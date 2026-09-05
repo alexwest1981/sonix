@@ -1440,38 +1440,78 @@ impl eframe::App for SonixApp {
             ctx.request_repaint_after(std::time::Duration::from_millis(200));
         }
 
+        // Check if user is typing into an input field or if a modal is open
+        let modal_open = self.show_help_guide
+            || self.show_project_manager_modal
+            || self.show_suno_import_modal
+            || self.show_render_queue_modal
+            || self.show_stem_focus_modal
+            || self.show_controller_modal
+            || self.show_about_modal
+            || self.show_ai_settings_modal
+            || self.show_audio_settings_modal
+            || self.show_import_modal;
+
+        let wants_keyboard = ctx.wants_keyboard_input();
+        let piano_active = self.view_mode == ViewMode::PianoRoll && !modal_open && !wants_keyboard;
+
+        // Release any stuck notes if piano was switched away or keyboard input was captured
+        if !piano_active && !self.active_keys.is_empty() {
+            let keys_to_release: Vec<u8> = self.active_keys.iter().copied().collect();
+            for note in keys_to_release {
+                self.release_note(note);
+            }
+        }
+
         // Keyboard Shortcuts
         ctx.input(|i| {
-            let key_map = [
-                (egui::Key::A, 0),
-                (egui::Key::W, 1),
-                (egui::Key::S, 2),
-                (egui::Key::E, 3),
-                (egui::Key::D, 4),
-                (egui::Key::F, 5),
-                (egui::Key::T, 6),
-                (egui::Key::G, 7),
-                (egui::Key::Y, 8),
-                (egui::Key::H, 9),
-                (egui::Key::U, 10),
-                (egui::Key::J, 11),
-                (egui::Key::K, 12),
-                (egui::Key::O, 13),
-                (egui::Key::L, 14),
-                (egui::Key::P, 15),
-            ];
+            // Virtual Piano keys ONLY when Piano Roll is active on screen, no modal is open, and not typing text
+            if piano_active && !i.modifiers.ctrl && !i.modifiers.alt && !i.modifiers.command {
+                let key_map = [
+                    (egui::Key::A, 0),
+                    (egui::Key::W, 1),
+                    (egui::Key::S, 2),
+                    (egui::Key::E, 3),
+                    (egui::Key::D, 4),
+                    (egui::Key::F, 5),
+                    (egui::Key::T, 6),
+                    (egui::Key::G, 7),
+                    (egui::Key::Y, 8),
+                    (egui::Key::H, 9),
+                    (egui::Key::U, 10),
+                    (egui::Key::J, 11),
+                    (egui::Key::K, 12),
+                    (egui::Key::O, 13),
+                    (egui::Key::L, 14),
+                    (egui::Key::P, 15),
+                ];
 
-            for (k, semi) in key_map {
-                let note = ((self.octave + 1) * 12 + semi) as u8;
-                if i.key_pressed(k) {
-                    self.play_note(note);
-                } else if i.key_released(k) {
-                    self.release_note(note);
+                for (k, semi) in key_map {
+                    let note = ((self.octave + 1) * 12 + semi) as u8;
+                    if i.key_pressed(k) {
+                        self.play_note(note);
+                    } else if i.key_released(k) {
+                        self.release_note(note);
+                    }
                 }
             }
 
-            if i.key_pressed(egui::Key::Space) {
-                self.toggle_playback();
+            // Transport & region keys only when not actively typing text in an input box
+            if !wants_keyboard {
+                if i.key_pressed(egui::Key::Space) {
+                    self.toggle_playback();
+                }
+
+                if i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace) {
+                    if let Some((t_idx, r_idx)) = self.selected_audio_region {
+                        if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+                            self.playlist_tracks[t_idx].regions.remove(r_idx);
+                            self.sync_track_regions(t_idx);
+                            self.selected_audio_region = None;
+                            self.status_message = "🗑 Raderade markerad ljudregion.".to_string();
+                        }
+                    }
+                }
             }
 
             // Global Project & View Shortcuts
@@ -1505,16 +1545,6 @@ impl eframe::App for SonixApp {
             }
             if i.key_pressed(egui::Key::F6) {
                 self.view_mode = ViewMode::EffectsMixer;
-            }
-            if i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace) {
-                if let Some((t_idx, r_idx)) = self.selected_audio_region {
-                    if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
-                        self.playlist_tracks[t_idx].regions.remove(r_idx);
-                        self.sync_track_regions(t_idx);
-                        self.selected_audio_region = None;
-                        self.status_message = "🗑 Raderade markerad ljudregion.".to_string();
-                    }
-                }
             }
         });
 
