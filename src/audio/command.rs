@@ -117,6 +117,21 @@ pub enum AudioCommand {
         muted: bool,
         solo: bool,
     },
+    SetStemTrackRegions {
+        track_index: usize,
+        regions: Vec<StemRegionPlayback>,
+    },
     SeekSongPosition(f32),
     SetSongPlayback(bool),
+}
+
+#[derive(Debug, Clone)]
+pub struct StemRegionPlayback {
+    pub start_time_secs: f32,
+    pub length_secs: f32,
+    pub sample_offset_sec: f32,
+    pub gain: f32,
+    pub fade_in_sec: f32,
+    pub fade_out_sec: f32,
+    pub muted: bool,
 }

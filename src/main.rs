@@ -5,6 +5,19 @@ use audio::AudioEngine;
 use ui::SonixApp;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Install a robust panic hook that logs detailed backtrace to stderr and /tmp/sonix_crash.log
+    std::panic::set_hook(Box::new(|panic_info| {
+        let backtrace = std::backtrace::Backtrace::capture();
+        eprintln!("💥 [SONIX CRASH CAUGHT] {}", panic_info);
+        eprintln!("Stack Backtrace:\n{}", backtrace);
+        if let Ok(mut f) = std::fs::File::create("/tmp/sonix_crash.log") {
+            use std::io::Write;
+            let _ = writeln!(f, "=== SONIX CRASH REPORT ===");
+            let _ = writeln!(f, "Panic: {}", panic_info);
+            let _ = writeln!(f, "Backtrace:\n{}", backtrace);
+        }
+    }));
+
     println!("=========================================================");
     println!("  🎹 SONIX - Native Linux Digital Audio Workstation     ");
     println!("=========================================================");
@@ -19,9 +32,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_inner_size([960.0, 720.0])
+            .with_inner_size([1100.0, 760.0])
             .with_min_inner_size([780.0, 540.0])
-            .with_title("🎹 Sonix DAW - Linux Audio Workstation"),
+            .with_title("🎹 Sonix DAW - Linux Audio Workstation")
+            .with_app_id("sonix-daw"),
         ..Default::default()
     };
 

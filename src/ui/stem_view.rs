@@ -80,7 +80,7 @@ pub fn render_stem_separator_view(
                     });
 
                     // Right Interactive Waveform Track Display
-                    let wave_width = ui.available_width() - 10.0;
+                    let wave_width = (ui.available_width() - 10.0).max(10.0);
                     let (wave_rect, _) = ui.allocate_exact_size(Vec2::new(wave_width, 70.0), Sense::click());
                     let painter = ui.painter();
 
@@ -90,14 +90,16 @@ pub fn render_stem_separator_view(
 
                     let mid_y = wave_rect.center().y;
                     let num_bars = stem.waveform_data.len();
-                    let bar_w = (wave_rect.width() - 8.0) / num_bars as f32;
+                    if num_bars > 0 {
+                        let bar_w = (wave_rect.width() - 8.0).max(1.0) / num_bars as f32;
 
-                    for (idx, &amp) in stem.waveform_data.iter().enumerate() {
-                        let bx = wave_rect.min.x + 4.0 + idx as f32 * bar_w;
-                        let h = amp * (wave_rect.height() * 0.42);
-                        let bar_rect = Rect::from_min_max(Pos2::new(bx, mid_y - h), Pos2::new(bx + bar_w * 0.8, mid_y + h));
-                        let fill = if stem.muted { Color32::from_rgb(40, 45, 55) } else { col };
-                        painter.rect_filled(bar_rect, Rounding::same(1.0), fill);
+                        for (idx, &amp) in stem.waveform_data.iter().enumerate() {
+                            let bx = wave_rect.min.x + 4.0 + idx as f32 * bar_w;
+                            let h = amp * (wave_rect.height() * 0.42);
+                            let bar_rect = Rect::from_min_max(Pos2::new(bx, mid_y - h), Pos2::new(bx + bar_w * 0.8, mid_y + h));
+                            let fill = if stem.muted { Color32::from_rgb(40, 45, 55) } else { col };
+                            painter.rect_filled(bar_rect, Rounding::same(1.0), fill);
+                        }
                     }
 
                     // Playhead needle

@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::Read;
 
 /// Reads a standard 16-bit, 24-bit or 32-bit float RIFF/WAVE file and generates a normalized peak amplitude waveform envelope.
-#[allow(unused_variables, unused_assignments)]
+#[allow(unused_variables, unused_assignments, dead_code)]
 pub fn read_wav_envelope(path: &str, points_count: usize) -> Result<Vec<f32>, String> {
     let mut file = File::open(path).map_err(|e| format!("Kunde inte öppna fil: {}", e))?;
     let mut buffer = Vec::new();

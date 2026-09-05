@@ -121,21 +121,24 @@ pub fn render_vocal_studio_view(
                             }
 
                             // Waveform display
-                            let (w_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width() - 8.0, 32.0), Sense::click());
+                            let w_w = (ui.available_width() - 8.0).max(10.0);
+                            let (w_rect, _) = ui.allocate_exact_size(Vec2::new(w_w, 32.0), Sense::click());
                             let painter = ui.painter();
 
                             painter.rect_filled(w_rect, Rounding::same(3.0), Color32::from_rgb(16, 20, 26));
                             painter.rect_stroke(w_rect, Rounding::same(3.0), Stroke::new(1.0_f32, if is_active { take.color } else { Color32::from_rgb(30, 40, 52) }));
 
                             let num_samples = take.waveform_data.len();
-                            let step_w = (w_rect.width() - 6.0) / num_samples as f32;
-                            let mid_y = w_rect.center().y;
+                            if num_samples > 0 {
+                                let step_w = (w_rect.width() - 6.0).max(1.0) / num_samples as f32;
+                                let mid_y = w_rect.center().y;
 
-                            for (s_i, &amp) in take.waveform_data.iter().enumerate() {
-                                let sx = w_rect.min.x + 3.0 + s_i as f32 * step_w;
-                                let h = amp * (w_rect.height() * 0.45);
-                                let bar_rect = Rect::from_min_max(Pos2::new(sx, mid_y - h), Pos2::new(sx + step_w * 0.85, mid_y + h));
-                                painter.rect_filled(bar_rect, Rounding::same(1.0), if is_active { take.color } else { Color32::from_rgb(60, 75, 95) });
+                                for (s_i, &amp) in take.waveform_data.iter().enumerate() {
+                                    let sx = w_rect.min.x + 3.0 + s_i as f32 * step_w;
+                                    let h = amp * (w_rect.height() * 0.45);
+                                    let bar_rect = Rect::from_min_max(Pos2::new(sx, mid_y - h), Pos2::new(sx + step_w * 0.85, mid_y + h));
+                                    painter.rect_filled(bar_rect, Rounding::same(1.0), if is_active { take.color } else { Color32::from_rgb(60, 75, 95) });
+                                }
                             }
                         });
                         ui.add_space(2.0);
@@ -152,7 +155,8 @@ pub fn render_vocal_studio_view(
                         });
                         ui.add_space(4.0);
 
-                        let (m_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 130.0), Sense::click());
+                        let m_w = ui.available_width().max(10.0);
+                        let (m_rect, _) = ui.allocate_exact_size(Vec2::new(m_w, 130.0), Sense::click());
                         let painter = ui.painter();
                         painter.rect_filled(m_rect, Rounding::same(4.0), Color32::from_rgb(14, 18, 24));
                         painter.rect_stroke(m_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Color32::from_rgb(34, 48, 64)));
@@ -164,11 +168,11 @@ pub fn render_vocal_studio_view(
                             painter.line_segment([Pos2::new(m_rect.min.x, ry), Pos2::new(m_rect.max.x, ry)], Stroke::new(1.0_f32, Color32::from_rgb(22, 28, 38)));
                         }
 
-                        let step_width = (m_rect.width() - 10.0) / 16.0;
+                        let step_width = (m_rect.width() - 10.0).max(1.0) / 16.0;
                         for blob in &harmonizer.blobs {
                             let bx = m_rect.min.x + 5.0 + blob.start_step as f32 * step_width;
-                            let bw = blob.length_steps as f32 * step_width - 3.0;
-                            let by = m_rect.max.y - ((blob.midi_note - 58) as f32 * (row_h * 0.75)).clamp(15.0, m_rect.height() - 25.0);
+                            let bw = (blob.length_steps as f32 * step_width - 3.0).max(4.0);
+                            let by = m_rect.max.y - ((blob.midi_note - 58) as f32 * (row_h * 0.75)).clamp(15.0, (m_rect.height() - 25.0).max(15.0));
                             let blob_rect = Rect::from_min_size(Pos2::new(bx, by), Vec2::new(bw, 18.0));
                             painter.rect_filled(blob_rect, Rounding::same(9.0), blob.color);
                             painter.rect_stroke(blob_rect, Rounding::same(9.0), Stroke::new(1.5_f32, Color32::WHITE));

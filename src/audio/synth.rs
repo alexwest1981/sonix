@@ -1,5 +1,5 @@
 use std::f32::consts::PI;
-use super::command::{AudioCommand, Preset, Waveform};
+use super::command::{AudioCommand, Preset, StemRegionPlayback, Waveform};
 use super::drum::{DrumType, DrumVoice};
 use super::effects::{DelayParams, ReverbParams, SimpleReverb, StereoDelay};
 use super::envelope::{AdsrParams, AdsrVoice};
@@ -102,6 +102,7 @@ pub struct StemVoiceTrack {
     pub muted: bool,
     pub solo: bool,
     pub start_time_secs: f32,
+    pub regions: Vec<StemRegionPlayback>,
 }
 
 pub struct SynthEngine {
@@ -235,6 +236,7 @@ impl SynthEngine {
                     muted: false,
                     solo: false,
                     start_time_secs,
+                    regions: Vec::new(),
                 };
                 if track_index < self.stem_tracks.len() {
                     self.stem_tracks[track_index] = track;
@@ -249,6 +251,7 @@ impl SynthEngine {
                             muted: false,
                             solo: false,
                             start_time_secs: 0.0,
+                            regions: Vec::new(),
                         });
                     }
                     self.stem_tracks.push(track);
@@ -263,6 +266,11 @@ impl SynthEngine {
                     track.pan = pan;
                     track.muted = muted;
                     track.solo = solo;
+                }
+            }
+            AudioCommand::SetStemTrackRegions { track_index, regions } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    track.regions = regions;
                 }
             }
             AudioCommand::SeekSongPosition(secs) => {
@@ -315,7 +323,7 @@ impl SynthEngine {
         // 6. Stereo Ping-Pong Delay FX
         let (del_l, del_r) = self.delay.process(rev_out, rev_out, &self.delay_params);
 
-        // 7. Multi-Track Stem Audio Streaming
+        // 7. Multi-Track Stem Audio Streaming (with Region Slicing & Fades)
         let mut stem_mix_l = 0.0;
         let mut stem_mix_r = 0.0;
 
@@ -329,22 +337,52 @@ impl SynthEngine {
                     continue;
                 }
 
-                let track_rel_time = current_time_sec - track.start_time_secs;
-                if track_rel_time < 0.0 {
-                    continue;
-                }
+                let pan = track.pan.clamp(-1.0, 1.0);
+                let pan_l = ((1.0 - pan) * 0.5).sqrt();
+                let pan_r = ((1.0 + pan) * 0.5).sqrt();
 
-                let sample_idx = (track_rel_time * track.sample_rate) as usize;
-                if sample_idx < track.left.len() {
-                    let raw_l = track.left[sample_idx];
-                    let raw_r = if sample_idx < track.right.len() { track.right[sample_idx] } else { raw_l };
+                if !track.regions.is_empty() {
+                    // Play defined audio regions/slices
+                    for region in &track.regions {
+                        if region.muted {
+                            continue;
+                        }
+                        let r_end = region.start_time_secs + region.length_secs;
+                        if current_time_sec >= region.start_time_secs && current_time_sec < r_end {
+                            let rel_time = current_time_sec - region.start_time_secs;
+                            let mut env = 1.0_f32;
+                            if region.fade_in_sec > 0.001 && rel_time < region.fade_in_sec {
+                                env *= (rel_time / region.fade_in_sec).clamp(0.0, 1.0);
+                            }
+                            let time_left = r_end - current_time_sec;
+                            if region.fade_out_sec > 0.001 && time_left < region.fade_out_sec {
+                                env *= (time_left / region.fade_out_sec).clamp(0.0, 1.0);
+                            }
 
-                    let pan = track.pan.clamp(-1.0, 1.0);
-                    let pan_l = ((1.0 - pan) * 0.5).sqrt();
-                    let pan_r = ((1.0 + pan) * 0.5).sqrt();
+                            let sample_pos_sec = region.sample_offset_sec + rel_time;
+                            let sample_idx = (sample_pos_sec * track.sample_rate) as usize;
+                            if sample_idx < track.left.len() {
+                                let raw_l = track.left[sample_idx];
+                                let raw_r = if sample_idx < track.right.len() { track.right[sample_idx] } else { raw_l };
+                                let g = track.volume * region.gain * env;
+                                stem_mix_l += raw_l * g * pan_l;
+                                stem_mix_r += raw_r * g * pan_r;
+                            }
+                        }
+                    }
+                } else {
+                    // Fallback to full track streaming
+                    let track_rel_time = current_time_sec - track.start_time_secs;
+                    if track_rel_time >= 0.0 {
+                        let sample_idx = (track_rel_time * track.sample_rate) as usize;
+                        if sample_idx < track.left.len() {
+                            let raw_l = track.left[sample_idx];
+                            let raw_r = if sample_idx < track.right.len() { track.right[sample_idx] } else { raw_l };
 
-                    stem_mix_l += raw_l * track.volume * pan_l;
-                    stem_mix_r += raw_r * track.volume * pan_r;
+                            stem_mix_l += raw_l * track.volume * pan_l;
+                            stem_mix_r += raw_r * track.volume * pan_r;
+                        }
+                    }
                 }
             }
 

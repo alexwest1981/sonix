@@ -15,7 +15,7 @@ pub mod wav_reader;
 pub mod wav_writer;
 
 #[allow(unused_imports)]
-pub use command::{AudioCommand, Preset, Waveform};
+pub use command::{AudioCommand, Preset, StemRegionPlayback, Waveform};
 #[allow(unused_imports)]
 pub use drum::DrumType;
 #[allow(unused_imports)]
