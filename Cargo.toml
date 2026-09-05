@@ -1,0 +1,11 @@
+[package]
+name = "sonix"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+cpal = "0.15"
+rtrb = "0.3"
+eframe = "0.29"
+crossterm = "0.28"
+colored = "3.0"
