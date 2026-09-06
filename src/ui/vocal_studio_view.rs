@@ -14,6 +14,7 @@ pub fn render_vocal_studio_view(
     bpm: f32,
     playlist_tracks: &mut Vec<PlaylistTrack>,
     status_msg: &mut String,
+    show_mic_settings: &mut bool,
 ) {
     ui.group(|ui| {
         // ============================================================
@@ -25,9 +26,12 @@ pub fn render_vocal_studio_view(
             ui.label(egui::RichText::new("Mikrofoninspelning i realtid  •  Live WAV Capture  •  Waveform Editor  •  Melodyne ARA2").size(11.0).color(Theme::TEXT_MUTED));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.add(egui::Button::new(egui::RichText::new("⚙ Mik-panel").size(11.0).strong().color(Color32::BLACK)).fill(Theme::FL_CYAN)).clicked() {
+                    *show_mic_settings = true;
+                }
                 let dev_name = vocal_track.mic_capture.as_ref().map(|m| m.device_name.as_str()).unwrap_or("Standard Mikrofon");
                 let sr = vocal_track.mic_capture.as_ref().map(|m| m.sample_rate).unwrap_or(44100);
-                ui.label(egui::RichText::new(format!("🎛 {} | {} Hz 32-bit", dev_name, sr)).size(10.5).color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(format!("🎛 {} | {} Hz", dev_name, sr)).size(10.5).color(Theme::FL_CYAN));
             });
         });
 

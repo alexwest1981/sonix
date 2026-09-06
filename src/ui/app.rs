@@ -10,7 +10,7 @@ use crate::audio::{
 use crate::audio::ai_generator::AiMusicAssistant;
 use crate::audio::patcher::ModularGraph;
 use crate::audio::plugin_host::PluginManager;
-use crate::audio::recorder::VocalStudioTrack;
+use crate::audio::recorder::{LiveMicrophoneCapture, VocalStudioTrack};
 use crate::audio::stem_separator::StemProject;
 use crate::audio::vocal_harmonizer::VocalHarmonizer;
 use super::ai_assistant_view::render_ai_assistant_view;
@@ -528,6 +528,7 @@ pub struct SonixApp {
     pub show_about_modal: bool,
     pub show_ai_settings_modal: bool,
     pub show_audio_settings_modal: bool,
+    pub show_mic_settings_modal: bool,
     pub show_project_manager_modal: bool,
     pub project_file_path: Option<String>,
     pub new_project_name_input: String,
@@ -1026,6 +1027,7 @@ impl SonixApp {
             show_about_modal: false,
             show_ai_settings_modal: false,
             show_audio_settings_modal: false,
+            show_mic_settings_modal: false,
             show_project_manager_modal: false,
             project_file_path: None,
             new_project_name_input: "Mitt Beat".to_string(),
@@ -2275,6 +2277,10 @@ impl eframe::App for SonixApp {
 
                     // Inställningar
                     ui.menu_button("⚙ Inställningar", |ui| {
+                        if ui.button("🎙 Mikrofoninställningar & Inmatningsenhet (Samson/USB)...").clicked() {
+                            self.show_mic_settings_modal = true;
+                            ui.close_menu();
+                        }
                         if ui.button("🎛 Ljud- & MIDI-inställningar (PipeWire/ALSA/JACK)...").clicked() {
                             self.show_audio_settings_modal = true;
                             ui.close_menu();
@@ -2576,6 +2582,7 @@ impl eframe::App for SonixApp {
                                 self.bpm,
                                 &mut self.playlist_tracks,
                                 &mut self.status_message,
+                                &mut self.show_mic_settings_modal,
                             );
                         }
                         ViewMode::AiMusicAssistant => {
@@ -2598,6 +2605,7 @@ impl eframe::App for SonixApp {
         self.render_project_manager_modal(ctx);
         self.render_ai_settings_modal(ctx);
         self.render_audio_settings_modal(ctx);
+        self.render_mic_settings_modal(ctx);
         self.render_stem_focus_modal(ctx);
         self.render_help_manual_modal(ctx);
         self.render_add_track_modal(ctx);
@@ -2898,6 +2906,10 @@ impl SonixApp {
                         let loop_bg = Color32::from_rgb(38, 45, 55);
                         if ui.add(egui::Button::new(egui::RichText::new("🔁").size(10.0).color(Theme::FL_CYAN)).fill(loop_bg)).clicked() {
                             self.status_message = format!("Loop-region satt till Takt {}-{}", self.loop_start_bar + 1, self.loop_end_bar);
+                        }
+
+                        if ui.add(egui::Button::new(egui::RichText::new("🎙 Mik-panel").size(10.5).strong().color(Color32::WHITE)).fill(Color32::from_rgb(30, 80, 110))).clicked() {
+                            self.show_mic_settings_modal = true;
                         }
 
                         ui.separator();
@@ -3285,7 +3297,10 @@ impl SonixApp {
                                 if h_resp.clicked() || h_resp.double_clicked() {
                                     self.selected_timeline_track = t_idx;
                                     if let Some(mouse_pos) = h_resp.hover_pos() {
-                                        if m_rect.contains(mouse_pos) {
+                                        let vu_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 116.0, h_rect.min.y + 18.0), Vec2::new(20.0, 18.0));
+                                        if (is_vocal_track || is_armed) && vu_rect.contains(mouse_pos) {
+                                            self.show_mic_settings_modal = true;
+                                        } else if m_rect.contains(mouse_pos) {
                                             self.playlist_tracks[t_idx].muted = !self.playlist_tracks[t_idx].muted;
                                             self.sync_track_audio_state(t_idx);
                                         } else if s_rect.contains(mouse_pos) {
@@ -6917,6 +6932,197 @@ impl SonixApp {
 
         if close || !open {
             self.show_audio_settings_modal = false;
+        }
+    }
+
+    fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_mic_settings_modal {
+            return;
+        }
+
+        let mut close = false;
+        let mut open = self.show_mic_settings_modal;
+        egui::Window::new("🎙 Mikrofonjustering & Enhetsinställningar (Microphone Panel)")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .default_size(Vec2::new(560.0, 480.0))
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    // Group 1: Device Selection & Host Audio Stream
+                    ui.group(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(egui::RichText::new("Ljudenhet & Mikrofonkälla").strong().size(13.0).color(Theme::FL_CYAN));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("🔄 Uppdatera enheter").on_hover_text("Sök efter anslutna USB- och hårdvarumikrofoner").clicked() {
+                                    let devs = LiveMicrophoneCapture::list_devices();
+                                    self.vocal_studio.mic_settings.available_devices = devs;
+                                }
+                            });
+                        });
+                        ui.add_space(4.0);
+
+                        let dev_list = self.vocal_studio.mic_settings.available_devices.clone();
+                        let mut current_idx = self.vocal_studio.mic_settings.selected_device_idx;
+
+                        egui::ComboBox::from_label("Välj Mikrofon")
+                            .selected_text(dev_list.get(current_idx).cloned().unwrap_or_else(|| "Standardmikrofon".to_string()))
+                            .width(360.0)
+                            .show_ui(ui, |ui| {
+                                for (idx, dev_name) in dev_list.iter().enumerate() {
+                                    let is_rec_pref = dev_name.to_lowercase().contains("samson") || dev_name.to_lowercase().contains("usb");
+                                    let label = if is_rec_pref {
+                                        format!("🎤 {} (Rekommenderad)", dev_name)
+                                    } else {
+                                        format!("🎙 {}", dev_name)
+                                    };
+                                    if ui.selectable_value(&mut current_idx, idx, label).clicked() {
+                                        let switched = self.vocal_studio.select_microphone(idx);
+                                        if switched {
+                                            self.status_message = format!("✔ Mikrofon ändrad till: {}", dev_name);
+                                        }
+                                    }
+                                }
+                            });
+
+                        let active_dev = self.vocal_studio.mic_capture.as_ref().map(|m| m.device_name.as_str()).unwrap_or("Standard");
+                        let sr = self.vocal_studio.mic_capture.as_ref().map(|m| m.sample_rate).unwrap_or(44100);
+                        ui.label(egui::RichText::new(format!("🟢 Aktiv ström: {} • {} Hz 32-bit Float", active_dev, sr)).size(10.5).color(Theme::FL_GREEN));
+                    });
+
+                    ui.add_space(6.0);
+
+                    // Group 2: Real-time VU & Level Meter with Gain
+                    ui.group(|ui| {
+                        ui.label(egui::RichText::new("Ingångsnivå & Förförstärkare (Gain & VU)").strong().size(13.0).color(Theme::FL_ORANGE));
+                        ui.add_space(4.0);
+
+                        let vu = self.vocal_studio.mic_vu_level;
+                        let vu_db = if vu > 0.0001 {
+                            (20.0 * vu.log10()).max(-48.0)
+                        } else {
+                            -48.0
+                        };
+
+                        ui.horizontal(|ui| {
+                            let text_col = if vu > 0.85 {
+                                Color32::from_rgb(255, 60, 60)
+                            } else if vu > 0.50 {
+                                Theme::FL_ORANGE
+                            } else {
+                                Theme::FL_GREEN
+                            };
+                            ui.label(egui::RichText::new(format!("Ingångssignal: {:.1} dB", vu_db)).monospace().strong().color(text_col));
+
+                            if vu > 0.95 {
+                                ui.label(egui::RichText::new("⚠ CLIP").strong().color(Color32::from_rgb(255, 40, 40)));
+                            }
+                        });
+
+                        // Visual LED Bar Meter
+                        let (m_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
+                        ui.painter().rect_filled(m_rect, Rounding::same(3.0), Color32::from_rgb(18, 22, 30));
+                        ui.painter().rect_stroke(m_rect, Rounding::same(3.0), Stroke::new(1.0_f32, Color32::from_rgb(40, 50, 68)));
+
+                        let fill_w = (m_rect.width() * vu.clamp(0.0, 1.0)).max(2.0);
+                        let bar_color = if vu > 0.85 {
+                            Color32::from_rgb(255, 60, 60)
+                        } else if vu > 0.50 {
+                            Theme::FL_ORANGE
+                        } else {
+                            Theme::FL_GREEN
+                        };
+                        ui.painter().rect_filled(Rect::from_min_size(m_rect.min, Vec2::new(fill_w, m_rect.height())), Rounding::same(3.0), bar_color);
+
+                        ui.add_space(4.0);
+                        let mut gain = self.vocal_studio.mic_settings.input_gain;
+                        let gain_db = 20.0 * gain.log10();
+                        let gain_str = format!("Mikrofonförstärkning: {:.2}x ({:+.1} dB)", gain, gain_db);
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::Slider::new(&mut gain, 0.0..=4.0).text(gain_str)).changed() {
+                                self.vocal_studio.set_input_gain(gain);
+                            }
+                        });
+                    });
+
+                    ui.add_space(6.0);
+
+                    // Group 3: Noise Gate & Feedback Suppression
+                    ui.group(|ui| {
+                        ui.label(egui::RichText::new("Brusreducering & Anti-rundgång").strong().size(13.0).color(Theme::FL_YELLOW));
+                        ui.add_space(4.0);
+
+                        let mut gate = self.vocal_studio.mic_settings.noise_gate_thresh;
+                        let gate_db = if gate > 0.0001 { 20.0 * gate.log10() } else { -60.0 };
+                        let gate_open = self.vocal_studio.mic_vu_level >= gate;
+                        let gate_str = format!("Bruströskel (Gate): {:.3} ({:.1} dB)", gate, gate_db);
+
+                        ui.horizontal(|ui| {
+                            if ui.add(egui::Slider::new(&mut gate, 0.000..=0.100).text(gate_str)).changed() {
+                                self.vocal_studio.set_noise_gate(gate);
+                            }
+                            let led_color = if gate_open { Theme::FL_GREEN } else { Color32::from_rgb(180, 40, 40) };
+                            let led_text = if gate_open { "🟢 ÖPPEN" } else { "🔴 STÄNGD" };
+                            ui.label(egui::RichText::new(led_text).strong().color(led_color).size(10.5));
+                        });
+
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut self.vocal_studio.mic_settings.feedback_reduction, "🔇 Feedback Suppression / Anti-rundgång");
+                            ui.checkbox(&mut self.vocal_studio.mic_settings.low_cut_80hz, "📉 80Hz Low-Cut (Tar bort muller & bordsvibrationer)");
+                        });
+                    });
+
+                    ui.add_space(6.0);
+
+                    // Group 4: Live DSP Effects (Reverb, De-Esser, Compressor, Direct Monitoring)
+                    ui.group(|ui| {
+                        ui.label(egui::RichText::new("Vokaleffekter i realtid (Live DSP)").strong().size(13.0).color(Theme::FL_PURPLE));
+                        ui.add_space(4.0);
+
+                        let rev_str = format!("Rumsklang: {:.0}%", self.vocal_studio.mic_settings.vocal_reverb * 100.0);
+                        ui.horizontal(|ui| {
+                            ui.add(egui::Slider::new(&mut self.vocal_studio.mic_settings.vocal_reverb, 0.0..=1.0).text(rev_str));
+                        });
+
+                        let ess_str = format!("De-Esser (S-dämpning): {:.0}%", self.vocal_studio.mic_settings.de_esser_amount * 100.0);
+                        ui.horizontal(|ui| {
+                            ui.add(egui::Slider::new(&mut self.vocal_studio.mic_settings.de_esser_amount, 0.0..=1.0).text(ess_str));
+                        });
+
+                        let comp_str = format!("Vokal Kompressor: {:.0}%", self.vocal_studio.mic_settings.compressor_amount * 100.0);
+                        ui.horizontal(|ui| {
+                            ui.add(egui::Slider::new(&mut self.vocal_studio.mic_settings.compressor_amount, 0.0..=1.0).text(comp_str));
+                        });
+
+                        ui.checkbox(&mut self.vocal_studio.mic_settings.direct_monitoring, "🎧 Direktlyssning i hörlurar (Zero-Latency Direct Monitoring)");
+                    });
+
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui.button("OK / Stäng").clicked() {
+                            close = true;
+                        }
+
+                        let is_rec = self.vocal_studio.is_recording;
+                        let btn_label = if is_rec { "⏹ Avsluta Provpratning" } else { "🎙 Provprata & Testa Inspelning" };
+                        let btn_col = if is_rec { Color32::from_rgb(220, 40, 40) } else { Theme::FL_GREEN };
+                        if ui.add(egui::Button::new(egui::RichText::new(btn_label).strong().color(Color32::WHITE)).fill(btn_col)).clicked() {
+                            if is_rec {
+                                self.vocal_studio.stop_recording(self.bpm);
+                                self.sync_track_stem_to_engine(4);
+                                self.status_message = "✔ Testinspelning klar och sparad i Sångstudion!".to_string();
+                            } else {
+                                self.vocal_studio.start_recording();
+                                self.status_message = "🔴 Provpratar... Säg några ord i mikrofonen!".to_string();
+                            }
+                        }
+                    });
+                });
+            });
+
+        if close || !open {
+            self.show_mic_settings_modal = false;
         }
     }
 

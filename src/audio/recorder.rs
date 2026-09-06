@@ -47,10 +47,47 @@ pub enum RecordingMode {
     CustomSounds,
 }
 
+#[derive(Clone, Debug)]
+pub struct MicrophoneSettings {
+    pub selected_device_idx: usize,
+    pub available_devices: Vec<String>,
+    pub input_gain: f32,
+    pub noise_gate_thresh: f32,
+    pub direct_monitoring: bool,
+    pub feedback_reduction: bool,
+    pub low_cut_80hz: bool,
+    pub vocal_reverb: f32,
+    pub de_esser_amount: f32,
+    pub compressor_amount: f32,
+}
+
+impl Default for MicrophoneSettings {
+    fn default() -> Self {
+        let devs = LiveMicrophoneCapture::list_devices();
+        let default_idx = devs.iter().position(|d| {
+            let l = d.to_lowercase();
+            (l.contains("samson") || l.contains("usb") || l.contains("mic")) && !l.contains("monitor")
+        }).unwrap_or(0);
+        Self {
+            selected_device_idx: default_idx,
+            available_devices: devs,
+            input_gain: 1.50,
+            noise_gate_thresh: 0.012,
+            direct_monitoring: false,
+            feedback_reduction: true,
+            low_cut_80hz: true,
+            vocal_reverb: 0.20,
+            de_esser_amount: 0.35,
+            compressor_amount: 0.45,
+        }
+    }
+}
+
 pub struct LiveMicrophoneCapture {
     pub is_recording: Arc<AtomicBool>,
     pub is_paused: Arc<AtomicBool>,
     pub input_gain: Arc<Mutex<f32>>,
+    pub noise_gate_thresh: Arc<Mutex<f32>>,
     pub peak_vu: Arc<AtomicU32>,
     pub recorded_samples: Arc<Mutex<Vec<f32>>>,
     pub live_peaks: Arc<Mutex<Vec<f32>>>,
@@ -60,17 +97,55 @@ pub struct LiveMicrophoneCapture {
 }
 
 impl LiveMicrophoneCapture {
+    pub fn list_devices() -> Vec<String> {
+        let host = cpal::default_host();
+        let mut devices = Vec::new();
+        if let Ok(dev_iter) = host.input_devices() {
+            for dev in dev_iter {
+                if let Ok(name) = dev.name() {
+                    devices.push(name);
+                }
+            }
+        }
+        if devices.is_empty() {
+            devices.push("PipeWire / ALSA Standardmikrofon".to_string());
+        }
+        devices
+    }
+
     pub fn new() -> Self {
         let is_recording = Arc::new(AtomicBool::new(false));
         let is_paused = Arc::new(AtomicBool::new(false));
-        let input_gain = Arc::new(Mutex::new(1.0));
+        let input_gain = Arc::new(Mutex::new(1.50));
+        let noise_gate_thresh = Arc::new(Mutex::new(0.012));
         let peak_vu = Arc::new(AtomicU32::new(0));
         let recorded_samples = Arc::new(Mutex::new(Vec::with_capacity(44100 * 30)));
         let live_peaks = Arc::new(Mutex::new(Vec::with_capacity(1000)));
 
         let host = cpal::default_host();
-        let (device_name, stream, sample_rate) = if let Some(device) = host.default_input_device() {
-            let name = device.name().unwrap_or_else(|_| "PipeWire / ALSA Standardmikrofon".to_string());
+        let mut chosen_device = None;
+        if let Ok(dev_iter) = host.input_devices() {
+            let devs: Vec<_> = dev_iter.collect();
+            // Prioritize dedicated USB mics like Samson Q2U over monitor devices
+            if let Some(preferred) = devs.iter().find(|d| {
+                if let Ok(n) = d.name() {
+                    let l = n.to_lowercase();
+                    (l.contains("samson") || l.contains("usb") || l.contains("mic")) && !l.contains("monitor")
+                } else {
+                    false
+                }
+            }) {
+                chosen_device = Some((*preferred).clone());
+            } else if let Some(first) = devs.into_iter().next() {
+                chosen_device = Some(first);
+            }
+        }
+        if chosen_device.is_none() {
+            chosen_device = host.default_input_device();
+        }
+
+        let (device_name, stream, sample_rate) = if let Some(device) = chosen_device {
+            let name = device.name().unwrap_or_else(|_| "PipeWire / ALSA Mikrofon".to_string());
             if let Ok(default_config) = device.default_input_config() {
                 let sr = default_config.sample_rate().0;
                 let sample_format = default_config.sample_format();
@@ -79,6 +154,7 @@ impl LiveMicrophoneCapture {
                 let is_rec = Arc::clone(&is_recording);
                 let is_p = Arc::clone(&is_paused);
                 let gain_ref = Arc::clone(&input_gain);
+                let gate_ref = Arc::clone(&noise_gate_thresh);
                 let vu_ref = Arc::clone(&peak_vu);
                 let samples_ref = Arc::clone(&recorded_samples);
                 let peaks_ref = Arc::clone(&live_peaks);
@@ -90,6 +166,7 @@ impl LiveMicrophoneCapture {
                         &config,
                         move |data: &[f32], _: &cpal::InputCallbackInfo| {
                             let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
+                            let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
                             let ch = num_channels.max(1);
                             let mut block_max: f32 = 0.0;
 
@@ -97,9 +174,12 @@ impl LiveMicrophoneCapture {
                                 let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
                                 let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
                                 for frame in data.chunks(ch) {
-                                    let mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
-                                    let val = mono_sample.abs();
-                                    if val > block_max { block_max = val; }
+                                    let mut mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
+                                    let raw_abs = mono_sample.abs();
+                                    if raw_abs < gate {
+                                        mono_sample = 0.0;
+                                    }
+                                    if raw_abs > block_max { block_max = raw_abs; }
                                     b.push(mono_sample.clamp(-1.0, 1.0));
                                     if b.len() % 256 == 0 {
                                         p.push(block_max.clamp(0.04, 1.0));
@@ -121,6 +201,7 @@ impl LiveMicrophoneCapture {
                         &config,
                         move |data: &[i16], _: &cpal::InputCallbackInfo| {
                             let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
+                            let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
                             let ch = num_channels.max(1);
                             let mut block_max: f32 = 0.0;
 
@@ -128,9 +209,12 @@ impl LiveMicrophoneCapture {
                                 let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
                                 let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
                                 for frame in data.chunks(ch) {
-                                    let mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
-                                    let val = mono_sample.abs();
-                                    if val > block_max { block_max = val; }
+                                    let mut mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
+                                    let raw_abs = mono_sample.abs();
+                                    if raw_abs < gate {
+                                        mono_sample = 0.0;
+                                    }
+                                    if raw_abs > block_max { block_max = raw_abs; }
                                     b.push(mono_sample.clamp(-1.0, 1.0));
                                     if b.len() % 256 == 0 {
                                         p.push(block_max.clamp(0.04, 1.0));
@@ -170,6 +254,7 @@ impl LiveMicrophoneCapture {
             is_recording,
             is_paused,
             input_gain,
+            noise_gate_thresh,
             peak_vu,
             recorded_samples,
             live_peaks,
@@ -177,6 +262,122 @@ impl LiveMicrophoneCapture {
             device_name,
             _stream: stream,
         }
+    }
+
+    pub fn open_device_by_index(&mut self, device_index: usize) -> bool {
+        let host = cpal::default_host();
+        let mut chosen_device = None;
+        if let Ok(dev_iter) = host.input_devices() {
+            let devs: Vec<_> = dev_iter.collect();
+            if let Some(dev) = devs.into_iter().nth(device_index) {
+                chosen_device = Some(dev);
+            }
+        }
+        if chosen_device.is_none() {
+            chosen_device = host.default_input_device();
+        }
+
+        if let Some(device) = chosen_device {
+            let name = device.name().unwrap_or_else(|_| "Mikrofon".to_string());
+            if let Ok(default_config) = device.default_input_config() {
+                let sr = default_config.sample_rate().0;
+                let sample_format = default_config.sample_format();
+                let config: StreamConfig = default_config.into();
+
+                let is_rec = Arc::clone(&self.is_recording);
+                let is_p = Arc::clone(&self.is_paused);
+                let gain_ref = Arc::clone(&self.input_gain);
+                let gate_ref = Arc::clone(&self.noise_gate_thresh);
+                let vu_ref = Arc::clone(&self.peak_vu);
+                let samples_ref = Arc::clone(&self.recorded_samples);
+                let peaks_ref = Arc::clone(&self.live_peaks);
+
+                let num_channels = config.channels as usize;
+
+                let stream_res = match sample_format {
+                    SampleFormat::F32 => device.build_input_stream(
+                        &config,
+                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                            let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
+                            let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
+                            let ch = num_channels.max(1);
+                            let mut block_max: f32 = 0.0;
+
+                            if is_rec.load(Ordering::Relaxed) && !is_p.load(Ordering::Relaxed) {
+                                let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
+                                let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
+                                for frame in data.chunks(ch) {
+                                    let mut mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
+                                    let raw_abs = mono_sample.abs();
+                                    if raw_abs < gate {
+                                        mono_sample = 0.0;
+                                    }
+                                    if raw_abs > block_max { block_max = raw_abs; }
+                                    b.push(mono_sample.clamp(-1.0, 1.0));
+                                    if b.len() % 256 == 0 {
+                                        p.push(block_max.clamp(0.04, 1.0));
+                                    }
+                                }
+                            } else {
+                                for frame in data.chunks(ch) {
+                                    let mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
+                                    let raw_abs = mono_sample.abs();
+                                    if raw_abs > block_max { block_max = raw_abs; }
+                                }
+                            }
+                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
+                        },
+                        |err| eprintln!("[Sonix Mic Input Error] {}", err),
+                        None,
+                    ),
+                    SampleFormat::I16 => device.build_input_stream(
+                        &config,
+                        move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                            let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
+                            let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
+                            let ch = num_channels.max(1);
+                            let mut block_max: f32 = 0.0;
+
+                            if is_rec.load(Ordering::Relaxed) && !is_p.load(Ordering::Relaxed) {
+                                let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
+                                let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
+                                for frame in data.chunks(ch) {
+                                    let mut mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
+                                    let raw_abs = mono_sample.abs();
+                                    if raw_abs < gate {
+                                        mono_sample = 0.0;
+                                    }
+                                    if raw_abs > block_max { block_max = raw_abs; }
+                                    b.push(mono_sample.clamp(-1.0, 1.0));
+                                    if b.len() % 256 == 0 {
+                                        p.push(block_max.clamp(0.04, 1.0));
+                                    }
+                                }
+                            } else {
+                                for frame in data.chunks(ch) {
+                                    let mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
+                                    let raw_abs = mono_sample.abs();
+                                    if raw_abs > block_max { block_max = raw_abs; }
+                                }
+                            }
+                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
+                        },
+                        |err| eprintln!("[Sonix Mic Input Error] {}", err),
+                        None,
+                    ),
+                    _ => Err(cpal::BuildStreamError::DeviceNotAvailable),
+                };
+
+                if let Ok(s) = stream_res {
+                    let _ = s.play();
+                    self._stream = Some(s);
+                    self.device_name = name;
+                    self.sample_rate = sr;
+                    return true;
+                }
+            }
+        }
+        false
     }
 }
 
@@ -200,12 +401,14 @@ pub struct VocalStudioTrack {
     pub selected_crop_start_norm: f32,
     pub selected_crop_end_norm: f32,
     pub mic_capture: Option<LiveMicrophoneCapture>,
+    pub mic_settings: MicrophoneSettings,
 }
 
 impl Default for VocalStudioTrack {
     fn default() -> Self {
         let mic = LiveMicrophoneCapture::new();
         let dev_name = mic.device_name.clone();
+        let settings = MicrophoneSettings::default();
 
         let mut track = Self {
             name: "🎤 Lead Sång (Studio Recorder)".to_string(),
@@ -216,7 +419,7 @@ impl Default for VocalStudioTrack {
             recording_mode: RecordingMode::LeadVocals,
             recording_elapsed_secs: 0.0,
             monitoring_on: true,
-            input_gain: 1.0,
+            input_gain: settings.input_gain,
             mic_vu_level: 0.0,
             custom_sample_name_input: "Mitt Akustiska Ljud 1".to_string(),
             takes: Vec::new(),
@@ -227,6 +430,7 @@ impl Default for VocalStudioTrack {
             selected_crop_start_norm: 0.0,
             selected_crop_end_norm: 1.0,
             mic_capture: Some(mic),
+            mic_settings: settings,
         };
         track.populate_demo_takes();
         track.populate_demo_custom_sounds();
@@ -235,6 +439,35 @@ impl Default for VocalStudioTrack {
 }
 
 impl VocalStudioTrack {
+    pub fn select_microphone(&mut self, device_index: usize) -> bool {
+        self.mic_settings.selected_device_idx = device_index;
+        if let Some(ref mut mic) = self.mic_capture {
+            if mic.open_device_by_index(device_index) {
+                self.input_channel = mic.device_name.clone();
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn set_input_gain(&mut self, gain: f32) {
+        self.mic_settings.input_gain = gain;
+        self.input_gain = gain;
+        if let Some(ref mic) = self.mic_capture {
+            if let Ok(mut g) = mic.input_gain.lock() {
+                *g = gain;
+            }
+        }
+    }
+
+    pub fn set_noise_gate(&mut self, threshold: f32) {
+        self.mic_settings.noise_gate_thresh = threshold;
+        if let Some(ref mic) = self.mic_capture {
+            if let Ok(mut gate) = mic.noise_gate_thresh.lock() {
+                *gate = threshold;
+            }
+        }
+    }
     pub fn update_live_stream(&mut self) {
         if let Some(ref mic) = self.mic_capture {
             let vu_bits = mic.peak_vu.load(Ordering::Relaxed);
