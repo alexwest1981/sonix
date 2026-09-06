@@ -43,12 +43,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
+    let is_fullscreen = !screenshot_dir.is_empty() || args.contains(&"--fullscreen".to_string());
+
+    let viewport = if is_fullscreen {
+        eframe::egui::ViewportBuilder::default()
+            .with_fullscreen(true)
+            .with_inner_size([1920.0, 1200.0])
+            .with_title("🎹 Sonix DAW - Linux Audio Workstation")
+            .with_app_id("sonix-daw")
+    } else {
+        eframe::egui::ViewportBuilder::default()
             .with_inner_size([1280.0, 800.0])
             .with_min_inner_size([780.0, 540.0])
             .with_title("🎹 Sonix DAW - Linux Audio Workstation")
-            .with_app_id("sonix-daw"),
+            .with_app_id("sonix-daw")
+    };
+
+    let options = eframe::NativeOptions {
+        viewport,
         ..Default::default()
     };
 
