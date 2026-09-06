@@ -1712,15 +1712,14 @@ impl eframe::App for SonixApp {
 
         self.advance_sequencer();
         self.anim_phase += 0.08;
-
-
+        self.vocal_studio.update_live_stream();
 
         // Check if window is minimized or not focused (Wayland / Hyprland safety)
         let is_minimized = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
         let is_focused = ctx.input(|i| i.viewport().focused.unwrap_or(true));
 
-        // Smooth 60 FPS while playing & focused, 30 FPS when idle, gentle 200ms when unfocused/minimized to prevent Wayland crashes
-        if self.is_playing {
+        // Smooth 60 FPS while playing/recording & focused, 30 FPS when idle, gentle 200ms when unfocused/minimized to prevent Wayland crashes
+        if self.is_playing || self.vocal_studio.is_recording {
             if is_minimized || !is_focused {
                 ctx.request_repaint_after(std::time::Duration::from_millis(33));
             } else {
@@ -2302,7 +2301,16 @@ impl eframe::App for SonixApp {
                             render_plugins_view(ui, &mut self.plugin_manager, &mut self.status_message);
                         }
                         ViewMode::VocalStudio => {
-                            render_vocal_studio_view(ui, &mut self.vocal_studio, &mut self.vocal_harmonizer, self.is_playing, self.current_step, &mut self.status_message);
+                            render_vocal_studio_view(
+                                ui,
+                                &mut self.vocal_studio,
+                                &mut self.vocal_harmonizer,
+                                self.is_playing,
+                                self.current_step,
+                                self.bpm,
+                                &mut self.playlist_tracks,
+                                &mut self.status_message,
+                            );
                         }
                         ViewMode::AiMusicAssistant => {
                             render_ai_assistant_view(ui, &mut self.ai_assistant, &mut self.channels, &mut self.status_message);
