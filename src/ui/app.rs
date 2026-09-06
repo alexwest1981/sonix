@@ -14,10 +14,15 @@ use crate::audio::recorder::{LiveMicrophoneCapture, VocalStudioTrack};
 use crate::audio::stem_separator::StemProject;
 use crate::audio::vocal_harmonizer::VocalHarmonizer;
 use super::ai_assistant_view::render_ai_assistant_view;
+use super::chord_generator_modal::{render_chord_generator_modal, ChordGeneratorState, GeneratedChord};
+use super::dice_generator_modal::{render_dice_generator_modal, DiceGeneratorState};
+use super::fx_rack_modal::{render_fx_rack_modal, FxRackState};
 use super::patcher_view::render_patcher_view;
 use super::plugins_view::render_plugins_view;
+use super::song_structure_modal::{render_song_structure_modal, SongStructureState, SongSectionItem};
 use super::stem_view::render_stem_separator_view;
 use super::theme::Theme;
+use super::tuner_modal::{render_tuner_modal, TunerState};
 use super::vocal_studio_view::render_vocal_studio_view;
 use super::widgets::{
     alchemy_transform_matrix, drummer_xy_matrix, eq_curve_visualizer, fl_step_button,
@@ -529,6 +534,16 @@ pub struct SonixApp {
     pub show_ai_settings_modal: bool,
     pub show_audio_settings_modal: bool,
     pub show_mic_settings_modal: bool,
+    pub show_chord_generator_modal: bool,
+    pub chord_generator_state: ChordGeneratorState,
+    pub show_tuner_modal: bool,
+    pub tuner_state: TunerState,
+    pub show_dice_generator_modal: bool,
+    pub dice_generator_state: DiceGeneratorState,
+    pub show_fx_rack_modal: bool,
+    pub fx_rack_state: FxRackState,
+    pub show_song_structure_modal: bool,
+    pub song_structure_state: SongStructureState,
     pub show_project_manager_modal: bool,
     pub project_file_path: Option<String>,
     pub new_project_name_input: String,
@@ -1028,6 +1043,16 @@ impl SonixApp {
             show_ai_settings_modal: false,
             show_audio_settings_modal: false,
             show_mic_settings_modal: false,
+            show_chord_generator_modal: false,
+            chord_generator_state: ChordGeneratorState::default(),
+            show_tuner_modal: false,
+            tuner_state: TunerState::default(),
+            show_dice_generator_modal: false,
+            dice_generator_state: DiceGeneratorState::default(),
+            show_fx_rack_modal: false,
+            fx_rack_state: FxRackState::default(),
+            show_song_structure_modal: false,
+            song_structure_state: SongStructureState::default(),
             show_project_manager_modal: false,
             project_file_path: None,
             new_project_name_input: "Mitt Beat".to_string(),
@@ -2103,6 +2128,24 @@ impl eframe::App for SonixApp {
             if i.key_pressed(egui::Key::F6) {
                 self.view_mode = ViewMode::EffectsMixer;
             }
+            if i.key_pressed(egui::Key::F7) {
+                self.view_mode = ViewMode::AlchemySynth;
+            }
+            if i.key_pressed(egui::Key::F8) {
+                self.view_mode = ViewMode::VocalStudio;
+            }
+            if i.key_pressed(egui::Key::F9) {
+                self.view_mode = ViewMode::AiMusicAssistant;
+            }
+            if i.key_pressed(egui::Key::F10) {
+                self.view_mode = ViewMode::ModularPatcher;
+            }
+            if i.key_pressed(egui::Key::F11) {
+                self.show_chord_generator_modal = !self.show_chord_generator_modal;
+            }
+            if i.key_pressed(egui::Key::F12) {
+                self.show_dice_generator_modal = !self.show_dice_generator_modal;
+            }
         });
 
         // Drag & Drop support for Suno ZIP stems or folders
@@ -2271,6 +2314,36 @@ impl eframe::App for SonixApp {
                         }
                         if ui.button("🤖 AI Co-Producer Assistent...").clicked() {
                             self.view_mode = ViewMode::AiMusicAssistant;
+                            ui.close_menu();
+                        }
+                    });
+
+                    // Verktyg & Kreativa Generatorer
+                    ui.menu_button("🎛 Verktyg", |ui| {
+                        if ui.button("🎲 Melodi- & Beat-Tärning... (F12)").clicked() {
+                            self.show_dice_generator_modal = true;
+                            ui.close_menu();
+                        }
+                        if ui.button("🎹 Smart Ackord- & Skalgenerator... (F11)").clicked() {
+                            self.show_chord_generator_modal = true;
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("🎛 Modulärt FX-Pedalbord & Stompboxes...").clicked() {
+                            self.show_fx_rack_modal = true;
+                            ui.close_menu();
+                        }
+                        if ui.button("🎯 Hårdvarustämapparat & Pitch Scope (Tuner)...").clicked() {
+                            self.show_tuner_modal = true;
+                            ui.close_menu();
+                        }
+                        if ui.button("📑 Låtstruktur & Formdelar...").clicked() {
+                            self.show_song_structure_modal = true;
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button("🎙 Mikrofonjustering & Inmatningspanel...").clicked() {
+                            self.show_mic_settings_modal = true;
                             ui.close_menu();
                         }
                     });
@@ -2503,6 +2576,29 @@ impl eframe::App for SonixApp {
 
                     let rmx_btn = ui.selectable_label(self.view_mode == ViewMode::RemixFx, "🎛 Remix FX");
                     if rmx_btn.clicked() { self.view_mode = ViewMode::RemixFx; }
+
+                    ui.separator();
+                    ui.label(egui::RichText::new("VERKTYG:").strong().size(10.0).color(Theme::TEXT_MUTED));
+
+                    if ui.add(egui::Button::new(egui::RichText::new("🎲 Tärning").strong().size(10.0).color(Color32::WHITE)).fill(Color32::from_rgb(180, 80, 20))).on_hover_text("Idé- & Slumptärning för Melodier & Beats (F12)").clicked() {
+                        self.show_dice_generator_modal = true;
+                    }
+
+                    if ui.add(egui::Button::new(egui::RichText::new("🎹 Ackord").strong().size(10.0).color(Color32::WHITE)).fill(Color32::from_rgb(30, 110, 150))).on_hover_text("Smart Ackord- & Skalgenerator (F11)").clicked() {
+                        self.show_chord_generator_modal = true;
+                    }
+
+                    if ui.add(egui::Button::new(egui::RichText::new("🎛 FX-Rack").strong().size(10.0).color(Color32::WHITE)).fill(Color32::from_rgb(120, 50, 160))).on_hover_text("Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)").clicked() {
+                        self.show_fx_rack_modal = true;
+                    }
+
+                    if ui.add(egui::Button::new(egui::RichText::new("🎯 Stämmare").strong().size(10.0).color(Color32::WHITE)).fill(Color32::from_rgb(40, 120, 80))).on_hover_text("Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)").clicked() {
+                        self.show_tuner_modal = true;
+                    }
+
+                    if ui.add(egui::Button::new(egui::RichText::new("📑 Formdelar").strong().size(10.0).color(Color32::WHITE)).fill(Color32::from_rgb(140, 100, 30))).on_hover_text("Låtstruktur & Formdelar").clicked() {
+                        self.show_song_structure_modal = true;
+                    }
                 });
             });
 
@@ -2606,6 +2702,11 @@ impl eframe::App for SonixApp {
         self.render_ai_settings_modal(ctx);
         self.render_audio_settings_modal(ctx);
         self.render_mic_settings_modal(ctx);
+        self.render_chord_generator_modal_view(ctx);
+        self.render_tuner_modal_view(ctx);
+        self.render_dice_generator_modal_view(ctx);
+        self.render_fx_rack_modal_view(ctx);
+        self.render_song_structure_modal_view(ctx);
         self.render_stem_focus_modal(ctx);
         self.render_help_manual_modal(ctx);
         self.render_add_track_modal(ctx);
@@ -7123,6 +7224,139 @@ impl SonixApp {
 
         if close || !open {
             self.show_mic_settings_modal = false;
+        }
+    }
+
+    fn render_chord_generator_modal_view(&mut self, ctx: &egui::Context) {
+        let p_idx = self.selected_pattern;
+        let c_idx = self.selected_channel;
+        let num_chans = self.channels.len();
+
+        let mut insert_chords: Option<Vec<GeneratedChord>> = None;
+        let mut status = self.status_message.clone();
+
+        render_chord_generator_modal(
+            ctx,
+            &mut self.show_chord_generator_modal,
+            &mut self.chord_generator_state,
+            &mut self.engine,
+            &mut status,
+            |chords| {
+                insert_chords = Some(chords.to_vec());
+            },
+        );
+        self.status_message = status;
+
+        if let Some(chords) = insert_chords {
+            if p_idx < self.patterns.len() && c_idx < num_chans {
+                for (step_i, chord) in chords.iter().enumerate() {
+                    let s_start = (step_i * 4) % 16;
+                    self.channels[c_idx].steps[s_start] = true;
+                    self.channels[c_idx].notes[s_start] = chord.root_midi;
+                    if let Some(pat_steps) = self.patterns[p_idx].channel_steps.get_mut(c_idx) {
+                        pat_steps[s_start] = true;
+                    }
+                    if let Some(pat_notes) = self.patterns[p_idx].channel_notes.get_mut(c_idx) {
+                        pat_notes[s_start] = chord.root_midi;
+                    }
+                }
+                self.status_message = format!("🎹 Infogade {} ackord i Mönster {} (Kanal: {})!", chords.len(), p_idx + 1, self.channels[c_idx].name);
+            }
+        }
+    }
+
+    fn render_tuner_modal_view(&mut self, ctx: &egui::Context) {
+        let mic_vu = self.vocal_studio.mic_vu_level;
+        render_tuner_modal(
+            ctx,
+            &mut self.show_tuner_modal,
+            &mut self.tuner_state,
+            &mut self.engine,
+            mic_vu,
+        );
+    }
+
+    fn render_dice_generator_modal_view(&mut self, ctx: &egui::Context) {
+        let p_idx = self.selected_pattern;
+        let c_idx = self.selected_channel;
+        let num_chans = self.channels.len();
+
+        let mut insert_dice: Option<DiceGeneratorState> = None;
+        let mut status = self.status_message.clone();
+
+        render_dice_generator_modal(
+            ctx,
+            &mut self.show_dice_generator_modal,
+            &mut self.dice_generator_state,
+            &mut self.engine,
+            &mut status,
+            |state| {
+                insert_dice = Some(state.clone());
+            },
+        );
+        self.status_message = status;
+
+        if let Some(dice) = insert_dice {
+            if dice.category == crate::ui::dice_generator_modal::DiceCategory::DrumBeat {
+                for d in 0..4.min(num_chans) {
+                    self.channels[d].steps = dice.generated_drum_grid[d];
+                    if p_idx < self.patterns.len() && d < self.patterns[p_idx].channel_steps.len() {
+                        self.patterns[p_idx].channel_steps[d] = dice.generated_drum_grid[d];
+                    }
+                }
+                self.status_message = "🎲 Klistrade in slumpat trumgroove på de 4 första trumspåren!".to_string();
+            } else if p_idx < self.patterns.len() && c_idx < num_chans {
+                self.channels[c_idx].steps = [false; 16];
+                for n in &dice.generated_notes {
+                    if n.step < 16 {
+                        self.channels[c_idx].steps[n.step] = true;
+                        self.channels[c_idx].notes[n.step] = n.note;
+                    }
+                }
+                if let Some(pat_steps) = self.patterns[p_idx].channel_steps.get_mut(c_idx) {
+                    *pat_steps = self.channels[c_idx].steps;
+                }
+                if let Some(pat_notes) = self.patterns[p_idx].channel_notes.get_mut(c_idx) {
+                    *pat_notes = self.channels[c_idx].notes;
+                }
+                self.status_message = format!("🎲 Klistrade in slumpad melodi på '{}' i Mönster {}!", self.channels[c_idx].name, p_idx + 1);
+            }
+        }
+    }
+
+    fn render_fx_rack_modal_view(&mut self, ctx: &egui::Context) {
+        let mut status = self.status_message.clone();
+        render_fx_rack_modal(
+            ctx,
+            &mut self.show_fx_rack_modal,
+            &mut self.fx_rack_state,
+            &mut self.engine,
+            &mut status,
+        );
+        self.status_message = status;
+    }
+
+    fn render_song_structure_modal_view(&mut self, ctx: &egui::Context) {
+        let mut apply_sections: Option<Vec<SongSectionItem>> = None;
+        let mut status = self.status_message.clone();
+
+        render_song_structure_modal(
+            ctx,
+            &mut self.show_song_structure_modal,
+            &mut self.song_structure_state,
+            self.bpm,
+            &mut status,
+            |sections| {
+                apply_sections = Some(sections.to_vec());
+            },
+        );
+        self.status_message = status;
+
+        if let Some(sections) = apply_sections {
+            let total_bars: usize = sections.iter().map(|s| s.length_bars).sum();
+            self.loop_start_bar = 0;
+            self.loop_end_bar = total_bars.max(16);
+            self.status_message = format!("📑 Applicerade låtstruktur med {} sektioner (Totalt {} takter)!", sections.len(), total_bars);
         }
     }
 
