@@ -707,27 +707,72 @@ impl SonixApp {
 
         let patterns = vec![pat1, pat2, pat3, pat4];
 
-        // 6 Audio & MIDI Timeline Tracks (Clean & Empty by default)
-        let mut t0 = PlaylistTrack::new("🎙 Sång (Lead Vocal)".to_string(), "🎙", TrackKind::VocalAudio, Color32::from_rgb(180, 110, 255));
-        t0.volume = 0.95;
-        t0.is_rec_armed = true;
+        // Soundtrap Studio Styled Timeline Tracks
+        let mut t_mic = PlaylistTrack::new("Mic".to_string(), "🎙", TrackKind::VocalAudio, Color32::from_rgb(0, 195, 245));
+        t_mic.volume = 0.95;
+        t_mic.is_rec_armed = true;
 
-        let mut t1 = PlaylistTrack::new("🥁 Trummor & Beats".to_string(), "🥁", TrackKind::Drums, Theme::FL_CYAN);
-        t1.volume = 0.90;
+        let mut t_drum_break = PlaylistTrack::new("Winston - Cork (Drum Break)".to_string(), "🥁", TrackKind::Drums, Color32::from_rgb(170, 100, 255));
+        t_drum_break.volume = 0.90;
+        let drum_wave: Vec<f32> = (0..80).map(|i| {
+            let t = i as f32 / 80.0;
+            if (0.0..0.15).contains(&t) || (0.45..0.6).contains(&t) { 0.85 } else { 0.35 + (t * 20.0).sin().abs() * 0.4 }
+        }).collect();
+        t_drum_break.regions.push(AudioRegion {
+            id: 101, name: "Winston - Cork (Drum Break)".to_string(),
+            start_bar: 0.0, length_bars: 8.0, sample_offset_sec: 0.0, source_path: None,
+            waveform_peaks: drum_wave.clone(), volume: 0.90, fade_in_bars: 0.0, fade_out_bars: 0.0, muted: false,
+            color: Color32::from_rgb(170, 100, 255),
+        });
+        t_drum_break.regions.push(AudioRegion {
+            id: 102, name: "Winston - Cork (Drum Break)".to_string(),
+            start_bar: 8.0, length_bars: 8.0, sample_offset_sec: 0.0, source_path: None,
+            waveform_peaks: drum_wave, volume: 0.90, fade_in_bars: 0.0, fade_out_bars: 0.0, muted: false,
+            color: Color32::from_rgb(170, 100, 255),
+        });
 
-        let mut t2 = PlaylistTrack::new("🎹 Lead Melodi & Synt".to_string(), "🎹", TrackKind::SynthLead, Theme::FL_GREEN);
-        t2.volume = 0.85;
+        let mut t_pad = PlaylistTrack::new("Winston - Night (Chords Pad) Cm".to_string(), "🎹", TrackKind::SynthLead, Color32::from_rgb(120, 90, 245));
+        t_pad.volume = 0.85;
+        let pad_wave: Vec<f32> = (0..80).map(|i| {
+            let t = i as f32 / 80.0;
+            (t * 8.0).sin().abs() * 0.6 + 0.25
+        }).collect();
+        t_pad.regions.push(AudioRegion {
+            id: 103, name: "Winston - Night (Chords Pad) Cm".to_string(),
+            start_bar: 0.0, length_bars: 16.0, sample_offset_sec: 0.0, source_path: None,
+            waveform_peaks: pad_wave, volume: 0.85, fade_in_bars: 0.25, fade_out_bars: 0.25, muted: false,
+            color: Color32::from_rgb(120, 90, 245),
+        });
 
-        let mut t3 = PlaylistTrack::new("🎸 Bas / Basgång".to_string(), "🎸", TrackKind::Bassline, Color32::from_rgb(255, 80, 140));
-        t3.volume = 0.90;
+        let mut t_bass = PlaylistTrack::new("Winston - Night (Bass) Cm".to_string(), "🎸", TrackKind::Bassline, Color32::from_rgb(95, 75, 230));
+        t_bass.volume = 0.90;
+        let bass_wave: Vec<f32> = (0..80).map(|i| {
+            let _t = i as f32 / 80.0;
+            if (i % 8) < 4 { 0.75 } else { 0.15 }
+        }).collect();
+        t_bass.regions.push(AudioRegion {
+            id: 104, name: "Winston - Night (Bass) Cm".to_string(),
+            start_bar: 4.0, length_bars: 12.0, sample_offset_sec: 0.0, source_path: None,
+            waveform_peaks: bass_wave, volume: 0.90, fade_in_bars: 0.0, fade_out_bars: 0.0, muted: false,
+            color: Color32::from_rgb(95, 75, 230),
+        });
 
-        let mut t4 = PlaylistTrack::new("📂 Egna Ljud & Sampler".to_string(), "📂", TrackKind::CustomAudio, Color32::from_rgb(255, 200, 80));
-        t4.volume = 0.85;
+        let mut t_kick_clap = PlaylistTrack::new("Million - Kick & Clap Beat".to_string(), "💥", TrackKind::Drums, Color32::from_rgb(190, 90, 255));
+        t_kick_clap.volume = 0.95;
+        let kick_wave: Vec<f32> = (0..80).map(|i| {
+            if i % 10 == 0 || i % 10 == 5 { 0.95 } else { 0.10 }
+        }).collect();
+        t_kick_clap.regions.push(AudioRegion {
+            id: 105, name: "Million - Kick & Clap Beat".to_string(),
+            start_bar: 0.0, length_bars: 16.0, sample_offset_sec: 0.0, source_path: None,
+            waveform_peaks: kick_wave, volume: 0.95, fade_in_bars: 0.0, fade_out_bars: 0.0, muted: false,
+            color: Color32::from_rgb(190, 90, 255),
+        });
 
-        let mut t5 = PlaylistTrack::new("⚡ FX & Drop".to_string(), "⚡", TrackKind::Fx, Theme::FL_PURPLE);
-        t5.volume = 0.80;
+        let mut t_fx = PlaylistTrack::new("Arcane Dreams - FX Drop".to_string(), "⚡", TrackKind::Fx, Color32::from_rgb(160, 120, 240));
+        t_fx.volume = 0.80;
 
-        let playlist_tracks = vec![t0, t1, t2, t3, t4, t5];
+        let playlist_tracks = vec![t_drum_break, t_pad, t_bass, t_kick_clap, t_mic, t_fx];
         let selected_pattern = 0;
         let initial_channels = channels;
         let initial_grid = [[false; 16]; 24];
