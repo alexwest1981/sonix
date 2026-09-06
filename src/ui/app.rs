@@ -298,6 +298,7 @@ pub struct PlaylistTrack {
     #[allow(dead_code)]
     pub custom_clip_name: Option<String>,
     pub automation_enabled: bool,
+    pub pcm_audio: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
     pub eq: TrackEq,
     pub comp_threshold_db: f32,
     pub comp_ratio: f32,
@@ -323,6 +324,7 @@ impl PlaylistTrack {
             audio_waveform: None,
             custom_clip_name: None,
             automation_enabled: false,
+            pcm_audio: None,
             eq: TrackEq::default(),
             comp_threshold_db: 0.0,
             comp_ratio: 1.0,
@@ -707,11 +709,10 @@ impl SonixApp {
 
         let patterns = vec![pat1, pat2, pat3, pat4];
 
-        // Soundtrap Studio Styled Timeline Tracks
-        let mut t_mic = PlaylistTrack::new("Mic".to_string(), "🎙", TrackKind::VocalAudio, Color32::from_rgb(0, 195, 245));
-        t_mic.volume = 0.95;
-        t_mic.is_rec_armed = true;
+        let sr = 44100_u32;
+        let total_demo_samples = (16.0 * 2.0 * sr as f32) as usize; // 16 bars @ 120 bpm = 32s
 
+        // 1. Drum Break Track & PCM
         let mut t_drum_break = PlaylistTrack::new("Winston - Cork (Drum Break)".to_string(), "🥁", TrackKind::Drums, Color32::from_rgb(170, 100, 255));
         t_drum_break.volume = 0.90;
         let drum_wave: Vec<f32> = (0..80).map(|i| {
@@ -730,7 +731,24 @@ impl SonixApp {
             waveform_peaks: drum_wave, volume: 0.90, fade_in_bars: 0.0, fade_out_bars: 0.0, muted: false,
             color: Color32::from_rgb(170, 100, 255),
         });
+        let drum_pcm: Vec<f32> = (0..total_demo_samples).map(|i| {
+            let t = i as f32 / sr as f32;
+            let beat_t = t % 0.5;
+            let kick = if beat_t < 0.14 { (-(beat_t * 26.0)).exp() * (beat_t * 55.0 * 6.28318).sin() * 0.8 } else { 0.0 };
+            let snare = if (t % 1.0) >= 0.5 && (t % 1.0) < 0.75 {
+                let st = (t % 1.0) - 0.5;
+                (-(st * 20.0)).exp() * ((st * 190.0 * 6.28318).sin() * 0.3 + ((i * 1103515245 + 12345) as f32 / 2147483648.0 - 1.0) * 0.22)
+            } else { 0.0 };
+            let hat = if (t % 0.25) < 0.04 {
+                let ht = t % 0.25;
+                (-(ht * 80.0)).exp() * ((i * 1664525 + 1013904223) as f32 / 2147483648.0 - 1.0) * 0.15
+            } else { 0.0 };
+            (kick + snare + hat).clamp(-0.95, 0.95)
+        }).collect();
+        let drum_arc = std::sync::Arc::new(drum_pcm);
+        t_drum_break.pcm_audio = Some((drum_arc.clone(), drum_arc, sr));
 
+        // 2. Chords Pad Track & PCM
         let mut t_pad = PlaylistTrack::new("Winston - Night (Chords Pad) Cm".to_string(), "🎹", TrackKind::SynthLead, Color32::from_rgb(120, 90, 245));
         t_pad.volume = 0.85;
         let pad_wave: Vec<f32> = (0..80).map(|i| {
@@ -743,7 +761,24 @@ impl SonixApp {
             waveform_peaks: pad_wave, volume: 0.85, fade_in_bars: 0.25, fade_out_bars: 0.25, muted: false,
             color: Color32::from_rgb(120, 90, 245),
         });
+        let pad_pcm: Vec<f32> = (0..total_demo_samples).map(|i| {
+            let t = i as f32 / sr as f32;
+            let chord_idx = ((t / 8.0) as usize) % 4;
+            let root = match chord_idx {
+                0 => 261.63, // C4
+                1 => 311.13, // Eb4
+                2 => 233.08, // Bb3
+                _ => 207.65, // Ab3
+            };
+            let s1 = (t * root * 6.28318).sin();
+            let s2 = (t * (root * 1.1892) * 6.28318).sin();
+            let s3 = (t * (root * 1.4983) * 6.28318).sin();
+            ((s1 + s2 + s3) * 0.20).clamp(-0.9, 0.9)
+        }).collect();
+        let pad_arc = std::sync::Arc::new(pad_pcm);
+        t_pad.pcm_audio = Some((pad_arc.clone(), pad_arc, sr));
 
+        // 3. Bass Track & PCM
         let mut t_bass = PlaylistTrack::new("Winston - Night (Bass) Cm".to_string(), "🎸", TrackKind::Bassline, Color32::from_rgb(95, 75, 230));
         t_bass.volume = 0.90;
         let bass_wave: Vec<f32> = (0..80).map(|i| {
@@ -756,7 +791,23 @@ impl SonixApp {
             waveform_peaks: bass_wave, volume: 0.90, fade_in_bars: 0.0, fade_out_bars: 0.0, muted: false,
             color: Color32::from_rgb(95, 75, 230),
         });
+        let bass_pcm: Vec<f32> = (0..total_demo_samples).map(|i| {
+            let t = i as f32 / sr as f32;
+            let chord_idx = ((t / 8.0) as usize) % 4;
+            let root = match chord_idx {
+                0 => 65.41, // C2
+                1 => 77.78, // Eb2
+                2 => 58.27, // Bb1
+                _ => 51.91, // Ab1
+            };
+            let sub = (t * root * 6.28318).sin() * 0.65;
+            let bite = (t * root * 2.0 * 6.28318).sin() * 0.18;
+            (sub + bite).clamp(-0.9, 0.9)
+        }).collect();
+        let bass_arc = std::sync::Arc::new(bass_pcm);
+        t_bass.pcm_audio = Some((bass_arc.clone(), bass_arc, sr));
 
+        // 4. Kick & Clap Track & PCM
         let mut t_kick_clap = PlaylistTrack::new("Million - Kick & Clap Beat".to_string(), "💥", TrackKind::Drums, Color32::from_rgb(190, 90, 255));
         t_kick_clap.volume = 0.95;
         let kick_wave: Vec<f32> = (0..80).map(|i| {
@@ -768,6 +819,62 @@ impl SonixApp {
             waveform_peaks: kick_wave, volume: 0.95, fade_in_bars: 0.0, fade_out_bars: 0.0, muted: false,
             color: Color32::from_rgb(190, 90, 255),
         });
+        let kick_clap_pcm: Vec<f32> = (0..total_demo_samples).map(|i| {
+            let t = i as f32 / sr as f32;
+            let bt = t % 0.5;
+            let k = if bt < 0.12 { (-(bt * 32.0)).exp() * (bt * 60.0 * 6.28318).sin() * 0.7 } else { 0.0 };
+            let c = if (t % 1.0) >= 0.5 && (t % 1.0) < 0.65 {
+                let ct = (t % 1.0) - 0.5;
+                (-(ct * 35.0)).exp() * ((i * 22695477 + 1) as f32 / 2147483648.0 - 1.0) * 0.35
+            } else { 0.0 };
+            (k + c).clamp(-0.9, 0.9)
+        }).collect();
+        let kick_clap_arc = std::sync::Arc::new(kick_clap_pcm);
+        t_kick_clap.pcm_audio = Some((kick_clap_arc.clone(), kick_clap_arc, sr));
+
+        // 5. Soundtrap Style Mic Vocal Track & PCM
+        let mut t_mic = PlaylistTrack::new("Mic (Voice & Sång)".to_string(), "🎤", TrackKind::VocalAudio, Color32::from_rgb(0, 195, 245));
+        t_mic.volume = 0.95;
+        t_mic.is_rec_armed = true;
+        let vocal_wave: Vec<f32> = (0..80).map(|i| {
+            let t = i as f32 / 80.0;
+            ((t * 22.0).sin().abs() * 0.7 + (t * 44.0).sin().abs() * 0.25).clamp(0.1, 0.92)
+        }).collect();
+        t_mic.regions.push(AudioRegion {
+            id: 106,
+            name: "Mic (Lead Vocal Take 1)".to_string(),
+            start_bar: 0.0,
+            length_bars: 8.0,
+            sample_offset_sec: 0.0,
+            source_path: None,
+            waveform_peaks: vocal_wave,
+            volume: 0.95,
+            fade_in_bars: 0.1,
+            fade_out_bars: 0.1,
+            muted: false,
+            color: Color32::from_rgb(0, 195, 245),
+        });
+        let vocal_pcm: Vec<f32> = (0..total_demo_samples).map(|i| {
+            let t = i as f32 / sr as f32;
+            if t < 16.0 {
+                let note = match ((t * 2.0) as usize) % 8 {
+                    0 => 523.25, // C5
+                    1 => 587.33, // D5
+                    2 => 622.25, // Eb5
+                    3 => 698.46, // F5
+                    4 => 783.99, // G5
+                    5 => 698.46, // F5
+                    6 => 622.25, // Eb5
+                    _ => 523.25, // C5
+                };
+                let vib = (t * 5.5 * 6.28318).sin() * 4.0;
+                let v_synth = (t * (note + vib) * 6.28318).sin() * 0.42;
+                let formant = (t * (note * 2.0 + vib) * 6.28318).sin() * 0.18;
+                (v_synth + formant).clamp(-0.85, 0.85)
+            } else { 0.0 }
+        }).collect();
+        let vocal_arc = std::sync::Arc::new(vocal_pcm);
+        t_mic.pcm_audio = Some((vocal_arc.clone(), vocal_arc, sr));
 
         let mut t_fx = PlaylistTrack::new("Arcane Dreams - FX Drop".to_string(), "⚡", TrackKind::Fx, Color32::from_rgb(160, 120, 240));
         t_fx.volume = 0.80;
@@ -777,7 +884,7 @@ impl SonixApp {
         let initial_channels = channels;
         let initial_grid = [[false; 16]; 24];
 
-        Self {
+        let mut app = Self {
             engine,
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             is_playing: false,
@@ -937,7 +1044,9 @@ impl SonixApp {
             screenshot_queue: Vec::new(),
             screenshot_state: ScreenshotState::Idle,
             screenshot_mode_active: false,
-        }
+        };
+        app.sync_all_stems_to_engine();
+        app
     }
 
     pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
@@ -1469,18 +1578,22 @@ impl SonixApp {
             let _ = self.engine.send_command(AudioCommand::SetSongPlayback(false));
 
             if let Some(take_idx) = maybe_take {
-                if let Some(take) = self.vocal_studio.takes.get(take_idx) {
+                if let Some(take) = self.vocal_studio.takes.get(take_idx).cloned() {
                     let armed_idx = self.playlist_tracks.iter().position(|t| t.is_rec_armed).unwrap_or(0);
                     let start_bar = self.timeline_rec_start_bar;
                     let length_bars = (take.duration_secs / sec_per_bar).max(0.5);
+
+                    let pcm_arc = std::sync::Arc::new(take.pcm_samples);
+                    self.playlist_tracks[armed_idx].pcm_audio = Some((pcm_arc.clone(), pcm_arc, 44100));
+
                     let region = AudioRegion {
                         id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as usize,
-                        name: format!("🎙 {}", take.name),
+                        name: format!("🎤 {}", take.name),
                         start_bar,
                         length_bars,
                         sample_offset_sec: 0.0,
                         source_path: None,
-                        waveform_peaks: take.waveform_data.clone(),
+                        waveform_peaks: take.waveform_data,
                         volume: 1.0,
                         fade_in_bars: 0.0,
                         fade_out_bars: 0.0,
@@ -1488,6 +1601,7 @@ impl SonixApp {
                         color: self.playlist_tracks[armed_idx].color,
                     };
                     self.playlist_tracks[armed_idx].regions.push(region);
+                    self.sync_track_stem_to_engine(armed_idx);
                     self.status_message = format!("✔ Spelade in '{}' direkt i spår {} ({}) vid takt {:.1}!", take.name, armed_idx + 1, self.playlist_tracks[armed_idx].name, start_bar + 1.0);
                 }
             }
@@ -1513,6 +1627,7 @@ impl SonixApp {
         }
         self.is_playing = !self.is_playing;
         if self.is_playing {
+            self.sync_all_stems_to_engine();
             let song_secs = if self.pattern_mode {
                 0.0
             } else {
@@ -1577,6 +1692,52 @@ impl SonixApp {
                 muted: t.muted,
                 solo: t.solo,
             });
+        }
+    }
+
+    pub fn sync_track_stem_to_engine(&mut self, track_idx: usize) {
+        if track_idx < self.playlist_tracks.len() {
+            let t = &self.playlist_tracks[track_idx];
+            if let Some((ref l, ref r, sr)) = t.pcm_audio {
+                let _ = self.engine.send_command(AudioCommand::LoadStemTrack {
+                    track_index: track_idx,
+                    left: l.clone(),
+                    right: r.clone(),
+                    sample_rate: sr as f32,
+                    volume: t.volume,
+                    pan: t.pan,
+                    start_time_secs: 0.0,
+                });
+            }
+            let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
+            let stem_regions: Vec<crate::audio::command::StemRegionPlayback> = t.regions.iter().map(|r| {
+                crate::audio::command::StemRegionPlayback {
+                    start_time_secs: r.start_bar * sec_per_bar,
+                    length_secs: r.length_bars * sec_per_bar,
+                    sample_offset_sec: r.sample_offset_sec,
+                    gain: r.volume,
+                    fade_in_sec: r.fade_in_bars * sec_per_bar,
+                    fade_out_sec: r.fade_out_bars * sec_per_bar,
+                    muted: r.muted,
+                }
+            }).collect();
+            let _ = self.engine.send_command(AudioCommand::SetStemTrackRegions {
+                track_index: track_idx,
+                regions: stem_regions,
+            });
+            let _ = self.engine.send_command(AudioCommand::SetStemTrackState {
+                track_index: track_idx,
+                volume: t.volume,
+                pan: t.pan,
+                muted: t.muted,
+                solo: t.solo,
+            });
+        }
+    }
+
+    pub fn sync_all_stems_to_engine(&mut self) {
+        for idx in 0..self.playlist_tracks.len() {
+            self.sync_track_stem_to_engine(idx);
         }
     }
 
@@ -3060,16 +3221,38 @@ impl SonixApp {
 
                                 // Track Number & Name
                                 let icon = self.playlist_tracks[t_idx].icon;
+                                let is_vocal_track = self.playlist_tracks[t_idx].kind == TrackKind::VocalAudio;
+                                
+                                let display_name = if is_vocal_track {
+                                    format!("{} 🎤 {}", t_idx + 1, track_name)
+                                } else {
+                                    format!("{} {} {}", t_idx + 1, icon, track_name)
+                                };
                                 ui.painter().text(
                                     Pos2::new(h_rect.min.x + 10.0, h_rect.min.y + 12.0),
                                     egui::Align2::LEFT_CENTER,
-                                    format!("{}  {} {}", t_idx + 1, icon, track_name),
+                                    display_name,
                                     egui::FontId::proportional(11.0),
-                                    Color32::WHITE,
+                                    if is_vocal_track { Color32::from_rgb(0, 230, 255) } else { Color32::WHITE },
                                 );
 
+                                // Live Input Meter for Mic/Vocal tracks or armed tracks
+                                let is_armed = self.playlist_tracks[t_idx].is_rec_armed;
+                                if is_vocal_track || is_armed {
+                                    let vu = self.vocal_studio.mic_vu_level;
+                                    let vu_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 116.0, h_rect.min.y + 18.0), Vec2::new(20.0, 18.0));
+                                    ui.painter().rect_filled(vu_rect, Rounding::same(2.0), Color32::from_rgb(22, 26, 34));
+                                    let vu_h = (vu * 14.0).clamp(2.0, 14.0);
+                                    let vu_fill = Rect::from_min_max(
+                                        Pos2::new(vu_rect.min.x + 4.0, vu_rect.max.y - 2.0 - vu_h),
+                                        Pos2::new(vu_rect.max.x - 4.0, vu_rect.max.y - 2.0)
+                                    );
+                                    let vu_col = if vu > 0.85 { Color32::from_rgb(255, 60, 60) } else if vu > 0.5 { Color32::from_rgb(255, 200, 40) } else { Color32::from_rgb(0, 230, 255) };
+                                    ui.painter().rect_filled(vu_fill, Rounding::same(1.0), vu_col);
+                                }
+
                                 // Controls Row inside header (Vol Slider, Mute, Solo, Record Arm R, Focus Editor 🔍)
-                                let vol_rect = Rect::from_min_size(Pos2::new(h_rect.min.x + 10.0, h_rect.min.y + 26.0), Vec2::new(55.0, 12.0));
+                                let vol_rect = Rect::from_min_size(Pos2::new(h_rect.min.x + 10.0, h_rect.min.y + 26.0), Vec2::new(50.0, 12.0));
                                 ui.painter().rect_filled(vol_rect, Rounding::same(2.0), Color32::from_rgb(30, 35, 45));
                                 let vol_fill_w = vol_rect.width() * (track_vol / 1.25).clamp(0.0, 1.0);
                                 ui.painter().rect_filled(Rect::from_min_size(vol_rect.min, Vec2::new(vol_fill_w, vol_rect.height())), Rounding::same(2.0), track_color);
@@ -3088,7 +3271,6 @@ impl SonixApp {
 
                                 // Record Arm (R)
                                 let r_arm_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 46.0, h_rect.min.y + 18.0), Vec2::new(18.0, 18.0));
-                                let is_armed = self.playlist_tracks[t_idx].is_rec_armed;
                                 let r_arm_bg = if is_armed { Color32::from_rgb(220, 30, 30) } else { Color32::from_rgb(30, 35, 45) };
                                 ui.painter().rect_filled(r_arm_rect, Rounding::same(2.0), r_arm_bg);
                                 ui.painter().text(r_arm_rect.center(), egui::Align2::CENTER_CENTER, "R", egui::FontId::proportional(9.0), if is_armed { Color32::WHITE } else { Theme::TEXT_MUTED });

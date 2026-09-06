@@ -83,29 +83,36 @@ impl LiveMicrophoneCapture {
                 let samples_ref = Arc::clone(&recorded_samples);
                 let peaks_ref = Arc::clone(&live_peaks);
 
+                let num_channels = config.channels as usize;
+
                 let stream_res = match sample_format {
                     SampleFormat::F32 => device.build_input_stream(
                         &config,
                         move |data: &[f32], _: &cpal::InputCallbackInfo| {
                             let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
+                            let ch = num_channels.max(1);
                             let mut block_max: f32 = 0.0;
-                            for &s in data {
-                                let val = (s * gain).abs();
-                                if val > block_max { block_max = val; }
-                            }
-                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
 
                             if is_rec.load(Ordering::Relaxed) && !is_p.load(Ordering::Relaxed) {
                                 let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
                                 let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                for &s in data {
-                                    let sample = (s * gain).clamp(-1.0, 1.0);
-                                    b.push(sample);
-                                    if b.len() % 512 == 0 {
-                                        p.push(block_max.clamp(0.02, 1.0));
+                                for frame in data.chunks(ch) {
+                                    let mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
+                                    let val = mono_sample.abs();
+                                    if val > block_max { block_max = val; }
+                                    b.push(mono_sample.clamp(-1.0, 1.0));
+                                    if b.len() % 256 == 0 {
+                                        p.push(block_max.clamp(0.04, 1.0));
                                     }
                                 }
+                            } else {
+                                for frame in data.chunks(ch) {
+                                    let mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
+                                    let val = mono_sample.abs();
+                                    if val > block_max { block_max = val; }
+                                }
                             }
+                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
                         },
                         |err| eprintln!("[Sonix Mic Input Error] {}", err),
                         None,
@@ -114,25 +121,29 @@ impl LiveMicrophoneCapture {
                         &config,
                         move |data: &[i16], _: &cpal::InputCallbackInfo| {
                             let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
+                            let ch = num_channels.max(1);
                             let mut block_max: f32 = 0.0;
-                            for &s in data {
-                                let s_f32 = (s as f32 / 32768.0) * gain;
-                                let val = s_f32.abs();
-                                if val > block_max { block_max = val; }
-                            }
-                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
 
                             if is_rec.load(Ordering::Relaxed) && !is_p.load(Ordering::Relaxed) {
                                 let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
                                 let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                for &s in data {
-                                    let s_f32 = ((s as f32 / 32768.0) * gain).clamp(-1.0, 1.0);
-                                    b.push(s_f32);
-                                    if b.len() % 512 == 0 {
-                                        p.push(block_max.clamp(0.02, 1.0));
+                                for frame in data.chunks(ch) {
+                                    let mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
+                                    let val = mono_sample.abs();
+                                    if val > block_max { block_max = val; }
+                                    b.push(mono_sample.clamp(-1.0, 1.0));
+                                    if b.len() % 256 == 0 {
+                                        p.push(block_max.clamp(0.04, 1.0));
                                     }
                                 }
+                            } else {
+                                for frame in data.chunks(ch) {
+                                    let mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
+                                    let val = mono_sample.abs();
+                                    if val > block_max { block_max = val; }
+                                }
                             }
+                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
                         },
                         |err| eprintln!("[Sonix Mic Input Error] {}", err),
                         None,
