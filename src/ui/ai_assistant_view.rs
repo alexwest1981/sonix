@@ -77,22 +77,20 @@ pub fn render_ai_assistant_view(
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             // Apply to Bass (Channel 7)
-                            if ui.add(egui::Button::new(egui::RichText::new("📥 Applicera på 🎸 Sub Bass").strong().size(11.0).color(Color32::BLACK)).fill(Theme::FL_ORANGE)).clicked() {
-                                if channels.len() > 7 {
+                            if ui.add(egui::Button::new(egui::RichText::new("📥 Applicera på 🎸 Sub Bass").strong().size(11.0).color(Color32::BLACK)).fill(Theme::FL_ORANGE)).clicked()
+                                && channels.len() > 7 {
                                     channels[7].steps = clip.channel_steps;
                                     channels[7].notes = clip.notes;
                                     *status_msg = format!("✔ Applicerade \"{}\" på Sub Bass (Kanal 8)!", clip.title);
                                 }
-                            }
 
                             // Apply to Lead (Channel 6)
-                            if ui.add(egui::Button::new(egui::RichText::new("📥 Applicera på 🎹 303 Lead").strong().size(11.0).color(Color32::BLACK)).fill(Theme::FL_CYAN)).clicked() {
-                                if channels.len() > 6 {
+                            if ui.add(egui::Button::new(egui::RichText::new("📥 Applicera på 🎹 303 Lead").strong().size(11.0).color(Color32::BLACK)).fill(Theme::FL_CYAN)).clicked()
+                                && channels.len() > 6 {
                                     channels[6].steps = clip.channel_steps;
                                     channels[6].notes = clip.notes;
                                     *status_msg = format!("✔ Applicerade \"{}\" på 303 Lead (Kanal 7)!", clip.title);
                                 }
-                            }
 
                             // Step count badge
                             let active_steps = clip.channel_steps.iter().filter(|&&s| s).count();

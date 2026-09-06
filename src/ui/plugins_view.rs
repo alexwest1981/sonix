@@ -69,13 +69,12 @@ pub fn render_plugins_view(ui: &mut Ui, manager: &mut PluginManager, status_msg:
 
         // Plugins Table
         egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
-            for (_idx, plugin) in manager.plugins.iter_mut().enumerate() {
+            for plugin in manager.plugins.iter_mut() {
                 // Filter matching
-                if let Some(fmt) = manager.selected_format_filter {
-                    if plugin.format != fmt {
+                if let Some(fmt) = manager.selected_format_filter
+                    && plugin.format != fmt {
                         continue;
                     }
-                }
                 if !manager.search_query.is_empty() {
                     let q = manager.search_query.to_lowercase();
                     if !plugin.name.to_lowercase().contains(&q) && !plugin.vendor.to_lowercase().contains(&q) {

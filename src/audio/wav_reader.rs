@@ -201,9 +201,10 @@ mod tests {
 
     #[test]
     fn test_read_real_wav_envelope() {
-        let test_path = "/home/alex/Projects/sonix/imported_stems/A_Box_of_You/0 Lead Vocals.wav";
-        if std::path::Path::new(test_path).exists() {
-            let res = read_wav_envelope(test_path, 100);
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let test_path = format!("{}/imported_stems/A_Box_of_You/0 Lead Vocals.wav", manifest_dir);
+        if std::path::Path::new(&test_path).exists() {
+            let res = read_wav_envelope(&test_path, 100);
             assert!(res.is_ok());
             let env = res.unwrap();
             assert_eq!(env.len(), 100);

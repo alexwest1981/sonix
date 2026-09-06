@@ -537,7 +537,36 @@ pub struct SonixApp {
     pub audio_sample_rate_idx: usize,
     pub audio_buffer_size_idx: usize,
     pub audio_limiter_enabled: bool,
+    // Automated Screenshot System
+    pub screenshot_queue: Vec<(ScreenshotTarget, std::path::PathBuf)>,
+    pub screenshot_state: ScreenshotState,
+    pub screenshot_mode_active: bool,
 }
+
+#[derive(Clone, Debug)]
+pub enum ScreenshotTarget {
+    View(ViewMode),
+    VocalTakeLanes,
+    VocalCustomSounds,
+    AudioSettingsModal,
+    AiSettingsModal,
+    ProjectManagerModal,
+    RenderQueueModal,
+    SunoImportModal,
+    ControllerModal,
+    StemFocusModal,
+    HelpGuideModal,
+    AboutModal,
+}
+
+#[derive(Clone, Debug)]
+pub enum ScreenshotState {
+    Idle,
+    Preparing { target: ScreenshotTarget, dest: std::path::PathBuf, frames_left: usize },
+    AwaitingCapture { dest: std::path::PathBuf },
+}
+
+
 
 impl SonixApp {
     pub fn new(engine: AudioEngine) -> Self {
@@ -853,8 +882,245 @@ impl SonixApp {
             audio_sample_rate_idx: 1,
             audio_buffer_size_idx: 1,
             audio_limiter_enabled: true,
+            // Automated Screenshot System
+            screenshot_queue: Vec::new(),
+            screenshot_state: ScreenshotState::Idle,
+            screenshot_mode_active: false,
         }
     }
+
+    pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
+        self.screenshot_mode_active = true;
+        self.screenshot_state = ScreenshotState::Idle;
+        self.populate_demo_data();
+        let _ = std::fs::create_dir_all(out_dir);
+
+
+        let targets = vec![
+            (ScreenshotTarget::View(ViewMode::PlaylistArranger), out_dir.join("01_tidslinje_arranger.png")),
+            (ScreenshotTarget::View(ViewMode::ChannelRack), out_dir.join("02_channel_rack.png")),
+            (ScreenshotTarget::View(ViewMode::PianoRoll), out_dir.join("03_piano_roll.png")),
+            (ScreenshotTarget::VocalTakeLanes, out_dir.join("04_vocal_studio_leads.png")),
+            (ScreenshotTarget::VocalCustomSounds, out_dir.join("05_vocal_studio_sampler.png")),
+            (ScreenshotTarget::View(ViewMode::EffectsMixer), out_dir.join("06_effects_mixer.png")),
+            (ScreenshotTarget::View(ViewMode::AiMusicAssistant), out_dir.join("07_ai_music_assistant.png")),
+            (ScreenshotTarget::View(ViewMode::AlchemySynth), out_dir.join("08_alchemy_synth.png")),
+            (ScreenshotTarget::View(ViewMode::SessionDrummer), out_dir.join("09_session_drummer.png")),
+            (ScreenshotTarget::View(ViewMode::ModularPatcher), out_dir.join("10_modular_patcher.png")),
+            (ScreenshotTarget::View(ViewMode::StemSeparator), out_dir.join("11_stem_separator.png")),
+            (ScreenshotTarget::View(ViewMode::PluginManager), out_dir.join("12_plugin_manager.png")),
+            (ScreenshotTarget::View(ViewMode::RemixFx), out_dir.join("13_remix_fx.png")),
+            (ScreenshotTarget::AudioSettingsModal, out_dir.join("14_dialog_ljudinstallningar.png")),
+            (ScreenshotTarget::AiSettingsModal, out_dir.join("15_dialog_ai_installningar.png")),
+            (ScreenshotTarget::ProjectManagerModal, out_dir.join("16_dialog_projekthanterare.png")),
+            (ScreenshotTarget::RenderQueueModal, out_dir.join("17_dialog_render_queue.png")),
+            (ScreenshotTarget::SunoImportModal, out_dir.join("18_dialog_suno_import.png")),
+            (ScreenshotTarget::ControllerModal, out_dir.join("19_dialog_midi_controller.png")),
+            (ScreenshotTarget::StemFocusModal, out_dir.join("20_dialog_stem_focus_editor.png")),
+            (ScreenshotTarget::HelpGuideModal, out_dir.join("21_dialog_hjalpguide_manual.png")),
+            (ScreenshotTarget::AboutModal, out_dir.join("22_dialog_om_sonix.png")),
+        ];
+
+        self.screenshot_queue = targets;
+    }
+
+    pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
+        self.show_help_guide = false;
+        self.show_project_manager_modal = false;
+        self.show_suno_import_modal = false;
+        self.show_render_queue_modal = false;
+        self.show_stem_focus_modal = false;
+        self.show_controller_modal = false;
+        self.show_about_modal = false;
+        self.show_ai_settings_modal = false;
+        self.show_audio_settings_modal = false;
+        self.show_import_modal = false;
+
+        match target {
+            ScreenshotTarget::View(vm) => {
+                self.view_mode = vm;
+            }
+            ScreenshotTarget::VocalTakeLanes => {
+                self.view_mode = ViewMode::VocalStudio;
+                self.vocal_studio.recording_mode = crate::audio::recorder::RecordingMode::LeadVocals;
+            }
+            ScreenshotTarget::VocalCustomSounds => {
+                self.view_mode = ViewMode::VocalStudio;
+                self.vocal_studio.recording_mode = crate::audio::recorder::RecordingMode::CustomSounds;
+            }
+            ScreenshotTarget::AudioSettingsModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.show_audio_settings_modal = true;
+            }
+            ScreenshotTarget::AiSettingsModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.show_ai_settings_modal = true;
+            }
+            ScreenshotTarget::ProjectManagerModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.show_project_manager_modal = true;
+            }
+            ScreenshotTarget::RenderQueueModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.show_render_queue_modal = true;
+            }
+            ScreenshotTarget::SunoImportModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.show_suno_import_modal = true;
+            }
+            ScreenshotTarget::ControllerModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.show_controller_modal = true;
+            }
+            ScreenshotTarget::StemFocusModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.focused_stem_track = Some(0);
+                self.show_stem_focus_modal = true;
+            }
+            ScreenshotTarget::HelpGuideModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.show_help_guide = true;
+            }
+            ScreenshotTarget::AboutModal => {
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.show_about_modal = true;
+            }
+        }
+    }
+
+    pub fn populate_demo_data(&mut self) {
+        self.project_name = "Cyberpunk Odyssey (Suno AI + Sonix Lead)".to_string();
+        self.bpm = 124.0;
+        self.swing = 0.15;
+        self.song_bar = 4;
+        self.song_step_in_bar = 2;
+
+        // Populate Channel rack steps
+        if self.channels.len() >= 6 {
+            self.channels[0].steps = [true, false, false, false, true, false, false, false, true, false, false, false, true, false, false, false];
+            self.channels[1].steps = [false, false, false, false, true, false, false, false, false, false, false, false, true, false, false, false];
+            self.channels[2].steps = [true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false];
+            self.channels[3].steps = [false, false, true, false, false, false, true, false, false, false, true, false, false, false, true, false];
+            self.channels[4].steps = [true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, false];
+            self.channels[5].steps = [true, true, false, false, true, true, false, false, true, true, false, false, true, true, false, false];
+        }
+
+        // Populate Piano Roll Grid (24 notes x 16 steps)
+        for r in 0..24 {
+            for c in 0..16 {
+                self.piano_roll_grid[r][c] = false;
+            }
+        }
+        let notes_to_set = [
+            (12, 0), (12, 1), (15, 2), (19, 3), (12, 4), (17, 6), (15, 7),
+            (10, 8), (14, 10), (17, 11), (10, 12), (12, 14), (15, 15),
+            (5, 0), (5, 4), (5, 8), (5, 12), (0, 0), (0, 4), (0, 8), (0, 12)
+        ];
+        for (r, c) in notes_to_set {
+            if r < 24 && c < 16 {
+                self.piano_roll_grid[r][c] = true;
+            }
+        }
+
+        // Populate Audio Regions in Playlist Tracks
+        let sample_waveform: Vec<f32> = (0..120).map(|i| {
+            let t = i as f32 / 120.0;
+            ((t * 24.0).sin() * 0.5 + (t * 50.0).sin() * 0.3 + 0.1).abs().clamp(0.05, 0.95)
+        }).collect();
+
+        if self.playlist_tracks.is_empty() {
+            self.playlist_tracks = vec![
+                PlaylistTrack::new("🎤 Lead Vocals (Suno AI)".to_string(), "🎤", TrackKind::VocalAudio, Color32::from_rgb(255, 100, 120)),
+                PlaylistTrack::new("🎧 Backing Choir".to_string(), "🎧", TrackKind::VocalAudio, Color32::from_rgb(220, 140, 255)),
+                PlaylistTrack::new("🥁 808 & Drums".to_string(), "🥁", TrackKind::Drums, Theme::FL_ORANGE),
+                PlaylistTrack::new("🎹 Nexus Synth Lead".to_string(), "🎹", TrackKind::SynthLead, Theme::FL_CYAN),
+                PlaylistTrack::new("🎸 Moog Sub Bass".to_string(), "🎸", TrackKind::Bassline, Theme::FL_GREEN),
+                PlaylistTrack::new("🌌 Space FX & Risers".to_string(), "🌌", TrackKind::Fx, Theme::FL_YELLOW),
+            ];
+        }
+
+        if let Some(t0) = self.playlist_tracks.get_mut(0) {
+            t0.name = "🎤 Lead Vocals (Suno AI)".to_string();
+            t0.regions = vec![
+                AudioRegion {
+                    id: 101,
+                    name: "Chorus Take 1 (Main)".to_string(),
+                    start_bar: 1.0,
+                    length_bars: 7.0,
+                    sample_offset_sec: 0.0,
+                    source_path: Some("stems/lead_vocals.wav".to_string()),
+                    waveform_peaks: sample_waveform.clone(),
+                    volume: 0.95,
+                    fade_in_bars: 0.1,
+                    fade_out_bars: 0.2,
+                    muted: false,
+                    color: Color32::from_rgb(255, 100, 120),
+                },
+                AudioRegion {
+                    id: 102,
+                    name: "Verse Hook (Harmonized)".to_string(),
+                    start_bar: 9.0,
+                    length_bars: 6.0,
+                    sample_offset_sec: 0.0,
+                    source_path: Some("stems/lead_vocals_hook.wav".to_string()),
+                    waveform_peaks: sample_waveform.clone(),
+                    volume: 0.90,
+                    fade_in_bars: 0.1,
+                    fade_out_bars: 0.2,
+                    muted: false,
+                    color: Color32::from_rgb(255, 120, 140),
+                },
+            ];
+        }
+
+        if let Some(t1) = self.playlist_tracks.get_mut(1) {
+            t1.name = "🎧 Backing Choir".to_string();
+            t1.regions = vec![
+                AudioRegion {
+                    id: 201,
+                    name: "Stereo Choir Pad (4-Part)".to_string(),
+                    start_bar: 3.0,
+                    length_bars: 5.0,
+                    sample_offset_sec: 0.0,
+                    source_path: Some("stems/choir.wav".to_string()),
+                    waveform_peaks: sample_waveform.clone(),
+                    volume: 0.80,
+                    fade_in_bars: 0.5,
+                    fade_out_bars: 0.5,
+                    muted: false,
+                    color: Color32::from_rgb(200, 130, 255),
+                },
+            ];
+        }
+
+        if let Some(t2) = self.playlist_tracks.get_mut(2) {
+            t2.name = "🥁 808 Drum Beat".to_string();
+            t2.clips[0] = Some(0);
+            t2.clips[1] = Some(0);
+            t2.clips[2] = Some(0);
+            t2.clips[3] = Some(0);
+        }
+
+        if let Some(t3) = self.playlist_tracks.get_mut(3) {
+            t3.name = "🎹 Nexus Synth Lead".to_string();
+            t3.clips[0] = Some(1);
+            t3.clips[1] = Some(1);
+        }
+
+        if let Some(t4) = self.playlist_tracks.get_mut(4) {
+            t4.name = "🎸 Moog Sub Bass".to_string();
+            t4.clips[0] = Some(2);
+            t4.clips[1] = Some(2);
+        }
+
+        // Modular graph default connections
+        self.modular_graph.load_default_preset();
+
+        // AI Assistant prompt
+        self.ai_assistant.prompt_input = "Cyberpunk 80s synthwave lead med mörk rezonans i A-moll".to_string();
+        self.ai_assistant.last_status = "✨ AI genererade 3 variationer av Synth Lead & Bassline".to_string();
+    }
+
 
     pub fn new_empty_project(&mut self) {
         self.stop_playback();
@@ -864,9 +1130,7 @@ impl SonixApp {
             t.clips = [None; 32];
         }
         for p in &mut self.patterns {
-            for s in &mut p.channel_steps {
-                *s = [false; 16];
-            }
+            p.channel_steps.fill([false; 16]);
             p.piano_roll_grid = [[false; 16]; 24];
         }
         for ch in &mut self.channels {
@@ -892,13 +1156,13 @@ impl SonixApp {
         p1_steps[5][7] = true; p1_steps[5][15] = true;
         p1_steps[6][0] = true; p1_steps[6][3] = true; p1_steps[6][8] = true; p1_steps[6][11] = true;
         p1_steps[7][0] = true; p1_steps[7][4] = true; p1_steps[7][8] = true; p1_steps[7][12] = true;
-        if self.patterns.len() > 0 { self.patterns[0].channel_steps = p1_steps; }
+        if !self.patterns.is_empty() { self.patterns[0].channel_steps = p1_steps; }
 
         // Pattern 2: Acid Groove
         let mut p2_steps = vec![[false; 16]; 8];
         for i in (0..16).step_by(4) { p2_steps[0][i] = true; }
         p2_steps[1][4] = true; p2_steps[1][12] = true;
-        for i in 0..16 { p2_steps[2][i] = true; }
+        p2_steps[2].fill(true);
         p2_steps[6][0] = true; p2_steps[6][2] = true; p2_steps[6][6] = true; p2_steps[6][10] = true;
         if self.patterns.len() > 1 { self.patterns[1].channel_steps = p2_steps; }
 
@@ -996,20 +1260,19 @@ impl SonixApp {
             tracks: saved_tracks,
         };
 
-        if let Ok(json) = serde_json::to_string_pretty(&data) {
-            if std::fs::write(&file_path, json).is_ok() {
+        if let Ok(json) = serde_json::to_string_pretty(&data)
+            && std::fs::write(&file_path, json).is_ok() {
                 self.project_name = clean_name.to_string();
                 self.project_file_path = Some(file_path.to_string_lossy().to_string());
                 self.status_message = format!("💾 Sparade projekt till '{}'!", file_path.display());
                 return;
             }
-        }
         self.status_message = "❌ Misslyckades att spara projektet.".to_string();
     }
 
     pub fn load_project_file(&mut self, path_str: &str) {
-        if let Ok(content) = std::fs::read_to_string(path_str) {
-            if let Ok(data) = serde_json::from_str::<SonixProjectData>(&content) {
+        if let Ok(content) = std::fs::read_to_string(path_str)
+            && let Ok(data) = serde_json::from_str::<SonixProjectData>(&content) {
                 self.stop_playback();
                 let _ = self.engine.send_command(AudioCommand::ClearAllStemTracks);
 
@@ -1024,8 +1287,8 @@ impl SonixApp {
                     let regions = st.regions;
                     // Re-load audio PCM for regions that have source_path
                     for r in &regions {
-                        if let Some(ref p) = r.source_path {
-                            if let Ok((pcm_l, pcm_r, sr)) = crate::audio::load_wav_pcm(p) {
+                        if let Some(ref p) = r.source_path
+                            && let Ok((pcm_l, pcm_r, sr)) = crate::audio::load_wav_pcm(p) {
                                 let _ = self.engine.send_command(AudioCommand::LoadStemTrack {
                                     track_index: t_idx,
                                     left: std::sync::Arc::new(pcm_l),
@@ -1036,7 +1299,6 @@ impl SonixApp {
                                     start_time_secs: 0.0,
                                 });
                             }
-                        }
                     }
 
                     let mut loaded_track = PlaylistTrack::new(st.name, "🎵", TrackKind::CustomAudio, Color32::from_rgb(100, 180, 255));
@@ -1060,7 +1322,6 @@ impl SonixApp {
                 self.status_message = format!("📂 Öppnade projekt '{}'!", self.project_name);
                 return;
             }
-        }
         self.status_message = format!("❌ Kunde inte läsa projektfilen: {}", path_str);
     }
 
@@ -1118,6 +1379,7 @@ impl SonixApp {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn import_custom_sample(
         &mut self,
         name: String,
@@ -1304,8 +1566,8 @@ impl SonixApp {
                 continue;
             }
 
-            if let Some(pat_idx) = track.clips[bar] {
-                if let Some(pat) = self.patterns.get(pat_idx) {
+            if let Some(pat_idx) = track.clips[bar]
+                && let Some(pat) = self.patterns.get(pat_idx) {
                     match track.kind {
                         TrackKind::Drums => {
                             for ch_idx in 0..=5 {
@@ -1337,7 +1599,7 @@ impl SonixApp {
                             }
                         }
                         TrackKind::VocalAudio | TrackKind::CustomAudio | TrackKind::Fx => {
-                            if pat.channel_steps.len() > 6 && pat.channel_steps[6][step_in_bar] && step_in_bar % 4 == 0 {
+                            if pat.channel_steps.len() > 6 && pat.channel_steps[6][step_in_bar] && step_in_bar.is_multiple_of(4) {
                                 let note = 55 + (t_idx as u8 * 3);
                                 let freq = midi_to_freq(note);
                                 let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * 0.65 });
@@ -1345,7 +1607,6 @@ impl SonixApp {
                         }
                     }
                 }
-            }
         }
     }
 
@@ -1384,7 +1645,7 @@ impl SonixApp {
                 pattern_notes,
                 track_clips,
                 track_muted,
-                num_bars: self.loop_end_bar.max(4).min(32),
+                num_bars: self.loop_end_bar.clamp(4, 32),
                 bpm: self.bpm,
             };
 
@@ -1420,8 +1681,39 @@ impl SonixApp {
 
 impl eframe::App for SonixApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Screenshot event listener
+        let mut received_screenshot = None;
+        ctx.input(|i| {
+            for event in &i.raw.events {
+                if let egui::Event::Screenshot { image, .. } = event {
+                    received_screenshot = Some(image.clone());
+                }
+            }
+        });
+
+        if let Some(img) = received_screenshot {
+            if let ScreenshotState::AwaitingCapture { dest } = &self.screenshot_state {
+                let w = img.size[0] as u32;
+                let h = img.size[1] as u32;
+                let raw_bytes: Vec<u8> = img.pixels.iter().flat_map(|c| [c.r(), c.g(), c.b(), c.a()]).collect();
+                if let Some(rgba) = image::RgbaImage::from_raw(w, h, raw_bytes) {
+                    if let Some(parent) = dest.parent() {
+                        let _ = std::fs::create_dir_all(parent);
+                    }
+                    if let Err(e) = rgba.save(dest) {
+                        eprintln!("❌ Kunde inte spara skärmdump till {:?}: {}", dest, e);
+                    } else {
+                        println!("📸 Sparade skärmdump: {:?}", dest);
+                    }
+                }
+                self.screenshot_state = ScreenshotState::Idle;
+            }
+        }
+
         self.advance_sequencer();
         self.anim_phase += 0.08;
+
+
 
         // Check if window is minimized or not focused (Wayland / Hyprland safety)
         let is_minimized = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
@@ -1502,16 +1794,14 @@ impl eframe::App for SonixApp {
                     self.toggle_playback();
                 }
 
-                if i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace) {
-                    if let Some((t_idx, r_idx)) = self.selected_audio_region {
-                        if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+                if (i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
+                    && let Some((t_idx, r_idx)) = self.selected_audio_region
+                        && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
                             self.playlist_tracks[t_idx].regions.remove(r_idx);
                             self.sync_track_regions(t_idx);
                             self.selected_audio_region = None;
                             self.status_message = "🗑 Raderade markerad ljudregion.".to_string();
                         }
-                    }
-                }
             }
 
             // Global Project & View Shortcuts
@@ -1626,25 +1916,23 @@ impl eframe::App for SonixApp {
                         }
                         ui.separator();
                         if ui.button("✂ Klipp markerat (Ctrl+X)").clicked() {
-                            if let Some((t_idx, r_idx)) = self.selected_audio_region {
-                                if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+                            if let Some((t_idx, r_idx)) = self.selected_audio_region
+                                && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
                                     self.playlist_tracks[t_idx].regions.remove(r_idx);
                                     self.sync_track_regions(t_idx);
                                     self.selected_audio_region = None;
                                     self.status_message = "Klippte ut ljudregion.".to_string();
                                 }
-                            }
                             ui.close_menu();
                         }
                         if ui.button("🗑 Ta bort markerat (Del)").clicked() {
-                            if let Some((t_idx, r_idx)) = self.selected_audio_region {
-                                if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+                            if let Some((t_idx, r_idx)) = self.selected_audio_region
+                                && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
                                     self.playlist_tracks[t_idx].regions.remove(r_idx);
                                     self.sync_track_regions(t_idx);
                                     self.selected_audio_region = None;
                                     self.status_message = "🗑 Raderade markerad region.".to_string();
                                 }
-                            }
                             ui.close_menu();
                         }
                         if ui.button("🧹 Rensa alla spår").clicked() {
@@ -1775,18 +2063,16 @@ impl eframe::App for SonixApp {
 
                     // Transport Buttons
                     let play_color = if self.is_playing { Theme::FL_GREEN } else { Color32::from_rgb(40, 50, 45) };
-                    if ui.add(egui::Button::new(egui::RichText::new(" ▶ PLAY ").strong().size(12.0).color(Color32::WHITE)).fill(play_color)).clicked() {
-                        if !self.is_playing {
+                    if ui.add(egui::Button::new(egui::RichText::new(" ▶ PLAY ").strong().size(12.0).color(Color32::WHITE)).fill(play_color)).clicked()
+                        && !self.is_playing {
                             self.toggle_playback();
                         }
-                    }
 
                     let pause_color = if !self.is_playing { Theme::FL_ORANGE } else { Color32::from_rgb(45, 40, 35) };
-                    if ui.add(egui::Button::new(egui::RichText::new(" ⏸ PAUSE ").strong().size(12.0).color(Color32::WHITE)).fill(pause_color)).clicked() {
-                        if self.is_playing {
+                    if ui.add(egui::Button::new(egui::RichText::new(" ⏸ PAUSE ").strong().size(12.0).color(Color32::WHITE)).fill(pause_color)).clicked()
+                        && self.is_playing {
                             self.toggle_playback();
                         }
-                    }
 
                     if ui.add(egui::Button::new(egui::RichText::new(" ⏹ STOP ").strong().size(12.0).color(Color32::WHITE)).fill(Color32::from_rgb(45, 48, 56))).clicked() {
                         self.stop_playback();
@@ -2040,6 +2326,37 @@ impl eframe::App for SonixApp {
         self.render_audio_settings_modal(ctx);
         self.render_stem_focus_modal(ctx);
         self.render_help_manual_modal(ctx);
+
+        // Screenshot automated capture loop
+        if self.screenshot_mode_active {
+            match self.screenshot_state.clone() {
+                ScreenshotState::Idle => {
+                    if !self.screenshot_queue.is_empty() {
+                        let (target, dest) = self.screenshot_queue.remove(0);
+                        self.apply_screenshot_target(target.clone());
+                        self.screenshot_state = ScreenshotState::Preparing { target, dest, frames_left: 4 };
+                        ctx.request_repaint();
+                    } else {
+                        println!("🎉 Alla 22 skärmdumpar har genererats och sparats framgångsrikt!");
+                        self.screenshot_mode_active = false;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    }
+                }
+                ScreenshotState::Preparing { target, dest, frames_left } => {
+                    if frames_left > 0 {
+                        self.screenshot_state = ScreenshotState::Preparing { target, dest, frames_left: frames_left - 1 };
+                        ctx.request_repaint();
+                    } else {
+                        self.screenshot_state = ScreenshotState::AwaitingCapture { dest };
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
+                        ctx.request_repaint();
+                    }
+                }
+                ScreenshotState::AwaitingCapture { .. } => {
+                    ctx.request_repaint();
+                }
+            }
+        }
     }
 }
 
@@ -2451,7 +2768,7 @@ impl SonixApp {
                 .flat_map(|t| t.regions.iter())
                 .map(|r| r.start_bar + r.length_bars)
                 .fold(32.0_f32, |m, b| m.max(b));
-            let total_bars = ((max_region_end + 8.0).ceil() as usize).max(32).min(1024);
+            let total_bars = ((max_region_end + 8.0).ceil() as usize).clamp(32, 1024);
             let timeline_total_w = total_bars as f32 * bar_w;
 
             let mut scrub_target_sec: Option<f32> = None;
@@ -2567,8 +2884,8 @@ impl SonixApp {
                             }
 
                             // Ruler Interaction: Click / Drag / Scrub with high hundredth-second precision
-                            if ruler_resp.clicked() || ruler_resp.dragged() {
-                                if let Some(mouse_pos) = ruler_resp.hover_pos() {
+                            if (ruler_resp.clicked() || ruler_resp.dragged())
+                                && let Some(mouse_pos) = ruler_resp.hover_pos() {
                                     let click_bar = (mouse_pos.x - ruler_rect.min.x) / bar_w;
                                     let raw_sec = click_bar * sec_per_bar;
                                     let target_sec = match self.timeline_snap_mode {
@@ -2586,7 +2903,6 @@ impl SonixApp {
                                     scrub_target_sec = Some(target_sec.max(0.0));
                                     self.pattern_mode = false;
                                 }
-                            }
 
                             // Ruler Hover Tooltip with exact hundredths
                             if let Some(hover_pos) = ruler_resp.hover_pos() {
@@ -2817,8 +3133,8 @@ impl SonixApp {
                                             }
                                         }
 
-                                        if lane_resp.clicked() || lane_resp.secondary_clicked() {
-                                            if let Some(mouse_pos) = lane_resp.hover_pos() {
+                                        if (lane_resp.clicked() || lane_resp.secondary_clicked())
+                                            && let Some(mouse_pos) = lane_resp.hover_pos() {
                                                 let click_bar = (mouse_pos.x - lane_rect.min.x) / bar_w;
                                                 for (r_i, r) in track.regions.iter().enumerate() {
                                                     if click_bar >= r.start_bar && click_bar <= (r.start_bar + r.length_bars) {
@@ -2847,7 +3163,6 @@ impl SonixApp {
                                                     }
                                                 }
                                             }
-                                        }
                                     } else {
                                         // Fallback pattern clips
                                         for bar_idx in 0..32 {
@@ -2859,8 +3174,8 @@ impl SonixApp {
                                             }
                                         }
 
-                                        if lane_resp.clicked() || lane_resp.secondary_clicked() {
-                                            if let Some(mouse_pos) = lane_resp.hover_pos() {
+                                        if (lane_resp.clicked() || lane_resp.secondary_clicked())
+                                            && let Some(mouse_pos) = lane_resp.hover_pos() {
                                                 let clicked_bar = ((mouse_pos.x - lane_rect.min.x) / bar_w) as usize;
                                                 if clicked_bar < 32 {
                                                     if lane_resp.secondary_clicked() || self.arranger_tool == ArrangerTool::Erase {
@@ -2870,7 +3185,6 @@ impl SonixApp {
                                                     }
                                                 }
                                             }
-                                        }
                                     }
                                 }
 
@@ -2970,24 +3284,22 @@ impl SonixApp {
                                     }
                                 }
 
-                                if let Some(d_idx) = delete_action {
-                                    if d_idx < self.playlist_tracks[t_idx].regions.len() {
+                                if let Some(d_idx) = delete_action
+                                    && d_idx < self.playlist_tracks[t_idx].regions.len() {
                                         let name = self.playlist_tracks[t_idx].regions[d_idx].name.clone();
                                         self.playlist_tracks[t_idx].regions.remove(d_idx);
                                         self.sync_track_regions(t_idx);
                                         self.selected_audio_region = None;
                                         self.status_message = format!("🗑 Raderade '{}'", name);
                                     }
-                                }
 
-                                if let Some(m_idx) = mute_action {
-                                    if m_idx < self.playlist_tracks[t_idx].regions.len() {
+                                if let Some(m_idx) = mute_action
+                                    && m_idx < self.playlist_tracks[t_idx].regions.len() {
                                         self.playlist_tracks[t_idx].regions[m_idx].muted = !self.playlist_tracks[t_idx].regions[m_idx].muted;
                                         let name = self.playlist_tracks[t_idx].regions[m_idx].name.clone();
                                         self.sync_track_regions(t_idx);
                                         self.status_message = format!("🔇 Toggla mute för '{}'", name);
                                     }
-                                }
                             });
                             ui.add_space(2.0);
                         }
@@ -3045,8 +3357,8 @@ impl SonixApp {
                             ui.painter().rect_filled(m_rect, Rounding::same(2.0), m_bg);
                             ui.painter().text(m_rect.center(), egui::Align2::CENTER_CENTER, "🔊", egui::FontId::proportional(9.0), if is_master_muted { Color32::WHITE } else { Theme::TEXT_MUTED });
 
-                            if m_header_resp.clicked() || m_header_resp.dragged() {
-                                if let Some(mouse_pos) = m_header_resp.hover_pos() {
+                            if (m_header_resp.clicked() || m_header_resp.dragged())
+                                && let Some(mouse_pos) = m_header_resp.hover_pos() {
                                     if m_rect.contains(mouse_pos) && m_header_resp.clicked() {
                                         if is_master_muted {
                                             self.master_volume = 0.85;
@@ -3060,7 +3372,6 @@ impl SonixApp {
                                         let _ = self.engine.send_command(AudioCommand::SetMasterVolume(self.master_volume));
                                     }
                                 }
-                            }
 
                             // Timeline background for Main track lane
                             let (m_lane_rect, _) = ui.allocate_exact_size(Vec2::new(timeline_total_w, row_h), Sense::hover());
@@ -3125,8 +3436,8 @@ impl SonixApp {
             // ================================================================
             // 2.5 SELECTED AUDIO REGION INSPECTOR (HUNDREDTH-SECOND PRECISION)
             // ================================================================
-            if let Some((t_idx, r_idx)) = self.selected_audio_region {
-                if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+            if let Some((t_idx, r_idx)) = self.selected_audio_region
+                && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
                     let mut do_delete = false;
                     let mut do_split = false;
                     let mut do_duplicate = false;
@@ -3201,11 +3512,10 @@ impl SonixApp {
 
                             // Split at playhead button (Exact hundredths!)
                             let cur_song_time = self.song_time;
-                            if cur_song_time > r_start_sec + 0.02 && cur_song_time < r_start_sec + r_len_sec - 0.02 {
-                                if ui.button(egui::RichText::new(format!("✂ Dela vid {}", format_time_hundredths(cur_song_time))).color(Theme::FL_GREEN)).clicked() {
+                            if cur_song_time > r_start_sec + 0.02 && cur_song_time < r_start_sec + r_len_sec - 0.02
+                                && ui.button(egui::RichText::new(format!("✂ Dela vid {}", format_time_hundredths(cur_song_time))).color(Theme::FL_GREEN)).clicked() {
                                     do_split = true;
                                 }
-                            }
 
                             // Duplicate
                             if ui.button("📋 Duplicera").clicked() {
@@ -3304,7 +3614,6 @@ impl SonixApp {
                         self.sync_track_regions(t_idx);
                     }
                 }
-            }
 
             ui.add_space(6.0);
 
@@ -3646,8 +3955,8 @@ impl SonixApp {
             }
 
             // Interactive Sample Chopper & Pitch Transpose Inspector
-            if let Some(chop_ch) = self.active_chopper_channel {
-                if chop_ch < self.channels.len() {
+            if let Some(chop_ch) = self.active_chopper_channel
+                && chop_ch < self.channels.len() {
                     ui.add_space(6.0);
                     ui.group(|ui| {
                         let ch = &mut self.channels[chop_ch];
@@ -3755,7 +4064,6 @@ impl SonixApp {
                         });
                     });
                 }
-            }
 
             self.sync_active_pattern_from_ui();
         });
@@ -4137,9 +4445,7 @@ impl SonixApp {
         self.channels[5].steps = crash;
 
         let vel_mult = 0.5 + loud * 0.5;
-        for v in &mut self.step_velocities {
-            *v = vel_mult;
-        }
+        self.step_velocities.fill(vel_mult);
 
         self.sync_active_pattern_from_ui();
         self.status_message = format!("🥁 Drummer genererade mönster (Komplexitet: {:.0}%, Volym: {:.0}%)", comp * 100.0, loud * 100.0);
@@ -4444,8 +4750,8 @@ impl SonixApp {
                         let (rect, resp) = ui.allocate_exact_size(Vec2::new(320.0, 240.0), Sense::click_and_drag());
                         let painter = ui.painter();
 
-                        if resp.dragged() || resp.clicked() {
-                            if let Some(pos) = resp.interact_pointer_pos() {
+                        if (resp.dragged() || resp.clicked())
+                            && let Some(pos) = resp.interact_pointer_pos() {
                                 self.remix_xy[0] = ((pos.x - rect.min.x) / rect.width()).clamp(0.0, 1.0);
                                 self.remix_xy[1] = (1.0 - (pos.y - rect.min.y) / rect.height()).clamp(0.0, 1.0);
 
@@ -4453,7 +4759,6 @@ impl SonixApp {
                                 self.filter.resonance = 0.5 + self.remix_xy[1] * 7.5;
                                 let _ = self.engine.send_command(AudioCommand::SetFilter(self.filter));
                             }
-                        }
 
                         painter.rect_filled(rect, Rounding::same(6.0), Color32::from_rgb(14, 22, 18));
                         painter.rect_stroke(rect, Rounding::same(6.0), Stroke::new(1.5_f32, Theme::FL_GREEN));
@@ -4950,11 +5255,10 @@ impl SonixApp {
                     Color32::from_rgb(40, 45, 55),
                 );
 
-                if let Some(pos) = pointer_pos {
-                    if key_rect.contains(pos) {
+                if let Some(pos) = pointer_pos
+                    && key_rect.contains(pos) {
                         hovered_note = Some(note);
                     }
-                }
             }
 
             // 2. Black Keys
@@ -4976,24 +5280,22 @@ impl SonixApp {
                 ui.painter().rect_filled(key_rect, Rounding::same(2.0), bg_color);
                 ui.painter().rect_stroke(key_rect, Rounding::same(2.0), Stroke::new(1.0_f32, Color32::BLACK));
 
-                if let Some(pos) = pointer_pos {
-                    if key_rect.contains(pos) {
+                if let Some(pos) = pointer_pos
+                    && key_rect.contains(pos) {
                         hovered_note = Some(note);
                     }
-                }
             }
 
             // Mouse Touch Interaction
             if pointer_down {
-                if let Some(note) = hovered_note {
-                    if self.active_mouse_note != Some(note) {
+                if let Some(note) = hovered_note
+                    && self.active_mouse_note != Some(note) {
                         if let Some(old) = self.active_mouse_note {
                             self.release_note(old);
                         }
                         self.active_mouse_note = Some(note);
                         self.play_note(note);
                     }
-                }
             } else if let Some(old) = self.active_mouse_note {
                 self.release_note(old);
                 self.active_mouse_note = None;
@@ -5277,7 +5579,7 @@ impl SonixApp {
                         pattern_notes,
                         track_clips,
                         track_muted,
-                        num_bars: self.loop_end_bar.max(4).min(32),
+                        num_bars: self.loop_end_bar.clamp(4, 32),
                         bpm: self.bpm,
                     };
                     let _ = render_song_arrangement_to_wav(&export_path, synth, &arrangement);
@@ -5339,13 +5641,11 @@ impl SonixApp {
             if let Ok(entries) = std::fs::read_dir(dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                        if ext.eq_ignore_ascii_case("zip") {
-                            if let Some(path_str) = path.to_str() {
+                    if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                        && ext.eq_ignore_ascii_case("zip")
+                            && let Some(path_str) = path.to_str() {
                                 results.push(path_str.to_string());
                             }
-                        }
-                    }
                 }
             }
         }
@@ -5537,8 +5837,8 @@ impl SonixApp {
             let mut sample_rate = 44100u32;
             let mut wave_env = Vec::new();
 
-            if path_str.to_lowercase().ends_with(".wav") {
-                if let Ok((l, r, sr)) = crate::audio::load_wav_pcm(&path_str) {
+            if path_str.to_lowercase().ends_with(".wav")
+                && let Ok((l, r, sr)) = crate::audio::load_wav_pcm(&path_str) {
                     sample_rate = sr;
                     let total_secs = l.len() as f32 / sr.max(1) as f32;
                     file_bars = (total_secs / sec_per_bar).max(1.0);
@@ -5567,7 +5867,6 @@ impl SonixApp {
                     pcm_l_opt = Some(std::sync::Arc::new(l));
                     pcm_r_opt = Some(std::sync::Arc::new(r));
                 }
-            }
 
             if wave_env.is_empty() {
                 let num_points = ((file_bars * 16.0) as usize).clamp(240, 4800);
@@ -5764,19 +6063,16 @@ impl SonixApp {
                     ui.label(egui::RichText::new("VÄLJ ZIP-FIL ELLER MAPP").strong().size(11.0).color(Theme::FL_ORANGE));
                     ui.separator();
                     ui.horizontal(|ui| {
-                        if ui.add(egui::Button::new(egui::RichText::new("📁 Välj ZIP-fil från datorn...").strong().size(11.5).color(Color32::WHITE)).fill(Color32::from_rgb(60, 90, 150))).clicked() {
-                            if let Ok(output) = std::process::Command::new("zenity")
+                        if ui.add(egui::Button::new(egui::RichText::new("📁 Välj ZIP-fil från datorn...").strong().size(11.5).color(Color32::WHITE)).fill(Color32::from_rgb(60, 90, 150))).clicked()
+                            && let Ok(output) = std::process::Command::new("zenity")
                                 .args(["--file-selection", "--file-filter=*.zip", "--title=Välj ZIP Stempaket"])
                                 .output()
-                            {
-                                if output.status.success() {
+                                && output.status.success() {
                                     let selected_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
                                     if !selected_path.is_empty() {
                                         zip_to_import = Some(selected_path);
                                     }
                                 }
-                            }
-                        }
 
                         ui.separator();
                         ui.label("eller ange sökväg:");
@@ -6009,11 +6305,10 @@ impl SonixApp {
                 if let Ok(entries) = std::fs::read_dir(&projects_dir) {
                     for entry in entries.flatten() {
                         let path = entry.path();
-                        if path.extension().and_then(|s| s.to_str()) == Some("sonix") {
-                            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                        if path.extension().and_then(|s| s.to_str()) == Some("sonix")
+                            && let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                                 saved_files.push((stem.to_string(), path.to_string_lossy().to_string()));
                             }
-                        }
                     }
                 }
 
@@ -6732,13 +7027,12 @@ impl SonixApp {
                             }
 
                             // Interactive Scrubbing on Waveform
-                            if wave_resp.clicked() || wave_resp.dragged() {
-                                if let Some(m_pos) = wave_resp.hover_pos() {
+                            if (wave_resp.clicked() || wave_resp.dragged())
+                                && let Some(m_pos) = wave_resp.hover_pos() {
                                     let norm = ((m_pos.x - wave_rect.min.x) / wave_rect.width()).clamp(0.0, 1.0);
                                     let target_sec = norm * (140.0 * sec_per_bar);
                                     seek_to_sec = Some(target_sec);
                                 }
-                            }
 
                             ui.add_space(6.0);
 
@@ -6768,12 +7062,11 @@ impl SonixApp {
                                     ui.separator();
                                 }
 
-                                if let Some(del_i) = del_region_idx {
-                                    if del_i < track.regions.len() {
+                                if let Some(del_i) = del_region_idx
+                                    && del_i < track.regions.len() {
                                         track.regions.remove(del_i);
                                         trigger_region_sync = true;
                                     }
-                                }
                             });
                         });
                     }

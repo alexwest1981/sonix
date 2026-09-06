@@ -3152,6 +3152,7 @@ dependencies = [
  "cpal",
  "crossterm",
  "eframe",
+ "image",
  "rtrb",
  "serde",
  "serde_json",

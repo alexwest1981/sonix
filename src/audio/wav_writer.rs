@@ -136,8 +136,8 @@ pub fn render_song_arrangement_to_wav(
                 if arrangement.track_muted.get(track_idx).copied().unwrap_or(false) {
                     continue;
                 }
-                if let Some(pat_idx) = clips[bar] {
-                    if let Some(channels) = arrangement.pattern_steps.get(pat_idx) {
+                if let Some(pat_idx) = clips[bar]
+                    && let Some(channels) = arrangement.pattern_steps.get(pat_idx) {
                         // Drums
                         if !channels.is_empty() && channels[0][step_in_bar] {
                             synth.handle_command(AudioCommand::TriggerDrum(DrumType::Kick));
@@ -170,7 +170,6 @@ pub fn render_song_arrangement_to_wav(
                             synth.handle_command(AudioCommand::NoteOn { note, freq, velocity: 0.9 });
                         }
                     }
-                }
             }
 
             for _ in 0..step_samples {

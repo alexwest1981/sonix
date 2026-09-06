@@ -99,10 +99,46 @@ pub struct StemVoiceTrack {
     pub sample_rate: f32,
     pub volume: f32,
     pub pan: f32,
+    pub pan_l: f32,
+    pub pan_r: f32,
     pub muted: bool,
     pub solo: bool,
     pub start_time_secs: f32,
     pub regions: Vec<StemRegionPlayback>,
+}
+
+impl StemVoiceTrack {
+    pub fn new(
+        left: Arc<Vec<f32>>,
+        right: Arc<Vec<f32>>,
+        sample_rate: f32,
+        volume: f32,
+        pan: f32,
+        start_time_secs: f32,
+    ) -> Self {
+        let p = pan.clamp(-1.0, 1.0);
+        let pan_l = ((1.0 - p) * 0.5).sqrt();
+        let pan_r = ((1.0 + p) * 0.5).sqrt();
+        Self {
+            left,
+            right,
+            sample_rate,
+            volume,
+            pan: p,
+            pan_l,
+            pan_r,
+            muted: false,
+            solo: false,
+            start_time_secs,
+            regions: Vec::new(),
+        }
+    }
+
+    pub fn set_pan(&mut self, pan: f32) {
+        self.pan = pan.clamp(-1.0, 1.0);
+        self.pan_l = ((1.0 - self.pan) * 0.5).sqrt();
+        self.pan_r = ((1.0 + self.pan) * 0.5).sqrt();
+    }
 }
 
 pub struct SynthEngine {
@@ -121,6 +157,7 @@ pub struct SynthEngine {
     pub drums: [DrumVoice; MAX_DRUMS],
     // Multi-track audio stem streaming
     pub stem_tracks: Vec<StemVoiceTrack>,
+    pub has_stem_solo: bool,
     pub song_playing: bool,
     pub song_time_samples: usize,
 }
@@ -143,6 +180,7 @@ impl SynthEngine {
             voices: [Voice::new(sample_rate); MAX_VOICES],
             drums: [DrumVoice::new(sample_rate); MAX_DRUMS],
             stem_tracks: Vec::new(),
+            has_stem_solo: false,
             song_playing: false,
             song_time_samples: 0,
         }
@@ -227,45 +265,35 @@ impl SynthEngine {
                 self.song_playing = false;
             }
             AudioCommand::LoadStemTrack { track_index, left, right, sample_rate, volume, pan, start_time_secs } => {
-                let track = StemVoiceTrack {
-                    left,
-                    right,
-                    sample_rate,
-                    volume,
-                    pan,
-                    muted: false,
-                    solo: false,
-                    start_time_secs,
-                    regions: Vec::new(),
-                };
+                let track = StemVoiceTrack::new(left, right, sample_rate, volume, pan, start_time_secs);
                 if track_index < self.stem_tracks.len() {
                     self.stem_tracks[track_index] = track;
                 } else {
                     while self.stem_tracks.len() < track_index {
-                        self.stem_tracks.push(StemVoiceTrack {
-                            left: Arc::new(Vec::new()),
-                            right: Arc::new(Vec::new()),
-                            sample_rate: self.sample_rate,
-                            volume: 1.0,
-                            pan: 0.0,
-                            muted: false,
-                            solo: false,
-                            start_time_secs: 0.0,
-                            regions: Vec::new(),
-                        });
+                        self.stem_tracks.push(StemVoiceTrack::new(
+                            Arc::new(Vec::new()),
+                            Arc::new(Vec::new()),
+                            self.sample_rate,
+                            1.0,
+                            0.0,
+                            0.0,
+                        ));
                     }
                     self.stem_tracks.push(track);
                 }
+                self.has_stem_solo = self.stem_tracks.iter().any(|t| t.solo);
             }
             AudioCommand::ClearAllStemTracks => {
                 self.stem_tracks.clear();
+                self.has_stem_solo = false;
             }
             AudioCommand::SetStemTrackState { track_index, volume, pan, muted, solo } => {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
                     track.volume = volume;
-                    track.pan = pan;
+                    track.set_pan(pan);
                     track.muted = muted;
                     track.solo = solo;
+                    self.has_stem_solo = self.stem_tracks.iter().any(|t| t.solo);
                 }
             }
             AudioCommand::SetStemTrackRegions { track_index, regions } => {
@@ -328,7 +356,7 @@ impl SynthEngine {
         let mut stem_mix_r = 0.0;
 
         if self.song_playing && !self.stem_tracks.is_empty() {
-            let has_solo = self.stem_tracks.iter().any(|t| t.solo);
+            let has_solo = self.has_stem_solo;
             let current_time_sec = self.song_time_samples as f32 / self.sample_rate;
 
             for track in &self.stem_tracks {
@@ -337,9 +365,8 @@ impl SynthEngine {
                     continue;
                 }
 
-                let pan = track.pan.clamp(-1.0, 1.0);
-                let pan_l = ((1.0 - pan) * 0.5).sqrt();
-                let pan_r = ((1.0 + pan) * 0.5).sqrt();
+                let pan_l = track.pan_l;
+                let pan_r = track.pan_r;
 
                 if !track.regions.is_empty() {
                     // Play defined audio regions/slices

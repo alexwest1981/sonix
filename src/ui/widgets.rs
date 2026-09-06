@@ -369,8 +369,8 @@ pub fn drummer_xy_matrix(
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let painter = ui.painter();
 
-    if response.dragged() || response.clicked() {
-        if let Some(pos) = response.interact_pointer_pos() {
+    if (response.dragged() || response.clicked())
+        && let Some(pos) = response.interact_pointer_pos() {
             let norm_x = ((pos.x - rect.min.x) / rect.width()).clamp(0.0, 1.0);
             let norm_y = (1.0 - (pos.y - rect.min.y) / rect.height()).clamp(0.0, 1.0);
             if norm_x != *complexity || norm_y != *loudness {
@@ -379,7 +379,6 @@ pub fn drummer_xy_matrix(
                 changed = true;
             }
         }
-    }
 
     // 1. Matrix Background (Dark brushed radar screen)
     painter.rect_filled(rect, Rounding::same(6.0), Color32::from_rgb(18, 22, 30));
@@ -423,8 +422,8 @@ pub fn alchemy_transform_matrix(
     let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let painter = ui.painter();
 
-    if response.dragged() || response.clicked() {
-        if let Some(pos) = response.interact_pointer_pos() {
+    if (response.dragged() || response.clicked())
+        && let Some(pos) = response.interact_pointer_pos() {
             let norm_x = ((pos.x - rect.center().x) / (rect.width() * 0.42)).clamp(-1.0, 1.0);
             let norm_y = ((pos.y - rect.center().y) / (rect.height() * 0.42)).clamp(-1.0, 1.0);
             if norm_x != puck_pos_norm[0] || norm_y != puck_pos_norm[1] {
@@ -433,7 +432,6 @@ pub fn alchemy_transform_matrix(
                 changed = true;
             }
         }
-    }
 
     // Pad Background
     painter.rect_filled(rect, Rounding::same(6.0), Color32::from_rgb(14, 18, 24));

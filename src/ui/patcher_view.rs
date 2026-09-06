@@ -109,8 +109,8 @@ pub fn render_patcher_view(ui: &mut Ui, graph: &mut ModularGraph, anim_phase: f3
         }
 
         // Handle Active Dragging Cable
-        if let Some((f_node_id, f_pin)) = graph.connecting_from {
-            if let Some(fn_node) = graph.nodes.iter().find(|n| n.id == f_node_id) {
+        if let Some((f_node_id, f_pin)) = graph.connecting_from
+            && let Some(fn_node) = graph.nodes.iter().find(|n| n.id == f_node_id) {
                 let from_pin_pos = to_screen(Pos2::new(
                     fn_node.pos.x + node_width,
                     fn_node.pos.y + 36.0 + f_pin as f32 * 18.0,
@@ -127,7 +127,6 @@ pub fn render_patcher_view(ui: &mut Ui, graph: &mut ModularGraph, anim_phase: f3
                     painter.add(curve);
                 }
             }
-        }
 
         let mut connect_to = None;
         let mut start_connect = None;
@@ -197,16 +196,14 @@ pub fn render_patcher_view(ui: &mut Ui, graph: &mut ModularGraph, anim_phase: f3
             }
 
             // Node Dragging Check (by dragging header)
-            if response.dragged() {
-                if let Some(ptr) = response.interact_pointer_pos() {
-                    if header_rect.contains(ptr) {
+            if response.dragged()
+                && let Some(ptr) = response.interact_pointer_pos()
+                    && header_rect.contains(ptr) {
                         let mut new_pos = graph.nodes[i].pos + response.drag_delta();
                         new_pos.x = new_pos.x.clamp(10.0, (canvas_rect.width() - node_width - 10.0).max(10.0));
                         new_pos.y = new_pos.y.clamp(10.0, (canvas_rect.height() - node_height - 10.0).max(10.0));
                         graph.nodes[i].pos = new_pos;
                     }
-                }
-            }
         }
 
         // Apply Cable Connection
@@ -215,8 +212,8 @@ pub fn render_patcher_view(ui: &mut Ui, graph: &mut ModularGraph, anim_phase: f3
         }
 
         if let Some((to_node, to_pin)) = connect_to {
-            if let Some((from_node, from_pin)) = graph.connecting_from {
-                if from_node != to_node {
+            if let Some((from_node, from_pin)) = graph.connecting_from
+                && from_node != to_node {
                     // Check if cable already exists
                     if !graph.cables.iter().any(|c| c.from_node == from_node && c.from_pin == from_pin && c.to_node == to_node && c.to_pin == to_pin) {
                         let color = Color32::from_rgb(100 + (from_node as u8 * 40) % 155, 200, 240);
@@ -229,17 +226,15 @@ pub fn render_patcher_view(ui: &mut Ui, graph: &mut ModularGraph, anim_phase: f3
                         });
                     }
                 }
-            }
             graph.connecting_from = None;
         } else if response.drag_stopped() {
             graph.connecting_from = None;
         }
 
-        if let Some(idx) = remove_cable_idx {
-            if idx < graph.cables.len() {
+        if let Some(idx) = remove_cable_idx
+            && idx < graph.cables.len() {
                 graph.cables.remove(idx);
             }
-        }
     });
 }
 

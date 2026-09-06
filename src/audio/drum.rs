@@ -61,7 +61,9 @@ impl DrumVoice {
         let dt = 1.0 / self.sample_rate;
         self.time += dt;
 
-        let sample = match self.drum_type {
+        
+
+        match self.drum_type {
             DrumType::Kick => {
                 let duration = 0.35;
                 if self.time >= duration {
@@ -158,8 +160,6 @@ impl DrumVoice {
                 let amp_env = (-self.time * 9.0).exp();
                 (2.0 * PI * freq * self.time).sin() * amp_env * 0.9
             }
-        };
-
-        sample
+        }
     }
 }
