@@ -309,8 +309,8 @@ pub fn eq_curve_visualizer(
     high_gain: &mut f32,
     size: Vec2,
 ) -> bool {
-    let changed = false;
-    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let mut changed = false;
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
     let painter = ui.painter();
 
     // Dark screen
@@ -324,6 +324,24 @@ pub fn eq_curve_visualizer(
     painter.line_segment([Pos2::new(rect.min.x, mid_y), Pos2::new(rect.max.x, mid_y)], Stroke::new(1.0_f32, Color32::from_rgb(34, 44, 58)));
     painter.line_segment([Pos2::new(rect.min.x + rect.width() * 0.33, rect.min.y), Pos2::new(rect.min.x + rect.width() * 0.33, rect.max.y)], grid_stroke);
     painter.line_segment([Pos2::new(rect.min.x + rect.width() * 0.66, rect.min.y), Pos2::new(rect.min.x + rect.width() * 0.66, rect.max.y)], grid_stroke);
+
+    // Interactive Dragging on Node Zones
+    if response.dragged() {
+        if let Some(pos) = response.interact_pointer_pos() {
+            let rel_x = ((pos.x - rect.min.x) / rect.width()).clamp(0.0, 1.0);
+            let rel_gain = (((mid_y - pos.y) / (rect.height() * 0.45)) * 12.0).clamp(-12.0, 12.0);
+            if rel_x < 0.33 {
+                *low_gain = rel_gain;
+                changed = true;
+            } else if rel_x > 0.66 {
+                *high_gain = rel_gain;
+                changed = true;
+            } else {
+                *mid_gain = rel_gain;
+                changed = true;
+            }
+        }
+    }
 
     // EQ Curve points
     let steps = 48;
@@ -356,6 +374,47 @@ pub fn eq_curve_visualizer(
     painter.text(Pos2::new(rect.max.x - 8.0, rect.max.y - 10.0), egui::Align2::RIGHT_CENTER, "HIGH (10kHz)", egui::FontId::proportional(9.0), Theme::TEXT_MUTED);
 
     changed
+}
+
+/// Mini EQ Thumbnail for Track Channel Strips
+pub fn mini_track_eq_curve(
+    painter: &egui::Painter,
+    rect: Rect,
+    low_gain: f32,
+    mid_gain: f32,
+    high_gain: f32,
+    accent_col: Color32,
+    enabled: bool,
+) {
+    painter.rect_filled(rect, Rounding::same(2.0), Color32::from_rgb(14, 18, 24));
+    painter.rect_stroke(rect, Rounding::same(2.0), Stroke::new(0.8_f32, Color32::from_rgb(32, 40, 52)));
+
+    let mid_y = rect.center().y;
+    painter.line_segment([Pos2::new(rect.min.x, mid_y), Pos2::new(rect.max.x, mid_y)], Stroke::new(0.5_f32, Color32::from_rgb(26, 34, 46)));
+
+    if !enabled {
+        painter.line_segment([Pos2::new(rect.min.x + 2.0, mid_y), Pos2::new(rect.max.x - 2.0, mid_y)], Stroke::new(1.0_f32, Color32::from_rgb(80, 85, 95)));
+        return;
+    }
+
+    let steps = 16;
+    let mut pts = Vec::with_capacity(steps);
+    for i in 0..steps {
+        let t = i as f32 / (steps - 1) as f32;
+        let x = rect.min.x + t * rect.width();
+
+        let low_w = (1.0 - (t / 0.38)).clamp(0.0, 1.0).powf(2.0);
+        let mid_dist = (t - 0.5).abs() / 0.25;
+        let mid_w = (1.0 - mid_dist.min(1.0)).powf(2.0);
+        let high_w = ((t - 0.62) / 0.38).clamp(0.0, 1.0).powf(2.0);
+
+        let total_db = low_gain * low_w + mid_gain * mid_w + high_gain * high_w;
+        let y_offset = (total_db / 12.0) * (rect.height() * 0.40);
+        let y = mid_y - y_offset;
+        pts.push(Pos2::new(x, y.clamp(rect.min.y + 1.0, rect.max.y - 1.0)));
+    }
+
+    painter.add(egui::Shape::line(pts, Stroke::new(1.5_f32, accent_col)));
 }
 
 /// Draw an interactive 2D Drummer XY Performance Matrix (GarageBand Virtual Session Drummer style)

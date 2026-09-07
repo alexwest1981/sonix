@@ -1,1 +1,9 @@
 /target
+imported_stems/
+*.wav
+*.mp3
+*.flac
+*.ogg
+*.zip
+*.sonix
+.env

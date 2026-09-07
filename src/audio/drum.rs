@@ -11,6 +11,8 @@ pub enum DrumType {
     Crash,
     TomLow,
     TomHigh,
+    MetronomeHigh,
+    MetronomeLow,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -159,6 +161,28 @@ impl DrumVoice {
                 let freq = 120.0 + 130.0 * pitch_env;
                 let amp_env = (-self.time * 9.0).exp();
                 (2.0 * PI * freq * self.time).sin() * amp_env * 0.9
+            }
+            DrumType::MetronomeHigh => {
+                let duration = 0.04;
+                if self.time >= duration {
+                    self.active = false;
+                    return 0.0;
+                }
+                let env = (-self.time * 90.0).exp();
+                let sine = (2.0 * PI * 1800.0 * self.time).sin();
+                let click = if self.time < 0.003 { 0.4 } else { 0.0 };
+                (sine * 0.8 + click) * env
+            }
+            DrumType::MetronomeLow => {
+                let duration = 0.035;
+                if self.time >= duration {
+                    self.active = false;
+                    return 0.0;
+                }
+                let env = (-self.time * 110.0).exp();
+                let sine = (2.0 * PI * 1100.0 * self.time).sin();
+                let click = if self.time < 0.003 { 0.3 } else { 0.0 };
+                (sine * 0.7 + click) * env
             }
         }
     }

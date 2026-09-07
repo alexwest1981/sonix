@@ -123,6 +123,23 @@ pub enum AudioCommand {
     },
     SeekSongPosition(f32),
     SetSongPlayback(bool),
+    // Isolated Audition for Vocal Studio & Sample Preview (does not affect song timeline)
+    PlayAudition {
+        left: Arc<Vec<f32>>,
+        right: Arc<Vec<f32>>,
+        sample_rate: f32,
+        volume: f32,
+        pitch_ratio: f32,
+        time_stretch_ratio: f32,
+        is_reverse: bool,
+        loop_playback: bool,
+    },
+    StopAudition,
+    SetAuditionParams {
+        volume: f32,
+        pitch_ratio: f32,
+        time_stretch_ratio: f32,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -134,4 +151,6 @@ pub struct StemRegionPlayback {
     pub fade_in_sec: f32,
     pub fade_out_sec: f32,
     pub muted: bool,
+    pub is_reverse: bool,
+    pub loop_length_secs: f32,
 }

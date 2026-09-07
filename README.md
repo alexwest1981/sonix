@@ -2,7 +2,7 @@
 
 > **Languages / Språk:** [🇬🇧 English](README.md) | [🇸🇪 Svenska](README_SV.md)
 
-A modern, lightning-fast graphical Digital Audio Workstation (DAW) built with **Rust** and **egui**, featuring an integrated modular synthesizer, linear multitrack audio editor with Suno AI stem support, 16-step Channel Rack, Piano Roll, Vocal Studio, Multichannel Effects Mixer, and Touch Instruments for Linux (PipeWire / Wayland / ALSA / JACK).
+A modern, lightning-fast graphical Digital Audio Workstation (DAW) built with **Rust** and **egui**, featuring FL Studio-style direct timeline audio editing, magnetic loop snapping, FL Studio & VST3/CLAP plugin integration, Soundtrap-style creative panels, an integrated modular synthesizer, 16-step Channel Rack, Piano Roll, Vocal Studio with live microphone recording, Multichannel Effects Mixer, and Touch Instruments for Linux (PipeWire / Wayland / ALSA / JACK).
 
 ---
 
@@ -21,7 +21,7 @@ cd ~/Projects/sonix
 cargo run --release
 ```
 
-To automatically generate all 22 full-screen screenshots:
+To automatically generate all 29 full-screen screenshots:
 
 ```bash
 cargo run --release -- --capture-screenshots screenshots
@@ -29,64 +29,59 @@ cargo run --release -- --capture-screenshots screenshots
 
 ---
 
-## 🎨 Core Features in Sonix Studio:
+## 🎨 Core Features in Sonix Studio
 
-### 1. 🎛️ Metallic Top Toolbar & LCD Display:
-* **Transport Controls:** Tactile controls for `▶ PLAY`, `⏸ PAUSE`, `⏹ STOP`, `⏺ REC`, and Song/Pattern Loop.
-* **Digital LCD:** Displays real-time BPM, elapsed playback time, and precise bar position with centisecond precision (`BAR 01 : 03 : 12 (+00cs)`).
-* **Live Oscilloscope:** High-resolution real-time waveform visualizer and spectrum display.
-* **Tactile Rotary Knobs:** High-precision rotary knobs for Master VOL, Master PAN, and Stereo Width.
+### 1. 🎼 FL Studio-Style Timeline & Multitrack Audio Arranger
+* **Direct Clip Edge Dragging (Paint & Select Tools):** Grab the right edge to extend and loop clips seamlessly across bars, or drag left to shorten. Grab the left edge to trim/crop the start without destructive audio edits.
+* **Continuous Waveform Phase Tracking:** Trimming the start shifts the waveform without squishing or distorting loop cycles.
+* **Magnetic Loop-Snap (🧲):** Automatically locks onto exact whole-loop multiples (`1x`, `2x`, `3x`, `4x`, `8x` loop lengths) and timeline grid divisions (`1/16`, `Beat`, `Bar`). Hold `Alt` for free millisecond-level precision.
+* **Bottom Region Inspector:** Fine-tune audio clips with coarse/fine nudge buttons (`±1 bar`, `±0.1s`), start-trim offset, gain slider, fade in/out curves, reverse playback, and loop multiplication.
+* **Tool Palette:** Select (⇱), Paint (✎), Slice (✂), Erase (🗑), Mute (🔇).
+* **Live In-Track Microphone Recording:** Record live vocals directly onto audio tracks with dedicated arm buttons (`⏺`), input monitoring, and real-time waveforms.
 
-### 2. 🎼 Suno AI Stem Import & Linear Multitrack Audio Editing:
-* **Direct Zip/Folder Import:** Drag and drop or browse Suno Stem archives/folders (`vocals`, `drums`, `bass`, `guitar`, `keys`, `back_vocals`, etc.).
-* **Real-time Waveforms:** Continuous audio regions with pre-rendered and live RMS and peak waveforms.
-* **Precision Slice Tool (✂):** Cut audio regions anywhere on the timeline with millimeter accuracy (0.01s centisecond snap).
-* **Tool Palette:** Select / Pointer (⇱), Paint (✎), Slice (✂), Erase (🗑), Mute (🔇).
-* **Multitrack Audio Streaming:** Real-time synchronized multitrack mixing directly from the audio engine with zero latency.
+### 2. 🔌 FL Studio Native, .fst & 3rd-Party Plugin Integration
+* **FL Studio Native Compatibility:** Built-in scanner and loader for FL Studio instruments and effects (`.dll` VSTi like Sytrus, Harmor, Harmless, Gross Beat, FL Studio VSTi).
+* **FL Studio Preset (.fst) Management:** Read and import FL Studio preset files directly into your projects.
+* **Universal Plugin Host:** Native Linux support for **CLAP**, **VST3**, and **LV2** plugins.
+* **Windows VST Sandboxing:** Automatic Yabridge & Wine prefix scanning with isolated crash-safe process execution.
+* **Custom Scan Directories:** Add custom VST/CLAP folders with recursive scanning and real-time status counters.
 
-### 3. 🥁 Sonix Channel Rack (16-Step Sequencer):
-* **6+ Dedicated Channels:**
-  1. 💥 `808 Kick Drum`
-  2. 🥁 `909 Snare Drum`
-  3. ⚡ `Crisp Closed Hi-Hat`
-  4. 🌊 `Open Hi-Hat`
-  5. 🎹 `303 Acid Synth Lead`
-  6. 🎸 `Sub Bassline`
-* **4-Beat Step Buttons:** Tactile buttons grouped in fours with **glowing white center LEDs** when activated.
-* **Mute [M] & Solo [S]** with status LED indicators.
-* **Mini VOL & PAN Knobs** for each channel.
-* **Sample Chopper & Pitch Shift:** Slice and retune samples directly in the channel strip.
+### 3. 🎙 Creative Studio Panels & Vocal Tools (Soundtrap-Inspired)
+* **Hardware Microphone & Vocal Panel:** Device selector, hardware gain boost (+0dB to +24dB), noise gate, acoustic feedback suppression, and vocal presets (Broadcast, Warm Tube, Crystal Lead, Rap, Podcast).
+* **Smart Chord & Harmony Matrix:** Generate scale-aware Roman numeral chord progressions (I, ii, iii, IV, V, vi, vii°), strum humanization, and one-click chord stamping into the Piano Roll.
+* **Hardware Strobe Tuner:** Ultra-high precision chromatic strobe tuner with real-time pitch detection, ±cents readout, and frequency in Hz.
+* **Beat & Melody Dice Generator:** Algorithmic groove and melody generator with scale constraints and syncopation controls.
+* **Modular FX Pedalboard & Vocal Rack:** Vocal doubler, analog tube compressor, dynamic de-esser, noise gate, and resonant multi-filter.
+* **Song Section Arranger:** Define and arrange Intro, Verse, Chorus, Bridge, Drop, and Outro song markers.
+* **Add Track Studio Creator:** Modal for adding Vocals/Mic, Custom Audio, 808 Drums, Synth Lead, Bassline, or FX Bus tracks.
 
-### 4. 🎛️ Sonix Analog Synthesizer & Alchemy Synth:
-* **Filter & Resonance:** Moog 24dB Ladder Lowpass filter with `CUTOFF` (Hz) and `RESO` (Q).
-* **ADSR Envelope:** `ATTACK`, `DECAY`, `SUSTAIN`, `RELEASE`.
-* **Live Envelope Graph:** Real-time visual envelope curve display.
-* **Oscillators:** `∿ Sine`, `⩘ Sawtooth`, `⊓ Square`, `⋀ Triangle`.
-* **Alchemy Vector Morph Pad:** 8-point real-time morph pad for smooth transitions between sound textures.
+### 4. 🥁 Sonix Channel Rack (16-Step Sequencer)
+* **Dedicated Channel Strips:** Kick, Snare, Closed Hat, Open Hat, Synth Lead, Sub Bass, and custom user channels.
+* **4-Beat Step Buttons:** Tactile buttons grouped in fours with glowing center LEDs when active.
+* **Per-Channel Knobs:** Quick access to volume, panning, pitch shifting, and sample chopping.
 
-### 5. 🎹 Sonix Piano Roll & Touch Keyboard:
-* **Interactive Note Editor:** Polyphonic piano roll with dynamic note lengths and velocity.
-* **Touch Keyboard:** Playable virtual keyboard with neon visual feedback and computer keyboard typing support (A-K).
-* **Scale Snapping & Chord Stamp:** Snap to Major, Minor, Pentatonic, or stamp chords with a single click.
+### 5. 🎹 Piano Roll & Interactive Touch Keyboard
+* **Polyphonic Note Editor:** Dynamic note lengths, velocity editing, scale snapping, and brush tools.
+* **Playable Virtual Keyboard:** Neon visual feedback with computer keyboard typing support (A-K).
 
-### 6. 🎙 Vocal Studio & Intelligent Harmonizer:
-* **Microphone Recording:** Record lead vocals and acoustic takes with Take Lanes and real-time zero-latency monitoring.
+### 6. 🎙 Vocal Studio & Intelligent Harmonizer
+* **Take Lanes:** Record multiple vocal takes with non-destructive comping.
 * **Pitch Detection & Autotune:** Real-time pitch correction and formant shifting.
-* **4-Part Harmonizer:** Generate automated vocal harmonies and choir backing tracks.
-* **Sampler Recorder:** Record custom acoustic instruments and samples directly via microphone.
+* **4-Part Harmonizer:** Instant vocal harmonies and backing choir generation.
+* **Custom Sampler:** Record acoustic instruments and one-shots directly via microphone.
 
-### 7. 🎚 Master & Multitrack Effects Mixer:
-* **Multichannel Mixer:** Channel strips with faders, peak VU meters, Solo, Mute, Pan, and Stereo Width.
+### 7. 🎚 Master & Multitrack Effects Mixer
+* **8+ Channel Strips:** Dedicated faders, peak VU meters, solo, mute, pan, and stereo width.
 * **Sub-Mix Busses & VCA:** Dedicated Drum Bus, Vocal Bus, Synth Bus, and 4x VCA faders.
-* **Parametric 3-Band EQ:** Graphical EQ curve visualizer with adjustable frequency and gain per band.
-* **Master Effects:** Space Reverb, Stereo Delay, Chorus, Compressor, and Tube Drive.
+* **Parametric 3-Band EQ:** Visual curve graph with adjustable frequencies and Q-factor.
+* **Master FX Rack:** Space Reverb, Stereo Delay, Chorus, Compressor, and Tube Drive.
 
-### 8. 🤖 AI Music Assistant, Patcher & Plugins:
-* **AI Prompt Engine:** Generate melodies, basslines, chord progressions, and arrangement ideas via natural language prompts (Suno AI, OpenAI, Claude, Ollama).
-* **Modular Patcher Grid:** Bitwig/The Grid modular environment with visual nodes and patch cables.
-* **AI Stem Separator:** Demucs Neural Engine source separation to isolate vocals, drums, bass, and instruments from finished songs.
-* **Plugin Manager & Wine:** CLAP, VST3, LV2 plugin host with isolated process sandboxing for Windows VSTs via Yabridge/Wine.
-* **Remix FX:** Live DJ performance pad with Kaoss XY matrix, stutter repeater, vinyl tape stop, bitcrusher, and filter sweeps.
+### 8. 🤖 AI Music Assistant, Modular Patcher & Demucs Stems
+* **AI Prompt Engine:** Natural language prompt-based generation for chords, basslines, and melodies (Suno AI, OpenAI, Claude, local Ollama).
+* **Suno AI Stem Importer:** Drag & drop Suno ZIP archives with automated stem track extraction and alignment.
+* **Modular Patcher Grid:** Visual node-based signal routing with virtual patch cables.
+* **Demucs AI Stem Separator:** Neural source separation to isolate vocals, drums, bass, and instruments from full audio mixes.
+* **Remix FX:** Kaoss-style XY matrix pad, stutter repeater, vinyl tape stop, and bitcrusher.
 
 ---
 
@@ -95,6 +90,8 @@ cargo run --release -- --capture-screenshots screenshots
 | Key / Shortcut | Function | Description |
 | :--- | :--- | :--- |
 | **Space** | **Play / Pause** | Toggle playback in Song or Pattern mode. |
+| **R** | **Record Arm** | Arm active microphone track for live recording. |
+| **Alt (Hold)** | **Free Slip / Trim** | Bypass magnetic loop and grid snapping for free editing. |
 | **F1** | **User Manual / Help** | Open built-in interactive manual and help center. |
 | **F3** | **Timeline / Arranger** | Switch to the linear multitrack audio playlist. |
 | **F4** | **Channel Rack** | Switch to the 16-step sequencer and drum machine. |
@@ -115,11 +112,11 @@ cargo run --release -- --capture-screenshots screenshots
 ### 1. 🎼 Main Workspaces & Production
 
 #### 1. 🎼 Timeline & Multitrack Arranger (Playlist)
-Linear multitrack editor with Suno AI stem support, continuous waveforms, tool palette (Pointer, Paint, Slice ✂, Mute, Trash), snap-grid, and transport controls.
+Linear multitrack editor with FL Studio-style clip dragging, magnetic loop snapping, continuous waveforms, tool palette, and live microphone track.
 ![Timeline & Arranger](screenshots/01_tidslinje_arranger.png)
 
 #### 2. 🥁 16-Step Channel Rack & Drum Sequencer
-Tactile step buttons with glowing white center LEDs, mute/solo status, dedicated rotary knobs for volume and pan per channel, and sample quick-select.
+Tactile step buttons with glowing center LEDs, mute/solo status, dedicated volume/pan rotary knobs, and sample quick-select.
 ![Channel Rack](screenshots/02_channel_rack.png)
 
 #### 3. 🎹 Piano Roll & Interactive Touch Keyboard
@@ -127,7 +124,7 @@ Polyphonic note editor with note lengths, velocity, scale snapping, and playable
 ![Piano Roll](screenshots/03_piano_roll.png)
 
 #### 4. 🎙 Vocal Studio & Microphone Recording (Take Lanes)
-Professional recording console for vocals and acoustic instruments with real-time pitch detection, autotune, formant shifting, and 4-part harmonizer.
+Professional recording console for vocals and acoustic instruments with pitch detection, autotune, formant shifting, and 4-part harmonizer.
 ![Vocal Studio Take Lanes](screenshots/04_vocal_studio_leads.png)
 
 #### 5. 🎤 Vocal Studio: Custom Sound & Sampler Recording
@@ -155,7 +152,7 @@ Interactive XY control pad for groove complexity and energy dynamics, with human
 ![Session Drummer](screenshots/09_session_drummer.png)
 
 #### 10. 🧩 Modular Patcher & The Grid
-Visual modular node environment in Bitwig/FL Patcher style for connecting audio signals, filters, envelopes, LFOs, and distortion with virtual patch cables.
+Visual modular node environment for connecting audio signals, filters, envelopes, LFOs, and distortion with virtual patch cables.
 ![Modular Patcher](screenshots/10_modular_patcher.png)
 
 #### 11. 🧠 AI Stem Separator (Demucs Neural Engine)
@@ -163,7 +160,7 @@ Source separation to isolate vocals, drums, bass, and instruments directly from 
 ![Stem Separator](screenshots/11_stem_separator.png)
 
 #### 12. 🔌 Plugin & VST/CLAP Bridge Manager
-Seamless management of CLAP, VST3, and LV2 plugins for Linux with isolated crash-safe process sandboxing for Windows VSTs via Yabridge/Wine.
+Seamless management of FL Studio Native plugins, `.fst` presets, CLAP, VST3, LV2, and Wine/Yabridge sandboxed Windows VSTs.
 ![Plugin Manager](screenshots/12_plugin_manager.png)
 
 #### 13. 🎛 Remix FX (Live Performance Pad)
@@ -172,43 +169,75 @@ Live DJ performance effects with Kaoss-style XY matrix, stutter repeater, vinyl 
 
 ---
 
-### 3. ⚙️ Dialogs, Modals & Configuration
+### 3. 🎙 Creative Studio Panels & Vocal Modules (Soundtrap-Inspired)
 
-#### 14. ⚙ Audio & Driver Settings
+#### 14. 🎤 Microphone & Hardware Vocal Panel
+Input device selector, hardware gain boost (+0dB to +24dB), noise gate, acoustic feedback suppression, and vocal character presets.
+![Microphone Settings](screenshots/21_dialog_mikrofon_installningar.png)
+
+#### 15. 🎹 Smart Chord & Harmony Matrix
+Scale-aware Roman numeral chord matrix, strum spread humanizer, block/arpeggiated styles, and one-click Piano Roll stamping.
+![Chord Generator Matrix](screenshots/22_dialog_ackord_matris.png)
+
+#### 16. 🎯 Hardware Strobe Tuner
+Ultra-high precision chromatic strobe tuner with real-time frequency analysis, ±cents deviation, and 440Hz calibration.
+![Hardware Strobe Tuner](screenshots/23_dialog_strobe_tuner.png)
+
+#### 17. 🎲 Beat & Melody Dice Generator
+Algorithmic generator for drum rhythms and melodic hooks with musical scale locks and syncopation controls.
+![Dice Generator](screenshots/24_dialog_tarning_generator.png)
+
+#### 18. 🎛 Modular FX Pedalboard & Vocal Rack
+Multi-effect chain with Vocal Doubler, Analog Tube Compressor, Dynamic De-Esser, Noise Gate, and Resonant Filter.
+![Modular FX Rack](screenshots/25_dialog_modular_fx_rack.png)
+
+#### 19. 🎼 Song Section Arranger
+Define and arrange Intro, Verse, Chorus, Bridge, Drop, and Outro sections on the timeline.
+![Song Structure Arranger](screenshots/26_dialog_latstruktur_arrangemang.png)
+
+#### 20. ➕ Add Track Studio Creator
+Modal for quickly instantiating Vocals/Mic, Sample Audio, 808 Drums, Synth Lead, Bassline, or FX Bus tracks.
+![Add Track Modal](screenshots/27_dialog_lagg_till_spar.png)
+
+---
+
+### 4. ⚙️ Dialogs, Modals & System Configuration
+
+#### 21. ⚙ Audio & Driver Settings
 Configure audio interfaces, buffer sizes (1.4 ms low-latency), sample rates, and PipeWire/ALSA drivers.
 ![Audio Settings](screenshots/14_dialog_ljudinstallningar.png)
 
-#### 15. 🤖 AI Configuration & API Keys
+#### 22. 🤖 AI Configuration & API Keys
 Setup credentials and connections for Suno AI, OpenAI GPT, Claude AI, and local Ollama servers.
 ![AI Settings](screenshots/15_dialog_ai_installningar.png)
 
-#### 16. 💾 Project Manager & Templates
+#### 23. 💾 Project Manager & Templates
 Create new projects from music templates (Synthwave, Trap, House, Ambient), save, and load projects.
 ![Project Manager](screenshots/16_dialog_projekthanterare.png)
 
-#### 17. 💿 Render & Master Export Queue
+#### 24. 💿 Render & Master Export Queue
 Multithreaded master audio rendering to WAV, MP3, or FLAC with batch export support for individual stems.
 ![Render Queue](screenshots/17_dialog_render_queue.png)
 
-#### 18. 📥 Suno AI Stem Importer
+#### 25. 📥 Suno AI Stem Importer
 Automated loading and unzipping of Suno AI stems directly from zip archives or folders.
 ![Suno Import](screenshots/18_dialog_suno_import.png)
 
-#### 19. 🎛 Hardware Controllers & MCU/OSC
+#### 26. 🎛 Hardware Controllers & MCU/OSC
 Hardware controller support for Behringer X-Touch, Novation Launchpad, ALSA MIDI, and OSC network control.
 ![MIDI Controller](screenshots/19_dialog_midi_controller.png)
 
-#### 20. 🔍 Focused Stem & Region Editor
+#### 27. 🔍 Focused Stem & Region Editor
 Detailed audio region editor with volume envelopes, fade in/out curves, reverse, and sample slicing.
 ![Stem Focus Editor](screenshots/20_dialog_stem_focus_editor.png)
 
-#### 21. 📖 Interactive Help Guide & Manual
+#### 28. 📖 Interactive Help Guide & Manual
 Built-in comprehensive manual with shortcut lists, signal flow diagrams, and workflow guides.
-![Help Guide](screenshots/21_dialog_hjalpguide_manual.png)
+![Help Guide](screenshots/28_dialog_hjalpguide_manual.png)
 
-#### 22. ℹ About Sonix Studio
+#### 29. ℹ About Sonix Studio
 Version information, audio engine details, system architecture, and license.
-![About Sonix](screenshots/22_dialog_om_sonix.png)
+![About Sonix](screenshots/29_dialog_om_sonix.png)
 
 
 

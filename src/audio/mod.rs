@@ -4,6 +4,7 @@ pub mod drum;
 pub mod effects;
 pub mod engine;
 pub mod envelope;
+pub mod factory_samples;
 pub mod filter;
 pub mod patcher;
 pub mod plugin_host;
@@ -31,4 +32,4 @@ pub use synth::SynthEngine;
 #[allow(unused_imports)]
 pub use wav_reader::{load_wav_pcm, read_wav_envelope};
 #[allow(unused_imports)]
-pub use wav_writer::{render_song_arrangement_to_wav, render_to_wav, SongArrangementExport};
+pub use wav_writer::{render_song_arrangement_to_wav, render_to_wav, write_pcm_f32_to_wav, SongArrangementExport};

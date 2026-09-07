@@ -1,3 +1,4 @@
+pub mod add_track_modal;
 pub mod ai_assistant_view;
 pub mod app;
 pub mod chord_generator_modal;

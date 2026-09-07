@@ -6,7 +6,7 @@ use super::envelope::{AdsrParams, AdsrVoice};
 use super::filter::{FilterParams, StateVariableFilter};
 
 const MAX_VOICES: usize = 16;
-const MAX_DRUMS: usize = 8;
+const MAX_DRUMS: usize = 10;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Voice {
@@ -141,6 +141,20 @@ impl StemVoiceTrack {
     }
 }
 
+#[derive(Clone)]
+pub struct AuditionVoice {
+    pub left: Arc<Vec<f32>>,
+    pub right: Arc<Vec<f32>>,
+    pub sample_rate: f32,
+    pub volume: f32,
+    pub pitch_ratio: f32,
+    pub time_stretch_ratio: f32,
+    pub is_reverse: bool,
+    pub loop_playback: bool,
+    pub play_pos_samples: f32,
+    pub is_playing: bool,
+}
+
 pub struct SynthEngine {
     pub sample_rate: f32,
     pub waveform: Waveform,
@@ -160,6 +174,8 @@ pub struct SynthEngine {
     pub has_stem_solo: bool,
     pub song_playing: bool,
     pub song_time_samples: usize,
+    // Isolated audition for Vocal Studio & Sound Browser
+    pub audition: Option<AuditionVoice>,
 }
 
 impl SynthEngine {
@@ -183,6 +199,7 @@ impl SynthEngine {
             has_stem_solo: false,
             song_playing: false,
             song_time_samples: 0,
+            audition: None,
         }
     }
 
@@ -224,6 +241,8 @@ impl SynthEngine {
                     DrumType::Crash => 5,
                     DrumType::TomLow => 6,
                     DrumType::TomHigh => 7,
+                    DrumType::MetronomeHigh => 8,
+                    DrumType::MetronomeLow => 9,
                 };
                 self.drums[slot].trigger(drum_type);
             }
@@ -307,6 +326,50 @@ impl SynthEngine {
             AudioCommand::SetSongPlayback(playing) => {
                 self.song_playing = playing;
             }
+            AudioCommand::PlayAudition {
+                left,
+                right,
+                sample_rate,
+                volume,
+                pitch_ratio,
+                time_stretch_ratio,
+                is_reverse,
+                loop_playback,
+            } => {
+                let start_pos = if is_reverse {
+                    (left.len() as f32 - 1.0).max(0.0)
+                } else {
+                    0.0
+                };
+                self.audition = Some(AuditionVoice {
+                    left,
+                    right,
+                    sample_rate,
+                    volume: volume.max(0.0),
+                    pitch_ratio: pitch_ratio.max(0.05),
+                    time_stretch_ratio: time_stretch_ratio.max(0.05),
+                    is_reverse,
+                    loop_playback,
+                    play_pos_samples: start_pos,
+                    is_playing: true,
+                });
+            }
+            AudioCommand::StopAudition => {
+                if let Some(ref mut aud) = self.audition {
+                    aud.is_playing = false;
+                }
+            }
+            AudioCommand::SetAuditionParams {
+                volume,
+                pitch_ratio,
+                time_stretch_ratio,
+            } => {
+                if let Some(ref mut aud) = self.audition {
+                    aud.volume = volume.max(0.0);
+                    aud.pitch_ratio = pitch_ratio.max(0.05);
+                    aud.time_stretch_ratio = time_stretch_ratio.max(0.05);
+                }
+            }
         }
     }
 
@@ -386,11 +449,38 @@ impl SynthEngine {
                                 env *= (time_left / region.fade_out_sec).clamp(0.0, 1.0);
                             }
 
-                            let sample_pos_sec = region.sample_offset_sec + rel_time;
-                            let sample_idx = (sample_pos_sec * track.sample_rate) as usize;
-                            if sample_idx < track.left.len() {
-                                let raw_l = track.left[sample_idx];
-                                let raw_r = if sample_idx < track.right.len() { track.right[sample_idx] } else { raw_l };
+                            let sample_pos_sec = if region.loop_length_secs > 0.02 {
+                                let loop_dur = region.loop_length_secs;
+                                let eff_time = (region.sample_offset_sec + rel_time) % loop_dur;
+                                if region.is_reverse {
+                                    (loop_dur - eff_time).max(0.0)
+                                } else {
+                                    eff_time
+                                }
+                            } else {
+                                if region.is_reverse {
+                                    (region.length_secs - (region.sample_offset_sec + rel_time)).max(0.0)
+                                } else {
+                                    region.sample_offset_sec + rel_time
+                                }
+                            };
+                            let sample_pos = (sample_pos_sec * track.sample_rate).max(0.0);
+                            let idx0 = sample_pos.floor() as usize;
+                            let frac = sample_pos - idx0 as f32;
+
+                            if idx0 + 1 < track.left.len() {
+                                let raw_l = track.left[idx0] + (track.left[idx0 + 1] - track.left[idx0]) * frac;
+                                let raw_r = if idx0 + 1 < track.right.len() {
+                                    track.right[idx0] + (track.right[idx0 + 1] - track.right[idx0]) * frac
+                                } else {
+                                    raw_l
+                                };
+                                let g = track.volume * region.gain * env;
+                                stem_mix_l += raw_l * g * pan_l;
+                                stem_mix_r += raw_r * g * pan_r;
+                            } else if idx0 < track.left.len() {
+                                let raw_l = track.left[idx0];
+                                let raw_r = if idx0 < track.right.len() { track.right[idx0] } else { raw_l };
                                 let g = track.volume * region.gain * env;
                                 stem_mix_l += raw_l * g * pan_l;
                                 stem_mix_r += raw_r * g * pan_r;
@@ -401,11 +491,22 @@ impl SynthEngine {
                     // Fallback to full track streaming
                     let track_rel_time = current_time_sec - track.start_time_secs;
                     if track_rel_time >= 0.0 {
-                        let sample_idx = (track_rel_time * track.sample_rate) as usize;
-                        if sample_idx < track.left.len() {
-                            let raw_l = track.left[sample_idx];
-                            let raw_r = if sample_idx < track.right.len() { track.right[sample_idx] } else { raw_l };
+                        let sample_pos = (track_rel_time * track.sample_rate).max(0.0);
+                        let idx0 = sample_pos.floor() as usize;
+                        let frac = sample_pos - idx0 as f32;
 
+                        if idx0 + 1 < track.left.len() {
+                            let raw_l = track.left[idx0] + (track.left[idx0 + 1] - track.left[idx0]) * frac;
+                            let raw_r = if idx0 + 1 < track.right.len() {
+                                track.right[idx0] + (track.right[idx0 + 1] - track.right[idx0]) * frac
+                            } else {
+                                raw_l
+                            };
+                            stem_mix_l += raw_l * track.volume * pan_l;
+                            stem_mix_r += raw_r * track.volume * pan_r;
+                        } else if idx0 < track.left.len() {
+                            let raw_l = track.left[idx0];
+                            let raw_r = if idx0 < track.right.len() { track.right[idx0] } else { raw_l };
                             stem_mix_l += raw_l * track.volume * pan_l;
                             stem_mix_r += raw_r * track.volume * pan_r;
                         }
@@ -414,6 +515,53 @@ impl SynthEngine {
             }
 
             self.song_time_samples += 1;
+        }
+
+        // 8. Isolated Audition Audio Playback (Vocal Studio & Sample Previews)
+        if let Some(ref mut aud) = self.audition {
+            if aud.is_playing && !aud.left.is_empty() {
+                let len = aud.left.len();
+                let idx_f = aud.play_pos_samples;
+                let idx0 = idx_f.floor() as usize;
+                let idx1 = (idx0 + 1).min(len.saturating_sub(1));
+                let frac = idx_f - idx0 as f32;
+
+                if idx0 < len {
+                    let l0 = aud.left[idx0];
+                    let l1 = aud.left[idx1];
+                    let r0 = if idx0 < aud.right.len() { aud.right[idx0] } else { l0 };
+                    let r1 = if idx1 < aud.right.len() { aud.right[idx1] } else { l1 };
+
+                    let raw_l = l0 + (l1 - l0) * frac;
+                    let raw_r = r0 + (r1 - r0) * frac;
+
+                    stem_mix_l += raw_l * aud.volume;
+                    stem_mix_r += raw_r * aud.volume;
+
+                    let speed = (aud.sample_rate / self.sample_rate) * aud.pitch_ratio * aud.time_stretch_ratio;
+                    if aud.is_reverse {
+                        aud.play_pos_samples -= speed;
+                        if aud.play_pos_samples < 0.0 {
+                            if aud.loop_playback {
+                                aud.play_pos_samples = (len as f32 - 1.0).max(0.0);
+                            } else {
+                                aud.is_playing = false;
+                            }
+                        }
+                    } else {
+                        aud.play_pos_samples += speed;
+                        if aud.play_pos_samples >= len as f32 {
+                            if aud.loop_playback {
+                                aud.play_pos_samples = 0.0;
+                            } else {
+                                aud.is_playing = false;
+                            }
+                        }
+                    }
+                } else {
+                    aud.is_playing = false;
+                }
+            }
         }
 
         let out_l = ((del_l + stem_mix_l) * self.master_volume).tanh();

@@ -11,6 +11,7 @@ pub struct AudioTake {
     pub name: String,
     pub pcm_samples: Vec<f32>,
     pub waveform_data: Vec<f32>,
+    pub sample_rate: u32,
     pub duration_secs: f32,
     pub is_selected: bool,
     pub color: Color32,
@@ -19,6 +20,11 @@ pub struct AudioTake {
     pub trim_start_norm: f32,
     pub trim_end_norm: f32,
     pub gain_linear: f32,
+    pub pitch_semitones: f32,
+    pub pitch_cents: f32,
+    pub time_stretch: f32,
+    pub is_reverse: bool,
+    pub loop_audition: bool,
     pub is_muted: bool,
     pub is_playing: bool,
 }
@@ -30,6 +36,7 @@ pub struct CustomSoundClip {
     pub category: String,
     pub pcm_samples: Vec<f32>,
     pub waveform_data: Vec<f32>,
+    pub sample_rate: u32,
     pub duration_secs: f32,
     pub color: Color32,
 }
@@ -533,6 +540,7 @@ impl VocalStudioTrack {
         self.is_recording = false;
         self.is_paused = false;
 
+        let mic_sr = self.mic_capture.as_ref().map(|m| m.sample_rate).unwrap_or(44100);
         let mut samples = Vec::new();
         if let Some(ref mic) = self.mic_capture {
             mic.is_recording.store(false, Ordering::Relaxed);
@@ -542,25 +550,22 @@ impl VocalStudioTrack {
             }
         }
 
-        // If simulated or empty, generate sample data
+        // If simulated or empty, generate silence
         if samples.is_empty() {
-            let total_s = ((self.recording_elapsed_secs.max(1.5)) * 44100.0) as usize;
-            samples = (0..total_s).map(|i| {
-                let t = i as f32 / 44100.0;
-                (t * 330.0 * std::f32::consts::TAU).sin() * 0.6 + (t * 660.0 * std::f32::consts::TAU).sin() * 0.2
-            }).collect();
+            let total_s = ((self.recording_elapsed_secs.max(0.5)) * mic_sr as f32) as usize;
+            samples = vec![0.0; total_s];
         }
 
-        let duration = self.recording_elapsed_secs.max(samples.len() as f32 / 44100.0);
+        let duration = (samples.len() as f32 / mic_sr as f32).max(0.1);
         let sec_per_bar = (60.0 / bpm.max(40.0)) * 4.0;
         let length_bars = (duration / sec_per_bar).ceil().max(1.0) as usize;
 
-        let peaks_count = 120;
+        let peaks_count = 512.min(samples.len().max(64));
         let step = (samples.len() / peaks_count).max(1);
         let mut visual_peaks = Vec::with_capacity(peaks_count);
         for chunk in samples.chunks(step) {
             let peak = chunk.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs()));
-            visual_peaks.push(peak.clamp(0.04, 0.98));
+            visual_peaks.push(peak.clamp(0.0, 1.0));
         }
 
         let count = self.takes.len() + 1;
@@ -576,6 +581,7 @@ impl VocalStudioTrack {
             name: format!("Tagning {} ({:.1}s)", count, duration),
             pcm_samples: samples,
             waveform_data: visual_peaks,
+            sample_rate: mic_sr,
             duration_secs: duration,
             is_selected: true,
             color,
@@ -584,6 +590,11 @@ impl VocalStudioTrack {
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
+            pitch_semitones: 0.0,
+            pitch_cents: 0.0,
+            time_stretch: 1.0,
+            is_reverse: false,
+            loop_audition: false,
             is_muted: false,
             is_playing: false,
         };
@@ -615,15 +626,15 @@ impl VocalStudioTrack {
         let e_idx = ((total_samples as f32 * end_n) as usize).min(total_samples);
 
         take.pcm_samples = take.pcm_samples[s_idx..e_idx].to_vec();
-        take.duration_secs = take.pcm_samples.len() as f32 / 44100.0;
+        take.duration_secs = take.pcm_samples.len() as f32 / take.sample_rate.max(8000) as f32;
 
         // Recompute peaks
-        let peaks_count = 120;
+        let peaks_count = 512.min(take.pcm_samples.len().max(64));
         let step = (take.pcm_samples.len() / peaks_count).max(1);
         let mut visual_peaks = Vec::with_capacity(peaks_count);
         for chunk in take.pcm_samples.chunks(step) {
             let peak = chunk.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs()));
-            visual_peaks.push(peak.clamp(0.04, 0.98));
+            visual_peaks.push(peak.clamp(0.0, 1.0));
         }
         take.waveform_data = visual_peaks;
         take.trim_start_norm = 0.0;
@@ -649,19 +660,20 @@ impl VocalStudioTrack {
         let part2_samples = orig_take.pcm_samples[split_idx..].to_vec();
 
         let make_peaks = |samples: &[f32]| -> Vec<f32> {
-            let count = 100;
+            let count = 512.min(samples.len().max(64));
             let step = (samples.len() / count).max(1);
-            samples.chunks(step).map(|c| c.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs())).clamp(0.04, 0.98)).collect()
+            samples.chunks(step).map(|c| c.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs())).clamp(0.0, 1.0)).collect()
         };
 
         let t1_peaks = make_peaks(&part1_samples);
         let t2_peaks = make_peaks(&part2_samples);
+        let sr = orig_take.sample_rate.max(8000);
 
         // Update Part 1
         self.takes[self.active_comp_take].name = format!("{} (Del 1)", orig_take.name);
         self.takes[self.active_comp_take].pcm_samples = part1_samples.clone();
         self.takes[self.active_comp_take].waveform_data = t1_peaks;
-        self.takes[self.active_comp_take].duration_secs = part1_samples.len() as f32 / 44100.0;
+        self.takes[self.active_comp_take].duration_secs = part1_samples.len() as f32 / sr as f32;
 
         // Insert Part 2 as new take
         let count = self.takes.len() + 1;
@@ -670,7 +682,8 @@ impl VocalStudioTrack {
             name: format!("{} (Del 2)", orig_take.name),
             pcm_samples: part2_samples.clone(),
             waveform_data: t2_peaks,
-            duration_secs: part2_samples.len() as f32 / 44100.0,
+            sample_rate: sr,
+            duration_secs: part2_samples.len() as f32 / sr as f32,
             is_selected: true,
             color: Color32::from_rgb(255, 100, 180),
             start_bar: 0,
@@ -678,6 +691,11 @@ impl VocalStudioTrack {
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
+            pitch_semitones: 0.0,
+            pitch_cents: 0.0,
+            time_stretch: 1.0,
+            is_reverse: false,
+            loop_audition: false,
             is_muted: false,
             is_playing: false,
         });
@@ -688,7 +706,7 @@ impl VocalStudioTrack {
 
     pub fn export_take_to_wav(&self, take_idx: usize, path: &str) -> Result<String, String> {
         if let Some(take) = self.takes.get(take_idx) {
-            let sr = self.mic_capture.as_ref().map(|m| m.sample_rate).unwrap_or(44100);
+            let sr = take.sample_rate;
             if let Some(parent) = std::path::Path::new(path).parent() {
                 let _ = std::fs::create_dir_all(parent);
             }
@@ -713,12 +731,12 @@ impl VocalStudioTrack {
         for s in &mut take.pcm_samples {
             *s = (*s * mult).clamp(-1.0, 1.0);
         }
-        let peaks_count = 120;
+        let peaks_count = 512.min(take.pcm_samples.len().max(64));
         let step = (take.pcm_samples.len() / peaks_count).max(1);
         let mut visual_peaks = Vec::with_capacity(peaks_count);
         for chunk in take.pcm_samples.chunks(step) {
             let peak = chunk.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs()));
-            visual_peaks.push(peak.clamp(0.04, 0.98));
+            visual_peaks.push(peak.clamp(0.0, 1.0));
         }
         take.waveform_data = visual_peaks;
         Ok(format!("✔ Normaliserade {} (Peak förstärkt med {:.1}x)!", take.name, mult))
@@ -742,24 +760,24 @@ impl VocalStudioTrack {
         self.takes.clear();
         let samples_count = 44100 * 4;
 
-        // Take 1: First run-through
+        // Take 1: Gentle intro verse
         let mut take1_pcm = Vec::with_capacity(samples_count);
         for i in 0..samples_count {
             let t = i as f32 / 44100.0;
-            let val = if (0.5..1.8).contains(&t) || (2.2..3.5).contains(&t) {
-                (t * 220.0 * std::f32::consts::TAU).sin() * 0.65 + (t * 440.0 * std::f32::consts::TAU).cos() * 0.15
+            let val = if (0.2..3.8).contains(&t) {
+                (t * 220.0 * std::f32::consts::TAU).sin() * 0.7 + (t * 440.0 * std::f32::consts::TAU).sin() * 0.15
             } else {
-                0.02
+                0.01
             };
             take1_pcm.push(val);
         }
 
-        let peaks1: Vec<f32> = (0..100).map(|i| {
-            let t = i as f32 / 100.0;
+        let peaks1: Vec<f32> = (0..256).map(|i| {
+            let t = i as f32 / 256.0;
             if (0.1..0.45).contains(&t) || (0.55..0.9).contains(&t) {
                 (t * 30.0).sin().abs() * 0.75 + 0.1
             } else {
-                0.05
+                0.02
             }
         }).collect();
 
@@ -768,6 +786,7 @@ impl VocalStudioTrack {
             name: "Tagning 1 (Intro & Vers)".to_string(),
             pcm_samples: take1_pcm,
             waveform_data: peaks1,
+            sample_rate: 44100,
             duration_secs: 4.0,
             is_selected: false,
             color: Color32::from_rgb(0, 200, 240),
@@ -776,6 +795,11 @@ impl VocalStudioTrack {
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
+            pitch_semitones: 0.0,
+            pitch_cents: 0.0,
+            time_stretch: 1.0,
+            is_reverse: false,
+            loop_audition: false,
             is_muted: false,
             is_playing: false,
         });
@@ -787,17 +811,17 @@ impl VocalStudioTrack {
             let val = if (0.4..3.6).contains(&t) {
                 (t * 260.0 * std::f32::consts::TAU).sin() * 0.85 + (t * 520.0 * std::f32::consts::TAU).cos() * 0.2
             } else {
-                0.02
+                0.01
             };
             take2_pcm.push(val);
         }
 
-        let peaks2: Vec<f32> = (0..100).map(|i| {
-            let t = i as f32 / 100.0;
+        let peaks2: Vec<f32> = (0..256).map(|i| {
+            let t = i as f32 / 256.0;
             if (0.15..0.92).contains(&t) {
                 (t * 35.0).sin().abs() * 0.88 + 0.08
             } else {
-                0.04
+                0.02
             }
         }).collect();
 
@@ -806,6 +830,7 @@ impl VocalStudioTrack {
             name: "Tagning 2 (Stark Refräng)".to_string(),
             pcm_samples: take2_pcm,
             waveform_data: peaks2,
+            sample_rate: 44100,
             duration_secs: 4.0,
             is_selected: true,
             color: Color32::from_rgb(255, 140, 0),
@@ -814,6 +839,11 @@ impl VocalStudioTrack {
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
+            pitch_semitones: 0.0,
+            pitch_cents: 0.0,
+            time_stretch: 1.0,
+            is_reverse: false,
+            loop_audition: false,
             is_muted: false,
             is_playing: false,
         });
@@ -833,9 +863,9 @@ impl VocalStudioTrack {
             (1.0 - t).powi(2) * (t * 800.0 * std::f32::consts::TAU).sin() * 0.8
         }).collect();
 
-        let s1_wave: Vec<f32> = (0..60).map(|i| {
-            let t = i as f32 / 60.0;
-            ((1.0 - t).powi(2) * (t * 50.0).sin().abs()).clamp(0.05, 0.9)
+        let s1_wave: Vec<f32> = (0..128).map(|i| {
+            let t = i as f32 / 128.0;
+            ((1.0 - t).powi(2) * (t * 50.0).sin().abs()).clamp(0.02, 0.9)
         }).collect();
 
         self.custom_sounds.push(CustomSoundClip {
@@ -844,6 +874,7 @@ impl VocalStudioTrack {
             category: "Perkussion".to_string(),
             pcm_samples: s1_pcm,
             waveform_data: s1_wave,
+            sample_rate: 44100,
             duration_secs: 1.0,
             color: Color32::from_rgb(255, 120, 80),
         });
@@ -851,11 +882,11 @@ impl VocalStudioTrack {
 
     pub fn add_new_take(&mut self, name: &str, start_bar: usize, length_bars: usize) {
         let count = self.takes.len() + 1;
-        let mut new_wave = Vec::with_capacity(100);
-        for i in 0..100 {
-            let t = i as f32 / 100.0;
+        let mut new_wave = Vec::with_capacity(256);
+        for i in 0..256 {
+            let t = i as f32 / 256.0;
             let val = (t * 24.0).sin().abs() * 0.8 + (t * 48.0).cos().abs() * 0.15;
-            new_wave.push(val.clamp(0.03, 0.95));
+            new_wave.push(val.clamp(0.02, 0.95));
         }
         let color = match count % 4 {
             0 => Color32::from_rgb(0, 200, 240),
@@ -868,6 +899,7 @@ impl VocalStudioTrack {
             name: if name.is_empty() { format!("Tagning {}", count) } else { name.to_string() },
             pcm_samples: vec![0.0; 44100 * 4],
             waveform_data: new_wave,
+            sample_rate: 44100,
             duration_secs: 4.0,
             is_selected: true,
             color,
@@ -876,18 +908,66 @@ impl VocalStudioTrack {
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
+            pitch_semitones: 0.0,
+            pitch_cents: 0.0,
+            time_stretch: 1.0,
+            is_reverse: false,
+            loop_audition: false,
             is_muted: false,
             is_playing: false,
         });
         self.active_comp_take = self.takes.len() - 1;
     }
 
+    pub fn load_sample_or_region_as_take(&mut self, name: &str, pcm: Vec<f32>, sample_rate: u32, color: Color32) -> usize {
+        let count = self.takes.len() + 1;
+        let duration = (pcm.len() as f32 / sample_rate.max(8000) as f32).max(0.1);
+
+        let peaks_count = 512.min(pcm.len().max(64));
+        let step = (pcm.len() / peaks_count).max(1);
+        let mut visual_peaks = Vec::with_capacity(peaks_count);
+        for chunk in pcm.chunks(step) {
+            let peak = chunk.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs()));
+            visual_peaks.push(peak.clamp(0.0, 1.0));
+        }
+
+        let new_take = AudioTake {
+            take_number: count,
+            name: name.to_string(),
+            pcm_samples: pcm,
+            waveform_data: visual_peaks,
+            sample_rate,
+            duration_secs: duration,
+            is_selected: true,
+            color,
+            start_bar: 0,
+            length_bars: (duration / 2.0).ceil().max(1.0) as usize,
+            trim_start_norm: 0.0,
+            trim_end_norm: 1.0,
+            gain_linear: 1.0,
+            pitch_semitones: 0.0,
+            pitch_cents: 0.0,
+            time_stretch: 1.0,
+            is_reverse: false,
+            loop_audition: false,
+            is_muted: false,
+            is_playing: false,
+        };
+
+        for t in &mut self.takes { t.is_selected = false; }
+        self.takes.push(new_take);
+        self.active_comp_take = self.takes.len() - 1;
+        self.selected_crop_start_norm = 0.0;
+        self.selected_crop_end_norm = 1.0;
+        self.active_comp_take
+    }
+
     pub fn add_custom_sound(&mut self, name: &str, category: &str) {
         let count = self.custom_sounds.len() + 1;
-        let mut new_wave = Vec::with_capacity(60);
-        for i in 0..60 {
-            let t = i as f32 / 60.0;
-            let val = ((1.0 - t) * (t * 36.0).sin().abs()).clamp(0.05, 0.95);
+        let mut new_wave = Vec::with_capacity(128);
+        for i in 0..128 {
+            let t = i as f32 / 128.0;
+            let val = ((1.0 - t) * (t * 36.0).sin().abs()).clamp(0.02, 0.95);
             new_wave.push(val);
         }
         self.custom_sounds.push(CustomSoundClip {
@@ -896,6 +976,7 @@ impl VocalStudioTrack {
             category: if category.is_empty() { "Eget Ljud".to_string() } else { category.to_string() },
             pcm_samples: vec![0.0; 44100 * 2],
             waveform_data: new_wave,
+            sample_rate: 44100,
             duration_secs: 1.5,
             color: Color32::from_rgb(255, 180, 60),
         });
