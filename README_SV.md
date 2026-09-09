@@ -6,26 +6,89 @@ Ett modernt, blixtsnabbt grafiskt musikproduktionsprogram skapat i **Rust** och 
 
 ---
 
-## 🚀 Starta appen
+## 🚀 Installation (Linux / Omarchy)
 
-Starta direkt från applikationsmenyn i Omarchy / Linux Desktop, eller kör från terminalen:
+Sonix är en inhemsk Linux-DAW skriven i **Rust** och **egui**. Du kör den genom att kompilera från källkod med Cargo. Det inbyggda läget som tar de 29 skärmdumparna används bara av underhållarna (se notisen under galleriet nedan) och är **inte** en del av att installera eller köra programmet.
+
+### Förutsättningar
+
+- 64-bitars Linux med en ljudserver i gång — **PipeWire** (rekommenderas), **JACK** eller **ALSA**.
+- **Rust** (stable, edition 2024) plus en C-kompilator.
+- Ett par körtidsverktyg som används av vissa funktioner: `zenity` (fildialoger) och `unzip` (Suno ZIP-import). Båda valfria.
+- Valfritt, för Windows-VST: **yabridge** + **Wine**.
+
+Installera förutsättningarna:
+
+**Omarchy / Arch Linux:**
 
 ```bash
+sudo pacman -S --needed base-devel alsa-lib zenity unzip rustup
+rustup default stable
+```
+
+**Debian / Ubuntu:**
+
+```bash
+sudo apt install build-essential libasound2-dev zenity unzip curl
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+**Fedora:**
+
+```bash
+sudo dnf install gcc-c++ alsa-lib-devel zenity unzip curl
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+```
+
+### 1. Klona och kompilera
+
+```bash
+git clone https://github.com/alexwest1981/sonix.git
+cd sonix
+cargo build --release
+./target/release/sonix
+```
+
+Under utveckling kan du hoppa över det manuella byggsteget och använda `cargo run --release` i stället.
+
+### 2. Installera binären (valfritt men rekommenderat)
+
+Installerar `sonix` i `~/.cargo/bin` så att du kan starta programmet var som helst ifrån eller från en applikationsmeny:
+
+```bash
+cargo install --path .
 sonix
 ```
 
-Eller kompilera och kör från källkod:
+### 3. Menypost i applikationsmenyn (Omarchy / Linux desktop)
+
+Skapa efter `cargo install` en startare (justera sökvägarna om din klon ligger på annan plats):
 
 ```bash
-cd ~/Projects/sonix
-cargo run --release
+mkdir -p ~/.local/share/applications
+cat > ~/.local/share/applications/sonix.desktop <<EOF
+[Desktop Entry]
+Name=Sonix Studio
+Comment=Native Linux DAW
+Exec=$HOME/.cargo/bin/sonix
+Icon=$HOME/Projects/sonix/assets/sonix.png
+Terminal=false
+Type=Application
+Categories=Audio;AudioVideo;Music;
+StartupWMClass=sonix-daw
+EOF
 ```
 
-För att automatiskt generera alla 29 skärmdumpar i helskärm:
+Logga sedan ut/in en gång, eller uppdatera menyn direkt med:
 
 ```bash
-cargo run --release -- --capture-screenshots screenshots
+update-desktop-database ~/.local/share/applications
 ```
+
+### Felsökning
+
+- **Inget ljud / ingen ljudenhet:** kontrollera att PipeWire (eller JACK/ALSA) är i gång och att din mikrofon/audiointerface är anslutet. Öppna ljudinställningarna i programmet med **Ctrl + P** för att välja enhet och buffertstorlek.
+- **Fönstret startar inte:** du behöver en fungerande Wayland- eller X11-session med Mesa/OpenGL-drivrutiner.
 
 ---
 
@@ -108,6 +171,8 @@ cargo run --release -- --capture-screenshots screenshots
 ---
 
 ## 📸 Skärmdumpar & Gränssnitt (Galleri 1920 × 1200 Helskärm)
+
+> ℹ️ Dessa förhandsvisningar genereras av underhållarna med `cargo run --release -- --capture-screenshots screenshots` (öppnar en helskärmsinstans och tar skärmdumpar av varje vy). Krävs inte för att installera eller köra Sonix.
 
 ### 1. 🎼 Huvudarbetsytor & Produktion
 
