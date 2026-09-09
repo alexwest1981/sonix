@@ -75,16 +75,24 @@ detect_pm() {
     else echo "unknown"; fi
 }
 
+rust_toolchain_ready() {
+    command -v cargo >/dev/null 2>&1 && cargo --version >/dev/null 2>&1
+}
+
 ensure_rust() {
-    if command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1; then
+    # Verify cargo can actually run – on rustup systems the cargo/rustc shims
+    # exist in PATH even when no toolchain is installed, so `command -v` alone
+    # is not enough (it would fail later with "rustup could not choose a
+    # version of cargo...").
+    if rust_toolchain_ready; then
         return 0
     fi
     export PATH="${HOME}/.cargo/bin:${PATH}"
-    if command -v cargo >/dev/null 2>&1 && command -v rustc >/dev/null 2>&1; then
+    if rust_toolchain_ready; then
         return 0
     fi
     if command -v rustup >/dev/null 2>&1; then
-        if confirm "Rustup finns – installera verktygskedjan (rustup default stable) nu?"; then
+        if confirm "Rustup finns men ingen verktygskedja är vald – installera 'stable' nu (rustup default stable)?"; then
             rustup default stable
             export PATH="${HOME}/.cargo/bin:${PATH}"
         fi
@@ -92,45 +100,105 @@ ensure_rust() {
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
         export PATH="${HOME}/.cargo/bin:${PATH}"
     fi
-    if ! command -v cargo >/dev/null 2>&1; then
-        echo "   ⚠️  Rust krävs för att bygga. Avbryter." >&2
+    if ! rust_toolchain_ready; then
+        echo "   ⚠️  Rust/verktygskedjan saknas eller är inte konfigurerad. Avbryter." >&2
         exit 1
     fi
+}
+
+has_cmd() { command -v "$1" >/dev/null 2>&1; }
+
+cc_ok() { has_cmd cc || has_cmd gcc; }
+
+# ALSA-utvecklingsbibliotek krävs för att kompilera ljudmotorn (cpal).
+alsa_dev_ok() {
+    has_cmd pkg-config || return 1
+    pkg-config --exists alsa 2>/dev/null
+}
+
+# Paket per officiell paketkälla. Grupper: byggberoenden (måste finnas för
+# att kompilera) och verktyg (zenity/unzip behövs av appen vid körning).
+build_pkgs_for() {
+    case "$1" in
+        pacman) echo "base-devel alsa-lib" ;;
+        apt)    echo "build-essential libasound2-dev" ;;
+        dnf)    echo "gcc-c++ alsa-lib-devel" ;;
+    esac
+}
+tool_pkgs_for() {
+    echo "zenity unzip curl git"
+}
+
+pm_install() {
+    local pm="$1"
+    local pkgs="$2"
+    case "$pm" in
+        pacman) sudo pacman -S --needed $pkgs ;;
+        apt)    sudo apt-get install -y $pkgs ;;
+        dnf)    sudo dnf install -y $pkgs ;;
+        *)      return 1 ;;
+    esac
 }
 
 step_deps() {
     step "Systemberoenden"
     local pm
     pm="$(detect_pm)"
+
+    # Vilka byggberoenden saknas egentligen?
+    local missing_build=0
+    local missing_tools=0
+    if ! cc_ok || ! has_cmd make || ! alsa_dev_ok; then
+        missing_build=1
+    fi
+    local t
+    for t in zenity unzip curl git; do
+        if ! has_cmd "$t"; then
+            missing_tools=1
+            break
+        fi
+    done
+
+    if [[ "$pm" == "apt" ]] && { [[ "$missing_build" -eq 1 || "$missing_tools" -eq 1 ]]; }; then
+        sudo apt-get update
+    fi
+
     case "$pm" in
-        pacman)
-            if confirm "Installera byggverktyg via pacman (base-devel, alsa-lib, zenity, unzip, rustup)?"; then
-                sudo pacman -S --needed base-devel alsa-lib zenity unzip rustup
+        pacman|apt|dnf)
+            if [[ "$missing_build" -eq 1 ]]; then
+                info "Saknas byggberoenden: $(build_pkgs_for "$pm")"
+                if confirm "Installera saknade byggberoenden via '${pm}' (officiella paketkällor)?"; then
+                    pm_install "$pm" "$(build_pkgs_for "$pm")"
+                else
+                    info "   Hoppas över – bygget kan misslyckas om de saknas."
+                fi
+            else
+                info "Byggverktyg (C-kompilator, make, ALSA-dev) finns redan."
             fi
-            ensure_rust
-            ;;
-        apt)
-            if confirm "Installera byggverktyg via apt (build-essential, libasound2-dev, zenity, unzip, curl)?"; then
-                sudo apt-get update
-                sudo apt-get install -y build-essential libasound2-dev zenity unzip curl
+
+            if [[ "$missing_tools" -eq 1 ]]; then
+                info "Saknas verktyg: $(tool_pkgs_for)"
+                if confirm "Installera saknade verktyg via '${pm}' (officiella paketkällor)?"; then
+                    pm_install "$pm" "$(tool_pkgs_for)"
+                else
+                    info "   Hoppas över – zenity/unzip behövs av appen vid körning."
+                fi
+            else
+                info "Verktyg (zenity, unzip, curl, git) finns redan."
             fi
-            ensure_rust
-            ;;
-        dnf)
-            if confirm "Installera byggverktyg via dnf (gcc-c++, alsa-lib-devel, zenity, unzip, curl)?"; then
-                sudo dnf install -y gcc-c++ alsa-lib-devel zenity unzip curl
-            fi
-            ensure_rust
             ;;
         unknown)
-            echo "   ⚠️  Okänd distribution – hoppar över beroendeinstallation."
-            echo "   Installera Rust + en C-kompilator + ALSA-utvecklingsbibliotek manuellt."
-            ensure_rust
+            echo "   ⚠️  Okänd distribution – kan inte installera automatiskt."
+            echo "   Installera manuellt från officiella kanaler: Rust + C-kompilator + ALSA-utvecklingsbibliotek (+ zenity, unzip)."
             ;;
     esac
-    if ! command -v cargo >/dev/null 2>&1; then
-        echo "   ⚠️  cargo saknas fortfarande." >&2
-        exit 1
+
+    # Rust installeras via rustup (officiell kanal: rust-lang.org), aldrig via
+    # tredjeparts-PPA:er. Verifierar att cargo verkligen kan köras.
+    ensure_rust
+
+    if ! cc_ok || ! alsa_dev_ok; then
+        echo "   ⚠️  C-kompilator eller ALSA-dev saknas fortfarande – bygget kan misslyckas." >&2
     fi
 }
 
