@@ -12,6 +12,7 @@ pub struct AudioEngine {
     _stream: Stream,
     command_tx: Producer<AudioCommand>,
     peak_level: Arc<AtomicU32>,
+    scope_rx: Consumer<f32>,
     pub sample_rate: u32,
     pub channels: u16,
     pub device_name: String,
@@ -36,10 +37,14 @@ impl AudioEngine {
         let peak_level = Arc::new(AtomicU32::new(0));
         let peak_level_clone = Arc::clone(&peak_level);
 
+        // Ring buffer carrying the real (mono) output waveform from the audio
+        // thread to the UI for the oscilloscope display.
+        let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
+
         let stream = match sample_format {
-            SampleFormat::F32 => Self::build_stream::<f32>(&device, &config, command_rx, peak_level_clone)?,
-            SampleFormat::I16 => Self::build_stream::<i16>(&device, &config, command_rx, peak_level_clone)?,
-            SampleFormat::U16 => Self::build_stream::<u16>(&device, &config, command_rx, peak_level_clone)?,
+            SampleFormat::F32 => Self::build_stream::<f32>(&device, &config, command_rx, peak_level_clone, scope_tx)?,
+            SampleFormat::I16 => Self::build_stream::<i16>(&device, &config, command_rx, peak_level_clone, scope_tx)?,
+            SampleFormat::U16 => Self::build_stream::<u16>(&device, &config, command_rx, peak_level_clone, scope_tx)?,
             _ => return Err("Ljudformatet stöds inte".into()),
         };
 
@@ -49,6 +54,7 @@ impl AudioEngine {
             _stream: stream,
             command_tx,
             peak_level,
+            scope_rx,
             sample_rate,
             channels,
             device_name,
@@ -64,11 +70,21 @@ impl AudioEngine {
         f32::from_bits(bits)
     }
 
+    /// Pops every waveform sample produced since the last UI frame.
+    pub fn drain_scope_samples(&mut self) -> Vec<f32> {
+        let mut out = Vec::new();
+        while let Ok(s) = self.scope_rx.pop() {
+            out.push(s);
+        }
+        out
+    }
+
     fn build_stream<T>(
         device: &cpal::Device,
         config: &StreamConfig,
         mut command_rx: Consumer<AudioCommand>,
         peak_level: Arc<AtomicU32>,
+        mut scope_tx: Producer<f32>,
     ) -> Result<Stream, cpal::BuildStreamError>
     where
         T: cpal::Sample + cpal::FromSample<f32> + cpal::SizedSample,
@@ -108,6 +124,10 @@ impl AudioEngine {
                         if peak_s > max_peak {
                             max_peak = peak_s;
                         }
+                        // Feed the real output waveform to the scope (mono mix).
+                        // If the ring is full the oldest samples are dropped,
+                        // which only makes the scope skip a beat.
+                        let _ = scope_tx.push((sample_l + sample_r) * 0.5);
                         if frame.len() >= 2 {
                             frame[0] = cpal::Sample::from_sample(sample_l);
                             frame[1] = cpal::Sample::from_sample(sample_r);

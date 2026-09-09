@@ -139,7 +139,7 @@ pub fn fl_step_button(
 }
 
 /// Draw a live bouncing oscilloscope display (FL Studio Wave Candy style)
-pub fn oscilloscope_display(ui: &mut Ui, peak: f32, phase_seed: f32, size: Vec2) {
+pub fn oscilloscope_display(ui: &mut Ui, samples: &[f32], peak: f32, size: Vec2) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter();
 
@@ -151,28 +151,40 @@ pub fn oscilloscope_display(ui: &mut Ui, peak: f32, phase_seed: f32, size: Vec2)
     let grid_color = Color32::from_rgb(18, 26, 34);
     let mid_y = rect.center().y;
     painter.line_segment([Pos2::new(rect.min.x, mid_y), Pos2::new(rect.max.x, mid_y)], Stroke::new(1.0_f32, grid_color));
-    
+
     for i in 1..4 {
         let x = rect.min.x + (rect.width() * i as f32 / 4.0);
         painter.line_segment([Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)], Stroke::new(1.0_f32, grid_color));
     }
 
-    // Dynamic wave points
-    let points_count = 60;
-    let mut points = Vec::with_capacity(points_count);
-    let amp = (peak * (rect.height() * 0.42)).clamp(2.0, rect.height() * 0.45);
+    // Real output waveform: newest samples scroll in from the right edge
+    if samples.len() >= 2 {
+        let n = samples.len();
+        let amp = (rect.height() * 0.44).max(2.0);
+        let clipped = peak >= 0.99;
+        let line_color = if clipped { Color32::from_rgb(255, 150, 60) } else { Color32::from_rgb(0, 255, 220) };
+        let glow_color = if clipped { Color32::from_rgba_unmultiplied(255, 120, 0, 60) } else { Color32::from_rgba_unmultiplied(0, 240, 255, 60) };
 
-    for i in 0..points_count {
-        let t = i as f32 / (points_count - 1) as f32;
-        let x = rect.min.x + t * rect.width();
-        let wave = (t * 6.0 * PI + phase_seed).sin() * 0.7 + (t * 12.0 * PI - phase_seed * 1.5).sin() * 0.3;
-        let y = mid_y + wave * amp;
-        points.push(Pos2::new(x, y));
+        // Cap the number of drawn points while keeping the full window shape.
+        let max_points = 240usize;
+        let stride = (n / max_points).max(1);
+
+        let mut points = Vec::with_capacity(n / stride + 1);
+        let mut i = 0usize;
+        while i < n {
+            let t = i as f32 / (n - 1) as f32;
+            let x = rect.min.x + t * rect.width();
+            let v = samples[i].clamp(-1.0, 1.0);
+            points.push(Pos2::new(x, mid_y - v * amp));
+            i += stride;
+        }
+        // Newest sample pinned to the right edge
+        let v = samples[n - 1].clamp(-1.0, 1.0);
+        points.push(Pos2::new(rect.max.x, mid_y - v * amp));
+
+        painter.add(egui::Shape::line(points.clone(), Stroke::new(3.0_f32, glow_color)));
+        painter.add(egui::Shape::line(points, Stroke::new(1.5_f32, line_color)));
     }
-
-    // Glow line & core line
-    painter.add(egui::Shape::line(points.clone(), Stroke::new(3.0_f32, Color32::from_rgba_unmultiplied(0, 240, 255, 60))));
-    painter.add(egui::Shape::line(points, Stroke::new(1.5_f32, Color32::from_rgb(0, 255, 220))));
 }
 
 /// Draw a vertical Mixer Channel Fader with dB markings and adjacent LED VU meter ladder (FL Studio & GarageBand style)

@@ -597,6 +597,7 @@ pub struct SonixApp {
     pub active_mouse_note: Option<u8>,
     pub active_keys: HashSet<u8>,
     pub anim_phase: f32,
+    pub scope_history: Vec<f32>,
     // Sub-Mixing, VCA Groups & PDC
     pub vca_faders: [f32; 4],
     pub vca_mutes: [bool; 4],
@@ -1111,6 +1112,7 @@ impl SonixApp {
             active_mouse_note: None,
             active_keys: HashSet::new(),
             anim_phase: 0.0,
+            scope_history: Vec::new(),
             // Sub-Mixing, VCA Groups & PDC
             vca_faders: [1.0, 1.0, 1.0, 1.0],
             vca_mutes: [false, false, false, false],
@@ -2129,6 +2131,22 @@ impl SonixApp {
         max_id + 1
     }
 
+    const SCOPE_HISTORY_MAX: usize = 2048;
+
+    /// Pulls the real output waveform samples produced since the last UI frame
+    /// and keeps a sliding history for the oscilloscope display.
+    fn update_scope_history(&mut self) {
+        let new = self.engine.drain_scope_samples();
+        if new.is_empty() {
+            return;
+        }
+        self.scope_history.extend(new);
+        if self.scope_history.len() > Self::SCOPE_HISTORY_MAX {
+            let excess = self.scope_history.len() - Self::SCOPE_HISTORY_MAX;
+            self.scope_history.drain(0..excess);
+        }
+    }
+
     pub fn duplicate_track(&mut self, track_idx: usize) {
         if track_idx >= self.playlist_tracks.len() {
             return;
@@ -3119,6 +3137,7 @@ impl eframe::App for SonixApp {
 
         self.advance_sequencer();
         self.anim_phase += 0.08;
+        self.update_scope_history();
         self.vocal_studio.update_live_stream();
 
         // Check if window is minimized or not focused (Wayland / Hyprland safety)
@@ -3660,9 +3679,9 @@ impl eframe::App for SonixApp {
 
                     ui.separator();
 
-                    // Oscilloscope Display
+                    // Oscilloscope Display (real output waveform from audio thread)
                     let peak = self.engine.get_peak_level();
-                    oscilloscope_display(ui, peak, self.anim_phase, Vec2::new(50.0, 22.0));
+                    oscilloscope_display(ui, &self.scope_history, peak, Vec2::new(50.0, 22.0));
 
                     ui.separator();
 
