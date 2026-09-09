@@ -911,3 +911,295 @@ pub fn ensure_factory_samples_directory() -> std::path::PathBuf {
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
+
+#[derive(Clone, Debug)]
+pub struct ScannedSampleItem {
+    pub name: String,
+    pub category: String,
+    pub icon: String,
+    pub default_note: u8,
+    pub color_rgb: (u8, u8, u8),
+    pub waveform: Vec<f32>,
+    pub file_path: String,
+}
+
+fn cache_fingerprint() -> String {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let roots = [
+        format!("{}/Music/Sonix/Factory_Samples", home),
+        format!("{}/Music/Sonix/Sample_Packs", home),
+        format!("{}/Music/Sonix/User_Samples", home),
+    ];
+    let mut fp = String::new();
+    for r in roots {
+        fp.push_str(&r);
+        fp.push(':');
+        fp.push_str(&std::fs::metadata(&r).map(|m| m.len()).unwrap_or(0).to_string());
+        fp.push(';');
+    }
+    fp
+}
+
+fn cache_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    std::path::PathBuf::from(format!("{}/Music/Sonix/library_cache.tsv", home))
+}
+
+fn write_library_cache(items: &[ScannedSampleItem]) {
+    let mut s = String::new();
+    s.push_str("SONIXLIB1\n");
+    s.push_str(&cache_fingerprint());
+    s.push('\n');
+    for it in items {
+        let size = std::fs::metadata(&it.file_path).map(|m| m.len()).unwrap_or(0);
+        s.push_str("I\n");
+        s.push_str(&it.file_path);
+        s.push('\n');
+        s.push_str(&size.to_string());
+        s.push('\n');
+        s.push_str(&it.name);
+        s.push('\n');
+        s.push_str(&it.category);
+        s.push('\n');
+        s.push_str(&it.icon);
+        s.push('\n');
+        s.push_str(&it.default_note.to_string());
+        s.push('\n');
+        s.push_str(&it.color_rgb.0.to_string());
+        s.push('\n');
+        s.push_str(&it.color_rgb.1.to_string());
+        s.push('\n');
+        s.push_str(&it.color_rgb.2.to_string());
+        s.push('\n');
+        for (i, v) in it.waveform.iter().enumerate() {
+            if i > 0 {
+                s.push(' ');
+            }
+            s.push_str(&format!("{:.6}", v));
+        }
+        s.push('\n');
+    }
+    if let Some(parent) = cache_path().parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(cache_path(), s);
+}
+
+fn read_library_cache() -> Option<Vec<ScannedSampleItem>> {
+    let contents = std::fs::read_to_string(cache_path()).ok()?;
+    let mut lines = contents.lines().peekable();
+    if lines.next()? != "SONIXLIB1" {
+        return None;
+    }
+    if lines.next()? != cache_fingerprint() {
+        return None;
+    }
+    let mut items = Vec::new();
+    while let Some(header) = lines.next() {
+        if header != "I" {
+            return None;
+        }
+        let file_path = lines.next()?.to_string();
+        let size = lines.next()?.parse::<u64>().ok()?;
+        let name = lines.next()?.to_string();
+        let category = lines.next()?.to_string();
+        let icon = lines.next()?.to_string();
+        let default_note = lines.next()?.parse::<u8>().ok()?;
+        let r = lines.next()?.parse::<u8>().ok()?;
+        let g = lines.next()?.parse::<u8>().ok()?;
+        let b = lines.next()?.parse::<u8>().ok()?;
+        let waveform = lines
+            .next()?
+            .split_whitespace()
+            .map(|t| t.parse::<f32>().ok())
+            .collect::<Option<Vec<f32>>>()?;
+        if std::fs::metadata(&file_path).map(|m| m.len()).ok()? != size {
+            return None;
+        }
+        items.push(ScannedSampleItem {
+            name,
+            category,
+            icon,
+            default_note,
+            color_rgb: (r, g, b),
+            waveform,
+            file_path,
+        });
+    }
+    Some(items)
+}
+
+pub fn scan_and_load_all_samples() -> Vec<ScannedSampleItem> {
+    if let Some(cached) = read_library_cache() {
+        eprintln!("🎵 Ljudbibliotek läst från cache: {} samplar", cached.len());
+        return cached;
+    }
+    let items = perform_full_sample_scan();
+    write_library_cache(&items);
+    items
+}
+
+fn perform_full_sample_scan() -> Vec<ScannedSampleItem> {
+    let mut results = Vec::new();
+    let scan_start = std::time::Instant::now();
+
+    // 1. Generate & save Sonix Factory DSP Loops and Pads
+    let factory_dir = ensure_factory_samples_directory();
+    let generated = generate_all_factory_samples();
+    eprintln!("🧪 DSP-genererade samplar: {}", generated.len());
+    for gen_s in generated {
+        let path_res = gen_s.save_to_file(&factory_dir);
+        if let Ok(path_str) = path_res {
+            let waveform = gen_s.compute_waveform_peaks(64);
+            results.push(ScannedSampleItem {
+                name: gen_s.name,
+                category: gen_s.category,
+                icon: gen_s.icon,
+                default_note: gen_s.default_note,
+                color_rgb: gen_s.color_rgb,
+                waveform,
+                file_path: path_str,
+            });
+        }
+    }
+    eprintln!("🧪 DSP klart på {:.1}s", scan_start.elapsed().as_secs_f32());
+
+    // 2. Scan Sample_Packs directory
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let pack_dirs = [
+        format!("{}/Music/Sonix/Sample_Packs", home),
+        format!("{}/Music/Sonix/User_Samples", home),
+    ];
+
+    for p_dir in &pack_dirs {
+        let path = Path::new(p_dir);
+        if path.exists() {
+            eprintln!("🧪 Skannar mapp: {}", p_dir);
+            scan_dir_recursive(path, &mut results);
+            eprintln!("🧪 Klar mapp ({:.1}s, totalt {} samplar)", scan_start.elapsed().as_secs_f32(), results.len());
+        }
+    }
+
+    eprintln!(
+        "🎵 Ljudbibliotek skannat: {} samplar på {:.1} s",
+        results.len(),
+        scan_start.elapsed().as_secs_f32()
+    );
+
+    results
+}
+
+fn scan_dir_recursive(dir: &Path, results: &mut Vec<ScannedSampleItem>) {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            // Avoid git directory
+            if p.file_name().map(|n| n == ".git").unwrap_or(false) {
+                continue;
+            }
+            scan_dir_recursive(&p, results);
+        } else if p.is_file() {
+            let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
+            if ext == "wav" {
+                if let Some(item) = classify_and_parse_wav_sample(&p) {
+                    results.push(item);
+                }
+            }
+        }
+    }
+}
+
+fn classify_and_parse_wav_sample(path: &Path) -> Option<ScannedSampleItem> {
+    let path_str = path.to_string_lossy().to_string();
+    let file_name = path.file_stem()?.to_string_lossy().to_string();
+    let lower_path = path_str.to_lowercase();
+
+    // Ignore tiny metadata files or temp files
+    if file_name.starts_with('.') || file_name.contains("metadata") {
+        return None;
+    }
+
+    let (category, icon, color_rgb, default_note) = if lower_path.contains("tr-808") || lower_path.contains("tr808") {
+        ("💥 Roland TR-808", "🥁", (255, 140, 25), 36)
+    } else if lower_path.contains("tr-909") || lower_path.contains("tr909") {
+        ("⚡ Roland TR-909", "🥁", (255, 200, 50), 36)
+    } else if lower_path.contains("tr-707") || lower_path.contains("lm-2") || lower_path.contains("casio") || lower_path.contains("drumtraks") || lower_path.contains("cr-8000") {
+        ("📼 80s Drum Machines", "📼", (255, 100, 180), 38)
+    } else if lower_path.contains("acoustic_kit") || lower_path.contains("crabacus") {
+        ("🥁 Akustiskt Studiokit", "🥁", (80, 220, 255), 38)
+    } else if lower_path.contains("rhodes") || lower_path.contains("wurlitzer") || lower_path.contains("cp80") || lower_path.contains("pianet") {
+        ("🎹 Rhodes & Elpianon", "🎹", (255, 190, 80), 60)
+    } else if lower_path.contains("mellotron") {
+        ("🎻 Mellotron & Kör/Stråkar", "🎻", (180, 140, 255), 60)
+    } else if lower_path.contains("grand-piano") || lower_path.contains("oldpiano") || lower_path.contains("piano") {
+        ("🎹 Flygel & Akustiskt Piano", "🎹", (255, 220, 140), 60)
+    } else if lower_path.contains("dsmolken") || lower_path.contains("meatbass") || lower_path.contains("swagbass") || lower_path.contains("double-bass") {
+        ("🎸 Bas & Elbas", "🎸", (255, 80, 140), 36)
+    } else if lower_path.contains("tx81z") || lower_path.contains("vcsl") {
+        ("✨ TX81Z & Syntar", "✨", (100, 220, 255), 60)
+    } else if lower_path.contains("factory_samples") {
+        ("🎵 Sonix Factory", "🎵", (120, 200, 240), 60)
+    } else {
+        ("📂 Egna Samples", "⭐", (80, 240, 160), 60)
+    };
+
+    // Format clean display name
+    let clean_name = format_clean_sample_name(&file_name, &lower_path);
+
+    // Fast peak envelope
+    let waveform = match super::wav_reader::read_wav_envelope(&path_str, 48) {
+        Ok(peaks) => peaks,
+        Err(_) => vec![0.5; 48],
+    };
+
+    Some(ScannedSampleItem {
+        name: clean_name,
+        category: category.to_string(),
+        icon: icon.to_string(),
+        default_note,
+        color_rgb,
+        waveform,
+        file_path: path_str,
+    })
+}
+
+fn format_clean_sample_name(stem: &str, lower_path: &str) -> String {
+    let s = stem.replace('_', " ").replace('-', " ");
+
+    if lower_path.contains("tr-808") || lower_path.contains("tr808") {
+        if s.starts_with("BD") { return format!("808 Bass Drum ({})", s); }
+        if s.starts_with("SD") { return format!("808 Snare Drum ({})", s); }
+        if s.starts_with("CH") { return format!("808 Closed Hat ({})", s); }
+        if s.starts_with("OH") { return format!("808 Open Hat ({})", s); }
+        if s.starts_with("CP") { return format!("808 Handclap ({})", s); }
+        if s.starts_with("CB") { return format!("808 Cowbell ({})", s); }
+        if s.starts_with("RS") { return format!("808 Rimshot ({})", s); }
+        if s.starts_with("CY") { return format!("808 Cymbal ({})", s); }
+        if s.starts_with("LT") { return format!("808 Low Tom ({})", s); }
+        if s.starts_with("MT") { return format!("808 Mid Tom ({})", s); }
+        if s.starts_with("HT") { return format!("808 High Tom ({})", s); }
+        if s.starts_with("MA") { return format!("808 Maracas ({})", s); }
+        if s.starts_with("CL") { return format!("808 Claves ({})", s); }
+    }
+
+    if lower_path.contains("acoustic_kit") {
+        return format!("Acoustic {}", s);
+    }
+
+    if lower_path.contains("rhodes") {
+        return format!("Rhodes MKI {}", s);
+    }
+    if lower_path.contains("wurlitzer") {
+        return format!("Wurlitzer EP {}", s);
+    }
+    if lower_path.contains("mellotron") {
+        return format!("Mellotron {}", s);
+    }
+
+    s
+}

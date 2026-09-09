@@ -77,35 +77,69 @@ impl AudioEngine {
         let channels = config.channels as usize;
         let mut synth = SynthEngine::new(sample_rate);
 
-        let err_fn = |err| eprintln!("[Sonix Audio Error] {}", err);
+        let err_fn = |err| {
+            eprintln!("[Sonix Audio Error] {}", err);
+            if let Ok(log) = std::env::var("HOME") {
+                let path = std::path::Path::new(&log).join("Music/Sonix/audio_crash.log");
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                    let _ = std::io::Write::write_all(
+                        &mut f,
+                        format!("[{}] [Audio Error] {}\n", std::process::id(), err).as_bytes(),
+                    );
+                }
+            }
+        };
 
         device.build_output_stream(
             config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-                // 1. Process all pending commands from UI/Main thread without blocking
-                while let Ok(cmd) = command_rx.pop() {
-                    synth.handle_command(cmd);
-                }
-
-                // 2. Render samples for this buffer block
-                let mut max_peak: f32 = 0.0;
-
-                for frame in data.chunks_mut(channels) {
-                    let (sample_l, sample_r) = synth.process_stereo();
-                    let peak_s = sample_l.abs().max(sample_r.abs());
-                    if peak_s > max_peak {
-                        max_peak = peak_s;
+                let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    // 1. Process all pending commands from UI/Main thread without blocking
+                    while let Ok(cmd) = command_rx.pop() {
+                        synth.handle_command(cmd);
                     }
-                    if frame.len() >= 2 {
-                        frame[0] = cpal::Sample::from_sample(sample_l);
-                        frame[1] = cpal::Sample::from_sample(sample_r);
-                    } else if !frame.is_empty() {
-                        frame[0] = cpal::Sample::from_sample((sample_l + sample_r) * 0.5);
+
+                    // 2. Render samples for this buffer block
+                    let mut max_peak: f32 = 0.0;
+
+                    for frame in data.chunks_mut(channels) {
+                        let (sample_l, sample_r) = synth.process_stereo();
+                        let peak_s = sample_l.abs().max(sample_r.abs());
+                        if peak_s > max_peak {
+                            max_peak = peak_s;
+                        }
+                        if frame.len() >= 2 {
+                            frame[0] = cpal::Sample::from_sample(sample_l);
+                            frame[1] = cpal::Sample::from_sample(sample_r);
+                        } else if !frame.is_empty() {
+                            frame[0] = cpal::Sample::from_sample((sample_l + sample_r) * 0.5);
+                        }
+                    }
+
+                    // 3. Atomically store peak level for UI visualization
+                    peak_level.store(max_peak.to_bits(), Ordering::Relaxed);
+                }));
+
+                if let Err(panic) = res {
+                    let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+                        (*s).to_string()
+                    } else if let Some(s) = panic.downcast_ref::<String>() {
+                        s.clone()
+                    } else {
+                        "okänd panik".to_string()
+                    };
+                    eprintln!("[Sonix] AUDIO-KRASCH i ljudtråd: {}", msg);
+                    if let Ok(log) = std::env::var("HOME") {
+                        let path = std::path::Path::new(&log)
+                            .join("Music/Sonix/audio_crash.log");
+                        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+                            let _ = std::io::Write::write_all(
+                                &mut f,
+                                format!("[{}] {}\n", std::process::id(), msg).as_bytes(),
+                            );
+                        }
                     }
                 }
-
-                // 3. Atomically store peak level for UI visualization
-                peak_level.store(max_peak.to_bits(), Ordering::Relaxed);
             },
             err_fn,
             None,

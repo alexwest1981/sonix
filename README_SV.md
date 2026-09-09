@@ -10,6 +10,13 @@ Ett modernt, blixtsnabbt grafiskt musikproduktionsprogram skapat i **Rust** och 
 
 Sonix är en inhemsk Linux-DAW skriven i **Rust** och **egui**. Du kör den genom att kompilera från källkod med Cargo. Det inbyggda läget som tar de 29 skärmdumparna används bara av underhållarna (se notisen under galleriet nedan) och är **inte** en del av att installera eller köra programmet.
 
+> ⚡ **Snabbaste sättet (guidad installerare):**
+> Ladda ner och kör `install.sh` – den bekräftar varje steg åt dig (beroenden, kompilering, binär + startmenypost) och kräver inga terminalkommandon utöver:
+> ```bash
+> bash <(curl -fsSL https://raw.githubusercontent.com/alexwest1981/sonix/master/install.sh)
+> ```
+> Har du redan en klon kör du bara `bash install.sh` inifrån mappen. Efter en kodändring kan du uppdatera binär + startmenypost med `bash install.sh --refresh`.
+
 ### Förutsättningar
 
 - 64-bitars Linux med en ljudserver i gång — **PipeWire** (rekommenderas), **JACK** eller **ALSA**.
@@ -163,7 +170,7 @@ update-desktop-database ~/.local/share/applications
 | **F7** | **Analog Synthesizer** | Växlar till synteditorn med ADSR, Filter och Morph. |
 | **F8** | **Vocal Studio** | Växlar till sångstudion, inspelning och harmonizern. |
 | **Ctrl + I** | **Importera Stämmor** | Öppnar dialogen för att importera Suno- eller ljudfiler. |
-| **Ctrl + E** | **Exportera Master / WAV** | Öppnar render-kön för att exportera WAV, MP3 eller stems. |
+| **Ctrl + E** | **Exportera Master / Stems** | Offline-renderar hela projektet (riktiga samples, tidslinje-audio & FX) till WAV, FLAC, MP3, OGG eller AAC med ren Sonix-metadata. |
 | **Ctrl + S** | **Spara Projekt** | Sparar det aktuella projektet. |
 | **Ctrl + O** | **Öppna Projekt** | Öppnar ett sparat projekt från disk. |
 | **Ctrl + P** | **Ljudinställningar** | Öppnar konfiguration för PipeWire, ALSA och buffertstorlek. |
@@ -281,7 +288,7 @@ Skapa nya låtprojekt från mallar (Synthwave, Trap, House, Ambient) samt spara 
 ![Projekthanterare](screenshots/16_dialog_projekthanterare.png)
 
 #### 24. 💿 Render & Master Export Queue
-Flertrådad master-rendering till WAV, MP3 eller FLAC med stöd för batch-export av enskilda stems.
+Offline-rendering av hela projektet (riktiga Channel Rack-WAV-samples + tidslinje-audio-stems + FX) till WAV (16/24-bit & float), FLAC (24-bit lossless), MP3 (320 kbps), OGG Vorbis och AAC/M4A. Välj mastermix eller per-spår torra/våta stems, samplingsfrekvens och ren metadata (titel/artist/album/genre/år/kommentar) som bara taggas med **Sonix Studio** – aldrig AI-/leverantörsinfo. WAV/FLAC kodas i appen; MP3/OGG/AAC via `ffmpeg` om det är installerat.
 ![Render Queue](screenshots/17_dialog_render_queue.png)
 
 #### 25. 📥 Suno AI Stem Importör

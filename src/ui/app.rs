@@ -3,9 +3,9 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::audio::{
-    render_song_arrangement_to_wav, render_to_wav, AdsrParams, AudioCommand, AudioEngine,
-    DelayParams, DrumType, FilterParams, Preset, ReverbParams, SongArrangementExport,
-    StemRegionPlayback, SynthEngine, Waveform,
+    AdsrParams, AudioCommand, AudioEngine,
+    DelayParams, DrumType, FilterParams, Preset, ReverbParams,
+    StemRegionPlayback, Waveform,
 };
 use crate::audio::ai_generator::AiMusicAssistant;
 use crate::audio::patcher::ModularGraph;
@@ -160,6 +160,9 @@ pub struct ChannelStrip {
     pub attack_decay: f32, // 0.0 .. 1.0
     pub is_reverse: bool,
     pub waveform_preview: Vec<f32>,
+    pub sample_path: Option<String>,
+    pub pcm_audio: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    pub sample_base_note: u8,
     pub target_bus: BusRouting,
     pub vca_group: VcaGroup,
     pub pdc_latency_samples: usize,
@@ -621,10 +624,13 @@ pub struct SonixApp {
     pub render_sample_rate_idx: usize,
     #[allow(dead_code)]
     pub render_bit_depth_idx: usize,
-    pub render_template: String,
     pub is_rendering: bool,
     pub render_progress: f32,
     pub render_queue_status: String,
+    // Export destination & clean metadata (only Sonix tags, never AI info)
+    pub export_folder: String,
+    pub export_base_name: String,
+    pub export_metadata: crate::audio::ExportMeta,
     // Suno AI Prompt Bar & Studio Timeline View
     pub suno_prompt_input: String,
     pub suno_model_version: String,
@@ -720,51 +726,136 @@ pub enum ScreenshotState {
 }
 
 fn init_default_sample_library() -> Vec<LibrarySampleItem> {
-    let factory_dir = crate::audio::factory_samples::ensure_factory_samples_directory();
-    let generated = crate::audio::factory_samples::generate_all_factory_samples();
+    let scanned = crate::audio::factory_samples::scan_and_load_all_samples();
     let mut items = Vec::new();
 
-    for (idx, sample_gen) in generated.into_iter().enumerate() {
-        let file_path = sample_gen.save_to_file(&factory_dir).ok();
-        let waveform = sample_gen.compute_waveform_peaks(64);
-        let color = Color32::from_rgb(sample_gen.color_rgb.0, sample_gen.color_rgb.1, sample_gen.color_rgb.2);
+    for (idx, sc) in scanned.into_iter().enumerate() {
+        let color = Color32::from_rgb(sc.color_rgb.0, sc.color_rgb.1, sc.color_rgb.2);
         items.push(LibrarySampleItem {
             id: idx,
-            name: sample_gen.name,
-            category: sample_gen.category,
-            icon: sample_gen.icon,
-            default_note: sample_gen.default_note,
+            name: sc.name,
+            category: sc.category,
+            icon: sc.icon,
+            default_note: sc.default_note,
             color,
-            waveform,
-            file_path,
+            waveform: sc.waveform,
+            file_path: Some(sc.file_path),
         });
     }
 
-    let make_wave_local = |freq: f32, decay: f32| -> Vec<f32> {
-        let mut w = Vec::with_capacity(50);
-        for i in 0..50 {
-            let t = i as f32 / 50.0;
-            let val = (1.0 - t * decay) * (t * freq).sin().abs();
-            w.push(val.clamp(0.05, 0.95));
-        }
-        w
-    };
-
-    let start_id = items.len();
-    let one_shots = vec![
-        LibrarySampleItem { id: start_id, name: "808 Kick Deep Sub (Hit)".to_string(), category: "Kicks".to_string(), icon: "🥁".to_string(), default_note: 36, color: Theme::FL_ORANGE, waveform: make_wave_local(25.0, 0.5), file_path: None },
-        LibrarySampleItem { id: start_id + 1, name: "Acoustic Rock Kick".to_string(), category: "Kicks".to_string(), icon: "🥁".to_string(), default_note: 36, color: Theme::FL_ORANGE, waveform: make_wave_local(30.0, 0.7), file_path: None },
-        LibrarySampleItem { id: start_id + 2, name: "Punchy Club Kick 909".to_string(), category: "Kicks".to_string(), icon: "🥁".to_string(), default_note: 36, color: Theme::FL_ORANGE, waveform: make_wave_local(35.0, 0.8), file_path: None },
-        LibrarySampleItem { id: start_id + 3, name: "Trap Snare Tight 808".to_string(), category: "Snares".to_string(), icon: "🥁".to_string(), default_note: 38, color: Theme::FL_CYAN, waveform: make_wave_local(45.0, 0.8), file_path: None },
-        LibrarySampleItem { id: start_id + 4, name: "Acoustic Wood Snare".to_string(), category: "Snares".to_string(), icon: "🥁".to_string(), default_note: 38, color: Theme::FL_CYAN, waveform: make_wave_local(40.0, 0.75), file_path: None },
-        LibrarySampleItem { id: start_id + 5, name: "Studio Multi-Clap (Hit)".to_string(), category: "Claps".to_string(), icon: "👏".to_string(), default_note: 39, color: Theme::FL_CYAN, waveform: make_wave_local(48.0, 0.8), file_path: None },
-        LibrarySampleItem { id: start_id + 6, name: "808 Closed Hat Clean".to_string(), category: "Hi-Hats".to_string(), icon: "🧂".to_string(), default_note: 42, color: Theme::FL_YELLOW, waveform: make_wave_local(80.0, 0.95), file_path: None },
-        LibrarySampleItem { id: start_id + 7, name: "909 Open Hat Sizzle".to_string(), category: "Hi-Hats".to_string(), icon: "🧂".to_string(), default_note: 46, color: Theme::FL_YELLOW, waveform: make_wave_local(70.0, 0.7), file_path: None },
-        LibrarySampleItem { id: start_id + 8, name: "Low Sub Tom (Hit)".to_string(), category: "Percussion".to_string(), icon: "🪘".to_string(), default_note: 45, color: Color32::from_rgb(255, 140, 60), waveform: make_wave_local(28.0, 0.7), file_path: None },
-        LibrarySampleItem { id: start_id + 9, name: "808 Cowbell Classic".to_string(), category: "Percussion".to_string(), icon: "🔔".to_string(), default_note: 56, color: Color32::from_rgb(255, 140, 60), waveform: make_wave_local(55.0, 0.8), file_path: None },
-    ];
-    items.extend(one_shots);
     items
+}
+
+/// Loads a WAV file once and returns Arc-wrapped stereo PCM for cheap cloning into audio commands.
+fn load_sample_pcm_arcs(path: &str) -> Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)> {
+    match crate::audio::load_wav_pcm(path) {
+        Ok((l, r, sr)) => Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr)),
+        Err(_) => None,
+    }
+}
+
+/// Assigns a library sample to a Channel Rack channel strip. Loads the real
+/// PCM into memory so step playback triggers the actual WAV instead of the
+/// built-in synthesizer drum voices.
+fn assign_library_sample_to_channel(ch: &mut ChannelStrip, item: &LibrarySampleItem) {
+    ch.name = item.name.clone();
+    ch.icon = item.icon.clone();
+    ch.color = item.color;
+    ch.notes = [item.default_note; 16];
+    ch.waveform_preview = item.waveform.clone();
+    ch.sample_start = 0.0;
+    ch.sample_end = 1.0;
+    ch.pitch_semitones = 0;
+    ch.pitch_fine_cents = 0.0;
+    ch.sample_base_note = item.default_note;
+    match &item.file_path {
+        Some(path) => {
+            ch.sample_path = Some(path.clone());
+            ch.pcm_audio = load_sample_pcm_arcs(path);
+        }
+        None => {
+            ch.sample_path = None;
+            ch.pcm_audio = None;
+        }
+    }
+}
+
+/// Picks a fitting real WAV from the library for each built-in drum channel
+/// (Kick/Snare/Clap/Hat/Crash) when the user has downloaded sample packs, so the
+/// Channel Rack plays actual recorded samples out of the box.
+fn auto_assign_default_kit(channels: &mut [ChannelStrip], library: &[LibrarySampleItem]) {
+    const KICK: &[&str] = &["bass drum", "bd0", "bd-", "kick"];
+    const SNARE: &[&str] = &["snare"];
+    const CLAP: &[&str] = &["handclap", "clap"];
+    const HAT_CLOSED: &[&str] = &["closed hat", "chh", "hat closed"];
+    const HAT_OPEN: &[&str] = &["open hat", "ohh", "hat open"];
+    const CRASH: &[&str] = &["crash", "cymbal", "cy"];
+    let rules: [(&[&str], usize); 6] = [
+        (KICK, 0),
+        (SNARE, 1),
+        (CLAP, 2),
+        (HAT_CLOSED, 3),
+        (HAT_OPEN, 4),
+        (CRASH, 5),
+    ];
+
+    let mut used_paths: Vec<String> = Vec::new();
+    for (keywords, ch_idx) in rules {
+        if ch_idx >= channels.len() {
+            continue;
+        }
+        if channels[ch_idx].pcm_audio.is_some() {
+            continue;
+        }
+        let found = library.iter().find(|item| {
+            item.file_path.as_deref().is_some_and(|p| !used_paths.iter().any(|u| u == p))
+                && keywords.iter().any(|k| item.name.to_lowercase().contains(k))
+        });
+        if let Some(item) = found {
+            if let Some(p) = item.file_path.clone() {
+                used_paths.push(p);
+            }
+            assign_library_sample_to_channel(&mut channels[ch_idx], item);
+        }
+    }
+}
+
+/// Builds the audio command that plays a channel's loaded WAV sample for one
+/// sequencer step. Returns None when the channel has no PCM loaded, in which
+/// case the caller falls back to the built-in synthesizer.
+fn channel_sample_trigger_command(ch: &ChannelStrip, note: u8, velocity: f32) -> Option<AudioCommand> {
+    ch.pcm_audio.as_ref().map(|(l, r, sr)| AudioCommand::TriggerSampleVoice {
+        left: l.clone(),
+        right: r.clone(),
+        sample_rate: *sr,
+        base_note: ch.sample_base_note,
+        note,
+        pitch_semitones: ch.pitch_semitones,
+        pitch_cents: ch.pitch_fine_cents,
+        velocity,
+        volume: ch.volume,
+        reverse: ch.is_reverse,
+        start01: ch.sample_start,
+        end01: ch.sample_end,
+    })
+}
+
+fn ui_dbg(msg: &str) {
+    let on = std::env::var("SONIX_AUDIO_DEBUG").is_ok()
+        || std::env::var("HOME")
+            .ok()
+            .map(|h| std::path::Path::new(&h).join("Music/Sonix/debug_on").exists())
+            .unwrap_or(false);
+    if !on {
+        return;
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        let path = std::path::Path::new(&home).join("Music/Sonix/audio_debug.log");
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+            use std::io::Write;
+            let _ = writeln!(f, "[{}] UI: {}", std::process::id(), msg);
+        }
+    }
 }
 
 impl SonixApp {
@@ -788,6 +879,7 @@ impl SonixApp {
             volume: 0.95, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [36; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.3, is_reverse: false,
             waveform_preview: make_wave(20.0, 0.8),
+            sample_path: None, pcm_audio: None, sample_base_note: 60,
             target_bus: BusRouting::DrumBus, vca_group: VcaGroup::Vca1, pdc_latency_samples: 0,
         };
         let snare = ChannelStrip {
@@ -795,6 +887,7 @@ impl SonixApp {
             volume: 0.85, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [38; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, is_reverse: false,
             waveform_preview: make_wave(45.0, 0.9),
+            sample_path: None, pcm_audio: None, sample_base_note: 60,
             target_bus: BusRouting::DrumBus, vca_group: VcaGroup::Vca1, pdc_latency_samples: 0,
         };
         let clap = ChannelStrip {
@@ -802,6 +895,7 @@ impl SonixApp {
             volume: 0.80, pan: -0.1, muted: false, solo: false, steps: [false; 16], notes: [39; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, is_reverse: false,
             waveform_preview: make_wave(35.0, 0.85),
+            sample_path: None, pcm_audio: None, sample_base_note: 60,
             target_bus: BusRouting::DrumBus, vca_group: VcaGroup::Vca1, pdc_latency_samples: 0,
         };
         let hat = ChannelStrip {
@@ -809,6 +903,7 @@ impl SonixApp {
             volume: 0.75, pan: 0.15, muted: false, solo: false, steps: [false; 16], notes: [42; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.2, is_reverse: false,
             waveform_preview: make_wave(70.0, 0.95),
+            sample_path: None, pcm_audio: None, sample_base_note: 60,
             target_bus: BusRouting::DrumBus, vca_group: VcaGroup::Vca1, pdc_latency_samples: 0,
         };
         let open_hat = ChannelStrip {
@@ -816,6 +911,7 @@ impl SonixApp {
             volume: 0.70, pan: -0.2, muted: false, solo: false, steps: [false; 16], notes: [46; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.6, is_reverse: false,
             waveform_preview: make_wave(50.0, 0.5),
+            sample_path: None, pcm_audio: None, sample_base_note: 60,
             target_bus: BusRouting::DrumBus, vca_group: VcaGroup::Vca1, pdc_latency_samples: 0,
         };
         let crash = ChannelStrip {
@@ -823,6 +919,7 @@ impl SonixApp {
             volume: 0.75, pan: 0.25, muted: false, solo: false, steps: [false; 16], notes: [49; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.7, is_reverse: false,
             waveform_preview: make_wave(30.0, 0.4),
+            sample_path: None, pcm_audio: None, sample_base_note: 60,
             target_bus: BusRouting::DrumBus, vca_group: VcaGroup::Vca1, pdc_latency_samples: 0,
         };
         let synth_lead = ChannelStrip {
@@ -830,6 +927,7 @@ impl SonixApp {
             volume: 0.85, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [60; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, is_reverse: false,
             waveform_preview: make_wave(60.0, 0.3),
+            sample_path: None, pcm_audio: None, sample_base_note: 60,
             target_bus: BusRouting::SynthBus, vca_group: VcaGroup::Vca2, pdc_latency_samples: 0,
         };
         let sub_bass = ChannelStrip {
@@ -837,13 +935,21 @@ impl SonixApp {
             volume: 0.90, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [36; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, is_reverse: false,
             waveform_preview: make_wave(25.0, 0.6),
+            sample_path: None, pcm_audio: None, sample_base_note: 60,
             target_bus: BusRouting::SynthBus, vca_group: VcaGroup::Vca2, pdc_latency_samples: 0,
         };
 
-        let channels = vec![kick, snare, clap, hat, open_hat, crash, synth_lead, sub_bass];
+        let mut channels = vec![kick, snare, clap, hat, open_hat, crash, synth_lead, sub_bass];
 
-        // Sample Library Initial Items (Categorized with Rich Factory Samples)
+        // Sample Library Initial Items (Categorized with Rich Factory & Downloaded Sample Packs)
         let sample_library = init_default_sample_library();
+
+        // Give the six built-in drum channels real recorded samples when sample
+        // packs are installed, so the Channel Rack plays WAV files by default.
+        if !sample_library.is_empty() {
+            auto_assign_default_kit(&mut channels, &sample_library);
+        }
+
 
 
         let pat1 = Pattern {
@@ -1030,10 +1136,15 @@ impl SonixApp {
             render_scope_idx: 0,
             render_sample_rate_idx: 0,
             render_bit_depth_idx: 0,
-            render_template: "{project}_{track}_{bpm}bpm".to_string(),
             is_rendering: false,
             render_progress: 0.0,
             render_queue_status: "Klar för rendering".to_string(),
+            export_folder: {
+                let home = std::env::var("HOME").unwrap_or_else(|_| "/home/alex".to_string());
+                format!("{}/Music/Sonix/Exporterat", home)
+            },
+            export_base_name: "Min_Låt".to_string(),
+            export_metadata: crate::audio::ExportMeta::default(),
             // Suno AI Prompt Bar & Studio Timeline View
             suno_prompt_input: "Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll".to_string(),
             suno_model_version: "Sonix AI v5.5 (Music & Stems)".to_string(),
@@ -1188,7 +1299,7 @@ impl SonixApp {
             }
             ScreenshotTarget::RenderQueueModal => {
                 self.view_mode = ViewMode::PlaylistArranger;
-                self.show_render_queue_modal = true;
+                self.open_export_modal();
             }
             ScreenshotTarget::SunoImportModal => {
                 self.view_mode = ViewMode::PlaylistArranger;
@@ -2023,6 +2134,13 @@ impl SonixApp {
             return;
         }
         let orig_name = self.playlist_tracks[track_idx].name.clone();
+        ui_dbg(&format!(
+            "duplicate_track idx={} name='{}' playing={} tracks_before={}",
+            track_idx,
+            orig_name,
+            self.is_playing,
+            self.playlist_tracks.len()
+        ));
         self.push_undo(&format!("Duplicera spår '{}'", orig_name));
 
         let mut new_track = self.playlist_tracks[track_idx].clone();
@@ -2052,6 +2170,13 @@ impl SonixApp {
         }
 
         self.status_message = format!("📋 Duplicerade spår '{}' under originalspåret!", orig_name);
+        ui_dbg(&format!(
+            "duplicate_track done name='{}' tracks_after={} playing={} selected={}",
+            orig_name,
+            self.playlist_tracks.len(),
+            self.is_playing,
+            self.selected_timeline_track
+        ));
     }
 
     pub fn delete_track(&mut self, track_idx: usize) {
@@ -2348,8 +2473,12 @@ impl SonixApp {
 
         self.playlist_tracks.clear();
         for (t_idx, st) in payload.tracks.into_iter().enumerate() {
-            // Send preloaded PCM to engine
+            // Send preloaded PCM to engine, and keep a reference on the track so
+            // a later ClearAllStemTracks + resync (duplicate/delete/reload) can
+            // re-send it. Without this the app loses the PCM after project load.
+            let mut track_pcm = None;
             for (pcm_l, pcm_r, sr) in st.stem_pcms {
+                track_pcm = Some((pcm_l.clone(), pcm_r.clone(), sr));
                 let _ = self.engine.send_command(AudioCommand::LoadStemTrack {
                     track_index: t_idx,
                     left: pcm_l,
@@ -2374,6 +2503,7 @@ impl SonixApp {
             loaded_track.comp_ratio = st.comp_ratio;
             loaded_track.reverb_send = st.reverb_send;
             loaded_track.delay_send = st.delay_send;
+            loaded_track.pcm_audio = track_pcm;
             self.playlist_tracks.push(loaded_track);
             self.sync_track_regions(t_idx);
         }
@@ -2479,53 +2609,53 @@ impl SonixApp {
 
     pub fn select_sound_for_channel(&mut self, ch_idx: usize, item: &LibrarySampleItem) {
         if ch_idx < self.channels.len() {
-            let ch = &mut self.channels[ch_idx];
-            ch.name = item.name.clone();
-            ch.icon = item.icon.clone();
-            ch.color = item.color;
-            ch.notes = [item.default_note; 16];
-            ch.waveform_preview = item.waveform.clone();
-            ch.sample_start = 0.0;
-            ch.sample_end = 1.0;
-            ch.pitch_semitones = 0;
-            ch.pitch_fine_cents = 0.0;
-            self.status_message = format!("Kanal {} ändrad till: {}", ch_idx + 1, item.name);
+            assign_library_sample_to_channel(&mut self.channels[ch_idx], item);
+            let item_name = item.name.clone();
+            self.status_message = format!("Kanal {} ändrad till: {}", ch_idx + 1, item_name);
+            self.audition_library_sample(item);
+        }
+    }
 
-            if let Some(ref path) = item.file_path && let Ok((l, r, sr)) = crate::audio::load_wav_pcm(path) {
-                let _ = self.engine.send_command(AudioCommand::PlayAudition {
-                    left: std::sync::Arc::new(l),
-                    right: std::sync::Arc::new(r),
-                    sample_rate: sr as f32,
-                    volume: 0.95,
-                    pitch_ratio: 1.0,
-                    time_stretch_ratio: 1.0,
-                    is_reverse: false,
-                    loop_playback: false,
-                });
-            } else {
-                match item.category.as_str() {
-                    "Kicks" => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Kick)); },
-                    "Snares" => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Snare)); },
-                    "Claps" => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Clap)); },
-                    "Hi-Hats" => {
-                        if item.name.to_lowercase().contains("open") {
-                            let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatOpen));
-                        } else {
-                            let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatClosed));
-                        }
-                    },
-                    "Percussion" => {
-                        if item.name.to_lowercase().contains("high") {
-                            let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::TomHigh));
-                        } else {
-                            let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::TomLow));
-                        }
-                    },
-                    _ => {
-                        let freq = midi_to_freq(item.default_note);
-                        let _ = self.engine.send_command(AudioCommand::NoteOn { note: item.default_note, freq, velocity: 0.9 });
-                    }
+    /// Auditions a library sample. Plays the real WAV when available, otherwise
+    /// falls back to the built-in synthesizer for the matching sound category.
+    pub fn audition_library_sample(&mut self, item: &LibrarySampleItem) {
+        if let Some(ref path) = item.file_path
+            && let Some((l, r, sr)) = load_sample_pcm_arcs(path)
+        {
+            let _ = self.engine.send_command(AudioCommand::PlayAudition {
+                left: l,
+                right: r,
+                sample_rate: sr as f32,
+                volume: 0.95,
+                pitch_ratio: 1.0,
+                time_stretch_ratio: 1.0,
+                is_reverse: false,
+                loop_playback: false,
+            });
+            return;
+        }
+
+        match item.category.as_str() {
+            "Kicks" => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Kick)); }
+            "Snares" => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Snare)); }
+            "Claps" => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Clap)); }
+            "Hi-Hats" => {
+                if item.name.to_lowercase().contains("open") {
+                    let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatOpen));
+                } else {
+                    let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatClosed));
                 }
+            }
+            "Percussion" => {
+                if item.name.to_lowercase().contains("high") {
+                    let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::TomHigh));
+                } else {
+                    let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::TomLow));
+                }
+            }
+            _ => {
+                let freq = midi_to_freq(item.default_note);
+                let _ = self.engine.send_command(AudioCommand::NoteOn { note: item.default_note, freq, velocity: 0.9 });
             }
         }
     }
@@ -2622,6 +2752,7 @@ impl SonixApp {
         }
         self.is_playing = !self.is_playing;
         if self.is_playing {
+            ui_dbg(&format!("toggle_playback -> PLAY song_bar={} step={} pattern_mode={}", self.song_bar, self.song_step_in_bar, self.pattern_mode));
             self.sync_all_stems_to_engine();
             let song_secs = if self.pattern_mode {
                 0.0
@@ -2632,6 +2763,7 @@ impl SonixApp {
             let _ = self.engine.send_command(AudioCommand::SeekSongPosition(song_secs));
             let _ = self.engine.send_command(AudioCommand::SetSongPlayback(true));
         } else {
+            ui_dbg("toggle_playback -> STOP (pause)");
             let _ = self.engine.send_command(AudioCommand::SetSongPlayback(false));
             let _ = self.engine.send_command(AudioCommand::StopAll);
             self.active_keys.clear();
@@ -2644,6 +2776,7 @@ impl SonixApp {
             self.toggle_timeline_recording();
             return;
         }
+        ui_dbg("stop_playback");
         self.is_playing = false;
         self.current_step = 0;
         self.song_bar = 0;
@@ -2819,6 +2952,11 @@ impl SonixApp {
         for (idx, ch) in self.channels.iter().enumerate() {
             let is_audible = if has_solo { ch.solo } else { !ch.muted };
             if ch.steps[step] && is_audible {
+                let note = ch.notes[step];
+                if let Some(cmd) = channel_sample_trigger_command(ch, note, vel) {
+                    let _ = self.engine.send_command(cmd);
+                    continue;
+                }
                 match idx {
                     0 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Kick)); }
                     1 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Snare)); }
@@ -2827,12 +2965,10 @@ impl SonixApp {
                     4 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatOpen)); }
                     5 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Crash)); }
                     6 => {
-                        let note = ch.notes[step];
                         let freq = midi_to_freq(note);
                         let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: ch.volume * vel });
                     }
                     7 => {
-                        let note = ch.notes[step];
                         let freq = midi_to_freq(note);
                         let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: ch.volume * vel });
                     }
@@ -2869,30 +3005,37 @@ impl SonixApp {
                         TrackKind::Drums => {
                             for ch_idx in 0..=5 {
                                 if ch_idx < pat.channel_steps.len() && pat.channel_steps[ch_idx][step_in_bar] {
-                                    match ch_idx {
-                                        0 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Kick)); }
-                                        1 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Snare)); }
-                                        2 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Clap)); }
-                                        3 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatClosed)); }
-                                        4 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatOpen)); }
-                                        5 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Crash)); }
-                                        _ => {}
+                                    let note = pat.channel_notes.get(ch_idx).map(|n| n[step_in_bar]).unwrap_or(36);
+                                    let sample_cmd = self.channels.get(ch_idx)
+                                        .and_then(|ch| channel_sample_trigger_command(ch, note, track.volume * vel));
+                                    if let Some(cmd) = sample_cmd {
+                                        let _ = self.engine.send_command(cmd);
+                                    } else {
+                                        match ch_idx {
+                                            0 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Kick)); }
+                                            1 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Snare)); }
+                                            2 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Clap)); }
+                                            3 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatClosed)); }
+                                            4 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::HiHatOpen)); }
+                                            5 => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Crash)); }
+                                            _ => {}
+                                        }
                                     }
                                 }
                             }
                         }
-                        TrackKind::SynthLead => {
-                            if pat.channel_steps.len() > 6 && pat.channel_steps[6][step_in_bar] {
-                                let note = pat.channel_notes[6][step_in_bar];
-                                let freq = midi_to_freq(note);
-                                let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
-                            }
-                        }
-                        TrackKind::Bassline => {
-                            if pat.channel_steps.len() > 7 && pat.channel_steps[7][step_in_bar] {
-                                let note = pat.channel_notes[7][step_in_bar];
-                                let freq = midi_to_freq(note);
-                                let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
+                        TrackKind::SynthLead | TrackKind::Bassline => {
+                            let ch_idx = if track.kind == TrackKind::SynthLead { 6 } else { 7 };
+                            if pat.channel_steps.len() > ch_idx && pat.channel_steps[ch_idx][step_in_bar] {
+                                let note = pat.channel_notes[ch_idx][step_in_bar];
+                                let sample_cmd = self.channels.get(ch_idx)
+                                    .and_then(|ch| channel_sample_trigger_command(ch, note, track.volume * vel));
+                                if let Some(cmd) = sample_cmd {
+                                    let _ = self.engine.send_command(cmd);
+                                } else {
+                                    let freq = midi_to_freq(note);
+                                    let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
+                                }
                             }
                         }
                         TrackKind::VocalAudio | TrackKind::CustomAudio | TrackKind::Fx => {}
@@ -2902,54 +3045,9 @@ impl SonixApp {
     }
 
     pub fn export_wav(&mut self) {
-        self.sync_active_pattern_from_ui();
-        let sample_rate = self.engine.sample_rate as f32;
-        let mut synth = SynthEngine::new(sample_rate);
-        synth.waveform = self.waveform;
-        synth.adsr = self.adsr;
-        synth.filter_params = self.filter;
-        synth.delay_params = self.delay;
-        synth.reverb_params = self.reverb;
-        synth.drive = self.drive;
-        synth.master_volume = self.master_volume;
-
-        if self.pattern_mode {
-            let pattern_grid: Vec<[bool; 16]> = self.channels.iter().map(|c| c.steps).collect();
-            let step_notes = self.channels[6].notes;
-            let export_path = "/home/alex/Projects/sonix/exported_pattern.wav";
-            match render_to_wav(export_path, synth, &pattern_grid, &step_notes, self.bpm, 4) {
-                Ok(p) => {
-                    self.status_message = format!("✔ Sparat mönster som WAV: {}", p);
-                }
-                Err(e) => {
-                    self.status_message = format!("✘ Export misslyckades: {}", e);
-                }
-            }
-        } else {
-            let pattern_steps = self.patterns.iter().map(|p| p.channel_steps.clone()).collect();
-            let pattern_notes = self.patterns.iter().map(|p| p.channel_notes.clone()).collect();
-            let track_clips = self.playlist_tracks.iter().map(|t| t.clips).collect();
-            let track_muted = self.playlist_tracks.iter().map(|t| t.muted).collect();
-
-            let arrangement = SongArrangementExport {
-                pattern_steps,
-                pattern_notes,
-                track_clips,
-                track_muted,
-                num_bars: self.loop_end_bar.clamp(4, 32),
-                bpm: self.bpm,
-            };
-
-            let export_path = "/home/alex/Projects/sonix/exported_song.wav";
-            match render_song_arrangement_to_wav(export_path, synth, &arrangement) {
-                Ok(p) => {
-                    self.status_message = format!("✔ Sparad hel låt (Song Arranger) som WAV: {}", p);
-                }
-                Err(e) => {
-                    self.status_message = format!("✘ Export misslyckades: {}", e);
-                }
-            }
-        }
+        // Snabbexport öppnar exportdialogen (fullt projekt: format, mapp &
+        // ren metadata – ingen hårdkodad sökväg kvar).
+        self.open_export_modal();
     }
 
     fn play_note(&mut self, note: u8) {
@@ -3149,7 +3247,7 @@ impl eframe::App for SonixApp {
                     self.show_suno_import_modal = true;
                 }
                 if i.key_pressed(egui::Key::E) {
-                    self.show_render_queue_modal = true;
+                    self.open_export_modal();
                 }
             }
 
@@ -3289,8 +3387,8 @@ impl eframe::App for SonixApp {
                             self.show_suno_import_modal = true;
                             ui.close_menu();
                         }
-                        if ui.button("↗ Exportera WAV / Master (Ctrl+E)").clicked() {
-                            self.show_render_queue_modal = true;
+                        if ui.button("↗ Exportera projekt (Ctrl+E)").clicked() {
+                            self.open_export_modal();
                             ui.close_menu();
                         }
                         ui.separator();
@@ -3584,7 +3682,7 @@ impl eframe::App for SonixApp {
 
                     // Batch Export & Render Queue Button
                     if ui.add(egui::Button::new(egui::RichText::new("📤 BATCH EXPORT").strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(45, 90, 140))).clicked() {
-                        self.show_render_queue_modal = true;
+                        self.open_export_modal();
                     }
 
                     // Stems Importer Button
@@ -6454,9 +6552,8 @@ impl SonixApp {
                                     }
 
                                     ui.horizontal(|ui| {
-                                        if ui.button(egui::RichText::new("▶ Prov").size(9.5)).clicked() {
-                                            let freq = midi_to_freq(item.default_note);
-                                            let _ = self.engine.send_command(AudioCommand::NoteOn { note: item.default_note, freq, velocity: 0.9 });
+                                        if ui.button(egui::RichText::new("▶ Prov").size(9.5)).on_hover_text("Provspela med riktigt ljud").clicked() {
+                                            self.audition_library_sample(item);
                                         }
                                         if ui.add(egui::Button::new(egui::RichText::new("✅ Välj").strong().size(9.5).color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
                                             chosen_item = Some(item.clone());
@@ -8331,30 +8428,189 @@ impl SonixApp {
         }
     }
 
+    const EXPORT_FORMATS: [crate::audio::ExportFormat; 7] = [
+        crate::audio::ExportFormat::Wav16,
+        crate::audio::ExportFormat::Wav24,
+        crate::audio::ExportFormat::Wav32,
+        crate::audio::ExportFormat::Flac,
+        crate::audio::ExportFormat::Mp3,
+        crate::audio::ExportFormat::Ogg,
+        crate::audio::ExportFormat::Aac,
+    ];
+
+    pub fn open_export_modal(&mut self) {
+        if self.export_base_name.trim().is_empty()
+            || self.export_base_name == "Min_Låt"
+            || self.export_metadata.title.is_empty() {
+            let safe = crate::audio::sanitize_filename(&self.project_name);
+            if !safe.is_empty() {
+                self.export_base_name = safe;
+            }
+            if self.export_metadata.title.is_empty() {
+                self.export_metadata.title = self.project_name.clone();
+            }
+        }
+        self.show_render_queue_modal = true;
+        self.render_queue_status = "Klar för rendering".to_string();
+    }
+
+    fn export_bars(&self) -> usize {
+        self.loop_end_bar.clamp(4, 32)
+    }
+
+    fn export_sample_rate(&self) -> u32 {
+        match self.render_sample_rate_idx {
+            1 => 48000,
+            2 => 96000,
+            _ => 44100,
+        }
+    }
+
+    /// Snapshot the current project (real Channel Rack samples, patterns,
+    /// timeline stems) into the pure renderer data model.
+    fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u32) -> crate::audio::RenderSpec {
+        use crate::audio::{PatternSnap, RackChannel, TrackAudioSnap, TrackRole, TrackSnap, VoiceSpec};
+
+        let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
+        let pattern_mode = self.pattern_mode;
+
+        let rack = self.channels.iter().map(|ch| {
+            let voice = ch.pcm_audio.as_ref().map(|(l, r, sr)| VoiceSpec {
+                left: l.clone(),
+                right: r.clone(),
+                sample_rate: *sr,
+                base_note: ch.sample_base_note,
+                semitones: ch.pitch_semitones,
+                cents: ch.pitch_fine_cents,
+                volume: ch.volume,
+                reverse: ch.is_reverse,
+                start: ch.sample_start,
+                end: ch.sample_end,
+            });
+            RackChannel {
+                voice,
+                fallback_volume: ch.volume,
+                steps: ch.steps,
+                notes: ch.notes,
+            }
+        }).collect();
+
+        let patterns = self.patterns.iter().map(|p| PatternSnap {
+            steps: p.channel_steps.clone(),
+            notes: p.channel_notes.clone(),
+        }).collect();
+
+        let tracks = self.playlist_tracks.iter().map(|t| {
+            let role = match t.kind {
+                TrackKind::Drums => TrackRole::Drums,
+                TrackKind::SynthLead => TrackRole::Synth,
+                TrackKind::Bassline => TrackRole::Bass,
+                TrackKind::VocalAudio | TrackKind::CustomAudio | TrackKind::Fx => TrackRole::Audio,
+            };
+            TrackSnap {
+                role,
+                clips: t.clips,
+                volume: t.volume,
+                muted: t.muted,
+                solo: t.solo,
+            }
+        }).collect();
+
+        let timeline = self.playlist_tracks.iter().enumerate().filter_map(|(idx, t)| {
+            t.pcm_audio.as_ref().map(|(l, r, sr)| {
+                let regions = t.regions.iter().map(|r| crate::audio::StemRegionPlayback {
+                    start_time_secs: r.start_bar * sec_per_bar,
+                    length_secs: r.length_bars * sec_per_bar,
+                    sample_offset_sec: r.sample_offset_sec,
+                    gain: r.volume,
+                    fade_in_sec: r.fade_in_bars * sec_per_bar,
+                    fade_out_sec: r.fade_out_bars * sec_per_bar,
+                    muted: r.muted,
+                    is_reverse: r.is_reverse,
+                    loop_length_secs: r.loop_length_bars * sec_per_bar,
+                }).collect();
+                TrackAudioSnap {
+                    track_index: idx,
+                    left: l.clone(),
+                    right: r.clone(),
+                    sample_rate: *sr,
+                    volume: t.volume,
+                    pan: t.pan,
+                    muted: t.muted,
+                    solo: t.solo,
+                    regions,
+                }
+            })
+        }).collect();
+
+        crate::audio::RenderSpec {
+            sample_rate,
+            bpm: self.bpm,
+            swing: self.swing,
+            num_bars: self.export_bars(),
+            pattern_mode,
+            rack,
+            patterns,
+            tracks,
+            timeline,
+            velocities: self.step_velocities,
+            solo_track,
+            tail_secs: (60.0 / self.bpm.max(40.0)).min(2.0),
+        }
+    }
+
+    fn export_fx_state(&self, dry: bool) -> crate::audio::FxState {
+        let mut delay = self.delay;
+        let mut reverb = self.reverb;
+        if dry {
+            delay.mix = 0.0;
+            reverb.mix = 0.0;
+        }
+        crate::audio::FxState {
+            waveform: self.waveform,
+            adsr: self.adsr,
+            filter: self.filter,
+            delay,
+            reverb,
+            drive: if dry { 1.0 } else { self.drive },
+            master_volume: self.master_volume,
+        }
+    }
+
+    /// Render one spec to an interleaved float buffer.
+    fn render_buffer(&self, spec: &crate::audio::RenderSpec, dry: bool) -> Result<Vec<f32>, String> {
+        let mut engine = crate::audio::build_offline_engine(spec, &self.export_fx_state(dry));
+        Ok(crate::audio::render_project_offline(&mut engine, spec))
+    }
+
+    /// Peak level, used to skip completely empty stem files.
+    fn peak_of(buf: &[f32]) -> f32 {
+        buf.iter().fold(0.0f32, |m, &s| m.max(s.abs()))
+    }
+
     fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
         if !self.show_render_queue_modal {
             return;
         }
 
         let mut close = false;
-        egui::Window::new("📤 Batch-Export & Render Queue")
+        egui::Window::new("📤 Exportera projekt")
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ctx, |ui| {
-                ui.set_width(540.0);
-                ui.label(egui::RichText::new("Automatisera export av hela låtar, individuella stämmor (stems) och torra tagningar i valfritt format.").size(11.0).color(Theme::TEXT_MUTED));
+                ui.set_width(620.0);
+                ui.label(egui::RichText::new("Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till.").size(11.0).color(Theme::TEXT_MUTED));
                 ui.add_space(8.0);
 
-                // Scope & Source
+                // 1. Scope
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new("1. VAD SKALL EXPORTERAS (SCOPE)").strong().size(11.5).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new("1. VAD SKALL EXPORTERAS").strong().size(11.5).color(Theme::FL_ORANGE));
                     ui.separator();
                     let scopes = [
-                        ("Master Mix (Hela Låten)", "Renderar full stereo-mix med all master-processering"),
-                        ("Alla Stämmor - Torra (All Tracks Dry)", "Exporterar 8 individuella spår utan reverb/delay för extern mixning"),
-                        ("Alla Stämmor - Med FX (All Stems Wet)", "Exporterar 8 individuella spår med alla effekter och modulation"),
-                        ("Sång & Stämmor (Vocal Studio & Harmonies)", "Exporterar master take + ters/kvint harmonier"),
+                        ("Hel låt – Master Mix (Fullt Projekt)", "Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter."),
+                        ("Individuella spår – Torra (Stems Dry)", "Exporterar varje tidslinjespår för sig utan reverb/delay för extern mixning."),
+                        ("Individuella spår – Med FX (Stems Wet)", "Exporterar varje tidslinjespår för sig med alla effekter och modulation."),
                     ];
                     for (i, (title, desc)) in scopes.iter().enumerate() {
                         if ui.selectable_label(self.render_scope_idx == i, format!("⦿ {}", title)).clicked() {
@@ -8366,16 +8622,16 @@ impl SonixApp {
 
                 ui.add_space(6.0);
 
-                // Format & Sample Rate
+                // 2. Format & quality
                 ui.group(|ui| {
                     ui.label(egui::RichText::new("2. FORMAT & LJUDKVALITET").strong().size(11.5).color(Theme::FL_CYAN));
                     ui.separator();
 
-                    ui.horizontal(|ui| {
+                    ui.horizontal_wrapped(|ui| {
                         ui.label("Format:");
-                        let formats = ["WAV (32-bit Float)", "WAV (24-bit PCM)", "MP3 (320 kbps CBR)", "FLAC (24-bit Lossless)"];
-                        for (f_i, fname) in formats.iter().enumerate() {
-                            if ui.selectable_label(self.render_format_idx == f_i, *fname).clicked() {
+                        for (f_i, fname) in Self::EXPORT_FORMATS.iter().enumerate() {
+                            let label = fname.label();
+                            if ui.selectable_label(self.render_format_idx == f_i, label).clicked() {
                                 self.render_format_idx = f_i;
                             }
                         }
@@ -8394,34 +8650,57 @@ impl SonixApp {
 
                 ui.add_space(6.0);
 
-                // Filename Template
+                // 3. Filnamn & mapp
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new("3. FILNAMNSMALL").strong().size(11.5).color(Theme::FL_YELLOW));
+                    ui.label(egui::RichText::new("3. FILNAMN & MAPPA").strong().size(11.5).color(Theme::FL_YELLOW));
                     ui.separator();
-
                     ui.horizontal(|ui| {
-                        ui.label("Mall:");
-                        ui.text_edit_singleline(&mut self.render_template);
+                        ui.label("Låt-/filnamn:");
+                        ui.text_edit_singleline(&mut self.export_base_name);
                     });
+                    ui.horizontal(|ui| {
+                        ui.label("Mapp:");
+                        ui.add(egui::TextEdit::singleline(&mut self.export_folder).desired_width(400.0));
+                    });
+                    let fmt = Self::EXPORT_FORMATS[self.render_format_idx.min(Self::EXPORT_FORMATS.len() - 1)];
+                    ui.label(egui::RichText::new(format!("Exempel: {}_{:.0}bpm.{}", self.export_base_name, self.bpm, fmt.ext())).size(10.0).color(Theme::FL_GREEN));
+                });
 
-                    let ext = match self.render_format_idx {
-                        0 | 1 => "wav",
-                        2 => "mp3",
-                        _ => "flac",
-                    };
-                    let example_name = format!("Sonix_808_Kick_{:.0}bpm.{}", self.bpm, ext);
-                    ui.label(egui::RichText::new(format!("Exempel på filnamn: {}", example_name)).size(10.0).color(Theme::FL_GREEN));
+                ui.add_space(6.0);
+
+                // 4. Ren metadata
+                ui.group(|ui| {
+                    ui.label(egui::RichText::new("4. METADATA (endast Sonix – ingen AI-info)").strong().size(11.5).color(Theme::FL_PURPLE));
+                    ui.separator();
+                    let meta = &mut self.export_metadata;
+                    ui.horizontal(|ui| {
+                        ui.label("Titel:");
+                        ui.add(egui::TextEdit::singleline(&mut meta.title).desired_width(200.0));
+                        ui.label("Artist:");
+                        ui.add(egui::TextEdit::singleline(&mut meta.artist).desired_width(160.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("Album:");
+                        ui.add(egui::TextEdit::singleline(&mut meta.album).desired_width(200.0));
+                        ui.label("Genre:");
+                        ui.add(egui::TextEdit::singleline(&mut meta.genre).desired_width(160.0));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label("År:");
+                        ui.add(egui::TextEdit::singleline(&mut meta.year).desired_width(80.0));
+                        ui.label("Kommentar:");
+                        ui.add(egui::TextEdit::singleline(&mut meta.comment).desired_width(340.0));
+                    });
+                    ui.label(egui::RichText::new("Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem.").size(9.5).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(8.0);
 
-                // Status & Render Button
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new("Status:").strong());
                         ui.label(egui::RichText::new(&self.render_queue_status).color(Theme::FL_CYAN));
                     });
-
                     if self.is_rendering {
                         ui.add(egui::ProgressBar::new(self.render_progress).show_percentage());
                     }
@@ -8430,10 +8709,9 @@ impl SonixApp {
                 ui.add_space(10.0);
 
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("🚀 STARTA BATCH-RENDERING").strong().size(12.0).color(Color32::WHITE)).fill(Color32::from_rgb(38, 120, 90))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new("🚀 STARTA EXPORT").strong().size(12.0).color(Color32::WHITE)).fill(Color32::from_rgb(38, 120, 90))).clicked() {
                         self.execute_batch_export();
                     }
-
                     if ui.button("Stäng").clicked() {
                         close = true;
                     }
@@ -8448,94 +8726,100 @@ impl SonixApp {
     pub fn execute_batch_export(&mut self) {
         self.sync_active_pattern_from_ui();
         self.is_rendering = true;
-        self.render_progress = 1.0;
+        self.render_progress = 0.0;
 
-        let export_dir = "/home/alex/Projects/sonix/exports";
-        let _ = std::fs::create_dir_all(export_dir);
-
-        let sample_rate = match self.render_sample_rate_idx {
-            1 => 48000.0,
-            2 => 96000.0,
-            _ => 44100.0,
+        let fmt_idx = self.render_format_idx.min(Self::EXPORT_FORMATS.len() - 1);
+        let fmt = Self::EXPORT_FORMATS[fmt_idx];
+        let sample_rate = self.export_sample_rate();
+        let folder = if self.export_folder.trim().is_empty() {
+            "/home/alex/Projects/sonix/exports".to_string()
+        } else {
+            self.export_folder.trim().to_string()
         };
 
-        let mut synth = SynthEngine::new(sample_rate);
-        synth.waveform = self.waveform;
-        synth.adsr = self.adsr;
-        synth.filter_params = self.filter;
-        synth.delay_params = self.delay;
-        synth.reverb_params = self.reverb;
-        synth.drive = self.drive;
-        synth.master_volume = self.master_volume;
+        let base = {
+            let raw = if self.export_base_name.trim().is_empty() {
+                self.project_name.clone()
+            } else {
+                self.export_base_name.clone()
+            };
+            let safe = crate::audio::sanitize_filename(&raw);
+            if safe.is_empty() { "Min_Låt".to_string() } else { safe }
+        };
 
-        match self.render_scope_idx {
-            0 => {
-                // Master mix
-                let export_path = format!("{}/Sonix_Master_Mix_{:.0}bpm.wav", export_dir, self.bpm);
-                if self.pattern_mode {
-                    let pattern_grid: Vec<[bool; 16]> = self.channels.iter().map(|c| c.steps).collect();
-                    let step_notes = self.channels[6].notes;
-                    let _ = render_to_wav(&export_path, synth, &pattern_grid, &step_notes, self.bpm, 4);
-                } else {
-                    let pattern_steps = self.patterns.iter().map(|p| p.channel_steps.clone()).collect();
-                    let pattern_notes = self.patterns.iter().map(|p| p.channel_notes.clone()).collect();
-                    let track_clips = self.playlist_tracks.iter().map(|t| t.clips).collect();
-                    let track_muted = self.playlist_tracks.iter().map(|t| t.muted).collect();
+        let mut meta = self.export_metadata.clone();
+        if meta.title.trim().is_empty() {
+            meta.title = base.clone();
+        }
 
-                    let arrangement = SongArrangementExport {
-                        pattern_steps,
-                        pattern_notes,
-                        track_clips,
-                        track_muted,
-                        num_bars: self.loop_end_bar.clamp(4, 32),
-                        bpm: self.bpm,
-                    };
-                    let _ = render_song_arrangement_to_wav(&export_path, synth, &arrangement);
+        let dry = self.render_scope_idx == 1;
+        let stem_mode = self.render_scope_idx == 1 || self.render_scope_idx == 2;
+
+        std::fs::create_dir_all(&folder).map_err(|e| {
+            self.is_rendering = false;
+            self.render_queue_status = format!("✘ Kan inte skapa mapp: {}", e);
+            self.status_message = format!("✘ Exportfel: {}", e);
+        }).ok();
+
+        let mut written_files: Vec<String> = Vec::new();
+        let mut last_error: Option<String> = None;
+
+        if stem_mode {
+            let track_count = self.playlist_tracks.len();
+            for t_idx in 0..track_count {
+                let track_name = self.playlist_tracks[t_idx].name.replace([' ', '/', '\\'], "_");
+                let spec = self.build_render_spec(Some(t_idx), sample_rate);
+                let buf = match self.render_buffer(&spec, dry) {
+                    Ok(b) => b,
+                    Err(e) => { last_error = Some(e); break; }
+                };
+                if Self::peak_of(&buf) < 1.0e-6 {
+                    continue; // tomt spår – hoppa över
                 }
-                self.render_queue_status = format!("✅ Master Mix sparad till: {}", export_path);
-                self.status_message = format!("✔ Batch-export klar: {}", export_path);
-            }
-            1 | 2 => {
-                // All Stems (Dry or Wet)
-                let mut stem_count = 0;
-                for (idx, ch) in self.channels.iter().enumerate() {
-                    let is_wet = self.render_scope_idx == 2;
-                    let sanitized_name = ch.name.replace(' ', "_");
-                    let file_path = format!("{}/Stem_{:02}_{}_{}_{:.0}bpm.wav", export_dir, idx + 1, sanitized_name, if is_wet { "Wet" } else { "Dry" }, self.bpm);
-
-                    let mut solo_grid = vec![[false; 16]; self.channels.len()];
-                    solo_grid[idx] = ch.steps;
-                    let step_notes = ch.notes;
-
-                    let mut stem_synth = SynthEngine::new(sample_rate);
-                    stem_synth.waveform = self.waveform;
-                    stem_synth.adsr = self.adsr;
-                    stem_synth.filter_params = self.filter;
-                    stem_synth.drive = if is_wet { self.drive } else { 1.0 };
-                    stem_synth.master_volume = ch.volume;
-                    if is_wet {
-                        stem_synth.delay_params = self.delay;
-                        stem_synth.reverb_params = self.reverb;
-                    }
-
-                    if render_to_wav(&file_path, stem_synth, &solo_grid, &step_notes, self.bpm, 4).is_ok() {
-                        stem_count += 1;
-                    }
+                let file_stem = format!("{}_Trk{:02}_{}", base, t_idx + 1, track_name);
+                let path = format!("{}/{}.{}", folder, file_stem, fmt.ext());
+                let mut stem_meta = meta.clone();
+                if stem_meta.title.trim().is_empty() || stem_meta.title == base {
+                    stem_meta.title = format!("{} ({})", base, track_name);
                 }
-                self.render_queue_status = format!("✅ {} stämmor exporterade till {}", stem_count, export_dir);
-                self.status_message = format!("✔ Exporterade {} stämmor till ./exports/", stem_count);
+                match crate::audio::write_export(&path, fmt, &buf, sample_rate, &stem_meta) {
+                    Ok(_) => written_files.push(path),
+                    Err(e) => { last_error = Some(e); break; }
+                }
             }
-            _ => {
-                // Vocal Stems
-                let vocal_path = format!("{}/Sonix_Vocal_Studio_Comp_{:.0}bpm.wav", export_dir, self.bpm);
-                let pattern_grid: Vec<[bool; 16]> = self.channels.iter().map(|c| c.steps).collect();
-                let step_notes = self.channels[6].notes;
-                let _ = render_to_wav(&vocal_path, synth, &pattern_grid, &step_notes, self.bpm, 4);
-                self.render_queue_status = format!("✅ Sångstämmor exporterade till: {}", vocal_path);
-                self.status_message = format!("✔ Sång export klar: {}", vocal_path);
+        } else {
+            let spec = self.build_render_spec(None, sample_rate);
+            let buf = match self.render_buffer(&spec, false) {
+                Ok(b) => b,
+                Err(e) => { last_error = Some(e); Vec::new() }
+            };
+            if last_error.is_none() {
+                let path = format!("{}/{}_{:.0}bpm.{}", folder, base, self.bpm, fmt.ext());
+                match crate::audio::write_export(&path, fmt, &buf, sample_rate, &meta) {
+                    Ok(_) => written_files.push(path),
+                    Err(e) => last_error = Some(e),
+                }
+            }
+        }
+
+        self.is_rendering = false;
+        self.render_progress = 1.0;
+        match last_error {
+            Some(e) => {
+                self.render_queue_status = format!("✘ Exporten avbröts: {}", e);
+                self.status_message = format!("✘ Exportfel: {}", e);
+            }
+            None if written_files.is_empty() => {
+                self.render_queue_status = "⚠ Inga ljudfiler skapades (alla spår var tomma?).".to_string();
+                self.status_message = "⚠ Inga ljud skapades.".to_string();
+            }
+            None => {
+                self.render_queue_status = format!("✅ {} fil(er) exporterade till {}", written_files.len(), folder);
+                self.status_message = format!("✔ Klar! Exporterade {} fil(er) utan AI-metadata → {}", written_files.len(), folder);
             }
         }
     }
+
     pub fn scan_for_suno_stems(&mut self) {
         let mut results = Vec::new();
         let home = std::env::var("HOME").unwrap_or_else(|_| "/home/alex".to_string());
@@ -10538,7 +10822,7 @@ impl SonixApp {
                                                 ("Ctrl + O / P", "Öppna Projektbläddrare"),
                                                 ("Ctrl + S", "Spara projektfil"),
                                                 ("Ctrl + I", "Importera Stämmor / Multi-Track Stems"),
-                                                ("Ctrl + E", "Exportera WAV / Master"),
+                                                ("Ctrl + E", "Exportera projekt (WAV/FLAC/MP3/OGG/AAC)"),
                                                 ("Del / Backspace", "Radera markerat ljudklipp"),
                                                 ("Ctrl + Scroll", "Mjuk horisontell zoomning i tidslinjen"),
                                                 ("A, W, S, E, D...", "Klaviatur – Spela synthen live med tangentbordet"),

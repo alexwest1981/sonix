@@ -10,6 +10,13 @@ A modern, lightning-fast graphical Digital Audio Workstation (DAW) built with **
 
 Sonix is a native Linux DAW written in **Rust** and **egui**. You run it by building from source with Cargo. The built-in mode that captures the 29 screenshots is only used by maintainers (see the note under the gallery below) and is **not** part of installing or running the app.
 
+> ⚡ **Fastest way (guided installer):**
+> Download and run `install.sh` – it confirms every step for you (dependencies, compilation, binary + start-menu entry) with no other terminal commands needed:
+> ```bash
+> bash <(curl -fsSL https://raw.githubusercontent.com/alexwest1981/sonix/master/install.sh)
+> ```
+> If you already have a clone, just run `bash install.sh` from inside the folder. After a code change you can refresh the binary + start-menu entry with `bash install.sh --refresh`.
+
 ### Prerequisites
 
 - 64-bit Linux with a running audio server — **PipeWire** (recommended), **JACK** or **ALSA**.
@@ -163,7 +170,7 @@ update-desktop-database ~/.local/share/applications
 | **F7** | **Analog Synthesizer** | Switch to the synth editor with ADSR, Filter, and Morph Pad. |
 | **F8** | **Vocal Studio** | Switch to the vocal recording console and harmonizer. |
 | **Ctrl + I** | **Import Stems** | Open dialog to import Suno ZIP archives or audio files. |
-| **Ctrl + E** | **Export Master / WAV** | Open batch render queue to export WAV, MP3, or stems. |
+| **Ctrl + E** | **Export Master / Stems** | Offline-render the full project (real samples, timeline audio & FX) to WAV, FLAC, MP3, OGG or AAC with clean Sonix-only metadata. |
 | **Ctrl + S** | **Save Project** | Save the current project to disk. |
 | **Ctrl + O** | **Open Project** | Open a saved project from disk. |
 | **Ctrl + P** | **Audio Settings** | Open PipeWire, ALSA, and buffer size configuration. |
@@ -281,7 +288,7 @@ Create new projects from music templates (Synthwave, Trap, House, Ambient), save
 ![Project Manager](screenshots/16_dialog_projekthanterare.png)
 
 #### 24. 💿 Render & Master Export Queue
-Multithreaded master audio rendering to WAV, MP3, or FLAC with batch export support for individual stems.
+Offline full-project rendering (real channel WAV samples + timeline audio stems + FX) to WAV (16/24-bit & float), FLAC (24-bit lossless), MP3 (320 kbps), OGG Vorbis and AAC/M4A. Choose master mix or per-track dry/wet stems, sample rate and clean metadata (title/artist/album/genre/year/comment) tagged only with **Sonix Studio** – never AI/provider info. WAV/FLAC are encoded in-app; MP3/OGG/AAC use `ffmpeg` when installed.
 ![Render Queue](screenshots/17_dialog_render_queue.png)
 
 #### 25. 📥 Suno AI Stem Importer

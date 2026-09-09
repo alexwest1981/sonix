@@ -4,6 +4,7 @@ pub mod drum;
 pub mod effects;
 pub mod engine;
 pub mod envelope;
+pub mod exporter;
 pub mod factory_samples;
 pub mod filter;
 pub mod patcher;
@@ -25,6 +26,12 @@ pub use effects::{DelayParams, ReverbParams};
 pub use engine::AudioEngine;
 #[allow(unused_imports)]
 pub use envelope::AdsrParams;
+#[allow(unused_imports)]
+pub use exporter::{
+    build_offline_engine, load_timeline_into_engine, render_project_offline, sanitize_filename,
+    write_export, ExportFormat, ExportMeta, FxState, PatternSnap, RackChannel, RenderSpec,
+    TrackAudioSnap, TrackRole, TrackSnap, VoiceSpec,
+};
 #[allow(unused_imports)]
 pub use filter::FilterParams;
 #[allow(unused_imports)]

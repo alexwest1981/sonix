@@ -140,6 +140,21 @@ pub enum AudioCommand {
         pitch_ratio: f32,
         time_stretch_ratio: f32,
     },
+    // Polyphonic WAV one-shot playback (Channel Rack sample player)
+    TriggerSampleVoice {
+        left: Arc<Vec<f32>>,
+        right: Arc<Vec<f32>>,
+        sample_rate: u32,
+        base_note: u8,
+        note: u8,
+        pitch_semitones: i8,
+        pitch_cents: f32,
+        velocity: f32,
+        volume: f32,
+        reverse: bool,
+        start01: f32,
+        end01: f32,
+    },
 }
 
 #[derive(Debug, Clone)]
