@@ -238,14 +238,21 @@ typedef struct mock_state {
     double mix;
 } mock_state_t;
 
-static mock_state_t mock_state = {1.0, 1.0};
+/* Each plugin instance owns its state via `plugin_data`, so parallel host
+ * tests can never race on a shared global. */
+static mock_state_t *state_of(const clap_plugin_t *p) {
+    return (mock_state_t *)p->plugin_data;
+}
 
 static bool p_init(const clap_plugin_t *p) { (void)p; return true; }
-static void p_destroy(const clap_plugin_t *p) { (void)p; }
+static void p_destroy(const clap_plugin_t *p) {
+    free(p->plugin_data);
+    free((void *)p);
+}
 static bool p_activate(const clap_plugin_t *p, double sr, uint32_t a, uint32_t b) {
-    (void)p; (void)sr; (void)a; (void)b;
-    mock_state.gain = 1.0;
-    mock_state.mix = 1.0;
+    (void)sr; (void)a; (void)b;
+    state_of(p)->gain = 1.0;
+    state_of(p)->mix = 1.0;
     return true;
 }
 static void p_deactivate(const clap_plugin_t *p) { (void)p; }
@@ -260,7 +267,7 @@ static int32_t p_process(const clap_plugin_t *p, const clap_process_t *proc) {
     if (out->channel_count == 0 || out->data32 == NULL) return 0;
     const clap_audio_buffer_t *in =
         (proc->audio_inputs_count > 0) ? &proc->audio_inputs[0] : NULL;
-    double wet = 1.0 - mock_state.mix + mock_state.mix * mock_state.gain;
+    double wet = 1.0 - state_of(p)->mix + state_of(p)->mix * state_of(p)->gain;
     for (uint32_t c = 0; c < out->channel_count; c++) {
         float *o = out->data32[c];
         if (!o) continue;
@@ -303,8 +310,8 @@ static bool params_get_info(const clap_plugin_t *p, uint32_t index, clap_param_i
 
 static bool params_get_value(const clap_plugin_t *p, uint32_t id, double *value) {
     (void)p;
-    if (id == 0) { *value = mock_state.gain; return true; }
-    if (id == 1) { *value = mock_state.mix; return true; }
+    if (id == 0) { *value = state_of(p)->gain; return true; }
+    if (id == 1) { *value = state_of(p)->mix; return true; }
     return false;
 }
 
@@ -333,8 +340,8 @@ static void params_flush(const clap_plugin_t *p, const clap_input_events_t *in,
         if (h->space_id == 0 && h->type == 5 &&
             h->size >= (uint32_t)sizeof(clap_event_param_value_t)) {
             const clap_event_param_value_t *ev = (const clap_event_param_value_t *)h;
-            if (ev->param_id == 0) mock_state.gain = ev->value;
-            else if (ev->param_id == 1) mock_state.mix = ev->value;
+            if (ev->param_id == 0) state_of(p)->gain = ev->value;
+            else if (ev->param_id == 1) state_of(p)->mix = ev->value;
         }
     }
 }
@@ -375,7 +382,7 @@ static const clap_plugin_latency_t mock_latency = {latency_get};
 static bool state_save(const clap_plugin_t *p, const clap_ostream_t *stream) {
     (void)p;
     if (!stream || !stream->write) return false;
-    double values[2] = {mock_state.gain, mock_state.mix};
+    double values[2] = {state_of(p)->gain, state_of(p)->mix};
     int64_t n = stream->write(stream, values, sizeof(values));
     return n == (int64_t)sizeof(values);
 }
@@ -386,8 +393,8 @@ static bool state_load(const clap_plugin_t *p, const clap_istream_t *stream) {
     double values[2] = {0.0, 0.0};
     int64_t n = stream->read(stream, values, sizeof(values));
     if (n != (int64_t)sizeof(values)) return false;
-    mock_state.gain = values[0];
-    mock_state.mix = values[1];
+    state_of(p)->gain = values[0];
+    state_of(p)->mix = values[1];
     return true;
 }
 
@@ -398,14 +405,14 @@ static bool preset_from_location(const clap_plugin_t *p, uint32_t location_kind,
                                  const char *location, const char *load_key) {
     (void)p; (void)load_key;
     if (location_kind != 0 || !location) return false;
-    double gain = mock_state.gain;
-    double mix = mock_state.mix;
+    double gain = state_of(p)->gain;
+    double mix = state_of(p)->mix;
     const char *g = strstr(location, "gain=");
     if (g) gain = atof(g + 5);
     const char *m = strstr(location, "mix=");
     if (m) mix = atof(m + 4);
-    mock_state.gain = gain;
-    mock_state.mix = mix;
+    state_of(p)->gain = gain;
+    state_of(p)->mix = mix;
     return true;
 }
 
@@ -535,8 +542,8 @@ static const void *p_get_extension(const clap_plugin_t *p, const char *id) {
     return NULL;
 }
 
-static clap_plugin_t mock_plugin = {
-    &mock_desc, &mock_state, p_init, p_destroy, p_activate, p_deactivate,
+static const clap_plugin_t mock_plugin_template = {
+    &mock_desc, NULL, p_init, p_destroy, p_activate, p_deactivate,
     p_start_processing, p_stop_processing, p_reset, p_process,
     p_get_extension, p_on_main_thread,
 };
@@ -555,10 +562,21 @@ static const clap_plugin_descriptor_t *factory_get_plugin_descriptor(
 static const clap_plugin_t *factory_create_plugin(const clap_plugin_factory_t *factory,
                                                   const clap_host_t *host, const char *plugin_id) {
     (void)factory; (void)host;
-    if (strcmp(plugin_id, mock_desc.id) == 0) {
-        return &mock_plugin;
+    if (strcmp(plugin_id, mock_desc.id) != 0) {
+        return NULL;
     }
-    return NULL;
+    clap_plugin_t *plugin = (clap_plugin_t *)malloc(sizeof(clap_plugin_t));
+    mock_state_t *state = (mock_state_t *)malloc(sizeof(mock_state_t));
+    if (!plugin || !state) {
+        free(plugin);
+        free(state);
+        return NULL;
+    }
+    *plugin = mock_plugin_template;
+    state->gain = 1.0;
+    state->mix = 1.0;
+    plugin->plugin_data = state;
+    return plugin;
 }
 
 static const clap_plugin_factory_t mock_factory = {
