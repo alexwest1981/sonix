@@ -11,6 +11,10 @@ pub struct PluginViewActions {
     pub load_preset_into_track: Option<(String, usize, String)>,
     /// Stem track index whose plugin insert should be removed.
     pub remove_track: Option<usize>,
+    /// Stem track index whose plugin editor should be opened (Fas 4.4b).
+    pub open_gui: Option<usize>,
+    /// Stem track index whose plugin editor should be closed.
+    pub close_gui: Option<usize>,
 }
 
 pub fn render_plugins_view(
@@ -20,6 +24,7 @@ pub fn render_plugins_view(
     stem_track_count: usize,
     default_track: usize,
     active_plugins: &[Option<String>],
+    gui_open: &[bool],
 ) -> PluginViewActions {
     ui.group(|ui| {
         // ====================================================================
@@ -94,7 +99,7 @@ pub fn render_plugins_view(
         // 3. ACTIVE PER-TRACK INSERTS (Fas 4.2 / 4.3)
         // ====================================================================
         let mut actions = PluginViewActions::default();
-        render_active_inserts(ui, active_plugins, &mut actions);
+        render_active_inserts(ui, active_plugins, gui_open, &mut actions);
 
         ui.add_space(8.0);
 
@@ -131,11 +136,12 @@ pub fn render_plugins_view(
     .inner
 }
 
-/// Lists the plugins currently instantiated per stem track, with a remove
-/// button. Empty when no plugin is loaded anywhere.
+/// Lists the plugins currently instantiated per stem track, with open/close GUI
+/// and remove buttons. Empty when no plugin is loaded anywhere.
 fn render_active_inserts(
     ui: &mut Ui,
     active_plugins: &[Option<String>],
+    gui_open: &[bool],
     actions: &mut PluginViewActions,
 ) {
     let any = active_plugins.iter().any(|p| p.is_some());
@@ -153,6 +159,7 @@ fn render_active_inserts(
             let Some(name) = slot else {
                 continue;
             };
+            let is_open = gui_open.get(idx).copied().unwrap_or(false);
             ui.horizontal(|ui| {
                 ui.label(
                     egui::RichText::new(crate::tstatus!("Spår {}", idx + 1))
@@ -161,9 +168,34 @@ fn render_active_inserts(
                         .color(Theme::TEXT_BRIGHT),
                 );
                 ui.label(egui::RichText::new(name).size(10.5).color(Theme::FL_GREEN));
+                if is_open {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("🪟 GUI öppet"))
+                            .size(9.5)
+                            .color(Theme::FL_YELLOW),
+                    );
+                }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(crate::i18n::t("🗑 Ta bort")).clicked() {
                         actions.remove_track = Some(idx);
+                    }
+                    let gui_button = if is_open {
+                        crate::i18n::t("🪟 Stäng GUI")
+                    } else {
+                        crate::i18n::t("🪟 Öppna GUI")
+                    };
+                    if ui
+                        .button(gui_button)
+                        .on_hover_text(crate::i18n::t(
+                            "Visar pluginens eget gränssnitt i ett X11-fönster – samma instans som processar ljudet.",
+                        ))
+                        .clicked()
+                    {
+                        if is_open {
+                            actions.close_gui = Some(idx);
+                        } else {
+                            actions.open_gui = Some(idx);
+                        }
                     }
                 });
             });
@@ -666,7 +698,7 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
             ui.label(egui::RichText::new(crate::i18n::t("2. Köra hela FL Studio som ett instrument inuti Sonix (FL Studio VSTi)")).strong().size(12.5).color(Theme::FL_CYAN));
             ui.label(
                 egui::RichText::new(
-                    crate::i18n::t("Vägen dit går via FL Studio VSTi (.dll) körd genom Wine + yabridge. Sonix kan ännu inte ladda eller visa plugin-GUI:t – plugin-hanteraren katalogiserar och verifierar filer, den kör dem inte.")
+                    crate::i18n::t("Vägen dit går via FL Studio VSTi (.dll) körd genom Wine + yabridge. Sonix kan ännu inte ladda eller visa VSTi-pluginets GUI – plugin-hanteraren katalogiserar och verifierar filer, den kör dem inte. (CLAP-plugins kan däremot laddas och köras.)")
                 ).size(10.5).color(Theme::TEXT_BRIGHT)
             );
         });
@@ -826,7 +858,7 @@ fn render_inspection_panel(
                     };
                     ui.label(
                         egui::RichText::new(crate::tstatus!(
-                            "🖼 GUI: {} {}×{} ({}) – fönsterhosting (X11) kommer i Fas 4.4b",
+                            "🖼 GUI: {} {}×{} ({}) – öppnas i ett X11-fönster från plugin-hanteraren",
                             gui.api,
                             gui.width,
                             gui.height,

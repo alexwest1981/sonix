@@ -145,13 +145,14 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 - [x] **4.4a Plugin-GUI-ABI + livscykel** — *M* ✅
   - **Löst:** CLAP-värden läser och driver nu **`clap.gui`** mot den fullständiga vtable:n (`is_api_supported`, `get_preferred_api`, `create`, `destroy`, `get_size`, `can_resize`, `set_size`, `set_parent`, `show`, `hide`; resterande fält deklareras för korrekt layout). `PluginProcessor`-traitet fick GUI-metoder (default "stöds ej"), `PluginInsert` delegerar, och `ClapProcessor` håller GUI-livscykeln (`gui_created`) samt river GUI:t i `Drop` före `deactivate`. `clap_window_t` skickas med korrekt `x11`-union. Inspektionen rapporterar nu pluginens GUI-kapacitet (`PluginGuiCapability`) och plugin-panelen visar **"🖼 Plugin-GUI: x11 320×240 (kan ändra storlek)"** eller **"stöds inte"**. Mock-pluginen (`tests/fixtures/mock_clap.c`) implementerar en riktig (headless) GUI-vtable.
   - **Klart när:** Hosten kan skapa/visa/dölja/ta bort en plugins GUI och läsa dess storlek. ✅ (Livscykel + `set_parent` + `set_size` + storleks-round-trip verifierade mot mock-pluginen. 125 tester default, 138 med featuren, 0 varningar.)
-  - **Kvar till 4.4b:** själva X11-fönstret och den **delade plugin-instansen** (samma instans för ljud och GUI), samt en aktiv "öppna GUI"-knapp i spåret.
+  - **Kvar till 4.4b:** själva X11-fönstret och den **delade plugin-instansen** (samma instans för ljud och GUI), samt en aktiv "öppna GUI"-knapp i spåret. → **Klart i 4.4b nedan.**
   - **Filer:** `src/audio/plugin_host_live.rs`, `src/ui/plugins_view.rs`, `src/i18n.rs`, `tests/fixtures/mock_clap.c`
   - **Beroende:** 4.2
 
-- [ ] **4.4b Plugin-GUI-fönster (X11)** — *L*
-  - **Gör:** Dela plugin-instansen mellan ljud- och huvudtråden, skapa ett X11-fönster och bädda in GUI:t via `set_parent`; visa "öppna GUI" i spåret.
-  - **Klart när:** Pluginens egna fönster kan öppnas och styra ljudet.
+- [x] **4.4b Plugin-GUI-fönster (X11)** — *L* ✅
+  - **Löst:** Plugin-instansen delas nu mellan ljud- och huvudtråden: `ClapProcessor` håller bara ljudbuffertarna medan själva kärnan (`ClapCore`) ligger bakom `Arc<ClapCore>` (`unsafe impl Send + Sync`), och `PluginHandle(Arc<dyn PluginCore>)` är det huvudtråds-handtag som GUI:t använder. `PluginInsert::core_handle()` ger handtaget, och `App` håller en `PluginHandle` per spår så att kärnan aldrig droppas på ljudtråden (utbytta/borttagna plugins flyttas till `retired_plugin_handles` och släpps först vid app-exit). Ny modul `src/audio/plugin_gui.rs` skapar ett riktigt **X11-fönster** via `libX11` (dlopen med `libloading`, `XCreateSimpleWindow`, `XSetWMProtocols` för fönsterstängning) och bäddar in editorn med `gui_set_parent`; `GuiSession` sköter livscykeln (create → set_parent → show, hide → destroy i `Drop`) och pollar X11-händelser per UI-frame. Plugin-hanteraren har nu **"🪟 Öppna GUI" / "🪟 Stäng GUI"** per aktiv insert, och ett stängt fönster river sessionen automatiskt.
+  - **Klart när:** Pluginens egna fönster kan öppnas och styra ljudet. ✅ (Delad-instans-invarianten + GUI-sessionens avvisande/ärliga fel verifierade headless mot mock-pluginen: `shared_core_outlives_the_processor`, `mock_plugin_reaches_the_x11_stage_without_display`. 127 tester default, 142 med featuren, 0 varningar. **OBS:** själva X11-fönstret kan inte köras i en headless miljö — det kompileras och ABI:n testas, men fönsterhosting kräver en riktig display.)
+  - **Filer:** `src/audio/plugin_host_live.rs`, `src/audio/plugin_gui.rs`, `src/audio/mod.rs`, `src/ui/app.rs`, `src/ui/plugins_view.rs`, `src/i18n.rs`
   - **Beroende:** 4.4a
 
 - [ ] **4.5 Out-of-process sandbox** — *L*

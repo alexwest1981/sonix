@@ -17,6 +17,7 @@ pub mod midi_input;
 #[allow(dead_code)]
 pub mod neural_separator;
 pub mod patcher;
+pub mod plugin_gui;
 pub mod plugin_host;
 // The live CLAP host's ABI code is feature-gated; the shared data types and
 // `inspect()` are always compiled so the UI can show an honest status.

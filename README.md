@@ -173,8 +173,9 @@ update-desktop-database ~/.local/share/applications
 
 ### 11. 🔌 Plugin Manager — 🟡 Catalogue + opt-in CLAP host
 * Real recursive scanning of VST3/CLAP/LV2/VST2/`.fst` folders, ELF/PE binary verification, Wine & yabridge detection, and a one-click `yabridgectl sync`.
-* **Opt-in CLAP host:** build with `--features plugin-host` and Sonix can `dlopen` a `.clap` plugin, validate its `clap_entry`, instantiate it, read its descriptor **and parameters** (the "🔎 Load & inspect" button shows them), **run audio through it on a stem track** with plug-in delay compensation (the "▶ Load" button inserts it), **save/restore its state with the project** and **read/drive its `clap.gui` lifecycle**. The actual plugin window (X11) is not embedded yet.
-* 🔜 **Note:** VST3/LV2/VST2 are still catalogue-only, and no plugin GUI window is shown yet. See **[Plugin Support — Current Reality](#-plugin-support--current-reality)**.
+* **Opt-in CLAP host:** build with `--features plugin-host` and Sonix can `dlopen` a `.clap` plugin, validate its `clap_entry`, instantiate it, read its descriptor **and parameters** (the "🔎 Load & inspect" button shows them), **run audio through it on a stem track** with plug-in delay compensation (the "▶ Load" button inserts it), **save/restore its state with the project** and **read/drive its `clap.gui` lifecycle**.
+* **Plugin GUI in its own window:** an active insert opens the plugin's own UI with **"🪟 Open GUI"** — the host creates a real **X11 window** and embeds the editor via `clap.gui` (`set_parent`/`show`), and the audio and the GUI share the **same plugin instance**. The window is polled every UI frame and torn down cleanly (hide → destroy) when closed.
+* 🔜 **Note:** VST3/LV2/VST2 are still catalogue-only. The CLAP GUI needs a real X display (cannot be shown headless). See **[Plugin Support — Current Reality](#-plugin-support--current-reality)**.
 
 ### 12. 💿 Export & Project I/O — ✅ Real
 * Offline render of the full project (real samples, timeline audio, FX) to **WAV** (16/24-bit & 32-bit float) and **FLAC** (in-app encoders); **MP3/OGG/AAC** via `ffmpeg` when installed.
@@ -212,9 +213,9 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
 | `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — applying needs a plugin host |
-| Plugin hosting (VST3/CLAP/LV2/VST2) | 🟡 Partial | CLAP load + parameter inspection + per-track audio processing with PDC + state/preset save-load + GUI ABI/lifecycle (opt-in `--features plugin-host`); the X11 window, MIDI instrument routing & sandbox still missing |
+| Plugin hosting (VST3/CLAP/LV2/VST2) | 🟡 Partial | CLAP load + parameter inspection + per-track audio processing with PDC + state/preset save-load + GUI in its own X11 window (opt-in `--features plugin-host`); MIDI instrument routing & sandbox still missing |
 
-**Overall:** roughly **90–95 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The largest outstanding piece is **plugin hosting** (CLAP load + parameter inspection + per-track audio processing with PDC + state/preset save-load + GUI ABI/lifecycle work opt-in; the X11 window, MIDI instrument routing and sandbox remain); neural stem separation is implemented (opt-in `--features neural` + a user-supplied HTDemucs ONNX).
+**Overall:** roughly **90–95 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The largest outstanding piece is **plugin hosting** (CLAP load + parameter inspection + per-track audio processing with PDC + state/preset save-load + GUI in its own X11 window work opt-in; MIDI instrument routing and sandbox remain); neural stem separation is implemented (opt-in `--features neural` + a user-supplied HTDemucs ONNX).
 
 The full, prioritised development plan with check-off phases lives in **[ROADMAP.md](ROADMAP.md)**.
 
@@ -222,7 +223,7 @@ The full, prioritised development plan with check-off phases lives in **[ROADMAP
 
 ## 🔌 Plugin Support — Current Reality
 
-> **Short answer: catalogue + opt-in CLAP loading, inspection, per-track audio processing, project state/preset persistence and GUI ABI.** Sonix can *find and catalogue* every format, and — when built with `--features plugin-host` — *load* a native CLAP plugin, read its parameters, **run audio through it on a stem track with plug-in delay compensation**, **save/restore its state with the project**, **load the plugin's own presets** and **read/drive the plugin's `clap.gui` lifecycle on the main thread**. The actual plugin window (X11) and sandboxing remain.
+> **Short answer: catalogue + opt-in CLAP loading, inspection, per-track audio processing, project state/preset persistence and a plugin GUI in its own X11 window.** Sonix can *find and catalogue* every format, and — when built with `--features plugin-host` — *load* a native CLAP plugin, read its parameters, **run audio through it on a stem track with plug-in delay compensation**, **save/restore its state with the project**, **load the plugin's own presets** and **open the plugin's own UI in an X11 window that shares the same instance that processes audio**. Sandboxing remains.
 
 **What works today (✅)**
 * Recursive scanning of standard **VST3 / CLAP / LV2 / VST2** folders and FL Studio `.fst` locations (Linux + Wine paths).
@@ -231,15 +232,16 @@ The full, prioritised development plan with check-off phases lives in **[ROADMAP
 * **CLAP host (opt-in, `--features plugin-host`):** `dlopen` of a `.clap` bundle, `clap_entry` validation, instantiation via the plugin-factory, and descriptor + parameter inspection shown in the UI.
 * **Real audio processing + PDC:** a loaded CLAP effect can be set as a per-track insert (the "▶ Load" button in the Plugin Manager) and processes the stem audio in real time. The host block-buffers (128 frames) and the engine compensates the latency so tracks stay phase-aligned.
 * **State + preset persistence:** the host implements `clap.state` (opaque save/load blob) and `clap.preset-load/2` (the plugin's own presets). Plugin inserts are stored in the project (`plugin_slots`, path + state) and re-instantiated with their state restored on load; the UI lists active inserts with a remove button and offers a "load with preset" field.
-* **GUI ABI + lifecycle:** the host reads `clap.gui` and drives the whole lifecycle on the main thread (`is_api_supported`, `get_preferred_api`, `create`, `get_size`, `can_resize`, `set_size`, `set_parent`, `show`, `hide`, `destroy`). Inspection reports the plugin's GUI capability (e.g. "x11 320×240, resizable"). The actual X11 window is wired in Fas 4.4b.
+* **GUI ABI + lifecycle:** the host reads `clap.gui` and drives the whole lifecycle on the main thread (`is_api_supported`, `get_preferred_api`, `create`, `get_size`, `can_resize`, `set_size`, `set_parent`, `show`, `hide`, `destroy`). Inspection reports the plugin's GUI capability (e.g. "x11 320×240, resizable").
+* **Plugin GUI in its own X11 window:** an active insert opens with **"🪟 Open GUI"**; the host creates an X11 window via `libX11` and embeds the editor with `set_parent`, and the GUI shares the **same `ClapCore` instance** as the audio thread (via `Arc` + `PluginHandle`). Window events are polled every UI frame and closing tears the editor down cleanly (hide → destroy). Requires a real X display.
 
 **What is still missing to fully host plugins (🔜)**
-1. The actual plugin window (X11 embedding, Fas 4.4b), and out-of-process sandboxing for crash isolation (Fas 4.5).
+1. Out-of-process sandboxing for crash isolation (Fas 4.5).
 2. Full engine-wide MIDI routing into instruments (note-port discovery and plumbing are in place, but no instrument hosting yet).
 3. VST3 / LV2 / VST2 loading — only CLAP is implemented so far.
 4. For FL Studio's own instruments (Sytrus, Harmor, Gross Beat, …) and FL Studio VSTi, the only viable route is their **VST/VST3 builds run through Wine + yabridge** — the native FL `.dll` formats are not a standard plugin API.
 
-**Therefore:** a CLAP **effect** is now usable for sound in Sonix when built with `--features plugin-host` — load it, insert it on a stem track with "▶ Load", and its state survives project save/load. The plugin's GUI ABI is already read and driven on the main thread; the X11 window, sandboxing and instrument hosting are still to come; the Plugin Manager otherwise remains a catalogue and a Yabridge setup assistant.
+**Therefore:** a CLAP **effect** is now usable for sound in Sonix when built with `--features plugin-host` — load it, insert it on a stem track with "▶ Load", open its GUI with "🪟 Open GUI", and its state survives project save/load. Sandboxing and instrument hosting are still to come; the Plugin Manager otherwise remains a catalogue and a Yabridge setup assistant.
 
 ---
 

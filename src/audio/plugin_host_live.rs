@@ -19,6 +19,7 @@
 //! compiled in both configurations, so the UI can always show an honest status.
 
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 /// CLAP parameter flag: the value is a discrete/stepped value.
 pub const PARAM_IS_STEPPED: u32 = 1 << 0;
@@ -263,6 +264,102 @@ pub trait PluginProcessor: Send {
     }
     /// `clap.gui`: destroys the GUI. Main-thread only.
     fn gui_destroy(&mut self) {}
+    /// A cloneable handle to the underlying instance, when the backend supports
+    /// sharing it between the audio thread and the main thread (Fas 4.4b).
+    ///
+    /// The handle keeps the plugin alive: hold one for as long as any GUI
+    /// session or deferred state access may still touch the instance.
+    fn core_handle(&self) -> Option<PluginHandle> {
+        None
+    }
+}
+
+/// A cloneable, thread-safe handle to a live plugin instance.
+///
+/// CLAP explicitly allows the host to call `process` on the audio thread while
+/// calling GUI/state methods on the main thread, so the instance can be shared
+/// behind an `Arc`. The handle is what makes the GUI operate on the *same*
+/// instance that is processing audio — no duplicated/parallel plugin.
+#[allow(dead_code)]
+pub trait PluginCore: Send + Sync {
+    fn info(&self) -> &PluginInfo;
+    fn latency_frames(&self) -> u32;
+    fn save_state(&self) -> Vec<u8>;
+    fn load_state(&self, data: &[u8]) -> bool;
+    fn set_parameter(&self, id: u32, value: f64) -> bool;
+    fn reset(&self);
+    fn preset_load(&self, location: &str) -> bool;
+    fn gui_is_api_supported(&self, api: &str, is_floating: bool) -> bool;
+    fn gui_preferred_api(&self) -> Option<(String, bool)>;
+    fn gui_get_size(&self) -> Option<(u32, u32)>;
+    fn gui_can_resize(&self) -> bool;
+    fn gui_is_created(&self) -> bool;
+    fn gui_create(&self, api: &str, is_floating: bool) -> bool;
+    fn gui_set_parent(&self, x11_window: u64) -> bool;
+    fn gui_set_size(&self, width: u32, height: u32) -> bool;
+    fn gui_show(&self) -> bool;
+    fn gui_hide(&self) -> bool;
+    fn gui_destroy(&self);
+}
+
+/// Shared ownership wrapper around a [`PluginCore`].
+#[derive(Clone)]
+#[allow(dead_code)]
+pub struct PluginHandle(Arc<dyn PluginCore>);
+
+#[allow(dead_code)]
+impl PluginHandle {
+    pub fn new(core: Arc<dyn PluginCore>) -> Self {
+        Self(core)
+    }
+    pub fn info(&self) -> &PluginInfo {
+        self.0.info()
+    }
+    pub fn latency_frames(&self) -> u32 {
+        self.0.latency_frames()
+    }
+    pub fn save_state(&self) -> Vec<u8> {
+        self.0.save_state()
+    }
+    pub fn load_state(&self, data: &[u8]) -> bool {
+        self.0.load_state(data)
+    }
+    pub fn set_parameter(&self, id: u32, value: f64) -> bool {
+        self.0.set_parameter(id, value)
+    }
+    pub fn gui_is_api_supported(&self, api: &str, is_floating: bool) -> bool {
+        self.0.gui_is_api_supported(api, is_floating)
+    }
+    pub fn gui_preferred_api(&self) -> Option<(String, bool)> {
+        self.0.gui_preferred_api()
+    }
+    pub fn gui_get_size(&self) -> Option<(u32, u32)> {
+        self.0.gui_get_size()
+    }
+    pub fn gui_can_resize(&self) -> bool {
+        self.0.gui_can_resize()
+    }
+    pub fn gui_is_created(&self) -> bool {
+        self.0.gui_is_created()
+    }
+    pub fn gui_create(&self, api: &str, is_floating: bool) -> bool {
+        self.0.gui_create(api, is_floating)
+    }
+    pub fn gui_set_parent(&self, x11_window: u64) -> bool {
+        self.0.gui_set_parent(x11_window)
+    }
+    pub fn gui_set_size(&self, width: u32, height: u32) -> bool {
+        self.0.gui_set_size(width, height)
+    }
+    pub fn gui_show(&self) -> bool {
+        self.0.gui_show()
+    }
+    pub fn gui_hide(&self) -> bool {
+        self.0.gui_hide()
+    }
+    pub fn gui_destroy(&self) {
+        self.0.gui_destroy()
+    }
 }
 
 /// Creates a live processing instance for `path`, ready to be wrapped in a
@@ -388,6 +485,11 @@ impl PluginInsert {
         self.processor.gui_destroy()
     }
 
+    /// Shared handle to the plugin instance, when the backend supports it.
+    pub fn core_handle(&self) -> Option<PluginHandle> {
+        self.processor.core_handle()
+    }
+
     pub fn block_frames(&self) -> usize {
         self.block_frames
     }
@@ -503,6 +605,8 @@ mod imp {
     use libloading::Library;
     use std::ffi::{CStr, CString, c_char, c_void};
     use std::path::{Path, PathBuf};
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     pub const CLAP_VERSION_MAJOR: u32 = 1;
 
@@ -1289,47 +1393,43 @@ mod imp {
         (bufs, ptrs, audio)
     }
 
+    /// Shared, thread-safe plugin instance. The audio thread calls
+    /// `process`/`set_parameter`; the main thread calls state/GUI methods.
+    /// CLAP's contract explicitly allows that split, so the instance is shared
+    /// behind an `Arc` instead of being duplicated.
     #[allow(dead_code)]
-    pub struct ClapProcessor {
+    struct ClapCore {
         instance: ClapInstance,
         sample_rate: f64,
         max_frames: u32,
         activated: bool,
         processing: bool,
         latency_frames: u32,
-        input_channels: Vec<u32>,
-        output_channels: Vec<u32>,
-        in_bufs: Vec<Vec<Vec<f32>>>,
-        out_bufs: Vec<Vec<Vec<f32>>>,
-        /// Owns the per-port channel-pointer arrays that `in_audio`/`out_audio`
-        /// point into; must outlive them.
-        in_ptrs: Vec<Vec<*mut f32>>,
-        out_ptrs: Vec<Vec<*mut f32>>,
-        in_audio: Vec<ClapAudioBuffer>,
-        out_audio: Vec<ClapAudioBuffer>,
         params_ext: *const ClapPluginParams,
         state_ext: *const ClapPluginState,
         preset_load_ext: *const ClapPluginPresetLoad,
         gui_ext: *const ClapPluginGui,
         /// Whether `clap.gui` create() succeeded and destroy() has not run.
-        gui_created: bool,
+        gui_created: AtomicBool,
     }
 
-    // The processor is only ever touched from one thread at a time (the audio
-    // thread after hand-off), which the host upholds.
-    unsafe impl Send for ClapProcessor {}
+    // CLAP hosts may call `process` from the audio thread while calling
+    // GUI/state methods from the main thread; plugins must be safe under that
+    // split. The only host-side shared state is the atomic `gui_created` flag.
+    unsafe impl Send for ClapCore {}
+    unsafe impl Sync for ClapCore {}
 
-    impl ClapProcessor {
+    impl ClapCore {
         fn plugin(&self) -> *const ClapPlugin {
             self.instance.plugin
         }
     }
 
-    impl Drop for ClapProcessor {
+    impl Drop for ClapCore {
         fn drop(&mut self) {
             // Tear the GUI down first; the CLAP contract wants destroy() before
             // the plugin itself is destroyed.
-            super::PluginProcessor::gui_destroy(self);
+            super::PluginCore::gui_destroy(self);
             unsafe {
                 let plugin = self.plugin();
                 if self.processing
@@ -1347,86 +1447,14 @@ mod imp {
         }
     }
 
-    impl super::PluginProcessor for ClapProcessor {
-        fn backend(&self) -> &'static str {
-            "CLAP"
-        }
+    impl super::PluginCore for ClapCore {
         fn info(&self) -> &PluginInfo {
             &self.instance.info
-        }
-        fn parameters(&self) -> &[PluginParameter] {
-            &self.instance.params
         }
         fn latency_frames(&self) -> u32 {
             self.latency_frames
         }
-        fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
-            let frames = left.len().min(right.len());
-            if frames == 0 {
-                return;
-            }
-            let frames = frames.min(self.max_frames as usize);
-
-            // Fill input port 0 (and silence any additional input ports).
-            for (port, bufs) in self.in_bufs.iter_mut().enumerate() {
-                if port == 0 {
-                    for (ch, buf) in bufs.iter_mut().enumerate() {
-                        for (i, s) in buf.iter_mut().enumerate().take(frames) {
-                            *s = match ch {
-                                0 => left[i],
-                                1 => right[i],
-                                _ => 0.0,
-                            };
-                        }
-                    }
-                } else {
-                    for buf in bufs.iter_mut() {
-                        for s in buf.iter_mut().take(frames) {
-                            *s = 0.0;
-                        }
-                    }
-                }
-            }
-
-            let in_events = empty_input_events();
-            let out_events = empty_output_events();
-            let process = ClapProcess {
-                steady_time: -1,
-                frames_count: frames as u32,
-                transport: std::ptr::null(),
-                audio_inputs: self.in_audio.as_ptr(),
-                audio_outputs: self.out_audio.as_mut_ptr(),
-                audio_inputs_count: self.in_audio.len() as u32,
-                audio_outputs_count: self.out_audio.len() as u32,
-                in_events: &in_events,
-                out_events: &out_events,
-            };
-
-            unsafe {
-                if let Some(process_fn) = (*self.plugin()).process {
-                    process_fn(self.plugin(), &process as *const ClapProcess as *const c_void);
-                }
-            }
-
-            // Read back output port 0; duplicate channel 0 for mono outputs.
-            if let Some(bufs) = self.out_bufs.first() {
-                let (l_buf, r_buf) = match bufs.len() {
-                    0 => (None, None),
-                    1 => (Some(&bufs[0]), None),
-                    _ => (Some(&bufs[0]), Some(&bufs[1])),
-                };
-                for i in 0..frames {
-                    left[i] = l_buf.map(|b| b[i]).unwrap_or(0.0);
-                    right[i] = r_buf.map(|b| b[i]).unwrap_or_else(|| l_buf.map(|b| b[i]).unwrap_or(0.0));
-                }
-            } else {
-                for i in 0..frames {
-                    left[i] = 0.0;
-                    right[i] = 0.0;
-                }
-            }
-        }
-        fn set_parameter(&mut self, id: u32, value: f64) -> bool {
+        fn set_parameter(&self, id: u32, value: f64) -> bool {
             if self.params_ext.is_null() {
                 return false;
             }
@@ -1465,15 +1493,14 @@ mod imp {
             }
             true
         }
-        fn reset(&mut self) {
+        fn reset(&self) {
             unsafe {
                 if let Some(reset) = (*self.plugin()).reset {
                     reset(self.plugin());
                 }
             }
         }
-
-        fn save_state(&mut self) -> Vec<u8> {
+        fn save_state(&self) -> Vec<u8> {
             if self.state_ext.is_null() {
                 return Vec::new();
             }
@@ -1489,8 +1516,7 @@ mod imp {
             let ok = unsafe { save(self.plugin(), &ostream) };
             if ok { out } else { Vec::new() }
         }
-
-        fn load_state(&mut self, data: &[u8]) -> bool {
+        fn load_state(&self, data: &[u8]) -> bool {
             if self.state_ext.is_null() {
                 return false;
             }
@@ -1508,8 +1534,7 @@ mod imp {
             };
             unsafe { load(self.plugin(), &istream) }
         }
-
-        fn preset_load(&mut self, location: &str) -> bool {
+        fn preset_load(&self, location: &str) -> bool {
             if self.preset_load_ext.is_null() {
                 return false;
             }
@@ -1529,7 +1554,6 @@ mod imp {
                 )
             }
         }
-
         fn gui_is_api_supported(&self, api: &str, is_floating: bool) -> bool {
             if self.gui_ext.is_null() {
                 return false;
@@ -1543,7 +1567,6 @@ mod imp {
             };
             unsafe { is_supported(self.plugin(), api.as_ptr(), is_floating) }
         }
-
         fn gui_preferred_api(&self) -> Option<(String, bool)> {
             if self.gui_ext.is_null() {
                 return None;
@@ -1558,7 +1581,6 @@ mod imp {
             let api = unsafe { CStr::from_ptr(api_ptr) }.to_string_lossy().into_owned();
             Some((api, floating))
         }
-
         fn gui_get_size(&self) -> Option<(u32, u32)> {
             if self.gui_ext.is_null() {
                 return None;
@@ -1573,7 +1595,6 @@ mod imp {
                 None
             }
         }
-
         fn gui_can_resize(&self) -> bool {
             if self.gui_ext.is_null() {
                 return false;
@@ -1583,13 +1604,11 @@ mod imp {
                 .map(|f| unsafe { f(self.plugin()) })
                 .unwrap_or(false)
         }
-
         fn gui_is_created(&self) -> bool {
-            self.gui_created
+            self.gui_created.load(Ordering::SeqCst)
         }
-
-        fn gui_create(&mut self, api: &str, is_floating: bool) -> bool {
-            if self.gui_created {
+        fn gui_create(&self, api: &str, is_floating: bool) -> bool {
+            if self.gui_created.load(Ordering::SeqCst) {
                 return true;
             }
             if self.gui_ext.is_null() {
@@ -1604,13 +1623,12 @@ mod imp {
             };
             let ok = unsafe { create(self.plugin(), api.as_ptr(), is_floating) };
             if ok {
-                self.gui_created = true;
+                self.gui_created.store(true, Ordering::SeqCst);
             }
             ok
         }
-
-        fn gui_set_parent(&mut self, x11_window: u64) -> bool {
-            if !self.gui_created || self.gui_ext.is_null() {
+        fn gui_set_parent(&self, x11_window: u64) -> bool {
+            if !self.gui_created.load(Ordering::SeqCst) || self.gui_ext.is_null() {
                 return false;
             }
             let gui = unsafe { &*self.gui_ext };
@@ -1623,9 +1641,8 @@ mod imp {
             };
             unsafe { set_parent(self.plugin(), &window) }
         }
-
-        fn gui_set_size(&mut self, width: u32, height: u32) -> bool {
-            if !self.gui_created || self.gui_ext.is_null() {
+        fn gui_set_size(&self, width: u32, height: u32) -> bool {
+            if !self.gui_created.load(Ordering::SeqCst) || self.gui_ext.is_null() {
                 return false;
             }
             let gui = unsafe { &*self.gui_ext };
@@ -1634,9 +1651,8 @@ mod imp {
             };
             unsafe { set_size(self.plugin(), width, height) }
         }
-
-        fn gui_show(&mut self) -> bool {
-            if !self.gui_created || self.gui_ext.is_null() {
+        fn gui_show(&self) -> bool {
+            if !self.gui_created.load(Ordering::SeqCst) || self.gui_ext.is_null() {
                 return false;
             }
             let gui = unsafe { &*self.gui_ext };
@@ -1644,9 +1660,8 @@ mod imp {
                 .map(|f| unsafe { f(self.plugin()) })
                 .unwrap_or(false)
         }
-
-        fn gui_hide(&mut self) -> bool {
-            if !self.gui_created || self.gui_ext.is_null() {
+        fn gui_hide(&self) -> bool {
+            if !self.gui_created.load(Ordering::SeqCst) || self.gui_ext.is_null() {
                 return false;
             }
             let gui = unsafe { &*self.gui_ext };
@@ -1654,12 +1669,10 @@ mod imp {
                 .map(|f| unsafe { f(self.plugin()) })
                 .unwrap_or(false)
         }
-
-        fn gui_destroy(&mut self) {
-            if !self.gui_created {
+        fn gui_destroy(&self) {
+            if !self.gui_created.swap(false, Ordering::SeqCst) {
                 return;
             }
-            self.gui_created = false;
             if self.gui_ext.is_null() {
                 return;
             }
@@ -1667,6 +1680,163 @@ mod imp {
             if let Some(destroy) = gui.destroy {
                 unsafe { destroy(self.plugin()) };
             }
+        }
+    }
+
+    #[allow(dead_code)]
+    pub struct ClapProcessor {
+        /// Shared with the main thread (GUI/state); see [`ClapCore`].
+        core: Arc<ClapCore>,
+        input_channels: Vec<u32>,
+        output_channels: Vec<u32>,
+        in_bufs: Vec<Vec<Vec<f32>>>,
+        out_bufs: Vec<Vec<Vec<f32>>>,
+        /// Owns the per-port channel-pointer arrays that `in_audio`/`out_audio`
+        /// point into; must outlive them.
+        in_ptrs: Vec<Vec<*mut f32>>,
+        out_ptrs: Vec<Vec<*mut f32>>,
+        in_audio: Vec<ClapAudioBuffer>,
+        out_audio: Vec<ClapAudioBuffer>,
+    }
+
+    // The audio buffers are only ever touched from the audio thread; the shared
+    // `Arc<ClapCore>` is `Send + Sync`.
+    unsafe impl Send for ClapProcessor {}
+
+    impl super::PluginProcessor for ClapProcessor {
+        fn backend(&self) -> &'static str {
+            "CLAP"
+        }
+        fn info(&self) -> &PluginInfo {
+            super::PluginCore::info(&*self.core)
+        }
+        fn parameters(&self) -> &[PluginParameter] {
+            &self.core.instance.params
+        }
+        fn latency_frames(&self) -> u32 {
+            super::PluginCore::latency_frames(&*self.core)
+        }
+        fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+            let frames = left.len().min(right.len());
+            if frames == 0 {
+                return;
+            }
+            let frames = frames.min(self.core.max_frames as usize);
+
+            // Fill input port 0 (and silence any additional input ports).
+            for (port, bufs) in self.in_bufs.iter_mut().enumerate() {
+                if port == 0 {
+                    for (ch, buf) in bufs.iter_mut().enumerate() {
+                        for (i, s) in buf.iter_mut().enumerate().take(frames) {
+                            *s = match ch {
+                                0 => left[i],
+                                1 => right[i],
+                                _ => 0.0,
+                            };
+                        }
+                    }
+                } else {
+                    for buf in bufs.iter_mut() {
+                        for s in buf.iter_mut().take(frames) {
+                            *s = 0.0;
+                        }
+                    }
+                }
+            }
+
+            let in_events = empty_input_events();
+            let out_events = empty_output_events();
+            let process = ClapProcess {
+                steady_time: -1,
+                frames_count: frames as u32,
+                transport: std::ptr::null(),
+                audio_inputs: self.in_audio.as_ptr(),
+                audio_outputs: self.out_audio.as_mut_ptr(),
+                audio_inputs_count: self.in_audio.len() as u32,
+                audio_outputs_count: self.out_audio.len() as u32,
+                in_events: &in_events,
+                out_events: &out_events,
+            };
+
+            unsafe {
+                if let Some(process_fn) = (*self.core.plugin()).process {
+                    process_fn(
+                        self.core.plugin(),
+                        &process as *const ClapProcess as *const c_void,
+                    );
+                }
+            }
+
+            // Read back output port 0; duplicate channel 0 for mono outputs.
+            if let Some(bufs) = self.out_bufs.first() {
+                let (l_buf, r_buf) = match bufs.len() {
+                    0 => (None, None),
+                    1 => (Some(&bufs[0]), None),
+                    _ => (Some(&bufs[0]), Some(&bufs[1])),
+                };
+                for i in 0..frames {
+                    left[i] = l_buf.map(|b| b[i]).unwrap_or(0.0);
+                    right[i] = r_buf
+                        .map(|b| b[i])
+                        .unwrap_or_else(|| l_buf.map(|b| b[i]).unwrap_or(0.0));
+                }
+            } else {
+                for i in 0..frames {
+                    left[i] = 0.0;
+                    right[i] = 0.0;
+                }
+            }
+        }
+        fn set_parameter(&mut self, id: u32, value: f64) -> bool {
+            super::PluginCore::set_parameter(&*self.core, id, value)
+        }
+        fn reset(&mut self) {
+            super::PluginCore::reset(&*self.core);
+        }
+        fn save_state(&mut self) -> Vec<u8> {
+            super::PluginCore::save_state(&*self.core)
+        }
+        fn load_state(&mut self, data: &[u8]) -> bool {
+            super::PluginCore::load_state(&*self.core, data)
+        }
+        fn preset_load(&mut self, location: &str) -> bool {
+            super::PluginCore::preset_load(&*self.core, location)
+        }
+        fn gui_is_api_supported(&self, api: &str, is_floating: bool) -> bool {
+            super::PluginCore::gui_is_api_supported(&*self.core, api, is_floating)
+        }
+        fn gui_preferred_api(&self) -> Option<(String, bool)> {
+            super::PluginCore::gui_preferred_api(&*self.core)
+        }
+        fn gui_get_size(&self) -> Option<(u32, u32)> {
+            super::PluginCore::gui_get_size(&*self.core)
+        }
+        fn gui_can_resize(&self) -> bool {
+            super::PluginCore::gui_can_resize(&*self.core)
+        }
+        fn gui_is_created(&self) -> bool {
+            super::PluginCore::gui_is_created(&*self.core)
+        }
+        fn gui_create(&mut self, api: &str, is_floating: bool) -> bool {
+            super::PluginCore::gui_create(&*self.core, api, is_floating)
+        }
+        fn gui_set_parent(&mut self, x11_window: u64) -> bool {
+            super::PluginCore::gui_set_parent(&*self.core, x11_window)
+        }
+        fn gui_set_size(&mut self, width: u32, height: u32) -> bool {
+            super::PluginCore::gui_set_size(&*self.core, width, height)
+        }
+        fn gui_show(&mut self) -> bool {
+            super::PluginCore::gui_show(&*self.core)
+        }
+        fn gui_hide(&mut self) -> bool {
+            super::PluginCore::gui_hide(&*self.core)
+        }
+        fn gui_destroy(&mut self) {
+            super::PluginCore::gui_destroy(&*self.core)
+        }
+        fn core_handle(&self) -> Option<super::PluginHandle> {
+            Some(super::PluginHandle::new(self.core.clone()))
         }
     }
 
@@ -1801,12 +1971,19 @@ mod imp {
         }
 
         Ok(Box::new(ClapProcessor {
-            instance,
-            sample_rate: sample_rate_f,
-            max_frames,
-            activated,
-            processing,
-            latency_frames,
+            core: Arc::new(ClapCore {
+                instance,
+                sample_rate: sample_rate_f,
+                max_frames,
+                activated,
+                processing,
+                latency_frames,
+                params_ext,
+                state_ext,
+                preset_load_ext,
+                gui_ext,
+                gui_created: AtomicBool::new(false),
+            }),
             input_channels,
             output_channels,
             in_bufs,
@@ -1815,11 +1992,6 @@ mod imp {
             out_ptrs,
             in_audio,
             out_audio,
-            params_ext,
-            state_ext,
-            preset_load_ext,
-            gui_ext,
-            gui_created: false,
         }))
     }
 
@@ -1939,6 +2111,25 @@ mod imp {
             assert_eq!(processor.info().name, "Sonix Mock Gain");
             assert_eq!(processor.latency_frames(), 0);
             assert_eq!(processor.parameters().len(), 2);
+        }
+
+        #[test]
+        fn shared_core_outlives_the_processor() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let processor =
+                super::super::load_processor(mock, 48_000.0, 512).expect("mock processor");
+            let insert = super::super::PluginInsert::new(processor, 128);
+            let handle = insert
+                .core_handle()
+                .expect("CLAP inserts expose a shared core");
+            assert_eq!(handle.info().name, "Sonix Mock Gain");
+            drop(insert);
+            // The audio-thread processor is gone, but the main-thread handle
+            // keeps the shared ClapCore alive (Fas 4.4b invariant).
+            assert_eq!(handle.info().name, "Sonix Mock Gain");
+            assert_eq!(handle.latency_frames(), 0);
         }
 
         #[test]

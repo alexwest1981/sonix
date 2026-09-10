@@ -723,6 +723,15 @@ pub struct SonixApp {
     /// Per-engine-stem-track plugin insert, persisted with the project so a
     /// reload can re-instantiate the plugin and restore its `clap.state` blob.
     pub plugin_slots: Vec<Option<PluginSlot>>,
+    /// Main-thread handles to the live plugin instances (Fas 4.4b). Holding one
+    /// keeps the shared `ClapCore` alive so it is never dropped on the audio
+    /// thread; the GUI session uses it to talk to the *same* instance.
+    pub plugin_handles: Vec<Option<crate::audio::plugin_host_live::PluginHandle>>,
+    /// Open plugin-GUI windows, one slot per stem track.
+    pub plugin_gui_sessions: Vec<Option<crate::audio::plugin_gui::GuiSession>>,
+    /// Handles for replaced/removed plugins. Kept until shutdown so the final
+    /// `ClapCore` drop happens on the main thread, not the audio thread.
+    pub retired_plugin_handles: Vec<crate::audio::plugin_host_live::PluginHandle>,
     // Vocal Studio, Comping, Harmonizer & AI Music Assistant
     pub vocal_studio: VocalStudioTrack,
     pub vocal_harmonizer: VocalHarmonizer,
@@ -1274,6 +1283,9 @@ impl SonixApp {
             stem_separation_active: false,
             plugin_manager: PluginManager::default(),
             plugin_slots: Vec::new(),
+            plugin_handles: Vec::new(),
+            plugin_gui_sessions: Vec::new(),
+            retired_plugin_handles: Vec::new(),
             vocal_studio: VocalStudioTrack::default(),
             vocal_harmonizer: VocalHarmonizer::default(),
             ai_assistant: AiMusicAssistant::default(),
@@ -2674,6 +2686,11 @@ impl SonixApp {
     pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         self.stop_playback();
         let _ = self.engine.send_command(AudioCommand::ClearAllStemTracks);
+        // The old plugins are being replaced: close their editors and hold the
+        // shared handles until shutdown so the cores are not freed on the audio
+        // thread while it may still be rendering the previous graph.
+        self.close_all_plugin_guis();
+        self.retire_all_plugin_handles();
 
         let plugin_slots = payload.plugin_slots;
 
@@ -3621,6 +3638,8 @@ impl SonixApp {
                 // Capture the fresh state now, on the main thread (clap.state is
                 // main-thread only), so a project save can restore it.
                 let state = insert.save_state();
+                let handle = insert.core_handle();
+                self.retire_plugin_handle(track_index);
                 self.record_plugin_slot(
                     track_index,
                     PluginSlot {
@@ -3629,6 +3648,8 @@ impl SonixApp {
                         state,
                     },
                 );
+                self.ensure_plugin_vecs(track_index);
+                self.plugin_handles[track_index] = handle;
                 let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
                     track_index,
                     insert: Some(insert),
@@ -3663,6 +3684,8 @@ impl SonixApp {
                     return;
                 }
                 let state = insert.save_state();
+                let handle = insert.core_handle();
+                self.retire_plugin_handle(track_index);
                 self.record_plugin_slot(
                     track_index,
                     PluginSlot {
@@ -3671,6 +3694,8 @@ impl SonixApp {
                         state,
                     },
                 );
+                self.ensure_plugin_vecs(track_index);
+                self.plugin_handles[track_index] = handle;
                 let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
                     track_index,
                     insert: Some(insert),
@@ -3690,6 +3715,7 @@ impl SonixApp {
 
     /// Removes the plugin insert on `track_index` and forgets its saved slot.
     pub fn remove_plugin_from_track(&mut self, track_index: usize) {
+        self.retire_plugin_handle(track_index);
         let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
             track_index,
             insert: None,
@@ -3702,6 +3728,116 @@ impl SonixApp {
             "🗑 Tog bort plugin från stämspår {}",
             track_index + 1
         );
+    }
+
+    fn ensure_plugin_vecs(&mut self, track_index: usize) {
+        if self.plugin_handles.len() <= track_index {
+            self.plugin_handles.resize_with(track_index + 1, || None);
+        }
+        if self.plugin_gui_sessions.len() <= track_index {
+            self.plugin_gui_sessions.resize_with(track_index + 1, || None);
+        }
+    }
+
+    /// Closes the GUI and moves the track's shared handle to the retirement
+    /// list so the instance is not destroyed on the audio thread.
+    fn retire_plugin_handle(&mut self, track_index: usize) {
+        if let Some(slot) = self.plugin_gui_sessions.get_mut(track_index) {
+            *slot = None;
+        }
+        if let Some(handle) = self.plugin_handles.get_mut(track_index).and_then(|h| h.take()) {
+            self.retired_plugin_handles.push(handle);
+        }
+    }
+
+    fn close_all_plugin_guis(&mut self) {
+        for slot in self.plugin_gui_sessions.iter_mut() {
+            *slot = None;
+        }
+    }
+
+    fn retire_all_plugin_handles(&mut self) {
+        for slot in self.plugin_handles.iter_mut() {
+            if let Some(handle) = slot.take() {
+                self.retired_plugin_handles.push(handle);
+            }
+        }
+    }
+
+    /// Whether a plugin GUI is currently open for `track_index`.
+    pub fn is_plugin_gui_open(&self, track_index: usize) -> bool {
+        self.plugin_gui_sessions
+            .get(track_index)
+            .and_then(|s| s.as_ref())
+            .map(|s| s.is_alive())
+            .unwrap_or(false)
+    }
+
+    /// Opens the plugin editor for `track_index` in a real X11 window, sharing
+    /// the instance that is processing audio. Main-thread only.
+    pub fn open_plugin_gui(&mut self, track_index: usize) {
+        self.ensure_plugin_vecs(track_index);
+        if self.plugin_gui_sessions[track_index].is_some() {
+            return;
+        }
+        let Some(handle) = self.plugin_handles.get(track_index).and_then(|h| h.clone()) else {
+            self.status_message =
+                crate::tstatus!("⚠ Ingen aktiv plugin på stämspår {}", track_index + 1);
+            return;
+        };
+        let name = handle.info().name.clone();
+        let title = format!("{} – Sonix", name);
+        match crate::audio::plugin_gui::GuiSession::open(handle, &title) {
+            Ok(session) => {
+                let size = session.size();
+                self.plugin_gui_sessions[track_index] = Some(session);
+                self.status_message = match size {
+                    Some((width, height)) => crate::tstatus!(
+                        "🪟 Öppnade plugin-GUI för '{}' ({}×{})",
+                        name,
+                        width,
+                        height
+                    ),
+                    None => crate::tstatus!("🪟 Öppnade plugin-GUI för '{}'", name),
+                };
+            }
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte öppna plugin-GUI: {}", e);
+            }
+        }
+    }
+
+    /// Closes the plugin editor for `track_index`, if open.
+    pub fn close_plugin_gui(&mut self, track_index: usize) {
+        if let Some(slot) = self.plugin_gui_sessions.get_mut(track_index)
+            && slot.is_some()
+        {
+            *slot = None;
+            self.status_message = crate::i18n::t("🪟 Stängde plugin-GUI").to_string();
+        }
+    }
+
+    /// Pumps X11 events for every open plugin window and drops sessions whose
+    /// window was closed by the user. Call once per UI frame.
+    pub fn poll_plugin_guis(&mut self) {
+        let mut closed = Vec::new();
+        for (index, slot) in self.plugin_gui_sessions.iter_mut().enumerate() {
+            if let Some(session) = slot
+                && !session.poll()
+            {
+                closed.push(index);
+            }
+        }
+        for index in closed {
+            let title = self.plugin_gui_sessions[index]
+                .as_ref()
+                .map(|s| s.title().to_string());
+            self.plugin_gui_sessions[index] = None;
+            self.status_message = match title {
+                Some(title) => crate::tstatus!("🪟 Plugin-GUI stängt ({})", title),
+                None => crate::i18n::t("🪟 Plugin-GUI stängt").to_string(),
+            };
+        }
     }
 
     fn record_plugin_slot(&mut self, track_index: usize, slot: PluginSlot) {
@@ -3725,6 +3861,9 @@ impl SonixApp {
                         data.name
                     ));
                 }
+                let handle = insert.core_handle();
+                self.ensure_plugin_vecs(track_index);
+                self.plugin_handles[track_index] = handle;
                 let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
                     track_index,
                     insert: Some(insert),
@@ -4297,6 +4436,8 @@ impl eframe::App for SonixApp {
         self.poll_hardware_control();
         self.sync_patcher_graph();
         self.sync_stem_separator_engine();
+        // Keep embedded plugin editors responsive (Fas 4.4b).
+        self.poll_plugin_guis();
 
         // Screenshot event listener
         let mut received_screenshot = None;
@@ -5139,6 +5280,9 @@ impl eframe::App for SonixApp {
                                 .len()
                                 .max(self.playlist_tracks.len())
                                 .max(active_plugins.len());
+                            let gui_open: Vec<bool> = (0..active_plugins.len())
+                                .map(|i| self.is_plugin_gui_open(i))
+                                .collect();
                             let actions = render_plugins_view(
                                 ui,
                                 &mut self.plugin_manager,
@@ -5146,6 +5290,7 @@ impl eframe::App for SonixApp {
                                 stem_track_count,
                                 self.selected_channel,
                                 &active_plugins,
+                                &gui_open,
                             );
                             if let Some((path, track)) = actions.load_into_track {
                                 self.load_plugin_into_track(&path, track);
@@ -5155,6 +5300,12 @@ impl eframe::App for SonixApp {
                             }
                             if let Some(track) = actions.remove_track {
                                 self.remove_plugin_from_track(track);
+                            }
+                            if let Some(track) = actions.open_gui {
+                                self.open_plugin_gui(track);
+                            }
+                            if let Some(track) = actions.close_gui {
+                                self.close_plugin_gui(track);
                             }
                         }
                         ViewMode::VocalStudio => {

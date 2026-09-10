@@ -286,6 +286,14 @@ Pluginen kunde spara state, men värden läste/drev aldrig pluginens GUI och ins
 
 ---
 
+### P41 — Delad plugin-instans + X11-GUI-fönster (Fas 4.4b) · ✅ KLAR
+GUI-ABI:n fanns, men inget fönster öppnades och ljudtråden ägde instansen — så ett GUI kunde inte nå samma plugin som processade ljudet.
+- **Löst:** Instansen delas nu. `ClapProcessor` behåller bara ljudbuffertarna; själva kärnan ligger i `ClapCore` bakom `Arc<ClapCore>` (`unsafe impl Send + Sync`), och `PluginHandle(Arc<dyn PluginCore>)` är huvudtråds-handtaget. `PluginInsert::core_handle()` ger handtaget. Ny modul **`src/audio/plugin_gui.rs`** skapar ett riktigt **X11-fönster** via `libX11` (dlopen med `libloading`; `XOpenDisplay`, `XCreateSimpleWindow`, `XStoreName`, `XSetWMProtocols`, `XResizeWindow`, `XDestroyWindow` m.fl.) och bäddar in editorn med `gui_set_parent`. `GuiSession` sköter CLAP-livscykeln (create → set_parent → show, hide → destroy i `Drop`) och pollar X11-händelser (`DestroyNotify` + `WM_DELETE_WINDOW`) per UI-frame. `App` håller en `PluginHandle` per spår (`plugin_handles`) och öppna sessioner (`plugin_gui_sessions`); utbytta/borttagna plugins flyttas till `retired_plugin_handles` så att sista `ClapCore`-droppen alltid sker på huvudtråden. Plugin-hanteraren fick **"🪟 Öppna GUI" / "🪟 Stäng GUI"** per aktiv insert; ett användarstängt fönster river sessionen automatiskt.
+- **Tester:** `shared_core_outlives_the_processor` (handtaget håller kärnan vid liv efter att processorn släppts), `mock_plugin_reaches_the_x11_stage_without_display` (mock-pluginen går genom `gui_create` och faller på ärligt X11-fel utan `DISPLAY`), `rejects_plugins_without_x11_support`, `x11_open_without_display_is_an_honest_error`.
+- `cargo test --release` = **127 tester**, 0 varningar. `cargo test --release --features plugin-host` = **142 tester**, 0 varningar. Alla byggkombinationer (`default`, `plugin-host`, `neural`, `neural,plugin-host`) länkar rent. **OBS:** X11-fönstret kan inte köras headless — fönsterhosting kräver en riktig display; koden kompileras och ABI:n/livscykeln testas mot mock.
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -300,6 +308,7 @@ Pluginen kunde spara state, men värden läste/drev aldrig pluginens GUI och ins
 | CLAP-ljudprocessning + per-spår-insert med PDC (opt-in) | ✅ REAL (P38) |
 | CLAP state/preset save-load + projektpersistens (opt-in) | ✅ REAL (P39) |
 | CLAP GUI-ABI + livscykel + inspektion (opt-in) | ✅ REAL (P40) |
+| CLAP delad instans + X11-GUI-fönster (opt-in) | ✅ REAL (P41) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |
