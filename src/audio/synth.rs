@@ -1628,10 +1628,7 @@ mod tests {
         synth.handle_command(AudioCommand::SetSongPlayback(true));
     }
 
-    /// Sums |L|+|R| over `frames` stereo frames. The master chain ends in the
-    /// tape-stop ring buffer, which currently reads a full buffer ahead, so the
-    /// stem audio only reaches the output after ~32768 frames. Integrating over
-    /// a window past that point is therefore required.
+    /// Sums |L|+|R| over `frames` stereo frames.
     fn output_energy(synth: &mut SynthEngine, frames: usize) -> f32 {
         let mut energy = 0.0_f32;
         for _ in 0..frames {
@@ -1645,7 +1642,7 @@ mod tests {
         let mut unity = SynthEngine::new(48_000.0);
         load_impulse_and_silence(&mut unity);
         route_track(&mut unity, 0, 0, None);
-        let full = output_energy(&mut unity, 40_000);
+        let full = output_energy(&mut unity, 2048);
 
         let mut halved = SynthEngine::new(48_000.0);
         load_impulse_and_silence(&mut halved);
@@ -1656,7 +1653,7 @@ mod tests {
             muted: false,
             solo: false,
         });
-        let half = output_energy(&mut halved, 40_000);
+        let half = output_energy(&mut halved, 2048);
 
         assert!(full > 0.05, "expected audible bus output, got {full}");
         assert!(
@@ -1676,7 +1673,7 @@ mod tests {
             muted: true,
             solo: false,
         });
-        assert!(output_energy(&mut synth, 40_000) < 1e-4, "muted bus must be silent");
+        assert!(output_energy(&mut synth, 2048) < 1e-4, "muted bus must be silent");
     }
 
     #[test]
@@ -1685,7 +1682,7 @@ mod tests {
         load_impulse_and_silence(&mut reference);
         route_track(&mut reference, 0, 0, None);
         route_track(&mut reference, 1, 1, None);
-        assert!(output_energy(&mut reference, 40_000) > 0.05, "reference should be audible");
+        assert!(output_energy(&mut reference, 2048) > 0.05, "reference should be audible");
 
         let mut soloed = SynthEngine::new(48_000.0);
         load_impulse_and_silence(&mut soloed);
@@ -1698,7 +1695,7 @@ mod tests {
             solo: true,
         });
         assert!(
-            output_energy(&mut soloed, 40_000) < 1e-4,
+            output_energy(&mut soloed, 2048) < 1e-4,
             "soloing the silent bus must silence the non-soloed impulse bus"
         );
     }
@@ -1708,7 +1705,7 @@ mod tests {
         let mut unity = SynthEngine::new(48_000.0);
         load_impulse_and_silence(&mut unity);
         route_track(&mut unity, 0, 0, Some(2));
-        let full = output_energy(&mut unity, 40_000);
+        let full = output_energy(&mut unity, 2048);
 
         let mut halved = SynthEngine::new(48_000.0);
         load_impulse_and_silence(&mut halved);
@@ -1719,7 +1716,7 @@ mod tests {
             muted: false,
             solo: false,
         });
-        let half = output_energy(&mut halved, 40_000);
+        let half = output_energy(&mut halved, 2048);
 
         assert!(full > 0.05, "expected audible VCA output, got {full}");
         assert!(
@@ -1739,7 +1736,7 @@ mod tests {
             muted: true,
             solo: false,
         });
-        assert!(output_energy(&mut synth, 40_000) < 1e-4, "muted VCA must be silent");
+        assert!(output_energy(&mut synth, 2048) < 1e-4, "muted VCA must be silent");
     }
 
     #[test]

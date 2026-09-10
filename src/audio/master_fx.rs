@@ -831,15 +831,20 @@ impl TapeStop {
             self.rate = (self.rate - step).max(target);
         }
 
-        self.read_pos += self.rate;
-        if self.read_pos >= n as f32 {
-            self.read_pos -= n as f32;
-        }
+        // Read at the current position *before* advancing it. `read_pos` starts
+        // equal to `write_pos`, so at rate 1.0 the just-written sample passes
+        // through with no added latency; as the rate falls, the read pointer
+        // lags behind the write pointer and the pitch drops.
         let i0 = self.read_pos as usize % n;
         let i1 = (i0 + 1) % n;
         let frac = self.read_pos - self.read_pos.floor();
         let ol = self.buffer_l[i0] * (1.0 - frac) + self.buffer_l[i1] * frac;
         let or = self.buffer_r[i0] * (1.0 - frac) + self.buffer_r[i1] * frac;
+
+        self.read_pos += self.rate;
+        if self.read_pos >= n as f32 {
+            self.read_pos -= n as f32;
+        }
 
         self.write_pos = (self.write_pos + 1) % n;
 
@@ -877,6 +882,21 @@ mod tests {
             a = l;
         }
         assert!(captured.iter().any(|&v| (v - a).abs() < 1e-6));
+    }
+
+    #[test]
+    fn tape_stop_is_transparent_at_normal_rate() {
+        let mut ts = TapeStop::new(48_000.0);
+        // Inactive -> rate 1.0: output must equal the input with no added
+        // latency (regression for a full ring-buffer read-ahead).
+        for i in 0..2000 {
+            let x = ((i as f32) * 0.01).sin();
+            let (l, r) = ts.process(x, -x);
+            assert!(
+                (l - x).abs() < 1e-6 && (r + x).abs() < 1e-6,
+                "tape-stop must be a passthrough when idle (frame {i}: {l} vs {x})"
+            );
+        }
     }
 
     #[test]
