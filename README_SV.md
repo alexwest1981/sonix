@@ -175,6 +175,7 @@ update-desktop-database ~/.local/share/applications
 ### 12. 💿 Export & Projekt-I/O — ✅ Äkta
 * Offline-rendering av hela projektet (riktiga samples, tidslinje-audio, FX) till **WAV** (16/24-bit & 32-bit float) och **FLAC** (kodas i appen); **MP3/OGG/AAC** via `ffmpeg` om installerat.
 * Ren metadatataggning (endast Sonix Studio), mastermix eller per-spår-stems.
+* **Loudness-normalisering (EBU R128):** Äkta ITU-R BS.1770-grindad loudness (K-viktning) och äkta-peak-tak via 4× oversampling. Export-presets i ett klick (Streaming −14, Apple Music −16, Broadcast −23, Klubb/Loud −9 LUFS).
 * Projekt spara/ladda och projektmallar.
 
 ### 13. 🎛 Hårdvarukontroll — ✅ Äkta
@@ -368,7 +369,7 @@ Skapa nya låtprojekt från mallar (Synthwave, Trap, House, Ambient) samt spara 
 ![Projekthanterare](screenshots/16_dialog_projekthanterare.png)
 
 #### 24. 💿 Render & Master Export Queue
-Offline-rendering av hela projektet (riktiga Channel Rack-WAV-samples + tidslinje-audio-stems + FX) till WAV (16/24-bit & float), FLAC (24-bit lossless), MP3 (320 kbps), OGG Vorbis och AAC/M4A. Välj mastermix eller per-spår torra/våta stems, samplingsfrekvens och ren metadata (titel/artist/album/genre/år/kommentar) som bara taggas med **Sonix Studio** – aldrig AI-/leverantörsinfo. WAV/FLAC kodas i appen; MP3/OGG/AAC via `ffmpeg` om det är installerat.
+Offline-rendering av hela projektet (riktiga Channel Rack-WAV-samples + tidslinje-audio-stems + FX) till WAV (16/24-bit & float), FLAC (24-bit lossless), MP3 (320 kbps), OGG Vorbis och AAC/M4A. Välj mastermix eller per-spår torra/våta stems, samplingsfrekvens och ren metadata (titel/artist/album/genre/år/kommentar) som bara taggas med **Sonix Studio** – aldrig AI-/leverantörsinfo. WAV/FLAC kodas i appen; MP3/OGG/AAC via `ffmpeg` om det är installerat. Inkluderar **EBU R128 loudness-normalisering** (BS.1770 K-viktad grindad mätning + äkta-peak-tak via 4× oversampling) med leverans-presets i ett klick (Streaming/Apple Music/Broadcast/Klubb).
 ![Render Queue](screenshots/17_dialog_render_queue.png)
 
 #### 25. 📥 Suno AI Stem Importör

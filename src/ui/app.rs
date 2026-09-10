@@ -747,6 +747,8 @@ pub struct SonixApp {
     pub export_folder: String,
     pub export_base_name: String,
     pub export_metadata: crate::audio::ExportMeta,
+    pub export_loudness_idx: usize,
+    pub export_preset_idx: usize,
     // Suno AI Prompt Bar & Studio Timeline View
     pub suno_prompt_input: String,
     pub suno_model_version: String,
@@ -1289,6 +1291,8 @@ impl SonixApp {
             },
             export_base_name: crate::i18n::t("Min_Låt").to_string(),
             export_metadata: crate::audio::ExportMeta::default(),
+            export_loudness_idx: 0,
+            export_preset_idx: 0,
             // Suno AI Prompt Bar & Studio Timeline View
             suno_prompt_input: crate::i18n::t("Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll").to_string(),
             suno_model_version: "Sonix AI v5.5 (Music & Stems)".to_string(),
@@ -10162,6 +10166,52 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     ui.label(egui::RichText::new(self.tr("Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem.")).size(9.5).color(Theme::TEXT_MUTED));
                 });
 
+                ui.add_space(6.0);
+
+                // 5. Export preset & loudness normalization (EBU R128)
+                ui.group(|ui| {
+                    ui.label(egui::RichText::new(self.tr("5. EXPORT-PRESET & LOUDNESS (EBU R128)")).strong().size(11.5).color(Theme::FL_GREEN));
+                    ui.separator();
+
+                    let presets: [(&str, usize, usize, usize); 5] = [
+                        ("Streaming (WAV 24/48, −14 LUFS)", 1, 1, 1),
+                        ("Apple Music (WAV 24/48, −16 LUFS)", 1, 1, 2),
+                        ("Broadcast EBU R128 (WAV 24/48, −23 LUFS)", 1, 1, 3),
+                        ("Klubb/Loud (WAV 24/44.1, −9 LUFS)", 1, 0, 4),
+                        ("FLAC Master (24-bit, −14 LUFS)", 3, 1, 1),
+                    ];
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(self.tr("Preset:"));
+                        if ui.selectable_label(self.export_preset_idx == 0, self.tr("Anpassad")).clicked() {
+                            self.export_preset_idx = 0;
+                        }
+                        for (i, (label, f, s, l)) in presets.iter().enumerate() {
+                            if ui.selectable_label(self.export_preset_idx == i + 1, self.tr(label)).clicked() {
+                                self.export_preset_idx = i + 1;
+                                self.render_format_idx = *f;
+                                self.render_sample_rate_idx = *s;
+                                self.export_loudness_idx = *l;
+                            }
+                        }
+                    });
+
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(self.tr("Loudness-normalisering:"));
+                        for (i, p) in crate::audio::LoudnessPreset::ALL.iter().enumerate() {
+                            if ui.selectable_label(self.export_loudness_idx == i, self.tr(p.label())).clicked() {
+                                self.export_loudness_idx = i;
+                                self.export_preset_idx = 0;
+                            }
+                        }
+                    });
+                    let active = crate::audio::LoudnessPreset::ALL[self.export_loudness_idx.min(crate::audio::LoudnessPreset::ALL.len() - 1)];
+                    if active.enabled() {
+                        ui.label(egui::RichText::new(crate::tstatus!("Mäts med K-viktning och grindas (BS.1770), normaliseras till {} LUFS med tak på {} dBTP (äkta peak, 4× oversampling). Gäller master-mixen; stems lämnas orörda för extern mixning.", active.target_lufs(), active.ceiling_dbtp())).size(9.5).color(Theme::FL_GREEN));
+                    } else {
+                        ui.label(egui::RichText::new(self.tr("Ingen normalisering – exporten sker med exakt den nivå du hör.")).size(9.5).color(Theme::TEXT_MUTED));
+                    }
+                });
+
                 ui.add_space(8.0);
 
                 ui.group(|ui| {
@@ -10231,6 +10281,9 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
 
         let mut written_files: Vec<String> = Vec::new();
         let mut last_error: Option<String> = None;
+        let mut normalize_note: Option<String> = None;
+        let loudness = crate::audio::LoudnessPreset::ALL
+            [self.export_loudness_idx.min(crate::audio::LoudnessPreset::ALL.len() - 1)];
 
         if stem_mode {
             let track_count = self.playlist_tracks.len();
@@ -10257,11 +10310,21 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             }
         } else {
             let spec = self.build_render_spec(None, sample_rate);
-            let buf = match self.render_buffer(&spec, false) {
+            let mut buf = match self.render_buffer(&spec, false) {
                 Ok(b) => b,
                 Err(e) => { last_error = Some(e); Vec::new() }
             };
             if last_error.is_none() {
+                if let Some(measured) =
+                    crate::audio::normalize_to_preset(&mut buf, sample_rate, loudness)
+                {
+                    normalize_note = Some(crate::tstatus!(
+                        "🔊 Normaliserad till {} LUFS (mätt {} LUFS, tak {} dBTP)",
+                        loudness.target_lufs(),
+                        (measured * 10.0).round() / 10.0,
+                        loudness.ceiling_dbtp()
+                    ));
+                }
                 let path = format!("{}/{}_{:.0}bpm.{}", folder, base, self.bpm, fmt.ext());
                 match crate::audio::write_export(&path, fmt, &buf, sample_rate, &meta) {
                     Ok(_) => written_files.push(path),
@@ -10283,6 +10346,9 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             }
             None => {
                 self.render_queue_status = crate::tstatus!("✅ {} fil(er) exporterade till {}", written_files.len(), folder);
+                if let Some(note) = &normalize_note {
+                    self.render_queue_status = crate::tstatus!("✅ {} fil(er) → {} · {}", written_files.len(), folder, note);
+                }
                 self.status_message = crate::tstatus!("✔ Klar! Exporterade {} fil(er) utan AI-metadata → {}", written_files.len(), folder);
             }
         }

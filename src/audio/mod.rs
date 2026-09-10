@@ -9,6 +9,7 @@ pub mod exporter;
 pub mod factory_samples;
 pub mod filter;
 pub mod hardware_control;
+pub mod loudness;
 pub mod master_fx;
 pub mod midi_input;
 pub mod patcher;
@@ -44,6 +45,10 @@ pub use hardware_control::{
 };
 #[allow(unused_imports)]
 pub use midi_input::{note_to_roll_offset, MidiKeyboardInput};
+#[allow(unused_imports)]
+pub use loudness::{
+    integrated_lufs, normalize_loudness, normalize_to_preset, true_peak_db, LoudnessPreset,
+};
 #[allow(unused_imports)]
 pub use master_fx::{
     CompressorParams, DeEsserParams, DoublerParams, GateParams, LimiterParams, MasterEqBand,

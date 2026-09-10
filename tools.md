@@ -236,6 +236,12 @@ Det gick att spela med datortangentbordet men inte med ett riktigt MIDI-klaviatu
 - **Tester:** `note_to_roll_offset` (in-range, oktavtransponering, kort rutnät, tomt rutnät) i `midi_input.rs`.
 - `cargo test --release` = **75 tester**, 0 varningar.
 
+### P34 — Export-presets & loudness-normalisering (Fas 5.5) · ✅ KLAR
+Exporten saknade nivåkontroll: ingen loudness-mätning, inget äkta-peak-tak och inga färdiga leveranspresets.
+- **Löst:** Ny DSP-modul `src/audio/loudness.rs` med en **äkta** ITU-R BS.1770 / EBU R128-implementation: K-viktning (high-shelf + high-pass-biquads designade för valfri samplerate), grindad integrerad loudness (400 ms-block, 75 % överlapp, absolut grind −70 LUFS, relativ grind −10 LU) samt **true peak** via 4× polyphase-oversampling (windowed-sinc-FIR, 12 taps/fas). `normalize_loudness()` mäter, applicerar gain mot målet och sänker vid behov ytterligare så att äkta peak hamnar under taket; `normalize_to_preset()` är en bekväm wrapper. `LoudnessPreset` (Av, Streaming −14, Apple Music −16, Broadcast −23, Klubb/Loud −9 LUFS, med −1/−0.3 dBTP-tak). I exportmodalen: **preset-väljare** (sätter format + samplerate + loudness i ett klick) och **loudness-väljare**; statusraden visar uppmätt och mål-LUFS. Normaliseringen körs på master-mixen; stems lämnas orörda för extern mixning. Nya `SonixApp`-fält: `export_loudness_idx`, `export_preset_idx`.
+- **Tester:** `silence_has_no_loudness`, `normalizing_reaches_target_loudness` (±0.2 LU), `true_peak_of_full_scale_sine_is_near_zero`, `ceiling_is_respected`, `preset_off_is_a_noop`.
+- `cargo test --release` = **80 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning
@@ -246,6 +252,7 @@ Det gick att spela med datortangentbordet men inte med ett riktigt MIDI-klaviatu
 | Timeline/arranger, Channel Rack, Piano Roll, export | REAL |
 | Automationskurvor (volym/pan/sends) | ✅ REAL (P32) |
 | MIDI-klaviaturinspelning till Piano Roll | ✅ REAL (P33) |
+| Export-presets & loudness-normalisering (EBU R128) | ✅ REAL (P34) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

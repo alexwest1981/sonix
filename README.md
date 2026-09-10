@@ -177,6 +177,7 @@ update-desktop-database ~/.local/share/applications
 ### 12. 💿 Export & Project I/O — ✅ Real
 * Offline render of the full project (real samples, timeline audio, FX) to **WAV** (16/24-bit & 32-bit float) and **FLAC** (in-app encoders); **MP3/OGG/AAC** via `ffmpeg` when installed.
 * Clean metadata tagging (Sonix Studio only), master mix or per-track stems.
+* **Loudness normalization (EBU R128):** Real ITU-R BS.1770 gated loudness (K-weighting) and true-peak ceiling via 4× oversampling. One-click export presets (Streaming −14, Apple Music −16, Broadcast −23, Club/Loud −9 LUFS).
 * Project save/load and template projects.
 
 ### 13. 🎛 Hardware Control — ✅ Real
@@ -370,7 +371,7 @@ Create new projects from music templates (Synthwave, Trap, House, Ambient), save
 ![Project Manager](screenshots/16_dialog_projekthanterare.png)
 
 #### 24. 💿 Render & Master Export Queue
-Offline full-project rendering (real channel WAV samples + timeline audio stems + FX) to WAV (16/24-bit & float), FLAC (24-bit lossless), MP3 (320 kbps), OGG Vorbis and AAC/M4A. Choose master mix or per-track dry/wet stems, sample rate and clean metadata (title/artist/album/genre/year/comment) tagged only with **Sonix Studio** – never AI/provider info. WAV/FLAC are encoded in-app; MP3/OGG/AAC use `ffmpeg` when installed.
+Offline full-project rendering (real channel WAV samples + timeline audio stems + FX) to WAV (16/24-bit & float), FLAC (24-bit lossless), MP3 (320 kbps), OGG Vorbis and AAC/M4A. Choose master mix or per-track dry/wet stems, sample rate and clean metadata (title/artist/album/genre/year/comment) tagged only with **Sonix Studio** – never AI/provider info. WAV/FLAC are encoded in-app; MP3/OGG/AAC use `ffmpeg` when installed. Includes **EBU R128 loudness normalization** (BS.1770 K-weighted gated measurement + true-peak ceiling via 4× oversampling) with one-click delivery presets (Streaming/Apple Music/Broadcast/Club).
 ![Render Queue](screenshots/17_dialog_render_queue.png)
 
 #### 25. 📥 Suno AI Stem Importer

@@ -31,7 +31,7 @@
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Plugin-hantering | 2 | 6 | **25 %** |
-| Export & projekt-I/O | 4 | 1 | **80 %** |
+| Export & projekt-I/O (presets, loudness-normalisering) | 5 | 0 | **100 %** |
 | Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
@@ -170,13 +170,16 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Löst:** Ny datamodell `AutomationParam` (Volym, Panorering, Reverb-send, Delay-send), `AutomationPoint` och `AutomationLane` med linjär interpolering (`value_at`). Varje `PlaylistTrack` har `automation: Vec<AutomationLane>`; kurvorna sparas/laddas i projektet (`SavedTrackData.automation` + `PreloadedTrackData.automation`, `#[serde(default)]`). Under uppspelning utvärderar `apply_automation()` alla aktiva kurvor vid `song_time` och skickar ändrade värden till motorn via `SetStemTrackState`/`SetTrackMix` (med per-parameter-cache så inga kommandon spammas). I arranger-vyn finns en **Automation PÅ/AV**-knapp + parameter-väljare i ROW 2, och en dedikerad redigeringsfil under Master-spåret: vänsterklicka lägger till punkter, dra flyttar (snäpps med valt `TimeSnapMode`), högerklicka tar bort. `value_at`-interpolering, serde-roundtrip och parameter-index/ranges testas (71 tester, 0 varningar).
   - **Klart när:** En kurva kan ritas per spår/parameter och hörs påverka ljudet under uppspelning samt överlever spara/ladda. ✅
   - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
-- [ ] **5.5 Fler export-presets / loudness-normalisering.**
+- [x] **5.5 Fler export-presets / loudness-normalisering.** ✅
+  - **Löst:** Ny DSP-modul `src/audio/loudness.rs` med en **äkta** ITU-R BS.1770 / EBU R128-implementation: K-viktning (high-shelf + high-pass-biquads designade för valfri samplerate), grindad integrerad loudness (400 ms-block, 75 % överlapp, absolut grind −70 LUFS, relativ grind −10 LU) och **true peak** via 4× polyphase-oversampling (windowed-sinc-FIR). `normalize_loudness()` mäter, applicerar gain mot målet och sänker vid behov ytterligare så att äkta peak hamnar under taket. I exportmodalen finns nu en **preset-väljare** (Streaming/Apple Music/Broadcast/Club/FLAC Master som sätter format + samplerate + loudness i ett klick) och en **loudness-väljare** (Av, −14, −16, −23, −9 LUFS med −1/−0.3 dBTP-tak). Normaliseringen körs på master-mixen; stems lämnas orörda för extern mixning. Statusraden visar uppmätt och mål-LUFS.
+  - **Klart när:** En exporterad master kan träffa ett valt LUFS-mål med äkta-peak-tak, verifierat av tester. ✅
+  - **Filer:** `src/audio/loudness.rs`, `src/audio/mod.rs`, `src/ui/app.rs`, `src/i18n.rs`
 
 ---
 
 ## 🎯 Nästa uppgift
 
-**Fas 5.1 — Fler tester** för realtids- och plugin-vägar, eller **Fas 5.5** (export-presets / loudness-normalisering) — båda medelstora och verifierbara. Alternativt **Fas 3.1** (neural stem-separation, XL) eller **Fas 4.1** (plugin-hosting, L) om du vill ta itu med de stora kvarvarande bitarna. Fas 2 och MIDI/automation i Fas 5 är nu klara.
+**Fas 5.1 — Fler tester** för realtids- och plugin-vägar (medelstor, verifierbar). Alternativt **Fas 5.2** (VCA-grupper, om efterfrågat), eller de stora kvarvarande bitarna **Fas 3.1** (neural stem-separation, XL) och **Fas 4.1** (plugin-hosting, L). Fas 2 samt MIDI, automation och loudness i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 
