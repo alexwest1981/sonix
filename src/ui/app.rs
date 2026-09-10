@@ -380,6 +380,29 @@ pub struct SonixProjectData {
     pub master_volume: f32,
     pub master_pan: f32,
     pub tracks: Vec<SavedTrackData>,
+    /// Per-engine-stem-track plugin inserts. Index-aligned with the engine's
+    /// stem tracks; `None` means "no plugin on this track".
+    #[serde(default)]
+    pub plugin_slots: Vec<Option<SavedPluginData>>,
+}
+
+/// A plugin insert persisted with the project: its shared-object path plus the
+/// opaque state blob produced by `clap.state`.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct SavedPluginData {
+    pub path: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub state: Vec<u8>,
+}
+
+/// In-memory mirror of [`SavedPluginData`] kept on [`SonixApp`].
+#[derive(Clone)]
+pub struct PluginSlot {
+    pub path: String,
+    pub name: String,
+    pub state: Vec<u8>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -570,6 +593,7 @@ pub struct LoadedProjectPayload {
     pub master_volume: f32,
     pub master_pan: f32,
     pub tracks: Vec<PreloadedTrackData>,
+    pub plugin_slots: Vec<Option<SavedPluginData>>,
     pub file_path: String,
 }
 
@@ -696,6 +720,9 @@ pub struct SonixApp {
     pub stem_separation_result: std::sync::Arc<std::sync::Mutex<Option<Result<SeparationResult, String>>>>,
     pub stem_separation_active: bool,
     pub plugin_manager: PluginManager,
+    /// Per-engine-stem-track plugin insert, persisted with the project so a
+    /// reload can re-instantiate the plugin and restore its `clap.state` blob.
+    pub plugin_slots: Vec<Option<PluginSlot>>,
     // Vocal Studio, Comping, Harmonizer & AI Music Assistant
     pub vocal_studio: VocalStudioTrack,
     pub vocal_harmonizer: VocalHarmonizer,
@@ -1246,6 +1273,7 @@ impl SonixApp {
             stem_separation_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
             stem_separation_active: false,
             plugin_manager: PluginManager::default(),
+            plugin_slots: Vec::new(),
             vocal_studio: VocalStudioTrack::default(),
             vocal_harmonizer: VocalHarmonizer::default(),
             ai_assistant: AiMusicAssistant::default(),
@@ -1752,6 +1780,7 @@ impl SonixApp {
                     master_volume: 0.90,
                     master_pan: 0.0,
                     tracks,
+                    plugin_slots: Vec::new(),
                     file_path: "demo".to_string(),
                 });
             }
@@ -2511,6 +2540,17 @@ impl SonixApp {
             master_volume: self.master_volume,
             master_pan: self.master_pan,
             tracks: saved_tracks,
+            plugin_slots: self
+                .plugin_slots
+                .iter()
+                .map(|slot| {
+                    slot.as_ref().map(|s| SavedPluginData {
+                        path: s.path.clone(),
+                        name: s.name.clone(),
+                        state: s.state.clone(),
+                    })
+                })
+                .collect(),
         };
 
         if let Ok(json) = serde_json::to_string_pretty(&data)
@@ -2624,6 +2664,7 @@ impl SonixApp {
                     master_volume: data.master_volume,
                     master_pan: data.master_pan,
                     tracks: preloaded_tracks,
+                    plugin_slots: data.plugin_slots,
                     file_path: path,
                 });
             }
@@ -2633,6 +2674,8 @@ impl SonixApp {
     pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         self.stop_playback();
         let _ = self.engine.send_command(AudioCommand::ClearAllStemTracks);
+
+        let plugin_slots = payload.plugin_slots;
 
         self.project_name = payload.name;
         self.bpm = payload.bpm;
@@ -2681,10 +2724,41 @@ impl SonixApp {
         // Ensure Mic track is always at the end & all track colors are properly classified
         self.ensure_mic_track_exists();
 
+        // Re-instantiate per-track plugins and restore their state on the main
+        // thread (clap.state is main-thread only, so it must not go through the
+        // audio thread). Slot indices map 1:1 onto engine stem tracks.
+        self.plugin_slots = plugin_slots
+            .iter()
+            .map(|slot| {
+                slot.as_ref().map(|s| PluginSlot {
+                    path: s.path.clone(),
+                    name: s.name.clone(),
+                    state: s.state.clone(),
+                })
+            })
+            .collect();
+        let mut plugin_errors: Vec<String> = Vec::new();
+        for (track_index, slot) in plugin_slots.iter().enumerate() {
+            if let Some(data) = slot
+                && let Some(err) = self.restore_plugin_slot(track_index, data)
+            {
+                plugin_errors.push(err);
+            }
+        }
+
         self.loop_end_bar = self.get_max_project_bars().max(32);
         self.project_file_path = Some(payload.file_path);
         self.selected_audio_region = None;
-        self.status_message = crate::tstatus!("📂 Öppnade projekt '{}'!", self.project_name);
+        let opened_name = self.project_name.clone();
+        self.status_message = if plugin_errors.is_empty() {
+            crate::tstatus!("📂 Öppnade projekt '{}'!", opened_name)
+        } else {
+            crate::tstatus!(
+                "📂 Öppnade projekt '{}' – ⚠ {} plugin(s) kunde inte återställas",
+                opened_name,
+                plugin_errors.len()
+            )
+        };
     }
 
     /// Ensures that a dedicated Mic track exists at the very end of the playlist,
@@ -3542,8 +3616,19 @@ impl SonixApp {
         let block = crate::audio::plugin_host_live::DEFAULT_BLOCK_FRAMES;
         match crate::audio::plugin_host_live::load_processor(path, sample_rate, block as u32) {
             Ok(processor) => {
-                let insert = crate::audio::plugin_host_live::PluginInsert::new(processor, block);
+                let mut insert = crate::audio::plugin_host_live::PluginInsert::new(processor, block);
                 let name = insert.info().name.clone();
+                // Capture the fresh state now, on the main thread (clap.state is
+                // main-thread only), so a project save can restore it.
+                let state = insert.save_state();
+                self.record_plugin_slot(
+                    track_index,
+                    PluginSlot {
+                        path: path.to_string(),
+                        name: name.clone(),
+                        state,
+                    },
+                );
                 let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
                     track_index,
                     insert: Some(insert),
@@ -3558,6 +3643,95 @@ impl SonixApp {
             Err(e) => {
                 self.status_message = crate::tstatus!("⚠ Kunde inte ladda plugin: {}", e);
             }
+        }
+    }
+
+    /// Instantiates `path` into `track_index` with a native preset applied via
+    /// `clap.preset-load/2`, then captures the resulting state for the project.
+    pub fn load_plugin_preset_into_track(&mut self, path: &str, track_index: usize, location: &str) {
+        let sample_rate = self.engine.sample_rate as f32;
+        let block = crate::audio::plugin_host_live::DEFAULT_BLOCK_FRAMES;
+        match crate::audio::plugin_host_live::load_processor(path, sample_rate, block as u32) {
+            Ok(processor) => {
+                let mut insert = crate::audio::plugin_host_live::PluginInsert::new(processor, block);
+                let name = insert.info().name.clone();
+                if !insert.preset_load(location) {
+                    self.status_message = crate::tstatus!(
+                        "⚠ Pluginen '{}' stödjer inte clap.preset-load/2 (eller avvisade preseten)",
+                        name
+                    );
+                    return;
+                }
+                let state = insert.save_state();
+                self.record_plugin_slot(
+                    track_index,
+                    PluginSlot {
+                        path: path.to_string(),
+                        name: name.clone(),
+                        state,
+                    },
+                );
+                let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
+                    track_index,
+                    insert: Some(insert),
+                });
+                self.plugin_manager.instantiated_plugin = Some(name.clone());
+                self.status_message = crate::tstatus!(
+                    "✔ {} laddad med preset på stämspår {} (PDC-kompenserad)",
+                    name,
+                    track_index + 1
+                );
+            }
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte ladda plugin: {}", e);
+            }
+        }
+    }
+
+    /// Removes the plugin insert on `track_index` and forgets its saved slot.
+    pub fn remove_plugin_from_track(&mut self, track_index: usize) {
+        let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
+            track_index,
+            insert: None,
+        });
+        if let Some(slot) = self.plugin_slots.get_mut(track_index) {
+            *slot = None;
+        }
+        self.plugin_manager.instantiated_plugin = None;
+        self.status_message = crate::tstatus!(
+            "🗑 Tog bort plugin från stämspår {}",
+            track_index + 1
+        );
+    }
+
+    fn record_plugin_slot(&mut self, track_index: usize, slot: PluginSlot) {
+        if self.plugin_slots.len() <= track_index {
+            self.plugin_slots.resize_with(track_index + 1, || None);
+        }
+        self.plugin_slots[track_index] = Some(slot);
+    }
+
+    /// Re-instantiates a saved plugin on `track_index` and restores its state.
+    /// Must run on the main thread. Returns an error message on failure.
+    fn restore_plugin_slot(&mut self, track_index: usize, data: &SavedPluginData) -> Option<String> {
+        let sample_rate = self.engine.sample_rate as f32;
+        let block = crate::audio::plugin_host_live::DEFAULT_BLOCK_FRAMES;
+        match crate::audio::plugin_host_live::load_processor(&data.path, sample_rate, block as u32) {
+            Ok(processor) => {
+                let mut insert = crate::audio::plugin_host_live::PluginInsert::new(processor, block);
+                if !data.state.is_empty() && !insert.load_state(&data.state) {
+                    return Some(crate::tstatus!(
+                        "kunde inte återställa state för '{}'",
+                        data.name
+                    ));
+                }
+                let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
+                    track_index,
+                    insert: Some(insert),
+                });
+                None
+            }
+            Err(e) => Some(e),
         }
     }
 
@@ -4954,15 +5128,33 @@ impl eframe::App for SonixApp {
                             }
                         }
                         ViewMode::PluginManager => {
+                            let active_plugins: Vec<Option<String>> = self
+                                .plugin_slots
+                                .iter()
+                                .map(|s| s.as_ref().map(|p| p.name.clone()))
+                                .collect();
+                            let stem_track_count = self
+                                .stem_project
+                                .stems
+                                .len()
+                                .max(self.playlist_tracks.len())
+                                .max(active_plugins.len());
                             let actions = render_plugins_view(
                                 ui,
                                 &mut self.plugin_manager,
                                 &mut self.status_message,
-                                self.stem_project.stems.len(),
+                                stem_track_count,
                                 self.selected_channel,
+                                &active_plugins,
                             );
                             if let Some((path, track)) = actions.load_into_track {
                                 self.load_plugin_into_track(&path, track);
+                            }
+                            if let Some((path, track, location)) = actions.load_preset_into_track {
+                                self.load_plugin_preset_into_track(&path, track, &location);
+                            }
+                            if let Some(track) = actions.remove_track {
+                                self.remove_plugin_from_track(track);
                             }
                         }
                         ViewMode::VocalStudio => {
@@ -13041,5 +13233,47 @@ mod tests {
         assert_eq!(AutomationParam::Volume.range(), (0.0, 1.5));
         assert_eq!(AutomationParam::Pan.range(), (-1.0, 1.0));
         assert_eq!(AutomationParam::DelaySend.range(), (0.0, 1.0));
+    }
+
+    #[test]
+    fn test_plugin_slots_survive_project_json_roundtrip() {
+        let data = SonixProjectData {
+            name: "Plugin Test".into(),
+            bpm: 120.0,
+            swing: 0.0,
+            master_volume: 1.0,
+            master_pan: 0.0,
+            tracks: Vec::new(),
+            plugin_slots: vec![
+                None,
+                Some(SavedPluginData {
+                    path: "/plugins/Gain.clap".into(),
+                    name: "Gain".into(),
+                    state: vec![0, 1, 2, 250, 255],
+                }),
+            ],
+        };
+        let json = serde_json::to_string(&data).unwrap();
+        let back: SonixProjectData = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.plugin_slots.len(), 2);
+        assert!(back.plugin_slots[0].is_none());
+        let slot = back.plugin_slots[1].as_ref().unwrap();
+        assert_eq!(slot.path, "/plugins/Gain.clap");
+        assert_eq!(slot.name, "Gain");
+        assert_eq!(slot.state, vec![0, 1, 2, 250, 255]);
+    }
+
+    #[test]
+    fn test_old_projects_without_plugin_slots_still_load() {
+        let legacy = r#"{
+            "name": "Legacy",
+            "bpm": 100.0,
+            "swing": 0.0,
+            "master_volume": 1.0,
+            "master_pan": 0.0,
+            "tracks": []
+        }"#;
+        let data: SonixProjectData = serde_json::from_str(legacy).unwrap();
+        assert!(data.plugin_slots.is_empty());
     }
 }

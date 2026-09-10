@@ -153,6 +153,26 @@ typedef struct clap_plugin_latency {
     uint32_t (*get)(const clap_plugin_t *plugin);
 } clap_plugin_latency_t;
 
+typedef struct clap_ostream {
+    void *ctx;
+    int64_t (*write)(const struct clap_ostream *stream, const void *buffer, uint64_t size);
+} clap_ostream_t;
+
+typedef struct clap_istream {
+    void *ctx;
+    int64_t (*read)(const struct clap_istream *stream, void *buffer, uint64_t size);
+} clap_istream_t;
+
+typedef struct clap_plugin_state {
+    bool (*save)(const clap_plugin_t *plugin, const clap_ostream_t *stream);
+    bool (*load)(const clap_plugin_t *plugin, const clap_istream_t *stream);
+} clap_plugin_state_t;
+
+typedef struct clap_plugin_preset_load {
+    bool (*from_location)(const clap_plugin_t *plugin, uint32_t location_kind,
+                          const char *location, const char *load_key);
+} clap_plugin_preset_load_t;
+
 typedef struct clap_plugin_factory {
     uint32_t (*get_plugin_count)(const struct clap_plugin_factory *factory);
     const clap_plugin_descriptor_t *(*get_plugin_descriptor)(const struct clap_plugin_factory *factory,
@@ -320,11 +340,53 @@ static uint32_t latency_get(const clap_plugin_t *p) { (void)p; return 0; }
 
 static const clap_plugin_latency_t mock_latency = {latency_get};
 
+/* `clap.state`: serialise the two parameters as raw doubles. */
+static bool state_save(const clap_plugin_t *p, const clap_ostream_t *stream) {
+    (void)p;
+    if (!stream || !stream->write) return false;
+    double values[2] = {mock_state.gain, mock_state.mix};
+    int64_t n = stream->write(stream, values, sizeof(values));
+    return n == (int64_t)sizeof(values);
+}
+
+static bool state_load(const clap_plugin_t *p, const clap_istream_t *stream) {
+    (void)p;
+    if (!stream || !stream->read) return false;
+    double values[2] = {0.0, 0.0};
+    int64_t n = stream->read(stream, values, sizeof(values));
+    if (n != (int64_t)sizeof(values)) return false;
+    mock_state.gain = values[0];
+    mock_state.mix = values[1];
+    return true;
+}
+
+static const clap_plugin_state_t mock_state_ext = {state_save, state_load};
+
+/* `clap.preset-load/2`: parse a tiny "gain=<v>;mix=<v>" pseudo-preset. */
+static bool preset_from_location(const clap_plugin_t *p, uint32_t location_kind,
+                                 const char *location, const char *load_key) {
+    (void)p; (void)load_key;
+    if (location_kind != 0 || !location) return false;
+    double gain = mock_state.gain;
+    double mix = mock_state.mix;
+    const char *g = strstr(location, "gain=");
+    if (g) gain = atof(g + 5);
+    const char *m = strstr(location, "mix=");
+    if (m) mix = atof(m + 4);
+    mock_state.gain = gain;
+    mock_state.mix = mix;
+    return true;
+}
+
+static const clap_plugin_preset_load_t mock_preset_load = {preset_from_location};
+
 static const void *p_get_extension(const clap_plugin_t *p, const char *id) {
     (void)p;
     if (strcmp(id, "clap.params") == 0) return &mock_params;
     if (strcmp(id, "clap.audio-ports") == 0) return &mock_audio_ports;
     if (strcmp(id, "clap.latency") == 0) return &mock_latency;
+    if (strcmp(id, "clap.state") == 0) return &mock_state_ext;
+    if (strcmp(id, "clap.preset-load/2") == 0) return &mock_preset_load;
     return NULL;
 }
 

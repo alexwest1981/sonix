@@ -130,6 +130,8 @@ pub struct PluginManager {
     pub plugin_target_track: usize,
     /// Name of the last plugin instantiated into a track, for status display.
     pub instantiated_plugin: Option<String>,
+    /// Filesystem path to a native preset for `clap.preset-load/2` (Fas 4.3).
+    pub plugin_preset_location: String,
     // Custom inputs
     pub new_custom_path_input: String,
     pub manual_import_file_input: String,
@@ -237,6 +239,7 @@ impl Default for PluginManager {
             inspection: None,
             plugin_target_track: 0,
             instantiated_plugin: None,
+            plugin_preset_location: String::new(),
             new_custom_path_input: String::new(),
             manual_import_file_input: String::new(),
             manual_import_vendor_input: String::new(),

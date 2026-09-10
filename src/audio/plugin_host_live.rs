@@ -178,6 +178,22 @@ pub trait PluginProcessor: Send {
     fn set_parameter(&mut self, id: u32, value: f64) -> bool;
     /// Clears internal state (delay lines, voices, …).
     fn reset(&mut self);
+    /// Saves the plugin's opaque state via `clap.state`. Empty when unsupported.
+    fn save_state(&mut self) -> Vec<u8> {
+        Vec::new()
+    }
+    /// Restores state previously produced by [`Self::save_state`]. Returns false
+    /// when unsupported or when the blob is rejected.
+    fn load_state(&mut self, data: &[u8]) -> bool {
+        let _ = data;
+        false
+    }
+    /// Loads one of the plugin's own presets from `location` via
+    /// `clap.preset-load/2`. Returns false when unsupported.
+    fn preset_load(&mut self, location: &str) -> bool {
+        let _ = location;
+        false
+    }
 }
 
 /// Creates a live processing instance for `path`, ready to be wrapped in a
@@ -251,6 +267,21 @@ impl PluginInsert {
 
     pub fn set_parameter(&mut self, id: u32, value: f64) -> bool {
         self.processor.set_parameter(id, value)
+    }
+
+    /// Saves the plugin state (main-thread only, per the CLAP contract).
+    pub fn save_state(&mut self) -> Vec<u8> {
+        self.processor.save_state()
+    }
+
+    /// Restores plugin state (main-thread only, per the CLAP contract).
+    pub fn load_state(&mut self, data: &[u8]) -> bool {
+        self.processor.load_state(data)
+    }
+
+    /// Loads a native preset from a location (main-thread only).
+    pub fn preset_load(&mut self, location: &str) -> bool {
+        self.processor.preset_load(location)
     }
 
     pub fn block_frames(&self) -> usize {
@@ -375,6 +406,11 @@ mod imp {
     pub const CLAP_EXT_AUDIO_PORTS: &CStr = c"clap.audio-ports";
     pub const CLAP_EXT_NOTE_PORTS: &CStr = c"clap.note-ports";
     pub const CLAP_EXT_LATENCY: &CStr = c"clap.latency";
+    pub const CLAP_EXT_STATE: &CStr = c"clap.state";
+    /// Current `clap.preset-load` revision. The draft id is the same ABI and is
+    /// still advertised by some plugins.
+    pub const CLAP_EXT_PRESET_LOAD: &CStr = c"clap.preset-load/2";
+    pub const CLAP_EXT_PRESET_LOAD_DRAFT: &CStr = c"clap.preset-load.draft/2";
     pub const CLAP_PLUGIN_FACTORY_ID: &CStr = c"clap.plugin-factory";
 
     /// `clap_event_param_value` space id/type (CLAP core event space 0).
@@ -527,6 +563,42 @@ mod imp {
     pub struct ClapPluginLatency {
         pub get: Option<unsafe extern "C" fn(*const ClapPlugin) -> u32>,
     }
+
+    /// `clap_ostream_t`: the host hands the plugin a `write` sink so it can
+    /// serialise its state. Returns the number of bytes written, `0` on EOF
+    /// (stop), or `-1` on error.
+    #[repr(C)]
+    pub struct ClapOstream {
+        pub ctx: *mut c_void,
+        pub write:
+            Option<unsafe extern "C" fn(*const ClapOstream, *const c_void, u64) -> i64>,
+    }
+
+    /// `clap_istream_t`: the host hands the plugin a `read` source so it can
+    /// deserialise its state.
+    #[repr(C)]
+    pub struct ClapIstream {
+        pub ctx: *mut c_void,
+        pub read: Option<unsafe extern "C" fn(*const ClapIstream, *mut c_void, u64) -> i64>,
+    }
+
+    #[repr(C)]
+    pub struct ClapPluginState {
+        pub save: Option<unsafe extern "C" fn(*const ClapPlugin, *const ClapOstream) -> bool>,
+        pub load: Option<unsafe extern "C" fn(*const ClapPlugin, *const ClapIstream) -> bool>,
+    }
+
+    /// `clap.preset-load/2`: loads one of the plugin's own presets. `location`
+    /// is a filesystem path (`location_kind == 0`), `load_key` may be null.
+    #[repr(C)]
+    pub struct ClapPluginPresetLoad {
+        pub from_location: Option<
+            unsafe extern "C" fn(*const ClapPlugin, u32, *const c_char, *const c_char) -> bool,
+        >,
+    }
+
+    /// `CLAP_PRESET_DISCOVERY_LOCATION_FILE`
+    const CLAP_PRESET_LOCATION_FILE: u32 = 0;
 
     #[repr(C)]
     pub struct ClapEventHeader {
@@ -1030,6 +1102,8 @@ mod imp {
         in_audio: Vec<ClapAudioBuffer>,
         out_audio: Vec<ClapAudioBuffer>,
         params_ext: *const ClapPluginParams,
+        state_ext: *const ClapPluginState,
+        preset_load_ext: *const ClapPluginPresetLoad,
     }
 
     // The processor is only ever touched from one thread at a time (the audio
@@ -1186,6 +1260,110 @@ mod imp {
                 }
             }
         }
+
+        fn save_state(&mut self) -> Vec<u8> {
+            if self.state_ext.is_null() {
+                return Vec::new();
+            }
+            let state = unsafe { &*self.state_ext };
+            let Some(save) = state.save else {
+                return Vec::new();
+            };
+            let mut out: Vec<u8> = Vec::new();
+            let ostream = ClapOstream {
+                ctx: &mut out as *mut Vec<u8> as *mut c_void,
+                write: Some(ostream_vec_write),
+            };
+            let ok = unsafe { save(self.plugin(), &ostream) };
+            if ok { out } else { Vec::new() }
+        }
+
+        fn load_state(&mut self, data: &[u8]) -> bool {
+            if self.state_ext.is_null() {
+                return false;
+            }
+            let state = unsafe { &*self.state_ext };
+            let Some(load) = state.load else {
+                return false;
+            };
+            let mut reader = StateReader {
+                data,
+                pos: 0,
+            };
+            let istream = ClapIstream {
+                ctx: &mut reader as *mut StateReader as *mut c_void,
+                read: Some(istream_slice_read),
+            };
+            unsafe { load(self.plugin(), &istream) }
+        }
+
+        fn preset_load(&mut self, location: &str) -> bool {
+            if self.preset_load_ext.is_null() {
+                return false;
+            }
+            let ext = unsafe { &*self.preset_load_ext };
+            let Some(from_location) = ext.from_location else {
+                return false;
+            };
+            let Ok(loc) = CString::new(location) else {
+                return false;
+            };
+            unsafe {
+                from_location(
+                    self.plugin(),
+                    CLAP_PRESET_LOCATION_FILE,
+                    loc.as_ptr(),
+                    std::ptr::null(),
+                )
+            }
+        }
+    }
+
+    /// Cursor over a state blob handed to `clap.state.load`.
+    struct StateReader<'a> {
+        data: &'a [u8],
+        pos: usize,
+    }
+
+    unsafe extern "C" fn ostream_vec_write(
+        stream: *const ClapOstream,
+        buffer: *const c_void,
+        size: u64,
+    ) -> i64 {
+        if stream.is_null() || (buffer.is_null() && size > 0) {
+            return -1;
+        }
+        let stream = unsafe { &*stream };
+        if stream.ctx.is_null() {
+            return -1;
+        }
+        let out = unsafe { &mut *(stream.ctx as *mut Vec<u8>) };
+        let bytes = unsafe { std::slice::from_raw_parts(buffer as *const u8, size as usize) };
+        out.extend_from_slice(bytes);
+        size as i64
+    }
+
+    unsafe extern "C" fn istream_slice_read(
+        stream: *const ClapIstream,
+        buffer: *mut c_void,
+        size: u64,
+    ) -> i64 {
+        if stream.is_null() || (buffer.is_null() && size > 0) {
+            return -1;
+        }
+        let stream = unsafe { &*stream };
+        if stream.ctx.is_null() {
+            return -1;
+        }
+        let reader = unsafe { &mut *(stream.ctx as *mut StateReader) };
+        let remaining = reader.data.len().saturating_sub(reader.pos);
+        let n = (size as usize).min(remaining);
+        if n > 0 {
+            let src = &reader.data[reader.pos..reader.pos + n];
+            unsafe { std::ptr::copy_nonoverlapping(src.as_ptr(), buffer as *mut u8, n) };
+            reader.pos += n;
+        }
+        n as i64
     }
 
     /// Loads `path` and returns a live, activated processor ready to render
@@ -1202,6 +1380,22 @@ mod imp {
         let get_extension = unsafe { &*plugin }.get_extension;
         let params_ext = match get_extension {
             Some(f) => (unsafe { f(plugin, CLAP_EXT_PARAMS.as_ptr()) }) as *const ClapPluginParams,
+            None => std::ptr::null(),
+        };
+
+        let state_ext = match get_extension {
+            Some(f) => (unsafe { f(plugin, CLAP_EXT_STATE.as_ptr()) }) as *const ClapPluginState,
+            None => std::ptr::null(),
+        };
+
+        let preset_load_ext = match get_extension {
+            Some(f) => {
+                let mut ext = unsafe { f(plugin, CLAP_EXT_PRESET_LOAD.as_ptr()) };
+                if ext.is_null() {
+                    ext = unsafe { f(plugin, CLAP_EXT_PRESET_LOAD_DRAFT.as_ptr()) };
+                }
+                ext as *const ClapPluginPresetLoad
+            }
             None => std::ptr::null(),
         };
 
@@ -1269,6 +1463,8 @@ mod imp {
             in_audio,
             out_audio,
             params_ext,
+            state_ext,
+            preset_load_ext,
         }))
     }
 
@@ -1412,6 +1608,51 @@ mod imp {
             processor.process_stereo(&mut l, &mut r);
             assert!((l[0] - 0.4).abs() < 1e-5, "expected 0.4, got {}", l[0]);
             assert!((r[0] - 0.2).abs() < 1e-5, "expected 0.2, got {}", r[0]);
+        }
+
+        #[test]
+        fn mock_plugin_state_round_trips() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let mut processor =
+                super::super::load_processor(mock, 48_000.0, 512).expect("mock processor");
+            assert!(processor.set_parameter(0, 0.25));
+            assert!(processor.set_parameter(1, 1.0));
+            let blob = processor.save_state();
+            assert_eq!(blob.len(), 16, "two f64 parameters");
+
+            // Mutate the live state, then restore the saved blob.
+            assert!(processor.set_parameter(0, 1.0));
+            assert!(processor.load_state(&blob));
+
+            let mut l = vec![1.0_f32; 64];
+            let mut r = vec![1.0_f32; 64];
+            processor.process_stereo(&mut l, &mut r);
+            assert!(
+                (l[0] - 0.25).abs() < 1e-5,
+                "restored gain should be 0.25, got {}",
+                l[0]
+            );
+        }
+
+        #[test]
+        fn mock_plugin_loads_native_preset() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let mut processor =
+                super::super::load_processor(mock, 48_000.0, 512).expect("mock processor");
+            assert!(processor.preset_load("gain=0.5;mix=1.0"));
+
+            let mut l = vec![1.0_f32; 64];
+            let mut r = vec![1.0_f32; 64];
+            processor.process_stereo(&mut l, &mut r);
+            assert!(
+                (l[0] - 0.5).abs() < 1e-5,
+                "preset gain 0.5 expected, got {}",
+                l[0]
+            );
         }
     }
 }

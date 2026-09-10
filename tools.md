@@ -270,6 +270,14 @@ CLAP-värden kunde bara ladda och inspektera; ingen instans var kopplad till lju
 
 ---
 
+### P39 — State/preset save-load (Fas 4.3) · ✅ KLAR
+CLAP-instansen kunde processa ljud men state sparades aldrig och pluginens egna presets kunde inte laddas.
+- **Löst:** CLAP-värden stödjer nu **`clap.state`** (opak state-blob via `clap_ostream`/`clap_istream`) och **`clap.preset-load/2`** (`from_location`). `PluginProcessor`-traitet har `save_state`/`load_state`/`preset_load` (default = "stöds ej"), och `PluginInsert` delegerar. **State-operationerna körs alltid på huvudtråden** enligt CLAP-kontraktet: `App::load_plugin_into_track` fångar en färsk blob innan processorn skickas till ljudtråden, och vid projektladdning instansieras + återställs pluginen på huvudtråden (`restore_plugin_slot`). Projektet sparar **`plugin_slots`** (index-justerade mot motorns stämspår) som `SavedPluginData { path, name, state }`; äldre projekt utan fältet laddas oförändrat via `#[serde(default)]`. Plugin-vyn har en **"🎛 Aktiva plugin-inserts per spår"**-lista med **"🗑 Ta bort"** samt ett **"Native preset (sökväg)"**-fält + **"▶ Ladda in med preset"** (`App::load_plugin_preset_into_track`).
+- **Tester:** Mock-CLAP:en (`tests/fixtures/mock_clap.c`) implementerar `clap.state` (sparar Gain/Mix som två f64) och `clap.preset-load/2` (tolkar `gain=…;mix=…`). Nya tester: state-round-trip (spara → mutera → återställ → verifiera ljud), preset-load, samt projekt-JSON-round-trip för `plugin_slots` och bakåtkompatibilitet för projekt utan fältet.
+- `cargo test --release` = **125 tester**, 0 varningar. `cargo test --release --features plugin-host` = **135 tester**, 0 varningar. Alla byggkombinationer (`default`, `plugin-host`, `neural`, `neural,plugin-host`) länkar rent.
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -282,6 +290,7 @@ CLAP-värden kunde bara ladda och inspektera; ingen instans var kopplad till lju
 | Neural stem-separation (HTDemucs/ONNX, opt-in) | ✅ REAL (P36) |
 | CLAP-pluginvärd (laddning + parameterinspektion, opt-in) | ✅ REAL (P37) |
 | CLAP-ljudprocessning + per-spår-insert med PDC (opt-in) | ✅ REAL (P38) |
+| CLAP state/preset save-load + projektpersistens (opt-in) | ✅ REAL (P39) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

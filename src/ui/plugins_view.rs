@@ -6,6 +6,11 @@ use crate::ui::theme::Theme;
 pub struct PluginViewActions {
     /// `(plugin path, stem track index)` to instantiate a CLAP processor into.
     pub load_into_track: Option<(String, usize)>,
+    /// `(plugin path, stem track index, preset location)` to instantiate with a
+    /// native `clap.preset-load/2` preset already applied.
+    pub load_preset_into_track: Option<(String, usize, String)>,
+    /// Stem track index whose plugin insert should be removed.
+    pub remove_track: Option<usize>,
 }
 
 pub fn render_plugins_view(
@@ -14,6 +19,7 @@ pub fn render_plugins_view(
     status_msg: &mut String,
     stem_track_count: usize,
     default_track: usize,
+    active_plugins: &[Option<String>],
 ) -> PluginViewActions {
     ui.group(|ui| {
         // ====================================================================
@@ -85,9 +91,17 @@ pub fn render_plugins_view(
         ui.add_space(8.0);
 
         // ====================================================================
-        // 3. TAB CONTENT
+        // 3. ACTIVE PER-TRACK INSERTS (Fas 4.2 / 4.3)
         // ====================================================================
-        match manager.active_tab {
+        let mut actions = PluginViewActions::default();
+        render_active_inserts(ui, active_plugins, &mut actions);
+
+        ui.add_space(8.0);
+
+        // ====================================================================
+        // 4. TAB CONTENT
+        // ====================================================================
+        let tab_actions = match manager.active_tab {
             0 => render_plugin_database_tab(ui, manager, status_msg, stem_track_count, default_track),
             1 => {
                 render_scan_paths_tab(ui, manager, status_msg);
@@ -102,9 +116,59 @@ pub fn render_plugins_view(
                 PluginViewActions::default()
             }
             _ => PluginViewActions::default(),
+        };
+        if tab_actions.load_into_track.is_some() {
+            actions.load_into_track = tab_actions.load_into_track;
         }
+        if tab_actions.load_preset_into_track.is_some() {
+            actions.load_preset_into_track = tab_actions.load_preset_into_track;
+        }
+        if tab_actions.remove_track.is_some() {
+            actions.remove_track = tab_actions.remove_track;
+        }
+        actions
     })
     .inner
+}
+
+/// Lists the plugins currently instantiated per stem track, with a remove
+/// button. Empty when no plugin is loaded anywhere.
+fn render_active_inserts(
+    ui: &mut Ui,
+    active_plugins: &[Option<String>],
+    actions: &mut PluginViewActions,
+) {
+    let any = active_plugins.iter().any(|p| p.is_some());
+    if !any {
+        return;
+    }
+    ui.group(|ui| {
+        ui.label(
+            egui::RichText::new(crate::i18n::t("🎛 Aktiva plugin-inserts per spår"))
+                .strong()
+                .size(12.0)
+                .color(Theme::FL_CYAN),
+        );
+        for (idx, slot) in active_plugins.iter().enumerate() {
+            let Some(name) = slot else {
+                continue;
+            };
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(crate::tstatus!("Spår {}", idx + 1))
+                        .strong()
+                        .size(10.5)
+                        .color(Theme::TEXT_BRIGHT),
+                );
+                ui.label(egui::RichText::new(name).size(10.5).color(Theme::FL_GREEN));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if ui.button(crate::i18n::t("🗑 Ta bort")).clicked() {
+                        actions.remove_track = Some(idx);
+                    }
+                });
+            });
+        }
+    });
 }
 
 // ============================================================================
@@ -181,8 +245,10 @@ fn render_plugin_database_tab(
     });
 
     let mut actions = PluginViewActions::default();
-    actions.load_into_track =
+    let inspection_actions =
         render_inspection_panel(ui, manager, status_msg, stem_track_count, default_track);
+    actions.load_into_track = inspection_actions.load_into_track;
+    actions.load_preset_into_track = inspection_actions.load_preset_into_track;
 
     ui.add_space(6.0);
 
@@ -686,16 +752,16 @@ fn render_inspection_panel(
     _status_msg: &mut String,
     stem_track_count: usize,
     default_track: usize,
-) -> Option<(String, usize)> {
+) -> PluginViewActions {
+    let mut actions = PluginViewActions::default();
     if manager.inspection.is_none() {
-        return None;
+        return actions;
     }
     if manager.plugin_target_track == 0 && default_track > 0 {
         manager.plugin_target_track = default_track;
     }
 
     let mut close = false;
-    let mut load_into_track: Option<(String, usize)> = None;
     ui.group(|ui| {
         let Some(snapshot) = manager.inspection.as_ref() else {
             return;
@@ -779,10 +845,47 @@ fn render_inspection_panel(
                     ))
                     .clicked()
                 {
-                    load_into_track = Some((snapshot.path.clone(), target));
+                    actions.load_into_track = Some((snapshot.path.clone(), target));
                 }
             }
         });
+
+        // Load one of the plugin's own presets (clap.preset-load/2) while
+        // instantiating it (Fas 4.3).
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t("🎚 Native preset (sökväg):"))
+                    .size(10.5)
+                    .color(Theme::FL_YELLOW),
+            );
+            ui.add(
+                egui::TextEdit::singleline(&mut manager.plugin_preset_location)
+                    .hint_text(crate::i18n::t("/sökväg/till/preset.clap-preset"))
+                    .desired_width(240.0),
+            );
+            let preset_ok = !manager.plugin_preset_location.trim().is_empty() && stem_track_count > 0;
+            let resp = ui.add_enabled(
+                preset_ok,
+                egui::Button::new(crate::i18n::t("▶ Ladda in med preset")),
+            );
+            if resp.clicked() {
+                let max_track = stem_track_count - 1;
+                let target = manager.plugin_target_track.min(max_track);
+                actions.load_preset_into_track = Some((
+                    snapshot.path.clone(),
+                    target,
+                    manager.plugin_preset_location.trim().to_string(),
+                ));
+            }
+        });
+        ui.label(
+            egui::RichText::new(crate::i18n::t(
+                "Laddar en ny instans av pluginen med preseten applicerad via clap.preset-load/2.",
+            ))
+            .size(9.5)
+            .color(Theme::TEXT_MUTED),
+        );
 
         ui.add_space(4.0);
         ui.label(
@@ -832,7 +935,7 @@ fn render_inspection_panel(
     if close {
         manager.inspection = None;
     }
-    load_into_track
+    actions
 }
 
 
