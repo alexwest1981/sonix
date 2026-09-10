@@ -194,6 +194,12 @@ Ljudinställningarnas reglage sparades men applicerades aldrig; enhetens standar
 - **Borttaget (dött):** `audio_driver_idx` (kosmetisk drivrutinsväljare) och `audio_limiter_enabled` (kryssruta utan effekt; riktiga limitern sitter i FX-racket).
 - `cargo test --release` = **61 tester**, 0 varningar.
 
+### P27 — `.fst` "Apply Preset" är inte längre en no-op · ✅ KLAR
+Knappen "⚡ Tillämpa Preset" visade en falsk bekräftelse utan att göra något (`.fst` avkodas inte och ingen plugin-värd finns).
+- **Löst (Alternativ B):** Knappen är nu **inaktiverad** med tooltip: "Kräver plugin-hosting (VST/CLAP), vilket ännu inte är implementerat. Preseten visas endast som metadata." Undertexten klargör att `.fst` bara katalogiseras.
+- **i18n:** Nya `tr_en`-nycklar.
+- `cargo test --release` = **61 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning

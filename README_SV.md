@@ -202,7 +202,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Time-stretch | 🟡 Delvis | Pitch-bevarande time-stretch (nuvarande är varispeed) |
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
-| `.fst`-knappen "Apply Preset" | 🔜 Saknas | Knappen är en no-op; kräver `.fst`-avkodning |
+| `.fst`-knappen "Apply Preset" | ✅ Ärlig | Inaktiverad med förklaring — applicering kräver plugin-värd |
 | Plugin-hosting (VST3/CLAP/LV2/VST2) | 🔜 Saknas | Kräver en komplett värd — se nedan |
 
 **Helhetsbedömning:** ungefär **85–90 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. De två största kvarvarande delarna är **plugin-hosting** (ej påbörjad) och **neural stem-separation** (nuvarande är en DSP-approximation).

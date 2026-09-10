@@ -573,6 +573,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Ingångsnivå & Förförstärkare (Gain & VU)" => "Input Level & Preamp (Gain & VU)",
         "Inläsningen sker i bakgrunden med en förloppsindikator utan att programmet hänger sig." => "Loading happens in the background with a progress indicator, without the program freezing.",
         "Inställningsfiler för kanaler och mixer-effekter sparade från FL Studio:" => "Settings files for channels and mixer effects saved from FL Studio:",
+        "Katalogiserade .fst-filer (endast metadata – själva preset-datan kan inte avkodas eller appliceras utan en plugin-värd):" => "Catalogued .fst files (metadata only – the preset data itself cannot be decoded or applied without a plugin host):",
+        "Kräver plugin-hosting (VST/CLAP), vilket ännu inte är implementerat. Preseten visas endast som metadata." => "Requires plugin hosting (VST/CLAP), which is not implemented yet. The presets are shown as metadata only.",
         "Intelligent trummis med 2D XY-radar för realtids-generering av trumspår" => "Intelligent drummer with 2D XY radar for real-time drum track generation",
         "Isolera och extrahera sång, trummor, bas och instrument direkt ur färdiga mixar" => "Isolate and extract vocals, drums, bass and instruments directly from finished mixes",
         "Isolera och lyssna enbart på denna stämma i realtid" => "Isolate and listen only to this stem in real time",

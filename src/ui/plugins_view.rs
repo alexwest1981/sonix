@@ -461,7 +461,7 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
     // FL Studio .FST Presets Library
     ui.label(egui::RichText::new(crate::i18n::t("📄 IMPORTERADE FL STUDIO PRESETS (.FST)")).strong().size(12.5).color(Theme::FL_ORANGE));
     ui.label(
-        egui::RichText::new(crate::i18n::t("Inställningsfiler för kanaler och mixer-effekter sparade från FL Studio:"))
+        egui::RichText::new(crate::i18n::t("Katalogiserade .fst-filer (endast metadata – själva preset-datan kan inte avkodas eller appliceras utan en plugin-värd):"))
             .size(10.5)
             .color(Theme::TEXT_MUTED),
     );
@@ -484,9 +484,8 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button(crate::i18n::t("⚡ Tillämpa Preset")).clicked() {
-                            *status_msg = crate::tstatus!("✔ Applicerade FL-preset: '{}' på målet {}", preset.preset_name, preset.target_plugin);
-                        }
+                        ui.add_enabled(false, egui::Button::new(crate::i18n::t("⚡ Tillämpa Preset")))
+                            .on_disabled_hover_text(crate::i18n::t("Kräver plugin-hosting (VST/CLAP), vilket ännu inte är implementerat. Preseten visas endast som metadata."));
                         ui.label(egui::RichText::new(format!("{} KB", preset.filesize_bytes / 1024)).size(9.5).color(Theme::TEXT_MUTED));
                     });
                 });

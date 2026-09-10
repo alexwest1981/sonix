@@ -2,7 +2,7 @@
 
 > Levande utvecklingsplan. **Bocka av `[x]` allt eftersom.** Uppdatera procenten i [Framsteg](#-framsteg-i-siffror) när något blir klart.
 >
-> Läs tillsammans med **[README.md](README.md)** / **[README_SV.md](README_SV.md)** (funktionslista & ärlig status) och **[tools.md](tools.md)** (detaljerad historik P1–P26).
+> Läs tillsammans med **[README.md](README.md)** / **[README_SV.md](README_SV.md)** (funktionslista & ärlig status) och **[tools.md](tools.md)** (detaljerad historik P1–P27).
 
 **Teckenförklaring**
 
@@ -17,10 +17,10 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~93 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~94 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[██████████████████████████████████░░]  93 %
+[██████████████████████████████████░░]  94 %
 ```
 
 | Område | Klart | Kvar | Procent |
@@ -57,7 +57,7 @@
 
 ---
 
-## ⬜ Fas 1 — Ärlighet & snabba vinster
+## ✅ Fas 1 — Ärlighet & snabba vinster (KLAR)
 
 Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
@@ -81,11 +81,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** Val i Ljudinställningar påverkar faktiskt strömmen. ✅
   - **Filer:** `src/audio/engine.rs`, `src/audio/mod.rs`, `src/main.rs`, `src/ui/app.rs`, `src/i18n.rs`
 
-- [ ] **1.5 `.fst` "Apply Preset"** — *M*
-  - **Alternativ A:** Avkoda `.fst` (binärt FL-format) och applicera.
-  - **Alternativ B (trolig):** Dölj/inaktivera knappen med tydlig text tills en värd finns.
-  - **Klart när:** Ingen no-op-knapp finns kvar.
-  - **Filer:** `src/ui/plugins_view.rs`, `src/audio/plugin_host.rs`
+- [x] **1.5 `.fst` "Apply Preset"** — *S* ✅
+  - **Löst (Alternativ B):** Knappen är nu inaktiverad och förklarar i tooltip att applicering kräver plugin-hosting (VST/CLAP) som ännu inte finns. Undertexten klargör att `.fst` endast katalogiseras som metadata (ingen avkodning). Ingen falsk "Applicerade preset"-bekräftelse längre.
+  - **Klart när:** Ingen no-op-knapp finns kvar. ✅
+  - **Filer:** `src/ui/plugins_view.rs`, `src/i18n.rs`
 
 ---
 
@@ -172,7 +171,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 1.5 — `.fst` "Apply Preset"** (första ovalda punkten).
+**Fas 2.1 — Realtids-autotune i ljudtråden** (första ovalda punkten i Fas 2).
 
 ## 🛠️ Så här håller vi roadmapen levande
 

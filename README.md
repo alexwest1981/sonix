@@ -204,7 +204,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Time-stretch | 🟡 Partial | Pitch-preserving time-stretch (currently varispeed) |
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
-| `.fst` "Apply Preset" button | 🔜 Missing | Button is a no-op; needs `.fst` decoding |
+| `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — applying needs a plugin host |
 | Plugin hosting (VST3/CLAP/LV2/VST2) | 🔜 Missing | Full host required — see below |
 
 **Overall:** roughly **85–90 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The two largest outstanding pieces are **plugin hosting** (not started) and **neural stem separation** (currently a DSP approximation).
