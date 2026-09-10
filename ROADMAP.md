@@ -31,13 +31,13 @@
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Stem-separation (DSP + neural ONNX) | 1 | 0 | **100 %** |
-| Plugin-hantering | 7 | 2 | **78 %** |
+| Plugin-hantering | 8 | 1 | **89 %** |
 | Export & projekt-I/O (presets, loudness-normalisering) | 5 | 0 | **100 %** |
 | Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
-> **Största kvarvarande biten:** **Plugin-hosting** (78 % — en CLAP-värd kan nu ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets**, **läsa och driva `clap.gui`-livscykeln på huvudtråden**, samt **köra en plugin i en separat process — med kraschdetektering, automatisk omstart och ljud över delat minne**; kvar är Wine/yabridge-vägen (4.6) och att verifiera X11-fönstret på en riktig display). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
+> **Största kvarvarande biten:** **Plugin-hosting** (89 % — en CLAP-värd kan nu ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets**, **läsa och driva `clap.gui`-livscykeln på huvudtråden**, **köra en plugin i en separat process — med kraschdetektering, automatisk omstart och ljud över delat minne**, samt **ladda och inspektera VST3-moduler via en handrullad ABI**; kvar är VST3-ljud/state (4.6b), VST2 samt att verifiera X11-fönstret på en riktig display). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
 ---
 
@@ -172,6 +172,18 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** En yabridge-brygga kan spelas genom Sonix.
   - **Beroende:** 4.1–4.2
 
+  - [x] **4.6a VST3-modul, ABI, laddning & inspektion** — *M* ✅
+    - **Löst:** yabridge producerar VST3 (ELF-`.so`, inte bundles) och VST2 — inte CLAP. Ny modul `src/audio/plugin_vst3.rs` implementerar en **minimal, handrullad VST3-ABI** utan VST3 SDK (samma offline/lättviktsprincip som CLAP-hosten): modul-entrypoints (`InitDll`/`ExitDll`/`GetPluginFactory`), `#[repr(C)]`-layouter för `PFactoryInfo`/`PClassInfo`/`ParameterInfo`, vtable-structs i exakt ABI-ordning för `FUnknown`/`IPluginBase`/`IPluginFactory`/`IComponent`/`IEditController`, korrekt **non-COM big-endian** `INLINE_UID`-kodning och de riktiga IID:erna. `resolve_vst3_binary` hanterar både macOS/Windows-liknande bundles (`Contents/<arch>-linux/*.so`) och en direkt `.vst3`-ELF. `VstInstance`/`RawHandles` sköter livscykeln (queryInterface/terminate/release i rätt ordning, `ExitDll` efter objekten) och implementerar `PluginInstance`, så `inspect` returnerar riktig info + parametrar (namn, enheter, steg, flaggor mappade till CLAP-flaggor). `plugin_host_live::inspect` dispatchar `.vst3` till den nya modulen. Ljud/state skjuts medvetet till 4.6b (`load_processor` ger ett ärligt fel). Fixturen `tests/fixtures/mock_vst3.c` är en **äkta** VST3-modul (factory + component + controller + processor) som build.rs kompilerar och exponerar som `SONIX_MOCK_VST3`.
+    - **Klart när:** En VST3-modul kan laddas och inspekteras med riktiga parametrar. ✅ (Verifierat headless mot mock: `detects_vst3_extension_case_insensitively`, `rejects_non_vst3_library`, `loads_mock_module_and_reports_parameters`, `inspect_snapshot_matches_load`, `missing_file_is_an_honest_error`. 127 tester default, 160 med featuren, 0 varningar i alla fyra byggkombinationer. **OBS:** verifieras mot mock-modulen, inte mot en riktig yabridge-brygga — ingen VST3/Wine finns på disk och miljön är headless.)
+    - **Filer:** `src/audio/plugin_vst3.rs`, `src/audio/mod.rs`, `src/audio/plugin_host_live.rs`, `tests/fixtures/mock_vst3.c`, `build.rs`
+    - **Beroende:** 4.1
+
+  - [ ] **4.6b VST3-ljud, parametrar/state & UI** — *L*
+    - **Gör:** Koppla in `IAudioProcessor::process` + `IComponentHandler`/`IEditController` så en `.vst3`-brygga kan spelas i ett spår (PDC från `getLatencySamples`), spara/ladda state och visas i plugin-hanteraren.
+    - **Klart när:** En yabridge-VST3-brygga kan spelas genom Sonix. (Verifierbart headless mot `mock_vst3.c`; riktig yabridge kräver Wine + display.)
+    - **Beroende:** 4.6a
+
+
 ---
 
 ## ⬜ Fas 5 — Polish & utbyggnad (efter behov)
@@ -198,7 +210,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 4.6 — Wine/yabridge-vägen för FL Studio & Windows-VST** (*L*): ladda `.so`-bryggor från yabridge som vanliga plugins och verifiera Sytrus/Harmor/Gross Beat/FL Studio VSTi. (Fas 4.5a/4.5b — processgräns, krasch/omstart och delat-minne-ljudtransport — är klara.) Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
+**Fas 4.6b — VST3-ljud, parametrar/state & UI** (*L*): koppla in `IAudioProcessor::process` och `IEditController`/`IComponentHandler` så en VST3-brygga (t.ex. från yabridge) kan spelas i ett spår med PDC, spara/ladda state och visas i plugin-hanteraren. (4.6a — modul/ABI/laddning/inspektion — är klar.) Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

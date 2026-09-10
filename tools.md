@@ -310,6 +310,14 @@ Pluginen kördes alltid in-process, så en kraschande plugin tog ner hela Sonix.
 
 ---
 
+### P44 — VST3-modul, ABI, laddning & inspektion (Fas 4.6a) · ✅ KLAR
+yabridge producerar **VST3** (ELF-`.so`, inte bundles) och VST2 — inte CLAP. Därför behöver Sonix en egen VST3-väg.
+- **Löst:** Ny modul **`src/audio/plugin_vst3.rs`** implementerar en **minimal, handrullad VST3-ABI** utan VST3 SDK (samma offline/lättviktsprincip som CLAP-hosten). Den innehåller: modul-entrypoints (`InitDll`/`ExitDll`/`GetPluginFactory`), `#[repr(C)]`-layouter för **`PFactoryInfo`** (452 B), **`PClassInfo`** (`cid[16]` + `cardinality` + `category[32]` + `name[64]` = 116 B) och **`ParameterInfo`** (792 B), samt vtable-structs i exakt ABI-ordning för **`FUnknown`/`IPluginBase`/`IPluginFactory`/`IComponent`/`IEditController`**. `INLINE_UID` kodas **non-COM big-endian** per 32-bitars ord och alla riktiga IID:er (`IPluginBase`, `IPluginFactory`, `IComponent`, `IAudioProcessor`, `IEditController`) är hårdkodade. `resolve_vst3_binary` hittar rätt `.so` både i en bundle (`Contents/<arch>-linux/*.so`) och i en direkt `.vst3`-ELF. `VstInstance`/`RawHandles` sköter livscykeln (`queryInterface` → `initialize` → ... → `terminate` → `release`, `ExitDll` **efter** att objekten släppts) och implementerar `PluginInstance`, så `inspect` returnerar riktig info + parametrar (namn, enheter, steg, flaggor mappade till CLAP-flaggor). `plugin_host_live::inspect` dispatchar `.vst3` hit. Ljud/state skjuts medvetet till 4.6b — `load_processor` ger ett **ärligt fel** i stället för fejk. Fixturen **`tests/fixtures/mock_vst3.c`** är en **äkta** VST3-modul (factory + component + controller + processor) som `build.rs` kompilerar och exponerar som `SONIX_MOCK_VST3`.
+- **Tester:** `detects_vst3_extension_case_insensitively`, `rejects_non_vst3_library`, `loads_mock_module_and_reports_parameters`, `inspect_snapshot_matches_load`, `missing_file_is_an_honest_error`.
+- `cargo test --release` = **127 tester**, 0 varningar. `cargo test --release --features plugin-host` = **160 tester**, 0 varningar. Alla byggkombinationer (`default`, `plugin-host`, `neural`, `neural,plugin-host`) bygger med 0 varningar. **OBS:** verifieras mot mock-modulen, inte mot en riktig yabridge-brygga (ingen VST3/Wine på disk, headless miljö).
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -327,6 +335,7 @@ Pluginen kördes alltid in-process, så en kraschande plugin tog ner hela Sonix.
 | CLAP delad instans + X11-GUI-fönster (opt-in) | ✅ REAL (P41) |
 | Out-of-process sandbox: processgräns + krasch/omstart (opt-in) | ✅ REAL (P42) |
 | Out-of-process sandbox: ljud över delat minne (opt-in) | ✅ REAL (P43) |
+| VST3-modul, ABI, laddning & inspektion (opt-in) | ✅ REAL (P44) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

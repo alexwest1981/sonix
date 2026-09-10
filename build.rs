@@ -14,6 +14,7 @@ use std::process::Command;
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=tests/fixtures/mock_clap.c");
+    println!("cargo:rerun-if-changed=tests/fixtures/mock_vst3.c");
     println!("cargo:rerun-if-changed=tests/fixtures/empty.c");
 
     if env::var_os("CARGO_FEATURE_PLUGIN_HOST").is_none() {
@@ -50,6 +51,9 @@ fn main() {
 
     if let Some(mock) = compile("tests/fixtures/mock_clap.c", "libsonix_mock_clap.so") {
         println!("cargo:rustc-env=SONIX_MOCK_CLAP={}", mock.display());
+    }
+    if let Some(mock) = compile("tests/fixtures/mock_vst3.c", "libsonix_mock_vst3.so") {
+        println!("cargo:rustc-env=SONIX_MOCK_VST3={}", mock.display());
     }
     if let Some(empty) = compile("tests/fixtures/empty.c", "libsonix_empty.so") {
         println!("cargo:rustc-env=SONIX_EMPTY_SO={}", empty.display());

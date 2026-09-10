@@ -236,14 +236,15 @@ The full, prioritised development plan with check-off phases lives in **[ROADMAP
 * **GUI ABI + lifecycle:** the host reads `clap.gui` and drives the whole lifecycle on the main thread (`is_api_supported`, `get_preferred_api`, `create`, `get_size`, `can_resize`, `set_size`, `set_parent`, `show`, `hide`, `destroy`). Inspection reports the plugin's GUI capability (e.g. "x11 320×240, resizable").
 * **Plugin GUI in its own X11 window:** an active insert opens with **"🪟 Open GUI"**; the host creates an X11 window via `libX11` and embeds the editor with `set_parent`, and the GUI shares the **same `ClapCore` instance** as the audio thread (via `Arc` + `PluginHandle`). Window events are polled every UI frame and closing tears the editor down cleanly (hide → destroy). Requires a real X display.
 * **Out-of-process sandbox (crash restart + shared-memory audio):** **"🧪 Sandbox inspect"** runs the plugin in a **separate process** (the same binary re-executed with `--plugin-sandbox-worker`) over a length-prefixed JSON protocol and reads its info + parameters there. A supervisor monitors the process and **automatically restarts it on a crash** (up to three attempts) before giving up, so a crashing plugin does not take Sonix down. **"🧪 Load into sandbox"** additionally moves the **audio processing itself** into that process: host and worker map the same anonymous region (`memfd_create` + `mmap(MAP_SHARED)`) and exchange stereo blocks through SPSC ring buffers, with the transport's one-block latency compensated by PDC and the ring re-synchronised after a restart.
+* **VST3 loading + inspection (opt-in, `--features plugin-host`):** a **hand-rolled minimal VST3 ABI** (no SDK) loads a `.vst3` module (ELF or bundle), creates the component via the factory and reads its parameters (name, units, steps, flags) — especially relevant because **yabridge produces VST3/VST2**, not CLAP. VST3 audio/state comes next.
 
 **What is still missing to fully host plugins (🔜)**
 1. Full engine-wide MIDI routing into instruments (note-port discovery and plumbing are in place, but no instrument hosting yet).
-2. The Wine/yabridge path for FL Studio & Windows VSTs (Fas 4.6).
-3. VST3 / LV2 / VST2 loading — only CLAP is implemented so far.
+2. The Wine/yabridge path for FL Studio & Windows VSTs (Fas 4.6): **VST3 module/ABI/loading/inspection is done (4.6a)**; **VST3 audio, state and UI remain (4.6b)**.
+3. LV2 / VST2 loading plus VST3 audio/state — only CLAP can play audio so far.
 4. For FL Studio's own instruments (Sytrus, Harmor, Gross Beat, …) and FL Studio VSTi, the only viable route is their **VST/VST3 builds run through Wine + yabridge** — the native FL `.dll` formats are not a standard plugin API.
 
-**Therefore:** a CLAP **effect** is now usable for sound in Sonix when built with `--features plugin-host` — load it, insert it on a stem track with "▶ Load", open its GUI with "🪟 Open GUI", and its state survives project save/load. Crash isolation in a separate process with **shared-memory audio** now exists (with automatic restart); instrument hosting and the Wine/yabridge path are still to come.
+**Therefore:** a CLAP **effect** is now usable for sound in Sonix when built with `--features plugin-host` — load it, insert it on a stem track with "▶ Load", open its GUI with "🪟 Open GUI", and its state survives project save/load. Crash isolation in a separate process with **shared-memory audio** now exists (with automatic restart); instrument hosting, VST3 audio/state and the Wine/yabridge path are still to come.
 
 ---
 
