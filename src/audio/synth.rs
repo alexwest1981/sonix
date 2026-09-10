@@ -77,6 +77,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetWaveform(_) => "SetWaveform",
         AudioCommand::SetAdsr(_) => "SetAdsr",
         AudioCommand::SetFilter(_) => "SetFilter",
+        AudioCommand::SetFilterEnv { .. } => "SetFilterEnv",
         AudioCommand::SetDelay(_) => "SetDelay",
         AudioCommand::SetReverb(_) => "SetReverb",
         AudioCommand::SetDrive(_) => "SetDrive",
@@ -113,6 +114,11 @@ pub struct Voice {
     pub phase_inc: f32,
     pub velocity: f32,
     pub envelope: AdsrVoice,
+    /// Per-voice filter state so simultaneously sounding notes do not share a
+    /// single filter (each note keeps its own resonant state).
+    pub filter: StateVariableFilter,
+    /// Per-voice filter envelope; its level modulates the cutoff per note.
+    pub filter_env: AdsrVoice,
 }
 
 impl Voice {
@@ -124,6 +130,8 @@ impl Voice {
             phase_inc: 0.0,
             velocity: 0.0,
             envelope: AdsrVoice::new(sample_rate),
+            filter: StateVariableFilter::new(sample_rate),
+            filter_env: AdsrVoice::new(sample_rate),
         }
     }
 
@@ -132,15 +140,19 @@ impl Voice {
         self.freq = freq;
         self.velocity = velocity;
         self.phase_inc = (2.0 * PI * freq) / sample_rate;
+        self.filter.reset();
         self.envelope.gate_on();
+        self.filter_env.gate_on();
     }
 
     pub fn release(&mut self) {
         self.envelope.gate_off();
+        self.filter_env.gate_off();
     }
 
     pub fn reset(&mut self) {
         self.envelope.reset();
+        self.filter_env.reset();
         self.velocity = 0.0;
         self.phase = 0.0;
     }
@@ -151,7 +163,14 @@ impl Voice {
     }
 
     #[inline(always)]
-    pub fn next_sample(&mut self, waveform: Waveform, adsr: &AdsrParams) -> f32 {
+    pub fn next_sample(
+        &mut self,
+        waveform: Waveform,
+        adsr: &AdsrParams,
+        filter_params: &FilterParams,
+        filter_env: &AdsrParams,
+        filter_env_amount: f32,
+    ) -> f32 {
         if !self.envelope.is_active() {
             return 0.0;
         }
@@ -183,7 +202,14 @@ impl Voice {
             self.phase -= 2.0 * PI;
         }
 
-        raw_sample * self.velocity * env_gain
+        // Each voice runs through its own resonant filter instance, and its own
+        // filter envelope modulates the cutoff (in octaves) independently.
+        let fenv = self.filter_env.next_sample(filter_env);
+        let effective = FilterParams {
+            cutoff: filter_params.cutoff * 2.0_f32.powf(filter_env_amount * fenv),
+            resonance: filter_params.resonance,
+        };
+        self.filter.process_lowpass(raw_sample * self.velocity * env_gain, &effective)
     }
 }
 
@@ -334,7 +360,9 @@ pub struct SynthEngine {
     pub waveform: Waveform,
     pub adsr: AdsrParams,
     pub filter_params: FilterParams,
-    pub filter: StateVariableFilter,
+    /// Per-voice filter envelope depth in octaves and its shape.
+    pub filter_env_amount: f32,
+    pub filter_env: AdsrParams,
     pub delay_params: DelayParams,
     pub delay: StereoDelay,
     pub reverb_params: ReverbParams,
@@ -374,7 +402,8 @@ impl SynthEngine {
             waveform,
             adsr,
             filter_params,
-            filter: StateVariableFilter::new(sample_rate),
+            filter_env_amount: 0.0,
+            filter_env: AdsrParams::default(),
             delay_params: DelayParams::default(),
             delay: StereoDelay::new(sample_rate),
             reverb_params: ReverbParams::default(),
@@ -528,6 +557,10 @@ impl SynthEngine {
             AudioCommand::SetFilter(flt) => {
                 self.filter_params = flt;
             }
+            AudioCommand::SetFilterEnv { amount, adsr } => {
+                self.filter_env_amount = amount.clamp(-6.0, 6.0);
+                self.filter_env = adsr;
+            }
             AudioCommand::SetDelay(dly) => {
                 self.delay_params = dly;
             }
@@ -588,7 +621,9 @@ impl SynthEngine {
                 self.waveform = wf;
                 self.adsr = adsr;
                 self.filter_params = flt;
-                self.filter.reset();
+                for voice in &mut self.voices {
+                    voice.filter.reset();
+                }
             }
             AudioCommand::SetMasterVolume(vol) => {
                 self.master_volume = vol.clamp(0.0, 1.0);
@@ -796,10 +831,16 @@ impl SynthEngine {
         let mut mixed = 0.0;
         let mut active_count = 0;
 
-        // 1. Synthesizer voices
+        // 1. Synthesizer voices (each with its own envelope + filter state)
         for voice in &mut self.voices {
             if voice.is_active() {
-                mixed += voice.next_sample(self.waveform, &self.adsr);
+                mixed += voice.next_sample(
+                    self.waveform,
+                    &self.adsr,
+                    &self.filter_params,
+                    &self.filter_env,
+                    self.filter_env_amount,
+                );
                 active_count += 1;
             }
         }
@@ -813,8 +854,9 @@ impl SynthEngine {
             mixed = (mixed * self.drive).tanh() / (self.drive * 0.7 + 0.3);
         }
 
-        // 3. Resonant Lowpass Filter on synth bus
-        let synth_out = self.filter.process_lowpass(mixed, &self.filter_params);
+        // 3. Per-voice resonant lowpass is applied inside each voice; the synth
+        //    bus itself is no longer filtered globally.
+        let synth_out = mixed;
 
         // 4. Drum bus
         let mut drum_mix = 0.0;
@@ -1163,5 +1205,63 @@ mod tests {
         });
         synth.process_stereo();
         assert_eq!(active_voices(&synth), 4);
+    }
+
+    #[test]
+    fn filter_env_zero_amount_is_transparent() {
+        let adsr = AdsrParams::default();
+        let flt = FilterParams { cutoff: 1200.0, resonance: 2.0 };
+        let env = AdsrParams { attack: 0.001, decay: 0.05, sustain: 0.0, release: 0.05 };
+        let other_env = AdsrParams { attack: 0.2, decay: 0.9, sustain: 0.5, release: 1.0 };
+        let mut a = Voice::new(48_000.0);
+        let mut b = Voice::new(48_000.0);
+        a.trigger(60, 261.63, 1.0, 48_000.0);
+        b.trigger(60, 261.63, 1.0, 48_000.0);
+        for _ in 0..500 {
+            let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0);
+            let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0);
+            assert!(
+                (sa - sb).abs() < 1e-6,
+                "amount 0 must ignore the filter envelope shape"
+            );
+        }
+    }
+
+    #[test]
+    fn filter_env_amount_changes_timbre() {
+        let adsr = AdsrParams::default();
+        let flt = FilterParams { cutoff: 400.0, resonance: 4.0 };
+        let fenv = AdsrParams { attack: 0.001, decay: 0.2, sustain: 0.0, release: 0.2 };
+        let mut dry = Voice::new(48_000.0);
+        let mut wet = Voice::new(48_000.0);
+        dry.trigger(60, 261.63, 1.0, 48_000.0);
+        wet.trigger(60, 261.63, 1.0, 48_000.0);
+        let mut diff = 0.0_f32;
+        for _ in 0..2000 {
+            let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0);
+            let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0);
+            diff += (a - b).abs();
+        }
+        assert!(diff > 1.0, "filter envelope should alter the timbre, diff={diff}");
+    }
+
+    #[test]
+    fn voices_have_independent_filter_envelopes() {
+        let fenv = AdsrParams { attack: 0.5, decay: 0.5, sustain: 1.0, release: 0.5 };
+        let adsr = AdsrParams::default();
+        let flt = FilterParams::default();
+        let mut first = Voice::new(48_000.0);
+        let mut second = Voice::new(48_000.0);
+        first.trigger(60, 261.63, 1.0, 48_000.0);
+        for _ in 0..2000 {
+            first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0);
+        }
+        second.trigger(64, 329.63, 1.0, 48_000.0);
+        let l1 = first.filter_env.current_level;
+        let l2 = second.filter_env.current_level;
+        assert!(
+            l1 > l2,
+            "earlier note's filter envelope must be further along: {l1} vs {l2}"
+        );
     }
 }

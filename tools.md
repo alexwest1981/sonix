@@ -200,6 +200,12 @@ Knappen "⚡ Tillämpa Preset" visade en falsk bekräftelse utan att göra någo
 - **i18n:** Nya `tr_en`-nycklar.
 - `cargo test --release` = **61 tester**, 0 varningar.
 
+### P28 — Per-röst filter & filter-envelope i synthen (Fas 2.4) · ✅ KLAR
+Filtret låg tidigare på synth-bussen (globalt). Eftersom SVF:en är linjär lät per-röst-filter med samma parametrar identiskt — den hörbara vinsten kräver per-röst modulation.
+- **Löst:** `Voice` har nu eget `filter` (StateVariableFilter) och eget `filter_env` (AdsrVoice). Globala `SynthEngine.filter` borttaget (även i `exporter.rs`). Nytt `AudioCommand::SetFilterEnv { amount, adsr }`; cutoff = `base * 2^(amount * env)`. Ny ratt **"ENV ±oct"** (−6..+6) i filterpanelen; standard 0 = ingen ljudförändring. Envelope-parametrar är patch-globala (rattar hörs live) men varje tons envelope löper oberoende.
+- **Tester:** `filter_env_zero_amount_is_transparent`, `filter_env_amount_changes_timbre`, `voices_have_independent_filter_envelopes`.
+- `cargo test --release` = **64 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning

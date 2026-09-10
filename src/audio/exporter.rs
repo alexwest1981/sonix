@@ -345,7 +345,6 @@ pub fn build_offline_engine(spec: &RenderSpec, fx: &FxState) -> SynthEngine {
     engine.waveform = fx.waveform;
     engine.adsr = fx.adsr;
     engine.filter_params = fx.filter;
-    engine.filter.reset();
     engine.delay_params = fx.delay;
     engine.delay = super::effects::StereoDelay::new(engine.sample_rate);
     engine.reverb_params = fx.reverb;

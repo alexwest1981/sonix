@@ -94,6 +94,13 @@ pub enum AudioCommand {
     SetWaveform(Waveform),
     SetAdsr(AdsrParams),
     SetFilter(FilterParams),
+    /// Per-voice filter envelope: `amount` is the cutoff modulation depth in
+    /// octaves (positive = brighter, negative = darker); `adsr` shapes the
+    /// per-note sweep. Default amount 0 disables it.
+    SetFilterEnv {
+        amount: f32,
+        adsr: AdsrParams,
+    },
     SetDelay(DelayParams),
     SetReverb(ReverbParams),
     SetDrive(f32),

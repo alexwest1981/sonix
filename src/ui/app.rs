@@ -492,6 +492,8 @@ pub struct SonixApp {
     pub waveform: Waveform,
     pub adsr: AdsrParams,
     pub filter: FilterParams,
+    pub filter_env_amount: f32,
+    pub filter_env: AdsrParams,
     pub delay: DelayParams,
     pub reverb: ReverbParams,
     pub drive: f32,
@@ -1030,6 +1032,8 @@ impl SonixApp {
             waveform,
             adsr,
             filter,
+            filter_env_amount: 0.0,
+            filter_env: AdsrParams { attack: 0.005, decay: 0.25, sustain: 0.0, release: 0.2 },
             delay: DelayParams::default(),
             reverb: ReverbParams::default(),
             drive: 1.0,
@@ -3408,6 +3412,10 @@ impl SonixApp {
         let _ = self.engine.send_command(AudioCommand::SetWaveform(self.waveform));
         let _ = self.engine.send_command(AudioCommand::SetAdsr(self.adsr));
         let _ = self.engine.send_command(AudioCommand::SetFilter(self.filter));
+        let _ = self.engine.send_command(AudioCommand::SetFilterEnv {
+            amount: self.filter_env_amount,
+            adsr: self.filter_env,
+        });
         let _ = self.engine.send_command(AudioCommand::SetDelay(self.delay));
         let _ = self.engine.send_command(AudioCommand::SetReverb(self.reverb));
         let _ = self.engine.send_command(AudioCommand::SetDrive(self.drive));
@@ -8860,13 +8868,21 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     ui.label(egui::RichText::new(crate::i18n::t("RESONANT SVF FILTER (12 dB)")).strong().color(Theme::FL_ORANGE));
                     ui.horizontal(|ui| {
                         let mut flt_changed = false;
+                        let mut fenv_changed = false;
                         flt_changed |= rotary_knob(ui, &mut self.filter.cutoff, 60.0, 18000.0, "CUTOFF", Theme::FL_ORANGE, 40.0);
                         flt_changed |= rotary_knob(ui, &mut self.filter.resonance, 0.5, 9.5, "RESO (Q)", Theme::FL_YELLOW, 40.0);
+                        fenv_changed |= rotary_knob(ui, &mut self.filter_env_amount, -6.0, 6.0, "ENV ±oct", Theme::FL_ORANGE, 40.0);
                         if flt_changed {
                             let _ = self.engine.send_command(AudioCommand::SetFilter(self.filter));
                         }
+                        if fenv_changed {
+                            let _ = self.engine.send_command(AudioCommand::SetFilterEnv {
+                                amount: self.filter_env_amount,
+                                adsr: self.filter_env,
+                            });
+                        }
                     });
-                    ui.label(egui::RichText::new(format!("Cutoff: {:.0} Hz | Q: {:.1}", self.filter.cutoff, self.filter.resonance)).size(10.0).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(format!("Cutoff: {:.0} Hz | Q: {:.1} | Env: {:+.1} oct", self.filter.cutoff, self.filter.resonance, self.filter_env_amount)).size(10.0).color(Theme::TEXT_MUTED));
                 });
 
                 // Column 3: ADSR Rotary Envelopes

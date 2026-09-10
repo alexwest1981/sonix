@@ -132,7 +132,8 @@ update-desktop-database ~/.local/share/applications
 
 ### 5. 🎛 Analog Alchemy Synth — ✅ Äkta
 * 4 vågformer (sinus, sågtand, fyrkant, triangel), ADSR, resonant filter, drive och en morph-vektorplatta med 8 snapshots.
-* 🟡 **Not:** Filtret är ett 2-poligt (12 dB) state-variable lågpass — inte ett 24 dB Moog-ladder — och filter/ADSR är globala, inte per röst.
+* ✅ **Per röst:** Varje ton har eget filtertillstånd och eget filter-envelope (ratten **ENV ±oct** sveper cutoff per ton); envelope-parametrarna är patch-globala så rattar hörs live.
+* 🟡 **Not:** Filtret är ett 2-poligt (12 dB) state-variable lågpass — inte ett 24 dB Moog-ladder.
 
 ### 6. 🎙 Sångstudio & Harmonizer — ✅ Äkta (offline-bearbetning)
 * **Take Lanes:** Flera tagningar med icke-destruktiv comping; vågform crop/slice/normalize.

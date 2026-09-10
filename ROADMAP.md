@@ -17,10 +17,10 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~94 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~95 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[██████████████████████████████████░░]  94 %
+[███████████████████████████████████░]  95 %
 ```
 
 | Område | Klart | Kvar | Procent |
@@ -106,10 +106,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** Tempo kan ändras utan att tonhöjden ändras.
   - **Filer:** `src/audio/synth.rs`, `src/audio/vocal_harmonizer.rs`
 
-- [ ] **2.4 Per-voice filter & ADSR i Alchemy-synthen** — *M*
-  - **Gör:** Separata envelope/filter per röst (polyfonisk), inte globala.
-  - **Klart när:** Ackord kan ha oberoende filter/envelope per ton.
-  - **Filer:** `src/audio/synth.rs`
+- [x] **2.4 Per-voice filter & ADSR i Alchemy-synthen** — *M* ✅
+  - **Löst:** Varje röst har nu eget filtertillstånd (`Voice.filter`) och ett eget **filter-envelope** (`Voice.filter_env`) vars nivå modulerar cutoff per ton (i oktaver). Globala filterfältet på synth-bussen är borttaget. Ny ratt **"ENV ±oct"** i filterpanelen (−6..+6) skickar `AudioCommand::SetFilterEnv`. Standard 0 → ingen ljudförändring. Envelope-*parametrarna* (ADSR + filter-envelope-form) är fortfarande patch-globala så rattar hörs live, men varje tons envelope löper oberoende.
+  - **Klart när:** Ackord kan ha oberoende filter/envelope per ton. ✅ (tester: `voices_have_independent_filter_envelopes`, `filter_env_amount_changes_timbre`, `filter_env_zero_amount_is_transparent`)
+  - **Filer:** `src/audio/synth.rs`, `src/audio/command.rs`, `src/audio/exporter.rs`, `src/ui/app.rs`
 
 ---
 
@@ -171,7 +171,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 2.1 — Realtids-autotune i ljudtråden** (första ovalda punkten i Fas 2).
+**Fas 2.2 — Riktig formantbevarande pitch-shift** (nästa ovalda punkt i Fas 2).
 
 ## 🛠️ Så här håller vi roadmapen levande
 

@@ -134,7 +134,8 @@ update-desktop-database ~/.local/share/applications
 
 ### 5. 🎛 Analog Alchemy Synth — ✅ Real
 * 4 waveforms (sine, saw, square, triangle), ADSR, resonant filter, drive and an 8-snapshot morph vector pad.
-* 🟡 **Note:** The filter is a 2-pole (12 dB) state-variable low-pass — not a 24 dB Moog ladder — and filter/ADSR are global, not per-voice.
+* ✅ **Per-voice:** Each note has its own filter state and filter envelope (the **ENV ±oct** knob sweeps the cutoff per note); envelope parameters are patch-global so knobs are heard live.
+* 🟡 **Note:** The filter is a 2-pole (12 dB) state-variable low-pass — not a 24 dB Moog ladder.
 
 ### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real (offline processing)
 * **Take Lanes:** Multiple takes with non-destructive comping; waveform crop/slice/normalize.
