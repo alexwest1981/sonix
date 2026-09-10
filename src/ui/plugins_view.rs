@@ -808,6 +808,44 @@ fn render_inspection_panel(
             }
         }
 
+        // GUI capability reported by `clap.gui` (Fas 4.4a).
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t("🖼 Plugin-GUI:"))
+                    .strong()
+                    .size(10.5)
+                    .color(Theme::FL_CYAN),
+            );
+            match &snapshot.gui {
+                Some(gui) => {
+                    let resize = if gui.can_resize {
+                        crate::i18n::t("kan ändra storlek")
+                    } else {
+                        crate::i18n::t("fast storlek")
+                    };
+                    ui.label(
+                        egui::RichText::new(crate::tstatus!(
+                            "🖼 GUI: {} {}×{} ({}) – fönsterhosting (X11) kommer i Fas 4.4b",
+                            gui.api,
+                            gui.width,
+                            gui.height,
+                            resize
+                        ))
+                        .size(10.0)
+                        .color(Theme::TEXT_BRIGHT),
+                    );
+                }
+                None => {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("stöds inte (ingen clap.gui)"))
+                            .size(10.0)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                }
+            }
+        });
+
         // Instantiate this plugin into a stem track (Fas 4.2).
         ui.add_space(4.0);
         ui.horizontal(|ui| {

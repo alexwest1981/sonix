@@ -278,6 +278,14 @@ CLAP-instansen kunde processa ljud men state sparades aldrig och pluginens egna 
 
 ---
 
+### P40 — GUI-ABI + livscykel (Fas 4.4a) · ✅ KLAR
+Pluginen kunde spara state, men värden läste/drev aldrig pluginens GUI och inspektionen visste inte om pluginen hade ett GUI.
+- **Löst:** CLAP-värden implementerar nu **`clap.gui`** mot den fullständiga vtable:n — `is_api_supported`, `get_preferred_api`, `create`, `destroy`, `get_size`, `can_resize`, `set_size`, `set_parent`, `show`, `hide` (resterande fält deklareras för korrekt funktionspekarlayout). `clap_window_t` skickas med rätt `x11`-union. `PluginProcessor`-traitet fick GUI-metoder (default = "stöds ej"), `PluginInsert` delegerar, och `ClapProcessor` håller livscykeln (`gui_created`) samt river GUI:t i `Drop` före `deactivate`. Inspektionen rapporterar **`PluginGuiCapability`** (API, flytande, bredd/höjd, storleksändring) och plugin-panelen visar **"🖼 Plugin-GUI: x11 320×240 (kan ändra storlek)"** eller **"stöds inte (ingen clap.gui)"**. Kvar till 4.4b: själva X11-fönstret + delad plugin-instans (samma instans för ljud och GUI) och en aktiv "öppna GUI"-knapp.
+- **Tester:** Mock-CLAP:en (`tests/fixtures/mock_clap.c`) implementerar en riktig (headless) `clap.gui`-vtable. Nya tester: X11-kapabilitet (`is_api_supported`/`get_preferred_api`/`can_resize`), GUI-livscykel (create → get_size → set_size-round-trip → set_parent med riktig/ogiltig X11-id → show/hide → destroy) samt att inspektionen rapporterar GUI-kapabiliteten.
+- `cargo test --release` = **125 tester**, 0 varningar. `cargo test --release --features plugin-host` = **138 tester**, 0 varningar. Alla byggkombinationer (`default`, `plugin-host`, `neural`, `neural,plugin-host`) länkar rent.
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -291,6 +299,7 @@ CLAP-instansen kunde processa ljud men state sparades aldrig och pluginens egna 
 | CLAP-pluginvärd (laddning + parameterinspektion, opt-in) | ✅ REAL (P37) |
 | CLAP-ljudprocessning + per-spår-insert med PDC (opt-in) | ✅ REAL (P38) |
 | CLAP state/preset save-load + projektpersistens (opt-in) | ✅ REAL (P39) |
+| CLAP GUI-ABI + livscykel + inspektion (opt-in) | ✅ REAL (P40) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

@@ -31,13 +31,13 @@
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Stem-separation (DSP + neural ONNX) | 1 | 0 | **100 %** |
-| Plugin-hantering | 5 | 3 | **63 %** |
+| Plugin-hantering | 6 | 3 | **67 %** |
 | Export & projekt-I/O (presets, loudness-normalisering) | 5 | 0 | **100 %** |
 | Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
-> **Största kvarvarande biten:** **Plugin-hosting** (63 % — en CLAP-värd kan nu ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC** samt **spara/ladda plugin-state i projektet och applicera pluginens egna presets**; GUI och sandbox återstår). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
+> **Största kvarvarande biten:** **Plugin-hosting** (67 % — en CLAP-värd kan nu ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets** samt **läsa och driva `clap.gui`-livscykeln på huvudtråden**; själva X11-fönstret och sandboxen återstår). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
 ---
 
@@ -142,10 +142,17 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/audio/plugin_host_live.rs`, `src/ui/app.rs`, `src/ui/plugins_view.rs`, `src/audio/plugin_host.rs`, `tests/fixtures/mock_clap.c`
   - **Beroende:** 4.2
 
-- [ ] **4.4 Plugin-GUI** — *L*
-  - **Gör:** CLAP GUI-extension / X11-embedding; visa "öppna GUI" i spåret.
-  - **Klart när:** Pluginens egna fönster kan öppnas och styra ljudet.
+- [x] **4.4a Plugin-GUI-ABI + livscykel** — *M* ✅
+  - **Löst:** CLAP-värden läser och driver nu **`clap.gui`** mot den fullständiga vtable:n (`is_api_supported`, `get_preferred_api`, `create`, `destroy`, `get_size`, `can_resize`, `set_size`, `set_parent`, `show`, `hide`; resterande fält deklareras för korrekt layout). `PluginProcessor`-traitet fick GUI-metoder (default "stöds ej"), `PluginInsert` delegerar, och `ClapProcessor` håller GUI-livscykeln (`gui_created`) samt river GUI:t i `Drop` före `deactivate`. `clap_window_t` skickas med korrekt `x11`-union. Inspektionen rapporterar nu pluginens GUI-kapacitet (`PluginGuiCapability`) och plugin-panelen visar **"🖼 Plugin-GUI: x11 320×240 (kan ändra storlek)"** eller **"stöds inte"**. Mock-pluginen (`tests/fixtures/mock_clap.c`) implementerar en riktig (headless) GUI-vtable.
+  - **Klart när:** Hosten kan skapa/visa/dölja/ta bort en plugins GUI och läsa dess storlek. ✅ (Livscykel + `set_parent` + `set_size` + storleks-round-trip verifierade mot mock-pluginen. 125 tester default, 138 med featuren, 0 varningar.)
+  - **Kvar till 4.4b:** själva X11-fönstret och den **delade plugin-instansen** (samma instans för ljud och GUI), samt en aktiv "öppna GUI"-knapp i spåret.
+  - **Filer:** `src/audio/plugin_host_live.rs`, `src/ui/plugins_view.rs`, `src/i18n.rs`, `tests/fixtures/mock_clap.c`
   - **Beroende:** 4.2
+
+- [ ] **4.4b Plugin-GUI-fönster (X11)** — *L*
+  - **Gör:** Dela plugin-instansen mellan ljud- och huvudtråden, skapa ett X11-fönster och bädda in GUI:t via `set_parent`; visa "öppna GUI" i spåret.
+  - **Klart när:** Pluginens egna fönster kan öppnas och styra ljudet.
+  - **Beroende:** 4.4a
 
 - [ ] **4.5 Out-of-process sandbox** — *L*
   - **Gör:** Kör plugins i separat process med delat minne/IPC så att en krasch inte tar ner Sonix.
@@ -183,7 +190,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 4.4 — Plugin-GUI** (*L*): CLAP GUI-extension / X11-embedding och en "öppna GUI"-knapp i spåret. Därefter 4.5–4.6. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
+**Fas 4.4b — Plugin-GUI-fönster (X11)** (*L*): dela plugin-instansen mellan ljud- och huvudtråden, skapa ett X11-fönster och bädda in GUI:t via `set_parent`, samt en aktiv "öppna GUI"-knapp i spåret. (4.4a — ABI + livscykel + inspektion — är klar.) Därefter 4.5–4.6. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3) och GUI-ABI/livscykel (4.4a), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

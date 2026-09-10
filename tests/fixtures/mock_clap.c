@@ -3,7 +3,8 @@
  *
  * It implements the CLAP 1.x ABI by hand: an exported `clap_entry`, a
  * plugin-factory with a single descriptor, a real processing vtable and the
- * `clap.params`, `clap.audio-ports` and `clap.latency` extensions.
+ * `clap.params`, `clap.audio-ports`, `clap.latency`, `clap.state`,
+ * `clap.preset-load/2` and `clap.gui` extensions.
  *
  * It is a stereo gain effect: each output sample is
  *     out = in * (1 - mix + mix * gain)
@@ -172,6 +173,36 @@ typedef struct clap_plugin_preset_load {
     bool (*from_location)(const clap_plugin_t *plugin, uint32_t location_kind,
                           const char *location, const char *load_key);
 } clap_plugin_preset_load_t;
+
+typedef struct clap_window {
+    const char *api;
+    uintptr_t x11;
+} clap_window_t;
+
+typedef struct clap_gui_resize_hints {
+    bool can_resize;
+    bool preserve_aspect_ratio;
+    uint32_t aspect_ratio_width;
+    uint32_t aspect_ratio_height;
+} clap_gui_resize_hints_t;
+
+typedef struct clap_plugin_gui {
+    bool (*is_api_supported)(const clap_plugin_t *plugin, const char *api, bool is_floating);
+    bool (*get_preferred_api)(const clap_plugin_t *plugin, const char **api, bool *is_floating);
+    bool (*create)(const clap_plugin_t *plugin, const char *api, bool is_floating);
+    void (*destroy)(const clap_plugin_t *plugin);
+    bool (*set_scale)(const clap_plugin_t *plugin, double scale);
+    bool (*get_size)(const clap_plugin_t *plugin, uint32_t *width, uint32_t *height);
+    bool (*can_resize)(const clap_plugin_t *plugin);
+    bool (*get_resize_hints)(const clap_plugin_t *plugin, clap_gui_resize_hints_t *hints);
+    bool (*adjust_size)(const clap_plugin_t *plugin, uint32_t *width, uint32_t *height);
+    bool (*set_size)(const clap_plugin_t *plugin, uint32_t width, uint32_t height);
+    bool (*set_parent)(const clap_plugin_t *plugin, const clap_window_t *window);
+    bool (*set_transient)(const clap_plugin_t *plugin, const clap_window_t *window);
+    bool (*suggest_title)(const clap_plugin_t *plugin, const char *title);
+    bool (*show)(const clap_plugin_t *plugin);
+    bool (*hide)(const clap_plugin_t *plugin);
+} clap_plugin_gui_t;
 
 typedef struct clap_plugin_factory {
     uint32_t (*get_plugin_count)(const struct clap_plugin_factory *factory);
@@ -380,6 +411,119 @@ static bool preset_from_location(const clap_plugin_t *p, uint32_t location_kind,
 
 static const clap_plugin_preset_load_t mock_preset_load = {preset_from_location};
 
+/*
+ * `clap.gui`: a real (but headless) GUI vtable. It never touches a windowing
+ * system, it just tracks the lifecycle so the Rust host tests can verify that
+ * create/get_size/set_size/set_parent/show/hide/destroy are driven correctly
+ * and with a correctly laid-out `clap_window_t`.
+ */
+static bool mock_gui_created = false;
+static bool mock_gui_shown = false;
+static uint32_t mock_gui_width = 320;
+static uint32_t mock_gui_height = 240;
+static uintptr_t mock_gui_parent = 0;
+
+static bool gui_is_api_supported(const clap_plugin_t *p, const char *api, bool is_floating) {
+    (void)p; (void)is_floating;
+    return api && strcmp(api, "x11") == 0;
+}
+
+static bool gui_get_preferred_api(const clap_plugin_t *p, const char **api, bool *is_floating) {
+    (void)p;
+    if (api) *api = "x11";
+    if (is_floating) *is_floating = false;
+    return true;
+}
+
+static bool gui_create(const clap_plugin_t *p, const char *api, bool is_floating) {
+    (void)p; (void)is_floating;
+    if (!api || strcmp(api, "x11") != 0) return false;
+    if (mock_gui_created) return false;
+    mock_gui_created = true;
+    return true;
+}
+
+static void gui_destroy(const clap_plugin_t *p) {
+    (void)p;
+    mock_gui_created = false;
+    mock_gui_shown = false;
+    mock_gui_parent = 0;
+}
+
+static bool gui_set_scale(const clap_plugin_t *p, double scale) { (void)p; return scale > 0.0; }
+
+static bool gui_get_size(const clap_plugin_t *p, uint32_t *width, uint32_t *height) {
+    (void)p;
+    if (!mock_gui_created) return false;
+    if (width) *width = mock_gui_width;
+    if (height) *height = mock_gui_height;
+    return true;
+}
+
+static bool gui_can_resize(const clap_plugin_t *p) { (void)p; return true; }
+
+static bool gui_get_resize_hints(const clap_plugin_t *p, clap_gui_resize_hints_t *hints) {
+    (void)p;
+    if (!hints) return false;
+    hints->can_resize = true;
+    hints->preserve_aspect_ratio = false;
+    hints->aspect_ratio_width = 1;
+    hints->aspect_ratio_height = 1;
+    return true;
+}
+
+static bool gui_adjust_size(const clap_plugin_t *p, uint32_t *width, uint32_t *height) {
+    (void)p; (void)width; (void)height;
+    return true;
+}
+
+static bool gui_set_size(const clap_plugin_t *p, uint32_t width, uint32_t height) {
+    (void)p;
+    if (!mock_gui_created || width == 0 || height == 0) return false;
+    mock_gui_width = width;
+    mock_gui_height = height;
+    return true;
+}
+
+static bool gui_set_parent(const clap_plugin_t *p, const clap_window_t *window) {
+    (void)p;
+    if (!mock_gui_created || !window || !window->api) return false;
+    if (strcmp(window->api, "x11") != 0) return false;
+    if (window->x11 == 0) return false;
+    mock_gui_parent = window->x11;
+    return true;
+}
+
+static bool gui_set_transient(const clap_plugin_t *p, const clap_window_t *window) {
+    (void)p; (void)window;
+    return true;
+}
+
+static bool gui_suggest_title(const clap_plugin_t *p, const char *title) {
+    (void)p; (void)title;
+    return true;
+}
+
+static bool gui_show(const clap_plugin_t *p) {
+    (void)p;
+    if (!mock_gui_created) return false;
+    mock_gui_shown = true;
+    return true;
+}
+
+static bool gui_hide(const clap_plugin_t *p) {
+    (void)p;
+    mock_gui_shown = false;
+    return true;
+}
+
+static const clap_plugin_gui_t mock_gui = {
+    gui_is_api_supported, gui_get_preferred_api, gui_create, gui_destroy,
+    gui_set_scale, gui_get_size, gui_can_resize, gui_get_resize_hints,
+    gui_adjust_size, gui_set_size, gui_set_parent, gui_set_transient,
+    gui_suggest_title, gui_show, gui_hide,
+};
+
 static const void *p_get_extension(const clap_plugin_t *p, const char *id) {
     (void)p;
     if (strcmp(id, "clap.params") == 0) return &mock_params;
@@ -387,6 +531,7 @@ static const void *p_get_extension(const clap_plugin_t *p, const char *id) {
     if (strcmp(id, "clap.latency") == 0) return &mock_latency;
     if (strcmp(id, "clap.state") == 0) return &mock_state_ext;
     if (strcmp(id, "clap.preset-load/2") == 0) return &mock_preset_load;
+    if (strcmp(id, "clap.gui") == 0) return &mock_gui;
     return NULL;
 }
 

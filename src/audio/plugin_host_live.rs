@@ -83,6 +83,20 @@ pub struct PluginInfo {
     pub features: Vec<String>,
 }
 
+/// What a plugin's `clap.gui` extension supports, discovered during
+/// inspection. `None` (on [`PluginInspection::gui`]) means the plugin ships no
+/// GUI at all.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PluginGuiCapability {
+    /// Window API the plugin can be embedded into, e.g. `"x11"`.
+    pub api: String,
+    /// Whether the plugin prefers a floating window rather than an embedded one.
+    pub floating: bool,
+    pub width: u32,
+    pub height: u32,
+    pub can_resize: bool,
+}
+
 /// Backend-agnostic handle to a live plugin instance.
 ///
 /// Future backends (VST3, LV2) will implement the same trait.
@@ -92,6 +106,10 @@ pub trait PluginInstance {
     fn backend(&self) -> &'static str;
     fn info(&self) -> &PluginInfo;
     fn parameters(&self) -> &[PluginParameter];
+    /// Probes the plugin's GUI support. Defaults to "no GUI".
+    fn gui_capability(&self) -> Option<PluginGuiCapability> {
+        None
+    }
 }
 
 /// Serializable snapshot of an inspection, safe to keep in the UI state.
@@ -101,6 +119,8 @@ pub struct PluginInspection {
     pub backend: String,
     pub info: Option<PluginInfo>,
     pub parameters: Vec<PluginParameter>,
+    /// GUI capability reported by `clap.gui`, if any.
+    pub gui: Option<PluginGuiCapability>,
     pub error: Option<String>,
 }
 
@@ -111,6 +131,7 @@ impl PluginInspection {
             backend: backend.to_string(),
             info: None,
             parameters: Vec::new(),
+            gui: None,
             error: Some(error),
         }
     }
@@ -132,6 +153,7 @@ pub fn inspect(path: &str) -> PluginInspection {
                 backend: instance.backend().to_string(),
                 info: Some(instance.info().clone()),
                 parameters: instance.parameters().to_vec(),
+                gui: instance.gui_capability(),
                 error: None,
             },
             Err(err) => PluginInspection::failed(path, "CLAP", err),
@@ -194,6 +216,53 @@ pub trait PluginProcessor: Send {
         let _ = location;
         false
     }
+
+    /// `clap.gui`: whether the plugin can embed into `api` (e.g. `"x11"`).
+    fn gui_is_api_supported(&self, api: &str, is_floating: bool) -> bool {
+        let _ = (api, is_floating);
+        false
+    }
+    /// `clap.gui`: the plugin's preferred window API and floating preference.
+    fn gui_preferred_api(&self) -> Option<(String, bool)> {
+        None
+    }
+    /// `clap.gui`: the GUI's current size. Only valid after [`Self::gui_create`].
+    fn gui_get_size(&self) -> Option<(u32, u32)> {
+        None
+    }
+    /// `clap.gui`: whether the user may resize the window.
+    fn gui_can_resize(&self) -> bool {
+        false
+    }
+    /// Whether the GUI has been created and not yet destroyed.
+    fn gui_is_created(&self) -> bool {
+        false
+    }
+    /// `clap.gui`: creates the GUI for `api`. Main-thread only.
+    fn gui_create(&mut self, api: &str, is_floating: bool) -> bool {
+        let _ = (api, is_floating);
+        false
+    }
+    /// `clap.gui`: attaches the GUI to a host-provided X11 window. Main-thread.
+    fn gui_set_parent(&mut self, x11_window: u64) -> bool {
+        let _ = x11_window;
+        false
+    }
+    /// `clap.gui`: requests a new window size. Main-thread only.
+    fn gui_set_size(&mut self, width: u32, height: u32) -> bool {
+        let _ = (width, height);
+        false
+    }
+    /// `clap.gui`: makes the GUI visible. Main-thread only.
+    fn gui_show(&mut self) -> bool {
+        false
+    }
+    /// `clap.gui`: hides the GUI without destroying it. Main-thread only.
+    fn gui_hide(&mut self) -> bool {
+        false
+    }
+    /// `clap.gui`: destroys the GUI. Main-thread only.
+    fn gui_destroy(&mut self) {}
 }
 
 /// Creates a live processing instance for `path`, ready to be wrapped in a
@@ -282,6 +351,41 @@ impl PluginInsert {
     /// Loads a native preset from a location (main-thread only).
     pub fn preset_load(&mut self, location: &str) -> bool {
         self.processor.preset_load(location)
+    }
+
+    /// `clap.gui` helpers — all main-thread only, delegated to the processor.
+    pub fn gui_is_api_supported(&self, api: &str, is_floating: bool) -> bool {
+        self.processor.gui_is_api_supported(api, is_floating)
+    }
+    pub fn gui_preferred_api(&self) -> Option<(String, bool)> {
+        self.processor.gui_preferred_api()
+    }
+    pub fn gui_get_size(&self) -> Option<(u32, u32)> {
+        self.processor.gui_get_size()
+    }
+    pub fn gui_can_resize(&self) -> bool {
+        self.processor.gui_can_resize()
+    }
+    pub fn gui_is_created(&self) -> bool {
+        self.processor.gui_is_created()
+    }
+    pub fn gui_create(&mut self, api: &str, is_floating: bool) -> bool {
+        self.processor.gui_create(api, is_floating)
+    }
+    pub fn gui_set_parent(&mut self, x11_window: u64) -> bool {
+        self.processor.gui_set_parent(x11_window)
+    }
+    pub fn gui_set_size(&mut self, width: u32, height: u32) -> bool {
+        self.processor.gui_set_size(width, height)
+    }
+    pub fn gui_show(&mut self) -> bool {
+        self.processor.gui_show()
+    }
+    pub fn gui_hide(&mut self) -> bool {
+        self.processor.gui_hide()
+    }
+    pub fn gui_destroy(&mut self) {
+        self.processor.gui_destroy()
     }
 
     pub fn block_frames(&self) -> usize {
@@ -411,7 +515,11 @@ mod imp {
     /// still advertised by some plugins.
     pub const CLAP_EXT_PRESET_LOAD: &CStr = c"clap.preset-load/2";
     pub const CLAP_EXT_PRESET_LOAD_DRAFT: &CStr = c"clap.preset-load.draft/2";
+    pub const CLAP_EXT_GUI: &CStr = c"clap.gui";
     pub const CLAP_PLUGIN_FACTORY_ID: &CStr = c"clap.plugin-factory";
+
+    /// `CLAP_WINDOW_API_X11` — the only window API this host embeds into.
+    pub const CLAP_WINDOW_API_X11: &CStr = c"x11";
 
     /// `clap_event_param_value` space id/type (CLAP core event space 0).
     const CLAP_CORE_EVENT_SPACE_ID: u16 = 0;
@@ -600,6 +708,52 @@ mod imp {
     /// `CLAP_PRESET_DISCOVERY_LOCATION_FILE`
     const CLAP_PRESET_LOCATION_FILE: u32 = 0;
 
+    /// `clap_window_t`: identifies the host window the GUI is embedded into.
+    /// The `api` string selects the union member; only the X11 handle is used,
+    /// and it is pointer-sized, so a single `usize` mirrors the union.
+    #[repr(C)]
+    #[allow(dead_code)]
+    pub struct ClapWindow {
+        pub api: *const c_char,
+        pub x11: usize,
+    }
+
+    #[repr(C)]
+    #[allow(dead_code)]
+    pub struct ClapGuiResizeHints {
+        pub can_resize: bool,
+        pub preserve_aspect_ratio: bool,
+        pub aspect_ratio_width: u32,
+        pub aspect_ratio_height: u32,
+    }
+
+    /// `clap_plugin_gui_t` — the `clap.gui` extension vtable. Every field must
+    /// be declared, in order, even the ones this host does not call, or the
+    /// function-pointer offsets would be wrong.
+    #[repr(C)]
+    #[allow(dead_code)]
+    pub struct ClapPluginGui {
+        pub is_api_supported:
+            Option<unsafe extern "C" fn(*const ClapPlugin, *const c_char, bool) -> bool>,
+        pub get_preferred_api:
+            Option<unsafe extern "C" fn(*const ClapPlugin, *mut *const c_char, *mut bool) -> bool>,
+        pub create: Option<unsafe extern "C" fn(*const ClapPlugin, *const c_char, bool) -> bool>,
+        pub destroy: Option<unsafe extern "C" fn(*const ClapPlugin)>,
+        pub set_scale: Option<unsafe extern "C" fn(*const ClapPlugin, f64) -> bool>,
+        pub get_size: Option<unsafe extern "C" fn(*const ClapPlugin, *mut u32, *mut u32) -> bool>,
+        pub can_resize: Option<unsafe extern "C" fn(*const ClapPlugin) -> bool>,
+        pub get_resize_hints:
+            Option<unsafe extern "C" fn(*const ClapPlugin, *mut ClapGuiResizeHints) -> bool>,
+        pub adjust_size: Option<unsafe extern "C" fn(*const ClapPlugin, *mut u32, *mut u32) -> bool>,
+        pub set_size: Option<unsafe extern "C" fn(*const ClapPlugin, u32, u32) -> bool>,
+        pub set_parent: Option<unsafe extern "C" fn(*const ClapPlugin, *const ClapWindow) -> bool>,
+        pub set_transient:
+            Option<unsafe extern "C" fn(*const ClapPlugin, *const ClapWindow) -> bool>,
+        pub suggest_title: Option<unsafe extern "C" fn(*const ClapPlugin, *const c_char) -> bool>,
+        pub show: Option<unsafe extern "C" fn(*const ClapPlugin) -> bool>,
+        pub hide: Option<unsafe extern "C" fn(*const ClapPlugin) -> bool>,
+    }
+
     #[repr(C)]
     pub struct ClapEventHeader {
         pub size: u32,
@@ -719,6 +873,58 @@ mod imp {
         fn parameters(&self) -> &[PluginParameter] {
             &self.params
         }
+        fn gui_capability(&self) -> Option<super::PluginGuiCapability> {
+            gui_capability(self.plugin)
+        }
+    }
+
+    /// Fetches a plugin extension by id, or null when the plugin has none.
+    fn plugin_extension(plugin: *const ClapPlugin, id: &CStr) -> *const c_void {
+        match unsafe { &*plugin }.get_extension {
+            Some(f) => unsafe { f(plugin, id.as_ptr()) },
+            None => std::ptr::null(),
+        }
+    }
+
+    /// Probes `clap.gui` for X11 support and the preferred size, creating and
+    /// destroying the GUI once so `get_size` is valid (per the CLAP contract).
+    fn gui_capability(plugin: *const ClapPlugin) -> Option<super::PluginGuiCapability> {
+        let ext = plugin_extension(plugin, CLAP_EXT_GUI) as *const ClapPluginGui;
+        if ext.is_null() {
+            return None;
+        }
+        let gui = unsafe { &*ext };
+        let is_supported = gui.is_api_supported?;
+        if !unsafe { is_supported(plugin, CLAP_WINDOW_API_X11.as_ptr(), false) } {
+            return None;
+        }
+        let create = gui.create?;
+        if !unsafe { create(plugin, CLAP_WINDOW_API_X11.as_ptr(), false) } {
+            return None;
+        }
+        let mut width = 0u32;
+        let mut height = 0u32;
+        let size_ok = gui
+            .get_size
+            .map(|f| unsafe { f(plugin, &mut width, &mut height) })
+            .unwrap_or(false);
+        let can_resize = gui
+            .can_resize
+            .map(|f| unsafe { f(plugin) })
+            .unwrap_or(false);
+        if let Some(destroy) = gui.destroy {
+            unsafe { destroy(plugin) };
+        }
+        if !size_ok {
+            return None;
+        }
+        Some(super::PluginGuiCapability {
+            api: CLAP_WINDOW_API_X11.to_string_lossy().into_owned(),
+            floating: false,
+            width,
+            height,
+            can_resize,
+        })
     }
 
     /// Turns a `.clap` file or bundle directory into the shared object to load.
@@ -1104,6 +1310,9 @@ mod imp {
         params_ext: *const ClapPluginParams,
         state_ext: *const ClapPluginState,
         preset_load_ext: *const ClapPluginPresetLoad,
+        gui_ext: *const ClapPluginGui,
+        /// Whether `clap.gui` create() succeeded and destroy() has not run.
+        gui_created: bool,
     }
 
     // The processor is only ever touched from one thread at a time (the audio
@@ -1118,6 +1327,9 @@ mod imp {
 
     impl Drop for ClapProcessor {
         fn drop(&mut self) {
+            // Tear the GUI down first; the CLAP contract wants destroy() before
+            // the plugin itself is destroyed.
+            super::PluginProcessor::gui_destroy(self);
             unsafe {
                 let plugin = self.plugin();
                 if self.processing
@@ -1317,6 +1529,145 @@ mod imp {
                 )
             }
         }
+
+        fn gui_is_api_supported(&self, api: &str, is_floating: bool) -> bool {
+            if self.gui_ext.is_null() {
+                return false;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            let Some(is_supported) = gui.is_api_supported else {
+                return false;
+            };
+            let Ok(api) = CString::new(api) else {
+                return false;
+            };
+            unsafe { is_supported(self.plugin(), api.as_ptr(), is_floating) }
+        }
+
+        fn gui_preferred_api(&self) -> Option<(String, bool)> {
+            if self.gui_ext.is_null() {
+                return None;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            let get = gui.get_preferred_api?;
+            let mut api_ptr: *const c_char = std::ptr::null();
+            let mut floating = false;
+            if !unsafe { get(self.plugin(), &mut api_ptr, &mut floating) } || api_ptr.is_null() {
+                return None;
+            }
+            let api = unsafe { CStr::from_ptr(api_ptr) }.to_string_lossy().into_owned();
+            Some((api, floating))
+        }
+
+        fn gui_get_size(&self) -> Option<(u32, u32)> {
+            if self.gui_ext.is_null() {
+                return None;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            let get = gui.get_size?;
+            let mut width = 0u32;
+            let mut height = 0u32;
+            if unsafe { get(self.plugin(), &mut width, &mut height) } {
+                Some((width, height))
+            } else {
+                None
+            }
+        }
+
+        fn gui_can_resize(&self) -> bool {
+            if self.gui_ext.is_null() {
+                return false;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            gui.can_resize
+                .map(|f| unsafe { f(self.plugin()) })
+                .unwrap_or(false)
+        }
+
+        fn gui_is_created(&self) -> bool {
+            self.gui_created
+        }
+
+        fn gui_create(&mut self, api: &str, is_floating: bool) -> bool {
+            if self.gui_created {
+                return true;
+            }
+            if self.gui_ext.is_null() {
+                return false;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            let Some(create) = gui.create else {
+                return false;
+            };
+            let Ok(api) = CString::new(api) else {
+                return false;
+            };
+            let ok = unsafe { create(self.plugin(), api.as_ptr(), is_floating) };
+            if ok {
+                self.gui_created = true;
+            }
+            ok
+        }
+
+        fn gui_set_parent(&mut self, x11_window: u64) -> bool {
+            if !self.gui_created || self.gui_ext.is_null() {
+                return false;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            let Some(set_parent) = gui.set_parent else {
+                return false;
+            };
+            let window = ClapWindow {
+                api: CLAP_WINDOW_API_X11.as_ptr(),
+                x11: x11_window as usize,
+            };
+            unsafe { set_parent(self.plugin(), &window) }
+        }
+
+        fn gui_set_size(&mut self, width: u32, height: u32) -> bool {
+            if !self.gui_created || self.gui_ext.is_null() {
+                return false;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            let Some(set_size) = gui.set_size else {
+                return false;
+            };
+            unsafe { set_size(self.plugin(), width, height) }
+        }
+
+        fn gui_show(&mut self) -> bool {
+            if !self.gui_created || self.gui_ext.is_null() {
+                return false;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            gui.show
+                .map(|f| unsafe { f(self.plugin()) })
+                .unwrap_or(false)
+        }
+
+        fn gui_hide(&mut self) -> bool {
+            if !self.gui_created || self.gui_ext.is_null() {
+                return false;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            gui.hide
+                .map(|f| unsafe { f(self.plugin()) })
+                .unwrap_or(false)
+        }
+
+        fn gui_destroy(&mut self) {
+            if !self.gui_created {
+                return;
+            }
+            self.gui_created = false;
+            if self.gui_ext.is_null() {
+                return;
+            }
+            let gui = unsafe { &*self.gui_ext };
+            if let Some(destroy) = gui.destroy {
+                unsafe { destroy(self.plugin()) };
+            }
+        }
     }
 
     /// Cursor over a state blob handed to `clap.state.load`.
@@ -1399,6 +1750,8 @@ mod imp {
             None => std::ptr::null(),
         };
 
+        let gui_ext = plugin_extension(plugin, CLAP_EXT_GUI) as *const ClapPluginGui;
+
         let latency_frames = match get_extension {
             Some(f) => {
                 let ext = unsafe { f(plugin, CLAP_EXT_LATENCY.as_ptr()) };
@@ -1465,6 +1818,8 @@ mod imp {
             params_ext,
             state_ext,
             preset_load_ext,
+            gui_ext,
+            gui_created: false,
         }))
     }
 
@@ -1653,6 +2008,64 @@ mod imp {
                 "preset gain 0.5 expected, got {}",
                 l[0]
             );
+        }
+
+        #[test]
+        fn mock_plugin_reports_x11_gui_capability() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let processor =
+                super::super::load_processor(mock, 48_000.0, 512).expect("mock processor");
+
+            assert!(processor.gui_is_api_supported("x11", false));
+            assert!(!processor.gui_is_api_supported("win32", false));
+            assert_eq!(processor.gui_preferred_api(), Some(("x11".to_string(), false)));
+            assert!(processor.gui_can_resize());
+            assert!(!processor.gui_is_created());
+            // `get_size` is only valid once the GUI has been created.
+            assert_eq!(processor.gui_get_size(), None);
+        }
+
+        #[test]
+        fn mock_plugin_gui_lifecycle_round_trips() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let mut processor =
+                super::super::load_processor(mock, 48_000.0, 512).expect("mock processor");
+
+            assert!(processor.gui_create("x11", false));
+            assert!(processor.gui_is_created());
+            assert_eq!(processor.gui_get_size(), Some((320, 240)));
+
+            assert!(processor.gui_set_size(400, 300));
+            assert_eq!(processor.gui_get_size(), Some((400, 300)));
+
+            // A real X11 window id is accepted; the null window is rejected.
+            assert!(processor.gui_set_parent(0x1234_5678));
+            assert!(!processor.gui_set_parent(0));
+
+            assert!(processor.gui_show());
+            assert!(processor.gui_hide());
+
+            processor.gui_destroy();
+            assert!(!processor.gui_is_created());
+            assert_eq!(processor.gui_get_size(), None);
+        }
+
+        #[test]
+        fn inspect_reports_gui_capability() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let snapshot = super::super::inspect(mock);
+            assert!(snapshot.error.is_none(), "{:?}", snapshot.error);
+            let gui = snapshot.gui.expect("mock plugin advertises clap.gui");
+            assert_eq!(gui.api, "x11");
+            assert!(!gui.floating);
+            assert_eq!((gui.width, gui.height), (320, 240));
+            assert!(gui.can_resize);
         }
     }
 }

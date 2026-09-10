@@ -210,9 +210,9 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
 | `.fst`-knappen "Apply Preset" | ✅ Ärlig | Inaktiverad med förklaring — applicering kräver plugin-värd |
-| Plugin-hosting (VST3/CLAP/LV2/VST2) | 🟡 Delvis | CLAP-laddning + parameterinspektion + per-spår-ljudprocessning med PDC + state/preset-sparning (opt-in `--features plugin-host`); GUI, MIDI-instrument-routing & sandbox saknas ännu |
+| Plugin-hosting (VST3/CLAP/LV2/VST2) | 🟡 Delvis | CLAP-laddning + parameterinspektion + per-spår-ljudprocessning med PDC + state/preset-sparning + GUI-ABI/livscykel (opt-in `--features plugin-host`); själva X11-fönstret, MIDI-instrument-routing & sandbox saknas ännu |
 
-**Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (CLAP-laddning + parameterinspektion + per-spår-ljudprocessning med PDC + state/preset-sparning fungerar opt-in; GUI, MIDI-instrument-routing och sandbox återstår); neural stem-separation är byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
+**Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (CLAP-laddning + parameterinspektion + per-spår-ljudprocessning med PDC + state/preset-sparning + GUI-ABI/livscykel fungerar opt-in; X11-fönster, MIDI-instrument-routing och sandbox återstår); neural stem-separation är byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
 
 Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finns i **[ROADMAP.md](ROADMAP.md)**.
 
@@ -220,7 +220,7 @@ Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finn
 
 ## 🔌 Plugin-stöd — nuläget
 
-> **Kort svar: katalog + opt-in CLAP-laddning, inspektion, per-spår-ljudprocessning och projektlagrad state/preset.** Sonix kan *hitta och katalogisera* alla format och — när det byggs med `--features plugin-host` — *ladda* en native CLAP-plugin, läsa dess parametrar, **köra ljud genom den på ett stämspår** med delay-kompensation, **spara/återställa dess state med projektet** och **ladda pluginens egna presets**. Det kan ännu inte visa pluginens GUI eller sandboxa plugins.
+> **Kort svar: katalog + opt-in CLAP-laddning, inspektion, per-spår-ljudprocessning, projektlagrad state/preset och GUI-ABI.** Sonix kan *hitta och katalogisera* alla format och — när det byggs med `--features plugin-host` — *ladda* en native CLAP-plugin, läsa dess parametrar, **köra ljud genom den på ett stämspår** med delay-kompensation, **spara/återställa dess state med projektet**, **ladda pluginens egna presets** och **läsa/driva pluginens `clap.gui`-livscykel på huvudtråden**. Själva plugin-fönstret (X11) och sandboxning återstår.
 
 **Vad som fungerar idag (✅)**
 * Rekursiv skanning av standardmapparna för **VST3 / CLAP / LV2 / VST2** samt FL Studio-`.fst`-platser (Linux- och Wine-sökvägar).
@@ -229,14 +229,15 @@ Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finn
 * **CLAP-värd (opt-in, `--features plugin-host`):** `dlopen` av ett `.clap`-paket, validering av `clap_entry`, instansiering via plugin-fabriken och descriptor- + parameterinspektion som visas i UI:t.
 * **Riktig ljudprocessning + PDC:** en laddad CLAP-effekt kan sättas som per-spår-insert (knappen "▶ Ladda in" i Plugin-hanteraren) och processar stämspårets ljud i realtid. Värden blockbuffrar (128 frames) och motorn kompenserar latensen så att spåren förblir faslinjerade.
 * **State- + preset-persistens:** värden implementerar `clap.state` (opak save/load-blob) och `clap.preset-load/2` (pluginens egna presets). Plugin-inserts sparas i projektet (`plugin_slots`, sökväg + state) och återinstansieras med återställt state vid inladdning; UI:t listar aktiva inserts med en ta-bort-knapp och erbjuder ett "ladda med preset"-fält.
+* **GUI-ABI + livscykel:** värden läser `clap.gui` och driver hela livscykeln på huvudtråden (`is_api_supported`, `get_preferred_api`, `create`, `get_size`, `can_resize`, `set_size`, `set_parent`, `show`, `hide`, `destroy`). Inspektionen visar pluginens GUI-kapacitet (t.ex. "x11 320×240, kan ändra storlek"). Själva X11-fönstret kopplas in i Fas 4.4b.
 
 **Vad som fortfarande saknas för full plugin-hosting (🔜)**
-1. Inbäddade eller flytande plugin-GUI:n (Fas 4.4), samt out-of-process-sandboxning för kraschisolering (Fas 4.5).
+1. Själva plugin-fönstret (X11-inbäddning, Fas 4.4b) samt out-of-process-sandboxning för kraschisolering (Fas 4.5).
 2. Full MIDI-routing in i instrument (note-port-upptäckt och plumbing finns, men ingen instrument-hosting ännu).
 3. VST3 / LV2 / VST2-laddning — endast CLAP är implementerat så långt.
 4. För FL Studios egna instrument (Sytrus, Harmor, Gross Beat, …) och FL Studio VSTi är den enda farbara vägen deras **VST/VST3-byggen körda genom Wine + yabridge** — de nativa FL-`.dll`-formaten är inte ett standard-plugin-API.
 
-**Därför:** en CLAP-**effekt** är nu användbar för ljud i Sonix när den byggs med `--features plugin-host` — ladda den, sätt den som insert på ett stämspår med "▶ Ladda in", och dess state överlever projektets spara/ladda. Plugin-GUI:n, sandboxning och instrument-hosting återstår; Plugin-hanteraren är i övrigt en katalog och en Yabridge-assistent.
+**Därför:** en CLAP-**effekt** är nu användbar för ljud i Sonix när den byggs med `--features plugin-host` — ladda den, sätt den som insert på ett stämspår med "▶ Ladda in", och dess state överlever projektets spara/ladda. Pluginens GUI-ABI läses och drivs redan på huvudtråden; själva X11-fönstret, sandboxning och instrument-hosting återstår; Plugin-hanteraren är i övrigt en katalog och en Yabridge-assistent.
 
 ---
 
