@@ -81,9 +81,9 @@ pub fn render_plugins_view(
                 ui.label(egui::RichText::new(crate::i18n::t("🛡 Plugin-körning:")).strong().size(11.0).color(Theme::FL_YELLOW));
                 let host_available = crate::audio::plugin_host_live::is_available();
                 let (host_label, host_color) = if host_available {
-                    (crate::i18n::t("CLAP: in-process host aktiv (laddar plugins)"), Theme::FL_GREEN)
+                    (crate::i18n::t("CLAP/VST2/VST3: host aktiv (laddar plugins)"), Theme::FL_GREEN)
                 } else {
-                    (crate::i18n::t("Endast metadata-skanning (bygg med --features plugin-host för CLAP-host)"), Theme::TEXT_MUTED)
+                    (crate::i18n::t("Endast metadata-skanning (bygg med --features plugin-host för CLAP/VST2/VST3-host)"), Theme::TEXT_MUTED)
                 };
                 ui.label(egui::RichText::new(host_label).size(11.0).color(host_color));
                 ui.separator();
@@ -673,7 +673,7 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
     // FL Studio .FST Presets Library
     ui.label(egui::RichText::new(crate::i18n::t("📄 IMPORTERADE FL STUDIO PRESETS (.FST)")).strong().size(12.5).color(Theme::FL_ORANGE));
     ui.label(
-        egui::RichText::new(crate::i18n::t("Katalogiserade .fst-filer (endast metadata – själva preset-datan kan inte avkodas eller appliceras utan en plugin-värd):"))
+        egui::RichText::new(crate::i18n::t("Katalogiserade .fst-filer (endast metadata – FL Studios stängda .fst-format kan inte avkodas, så preset-datan visas men kan inte tillämpas):"))
             .size(10.5)
             .color(Theme::TEXT_MUTED),
     );
@@ -697,7 +697,7 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_enabled(false, egui::Button::new(crate::i18n::t("⚡ Tillämpa Preset")))
-                            .on_disabled_hover_text(crate::i18n::t("Kräver plugin-hosting (VST/CLAP), vilket ännu inte är implementerat. Preseten visas endast som metadata."));
+                            .on_disabled_hover_text(crate::i18n::t("Kan inte tillämpas: .fst-presetdata kan inte avkodas. Plugins (CLAP/VST2/VST3) kan däremot laddas i plugin-panelen."));
                         ui.label(egui::RichText::new(format!("{} KB", preset.filesize_bytes / 1024)).size(9.5).color(Theme::TEXT_MUTED));
                     });
                 });
@@ -740,7 +740,7 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
             ui.label(egui::RichText::new(crate::i18n::t("2. Köra hela FL Studio som ett instrument inuti Sonix (FL Studio VSTi)")).strong().size(12.5).color(Theme::FL_CYAN));
             ui.label(
                 egui::RichText::new(
-                    crate::i18n::t("Vägen dit går via FL Studio VSTi (.dll) körd genom Wine + yabridge. Sonix kan ännu inte ladda eller visa VSTi-pluginets GUI – plugin-hanteraren katalogiserar och verifierar filer, den kör dem inte. (CLAP-plugins kan däremot laddas och köras.)")
+                    crate::i18n::t("Vägen dit går via FL Studio VSTi (.dll) körd genom Wine + yabridge. Sonix kan ladda och köra VST2/VST3/CLAP-bryggor (med PDC, state och GUI-fönster). Det som ännu inte verifierats här är en riktig yabridge-brygga med Wine + display.")
                 ).size(10.5).color(Theme::TEXT_BRIGHT)
             );
         });
@@ -787,7 +787,7 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
             ui.label(egui::RichText::new(crate::i18n::t("4. Process-Isolering & Kraschskydd")).strong().size(12.5).color(Theme::FL_YELLOW));
             ui.label(
                 egui::RichText::new(
-                    crate::i18n::t("Planerat: externa plugins ska köras i isolerade processer med minnesdelat IPC så att en kraschande Windows-VST3 inte tar ner Sonix. Detta är ännu inte implementerat.")
+                    crate::i18n::t("Kraschskydd: plugins kan köras i en separat sandbox-process med minnesdelad ljudtransport. En kraschande plugin startas automatiskt om (max 3 gånger) utan att Sonix stängs – använd \"🧪 Sandbox-inspektera\" och \"🧪 Ladda in i sandbox\" i plugin-panelen.")
                 ).size(10.5).color(Theme::TEXT_MUTED)
             );
         });
