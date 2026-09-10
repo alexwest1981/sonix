@@ -227,3 +227,434 @@ impl ModularGraph {
         self.nodes.push(node);
     }
 }
+
+// ---------------------------------------------------------------------------
+// Real-time DSP graph (used by the audio engine)
+// ---------------------------------------------------------------------------
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct PatchNodeSpec {
+    pub id: usize,
+    pub node_type: NodeType,
+    pub param1: f32,
+    pub param2: f32,
+    pub param3: f32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PatchSpec {
+    pub nodes: Vec<PatchNodeSpec>,
+    pub cables: Vec<(usize, usize, usize, usize)>, // from_node, from_pin, to_node, to_pin
+}
+
+impl ModularGraph {
+    /// Flattens the UI graph into a spec that can be sent to the audio thread.
+    pub fn to_spec(&self) -> PatchSpec {
+        PatchSpec {
+            nodes: self
+                .nodes
+                .iter()
+                .map(|n| PatchNodeSpec {
+                    id: n.id,
+                    node_type: n.node_type,
+                    param1: n.param1,
+                    param2: n.param2,
+                    param3: n.param3,
+                })
+                .collect(),
+            cables: self
+                .cables
+                .iter()
+                .map(|c| (c.from_node, c.from_pin, c.to_node, c.to_pin))
+                .collect(),
+        }
+    }
+}
+
+fn node_io(node_type: NodeType) -> (usize, usize) {
+    match node_type {
+        NodeType::MidiIn => (0, 3),
+        NodeType::Oscillator => (3, 1),
+        NodeType::Filter => (3, 3),
+        NodeType::Envelope => (1, 1),
+        NodeType::Lfo => (1, 1),
+        NodeType::Delay => (2, 1),
+        NodeType::Reverb => (2, 2),
+        NodeType::Distortion => (2, 1),
+        NodeType::AudioOut => (2, 0),
+    }
+}
+
+struct RtNode {
+    node_type: NodeType,
+    p1: f32,
+    p2: f32,
+    p3: f32,
+    inputs: Vec<Option<(usize, usize)>>,
+    phase: f32,
+    lfo_phase: f32,
+    prev_sync: f32,
+    svf_low: f32,
+    svf_band: f32,
+    env_stage: u8,
+    env_level: f32,
+    delay: Vec<f32>,
+    delay_w: usize,
+    rev: Vec<f32>,
+    rev_w: usize,
+}
+
+impl RtNode {
+    fn new(spec: &PatchNodeSpec, sample_rate: f32) -> Self {
+        let (in_count, _) = node_io(spec.node_type);
+        Self {
+            node_type: spec.node_type,
+            p1: spec.param1,
+            p2: spec.param2,
+            p3: spec.param3,
+            inputs: vec![None; in_count],
+            phase: 0.0,
+            lfo_phase: 0.0,
+            prev_sync: 0.0,
+            svf_low: 0.0,
+            svf_band: 0.0,
+            env_stage: 0,
+            env_level: 0.0,
+            delay: if spec.node_type == NodeType::Delay {
+                vec![0.0; (sample_rate * 1.2) as usize]
+            } else {
+                Vec::new()
+            },
+            delay_w: 0,
+            rev: if spec.node_type == NodeType::Reverb {
+                vec![0.0; (sample_rate * 0.4) as usize]
+            } else {
+                Vec::new()
+            },
+            rev_w: 0,
+        }
+    }
+}
+
+fn read_input(
+    outs: &[f32],
+    offsets: &[usize],
+    nodes: &[RtNode],
+    node_idx: usize,
+    pin: usize,
+) -> f32 {
+    match nodes[node_idx].inputs.get(pin).and_then(|o| *o) {
+        Some((src, sp)) => outs.get(offsets[src] + sp).copied().unwrap_or(0.0),
+        None => 0.0,
+    }
+}
+
+/// Evaluates a `PatchSpec` sample by sample and produces stereo audio.
+pub struct PatchProcessor {
+    nodes: Vec<RtNode>,
+    offsets: Vec<usize>,
+    outs: Vec<f32>,
+    sample_rate: f32,
+    note_freq: f32,
+    gate: bool,
+    velocity: f32,
+    pub last_l: f32,
+    pub last_r: f32,
+}
+
+impl PatchProcessor {
+    pub fn new(spec: &PatchSpec, sample_rate: f32) -> Self {
+        let nodes: Vec<RtNode> = spec.nodes.iter().map(|n| RtNode::new(n, sample_rate)).collect();
+        let mut offsets = Vec::with_capacity(nodes.len());
+        let mut total = 0usize;
+        for n in &nodes {
+            offsets.push(total);
+            let (_, out_count) = node_io(n.node_type);
+            total += out_count;
+        }
+        let id_index = |id: usize| spec.nodes.iter().position(|n| n.id == id);
+        let mut processor = Self {
+            nodes,
+            offsets,
+            outs: vec![0.0; total],
+            sample_rate,
+            note_freq: 220.0,
+            gate: false,
+            velocity: 0.8,
+            last_l: 0.0,
+            last_r: 0.0,
+        };
+        // Wire cables (needs indices resolved against the id list).
+        for (from_node, from_pin, to_node, to_pin) in &spec.cables {
+            let fi = match id_index(*from_node) {
+                Some(i) => i,
+                None => continue,
+            };
+            let ti = match id_index(*to_node) {
+                Some(i) => i,
+                None => continue,
+            };
+            if let Some(node) = processor.nodes.get_mut(ti)
+                && *to_pin < node.inputs.len()
+            {
+                node.inputs[*to_pin] = Some((fi, *from_pin));
+            }
+        }
+        processor
+    }
+
+    pub fn note_on(&mut self, freq: f32, velocity: f32) {
+        self.note_freq = freq;
+        self.velocity = velocity;
+        self.gate = true;
+    }
+
+    pub fn note_off(&mut self) {
+        self.gate = false;
+    }
+
+    #[cfg(test)]
+    pub fn is_active(&self) -> bool {
+        self.gate
+            || self
+                .nodes
+                .iter()
+                .any(|n| n.node_type == NodeType::Envelope && n.env_level > 0.0005)
+    }
+
+    pub fn process(&mut self) -> (f32, f32) {
+        let sr = self.sample_rate;
+        let mut acc_l = 0.0f32;
+        let mut acc_r = 0.0f32;
+
+        {
+            let Self {
+                nodes,
+                offsets,
+                outs,
+                note_freq,
+                gate,
+                velocity,
+                ..
+            } = self;
+            let note_freq = *note_freq;
+            let gate = *gate;
+            let velocity = *velocity;
+
+            for i in 0..nodes.len() {
+                let base = offsets[i];
+                let (_, out_count) = node_io(nodes[i].node_type);
+                match nodes[i].node_type {
+                    NodeType::MidiIn => {
+                        if out_count >= 3 {
+                            outs[base] = note_freq;
+                            outs[base + 1] = if gate { 1.0 } else { 0.0 };
+                            outs[base + 2] = velocity;
+                        }
+                    }
+                    NodeType::Lfo => {
+                        let cv = read_input(outs, offsets, nodes, i, 0);
+                        let rate = (nodes[i].p1 * (1.0 + cv)).clamp(0.01, 40.0);
+                        nodes[i].lfo_phase = (nodes[i].lfo_phase + rate / sr).fract();
+                        outs[base] = (nodes[i].lfo_phase * std::f32::consts::TAU).sin() * nodes[i].p2;
+                    }
+                    NodeType::Oscillator => {
+                        let pitch = read_input(outs, offsets, nodes, i, 0);
+                        let sync = read_input(outs, offsets, nodes, i, 1);
+                        let pwm = read_input(outs, offsets, nodes, i, 2);
+                        // Hard-sync the phase on a rising edge of the Sync input.
+                        if sync > 0.5 && nodes[i].prev_sync <= 0.5 {
+                            nodes[i].phase = 0.0;
+                        }
+                        nodes[i].prev_sync = sync;
+                        let freq = if pitch > 1.0 { pitch } else { 220.0 };
+                        nodes[i].phase = (nodes[i].phase + freq / sr).fract();
+                        let ph = nodes[i].phase;
+                        let pulse_width = (nodes[i].p3 + pwm).clamp(0.05, 0.95);
+                        let v = match (nodes[i].p1.round() as i32).rem_euclid(4) {
+                            0 => (ph * std::f32::consts::TAU).sin(),
+                            1 => 2.0 * ph - 1.0,
+                            2 => {
+                                if ph < pulse_width {
+                                    1.0
+                                } else {
+                                    -1.0
+                                }
+                            }
+                            _ => 4.0 * (ph - 0.5).abs() - 1.0,
+                        };
+                        outs[base] = v;
+                    }
+                    NodeType::Envelope => {
+                        let g = read_input(outs, offsets, nodes, i, 0) > 0.5;
+                        let a = nodes[i].p1.max(0.001);
+                        let d = nodes[i].p2.max(0.001);
+                        let s = nodes[i].p3.clamp(0.0, 1.0);
+                        if g && nodes[i].env_stage == 0 {
+                            nodes[i].env_stage = 1;
+                        }
+                        match nodes[i].env_stage {
+                            1 => {
+                                nodes[i].env_level += 1.0 / (a * sr);
+                                if nodes[i].env_level >= 1.0 {
+                                    nodes[i].env_level = 1.0;
+                                    nodes[i].env_stage = 2;
+                                }
+                            }
+                            2 => {
+                                if g {
+                                    nodes[i].env_level += (s - nodes[i].env_level) * (1.0 / (d * sr)).min(1.0);
+                                } else {
+                                    nodes[i].env_stage = 3;
+                                }
+                            }
+                            3 => {
+                                nodes[i].env_level -= 1.0 / (0.2 * sr);
+                                if nodes[i].env_level <= 0.0 {
+                                    nodes[i].env_level = 0.0;
+                                    nodes[i].env_stage = 0;
+                                }
+                            }
+                            _ => {}
+                        }
+                        outs[base] = nodes[i].env_level;
+                    }
+                    NodeType::Filter => {
+                        let x = read_input(outs, offsets, nodes, i, 0);
+                        let cv = read_input(outs, offsets, nodes, i, 1);
+                        let rcv = read_input(outs, offsets, nodes, i, 2);
+                        let cutoff = (nodes[i].p1 * (1.0 + cv)).clamp(20.0, sr * 0.45);
+                        let q = (nodes[i].p2 + rcv * 4.0).clamp(0.5, 20.0);
+                        let f = (2.0 * (std::f32::consts::PI * cutoff / sr).sin()).clamp(0.001, 0.99);
+                        let high = x - nodes[i].svf_low - (1.0 / q) * nodes[i].svf_band;
+                        let band = nodes[i].svf_band + f * high;
+                        let low = nodes[i].svf_low + f * band;
+                        nodes[i].svf_low = low;
+                        nodes[i].svf_band = band;
+                        outs[base] = low;
+                        outs[base + 1] = high;
+                        outs[base + 2] = band;
+                    }
+                    NodeType::Distortion => {
+                        let x = read_input(outs, offsets, nodes, i, 0);
+                        let cv = read_input(outs, offsets, nodes, i, 1);
+                        let drive = 1.0 + nodes[i].p1 + cv * 4.0;
+                        outs[base] = (x * drive).tanh() * 0.8;
+                    }
+                    NodeType::Delay => {
+                        let x = read_input(outs, offsets, nodes, i, 0);
+                        let cv = read_input(outs, offsets, nodes, i, 1);
+                        let len = nodes[i].delay.len();
+                        if len > 1 {
+                            let time_ms = (nodes[i].p1 * (1.0 + cv)).clamp(1.0, 1000.0);
+                            let d = ((time_ms / 1000.0 * sr) as usize).clamp(1, len - 1);
+                            let r = (nodes[i].delay_w + len - d) % len;
+                            let delayed = nodes[i].delay[r];
+                            let out = x + delayed * nodes[i].p2.clamp(0.0, 0.95);
+                            let w = nodes[i].delay_w;
+                            nodes[i].delay[w] = out;
+                            nodes[i].delay_w = (w + 1) % len;
+                            outs[base] = out;
+                        } else {
+                            outs[base] = x;
+                        }
+                    }
+                    NodeType::Reverb => {
+                        let x = read_input(outs, offsets, nodes, i, 0);
+                        let mcv = read_input(outs, offsets, nodes, i, 1);
+                        let len = nodes[i].rev.len();
+                        if len > 1 {
+                            let mix = (nodes[i].p2 + mcv).clamp(0.0, 1.0);
+                            let d1 = ((sr * 0.089) as usize).clamp(1, len - 1);
+                            let d2 = ((sr * 0.113) as usize).clamp(1, len - 1);
+                            let w = nodes[i].rev_w;
+                            let r1 = (w + len - d1) % len;
+                            let r2 = (w + len - d2) % len;
+                            let dl = nodes[i].rev[r1];
+                            let dr = nodes[i].rev[r2];
+                            nodes[i].rev[w] = x + (dl + dr) * 0.5 * nodes[i].p1.clamp(0.0, 0.95);
+                            nodes[i].rev_w = (w + 1) % len;
+                            outs[base] = x * (1.0 - mix) + dl * mix;
+                            outs[base + 1] = x * (1.0 - mix) + dr * mix;
+                        } else {
+                            outs[base] = x;
+                            outs[base + 1] = x;
+                        }
+                    }
+                    NodeType::AudioOut => {
+                        let l = read_input(outs, offsets, nodes, i, 0);
+                        let r = read_input(outs, offsets, nodes, i, 1);
+                        let pan = nodes[i].p2.clamp(-1.0, 1.0);
+                        let ang = (pan + 1.0) * std::f32::consts::FRAC_PI_4;
+                        acc_l += l * nodes[i].p1 * ang.cos();
+                        acc_r += r * nodes[i].p1 * ang.sin();
+                    }
+                }
+            }
+        }
+
+        self.last_l = acc_l;
+        self.last_r = acc_r;
+        (acc_l, acc_r)
+    }
+}
+
+#[cfg(test)]
+mod dsp_tests {
+    use super::*;
+
+    fn spec_osc_to_out() -> PatchSpec {
+        PatchSpec {
+            nodes: vec![
+                PatchNodeSpec { id: 1, node_type: NodeType::MidiIn, param1: 60.0, param2: 1.0, param3: 0.0 },
+                PatchNodeSpec { id: 2, node_type: NodeType::Oscillator, param1: 1.0, param2: 0.0, param3: 0.0 },
+                PatchNodeSpec { id: 3, node_type: NodeType::Envelope, param1: 0.01, param2: 0.2, param3: 0.8 },
+                PatchNodeSpec { id: 4, node_type: NodeType::Filter, param1: 4000.0, param2: 2.0, param3: 0.0 },
+                PatchNodeSpec { id: 5, node_type: NodeType::AudioOut, param1: 0.8, param2: 0.0, param3: 0.0 },
+            ],
+            cables: vec![
+                (1, 0, 2, 0), // pitch -> osc
+                (1, 1, 3, 0), // gate -> env
+                (2, 0, 4, 0), // osc -> filter
+                (4, 0, 5, 0), // filter lp -> out L
+                (4, 0, 5, 1), // filter lp -> out R
+            ],
+        }
+    }
+
+    #[test]
+    fn processor_renders_audible_signal() {
+        let mut p = PatchProcessor::new(&spec_osc_to_out(), 44100.0);
+        p.note_on(220.0, 1.0);
+        let mut peak = 0.0f32;
+        for _ in 0..44100 {
+            let (l, r) = p.process();
+            assert!(l.is_finite() && r.is_finite());
+            peak = peak.max(l.abs());
+        }
+        assert!(peak > 0.05, "patcher produced near-silence (peak {})", peak);
+    }
+
+    #[test]
+    fn envelope_opens_and_releases() {
+        let spec = PatchSpec {
+            nodes: vec![
+                PatchNodeSpec { id: 1, node_type: NodeType::MidiIn, param1: 60.0, param2: 1.0, param3: 0.0 },
+                PatchNodeSpec { id: 2, node_type: NodeType::Envelope, param1: 0.01, param2: 0.1, param3: 0.5 },
+                PatchNodeSpec { id: 3, node_type: NodeType::AudioOut, param1: 1.0, param2: 0.0, param3: 0.0 },
+            ],
+            cables: vec![(1, 1, 2, 0), (2, 0, 3, 0), (2, 0, 3, 1)],
+        };
+        let mut p = PatchProcessor::new(&spec, 44100.0);
+        p.note_on(220.0, 1.0);
+        for _ in 0..2000 {
+            p.process();
+        }
+        assert!(p.is_active());
+        p.note_off();
+        for _ in 0..44100 {
+            p.process();
+        }
+        assert!(!p.is_active());
+    }
+}

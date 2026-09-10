@@ -2,6 +2,7 @@ use super::drum::DrumType;
 use super::effects::{DelayParams, ReverbParams};
 use super::envelope::AdsrParams;
 use super::filter::FilterParams;
+use super::master_fx::{MasterFxParams, TrackEqSettings};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -35,16 +36,6 @@ pub enum Preset {
 
 #[allow(dead_code)]
 impl Preset {
-    pub fn name(&self) -> &'static str {
-        match self {
-            Preset::CleanPluck => "1. Clean Pluck / Piano",
-            Preset::WarmPad => "2. Warm Synth Pad (Mjuk)",
-            Preset::AcidBass => "3. Fat Acid Bass (303)",
-            Preset::ChiptuneLead => "4. 8-Bit Chiptune Lead",
-            Preset::CosmicBrass => "5. Cosmic Synth Brass",
-        }
-    }
-
     pub fn settings(&self) -> (Waveform, AdsrParams, FilterParams) {
         match self {
             Preset::CleanPluck => (
@@ -89,6 +80,16 @@ pub enum AudioCommand {
     NoteOff {
         note: u8,
     },
+    /// Schedules a chord/arpeggio: each note in `notes` is triggered after
+    /// `spread_samples * i` samples. `mode`: 0 = Block, 1 = Up, 2 = Down,
+    /// 3 = Random. Used by the Chord Matrix audition/strum.
+    StrumChord {
+        notes: Vec<u8>,
+        velocity: f32,
+        start_samples: u32,
+        spread_samples: u32,
+        mode: u8,
+    },
     TriggerDrum(DrumType),
     SetWaveform(Waveform),
     SetAdsr(AdsrParams),
@@ -96,6 +97,27 @@ pub enum AudioCommand {
     SetDelay(DelayParams),
     SetReverb(ReverbParams),
     SetDrive(f32),
+    SetMasterFx(MasterFxParams),
+    SetTrackEq {
+        track_index: usize,
+        settings: TrackEqSettings,
+    },
+    /// Per-track dynamics, aux sends and pitch for the selected channel strip.
+    SetTrackMix {
+        track_index: usize,
+        comp_threshold_db: f32,
+        comp_ratio: f32,
+        reverb_send: f32,
+        delay_send: f32,
+        pitch_semitones: f32,
+    },
+    SetRemixFx {
+        mode: u8,
+        bpm: f32,
+    },
+    SetTapeStop {
+        active: bool,
+    },
     LoadPreset(Preset),
     SetMasterVolume(f32),
     StopAll,
@@ -155,6 +177,14 @@ pub enum AudioCommand {
         start01: f32,
         end01: f32,
     },
+    // Modular Patcher (node graph) — real DSP graph evaluated per sample
+    SetPatcherGraph(crate::audio::patcher::PatchSpec),
+    SetPatcherEnabled(bool),
+    PatcherNoteOn {
+        freq: f32,
+        velocity: f32,
+    },
+    PatcherNoteOff,
 }
 
 #[derive(Debug, Clone)]

@@ -58,47 +58,47 @@ impl SongStructureState {
         match preset_idx {
             0 => { // Pop Standard
                 self.sections = vec![
-                    SongSectionItem { section_type: SectionType::Intro, name: "Intro".to_string(), length_bars: 4 },
-                    SongSectionItem { section_type: SectionType::Verse, name: "Vers 1".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::PreChorus, name: "Brygga 1".to_string(), length_bars: 4 },
-                    SongSectionItem { section_type: SectionType::Chorus, name: "Refräng 1".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Verse, name: "Vers 2".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::PreChorus, name: "Brygga 2".to_string(), length_bars: 4 },
-                    SongSectionItem { section_type: SectionType::Chorus, name: "Refräng 2".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Solo, name: "Solo / Stick".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Chorus, name: "Slutrefräng".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Outro, name: "Outro".to_string(), length_bars: 4 },
+                    SongSectionItem { section_type: SectionType::Intro, name: crate::i18n::t("Intro").to_string(), length_bars: 4 },
+                    SongSectionItem { section_type: SectionType::Verse, name: crate::i18n::t("Vers 1").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::PreChorus, name: crate::i18n::t("Brygga 1").to_string(), length_bars: 4 },
+                    SongSectionItem { section_type: SectionType::Chorus, name: crate::i18n::t("Refräng 1").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Verse, name: crate::i18n::t("Vers 2").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::PreChorus, name: crate::i18n::t("Brygga 2").to_string(), length_bars: 4 },
+                    SongSectionItem { section_type: SectionType::Chorus, name: crate::i18n::t("Refräng 2").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Solo, name: crate::i18n::t("Solo / Stick").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Chorus, name: crate::i18n::t("Slutrefräng").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Outro, name: crate::i18n::t("Outro").to_string(), length_bars: 4 },
                 ];
             }
             1 => { // EDM Anthem
                 self.sections = vec![
-                    SongSectionItem { section_type: SectionType::Intro, name: "DJ Intro".to_string(), length_bars: 16 },
-                    SongSectionItem { section_type: SectionType::Verse, name: "Build-Up 1".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Drop, name: "DROP 1".to_string(), length_bars: 16 },
-                    SongSectionItem { section_type: SectionType::Bridge, name: "Breakdown".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Verse, name: "Build-Up 2".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Drop, name: "MAIN DROP".to_string(), length_bars: 16 },
-                    SongSectionItem { section_type: SectionType::Outro, name: "DJ Outro".to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Intro, name: crate::i18n::t("DJ Intro").to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Verse, name: crate::i18n::t("Build-Up 1").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Drop, name: crate::i18n::t("DROP 1").to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Bridge, name: crate::i18n::t("Breakdown").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Verse, name: crate::i18n::t("Build-Up 2").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Drop, name: crate::i18n::t("MAIN DROP").to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Outro, name: crate::i18n::t("DJ Outro").to_string(), length_bars: 16 },
                 ];
             }
             2 => { // Trap & Hip-Hop
                 self.sections = vec![
-                    SongSectionItem { section_type: SectionType::Intro, name: "Intro".to_string(), length_bars: 4 },
-                    SongSectionItem { section_type: SectionType::Chorus, name: "Hook 1".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Verse, name: "Vers 1 (16t)".to_string(), length_bars: 16 },
-                    SongSectionItem { section_type: SectionType::Chorus, name: "Hook 2".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Verse, name: "Vers 2 (16t)".to_string(), length_bars: 16 },
-                    SongSectionItem { section_type: SectionType::Chorus, name: "Slut-Hook".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Outro, name: "Outro (Fade)".to_string(), length_bars: 4 },
+                    SongSectionItem { section_type: SectionType::Intro, name: crate::i18n::t("Intro").to_string(), length_bars: 4 },
+                    SongSectionItem { section_type: SectionType::Chorus, name: crate::i18n::t("Hook 1").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Verse, name: crate::i18n::t("Vers 1 (16t)").to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Chorus, name: crate::i18n::t("Hook 2").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Verse, name: crate::i18n::t("Vers 2 (16t)").to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Chorus, name: crate::i18n::t("Slut-Hook").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Outro, name: crate::i18n::t("Outro (Fade)").to_string(), length_bars: 4 },
                 ];
             }
             _ => { // Synthwave Extended
                 self.sections = vec![
-                    SongSectionItem { section_type: SectionType::Intro, name: "Arp Intro".to_string(), length_bars: 8 },
-                    SongSectionItem { section_type: SectionType::Verse, name: "Main Theme A".to_string(), length_bars: 16 },
-                    SongSectionItem { section_type: SectionType::Chorus, name: "Lead Climax B".to_string(), length_bars: 16 },
-                    SongSectionItem { section_type: SectionType::Solo, name: "Synthesizer Solo".to_string(), length_bars: 16 },
-                    SongSectionItem { section_type: SectionType::Outro, name: "Outro Drive".to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Intro, name: crate::i18n::t("Arp Intro").to_string(), length_bars: 8 },
+                    SongSectionItem { section_type: SectionType::Verse, name: crate::i18n::t("Main Theme A").to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Chorus, name: crate::i18n::t("Lead Climax B").to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Solo, name: crate::i18n::t("Synthesizer Solo").to_string(), length_bars: 16 },
+                    SongSectionItem { section_type: SectionType::Outro, name: crate::i18n::t("Outro Drive").to_string(), length_bars: 16 },
                 ];
             }
         }
@@ -130,7 +130,7 @@ pub fn render_song_structure_modal(
     let mins = (total_secs / 60.0).floor() as u32;
     let secs = (total_secs % 60.0).floor() as u32;
 
-    egui::Window::new("📑 Låtstruktur & Formdelar (Song Section Arranger)")
+    egui::Window::new(crate::i18n::t("📑 Låtstruktur & Formdelar (Song Section Arranger)"))
         .open(open)
         .collapsible(false)
         .resizable(true)
@@ -140,9 +140,9 @@ pub fn render_song_structure_modal(
             ui.vertical(|ui| {
                 // Header bar
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("📑 STRUKTUR- & ARRANGEMANGSBYGGARE").strong().size(14.0).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("📑 STRUKTUR- & ARRANGEMANGSBYGGARE")).strong().size(14.0).color(Theme::FL_CYAN));
                     ui.separator();
-                    ui.label(egui::RichText::new(format!("Totalt: {} takter • Tid: {:02}:{:02} @ {:.1} BPM", tot_bars, mins, secs, bpm)).strong().color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(format!("{} {} {} • {} {:02}:{:02} @ {:.1} BPM", crate::i18n::t("Totalt:"), tot_bars, crate::i18n::t("takter"), crate::i18n::t("Tid:"), mins, secs, bpm)).strong().color(Theme::FL_ORANGE));
                 });
 
                 ui.add_space(4.0);
@@ -150,7 +150,7 @@ pub fn render_song_structure_modal(
                 // Presets Bar
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Låtmall / Genre:").strong().color(Theme::FL_YELLOW));
+                        ui.label(egui::RichText::new(crate::i18n::t("Låtmall / Genre:")).strong().color(Theme::FL_YELLOW));
                         let presets = ["Pop Hit Radio (Standard)", "EDM Festival Anthem", "Hip-Hop & Trap", "Synthwave Extended"];
                         egui::ComboBox::from_id_salt("song_structure_preset_picker")
                             .selected_text(*presets.get(state.selected_preset).unwrap_or(&"Pop"))
@@ -159,17 +159,17 @@ pub fn render_song_structure_modal(
                                 for (pr_idx, &pr_name) in presets.iter().enumerate() {
                                     if ui.selectable_label(state.selected_preset == pr_idx, pr_name).clicked() {
                                         state.load_preset(pr_idx);
-                                        *status_msg = format!("📑 Laddade låtstruktur: {}", pr_name);
+                                        *status_msg = crate::tstatus!("📑 Laddade låtstruktur: {}", pr_name);
                                     }
                                 }
                             });
 
                         ui.separator();
-                        if ui.button("➕ Lägg till Vers").clicked() {
-                            state.sections.push(SongSectionItem { section_type: SectionType::Verse, name: "Ny Vers".to_string(), length_bars: 8 });
+                        if ui.button(crate::i18n::t("➕ Lägg till Vers")).clicked() {
+                            state.sections.push(SongSectionItem { section_type: SectionType::Verse, name: crate::i18n::t("Ny Vers").to_string(), length_bars: 8 });
                         }
-                        if ui.button("➕ Lägg till Refräng").clicked() {
-                            state.sections.push(SongSectionItem { section_type: SectionType::Chorus, name: "Ny Refräng".to_string(), length_bars: 8 });
+                        if ui.button(crate::i18n::t("➕ Lägg till Refräng")).clicked() {
+                            state.sections.push(SongSectionItem { section_type: SectionType::Chorus, name: crate::i18n::t("Ny Refräng").to_string(), length_bars: 8 });
                         }
                     });
                 });
@@ -178,7 +178,7 @@ pub fn render_song_structure_modal(
 
                 // VISUAL TIMELINE OVERVIEW STRIP
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new("Tidslinjeöversikt (Övergripande form)").strong().color(Theme::TEXT_BRIGHT));
+                    ui.label(egui::RichText::new(crate::i18n::t("Tidslinjeöversikt (Övergripande form)")).strong().color(Theme::TEXT_BRIGHT));
                     ui.add_space(4.0);
 
                     let (ov_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::hover());
@@ -238,7 +238,7 @@ pub fn render_song_structure_modal(
                                     ui.text_edit_singleline(&mut sec.name);
 
                                     ui.separator();
-                                    ui.label("Längd:");
+                                    ui.label(crate::i18n::t("Längd:"));
                                     for l in [2, 4, 8, 16, 32] {
                                         if ui.selectable_label(sec.length_bars == l, format!("{}t", l)).clicked() {
                                             sec.length_bars = l;
@@ -246,13 +246,13 @@ pub fn render_song_structure_modal(
                                     }
 
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.button("🗑").on_hover_text("Ta bort sektion").clicked() {
+                                        if ui.button(crate::i18n::t("🗑")).on_hover_text(crate::i18n::t("Ta bort sektion")).clicked() {
                                             to_remove = Some(s_idx);
                                         }
-                                        if s_idx < num_sections - 1 && ui.button("▼").clicked() {
+                                        if s_idx < num_sections - 1 && ui.button(crate::i18n::t("▼")).clicked() {
                                             move_down = Some(s_idx);
                                         }
-                                        if s_idx > 0 && ui.button("▲").clicked() {
+                                        if s_idx > 0 && ui.button(crate::i18n::t("▲")).clicked() {
                                             move_up = Some(s_idx);
                                         }
                                     });
@@ -270,13 +270,13 @@ pub fn render_song_structure_modal(
 
                 // Action Bar
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("📥 Applicera Formdelar på Tidslinjen").strong().color(Color32::BLACK)).fill(Theme::FL_GREEN).min_size(Vec2::new(240.0, 32.0))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera Formdelar på Tidslinjen")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN).min_size(Vec2::new(240.0, 32.0))).clicked() {
                         trigger_apply = true;
                         close = true;
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Stäng").clicked() {
+                        if ui.button(crate::i18n::t("Stäng")).clicked() {
                             close = true;
                         }
                     });

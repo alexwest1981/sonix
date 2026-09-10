@@ -1030,12 +1030,17 @@ fn read_library_cache() -> Option<Vec<ScannedSampleItem>> {
 }
 
 pub fn scan_and_load_all_samples() -> Vec<ScannedSampleItem> {
-    if let Some(cached) = read_library_cache() {
+    let mut items = if let Some(cached) = read_library_cache() {
         eprintln!("🎵 Ljudbibliotek läst från cache: {} samplar", cached.len());
-        return cached;
+        cached
+    } else {
+        let fresh = perform_full_sample_scan();
+        write_library_cache(&fresh);
+        fresh
+    };
+    for it in &mut items {
+        it.category = crate::i18n::translate_owned(crate::i18n::current(), &it.category);
     }
-    let items = perform_full_sample_scan();
-    write_library_cache(&items);
     items
 }
 

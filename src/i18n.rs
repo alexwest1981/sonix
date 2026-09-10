@@ -1,0 +1,2144 @@
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU8, Ordering};
+
+static CURRENT_LANG: AtomicU8 = AtomicU8::new(u8::MAX);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum Language {
+    #[default]
+    En,
+    Sv,
+    Da,
+    No,
+    De,
+    Es,
+    Fr,
+}
+
+impl Language {
+    pub fn all() -> [Language; 7] {
+        [Language::En, Language::Sv, Language::Da, Language::No, Language::De, Language::Es, Language::Fr]
+    }
+
+    fn disc(self) -> u8 {
+        match self {
+            Language::En => 0,
+            Language::Sv => 1,
+            Language::Da => 2,
+            Language::No => 3,
+            Language::De => 4,
+            Language::Es => 5,
+            Language::Fr => 6,
+        }
+    }
+
+    fn from_disc(v: u8) -> Language {
+        match v {
+            1 => Language::Sv,
+            2 => Language::Da,
+            3 => Language::No,
+            4 => Language::De,
+            5 => Language::Es,
+            6 => Language::Fr,
+            _ => Language::En,
+        }
+    }
+
+    pub fn code(self) -> &'static str {
+        match self {
+            Language::En => "en",
+            Language::Sv => "sv",
+            Language::Da => "da",
+            Language::No => "no",
+            Language::De => "de",
+            Language::Es => "es",
+            Language::Fr => "fr",
+        }
+    }
+
+    pub fn native_name(self) -> &'static str {
+        match self {
+            Language::En => "English",
+            Language::Sv => "Svenska",
+            Language::Da => "Dansk",
+            Language::No => "Norsk",
+            Language::De => "Deutsch",
+            Language::Es => "Español",
+            Language::Fr => "Français",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Language {
+        let normalized = code.trim().to_ascii_lowercase();
+        let first = normalized.split(['_', '-', '.']).next().unwrap_or("");
+        match first {
+            "en" | "eng" => Language::En,
+            "sv" | "swe" => Language::Sv,
+            "da" | "dan" => Language::Da,
+            "no" | "nb" | "nn" | "nor" => Language::No,
+            "de" | "deu" | "ger" => Language::De,
+            "es" | "spa" => Language::Es,
+            "fr" | "fre" | "fra" => Language::Fr,
+            _ => Language::En,
+        }
+    }
+}
+
+pub fn detect_from_env() -> Language {
+    if let Ok(lang) = std::env::var("LANG") {
+        let lc = lang.to_ascii_lowercase();
+        if let Some(first) = lc.split(['_', '.']).next() {
+            return Language::from_code(first);
+        }
+    }
+    if let Ok(lang) = std::env::var("LANGUAGE") {
+        return Language::from_code(&lang);
+    }
+    Language::En
+}
+
+fn config_dir() -> PathBuf {
+    if let Ok(home) = std::env::var("HOME") {
+        PathBuf::from(home).join(".config").join("sonix")
+    } else {
+        PathBuf::from(".")
+    }
+}
+
+pub fn config_path() -> PathBuf {
+    config_dir().join("config.json")
+}
+
+pub fn load_language() -> Language {
+    let path = config_path();
+    if let Ok(text) = std::fs::read_to_string(&path) {
+        if let Ok(map) = serde_json::from_str::<serde_json::Value>(&text) {
+            if let Some(code) = map.get("language").and_then(|v| v.as_str()) {
+                return Language::from_code(code);
+            }
+        }
+    }
+    detect_from_env()
+}
+
+pub fn save_language(lang: Language) {
+    let dir = config_dir();
+    if std::fs::create_dir_all(&dir).is_ok() {
+        let map = serde_json::json!({ "language": lang.code() });
+        if let Ok(text) = serde_json::to_string_pretty(&map) {
+            let _ = std::fs::write(config_path(), text);
+        }
+    }
+}
+
+pub fn current() -> Language {
+    let v = CURRENT_LANG.load(Ordering::Relaxed);
+    if v == u8::MAX {
+        let lang = load_language();
+        CURRENT_LANG.store(lang.disc(), Ordering::Relaxed);
+        lang
+    } else {
+        Language::from_disc(v)
+    }
+}
+
+pub fn set_current(lang: Language) {
+    CURRENT_LANG.store(lang.disc(), Ordering::Relaxed);
+    save_language(lang);
+}
+
+pub fn t(key: &'static str) -> &'static str {
+    translate(current(), key)
+}
+
+pub fn translate(lang: Language, key: &'static str) -> &'static str {
+    match lang {
+        Language::Sv => key,
+        Language::En => tr_en(key).unwrap_or(key),
+        Language::Da => tr_da(key).unwrap_or_else(|| tr_en(key).unwrap_or(key)),
+        Language::No => tr_no(key).unwrap_or_else(|| tr_en(key).unwrap_or(key)),
+        Language::De => tr_de(key).unwrap_or_else(|| tr_en(key).unwrap_or(key)),
+        Language::Es => tr_es(key).unwrap_or_else(|| tr_en(key).unwrap_or(key)),
+        Language::Fr => tr_fr(key).unwrap_or_else(|| tr_en(key).unwrap_or(key)),
+    }
+}
+
+pub fn translate_owned(lang: Language, key: &str) -> String {
+    let found: Option<&'static str> = match lang {
+        Language::Sv => None,
+        Language::En => tr_en(key),
+        Language::Da => tr_da(key).or_else(|| tr_en(key)),
+        Language::No => tr_no(key).or_else(|| tr_en(key)),
+        Language::De => tr_de(key).or_else(|| tr_en(key)),
+        Language::Es => tr_es(key).or_else(|| tr_en(key)),
+        Language::Fr => tr_fr(key).or_else(|| tr_en(key)),
+    };
+    found.unwrap_or(key).to_string()
+}
+
+// ====================================================================
+// RUNTIME LOCALIZED FORMATTING
+//
+// Dynamic feedback/status strings are produced from translatable
+// templates that may contain Rust-style placeholders (`{}`, `{:.1}`,
+// `{:+.1}`, ...). `std::format!` requires a compile-time format string,
+// so translated templates are expanded at runtime here for the limited
+// set of placeholder shapes used across the codebase. Call sites use
+// the `crate::tstatus!` macro, e.g.:
+//
+//     self.status_message = crate::tstatus!("Raderade '{}'.", name);
+//
+// The Swedish template doubles as the lookup key in the dictionaries.
+// ====================================================================
+
+/// Formatting spec parsed out of a `{...}` placeholder.
+#[derive(Clone, Copy, Default)]
+pub struct Spec {
+    pub plus: bool,
+    pub prec: Option<usize>,
+}
+
+impl Spec {
+    fn parse(tok: &str) -> Spec {
+        let mut plus = false;
+        let mut prec = None;
+        let mut digits = String::new();
+        let mut after_dot = false;
+        for ch in tok.chars() {
+            match ch {
+                '+' => plus = true,
+                '.' => after_dot = true,
+                c if c.is_ascii_digit() => {
+                    if after_dot {
+                        digits.push(c);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if !digits.is_empty() {
+            prec = digits.parse().ok();
+        }
+        Spec { plus, prec }
+    }
+}
+
+/// A value that can be spliced into a placeholder of a localized template.
+pub trait FmtArg {
+    fn w(&self, spec: Spec) -> String;
+}
+
+impl FmtArg for str {
+    fn w(&self, _spec: Spec) -> String {
+        self.to_string()
+    }
+}
+
+impl<'a, T: FmtArg + ?Sized> FmtArg for &'a T {
+    fn w(&self, spec: Spec) -> String {
+        (*self).w(spec)
+    }
+}
+
+impl FmtArg for std::io::Error {
+    fn w(&self, _spec: Spec) -> String {
+        self.to_string()
+    }
+}
+
+impl FmtArg for String {
+    fn w(&self, spec: Spec) -> String {
+        self.as_str().w(spec)
+    }
+}
+
+fn fmt_num(spec: Spec, v: f64) -> String {
+    if spec.plus {
+        match spec.prec {
+            Some(n) => format!("{:+.prec$}", v, prec = n),
+            None => format!("{:+}", v),
+        }
+    } else {
+        match spec.prec {
+            Some(n) => format!("{:.*}", n, v),
+            None => format!("{}", v),
+        }
+    }
+}
+
+impl FmtArg for f64 {
+    fn w(&self, spec: Spec) -> String {
+        fmt_num(spec, *self)
+    }
+}
+
+impl FmtArg for f32 {
+    fn w(&self, spec: Spec) -> String {
+        fmt_num(spec, *self as f64)
+    }
+}
+
+impl FmtArg for bool {
+    fn w(&self, _spec: Spec) -> String {
+        format!("{}", self)
+    }
+}
+
+macro_rules! impl_int_fmt {
+    ($($t:ty),*) => {
+        $(
+            impl FmtArg for $t {
+                fn w(&self, _spec: Spec) -> String {
+                    format!("{}", self)
+                }
+            }
+        )*
+    };
+}
+impl_int_fmt!(u8, u16, u32, u64, usize, i8, i16, i32, i64, isize);
+
+impl<'a> FmtArg for std::path::Display<'a> {
+    fn w(&self, _spec: Spec) -> String {
+        self.to_string()
+    }
+}
+
+impl FmtArg for char {
+    fn w(&self, _spec: Spec) -> String {
+        format!("{}", self)
+    }
+}
+
+/// Expand a (possibly translated) template containing `{}`, `{:.N}` or
+/// `{:+.N}` placeholders by splicing in `args` in order.
+pub fn sprintf(tpl: &str, args: &[&dyn FmtArg]) -> String {
+    let mut out = String::with_capacity(tpl.len() + 16);
+    let bytes = tpl.as_bytes();
+    let mut i = 0;
+    let mut ai = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'{' {
+            let start = i;
+            let mut j = i + 1;
+            while j < bytes.len() && bytes[j] != b'}' {
+                j += 1;
+            }
+            if j < bytes.len() && bytes[j] == b'}' {
+                let spec = Spec::parse(&tpl[start + 1..j]);
+                if let Some(a) = args.get(ai) {
+                    out.push_str(&a.w(spec));
+                    ai += 1;
+                }
+                i = j + 1;
+            } else {
+                out.push('{');
+                i += 1;
+            }
+        } else {
+            let start = i;
+            while i < bytes.len() && bytes[i] != b'{' {
+                i += 1;
+            }
+            out.push_str(&tpl[start..i]);
+        }
+    }
+    out
+}
+
+/// Translate `key` (a Swedish status template) in the current language and
+/// splice in the given arguments.
+pub fn tstatus(key: &'static str, args: &[&dyn FmtArg]) -> String {
+    sprintf(translate(current(), key), args)
+}
+
+/// Macro version of [`tstatus`] so call sites read like the old
+/// `format!("template", arg1, arg2, ...)`.
+#[macro_export]
+macro_rules! tstatus {
+    ($key:expr $(, $arg:expr)* $(,)?) => {{
+        crate::i18n::tstatus($key, &[ $( &($arg) as &dyn crate::i18n::FmtArg ),* ])
+    }};
+}
+
+// ====================================================================
+// ENGLISH
+// ====================================================================
+fn tr_en(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "📁 Arkiv" => "📁 File",
+        "📄 Nytt tomt projekt (Ctrl+N)" => "📄 New empty project (Ctrl+N)",
+        "📂 Öppna projekt... (Ctrl+O)" => "📂 Open project... (Ctrl+O)",
+        "💾 Spara projekt (Ctrl+S)" => "💾 Save project (Ctrl+S)",
+        "💾 Spara som... (Ctrl+Shift+S)" => "💾 Save as... (Ctrl+Shift+S)",
+        "📁 Filhanterare / Projektbläddrare (Ctrl+P)" => "📁 File Manager / Project Browser (Ctrl+P)",
+        "⚡ Ladda Demo-projekt" => "⚡ Load Demo Project",
+        "🎼 Importera Stämmor / Stems... (Ctrl+I)" => "🎼 Import Stems / Vocal Stems... (Ctrl+I)",
+        "↗ Exportera projekt (Ctrl+E)" => "↗ Export Project (Ctrl+E)",
+        "🚪 Avsluta" => "🚪 Quit",
+
+        "✏ Redigera" => "✏ Edit",
+        "↶ Ångra (Ctrl+Z)" => "↶ Undo (Ctrl+Z)",
+        "↷ Gör om (Ctrl+Y)" => "↷ Redo (Ctrl+Y)",
+        "✂ Klipp vid spelhuvud (Ctrl+B / S)" => "✂ Cut at playhead (Ctrl+B / S)",
+        "📋 Duplicera markerat (Ctrl+D)" => "📋 Duplicate selection (Ctrl+D)",
+        "🗑 Ta bort markerat (Del)" => "🗑 Delete selection (Del)",
+        "🧹 Rensa alla spår" => "🧹 Clear all tracks",
+        "Rensade alla spår och tidslinjeklipp." => "Cleared all tracks and timeline clips.",
+
+        "👁 Vy" => "👁 View",
+        "📊 Tidslinje / Arranger (F3)" => "📊 Timeline / Arranger (F3)",
+        "🥁 Sonix Channel Rack (F4)" => "🥁 Sonix Channel Rack (F4)",
+        "🎹 Sonix Piano Roll (F5)" => "🎹 Sonix Piano Roll (F5)",
+        "🎛 Mixer Console (F6)" => "🎛 Mixer Console (F6)",
+        "🎛 Analog Synthesizer (F7)" => "🎛 Analog Synthesizer (F7)",
+        "🎙 Vocal Studio & Harmonizer (F8)" => "🎙 Vocal Studio & Harmonizer (F8)",
+        "🤖 AI Music Studio (F9)" => "🤖 AI Music Studio (F9)",
+        "🔌 Modulär Synt & Patcher (F10)" => "🔌 Modular Synth & Patcher (F10)",
+        "📁 Växla Webbläsare / Bibliotek: PÅ" => "📁 Toggle Browser / Library: ON",
+        "📁 Växla Webbläsare / Bibliotek: AV" => "📁 Toggle Browser / Library: OFF",
+
+        "🤖 AI & Providers" => "🤖 AI & Providers",
+        "⚙ AI Provider Inställningar & API-nycklar..." => "⚙ AI Provider Settings & API Keys...",
+        "🎼 Importera Stämmor / Multi-Track Stems..." => "🎼 Import Vocal Stems / Multi-Track Stems...",
+        "✨ ACE-Step & Stable Audio Generator..." => "✨ ACE-Step & Stable Audio Generator...",
+        "🤖 AI Co-Producer Assistent..." => "🤖 AI Co-Producer Assistant...",
+
+        "🎛 Verktyg" => "🎛 Tools",
+        "🎲 Melodi- & Beat-Tärning... (F12)" => "🎲 Melody & Beat Dice... (F12)",
+        "🎹 Smart Ackord- & Skalgenerator... (F11)" => "🎹 Smart Chord & Scale Generator... (F11)",
+        "🎛 Modulärt FX-Pedalbord & Stompboxes..." => "🎛 Modular FX Pedalboard & Stompboxes...",
+        "🎯 Hårdvarustämapparat & Pitch Scope (Tuner)..." => "🎯 Hardware Tuner & Pitch Scope (Tuner)...",
+        "📑 Låtstruktur & Formdelar..." => "📑 Song Structure & Sections...",
+        "🎙 Mikrofonjustering & Inmatningspanel..." => "🎙 Mic Setup & Input Panel...",
+
+        "⚙ Inställningar" => "⚙ Settings",
+        "🎙 Mikrofoninställningar & Inmatningsenhet (Samson/USB)..." => "🎙 Microphone Settings & Input Device (Samson/USB)...",
+        "🎛 Ljud- & MIDI-inställningar (PipeWire/ALSA/JACK)..." => "🎛 Audio & MIDI Settings (PipeWire/ALSA/JACK)...",
+        "🎛 Hårdvarukontroller (MCU / OSC)..." => "🎛 Hardware Controllers (MCU / OSC)...",
+
+        "❓ Hjälp" => "❓ Help",
+        "📖 Snabbguide & Manual (F1)" => "📖 Quick Guide & Manual (F1)",
+        "ℹ Om Sonix Studio..." => "ℹ About Sonix Studio...",
+        "📁 Projekt:" => "📁 Project:",
+        "Klicka för att hantera projekt" => "Click to manage projects",
+
+        "📁 Browser" => "📁 Browser",
+        "VY:" => "VIEW:",
+        "STUDIOS:" => "STUDIOS:",
+        "VERKTYG:" => "TOOLS:",
+        "🎼 Tidslinje" => "🎼 Timeline",
+        "🥁 Rack" => "🥁 Rack",
+        "🎹 Piano" => "🎹 Piano",
+        "🎙 Sångstudio" => "🎙 Vocal Studio",
+        "🎚 Mixer" => "🎚 Mixer",
+        "🤖 AI" => "🤖 AI",
+        "✨ Alchemy" => "✨ Alchemy",
+        "🥁 Trummor" => "🥁 Drums",
+        "🧩 Patcher" => "🧩 Patcher",
+        "🧠 Stems" => "🧠 Stems",
+        "🔌 Plugins" => "🔌 Plugins",
+        "🎛 Remix" => "🎛 Remix",
+        "🎲 Tärning" => "🎲 Dice",
+        "🎹 Ackord" => "🎹 Chords",
+        "🎛 FX-Rack" => "🎛 FX Rack",
+        "🎯 Stämmare" => "🎯 Tuner",
+        "📑 Formdelar" => "📑 Sections",
+        "Idé- & Slumptärning för Melodier & Beats (F12)" => "Idea & random dice for melodies & beats (F12)",
+        "Smart Ackord- & Skalgenerator (F11)" => "Smart chord & scale generator (F11)",
+        "Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)" => "Modular FX pedalboard & stompbox rack (Ctrl+R)",
+        "Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)" => "Hardware tuner & pitch analyzer (Ctrl+T)",
+        "Låtstruktur & Formdelar" => "Song structure & sections",
+        "PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW" => "PipeWire / ALSA 44.1kHz • 16-voice polyphony • Sonix Studio Pro DAW",
+
+        "Läge ändrat till: PAT (Mönsterloop)" => "Mode changed to: PAT (Pattern loop)",
+        "Läge ändrat till: SONG (Låtläge)" => "Mode changed to: SONG (Song mode)",
+
+        "Språk" => "Language",
+        "🌐 Språk" => "🌐 Language",
+        "📤 Exportera projekt" => "📤 Export Project",
+        "Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till." => "Render the entire project offline (real WAV samples, timeline audio & effects) with clean metadata – no AI or provider information is ever added.",
+        "1. VAD SKALL EXPORTERAS" => "1. WHAT TO EXPORT",
+        "Hel låt – Master Mix (Fullt Projekt)" => "Full Song – Master Mix (Full Project)",
+        "Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter." => "Renders the entire song/arrangement with all Channel Rack samples, timeline audio (stems/mic) and master effects.",
+        "Individuella spår – Torra (Stems Dry)" => "Individual Tracks – Dry (Stems Dry)",
+        "Exporterar varje tidslinjespår för sig utan reverb/delay för extern mixning." => "Exports each timeline track on its own without reverb/delay for external mixing.",
+        "Individuella spår – Med FX (Stems Wet)" => "Individual Tracks – With FX (Stems Wet)",
+        "Exporterar varje tidslinjespår för sig med alla effekter och modulation." => "Exports each timeline track on its own with all effects and modulation.",
+        "2. FORMAT & LJUDKVALITET" => "2. FORMAT & AUDIO QUALITY",
+        "Format:" => "Format:",
+        "Samplingsfrekvens:" => "Sample rate:",
+        "3. FILNAMN & MAPPA" => "3. FILE NAME & FOLDER",
+        "Låt-/filnamn:" => "Song/file name:",
+        "Mapp:" => "Folder:",
+        "Exempel:" => "Example:",
+        "4. METADATA (endast Sonix – ingen AI-info)" => "4. METADATA (Sonix only – no AI info)",
+        "Titel:" => "Title:",
+        "Artist:" => "Artist:",
+        "Album:" => "Album:",
+        "Genre:" => "Genre:",
+        "År:" => "Year:",
+        "Kommentar:" => "Comment:",
+        "Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem." => "The software marker is always set to Sonix Studio. Leave fields empty to omit them.",
+        "Status:" => "Status:",
+        "🚀 STARTA EXPORT" => "🚀 START EXPORT",
+        "Stäng" => "Close",
+        // --- auto-merged i18n EN entries (EN_MAP + EXTRA) ---
+        "  Stäng  " => "  Close  ",
+        " ⏸ PAUSA " => " ⏸ PAUSE ",
+        " ⏹ STOPPA & SKAPA TAGNING " => " ⏹ STOP & CREATE TAKE ",
+        " ▶ ÅTERUPPTA " => " ▶ RESUME ",
+        " 🔴 SPELA IN (REC) " => " 🔴 RECORD (REC) ",
+        " 🔴 SPELA IN LJUDKLIPP " => " 🔴 RECORD AUDIO CLIP ",
+        "0 smp latens (0 ms)" => "0 smp latency (0 ms)",
+        "0 st" => "0 stems",
+        "1. Image-Line & FL Studio Inbyggda Plugins" => "1. Image-Line & FL Studio Built-in Plugins",
+        "1. Importera stämmor: Klicka på '📦 IMPORT STEMS' (Ctrl+I) för att läsa in ett ZIP-paket med sång, bas, trummor m.m." => "1. Import stems: Click '📦 IMPORT STEMS' (Ctrl+I) to load a ZIP package with vocals, bass, drums, etc.",
+        "1. Takter (Bars): Stora vertikala streck med taktnummer (1, 2, 3...) och tidskod (MM:SS.cs)." => "1. Bars: Large vertical lines with bar numbers (1, 2, 3...) and timecode (MM:SS.cs).",
+        "1. Tryck '📦 IMPORT STEMS' i verktygsfältet eller tryck Ctrl+I." => "1. Click '📦 IMPORT STEMS' in the toolbar or press Ctrl+I.",
+        "16-Stegs Trummaskin & Mönster:" => "16-step drum machine & patterns:",
+        "2. Arrangera & Klipp: Använd saxverktyget (✂ Klipp) och zooma in djupt (Ctrl+Scroll) för att dela med 0.01s precision." => "2. Arrange & Edit: Use the scissor tool (✂ Cut) and zoom in deeply (Ctrl+Scroll) to split with 0.01s precision.",
+        "2. Beats: Fjärdedelstikar (.2, .3, .4) som syns vid normal zoom." => "2. Beats: Quarter-note ticks (.2, .3, .4) visible at normal zoom.",
+        "2. Köra hela FL Studio som ett instrument inuti Sonix (FL Studio VSTi)" => "2. Running the whole FL Studio as an instrument inside Sonix (FL Studio VSTi)",
+        "2. Välj bland automatiskt upptäckta paket i ~/Music / ~/Downloads eller välj ZIP-fil/mapp manuellt." => "2. Pick among auto-detected packages in ~/Music / ~/Downloads, or choose a ZIP file/folder manually.",
+        "3. 1/16-delssteg: Tunt rutnät för exakt rytmisk klippning och placering." => "3. 1/16-step: Fine grid for precise rhythmic cutting and placement.",
+        "3. Dra & Släpp (Drag & Drop): Dra en .zip-fil direkt in i Sonix-fönstret." => "3. Drag & Drop: Drag a .zip file straight into the Sonix window.",
+        "3. Fokusera & Förädla: Klicka på '🔍' på ett spår för att öppna Stämeditorn, isolera stämman med Solo och ratta 3-bands EQ." => "3. Focus & Refine: Click '🔍' on a track to open the Stem Editor, isolate the stem with Solo and dial in 3-band EQ.",
+        "3. Synkronisera med Yabridge (Zero-Latency IPC)" => "3. Syncing with Yabridge (Zero-Latency IPC)",
+        "4. Hundradelar (0.01s): Aktiveras vid djup inzoomning (200%–800%) för millimeterexakta snitt i sång och trummor." => "4. Hundredths (0.01s): Enabled at deep zoom (200%–800%) for pinpoint cuts in vocals and drums.",
+        "4. Process-Isolering & Kraschskydd" => "4. Process Isolation & Crash Protection",
+        "4. Skapa trumkomp: Tryck F4 för att öppna Channel Rack och klicka in 16-stegs beats." => "4. Build drum patterns: Press F4 to open the Channel Rack and click in 16-step beats.",
+        "44.1 kHz • 64 buffert (1.4 ms latency)" => "44.1 kHz • 64 buffer (1.4 ms latency)",
+        "5. Spela in melodier: Tryck F5 för Piano Roll eller spela live med datortangentbordet." => "5. Record melodies: Press F5 for the Piano Roll, or play live with the computer keyboard.",
+        "6. Mixa & Exportera: Tryck F6 för Mixern och Ctrl+E för att exportera mastrad 48kHz WAV." => "6. Mix & Export: Press F6 for the Mixer and Ctrl+E to export a mastered 48kHz WAV.",
+        "8-punkters realtids-morphing mellan subtraktiva, FM- och wavetable-synteser" => "8-point real-time morphing between subtractive, FM and wavetable synthesis",
+        "AKTIVA SYNTPARAMETRAR (MORPHED)" => "ACTIVE SYNTH PARAMETERS (MORPHED)",
+        "API-nyckel:" => "API key:",
+        "Ackord:" => "Chord:",
+        "Alla förändringar i Session Drummer speglas direkt i FL Channel Rack och tidslinjen!" => "All changes in Session Drummer are mirrored directly in the Channel Rack and timeline!",
+        "Används för automatisk stäm-nedladdning och metadata-synk." => "Used for automatic stem download and metadata sync.",
+        "Applicera direkt på synt, bas eller trumspår med ett klick" => "Apply directly to synth, bass or drum tracks with one click",
+        "Avbryt" => "Cancel",
+        "Bifoga aktuellt spår/mix som AI-kontext" => "Attach current track/mix as AI context",
+        "Brusreducering & Anti-rundgång" => "Noise Reduction & Anti-feedback",
+        "Bufferstorlek:" => "Buffer size:",
+        "Byt ut detta beat/ljud direkt från biblioteket" => "Replace this beat/sound directly from the library",
+        "Chop Snabbval:" => "Chop Quick Picks:",
+        "DJ-effekter, Tape Stop, Filter Sweeps och Stutter Glitch" => "DJ effects, Tape Stop, Filter Sweeps and Stutter Glitch",
+        "DRUMMERS (STILAR)" => "DRUMMERS (STYLES)",
+        "Decay Tid:" => "Decay Time:",
+        "Dela vald region exakt vid den nuvarande tidsmarkören (Genväg: Ctrl+B eller S)" => "Split the selected region exactly at the current time marker (Shortcut: Ctrl+B or S)",
+        "Direkt hårdvaruintegration med Mackie Control Universal (MCU) och Open Sound Control (OSC)" => "Direct hardware integration with Mackie Control Universal (MCU) and Open Sound Control (OSC)",
+        "Dra den gula pucken för att ändra dynamik & komplexitet i realtid" => "Drag the yellow puck to change dynamics & complexity in real time",
+        "Dra den lysande markören för att sömlöst smälta samman filter, vågformer och ADSR" => "Drag the glowing marker to seamlessly blend filters, waveforms and ADSR",
+        "Dra i noderna för att justera frekvens och förstärkning (dB)" => "Drag the nodes to adjust frequency and gain (dB)",
+        "Drivrutin:" => "Driver:",
+        "Duplicera samplen direkt efter den nuvarande" => "Duplicate the sample right after the current one",
+        "ENVELOPE GRAF" => "ENVELOPE GRAPH",
+        "Enhet:" => "Device:",
+        "Filhanterare & Projektinställningar" => "File Manager & Project Settings",
+        "Filsökväg:" => "File path:",
+        "Finjustera med hundradelar:" => "Fine-tune in hundredths:",
+        "Finjustera tonhöjd i cents (-50 .. +50)" => "Fine-tune pitch in cents (-50 .. +50)",
+        "Finjustering (Test):" => "Fine tuning (Test):",
+        "Flytta 0.1s bakåt" => "Move 0.1s backward",
+        "Flytta 0.1s framåt" => "Move 0.1s forward",
+        "Flytta 1 takt bakåt" => "Move 1 bar backward",
+        "Flytta 1 takt framåt" => "Move 1 bar forward",
+        "Fokusera på en enda stämma med högprecisionskontroller, decibelnivåer, grafisk EQ och fading." => "Focus on a single stem with high-precision controls, decibel levels, graphic EQ and fading.",
+        "Format-filter:" => "Format filter:",
+        "Frekvens & Tonhöjd:" => "Frequency & Pitch:",
+        "Fullt" => "Full",
+        "Funktioner i Vocal Studio:" => "Features in Vocal Studio:",
+        "Förinställningar:" => "Presets:",
+        "Förläng 0.1s" => "Lengthen 0.1s",
+        "Förläng 1 takt" => "Lengthen 1 bar",
+        "Generera MIDI-slingor, basgångar, ackordföljder och trumspår direkt via naturligt språk" => "Generate MIDI loops, bass lines, chord progressions and drum tracks directly from natural language",
+        "Genre / Stil:" => "Genre / Style:",
+        "Grundton (Key):" => "Root note (Key):",
+        "Grundton (MIDI):" => "Root note (MIDI):",
+        "Grundton:" => "Root note:",
+        "Gå till start (00:00.00)" => "Go to start (00:00.00)",
+        "Hantera och importera VST3, CLAP, LV2, FL Studio Native & Windows-plugins via Yabridge" => "Manage and import VST3, CLAP, LV2, FL Studio native and Windows plugins via Yabridge",
+        "Hi-Hat Rytm:" => "Hi-Hat Rhythm:",
+        "Hur du kör Image-Line plugins (Sytrus, Harmor, Gross Beat, FL Studio VSTi) och Windows VSTs i Sonix på Linux" => "How to run Image-Line plugins (Sytrus, Harmor, Gross Beat, FL Studio VSTi) and Windows VSTs in Sonix on Linux",
+        "Hörbar klick-metronom vid uppspelning" => "Audible click metronome during playback",
+        "Ikon:" => "Icon:",
+        "Importera fristående filer (.vst3, .clap, .dll, .so, .lv2) eller FL Studio Preset-filer (.fst) direkt:" => "Import standalone files (.vst3, .clap, .dll, .so, .lv2) or FL Studio preset files (.fst) directly:",
+        "Importera kompletta stämpaket (WAV, MP3, FLAC, OGG) från Suno AI, FL Studio, Ableton, Logic m.fl." => "Import complete stem packs (WAV, MP3, FLAC, OGG) from Suno AI, FL Studio, Ableton, Logic and more.",
+        "Importera nedladdade ZIP-paket eller mappar med stämmor (Suno, FL Studio, Ableton, Logic m.fl.). Sonix läser ut äkta 48kHz WAV-vågformer, detekterar tempo (BPM) och mappar spåren i tidslinjen." => "Import downloaded ZIP packs or folders of stems (Suno, FL Studio, Ableton, Logic etc.). Sonix reads real 48kHz WAV waveforms, detects the tempo (BPM) and maps the tracks onto the timeline.",
+        "Inga .zip-stempaket hittades i ~/Music eller ~/Downloads. Klicka på knappen ovan för att skanna, eller ange sökväg manuellt nedan." => "No .zip stem packs found in ~/Music or ~/Downloads. Click the button above to scan, or enter a path manually below.",
+        "Inga ackord valda än. Klicka på plattorna ovan eller välj en färdig mall!" => "No chords selected yet. Click the pads above or choose a ready-made template!",
+        "Inga plugins matchade din sökning eller filter." => "No plugins matched your search or filter.",
+        "Inga sparade .sonix-projekt hittades ännu. Spara ditt nuvarande projekt ovan eller ladda ett demo-projekt!" => "No saved .sonix projects found yet. Save your current project above or load a demo project!",
+        "Ingångsnivå & Förförstärkare (Gain & VU)" => "Input Level & Preamp (Gain & VU)",
+        "Inläsningen sker i bakgrunden med en förloppsindikator utan att programmet hänger sig." => "Loading happens in the background with a progress indicator, without the program freezing.",
+        "Inställningsfiler för kanaler och mixer-effekter sparade från FL Studio:" => "Settings files for channels and mixer effects saved from FL Studio:",
+        "Intelligent trummis med 2D XY-radar för realtids-generering av trumspår" => "Intelligent drummer with 2D XY radar for real-time drum track generation",
+        "Isolera och extrahera sång, trummor, bas och instrument direkt ur färdiga mixar" => "Isolate and extract vocals, drums, bass and instruments directly from finished mixes",
+        "Isolera och lyssna enbart på denna stämma i realtid" => "Isolate and listen only to this stem in real time",
+        "Justera tidssträckning / uppspelningshastighet (0.25x = snabbare, 2.0x = långsammare)" => "Adjust time stretching / playback speed (0.25x = faster, 2.0x = slower)",
+        "Justera tonhöjd i halvtoner (-24 .. +24)" => "Adjust pitch in semitones (-24 .. +24)",
+        "KAPITEL & AVSNITT:" => "CHAPTERS & SECTIONS:",
+        "KOMPRESSOR" => "COMPRESSOR",
+        "Kategori:" => "Category:",
+        "Kedjemallar (Presets):" => "Chain templates (Presets):",
+        "Klicka & håll ned för att dra till tidslinjen" => "Click & hold to drag onto the timeline",
+        "Klicka i takt för att sätta tempo (Tap Tempo)" => "Click in time to set the tempo (Tap Tempo)",
+        "Klicka på ackordplattorna för att spela live • Skapa magiska ackordföljder" => "Click the chord pads to play live • Create magical chord progressions",
+        "Klicka på den stora knappen '🎧 ISOLERA STÄMMA (SOLO)' högst upp i editorn för att direkt tysta alla andra spår och lyssna enbart på den valda stämman." => "Click the big '🎧 ISOLATE STEM (SOLO)' button at the top of the editor to instantly mute all other tracks and listen only to the selected stem.",
+        "Klicka på en effekt för att lägga till eller aktivera den i din aktiva kedja" => "Click an effect to add or enable it in your active chain",
+        "Klipp/dela regionen på exakt denna tidpunkt" => "Cut/split the region at exactly this time",
+        "Klistra in kopierat sample vid spelhuvudet på aktivt spår" => "Paste the copied sample at the playhead on the active track",
+        "Konfigurera dina API-nycklar och lokala AI-modeller för stämdelning och musikgenerering." => "Configure your API keys and local AI models for stem separation and music generation.",
+        "Kopiera detta sample till urklipp" => "Copy this sample to the clipboard",
+        "Korta 0.1s" => "Shorten 0.1s",
+        "Korta 1 takt" => "Shorten 1 bar",
+        "Källfil:" => "Source file:",
+        "Ladda" => "Load",
+        "Ladda in detta sample/region i Sångstudion för isolerad provspelning, pitch, time stretch & effekter" => "Load this sample/region into Vocal Studio for isolated preview, pitch, time stretch & effects",
+        "Ladda in extern WAV/Audio-fil som tagning" => "Load an external WAV/audio file as a take",
+        "Ladda till Channel Rack" => "Load into Channel Rack",
+        "Linux Wayland & Hyprland Säkerhet:" => "Linux Wayland & Hyprland safety:",
+        "Ljudenhet & Mikrofonkälla" => "Audio Device & Microphone Source",
+        "Ljudets Namn:" => "Sound Name:",
+        "Ljudmotor & Drivrutiner" => "Audio Engine & Drivers",
+        "Ljudmotor (PipeWire / ALSA / JACK):" => "Audio engine (PipeWire / ALSA / JACK):",
+        "Lokal Ollama / Piper / Whisper" => "Local Ollama / Piper / Whisper",
+        "Lyssningsport (RX):" => "Listen port (RX):",
+        "Längd:" => "Length:",
+        "Läser in och avkodar stämmor (Stems)" => "Reading and decoding stems",
+        "Lås tangenter till vald skala" => "Lock keys to the selected scale",
+        "Låtmall / Genre:" => "Song template / Genre:",
+        "MUSIKTEORI & HARMONIK" => "MUSIC THEORY & HARMONY",
+        "Mappsökväg:" => "Folder path:",
+        "Master Säkerhet & Limiter" => "Master Safety & Limiter",
+        "Mikrofoninspelning i realtid  •  Live WAV Capture  •  Waveform Editor  •  Melodyne ARA2" => "Real-time microphone recording  •  Live WAV capture  •  Waveform editor  •  Melodyne ARA2",
+        "Mikrofoninställningar" => "Microphone settings",
+        "Minska start-trim (visa mer av början)" => "Decrease start trim (show more of the beginning)",
+        "Mixerbord & Effektrack (F6):" => "Mixer & effects rack (F6):",
+        "Modulär effektkedja  •  Visual Parametric EQ  •  Dynamisk kompressor  •  Vocal Doubler" => "Modular effects chain  •  Visual parametric EQ  •  Dynamic compressor  •  Vocal doubler",
+        "Motorfaders feedback status:" => "Motor fader feedback status:",
+        "Multi-Track Stämmor & Ljudspår (Stems)" => "Multi-Track Stems & Audio Tracks (Stems)",
+        "Mönster:" => "Pattern:",
+        "NAVIGERING MELLAN VYER (Funktionstangenter):" => "NAVIGATING BETWEEN VIEWS (Function keys):",
+        "Namn på ljudet:" => "Name of the sound:",
+        "Nivåer & Stereobild för stämman" => "Levels & stereo image for the stem",
+        "Nollställ Pitch" => "Reset Pitch",
+        "Nollställ tonhöjd" => "Reset pitch",
+        "Nästa ▶" => "Next ▶",
+        "OK / Stäng" => "OK / Close",
+        "Oktav:" => "Octave:",
+        "Oktavomfång:" => "Octave range:",
+        "PROJEKT & REDIGERINGSKOMMANDON:" => "PROJECT & EDITING COMMANDS:",
+        "Pitch & Tonhöjd:" => "Pitch:",
+        "Professionell Digital Audio Workstation & AI Musikstudio för Linux" => "Professional Digital Audio Workstation & AI Music Studio for Linux",
+        "Projektnamn:" => "Project name:",
+        "Provspela med riktigt ljud" => "Preview with real audio",
+        "Provspela sample med äkta ljud" => "Preview sample with real audio",
+        "Rensa mönster" => "Clear pattern",
+        "Repetera och fördubbla loop-längden" => "Repeat and double the loop length",
+        "Repetera samplen 4 gånger i följd" => "Repeat the sample 4 times in a row",
+        "SNABBVAL SNAPSHOTS" => "QUICK PICK SNAPSHOTS",
+        "SPÅRSTRUKTUR I SONIX:" => "TRACK STRUCTURE IN SONIX:",
+        "STÄMAPPARAT & PITCH ANALYZER" => "TUNER & PITCH ANALYZER",
+        "Sample Karaktär & Syntes:" => "Sample Character & Synthesis:",
+        "Semitoner:" => "Semitones:",
+        "Senast skannad:" => "Last scanned:",
+        "Skala / Tonart:" => "Scale / Key:",
+        "Skala:" => "Scale:",
+        "Skapa automatiskt arpeggiomönster från vald skala" => "Automatically create an arpeggio pattern from the selected scale",
+        "Skapa nytt spår på tidslinjen med denna sample" => "Create a new track on the timeline with this sample",
+        "Slumpa ny skala och grundton för inspiration" => "Randomize a new scale and root note for inspiration",
+        "Slumpa vilda melodier, unika grooves, trap-rolls och basgångar med 1 klick" => "Randomize wild melodies, unique grooves, trap rolls and bass lines with one click",
+        "Slut (Ut):" => "End (Out):",
+        "Snabbjustering (0.1 dB precision):" => "Quick adjustment (0.1 dB precision):",
+        "Snäpp:" => "Snap:",
+        "Sonix genomsöker följande mappar efter Linux-native VST3/CLAP/LV2 samt Windows/Wine & FL Studio VST-kataloger:" => "Sonix scans the following folders for Linux-native VST3/CLAP/LV2 as well as Windows/Wine & FL Studio VST catalogs:",
+        "Spara denna ljudregion som sample i Sound Browser & på disk" => "Save this audio region as a sample in the Sound Browser and to disk",
+        "Spara till disk" => "Save to disk",
+        "Spela in instrument, klappar, rösteffekter eller miljöljud direkt via mik" => "Record instruments, claps, voice effects or ambient sounds directly via the mic",
+        "Spela med tangentbordet [A, S, D...] eller klicka med musen" => "Play with the keyboard [A, S, D...] or click with the mouse",
+        "Spela upp ENBART denna tagning/sample utan att starta låtens tidslinje" => "Play ONLY this take/sample without starting the song timeline",
+        "Spela upp ljudregionen baklänges i realtid (Ctrl+K / R)" => "Play the audio region backwards in real time (Ctrl+K / R)",
+        "Status: 🟢 Ansluten och aktiv (Noll latens)" => "Status: 🟢 Connected and active (Zero latency)",
+        "Stoppa provspelning" => "Stop preview",
+        "Styr DJ-effekter under uppspelning för live-remixing av dina mönster!" => "Control DJ effects during playback for live remixing of your patterns!",
+        "Stäm gitarr, bas eller träna röstintonation i realtid" => "Tune guitar, bass or train vocal intonation in real time",
+        "SÄNDNING" => "SEND",
+        "Sändningsport (TX):" => "Send port (TX):",
+        "Sätt loop" => "Set loop",
+        "Sök efter anslutna USB- och hårdvarumikrofoner" => "Search for connected USB and hardware microphones",
+        "Sökväg:" => "Path:",
+        "TONHÖJD" => "PITCH",
+        "TRUMSET & INSTRUMENT" => "DRUM KIT & INSTRUMENT",
+        "Ta bort från bibliotek" => "Remove from library",
+        "Ta bort sektion" => "Remove section",
+        "Tidslinjen hanterar obegränsat med ljudspår och regioner med precision ned till 0.01 sekunder (hundradelar)." => "The timeline handles unlimited audio tracks and regions with precision down to 0.01 seconds (hundredths).",
+        "Tidslinjeöversikt (Övergripande form)" => "Timeline overview (overall form)",
+        "Tillverkare / Vendor (valfritt):" => "Manufacturer / Vendor (optional):",
+        "Tillåt flera toner samtidigt i samma steg (ackordmålning)" => "Allow multiple notes at once in the same step (chord painting)",
+        "Tonhöjd (Pitch Shift):" => "Pitch Shift:",
+        "Transponera ner 1 oktav (-12 halvtoner)" => "Transpose down 1 octave (-12 semitones)",
+        "Transponera upp 1 oktav (+12 halvtoner)" => "Transpose up 1 octave (+12 semitones)",
+        "UPPTÄCKTA STEMPAKET:" => "DETECTED STEM PACKS:",
+        "Utöka ditt personliga ljudbibliotek med egna samples!" => "Expand your personal sound library with your own samples!",
+        "Variera anslagsdynamik (velocity) för levande sväng" => "Vary hit velocity for a lively groove",
+        "Visuell modulär miljö: Koppla ihop ljudsignaler, syntmoduler, filter och LFO med virtuella kablar" => "Visual modular environment: connect audio signals, synth modules, filters and LFOs with virtual cables",
+        "Vokaleffekter i realtid (Live DSP)" => "Real-time vocal effects (Live DSP)",
+        "VÄLJ ZIP-FIL ELLER MAPP" => "CHOOSE ZIP FILE OR FOLDER",
+        "Välj instrument eller ljudkälla för ditt nya spår:" => "Choose an instrument or sound source for your new track:",
+        "Välkommen till Sonix Studio – en blixtsnabb Digital Audio Workstation skapad för Linux med äkta realtidsprestanda." => "Welcome to Sonix Studio – a lightning-fast Digital Audio Workstation built for Linux with true real-time performance.",
+        "Vänd tonföljden baklänges" => "Reverse the note order",
+        "Växla till föregående stämma" => "Switch to previous stem",
+        "Växla till nästa stämma" => "Switch to next stem",
+        "Zooma in (Ctrl+Skrolla)" => "Zoom in (Ctrl+Scroll)",
+        "Zooma ut (Ctrl+Skrolla)" => "Zoom out (Ctrl+Scroll)",
+        "eller ange sökväg:" => "or enter a path:",
+        "Återställ filter" => "Reset filter",
+        "Återställ till normal hastighet" => "Reset to normal speed",
+        "Återställ volym, pitch och stretch till standard" => "Reset volume, pitch and stretch to default",
+        "Öka start-trim (klipp bort mer av början)" => "Increase start trim (cut away more of the beginning)",
+        "Öppna" => "Open",
+        "Öppna Projekt" => "Open Project",
+        "Öppna Waveform Chopper & Pitch Slicer" => "Open Waveform Chopper & Pitch Slicer",
+        "Öppna i Sångstudion för isolerad solo-provspelning & formning" => "Open in Vocal Studio for isolated solo preview & shaping",
+        "• '⏸ Följ tidslinje: AV': Tidslinjen står stilla så att du kan redigera i lugn och ro medan låten spelar." => "• '⏸ Follow timeline: OFF': The timeline stays still so you can edit calmly while the song plays.",
+        "• '🏃 Följ tidslinje: PÅ': Tidslinjen rullar automatiskt och håller spelhuvudet centrerat på skärmen." => "• '🏃 Follow timeline: ON': The timeline scrolls automatically, keeping the playhead centered on screen.",
+        "• 100% Rust Audio DSP – Inget hack, noll skräpsamling (Garbage Collection), noll latens." => "• 100% Rust audio DSP – No hacks, zero garbage collection, zero latency.",
+        "• 16-Stegs Sonix Channel Rack, Piano Roll & Touch Piano" => "• 16-step Sonix Channel Rack, Piano Roll & Touch Piano",
+        "• 3-Bands Parametrisk EQ per mixerkanal." => "• 3-band parametric EQ per mixer channel.",
+        "• 4 Vågformer: Sawtooth (sågtand), Square (fyrkant), Sine (sinus) och Noise (brus)." => "• 4 waveforms: Sawtooth, Square, Sine and Noise.",
+        "• 4-Voice Harmonizer: Skapar fylliga sångarrangemang med kör, oktavdubbling eller vocoder." => "• 4-voice harmonizer: Creates rich vocal arrangements with choir, octave doubling or vocoder.",
+        "• 64-bit SIMD Audio DSP med Zero-Latency Process Thread" => "• 64-bit SIMD audio DSP with a zero-latency process thread",
+        "• 8 Klassiska trumkanaler: Kick, Snare, Clap, Closed Hat, Open Hat, Crash, 303 Bass och Lead." => "• 8 classic drum channels: Kick, Snare, Clap, Closed Hat, Open Hat, Crash, 303 Bass and Lead.",
+        "• 8 Stereokanaler + Master Bus med analoga faders och VU peak meters." => "• 8 stereo channels + master bus with analog faders and VU peak meters.",
+        "• ADSR Envelope: Attack, Decay, Sustain och Release." => "• ADSR envelope: Attack, Decay, Sustain and Release.",
+        "• Asynkron bakgrundsavkodning – Gränssnittet fryser aldrig vid inläsning av tunga ljudfiler." => "• Async background decoding – The UI never freezes when loading heavy audio files.",
+        "• Backing Vocals ➔ 🗣 Körbuss." => "• Backing vocals ➔ 🗣 Choir bus.",
+        "• Bass ➔ 🎸 Basbuss med gul färgkod." => "• Bass ➔ 🎸 Bass bus with yellow color coding.",
+        "• Buffertstorlek: 128/256 samples för noll latens vid live-spelning, 512/1024 samples för tunga projekt." => "• Buffer size: 128/256 samples for zero-latency live playing, 512/1024 samples for heavy projects.",
+        "• Comping & Tagningar: Spela in flera sångtagningar och klipp ihop den bästa versionen." => "• Comping & takes: Record several vocal takes and stitch together the best version.",
+        "• Drums / Kick / Snare ➔ 🥁 Trumbuss med cyan färgkod." => "• Drums / Kick / Snare ➔ 🥁 Drum bus with cyan color coding.",
+        "• Export Pattern: Exporterar det aktiva Channel Rack-mönstret." => "• Export Pattern: Exports the active Channel Rack pattern.",
+        "• Export Song: Renderar hela tidslinjen till en sammanslagen masterfil." => "• Export Song: Renders the whole timeline to a single master file.",
+        "• FX / Other ➔ ✨ Effektsändning." => "• FX / Other ➔ ✨ FX send.",
+        "• Fade In och Fade Out med 0.01s precision." => "• Fade in and fade out with 0.01s precision.",
+        "• Format: 32-bit float / 24-bit PCM WAV i 44.1 kHz eller 48 kHz." => "• Format: 32-bit float / 24-bit PCM WAV at 44.1 kHz or 48 kHz.",
+        "• Fullt stöd för Suno AI Stems med linjär vågformsredigering" => "• Full support for Suno AI stems with linear waveform editing",
+        "• Grafiskt 3-oktavigt notinmatningsfönster (C3 till B5)." => "• Graphical 3-octave note input window (C3 to B5).",
+        "• Guitar / Keys / Synth ➔ 🎹 Synthbuss med grön/orange färgkod." => "• Guitar / Keys / Synth ➔ 🎹 Synth bus with green/orange color coding.",
+        "• High Shelf (Diskant): Gain ±12 dB, frekvens 3 kHz – 16 kHz." => "• High shelf (treble): Gain ±12 dB, frequency 3 kHz – 16 kHz.",
+        "• Inbyggd Crash Logger sparar automatiskt eventuella problem till /tmp/sonix_crash.log." => "• Built-in crash logger automatically saves any issues to /tmp/sonix_crash.log.",
+        "• Interaktiv frekvenskurva i realtid (20 Hz – 20 kHz) med dB-skala." => "• Interactive real-time frequency curve (20 Hz – 20 kHz) with dB scale.",
+        "• Klicka på klaviaturet till vänster för att provlyssna toner i realtid." => "• Click the keyboard on the left to audition notes in real time.",
+        "• Klippverktyg (Slice ✂), Fading & Dynamisk Gain-justering" => "• Cutting tools (Slice ✂), fading & dynamic gain adjustment",
+        "• Komplett Referensguide & Handbok" => "• Complete reference guide & handbook",
+        "• Kompressor: Justerbar Threshold (-30 dB till 0 dB) och Ratio (1:1 till 8:1)." => "• Compressor: Adjustable threshold (-30 dB to 0 dB) and ratio (1:1 to 8:1).",
+        "• Lead Vocals ➔ 🎙 Sångbuss med lila färgkod." => "• Lead vocals ➔ 🎙 Vocal bus with purple color coding.",
+        "• Low Shelf (Bas): Gain ±12 dB, brytfrekvens 40–400 Hz." => "• Low shelf (bass): Gain ±12 dB, cutoff 40–400 Hz.",
+        "• Master Limiter & Maximizer för kommersiell ljudstyrka utan digital distorsion." => "• Master limiter & maximizer for commercial loudness without digital distortion.",
+        "• Melodyne ARA2 Editor: Interaktiva tonhöjds-blobs för att justera sångens toner och timing." => "• Melodyne ARA2 editor: Interactive pitch blobs to adjust the vocal's notes and timing.",
+        "• Mid Peak (Mellanregister): Gain ±12 dB, frekvens 200 Hz – 6 kHz, Q-faktor 0.5–3.0." => "• Mid peak (mids): Gain ±12 dB, frequency 200 Hz – 6 kHz, Q-factor 0.5–3.0.",
+        "• Moog 24dB Resonant Filter: Cutoff (20Hz–18kHz) och Resonans." => "• Moog 24dB resonant filter: Cutoff (20Hz–18kHz) and resonance.",
+        "• Mönster P1–P4: Skapa variationer för vers, refräng och stick." => "• Patterns P1–P4: Create variations for verse, chorus and bridge.",
+        "• När fönstret täcks av ett annat fönster eller minimeras fortsätter ljudmotorn att spela utan avbrott samtidigt som GUI-uppritningen vilar för att förhindra krascher." => "• When the window is covered or minimized the audio engine keeps playing without interruption while GUI rendering rests to prevent crashes.",
+        "• PipeWire & ALSA Native – Ansluter direkt till Linux moderna ljudserver." => "• PipeWire & ALSA native – Connects directly to Linux's modern audio server.",
+        "• Pitch Shifter: Transponera stämman upp/ned ±12 halvtoner." => "• Pitch shifter: Transpose the stem up/down ±12 semitones.",
+        "• Realtids Multi-Track Audio Streaming & Mixmotor i Rust" => "• Real-time multi-track audio streaming & mixing engine in Rust",
+        "• Reverb & Delay sends." => "• Reverb & delay sends.",
+        "• Sampling & Recorder: Spela in egna ljud, klappar och instrument med din mikrofon." => "• Sampling & recorder: Record your own sounds, claps and instruments with your microphone.",
+        "• Saturation & Drive: Analog rörvärme och distortion." => "• Saturation & drive: Analog tube warmth and distortion.",
+        "• Slå på alla: Sätter samma fading på alla klipp i just den stämman." => "• Apply to all: Sets the same fade on all clips in that stem.",
+        "• Snabbpresets för Sång, Trummor, Gitarr, Bas och Flat nollställning." => "• Quick presets for Vocals, Drums, Guitar, Bass and Flat reset.",
+        "• Snäppläge '⚡ 0.01s (Fri)': Frikopplar från musikaliska takter och låter dig klippa med 10ms precision." => "• Snap mode '⚡ 0.01s (Free)': Detaches from musical bars and lets you cut with 10ms precision.",
+        "• Snäpplägen 1/16, Beat, Takt: Snäpper automatiskt till det musikaliska tempot (BPM)." => "• Snap modes 1/16, Beat, Bar: Snaps automatically to the musical tempo (BPM).",
+        "• Sonix kommunicerar direkt med Linux professionella ljudserver i realtid." => "• Sonix talks to Linux's professional audio server directly in real time.",
+        "• Sonix är helt anpassat för Hyprland, GNOME Wayland och KDE." => "• Sonix is fully tuned for Hyprland, GNOME Wayland and KDE.",
+        "• Stegknappar för '±0.01s' och '±0.10s'. Snabbval för 20ms, 50ms, 100ms, 500ms, 1.00s." => "• Step buttons for '±0.01s' and '±0.10s'. Quick picks for 20ms, 50ms, 100ms, 500ms, 1.00s.",
+        "• Stereopanorering med snabbcentrering ('Center')." => "• Stereo panning with quick centering ('Center').",
+        "• Swing: Skjutreglage för att ge trummorna ett naturligt sväng." => "• Swing: Slider to give the drums a natural groove.",
+        "• Velocity-redigering: Justera anslagskraften per steg i den nedre velocity-raden." => "• Velocity editing: Adjust the accent strength per step in the lower velocity row.",
+        "• Volymreglage med exakt dB-visning och '±0.1 dB' finjusteringsknappar." => "• Volume controls with exact dB readout and '±0.1 dB' fine-tune buttons.",
+        "• ⇱ Välj: Klicka på en region för att markera och se dess egenskaper i inspektorn." => "• ⇱ Select: Click a region to select it and see its properties in the inspector.",
+        "• ⚡ Slumpa Beats: Genererar omedelbart nya inspirerande trumkomp." => "• ⚡ Randomize beats: Instantly generates new inspiring drum patterns.",
+        "• ⚡ Slumpa Melodi: Skapar harmoniska melodislingor automatiskt." => "• ⚡ Randomize melody: Automatically creates harmonic melody loops.",
+        "• ✂ Klipp (0.01s): Saxverktyg. Klicka var som helst på ett ljudspår för att klyva klippet i två." => "• ✂ Cut (0.01s): Scissor tool. Click anywhere on an audio track to split the clip in two.",
+        "• ✎ Rita: Klicka i tidslinjen för att rita ut mönster och aktiva klipp." => "• ✎ Draw: Click in the timeline to draw out patterns and active clips.",
+        "• 📤 BATCH EXPORT: Exporterar alla aktiva stämmor som separata WAV-filer till ./exports/." => "• 📤 BATCH EXPORT: Exports all active stems as separate WAV files to ./exports/.",
+        "• 🔇 Muta / 🗑 Radera: Tysta eller radera regioner direkt med ett klick." => "• 🔇 Mute / 🗑 Delete: Mute or delete regions directly with one click.",
+        "ℹ Om Sonix Studio" => "ℹ About Sonix Studio",
+        "↔ Stereopanorering" => "↔ Stereo Panning",
+        "↩ Nollställ effekter" => "↩ Reset effects",
+        "⌨ 2. Tangentbord & Komplett Kortkommandoreferens" => "⌨ 2. Keyboard & Complete Shortcut Reference",
+        "⏱ 4. Fading & Envelope i hundradelar (Flik 3):" => "⏱ 4. Fading & Envelope in hundredths (Tab 3):",
+        "⏱ Fading & Fade-kurvor (Exakt hundradels precision)" => "⏱ Fading & Fade Curves (exact hundredth-of-a-second precision)",
+        "⏳ Importerar stämspår..." => "⏳ Importing stem tracks...",
+        "⏳ Öppnar projekt..." => "⏳ Opening project...",
+        "⏹ Stoppa" => "⏹ Stop",
+        "▶ Prov" => "▶ Preview",
+        "▶ Provlyssna" => "▶ Preview",
+        "▶ Provspela" => "▶ Preview",
+        "▶ Provspela Chop" => "▶ Preview Chop",
+        "▶ Provspela Hela Sekvensen" => "▶ Preview Entire Sequence",
+        "▶ Provspela Mönster" => "▶ Preview Pattern",
+        "◀ Föregående" => "◀ Previous",
+        "⚙ 10. Ljudmotor, PipeWire & Hyprland / Wayland" => "⚙ 10. Audio Engine, PipeWire & Hyprland / Wayland",
+        "⚙ Mik-panel" => "⚙ Mic Panel",
+        "⚡ Aktivera alla" => "⚡ Enable all",
+        "⚡ Importera Alla Stämmor" => "⚡ Import All Stems",
+        "⚡ Kör AI-separering" => "⚡ Run AI Separation",
+        "⚡ Kör automatisk Yabridge-synk nu" => "⚡ Run automatic Yabridge sync now",
+        "⚡ SNABBPRESETS" => "⚡ QUICK PRESETS",
+        "⚡ Skicka Test Ping (/sonix/ping)" => "⚡ Send Test Ping (/sonix/ping)",
+        "⚡ Skriv till Mönster" => "⚡ Write to Pattern",
+        "⚡ Slumpa Beats" => "⚡ Randomize Beats",
+        "⚡ Systemarkitektur & Prestanda:" => "⚡ System architecture & performance:",
+        "⚡ Sätt BPM" => "⚡ Set BPM",
+        "⚡ Tillämpa Preset" => "⚡ Apply Preset",
+        "⚪ Ej skapad" => "⚪ Not created",
+        "⚪ Förbikoppla (Bypass)" => "⚪ Bypass",
+        "✂ Beskär till Markering" => "✂ Trim to Selection",
+        "✂ Dela Tagning" => "✂ Split Take",
+        "✂ LJUDVÅGSEDITOR & SAMPLE FORMARE" => "✂ WAVEFORM EDITOR & SAMPLE SHAPER",
+        "✂ Redigeringsverktyg & Snäpp:" => "✂ Editing tools & snap:",
+        "✂ Start-trim:" => "✂ Start trim:",
+        "✅ Välj" => "✅ Select",
+        "✋ Dra" => "✋ Drag",
+        "✋ Drar sample..." => "✋ Dragging sample...",
+        "✍ SKRIV MUSIKPROMPT (SVENSKA ELLER ENGELSKA):" => "✍ WRITE MUSIC PROMPT (SWEDISH OR ENGLISH):",
+        "✔ Tillämpa på Spår & Master" => "✔ Apply to Track & Master",
+        "✖ Stäng Chopper" => "✖ Close Chopper",
+        "✖ Stäng Manual" => "✖ Close Manual",
+        "✖ Stäng Väljare" => "✖ Close Picker",
+        "✨ 4-VOICE HARMONIZER (KÖR)" => "✨ 4-VOICE HARMONIZER (BACKING VOCALS)",
+        "✨ Diskant (High Shelf)" => "✨ Treble (High Shelf)",
+        "✨ Generera AI-Musik" => "✨ Generate AI Music",
+        "❌ Stäng" => "❌ Close",
+        "➕ Importera Eget Ljud" => "➕ Import Your Own Audio",
+        "➕ Importera Ljud" => "➕ Import Audio",
+        "➕ Lägg till Refräng" => "➕ Add Chorus",
+        "➕ Lägg till Vers" => "➕ Add Verse",
+        "➕ Lägg till anpassad plugin-mapp (t.ex. extern hårddisk eller FL Studio-installation)" => "➕ Add a custom plugin folder (e.g. external drive or FL Studio installation)",
+        "➕ Lägg till mapp" => "➕ Add folder",
+        "➕ Lägg till modul:" => "➕ Add module:",
+        "➕ Lägg till nytt spår..." => "➕ Add new track...",
+        "➕ Skapa Demo Percussion-Ljud" => "➕ Create Demo Percussion Sound",
+        "➕ Skapa Demo-Tagning" => "➕ Create Demo Take",
+        "➕ Skapa nytt spår i Sonix Studio" => "+ Create New Track in Sonix Studio",
+        "➕ Tidslinje" => "➕ Timeline",
+        "⬆ +Okt" => "⬆ +Oct",
+        "⬇ -Okt" => "⬇ -Oct",
+        "🍷 FL STUDIO & WINDOWS VST BRYGG-ASSISTENT" => "🍷 FL STUDIO & WINDOWS VST BRIDGE ASSISTANT",
+        "🍷 Windows / FL-brygga:" => "🍷 Windows / FL bridge:",
+        "🎙 Mellanregister (Mid Peak)" => "🎙 Midrange (Mid Peak)",
+        "🎙 Mik" => "🎙 Mic",
+        "🎙 Mikrofonjustering & Enhetsinställningar (Microphone Panel)" => "🎙 Microphone Setup & Device Settings (Microphone Panel)",
+        "🎙 Sång (Vocal Air)" => "🎙 Vocals (Vocal Air)",
+        "🎙 Sång: Luft & Värme" => "🎙 Vocal: Air & Warmth",
+        "🎙 Öppna i Sångstudio" => "🎙 Open in Vocal Studio",
+        "🎙 Öppna i Sångstudion (Isolerad provspelning & formning)" => "🎙 Open in Vocal Studio (Isolated preview & shaping)",
+        "🎚 2. Volym, Pan & Dynamik (Flik 1):" => "🎚 2. Volume, Pan & Dynamics (Tab 1):",
+        "🎚 DYNAMIK & EFFEKT-SÄNDNING" => "🎚 DYNAMICS & EFFECT SEND",
+        "🎚 Exakt Ljudvolym & Gain" => "🎚 Precise Volume & Gain",
+        "🎚 Normalisera" => "🎚 Normalize",
+        "🎚 Volym:" => "🎚 Volume:",
+        "🎛 9. Mixer Console, Effekter & WAV-Export (F6 / Ctrl+E)" => "🎛 9. Mixer Console, Effects & WAV Export (F6 / Ctrl+E)",
+        "🎛 Automatisk Spåridentifiering & Routing:" => "🎛 Automatic track identification & routing:",
+        "🎛 Dynamik & Kompressor" => "🎛 Dynamics & Compressor",
+        "🎛 Hårdvarukontroller & MCU / OSC Routing" => "🎛 Hardware Controllers & MCU / OSC Routing",
+        "🎛 Kanal" => "🎛 Channel",
+        "🎛 Ljud- & MIDI-inställningar" => "🎛 Audio & MIDI Settings",
+        "🎛 SONIX PRO MULTI-TRACK MIXER & DEDIKERAD EQ-STUDIO" => "🎛 SONIX PRO MULTI-TRACK MIXER & DEDICATED EQ STUDIO",
+        "🎛 Stämeditor & Ljudfokus" => "🎛 Stem Editor & Audio Focus",
+        "🎛 Öppna GUI" => "🎛 Open GUI",
+        "🎤 SPELA IN EGET LJUD / SAMPLING" => "🎤 RECORD YOUR OWN AUDIO / SAMPLING",
+        "🎧 1. Isolera stämma (Solo On):" => "🎧 1. Isolate stem (Solo On):",
+        "🎨 Ändra färg" => "🎨 Change color",
+        "🎯 Hårdvarustämapparat & Pitch Scope (Tuner)" => "🎯 Hardware Tuner & Pitch Scope (Tuner)",
+        "🎯 Nollställ" => "🎯 Reset",
+        "🎯 Typiskt produktionsarbetsflöde:" => "🎯 Typical production workflow:",
+        "🎲 KASTA TÄRNINGEN IGEN" => "🎲 ROLL THE DICE AGAIN",
+        "🎲 Melodi- & Beat-Tärning (Idea Spark & Randomizer)" => "🎲 Melody & Beat Dice (Idea Spark & Randomizer)",
+        "🎲 Slumpa Skala" => "🎲 Randomize Scale",
+        "🎵 GENERERADE AI-KLIPP & PATTERNS" => "🎵 GENERATED AI CLIPS & PATTERNS",
+        "🎸 Bas / Sub Power" => "🎸 Bass / Sub Power",
+        "🎸 Gitarr / Presence" => "🎸 Guitar / Presence",
+        "🎸 Gitarr: Presence" => "🎸 Guitar: Presence",
+        "🎹 INTERAKTIVA ACKORDPLATTOR (Klicka för att spela & bygga)" => "🎹 INTERACTIVE CHORD PADS (Click to play & build)",
+        "🎹 Polyfoni" => "🎹 Polyphony",
+        "🎹 Provspela Ton (C4)" => "🎹 Play Note (C4)",
+        "🎹 Smart Ackord- & Skalgenerator (Harmony Matrix)" => "🎹 Smart Chord & Scale Generator (Harmony Matrix)",
+        "🎹 Öppna Piano Roll" => "🎹 Open Piano Roll",
+        "🎼 AKTIV ACKORDFÖLJD (PROGRESSION)" => "🎼 ACTIVE CHORD PROGRESSION",
+        "🎼 Importera Suno ZIP..." => "🎼 Import Suno ZIP...",
+        "🎼 MELODYNE ARA2 TONKORRIGERING" => "🎼 MELODYNE ARA2 PITCH CORRECTION",
+        "🎼 Öppna Arranger" => "🎼 Open Arranger",
+        "🏃 Följ Tidslinje (Auto-Scroll):" => "🏃 Follow Timeline (Auto-Scroll):",
+        "💡 Snabbguide (F1)" => "💡 Quick Guide (F1)",
+        "💡 TIPS" => "💡 TIP",
+        "💡 Tips: Du kan byta färg, ljud och effekter när som helst i spårhuvudet." => "💡 Tip: You can change color, sound and effects anytime in the track header.",
+        "💡 Tips: Du kan även dra & släppa (Drag & Drop) .zip-filer direkt in i fönstret!" => "💡 Tip: You can also drag & drop .zip files straight into the window!",
+        "💾 Exportera WAV" => "💾 Export WAV",
+        "💾 SPARA PROJEKT" => "💾 SAVE PROJECT",
+        "💾 Spara i Bibliotek" => "💾 Save to Library",
+        "💾 Spara i Sound Browser" => "💾 Save to Sound Browser",
+        "💾 Spara inställningar" => "💾 Save Settings",
+        "💾 Spara som sample i Sound Browser" => "💾 Save as sample in Sound Browser",
+        "📁 Filhanterare & Projekt" => "📁 File Manager & Project",
+        "📁 MINA INSPELADE LJUD & SAMPLINGAR" => "📁 MY RECORDED AUDIO & SAMPLES",
+        "📁 SÅNGTAGNINGAR & COMPING LANES" => "📁 VOCAL TAKES & COMPING LANES",
+        "📁 SÖKVÄGAR FÖR PLUGIN-SKANNING" => "📁 PLUGIN SCAN PATHS",
+        "📁 Välj ZIP-fil från datorn..." => "📁 Choose ZIP file from your computer...",
+        "📂 Importera Fil" => "📂 Import File",
+        "📂 SPARADE PROJEKT (~/Music/Sonix/Projects):" => "📂 SAVED PROJECTS (~/Music/Sonix/Projects):",
+        "📂 Välj .sonix från datorn..." => "📂 Choose .sonix file from your computer...",
+        "📂 ÖPPNA PROJEKT FRÅN SÖKVÄG" => "📂 OPEN PROJECT FROM PATH",
+        "📄 IMPORTERADE FL STUDIO PRESETS (.FST)" => "📄 IMPORTED FL STUDIO PRESETS (.FST)",
+        "📄 Nytt tomt projekt" => "📄 New Empty Project",
+        "📈 3-Bands Parametrisk Stäm-EQ" => "📈 3-Band Parametric Stem EQ",
+        "📈 3. 3-Bands Grafisk Parametrisk EQ (Flik 2):" => "📈 3. 3-band Graphic Parametric EQ (Tab 2):",
+        "📈 Fade In (In-toning)" => "📈 Fade In",
+        "📉 Fade Out (Ut-toning)" => "📉 Fade Out",
+        "📉 Ut:" => "📉 Out:",
+        "📊 3-BANDS FREKVENSJUSTERING" => "📊 3-BAND FREQUENCY ADJUSTMENT",
+        "📊 3. Tidslinje, Snäpp & 0.01s Precision" => "📊 3. Timeline, Snap & 0.01s Precision",
+        "📊 4-BANDS PARAMETRISK EQUALIZER" => "📊 4-BAND PARAMETRIC EQUALIZER",
+        "📊 GENERERAT MÖNSTER (16 STEG)" => "📊 GENERATED PATTERN (16 STEPS)",
+        "📋 Duplicera (Ctrl+D)" => "📋 Duplicate (Ctrl+D)",
+        "📋 Duplicera hela detta spår" => "📋 Duplicate this whole track",
+        "📋 Duplicera region (Ctrl+D)" => "📋 Duplicate region (Ctrl+D)",
+        "📋 Duplicera spår (under detta spår)" => "📋 Duplicate track (below this track)",
+        "📋 Duplicera spår (under detta)" => "📋 Duplicate track (below this one)",
+        "📋 Klistra in sample här (Ctrl+V)" => "📋 Paste sample here (Ctrl+V)",
+        "📋 Klistra in sample vid spelhuvud (Ctrl+V)" => "📋 Paste sample at playhead (Ctrl+V)",
+        "📋 Kopiera (Ctrl+C)" => "📋 Copy (Ctrl+C)",
+        "📋 Kopiera sample (Ctrl+C)" => "📋 Copy sample (Ctrl+C)",
+        "📏 Längd:" => "📏 Length:",
+        "📑 Låtstruktur & Formdelar (Song Section Arranger)" => "📑 Song Structure & Sections (Song Section Arranger)",
+        "📑 STRUKTUR- & ARRANGEMANGSBYGGARE" => "📑 STRUCTURE & ARRANGEMENT BUILDER",
+        "📖 Sonix Studio – Komplett Bruksanvisning & Master Manual" => "📖 Sonix Studio – Complete User Guide & Master Manual",
+        "📥 Applicera Formdelar på Tidslinjen" => "📥 Apply Sections to Timeline",
+        "📥 Applicera på 🎸 Sub Bass" => "📥 Apply to 🎸 Sub Bass",
+        "📥 Applicera på 🎹 303 Lead" => "📥 Apply to 🎹 303 Lead",
+        "📥 Exportera Stems till Song Arranger" => "📥 Export Stems to Song Arranger",
+        "📥 Hur du importerar:" => "📥 How to import:",
+        "📥 Importera & Skapa Nytt Sample Ljud" => "📥 Import & Create New Sample Audio",
+        "📥 Importera Fil Nu" => "📥 Import File Now",
+        "📥 Infoga Ackord i Piano Roll & Spår" => "📥 Insert Chords into Piano Roll & Track",
+        "📥 Infoga i Tidslinje (Arranger)" => "📥 Insert into Timeline (Arranger)",
+        "📥 Klistra in Mönster i Spår" => "📥 Paste Pattern into Track",
+        "📥 MANUELL PLUGIN- OCH PRESET-IMPORT" => "📥 MANUAL PLUGIN & PRESET IMPORT",
+        "📦 4. Multi-Track Stämimport (Stems)" => "📦 4. Multi-Track Stem Import (Stems)",
+        "📦 Stämmor (Stems)" => "📦 Stems",
+        "🔁 Backa" => "🔁 Reverse",
+        "🔁 Loopa/Repetera loop (x2 - Ctrl+L)" => "🔁 Loop/Repeat loop (x2 - Ctrl+L)",
+        "🔁 Loopa/Repetera loop (x4)" => "🔁 Loop/Repeat loop (x4)",
+        "🔄 Byt" => "🔄 Replace",
+        "🔄 Nollställ (Flat)" => "🔄 Reset (Flat)",
+        "🔄 Nollställ EQ" => "🔄 Reset EQ",
+        "🔄 Skanna mappar nu" => "🔄 Scan folders now",
+        "🔄 Skanna ~/Music & ~/Downloads" => "🔄 Scan ~/Music & ~/Downloads",
+        "🔄 Uppdatera enheter" => "🔄 Refresh devices",
+        "🔄 Återställ Standard-patch" => "🔄 Reset Default Patch",
+        "🔇 Muta" => "🔇 Mute",
+        "🔊 Bas (Low Shelf)" => "🔊 Bass (Low Shelf)",
+        "🔊 Bas: Deep Sub" => "🔊 Bass: Deep Sub",
+        "🔍 5. Dedikerad Stämeditor & Ljudfokus" => "🔍 5. Dedicated Stem Editor & Audio Focus",
+        "🔍 Dynamisk 4-Nivåers Tidslinjelinjal:" => "🔍 Dynamic 4-level timeline ruler:",
+        "🔍 Sök plugin:" => "🔍 Search plugin:",
+        "🔍 Sök:" => "🔍 Search:",
+        "🔍 Öppna Stämeditor" => "🔍 Open Stem Editor",
+        "🔒 Skal-lås" => "🔒 Scale lock",
+        "🔔 Metronom" => "🔔 Metronome",
+        "🔴 INSPELNINGSDECK" => "🔴 RECORDING DECK",
+        "🔴 Spela in på detta spår" => "🔴 Record on this track",
+        "🗂 EFFEKTBIBLIOTEK (EFFECTS LIBRARY)" => "🗂 EFFECTS LIBRARY",
+        "🗂 Projektfiler" => "🗂 Project Files",
+        "🗑 Radera region (Delete)" => "🗑 Delete region (Delete)",
+        "🗑 Rensa" => "🗑 Clear",
+        "🗑 Rensa Allt" => "🗑 Clear All",
+        "🗑 Rensa Steg" => "🗑 Clear Steps",
+        "🗑 Ta bort" => "🗑 Delete",
+        "🗑 Ta bort (Del)" => "🗑 Delete (Del)",
+        "🗑 Ta bort spår" => "🗑 Delete track",
+        "🗣 Kör / Harmoni" => "🗣 Backing Vocals / Harmony",
+        "🚀 1. Snabbstart & Översikt" => "🚀 1. Quick Start & Overview",
+        "🚀 Huvudfunktioner i Sonix Studio:" => "🚀 Main features of Sonix Studio:",
+        "🛡 Process-Isolering:" => "🛡 Process isolation:",
+        "🟢 Finns" => "🟢 Exists",
+        "🟢 PipeWire RT Ljudmotor:" => "🟢 PipeWire RT audio engine:",
+        "🤖 AI Provider Inställningar" => "🤖 AI Provider Settings",
+        "🥁 6. Sonix Channel Rack & Stegsequencer (F4)" => "🥁 6. Sonix Channel Rack & Step Sequencer (F4)",
+        "🥁 Trum-Punch" => "🥁 Drum Punch",
+        "🥁 Trummor: Punch & Snap" => "🥁 Drums: Punch & Snap",
+        "🧹 Töm" => "🧹 Clear",
+        "Aktivt mönster: {}" => "Active pattern: {}",
+        "Ange en giltig filsökväg först." => "Enter a valid file path first.",
+        "Filen '{}' importerades som en FL Studio .FST preset!" => "The file '{}' was imported as an FL Studio .FST preset!",
+        "Flyttade markör till Takt {}" => "Moved playhead to Bar {}",
+        "Flyttade markör till {}" => "Moved playhead to {}",
+        "Följ spelhuvud / Autoscroll: {}" => "Follow playhead / Autoscroll: {}",
+        "Importerade '{}' till ljudbiblioteket!" => "Imported '{}' into the sound library!",
+        "Ingen ljudregion markerad att kopiera." => "No audio region selected to copy.",
+        "Ingen tagning är vald att beskära" => "No take is selected to crop",
+        "Ingen tagning är vald att klippa" => "No take is selected to cut",
+        "Ingen tagning är vald att normalisera" => "No take is selected to normalize",
+        "Ingen tagning är vald att ta bort" => "No take is selected to delete",
+        "Ingenting att göra om." => "Nothing to redo.",
+        "Ingenting att ångra." => "Nothing to undo.",
+        "Kanal {} ändrad till: {}" => "Channel {} changed to: {}",
+        "Laddade preset: {}" => "Loaded preset: {}",
+        "Ljudspåret är helt tyst" => "The audio track is completely silent",
+        "Loop-region satt till Takt {}-{}" => "Loop region set to Bar {}-{}",
+        "MCU växlade till {}" => "MCU switched to {}",
+        "Markerade '{}' [Start: {} | Längd: {}]" => "Selected '{}' [Start: {} | Length: {}]",
+        "Namnlöst Projekt" => "Untitled Project",
+        "Okänt Plugin" => "Unknown Plugin",
+        "Placerade mönster {} vid takt {}" => "Placed pattern {} at bar {}",
+        "Raderade mönsterblock vid takt {}" => "Deleted pattern block at bar {}",
+        "Satte tempo till {} BPM med {:.0}% swing" => "Set tempo to {} BPM with {:.0}% swing",
+        "Skanning klar. {} aktiva plugins och presets identifierade." => "Scan complete. {} active plugins and presets identified.",
+        "Sparade AI Provider-inställningar!" => "Saved AI Provider settings!",
+        "Spelar upp: {}" => "Playing back: {}",
+        "Tagningen innehåller för lite data för att beskäras" => "The take contains too little data to be cropped",
+        "Tog bort sökväg från skanningslistan." => "Removed path from the scan list.",
+        "Urklipp är tomt. Kopiera en region först med Ctrl+C." => "Clipboard is empty. Copy a region first with Ctrl+C.",
+        "Valde '{}' för EQ & mixjustering" => "Selected '{}' for EQ & mix tweaking",
+        "Valde {} för aktiv redigering och comping" => "Selected {} for active editing and comping",
+        "Verktyg: ⇱ Välj / Flytta / Trimma (1)" => "Tool: ⇱ Select / Move / Trim (1)",
+        "Verktyg: ✂ Klipp / Sax (3)" => "Tool: ✂ Cut / Scissors (3)",
+        "Verktyg: ✎ Rita (2)" => "Tool: ✎ Draw (2)",
+        "Verktyg: 🔇 Muta (4)" => "Tool: 🔇 Mute (4)",
+        "Verktyg: 🗑 Radera (5)" => "Tool: 🗑 Delete (5)",
+        "Välkommen till Sonix Studio! Skapa ett beat eller importera dina stämmor (Stems)." => "Welcome to Sonix Studio! Create a beat or import your stems.",
+        "↔ Flyttar '{}' till takt {:.2} (⏱ {})" => "↔ Moving '{}' to bar {:.2} (⏱ {})",
+        "↶ Ångrade: {} (Ctrl+Z)" => "↶ Undid: {} (Ctrl+Z)",
+        "↷ Gjorde om: {} (Ctrl+Y)" => "↷ Redid: {} (Ctrl+Y)",
+        "⏸ Inspelning pausad." => "⏸ Recording paused.",
+        "▶ Loopar '{}': {:.2} takter ({:.1}x repetitioner, ⏱ {})" => "▶ Looping '{}': {:.2} bars ({:.1}x repeats, ⏱ {})",
+        "▶ Längd för '{}': {:.2} takter (⏱ {})" => "▶ Length of '{}': {:.2} bars (⏱ {})",
+        "▶ Provspelar '{}' isolerat i Sångstudion (Pitch: {:+.1} st, Stretch: {:.2}x, Vol: {:.0}%)" => "▶ Previewing '{}' isolated in Vocal Studio (Pitch: {:+.1} st, Stretch: {:.2}x, Vol: {:.0}%)",
+        "▶ Återupptog inspelningen!" => "▶ Resumed recording!",
+        "◀ Trimmar start på '{}': Start takt {:.2} | Bortklippt start: +{:.2}s | Längd: {:.2} takter" => "◀ Trimming start of '{}': Start bar {:.2} | Sliced off start: +{:.2}s | Length: {:.2} bars",
+        "⚠ Inga ljud skapades." => "⚠ No audio was created.",
+        "⚠ Inget ljudklipp markerat eller vid spelhuvudet ({}) att klippa." => "⚠ No audio clip selected or at the playhead ({}) to cut.",
+        "⚠️ Mikrofonspåret kan inte tas bort." => "⚠️ The microphone track cannot be removed.",
+        "⚡ 1/16 High-Speed Roll aktiv" => "⚡ 1/16 High-Speed Roll active",
+        "⚡ 1/4 Beat Repeat aktiv" => "⚡ 1/4 Beat Repeat active",
+        "⚡ 1/8 Stutter aktiv" => "⚡ 1/8 Stutter active",
+        "⚡ AI Stem Separation slutförd med Demucs v4!" => "⚡ AI Stem Separation finished with Demucs v4!",
+        "⚡ Applicerade preset 'Bas / Sub Power' på {}" => "⚡ Applied preset 'Bass / Sub Power' to {}",
+        "⚡ Applicerade preset 'Gitarr / Presence' på {}" => "⚡ Applied preset 'Guitar / Presence' to {}",
+        "⚡ Applicerade preset 'Kör / Harmoni' på {}" => "⚡ Applied preset 'Choir / Harmony' to {}",
+        "⚡ Applicerade preset 'Sång (Vocal Air)' på {}" => "⚡ Applied preset 'Vocal (Vocal Air)' to {}",
+        "⚡ Applicerade preset 'Trum-Punch' på {}" => "⚡ Applied preset 'Drum Punch' to {}",
+        "⚡ Arpeggiator: Skapade melodiskt arpeggio!" => "⚡ Arpeggiator: created a melodic arpeggio!",
+        "⚪ Kopplade från plugin: {}" => "⚪ Disconnected from plugin: {}",
+        "✂ Klippte '{}' vid {} (Takt {})! [Ångra: Ctrl+Z]" => "✂ Cut '{}' at {} (Bar {})! [Undo: Ctrl+Z]",
+        "✅ Ändring sparad på tidslinjen!" => "✅ Change saved on the timeline!",
+        "✋ Drar '{}' till tidslinjen... Släpp på önskat spår och takt!" => "✋ Dragging '{}' onto the timeline... Drop on the desired track and bar!",
+        "✔ 4 Stems exporterade till Song Arranger (Spår 1-4)" => "✔ 4 Stems exported to Song Arranger (Tracks 1-4)",
+        "✔ Applicerade \"{}\" på 303 Lead (Kanal 7)!" => "✔ Applied \"{}\" to 303 Lead (Channel 7)!",
+        "✔ Applicerade \"{}\" på Sub Bass (Kanal 8)!" => "✔ Applied \"{}\" to Sub Bass (Channel 8)!",
+        "✔ Applicerade FL-preset: '{}' på målet {}" => "✔ Applied FL preset: '{}' to target {}",
+        "✔ Beskärde {} till {:.2} sekunder!" => "✔ Cropped {} to {:.2} seconds!",
+        "✔ Effektinställningar applicerade i realtid!" => "✔ Effect settings applied in real time!",
+        "✔ Genererade nytt musikmönster från prompt: \"{}\"" => "✔ Generated a new music pattern from prompt: \"{}\"",
+        "✔ Importerade '{}' ({})" => "✔ Imported '{}' ({})",
+        "✔ Importerade '{}' till Sångstudion (Tagning {})!" => "✔ Imported '{}' into Vocal Studio (Take {})!",
+        "✔ Importerade framgångsrikt '{}' som {}!" => "✔ Successfully imported '{}' as {}!",
+        "✔ Infogade '{}' ({:.2}s) som ljudregion i Spår {} ({})!" => "✔ Inserted '{}' ({:.2}s) as an audio region in Track {} ({})!",
+        "✔ Klar! Exporterade {} fil(er) utan AI-metadata → {}" => "✔ Done! Exported {} file(s) without AI metadata → {}",
+        "✔ Klippte tagningen i två separata delar!" => "✔ Cut the take into two separate parts!",
+        "✔ Laddade plugin: {} till aktiv session" => "✔ Loaded plugin: {} into the active session",
+        "✔ Lade till Akustisk Shaker i biblioteket" => "✔ Added Acoustic Shaker to the library",
+        "✔ Lade till ny plugin-mapp. Klicka 'Skanna mappar nu' för att uppdatera." => "✔ Added new plugin folder. Click 'Scan folders now' to update.",
+        "✔ Mikrofon ändrad till: {}" => "✔ Microphone changed to: {}",
+        "✔ Normaliserade {} (Peak förstärkt med {:.1}x)!" => "✔ Normalized {} (peak boosted by {:.1}x)!",
+        "✔ Plugin-skanning klar ({} plugins och presets hittades)" => "✔ Plugin scan complete ({} plugins and presets found)",
+        "✔ Skapade nytt spår: {}" => "✔ Created new track: {}",
+        "✔ Skapade {}" => "✔ Created {}",
+        "✔ Sparade eget ljud '{}' i samplingsbiblioteket!" => "✔ Saved custom sound '{}' in the sample library!",
+        "✔ Sparade tagning '{}' till {}" => "✔ Saved take '{}' to {}",
+        "✔ Sparade tagning: {}! Klar för redigering och tidslinje." => "✔ Saved take: {}! Ready for editing and timeline.",
+        "✔ Spelade in '{}' direkt i spår {} ({}) vid takt {:.1} ({:.2}s)!" => "✔ Recorded '{}' straight into track {} ({}) at bar {:.1} ({:.2}s)!",
+        "✔ Testinspelning klar och sparad i Sångstudion!" => "✔ Test recording done and saved in Vocal Studio!",
+        "✔ Tog bort {}" => "✔ Removed {}",
+        "✔ Yabridge-synk genomförd! Alla Windows- och FL Studio-plugins är uppdaterade." => "✔ Yabridge sync complete! All Windows and FL Studio plugins are up to date.",
+        "✘ Exportfel: {}" => "✘ Export error: {}",
+        "✨ AI genererade 3 variationer av Synth Lead & Bassline" => "✨ AI generated 3 variations of Synth Lead & Bassline",
+        "✨ FX & Ljudeffekter" => "✨ FX & Sound Effects",
+        "✨ Genererade ny tagning (Takt {}-{}) via {}: '{}'" => "✨ Generated new take (Bar {}-{}) via {}: '{}'",
+        "✨ Importerade {} stämspår för '{}' ({:.1} BPM) med kategorifärger & Mic-spår!" => "✨ Imported {} stem tracks for '{}' ({:.1} BPM) with category colors & Mic track!",
+        "✨ Skapade ett nytt tomt projekt!" => "✨ Created a new empty project!",
+        "❌ Fel vid projektladdning: {}" => "❌ Error loading project: {}",
+        "❌ Fel vid stämimport: {}" => "❌ Stem import error: {}",
+        "❌ Kunde inte läsa ljudfilen: {}" => "❌ Could not read audio file: {}",
+        "❌ Misslyckades att spara projektet." => "❌ Failed to save the project.",
+        "➕ Lade till '{}' som nytt ljudspår på tidslinjen ({:.1} takter)!" => "➕ Added '{}' as a new audio track on the timeline ({:.1} bars)!",
+        "⬆️ Transponerade mönster {} halvtoner" => "⬆️ Transposed pattern {} semitones",
+        "🌀 Gross Beat Half-Speed aktiv" => "🌀 Gross Beat Half-Speed active",
+        "🎙 Öppnade region '{}' i Sångstudion (Tagning {})!" => "🎙 Opened region '{}' in Vocal Studio (Take {})!",
+        "🎙 Öppnade sample '{}' i Sångstudion (Tagning {}) för isolerad provspelning & formning!" => "🎙 Opened sample '{}' in Vocal Studio (Take {}) for isolated preview & shaping!",
+        "🎛 Laddade FX-preset: {}" => "🎛 Loaded FX preset: {}",
+        "🎛 Ändrade status för {}" => "🎛 Changed status for {}",
+        "🎛 Öppnade externt fönster för: {}" => "🎛 Opened external window for: {}",
+        "🎤 Mic (Voice & Sång)" => "🎤 Mic (Voice & Vocals)",
+        "🎯 Tap Tempo: {:.1} BPM ({} tryck)" => "🎯 Tap Tempo: {:.1} BPM ({} taps)",
+        "🎲 Humanize: Anslagsdynamik och sväng varierat!" => "🎲 Humanize: varied note velocity and groove!",
+        "🎲 Klistrade in slumpad melodi på '{}' i Mönster {}!" => "🎲 Pasted a random melody onto '{}' in Pattern {}!",
+        "🎲 Klistrade in slumpat trumgroove på de 4 första trumspåren!" => "🎲 Pasted a random drum groove onto the first 4 drum tracks!",
+        "🎲 Rullade ny slumpmässig idé!" => "🎲 Rolled a new random idea!",
+        "🎵 Placerade sample '{}' på spår {} vid takt {:.2}!" => "🎵 Placed sample '{}' on track {} at bar {:.2}!",
+        "🎶 Spelade ackord: {} ({})" => "🎶 Played chords: {} ({})",
+        "🎸 Bas" => "🎸 Bass",
+        "🎸 Baslinje" => "🎸 Bassline",
+        "🎹 Infogade {} ackord i Mönster {} (Kanal: {})!" => "🎹 Inserted {} chords into Pattern {} (Channel: {})!",
+        "🎹 Synt & Ackord" => "🎹 Synth & Chords",
+        "🎼 Tonart ändrad till {}" => "🎼 Key changed to {}",
+        "💾 Sparade projekt till '{}'!" => "💾 Saved project to '{}'!",
+        "💾 Sparade sample '{}' till Sound Browser! Fil: {}" => "💾 Saved sample '{}' to Sound Browser! File: {}",
+        "📂 Öppnade projekt '{}'!" => "📂 Opened project '{}'!",
+        "📋 Duplicerade ljudregion till tidslinjen!" => "📋 Duplicated audio region to the timeline!",
+        "📋 Duplicerade spår '{}' under originalspåret!" => "📋 Duplicated track '{}' below the original track!",
+        "📋 Klistrade in sample '{}' på spår {} vid takt {:.2}! [Ångra: Ctrl+Z]" => "📋 Pasted sample '{}' onto track {} at bar {:.2}! [Undo: Ctrl+Z]",
+        "📋 Kopierade sample '{}' till urklipp! [Klistra in: Ctrl+V]" => "📋 Copied sample '{}' to clipboard! [Paste: Ctrl+V]",
+        "📑 Applicerade låtstruktur med {} sektioner (Totalt {} takter)!" => "📑 Applied song structure with {} sections ({} bars total)!",
+        "📑 Laddade låtstruktur: {}" => "📑 Loaded song structure: {}",
+        "📡 Sände OSC Test Ping på port 9000" => "📡 Sent OSC Test Ping on port 9000",
+        "🔁 Loopade sample '{}': {} repetitioner ({:.1} takter)!" => "🔁 Looped sample '{}': {} repeats ({:.1} bars)!",
+        "🔁 Vände mönster baklänges (Reverse)" => "🔁 Reversed pattern (Reverse)",
+        "🔄 Nollställde EQ för {}" => "🔄 Reset EQ for {}",
+        "🔄 Vände ljudregion baklänges (Reverse)!" => "🔄 Reversed audio region (Reverse)!",
+        "🔇 Region mutad" => "🔇 Region muted",
+        "🔇 Toggla mute för '{}'" => "🔇 Toggle mute for '{}'",
+        "🔊 Region aktiv" => "🔊 Region active",
+        "🔍 Öppnade stämeditor för '{}'" => "🔍 Opened stem editor for '{}'",
+        "🔔 Metronom aktiverad" => "🔔 Metronome on",
+        "🔕 Metronom avstängd" => "🔕 Metronome off",
+        "🔴 Provpratar... Säg några ord i mikrofonen!" => "🔴 Testing... say a few words into the microphone!",
+        "🔴 Spelar in direkt i spår '{}' från takt {:.1}..." => "🔴 Recording straight into track '{}' from bar {:.1}...",
+        "🔴 Spelar in mikrofonljud i realtid... Sjung eller spela nu!" => "🔴 Recording mic audio in real time... Sing or play now!",
+        "🔴 Spår {} ({}) är nu armerat för mikrofoninspelning!" => "🔴 Track {} ({}) is now armed for microphone recording!",
+        "🗑 Raderade region '{}'. [Ångra: Ctrl+Z]" => "🗑 Deleted region '{}'. [Undo: Ctrl+Z]",
+        "🗑 Raderade spår '{}'." => "🗑 Deleted track '{}'.",
+        "🥁 Drummer genererade mönster (Komplexitet: {:.0}%, Volym: {:.0}%)" => "🥁 Drummer generated pattern (Complexity: {:.0}%, Volume: {:.0}%)",
+        "🥁 Trummor & Beat" => "🥁 Drums & Beat",
+        "🧲 Loop-snap: '{}' loopad exakt {:.0}x ({} takter, ⏱ {})" => "🧲 Loop-snap: '{}' looped exactly {:.0}x ({} bars, ⏱ {})",
+        "🧹 Pianorullens mönster rensat!" => "🧹 Piano roll pattern cleared!",
+        "Klar för rendering" => "Ready for rendering",
+        "ffmpeg får bara användas för MP3/OGG/AAC" => "ffmpeg may only be used for MP3/OGG/AAC",
+        "ffmpeg misslyckades för {}: {}" => "ffmpeg failed for {}: {}",
+        "ffmpeg är inte installerat – kan inte koda {}. Installera ffmpeg (t.ex. 'sudo pacman -S ffmpeg') och försök igen. WAV/FLAC fungerar alltid utan ffmpeg." => "ffmpeg is not installed – cannot encode {}. Install ffmpeg (e.g. 'sudo pacman -S ffmpeg') and try again. WAV/FLAC always works without ffmpeg.",
+        "⏳ Startade inläsning av '{}' i bakgrunden..." => "⏳ Started loading '{}' in the background...",
+        "⏳ Startade inläsning av stämmor för '{}' i bakgrunden..." => "⏳ Started loading stems for '{}' in the background...",
+        "▶ Provspelar ackordföljd..." => "▶ Previewing chord progression...",
+        "▶ Provspelar slumpat mönster..." => "▶ Previewing random pattern...",
+        "⚠ Inga ljudfiler skapades (alla spår var tomma?)." => "⚠ No audio files were created (all tracks were empty?).",
+        "✅ {} fil(er) exporterade till {}" => "✅ Exported {} file(s) to {}",
+        "✘ Exporten avbröts: {}" => "✘ Export aborted: {}",
+        "✘ Kan inte skapa mapp: {}" => "✘ Could not create folder: {}",
+        "✨ ACE-Step/Stable Audio genererade 4 synkade stems för: '{}'" => "✨ ACE-Step/Stable Audio generated 4 synced stems for: '{}'",
+        "❌ Fel vid export: {}" => "❌ Export error: {}",
+        "Bygger tidslinje och effekter..." => "Building timeline and effects...",
+        "Filen är för kort för att vara en giltig WAV-fil" => "File is too short to be a valid WAV file",
+        "Färdig! Laddar Synthwave Demo..." => "Done! Loading Synthwave Demo...",
+        "Förbereder avkodning av stämmor..." => "Preparing stem decoding...",
+        "Hittade {} stämspår. Avkodar PCM-ljud..." => "Found {} stem tracks. Decoding PCM audio...",
+        "Konfigurerar mönster & arpeggios..." => "Configuring patterns & arpeggios...",
+        "Kunde inte läsa fil: {}" => "Could not read file: {}",
+        "Kunde inte packa upp ZIP: {}" => "Could not unzip archive: {}",
+        "Slutför inläsning..." => "Finishing import...",
+        "Tagningen hittades inte" => "The take was not found",
+        "⏸ INSPELNING PAUSAD" => "⏸ RECORDING PAUSED",
+        "📈 INTERAKTIV FREKVENSKURVA" => "📈 INTERACTIVE FREQUENCY CURVE",
+        "🔴 SPELAR IN LIVE FRÅN MIKROFON..." => "🔴 RECORDING LIVE FROM MICROPHONE...",
+        "80s Retrowave analog bassline med punchig attack och pulserande 16-delar" => "80s Retrowave analog bassline with punchy attack and pulsing 16th notes",
+        "AI Music Assistant redo (Lokal transformer + Suno/LALAL prompt engine)" => "AI Music Assistant ready (Local transformer + Suno/LALAL prompt engine)",
+        "Automatisk förinläsning" => "Automatic preload",
+        "Inga ljudfiler hittades i mappen: {}" => "No audio files found in the folder: {}",
+        "Läser & avkodar spår {}/{}: {}" => "Reading & decoding track {}/{}: {}",
+        "Läser in mönster och instrumentspår..." => "Loading patterns and instrument tracks...",
+        "Redo" => "Ready",
+        "✨ TX81Z & Syntar" => "✨ TX81Z & Synths",
+        "🎸 Bas & Elbas" => "🎸 Bass & Electric Bass",
+        "🎹 Flygel & Akustiskt Piano" => "🎹 Grand & Acoustic Piano",
+        "🎹 Rhodes & Elpianon" => "🎹 Rhodes & Electric Piano",
+        "🎻 Mellotron & Kör/Stråkar" => "🎻 Mellotron & Choir/Strings",
+        "📂 Egna Samples" => "📂 My Samples",
+        "🥁 Akustiskt Studiokit" => "🥁 Acoustic Studio Kit",
+        "Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll" => "Generate an 8-bar synthwave drum groove and vocal melody in A minor",
+        "SPÅR / INSTRUMENT" => "TRACK / INSTRUMENT",
+        "➕ Lägg till spår" => "➕ Add Track",
+        "Akustisk flygel med djup dynamik och resonant reverbklang." => "Acoustic grand with deep dynamics and resonant reverb tone.",
+        "Akustiskt" => "Acoustic",
+        "Bas & 808" => "Bass & 808",
+        "Bred stereobild med doubler och mjuk plate-reverb." => "Wide stereo image with doubler and soft plate reverb.",
+        "Djup, mättad sub-bas som pumpar och skakar subwoofern." => "Deep, saturated sub bass that pumps and shakes the subwoofer.",
+        "Elektronisk" => "Electronic",
+        "Episka filmiska stråkar med full orkesterbredd." => "Epic cinematic strings with full orchestral width.",
+        "FX & Övergångar" => "FX & Transitions",
+        "Gitarr" => "Guitar",
+        "Importera egna WAV-, MP3-, FLAC- eller AIFF-ljudspår direkt i tidslinjen." => "Import your own WAV, MP3, FLAC, or AIFF audio tracks directly into the timeline.",
+        "Keys & Melodier" => "Keys & Melodies",
+        "Klar elgitarr med rörförstärkarsimulering och mjuk delay." => "Clear electric guitar with tube-amp simulation and soft delay.",
+        "Klassisk resonant bas med glide och distorsion." => "Classic resonant bass with glide and distortion.",
+        "Knastriga samplingar, dämpade kicks och vintage vinylklang." => "Crackly samples, muffled kicks, and vintage vinyl tone.",
+        "Krispig och fyllig mikrofonsignal med studiokompressor och equalizer." => "Crisp, full microphone signal with studio compressor and EQ.",
+        "Kör & Harmoni" => "Backing & Harmony",
+        "Mikrofon" => "Microphone",
+        "Mitt Akustiska Ljud 1" => "My Acoustic Sound 1",
+        "Mitt Beat" => "My Beat",
+        "Mitt Nya Ljud" => "My New Sound",
+        "Mäktiga trumpeter, tromboner och valthorn för drops och refränger." => "Powerful trumpets, trombones, and French horns for drops and choruses.",
+        "Naturligt trumset med punchig bastrumma och dynamisk virvel." => "Natural drum kit with punchy kick drum and dynamic snare.",
+        "Orkester" => "Orchestra",
+        "Pads & Atmosfär" => "Pads & Atmosphere",
+        "Ren och brusfri röstinspelning optimerad för podcasts och voiceovers." => "Clean, noise-free vocal recording optimized for podcasts and voiceovers.",
+        "Separat ljudspår för Vocals, Drums, Bass eller Instrument från Suno AI." => "Separate audio track for Vocals, Drums, Bass, or Instrumental from Suno AI.",
+        "Snabb, krispig synth-pluck perfekt för melodier och arpeggion." => "Fast, crisp synth pluck perfect for melodies and arpeggios.",
+        "Svävande varma synth-mattor och drömlika atmosfärer." => "Flowing warm synth pads and dreamlike atmospheres.",
+        "T.ex. flygel, 808..." => "e.g. piano, 808...",
+        "Tal / Broadcast" => "Speech / Broadcast",
+        "Trumloopar" => "Drum Loops",
+        "Tung analog kick, öppna hi-hats och industriella claps." => "Heavy analog kick, open hi-hats, and industrial claps.",
+        "Tunga kicks, snärtiga snares, hi-hat rolls och 808 claps." => "Heavy kicks, snappy snares, hi-hat rolls, and 808 claps.",
+        "Tät, punchig röstinställning med de-esser och snabb gate." => "Tight, punchy vocal chain with de-esser and fast gate.",
+        "Varm och fyllig fingerpicking-gitarr med studiorumsklang." => "Warm, full fingerpicking guitar with studio room tone.",
+        "Varmt elpiano med mjuk tremolo och analog chorus." => "Warm electric piano with soft tremolo and analog chorus.",
+        "🌟 Alla" => "🌟 All",
+        "🎙 1. Sång & Mikrofoninspelning (Take Lanes & Studio Deck)" => "🎙 1. Vocals & Microphone Recording (Take Lanes & Studio Deck)",
+        "🎙 Lead Vocal (Sång)" => "🎙 Lead Vocal",
+        "🎙 Podcast & Tal" => "🎙 Podcast & Speech",
+        "🎙 Röst & Mic" => "🎙 Voice & Mic",
+        "🎙 Stämmor & Backing Vocals" => "🎙 Harmonies & Backing Vocals",
+        "🎤 2. Spela in Egna Ljud & Sampler" => "🎤 2. Record Your Own Sounds & Sampler",
+        "🎸 Akustisk Nylon Gitarr" => "🎸 Acoustic Nylon Guitar",
+        "🎸 Gitarr & Bas" => "🎸 Guitar & Bass",
+        "🎹 Tangenter & Synth" => "🎹 Keys & Synth",
+        "🎻 Stråkar & Brass" => "🎻 Strings & Brass",
+        "📁 Ljudfil / Sample Import" => "📁 Audio File / Sample Import",
+        "📁 Ljudfil / Stems" => "📁 Audio File / Stems",
+        "📦 Suno AI Stems Spår" => "📦 Suno AI Stems Track",
+        "🥁 Studio Akustiska Trummor" => "🥁 Studio Acoustic Drums",
+        "🥁 Trummor & Beats" => "🥁 Drums & Beats",
+        "Additiv synth och resyntes med unik bild/ljudsyntes och prismamodulering." => "Additive synth and resynthesis with unique image/audio synthesis and prism modulation.",
+        "Analog rör- och bandmättnad med 5 distinkta analoga modeller." => "Analog tube and tape saturation with 5 distinct analog models.",
+        "Avancerad 3-bands mastering-kompressor och brickwall limiter." => "Advanced 3-band mastering compressor and brickwall limiter.",
+        "Branschstandard inom EQ med dynamiskt läge och spektrogram." => "Industry standard EQ with dynamic mode and spectrogram.",
+        "Brygga 1" => "Bridge 1",
+        "Brygga 2" => "Bridge 2",
+        "FL Studio .FST Presets (Kanaler & Mixer)" => "FL Studio .FST Presets (Channels & Mixer)",
+        "Högpresterande spektral wavetable-synth med CLAP polyfonisk modulation." => "High-performance spectral wavetable synth with CLAP polyphonic modulation.",
+        "Klassisk 1-ratts saturator & multiband enhancer baserad på Maximus." => "Classic 1-knob saturator & multiband enhancer based on Maximus.",
+        "Klassisk 1970/1980-tals algoritmisk rymd och plate med varm klang." => "Classic 1970s/1980s algorithmic space and plate reverb with warm tone.",
+        "Kretsnivå-emulering av klassiska analoga syntar (Minimoog, Jupiter-8, MS-20)." => "Circuit-level emulation of classic analog synths (Minimoog, Jupiter-8, MS-20).",
+        "Kör hela FL Studios motor, step sequencer och plugins synkroniserat inuti Sonix!" => "Runs the entire FL Studio engine, step sequencer, and plugins synchronized inside Sonix!",
+        "Legendarisk FM/RM-synth från FL Studio med 6 operatorer och matris-modulering." => "Legendary FM/RM synth from FL Studio with 6 operators and matrix modulation.",
+        "Legendarisk upward/downward multiband-kompressor för aggressiv dynamik." => "Legendary upward/downward multiband compressor for aggressive dynamics.",
+        "Linux Användar-CLAP" => "Linux User-CLAP",
+        "Linux Användar-VST3" => "Linux User-VST3",
+        "Linux LV2 Standardbibliotek" => "Linux LV2 Standard Library",
+        "Manuellt importerad pluginfil i Sonix." => "Manually imported plugin file in Sonix.",
+        "Ny Refräng" => "New Chorus",
+        "Ny Vers" => "New Verse",
+        "Populärt verktyg för half-speed, gating, reverse och scratch-effekter i realtid." => "Popular tool for half-speed, gating, reverse, and scratch effects in real time.",
+        "Refräng 1" => "Chorus 1",
+        "Refräng 2" => "Chorus 2",
+        "Slut-Hook" => "Final Hook",
+        "Slutrefräng" => "Final Chorus",
+        "Solo / Stick" => "Solo / Bridge",
+        "Tagning" => "Take",
+        "Tagning 1 (Intro & Vers)" => "Take 1 (Intro & Verse)",
+        "Tagning 2 (Stark Refräng)" => "Take 2 (Powerful Chorus)",
+        "Takt" => "Bar",
+        "Tonart:" => "Key:",
+        "Upp till 100 filterband för rika daft punk- och robotröster." => "Up to 100 filter bands for rich Daft Punk-style and robotic voices.",
+        "Vers 1" => "Verse 1",
+        "Vers 1 (16t)" => "Verse 1 (16 bars)",
+        "Vers 2" => "Verse 2",
+        "Vers 2 (16t)" => "Verse 2 (16 bars)",
+        "Världens mest använda wavetable-synth för modern elektronisk musik och trap." => "The world's most used wavetable synth for modern electronic music and trap.",
+        "Öppen källkods hybridsynth med hundratals filter och oscillatorer." => "Open-source hybrid synth with hundreds of filters and oscillators.",
+        "Bank 1 (Spår 1–8)" => "Bank 1 (Tracks 1–8)",
+        "Bank 2 (Spår 9–16)" => "Bank 2 (Tracks 9–16)",
+        "Bank 3 (Bussar & VCA)" => "Bank 3 (Buses & VCA)",
+        "Tid:" => "Time:",
+        "Totalt:" => "Total:",
+        "tagningar sparade i projektet" => "takes saved in this project",
+        "takter" => "bars",
+        "🎙 Kromatisk / Sång (Alla toner)" => "🎙 Chromatic / Vocal (All notes)",
+        "🎸 7-Strängad Gitarr (B E A D G B E)" => "🎸 7-String Guitar (B E A D G B E)",
+        "🎸 Elbas 4-strängad (E A D G)" => "🎸 Electric Bass 4-string (E A D G)",
+        "🎸 Gitarr Drop D (D A D G B E)" => "🎸 Guitar Drop D (D A D G B E)",
+        "🎸 Gitarr Standard (E A D G B E)" => "🎸 Guitar Standard (E A D G B E)",
+        "🎻 Violin / Fiol (G D A E)" => "🎻 Violin / Fiddle (G D A E)",
+        "Låt: '{}' • {} låtspår med 3-bands parametrisk EQ, dynamik & effekter" => "Song: '{}' • {} tracks with 3-band parametric EQ, dynamics & effects",
+        "Komplexitet:" => "Complexity:",
+        "Ljudstyrka:" => "Loudness:",
+        "○ FRÅNKOPPLAD" => "○ DISCONNECTED",
+        "● ANSLUTEN (ALSA RawMIDI)" => "● CONNECTED (ALSA RawMIDI)",
+        "🔴 STÄNGD" => "🔴 CLOSED",
+        "🟢 ÖPPEN" => "🟢 OPEN",
+                "--title=Välj Ljudfil" => "--title=Select Audio File",
+        "/media/user/Plugins eller ~/.wine/drive_c/..." => "/media/user/Plugins or ~/.wine/drive_c/...",
+        "/sökväg/till/plugin.vst3 eller ~/.wine/.../Sytrus.dll eller preset.fst" => "/path/to/plugin.vst3 or ~/.wine/.../Sytrus.dll or preset.fst",
+        "4-bands parametrisk equalizer med interaktiv kurva." => "4-band parametric EQ with interactive curve.",
+        "80s Synthwave bassline i A-moll" => "80s synthwave bassline in A minor",
+        "Aktiv" => "Active",
+        "Aktiv (Kraschsäkert läge)" => "Active (Crash-safe mode)",
+        "Alla" => "All",
+        "Anpassad plugin-mapp" => "Custom plugin folder",
+        "Blå" => "Blue",
+        "Bruksanvisning / Manual & Hjälpcenter" => "User Guide / Manual & Help Center",
+        "Bruströskel (Gate): {:.3} ({:.1} dB)" => "Noise threshold (Gate): {:.3} ({:.1} dB)",
+        "Center (Mitt)" => "Center",
+        "Cyberpunk 80s synthwave lead med mörk rezonans i A-moll" => "Cyberpunk 80s synthwave lead with dark resonance in A minor",
+        "De-Esser (S-dämpning): {:.0}%" => "De-Esser (S reduction): {:.0}%",
+        "Duplicera spår '{}'" => "Duplicate track '{}'",
+        "Dämpar automatiskt skarpa s- och t-ljud i sånginspelningar." => "Automatically tames harsh s- and t-sounds in vocal recordings.",
+        "FL Studio Specifik" => "FL Studio Specific",
+        "Flytta region" => "Move region",
+        "Funky disco basgång med syncopation" => "Funky disco bassline with syncopation",
+        "Färdigställer tidslinje och ljudmotor..." => "Finalizing timeline and audio engine...",
+        "För att generera Linux-native VST3/CLAP-broar för alla Windows-plugins, kör i din terminal:\nyabridgectl add \"$HOME/.wine/drive_c/Program Files/Common Files/VST3\"\nyabridgectl add \"$HOME/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST\"\nyabridgectl sync" => "To generate Linux-native VST3/CLAP bridges for all Windows plugins, run in your terminal:\nyabridgectl add \"$HOME/.wine/drive_c/Program Files/Common Files/VST3\"\nyabridgectl add \"$HOME/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST\"\nyabridgectl sync",
+        "Förhindrar digital distorsion och maximerar ljudstyrkan." => "Prevents digital distortion and maximizes loudness.",
+        "Gain: {:+.2} dB  (Nivå: {:.1}%)" => "Gain: {:+.2} dB  (Level: {:.1}%)",
+        "Grön" => "Green",
+        "Guld" => "Gold",
+        "Höger {:.0}%" => "Right {:.0}%",
+        "Image-Line har officiella VSTi/VST-versioner av Sytrus, Harmor, Gross Beat, Maximus, Vocodex och Edison.\nDessa installeras i Windows/Wine-katalogen:\n~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/" => "Image-Line has official VSTi/VST versions of Sytrus, Harmor, Gross Beat, Maximus, Vocodex and Edison.\nThese are installed into the Windows/Wine folder:\n~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/",
+        "Image-Line inkluderar 'FL Studio VSTi.dll' och 'FL Studio VSTi (Multi).dll'.\nNär du laddar denna i Sonix öppnas hela FL Studios användargränssnitt i ett fönster och dess ljud synkroniseras med Sonix tempo och transport!" => "Image-Line includes 'FL Studio VSTi.dll' and 'FL Studio VSTi (Multi).dll'.\nWhen you load these in Sonix, the entire FL Studio UI opens in a window and its audio syncs to Sonix tempo and transport!",
+        "Vägen dit går via FL Studio VSTi (.dll) körd genom Wine + yabridge. Sonix kan ännu inte ladda eller visa plugin-GUI:t – plugin-hanteraren katalogiserar och verifierar filer, den kör dem inte." => "The route to this is FL Studio VSTi (.dll) run through Wine + yabridge. Sonix cannot load or show plugin GUIs yet – the plugin manager catalogues and verifies files, it does not run them.",
+        "Planerat: externa plugins ska köras i isolerade processer med minnesdelat IPC så att en kraschande Windows-VST3 inte tar ner Sonix. Detta är ännu inte implementerat." => "Planned: external plugins will run in isolated processes with shared-memory IPC so a crashing Windows VST3 cannot take down Sonix. This is not implemented yet.",
+        "Importera Stämmor / Multi-Track Stems" => "Import Stems / Multi-Track Stems",
+        "Ingångssignal: {:.1} dB" => "Input signal: {:.1} dB",
+        "Justera längd / loop (Höger)" => "Adjust length / loop (Right)",
+        "Klaviatur – Spela synthen live med tangentbordet" => "Keyboard – Play the synth live with the keyboard",
+        "Kunde inte läsa filen: {}" => "Could not read file: {}",
+        "Latens: {} smp (PDC)" => "Latency: {} smp (PDC)",
+        "Lila" => "Purple",
+        "Lägg till från\nEffektbiblioteket" => "Add from\nEffects Library",
+        "Längd: {:.2} sekunder  ({} hundradelar)" => "Length: {:.2} seconds  ({} hundredths)",
+        "Läser in och avkodar ljudspår ({}/{})..." => "Loading and decoding audio track ({}/{})...",
+        "Läser projektfil och förbereder spår..." => "Reading project file and preparing tracks...",
+        "Läser spår {}/{}: {}" => "Loading track {}/{}: {}",
+        "Mikrofonförstärkning: {:.2}x ({:+.1} dB)" => "Microphone gain: {:.2}x ({:+.1} dB)",
+        "Min_Låt" => "My_Track",
+        "Mixer Console & Master Effektrack" => "Mixer Console & Master Effects Rack",
+        "Mjuk horisontell zoomning i tidslinjen" => "Smooth horizontal zoom in the timeline",
+        "Modulär Synt & Patcher" => "Modular Synth & Patcher",
+        "Mål: {}  •  Typ: {}  •  {}" => "Target: {}  •  Type: {}  •  {}",
+        "Målfrekvens: {:.2} Hz  •  Offset: {:+.1} Cents" => "Target frequency: {:.2} Hz  •  Offset: {:+.1} Cents",
+        "Mörk Cyberpunk 808 basgång" => "Dark cyberpunk 808 bassline",
+        "Neo-Soul varma 9th ackord" => "Neo-soul warm 9th chords",
+        "Piano Roll (Notinmatning & melodieditor)" => "Piano Roll (Note input & melody editor)",
+        "Plate, Room och Hall-akustik för djup och rymd." => "Plate, Room and Hall acoustics for depth and space.",
+        "Professionell studiokompressor med Gain Reduction-mätare." => "Professional studio compressor with Gain Reduction meter.",
+        "Projekt" => "Project",
+        "Q-FAKTOR" => "Q FACTOR",
+        "Radera markerat ljudklipp" => "Delete selected audio clip",
+        "Rensa alla spår" => "Clear all tracks",
+        "Resonans (Q): {:.2}" => "Resonance (Q): {:.2}",
+        "Resonant lågpass- och högpassfilter med analog värme." => "Resonant low-pass and high-pass filter with analog warmth.",
+        "Skapa nytt tomt projekt" => "Create new empty project",
+        "Skapar fylliga stereostämmor och analog körklang." => "Creates lush stereo voices and analog choir tone.",
+        "Sonix Channel Rack (16-stegs trummaskin)" => "Sonix Channel Rack (16-step drum machine)",
+        "Sonix kör alla externa plugins i isolerade processer via ett låglatens minnesdelat IPC-lager.\nOm en Windows VST3 kraschar förblir Sonix och alla andra spår 100% stabila utan att ljudet avbryts." => "Sonix runs all external plugins in isolated processes via a low-latency shared-memory IPC layer.\nIf a Windows VST3 crashes, Sonix and all other tracks stay 100% stable without audio interruption.",
+        "Spara projektfil" => "Save project file",
+        "Spår {} av {}" => "Track {} of {}",
+        "Spår {} av {}: {}" => "Track {} of {}: {}",
+        "Spår {}: {}" => "Track {}: {}",
+        "Spår {}: {}\nKlicka för att öppna dedikerad EQ & detaljer" => "Track {}: {}\nClick to open dedicated EQ & details",
+        "Standardmikrofon" => "Default microphone",
+        "Start: {}  |  Längd: {}" => "Start: {}  |  Length: {}",
+        "Starta / Pausa uppspelning" => "Start / Pause playback",
+        "Stereo Master Utgång • Volym: {:.0}% • Peak: {:.2}" => "Stereo Master Output • Volume: {:.0}% • Peak: {:.2}",
+        "Sök effekt (t.ex. Overdrive, EQ, Reverb, Chorus, Vocals...)" => "Search effects (e.g. Overdrive, EQ, Reverb, Chorus, Vocals...)",
+        "Sök i manualen..." => "Search the manual...",
+        "Sök på plugin-namn, tillverkare (t.ex. Sytrus, Gross Beat, Serum, FabFilter, Vital)..." => "Search plugin name, vendor (e.g. Sytrus, Gross Beat, Serum, FabFilter, Vital)...",
+        "Ta bort spår '{}'" => "Remove track '{}'",
+        "Tidslinje / Multi-Track Arranger" => "Timeline / Multi-Track Arranger",
+        "Tidslinjen rullar automatiskt med spelhuvudet under uppspelning. Klicka för att stänga av." => "The timeline auto-scrolls with the playhead during playback. Click to turn off.",
+        "Tidslinjen står stilla så du kan redigera i lugn och ro. Klicka för att aktivera följning." => "The timeline stays still so you can edit in peace. Click to enable follow.",
+        "Tillverkare: {}  •  Sökväg: {}" => "Vendor: {}  •  Path: {}",
+        "Trimma start (Vänster)" => "Trim start (Left)",
+        "Tystar bakgrundsbrus och sus när sångaren inte sjunger." => "Silences background noise and hiss when the singer isn't singing.",
+        "Täthet: {:.0}%" => "Density: {:.0}%",
+        "Välj" => "Choose",
+        "Välj Mikrofon" => "Select Microphone",
+        "Välj Sonix Projektfil (.sonix)" => "Select Sonix Project File (.sonix)",
+        "Välj ZIP Stempaket" => "Select ZIP Stem Pack",
+        "Vänd region baklänges (Reverse)" => "Reverse region",
+        "Vänster {:.0}%" => "Left {:.0}%",
+        "Vågform: {}" => "Waveform: {}",
+        "t.ex. Image-Line, FabFilter, Xfer Records, u-he..." => "e.g. Image-Line, FabFilter, Xfer Records, u-he...",
+        "{} Okt" => "{} Oct",
+        "{} aktiva effekter" => "{} active effects",
+        "Ändra region" => "Change region",
+        "Öppna Projektbläddrare" => "Open Project Browser",
+        "Öppnar: {}" => "Opening: {}",
+        "⇱ Välj (1)" => "⇱ Select (1)",
+        "∿ Sinus" => "∿ Sine",
+        "⊓ Fyrkant" => "⊓ Square",
+        "⋀ Triangel" => "⋀ Triangle",
+        "⌨ 2. Tangentbord & Kommandon" => "⌨ 2. Keyboard & Commands",
+        "⏱ Fading & Tidsredigering (0.01s)" => "⏱ Fading & Time Editing (0.01s)",
+        "⏸ Följ: AV" => "⏸ Follow: OFF",
+        "⏹ Stoppa Referenston" => "⏹ Stop Reference Tone",
+        "▲ FÖR HÖG (SHARP) - Släpp efter" => "▲ TOO HIGH (SHARP) - Loosen the string",
+        "▼ FÖR LÅG (FLAT) - Spänn strängen" => "▼ TOO LOW (FLAT) - Tighten the string",
+        "✂ Klipp (3)" => "✂ Slice (3)",
+        "✎ Rita (2)" => "✎ Paint (2)",
+        "✔ Aktiv i Projekt" => "✔ Active in Project",
+        "✔ På" => "✔ On",
+        "✨ Hög Ters (+3st)" => "✨ High Third (+3st)",
+        "✨ PERFEKT STÄMD (IN TUNE)" => "✨ PERFECTLY IN TUNE",
+        "➕ Ladda Plugin" => "➕ Load Plugin",
+        "➕ Lägg till" => "➕ Add",
+        "➕ Nytt spår: Släpp {} (Takt {:.2})" => "➕ New track: Drop {} (Bar {:.2})",
+        "⩘ Sågtand" => "⩘ Sawtooth",
+        "🌌 Oktav Högre (+12st)" => "🌌 Octave Up (+12st)",
+        "🍷 FL Studio & Yabridge Assistent" => "🍷 FL Studio & Yabridge Assistant",
+        "🎚 Volym, Pan & Dynamik" => "🎚 Volume, Pan & Dynamics",
+        "🎛 Effektkedja" => "🎛 Effects Chain",
+        "🎤 Lead Sång (Center)" => "🎤 Lead Vocal (Center)",
+        "🎤 Lead Sång (Studio Recorder)" => "🎤 Lead Vocal (Studio Recorder)",
+        "🎧 Direktlyssning i hörlurar (Zero-Latency Direct Monitoring)" => "🎧 Direct headphone monitoring (Zero-Latency Direct Monitoring)",
+        "🎵 Klipp & Vågform" => "🎵 Clip & Waveform",
+        "🎶 Låg Kvint (-5st)" => "🎶 Low Fifth (-5st)",
+        "🎸 Basgång (Bass)" => "🎸 Bassline (Bass)",
+        "🎼 Melodi / Lead" => "🎼 Melody / Lead",
+        "🏃 Följ: PÅ" => "🏃 Follow: ON",
+        "📁 Sökvägar & Mappar" => "📁 Paths & Folders",
+        "📈 3-Bands Parametrisk EQ" => "📈 3-Band Parametric EQ",
+        "📊 3. Tidslinje & 0.01s Snäpp" => "📊 3. Timeline & 0.01s Snap",
+        "📚 BYT LJUD: Välj sample för Kanal {} ({})" => "📚 SWAP SOUND: Choose sample for Channel {} ({})",
+        "📥 Importera Plugin / .FST" => "📥 Import Plugin / .FST",
+        "📥 Släpp här: {} (Takt {:.2})" => "📥 Drop here: {} (Bar {:.2})",
+        "📦 4. Multi-Track Stämimport" => "📦 4. Multi-Track Stem Import",
+        "🔄 Baklänges (PÅ)" => "🔄 Reversed (ON)",
+        "🔄 Normal (Framlänges)" => "🔄 Normal (Forwards)",
+        "🔄 Vänd baklänges (Reverse - Ctrl+K)" => "🔄 Reverse (Ctrl+K)",
+        "🔄 Vänd baklänges (Reverse)" => "🔄 Reverse (Backwards)",
+        "🔄 Återställ riktning (Normal)" => "🔄 Restore direction (Normal)",
+        "🔇 Feedback Suppression / Anti-rundgång" => "🔇 Feedback Suppression / Anti-feedback",
+        "🔇 Muta region (M)" => "🔇 Mute region (M)",
+        "🔇 Mutad" => "🔇 Muted",
+        "🔊 Avmuta region (M)" => "🔊 Unmute region (M)",
+        "🔊 På" => "🔊 On",
+        "🔊 Spela Referenston (Sinuston)" => "🔊 Play Reference Tone (Sine)",
+        "🔌 Plugindatabas" => "🔌 Plugin Database",
+        "🔍 5. Stämeditor & 3-Band EQ" => "🔍 5. Stem Editor & 3-Band EQ",
+        "🔍 Automatisk strängdetektering" => "🔍 Automatic string detection",
+        "🗂 Effektbibliotek" => "🗂 Effects Library",
+        "🟢 Aktiv ström: {} • {} Hz 32-bit Float" => "🟢 Active stream: {} • {} Hz 32-bit Float",
+        "🥁 Trumgroove & Beat" => "🥁 Drum Groove & Beat",
+        "OGG Vorbis (hög kvalitet)" => "OGG Vorbis (high quality)",
+        "🎧 ISOLERA STÄMMA" => "🎧 ISOLATE STEM",
+        "Inget standard-ljudkort hittades på systemet" => "No default audio device was found on the system",
+        "Ljudformatet stöds inte" => "The audio format is not supported",
+        "Kunde inte öppna fil" => "Could not open file",
+        "Upptäcktes automatiskt under skanning av {}" => "Detected automatically during scan of {}",
+        "⏳ Genererar via AI-API..." => "⏳ Generating via AI API...",
+        "⚙ AI-API-inställningar (valfritt – annars lokal motor)" => "⚙ AI API settings (optional – otherwise local engine)",
+        "Provider:" => "Provider:",
+        "Återställ standard" => "Reset to defaults",
+        "Bas-URL:" => "Base URL:",
+        "(tomt = providers standard)" => "(empty = provider default)",
+        "Modell:" => "Model:",
+        "(standard)" => "(default)",
+        "💾 Spara AI-konfiguration" => "💾 Save AI configuration",
+        "✔ Sparade AI-konfiguration till {}" => "✔ Saved AI configuration to {}",
+        "⚠ Kunde inte spara AI-konfiguration: {}" => "⚠ Could not save AI configuration: {}",
+        "Redo: använder AI-API" => "Ready: using AI API",
+        "🎯 Använd projektkontext" => "🎯 Use project context",
+        "🎧 AI-ljudgenerering (sparas i samma fil)" => "🎧 AI audio generation (saved in the same file)",
+        "Ljud-provider:" => "Audio provider:",
+        "Redo: använder AI-ljud-API" => "Ready: using AI audio API",
+        "Offline: använder lokal DSP" => "Offline: using local DSP",
+        "⏳ Genererar ljud via {} ..." => "⏳ Generating audio via {} ...",
+        "⚠ AI-ljudgenerering misslyckades ({}), använder lokal motor." => "⚠ AI audio generation failed ({}), using local engine.",
+        "⚠ Kunde inte importera AI-ljud ({}), använder lokal motor." => "⚠ Could not import AI audio ({}), using local engine.",
+        "✅ Importerade AI-genererat ljud som spår {}: '{}'" => "✅ Imported AI-generated audio as track {}: '{}'",
+        "Offline: använder lokal regelbaserad motor" => "Offline: using local rule-based engine",
+        "✔ AI-API genererade {} klipp från prompten." => "✔ AI API generated {} clips from the prompt.",
+        _ => return None,
+    })
+}
+
+// ====================================================================
+// DANSK
+// ====================================================================
+fn tr_da(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "📁 Arkiv" => "📁 Fil",
+        "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Nyt tomt projekt (Ctrl+N)",
+        "📂 Öppna projekt... (Ctrl+O)" => "📂 Åbn projekt... (Ctrl+O)",
+        "💾 Spara projekt (Ctrl+S)" => "💾 Gem projekt (Ctrl+S)",
+        "💾 Spara som... (Ctrl+Shift+S)" => "💾 Gem som... (Ctrl+Shift+S)",
+        "📁 Filhanterare / Projektbläddrare (Ctrl+P)" => "📁 Filhåndtering / Projektoversigt (Ctrl+P)",
+        "⚡ Ladda Demo-projekt" => "⚡ Indlæs demo-projekt",
+        "🎼 Importera Stämmor / Stems... (Ctrl+I)" => "🎼 Importér stems / vokalstemmer... (Ctrl+I)",
+        "↗ Exportera projekt (Ctrl+E)" => "↗ Eksportér projekt (Ctrl+E)",
+        "🚪 Avsluta" => "🚪 Afslut",
+
+        "✏ Redigera" => "✏ Rediger",
+        "↶ Ångra (Ctrl+Z)" => "↶ Fortryd (Ctrl+Z)",
+        "↷ Gör om (Ctrl+Y)" => "↷ Gentag (Ctrl+Y)",
+        "✂ Klipp vid spelhuvud (Ctrl+B / S)" => "✂ Klip ved afspilningsmarkør (Ctrl+B / S)",
+        "📋 Duplicera markerat (Ctrl+D)" => "📋 Dupliker markering (Ctrl+D)",
+        "🗑 Ta bort markerat (Del)" => "🗑 Slet markering (Del)",
+        "🧹 Rensa alla spår" => "🧹 Ryd alle spor",
+        "Rensade alla spår och tidslinjeklipp." => "Alle spor og tidslinjeklip er ryddet.",
+
+        "👁 Vy" => "👁 Visning",
+        "📊 Tidslinje / Arranger (F3)" => "📊 Tidslinje / Arranger (F3)",
+        "🥁 Sonix Channel Rack (F4)" => "🥁 Sonix Channel Rack (F4)",
+        "🎹 Sonix Piano Roll (F5)" => "🎹 Sonix Piano Roll (F5)",
+        "🎛 Mixer Console (F6)" => "🎛 Mixer Console (F6)",
+        "🎛 Analog Synthesizer (F7)" => "🎛 Analog synthesizer (F7)",
+        "🎙 Vocal Studio & Harmonizer (F8)" => "🎙 Vocal Studio & Harmonizer (F8)",
+        "🤖 AI Music Studio (F9)" => "🤖 AI Music Studio (F9)",
+        "🔌 Modulär Synt & Patcher (F10)" => "🔌 Modulær synth & Patcher (F10)",
+        "📁 Växla Webbläsare / Bibliotek: PÅ" => "📁 Slå browser / bibliotek til: TIL",
+        "📁 Växla Webbläsare / Bibliotek: AV" => "📁 Slå browser / bibliotek fra: FRA",
+
+        "🤖 AI & Providers" => "🤖 AI & udbydere",
+        "⚙ AI Provider Inställningar & API-nycklar..." => "⚙ AI-udbyderindstillinger & API-nøgler...",
+        "🎼 Importera Stämmor / Multi-Track Stems..." => "🎼 Importér vokalstemmer / multi-track stems...",
+        "✨ ACE-Step & Stable Audio Generator..." => "✨ ACE-Step & Stable Audio-generator...",
+        "🤖 AI Co-Producer Assistent..." => "🤖 AI-medproducerassistent...",
+
+        "🎛 Verktyg" => "🎛 Værktøj",
+        "🎲 Melodi- & Beat-Tärning... (F12)" => "🎲 Melodi- & beat-terning... (F12)",
+        "🎹 Smart Ackord- & Skalgenerator... (F11)" => "🎹 Smart akkord- & skala-generator... (F11)",
+        "🎛 Modulärt FX-Pedalbord & Stompboxes..." => "🎛 Modulært FX-pedalboard & stompboxes...",
+        "🎯 Hårdvarustämapparat & Pitch Scope (Tuner)..." => "🎯 Hardware-stemmer & pitch-scope (tuner)...",
+        "📑 Låtstruktur & Formdelar..." => "📑 Sangs struktur & formdele...",
+        "🎙 Mikrofonjustering & Inmatningspanel..." => "🎙 Mikrofonopsætning & inputpanel...",
+
+        "⚙ Inställningar" => "⚙ Indstillinger",
+        "🎙 Mikrofoninställningar & Inmatningsenhet (Samson/USB)..." => "🎙 Mikrofonindstillinger & inputenhed (Samson/USB)...",
+        "🎛 Ljud- & MIDI-inställningar (PipeWire/ALSA/JACK)..." => "🎛 Lyd- & MIDI-indstillinger (PipeWire/ALSA/JACK)...",
+        "🎛 Hårdvarukontroller (MCU / OSC)..." => "🎛 Hardwarecontrollere (MCU / OSC)...",
+
+        "❓ Hjälp" => "❓ Hjælp",
+        "📖 Snabbguide & Manual (F1)" => "📖 Hurtigguide & manual (F1)",
+        "ℹ Om Sonix Studio..." => "ℹ Om Sonix Studio...",
+        "📁 Projekt:" => "📁 Projekt:",
+        "Klicka för att hantera projekt" => "Klik for at administrere projekter",
+
+        "📁 Browser" => "📁 Browser",
+        "VY:" => "VISNING:",
+        "STUDIOS:" => "STUDIOS:",
+        "VERKTYG:" => "VÆRKTØJ:",
+        "🎼 Tidslinje" => "🎼 Tidslinje",
+        "🥁 Rack" => "🥁 Rack",
+        "🎹 Piano" => "🎹 Klaver",
+        "🎙 Sångstudio" => "🎙 Vokalstudie",
+        "🎚 Mixer" => "🎚 Mixer",
+        "🤖 AI" => "🤖 AI",
+        "✨ Alchemy" => "✨ Alchemy",
+        "🥁 Trummor" => "🥁 Trommer",
+        "🧩 Patcher" => "🧩 Patcher",
+        "🧠 Stems" => "🧠 Stems",
+        "🔌 Plugins" => "🔌 Plugins",
+        "🎛 Remix" => "🎛 Remix",
+        "🎲 Tärning" => "🎲 Terning",
+        "🎹 Ackord" => "🎹 Akkorder",
+        "🎛 FX-Rack" => "🎛 FX-rack",
+        "🎯 Stämmare" => "🎯 Tuner",
+        "📑 Formdelar" => "📑 Formdele",
+        "Idé- & Slumptärning för Melodier & Beats (F12)" => "Idé- & tilfældighedsterning til melodier & beats (F12)",
+        "Smart Ackord- & Skalgenerator (F11)" => "Smart akkord- & skala-generator (F11)",
+        "Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)" => "Modulært FX-pedalboard & stompbox-rack (Ctrl+R)",
+        "Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)" => "Hardware-tuner & pitch-analyzer (Ctrl+T)",
+        "Låtstruktur & Formdelar" => "Sangs struktur & formdele",
+        "PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW" => "PipeWire / ALSA 44.1kHz • 16-stemmers polyfoni • Sonix Studio Pro DAW",
+
+        "Läge ändrat till: PAT (Mönsterloop)" => "Tilstand ændret til: PAT (mønsterloop)",
+        "Läge ändrat till: SONG (Låtläge)" => "Tilstand ændret til: SONG (sangtilstand)",
+
+        "Språk" => "Sprog",
+        "🌐 Språk" => "🌐 Sprog",
+        "📤 Exportera projekt" => "📤 Eksportér projekt",
+        "Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till." => "Render hele projektet offline (rigtige WAV-samples, tidslinje-audio & effekter) med ren metadata – AI- eller udbyderoplysninger tilføjes aldrig.",
+        "1. VAD SKALL EXPORTERAS" => "1. HVAD SKAL EKSPORTERES",
+        "Hel låt – Master Mix (Fullt Projekt)" => "Hele sangen – mastermix (fuldt projekt)",
+        "Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter." => "Render hele sangen/arrangementet med alle Channel Rack-samples, tidslinje-audio (stems/mic) og master-effekter.",
+        "Individuella spår – Torra (Stems Dry)" => "Individuelle spor – tørre (stems dry)",
+        "Exporterar varje tidslinjespår för sig utan reverb/delay för extern mixning." => "Eksporterer hvert tidslinjespor for sig uden reverb/delay til ekstern mixning.",
+        "Individuella spår – Med FX (Stems Wet)" => "Individuelle spor – med FX (stems wet)",
+        "Exporterar varje tidslinjespår för sig med alla effekter och modulation." => "Eksporterer hvert tidslinjespor for sig med alle effekter og modulation.",
+        "2. FORMAT & LJUDKVALITET" => "2. FORMAT & LYDKVALITET",
+        "Format:" => "Format:",
+        "Samplingsfrekvens:" => "Samplingsfrekvens:",
+        "3. FILNAMN & MAPPA" => "3. FILNAVN & MAPPE",
+        "Låt-/filnamn:" => "Sang-/filnavn:",
+        "Mapp:" => "Mappe:",
+        "Exempel:" => "Eksempel:",
+        "4. METADATA (endast Sonix – ingen AI-info)" => "4. METADATA (kun Sonix – ingen AI-info)",
+        "Titel:" => "Titel:",
+        "Artist:" => "Artist:",
+        "Album:" => "Album:",
+        "Genre:" => "Genre:",
+        "År:" => "År:",
+        "Kommentar:" => "Kommentar:",
+        "Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem." => "Software-markøren sættes altid til Sonix Studio. Efterlad felterne tomme for at udelade dem.",
+        "Status:" => "Status:",
+        "🚀 STARTA EXPORT" => "🚀 START EKSPORT",
+        "Stäng" => "Luk",
+        _ => return None,
+    })
+}
+
+// ====================================================================
+// NORSK (BOKMÅL)
+// ====================================================================
+fn tr_no(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "📁 Arkiv" => "📁 Fil",
+        "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Nytt tomt prosjekt (Ctrl+N)",
+        "📂 Öppna projekt... (Ctrl+O)" => "📂 Åpne prosjekt... (Ctrl+O)",
+        "💾 Spara projekt (Ctrl+S)" => "💾 Lagre prosjekt (Ctrl+S)",
+        "💾 Spara som... (Ctrl+Shift+S)" => "💾 Lagre som... (Ctrl+Shift+S)",
+        "📁 Filhanterare / Projektbläddrare (Ctrl+P)" => "📁 Filbehandler / Prosjektutforsker (Ctrl+P)",
+        "⚡ Ladda Demo-projekt" => "⚡ Last inn demoprosjekt",
+        "🎼 Importera Stämmor / Stems... (Ctrl+I)" => "🎼 Importer vokalstems / stems... (Ctrl+I)",
+        "↗ Exportera projekt (Ctrl+E)" => "↗ Eksporter prosjekt (Ctrl+E)",
+        "🚪 Avsluta" => "🚪 Avslutt",
+
+        "✏ Redigera" => "✏ Rediger",
+        "↶ Ångra (Ctrl+Z)" => "↶ Angre (Ctrl+Z)",
+        "↷ Gör om (Ctrl+Y)" => "↷ Gjør om (Ctrl+Y)",
+        "✂ Klipp vid spelhuvud (Ctrl+B / S)" => "✂ Klipp ved avspillingshode (Ctrl+B / S)",
+        "📋 Duplicera markerat (Ctrl+D)" => "📋 Dupliser markering (Ctrl+D)",
+        "🗑 Ta bort markerat (Del)" => "🗑 Slett markering (Del)",
+        "🧹 Rensa alla spår" => "🧹 Tøm alle spor",
+        "Rensade alla spår och tidslinjeklipp." => "Tømte alle spor og tidslinjeklipp.",
+
+        "👁 Vy" => "👁 Visning",
+        "📊 Tidslinje / Arranger (F3)" => "📊 Tidslinje / Arranger (F3)",
+        "🥁 Sonix Channel Rack (F4)" => "🥁 Sonix Channel Rack (F4)",
+        "🎹 Sonix Piano Roll (F5)" => "🎹 Sonix Piano Roll (F5)",
+        "🎛 Mixer Console (F6)" => "🎛 Mixer Console (F6)",
+        "🎛 Analog Synthesizer (F7)" => "🎛 Analog synthesizer (F7)",
+        "🎙 Vocal Studio & Harmonizer (F8)" => "🎙 Vocal Studio & Harmonizer (F8)",
+        "🤖 AI Music Studio (F9)" => "🤖 AI Music Studio (F9)",
+        "🔌 Modulär Synt & Patcher (F10)" => "🔌 Modulær synt & Patcher (F10)",
+        "📁 Växla Webbläsare / Bibliotek: PÅ" => "📁 Slå på nettleser / bibliotek: PÅ",
+        "📁 Växla Webbläsare / Bibliotek: AV" => "📁 Slå av nettleser / bibliotek: AV",
+
+        "🤖 AI & Providers" => "🤖 AI & leverandører",
+        "⚙ AI Provider Inställningar & API-nycklar..." => "⚙ AI-leverandørinnstillinger & API-nøkler...",
+        "🎼 Importera Stämmor / Multi-Track Stems..." => "🎼 Importer vokalstems / multitrack-stems...",
+        "✨ ACE-Step & Stable Audio Generator..." => "✨ ACE-Step & Stable Audio-generator...",
+        "🤖 AI Co-Producer Assistent..." => "🤖 AI-medprodusentassistent...",
+
+        "🎛 Verktyg" => "🎛 Verktøy",
+        "🎲 Melodi- & Beat-Tärning... (F12)" => "🎲 Melodi- & beatterning... (F12)",
+        "🎹 Smart Ackord- & Skalgenerator... (F11)" => "🎹 Smart akkord- & skala-generator... (F11)",
+        "🎛 Modulärt FX-Pedalbord & Stompboxes..." => "🎛 Modulært FX-pedalbrett & stompboxer...",
+        "🎯 Hårdvarustämapparat & Pitch Scope (Tuner)..." => "🎯 Maskinvarestemmer & pitch-scope (tuner)...",
+        "📑 Låtstruktur & Formdelar..." => "📑 Låtstruktur & formdeler...",
+        "🎙 Mikrofonjustering & Inmatningspanel..." => "🎙 Mikrofonoppsett & inngangspanel...",
+
+        "⚙ Inställningar" => "⚙ Innstillinger",
+        "🎙 Mikrofoninställningar & Inmatningsenhet (Samson/USB)..." => "🎙 Mikrofoninnstillinger & inngangsenhet (Samson/USB)...",
+        "🎛 Ljud- & MIDI-inställningar (PipeWire/ALSA/JACK)..." => "🎛 Lyd- & MIDI-innstillinger (PipeWire/ALSA/JACK)...",
+        "🎛 Hårdvarukontroller (MCU / OSC)..." => "🎛 Maskinvarekontrollere (MCU / OSC)...",
+
+        "❓ Hjälp" => "❓ Hjelp",
+        "📖 Snabbguide & Manual (F1)" => "📖 Hurtigguide & manual (F1)",
+        "ℹ Om Sonix Studio..." => "ℹ Om Sonix Studio...",
+        "📁 Projekt:" => "📁 Prosjekt:",
+        "Klicka för att hantera projekt" => "Klikk for å håndtere prosjekter",
+
+        "📁 Browser" => "📁 Nettleser",
+        "VY:" => "VISNING:",
+        "STUDIOS:" => "STUDIOS:",
+        "VERKTYG:" => "VERKTØY:",
+        "🎼 Tidslinje" => "🎼 Tidslinje",
+        "🥁 Rack" => "🥁 Rack",
+        "🎹 Piano" => "🎹 Piano",
+        "🎙 Sångstudio" => "🎙 Vokalstudio",
+        "🎚 Mixer" => "🎚 Mikser",
+        "🤖 AI" => "🤖 AI",
+        "✨ Alchemy" => "✨ Alchemy",
+        "🥁 Trummor" => "🥁 Trommer",
+        "🧩 Patcher" => "🧩 Patcher",
+        "🧠 Stems" => "🧠 Stems",
+        "🔌 Plugins" => "🔌 Plugins",
+        "🎛 Remix" => "🎛 Remix",
+        "🎲 Tärning" => "🎲 Terning",
+        "🎹 Ackord" => "🎹 Akkorder",
+        "🎛 FX-Rack" => "🎛 FX-rack",
+        "🎯 Stämmare" => "🎯 Stemmer",
+        "📑 Formdelar" => "📑 Formdeler",
+        "Idé- & Slumptärning för Melodier & Beats (F12)" => "Idé- & tilfeldighetsterning for melodier & beats (F12)",
+        "Smart Ackord- & Skalgenerator (F11)" => "Smart akkord- & skala-generator (F11)",
+        "Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)" => "Modulært FX-pedalbrett & stompbox-rack (Ctrl+R)",
+        "Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)" => "Maskinvarestemmer & pitch-analyzer (Ctrl+T)",
+        "Låtstruktur & Formdelar" => "Låtstruktur & formdeler",
+        "PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW" => "PipeWire / ALSA 44.1kHz • 16-stemmers polyfoni • Sonix Studio Pro DAW",
+
+        "Läge ändrat till: PAT (Mönsterloop)" => "Modus endret til: PAT (mønsterloop)",
+        "Läge ändrat till: SONG (Låtläge)" => "Modus endret til: SONG (låtmodus)",
+
+        "Språk" => "Språk",
+        "🌐 Språk" => "🌐 Språk",
+        "📤 Exportera projekt" => "📤 Eksporter prosjekt",
+        "Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till." => "Render hele prosjektet offline (ekte WAV-samples, tidslinje-audio & effekter) med ren metadata – AI- eller leverandørinformasjon legges aldri til.",
+        "1. VAD SKALL EXPORTERAS" => "1. HVA SKAL EKSPORTERES",
+        "Hel låt – Master Mix (Fullt Projekt)" => "Hele låten – mastermiks (fullt prosjekt)",
+        "Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter." => "Render hele låten/arrangementet med alle Channel Rack-samples, tidslinje-audio (stems/mic) og mastereffekter.",
+        "Individuella spår – Torra (Stems Dry)" => "Individuelle spor – tørre (stems dry)",
+        "Exporterar varje tidslinjespår för sig utan reverb/delay för extern mixning." => "Eksporterer hvert tidslinjespor for seg uten reverb/delay for ekstern miksing.",
+        "Individuella spår – Med FX (Stems Wet)" => "Individuelle spor – med FX (stems wet)",
+        "Exporterar varje tidslinjespår för sig med alla effekter och modulation." => "Eksporterer hvert tidslinjespor for seg med alle effekter og modulasjon.",
+        "2. FORMAT & LJUDKVALITET" => "2. FORMAT & LYDKVALITET",
+        "Format:" => "Format:",
+        "Samplingsfrekvens:" => "Samplingsfrekvens:",
+        "3. FILNAMN & MAPPA" => "3. FILNAVN & MAPP",
+        "Låt-/filnamn:" => "Låt-/filnavn:",
+        "Mapp:" => "Mappe:",
+        "Exempel:" => "Eksempel:",
+        "4. METADATA (endast Sonix – ingen AI-info)" => "4. METADATA (kun Sonix – ingen AI-info)",
+        "Titel:" => "Tittel:",
+        "Artist:" => "Artist:",
+        "Album:" => "Album:",
+        "Genre:" => "Sjanger:",
+        "År:" => "År:",
+        "Kommentar:" => "Kommentar:",
+        "Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem." => "Software-markøren settes alltid til Sonix Studio. La felt stå tomme hvis du vil utelate dem.",
+        "Status:" => "Status:",
+        "🚀 STARTA EXPORT" => "🚀 START EKSPORT",
+        "Stäng" => "Lukk",
+        _ => return None,
+    })
+}
+
+// ====================================================================
+// DEUTSCH
+// ====================================================================
+fn tr_de(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "📁 Arkiv" => "📁 Datei",
+        "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Neues leeres Projekt (Ctrl+N)",
+        "📂 Öppna projekt... (Ctrl+O)" => "📂 Projekt öffnen... (Ctrl+O)",
+        "💾 Spara projekt (Ctrl+S)" => "💾 Projekt speichern (Ctrl+S)",
+        "💾 Spara som... (Ctrl+Shift+S)" => "💾 Speichern unter... (Ctrl+Shift+S)",
+        "📁 Filhanterare / Projektbläddrare (Ctrl+P)" => "📁 Dateimanager / Projektbrowser (Ctrl+P)",
+        "⚡ Ladda Demo-projekt" => "⚡ Demo-Projekt laden",
+        "🎼 Importera Stämmor / Stems... (Ctrl+I)" => "🎼 Stems / Gesang importieren... (Ctrl+I)",
+        "↗ Exportera projekt (Ctrl+E)" => "↗ Projekt exportieren (Ctrl+E)",
+        "🚪 Avsluta" => "🚪 Beenden",
+
+        "✏ Redigera" => "✏ Bearbeiten",
+        "↶ Ångra (Ctrl+Z)" => "↶ Rückgängig (Ctrl+Z)",
+        "↷ Gör om (Ctrl+Y)" => "↷ Wiederholen (Ctrl+Y)",
+        "✂ Klipp vid spelhuvud (Ctrl+B / S)" => "✂ Am Abspielkopf schneiden (Ctrl+B / S)",
+        "📋 Duplicera markerat (Ctrl+D)" => "📋 Auswahl duplizieren (Ctrl+D)",
+        "🗑 Ta bort markerat (Del)" => "🗑 Auswahl löschen (Entf)",
+        "🧹 Rensa alla spår" => "🧹 Alle Spuren leeren",
+        "Rensade alla spår och tidslinjeklipp." => "Alle Spuren und Timeline-Clips geleert.",
+
+        "👁 Vy" => "👁 Ansicht",
+        "📊 Tidslinje / Arranger (F3)" => "📊 Timeline / Arranger (F3)",
+        "🥁 Sonix Channel Rack (F4)" => "🥁 Sonix Channel Rack (F4)",
+        "🎹 Sonix Piano Roll (F5)" => "🎹 Sonix Piano Roll (F5)",
+        "🎛 Mixer Console (F6)" => "🎛 Mixer Console (F6)",
+        "🎛 Analog Synthesizer (F7)" => "🎛 Analoger Synthesizer (F7)",
+        "🎙 Vocal Studio & Harmonizer (F8)" => "🎙 Vocal Studio & Harmonizer (F8)",
+        "🤖 AI Music Studio (F9)" => "🤖 AI Music Studio (F9)",
+        "🔌 Modulär Synt & Patcher (F10)" => "🔌 Modularer Synth & Patcher (F10)",
+        "📁 Växla Webbläsare / Bibliotek: PÅ" => "📁 Browser / Bibliothek umschalten: AN",
+        "📁 Växla Webbläsare / Bibliotek: AV" => "📁 Browser / Bibliothek umschalten: AUS",
+
+        "🤖 AI & Providers" => "🤖 KI & Anbieter",
+        "⚙ AI Provider Inställningar & API-nycklar..." => "⚙ KI-Anbieter-Einstellungen & API-Schlüssel...",
+        "🎼 Importera Stämmor / Multi-Track Stems..." => "🎼 Gesang / Multi-Track-Stems importieren...",
+        "✨ ACE-Step & Stable Audio Generator..." => "✨ ACE-Step & Stable-Audio-Generator...",
+        "🤖 AI Co-Producer Assistent..." => "🤖 KI-Co-Producer-Assistent...",
+
+        "🎛 Verktyg" => "🎛 Werkzeuge",
+        "🎲 Melodi- & Beat-Tärning... (F12)" => "🎲 Melodie- & Beat-Würfel... (F12)",
+        "🎹 Smart Ackord- & Skalgenerator... (F11)" => "🎹 Smart Akkord- & Skala-Generator... (F11)",
+        "🎛 Modulärt FX-Pedalbord & Stompboxes..." => "🎛 Modulares FX-Pedalboard & Stompboxen...",
+        "🎯 Hårdvarustämapparat & Pitch Scope (Tuner)..." => "🎯 Hardware-Stimmgerät & Pitch-Scope (Tuner)...",
+        "📑 Låtstruktur & Formdelar..." => "📑 Songstruktur & Formteile...",
+        "🎙 Mikrofonjustering & Inmatningspanel..." => "🎙 Mikrofon-Setup & Eingabefeld...",
+
+        "⚙ Inställningar" => "⚙ Einstellungen",
+        "🎙 Mikrofoninställningar & Inmatningsenhet (Samson/USB)..." => "🎙 Mikrofon-Einstellungen & Eingabegerät (Samson/USB)...",
+        "🎛 Ljud- & MIDI-inställningar (PipeWire/ALSA/JACK)..." => "🎛 Audio- & MIDI-Einstellungen (PipeWire/ALSA/JACK)...",
+        "🎛 Hårdvarukontroller (MCU / OSC)..." => "🎛 Hardware-Controller (MCU / OSC)...",
+
+        "❓ Hjälp" => "❓ Hilfe",
+        "📖 Snabbguide & Manual (F1)" => "📖 Kurzanleitung & Handbuch (F1)",
+        "ℹ Om Sonix Studio..." => "ℹ Über Sonix Studio...",
+        "📁 Projekt:" => "📁 Projekt:",
+        "Klicka för att hantera projekt" => "Klicken, um Projekte zu verwalten",
+
+        "📁 Browser" => "📁 Browser",
+        "VY:" => "ANSICHT:",
+        "STUDIOS:" => "STUDIOS:",
+        "VERKTYG:" => "WERKZEUGE:",
+        "🎼 Tidslinje" => "🎼 Timeline",
+        "🥁 Rack" => "🥁 Rack",
+        "🎹 Piano" => "🎹 Klavier",
+        "🎙 Sångstudio" => "🎙 Gesangsstudio",
+        "🎚 Mixer" => "🎚 Mixer",
+        "🤖 AI" => "🤖 KI",
+        "✨ Alchemy" => "✨ Alchemy",
+        "🥁 Trummor" => "🥁 Schlagzeug",
+        "🧩 Patcher" => "🧩 Patcher",
+        "🧠 Stems" => "🧠 Stems",
+        "🔌 Plugins" => "🔌 Plugins",
+        "🎛 Remix" => "🎛 Remix",
+        "🎲 Tärning" => "🎲 Würfel",
+        "🎹 Ackord" => "🎹 Akkorde",
+        "🎛 FX-Rack" => "🎛 FX-Rack",
+        "🎯 Stämmare" => "🎯 Tuner",
+        "📑 Formdelar" => "📑 Formteile",
+        "Idé- & Slumptärning för Melodier & Beats (F12)" => "Ideen- & Zufallswürfel für Melodien & Beats (F12)",
+        "Smart Ackord- & Skalgenerator (F11)" => "Smart Akkord- & Skala-Generator (F11)",
+        "Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)" => "Modulares FX-Pedalboard & Stompbox-Rack (Ctrl+R)",
+        "Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)" => "Hardware-Stimmgerät & Pitch-Analyzer (Ctrl+T)",
+        "Låtstruktur & Formdelar" => "Songstruktur & Formteile",
+        "PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW" => "PipeWire / ALSA 44.1kHz • 16-stimmige Polyfonie • Sonix Studio Pro DAW",
+
+        "Läge ändrat till: PAT (Mönsterloop)" => "Modus geändert zu: PAT (Pattern-Loop)",
+        "Läge ändrat till: SONG (Låtläge)" => "Modus geändert zu: SONG (Songmodus)",
+
+        "Språk" => "Sprache",
+        "🌐 Språk" => "🌐 Sprache",
+        "📤 Exportera projekt" => "📤 Projekt exportieren",
+        "Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till." => "Das gesamte Projekt offline rendern (echte WAV-Samples, Timeline-Audio & Effekte) mit sauberen Metadaten – KI- oder Anbieterinformationen werden niemals hinzugefügt.",
+        "1. VAD SKALL EXPORTERAS" => "1. WAS EXPORTIERT WERDEN SOLL",
+        "Hel låt – Master Mix (Fullt Projekt)" => "Kompletter Song – Master-Mix (volles Projekt)",
+        "Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter." => "Rendert den gesamten Song/das Arrangement mit allen Channel-Rack-Samples, Timeline-Audio (Stems/Mic) und Master-Effekten.",
+        "Individuella spår – Torra (Stems Dry)" => "Einzelspuren – trocken (Stems Dry)",
+        "Exporterar varje tidslinjespår för sig utan reverb/delay för extern mixning." => "Exportiert jede Timeline-Spur einzeln ohne Reverb/Delay für die externe Abmischung.",
+        "Individuella spår – Med FX (Stems Wet)" => "Einzelspuren – mit FX (Stems Wet)",
+        "Exporterar varje tidslinjespår för sig med alla effekter och modulation." => "Exportiert jede Timeline-Spur einzeln mit allen Effekten und Modulation.",
+        "2. FORMAT & LJUDKVALITET" => "2. FORMAT & AUDIOQUALITÄT",
+        "Format:" => "Format:",
+        "Samplingsfrekvens:" => "Abtastrate:",
+        "3. FILNAMN & MAPPA" => "3. DATEINAME & ORDNER",
+        "Låt-/filnamn:" => "Song-/Dateiname:",
+        "Mapp:" => "Ordner:",
+        "Exempel:" => "Beispiel:",
+        "4. METADATA (endast Sonix – ingen AI-info)" => "4. METADATEN (nur Sonix – keine KI-Infos)",
+        "Titel:" => "Titel:",
+        "Artist:" => "Künstler:",
+        "Album:" => "Album:",
+        "Genre:" => "Genre:",
+        "År:" => "Jahr:",
+        "Kommentar:" => "Kommentar:",
+        "Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem." => "Die Software-Markierung wird immer auf Sonix Studio gesetzt. Lassen Sie Felder leer, um sie wegzulassen.",
+        "Status:" => "Status:",
+        "🚀 STARTA EXPORT" => "🚀 EXPORT STARTEN",
+        "Stäng" => "Schließen",
+        _ => return None,
+    })
+}
+
+// ====================================================================
+// ESPAÑOL
+// ====================================================================
+fn tr_es(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "📁 Arkiv" => "📁 Archivo",
+        "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Nuevo proyecto vacío (Ctrl+N)",
+        "📂 Öppna projekt... (Ctrl+O)" => "📂 Abrir proyecto... (Ctrl+O)",
+        "💾 Spara projekt (Ctrl+S)" => "💾 Guardar proyecto (Ctrl+S)",
+        "💾 Spara som... (Ctrl+Shift+S)" => "💾 Guardar como... (Ctrl+Shift+S)",
+        "📁 Filhanterare / Projektbläddrare (Ctrl+P)" => "📁 Administrador de archivos / Explorador de proyectos (Ctrl+P)",
+        "⚡ Ladda Demo-projekt" => "⚡ Cargar proyecto demo",
+        "🎼 Importera Stämmor / Stems... (Ctrl+I)" => "🎼 Importar voces / stems... (Ctrl+I)",
+        "↗ Exportera projekt (Ctrl+E)" => "↗ Exportar proyecto (Ctrl+E)",
+        "🚪 Avsluta" => "🚪 Salir",
+
+        "✏ Redigera" => "✏ Editar",
+        "↶ Ångra (Ctrl+Z)" => "↶ Deshacer (Ctrl+Z)",
+        "↷ Gör om (Ctrl+Y)" => "↷ Rehacer (Ctrl+Y)",
+        "✂ Klipp vid spelhuvud (Ctrl+B / S)" => "✂ Cortar en el cursor de reproducción (Ctrl+B / S)",
+        "📋 Duplicera markerat (Ctrl+D)" => "📋 Duplicar selección (Ctrl+D)",
+        "🗑 Ta bort markerat (Del)" => "🗑 Eliminar selección (Supr)",
+        "🧹 Rensa alla spår" => "🧹 Limpiar todas las pistas",
+        "Rensade alla spår och tidslinjeklipp." => "Se limpiaron todas las pistas y clips de la línea de tiempo.",
+
+        "👁 Vy" => "👁 Ver",
+        "📊 Tidslinje / Arranger (F3)" => "📊 Línea de tiempo / Arreglador (F3)",
+        "🥁 Sonix Channel Rack (F4)" => "🥁 Sonix Channel Rack (F4)",
+        "🎹 Sonix Piano Roll (F5)" => "🎹 Sonix Piano Roll (F5)",
+        "🎛 Mixer Console (F6)" => "🎛 Mixer Console (F6)",
+        "🎛 Analog Synthesizer (F7)" => "🎛 Sintetizador analógico (F7)",
+        "🎙 Vocal Studio & Harmonizer (F8)" => "🎙 Vocal Studio & Harmonizer (F8)",
+        "🤖 AI Music Studio (F9)" => "🤖 AI Music Studio (F9)",
+        "🔌 Modulär Synt & Patcher (F10)" => "🔌 Sintetizador modular & Patcher (F10)",
+        "📁 Växla Webbläsare / Bibliotek: PÅ" => "📁 Cambiar explorador / biblioteca: SÍ",
+        "📁 Växla Webbläsare / Bibliotek: AV" => "📁 Cambiar explorador / biblioteca: NO",
+
+        "🤖 AI & Providers" => "🤖 IA y proveedores",
+        "⚙ AI Provider Inställningar & API-nycklar..." => "⚙ Ajustes del proveedor de IA y claves API...",
+        "🎼 Importera Stämmor / Multi-Track Stems..." => "🎼 Importar voces / stems multipista...",
+        "✨ ACE-Step & Stable Audio Generator..." => "✨ Generador ACE-Step & Stable Audio...",
+        "🤖 AI Co-Producer Assistent..." => "🤖 Asistente coproductor de IA...",
+
+        "🎛 Verktyg" => "🎛 Herramientas",
+        "🎲 Melodi- & Beat-Tärning... (F12)" => "🎲 Dados de melodía y ritmo... (F12)",
+        "🎹 Smart Ackord- & Skalgenerator... (F11)" => "🎹 Generador inteligente de acordes y escalas... (F11)",
+        "🎛 Modulärt FX-Pedalbord & Stompboxes..." => "🎛 Pedalboard FX modular y stompboxes...",
+        "🎯 Hårdvarustämapparat & Pitch Scope (Tuner)..." => "🎯 Afinador de hardware y pitch scope (tuner)...",
+        "📑 Låtstruktur & Formdelar..." => "📑 Estructura de canción y secciones...",
+        "🎙 Mikrofonjustering & Inmatningspanel..." => "🎙 Ajuste de micrófono y panel de entrada...",
+
+        "⚙ Inställningar" => "⚙ Ajustes",
+        "🎙 Mikrofoninställningar & Inmatningsenhet (Samson/USB)..." => "🎙 Ajustes de micrófono y dispositivo de entrada (Samson/USB)...",
+        "🎛 Ljud- & MIDI-inställningar (PipeWire/ALSA/JACK)..." => "🎛 Ajustes de audio y MIDI (PipeWire/ALSA/JACK)...",
+        "🎛 Hårdvarukontroller (MCU / OSC)..." => "🎛 Controladores de hardware (MCU / OSC)...",
+
+        "❓ Hjälp" => "❓ Ayuda",
+        "📖 Snabbguide & Manual (F1)" => "📖 Guía rápida y manual (F1)",
+        "ℹ Om Sonix Studio..." => "ℹ Acerca de Sonix Studio...",
+        "📁 Projekt:" => "📁 Proyecto:",
+        "Klicka för att hantera projekt" => "Haz clic para gestionar proyectos",
+
+        "📁 Browser" => "📁 Explorador",
+        "VY:" => "VER:",
+        "STUDIOS:" => "ESTUDIOS:",
+        "VERKTYG:" => "HERRAMIENTAS:",
+        "🎼 Tidslinje" => "🎼 Línea de tiempo",
+        "🥁 Rack" => "🥁 Rack",
+        "🎹 Piano" => "🎹 Piano",
+        "🎙 Sångstudio" => "🎙 Estudio vocal",
+        "🎚 Mixer" => "🎚 Mezclador",
+        "🤖 AI" => "🤖 IA",
+        "✨ Alchemy" => "✨ Alchemy",
+        "🥁 Trummor" => "🥁 Batería",
+        "🧩 Patcher" => "🧩 Patcher",
+        "🧠 Stems" => "🧠 Stems",
+        "🔌 Plugins" => "🔌 Plugins",
+        "🎛 Remix" => "🎛 Remix",
+        "🎲 Tärning" => "🎲 Dados",
+        "🎹 Ackord" => "🎹 Acordes",
+        "🎛 FX-Rack" => "🎛 Rack FX",
+        "🎯 Stämmare" => "🎯 Afinador",
+        "📑 Formdelar" => "📑 Secciones",
+        "Idé- & Slumptärning för Melodier & Beats (F12)" => "Dados de ideas y azar para melodías y ritmos (F12)",
+        "Smart Ackord- & Skalgenerator (F11)" => "Generador inteligente de acordes y escalas (F11)",
+        "Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)" => "Pedalboard FX modular y rack de stompboxes (Ctrl+R)",
+        "Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)" => "Afinador de hardware y analizador de tono (Ctrl+T)",
+        "Låtstruktur & Formdelar" => "Estructura de canción y secciones",
+        "PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW" => "PipeWire / ALSA 44.1kHz • Polifonía de 16 voces • Sonix Studio Pro DAW",
+
+        "Läge ändrat till: PAT (Mönsterloop)" => "Modo cambiado a: PAT (bucle de patrón)",
+        "Läge ändrat till: SONG (Låtläge)" => "Modo cambiado a: SONG (modo canción)",
+
+        "Språk" => "Idioma",
+        "🌐 Språk" => "🌐 Idioma",
+        "📤 Exportera projekt" => "📤 Exportar proyecto",
+        "Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till." => "Renderiza todo el proyecto sin conexión (muestras WAV reales, audio de línea de tiempo y efectos) con metadatos limpios; nunca se añade información de IA o proveedores.",
+        "1. VAD SKALL EXPORTERAS" => "1. QUÉ EXPORTAR",
+        "Hel låt – Master Mix (Fullt Projekt)" => "Canción completa – mezcla maestra (proyecto completo)",
+        "Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter." => "Renderiza toda la canción/arreglo con todas las muestras del Channel Rack, audio de la línea de tiempo (stems/mic) y efectos maestros.",
+        "Individuella spår – Torra (Stems Dry)" => "Pistas individuales – secas (stems dry)",
+        "Exporterar varje tidslinjespår för sig utan reverb/delay för extern mixning." => "Exporta cada pista de la línea de tiempo por separado, sin reverb/delay, para mezcla externa.",
+        "Individuella spår – Med FX (Stems Wet)" => "Pistas individuales – con FX (stems wet)",
+        "Exporterar varje tidslinjespår för sig med alla effekter och modulation." => "Exporta cada pista de la línea de tiempo por separado, con todos los efectos y modulación.",
+        "2. FORMAT & LJUDKVALITET" => "2. FORMATO Y CALIDAD DE AUDIO",
+        "Format:" => "Formato:",
+        "Samplingsfrekvens:" => "Frecuencia de muestreo:",
+        "3. FILNAMN & MAPPA" => "3. NOMBRE DE ARCHIVO Y CARPETA",
+        "Låt-/filnamn:" => "Canción/nombre de archivo:",
+        "Mapp:" => "Carpeta:",
+        "Exempel:" => "Ejemplo:",
+        "4. METADATA (endast Sonix – ingen AI-info)" => "4. METADATOS (solo Sonix – sin información de IA)",
+        "Titel:" => "Título:",
+        "Artist:" => "Artista:",
+        "Album:" => "Álbum:",
+        "Genre:" => "Género:",
+        "År:" => "Año:",
+        "Kommentar:" => "Comentario:",
+        "Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem." => "El marcador de software siempre se establece en Sonix Studio. Deja los campos vacíos si quieres omitirlos.",
+        "Status:" => "Estado:",
+        "🚀 STARTA EXPORT" => "🚀 INICIAR EXPORTACIÓN",
+        "Stäng" => "Cerrar",
+        _ => return None,
+    })
+}
+
+// ====================================================================
+// FRANÇAIS
+// ====================================================================
+fn tr_fr(key: &str) -> Option<&'static str> {
+    Some(match key {
+        "📁 Arkiv" => "📁 Fichier",
+        "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Nouveau projet vide (Ctrl+N)",
+        "📂 Öppna projekt... (Ctrl+O)" => "📂 Ouvrir un projet... (Ctrl+O)",
+        "💾 Spara projekt (Ctrl+S)" => "💾 Enregistrer le projet (Ctrl+S)",
+        "💾 Spara som... (Ctrl+Shift+S)" => "💾 Enregistrer sous... (Ctrl+Shift+S)",
+        "📁 Filhanterare / Projektbläddrare (Ctrl+P)" => "📁 Gestionnaire de fichiers / Explorateur de projets (Ctrl+P)",
+        "⚡ Ladda Demo-projekt" => "⚡ Charger le projet de démo",
+        "🎼 Importera Stämmor / Stems... (Ctrl+I)" => "🎼 Importer des voix / stems... (Ctrl+I)",
+        "↗ Exportera projekt (Ctrl+E)" => "↗ Exporter le projet (Ctrl+E)",
+        "🚪 Avsluta" => "🚪 Quitter",
+
+        "✏ Redigera" => "✏ Édition",
+        "↶ Ångra (Ctrl+Z)" => "↶ Annuler (Ctrl+Z)",
+        "↷ Gör om (Ctrl+Y)" => "↷ Rétablir (Ctrl+Y)",
+        "✂ Klipp vid spelhuvud (Ctrl+B / S)" => "✂ Couper à la tête de lecture (Ctrl+B / S)",
+        "📋 Duplicera markerat (Ctrl+D)" => "📋 Dupliquer la sélection (Ctrl+D)",
+        "🗑 Ta bort markerat (Del)" => "🗑 Supprimer la sélection (Suppr)",
+        "🧹 Rensa alla spår" => "🧹 Vider toutes les pistes",
+        "Rensade alla spår och tidslinjeklipp." => "Toutes les pistes et clips de la timeline ont été vidés.",
+
+        "👁 Vy" => "👁 Affichage",
+        "📊 Tidslinje / Arranger (F3)" => "📊 Timeline / Arrangeur (F3)",
+        "🥁 Sonix Channel Rack (F4)" => "🥁 Sonix Channel Rack (F4)",
+        "🎹 Sonix Piano Roll (F5)" => "🎹 Sonix Piano Roll (F5)",
+        "🎛 Mixer Console (F6)" => "🎛 Console de mixage (F6)",
+        "🎛 Analog Synthesizer (F7)" => "🎛 Synthétiseur analogique (F7)",
+        "🎙 Vocal Studio & Harmonizer (F8)" => "🎙 Studio vocal et harmoniseur (F8)",
+        "🤖 AI Music Studio (F9)" => "🤖 Studio musical IA (F9)",
+        "🔌 Modulär Synt & Patcher (F10)" => "🔌 Synthétiseur modulaire et Patcher (F10)",
+        "📁 Växla Webbläsare / Bibliotek: PÅ" => "📁 Basculer navigateur / bibliothèque : ON",
+        "📁 Växla Webbläsare / Bibliotek: AV" => "📁 Basculer navigateur / bibliothèque : OFF",
+
+        "🤖 AI & Providers" => "🤖 IA et fournisseurs",
+        "⚙ AI Provider Inställningar & API-nycklar..." => "⚙ Réglages des fournisseurs d'IA et clés API...",
+        "🎼 Importera Stämmor / Multi-Track Stems..." => "🎼 Importer des voix / stems multipistes...",
+        "✨ ACE-Step & Stable Audio Generator..." => "✨ Générateur ACE-Step et Stable Audio...",
+        "🤖 AI Co-Producer Assistent..." => "🤖 Assistant co-producteur IA...",
+
+        "🎛 Verktyg" => "🎛 Outils",
+        "🎲 Melodi- & Beat-Tärning... (F12)" => "🎲 Dés de mélodie et de beat... (F12)",
+        "🎹 Smart Ackord- & Skalgenerator... (F11)" => "🎹 Générateur intelligent d'accords et de gammes... (F11)",
+        "🎛 Modulärt FX-Pedalbord & Stompboxes..." => "🎛 Pédalier FX modulaire et stompboxes...",
+        "🎯 Hårdvarustämapparat & Pitch Scope (Tuner)..." => "🎯 Accordeur matériel et pitch scope (tuner)...",
+        "📑 Låtstruktur & Formdelar..." => "📑 Structure de chanson et sections...",
+        "🎙 Mikrofonjustering & Inmatningspanel..." => "🎙 Réglage du micro et panneau d'entrée...",
+
+        "⚙ Inställningar" => "⚙ Paramètres",
+        "🎙 Mikrofoninställningar & Inmatningsenhet (Samson/USB)..." => "🎙 Paramètres du micro et périphérique d'entrée (Samson/USB)...",
+        "🎛 Ljud- & MIDI-inställningar (PipeWire/ALSA/JACK)..." => "🎛 Paramètres audio et MIDI (PipeWire/ALSA/JACK)...",
+        "🎛 Hårdvarukontroller (MCU / OSC)..." => "🎛 Contrôleurs matériels (MCU / OSC)...",
+
+        "❓ Hjälp" => "❓ Aide",
+        "📖 Snabbguide & Manual (F1)" => "📖 Guide rapide et manuel (F1)",
+        "ℹ Om Sonix Studio..." => "ℹ À propos de Sonix Studio...",
+        "📁 Projekt:" => "📁 Projet :",
+        "Klicka för att hantera projekt" => "Cliquez pour gérer les projets",
+
+        "📁 Browser" => "📁 Navigateur",
+        "VY:" => "VUE :",
+        "STUDIOS:" => "STUDIOS :",
+        "VERKTYG:" => "OUTILS :",
+        "🎼 Tidslinje" => "🎼 Timeline",
+        "🥁 Rack" => "🥁 Rack",
+        "🎹 Piano" => "🎹 Piano",
+        "🎙 Sångstudio" => "🎙 Studio vocal",
+        "🎚 Mixer" => "🎚 Table de mixage",
+        "🤖 AI" => "🤖 IA",
+        "✨ Alchemy" => "✨ Alchemy",
+        "🥁 Trummor" => "🥁 Batterie",
+        "🧩 Patcher" => "🧩 Patcher",
+        "🧠 Stems" => "🧠 Stems",
+        "🔌 Plugins" => "🔌 Plugins",
+        "🎛 Remix" => "🎛 Remix",
+        "🎲 Tärning" => "🎲 Dés",
+        "🎹 Ackord" => "🎹 Accords",
+        "🎛 FX-Rack" => "🎛 Rack FX",
+        "🎯 Stämmare" => "🎯 Accordeur",
+        "📑 Formdelar" => "📑 Sections",
+        "Idé- & Slumptärning för Melodier & Beats (F12)" => "Dés d'idées et de hasard pour mélodies et beats (F12)",
+        "Smart Ackord- & Skalgenerator (F11)" => "Générateur intelligent d'accords et de gammes (F11)",
+        "Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)" => "Pédalier FX modulaire et rack de stompboxes (Ctrl+R)",
+        "Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)" => "Accordeur matériel et analyseur de hauteur (Ctrl+T)",
+        "Låtstruktur & Formdelar" => "Structure de chanson et sections",
+        "PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW" => "PipeWire / ALSA 44.1kHz • Polyphonie à 16 voix • Sonix Studio Pro DAW",
+
+        "Läge ändrat till: PAT (Mönsterloop)" => "Mode changé en : PAT (boucle de motif)",
+        "Läge ändrat till: SONG (Låtläge)" => "Mode changé en : SONG (mode chanson)",
+
+        "Språk" => "Langue",
+        "🌐 Språk" => "🌐 Langue",
+        "📤 Exportera projekt" => "📤 Exporter le projet",
+        "Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till." => "Rendu hors ligne du projet complet (vrais échantillons WAV, audio de timeline et effets) avec des métadonnées propres – aucune information d'IA ou de fournisseur n'est jamais ajoutée.",
+        "1. VAD SKALL EXPORTERAS" => "1. QUOI EXPORTER",
+        "Hel låt – Master Mix (Fullt Projekt)" => "Chanson complète – mixage master (projet complet)",
+        "Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter." => "Rend la chanson/l'arrangement complet avec tous les échantillons du Channel Rack, l'audio de la timeline (stems/mic) et les effets master.",
+        "Individuella spår – Torra (Stems Dry)" => "Pistes individuelles – sèches (stems dry)",
+        "Exporterar varje tidslinjespår för sig utan reverb/delay för extern mixning." => "Exporte chaque piste de la timeline séparément, sans réverb/délai, pour un mixage externe.",
+        "Individuella spår – Med FX (Stems Wet)" => "Pistes individuelles – avec FX (stems wet)",
+        "Exporterar varje tidslinjespår för sig med alla effekter och modulation." => "Exporte chaque piste de la timeline séparément, avec tous les effets et la modulation.",
+        "2. FORMAT & LJUDKVALITET" => "2. FORMAT ET QUALITÉ AUDIO",
+        "Format:" => "Format :",
+        "Samplingsfrekvens:" => "Fréquence d'échantillonnage :",
+        "3. FILNAMN & MAPPA" => "3. NOM DE FICHIER ET DOSSIER",
+        "Låt-/filnamn:" => "Chanson / nom du fichier :",
+        "Mapp:" => "Dossier :",
+        "Exempel:" => "Exemple :",
+        "4. METADATA (endast Sonix – ingen AI-info)" => "4. MÉTADONNÉES (Sonix uniquement – aucune info IA)",
+        "Titel:" => "Titre :",
+        "Artist:" => "Artiste :",
+        "Album:" => "Album :",
+        "Genre:" => "Genre :",
+        "År:" => "Année :",
+        "Kommentar:" => "Commentaire :",
+        "Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem." => "Le marqueur logiciel est toujours défini sur Sonix Studio. Laissez les champs vides pour les omettre.",
+        "Status:" => "Statut :",
+        "🚀 STARTA EXPORT" => "🚀 LANCER L'EXPORT",
+        "Stäng" => "Fermer",
+        _ => return None,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_keys() -> [&'static str; 6] {
+        [
+            "📁 Arkiv",
+            "🎼 Tidslinje",
+            "Stäng",
+            "📤 Exportera projekt",
+            "Hel låt – Master Mix (Fullt Projekt)",
+            "VY:",
+        ]
+    }
+
+    #[test]
+    fn swedish_returns_key() {
+        for k in sample_keys() {
+            assert_eq!(translate(Language::Sv, k), k);
+        }
+    }
+
+    #[test]
+    fn english_translations_exist_for_sample() {
+        for lang in [Language::En, Language::Da, Language::No, Language::De, Language::Es, Language::Fr] {
+            for k in sample_keys() {
+                let out = translate(lang, k);
+                assert!(!out.is_empty(), "no translation for {k} in {lang:?}");
+            }
+        }
+        assert_eq!(translate(Language::En, "📁 Arkiv"), "📁 File");
+        assert_eq!(translate(Language::De, "Stäng"), "Schließen");
+        assert_eq!(translate(Language::Fr, "📤 Exportera projekt"), "📤 Exporter le projet");
+    }
+
+    #[test]
+    fn config_roundtrip_via_code() {
+        let en = Language::from_code("en");
+        let sv = Language::from_code("sv-SE.UTF-8");
+        assert_eq!(en, Language::En);
+        assert_eq!(sv, Language::Sv);
+        assert_eq!(Language::from_code("nb"), Language::No);
+        assert_eq!(Language::from_code("garbage"), Language::En);
+    }
+}

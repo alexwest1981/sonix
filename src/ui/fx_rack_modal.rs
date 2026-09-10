@@ -1,5 +1,8 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
-use crate::audio::{AudioCommand, AudioEngine};
+use crate::audio::{
+    AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
+    LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams, ReverbParams,
+};
 use crate::ui::theme::Theme;
 use crate::ui::widgets::rotary_knob;
 
@@ -38,18 +41,7 @@ pub struct FxRackState {
     pub search_query: String,
     pub selected_category: &'static str,
     pub eq_nodes: Vec<VisualEqNode>,
-    pub vocal_doubler_strength: f32,
-    pub vocal_doubler_mod: f32,
-    pub vocal_doubler_boost: bool,
-    pub compressor_thresh_db: f32,
-    pub compressor_ratio: f32,
-    pub compressor_attack_ms: f32,
     pub compressor_release_ms: f32,
-    pub compressor_gr_meter: f32,
-    pub de_esser_amount: f32,
-    pub noise_gate_thresh: f32,
-    pub filter_cutoff_hz: f32,
-    pub filter_res: f32,
 }
 
 impl Default for FxRackState {
@@ -187,18 +179,7 @@ impl Default for FxRackState {
                 VisualEqNode { name: "High-Mid", freq_hz: 2800.0, gain_db: 3.0, q: 1.0, color: Color32::from_rgb(80, 220, 120), is_active: true },
                 VisualEqNode { name: "High (Air)", freq_hz: 11000.0, gain_db: 1.5, q: 0.8, color: Color32::from_rgb(0, 200, 255), is_active: true },
             ],
-            vocal_doubler_strength: 0.70,
-            vocal_doubler_mod: 0.35,
-            vocal_doubler_boost: true,
-            compressor_thresh_db: -18.0,
-            compressor_ratio: 4.0,
-            compressor_attack_ms: 15.0,
             compressor_release_ms: 120.0,
-            compressor_gr_meter: 0.35,
-            de_esser_amount: 0.45,
-            noise_gate_thresh: -42.0,
-            filter_cutoff_hz: 18000.0,
-            filter_res: 0.25,
         }
     }
 }
@@ -234,6 +215,104 @@ impl FxRackState {
             _ => {}
         }
     }
+
+    fn pedal(&self, id: &str) -> Option<&FxPedal> {
+        self.pedals.iter().find(|p| p.id == id)
+    }
+
+    /// Translate the UI rack state into the DSP parameter struct sent to the engine.
+    pub fn build_master_fx_params(&self) -> MasterFxParams {
+        let eq_pedal_on = self.pedal("visual_eq").map(|p| p.enabled).unwrap_or(false);
+        let mut eq_bands = [MasterEqBand::flat(); 4];
+        for (i, node) in self.eq_nodes.iter().take(4).enumerate() {
+            eq_bands[i] = MasterEqBand {
+                freq: node.freq_hz,
+                gain_db: node.gain_db,
+                q: node.q,
+                active: node.is_active,
+            };
+        }
+
+        let comp_p = self.pedal("dyn_comp");
+        let comp = CompressorParams {
+            threshold_db: -60.0 + comp_p.map(|p| p.p1_val).unwrap_or(0.65) * 60.0,
+            ratio: 1.0 + comp_p.map(|p| p.p2_val).unwrap_or(0.4) * 11.0,
+            attack_ms: 1.0 + comp_p.map(|p| p.p3_val).unwrap_or(0.3) * 99.0,
+            release_ms: self.compressor_release_ms.max(5.0),
+            makeup_db: comp_p.map(|p| (p.mix - 0.5) * 12.0).unwrap_or(0.0),
+        };
+
+        let dbl_p = self.pedal("vocal_doubler");
+        let doubler = DoublerParams {
+            strength: dbl_p.map(|p| p.p1_val).unwrap_or(0.7),
+            modulation: dbl_p.map(|p| p.p2_val).unwrap_or(0.35),
+            width: dbl_p.map(|p| p.p3_val).unwrap_or(0.8),
+        };
+
+        let ds_p = self.pedal("de_esser");
+        let deesser = DeEsserParams {
+            amount: ds_p.map(|p| p.p3_val).unwrap_or(0.45),
+            freq: 4000.0 + ds_p.map(|p| p.p2_val).unwrap_or(0.65) * 8000.0,
+        };
+
+        let gate_p = self.pedal("noise_gate");
+        let gate = GateParams {
+            threshold: {
+                let thresh_db = -60.0 + gate_p.map(|p| p.p1_val).unwrap_or(0.25).clamp(0.0, 1.0) * 48.0;
+                10.0_f32.powf(thresh_db / 20.0).clamp(0.0001, 0.5)
+            },
+            attack_ms: 1.0 + gate_p.map(|p| p.p2_val).unwrap_or(0.15) * 49.0,
+            release_ms: 20.0 + gate_p.map(|p| p.p3_val).unwrap_or(0.4) * 480.0,
+        };
+
+        let filt_p = self.pedal("analog_filter");
+        let filter = MasterFilterParams {
+            cutoff: {
+                let v = filt_p.map(|p| p.p1_val).unwrap_or(0.85).clamp(0.0, 1.0);
+                20.0 * (20000.0_f32 / 20.0).powf(v)
+            },
+            resonance: 0.1 + filt_p.map(|p| p.p2_val).unwrap_or(0.30) * 7.9,
+            drive: 1.0 + filt_p.map(|p| p.p3_val).unwrap_or(0.2) * 9.0,
+            enabled: filt_p.map(|p| p.enabled).unwrap_or(false),
+        };
+
+        let lim_p = self.pedal("brickwall_limiter");
+        let limiter = LimiterParams {
+            ceiling: lim_p.map(|p| p.p1_val).unwrap_or(0.95).clamp(0.1, 1.0),
+            release_ms: 5.0 + lim_p.map(|p| p.p2_val).unwrap_or(0.35) * 245.0,
+            boost: 0.5 + lim_p.map(|p| p.p3_val).unwrap_or(0.5) * 2.5,
+        };
+
+        MasterFxParams {
+            eq_bands,
+            eq_enabled: eq_pedal_on,
+            comp,
+            comp_enabled: comp_p.map(|p| p.enabled).unwrap_or(false),
+            doubler,
+            doubler_enabled: dbl_p.map(|p| p.enabled).unwrap_or(false),
+            deesser,
+            deesser_enabled: ds_p.map(|p| p.enabled).unwrap_or(false),
+            gate,
+            gate_enabled: gate_p.map(|p| p.enabled).unwrap_or(false),
+            filter,
+            limiter,
+            limiter_enabled: lim_p.map(|p| p.enabled).unwrap_or(false),
+        }
+    }
+
+    /// Push the current rack to the audio engine in real time.
+    pub fn sync_to_engine(&self, engine: &mut AudioEngine) {
+        let _ = engine.send_command(AudioCommand::SetMasterFx(self.build_master_fx_params()));
+
+        if let Some(p) = self.pedal("studio_reverb") {
+            let params = ReverbParams {
+                room_size: p.p1_val,
+                damping: p.p2_val,
+                mix: if p.enabled { p.mix } else { 0.0 },
+            };
+            let _ = engine.send_command(AudioCommand::SetReverb(params));
+        }
+    }
 }
 
 pub fn render_fx_rack_modal(
@@ -247,9 +326,15 @@ pub fn render_fx_rack_modal(
         return;
     }
 
+    // Push the current rack state to the DSP every frame for real-time auditioning.
+    state.sync_to_engine(engine);
+
+    // Real compressor gain reduction reported by the audio thread.
+    let master_gr_db = engine.master_gain_reduction_db();
+
     let mut close = false;
 
-    egui::Window::new("🎛 Soundtrap Studio Effects & FX Rack")
+    egui::Window::new(crate::i18n::t("🎛 Soundtrap Studio Effects & FX Rack"))
         .open(open)
         .collapsible(false)
         .resizable(true)
@@ -261,18 +346,18 @@ pub fn render_fx_rack_modal(
                 // 1. TOP HEADER & NAVIGATION TABS
                 // ============================================================
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("🎛 SOUNDTRAP FX RACK").strong().size(15.0).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎛 SOUNDTRAP FX RACK")).strong().size(15.0).color(Theme::FL_ORANGE));
                     ui.separator();
-                    ui.label(egui::RichText::new("Modulär effektkedja  •  Visual Parametric EQ  •  Dynamisk kompressor  •  Vocal Doubler").size(11.0).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Modulär effektkedja  •  Visual Parametric EQ  •  Dynamisk kompressor  •  Vocal Doubler")).size(11.0).color(Theme::TEXT_MUTED));
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let lib_btn = ui.selectable_label(state.active_tab == 2, "🗂 Effektbibliotek");
+                        let lib_btn = ui.selectable_label(state.active_tab == 2, crate::i18n::t("🗂 Effektbibliotek"));
                         if lib_btn.clicked() { state.active_tab = 2; }
 
                         let eq_btn = ui.selectable_label(state.active_tab == 1, "📊 Visual EQ");
                         if eq_btn.clicked() { state.active_tab = 1; }
 
-                        let rack_btn = ui.selectable_label(state.active_tab == 0, "🎛 Effektkedja");
+                        let rack_btn = ui.selectable_label(state.active_tab == 0, crate::i18n::t("🎛 Effektkedja"));
                         if rack_btn.clicked() { state.active_tab = 0; }
                     });
                 });
@@ -282,7 +367,7 @@ pub fn render_fx_rack_modal(
                 // Presets toolbar
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Kedjemallar (Presets):").strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("Kedjemallar (Presets):")).strong().color(Theme::FL_CYAN));
                         let presets = ["Warm Studio Vocal", "Punchy Modern Pop", "Lo-Fi Nostalgia & Warmth", "80s Gated Arena Reverb", "Clean Master"];
                         egui::ComboBox::from_id_salt("fx_master_preset_picker")
                             .selected_text(*presets.get(state.selected_preset).unwrap_or(&"Standard"))
@@ -291,22 +376,22 @@ pub fn render_fx_rack_modal(
                                 for (pr_idx, &pr_name) in presets.iter().enumerate() {
                                     if ui.selectable_label(state.selected_preset == pr_idx, pr_name).clicked() {
                                         state.load_preset(pr_idx);
-                                        *status_msg = format!("🎛 Laddade FX-preset: {}", pr_name);
+                                        *status_msg = crate::tstatus!("🎛 Laddade FX-preset: {}", pr_name);
                                     }
                                 }
                             });
 
                         ui.separator();
-                        if ui.button("⚡ Aktivera alla").clicked() {
+                        if ui.button(crate::i18n::t("⚡ Aktivera alla")).clicked() {
                             for p in &mut state.pedals { p.enabled = true; }
                         }
-                        if ui.button("⚪ Förbikoppla (Bypass)").clicked() {
+                        if ui.button(crate::i18n::t("⚪ Förbikoppla (Bypass)")).clicked() {
                             for p in &mut state.pedals { p.enabled = false; }
                         }
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let enabled_count = state.pedals.iter().filter(|p| p.enabled).count();
-                            ui.label(egui::RichText::new(format!("{} aktiva effekter", enabled_count)).size(10.5).color(Theme::FL_GREEN));
+                            ui.label(egui::RichText::new(crate::tstatus!("{} aktiva effekter", enabled_count)).size(10.5).color(Theme::FL_GREEN));
                         });
                     });
                 });
@@ -319,7 +404,7 @@ pub fn render_fx_rack_modal(
                 match state.active_tab {
                     // TAB 0: MODULAR PEDAL CHAIN (Soundtrap Horizontal Cards)
                     0 => {
-                        render_modular_pedal_chain(ui, state);
+                        render_modular_pedal_chain(ui, state, master_gr_db);
                     }
                     // TAB 1: VISUAL PARAMETRIC EQ (Interactive Frequency Canvas)
                     1 => {
@@ -339,17 +424,17 @@ pub fn render_fx_rack_modal(
                 // ============================================================
                 ui.horizontal(|ui| {
                     if ui.add(
-                        egui::Button::new(egui::RichText::new("✔ Tillämpa på Spår & Master").strong().color(Color32::BLACK))
+                        egui::Button::new(egui::RichText::new(crate::i18n::t("✔ Tillämpa på Spår & Master")).strong().color(Color32::BLACK))
                             .fill(Theme::FL_GREEN)
                             .min_size(Vec2::new(220.0, 32.0)),
                     ).clicked() {
-                        let _ = engine.send_command(AudioCommand::SetMasterVolume(0.95));
-                        *status_msg = "✔ Effektinställningar applicerade i realtid!".to_string();
+                        state.sync_to_engine(engine);
+                        *status_msg = crate::i18n::t("✔ Effektinställningar applicerade i realtid!").to_string();
                         close = true;
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Stäng").clicked() {
+                        if ui.button(crate::i18n::t("Stäng")).clicked() {
                             close = true;
                         }
                     });
@@ -365,14 +450,17 @@ pub fn render_fx_rack_modal(
 // ============================================================================
 // MODULAR PEDAL CHAIN RENDERER
 // ============================================================================
-fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState) {
+fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db: f32) {
+    // Split the borrow so the Visual EQ pedal can read/write the real EQ nodes.
+    let FxRackState { pedals, eq_nodes, active_tab, .. } = state;
+
     egui::ScrollArea::horizontal()
         .max_height(400.0)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(10.0, 0.0);
 
-                for pedal in state.pedals.iter_mut() {
+                for pedal in pedals.iter_mut() {
                     let card_w = 175.0;
                     let card_h = 360.0;
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(card_w, card_h), Sense::hover());
@@ -416,7 +504,7 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState) {
                     );
 
                     child.vertical(|ui| {
-                        ui.checkbox(&mut pedal.enabled, "Aktiv");
+                        ui.checkbox(&mut pedal.enabled, crate::i18n::t("Aktiv"));
                         ui.add_space(4.0);
 
                         // Special visuals per pedal type
@@ -424,20 +512,38 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState) {
                             let (eq_box, _) = ui.allocate_exact_size(Vec2::new(card_w - 20.0, 50.0), Sense::hover());
                             ui.painter().rect_filled(eq_box, Rounding::same(4.0), Color32::from_rgb(12, 16, 24));
                             ui.painter().rect_stroke(eq_box, Rounding::same(4.0), Stroke::new(1.0_f32, Color32::from_rgb(30, 42, 58)));
+                            // Live mini curve derived from the real 4-band EQ nodes.
                             let mid = eq_box.center().y;
-                            let p1 = Pos2::new(eq_box.min.x + 5.0, mid + 6.0);
-                            let p2 = Pos2::new(eq_box.min.x + 35.0, mid - 12.0);
-                            let p3 = Pos2::new(eq_box.min.x + 95.0, mid + 8.0);
-                            let p4 = Pos2::new(eq_box.max.x - 5.0, mid - 6.0);
-                            ui.painter().line_segment([p1, p2], Stroke::new(1.8_f32, pedal.color));
-                            ui.painter().line_segment([p2, p3], Stroke::new(1.8_f32, pedal.color));
-                            ui.painter().line_segment([p3, p4], Stroke::new(1.8_f32, pedal.color));
+                            let span = eq_box.height() * 0.42;
+                            let steps = 48;
+                            let mut prev: Option<Pos2> = None;
+                            for s in 0..=steps {
+                                let norm = s as f32 / steps as f32;
+                                let f = 20.0 * (20000.0_f32 / 20.0).powf(norm);
+                                let mut gain = 0.0_f32;
+                                for node in eq_nodes.iter() {
+                                    if !node.is_active { continue; }
+                                    let oct = (f / node.freq_hz).log2();
+                                    gain += node.gain_db * (-oct.powi(2) * node.q * 1.8).exp();
+                                }
+                                let p = Pos2::new(
+                                    eq_box.min.x + norm * eq_box.width(),
+                                    mid - (gain.clamp(-12.0, 12.0) / 12.0) * span,
+                                );
+                                if let Some(q) = prev {
+                                    ui.painter().line_segment([q, p], Stroke::new(1.8_f32, pedal.color));
+                                }
+                                prev = Some(p);
+                            }
                         } else if pedal.id == "dyn_comp" {
                             let (gr_box, _) = ui.allocate_exact_size(Vec2::new(card_w - 20.0, 14.0), Sense::hover());
                             ui.painter().rect_filled(gr_box, Rounding::same(2.0), Color32::from_rgb(12, 16, 24));
-                            let fill_w = gr_box.width() * 0.45;
+                            // Real gain reduction reported by the audio thread (0..-20 dB).
+                            let gr_frac = (master_gr_db.abs() / 20.0).clamp(0.0, 1.0);
+                            let fill_w = gr_box.width() * gr_frac;
                             ui.painter().rect_filled(Rect::from_min_size(gr_box.min, Vec2::new(fill_w, gr_box.height())), Rounding::same(2.0), Theme::FL_ORANGE);
-                            ui.painter().text(gr_box.center(), egui::Align2::CENTER_CENTER, "GR: -4.5 dB", egui::FontId::proportional(8.5), Color32::BLACK);
+                            let gr_txt = if master_gr_db <= -0.05 { format!("GR {:.1} dB", master_gr_db) } else { "GR".to_string() };
+                            ui.painter().text(gr_box.center(), egui::Align2::CENTER_CENTER, gr_txt, egui::FontId::proportional(8.5), Color32::BLACK);
                         } else if pedal.id == "vocal_doubler" {
                             let (orb_box, _) = ui.allocate_exact_size(Vec2::new(card_w - 20.0, 45.0), Sense::hover());
                             ui.painter().rect_filled(orb_box, Rounding::same(4.0), Color32::from_rgb(12, 16, 24));
@@ -449,10 +555,20 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState) {
 
                         ui.add_space(6.0);
 
-                        rotary_knob(ui, &mut pedal.p1_val, 0.0, 1.0, pedal.p1_name, pedal.color, 18.0);
-                        rotary_knob(ui, &mut pedal.p2_val, 0.0, 1.0, pedal.p2_name, pedal.color, 18.0);
-                        rotary_knob(ui, &mut pedal.p3_val, 0.0, 1.0, pedal.p3_name, pedal.color, 18.0);
-                        rotary_knob(ui, &mut pedal.mix, 0.0, 1.0, "MIX", Color32::WHITE, 18.0);
+                        if pedal.id == "visual_eq" {
+                            // Knobs drive the real 4-band EQ nodes (same state as
+                            // the Visual EQ tab).
+                            let short = ["LOW", "L-MID", "H-MID", "HIGH"];
+                            for (i, node) in eq_nodes.iter_mut().enumerate() {
+                                let label = short.get(i).copied().unwrap_or("BAND");
+                                rotary_knob(ui, &mut node.gain_db, -12.0, 12.0, label, node.color, 14.0);
+                            }
+                        } else {
+                            rotary_knob(ui, &mut pedal.p1_val, 0.0, 1.0, pedal.p1_name, pedal.color, 18.0);
+                            rotary_knob(ui, &mut pedal.p2_val, 0.0, 1.0, pedal.p2_name, pedal.color, 18.0);
+                            rotary_knob(ui, &mut pedal.p3_val, 0.0, 1.0, pedal.p3_name, pedal.color, 18.0);
+                            rotary_knob(ui, &mut pedal.mix, 0.0, 1.0, "MIX", Color32::WHITE, 18.0);
+                        }
 
                         ui.add_space(4.0);
                         ui.label(egui::RichText::new(pedal.category).size(9.0).color(Theme::TEXT_MUTED));
@@ -466,10 +582,10 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState) {
                 ui.painter().rect_filled(add_rect, Rounding::same(8.0), Color32::from_rgb(18, 22, 30));
                 ui.painter().rect_stroke(add_rect, Rounding::same(8.0), Stroke::new(1.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(45, 55, 75)).color));
                 ui.painter().text(add_rect.center() - Vec2::new(0.0, 15.0), egui::Align2::CENTER_CENTER, "➕", egui::FontId::proportional(26.0), Theme::FL_CYAN);
-                ui.painter().text(add_rect.center() + Vec2::new(0.0, 18.0), egui::Align2::CENTER_CENTER, "Lägg till från\nEffektbiblioteket", egui::FontId::proportional(11.0), Theme::TEXT_BRIGHT);
+                ui.painter().text(add_rect.center() + Vec2::new(0.0, 18.0), egui::Align2::CENTER_CENTER, crate::i18n::t("Lägg till från\nEffektbiblioteket"), egui::FontId::proportional(11.0), Theme::TEXT_BRIGHT);
 
                 if add_resp.clicked() {
-                    state.active_tab = 2; // Switch to library
+                    *active_tab = 2; // Switch to library
                 }
             });
         });
@@ -481,9 +597,9 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState) {
 fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("📊 4-BANDS PARAMETRISK EQUALIZER").strong().size(13.0).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("📊 4-BANDS PARAMETRISK EQUALIZER")).strong().size(13.0).color(Theme::FL_CYAN));
             ui.separator();
-            ui.label(egui::RichText::new("Dra i noderna för att justera frekvens och förstärkning (dB)").size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Dra i noderna för att justera frekvens och förstärkning (dB)")).size(11.0).color(Theme::TEXT_MUTED));
         });
 
         ui.add_space(4.0);
@@ -600,7 +716,7 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
                         ui.horizontal(|ui| {
                             rotary_knob(ui, &mut node.gain_db, -12.0, 12.0, "GAIN dB", node.color, 16.0);
                             rotary_knob(ui, &mut node.freq_hz, 20.0, 20000.0, "FREQ", node.color, 16.0);
-                            rotary_knob(ui, &mut node.q, 0.3, 4.0, "Q-FAKTOR", node.color, 16.0);
+                            rotary_knob(ui, &mut node.q, 0.3, 4.0, crate::i18n::t("Q-FAKTOR"), node.color, 16.0);
                         });
                     });
                 });
@@ -615,23 +731,23 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
 fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_msg: &mut String) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("🗂 EFFEKTBIBLIOTEK (EFFECTS LIBRARY)").strong().size(13.0).color(Theme::FL_YELLOW));
+            ui.label(egui::RichText::new(crate::i18n::t("🗂 EFFEKTBIBLIOTEK (EFFECTS LIBRARY)")).strong().size(13.0).color(Theme::FL_YELLOW));
             ui.separator();
-            ui.label(egui::RichText::new("Klicka på en effekt för att lägga till eller aktivera den i din aktiva kedja").size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Klicka på en effekt för att lägga till eller aktivera den i din aktiva kedja")).size(11.0).color(Theme::TEXT_MUTED));
         });
 
         ui.add_space(4.0);
 
         // Search bar & Category filter chips
         ui.horizontal(|ui| {
-            ui.label("🔍");
+            ui.label(crate::i18n::t("🔍"));
             ui.add(
                 egui::TextEdit::singleline(&mut state.search_query)
-                    .hint_text("Sök effekt (t.ex. Overdrive, EQ, Reverb, Chorus, Vocals...)")
+                    .hint_text(crate::i18n::t("Sök effekt (t.ex. Overdrive, EQ, Reverb, Chorus, Vocals...)"))
                     .desired_width(280.0),
             );
 
-            if !state.search_query.is_empty() && ui.button("✕").clicked() {
+            if !state.search_query.is_empty() && ui.button(crate::i18n::t("✕")).clicked() {
                 state.search_query.clear();
             }
         });
@@ -650,7 +766,7 @@ fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_ms
                 let chip_bg = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(28, 34, 46) };
                 let text_col = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
 
-                if ui.add(egui::Button::new(egui::RichText::new(cat).size(10.5).color(text_col)).fill(chip_bg)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(cat)).size(10.5).color(text_col)).fill(chip_bg)).clicked() {
                     state.selected_category = cat;
                 }
             }
@@ -694,16 +810,16 @@ fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_ms
                             card_ui.horizontal(|ui| {
                                 ui.vertical(|ui| {
                                     ui.label(egui::RichText::new(pedal.name).strong().size(11.0).color(Theme::TEXT_BRIGHT));
-                                    ui.label(egui::RichText::new(pedal.description).size(9.5).color(Theme::TEXT_MUTED));
+                                    ui.label(egui::RichText::new(crate::i18n::t(pedal.description)).size(9.5).color(Theme::TEXT_MUTED));
                                     ui.label(egui::RichText::new(pedal.category).size(8.5).color(pedal.color));
                                 });
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    let btn_txt = if pedal.enabled { "✔ På" } else { "➕ Lägg till" };
+                                    let btn_txt = if pedal.enabled { crate::i18n::t("✔ På") } else { crate::i18n::t("➕ Lägg till") };
                                     let btn_bg = if pedal.enabled { Theme::FL_GREEN } else { Color32::from_rgb(45, 60, 85) };
                                     if ui.add(egui::Button::new(egui::RichText::new(btn_txt).size(10.0).color(Color32::WHITE)).fill(btn_bg)).clicked() {
                                         pedal.enabled = !pedal.enabled;
-                                        *status_msg = format!("🎛 Ändrade status för {}", pedal.name);
+                                        *status_msg = crate::tstatus!("🎛 Ändrade status för {}", pedal.name);
                                     }
                                 });
                             });

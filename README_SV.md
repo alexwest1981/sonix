@@ -2,7 +2,7 @@
 
 > **Språk / Languages:** [🇸🇪 Svenska](README_SV.md) | [🇬🇧 English](README.md)
 
-Ett modernt, blixtsnabbt grafiskt musikproduktionsprogram skapat i **Rust** och **egui** med FL Studio-inspirerad direkt redigering i tidslinjen, magnetisk loop-snäppning, integration av FL Studio- & VST3/CLAP-plugins, Soundtrap-inspirerade kreativa paneler, integrerad modulär synthesizer, 16-stegs Channel Rack, Piano Roll, Sångstudio med mikrofoninspelning i realtid, multikanals mixerbord och touch-instrument för Linux (PipeWire / Wayland / ALSA / JACK).
+Ett modernt, blixtsnabbt grafiskt musikproduktionsprogram skapat i **Rust** och **egui** med FL Studio-inspirerad direkt redigering i tidslinjen, magnetisk loop-snäppning, skanning & katalogisering av FL Studio/VST3/CLAP-plugins, Soundtrap-inspirerade kreativa paneler, integrerad modulär synthesizer, 16-stegs Channel Rack, Piano Roll, Sångstudio med mikrofoninspelning i realtid, multikanals mixerbord och touch-instrument för Linux. Ljudet går genom systemets realtidsbackend via **cpal/ALSA** (PipeWire fungerar via sitt ALSA-lager). Se **[Funktioner & implementationsstatus](#-funktioner--implementationsstatus)** för exakt vad som är äkta idag och vad som återstår. Fullständig utvecklingsplan: **[ROADMAP.md](ROADMAP.md)**.
 
 ---
 
@@ -99,59 +99,135 @@ update-desktop-database ~/.local/share/applications
 
 ---
 
-## 🎨 Huvudfunktioner i Sonix Studio
+## 🎨 Funktioner & Implementationsstatus
 
-### 1. 🎼 FL Studio-inspirerad Tidslinje & Flerspårs-Arranger
-* **Dra direkt i klippkanter (Paint & Select):** Ta tag i högerkanten för att förlänga och loopa klipp sömlöst över takter, eller dra åt vänster för att korta av. Ta tag i vänsterkanten för att trimma/klippa bort början utan destruktiva ingrepp.
-* **Kontinuerlig vågformsfasning:** Justering av starttrim flyttar ljudvågens startpunkt naturligt utan att komprimera eller förvränga efterföljande loopcykler.
-* **Magnetisk Loop-Snap (🧲):** Låser automatiskt mot exakta multiplar av hela looplängder (`1x`, `2x`, `3x`, `4x`, `8x`) samt tidslinjens rutnät (`1/16`, `Beat`, `Bar`). Håll `Alt` för fri millimeterprecision.
-* **Nedre Region-Inspektor:** Finjustera ljudklipp med grov- och finjusteringsknappar (`±1 takt`, `±0.1s`), offset-reglage för starttrim, gain/volym, fade in/out-kurvor, reverse-uppspelning och loop-multiplikator.
-* **Verktygspalett:** Välj (⇱), Rita (✎), Klipp (✂), Radera (🗑), Muta (🔇).
-* **Direkt mikrofoninspelning i spår:** Spela in leadsång och akustiska instrument direkt på audiospåret med dedikerad armeringsknapp (`⏺`), ingångsmonitorering och realtidsvågformer.
+**Teckenförklaring:** ✅ Äkta & inkopplad · 🟡 Delvis / approximation · 🔜 Ännu inte implementerad
 
-### 2. 🔌 FL Studio Native, .fst & Plugin-integration
-* **FL Studio Native-kompatibilitet:** Inbyggd skanning och laddning av FL Studio-instrument och effekter (`.dll` VSTi såsom Sytrus, Harmor, Harmless, Gross Beat, FL Studio VSTi).
-* **FL Studio Preset (.fst)-hantering:** Läs och importera FL Studio-presets direkt in i dina projekt.
-* **Universell Plugin-värd:** Inbyggt Linux-stöd för **CLAP**-, **VST3**- och **LV2**-plugins.
-* **Sandboxing för Windows VST:** Automatisk avsökning av Yabridge & Wine-prefix med isolerad, kraschsäker processexekvering.
-* **Anpassade sökvägar:** Lägg till egna VST/CLAP-kataloger med rekursiv genomsökning och realtidsräknare.
+> Allt som är markerat ✅ fungerar på riktigt i ljudmotorn eller projektets tillstånd — inte en mock-up. 🟡-punkterna fungerar men är medvetet märkta så att inget överlövas.
 
-### 3. 🎙 Kreativa Studiopaneler & Sångverktyg (Soundtrap-Inspirerat)
-* **Hårdvarumikrofon & Röstpanel:** Enhetsväljare, hårdvarugain (+0dB till +24dB), brusgrind (noise gate), akustisk återkopplingsdämpning och sångförinställningar (Broadcast, Warm Tube, Crystal Lead, Rap, Podcast).
-* **Smart Ackord- & Harmonimatris:** Skapa skalanpassade ackordföljder med romerska siffror (I, ii, iii, IV, V, vi, vii°), humaniserad strum-förskjutning och direktstämpling av ackord till Piano Roll.
-* **Hårdvaru-Strobetuner:** Ultrahögprecisions kromatisk strobetuner med frekvensanalys i realtid, ±cents-avvikelse och 440 Hz-kalibrering.
-* **Beat- & Meloditärning:** Algoritmisk slumpgenerator för trumgrooves och melodislingor med tonartslås och synkopkontroller.
-* **Modulärt FX-Pedalbord & Vocal Rack:** Vocal doubler, analog rörkompressor, dynamisk de-esser, brusgrind och resonant multifilter.
-* **Låtstruktur-Arrangör:** Definiera och arrangera Intro, Vers, Refräng, Stick, Drop och Outro på tidslinjen.
-* **Spårskapare:** Snabbvalsmodal för att skapa Sång/Mikrofon-, Ljudsample-, 808 Trum-, Syntlead-, Bas- eller FX-buss-spår.
+### 1. 🎼 Tidslinje & Flerspårs-Arranger — ✅ Äkta
+* **Dra direkt i klippkanter (Paint & Select):** Förläng/loopa klipp sömlöst över takter, korta av, eller trimma vänsterkanten utan destruktiva ingrepp.
+* **Kontinuerlig vågformsfasning:** Starttrim flyttar vågformen naturligt utan att förvränga loopcykler.
+* **Magnetisk Loop-Snap (🧲):** Låser mot multiplar av hela looplängder (`1x`–`8x`) och rutnät (`1/16`, `Beat`, `Bar`). Håll `Alt` för fri precision.
+* **Nedre Region-Inspektor:** Grov/fin nudge (`±1 takt`, `±0.1s`), starttrim-offset, gain, fade in/out, reverse och loop-multiplikator.
+* **Verktygspalett:** Välj (⇱), Rita (✎), Klipp (✂), Radera (🗑), Muta (🔇); snabbklipp vid spelhuvudet (Ctrl+B).
+* **Direkt mikrofoninspelning i spår:** Armeringsknapp (`⏺`), ingångsmonitorering och realtidsvågformer.
 
-### 4. 🥁 Sonix Channel Rack (16-Stegs Sequencer)
-* **Dedikerade kanalstrippar:** Kick, Snare, Closed Hat, Open Hat, Synth Lead, Sub Bass och egna användarkanaler.
-* **4-Takts Stegknappar:** Taktila knappar grupperade i fyror med lysande vita center-LEDs vid aktivering.
-* **Kanalrattar:** Snabb åtkomst till volym, panorering, pitch shifting och sample slicing.
+### 2. 🥁 Sonix Channel Rack (16-Stegs Sequencer) — ✅ Äkta
+* **Kanalstrippar:** Kick, Snare, Closed/Open Hat, Synth Lead, Sub Bass och egna kanaler.
+* **4-Takts Stegknappar** med lysande center-LEDs.
+* **Kanalrattar:** Volym, panorering, pitch (semitones + cents) och en **sample-chopper** (start/slut-fraktioner + transientdetektering).
 
-### 5. 🎹 Piano Roll & Interaktivt Touch-Klaviatur
-* **Polyfonisk Noteditor:** Dynamiska notlängder, anslagsdynamik (velocity), skalsnäppning och penselverktyg.
-* **Spelbart Virtuellt Klaviatur:** Neonvisuell feedback med stöd för datortangentbord (A-K).
+### 3. 🎹 Piano Roll & Interaktivt Touch-Klaviatur — ✅ Äkta
+* **Polyfonisk Noteditor:** Notlängder, velocity, skalsnäppning och penselverktyg.
+* **Spelbart Virtuellt Klaviatur:** Neonfeedback med stöd för datortangentbord (A–K).
 
-### 6. 🎙 Sångstudio & Intelligent Harmonizer
-* **Take Lanes:** Spela in flera sångtagningar med icke-destruktiv comping.
-* **Pitch Detection & Autotune:** Realtids pitchkorrigering och formantskiftning.
-* **4-Stämmig Harmonizer:** Generera omedelbara stämmor och bakgrundskörer.
-* **Egen Sampler:** Spela in akustiska instrument och samplingar direkt via mikrofonen.
+### 4. 🎚 Mixerbord & Per-Spår-Effekter — ✅ Äkta
+* **Kanalstrippar:** Faders, riktiga peak-VU-mätare, solo, mute, pan och stereobredd.
+* **Per-Spår 3-Bands Parametrisk EQ:** Dragbar visuell kurva + snabbpresets.
+* **Per-Spår Dynamik & Sends:** Kompressor, reverb/delay-sends och pitch — allt skickas till ljudmotorn.
+* **Master FX Rack:** Gate → 4-bands EQ → kompressor → de-esser → filter/drive → doubler → limiter, plus reverb & delay, med **riktig gain-reduction-mätare** och visuell EQ-redigerare.
+* **Remix FX (live):** Kaoss-liknande XY-platta med beat-repeat/stutter/reverse och en riktig tape-stop-varispeed.
+* 🟡 **Not:** VCA-grupper och sub-mix-bussar är **inte** implementerade (de gamla döda reglagen togs bort).
 
-### 7. 🎚 Master & Flerspårs Effects Mixer
-* **8+ Kanalstrippar:** Dedikerade faders, VU-mätare, solo, mute, pan och stereobredd.
-* **Sub-Mix Bussar & VCA:** Dedikerad Drum Bus, Vocal Bus, Synth Bus samt 4x VCA-faders.
-* **Parametrisk 3-Bands EQ:** Visuell frekvenskurva med justerbara frekvenser och Q-faktor.
-* **Master Effektrack:** Space Reverb, Stereo Delay, Chorus, Kompressor och Tube Drive.
+### 5. 🎛 Analog Alchemy Synth — ✅ Äkta
+* 4 vågformer (sinus, sågtand, fyrkant, triangel), ADSR, resonant filter, drive och en morph-vektorplatta med 8 snapshots.
+* 🟡 **Not:** Filtret är ett 2-poligt (12 dB) state-variable lågpass — inte ett 24 dB Moog-ladder — och filter/ADSR är globala, inte per röst.
 
-### 8. 🤖 AI Musikassistent, Modulär Patcher & Demucs Stems
-* **AI Prompt Engine:** Textprompt-baserad generering av ackordföljder, basgångar och melodier (Suno AI, OpenAI, Claude, lokal Ollama).
-* **Suno AI Stem-importör:** Dra och släpp Suno ZIP-arkiv med automatisk extrahering och tidslinjeplacering.
-* **Modulärt Patcher-nät:** Visuell nodbaserad signalrouting med virtuella patchkablar.
-* **Demucs AI Stem Separator:** Källseparation för att isolera sång, trummor, bas och instrument från färdiga mixar.
-* **Remix FX:** Kaoss-liknande XY-matris, stutter-repeater, vinyl tape stop och bitcrusher.
+### 6. 🎙 Sångstudio & Harmonizer — ✅ Äkta (offline-bearbetning)
+* **Take Lanes:** Flera tagningar med icke-destruktiv comping; vågform crop/slice/normalize.
+* **Pitch-editor:** Dragbara not-blobs (Melodyne-liknande) och skalanpassad korrigering.
+* **Autotune & 4-stämmig Harmonizer** med nivå/formant per stämma.
+* **Egen Sampler:** Spela in akustiska one-shots via mikrofon och mappa till instrument/trummor.
+* **Hårdvaru-mikpanel:** Enhetsväljare, hårdvarugain (+0 till +24 dB), brusgrind, återkopplingsdämpning och röstpresets.
+* 🟡 **Not:** Tuning och harmonier körs **offline** på den inspelade bufferten (inte i realtidstråden). Pitchdetektering är autokorrelationsbaserad och "formant" är en spektral-tilt-approximation.
+
+### 7. 🎛 Kreativa Generatorer — ✅ Äkta
+* **Smart Ackord- & Harmonimatris:** 12 skalor, romerska siffror, voicings, strum-humanisering, arpeggiator → Piano Roll.
+* **Beat- & Meloditärning:** 5 kategorier, genrepresets, live-förhandsvisning → mönster.
+* **Session Drummer:** XY-platta för komplexitet/energi med 6 genrepresets.
+* **Låtstruktur-Arrangör:** Intro/Vers/Refräng/Stick/Drop/Outro → tidslinjen.
+* **Spårskapare:** 19 mallar i 6 kategorier.
+* **Hårdvaru-Strobetuner:** Riktig pitchdetektering, ±cents, 7 stämningspresets och en referenston.
+
+### 8. 🧩 Modulär Patcher — 🟡 Äkta DSP, ordningskänslig
+* Visuellt nodnät med patchkablar: MidiIn, Oscillator (sinus/sågtand/fyrkant/triangel + sync/PWM), Filter (LP/HP/BP), ADSR, LFO, Delay, Reverb, Distortion, AudioOut.
+* 🟡 **Not:** Noderna utvärderas i skapandeordning (ingen topologisk sortering), så kablar måste följa signalordningen. Några nodetiketter lovar mer än DSP:n gör.
+
+### 9. 🤖 AI Musikassistent & Generering — ✅ Äkta (med ärliga gränser)
+* **Riktig HTTP-integration:** OpenAI, Anthropic, OpenRouter och lokal Ollama för text→mönster; ljudgenerering via OpenAI TTS och Stability Stable Audio. Projektkontext (tonart/BPM/val) injiceras i prompten.
+* **Lokal fallback:** en deterministisk, regelbaserad kompositör (skala/tonart) när inget API är konfigurerat.
+* **Suno/AI Stem-importör:** Packa upp och avkoda riktigt ljud, detektera BPM och mappa stämmor till tidslinjen.
+* 🟡 **Not:** Det finns **ingen** Suno-API-integration. "Suno" betyder här import av Suno-exporterade stämpaket och den lokala generatorn — inte anrop till Suno.
+
+### 10. 🧠 Stem Separator — 🟡 DSP-approximation
+* Delar en mix i sång/trummor/bas/instrument med spektral banddelning, centerkanal-extraktion och transient-gating, plus en riktig BPM-skattning via autokorrelation.
+* 🟡 **Not:** Detta är **inte** Demucs-neuralnätet. Det är en lättvikts-DSP-separator; kvaliteten ligger långt under en neural modell.
+
+### 11. 🔌 Plugin-hanterare — 🟡 Endast katalog (ingen värd än)
+* Riktig rekursiv skanning av VST3/CLAP/LV2/VST2/`.fst`-mappar, ELF/PE-verifiering, Wine- & yabridge-detektion och en ett-klicks `yabridgectl sync`.
+* 🔜 **Not:** Sonix **laddar, kör eller visar** ännu inte plugin-GUI:n. Se **[Plugin-stöd — nuläget](#-plugin-stöd--nuläget)**.
+
+### 12. 💿 Export & Projekt-I/O — ✅ Äkta
+* Offline-rendering av hela projektet (riktiga samples, tidslinje-audio, FX) till **WAV** (16/24-bit & 32-bit float) och **FLAC** (kodas i appen); **MP3/OGG/AAC** via `ffmpeg` om installerat.
+* Ren metadatataggning (endast Sonix Studio), mastermix eller per-spår-stems.
+* Projekt spara/ladda och projektmallar.
+
+### 13. 🎛 Hårdvarukontroll — ✅ Äkta
+* Riktig ALSA MIDI (MCU-liknande) ingång och en riktig UDP OSC-server; enhetslista och bunden port visas i appen.
+
+### 14. 🌐 Lokalisering & System — ✅ Äkta
+* **7 gränssnittsspråk** (English, Svenska, Dansk, Norsk, Deutsch, Español, Français), växlingsbara live och ihågkomna mellan sessioner.
+* **cpal/ALSA-realtidsmotor** med låsningsfri kommandoring och en kraschsäker ljudcallback.
+* 🟡 **Not:** Reglagen för samplingsfrekvens och buffertstorlek i Ljudinställningar sparas men appliceras ännu inte på strömmen (enhetens standard används).
+
+---
+
+## 🧭 Vad som är kvar & hur långt ifrån "äkta"
+
+En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, generatorerna och I/O är äkta; punkterna nedan är de ärliga undantagen.
+
+| Område | Status | Kvarvarande arbete |
+| :--- | :--- | :--- |
+| Ljudmotor (synth, trummor, samples, FX, render) | ✅ Äkta | — |
+| Tidslinje, Piano Roll, Channel Rack, Mixer | ✅ Äkta | — |
+| Sångstudio (inspelning, comping, pitch-edit, harmonier) | ✅ Äkta | — |
+| Generatorer (Ackord, Tärning, Drummer, Sektioner, Tuner) | ✅ Äkta | — |
+| AI (LLM + ljud-API:er) | ✅ Äkta | Lokal fallback är regelbaserad, inte en neural modell |
+| Hårdvara MIDI / OSC | ✅ Äkta | — |
+| Export (WAV/FLAC i appen, MP3/OGG/AAC via ffmpeg) | ✅ Äkta | — |
+| Modulär Patcher | 🟡 Delvis | Lägg till topologisk sortering; matcha etiketter mot DSP |
+| Stem-separation | 🟡 Delvis | Integrera en riktig neural modell (t.ex. HTDemucs via ONNX) |
+| Vocal tuning | 🟡 Delvis | Realtids-autotune (ljudtråden) + riktig formantbevarande |
+| Time-stretch | 🟡 Delvis | Pitch-bevarande time-stretch (nuvarande är varispeed) |
+| Ljudinställningar | 🟡 Delvis | Applicera vald samplingsfrekvens/buffert på strömmen |
+| Legacy-modal "AI Provider Inställningar" | 🟡 Delvis | Reglagen sparas inte — koppla till config eller ta bort |
+| `.fst`-knappen "Apply Preset" | 🔜 Saknas | Knappen är en no-op; kräver `.fst`-avkodning |
+| Plugin-hosting (VST3/CLAP/LV2/VST2) | 🔜 Saknas | Kräver en komplett värd — se nedan |
+
+**Helhetsbedömning:** ungefär **85–90 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. De två största kvarvarande delarna är **plugin-hosting** (ej påbörjad) och **neural stem-separation** (nuvarande är en DSP-approximation).
+
+Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finns i **[ROADMAP.md](ROADMAP.md)**.
+
+---
+
+## 🔌 Plugin-stöd — nuläget
+
+> **Kort svar: ännu inte.** Sonix kan *hitta och katalogisera* plugins, men kan inte *köra* dem.
+
+**Vad som fungerar idag (✅)**
+* Rekursiv skanning av standardmapparna för **VST3 / CLAP / LV2 / VST2** samt FL Studio-`.fst`-platser (Linux- och Wine-sökvägar).
+* Binärverifiering (ELF/PE), filstorlek och en "verifierad"-markering.
+* Detektion av Wine och `yabridgectl`, samt en ett-klicks `yabridgectl sync`.
+
+**Vad som saknas för att faktiskt hosta FL Studio / tredjepartsplugins (🔜)**
+1. Ett plugin-värdbibliotek / ABI — t.ex. `clack`/CLAP, en VST3-binding, `lv2`, eller `libloading` + VST2/3-entrypoints. **Det finns ingen laddningskod idag.**
+2. Att instansiera plugins och routa audio + MIDI in och ut ur realtidsmotorn, med delay-kompensation.
+3. Spara/ladda plugin-state och presets. (`.fst` är ett proprietärt FL Studio-format och avkodas inte.)
+4. Inbäddade eller flytande plugin-GUI:n, samt out-of-process-sandboxning för kraschisolering.
+5. För FL Studios egna instrument (Sytrus, Harmor, Gross Beat, …) och FL Studio VSTi är den enda farbara vägen deras **VST/VST3-byggen körda genom Wine + yabridge** — de nativa FL-`.dll`-formaten är inte ett standard-plugin-API.
+
+**Därför:** FL Studio och andra tredjepartsplugins är **inte användbara i Sonix ännu**. Inga av påståendena om "öppnar plugin-GUI:t" eller "kraschersäker sandbox" gäller — Plugin-hanteraren är en katalog och en Yabridge-assistent, inget mer.
 
 ---
 
@@ -196,7 +272,7 @@ Polyfonisk noteditor med notlängder, anslagsdynamik (velocity), skalsnäppning 
 ![Piano Roll](screenshots/03_piano_roll.png)
 
 #### 4. 🎙 Sångstudio & Mikrofoninspelning (Take Lanes)
-Professionell inspelningskonsol för sång och akustiska instrument med realtids pitch-detektering, autotune, formantskiftning och 4-stämmig harmoniserare.
+Professionell inspelningskonsol för sång och akustiska instrument med pitchdetektering, offline-autotune, formant-tilt och en 4-stämmig harmoniserare.
 ![Sångstudio Take Lanes](screenshots/04_vocal_studio_leads.png)
 
 #### 5. 🎤 Sångstudio: Spela in Egna Ljud & Sampler
@@ -204,7 +280,7 @@ Spela in egna akustiska instrument eller samplingar direkt från mikrofon och ma
 ![Sångstudio Sampler](screenshots/05_vocal_studio_sampler.png)
 
 #### 6. 🎚 Master & Flerspårs Effects Mixer
-Fullt mixerbord med individuella kanalstrippar, VU-mätare, VCA-grupper, Sub-Mix bussar, parametrisk 3-bands EQ och rumsreverb/delay sends.
+Fullt mixerbord med individuella kanalstrippar, VU-mätare, per-spår 3-bands parametrisk EQ och rumsreverb/delay sends.
 ![Mixer](screenshots/06_effects_mixer.png)
 
 ---
@@ -212,11 +288,11 @@ Fullt mixerbord med individuella kanalstrippar, VU-mätare, VCA-grupper, Sub-Mix
 ### 2. 🎛️ Syntar, AI-Moduler & Signalbehandling
 
 #### 7. 🤖 AI Music Assistant & Prompt Engine
-Skapa ackordföljder, melodier, basgångar och strukturidéer via naturlig textprompt (Suno AI, OpenAI, Claude eller lokal Ollama).
+Skapa ackordföljder, melodier, basgångar och strukturidéer via naturlig textprompt (OpenAI, Anthropic/Claude, OpenRouter eller lokal Ollama), med en inbyggd regelbaserad generator som fallback.
 ![AI Assistent](screenshots/07_ai_music_assistant.png)
 
 #### 8. ✨ Sonix Alchemy Synthesizer
-Avancerad hybridsynt med 4 oscillatorer (Sinus, Sågtand, Fyrkant, Triangel), Moog 24dB filter, ADSR-envelope och en 8-punkters realtids-morph-vektorplatta.
+Avancerad hybridsynt med 4 oscillatorvågformer (Sinus, Sågtand, Fyrkant, Triangel), ett resonant state-variable-filter, ADSR-envelope och en 8-punkters morph-vektorplatta.
 ![Alchemy Synth](screenshots/08_alchemy_synth.png)
 
 #### 9. 🥁 Dynamic Session Drummer
@@ -227,16 +303,16 @@ Interaktiv XY-kontrollmatris för groove-komplexitet och dynamik, med humanize-m
 Visuell modulär nod-miljö för att koppla ihop ljudsignaler, filter, envelopes, LFO och distorsion med virtuella patchkablar.
 ![Modular Patcher](screenshots/10_modular_patcher.png)
 
-#### 11. 🧠 AI Stem Separator (Demucs Neural Engine)
-Källseparation som delar upp färdiga mixar eller låtar i separata spår för sång, trummor, bas och instrument.
+#### 11. 🧠 Stem Separator (DSP-motor)
+Källseparation som isolerar sång, trummor, bas och instrument från färdiga mixar (lättvikts spektral-DSP — inte en neural modell).
 ![Stem Separator](screenshots/11_stem_separator.png)
 
 #### 12. 🔌 Plugin & VST/CLAP Bridge Manager
-Sömlös hantering av FL Studio Native-plugins, `.fst`-presets, CLAP-, VST3- och LV2-plugins samt isolerad process-sandboxing för Windows VST via Yabridge/Wine.
+Katalogisering av FL Studio-`.fst`-presets samt CLAP-, VST3-, LV2- och Wine/Yabridge-pluginplatser (skanning & verifiering — hosting är ännu inte implementerad).
 ![Plugin Manager](screenshots/12_plugin_manager.png)
 
 #### 13. 🎛 Remix FX (Live Performance Pad)
-DJ-liveeffekter med Kaoss-liknande XY-matris, stutter-repeater, vinyl tape stop, bitcrusher och filter sweeps.
+DJ-liveeffekter med Kaoss-liknande XY-matris, stutter-repeater, vinyl tape stop och reverse.
 ![Remix FX](screenshots/13_remix_fx.png)
 
 ---
@@ -276,11 +352,11 @@ Modal för att snabbt skapa Sång/Mikrofon-, Ljudsample-, 808 Trum-, Syntlead-, 
 ### 4. ⚙️ Dialogrutor, Modaler & Konfiguration
 
 #### 21. ⚙ Ljud- & Systeminställningar
-Konfiguration av ljudkort, buffertstorlek (1.4 ms low-latency), samplingsfrekvens och PipeWire/ALSA-drivrutin.
+Konfiguration av ljudkort, samplingsfrekvens, buffertstorlek och PipeWire/ALSA-drivrutin (valen sparas; enhetens standard används för närvarande).
 ![Ljudinställningar](screenshots/14_dialog_ljudinstallningar.png)
 
 #### 22. 🤖 AI-Konfiguration & API-nycklar
-Anslutningsinställningar för Suno AI, OpenAI GPT, Claude AI och lokal Ollama-server.
+Anslutningsinställningar för OpenAI GPT, Claude AI, OpenRouter och lokal Ollama-server. (Denna äldre modal är inte inkopplad — använd AI-assistentens egna inställningar.)
 ![AI Inställningar](screenshots/15_dialog_ai_installningar.png)
 
 #### 23. 💾 Projekthanterare & Projektmallar

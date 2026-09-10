@@ -71,7 +71,6 @@ pub struct ChordGeneratorState {
     pub chord_voicing: usize, // 0 = Triad, 1 = 7th, 2 = 9th, 3 = Sus4, 4 = Inversion 1, 5 = Open
     pub current_progression: Vec<GeneratedChord>,
     pub selected_progression_preset: usize,
-    pub is_auditioning: bool,
     pub strum_spread_ms: f32,
     pub arpeggiator_mode: usize, // 0 = Block, 1 = Up, 2 = Down, 3 = Random
 }
@@ -85,7 +84,6 @@ impl Default for ChordGeneratorState {
             chord_voicing: 1, // 7th chords
             current_progression: Vec::new(),
             selected_progression_preset: 0,
-            is_auditioning: false,
             strum_spread_ms: 15.0,
             arpeggiator_mode: 0,
         };
@@ -185,9 +183,35 @@ impl ChordGeneratorState {
     }
 
     pub fn play_chord_sound(&self, chord: &GeneratedChord, engine: &mut AudioEngine) {
-        for &note in &chord.notes {
-            let freq = 440.0 * 2.0_f32.powf((note as f32 - 69.0) / 12.0);
-            let _ = engine.send_command(AudioCommand::NoteOn { note, freq, velocity: 0.85 });
+        let spread_samples = ((self.strum_spread_ms.max(0.0) / 1000.0)
+            * engine.sample_rate as f32) as u32;
+        let _ = engine.send_command(AudioCommand::StrumChord {
+            notes: chord.notes.clone(),
+            velocity: 0.85,
+            start_samples: 0,
+            spread_samples,
+            mode: self.arpeggiator_mode as u8,
+        });
+    }
+
+    /// Plays the whole progression as a real time sequence: each chord starts
+    /// one "step" after the previous, honouring the strum/arpeggio settings.
+    pub fn audition_progression(&self, engine: &mut AudioEngine) {
+        if self.current_progression.is_empty() {
+            return;
+        }
+        let spread_samples = ((self.strum_spread_ms.max(0.0) / 1000.0)
+            * engine.sample_rate as f32) as u32;
+        // One chord per beat at 90 BPM (~0.667s) so the sequence is musical.
+        let chord_step = (engine.sample_rate as f32 * 0.667) as u32;
+        for (i, chord) in self.current_progression.iter().enumerate() {
+            let _ = engine.send_command(AudioCommand::StrumChord {
+                notes: chord.notes.clone(),
+                velocity: 0.85,
+                start_samples: chord_step.saturating_mul(i as u32),
+                spread_samples,
+                mode: self.arpeggiator_mode as u8,
+            });
         }
     }
 }
@@ -207,7 +231,7 @@ pub fn render_chord_generator_modal(
     let mut close = false;
     let mut trigger_insert = false;
 
-    egui::Window::new("🎹 Smart Ackord- & Skalgenerator (Harmony Matrix)")
+    egui::Window::new(crate::i18n::t("🎹 Smart Ackord- & Skalgenerator (Harmony Matrix)"))
         .open(open)
         .collapsible(false)
         .resizable(true)
@@ -217,9 +241,9 @@ pub fn render_chord_generator_modal(
             ui.vertical(|ui| {
                 // Header bar
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("MUSIKTEORI & HARMONIK").strong().size(14.0).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("MUSIKTEORI & HARMONIK")).strong().size(14.0).color(Theme::FL_ORANGE));
                     ui.separator();
-                    ui.label(egui::RichText::new("Klicka på ackordplattorna för att spela live • Skapa magiska ackordföljder").size(11.0).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Klicka på ackordplattorna för att spela live • Skapa magiska ackordföljder")).size(11.0).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(4.0);
@@ -227,7 +251,7 @@ pub fn render_chord_generator_modal(
                 // Top Controls: Root Key, Scale, Octave, Voicing
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Grundton (Key):").strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("Grundton (Key):")).strong().color(Theme::FL_CYAN));
                         for (idx, &name) in NOTE_NAMES.iter().enumerate() {
                             let is_sel = state.root_note == idx as u8;
                             let btn_col = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(32, 36, 44) };
@@ -242,7 +266,7 @@ pub fn render_chord_generator_modal(
                     ui.add_space(4.0);
 
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Skala / Tonart:").strong().color(Theme::FL_YELLOW));
+                        ui.label(egui::RichText::new(crate::i18n::t("Skala / Tonart:")).strong().color(Theme::FL_YELLOW));
                         let scales = ScaleType::all();
                         let current_label = scales.iter().find(|(s, _)| *s == state.scale_type).map(|(_, l)| *l).unwrap_or("Moll");
 
@@ -260,7 +284,7 @@ pub fn render_chord_generator_modal(
 
                         ui.separator();
 
-                        ui.label("Oktav:");
+                        ui.label(crate::i18n::t("Oktav:"));
                         for oct in 2..=5 {
                             if ui.selectable_label(state.octave == oct, format!("C{}", oct)).clicked() {
                                 state.octave = oct;
@@ -269,7 +293,7 @@ pub fn render_chord_generator_modal(
 
                         ui.separator();
 
-                        ui.label("Voicing:");
+                        ui.label(crate::i18n::t("Voicing:"));
                         let voicings = ["Triad (3-ton)", "7th (Jazz/Pop)", "9th (Neo-Soul)", "Sus4", "Inversion 1", "Open Spread"];
                         egui::ComboBox::from_id_salt("chord_voicing_picker")
                             .selected_text(*voicings.get(state.chord_voicing).unwrap_or(&"7th"))
@@ -290,9 +314,9 @@ pub fn render_chord_generator_modal(
                 // INTERACTIVE CHORD PADS MATRIX (The core fun!)
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("🎹 INTERAKTIVA ACKORDPLATTOR (Klicka för att spela & bygga)").strong().color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(crate::i18n::t("🎹 INTERAKTIVA ACKORDPLATTOR (Klicka för att spela & bygga)")).strong().color(Theme::FL_GREEN));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("🎲 Slumpa Skala").on_hover_text("Slumpa ny skala och grundton för inspiration").clicked() {
+                            if ui.button(crate::i18n::t("🎲 Slumpa Skala")).on_hover_text(crate::i18n::t("Slumpa ny skala och grundton för inspiration")).clicked() {
                                 state.root_note = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() % 12) as u8;
                                 let all_scales = ScaleType::all();
                                 let rand_s = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_micros() % all_scales.len() as u128) as usize;
@@ -358,7 +382,7 @@ pub fn render_chord_generator_modal(
                                 if state.current_progression.len() > 8 {
                                     state.current_progression.remove(0);
                                 }
-                                *status_msg = format!("🎶 Spelade ackord: {} ({})", chord.name, chord.roman);
+                                *status_msg = crate::tstatus!("🎶 Spelade ackord: {} ({})", chord.name, chord.roman);
                             }
 
                             if (p_idx + 1) % 4 == 0 {
@@ -373,7 +397,7 @@ pub fn render_chord_generator_modal(
                 // CURRENT PROGRESSION TIMELINE & PRESETS
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("🎼 AKTIV ACKORDFÖLJD (PROGRESSION)").strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("🎼 AKTIV ACKORDFÖLJD (PROGRESSION)")).strong().color(Theme::FL_CYAN));
                         ui.separator();
 
                         let presets = ["Trap & Dark (i-iv-v-i)", "EDM Anthem (VI-IV-I-V)", "Cyberpunk (i-VI-III-VII)", "Neo-Soul (ii-V-I-vi)", "Blues Groove (i-iv-i-V)", "Cinematic (i-III-iv-v)"];
@@ -388,7 +412,7 @@ pub fn render_chord_generator_modal(
                                 }
                             });
 
-                        if ui.button("🗑 Rensa").clicked() {
+                        if ui.button(crate::i18n::t("🗑 Rensa")).clicked() {
                             state.current_progression.clear();
                         }
                     });
@@ -398,7 +422,7 @@ pub fn render_chord_generator_modal(
                     // Horizontal Chord Sequence Cards
                     ui.horizontal(|ui| {
                         if state.current_progression.is_empty() {
-                            ui.label(egui::RichText::new("Inga ackord valda än. Klicka på plattorna ovan eller välj en färdig mall!").color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(crate::i18n::t("Inga ackord valda än. Klicka på plattorna ovan eller välj en färdig mall!")).color(Theme::TEXT_MUTED));
                         } else {
                             let card_w = 110.0;
                             let card_h = 44.0;
@@ -410,7 +434,7 @@ pub fn render_chord_generator_modal(
                                 ui.painter().text(
                                     Pos2::new(c_rect.min.x + 8.0, c_rect.min.y + 12.0),
                                     egui::Align2::LEFT_CENTER,
-                                    format!("Takt {}", c_idx + 1),
+                                    format!("{} {}", crate::i18n::t("Takt"), c_idx + 1),
                                     egui::FontId::proportional(9.5),
                                     Theme::TEXT_MUTED,
                                 );
@@ -428,7 +452,7 @@ pub fn render_chord_generator_modal(
                                 }
 
                                 if c_idx < state.current_progression.len() - 1 {
-                                    ui.label(egui::RichText::new("➔").strong().color(Theme::FL_ORANGE));
+                                    ui.label(egui::RichText::new(crate::i18n::t("➔")).strong().color(Theme::FL_ORANGE));
                                 }
                             }
                         }
@@ -437,22 +461,43 @@ pub fn render_chord_generator_modal(
 
                 ui.add_space(8.0);
 
+                // Strum / Arpeggiator performance controls
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(crate::i18n::t("Strum-utbredning:")).strong().color(Theme::FL_CYAN));
+                        ui.add(egui::Slider::new(&mut state.strum_spread_ms, 0.0..=120.0).suffix(" ms").show_value(true));
+                        ui.separator();
+                        ui.label(egui::RichText::new(crate::i18n::t("Arpeggio:")).strong().color(Theme::FL_YELLOW));
+                        let modes = ["Block", "Upp", "Ner", "Slump"];
+                        egui::ComboBox::from_id_salt("chord_arp_mode")
+                            .selected_text(*modes.get(state.arpeggiator_mode).unwrap_or(&"Block"))
+                            .width(90.0)
+                            .show_ui(ui, |ui| {
+                                for (m_idx, &m_name) in modes.iter().enumerate() {
+                                    if ui.selectable_label(state.arpeggiator_mode == m_idx, m_name).clicked() {
+                                        state.arpeggiator_mode = m_idx;
+                                    }
+                                }
+                            });
+                    });
+                });
+
+                ui.add_space(8.0);
+
                 // Bottom Action Buttons
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("📥 Infoga Ackord i Piano Roll & Spår").strong().color(Color32::BLACK)).fill(Theme::FL_GREEN).min_size(Vec2::new(220.0, 32.0))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Infoga Ackord i Piano Roll & Spår")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN).min_size(Vec2::new(220.0, 32.0))).clicked() {
                         trigger_insert = true;
                         close = true;
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new("▶ Provspela Hela Sekvensen").strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 90, 140)).min_size(Vec2::new(180.0, 32.0))).clicked() {
-                        for ch in &state.current_progression {
-                            state.play_chord_sound(ch, engine);
-                        }
-                        *status_msg = "▶ Provspelar ackordföljd...".to_string();
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("▶ Provspela Hela Sekvensen")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 90, 140)).min_size(Vec2::new(180.0, 32.0))).clicked() {
+                        state.audition_progression(engine);
+                        *status_msg = crate::i18n::t("▶ Provspelar ackordföljd...").to_string();
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Stäng").clicked() {
+                        if ui.button(crate::i18n::t("Stäng")).clicked() {
                             close = true;
                         }
                     });

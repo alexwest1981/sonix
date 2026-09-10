@@ -20,6 +20,7 @@ use super::drum::DrumType;
 use super::effects::{DelayParams, ReverbParams};
 use super::envelope::AdsrParams;
 use super::filter::FilterParams;
+use super::master_fx::{MasterFxParams, TrackEqSettings};
 use super::synth::SynthEngine;
 
 // ---------------------------------------------------------------------------
@@ -85,8 +86,8 @@ pub struct TrackAudioSnap {
     pub volume: f32,
     pub pan: f32,
     pub muted: bool,
-    pub solo: bool,
     pub regions: Vec<StemRegionPlayback>,
+    pub eq: TrackEqSettings,
 }
 
 /// Master FX / synth settings snapshot.
@@ -99,6 +100,7 @@ pub struct FxState {
     pub reverb: ReverbParams,
     pub drive: f32,
     pub master_volume: f32,
+    pub master_fx: MasterFxParams,
 }
 
 #[derive(Clone)]
@@ -277,6 +279,10 @@ pub fn load_timeline_into_engine(engine: &mut SynthEngine, timeline: &[TrackAudi
             muted: other_in_solo || (!forced_solo && t.muted),
             solo: false,
         });
+        engine.handle_command(AudioCommand::SetTrackEq {
+            track_index: t.track_index,
+            settings: t.eq,
+        });
     }
 }
 
@@ -344,6 +350,7 @@ pub fn build_offline_engine(spec: &RenderSpec, fx: &FxState) -> SynthEngine {
     engine.delay = super::effects::StereoDelay::new(engine.sample_rate);
     engine.reverb_params = fx.reverb;
     engine.drive = fx.drive.clamp(1.0, 10.0);
+    engine.master_fx.set_params(fx.master_fx);
     engine.master_volume = fx.master_volume.clamp(0.0, 1.0);
     load_timeline_into_engine(&mut engine, &spec.timeline, spec.solo_track);
     engine
@@ -614,8 +621,7 @@ fn write_with_ffmpeg(
     meta: &ExportMeta,
 ) -> Result<(), String> {
     if !ffmpeg_available() {
-        return Err(format!(
-            "ffmpeg är inte installerat – kan inte koda {}. Installera ffmpeg (t.ex. 'sudo pacman -S ffmpeg') och försök igen. WAV/FLAC fungerar alltid utan ffmpeg.",
+        return Err(crate::tstatus!("ffmpeg är inte installerat – kan inte koda {}. Installera ffmpeg (t.ex. 'sudo pacman -S ffmpeg') och försök igen. WAV/FLAC fungerar alltid utan ffmpeg.",
             format.label()
         ));
     }
@@ -659,8 +665,7 @@ fn write_with_ffmpeg(
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr).to_string();
         let _ = std::fs::remove_file(&tmp_path);
-        return Err(format!(
-            "ffmpeg misslyckades för {}: {}",
+        return Err(crate::tstatus!("ffmpeg misslyckades för {}: {}",
             format.label(),
             stderr.lines().last().unwrap_or(&stderr)
         ));
@@ -737,6 +742,7 @@ mod tests {
             reverb: ReverbParams::default(),
             drive: 1.0,
             master_volume: 0.9,
+            master_fx: MasterFxParams::default(),
         };
         let mut engine = build_offline_engine(&spec, &fx);
         let buf = render_project_offline(&mut engine, &spec);

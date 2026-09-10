@@ -4,6 +4,8 @@ use super::drum::{DrumType, DrumVoice};
 use super::effects::{DelayParams, ReverbParams, SimpleReverb, StereoDelay};
 use super::envelope::{AdsrParams, AdsrVoice};
 use super::filter::{FilterParams, StateVariableFilter};
+use super::master_fx::{Compressor, CompressorParams, MasterFxChain, RemixFx, StereoEq, TapeStop, TrackEqSettings};
+use super::patcher::{PatchProcessor, PatchSpec};
 
 /// Debug logging to ~/Music/Sonix/audio_debug.log. Enabled when the
 /// SONIX_AUDIO_DEBUG env var is set OR when the marker file
@@ -70,6 +72,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
     match cmd {
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOff { .. } => "NoteOff",
+        AudioCommand::StrumChord { .. } => "StrumChord",
         AudioCommand::TriggerDrum(_) => "TriggerDrum",
         AudioCommand::SetWaveform(_) => "SetWaveform",
         AudioCommand::SetAdsr(_) => "SetAdsr",
@@ -77,6 +80,11 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetDelay(_) => "SetDelay",
         AudioCommand::SetReverb(_) => "SetReverb",
         AudioCommand::SetDrive(_) => "SetDrive",
+        AudioCommand::SetMasterFx(_) => "SetMasterFx",
+        AudioCommand::SetTrackEq { .. } => "SetTrackEq",
+        AudioCommand::SetTrackMix { .. } => "SetTrackMix",
+        AudioCommand::SetRemixFx { .. } => "SetRemixFx",
+        AudioCommand::SetTapeStop { .. } => "SetTapeStop",
         AudioCommand::LoadPreset(_) => "LoadPreset",
         AudioCommand::SetMasterVolume(_) => "SetMasterVolume",
         AudioCommand::StopAll => "StopAll",
@@ -90,6 +98,10 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::StopAudition => "StopAudition",
         AudioCommand::SetAuditionParams { .. } => "SetAuditionParams",
         AudioCommand::TriggerSampleVoice { .. } => "TriggerSampleVoice",
+        AudioCommand::SetPatcherGraph(_) => "SetPatcherGraph",
+        AudioCommand::SetPatcherEnabled(_) => "SetPatcherEnabled",
+        AudioCommand::PatcherNoteOn { .. } => "PatcherNoteOn",
+        AudioCommand::PatcherNoteOff => "PatcherNoteOff",
     }
 }
 
@@ -177,7 +189,6 @@ impl Voice {
 
 use std::sync::Arc;
 
-#[derive(Clone)]
 pub struct StemVoiceTrack {
     pub left: Arc<Vec<f32>>,
     pub right: Arc<Vec<f32>>,
@@ -190,6 +201,16 @@ pub struct StemVoiceTrack {
     pub solo: bool,
     pub start_time_secs: f32,
     pub regions: Vec<StemRegionPlayback>,
+    pub eq: TrackEqSettings,
+    pub eq_proc: StereoEq,
+    pub comp: Compressor,
+    pub comp_threshold_db: f32,
+    pub comp_ratio: f32,
+    pub reverb: SimpleReverb,
+    pub reverb_send: f32,
+    pub delay: StereoDelay,
+    pub delay_send: f32,
+    pub pitch_ratio: f32,
 }
 
 impl StemVoiceTrack {
@@ -200,6 +221,7 @@ impl StemVoiceTrack {
         volume: f32,
         pan: f32,
         start_time_secs: f32,
+        engine_sample_rate: f32,
     ) -> Self {
         let p = pan.clamp(-1.0, 1.0);
         let pan_l = ((1.0 - p) * 0.5).sqrt();
@@ -216,6 +238,16 @@ impl StemVoiceTrack {
             solo: false,
             start_time_secs,
             regions: Vec::new(),
+            eq: TrackEqSettings::default(),
+            eq_proc: StereoEq::new(engine_sample_rate),
+            comp: Compressor::new(engine_sample_rate),
+            comp_threshold_db: 0.0,
+            comp_ratio: 1.0,
+            reverb: SimpleReverb::new(engine_sample_rate),
+            reverb_send: 0.0,
+            delay: StereoDelay::new(engine_sample_rate),
+            delay_send: 0.0,
+            pitch_ratio: 1.0,
         }
     }
 
@@ -289,6 +321,14 @@ impl SampleVoice {
     }
 }
 
+/// A note waiting to be triggered by the scheduler (chord strum/arpeggio).
+pub struct ScheduledNote {
+    pub samples_until: u32,
+    pub note: u8,
+    pub freq: f32,
+    pub velocity: f32,
+}
+
 pub struct SynthEngine {
     pub sample_rate: f32,
     pub waveform: Waveform,
@@ -300,6 +340,9 @@ pub struct SynthEngine {
     pub reverb_params: ReverbParams,
     pub reverb: SimpleReverb,
     pub drive: f32,
+    pub master_fx: MasterFxChain,
+    pub remix_fx: RemixFx,
+    pub tape_stop: TapeStop,
     pub master_volume: f32,
     pub voices: [Voice; MAX_VOICES],
     pub drums: [DrumVoice; MAX_DRUMS],
@@ -313,6 +356,12 @@ pub struct SynthEngine {
     // Polyphonic WAV one-shot voices for the Channel Rack sample player
     pub sample_voices: [SampleVoice; MAX_SAMPLE_VOICES],
     pub sample_voice_cursor: usize,
+    // Scheduled chord/strum notes (Chord Matrix audition)
+    pub scheduled_notes: Vec<ScheduledNote>,
+    // Modular Patcher DSP graph
+    pub patcher: Option<PatchProcessor>,
+    pub patcher_spec: Option<PatchSpec>,
+    pub patcher_enabled: bool,
     // Debug heartbeat counters (only used when SONIX_AUDIO_DEBUG is set)
     pub dbg_frames: u64,
 }
@@ -329,8 +378,11 @@ impl SynthEngine {
             delay_params: DelayParams::default(),
             delay: StereoDelay::new(sample_rate),
             reverb_params: ReverbParams::default(),
-            reverb: SimpleReverb::new(),
+            reverb: SimpleReverb::new(sample_rate),
             drive: 1.0,
+            master_fx: MasterFxChain::new(sample_rate),
+            remix_fx: RemixFx::new(sample_rate),
+            tape_stop: TapeStop::new(sample_rate),
             master_volume: 0.8,
             voices: [Voice::new(sample_rate); MAX_VOICES],
             drums: [DrumVoice::new(sample_rate); MAX_DRUMS],
@@ -341,6 +393,10 @@ impl SynthEngine {
             audition: None,
             sample_voices: std::array::from_fn(|_| SampleVoice::new()),
             sample_voice_cursor: 0,
+            scheduled_notes: Vec::new(),
+            patcher: None,
+            patcher_spec: None,
+            patcher_enabled: false,
             dbg_frames: 0,
         }
     }
@@ -376,6 +432,10 @@ impl SynthEngine {
                 | AudioCommand::LoadStemTrack { .. }
                 | AudioCommand::SetStemTrackState { .. }
                 | AudioCommand::SetStemTrackRegions { .. }
+                | AudioCommand::SetTrackEq { .. }
+                | AudioCommand::SetTrackMix { .. }
+                | AudioCommand::SetRemixFx { .. }
+                | AudioCommand::SetTapeStop { .. }
                 | AudioCommand::SeekSongPosition(_)
         );
         if significant {
@@ -408,6 +468,40 @@ impl SynthEngine {
                     if voice.is_active() && voice.note == note {
                         voice.release();
                     }
+                }
+            }
+            AudioCommand::StrumChord { notes, velocity, start_samples, spread_samples, mode } => {
+                let mut ordered = notes;
+                match mode {
+                    2 => ordered.reverse(),
+                    3 => {
+                        let n = ordered.len();
+                        if n > 1 {
+                            let mut seed = (self.song_time_samples as u32) ^ 0x9E37_79B9;
+                            for i in (1..n).rev() {
+                                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                                let j = (seed as usize) % (i + 1);
+                                ordered.swap(i, j);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+                let step = if mode == 0 { 0 } else { spread_samples };
+                for (i, note) in ordered.into_iter().enumerate() {
+                    let freq = 440.0 * 2.0_f32.powf((note as f32 - 69.0) / 12.0);
+                    let delay = start_samples.saturating_add(step.saturating_mul(i as u32));
+                    self.scheduled_notes.push(ScheduledNote {
+                        samples_until: delay,
+                        note,
+                        freq,
+                        velocity,
+                    });
+                }
+                // Hard cap so a stuck stream of commands can never grow forever.
+                if self.scheduled_notes.len() > 256 {
+                    let overflow = self.scheduled_notes.len() - 256;
+                    self.scheduled_notes.drain(0..overflow);
                 }
             }
             AudioCommand::TriggerDrum(drum_type) => {
@@ -443,6 +537,52 @@ impl SynthEngine {
             AudioCommand::SetDrive(drv) => {
                 self.drive = drv.clamp(1.0, 10.0);
             }
+            AudioCommand::SetMasterFx(params) => {
+                self.master_fx.set_params(params);
+            }
+            AudioCommand::SetTrackEq { track_index, settings } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    track.eq = settings;
+                    track.eq_proc.set_settings(settings);
+                }
+            }
+            AudioCommand::SetTrackMix { track_index, comp_threshold_db, comp_ratio, reverb_send, delay_send, pitch_semitones } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    track.comp_threshold_db = comp_threshold_db;
+                    track.comp_ratio = comp_ratio;
+                    track.reverb_send = reverb_send.clamp(0.0, 1.0);
+                    track.delay_send = delay_send.clamp(0.0, 1.0);
+                    track.pitch_ratio = 2.0_f32.powf(pitch_semitones / 12.0);
+                }
+            }
+            AudioCommand::SetRemixFx { mode, bpm } => {
+                self.remix_fx.set(mode, bpm);
+            }
+            AudioCommand::SetTapeStop { active } => {
+                self.tape_stop.set_active(active);
+            }
+            AudioCommand::SetPatcherGraph(spec) => {
+                self.patcher_spec = Some(spec.clone());
+                self.patcher = Some(PatchProcessor::new(&spec, self.sample_rate));
+            }
+            AudioCommand::SetPatcherEnabled(enabled) => {
+                self.patcher_enabled = enabled;
+                if enabled && self.patcher.is_none() {
+                    if let Some(spec) = &self.patcher_spec {
+                        self.patcher = Some(PatchProcessor::new(spec, self.sample_rate));
+                    }
+                }
+            }
+            AudioCommand::PatcherNoteOn { freq, velocity } => {
+                if let Some(p) = &mut self.patcher {
+                    p.note_on(freq, velocity);
+                }
+            }
+            AudioCommand::PatcherNoteOff => {
+                if let Some(p) = &mut self.patcher {
+                    p.note_off();
+                }
+            }
             AudioCommand::LoadPreset(preset) => {
                 let (wf, adsr, flt) = preset.settings();
                 self.waveform = wf;
@@ -469,9 +609,20 @@ impl SynthEngine {
                 self.song_playing = false;
             }
             AudioCommand::LoadStemTrack { track_index, left, right, sample_rate, volume, pan, start_time_secs } => {
-                let track = StemVoiceTrack::new(left, right, sample_rate, volume, pan, start_time_secs);
+                let track = StemVoiceTrack::new(left, right, sample_rate, volume, pan, start_time_secs, self.sample_rate);
                 if track_index < self.stem_tracks.len() {
-                    self.stem_tracks[track_index] = track;
+                    let eq = self.stem_tracks[track_index].eq;
+                    let old = &self.stem_tracks[track_index];
+                    let (ct, cr, rs, ds, pr) = (old.comp_threshold_db, old.comp_ratio, old.reverb_send, old.delay_send, old.pitch_ratio);
+                    let mut new_track = track;
+                    new_track.eq = eq;
+                    new_track.eq_proc.set_settings(eq);
+                    new_track.comp_threshold_db = ct;
+                    new_track.comp_ratio = cr;
+                    new_track.reverb_send = rs;
+                    new_track.delay_send = ds;
+                    new_track.pitch_ratio = pr;
+                    self.stem_tracks[track_index] = new_track;
                 } else {
                     while self.stem_tracks.len() < track_index {
                         self.stem_tracks.push(StemVoiceTrack::new(
@@ -481,6 +632,7 @@ impl SynthEngine {
                             1.0,
                             0.0,
                             0.0,
+                            self.sample_rate,
                         ));
                     }
                     self.stem_tracks.push(track);
@@ -611,6 +763,36 @@ impl SynthEngine {
 
     #[inline(always)]
     pub fn process_stereo(&mut self) -> (f32, f32) {
+        // 0. Fire any due scheduled chord/strum notes.
+        if !self.scheduled_notes.is_empty() {
+            let mut i = 0;
+            while i < self.scheduled_notes.len() {
+                if self.scheduled_notes[i].samples_until == 0 {
+                    let ev = self.scheduled_notes.swap_remove(i);
+                    let mut target = None;
+                    for (vi, voice) in self.voices.iter().enumerate() {
+                        if voice.is_active() && voice.note == ev.note {
+                            target = Some(vi);
+                            break;
+                        }
+                    }
+                    if target.is_none() {
+                        for (vi, voice) in self.voices.iter().enumerate() {
+                            if !voice.is_active() {
+                                target = Some(vi);
+                                break;
+                            }
+                        }
+                    }
+                    let idx = target.unwrap_or(0);
+                    self.voices[idx].trigger(ev.note, ev.freq, ev.velocity, self.sample_rate);
+                } else {
+                    self.scheduled_notes[i].samples_until -= 1;
+                    i += 1;
+                }
+            }
+        }
+
         let mut mixed = 0.0;
         let mut active_count = 0;
 
@@ -702,7 +884,7 @@ impl SynthEngine {
             let has_solo = self.has_stem_solo;
             let current_time_sec = self.song_time_samples as f32 / self.sample_rate;
 
-            for track in &self.stem_tracks {
+            for track in &mut self.stem_tracks {
                 let audible = if has_solo { track.solo } else { !track.muted };
                 if !audible || track.left.is_empty() {
                     continue;
@@ -710,6 +892,8 @@ impl SynthEngine {
 
                 let pan_l = track.pan_l;
                 let pan_r = track.pan_r;
+                let mut track_l = 0.0_f32;
+                let mut track_r = 0.0_f32;
 
                 if !track.regions.is_empty() {
                     // Play defined audio regions/slices
@@ -744,7 +928,7 @@ impl SynthEngine {
                                     region.sample_offset_sec + rel_time
                                 }
                             };
-                            let sample_pos = (sample_pos_sec * track.sample_rate).max(0.0);
+                            let sample_pos = (sample_pos_sec * track.sample_rate * track.pitch_ratio).max(0.0);
                             let idx0 = sample_pos.floor() as usize;
                             let frac = sample_pos - idx0 as f32;
 
@@ -756,14 +940,14 @@ impl SynthEngine {
                                     raw_l
                                 };
                                 let g = track.volume * region.gain * env;
-                                stem_mix_l += raw_l * g * pan_l;
-                                stem_mix_r += raw_r * g * pan_r;
+                                track_l += raw_l * g * pan_l;
+                                track_r += raw_r * g * pan_r;
                             } else if idx0 < track.left.len() {
                                 let raw_l = track.left[idx0];
                                 let raw_r = if idx0 < track.right.len() { track.right[idx0] } else { raw_l };
                                 let g = track.volume * region.gain * env;
-                                stem_mix_l += raw_l * g * pan_l;
-                                stem_mix_r += raw_r * g * pan_r;
+                                track_l += raw_l * g * pan_l;
+                                track_r += raw_r * g * pan_r;
                             }
                         }
                     }
@@ -771,7 +955,7 @@ impl SynthEngine {
                     // Fallback to full track streaming
                     let track_rel_time = current_time_sec - track.start_time_secs;
                     if track_rel_time >= 0.0 {
-                        let sample_pos = (track_rel_time * track.sample_rate).max(0.0);
+                        let sample_pos = (track_rel_time * track.sample_rate * track.pitch_ratio).max(0.0);
                         let idx0 = sample_pos.floor() as usize;
                         let frac = sample_pos - idx0 as f32;
 
@@ -782,16 +966,57 @@ impl SynthEngine {
                             } else {
                                 raw_l
                             };
-                            stem_mix_l += raw_l * track.volume * pan_l;
-                            stem_mix_r += raw_r * track.volume * pan_r;
+                            track_l += raw_l * track.volume * pan_l;
+                            track_r += raw_r * track.volume * pan_r;
                         } else if idx0 < track.left.len() {
                             let raw_l = track.left[idx0];
                             let raw_r = if idx0 < track.right.len() { track.right[idx0] } else { raw_l };
-                            stem_mix_l += raw_l * track.volume * pan_l;
-                            stem_mix_r += raw_r * track.volume * pan_r;
+                            track_l += raw_l * track.volume * pan_l;
+                            track_r += raw_r * track.volume * pan_r;
                         }
                     }
                 }
+
+                // Per-track 3-band parametric EQ
+                let (eq_l, eq_r) = track.eq_proc.process(track_l, track_r);
+                let (mut tl, mut tr) = (eq_l, eq_r);
+
+                // Per-track compressor (channel strip dynamics)
+                if track.comp_ratio > 1.0 {
+                    let params = CompressorParams {
+                        threshold_db: track.comp_threshold_db,
+                        ratio: track.comp_ratio,
+                        attack_ms: 12.0,
+                        release_ms: 140.0,
+                        makeup_db: 0.0,
+                    };
+                    let (cl, cr) = track.comp.process(tl, tr, &params);
+                    tl = cl;
+                    tr = cr;
+                }
+
+                // Per-track aux sends: 100% wet reverb/delay scaled by send amount.
+                if track.reverb_send > 0.0001 {
+                    let wet = track.reverb.process((tl + tr) * 0.5, &ReverbParams {
+                        room_size: 0.65,
+                        damping: 0.4,
+                        mix: 1.0,
+                    });
+                    tl += wet * track.reverb_send;
+                    tr += wet * track.reverb_send;
+                }
+                if track.delay_send > 0.0001 {
+                    let (dl, dr) = track.delay.process(tl, tr, &DelayParams {
+                        time_ms: 350.0,
+                        feedback: 0.35,
+                        mix: 1.0,
+                    });
+                    tl += dl * track.delay_send;
+                    tr += dr * track.delay_send;
+                }
+
+                stem_mix_l += tl;
+                stem_mix_r += tr;
             }
 
             self.song_time_samples += 1;
@@ -844,8 +1069,28 @@ impl SynthEngine {
             }
         }
 
-        let out_l = ((del_l + stem_mix_l) * self.master_volume).tanh();
-        let out_r = ((del_r + stem_mix_r) * self.master_volume).tanh();
+        // 8b. Modular Patcher output (real DSP graph)
+        if self.patcher_enabled
+            && let Some(patch) = &mut self.patcher
+        {
+            let (pl, pr) = patch.process();
+            stem_mix_l += pl;
+            stem_mix_r += pr;
+        }
+
+        // 9. Master bus FX chain (EQ, compressor, de-esser, doubler, gate, filter, limiter)
+        let (fx_l, fx_r) = self.master_fx.process(del_l + stem_mix_l, del_r + stem_mix_r);
+
+        let out_l = (fx_l * self.master_volume).tanh();
+        let out_r = (fx_r * self.master_volume).tanh();
+
+        // DJ performance FX on the final master bus.
+        let (out_l, out_r) = if self.remix_fx.is_active() {
+            self.remix_fx.process(out_l, out_r)
+        } else {
+            (out_l, out_r)
+        };
+        let (out_l, out_r) = self.tape_stop.process(out_l, out_r);
 
         self.dbg_frames += 1;
         if self.dbg_frames % 48000 == 0 {
@@ -872,11 +1117,51 @@ impl SynthEngine {
 
         (out_l, out_r)
     }
+}
 
-    #[allow(dead_code)]
-    #[inline(always)]
-    pub fn process_sample(&mut self) -> f32 {
-        let (l, r) = self.process_stereo();
-        (l + r) * 0.5
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn active_voices(synth: &SynthEngine) -> usize {
+        synth.voices.iter().filter(|v| v.is_active()).count()
+    }
+
+    #[test]
+    fn strum_chord_schedules_notes_over_time() {
+        let mut synth = SynthEngine::new(48_000.0);
+        synth.handle_command(AudioCommand::StrumChord {
+            notes: vec![60, 64, 67],
+            velocity: 0.8,
+            start_samples: 0,
+            spread_samples: 100,
+            mode: 1,
+        });
+        assert_eq!(synth.scheduled_notes.len(), 3);
+
+        // First note fires on the first processed frame.
+        synth.process_stereo();
+        assert_eq!(active_voices(&synth), 1);
+
+        // Advance far enough for the remaining strummed notes.
+        for _ in 0..250 {
+            synth.process_stereo();
+        }
+        assert_eq!(active_voices(&synth), 3);
+        assert!(synth.scheduled_notes.is_empty());
+    }
+
+    #[test]
+    fn strum_chord_block_mode_fires_together() {
+        let mut synth = SynthEngine::new(48_000.0);
+        synth.handle_command(AudioCommand::StrumChord {
+            notes: vec![60, 64, 67, 71],
+            velocity: 0.8,
+            start_samples: 0,
+            spread_samples: 500,
+            mode: 0,
+        });
+        synth.process_stereo();
+        assert_eq!(active_voices(&synth), 4);
     }
 }

@@ -3,22 +3,30 @@ use crate::audio::stem_separator::StemProject;
 use crate::ui::theme::Theme;
 use crate::ui::widgets::rotary_knob;
 
+#[derive(Default)]
+pub struct StemViewActions {
+    pub request_separation: bool,
+    pub export_stems: bool,
+}
+
 pub fn render_stem_separator_view(
     ui: &mut Ui,
     project: &mut StemProject,
     current_time: f32,
     is_playing: bool,
     status_msg: &mut String,
-) {
+) -> StemViewActions {
+    let mut actions = StemViewActions::default();
+    let _ = &status_msg;
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("🧠 AI STEM SEPARATION STUDIO (Demucs v4 Neural Engine)").strong().size(14.0).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🧠 AI STEM SEPARATION STUDIO (Spectral DSP Engine)")).strong().size(14.0).color(Theme::FL_ORANGE));
             ui.separator();
-            ui.label(egui::RichText::new("Isolera och extrahera sång, trummor, bas och instrument direkt ur färdiga mixar").size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Isolera och extrahera sång, trummor, bas och instrument direkt ur färdiga mixar")).size(11.0).color(Theme::TEXT_MUTED));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new("📥 Exportera Stems till Song Arranger").strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
-                    *status_msg = "✔ 4 Stems exporterade till Song Arranger (Spår 1-4)".to_string();
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Exportera Stems till Song Arranger")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                    actions.export_stems = true;
                 }
             });
         });
@@ -28,25 +36,35 @@ pub fn render_stem_separator_view(
         // Project Info Bar
         ui.group(|ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Källfil:").size(11.0).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(crate::i18n::t("Källfil:")).size(11.0).color(Theme::TEXT_MUTED));
                 ui.label(egui::RichText::new(&project.track_title).strong().size(12.0).color(Theme::FL_CYAN));
                 ui.separator();
 
-                ui.label(egui::RichText::new(format!("Längd: {:.1}s  •  Tempo: {:.0} BPM", project.duration_seconds, project.bpm)).size(11.0).color(Theme::TEXT_MUTED));
+                let tempo_txt = if project.bpm > 0.0 {
+                    format!("{:.0} BPM", project.bpm)
+                } else {
+                    crate::i18n::t("— BPM").to_string()
+                };
+                ui.label(egui::RichText::new(format!("{} {:.1}s  •  {} {}", crate::i18n::t("Längd:"), project.duration_seconds, crate::i18n::t("Tempo:"), tempo_txt)).size(11.0).color(Theme::TEXT_MUTED));
                 ui.separator();
 
                 ui.label(egui::RichText::new(format!("Modell: {}", project.model_name)).size(10.5).color(Theme::FL_YELLOW));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("⚡ Kör AI-separering").strong().color(Color32::WHITE)).fill(Color32::from_rgb(140, 40, 180))).clicked() {
-                        project.trigger_ai_separation("Retro_Synthwave_Summer_Hit.wav");
-                        *status_msg = "⚡ AI Stem Separation slutförd med Demucs v4!".to_string();
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Välj fil & separera")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(140, 40, 180))).clicked() {
+                        actions.request_separation = true;
                     }
                 });
             });
         });
 
         ui.add_space(8.0);
+
+        if project.stems.is_empty() {
+            ui.group(|ui| {
+                ui.label(egui::RichText::new(crate::i18n::t("Ingen mix separerad ännu. Klicka på \"Välj fil & separera\" och välj en WAV/MP3/FLAC-fil — Sonix delar upp den i fyra spelbara stämspår.")).size(11.5).color(Theme::TEXT_MUTED));
+            });
+        }
 
         // 4 Isolated Stem Waveform Channels
         for stem in &mut project.stems {
@@ -62,11 +80,11 @@ pub fn render_stem_separator_view(
 
                             ui.horizontal(|ui| {
                                 let m_col = if stem.muted { Color32::from_rgb(80, 20, 20) } else { Theme::FL_GREEN };
-                                if ui.add(egui::Button::new(egui::RichText::new("MUTE").size(10.0)).fill(m_col)).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("MUTE")).size(10.0)).fill(m_col)).clicked() {
                                     stem.muted = !stem.muted;
                                 }
                                 let s_col = if stem.solo { Theme::FL_ORANGE } else { Color32::from_rgb(40, 35, 25) };
-                                if ui.add(egui::Button::new(egui::RichText::new("SOLO").size(10.0)).fill(s_col)).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("SOLO")).size(10.0)).fill(s_col)).clicked() {
                                     stem.solo = !stem.solo;
                                 }
                             });
@@ -113,4 +131,5 @@ pub fn render_stem_separator_view(
             ui.add_space(4.0);
         }
     });
+    actions
 }

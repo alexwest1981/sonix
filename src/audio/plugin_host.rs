@@ -9,7 +9,6 @@ pub enum PluginFormat {
     Lv2,
     WineYabridge,
     FlStudioNative,
-    FlPresetFst,
 }
 
 impl PluginFormat {
@@ -21,19 +20,6 @@ impl PluginFormat {
             PluginFormat::Lv2 => "LV2 (Linux Audio)",
             PluginFormat::WineYabridge => "Windows VST3 (Yabridge/Wine)",
             PluginFormat::FlStudioNative => "FL Studio VSTi / Image-Line",
-            PluginFormat::FlPresetFst => "FL Studio Preset (.fst)",
-        }
-    }
-
-    pub fn short_name(&self) -> &'static str {
-        match self {
-            PluginFormat::Clap => "CLAP",
-            PluginFormat::Vst3 => "VST3",
-            PluginFormat::Vst2 => "VST2",
-            PluginFormat::Lv2 => "LV2",
-            PluginFormat::WineYabridge => "Yabridge",
-            PluginFormat::FlStudioNative => "FL Studio",
-            PluginFormat::FlPresetFst => ".FST Preset",
         }
     }
 
@@ -45,7 +31,6 @@ impl PluginFormat {
             PluginFormat::Lv2 => Color32::from_rgb(46, 204, 113),          // Green
             PluginFormat::WineYabridge => Color32::from_rgb(180, 100, 255), // Purple Wine
             PluginFormat::FlStudioNative => Color32::from_rgb(255, 100, 30),// FL Orange/Red
-            PluginFormat::FlPresetFst => Color32::from_rgb(255, 200, 80),  // Bright Yellow
         }
     }
 }
@@ -61,7 +46,6 @@ pub enum PluginCategory {
     Distortion,
     PitchCorrection,
     Mastering,
-    Sampler,
 }
 
 impl PluginCategory {
@@ -76,7 +60,6 @@ impl PluginCategory {
             PluginCategory::Distortion => "Distortion / Saturation",
             PluginCategory::PitchCorrection => "Pitch Correction / Vocoder",
             PluginCategory::Mastering => "Mastering / Limiter",
-            PluginCategory::Sampler => "Sampler / Rompler",
         }
     }
 
@@ -91,7 +74,6 @@ impl PluginCategory {
             PluginCategory::Distortion => "🔥",
             PluginCategory::PitchCorrection => "🎤",
             PluginCategory::Mastering => "🛡",
-            PluginCategory::Sampler => "🥁",
         }
     }
 }
@@ -105,12 +87,9 @@ pub struct PluginDescriptor {
     pub format: PluginFormat,
     pub category: PluginCategory,
     pub file_path: String,
-    pub is_sandboxed: bool,
-    pub is_loaded: bool,
-    pub cpu_usage: f32,
-    pub latency_samples: usize,
-    pub is_fl_compatible: bool,
-    pub has_gui: bool,
+    pub file_size_bytes: u64,
+    pub verified: bool,
+    pub verify_note: String,
     pub author_notes: String,
 }
 
@@ -140,7 +119,6 @@ pub struct PluginManager {
     pub active_tab: usize, // 0 = Plugin Databas, 1 = Mappar & Sökvägar, 2 = Importera Plugin / .FST, 3 = FL Studio & Yabridge Assistent
     pub yabridge_installed: bool,
     pub wine_version: String,
-    pub sandboxing_enabled: bool,
     pub search_query: String,
     pub selected_format_filter: Option<PluginFormat>,
     pub selected_category_filter: Option<PluginCategory>,
@@ -168,35 +146,35 @@ impl Default for PluginManager {
             ScanPath {
                 path: "~/.vst3".to_string(),
                 enabled: true,
-                description: "Linux Användar-VST3".to_string(),
+                description: crate::i18n::t("Linux Användar-VST3").to_string(),
                 is_wine: false,
                 is_fl_path: false,
             },
             ScanPath {
                 path: "/usr/lib/vst3".to_string(),
                 enabled: true,
-                description: "Linux System-VST3".to_string(),
+                description: crate::i18n::t("Linux System-VST3").to_string(),
                 is_wine: false,
                 is_fl_path: false,
             },
             ScanPath {
                 path: "~/.clap".to_string(),
                 enabled: true,
-                description: "Linux Användar-CLAP".to_string(),
+                description: crate::i18n::t("Linux Användar-CLAP").to_string(),
                 is_wine: false,
                 is_fl_path: false,
             },
             ScanPath {
                 path: "/usr/lib/clap".to_string(),
                 enabled: true,
-                description: "Linux System-CLAP".to_string(),
+                description: crate::i18n::t("Linux System-CLAP").to_string(),
                 is_wine: false,
                 is_fl_path: false,
             },
             ScanPath {
                 path: "/usr/lib/lv2".to_string(),
                 enabled: true,
-                description: "Linux LV2 Standardbibliotek".to_string(),
+                description: crate::i18n::t("Linux LV2 Standardbibliotek").to_string(),
                 is_wine: false,
                 is_fl_path: false,
             },
@@ -204,35 +182,35 @@ impl Default for PluginManager {
             ScanPath {
                 path: "~/.wine/drive_c/Program Files/Common Files/VST3".to_string(),
                 enabled: true,
-                description: "Windows VST3 Standard (Yabridge / Wine)".to_string(),
+                description: crate::i18n::t("Windows VST3 Standard (Yabridge / Wine)").to_string(),
                 is_wine: true,
                 is_fl_path: false,
             },
             ScanPath {
                 path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST".to_string(),
                 enabled: true,
-                description: "FL Studio 64-bit VST Plugins (Image-Line)".to_string(),
+                description: crate::i18n::t("FL Studio 64-bit VST Plugins (Image-Line)").to_string(),
                 is_wine: true,
                 is_fl_path: true,
             },
             ScanPath {
                 path: "~/.wine/drive_c/Program Files (x86)/Image-Line/FL Studio/Plugins/VST".to_string(),
                 enabled: true,
-                description: "FL Studio 32-bit VST Plugins (Legacy)".to_string(),
+                description: crate::i18n::t("FL Studio 32-bit VST Plugins (Legacy)").to_string(),
                 is_wine: true,
                 is_fl_path: true,
             },
             ScanPath {
                 path: "~/.wine/drive_c/Program Files/VstPlugins".to_string(),
                 enabled: true,
-                description: "Windows VST2 Standard (Yabridge)".to_string(),
+                description: crate::i18n::t("Windows VST2 Standard (Yabridge)").to_string(),
                 is_wine: true,
                 is_fl_path: false,
             },
             ScanPath {
                 path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Data/Patches/Plugin presets".to_string(),
                 enabled: true,
-                description: "FL Studio .FST Presets (Kanaler & Mixer)".to_string(),
+                description: crate::i18n::t("FL Studio .FST Presets (Kanaler & Mixer)").to_string(),
                 is_wine: true,
                 is_fl_path: true,
             },
@@ -243,331 +221,157 @@ impl Default for PluginManager {
             presets: Vec::new(),
             scan_paths: default_scan_paths,
             active_tab: 0,
-            yabridge_installed: true,
-            wine_version: "Wine Staging 9.14 (Low-Latency PREEMPT_RT)".to_string(),
-            sandboxing_enabled: true,
+            yabridge_installed: detect_yabridge_installed(),
+            wine_version: detect_wine_version(),
             search_query: String::new(),
             selected_format_filter: None,
             selected_category_filter: None,
-            last_scan_time: "Automatisk förinläsning".to_string(),
-            scan_status: "Redo".to_string(),
+            last_scan_time: crate::i18n::t("Inte skannad ännu").to_string(),
+            scan_status: crate::i18n::t("Redo").to_string(),
             new_custom_path_input: String::new(),
             manual_import_file_input: String::new(),
             manual_import_vendor_input: String::new(),
             manual_import_category_idx: 0,
         };
 
-        mgr.populate_known_plugins();
         mgr.scan_disk();
         mgr
     }
 }
 
-impl PluginManager {
-    pub fn populate_known_plugins(&mut self) {
-        self.plugins.clear();
-
-        // -------------------------------------------------------------
-        // 1. FL Studio Native & Image-Line VSTs (Standard & Bridged)
-        // -------------------------------------------------------------
-        self.plugins.push(PluginDescriptor {
-            id: "fl_sytrus".to_string(),
-            name: "Sytrus (FM & Subtractive Synthesizer)".to_string(),
-            vendor: "Image-Line (FL Studio)".to_string(),
-            version: "v2.6.4".to_string(),
-            format: PluginFormat::FlStudioNative,
-            category: PluginCategory::Synth,
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/Sytrus.dll".to_string(),
-            is_sandboxed: true,
-            is_loaded: true,
-            cpu_usage: 1.6,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Legendarisk FM/RM-synth från FL Studio med 6 operatorer och matris-modulering.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "fl_harmor".to_string(),
-            name: "Harmor (Additive & Resynthesis)".to_string(),
-            vendor: "Image-Line (FL Studio)".to_string(),
-            version: "v1.3.1".to_string(),
-            format: PluginFormat::FlStudioNative,
-            category: PluginCategory::Synth,
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/Harmor.dll".to_string(),
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 3.4,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Additiv synth och resyntes med unik bild/ljudsyntes och prismamodulering.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "fl_gross_beat".to_string(),
-            name: "Gross Beat (Time & Pitch Manipulation)".to_string(),
-            vendor: "Image-Line (FL Studio)".to_string(),
-            version: "v1.0.32".to_string(),
-            format: PluginFormat::FlStudioNative,
-            category: PluginCategory::Effect,
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/GrossBeat.dll".to_string(),
-            is_sandboxed: true,
-            is_loaded: true,
-            cpu_usage: 0.8,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Populärt verktyg för half-speed, gating, reverse och scratch-effekter i realtid.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "fl_maximus".to_string(),
-            name: "Maximus (Multiband Maximizer & Limiter)".to_string(),
-            vendor: "Image-Line (FL Studio)".to_string(),
-            version: "v1.0.30".to_string(),
-            format: PluginFormat::FlStudioNative,
-            category: PluginCategory::Mastering,
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/Maximus.dll".to_string(),
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 1.2,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Avancerad 3-bands mastering-kompressor och brickwall limiter.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "fl_vocodex".to_string(),
-            name: "Vocodex (Advanced Studio Vocoder)".to_string(),
-            vendor: "Image-Line (FL Studio)".to_string(),
-            version: "v1.0.22".to_string(),
-            format: PluginFormat::FlStudioNative,
-            category: PluginCategory::PitchCorrection,
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/Vocodex.dll".to_string(),
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 2.1,
-            latency_samples: 64,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Upp till 100 filterband för rika daft punk- och robotröster.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "fl_studio_vsti".to_string(),
-            name: "FL Studio VSTi Host Multi-Out".to_string(),
-            vendor: "Image-Line (FL Studio Core)".to_string(),
-            version: "v21.2.3".to_string(),
-            format: PluginFormat::FlStudioNative,
-            category: PluginCategory::Synth,
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/FL Studio VSTi (Multi).dll".to_string(),
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 4.8,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Kör hela FL Studios motor, step sequencer och plugins synkroniserat inuti Sonix!".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "fl_soundgoodizer".to_string(),
-            name: "Soundgoodizer (Stereo Maximizer)".to_string(),
-            vendor: "Image-Line (FL Studio)".to_string(),
-            version: "v1.0.1".to_string(),
-            format: PluginFormat::FlStudioNative,
-            category: PluginCategory::Effect,
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/Soundgoodizer.dll".to_string(),
-            is_sandboxed: true,
-            is_loaded: true,
-            cpu_usage: 0.3,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Klassisk 1-ratts saturator & multiband enhancer baserad på Maximus.".to_string(),
-        });
-
-        // -------------------------------------------------------------
-        // 2. Windows Plugins via Yabridge (FabFilter, Serum, Valhalla, OTT)
-        // -------------------------------------------------------------
-        self.plugins.push(PluginDescriptor {
-            id: "ff_pro_q3".to_string(),
-            name: "FabFilter Pro-Q 3".to_string(),
-            vendor: "FabFilter (Windows Bridged)".to_string(),
-            version: "v3.24".to_string(),
-            format: PluginFormat::WineYabridge,
-            category: PluginCategory::Equalizer,
-            file_path: "~/.wine/drive_c/Program Files/Common Files/VST3/FabFilter Pro-Q 3.vst3".to_string(),
-            is_sandboxed: true,
-            is_loaded: true,
-            cpu_usage: 0.9,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Branschstandard inom EQ med dynamiskt läge och spektrogram.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "serum".to_string(),
-            name: "Serum Wavetable Synthesizer".to_string(),
-            vendor: "Xfer Records (Windows Bridged)".to_string(),
-            version: "v1.368".to_string(),
-            format: PluginFormat::WineYabridge,
-            category: PluginCategory::Synth,
-            file_path: "~/.wine/drive_c/Program Files/Common Files/VST3/Serum.vst3".to_string(),
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 3.5,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Världens mest använda wavetable-synth för modern elektronisk musik och trap.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "ott".to_string(),
-            name: "OTT Multiband Compressor".to_string(),
-            vendor: "Xfer Records".to_string(),
-            version: "v1.31".to_string(),
-            format: PluginFormat::WineYabridge,
-            category: PluginCategory::Compressor,
-            file_path: "~/.wine/drive_c/Program Files/Common Files/VST3/OTT.vst3".to_string(),
-            is_sandboxed: true,
-            is_loaded: true,
-            cpu_usage: 0.4,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Legendarisk upward/downward multiband-kompressor för aggressiv dynamik.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "valhalla_vintage_verb".to_string(),
-            name: "Valhalla VintageVerb".to_string(),
-            vendor: "Valhalla DSP (Windows Bridged)".to_string(),
-            version: "v3.0.0".to_string(),
-            format: PluginFormat::WineYabridge,
-            category: PluginCategory::Reverb,
-            file_path: "~/.wine/drive_c/Program Files/Common Files/VST3/ValhallaVintageVerb.vst3".to_string(),
-            is_sandboxed: true,
-            is_loaded: true,
-            cpu_usage: 1.1,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Klassisk 1970/1980-tals algoritmisk rymd och plate med varm klang.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "soundtoys_decapitator".to_string(),
-            name: "Soundtoys Decapitator".to_string(),
-            vendor: "Soundtoys (Windows Bridged)".to_string(),
-            version: "v5.3.8".to_string(),
-            format: PluginFormat::WineYabridge,
-            category: PluginCategory::Distortion,
-            file_path: "~/.wine/drive_c/Program Files/Common Files/VST3/Decapitator.vst3".to_string(),
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 1.4,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Analog rör- och bandmättnad med 5 distinkta analoga modeller.".to_string(),
-        });
-
-        // -------------------------------------------------------------
-        // 3. Native Linux CLAP & VST3 & LV2
-        // -------------------------------------------------------------
-        self.plugins.push(PluginDescriptor {
-            id: "vital_clap".to_string(),
-            name: "Vital Spectral Wavetable".to_string(),
-            vendor: "Matt Tytel (Native Linux)".to_string(),
-            version: "v1.5.5".to_string(),
-            format: PluginFormat::Clap,
-            category: PluginCategory::Synth,
-            file_path: "~/.clap/Vital.clap".to_string(),
-            is_sandboxed: true,
-            is_loaded: true,
-            cpu_usage: 2.2,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Högpresterande spektral wavetable-synth med CLAP polyfonisk modulation.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "surge_xt".to_string(),
-            name: "Surge XT Hybrid Synth".to_string(),
-            vendor: "Surge Synth Team (Native)".to_string(),
-            version: "v1.3.4".to_string(),
-            format: PluginFormat::Clap,
-            category: PluginCategory::Synth,
-            file_path: "/usr/lib/clap/Surge-XT.clap".to_string(),
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 1.8,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Öppen källkods hybridsynth med hundratals filter och oscillatorer.".to_string(),
-        });
-
-        self.plugins.push(PluginDescriptor {
-            id: "uhe_diva".to_string(),
-            name: "u-he Diva (Analogue Emulation)".to_string(),
-            vendor: "u-he (Native Linux)".to_string(),
-            version: "v1.4.7".to_string(),
-            format: PluginFormat::Vst3,
-            category: PluginCategory::Synth,
-            file_path: "~/.vst3/u-he/Diva.vst3".to_string(),
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 4.2,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Kretsnivå-emulering av klassiska analoga syntar (Minimoog, Jupiter-8, MS-20).".to_string(),
-        });
-
-        // -------------------------------------------------------------
-        // 4. Sample FL Studio Presets (.fst)
-        // -------------------------------------------------------------
-        self.presets.clear();
-        self.presets.push(FlStudioPreset {
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Data/Patches/Plugin presets/Effects/Gross Beat/Half-Speed Drill.fst".to_string(),
-            preset_name: "Half-Speed Drill Rhythm".to_string(),
-            target_plugin: "Gross Beat".to_string(),
-            preset_type: "Effect Preset (.fst)".to_string(),
-            filesize_bytes: 4096,
-        });
-        self.presets.push(FlStudioPreset {
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Data/Patches/Plugin presets/Generators/Sytrus/Pluck - Bell 80s.fst".to_string(),
-            preset_name: "Pluck - Bell 80s FM".to_string(),
-            target_plugin: "Sytrus".to_string(),
-            preset_type: "Channel State (.fst)".to_string(),
-            filesize_bytes: 8192,
-        });
-        self.presets.push(FlStudioPreset {
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Data/Patches/Plugin presets/Effects/Maximus/Mastering - Clean Punch.fst".to_string(),
-            preset_name: "Mastering - Clean Punch".to_string(),
-            target_plugin: "Maximus".to_string(),
-            preset_type: "Mixer State (.fst)".to_string(),
-            filesize_bytes: 6144,
-        });
-        self.presets.push(FlStudioPreset {
-            file_path: "~/.wine/drive_c/Program Files/Image-Line/FL Studio/Data/Patches/Plugin presets/Effects/Soundgoodizer/Preset A - Warm Glue.fst".to_string(),
-            preset_name: "Preset A - Warm Glue".to_string(),
-            target_plugin: "Soundgoodizer".to_string(),
-            preset_type: "Mixer State (.fst)".to_string(),
-            filesize_bytes: 1024,
-        });
+/// Detects the installed Wine version, or reports that Wine is unavailable.
+pub fn detect_wine_version() -> String {
+    let candidates = ["wine", "wine64"];
+    for exe in candidates {
+        if let Ok(out) = std::process::Command::new(exe).arg("--version").output()
+            && out.status.success()
+        {
+            let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if !s.is_empty() {
+                return s;
+            }
+        }
     }
+    crate::i18n::t("Wine ej installerat").to_string()
+}
+
+/// Returns true if the `yabridgectl` helper is available in PATH.
+pub fn detect_yabridge_installed() -> bool {
+    std::process::Command::new("yabridgectl")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Runs `yabridgectl sync` for real and returns its combined output.
+pub fn run_yabridge_sync() -> Result<String, String> {
+    let out = std::process::Command::new("yabridgectl")
+        .arg("sync")
+        .output()
+        .map_err(|e| crate::tstatus!("Kunde inte köra yabridgectl: {}", e))?;
+    let mut text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let err = String::from_utf8_lossy(&out.stderr).trim().to_string();
+    if !err.is_empty() {
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str(&err);
+    }
+    if out.status.success() {
+        Ok(if text.is_empty() { crate::i18n::t("Yabridge-synk klar.").to_string() } else { text })
+    } else {
+        Err(if text.is_empty() { crate::i18n::t("yabridgectl sync misslyckades.").to_string() } else { text })
+    }
+}
+
+/// Extracts a version number embedded in a plugin file name (e.g. "Serum 1.3.5"),
+/// returning "—" when none is present instead of inventing one.
+fn extract_version(file_name: &str) -> String {
+    let chars: Vec<char> = file_name.chars().collect();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_ascii_digit() {
+            let start = i;
+            let mut dots = 0;
+            while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
+                if chars[i] == '.' {
+                    dots += 1;
+                }
+                i += 1;
+            }
+            if dots >= 1 {
+                let token: String = chars[start..i].iter().collect();
+                let token = token.trim_matches('.').to_string();
+                if !token.is_empty() {
+                    return token;
+                }
+            }
+        } else {
+            i += 1;
+        }
+    }
+    crate::i18n::t("—").to_string()
+}
+
+/// Verifies that a plugin binary/bundle is a real, loadable artifact.
+/// Returns (verified, human-readable note).
+pub fn verify_plugin_artifact(path: &Path) -> (bool, String) {
+    if !path.exists() {
+        return (false, crate::i18n::t("Filen finns inte på disken").to_string());
+    }
+    if path.is_dir() {
+        // VST3/LV2/CLAP bundles: look for a native shared object inside.
+        let has_so = walk_find_so(path, 0);
+        return if has_so {
+            (true, crate::i18n::t("Plugin-paket med binär hittad").to_string())
+        } else {
+            (false, crate::i18n::t("Paket saknar binär (.so)").to_string())
+        };
+    }
+    match std::fs::read(path) {
+        Ok(bytes) if bytes.len() >= 4 => {
+            if bytes.starts_with(&[0x7f, b'E', b'L', b'F']) {
+                (true, crate::i18n::t("Giltig Linux-binär (ELF)").to_string())
+            } else if bytes.starts_with(b"MZ") {
+                (true, crate::i18n::t("Giltig Windows-binär (PE) – kräver Yabridge").to_string())
+            } else {
+                (false, crate::i18n::t("Okänt filformat (inte ELF/PE)").to_string())
+            }
+        }
+        _ => (false, crate::i18n::t("Kunde inte läsa filen").to_string()),
+    }
+}
+
+fn walk_find_so(dir: &Path, depth: usize) -> bool {
+    if depth > 4 {
+        return false;
+    }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.is_dir() {
+            if walk_find_so(&p, depth + 1) {
+                return true;
+            }
+        } else if p.extension().and_then(|e| e.to_str()) == Some("so") {
+            return true;
+        }
+    }
+    false
+}
+
+impl PluginManager {
 
     /// Scans configured real directories on the file system for plugin bundles & files.
     pub fn scan_disk(&mut self) {
         let mut found_count = 0;
+        // Drop previously discovered entries so a rescan reflects the real disk.
+        self.plugins.retain(|p| !p.id.starts_with("disc_"));
+        self.presets.retain(|p| !p.file_path.is_empty() && std::path::Path::new(&expand_tilde(&p.file_path)).exists());
         let paths_to_scan: Vec<(PathBuf, bool)> = self
             .scan_paths
             .iter()
@@ -584,7 +388,11 @@ impl PluginManager {
         }
 
         self.last_scan_time = "Nyss (Auto-skannad)".to_string();
-        self.scan_status = format!("Skanning klar. {} aktiva plugins och presets identifierade.", self.plugins.len());
+        self.scan_status = crate::tstatus!(
+            "Skanning klar. {} plugins och {} presets identifierade på disk.",
+            self.plugins.len(),
+            self.presets.len()
+        );
     }
 
     fn scan_directory_recursive(&mut self, dir: &Path, depth: usize, count: &mut usize, is_wine: bool) {
@@ -693,29 +501,33 @@ impl PluginManager {
             PluginCategory::Effect
         };
 
+        let (verified, verify_note) = verify_plugin_artifact(path);
+        let file_size_bytes = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+
         self.plugins.push(PluginDescriptor {
             id: format!("disc_{}", self.plugins.len()),
             name: clean_name,
             vendor,
-            version: "1.0".to_string(),
+            version: extract_version(&file_name),
             format,
             category,
             file_path: path_str,
-            is_sandboxed: true,
-            is_loaded: false,
-            cpu_usage: 1.0,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: format!("Upptäcktes automatiskt under skanning av {}", path.display()),
+            file_size_bytes,
+            verified,
+            verify_note: verify_note.clone(),
+            author_notes: crate::tstatus!("Upptäcktes automatiskt under skanning av {}. {}", path.display(), verify_note),
         });
     }
 
     /// Manually import a single plugin file or bundle
     pub fn import_file(&mut self, raw_path: &str, custom_vendor: &str, category: PluginCategory) -> Result<PluginDescriptor, String> {
         let expanded = expand_tilde(raw_path.trim());
-        let file_name = expanded.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "Okänt Plugin".to_string());
+        let file_name = expanded.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| crate::i18n::t("Okänt Plugin").to_string());
         let lower = file_name.to_lowercase();
+
+        if !expanded.exists() {
+            return Err(crate::tstatus!("Filen finns inte: {}", raw_path));
+        }
 
         if lower.ends_with(".fst") {
             let preset_name = file_name.trim_end_matches(".fst").to_string();
@@ -727,7 +539,7 @@ impl PluginManager {
                 filesize_bytes: std::fs::metadata(&expanded).map(|m| m.len()).unwrap_or(0),
             };
             self.presets.push(p);
-            return Err(format!("Filen '{}' importerades som en FL Studio .FST preset!", preset_name));
+            return Err(crate::tstatus!("Filen '{}' importerades som en FL Studio .FST preset!", preset_name));
         }
 
         let format = if lower.ends_with(".clap") {
@@ -762,25 +574,23 @@ impl PluginManager {
             .trim_end_matches(".lv2")
             .replace('_', " ");
 
+        let (verified, verify_note) = verify_plugin_artifact(&expanded);
         let desc = PluginDescriptor {
             id: format!("custom_{}", self.plugins.len()),
             name: clean_name,
             vendor,
-            version: "1.0".to_string(),
+            version: extract_version(&file_name),
             format,
             category,
             file_path: raw_path.to_string(),
-            is_sandboxed: true,
-            is_loaded: true,
-            cpu_usage: 1.2,
-            latency_samples: 0,
-            is_fl_compatible: true,
-            has_gui: true,
-            author_notes: "Manuellt importerad pluginfil i Sonix.".to_string(),
+            file_size_bytes: std::fs::metadata(&expanded).map(|m| m.len()).unwrap_or(0),
+            verified,
+            verify_note: verify_note.clone(),
+            author_notes: crate::tstatus!("Manuellt importerad pluginfil. {}", verify_note),
         };
 
         self.plugins.push(desc.clone());
-        self.scan_status = format!("✔ Importerade '{}' ({})", desc.name, desc.format.name());
+        self.scan_status = crate::tstatus!("✔ Importerade '{}' ({}) – {}", desc.name, desc.format.name(), verify_note);
         Ok(desc)
     }
 
@@ -804,8 +614,9 @@ impl PluginManager {
     }
 
     pub fn rescan(&mut self) {
-        self.populate_known_plugins();
         self.scan_disk();
+        self.yabridge_installed = detect_yabridge_installed();
+        self.wine_version = detect_wine_version();
     }
 }
 
@@ -813,53 +624,63 @@ impl PluginManager {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_plugin_manager_initialization_and_fl_plugins() {
-        let mgr = PluginManager::default();
-        assert!(!mgr.plugins.is_empty());
-        assert!(!mgr.scan_paths.is_empty());
-
-        let has_sytrus = mgr.plugins.iter().any(|p| p.name.contains("Sytrus"));
-        let has_gross_beat = mgr.plugins.iter().any(|p| p.name.contains("Gross Beat"));
-        let has_pro_q = mgr.plugins.iter().any(|p| p.name.contains("Pro-Q"));
-        let has_vital = mgr.plugins.iter().any(|p| p.name.contains("Vital"));
-
-        assert!(has_sytrus, "Should have Sytrus FL plugin");
-        assert!(has_gross_beat, "Should have Gross Beat FL plugin");
-        assert!(has_pro_q, "Should have FabFilter Pro-Q");
-        assert!(has_vital, "Should have Vital CLAP");
+    fn temp_file(name: &str, bytes: &[u8]) -> PathBuf {
+        let dir = std::env::temp_dir().join("sonix_plugin_tests");
+        std::fs::create_dir_all(&dir).unwrap();
+        let p = dir.join(name);
+        std::fs::write(&p, bytes).unwrap();
+        p
     }
 
     #[test]
-    fn test_manual_plugin_import() {
+    fn manager_does_not_fabricate_plugins() {
+        let mgr = PluginManager::default();
+        // Only real files discovered on disk are listed — never hardcoded names.
+        assert!(!mgr.plugins.iter().any(|p| p.name.contains("Sytrus")));
+        assert!(!mgr.scan_paths.is_empty());
+    }
+
+    #[test]
+    fn verify_detects_elf_and_rejects_garbage() {
+        let elf = temp_file("fake.clap", &[0x7f, b'E', b'L', b'F', 0, 0, 0, 0]);
+        let (ok, _) = verify_plugin_artifact(&elf);
+        assert!(ok, "ELF magic should verify");
+
+        let bad = temp_file("bad.clap", b"not a plugin");
+        let (ok2, _) = verify_plugin_artifact(&bad);
+        assert!(!ok2, "garbage should not verify");
+    }
+
+    #[test]
+    fn manual_import_requires_real_file() {
+        let mut mgr = PluginManager::default();
+        let res = mgr.import_file("/nonexistent/path/Nexus.dll", "reFX", PluginCategory::Synth);
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn manual_plugin_import_records_real_file() {
         let mut mgr = PluginManager::default();
         let initial_len = mgr.plugins.len();
+        let path = temp_file("Nexus.dll", b"MZ\x90\x00fakepe");
 
-        let res = mgr.import_file(
-            "~/.wine/drive_c/Program Files/VstPlugins/Nexus.dll",
-            "reFX",
-            PluginCategory::Synth,
-        );
-
+        let res = mgr.import_file(path.to_str().unwrap(), "reFX", PluginCategory::Synth);
         assert!(res.is_ok());
         assert_eq!(mgr.plugins.len(), initial_len + 1);
         let imported = mgr.plugins.last().unwrap();
         assert_eq!(imported.name, "Nexus");
         assert_eq!(imported.vendor, "reFX");
         assert_eq!(imported.format, PluginFormat::WineYabridge);
+        assert!(imported.verified);
     }
 
     #[test]
     fn test_fst_preset_import() {
         let mut mgr = PluginManager::default();
         let initial_presets = mgr.presets.len();
+        let path = temp_file("Custom808.fst", b"FSTDATA");
 
-        let res = mgr.import_file(
-            "~/.wine/drive_c/FL Studio/Data/Patches/Custom808.fst",
-            "Image-Line",
-            PluginCategory::Distortion,
-        );
-
+        let res = mgr.import_file(path.to_str().unwrap(), "Image-Line", PluginCategory::Distortion);
         assert!(res.is_err()); // Returns Err with Swedish notification explaining it went to presets
         assert_eq!(mgr.presets.len(), initial_presets + 1);
         let preset = mgr.presets.last().unwrap();

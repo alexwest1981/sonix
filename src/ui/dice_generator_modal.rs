@@ -30,6 +30,8 @@ pub struct DiceGeneratorState {
     pub generated_notes: Vec<GeneratedStepNote>,
     pub generated_drum_grid: [[bool; 16]; 4], // 0=Kick, 1=Snare, 2=HiHat, 3=Perc
     pub is_previewing: bool,
+    pub preview_start: Option<std::time::Instant>,
+    pub preview_step: usize,
 }
 
 impl Default for DiceGeneratorState {
@@ -44,6 +46,8 @@ impl Default for DiceGeneratorState {
             generated_notes: Vec::new(),
             generated_drum_grid: [[false; 16]; 4],
             is_previewing: false,
+            preview_start: None,
+            preview_step: 0,
         };
         s.roll_dice();
         s
@@ -54,83 +58,167 @@ const NOTE_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#",
 
 impl DiceGeneratorState {
     pub fn roll_dice(&mut self) {
-        let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_micros();
-        let scale = [0, 2, 3, 5, 7, 8, 10]; // Minor scale intervals
-        let base_root = 60; // C4
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_micros();
+
+        // Genre presets shape the scale, root note and drum feel.
+        // (scale intervals, root, four_on_floor kick)
+        let (scale, base_root, four_on_floor): (&[u8], u8, bool) = match self.genre_preset {
+            0 => (&[0, 3, 5, 7, 10], 60, false), // Trap  – minor pentatonic
+            1 => (&[0, 2, 3, 5, 7, 8, 10], 57, true), // Synthwave – natural minor, four-on-floor
+            2 => (&[0, 2, 3, 5, 7, 9, 10], 60, false), // LoFi – dorian
+            3 => (&[0, 2, 3, 5, 7, 8, 10], 60, false), // Drill – natural minor
+            4 => (&[0, 1, 3, 5, 7, 8, 10], 60, false), // Cyberpunk – phrygian
+            5 => (&[0, 2, 4, 5, 7, 9, 11], 60, true), // House – major, four-on-floor
+            _ => (&[0, 2, 3, 5, 7, 8, 10], 60, false),
+        };
+
+        let rand01 = |shift: u32| -> f32 {
+            (((seed >> (shift % 100)) % 1000) as f32) / 1000.0
+        };
+        let humanize = (self.humanize_pct / 100.0).clamp(0.0, 1.0);
+        let syncopation = (self.syncopation_pct / 100.0).clamp(0.0, 1.0);
 
         match self.category {
             DiceCategory::MelodyLead | DiceCategory::ChordArp => {
                 self.generated_notes.clear();
-                for step in 0..16 {
-                    let r = ((seed >> (step * 2)) % 100) as f32 / 100.0;
-                    if r < self.density {
-                        let scale_idx = ((seed >> (step * 3 + 1)) % scale.len() as u128) as usize;
-                        let oct = ((seed >> (step + 4)) % self.octave_range.max(1) as u128) as u8;
-                        let note = base_root + scale[scale_idx] + (oct * 12);
-                        let vel = 0.60 + (((seed >> (step + 7)) % 40) as f32 / 100.0);
-                        let len = if (seed >> (step + 2)) % 3 == 0 { 2 } else { 1 };
-                        self.generated_notes.push(GeneratedStepNote {
-                            step,
-                            note,
-                            velocity: vel,
-                            length_steps: len,
-                        });
+                for step in 0..16usize {
+                    if rand01((step * 2 + 1) as u32) >= self.density {
+                        continue;
                     }
+                    let mut note_step = step;
+                    // Syncopation pushes notes onto off-beats.
+                    if step % 2 == 0 && rand01((step * 5 + 3) as u32) < syncopation {
+                        note_step = (step + 1).min(15);
+                    }
+                    let scale_idx = ((seed >> (step * 3 + 1)) % scale.len() as u128) as usize;
+                    let oct = ((seed >> (step + 4)) % self.octave_range.max(1) as u128) as u8;
+                    let note = base_root + scale[scale_idx] + (oct * 12);
+                    // Humanize nudges velocity and occasionally skips a note.
+                    let vel = (0.60
+                        + rand01((step * 7 + 11) as u32) * 0.4
+                        + (rand01((step * 3 + 2) as u32) - 0.5) * humanize * 0.3)
+                        .clamp(0.1, 1.0);
+                    if humanize > 0.05 && rand01((step * 11 + 5) as u32) < humanize * 0.15 {
+                        continue;
+                    }
+                    let len = if rand01((step * 3 + 7) as u32) > 0.66 { 2 } else { 1 };
+                    self.generated_notes.push(GeneratedStepNote {
+                        step: note_step,
+                        note,
+                        velocity: vel,
+                        length_steps: len,
+                    });
                 }
             }
             DiceCategory::Bassline => {
                 self.generated_notes.clear();
                 let bass_root = 36; // C2
-                for step in [0, 3, 6, 8, 10, 12, 14] {
-                    let r = ((seed >> step) % 100) as f32 / 100.0;
-                    if r < self.density + 0.15 {
-                        let scale_idx = ((seed >> (step + 2)) % 4) as usize; // Root, b3, 4, 5
-                        let note = bass_root + scale[scale_idx];
-                        self.generated_notes.push(GeneratedStepNote {
-                            step,
-                            note,
-                            velocity: 0.90,
-                            length_steps: 2,
-                        });
+                for step in [0usize, 3, 6, 8, 10, 12, 14] {
+                    if rand01((step + 1) as u32) >= self.density + 0.15 {
+                        continue;
                     }
+                    let mut note_step = step;
+                    if step % 2 == 0 && rand01((step + 9) as u32) < syncopation {
+                        note_step = (step + 1).min(15);
+                    }
+                    let scale_idx = ((seed >> (step + 2)) % 4) as usize; // Root, b3, 4, 5
+                    let note = bass_root + scale[scale_idx % scale.len()];
+                    let vel = (0.90 + (rand01((step + 13) as u32) - 0.5) * humanize * 0.25)
+                        .clamp(0.1, 1.0);
+                    self.generated_notes.push(GeneratedStepNote {
+                        step: note_step,
+                        note,
+                        velocity: vel,
+                        length_steps: 2,
+                    });
                 }
             }
             DiceCategory::DrumBeat => {
                 self.generated_drum_grid = [[false; 16]; 4];
-                // Kick: standard beats 0, 8 + syncopated
-                self.generated_drum_grid[0][0] = true;
-                self.generated_drum_grid[0][8] = true;
-                if ((seed >> 2) % 10) > 3 { self.generated_drum_grid[0][6] = true; }
-                if ((seed >> 5) % 10) > 4 { self.generated_drum_grid[0][10] = true; }
+                // Kick: four-on-floor for house/synthwave, else 0/8 + syncopated.
+                if four_on_floor {
+                    for s in (0..16).step_by(4) {
+                        self.generated_drum_grid[0][s] = true;
+                    }
+                } else {
+                    self.generated_drum_grid[0][0] = true;
+                    self.generated_drum_grid[0][8] = true;
+                }
+                if rand01(2) > 1.0 - syncopation {
+                    self.generated_drum_grid[0][6] = true;
+                }
+                if rand01(5) > 1.0 - syncopation * 0.7 {
+                    self.generated_drum_grid[0][10] = true;
+                }
 
                 // Snare: beats 4, 12
                 self.generated_drum_grid[1][4] = true;
                 self.generated_drum_grid[1][12] = true;
-                if ((seed >> 8) % 10) > 6 { self.generated_drum_grid[1][15] = true; } // Ghost note
+                if rand01(8) > 1.0 - syncopation * 0.6 {
+                    self.generated_drum_grid[1][15] = true; // Ghost note
+                }
 
-                // HiHat: 8th or 16th notes + rolls
+                // HiHat: 8th or 16th notes, density driven
                 for s in 0..16 {
-                    if s % 2 == 0 || ((seed >> s) % 10) > 4 {
+                    let base = s % 2 == 0;
+                    if base || rand01((s + 1) as u32) < self.density {
                         self.generated_drum_grid[2][s] = true;
                     }
                 }
 
                 // Perc / Claps
-                for s in [2, 7, 11, 14] {
-                    if ((seed >> (s + 3)) % 10) > 5 {
+                for s in [2usize, 7, 11, 14] {
+                    if rand01((s + 3) as u32) > 1.0 - self.density * 0.6 {
                         self.generated_drum_grid[3][s] = true;
                     }
                 }
             }
             DiceCategory::SoundFx => {
                 self.generated_notes.clear();
-                for step in [0, 4, 8, 12] {
+                for step in [0usize, 4, 8, 12] {
                     self.generated_notes.push(GeneratedStepNote {
                         step,
-                        note: 72 + (step as u8 * 2),
+                        note: base_root + 12 + (step as u8 * 2),
                         velocity: 0.80,
                         length_steps: 4,
                     });
+                }
+            }
+        }
+    }
+}
+
+fn trigger_preview_step(state: &DiceGeneratorState, engine: &mut AudioEngine, s: usize) {
+    use crate::audio::DrumType;
+    match state.category {
+        DiceCategory::DrumBeat => {
+            for d in 0..4 {
+                if state.generated_drum_grid[d][s] {
+                    let drum = match d {
+                        0 => DrumType::Kick,
+                        1 => DrumType::Snare,
+                        2 => DrumType::HiHatClosed,
+                        _ => DrumType::Clap,
+                    };
+                    let _ = engine.send_command(AudioCommand::TriggerDrum(drum));
+                }
+            }
+        }
+        _ => {
+            for n in &state.generated_notes {
+                if n.step == s {
+                    let freq = 440.0 * 2.0_f32.powf((n.note as f32 - 69.0) / 12.0);
+                    let _ = engine.send_command(AudioCommand::NoteOn {
+                        note: n.note,
+                        freq,
+                        velocity: n.velocity,
+                    });
+                }
+                if n.step + n.length_steps == s {
+                    let _ = engine.send_command(AudioCommand::NoteOff { note: n.note });
                 }
             }
         }
@@ -149,10 +237,22 @@ pub fn render_dice_generator_modal(
         return;
     }
 
+    // Sequenced preview: fires one 16th-note step at a time at 120 BPM.
+    if state.is_previewing {
+        let start = *state.preview_start.get_or_insert_with(std::time::Instant::now);
+        let step_secs = 0.125_f32; // 16th note @ 120 BPM
+        let target = (start.elapsed().as_secs_f32() / step_secs) as usize;
+        while state.preview_step <= target {
+            let s = state.preview_step % 16;
+            trigger_preview_step(state, engine, s);
+            state.preview_step += 1;
+        }
+    }
+
     let mut close = false;
     let mut trigger_insert = false;
 
-    egui::Window::new("🎲 Melodi- & Beat-Tärning (Idea Spark & Randomizer)")
+    egui::Window::new(crate::i18n::t("🎲 Melodi- & Beat-Tärning (Idea Spark & Randomizer)"))
         .open(open)
         .collapsible(false)
         .resizable(true)
@@ -162,9 +262,9 @@ pub fn render_dice_generator_modal(
             ui.vertical(|ui| {
                 // Header
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("🎲 SPARK & GENERATOR").strong().size(14.0).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎲 SPARK & GENERATOR")).strong().size(14.0).color(Theme::FL_ORANGE));
                     ui.separator();
-                    ui.label(egui::RichText::new("Slumpa vilda melodier, unika grooves, trap-rolls och basgångar med 1 klick").size(10.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Slumpa vilda melodier, unika grooves, trap-rolls och basgångar med 1 klick")).size(10.5).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(4.0);
@@ -172,11 +272,11 @@ pub fn render_dice_generator_modal(
                 // Category Buttons
                 ui.horizontal(|ui| {
                     let cats = [
-                        (DiceCategory::MelodyLead, "🎼 Melodi / Lead"),
-                        (DiceCategory::Bassline, "🎸 Basgång (Bass)"),
-                        (DiceCategory::DrumBeat, "🥁 Trumgroove & Beat"),
-                        (DiceCategory::ChordArp, "✨ Arpeggio"),
-                        (DiceCategory::SoundFx, "🎛 Sound FX / Riser"),
+                        (DiceCategory::MelodyLead, crate::i18n::t("🎼 Melodi / Lead")),
+                        (DiceCategory::Bassline, crate::i18n::t("🎸 Basgång (Bass)")),
+                        (DiceCategory::DrumBeat, crate::i18n::t("🥁 Trumgroove & Beat")),
+                        (DiceCategory::ChordArp, crate::i18n::t("✨ Arpeggio")),
+                        (DiceCategory::SoundFx, crate::i18n::t("🎛 Sound FX / Riser")),
                     ];
                     for (cat, label) in cats {
                         let is_sel = state.category == cat;
@@ -194,7 +294,7 @@ pub fn render_dice_generator_modal(
                 // Genre Presets & Style Tuning
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Genre / Stil:").strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("Genre / Stil:")).strong().color(Theme::FL_CYAN));
                         let genres = ["Trap & 808", "Synthwave 80s", "Lo-Fi Hip Hop", "UK Drill", "Cyberpunk Industrial", "House 4x4"];
                         egui::ComboBox::from_id_salt("dice_genre_picker")
                             .selected_text(*genres.get(state.genre_preset).unwrap_or(&"Trap"))
@@ -210,9 +310,9 @@ pub fn render_dice_generator_modal(
 
                         ui.separator();
 
-                        ui.label("Oktavomfång:");
+                        ui.label(crate::i18n::t("Oktavomfång:"));
                         for oct in 1..=3 {
-                            if ui.selectable_label(state.octave_range == oct, format!("{} Okt", oct)).clicked() {
+                            if ui.selectable_label(state.octave_range == oct, crate::tstatus!("{} Okt", oct)).clicked() {
                                 state.octave_range = oct;
                                 state.roll_dice();
                             }
@@ -222,7 +322,7 @@ pub fn render_dice_generator_modal(
                     ui.add_space(4.0);
 
                     ui.horizontal(|ui| {
-                        let dens_str = format!("Täthet: {:.0}%", state.density * 100.0);
+                        let dens_str = crate::tstatus!("Täthet: {:.0}%", state.density * 100.0);
                         if ui.add(egui::Slider::new(&mut state.density, 0.1..=1.0).text(dens_str)).changed() {
                             state.roll_dice();
                         }
@@ -238,11 +338,11 @@ pub fn render_dice_generator_modal(
                 // Visual Pattern Preview Canvas
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("📊 GENERERAT MÖNSTER (16 STEG)").strong().color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(crate::i18n::t("📊 GENERERAT MÖNSTER (16 STEG)")).strong().color(Theme::FL_GREEN));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(egui::RichText::new("🎲 KASTA TÄRNINGEN IGEN").strong().color(Color32::BLACK)).fill(Theme::FL_YELLOW)).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 KASTA TÄRNINGEN IGEN")).strong().color(Color32::BLACK)).fill(Theme::FL_YELLOW)).clicked() {
                                 state.roll_dice();
-                                *status_msg = "🎲 Rullade ny slumpmässig idé!".to_string();
+                                *status_msg = crate::i18n::t("🎲 Rullade ny slumpmässig idé!").to_string();
                             }
                         });
                     });
@@ -326,26 +426,32 @@ pub fn render_dice_generator_modal(
 
                 // Action Buttons
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new("📥 Klistra in Mönster i Spår").strong().color(Color32::BLACK)).fill(Theme::FL_GREEN).min_size(Vec2::new(200.0, 32.0))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Klistra in Mönster i Spår")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN).min_size(Vec2::new(200.0, 32.0))).clicked() {
                         trigger_insert = true;
                         close = true;
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new("▶ Provspela Mönster").strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 90, 140)).min_size(Vec2::new(160.0, 32.0))).clicked() {
-                        if state.category == DiceCategory::DrumBeat {
-                            let _ = engine.send_command(AudioCommand::TriggerDrum(crate::audio::DrumType::Kick));
-                            let _ = engine.send_command(AudioCommand::TriggerDrum(crate::audio::DrumType::Snare));
+                    let preview_label = if state.is_previewing {
+                        crate::i18n::t("⏹ Stoppa Provspelning")
+                    } else {
+                        crate::i18n::t("▶ Provspela Mönster")
+                    };
+                    if ui.add(egui::Button::new(egui::RichText::new(preview_label).strong().color(Color32::WHITE)).fill(if state.is_previewing { Color32::from_rgb(150, 50, 50) } else { Color32::from_rgb(45, 90, 140) }).min_size(Vec2::new(160.0, 32.0))).clicked() {
+                        state.is_previewing = !state.is_previewing;
+                        if state.is_previewing {
+                            state.preview_start = Some(std::time::Instant::now());
+                            state.preview_step = 0;
+                            *status_msg = crate::i18n::t("▶ Provspelar slumpat mönster sekvenserat...").to_string();
                         } else {
                             for n in &state.generated_notes {
-                                let freq = 440.0 * 2.0_f32.powf((n.note as f32 - 69.0) / 12.0);
-                                let _ = engine.send_command(AudioCommand::NoteOn { note: n.note, freq, velocity: n.velocity });
+                                let _ = engine.send_command(AudioCommand::NoteOff { note: n.note });
                             }
+                            *status_msg = crate::i18n::t("⏹ Stoppade provspelning").to_string();
                         }
-                        *status_msg = "▶ Provspelar slumpat mönster...".to_string();
                     }
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("Stäng").clicked() {
+                        if ui.button(crate::i18n::t("Stäng")).clicked() {
                             close = true;
                         }
                     });

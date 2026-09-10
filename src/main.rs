@@ -1,4 +1,5 @@
 mod audio;
+mod i18n;
 mod ui;
 
 use audio::AudioEngine;
@@ -21,14 +22,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=========================================================");
     println!("  🎹 SONIX - Native Linux Digital Audio Workstation     ");
     println!("=========================================================");
-    println!("🔊 Startar PipeWire / ALSA ljudmotor...");
+    println!("🔊 Starting PipeWire / ALSA audio engine...");
 
     let engine = AudioEngine::new(512)?;
 
-    println!("  • Ljudkort:    {}", engine.device_name);
-    println!("  • Samplingsfrekvens: {} Hz", engine.sample_rate);
-    println!("  • Kanaler:     Stereo");
-    println!("🚀 Startar grafiskt gränssnitt (GUI)...");
+    println!("  • Audio device: {}", engine.device_name);
+    println!("  • Sample rate:       {} Hz", engine.sample_rate);
+    println!("  • Channels:    Stereo");
+    println!("🚀 Starting graphical interface (GUI)...");
 
     let args: Vec<String> = std::env::args().collect();
     let screenshot_dir = if let Some(idx) = args.iter().position(|a| a == "--capture-screenshots" || a == "--screenshots" || a == "-s") {
@@ -70,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Box::new(move |_cc| {
             let mut app = SonixApp::new(engine);
             if !screenshot_dir.is_empty() {
-                println!("📸 Aktiverar automatisk skärmdumpsinsamling till: {}", screenshot_dir);
+                println!("📸 Enabling automatic screenshot capture to: {}", screenshot_dir);
                 app.enable_screenshot_mode(std::path::Path::new(&screenshot_dir));
             } else if let Some(ref arg) = cli_arg {
                 if arg.to_lowercase().ends_with(".zip") {
@@ -82,5 +83,5 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Ok(Box::new(app))
         }),
-    ).map_err(|e| format!("Kunde inte starta fönstret: {}", e).into())
+    ).map_err(|e| format!("Could not start the window: {}", e).into())
 }

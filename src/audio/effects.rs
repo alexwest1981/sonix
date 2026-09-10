@@ -87,9 +87,20 @@ pub struct SimpleReverb {
 }
 
 impl SimpleReverb {
-    pub fn new() -> Self {
-        let comb_lens = [1116, 1188, 1277, 1356];
-        let allpass_lens = [225, 556];
+    pub fn new(sample_rate: f32) -> Self {
+        // Schroeder comb/all-pass lengths are tuned for 44.1 kHz; scale them so
+        // the room size stays consistent at any engine sample rate.
+        let scale = (sample_rate / 44100.0).max(0.1);
+        let comb_lens = [
+            (1116.0 * scale).round().max(1.0) as usize,
+            (1188.0 * scale).round().max(1.0) as usize,
+            (1277.0 * scale).round().max(1.0) as usize,
+            (1356.0 * scale).round().max(1.0) as usize,
+        ];
+        let allpass_lens = [
+            (225.0 * scale).round().max(1.0) as usize,
+            (556.0 * scale).round().max(1.0) as usize,
+        ];
 
         let comb_delays_l = [
             vec![0.0; comb_lens[0]],

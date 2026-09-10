@@ -252,15 +252,16 @@ pub fn render_add_track_modal(
     playlist_tracks: &mut Vec<PlaylistTrack>,
     status_message: &mut String,
     ctx: &egui::Context,
-) {
+) -> Option<TrackTemplate> {
     if !*open {
-        return;
+        return None;
     }
 
     let mut close = false;
     let mut created_track = None;
+    let mut import_request: Option<TrackTemplate> = None;
 
-    egui::Window::new("➕ Skapa nytt spår i Sonix Studio")
+    egui::Window::new(crate::i18n::t("➕ Skapa nytt spår i Sonix Studio"))
         .collapsible(false)
         .resizable(true)
         .default_size(Vec2::new(720.0, 520.0))
@@ -270,10 +271,10 @@ pub fn render_add_track_modal(
 
             // Top Header and Search Bar
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("Välj instrument eller ljudkälla för ditt nya spår:").strong().size(12.5).color(Theme::TEXT_BRIGHT));
+                ui.label(egui::RichText::new(crate::i18n::t("Välj instrument eller ljudkälla för ditt nya spår:")).strong().size(12.5).color(Theme::TEXT_BRIGHT));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new("🔍 Sök:").size(11.0).color(Theme::TEXT_MUTED));
-                    ui.add_sized(Vec2::new(140.0, 20.0), egui::TextEdit::singleline(&mut state.search_filter).hint_text("T.ex. flygel, 808..."));
+                    ui.label(egui::RichText::new(crate::i18n::t("🔍 Sök:")).size(11.0).color(Theme::TEXT_MUTED));
+                    ui.add_sized(Vec2::new(140.0, 20.0), egui::TextEdit::singleline(&mut state.search_filter).hint_text(crate::i18n::t("T.ex. flygel, 808...")));
                 });
             });
 
@@ -295,7 +296,7 @@ pub fn render_add_track_modal(
                     let is_active = state.selected_category == cat_opt;
                     let fill = if is_active { Theme::FL_ORANGE } else { Color32::from_rgb(26, 32, 42) };
                     let fg = if is_active { Color32::BLACK } else { Theme::TEXT_BRIGHT };
-                    if ui.add(egui::Button::new(egui::RichText::new(cat_name).strong().size(11.0).color(fg)).fill(fill)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(cat_name)).strong().size(11.0).color(fg)).fill(fill)).clicked() {
                         state.selected_category = cat_opt;
                     }
                 }
@@ -350,7 +351,7 @@ pub fn render_add_track_modal(
                         ui.painter().text(
                             Pos2::new(card_rect.min.x + 40.0, card_rect.min.y + 18.0),
                             egui::Align2::LEFT_CENTER,
-                            tmpl.title,
+                            crate::i18n::t(tmpl.title),
                             egui::FontId::proportional(12.0),
                             Color32::WHITE,
                         );
@@ -360,7 +361,7 @@ pub fn render_add_track_modal(
                         ui.painter().text(
                             tag_pos,
                             egui::Align2::RIGHT_CENTER,
-                            format!("[{}]", tmpl.tag),
+                            format!("[{}]", crate::i18n::t(tmpl.tag)),
                             egui::FontId::proportional(10.0),
                             tmpl.color,
                         );
@@ -369,22 +370,29 @@ pub fn render_add_track_modal(
                         ui.painter().text(
                             Pos2::new(card_rect.min.x + 14.0, card_rect.min.y + 48.0),
                             egui::Align2::LEFT_CENTER,
-                            tmpl.desc,
+                            crate::i18n::t(tmpl.desc),
                             egui::FontId::proportional(10.0),
                             Theme::TEXT_MUTED,
                         );
 
                         if card_resp.clicked() {
-                            let new_id = playlist_tracks.len() + 1;
-                            let mut track = PlaylistTrack::new(
-                                format!("{} {}", tmpl.title, new_id),
-                                tmpl.icon,
-                                tmpl.kind,
-                                tmpl.color,
-                            );
-                            track.is_rec_armed = tmpl.is_rec_arm_default;
-                            created_track = Some((track, tmpl.title));
-                            close = true;
+                            if tmpl.category == AddTrackCategory::Import {
+                                // Audio-file templates need a real file: request a
+                                // picker instead of creating an empty silent track.
+                                import_request = Some((*tmpl).clone());
+                                close = true;
+                            } else {
+                                let new_id = playlist_tracks.len() + 1;
+                                let mut track = PlaylistTrack::new(
+                                    format!("{} {}", crate::i18n::t(tmpl.title), new_id),
+                                    tmpl.icon,
+                                    tmpl.kind,
+                                    tmpl.color,
+                                );
+                                track.is_rec_armed = tmpl.is_rec_arm_default;
+                                created_track = Some((track, crate::i18n::t(tmpl.title)));
+                                close = true;
+                            }
                         }
 
                         if (idx + 1) % 2 == 0 {
@@ -397,9 +405,9 @@ pub fn render_add_track_modal(
             ui.add_space(8.0);
             ui.separator();
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("💡 Tips: Du kan byta färg, ljud och effekter när som helst i spårhuvudet.").size(10.5).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(crate::i18n::t("💡 Tips: Du kan byta färg, ljud och effekter när som helst i spårhuvudet.")).size(10.5).color(Theme::TEXT_MUTED));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.button("Stäng").clicked() {
+                    if ui.button(crate::i18n::t("Stäng")).clicked() {
                         close = true;
                     }
                 });
@@ -407,11 +415,13 @@ pub fn render_add_track_modal(
         });
 
     if let Some((track, title)) = created_track {
-        *status_message = format!("✔ Skapade nytt spår: {}", title);
+        *status_message = crate::tstatus!("✔ Skapade nytt spår: {}", title);
         playlist_tracks.push(track);
     }
 
     if close {
         *open = false;
     }
+
+    import_request
 }

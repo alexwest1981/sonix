@@ -8,30 +8,30 @@ pub fn render_plugins_view(ui: &mut Ui, manager: &mut PluginManager, status_msg:
         // 1. TOP HEADER & MAIN NAVIGATION TABS
         // ====================================================================
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("🔌 PLUGIN & FL STUDIO BRIDGE MANAGER").strong().size(15.0).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("🔌 PLUGIN & FL STUDIO BRIDGE MANAGER")).strong().size(15.0).color(Theme::FL_CYAN));
             ui.separator();
             ui.label(
-                egui::RichText::new("Hantera och importera VST3, CLAP, LV2, FL Studio Native & Windows-plugins via Yabridge")
+                egui::RichText::new(crate::i18n::t("Hantera och importera VST3, CLAP, LV2, FL Studio Native & Windows-plugins via Yabridge"))
                     .size(11.0)
                     .color(Theme::TEXT_MUTED),
             );
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("🔄 Skanna mappar nu").clicked() {
+                if ui.button(crate::i18n::t("🔄 Skanna mappar nu")).clicked() {
                     manager.rescan();
-                    *status_msg = format!("✔ Plugin-skanning klar ({} plugins och presets hittades)", manager.plugins.len() + manager.presets.len());
+                    *status_msg = crate::tstatus!("✔ Plugin-skanning klar ({} plugins och presets hittades)", manager.plugins.len() + manager.presets.len());
                 }
 
-                let assist_btn = ui.selectable_label(manager.active_tab == 3, "🍷 FL Studio & Yabridge Assistent");
+                let assist_btn = ui.selectable_label(manager.active_tab == 3, crate::i18n::t("🍷 FL Studio & Yabridge Assistent"));
                 if assist_btn.clicked() { manager.active_tab = 3; }
 
-                let imp_btn = ui.selectable_label(manager.active_tab == 2, "📥 Importera Plugin / .FST");
+                let imp_btn = ui.selectable_label(manager.active_tab == 2, crate::i18n::t("📥 Importera Plugin / .FST"));
                 if imp_btn.clicked() { manager.active_tab = 2; }
 
-                let paths_btn = ui.selectable_label(manager.active_tab == 1, "📁 Sökvägar & Mappar");
+                let paths_btn = ui.selectable_label(manager.active_tab == 1, crate::i18n::t("📁 Sökvägar & Mappar"));
                 if paths_btn.clicked() { manager.active_tab = 1; }
 
-                let db_btn = ui.selectable_label(manager.active_tab == 0, "🔌 Plugindatabas");
+                let db_btn = ui.selectable_label(manager.active_tab == 0, crate::i18n::t("🔌 Plugindatabas"));
                 if db_btn.clicked() { manager.active_tab = 0; }
             });
         });
@@ -44,22 +44,22 @@ pub fn render_plugins_view(ui: &mut Ui, manager: &mut PluginManager, status_msg:
         ui.group(|ui| {
             ui.horizontal(|ui| {
                 // PipeWire Status
-                ui.label(egui::RichText::new("🟢 PipeWire RT Ljudmotor:").strong().size(11.0).color(Theme::FL_GREEN));
-                ui.label(egui::RichText::new("44.1 kHz • 64 buffert (1.4 ms latency)").size(11.0).color(Theme::TEXT_BRIGHT));
+                ui.label(egui::RichText::new(crate::i18n::t("🟢 PipeWire RT Ljudmotor:")).strong().size(11.0).color(Theme::FL_GREEN));
+                ui.label(egui::RichText::new(crate::i18n::t("Aktiv (Sonix 512-sampels ringbuffert)")).size(11.0).color(Theme::TEXT_BRIGHT));
                 ui.separator();
 
-                // Sandboxing Status
-                ui.label(egui::RichText::new("🛡 Process-Isolering:").strong().size(11.0).color(Theme::FL_YELLOW));
-                ui.checkbox(&mut manager.sandboxing_enabled, "Aktiv (Kraschsäkert läge)");
+                // Plugin execution model
+                ui.label(egui::RichText::new(crate::i18n::t("🛡 Plugin-körning:")).strong().size(11.0).color(Theme::FL_YELLOW));
+                ui.label(egui::RichText::new(crate::i18n::t("Endast metadata-skanning (ingen in-process host)")).size(11.0).color(Theme::TEXT_MUTED));
                 ui.separator();
 
                 // Wine / Yabridge Status
-                ui.label(egui::RichText::new("🍷 Windows / FL-brygga:").strong().size(11.0).color(Theme::FL_PURPLE));
+                ui.label(egui::RichText::new(crate::i18n::t("🍷 Windows / FL-brygga:")).strong().size(11.0).color(Theme::FL_PURPLE));
                 ui.label(egui::RichText::new(&manager.wine_version).size(11.0).color(Theme::TEXT_BRIGHT));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(&manager.last_scan_time).size(10.5).color(Theme::TEXT_MUTED));
-                    ui.label(egui::RichText::new("Senast skannad:").size(10.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Senast skannad:")).size(10.5).color(Theme::TEXT_MUTED));
                 });
             });
         });
@@ -85,20 +85,20 @@ pub fn render_plugins_view(ui: &mut Ui, manager: &mut PluginManager, status_msg:
 fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
     // Search & Filter controls
     ui.horizontal(|ui| {
-        ui.label("🔍 Sök plugin:");
+        ui.label(crate::i18n::t("🔍 Sök plugin:"));
         ui.add(
             egui::TextEdit::singleline(&mut manager.search_query)
-                .hint_text("Sök på plugin-namn, tillverkare (t.ex. Sytrus, Gross Beat, Serum, FabFilter, Vital)...")
+                .hint_text(crate::i18n::t("Sök på plugin-namn, tillverkare (t.ex. Sytrus, Gross Beat, Serum, FabFilter, Vital)..."))
                 .desired_width(320.0),
         );
-        if !manager.search_query.is_empty() && ui.button("✕").clicked() {
+        if !manager.search_query.is_empty() && ui.button(crate::i18n::t("✕")).clicked() {
             manager.search_query.clear();
         }
 
         ui.separator();
 
-        ui.label("Format-filter:");
-        if ui.selectable_label(manager.selected_format_filter.is_none(), "Alla").clicked() {
+        ui.label(crate::i18n::t("Format-filter:"));
+        if ui.selectable_label(manager.selected_format_filter.is_none(), crate::i18n::t("Alla")).clicked() {
             manager.selected_format_filter = None;
         }
         if ui.selectable_label(manager.selected_format_filter == Some(PluginFormat::FlStudioNative), "🔥 FL Studio Native").clicked() {
@@ -122,7 +122,7 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
 
     // Category Filter Chips
     ui.horizontal_wrapped(|ui| {
-        ui.label(egui::RichText::new("Kategori:").size(10.5).color(Theme::TEXT_MUTED));
+        ui.label(egui::RichText::new(crate::i18n::t("Kategori:")).size(10.5).color(Theme::TEXT_MUTED));
         let categories = [
             (None, "Alla kategorier"),
             (Some(PluginCategory::Synth), "🎹 Synthesizer"),
@@ -140,7 +140,7 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
             let is_sel = manager.selected_category_filter == cat_opt;
             let bg = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(26, 32, 44) };
             let fg = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
-            if ui.add(egui::Button::new(egui::RichText::new(label).size(10.0).color(fg)).fill(bg)).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(label)).size(10.0).color(fg)).fill(bg)).clicked() {
                 manager.selected_category_filter = cat_opt;
             }
         }
@@ -209,7 +209,7 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
                         });
 
                         ui.label(
-                            egui::RichText::new(format!("Tillverkare: {}  •  Sökväg: {}", plugin.vendor, plugin.file_path))
+                            egui::RichText::new(crate::tstatus!("Tillverkare: {}  •  Sökväg: {}", plugin.vendor, plugin.file_path))
                                 .size(10.0)
                                 .color(Theme::TEXT_MUTED),
                         );
@@ -221,37 +221,38 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
 
                     // 3. Right side: Action buttons & Stats
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let load_label = if plugin.is_loaded { "✔ Aktiv i Projekt" } else { "➕ Ladda Plugin" };
-                        let load_color = if plugin.is_loaded { Theme::FL_GREEN } else { Theme::FL_ORANGE };
-                        if ui.add(
-                            egui::Button::new(egui::RichText::new(load_label).strong().size(11.0).color(Color32::BLACK))
-                                .fill(load_color)
-                                .min_size(Vec2::new(125.0, 26.0)),
-                        ).clicked() {
-                            plugin.is_loaded = !plugin.is_loaded;
-                            *status_msg = if plugin.is_loaded {
-                                format!("✔ Laddade plugin: {} till aktiv session", plugin.name)
-                            } else {
-                                format!("⚪ Kopplade från plugin: {}", plugin.name)
-                            };
+                        if ui.button(crate::i18n::t("📂 Visa i mapp")).clicked() {
+                            let dir = std::path::Path::new(&plugin.file_path)
+                                .parent()
+                                .map(|p| p.to_string_lossy().to_string())
+                                .unwrap_or_else(|| plugin.file_path.clone());
+                            let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
+                            *status_msg = crate::tstatus!("📂 Öppnade mapp: {}", dir);
                         }
 
-                        if plugin.has_gui && ui.button("🎛 Öppna GUI").clicked() {
-                            *status_msg = format!("🎛 Öppnade externt fönster för: {}", plugin.name);
-                        }
+                        let (badge, color) = if plugin.verified {
+                            (crate::i18n::t("✔ Verifierad"), Theme::FL_GREEN)
+                        } else {
+                            (crate::i18n::t("⚠ Ej verifierad"), Theme::FL_YELLOW)
+                        };
+                        ui.label(egui::RichText::new(badge).strong().size(10.0).color(color));
 
-                        // Stats column
+                        // Stats column (real file size, no fabricated CPU/latency)
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new(format!("CPU: {:.1}%", plugin.cpu_usage)).size(10.0).color(Theme::TEXT_MUTED));
-                            if plugin.latency_samples > 0 {
-                                ui.label(egui::RichText::new(format!("Latens: {} smp (PDC)", plugin.latency_samples)).size(9.0).color(Theme::FL_YELLOW));
+                            let kb = plugin.file_size_bytes as f64 / 1024.0;
+                            let size_str = if kb > 1024.0 {
+                                format!("{:.1} MB", kb / 1024.0)
                             } else {
-                                ui.label(egui::RichText::new("0 smp latens (0 ms)").size(9.0).color(Theme::FL_GREEN));
+                                format!("{:.0} KB", kb)
+                            };
+                            ui.label(egui::RichText::new(size_str).size(10.0).color(Theme::TEXT_MUTED));
+                            if !plugin.verify_note.is_empty() {
+                                ui.label(egui::RichText::new(&plugin.verify_note).size(9.0).color(Theme::TEXT_MUTED));
                             }
                         });
 
-                        if plugin.is_sandboxed {
-                            ui.label(egui::RichText::new("🛡 Sandboxed").size(9.5).color(Theme::FL_CYAN));
+                        if plugin.verified {
+                            ui.label(egui::RichText::new(crate::i18n::t("✔ Verifierad binär")).size(9.5).color(Theme::FL_GREEN));
                         }
                     });
                 });
@@ -262,8 +263,8 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
         if visible_count == 0 {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
-                ui.label(egui::RichText::new("Inga plugins matchade din sökning eller filter.").color(Theme::TEXT_MUTED).size(13.0));
-                if ui.button("Återställ filter").clicked() {
+                ui.label(egui::RichText::new(crate::i18n::t("Inga plugins matchade din sökning eller filter.")).color(Theme::TEXT_MUTED).size(13.0));
+                if ui.button(crate::i18n::t("Återställ filter")).clicked() {
                     manager.search_query.clear();
                     manager.selected_format_filter = None;
                     manager.selected_category_filter = None;
@@ -277,9 +278,9 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
 // TAB 1: SCAN PATHS & FOLDERS MANAGER
 // ============================================================================
 fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
-    ui.label(egui::RichText::new("📁 SÖKVÄGAR FÖR PLUGIN-SKANNING").strong().size(13.5).color(Theme::FL_YELLOW));
+    ui.label(egui::RichText::new(crate::i18n::t("📁 SÖKVÄGAR FÖR PLUGIN-SKANNING")).strong().size(13.5).color(Theme::FL_YELLOW));
     ui.label(
-        egui::RichText::new("Sonix genomsöker följande mappar efter Linux-native VST3/CLAP/LV2 samt Windows/Wine & FL Studio VST-kataloger:")
+        egui::RichText::new(crate::i18n::t("Sonix genomsöker följande mappar efter Linux-native VST3/CLAP/LV2 samt Windows/Wine & FL Studio VST-kataloger:"))
             .size(11.0)
             .color(Theme::TEXT_MUTED),
     );
@@ -304,9 +305,9 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
 
                     // Existence indicator
                     if exists_on_disk {
-                        ui.label(egui::RichText::new("🟢 Finns").size(10.0).color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(crate::i18n::t("🟢 Finns")).size(10.0).color(Theme::FL_GREEN));
                     } else {
-                        ui.label(egui::RichText::new("⚪ Ej skapad").size(10.0).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("⚪ Ej skapad")).size(10.0).color(Theme::TEXT_MUTED));
                     }
 
                     ui.vertical(|ui| {
@@ -315,7 +316,7 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
                             egui::RichText::new(format!(
                                 "{} • {}",
                                 scan_path.description,
-                                if scan_path.is_fl_path { "FL Studio Specifik" } else if scan_path.is_wine { "Wine/Windows" } else { "Native Linux" }
+                                if scan_path.is_fl_path { crate::i18n::t("FL Studio Specifik") } else if scan_path.is_wine { crate::i18n::t("Wine/Windows") } else { crate::i18n::t("Native Linux") }
                             ))
                             .size(9.5)
                             .color(if scan_path.is_fl_path { Theme::FL_ORANGE } else { Theme::TEXT_MUTED }),
@@ -323,7 +324,7 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("🗑 Ta bort").clicked() {
+                        if ui.button(crate::i18n::t("🗑 Ta bort")).clicked() {
                             to_remove = Some(idx);
                         }
                     });
@@ -334,7 +335,7 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
 
         if let Some(idx) = to_remove {
             manager.remove_scan_path(idx);
-            *status_msg = "Tog bort sökväg från skanningslistan.".to_string();
+            *status_msg = crate::i18n::t("Tog bort sökväg från skanningslistan.").to_string();
         }
     });
 
@@ -342,23 +343,23 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
 
     // Add new custom scan path section
     ui.group(|ui| {
-        ui.label(egui::RichText::new("➕ Lägg till anpassad plugin-mapp (t.ex. extern hårddisk eller FL Studio-installation)").strong().size(12.0).color(Theme::FL_CYAN));
+        ui.label(egui::RichText::new(crate::i18n::t("➕ Lägg till anpassad plugin-mapp (t.ex. extern hårddisk eller FL Studio-installation)")).strong().size(12.0).color(Theme::FL_CYAN));
         ui.horizontal(|ui| {
-            ui.label("Mappsökväg:");
+            ui.label(crate::i18n::t("Mappsökväg:"));
             ui.add(
                 egui::TextEdit::singleline(&mut manager.new_custom_path_input)
-                    .hint_text("/media/user/Plugins eller ~/.wine/drive_c/...")
+                    .hint_text(crate::i18n::t("/media/user/Plugins eller ~/.wine/drive_c/..."))
                     .desired_width(340.0),
             );
 
-            if ui.button("➕ Lägg till mapp").clicked() {
+            if ui.button(crate::i18n::t("➕ Lägg till mapp")).clicked() {
                 if !manager.new_custom_path_input.trim().is_empty() {
                     let path = manager.new_custom_path_input.trim().to_string();
                     let is_wine = path.contains(".wine") || path.contains("drive_c");
                     let is_fl = path.to_lowercase().contains("fl studio") || path.to_lowercase().contains("image-line");
-                    manager.add_scan_path(path, "Anpassad plugin-mapp".to_string(), is_wine, is_fl);
+                    manager.add_scan_path(path, crate::i18n::t("Anpassad plugin-mapp").to_string(), is_wine, is_fl);
                     manager.new_custom_path_input.clear();
-                    *status_msg = "✔ Lade till ny plugin-mapp. Klicka 'Skanna mappar nu' för att uppdatera.".to_string();
+                    *status_msg = crate::i18n::t("✔ Lade till ny plugin-mapp. Klicka 'Skanna mappar nu' för att uppdatera.").to_string();
                 }
             }
         });
@@ -371,9 +372,9 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
 fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(egui::RichText::new("📥 MANUELL PLUGIN- OCH PRESET-IMPORT").strong().size(13.5).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("📥 MANUELL PLUGIN- OCH PRESET-IMPORT")).strong().size(13.5).color(Theme::FL_CYAN));
             ui.label(
-                egui::RichText::new("Importera fristående filer (.vst3, .clap, .dll, .so, .lv2) eller FL Studio Preset-filer (.fst) direkt:")
+                egui::RichText::new(crate::i18n::t("Importera fristående filer (.vst3, .clap, .dll, .so, .lv2) eller FL Studio Preset-filer (.fst) direkt:"))
                     .size(11.0)
                     .color(Theme::TEXT_MUTED),
             );
@@ -385,10 +386,10 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
     ui.group(|ui| {
         ui.vertical(|ui| {
             ui.horizontal(|ui| {
-                ui.label("Filsökväg:");
+                ui.label(crate::i18n::t("Filsökväg:"));
                 ui.add(
                     egui::TextEdit::singleline(&mut manager.manual_import_file_input)
-                        .hint_text("/sökväg/till/plugin.vst3 eller ~/.wine/.../Sytrus.dll eller preset.fst")
+                        .hint_text(crate::i18n::t("/sökväg/till/plugin.vst3 eller ~/.wine/.../Sytrus.dll eller preset.fst"))
                         .desired_width(380.0),
                 );
             });
@@ -396,16 +397,16 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
             ui.add_space(4.0);
 
             ui.horizontal(|ui| {
-                ui.label("Tillverkare / Vendor (valfritt):");
+                ui.label(crate::i18n::t("Tillverkare / Vendor (valfritt):"));
                 ui.add(
                     egui::TextEdit::singleline(&mut manager.manual_import_vendor_input)
-                        .hint_text("t.ex. Image-Line, FabFilter, Xfer Records, u-he...")
+                        .hint_text(crate::i18n::t("t.ex. Image-Line, FabFilter, Xfer Records, u-he..."))
                         .desired_width(220.0),
                 );
 
                 ui.separator();
 
-                ui.label("Kategori:");
+                ui.label(crate::i18n::t("Kategori:"));
                 let categories = [
                     (PluginCategory::Synth, "🎹 Synthesizer"),
                     (PluginCategory::Effect, "✨ Effekt"),
@@ -420,17 +421,17 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
 
                 let selected_cat = categories.get(manager.manual_import_category_idx).map(|c| c.0).unwrap_or(PluginCategory::Synth);
                 egui::ComboBox::from_id_salt("manual_import_category_dropdown")
-                    .selected_text(categories.get(manager.manual_import_category_idx).map(|c| c.1).unwrap_or("Välj"))
+                    .selected_text(categories.get(manager.manual_import_category_idx).map(|c| crate::i18n::t(c.1)).unwrap_or(crate::i18n::t("Välj")))
                     .show_ui(ui, |ui| {
                         for (idx, &(_cat_val, cat_label)) in categories.iter().enumerate() {
-                            if ui.selectable_label(manager.manual_import_category_idx == idx, cat_label).clicked() {
+                            if ui.selectable_label(manager.manual_import_category_idx == idx, crate::i18n::t(cat_label)).clicked() {
                                 manager.manual_import_category_idx = idx;
                             }
                         }
                     });
 
                 if ui.add(
-                    egui::Button::new(egui::RichText::new("📥 Importera Fil Nu").strong().color(Color32::BLACK))
+                    egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Importera Fil Nu")).strong().color(Color32::BLACK))
                         .fill(Theme::FL_GREEN)
                         .min_size(Vec2::new(140.0, 26.0)),
                 ).clicked() {
@@ -439,7 +440,7 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
                         let vendor = manager.manual_import_vendor_input.clone();
                         match manager.import_file(&path, &vendor, selected_cat) {
                             Ok(desc) => {
-                                *status_msg = format!("✔ Importerade framgångsrikt '{}' som {}!", desc.name, desc.format.name());
+                                *status_msg = crate::tstatus!("✔ Importerade framgångsrikt '{}' som {}!", desc.name, desc.format.name());
                                 manager.manual_import_file_input.clear();
                                 manager.manual_import_vendor_input.clear();
                             }
@@ -448,7 +449,7 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
                             }
                         }
                     } else {
-                        *status_msg = "Ange en giltig filsökväg först.".to_string();
+                        *status_msg = crate::i18n::t("Ange en giltig filsökväg först.").to_string();
                     }
                 }
             });
@@ -458,9 +459,9 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
     ui.add_space(10.0);
 
     // FL Studio .FST Presets Library
-    ui.label(egui::RichText::new("📄 IMPORTERADE FL STUDIO PRESETS (.FST)").strong().size(12.5).color(Theme::FL_ORANGE));
+    ui.label(egui::RichText::new(crate::i18n::t("📄 IMPORTERADE FL STUDIO PRESETS (.FST)")).strong().size(12.5).color(Theme::FL_ORANGE));
     ui.label(
-        egui::RichText::new("Inställningsfiler för kanaler och mixer-effekter sparade från FL Studio:")
+        egui::RichText::new(crate::i18n::t("Inställningsfiler för kanaler och mixer-effekter sparade från FL Studio:"))
             .size(10.5)
             .color(Theme::TEXT_MUTED),
     );
@@ -471,20 +472,20 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
         for preset in &manager.presets {
             ui.group(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("📄").size(14.0));
+                    ui.label(egui::RichText::new(crate::i18n::t("📄")).size(14.0));
 
                     ui.vertical(|ui| {
                         ui.label(egui::RichText::new(&preset.preset_name).strong().size(11.5).color(Theme::TEXT_BRIGHT));
                         ui.label(
-                            egui::RichText::new(format!("Mål: {}  •  Typ: {}  •  {}", preset.target_plugin, preset.preset_type, preset.file_path))
+                            egui::RichText::new(crate::tstatus!("Mål: {}  •  Typ: {}  •  {}", preset.target_plugin, preset.preset_type, preset.file_path))
                                 .size(9.5)
                                 .color(Theme::TEXT_MUTED),
                         );
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui.button("⚡ Tillämpa Preset").clicked() {
-                            *status_msg = format!("✔ Applicerade FL-preset: '{}' på målet {}", preset.preset_name, preset.target_plugin);
+                        if ui.button(crate::i18n::t("⚡ Tillämpa Preset")).clicked() {
+                            *status_msg = crate::tstatus!("✔ Applicerade FL-preset: '{}' på målet {}", preset.preset_name, preset.target_plugin);
                         }
                         ui.label(egui::RichText::new(format!("{} KB", preset.filesize_bytes / 1024)).size(9.5).color(Theme::TEXT_MUTED));
                     });
@@ -499,9 +500,9 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
 // TAB 3: FL STUDIO & YABRIDGE SETUP ASSISTANT
 // ============================================================================
 fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
-    ui.label(egui::RichText::new("🍷 FL STUDIO & WINDOWS VST BRYGG-ASSISTENT").strong().size(14.0).color(Theme::FL_PURPLE));
+    ui.label(egui::RichText::new(crate::i18n::t("🍷 FL STUDIO & WINDOWS VST BRYGG-ASSISTENT")).strong().size(14.0).color(Theme::FL_PURPLE));
     ui.label(
-        egui::RichText::new("Hur du kör Image-Line plugins (Sytrus, Harmor, Gross Beat, FL Studio VSTi) och Windows VSTs i Sonix på Linux")
+        egui::RichText::new(crate::i18n::t("Hur du kör Image-Line plugins (Sytrus, Harmor, Gross Beat, FL Studio VSTi) och Windows VSTs i Sonix på Linux"))
             .size(11.0)
             .color(Theme::TEXT_MUTED),
     );
@@ -511,12 +512,12 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
     egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
         // Step 1: Image-Line FL Studio Plugins
         ui.group(|ui| {
-            ui.label(egui::RichText::new("1. Image-Line & FL Studio Inbyggda Plugins").strong().size(12.5).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("1. Image-Line & FL Studio Inbyggda Plugins")).strong().size(12.5).color(Theme::FL_ORANGE));
             ui.label(
                 egui::RichText::new(
-                    "Image-Line har officiella VSTi/VST-versioner av Sytrus, Harmor, Gross Beat, Maximus, Vocodex och Edison.\n\
+                    crate::i18n::t("Image-Line har officiella VSTi/VST-versioner av Sytrus, Harmor, Gross Beat, Maximus, Vocodex och Edison.\n\
                      Dessa installeras i Windows/Wine-katalogen:\n\
-                     ~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/"
+                     ~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/")
                 ).size(10.5).color(Theme::TEXT_BRIGHT)
             );
         });
@@ -525,11 +526,10 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
 
         // Step 2: FL Studio as VSTi
         ui.group(|ui| {
-            ui.label(egui::RichText::new("2. Köra hela FL Studio som ett instrument inuti Sonix (FL Studio VSTi)").strong().size(12.5).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("2. Köra hela FL Studio som ett instrument inuti Sonix (FL Studio VSTi)")).strong().size(12.5).color(Theme::FL_CYAN));
             ui.label(
                 egui::RichText::new(
-                    "Image-Line inkluderar 'FL Studio VSTi.dll' och 'FL Studio VSTi (Multi).dll'.\n\
-                     När du laddar denna i Sonix öppnas hela FL Studios användargränssnitt i ett fönster och dess ljud synkroniseras med Sonix tempo och transport!"
+                    crate::i18n::t("Vägen dit går via FL Studio VSTi (.dll) körd genom Wine + yabridge. Sonix kan ännu inte ladda eller visa plugin-GUI:t – plugin-hanteraren katalogiserar och verifierar filer, den kör dem inte.")
                 ).size(10.5).color(Theme::TEXT_BRIGHT)
             );
         });
@@ -538,32 +538,45 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
 
         // Step 3: Yabridge CLI Sync
         ui.group(|ui| {
-            ui.label(egui::RichText::new("3. Synkronisera med Yabridge (Zero-Latency IPC)").strong().size(12.5).color(Theme::FL_GREEN));
+            ui.label(egui::RichText::new(crate::i18n::t("3. Synkronisera med Yabridge (Zero-Latency IPC)")).strong().size(12.5).color(Theme::FL_GREEN));
             ui.label(
                 egui::RichText::new(
-                    "För att generera Linux-native VST3/CLAP-broar för alla Windows-plugins, kör i din terminal:\n\
+                    crate::i18n::t("För att generera Linux-native VST3/CLAP-broar för alla Windows-plugins, kör i din terminal:\n\
                      yabridgectl add \"$HOME/.wine/drive_c/Program Files/Common Files/VST3\"\n\
                      yabridgectl add \"$HOME/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST\"\n\
-                     yabridgectl sync"
+                     yabridgectl sync")
                 ).size(10.5).color(Color32::from_rgb(180, 230, 180))
             );
 
             ui.add_space(4.0);
-            if ui.button("⚡ Kör automatisk Yabridge-synk nu").clicked() {
-                manager.rescan();
-                *status_msg = "✔ Yabridge-synk genomförd! Alla Windows- och FL Studio-plugins är uppdaterade.".to_string();
-            }
+            ui.horizontal(|ui| {
+                if manager.yabridge_installed {
+                    ui.label(egui::RichText::new(crate::i18n::t("🟢 yabridgectl hittad i PATH")).size(10.5).color(Theme::FL_GREEN));
+                } else {
+                    ui.label(egui::RichText::new(crate::i18n::t("⚪ yabridgectl hittades inte – installera yabridge för Windows-plugins")).size(10.5).color(Theme::FL_YELLOW));
+                }
+                if ui.button(crate::i18n::t("⚡ Kör yabridgectl sync nu")).clicked() {
+                    match crate::audio::plugin_host::run_yabridge_sync() {
+                        Ok(out) => {
+                            manager.rescan();
+                            *status_msg = crate::tstatus!("✔ Yabridge-synk klar: {}", out);
+                        }
+                        Err(err) => {
+                            *status_msg = crate::tstatus!("⚠ Yabridge-synk misslyckades: {}", err);
+                        }
+                    }
+                }
+            });
         });
 
         ui.add_space(6.0);
 
         // Step 4: Process-Isolering (Crash Sandboxing)
         ui.group(|ui| {
-            ui.label(egui::RichText::new("4. Process-Isolering & Kraschskydd").strong().size(12.5).color(Theme::FL_YELLOW));
+            ui.label(egui::RichText::new(crate::i18n::t("4. Process-Isolering & Kraschskydd")).strong().size(12.5).color(Theme::FL_YELLOW));
             ui.label(
                 egui::RichText::new(
-                    "Sonix kör alla externa plugins i isolerade processer via ett låglatens minnesdelat IPC-lager.\n\
-                     Om en Windows VST3 kraschar förblir Sonix och alla andra spår 100% stabila utan att ljudet avbryts."
+                    crate::i18n::t("Planerat: externa plugins ska köras i isolerade processer med minnesdelat IPC så att en kraschande Windows-VST3 inte tar ner Sonix. Detta är ännu inte implementerat.")
                 ).size(10.5).color(Theme::TEXT_MUTED)
             );
         });

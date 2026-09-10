@@ -17,17 +17,24 @@ pub fn render_vocal_studio_view(
     show_mic_settings: &mut bool,
     engine: &mut crate::audio::AudioEngine,
 ) {
+    // Clear stale "playing" indicators once the isolated audition has ended.
+    if !engine.is_audition_playing() {
+        for t in &mut vocal_track.takes {
+            t.is_playing = false;
+        }
+    }
+
     ui.group(|ui| {
         // ============================================================
         // 1. TOP HEADER & AUDIO ROUTING STATUS
         // ============================================================
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("🎙 SONIX STUDIO RECORDER").strong().size(15.0).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🎙 SONIX STUDIO RECORDER")).strong().size(15.0).color(Theme::FL_ORANGE));
             ui.separator();
-            ui.label(egui::RichText::new("Mikrofoninspelning i realtid  •  Live WAV Capture  •  Waveform Editor  •  Melodyne ARA2").size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Mikrofoninspelning i realtid  •  Live WAV Capture  •  Waveform Editor  •  Pitch Editor")).size(11.0).color(Theme::TEXT_MUTED));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new("⚙ Mik-panel").size(11.0).strong().color(Color32::BLACK)).fill(Theme::FL_CYAN)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚙ Mik-panel")).size(11.0).strong().color(Color32::BLACK)).fill(Theme::FL_CYAN)).clicked() {
                     *show_mic_settings = true;
                 }
                 let dev_name = vocal_track.mic_capture.as_ref().map(|m| m.device_name.as_str()).unwrap_or("Standard Mikrofon");
@@ -40,10 +47,10 @@ pub fn render_vocal_studio_view(
 
         // Sub-tabs for the Studio
         ui.horizontal(|ui| {
-            let voc_tab = ui.selectable_label(vocal_track.recording_mode == RecordingMode::LeadVocals, "🎙 1. Sång & Mikrofoninspelning (Take Lanes & Studio Deck)");
+            let voc_tab = ui.selectable_label(vocal_track.recording_mode == RecordingMode::LeadVocals, crate::i18n::t("🎙 1. Sång & Mikrofoninspelning (Take Lanes & Studio Deck)"));
             if voc_tab.clicked() { vocal_track.recording_mode = RecordingMode::LeadVocals; }
 
-            let custom_tab = ui.selectable_label(vocal_track.recording_mode == RecordingMode::CustomSounds, "🎤 2. Spela in Egna Ljud & Sampler");
+            let custom_tab = ui.selectable_label(vocal_track.recording_mode == RecordingMode::CustomSounds, crate::i18n::t("🎤 2. Spela in Egna Ljud & Sampler"));
             if custom_tab.clicked() { vocal_track.recording_mode = RecordingMode::CustomSounds; }
         });
 
@@ -58,7 +65,7 @@ pub fn render_vocal_studio_view(
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         // Channel & Arm status
-                        ui.label(egui::RichText::new("🔴 INSPELNINGSDECK").strong().size(12.0).color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("🔴 INSPELNINGSDECK")).strong().size(12.0).color(Theme::FL_CYAN));
                         ui.separator();
 
                         ui.checkbox(&mut vocal_track.is_armed, "🔴 Armera");
@@ -116,7 +123,7 @@ pub fn render_vocal_studio_view(
                                 "⏹ STANDBY"
                             };
 
-                            ui.label(egui::RichText::new(format!("{:02}:{:02}.{:02} (Takt {:.1})", mins, secs, centis, current_bars)).strong().size(12.0).color(timer_color));
+                            ui.label(egui::RichText::new(format!("{:02}:{:02}.{:02} ({} {:.1})", mins, secs, centis, crate::i18n::t("Takt"), current_bars)).strong().size(12.0).color(timer_color));
                             ui.label(egui::RichText::new(state_icon).size(9.5).color(timer_color));
                         });
 
@@ -127,44 +134,49 @@ pub fn render_vocal_studio_view(
                         // ==========================================
                         if !vocal_track.is_recording {
                             if ui.add(
-                                egui::Button::new(egui::RichText::new(" 🔴 SPELA IN (REC) ").strong().size(12.0).color(Color32::WHITE))
+                                egui::Button::new(egui::RichText::new(crate::i18n::t(" 🔴 SPELA IN (REC) ")).strong().size(12.0).color(Color32::WHITE))
                                     .fill(Color32::from_rgb(210, 30, 30))
                                     .min_size(Vec2::new(130.0, 32.0)),
                             ).clicked() {
-                                vocal_track.start_recording();
-                                *status_msg = "🔴 Spelar in mikrofonljud i realtid... Sjung eller spela nu!".to_string();
+                                match vocal_track.start_recording() {
+                                    Ok(()) => *status_msg = crate::i18n::t("🔴 Spelar in mikrofonljud i realtid... Sjung eller spela nu!").to_string(),
+                                    Err(e) => *status_msg = format!("❌ {}", e),
+                                }
                             }
                         } else {
                             if vocal_track.is_paused {
                                 if ui.add(
-                                    egui::Button::new(egui::RichText::new(" ▶ ÅTERUPPTA ").strong().size(11.0).color(Color32::BLACK))
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t(" ▶ ÅTERUPPTA ")).strong().size(11.0).color(Color32::BLACK))
                                         .fill(Theme::FL_YELLOW)
                                         .min_size(Vec2::new(90.0, 32.0)),
                                 ).clicked() {
                                     vocal_track.resume_recording();
-                                    *status_msg = "▶ Återupptog inspelningen!".to_string();
+                                    *status_msg = crate::i18n::t("▶ Återupptog inspelningen!").to_string();
                                 }
                             } else {
                                 if ui.add(
-                                    egui::Button::new(egui::RichText::new(" ⏸ PAUSA ").strong().size(11.0).color(Color32::BLACK))
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏸ PAUSA ")).strong().size(11.0).color(Color32::BLACK))
                                         .fill(Theme::FL_YELLOW)
                                         .min_size(Vec2::new(80.0, 32.0)),
                                 ).clicked() {
                                     vocal_track.pause_recording();
-                                    *status_msg = "⏸ Inspelning pausad.".to_string();
+                                    *status_msg = crate::i18n::t("⏸ Inspelning pausad.").to_string();
                                 }
                             }
 
                             ui.add_space(4.0);
 
                             if ui.add(
-                                egui::Button::new(egui::RichText::new(" ⏹ STOPPA & SKAPA TAGNING ").strong().size(11.0).color(Color32::WHITE))
+                                egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOPPA & SKAPA TAGNING ")).strong().size(11.0).color(Color32::WHITE))
                                     .fill(Color32::from_rgb(30, 160, 70))
                                     .min_size(Vec2::new(140.0, 32.0)),
                             ).clicked() {
-                                if let Some(idx) = vocal_track.stop_recording(bpm) {
-                                    let name = vocal_track.takes[idx].name.clone();
-                                    *status_msg = format!("✔ Sparade tagning: {}! Klar för redigering och tidslinje.", name);
+                                match vocal_track.stop_recording() {
+                                    Ok(idx) => {
+                                        let name = vocal_track.takes[idx].name.clone();
+                                        *status_msg = crate::tstatus!("✔ Sparade tagning: {}! Klar för redigering och tidslinje.", name);
+                                    }
+                                    Err(e) => *status_msg = format!("❌ {}", e),
                                 }
                             }
                         }
@@ -201,7 +213,7 @@ pub fn render_vocal_studio_view(
                             }
                         }
 
-                        let status_text = if vocal_track.is_paused { "⏸ INSPELNING PAUSAD" } else { "🔴 SPELAR IN LIVE FRÅN MIKROFON..." };
+                        let status_text = if vocal_track.is_paused { crate::i18n::t("⏸ INSPELNING PAUSAD") } else { "🔴 SPELAR IN LIVE FRÅN MIKROFON..." };
                         painter.text(
                             Pos2::new(live_rect.min.x + 8.0, live_rect.min.y + 6.0),
                             egui::Align2::LEFT_TOP,
@@ -239,14 +251,14 @@ pub fn render_vocal_studio_view(
 
                         // Row 1: Header + Action Buttons
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("✂ LJUDVÅGSEDITOR & SAMPLE FORMARE").strong().size(12.0).color(Theme::FL_YELLOW));
+                            ui.label(egui::RichText::new(crate::i18n::t("✂ LJUDVÅGSEDITOR & SAMPLE FORMARE")).strong().size(12.0).color(Theme::FL_YELLOW));
                             ui.separator();
                             ui.label(egui::RichText::new(format!("Aktiv: {} ({:.2}s, {} samples)", take_name, duration, sample_count)).size(11.0).color(Theme::TEXT_BRIGHT));
 
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 // INSERT INTO PLAYLIST BUTTON
                                 if ui.add(
-                                    egui::Button::new(egui::RichText::new("📥 Infoga i Tidslinje (Arranger)").strong().size(11.0).color(Color32::BLACK))
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Infoga i Tidslinje (Arranger)")).strong().size(11.0).color(Color32::BLACK))
                                         .fill(Theme::FL_GREEN),
                                 ).clicked() {
                                     if !playlist_tracks.is_empty() {
@@ -275,13 +287,13 @@ pub fn render_vocal_studio_view(
                                             loop_length_bars: 0.0,
                                         };
                                         playlist_tracks[target_idx].regions.push(region);
-                                        *status_msg = format!("✔ Infogade '{}' ({:.2}s) som ljudregion i Spår {} ({})!", take_name, duration, target_idx + 1, playlist_tracks[target_idx].name);
+                                        *status_msg = crate::tstatus!("✔ Infogade '{}' ({:.2}s) som ljudregion i Spår {} ({})!", take_name, duration, target_idx + 1, playlist_tracks[target_idx].name);
                                     }
                                 }
 
                                 // EXPORT TO WAV BUTTON
                                 if ui.add(
-                                    egui::Button::new(egui::RichText::new("💾 Exportera WAV").strong().size(11.0).color(Color32::WHITE))
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Exportera WAV")).strong().size(11.0).color(Color32::WHITE))
                                         .fill(Color32::from_rgb(50, 110, 180)),
                                 ).clicked() {
                                     do_export_wav = true;
@@ -289,11 +301,11 @@ pub fn render_vocal_studio_view(
 
                                 // IMPORT AUDIO FILE BUTTON
                                 if ui.add(
-                                    egui::Button::new(egui::RichText::new("📂 Importera Fil").size(10.5).color(Color32::WHITE))
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t("📂 Importera Fil")).size(10.5).color(Color32::WHITE))
                                         .fill(Color32::from_rgb(45, 90, 120)),
-                                ).on_hover_text("Ladda in extern WAV/Audio-fil som tagning").clicked() {
+                                ).on_hover_text(crate::i18n::t("Ladda in extern WAV/Audio-fil som tagning")).clicked() {
                                     let output = std::process::Command::new("zenity")
-                                        .args(["--file-selection", "--file-filter=*.wav *.mp3 *.flac *.ogg", "--title=Välj Ljudfil"])
+                                        .args(["--file-selection", "--file-filter=*.wav *.mp3 *.flac *.ogg", crate::i18n::t("--title=Välj Ljudfil")])
                                         .output();
                                     if let Ok(out) = output && out.status.success() {
                                         let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
@@ -303,7 +315,7 @@ pub fn render_vocal_studio_view(
                                                 let f_name = p.file_stem().and_then(|s| s.to_str()).unwrap_or("Importerat Ljud").to_string();
                                                 do_import_pcm = Some((f_name, l, sr));
                                             } else {
-                                                *status_msg = format!("❌ Kunde inte läsa ljudfilen: {}", path);
+                                                *status_msg = crate::tstatus!("❌ Kunde inte läsa ljudfilen: {}", path);
                                             }
                                         }
                                     }
@@ -320,7 +332,7 @@ pub fn render_vocal_studio_view(
                                 egui::Button::new(egui::RichText::new(if is_auditioning { "🔊 PROVSPELAR..." } else { "▶ Provspela (Solo)" }).strong().size(11.0).color(if is_auditioning { Color32::BLACK } else { Color32::WHITE }))
                                     .fill(if is_auditioning { Theme::FL_YELLOW } else { Theme::FL_GREEN })
                                     .min_size(Vec2::new(140.0, 24.0)),
-                            ).on_hover_text("Spela upp ENBART denna tagning/sample utan att starta låtens tidslinje").clicked() {
+                            ).on_hover_text(crate::i18n::t("Spela upp ENBART denna tagning/sample utan att starta låtens tidslinje")).clicked() {
                                 take.is_playing = true;
                                 let pitch_mul = ((take.pitch_semitones + take.pitch_cents / 100.0) / 12.0).exp2();
                                 let total_s = take.pcm_samples.len();
@@ -344,14 +356,14 @@ pub fn render_vocal_studio_view(
                                     is_reverse: take.is_reverse,
                                     loop_playback: take.loop_audition,
                                 });
-                                *status_msg = format!("▶ Provspelar '{}' isolerat i Sångstudion (Pitch: {:+.1} st, Stretch: {:.2}x, Vol: {:.0}%)", take_name, take.pitch_semitones, take.time_stretch, take.gain_linear * 100.0);
+                                *status_msg = crate::tstatus!("▶ Provspelar '{}' isolerat i Sångstudion (Pitch: {:+.1} st, Stretch: {:.2}x, Vol: {:.0}%)", take_name, take.pitch_semitones, take.time_stretch, take.gain_linear * 100.0);
                             }
 
                             if ui.add(
-                                egui::Button::new(egui::RichText::new("⏹ Stoppa").strong().size(11.0).color(Color32::WHITE))
+                                egui::Button::new(egui::RichText::new(crate::i18n::t("⏹ Stoppa")).strong().size(11.0).color(Color32::WHITE))
                                     .fill(Color32::from_rgb(160, 40, 40))
                                     .min_size(Vec2::new(70.0, 24.0)),
-                            ).on_hover_text("Stoppa provspelning").clicked() {
+                            ).on_hover_text(crate::i18n::t("Stoppa provspelning")).clicked() {
                                 take.is_playing = false;
                                 let _ = engine.send_command(crate::audio::AudioCommand::StopAudition);
                             }
@@ -362,7 +374,7 @@ pub fn render_vocal_studio_view(
 
                             // Reverse toggle
                             let rev_bg = if take.is_reverse { Theme::FL_ORANGE } else { Color32::from_rgb(50, 40, 70) };
-                            if ui.add(egui::Button::new(egui::RichText::new(if take.is_reverse { "🔄 Baklänges (PÅ)" } else { "🔄 Normal" }).strong().size(10.5).color(Color32::WHITE)).fill(rev_bg)).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(if take.is_reverse { crate::i18n::t("🔄 Baklänges (PÅ)") } else { crate::i18n::t("🔄 Normal") }).strong().size(10.5).color(Color32::WHITE)).fill(rev_bg)).clicked() {
                                 take.is_reverse = !take.is_reverse;
                                 if take.is_playing {
                                     // Trigger re-play with reverse
@@ -381,7 +393,7 @@ pub fn render_vocal_studio_view(
                                 }
                             }
 
-                            if ui.button("↩ Nollställ effekter").on_hover_text("Återställ volym, pitch och stretch till standard").clicked() {
+                            if ui.button(crate::i18n::t("↩ Nollställ effekter")).on_hover_text(crate::i18n::t("Återställ volym, pitch och stretch till standard")).clicked() {
                                 take.gain_linear = 1.0;
                                 take.pitch_semitones = 0.0;
                                 take.pitch_cents = 0.0;
@@ -402,7 +414,7 @@ pub fn render_vocal_studio_view(
                             ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                             ui.horizontal_wrapped(|ui| {
                                 // 1. Volume
-                                ui.label(egui::RichText::new("🎚 Volym:").strong().size(11.0).color(Theme::FL_CYAN));
+                                ui.label(egui::RichText::new(crate::i18n::t("🎚 Volym:")).strong().size(11.0).color(Theme::FL_CYAN));
                                 let vol_db = if take.gain_linear <= 0.001 { -60.0 } else { 20.0 * take.gain_linear.log10() };
                                 ui.label(egui::RichText::new(format!("{:.1}dB ({:.0}%)", vol_db, take.gain_linear * 100.0)).size(10.5).color(Theme::TEXT_BRIGHT));
                                 if ui.add_sized(Vec2::new(100.0, 18.0), egui::Slider::new(&mut take.gain_linear, 0.0..=2.0).show_value(false)).changed() {
@@ -417,9 +429,9 @@ pub fn render_vocal_studio_view(
                                 ui.separator();
 
                                 // 2. Time Dilation / Stretch (Hastighet / Tidssträckning)
-                                ui.label(egui::RichText::new("⏳ Time Dilation (Stretch):").strong().size(11.0).color(Theme::FL_ORANGE));
+                                ui.label(egui::RichText::new(crate::i18n::t("⏳ Time Dilation (Stretch):")).strong().size(11.0).color(Theme::FL_ORANGE));
                                 ui.label(egui::RichText::new(format!("{:.2}x ({:.0}%)", take.time_stretch, take.time_stretch * 100.0)).size(10.5).color(Theme::TEXT_BRIGHT));
-                                if ui.add_sized(Vec2::new(110.0, 18.0), egui::Slider::new(&mut take.time_stretch, 0.25..=3.0).show_value(false)).on_hover_text("Justera tidssträckning / uppspelningshastighet (0.25x = snabbare, 2.0x = långsammare)").changed() {
+                                if ui.add_sized(Vec2::new(110.0, 18.0), egui::Slider::new(&mut take.time_stretch, 0.25..=3.0).show_value(false)).on_hover_text(crate::i18n::t("Justera tidssträckning / uppspelningshastighet (0.25x = snabbare, 2.0x = långsammare)")).changed() {
                                     let pitch_mul = ((take.pitch_semitones + take.pitch_cents / 100.0) / 12.0).exp2();
                                     let _ = engine.send_command(crate::audio::AudioCommand::SetAuditionParams {
                                         volume: take.gain_linear,
@@ -427,7 +439,7 @@ pub fn render_vocal_studio_view(
                                         time_stretch_ratio: take.time_stretch,
                                     });
                                 }
-                                if ui.button("1.0x").on_hover_text("Återställ till normal hastighet").clicked() {
+                                if ui.button(crate::i18n::t("1.0x")).on_hover_text(crate::i18n::t("Återställ till normal hastighet")).clicked() {
                                     take.time_stretch = 1.0;
                                     let pitch_mul = ((take.pitch_semitones + take.pitch_cents / 100.0) / 12.0).exp2();
                                     let _ = engine.send_command(crate::audio::AudioCommand::SetAuditionParams {
@@ -440,9 +452,9 @@ pub fn render_vocal_studio_view(
                                 ui.separator();
 
                                 // 3. Pitch Shift (Tonhöjd i halvtoner & cents)
-                                ui.label(egui::RichText::new("🎵 Pitch:").strong().size(11.0).color(Theme::FL_GREEN));
+                                ui.label(egui::RichText::new(crate::i18n::t("🎵 Pitch:")).strong().size(11.0).color(Theme::FL_GREEN));
                                 ui.label(egui::RichText::new(format!("{:+.0} st / {:+.0} ct", take.pitch_semitones, take.pitch_cents)).size(10.5).color(Theme::TEXT_BRIGHT));
-                                if ui.add_sized(Vec2::new(100.0, 18.0), egui::Slider::new(&mut take.pitch_semitones, -24.0..=24.0).step_by(1.0).show_value(false)).on_hover_text("Justera tonhöjd i halvtoner (-24 .. +24)").changed() {
+                                if ui.add_sized(Vec2::new(100.0, 18.0), egui::Slider::new(&mut take.pitch_semitones, -24.0..=24.0).step_by(1.0).show_value(false)).on_hover_text(crate::i18n::t("Justera tonhöjd i halvtoner (-24 .. +24)")).changed() {
                                     let pitch_mul = ((take.pitch_semitones + take.pitch_cents / 100.0) / 12.0).exp2();
                                     let _ = engine.send_command(crate::audio::AudioCommand::SetAuditionParams {
                                         volume: take.gain_linear,
@@ -450,7 +462,7 @@ pub fn render_vocal_studio_view(
                                         time_stretch_ratio: take.time_stretch,
                                     });
                                 }
-                                if ui.add_sized(Vec2::new(70.0, 18.0), egui::Slider::new(&mut take.pitch_cents, -50.0..=50.0).show_value(false)).on_hover_text("Finjustera tonhöjd i cents (-50 .. +50)").changed() {
+                                if ui.add_sized(Vec2::new(70.0, 18.0), egui::Slider::new(&mut take.pitch_cents, -50.0..=50.0).show_value(false)).on_hover_text(crate::i18n::t("Finjustera tonhöjd i cents (-50 .. +50)")).changed() {
                                     let pitch_mul = ((take.pitch_semitones + take.pitch_cents / 100.0) / 12.0).exp2();
                                     let _ = engine.send_command(crate::audio::AudioCommand::SetAuditionParams {
                                         volume: take.gain_linear,
@@ -458,7 +470,7 @@ pub fn render_vocal_studio_view(
                                         time_stretch_ratio: take.time_stretch,
                                     });
                                 }
-                                if ui.button("0 st").on_hover_text("Nollställ tonhöjd").clicked() {
+                                if ui.button(crate::i18n::t("0 st")).on_hover_text(crate::i18n::t("Nollställ tonhöjd")).clicked() {
                                     take.pitch_semitones = 0.0;
                                     take.pitch_cents = 0.0;
                                     let _ = engine.send_command(crate::audio::AudioCommand::SetAuditionParams {
@@ -535,14 +547,14 @@ pub fn render_vocal_studio_view(
 
                         // DUAL TRIM SLIDERS & EDIT ACTIONS
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("Start (In):").size(10.5).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(crate::i18n::t("Start (In):")).size(10.5).color(Theme::TEXT_MUTED));
                             let s_val = crop_start_norm * duration;
                             ui.label(egui::RichText::new(format!("{:.2}s", s_val)).strong().size(10.5).color(Theme::FL_YELLOW));
                             ui.add_sized(Vec2::new(120.0, 18.0), egui::Slider::new(&mut crop_start_norm, 0.0..=0.98).show_value(false));
 
                             ui.separator();
 
-                            ui.label(egui::RichText::new("Slut (Ut):").size(10.5).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(crate::i18n::t("Slut (Ut):")).size(10.5).color(Theme::TEXT_MUTED));
                             let e_val = crop_end_norm * duration;
                             ui.label(egui::RichText::new(format!("{:.2}s", e_val)).strong().size(10.5).color(Theme::FL_YELLOW));
                             ui.add_sized(Vec2::new(120.0, 18.0), egui::Slider::new(&mut crop_end_norm, 0.02..=1.0).show_value(false));
@@ -550,22 +562,22 @@ pub fn render_vocal_studio_view(
                             ui.separator();
 
                             // CROP BUTTON
-                            if ui.add(egui::Button::new(egui::RichText::new("✂ Beskär till Markering").strong().size(11.0).color(Color32::BLACK)).fill(Theme::FL_YELLOW)).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✂ Beskär till Markering")).strong().size(11.0).color(Color32::BLACK)).fill(Theme::FL_YELLOW)).clicked() {
                                 do_crop = true;
                             }
 
                             // SLICE BUTTON
-                            if ui.add(egui::Button::new(egui::RichText::new("✂ Dela Tagning").size(11.0).color(Theme::TEXT_BRIGHT))).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✂ Dela Tagning")).size(11.0).color(Theme::TEXT_BRIGHT))).clicked() {
                                 do_slice = true;
                             }
 
                             // NORMALIZE BUTTON
-                            if ui.add(egui::Button::new(egui::RichText::new("🎚 Normalisera").size(11.0).color(Theme::TEXT_BRIGHT))).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎚 Normalisera")).size(11.0).color(Theme::TEXT_BRIGHT))).clicked() {
                                 do_normalize = true;
                             }
 
                             // DELETE BUTTON
-                            if ui.add(egui::Button::new(egui::RichText::new("🗑 Ta bort").size(11.0).color(Color32::from_rgb(240, 90, 90)))).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🗑 Ta bort")).size(11.0).color(Color32::from_rgb(240, 90, 90)))).clicked() {
                                 do_delete = true;
                             }
                         });
@@ -578,7 +590,7 @@ pub fn render_vocal_studio_view(
                         let filename = format!("recordings/take_{}.wav", selected_idx + 1);
                         match vocal_track.export_take_to_wav(selected_idx, &filename) {
                             Ok(msg) => *status_msg = msg,
-                            Err(err) => *status_msg = format!("❌ Fel vid export: {}", err),
+                            Err(err) => *status_msg = crate::tstatus!("❌ Fel vid export: {}", err),
                         }
                     } else if do_crop {
                         match vocal_track.crop_selected_take() {
@@ -603,7 +615,7 @@ pub fn render_vocal_studio_view(
                         }
                     } else if let Some((f_name, l, sr)) = do_import_pcm {
                         let new_idx = vocal_track.load_sample_or_region_as_take(&f_name, l, sr, Theme::FL_CYAN);
-                        *status_msg = format!("✔ Importerade '{}' till Sångstudion (Tagning {})!", f_name, new_idx + 1);
+                        *status_msg = crate::tstatus!("✔ Importerade '{}' till Sångstudion (Tagning {})!", f_name, new_idx + 1);
                     }
 
                     ui.add_space(6.0);
@@ -614,15 +626,15 @@ pub fn render_vocal_studio_view(
                 // ============================================================
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("📁 SÅNGTAGNINGAR & COMPING LANES").strong().size(12.0).color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("📁 SÅNGTAGNINGAR & COMPING LANES")).strong().size(12.0).color(Theme::FL_CYAN));
                         ui.separator();
-                        ui.label(egui::RichText::new(format!("Totalt {} tagningar sparade i projektet", vocal_track.takes.len())).size(10.5).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(format!("{} {} {}", crate::i18n::t("Totalt:"), vocal_track.takes.len(), crate::i18n::t("tagningar sparade i projektet"))).size(10.5).color(Theme::TEXT_MUTED));
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.button("➕ Skapa Demo-Tagning").clicked() {
-                                let name = format!("Tagning {}", vocal_track.takes.len() + 1);
-                                vocal_track.add_new_take(&name, 0, 8);
-                                *status_msg = format!("✔ Skapade {}", name);
+                            if ui.button(crate::i18n::t("➕ Skapa Testton (2s)")).on_hover_text(crate::i18n::t("Lägger till en hörbar referenston (220 Hz) som du kan redigera")).clicked() {
+                                let name = format!("{} {}", crate::i18n::t("Tagning"), vocal_track.takes.len() + 1);
+                                vocal_track.add_new_take(&name);
+                                *status_msg = crate::tstatus!("✔ Skapade hörbar testton: {}", name);
                             }
                         });
                     });
@@ -651,7 +663,7 @@ pub fn render_vocal_studio_view(
                                 }
                                 vocal_track.selected_crop_start_norm = 0.0;
                                 vocal_track.selected_crop_end_norm = 1.0;
-                                *status_msg = format!("Valde {} för aktiv redigering och comping", take_name);
+                                *status_msg = crate::tstatus!("Valde {} för aktiv redigering och comping", take_name);
                             }
 
                             // Waveform display for each lane
@@ -693,15 +705,81 @@ pub fn render_vocal_studio_view(
                 // ============================================================
                 // 5. MELODYNE & HARMONIZER
                 // ============================================================
+                let act_idx = vocal_track.active_comp_take.min(vocal_track.takes.len().saturating_sub(1));
                 ui.columns(2, |cols| {
                     cols[0].group(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("🎼 MELODYNE ARA2 TONKORRIGERING").strong().size(11.0).color(Theme::FL_YELLOW));
+                            ui.label(egui::RichText::new(crate::i18n::t("🎼 PITCH EDITOR – TONKORRIGERING (NOTBLOCK)")).strong().size(11.0).color(Theme::FL_YELLOW));
                         });
                         ui.add_space(4.0);
 
+                        // Real analysis / correction actions for the selected take
+                        ui.horizontal_wrapped(|ui| {
+                            let has_take = !vocal_track.takes.is_empty();
+                            if ui.add_enabled(has_take, egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Analysera tonhöjd")).size(10.5))).on_hover_text(crate::i18n::t("Detekterar tonhöjden i den valda tagningen och ritar riktiga notblock")).clicked() {
+                                let take = &vocal_track.takes[act_idx];
+                                let pcm = take.pcm_samples.clone();
+                                let sr = take.sample_rate as f32;
+                                harmonizer.analyze_take(&pcm, sr, 16);
+                                *status_msg = crate::tstatus!("🎯 Analyserade {} notblock ur tagningen", harmonizer.blobs.len());
+                            }
+
+                            if ui.add_enabled(has_take, egui::Button::new(egui::RichText::new(crate::i18n::t("✨ Auto-Tune")).color(Color32::BLACK).size(10.5)).fill(Theme::FL_ORANGE)).on_hover_text(crate::i18n::t("Korrigerar tonhöjden mot vald skala (styrka = AUTO-TUNE-ratten)")).clicked() {
+                                let corrected = {
+                                    let take = &vocal_track.takes[act_idx];
+                                    harmonizer.apply_autotune(&take.pcm_samples, take.sample_rate as f32)
+                                };
+                                vocal_track.replace_active_take_pcm("(Auto-Tune)", corrected);
+                                *status_msg = crate::i18n::t("✨ Auto-Tune applicerad på vald tagning").to_string();
+                            }
+
+                            let has_edits = harmonizer.blobs.iter().any(|b| b.pitch_offset.abs() > 0.001);
+                            if ui.add_enabled(has_take && has_edits, egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Applicera notkorrigering")).color(Color32::BLACK).size(10.5)).fill(Theme::FL_CYAN)).on_hover_text(crate::i18n::t("Pitch-shiftar tagningen per notblock enligt dina dragningar")).clicked() {
+                                let corrected = {
+                                    let take = &vocal_track.takes[act_idx];
+                                    harmonizer.apply_blob_corrections(&take.pcm_samples, take.sample_rate as f32)
+                                };
+                                vocal_track.replace_active_take_pcm("(Pitch Edit)", corrected);
+                                for b in &mut harmonizer.blobs { b.pitch_offset = 0.0; }
+                                *status_msg = crate::i18n::t("🎯 Notkorrigering applicerad på tagningen").to_string();
+                            }
+
+                            if ui.add_enabled(!harmonizer.blobs.is_empty(), egui::Button::new(egui::RichText::new(crate::i18n::t("↩ Nollställ notblock")).size(10.5))).clicked() {
+                                for b in &mut harmonizer.blobs { b.pitch_offset = 0.0; }
+                                harmonizer.selected_blob = None;
+                            }
+
+                            ui.label(egui::RichText::new(crate::i18n::t("Skala:")).size(10.5).color(Theme::TEXT_MUTED));
+                            egui::ComboBox::from_id_salt("tuner_scale_combo")
+                                .selected_text(match harmonizer.target_scale {
+                                    1 => crate::i18n::t("Dur"),
+                                    2 => crate::i18n::t("Moll"),
+                                    3 => crate::i18n::t("Dur-pentatonisk"),
+                                    4 => crate::i18n::t("Moll-pentatonisk"),
+                                    5 => crate::i18n::t("Dorisk"),
+                                    6 => crate::i18n::t("Mixolydisk"),
+                                    7 => crate::i18n::t("Blues"),
+                                    _ => crate::i18n::t("Kromatisk"),
+                                })
+                                .show_ui(ui, |ui| {
+                                    for (idx, name) in [
+                                        (0usize, crate::i18n::t("Kromatisk")),
+                                        (1, crate::i18n::t("Dur")),
+                                        (2, crate::i18n::t("Moll")),
+                                        (3, crate::i18n::t("Dur-pentatonisk")),
+                                        (4, crate::i18n::t("Moll-pentatonisk")),
+                                        (5, crate::i18n::t("Dorisk")),
+                                        (6, crate::i18n::t("Mixolydisk")),
+                                        (7, crate::i18n::t("Blues")),
+                                    ] {
+                                        ui.selectable_value(&mut harmonizer.target_scale, idx, name);
+                                    }
+                                });
+                        });
+
+
                         let m_w = ui.available_width().max(10.0);
-                        let (m_rect, _) = ui.allocate_exact_size(Vec2::new(m_w, 120.0), Sense::click());
+                        let (m_rect, m_resp) = ui.allocate_exact_size(Vec2::new(m_w, 120.0), Sense::click_and_drag());
                         let painter = ui.painter();
                         painter.rect_filled(m_rect, Rounding::same(4.0), Color32::from_rgb(14, 18, 24));
                         painter.rect_stroke(m_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Color32::from_rgb(34, 48, 64)));
@@ -713,27 +791,86 @@ pub fn render_vocal_studio_view(
                             painter.line_segment([Pos2::new(m_rect.min.x, ry), Pos2::new(m_rect.max.x, ry)], Stroke::new(1.0_f32, Color32::from_rgb(22, 28, 38)));
                         }
 
-                        let step_width = (m_rect.width() - 10.0).max(1.0) / 16.0;
-                        for blob in &harmonizer.blobs {
+                        let total_steps = harmonizer.blob_steps.max(1);
+                        let step_width = (m_rect.width() - 10.0).max(1.0) / total_steps as f32;
+                        let pitch_to_y = |note: f32| -> f32 {
+                            m_rect.max.y - ((note - 58.0) * (row_h * 0.75)).clamp(15.0, (m_rect.height() - 25.0).max(15.0))
+                        };
+                        for (i, blob) in harmonizer.blobs.iter().enumerate() {
                             let bx = m_rect.min.x + 5.0 + blob.start_step as f32 * step_width;
                             let bw = (blob.length_steps as f32 * step_width - 3.0).max(4.0);
-                            let by = m_rect.max.y - ((blob.midi_note - 58) as f32 * (row_h * 0.75)).clamp(15.0, (m_rect.height() - 25.0).max(15.0));
+                            let by = pitch_to_y(blob.midi_note as f32 + blob.pitch_offset);
                             let blob_rect = Rect::from_min_size(Pos2::new(bx, by), Vec2::new(bw, 18.0));
                             painter.rect_filled(blob_rect, Rounding::same(9.0), blob.color);
-                            painter.rect_stroke(blob_rect, Rounding::same(9.0), Stroke::new(1.5_f32, Color32::WHITE));
-                            painter.text(blob_rect.center(), egui::Align2::CENTER_CENTER, blob.text_lyric, egui::FontId::proportional(10.0), Color32::BLACK);
+                            let selected = harmonizer.selected_blob == Some(i);
+                            painter.rect_stroke(blob_rect, Rounding::same(9.0), Stroke::new(if selected { 3.0_f32 } else { 1.5_f32 }, if selected { Theme::FL_YELLOW } else { Color32::WHITE }));
+                            if blob.pitch_offset.abs() > 0.001 {
+                                painter.text(blob_rect.center(), egui::Align2::CENTER_CENTER, format!("{:+}", blob.pitch_offset.round() as i32), egui::FontId::proportional(10.0), Color32::BLACK);
+                            }
+                        }
+
+                        // Click a note to select it; drag vertically to retune it.
+                        if m_resp.clicked() || m_resp.dragged() {
+                            if let Some(pos) = m_resp.interact_pointer_pos() {
+                                let step = ((pos.x - (m_rect.min.x + 5.0)) / step_width).floor();
+                                let mut hit: Option<usize> = None;
+                                for (i, b) in harmonizer.blobs.iter().enumerate() {
+                                    if step >= b.start_step as f32 && step < (b.start_step + b.length_steps) as f32 {
+                                        hit = Some(i);
+                                        break;
+                                    }
+                                }
+                                harmonizer.selected_blob = hit;
+                                if let Some(i) = hit {
+                                    if m_resp.dragged() {
+                                        let delta = -m_resp.drag_delta().y / (row_h * 0.75);
+                                        let b = &mut harmonizer.blobs[i];
+                                        b.pitch_offset = (b.pitch_offset + delta).clamp(-12.0, 12.0);
+                                    }
+                                }
+                            }
                         }
 
                         if is_playing {
                             let px = m_rect.min.x + 5.0 + current_step as f32 * step_width;
                             painter.line_segment([Pos2::new(px, m_rect.min.y), Pos2::new(px, m_rect.max.y)], Stroke::new(2.0_f32, Color32::WHITE));
                         }
+
+                        // Selected-note editor.
+                        if let Some(i) = harmonizer.selected_blob {
+                            if let Some(b) = harmonizer.blobs.get_mut(i) {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(crate::tstatus!("Not {} – MIDI {}", i + 1, b.midi_note)).size(10.0).color(Theme::TEXT_BRIGHT));
+                                    ui.add(egui::Slider::new(&mut b.pitch_offset, -12.0..=12.0).text(crate::i18n::t("korrigering (st)")).step_by(0.5));
+                                    if ui.button(crate::i18n::t("0")).clicked() {
+                                        b.pitch_offset = 0.0;
+                                    }
+                                });
+                            }
+                        } else if !harmonizer.blobs.is_empty() {
+                            ui.label(egui::RichText::new(crate::i18n::t("Klicka på ett notblock och dra lodrätt för att justera tonhöjden.")).size(9.5).color(Theme::TEXT_MUTED));
+                        }
                     });
 
                     cols[1].group(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new("✨ 4-VOICE HARMONIZER (KÖR)").strong().size(11.0).color(Theme::FL_GREEN));
+                            ui.label(egui::RichText::new(crate::i18n::t("✨ 4-VOICE HARMONIZER (KÖR)")).strong().size(11.0).color(Theme::FL_GREEN));
                         });
+                        ui.add_space(4.0);
+
+                        if ui.add_enabled(!vocal_track.takes.is_empty(), egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Skapa körstämmor som tagningar")).size(10.5)).fill(Theme::FL_GREEN)).on_hover_text(crate::i18n::t("Pitch-shiftar vald tagning per aktiverad stämma och lägger till dem som egna tagningar")).clicked() {
+                            let (pcm, sr) = {
+                                let take = &vocal_track.takes[act_idx];
+                                (take.pcm_samples.clone(), take.sample_rate)
+                            };
+                            let rendered = harmonizer.render_harmony(&pcm, sr as f32);
+                            let count = rendered.len();
+                            for (i, (name, voice_pcm)) in rendered.into_iter().enumerate() {
+                                let color = Color32::from_rgb(80, 220 - (i as u8 * 30), 160);
+                                vocal_track.add_take_from_pcm(name, voice_pcm, sr, color);
+                            }
+                            *status_msg = crate::tstatus!("➕ Skapade {} körstämmor från tagningen", count);
+                        }
                         ui.add_space(4.0);
 
                         for voice in &mut harmonizer.voices {
@@ -756,28 +893,35 @@ pub fn render_vocal_studio_view(
                 // ============================================================
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("🎤 SPELA IN EGET LJUD / SAMPLING").strong().size(12.0).color(Theme::FL_ORANGE));
+                        ui.label(egui::RichText::new(crate::i18n::t("🎤 SPELA IN EGET LJUD / SAMPLING")).strong().size(12.0).color(Theme::FL_ORANGE));
                         ui.separator();
-                        ui.label(egui::RichText::new("Spela in instrument, klappar, rösteffekter eller miljöljud direkt via mik").size(11.0).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("Spela in instrument, klappar, rösteffekter eller miljöljud direkt via mik")).size(11.0).color(Theme::TEXT_MUTED));
                     });
 
                     ui.add_space(6.0);
 
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Namn på ljudet:").size(11.0).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("Namn på ljudet:")).size(11.0).color(Theme::TEXT_MUTED));
                         ui.add(egui::TextEdit::singleline(&mut vocal_track.custom_sample_name_input).desired_width(180.0));
 
                         ui.separator();
 
-                        if ui.add(egui::Button::new(egui::RichText::new(" 🔴 SPELA IN LJUDKLIPP ").strong().size(11.0).color(Color32::WHITE)).fill(Color32::from_rgb(220, 50, 50))).clicked() {
-                            let name = vocal_track.custom_sample_name_input.clone();
-                            vocal_track.add_custom_sound(&name, "Eget Ljud");
-                            *status_msg = format!("✔ Sparade eget ljud '{}' i samplingsbiblioteket!", name);
-                        }
-
-                        if ui.button("➕ Skapa Demo Percussion-Ljud").clicked() {
-                            vocal_track.add_custom_sound("Akustisk Shaker", "Perkussion");
-                            *status_msg = "✔ Lade till Akustisk Shaker i biblioteket".to_string();
+                        if vocal_track.is_recording_custom {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOPPA & SPARA KLIPP ")).strong().size(11.0).color(Color32::WHITE)).fill(Color32::from_rgb(30, 160, 70))).clicked() {
+                                match vocal_track.stop_custom_recording() {
+                                    Ok(idx) => {
+                                        let name = vocal_track.custom_sounds[idx].name.clone();
+                                        *status_msg = crate::tstatus!("✔ Sparade eget ljud '{}' i samplingsbiblioteket!", name);
+                                    }
+                                    Err(e) => *status_msg = format!("❌ {}", e),
+                                }
+                            }
+                            ui.label(egui::RichText::new(format!("🔴 {:.1}s", vocal_track.custom_recording_elapsed_secs)).strong().size(11.0).color(Color32::from_rgb(255, 80, 80)));
+                        } else if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" 🔴 SPELA IN LJUDKLIPP ")).strong().size(11.0).color(Color32::WHITE)).fill(Color32::from_rgb(220, 50, 50))).clicked() {
+                            match vocal_track.start_custom_recording() {
+                                Ok(()) => *status_msg = crate::i18n::t("🔴 Spelar in eget ljud...").to_string(),
+                                Err(e) => *status_msg = format!("❌ {}", e),
+                            }
                         }
                     });
                 });
@@ -786,7 +930,7 @@ pub fn render_vocal_studio_view(
 
                 // List of custom sound clips
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new("📁 MINA INSPELADE LJUD & SAMPLINGAR").strong().size(12.0).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("📁 MINA INSPELADE LJUD & SAMPLINGAR")).strong().size(12.0).color(Theme::FL_CYAN));
                     ui.add_space(4.0);
 
                     for sound in &vocal_track.custom_sounds {
@@ -816,8 +960,19 @@ pub fn render_vocal_studio_view(
 
                             ui.label(egui::RichText::new(format!("{:.1}s | {}", sound.duration_secs, sound.category)).size(10.0).color(Theme::TEXT_MUTED));
 
-                            if ui.button("▶ Provlyssna").clicked() {
-                                *status_msg = format!("Spelar upp: {}", sound.name);
+                            if ui.button(crate::i18n::t("▶ Provlyssna")).clicked() {
+                                let pcm_arc = std::sync::Arc::new(sound.pcm_samples.clone());
+                                let _ = engine.send_command(crate::audio::AudioCommand::PlayAudition {
+                                    left: pcm_arc.clone(),
+                                    right: pcm_arc,
+                                    sample_rate: sound.sample_rate as f32,
+                                    volume: 1.0,
+                                    pitch_ratio: 1.0,
+                                    time_stretch_ratio: 1.0,
+                                    is_reverse: false,
+                                    loop_playback: false,
+                                });
+                                *status_msg = crate::tstatus!("▶ Spelar upp: {}", sound.name);
                             }
                         });
                         ui.add_space(3.0);

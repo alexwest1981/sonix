@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 #
-# Sonix Studio – installerare
+# Sonix Studio – installer
 #
-# Två lägen:
+# Two modes:
 #
-#   1) GUIDED INSTALL (standard) – för nya användare.
-#      Varje steg bekräftas först, precis som i en installerare:
+#   1) GUIDED INSTALL (default) – for new users.
+#      Each step is confirmed first, just like in an installer:
 #
 #          bash install.sh
 #
-#   2) REFRESH – bygger om och uppdaterar binär + startmenypost.
-#      Används efter en kodändring så du kan starta direkt från startmenyn:
+#   2) REFRESH – rebuilds and updates the binary + start menu entry.
+#      Use after a code change so you can start straight from the menu:
 #
 #          bash install.sh --refresh
 #
-#   Lägg till --yes för att bekräfta alla steg automatiskt (ex. CI / egna scripts):
+#   Add --yes to confirm every step automatically (e.g. CI / your own scripts):
 #
 #          bash install.sh --refresh --yes
 #
-# Beroenden som installeras (per distribution) finns dokumenterade i README.
+# Dependencies installed (per distribution) are documented in the README.
 
 set -euo pipefail
 
@@ -26,6 +26,7 @@ APP_NAME="Sonix Studio"
 APP_EXE="sonix"
 REPO_URL="https://github.com/alexwest1981/sonix.git"
 ICON_SRC_REL="assets/sonix.png"
+CONFIG_DIR="${HOME}/.config/sonix"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -41,10 +42,10 @@ for arg in "$@"; do
         --refresh) REFRESH=1 ;;
         --yes) YES=1 ;;
         -h|--help)
-            sed -n '2,24p' "${BASH_SOURCE[0]}"
+            sed -n '2,26p' "${BASH_SOURCE[0]}"
             exit 0
             ;;
-        *) echo "Okänt argument: $arg (se --help)" >&2; exit 1 ;;
+        *) echo "Unknown argument: $arg (see --help)" >&2; exit 1 ;;
     esac
 done
 
@@ -53,15 +54,15 @@ info()  { printf '   %s\n' "$*"; }
 step()  { printf '\n──────────────────────────────────────────────\n'; printf '◉  %s\n' "$1"; printf '──────────────────────────────────────────────\n'; }
 
 confirm() {
-    # $1 = fråga. Returnerar 0 (ja) eller 1 (nej). Enter = nej (säkert val).
+    # $1 = question. Returns 0 (yes) or 1 (no). Enter = no (safe choice).
     if [[ "$YES" -eq 1 ]]; then
         return 0
     fi
     local answer
-    printf '\n\033[1m❓ %s\033[0m  [j/N]: ' "$1"
+    printf '\n\033[1m❓ %s\033[0m  [y/N]: ' "$1"
     read -r answer
     case "$answer" in
-        j|J|ja|Ja|y|Y|yes|Yes|YES) return 0 ;;
+        y|Y|yes|Yes|YES) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -92,16 +93,16 @@ ensure_rust() {
         return 0
     fi
     if command -v rustup >/dev/null 2>&1; then
-        if confirm "Rustup finns men ingen verktygskedja är vald – installera 'stable' nu (rustup default stable)?"; then
+        if confirm "rustup is present but no toolchain is selected – install 'stable' now (rustup default stable)?"; then
             rustup default stable
             export PATH="${HOME}/.cargo/bin:${PATH}"
         fi
-    elif confirm "Installera Rust via rustup (stable) nu?"; then
+    elif confirm "Install Rust via rustup (stable) now?"; then
         curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
         export PATH="${HOME}/.cargo/bin:${PATH}"
     fi
     if ! rust_toolchain_ready; then
-        echo "   ⚠️  Rust/verktygskedjan saknas eller är inte konfigurerad. Avbryter." >&2
+        echo "   ⚠️  Rust/toolchain is missing or not configured. Aborting." >&2
         exit 1
     fi
 }
@@ -110,14 +111,14 @@ has_cmd() { command -v "$1" >/dev/null 2>&1; }
 
 cc_ok() { has_cmd cc || has_cmd gcc; }
 
-# ALSA-utvecklingsbibliotek krävs för att kompilera ljudmotorn (cpal).
+# The ALSA development library is required to compile the audio engine (cpal).
 alsa_dev_ok() {
     has_cmd pkg-config || return 1
     pkg-config --exists alsa 2>/dev/null
 }
 
-# Paket per officiell paketkälla. Grupper: byggberoenden (måste finnas för
-# att kompilera) och verktyg (zenity/unzip behövs av appen vid körning).
+# Packages from official package sources. Groups: build dependencies (must be
+# present to compile) and tools (zenity/unzip are needed by the app at runtime).
 build_pkgs_for() {
     case "$1" in
         pacman) echo "base-devel alsa-lib" ;;
@@ -141,11 +142,11 @@ pm_install() {
 }
 
 step_deps() {
-    step "Systemberoenden"
+    step "System dependencies"
     local pm
     pm="$(detect_pm)"
 
-    # Vilka byggberoenden saknas egentligen?
+    # Which build dependencies are actually missing?
     local missing_build=0
     local missing_tools=0
     if ! cc_ok || ! has_cmd make || ! alsa_dev_ok; then
@@ -166,91 +167,133 @@ step_deps() {
     case "$pm" in
         pacman|apt|dnf)
             if [[ "$missing_build" -eq 1 ]]; then
-                info "Saknas byggberoenden: $(build_pkgs_for "$pm")"
-                if confirm "Installera saknade byggberoenden via '${pm}' (officiella paketkällor)?"; then
+                info "Missing build dependencies: $(build_pkgs_for "$pm")"
+                if confirm "Install missing build dependencies via '${pm}' (official package sources)?"; then
                     pm_install "$pm" "$(build_pkgs_for "$pm")"
                 else
-                    info "   Hoppas över – bygget kan misslyckas om de saknas."
+                    info "   Skipped – the build may fail if they are missing."
                 fi
             else
-                info "Byggverktyg (C-kompilator, make, ALSA-dev) finns redan."
+                info "Build tools (C compiler, make, ALSA-dev) are already present."
             fi
 
             if [[ "$missing_tools" -eq 1 ]]; then
-                info "Saknas verktyg: $(tool_pkgs_for)"
-                if confirm "Installera saknade verktyg via '${pm}' (officiella paketkällor)?"; then
+                info "Missing tools: $(tool_pkgs_for)"
+                if confirm "Install missing tools via '${pm}' (official package sources)?"; then
                     pm_install "$pm" "$(tool_pkgs_for)"
                 else
-                    info "   Hoppas över – zenity/unzip behövs av appen vid körning."
+                    info "   Skipped – zenity/unzip are needed by the app at runtime."
                 fi
             else
-                info "Verktyg (zenity, unzip, curl, git) finns redan."
+                info "Tools (zenity, unzip, curl, git) are already present."
             fi
             ;;
         unknown)
-            echo "   ⚠️  Okänd distribution – kan inte installera automatiskt."
-            echo "   Installera manuellt från officiella kanaler: Rust + C-kompilator + ALSA-utvecklingsbibliotek (+ zenity, unzip)."
+            echo "   ⚠️  Unknown distribution – cannot install automatically."
+            echo "   Install manually from official channels: Rust + C compiler + ALSA development library (+ zenity, unzip)."
             ;;
     esac
 
-    # Rust installeras via rustup (officiell kanal: rust-lang.org), aldrig via
-    # tredjeparts-PPA:er. Verifierar att cargo verkligen kan köras.
+    # Rust is installed via rustup (official channel: rust-lang.org), never via
+    # third-party PPAs. Verifies that cargo can actually run.
     ensure_rust
 
     if ! cc_ok || ! alsa_dev_ok; then
-        echo "   ⚠️  C-kompilator eller ALSA-dev saknas fortfarande – bygget kan misslyckas." >&2
+        echo "   ⚠️  C compiler or ALSA-dev is still missing – the build may fail." >&2
     fi
 }
 
+step_language() {
+    step "Interface language"
+    say "Select the Sonix interface language. You can always switch later from the 🌐 menu in the app."
+
+    local choice
+    if [[ "$YES" -eq 1 ]]; then
+        choice=1
+    else
+        echo "  1) English"
+        echo "  2) Svenska"
+        echo "  3) Dansk"
+        echo "  4) Norsk (bokmål)"
+        echo "  5) Deutsch"
+        echo "  6) Español"
+        echo "  7) Français"
+        printf '\n\033[1m❓ Choice [1-7, default 1]: \033[0m'
+        read -r choice
+    fi
+
+    local code
+    case "$choice" in
+        1|"") code="en" ;;
+        2) code="sv" ;;
+        3) code="da" ;;
+        4) code="no" ;;
+        5) code="de" ;;
+        6) code="es" ;;
+        7) code="fr" ;;
+        *)
+            echo "   ⚠️  Invalid choice – keeping English." >&2
+            code="en" ;;
+    esac
+
+    mkdir -p "$CONFIG_DIR"
+    cat > "$CONFIG_DIR/config.json" <<EOF
+{
+  "language": "$code"
+}
+EOF
+    info "Saved language preference: $CONFIG_DIR/config.json"
+}
+
 step_source() {
-    step "Källkod"
+    step "Source code"
     if [[ "$IN_REPO" -eq 1 ]]; then
-        info "Körs redan inuti en Sonix-klon: $SCRIPT_DIR"
+        info "Already running inside a Sonix clone: $SCRIPT_DIR"
         return 0
     fi
 
     local default_dir="${HOME}/Projects/sonix"
-    if confirm "Klona Sonix till '${default_dir}'? (skriv 'n' för att hoppa över om du redan har en klon)"; then
+    if confirm "Clone Sonix into '${default_dir}'? (type 'n' to skip if you already have a clone)"; then
         mkdir -p "$(dirname "$default_dir")"
         git clone "$REPO_URL" "$default_dir"
         cd "$default_dir"
         SCRIPT_DIR="$default_dir"
     else
-        echo "   ⚠️  Ingen källkod – kan inte bygga. Avbryter." >&2
+        echo "   ⚠️  No source code – cannot build. Aborting." >&2
         exit 1
     fi
 }
 
 step_build() {
-    step "Kompilera (release-bygge – kan ta några minuter första gången)"
-    if confirm "Bygg Sonix nu (cargo build --release)?"; then
+    step "Compile (release build – may take a few minutes the first time)"
+    if confirm "Build Sonix now (cargo build --release)?"; then
         (cd "$SCRIPT_DIR" && cargo build --release)
     fi
     if [[ ! -x "$SCRIPT_DIR/target/release/${APP_EXE}" ]]; then
-        echo "   ⚠️  Bygget misslyckades (ingen körbar fil skapades). Avbryter." >&2
+        echo "   ⚠️  The build failed (no executable was created). Aborting." >&2
         exit 1
     fi
 }
 
 step_install_binary() {
-    step "Installera binär → ~/.cargo/bin"
-    if confirm "Installera '${APP_EXE}' till '${HOME_BIN}'?"; then
+    step "Install binary → ~/.cargo/bin"
+    if confirm "Install '${APP_EXE}' into '${HOME_BIN}'?"; then
         mkdir -p "$HOME_BIN"
         install -m 0755 "$SCRIPT_DIR/target/release/${APP_EXE}" "$HOME_BIN/${APP_EXE}"
-        info "Installerad: ${HOME_BIN}/${APP_EXE}"
+        info "Installed: ${HOME_BIN}/${APP_EXE}"
     fi
 }
 
 step_menu() {
-    step "Startmenypost (applikationsmenyn)"
-    if ! confirm "Skapa menypost '${APP_NAME}' i startmenyn?"; then
+    step "Start menu entry (application menu)"
+    if ! confirm "Create start menu entry '${APP_NAME}'?"; then
         return 0
     fi
 
     mkdir -p "${HOME}/.local/share/applications"
     mkdir -p "${HOME}/.local/share/icons/hicolor/256x256/apps"
 
-    # Kopiera ikonen så menyposten fungerar även om klonen flyttas/raderas.
+    # Copy the icon so the menu entry works even if the clone is moved/deleted.
     if [[ -f "$SCRIPT_DIR/$ICON_SRC_REL" ]]; then
         install -m 0644 "$SCRIPT_DIR/$ICON_SRC_REL" \
             "${HOME}/.local/share/icons/hicolor/256x256/apps/${APP_EXE}.png"
@@ -269,46 +312,47 @@ Categories=Audio;AudioVideo;Music;
 StartupWMClass=${APP_EXE}-daw
 EOF
 
-    info "Skapad: ${desktop_file}"
+    info "Created: ${desktop_file}"
     if command -v update-desktop-database >/dev/null 2>&1; then
         update-desktop-database "${HOME}/.local/share/applications" >/dev/null 2>&1 || true
-        info "Desktop-databas uppdaterad."
+        info "Desktop database updated."
     fi
 }
 
 run_app() {
-    step "Starta Sonix"
-    if confirm "Starta Sonix nu?"; then
+    step "Start Sonix"
+    if confirm "Start Sonix now?"; then
         exec "${HOME_BIN}/${APP_EXE}"
     else
-        say "Klart! Starta när du vill via startmenyn (${APP_NAME}) eller kommandot '${APP_EXE}'."
+        say "Done! Start whenever you like from the start menu (${APP_NAME}) or with the command '${APP_EXE}'."
     fi
 }
 
-say "🍊 ${APP_NAME} – installerare"
-info "Detta utför alla steg från README med bekräftelse per steg."
+say "🍊 ${APP_NAME} – installer"
+info "This performs every step from the README with confirmation at each step."
 
 if [[ "$REFRESH" -eq 1 ]]; then
-    step "Refresh-läge: bygger om & uppdaterar binär + startmenypost"
+    step "Refresh mode: rebuilding & updating binary + start menu entry"
     if [[ "$IN_REPO" -ne 1 ]]; then
-        echo "   ⚠️  --refresh måste köras inifrån en Sonix-klon." >&2
+        echo "   ⚠️  --refresh must be run from inside a Sonix clone." >&2
         exit 1
     fi
     step_build
     step_install_binary
     step_menu
-    say "✅ Klar! Sonix är uppdaterad och startbar från startmenyn."
+    say "✅ Done! Sonix is updated and can be started from the start menu."
     exit 0
 fi
 
-say "Vi går igenom stegen nedan. Tryck 'j' för ja (eller 'n'/Enter för att hoppa över)."
+say "We will go through the steps below. Press 'y' for yes (or 'n'/Enter to skip)."
 
+step_language
 step_deps
 step_source
 step_build
 step_install_binary
 step_menu
-say "✅ Installation klar."
-info "📂 Sample-paket (valfritt): lägg egna WAV-paket under '~/Music/Sonix/Sample_Packs' så syns de i Ljudbiblioteket."
-info "   Sonix skapar katalogerna själv vid första start."
+say "✅ Installation complete."
+info "📂 Sample packs (optional): place your own WAV packs under '~/Music/Sonix/Sample_Packs' and they will appear in the Sound Library."
+info "   Sonix creates these folders itself on first start."
 run_app

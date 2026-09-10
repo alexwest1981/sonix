@@ -1,7 +1,7 @@
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, StreamConfig};
 use rtrb::{Consumer, Producer, RingBuffer};
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
 use super::command::AudioCommand;
@@ -12,6 +12,8 @@ pub struct AudioEngine {
     _stream: Stream,
     command_tx: Producer<AudioCommand>,
     peak_level: Arc<AtomicU32>,
+    audition_active: Arc<AtomicBool>,
+    master_gr_db: Arc<AtomicU32>,
     scope_rx: Consumer<f32>,
     pub sample_rate: u32,
     pub channels: u16,
@@ -23,7 +25,7 @@ impl AudioEngine {
         let host = cpal::default_host();
         let device = host
             .default_output_device()
-            .ok_or("Inget standard-ljudkort hittades på systemet")?;
+            .ok_or(crate::i18n::t("Inget standard-ljudkort hittades på systemet"))?;
 
         let device_name = device.name().unwrap_or_else(|_| "Standard Output".to_string());
         let default_config = device.default_output_config()?;
@@ -37,15 +39,25 @@ impl AudioEngine {
         let peak_level = Arc::new(AtomicU32::new(0));
         let peak_level_clone = Arc::clone(&peak_level);
 
+        // Real audition playing state, mirrored from the audio thread so the UI
+        // can clear its "playing" indicator when playback finishes on its own.
+        let audition_active = Arc::new(AtomicBool::new(false));
+        let audition_active_clone = Arc::clone(&audition_active);
+
+        // Real compressor gain reduction (dB) mirrored from the audio thread for
+        // the FX rack's GR meter.
+        let master_gr_db = Arc::new(AtomicU32::new(0));
+        let master_gr_db_clone = Arc::clone(&master_gr_db);
+
         // Ring buffer carrying the real (mono) output waveform from the audio
         // thread to the UI for the oscilloscope display.
         let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
 
         let stream = match sample_format {
-            SampleFormat::F32 => Self::build_stream::<f32>(&device, &config, command_rx, peak_level_clone, scope_tx)?,
-            SampleFormat::I16 => Self::build_stream::<i16>(&device, &config, command_rx, peak_level_clone, scope_tx)?,
-            SampleFormat::U16 => Self::build_stream::<u16>(&device, &config, command_rx, peak_level_clone, scope_tx)?,
-            _ => return Err("Ljudformatet stöds inte".into()),
+            SampleFormat::F32 => Self::build_stream::<f32>(&device, &config, command_rx, peak_level_clone, audition_active_clone, master_gr_db_clone, scope_tx)?,
+            SampleFormat::I16 => Self::build_stream::<i16>(&device, &config, command_rx, peak_level_clone, audition_active_clone, master_gr_db_clone, scope_tx)?,
+            SampleFormat::U16 => Self::build_stream::<u16>(&device, &config, command_rx, peak_level_clone, audition_active_clone, master_gr_db_clone, scope_tx)?,
+            _ => return Err(crate::i18n::t("Ljudformatet stöds inte").into()),
         };
 
         stream.play()?;
@@ -54,6 +66,8 @@ impl AudioEngine {
             _stream: stream,
             command_tx,
             peak_level,
+            audition_active,
+            master_gr_db,
             scope_rx,
             sample_rate,
             channels,
@@ -70,6 +84,17 @@ impl AudioEngine {
         f32::from_bits(bits)
     }
 
+    /// True while the isolated audition player (Vocal Studio / sound browser)
+    /// is still producing audio. Cleared automatically when playback ends.
+    pub fn is_audition_playing(&self) -> bool {
+        self.audition_active.load(Ordering::Relaxed)
+    }
+
+    /// Current master-bus compressor gain reduction in dB (<= 0.0).
+    pub fn master_gain_reduction_db(&self) -> f32 {
+        f32::from_bits(self.master_gr_db.load(Ordering::Relaxed))
+    }
+
     /// Pops every waveform sample produced since the last UI frame.
     pub fn drain_scope_samples(&mut self) -> Vec<f32> {
         let mut out = Vec::new();
@@ -84,6 +109,8 @@ impl AudioEngine {
         config: &StreamConfig,
         mut command_rx: Consumer<AudioCommand>,
         peak_level: Arc<AtomicU32>,
+        audition_active: Arc<AtomicBool>,
+        master_gr_db: Arc<AtomicU32>,
         mut scope_tx: Producer<f32>,
     ) -> Result<Stream, cpal::BuildStreamError>
     where
@@ -138,6 +165,16 @@ impl AudioEngine {
 
                     // 3. Atomically store peak level for UI visualization
                     peak_level.store(max_peak.to_bits(), Ordering::Relaxed);
+
+                    // 4. Mirror the real audition state so the UI can clear its
+                    //    "playing" indicator once playback ends naturally.
+                    audition_active.store(
+                        synth.audition.as_ref().map(|a| a.is_playing).unwrap_or(false),
+                        Ordering::Relaxed,
+                    );
+
+                    // 5. Mirror real compressor gain reduction for the FX rack meter.
+                    master_gr_db.store(synth.master_fx.gain_reduction_db().to_bits(), Ordering::Relaxed);
                 }));
 
                 if let Err(panic) = res {

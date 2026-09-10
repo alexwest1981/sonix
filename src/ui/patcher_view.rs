@@ -2,48 +2,91 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::patcher::{ModularGraph, NodeType, PatchCable};
 use crate::ui::theme::Theme;
 
-pub fn render_patcher_view(ui: &mut Ui, graph: &mut ModularGraph, anim_phase: f32) {
+#[derive(Default)]
+pub struct PatcherActions {
+    pub enabled_changed: bool,
+    pub note_on: Option<(f32, f32)>,
+    pub note_off: bool,
+}
+
+fn midi_to_freq(note: u8) -> f32 {
+    440.0 * 2.0f32.powf((note as f32 - 69.0) / 12.0)
+}
+
+pub fn render_patcher_view(
+    ui: &mut Ui,
+    graph: &mut ModularGraph,
+    anim_phase: f32,
+    enabled: &mut bool,
+) -> PatcherActions {
+    let mut actions = PatcherActions::default();
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new("🧩 MODULAR PATCHER & THE GRID (Bitwig & FL Patcher Style)").strong().size(13.5).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("🧩 MODULAR PATCHER & THE GRID (Bitwig & FL Patcher Style)")).strong().size(13.5).color(Theme::FL_CYAN));
             ui.separator();
-            ui.label(egui::RichText::new("Visuell modulär miljö: Koppla ihop ljudsignaler, syntmoduler, filter och LFO med virtuella kablar").size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Visuell modulär miljö: Koppla ihop ljudsignaler, syntmoduler, filter och LFO med virtuella kablar")).size(11.0).color(Theme::TEXT_MUTED));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button("🔄 Återställ Standard-patch").clicked() {
+                if ui.button(crate::i18n::t("🔄 Återställ Standard-patch")).clicked() {
                     graph.load_default_preset();
                 }
-                if ui.button("🗑 Rensa Allt").clicked() {
+                if ui.button(crate::i18n::t("🗑 Rensa Allt")).clicked() {
                     graph.nodes.clear();
                     graph.cables.clear();
                 }
+                if ui.checkbox(enabled, crate::i18n::t("🔊 Ljudmotor")).changed() {
+                    actions.enabled_changed = true;
+                }
             });
+        });
+
+        ui.add_space(4.0);
+
+        // Test keyboard: drives the patcher's MidiIn node with real notes.
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(crate::i18n::t("🎹 Testa patchen:")).strong().size(11.0).color(Theme::FL_ORANGE));
+            let notes: [u8; 15] = [48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72];
+            let mut any_down = false;
+            for (i, note) in notes.iter().enumerate() {
+                let black = matches!(note % 12, 1 | 3 | 6 | 8 | 10);
+                let fill = if black { Color32::from_rgb(30, 34, 42) } else { Color32::from_rgb(220, 224, 230) };
+                let btn = egui::Button::new("").fill(fill).min_size(Vec2::new(26.0, 46.0));
+                let resp = ui.add(btn);
+                if resp.is_pointer_button_down_on() {
+                    actions.note_on = Some((midi_to_freq(*note), 0.9));
+                    any_down = true;
+                }
+                let _ = i;
+            }
+            if !any_down {
+                actions.note_off = true;
+            }
         });
 
         ui.add_space(6.0);
 
         // Quick Node Creation Toolbar
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new("➕ Lägg till modul:").strong().size(11.0).color(Theme::FL_ORANGE));
-            if ui.button("+ 🔊 Oscillator").clicked() {
+            ui.label(egui::RichText::new(crate::i18n::t("➕ Lägg till modul:")).strong().size(11.0).color(Theme::FL_ORANGE));
+            if ui.button(crate::i18n::t("+ 🔊 Oscillator")).clicked() {
                 graph.add_node(NodeType::Oscillator, Pos2::new(180.0, 60.0));
             }
-            if ui.button("+ 🌊 SVF Filter").clicked() {
+            if ui.button(crate::i18n::t("+ 🌊 SVF Filter")).clicked() {
                 graph.add_node(NodeType::Filter, Pos2::new(360.0, 60.0));
             }
-            if ui.button("+ 📈 ADSR Envelope").clicked() {
+            if ui.button(crate::i18n::t("+ 📈 ADSR Envelope")).clicked() {
                 graph.add_node(NodeType::Envelope, Pos2::new(180.0, 220.0));
             }
-            if ui.button("+ 🌀 LFO Modulator").clicked() {
+            if ui.button(crate::i18n::t("+ 🌀 LFO Modulator")).clicked() {
                 graph.add_node(NodeType::Lfo, Pos2::new(30.0, 220.0));
             }
-            if ui.button("+ 🌊 Stereo Delay").clicked() {
+            if ui.button(crate::i18n::t("+ 🌊 Stereo Delay")).clicked() {
                 graph.add_node(NodeType::Delay, Pos2::new(540.0, 60.0));
             }
-            if ui.button("+ ✨ Space Reverb").clicked() {
+            if ui.button(crate::i18n::t("+ ✨ Space Reverb")).clicked() {
                 graph.add_node(NodeType::Reverb, Pos2::new(540.0, 220.0));
             }
-            if ui.button("+ 🔥 Tube Drive").clicked() {
+            if ui.button(crate::i18n::t("+ 🔥 Tube Drive")).clicked() {
                 graph.add_node(NodeType::Distortion, Pos2::new(480.0, 140.0));
             }
         });
@@ -236,6 +279,7 @@ pub fn render_patcher_view(ui: &mut Ui, graph: &mut ModularGraph, anim_phase: f3
                 graph.cables.remove(idx);
             }
     });
+    actions
 }
 
 fn eval_bezier(p0: Pos2, p1: Pos2, p2: Pos2, p3: Pos2, t: f32) -> Pos2 {

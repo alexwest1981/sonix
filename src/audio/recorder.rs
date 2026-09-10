@@ -7,7 +7,6 @@ use super::wav_writer::write_pcm_f32_to_wav;
 
 #[derive(Debug, Clone)]
 pub struct AudioTake {
-    pub take_number: usize,
     pub name: String,
     pub pcm_samples: Vec<f32>,
     pub waveform_data: Vec<f32>,
@@ -15,8 +14,6 @@ pub struct AudioTake {
     pub duration_secs: f32,
     pub is_selected: bool,
     pub color: Color32,
-    pub start_bar: usize,
-    pub length_bars: usize,
     pub trim_start_norm: f32,
     pub trim_end_norm: f32,
     pub gain_linear: f32,
@@ -25,13 +22,11 @@ pub struct AudioTake {
     pub time_stretch: f32,
     pub is_reverse: bool,
     pub loop_audition: bool,
-    pub is_muted: bool,
     pub is_playing: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct CustomSoundClip {
-    pub id: usize,
     pub name: String,
     pub category: String,
     pub pcm_samples: Vec<f32>,
@@ -39,13 +34,6 @@ pub struct CustomSoundClip {
     pub sample_rate: u32,
     pub duration_secs: f32,
     pub color: Color32,
-}
-
-#[derive(Debug, Clone)]
-pub struct CompRegion {
-    pub start_norm: f32, // 0.0 .. 1.0
-    pub end_norm: f32,
-    pub from_take: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,9 +86,182 @@ pub struct LiveMicrophoneCapture {
     pub peak_vu: Arc<AtomicU32>,
     pub recorded_samples: Arc<Mutex<Vec<f32>>>,
     pub live_peaks: Arc<Mutex<Vec<f32>>>,
+    pub analysis_buffer: Arc<Mutex<Vec<f32>>>,
     pub sample_rate: u32,
     pub device_name: String,
     _stream: Option<Stream>,
+}
+
+/// How many recent mono samples are kept for always-on pitch analysis.
+const ANALYSIS_MAX: usize = 16384;
+
+/// Shared microphone callback body: computes per-block peak, records to
+/// `recorded` while armed, and always feeds the rolling `analysis` buffer used
+/// by the strobe tuner and harmonizer.
+#[allow(clippy::too_many_arguments)]
+fn process_mic_block<T: Copy>(
+    data: &[T],
+    channels: usize,
+    gain: f32,
+    gate: f32,
+    is_recording: bool,
+    is_paused: bool,
+    recorded: &Arc<Mutex<Vec<f32>>>,
+    peaks: &Arc<Mutex<Vec<f32>>>,
+    analysis: &Arc<Mutex<Vec<f32>>>,
+    convert: impl Fn(T) -> f32,
+) -> f32 {
+    let ch = channels.max(1);
+    let recording = is_recording && !is_paused;
+    let mut block_max = 0.0_f32;
+    let mut rec = if recording {
+        Some(recorded.lock().unwrap_or_else(|e| e.into_inner()))
+    } else {
+        None
+    };
+    let mut pk = if recording {
+        Some(peaks.lock().unwrap_or_else(|e| e.into_inner()))
+    } else {
+        None
+    };
+    let mut an = analysis.lock().unwrap_or_else(|e| e.into_inner());
+
+    for frame in data.chunks(ch) {
+        let mut mono = (frame.iter().map(|&s| convert(s)).sum::<f32>() / ch as f32) * gain;
+        let raw_abs = mono.abs();
+        if raw_abs < gate {
+            mono = 0.0;
+        }
+        if raw_abs > block_max {
+            block_max = raw_abs;
+        }
+        if let Some(b) = rec.as_mut() {
+            b.push(mono.clamp(-1.0, 1.0));
+            if b.len() % 256 == 0 {
+                if let Some(p) = pk.as_mut() {
+                    p.push(block_max.clamp(0.04, 1.0));
+                }
+            }
+        }
+        an.push(mono.clamp(-1.0, 1.0));
+    }
+
+    if an.len() > ANALYSIS_MAX {
+        let drop = an.len() - ANALYSIS_MAX;
+        an.drain(0..drop);
+    }
+    block_max
+}
+
+/// Normalized autocorrelation pitch detector. Returns the fundamental
+/// frequency in Hz for the most recent `samples`, or `None` if the signal is
+/// too quiet / unpitched. Suitable for guitar, bass and voice. Uses a fixed
+/// analysis window so it stays cheap enough to run per UI frame.
+pub fn detect_pitch_hz(samples: &[f32], sample_rate: f32) -> Option<f32> {
+    let n = samples.len();
+    if n < 1024 || sample_rate <= 0.0 {
+        return None;
+    }
+
+    // Use the most recent samples, but cap the correlation window for speed.
+    let min_lag = (sample_rate / 1200.0).max(2.0) as usize;
+    let max_lag = (sample_rate / 55.0) as usize;
+    if max_lag <= min_lag || n <= max_lag + 512 {
+        return None;
+    }
+    let window = (n - max_lag).min(2048);
+    let buf = &samples[n - window..];
+    let mean = buf.iter().sum::<f32>() / window as f32;
+
+    let energy0: f32 = buf
+        .iter()
+        .map(|s| {
+            let d = s - mean;
+            d * d
+        })
+        .sum();
+    if energy0 <= 1e-6 {
+        return None;
+    }
+    let rms = (energy0 / window as f32).sqrt();
+    if rms < 0.004 {
+        return None;
+    }
+
+    let mut corrs: Vec<f32> = Vec::with_capacity(max_lag - min_lag);
+    for lag in min_lag..max_lag {
+        let mut corr = 0.0_f32;
+        for i in 0..window {
+            corr += (buf[i] - mean) * (samples[n - window + i - lag] - mean);
+        }
+        corrs.push(corr / energy0);
+    }
+
+    let peak = corrs.iter().cloned().fold(f32::MIN, f32::max);
+    if peak < 0.5 {
+        return None;
+    }
+
+    // Pick the *first* strong local peak (smallest lag) to avoid octave errors
+    // where 2x the true period also correlates strongly.
+    let threshold = peak * 0.9;
+    let mut best_idx = None;
+    for i in 0..corrs.len() {
+        let c = corrs[i];
+        let prev = if i == 0 { f32::MIN } else { corrs[i - 1] };
+        let next = if i + 1 >= corrs.len() { f32::MIN } else { corrs[i + 1] };
+        if c >= threshold && c >= prev && c >= next {
+            best_idx = Some(i);
+            break;
+        }
+    }
+    let best_idx = best_idx.unwrap_or_else(|| {
+        corrs
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+            .map(|(i, _)| i)
+            .unwrap_or(0)
+    });
+    let best_lag = min_lag + best_idx;
+    let best_corr = corrs[best_idx];
+
+    if best_lag == 0 {
+        return None;
+    }
+
+    let corr_at = |lag: usize| -> f32 {
+        if lag < min_lag || lag >= max_lag {
+            return 0.0;
+        }
+        corrs[lag - min_lag]
+    };
+
+    let lag = best_lag;
+    if lag > min_lag && lag + 1 < max_lag {
+        let y0 = corr_at(lag - 1);
+        let y1 = best_corr;
+        let y2 = corr_at(lag + 1);
+        let denom = y0 - 2.0 * y1 + y2;
+        if denom.abs() > 1e-9 {
+            let shift = (0.5 * (y0 - y2) / denom).clamp(-0.5, 0.5);
+            return Some(sample_rate / (lag as f32 + shift));
+        }
+    }
+    Some(sample_rate / lag as f32)
+}
+
+/// Downsamples PCM to a fixed peak envelope for waveform drawing.
+pub fn visual_peaks_from(samples: &[f32]) -> Vec<f32> {
+    if samples.is_empty() {
+        return Vec::new();
+    }
+    let count = 512.min(samples.len().max(64));
+    let step = (samples.len() / count).max(1);
+    samples
+        .chunks(step)
+        .map(|c| c.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs())).clamp(0.0, 1.0))
+        .collect()
 }
 
 impl LiveMicrophoneCapture {
@@ -114,9 +275,6 @@ impl LiveMicrophoneCapture {
                 }
             }
         }
-        if devices.is_empty() {
-            devices.push("PipeWire / ALSA Standardmikrofon".to_string());
-        }
         devices
     }
 
@@ -128,6 +286,7 @@ impl LiveMicrophoneCapture {
         let peak_vu = Arc::new(AtomicU32::new(0));
         let recorded_samples = Arc::new(Mutex::new(Vec::with_capacity(44100 * 30)));
         let live_peaks = Arc::new(Mutex::new(Vec::with_capacity(1000)));
+        let analysis_buffer = Arc::new(Mutex::new(Vec::with_capacity(ANALYSIS_MAX)));
 
         let host = cpal::default_host();
         let mut chosen_device = None;
@@ -165,6 +324,7 @@ impl LiveMicrophoneCapture {
                 let vu_ref = Arc::clone(&peak_vu);
                 let samples_ref = Arc::clone(&recorded_samples);
                 let peaks_ref = Arc::clone(&live_peaks);
+                let analysis_ref = Arc::clone(&analysis_buffer);
 
                 let num_channels = config.channels as usize;
 
@@ -174,31 +334,18 @@ impl LiveMicrophoneCapture {
                         move |data: &[f32], _: &cpal::InputCallbackInfo| {
                             let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
                             let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let ch = num_channels.max(1);
-                            let mut block_max: f32 = 0.0;
-
-                            if is_rec.load(Ordering::Relaxed) && !is_p.load(Ordering::Relaxed) {
-                                let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                for frame in data.chunks(ch) {
-                                    let mut mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
-                                    let raw_abs = mono_sample.abs();
-                                    if raw_abs < gate {
-                                        mono_sample = 0.0;
-                                    }
-                                    if raw_abs > block_max { block_max = raw_abs; }
-                                    b.push(mono_sample.clamp(-1.0, 1.0));
-                                    if b.len() % 256 == 0 {
-                                        p.push(block_max.clamp(0.04, 1.0));
-                                    }
-                                }
-                            } else {
-                                for frame in data.chunks(ch) {
-                                    let mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
-                                    let val = mono_sample.abs();
-                                    if val > block_max { block_max = val; }
-                                }
-                            }
+                            let block_max = process_mic_block(
+                                data,
+                                num_channels,
+                                gain,
+                                gate,
+                                is_rec.load(Ordering::Relaxed),
+                                is_p.load(Ordering::Relaxed),
+                                &samples_ref,
+                                &peaks_ref,
+                                &analysis_ref,
+                                |s| s,
+                            );
                             vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
                         },
                         |err| eprintln!("[Sonix Mic Input Error] {}", err),
@@ -209,31 +356,18 @@ impl LiveMicrophoneCapture {
                         move |data: &[i16], _: &cpal::InputCallbackInfo| {
                             let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
                             let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let ch = num_channels.max(1);
-                            let mut block_max: f32 = 0.0;
-
-                            if is_rec.load(Ordering::Relaxed) && !is_p.load(Ordering::Relaxed) {
-                                let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                for frame in data.chunks(ch) {
-                                    let mut mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
-                                    let raw_abs = mono_sample.abs();
-                                    if raw_abs < gate {
-                                        mono_sample = 0.0;
-                                    }
-                                    if raw_abs > block_max { block_max = raw_abs; }
-                                    b.push(mono_sample.clamp(-1.0, 1.0));
-                                    if b.len() % 256 == 0 {
-                                        p.push(block_max.clamp(0.04, 1.0));
-                                    }
-                                }
-                            } else {
-                                for frame in data.chunks(ch) {
-                                    let mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
-                                    let val = mono_sample.abs();
-                                    if val > block_max { block_max = val; }
-                                }
-                            }
+                            let block_max = process_mic_block(
+                                data,
+                                num_channels,
+                                gain,
+                                gate,
+                                is_rec.load(Ordering::Relaxed),
+                                is_p.load(Ordering::Relaxed),
+                                &samples_ref,
+                                &peaks_ref,
+                                &analysis_ref,
+                                |s| s as f32 / 32768.0,
+                            );
                             vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
                         },
                         |err| eprintln!("[Sonix Mic Input Error] {}", err),
@@ -251,10 +385,10 @@ impl LiveMicrophoneCapture {
                 };
                 (name, active_stream, sr)
             } else {
-                ("Standard Mikrofon (PipeWire/ALSA)".to_string(), None, 44100)
+                ("Ingen mikrofon hittad (standby)".to_string(), None, 44100)
             }
         } else {
-            ("Mikrofon (Simulerad / Standby)".to_string(), None, 44100)
+            ("Ingen mikrofon hittad (standby)".to_string(), None, 44100)
         };
 
         Self {
@@ -265,6 +399,7 @@ impl LiveMicrophoneCapture {
             peak_vu,
             recorded_samples,
             live_peaks,
+            analysis_buffer,
             sample_rate,
             device_name,
             _stream: stream,
@@ -298,6 +433,7 @@ impl LiveMicrophoneCapture {
                 let vu_ref = Arc::clone(&self.peak_vu);
                 let samples_ref = Arc::clone(&self.recorded_samples);
                 let peaks_ref = Arc::clone(&self.live_peaks);
+                let analysis_ref = Arc::clone(&self.analysis_buffer);
 
                 let num_channels = config.channels as usize;
 
@@ -307,31 +443,18 @@ impl LiveMicrophoneCapture {
                         move |data: &[f32], _: &cpal::InputCallbackInfo| {
                             let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
                             let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let ch = num_channels.max(1);
-                            let mut block_max: f32 = 0.0;
-
-                            if is_rec.load(Ordering::Relaxed) && !is_p.load(Ordering::Relaxed) {
-                                let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                for frame in data.chunks(ch) {
-                                    let mut mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
-                                    let raw_abs = mono_sample.abs();
-                                    if raw_abs < gate {
-                                        mono_sample = 0.0;
-                                    }
-                                    if raw_abs > block_max { block_max = raw_abs; }
-                                    b.push(mono_sample.clamp(-1.0, 1.0));
-                                    if b.len() % 256 == 0 {
-                                        p.push(block_max.clamp(0.04, 1.0));
-                                    }
-                                }
-                            } else {
-                                for frame in data.chunks(ch) {
-                                    let mono_sample = (frame.iter().sum::<f32>() / ch as f32) * gain;
-                                    let raw_abs = mono_sample.abs();
-                                    if raw_abs > block_max { block_max = raw_abs; }
-                                }
-                            }
+                            let block_max = process_mic_block(
+                                data,
+                                num_channels,
+                                gain,
+                                gate,
+                                is_rec.load(Ordering::Relaxed),
+                                is_p.load(Ordering::Relaxed),
+                                &samples_ref,
+                                &peaks_ref,
+                                &analysis_ref,
+                                |s| s,
+                            );
                             vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
                         },
                         |err| eprintln!("[Sonix Mic Input Error] {}", err),
@@ -342,31 +465,18 @@ impl LiveMicrophoneCapture {
                         move |data: &[i16], _: &cpal::InputCallbackInfo| {
                             let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
                             let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let ch = num_channels.max(1);
-                            let mut block_max: f32 = 0.0;
-
-                            if is_rec.load(Ordering::Relaxed) && !is_p.load(Ordering::Relaxed) {
-                                let mut b = samples_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                let mut p = peaks_ref.lock().unwrap_or_else(|e| e.into_inner());
-                                for frame in data.chunks(ch) {
-                                    let mut mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
-                                    let raw_abs = mono_sample.abs();
-                                    if raw_abs < gate {
-                                        mono_sample = 0.0;
-                                    }
-                                    if raw_abs > block_max { block_max = raw_abs; }
-                                    b.push(mono_sample.clamp(-1.0, 1.0));
-                                    if b.len() % 256 == 0 {
-                                        p.push(block_max.clamp(0.04, 1.0));
-                                    }
-                                }
-                            } else {
-                                for frame in data.chunks(ch) {
-                                    let mono_sample = (frame.iter().map(|&s| s as f32 / 32768.0).sum::<f32>() / ch as f32) * gain;
-                                    let raw_abs = mono_sample.abs();
-                                    if raw_abs > block_max { block_max = raw_abs; }
-                                }
-                            }
+                            let block_max = process_mic_block(
+                                data,
+                                num_channels,
+                                gain,
+                                gate,
+                                is_rec.load(Ordering::Relaxed),
+                                is_p.load(Ordering::Relaxed),
+                                &samples_ref,
+                                &peaks_ref,
+                                &analysis_ref,
+                                |s| s as f32 / 32768.0,
+                            );
                             vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
                         },
                         |err| eprintln!("[Sonix Mic Input Error] {}", err),
@@ -389,11 +499,12 @@ impl LiveMicrophoneCapture {
 }
 
 pub struct VocalStudioTrack {
-    pub name: String,
     pub input_channel: String,
     pub is_armed: bool,
     pub is_recording: bool,
     pub is_paused: bool,
+    pub is_recording_custom: bool,
+    pub custom_recording_elapsed_secs: f32,
     pub recording_mode: RecordingMode,
     pub recording_elapsed_secs: f32,
     pub monitoring_on: bool,
@@ -402,7 +513,6 @@ pub struct VocalStudioTrack {
     pub custom_sample_name_input: String,
     pub takes: Vec<AudioTake>,
     pub custom_sounds: Vec<CustomSoundClip>,
-    pub comp_regions: Vec<CompRegion>,
     pub active_comp_take: usize,
     pub live_recording_peaks: Vec<f32>,
     pub selected_crop_start_norm: f32,
@@ -417,31 +527,28 @@ impl Default for VocalStudioTrack {
         let dev_name = mic.device_name.clone();
         let settings = MicrophoneSettings::default();
 
-        let mut track = Self {
-            name: "🎤 Lead Sång (Studio Recorder)".to_string(),
+        Self {
             input_channel: dev_name,
             is_armed: true,
             is_recording: false,
             is_paused: false,
+            is_recording_custom: false,
+            custom_recording_elapsed_secs: 0.0,
             recording_mode: RecordingMode::LeadVocals,
             recording_elapsed_secs: 0.0,
             monitoring_on: true,
             input_gain: settings.input_gain,
             mic_vu_level: 0.0,
-            custom_sample_name_input: "Mitt Akustiska Ljud 1".to_string(),
+            custom_sample_name_input: crate::i18n::t("Mitt Akustiska Ljud 1").to_string(),
             takes: Vec::new(),
             custom_sounds: Vec::new(),
-            comp_regions: Vec::new(),
             active_comp_take: 0,
             live_recording_peaks: Vec::new(),
             selected_crop_start_norm: 0.0,
             selected_crop_end_norm: 1.0,
             mic_capture: Some(mic),
             mic_settings: settings,
-        };
-        track.populate_demo_takes();
-        track.populate_demo_custom_sounds();
-        track
+        }
     }
 }
 
@@ -489,26 +596,88 @@ impl VocalStudioTrack {
             if self.is_recording && !self.is_paused {
                 self.recording_elapsed_secs += 0.033; // ~30 fps frame delta
 
-                // Sync live peaks
+                // Sync the real captured peaks (empty while no mic is streaming).
                 if let Ok(peaks) = mic.live_peaks.lock() {
                     self.live_recording_peaks = peaks.clone();
                 }
+            }
 
-                // If hardware mic isn't streaming, generate graceful simulated mic wave
-                if self.live_recording_peaks.is_empty() || mic._stream.is_none() {
-                    let t = self.recording_elapsed_secs;
-                    let sim_peak = ((t * 8.0).sin().abs() * 0.7 + (t * 22.0).cos().abs() * 0.25).clamp(0.05, 0.95);
-                    self.live_recording_peaks.push(sim_peak);
-                    if self.live_recording_peaks.len() > 300 {
-                        self.live_recording_peaks.remove(0);
-                    }
-                    self.mic_vu_level = sim_peak;
-                }
+            if self.is_recording_custom {
+                self.custom_recording_elapsed_secs += 0.033;
             }
         }
     }
 
-    pub fn start_recording(&mut self) {
+    /// Detects the live fundamental frequency from the always-on microphone
+    /// analysis buffer. Returns `None` when silent or unpitched.
+    pub fn detect_live_pitch_hz(&self) -> Option<f32> {
+        let mic = self.mic_capture.as_ref()?;
+        let buf = mic.analysis_buffer.lock().ok()?;
+        if buf.len() < 1024 {
+            return None;
+        }
+        detect_pitch_hz(&buf, mic.sample_rate as f32)
+    }
+
+    /// Replaces the PCM of the currently selected take (used by Auto-Tune).
+    pub fn replace_active_take_pcm(&mut self, name_suffix: &str, pcm: Vec<f32>) {
+        if self.takes.is_empty() {
+            return;
+        }
+        let idx = self.active_comp_take.min(self.takes.len() - 1);
+        let sr = self.takes[idx].sample_rate.max(8000) as f32;
+        let take = &mut self.takes[idx];
+        take.pcm_samples = pcm;
+        take.duration_secs = take.pcm_samples.len() as f32 / sr;
+        take.waveform_data = visual_peaks_from(&take.pcm_samples);
+        if !take.name.contains(name_suffix) {
+            take.name = format!("{} {}", take.name, name_suffix);
+        }
+    }
+
+    /// Appends a new take built from a PCM buffer (used by the harmonizer).
+    pub fn add_take_from_pcm(
+        &mut self,
+        name: String,
+        pcm: Vec<f32>,
+        sample_rate: u32,
+        color: Color32,
+    ) -> usize {
+        let sr = sample_rate.max(8000);
+        let waveform_data = visual_peaks_from(&pcm);
+        let duration_secs = pcm.len() as f32 / sr as f32;
+        for t in &mut self.takes {
+            t.is_selected = false;
+        }
+        self.takes.push(AudioTake {
+            name,
+            pcm_samples: pcm,
+            waveform_data,
+            sample_rate: sr,
+            duration_secs,
+            is_selected: true,
+            color,
+            trim_start_norm: 0.0,
+            trim_end_norm: 1.0,
+            gain_linear: 1.0,
+            pitch_semitones: 0.0,
+            pitch_cents: 0.0,
+            time_stretch: 1.0,
+            is_reverse: false,
+            loop_audition: false,
+            is_playing: false,
+        });
+        self.active_comp_take = self.takes.len() - 1;
+        self.active_comp_take
+    }
+
+    pub fn start_recording(&mut self) -> Result<(), String> {
+        if !self.is_armed {
+            return Err(crate::i18n::t("Mikrofonen är inte armerad – kryssa i 'Armera' först").to_string());
+        }
+        if self.mic_capture.as_ref().map(|m| m._stream.is_none()).unwrap_or(true) {
+            return Err(crate::i18n::t("Ingen mikrofon är tillgänglig för inspelning").to_string());
+        }
         self.is_recording = true;
         self.is_paused = false;
         self.recording_elapsed_secs = 0.0;
@@ -520,6 +689,7 @@ impl VocalStudioTrack {
             mic.is_recording.store(true, Ordering::Relaxed);
             mic.is_paused.store(false, Ordering::Relaxed);
         }
+        Ok(())
     }
 
     pub fn pause_recording(&mut self) {
@@ -536,7 +706,58 @@ impl VocalStudioTrack {
         }
     }
 
-    pub fn stop_recording(&mut self, bpm: f32) -> Option<usize> {
+    /// Starts capturing microphone audio for a custom sound / one-shot sample.
+    pub fn start_custom_recording(&mut self) -> Result<(), String> {
+        if self.mic_capture.as_ref().map(|m| m._stream.is_none()).unwrap_or(true) {
+            return Err(crate::i18n::t("Ingen mikrofon är tillgänglig för inspelning").to_string());
+        }
+        if let Some(ref mic) = self.mic_capture {
+            if let Ok(mut s) = mic.recorded_samples.lock() { s.clear(); }
+            if let Ok(mut p) = mic.live_peaks.lock() { p.clear(); }
+            mic.is_recording.store(true, Ordering::Relaxed);
+            mic.is_paused.store(false, Ordering::Relaxed);
+        }
+        self.is_recording_custom = true;
+        self.custom_recording_elapsed_secs = 0.0;
+        Ok(())
+    }
+
+    /// Stops custom-sound capture and stores the real recorded PCM in the
+    /// library. Returns the new clip index.
+    pub fn stop_custom_recording(&mut self) -> Result<usize, String> {
+        self.is_recording_custom = false;
+        let mic_sr = self.mic_capture.as_ref().map(|m| m.sample_rate).unwrap_or(44100);
+        let mut samples = Vec::new();
+        if let Some(ref mic) = self.mic_capture {
+            mic.is_recording.store(false, Ordering::Relaxed);
+            if let Ok(s) = mic.recorded_samples.lock() {
+                samples = s.clone();
+            }
+        }
+        if samples.is_empty() {
+            return Err(crate::i18n::t("Ingen ljuddata fångades – kontrollera mikrofonen").to_string());
+        }
+
+        let name = if self.custom_sample_name_input.trim().is_empty() {
+            format!("{} {}", crate::i18n::t("Eget Ljud"), self.custom_sounds.len() + 1)
+        } else {
+            self.custom_sample_name_input.trim().to_string()
+        };
+        let duration = samples.len() as f32 / mic_sr.max(8000) as f32;
+        let waveform_data = visual_peaks_from(&samples);
+        self.custom_sounds.push(CustomSoundClip {
+            name,
+            category: crate::i18n::t("Eget Ljud").to_string(),
+            pcm_samples: samples,
+            waveform_data,
+            sample_rate: mic_sr.max(8000),
+            duration_secs: duration,
+            color: Color32::from_rgb(255, 180, 60),
+        });
+        Ok(self.custom_sounds.len() - 1)
+    }
+
+    pub fn stop_recording(&mut self) -> Result<usize, String> {
         self.is_recording = false;
         self.is_paused = false;
 
@@ -550,23 +771,12 @@ impl VocalStudioTrack {
             }
         }
 
-        // If simulated or empty, generate silence
         if samples.is_empty() {
-            let total_s = ((self.recording_elapsed_secs.max(0.5)) * mic_sr as f32) as usize;
-            samples = vec![0.0; total_s];
+            return Err(crate::i18n::t("Ingen ljuddata fångades – kontrollera mikrofonen").to_string());
         }
 
         let duration = (samples.len() as f32 / mic_sr as f32).max(0.1);
-        let sec_per_bar = (60.0 / bpm.max(40.0)) * 4.0;
-        let length_bars = (duration / sec_per_bar).ceil().max(1.0) as usize;
-
-        let peaks_count = 512.min(samples.len().max(64));
-        let step = (samples.len() / peaks_count).max(1);
-        let mut visual_peaks = Vec::with_capacity(peaks_count);
-        for chunk in samples.chunks(step) {
-            let peak = chunk.iter().fold(0.0_f32, |acc, &x| acc.max(x.abs()));
-            visual_peaks.push(peak.clamp(0.0, 1.0));
-        }
+        let visual_peaks = visual_peaks_from(&samples);
 
         let count = self.takes.len() + 1;
         let color = match count % 4 {
@@ -577,16 +787,13 @@ impl VocalStudioTrack {
         };
 
         let new_take = AudioTake {
-            take_number: count,
-            name: format!("Tagning {} ({:.1}s)", count, duration),
+            name: format!("{} {} ({:.1}s)", crate::i18n::t("Tagning"), count, duration),
             pcm_samples: samples,
             waveform_data: visual_peaks,
             sample_rate: mic_sr,
             duration_secs: duration,
             is_selected: true,
             color,
-            start_bar: 0,
-            length_bars,
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
@@ -595,7 +802,6 @@ impl VocalStudioTrack {
             time_stretch: 1.0,
             is_reverse: false,
             loop_audition: false,
-            is_muted: false,
             is_playing: false,
         };
 
@@ -605,12 +811,12 @@ impl VocalStudioTrack {
         self.selected_crop_start_norm = 0.0;
         self.selected_crop_end_norm = 1.0;
 
-        Some(self.active_comp_take)
+        Ok(self.active_comp_take)
     }
 
     pub fn crop_selected_take(&mut self) -> Result<String, String> {
         if self.takes.is_empty() || self.active_comp_take >= self.takes.len() {
-            return Err("Ingen tagning är vald att beskära".to_string());
+            return Err(crate::i18n::t("Ingen tagning är vald att beskära").to_string());
         }
 
         let start_n = self.selected_crop_start_norm.clamp(0.0, 0.99);
@@ -619,7 +825,7 @@ impl VocalStudioTrack {
         let take = &mut self.takes[self.active_comp_take];
         let total_samples = take.pcm_samples.len();
         if total_samples < 100 {
-            return Err("Tagningen innehåller för lite data för att beskäras".to_string());
+            return Err(crate::i18n::t("Tagningen innehåller för lite data för att beskäras").to_string());
         }
 
         let s_idx = (total_samples as f32 * start_n) as usize;
@@ -643,12 +849,12 @@ impl VocalStudioTrack {
         self.selected_crop_start_norm = 0.0;
         self.selected_crop_end_norm = 1.0;
 
-        Ok(format!("✔ Beskärde {} till {:.2} sekunder!", take.name, take.duration_secs))
+        Ok(crate::tstatus!("✔ Beskärde {} till {:.2} sekunder!", take.name, take.duration_secs))
     }
 
     pub fn slice_selected_take_at(&mut self, split_norm: f32) -> Result<String, String> {
         if self.takes.is_empty() || self.active_comp_take >= self.takes.len() {
-            return Err("Ingen tagning är vald att klippa".to_string());
+            return Err(crate::i18n::t("Ingen tagning är vald att klippa").to_string());
         }
 
         let split_n = split_norm.clamp(0.05, 0.95);
@@ -676,9 +882,7 @@ impl VocalStudioTrack {
         self.takes[self.active_comp_take].duration_secs = part1_samples.len() as f32 / sr as f32;
 
         // Insert Part 2 as new take
-        let count = self.takes.len() + 1;
         self.takes.push(AudioTake {
-            take_number: count,
             name: format!("{} (Del 2)", orig_take.name),
             pcm_samples: part2_samples.clone(),
             waveform_data: t2_peaks,
@@ -686,8 +890,6 @@ impl VocalStudioTrack {
             duration_secs: part2_samples.len() as f32 / sr as f32,
             is_selected: true,
             color: Color32::from_rgb(255, 100, 180),
-            start_bar: 0,
-            length_bars: 4,
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
@@ -696,12 +898,11 @@ impl VocalStudioTrack {
             time_stretch: 1.0,
             is_reverse: false,
             loop_audition: false,
-            is_muted: false,
             is_playing: false,
         });
 
         self.active_comp_take = self.takes.len() - 1;
-        Ok("✔ Klippte tagningen i två separata delar!".to_string())
+        Ok(crate::i18n::t("✔ Klippte tagningen i två separata delar!").to_string())
     }
 
     pub fn export_take_to_wav(&self, take_idx: usize, path: &str) -> Result<String, String> {
@@ -712,20 +913,20 @@ impl VocalStudioTrack {
             }
             write_pcm_f32_to_wav(path, &take.pcm_samples, sr, 1)
                 .map_err(|e| format!("Kunde inte skriva WAV-fil: {}", e))?;
-            Ok(format!("✔ Sparade tagning '{}' till {}", take.name, path))
+            Ok(crate::tstatus!("✔ Sparade tagning '{}' till {}", take.name, path))
         } else {
-            Err("Tagningen hittades inte".to_string())
+            Err(crate::i18n::t("Tagningen hittades inte").to_string())
         }
     }
 
     pub fn normalize_selected_take(&mut self) -> Result<String, String> {
         if self.takes.is_empty() || self.active_comp_take >= self.takes.len() {
-            return Err("Ingen tagning är vald att normalisera".to_string());
+            return Err(crate::i18n::t("Ingen tagning är vald att normalisera").to_string());
         }
         let take = &mut self.takes[self.active_comp_take];
         let max_amp = take.pcm_samples.iter().fold(0.0_f32, |acc, &s| acc.max(s.abs()));
         if max_amp < 0.0001 {
-            return Err("Ljudspåret är helt tyst".to_string());
+            return Err(crate::i18n::t("Ljudspåret är helt tyst").to_string());
         }
         let mult = 0.98 / max_amp;
         for s in &mut take.pcm_samples {
@@ -739,12 +940,12 @@ impl VocalStudioTrack {
             visual_peaks.push(peak.clamp(0.0, 1.0));
         }
         take.waveform_data = visual_peaks;
-        Ok(format!("✔ Normaliserade {} (Peak förstärkt med {:.1}x)!", take.name, mult))
+        Ok(crate::tstatus!("✔ Normaliserade {} (Peak förstärkt med {:.1}x)!", take.name, mult))
     }
 
     pub fn delete_selected_take(&mut self) -> Result<String, String> {
         if self.takes.is_empty() || self.active_comp_take >= self.takes.len() {
-            return Err("Ingen tagning är vald att ta bort".to_string());
+            return Err(crate::i18n::t("Ingen tagning är vald att ta bort").to_string());
         }
         let removed = self.takes.remove(self.active_comp_take);
         if !self.takes.is_empty() {
@@ -753,141 +954,25 @@ impl VocalStudioTrack {
         } else {
             self.active_comp_take = 0;
         }
-        Ok(format!("✔ Tog bort {}", removed.name))
+        Ok(crate::tstatus!("✔ Tog bort {}", removed.name))
     }
 
-    pub fn populate_demo_takes(&mut self) {
-        self.takes.clear();
-        let samples_count = 44100 * 4;
-
-        // Take 1: Gentle intro verse
-        let mut take1_pcm = Vec::with_capacity(samples_count);
-        for i in 0..samples_count {
-            let t = i as f32 / 44100.0;
-            let val = if (0.2..3.8).contains(&t) {
-                (t * 220.0 * std::f32::consts::TAU).sin() * 0.7 + (t * 440.0 * std::f32::consts::TAU).sin() * 0.15
-            } else {
-                0.01
-            };
-            take1_pcm.push(val);
-        }
-
-        let peaks1: Vec<f32> = (0..256).map(|i| {
-            let t = i as f32 / 256.0;
-            if (0.1..0.45).contains(&t) || (0.55..0.9).contains(&t) {
-                (t * 30.0).sin().abs() * 0.75 + 0.1
-            } else {
-                0.02
-            }
-        }).collect();
-
-        self.takes.push(AudioTake {
-            take_number: 1,
-            name: "Tagning 1 (Intro & Vers)".to_string(),
-            pcm_samples: take1_pcm,
-            waveform_data: peaks1,
-            sample_rate: 44100,
-            duration_secs: 4.0,
-            is_selected: false,
-            color: Color32::from_rgb(0, 200, 240),
-            start_bar: 0,
-            length_bars: 8,
-            trim_start_norm: 0.0,
-            trim_end_norm: 1.0,
-            gain_linear: 1.0,
-            pitch_semitones: 0.0,
-            pitch_cents: 0.0,
-            time_stretch: 1.0,
-            is_reverse: false,
-            loop_audition: false,
-            is_muted: false,
-            is_playing: false,
-        });
-
-        // Take 2: Strong chorus
-        let mut take2_pcm = Vec::with_capacity(samples_count);
-        for i in 0..samples_count {
-            let t = i as f32 / 44100.0;
-            let val = if (0.4..3.6).contains(&t) {
-                (t * 260.0 * std::f32::consts::TAU).sin() * 0.85 + (t * 520.0 * std::f32::consts::TAU).cos() * 0.2
-            } else {
-                0.01
-            };
-            take2_pcm.push(val);
-        }
-
-        let peaks2: Vec<f32> = (0..256).map(|i| {
-            let t = i as f32 / 256.0;
-            if (0.15..0.92).contains(&t) {
-                (t * 35.0).sin().abs() * 0.88 + 0.08
-            } else {
-                0.02
-            }
-        }).collect();
-
-        self.takes.push(AudioTake {
-            take_number: 2,
-            name: "Tagning 2 (Stark Refräng)".to_string(),
-            pcm_samples: take2_pcm,
-            waveform_data: peaks2,
-            sample_rate: 44100,
-            duration_secs: 4.0,
-            is_selected: true,
-            color: Color32::from_rgb(255, 140, 0),
-            start_bar: 8,
-            length_bars: 8,
-            trim_start_norm: 0.0,
-            trim_end_norm: 1.0,
-            gain_linear: 1.0,
-            pitch_semitones: 0.0,
-            pitch_cents: 0.0,
-            time_stretch: 1.0,
-            is_reverse: false,
-            loop_audition: false,
-            is_muted: false,
-            is_playing: false,
-        });
-
-        self.comp_regions = vec![
-            CompRegion { start_norm: 0.0, end_norm: 0.45, from_take: 0 },
-            CompRegion { start_norm: 0.45, end_norm: 1.0, from_take: 1 },
-        ];
-    }
-
-    pub fn populate_demo_custom_sounds(&mut self) {
-        self.custom_sounds.clear();
-        let samples = 44100;
-
-        let s1_pcm: Vec<f32> = (0..samples).map(|i| {
-            let t = i as f32 / 44100.0;
-            (1.0 - t).powi(2) * (t * 800.0 * std::f32::consts::TAU).sin() * 0.8
-        }).collect();
-
-        let s1_wave: Vec<f32> = (0..128).map(|i| {
-            let t = i as f32 / 128.0;
-            ((1.0 - t).powi(2) * (t * 50.0).sin().abs()).clamp(0.02, 0.9)
-        }).collect();
-
-        self.custom_sounds.push(CustomSoundClip {
-            id: 1,
-            name: "👏 Akustisk Handklapp".to_string(),
-            category: "Perkussion".to_string(),
-            pcm_samples: s1_pcm,
-            waveform_data: s1_wave,
-            sample_rate: 44100,
-            duration_secs: 1.0,
-            color: Color32::from_rgb(255, 120, 80),
-        });
-    }
-
-    pub fn add_new_take(&mut self, name: &str, start_bar: usize, length_bars: usize) {
+    pub fn add_new_take(&mut self, name: &str) {
         let count = self.takes.len() + 1;
-        let mut new_wave = Vec::with_capacity(256);
-        for i in 0..256 {
-            let t = i as f32 / 256.0;
-            let val = (t * 24.0).sin().abs() * 0.8 + (t * 48.0).cos().abs() * 0.15;
-            new_wave.push(val.clamp(0.02, 0.95));
-        }
+        let sr = 44100u32;
+        let dur = 2.0f32;
+        let freq = 220.0f32;
+        let n = (sr as f32 * dur) as usize;
+        // A real, audible reference tone with an attack/release envelope; the
+        // waveform is derived from the actual PCM so what you see is what you hear.
+        let pcm: Vec<f32> = (0..n)
+            .map(|i| {
+                let t = i as f32 / sr as f32;
+                let env = (t * 8.0).min(1.0) * ((dur - t) * 4.0).clamp(0.0, 1.0);
+                (t * freq * std::f32::consts::TAU).sin() * 0.5 * env
+            })
+            .collect();
+        let new_wave = visual_peaks_from(&pcm);
         let color = match count % 4 {
             0 => Color32::from_rgb(0, 200, 240),
             1 => Color32::from_rgb(255, 140, 0),
@@ -895,16 +980,13 @@ impl VocalStudioTrack {
             _ => Color32::from_rgb(80, 240, 160),
         };
         self.takes.push(AudioTake {
-            take_number: count,
-            name: if name.is_empty() { format!("Tagning {}", count) } else { name.to_string() },
-            pcm_samples: vec![0.0; 44100 * 4],
+            name: if name.is_empty() { format!("{} {} ({})", crate::i18n::t("Tagning"), count, crate::i18n::t("Testton")) } else { name.to_string() },
+            pcm_samples: pcm,
             waveform_data: new_wave,
-            sample_rate: 44100,
-            duration_secs: 4.0,
+            sample_rate: sr,
+            duration_secs: dur,
             is_selected: true,
             color,
-            start_bar,
-            length_bars,
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
@@ -913,14 +995,14 @@ impl VocalStudioTrack {
             time_stretch: 1.0,
             is_reverse: false,
             loop_audition: false,
-            is_muted: false,
             is_playing: false,
         });
+        for t in &mut self.takes { t.is_selected = false; }
+        self.takes.last_mut().unwrap().is_selected = true;
         self.active_comp_take = self.takes.len() - 1;
     }
 
     pub fn load_sample_or_region_as_take(&mut self, name: &str, pcm: Vec<f32>, sample_rate: u32, color: Color32) -> usize {
-        let count = self.takes.len() + 1;
         let duration = (pcm.len() as f32 / sample_rate.max(8000) as f32).max(0.1);
 
         let peaks_count = 512.min(pcm.len().max(64));
@@ -932,7 +1014,6 @@ impl VocalStudioTrack {
         }
 
         let new_take = AudioTake {
-            take_number: count,
             name: name.to_string(),
             pcm_samples: pcm,
             waveform_data: visual_peaks,
@@ -940,8 +1021,6 @@ impl VocalStudioTrack {
             duration_secs: duration,
             is_selected: true,
             color,
-            start_bar: 0,
-            length_bars: (duration / 2.0).ceil().max(1.0) as usize,
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
@@ -950,7 +1029,6 @@ impl VocalStudioTrack {
             time_stretch: 1.0,
             is_reverse: false,
             loop_audition: false,
-            is_muted: false,
             is_playing: false,
         };
 
@@ -961,26 +1039,6 @@ impl VocalStudioTrack {
         self.selected_crop_end_norm = 1.0;
         self.active_comp_take
     }
-
-    pub fn add_custom_sound(&mut self, name: &str, category: &str) {
-        let count = self.custom_sounds.len() + 1;
-        let mut new_wave = Vec::with_capacity(128);
-        for i in 0..128 {
-            let t = i as f32 / 128.0;
-            let val = ((1.0 - t) * (t * 36.0).sin().abs()).clamp(0.02, 0.95);
-            new_wave.push(val);
-        }
-        self.custom_sounds.push(CustomSoundClip {
-            id: count,
-            name: if name.is_empty() { format!("Eget Ljud {}", count) } else { name.to_string() },
-            category: if category.is_empty() { "Eget Ljud".to_string() } else { category.to_string() },
-            pcm_samples: vec![0.0; 44100 * 2],
-            waveform_data: new_wave,
-            sample_rate: 44100,
-            duration_secs: 1.5,
-            color: Color32::from_rgb(255, 180, 60),
-        });
-    }
 }
 
 #[cfg(test)]
@@ -988,38 +1046,95 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_detect_pitch_hz_sine() {
+        let sr = 44100.0_f32;
+        for &freq in &[82.41_f32, 110.0, 196.0, 329.63, 440.0] {
+            let buf: Vec<f32> = (0..8192)
+                .map(|i| 0.6 * (2.0 * std::f32::consts::PI * freq * i as f32 / sr).sin())
+                .collect();
+            let detected = detect_pitch_hz(&buf, sr).expect("should detect a pitch");
+            assert!(
+                (detected - freq).abs() / freq < 0.02,
+                "expected ~{freq} Hz, got {detected} Hz"
+            );
+        }
+    }
+
+    #[test]
+    fn test_detect_pitch_hz_silence_is_none() {
+        let sr = 44100.0_f32;
+        let silence = vec![0.0_f32; 8192];
+        assert!(detect_pitch_hz(&silence, sr).is_none());
+    }
+
+    #[test]
     fn test_vocal_studio_recording_workflow() {
         let mut track = VocalStudioTrack::default();
         let initial_takes = track.takes.len();
 
-        // 1. Start recording
-        track.start_recording();
-        assert!(track.is_recording);
-        assert!(!track.is_paused);
-
-        // 2. Pause and Resume
-        track.pause_recording();
-        assert!(track.is_paused);
-        track.resume_recording();
-        assert!(!track.is_paused);
-
-        // 3. Update stream
+        // Inject real captured samples (as the mic callback would) and mark the
+        // track as recording; this exercises the take-creation path without
+        // depending on physical audio hardware being present in CI.
+        if let Some(ref mic) = track.mic_capture {
+            let mut s = mic.recorded_samples.lock().unwrap();
+            for i in 0..44100 {
+                s.push((i as f32 * 0.01).sin() * 0.5);
+            }
+        }
+        track.is_recording = true;
+        track.is_paused = false;
         track.update_live_stream();
 
-        // 4. Stop recording and create take
-        let new_idx = track.stop_recording(120.0).expect("Should create a take");
+        let new_idx = track.stop_recording().expect("Should create a take");
         assert_eq!(track.takes.len(), initial_takes + 1);
         assert_eq!(track.active_comp_take, new_idx);
 
         let take = &track.takes[new_idx];
         assert!(!take.pcm_samples.is_empty());
         assert!(!take.waveform_data.is_empty());
+        assert!(take.duration_secs > 0.0);
+    }
+
+    #[test]
+    fn test_start_recording_requires_arm() {
+        let mut track = VocalStudioTrack::default();
+        track.is_armed = false;
+        assert!(track.start_recording().is_err());
+        assert!(!track.is_recording);
+    }
+
+    #[test]
+    fn test_custom_sound_recording_stores_pcm() {
+        let mut track = VocalStudioTrack::default();
+        if let Some(ref mic) = track.mic_capture {
+            let mut s = mic.recorded_samples.lock().unwrap();
+            for i in 0..22050 {
+                s.push((i as f32 * 0.05).sin() * 0.4);
+            }
+        }
+        track.custom_sample_name_input = "Testklapp".to_string();
+        let idx = track.stop_custom_recording().expect("clip");
+        assert_eq!(idx, 0);
+        assert_eq!(track.custom_sounds.len(), 1);
+        assert!(!track.custom_sounds[0].pcm_samples.is_empty());
+        assert!(!track.custom_sounds[0].waveform_data.is_empty());
+    }
+
+    #[test]
+    fn test_add_new_take_generates_audible_pcm() {
+        let mut track = VocalStudioTrack::default();
+        track.add_new_take("Testton");
+        let take = track.takes.last().unwrap();
+        assert_eq!(take.pcm_samples.len(), 88200);
+        let peak = take.pcm_samples.iter().fold(0.0_f32, |a, &s| a.max(s.abs()));
+        assert!(peak > 0.1, "test tone should be audible, peak was {peak}");
     }
 
     #[test]
     fn test_vocal_studio_crop_and_slice() {
         let mut track = VocalStudioTrack::default();
-        track.populate_demo_takes();
+        let pcm: Vec<f32> = (0..44100).map(|i| (i as f32 * 0.02).sin() * 0.5).collect();
+        track.load_sample_or_region_as_take("Test", pcm, 44100, Color32::from_rgb(0, 200, 240));
         track.active_comp_take = 0;
 
         let orig_len = track.takes[0].pcm_samples.len();

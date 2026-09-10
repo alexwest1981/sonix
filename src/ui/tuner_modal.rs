@@ -111,6 +111,7 @@ pub fn render_tuner_modal(
     state: &mut TunerState,
     engine: &mut AudioEngine,
     mic_vu_level: f32,
+    live_pitch_hz: Option<f32>,
 ) {
     if !*open {
         return;
@@ -118,7 +119,7 @@ pub fn render_tuner_modal(
 
     let mut close = false;
 
-    egui::Window::new("🎯 Hårdvarustämapparat & Pitch Scope (Tuner)")
+    egui::Window::new(crate::i18n::t("🎯 Hårdvarustämapparat & Pitch Scope (Tuner)"))
         .open(open)
         .collapsible(false)
         .resizable(false)
@@ -128,9 +129,9 @@ pub fn render_tuner_modal(
             ui.vertical(|ui| {
                 // Header
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new("STÄMAPPARAT & PITCH ANALYZER").strong().size(14.0).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("STÄMAPPARAT & PITCH ANALYZER")).strong().size(14.0).color(Theme::FL_CYAN));
                     ui.separator();
-                    ui.label(egui::RichText::new("Stäm gitarr, bas eller träna röstintonation i realtid").size(10.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Stäm gitarr, bas eller träna röstintonation i realtid")).size(10.5).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(4.0);
@@ -138,16 +139,16 @@ pub fn render_tuner_modal(
                 // Instrument & Preset Selector
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Instrument:").strong().color(Theme::FL_ORANGE));
+                        ui.label(egui::RichText::new(crate::i18n::t("Instrument:")).strong().color(Theme::FL_ORANGE));
                         let presets = TuningPreset::all();
-                        let current_label = presets.iter().find(|(p, _)| *p == state.preset).map(|(_, l)| *l).unwrap_or("Gitarr");
+                        let current_label = presets.iter().find(|(p, _)| *p == state.preset).map(|(_, l)| crate::i18n::t(l)).unwrap_or("Gitarr");
 
                         egui::ComboBox::from_id_salt("tuner_preset_picker")
                             .selected_text(current_label)
                             .width(260.0)
                             .show_ui(ui, |ui| {
                                 for (p, label) in presets {
-                                    if ui.selectable_label(state.preset == *p, *label).clicked() {
+                                    if ui.selectable_label(state.preset == *p, crate::i18n::t(*label)).clicked() {
                                         state.preset = p.clone();
                                         state.selected_string_idx = 0;
                                     }
@@ -156,7 +157,7 @@ pub fn render_tuner_modal(
 
                         ui.separator();
 
-                        ui.label("Ref:");
+                        ui.label(crate::i18n::t("Ref:"));
                         if ui.selectable_label((state.reference_hz - 440.0).abs() < 0.1, "440 Hz").clicked() {
                             state.reference_hz = 440.0;
                         }
@@ -184,17 +185,38 @@ pub fn render_tuner_modal(
                 ui.add_space(8.0);
 
                 let current_str = strings.get(state.selected_string_idx).cloned().unwrap_or(("A4", 440.0, 69));
-                let target_name = current_str.0;
-                let target_freq = current_str.1 * (state.reference_hz / 440.0);
-                let midi_note = current_str.2;
+
+                // Real pitch detection: snap the live microphone reading to the
+                // closest string (when auto-detect is on) and compute cents.
+                let detected = live_pitch_hz.map(|f| {
+                    let mut chosen = current_str;
+                    if state.auto_detect_closest_string {
+                        let mut best = chosen;
+                        let mut best_dist = f32::MAX;
+                        for s in strings {
+                            let dist = (1200.0 * (f / s.1).log2()).abs();
+                            if dist < best_dist {
+                                best_dist = dist;
+                                best = *s;
+                            }
+                        }
+                        chosen = best;
+                    }
+                    let cents = 1200.0 * (f / chosen.1).log2();
+                    (chosen, cents, f)
+                });
+
+                let (active_str, cents) = match detected {
+                    Some((s, c, _)) => (s, c.clamp(-50.0, 50.0)),
+                    None => (current_str, state.simulated_pitch_cents),
+                };
+                let target_name = active_str.0;
+                let target_freq = active_str.1 * (state.reference_hz / 440.0);
+                let midi_note = active_str.2;
+                let live_hz = detected.map(|(_, _, f)| f);
 
                 // MAIN STROBE / NEEDLE DISPLAY
                 ui.group(|ui| {
-                    let cents = if mic_vu_level > 0.05 {
-                        state.simulated_pitch_cents
-                    } else {
-                        state.simulated_pitch_cents
-                    };
                     let in_tune = cents.abs() <= 3.0;
 
                     // Large Note display
@@ -210,15 +232,32 @@ pub fn render_tuner_modal(
                         ui.label(egui::RichText::new(target_name).strong().size(36.0).color(note_color));
 
                         let status_text = if in_tune {
-                            "✨ PERFEKT STÄMD (IN TUNE)"
+                            crate::i18n::t("✨ PERFEKT STÄMD (IN TUNE)")
                         } else if cents > 0.0 {
-                            "▲ FÖR HÖG (SHARP) - Släpp efter"
+                            crate::i18n::t("▲ FÖR HÖG (SHARP) - Släpp efter")
                         } else {
-                            "▼ FÖR LÅG (FLAT) - Spänn strängen"
+                            crate::i18n::t("▼ FÖR LÅG (FLAT) - Spänn strängen")
                         };
                         ui.label(egui::RichText::new(status_text).strong().size(12.0).color(note_color));
 
-                        ui.label(egui::RichText::new(format!("Målfrekvens: {:.2} Hz  •  Offset: {:+.1} Cents", target_freq, cents)).size(11.0).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::tstatus!("Målfrekvens: {:.2} Hz  •  Offset: {:+.1} Cents", target_freq, cents)).size(11.0).color(Theme::TEXT_MUTED));
+
+                        // Live signal readout: detected frequency + input level
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(match live_hz {
+                                    Some(f) => crate::tstatus!("🎤 Live: {:.1} Hz", f),
+                                    None => crate::i18n::t("🎤 Live: — (tyst)").to_string(),
+                                })
+                                .size(10.5)
+                                .color(if live_hz.is_some() { Theme::FL_GREEN } else { Theme::TEXT_MUTED }),
+                            );
+                            ui.add(
+                                egui::ProgressBar::new(mic_vu_level.clamp(0.0, 1.0))
+                                    .desired_width(120.0)
+                                    .text(crate::i18n::t("Ingång")),
+                            );
+                        });
                     });
 
                     ui.add_space(8.0);
@@ -263,9 +302,9 @@ pub fn render_tuner_modal(
 
                     // Quick simulated fine adjustment slider for manual check or testing
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new("Finjustering (Test):").size(10.5).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("Finjustering (Test):")).size(10.5).color(Theme::TEXT_MUTED));
                         ui.add(egui::Slider::new(&mut state.simulated_pitch_cents, -50.0..=50.0).text("Cents"));
-                        if ui.button("🎯 Nollställ").clicked() {
+                        if ui.button(crate::i18n::t("🎯 Nollställ")).clicked() {
                             state.simulated_pitch_cents = 0.0;
                         }
                     });
@@ -276,7 +315,7 @@ pub fn render_tuner_modal(
                 // Reference Tone & Calibration Controls
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        let btn_txt = if state.is_tone_playing { "⏹ Stoppa Referenston" } else { "🔊 Spela Referenston (Sinuston)" };
+                        let btn_txt = if state.is_tone_playing { crate::i18n::t("⏹ Stoppa Referenston") } else { crate::i18n::t("🔊 Spela Referenston (Sinuston)") };
                         let btn_col = if state.is_tone_playing { Color32::from_rgb(220, 40, 40) } else { Theme::FL_GREEN };
                         if ui.add(egui::Button::new(egui::RichText::new(btn_txt).strong().color(Color32::WHITE)).fill(btn_col).min_size(Vec2::new(200.0, 30.0))).clicked() {
                             state.is_tone_playing = !state.is_tone_playing;
@@ -288,13 +327,13 @@ pub fn render_tuner_modal(
                         }
 
                         ui.separator();
-                        ui.checkbox(&mut state.auto_detect_closest_string, "🔍 Automatisk strängdetektering");
+                        ui.checkbox(&mut state.auto_detect_closest_string, crate::i18n::t("🔍 Automatisk strängdetektering"));
                     });
                 });
 
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
-                    if ui.button("Stäng").clicked() {
+                    if ui.button(crate::i18n::t("Stäng")).clicked() {
                         if state.is_tone_playing {
                             let _ = engine.send_command(AudioCommand::NoteOff { note: midi_note });
                             state.is_tone_playing = false;

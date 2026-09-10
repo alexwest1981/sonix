@@ -4,12 +4,12 @@ use std::io::Read;
 /// Reads a standard 16-bit, 24-bit or 32-bit float RIFF/WAVE file and generates a normalized peak amplitude waveform envelope.
 #[allow(unused_variables, unused_assignments, dead_code)]
 pub fn read_wav_envelope(path: &str, points_count: usize) -> Result<Vec<f32>, String> {
-    let mut file = File::open(path).map_err(|e| format!("Kunde inte öppna fil: {}", e))?;
+    let mut file = File::open(path).map_err(|e| format!("{}: {}", crate::i18n::t("Kunde inte öppna fil"), e))?;
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).map_err(|e| format!("Kunde inte läsa fil: {}", e))?;
+    file.read_to_end(&mut buffer).map_err(|e| crate::tstatus!("Kunde inte läsa fil: {}", e))?;
 
     if buffer.len() < 44 {
-        return Err("Filen är för kort för att vara en giltig WAV-fil".to_string());
+        return Err(crate::i18n::t("Filen är för kort för att vara en giltig WAV-fil").to_string());
     }
 
     if &buffer[0..4] != b"RIFF" || &buffer[8..12] != b"WAVE" {
@@ -55,7 +55,7 @@ pub fn read_wav_envelope(path: &str, points_count: usize) -> Result<Vec<f32>, St
     let total_samples = data_size / block_align;
 
     if total_samples == 0 {
-        return Ok(vec![0.1; points_count]);
+        return Ok(vec![0.0; points_count]);
     }
 
     let mut envelope = Vec::with_capacity(points_count);
@@ -105,9 +105,9 @@ pub fn read_wav_envelope(path: &str, points_count: usize) -> Result<Vec<f32>, St
 /// Loads full decoded stereo PCM audio samples [-1.0, 1.0] from a WAV file.
 #[allow(unused_variables, unused_assignments)]
 pub fn load_wav_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
-    let mut file = File::open(path).map_err(|e| format!("Kunde inte öppna fil: {}", e))?;
+    let mut file = File::open(path).map_err(|e| format!("{}: {}", crate::i18n::t("Kunde inte öppna fil"), e))?;
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).map_err(|e| format!("Kunde inte läsa fil: {}", e))?;
+    file.read_to_end(&mut buffer).map_err(|e| crate::tstatus!("Kunde inte läsa fil: {}", e))?;
 
     if buffer.len() < 44 || &buffer[0..4] != b"RIFF" || &buffer[8..12] != b"WAVE" {
         return Err("Ogiltigt WAV-format".to_string());
@@ -195,6 +195,54 @@ pub fn load_wav_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
     Ok((left, right, sample_rate))
 }
 
+/// Loads decoded stereo PCM [-1.0, 1.0] from any supported audio file.
+/// WAV is decoded natively; compressed formats (MP3, FLAC, OGG, M4A, AIFF…)
+/// are decoded through the external `ffmpeg` binary (f32le, stereo, 44.1 kHz).
+pub fn load_audio_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
+    let lower = path.to_lowercase();
+    if lower.ends_with(".wav") || lower.ends_with(".wave") {
+        return load_wav_pcm(path);
+    }
+    load_via_ffmpeg(path)
+}
+
+fn load_via_ffmpeg(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
+    let output = std::process::Command::new("ffmpeg")
+        .args([
+            "-v", "error",
+            "-i", path,
+            "-f", "f32le",
+            "-acodec", "pcm_f32le",
+            "-ac", "2",
+            "-ar", "44100",
+            "-",
+        ])
+        .output()
+        .map_err(|e| crate::tstatus!("ffmpeg kunde inte startas (är det installerat?): {}", e))?;
+
+    if !output.status.success() {
+        let err = String::from_utf8_lossy(&output.stderr);
+        return Err(crate::tstatus!("ffmpeg-avkodning misslyckades: {}", err.trim()));
+    }
+
+    let bytes = output.stdout;
+    let frame_bytes = 8usize; // 2 channels * 4 bytes (f32)
+    let total_frames = bytes.len() / frame_bytes;
+    let mut left = Vec::with_capacity(total_frames);
+    let mut right = Vec::with_capacity(total_frames);
+    for f in 0..total_frames {
+        let base = f * frame_bytes;
+        let l = f32::from_le_bytes([bytes[base], bytes[base + 1], bytes[base + 2], bytes[base + 3]]);
+        let r = f32::from_le_bytes([bytes[base + 4], bytes[base + 5], bytes[base + 6], bytes[base + 7]]);
+        left.push(l);
+        right.push(r);
+    }
+    if left.is_empty() {
+        return Err("Avkodningen gav inget ljud".to_string());
+    }
+    Ok((left, right, 44100))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -210,5 +258,25 @@ mod tests {
             assert_eq!(env.len(), 100);
             assert!(env.iter().any(|&v| v > 0.05));
         }
+    }
+
+    #[test]
+    fn test_load_audio_pcm_delegates_for_wav() {
+        let manifest_dir = env!("CARGO_MANIFEST_DIR");
+        let test_path = format!("{}/imported_stems/A_Box_of_You/0 Lead Vocals.wav", manifest_dir);
+        if std::path::Path::new(&test_path).exists() {
+            let res = load_audio_pcm(&test_path);
+            assert!(res.is_ok());
+            let (l, r, sr) = res.unwrap();
+            assert!(!l.is_empty());
+            assert_eq!(l.len(), r.len());
+            assert!(sr > 0);
+        }
+    }
+
+    #[test]
+    fn test_load_audio_pcm_missing_file_errors() {
+        let res = load_audio_pcm("/nonexistent/sonix_missing.wav");
+        assert!(res.is_err());
     }
 }
