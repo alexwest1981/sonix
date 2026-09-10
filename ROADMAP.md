@@ -17,15 +17,15 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~88 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~89 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[███████████████████████████████░░░░░]  88 %
+[████████████████████████████████░░░░]  89 %
 ```
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| Ljudmotor (synth, trummor, FX, patcher, per-spår) | 10 | 1 | **91 %** |
+| Ljudmotor (synth, trummor, FX, patcher, per-spår) | 11 | 1 | **92 %** |
 | Sequencer & arranger (timeline, rack, piano roll, sektioner) | 5 | 0 | **100 %** |
 | Inspelning & sång (mic, takes, comping, pitch, harmonier) | 5 | 2 | **71 %** |
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
@@ -33,7 +33,7 @@
 | Plugin-hantering | 2 | 6 | **25 %** |
 | Export & projekt-I/O | 4 | 1 | **80 %** |
 | Hårdvara (MCU/OSC) | 2 | 0 | **100 %** |
-| Lokalisering & system (7 språk, motor) | 2 | 0 | **100 %** |
+| Lokalisering & system (7 språk, motor) | 2 | 1 | **67 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
 > **De två största kvarvarande bitarna:** **Plugin-hosting** (25 %, ej påbörjad värd) och **neural stem-separation** (DSP-approximation idag).
@@ -61,11 +61,10 @@
 
 Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
-- [ ] **1.1 Topologisk sortering i Modular Patcher** — *S*
-  - **Problem:** Noder utvärderas i skapandeordning → kablar måste dras i signalordning.
-  - **Gör:** Topologisk sortering (Kahn) i `PatchProcessor`/`ModularGraph::to_spec`; upptäck cykler och visa varning i vyn.
-  - **Klart när:** En kabel kan dras "baklänges" och ljudet följer ändå grafen; cykel-test finns.
-  - **Filer:** `src/audio/patcher.rs`, `src/ui/patcher_view.rs`
+- [x] **1.1 Topologisk sortering i Modular Patcher** — *S* ✅
+  - **Löst:** Kahn-sortering i `topo_order()` (`patcher.rs`); processorn utvärderar nu alltid källor före mål oavsett kabelordning. Cykler upptäcks och de noder som inte kan sorteras körs sist (föregående samples utsignal på återkopplingsvägen).
+  - **Klart när:** En kabel kan dras "baklänges" och ljudet följer ändå grafen; cykel-test finns. ✅
+  - **Filer:** `src/audio/patcher.rs`, `src/ui/patcher_view.rs` (varningsband vid cykel)
 
 - [ ] **1.2 Matcha patcher-nodetiketter mot DSP** — *S*
   - **Gör:** Ta bort eller korrigera etiketter som lovar mer än DSP:n gör (t.ex. filtertyp/parametrar).
@@ -175,7 +174,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 1.1 — Topologisk sortering i Modular Patcher** (första ovalda punkten).
+**Fas 1.2 — Matcha patcher-nodetiketter mot DSP** (första ovalda punkten).
 
 ## 🛠️ Så här håller vi roadmapen levande
 

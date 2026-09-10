@@ -1,3 +1,5 @@
+use std::collections::VecDeque;
+
 use eframe::egui::{Color32, Pos2};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -269,6 +271,17 @@ impl ModularGraph {
                 .collect(),
         }
     }
+
+    /// True when the patch cables form a feedback loop.
+    pub fn has_cycle(&self) -> bool {
+        let ids: Vec<usize> = self.nodes.iter().map(|n| n.id).collect();
+        let cables: Vec<(usize, usize, usize, usize)> = self
+            .cables
+            .iter()
+            .map(|c| (c.from_node, c.from_pin, c.to_node, c.to_pin))
+            .collect();
+        topo_order(&ids, &cables).1
+    }
 }
 
 fn node_io(node_type: NodeType) -> (usize, usize) {
@@ -283,6 +296,55 @@ fn node_io(node_type: NodeType) -> (usize, usize) {
         NodeType::Distortion => (2, 1),
         NodeType::AudioOut => (2, 0),
     }
+}
+
+/// Kahn topological sort over the patch graph.
+///
+/// Returns the evaluation order as indices into `node_ids` plus a flag telling
+/// whether a cycle was found. Cables may therefore be drawn in any order: an
+/// upstream node is always evaluated before the nodes that read from it. If the
+/// graph contains a feedback loop, the nodes that cannot be ordered are appended
+/// in their original order so they still run (using the previous sample's output
+/// for the feedback path).
+fn topo_order(node_ids: &[usize], cables: &[(usize, usize, usize, usize)]) -> (Vec<usize>, bool) {
+    let n = node_ids.len();
+    let index_of = |id: usize| node_ids.iter().position(|x| *x == id);
+
+    let mut indegree = vec![0usize; n];
+    let mut adjacency: Vec<Vec<usize>> = vec![Vec::new(); n];
+    for (from_node, _from_pin, to_node, _to_pin) in cables {
+        if let (Some(from), Some(to)) = (index_of(*from_node), index_of(*to_node)) {
+            adjacency[from].push(to);
+            indegree[to] += 1;
+        }
+    }
+
+    let mut queue: VecDeque<usize> = (0..n).filter(|i| indegree[*i] == 0).collect();
+    let mut order = Vec::with_capacity(n);
+    while let Some(i) = queue.pop_front() {
+        order.push(i);
+        for &next in &adjacency[i] {
+            indegree[next] -= 1;
+            if indegree[next] == 0 {
+                queue.push_back(next);
+            }
+        }
+    }
+
+    let has_cycle = order.len() < n;
+    if has_cycle {
+        let mut placed = vec![false; n];
+        for &i in &order {
+            placed[i] = true;
+        }
+        for (i, was_placed) in placed.iter().enumerate() {
+            if !was_placed {
+                order.push(i);
+            }
+        }
+    }
+
+    (order, has_cycle)
 }
 
 struct RtNode {
@@ -354,6 +416,7 @@ pub struct PatchProcessor {
     nodes: Vec<RtNode>,
     offsets: Vec<usize>,
     outs: Vec<f32>,
+    order: Vec<usize>,
     sample_rate: f32,
     note_freq: f32,
     gate: bool,
@@ -372,11 +435,14 @@ impl PatchProcessor {
             let (_, out_count) = node_io(n.node_type);
             total += out_count;
         }
+        let node_ids: Vec<usize> = spec.nodes.iter().map(|n| n.id).collect();
+        let (order, _has_cycle) = topo_order(&node_ids, &spec.cables);
         let id_index = |id: usize| spec.nodes.iter().position(|n| n.id == id);
         let mut processor = Self {
             nodes,
             offsets,
             outs: vec![0.0; total],
+            order,
             sample_rate,
             note_freq: 220.0,
             gate: false,
@@ -432,6 +498,7 @@ impl PatchProcessor {
                 nodes,
                 offsets,
                 outs,
+                order,
                 note_freq,
                 gate,
                 velocity,
@@ -441,7 +508,7 @@ impl PatchProcessor {
             let gate = *gate;
             let velocity = *velocity;
 
-            for i in 0..nodes.len() {
+            for &i in order.iter() {
                 let base = offsets[i];
                 let (_, out_count) = node_io(nodes[i].node_type);
                 match nodes[i].node_type {
@@ -656,5 +723,59 @@ mod dsp_tests {
             p.process();
         }
         assert!(!p.is_active());
+    }
+
+    fn run_spec(spec: &PatchSpec, samples: usize) -> Vec<(f32, f32)> {
+        let mut p = PatchProcessor::new(spec, 44100.0);
+        p.note_on(220.0, 1.0);
+        (0..samples).map(|_| p.process()).collect()
+    }
+
+    #[test]
+    fn topo_order_places_sources_before_targets() {
+        let ids = vec![5usize, 4, 3, 2, 1];
+        let cables = vec![(1, 0, 2, 0), (1, 1, 3, 0), (2, 0, 4, 0), (4, 0, 5, 0), (4, 0, 5, 1)];
+        let (order, has_cycle) = topo_order(&ids, &cables);
+        assert!(!has_cycle);
+        let pos = |id: usize| order.iter().position(|i| ids[*i] == id).unwrap();
+        for (from, _fp, to, _tp) in &cables {
+            assert!(pos(*from) < pos(*to), "source {from} must be evaluated before target {to}");
+        }
+    }
+
+    #[test]
+    fn topo_order_detects_cycle_and_keeps_all_nodes() {
+        let ids = vec![1usize, 2];
+        let cables = vec![(1, 0, 2, 0), (2, 0, 1, 0)];
+        let (order, has_cycle) = topo_order(&ids, &cables);
+        assert!(has_cycle);
+        assert_eq!(order.len(), 2);
+    }
+
+    #[test]
+    fn evaluation_order_is_independent_of_node_listing_order() {
+        let canonical = spec_osc_to_out();
+        let mut reversed = canonical.clone();
+        reversed.nodes.reverse();
+
+        let out_a = run_spec(&canonical, 4410);
+        let out_b = run_spec(&reversed, 4410);
+
+        assert_eq!(out_a, out_b, "reversed node listing must not change the audio");
+        assert!(out_a.iter().any(|(l, _)| l.abs() > 0.05), "patcher produced near-silence");
+    }
+
+    #[test]
+    fn graph_reports_feedback_cycle() {
+        assert!(!ModularGraph::default().has_cycle());
+        let mut cyclic = ModularGraph::default();
+        cyclic.cables.push(PatchCable {
+            from_node: 3,
+            from_pin: 0,
+            to_node: 3,
+            to_pin: 1,
+            color: Color32::BLACK,
+        });
+        assert!(cyclic.has_cycle());
     }
 }

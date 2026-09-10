@@ -1022,6 +1022,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "◀ Trimmar start på '{}': Start takt {:.2} | Bortklippt start: +{:.2}s | Längd: {:.2} takter" => "◀ Trimming start of '{}': Start bar {:.2} | Sliced off start: +{:.2}s | Length: {:.2} bars",
         "⚠ Inga ljud skapades." => "⚠ No audio was created.",
         "⚠ Inget ljudklipp markerat eller vid spelhuvudet ({}) att klippa." => "⚠ No audio clip selected or at the playhead ({}) to cut.",
+        "⚠ Återkoppling/cykel i patchen: en eller flera kablar bildar en slinga. Noderna körs ändå, men ordningen kan bli fel — ta bort en kabel i slingan." => "⚠ Feedback loop in the patch: one or more cables form a cycle. The nodes still run, but the order may be wrong — remove a cable in the loop.",
         "⚠️ Mikrofonspåret kan inte tas bort." => "⚠️ The microphone track cannot be removed.",
         "⚡ 1/16 High-Speed Roll aktiv" => "⚡ 1/16 High-Speed Roll active",
         "⚡ 1/4 Beat Repeat aktiv" => "⚡ 1/4 Beat Repeat active",

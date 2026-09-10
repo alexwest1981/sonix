@@ -165,6 +165,12 @@ Full inventering (tre parallella granskningar av ljud-DSP, UI och I/O/AI/hårdva
 - Ärlig text i `plugins_view.rs` (FL/Yabridge-assistenten steg 2 & 4) + engelska översättningar i `i18n.rs`.
 - Verifierat: `cargo test --release` = **57 tester**, 0 varningar.
 
+### P23 — Modular Patcher: topologisk sortering · ✅ KLAR
+Patcher-grafen utvärderas inte längre i skapandeordning. Ny `topo_order()` (`patcher.rs`) gör en Kahn-sortering över patchkablarna så att en källa alltid körs före sina mål — kablar kan dras i valfri ordning. `PatchProcessor` lagrar den beräknade `order` och `process()` itererar den i stället för `0..nodes.len()`.
+- **Cykeldetektion:** `ModularGraph::has_cycle()` returnerar sant vid återkoppling; noder som inte kan sorteras läggs sist och använder föregående samples utsignal på feedback-vägen.
+- **UI:** `patcher_view.rs` visar ett varningsband ("⚠ Återkoppling/cykel i patchen…") när `graph.has_cycle()` är sant. Engelsk översättning i `i18n.rs`.
+- **Tester:** `topo_order_places_sources_before_targets`, `topo_order_detects_cycle_and_keeps_all_nodes`, `evaluation_order_is_independent_of_node_listing_order` (reverserad nodlista ger bit-identisk utsignal), `graph_reports_feedback_cycle`. `cargo test --release` = **61 tester**, 0 varningar.
+
 
 ---
 

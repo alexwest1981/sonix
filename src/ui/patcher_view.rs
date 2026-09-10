@@ -93,6 +93,13 @@ pub fn render_patcher_view(
 
         ui.add_space(8.0);
 
+        if graph.has_cycle() {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(crate::i18n::t("⚠ Återkoppling/cykel i patchen: en eller flera kablar bildar en slinga. Noderna körs ändå, men ordningen kan bli fel — ta bort en kabel i slingan.")).size(11.0).color(Theme::FL_YELLOW));
+            });
+            ui.add_space(4.0);
+        }
+
         // Interactive Canvas
         let canvas_size = Vec2::new(ui.available_width().max(850.0), 480.0);
         let (canvas_rect, response) = ui.allocate_exact_size(canvas_size, Sense::click_and_drag());
