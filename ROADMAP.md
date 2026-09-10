@@ -31,13 +31,13 @@
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Stem-separation (DSP + neural ONNX) | 1 | 0 | **100 %** |
-| Plugin-hantering | 2 | 6 | **25 %** |
+| Plugin-hantering | 3 | 5 | **38 %** |
 | Export & projekt-I/O (presets, loudness-normalisering) | 5 | 0 | **100 %** |
 | Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
-> **Största kvarvarande biten:** **Plugin-hosting** (25 %, ingen riktig värd ännu). Neural stem-separation är nu byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
+> **Största kvarvarande biten:** **Plugin-hosting** (38 % — en CLAP-värd kan nu ladda plugins och läsa parametrar; ljud/MIDI-routing, state, GUI och sandbox återstår). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
 ---
 
@@ -126,11 +126,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 > Detta är det stora kvarvarande arbetet. Rekommenderad ordning nedan.
 
-- [ ] **4.1 Välj ABI + host-modul** — *L*
-  - **Rekommendation:** Börja med **CLAP** (`clack`-craten) — öppen, stabil, bra GUI-extension. Därefter VST3.
-  - **Gör:** Ny `src/audio/plugin_host_live.rs` med `dlopen`/`libloading`, entrypoint-scanning, `PluginInstance`-trait.
-  - **Klart när:** En CLAP-plugin kan laddas och rapportera sina parametrar.
-  - **Filer:** `src/audio/plugin_host.rs`, `Cargo.toml`
+- [x] **4.1 Välj ABI + host-modul** — *L* ✅
+  - **Löst:** Ny modul `src/audio/plugin_host_live.rs` som talar **CLAP 1.x C-ABI** direkt (ingen tung host-crate) och laddar `.clap`-filer med `dlopen` via `libloading`. Hela laddaren är **opt-in** (`--features plugin-host`), så standardbygget förblir dependency-fritt. Modulen löser upp en `.clap`-fil eller ett bundle (hittar rätt `.so`), validerar `clap_entry`, kör `entry.init()`, hämtar `clap.plugin-factory`, skapar en instans och läser **descriptor + parametrar** via `clap.params`. `deinit()`/`destroy()` körs i rätt ordning före `dlclose` (Drop-guards). `inspect(path)` ger en ärlig snapshot (info, parameterlista, eller fel) som UI:t visar; plugin-databasen har knappen **"🔎 Ladda & inspektera"** för verifierade CLAP-plugins med en parameterpanel. Ett riktigt mock-CLAP-plugin kompileras av `build.rs` och används i ett end-to-end-test.
+  - **Klart när:** En CLAP-plugin kan laddas och rapportera sina parametrar. ✅ (7 nya tester: bundle/`.so`-upplösning, felhantering för saknad fil/paket utan binär/icke-CLAP-bibliotek, samt end-to-end-laddning av mock-pluginen med descriptor och 2 parametrar — 113 tester default, 120 med featuren, 0 varningar)
+  - **Filer:** `src/audio/plugin_host_live.rs`, `src/audio/plugin_host.rs`, `src/audio/mod.rs`, `Cargo.toml`, `build.rs`, `tests/fixtures/mock_clap.c`, `tests/fixtures/empty.c`, `src/ui/plugins_view.rs`, `src/i18n.rs`
 
 - [ ] **4.2 Instansiering + audio/MIDI-routing + PDC** — *XL*
   - **Gör:** Koppla plugin-instans in/ut i realtidsgrafen, buffert-hantering, delay-kompensation.
@@ -183,7 +182,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 4.1 — Välj ABI + host-modul** (*L*): börja med **CLAP** (`clack`) och en `dlopen`-baserad host i `src/audio/plugin_host_live.rs`; därefter 4.2/4.3. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
+**Fas 4.2 — Instansiering + audio/MIDI-routing + PDC** (*XL*): koppla CLAP-instansen in i realtidsgrafen (buffert-hantering, `clap.audio-ports`/`clap.note-ports`, delay-kompensation). Därefter 4.3–4.6. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

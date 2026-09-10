@@ -18,6 +18,10 @@ pub mod midi_input;
 pub mod neural_separator;
 pub mod patcher;
 pub mod plugin_host;
+// The live CLAP host's ABI code is feature-gated; the shared data types and
+// `inspect()` are always compiled so the UI can show an honest status.
+#[allow(dead_code)]
+pub mod plugin_host_live;
 pub mod recorder;
 pub mod stem_separator;
 pub mod synth;
@@ -51,6 +55,11 @@ pub use hardware_control::{
 pub use midi_input::{note_to_roll_offset, MidiKeyboardInput};
 #[allow(unused_imports)]
 pub use neural_separator::{is_available as neural_available, model_status as neural_model_status};
+#[allow(unused_imports)]
+pub use plugin_host_live::{
+    inspect as inspect_plugin, is_available as plugin_host_available, PluginInfo,
+    PluginInspection, PluginParameter,
+};
 #[allow(unused_imports)]
 pub use loudness::{
     integrated_lufs, normalize_loudness, normalize_to_preset, true_peak_db, LoudnessPreset,

@@ -169,9 +169,10 @@ update-desktop-database ~/.local/share/applications
 * **Valfri neural backend:** bygg med `--features neural` och lägg en HTDemucs-familj `.onnx`-modell i `~/.config/sonix/models/` (eller sätt `SONIX_DEMUCS_ONNX`) för äkta Demucs-separation via ONNX Runtime — bakgrundstråd, live-progress, 44,1 kHz-resampling och överlappande crossfade. Utan modell används DSP-vägen och UI:t visar vilken backend som kördes.
 * 🟡 **Not:** Sonix skeppar inga modellvikter; den neurala vägen kräver en egen, korrekt licensierad modell. Standardbygget förblir dependency-fritt och offline.
 
-### 11. 🔌 Plugin-hanterare — 🟡 Endast katalog (ingen värd än)
+### 11. 🔌 Plugin-hanterare — 🟡 Katalog + opt-in CLAP-värd
 * Riktig rekursiv skanning av VST3/CLAP/LV2/VST2/`.fst`-mappar, ELF/PE-verifiering, Wine- & yabridge-detektion och en ett-klicks `yabridgectl sync`.
-* 🔜 **Not:** Sonix **laddar, kör eller visar** ännu inte plugin-GUI:n. Se **[Plugin-stöd — nuläget](#-plugin-stöd--nuläget)**.
+* **Opt-in CLAP-värd:** bygg med `--features plugin-host` och Sonix kan `dlopen`:a en `.clap`-plugin, validera dess `clap_entry`, instansiera den och läsa dess **descriptor + parametrar** (knappen "🔎 Ladda & inspektera" visar dem). Ljud/MIDI-routing, state och GUI är ännu inte inkopplade.
+* 🔜 **Not:** VST3/LV2/VST2 är fortfarande endast katalog, och ingen plugin-GUI visas än. Se **[Plugin-stöd — nuläget](#-plugin-stöd--nuläget)**.
 
 ### 12. 💿 Export & Projekt-I/O — ✅ Äkta
 * Offline-rendering av hela projektet (riktiga samples, tidslinje-audio, FX) till **WAV** (16/24-bit & 32-bit float) och **FLAC** (kodas i appen); **MP3/OGG/AAC** via `ffmpeg` om installerat.
@@ -209,9 +210,9 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
 | `.fst`-knappen "Apply Preset" | ✅ Ärlig | Inaktiverad med förklaring — applicering kräver plugin-värd |
-| Plugin-hosting (VST3/CLAP/LV2/VST2) | 🔜 Saknas | Kräver en komplett värd — se nedan |
+| Plugin-hosting (VST3/CLAP/LV2/VST2) | 🟡 Delvis | CLAP-laddning + parameterinspektion (opt-in `--features plugin-host`); ljud/MIDI-routing, state, GUI & sandbox saknas ännu |
 
-**Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (ej påbörjad); neural stem-separation är nu byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
+**Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (CLAP-laddning + parameterinspektion fungerar opt-in; ljud-routing, state och GUI återstår); neural stem-separation är byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
 
 Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finns i **[ROADMAP.md](ROADMAP.md)**.
 
@@ -219,21 +220,22 @@ Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finn
 
 ## 🔌 Plugin-stöd — nuläget
 
-> **Kort svar: ännu inte.** Sonix kan *hitta och katalogisera* plugins, men kan inte *köra* dem.
+> **Kort svar: katalog + opt-in CLAP-laddning; ingen ljudhosting ännu.** Sonix kan *hitta och katalogisera* alla format och — när det byggs med `--features plugin-host` — *ladda* en native CLAP-plugin och läsa dess parametrar. Det kan ännu inte köra ljud/MIDI genom plugins eller visa deras GUI:n.
 
 **Vad som fungerar idag (✅)**
 * Rekursiv skanning av standardmapparna för **VST3 / CLAP / LV2 / VST2** samt FL Studio-`.fst`-platser (Linux- och Wine-sökvägar).
 * Binärverifiering (ELF/PE), filstorlek och en "verifierad"-markering.
 * Detektion av Wine och `yabridgectl`, samt en ett-klicks `yabridgectl sync`.
+* **CLAP-värd (opt-in, `--features plugin-host`):** `dlopen` av ett `.clap`-paket, validering av `clap_entry`, instansiering via plugin-fabriken och descriptor- + parameterinspektion som visas i UI:t.
 
-**Vad som saknas för att faktiskt hosta FL Studio / tredjepartsplugins (🔜)**
-1. Ett plugin-värdbibliotek / ABI — t.ex. `clack`/CLAP, en VST3-binding, `lv2`, eller `libloading` + VST2/3-entrypoints. **Det finns ingen laddningskod idag.**
-2. Att instansiera plugins och routa audio + MIDI in och ut ur realtidsmotorn, med delay-kompensation.
-3. Spara/ladda plugin-state och presets. (`.fst` är ett proprietärt FL Studio-format och avkodas inte.)
-4. Inbäddade eller flytande plugin-GUI:n, samt out-of-process-sandboxning för kraschisolering.
+**Vad som fortfarande saknas för full plugin-hosting (🔜)**
+1. **Ljud/MIDI-routing + delay-kompensation** — den laddade CLAP-instansen är ännu inte kopplad till realtidsmotorn (Fas 4.2).
+2. Spara/ladda plugin-state och presets. (`.fst` är ett proprietärt FL Studio-format och avkodas inte.)
+3. Inbäddade eller flytande plugin-GUI:n (Fas 4.4), samt out-of-process-sandboxning för kraschisolering (Fas 4.5).
+4. VST3 / LV2 / VST2-laddning — endast CLAP är implementerat så långt.
 5. För FL Studios egna instrument (Sytrus, Harmor, Gross Beat, …) och FL Studio VSTi är den enda farbara vägen deras **VST/VST3-byggen körda genom Wine + yabridge** — de nativa FL-`.dll`-formaten är inte ett standard-plugin-API.
 
-**Därför:** FL Studio och andra tredjepartsplugins är **inte användbara i Sonix ännu**. Inga av påståendena om "öppnar plugin-GUI:t" eller "kraschersäker sandbox" gäller — Plugin-hanteraren är en katalog och en Yabridge-assistent, inget mer.
+**Därför:** tredjepartsplugins är **inte användbara för ljud i Sonix ännu**. En CLAP-plugin kan laddas och inspekteras, men den processar inget ljud och dess GUI visas inte; Plugin-hanteraren är i övrigt en katalog och en Yabridge-assistent.
 
 ---
 

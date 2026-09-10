@@ -9,6 +9,10 @@ default = []
 # the normal build stays dependency-free and offline; enable with
 # `cargo build --features neural`.
 neural = ["dep:ort"]
+# Opt-in in-process CLAP plugin host (dlopen via libloading). Off by default so
+# the normal build stays dependency-free; enable with
+# `cargo build --features plugin-host`.
+plugin-host = ["dep:libloading"]
 
 [dependencies]
 cpal = "0.15"
@@ -23,4 +27,5 @@ flacenc = "0.5"
 alsa = "0.9"
 ureq = "2"
 ort = { version = "2.0.0-rc.13", optional = true }
+libloading = { version = "0.8", optional = true }
 

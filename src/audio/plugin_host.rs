@@ -124,6 +124,8 @@ pub struct PluginManager {
     pub selected_category_filter: Option<PluginCategory>,
     pub last_scan_time: String,
     pub scan_status: String,
+    /// Last live CLAP inspection (Fas 4.1), if the user asked to load a plugin.
+    pub inspection: Option<crate::audio::plugin_host_live::PluginInspection>,
     // Custom inputs
     pub new_custom_path_input: String,
     pub manual_import_file_input: String,
@@ -228,6 +230,7 @@ impl Default for PluginManager {
             selected_category_filter: None,
             last_scan_time: crate::i18n::t("Inte skannad ännu").to_string(),
             scan_status: crate::i18n::t("Redo").to_string(),
+            inspection: None,
             new_custom_path_input: String::new(),
             manual_import_file_input: String::new(),
             manual_import_vendor_input: String::new(),

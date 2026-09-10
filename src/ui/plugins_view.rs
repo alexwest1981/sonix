@@ -50,7 +50,13 @@ pub fn render_plugins_view(ui: &mut Ui, manager: &mut PluginManager, status_msg:
 
                 // Plugin execution model
                 ui.label(egui::RichText::new(crate::i18n::t("🛡 Plugin-körning:")).strong().size(11.0).color(Theme::FL_YELLOW));
-                ui.label(egui::RichText::new(crate::i18n::t("Endast metadata-skanning (ingen in-process host)")).size(11.0).color(Theme::TEXT_MUTED));
+                let host_available = crate::audio::plugin_host_live::is_available();
+                let (host_label, host_color) = if host_available {
+                    (crate::i18n::t("CLAP: in-process host aktiv (laddar plugins)"), Theme::FL_GREEN)
+                } else {
+                    (crate::i18n::t("Endast metadata-skanning (bygg med --features plugin-host för CLAP-host)"), Theme::TEXT_MUTED)
+                };
+                ui.label(egui::RichText::new(host_label).size(11.0).color(host_color));
                 ui.separator();
 
                 // Wine / Yabridge Status
@@ -146,6 +152,8 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
         }
     });
 
+    render_inspection_panel(ui, manager, status_msg);
+
     ui.add_space(6.0);
 
     // Plugins List
@@ -221,6 +229,38 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
 
                     // 3. Right side: Action buttons & Stats
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if plugin.format == PluginFormat::Clap {
+                            let host_available = crate::audio::plugin_host_live::is_available();
+                            let can_load = plugin.verified && host_available;
+                            let resp = ui.add_enabled(
+                                can_load,
+                                egui::Button::new(crate::i18n::t("🔎 Ladda & inspektera")),
+                            );
+                            let resp = if !host_available {
+                                resp.on_disabled_hover_text(crate::i18n::t(
+                                    "Bygg med --features plugin-host för att ladda CLAP-plugins.",
+                                ))
+                            } else if !plugin.verified {
+                                resp.on_disabled_hover_text(crate::i18n::t(
+                                    "Filen verifierades inte som en giltig binär.",
+                                ))
+                            } else {
+                                resp
+                            };
+                            if resp.clicked() {
+                                let snapshot = crate::audio::plugin_host_live::inspect(&plugin.file_path);
+                                *status_msg = match &snapshot.error {
+                                    Some(err) => crate::tstatus!("⚠ Kunde inte ladda plugin: {}", err),
+                                    None => crate::tstatus!(
+                                        "🔬 Läste {} parametrar från '{}'",
+                                        snapshot.parameters.len(),
+                                        snapshot.info.as_ref().map(|i| i.name.as_str()).unwrap_or(&snapshot.path)
+                                    ),
+                                };
+                                manager.inspection = Some(snapshot);
+                            }
+                        }
+
                         if ui.button(crate::i18n::t("📂 Visa i mapp")).clicked() {
                             let dir = std::path::Path::new(&plugin.file_path)
                                 .parent()
@@ -581,4 +621,133 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
         });
     });
 }
+
+// ============================================================================
+// LIVE CLAP INSPECTION PANEL (Fas 4.1)
+// ============================================================================
+fn param_flags_label(p: &crate::audio::plugin_host_live::PluginParameter) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    if p.is_automatable() {
+        parts.push(crate::i18n::t("auto"));
+    }
+    if p.is_stepped() {
+        parts.push(crate::i18n::t("steg"));
+    }
+    if p.is_modulatable() {
+        parts.push(crate::i18n::t("mod"));
+    }
+    if p.is_bypass() {
+        parts.push(crate::i18n::t("bypass"));
+    }
+    if p.is_readonly() {
+        parts.push(crate::i18n::t("låst"));
+    }
+    if p.is_hidden() {
+        parts.push(crate::i18n::t("dold"));
+    }
+    parts.join(", ")
+}
+
+fn render_inspection_panel(ui: &mut Ui, manager: &mut PluginManager, _status_msg: &mut String) {
+    if manager.inspection.is_none() {
+        return;
+    }
+
+    let mut close = false;
+    ui.group(|ui| {
+        let Some(snapshot) = manager.inspection.as_ref() else {
+            return;
+        };
+
+        ui.horizontal(|ui| {
+            ui.label(egui::RichText::new(crate::i18n::t("🔬 Inspekterad plugin")).strong().size(12.5).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(&snapshot.backend).size(10.5).color(Theme::FL_GREEN));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button(crate::i18n::t("✕ Stäng")).clicked() {
+                    close = true;
+                }
+                ui.label(egui::RichText::new(&snapshot.path).size(9.5).color(Theme::TEXT_MUTED));
+            });
+        });
+
+        if let Some(err) = &snapshot.error {
+            ui.label(egui::RichText::new(format!("⚠ {}", err)).size(10.5).color(Theme::FL_ORANGE));
+            return;
+        }
+
+        if let Some(info) = &snapshot.info {
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(&info.name).strong().size(12.0).color(Color32::WHITE));
+                if !info.version.is_empty() {
+                    ui.label(egui::RichText::new(&info.version).size(10.0).color(Theme::TEXT_MUTED));
+                }
+                if !info.vendor.is_empty() {
+                    ui.label(egui::RichText::new(format!("• {}", info.vendor)).size(10.0).color(Theme::FL_ORANGE));
+                }
+            });
+            if !info.id.is_empty() {
+                ui.label(egui::RichText::new(format!("id: {}", info.id)).size(9.5).color(Theme::TEXT_MUTED));
+            }
+            if !info.description.is_empty() {
+                ui.label(egui::RichText::new(&info.description).size(10.0).color(Theme::TEXT_BRIGHT));
+            }
+            if !info.features.is_empty() {
+                ui.label(
+                    egui::RichText::new(crate::tstatus!("Egenskaper: {}", info.features.join(", ")))
+                        .size(9.5)
+                        .color(Theme::TEXT_MUTED),
+                );
+            }
+        }
+
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(crate::tstatus!(
+                "Parametrar ({}):",
+                snapshot.parameters.len()
+            ))
+            .strong()
+            .size(11.0)
+            .color(Theme::FL_YELLOW),
+        );
+
+        if snapshot.parameters.is_empty() {
+            ui.label(egui::RichText::new(crate::i18n::t("Inga parametrar rapporterade.")).size(10.0).color(Theme::TEXT_MUTED));
+            return;
+        }
+
+        egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
+            for p in &snapshot.parameters {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(&p.name).strong().size(10.5).color(Theme::TEXT_BRIGHT));
+                    if !p.module.is_empty() {
+                        ui.label(egui::RichText::new(format!("[{}]", p.module)).size(9.5).color(Theme::TEXT_MUTED));
+                    }
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{:.3} … {:.3}  std {:.3}",
+                            p.min_value,
+                            p.max_value,
+                            p.default_value
+                        ))
+                        .size(9.5)
+                        .color(Theme::TEXT_MUTED),
+                    );
+                    let flags = param_flags_label(p);
+                    if !flags.is_empty() {
+                        ui.label(egui::RichText::new(flags).size(9.0).color(Theme::FL_CYAN));
+                    }
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        ui.label(egui::RichText::new(format!("#{}", p.id)).size(9.0).color(Theme::TEXT_MUTED));
+                    });
+                });
+            }
+        });
+    });
+
+    if close {
+        manager.inspection = None;
+    }
+}
+
 

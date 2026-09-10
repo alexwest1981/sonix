@@ -3575,6 +3575,7 @@ dependencies = [
  "eframe",
  "flacenc",
  "image",
+ "libloading",
  "ort",
  "rtrb",
  "serde",

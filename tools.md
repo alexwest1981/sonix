@@ -254,6 +254,12 @@ Stem-separatorn var en ren DSP-approximation; ingen neural modell fanns.
 - **Tester:** 10 nya (`demucs_source_order_maps_to_sonix_stems`, `resampling_upsamples_and_preserves_dc`, `resampling_downsample_length_and_identity`, `segments_cover_the_whole_signal`, `segment_windows_do_not_attenuate_boundaries`, `extracts_sources_from_batched_and_flat_layouts`, `rejects_bad_shapes_and_short_buffers`, `finds_model_in_priority_order`, `neural_requires_a_model_to_be_available`, `run_separation_falls_back_to_dsp_without_a_model`).
 - `cargo test --release` = **111 tester**, 0 varningar. `cargo build --release --features neural` bygger och länkar (ORT laddas ned vid bygge).
 
+### P37 — In-process CLAP-pluginvärd (Fas 4.1) · ✅ KLAR
+Plugin-hanteraren katalogiserade bara filer; ingen laddningskod fanns.
+- **Löst:** Ny modul `src/audio/plugin_host_live.rs` som talar **CLAP 1.x C-ABI** direkt och laddar `.clap`-filer med `dlopen` via `libloading` (opt-in `--features plugin-host`, standardbygget förblir dependency-fritt). Löser upp `.clap`-fil/bundle till rätt `.so`, validerar `clap_entry` + version, kör `entry.init()`, hämtar `clap.plugin-factory`, skapar en instans och läser **descriptor + parametrar** via `clap.params`. `destroy()`/`deinit()` körs i rätt ordning före `dlclose` (Drop-guards). `inspect(path)` ger en ärlig snapshot (info/parametrar/fel) som plugin-databasen visar via knappen **"🔎 Ladda & inspektera"** och en parameterpanel. `PluginManager.inspection` håller senaste snapshot.
+- **Tester:** 7 nya (bundle-/`.so`-upplösning, fel för saknad fil, paket utan binär och icke-CLAP-bibliotek, samt end-to-end-laddning av mock-pluginen med descriptor + 2 parametrar). Mocken byggs som en riktig `.so` av `build.rs` (kräver `cc`; annars hoppas testet över).
+- `cargo test --release` = **113 tester**, 0 varningar. `cargo test --release --features plugin-host` = **120 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning
@@ -266,6 +272,7 @@ Stem-separatorn var en ren DSP-approximation; ingen neural modell fanns.
 | MIDI-klaviaturinspelning till Piano Roll | ✅ REAL (P33) |
 | Export-presets & loudness-normalisering (EBU R128) | ✅ REAL (P34) |
 | Neural stem-separation (HTDemucs/ONNX, opt-in) | ✅ REAL (P36) |
+| CLAP-pluginvärd (laddning + parameterinspektion, opt-in) | ✅ REAL (P37) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |
