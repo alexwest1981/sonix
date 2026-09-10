@@ -1,4 +1,5 @@
 use std::f32::consts::PI;
+use std::sync::Mutex;
 use super::command::{AudioCommand, Preset, StemRegionPlayback, Waveform};
 use super::drum::{DrumType, DrumVoice};
 use super::effects::{DelayParams, ReverbParams, SimpleReverb, StereoDelay};
@@ -98,6 +99,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetSongPlayback(_) => "SetSongPlayback",
         AudioCommand::PlayAudition { .. } => "PlayAudition",
         AudioCommand::StopAudition => "StopAudition",
+        AudioCommand::SetMonitorRing { .. } => "SetMonitorRing",
         AudioCommand::SetAuditionParams { .. } => "SetAuditionParams",
         AudioCommand::TriggerSampleVoice { .. } => "TriggerSampleVoice",
         AudioCommand::SetPatcherGraph(_) => "SetPatcherGraph",
@@ -385,6 +387,10 @@ pub struct SynthEngine {
     pub song_time_samples: usize,
     // Isolated audition for Vocal Studio & Sound Browser
     pub audition: Option<AuditionVoice>,
+    // Zero-latency microphone direct monitoring (post auto-tune mono samples)
+    pub monitor_ring: Option<Arc<Mutex<Vec<f32>>>>,
+    monitor_buf: Vec<f32>,
+    monitor_idx: usize,
     // Polyphonic WAV one-shot voices for the Channel Rack sample player
     pub sample_voices: [SampleVoice; MAX_SAMPLE_VOICES],
     pub sample_voice_cursor: usize,
@@ -424,6 +430,9 @@ impl SynthEngine {
             song_playing: false,
             song_time_samples: 0,
             audition: None,
+            monitor_ring: None,
+            monitor_buf: Vec::new(),
+            monitor_idx: 0,
             sample_voices: std::array::from_fn(|_| SampleVoice::new()),
             sample_voice_cursor: 0,
             scheduled_notes: Vec::new(),
@@ -784,6 +793,11 @@ impl SynthEngine {
                     aud.is_playing = false;
                 }
             }
+            AudioCommand::SetMonitorRing { ring } => {
+                self.monitor_ring = Some(ring);
+                self.monitor_buf.clear();
+                self.monitor_idx = 0;
+            }
             AudioCommand::SetAuditionParams {
                 volume,
                 pitch_ratio,
@@ -1143,6 +1157,28 @@ impl SynthEngine {
             let (pl, pr) = patch.process();
             stem_mix_l += pl;
             stem_mix_r += pr;
+        }
+
+        // 8c. Zero-latency microphone direct monitoring (post auto-tune).
+        //     Drains the ring once per buffer and plays the mono signal on both
+        //     channels, routed through the master bus so the limiter catches
+        //     peaks and the master volume controls the level.
+        if let Some(ring) = self.monitor_ring.as_ref() {
+            if self.monitor_idx >= self.monitor_buf.len() {
+                self.monitor_buf.clear();
+                self.monitor_idx = 0;
+                if let Ok(mut r) = ring.lock() {
+                    if !r.is_empty() {
+                        self.monitor_buf.append(&mut r);
+                    }
+                }
+            }
+            if self.monitor_idx < self.monitor_buf.len() {
+                let m = self.monitor_buf[self.monitor_idx];
+                self.monitor_idx += 1;
+                stem_mix_l += m;
+                stem_mix_r += m;
+            }
         }
 
         // 9. Master bus FX chain (EQ, compressor, de-esser, doubler, gate, filter, limiter)

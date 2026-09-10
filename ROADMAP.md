@@ -17,17 +17,17 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~97 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~98 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[████████████████████████████████████░]  97 %
+[█████████████████████████████████████░]  98 %
 ```
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
 | Ljudmotor (synth, trummor, FX, patcher, per-spår) | 11 | 1 | **92 %** |
 | Sequencer & arranger (timeline, rack, piano roll, sektioner) | 5 | 0 | **100 %** |
-| Inspelning & sång (mic, takes, comping, pitch, harmonier) | 6 | 1 | **86 %** |
+| Inspelning & sång (mic, takes, comping, pitch, harmonier) | 7 | 0 | **100 %** |
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Plugin-hantering | 2 | 6 | **25 %** |
@@ -88,12 +88,12 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ---
 
-## ⬜ Fas 2 — Ljudkvalitet & realtid
+## ✅ Fas 2 — Ljudkvalitet & realtid (KLAR)
 
-- [ ] **2.1 Realtids-autotune i ljudtråden** — *L*
-  - **Gör:** Flytta pitchkorrigering från offline-buffert till realtidsblock med låg latens (t.ex. PSOLA/phase-vocoder), koppla till mikrofonkedjan.
-  - **Klart när:** Sång kan korrigeras live med hörbar effekt och acceptabel latens.
-  - **Filer:** `src/audio/vocal_harmonizer.rs`, `src/audio/recorder.rs`, `src/audio/engine.rs`
+- [x] **2.1 Realtids-autotune i ljudtråden** — *L* ✅
+  - **Löst:** Ny **`RealtimeAutotune`** (i `vocal_harmonizer.rs`) som körs i mikrofon-callbacken: rullande 2048-sample analysfönster, pitchdetektering var 1024:e sample, snapning mot vald skala/root via `snap_midi_to_scale`, korrigering begränsad till ±2 semitoner och utjämnad per sample (coefficient `0.0002 + speed*0.0015`). Pitchskiftet görs av en ny **`StreamingPitchShifter`** (WSOLA över cirkelbuffert, 512-frame/256-hop, korskorrelationssökning, ~12 ms latens). **Direktlyssning** är nu verklig: mikrofonens efter-autotune-signal skickas via en delad ring (`AudioCommand::SetMonitorRing` → `SynthEngine::monitor_ring`) och mixas in i master-bussen i `process_stereo` (noll extra latency). `LiveMicrophoneCapture` fick `monitor_enabled`/`autotune_*`-atomics, `process_mic_block` tar `&mut RealtimeAutotune`, och streambygget refaktorerades till en gemensam `build_input_stream`-hjälpare (tog bort dupliceringen mellan `new()` och `open_device_by_index()`). UI: kryssrutan **🎙️ Realtids-Auto-Tune** i Sångstudion (styrka = AUTO-TUNE-ratten). Inspelning sker torrt; autotunen hörs i monitor.
+  - **Klart när:** Sång kan korrigeras live med hörbar effekt och acceptabel latens. ✅ (tester: `streaming_pitch_shifter_shifts_up_octave`, `realtime_autotune_corrects_flat_note`)
+  - **Filer:** `src/audio/vocal_harmonizer.rs`, `src/audio/recorder.rs`, `src/audio/synth.rs`, `src/audio/command.rs`, `src/ui/app.rs`, `src/ui/vocal_studio_view.rs`, `src/i18n.rs`
 
 - [x] **2.2 Riktig formantbevarande pitch-shift** — *M* ✅
   - **Löst:** Ersatte den gamla spektral-tilt-approximationen med en riktig **STFT-baserad formantkorrigering**: granulär pitch-shift följt av cepstral envelop-analys (radix-2 FFT, inbyggd, ingen ny dependency) där varje frame skalas så att den pitchade signalens spektrala envelop matchar originalets (valfritt frekvenswarpad av `formant_shift`). `apply_formant_tilt` borttagen.
@@ -170,7 +170,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 2.1 — Realtids-autotune i ljudtråden** (sista ovalda punkten i Fas 2).
+**Fas 5.3 — Midi-inspelning/klaviatur-inmatning (`midir`) till Piano Roll** (nästa medelstora, verifierbara punkt; Fas 2 är nu helt klar). Alternativt **Fas 3.1** (neural stem-separation, XL) eller **Fas 4.1** (plugin-hosting, L) om du vill ta itu med de stora kvarvarande bitarna.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

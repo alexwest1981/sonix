@@ -1418,6 +1418,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🎤 Lead Sång (Center)" => "🎤 Lead Vocal (Center)",
         "🎤 Lead Sång (Studio Recorder)" => "🎤 Lead Vocal (Studio Recorder)",
         "🎧 Direktlyssning i hörlurar (Zero-Latency Direct Monitoring)" => "🎧 Direct headphone monitoring (Zero-Latency Direct Monitoring)",
+        "🎙️ Realtids-Auto-Tune" => "🎙️ Real-time Auto-Tune",
+        "Korrigerar mikrofonen i realtid mot vald skala (styrka = AUTO-TUNE-ratten)" => "Corrects the microphone in real time toward the selected scale (strength = the AUTO-TUNE knob)",
         "🎵 Klipp & Vågform" => "🎵 Clip & Waveform",
         "🎶 Låg Kvint (-5st)" => "🎶 Low Fifth (-5st)",
         "🎸 Basgång (Bass)" => "🎸 Bassline (Bass)",

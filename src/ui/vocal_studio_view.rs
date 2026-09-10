@@ -70,6 +70,8 @@ pub fn render_vocal_studio_view(
 
                         ui.checkbox(&mut vocal_track.is_armed, "🔴 Armera");
                         ui.checkbox(&mut vocal_track.monitoring_on, "🎧 Direct Monitoring");
+                        ui.checkbox(&mut vocal_track.realtime_autotune, crate::i18n::t("🎙️ Realtids-Auto-Tune"))
+                            .on_hover_text(crate::i18n::t("Korrigerar mikrofonen i realtid mot vald skala (styrka = AUTO-TUNE-ratten)"));
 
                         ui.separator();
                         rotary_knob(ui, &mut vocal_track.input_gain, 0.0, 2.5, "GAIN", Theme::FL_YELLOW, 18.0);

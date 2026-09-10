@@ -218,6 +218,12 @@ Stretch var varispeed: `AuditionVoice` multiplicerade uppspelningshastigheten me
 - **Test:** `wsola_time_stretch_preserves_pitch_and_scales_duration` (220 Hz-sin, 2.0× ≈ dubbel längd och 0.5× ≈ halv längd, tonhöjd kvar på 220 Hz).
 - `cargo test --release` = **66 tester**, 0 varningar.
 
+### P31 — Realtids-autotune i ljudtråden (Fas 2.1) · ✅ KLAR
+Tuning kördes bara offline på den inspelade bufferten, och `Direct Monitoring`/`monitoring_on` var döda kontroller — det fanns ingen monitorväg alls.
+- **Löst:** Ny **`RealtimeAutotune`** i `vocal_harmonizer.rs`: rullande 2048-sample analys, pitchdetektering var 1024:e sample, `snap_midi_to_scale` mot root/skala, korrigering begränsad till ±2 semitoner och utjämnad per sample (`coeff = 0.0002 + speed·0.0015`). Ny **`StreamingPitchShifter`** (WSOLA över cirkelbuffert, frame 512 / hop 256, korskorrelationssökning ±256, ~12 ms latens) gör själva pitchskiftet. `LiveMicrophoneCapture` fick `monitor_ring`, `monitor_enabled` och `autotune_*`-atomics; `process_mic_block` tar `&mut RealtimeAutotune` och fyller monitor-ringen med det autotunade (torr signal spelas in). Streambygget refaktorerades till gemensam `build_input_stream()` (tar bort dupliceringen mellan `new()` och `open_device_by_index()`). Ny `AudioCommand::SetMonitorRing` registrerar ringen i `SynthEngine`, som dränerar den per block och mixar in den i master-bussen i `process_stereo` — riktig noll-latens direktlyssning. `sync_live_effects()` och `SonixApp::sync_mic_monitoring()` synkar monitor/autotune varje frame (och `SetMonitorRing` återsänds efter reconfigure). UI: kryssrutan **🎙️ Realtids-Auto-Tune** i Sångstudion (styrka = AUTO-TUNE-ratten).
+- **Tester:** `streaming_pitch_shifter_shifts_up_octave` (220 Hz → ~440 Hz vid ratio 2.0), `realtime_autotune_corrects_flat_note` (30 cent flat A4 dras till 440 Hz).
+- `cargo test --release` = **68 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning
@@ -243,7 +249,7 @@ Stretch var varispeed: `AuditionVoice` multiplicerade uppspelningshastigheten me
 | Modular Patcher | ✅ REAL (P2) |
 | AI Stem Separation | ✅ REAL (P3) |
 | Plugin-host (ladda/GUI) | ✅ REAL (P4, ärlig hanterare) |
-| Vocal Harmonizer / Auto-Tune | REAL (P5) |
+| Vocal Harmonizer / Auto-Tune | REAL (P5) · realtids-autotune + direktlyssning REAL (P31) |
 | Suno/AI-spårgenerering | REAL (P9) |
 
 **Föreslagen arbetsordning:** P1 → P11 → P6 → P5 → P8 → P10 → P12 → P13 → P14 → P15 → P16 → P18 → P7 → P9 → P2 → P3 → P4 → P17. (**Alla prioriteter klara.**)

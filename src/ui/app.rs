@@ -460,6 +460,9 @@ pub struct TimelineUndoSnapshot {
 
 pub struct SonixApp {
     pub engine: AudioEngine,
+    /// Monitor ring currently registered with the audio engine (re-sent after
+    /// every reconfigure, which recreates the synth engine).
+    pub monitor_ring_sent: Option<std::sync::Arc<std::sync::Mutex<Vec<f32>>>>,
     pub stem_import_progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
     pub project_load_progress: std::sync::Arc<std::sync::Mutex<ProjectLoadProgress>>,
     // Transport & Clock
@@ -1004,6 +1007,7 @@ impl SonixApp {
 
         let mut app = Self {
             engine,
+            monitor_ring_sent: None,
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),
             is_playing: false,
@@ -3442,10 +3446,38 @@ impl SonixApp {
         }
     }
 
+    /// Registers the microphone monitor ring with the engine (once, or after a
+    /// reconfigure) and pushes the live monitoring / auto-tune parameters into
+    /// the input callback. Cheap enough to call every UI frame.
+    fn sync_mic_monitoring(&mut self) {
+        let ring = self
+            .vocal_studio
+            .mic_capture
+            .as_ref()
+            .map(|m| std::sync::Arc::clone(&m.monitor_ring));
+        let needs_send = match (&ring, &self.monitor_ring_sent) {
+            (Some(a), Some(b)) => !std::sync::Arc::ptr_eq(a, b),
+            (Some(_), None) => true,
+            _ => false,
+        };
+        if needs_send && let Some(r) = ring {
+            let _ = self.engine.send_command(AudioCommand::SetMonitorRing { ring: r.clone() });
+            self.monitor_ring_sent = Some(r);
+        }
+        self.vocal_studio.sync_live_effects(
+            self.vocal_studio.realtime_autotune,
+            self.vocal_harmonizer.autotune_speed,
+            self.vocal_harmonizer.autotune_speed,
+            self.vocal_harmonizer.root_note,
+            self.vocal_harmonizer.target_scale,
+        );
+    }
+
     /// Re-sends all persistent synth/mixer state after the output stream has
     /// been rebuilt (e.g. a sample-rate change), because `reconfigure()`
     /// recreates the `SynthEngine` from scratch.
     fn resync_engine_after_reconfigure(&mut self) {
+        self.monitor_ring_sent = None;
         let _ = self.engine.send_command(AudioCommand::SetWaveform(self.waveform));
         let _ = self.engine.send_command(AudioCommand::SetAdsr(self.adsr));
         let _ = self.engine.send_command(AudioCommand::SetFilter(self.filter));
@@ -3535,6 +3567,7 @@ impl eframe::App for SonixApp {
         self.anim_phase += 0.08;
         self.update_scope_history();
         self.vocal_studio.update_live_stream();
+        self.sync_mic_monitoring();
 
         // Check if window is minimized or not focused (Wayland / Hyprland safety)
         let is_minimized = ctx.input(|i| i.viewport().minimized.unwrap_or(false));

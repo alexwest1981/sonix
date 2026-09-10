@@ -3,6 +3,7 @@ use cpal::{SampleFormat, Stream, StreamConfig};
 use eframe::egui::Color32;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use super::vocal_harmonizer::RealtimeAutotune;
 use super::wav_writer::write_pcm_f32_to_wav;
 
 #[derive(Debug, Clone)]
@@ -87,17 +88,121 @@ pub struct LiveMicrophoneCapture {
     pub recorded_samples: Arc<Mutex<Vec<f32>>>,
     pub live_peaks: Arc<Mutex<Vec<f32>>>,
     pub analysis_buffer: Arc<Mutex<Vec<f32>>>,
+    /// Post-autotune mono samples handed to the output engine for zero-latency
+    /// direct monitoring.
+    pub monitor_ring: Arc<Mutex<Vec<f32>>>,
+    pub monitor_enabled: Arc<AtomicBool>,
+    pub autotune_enabled: Arc<AtomicBool>,
+    pub autotune_strength: Arc<Mutex<f32>>,
+    pub autotune_speed: Arc<Mutex<f32>>,
+    /// Root note (0 = C) packed into a `u32`.
+    pub autotune_root: Arc<AtomicU32>,
+    /// Target scale index, see `scale_mask`.
+    pub autotune_scale: Arc<AtomicU32>,
     pub sample_rate: u32,
     pub device_name: String,
     _stream: Option<Stream>,
+}
+
+/// Arc bundle cloned into the cpal input callback.
+#[derive(Clone)]
+struct MicStreamShared {
+    is_recording: Arc<AtomicBool>,
+    is_paused: Arc<AtomicBool>,
+    input_gain: Arc<Mutex<f32>>,
+    noise_gate_thresh: Arc<Mutex<f32>>,
+    peak_vu: Arc<AtomicU32>,
+    recorded_samples: Arc<Mutex<Vec<f32>>>,
+    live_peaks: Arc<Mutex<Vec<f32>>>,
+    analysis_buffer: Arc<Mutex<Vec<f32>>>,
+    monitor_ring: Arc<Mutex<Vec<f32>>>,
+    monitor_enabled: Arc<AtomicBool>,
+    autotune_enabled: Arc<AtomicBool>,
+    autotune_strength: Arc<Mutex<f32>>,
+    autotune_speed: Arc<Mutex<f32>>,
+    autotune_root: Arc<AtomicU32>,
+    autotune_scale: Arc<AtomicU32>,
+}
+
+/// Builds the input stream for a device, wiring the always-on pitch analysis,
+/// the real-time auto-tune and the direct-monitoring ring buffer.
+fn build_input_stream(
+    device: &cpal::Device,
+    config: &StreamConfig,
+    sample_format: SampleFormat,
+    shared: MicStreamShared,
+    sample_rate: u32,
+) -> Result<Stream, cpal::BuildStreamError> {
+    let num_channels = config.channels as usize;
+    macro_rules! callback_body {
+        ($data:expr, $convert:expr, $autotune:expr) => {{
+            let gain = *shared.input_gain.lock().unwrap_or_else(|e| e.into_inner());
+            let gate = *shared.noise_gate_thresh.lock().unwrap_or_else(|e| e.into_inner());
+            let strength = *shared.autotune_strength.lock().unwrap_or_else(|e| e.into_inner());
+            let speed = *shared.autotune_speed.lock().unwrap_or_else(|e| e.into_inner());
+            let root = shared.autotune_root.load(Ordering::Relaxed) as i32;
+            let scale = shared.autotune_scale.load(Ordering::Relaxed) as usize;
+            $autotune.set_params(
+                shared.autotune_enabled.load(Ordering::Relaxed),
+                strength,
+                speed,
+                root,
+                scale,
+            );
+            let monitor_on = shared.monitor_enabled.load(Ordering::Relaxed);
+            let block_max = process_mic_block(
+                $data,
+                num_channels,
+                gain,
+                gate,
+                shared.is_recording.load(Ordering::Relaxed),
+                shared.is_paused.load(Ordering::Relaxed),
+                &shared.recorded_samples,
+                &shared.live_peaks,
+                &shared.analysis_buffer,
+                $autotune,
+                monitor_on,
+                &shared.monitor_ring,
+                $convert,
+            );
+            shared.peak_vu.store(block_max.to_bits(), Ordering::Relaxed);
+        }};
+    }
+
+    match sample_format {
+        SampleFormat::F32 => {
+            let mut autotune = RealtimeAutotune::new(sample_rate as f32);
+            device.build_input_stream(
+                config,
+                move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    callback_body!(data, |s| s, &mut autotune);
+                },
+                |err| eprintln!("[Sonix Mic Input Error] {}", err),
+                None,
+            )
+        }
+        SampleFormat::I16 => {
+            let mut autotune = RealtimeAutotune::new(sample_rate as f32);
+            device.build_input_stream(
+                config,
+                move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                    callback_body!(data, |s| s as f32 / 32768.0, &mut autotune);
+                },
+                |err| eprintln!("[Sonix Mic Input Error] {}", err),
+                None,
+            )
+        }
+        _ => Err(cpal::BuildStreamError::DeviceNotAvailable),
+    }
 }
 
 /// How many recent mono samples are kept for always-on pitch analysis.
 const ANALYSIS_MAX: usize = 16384;
 
 /// Shared microphone callback body: computes per-block peak, records to
-/// `recorded` while armed, and always feeds the rolling `analysis` buffer used
-/// by the strobe tuner and harmonizer.
+/// `recorded` while armed, always feeds the rolling `analysis` buffer used by
+/// the strobe tuner and harmonizer, and (when monitoring is on) pushes the
+/// auto-tuned signal into `monitor_ring` for the output engine to mix.
 #[allow(clippy::too_many_arguments)]
 fn process_mic_block<T: Copy>(
     data: &[T],
@@ -109,6 +214,9 @@ fn process_mic_block<T: Copy>(
     recorded: &Arc<Mutex<Vec<f32>>>,
     peaks: &Arc<Mutex<Vec<f32>>>,
     analysis: &Arc<Mutex<Vec<f32>>>,
+    autotune: &mut RealtimeAutotune,
+    monitor_enabled: bool,
+    monitor_ring: &Arc<Mutex<Vec<f32>>>,
     convert: impl Fn(T) -> f32,
 ) -> f32 {
     let ch = channels.max(1);
@@ -125,6 +233,11 @@ fn process_mic_block<T: Copy>(
         None
     };
     let mut an = analysis.lock().unwrap_or_else(|e| e.into_inner());
+    let mut monitor = if monitor_enabled {
+        Some(monitor_ring.lock().unwrap_or_else(|e| e.into_inner()))
+    } else {
+        None
+    };
 
     for frame in data.chunks(ch) {
         let mut mono = (frame.iter().map(|&s| convert(s)).sum::<f32>() / ch as f32) * gain;
@@ -144,11 +257,20 @@ fn process_mic_block<T: Copy>(
             }
         }
         an.push(mono.clamp(-1.0, 1.0));
+        if let Some(m) = monitor.as_mut() {
+            m.push(autotune.process(mono).clamp(-1.0, 1.0));
+        }
     }
 
     if an.len() > ANALYSIS_MAX {
         let drop = an.len() - ANALYSIS_MAX;
         an.drain(0..drop);
+    }
+    if let Some(m) = monitor.as_mut() {
+        if m.len() > 16384 {
+            let drop = m.len() - 16384;
+            m.drain(0..drop);
+        }
     }
     block_max
 }
@@ -279,14 +401,26 @@ impl LiveMicrophoneCapture {
     }
 
     pub fn new() -> Self {
-        let is_recording = Arc::new(AtomicBool::new(false));
-        let is_paused = Arc::new(AtomicBool::new(false));
-        let input_gain = Arc::new(Mutex::new(1.50));
-        let noise_gate_thresh = Arc::new(Mutex::new(0.012));
-        let peak_vu = Arc::new(AtomicU32::new(0));
-        let recorded_samples = Arc::new(Mutex::new(Vec::with_capacity(44100 * 30)));
-        let live_peaks = Arc::new(Mutex::new(Vec::with_capacity(1000)));
-        let analysis_buffer = Arc::new(Mutex::new(Vec::with_capacity(ANALYSIS_MAX)));
+        let mut cap = Self {
+            is_recording: Arc::new(AtomicBool::new(false)),
+            is_paused: Arc::new(AtomicBool::new(false)),
+            input_gain: Arc::new(Mutex::new(1.50)),
+            noise_gate_thresh: Arc::new(Mutex::new(0.012)),
+            peak_vu: Arc::new(AtomicU32::new(0)),
+            recorded_samples: Arc::new(Mutex::new(Vec::with_capacity(44100 * 30))),
+            live_peaks: Arc::new(Mutex::new(Vec::with_capacity(1000))),
+            analysis_buffer: Arc::new(Mutex::new(Vec::with_capacity(ANALYSIS_MAX))),
+            monitor_ring: Arc::new(Mutex::new(Vec::with_capacity(8192))),
+            monitor_enabled: Arc::new(AtomicBool::new(false)),
+            autotune_enabled: Arc::new(AtomicBool::new(false)),
+            autotune_strength: Arc::new(Mutex::new(0.75)),
+            autotune_speed: Arc::new(Mutex::new(0.75)),
+            autotune_root: Arc::new(AtomicU32::new(0)),
+            autotune_scale: Arc::new(AtomicU32::new(0)),
+            sample_rate: 44100,
+            device_name: "Ingen mikrofon hittad (standby)".to_string(),
+            _stream: None,
+        };
 
         let host = cpal::default_host();
         let mut chosen_device = None;
@@ -310,99 +444,40 @@ impl LiveMicrophoneCapture {
             chosen_device = host.default_input_device();
         }
 
-        let (device_name, stream, sample_rate) = if let Some(device) = chosen_device {
+        if let Some(device) = chosen_device {
             let name = device.name().unwrap_or_else(|_| "PipeWire / ALSA Mikrofon".to_string());
             if let Ok(default_config) = device.default_input_config() {
                 let sr = default_config.sample_rate().0;
                 let sample_format = default_config.sample_format();
                 let config: StreamConfig = default_config.into();
-
-                let is_rec = Arc::clone(&is_recording);
-                let is_p = Arc::clone(&is_paused);
-                let gain_ref = Arc::clone(&input_gain);
-                let gate_ref = Arc::clone(&noise_gate_thresh);
-                let vu_ref = Arc::clone(&peak_vu);
-                let samples_ref = Arc::clone(&recorded_samples);
-                let peaks_ref = Arc::clone(&live_peaks);
-                let analysis_ref = Arc::clone(&analysis_buffer);
-
-                let num_channels = config.channels as usize;
-
-                let stream_res = match sample_format {
-                    SampleFormat::F32 => device.build_input_stream(
-                        &config,
-                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                            let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let block_max = process_mic_block(
-                                data,
-                                num_channels,
-                                gain,
-                                gate,
-                                is_rec.load(Ordering::Relaxed),
-                                is_p.load(Ordering::Relaxed),
-                                &samples_ref,
-                                &peaks_ref,
-                                &analysis_ref,
-                                |s| s,
-                            );
-                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
-                        },
-                        |err| eprintln!("[Sonix Mic Input Error] {}", err),
-                        None,
-                    ),
-                    SampleFormat::I16 => device.build_input_stream(
-                        &config,
-                        move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                            let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let block_max = process_mic_block(
-                                data,
-                                num_channels,
-                                gain,
-                                gate,
-                                is_rec.load(Ordering::Relaxed),
-                                is_p.load(Ordering::Relaxed),
-                                &samples_ref,
-                                &peaks_ref,
-                                &analysis_ref,
-                                |s| s as f32 / 32768.0,
-                            );
-                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
-                        },
-                        |err| eprintln!("[Sonix Mic Input Error] {}", err),
-                        None,
-                    ),
-                    _ => Err(cpal::BuildStreamError::DeviceNotAvailable),
-                };
-
-                let active_stream = match stream_res {
-                    Ok(s) => {
-                        let _ = s.play();
-                        Some(s)
-                    }
-                    Err(_) => None,
-                };
-                (name, active_stream, sr)
-            } else {
-                ("Ingen mikrofon hittad (standby)".to_string(), None, 44100)
+                if let Ok(s) = build_input_stream(&device, &config, sample_format, cap.stream_shared(), sr) {
+                    let _ = s.play();
+                    cap._stream = Some(s);
+                }
+                cap.device_name = name;
+                cap.sample_rate = sr;
             }
-        } else {
-            ("Ingen mikrofon hittad (standby)".to_string(), None, 44100)
-        };
+        }
+        cap
+    }
 
-        Self {
-            is_recording,
-            is_paused,
-            input_gain,
-            noise_gate_thresh,
-            peak_vu,
-            recorded_samples,
-            live_peaks,
-            analysis_buffer,
-            sample_rate,
-            device_name,
-            _stream: stream,
+    fn stream_shared(&self) -> MicStreamShared {
+        MicStreamShared {
+            is_recording: Arc::clone(&self.is_recording),
+            is_paused: Arc::clone(&self.is_paused),
+            input_gain: Arc::clone(&self.input_gain),
+            noise_gate_thresh: Arc::clone(&self.noise_gate_thresh),
+            peak_vu: Arc::clone(&self.peak_vu),
+            recorded_samples: Arc::clone(&self.recorded_samples),
+            live_peaks: Arc::clone(&self.live_peaks),
+            analysis_buffer: Arc::clone(&self.analysis_buffer),
+            monitor_ring: Arc::clone(&self.monitor_ring),
+            monitor_enabled: Arc::clone(&self.monitor_enabled),
+            autotune_enabled: Arc::clone(&self.autotune_enabled),
+            autotune_strength: Arc::clone(&self.autotune_strength),
+            autotune_speed: Arc::clone(&self.autotune_speed),
+            autotune_root: Arc::clone(&self.autotune_root),
+            autotune_scale: Arc::clone(&self.autotune_scale),
         }
     }
 
@@ -425,67 +500,13 @@ impl LiveMicrophoneCapture {
                 let sr = default_config.sample_rate().0;
                 let sample_format = default_config.sample_format();
                 let config: StreamConfig = default_config.into();
-
-                let is_rec = Arc::clone(&self.is_recording);
-                let is_p = Arc::clone(&self.is_paused);
-                let gain_ref = Arc::clone(&self.input_gain);
-                let gate_ref = Arc::clone(&self.noise_gate_thresh);
-                let vu_ref = Arc::clone(&self.peak_vu);
-                let samples_ref = Arc::clone(&self.recorded_samples);
-                let peaks_ref = Arc::clone(&self.live_peaks);
-                let analysis_ref = Arc::clone(&self.analysis_buffer);
-
-                let num_channels = config.channels as usize;
-
-                let stream_res = match sample_format {
-                    SampleFormat::F32 => device.build_input_stream(
-                        &config,
-                        move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                            let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let block_max = process_mic_block(
-                                data,
-                                num_channels,
-                                gain,
-                                gate,
-                                is_rec.load(Ordering::Relaxed),
-                                is_p.load(Ordering::Relaxed),
-                                &samples_ref,
-                                &peaks_ref,
-                                &analysis_ref,
-                                |s| s,
-                            );
-                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
-                        },
-                        |err| eprintln!("[Sonix Mic Input Error] {}", err),
-                        None,
-                    ),
-                    SampleFormat::I16 => device.build_input_stream(
-                        &config,
-                        move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                            let gain = *gain_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let gate = *gate_ref.lock().unwrap_or_else(|e| e.into_inner());
-                            let block_max = process_mic_block(
-                                data,
-                                num_channels,
-                                gain,
-                                gate,
-                                is_rec.load(Ordering::Relaxed),
-                                is_p.load(Ordering::Relaxed),
-                                &samples_ref,
-                                &peaks_ref,
-                                &analysis_ref,
-                                |s| s as f32 / 32768.0,
-                            );
-                            vu_ref.store(block_max.to_bits(), Ordering::Relaxed);
-                        },
-                        |err| eprintln!("[Sonix Mic Input Error] {}", err),
-                        None,
-                    ),
-                    _ => Err(cpal::BuildStreamError::DeviceNotAvailable),
-                };
-
-                if let Ok(s) = stream_res {
+                if let Ok(s) = build_input_stream(
+                    &device,
+                    &config,
+                    sample_format,
+                    self.stream_shared(),
+                    sr,
+                ) {
                     let _ = s.play();
                     self._stream = Some(s);
                     self.device_name = name;
@@ -508,6 +529,7 @@ pub struct VocalStudioTrack {
     pub recording_mode: RecordingMode,
     pub recording_elapsed_secs: f32,
     pub monitoring_on: bool,
+    pub realtime_autotune: bool,
     pub input_gain: f32,
     pub mic_vu_level: f32,
     pub custom_sample_name_input: String,
@@ -537,6 +559,7 @@ impl Default for VocalStudioTrack {
             recording_mode: RecordingMode::LeadVocals,
             recording_elapsed_secs: 0.0,
             monitoring_on: true,
+            realtime_autotune: false,
             input_gain: settings.input_gain,
             mic_vu_level: 0.0,
             custom_sample_name_input: crate::i18n::t("Mitt Akustiska Ljud 1").to_string(),
@@ -605,6 +628,31 @@ impl VocalStudioTrack {
             if self.is_recording_custom {
                 self.custom_recording_elapsed_secs += 0.033;
             }
+        }
+    }
+
+    /// Pushes the current monitoring / real-time auto-tune state into the live
+    /// input stream so the audio callback picks it up on the next block.
+    pub fn sync_live_effects(
+        &self,
+        autotune_on: bool,
+        strength: f32,
+        speed: f32,
+        root: i32,
+        scale: usize,
+    ) {
+        if let Some(mic) = self.mic_capture.as_ref() {
+            mic.monitor_enabled.store(self.monitoring_on, Ordering::Relaxed);
+            mic.autotune_enabled.store(autotune_on, Ordering::Relaxed);
+            if let Ok(mut s) = mic.autotune_strength.lock() {
+                *s = strength.clamp(0.0, 1.0);
+            }
+            if let Ok(mut s) = mic.autotune_speed.lock() {
+                *s = speed.clamp(0.0, 1.0);
+            }
+            mic.autotune_root
+                .store(root.rem_euclid(12) as u32, Ordering::Relaxed);
+            mic.autotune_scale.store(scale as u32, Ordering::Relaxed);
         }
     }
 

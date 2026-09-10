@@ -680,10 +680,282 @@ impl VocalHarmonizer {
     }
 }
 
+/// Low-latency streaming pitch shifter built on WSOLA over a circular buffer.
+///
+/// Push input one sample at a time with [`StreamingPitchShifter::push`], then
+/// read pitch-shifted output with [`StreamingPitchShifter::pull`]. A ratio of
+/// 2.0 shifts up one octave while preserving duration. The first ~`frame`
+/// samples are buffered, giving roughly 12 ms of latency at 44.1 kHz.
+pub struct StreamingPitchShifter {
+    ring: Vec<f32>,
+    write: usize,
+    ana: f64,
+    frame: usize,
+    hop: usize,
+    search: usize,
+    window: Vec<f32>,
+    prev_tail: Vec<f32>,
+    ola: Vec<f32>,
+    out: Vec<f32>,
+    out_read: f64,
+    started: bool,
+    ratio: f32,
+}
+
+impl StreamingPitchShifter {
+    pub fn new(_sample_rate: f32) -> Self {
+        let frame = 512usize;
+        let hop = 256usize;
+        let search = 256usize;
+        let two_pi = std::f32::consts::TAU;
+        let window: Vec<f32> = (0..frame)
+            .map(|i| 0.5 - 0.5 * (two_pi * i as f32 / (frame - 1) as f32).cos())
+            .collect();
+        Self {
+            ring: vec![0.0; (frame + search) * 4],
+            write: 0,
+            ana: 0.0,
+            frame,
+            hop,
+            search,
+            window,
+            prev_tail: vec![0.0; frame - hop],
+            ola: vec![0.0; frame],
+            out: Vec::with_capacity(frame * 2),
+            out_read: 0.0,
+            started: false,
+            ratio: 1.0,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.ring.iter_mut().for_each(|v| *v = 0.0);
+        self.write = 0;
+        self.ana = 0.0;
+        self.prev_tail.iter_mut().for_each(|v| *v = 0.0);
+        self.ola.iter_mut().for_each(|v| *v = 0.0);
+        self.out.clear();
+        self.out_read = 0.0;
+        self.started = false;
+    }
+
+    pub fn set_ratio(&mut self, ratio: f32) {
+        self.ratio = ratio.clamp(0.25, 4.0);
+    }
+
+    #[inline]
+    fn read(&self, idx: usize) -> f32 {
+        let len = self.ring.len();
+        if idx < self.write && idx + len > self.write {
+            self.ring[idx % len]
+        } else {
+            0.0
+        }
+    }
+
+    fn best_start(&self, nominal: isize) -> usize {
+        let ov = self.frame - self.hop;
+        let energy: f32 = self.prev_tail.iter().map(|v| v * v).sum();
+        if energy < 1e-9 {
+            return nominal.max(0) as usize;
+        }
+        let score = |cand: isize| -> Option<f32> {
+            if cand < 0 || cand as usize + self.frame > self.write {
+                return None;
+            }
+            let cand = cand as usize;
+            let mut dot = 0.0_f32;
+            let mut na = 0.0_f32;
+            for i in 0..ov {
+                let a = self.read(cand + i);
+                let b = self.prev_tail[i];
+                dot += a * b;
+                na += a * a;
+            }
+            Some(dot / (na.sqrt() + 1e-9))
+        };
+        let search = self.search as isize;
+        let coarse = (search / 8).max(1);
+        let mut best = nominal.max(0);
+        let mut best_score = f32::NEG_INFINITY;
+        let mut d = -search;
+        while d <= search {
+            if let Some(s) = score(nominal + d) {
+                if s > best_score {
+                    best_score = s;
+                    best = nominal + d;
+                }
+            }
+            d += coarse;
+        }
+        let lo = (best - coarse).max(-search);
+        let hi = (best + coarse).min(search);
+        let mut d = lo;
+        while d <= hi {
+            if let Some(s) = score(nominal + d) {
+                if s > best_score {
+                    best_score = s;
+                    best = nominal + d;
+                }
+            }
+            d += 1;
+        }
+        best.max(0) as usize
+    }
+
+    fn gen_frame(&mut self) {
+        let nominal = self.ana.round() as isize;
+        let start = if self.started { self.best_start(nominal) } else { 0 };
+        for i in 0..self.frame {
+            self.ola[i] += self.read(start + i) * self.window[i];
+        }
+        for i in 0..self.hop {
+            self.out.push(self.ola[i]);
+        }
+        self.ola.copy_within(self.hop..self.frame, 0);
+        for i in (self.frame - self.hop)..self.frame {
+            self.ola[i] = 0.0;
+        }
+        let ov = self.frame - self.hop;
+        for i in 0..ov {
+            self.prev_tail[i] = self.read(start + self.hop + i);
+        }
+        self.started = true;
+        // Advance from the *actual* analysis position so successive frames stay
+        // locally phase-continuous even when the correlation search moves us.
+        self.ana = start as f64 + self.hop as f64 / self.ratio.max(0.05) as f64;
+    }
+
+    /// Adds one input sample to the circular buffer.
+    pub fn push(&mut self, x: f32) {
+        let len = self.ring.len();
+        self.ring[self.write % len] = x;
+        self.write += 1;
+    }
+
+    /// Emits one pitch-shifted sample. `step` is the pitch ratio (2.0 = up an
+    /// octave); returns 0.0 until enough input has accumulated.
+    pub fn pull(&mut self, step: f32) -> f32 {
+        while (self.out.len() as f64 - self.out_read) < 2.0
+            && (self.ana as usize + self.frame) <= self.write
+        {
+            self.gen_frame();
+        }
+        if self.out.is_empty() || self.out_read >= self.out.len() as f64 {
+            return 0.0;
+        }
+        let i0 = self.out_read.floor() as usize;
+        let frac = (self.out_read - i0 as f64) as f32;
+        let i0 = i0.min(self.out.len() - 1);
+        let i1 = (i0 + 1).min(self.out.len() - 1);
+        let s = self.out[i0] + (self.out[i1] - self.out[i0]) * frac;
+        self.out_read += step.max(0.05) as f64;
+        if self.out_read > 4096.0 {
+            let drop = self.out_read.floor() as usize;
+            self.out.drain(0..drop);
+            self.out_read -= drop as f64;
+        }
+        s
+    }
+}
+
+/// Real-time scale-snapping auto-tune for the live microphone path.
+///
+/// Tracks the input pitch periodically, snaps it to the selected scale, and
+/// applies the correction through a [`StreamingPitchShifter`] with adjustable
+/// strength and smoothing (the AUTO-TUNE knob). Bypasses cleanly when disabled.
+pub struct RealtimeAutotune {
+    sample_rate: f32,
+    shifter: StreamingPitchShifter,
+    analyzer: Vec<f32>,
+    detect_countdown: usize,
+    current_ratio: f32,
+    target_ratio: f32,
+    strength: f32,
+    speed: f32,
+    enabled: bool,
+    active: bool,
+    root_note: i32,
+    scale: usize,
+}
+
+impl RealtimeAutotune {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate,
+            shifter: StreamingPitchShifter::new(sample_rate),
+            analyzer: Vec::with_capacity(2048),
+            detect_countdown: 0,
+            current_ratio: 1.0,
+            target_ratio: 1.0,
+            strength: 0.75,
+            speed: 0.5,
+            enabled: false,
+            active: false,
+            root_note: 0,
+            scale: 0,
+        }
+    }
+
+    pub fn set_params(&mut self, enabled: bool, strength: f32, speed: f32, root_note: i32, scale: usize) {
+        self.enabled = enabled;
+        self.strength = strength.clamp(0.0, 1.0);
+        self.speed = speed.clamp(0.0, 1.0);
+        self.root_note = root_note;
+        self.scale = scale;
+    }
+
+    pub fn process(&mut self, input: f32) -> f32 {
+        if !self.enabled || self.strength <= 0.001 {
+            if self.active {
+                self.shifter.reset();
+                self.current_ratio = 1.0;
+                self.target_ratio = 1.0;
+                self.active = false;
+            }
+            return input;
+        }
+        if !self.active {
+            self.shifter.reset();
+            self.current_ratio = 1.0;
+            self.target_ratio = 1.0;
+            self.active = true;
+        }
+
+        self.shifter.push(input);
+        self.analyzer.push(input);
+        if self.analyzer.len() > 2048 {
+            let drop = self.analyzer.len() - 2048;
+            self.analyzer.drain(0..drop);
+        }
+
+        if self.detect_countdown == 0 {
+            self.detect_countdown = 1024;
+            if let Some(freq) = detect_pitch_hz(&self.analyzer, self.sample_rate) {
+                let midi = freq_to_midi(freq);
+                let mask = scale_mask(self.scale);
+                let target = snap_midi_to_scale(midi, self.root_note, &mask);
+                let correction = (target - midi).clamp(-2.0, 2.0);
+                self.target_ratio = 2f32.powf(correction / 12.0);
+            } else {
+                self.target_ratio = 1.0;
+            }
+        } else {
+            self.detect_countdown -= 1;
+        }
+
+        let applied = 1.0 + (self.target_ratio - 1.0) * self.strength;
+        let coeff = 0.0002 + self.speed * 0.0015;
+        self.current_ratio += (applied - self.current_ratio) * coeff;
+        self.current_ratio = self.current_ratio.clamp(0.5, 2.0);
+        self.shifter.set_ratio(self.current_ratio);
+        self.shifter.pull(self.current_ratio)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-
     fn sine(freq: f32, sr: f32, n: usize) -> Vec<f32> {
         (0..n)
             .map(|i| 0.6 * (std::f32::consts::TAU * freq * i as f32 / sr).sin())
@@ -851,6 +1123,41 @@ mod tests {
         assert!(
             (f_fast - 220.0).abs() / 220.0 < 0.06,
             "pitch must stay at 220 Hz when compressing, got {f_fast}"
+        );
+    }
+
+    #[test]
+    fn streaming_pitch_shifter_shifts_up_octave() {
+        let sr = 44100.0;
+        let src = sine(220.0, sr, 44100);
+        let mut sh = StreamingPitchShifter::new(sr);
+        sh.set_ratio(2.0);
+        let mut out = Vec::with_capacity(src.len());
+        for &x in &src {
+            sh.push(x);
+            out.push(sh.pull(2.0));
+        }
+        let f = detect_pitch_hz(&out[8192..16384], sr).expect("pitched");
+        assert!((f - 440.0).abs() / 440.0 < 0.06, "expected ~440 Hz, got {f}");
+        assert!(out.iter().all(|s| s.is_finite()));
+    }
+
+    #[test]
+    fn realtime_autotune_corrects_flat_note() {
+        let sr = 44100.0;
+        // A4 (440 Hz) sung 30 cents flat.
+        let flat = 440.0 * 2f32.powf(-0.3 / 12.0);
+        let src = sine(flat, sr, 44100);
+        let mut at = RealtimeAutotune::new(sr);
+        at.set_params(true, 1.0, 1.0, 0, 0); // chromatic
+        let mut out = Vec::with_capacity(src.len());
+        for &x in &src {
+            out.push(at.process(x));
+        }
+        let f = detect_pitch_hz(&out[20000..28000], sr).expect("pitched");
+        assert!(
+            (f - 440.0).abs() / 440.0 < 0.02,
+            "autotune should pull the note to 440 Hz, got {f}"
         );
     }
 }

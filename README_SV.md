@@ -111,7 +111,7 @@ update-desktop-database ~/.local/share/applications
 * **Magnetisk Loop-Snap (🧲):** Låser mot multiplar av hela looplängder (`1x`–`8x`) och rutnät (`1/16`, `Beat`, `Bar`). Håll `Alt` för fri precision.
 * **Nedre Region-Inspektor:** Grov/fin nudge (`±1 takt`, `±0.1s`), starttrim-offset, gain, fade in/out, reverse och loop-multiplikator.
 * **Verktygspalett:** Välj (⇱), Rita (✎), Klipp (✂), Radera (🗑), Muta (🔇); snabbklipp vid spelhuvudet (Ctrl+B).
-* **Direkt mikrofoninspelning i spår:** Armeringsknapp (`⏺`), ingångsmonitorering och realtidsvågformer.
+* **Direkt mikrofoninspelning i spår:** Armeringsknapp (`⏺`), riktig noll-latens direktlyssning och realtidsvågformer.
 
 ### 2. 🥁 Sonix Channel Rack (16-Stegs Sequencer) — ✅ Äkta
 * **Kanalstrippar:** Kick, Snare, Closed/Open Hat, Synth Lead, Sub Bass och egna kanaler.
@@ -135,13 +135,14 @@ update-desktop-database ~/.local/share/applications
 * ✅ **Per röst:** Varje ton har eget filtertillstånd och eget filter-envelope (ratten **ENV ±oct** sveper cutoff per ton); envelope-parametrarna är patch-globala så rattar hörs live.
 * 🟡 **Not:** Filtret är ett 2-poligt (12 dB) state-variable lågpass — inte ett 24 dB Moog-ladder.
 
-### 6. 🎙 Sångstudio & Harmonizer — ✅ Äkta (offline-bearbetning)
+### 6. 🎙 Sångstudio & Harmonizer — ✅ Äkta
 * **Take Lanes:** Flera tagningar med icke-destruktiv comping; vågform crop/slice/normalize.
 * **Pitch-editor:** Dragbara not-blobs (Melodyne-liknande) och skalanpassad korrigering.
 * **Autotune & 4-stämmig Harmonizer** med nivå och formant per stämma; stämmorna använder **riktig formantbevarning** (STFT + cepstral envelop-korrigering) så pitch-shift inte längre låter "chipmunk".
+* **Realtids-Auto-Tune & direktlyssning:** Kryssrutan 🎙️ Realtids-Auto-Tune korrigerar mikrofonen i ljudtråden (rullande pitchdetektering + WSOLA-streaming-shifter) och hörs via riktig noll-latens direktlyssning (ring-buffert → master-bussen). Styrka = AUTO-TUNE-ratten. Inspelning sker torrt.
 * **Egen Sampler:** Spela in akustiska one-shots via mikrofon och mappa till instrument/trummor.
 * **Hårdvaru-mikpanel:** Enhetsväljare, hårdvarugain (+0 till +24 dB), brusgrind, återkopplingsdämpning och röstpresets.
-* 🟡 **Not:** Tuning och harmonier körs **offline** på den inspelade bufferten (inte i realtidstråden). Pitchdetektering är autokorrelationsbaserad.
+* 🟡 **Not:** Den grafiska pitch-editorn och harmonierna körs **offline** på den inspelade bufferten; realtids-autotunen och direktlyssningen är äkta men harmonistämmorna renderas fortfarande offline. Pitchdetektering är autokorrelationsbaserad.
 
 ### 7. 🎛 Kreativa Generatorer — ✅ Äkta
 * **Smart Ackord- & Harmonimatris:** 12 skalor, romerska siffror, voicings, strum-humanisering, arpeggiator → Piano Roll.
@@ -199,7 +200,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Export (WAV/FLAC i appen, MP3/OGG/AAC via ffmpeg) | ✅ Äkta | — |
 | Modulär Patcher | ✅ Äkta | Topologisk sortering + etiketter matchar DSP:n |
 | Stem-separation | 🟡 Delvis | Integrera en riktig neural modell (t.ex. HTDemucs via ONNX) |
-| Vocal tuning | 🟡 Delvis | Riktig formantbevarning ✅; realtids-autotune (ljudtråden) saknas ännu |
+| Vocal tuning | ✅ Äkta | Realtids-autotune i ljudtråden + direktlyssning; harmonier/formantbevaring körs offline |
 | Time-stretch | ✅ Riktig | WSOLA (pitch-bevarande) i Sångstudiens provspelning och Stem Separators SPEED-ratt |
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |

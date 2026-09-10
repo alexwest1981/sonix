@@ -113,7 +113,7 @@ update-desktop-database ~/.local/share/applications
 * **Magnetic Loop-Snap (🧲):** Locks onto exact whole-loop multiples (`1x`, `2x`, `3x`, `4x`, `8x`) and grid divisions (`1/16`, `Beat`, `Bar`). Hold `Alt` for free precision.
 * **Bottom Region Inspector:** Coarse/fine nudge (`±1 bar`, `±0.1s`), start-trim offset, gain, fade in/out, reverse playback, and loop multiplication.
 * **Tool Palette:** Select (⇱), Paint (✎), Slice (✂), Erase (🗑), Mute (🔇); quick-cut at playhead (Ctrl+B).
-* **Live In-Track Microphone Recording:** Arm buttons (`⏺`), input monitoring and real-time waveforms on audio tracks.
+* **Live In-Track Microphone Recording:** Arm buttons (`⏺`), real zero-latency direct monitoring and real-time waveforms on audio tracks.
 
 ### 2. 🥁 Sonix Channel Rack (16-Step Sequencer) — ✅ Real
 * **Channel Strips:** Kick, Snare, Closed/Open Hat, Synth Lead, Sub Bass and custom user channels.
@@ -137,13 +137,14 @@ update-desktop-database ~/.local/share/applications
 * ✅ **Per-voice:** Each note has its own filter state and filter envelope (the **ENV ±oct** knob sweeps the cutoff per note); envelope parameters are patch-global so knobs are heard live.
 * 🟡 **Note:** The filter is a 2-pole (12 dB) state-variable low-pass — not a 24 dB Moog ladder.
 
-### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real (offline processing)
+### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real
 * **Take Lanes:** Multiple takes with non-destructive comping; waveform crop/slice/normalize.
 * **Pitch Editor:** Draggable note blobs (Melodyne-style) and scale-aware correction.
 * **Autotune & 4-Part Harmonizer** with per-voice level and formant controls; harmony voices use **real formant preservation** (STFT + cepstral envelope correction) so pitch shifts no longer sound "chipmunk".
+* **Real-time Auto-Tune & direct monitoring:** The 🎙️ Real-time Auto-Tune checkbox corrects the microphone in the audio thread (rolling pitch detection + WSOLA streaming shifter) and is heard through true zero-latency direct monitoring (ring buffer → master bus). Strength = the AUTO-TUNE knob. Recording stays dry.
 * **Custom Sampler:** Record acoustic one-shots via microphone and map them to instruments/drums.
 * **Hardware Mic Panel:** Input device selector, hardware gain boost (+0 to +24 dB), noise gate, feedback suppression and vocal character presets.
-* 🟡 **Note:** Tuning and harmony run **offline** on the recorded buffer (not in the realtime audio thread). Pitch detection is autocorrelation-based.
+* 🟡 **Note:** The graphical pitch editor and the harmony voices still run **offline** on the recorded buffer; the real-time auto-tune and direct monitoring are genuine. Pitch detection is autocorrelation-based.
 
 ### 7. 🎛 Creative Generators — ✅ Real
 * **Smart Chord & Harmony Matrix:** 12 scales, Roman-numeral progressions, voicings, strum humanizer, arpeggiator → Piano Roll.
@@ -201,7 +202,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Export (WAV/FLAC in-app, MP3/OGG/AAC via ffmpeg) | ✅ Real | — |
 | Modular Patcher | ✅ Real | Topological sort + labels match the DSP |
 | Stem separation | 🟡 Partial | Integrate a real neural model (e.g. HTDemucs via ONNX) |
-| Vocal tuning | 🟡 Partial | True formant preservation ✅; realtime (audio-thread) autotune still missing |
+| Vocal tuning | ✅ Real | Real-time autotune in the audio thread + direct monitoring; harmonies/formant preservation run offline |
 | Time-stretch | ✅ Real | WSOLA (pitch-preserving) in the Vocal Studio audition and the Stem Separator SPEED control |
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |

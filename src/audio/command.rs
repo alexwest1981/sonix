@@ -67,7 +67,7 @@ impl Preset {
     }
 }
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -164,6 +164,12 @@ pub enum AudioCommand {
         loop_playback: bool,
     },
     StopAudition,
+    /// Registers the microphone's post-auto-tune mono monitor buffer. The
+    /// output engine drains it and mixes it into the master bus for
+    /// zero-latency direct monitoring. Sent again after every reconfigure.
+    SetMonitorRing {
+        ring: Arc<Mutex<Vec<f32>>>,
+    },
     SetAuditionParams {
         volume: f32,
         pitch_ratio: f32,
