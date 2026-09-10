@@ -2,7 +2,7 @@ mod audio;
 mod i18n;
 mod ui;
 
-use audio::AudioEngine;
+use audio::{AudioEngine, AudioSettings};
 use ui::SonixApp;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -24,10 +24,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=========================================================");
     println!("🔊 Starting PipeWire / ALSA audio engine...");
 
-    let engine = AudioEngine::new(512)?;
+    let audio_settings = AudioSettings::load();
+    let engine = AudioEngine::new_with(
+        512,
+        audio_settings.sample_rate,
+        audio_settings.buffer_frames,
+    )?;
 
     println!("  • Audio device: {}", engine.device_name);
     println!("  • Sample rate:       {} Hz", engine.sample_rate);
+    if let Some(frames) = engine.buffer_frames {
+        println!("  • Buffer size:       {} frames", frames);
+    }
     println!("  • Channels:    Stereo");
     println!("🚀 Starting graphical interface (GUI)...");
 

@@ -181,7 +181,7 @@ update-desktop-database ~/.local/share/applications
 ### 14. 🌐 Localisation & System — ✅ Real
 * **7 interface languages** (English, Svenska, Dansk, Norsk, Deutsch, Español, Français), switchable live and remembered between sessions.
 * **cpal/ALSA realtime engine** with a lock-free command ring and a crash-safe audio callback.
-* 🟡 **Note:** The sample-rate and buffer-size selectors in Audio Settings are stored but not yet applied to the stream (the device default is used).
+* **Audio Settings** (Ctrl+P) apply the chosen sample rate and buffer size by rebuilding the output stream live; the choice is persisted to `~/.config/sonix/audio.json` and restored on launch. The current host/device and the real active stream config are shown.
 
 ---
 
@@ -202,7 +202,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Stem separation | 🟡 Partial | Integrate a real neural model (e.g. HTDemucs via ONNX) |
 | Vocal tuning | 🟡 Partial | Realtime (audio-thread) autotune + true formant preservation |
 | Time-stretch | 🟡 Partial | Pitch-preserving time-stretch (currently varispeed) |
-| Audio Settings | 🟡 Partial | Apply selected sample rate/buffer to the stream |
+| Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
 | `.fst` "Apply Preset" button | 🔜 Missing | Button is a no-op; needs `.fst` decoding |
 | Plugin hosting (VST3/CLAP/LV2/VST2) | 🔜 Missing | Full host required — see below |
@@ -354,7 +354,7 @@ Modal for quickly instantiating Vocals/Mic, Sample Audio, 808 Drums, Synth Lead,
 ### 4. ⚙️ Dialogs, Modals & System Configuration
 
 #### 21. ⚙ Audio & Driver Settings
-Configure the audio interface and input device, and choose sample rates/buffer sizes (the device default is used until selection is applied to the stream).
+Shows the real cpal host and output device, the active stream (sample rate · buffer · channels), and lets you apply a new sample rate/buffer by rebuilding the stream live (persisted to `~/.config/sonix/audio.json`).
 ![Audio Settings](screenshots/14_dialog_ljudinstallningar.png)
 
 #### 22. 🤖 AI Configuration & API Keys

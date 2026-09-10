@@ -179,7 +179,7 @@ update-desktop-database ~/.local/share/applications
 ### 14. 🌐 Lokalisering & System — ✅ Äkta
 * **7 gränssnittsspråk** (English, Svenska, Dansk, Norsk, Deutsch, Español, Français), växlingsbara live och ihågkomna mellan sessioner.
 * **cpal/ALSA-realtidsmotor** med låsningsfri kommandoring och en kraschsäker ljudcallback.
-* 🟡 **Not:** Reglagen för samplingsfrekvens och buffertstorlek i Ljudinställningar sparas men appliceras ännu inte på strömmen (enhetens standard används).
+* **Ljudinställningar** (Ctrl+P) applicerar vald samplingsfrekvens och buffertstorlek genom att bygga om ljudströmmen live; valet sparas till `~/.config/sonix/audio.json` och återställs vid start. Aktuell värd/enhet och den verkliga strömkonfigurationen visas.
 
 ---
 
@@ -200,7 +200,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Stem-separation | 🟡 Delvis | Integrera en riktig neural modell (t.ex. HTDemucs via ONNX) |
 | Vocal tuning | 🟡 Delvis | Realtids-autotune (ljudtråden) + riktig formantbevarande |
 | Time-stretch | 🟡 Delvis | Pitch-bevarande time-stretch (nuvarande är varispeed) |
-| Ljudinställningar | 🟡 Delvis | Applicera vald samplingsfrekvens/buffert på strömmen |
+| Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
 | `.fst`-knappen "Apply Preset" | 🔜 Saknas | Knappen är en no-op; kräver `.fst`-avkodning |
 | Plugin-hosting (VST3/CLAP/LV2/VST2) | 🔜 Saknas | Kräver en komplett värd — se nedan |
@@ -352,7 +352,7 @@ Modal för att snabbt skapa Sång/Mikrofon-, Ljudsample-, 808 Trum-, Syntlead-, 
 ### 4. ⚙️ Dialogrutor, Modaler & Konfiguration
 
 #### 21. ⚙ Ljud- & Systeminställningar
-Konfiguration av ljudkort, samplingsfrekvens, buffertstorlek och PipeWire/ALSA-drivrutin (valen sparas; enhetens standard används för närvarande).
+Visar verklig cpal-värd och utgångsenhet, den aktiva strömmen (samplingsfrekvens · buffert · kanaler) och låter dig applicera en ny samplingsfrekvens/buffert genom att bygga om strömmen live (sparas till `~/.config/sonix/audio.json`).
 ![Ljudinställningar](screenshots/14_dialog_ljudinstallningar.png)
 
 #### 22. 🤖 AI-Konfiguration & API-nycklar

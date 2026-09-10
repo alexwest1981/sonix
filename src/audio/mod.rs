@@ -26,7 +26,7 @@ pub use drum::DrumType;
 #[allow(unused_imports)]
 pub use effects::{DelayParams, ReverbParams};
 #[allow(unused_imports)]
-pub use engine::AudioEngine;
+pub use engine::{AudioEngine, AudioSettings};
 #[allow(unused_imports)]
 pub use envelope::AdsrParams;
 #[allow(unused_imports)]

@@ -2,7 +2,7 @@
 
 > Levande utvecklingsplan. **Bocka av `[x]` allt eftersom.** Uppdatera procenten i [Framsteg](#-framsteg-i-siffror) när något blir klart.
 >
-> Läs tillsammans med **[README.md](README.md)** / **[README_SV.md](README_SV.md)** (funktionslista & ärlig status) och **[tools.md](tools.md)** (detaljerad historik P1–P25).
+> Läs tillsammans med **[README.md](README.md)** / **[README_SV.md](README_SV.md)** (funktionslista & ärlig status) och **[tools.md](tools.md)** (detaljerad historik P1–P26).
 
 **Teckenförklaring**
 
@@ -17,10 +17,10 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~91 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~93 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[█████████████████████████████████░░░]  91 %
+[██████████████████████████████████░░]  93 %
 ```
 
 | Område | Klart | Kvar | Procent |
@@ -33,7 +33,7 @@
 | Plugin-hantering | 2 | 6 | **25 %** |
 | Export & projekt-I/O | 4 | 1 | **80 %** |
 | Hårdvara (MCU/OSC) | 2 | 0 | **100 %** |
-| Lokalisering & system (7 språk, motor) | 2 | 1 | **67 %** |
+| Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
 > **De två största kvarvarande bitarna:** **Plugin-hosting** (25 %, ej påbörjad värd) och **neural stem-separation** (DSP-approximation idag).
@@ -76,11 +76,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** Ingen död konfig-yta finns kvar. ✅
   - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
 
-- [ ] **1.4 Applicera samplingsfrekvens & buffertstorlek** — *M*
-  - **Problem:** `audio_sample_rate_idx`/`audio_buffer_size_idx` sparas men används inte; enhetens standard gäller.
-  - **Gör:** Bygg om cpal-strömmen med valt `SampleRate` + `BufferSize` och visa verklig status; hantera fel snyggt.
-  - **Klart när:** Val i Ljudinställningar påverkar faktiskt strömmen.
-  - **Filer:** `src/audio/engine.rs`, `src/ui/app.rs`
+- [x] **1.4 Applicera samplingsfrekvens & buffertstorlek** — *M* ✅
+  - **Löst:** `AudioEngine::new_with()` tar emot sparade preferenser och `AudioEngine::reconfigure()` bygger om cpal-strömmen live med valt `SampleRate` + `BufferSize` (faller tillbaka på enhetens standard om kombinationen inte stöds). Modalen visar verklig värd/enhet/aktiv ström, applicerar valet och sparar till `~/.config/sonix/audio.json`; efter omstart återsänds synth-/mixer-/stem-state (`resync_engine_after_reconfigure`). Tog även bort den döda "limiter"-kryssrutan och den kosmetiska drivrutinsväljaren.
+  - **Klart när:** Val i Ljudinställningar påverkar faktiskt strömmen. ✅
+  - **Filer:** `src/audio/engine.rs`, `src/audio/mod.rs`, `src/main.rs`, `src/ui/app.rs`, `src/i18n.rs`
 
 - [ ] **1.5 `.fst` "Apply Preset"** — *M*
   - **Alternativ A:** Avkoda `.fst` (binärt FL-format) och applicera.
@@ -173,7 +172,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 1.4 — Applicera samplingsfrekvens & buffertstorlek** (första ovalda punkten).
+**Fas 1.5 — `.fst` "Apply Preset"** (första ovalda punkten).
 
 ## 🛠️ Så här håller vi roadmapen levande
 

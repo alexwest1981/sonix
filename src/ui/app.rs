@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::audio::{
-    AdsrParams, AudioCommand, AudioEngine,
+    AdsrParams, AudioCommand, AudioEngine, AudioSettings,
     DelayParams, DrumType, FilterParams, Preset, ReverbParams,
     StemRegionPlayback, TrackEqSettings, Waveform,
 };
@@ -663,10 +663,8 @@ pub struct SonixApp {
     pub project_file_path: Option<String>,
     pub new_project_name_input: String,
     // Audio / MIDI Configuration
-    pub audio_driver_idx: usize,
     pub audio_sample_rate_idx: usize,
     pub audio_buffer_size_idx: usize,
-    pub audio_limiter_enabled: bool,
     // Automated Screenshot System
     pub screenshot_queue: Vec<(ScreenshotTarget, std::path::PathBuf)>,
     pub screenshot_state: ScreenshotState,
@@ -989,6 +987,19 @@ impl SonixApp {
         let initial_channels = channels;
         let initial_grid = [[false; 16]; 24];
 
+        // Reflect the real stream configuration in the settings UI.
+        let initial_rate_idx = match engine.sample_rate {
+            44100 => 0,
+            96000 => 2,
+            _ => 1,
+        };
+        let initial_buffer_idx = match engine.buffer_frames {
+            Some(128) => 0,
+            Some(512) => 2,
+            Some(1024) => 3,
+            _ => 1,
+        };
+
         let mut app = Self {
             engine,
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
@@ -1175,10 +1186,8 @@ impl SonixApp {
             project_file_path: None,
             new_project_name_input: crate::i18n::t("Mitt Beat").to_string(),
             // Audio / MIDI Configuration
-            audio_driver_idx: 0,
-            audio_sample_rate_idx: 1,
-            audio_buffer_size_idx: 1,
-            audio_limiter_enabled: true,
+            audio_sample_rate_idx: initial_rate_idx,
+            audio_buffer_size_idx: initial_buffer_idx,
             // Automated Screenshot System
             screenshot_queue: Vec::new(),
             screenshot_state: ScreenshotState::Idle,
@@ -3389,6 +3398,29 @@ impl SonixApp {
         if self.last_patcher_spec.as_ref() != Some(&spec) {
             self.last_patcher_spec = Some(spec.clone());
             let _ = self.engine.send_command(AudioCommand::SetPatcherGraph(spec));
+        }
+    }
+
+    /// Re-sends all persistent synth/mixer state after the output stream has
+    /// been rebuilt (e.g. a sample-rate change), because `reconfigure()`
+    /// recreates the `SynthEngine` from scratch.
+    fn resync_engine_after_reconfigure(&mut self) {
+        let _ = self.engine.send_command(AudioCommand::SetWaveform(self.waveform));
+        let _ = self.engine.send_command(AudioCommand::SetAdsr(self.adsr));
+        let _ = self.engine.send_command(AudioCommand::SetFilter(self.filter));
+        let _ = self.engine.send_command(AudioCommand::SetDelay(self.delay));
+        let _ = self.engine.send_command(AudioCommand::SetReverb(self.reverb));
+        let _ = self.engine.send_command(AudioCommand::SetDrive(self.drive));
+        let _ = self.engine.send_command(AudioCommand::SetMasterVolume(self.master_volume));
+        let _ = self.engine.send_command(AudioCommand::SetRemixFx { mode: 0, bpm: self.bpm });
+        self.last_patcher_spec = None;
+        self.sync_patcher_graph();
+        let _ = self.engine.send_command(AudioCommand::SetPatcherEnabled(self.patcher_enabled));
+        self.is_playing = false;
+        if self.view_mode == ViewMode::StemSeparator && !self.stem_project.stem_audio.is_empty() {
+            self.load_separated_stems_to_engine();
+        } else {
+            self.sync_all_stems_to_engine();
         }
     }
 }
@@ -10473,16 +10505,16 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             .show(ctx, |ui| {
                 ui.group(|ui| {
                     ui.label(egui::RichText::new(crate::i18n::t("Ljudmotor & Drivrutiner")).strong().color(Theme::FL_CYAN));
-                    ui.horizontal(|ui| {
-                        ui.label(crate::i18n::t("Drivrutin:"));
-                        let drivers = ["PipeWire (Rekommenderad)", "ALSA Direct", "JACK Audio Server"];
-                        for (i, drv) in drivers.iter().enumerate() {
-                            if ui.selectable_label(self.audio_driver_idx == i, *drv).clicked() {
-                                self.audio_driver_idx = i;
-                            }
-                        }
-                    });
-                    ui.label(crate::i18n::t("Status: 🟢 Ansluten och aktiv (Noll latens)"));
+                    ui.label(crate::tstatus!("Värd: {} · Enhet: {}", self.engine.host_name, self.engine.device_name));
+                    let buffer_txt = self.engine.buffer_frames
+                        .map(|f| format!("{f} frames"))
+                        .unwrap_or_else(|| crate::i18n::t("enhetens standard").to_string());
+                    ui.label(egui::RichText::new(crate::tstatus!(
+                        "Aktiv ström: {} Hz · {} · {} kanaler",
+                        self.engine.sample_rate,
+                        buffer_txt,
+                        self.engine.channels
+                    )).size(10.5).color(Theme::TEXT_MUTED));
 
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
@@ -10504,16 +10536,44 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             }
                         }
                     });
-                });
 
-                ui.add_space(6.0);
-                ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Master Säkerhet & Limiter")).strong().color(Theme::FL_ORANGE));
-                    ui.checkbox(&mut self.audio_limiter_enabled, "Aktivera Soft-Clip Brickwall Limiter vid 0.0 dBFS");
+                    ui.add_space(6.0);
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Tillämpa på ljudströmmen")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                        let rates = [44100_u32, 48000, 96000];
+                        let buffers = [128_u32, 256, 512, 1024];
+                        let requested_rate = rates[self.audio_sample_rate_idx.min(rates.len() - 1)];
+                        let requested_buffer = buffers[self.audio_buffer_size_idx.min(buffers.len() - 1)];
+                        match self.engine.reconfigure(Some(requested_rate), Some(requested_buffer)) {
+                            Ok(()) => {
+                                let actual_rate = self.engine.sample_rate;
+                                let actual_buffer = self.engine.buffer_frames;
+                                let settings = AudioSettings {
+                                    sample_rate: Some(actual_rate),
+                                    buffer_frames: actual_buffer,
+                                };
+                                let save_note = match settings.save() {
+                                    Ok(_) => String::new(),
+                                    Err(e) => crate::tstatus!(" (kunde inte spara: {})", e),
+                                };
+                                self.audio_sample_rate_idx = match actual_rate { 44100 => 0, 96000 => 2, _ => 1 };
+                                self.audio_buffer_size_idx = match actual_buffer { Some(128) => 0, Some(512) => 2, Some(1024) => 3, _ => 1 };
+                                self.resync_engine_after_reconfigure();
+                                let buf_txt = actual_buffer.map(|f| format!("{f} frames")).unwrap_or_else(|| crate::i18n::t("enhetens standard").to_string());
+                                self.status_message = crate::tstatus!(
+                                    "🔁 Ljudströmmen omstartad: {} Hz · {}{}",
+                                    actual_rate, buf_txt, save_note
+                                );
+                                close = true;
+                            }
+                            Err(e) => {
+                                self.status_message = crate::tstatus!("⚠ Kunde inte byta ljudkonfiguration: {}", e);
+                            }
+                        }
+                    }
                 });
 
                 ui.add_space(10.0);
-                if ui.button(crate::i18n::t("OK")).clicked() {
+                if ui.button(crate::i18n::t("Stäng")).clicked() {
                     close = true;
                 }
             });

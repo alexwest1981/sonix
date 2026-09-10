@@ -251,8 +251,8 @@ När din produktion är klar exporterar du enkelt till högkvalitativt ljud:
 ## 12. Ljudinställningar (PipeWire/ALSA/JACK) & Hårdvarukontrollers (MCU/OSC)
 
 ### Ljudmotor & Drivrutiner:
-* **PipeWire / ALSA / JACK**: Sonix kommunicerar direkt med Linux professionella ljudserver med ultralåg latens.
-* **Buffertstorlek**: Justerbar mellan 128, 256, 512 och 1024 samples. Använd 128/256 för realtidsspelning via MIDI, och 512/1024 för tunga mixningsprojekt.
+* **cpal + systemets standardvärd**: Sonix öppnar standardutgången via cpal (på Linux ALSA, vilket PipeWire/JACK exponerar). Aktuell värd och enhet visas i Ljudinställningar.
+* **Samplingsfrekvens & buffertstorlek**: Välj 44.1/48/96 kHz och 128/256/512/1024 samples. Valet **appliceras direkt** genom att ljudströmmen byggs om live och sparas till `~/.config/sonix/audio.json` (återställs vid start). Använd 128/256 för realtidsspelning och 512/1024 för tunga mixningsprojekt.
 * **Fönsterhantering & Wayland**: Sonix är helt anpassad för Hyprland, GNOME Wayland och KDE. Om fönstret täcks eller minimeras dras omritningshastigheten ned mjukt för att spara ström, samtidigt som ljudet fortsätter spela utan minsta hack.
 
 ### Hårdvarukontrollers:

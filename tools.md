@@ -186,6 +186,14 @@ Den gamla "AI Provider Inställningar"-modalen redigerade döda `ai_provider_*`-
 - **i18n:** Nya nycklar i `tr_en`; menyvalet döpt till "⚙ AI-inställningar & API-nycklar...".
 - `cargo test --release` = **61 tester**, 0 varningar.
 
+### P26 — Samplingsfrekvens & buffert appliceras på ljudströmmen · ✅ KLAR
+Ljudinställningarnas reglage sparades men applicerades aldrig; enhetens standard användes.
+- **Motor:** `AudioEngine::new_with()` tar emot sparade preferenser; `AudioEngine::reconfigure()` bygger om cpal-strömmen live med valt `SampleRate` + `BufferSize` och faller tillbaka på enhetens standard om kombinationen inte stöds. `apply_preferences()` kontrollerar stöd via `supported_output_configs()`.
+- **Persistence:** `AudioSettings` (sample_rate, buffer_frames) sparas/laddas från `~/.config/sonix/audio.json`; main använder `new_with` vid start.
+- **UI:** Modalen visar verklig cpal-värd/enhet och den aktiva strömmen; "🔁 Tillämpa på ljudströmmen" bygger om, sparar och återsänder all persistent synth-/mixer-/stem-state (`resync_engine_after_reconfigure`).
+- **Borttaget (dött):** `audio_driver_idx` (kosmetisk drivrutinsväljare) och `audio_limiter_enabled` (kryssruta utan effekt; riktiga limitern sitter i FX-racket).
+- `cargo test --release` = **61 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning
