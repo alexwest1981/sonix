@@ -196,12 +196,12 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | AI (LLM + ljud-API:er) | ✅ Äkta | Lokal fallback är regelbaserad, inte en neural modell |
 | Hårdvara MIDI / OSC | ✅ Äkta | — |
 | Export (WAV/FLAC i appen, MP3/OGG/AAC via ffmpeg) | ✅ Äkta | — |
-| Modulär Patcher | 🟡 Delvis | Lägg till topologisk sortering; matcha etiketter mot DSP |
+| Modulär Patcher | ✅ Äkta | Topologisk sortering + etiketter matchar DSP:n |
 | Stem-separation | 🟡 Delvis | Integrera en riktig neural modell (t.ex. HTDemucs via ONNX) |
 | Vocal tuning | 🟡 Delvis | Realtids-autotune (ljudtråden) + riktig formantbevarande |
 | Time-stretch | 🟡 Delvis | Pitch-bevarande time-stretch (nuvarande är varispeed) |
 | Ljudinställningar | 🟡 Delvis | Applicera vald samplingsfrekvens/buffert på strömmen |
-| Legacy-modal "AI Provider Inställningar" | 🟡 Delvis | Reglagen sparas inte — koppla till config eller ta bort |
+| Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
 | `.fst`-knappen "Apply Preset" | 🔜 Saknas | Knappen är en no-op; kräver `.fst`-avkodning |
 | Plugin-hosting (VST3/CLAP/LV2/VST2) | 🔜 Saknas | Kräver en komplett värd — se nedan |
 

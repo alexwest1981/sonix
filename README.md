@@ -198,12 +198,12 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | AI (LLM + audio APIs) | ✅ Real | Local fallback is rule-based, not a neural model |
 | Hardware MIDI / OSC | ✅ Real | — |
 | Export (WAV/FLAC in-app, MP3/OGG/AAC via ffmpeg) | ✅ Real | — |
-| Modular Patcher | 🟡 Partial | Add topological sort; align labels with DSP |
+| Modular Patcher | ✅ Real | Topological sort + labels match the DSP |
 | Stem separation | 🟡 Partial | Integrate a real neural model (e.g. HTDemucs via ONNX) |
 | Vocal tuning | 🟡 Partial | Realtime (audio-thread) autotune + true formant preservation |
 | Time-stretch | 🟡 Partial | Pitch-preserving time-stretch (currently varispeed) |
 | Audio Settings | 🟡 Partial | Apply selected sample rate/buffer to the stream |
-| Legacy "AI Provider Settings" modal | 🟡 Partial | Controls are not persisted — wire to config or remove |
+| Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
 | `.fst` "Apply Preset" button | 🔜 Missing | Button is a no-op; needs `.fst` decoding |
 | Plugin hosting (VST3/CLAP/LV2/VST2) | 🔜 Missing | Full host required — see below |
 

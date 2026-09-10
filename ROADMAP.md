@@ -2,7 +2,7 @@
 
 > Levande utvecklingsplan. **Bocka av `[x]` allt eftersom.** Uppdatera procenten i [Framsteg](#-framsteg-i-siffror) när något blir klart.
 >
-> Läs tillsammans med **[README.md](README.md)** / **[README_SV.md](README_SV.md)** (funktionslista & ärlig status) och **[tools.md](tools.md)** (detaljerad historik P1–P22).
+> Läs tillsammans med **[README.md](README.md)** / **[README_SV.md](README_SV.md)** (funktionslista & ärlig status) och **[tools.md](tools.md)** (detaljerad historik P1–P25).
 
 **Teckenförklaring**
 
@@ -17,10 +17,10 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~90 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~91 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[█████████████████████████████████░░░]  90 %
+[█████████████████████████████████░░░]  91 %
 ```
 
 | Område | Klart | Kvar | Procent |
@@ -71,11 +71,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** Varje nod-etikett beskriver exakt vad koden gör. ✅
   - **Filer:** `src/audio/patcher.rs`, `src/ui/patcher_view.rs`, `src/ui/fx_rack_modal.rs`, `src/ui/app.rs`, `src/i18n.rs`, `MANUAL.md`
 
-- [ ] **1.3 Legacy "AI Provider Inställningar"-modal** — *S*
-  - **Problem:** Fälten (`ai_provider_*`) läses aldrig och sparas inte.
-  - **Gör:** Antingen koppla till `AiConfig` (`~/.config/sonix/ai.json`) **eller** ta bort modalen och hänvisa till AI-assistentens konfig.
-  - **Klart när:** Ingen död konfig-yta finns kvar.
-  - **Filer:** `src/ui/app.rs` (modal ~`:10370`)
+- [x] **1.3 Legacy "AI Provider Inställningar"-modal** — *S* ✅
+  - **Löst:** Modalen redigerar nu den **riktiga** `AiConfig` (samma som AI Music Studio) och sparar till `~/.config/sonix/ai.json` (chmod 0600). Alla döda `ai_provider_*`-fält (`suno_key`, `stable_audio_key`, `openai_key`, `claude_key`, `ollama_endpoint`) är borttagna. Menyvalet döpt till "⚙ AI-inställningar & API-nycklar...".
+  - **Klart när:** Ingen död konfig-yta finns kvar. ✅
+  - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
 
 - [ ] **1.4 Applicera samplingsfrekvens & buffertstorlek** — *M*
   - **Problem:** `audio_sample_rate_idx`/`audio_buffer_size_idx` sparas men används inte; enhetens standard gäller.
@@ -174,7 +173,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 1.3 — Legacy "AI Provider Inställningar"-modal** (första ovalda punkten).
+**Fas 1.4 — Applicera samplingsfrekvens & buffertstorlek** (första ovalda punkten).
 
 ## 🛠️ Så här håller vi roadmapen levande
 

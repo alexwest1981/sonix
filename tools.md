@@ -179,6 +179,12 @@ Tog bort överlöften i nod-/filteretiketter så att de beskriver vad koden fakt
 - **MANUAL.md:** "Moog-filter"/"Moog 24dB Resonant Lowpass" → resonant SVF (12 dB); rättade även felaktig vågform (`Noise` → `Triangle`).
 - `cargo test --release` = **61 tester**, 0 varningar.
 
+### P25 — Legacy AI-modal kopplad till riktig config · ✅ KLAR
+Den gamla "AI Provider Inställningar"-modalen redigerade döda `ai_provider_*`-fält som aldrig lästes eller sparades.
+- **Löst:** Modalen redigerar nu `self.ai_assistant.config` (samma `AiConfig` som AI Music Studio) och sparar via `config.save()` till `~/.config/sonix/ai.json` (chmod 0600). Text-provider + ljud-provider, bas-URL, modell och API-nycklar.
+- **Borttaget:** Alla döda fält (`ai_provider_suno_key`, `ai_provider_stable_audio_key`, `ai_provider_openai_key`, `ai_provider_claude_key`, `ai_provider_ollama_endpoint`).
+- **i18n:** Nya nycklar i `tr_en`; menyvalet döpt till "⚙ AI-inställningar & API-nycklar...".
+- `cargo test --release` = **61 tester**, 0 varningar.
 
 ---
 

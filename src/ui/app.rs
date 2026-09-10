@@ -662,12 +662,6 @@ pub struct SonixApp {
     pub show_project_manager_modal: bool,
     pub project_file_path: Option<String>,
     pub new_project_name_input: String,
-    // AI Providers & API Keys
-    pub ai_provider_suno_key: String,
-    pub ai_provider_stable_audio_key: String,
-    pub ai_provider_openai_key: String,
-    pub ai_provider_claude_key: String,
-    pub ai_provider_ollama_endpoint: String,
     // Audio / MIDI Configuration
     pub audio_driver_idx: usize,
     pub audio_sample_rate_idx: usize,
@@ -1180,12 +1174,6 @@ impl SonixApp {
             show_project_manager_modal: false,
             project_file_path: None,
             new_project_name_input: crate::i18n::t("Mitt Beat").to_string(),
-            // AI Providers & API Keys
-            ai_provider_suno_key: String::new(),
-            ai_provider_stable_audio_key: String::new(),
-            ai_provider_openai_key: String::new(),
-            ai_provider_claude_key: String::new(),
-            ai_provider_ollama_endpoint: "http://localhost:11434".to_string(),
             // Audio / MIDI Configuration
             audio_driver_idx: 0,
             audio_sample_rate_idx: 1,
@@ -3826,7 +3814,7 @@ impl eframe::App for SonixApp {
 
                     // AI & Providers
                     ui.menu_button(self.tr("🤖 AI & Providers"), |ui| {
-                        if ui.button(self.tr("⚙ AI Provider Inställningar & API-nycklar...")).clicked() {
+                        if ui.button(self.tr("⚙ AI-inställningar & API-nycklar...")).clicked() {
                             self.show_ai_settings_modal = true;
                             ui.close_menu();
                         }
@@ -10374,65 +10362,88 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
 
         let mut close = false;
         let mut open = self.show_ai_settings_modal;
-        egui::Window::new(crate::i18n::t("🤖 AI Provider Inställningar"))
+        egui::Window::new(crate::i18n::t("🤖 AI-inställningar"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-            .default_size(Vec2::new(520.0, 420.0))
+            .default_size(Vec2::new(560.0, 480.0))
             .show(ctx, |ui| {
-                ui.label(crate::i18n::t("Konfigurera dina API-nycklar och lokala AI-modeller för stämdelning och musikgenerering."));
+                ui.label(crate::i18n::t("Samma konfiguration som i AI Music Studio – sparas till ~/.config/sonix/ai.json."));
                 ui.add_space(8.0);
 
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Suno AI")).strong().color(Theme::FL_ORANGE));
-                    ui.label(egui::RichText::new(crate::i18n::t("Används för automatisk stäm-nedladdning och metadata-synk.")).size(10.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("💬 Textgenerering (AI Co-Producer)")).strong().color(Theme::FL_GREEN));
                     ui.horizontal(|ui| {
-                        ui.label(crate::i18n::t("Session Key:"));
-                        ui.add(egui::TextEdit::singleline(&mut self.ai_provider_suno_key).password(true));
+                        ui.label(crate::i18n::t("Provider:"));
+                        egui::ComboBox::from_id_salt("legacy_ai_provider_combo")
+                            .selected_text(self.ai_assistant.config.provider.label())
+                            .show_ui(ui, |ui| {
+                                for p in crate::audio::ai_client::AiProvider::ALL {
+                                    ui.selectable_value(&mut self.ai_assistant.config.provider, p, p.label());
+                                }
+                            });
                     });
-                });
-
-                ui.add_space(4.0);
-                ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Stability AI / Stable Audio")).strong().color(Theme::FL_CYAN));
                     ui.horizontal(|ui| {
-                        ui.label(crate::i18n::t("API-nyckel:"));
-                        ui.add(egui::TextEdit::singleline(&mut self.ai_provider_stable_audio_key).password(true));
+                        ui.label(crate::i18n::t("Bas-URL:"));
+                        ui.add(egui::TextEdit::singleline(&mut self.ai_assistant.config.base_url).desired_width(340.0).hint_text(crate::i18n::t("(tomt = providers standard)")));
                     });
-                });
-
-                ui.add_space(4.0);
-                ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("OpenAI / ChatGPT Studio Assistant")).strong().color(Theme::FL_GREEN));
                     ui.horizontal(|ui| {
-                        ui.label(crate::i18n::t("API-nyckel:"));
-                        ui.add(egui::TextEdit::singleline(&mut self.ai_provider_openai_key).password(true));
+                        ui.label(crate::i18n::t("Modell:"));
+                        ui.add(egui::TextEdit::singleline(&mut self.ai_assistant.config.model).desired_width(340.0).hint_text(crate::i18n::t("(tomt = providers standard)")));
                     });
-                });
-
-                ui.add_space(4.0);
-                ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Anthropic / Claude Co-Producer")).strong().color(Theme::FL_ORANGE));
                     ui.horizontal(|ui| {
                         ui.label(crate::i18n::t("API-nyckel:"));
-                        ui.add(egui::TextEdit::singleline(&mut self.ai_provider_claude_key).password(true));
+                        ui.add(egui::TextEdit::singleline(&mut self.ai_assistant.config.api_key).password(true).desired_width(340.0));
                     });
                 });
 
                 ui.add_space(4.0);
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Lokal Ollama / Piper / Whisper")).strong().color(Theme::FL_PURPLE));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎧 AI-ljudgenerering (Stable Audio m.fl.)")).strong().color(Theme::FL_CYAN));
                     ui.horizontal(|ui| {
-                        ui.label(crate::i18n::t("Endpoint:"));
-                        ui.text_edit_singleline(&mut self.ai_provider_ollama_endpoint);
+                        ui.label(crate::i18n::t("Ljud-provider:"));
+                        egui::ComboBox::from_id_salt("legacy_ai_audio_provider_combo")
+                            .selected_text(self.ai_assistant.config.audio_provider.label())
+                            .show_ui(ui, |ui| {
+                                for p in crate::audio::ai_client::AudioProvider::ALL {
+                                    ui.selectable_value(&mut self.ai_assistant.config.audio_provider, p, p.label());
+                                }
+                            });
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::t("Bas-URL:"));
+                        ui.add(egui::TextEdit::singleline(&mut self.ai_assistant.config.audio_base_url).desired_width(340.0).hint_text(crate::i18n::t("(tomt = providers standard)")));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::t("Modell:"));
+                        ui.add(egui::TextEdit::singleline(&mut self.ai_assistant.config.audio_model).desired_width(340.0).hint_text(crate::i18n::t("(tomt = providers standard)")));
+                    });
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::t("API-nyckel:"));
+                        ui.add(egui::TextEdit::singleline(&mut self.ai_assistant.config.audio_api_key).password(true).desired_width(340.0));
                     });
                 });
+
+                ui.add_space(6.0);
+                let ready = self.ai_assistant.config.is_ready();
+                ui.label(
+                    egui::RichText::new(if ready {
+                        crate::i18n::t("Redo: använder AI-API")
+                    } else {
+                        crate::i18n::t("Offline: använder lokal regelbaserad motor")
+                    })
+                    .size(10.5)
+                    .color(if ready { Theme::FL_GREEN } else { Theme::TEXT_MUTED }),
+                );
 
                 ui.add_space(10.0);
                 ui.horizontal(|ui| {
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara inställningar")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
-                        self.status_message = crate::i18n::t("Sparade AI Provider-inställningar!").to_string();
+                        match self.ai_assistant.config.save() {
+                            Ok(path) => self.status_message = crate::tstatus!("✔ Sparade AI-inställningar till {}", path.display()),
+                            Err(e) => self.status_message = crate::tstatus!("⚠ Kunde inte spara AI-inställningar: {}", e),
+                        }
                         close = true;
                     }
                     if ui.button(crate::i18n::t("Avbryt")).clicked() {
