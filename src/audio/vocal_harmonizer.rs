@@ -141,20 +141,164 @@ pub fn pitch_shift(input: &[f32], sample_rate: f32, semitones: f32) -> Vec<f32> 
     pitch_shift_variable(input, sample_rate, &move |_| ratio)
 }
 
-/// Cheap spectral-tilt approximation of formant shifting: positive values
-/// brighten (scale the envelope up), negative values darken.
-pub fn apply_formant_tilt(input: &[f32], semitones: f32) -> Vec<f32> {
-    if semitones.abs() < 0.01 {
-        return input.to_vec();
+/// In-place iterative radix-2 Cooley–Tukey FFT. `re`/`im` must have a power-of-two
+/// length. When `invert` is true this performs the inverse transform including
+/// the `1/N` scaling.
+fn fft_radix2(re: &mut [f32], im: &mut [f32], invert: bool) {
+    let n = re.len();
+    if n <= 1 {
+        return;
     }
-    let g = 2f32.powf(semitones / 12.0);
-    let mut low = 0.0_f32;
-    let mut out = Vec::with_capacity(input.len());
-    for &x in input {
-        low += 0.18 * (x - low);
-        let high = x - low;
-        out.push((low / g + high * g).clamp(-2.0, 2.0));
+    let mut j = 0usize;
+    for i in 1..n {
+        let mut bit = n >> 1;
+        while j & bit != 0 {
+            j ^= bit;
+            bit >>= 1;
+        }
+        j ^= bit;
+        if i < j {
+            re.swap(i, j);
+            im.swap(i, j);
+        }
     }
+    let mut len = 2usize;
+    while len <= n {
+        let ang = 2.0 * std::f32::consts::PI / len as f32 * if invert { 1.0 } else { -1.0 };
+        let (wr, wi) = (ang.cos(), ang.sin());
+        let mut i = 0usize;
+        while i < n {
+            let mut cur_r = 1.0_f32;
+            let mut cur_i = 0.0_f32;
+            for k in 0..len / 2 {
+                let u_r = re[i + k];
+                let u_i = im[i + k];
+                let v_r = re[i + k + len / 2] * cur_r - im[i + k + len / 2] * cur_i;
+                let v_i = re[i + k + len / 2] * cur_i + im[i + k + len / 2] * cur_r;
+                re[i + k] = u_r + v_r;
+                im[i + k] = u_i + v_i;
+                re[i + k + len / 2] = u_r - v_r;
+                im[i + k + len / 2] = u_i - v_i;
+                let n_r = cur_r * wr - cur_i * wi;
+                cur_i = cur_r * wi + cur_i * wr;
+                cur_r = n_r;
+            }
+            i += len;
+        }
+        len <<= 1;
+    }
+    if invert {
+        let inv = 1.0 / n as f32;
+        for i in 0..n {
+            re[i] *= inv;
+            im[i] *= inv;
+        }
+    }
+}
+
+/// Estimates the smooth spectral envelope (formant structure) of a magnitude
+/// spectrum by real-cepstral liftering: keep only the low quefrency terms of the
+/// log-magnitude, which removes the fine harmonic structure and leaves the
+/// vocal-tract envelope.
+fn spectral_envelope(mag: &[f32], lifter: usize) -> Vec<f32> {
+    let n = mag.len();
+    let mut re: Vec<f32> = mag.iter().map(|&m| (m + 1e-9).ln()).collect();
+    let mut im = vec![0.0_f32; n];
+    fft_radix2(&mut re, &mut im, true);
+    for k in lifter..(n - lifter + 1).min(n) {
+        re[k] = 0.0;
+        im[k] = 0.0;
+    }
+    fft_radix2(&mut re, &mut im, false);
+    re.iter().map(|&v| v.exp()).collect()
+}
+
+/// Formant-preserving pitch shift.
+///
+/// The input is first pitch-shifted with the granular shifter (which also drags
+/// the formants along, causing the "chipmunk" effect). An STFT then estimates the
+/// cepstral spectral envelope of both the original and the shifted signal and
+/// rescales each shifted frame so its envelope matches the original, optionally
+/// warped by `formant_semitones` (0 = keep the original formants, +12 = an octave
+/// up). Only the magnitude is corrected; the shifted phase is kept.
+pub fn formant_preserving_shift(
+    input: &[f32],
+    sample_rate: f32,
+    pitch_semitones: f32,
+    formant_semitones: f32,
+) -> Vec<f32> {
+    let n = input.len();
+    if n == 0 {
+        return Vec::new();
+    }
+    let shifted = pitch_shift(input, sample_rate, pitch_semitones);
+    if formant_semitones.abs() > 24.0 {
+        return shifted;
+    }
+
+    const FRAME: usize = 1024;
+    const HOP: usize = 256;
+    const LIFTER: usize = 32;
+    let two_pi = std::f32::consts::TAU;
+    let window: Vec<f32> = (0..FRAME)
+        .map(|i| 0.5 - 0.5 * (two_pi * i as f32 / (FRAME - 1) as f32).cos())
+        .collect();
+
+    let mut out = vec![0.0_f32; n + FRAME];
+    let mut wsum = vec![0.0_f32; n + FRAME];
+    let beta = 2f32.powf(formant_semitones / 12.0);
+
+    let mut pos = 0usize;
+    while pos < n {
+        let mut orig_re = vec![0.0_f32; FRAME];
+        let mut orig_im = vec![0.0_f32; FRAME];
+        let mut shift_re = vec![0.0_f32; FRAME];
+        let mut shift_im = vec![0.0_f32; FRAME];
+        for i in 0..FRAME {
+            let s = pos + i;
+            if s < n {
+                orig_re[i] = input[s] * window[i];
+                shift_re[i] = shifted[s] * window[i];
+            }
+        }
+        fft_radix2(&mut orig_re, &mut orig_im, false);
+        fft_radix2(&mut shift_re, &mut shift_im, false);
+
+        let mag_o: Vec<f32> = (0..FRAME)
+            .map(|k| (orig_re[k] * orig_re[k] + orig_im[k] * orig_im[k]).sqrt())
+            .collect();
+        let mag_s: Vec<f32> = (0..FRAME)
+            .map(|k| (shift_re[k] * shift_re[k] + shift_im[k] * shift_im[k]).sqrt())
+            .collect();
+        let env_o = spectral_envelope(&mag_o, LIFTER);
+        let env_s = spectral_envelope(&mag_s, LIFTER);
+
+        for k in 0..FRAME {
+            let idx = ((k as f32) / beta).round() as isize;
+            let idx = idx.rem_euclid(FRAME as isize) as usize;
+            let idx = if idx > FRAME / 2 { FRAME - idx } else { idx };
+            let target = env_o[idx.min(FRAME - 1)];
+            let corr = (target / (env_s[k] + 1e-9)).clamp(0.1, 10.0);
+            shift_re[k] *= corr;
+            shift_im[k] *= corr;
+        }
+        fft_radix2(&mut shift_re, &mut shift_im, true);
+        for i in 0..FRAME {
+            let s = pos + i;
+            if s < n + FRAME {
+                out[s] += shift_re[i] * window[i];
+                wsum[s] += window[i] * window[i];
+            }
+        }
+        pos += HOP;
+    }
+
+    for i in 0..n {
+        if wsum[i] > 1e-4 {
+            out[i] /= wsum[i];
+        }
+    }
+    out.truncate(n);
     out
 }
 
@@ -293,9 +437,13 @@ impl VocalHarmonizer {
             if !v.enabled || v.interval_semitones == 0 {
                 continue;
             }
-            let shifted = pitch_shift(pcm, sample_rate, v.interval_semitones as f32);
-            let tilted = apply_formant_tilt(&shifted, v.formant_shift);
-            let scaled: Vec<f32> = tilted.iter().map(|s| (s * v.volume).clamp(-1.0, 1.0)).collect();
+            let shifted = formant_preserving_shift(
+                pcm,
+                sample_rate,
+                v.interval_semitones as f32,
+                v.formant_shift,
+            );
+            let scaled: Vec<f32> = shifted.iter().map(|s| (s * v.volume).clamp(-1.0, 1.0)).collect();
             out.push((v.name.to_string(), scaled));
         }
         out
@@ -339,5 +487,93 @@ mod tests {
         let blobs = analyze_blobs(&src, sr, 16, 0, 0);
         assert!(!blobs.is_empty());
         assert!(blobs.iter().any(|b| b.midi_note == 69));
+    }
+
+    /// A synthetic vowel: a harmonic stack at `f0` shaped by a Gaussian formant
+    /// centred at `formant_hz`.
+    fn vowel(f0: f32, formant_hz: f32, sr: f32, n: usize) -> Vec<f32> {
+        let mut out = vec![0.0_f32; n];
+        let mut h = 1;
+        while (h as f32) * f0 < sr * 0.45 {
+            let f = h as f32 * f0;
+            let amp = (-((f - formant_hz).powi(2)) / (2.0 * 150.0 * 150.0)).exp();
+            for (i, s) in out.iter_mut().enumerate() {
+                *s += amp * (std::f32::consts::TAU * f * i as f32 / sr).sin();
+            }
+            h += 1;
+        }
+        let peak = out.iter().fold(0.0_f32, |m, &v| m.max(v.abs())).max(1e-6);
+        out.iter().map(|&v| v / peak * 0.8).collect()
+    }
+
+    /// Averages the magnitude spectrum over frames and returns the dominant
+    /// formant frequency via the same cepstral envelope used by the shifter.
+    fn dominant_formant(sig: &[f32], sr: f32) -> f32 {
+        const FRAME: usize = 1024;
+        const HOP: usize = 512;
+        let mut avg = vec![0.0_f32; FRAME];
+        let mut frames = 0.0_f32;
+        let mut pos = 0usize;
+        while pos + FRAME <= sig.len() {
+            let mut re: Vec<f32> = sig[pos..pos + FRAME].to_vec();
+            let mut im = vec![0.0_f32; FRAME];
+            fft_radix2(&mut re, &mut im, false);
+            for k in 0..FRAME {
+                avg[k] += (re[k] * re[k] + im[k] * im[k]).sqrt();
+            }
+            frames += 1.0;
+            pos += HOP;
+        }
+        if frames == 0.0 {
+            return 0.0;
+        }
+        for v in avg.iter_mut() {
+            *v /= frames;
+        }
+        let env = spectral_envelope(&avg, 32);
+        let mut best_k = 1usize;
+        let mut best = 0.0_f32;
+        for k in 1..FRAME / 2 {
+            let f = k as f32 * sr / FRAME as f32;
+            if !(150.0..=3500.0).contains(&f) {
+                continue;
+            }
+            if env[k] > best {
+                best = env[k];
+                best_k = k;
+            }
+        }
+        best_k as f32 * sr / FRAME as f32
+    }
+
+    #[test]
+    fn formant_preserving_shift_keeps_formant_while_shifting_pitch() {
+        let sr = 44100.0;
+        let src = vowel(120.0, 700.0, sr, 44100);
+
+        let plain = pitch_shift(&src, sr, 12.0);
+        let preserved = formant_preserving_shift(&src, sr, 12.0, 0.0);
+
+        // Pitch is shifted in both cases (fundamental ~240 Hz).
+        let f_plain = detect_pitch_hz(&plain[..8192], sr).expect("plain pitched");
+        let f_pres = detect_pitch_hz(&preserved[..8192], sr).expect("preserved pitched");
+        assert!((f_plain - 240.0).abs() / 240.0 < 0.05, "plain f0 {f_plain}");
+        assert!((f_pres - 240.0).abs() / 240.0 < 0.05, "preserved f0 {f_pres}");
+
+        // The plain shift drags the formant up; preservation keeps it near 700 Hz.
+        let formant_plain = dominant_formant(&plain, sr);
+        let formant_pres = dominant_formant(&preserved, sr);
+        assert!(
+            formant_plain > 1050.0,
+            "plain shift should move the formant up, got {formant_plain}"
+        );
+        assert!(
+            formant_pres < 950.0,
+            "preserved shift should keep the formant near 700 Hz, got {formant_pres}"
+        );
+        assert!(
+            preserved.iter().all(|s| s.is_finite()),
+            "preserved output must be finite"
+        );
     }
 }

@@ -140,10 +140,10 @@ update-desktop-database ~/.local/share/applications
 ### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real (offline processing)
 * **Take Lanes:** Multiple takes with non-destructive comping; waveform crop/slice/normalize.
 * **Pitch Editor:** Draggable note blobs (Melodyne-style) and scale-aware correction.
-* **Autotune & 4-Part Harmonizer** with per-voice level/formant controls.
+* **Autotune & 4-Part Harmonizer** with per-voice level and formant controls; harmony voices use **real formant preservation** (STFT + cepstral envelope correction) so pitch shifts no longer sound "chipmunk".
 * **Custom Sampler:** Record acoustic one-shots via microphone and map them to instruments/drums.
 * **Hardware Mic Panel:** Input device selector, hardware gain boost (+0 to +24 dB), noise gate, feedback suppression and vocal character presets.
-* 🟡 **Note:** Tuning and harmony run **offline** on the recorded buffer (not in the realtime audio thread). Pitch detection is autocorrelation-based and "formant" is a spectral-tilt approximation.
+* 🟡 **Note:** Tuning and harmony run **offline** on the recorded buffer (not in the realtime audio thread). Pitch detection is autocorrelation-based.
 
 ### 7. 🎛 Creative Generators — ✅ Real
 * **Smart Chord & Harmony Matrix:** 12 scales, Roman-numeral progressions, voicings, strum humanizer, arpeggiator → Piano Roll.
@@ -201,7 +201,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Export (WAV/FLAC in-app, MP3/OGG/AAC via ffmpeg) | ✅ Real | — |
 | Modular Patcher | ✅ Real | Topological sort + labels match the DSP |
 | Stem separation | 🟡 Partial | Integrate a real neural model (e.g. HTDemucs via ONNX) |
-| Vocal tuning | 🟡 Partial | Realtime (audio-thread) autotune + true formant preservation |
+| Vocal tuning | 🟡 Partial | True formant preservation ✅; realtime (audio-thread) autotune still missing |
 | Time-stretch | 🟡 Partial | Pitch-preserving time-stretch (currently varispeed) |
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
@@ -275,7 +275,7 @@ Polyphonic note editor with note lengths, velocity, scale snapping, and playable
 ![Piano Roll](screenshots/03_piano_roll.png)
 
 #### 4. 🎙 Vocal Studio & Microphone Recording (Take Lanes)
-Professional recording console for vocals and acoustic instruments with pitch detection, offline autotune, formant tilt, and a 4-part harmonizer.
+Professional recording console for vocals and acoustic instruments with pitch detection, offline autotune, formant-preserving pitch shift, and a 4-part harmonizer.
 ![Vocal Studio Take Lanes](screenshots/04_vocal_studio_leads.png)
 
 #### 5. 🎤 Vocal Studio: Custom Sound & Sampler Recording

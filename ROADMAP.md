@@ -17,10 +17,10 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~95 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~96 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[███████████████████████████████████░]  95 %
+[███████████████████████████████████░]  96 %
 ```
 
 | Område | Klart | Kvar | Procent |
@@ -95,9 +95,9 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** Sång kan korrigeras live med hörbar effekt och acceptabel latens.
   - **Filer:** `src/audio/vocal_harmonizer.rs`, `src/audio/recorder.rs`, `src/audio/engine.rs`
 
-- [ ] **2.2 Riktig formantbevarande pitch-shift** — *M*
-  - **Gör:** Ersätt spektral-tilt-approximationen med riktig formantanalys/bevarande.
-  - **Klart när:** Pitch-shift ändrar tonhöjd utan "chipmunk"-artefakter.
+- [x] **2.2 Riktig formantbevarande pitch-shift** — *M* ✅
+  - **Löst:** Ersatte den gamla spektral-tilt-approximationen med en riktig **STFT-baserad formantkorrigering**: granulär pitch-shift följt av cepstral envelop-analys (radix-2 FFT, inbyggd, ingen ny dependency) där varje frame skalas så att den pitchade signalens spektrala envelop matchar originalets (valfritt frekvenswarpad av `formant_shift`). `apply_formant_tilt` borttagen.
+  - **Klart när:** Pitch-shift ändrar tonhöjd utan "chipmunk"-artefakter. ✅ (test: `formant_preserving_shift_keeps_formant_while_shifting_pitch`)
   - **Filer:** `src/audio/vocal_harmonizer.rs`
 
 - [ ] **2.3 Pitch-bevarande time-stretch** — *L*
@@ -171,7 +171,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 2.2 — Riktig formantbevarande pitch-shift** (nästa ovalda punkt i Fas 2).
+**Fas 2.3 — Pitch-bevarande time-stretch** (nästa ovalda punkt i Fas 2).
 
 ## 🛠️ Så här håller vi roadmapen levande
 

@@ -206,6 +206,12 @@ Filtret låg tidigare på synth-bussen (globalt). Eftersom SVF:en är linjär l�
 - **Tester:** `filter_env_zero_amount_is_transparent`, `filter_env_amount_changes_timbre`, `voices_have_independent_filter_envelopes`.
 - `cargo test --release` = **64 tester**, 0 varningar.
 
+### P29 — Riktig formantbevarande pitch-shift (Fas 2.2) · ✅ KLAR
+`apply_formant_tilt` var en billig 1-polig spektral-tilt som inte bevarade formanter (pitch-shift lät "chipmunk").
+- **Löst:** Ny `formant_preserving_shift(input, sr, pitch, formant)` i `vocal_harmonizer.rs`. Granulär pitch-shift följt av STFT (egen radix-2 FFT, ingen ny dependency) där cepstral liftering skattar formant-envelopen hos original och pitchad signal, och varje frame skalas så den pitchade signalens envelop matchar originalets (valfritt frekvenswarpad av `formant_shift`, β = 2^(semi/12)). Endast magnitud korrigeras; pitchad fas behålls. `apply_formant_tilt` borttagen; `render_harmony` använder den nya funktionen.
+- **Test:** `formant_preserving_shift_keeps_formant_while_shifting_pitch` (syntetisk vokal: +12 st flyttar f0 120→240 Hz medan formanten stannar nära 700 Hz).
+- `cargo test --release` = **65 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning

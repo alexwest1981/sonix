@@ -138,10 +138,10 @@ update-desktop-database ~/.local/share/applications
 ### 6. 🎙 Sångstudio & Harmonizer — ✅ Äkta (offline-bearbetning)
 * **Take Lanes:** Flera tagningar med icke-destruktiv comping; vågform crop/slice/normalize.
 * **Pitch-editor:** Dragbara not-blobs (Melodyne-liknande) och skalanpassad korrigering.
-* **Autotune & 4-stämmig Harmonizer** med nivå/formant per stämma.
+* **Autotune & 4-stämmig Harmonizer** med nivå och formant per stämma; stämmorna använder **riktig formantbevarning** (STFT + cepstral envelop-korrigering) så pitch-shift inte längre låter "chipmunk".
 * **Egen Sampler:** Spela in akustiska one-shots via mikrofon och mappa till instrument/trummor.
 * **Hårdvaru-mikpanel:** Enhetsväljare, hårdvarugain (+0 till +24 dB), brusgrind, återkopplingsdämpning och röstpresets.
-* 🟡 **Not:** Tuning och harmonier körs **offline** på den inspelade bufferten (inte i realtidstråden). Pitchdetektering är autokorrelationsbaserad och "formant" är en spektral-tilt-approximation.
+* 🟡 **Not:** Tuning och harmonier körs **offline** på den inspelade bufferten (inte i realtidstråden). Pitchdetektering är autokorrelationsbaserad.
 
 ### 7. 🎛 Kreativa Generatorer — ✅ Äkta
 * **Smart Ackord- & Harmonimatris:** 12 skalor, romerska siffror, voicings, strum-humanisering, arpeggiator → Piano Roll.
@@ -199,7 +199,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Export (WAV/FLAC i appen, MP3/OGG/AAC via ffmpeg) | ✅ Äkta | — |
 | Modulär Patcher | ✅ Äkta | Topologisk sortering + etiketter matchar DSP:n |
 | Stem-separation | 🟡 Delvis | Integrera en riktig neural modell (t.ex. HTDemucs via ONNX) |
-| Vocal tuning | 🟡 Delvis | Realtids-autotune (ljudtråden) + riktig formantbevarande |
+| Vocal tuning | 🟡 Delvis | Riktig formantbevarning ✅; realtids-autotune (ljudtråden) saknas ännu |
 | Time-stretch | 🟡 Delvis | Pitch-bevarande time-stretch (nuvarande är varispeed) |
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
@@ -273,7 +273,7 @@ Polyfonisk noteditor med notlängder, anslagsdynamik (velocity), skalsnäppning 
 ![Piano Roll](screenshots/03_piano_roll.png)
 
 #### 4. 🎙 Sångstudio & Mikrofoninspelning (Take Lanes)
-Professionell inspelningskonsol för sång och akustiska instrument med pitchdetektering, offline-autotune, formant-tilt och en 4-stämmig harmoniserare.
+Professionell inspelningskonsol för sång och akustiska instrument med pitchdetektering, offline-autotune, formantbevarande pitch-shift och en 4-stämmig harmoniserare.
 ![Sångstudio Take Lanes](screenshots/04_vocal_studio_leads.png)
 
 #### 5. 🎤 Sångstudio: Spela in Egna Ljud & Sampler
