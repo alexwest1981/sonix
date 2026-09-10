@@ -12090,7 +12090,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     ui.label(egui::RichText::new(crate::i18n::t("🍊")).size(64.0));
                     ui.heading(egui::RichText::new(crate::i18n::t("SONIX STUDIO")).strong().size(22.0).color(Theme::FL_ORANGE));
                     ui.label(egui::RichText::new(crate::i18n::t("Professionell Digital Audio Workstation & AI Musikstudio för Linux")).size(12.0).color(Theme::FL_CYAN));
-                    ui.label(egui::RichText::new(crate::i18n::t("Version 0.1.0 (PipeWire / ALSA / JACK Audio Engine)")).size(10.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::tstatus!("Version {} (PipeWire / ALSA / JACK Audio Engine)", env!("CARGO_PKG_VERSION"))).size(10.5).color(Theme::TEXT_MUTED));
 
                     ui.add_space(12.0);
                     ui.separator();

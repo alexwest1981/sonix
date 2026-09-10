@@ -403,5 +403,15 @@ Inbyggd snabbguide med kortkommandon, signalflödesscheman och arbetsflödesbesk
 Information om versionsnummer, ljudmotor, arkitektur och licens.
 ![Om Sonix](screenshots/29_dialog_om_sonix.png)
 
+## 📜 Licens
+
+Sonix Studio är dubbellicensierat under endera av
+
+- MIT-licensen ([LICENSE-MIT](LICENSE-MIT))
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+
+efter ditt val. Om du inte uttryckligen anger något annat är varje bidrag som avsiktligt skickas in för att inkluderas i detta projekt, enligt definitionen i Apache-2.0-licensen, dubbellicensierat enligt ovan, utan ytterligare villkor.
+
+
 
 

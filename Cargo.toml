@@ -1,7 +1,10 @@
 [package]
 name = "sonix"
-version = "0.1.0"
+version = "0.9.0"
 edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Native Linux DAW (Rust/egui) with timeline editing, synth, mixer, stem separation, plugin hosting and export."
+repository = "https://github.com/alexwest1981/sonix"
 
 [features]
 default = []

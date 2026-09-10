@@ -644,7 +644,7 @@ mod imp {
     const HOST_NAME: &CStr = c"Sonix";
     const HOST_VENDOR: &CStr = c"Sonix Studio";
     const HOST_URL: &CStr = c"https://github.com/alexwest1981/sonix";
-    const HOST_VERSION: &CStr = c"0.1.0";
+    const HOST_VERSION: &CStr = c"0.9.0";
 
     const CLAP_NAME_SIZE: usize = 256;
     const CLAP_PATH_SIZE: usize = 1024;

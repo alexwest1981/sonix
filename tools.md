@@ -342,6 +342,14 @@ Spår kan nu routas till **4 sub-mix-bussar** och **4 VCA-grupper** som styr vol
 
 ---
 
+### P48 — Release-förberedelse & sista ärlighetsfixar · ✅ KLAR
+Release **0.9.0**: dual-licens (MIT OR Apache-2.0), enkel CI och rättade inaktuella texter i plugin-vyn.
+- **Löst:** `TapeStop` läste en hel ringbuffert **före** skrivpekaren, vilket gav ~32768 sampels (≈0,68 s) latens på mastern och tystnad i början — även när effekten var avstängd. Den läser nu vid `read_pos` *innan* den avanceras, så rate 1.0 är en ren passthrough (noll latens) medan sjunkande rate fortfarande pitchar ner. Fyra inaktuella "inte implementerat"-texter i plugin-vyn (`.fst`-preset, FL Studio VSTi, process-isolering, CLAP-host-status) rättades till verkligheten. `Cargo.toml` → **0.9.0** med `license = "MIT OR Apache-2.0"` + `repository`/`description`, nya `LICENSE-MIT` och `LICENSE-APACHE`, licenssektion i README/README_SV, About-dialogens version läses nu från `CARGO_PKG_VERSION` och CLAP-hostens rapporterade version uppdaterades. Enkel GitHub Actions-CI (`.github/workflows/ci.yml`) bygger/testar `default` + `plugin-host` med `--locked` (ett `neural`-jobb är non-blocking).
+- **Tester:** `tape_stop_is_transparent_at_normal_rate` (ny). `cargo test --release` = **134 tester**, 0 varningar. `cargo test --release --features plugin-host` = **180 tester**, 0 varningar.
+- **Filer:** `src/audio/master_fx.rs`, `src/audio/synth.rs`, `src/ui/plugins_view.rs`, `src/i18n.rs`, `src/ui/app.rs`, `src/audio/plugin_host_live.rs`, `Cargo.toml`, `Cargo.lock`, `LICENSE-MIT`, `LICENSE-APACHE`, `README.md`, `README_SV.md`, `.github/workflows/ci.yml`, `tools.md`
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -363,6 +371,7 @@ Spår kan nu routas till **4 sub-mix-bussar** och **4 VCA-grupper** som styr vol
 | VST3-ljud, parametrar/state & PDC (opt-in) | ✅ REAL (P45) |
 | VST2-modul, ABI, ljud, parametrar/state & PDC (opt-in) | ✅ REAL (P46) |
 | VCA-grupper & sub-mix-bussar (4 bussar + 4 VCA) | ✅ REAL (P47) |
+| Release 0.9.0: licens, CI & sista ärlighetsfixar | ✅ REAL (P48) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |
