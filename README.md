@@ -114,6 +114,7 @@ update-desktop-database ~/.local/share/applications
 * **Bottom Region Inspector:** Coarse/fine nudge (`±1 bar`, `±0.1s`), start-trim offset, gain, fade in/out, reverse playback, and loop multiplication.
 * **Tool Palette:** Select (⇱), Paint (✎), Slice (✂), Erase (🗑), Mute (🔇); quick-cut at playhead (Ctrl+B).
 * **Live In-Track Microphone Recording:** Arm buttons (`⏺`), real zero-latency direct monitoring and real-time waveforms on audio tracks.
+* **Automation Curves (📈):** Draw per-track curves for volume, pan, reverb and delay sends. Left-click to add points, drag to move (snaps to the grid), right-click to delete. Curves play back in real time and are saved with the project.
 
 ### 2. 🥁 Sonix Channel Rack (16-Step Sequencer) — ✅ Real
 * **Channel Strips:** Kick, Snare, Closed/Open Hat, Synth Lead, Sub Bass and custom user channels.

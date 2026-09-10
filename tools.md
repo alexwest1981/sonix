@@ -224,6 +224,12 @@ Tuning kördes bara offline på den inspelade bufferten, och `Direct Monitoring`
 - **Tester:** `streaming_pitch_shifter_shifts_up_octave` (220 Hz → ~440 Hz vid ratio 2.0), `realtime_autotune_corrects_flat_note` (30 cent flat A4 dras till 440 Hz).
 - `cargo test --release` = **68 tester**, 0 varningar.
 
+### P32 — Automationskurvor på tidslinjen (Fas 5.4) · ✅ KLAR
+Spårparametrar (volym, panorering, reverb/delay-send) kunde bara sättas statiskt — ingen möjlighet att rita tidsvarierande kurvor.
+- **Löst:** Ny datamodell i `app.rs`: `AutomationParam` (Volym, Panorering, Reverb-send, Delay-send med `range()`/`index()`), `AutomationPoint { time_secs, value }` och `AutomationLane { param, enabled, points }` med linjär interpolering via `value_at()` (konstant före första/efter sista punkten, sorterade punkter). `PlaylistTrack` har `automation: Vec<AutomationLane>` + `automation_last: [f32; 4]` (cache). Kurvorna sparas/laddas i projektet via `SavedTrackData.automation` och `PreloadedTrackData.automation` (`#[serde(default)]` → gamla projekt laddar utan kurvor). Under uppspelning kör `SonixApp::apply_automation()` varje frame: utvärderar alla aktiva kurvor vid `song_time` och skickar bara **ändrade** värden till motorn (`SetStemTrackState` för volym/pan, `SetTrackMix` för sends), så inga kommandon spammas. Cachen nollställs vid play-start. UI: **📈 Automation: PÅ/AV** + parameterväljare i ROW 2, samt en dedikerad redigeringsfil under Master-spåret (`render_automation_lane`): vänsterklicka = lägg till punkt, dra = flytta (snäpps med valt `TimeSnapMode`), högerklicka = ta bort närmaste punkt. Spelhuvudet sträcker sig nu ner över automationsfilen.
+- **Tester:** `test_automation_value_at_interpolates`, `test_automation_lane_serde_roundtrip`, `test_automation_param_ranges_and_index`.
+- `cargo test --release` = **71 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning
@@ -232,6 +238,7 @@ Tuning kördes bara offline på den inspelade bufferten, och `Direct Monitoring`
 |---|---|
 | Alchemy-synth, trummor, delay/reverb, filter, envelope | REAL |
 | Timeline/arranger, Channel Rack, Piano Roll, export | REAL |
+| Automationskurvor (volym/pan/sends) | ✅ REAL (P32) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

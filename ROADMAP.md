@@ -17,16 +17,16 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~98 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~99 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[█████████████████████████████████████░]  98 %
+[██████████████████████████████████████]  99 %
 ```
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
 | Ljudmotor (synth, trummor, FX, patcher, per-spår) | 11 | 1 | **92 %** |
-| Sequencer & arranger (timeline, rack, piano roll, sektioner) | 5 | 0 | **100 %** |
+| Sequencer & arranger (timeline, rack, piano roll, sektioner, automation) | 6 | 0 | **100 %** |
 | Inspelning & sång (mic, takes, comping, pitch, harmonier) | 7 | 0 | **100 %** |
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
@@ -163,7 +163,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 - [ ] **5.1 Fler tester** för realtids- och plugin-vägar (integrationstester).
 - [ ] **5.2 VCA-grupper & sub-mix-bussar** — *M* (om efterfrågat; medvetet borttagna).
 - [ ] **5.3 Midi-inspelning/klaviatur-inmatning** (`midir`) till Piano Roll.
-- [ ] **5.4 Automationskurvor** på tidslinjen.
+- [x] **5.4 Automationskurvor** på tidslinjen. ✅
+  - **Löst:** Ny datamodell `AutomationParam` (Volym, Panorering, Reverb-send, Delay-send), `AutomationPoint` och `AutomationLane` med linjär interpolering (`value_at`). Varje `PlaylistTrack` har `automation: Vec<AutomationLane>`; kurvorna sparas/laddas i projektet (`SavedTrackData.automation` + `PreloadedTrackData.automation`, `#[serde(default)]`). Under uppspelning utvärderar `apply_automation()` alla aktiva kurvor vid `song_time` och skickar ändrade värden till motorn via `SetStemTrackState`/`SetTrackMix` (med per-parameter-cache så inga kommandon spammas). I arranger-vyn finns en **Automation PÅ/AV**-knapp + parameter-väljare i ROW 2, och en dedikerad redigeringsfil under Master-spåret: vänsterklicka lägger till punkter, dra flyttar (snäpps med valt `TimeSnapMode`), högerklicka tar bort. `value_at`-interpolering, serde-roundtrip och parameter-index/ranges testas (71 tester, 0 varningar).
+  - **Klart när:** En kurva kan ritas per spår/parameter och hörs påverka ljudet under uppspelning samt överlever spara/ladda. ✅
+  - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
 - [ ] **5.5 Fler export-presets / loudness-normalisering.**
 
 ---

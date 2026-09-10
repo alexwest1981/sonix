@@ -258,6 +258,119 @@ impl Default for TrackEq {
     }
 }
 
+/// Automatable per-track parameters. The order defines the cache index used by
+/// `PlaylistTrack::automation_last`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+pub enum AutomationParam {
+    Volume,
+    Pan,
+    ReverbSend,
+    DelaySend,
+}
+
+impl AutomationParam {
+    pub const ALL: [AutomationParam; 4] = [
+        AutomationParam::Volume,
+        AutomationParam::Pan,
+        AutomationParam::ReverbSend,
+        AutomationParam::DelaySend,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            AutomationParam::Volume => crate::i18n::t("Volym"),
+            AutomationParam::Pan => crate::i18n::t("Panorering"),
+            AutomationParam::ReverbSend => crate::i18n::t("Reverb-send"),
+            AutomationParam::DelaySend => crate::i18n::t("Delay-send"),
+        }
+    }
+
+    /// Inclusive value range used both for editing and for clamping.
+    pub fn range(self) -> (f32, f32) {
+        match self {
+            AutomationParam::Volume => (0.0, 1.5),
+            AutomationParam::Pan => (-1.0, 1.0),
+            AutomationParam::ReverbSend | AutomationParam::DelaySend => (0.0, 1.0),
+        }
+    }
+
+    fn index(self) -> usize {
+        match self {
+            AutomationParam::Volume => 0,
+            AutomationParam::Pan => 1,
+            AutomationParam::ReverbSend => 2,
+            AutomationParam::DelaySend => 3,
+        }
+    }
+}
+
+/// A single breakpoint on an automation curve.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AutomationPoint {
+    pub time_secs: f32,
+    pub value: f32,
+}
+
+/// One automated parameter for a track. Points are kept sorted by time.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AutomationLane {
+    pub param: AutomationParam,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub points: Vec<AutomationPoint>,
+}
+
+impl AutomationLane {
+    /// Linearly interpolated value at `t`; constant before the first and after
+    /// the last point. `None` when the lane has no points.
+    pub fn value_at(&self, t: f32) -> Option<f32> {
+        if self.points.is_empty() {
+            return None;
+        }
+        let first = &self.points[0];
+        if t <= first.time_secs {
+            return Some(first.value);
+        }
+        let last = self.points.last().unwrap();
+        if t >= last.time_secs {
+            return Some(last.value);
+        }
+        for w in self.points.windows(2) {
+            let (a, b) = (&w[0], &w[1]);
+            if t >= a.time_secs && t <= b.time_secs {
+                let span = (b.time_secs - a.time_secs).max(1e-6);
+                let f = (t - a.time_secs) / span;
+                return Some(a.value + (b.value - a.value) * f);
+            }
+        }
+        Some(last.value)
+    }
+
+    fn sort_points(&mut self) {
+        self.points.sort_by(|a, b| {
+            a.time_secs
+                .partial_cmp(&b.time_secs)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    }
+}
+
+fn snap_time_secs(mode: TimeSnapMode, raw: f32, sec_per_bar: f32) -> f32 {
+    match mode {
+        TimeSnapMode::FreeHundredth => (raw * 100.0).round() / 100.0,
+        TimeSnapMode::Snap16th => {
+            let step = sec_per_bar / 16.0;
+            (raw / step).round() * step
+        }
+        TimeSnapMode::SnapBeat => {
+            let step = sec_per_bar / 4.0;
+            (raw / step).round() * step
+        }
+        TimeSnapMode::SnapBar => (raw / sec_per_bar).round() * sec_per_bar,
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SonixProjectData {
     pub name: String,
@@ -287,6 +400,8 @@ pub struct SavedTrackData {
     pub reverb_send: f32,
     #[serde(default)]
     pub delay_send: f32,
+    #[serde(default)]
+    pub automation: Vec<AutomationLane>,
 }
 
 #[derive(Clone, Debug)]
@@ -315,6 +430,11 @@ pub struct PlaylistTrack {
     pub reverb_send: f32,
     pub delay_send: f32,
     pub pitch_semitones: f32,
+    /// Per-parameter automation curves for this track (Fas 5.4).
+    pub automation: Vec<AutomationLane>,
+    /// Last automation value sent to the engine per `AutomationParam` index
+    /// (NaN = never sent). Prevents command spam while playing.
+    pub automation_last: [f32; 4],
 }
 
 impl PlaylistTrack {
@@ -340,6 +460,8 @@ impl PlaylistTrack {
             reverb_send: 0.0,
             delay_send: 0.0,
             pitch_semitones: 0.0,
+            automation: Vec::new(),
+            automation_last: [f32::NAN; 4],
         }
     }
 }
@@ -435,6 +557,7 @@ pub struct PreloadedTrackData {
     pub comp_ratio: f32,
     pub reverb_send: f32,
     pub delay_send: f32,
+    pub automation: Vec<AutomationLane>,
     pub stem_pcms: Vec<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
 }
 
@@ -630,6 +753,11 @@ pub struct SonixApp {
     pub timeline_snap_mode: TimeSnapMode,
     pub timeline_auto_scroll: bool,
     pub selected_timeline_track: usize,
+    // Automation curves (Fas 5.4)
+    pub show_automation: bool,
+    pub automation_param: AutomationParam,
+    /// (track, lane, point) currently being dragged.
+    pub automation_drag: Option<(usize, usize, usize)>,
     // Project Metadata & Suno Multi-Track Stems
     pub project_name: String,
     pub show_suno_import_modal: bool,
@@ -1156,6 +1284,9 @@ impl SonixApp {
             timeline_snap_mode: TimeSnapMode::Snap16th,
             timeline_auto_scroll: true,
             selected_timeline_track: 0,
+            show_automation: false,
+            automation_param: AutomationParam::Volume,
+            automation_drag: None,
             // Project Metadata & Suno Multi-Track Stems
             project_name: crate::i18n::t("Namnlöst Projekt").to_string(),
             show_suno_import_modal: false,
@@ -1567,6 +1698,7 @@ impl SonixApp {
                     comp_ratio: 1.0,
                     reverb_send: 0.15,
                     delay_send: 0.10,
+                    automation: Vec::new(),
                     stem_pcms: Vec::new(),
                 });
             }
@@ -2343,6 +2475,7 @@ impl SonixApp {
             comp_ratio: t.comp_ratio,
             reverb_send: t.reverb_send,
             delay_send: t.delay_send,
+            automation: t.automation.clone(),
         }).collect();
 
         let data = SonixProjectData {
@@ -2448,6 +2581,7 @@ impl SonixApp {
                     comp_ratio: st.comp_ratio,
                     reverb_send: st.reverb_send,
                     delay_send: st.delay_send,
+                    automation: st.automation,
                     stem_pcms,
                 });
 
@@ -2512,6 +2646,7 @@ impl SonixApp {
             loaded_track.comp_ratio = st.comp_ratio;
             loaded_track.reverb_send = st.reverb_send;
             loaded_track.delay_send = st.delay_send;
+            loaded_track.automation = st.automation;
             loaded_track.pcm_audio = track_pcm;
             self.playlist_tracks.push(loaded_track);
             self.sync_track_regions(t_idx);
@@ -2769,6 +2904,9 @@ impl SonixApp {
         self.is_playing = !self.is_playing;
         if self.is_playing {
             ui_dbg(&format!("toggle_playback -> PLAY song_bar={} step={} pattern_mode={}", self.song_bar, self.song_step_in_bar, self.pattern_mode));
+            for t in &mut self.playlist_tracks {
+                t.automation_last = [f32::NAN; 4];
+            }
             self.sync_all_stems_to_engine();
             let song_secs = if self.pattern_mode {
                 0.0
@@ -2908,6 +3046,276 @@ impl SonixApp {
     pub fn sync_all_stems_to_engine(&mut self) {
         for idx in 0..self.playlist_tracks.len() {
             self.sync_track_stem_to_engine(idx);
+        }
+    }
+
+    /// Evaluates every enabled automation lane for all tracks at the current
+    /// song position and forwards changed values to the audio engine. Values
+    /// are cached per parameter so we only emit commands on real changes.
+    pub fn apply_automation(&mut self) {
+        if !self.is_playing {
+            return;
+        }
+        let t = self.song_time;
+        for ti in 0..self.playlist_tracks.len() {
+            let mut target = [f32::NAN; 4];
+            {
+                let track = &self.playlist_tracks[ti];
+                for lane in &track.automation {
+                    if !lane.enabled {
+                        continue;
+                    }
+                    if let Some(v) = lane.value_at(t) {
+                        let (lo, hi) = lane.param.range();
+                        target[lane.param.index()] = v.clamp(lo, hi);
+                    }
+                }
+            }
+            let mut state_cmd = None;
+            let mut mix_cmd = None;
+            {
+                let track = &mut self.playlist_tracks[ti];
+                let set = |cache: &mut f32, v: f32| -> bool {
+                    if v.is_finite() && (v - *cache).abs() > 1e-4 {
+                        *cache = v;
+                        true
+                    } else {
+                        false
+                    }
+                };
+                let mut state_changed = false;
+                let mut mix_changed = false;
+                if set(&mut track.automation_last[0], target[0]) {
+                    track.volume = target[0];
+                    state_changed = true;
+                }
+                if set(&mut track.automation_last[1], target[1]) {
+                    track.pan = target[1];
+                    state_changed = true;
+                }
+                if set(&mut track.automation_last[2], target[2]) {
+                    track.reverb_send = target[2];
+                    mix_changed = true;
+                }
+                if set(&mut track.automation_last[3], target[3]) {
+                    track.delay_send = target[3];
+                    mix_changed = true;
+                }
+                if state_changed {
+                    state_cmd = Some((track.volume, track.pan, track.muted, track.solo));
+                }
+                if mix_changed {
+                    mix_cmd = Some((
+                        track.comp_threshold_db,
+                        track.comp_ratio,
+                        track.reverb_send,
+                        track.delay_send,
+                        track.pitch_semitones,
+                    ));
+                }
+            }
+            if let Some((volume, pan, muted, solo)) = state_cmd {
+                let _ = self.engine.send_command(AudioCommand::SetStemTrackState {
+                    track_index: ti,
+                    volume,
+                    pan,
+                    muted,
+                    solo,
+                });
+            }
+            if let Some((comp_threshold_db, comp_ratio, reverb_send, delay_send, pitch_semitones)) =
+                mix_cmd
+            {
+                let _ = self.engine.send_command(AudioCommand::SetTrackMix {
+                    track_index: ti,
+                    comp_threshold_db,
+                    comp_ratio,
+                    reverb_send,
+                    delay_send,
+                    pitch_semitones,
+                });
+            }
+        }
+    }
+
+    fn render_automation_lane(
+        &mut self,
+        ui: &mut egui::Ui,
+        rect: Rect,
+        resp: &egui::Response,
+        bar_w: f32,
+        sec_per_bar: f32,
+        track_idx: usize,
+    ) {
+        let param = self.automation_param;
+        let (lo, hi) = param.range();
+        let span = (hi - lo).max(1e-6);
+        let val_to_y = |v: f32| rect.max.y - ((v - lo) / span).clamp(0.0, 1.0) * rect.height();
+        let y_to_val = |y: f32| lo + ((rect.max.y - y) / rect.height()).clamp(0.0, 1.0) * span;
+        let sec_to_x = |s: f32| rect.min.x + s / sec_per_bar * bar_w;
+        let x_to_sec = |x: f32| ((x - rect.min.x) / bar_w * sec_per_bar).max(0.0);
+
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, Rounding::same(4.0), Color32::from_rgb(11, 14, 19));
+        painter.text(
+            Pos2::new(rect.min.x + 8.0, rect.min.y + 10.0),
+            egui::Align2::LEFT_CENTER,
+            crate::tstatus!("📈 {} — {}", param.label(), self.playlist_tracks[track_idx].name),
+            egui::FontId::proportional(10.5),
+            Theme::FL_CYAN,
+        );
+        painter.line_segment(
+            [
+                Pos2::new(rect.min.x, val_to_y((lo + hi) * 0.5)),
+                Pos2::new(rect.max.x, val_to_y((lo + hi) * 0.5)),
+            ],
+            Stroke::new(0.5_f32, Color32::from_rgb(30, 36, 48)),
+        );
+        let total_bars = (rect.width() / bar_w).ceil() as usize;
+        for b in 0..=total_bars {
+            let x = rect.min.x + b as f32 * bar_w;
+            painter.line_segment(
+                [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
+                Stroke::new(0.5_f32, Color32::from_rgb(26, 30, 40)),
+            );
+        }
+
+        let lane_idx = self.playlist_tracks[track_idx]
+            .automation
+            .iter()
+            .position(|l| l.param == param);
+
+        if let Some(li) = lane_idx {
+            let lane = &self.playlist_tracks[track_idx].automation[li];
+            if lane.enabled && !lane.points.is_empty() {
+                let first = &lane.points[0];
+                let last = lane.points.last().unwrap();
+                painter.line_segment(
+                    [
+                        Pos2::new(rect.min.x, val_to_y(first.value)),
+                        Pos2::new(sec_to_x(first.time_secs), val_to_y(first.value)),
+                    ],
+                    Stroke::new(2.0_f32, Theme::FL_CYAN),
+                );
+                for w in lane.points.windows(2) {
+                    painter.line_segment(
+                        [
+                            Pos2::new(sec_to_x(w[0].time_secs), val_to_y(w[0].value)),
+                            Pos2::new(sec_to_x(w[1].time_secs), val_to_y(w[1].value)),
+                        ],
+                        Stroke::new(2.0_f32, Theme::FL_CYAN),
+                    );
+                }
+                painter.line_segment(
+                    [
+                        Pos2::new(sec_to_x(last.time_secs), val_to_y(last.value)),
+                        Pos2::new(rect.max.x, val_to_y(last.value)),
+                    ],
+                    Stroke::new(2.0_f32, Theme::FL_CYAN),
+                );
+                for (pi, p) in lane.points.iter().enumerate() {
+                    let c = Pos2::new(sec_to_x(p.time_secs), val_to_y(p.value));
+                    let dragging = self.automation_drag == Some((track_idx, li, pi));
+                    painter.circle_filled(
+                        c,
+                        if dragging { 6.0 } else { 4.5 },
+                        if dragging { Theme::FL_ORANGE } else { Theme::FL_CYAN },
+                    );
+                    painter.circle_stroke(c, 5.5, Stroke::new(1.0_f32, Color32::BLACK));
+                }
+            }
+        }
+
+        if resp.clicked() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                let sec = snap_time_secs(self.timeline_snap_mode, x_to_sec(pos.x), sec_per_bar);
+                let val = y_to_val(pos.y).clamp(lo, hi);
+                let li = match lane_idx {
+                    Some(li) => li,
+                    None => {
+                        self.playlist_tracks[track_idx].automation.push(AutomationLane {
+                            param,
+                            enabled: true,
+                            points: Vec::new(),
+                        });
+                        self.playlist_tracks[track_idx].automation.len() - 1
+                    }
+                };
+                let lane = &mut self.playlist_tracks[track_idx].automation[li];
+                lane.points.push(AutomationPoint { time_secs: sec, value: val });
+                lane.sort_points();
+                self.status_message = crate::tstatus!("📈 Automation: la till punkt ({:.2}s, {:.2})", sec, val);
+            }
+        }
+
+        if resp.drag_started() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                if let Some(li) = lane_idx {
+                    let pts = &self.playlist_tracks[track_idx].automation[li].points;
+                    let mut best = None;
+                    let mut best_d = 14.0_f32;
+                    for (pi, p) in pts.iter().enumerate() {
+                        let c = Pos2::new(sec_to_x(p.time_secs), val_to_y(p.value));
+                        let d = c.distance(pos);
+                        if d < best_d {
+                            best_d = d;
+                            best = Some(pi);
+                        }
+                    }
+                    if let Some(pi) = best {
+                        self.automation_drag = Some((track_idx, li, pi));
+                    }
+                }
+            }
+        }
+        if resp.dragged() {
+            if let Some((t, li, pi)) = self.automation_drag
+                && t == track_idx
+                && let Some(pos) = resp.interact_pointer_pos()
+            {
+                let sec = snap_time_secs(self.timeline_snap_mode, x_to_sec(pos.x), sec_per_bar);
+                let val = y_to_val(pos.y).clamp(lo, hi);
+                if let Some(p) = self.playlist_tracks[track_idx]
+                    .automation
+                    .get_mut(li)
+                    .and_then(|l| l.points.get_mut(pi))
+                {
+                    p.time_secs = sec;
+                    p.value = val;
+                }
+            }
+        }
+        if resp.drag_stopped() {
+            if let Some((t, li, _)) = self.automation_drag {
+                if t == track_idx
+                    && let Some(lane) = self.playlist_tracks[track_idx].automation.get_mut(li)
+                {
+                    lane.sort_points();
+                }
+            }
+            self.automation_drag = None;
+        }
+
+        if resp.secondary_clicked() {
+            if let Some(pos) = resp.interact_pointer_pos() {
+                if let Some(li) = lane_idx {
+                    let pts = &self.playlist_tracks[track_idx].automation[li].points;
+                    let mut best = None;
+                    let mut best_d = 14.0_f32;
+                    for (pi, p) in pts.iter().enumerate() {
+                        let c = Pos2::new(sec_to_x(p.time_secs), val_to_y(p.value));
+                        let d = c.distance(pos);
+                        if d < best_d {
+                            best_d = d;
+                            best = Some(pi);
+                        }
+                    }
+                    if let Some(pi) = best {
+                        self.playlist_tracks[track_idx].automation[li].points.remove(pi);
+                        self.status_message = crate::tstatus!("📈 Automation: tog bort punkt");
+                    }
+                }
+            }
         }
     }
 
@@ -3564,6 +3972,7 @@ impl eframe::App for SonixApp {
         self.poll_remote_audio_generation();
 
         self.advance_sequencer();
+        self.apply_automation();
         self.anim_phase += 0.08;
         self.update_scope_history();
         self.vocal_studio.update_live_stream();
@@ -5173,6 +5582,36 @@ impl SonixApp {
 
                 ui.separator();
 
+                // Automation Curves Toggle + Parameter Selector (Fas 5.4)
+                ui.group(|ui| {
+                    ui.set_height(26.0);
+                    ui.horizontal(|ui| {
+                        let auto_on = self.show_automation;
+                        let auto_lbl = if auto_on { crate::i18n::t("📈 Automation: PÅ") } else { crate::i18n::t("📈 Automation: AV") };
+                        let auto_bg = if auto_on { Theme::FL_CYAN } else { Color32::from_rgb(36, 42, 54) };
+                        let auto_fg = if auto_on { Color32::BLACK } else { Theme::TEXT_MUTED };
+                        if ui.add(egui::Button::new(egui::RichText::new(auto_lbl).strong().size(10.5).color(auto_fg)).fill(auto_bg))
+                            .on_hover_text(crate::i18n::t("Visa/redigera automationskurvor för valt spår. Vänsterklicka i kurvan för att lägga till punkter, dra för att flytta, högerklicka för att ta bort."))
+                            .clicked()
+                        {
+                            self.show_automation = !self.show_automation;
+                            self.status_message = crate::tstatus!("Automationskurvor: {}", if self.show_automation { "AKTIVERADE" } else { "INAKTIVERADE" });
+                        }
+                        if auto_on {
+                            for p in AutomationParam::ALL {
+                                let sel = self.automation_param == p;
+                                let pbg = if sel { Theme::FL_ORANGE } else { Color32::from_rgb(28, 32, 40) };
+                                let pfg = if sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+                                if ui.add(egui::Button::new(egui::RichText::new(p.label()).strong().size(10.0).color(pfg)).fill(pbg)).clicked() {
+                                    self.automation_param = p;
+                                }
+                            }
+                        }
+                    });
+                });
+
+                ui.separator();
+
                 // Zoom Controls Group (Now part of wrapped row, no right_to_left collision!)
                 ui.group(|ui| {
                     ui.set_height(26.0);
@@ -6618,12 +7057,24 @@ impl SonixApp {
                             );
 
                             // ====================================================
+                            // AUTOMATION CURVE EDITOR (Fas 5.4)
+                            // ====================================================
+                            let mut auto_bottom = m_lane_rect.max.y;
+                            if self.show_automation && !self.playlist_tracks.is_empty() {
+                                let sel = self.selected_timeline_track.min(self.playlist_tracks.len() - 1);
+                                let auto_h = 96.0;
+                                let (auto_rect, auto_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, auto_h), Sense::click_and_drag());
+                                self.render_automation_lane(ui, auto_rect, &auto_resp, bar_w, sec_per_bar, sel);
+                                auto_bottom = auto_rect.max.y;
+                            }
+
+                            // ====================================================
                             // 2.3 VERTICAL PLAYHEAD NEEDLE ACROSS ALL TRACKS
                             // ====================================================
                             let playhead_bar = self.song_time / sec_per_bar;
                             let playhead_x = timeline_left_x + playhead_bar * bar_w;
                             let track_area_top = ruler_rect.min.y;
-                            let track_area_bottom = m_lane_rect.max.y;
+                            let track_area_bottom = auto_bottom;
 
                             if playhead_x >= timeline_left_x && playhead_x <= timeline_left_x + timeline_total_w {
                                 // Auto-scroll timeline to follow playhead when enabled and playing
@@ -12185,5 +12636,58 @@ mod tests {
         assert_eq!(vocal_track.takes[0].time_stretch, 1.5);
         assert_eq!(vocal_track.takes[0].pitch_semitones, 3.0);
         assert_eq!(vocal_track.takes[0].is_reverse, true);
+    }
+
+    #[test]
+    fn test_automation_value_at_interpolates() {
+        let lane = AutomationLane {
+            param: AutomationParam::Volume,
+            enabled: true,
+            points: vec![
+                AutomationPoint { time_secs: 0.0, value: 0.0 },
+                AutomationPoint { time_secs: 10.0, value: 1.0 },
+            ],
+        };
+        assert_eq!(lane.value_at(-1.0), Some(0.0));
+        assert_eq!(lane.value_at(0.0), Some(0.0));
+        assert_eq!(lane.value_at(5.0), Some(0.5));
+        assert_eq!(lane.value_at(10.0), Some(1.0));
+        assert_eq!(lane.value_at(20.0), Some(1.0));
+
+        let empty = AutomationLane {
+            param: AutomationParam::Pan,
+            enabled: true,
+            points: Vec::new(),
+        };
+        assert_eq!(empty.value_at(1.0), None);
+    }
+
+    #[test]
+    fn test_automation_lane_serde_roundtrip() {
+        let lane = AutomationLane {
+            param: AutomationParam::ReverbSend,
+            enabled: true,
+            points: vec![
+                AutomationPoint { time_secs: 1.5, value: 0.25 },
+                AutomationPoint { time_secs: 4.0, value: 0.9 },
+            ],
+        };
+        let json = serde_json::to_string(&lane).unwrap();
+        let back: AutomationLane = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.param, AutomationParam::ReverbSend);
+        assert!(back.enabled);
+        assert_eq!(back.points.len(), 2);
+        assert!((back.value_at(2.0).unwrap() - 0.38).abs() < 1e-4);
+    }
+
+    #[test]
+    fn test_automation_param_ranges_and_index() {
+        assert_eq!(AutomationParam::Volume.index(), 0);
+        assert_eq!(AutomationParam::Pan.index(), 1);
+        assert_eq!(AutomationParam::ReverbSend.index(), 2);
+        assert_eq!(AutomationParam::DelaySend.index(), 3);
+        assert_eq!(AutomationParam::Volume.range(), (0.0, 1.5));
+        assert_eq!(AutomationParam::Pan.range(), (-1.0, 1.0));
+        assert_eq!(AutomationParam::DelaySend.range(), (0.0, 1.0));
     }
 }

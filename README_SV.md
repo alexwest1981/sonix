@@ -112,6 +112,7 @@ update-desktop-database ~/.local/share/applications
 * **Nedre Region-Inspektor:** Grov/fin nudge (`±1 takt`, `±0.1s`), starttrim-offset, gain, fade in/out, reverse och loop-multiplikator.
 * **Verktygspalett:** Välj (⇱), Rita (✎), Klipp (✂), Radera (🗑), Muta (🔇); snabbklipp vid spelhuvudet (Ctrl+B).
 * **Direkt mikrofoninspelning i spår:** Armeringsknapp (`⏺`), riktig noll-latens direktlyssning och realtidsvågformer.
+* **Automationskurvor (📈):** Rita kurvor per spår för volym, panorering, reverb- och delay-send. Vänsterklicka för punkter, dra för att flytta (snäpps mot rutnätet), högerklicka för att ta bort. Kurvorna spelas upp i realtid och sparas i projektet.
 
 ### 2. 🥁 Sonix Channel Rack (16-Stegs Sequencer) — ✅ Äkta
 * **Kanalstrippar:** Kick, Snare, Closed/Open Hat, Synth Lead, Sub Bass och egna kanaler.
