@@ -140,7 +140,7 @@ impl Default for FxRackState {
                 },
                 FxPedal {
                     id: "analog_filter",
-                    name: "🎛 24dB FILTER",
+                    name: "🎛 SVF FILTER (12 dB)",
                     category: "Sound Design",
                     enabled: false,
                     color: Color32::from_rgb(240, 210, 40),

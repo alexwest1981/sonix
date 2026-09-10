@@ -28,7 +28,7 @@ Sonix Studio är en blixtsnabb, professionell musikproduktionsmiljö (DAW) skriv
 * **Hundradelssekunds-precision (0.01s):** Alla tidskoder, klipppunkter, fadelängder och redigeringsverktyg opererar med exakt hundradelsprecision (`MM:SS.cs`).
 * **Multi-Track Stämstöd:** Importerar och mixar fullständiga stämpaket (från Suno AI, FL Studio, Ableton, Logic, m.fl.) med äkta avkodade vågformer och automatisk BPM-detektering.
 * **Icke-blockerande asynkron inläsning:** Stora WAV- och ZIP-filer packas upp och avkodas i bakgrunden med realtidsförloppsindikator.
-* **Integrerad Syntes & Sångstudio:** Inbyggd 4-vågforms subtraktiv synth, Moog-filter, Delay, Reverb, Melodyne-liknande pitch-editor och 4-stämmig intelligent harmonizer.
+* **Integrerad Syntes & Sångstudio:** Inbyggd 4-vågforms subtraktiv synth, resonant SVF-filter, Delay, Reverb, Melodyne-liknande pitch-editor och 4-stämmig intelligent harmonizer.
 
 ---
 
@@ -205,9 +205,9 @@ Channel Racket är den klassiska 16-stegs trummaskinen och mönstereditorn i sti
 * **Slumpa Melodi**: Knappen `⚡ Slumpa Melodi` skapar melodiska slingor i vald skala.
 
 ### Analog Alchemy Synthesizer (F7)
-* **Oscillator**: 4 vågformer – *Sawtooth* (sågtand), *Square/Pulse* (fyrkant), *Sine* (sinus) och *Noise* (vitt brus).
+* **Oscillator**: 4 vågformer – *Sawtooth* (sågtand), *Square/Pulse* (fyrkant), *Sine* (sinus) och *Triangle* (triangel).
 * **ADSR Envelope**: Attack, Decay, Sustain och Release för exakt klangformning.
-* **Moog 24dB Resonant Lowpass Filter**: Cutoff-frekvens (20 Hz – 18 kHz) och resonans (0.0 – 0.95).
+* **Resonant SVF-lågpassfilter (12 dB)**: Cutoff-frekvens (20 Hz – 18 kHz) och resonans (0.0 – 0.95).
 * **Saturation & Drive**: Analog rörvärme och distortion.
 * **Live Klaviatur**: Spela synthen live med tangentbordets tangenter:
   - `A` = C, `W` = C#, `S` = D, `E` = D#, `D` = E, `F` = F, `T` = F#, `G` = G, `Y` = G#, `H` = A, `U` = A#, `J` = B, `K` = C.

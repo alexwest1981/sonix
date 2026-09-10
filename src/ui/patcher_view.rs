@@ -80,7 +80,7 @@ pub fn render_patcher_view(
             if ui.button(crate::i18n::t("+ 🌀 LFO Modulator")).clicked() {
                 graph.add_node(NodeType::Lfo, Pos2::new(30.0, 220.0));
             }
-            if ui.button(crate::i18n::t("+ 🌊 Stereo Delay")).clicked() {
+            if ui.button(crate::i18n::t("+ 🌊 Delay")).clicked() {
                 graph.add_node(NodeType::Delay, Pos2::new(540.0, 60.0));
             }
             if ui.button(crate::i18n::t("+ ✨ Space Reverb")).clicked() {

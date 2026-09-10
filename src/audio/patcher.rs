@@ -96,10 +96,10 @@ impl ModularGraph {
             param3: 0.0,
         });
 
-        // 3. Dual Oscillator
+        // 3. Oscillator
         self.nodes.push(PatcherNode {
             id: 3,
-            title: "🔊 Dual Wavetable OSC".to_string(),
+            title: "🔊 Oscillator".to_string(),
             node_type: NodeType::Oscillator,
             pos: Pos2::new(215.0, 25.0),
             color: Color32::from_rgb(0, 200, 240),
@@ -127,7 +127,7 @@ impl ModularGraph {
         // 5. State Variable Filter (SVF)
         self.nodes.push(PatcherNode {
             id: 5,
-            title: "🌊 SVF 24dB Filter".to_string(),
+            title: "🌊 SVF Filter (12 dB)".to_string(),
             node_type: NodeType::Filter,
             pos: Pos2::new(405.0, 25.0),
             color: Color32::from_rgb(46, 204, 113),
@@ -141,7 +141,7 @@ impl ModularGraph {
         // 6. Tube Distortion
         self.nodes.push(PatcherNode {
             id: 6,
-            title: "🔥 Analog Tube Drive".to_string(),
+            title: "🔥 Tube-style Drive".to_string(),
             node_type: NodeType::Distortion,
             pos: Pos2::new(595.0, 25.0),
             color: Color32::from_rgb(255, 80, 50),
@@ -155,7 +155,7 @@ impl ModularGraph {
         // 7. Space Reverb
         self.nodes.push(PatcherNode {
             id: 7,
-            title: "✨ Shimmer Space Reverb".to_string(),
+            title: "✨ Space Reverb".to_string(),
             node_type: NodeType::Reverb,
             pos: Pos2::new(595.0, 195.0),
             color: Color32::from_rgb(160, 120, 255),
@@ -203,11 +203,11 @@ impl ModularGraph {
     pub fn add_node(&mut self, node_type: NodeType, pos: Pos2) {
         let (title, color, in_pins, out_pins, p1, p2, p3) = match node_type {
             NodeType::MidiIn => ("🎹 MIDI / Note IN", Color32::from_rgb(255, 120, 60), vec![], vec!["Pitch", "Gate", "Velocity"], 60.0, 1.0, 0.0),
-            NodeType::Oscillator => ("🔊 Wavetable OSC", Color32::from_rgb(0, 200, 240), vec!["Pitch", "Sync", "PWM"], vec!["Audio Out"], 1.0, 0.0, 0.5),
-            NodeType::Filter => ("🌊 SVF 24dB Filter", Color32::from_rgb(46, 204, 113), vec!["Audio In", "Cutoff CV", "Res CV"], vec!["Lowpass", "Highpass", "Bandpass"], 3000.0, 2.5, 1.0),
+            NodeType::Oscillator => ("🔊 Oscillator", Color32::from_rgb(0, 200, 240), vec!["Pitch", "Sync", "PWM"], vec!["Audio Out"], 1.0, 0.0, 0.5),
+            NodeType::Filter => ("🌊 SVF Filter (12 dB)", Color32::from_rgb(46, 204, 113), vec!["Audio In", "Cutoff CV", "Res CV"], vec!["Lowpass", "Highpass", "Bandpass"], 3000.0, 2.5, 1.0),
             NodeType::Envelope => ("📈 ADSR Envelope", Color32::from_rgb(255, 200, 40), vec!["Gate"], vec!["Env Out"], 0.01, 0.25, 0.60),
             NodeType::Lfo => ("🌀 LFO Modulator", Color32::from_rgb(180, 100, 255), vec!["Rate CV"], vec!["LFO Out"], 2.0, 0.8, 0.0),
-            NodeType::Delay => ("🌊 Stereo Delay", Color32::from_rgb(0, 230, 220), vec!["Audio In", "Time CV"], vec!["Wet Out"], 320.0, 0.45, 0.3),
+            NodeType::Delay => ("🌊 Delay", Color32::from_rgb(0, 230, 220), vec!["Audio In", "Time CV"], vec!["Wet Out"], 320.0, 0.45, 0.3),
             NodeType::Reverb => ("✨ Space Reverb", Color32::from_rgb(160, 120, 255), vec!["Audio In", "Mix CV"], vec!["Wet Out L", "Wet Out R"], 0.8, 0.35, 0.4),
             NodeType::Distortion => ("🔥 Tube Saturation", Color32::from_rgb(255, 80, 50), vec!["Audio In", "Drive CV"], vec!["Wet Audio"], 2.5, 0.8, 0.0),
             NodeType::AudioOut => ("🎚 Master Audio OUT", Color32::from_rgb(255, 140, 0), vec!["Left In", "Right In"], vec![], 0.85, 0.0, 0.0),

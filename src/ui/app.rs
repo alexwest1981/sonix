@@ -8835,9 +8835,9 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     });
                 });
 
-                // Column 2: Moog Filter Controls
+                // Column 2: Resonant filter controls
                 cols[1].group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("MOOG 24dB FILTER")).strong().color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("RESONANT SVF FILTER (12 dB)")).strong().color(Theme::FL_ORANGE));
                     ui.horizontal(|ui| {
                         let mut flt_changed = false;
                         flt_changed |= rotary_knob(ui, &mut self.filter.cutoff, 60.0, 18000.0, "CUTOFF", Theme::FL_ORANGE, 40.0);
@@ -11758,7 +11758,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                                             ui.label(egui::RichText::new(crate::i18n::t("Analog Alchemy Synthesizer (F7):")).strong().color(Theme::FL_GREEN));
                                             ui.label(crate::i18n::t("• 4 Vågformer: Sawtooth (sågtand), Square (fyrkant), Sine (sinus) och Noise (brus)."));
                                             ui.label(crate::i18n::t("• ADSR Envelope: Attack, Decay, Sustain och Release."));
-                                            ui.label(crate::i18n::t("• Moog 24dB Resonant Filter: Cutoff (20Hz–18kHz) och Resonans."));
+                                            ui.label(crate::i18n::t("• Resonant SVF-filter (12 dB): Cutoff (20Hz–18kHz) och Resonans."));
                                             ui.label(crate::i18n::t("• Saturation & Drive: Analog rörvärme och distortion."));
                                         });
                                     }

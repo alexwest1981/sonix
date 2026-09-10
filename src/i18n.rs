@@ -739,7 +739,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "• Master Limiter & Maximizer för kommersiell ljudstyrka utan digital distorsion." => "• Master limiter & maximizer for commercial loudness without digital distortion.",
         "• Melodyne ARA2 Editor: Interaktiva tonhöjds-blobs för att justera sångens toner och timing." => "• Melodyne ARA2 editor: Interactive pitch blobs to adjust the vocal's notes and timing.",
         "• Mid Peak (Mellanregister): Gain ±12 dB, frekvens 200 Hz – 6 kHz, Q-faktor 0.5–3.0." => "• Mid peak (mids): Gain ±12 dB, frequency 200 Hz – 6 kHz, Q-factor 0.5–3.0.",
-        "• Moog 24dB Resonant Filter: Cutoff (20Hz–18kHz) och Resonans." => "• Moog 24dB resonant filter: Cutoff (20Hz–18kHz) and resonance.",
+        "• Resonant SVF-filter (12 dB): Cutoff (20Hz–18kHz) och Resonans." => "• Resonant SVF filter (12 dB): Cutoff (20Hz–18kHz) and resonance.",
         "• Mönster P1–P4: Skapa variationer för vers, refräng och stick." => "• Patterns P1–P4: Create variations for verse, chorus and bridge.",
         "• När fönstret täcks av ett annat fönster eller minimeras fortsätter ljudmotorn att spela utan avbrott samtidigt som GUI-uppritningen vilar för att förhindra krascher." => "• When the window is covered or minimized the audio engine keeps playing without interruption while GUI rendering rests to prevent crashes.",
         "• PipeWire & ALSA Native – Ansluter direkt till Linux moderna ljudserver." => "• PipeWire & ALSA native – Connects directly to Linux's modern audio server.",

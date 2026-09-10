@@ -171,6 +171,14 @@ Patcher-grafen utvärderas inte längre i skapandeordning. Ny `topo_order()` (`p
 - **UI:** `patcher_view.rs` visar ett varningsband ("⚠ Återkoppling/cykel i patchen…") när `graph.has_cycle()` är sant. Engelsk översättning i `i18n.rs`.
 - **Tester:** `topo_order_places_sources_before_targets`, `topo_order_detects_cycle_and_keeps_all_nodes`, `evaluation_order_is_independent_of_node_listing_order` (reverserad nodlista ger bit-identisk utsignal), `graph_reports_feedback_cycle`. `cargo test --release` = **61 tester**, 0 varningar.
 
+### P24 — Etiketter matchar DSP:n · ✅ KLAR
+Tog bort överlöften i nod-/filteretiketter så att de beskriver vad koden faktiskt gör.
+- **Patcher:** `Dual Wavetable OSC` → `Oscillator`, `SVF 24dB Filter` → `SVF Filter (12 dB)`, `Stereo Delay` → `Delay`, `Shimmer Space Reverb` → `Space Reverb`, `Analog Tube Drive` → `Tube-style Drive` (både standardpresetet och `add_node`).
+- **FX-rack:** pedalen `🎛 24dB FILTER` → `🎛 SVF FILTER (12 dB)`.
+- **Synthen:** `MOOG 24dB FILTER` → `RESONANT SVF FILTER (12 dB)`; hjälptexten uppdaterad.
+- **MANUAL.md:** "Moog-filter"/"Moog 24dB Resonant Lowpass" → resonant SVF (12 dB); rättade även felaktig vågform (`Noise` → `Triangle`).
+- `cargo test --release` = **61 tester**, 0 varningar.
+
 
 ---
 

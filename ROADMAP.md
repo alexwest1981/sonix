@@ -17,10 +17,10 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~89 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~90 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[████████████████████████████████░░░░]  89 %
+[█████████████████████████████████░░░]  90 %
 ```
 
 | Område | Klart | Kvar | Procent |
@@ -66,10 +66,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** En kabel kan dras "baklänges" och ljudet följer ändå grafen; cykel-test finns. ✅
   - **Filer:** `src/audio/patcher.rs`, `src/ui/patcher_view.rs` (varningsband vid cykel)
 
-- [ ] **1.2 Matcha patcher-nodetiketter mot DSP** — *S*
-  - **Gör:** Ta bort eller korrigera etiketter som lovar mer än DSP:n gör (t.ex. filtertyp/parametrar).
-  - **Klart när:** Varje nod-etikett beskriver exakt vad koden gör.
-  - **Filer:** `src/ui/patcher_view.rs`, `src/audio/patcher.rs`
+- [x] **1.2 Matcha patcher-nodetiketter mot DSP** — *S* ✅
+  - **Löst:** `Dual Wavetable OSC` → `Oscillator`, `SVF 24dB Filter` → `SVF Filter (12 dB)`, `Stereo Delay` → `Delay`, `Shimmer Space Reverb` → `Space Reverb`, `Analog Tube Drive` → `Tube-style Drive`. Även samma överlöften utanför patchern: FX-pedalen `24dB FILTER` → `SVF FILTER (12 dB)`, synthens `MOOG 24dB FILTER` → `RESONANT SVF FILTER (12 dB)`, hjälptexten och `MANUAL.md` (inkl. felaktig "Noise"-vågform → Triangle).
+  - **Klart när:** Varje nod-etikett beskriver exakt vad koden gör. ✅
+  - **Filer:** `src/audio/patcher.rs`, `src/ui/patcher_view.rs`, `src/ui/fx_rack_modal.rs`, `src/ui/app.rs`, `src/i18n.rs`, `MANUAL.md`
 
 - [ ] **1.3 Legacy "AI Provider Inställningar"-modal** — *S*
   - **Problem:** Fälten (`ai_provider_*`) läses aldrig och sparas inte.
@@ -174,7 +174,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 1.2 — Matcha patcher-nodetiketter mot DSP** (första ovalda punkten).
+**Fas 1.3 — Legacy "AI Provider Inställningar"-modal** (första ovalda punkten).
 
 ## 🛠️ Så här håller vi roadmapen levande
 
