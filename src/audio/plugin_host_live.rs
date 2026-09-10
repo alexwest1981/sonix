@@ -375,10 +375,7 @@ pub fn load_processor(
     #[cfg(feature = "plugin-host")]
     {
         if crate::audio::plugin_vst3::is_vst3_path(path) {
-            return Err(crate::i18n::t(
-                "VST3-ljudprocessning är inte klar än (Fas 4.6b)",
-            )
-            .to_string());
+            return crate::audio::plugin_vst3::load_processor(path, sample_rate, max_frames);
         }
         imp::load_processor(path, sample_rate, max_frames)
     }

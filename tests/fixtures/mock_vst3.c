@@ -148,6 +148,54 @@ typedef struct ProcessData {
     void *processContext;
 } ProcessData;
 
+/* The host owns IBStream / IParameterChanges / IParamValueQueue; the plugin
+ * only calls through their vtables. */
+typedef struct IBStream {
+    const struct IBStreamVtbl *vtbl;
+} IBStream;
+
+typedef struct IParamValueQueue {
+    const struct IParamValueQueueVtbl *vtbl;
+} IParamValueQueue;
+
+typedef struct IParameterChanges {
+    const struct IParameterChangesVtbl *vtbl;
+} IParameterChanges;
+
+struct IBStreamVtbl {
+    tresult (*queryInterface)(void *, const char *, void **);
+    uint32 (*addRef)(void *);
+    uint32 (*release)(void *);
+    tresult (*read)(void *, void *, int32, int32 *);
+    tresult (*write)(void *, void *, int32, int32 *);
+    tresult (*seek)(void *, int64_t, int32, int64_t *);
+    tresult (*tell)(void *, int64_t *);
+};
+
+struct IParamValueQueueVtbl {
+    tresult (*queryInterface)(void *, const char *, void **);
+    uint32 (*addRef)(void *);
+    uint32 (*release)(void *);
+    uint32 (*getParameterId)(void *);
+    int32 (*getPointCount)(void *);
+    tresult (*getPoint)(void *, int32, int32 *, double *);
+    tresult (*addPoint)(void *, int32, double, int32 *);
+};
+
+struct IParameterChangesVtbl {
+    tresult (*queryInterface)(void *, const char *, void **);
+    uint32 (*addRef)(void *);
+    uint32 (*release)(void *);
+    int32 (*getParameterCount)(void *);
+    void *(*getParameterData)(void *, int32);
+    void *(*addParameterData)(void *, uint32, int32 *);
+};
+
+/* The mock reports (and applies) a small fixed latency so the host's PDC path
+ * can be exercised for real. */
+#define LATENCY_SAMPLES 8
+
+
 /* ------------------------------------------------------------------ vtables */
 
 typedef struct IPluginFactoryVtbl {
@@ -230,6 +278,9 @@ struct MockComponent {
     int32 max_frames;
     int32 active;
     MockProcessor proc;
+    float delay_l[LATENCY_SAMPLES];
+    float delay_r[LATENCY_SAMPLES];
+    int32 delay_pos;
 };
 
 typedef struct MockController {
@@ -547,19 +598,41 @@ static tresult component_activate_bus(void *self, int32 type, int32 dir, int32 i
 static tresult component_set_active(void *self, uint8_t state) {
     MockComponent *c = (MockComponent *)self;
     c->active = state ? 1 : 0;
+    /* Re-activation resets the processing state (the host's `reset`). */
+    c->delay_pos = 0;
+    memset(c->delay_l, 0, sizeof(c->delay_l));
+    memset(c->delay_r, 0, sizeof(c->delay_r));
     return kResultOk;
 }
 
 static tresult component_set_state(void *self, void *state) {
-    (void)self;
-    (void)state;
-    return kResultFalse;
+    MockComponent *c = (MockComponent *)self;
+    IBStream *s = (IBStream *)state;
+    if (!s || !s->vtbl || !s->vtbl->read) {
+        return kResultFalse;
+    }
+    int32 n = 0;
+    if (s->vtbl->read(s, &c->gain, (int32)sizeof(double), &n) != kResultOk ||
+        n != (int32)sizeof(double)) {
+        return kResultFalse;
+    }
+    if (s->vtbl->read(s, &c->mix, (int32)sizeof(double), &n) != kResultOk ||
+        n != (int32)sizeof(double)) {
+        return kResultFalse;
+    }
+    return kResultOk;
 }
 
 static tresult component_get_state(void *self, void *state) {
-    (void)self;
-    (void)state;
-    return kResultFalse;
+    MockComponent *c = (MockComponent *)self;
+    IBStream *s = (IBStream *)state;
+    if (!s || !s->vtbl || !s->vtbl->write) {
+        return kResultFalse;
+    }
+    int32 n = 0;
+    s->vtbl->write(s, &c->gain, (int32)sizeof(double), &n);
+    s->vtbl->write(s, &c->mix, (int32)sizeof(double), &n);
+    return kResultOk;
 }
 
 /* --------------------------------------------------------------- processor */
@@ -617,7 +690,7 @@ static tresult processor_can_sample_size(void *self, int32 size) {
 
 static uint32 processor_latency(void *self) {
     (void)self;
-    return 0;
+    return LATENCY_SAMPLES;
 }
 
 static tresult processor_setup(void *self, ProcessSetup *setup) {
@@ -633,21 +706,77 @@ static tresult processor_set_processing(void *self, uint8_t state) {
     return kResultOk;
 }
 
+/* Applies the latest value of every changed parameter (the realtime VST3
+ * path). */
+static void apply_parameter_changes(MockComponent *c, ProcessData *data) {
+    if (!data->inputParameterChanges) {
+        return;
+    }
+    IParameterChanges *changes = (IParameterChanges *)data->inputParameterChanges;
+    if (!changes->vtbl || !changes->vtbl->getParameterCount ||
+        !changes->vtbl->getParameterData) {
+        return;
+    }
+    int32 count = changes->vtbl->getParameterCount(changes);
+    for (int32 i = 0; i < count; i++) {
+        IParamValueQueue *q =
+            (IParamValueQueue *)changes->vtbl->getParameterData(changes, i);
+        if (!q || !q->vtbl) {
+            continue;
+        }
+        uint32 id = q->vtbl->getParameterId(q);
+        int32 points = q->vtbl->getPointCount(q);
+        if (points > 0) {
+            int32 offset = 0;
+            double value = 0.0;
+            q->vtbl->getPoint(q, points - 1, &offset, &value);
+            if (id == PARAM_GAIN_ID) {
+                c->gain = value;
+            } else if (id == PARAM_MIX_ID) {
+                c->mix = value;
+            }
+        }
+    }
+}
+
 static tresult processor_process(void *self, ProcessData *data) {
     MockProcessor *p = (MockProcessor *)self;
     MockComponent *c = p->owner;
     if (data->numSamples <= 0 || data->numOutputs < 1 || !data->outputs) {
         return kResultOk;
     }
+    apply_parameter_changes(c, data);
+
     const float scale = (float)(1.0 - c->mix + c->mix * c->gain);
-    for (int32 bus = 0; bus < data->numOutputs; bus++) {
-        AudioBusBuffers *out = &data->outputs[bus];
-        const AudioBusBuffers *in = (data->numInputs > bus) ? &data->inputs[bus] : NULL;
-        for (int32 ch = 0; ch < out->numChannels; ch++) {
-            float *dst = out->u.channelBuffers32[ch];
-            const float *src = (in && ch < in->numChannels) ? in->u.channelBuffers32[ch] : NULL;
+    AudioBusBuffers *out = &data->outputs[0];
+    const AudioBusBuffers *in = (data->numInputs > 0) ? &data->inputs[0] : NULL;
+    float *dst0 = out->numChannels > 0 ? out->u.channelBuffers32[0] : NULL;
+    float *dst1 = out->numChannels > 1 ? out->u.channelBuffers32[1] : NULL;
+    const float *src0 = (in && in->numChannels > 0) ? in->u.channelBuffers32[0] : NULL;
+    const float *src1 = (in && in->numChannels > 1) ? in->u.channelBuffers32[1] : NULL;
+
+    for (int32 i = 0; i < data->numSamples; i++) {
+        float l = src0 ? src0[i] : 0.0f;
+        float r = src1 ? src1[i] : l;
+        float dl = c->delay_l[c->delay_pos];
+        float dr = c->delay_r[c->delay_pos];
+        c->delay_l[c->delay_pos] = l * scale;
+        c->delay_r[c->delay_pos] = r * scale;
+        c->delay_pos = (c->delay_pos + 1) % LATENCY_SAMPLES;
+        if (dst0) {
+            dst0[i] = dl;
+        }
+        if (dst1) {
+            dst1[i] = dr;
+        }
+    }
+    /* Any additional output buses are silent. */
+    for (int32 bus = 1; bus < data->numOutputs; bus++) {
+        AudioBusBuffers *extra = &data->outputs[bus];
+        for (int32 ch = 0; ch < extra->numChannels; ch++) {
+            float *dst = extra->u.channelBuffers32[ch];
             for (int32 i = 0; i < data->numSamples; i++) {
-                dst[i] = (src ? src[i] : 0.0f) * scale;
+                dst[i] = 0.0f;
             }
         }
     }
@@ -699,21 +828,37 @@ static tresult controller_terminate(void *self) {
 }
 
 static tresult controller_set_component_state(void *self, void *state) {
-    (void)self;
-    (void)state;
-    return kResultFalse;
+    MockController *c = (MockController *)self;
+    IBStream *s = (IBStream *)state;
+    if (!s || !s->vtbl || !s->vtbl->read) {
+        return kResultFalse;
+    }
+    int32 n = 0;
+    if (s->vtbl->read(s, &c->gain, (int32)sizeof(double), &n) != kResultOk ||
+        n != (int32)sizeof(double)) {
+        return kResultFalse;
+    }
+    if (s->vtbl->read(s, &c->mix, (int32)sizeof(double), &n) != kResultOk ||
+        n != (int32)sizeof(double)) {
+        return kResultFalse;
+    }
+    return kResultOk;
 }
 
 static tresult controller_set_state(void *self, void *state) {
-    (void)self;
-    (void)state;
-    return kResultFalse;
+    return controller_set_component_state(self, state);
 }
 
 static tresult controller_get_state(void *self, void *state) {
-    (void)self;
-    (void)state;
-    return kResultFalse;
+    MockController *c = (MockController *)self;
+    IBStream *s = (IBStream *)state;
+    if (!s || !s->vtbl || !s->vtbl->write) {
+        return kResultFalse;
+    }
+    int32 n = 0;
+    s->vtbl->write(s, &c->gain, (int32)sizeof(double), &n);
+    s->vtbl->write(s, &c->mix, (int32)sizeof(double), &n);
+    return kResultOk;
 }
 
 static int32 controller_param_count(void *self) {

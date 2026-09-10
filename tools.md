@@ -318,6 +318,14 @@ yabridge producerar **VST3** (ELF-`.so`, inte bundles) och VST2 — inte CLAP. D
 
 ---
 
+### P45 — VST3-ljud, parametrar/state & PDC (Fas 4.6b) · ✅ KLAR
+VST3-vägen spelar nu riktigt ljud i ett spår, med parametrar, state och PDC — inte bara inspektion.
+- **Löst:** `VstProcessor` i **`src/audio/plugin_vst3.rs`** implementerar `PluginProcessor` fullt ut. Ljud: `IAudioProcessor::process` anropas på riktiga stereo-block via `#[repr(C)]`-layouterna **`AudioBusBuffers`**/`ProcessData` (läge `kRealtime`, `kSample32`) och resultatet kopieras tillbaka. Latens: `getLatencySamples` läses vid laddning och rapporteras via `latency_frames()`, så motorns befintliga PDC kompenserar VST3-spåret precis som CLAP. Parametrar: `IEditController::setParamNormalized` anropas och ändringen köas i en host-ägd **`IParameterChanges`/`IParamValueQueue`** som skickas i `ProcessData::inputParameterChanges` (nollställs efter varje block). `reset()` kör `setActive(0)`→`setActive(1)`. State: en host-ägd **`IBStream`** (read/write/seek/tell över en `Vec<u8>`) matas till `IComponent::getState`/`setState`, följt av `IEditController::setComponentState`. `plugin_host_live::load_processor` dispatchar `.vst3` till `plugin_vst3::load_processor` (det tidigare ärliga felet är borta), så en VST3-plugin laddas, processar ljud i ett spår med PDC och sparar/laddar state via samma `PluginProcessor`-trait som CLAP. Fixturen **`tests/fixtures/mock_vst3.c`** fick riktig state-I/O (gain+mix som 2 f64 = 16 byte), `inputParameterChanges`-läsning i `process` och **8 samplars latens** (`getLatencySamples` = 8, delay-bufferten nollställs i `setActive`) för att exercera PDC på riktigt.
+- **Tester:** `loads_processor_and_reports_latency`, `processor_applies_parameter_changes`, `processor_state_round_trips`, `processor_reset_clears_the_latency_buffer` (+ de 5 från P44).
+- `cargo test --release` = **127 tester**, 0 varningar. `cargo test --release --features plugin-host` = **164 tester**, 0 varningar. Alla fyra byggkombinationer 0 varningar. **OBS:** verifieras mot mock-modulen; en riktig yabridge-brygga kräver Wine + display och VST2-bryggor (Sytrus/Harmor/Gross Beat) täcks ännu inte (Fas 4.6c).
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -336,6 +344,7 @@ yabridge producerar **VST3** (ELF-`.so`, inte bundles) och VST2 — inte CLAP. D
 | Out-of-process sandbox: processgräns + krasch/omstart (opt-in) | ✅ REAL (P42) |
 | Out-of-process sandbox: ljud över delat minne (opt-in) | ✅ REAL (P43) |
 | VST3-modul, ABI, laddning & inspektion (opt-in) | ✅ REAL (P44) |
+| VST3-ljud, parametrar/state & PDC (opt-in) | ✅ REAL (P45) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |
