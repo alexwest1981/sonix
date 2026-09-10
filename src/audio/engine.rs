@@ -384,3 +384,25 @@ fn apply_preferences(
         config.buffer_size = cpal::BufferSize::Fixed(frames);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn audio_settings_roundtrip_and_defaults() {
+        let settings = AudioSettings {
+            sample_rate: Some(48_000),
+            buffer_frames: Some(256),
+        };
+        let json = serde_json::to_string(&settings).unwrap();
+        let back: AudioSettings = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.sample_rate, Some(48_000));
+        assert_eq!(back.buffer_frames, Some(256));
+
+        // Older/partial config files must still load via serde defaults.
+        let partial: AudioSettings = serde_json::from_str("{}").unwrap();
+        assert!(partial.sample_rate.is_none());
+        assert!(partial.buffer_frames.is_none());
+    }
+}

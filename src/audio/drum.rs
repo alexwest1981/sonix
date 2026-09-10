@@ -187,3 +187,65 @@ impl DrumVoice {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ALL: [DrumType; 10] = [
+        DrumType::Kick,
+        DrumType::Snare,
+        DrumType::Clap,
+        DrumType::HiHatClosed,
+        DrumType::HiHatOpen,
+        DrumType::Crash,
+        DrumType::TomLow,
+        DrumType::TomHigh,
+        DrumType::MetronomeHigh,
+        DrumType::MetronomeLow,
+    ];
+
+    #[test]
+    fn trigger_produces_sound_then_goes_idle() {
+        let mut v = DrumVoice::new(48000.0);
+        assert_eq!(v.next_sample(), 0.0);
+        v.trigger(DrumType::Kick);
+        let mut peak = 0.0f32;
+        for _ in 0..(48000 / 2) {
+            peak = peak.max(v.next_sample().abs());
+        }
+        assert!(peak > 0.1, "kick should be audible, peak {}", peak);
+        assert!(!v.active, "kick should finish within its duration");
+        assert_eq!(v.next_sample(), 0.0);
+    }
+
+    #[test]
+    fn reset_silences_voice() {
+        let mut v = DrumVoice::new(48000.0);
+        v.trigger(DrumType::Snare);
+        v.next_sample();
+        v.reset();
+        assert!(!v.active);
+        assert_eq!(v.next_sample(), 0.0);
+    }
+
+    #[test]
+    fn every_voice_is_bounded_and_audible() {
+        for drum_type in ALL {
+            let mut v = DrumVoice::new(48000.0);
+            v.trigger(drum_type);
+            let mut peak = 0.0f32;
+            for _ in 0..(48000 * 2) {
+                let s = v.next_sample();
+                assert!(s.is_finite(), "{:?} produced a non-finite sample", drum_type);
+                assert!(s.abs() < 5.0, "{:?} exceeded bounds: {}", drum_type, s);
+                peak = peak.max(s.abs());
+                if !v.active {
+                    break;
+                }
+            }
+            assert!(peak > 0.05, "{:?} was inaudible (peak {})", drum_type, peak);
+            assert!(!v.active, "{:?} never went idle", drum_type);
+        }
+    }
+}

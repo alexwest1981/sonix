@@ -686,5 +686,61 @@ mod tests {
         let preset = mgr.presets.last().unwrap();
         assert_eq!(preset.preset_name, "Custom808");
     }
+
+    fn isolated_manager(scan_dir: &std::path::Path) -> PluginManager {
+        let mut mgr = PluginManager::default();
+        mgr.plugins.clear();
+        mgr.presets.clear();
+        mgr.scan_paths = vec![ScanPath {
+            path: scan_dir.to_string_lossy().to_string(),
+            enabled: true,
+            description: "test".to_string(),
+            is_wine: false,
+            is_fl_path: false,
+        }];
+        mgr
+    }
+
+    #[test]
+    fn scan_disk_discovers_and_classifies_plugins() {
+        let dir = std::env::temp_dir().join("sonix_plugin_scan_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let clap = dir.join("SuperSynth.clap");
+        std::fs::write(&clap, [0x7f, b'E', b'L', b'F', 0, 0, 0, 0]).unwrap();
+        let vst3 = dir.join("RoomReverb.vst3");
+        std::fs::write(&vst3, b"not really a plugin").unwrap();
+
+        let mut mgr = isolated_manager(&dir);
+        mgr.scan_disk();
+
+        let found_clap = mgr.plugins.iter().find(|p| p.name == "SuperSynth").expect("clap discovered");
+        assert_eq!(found_clap.format, PluginFormat::Clap);
+        assert_eq!(found_clap.category, PluginCategory::Synth);
+        assert!(found_clap.verified, "ELF magic should verify");
+
+        let found_vst3 = mgr.plugins.iter().find(|p| p.name == "RoomReverb").expect("vst3 discovered");
+        assert_eq!(found_vst3.format, PluginFormat::Vst3);
+        assert_eq!(found_vst3.category, PluginCategory::Reverb);
+        assert!(!found_vst3.verified, "garbage should not verify");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn scan_disk_classifies_fst_as_preset_not_plugin() {
+        let dir = std::env::temp_dir().join("sonix_plugin_scan_fst");
+        std::fs::create_dir_all(&dir).unwrap();
+        let fst = dir.join("GrossBeatPattern.fst");
+        std::fs::write(&fst, b"FSTDATA").unwrap();
+
+        let mut mgr = isolated_manager(&dir);
+        mgr.scan_disk();
+
+        assert!(mgr.plugins.is_empty(), "a .fst must never be listed as a plugin");
+        let preset = mgr.presets.iter().find(|p| p.preset_name == "GrossBeatPattern").expect("fst preset discovered");
+        assert_eq!(preset.target_plugin, "Gross Beat");
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
 }
 

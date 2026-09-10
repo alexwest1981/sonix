@@ -57,3 +57,47 @@ impl StateVariableFilter {
         v2
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn rms_of_sine(cutoff: f32, freq: f32) -> f32 {
+        let sr = 48000.0;
+        let mut f = StateVariableFilter::new(sr);
+        let params = FilterParams { cutoff, resonance: 0.707 };
+        let warmup = 4800;
+        let measure = 4800;
+        let mut sum = 0.0f32;
+        for i in 0..(warmup + measure) {
+            let x = (2.0 * PI * freq * i as f32 / sr).sin();
+            let y = f.process_lowpass(x, &params);
+            if i >= warmup {
+                sum += y * y;
+            }
+        }
+        (sum / measure as f32).sqrt()
+    }
+
+    #[test]
+    fn lowpass_attenuates_high_frequencies() {
+        let low = rms_of_sine(500.0, 100.0);
+        let high = rms_of_sine(500.0, 15000.0);
+        assert!(low > 0.5, "passband should survive, got {}", low);
+        assert!(high < low * 0.1, "stopband {} should be far below {}", high, low);
+    }
+
+    #[test]
+    fn reset_clears_filter_state() {
+        let sr = 48000.0;
+        let mut f = StateVariableFilter::new(sr);
+        let params = FilterParams { cutoff: 200.0, resonance: 5.0 };
+        for i in 0..1000 {
+            let x = (2.0 * PI * 100.0 * i as f32 / sr).sin();
+            f.process_lowpass(x, &params);
+        }
+        f.reset();
+        let tail = f.process_lowpass(0.0, &params);
+        assert!(tail.abs() < 1e-6, "state should be cleared, got {}", tail);
+    }
+}

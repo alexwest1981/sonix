@@ -242,6 +242,12 @@ Exporten saknade nivåkontroll: ingen loudness-mätning, inget äkta-peak-tak oc
 - **Tester:** `silence_has_no_loudness`, `normalizing_reaches_target_loudness` (±0.2 LU), `true_peak_of_full_scale_sine_is_near_zero`, `ceiling_is_respected`, `preset_off_is_a_noop`.
 - `cargo test --release` = **80 tester**, 0 varningar.
 
+### P35 — Integrationstester för realtids-DSP & plugin-väg (Fas 5.1) · ✅ KLAR
+Realtids-DSP-byggstenarna (`envelope`, `filter`, `drum`, `effects`, `master_fx`) och delar av plugin-vägen saknade helt tester.
+- **Löst:** 21 nya tester i respektive modul. Realtid: ADSR-kuvertets fasgång och release-till-idle; lågpassfiltrets dämpning + reset; trumrösternas hörbarhet/begränsning/idle för **alla 10 typer**; delay-eko på exakt rätt sample, bypass vid mix 0, reverb-svans och bypass; kompressor (dämpar över tröskel, transparent under), limiter (håller taket), noise-gate (stänger under/öppnar över tröskel), hela `MasterFxChain` (passerar ljud, rapporterar gain reduction); `AudioSettings` serde-roundtrip + defaults. Plugin: `scan_disk()` klassificerar `.clap`/`.vst3` med rätt format/kategori och ELF-verifiering, samt lägger `.fst` som preset (aldrig som plugin). Inga produktionsändringar — endast testkod.
+- **Tester:** se ovan (21 st).
+- `cargo test --release` = **101 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning

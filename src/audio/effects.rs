@@ -156,3 +156,60 @@ impl SimpleReverb {
         input * (1.0 - params.mix) + ap_out * params.mix
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn delay_echoes_after_delay_time() {
+        let sr = 48000.0;
+        let mut d = StereoDelay::new(sr);
+        let params = DelayParams { time_ms: 100.0, feedback: 0.0, mix: 1.0 };
+        let delay_samples = (0.1 * sr) as usize;
+        let mut out_at_echo = 0.0f32;
+        for i in 0..(delay_samples + 2) {
+            let (in_l, in_r) = if i == 0 { (1.0, 1.0) } else { (0.0, 0.0) };
+            let (l, _) = d.process(in_l, in_r, &params);
+            if i == delay_samples {
+                out_at_echo = l;
+            }
+            if i > 0 && i < delay_samples {
+                assert!(l.abs() < 1e-6, "no echo before delay time at {}", i);
+            }
+        }
+        assert!((out_at_echo - 1.0).abs() < 1e-4, "echo level {}", out_at_echo);
+    }
+
+    #[test]
+    fn delay_is_bypassed_when_mix_is_zero() {
+        let mut d = StereoDelay::new(48000.0);
+        let params = DelayParams { time_ms: 300.0, feedback: 0.5, mix: 0.0 };
+        let (l, r) = d.process(0.37, -0.21, &params);
+        assert_eq!((l, r), (0.37, -0.21));
+    }
+
+    #[test]
+    fn reverb_produces_a_finite_tail() {
+        let sr = 48000.0;
+        let mut rev = SimpleReverb::new(sr);
+        let params = ReverbParams { room_size: 0.8, damping: 0.3, mix: 0.5 };
+        let mut energy = 0.0f32;
+        for i in 0..(sr as usize * 2) {
+            let x = if i == 0 { 1.0 } else { 0.0 };
+            let y = rev.process(x, &params);
+            assert!(y.is_finite(), "reverb produced non-finite output at {}", i);
+            if i > 0 {
+                energy += y.abs();
+            }
+        }
+        assert!(energy > 0.01, "reverb tail should carry energy, got {}", energy);
+    }
+
+    #[test]
+    fn reverb_is_bypassed_when_mix_is_zero() {
+        let mut rev = SimpleReverb::new(48000.0);
+        let params = ReverbParams { room_size: 0.8, damping: 0.3, mix: 0.0 };
+        assert_eq!(rev.process(0.42, &params), 0.42);
+    }
+}

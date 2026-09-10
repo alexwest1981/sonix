@@ -890,4 +890,106 @@ mod tests {
         }
         assert!(last.abs() < 1e-3, "expected silence, got {last}");
     }
+
+    #[test]
+    fn compressor_reduces_loud_signal() {
+        let mut c = Compressor::new(48_000.0);
+        let p = CompressorParams {
+            threshold_db: -20.0,
+            ratio: 4.0,
+            attack_ms: 1.0,
+            release_ms: 50.0,
+            makeup_db: 0.0,
+        };
+        let mut out = 0.0;
+        for _ in 0..48_000 {
+            let (l, _) = c.process(0.5, 0.5, &p);
+            out = l;
+        }
+        assert!(out < 0.5 * 0.6, "compressor should pull 0.5 down, got {out}");
+        assert!(out > 0.0);
+    }
+
+    #[test]
+    fn compressor_bypassed_below_threshold() {
+        let mut c = Compressor::new(48_000.0);
+        let p = CompressorParams {
+            threshold_db: -6.0,
+            ratio: 4.0,
+            attack_ms: 1.0,
+            release_ms: 50.0,
+            makeup_db: 0.0,
+        };
+        let mut out = 0.0;
+        for _ in 0..48_000 {
+            let (l, _) = c.process(0.01, 0.01, &p);
+            out = l;
+        }
+        assert!((out - 0.01).abs() < 1e-6, "quiet signal should pass, got {out}");
+    }
+
+    #[test]
+    fn limiter_respects_ceiling() {
+        let mut lim = Limiter::new(48_000.0);
+        let p = LimiterParams { ceiling: 0.5, release_ms: 80.0, boost: 2.0 };
+        let mut peak = 0.0f32;
+        for _ in 0..48_000 {
+            let (l, r) = lim.process(1.0, -1.0, &p);
+            peak = peak.max(l.abs()).max(r.abs());
+        }
+        assert!(peak <= 0.5 + 1e-4, "limiter exceeded ceiling: {peak}");
+        assert!(peak > 0.4, "limiter should still pass level, got {peak}");
+    }
+
+    #[test]
+    fn gate_closes_below_threshold_and_opens_above() {
+        let mut gate = NoiseGate::new(48_000.0);
+        let p = GateParams { threshold: 0.1, attack_ms: 5.0, release_ms: 120.0 };
+        let mut quiet = 0.0;
+        for _ in 0..96_000 {
+            let (l, _) = gate.process(0.001, 0.001, &p);
+            quiet = l;
+        }
+        assert!(quiet.abs() < 1e-4, "gate should mute sub-threshold signal, got {quiet}");
+
+        let mut loud = 0.0;
+        for _ in 0..48_000 {
+            let (l, _) = gate.process(0.5, 0.5, &p);
+            loud = l;
+        }
+        assert!((loud - 0.5).abs() < 0.02, "gate should open on loud signal, got {loud}");
+    }
+
+    #[test]
+    fn master_chain_passes_signal_when_effects_off() {
+        let mut chain = MasterFxChain::new(48_000.0);
+        let params = MasterFxParams::default();
+        chain.set_params(params);
+        let mut out = 0.0;
+        for _ in 0..1000 {
+            let (l, _) = chain.process(0.3, 0.3);
+            out = l;
+        }
+        assert!(out.is_finite() && out.abs() > 0.1, "dry chain should pass audio, got {out}");
+        assert_eq!(chain.gain_reduction_db(), 0.0);
+    }
+
+    #[test]
+    fn master_chain_reports_compressor_gain_reduction() {
+        let mut chain = MasterFxChain::new(48_000.0);
+        let mut params = MasterFxParams::default();
+        params.comp_enabled = true;
+        params.comp = CompressorParams {
+            threshold_db: -20.0,
+            ratio: 4.0,
+            attack_ms: 1.0,
+            release_ms: 50.0,
+            makeup_db: 0.0,
+        };
+        chain.set_params(params);
+        for _ in 0..48_000 {
+            chain.process(0.5, 0.5);
+        }
+        assert!(chain.gain_reduction_db() < -1.0, "expected gain reduction, got {}", chain.gain_reduction_db());
+    }
 }

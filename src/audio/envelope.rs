@@ -103,3 +103,67 @@ impl AdsrVoice {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn idle_voice_is_silent() {
+        let mut v = AdsrVoice::new(48000.0);
+        assert!(!v.is_active());
+        assert_eq!(v.next_sample(&AdsrParams::default()), 0.0);
+    }
+
+    #[test]
+    fn adsr_reaches_sustain_then_releases_to_idle() {
+        let sr = 1000.0;
+        let p = AdsrParams {
+            attack: 0.01,
+            decay: 0.01,
+            sustain: 0.5,
+            release: 0.01,
+        };
+        let mut v = AdsrVoice::new(sr);
+        v.gate_on();
+
+        let mut saw_attack = false;
+        let mut saw_decay = false;
+        for _ in 0..1000 {
+            v.next_sample(&p);
+            if v.stage == EnvelopeStage::Attack {
+                saw_attack = true;
+            }
+            if v.stage == EnvelopeStage::Decay {
+                saw_decay = true;
+            }
+            if v.stage == EnvelopeStage::Sustain {
+                break;
+            }
+        }
+        assert!(saw_attack && saw_decay, "should pass through attack and decay");
+        assert_eq!(v.stage, EnvelopeStage::Sustain);
+        assert!((v.current_level - 0.5).abs() < 1e-4, "sustain level {}", v.current_level);
+
+        v.gate_off();
+        assert_eq!(v.stage, EnvelopeStage::Release);
+        for _ in 0..1000 {
+            v.next_sample(&p);
+            if !v.is_active() {
+                break;
+            }
+        }
+        assert!(!v.is_active(), "envelope should return to idle");
+        assert_eq!(v.current_level, 0.0);
+    }
+
+    #[test]
+    fn reset_silences_active_voice() {
+        let mut v = AdsrVoice::new(48000.0);
+        v.gate_on();
+        v.next_sample(&AdsrParams::default());
+        v.reset();
+        assert!(!v.is_active());
+        assert_eq!(v.current_level, 0.0);
+    }
+}
