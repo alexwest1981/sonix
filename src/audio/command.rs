@@ -70,8 +70,19 @@ impl Preset {
 use std::sync::{Arc, Mutex};
 
 #[allow(dead_code)]
-#[derive(Debug, Clone)]
 pub enum AudioCommand {
+    /// Replaces (or clears, with `None`) the CLAP insert on a stem track. The
+    /// insert is built on the UI thread and handed to the audio thread here.
+    SetTrackPlugin {
+        track_index: usize,
+        insert: Option<crate::audio::plugin_host_live::PluginInsert>,
+    },
+    /// Sets a parameter on a track's live plugin insert.
+    SetPluginParameter {
+        track_index: usize,
+        param_id: u32,
+        value: f64,
+    },
     NoteOn {
         note: u8,
         freq: f32,

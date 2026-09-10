@@ -2,7 +2,19 @@ use eframe::egui::{self, Color32, Rounding, Stroke, Ui, Vec2};
 use crate::audio::plugin_host::{PluginCategory, PluginFormat, PluginManager};
 use crate::ui::theme::Theme;
 
-pub fn render_plugins_view(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
+#[derive(Default)]
+pub struct PluginViewActions {
+    /// `(plugin path, stem track index)` to instantiate a CLAP processor into.
+    pub load_into_track: Option<(String, usize)>,
+}
+
+pub fn render_plugins_view(
+    ui: &mut Ui,
+    manager: &mut PluginManager,
+    status_msg: &mut String,
+    stem_track_count: usize,
+    default_track: usize,
+) -> PluginViewActions {
     ui.group(|ui| {
         // ====================================================================
         // 1. TOP HEADER & MAIN NAVIGATION TABS
@@ -76,19 +88,35 @@ pub fn render_plugins_view(ui: &mut Ui, manager: &mut PluginManager, status_msg:
         // 3. TAB CONTENT
         // ====================================================================
         match manager.active_tab {
-            0 => render_plugin_database_tab(ui, manager, status_msg),
-            1 => render_scan_paths_tab(ui, manager, status_msg),
-            2 => render_import_plugin_tab(ui, manager, status_msg),
-            3 => render_fl_yabridge_assistant_tab(ui, manager, status_msg),
-            _ => {}
+            0 => render_plugin_database_tab(ui, manager, status_msg, stem_track_count, default_track),
+            1 => {
+                render_scan_paths_tab(ui, manager, status_msg);
+                PluginViewActions::default()
+            }
+            2 => {
+                render_import_plugin_tab(ui, manager, status_msg);
+                PluginViewActions::default()
+            }
+            3 => {
+                render_fl_yabridge_assistant_tab(ui, manager, status_msg);
+                PluginViewActions::default()
+            }
+            _ => PluginViewActions::default(),
         }
-    });
+    })
+    .inner
 }
 
 // ============================================================================
 // TAB 0: PLUGIN DATABASE & LIBRARY
 // ============================================================================
-fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
+fn render_plugin_database_tab(
+    ui: &mut Ui,
+    manager: &mut PluginManager,
+    status_msg: &mut String,
+    stem_track_count: usize,
+    default_track: usize,
+) -> PluginViewActions {
     // Search & Filter controls
     ui.horizontal(|ui| {
         ui.label(crate::i18n::t("🔍 Sök plugin:"));
@@ -152,7 +180,9 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
         }
     });
 
-    render_inspection_panel(ui, manager, status_msg);
+    let mut actions = PluginViewActions::default();
+    actions.load_into_track =
+        render_inspection_panel(ui, manager, status_msg, stem_track_count, default_track);
 
     ui.add_space(6.0);
 
@@ -312,6 +342,8 @@ fn render_plugin_database_tab(ui: &mut Ui, manager: &mut PluginManager, status_m
             });
         }
     });
+
+    actions
 }
 
 // ============================================================================
@@ -648,12 +680,22 @@ fn param_flags_label(p: &crate::audio::plugin_host_live::PluginParameter) -> Str
     parts.join(", ")
 }
 
-fn render_inspection_panel(ui: &mut Ui, manager: &mut PluginManager, _status_msg: &mut String) {
+fn render_inspection_panel(
+    ui: &mut Ui,
+    manager: &mut PluginManager,
+    _status_msg: &mut String,
+    stem_track_count: usize,
+    default_track: usize,
+) -> Option<(String, usize)> {
     if manager.inspection.is_none() {
-        return;
+        return None;
+    }
+    if manager.plugin_target_track == 0 && default_track > 0 {
+        manager.plugin_target_track = default_track;
     }
 
     let mut close = false;
+    let mut load_into_track: Option<(String, usize)> = None;
     ui.group(|ui| {
         let Some(snapshot) = manager.inspection.as_ref() else {
             return;
@@ -699,6 +741,48 @@ fn render_inspection_panel(ui: &mut Ui, manager: &mut PluginManager, _status_msg
                 );
             }
         }
+
+        // Instantiate this plugin into a stem track (Fas 4.2).
+        ui.add_space(4.0);
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t("🎛 Ladda in i stämspår:"))
+                    .strong()
+                    .size(10.5)
+                    .color(Theme::FL_YELLOW),
+            );
+            if stem_track_count == 0 {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "Inga stämspår – separera eller importera ett spår först.",
+                    ))
+                    .size(10.0)
+                    .color(Theme::TEXT_MUTED),
+                );
+            } else {
+                let max_track = stem_track_count - 1;
+                let target = manager.plugin_target_track.min(max_track);
+                ui.add(
+                    egui::DragValue::new(&mut manager.plugin_target_track)
+                        .range(0..=max_track)
+                        .speed(0.1),
+                );
+                ui.label(
+                    egui::RichText::new(crate::tstatus!("spår {}", target + 1))
+                        .size(10.0)
+                        .color(Theme::TEXT_MUTED),
+                );
+                if ui
+                    .button(crate::i18n::t("▶ Ladda in"))
+                    .on_hover_text(crate::i18n::t(
+                        "Instansierar en riktig CLAP-processor och sätter den som insert på spåret.",
+                    ))
+                    .clicked()
+                {
+                    load_into_track = Some((snapshot.path.clone(), target));
+                }
+            }
+        });
 
         ui.add_space(4.0);
         ui.label(
@@ -748,6 +832,7 @@ fn render_inspection_panel(ui: &mut Ui, manager: &mut PluginManager, _status_msg
     if close {
         manager.inspection = None;
     }
+    load_into_track
 }
 
 

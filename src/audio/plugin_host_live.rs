@@ -18,6 +18,8 @@
 //! Everything that does not touch the ABI (the data types and `inspect`) is
 //! compiled in both configurations, so the UI can always show an honest status.
 
+use std::collections::VecDeque;
+
 /// CLAP parameter flag: the value is a discrete/stepped value.
 pub const PARAM_IS_STEPPED: u32 = 1 << 0;
 /// CLAP parameter flag: periodic (e.g. a phase).
@@ -36,7 +38,7 @@ pub const PARAM_IS_MODULATABLE: u32 = 1 << 10;
 /// A single automatable parameter reported by a plugin.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PluginParameter {
-    pub id: u64,
+    pub id: u32,
     pub name: String,
     pub module: String,
     pub min_value: f64,
@@ -149,6 +151,215 @@ pub fn inspect(path: &str) -> PluginInspection {
 }
 
 // ===========================================================================
+// Backend-agnostic audio processing (Fas 4.2)
+// ===========================================================================
+
+/// Host-side block size used to drive block-oriented plugin APIs from Sonix's
+/// per-sample engine. All inserts share this value so their buffering latency
+/// is identical and only the plugin-reported latency differs.
+pub const DEFAULT_BLOCK_FRAMES: usize = 128;
+
+/// A live, *processing* plugin instance. Backend-agnostic; the CLAP backend
+/// implements it in `imp`. Future VST3/LV2 backends will implement the same.
+#[allow(dead_code)]
+pub trait PluginProcessor: Send {
+    /// Human-readable backend name, e.g. `"CLAP"`.
+    fn backend(&self) -> &'static str;
+    fn info(&self) -> &PluginInfo;
+    fn parameters(&self) -> &[PluginParameter];
+    /// Frames of latency the plugin *itself* introduces (not counting the
+    /// host's block buffering).
+    fn latency_frames(&self) -> u32;
+    /// Processes `left`/`right` in place. Both slices must be the same length
+    /// and must not exceed the maximum frame count the processor was created
+    /// with.
+    fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]);
+    /// Applies a parameter value. Returns false when the id is unknown.
+    fn set_parameter(&mut self, id: u32, value: f64) -> bool;
+    /// Clears internal state (delay lines, voices, …).
+    fn reset(&mut self);
+}
+
+/// Creates a live processing instance for `path`, ready to be wrapped in a
+/// [`PluginInsert`]. `max_frames` is the largest block that will be processed.
+pub fn load_processor(
+    path: &str,
+    sample_rate: f32,
+    max_frames: u32,
+) -> Result<Box<dyn PluginProcessor>, String> {
+    #[cfg(feature = "plugin-host")]
+    {
+        imp::load_processor(path, sample_rate, max_frames)
+    }
+    #[cfg(not(feature = "plugin-host"))]
+    {
+        let _ = (path, sample_rate, max_frames);
+        Err(crate::i18n::t(
+            "Plugin-hosting är inte inbyggt i den här builden (bygg med --features plugin-host)",
+        )
+        .to_string())
+    }
+}
+
+/// A per-track plugin insert.
+///
+/// Sonix's engine renders one sample at a time while CLAP processes blocks, so
+/// this type buffers `block_frames` input frames, runs the plugin on the whole
+/// block and then plays the result back out one sample at a time. It therefore
+/// introduces `block_frames + plugin_latency` frames of latency, which the
+/// engine compensates for with [`PdcDelay`] (plug-in delay compensation).
+#[allow(dead_code)]
+pub struct PluginInsert {
+    processor: Box<dyn PluginProcessor>,
+    block_frames: usize,
+    filled: usize,
+    in_l: Vec<f32>,
+    in_r: Vec<f32>,
+    out_l: VecDeque<f32>,
+    out_r: VecDeque<f32>,
+    /// Frames processed since the last reset, for cheap diagnostics/tests.
+    frames_processed: u64,
+}
+
+#[allow(dead_code)]
+impl PluginInsert {
+    pub fn new(processor: Box<dyn PluginProcessor>, block_frames: usize) -> Self {
+        let block_frames = block_frames.max(1);
+        Self {
+            processor,
+            block_frames,
+            filled: 0,
+            in_l: vec![0.0; block_frames],
+            in_r: vec![0.0; block_frames],
+            out_l: VecDeque::with_capacity(block_frames * 2),
+            out_r: VecDeque::with_capacity(block_frames * 2),
+            frames_processed: 0,
+        }
+    }
+
+    pub fn backend(&self) -> &'static str {
+        self.processor.backend()
+    }
+
+    pub fn info(&self) -> &PluginInfo {
+        self.processor.info()
+    }
+
+    pub fn parameters(&self) -> &[PluginParameter] {
+        self.processor.parameters()
+    }
+
+    pub fn set_parameter(&mut self, id: u32, value: f64) -> bool {
+        self.processor.set_parameter(id, value)
+    }
+
+    pub fn block_frames(&self) -> usize {
+        self.block_frames
+    }
+
+    /// Latency introduced by the plugin itself.
+    pub fn plugin_latency_frames(&self) -> usize {
+        self.processor.latency_frames() as usize
+    }
+
+    /// Total latency (host block buffering + plugin latency).
+    pub fn latency_frames(&self) -> usize {
+        // The first output sample is emitted on the call that completes the
+        // first block, so the host contributes `block_frames - 1` frames.
+        self.block_frames.saturating_sub(1) + self.plugin_latency_frames()
+    }
+
+    pub fn frames_processed(&self) -> u64 {
+        self.frames_processed
+    }
+
+    pub fn reset(&mut self) {
+        self.processor.reset();
+        self.filled = 0;
+        self.out_l.clear();
+        self.out_r.clear();
+    }
+
+    /// Feeds one input sample and returns the next output sample. The first
+    /// `latency_frames()` calls return silence while the pipeline fills.
+    #[inline]
+    pub fn process_sample(&mut self, l: f32, r: f32) -> (f32, f32) {
+        self.in_l[self.filled] = l;
+        self.in_r[self.filled] = r;
+        self.filled += 1;
+        if self.filled == self.block_frames {
+            self.processor.process_stereo(&mut self.in_l, &mut self.in_r);
+            for i in 0..self.block_frames {
+                self.out_l.push_back(self.in_l[i]);
+                self.out_r.push_back(self.in_r[i]);
+            }
+            self.filled = 0;
+            self.frames_processed += self.block_frames as u64;
+        }
+        let ol = self.out_l.pop_front().unwrap_or(0.0);
+        let or = self.out_r.pop_front().unwrap_or(0.0);
+        (ol, or)
+    }
+}
+
+/// A simple fixed-length stereo delay used for plug-in delay compensation.
+/// With `delay == 0` it is a zero-cost pass-through.
+#[allow(dead_code)]
+pub struct PdcDelay {
+    l: VecDeque<f32>,
+    r: VecDeque<f32>,
+    delay: usize,
+}
+
+#[allow(dead_code)]
+impl PdcDelay {
+    pub fn new() -> Self {
+        Self {
+            l: VecDeque::new(),
+            r: VecDeque::new(),
+            delay: 0,
+        }
+    }
+
+    pub fn delay(&self) -> usize {
+        self.delay
+    }
+
+    /// Changes the delay, clearing the line when the length changes so stale
+    /// samples never leak through.
+    pub fn set_delay(&mut self, frames: usize) {
+        if frames != self.delay {
+            self.l.clear();
+            self.r.clear();
+            self.delay = frames;
+        }
+    }
+
+    #[inline]
+    pub fn process(&mut self, l: f32, r: f32) -> (f32, f32) {
+        if self.delay == 0 {
+            return (l, r);
+        }
+        self.l.push_back(l);
+        self.r.push_back(r);
+        if self.l.len() > self.delay {
+            (
+                self.l.pop_front().unwrap_or(0.0),
+                self.r.pop_front().unwrap_or(0.0),
+            )
+        } else {
+            (0.0, 0.0)
+        }
+    }
+}
+
+impl Default for PdcDelay {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ===========================================================================
 // Real CLAP ABI + loader (only when the feature is enabled)
 // ===========================================================================
 #[cfg(feature = "plugin-host")]
@@ -161,7 +372,14 @@ mod imp {
     pub const CLAP_VERSION_MAJOR: u32 = 1;
 
     pub const CLAP_EXT_PARAMS: &CStr = c"clap.params";
+    pub const CLAP_EXT_AUDIO_PORTS: &CStr = c"clap.audio-ports";
+    pub const CLAP_EXT_NOTE_PORTS: &CStr = c"clap.note-ports";
+    pub const CLAP_EXT_LATENCY: &CStr = c"clap.latency";
     pub const CLAP_PLUGIN_FACTORY_ID: &CStr = c"clap.plugin-factory";
+
+    /// `clap_event_param_value` space id/type (CLAP core event space 0).
+    const CLAP_CORE_EVENT_SPACE_ID: u16 = 0;
+    const CLAP_EVENT_PARAM_VALUE: u16 = 5;
 
     const HOST_NAME: &CStr = c"Sonix";
     const HOST_VENDOR: &CStr = c"Sonix Studio";
@@ -248,7 +466,7 @@ mod imp {
 
     #[repr(C)]
     pub struct ClapParamInfo {
-        pub id: u64,
+        pub id: u32,
         pub flags: u32,
         pub name: [c_char; CLAP_NAME_SIZE],
         pub module: [c_char; CLAP_PATH_SIZE],
@@ -262,13 +480,111 @@ mod imp {
         pub count: Option<unsafe extern "C" fn(*const ClapPlugin) -> u32>,
         pub get_info:
             Option<unsafe extern "C" fn(*const ClapPlugin, u32, *mut ClapParamInfo) -> bool>,
-        pub get_value: Option<unsafe extern "C" fn(*const ClapPlugin, u64, *mut f64) -> bool>,
+        pub get_value: Option<unsafe extern "C" fn(*const ClapPlugin, u32, *mut f64) -> bool>,
         pub value_to_text: Option<
-            unsafe extern "C" fn(*const ClapPlugin, u64, f64, *mut c_char, u32) -> bool,
+            unsafe extern "C" fn(*const ClapPlugin, u32, f64, *mut c_char, u32) -> bool,
         >,
         pub text_to_value:
-            Option<unsafe extern "C" fn(*const ClapPlugin, u64, *const c_char, *mut f64) -> bool>,
+            Option<unsafe extern "C" fn(*const ClapPlugin, u32, *const c_char, *mut f64) -> bool>,
         pub flush: Option<unsafe extern "C" fn(*const ClapPlugin, *const c_void, *const c_void)>,
+    }
+
+    #[repr(C)]
+    pub struct ClapAudioPortInfo {
+        pub id: u32,
+        pub name: [c_char; CLAP_NAME_SIZE],
+        pub flags: u32,
+        pub channel_count: u32,
+        pub port_type: *const c_char,
+        pub in_place_pair: u32,
+    }
+
+    #[repr(C)]
+    pub struct ClapPluginAudioPorts {
+        pub count: Option<unsafe extern "C" fn(*const ClapPlugin, bool) -> u32>,
+        pub get: Option<
+            unsafe extern "C" fn(*const ClapPlugin, u32, bool, *mut ClapAudioPortInfo) -> bool,
+        >,
+    }
+
+    #[repr(C)]
+    pub struct ClapNotePortInfo {
+        pub id: u32,
+        pub name: [c_char; CLAP_NAME_SIZE],
+        pub supported_dialects: u32,
+        pub preferred_dialect: u32,
+    }
+
+    #[repr(C)]
+    pub struct ClapPluginNotePorts {
+        pub count: Option<unsafe extern "C" fn(*const ClapPlugin, bool) -> u32>,
+        pub get: Option<
+            unsafe extern "C" fn(*const ClapPlugin, u32, bool, *mut ClapNotePortInfo) -> bool,
+        >,
+    }
+
+    #[repr(C)]
+    pub struct ClapPluginLatency {
+        pub get: Option<unsafe extern "C" fn(*const ClapPlugin) -> u32>,
+    }
+
+    #[repr(C)]
+    pub struct ClapEventHeader {
+        pub size: u32,
+        pub time: u32,
+        pub space_id: u16,
+        pub event_type: u16,
+        pub flags: u32,
+    }
+
+    #[repr(C)]
+    pub struct ClapEventParamValue {
+        pub header: ClapEventHeader,
+        pub param_id: u32,
+        pub cookie: *mut c_void,
+        pub note_id: i32,
+        pub port_index: i16,
+        pub channel: i16,
+        pub key: i16,
+        pub value: f64,
+    }
+
+    #[repr(C)]
+    pub struct ClapInputEvents {
+        pub ctx: *mut c_void,
+        pub size: Option<unsafe extern "C" fn(*const ClapInputEvents) -> u32>,
+        pub get: Option<
+            unsafe extern "C" fn(*const ClapInputEvents, u32) -> *const ClapEventHeader,
+        >,
+    }
+
+    #[repr(C)]
+    pub struct ClapOutputEvents {
+        pub ctx: *mut c_void,
+        pub try_push:
+            Option<unsafe extern "C" fn(*const ClapOutputEvents, *const ClapEventHeader) -> bool>,
+    }
+
+    #[repr(C)]
+    pub struct ClapAudioBuffer {
+        pub data32: *mut *mut f32,
+        pub data64: *mut *mut f64,
+        pub channel_count: u32,
+        pub latency: u32,
+        pub constant_mask: u64,
+    }
+
+    #[repr(C)]
+    pub struct ClapProcess {
+        pub steady_time: i64,
+        pub frames_count: u32,
+        pub transport: *const c_void,
+        pub audio_inputs: *const ClapAudioBuffer,
+        pub audio_outputs: *mut ClapAudioBuffer,
+        pub audio_inputs_count: u32,
+        pub audio_outputs_count: u32,
+        pub in_events: *const ClapInputEvents,
+        pub out_events: *const ClapOutputEvents,
     }
 
     unsafe extern "C" fn host_get_extension(
@@ -435,6 +751,12 @@ mod imp {
 
     /// Loads and inspects the first plugin exposed by a CLAP bundle.
     pub fn load(path: &str) -> Result<Box<dyn PluginInstance>, String> {
+        Ok(Box::new(create_instance(path)?))
+    }
+
+    /// Loads the first plugin in a CLAP bundle, keeping the live instance
+    /// (handle, vtable, host and descriptor) alive.
+    fn create_instance(path: &str) -> Result<ClapInstance, String> {
         let so = resolve_shared_object(path)?;
 
         let lib = unsafe { Library::new(&so) }
@@ -493,13 +815,13 @@ mod imp {
 
         let result = load_from_entry(entry, &host, &so);
         match result {
-            Ok((plugin, info, params)) => Ok(Box::new(ClapInstance {
+            Ok((plugin, info, params)) => Ok(ClapInstance {
                 handle,
                 plugin,
                 _host: host,
                 info,
                 params,
-            })),
+            }),
             Err(err) => {
                 // `handle` drops here, calling deinit() while the lib is loaded.
                 drop(handle);
@@ -578,6 +900,378 @@ mod imp {
         Ok((plugin, info, params))
     }
 
+    // =======================================================================
+    // Live processing (Fas 4.2)
+    // =======================================================================
+
+    unsafe extern "C" fn empty_events_size(_list: *const ClapInputEvents) -> u32 {
+        0
+    }
+    unsafe extern "C" fn empty_events_get(
+        _list: *const ClapInputEvents,
+        _index: u32,
+    ) -> *const ClapEventHeader {
+        std::ptr::null()
+    }
+
+    unsafe extern "C" fn param_events_size(list: *const ClapInputEvents) -> u32 {
+        let events = unsafe { &*((*list).ctx as *const Vec<ClapEventParamValue>) };
+        events.len() as u32
+    }
+    unsafe extern "C" fn param_events_get(
+        list: *const ClapInputEvents,
+        index: u32,
+    ) -> *const ClapEventHeader {
+        let events = unsafe { &*((*list).ctx as *const Vec<ClapEventParamValue>) };
+        match events.get(index as usize) {
+            Some(e) => e as *const ClapEventParamValue as *const ClapEventHeader,
+            None => std::ptr::null(),
+        }
+    }
+
+    unsafe extern "C" fn output_events_try_push(
+        _list: *const ClapOutputEvents,
+        _event: *const ClapEventHeader,
+    ) -> bool {
+        false
+    }
+
+    fn empty_input_events() -> ClapInputEvents {
+        ClapInputEvents {
+            ctx: std::ptr::null_mut(),
+            size: Some(empty_events_size),
+            get: Some(empty_events_get),
+        }
+    }
+
+    fn empty_output_events() -> ClapOutputEvents {
+        ClapOutputEvents {
+            ctx: std::ptr::null_mut(),
+            try_push: Some(output_events_try_push),
+        }
+    }
+
+    /// Channel counts of the plugin's audio ports (input, output). Falls back
+    /// to a single stereo pair when the extension is missing.
+    unsafe fn audio_port_channels(plugin: *const ClapPlugin) -> (Vec<u32>, Vec<u32>) {
+        let get_extension = unsafe { &*plugin }.get_extension;
+        let Some(get_extension) = get_extension else {
+            return (vec![2], vec![2]);
+        };
+        let ext = unsafe { get_extension(plugin, CLAP_EXT_AUDIO_PORTS.as_ptr()) };
+        if ext.is_null() {
+            return (vec![2], vec![2]);
+        }
+        let ports = unsafe { &*(ext as *const ClapPluginAudioPorts) };
+        let (Some(count), Some(get)) = (ports.count, ports.get) else {
+            return (vec![2], vec![2]);
+        };
+        let read = |is_input: bool| -> Vec<u32> {
+            let total = unsafe { count(plugin, is_input) };
+            let mut out = Vec::new();
+            for index in 0..total {
+                let mut info: ClapAudioPortInfo = unsafe { std::mem::zeroed() };
+                if unsafe { get(plugin, index, is_input, &mut info) } {
+                    out.push(info.channel_count.max(1));
+                }
+            }
+            out
+        };
+        let inputs = read(true);
+        let outputs = read(false);
+        (inputs, outputs)
+    }
+
+    fn allocate_audio(
+        counts: &[u32],
+        max_frames: u32,
+    ) -> (Vec<Vec<Vec<f32>>>, Vec<Vec<*mut f32>>, Vec<ClapAudioBuffer>) {
+        let mut bufs: Vec<Vec<Vec<f32>>> = counts
+            .iter()
+            .map(|&c| {
+                (0..c.max(1))
+                    .map(|_| vec![0.0_f32; max_frames as usize])
+                    .collect()
+            })
+            .collect();
+        let mut ptrs: Vec<Vec<*mut f32>> = bufs
+            .iter_mut()
+            .map(|port| port.iter_mut().map(|ch| ch.as_mut_ptr()).collect())
+            .collect();
+        let audio: Vec<ClapAudioBuffer> = ptrs
+            .iter_mut()
+            .map(|port| ClapAudioBuffer {
+                data32: port.as_mut_ptr(),
+                data64: std::ptr::null_mut(),
+                channel_count: port.len() as u32,
+                latency: 0,
+                constant_mask: 0,
+            })
+            .collect();
+        (bufs, ptrs, audio)
+    }
+
+    #[allow(dead_code)]
+    pub struct ClapProcessor {
+        instance: ClapInstance,
+        sample_rate: f64,
+        max_frames: u32,
+        activated: bool,
+        processing: bool,
+        latency_frames: u32,
+        input_channels: Vec<u32>,
+        output_channels: Vec<u32>,
+        in_bufs: Vec<Vec<Vec<f32>>>,
+        out_bufs: Vec<Vec<Vec<f32>>>,
+        /// Owns the per-port channel-pointer arrays that `in_audio`/`out_audio`
+        /// point into; must outlive them.
+        in_ptrs: Vec<Vec<*mut f32>>,
+        out_ptrs: Vec<Vec<*mut f32>>,
+        in_audio: Vec<ClapAudioBuffer>,
+        out_audio: Vec<ClapAudioBuffer>,
+        params_ext: *const ClapPluginParams,
+    }
+
+    // The processor is only ever touched from one thread at a time (the audio
+    // thread after hand-off), which the host upholds.
+    unsafe impl Send for ClapProcessor {}
+
+    impl ClapProcessor {
+        fn plugin(&self) -> *const ClapPlugin {
+            self.instance.plugin
+        }
+    }
+
+    impl Drop for ClapProcessor {
+        fn drop(&mut self) {
+            unsafe {
+                let plugin = self.plugin();
+                if self.processing
+                    && let Some(stop) = (*plugin).stop_processing
+                {
+                    stop(plugin);
+                }
+                if self.activated
+                    && let Some(deactivate) = (*plugin).deactivate
+                {
+                    deactivate(plugin);
+                }
+            }
+            // `instance` drops afterwards, calling destroy() + deinit().
+        }
+    }
+
+    impl super::PluginProcessor for ClapProcessor {
+        fn backend(&self) -> &'static str {
+            "CLAP"
+        }
+        fn info(&self) -> &PluginInfo {
+            &self.instance.info
+        }
+        fn parameters(&self) -> &[PluginParameter] {
+            &self.instance.params
+        }
+        fn latency_frames(&self) -> u32 {
+            self.latency_frames
+        }
+        fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+            let frames = left.len().min(right.len());
+            if frames == 0 {
+                return;
+            }
+            let frames = frames.min(self.max_frames as usize);
+
+            // Fill input port 0 (and silence any additional input ports).
+            for (port, bufs) in self.in_bufs.iter_mut().enumerate() {
+                if port == 0 {
+                    for (ch, buf) in bufs.iter_mut().enumerate() {
+                        for (i, s) in buf.iter_mut().enumerate().take(frames) {
+                            *s = match ch {
+                                0 => left[i],
+                                1 => right[i],
+                                _ => 0.0,
+                            };
+                        }
+                    }
+                } else {
+                    for buf in bufs.iter_mut() {
+                        for s in buf.iter_mut().take(frames) {
+                            *s = 0.0;
+                        }
+                    }
+                }
+            }
+
+            let in_events = empty_input_events();
+            let out_events = empty_output_events();
+            let process = ClapProcess {
+                steady_time: -1,
+                frames_count: frames as u32,
+                transport: std::ptr::null(),
+                audio_inputs: self.in_audio.as_ptr(),
+                audio_outputs: self.out_audio.as_mut_ptr(),
+                audio_inputs_count: self.in_audio.len() as u32,
+                audio_outputs_count: self.out_audio.len() as u32,
+                in_events: &in_events,
+                out_events: &out_events,
+            };
+
+            unsafe {
+                if let Some(process_fn) = (*self.plugin()).process {
+                    process_fn(self.plugin(), &process as *const ClapProcess as *const c_void);
+                }
+            }
+
+            // Read back output port 0; duplicate channel 0 for mono outputs.
+            if let Some(bufs) = self.out_bufs.first() {
+                let (l_buf, r_buf) = match bufs.len() {
+                    0 => (None, None),
+                    1 => (Some(&bufs[0]), None),
+                    _ => (Some(&bufs[0]), Some(&bufs[1])),
+                };
+                for i in 0..frames {
+                    left[i] = l_buf.map(|b| b[i]).unwrap_or(0.0);
+                    right[i] = r_buf.map(|b| b[i]).unwrap_or_else(|| l_buf.map(|b| b[i]).unwrap_or(0.0));
+                }
+            } else {
+                for i in 0..frames {
+                    left[i] = 0.0;
+                    right[i] = 0.0;
+                }
+            }
+        }
+        fn set_parameter(&mut self, id: u32, value: f64) -> bool {
+            if self.params_ext.is_null() {
+                return false;
+            }
+            let params = unsafe { &*self.params_ext };
+            let Some(flush) = params.flush else {
+                return false;
+            };
+            let mut events: Vec<ClapEventParamValue> = vec![ClapEventParamValue {
+                header: ClapEventHeader {
+                    size: std::mem::size_of::<ClapEventParamValue>() as u32,
+                    time: 0,
+                    space_id: CLAP_CORE_EVENT_SPACE_ID,
+                    event_type: CLAP_EVENT_PARAM_VALUE,
+                    flags: 0,
+                },
+                param_id: id,
+                cookie: std::ptr::null_mut(),
+                note_id: -1,
+                port_index: -1,
+                channel: -1,
+                key: -1,
+                value,
+            }];
+            let in_events = ClapInputEvents {
+                ctx: &mut events as *mut Vec<ClapEventParamValue> as *mut c_void,
+                size: Some(param_events_size),
+                get: Some(param_events_get),
+            };
+            let out_events = empty_output_events();
+            unsafe {
+                flush(
+                    self.plugin(),
+                    &in_events as *const ClapInputEvents as *const c_void,
+                    &out_events as *const ClapOutputEvents as *const c_void,
+                );
+            }
+            true
+        }
+        fn reset(&mut self) {
+            unsafe {
+                if let Some(reset) = (*self.plugin()).reset {
+                    reset(self.plugin());
+                }
+            }
+        }
+    }
+
+    /// Loads `path` and returns a live, activated processor ready to render
+    /// blocks of up to `max_frames` at `sample_rate`.
+    pub fn load_processor(
+        path: &str,
+        sample_rate: f32,
+        max_frames: u32,
+    ) -> Result<Box<dyn super::PluginProcessor>, String> {
+        let max_frames = max_frames.max(1);
+        let instance = create_instance(path)?;
+        let plugin = instance.plugin;
+
+        let get_extension = unsafe { &*plugin }.get_extension;
+        let params_ext = match get_extension {
+            Some(f) => (unsafe { f(plugin, CLAP_EXT_PARAMS.as_ptr()) }) as *const ClapPluginParams,
+            None => std::ptr::null(),
+        };
+
+        let latency_frames = match get_extension {
+            Some(f) => {
+                let ext = unsafe { f(plugin, CLAP_EXT_LATENCY.as_ptr()) };
+                if ext.is_null() {
+                    0
+                } else {
+                    let latency = unsafe { &*(ext as *const ClapPluginLatency) };
+                    latency.get.map(|g| unsafe { g(plugin) }).unwrap_or(0)
+                }
+            }
+            None => 0,
+        };
+
+        let (input_channels, output_channels) = unsafe { audio_port_channels(plugin) };
+        let (in_bufs, in_ptrs, in_audio) = allocate_audio(&input_channels, max_frames);
+        let (out_bufs, out_ptrs, out_audio) = allocate_audio(&output_channels, max_frames);
+
+        let sample_rate_f = sample_rate.max(1.0) as f64;
+        let activated = unsafe {
+            match (*plugin).activate {
+                Some(activate) => activate(plugin, sample_rate_f, 1, max_frames),
+                None => false,
+            }
+        };
+        if !activated {
+            return Err(crate::tstatus!(
+                "Kunde inte aktivera plugin-instansen '{}'",
+                instance.info.name
+            ));
+        }
+        let processing = unsafe {
+            match (*plugin).start_processing {
+                Some(start) => start(plugin),
+                None => false,
+            }
+        };
+        if !processing {
+            unsafe {
+                if let Some(deactivate) = (*plugin).deactivate {
+                    deactivate(plugin);
+                }
+            }
+            return Err(crate::tstatus!(
+                "Kunde inte starta processning för '{}'",
+                instance.info.name
+            ));
+        }
+
+        Ok(Box::new(ClapProcessor {
+            instance,
+            sample_rate: sample_rate_f,
+            max_frames,
+            activated,
+            processing,
+            latency_frames,
+            input_channels,
+            output_channels,
+            in_bufs,
+            out_bufs,
+            in_ptrs,
+            out_ptrs,
+            in_audio,
+            out_audio,
+            params_ext,
+        }))
+    }
+
     #[cfg(test)]
     mod tests {
         use super::*;
@@ -653,11 +1347,11 @@ mod imp {
 
             assert_eq!(instance.backend(), "CLAP");
             let info = instance.info();
-            assert_eq!(info.id, "com.sonix.mock-synth");
-            assert_eq!(info.name, "Sonix Mock Synth");
+            assert_eq!(info.id, "com.sonix.mock-gain");
+            assert_eq!(info.name, "Sonix Mock Gain");
             assert_eq!(info.vendor, "Sonix Test");
             assert_eq!(info.version, "1.0.0");
-            assert!(info.features.iter().any(|f| f == "instrument"));
+            assert!(info.features.iter().any(|f| f == "audio-effect"));
 
             let params = instance.parameters();
             assert_eq!(params.len(), 2, "mock plugin reports two parameters");
@@ -680,7 +1374,44 @@ mod imp {
             assert!(snapshot.error.is_none(), "{:?}", snapshot.error);
             assert_eq!(snapshot.backend, "CLAP");
             assert_eq!(snapshot.parameters.len(), 2);
-            assert_eq!(snapshot.info.unwrap().name, "Sonix Mock Synth");
+            assert_eq!(snapshot.info.unwrap().name, "Sonix Mock Gain");
+        }
+
+        #[test]
+        fn loads_processor_and_reports_ports_and_latency() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let processor = super::super::load_processor(mock, 48_000.0, 512)
+                .expect("mock processor should load");
+            assert_eq!(processor.backend(), "CLAP");
+            assert_eq!(processor.info().name, "Sonix Mock Gain");
+            assert_eq!(processor.latency_frames(), 0);
+            assert_eq!(processor.parameters().len(), 2);
+        }
+
+        #[test]
+        fn mock_plugin_processes_audio_through_the_abi() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let mut processor =
+                super::super::load_processor(mock, 48_000.0, 512).expect("mock processor");
+
+            // Default settings are transparent: output == input.
+            let mut l = vec![0.5_f32; 256];
+            let mut r = vec![-0.25_f32; 256];
+            processor.process_stereo(&mut l, &mut r);
+            assert!((l[0] - 0.5).abs() < 1e-6, "unity gain expected, got {}", l[0]);
+            assert!((r[0] + 0.25).abs() < 1e-6, "unity gain expected, got {}", r[0]);
+
+            // "Gain" (id 0) at 0.5 must halve the signal.
+            assert!(processor.set_parameter(0, 0.5));
+            let mut l = vec![0.8_f32; 128];
+            let mut r = vec![0.4_f32; 128];
+            processor.process_stereo(&mut l, &mut r);
+            assert!((l[0] - 0.4).abs() < 1e-5, "expected 0.4, got {}", l[0]);
+            assert!((r[0] - 0.2).abs() < 1e-5, "expected 0.2, got {}", r[0]);
         }
     }
 }
@@ -711,5 +1442,123 @@ mod tests {
         let snapshot = inspect("/definitely/not/here.clap");
         // Either the feature is off (build message) or the file is missing.
         assert!(snapshot.error.is_some());
+    }
+
+    struct FakeProcessor {
+        info: PluginInfo,
+        params: Vec<PluginParameter>,
+        gain: f32,
+        latency: u32,
+    }
+
+    impl FakeProcessor {
+        fn new(gain: f32, latency: u32) -> Self {
+            Self {
+                info: PluginInfo {
+                    id: "fake".into(),
+                    name: "Fake".into(),
+                    ..Default::default()
+                },
+                params: Vec::new(),
+                gain,
+                latency,
+            }
+        }
+    }
+
+    impl PluginProcessor for FakeProcessor {
+        fn backend(&self) -> &'static str {
+            "Fake"
+        }
+        fn info(&self) -> &PluginInfo {
+            &self.info
+        }
+        fn parameters(&self) -> &[PluginParameter] {
+            &self.params
+        }
+        fn latency_frames(&self) -> u32 {
+            self.latency
+        }
+        fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+            for s in left.iter_mut() {
+                *s *= self.gain;
+            }
+            for s in right.iter_mut() {
+                *s *= self.gain;
+            }
+        }
+        fn set_parameter(&mut self, _id: u32, _value: f64) -> bool {
+            true
+        }
+        fn reset(&mut self) {}
+    }
+
+    #[test]
+    fn insert_delays_audio_by_its_reported_latency() {
+        let insert = PluginInsert::new(Box::new(FakeProcessor::new(1.0, 0)), 4);
+        assert_eq!(insert.latency_frames(), 3);
+        let mut insert = insert;
+        let mut out = Vec::new();
+        for _ in 0..8 {
+            out.push(insert.process_sample(1.0, 1.0).0);
+        }
+        // First three samples are silence while the first block fills.
+        assert_eq!(&out[0..3], &[0.0, 0.0, 0.0]);
+        assert!((out[3] - 1.0).abs() < 1e-6);
+        assert!((out[7] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn insert_applies_processor_gain() {
+        let mut insert = PluginInsert::new(Box::new(FakeProcessor::new(2.0, 0)), 4);
+        let mut last = 0.0;
+        for _ in 0..8 {
+            last = insert.process_sample(1.0, 1.0).0;
+        }
+        assert!((last - 2.0).abs() < 1e-6, "expected 2.0, got {last}");
+    }
+
+    #[test]
+    fn insert_reports_plugin_latency_on_top_of_buffering() {
+        let insert = PluginInsert::new(Box::new(FakeProcessor::new(1.0, 10)), 4);
+        assert_eq!(insert.plugin_latency_frames(), 10);
+        assert_eq!(insert.latency_frames(), 13);
+    }
+
+    #[test]
+    fn pdc_delay_shifts_by_the_requested_frames() {
+        let mut delay = PdcDelay::new();
+        delay.set_delay(2);
+        let out: Vec<f32> = (1..=4)
+            .map(|i| delay.process(i as f32, i as f32).0)
+            .collect();
+        assert_eq!(out, vec![0.0, 0.0, 1.0, 2.0]);
+    }
+
+    #[test]
+    fn pdc_delay_of_zero_is_a_passthrough() {
+        let mut delay = PdcDelay::new();
+        assert_eq!(delay.process(0.5, -0.5), (0.5, -0.5));
+    }
+
+    #[test]
+    fn insert_reset_clears_pending_output() {
+        let mut insert = PluginInsert::new(Box::new(FakeProcessor::new(1.0, 0)), 4);
+        for _ in 0..4 {
+            insert.process_sample(1.0, 1.0);
+        }
+        insert.reset();
+        // After a reset the pipeline is empty again: silence until it refills.
+        assert_eq!(insert.process_sample(1.0, 1.0), (0.0, 0.0));
+    }
+
+    #[test]
+    #[cfg(not(feature = "plugin-host"))]
+    fn load_processor_without_feature_is_an_honest_error() {
+        let err = match load_processor("whatever.clap", 48_000.0, 128) {
+            Ok(_) => panic!("expected an error without the plugin-host feature"),
+            Err(e) => e,
+        };
+        assert!(err.contains("plugin-host"));
     }
 }

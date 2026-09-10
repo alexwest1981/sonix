@@ -3534,6 +3534,33 @@ impl SonixApp {
         });
     }
 
+    /// Instantiates a CLAP plugin and sets it as the insert on a stem track
+    /// (Fas 4.2). Runs on the UI thread; the live processor is moved to the
+    /// audio thread through the command ring.
+    pub fn load_plugin_into_track(&mut self, path: &str, track_index: usize) {
+        let sample_rate = self.engine.sample_rate as f32;
+        let block = crate::audio::plugin_host_live::DEFAULT_BLOCK_FRAMES;
+        match crate::audio::plugin_host_live::load_processor(path, sample_rate, block as u32) {
+            Ok(processor) => {
+                let insert = crate::audio::plugin_host_live::PluginInsert::new(processor, block);
+                let name = insert.info().name.clone();
+                let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
+                    track_index,
+                    insert: Some(insert),
+                });
+                self.plugin_manager.instantiated_plugin = Some(name.clone());
+                self.status_message = crate::tstatus!(
+                    "✔ {} laddad som insert på stämspår {} (PDC-kompenserad)",
+                    name,
+                    track_index + 1
+                );
+            }
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte ladda plugin: {}", e);
+            }
+        }
+    }
+
     /// Adds the four separated stems as real timeline tracks.
     pub fn export_separated_stems(&mut self) {
         if self.stem_project.stem_audio.is_empty() {
@@ -4927,7 +4954,16 @@ impl eframe::App for SonixApp {
                             }
                         }
                         ViewMode::PluginManager => {
-                            render_plugins_view(ui, &mut self.plugin_manager, &mut self.status_message);
+                            let actions = render_plugins_view(
+                                ui,
+                                &mut self.plugin_manager,
+                                &mut self.status_message,
+                                self.stem_project.stems.len(),
+                                self.selected_channel,
+                            );
+                            if let Some((path, track)) = actions.load_into_track {
+                                self.load_plugin_into_track(&path, track);
+                            }
                         }
                         ViewMode::VocalStudio => {
                             render_vocal_studio_view(

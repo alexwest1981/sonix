@@ -262,6 +262,14 @@ Plugin-hanteraren katalogiserade bara filer; ingen laddningskod fanns.
 
 ---
 
+### P38 — CLAP-ljudprocessning + per-spår-insert med PDC (Fas 4.2) · ✅ KLAR
+CLAP-värden kunde bara ladda och inspektera; ingen instans var kopplad till ljudmotorn.
+- **Löst:** Nytt `PluginProcessor`-trait + `ClapProcessor` som kör riktig ljudprocessning via `clap.audio-ports` (stereo in/ut) och rapporterar `clap.latency`; `clap.note-ports` läses in. Eftersom motorn renderar sample-för-sample medan CLAP processar block buffrar **`PluginInsert`** `DEFAULT_BLOCK_FRAMES` (128) frames, kör pluginen på hela blocket och spelar ut resultatet sample-för-sample. **`PdcDelay`** + motor-PDC i `SynthEngine::process_stereo` fördröjer icke-plugin-bussar till projektets maxlatens och varje plugin-spår med `max_latency - egen_latens`, så spåren förblir faslinjerade (ingen kamfiltrering/klick). Nya kommandon `SetTrackPlugin`/`SetPluginParameter` (rensning via `SetTrackPlugin { insert: None }`). Plugin-vyn har en **"▶ Ladda in"**-knapp per inspekterad plugin med spårväljare; `App::load_plugin_into_track` instansierar processorn och skickar den till ljudtråden. Param-id är nu korrekt `u32` enligt CLAP-spec.
+- **Tester:** Mock-CLAP:en (`tests/fixtures/mock_clap.c`) är omskriven till en riktig stereo gain-effekt (Gain/Mix, `clap.audio-ports`, `clap.latency`) och processar ljud end-to-end i test. Nya tester: insert-latens/gain/reset, PDC-delay (förskjutning + passthrough + rensning) och motor-alignment (plugin-spår vs icke-plugin-spår, samt passthrough utan plugins).
+- `cargo test --release` = **123 tester**, 0 varningar. `cargo test --release --features plugin-host` = **131 tester**, 0 varningar. Alla byggkombinationer (`default`, `plugin-host`, `neural`, `neural,plugin-host`) länkar rent.
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -273,6 +281,7 @@ Plugin-hanteraren katalogiserade bara filer; ingen laddningskod fanns.
 | Export-presets & loudness-normalisering (EBU R128) | ✅ REAL (P34) |
 | Neural stem-separation (HTDemucs/ONNX, opt-in) | ✅ REAL (P36) |
 | CLAP-pluginvärd (laddning + parameterinspektion, opt-in) | ✅ REAL (P37) |
+| CLAP-ljudprocessning + per-spår-insert med PDC (opt-in) | ✅ REAL (P38) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

@@ -7,6 +7,7 @@ use super::envelope::{AdsrParams, AdsrVoice};
 use super::filter::{FilterParams, StateVariableFilter};
 use super::master_fx::{Compressor, CompressorParams, MasterFxChain, RemixFx, StereoEq, TapeStop, TrackEqSettings};
 use super::patcher::{PatchProcessor, PatchSpec};
+use super::plugin_host_live::{PdcDelay, PluginInsert};
 use super::vocal_harmonizer::Wsola;
 
 /// Debug logging to ~/Music/Sonix/audio_debug.log. Enabled when the
@@ -106,6 +107,8 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetPatcherEnabled(_) => "SetPatcherEnabled",
         AudioCommand::PatcherNoteOn { .. } => "PatcherNoteOn",
         AudioCommand::PatcherNoteOff => "PatcherNoteOff",
+        AudioCommand::SetTrackPlugin { .. } => "SetTrackPlugin",
+        AudioCommand::SetPluginParameter { .. } => "SetPluginParameter",
     }
 }
 
@@ -240,6 +243,10 @@ pub struct StemVoiceTrack {
     pub delay: StereoDelay,
     pub delay_send: f32,
     pub pitch_ratio: f32,
+    /// Optional CLAP insert on this track (Fas 4.2).
+    pub plugin: Option<PluginInsert>,
+    /// Delay line that aligns this track with the project's max plugin latency.
+    pub pdc: PdcDelay,
 }
 
 impl StemVoiceTrack {
@@ -277,6 +284,8 @@ impl StemVoiceTrack {
             delay: StereoDelay::new(engine_sample_rate),
             delay_send: 0.0,
             pitch_ratio: 1.0,
+            plugin: None,
+            pdc: PdcDelay::new(),
         }
     }
 
@@ -400,6 +409,8 @@ pub struct SynthEngine {
     pub patcher: Option<PatchProcessor>,
     pub patcher_spec: Option<PatchSpec>,
     pub patcher_enabled: bool,
+    /// PDC delay line for the synth/drum/sample bus (Fas 4.2).
+    pub pdc_bus: PdcDelay,
     // Debug heartbeat counters (only used when SONIX_AUDIO_DEBUG is set)
     pub dbg_frames: u64,
 }
@@ -439,6 +450,7 @@ impl SynthEngine {
             patcher: None,
             patcher_spec: None,
             patcher_enabled: false,
+            pdc_bus: PdcDelay::new(),
             dbg_frames: 0,
         }
     }
@@ -656,12 +668,41 @@ impl SynthEngine {
                 }
                 self.song_playing = false;
             }
+            AudioCommand::SetTrackPlugin { track_index, insert } => {
+                if insert.is_some() {
+                    while self.stem_tracks.len() <= track_index {
+                        self.stem_tracks.push(StemVoiceTrack::new(
+                            Arc::new(Vec::new()),
+                            Arc::new(Vec::new()),
+                            self.sample_rate,
+                            1.0,
+                            0.0,
+                            0.0,
+                            self.sample_rate,
+                        ));
+                    }
+                }
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    track.plugin = insert;
+                    track.pdc.set_delay(0);
+                }
+            }
+            AudioCommand::SetPluginParameter { track_index, param_id, value } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index)
+                    && let Some(plugin) = &mut track.plugin
+                {
+                    plugin.set_parameter(param_id, value);
+                }
+            }
             AudioCommand::LoadStemTrack { track_index, left, right, sample_rate, volume, pan, start_time_secs } => {
                 let track = StemVoiceTrack::new(left, right, sample_rate, volume, pan, start_time_secs, self.sample_rate);
                 if track_index < self.stem_tracks.len() {
                     let eq = self.stem_tracks[track_index].eq;
-                    let old = &self.stem_tracks[track_index];
+                    let old = &mut self.stem_tracks[track_index];
                     let (ct, cr, rs, ds, pr) = (old.comp_threshold_db, old.comp_ratio, old.reverb_send, old.delay_send, old.pitch_ratio);
+                    // Preserve a live plugin insert (and its PDC line) across reloads.
+                    let plugin = old.plugin.take();
+                    let pdc = std::mem::replace(&mut old.pdc, PdcDelay::new());
                     let mut new_track = track;
                     new_track.eq = eq;
                     new_track.eq_proc.set_settings(eq);
@@ -670,6 +711,8 @@ impl SynthEngine {
                     new_track.reverb_send = rs;
                     new_track.delay_send = ds;
                     new_track.pitch_ratio = pr;
+                    new_track.plugin = plugin;
+                    new_track.pdc = pdc;
                     self.stem_tracks[track_index] = new_track;
                 } else {
                     while self.stem_tracks.len() < track_index {
@@ -937,6 +980,21 @@ impl SynthEngine {
         // 6. Stereo Ping-Pong Delay FX
         let (del_l, del_r) = self.delay.process(rev_out, rev_out, &self.delay_params);
 
+        // 6b. Plug-in delay compensation: find the largest insert latency so
+        //     every bus can be aligned to it (Fas 4.2). Only relevant while the
+        //     song is playing, so live monitoring keeps its low latency.
+        let max_plugin_latency = if self.song_playing {
+            self.stem_tracks
+                .iter()
+                .filter_map(|t| t.plugin.as_ref().map(|p| p.latency_frames()))
+                .max()
+                .unwrap_or(0)
+        } else {
+            0
+        };
+        self.pdc_bus.set_delay(max_plugin_latency);
+        let (del_l, del_r) = self.pdc_bus.process(del_l, del_r);
+
         // 7. Multi-Track Stem Audio Streaming (with Region Slicing & Fades)
         let mut stem_mix_l = 0.0;
         let mut stem_mix_r = 0.0;
@@ -1075,6 +1133,19 @@ impl SynthEngine {
                     tl += dl * track.delay_send;
                     tr += dr * track.delay_send;
                 }
+
+                // Optional CLAP insert, then PDC-align this track to the
+                // project's maximum plugin latency.
+                let track_latency = if let Some(plugin) = &mut track.plugin {
+                    let (pl, pr) = plugin.process_sample(tl, tr);
+                    tl = pl;
+                    tr = pr;
+                    plugin.latency_frames()
+                } else {
+                    0
+                };
+                track.pdc.set_delay(max_plugin_latency.saturating_sub(track_latency));
+                let (tl, tr) = track.pdc.process(tl, tr);
 
                 stem_mix_l += tl;
                 stem_mix_r += tr;
@@ -1324,5 +1395,114 @@ mod tests {
             l1 > l2,
             "earlier note's filter envelope must be further along: {l1} vs {l2}"
         );
+    }
+
+    use crate::audio::plugin_host_live::{
+        DEFAULT_BLOCK_FRAMES, PluginInfo, PluginParameter, PluginProcessor,
+    };
+
+    struct SilentLatencyProcessor {
+        info: PluginInfo,
+        latency: u32,
+    }
+
+    impl PluginProcessor for SilentLatencyProcessor {
+        fn backend(&self) -> &'static str {
+            "Fake"
+        }
+        fn info(&self) -> &PluginInfo {
+            &self.info
+        }
+        fn parameters(&self) -> &[PluginParameter] {
+            &[]
+        }
+        fn latency_frames(&self) -> u32 {
+            self.latency
+        }
+        fn process_stereo(&mut self, _left: &mut [f32], _right: &mut [f32]) {}
+        fn set_parameter(&mut self, _id: u32, _value: f64) -> bool {
+            false
+        }
+        fn reset(&mut self) {}
+    }
+
+    fn load_impulse_tracks(synth: &mut SynthEngine) {
+        let impulse = Arc::new(vec![1.0_f32; 8]);
+        let silent = Arc::new(vec![0.0_f32; 8]);
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 0,
+            left: impulse.clone(),
+            right: impulse,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 1,
+            left: silent.clone(),
+            right: silent,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+    }
+
+    #[test]
+    fn pdc_aligns_non_plugin_tracks_to_plugin_latency() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_tracks(&mut synth);
+        let insert = PluginInsert::new(
+            Box::new(SilentLatencyProcessor {
+                info: PluginInfo::default(),
+                latency: 20,
+            }),
+            DEFAULT_BLOCK_FRAMES,
+        );
+        let expected = insert.latency_frames();
+        synth.handle_command(AudioCommand::SetTrackPlugin {
+            track_index: 0,
+            insert: Some(insert),
+        });
+        synth.process_stereo();
+        assert_eq!(synth.stem_tracks[0].pdc.delay(), 0);
+        assert_eq!(synth.stem_tracks[1].pdc.delay(), expected);
+    }
+
+    #[test]
+    fn pdc_is_a_passthrough_without_plugins() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_tracks(&mut synth);
+        synth.process_stereo();
+        assert_eq!(synth.stem_tracks[0].pdc.delay(), 0);
+        assert_eq!(synth.stem_tracks[1].pdc.delay(), 0);
+    }
+
+    #[test]
+    fn clearing_a_track_plugin_removes_its_pdc() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_tracks(&mut synth);
+        let insert = PluginInsert::new(
+            Box::new(SilentLatencyProcessor {
+                info: PluginInfo::default(),
+                latency: 12,
+            }),
+            DEFAULT_BLOCK_FRAMES,
+        );
+        synth.handle_command(AudioCommand::SetTrackPlugin {
+            track_index: 0,
+            insert: Some(insert),
+        });
+        synth.process_stereo();
+        assert!(synth.stem_tracks[1].pdc.delay() > 0);
+        synth.handle_command(AudioCommand::SetTrackPlugin {
+            track_index: 0,
+            insert: None,
+        });
+        synth.process_stereo();
+        assert_eq!(synth.stem_tracks[1].pdc.delay(), 0);
+        assert!(synth.stem_tracks[0].plugin.is_none());
     }
 }

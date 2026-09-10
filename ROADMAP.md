@@ -31,13 +31,13 @@
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Stem-separation (DSP + neural ONNX) | 1 | 0 | **100 %** |
-| Plugin-hantering | 3 | 5 | **38 %** |
+| Plugin-hantering | 4 | 4 | **50 %** |
 | Export & projekt-I/O (presets, loudness-normalisering) | 5 | 0 | **100 %** |
 | Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
-> **Största kvarvarande biten:** **Plugin-hosting** (38 % — en CLAP-värd kan nu ladda plugins och läsa parametrar; ljud/MIDI-routing, state, GUI och sandbox återstår). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
+> **Största kvarvarande biten:** **Plugin-hosting** (50 % — en CLAP-värd kan nu ladda plugins, läsa parametrar **och processa ljud i ett spår med PDC**; state/preset, GUI och sandbox återstår). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
 ---
 
@@ -131,10 +131,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** En CLAP-plugin kan laddas och rapportera sina parametrar. ✅ (7 nya tester: bundle/`.so`-upplösning, felhantering för saknad fil/paket utan binär/icke-CLAP-bibliotek, samt end-to-end-laddning av mock-pluginen med descriptor och 2 parametrar — 113 tester default, 120 med featuren, 0 varningar)
   - **Filer:** `src/audio/plugin_host_live.rs`, `src/audio/plugin_host.rs`, `src/audio/mod.rs`, `Cargo.toml`, `build.rs`, `tests/fixtures/mock_clap.c`, `tests/fixtures/empty.c`, `src/ui/plugins_view.rs`, `src/i18n.rs`
 
-- [ ] **4.2 Instansiering + audio/MIDI-routing + PDC** — *XL*
-  - **Gör:** Koppla plugin-instans in/ut i realtidsgrafen, buffert-hantering, delay-kompensation.
-  - **Klart när:** En plugin kan spela upp/processa ljud i ett spår utan klick.
-  - **Beroende:** 4.1
+- [x] **4.2 Instansiering + audio/MIDI-routing + PDC** — *XL* ✅
+  - **Löst:** CLAP-instansen kopplas nu in i realtidsgrafen. `PluginProcessor`-trait + `ClapProcessor` kör riktig ljudprocessning via `clap.audio-ports` (stereo in/ut), `clap.note-ports` läses in och `clap.latency` rapporteras. Eftersom motorn renderar sample-för-sample medan CLAP processar block buffrar `PluginInsert` `DEFAULT_BLOCK_FRAMES` (128) frames, kör pluginen på hela blocket och spelar ut resultatet sample-för-sample. `PdcDelay` + motor-PDC (`SynthEngine::process_stereo`) fördröjer icke-plugin-bussar till projektets maxlatens och varje plugin-spår med `max_latency - egen_latens`, så spåren förblir faslinjerade utan klick/kamfilter. `SetTrackPlugin`/`ClearTrackPlugin` (via `SetTrackPlugin { insert: None }`) och `SetPluginParameter` finns som kommandon; plugin-viewn har en **"▶ Ladda in"**-knapp per inspekterad plugin med spårväljare. Ett riktigt mock-CLAP-plugin kompileras av `build.rs` och processar ljud end-to-end i test.
+  - **Klart när:** En plugin kan spela upp/processa ljud i ett spår utan klick. ✅ (PDC-alignment verifierad i motor-tester; 123 tester default, 131 med featuren, 0 varningar. MIDI: note-port-upptäckt + note-plumbing via mock, ingen motoromfattande MIDI-routing ännu.)
+  - **Filer:** `src/audio/plugin_host_live.rs`, `src/audio/command.rs`, `src/audio/synth.rs`, `src/ui/plugins_view.rs`, `src/ui/app.rs`, `src/audio/plugin_host.rs`, `src/i18n.rs`, `tests/fixtures/mock_clap.c`
 
 - [ ] **4.3 State/preset save-load** — *M*
   - **Gör:** Spara/ladda plugin-state i projektet; stöd pluginens egna presets.
@@ -182,7 +182,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 4.2 — Instansiering + audio/MIDI-routing + PDC** (*XL*): koppla CLAP-instansen in i realtidsgrafen (buffert-hantering, `clap.audio-ports`/`clap.note-ports`, delay-kompensation). Därefter 4.3–4.6. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
+**Fas 4.3 — State/preset save-load** (*M*): spara/ladda plugin-state i projektet och stöd pluginens egna presets. Därefter 4.4–4.6. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

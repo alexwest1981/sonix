@@ -171,7 +171,7 @@ update-desktop-database ~/.local/share/applications
 
 ### 11. 🔌 Plugin-hanterare — 🟡 Katalog + opt-in CLAP-värd
 * Riktig rekursiv skanning av VST3/CLAP/LV2/VST2/`.fst`-mappar, ELF/PE-verifiering, Wine- & yabridge-detektion och en ett-klicks `yabridgectl sync`.
-* **Opt-in CLAP-värd:** bygg med `--features plugin-host` och Sonix kan `dlopen`:a en `.clap`-plugin, validera dess `clap_entry`, instansiera den och läsa dess **descriptor + parametrar** (knappen "🔎 Ladda & inspektera" visar dem). Ljud/MIDI-routing, state och GUI är ännu inte inkopplade.
+* **Opt-in CLAP-värd:** bygg med `--features plugin-host` och Sonix kan `dlopen`:a en `.clap`-plugin, validera dess `clap_entry`, instansiera den, läsa dess **descriptor + parametrar** (knappen "🔎 Ladda & inspektera" visar dem) **och köra ljud genom den på ett stämspår** med delay-kompensation (knappen "▶ Ladda in" sätter den som insert). State och GUI är ännu inte inkopplade.
 * 🔜 **Not:** VST3/LV2/VST2 är fortfarande endast katalog, och ingen plugin-GUI visas än. Se **[Plugin-stöd — nuläget](#-plugin-stöd--nuläget)**.
 
 ### 12. 💿 Export & Projekt-I/O — ✅ Äkta
@@ -210,9 +210,9 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
 | `.fst`-knappen "Apply Preset" | ✅ Ärlig | Inaktiverad med förklaring — applicering kräver plugin-värd |
-| Plugin-hosting (VST3/CLAP/LV2/VST2) | 🟡 Delvis | CLAP-laddning + parameterinspektion (opt-in `--features plugin-host`); ljud/MIDI-routing, state, GUI & sandbox saknas ännu |
+| Plugin-hosting (VST3/CLAP/LV2/VST2) | 🟡 Delvis | CLAP-laddning + parameterinspektion + per-spår-ljudprocessning med PDC (opt-in `--features plugin-host`); state, GUI, MIDI-instrument-routing & sandbox saknas ännu |
 
-**Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (CLAP-laddning + parameterinspektion fungerar opt-in; ljud-routing, state och GUI återstår); neural stem-separation är byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
+**Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (CLAP-laddning + parameterinspektion + per-spår-ljudprocessning med PDC fungerar opt-in; state, GUI, MIDI-instrument-routing och sandbox återstår); neural stem-separation är byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
 
 Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finns i **[ROADMAP.md](ROADMAP.md)**.
 
@@ -220,22 +220,23 @@ Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finn
 
 ## 🔌 Plugin-stöd — nuläget
 
-> **Kort svar: katalog + opt-in CLAP-laddning; ingen ljudhosting ännu.** Sonix kan *hitta och katalogisera* alla format och — när det byggs med `--features plugin-host` — *ladda* en native CLAP-plugin och läsa dess parametrar. Det kan ännu inte köra ljud/MIDI genom plugins eller visa deras GUI:n.
+> **Kort svar: katalog + opt-in CLAP-laddning, inspektion och per-spår-ljudprocessning.** Sonix kan *hitta och katalogisera* alla format och — när det byggs med `--features plugin-host` — *ladda* en native CLAP-plugin, läsa dess parametrar **och köra ljud genom den på ett stämspår** med delay-kompensation. Det kan ännu inte spara plugin-state eller visa pluginens GUI.
 
 **Vad som fungerar idag (✅)**
 * Rekursiv skanning av standardmapparna för **VST3 / CLAP / LV2 / VST2** samt FL Studio-`.fst`-platser (Linux- och Wine-sökvägar).
 * Binärverifiering (ELF/PE), filstorlek och en "verifierad"-markering.
 * Detektion av Wine och `yabridgectl`, samt en ett-klicks `yabridgectl sync`.
 * **CLAP-värd (opt-in, `--features plugin-host`):** `dlopen` av ett `.clap`-paket, validering av `clap_entry`, instansiering via plugin-fabriken och descriptor- + parameterinspektion som visas i UI:t.
+* **Riktig ljudprocessning + PDC:** en laddad CLAP-effekt kan sättas som per-spår-insert (knappen "▶ Ladda in" i Plugin-hanteraren) och processar stämspårets ljud i realtid. Värden blockbuffrar (128 frames) och motorn kompenserar latensen så att spåren förblir faslinjerade.
 
 **Vad som fortfarande saknas för full plugin-hosting (🔜)**
-1. **Ljud/MIDI-routing + delay-kompensation** — den laddade CLAP-instansen är ännu inte kopplad till realtidsmotorn (Fas 4.2).
-2. Spara/ladda plugin-state och presets. (`.fst` är ett proprietärt FL Studio-format och avkodas inte.)
-3. Inbäddade eller flytande plugin-GUI:n (Fas 4.4), samt out-of-process-sandboxning för kraschisolering (Fas 4.5).
+1. Spara/ladda plugin-state och presets. (`.fst` är ett proprietärt FL Studio-format och avkodas inte.)
+2. Inbäddade eller flytande plugin-GUI:n (Fas 4.4), samt out-of-process-sandboxning för kraschisolering (Fas 4.5).
+3. Full MIDI-routing in i instrument (note-port-upptäckt och plumbing finns, men ingen instrument-hosting ännu).
 4. VST3 / LV2 / VST2-laddning — endast CLAP är implementerat så långt.
 5. För FL Studios egna instrument (Sytrus, Harmor, Gross Beat, …) och FL Studio VSTi är den enda farbara vägen deras **VST/VST3-byggen körda genom Wine + yabridge** — de nativa FL-`.dll`-formaten är inte ett standard-plugin-API.
 
-**Därför:** tredjepartsplugins är **inte användbara för ljud i Sonix ännu**. En CLAP-plugin kan laddas och inspekteras, men den processar inget ljud och dess GUI visas inte; Plugin-hanteraren är i övrigt en katalog och en Yabridge-assistent.
+**Därför:** en CLAP-**effekt** är nu användbar för ljud i Sonix när den byggs med `--features plugin-host` — ladda den och använd "▶ Ladda in" för att sätta den som insert på ett stämspår. Plugin-state, GUI:n, sandboxning och instrument-hosting återstår; Plugin-hanteraren är i övrigt en katalog och en Yabridge-assistent.
 
 ---
 
@@ -316,7 +317,7 @@ Källseparation som isolerar sång, trummor, bas och instrument från färdiga m
 ![Stem Separator](screenshots/11_stem_separator.png)
 
 #### 12. 🔌 Plugin & VST/CLAP Bridge Manager
-Katalogisering av FL Studio-`.fst`-presets samt CLAP-, VST3-, LV2- och Wine/Yabridge-pluginplatser (skanning & verifiering — hosting är ännu inte implementerad).
+Katalogisering av FL Studio-`.fst`-presets samt CLAP-, VST3-, LV2- och Wine/Yabridge-pluginplatser (skanning & verifiering — CLAP-processning opt-in, övrig hosting ännu inte implementerad).
 ![Plugin Manager](screenshots/12_plugin_manager.png)
 
 #### 13. 🎛 Remix FX (Live Performance Pad)

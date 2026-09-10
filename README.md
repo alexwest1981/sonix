@@ -173,7 +173,7 @@ update-desktop-database ~/.local/share/applications
 
 ### 11. 🔌 Plugin Manager — 🟡 Catalogue + opt-in CLAP host
 * Real recursive scanning of VST3/CLAP/LV2/VST2/`.fst` folders, ELF/PE binary verification, Wine & yabridge detection, and a one-click `yabridgectl sync`.
-* **Opt-in CLAP host:** build with `--features plugin-host` and Sonix can `dlopen` a `.clap` plugin, validate its `clap_entry`, instantiate it and read its descriptor **and parameters** (the "🔎 Load & inspect" button shows them). Audio/MIDI routing, state and GUI are not wired yet.
+* **Opt-in CLAP host:** build with `--features plugin-host` and Sonix can `dlopen` a `.clap` plugin, validate its `clap_entry`, instantiate it, read its descriptor **and parameters** (the "🔎 Load & inspect" button shows them) **and run audio through it on a stem track** with plug-in delay compensation (the "▶ Load" button inserts it). State and GUI are not wired yet.
 * 🔜 **Note:** VST3/LV2/VST2 are still catalogue-only, and no plugin GUI is shown yet. See **[Plugin Support — Current Reality](#-plugin-support--current-reality)**.
 
 ### 12. 💿 Export & Project I/O — ✅ Real
@@ -212,9 +212,9 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
 | `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — applying needs a plugin host |
-| Plugin hosting (VST3/CLAP/LV2/VST2) | 🟡 Partial | CLAP load + parameter inspection (opt-in `--features plugin-host`); audio/MIDI routing, state, GUI & sandbox still missing |
+| Plugin hosting (VST3/CLAP/LV2/VST2) | 🟡 Partial | CLAP load + parameter inspection + per-track audio processing with PDC (opt-in `--features plugin-host`); state, GUI, MIDI instrument routing & sandbox still missing |
 
-**Overall:** roughly **90–95 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The largest outstanding piece is **plugin hosting** (CLAP load + parameter inspection works opt-in; audio routing, state and GUI remain); neural stem separation is implemented (opt-in `--features neural` + a user-supplied HTDemucs ONNX).
+**Overall:** roughly **90–95 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The largest outstanding piece is **plugin hosting** (CLAP load + parameter inspection + per-track audio processing with PDC work opt-in; state, GUI, MIDI instrument routing and sandbox remain); neural stem separation is implemented (opt-in `--features neural` + a user-supplied HTDemucs ONNX).
 
 The full, prioritised development plan with check-off phases lives in **[ROADMAP.md](ROADMAP.md)**.
 
@@ -222,22 +222,23 @@ The full, prioritised development plan with check-off phases lives in **[ROADMAP
 
 ## 🔌 Plugin Support — Current Reality
 
-> **Short answer: catalogue + opt-in CLAP loading; no audio hosting yet.** Sonix can *find and catalogue* every format, and — when built with `--features plugin-host` — *load* a native CLAP plugin and read its parameters. It cannot yet run audio/MIDI through plugins or show their GUIs.
+> **Short answer: catalogue + opt-in CLAP loading, inspection and per-track audio processing.** Sonix can *find and catalogue* every format, and — when built with `--features plugin-host` — *load* a native CLAP plugin, read its parameters **and run audio through it on a stem track with plug-in delay compensation**. It cannot yet save plugin state or show plugin GUIs.
 
 **What works today (✅)**
 * Recursive scanning of standard **VST3 / CLAP / LV2 / VST2** folders and FL Studio `.fst` locations (Linux + Wine paths).
 * Binary verification (ELF/PE), file size and a "verified" badge.
 * Wine and `yabridgectl` detection, plus a one-click `yabridgectl sync`.
 * **CLAP host (opt-in, `--features plugin-host`):** `dlopen` of a `.clap` bundle, `clap_entry` validation, instantiation via the plugin-factory, and descriptor + parameter inspection shown in the UI.
+* **Real audio processing + PDC:** a loaded CLAP effect can be set as a per-track insert (the "▶ Load" button in the Plugin Manager) and processes the stem audio in real time. The host block-buffers (128 frames) and the engine compensates the latency so tracks stay phase-aligned.
 
 **What is still missing to fully host plugins (🔜)**
-1. **Audio/MIDI routing + delay compensation** — the loaded CLAP instance is not yet connected to the realtime engine (Fas 4.2).
-2. Plugin state/preset save-load. (`.fst` is an FL Studio proprietary format and is not decoded.)
-3. Embedded or floating plugin GUIs (Fas 4.4), and out-of-process sandboxing for crash isolation (Fas 4.5).
+1. Plugin state/preset save-load. (`.fst` is an FL Studio proprietary format and is not decoded.)
+2. Embedded or floating plugin GUIs (Fas 4.4), and out-of-process sandboxing for crash isolation (Fas 4.5).
+3. Full engine-wide MIDI routing into instruments (note-port discovery and plumbing are in place, but no instrument hosting yet).
 4. VST3 / LV2 / VST2 loading — only CLAP is implemented so far.
 5. For FL Studio's own instruments (Sytrus, Harmor, Gross Beat, …) and FL Studio VSTi, the only viable route is their **VST/VST3 builds run through Wine + yabridge** — the native FL `.dll` formats are not a standard plugin API.
 
-**Therefore:** third-party plugins are **not yet usable for sound in Sonix**. A CLAP plugin can be loaded and inspected, but it does not process audio and its GUI is not shown; the Plugin Manager otherwise remains a catalogue and a Yabridge setup assistant.
+**Therefore:** a CLAP **effect** is now usable for sound in Sonix when built with `--features plugin-host` — load it, then use "▶ Load" to insert it on a stem track. Plugin state, GUIs, sandboxing and instrument hosting are still to come; the Plugin Manager otherwise remains a catalogue and a Yabridge setup assistant.
 
 ---
 
@@ -318,7 +319,7 @@ Source separation to isolate vocals, drums, bass, and instruments from mixed tra
 ![Stem Separator](screenshots/11_stem_separator.png)
 
 #### 12. 🔌 Plugin & VST/CLAP Bridge Manager
-Cataloguing of FL Studio `.fst` presets and CLAP, VST3, LV2, and Wine/Yabridge plugin locations (scanning & verification — hosting not yet implemented).
+Cataloguing of FL Studio `.fst` presets and CLAP, VST3, LV2, and Wine/Yabridge plugin locations (scanning & verification — CLAP processing opt-in, other hosting not yet implemented).
 ![Plugin Manager](screenshots/12_plugin_manager.png)
 
 #### 13. 🎛 Remix FX (Live Performance Pad)
