@@ -161,6 +161,30 @@ pub enum AudioCommand {
         track_index: usize,
         regions: Vec<StemRegionPlayback>,
     },
+    /// Routes a stem track to a sub-mix bus and an optional VCA group (Fas 5.2).
+    /// The bus is clamped to `0..NUM_BUSES`, the VCA to `0..NUM_VCAS` (`None`
+    /// = the track is not in any VCA group).
+    SetStemTrackRouting {
+        track_index: usize,
+        bus: usize,
+        vca: Option<usize>,
+    },
+    /// Sets a sub-mix bus's group gain, mute and solo (Fas 5.2). The bus is
+    /// clamped to `0..NUM_BUSES`.
+    SetBusState {
+        bus: usize,
+        volume: f32,
+        muted: bool,
+        solo: bool,
+    },
+    /// Sets a VCA group's gain, mute and solo (Fas 5.2). The VCA is clamped to
+    /// `0..NUM_VCAS`.
+    SetVcaState {
+        vca: usize,
+        volume: f32,
+        muted: bool,
+        solo: bool,
+    },
     SeekSongPosition(f32),
     SetSongPlayback(bool),
     // Isolated Audition for Vocal Studio & Sample Preview (does not affect song timeline)

@@ -41,6 +41,14 @@ const MAX_VOICES: usize = 16;
 const MAX_DRUMS: usize = 10;
 const MAX_SAMPLE_VOICES: usize = 24;
 
+/// Number of sub-mix buses (Vocal, Drum, Synth, FX) — Fas 5.2.
+pub const NUM_BUSES: usize = 4;
+/// Number of VCA control groups — Fas 5.2.
+pub const NUM_VCAS: usize = 4;
+
+/// Human-readable names for the four sub-mix buses, used by the mixer UI.
+pub const BUS_NAMES: [&str; NUM_BUSES] = ["Vocal", "Trummor", "Synth", "FX"];
+
 /// One-line description of a command, WITHOUT dumping Arc/PCM contents.
 fn describe_cmd(cmd: &AudioCommand) -> String {
     match cmd {
@@ -65,6 +73,15 @@ fn describe_cmd(cmd: &AudioCommand) -> String {
         }
         AudioCommand::SetStemTrackRegions { track_index, regions } => {
             format!("SetStemTrackRegions(idx={} nregions={})", track_index, regions.len())
+        }
+        AudioCommand::SetStemTrackRouting { track_index, bus, vca } => {
+            format!("SetStemTrackRouting(idx={} bus={} vca={:?})", track_index, bus, vca)
+        }
+        AudioCommand::SetBusState { bus, volume, muted, solo } => {
+            format!("SetBusState(bus={} vol={} muted={} solo={})", bus, volume, muted, solo)
+        }
+        AudioCommand::SetVcaState { vca, volume, muted, solo } => {
+            format!("SetVcaState(vca={} vol={} muted={} solo={})", vca, volume, muted, solo)
         }
         AudioCommand::SeekSongPosition(s) => format!("SeekSongPosition({:.2}s)", s),
         other => format!("{}", variant_name(other)),
@@ -96,6 +113,9 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::ClearAllStemTracks => "ClearAllStemTracks",
         AudioCommand::SetStemTrackState { .. } => "SetStemTrackState",
         AudioCommand::SetStemTrackRegions { .. } => "SetStemTrackRegions",
+        AudioCommand::SetStemTrackRouting { .. } => "SetStemTrackRouting",
+        AudioCommand::SetBusState { .. } => "SetBusState",
+        AudioCommand::SetVcaState { .. } => "SetVcaState",
         AudioCommand::SeekSongPosition(_) => "SeekSongPosition",
         AudioCommand::SetSongPlayback(_) => "SetSongPlayback",
         AudioCommand::PlayAudition { .. } => "PlayAudition",
@@ -247,6 +267,10 @@ pub struct StemVoiceTrack {
     pub plugin: Option<PluginInsert>,
     /// Delay line that aligns this track with the project's max plugin latency.
     pub pdc: PdcDelay,
+    /// Sub-mix bus this track feeds (`0..NUM_BUSES`) — Fas 5.2.
+    pub bus: usize,
+    /// Optional VCA control group (`0..NUM_VCAS`) — Fas 5.2.
+    pub vca: Option<usize>,
 }
 
 impl StemVoiceTrack {
@@ -286,6 +310,8 @@ impl StemVoiceTrack {
             pitch_ratio: 1.0,
             plugin: None,
             pdc: PdcDelay::new(),
+            bus: 0,
+            vca: None,
         }
     }
 
@@ -411,6 +437,14 @@ pub struct SynthEngine {
     pub patcher_enabled: bool,
     /// PDC delay line for the synth/drum/sample bus (Fas 4.2).
     pub pdc_bus: PdcDelay,
+    /// Sub-mix bus group gains / mute / solo (Fas 5.2).
+    pub bus_volume: [f32; NUM_BUSES],
+    pub bus_muted: [bool; NUM_BUSES],
+    pub bus_solo: [bool; NUM_BUSES],
+    /// VCA group gains / mute / solo (Fas 5.2).
+    pub vca_volume: [f32; NUM_VCAS],
+    pub vca_muted: [bool; NUM_VCAS],
+    pub vca_solo: [bool; NUM_VCAS],
     // Debug heartbeat counters (only used when SONIX_AUDIO_DEBUG is set)
     pub dbg_frames: u64,
 }
@@ -451,6 +485,12 @@ impl SynthEngine {
             patcher_spec: None,
             patcher_enabled: false,
             pdc_bus: PdcDelay::new(),
+            bus_volume: [1.0; NUM_BUSES],
+            bus_muted: [false; NUM_BUSES],
+            bus_solo: [false; NUM_BUSES],
+            vca_volume: [1.0; NUM_VCAS],
+            vca_muted: [false; NUM_VCAS],
+            vca_solo: [false; NUM_VCAS],
             dbg_frames: 0,
         }
     }
@@ -486,6 +526,9 @@ impl SynthEngine {
                 | AudioCommand::LoadStemTrack { .. }
                 | AudioCommand::SetStemTrackState { .. }
                 | AudioCommand::SetStemTrackRegions { .. }
+                | AudioCommand::SetStemTrackRouting { .. }
+                | AudioCommand::SetBusState { .. }
+                | AudioCommand::SetVcaState { .. }
                 | AudioCommand::SetTrackEq { .. }
                 | AudioCommand::SetTrackMix { .. }
                 | AudioCommand::SetRemixFx { .. }
@@ -748,6 +791,24 @@ impl SynthEngine {
                     track.regions = regions;
                 }
             }
+            AudioCommand::SetStemTrackRouting { track_index, bus, vca } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    track.bus = bus.min(NUM_BUSES - 1);
+                    track.vca = vca.filter(|&v| v < NUM_VCAS);
+                }
+            }
+            AudioCommand::SetBusState { bus, volume, muted, solo } => {
+                let b = bus.min(NUM_BUSES - 1);
+                self.bus_volume[b] = volume.max(0.0);
+                self.bus_muted[b] = muted;
+                self.bus_solo[b] = solo;
+            }
+            AudioCommand::SetVcaState { vca, volume, muted, solo } => {
+                let v = vca.min(NUM_VCAS - 1);
+                self.vca_volume[v] = volume.max(0.0);
+                self.vca_muted[v] = muted;
+                self.vca_solo[v] = solo;
+            }
             AudioCommand::SeekSongPosition(secs) => {
                 self.song_time_samples = (secs.max(0.0) * self.sample_rate) as usize;
             }
@@ -1000,14 +1061,36 @@ impl SynthEngine {
         let mut stem_mix_r = 0.0;
 
         if self.song_playing && !self.stem_tracks.is_empty() {
-            let has_solo = self.has_stem_solo;
+            // Copy the group state so the loop can borrow `stem_tracks` mutably
+            // (Fas 5.2). A track is soloed if its own solo, its bus's solo or its
+            // VCA's solo is on; a track is silenced if its own, bus or VCA mute
+            // is on. Group gain is applied post-fader, just before the master.
+            let bus_volume = self.bus_volume;
+            let bus_muted = self.bus_muted;
+            let bus_solo = self.bus_solo;
+            let vca_volume = self.vca_volume;
+            let vca_muted = self.vca_muted;
+            let vca_solo = self.vca_solo;
+            let has_solo = self.has_stem_solo
+                || bus_solo.iter().any(|&s| s)
+                || vca_solo.iter().any(|&s| s);
             let current_time_sec = self.song_time_samples as f32 / self.sample_rate;
 
             for track in &mut self.stem_tracks {
-                let audible = if has_solo { track.solo } else { !track.muted };
+                let bus = track.bus.min(NUM_BUSES - 1);
+                let vca = track.vca.filter(|&v| v < NUM_VCAS);
+                let group_soloed = bus_solo[bus] || vca.map(|v| vca_solo[v]).unwrap_or(false);
+                let group_muted = bus_muted[bus] || vca.map(|v| vca_muted[v]).unwrap_or(false);
+                let audible = if has_solo {
+                    track.solo || group_soloed
+                } else {
+                    !track.muted && !group_muted
+                };
                 if !audible || track.left.is_empty() {
                     continue;
                 }
+                let group_gain =
+                    bus_volume[bus] * vca.map(|v| vca_volume[v]).unwrap_or(1.0);
 
                 let pan_l = track.pan_l;
                 let pan_r = track.pan_r;
@@ -1147,8 +1230,8 @@ impl SynthEngine {
                 track.pdc.set_delay(max_plugin_latency.saturating_sub(track_latency));
                 let (tl, tr) = track.pdc.process(tl, tr);
 
-                stem_mix_l += tl;
-                stem_mix_r += tr;
+                stem_mix_l += tl * group_gain;
+                stem_mix_r += tr * group_gain;
             }
 
             self.song_time_samples += 1;
@@ -1504,5 +1587,182 @@ mod tests {
         synth.process_stereo();
         assert_eq!(synth.stem_tracks[1].pdc.delay(), 0);
         assert!(synth.stem_tracks[0].plugin.is_none());
+    }
+
+    // -- Fas 5.2: sub-mix bussar & VCA-grupper -------------------------------
+
+    fn route_track(synth: &mut SynthEngine, track: usize, bus: usize, vca: Option<usize>) {
+        synth.handle_command(AudioCommand::SetStemTrackRouting {
+            track_index: track,
+            bus,
+            vca,
+        });
+    }
+
+    fn load_impulse_and_silence(synth: &mut SynthEngine) {
+        // A 220 Hz tone (not DC): the master chain high-passes DC away, so a
+        // constant buffer would read as silence regardless of group gain.
+        let tone: Vec<f32> = (0..8192)
+            .map(|i| (2.0 * std::f32::consts::PI * 220.0 * i as f32 / 48_000.0).sin() * 0.8)
+            .collect();
+        let impulse = Arc::new(tone);
+        let silent = Arc::new(vec![0.0_f32; 8192]);
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 0,
+            left: impulse.clone(),
+            right: impulse,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 1,
+            left: silent.clone(),
+            right: silent,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+    }
+
+    /// Sums |L|+|R| over `frames` stereo frames. The master chain ends in the
+    /// tape-stop ring buffer, which currently reads a full buffer ahead, so the
+    /// stem audio only reaches the output after ~32768 frames. Integrating over
+    /// a window past that point is therefore required.
+    fn output_energy(synth: &mut SynthEngine, frames: usize) -> f32 {
+        let mut energy = 0.0_f32;
+        for _ in 0..frames {
+            let (l, r) = synth.process_stereo();
+            energy += l.abs() + r.abs();
+        }
+        energy
+    }
+    #[test]
+    fn bus_volume_scales_group_output() {
+        let mut unity = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut unity);
+        route_track(&mut unity, 0, 0, None);
+        let full = output_energy(&mut unity, 40_000);
+
+        let mut halved = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut halved);
+        route_track(&mut halved, 0, 0, None);
+        halved.handle_command(AudioCommand::SetBusState {
+            bus: 0,
+            volume: 0.5,
+            muted: false,
+            solo: false,
+        });
+        let half = output_energy(&mut halved, 40_000);
+
+        assert!(full > 0.05, "expected audible bus output, got {full}");
+        assert!(
+            half > 0.0 && half < full,
+            "bus gain must attenuate: {half} vs {full}"
+        );
+    }
+
+    #[test]
+    fn bus_mute_silences_group() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut synth);
+        route_track(&mut synth, 0, 2, None);
+        synth.handle_command(AudioCommand::SetBusState {
+            bus: 2,
+            volume: 1.0,
+            muted: true,
+            solo: false,
+        });
+        assert!(output_energy(&mut synth, 40_000) < 1e-4, "muted bus must be silent");
+    }
+
+    #[test]
+    fn bus_solo_isolates_other_buses() {
+        let mut reference = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut reference);
+        route_track(&mut reference, 0, 0, None);
+        route_track(&mut reference, 1, 1, None);
+        assert!(output_energy(&mut reference, 40_000) > 0.05, "reference should be audible");
+
+        let mut soloed = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut soloed);
+        route_track(&mut soloed, 0, 0, None);
+        route_track(&mut soloed, 1, 1, None);
+        soloed.handle_command(AudioCommand::SetBusState {
+            bus: 1,
+            volume: 1.0,
+            muted: false,
+            solo: true,
+        });
+        assert!(
+            output_energy(&mut soloed, 40_000) < 1e-4,
+            "soloing the silent bus must silence the non-soloed impulse bus"
+        );
+    }
+
+    #[test]
+    fn vca_volume_scales_group_output() {
+        let mut unity = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut unity);
+        route_track(&mut unity, 0, 0, Some(2));
+        let full = output_energy(&mut unity, 40_000);
+
+        let mut halved = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut halved);
+        route_track(&mut halved, 0, 0, Some(2));
+        halved.handle_command(AudioCommand::SetVcaState {
+            vca: 2,
+            volume: 0.5,
+            muted: false,
+            solo: false,
+        });
+        let half = output_energy(&mut halved, 40_000);
+
+        assert!(full > 0.05, "expected audible VCA output, got {full}");
+        assert!(
+            half > 0.0 && half < full,
+            "VCA gain must attenuate: {half} vs {full}"
+        );
+    }
+
+    #[test]
+    fn vca_mute_silences_group() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut synth);
+        route_track(&mut synth, 0, 0, Some(1));
+        synth.handle_command(AudioCommand::SetVcaState {
+            vca: 1,
+            volume: 1.0,
+            muted: true,
+            solo: false,
+        });
+        assert!(output_energy(&mut synth, 40_000) < 1e-4, "muted VCA must be silent");
+    }
+
+    #[test]
+    fn routing_clamps_out_of_range_assignments() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_and_silence(&mut synth);
+        route_track(&mut synth, 0, 99, Some(99));
+        assert_eq!(synth.stem_tracks[0].bus, NUM_BUSES - 1);
+        assert_eq!(synth.stem_tracks[0].vca, None);
+        // Out-of-range bus/VCA state must clamp to the last group, not panic.
+        synth.handle_command(AudioCommand::SetBusState {
+            bus: 99,
+            volume: 0.3,
+            muted: false,
+            solo: false,
+        });
+        synth.handle_command(AudioCommand::SetVcaState {
+            vca: 99,
+            volume: 0.4,
+            muted: false,
+            solo: false,
+        });
+        assert!((synth.bus_volume[NUM_BUSES - 1] - 0.3).abs() < 1e-6);
+        assert!((synth.vca_volume[NUM_VCAS - 1] - 0.4).abs() < 1e-6);
     }
 }

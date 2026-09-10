@@ -130,7 +130,7 @@ update-desktop-database ~/.local/share/applications
 * **Per-Spår Dynamik & Sends:** Kompressor, reverb/delay-sends och pitch — allt skickas till ljudmotorn.
 * **Master FX Rack:** Gate → 4-bands EQ → kompressor → de-esser → filter/drive → doubler → limiter, plus reverb & delay, med **riktig gain-reduction-mätare** och visuell EQ-redigerare.
 * **Remix FX (live):** Kaoss-liknande XY-platta med beat-repeat/stutter/reverse och en riktig tape-stop-varispeed.
-* 🟡 **Not:** VCA-grupper och sub-mix-bussar är **inte** implementerade (de gamla döda reglagen togs bort).
+* **VCA-grupper & sub-mix-bussar:** 4 sub-mix-bussar (Vocal, Trummor, Synth, FX) och 4 VCA-grupper, var och en med fader + mute/solo; per-spår-routing till buss/VCA. Grupp-gainen appliceras post-fader precis före mastern, och tillståndet sparas i projektet och följer med till offline-exporten.
 
 ### 5. 🎛 Analog Alchemy Synth — ✅ Äkta
 * 4 vågformer (sinus, sågtand, fyrkant, triangel), ADSR, resonant filter, drive och en morph-vektorplatta med 8 snapshots.

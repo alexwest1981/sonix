@@ -384,6 +384,28 @@ pub struct SonixProjectData {
     /// stem tracks; `None` means "no plugin on this track".
     #[serde(default)]
     pub plugin_slots: Vec<Option<SavedPluginData>>,
+    /// Sub-mix bus group gains (Fas 5.2). Defaults to unity for old projects.
+    #[serde(default = "default_bus_volume")]
+    pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
+    #[serde(default)]
+    pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
+    #[serde(default)]
+    pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
+    /// VCA group gains (Fas 5.2). Defaults to unity for old projects.
+    #[serde(default = "default_vca_volume")]
+    pub vca_volume: [f32; crate::audio::synth::NUM_VCAS],
+    #[serde(default)]
+    pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
+    #[serde(default)]
+    pub vca_solo: [bool; crate::audio::synth::NUM_VCAS],
+}
+
+fn default_bus_volume() -> [f32; crate::audio::synth::NUM_BUSES] {
+    [1.0; crate::audio::synth::NUM_BUSES]
+}
+
+fn default_vca_volume() -> [f32; crate::audio::synth::NUM_VCAS] {
+    [1.0; crate::audio::synth::NUM_VCAS]
 }
 
 /// A plugin insert persisted with the project: its shared-object path plus the
@@ -430,6 +452,12 @@ pub struct SavedTrackData {
     pub delay_send: f32,
     #[serde(default)]
     pub automation: Vec<AutomationLane>,
+    /// Sub-mix bus assignment (Fas 5.2). Defaults to bus 0 for old projects.
+    #[serde(default)]
+    pub bus: usize,
+    /// Optional VCA group assignment (Fas 5.2).
+    #[serde(default)]
+    pub vca: Option<usize>,
 }
 
 #[derive(Clone, Debug)]
@@ -463,6 +491,21 @@ pub struct PlaylistTrack {
     /// Last automation value sent to the engine per `AutomationParam` index
     /// (NaN = never sent). Prevents command spam while playing.
     pub automation_last: [f32; 4],
+    /// Sub-mix bus this track feeds (`0..NUM_BUSES`) — Fas 5.2.
+    pub bus: usize,
+    /// Optional VCA control group (`0..NUM_VCAS`) — Fas 5.2.
+    pub vca: Option<usize>,
+}
+
+/// Default sub-mix bus for a track kind (Fas 5.2): drums → Trummor, bass and
+/// melodic synths → Synth, vocals → Vocal, FX/other → FX.
+pub fn default_bus_for_kind(kind: TrackKind) -> usize {
+    match kind {
+        TrackKind::Drums => 1,
+        TrackKind::Bassline | TrackKind::SynthLead => 2,
+        TrackKind::VocalAudio => 0,
+        TrackKind::Fx | TrackKind::CustomAudio => 3,
+    }
 }
 
 impl PlaylistTrack {
@@ -490,6 +533,8 @@ impl PlaylistTrack {
             pitch_semitones: 0.0,
             automation: Vec::new(),
             automation_last: [f32::NAN; 4],
+            bus: default_bus_for_kind(kind),
+            vca: None,
         }
     }
 }
@@ -586,6 +631,8 @@ pub struct PreloadedTrackData {
     pub reverb_send: f32,
     pub delay_send: f32,
     pub automation: Vec<AutomationLane>,
+    pub bus: usize,
+    pub vca: Option<usize>,
     pub stem_pcms: Vec<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
 }
 
@@ -598,6 +645,12 @@ pub struct LoadedProjectPayload {
     pub master_pan: f32,
     pub tracks: Vec<PreloadedTrackData>,
     pub plugin_slots: Vec<Option<SavedPluginData>>,
+    pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
+    pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
+    pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
+    pub vca_volume: [f32; crate::audio::synth::NUM_VCAS],
+    pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
+    pub vca_solo: [bool; crate::audio::synth::NUM_VCAS],
     pub file_path: String,
 }
 
@@ -757,14 +810,13 @@ pub struct SonixApp {
     pub anim_phase: f32,
     pub scope_history: Vec<f32>,
     pub language: crate::i18n::Language,
-    // Sub-Mixing, VCA Groups & PDC
-    pub vca_faders: [f32; 4],
-    #[allow(dead_code)]
-    pub vca_solos: [bool; 4],
-    pub vocal_bus_vol: f32,
-    pub drum_bus_vol: f32,
-    pub synth_bus_vol: f32,
-    pub fx_send_vol: f32,
+    // Sub-Mixing, VCA Groups & PDC (Fas 5.2)
+    pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
+    pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
+    pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
+    pub vca_faders: [f32; crate::audio::synth::NUM_VCAS],
+    pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
+    pub vca_solos: [bool; crate::audio::synth::NUM_VCAS],
     // Linux Native Hardware Controller (MCU / OSC)
     pub show_controller_modal: bool,
     pub mcu_connected: bool,
@@ -1315,13 +1367,13 @@ impl SonixApp {
             anim_phase: 0.0,
             scope_history: Vec::new(),
             language,
-            // Sub-Mixing, VCA Groups & PDC
-            vca_faders: [1.0, 1.0, 1.0, 1.0],
-            vca_solos: [false, false, false, false],
-            vocal_bus_vol: 0.90,
-            drum_bus_vol: 0.95,
-            synth_bus_vol: 0.88,
-            fx_send_vol: 0.75,
+            // Sub-Mixing, VCA Groups & PDC (Fas 5.2)
+            bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
+            bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_solo: [false; crate::audio::synth::NUM_BUSES],
+            vca_faders: [1.0; crate::audio::synth::NUM_VCAS],
+            vca_muted: [false; crate::audio::synth::NUM_VCAS],
+            vca_solos: [false; crate::audio::synth::NUM_VCAS],
             // Linux Native Hardware Controller (MCU / OSC)
             show_controller_modal: false,
             mcu_connected: false,
@@ -1419,6 +1471,7 @@ impl SonixApp {
             screenshot_state: ScreenshotState::Idle,
             screenshot_mode_active: false,
         };
+        app.sync_group_state();
         app.sync_all_stems_to_engine();
         app
     }
@@ -1770,7 +1823,7 @@ impl SonixApp {
                 (crate::i18n::t("🎤 Mic (Voice & Sång)"), TrackKind::VocalAudio, Color32::WHITE),
             ];
 
-            for (name, _kind, _col) in track_defs {
+            for (name, kind, _col) in track_defs {
                 let clips = [None; 32];
                 tracks.push(PreloadedTrackData {
                     name: name.to_string(),
@@ -1786,6 +1839,8 @@ impl SonixApp {
                     reverb_send: 0.15,
                     delay_send: 0.10,
                     automation: Vec::new(),
+                    bus: default_bus_for_kind(kind),
+                    vca: None,
                     stem_pcms: Vec::new(),
                 });
             }
@@ -1814,6 +1869,12 @@ impl SonixApp {
                     master_pan: 0.0,
                     tracks,
                     plugin_slots: Vec::new(),
+                    bus_volume: default_bus_volume(),
+                    bus_muted: [false; crate::audio::synth::NUM_BUSES],
+                    bus_solo: [false; crate::audio::synth::NUM_BUSES],
+                    vca_volume: default_vca_volume(),
+                    vca_muted: [false; crate::audio::synth::NUM_VCAS],
+                    vca_solo: [false; crate::audio::synth::NUM_VCAS],
                     file_path: "demo".to_string(),
                 });
             }
@@ -2564,6 +2625,8 @@ impl SonixApp {
             reverb_send: t.reverb_send,
             delay_send: t.delay_send,
             automation: t.automation.clone(),
+            bus: t.bus,
+            vca: t.vca,
         }).collect();
 
         let data = SonixProjectData {
@@ -2573,6 +2636,12 @@ impl SonixApp {
             master_volume: self.master_volume,
             master_pan: self.master_pan,
             tracks: saved_tracks,
+            bus_volume: self.bus_volume,
+            bus_muted: self.bus_muted,
+            bus_solo: self.bus_solo,
+            vca_volume: self.vca_faders,
+            vca_muted: self.vca_muted,
+            vca_solo: self.vca_solos,
             plugin_slots: self
                 .plugin_slots
                 .iter()
@@ -2682,6 +2751,8 @@ impl SonixApp {
                     reverb_send: st.reverb_send,
                     delay_send: st.delay_send,
                     automation: st.automation,
+                    bus: st.bus,
+                    vca: st.vca,
                     stem_pcms,
                 });
 
@@ -2699,6 +2770,12 @@ impl SonixApp {
                     master_pan: data.master_pan,
                     tracks: preloaded_tracks,
                     plugin_slots: data.plugin_slots,
+                    bus_volume: data.bus_volume,
+                    bus_muted: data.bus_muted,
+                    bus_solo: data.bus_solo,
+                    vca_volume: data.vca_volume,
+                    vca_muted: data.vca_muted,
+                    vca_solo: data.vca_solo,
                     file_path: path,
                 });
             }
@@ -2715,12 +2792,25 @@ impl SonixApp {
         self.retire_all_plugin_handles();
 
         let plugin_slots = payload.plugin_slots;
+        let bus_volume = payload.bus_volume;
+        let bus_muted = payload.bus_muted;
+        let bus_solo = payload.bus_solo;
+        let vca_volume = payload.vca_volume;
+        let vca_muted = payload.vca_muted;
+        let vca_solo = payload.vca_solo;
 
         self.project_name = payload.name;
         self.bpm = payload.bpm;
         self.swing = payload.swing;
         self.master_volume = payload.master_volume;
         self.master_pan = payload.master_pan;
+        self.bus_volume = bus_volume;
+        self.bus_muted = bus_muted;
+        self.bus_solo = bus_solo;
+        self.vca_faders = vca_volume;
+        self.vca_muted = vca_muted;
+        self.vca_solos = vca_solo;
+        self.sync_group_state();
 
         self.playlist_tracks.clear();
         for (t_idx, st) in payload.tracks.into_iter().enumerate() {
@@ -2755,6 +2845,8 @@ impl SonixApp {
             loaded_track.reverb_send = st.reverb_send;
             loaded_track.delay_send = st.delay_send;
             loaded_track.automation = st.automation;
+            loaded_track.bus = st.bus.min(crate::audio::synth::NUM_BUSES - 1);
+            loaded_track.vca = st.vca.filter(|&v| v < crate::audio::synth::NUM_VCAS);
             loaded_track.pcm_audio = track_pcm;
             self.playlist_tracks.push(loaded_track);
             self.sync_track_regions(t_idx);
@@ -3114,6 +3206,11 @@ impl SonixApp {
                 muted: t.muted,
                 solo: t.solo,
             });
+            let _ = self.engine.send_command(AudioCommand::SetStemTrackRouting {
+                track_index: track_idx,
+                bus: t.bus,
+                vca: t.vca,
+            });
             let _ = self.engine.send_command(AudioCommand::SetTrackEq {
                 track_index: track_idx,
                 settings: t.eq.to_settings(),
@@ -3125,6 +3222,27 @@ impl SonixApp {
                 reverb_send: t.reverb_send,
                 delay_send: t.delay_send,
                 pitch_semitones: t.pitch_semitones,
+            });
+        }
+    }
+
+    /// Pushes the sub-mix bus and VCA group state (gain/mute/solo) to the audio
+    /// engine (Fas 5.2). Cheap; safe to call every UI frame or on any change.
+    pub fn sync_group_state(&mut self) {
+        for bus in 0..self.bus_volume.len() {
+            let _ = self.engine.send_command(AudioCommand::SetBusState {
+                bus,
+                volume: self.bus_volume[bus],
+                muted: self.bus_muted[bus],
+                solo: self.bus_solo[bus],
+            });
+        }
+        for vca in 0..self.vca_faders.len() {
+            let _ = self.engine.send_command(AudioCommand::SetVcaState {
+                vca,
+                volume: self.vca_faders[vca],
+                muted: self.vca_muted[vca],
+                solo: self.vca_solos[vca],
             });
         }
     }
@@ -3167,6 +3285,11 @@ impl SonixApp {
                 pan: t.pan,
                 muted: t.muted,
                 solo: t.solo,
+            });
+            let _ = self.engine.send_command(AudioCommand::SetStemTrackRouting {
+                track_index: track_idx,
+                bus: t.bus,
+                vca: t.vca,
             });
             let _ = self.engine.send_command(AudioCommand::SetTrackEq {
                 track_index: track_idx,
@@ -4700,17 +4823,15 @@ impl SonixApp {
                 }
             }
             ControlEvent::BusVolume { bus, value } => {
-                let v = value.clamp(0.0, 1.25);
-                match bus {
-                    0 => self.vocal_bus_vol = v,
-                    1 => self.drum_bus_vol = v,
-                    2 => self.synth_bus_vol = v,
-                    _ => self.fx_send_vol = v,
+                if bus < self.bus_volume.len() {
+                    self.bus_volume[bus] = value.clamp(0.0, 1.25);
+                    self.sync_group_state();
                 }
             }
             ControlEvent::VcaVolume { vca, value } => {
                 if vca < self.vca_faders.len() {
                     self.vca_faders[vca] = value.clamp(0.0, 1.25);
+                    self.sync_group_state();
                 }
             }
             ControlEvent::MidiNote { note, velocity, on } => {
@@ -10008,6 +10129,91 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             ui.add_space(8.0);
 
             // ================================================================
+            // 1b. TIER 1B: SUB-MIX BUSSES & VCA GROUPS (Fas 5.2)
+            // ================================================================
+            ui.group(|ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(egui::RichText::new(crate::i18n::t("🧩 SUB-MIX-BUSSAR & VCA-GRUPPER")).strong().size(11.5).color(Theme::FL_CYAN));
+                    ui.separator();
+                    ui.label(egui::RichText::new(crate::i18n::t("Bussar summerar spår; VCA styr grupper utan att routa ljudet.")).size(9.5).color(Theme::TEXT_MUTED));
+                });
+                ui.add_space(4.0);
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(6.0, 6.0);
+                    let mut group_changed = false;
+
+                    for b in 0..crate::audio::synth::NUM_BUSES {
+                        let bus_name = crate::i18n::t(crate::audio::synth::BUS_NAMES[b]);
+                        ui.group(|ui| {
+                            ui.set_width(76.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(egui::RichText::new(format!("BUS {}", bus_name)).strong().size(9.5).color(Theme::FL_CYAN));
+                                let mut vol = self.bus_volume[b];
+                                if vertical_fader(ui, &mut vol, 0.0, 1.25, 0.0, Theme::FL_CYAN, 78.0) {
+                                    self.bus_volume[b] = vol;
+                                    group_changed = true;
+                                }
+                                ui.horizontal(|ui| {
+                                    let muted = self.bus_muted[b];
+                                    let m_col = if muted { Theme::FL_RED } else { Theme::TEXT_MUTED };
+                                    if ui.add(egui::Button::new(egui::RichText::new("M").size(10.0).color(m_col)).min_size(egui::vec2(22.0, 16.0))).clicked() {
+                                        self.bus_muted[b] = !muted;
+                                        group_changed = true;
+                                    }
+                                    let solo = self.bus_solo[b];
+                                    let s_col = if solo { Theme::FL_YELLOW } else { Theme::TEXT_MUTED };
+                                    if ui.add(egui::Button::new(egui::RichText::new("S").size(10.0).color(s_col)).min_size(egui::vec2(22.0, 16.0))).clicked() {
+                                        self.bus_solo[b] = !solo;
+                                        group_changed = true;
+                                    }
+                                });
+                                let gain_db = if self.bus_volume[b] <= 0.001 { -60.0 } else { 20.0 * self.bus_volume[b].log10() };
+                                ui.label(egui::RichText::new(format!("{:.0}% {:+.1}dB", self.bus_volume[b] * 100.0, gain_db)).size(8.0).color(Theme::TEXT_MUTED));
+                            });
+                        });
+                    }
+
+                    ui.separator();
+
+                    for v in 0..crate::audio::synth::NUM_VCAS {
+                        ui.group(|ui| {
+                            ui.set_width(76.0);
+                            ui.vertical_centered(|ui| {
+                                ui.label(egui::RichText::new(format!("VCA {}", v + 1)).strong().size(9.5).color(Theme::FL_PURPLE));
+                                let mut vol = self.vca_faders[v];
+                                if vertical_fader(ui, &mut vol, 0.0, 1.25, 0.0, Theme::FL_PURPLE, 78.0) {
+                                    self.vca_faders[v] = vol;
+                                    group_changed = true;
+                                }
+                                ui.horizontal(|ui| {
+                                    let muted = self.vca_muted[v];
+                                    let m_col = if muted { Theme::FL_RED } else { Theme::TEXT_MUTED };
+                                    if ui.add(egui::Button::new(egui::RichText::new("M").size(10.0).color(m_col)).min_size(egui::vec2(22.0, 16.0))).clicked() {
+                                        self.vca_muted[v] = !muted;
+                                        group_changed = true;
+                                    }
+                                    let solo = self.vca_solos[v];
+                                    let s_col = if solo { Theme::FL_YELLOW } else { Theme::TEXT_MUTED };
+                                    if ui.add(egui::Button::new(egui::RichText::new("S").size(10.0).color(s_col)).min_size(egui::vec2(22.0, 16.0))).clicked() {
+                                        self.vca_solos[v] = !solo;
+                                        group_changed = true;
+                                    }
+                                });
+                                let gain_db = if self.vca_faders[v] <= 0.001 { -60.0 } else { 20.0 * self.vca_faders[v].log10() };
+                                ui.label(egui::RichText::new(format!("{:.0}% {:+.1}dB", self.vca_faders[v] * 100.0, gain_db)).size(8.0).color(Theme::TEXT_MUTED));
+                            });
+                        });
+                    }
+
+                    if group_changed {
+                        self.sync_group_state();
+                    }
+                });
+            });
+
+            ui.add_space(8.0);
+
+            // ================================================================
             // 2. TIER 2: DEDICATED PARAMETRIC EQ & CHANNEL STRIP FOR SELECTED TRACK
             // ================================================================
             if !self.playlist_tracks.is_empty() {
@@ -10029,6 +10235,42 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             self.playlist_tracks[sel_idx].eq.enabled = eq_enabled;
                             track_dirty = true;
                         }
+
+                        ui.separator();
+                        ui.label(egui::RichText::new(crate::i18n::t("Buss:")).size(10.0).color(Theme::TEXT_MUTED));
+                        let cur_bus = self.playlist_tracks[sel_idx].bus.min(crate::audio::synth::NUM_BUSES - 1);
+                        egui::ComboBox::from_id_salt("sel_track_bus")
+                            .selected_text(crate::i18n::t(crate::audio::synth::BUS_NAMES[cur_bus]))
+                            .width(84.0)
+                            .show_ui(ui, |ui| {
+                                for b in 0..crate::audio::synth::NUM_BUSES {
+                                    if ui.selectable_label(cur_bus == b, crate::i18n::t(crate::audio::synth::BUS_NAMES[b])).clicked() && cur_bus != b {
+                                        self.playlist_tracks[sel_idx].bus = b;
+                                        track_dirty = true;
+                                    }
+                                }
+                            });
+
+                        ui.label(egui::RichText::new("VCA:").size(10.0).color(Theme::TEXT_MUTED));
+                        let cur_vca = self.playlist_tracks[sel_idx].vca;
+                        egui::ComboBox::from_id_salt("sel_track_vca")
+                            .selected_text(match cur_vca {
+                                Some(v) => format!("VCA {}", v + 1),
+                                None => crate::i18n::t("Ingen").to_string(),
+                            })
+                            .width(84.0)
+                            .show_ui(ui, |ui| {
+                                if ui.selectable_label(cur_vca.is_none(), crate::i18n::t("Ingen")).clicked() {
+                                    self.playlist_tracks[sel_idx].vca = None;
+                                    track_dirty = true;
+                                }
+                                for v in 0..crate::audio::synth::NUM_VCAS {
+                                    if ui.selectable_label(cur_vca == Some(v), format!("VCA {}", v + 1)).clicked() {
+                                        self.playlist_tracks[sel_idx].vca = Some(v);
+                                        track_dirty = true;
+                                    }
+                                }
+                            });
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.label(egui::RichText::new(crate::tstatus!("Spår {} av {}", sel_idx + 1, self.playlist_tracks.len())).size(10.5).color(Theme::TEXT_MUTED));
@@ -10858,6 +11100,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     muted: t.muted,
                     regions,
                     eq: t.eq.to_settings(),
+                    bus: t.bus,
+                    vca: t.vca,
                 }
             })
         }).collect();
@@ -10875,6 +11119,12 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             velocities: self.step_velocities,
             solo_track,
             tail_secs: (60.0 / self.bpm.max(40.0)).min(2.0),
+            bus_volume: self.bus_volume,
+            bus_muted: self.bus_muted,
+            bus_solo: self.bus_solo,
+            vca_volume: self.vca_faders,
+            vca_muted: self.vca_muted,
+            vca_solo: self.vca_solos,
         }
     }
 
@@ -13785,6 +14035,12 @@ mod tests {
                     sandboxed: false,
                 }),
             ],
+            bus_volume: default_bus_volume(),
+            bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_solo: [false; crate::audio::synth::NUM_BUSES],
+            vca_volume: default_vca_volume(),
+            vca_muted: [false; crate::audio::synth::NUM_VCAS],
+            vca_solo: [false; crate::audio::synth::NUM_VCAS],
         };
         let json = serde_json::to_string(&data).unwrap();
         let back: SonixProjectData = serde_json::from_str(&json).unwrap();

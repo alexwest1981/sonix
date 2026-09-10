@@ -334,6 +334,14 @@ Den sista av yabridge-vägarna: **VST2**-bryggor (`~/.vst/yabridge/*.so`) kan nu
 
 ---
 
+### P47 — VCA-grupper & sub-mix-bussar (Fas 5.2) · ✅ KLAR
+Spår kan nu routas till **4 sub-mix-bussar** och **4 VCA-grupper** som styr volym, mute och solo — på riktigt, hela vägen genom motor, UI, projekt-I/O och export.
+- **Löst:** `synth.rs` har `NUM_BUSES`/`NUM_VCAS`/`BUS_NAMES` (Vocal/Trummor/Synth/FX). `StemVoiceTrack` har `bus: usize` + `vca: Option<usize>`. Tre nya `AudioCommand`: `SetStemTrackRouting` (clampas i motorn), `SetBusState` och `SetVcaState`. I render-loopen beräknas `has_solo` (eget spår-solo ELLER någon buss-/VCA-solo), ett spår är hörbart om `has_solo` och (`track.solo || group_soloed`) annars om varken eget eller grupp-mute är på, och grupp-gainen (`bus_volume * vca_volume`) appliceras **post-fader precis före mastern**. Mixern har en ny **TIER 1B** med 4 buss- och 4 VCA-strips (fader + M/S), och den valda kanalens konsol har **Buss:**- och **VCA:**-väljare. Buss-/VCA-state sparas i `SonixProjectData` och per-spår `bus`/`vca` i `SavedTrackData` (`#[serde(default)]`, unity-defaults). Offline-exporten får samma state via `RenderSpec` + `TrackAudioSnap`; vid enstaka stem-export hålls grupperna neutrala så bara det isolerade spåret hörs.
+- **Tester:** `bus_volume_scales_group_output`, `bus_mute_silences_group`, `bus_solo_isolates_other_buses`, `vca_volume_scales_group_output`, `vca_mute_silences_group`, `routing_clamps_out_of_range_assignments`.
+- `cargo test --release` = **133 tester**, 0 varningar. `cargo test --release --features plugin-host` = **179 tester**, 0 varningar. Alla fyra byggkombinationer 0 varningar.
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -354,6 +362,7 @@ Den sista av yabridge-vägarna: **VST2**-bryggor (`~/.vst/yabridge/*.so`) kan nu
 | VST3-modul, ABI, laddning & inspektion (opt-in) | ✅ REAL (P44) |
 | VST3-ljud, parametrar/state & PDC (opt-in) | ✅ REAL (P45) |
 | VST2-modul, ABI, ljud, parametrar/state & PDC (opt-in) | ✅ REAL (P46) |
+| VCA-grupper & sub-mix-bussar (4 bussar + 4 VCA) | ✅ REAL (P47) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

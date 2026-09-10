@@ -1600,6 +1600,11 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "✅ Importerade AI-genererat ljud som spår {}: '{}'" => "✅ Imported AI-generated audio as track {}: '{}'",
         "Offline: använder lokal regelbaserad motor" => "Offline: using local rule-based engine",
         "✔ AI-API genererade {} klipp från prompten." => "✔ AI API generated {} clips from the prompt.",
+        "🧩 SUB-MIX-BUSSAR & VCA-GRUPPER" => "🧩 SUB-MIX BUSES & VCA GROUPS",
+        "Bussar summerar spår; VCA styr grupper utan att routa ljudet." => "Buses sum tracks; VCAs control groups without routing audio.",
+        "Buss:" => "Bus:",
+        "Ingen" => "None",
+        "Trummor" => "Drums",
         _ => return None,
     })
 }
@@ -1726,6 +1731,11 @@ fn tr_da(key: &str) -> Option<&'static str> {
         "Status:" => "Status:",
         "🚀 STARTA EXPORT" => "🚀 START EKSPORT",
         "Stäng" => "Luk",
+        "🧩 SUB-MIX-BUSSAR & VCA-GRUPPER" => "🧩 SUB-MIX-BUSSER & VCA-GRUPPER",
+        "Bussar summerar spår; VCA styr grupper utan att routa ljudet." => "Busser summerer spor; VCA'er styrer grupper uden at route lyden.",
+        "Buss:" => "Bus:",
+        "Ingen" => "Ingen",
+        "Trummor" => "Trommer",
         _ => return None,
     })
 }
@@ -1852,6 +1862,11 @@ fn tr_no(key: &str) -> Option<&'static str> {
         "Status:" => "Status:",
         "🚀 STARTA EXPORT" => "🚀 START EKSPORT",
         "Stäng" => "Lukk",
+        "🧩 SUB-MIX-BUSSAR & VCA-GRUPPER" => "🧩 SUB-MIX-BUSSER & VCA-GRUPPER",
+        "Bussar summerar spår; VCA styr grupper utan att routa ljudet." => "Busser summerer spor; VCA-er styrer grupper uten å rute lyden.",
+        "Buss:" => "Buss:",
+        "Ingen" => "Ingen",
+        "Trummor" => "Trommer",
         _ => return None,
     })
 }
@@ -1978,6 +1993,11 @@ fn tr_de(key: &str) -> Option<&'static str> {
         "Status:" => "Status:",
         "🚀 STARTA EXPORT" => "🚀 EXPORT STARTEN",
         "Stäng" => "Schließen",
+        "🧩 SUB-MIX-BUSSAR & VCA-GRUPPER" => "🧩 SUB-MIX-BUSSE & VCA-GRUPPEN",
+        "Bussar summerar spår; VCA styr grupper utan att routa ljudet." => "Busse summieren Spuren; VCAs steuern Gruppen, ohne Audio zu routen.",
+        "Buss:" => "Bus:",
+        "Ingen" => "Keine",
+        "Trummor" => "Drums",
         _ => return None,
     })
 }
@@ -2104,6 +2124,11 @@ fn tr_es(key: &str) -> Option<&'static str> {
         "Status:" => "Estado:",
         "🚀 STARTA EXPORT" => "🚀 INICIAR EXPORTACIÓN",
         "Stäng" => "Cerrar",
+        "🧩 SUB-MIX-BUSSAR & VCA-GRUPPER" => "🧩 SUB-MIX BUSES Y GRUPOS VCA",
+        "Bussar summerar spår; VCA styr grupper utan att routa ljudet." => "Los buses suman pistas; los VCA controlan grupos sin enrutar el audio.",
+        "Buss:" => "Bus:",
+        "Ingen" => "Ninguno",
+        "Trummor" => "Batería",
         _ => return None,
     })
 }
@@ -2230,6 +2255,11 @@ fn tr_fr(key: &str) -> Option<&'static str> {
         "Status:" => "Statut :",
         "🚀 STARTA EXPORT" => "🚀 LANCER L'EXPORT",
         "Stäng" => "Fermer",
+        "🧩 SUB-MIX-BUSSAR & VCA-GRUPPER" => "🧩 BUS DE SOUS-MIX & GROUPES VCA",
+        "Bussar summerar spår; VCA styr grupper utan att routa ljudet." => "Les bus additionnent les pistes ; les VCA contrôlent des groupes sans router l'audio.",
+        "Buss:" => "Bus :",
+        "Ingen" => "Aucun",
+        "Trummor" => "Batterie",
         _ => return None,
     })
 }

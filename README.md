@@ -132,7 +132,7 @@ update-desktop-database ~/.local/share/applications
 * **Per-Track Dynamics & Sends:** Compressor, reverb/delay sends and pitch — all sent to the audio engine.
 * **Master FX Rack:** Gate → 4-band EQ → compressor → de-esser → filter/drive → doubler → limiter, plus reverb & delay, with a **real gain-reduction meter** and a visual EQ editor.
 * **Remix FX (live):** Kaoss-style XY pad with beat-repeat/stutter/reverse and a real tape-stop varispeed effect.
-* 🟡 **Note:** VCA groups and sub-mix buses are **not** implemented (the old dead controls were removed).
+* **VCA Groups & Sub-Mix Buses:** 4 sub-mix buses (Vocal, Drums, Synth, FX) and 4 VCA groups, each with fader + mute/solo; per-track bus/VCA routing. Group gain is applied post-fader just before the master, and the state is saved in the project and honoured by offline export.
 
 ### 5. 🎛 Analog Alchemy Synth — ✅ Real
 * 4 waveforms (sine, saw, square, triangle), ADSR, resonant filter, drive and an 8-snapshot morph vector pad.

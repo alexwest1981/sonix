@@ -88,6 +88,10 @@ pub struct TrackAudioSnap {
     pub muted: bool,
     pub regions: Vec<StemRegionPlayback>,
     pub eq: TrackEqSettings,
+    /// Sub-mix bus assignment (Fas 5.2).
+    pub bus: usize,
+    /// Optional VCA group assignment (Fas 5.2).
+    pub vca: Option<usize>,
 }
 
 /// Master FX / synth settings snapshot.
@@ -122,6 +126,14 @@ pub struct RenderSpec {
     pub solo_track: Option<usize>,
     /// Extra silence after the last bar so reverb/delay tails decay.
     pub tail_secs: f32,
+    /// Sub-mix bus group state applied to the full mix (Fas 5.2).
+    pub bus_volume: [f32; super::synth::NUM_BUSES],
+    pub bus_muted: [bool; super::synth::NUM_BUSES],
+    pub bus_solo: [bool; super::synth::NUM_BUSES],
+    /// VCA group state applied to the full mix (Fas 5.2).
+    pub vca_volume: [f32; super::synth::NUM_VCAS],
+    pub vca_muted: [bool; super::synth::NUM_VCAS],
+    pub vca_solo: [bool; super::synth::NUM_VCAS],
 }
 
 pub fn midi_to_freq(note: u8) -> f32 {
@@ -279,6 +291,11 @@ pub fn load_timeline_into_engine(engine: &mut SynthEngine, timeline: &[TrackAudi
             muted: other_in_solo || (!forced_solo && t.muted),
             solo: false,
         });
+        engine.handle_command(AudioCommand::SetStemTrackRouting {
+            track_index: t.track_index,
+            bus: t.bus,
+            vca: t.vca,
+        });
         engine.handle_command(AudioCommand::SetTrackEq {
             track_index: t.track_index,
             settings: t.eq,
@@ -351,6 +368,27 @@ pub fn build_offline_engine(spec: &RenderSpec, fx: &FxState) -> SynthEngine {
     engine.drive = fx.drive.clamp(1.0, 10.0);
     engine.master_fx.set_params(fx.master_fx);
     engine.master_volume = fx.master_volume.clamp(0.0, 1.0);
+    // Apply the project's sub-mix bus / VCA group state to the full mix. For a
+    // single-stem export (`solo_track`), group gains/solos are left neutral so
+    // only the explicitly isolated track is audible (Fas 5.2).
+    if spec.solo_track.is_none() {
+        for bus in 0..super::synth::NUM_BUSES {
+            engine.handle_command(AudioCommand::SetBusState {
+                bus,
+                volume: spec.bus_volume[bus],
+                muted: spec.bus_muted[bus],
+                solo: spec.bus_solo[bus],
+            });
+        }
+        for vca in 0..super::synth::NUM_VCAS {
+            engine.handle_command(AudioCommand::SetVcaState {
+                vca,
+                volume: spec.vca_volume[vca],
+                muted: spec.vca_muted[vca],
+                solo: spec.vca_solo[vca],
+            });
+        }
+    }
     load_timeline_into_engine(&mut engine, &spec.timeline, spec.solo_track);
     engine
 }
@@ -727,6 +765,12 @@ mod tests {
             velocities: [0.85; 16],
             solo_track: None,
             tail_secs: 0.1,
+            bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
+            bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_solo: [false; crate::audio::synth::NUM_BUSES],
+            vca_volume: [1.0; crate::audio::synth::NUM_VCAS],
+            vca_muted: [false; crate::audio::synth::NUM_VCAS],
+            vca_solo: [false; crate::audio::synth::NUM_VCAS],
         }
     }
 
