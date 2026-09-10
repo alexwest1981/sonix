@@ -15,6 +15,8 @@ pub struct PluginViewActions {
     pub open_gui: Option<usize>,
     /// Stem track index whose plugin editor should be closed.
     pub close_gui: Option<usize>,
+    /// Plugin path to inspect out-of-process in the sandbox (Fas 4.5a).
+    pub sandbox_inspect: Option<String>,
 }
 
 pub fn render_plugins_view(
@@ -25,6 +27,7 @@ pub fn render_plugins_view(
     default_track: usize,
     active_plugins: &[Option<String>],
     gui_open: &[bool],
+    sandbox_status: Option<&str>,
 ) -> PluginViewActions {
     ui.group(|ui| {
         // ====================================================================
@@ -107,7 +110,14 @@ pub fn render_plugins_view(
         // 4. TAB CONTENT
         // ====================================================================
         let tab_actions = match manager.active_tab {
-            0 => render_plugin_database_tab(ui, manager, status_msg, stem_track_count, default_track),
+            0 => render_plugin_database_tab(
+                ui,
+                manager,
+                status_msg,
+                stem_track_count,
+                default_track,
+                sandbox_status,
+            ),
             1 => {
                 render_scan_paths_tab(ui, manager, status_msg);
                 PluginViewActions::default()
@@ -130,6 +140,9 @@ pub fn render_plugins_view(
         }
         if tab_actions.remove_track.is_some() {
             actions.remove_track = tab_actions.remove_track;
+        }
+        if tab_actions.sandbox_inspect.is_some() {
+            actions.sandbox_inspect = tab_actions.sandbox_inspect;
         }
         actions
     })
@@ -212,6 +225,7 @@ fn render_plugin_database_tab(
     status_msg: &mut String,
     stem_track_count: usize,
     default_track: usize,
+    sandbox_status: Option<&str>,
 ) -> PluginViewActions {
     // Search & Filter controls
     ui.horizontal(|ui| {
@@ -277,6 +291,15 @@ fn render_plugin_database_tab(
     });
 
     let mut actions = PluginViewActions::default();
+    if let Some(status) = sandbox_status {
+        ui.group(|ui| {
+            ui.label(
+                egui::RichText::new(status)
+                    .size(10.0)
+                    .color(Theme::FL_GREEN),
+            );
+        });
+    }
     let inspection_actions =
         render_inspection_panel(ui, manager, status_msg, stem_track_count, default_track);
     actions.load_into_track = inspection_actions.load_into_track;
@@ -386,6 +409,18 @@ fn render_plugin_database_tab(
                                     ),
                                 };
                                 manager.inspection = Some(snapshot);
+                            }
+
+                            let sandbox_resp = ui
+                                .add_enabled(
+                                    can_load,
+                                    egui::Button::new(crate::i18n::t("🧪 Sandbox-inspektera")),
+                                )
+                                .on_hover_text(crate::i18n::t(
+                                    "Laddar pluginen i en separat process (Fas 4.5a) så att en krasch inte tar ner Sonix.",
+                                ));
+                            if sandbox_resp.clicked() {
+                                actions.sandbox_inspect = Some(plugin.file_path.clone());
                             }
                         }
 

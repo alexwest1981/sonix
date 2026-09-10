@@ -37,7 +37,7 @@
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
-> **Största kvarvarande biten:** **Plugin-hosting** (67 % — en CLAP-värd kan nu ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets** samt **läsa och driva `clap.gui`-livscykeln på huvudtråden**; själva X11-fönstret och sandboxen återstår). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
+> **Största kvarvarande biten:** **Plugin-hosting** (75 % — en CLAP-värd kan nu ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets**, **läsa och driva `clap.gui`-livscykeln på huvudtråden**, samt **köra en plugin i en separat process med kraschdetektering och automatisk omstart**; själva X11-fönstret och delat-minne-ljudtransporten (4.5b) återstår). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
 ---
 
@@ -155,10 +155,16 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/audio/plugin_host_live.rs`, `src/audio/plugin_gui.rs`, `src/audio/mod.rs`, `src/ui/app.rs`, `src/ui/plugins_view.rs`, `src/i18n.rs`
   - **Beroende:** 4.4a
 
-- [ ] **4.5 Out-of-process sandbox** — *L*
-  - **Gör:** Kör plugins i separat process med delat minne/IPC så att en krasch inte tar ner Sonix.
-  - **Klart när:** En kraschande plugin kan återstartas utan att Sonix stänger.
+- [x] **4.5a Out-of-process sandbox — processgräns + krasch/omstart** — *M* ✅
+  - **Löst:** Samma binär re-exekveras som en sandbox-arbetare (`--plugin-sandbox-worker`) och talar ett längdprefixat JSON-protokoll över stdin/stdout (`write_frame`/`read_frame`, 4-byte LE + payload, 64 MiB-tak). Arbetaren (`serve`) laddar pluginen en gång och svarar på `Ping`, `Info`, `Parameters`, `SetParameter`, `SaveState`, `LoadState`, `Reset` och `Shutdown`. Supervisorn `SandboxHost` spawnar/pollar arbetaren och **startar automatiskt om den vid krasch** (max 3 omstarter), med `SandboxState::{Running,Restarted,Crashed,Stopped}` och graceful `Shutdown` → kill. Plugin-hanteraren har nu **"🧪 Sandbox-inspektera"** som läser info + parametrar ur en separat process och visar status. Ljudet går ännu in-process (delat-minne-transporten är 4.5b), men en kraschande plugin kan nu detekteras och återstartas utan att Sonix stänger.
+  - **Klart när:** En kraschande plugin kan återstartas utan att Sonix stänger. ✅ (Verifierat headless: `frames_round_trip`, `oversized_frame_is_rejected`, `worker_answers_the_control_protocol`, `supervisor_restarts_a_crashed_worker`, `supervisor_gives_up_after_the_restart_budget`, `shutdown_stops_supervision`. 127 tester default, 148 med featuren, 0 varningar i alla fyra byggkombinationer.)
+  - **Filer:** `src/audio/plugin_sandbox.rs`, `src/audio/mod.rs`, `src/main.rs`, `src/ui/app.rs`, `src/ui/plugins_view.rs`, `src/i18n.rs`
   - **Beroende:** 4.2
+
+- [ ] **4.5b Out-of-process sandbox — delat-minne-ljudtransport** — *L*
+  - **Gör:** Flytta själva ljudprocessningen till sandbox-arbetaren via delat minne/ringbuffert så att pluginen körs helt utanför Sonix adressrymd.
+  - **Klart när:** En kraschande plugin tappar inte ljudet mer än en omstart och Sonix påverkas inte.
+  - **Beroende:** 4.5a
 
 - [ ] **4.6 Wine/yabridge-väg för FL Studio & Windows-VST** — *L*
   - **Gör:** Ladda `.so`-bryggor från yabridge som vanliga plugins; verifiera Sytrus/Harmor/Gross Beat/FL Studio VSTi.
@@ -191,7 +197,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 4.4b — Plugin-GUI-fönster (X11)** (*L*): dela plugin-instansen mellan ljud- och huvudtråden, skapa ett X11-fönster och bädda in GUI:t via `set_parent`, samt en aktiv "öppna GUI"-knapp i spåret. (4.4a — ABI + livscykel + inspektion — är klar.) Därefter 4.5–4.6. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3) och GUI-ABI/livscykel (4.4a), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
+**Fas 4.5b — delat-minne-ljudtransport i sandboxen** (*L*): flytta själva ljudprocessningen till sandbox-arbetaren via delat minne/ringbuffert. (4.5a — processgräns + krasch/omstart — är klar.) Därefter 4.6 (Wine/yabridge). Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

@@ -294,6 +294,14 @@ GUI-ABI:n fanns, men inget fönster öppnades och ljudtråden ägde instansen �
 
 ---
 
+### P42 — Out-of-process sandbox: processgräns + krasch/omstart (Fas 4.5a) · ✅ KLAR
+Pluginen kördes alltid in-process, så en kraschande plugin tog ner hela Sonix.
+- **Löst:** Ny modul **`src/audio/plugin_sandbox.rs`**. Samma binär re-exekveras som en sandbox-arbetare med flaggan `--plugin-sandbox-worker` (`src/main.rs` dispatcher den **före** banner/panic-hook så att stdout förblir en ren protokollkanal). Arbetaren och värden talar ett **längdprefixat JSON-protokoll** över stdin/stdout (`write_frame`/`read_frame`: 4-byte LE-längd + payload, `MAX_FRAME_BYTES` = 64 MiB). Arbetaren (`serve`/`serve_from_args`) laddar pluginen en gång och svarar på `Ping`, `Info`, `Parameters`, `SetParameter`, `SaveState`, `LoadState`, `Reset` och `Shutdown`. Supervisorn **`SandboxHost`** spawnar arbetaren (re-exekverar `current_exe()`, eller en injicerad launcher för test), `request()` skickar ett kommando och läser svaret, `poll()` **startar automatiskt om** arbetaren om den dött (max 3 omstarter) och returnerar `SandboxState::{Running,Restarted,Crashed,Stopped}`. `shutdown()` skickar graceful `Shutdown` och dödar efter ~200 ms; `Drop` stänger av. Plugin-hanteraren fick knappen **"🧪 Sandbox-inspektera"** som läser info + parametrar ur en separat process och visar status i vyn. Ljudet går ännu in-process (delat-minne-transporten är 4.5b), men en kraschande plugin kan nu detekteras och återstartas utan att Sonix stänger.
+- **Tester:** `frames_round_trip`, `oversized_frame_is_rejected`, `worker_answers_the_control_protocol`, `supervisor_restarts_a_crashed_worker`, `supervisor_gives_up_after_the_restart_budget`, `shutdown_stops_supervision`.
+- `cargo test --release` = **127 tester**, 0 varningar. `cargo test --release --features plugin-host` = **148 tester**, 0 varningar. Alla byggkombinationer (`default`, `plugin-host`, `neural`, `neural,plugin-host`) bygger med 0 varningar.
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -309,6 +317,7 @@ GUI-ABI:n fanns, men inget fönster öppnades och ljudtråden ägde instansen �
 | CLAP state/preset save-load + projektpersistens (opt-in) | ✅ REAL (P39) |
 | CLAP GUI-ABI + livscykel + inspektion (opt-in) | ✅ REAL (P40) |
 | CLAP delad instans + X11-GUI-fönster (opt-in) | ✅ REAL (P41) |
+| Out-of-process sandbox: processgräns + krasch/omstart (opt-in) | ✅ REAL (P42) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

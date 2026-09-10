@@ -732,6 +732,13 @@ pub struct SonixApp {
     /// Handles for replaced/removed plugins. Kept until shutdown so the final
     /// `ClapCore` drop happens on the main thread, not the audio thread.
     pub retired_plugin_handles: Vec<crate::audio::plugin_host_live::PluginHandle>,
+    /// Out-of-process sandbox worker for the last plugin the user inspected in
+    /// isolation (Fas 4.5a).
+    #[cfg(feature = "plugin-host")]
+    pub plugin_sandbox: Option<crate::audio::plugin_sandbox::SandboxHost>,
+    /// Result of the last sandbox inspection, shown in the plugin manager.
+    #[cfg(feature = "plugin-host")]
+    pub sandbox_inspection: Option<crate::audio::plugin_sandbox::SandboxInspection>,
     // Vocal Studio, Comping, Harmonizer & AI Music Assistant
     pub vocal_studio: VocalStudioTrack,
     pub vocal_harmonizer: VocalHarmonizer,
@@ -1286,6 +1293,10 @@ impl SonixApp {
             plugin_handles: Vec::new(),
             plugin_gui_sessions: Vec::new(),
             retired_plugin_handles: Vec::new(),
+            #[cfg(feature = "plugin-host")]
+            plugin_sandbox: None,
+            #[cfg(feature = "plugin-host")]
+            sandbox_inspection: None,
             vocal_studio: VocalStudioTrack::default(),
             vocal_harmonizer: VocalHarmonizer::default(),
             ai_assistant: AiMusicAssistant::default(),
@@ -3840,6 +3851,144 @@ impl SonixApp {
         }
     }
 
+    /// Spawns a sandbox worker for `path` and reads its info + parameters over
+    /// the process boundary (Fas 4.5a). Replaces any previous worker.
+    #[cfg(feature = "plugin-host")]
+    pub fn sandbox_inspect(&mut self, path: &str) {
+        use crate::audio::plugin_sandbox::{
+            SandboxHost, SandboxInspection, SandboxRequest, SandboxResponse,
+        };
+        if let Some(mut previous) = self.plugin_sandbox.take() {
+            previous.shutdown();
+        }
+        let mut host = match SandboxHost::new(
+            path,
+            self.engine.sample_rate as f32,
+            crate::audio::plugin_host_live::DEFAULT_BLOCK_FRAMES as u32,
+        ) {
+            Ok(host) => host,
+            Err(err) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte skapa sandbox: {}", err);
+                return;
+            }
+        };
+        let outcome = (|| -> Result<SandboxInspection, String> {
+            host.spawn().map_err(|e| e.to_string())?;
+            let info = match host.request(&SandboxRequest::Info).map_err(|e| e.to_string())? {
+                SandboxResponse::Info { info } => Some(info),
+                SandboxResponse::Error { message } => return Err(message),
+                other => return Err(format!("oväntat svar: {other:?}")),
+            };
+            let parameters = match host
+                .request(&SandboxRequest::Parameters)
+                .map_err(|e| e.to_string())?
+            {
+                SandboxResponse::Parameters { parameters } => parameters,
+                _ => Vec::new(),
+            };
+            Ok(SandboxInspection {
+                path: path.to_string(),
+                info,
+                parameters,
+                restarts: 0,
+                error: None,
+            })
+        })();
+        match outcome {
+            Ok(inspection) => {
+                let name = inspection
+                    .info
+                    .as_ref()
+                    .map(|i| i.name.clone())
+                    .unwrap_or_else(|| path.to_string());
+                self.status_message = crate::tstatus!(
+                    "🧪 Sandbox: läste {} parametrar ur '{}' i en separat process",
+                    inspection.parameters.len(),
+                    name
+                );
+                self.sandbox_inspection = Some(inspection);
+                self.plugin_sandbox = Some(host);
+            }
+            Err(err) => {
+                self.status_message = crate::tstatus!("⚠ Sandbox misslyckades: {}", err);
+                self.sandbox_inspection = Some(SandboxInspection {
+                    path: path.to_string(),
+                    info: None,
+                    parameters: Vec::new(),
+                    restarts: 0,
+                    error: Some(err),
+                });
+                host.shutdown();
+            }
+        }
+    }
+
+    /// Health-checks the sandbox worker each frame and reports crashes (Fas 4.5a).
+    #[cfg(feature = "plugin-host")]
+    pub fn poll_plugin_sandbox(&mut self) {
+        use crate::audio::plugin_sandbox::SandboxState;
+        let state = match self.plugin_sandbox.as_mut() {
+            Some(host) => host.poll(),
+            None => return,
+        };
+        match state {
+            SandboxState::Restarted => {
+                let restarts = self
+                    .plugin_sandbox
+                    .as_ref()
+                    .map(|h| h.restarts())
+                    .unwrap_or(0);
+                if let Some(inspection) = self.sandbox_inspection.as_mut() {
+                    inspection.restarts = restarts;
+                }
+                self.status_message = crate::tstatus!(
+                    "🧪 Sandbox: plugin-processen kraschade och startades om (omstart {})",
+                    restarts
+                );
+            }
+            SandboxState::Crashed => {
+                let restarts = self
+                    .plugin_sandbox
+                    .as_ref()
+                    .map(|h| h.restarts())
+                    .unwrap_or(0);
+                if let Some(mut host) = self.plugin_sandbox.take() {
+                    host.shutdown();
+                }
+                if let Some(inspection) = self.sandbox_inspection.as_mut() {
+                    inspection.restarts = restarts;
+                    inspection.error =
+                        Some(crate::i18n::t("sandbox-processen kraschade upprepade gånger").to_string());
+                }
+                self.status_message = crate::i18n::t(
+                    "⚠ Sandbox: plugin-processen kraschade upprepade gånger",
+                )
+                .to_string();
+            }
+            _ => {}
+        }
+    }
+
+    /// Formats the sandbox inspection for the plugin-manager view.
+    #[cfg(feature = "plugin-host")]
+    pub fn sandbox_status_text(&self) -> Option<String> {
+        let inspection = self.sandbox_inspection.as_ref()?;
+        Some(match &inspection.info {
+            Some(info) => crate::tstatus!(
+                "🧪 Sandbox (separat process): {} v{} – {} parametrar, {} omstarter",
+                info.name,
+                info.version,
+                inspection.parameters.len(),
+                inspection.restarts
+            ),
+            None => crate::tstatus!(
+                "🧪 Sandbox misslyckades för '{}': {}",
+                inspection.path,
+                inspection.error.as_deref().unwrap_or("okänt fel")
+            ),
+        })
+    }
+
     fn record_plugin_slot(&mut self, track_index: usize, slot: PluginSlot) {
         if self.plugin_slots.len() <= track_index {
             self.plugin_slots.resize_with(track_index + 1, || None);
@@ -4438,6 +4587,9 @@ impl eframe::App for SonixApp {
         self.sync_stem_separator_engine();
         // Keep embedded plugin editors responsive (Fas 4.4b).
         self.poll_plugin_guis();
+        // Supervise the out-of-process sandbox worker (Fas 4.5a).
+        #[cfg(feature = "plugin-host")]
+        self.poll_plugin_sandbox();
 
         // Screenshot event listener
         let mut received_screenshot = None;
@@ -5283,6 +5435,10 @@ impl eframe::App for SonixApp {
                             let gui_open: Vec<bool> = (0..active_plugins.len())
                                 .map(|i| self.is_plugin_gui_open(i))
                                 .collect();
+                            #[cfg(feature = "plugin-host")]
+                            let sandbox_status = self.sandbox_status_text();
+                            #[cfg(not(feature = "plugin-host"))]
+                            let sandbox_status: Option<String> = None;
                             let actions = render_plugins_view(
                                 ui,
                                 &mut self.plugin_manager,
@@ -5291,6 +5447,7 @@ impl eframe::App for SonixApp {
                                 self.selected_channel,
                                 &active_plugins,
                                 &gui_open,
+                                sandbox_status.as_deref(),
                             );
                             if let Some((path, track)) = actions.load_into_track {
                                 self.load_plugin_into_track(&path, track);
@@ -5307,6 +5464,12 @@ impl eframe::App for SonixApp {
                             if let Some(track) = actions.close_gui {
                                 self.close_plugin_gui(track);
                             }
+                            #[cfg(feature = "plugin-host")]
+                            if let Some(path) = actions.sandbox_inspect {
+                                self.sandbox_inspect(&path);
+                            }
+                            #[cfg(not(feature = "plugin-host"))]
+                            let _ = actions.sandbox_inspect;
                         }
                         ViewMode::VocalStudio => {
                             render_vocal_studio_view(

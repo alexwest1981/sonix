@@ -6,6 +6,22 @@ use audio::{AudioEngine, AudioSettings};
 use ui::SonixApp;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Out-of-process plugin sandbox worker (Fas 4.5a): re-executed self with a
+    // flag. This must run before any banner output so stdout stays a clean
+    // protocol channel.
+    #[cfg(feature = "plugin-host")]
+    {
+        let args: Vec<String> = std::env::args().collect();
+        if let Some(pos) = args.iter().position(|a| a == audio::plugin_sandbox::WORKER_FLAG) {
+            let result = audio::plugin_sandbox::serve_from_args(&args[pos + 1..]);
+            if let Err(err) = result {
+                eprintln!("{err}");
+                std::process::exit(2);
+            }
+            return Ok(());
+        }
+    }
+
     // Install a robust panic hook that logs detailed backtrace to stderr and /tmp/sonix_crash.log
     std::panic::set_hook(Box::new(|panic_info| {
         let backtrace = std::backtrace::Backtrace::capture();
