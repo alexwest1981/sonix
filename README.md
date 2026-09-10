@@ -166,9 +166,10 @@ update-desktop-database ~/.local/share/applications
 * **Suno/AI Stem Importer:** Unzip and decode real audio, detect BPM and map stems onto the timeline.
 * 🟡 **Note:** There is **no** Suno API integration. "Suno" here means importing Suno-exported stem packs and using the local generator — not calling Suno.
 
-### 10. 🧠 Stem Separator — 🟡 DSP approximation
-* Splits a mix into vocals/drums/bass/instruments using spectral band-splitting, center-channel extraction and transient gating, plus a real onset-autocorrelation BPM estimator.
-* 🟡 **Note:** This is **not** the Demucs neural network. It is a lightweight DSP separator; quality is well below a neural model.
+### 10. 🧠 Stem Separator — ✅ Real (DSP + optional neural HTDemucs)
+* Splits a mix into vocals/drums/bass/instruments. The default is a real spectral DSP separator (band-splitting, center-channel extraction, transient gating) with a real onset-autocorrelation BPM estimator.
+* **Optional neural backend:** build with `--features neural` and place an HTDemucs-family `.onnx` model in `~/.config/sonix/models/` (or set `SONIX_DEMUCS_ONNX`) to run genuine Demucs separation through ONNX Runtime — background thread, live progress, 44.1 kHz resampling and overlap-add crossfading. Without a model it falls back to the DSP path and the UI states which backend ran.
+* 🟡 **Note:** Sonix does not ship model weights; the neural path needs a user-provided, appropriately licensed model. The default build stays dependency-free and offline.
 
 ### 11. 🔌 Plugin Manager — 🟡 Catalogue only (no host yet)
 * Real recursive scanning of VST3/CLAP/LV2/VST2/`.fst` folders, ELF/PE binary verification, Wine & yabridge detection, and a one-click `yabridgectl sync`.
@@ -204,7 +205,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Hardware MIDI / OSC | ✅ Real | — |
 | Export (WAV/FLAC in-app, MP3/OGG/AAC via ffmpeg) | ✅ Real | — |
 | Modular Patcher | ✅ Real | Topological sort + labels match the DSP |
-| Stem separation | 🟡 Partial | Integrate a real neural model (e.g. HTDemucs via ONNX) |
+| Stem separation | ✅ Real | Optional neural HTDemucs via `--features neural` + user model; DSP fallback otherwise |
 | Vocal tuning | ✅ Real | Real-time autotune in the audio thread + direct monitoring; harmonies/formant preservation run offline |
 | Time-stretch | ✅ Real | WSOLA (pitch-preserving) in the Vocal Studio audition and the Stem Separator SPEED control |
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
@@ -212,7 +213,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — applying needs a plugin host |
 | Plugin hosting (VST3/CLAP/LV2/VST2) | 🔜 Missing | Full host required — see below |
 
-**Overall:** roughly **85–90 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The two largest outstanding pieces are **plugin hosting** (not started) and **neural stem separation** (currently a DSP approximation).
+**Overall:** roughly **90–95 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The largest outstanding piece is **plugin hosting** (not started); neural stem separation is now implemented (opt-in `--features neural` + a user-supplied HTDemucs ONNX).
 
 The full, prioritised development plan with check-off phases lives in **[ROADMAP.md](ROADMAP.md)**.
 
@@ -310,8 +311,8 @@ Interactive XY control pad for groove complexity and energy dynamics, with human
 Visual modular node environment for connecting audio signals, filters, envelopes, LFOs, and distortion with virtual patch cables.
 ![Modular Patcher](screenshots/10_modular_patcher.png)
 
-#### 11. 🧠 Stem Separator (DSP Engine)
-Source separation to isolate vocals, drums, bass, and instruments from mixed tracks (lightweight spectral DSP — not a neural model).
+#### 11. 🧠 Stem Separator (DSP + optional Neural ONNX)
+Source separation to isolate vocals, drums, bass, and instruments from mixed tracks. Runs a lightweight spectral DSP separator by default, or a real HTDemucs ONNX model when built with `--features neural` and a model is installed.
 ![Stem Separator](screenshots/11_stem_separator.png)
 
 #### 12. 🔌 Plugin & VST/CLAP Bridge Manager

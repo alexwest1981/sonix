@@ -13,7 +13,7 @@ use crate::audio::MidiKeyboardInput;
 use crate::audio::patcher::{ModularGraph, PatchSpec};
 use crate::audio::plugin_host::PluginManager;
 use crate::audio::recorder::{LiveMicrophoneCapture, VocalStudioTrack};
-use crate::audio::stem_separator::StemProject;
+use crate::audio::stem_separator::{run_separation, SeparationResult, StemProject};
 use crate::audio::vocal_harmonizer::VocalHarmonizer;
 use super::add_track_modal::{render_add_track_modal, AddTrackModalState, TrackTemplate};
 use super::ai_assistant_view::render_ai_assistant_view;
@@ -692,6 +692,9 @@ pub struct SonixApp {
     pub last_patcher_spec: Option<PatchSpec>,
     pub stem_project: StemProject,
     pub pending_stem_separation: bool,
+    pub stem_separation_progress: std::sync::Arc<std::sync::Mutex<f32>>,
+    pub stem_separation_result: std::sync::Arc<std::sync::Mutex<Option<Result<SeparationResult, String>>>>,
+    pub stem_separation_active: bool,
     pub plugin_manager: PluginManager,
     // Vocal Studio, Comping, Harmonizer & AI Music Assistant
     pub vocal_studio: VocalStudioTrack,
@@ -1239,6 +1242,9 @@ impl SonixApp {
             last_patcher_spec: None,
             stem_project: StemProject::default(),
             pending_stem_separation: false,
+            stem_separation_progress: std::sync::Arc::new(std::sync::Mutex::new(0.0)),
+            stem_separation_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            stem_separation_active: false,
             plugin_manager: PluginManager::default(),
             vocal_studio: VocalStudioTrack::default(),
             vocal_harmonizer: VocalHarmonizer::default(),
@@ -3339,7 +3345,9 @@ impl SonixApp {
         }
     }
 
-    /// Decodes the chosen file and runs the real DSP stem separator.
+    /// Decodes the chosen file and runs stem separation on a background thread.
+    /// Uses the neural HTDemucs backend when a model is installed, otherwise the
+    /// built-in DSP separator.
     pub fn start_stem_separation(&mut self, path: &str) {
         let (l, r, sr) = match crate::audio::load_audio_pcm(path) {
             Ok(v) => v,
@@ -3348,14 +3356,103 @@ impl SonixApp {
                 return;
             }
         };
-        self.stem_project.separate_from_pcm(&l, &r, sr, path);
-        self.load_separated_stems_to_engine();
+
+        self.stem_separation_active = true;
+        self.stem_project.is_separating = true;
+        self.stem_project.progress = 0.0;
+        self.stem_project.source_path = Some(path.to_string());
+        self.stem_project.track_title = std::path::Path::new(path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(path)
+            .to_string();
+        if let Ok(mut p) = self.stem_separation_progress.lock() {
+            *p = 0.0;
+        }
+        if let Ok(mut slot) = self.stem_separation_result.lock() {
+            *slot = None;
+        }
         self.view_mode = ViewMode::StemSeparator;
+
+        let backend = if crate::audio::neural_available() {
+            crate::i18n::t("neural (HTDemucs)").to_string()
+        } else {
+            crate::i18n::t("DSP").to_string()
+        };
         self.status_message = crate::tstatus!(
-            "✅ Separerade '{}' i 4 spelbara stämspår ({:.1}s)",
+            "⏳ Separerar '{}' i bakgrunden med {}...",
             self.stem_project.track_title,
-            self.stem_project.duration_seconds
+            backend
         );
+
+        let progress = self.stem_separation_progress.clone();
+        let slot = self.stem_separation_result.clone();
+        std::thread::spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_separation(&l, &r, sr, &|value| {
+                    if let Ok(mut p) = progress.lock() {
+                        *p = value;
+                    }
+                })
+            }));
+            let value = match result {
+                Ok(r) => Ok(r),
+                Err(_) => Err(crate::i18n::t("Separationen kraschade oväntat").to_string()),
+            };
+            if let Ok(mut s) = slot.lock() {
+                *s = Some(value);
+            }
+        });
+    }
+
+    /// Polls the background separation thread and installs the result.
+    pub fn poll_stem_separation(&mut self) {
+        if !self.stem_separation_active {
+            return;
+        }
+        if let Ok(p) = self.stem_separation_progress.lock() {
+            self.stem_project.progress = *p;
+        }
+        let taken = self
+            .stem_separation_result
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take());
+        let Some(result) = taken else {
+            return;
+        };
+        self.stem_separation_active = false;
+        match result {
+            Ok(result) => {
+                let source = self.stem_project.source_path.clone().unwrap_or_default();
+                let neural = result.used_neural;
+                let fallback = result.fallback_reason.clone();
+                self.stem_project.install_separation(result, &source);
+                self.load_separated_stems_to_engine();
+                self.view_mode = ViewMode::StemSeparator;
+                let backend = if neural {
+                    crate::i18n::t("HTDemucs (neural)")
+                } else {
+                    crate::i18n::t("DSP")
+                };
+                self.status_message = crate::tstatus!(
+                    "✅ Separerade '{}' i 4 spelbara stämspår med {} ({:.1}s)",
+                    self.stem_project.track_title,
+                    backend,
+                    self.stem_project.duration_seconds
+                );
+                if !neural
+                    && let Some(reason) = fallback
+                {
+                    self.status_message = format!("{} — {}", self.status_message, reason);
+                }
+            }
+            Err(err) => {
+                self.stem_project.is_separating = false;
+                self.stem_project.progress = 0.0;
+                self.status_message = crate::tstatus!("⚠ Separation misslyckades: {}", err);
+            }
+        }
     }
 
     pub fn load_separated_stems_to_engine(&mut self) {
@@ -4054,6 +4151,7 @@ impl eframe::App for SonixApp {
         }
 
         self.poll_remote_audio_generation();
+        self.poll_stem_separation();
 
         self.advance_sequencer();
         self.apply_automation();

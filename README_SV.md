@@ -164,9 +164,10 @@ update-desktop-database ~/.local/share/applications
 * **Suno/AI Stem-importör:** Packa upp och avkoda riktigt ljud, detektera BPM och mappa stämmor till tidslinjen.
 * 🟡 **Not:** Det finns **ingen** Suno-API-integration. "Suno" betyder här import av Suno-exporterade stämpaket och den lokala generatorn — inte anrop till Suno.
 
-### 10. 🧠 Stem Separator — 🟡 DSP-approximation
-* Delar en mix i sång/trummor/bas/instrument med spektral banddelning, centerkanal-extraktion och transient-gating, plus en riktig BPM-skattning via autokorrelation.
-* 🟡 **Not:** Detta är **inte** Demucs-neuralnätet. Det är en lättvikts-DSP-separator; kvaliteten ligger långt under en neural modell.
+### 10. 🧠 Stem Separator — ✅ Äkta (DSP + valfri neural HTDemucs)
+* Delar en mix i sång/trummor/bas/instrument. Standard: en riktig spektral-DSP-separator (banddelning, centerkanal-extraktion, transient-gating) med en riktig BPM-skattning via autokorrelation.
+* **Valfri neural backend:** bygg med `--features neural` och lägg en HTDemucs-familj `.onnx`-modell i `~/.config/sonix/models/` (eller sätt `SONIX_DEMUCS_ONNX`) för äkta Demucs-separation via ONNX Runtime — bakgrundstråd, live-progress, 44,1 kHz-resampling och överlappande crossfade. Utan modell används DSP-vägen och UI:t visar vilken backend som kördes.
+* 🟡 **Not:** Sonix skeppar inga modellvikter; den neurala vägen kräver en egen, korrekt licensierad modell. Standardbygget förblir dependency-fritt och offline.
 
 ### 11. 🔌 Plugin-hanterare — 🟡 Endast katalog (ingen värd än)
 * Riktig rekursiv skanning av VST3/CLAP/LV2/VST2/`.fst`-mappar, ELF/PE-verifiering, Wine- & yabridge-detektion och en ett-klicks `yabridgectl sync`.
@@ -202,7 +203,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Hårdvara MIDI / OSC | ✅ Äkta | — |
 | Export (WAV/FLAC i appen, MP3/OGG/AAC via ffmpeg) | ✅ Äkta | — |
 | Modulär Patcher | ✅ Äkta | Topologisk sortering + etiketter matchar DSP:n |
-| Stem-separation | 🟡 Delvis | Integrera en riktig neural modell (t.ex. HTDemucs via ONNX) |
+| Stem-separation | ✅ Äkta | Valfri neural HTDemucs via `--features neural` + egen modell; DSP-fallback annars |
 | Vocal tuning | ✅ Äkta | Realtids-autotune i ljudtråden + direktlyssning; harmonier/formantbevaring körs offline |
 | Time-stretch | ✅ Riktig | WSOLA (pitch-bevarande) i Sångstudiens provspelning och Stem Separators SPEED-ratt |
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
@@ -210,7 +211,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | `.fst`-knappen "Apply Preset" | ✅ Ärlig | Inaktiverad med förklaring — applicering kräver plugin-värd |
 | Plugin-hosting (VST3/CLAP/LV2/VST2) | 🔜 Saknas | Kräver en komplett värd — se nedan |
 
-**Helhetsbedömning:** ungefär **85–90 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. De två största kvarvarande delarna är **plugin-hosting** (ej påbörjad) och **neural stem-separation** (nuvarande är en DSP-approximation).
+**Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (ej påbörjad); neural stem-separation är nu byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
 
 Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finns i **[ROADMAP.md](ROADMAP.md)**.
 
@@ -308,8 +309,8 @@ Interaktiv XY-kontrollmatris för groove-komplexitet och dynamik, med humanize-m
 Visuell modulär nod-miljö för att koppla ihop ljudsignaler, filter, envelopes, LFO och distorsion med virtuella patchkablar.
 ![Modular Patcher](screenshots/10_modular_patcher.png)
 
-#### 11. 🧠 Stem Separator (DSP-motor)
-Källseparation som isolerar sång, trummor, bas och instrument från färdiga mixar (lättvikts spektral-DSP — inte en neural modell).
+#### 11. 🧠 Stem Separator (DSP + valfri Neural ONNX)
+Källseparation som isolerar sång, trummor, bas och instrument från färdiga mixar. Kör en lättvikts spektral-DSP som standard, eller en äkta HTDemucs-ONNX-modell när appen byggts med `--features neural` och en modell installerats.
 ![Stem Separator](screenshots/11_stem_separator.png)
 
 #### 12. 🔌 Plugin & VST/CLAP Bridge Manager

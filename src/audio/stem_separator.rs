@@ -53,7 +53,7 @@ pub struct StemProject {
     pub track_title: String,
     pub duration_seconds: f32,
     pub bpm: f32,
-    pub model_name: &'static str,
+    pub model_name: String,
     pub is_separating: bool,
     pub progress: f32,
     pub stems: Vec<StemChannel>,
@@ -72,7 +72,7 @@ impl Default for StemProject {
             track_title: crate::i18n::t("Ingen fil vald").to_string(),
             duration_seconds: 0.0,
             bpm: 126.0,
-            model_name: "Sonix Spectral Separator (DSP)",
+            model_name: "Sonix Spectral Separator (DSP)".to_string(),
             is_separating: false,
             progress: 0.0,
             stems: Vec::new(),
@@ -266,34 +266,95 @@ fn normalize_stem(stem: &mut StemAudio, target_peak: f32) {
     }
 }
 
-impl StemProject {
-    /// Runs the real DSP separator over decoded PCM and refreshes the view model.
-    pub fn separate_from_pcm(
-        &mut self,
-        left: &[f32],
-        right: &[f32],
-        sample_rate: u32,
-        source_path: &str,
-    ) {
-        let sr_f = sample_rate.max(1) as f32;
-        let separated = separate_stems(left, right, sr_f);
+/// Result of a full separation run, independent of which backend produced it.
+#[derive(Debug, Clone)]
+pub struct SeparationResult {
+    pub stems: Vec<StemAudio>,
+    pub sample_rate: u32,
+    pub bpm: f32,
+    pub duration_seconds: f32,
+    pub model_name: String,
+    pub used_neural: bool,
+    /// Why the neural backend was skipped, when it was (for honest reporting).
+    pub fallback_reason: Option<String>,
+}
 
-        self.sample_rate = sample_rate;
+/// Runs the best available separator: a real neural HTDemucs model when one is
+/// installed (and the `neural` feature is compiled in), otherwise the built-in
+/// spectral DSP separator. `progress` is called with `0.0..=1.0`.
+pub fn run_separation(
+    left: &[f32],
+    right: &[f32],
+    sample_rate: u32,
+    progress: &dyn Fn(f32),
+) -> SeparationResult {
+    let sr_f = sample_rate.max(1) as f32;
+    let duration_seconds = left.len().min(right.len()) as f32 / sr_f;
+    let bpm = estimate_bpm(left, right, sr_f);
+
+    let mut fallback_reason = None;
+    let neural = if crate::audio::neural_separator::is_available() {
+        match crate::audio::neural_separator::separate_neural(left, right, sample_rate, progress) {
+            Ok(stems) => Some(stems),
+            Err(err) => {
+                fallback_reason = Some(err);
+                None
+            }
+        }
+    } else {
+        fallback_reason = Some(crate::i18n::t(
+            "Ingen neural modell hittades — använder inbyggd DSP-separation",
+        )
+        .to_string());
+        None
+    };
+
+    let (stems, model_name, used_neural) = match neural {
+        Some(stems) => (stems, "HTDemucs (ONNX Neural)".to_string(), true),
+        None => {
+            progress(0.0);
+            let stems = separate_stems(left, right, sr_f);
+            progress(1.0);
+            (stems, "Sonix Spectral Separator (DSP)".to_string(), false)
+        }
+    };
+
+    SeparationResult {
+        stems,
+        sample_rate,
+        bpm,
+        duration_seconds,
+        model_name,
+        used_neural,
+        fallback_reason,
+    }
+}
+
+impl StemProject {
+    /// Installs a finished separation run and refreshes the view model.
+    pub fn install_separation(&mut self, result: SeparationResult, source_path: &str) {
+        self.sample_rate = result.sample_rate;
         self.source_path = Some(source_path.to_string());
         self.track_title = std::path::Path::new(source_path)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(source_path)
             .to_string();
-        self.duration_seconds = left.len() as f32 / sr_f;
-        self.bpm = estimate_bpm(left, right, sr_f);
-        self.stem_audio = separated;
+        self.duration_seconds = result.duration_seconds;
+        self.bpm = result.bpm;
+        self.model_name = result.model_name;
+        self.stem_audio = result.stems;
         self.stem_audio_base = self.stem_audio.clone();
+        self.is_separating = false;
+        self.progress = 1.0;
         self.stems.clear();
 
         let types = [StemType::Vocals, StemType::Drums, StemType::Bass, StemType::Instruments];
         let volumes = [0.90, 0.95, 0.88, 0.82];
         for (idx, stem_type) in types.iter().enumerate() {
+            if idx >= self.stem_audio.len() {
+                break;
+            }
             let audio = &self.stem_audio[idx];
             let mono: Vec<f32> = audio
                 .left
@@ -312,6 +373,20 @@ impl StemProject {
                 waveform_data: super::recorder::visual_peaks_from(&mono),
             });
         }
+    }
+
+    /// Synchronous separation using the best backend (kept for tests and simple
+    /// callers; the UI runs [`run_separation`] on a background thread instead).
+    #[allow(dead_code)]
+    pub fn separate_from_pcm(
+        &mut self,
+        left: &[f32],
+        right: &[f32],
+        sample_rate: u32,
+        source_path: &str,
+    ) {
+        let result = run_separation(left, right, sample_rate, &|_| {});
+        self.install_separation(result, source_path);
     }
 }
 
@@ -362,5 +437,43 @@ mod tests {
         }
         let est = estimate_bpm(&l, &r, sr);
         assert!((est - 120.0).abs() < 5.0, "estimated {est} BPM");
+    }
+
+    #[test]
+    fn run_separation_falls_back_to_dsp_without_a_model() {
+        // With no ONNX model installed the neural backend is unavailable, so the
+        // separator must still produce four finite stems and report DSP.
+        if crate::audio::neural_available() {
+            return;
+        }
+        let sr = 44100u32;
+        let n = 44100usize;
+        let mut l = vec![0.0f32; n];
+        let mut r = vec![0.0f32; n];
+        for i in 0..n {
+            let t = i as f32 / sr as f32;
+            let v = (t * 220.0 * std::f32::consts::TAU).sin() * 0.4
+                + (t * 3000.0 * std::f32::consts::TAU).sin() * 0.1;
+            l[i] = v;
+            r[i] = v;
+        }
+
+        let saw_progress = std::sync::atomic::AtomicBool::new(false);
+        let result = run_separation(&l, &r, sr, &|p| {
+            if p > 0.5 {
+                saw_progress.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
+        });
+
+        assert_eq!(result.stems.len(), 4);
+        assert!(!result.used_neural);
+        assert_eq!(result.model_name, "Sonix Spectral Separator (DSP)");
+        assert!(result.fallback_reason.is_some());
+        assert!((result.duration_seconds - 1.0).abs() < 0.01);
+        assert!(saw_progress.load(std::sync::atomic::Ordering::Relaxed));
+        for stem in &result.stems {
+            assert_eq!(stem.left.len(), n);
+            assert!(stem.left.iter().all(|v| v.is_finite()));
+        }
     }
 }

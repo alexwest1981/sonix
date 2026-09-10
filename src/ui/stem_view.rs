@@ -23,7 +23,7 @@ pub fn render_stem_separator_view(
     let _ = &status_msg;
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🧠 AI STEM SEPARATION STUDIO (Spectral DSP Engine)")).strong().size(14.0).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🧠 AI STEM SEPARATION STUDIO (DSP + Neural ONNX)")).strong().size(14.0).color(Theme::FL_ORANGE));
             ui.separator();
             ui.label(egui::RichText::new(crate::i18n::t("Isolera och extrahera sång, trummor, bas och instrument direkt ur färdiga mixar")).size(11.0).color(Theme::TEXT_MUTED));
 
@@ -54,11 +54,31 @@ pub fn render_stem_separator_view(
                 ui.label(egui::RichText::new(format!("Modell: {}", project.model_name)).size(10.5).color(Theme::FL_YELLOW));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Välj fil & separera")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(140, 40, 180))).clicked() {
+                    if ui.add_enabled(!project.is_separating, egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Välj fil & separera")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(140, 40, 180))).clicked() {
                         actions.request_separation = true;
                     }
                 });
             });
+        });
+
+        ui.add_space(8.0);
+
+        // Neural backend status + live progress.
+        ui.group(|ui| {
+            ui.horizontal(|ui| {
+                if crate::audio::neural_available() {
+                    ui.label(egui::RichText::new(format!("🧠 {} {}", crate::i18n::t("Neural modell:"), crate::audio::neural_model_status())).size(10.5).color(Theme::FL_GREEN));
+                } else {
+                    ui.label(egui::RichText::new(format!("🧠 {} {} ({})", crate::i18n::t("Neural: ingen modell hittad — använder DSP. Lägg htdemucs.onnx i"), crate::audio::neural_model_status(), crate::i18n::t("bygg med --features neural"))).size(10.5).color(Theme::TEXT_MUTED));
+                }
+            });
+            if project.is_separating {
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(crate::i18n::t("⏳ Separerar...")).strong().size(11.0).color(Theme::FL_ORANGE));
+                    ui.add(egui::ProgressBar::new(project.progress.clamp(0.0, 1.0)).desired_width(260.0).text(format!("{:.0}%", project.progress * 100.0)));
+                });
+            }
         });
 
         ui.add_space(8.0);

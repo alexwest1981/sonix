@@ -3,6 +3,13 @@ name = "sonix"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+# Opt-in neural stem separation (HTDemucs via ONNX Runtime). Off by default so
+# the normal build stays dependency-free and offline; enable with
+# `cargo build --features neural`.
+neural = ["dep:ort"]
+
 [dependencies]
 cpal = "0.15"
 rtrb = "0.3"
@@ -15,4 +22,5 @@ image = { version = "0.25", default-features = false, features = ["png"] }
 flacenc = "0.5"
 alsa = "0.9"
 ureq = "2"
+ort = { version = "2.0.0-rc.13", optional = true }
 

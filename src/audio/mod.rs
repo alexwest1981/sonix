@@ -12,6 +12,10 @@ pub mod hardware_control;
 pub mod loudness;
 pub mod master_fx;
 pub mod midi_input;
+// Helpers here are exercised by the optional `neural` backend and by unit
+// tests; in the default (non-neural) build several are intentionally unused.
+#[allow(dead_code)]
+pub mod neural_separator;
 pub mod patcher;
 pub mod plugin_host;
 pub mod recorder;
@@ -45,6 +49,8 @@ pub use hardware_control::{
 };
 #[allow(unused_imports)]
 pub use midi_input::{note_to_roll_offset, MidiKeyboardInput};
+#[allow(unused_imports)]
+pub use neural_separator::{is_available as neural_available, model_status as neural_model_status};
 #[allow(unused_imports)]
 pub use loudness::{
     integrated_lufs, normalize_loudness, normalize_to_preset, true_peak_db, LoudnessPreset,

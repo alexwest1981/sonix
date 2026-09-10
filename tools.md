@@ -248,6 +248,12 @@ Realtids-DSP-byggstenarna (`envelope`, `filter`, `drum`, `effects`, `master_fx`)
 - **Tester:** se ovan (21 st).
 - `cargo test --release` = **101 tester**, 0 varningar.
 
+### P36 — Neural stem-separation via HTDemucs/ONNX (Fas 3.1) · ✅ KLAR
+Stem-separatorn var en ren DSP-approximation; ingen neural modell fanns.
+- **Löst:** Ny modul `src/audio/neural_separator.rs` som kör en Demucs-familj (HTDemucs) ONNX-modell via `ort`. Beroendet är **opt-in** (`--features neural`) så standardbygget förblir offline/dependency-fritt. Modellsökning: `$SONIX_DEMUCS_ONNX` → `~/.config/sonix/models/` → `~/.local/share/sonix/models/` (`htdemucs.onnx`/`demucs.onnx`/`htdemucs_ft.onnx`). Inferens i bakgrundstråd med progress: linjär resampling till 44,1 kHz, global normalisering (Demucs `apply_model`), 7,8 s-segment med triangulär överlappning/crossfade och layout-flexibel utläsning (`[B,S,C,T]`, `[B,S*C,T]`, `[S*C,T]`). `stem_separator::run_separation()` väljer neural backend när en modell finns, annars DSP-fallback, och rapporterar ärligt vilken som kördes. `StemProject::install_separation()` + asynkron `start_stem_separation`/`poll_stem_separation` i `app.rs`; stem-vyn visar modellsökväg och en live-progressbar.
+- **Tester:** 10 nya (`demucs_source_order_maps_to_sonix_stems`, `resampling_upsamples_and_preserves_dc`, `resampling_downsample_length_and_identity`, `segments_cover_the_whole_signal`, `segment_windows_do_not_attenuate_boundaries`, `extracts_sources_from_batched_and_flat_layouts`, `rejects_bad_shapes_and_short_buffers`, `finds_model_in_priority_order`, `neural_requires_a_model_to_be_available`, `run_separation_falls_back_to_dsp_without_a_model`).
+- `cargo test --release` = **111 tester**, 0 varningar. `cargo build --release --features neural` bygger och länkar (ORT laddas ned vid bygge).
+
 ---
 
 ## 3. Sammanfattning
@@ -259,6 +265,7 @@ Realtids-DSP-byggstenarna (`envelope`, `filter`, `drum`, `effects`, `master_fx`)
 | Automationskurvor (volym/pan/sends) | ✅ REAL (P32) |
 | MIDI-klaviaturinspelning till Piano Roll | ✅ REAL (P33) |
 | Export-presets & loudness-normalisering (EBU R128) | ✅ REAL (P34) |
+| Neural stem-separation (HTDemucs/ONNX, opt-in) | ✅ REAL (P36) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

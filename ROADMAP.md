@@ -30,13 +30,14 @@
 | Inspelning & sång (mic, takes, comping, pitch, harmonier) | 7 | 0 | **100 %** |
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
+| Stem-separation (DSP + neural ONNX) | 1 | 0 | **100 %** |
 | Plugin-hantering | 2 | 6 | **25 %** |
 | Export & projekt-I/O (presets, loudness-normalisering) | 5 | 0 | **100 %** |
 | Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
-> **De två största kvarvarande bitarna:** **Plugin-hosting** (25 %, ej påbörjad värd) och **neural stem-separation** (DSP-approximation idag).
+> **Största kvarvarande biten:** **Plugin-hosting** (25 %, ingen riktig värd ännu). Neural stem-separation är nu byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
 ---
 
@@ -114,10 +115,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## ⬜ Fas 3 — Neural stem-separation
 
-- [ ] **3.1 Integrera HTDemucs via ONNX Runtime** — *XL*
-  - **Gör:** Lägg till `ort` (ONNX Runtime) + HTDemucs-modell; kör i bakgrundstråd med progress; behåll DSP-separatorn som fallback när modellen saknas.
-  - **Klart när:** Vokaler/trummor/bas/övrigt separeras med neural kvalitet och licensierbar modell; test finns.
-  - **Filer:** `src/audio/stem_separator.rs`, `Cargo.toml`, `src/ui/stem_view.rs`
+- [x] **3.1 Integrera HTDemucs via ONNX Runtime** — *XL* ✅
+  - **Löst:** Ny modul `src/audio/neural_separator.rs` som kör en Demucs-familj (HTDemucs) ONNX-modell via `ort`. Beroendet är **opt-in** (`--features neural`), så standardbygget förblir offline/dependency-fritt. Modellen hittas via `$SONIX_DEMUCS_ONNX` eller i `~/.config/sonix/models/` (`htdemucs.onnx`, `demucs.onnx`, `htdemucs_ft.onnx`). Inferensen körs i en **bakgrundstråd med progress**: linjär resampling till 44,1 kHz, global normalisering (som Demucs `apply_model`), 7,8 s-segment med triangulär överlappning (crossfade) och layout-flexibel utläsning (`[B,S,C,T]`, `[B,S*C,T]`, `[S*C,T]`). När ingen modell finns (eller featuren är av) används den inbyggda DSP-separatorn som fallback och UI:t visar ärligt vilken backend som kördes. Stem-vyn har status för modellsökväg + en live-progressbar.
+  - **Klart när:** Vokaler/trummor/bas/övrigt separeras med neural kvalitet och licensierbar modell; test finns. ✅ (modellen är användarens eget val; 10 nya tester för modell-sökning, resampling, segmentering, crossfade, utdata-layout och DSP-fallback — 111 tester, 0 varningar)
+  - **Filer:** `src/audio/neural_separator.rs`, `src/audio/stem_separator.rs`, `src/audio/mod.rs`, `Cargo.toml`, `src/ui/app.rs`, `src/ui/stem_view.rs`, `src/i18n.rs`
 
 ---
 
@@ -182,7 +183,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 5.2 — VCA-grupper & sub-mix-bussar** (*M*, om du vill ha tillbaka dem; de togs medvetet bort). Annars återstår de stora bitarna: **Fas 3.1** (neural stem-separation, XL) och **Fas 4.1** (plugin-hosting, L). Fas 2 samt MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
+**Fas 4.1 — Välj ABI + host-modul** (*L*): börja med **CLAP** (`clack`) och en `dlopen`-baserad host i `src/audio/plugin_host_live.rs`; därefter 4.2/4.3. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 
