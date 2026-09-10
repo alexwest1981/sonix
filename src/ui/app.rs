@@ -395,6 +395,9 @@ pub struct SavedPluginData {
     pub name: String,
     #[serde(default)]
     pub state: Vec<u8>,
+    /// Whether the plugin was loaded in an out-of-process sandbox (Fas 4.5b).
+    #[serde(default)]
+    pub sandboxed: bool,
 }
 
 /// In-memory mirror of [`SavedPluginData`] kept on [`SonixApp`].
@@ -403,6 +406,7 @@ pub struct PluginSlot {
     pub path: String,
     pub name: String,
     pub state: Vec<u8>,
+    pub sandboxed: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -739,6 +743,10 @@ pub struct SonixApp {
     /// Result of the last sandbox inspection, shown in the plugin manager.
     #[cfg(feature = "plugin-host")]
     pub sandbox_inspection: Option<crate::audio::plugin_sandbox::SandboxInspection>,
+    /// Per-stem-track out-of-process sandbox hosts that stream audio over shared
+    /// memory (Fas 4.5b). Index-aligned with the engine's stem tracks.
+    #[cfg(feature = "plugin-host")]
+    pub plugin_sandboxes: Vec<Option<crate::audio::plugin_sandbox::SandboxHost>>,
     // Vocal Studio, Comping, Harmonizer & AI Music Assistant
     pub vocal_studio: VocalStudioTrack,
     pub vocal_harmonizer: VocalHarmonizer,
@@ -1297,6 +1305,8 @@ impl SonixApp {
             plugin_sandbox: None,
             #[cfg(feature = "plugin-host")]
             sandbox_inspection: None,
+            #[cfg(feature = "plugin-host")]
+            plugin_sandboxes: Vec::new(),
             vocal_studio: VocalStudioTrack::default(),
             vocal_harmonizer: VocalHarmonizer::default(),
             ai_assistant: AiMusicAssistant::default(),
@@ -2571,6 +2581,7 @@ impl SonixApp {
                         path: s.path.clone(),
                         name: s.name.clone(),
                         state: s.state.clone(),
+                        sandboxed: s.sandboxed,
                     })
                 })
                 .collect(),
@@ -2762,6 +2773,7 @@ impl SonixApp {
                     path: s.path.clone(),
                     name: s.name.clone(),
                     state: s.state.clone(),
+                    sandboxed: s.sandboxed,
                 })
             })
             .collect();
@@ -3657,6 +3669,7 @@ impl SonixApp {
                         path: path.to_string(),
                         name: name.clone(),
                         state,
+                        sandboxed: false,
                     },
                 );
                 self.ensure_plugin_vecs(track_index);
@@ -3703,6 +3716,7 @@ impl SonixApp {
                         path: path.to_string(),
                         name: name.clone(),
                         state,
+                        sandboxed: false,
                     },
                 );
                 self.ensure_plugin_vecs(track_index);
@@ -3727,6 +3741,8 @@ impl SonixApp {
     /// Removes the plugin insert on `track_index` and forgets its saved slot.
     pub fn remove_plugin_from_track(&mut self, track_index: usize) {
         self.retire_plugin_handle(track_index);
+        #[cfg(feature = "plugin-host")]
+        self.remove_plugin_sandbox(track_index);
         let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
             track_index,
             insert: None,
@@ -3739,6 +3755,125 @@ impl SonixApp {
             "🗑 Tog bort plugin från stämspår {}",
             track_index + 1
         );
+    }
+
+    /// Instantiates `path` in an out-of-process sandbox and streams its audio
+    /// over shared memory (Fas 4.5b). The plugin's GUI is not available for
+    /// sandboxed instances.
+    #[cfg(feature = "plugin-host")]
+    pub fn load_plugin_into_sandbox_track(&mut self, path: &str, track_index: usize) {
+        use crate::audio::plugin_sandbox::{
+            SandboxHost, SandboxProcessor, SandboxRequest, SandboxResponse, info_from_dto,
+            param_from_dto,
+        };
+        use crate::audio::sandbox_audio::{AudioBridge, DEFAULT_SLOTS};
+
+        let sample_rate = self.engine.sample_rate as f32;
+        let block = crate::audio::plugin_host_live::DEFAULT_BLOCK_FRAMES;
+
+        // Replace any previous plugin (in-process or sandboxed) on this track.
+        self.retire_plugin_handle(track_index);
+        self.remove_plugin_sandbox(track_index);
+
+        let bridge = match AudioBridge::create(block, DEFAULT_SLOTS) {
+            Ok(bridge) => bridge,
+            Err(err) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte skapa ljudbryggan: {}", err);
+                return;
+            }
+        };
+        let mut host = match SandboxHost::new_audio(path, sample_rate, block as u32, bridge.raw_fd())
+        {
+            Ok(host) => host,
+            Err(err) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte skapa sandbox: {}", err);
+                return;
+            }
+        };
+        let outcome = (|| -> Result<(crate::audio::plugin_host_live::PluginInfo, Vec<crate::audio::plugin_host_live::PluginParameter>, u32, Vec<u8>), String> {
+            host.spawn().map_err(|e| e.to_string())?;
+            let info = match host.request(&SandboxRequest::Info).map_err(|e| e.to_string())? {
+                SandboxResponse::Info { info } => info_from_dto(&info),
+                SandboxResponse::Error { message } => return Err(message),
+                other => return Err(format!("oväntat svar: {other:?}")),
+            };
+            let parameters = match host
+                .request(&SandboxRequest::Parameters)
+                .map_err(|e| e.to_string())?
+            {
+                SandboxResponse::Parameters { parameters } => {
+                    parameters.iter().map(param_from_dto).collect()
+                }
+                _ => Vec::new(),
+            };
+            let latency = match host
+                .request(&SandboxRequest::Latency)
+                .map_err(|e| e.to_string())?
+            {
+                SandboxResponse::Latency { frames } => frames,
+                _ => 0,
+            };
+            let state = match host
+                .request(&SandboxRequest::SaveState)
+                .map_err(|e| e.to_string())?
+            {
+                SandboxResponse::State { data } => data,
+                _ => Vec::new(),
+            };
+            Ok((info, parameters, latency, state))
+        })();
+
+        match outcome {
+            Ok((info, parameters, latency, state)) => {
+                let name = info.name.clone();
+                let processor = SandboxProcessor::new(bridge, info, parameters, latency);
+                let insert =
+                    crate::audio::plugin_host_live::PluginInsert::new(Box::new(processor), block);
+                self.record_plugin_slot(
+                    track_index,
+                    PluginSlot {
+                        path: path.to_string(),
+                        name: name.clone(),
+                        state,
+                        sandboxed: true,
+                    },
+                );
+                self.ensure_plugin_sandboxes(track_index);
+                self.plugin_sandboxes[track_index] = Some(host);
+                let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
+                    track_index,
+                    insert: Some(insert),
+                });
+                self.plugin_manager.instantiated_plugin = Some(name.clone());
+                self.status_message = crate::tstatus!(
+                    "🧪 {} laddad i sandbox på stämspår {} (separat process, PDC-kompenserad)",
+                    name,
+                    track_index + 1
+                );
+            }
+            Err(err) => {
+                self.status_message = crate::tstatus!("⚠ Sandbox misslyckades: {}", err);
+                host.shutdown();
+            }
+        }
+    }
+
+    #[cfg(feature = "plugin-host")]
+    fn ensure_plugin_sandboxes(&mut self, track_index: usize) {
+        if self.plugin_sandboxes.len() <= track_index {
+            self.plugin_sandboxes.resize_with(track_index + 1, || None);
+        }
+    }
+
+    #[cfg(feature = "plugin-host")]
+    fn remove_plugin_sandbox(&mut self, track_index: usize) {
+        if let Some(mut host) = self
+            .plugin_sandboxes
+            .get_mut(track_index)
+            .and_then(|slot| slot.take())
+        {
+            host.shutdown();
+        }
     }
 
     fn ensure_plugin_vecs(&mut self, track_index: usize) {
@@ -3967,6 +4102,44 @@ impl SonixApp {
             }
             _ => {}
         }
+
+        // Supervise the per-track audio sandboxes (Fas 4.5b).
+        for index in 0..self.plugin_sandboxes.len() {
+            let state = match self.plugin_sandboxes[index].as_mut() {
+                Some(host) => host.poll(),
+                None => continue,
+            };
+            match state {
+                SandboxState::Restarted => {
+                    let restarts = self.plugin_sandboxes[index]
+                        .as_ref()
+                        .map(|h| h.restarts())
+                        .unwrap_or(0);
+                    self.status_message = crate::tstatus!(
+                        "🧪 Sandbox på stämspår {}: plugin-processen startades om (omstart {})",
+                        index + 1,
+                        restarts
+                    );
+                }
+                SandboxState::Crashed => {
+                    if let Some(mut host) = self.plugin_sandboxes[index].take() {
+                        host.shutdown();
+                    }
+                    let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
+                        track_index: index,
+                        insert: None,
+                    });
+                    if let Some(slot) = self.plugin_slots.get_mut(index) {
+                        *slot = None;
+                    }
+                    self.status_message = crate::tstatus!(
+                        "⚠ Sandbox på stämspår {} kraschade upprepade gånger och togs bort",
+                        index + 1
+                    );
+                }
+                _ => {}
+            }
+        }
     }
 
     /// Formats the sandbox inspection for the plugin-manager view.
@@ -3999,6 +4172,45 @@ impl SonixApp {
     /// Re-instantiates a saved plugin on `track_index` and restores its state.
     /// Must run on the main thread. Returns an error message on failure.
     fn restore_plugin_slot(&mut self, track_index: usize, data: &SavedPluginData) -> Option<String> {
+        if data.sandboxed {
+            #[cfg(feature = "plugin-host")]
+            {
+                use crate::audio::plugin_sandbox::{SandboxRequest, SandboxResponse};
+                self.load_plugin_into_sandbox_track(&data.path, track_index);
+                let host = self
+                    .plugin_sandboxes
+                    .get_mut(track_index)
+                    .and_then(|slot| slot.as_mut());
+                let Some(host) = host else {
+                    return Some(crate::tstatus!(
+                        "kunde inte återställa sandboxad plugin '{}'",
+                        data.name
+                    ));
+                };
+                if !data.state.is_empty()
+                    && !matches!(
+                        host.request(&SandboxRequest::LoadState {
+                            data: data.state.clone(),
+                        }),
+                        Ok(SandboxResponse::Ok)
+                    )
+                {
+                    return Some(crate::tstatus!(
+                        "kunde inte återställa state för sandboxad plugin '{}'",
+                        data.name
+                    ));
+                }
+                if let Some(slot) = self.plugin_slots.get_mut(track_index).and_then(|s| s.as_mut()) {
+                    slot.state = data.state.clone();
+                }
+                return None;
+            }
+            #[cfg(not(feature = "plugin-host"))]
+            return Some(crate::i18n::t(
+                "sandboxade plugins kräver att Sonix byggs med --features plugin-host",
+            )
+            .to_string());
+        }
         let sample_rate = self.engine.sample_rate as f32;
         let block = crate::audio::plugin_host_live::DEFAULT_BLOCK_FRAMES;
         match crate::audio::plugin_host_live::load_processor(&data.path, sample_rate, block as u32) {
@@ -5452,6 +5664,12 @@ impl eframe::App for SonixApp {
                             if let Some((path, track)) = actions.load_into_track {
                                 self.load_plugin_into_track(&path, track);
                             }
+                            #[cfg(feature = "plugin-host")]
+                            if let Some((path, track)) = actions.load_into_sandbox {
+                                self.load_plugin_into_sandbox_track(&path, track);
+                            }
+                            #[cfg(not(feature = "plugin-host"))]
+                            let _ = actions.load_into_sandbox;
                             if let Some((path, track, location)) = actions.load_preset_into_track {
                                 self.load_plugin_preset_into_track(&path, track, &location);
                             }
@@ -13564,6 +13782,7 @@ mod tests {
                     path: "/plugins/Gain.clap".into(),
                     name: "Gain".into(),
                     state: vec![0, 1, 2, 250, 255],
+                    sandboxed: false,
                 }),
             ],
         };

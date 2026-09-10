@@ -1,11 +1,15 @@
-//! Out-of-process plugin sandbox (Fas 4.5a).
+//! Out-of-process plugin sandbox (Fas 4.5a + 4.5b).
 //!
 //! 4.5a establishes the **process boundary** and crash supervision: a worker
 //! process loads a CLAP plugin and answers control-plane requests over a
 //! length-prefixed JSON protocol on stdin/stdout, while a [`SandboxHost`] in the
-//! main process supervises it and restarts it after a crash. Audio is still
-//! processed in-process; streaming it across the boundary through shared memory
-//! is Fas 4.5b.
+//! main process supervises it and restarts it after a crash.
+//!
+//! 4.5b moves the **audio processing itself** into the worker: the host creates
+//! a shared-memory region (see [`crate::audio::sandbox_audio`]) and passes its
+//! descriptor to the worker, which maps the same region and streams stereo
+//! blocks through it. [`SandboxProcessor`] is the host-side
+//! [`crate::audio::plugin_host_live::PluginProcessor`] that drives that ring.
 //!
 //! The worker is the same binary re-executed with [`WORKER_FLAG`], so the
 //! sandbox needs no extra artifact.
@@ -33,6 +37,8 @@ pub enum SandboxRequest {
     SaveState,
     LoadState { data: Vec<u8> },
     Reset,
+    /// Reports the plugin's own latency in frames (not counting the transport).
+    Latency,
     Shutdown,
 }
 
@@ -45,6 +51,7 @@ pub enum SandboxResponse {
     Parameters { parameters: Vec<SandboxParam> },
     Ok,
     State { data: Vec<u8> },
+    Latency { frames: u32 },
     Error { message: String },
 }
 
@@ -153,6 +160,29 @@ fn param_to_dto(param: &crate::audio::plugin_host_live::PluginParameter) -> Sand
     }
 }
 
+pub fn info_from_dto(dto: &SandboxInfo) -> crate::audio::plugin_host_live::PluginInfo {
+    crate::audio::plugin_host_live::PluginInfo {
+        id: dto.id.clone(),
+        name: dto.name.clone(),
+        vendor: dto.vendor.clone(),
+        version: dto.version.clone(),
+        description: dto.description.clone(),
+        features: Vec::new(),
+    }
+}
+
+pub fn param_from_dto(dto: &SandboxParam) -> crate::audio::plugin_host_live::PluginParameter {
+    crate::audio::plugin_host_live::PluginParameter {
+        id: dto.id,
+        name: dto.name.clone(),
+        module: dto.module.clone(),
+        min_value: dto.min_value,
+        max_value: dto.max_value,
+        default_value: dto.default_value,
+        flags: dto.flags,
+    }
+}
+
 fn respond<W: Write>(writer: &mut W, response: &SandboxResponse) -> io::Result<()> {
     let payload = serde_json::to_vec(response).map_err(io::Error::other)?;
     write_frame(writer, &payload)
@@ -195,6 +225,9 @@ fn handle_request(
             processor.reset();
             SandboxResponse::Ok
         }
+        SandboxRequest::Latency => SandboxResponse::Latency {
+            frames: processor.latency_frames(),
+        },
         SandboxRequest::Shutdown => SandboxResponse::Ok,
     }
 }
@@ -258,8 +291,11 @@ pub fn serve<R: Read, W: Write>(
 pub fn serve_from_args(args: &[String]) -> Result<(), String> {
     if args.len() < 3 {
         return Err(format!(
-            "{WORKER_FLAG}: förväntade <plugin> <sample_rate> <block_frames>"
+            "{WORKER_FLAG}: förväntade <plugin> <sample_rate> <block_frames> [<memfd>]"
         ));
+    }
+    if args.len() >= 4 {
+        return serve_audio_from_args(args);
     }
     let sample_rate: f32 = args[1].parse().unwrap_or(48_000.0);
     let block_frames: u32 = args[2].parse().unwrap_or(128);
@@ -273,6 +309,208 @@ pub fn serve_from_args(args: &[String]) -> Result<(), String> {
         block_frames,
     )
     .map_err(|e| e.to_string())
+}
+
+// ============================================================================
+// Sandbox audio processor (host side)
+// ============================================================================
+
+/// Host-side [`crate::audio::plugin_host_live::PluginProcessor`] that streams
+/// stereo audio to the worker over shared memory (Fas 4.5b).
+///
+/// It reports `block_frames + plugin_latency` frames of latency so the engine's
+/// PDC compensates the transport. If the worker is behind or has crashed the
+/// block is emitted as silence; the supervisor restarts the worker and the ring
+/// re-synchronises.
+pub struct SandboxProcessor {
+    bridge: crate::audio::sandbox_audio::AudioBridge,
+    info: crate::audio::plugin_host_live::PluginInfo,
+    parameters: Vec<crate::audio::plugin_host_live::PluginParameter>,
+    plugin_latency: u32,
+    block_frames: usize,
+}
+
+impl SandboxProcessor {
+    pub fn new(
+        bridge: crate::audio::sandbox_audio::AudioBridge,
+        info: crate::audio::plugin_host_live::PluginInfo,
+        parameters: Vec<crate::audio::plugin_host_live::PluginParameter>,
+        plugin_latency: u32,
+    ) -> Self {
+        let block_frames = bridge.block_frames();
+        Self {
+            bridge,
+            info,
+            parameters,
+            plugin_latency,
+            block_frames,
+        }
+    }
+}
+
+impl crate::audio::plugin_host_live::PluginProcessor for SandboxProcessor {
+    fn backend(&self) -> &'static str {
+        "clap (sandbox)"
+    }
+
+    fn info(&self) -> &crate::audio::plugin_host_live::PluginInfo {
+        &self.info
+    }
+
+    fn parameters(&self) -> &[crate::audio::plugin_host_live::PluginParameter] {
+        &self.parameters
+    }
+
+    fn latency_frames(&self) -> u32 {
+        // One block for the transport round-trip plus the plugin's own latency.
+        self.block_frames as u32 + self.plugin_latency
+    }
+
+    fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        let status = self.bridge.process_block(left, right);
+        if !status.output_available {
+            for sample in left.iter_mut() {
+                *sample = 0.0;
+            }
+            for sample in right.iter_mut() {
+                *sample = 0.0;
+            }
+        }
+    }
+
+    fn set_parameter(&mut self, _id: u32, _value: f64) -> bool {
+        // Live parameter changes for sandboxed plugins are not routed across the
+        // process boundary in 4.5b; the control plane is main-thread only.
+        false
+    }
+
+    fn reset(&mut self) {}
+}
+
+// ============================================================================
+// Sandbox worker with audio (worker side)
+// ============================================================================
+
+/// Runs the audio worker: a control thread owns stdin/stdout while the audio
+/// loop owns the plugin and pumps the shared-memory ring.
+pub fn serve_audio_from_args(args: &[String]) -> Result<(), String> {
+    let sample_rate: f32 = args[1].parse().unwrap_or(48_000.0);
+    let block_frames: u32 = args[2].parse().unwrap_or(128);
+    let fd: std::os::fd::RawFd = args[3].parse().map_err(|_| {
+        format!("{WORKER_FLAG}: ogiltig memfd '{}'", args[3])
+    })?;
+    let bridge = crate::audio::sandbox_audio::AudioBridge::attach(fd)
+        .map_err(|e| e.to_string())?;
+    let processor = match crate::audio::plugin_host_live::load_processor(
+        &args[0],
+        sample_rate,
+        block_frames,
+    ) {
+        Ok(processor) => Some(processor),
+        Err(_) => None,
+    };
+
+    let (request_tx, request_rx) = std::sync::mpsc::channel();
+    let control = std::thread::spawn(move || {
+        control_loop(io::stdin(), io::stdout(), request_tx)
+    });
+    run_audio_worker(processor, &bridge, request_rx);
+    let _ = control.join();
+    Ok(())
+}
+
+/// The worker's audio loop. Handles control requests between blocks and pumps
+/// the shared-memory ring. Returns on shutdown or when the control thread goes
+/// away.
+pub fn run_audio_worker(
+    mut processor: Option<Box<dyn crate::audio::plugin_host_live::PluginProcessor>>,
+    bridge: &crate::audio::sandbox_audio::AudioBridge,
+    control_rx: std::sync::mpsc::Receiver<(SandboxRequest, std::sync::mpsc::Sender<SandboxResponse>)>,
+) {
+    use std::sync::mpsc::TryRecvError;
+    bridge.worker_begin();
+    loop {
+        loop {
+            match control_rx.try_recv() {
+                Ok((request, reply)) => {
+                    let is_shutdown = request == SandboxRequest::Shutdown;
+                    let response = match processor.as_mut() {
+                        Some(processor) => handle_request(&mut **processor, request),
+                        None => SandboxResponse::Error {
+                            message: "pluginen kunde inte laddas i sandboxen".to_string(),
+                        },
+                    };
+                    let _ = reply.send(response);
+                    if is_shutdown {
+                        bridge.request_shutdown();
+                        return;
+                    }
+                }
+                Err(TryRecvError::Empty) => break,
+                Err(TryRecvError::Disconnected) => return,
+            }
+        }
+        if bridge.shutdown_requested() {
+            return;
+        }
+        let processed = match processor.as_mut() {
+            Some(processor) => bridge.process_one(&mut **processor),
+            None => false,
+        };
+        if processed {
+            bridge.worker_heartbeat();
+        } else {
+            std::thread::sleep(Duration::from_micros(100));
+        }
+    }
+}
+
+/// Reads framed control requests and forwards them to the audio loop, writing
+/// the response back. Runs on its own thread in the worker.
+fn control_loop<R: Read, W: Write>(
+    mut reader: R,
+    mut writer: W,
+    request_tx: std::sync::mpsc::Sender<(
+        SandboxRequest,
+        std::sync::mpsc::Sender<SandboxResponse>,
+    )>,
+) -> io::Result<()> {
+    loop {
+        let Some(frame) = read_frame(&mut reader)? else {
+            break;
+        };
+        let request: SandboxRequest = match serde_json::from_slice(&frame) {
+            Ok(request) => request,
+            Err(err) => {
+                respond(
+                    &mut writer,
+                    &SandboxResponse::Error {
+                        message: format!("ogiltig begäran: {err}"),
+                    },
+                )?;
+                continue;
+            }
+        };
+        let is_shutdown = request == SandboxRequest::Shutdown;
+        let (reply_tx, reply_rx) = std::sync::mpsc::channel();
+        if request_tx.send((request, reply_tx)).is_err() {
+            respond(
+                &mut writer,
+                &SandboxResponse::Error {
+                    message: "sandbox-arbetaren har stängt".to_string(),
+                },
+            )?;
+            break;
+        }
+        let response = reply_rx.recv().unwrap_or(SandboxResponse::Error {
+            message: "sandbox-arbetaren svarade inte".to_string(),
+        });
+        respond(&mut writer, &response)?;
+        if is_shutdown {
+            break;
+        }
+    }
+    Ok(())
 }
 
 // ============================================================================
@@ -293,6 +531,26 @@ pub struct SandboxHost {
 impl SandboxHost {
     /// Builds a supervisor that re-executes the current binary in worker mode.
     pub fn new(plugin_path: &str, sample_rate: f32, block_frames: u32) -> io::Result<Self> {
+        Self::with_audio_fd(plugin_path, sample_rate, block_frames, None)
+    }
+
+    /// Builds a supervisor whose worker also attaches the shared-memory audio
+    /// region identified by `audio_fd` (Fas 4.5b).
+    pub fn new_audio(
+        plugin_path: &str,
+        sample_rate: f32,
+        block_frames: u32,
+        audio_fd: std::os::fd::RawFd,
+    ) -> io::Result<Self> {
+        Self::with_audio_fd(plugin_path, sample_rate, block_frames, Some(audio_fd))
+    }
+
+    fn with_audio_fd(
+        plugin_path: &str,
+        sample_rate: f32,
+        block_frames: u32,
+        audio_fd: Option<std::os::fd::RawFd>,
+    ) -> io::Result<Self> {
         let exe = std::env::current_exe()?;
         let plugin = plugin_path.to_string();
         let launcher = Box::new(move || {
@@ -302,6 +560,9 @@ impl SandboxHost {
                 .arg(format!("{sample_rate}"))
                 .arg(block_frames.to_string())
                 .stderr(Stdio::null());
+            if let Some(fd) = audio_fd {
+                cmd.arg(fd.to_string());
+            }
             cmd
         });
         Ok(Self::with_launcher(launcher))
@@ -432,6 +693,8 @@ mod tests {
     use std::io::Cursor;
     use std::sync::Arc;
     use std::sync::atomic::{AtomicU32, Ordering};
+
+    use crate::audio::plugin_host_live::PluginProcessor;
 
     #[test]
     fn frames_round_trip() {
@@ -570,5 +833,112 @@ mod tests {
         host.spawn().unwrap();
         host.shutdown();
         assert_eq!(host.poll(), SandboxState::Stopped);
+    }
+
+    struct GainProcessor {
+        gain: f32,
+        info: crate::audio::plugin_host_live::PluginInfo,
+    }
+
+    impl GainProcessor {
+        fn new(gain: f32) -> Self {
+            Self {
+                gain,
+                info: crate::audio::plugin_host_live::PluginInfo {
+                    id: "se.sonix.test.gain".to_string(),
+                    name: "Test Gain".to_string(),
+                    vendor: "Sonix".to_string(),
+                    version: "1.0".to_string(),
+                    description: String::new(),
+                    features: Vec::new(),
+                },
+            }
+        }
+    }
+
+    impl crate::audio::plugin_host_live::PluginProcessor for GainProcessor {
+        fn backend(&self) -> &'static str {
+            "test"
+        }
+        fn info(&self) -> &crate::audio::plugin_host_live::PluginInfo {
+            &self.info
+        }
+        fn parameters(&self) -> &[crate::audio::plugin_host_live::PluginParameter] {
+            &[]
+        }
+        fn latency_frames(&self) -> u32 {
+            0
+        }
+        fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+            for sample in left.iter_mut() {
+                *sample *= self.gain;
+            }
+            for sample in right.iter_mut() {
+                *sample *= self.gain;
+            }
+        }
+        fn set_parameter(&mut self, _id: u32, _value: f64) -> bool {
+            false
+        }
+        fn reset(&mut self) {}
+    }
+
+    fn attach_second(bridge: &crate::audio::sandbox_audio::AudioBridge) -> crate::audio::sandbox_audio::AudioBridge {
+        let fd = unsafe { libc::dup(bridge.raw_fd()) };
+        assert!(fd >= 0, "dup failed");
+        crate::audio::sandbox_audio::AudioBridge::attach(fd).unwrap()
+    }
+
+    #[test]
+    fn sandbox_processor_reports_transport_latency() {
+        let block = 16usize;
+        let bridge =
+            crate::audio::sandbox_audio::AudioBridge::create(block, 4).unwrap();
+        let processor = SandboxProcessor::new(bridge, GainProcessor::new(1.0).info, Vec::new(), 7);
+        assert_eq!(processor.latency_frames(), block as u32 + 7);
+    }
+
+    #[test]
+    fn audio_worker_streams_blocks_over_shared_memory() {
+        let block = 8usize;
+        let host = crate::audio::sandbox_audio::AudioBridge::create(block, 4).unwrap();
+        let worker = attach_second(&host);
+        let (request_tx, request_rx) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            let processor: Box<dyn crate::audio::plugin_host_live::PluginProcessor> =
+                Box::new(GainProcessor::new(2.0));
+            run_audio_worker(Some(processor), &worker, request_rx);
+        });
+
+        // Wait for the worker to attach (and reset the ring) before streaming.
+        let (ping_tx, ping_rx) = std::sync::mpsc::channel();
+        request_tx
+            .send((SandboxRequest::Ping, ping_tx))
+            .unwrap();
+        assert_eq!(ping_rx.recv().unwrap(), SandboxResponse::Pong);
+
+        let left = vec![0.25f32; block];
+        let right = vec![0.25f32; block];
+        assert!(host.publish_input(&left, &right));
+
+        let mut out_l = vec![0.0f32; block];
+        let mut out_r = vec![0.0f32; block];
+        let mut produced = false;
+        for _ in 0..400 {
+            if host.take_output(&mut out_l, &mut out_r) {
+                produced = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        assert!(produced, "arbetaren producerade ingen utdata");
+        assert_eq!(out_l, vec![0.5f32; block]);
+        assert_eq!(out_r, vec![0.5f32; block]);
+
+        let (reply_tx, _reply_rx) = std::sync::mpsc::channel();
+        request_tx
+            .send((SandboxRequest::Shutdown, reply_tx))
+            .unwrap();
+        handle.join().unwrap();
     }
 }

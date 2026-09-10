@@ -6,6 +6,9 @@ use crate::ui::theme::Theme;
 pub struct PluginViewActions {
     /// `(plugin path, stem track index)` to instantiate a CLAP processor into.
     pub load_into_track: Option<(String, usize)>,
+    /// `(plugin path, stem track index)` to instantiate inside an out-of-process
+    /// sandbox that streams audio over shared memory (Fas 4.5b).
+    pub load_into_sandbox: Option<(String, usize)>,
     /// `(plugin path, stem track index, preset location)` to instantiate with a
     /// native `clap.preset-load/2` preset already applied.
     pub load_preset_into_track: Option<(String, usize, String)>,
@@ -134,6 +137,9 @@ pub fn render_plugins_view(
         };
         if tab_actions.load_into_track.is_some() {
             actions.load_into_track = tab_actions.load_into_track;
+        }
+        if tab_actions.load_into_sandbox.is_some() {
+            actions.load_into_sandbox = tab_actions.load_into_sandbox;
         }
         if tab_actions.load_preset_into_track.is_some() {
             actions.load_preset_into_track = tab_actions.load_preset_into_track;
@@ -303,6 +309,7 @@ fn render_plugin_database_tab(
     let inspection_actions =
         render_inspection_panel(ui, manager, status_msg, stem_track_count, default_track);
     actions.load_into_track = inspection_actions.load_into_track;
+    actions.load_into_sandbox = inspection_actions.load_into_sandbox;
     actions.load_preset_into_track = inspection_actions.load_preset_into_track;
 
     ui.add_space(6.0);
@@ -951,6 +958,15 @@ fn render_inspection_panel(
                     .clicked()
                 {
                     actions.load_into_track = Some((snapshot.path.clone(), target));
+                }
+                if ui
+                    .button(crate::i18n::t("🧪 Ladda in i sandbox"))
+                    .on_hover_text(crate::i18n::t(
+                        "Kör pluginen i en separat process och strömmar ljudet via delat minne.",
+                    ))
+                    .clicked()
+                {
+                    actions.load_into_sandbox = Some((snapshot.path.clone(), target));
                 }
             }
         });

@@ -302,6 +302,14 @@ Pluginen kördes alltid in-process, så en kraschande plugin tog ner hela Sonix.
 
 ---
 
+### P43 — Out-of-process sandbox: delat-minne-ljudtransport (Fas 4.5b) · ✅ KLAR
+4.5a gav processgränsen men ljudet gick fortfarande in-process. Nu körs själva ljudprocessningen i sandbox-arbetaren.
+- **Löst:** Ny modul **`src/audio/sandbox_audio.rs`** skapar en anonym delad minnesregion med `memfd_create` + `ftruncate` + `mmap(MAP_SHARED)` som både värd och arbetare mappar (`AudioBridge::create`/`attach`). Regionen inleds med en atomisk **`AudioHeader`** (magic `0x5358_4e53`, version, block/channels/slots, in-/ut-ringarnas läs-/skrivindex, heartbeat, underrun- och overflow-räknare, `reset`- och `shutdown`-flaggor) följd av två **SPSC-ringbuffertar** (4 slots) med råa `f32`-stereoblock — endast räknarna använder acquire/release, sample-arrayerna är råa. Värden fick **`SandboxProcessor`** (en riktig `PluginProcessor`): `process_stereo` publicerar ett inputblock och tar ett outputblock, skickar tystnad vid underrun/crash och rapporterar **`block_frames + plugin_latens`** så att motorns PDC kompenserar transporten. Arbetaren fick **`serve_audio_from_args`**: en **kontrolltråd** äger stdin/stdout och vidarebefordrar requests via en kanal till **ljudloopen**, som äger pluginen och pumpar ringen (`run_audio_worker` → `worker_begin`/`process_one`/`worker_heartbeat`). Nytt protokollkommando **`SandboxRequest::Latency` → `SandboxResponse::Latency { frames }`** läser pluginens egen latens. Vid (om)attach sätter arbetaren `reset`, som värden kvitterar genom att nollställa ringarna, så en omstartad plugin aldrig spelar gammalt ljud. `SandboxHost::new_audio` skickar med `memfd`-deskriptorn till arbetaren. Plugin-hanteraren fick knappen **"🧪 Ladda in i sandbox"**; `App` håller `plugin_sandboxes` per stämspår och startar om/tar bort vid upprepade krascher (PDC kompenserar den extra blocklatensen).
+- **Tester:** `blocks_round_trip_through_shared_memory`, `worker_processes_a_stream_in_lockstep`, `underrun_is_reported_when_the_worker_has_not_run`, `reset_gates_the_worker_until_the_host_acknowledges`, `attach_rejects_a_bad_descriptor`, `sandbox_processor_reports_transport_latency`, `audio_worker_streams_blocks_over_shared_memory`.
+- `cargo test --release` = **127 tester**, 0 varningar. `cargo test --release --features plugin-host` = **155 tester**, 0 varningar. Alla byggkombinationer (`default`, `plugin-host`, `neural`, `neural,plugin-host`) bygger med 0 varningar. **OBS:** end-to-end med en riktig CLAP-plugin kan inte köras här (ingen plugin på disk, headless miljö); transporten verifieras mot en syntetisk processor.
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -318,6 +326,7 @@ Pluginen kördes alltid in-process, så en kraschande plugin tog ner hela Sonix.
 | CLAP GUI-ABI + livscykel + inspektion (opt-in) | ✅ REAL (P40) |
 | CLAP delad instans + X11-GUI-fönster (opt-in) | ✅ REAL (P41) |
 | Out-of-process sandbox: processgräns + krasch/omstart (opt-in) | ✅ REAL (P42) |
+| Out-of-process sandbox: ljud över delat minne (opt-in) | ✅ REAL (P43) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

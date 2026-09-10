@@ -31,13 +31,13 @@
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Stem-separation (DSP + neural ONNX) | 1 | 0 | **100 %** |
-| Plugin-hantering | 6 | 3 | **67 %** |
+| Plugin-hantering | 7 | 2 | **78 %** |
 | Export & projekt-I/O (presets, loudness-normalisering) | 5 | 0 | **100 %** |
 | Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
-> **Största kvarvarande biten:** **Plugin-hosting** (75 % — en CLAP-värd kan nu ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets**, **läsa och driva `clap.gui`-livscykeln på huvudtråden**, samt **köra en plugin i en separat process med kraschdetektering och automatisk omstart**; själva X11-fönstret och delat-minne-ljudtransporten (4.5b) återstår). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
+> **Största kvarvarande biten:** **Plugin-hosting** (78 % — en CLAP-värd kan nu ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets**, **läsa och driva `clap.gui`-livscykeln på huvudtråden**, samt **köra en plugin i en separat process — med kraschdetektering, automatisk omstart och ljud över delat minne**; kvar är Wine/yabridge-vägen (4.6) och att verifiera X11-fönstret på en riktig display). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
 ---
 
@@ -161,9 +161,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/audio/plugin_sandbox.rs`, `src/audio/mod.rs`, `src/main.rs`, `src/ui/app.rs`, `src/ui/plugins_view.rs`, `src/i18n.rs`
   - **Beroende:** 4.2
 
-- [ ] **4.5b Out-of-process sandbox — delat-minne-ljudtransport** — *L*
-  - **Gör:** Flytta själva ljudprocessningen till sandbox-arbetaren via delat minne/ringbuffert så att pluginen körs helt utanför Sonix adressrymd.
-  - **Klart när:** En kraschande plugin tappar inte ljudet mer än en omstart och Sonix påverkas inte.
+- [x] **4.5b Out-of-process sandbox — delat-minne-ljudtransport** — *L* ✅
+  - **Löst:** Själva ljudprocessningen körs nu i sandbox-arbetaren. Ny modul `src/audio/sandbox_audio.rs` skapar en anonym minnesregion (`memfd_create` + `ftruncate` + `mmap(MAP_SHARED)`) som både värd och arbetare mappar. Regionen har en atomisk `AudioHeader` (magic/version/layout, in-/ut-ringarnas index, heartbeat, underrun/overflow-räknare, reset- och shutdown-flaggor) följd av två SPSC-ringbuffertar (4 slots) med råa `f32`-stereoblock. Värden (`SandboxProcessor`, en riktig `PluginProcessor`) publicerar ett inputblock och tar ett outputblock per ljudcallback och rapporterar **`block_frames + plugin_latens`** så att motorns PDC kompenserar transporten; vid underrun/crash skickas tystnad och nästa block re-synkas. Arbetaren (`serve_audio_from_args`) kör en kontrolltråd (äger stdin/stdout) och en ljudloop som äger pluginen och pumpar ringen; `SandboxRequest::Latency` läser pluginens egen latens. Vid (om)attach sätter arbetaren `reset`, som värden kvitterar genom att nollställa ringarna, så en omstartad plugin aldrig spelar gammalt ljud. Plugin-hanteraren har knappen **"🧪 Ladda in i sandbox"**; appen håller en `SandboxHost` per stämspår (`plugin_sandboxes`) och startar om/tar bort vid upprepade krascher.
+  - **Klart när:** En kraschande plugin tappar inte ljudet mer än en omstart och Sonix påverkas inte. ✅ (Verifierat headless: `blocks_round_trip_through_shared_memory`, `worker_processes_a_stream_in_lockstep`, `underrun_is_reported_when_the_worker_has_not_run`, `reset_gates_the_worker_until_the_host_acknowledges`, `attach_rejects_a_bad_descriptor`, `sandbox_processor_reports_transport_latency`, `audio_worker_streams_blocks_over_shared_memory`. 127 tester default, 155 med featuren, 0 varningar i alla fyra byggkombinationer. **OBS:** end-to-end med en riktig CLAP-plugin kan inte köras här — ingen plugin finns på disk och miljön är headless; transporten verifieras mot en syntetisk processor.)
+  - **Filer:** `src/audio/sandbox_audio.rs`, `src/audio/plugin_sandbox.rs`, `src/audio/mod.rs`, `src/ui/app.rs`, `src/ui/plugins_view.rs`, `src/i18n.rs`, `Cargo.toml`
   - **Beroende:** 4.5a
 
 - [ ] **4.6 Wine/yabridge-väg för FL Studio & Windows-VST** — *L*
@@ -197,7 +198,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 4.5b — delat-minne-ljudtransport i sandboxen** (*L*): flytta själva ljudprocessningen till sandbox-arbetaren via delat minne/ringbuffert. (4.5a — processgräns + krasch/omstart — är klar.) Därefter 4.6 (Wine/yabridge). Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
+**Fas 4.6 — Wine/yabridge-vägen för FL Studio & Windows-VST** (*L*): ladda `.so`-bryggor från yabridge som vanliga plugins och verifiera Sytrus/Harmor/Gross Beat/FL Studio VSTi. (Fas 4.5a/4.5b — processgräns, krasch/omstart och delat-minne-ljudtransport — är klara.) Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

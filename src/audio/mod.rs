@@ -21,6 +21,8 @@ pub mod plugin_gui;
 pub mod plugin_host;
 #[cfg(feature = "plugin-host")]
 pub mod plugin_sandbox;
+#[cfg(feature = "plugin-host")]
+pub mod sandbox_audio;
 // The live CLAP host's ABI code is feature-gated; the shared data types and
 // `inspect()` are always compiled so the UI can show an honest status.
 #[allow(dead_code)]
