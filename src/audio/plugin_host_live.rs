@@ -151,6 +151,9 @@ pub fn inspect(path: &str) -> PluginInspection {
         if crate::audio::plugin_vst3::is_vst3_path(path) {
             return crate::audio::plugin_vst3::inspect(path);
         }
+        if crate::audio::plugin_vst2::is_vst2_path(path) {
+            return crate::audio::plugin_vst2::inspect(path);
+        }
         match imp::load(path) {
             Ok(instance) => PluginInspection {
                 path: path.to_string(),
@@ -376,6 +379,9 @@ pub fn load_processor(
     {
         if crate::audio::plugin_vst3::is_vst3_path(path) {
             return crate::audio::plugin_vst3::load_processor(path, sample_rate, max_frames);
+        }
+        if crate::audio::plugin_vst2::is_vst2_path(path) {
+            return crate::audio::plugin_vst2::load_processor(path, sample_rate, max_frames);
         }
         imp::load_processor(path, sample_rate, max_frames)
     }

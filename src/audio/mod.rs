@@ -26,6 +26,9 @@ pub mod sandbox_audio;
 // Minimal in-process VST3 host (Fas 4.6). Feature-gated like the CLAP ABI.
 #[cfg(feature = "plugin-host")]
 pub mod plugin_vst3;
+// Minimal in-process VST2 host (Fas 4.6c). Feature-gated like the CLAP/VST3 ABIs.
+#[cfg(feature = "plugin-host")]
+pub mod plugin_vst2;
 // The live CLAP host's ABI code is feature-gated; the shared data types and
 // `inspect()` are always compiled so the UI can show an honest status.
 #[allow(dead_code)]

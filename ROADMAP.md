@@ -31,13 +31,13 @@
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Stem-separation (DSP + neural ONNX) | 1 | 0 | **100 %** |
-| Plugin-hantering | 9 | 1 | **90 %** |
+| Plugin-hantering | 10 | 1 | **91 %** |
 | Export & projekt-I/O (presets, loudness-normalisering) | 5 | 0 | **100 %** |
 | Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
-> **Största kvarvarande biten:** **Plugin-hosting** (90 % — en CLAP-värd kan ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets**, **läsa och driva `clap.gui`-livscykeln på huvudtråden**, **köra en plugin i en separat process — med kraschdetektering, automatisk omstart och ljud över delat minne**, samt **ladda, inspektera och spela VST3-moduler via en handrullad ABI med parametrar, state och PDC**; kvar är **VST2-bryggor (4.6c)** samt att verifiera en riktig yabridge-brygga och X11-fönstret på en riktig display). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
+> **Största kvarvarande biten:** **Plugin-hosting** (91 % — en CLAP-värd kan ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets**, **läsa och driva `clap.gui`-livscykeln på huvudtråden**, **köra en plugin i en separat process — med kraschdetektering, automatisk omstart och ljud över delat minne**, samt **ladda, inspektera och spela både VST3- och VST2-moduler via handrullade ABI:er med parametrar, state och PDC**; kvar är att verifiera en **riktig** yabridge-brygga (Wine) och X11-fönstret på en riktig display). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
 ---
 
@@ -169,7 +169,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 - [ ] **4.6 Wine/yabridge-väg för FL Studio & Windows-VST** — *L*
   - **Gör:** Ladda `.so`-bryggor från yabridge som vanliga plugins; verifiera Sytrus/Harmor/Gross Beat/FL Studio VSTi.
-  - **Klart när:** En yabridge-brygga kan spelas genom Sonix. (VST3-vägen — 4.6a/4.6b — är klar och verifierad headless mot mock. Kvar: VST2-bryggor (4.6c) samt att köra en **riktig** yabridge-brygga med Wine + display.)
+  - **Klart när:** En yabridge-brygga kan spelas genom Sonix. (Både VST3-vägen — 4.6a/4.6b — och VST2-vägen — 4.6c — är klara och verifierade headless mot mock. Kvar: att köra en **riktig** yabridge-brygga med Wine + display.)
   - **Beroende:** 4.1–4.2
 
   - [x] **4.6a VST3-modul, ABI, laddning & inspektion** — *M* ✅
@@ -184,9 +184,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     - **Filer:** `src/audio/plugin_vst3.rs`, `src/audio/plugin_host_live.rs`, `tests/fixtures/mock_vst3.c`
     - **Beroende:** 4.6a
 
-  - [ ] **4.6c VST2-ABI (yabridge VST2-bryggor)** — *L*
-    - **Gör:** Minimal, handrullad VST2-ABI (samma princip som CLAP/VST3) så att yabridge:s VST2-bryggor (Sytrus/Harmor/Gross Beat m.fl.) kan laddas, inspekteras och spelas med PDC/state. Verifierbart headless mot en mock-VST2-modul.
-    - **Klart när:** En yabridge-VST2-brygga kan laddas och spelas genom Sonix.
+  - [x] **4.6c VST2-ABI (yabridge VST2-bryggor)** — *L* ✅
+    - **Löst:** Ny modul `src/audio/plugin_vst2.rs` implementerar en **minimal, handrullad VST2-ABI** utan Steinberg-SDK (samma offline/lättviktsprincip som CLAP/VST3-hosten): `VSTPluginMain` (med `main`-fallback), en `#[repr(C)]` `AEffect` i exakt `aeffect.h`-ordning (192 byte på 64-bit), `'VstP'`-magikontroll och en riktig `audioMaster`-callback (version 2400, sample rate/block size via en registrerad `HostContext`, `kVstProcessLevelRealtime`, engelska, vendor/product). Dispatchar de opcodes som behövs för att beskriva och köra en effekt: `effOpen`/`effClose`, `effGetEffectName`/vendor/product/version, `effGetPlugCategory`, `effGetParamName`/`Label`/`Display`/`effGetParameterProperties` (steg via `kVstParameterIsSwitch`), `effSetSampleRate`/`effSetBlockSize`/`effSetProcessPrecision`/`effMainsChanged`, `effGetChunk`/`effSetChunk` (program-chunk, med f32-parameterfallback) och `effGetVstVersion`. `Vst2Processor` implementerar `PluginProcessor` fullt ut: `processReplacing` på riktiga stereo-block (mono/extra kanaler hanteras), `setParameter`/`getParameter`, `effMainsChanged`-cykeln för `reset`, program-chunk för `save_state`/`load_state` och `initialDelay` → motorns PDC. `plugin_host_live::{inspect,load_processor}` dispatchar `.so` (utan `.vst3`/`.clap`) till den nya modulen; CLAP-mocken döptes om till `.clap` så att den extensionsbaserade routningen är entydig. Fixturen `tests/fixtures/mock_vst2.c` är en **äkta** VST2-plugin (`VSTPluginMain` + dispatcher + `processReplacing` + chunk-state + 8 samplars latens) som build.rs kompilerar och exponerar som `SONIX_MOCK_VST2`.
+    - **Klart när:** En yabridge-VST2-brygga kan laddas och spelas genom Sonix. ✅ (Verifierat headless mot mock: `detects_vst2_extension_case_insensitively`, `rejects_non_vst2_library`, `loads_mock_module_and_reports_parameters`, `inspect_snapshot_matches_load`, `missing_file_is_an_honest_error`, `loads_processor_and_reports_latency`, `processor_applies_parameters_and_latency`, `processor_state_round_trips`, `processor_reset_clears_the_latency_buffer`. 127 tester default, 173 med featuren, 0 varningar i alla fyra byggkombinationer. **OBS:** verifieras mot mock-modulen — en riktig yabridge-brygga kräver Wine + display.)
+    - **Filer:** `src/audio/plugin_vst2.rs`, `src/audio/mod.rs`, `src/audio/plugin_host_live.rs`, `tests/fixtures/mock_vst2.c`, `build.rs`
     - **Beroende:** 4.6b
 
 
@@ -216,7 +217,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 4.6c — VST2-ABI (yabridge VST2-bryggor)** (*L*): en minimal, handrullad VST2-ABI så att yabridge:s VST2-bryggor (Sytrus/Harmor/Gross Beat m.fl.) kan laddas och spelas med PDC/state — verifierbart headless mot en mock-VST2-modul. Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
+**Verifiera en riktig yabridge-brygga (VST2/VST3) med Wine + en riktig display** (*M*): kör en faktisk yabridge-producerad brygga (Sytrus/Harmor/Gross Beat/FL Studio VSTi) genom Sonix — laddning, inspektion, ljud med PDC, state och X11-fönstret. Detta kan bara göras på en maskin med Wine och display (kan inte verifieras i denna headless-miljö). Alternativt **Fas 5.2** (VCA-grupper, *M*, om du vill ha tillbaka dem). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI, automation, loudness och realtids-/plugin-tester i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

@@ -326,6 +326,14 @@ VST3-vägen spelar nu riktigt ljud i ett spår, med parametrar, state och PDC �
 
 ---
 
+### P46 — VST2-ABI, ljud, parametrar/state & PDC (Fas 4.6c) · ✅ KLAR
+Den sista av yabridge-vägarna: **VST2**-bryggor (`~/.vst/yabridge/*.so`) kan nu laddas, inspekteras och spelas med PDC/state.
+- **Löst:** Ny modul **`src/audio/plugin_vst2.rs`** implementerar en **minimal, handrullad VST2-ABI** utan Steinberg-SDK (samma offline/lättviktsprincip som CLAP/VST3-hosten). Den innehåller en `#[repr(C)]` **`AEffect`** i exakt `aeffect.h`-ordning (192 byte på 64-bit), entrypointen **`VSTPluginMain`** (med `main`-fallback), `'VstP'`-magikontroll och en riktig **`audioMaster`-callback** (`audioMasterVersion` = 2400, `audioMasterGetSampleRate`/`GetBlockSize` via en registrerad `HostContext`, `kVstProcessLevelRealtime`, engelska, vendor/product). Dispatchar de opcodes som behövs för att beskriva och köra en effekt: `effOpen`/`effClose`, `effGetEffectName`/vendor/product/version, `effGetPlugCategory`, `effGetParamName`/`Label`/`Display` samt `effGetParameterProperties` (steg via `kVstParameterIsSwitch`), `effSetSampleRate`/`effSetBlockSize`/`effSetProcessPrecision`/`effMainsChanged`, `effGetChunk`/`effSetChunk` (program-chunk; hosten frigör chunk-minnet med `libc::free`, med en f32-parameterfallback för plugins utan chunks) och `effGetVstVersion`. **`Vst2Processor`** implementerar `PluginProcessor` fullt ut: `processReplacing` på riktiga stereo-block (mono/extra kanaler hanteras), `setParameter`/`getParameter`, `effMainsChanged(0)`→`(1)` för `reset`, program-chunk för `save_state`/`load_state` och `initialDelay` → motorns PDC. **`plugin_host_live::{inspect,load_processor}`** dispatchar nu `.so` (utan `.vst3`/`.clap`) till den nya modulen; CLAP-mocken döptes om till **`.clap`** så att den extensionsbaserade routningen är entydig. Fixturen **`tests/fixtures/mock_vst2.c`** är en **äkta** VST2-plugin (`VSTPluginMain` + dispatcher + `processReplacing` + chunk-state + 8 samplars latens) som `build.rs` kompilerar och exponerar som `SONIX_MOCK_VST2`.
+- **Tester:** `detects_vst2_extension_case_insensitively`, `rejects_non_vst2_library`, `loads_mock_module_and_reports_parameters`, `inspect_snapshot_matches_load`, `missing_file_is_an_honest_error`, `loads_processor_and_reports_latency`, `processor_applies_parameters_and_latency`, `processor_state_round_trips`, `processor_reset_clears_the_latency_buffer`.
+- `cargo test --release` = **127 tester**, 0 varningar. `cargo test --release --features plugin-host` = **173 tester**, 0 varningar. Alla fyra byggkombinationer (`default`, `plugin-host`, `neural`, `neural,plugin-host`) 0 varningar. **OBS:** verifieras mot mock-modulen; en riktig yabridge-VST2-brygga kräver Wine + display.
+
+---
+
 ## 3. Sammanfattning
 
 | Verktyg | Status |
@@ -345,6 +353,7 @@ VST3-vägen spelar nu riktigt ljud i ett spår, med parametrar, state och PDC �
 | Out-of-process sandbox: ljud över delat minne (opt-in) | ✅ REAL (P43) |
 | VST3-modul, ABI, laddning & inspektion (opt-in) | ✅ REAL (P44) |
 | VST3-ljud, parametrar/state & PDC (opt-in) | ✅ REAL (P45) |
+| VST2-modul, ABI, ljud, parametrar/state & PDC (opt-in) | ✅ REAL (P46) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |
