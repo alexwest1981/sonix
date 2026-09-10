@@ -302,6 +302,236 @@ pub fn formant_preserving_shift(
     out
 }
 
+/// WSOLA (Waveform Similarity Overlap-Add) time-stretcher.
+///
+/// Produces a signal whose duration is scaled by [`Wsola::set_ratio`] while
+/// keeping the pitch intact (unlike varispeed resampling). It runs in frames,
+/// overlap-adding Hann-windowed grains; before each grain the best-matching
+/// analysis offset near the nominal position is found by normalised
+/// cross-correlation with the previous grain's tail, which keeps successive
+/// grains phase-aligned.
+#[derive(Clone)]
+pub struct Wsola {
+    frame: usize,
+    hop: usize,
+    search: usize,
+    window: Vec<f32>,
+    prev_tail: Vec<f32>,
+    ola_l: Vec<f32>,
+    ola_r: Vec<f32>,
+    fifo_l: Vec<f32>,
+    fifo_r: Vec<f32>,
+    fifo_read: f64,
+    ana_pos: f64,
+    started: bool,
+    finished: bool,
+    ratio: f32,
+}
+
+#[inline]
+fn read_at(src: &[f32], idx: usize, looping: bool) -> f32 {
+    if idx < src.len() {
+        src[idx]
+    } else if looping && !src.is_empty() {
+        src[idx % src.len()]
+    } else {
+        0.0
+    }
+}
+
+impl Wsola {
+    pub fn new(_sample_rate: f32) -> Self {
+        let frame = 1024usize;
+        // 50 % overlap: overlapping Hann windows sum to unity, and the coarser
+        // hop keeps the (otherwise O(n·search)) similarity search affordable.
+        let hop = 512usize;
+        let two_pi = std::f32::consts::TAU;
+        let window: Vec<f32> = (0..frame)
+            .map(|i| 0.5 - 0.5 * (two_pi * i as f32 / (frame - 1) as f32).cos())
+            .collect();
+        Self {
+            frame,
+            hop,
+            search: 128,
+            window,
+            prev_tail: vec![0.0; frame - hop],
+            ola_l: vec![0.0; frame],
+            ola_r: vec![0.0; frame],
+            fifo_l: Vec::new(),
+            fifo_r: Vec::new(),
+            fifo_read: 0.0,
+            ana_pos: 0.0,
+            started: false,
+            finished: false,
+            ratio: 1.0,
+        }
+    }
+
+    /// `ratio` is the output/input duration factor (2.0 = twice as long).
+    pub fn set_ratio(&mut self, ratio: f32) {
+        self.ratio = ratio.clamp(0.1, 10.0);
+    }
+
+    pub fn is_finished(&self) -> bool {
+        self.finished
+    }
+
+    pub fn available(&self) -> f64 {
+        self.fifo_l.len() as f64 - self.fifo_read
+    }
+
+    fn best_start(&self, src: &[f32], nominal: isize, looping: bool) -> usize {
+        let ov = self.frame - self.hop;
+        let len = src.len();
+        let energy: f32 = self.prev_tail.iter().map(|v| v * v).sum();
+        if energy < 1e-9 {
+            return nominal.max(0) as usize;
+        }
+        let score = |cand: isize| -> Option<f32> {
+            if cand < 0 {
+                return None;
+            }
+            let cand = cand as usize;
+            if !looping && cand + ov > len {
+                return None;
+            }
+            let mut dot = 0.0_f32;
+            let mut na = 0.0_f32;
+            for i in 0..ov {
+                let a = read_at(src, cand + i, looping);
+                let b = self.prev_tail[i];
+                dot += a * b;
+                na += a * a;
+            }
+            Some(dot / (na.sqrt() + 1e-9))
+        };
+
+        // Coarse-to-fine search keeps the cost low on long buffers.
+        let search = self.search as isize;
+        let coarse = (search / 8).max(1);
+        let mut best = nominal.max(0);
+        let mut best_score = f32::NEG_INFINITY;
+        let mut d = -search;
+        while d <= search {
+            if let Some(s) = score(nominal + d) {
+                if s > best_score {
+                    best_score = s;
+                    best = nominal + d;
+                }
+            }
+            d += coarse;
+        }
+        let refine_lo = (best - coarse).max(-search);
+        let refine_hi = (best + coarse).min(search);
+        let mut d = refine_lo;
+        while d <= refine_hi {
+            if let Some(s) = score(nominal + d) {
+                if s > best_score {
+                    best_score = s;
+                    best = nominal + d;
+                }
+            }
+            d += 1;
+        }
+        best.max(0) as usize
+    }
+
+    fn gen_frame(&mut self, sl: &[f32], sr: &[f32], looping: bool) {
+        let len = sl.len().max(sr.len());
+        let nominal = if self.started {
+            self.ana_pos.round() as isize
+        } else {
+            0
+        };
+        let start = if self.started {
+            self.best_start(sl, nominal, looping)
+        } else {
+            0
+        };
+        for i in 0..self.frame {
+            let w = self.window[i];
+            self.ola_l[i] += read_at(sl, start + i, looping) * w;
+            self.ola_r[i] += read_at(sr, start + i, looping) * w;
+        }
+        for i in 0..self.hop {
+            self.fifo_l.push(self.ola_l[i]);
+            self.fifo_r.push(self.ola_r[i]);
+        }
+        self.ola_l.copy_within(self.hop..self.frame, 0);
+        self.ola_r.copy_within(self.hop..self.frame, 0);
+        for i in (self.frame - self.hop)..self.frame {
+            self.ola_l[i] = 0.0;
+            self.ola_r[i] = 0.0;
+        }
+        let ov = self.frame - self.hop;
+        for i in 0..ov {
+            self.prev_tail[i] = read_at(sl, start + self.hop + i, looping);
+        }
+        self.started = true;
+        self.ana_pos += self.hop as f64 / self.ratio.max(0.01) as f64;
+        if !looping && self.ana_pos as usize >= len {
+            self.finished = true;
+        }
+    }
+
+    /// Ensures at least `ahead` output samples are buffered.
+    pub fn ensure(&mut self, sl: &[f32], sr: &[f32], looping: bool, ahead: usize) {
+        if self.fifo_read > 8192.0 {
+            let drop = self.fifo_read.floor() as usize;
+            self.fifo_l.drain(0..drop);
+            self.fifo_r.drain(0..drop);
+            self.fifo_read -= drop as f64;
+        }
+        while !self.finished && self.available() < ahead as f64 {
+            self.gen_frame(sl, sr, looping);
+        }
+    }
+
+    /// Pops one output sample, resampling the buffered WSOLA stream by `step`
+    /// (output frames consumed per emitted frame). `step > 1` raises the pitch.
+    pub fn next_resampled(
+        &mut self,
+        sl: &[f32],
+        sr: &[f32],
+        looping: bool,
+        step: f32,
+    ) -> (f32, f32) {
+        self.ensure(sl, sr, looping, 2);
+        if self.available() <= 0.0 {
+            return (0.0, 0.0);
+        }
+        let i0 = self.fifo_read.floor() as usize;
+        let frac = (self.fifo_read - i0 as f64) as f32;
+        let i0 = i0.min(self.fifo_l.len() - 1);
+        let i1 = (i0 + 1).min(self.fifo_l.len() - 1);
+        let l = self.fifo_l[i0] + (self.fifo_l[i1] - self.fifo_l[i0]) * frac;
+        let r = self.fifo_r[i0] + (self.fifo_r[i1] - self.fifo_r[i0]) * frac;
+        self.fifo_read += step.max(0.01) as f64;
+        (l, r)
+    }
+}
+
+/// Offline pitch-preserving time-stretch. `ratio` is the output/input duration
+/// factor (2.0 = twice as long). Used for whole-buffer stretching such as the
+/// stem SPEED control.
+pub fn time_stretch(input: &[f32], sample_rate: f32, ratio: f32) -> Vec<f32> {
+    if input.is_empty() || (ratio - 1.0).abs() < 1e-4 {
+        return input.to_vec();
+    }
+    let mut ws = Wsola::new(sample_rate);
+    ws.set_ratio(ratio);
+    let out_len = (input.len() as f32 * ratio).round() as usize;
+    let mut out = Vec::with_capacity(out_len);
+    while out.len() < out_len {
+        let (l, _) = ws.next_resampled(input, input, false, 1.0);
+        if ws.available() <= 0.0 && ws.is_finished() {
+            break;
+        }
+        out.push(l);
+    }
+    out
+}
+
 /// Per-frame scale-snapping pitch correction. `strength` 0..1 blends between
 /// the original and the fully corrected pitch (the AUTO-TUNE knob).
 pub fn auto_tune(
@@ -574,6 +804,53 @@ mod tests {
         assert!(
             preserved.iter().all(|s| s.is_finite()),
             "preserved output must be finite"
+        );
+    }
+
+    /// Drives the streaming WSOLA state over a whole buffer, as the audition
+    /// playback path does, and returns the stretched mono output.
+    fn wsola_stretch(src: &[f32], sr: f32, ratio: f32) -> Vec<f32> {
+        let mut ws = Wsola::new(sr);
+        ws.set_ratio(ratio);
+        let out_len = (src.len() as f32 * ratio).round() as usize;
+        let mut out = Vec::with_capacity(out_len);
+        while out.len() < out_len {
+            let (l, _) = ws.next_resampled(src, src, false, 1.0);
+            if ws.available() <= 0.0 && ws.is_finished() {
+                break;
+            }
+            out.push(l);
+        }
+        out
+    }
+
+    #[test]
+    fn wsola_time_stretch_preserves_pitch_and_scales_duration() {
+        let sr = 44100.0;
+        let src = sine(220.0, sr, 44100); // 1 second
+
+        let slow = wsola_stretch(&src, sr, 2.0);
+        assert!(
+            (slow.len() as f32 - 88200.0).abs() < 4000.0,
+            "2.0x should roughly double the length, got {}",
+            slow.len()
+        );
+        let f_slow = detect_pitch_hz(&slow[10000..18192], sr).expect("slow pitched");
+        assert!(
+            (f_slow - 220.0).abs() / 220.0 < 0.06,
+            "pitch must stay at 220 Hz when stretching, got {f_slow}"
+        );
+
+        let fast = time_stretch(&src, sr, 0.5);
+        assert!(
+            (fast.len() as f32 - 22050.0).abs() < 4000.0,
+            "0.5x should roughly halve the length, got {}",
+            fast.len()
+        );
+        let f_fast = detect_pitch_hz(&fast[4000..12192], sr).expect("fast pitched");
+        assert!(
+            (f_fast - 220.0).abs() / 220.0 < 0.06,
+            "pitch must stay at 220 Hz when compressing, got {f_fast}"
         );
     }
 }

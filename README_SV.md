@@ -200,7 +200,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Modulär Patcher | ✅ Äkta | Topologisk sortering + etiketter matchar DSP:n |
 | Stem-separation | 🟡 Delvis | Integrera en riktig neural modell (t.ex. HTDemucs via ONNX) |
 | Vocal tuning | 🟡 Delvis | Riktig formantbevarning ✅; realtids-autotune (ljudtråden) saknas ännu |
-| Time-stretch | 🟡 Delvis | Pitch-bevarande time-stretch (nuvarande är varispeed) |
+| Time-stretch | ✅ Riktig | WSOLA (pitch-bevarande) i Sångstudiens provspelning och Stem Separators SPEED-ratt |
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
 | `.fst`-knappen "Apply Preset" | ✅ Ärlig | Inaktiverad med förklaring — applicering kräver plugin-värd |

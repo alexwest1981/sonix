@@ -202,7 +202,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Modular Patcher | ✅ Real | Topological sort + labels match the DSP |
 | Stem separation | 🟡 Partial | Integrate a real neural model (e.g. HTDemucs via ONNX) |
 | Vocal tuning | 🟡 Partial | True formant preservation ✅; realtime (audio-thread) autotune still missing |
-| Time-stretch | 🟡 Partial | Pitch-preserving time-stretch (currently varispeed) |
+| Time-stretch | ✅ Real | WSOLA (pitch-preserving) in the Vocal Studio audition and the Stem Separator SPEED control |
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
 | `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — applying needs a plugin host |

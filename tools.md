@@ -212,6 +212,12 @@ Filtret låg tidigare på synth-bussen (globalt). Eftersom SVF:en är linjär l�
 - **Test:** `formant_preserving_shift_keeps_formant_while_shifting_pitch` (syntetisk vokal: +12 st flyttar f0 120→240 Hz medan formanten stannar nära 700 Hz).
 - `cargo test --release` = **65 tester**, 0 varningar.
 
+### P30 — Pitch-bevarande time-stretch (Fas 2.3) · ✅ KLAR
+Stretch var varispeed: `AuditionVoice` multiplicerade uppspelningshastigheten med `time_stretch_ratio`, vilket ändrade både tempo och tonhöjd. `StemChannel.time_stretch` (SPEED-ratten) lästes aldrig av ljudmotorn.
+- **Löst:** Ny **WSOLA**-sträckare `Wsola` i `vocal_harmonizer.rs`: Hann-fönstrade grains (frame 1024, hop 512 = 50 % överlapp), normaliserad korskorrelation för fasjustering med **coarse-to-fine**-sökning (search 128) så den klarar långa buffertar. `AuditionVoice` har nu ett `wsola`-fält; när stretch ≠ 1.0 i framlänges spel sträcks ljudet med WSOLA (`ratio = tsr·sr_ratio·pitch`) och resampplas sedan (`step = sr_ratio·pitch`) — tempo ändras, tonhöjd bevaras. `time_stretch()`-hjälpare för hela buffertar är kopplad till **SPEED**-ratten i Stem Separator: den tillämpas vid släpp och körs från `stem_audio_base` (originalet) så upprepade drag inte staplar artefakter. `rotary_knob_full()` rapporterar drag-släpp.
+- **Test:** `wsola_time_stretch_preserves_pitch_and_scales_duration` (220 Hz-sin, 2.0× ≈ dubbel längd och 0.5× ≈ halv längd, tonhöjd kvar på 220 Hz).
+- `cargo test --release` = **66 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning

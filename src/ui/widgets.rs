@@ -12,6 +12,20 @@ pub fn rotary_knob(
     color: Color32,
     size: f32,
 ) -> bool {
+    rotary_knob_full(ui, value, min, max, label, color, size).0
+}
+
+/// Like [`rotary_knob`] but also reports whether the drag just ended, so
+/// expensive follow-up work (e.g. offline time-stretch) can run on release.
+pub fn rotary_knob_full(
+    ui: &mut Ui,
+    value: &mut f32,
+    min: f32,
+    max: f32,
+    label: &str,
+    color: Color32,
+    size: f32,
+) -> (bool, bool) {
     let mut changed = false;
     let knob_width = size.max(46.0);
     let desired_size = Vec2::new(knob_width, size + 16.0);
@@ -84,7 +98,7 @@ pub fn rotary_knob(
         Theme::TEXT_MUTED,
     );
 
-    changed
+    (changed, response.drag_stopped())
 }
 
 /// Draw an FL Studio style tactile Step Button with LED

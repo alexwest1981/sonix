@@ -59,6 +59,9 @@ pub struct StemProject {
     pub stems: Vec<StemChannel>,
     pub selected_sample_idx: usize,
     pub stem_audio: Vec<StemAudio>,
+    /// Un-stretched separation result, used as the source for the SPEED
+    /// (pitch-preserving time-stretch) control.
+    pub stem_audio_base: Vec<StemAudio>,
     pub sample_rate: u32,
     pub source_path: Option<String>,
 }
@@ -75,6 +78,7 @@ impl Default for StemProject {
             stems: Vec::new(),
             selected_sample_idx: 0,
             stem_audio: Vec::new(),
+            stem_audio_base: Vec::new(),
             sample_rate: 44100,
             source_path: None,
         }
@@ -284,6 +288,7 @@ impl StemProject {
         self.duration_seconds = left.len() as f32 / sr_f;
         self.bpm = estimate_bpm(left, right, sr_f);
         self.stem_audio = separated;
+        self.stem_audio_base = self.stem_audio.clone();
         self.stems.clear();
 
         let types = [StemType::Vocals, StemType::Drums, StemType::Bass, StemType::Instruments];

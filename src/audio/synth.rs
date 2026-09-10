@@ -6,6 +6,7 @@ use super::envelope::{AdsrParams, AdsrVoice};
 use super::filter::{FilterParams, StateVariableFilter};
 use super::master_fx::{Compressor, CompressorParams, MasterFxChain, RemixFx, StereoEq, TapeStop, TrackEqSettings};
 use super::patcher::{PatchProcessor, PatchSpec};
+use super::vocal_harmonizer::Wsola;
 
 /// Debug logging to ~/Music/Sonix/audio_debug.log. Enabled when the
 /// SONIX_AUDIO_DEBUG env var is set OR when the marker file
@@ -296,6 +297,9 @@ pub struct AuditionVoice {
     pub loop_playback: bool,
     pub play_pos_samples: f32,
     pub is_playing: bool,
+    /// Pitch-preserving time-stretch state (used when `time_stretch_ratio != 1`
+    /// and playback is forward).
+    pub wsola: Wsola,
 }
 
 /// A polyphonic one-shot voice that streams a preloaded WAV sample
@@ -724,6 +728,7 @@ impl SynthEngine {
                     loop_playback,
                     play_pos_samples: start_pos,
                     is_playing: true,
+                    wsola: Wsola::new(sample_rate),
                 });
             }
             AudioCommand::TriggerSampleVoice {
@@ -1068,45 +1073,65 @@ impl SynthEngine {
         if let Some(ref mut aud) = self.audition {
             if aud.is_playing && !aud.left.is_empty() {
                 let len = aud.left.len();
-                let idx_f = aud.play_pos_samples;
-                let idx0 = idx_f.floor() as usize;
-                let idx1 = (idx0 + 1).min(len.saturating_sub(1));
-                let frac = idx_f - idx0 as f32;
+                let sr_ratio = aud.sample_rate / self.sample_rate;
+                let pr = aud.pitch_ratio.max(0.05);
+                let tsr = aud.time_stretch_ratio.max(0.05);
+                let use_wsola = !aud.is_reverse && (tsr - 1.0).abs() > 1e-3;
 
-                if idx0 < len {
-                    let l0 = aud.left[idx0];
-                    let l1 = aud.left[idx1];
-                    let r0 = if idx0 < aud.right.len() { aud.right[idx0] } else { l0 };
-                    let r1 = if idx1 < aud.right.len() { aud.right[idx1] } else { l1 };
+                if use_wsola {
+                    // Pitch-preserving time-stretch: WSOLA at ratio tsr*pr, then
+                    // resample by sr_ratio*pr to convert rate and apply pitch.
+                    aud.wsola.set_ratio(tsr * sr_ratio * pr);
+                    let step = sr_ratio * pr;
+                    let (l, r) = aud
+                        .wsola
+                        .next_resampled(&aud.left, &aud.right, aud.loop_playback, step);
+                    stem_mix_l += l * aud.volume;
+                    stem_mix_r += r * aud.volume;
+                    if aud.wsola.is_finished() && aud.wsola.available() <= 0.0 {
+                        aud.is_playing = false;
+                    }
+                } else {
+                    let idx_f = aud.play_pos_samples;
+                    let idx0 = idx_f.floor() as usize;
+                    let idx1 = (idx0 + 1).min(len.saturating_sub(1));
+                    let frac = idx_f - idx0 as f32;
 
-                    let raw_l = l0 + (l1 - l0) * frac;
-                    let raw_r = r0 + (r1 - r0) * frac;
+                    if idx0 < len {
+                        let l0 = aud.left[idx0];
+                        let l1 = aud.left[idx1];
+                        let r0 = if idx0 < aud.right.len() { aud.right[idx0] } else { l0 };
+                        let r1 = if idx1 < aud.right.len() { aud.right[idx1] } else { l1 };
 
-                    stem_mix_l += raw_l * aud.volume;
-                    stem_mix_r += raw_r * aud.volume;
+                        let raw_l = l0 + (l1 - l0) * frac;
+                        let raw_r = r0 + (r1 - r0) * frac;
 
-                    let speed = (aud.sample_rate / self.sample_rate) * aud.pitch_ratio * aud.time_stretch_ratio;
-                    if aud.is_reverse {
-                        aud.play_pos_samples -= speed;
-                        if aud.play_pos_samples < 0.0 {
-                            if aud.loop_playback {
-                                aud.play_pos_samples = (len as f32 - 1.0).max(0.0);
-                            } else {
-                                aud.is_playing = false;
+                        stem_mix_l += raw_l * aud.volume;
+                        stem_mix_r += raw_r * aud.volume;
+
+                        let speed = sr_ratio * pr * tsr;
+                        if aud.is_reverse {
+                            aud.play_pos_samples -= speed;
+                            if aud.play_pos_samples < 0.0 {
+                                if aud.loop_playback {
+                                    aud.play_pos_samples = (len as f32 - 1.0).max(0.0);
+                                } else {
+                                    aud.is_playing = false;
+                                }
+                            }
+                        } else {
+                            aud.play_pos_samples += speed;
+                            if aud.play_pos_samples >= len as f32 {
+                                if aud.loop_playback {
+                                    aud.play_pos_samples = 0.0;
+                                } else {
+                                    aud.is_playing = false;
+                                }
                             }
                         }
                     } else {
-                        aud.play_pos_samples += speed;
-                        if aud.play_pos_samples >= len as f32 {
-                            if aud.loop_playback {
-                                aud.play_pos_samples = 0.0;
-                            } else {
-                                aud.is_playing = false;
-                            }
-                        }
+                        aud.is_playing = false;
                     }
-                } else {
-                    aud.is_playing = false;
                 }
             }
         }

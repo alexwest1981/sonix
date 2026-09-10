@@ -2968,6 +2968,43 @@ impl SonixApp {
         }
     }
 
+    /// Re-render one stem through the pitch-preserving time-stretch and reload
+    /// it into the engine. Runs from the original (un-stretched) audio so the
+    /// SPEED knob can be adjusted repeatedly without compounding artefacts.
+    pub fn apply_stem_time_stretch(&mut self, idx: usize) {
+        let sr = self.stem_project.sample_rate as f32;
+        if idx >= self.stem_project.stems.len()
+            || idx >= self.stem_project.stem_audio.len()
+            || idx >= self.stem_project.stem_audio_base.len()
+        {
+            return;
+        }
+        let ratio = self.stem_project.stems[idx].time_stretch;
+        let base = &self.stem_project.stem_audio_base[idx];
+        let left = crate::audio::vocal_harmonizer::time_stretch(&base.left, sr, ratio);
+        let right = crate::audio::vocal_harmonizer::time_stretch(&base.right, sr, ratio);
+        self.stem_project.stem_audio[idx] = crate::audio::stem_separator::StemAudio { left, right };
+
+        let audio = self.stem_project.stem_audio[idx].clone();
+        let ch = &self.stem_project.stems[idx];
+        let _ = self.engine.send_command(AudioCommand::LoadStemTrack {
+            track_index: idx,
+            left: std::sync::Arc::new(audio.left),
+            right: std::sync::Arc::new(audio.right),
+            sample_rate: sr,
+            volume: ch.volume,
+            pan: ch.pan,
+            start_time_secs: 0.0,
+        });
+        let _ = self.engine.send_command(AudioCommand::SetStemTrackState {
+            track_index: idx,
+            volume: ch.volume,
+            pan: ch.pan,
+            muted: ch.muted,
+            solo: ch.solo,
+        });
+    }
+
     /// Adds the four separated stems as real timeline tracks.
     pub fn export_separated_stems(&mut self) {
         if self.stem_project.stem_audio.is_empty() {
@@ -4256,6 +4293,10 @@ impl eframe::App for SonixApp {
                             }
                             if actions.export_stems {
                                 self.export_separated_stems();
+                            }
+                            if let Some(idx) = actions.speed_changed {
+                                self.apply_stem_time_stretch(idx);
+                                self.status_message = crate::tstatus!("SPEED: tidssträckning tillämpad på stämspår {} (tonhöjd bevarad)", idx + 1);
                             }
                         }
                         ViewMode::PluginManager => {

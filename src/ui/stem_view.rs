@@ -1,12 +1,15 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::stem_separator::StemProject;
 use crate::ui::theme::Theme;
-use crate::ui::widgets::rotary_knob;
+use crate::ui::widgets::rotary_knob_full;
 
 #[derive(Default)]
 pub struct StemViewActions {
     pub request_separation: bool,
     pub export_stems: bool,
+    /// Index of a stem whose SPEED (time-stretch) control was changed and must
+    /// be re-rendered by the app.
+    pub speed_changed: Option<usize>,
 }
 
 pub fn render_stem_separator_view(
@@ -67,7 +70,7 @@ pub fn render_stem_separator_view(
         }
 
         // 4 Isolated Stem Waveform Channels
-        for stem in &mut project.stems {
+        for (stem_idx, stem) in project.stems.iter_mut().enumerate() {
             let col = stem.stem_type.color();
             ui.group(|ui| {
                 ui.horizontal(|ui| {
@@ -90,9 +93,11 @@ pub fn render_stem_separator_view(
                             });
 
                             ui.horizontal(|ui| {
-                                rotary_knob(ui, &mut stem.volume, 0.0, 1.25, "VOL", col, 22.0);
-                                rotary_knob(ui, &mut stem.pan, -1.0, 1.0, "PAN", Color32::WHITE, 22.0);
-                                rotary_knob(ui, &mut stem.time_stretch, 0.5, 2.0, "SPEED", Theme::FL_YELLOW, 22.0);
+                                rotary_knob_full(ui, &mut stem.volume, 0.0, 1.25, "VOL", col, 22.0);
+                                rotary_knob_full(ui, &mut stem.pan, -1.0, 1.0, "PAN", Color32::WHITE, 22.0);
+                                if rotary_knob_full(ui, &mut stem.time_stretch, 0.5, 2.0, "SPEED", Theme::FL_YELLOW, 22.0).1 {
+                                    actions.speed_changed = Some(stem_idx);
+                                }
                             });
                         });
                     });

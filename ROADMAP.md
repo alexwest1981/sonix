@@ -17,17 +17,17 @@
 
 ## 📊 Framsteg i siffror
 
-**Totalt: ~96 % klart** (av det som gränssnittet utlovar)
+**Totalt: ~97 % klart** (av det som gränssnittet utlovar)
 
 ```text
-[███████████████████████████████████░]  96 %
+[████████████████████████████████████░]  97 %
 ```
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
 | Ljudmotor (synth, trummor, FX, patcher, per-spår) | 11 | 1 | **92 %** |
 | Sequencer & arranger (timeline, rack, piano roll, sektioner) | 5 | 0 | **100 %** |
-| Inspelning & sång (mic, takes, comping, pitch, harmonier) | 5 | 2 | **71 %** |
+| Inspelning & sång (mic, takes, comping, pitch, harmonier) | 6 | 1 | **86 %** |
 | Generatorer (ackord, tärning, drummer, tuner, add track) | 5 | 0 | **100 %** |
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Plugin-hantering | 2 | 6 | **25 %** |
@@ -100,11 +100,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Klart när:** Pitch-shift ändrar tonhöjd utan "chipmunk"-artefakter. ✅ (test: `formant_preserving_shift_keeps_formant_while_shifting_pitch`)
   - **Filer:** `src/audio/vocal_harmonizer.rs`
 
-- [ ] **2.3 Pitch-bevarande time-stretch** — *L*
-  - **Problem:** Nuvarande är varispeed (ändrar tonhöjd).
-  - **Gör:** WSOLA eller phase-vocoder i `StemVoiceTrack`/audition.
-  - **Klart när:** Tempo kan ändras utan att tonhöjden ändras.
-  - **Filer:** `src/audio/synth.rs`, `src/audio/vocal_harmonizer.rs`
+- [x] **2.3 Pitch-bevarande time-stretch** — *L* ✅
+  - **Löst:** Ny **WSOLA**-sträckare (`Wsola` i `vocal_harmonizer.rs`): Hann-fönstrade grains med 50 % överlapp, normaliserad korskorrelation (coarse-to-fine) för fasjustering. Audition-uppspelningen i Sångstudion (`AuditionVoice`) använder nu WSOLA när stretch ≠ 1.0 i framlänges rakt spel, och resampplar sedan för pitch/rate — så tempo ändras utan att tonhöjden följer med (varispeed tidigare). Även `time_stretch()`-hjälpare för hela buffertar, kopplad till **SPEED**-ratten i Stem Separator (tillämpas vid släpp, körs från original-ljudet så den inte staplas).
+  - **Klart när:** Tempo kan ändras utan att tonhöjden ändras. ✅ (test: `wsola_time_stretch_preserves_pitch_and_scales_duration`)
+  - **Filer:** `src/audio/vocal_harmonizer.rs`, `src/audio/synth.rs`, `src/audio/stem_separator.rs`, `src/ui/stem_view.rs`, `src/ui/widgets.rs`, `src/ui/app.rs`
 
 - [x] **2.4 Per-voice filter & ADSR i Alchemy-synthen** — *M* ✅
   - **Löst:** Varje röst har nu eget filtertillstånd (`Voice.filter`) och ett eget **filter-envelope** (`Voice.filter_env`) vars nivå modulerar cutoff per ton (i oktaver). Globala filterfältet på synth-bussen är borttaget. Ny ratt **"ENV ±oct"** i filterpanelen (−6..+6) skickar `AudioCommand::SetFilterEnv`. Standard 0 → ingen ljudförändring. Envelope-*parametrarna* (ADSR + filter-envelope-form) är fortfarande patch-globala så rattar hörs live, men varje tons envelope löper oberoende.
@@ -171,7 +170,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 2.3 — Pitch-bevarande time-stretch** (nästa ovalda punkt i Fas 2).
+**Fas 2.1 — Realtids-autotune i ljudtråden** (sista ovalda punkten i Fas 2).
 
 ## 🛠️ Så här håller vi roadmapen levande
 
