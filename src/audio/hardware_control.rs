@@ -14,6 +14,8 @@ pub enum ControlEvent {
     TrackMute { track: usize, mute: bool },
     BusVolume { bus: usize, value: f32 },
     VcaVolume { vca: usize, value: f32 },
+    /// A note on/off from a real MIDI keyboard (`on == false` = note off).
+    MidiNote { note: u8, velocity: u8, on: bool },
 }
 
 #[derive(Debug, Clone, PartialEq)]

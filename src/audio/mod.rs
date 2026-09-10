@@ -10,6 +10,7 @@ pub mod factory_samples;
 pub mod filter;
 pub mod hardware_control;
 pub mod master_fx;
+pub mod midi_input;
 pub mod patcher;
 pub mod plugin_host;
 pub mod recorder;
@@ -41,6 +42,8 @@ pub use filter::FilterParams;
 pub use hardware_control::{
     control_channel, osc_to_event, parse_osc_message, ControlEvent, McuInput, OscArg, OscServer,
 };
+#[allow(unused_imports)]
+pub use midi_input::{note_to_roll_offset, MidiKeyboardInput};
 #[allow(unused_imports)]
 pub use master_fx::{
     CompressorParams, DeEsserParams, DoublerParams, GateParams, LimiterParams, MasterEqBand,

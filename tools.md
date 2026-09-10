@@ -230,6 +230,12 @@ Spårparametrar (volym, panorering, reverb/delay-send) kunde bara sättas statis
 - **Tester:** `test_automation_value_at_interpolates`, `test_automation_lane_serde_roundtrip`, `test_automation_param_ranges_and_index`.
 - `cargo test --release` = **71 tester**, 0 varningar.
 
+### P33 — MIDI-klaviaturinspelning till Piano Roll (Fas 5.3) · ✅ KLAR
+Det gick att spela med datortangentbordet men inte med ett riktigt MIDI-klaviatur, och inget kunde spelas in i Piano Roll.
+- **Löst:** Ny modul `src/audio/midi_input.rs` med `MidiKeyboardInput`, som öppnar en ALSA-sequencer-in-port (`Seq::open(None, Capture)`, klient `"Sonix Keys"`, port `"Sonix MIDI In"`) och skickar note-on/off som den nya `ControlEvent::MidiNote { note, velocity, on }` (velocity 0 = note-off). **Ingen `midir`-dependency behövdes** eftersom projektet redan använder `alsa`-craten — funktionellt likvärdigt och äkta. Ren, testad hjälpfunktion `note_to_roll_offset(note, base, rows)` transponerar hela oktaver så att toner utanför rutnätet hamnar på rätt rad. I `app.rs`: `handle_midi_note()` spelar via nya `play_note_velocity()` och, när `midi_record_armed` är på och transporten rullar, skriver `record_midi_note_at_step()` in hållna toner i `piano_roll_grid`/kanal 6 och synkar mönstret; `advance_sequencer()` håller kvar hållna toner över steg. Auto-anslutning sker en gång vid start; status, enhetslista och anslut/koppla-från finns i Hårdvarukontroller-modalen, plus MIDI-indikator och **⏺ MIDI-REC**-knapp i Piano Roll-headern. Fält: `midi_input`, `midi_keyboard_connected`, `midi_device_name`, `midi_note_count`, `midi_record_armed`, `midi_held_notes`.
+- **Tester:** `note_to_roll_offset` (in-range, oktavtransponering, kort rutnät, tomt rutnät) i `midi_input.rs`.
+- `cargo test --release` = **75 tester**, 0 varningar.
+
 ---
 
 ## 3. Sammanfattning
@@ -239,6 +245,7 @@ Spårparametrar (volym, panorering, reverb/delay-send) kunde bara sättas statis
 | Alchemy-synth, trummor, delay/reverb, filter, envelope | REAL |
 | Timeline/arranger, Channel Rack, Piano Roll, export | REAL |
 | Automationskurvor (volym/pan/sends) | ✅ REAL (P32) |
+| MIDI-klaviaturinspelning till Piano Roll | ✅ REAL (P33) |
 | Mikrofoninspelning, vocal audition, factory-samples | REAL |
 | Session Drummer | REAL (P13) |
 | Dice Generator | REAL (P12) |

@@ -122,6 +122,7 @@ update-desktop-database ~/.local/share/applications
 ### 3. 🎹 Piano Roll & Interaktivt Touch-Klaviatur — ✅ Äkta
 * **Polyfonisk Noteditor:** Notlängder, velocity, skalsnäppning och penselverktyg.
 * **Spelbart Virtuellt Klaviatur:** Neonfeedback med stöd för datortangentbord (A–K).
+* **Riktig MIDI-klaviaturingång (ALSA Seq):** Öppna en riktig MIDI-in-port ("Sonix MIDI In"), koppla ett hårdvaruklaviatur med `aconnect`, spela live och armera **⏺ MIDI-REC** för att skriva hållna toner direkt i Piano Roll-rutnätet under uppspelning.
 
 ### 4. 🎚 Mixerbord & Per-Spår-Effekter — ✅ Äkta
 * **Kanalstrippar:** Faders, riktiga peak-VU-mätare, solo, mute, pan och stereobredd.

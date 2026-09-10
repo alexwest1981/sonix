@@ -9,6 +9,7 @@ use crate::audio::{
 };
 use crate::audio::ai_generator::{AiMusicAssistant, GenStyle};
 use crate::audio::hardware_control::{control_channel, ControlEvent, McuInput, OscServer};
+use crate::audio::MidiKeyboardInput;
 use crate::audio::patcher::{ModularGraph, PatchSpec};
 use crate::audio::plugin_host::PluginManager;
 use crate::audio::recorder::{LiveMicrophoneCapture, VocalStudioTrack};
@@ -722,6 +723,14 @@ pub struct SonixApp {
     pub midi_learn_active: bool,
     pub mcu_input: Option<McuInput>,
     pub osc_server: Option<OscServer>,
+    // Real MIDI keyboard input (Fas 5.3)
+    pub midi_input: Option<crate::audio::MidiKeyboardInput>,
+    pub midi_auto_connect_attempted: bool,
+    pub midi_keyboard_connected: bool,
+    pub midi_device_name: String,
+    pub midi_note_count: usize,
+    pub midi_record_armed: bool,
+    pub midi_held_notes: std::collections::HashSet<u8>,
     pub control_tx: std::sync::mpsc::Sender<ControlEvent>,
     pub control_rx: std::sync::mpsc::Receiver<ControlEvent>,
     // Batch Export & Render Queue
@@ -1256,6 +1265,13 @@ impl SonixApp {
             midi_learn_active: false,
             mcu_input: None,
             osc_server: None,
+            midi_input: None,
+            midi_auto_connect_attempted: false,
+            midi_keyboard_connected: false,
+            midi_device_name: crate::i18n::t("Inte ansluten").to_string(),
+            midi_note_count: 0,
+            midi_record_armed: false,
+            midi_held_notes: std::collections::HashSet::new(),
             control_tx,
             control_rx,
             // Batch Export & Render Queue
@@ -3588,6 +3604,14 @@ impl SonixApp {
                 self.current_step = self.song_step_in_bar;
                 self.trigger_song_step(self.song_bar, self.song_step_in_bar);
             }
+
+            // Sustain any held MIDI notes across the new step while recording.
+            if self.midi_record_armed && !self.midi_held_notes.is_empty() {
+                let held: Vec<u8> = self.midi_held_notes.iter().copied().collect();
+                for note in held {
+                    self.record_midi_note_at_step(note);
+                }
+            }
         }
     }
 
@@ -3758,13 +3782,17 @@ impl SonixApp {
     }
 
     fn play_note(&mut self, note: u8) {
+        self.play_note_velocity(note, 0.85);
+    }
+
+    fn play_note_velocity(&mut self, note: u8, velocity: f32) {
         if !self.active_keys.contains(&note) {
             self.active_keys.insert(note);
             let freq = midi_to_freq(note);
             let _ = self.engine.send_command(AudioCommand::NoteOn {
                 note,
                 freq,
-                velocity: 0.85,
+                velocity: velocity.clamp(0.05, 1.0),
             });
         }
     }
@@ -3772,6 +3800,35 @@ impl SonixApp {
     fn release_note(&mut self, note: u8) {
         self.active_keys.remove(&note);
         let _ = self.engine.send_command(AudioCommand::NoteOff { note });
+    }
+
+    /// Handles a real MIDI keyboard note event: plays it, and (when armed and
+    /// the transport is running) records it into the active Piano Roll pattern.
+    fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool) {
+        let is_on = on && velocity > 0;
+        if is_on {
+            if self.midi_held_notes.insert(note) {
+                self.play_note_velocity(note, velocity as f32 / 127.0);
+                if self.midi_record_armed && self.is_playing {
+                    self.record_midi_note_at_step(note);
+                }
+            }
+        } else if self.midi_held_notes.remove(&note) {
+            self.release_note(note);
+        }
+    }
+
+    /// Writes a held MIDI note into the Piano Roll grid at the current step.
+    fn record_midi_note_at_step(&mut self, note: u8) {
+        const BASE_MIDI: u8 = 48;
+        const ROWS: usize = 24;
+        if let Some(off) = crate::audio::note_to_roll_offset(note, BASE_MIDI, ROWS) {
+            let step = self.current_step.min(15);
+            self.piano_roll_grid[off][step] = true;
+            self.channels[6].steps[step] = true;
+            self.channels[6].notes[step] = BASE_MIDI + off as u8;
+            self.sync_active_pattern_from_ui();
+        }
     }
 
     /// Drains real MCU/OSC events and refreshes connection status.
@@ -3796,6 +3853,18 @@ impl SonixApp {
             };
         } else {
             self.mcu_connected = false;
+        }
+        if let Some(midi) = &self.midi_input {
+            self.midi_keyboard_connected = true;
+            self.midi_note_count = midi.received();
+            let devices = midi.device_list();
+            self.midi_device_name = if devices.is_empty() {
+                crate::i18n::t("Sonix MIDI In (väntar – anslut med aconnect)").to_string()
+            } else {
+                devices.join(", ")
+            };
+        } else {
+            self.midi_keyboard_connected = false;
         }
     }
 
@@ -3841,6 +3910,9 @@ impl SonixApp {
                 if vca < self.vca_faders.len() {
                     self.vca_faders[vca] = value.clamp(0.0, 1.25);
                 }
+            }
+            ControlEvent::MidiNote { note, velocity, on } => {
+                self.handle_midi_note(note, velocity, on);
             }
         }
     }
@@ -3912,6 +3984,14 @@ impl SonixApp {
 
 impl eframe::App for SonixApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Auto-open the MIDI keyboard input port once, so external keyboards
+        // work as soon as they are connected with `aconnect`.
+        if !self.midi_auto_connect_attempted {
+            self.midi_auto_connect_attempted = true;
+            if let Ok(midi) = MidiKeyboardInput::connect(self.control_tx.clone()) {
+                self.midi_input = Some(midi);
+            }
+        }
         self.poll_hardware_control();
         self.sync_patcher_graph();
         self.sync_stem_separator_engine();
@@ -4020,6 +4100,9 @@ impl eframe::App for SonixApp {
             for note in keys_to_release {
                 self.release_note(note);
             }
+        }
+        if !piano_active && !self.midi_held_notes.is_empty() {
+            self.midi_held_notes.clear();
         }
 
         // Keyboard Shortcuts
@@ -8167,6 +8250,16 @@ impl SonixApp {
                     self.piano_roll_poly_mode = !self.piano_roll_poly_mode;
                 }
 
+                // Real MIDI keyboard input indicator + record arm (Fas 5.3)
+                let midi_col = if self.midi_keyboard_connected { Theme::FL_GREEN } else { Theme::TEXT_MUTED };
+                ui.label(egui::RichText::new(if self.midi_keyboard_connected { "🎹 MIDI ●" } else { "🎹 MIDI ○" }).strong().size(10.0).color(midi_col))
+                    .on_hover_text(if self.midi_keyboard_connected { crate::i18n::t("MIDI-klaviatur ansluten (ALSA Seq).") } else { crate::i18n::t("Ingen MIDI-klaviatur ansluten. Öppna Hårdvarukontroller för att koppla upp.") });
+                let mrec_bg = if self.midi_record_armed { Color32::from_rgb(180, 40, 40) } else { Color32::from_rgb(38, 45, 56) };
+                let mrec_fg = if self.midi_record_armed { Color32::WHITE } else { Theme::TEXT_BRIGHT };
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ MIDI-REC")).strong().size(10.0).color(mrec_fg)).fill(mrec_bg)).on_hover_text(crate::i18n::t("Spela in hållna MIDI-toner i rutnätet under uppspelning.")).clicked() {
+                    self.midi_record_armed = !self.midi_record_armed;
+                }
+
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Töm")).size(10.5).color(Color32::from_rgb(255, 120, 120))).fill(Color32::from_rgb(50, 20, 25))).on_hover_text(crate::i18n::t("Rensa mönster")).clicked() {
                     self.piano_roll_grid = [[false; 16]; 24];
                     self.channels[6].steps = [false; 16];
@@ -9648,6 +9741,65 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             self.midi_learn_active = !self.midi_learn_active;
                         }
                     });
+                });
+
+                ui.add_space(8.0);
+
+                // Section 1b: MIDI Keyboard (Piano Roll input) — Fas 5.3
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(crate::i18n::t("🎹 MIDI-KLAVIATUR (Piano Roll)")).strong().size(12.0).color(Theme::FL_GREEN));
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let (status_txt, status_col) = if self.midi_keyboard_connected {
+                                (crate::i18n::t("● MIDI-IN-PORT ÖPPEN"), Theme::FL_GREEN)
+                            } else {
+                                (crate::i18n::t("○ FRÅNKOPPLAD"), Theme::TEXT_MUTED)
+                            };
+                            ui.label(egui::RichText::new(status_txt).strong().size(10.0).color(status_col));
+                        });
+                    });
+                    ui.separator();
+
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::t("Enhet:"));
+                        ui.label(egui::RichText::new(&self.midi_device_name).strong().color(Theme::FL_CYAN));
+                    });
+
+                    ui.horizontal(|ui| {
+                        if self.midi_input.is_some() {
+                            if ui.button(crate::i18n::t("🔌 Koppla från MIDI")).clicked() {
+                                self.midi_input = None;
+                                self.midi_keyboard_connected = false;
+                                self.midi_held_notes.clear();
+                                self.status_message = crate::i18n::t("MIDI-klaviatur frånkopplad.").to_string();
+                            }
+                        } else if ui.button(crate::i18n::t("🔌 Anslut MIDI (ALSA Seq)")).clicked() {
+                            match MidiKeyboardInput::connect(self.control_tx.clone()) {
+                                Ok(m) => {
+                                    self.midi_input = Some(m);
+                                    self.status_message = crate::i18n::t("✔ MIDI-in-port öppnad. Anslut ett klaviatur med 'aconnect'.").to_string();
+                                }
+                                Err(e) => {
+                                    self.status_message = crate::tstatus!("⚠ Kunde inte öppna MIDI-in: {}", e);
+                                }
+                            }
+                        }
+                        if self.midi_input.is_some() {
+                            ui.label(egui::RichText::new(crate::tstatus!("{} nothändelser", self.midi_note_count)).size(10.0).color(Theme::FL_GREEN));
+                        }
+                    });
+
+                    ui.add_space(4.0);
+                    let rec_bg = if self.midi_record_armed { Color32::from_rgb(180, 40, 40) } else { Theme::PANEL_BG };
+                    let rec_txt = if self.midi_record_armed {
+                        crate::i18n::t("🔴 MIDI-REC: ARMED (spelar in i Piano Roll)")
+                    } else {
+                        crate::i18n::t("⏺ Armera MIDI-inspelning till Piano Roll")
+                    };
+                    if ui.add(egui::Button::new(egui::RichText::new(rec_txt).strong().size(10.5).color(Color32::WHITE)).fill(rec_bg)).on_hover_text(crate::i18n::t("När armerad skrivs hållna MIDI-klaviaturtoner in i det aktiva mönstrets rutnät under uppspelning.")).clicked() {
+                        self.midi_record_armed = !self.midi_record_armed;
+                    }
+                    ui.label(egui::RichText::new(crate::i18n::t("Tips: koppla ihop porten med 'aconnect <klaviatur> 'Sonix Keys:0'' och aktivera läget i Piano Roll.")).size(9.5).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(8.0);

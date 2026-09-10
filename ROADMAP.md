@@ -32,7 +32,7 @@
 | AI (lokal + LLM + ljud + kontext) | 4 | 1 | **80 %** |
 | Plugin-hantering | 2 | 6 | **25 %** |
 | Export & projekt-I/O | 4 | 1 | **80 %** |
-| Hårdvara (MCU/OSC) | 2 | 0 | **100 %** |
+| Hårdvara (MCU/OSC/MIDI) | 3 | 0 | **100 %** |
 | Lokalisering & system (7 språk, motor) | 3 | 0 | **100 %** |
 | Dokumentation (README, ROADMAP, tools) | 3 | 0 | **100 %** |
 
@@ -162,7 +162,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 - [ ] **5.1 Fler tester** för realtids- och plugin-vägar (integrationstester).
 - [ ] **5.2 VCA-grupper & sub-mix-bussar** — *M* (om efterfrågat; medvetet borttagna).
-- [ ] **5.3 Midi-inspelning/klaviatur-inmatning** (`midir`) till Piano Roll.
+- [x] **5.3 Midi-inspelning/klaviatur-inmatning** (ALSA Seq) till Piano Roll. ✅
+  - **Löst:** Ny modul `src/audio/midi_input.rs` med `MidiKeyboardInput` som öppnar en ALSA-sequencer-in-port (`"Sonix MIDI In"`, klient `"Sonix Keys"`) och vidarebefordrar note-on/off som `ControlEvent::MidiNote { note, velocity, on }`. (Projektet använder redan `alsa`-craten, så ingen ny `midir`-dependency behövdes.) Ren hjälpfunktion `note_to_roll_offset(note, base, rows)` transponerar hela oktaver så att toner utanför rutnätet hamnar på rätt rad (testad). I `app.rs` spelar `handle_midi_note()` upp toner via `play_note_velocity()` och, när `midi_record_armed` är på och transporten rullar, skriver `record_midi_note_at_step()` in dem i `piano_roll_grid`/kanal 6 och synkar mönstret. `advance_sequencer()` håller kvar hållna toner över steg. Auto-anslutning sker en gång vid start; status, enhetslista och anslut/koppla-från finns i Hårdvarukontroller-modalen, plus en MIDI-indikator och **⏺ MIDI-REC**-knapp i Piano Roll-headern. 4 nya tester (75 totalt, 0 varningar).
+  - **Klart när:** En extern klaviatur kan spela upp och spela in toner i Piano Roll under uppspelning. ✅
+  - **Filer:** `src/audio/midi_input.rs`, `src/audio/hardware_control.rs`, `src/audio/mod.rs`, `src/ui/app.rs`, `src/i18n.rs`
 - [x] **5.4 Automationskurvor** på tidslinjen. ✅
   - **Löst:** Ny datamodell `AutomationParam` (Volym, Panorering, Reverb-send, Delay-send), `AutomationPoint` och `AutomationLane` med linjär interpolering (`value_at`). Varje `PlaylistTrack` har `automation: Vec<AutomationLane>`; kurvorna sparas/laddas i projektet (`SavedTrackData.automation` + `PreloadedTrackData.automation`, `#[serde(default)]`). Under uppspelning utvärderar `apply_automation()` alla aktiva kurvor vid `song_time` och skickar ändrade värden till motorn via `SetStemTrackState`/`SetTrackMix` (med per-parameter-cache så inga kommandon spammas). I arranger-vyn finns en **Automation PÅ/AV**-knapp + parameter-väljare i ROW 2, och en dedikerad redigeringsfil under Master-spåret: vänsterklicka lägger till punkter, dra flyttar (snäpps med valt `TimeSnapMode`), högerklicka tar bort. `value_at`-interpolering, serde-roundtrip och parameter-index/ranges testas (71 tester, 0 varningar).
   - **Klart när:** En kurva kan ritas per spår/parameter och hörs påverka ljudet under uppspelning samt överlever spara/ladda. ✅
@@ -173,7 +176,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**Fas 5.3 — Midi-inspelning/klaviatur-inmatning (`midir`) till Piano Roll** (nästa medelstora, verifierbara punkt; Fas 2 är nu helt klar). Alternativt **Fas 3.1** (neural stem-separation, XL) eller **Fas 4.1** (plugin-hosting, L) om du vill ta itu med de stora kvarvarande bitarna.
+**Fas 5.1 — Fler tester** för realtids- och plugin-vägar, eller **Fas 5.5** (export-presets / loudness-normalisering) — båda medelstora och verifierbara. Alternativt **Fas 3.1** (neural stem-separation, XL) eller **Fas 4.1** (plugin-hosting, L) om du vill ta itu med de stora kvarvarande bitarna. Fas 2 och MIDI/automation i Fas 5 är nu klara.
 
 ## 🛠️ Så här håller vi roadmapen levande
 

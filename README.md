@@ -124,6 +124,7 @@ update-desktop-database ~/.local/share/applications
 ### 3. 🎹 Piano Roll & Interactive Touch Keyboard — ✅ Real
 * **Polyphonic Note Editor:** Note lengths, velocity editing, scale snapping and brush tools.
 * **Playable Virtual Keyboard:** Neon feedback with computer-keyboard typing (A–K).
+* **Real MIDI Keyboard Input (ALSA Seq):** Open a real MIDI-in port ("Sonix MIDI In"), connect a hardware keyboard with `aconnect`, play it live, and arm **⏺ MIDI-REC** to write held notes straight into the Piano Roll grid during playback.
 
 ### 4. 🎚 Mixer Console & Per-Track Effects — ✅ Real
 * **Channel Strips:** Faders, real peak VU meters, solo, mute, pan and stereo width.
