@@ -213,7 +213,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Time-stretch | ✅ Real | WSOLA (pitch-preserving) in the Vocal Studio audition and the Stem Separator SPEED control |
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
-| `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — applying needs a plugin host |
+| `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — FL Studio's closed `.fst` preset data cannot be decoded; CLAP/VST2/VST3 plugins can be loaded from the plugin panel instead |
 | Plugin hosting (VST3/CLAP/LV2/VST2) | 🟡 Partial | CLAP, **VST3 and VST2** load + parameter inspection + per-track audio processing with PDC + state save-load + CLAP GUI in its own X11 window + separate-process sandbox with crash restart **and shared-memory audio transport** (opt-in `--features plugin-host`); LV2, MIDI instrument routing & a real Wine/yabridge bridge still missing |
 
 **Overall:** roughly **90–95 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The largest outstanding piece is **plugin hosting** (CLAP, **VST3 and VST2** load + parameter inspection + per-track audio processing with PDC + state save-load + CLAP GUI in its own X11 window + separate-process sandbox with crash restart and shared-memory audio transport work opt-in; LV2, MIDI instrument routing and verifying a real Wine/yabridge bridge remain); neural stem separation is implemented (opt-in `--features neural` + a user-supplied HTDemucs ONNX).

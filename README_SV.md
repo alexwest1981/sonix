@@ -211,7 +211,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 | Time-stretch | ✅ Riktig | WSOLA (pitch-bevarande) i Sångstudiens provspelning och Stem Separators SPEED-ratt |
 | Ljudinställningar | ✅ Äkta | Live-ombyggnad av strömmen + sparas; visar verklig värd/enhet/ström |
 | Legacy-modal "AI-inställningar" | ✅ Äkta | Redigerar samma `AiConfig` och sparar till disk |
-| `.fst`-knappen "Apply Preset" | ✅ Ärlig | Inaktiverad med förklaring — applicering kräver plugin-värd |
+| `.fst`-knappen "Apply Preset" | ✅ Ärlig | Inaktiverad med förklaring — FL Studios stängda `.fst`-presetdata kan inte avkodas; CLAP/VST2/VST3-plugins kan i stället laddas i plugin-panelen |
 | Plugin-hosting (VST3/CLAP/LV2/VST2) | 🟡 Delvis | CLAP, **VST3 och VST2**-laddning + parameterinspektion + per-spår-ljudprocessning med PDC + state-sparning + CLAP-GUI i eget X11-fönster + separat-process-sandbox med krasch/omstart **och delat-minne-ljudtransport** (opt-in `--features plugin-host`); LV2, MIDI-instrument-routing & en riktig Wine/yabridge-brygga saknas ännu |
 
 **Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (CLAP, **VST3 och VST2**-laddning + parameterinspektion + per-spår-ljudprocessning med PDC + state-sparning + CLAP-GUI i eget X11-fönster + separat-process-sandbox med krasch/omstart och delat-minne-ljudtransport fungerar opt-in; LV2, MIDI-instrument-routing och att verifiera en riktig Wine/yabridge-brygga återstår); neural stem-separation är byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
