@@ -1412,8 +1412,18 @@ mod tests {
             vec![fake_item("sent")]
         });
         let spawn_time = started.elapsed();
+
+        // Kravet prövas först logiskt: efter att starten återvänt får arbetet
+        // inte vara färdigt. Det är deterministiskt och är vad punkten handlar
+        // om. Tidsgränsen nedan är ett komplement med god marginal (halva
+        // arbetet) — en hård millisekundgräns på en delad maskin blir ett
+        // flakigt test i stället för ett bättre bevis.
         assert!(
-            spawn_time < std::time::Duration::from_millis(50),
+            !matches!(scan.poll(), ScanPoll::Done(_)),
+            "skanningen var färdig direkt efter start — starten blockerar"
+        );
+        assert!(
+            spawn_time < std::time::Duration::from_millis(100),
             "starten tog {spawn_time:?} — den blockerar"
         );
 

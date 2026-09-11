@@ -287,6 +287,10 @@ mod tests {
     /// optimeringarna saknas, så tröskeln skalas då upp — annars vore testet
     /// meningslöst lokalt. CI kör `--release`, där det verkliga talet gäller.
     /// Uppmätt baslinje i release: medel 1,0–1,6 % och värsta 2,0–3,9 %.
+    ///
+    /// Debug-läget prövar att maskineriet fungerar och att medelbelastningen är
+    /// rimlig — **inte** prestanda. Värsta blocket mäts och skrivs ut men får
+    /// bara fälla testet i release (se kommentaren vid kontrollen).
     #[test]
     fn the_reference_project_renders_well_inside_the_realtime_budget() {
         let spec = reference_spec();
@@ -313,8 +317,14 @@ mod tests {
                 mean_ceiling,
                 stats.summary()
             );
+            // Värsta blocket prövas bara i release. I debug är DSP:n många gånger
+            // långsammare och maskinen delas med allt annat som körs, så ett
+            // enstaka block kan mycket väl gå över budgeten utan att något är
+            // fel — det var precis så det här testet flakade (mätt: 1 gång på 25
+            // körningar). En gräns som slår till slumpmässigt skyddar ingenting;
+            // i release, där talet betyder något, gäller den fortfarande.
             assert!(
-                stats.worst_load_percent < 100.0,
+                cfg!(debug_assertions) || stats.worst_load_percent < 100.0,
                 "ett block missade realtidsbudgeten i {} frames (xrun): {}",
                 frames,
                 stats.summary()
