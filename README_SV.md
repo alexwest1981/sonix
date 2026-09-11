@@ -272,7 +272,7 @@ Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finn
 
 ---
 
-## 📸 Skärmdumpar & Gränssnitt (Galleri 1920 × 1200 Helskärm)
+## 📸 Skärmdumpar & Gränssnitt (Galleri 1920 × 1080 Helskärm)
 
 > ℹ️ Dessa förhandsvisningar genereras av underhållarna med `cargo run --release -- --capture-screenshots screenshots` (öppnar en helskärmsinstans och tar skärmdumpar av varje vy). Krävs inte för att installera eller köra Sonix.
 
