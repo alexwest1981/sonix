@@ -1018,6 +1018,11 @@ pub struct SonixApp {
     pub autosave_accum: f32,
     pub autosave_last_fp: Option<u64>,
     pub autosave_last_write: Option<u64>,
+    /// Satt av `push_undo` när något strukturellt ändrats. Skrivningen sker
+    /// först vid frame-gränsen — `push_undo` anropas nämligen *först* i varje
+    /// muterande funktion, så en autosave som skrevs där skulle fånga läget
+    /// före ändringen (och därmed hoppas över som "oförändrat").
+    pub autosave_pending: bool,
     /// Autosaves som är nyare än den manuella filen, ifyllda vid start.
     pub recovery_candidates: Vec<RecoveryCandidate>,
     pub show_recovery_modal: bool,
@@ -1583,6 +1588,7 @@ impl SonixApp {
             autosave_accum: 0.0,
             autosave_last_fp: None,
             autosave_last_write: None,
+            autosave_pending: false,
             recovery_candidates,
             show_recovery_modal,
             new_project_name_input: crate::i18n::t("Mitt Beat").to_string(),
@@ -2470,9 +2476,12 @@ impl SonixApp {
         self.redo_stack.clear();
 
         // En strukturell ändring är exakt det som ska skyddas av en autosave
-        // (Fas 6.1) — men den skrivs högst var tionde sekund, annars blev det
-        // en fil per undo-steg.
-        self.autosave_after_structural_change();
+        // (Fas 6.1). Men `push_undo` anropas *först* i varje muterande funktion,
+        // alltså innan ändringen är genomförd — en autosave som skrevs här skulle
+        // fånga läget före och därför hoppas över som "oförändrat" (mätt i GUI:
+        // Ctrl+D gav ingen skrivning, bara 60 s-timern räddade läget). Därför
+        // märks ändringen här och skrivs vid frame-gränsen, i `update`.
+        self.autosave_pending = true;
     }
 
     pub fn undo(&mut self) {
@@ -2494,6 +2503,8 @@ impl SonixApp {
             for t_idx in 0..self.playlist_tracks.len() {
                 self.sync_track_regions(t_idx);
             }
+            // Även en ångring är en strukturell ändring som ska skyddas.
+            self.autosave_pending = true;
             self.status_message = crate::tstatus!("↶ Ångrade: {} (Ctrl+Z)", snapshot.description);
         } else {
             self.status_message = crate::i18n::t("Ingenting att ångra.").to_string();
@@ -2519,6 +2530,8 @@ impl SonixApp {
             for t_idx in 0..self.playlist_tracks.len() {
                 self.sync_track_regions(t_idx);
             }
+            // Även en omgörning ändrar projektet — skyddas på samma sätt.
+            self.autosave_pending = true;
             self.status_message = crate::tstatus!("↷ Gjorde om: {} (Ctrl+Y)", snapshot.description);
         } else {
             self.status_message = crate::i18n::t("Ingenting att göra om.").to_string();
@@ -5274,6 +5287,13 @@ impl eframe::App for SonixApp {
         if self.autosave_accum >= crate::autosave::INTERVAL_SECS {
             self.autosave_accum = 0.0;
             self.maybe_autosave();
+        }
+        // En strukturell ändring (märkt i `push_undo`) skrivs här i stället, när
+        // ändringen är genomförd. Ett frame senare är max ~33 ms när fönstret är
+        // fokuserat (200 ms oanvänt) — jämfört med upp till 60 s via timern.
+        if self.autosave_pending {
+            self.autosave_pending = false;
+            self.autosave_after_structural_change();
         }
         self.sync_mic_monitoring();
 
