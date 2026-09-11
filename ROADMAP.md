@@ -46,7 +46,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
 | **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, projektfilen) | 8 | 8 | **100 %** |
-| **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 0 | 4 | **0 %** |
+| **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 1 | 4 | **25 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
 
@@ -398,79 +398,24 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Gör:** Kör en faktisk yabridge-producerad brygga (Sytrus/Harmor/Gross Beat/FL Studio VSTi) genom Sonix — laddning, inspektion, ljud med PDC, state och X11-fönstret. Punkten ligger kvar som **4.6** i Fas 4; den flyttas hit när Tier 0 är klar, eftersom den är Tier 1.
   - **Beroende:** 4.1–4.2
 
-- [ ] **7.4 Skanningen av ljudbiblioteket får inte blockera starten** — *M* (fynd från GUI-testet 2026-09-11)
-  - **Mätt:** Med det riktiga biblioteket (`~/Music/Sonix/Sample_Packs`, 14 GB / 30 235 filer) skannade appen **10 630 samplar på 125,2 s** innan fönstret kom upp — ~10 GB lästes från disk (8 MB/s mitt i), och under hela tiden syntes ingenting: ingen ruta, ingen förloppsindikator. Samma start med tomt bibliotek: **0,4 s**. Cachen (`~/.cache/sonix/library_cache.tsv`, 116 932 rader) skrivs först *efter* en full skanning, så en avbruten start lämnar en ofullständig cache.
-  - **Redan åtgärdat (commit `docs`/`fix` samma dag):** de tre orsakerna till att cachen kastades i onödan är borta — `cache_fingerprint()` beskriver nu innehåll (`mtime:storlek` per rot) i stället för absoluta sökvägar, ett äldre fingeravtryck accepteras som engångsbrygga och skrivs om på plats, och cachen skrivs atomiskt (temp + `rename`) precis som autosaven. Verifierat i GUI: nya binären läste **10 630 samplar ur cachen** och uppgraderade huvudet, i stället för att skanna om.
-  - **Kvar (detta är kvarvarande arbete):** när cachen *verkligen* är ogiltig (nya samples, första starten) blockerar skanningen fortfarande fönstret i upp till två minuter utan återkoppling. Skanningen behöver flyttas bort från startvägen: visa fönstret direkt, skanna i en tråd och fyll biblioteksvyn när den är klar (samma mönster som `poll_stem_separation`/`poll_remote_audio_generation` redan använder), plus en synlig rad om att biblioteket indexeras.
-  - **Klart när:** Fönstret är interaktivt inom ~1 s även med en ogiltig cache, skanningen rapporterar förlopp i statusraden, och en enhetstestbar brytning finns mellan "bibliotek klart" och "GUI redo".
-  - **Filer:** `src/audio/factory_samples.rs`, `src/ui/app.rs`, `src/main.rs`
-  - **Beroende:** 6.0 ✅
+- [x] **7.4 Starttid: skanna inte före fönstret** — *M* ✅
+  - **Problemet, mätt:** vid första starten på en ny maskin kördes en full genomsökning av ljudbiblioteket **före** fönstret: `Ljudbibliotek skannat: 10630 samplar på 125.2 s` (~10 GB, `Sample_Packs` är 14 GB/30 235 filer). Med tomt bibliotek tog samma väg 0,4 s. Under skanningen fanns inget fönster att titta på — appen såg ut att hänga.
+  - **Löst:** `init_default_sample_library()` är delad i två vägar:
+    - **Cache finns** → läs den direkt (som förut, en bråkdel av en sekund) och var klar vid första bildrutan.
+    - **Cache saknas** → `LibraryScan::spawn()` startar en **full skanning i en egen tråd** och returnerar direkt. Fönstret ritas medan skanningen kör, och `poll_library_scan()` i uppdateringsloopen visar förloppet i statusraden: *"🎵 Skannar ljudbiblioteket: 4500 samplar (Sample_Packs, 12 s)"*, och till sist *"🎵 Ljudbiblioteket klart: 10630 samplar på 118,4 s"*.
+    - **Statusraden har fortfarande en skribent i taget:** förloppsraden skrivs bara om raden är tom eller redan är en biblioteksrad, så en ångring eller ett fel försvinner inte.
+    - **Kanalracket får sina samplar i efterhand:** när skanningen är klar körs `auto_assign_default_kit` på de inbyggda trumkanalerna — men **bara** på kanaler som fortfarande saknar eget ljud, så ett val användaren gjort under tiden inte skrivs över. Att tilldela sent går bra: kanalens PCM skickas till motorn vid varje anslag (`TriggerSampleVoice`), inte en gång vid start.
+    - **Tråden kan dö:** `poll()` skiljer på `Idle`, `Progress`, `Done` och `Aborted` — en panik i skanningstråden ger *"⚠ Kunde inte läsa in ljudbiblioteket — skanningen avbröts"* i stället för att appen väntar för evigt.
+    - Den gamla samlade ingången `scan_and_load_all_samples()` togs bort (den blockerande vägen ska inte finnas kvar att råka anropa); kvar är `read_library_cache_items()` och `perform_full_sample_scan_with_progress(progress)`.
+  - **Klart när:** Fönstret visas utan att vänta på biblioteksskanningen, förloppet syns, och den färdiga skanningen fyller biblioteket ✅ *(komponentbevis; se kvar nedan)*
+  - **Bevis:** **246 tester** default, 0 varningar. Fem nya tester i `factory_samples`:
+    - `starting_a_library_scan_returns_immediately` — arbetet sover 200 ms, men `spawn_with` är klar på **under 50 ms** (mätt med `Instant`), och resultatet kommer fram när tråden är klar. Det är själva fixen, mätt.
+    - `a_scan_reports_progress_before_it_finishes`, `only_the_last_progress_message_survives` (en långsam konsument får inte en kö av gamla förlopp), `a_dead_scan_thread_is_reported_as_aborted`, `a_finished_scan_leaves_nothing_to_poll` (Done vinner över förloppet och upprepas inte).
+    - `spawn_with` tar arbetet som en injicerad closure, så trådningen och tillståndsmaskinen testas utan att röra ett riktigt filsystem — det var därför testet kunde vara både snabbt och deterministiskt.
+  - **Kvar (ärligt):**
+    - **Att fönstret *syns* direkt är inte mätt av mig.** Ingen Xvfb/weston finns på maskinen, så den visuella kvittensen kräver en riktig skärm (BenQ/DP-3) — och min testinstans från 6.2 står fortfarande öppen där, så jag startade ingen andra oannonserat. Komponentbeviset är att startvägen returnerar direkt (testet ovan) och att cache-läsningen sker före första bildrutan.
+    - **Första starten på en ny maskin visar ett tomt bibliotek i upp till två minuter** medan skanningen kör. Det är ärligt (statusraden säger vad som händer) men nästa steg vore att fylla brorsan efter hand: skicka `Done` per mapp i stället för allt på en gång.
+    - Skanningen läser fortfarande **hela** biblioteket varje gång cachen saknas; den kunde spara dellistor under vägen så att ett avbrott inte kastar allt arbete.
+  - **Filer:** `src/audio/factory_samples.rs`, `src/ui/app.rs`, `src/i18n.rs`
+  - **Beroende:** —
 
----
-
-## ⬜ Fas 8 — Arbetsflödesdjup (Tier 2)
-
-> **Varför:** Detta är där en FL-användare faktiskt byter DAW eller inte. Kom efter Tier 0/1 — annars bygger vi bredd på en grund som tappar arbete.
-
-- [ ] **8.1 Freeze / bounce-in-place** — *M* (0 träffar i dag; `freeze` finns bara som text om att UI:t inte fryser)
-  - **Klart när:** Ett spår med plugin kan frysas till ljud, spelas identiskt och tinas upp igen utan att inställningar tappas (test: renderad längd/latens).
-  - **Filer:** `src/audio/exporter.rs`, `src/audio/synth.rs`, `src/ui/app.rs`
-
-- [ ] **8.2 Tempo map (variabelt tempo)** — *L* (`tempo_map`/`song_tempo` = 0 träffar; i dag ett globalt `bpm`)
-  - **Klart när:** Tempobyten på tidslinjen styr uppspelning, automation och export korrekt.
-  - **Filer:** `src/ui/app.rs`, `src/audio/synth.rs`, `src/audio/exporter.rs`
-
-- [ ] **8.3 Flexibel routing (sends/returns utöver de fyra fasta bussarna)** — *L*
-  - **Klart när:** Ett valfritt antal bussar/returns kan skapas, routas och sparas — inte bara Vocal/Trummor/Synth/FX.
-  - **Filer:** `src/audio/synth.rs`, `src/audio/command.rs`, `src/ui/app.rs`
-
-- [ ] **8.4 Multisample-sampler / slicer** — *L* (`multisample` = 0 träffar)
-  - **Klart när:** En multisamplad patch över flera oktaver och en slice-uppdelning av en loop kan spelas från klaviaturen och sparas i projektet.
-  - **Filer:** `src/audio/factory_samples.rs`, `src/ui/app.rs`, nytt `src/audio/sampler.rs`
-
----
-
-## ⬜ Fas 9 — AI-kilen (Tier 3)
-
-> **Varför sist och varför alls:** AI är inte det som gör Sonix professionellt — men det är det enda området där Sonix kan bli **bäst i världen**, eftersom ingen annan DAW erbjuder en offline co-producer vars resultat går att **mäta**. Bygg det på Tier 0/1, inte i stället för dem.
-
-- [ ] **9.1 LLM → Command-agent med mät-loop** — *L*
-  - **Gör:** Låt LLM:en (Ollama lokalt eller OpenAI/Anthropic/OpenRouter) svara med en **kommandolista** i stället för enbart 16-stegs-clips, och applicera den via den befintliga `command.rs`-ytan (~40 kommandon: mix, EQ, delay/reverb/drive, master-FX, buss/VCA, stems, presets). Verifiera med den mätning som redan finns i `loudness.rs` (LUFS, true peak): rendera → mät → justera tills målet nås, och visa målet i statusraden.
-  - **Klart när:** "Sänk sången 2 dB", "halvtidsdelay på leaden" och "mastra till −9 LUFS" utförs som riktiga kommandon, och LUFS-målet verifieras med mätning (test på intent → kommandon + mät-loop).
-  - **Filer:** `src/audio/ai_client.rs`, `src/audio/ai_generator.rs`, `src/ui/ai_assistant_view.rs`, `src/audio/loudness.rs`, `src/ui/app.rs`
-  - **Beroende:** 6.2 (allt agenten gör måste gå att ångra)
-
-- [ ] **9.2 ACE-Step 1.5 lokalt som `AudioProvider`** — *L*
-  - **Gör:** Ny provider mot en lokal ACE-Step-server (`acestep-api`, egen port) med `base_url` enligt samma mönster som Ollama. Ger text→låt, **repaint** (regenerera en vald takt — mer användbart i en DAW än att rulla en hel låt), cover, multi-track-lager och stems. Licens: MIT enligt repots licenssida. 2B-turbo kräver <4 GB VRAM (RTX 3060 Ti 8 GB räcker); XL (4B) kräver ≥12 GB och är därför inte aktuell.
-  - **Klart när:** En prompt genererar ett riktigt spår i tidslinjen och repaint ersätter ett valt tidsintervall utan att röra resten (test med mockad server).
-  - **Filer:** `src/audio/ai_client.rs`, `src/ui/ai_assistant_view.rs`, `src/ui/app.rs`, `src/i18n.rs`
-  - **Beroende:** 6.3 (för att notmaterial ska kunna flyttas ut/in)
-
-- [ ] **9.3 Valfri molnprovider: ElevenLabs Music API** — *M*
-  - **Gör:** Officiell musik-API (upp till 5 min, exakthet i ms för längd, upp till sex separata stems, inpainting av avsnitt, kommersiell licens — annons/film/TV/spel kräver utökad licens). Läggs **vid sidan av** de befintliga providerna och märks tydligt som molntjänst med kostnad per generering.
-  - **Klart när:** En generering hämtas, dekodas och importeras som spår med samma väg som Etapp C (`trigger_remote_audio_generation`/`poll_remote_audio_generation`), och fel/kvot felrapporteras ärligt.
-  - **Filer:** `src/audio/ai_client.rs`, `src/ui/ai_assistant_view.rs`, `src/ui/app.rs`
-  - **Beroende:** 9.2 (samma provider-mönster)
-
-> **Medvetet inte aktuellt:** *Suno* har ingen officiell publik API — tredjeparts-wrappers bryter mot deras villkor och lägger användarens prompts hos en mellanhand. *Mozart AI* har ingen publik utvecklar-API alls (deras tjänst är byggd på ElevenLabs Music API, dvs. 9.3). Suno förblir **import**, exakt som README beskriver.
-
----
-
-## 🎯 Nästa uppgift
-
-**Tier 0 är därmed stängd.** Alla åtta punkter är klara: sökvägar (6.0), autosave/kraschåterställning (6.1), undo för mixer/FX/automation (6.2), MIDI-fil I/O (6.3), kvantisering & humanisering (6.4), dither (6.5), rundgångssäkring (6.6) och projektfilen som bär hela arbetet (6.7).
-
-**Nästa är Tier 1 — Fas 7 (Plattform & prestanda).** Första punkten är **7.4 Starttid** (biblioteksskanningen får inte blockera fönstret: 125 s och ~10 GB vid första starten, 0,4 s med tomt bibliotek — cachen är fixad, blockeringen kvar), därefter 7.1 (bryt ut ALSA/X11 till backend-gränssnitt och porta), 7.2 och 7.3. Innan dess: de tre GUI-kvittenserna på 6.4/6.5/6.7 har inte klickats av mig (se respektive punkt).
-
-Därefter i Tier 0 (Fas 6): 6.5 dither.
-
-Nyss klart: **6.5** dither (TPDF + noise shaping, på som standard för 16 bitar, mätt på filen: udda övertoner 44 dB under grundtonen försvinner ner i ett jämnt brusgolv), **6.4** (tagningen sparas med sin tajming, kvantiseringen/humaniseringen är hörbar, mätbar, ångringsbar och har reglage för rutnät/styrka/mängd), **6.7** projektfilen sparar hela arbetet (mönster, kanalrack, stegvolymer — hittad och stängd under 6.3), **6.3** MIDI-fil import/export (egen SMF-kodek, arrangemanget exporteras, import routar till rätt kanaler, externt validerad) samt **6.2** mixer/FX/automation i undo-historiken.
-
-Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
-
-## 🛠️ Så här håller vi roadmapen levande
-
-1. Bocka av `[ ]` → `[x]` när uppgiften är **byggd och testad** (`cargo test --release`).
-2. Flytta avklarade punkter till **Fas 0** eller lämna kvar med ✅.
-3. Uppdatera siffrorna i **[Framsteg](#-framsteg-i-siffror)** (klart/kvar/procent).
-4. Lägg till en kort rad i **tools.md** (nästa P-nummer) med vad som gjordes.

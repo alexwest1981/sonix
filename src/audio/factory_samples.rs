@@ -1109,22 +1109,104 @@ fn read_library_cache() -> Option<Vec<ScannedSampleItem>> {
     Some(items)
 }
 
-pub fn scan_and_load_all_samples() -> Vec<ScannedSampleItem> {
-    let mut items = if let Some(cached) = read_library_cache() {
-        eprintln!("🎵 Ljudbibliotek läst från cache: {} samplar", cached.len());
-        cached
-    } else {
-        let fresh = perform_full_sample_scan();
-        write_library_cache(&fresh);
-        fresh
-    };
+/// Läser cache-filen om den finns (snabb väg) och översätter kategorierna.
+///
+/// `None` betyder att cachen saknas och att en full skanning behövs — vilket är
+/// den väg som ska köras i bakgrunden (Fas 7.4), inte före fönstret.
+pub fn read_library_cache_items() -> Option<Vec<ScannedSampleItem>> {
+    read_library_cache().map(translate_categories)
+}
+
+fn translate_categories(mut items: Vec<ScannedSampleItem>) -> Vec<ScannedSampleItem> {
     for it in &mut items {
         it.category = crate::i18n::translate_owned(crate::i18n::current(), &it.category);
     }
     items
 }
 
-fn perform_full_sample_scan() -> Vec<ScannedSampleItem> {
+/// Meddelanden från en pågående biblioteksskanning (Fas 7.4).
+pub enum ScanMsg {
+    Progress { found: usize, dir: String },
+    Done(Vec<ScannedSampleItem>),
+}
+
+/// Vad en avläsning av en pågående skanning gav.
+pub enum ScanPoll {
+    /// Ingenting nytt sedan sist.
+    Idle,
+    /// Skanningen arbetar: så många samplar hittills, i den här mappen.
+    Progress { found: usize, dir: String },
+    /// Klar.
+    Done(Vec<ScannedSampleItem>),
+    /// Tråden dog utan att bli klar (panik eller avbrott).
+    Aborted,
+}
+
+/// En biblioteksskanning som körs i en egen tråd.
+///
+/// Varför: den kalla skanningen läser ~10 GB och tog **125 s** — och kördes före
+/// fönstret, så appen såg ut att hänga vid första starten. Nu startas den i
+/// bakgrunden, fönstret ritas direkt, och förloppet syns i statusraden.
+pub struct LibraryScan {
+    rx: std::sync::mpsc::Receiver<ScanMsg>,
+}
+
+impl LibraryScan {
+    /// Startar en full skanning i bakgrunden. Returnerar direkt.
+    pub fn spawn() -> Self {
+        Self::spawn_with(|progress| {
+            let fresh = perform_full_sample_scan_with_progress(progress);
+            write_library_cache(&fresh);
+            fresh
+        })
+    }
+
+    /// Som [`Self::spawn`], men med arbetet injicerat — så att trådningen och
+    /// tillståndsmaskinen kan testas utan att röra ett riktigt filsystem.
+    pub fn spawn_with<F>(work: F) -> Self
+    where
+        F: FnOnce(&dyn Fn(usize, &str)) -> Vec<ScannedSampleItem> + Send + 'static,
+    {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let progress_tx = tx.clone();
+        std::thread::spawn(move || {
+            let items = work(&|found, dir| {
+                let _ = progress_tx.send(ScanMsg::Progress { found, dir: dir.to_string() });
+            });
+            let _ = tx.send(ScanMsg::Done(items));
+        });
+        Self { rx }
+    }
+
+    /// Läser av läget utan att blockera. Sista förloppet vinner, så en långsam
+    /// konsument inte får en kö av gamla meddelanden.
+    pub fn poll(&mut self) -> ScanPoll {
+        let mut last_progress = None;
+        loop {
+            match self.rx.try_recv() {
+                Ok(ScanMsg::Progress { found, dir }) => last_progress = Some((found, dir)),
+                Ok(ScanMsg::Done(items)) => return ScanPoll::Done(items),
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    // Tråden är borta utan att ha skickat klart: säg det i stället
+                    // för att låta appen vänta för evigt.
+                    return ScanPoll::Aborted;
+                }
+            }
+        }
+        match last_progress {
+            Some((found, dir)) => ScanPoll::Progress { found, dir },
+            None => ScanPoll::Idle,
+        }
+    }
+}
+
+/// Full skanning, med en callback för förloppet (Fas 7.4).
+///
+/// `progress(antal_funna, mapp)` anropas med jämna mellanrum så att
+/// statusraden kan visa något medan skanningen kör — den tar minuter, inte
+/// millisekunder.
+pub fn perform_full_sample_scan_with_progress(progress: &dyn Fn(usize, &str)) -> Vec<ScannedSampleItem> {
     let mut results = Vec::new();
     let scan_start = std::time::Instant::now();
 
@@ -1160,8 +1242,13 @@ fn perform_full_sample_scan() -> Vec<ScannedSampleItem> {
     for p_dir in &pack_dirs {
         let path = Path::new(p_dir);
         if path.exists() {
+            let label = p_dir
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| p_dir.display().to_string());
             eprintln!("🧪 Skannar mapp: {}", p_dir.display());
-            scan_dir_recursive(path, &mut results);
+            progress(results.len(), &label);
+            scan_dir_recursive(path, &mut results, progress, &label);
             eprintln!("🧪 Klar mapp ({:.1}s, totalt {} samplar)", scan_start.elapsed().as_secs_f32(), results.len());
         }
     }
@@ -1175,7 +1262,12 @@ fn perform_full_sample_scan() -> Vec<ScannedSampleItem> {
     results
 }
 
-fn scan_dir_recursive(dir: &Path, results: &mut Vec<ScannedSampleItem>) {
+fn scan_dir_recursive(
+    dir: &Path,
+    results: &mut Vec<ScannedSampleItem>,
+    progress: &dyn Fn(usize, &str),
+    label: &str,
+) {
     let entries = match std::fs::read_dir(dir) {
         Ok(e) => e,
         Err(_) => return,
@@ -1188,12 +1280,17 @@ fn scan_dir_recursive(dir: &Path, results: &mut Vec<ScannedSampleItem>) {
             if p.file_name().map(|n| n == ".git").unwrap_or(false) {
                 continue;
             }
-            scan_dir_recursive(&p, results);
+            scan_dir_recursive(&p, results, progress, label);
         } else if p.is_file() {
             let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
             if ext == "wav" {
                 if let Some(item) = classify_and_parse_wav_sample(&p) {
                     results.push(item);
+                    // Förloppet rapporteras sällan: en kanal per 500 fil kostar
+                    // ingenting, och statusraden behöver inte varje fil.
+                    if results.len() % 500 == 0 {
+                        progress(results.len(), label);
+                    }
                 }
             }
         }
@@ -1292,6 +1389,104 @@ fn format_clean_sample_name(stem: &str, lower_path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    fn fake_item(name: &str) -> ScannedSampleItem {
+        ScannedSampleItem {
+            name: name.to_string(),
+            category: "Test".to_string(),
+            icon: "🎵".to_string(),
+            default_note: 60,
+            color_rgb: (120, 130, 140),
+            waveform: Vec::new(),
+            file_path: String::new(),
+        }
+    }
+
+    #[test]
+    fn starting_a_library_scan_returns_immediately() {
+        // Kärnan i Fas 7.4: den som startar skanningen ska inte vänta på den.
+        // Arbetet sover här i 200 ms — starten ska ändå vara klar direkt.
+        let started = std::time::Instant::now();
+        let mut scan = LibraryScan::spawn_with(|progress| {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            progress(1, "Fake");
+            vec![fake_item("sent")]
+        });
+        let spawn_time = started.elapsed();
+        assert!(
+            spawn_time < std::time::Duration::from_millis(50),
+            "starten tog {spawn_time:?} — den blockerar"
+        );
+
+        // Och resultatet kommer fram när tråden är klar.
+        let mut items = None;
+        for _ in 0..100 {
+            match scan.poll() {
+                ScanPoll::Done(v) => {
+                    items = Some(v);
+                    break;
+                }
+                _ => std::thread::sleep(std::time::Duration::from_millis(10)),
+            }
+        }
+        let items = items.expect("skanningen ska bli klar");
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].name, "sent");
+    }
+
+    #[test]
+    fn a_scan_reports_progress_before_it_finishes() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut scan = LibraryScan { rx };
+        tx.send(ScanMsg::Progress { found: 500, dir: "Sample_Packs".to_string() }).unwrap();
+        match scan.poll() {
+            ScanPoll::Progress { found, dir } => {
+                assert_eq!(found, 500);
+                assert_eq!(dir, "Sample_Packs");
+            }
+            _ => panic!("väntade förlopp"),
+        }
+        // Ingenting mer på kanalen → Idle, inte ett upprepat förlopp.
+        assert!(matches!(scan.poll(), ScanPoll::Idle));
+    }
+
+    #[test]
+    fn only_the_last_progress_message_survives() {
+        // En långsam konsument ska inte få en kö av gamla förlopp.
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut scan = LibraryScan { rx };
+        for n in [100, 200, 300] {
+            tx.send(ScanMsg::Progress { found: n, dir: "x".to_string() }).unwrap();
+        }
+        match scan.poll() {
+            ScanPoll::Progress { found, .. } => assert_eq!(found, 300),
+            _ => panic!("väntade sista förloppet"),
+        }
+    }
+
+    #[test]
+    fn a_dead_scan_thread_is_reported_as_aborted() {
+        // Om tråden dör (panik) ska appen få veta det i stället för att vänta för evigt.
+        let (tx, rx) = std::sync::mpsc::channel::<ScanMsg>();
+        let mut scan = LibraryScan { rx };
+        drop(tx);
+        assert!(matches!(scan.poll(), ScanPoll::Aborted));
+    }
+
+    #[test]
+    fn a_finished_scan_leaves_nothing_to_poll() {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let mut scan = LibraryScan { rx };
+        tx.send(ScanMsg::Progress { found: 10, dir: "y".to_string() }).unwrap();
+        tx.send(ScanMsg::Done(vec![fake_item("klar")])).unwrap();
+        match scan.poll() {
+            ScanPoll::Done(v) => assert_eq!(v.len(), 1),
+            _ => panic!("väntade Done — den ska vinna över förloppet"),
+        }
+        // Tråden lever fortfarande men har sagt klart: ingen ny Done.
+        assert!(matches!(scan.poll(), ScanPoll::Idle));
+    }
+
+
     use super::*;
 
     fn test_dir(tag: &str) -> std::path::PathBuf {

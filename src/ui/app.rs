@@ -1381,6 +1381,10 @@ pub struct SonixApp {
     pub midi_record_armed: bool,
     /// Räknare som ger humaniseringen ett nytt frö varje gång (Fas 6.4).
     pub take_seed_counter: u64,
+    /// Pågående bakgrundsskanning av ljudbiblioteket (Fas 7.4), om cachen saknades.
+    pub library_scan: Option<crate::audio::factory_samples::LibraryScan>,
+    /// När skanningen startade, så statusraden kan visa hur länge den kört.
+    pub library_scan_started: std::time::Instant,
     /// Rutnätet kvantiseringen drar noterna mot (Fas 6.4), som index i `TakeGrid::ALL`.
     pub take_grid_idx: usize,
     /// Dither vid 16-bitars export (Fas 6.5). På som standard.
@@ -1531,8 +1535,28 @@ pub enum ScreenshotState {
     AwaitingCapture { dest: std::path::PathBuf },
 }
 
-fn init_default_sample_library() -> Vec<LibrarySampleItem> {
-    let scanned = crate::audio::factory_samples::scan_and_load_all_samples();
+/// Startar ljudbiblioteket (Fas 7.4).
+///
+/// Finns cachen läses den direkt — det tar en bråkdel av en sekund. Saknas den
+/// startas en **bakgrundsskanning** i stället för att fönstret ska vänta: den
+/// kalla skanningen läser ~10 GB och tog 125 sekunder.
+fn init_sample_library_start() -> (
+    Vec<LibrarySampleItem>,
+    Option<crate::audio::factory_samples::LibraryScan>,
+) {
+    if let Some(cached) = crate::audio::factory_samples::read_library_cache_items() {
+        eprintln!("🎵 Ljudbibliotek läst från cache: {} samplar", cached.len());
+        (library_items_from_scanned(cached), None)
+    } else {
+        eprintln!("🎵 Ingen cache — skannar ljudbiblioteket i bakgrunden (fönstret visas direkt)");
+        (
+            Vec::new(),
+            Some(crate::audio::factory_samples::LibraryScan::spawn()),
+        )
+    }
+}
+
+fn library_items_from_scanned(scanned: Vec<crate::audio::factory_samples::ScannedSampleItem>) -> Vec<LibrarySampleItem> {
     let mut items = Vec::new();
 
     for (idx, sc) in scanned.into_iter().enumerate() {
@@ -1746,8 +1770,9 @@ impl SonixApp {
 
         let mut channels = vec![kick, snare, clap, hat, open_hat, crash, synth_lead, sub_bass];
 
-        // Sample Library Initial Items (Categorized with Rich Factory & Downloaded Sample Packs)
-        let sample_library = init_default_sample_library();
+        // Sample Library Initial Items (Categorized with Rich Factory & Downloaded Sample Packs).
+        // Cachen läses direkt; saknas den skannas biblioteket i bakgrunden (Fas 7.4).
+        let (sample_library, library_scan_job) = init_sample_library_start();
 
         // Give the six built-in drum channels real recorded samples when sample
         // packs are installed, so the Channel Rack plays WAV files by default.
@@ -1983,6 +2008,8 @@ impl SonixApp {
             midi_note_count: 0,
             midi_record_armed: false,
             take_seed_counter: 0,
+            library_scan: library_scan_job,
+            library_scan_started: std::time::Instant::now(),
             take_grid_idx: crate::midi_take::TakeGrid::Sixteenth.index(),
             export_dither: true,
             export_noise_shaping: false,
@@ -5857,6 +5884,72 @@ impl SonixApp {
         (secs * self.engine.sample_rate as f32).max(1.0) as u32
     }
 
+    /// Läser av en pågående biblioteksskanning (Fas 7.4).
+    ///
+    /// Statusraden visar förloppet medan den kör, och när den är klar fylls
+    /// biblioteket — och de inbyggda trumkanalerna får riktiga inspelade samplar
+    /// om de fortfarande står på standardljudet. Att tilldela i efterhand går
+    /// bra: kanalens PCM skickas till motorn vid varje anslag.
+    fn poll_library_scan(&mut self) {
+        let Some(scan) = self.library_scan.as_mut() else {
+            return;
+        };
+        let poll = scan.poll();
+        let elapsed = self.library_scan_started.elapsed().as_secs_f32();
+        match poll {
+            crate::audio::factory_samples::ScanPoll::Idle => {
+                // Bara om inget viktigare står där: en skanning får inte skriva
+                // över en ångrings- eller felrad.
+                if self.status_message.is_empty() || self.status_message.starts_with("🎵") {
+                    self.status_message =
+                        crate::tstatus!("🎵 Läser in ljudbiblioteket i bakgrunden… ({:.0} s)", elapsed);
+                }
+            }
+            crate::audio::factory_samples::ScanPoll::Progress { found, dir } => {
+                self.status_message = crate::tstatus!(
+                    "🎵 Skannar ljudbiblioteket: {} samplar ({}, {:.0} s)",
+                    found,
+                    dir,
+                    elapsed
+                );
+            }
+            crate::audio::factory_samples::ScanPoll::Done(items) => {
+                let count = items.len();
+                self.sample_library = library_items_from_scanned(items);
+                // Ge de inbyggda trumkanalerna riktiga samplar — men rör inte en
+                // kanal användaren redan lagt ett eget ljud på.
+                if !self.sample_library.is_empty() {
+                    let library = self.sample_library.clone();
+                    let mut untouched: Vec<usize> = (0..self.channels.len().min(6))
+                        .filter(|i| self.channels[*i].sample_path.is_none())
+                        .collect();
+                    if !untouched.is_empty() {
+                        let mut rack: Vec<ChannelStrip> =
+                            untouched.iter().map(|i| self.channels[*i].clone()).collect();
+                        auto_assign_default_kit(&mut rack, &library);
+                        for (slot, i) in untouched.iter_mut().enumerate() {
+                            self.channels[*i] = rack[slot].clone();
+                        }
+                    }
+                    untouched.clear();
+                }
+                self.status_message = crate::tstatus!(
+                    "🎵 Ljudbiblioteket klart: {} samplar på {:.1} s",
+                    count,
+                    elapsed
+                );
+                self.library_scan = None;
+            }
+            crate::audio::factory_samples::ScanPoll::Aborted => {
+                self.status_message = crate::i18n::t(
+                    "⚠ Kunde inte läsa in ljudbiblioteket — skanningen avbröts",
+                )
+                .to_string();
+                self.library_scan = None;
+            }
+        }
+    }
+
     /// Positionen i takten (i steg) för en not som spelas just nu (Fas 6.4).
     ///
     /// Stegfasen mäts mot sekvenserns stegklocka, som går i UI-tråden:
@@ -6143,6 +6236,7 @@ impl eframe::App for SonixApp {
             }
         }
         self.poll_hardware_control();
+        self.poll_library_scan();
         self.sync_patcher_graph();
         self.sync_stem_separator_engine();
         // Keep embedded plugin editors responsive (Fas 4.4b).
