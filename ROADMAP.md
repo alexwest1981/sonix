@@ -45,7 +45,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 1 | 6 | **14 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 2 | 7 | **29 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge) | 0 | 3 | **0 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
@@ -277,14 +277,14 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/audio/wav_writer.rs`, `src/audio/exporter.rs`, `src/ui/app.rs`
   - **Beroende:** —
 
-- [ ] **6.6 Återkopplingssäkring för direktlyssning (rundgång)** — *S*
+- [x] **6.6 Återkopplingssäkring för direktlyssning (rundgång)** — *S* ✅
   - **Bakgrund:** Direktlyssningen adderade mikrofonen **1:1** in i masterbussen (`synth.rs` 8c), så **mastervolymen var det enda reglaget** som bröt en rundgång — och den var **på** som standard (`recorder.rs`, `monitoring_on: true`). Med högtalare i stället för hörlurar blir det rundgång, precis som rapporterat ("försvinner när jag sänker main vol").
-  - **Löst (delvis):** `monitoring_on: false` som standard, ny **MONITOR-ratt** (`AudioCommand::SetMonitorLevel`) som ger monitor-signalen egen nivå i `vocal_studio_view.rs`, och hover-text som varnar för högtalare.
-  - **Kvar:** (a) automatisk detektion — om ingången självsvänger (växande amplitud på en stabil frekvens) ska monitoreringen stängas och ett tydligt meddelande visas; (b) slå ihop de två kryssrutorna: `mic_settings.direct_monitoring` styr ingenting i dag (dubblett av `vocal_track.monitoring_on`).
-  - **Klart när:** En självsvängning dämpar sig själv inom en sekund utan att användaren rör mastervolymen, och det finns bara **en** kryssruta för direktlyssning.
-  - **Filer:** `src/ui/vocal_studio_view.rs`, `src/ui/app.rs`, `src/audio/synth.rs`, `src/audio/recorder.rs`, `src/audio/command.rs`
+  - **Rapport 2 ("baston som får hela rummet att vibrera"):** samma väg, men lågfrekvent. Mätt på maskinen: micken (Samson Q2U) har **78 Hz vid −45,7 dBFS** i rummet, och de två kryssrutorna som skulle skydda mot det — `low_cut_80hz` och `feedback_reduction` — **läste ingen kod**: de var bara fält med default `true` respektive dekorativ etikett. Utan högpass gick rummets lågfrekvens rakt in i mastern; vid LF har rummet mest akustisk förstärkning, så slingan låser sig på en rumsmod och blir en baston.
+  - **Löst:** `monitoring_on: false` som standard, **MONITOR-ratt** (`AudioCommand::SetMonitorLevel`) med egen nivå, hover-varning för högtalare, **riktigt 80 Hz-högpass** (RBJ-biquad, Butterworth-Q) i mikrofonvägen **före** gaten och monitor-ringen — med 5 Hz DC-spärr kvar även när kryssrutan är av — och **riktig anti-rundgång**: `HowlDetector` klassa en stabil, stark ton över tid (autokorrelationen som tunern redan kör) och en smal bandspärr (Q = 20) läggs på frekvensen i ljudtråden, med ~1 s hålltid efter att tonen tystnat.
+  - **Bevis:** 9 nya tester (`low_cut_removes_dc_offset`, `low_cut_attenuates_room_rumble` ≥ 12 dB vid 78 Hz, `low_cut_passes_voice_band` < 1 dB vid 1 kHz, `notch_kills_howl_frequency` ≥ 12 dB, `notch_leaves_neighbour_frequency_untouched`, samt fyra för detektorn: kräver stabilitet, ignorerar glissando, kräver nivå över gaten, håller spärren efter tonen).
+  - **Kvar:** slå ihop de två kryssrutorna — `mic_settings.direct_monitoring` styr fortfarande ingenting (dubblett av `vocal_track.monitoring_on`); en andra spärr för en migrerande howl hade varit bättre än en (taget i 6.2 om undo ändå rör samma state).
+  - **Filer:** `src/audio/recorder.rs`, `src/ui/app.rs`, `src/ui/vocal_studio_view.rs`, `src/audio/synth.rs`, `src/audio/command.rs`
   - **Beroende:** —
-
 ---
 
 ## ⬜ Fas 7 — Plattform & prestanda (Tier 1)

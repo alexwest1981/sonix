@@ -12609,7 +12609,14 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
 
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut self.vocal_studio.mic_settings.feedback_reduction, crate::i18n::t("🔇 Feedback Suppression / Anti-rundgång"));
-                            ui.checkbox(&mut self.vocal_studio.mic_settings.low_cut_80hz, "📉 80Hz Low-Cut (Tar bort muller & bordsvibrationer)");
+                            let mut low_cut = self.vocal_studio.mic_settings.low_cut_80hz;
+                            if ui
+                                .checkbox(&mut low_cut, "📉 80Hz Low-Cut (Tar bort muller & bordsvibrationer)")
+                                .on_hover_text(crate::i18n::t("Högpass som tar bort rummets lågfrekvens innan den når mastern. Utan den kan rummet börja vibrera (baston) när direktlyssningen är på."))
+                                .changed()
+                            {
+                                self.vocal_studio.set_low_cut(low_cut);
+                            }
                         });
                     });
 

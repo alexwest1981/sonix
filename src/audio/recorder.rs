@@ -92,6 +92,10 @@ pub struct LiveMicrophoneCapture {
     /// direct monitoring.
     pub monitor_ring: Arc<Mutex<Vec<f32>>>,
     pub monitor_enabled: Arc<AtomicBool>,
+    /// 80 Hz-högpass på mikrofonvägen (motsvarar kryssrutan i Sångstudion).
+    pub low_cut: Arc<AtomicBool>,
+    /// Rundgångsfrekvens att spärra (f32-bitar). 0 = ingen spärr aktiv.
+    pub notch_freq: Arc<AtomicU32>,
     pub autotune_enabled: Arc<AtomicBool>,
     pub autotune_strength: Arc<Mutex<f32>>,
     pub autotune_speed: Arc<Mutex<f32>>,
@@ -117,6 +121,8 @@ struct MicStreamShared {
     analysis_buffer: Arc<Mutex<Vec<f32>>>,
     monitor_ring: Arc<Mutex<Vec<f32>>>,
     monitor_enabled: Arc<AtomicBool>,
+    low_cut: Arc<AtomicBool>,
+    notch_freq: Arc<AtomicU32>,
     autotune_enabled: Arc<AtomicBool>,
     autotune_strength: Arc<Mutex<f32>>,
     autotune_speed: Arc<Mutex<f32>>,
@@ -135,7 +141,7 @@ fn build_input_stream(
 ) -> Result<Stream, cpal::BuildStreamError> {
     let num_channels = config.channels as usize;
     macro_rules! callback_body {
-        ($data:expr, $convert:expr, $autotune:expr) => {{
+        ($data:expr, $convert:expr, $autotune:expr, $low_cut:expr, $notch:expr) => {{
             let gain = *shared.input_gain.lock().unwrap_or_else(|e| e.into_inner());
             let gate = *shared.noise_gate_thresh.lock().unwrap_or_else(|e| e.into_inner());
             let strength = *shared.autotune_strength.lock().unwrap_or_else(|e| e.into_inner());
@@ -150,6 +156,13 @@ fn build_input_stream(
                 scale,
             );
             let monitor_on = shared.monitor_enabled.load(Ordering::Relaxed);
+            let low_cut_on = shared.low_cut.load(Ordering::Relaxed);
+            let notch_bits = shared.notch_freq.load(Ordering::Relaxed);
+            let notch_hz = if notch_bits == 0 {
+                None
+            } else {
+                Some(f32::from_bits(notch_bits))
+            };
             let block_max = process_mic_block(
                 $data,
                 num_channels,
@@ -161,6 +174,10 @@ fn build_input_stream(
                 &shared.live_peaks,
                 &shared.analysis_buffer,
                 $autotune,
+                $low_cut,
+                low_cut_on,
+                $notch,
+                notch_hz,
                 monitor_on,
                 &shared.monitor_ring,
                 $convert,
@@ -172,10 +189,12 @@ fn build_input_stream(
     match sample_format {
         SampleFormat::F32 => {
             let mut autotune = RealtimeAutotune::new(sample_rate as f32);
+            let mut low_cut = HighPassFilter::new(sample_rate as f32, LOW_CUT_CUTOFF_HZ);
+            let mut notch = NotchFilter::new(sample_rate as f32);
             device.build_input_stream(
                 config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    callback_body!(data, |s| s, &mut autotune);
+                    callback_body!(data, |s| s, &mut autotune, &mut low_cut, &mut notch);
                 },
                 |err| eprintln!("[Sonix Mic Input Error] {}", err),
                 None,
@@ -183,10 +202,18 @@ fn build_input_stream(
         }
         SampleFormat::I16 => {
             let mut autotune = RealtimeAutotune::new(sample_rate as f32);
+            let mut low_cut = HighPassFilter::new(sample_rate as f32, LOW_CUT_CUTOFF_HZ);
+            let mut notch = NotchFilter::new(sample_rate as f32);
             device.build_input_stream(
                 config,
                 move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                    callback_body!(data, |s| s as f32 / 32768.0, &mut autotune);
+                    callback_body!(
+                        data,
+                        |s| s as f32 / 32768.0,
+                        &mut autotune,
+                        &mut low_cut,
+                        &mut notch
+                    );
                 },
                 |err| eprintln!("[Sonix Mic Input Error] {}", err),
                 None,
@@ -198,6 +225,236 @@ fn build_input_stream(
 
 /// How many recent mono samples are kept for always-on pitch analysis.
 const ANALYSIS_MAX: usize = 16384;
+
+/// Andra ordningens högpass (RBJ-biquad, Butterworth-Q) för mikrofonvägen.
+///
+/// Implementerar det som `MicrophoneSettings::low_cut_80hz` utlovar: tar bort
+/// muller, bordsvibrationer och DC **innan** gaten och monitor-ringen. Utan den
+/// går rummets lägsta frekvenser rakt in i mastern — och eftersom ett rum har
+/// störst akustisk förstärkning vid låga frekvenser är det där en rundgång
+/// låser sig (hörs som en baston som får rummet att vibrera).
+#[derive(Clone, Copy, Debug)]
+pub struct HighPassFilter {
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    a1: f32,
+    a2: f32,
+    x1: f32,
+    x2: f32,
+    y1: f32,
+    y2: f32,
+    cutoff: f32,
+    sample_rate: f32,
+}
+
+impl HighPassFilter {
+    /// Högsta cutoff som fortfarande bara dämpar (aldrig > 0.45 * samplerate).
+    pub fn new(sample_rate: f32, cutoff_hz: f32) -> Self {
+        let mut filter = Self {
+            b0: 1.0,
+            b1: 0.0,
+            b2: 0.0,
+            a1: 0.0,
+            a2: 0.0,
+            x1: 0.0,
+            x2: 0.0,
+            y1: 0.0,
+            y2: 0.0,
+            cutoff: 0.0,
+            sample_rate: sample_rate.max(1.0),
+        };
+        filter.set_cutoff(sample_rate, cutoff_hz);
+        filter
+    }
+
+    /// Sätter cutoff i Hz utan att ange samplerate igen (används i ljudtråden).
+    pub fn set_cutoff_hz(&mut self, cutoff_hz: f32) {
+        let sr = self.sample_rate;
+        self.set_cutoff(sr, cutoff_hz);
+    }
+
+    /// Räknar om koefficienterna när cutoffen ändras (t.ex. när kryssrutan slås
+    /// av/på). Filterns tillstånd behålls, så ingen klick uppstår.
+    pub fn set_cutoff(&mut self, sample_rate: f32, cutoff_hz: f32) {
+        let nyquist = (sample_rate * 0.45).max(1.0);
+        let cutoff = cutoff_hz.clamp(1.0, nyquist);
+        if (cutoff - self.cutoff).abs() < f32::EPSILON {
+            return;
+        }
+        self.cutoff = cutoff;
+        let omega = 2.0 * std::f32::consts::PI * cutoff / sample_rate.max(1.0);
+        let cos = omega.cos();
+        let alpha = omega.sin() / (2.0 * 0.707_106_77); // Butterworth
+        let a0 = 1.0 + alpha;
+        self.b0 = (1.0 + cos) / 2.0 / a0;
+        self.b1 = -(1.0 + cos) / a0;
+        self.b2 = (1.0 + cos) / 2.0 / a0;
+        self.a1 = -2.0 * cos / a0;
+        self.a2 = (1.0 - alpha) / a0;
+    }
+
+    pub fn process(&mut self, x: f32) -> f32 {
+        let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
+            - self.a1 * self.y1
+            - self.a2 * self.y2;
+        self.x2 = self.x1;
+        self.x1 = x;
+        self.y2 = self.y1;
+        self.y1 = y;
+        y
+    }
+}
+
+/// Cutoff som används när lågpass-kryssrutan är avstängd: en ren DC-spärr, hörs
+/// inte men hindrar att en konstant offset hamnar i mastern (och trycker ut
+/// högtalarkonen).
+pub const DC_BLOCKER_CUTOFF_HZ: f32 = 5.0;
+/// Cutoff som används när kryssrutan är på.
+pub const LOW_CUT_CUTOFF_HZ: f32 = 80.0;
+
+/// Antal frames en ton måste hålla sig stabil innan den klassas som rundgång.
+pub const HOWL_STABLE_FRAMES: u32 = 8;
+/// Antal frames spärren ligger kvar efter att tonen tystnat (~1 sekund vid 30 fps).
+pub const HOWL_RELEASE_FRAMES: u32 = 30;
+/// Tillåten frekvensdrift mellan frames för att räknas som samma ton.
+pub const HOWL_TOLERANCE: f32 = 0.03;
+
+/// Klassar en stabil, stark ton i mikrofonvägen som rundgång ("howl").
+///
+/// Rundgång är per definition en **ihållande, ren ton** — rummet förstärker en
+/// frekvens mer än 1:1 och slingan låser sig. Därför krävs både nivå och
+/// frekvensstabilitet över tid; en sjungen ton driver i pitch och faller på
+/// första kriteriet. Ren logik (ingen ljud-I/O), så den går att testa.
+pub struct HowlDetector {
+    candidate: Option<f32>,
+    stable: u32,
+    release: u32,
+}
+
+impl Default for HowlDetector {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl HowlDetector {
+    pub fn new() -> Self {
+        Self {
+            candidate: None,
+            stable: 0,
+            release: 0,
+        }
+    }
+
+    /// Matas en gång per UI-frame. Returnerar frekvensen som ska spärras, eller
+    /// `None` när ingen rundgång hörs.
+    pub fn update(&mut self, pitch_hz: Option<f32>, level: f32, gate: f32) -> Option<f32> {
+        // Rundgång är högre än rummets brus och högre än gaten; en sångare
+        // som sjunger svagt ska inte råka få en spärr.
+        let threshold = (gate * 4.0).max(0.02);
+        let loud = level >= threshold;
+
+        let on_pitch = match (loud, pitch_hz) {
+            (true, Some(p)) if (20.0..=12000.0).contains(&p) => Some(p),
+            _ => None,
+        };
+
+        match (on_pitch, self.candidate) {
+            (Some(p), Some(c)) if (p - c).abs() <= c * HOWL_TOLERANCE => {
+                self.stable += 1;
+            }
+            (Some(p), _) => {
+                self.candidate = Some(p);
+                self.stable = 1;
+            }
+            (None, _) => {
+                self.stable = 0;
+                if self.release == 0 {
+                    self.candidate = None;
+                }
+            }
+        }
+
+        if self.stable >= HOWL_STABLE_FRAMES {
+            self.release = HOWL_RELEASE_FRAMES;
+            return self.candidate;
+        }
+        if self.release > 0 {
+            self.release -= 1;
+            return self.candidate;
+        }
+        None
+    }
+}
+
+/// Smal bandspärr (RBJ notch, Q = 20) som läggs på den detekterade
+/// rundgångsfrekvensen. Bredden är ~1/20 oktav — tillräckligt smal för att
+/// knappt höras på sång, tillräckligt bred för att bryta slingan.
+pub const NOTCH_Q: f32 = 20.0;
+
+pub struct NotchFilter {
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    a1: f32,
+    a2: f32,
+    x1: f32,
+    x2: f32,
+    y1: f32,
+    y2: f32,
+    sample_rate: f32,
+    freq: f32,
+}
+
+impl NotchFilter {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            b0: 1.0,
+            b1: 0.0,
+            b2: 0.0,
+            a1: 0.0,
+            a2: 0.0,
+            x1: 0.0,
+            x2: 0.0,
+            y1: 0.0,
+            y2: 0.0,
+            sample_rate: sample_rate.max(1.0),
+            freq: 0.0,
+        }
+    }
+
+    /// Sätter spärrens centrumfrekvens. Oförändrat värde är en no-op, så
+    /// filtrets tillstånd (och därmed ljudet) påverkas inte i onödan.
+    pub fn set_freq(&mut self, hz: f32) {
+        let nyquist = (self.sample_rate * 0.45).max(1.0);
+        let f = hz.clamp(20.0, nyquist);
+        if (f - self.freq).abs() < 0.5 {
+            return;
+        }
+        self.freq = f;
+        let omega = 2.0 * std::f32::consts::PI * f / self.sample_rate;
+        let cos = omega.cos();
+        let alpha = omega.sin() / (2.0 * NOTCH_Q);
+        let a0 = 1.0 + alpha;
+        self.b0 = 1.0 / a0;
+        self.b1 = -2.0 * cos / a0;
+        self.b2 = 1.0 / a0;
+        self.a1 = -2.0 * cos / a0;
+        self.a2 = (1.0 - alpha) / a0;
+    }
+
+    pub fn process(&mut self, x: f32) -> f32 {
+        let y = self.b0 * x + self.b1 * self.x1 + self.b2 * self.x2
+            - self.a1 * self.y1
+            - self.a2 * self.y2;
+        self.x2 = self.x1;
+        self.x1 = x;
+        self.y2 = self.y1;
+        self.y1 = y;
+        y
+    }
+}
 
 /// Shared microphone callback body: computes per-block peak, records to
 /// `recorded` while armed, always feeds the rolling `analysis` buffer used by
@@ -215,6 +472,10 @@ fn process_mic_block<T: Copy>(
     peaks: &Arc<Mutex<Vec<f32>>>,
     analysis: &Arc<Mutex<Vec<f32>>>,
     autotune: &mut RealtimeAutotune,
+    low_cut_filter: &mut HighPassFilter,
+    low_cut_on: bool,
+    notch: &mut NotchFilter,
+    notch_hz: Option<f32>,
     monitor_enabled: bool,
     monitor_ring: &Arc<Mutex<Vec<f32>>>,
     convert: impl Fn(T) -> f32,
@@ -241,6 +502,24 @@ fn process_mic_block<T: Copy>(
 
     for frame in data.chunks(ch) {
         let mut mono = (frame.iter().map(|&s| convert(s)).sum::<f32>() / ch as f32) * gain;
+        // Högpasset ligger FÖRE gaten och monitor-ringen. Utan det går rummets
+        // lågfrekvens (muller, bordsvibrationer, DC) rakt in i gaten — som
+        // aldrig stänger på en konstant offset — och vidare till mastern, där
+        // högtalarna får rummet att vibrera. Kryssrutan styr 80 Hz; avstängd
+        // lämnar kvar en 5 Hz DC-spärr (hörbarhetsgränsen underifrån).
+        low_cut_filter.set_cutoff_hz(if low_cut_on {
+            LOW_CUT_CUTOFF_HZ
+        } else {
+            DC_BLOCKER_CUTOFF_HZ
+        });
+        mono = low_cut_filter.process(mono);
+        // Anti-rundgång: en smal spärr på den detekterade howl-frekvensen.
+        // Frekvensen kommer från UI-trådens detektor (autokorrelation), så
+        // ljudtråden gör bara filtreringen.
+        if let Some(hz) = notch_hz {
+            notch.set_freq(hz);
+            mono = notch.process(mono);
+        }
         let raw_abs = mono.abs();
         if raw_abs < gate {
             mono = 0.0;
@@ -412,6 +691,11 @@ impl LiveMicrophoneCapture {
             analysis_buffer: Arc::new(Mutex::new(Vec::with_capacity(ANALYSIS_MAX))),
             monitor_ring: Arc::new(Mutex::new(Vec::with_capacity(8192))),
             monitor_enabled: Arc::new(AtomicBool::new(false)),
+            // 80 Hz-högpasset är på som standard (matchar kryssrutan och
+            // `MicrophoneSettings::low_cut_80hz`): utan det går rummets
+            // lågfrekvens rakt in i mastern.
+            low_cut: Arc::new(AtomicBool::new(true)),
+            notch_freq: Arc::new(AtomicU32::new(0)),
             autotune_enabled: Arc::new(AtomicBool::new(false)),
             autotune_strength: Arc::new(Mutex::new(0.75)),
             autotune_speed: Arc::new(Mutex::new(0.75)),
@@ -473,6 +757,8 @@ impl LiveMicrophoneCapture {
             analysis_buffer: Arc::clone(&self.analysis_buffer),
             monitor_ring: Arc::clone(&self.monitor_ring),
             monitor_enabled: Arc::clone(&self.monitor_enabled),
+            low_cut: Arc::clone(&self.low_cut),
+            notch_freq: Arc::clone(&self.notch_freq),
             autotune_enabled: Arc::clone(&self.autotune_enabled),
             autotune_strength: Arc::clone(&self.autotune_strength),
             autotune_speed: Arc::clone(&self.autotune_speed),
@@ -536,6 +822,8 @@ pub struct VocalStudioTrack {
     pub realtime_autotune: bool,
     pub input_gain: f32,
     pub mic_vu_level: f32,
+    /// Detektor för rundgång (se [`HowlDetector`]). Uppdateras per UI-frame.
+    pub howl_detector: HowlDetector,
     pub custom_sample_name_input: String,
     pub takes: Vec<AudioTake>,
     pub custom_sounds: Vec<CustomSoundClip>,
@@ -570,6 +858,7 @@ impl Default for VocalStudioTrack {
             realtime_autotune: false,
             input_gain: settings.input_gain,
             mic_vu_level: 0.0,
+            howl_detector: HowlDetector::new(),
             custom_sample_name_input: crate::i18n::t("Mitt Akustiska Ljud 1").to_string(),
             takes: Vec::new(),
             custom_sounds: Vec::new(),
@@ -613,6 +902,24 @@ impl VocalStudioTrack {
             }
         }
     }
+
+    /// Slår 80 Hz-högpasset på/av. Implementerar kryssrutan i Sångstudion, som
+    /// tidigare bara satte ett fält som ingen läste — så rummets lågfrekvens
+    /// gick rakt in i monitor-ringen och vidare till mastern.
+    pub fn set_low_cut(&mut self, on: bool) {
+        self.mic_settings.low_cut_80hz = on;
+        if let Some(ref mic) = self.mic_capture {
+            mic.low_cut.store(on, Ordering::Relaxed);
+        }
+    }
+
+    /// Publicerar rundgångsfrekvensen till ljudtråden (`None` = ingen spärr).
+    pub fn set_notch_freq(&self, hz: Option<f32>) {
+        if let Some(ref mic) = self.mic_capture {
+            let bits = hz.map(f32::to_bits).unwrap_or(0);
+            mic.notch_freq.store(bits, Ordering::Relaxed);
+        }
+    }
     pub fn update_live_stream(&mut self) {
         if let Some(ref mic) = self.mic_capture {
             let vu_bits = mic.peak_vu.load(Ordering::Relaxed);
@@ -637,6 +944,18 @@ impl VocalStudioTrack {
                 self.custom_recording_elapsed_secs += 0.033;
             }
         }
+
+        // Anti-rundgång: körs en gång per frame på samma analysbuffert som
+        // tunern redan fyller (autokorrelation), och publicerar frekvensen till
+        // ljudtråden. Bara aktiv när kryssrutan är på — annars nollas spärren.
+        let notch = if self.mic_settings.feedback_reduction {
+            let pitch = self.detect_live_pitch_hz();
+            self.howl_detector
+                .update(pitch, self.mic_vu_level, self.mic_settings.noise_gate_thresh)
+        } else {
+            None
+        };
+        self.set_notch_freq(notch);
     }
 
     /// Pushes the current monitoring / real-time auto-tune state into the live
@@ -1211,6 +1530,156 @@ mod tests {
         // Normalize
         let norm_res = track.normalize_selected_take();
         assert!(norm_res.is_ok());
+    }
+
+    // --- Högpass (80 Hz low-cut) och anti-rundgång -------------------------
+
+    fn rms(samples: &[f32]) -> f32 {
+        if samples.is_empty() {
+            return 0.0;
+        }
+        (samples.iter().map(|s| s * s).sum::<f32>() / samples.len() as f32).sqrt()
+    }
+
+    fn sine(freq: f32, sr: f32, len: usize, amp: f32) -> Vec<f32> {
+        (0..len)
+            .map(|i| amp * (2.0 * std::f32::consts::PI * freq * i as f32 / sr).sin())
+            .collect()
+    }
+
+    #[test]
+    fn low_cut_removes_dc_offset() {
+        let sr = 48_000.0;
+        let mut hp = HighPassFilter::new(sr, LOW_CUT_CUTOFF_HZ);
+        // 0.5 s konstant DC — exakt det en USB-mikrofon med offset skickar.
+        let out: Vec<f32> = (0..24_000).map(|_| hp.process(0.25)).collect();
+        let tail = rms(&out[12_000..]);
+        assert!(
+            tail < 0.001,
+            "DC ska vara borta efter insvängningen, kvar blev {tail}"
+        );
+    }
+
+    fn db(after: f32, before: f32) -> f32 {
+        20.0 * (after / before).log10()
+    }
+
+    #[test]
+    fn low_cut_removes_sub_and_keeps_voice() {
+        // Ett högpass har -3 dB *vid* hörnfrekvensen (definitionen av hörn).
+        // Rummet här mättes till 78 Hz — strax under hörnet — och dämpas
+        // därför bara ~3 dB. Det högpasset tar bort är sub-innehållet: en
+        // oktav under hörnet ska dämpas minst 12 dB (12 dB/oktav, ordning 2).
+        let sr = 48_000.0;
+
+        let corner = sine(LOW_CUT_CUTOFF_HZ, sr, 48_000, 0.5);
+        let mut hp = HighPassFilter::new(sr, LOW_CUT_CUTOFF_HZ);
+        let out: Vec<f32> = corner.iter().map(|&s| hp.process(s)).collect();
+        let at_corner = db(rms(&out[24_000..]), rms(&corner[24_000..]));
+        assert!(
+            (at_corner + 3.0).abs() < 1.5,
+            "hörnet ska ligga på -3 dB, blev {at_corner:.1} dB"
+        );
+
+        let sub = sine(40.0, sr, 48_000, 0.5);
+        let mut hp2 = HighPassFilter::new(sr, LOW_CUT_CUTOFF_HZ);
+        let out2: Vec<f32> = sub.iter().map(|&s| hp2.process(s)).collect();
+        let at_sub = db(rms(&out2[24_000..]), rms(&sub[24_000..]));
+        assert!(
+            at_sub < -12.0,
+            "40 Hz (oktaven under) ska dämpas minst 12 dB, blev {at_sub:.1} dB"
+        );
+    }
+
+    #[test]
+    fn low_cut_passes_voice_band() {
+        let sr = 48_000.0;
+        let voice = sine(1000.0, sr, 48_000, 0.5);
+        let mut hp = HighPassFilter::new(sr, LOW_CUT_CUTOFF_HZ);
+        let out: Vec<f32> = voice.iter().map(|&s| hp.process(s)).collect();
+        let before = rms(&voice[24_000..]);
+        let after = rms(&out[24_000..]);
+        let db = 20.0 * (after / before).log10();
+        assert!(db > -1.0, "1 kHz ska passera nästan oförändrat, blev {db:.1} dB");
+    }
+
+    #[test]
+    fn notch_kills_howl_frequency() {
+        let sr = 48_000.0;
+        let howl = sine(220.0, sr, 48_000, 0.5);
+        let mut notch = NotchFilter::new(sr);
+        notch.set_freq(220.0);
+        let out: Vec<f32> = howl.iter().map(|&s| notch.process(s)).collect();
+        let before = rms(&howl[24_000..]);
+        let after = rms(&out[24_000..]);
+        let db = 20.0 * (after / before).log10();
+        assert!(db < -12.0, "howl på 220 Hz ska dämpas minst 12 dB, blev {db:.1} dB");
+    }
+
+    #[test]
+    fn notch_leaves_neighbour_frequency_untouched() {
+        let sr = 48_000.0;
+        // En oktav under spärren: sång ska inte gröpas ur av anti-rundgången.
+        let voice = sine(110.0, sr, 48_000, 0.5);
+        let mut notch = NotchFilter::new(sr);
+        notch.set_freq(220.0);
+        let out: Vec<f32> = voice.iter().map(|&s| notch.process(s)).collect();
+        let before = rms(&voice[24_000..]);
+        let after = rms(&out[24_000..]);
+        let db = 20.0 * (after / before).log10();
+        assert!(db > -1.5, "110 Hz ska passera spärren, blev {db:.1} dB");
+    }
+
+    #[test]
+    fn howl_detector_needs_a_stable_tone() {
+        let mut det = HowlDetector::new();
+        // Stabil ton strax under kravet: ingen spärr ännu.
+        for i in 0..(HOWL_STABLE_FRAMES - 1) {
+            assert!(
+                det.update(Some(300.0), 0.5, 0.01).is_none(),
+                "frame {i} ska inte vara nog"
+            );
+        }
+        let engaged = det.update(Some(300.0), 0.5, 0.01);
+        assert_eq!(engaged, Some(300.0), "efter stabila frames ska spärren slå till");
+    }
+
+    #[test]
+    fn howl_detector_ignores_singing() {
+        let mut det = HowlDetector::new();
+        // Röst som driver i pitch (glissando) — aldrig samma frekvens.
+        for i in 0..200 {
+            let pitch = 200.0 + (i as f32) * 5.0;
+            assert!(det.update(Some(pitch), 0.5, 0.01).is_none());
+        }
+    }
+
+    #[test]
+    fn howl_detector_requires_level_above_gate() {
+        let mut det = HowlDetector::new();
+        for _ in 0..100 {
+            assert!(
+                det.update(Some(300.0), 0.005, 0.012).is_none(),
+                "svag ton under gaten ska inte spärras"
+            );
+        }
+    }
+
+    #[test]
+    fn howl_detector_holds_the_notch_after_the_tone_stops() {
+        let mut det = HowlDetector::new();
+        for _ in 0..HOWL_STABLE_FRAMES {
+            det.update(Some(300.0), 0.5, 0.01);
+        }
+        // Tyst: spärren ska ligga kvar en stund (annars pumpar rundgången igenom).
+        for _ in 0..(HOWL_RELEASE_FRAMES - 1) {
+            assert_eq!(det.update(None, 0.0, 0.01), Some(300.0));
+        }
+        // ...och sedan släppa.
+        for _ in 0..2 {
+            det.update(None, 0.0, 0.01);
+        }
+        assert!(det.update(None, 0.0, 0.01).is_none(), "spärren ska släppa");
     }
 }
 
