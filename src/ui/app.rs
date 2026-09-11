@@ -372,6 +372,105 @@ fn snap_time_secs(mode: TimeSnapMode, raw: f32, sec_per_bar: f32) -> f32 {
     }
 }
 
+/// En autosave som erbjuds vid start (Fas 6.1).
+#[derive(Clone)]
+pub struct RecoveryCandidate {
+    pub entry: crate::autosave::AutosaveEntry,
+    /// Projektets läsbara namn, läst ur autosavens JSON (annars sluggen).
+    pub name: String,
+}
+
+/// Autosaves som är nyare än motsvarande manuella projektfil.
+///
+/// Jämförelsen görs mot den *manuella* filens ändringstid, inte mot en sparad
+/// flagga: har användaren sparat efter autosaven finns det inget att rädda, och
+/// då ska ingen dialog stå i vägen. Saknas den manuella filen helt (krasch före
+/// första sparningen) är autosaven allt som finns och erbjuds alltid.
+fn collect_recovery_candidates() -> Vec<RecoveryCandidate> {
+    collect_recovery_candidates_in(&crate::paths::paths())
+}
+
+/// Samma sak mot en explicit sökvägsuppsättning (testbar utan miljöberoende).
+fn collect_recovery_candidates_in(paths: &crate::paths::Paths) -> Vec<RecoveryCandidate> {
+    let mut out: Vec<RecoveryCandidate> = Vec::new();
+    for entry in crate::autosave::latest_per_project(&paths.autosave_dir()) {
+        let Ok(bytes) = std::fs::read(&entry.path) else {
+            continue;
+        };
+        let name = serde_json::from_slice::<SonixProjectData>(&bytes)
+            .map(|d| d.name)
+            .unwrap_or_else(|_| entry.project.replace('-', " "));
+        let manual = std::fs::metadata(paths.project_file(&name))
+            .and_then(|m| m.modified())
+            .ok();
+        if entry.worth_offering(manual) {
+            out.push(RecoveryCandidate { entry, name });
+        }
+    }
+    out.sort_by(|a, b| b.entry.stamp.cmp(&a.entry.stamp));
+    out.truncate(5);
+    out
+}
+
+/// Ett projekt i "Senaste projekt"-listan (`recent.json`).
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct RecentProject {
+    pub name: String,
+    pub path: String,
+    /// Unix-sekunder då projektet senast öppnades eller sparades.
+    #[serde(default)]
+    pub opened: u64,
+}
+
+/// Hur många projekt läslistan minns.
+const RECENT_MAX: usize = 8;
+
+/// Läser `recent.json`. Trasig eller saknad fil ger en tom lista — läslistan är
+/// en bekvämlighet, aldrig en förutsättning för att kunna öppna ett projekt.
+fn load_recent_projects() -> Vec<RecentProject> {
+    load_recent_projects_in(&crate::paths::paths())
+}
+
+/// Samma läsning mot en explicit sökvägsuppsättning (testbar).
+fn load_recent_projects_in(paths: &crate::paths::Paths) -> Vec<RecentProject> {
+    let path = paths.recent_file();
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let mut entries: Vec<RecentProject> = serde_json::from_str(&text).unwrap_or_default();
+    // Filen kan ha flyttats eller städats bort utanför appen.
+    entries.retain(|e| std::path::Path::new(&e.path).exists());
+    entries.truncate(RECENT_MAX);
+    entries
+}
+
+/// Skriver läslistan atomiskt (samma temp+rename-väg som autosaven).
+fn store_recent_projects(entries: &[RecentProject]) {
+    store_recent_projects_in(&crate::paths::paths(), entries)
+}
+
+/// Samma skrivning mot en explicit sökvägsuppsättning (testbar).
+fn store_recent_projects_in(paths: &crate::paths::Paths, entries: &[RecentProject]) {
+    let path = paths.recent_file();
+    if let Ok(json) = serde_json::to_string_pretty(entries) {
+        let _ = crate::autosave::write_atomic(&path, json.as_bytes());
+    }
+}
+
+/// Lägger ett projekt först i läslistan (flyttar upp det om det redan finns).
+fn push_recent_project(entries: &mut Vec<RecentProject>, name: &str, path: &str) {
+    entries.retain(|e| e.path != path);
+    entries.insert(
+        0,
+        RecentProject {
+            name: name.to_string(),
+            path: path.to_string(),
+            opened: crate::autosave::now_stamp(),
+        },
+    );
+    entries.truncate(RECENT_MAX);
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SonixProjectData {
     pub name: String,
@@ -913,6 +1012,15 @@ pub struct SonixApp {
     pub song_structure_state: SongStructureState,
     pub show_project_manager_modal: bool,
     pub project_file_path: Option<String>,
+    /// Autosave (Fas 6.1): sekunder sedan senaste kontroll, och fingeravtryck
+    /// för det läge som senast skyddades — så ett oförändrat projekt inte
+    /// roterar bort sin egen historik.
+    pub autosave_accum: f32,
+    pub autosave_last_fp: Option<u64>,
+    pub autosave_last_write: Option<u64>,
+    /// Autosaves som är nyare än den manuella filen, ifyllda vid start.
+    pub recovery_candidates: Vec<RecoveryCandidate>,
+    pub show_recovery_modal: bool,
     pub new_project_name_input: String,
     // Audio / MIDI Configuration
     pub audio_sample_rate_idx: usize,
@@ -1252,6 +1360,11 @@ impl SonixApp {
             _ => 1,
         };
 
+        // Kraschåterställning (Fas 6.1): finns det en autosave som är nyare än
+        // sin manuella projektfil är det senaste arbetsläget bara där.
+        let recovery_candidates = collect_recovery_candidates();
+        let show_recovery_modal = !recovery_candidates.is_empty();
+
         let mut app = Self {
             engine,
             monitor_ring_sent: None,
@@ -1467,6 +1580,11 @@ impl SonixApp {
             song_structure_state: SongStructureState::default(),
             show_project_manager_modal: false,
             project_file_path: None,
+            autosave_accum: 0.0,
+            autosave_last_fp: None,
+            autosave_last_write: None,
+            recovery_candidates,
+            show_recovery_modal,
             new_project_name_input: crate::i18n::t("Mitt Beat").to_string(),
             // Audio / MIDI Configuration
             audio_sample_rate_idx: initial_rate_idx,
@@ -1478,6 +1596,13 @@ impl SonixApp {
         };
         app.sync_group_state();
         app.sync_all_stems_to_engine();
+
+        // Utgångsläget är inte "osparat arbete". Utan detta skulle en helt orörd
+        // start skriva en autosave, och nästa start erbjuda att återställa ett
+        // tomt projekt — en varning som inte betyder något.
+        if let Ok(json) = serde_json::to_string_pretty(&app.project_data(&app.project_name)) {
+            app.autosave_last_fp = Some(crate::autosave::fingerprint(json.as_bytes()));
+        }
         app
     }
 
@@ -2343,6 +2468,11 @@ impl SonixApp {
             self.undo_stack.remove(0);
         }
         self.redo_stack.clear();
+
+        // En strukturell ändring är exakt det som ska skyddas av en autosave
+        // (Fas 6.1) — men den skrivs högst var tionde sekund, annars blev det
+        // en fil per undo-steg.
+        self.autosave_after_structural_change();
     }
 
     pub fn undo(&mut self) {
@@ -2605,16 +2735,12 @@ impl SonixApp {
         }
     }
 
-    pub fn save_project(&mut self, name: &str) {
-        let clean_name = if name.trim().is_empty() {
-            crate::i18n::t("Namnlöst Projekt")
-        } else {
-            name.trim()
-        };
-        let dir = crate::paths::paths().projects_dir();
-        let _ = std::fs::create_dir_all(&dir);
-
-        let file_path = crate::paths::paths().project_file(clean_name);
+    /// Bygger projektets serialiserbara form.
+    ///
+    /// Delas av manuell sparning och autosave. Om de två byggde sina egna
+    /// objekt kunde de glida isär, och då skulle autosaven skydda något annat
+    /// än det användaren faktiskt sparar.
+    fn project_data(&self, name: &str) -> SonixProjectData {
         let saved_tracks: Vec<SavedTrackData> = self.playlist_tracks.iter().map(|t| SavedTrackData {
             name: t.name.clone(),
             volume: t.volume,
@@ -2633,8 +2759,8 @@ impl SonixApp {
             vca: t.vca,
         }).collect();
 
-        let data = SonixProjectData {
-            name: clean_name.to_string(),
+        SonixProjectData {
+            name: name.to_string(),
             bpm: self.bpm,
             swing: self.swing,
             master_volume: self.master_volume,
@@ -2658,16 +2784,148 @@ impl SonixApp {
                     })
                 })
                 .collect(),
+        }
+    }
+
+    pub fn save_project(&mut self, name: &str) {
+        let clean_name = if name.trim().is_empty() {
+            crate::i18n::t("Namnlöst Projekt")
+        } else {
+            name.trim()
         };
+        let dir = crate::paths::paths().projects_dir();
+        let _ = std::fs::create_dir_all(&dir);
+
+        let file_path = crate::paths::paths().project_file(clean_name);
+        let data = self.project_data(clean_name);
 
         if let Ok(json) = serde_json::to_string_pretty(&data)
-            && std::fs::write(&file_path, json).is_ok() {
+            // Temp + rename: en avbruten skrivning får aldrig ersätta en hel
+            // projektfil med en halv.
+            && crate::autosave::write_atomic(&file_path, json.as_bytes()).is_ok() {
                 self.project_name = clean_name.to_string();
                 self.project_file_path = Some(file_path.to_string_lossy().to_string());
+                // Kom ihåg läget, så autosaven inte skriver en kopia av exakt
+                // det som just sparades.
+                self.autosave_last_fp = Some(crate::autosave::fingerprint(json.as_bytes()));
+                self.remember_recent_project(clean_name, &file_path);
                 self.status_message = crate::tstatus!("💾 Sparade projekt till '{}'!", file_path.display());
                 return;
             }
         self.status_message = crate::i18n::t("❌ Misslyckades att spara projektet.").to_string();
+    }
+
+    /// Lägger projektet först i läslistan (`~/.local/state/sonix/recent.json`).
+    fn remember_recent_project(&self, name: &str, path: &std::path::Path) {
+        let mut entries = load_recent_projects();
+        push_recent_project(&mut entries, name, &path.to_string_lossy());
+        store_recent_projects(&entries);
+    }
+
+    /// Autosparar om projektet ändrats sedan det senast skyddades.
+    ///
+    /// Tre grindar innan en fil skrivs: läget får inte vara identiskt med förra
+    /// autosaven, inte heller med filen på disk (då finns inget osparat), och
+    /// skrivningen sker atomiskt i state-katalogen. Varje skrivning roterar
+    /// historiken så att de senaste versionerna finns kvar.
+    pub fn maybe_autosave(&mut self) {
+        // Under en pågående projektinläsning är state halvfärdigt — att frysa
+        // det som en autosave vore att skydda fel läge.
+        if self
+            .project_load_progress
+            .try_lock()
+            .map(|p| p.is_loading)
+            .unwrap_or(false)
+        {
+            return;
+        }
+
+        let name = self.project_name.clone();
+        let data = self.project_data(&name);
+        let Ok(json) = serde_json::to_string_pretty(&data) else {
+            return;
+        };
+        let bytes = json.as_bytes();
+        let fp = crate::autosave::fingerprint(bytes);
+
+        if self.autosave_last_fp == Some(fp) {
+            return;
+        }
+        if let Some(path) = self.project_file_path.as_deref()
+            && std::fs::read(path)
+                .map(|disk| crate::autosave::fingerprint(&disk) == fp)
+                .unwrap_or(false)
+        {
+            // Identiskt med det användaren redan sparat — inget att skydda.
+            self.autosave_last_fp = Some(fp);
+            return;
+        }
+
+        let dir = crate::paths::paths().autosave_dir();
+        let stamp = crate::autosave::now_stamp();
+        match crate::autosave::save(&dir, &name, bytes, stamp) {
+            Ok(path) => {
+                let removed = crate::autosave::prune(&dir, crate::autosave::KEEP_PER_PROJECT)
+                    .unwrap_or(0);
+                self.autosave_last_fp = Some(fp);
+                self.autosave_last_write = Some(stamp);
+                self.status_message = if removed > 0 {
+                    crate::tstatus!(
+                        "🛟 Autosparade '{}' ({} äldre versioner städade)",
+                        name,
+                        removed
+                    )
+                } else {
+                    crate::tstatus!("🛟 Autosparade '{}'", name)
+                };
+                let _ = path;
+            }
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte autospara: {}", e);
+            }
+        }
+    }
+
+    /// Autosparar direkt efter en strukturell ändring (Fas 6.1: "vid varje
+    /// strukturell ändring"), men högst var tionde sekund — annars skulle en
+    /// jämn ström av undo-punkter skriva en fil per steg.
+    pub fn autosave_after_structural_change(&mut self) {
+        let now = crate::autosave::now_stamp();
+        if let Some(last) = self.autosave_last_write
+            && now.saturating_sub(last) < 10
+        {
+            return;
+        }
+        self.maybe_autosave();
+    }
+
+    /// Återställer en autosave från återställningsdialogen.
+    ///
+    /// Filen *pensioneras* (döps om till `*.restored`) i stället för att
+    /// raderas: frågan ska inte ställas igen nästa start, men det återställda
+    /// läget ska gå att gräva fram om användaren ångrar sig.
+    pub fn restore_autosave(&mut self, index: usize) {
+        let Some(candidate) = self.recovery_candidates.get(index).cloned() else {
+            self.show_recovery_modal = false;
+            return;
+        };
+        let path = candidate.entry.path.clone();
+        self.recovery_candidates.clear();
+        self.show_recovery_modal = false;
+        match crate::autosave::retire(&path) {
+            Ok(_) => {
+                self.load_project_file(path.to_string_lossy().as_ref());
+                self.autosave_accum = 0.0;
+                self.autosave_last_fp = None;
+                self.status_message = crate::tstatus!(
+                    "🛟 Återställde autosave för '{}' — granska och spara projektet",
+                    candidate.name
+                );
+            }
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte återställa autosaven: {}", e);
+            }
+        }
     }
 
     pub fn load_project_file(&mut self, path_str: &str) {
@@ -2884,6 +3142,15 @@ impl SonixApp {
 
         self.loop_end_bar = self.get_max_project_bars().max(32);
         self.project_file_path = Some(payload.file_path);
+        // Öppnade projekt hör till läslistan precis som sparade (Fas 6.1).
+        if let Some(path) = self.project_file_path.clone() {
+            let name = self.project_name.clone();
+            self.remember_recent_project(&name, std::path::Path::new(&path));
+        }
+        // Nytt läge: nästa autosave-kontroll jämför mot filen på disk i stället
+        // för mot det förra projektets fingeravtryck.
+        self.autosave_last_fp = None;
+        self.autosave_accum = 0.0;
         self.selected_audio_region = None;
         let opened_name = self.project_name.clone();
         self.status_message = if plugin_errors.is_empty() {
@@ -4999,6 +5266,15 @@ impl eframe::App for SonixApp {
         self.anim_phase += 0.08;
         self.update_scope_history();
         self.vocal_studio.update_live_stream();
+
+        // Autosave (Fas 6.1): kontrollera med jämna mellanrum om projektet
+        // ändrats sedan det senast skyddades. Fingeravtrycket gör att ett
+        // orörligt projekt inte roterar bort sin egen historik.
+        self.autosave_accum += ctx.input(|i| i.stable_dt).min(0.5);
+        if self.autosave_accum >= crate::autosave::INTERVAL_SECS {
+            self.autosave_accum = 0.0;
+            self.maybe_autosave();
+        }
         self.sync_mic_monitoring();
 
         // Check if window is minimized or not focused (Wayland / Hyprland safety)
@@ -5028,6 +5304,7 @@ impl eframe::App for SonixApp {
             || self.show_stem_focus_modal
             || self.show_controller_modal
             || self.show_about_modal
+            || self.show_recovery_modal
             || self.show_ai_settings_modal
             || self.show_audio_settings_modal
             || self.show_import_modal
@@ -5261,6 +5538,52 @@ impl eframe::App for SonixApp {
                             self.show_project_manager_modal = true;
                             ui.close_menu();
                         }
+
+                        // 🕘 Senaste projekt (Fas 6.1): läser recent.json. Läslistan
+                        // är en bekvämlighet — stängs av sig själv om filen är tom.
+                        let recent = load_recent_projects();
+                        let mut open_recent: Option<String> = None;
+                        ui.add_enabled_ui(!recent.is_empty(), |ui| {
+                            ui.menu_button(self.tr("🕘 Senaste projekt"), |ui| {
+                                for entry in &recent {
+                                    let label = format!(
+                                        "{}  ({})",
+                                        entry.name,
+                                        crate::autosave::relative_age(
+                                            entry.opened,
+                                            crate::autosave::now_stamp()
+                                        )
+                                    );
+                                    if ui.button(label).on_hover_text(&entry.path).clicked() {
+                                        open_recent = Some(entry.path.clone());
+                                        ui.close_menu();
+                                    }
+                                }
+                            });
+                        });
+                        if let Some(path) = open_recent {
+                            self.load_project_file(&path);
+                        }
+
+                        if ui.button(self.tr("📂 Visa projektmappen i filhanteraren")).clicked() {
+                            // Öppnar den kanoniska projektmappen i systemets
+                            // filhanterare. Ingen egen filbläddrare — det är
+                            // användarens filhanterare som gäller.
+                            let dir = crate::paths::paths().projects_dir();
+                            let _ = std::fs::create_dir_all(&dir);
+                            if let Err(e) = std::process::Command::new("xdg-open")
+                                .arg(&dir)
+                                .spawn()
+                            {
+                                self.status_message = crate::tstatus!(
+                                    "⚠ Kunde inte öppna '{}' i filhanteraren: {}",
+                                    dir.display(),
+                                    e
+                                );
+                            }
+                            ui.close_menu();
+                        }
+
                         if ui.button(self.tr("⚡ Ladda Demo-projekt")).clicked() {
                             self.load_demo_project();
                             ui.close_menu();
@@ -5857,6 +6180,7 @@ impl eframe::App for SonixApp {
         self.render_stem_import_progress_modal(ctx);
         self.render_project_load_progress_modal(ctx);
         self.render_about_modal(ctx);
+        self.render_recovery_modal(ctx);
         self.render_project_manager_modal(ctx);
         self.render_ai_settings_modal(ctx);
         self.render_audio_settings_modal(ctx);
@@ -12090,6 +12414,104 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         }
     }
 
+    /// Kraschåterställning (Fas 6.1): erbjuder de autosaves som är nyare än sin
+    /// manuella projektfil. Dialogen visas bara när det finns något att rädda.
+    fn render_recovery_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_recovery_modal {
+            return;
+        }
+
+        // Snapshot av listan: fönster-closuren får inte låna self samtidigt som
+        // knapptryckningar vill ändra self.
+        let rows: Vec<(String, String, u64)> = self
+            .recovery_candidates
+            .iter()
+            .map(|c| {
+                (
+                    c.name.clone(),
+                    c.entry.path.to_string_lossy().to_string(),
+                    c.entry.stamp,
+                )
+            })
+            .collect();
+        let now = crate::autosave::now_stamp();
+
+        let mut restore: Option<usize> = None;
+        let mut dismiss = false;
+        let mut open = self.show_recovery_modal;
+        egui::Window::new(crate::i18n::t("🛟 Osparat arbete hittades"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .default_size(Vec2::new(560.0, 280.0))
+            .show(ctx, |ui| {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "Sonix avslutades innan projektet sparades. Dessa automatiska kopior är nyare än filen på disk:",
+                    ))
+                    .size(11.5)
+                    .color(Theme::TEXT_BRIGHT),
+                );
+                ui.add_space(8.0);
+
+                for (i, (name, path, stamp)) in rows.iter().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "🛟 {} — {}",
+                                name,
+                                crate::autosave::relative_age(*stamp, now)
+                            ))
+                            .size(11.5)
+                            .color(Theme::FL_CYAN),
+                        );
+                        if ui
+                            .button(crate::i18n::t("  Återställ  "))
+                            .on_hover_text(path)
+                            .clicked()
+                        {
+                            restore = Some(i);
+                        }
+                    });
+                }
+
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(6.0);
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "Autosparningarna ligger i ~/.local/state/sonix/autosave/ (5 senaste per projekt). En återställd kopia pensioneras dit utan att raderas.",
+                    ))
+                    .size(10.0)
+                    .color(Theme::TEXT_MUTED),
+                );
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(crate::i18n::t("  Fortsätt utan att återställa  "))
+                                    .size(11.5),
+                            )
+                            .fill(Theme::FL_ORANGE),
+                        )
+                        .clicked()
+                    {
+                        // Stäng bara: autosparningarna ligger kvar och kan
+                        // öppnas manuellt — inget raderas åt användaren.
+                        dismiss = true;
+                    }
+                });
+            });
+
+        if let Some(i) = restore {
+            self.restore_autosave(i);
+        } else if !open || dismiss {
+            self.show_recovery_modal = false;
+        }
+    }
+
     fn render_about_modal(&mut self, ctx: &egui::Context) {
         if !self.show_about_modal {
             return;
@@ -13816,6 +14238,125 @@ fn rand_simple(seed: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Minimal projektfil — fälten utanför `serde(default)` måste anges.
+    fn minimal_project_json(name: &str) -> String {
+        format!(
+            r#"{{"name":"{name}","bpm":128.0,"swing":0.0,"master_volume":1.0,"master_pan":0.0,"tracks":[]}}"#
+        )
+    }
+
+    fn isolated_paths(tag: &str) -> crate::paths::Paths {
+        let root = std::env::temp_dir().join(format!(
+            "sonix_app_test_{}_{}_{}",
+            tag,
+            std::process::id(),
+            crate::autosave::now_stamp()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("tmpdir");
+        crate::paths::Paths::with_home(root)
+    }
+
+    /// Kärnan i Fas 6.1: vid start ska bara arbete som *inte* finns i den
+    /// manuella filen erbjudas — annars blir varningen brus.
+    #[test]
+    fn recovery_offers_newer_autosaves_and_skips_already_saved_work() {
+        let paths = isolated_paths("recovery");
+        let dir = paths.autosave_dir();
+        let now = crate::autosave::now_stamp();
+
+        // (a) Autosave som är nyare än sin manuella fil → erbjuds.
+        let fresh = minimal_project_json("Färsk");
+        let fresh_file = paths.project_file("Färsk");
+        std::fs::create_dir_all(fresh_file.parent().unwrap()).unwrap();
+        std::fs::write(&fresh_file, &fresh).expect("manuell fil");
+        crate::autosave::save(&dir, "Färsk", fresh.as_bytes(), now + 5).expect("autosave");
+
+        // (b) Autosave som är äldre än sin manuella fil → inget att rädda.
+        let saved = minimal_project_json("Redan sparad");
+        let saved_file = paths.project_file("Redan sparad");
+        std::fs::create_dir_all(saved_file.parent().unwrap()).unwrap();
+        std::fs::write(&saved_file, &saved).expect("manuell fil");
+        crate::autosave::save(&dir, "Redan sparad", saved.as_bytes(), now.saturating_sub(600))
+            .expect("autosave");
+
+        // (c) Autosave utan manuell fil (krasch före första sparningen) → erbjuds.
+        let unsaved = minimal_project_json("Aldrig sparad");
+        crate::autosave::save(&dir, "Aldrig sparad", unsaved.as_bytes(), now).expect("autosave");
+
+        let found = collect_recovery_candidates_in(&paths);
+        let names: Vec<String> = found.iter().map(|c| c.name.clone()).collect();
+        assert!(names.contains(&"Färsk".to_string()), "saknas: {names:?}");
+        assert!(
+            names.contains(&"Aldrig sparad".to_string()),
+            "saknas: {names:?}"
+        );
+        assert!(
+            !names.contains(&"Redan sparad".to_string()),
+            "redan sparad ska inte erbjudas: {names:?}"
+        );
+        // Namnet kommer ur filens JSON, inte ur filnamnets slug.
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[0].name, "Färsk", "nyaste först");
+
+        // Prenumererad (återställd) autosave försvinner ur listan men finns kvar.
+        let restored = found[0].entry.path.clone();
+        let retired = crate::autosave::retire(&restored).expect("pensionera");
+        assert!(retired.exists() && !restored.exists());
+        let after = collect_recovery_candidates_in(&paths);
+        assert_eq!(after.len(), 1);
+        assert_eq!(after[0].name, "Aldrig sparad");
+
+        let _ = std::fs::remove_dir_all(paths.state_dir());
+    }
+
+    /// Läslistan ska hålla sig till senaste projekt, tåla en trasig fil och
+    /// aldrig peka på något som städats bort utanför appen.
+    #[test]
+    fn recent_list_keeps_the_newest_projects_and_drops_missing_files() {
+        let paths = isolated_paths("recent");
+        let mut entries: Vec<RecentProject> = Vec::new();
+
+        // Tolv projekt, bara åtta ska minnas — och det senaste först.
+        for i in 0..12 {
+            let file = paths.project_file(&format!("Projekt {i}"));
+            std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+            std::fs::write(&file, minimal_project_json(&format!("Projekt {i}"))).unwrap();
+            push_recent_project(&mut entries, &format!("Projekt {i}"), &file.to_string_lossy());
+        }
+        store_recent_projects_in(&paths, &entries);
+
+        let loaded = load_recent_projects_in(&paths);
+        assert_eq!(loaded.len(), RECENT_MAX);
+        assert_eq!(loaded[0].name, "Projekt 11", "senaste först");
+        assert!(
+            !loaded.iter().any(|e| e.name == "Projekt 0"),
+            "äldsta ska ha ramlat ur listan"
+        );
+
+        // Samma projekt igen: flyttas upp, blir inte dubbelt.
+        let last_path = loaded[3].path.clone();
+        let last_name = loaded[3].name.clone();
+        push_recent_project(&mut entries, &last_name, &last_path);
+        assert_eq!(entries.len(), RECENT_MAX, "ingen dubblett");
+        assert_eq!(entries[0].path, last_path);
+
+        // En fil som raderats utanför appen ska inte erbjudas.
+        std::fs::remove_file(&last_path).unwrap();
+        store_recent_projects_in(&paths, &entries);
+        let reloaded = load_recent_projects_in(&paths);
+        assert!(
+            !reloaded.iter().any(|e| e.path == last_path),
+            "borttagen fil ska filtreras bort"
+        );
+
+        // Trasig JSON får inte krascha starten — bara ge en tom lista.
+        std::fs::write(paths.recent_file(), b"{ inte json").unwrap();
+        assert!(load_recent_projects_in(&paths).is_empty());
+
+        let _ = std::fs::remove_dir_all(paths.state_dir());
+    }
 
     #[test]
     fn test_classify_all_stem_names_distinct_colors() {

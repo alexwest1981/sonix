@@ -1,4 +1,5 @@
 mod audio;
+mod autosave;
 mod i18n;
 mod paths;
 mod ui;
