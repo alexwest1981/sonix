@@ -39,6 +39,19 @@
 
 > **Största kvarvarande biten:** **Plugin-hosting** (91 % — en CLAP-värd kan ladda plugins, läsa parametrar, **processa ljud i ett spår med PDC**, **spara/ladda plugin-state i projektet och applicera pluginens egna presets**, **läsa och driva `clap.gui`-livscykeln på huvudtråden**, **köra en plugin i en separat process — med kraschdetektering, automatisk omstart och ljud över delat minne**, samt **ladda, inspektera och spela både VST3- och VST2-moduler via handrullade ABI:er med parametrar, state och PDC**; kvar är att verifiera en **riktig** yabridge-brygga (Wine) och X11-fönstret på en riktig display). Neural stem-separation är byggd (opt-in via `--features neural` + en HTDemucs-ONNX).
 
+### Nya områden — Fas 6–9 (ingår **inte** i de 99 % ovan)
+
+Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt scope, riktat mot att Sonix ska hålla professionell nivå — inte bara hålla vad UI:t lovar.
+
+| Område | Klart | Kvar | Procent |
+| :--- | :---: | :---: | :---: |
+| **Tier 0** — Trovärdighet (autosave, undo, MIDI-I/O, kvantisering, dither) | 0 | 5 | **0 %** |
+| **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge) | 0 | 3 | **0 %** |
+| **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
+| **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
+
+> **Prioritet just nu: Tier 0 (Fas 6).** Ordningen är inte förhandlingsbar: en proffsmusiker som tappat ett projekt en gång bryr sig inte om hur bra AI:n är. Tier 0 mäts i att inget arbete går förlorat och att allt går att ångra.
+
 ---
 
 ## ✅ Fas 0 — Klar baslinje (det som redan är äkta)
@@ -218,9 +231,119 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ---
 
+## ⬜ Fas 6 — Trovärdighet inför professionell nivå (Tier 0)
+
+> **Varför denna fas ligger först:** en DAW kan ha världens bästa AI och ändå vara oanvändbar professionellt om den tappar arbete, inte kan ångra mixerändringar eller inte pratar med andra DAW:er. Ingenting i Fas 7–9 är värt något förrän detta sitter.
+>
+> **Nuläge, verifierat i koden (2026-09-11):** **0 träffar** på `autosave`/`recover`/`backup`; undo-historiken i `app.rs` (`undo_stack`/`redo_stack`) matas från **14 anropsställen**, samtliga tidslinjeoperationer (klipp, duplicera/ta bort spår, klistra in, mute, reverse, rensa); **ingen** SMF/MIDI-filkod finns (`smf`/`midi_file`/`import_midi`/`export_midi` = 0 träffar); ingen dither (`dither` = 0 träffar); kvantisering finns bara som rutnätssnap vid inmatning (`snap_time_secs`, `piano_roll_snap_to_scale`), inte som efterarbete.
+
+- [ ] **6.1 Autosave, kraschåterställning & versionshistorik** — *M*
+  - **Gör:** Autospara projektet till en roterande backup (t.ex. var 60:e sekund och vid varje strukturell ändring) och visa en återställningsdialog vid start när autosaven är nyare än senaste manuella sparning. Behåll N senaste versioner så att en trasig redigering kan rullas tillbaka. Skriv alltid till temp-fil + `rename` så att en avbruten skrivning aldrig ersätter en hel projektfil.
+  - **Klart när:** Processen kan dödas mitt i en inspelning och nästa start erbjuder en autosave med allt arbete kvar; en tidigare version kan återställas; test verifierar rotationen och att halvskrivna filer aldrig blir den aktiva projektfilen.
+  - **Filer:** `src/ui/app.rs`, `src/audio/project_io.rs` (ny, eller utökad `save_project`/`load_project_file`), `src/i18n.rs`
+  - **Beroende:** —
+
+- [ ] **6.2 Undo/redo för mixer, FX och automation** — *M*
+  - **Gör:** Låt undo-historiken omfatta fader/pan/mute/solo, EQ, kompressor, reverb-/delay-send, buss-/VCA-state, master-FX, plugin-parametrar och automationskurvor — och `push_undo` vid varje sådan commit (i dag täcks enbart tidslinjen). Snapshot-mekaniken finns redan; detta är utbyggnad, inte ny arkitektur.
+  - **Klart när:** En felaktig mixerändring kan ångras med Ctrl+Z, och undo följt av redo ger samma ljudande state (test).
+  - **Filer:** `src/ui/app.rs`, `src/audio/command.rs`
+  - **Beroende:** —
+
+- [ ] **6.3 MIDI-fil import/export (SMF)** — *M*
+  - **Gör:** Läs och skriv Standard MIDI File (typ 0/1) med eget minimalt SMF-lager — samma offline-/lättviktsprincip som CLAP-, VST3- och VST2-hostarna: tempo, taktart, spårnamn och noter med start/längd/velocity. Koppla till Channel Rack, Piano Roll och offline-exporten. Detta är också nyckeln som gör notbaserat AI-material flyttbart in och ut.
+  - **Klart när:** En MIDI-fil från en annan DAW kan importeras, redigeras och exporteras tillbaka med noter och tempo intakta (round-trip-test), och den exporterade filen öppnar korrekt externt.
+  - **Filer:** `src/audio/midi_file.rs` (ny), `src/audio/mod.rs`, `src/ui/app.rs`, `src/i18n.rs`
+  - **Beroende:** —
+
+- [ ] **6.4 Kvantisering & humanisering av inspelad MIDI** — *S*
+  - **Gör:** Kvantisera valda noter till valfritt rutnät (1/4 … 1/32, trioler) med styrka (0–100 %) och swing, plus humanisering (tid/velocity). Efterarbetet på MIDI-inspelningen som finns sedan 5.3 men ännu saknas.
+  - **Klart när:** Inspelade noter kan kvantiseras/humaniseras, ändringen är hörbar, ångringsbar och testad (tid + velocity).
+  - **Filer:** `src/ui/app.rs`, `src/audio/midi_input.rs`, `src/i18n.rs`
+  - **Beroende:** 6.3 (samma notmodell)
+
+- [ ] **6.5 Dither vid export** — *S*
+  - **Gör:** TPDF-dither (och valfritt noise shaping) när mastern kvantiseras till 16-bitars WAV; av för 24/32-bitars och FLAC.
+  - **Klart när:** 16-bitars export dithras (test: dekorrelerat brusgolv, inte korrelerat kvantiseringsbrus) och 24-bitars export är bitidentisk med dagens.
+  - **Filer:** `src/audio/wav_writer.rs`, `src/audio/exporter.rs`, `src/ui/app.rs`
+  - **Beroende:** —
+
+---
+
+## ⬜ Fas 7 — Plattform & prestanda (Tier 1)
+
+> **Varför:** FL Studio finns på Windows och macOS. Så länge Sonix är Linux-only kan den inte tävla som produkt — bara vara bäst i en nisch. `cpal` och `egui` är redan plattformsoberoende; det som låser är ALSA-MIDI (`midi_input.rs`), X11-pluginfönstret (`plugin_gui.rs`) och paketeringen (`install.sh`).
+
+- [ ] **7.1 Bryt ut ALSA/X11 till backend-gränssnitt och porta mot Windows** — *XL*
+  - **Gör:** Inför traits för ljud-, MIDI- och plugin-fönsterbackend (ALSA → cpal/WASAPI/CoreAudio, ALSA-seq → `midir`, X11 → HWND/NSView) med Linux-vägen som första implementation.
+  - **Klart när:** `cargo check --target x86_64-pc-windows-msvc` passerar för allt utom plugin-GUI:t, och en Windows-build startar, spelar upp ljud och tar emot MIDI.
+  - **Filer:** `Cargo.toml`, `src/audio/engine.rs`, `src/audio/midi_input.rs`, `src/audio/plugin_gui.rs`, `src/main.rs`, `install.sh`
+  - **Beroende:** 6.1–6.3 (data-säkerhet och projekt-I/O ska vara stabilt innan portering)
+
+- [ ] **7.2 Realtidsmätning i CI (xruns, latens, CPU-skalning)** — *M*
+  - **Gör:** Mät och logga underruns, callback-tid och CPU-belastning vid 64/128/256/512 frames på ett referensprojekt med N spår, och lägg trösklar i CI så att regresser failar. Mixningen sker i dag i cpal-callbacken utan parallell spårrendering (inga `thread::spawn` i render-vägen) — **mät först, optimera sedan**.
+  - **Klart när:** CI rapporterar latens/CPU/xrun per buffertstorlek och failar vid regress över satt tröskel.
+  - **Filer:** `tests/realtime_bench.rs` (ny), `.github/workflows/ci.yml`, `src/audio/engine.rs`
+  - **Beroende:** —
+
+- [ ] **7.3 Verifiera en riktig yabridge-brygga (Wine + display)** — *M*
+  - **Gör:** Kör en faktisk yabridge-producerad brygga (Sytrus/Harmor/Gross Beat/FL Studio VSTi) genom Sonix — laddning, inspektion, ljud med PDC, state och X11-fönstret. Punkten ligger kvar som **4.6** i Fas 4; den flyttas hit när Tier 0 är klar, eftersom den är Tier 1.
+  - **Beroende:** 4.1–4.2
+
+---
+
+## ⬜ Fas 8 — Arbetsflödesdjup (Tier 2)
+
+> **Varför:** Detta är där en FL-användare faktiskt byter DAW eller inte. Kom efter Tier 0/1 — annars bygger vi bredd på en grund som tappar arbete.
+
+- [ ] **8.1 Freeze / bounce-in-place** — *M* (0 träffar i dag; `freeze` finns bara som text om att UI:t inte fryser)
+  - **Klart när:** Ett spår med plugin kan frysas till ljud, spelas identiskt och tinas upp igen utan att inställningar tappas (test: renderad längd/latens).
+  - **Filer:** `src/audio/exporter.rs`, `src/audio/synth.rs`, `src/ui/app.rs`
+
+- [ ] **8.2 Tempo map (variabelt tempo)** — *L* (`tempo_map`/`song_tempo` = 0 träffar; i dag ett globalt `bpm`)
+  - **Klart när:** Tempobyten på tidslinjen styr uppspelning, automation och export korrekt.
+  - **Filer:** `src/ui/app.rs`, `src/audio/synth.rs`, `src/audio/exporter.rs`
+
+- [ ] **8.3 Flexibel routing (sends/returns utöver de fyra fasta bussarna)** — *L*
+  - **Klart när:** Ett valfritt antal bussar/returns kan skapas, routas och sparas — inte bara Vocal/Trummor/Synth/FX.
+  - **Filer:** `src/audio/synth.rs`, `src/audio/command.rs`, `src/ui/app.rs`
+
+- [ ] **8.4 Multisample-sampler / slicer** — *L* (`multisample` = 0 träffar)
+  - **Klart när:** En multisamplad patch över flera oktaver och en slice-uppdelning av en loop kan spelas från klaviaturen och sparas i projektet.
+  - **Filer:** `src/audio/factory_samples.rs`, `src/ui/app.rs`, nytt `src/audio/sampler.rs`
+
+---
+
+## ⬜ Fas 9 — AI-kilen (Tier 3)
+
+> **Varför sist och varför alls:** AI är inte det som gör Sonix professionellt — men det är det enda området där Sonix kan bli **bäst i världen**, eftersom ingen annan DAW erbjuder en offline co-producer vars resultat går att **mäta**. Bygg det på Tier 0/1, inte i stället för dem.
+
+- [ ] **9.1 LLM → Command-agent med mät-loop** — *L*
+  - **Gör:** Låt LLM:en (Ollama lokalt eller OpenAI/Anthropic/OpenRouter) svara med en **kommandolista** i stället för enbart 16-stegs-clips, och applicera den via den befintliga `command.rs`-ytan (~40 kommandon: mix, EQ, delay/reverb/drive, master-FX, buss/VCA, stems, presets). Verifiera med den mätning som redan finns i `loudness.rs` (LUFS, true peak): rendera → mät → justera tills målet nås, och visa målet i statusraden.
+  - **Klart när:** "Sänk sången 2 dB", "halvtidsdelay på leaden" och "mastra till −9 LUFS" utförs som riktiga kommandon, och LUFS-målet verifieras med mätning (test på intent → kommandon + mät-loop).
+  - **Filer:** `src/audio/ai_client.rs`, `src/audio/ai_generator.rs`, `src/ui/ai_assistant_view.rs`, `src/audio/loudness.rs`, `src/ui/app.rs`
+  - **Beroende:** 6.2 (allt agenten gör måste gå att ångra)
+
+- [ ] **9.2 ACE-Step 1.5 lokalt som `AudioProvider`** — *L*
+  - **Gör:** Ny provider mot en lokal ACE-Step-server (`acestep-api`, egen port) med `base_url` enligt samma mönster som Ollama. Ger text→låt, **repaint** (regenerera en vald takt — mer användbart i en DAW än att rulla en hel låt), cover, multi-track-lager och stems. Licens: MIT enligt repots licenssida. 2B-turbo kräver <4 GB VRAM (RTX 3060 Ti 8 GB räcker); XL (4B) kräver ≥12 GB och är därför inte aktuell.
+  - **Klart när:** En prompt genererar ett riktigt spår i tidslinjen och repaint ersätter ett valt tidsintervall utan att röra resten (test med mockad server).
+  - **Filer:** `src/audio/ai_client.rs`, `src/ui/ai_assistant_view.rs`, `src/ui/app.rs`, `src/i18n.rs`
+  - **Beroende:** 6.3 (för att notmaterial ska kunna flyttas ut/in)
+
+- [ ] **9.3 Valfri molnprovider: ElevenLabs Music API** — *M*
+  - **Gör:** Officiell musik-API (upp till 5 min, exakthet i ms för längd, upp till sex separata stems, inpainting av avsnitt, kommersiell licens — annons/film/TV/spel kräver utökad licens). Läggs **vid sidan av** de befintliga providerna och märks tydligt som molntjänst med kostnad per generering.
+  - **Klart när:** En generering hämtas, dekodas och importeras som spår med samma väg som Etapp C (`trigger_remote_audio_generation`/`poll_remote_audio_generation`), och fel/kvot felrapporteras ärligt.
+  - **Filer:** `src/audio/ai_client.rs`, `src/ui/ai_assistant_view.rs`, `src/ui/app.rs`
+  - **Beroende:** 9.2 (samma provider-mönster)
+
+> **Medvetet inte aktuellt:** *Suno* har ingen officiell publik API — tredjeparts-wrappers bryter mot deras villkor och lägger användarens prompts hos en mellanhand. *Mozart AI* har ingen publik utvecklar-API alls (deras tjänst är byggd på ElevenLabs Music API, dvs. 9.3). Suno förblir **import**, exakt som README beskriver.
+
+---
+
 ## 🎯 Nästa uppgift
 
-**Verifiera en riktig yabridge-brygga (VST2/VST3) med Wine + en riktig display** (*M*): kör en faktisk yabridge-producerad brygga (Sytrus/Harmor/Gross Beat/FL Studio VSTi) genom Sonix — laddning, inspektion, ljud med PDC, state och X11-fönstret. Detta kan bara göras på en maskin med Wine och display (kan inte verifieras i denna headless-miljö). Fas 2, neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI, automation, loudness, VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester i Fas 5 är nu klara.
+**6.1 Autosave, kraschåterställning & versionshistorik** (*M*): Sonix sparar i dag bara när användaren själv sparar — `save_project`/`load_project_file` i `app.rs` mot `~/Music/Sonix/Projects/*.sonix`, utan autosave, backup eller återställning (**0 träffar** på `autosave`/`recover`/`backup`). Därför är detta den första punkten i **Tier 0 (Fas 6)**: allt annat i Fas 6–9 vilar på att appen inte tappar arbete.
+
+Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
 
 ## 🛠️ Så här håller vi roadmapen levande
 
