@@ -61,7 +61,13 @@ pub struct MidiKeyboardInput {
     join: Option<JoinHandle<()>>,
     /// … medan midir anropar tillbaka från sin egen kö. Anslutningarna måste
     /// hållas vid liv så länge vi vill ta emot något: att släppa dem kopplar ner.
+    ///
+    /// Fältet läses aldrig — det finns för sin livstid, inte för sitt värde.
+    /// Det ska stå uttryckligt, annars varnar Windows-bygget för död kod (och
+    /// den varningen fångades av CI, inte av mig: Linux kompilerar inte den här
+    /// vägen alls).
     #[cfg(not(target_os = "linux"))]
+    #[allow(dead_code, reason = "bär anslutningarna för sin livstid; att släppa dem kopplar ner")]
     connections: Vec<midir::MidiInputConnection<()>>,
 }
 
