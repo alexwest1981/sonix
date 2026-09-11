@@ -34,6 +34,10 @@ pub mod plugin_vst2;
 // `inspect()` are always compiled so the UI can show an honest status.
 #[allow(dead_code)]
 pub mod plugin_host_live;
+/// Realtidsmätningen (Fas 7.2) används av testerna — den är ett mätverktyg, inte
+/// en del av appen, så den byggs bara i testläget.
+#[cfg(test)]
+pub mod realtime_bench;
 pub mod recorder;
 pub mod smf;
 pub mod stem_separator;

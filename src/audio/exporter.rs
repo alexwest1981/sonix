@@ -194,7 +194,9 @@ fn drum_cmd(ch_idx: usize) -> AudioCommand {
 
 /// Build the trigger commands for one 16th-note step, mirroring the live UI
 /// (`trigger_step` in pattern mode, `trigger_song_step` in song mode).
-fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioCommand> {
+/// Noterna ett steg ger upphov till. Delas med realtidsmätningen (Fas 7.2), så att
+/// mätningen kör samma trigger-väg som exporten.
+pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioCommand> {
     let mut cmds = Vec::new();
     if spec.pattern_mode {
         let vel = spec.velocities[sib];

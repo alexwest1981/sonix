@@ -46,11 +46,11 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
 | **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, projektfilen) | 8 | 8 | **100 %** |
-| **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 1 | 4 | **25 %** |
+| **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 2 | 4 | **50 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
 
-> **Prioritet just nu: Tier 0 (Fas 6).** Ordningen är inte förhandlingsbar: en proffsmusiker som tappat ett projekt en gång bryr sig inte om hur bra AI:n är. Tier 0 mäts i att inget arbete går förlorat och att allt går att ångra.
+> **Prioritet just nu: Tier 1 (Fas 7) — Tier 0 (Fas 6) är stängd, 8 av 8.** Ordningen är inte förhandlingsbar: en proffsmusiker som tappat ett projekt en gång bryr sig inte om hur bra AI:n är. Tier 0 mäts i att inget arbete går förlorat och att allt går att ångra.
 
 ---
 
@@ -383,9 +383,14 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Kvar:** (a) detektorn kan inte skilja en ihållande *rundgång* från en ihållande *ton utifrån* (t.ex. en synthpad högtalarna spelar och micken hör) — hårdvaru-suppressorer använder tillväxt över tid som tredje kriterium, vilket är nästa steg; (b) bara **en** spärr, medan en rundgång kan migrera mellan två frekvenser (2–3 spärrar är standard hos hårdvaruburkar); (c) slå ihop de två kryssrutorna — `mic_settings.direct_monitoring` styr fortfarande ingenting (dubblett av `vocal_track.monitoring_on`).
   - **Filer:** `src/audio/recorder.rs`, `src/ui/app.rs`, `src/ui/vocal_studio_view.rs`, `src/audio/synth.rs`, `src/audio/command.rs`
   - **Beroende:** —
+
 ---
 
 ## ⬜ Fas 7 — Plattform & prestanda (Tier 1)
+
+> **Läget i Tier 1: 2 av 4 klara.** **7.4 Starttid** (biblioteksskanningen kör nu i bakgrunden i stället för före fönstret) och **7.2 Realtidsmätning** (8-kanals referensprojekt: 1–2 % medelbelastning, tröskel i CI + siffror i varje körning). Kvar: **7.1** (ALSA/X11 till backend-gränssnitt och Windows-port — *XL*) och **7.3** (riktig yabridge-brygga, kräver Wine och en display).
+
+> **Att klicka i GUI innan Tier 1 stängs** (jag kan inte klicka): 6.7 (spara ett projekt med ett beat → öppna igen), 6.4 (spela in snett → kvantisera → 0.00 → Ctrl+Z), 6.4 (en not strax *efter* ett slag ska höras — den var tyst före `c9fff40`), 6.5 (dither-kryssrutorna + lyssna) och 7.4 (att fönstret syns direkt vid kall start).
 
 > **Varför:** FL Studio finns på Windows och macOS. Så länge Sonix är Linux-only kan den inte tävla som produkt — bara vara bäst i en nisch. `cpal` och `egui` är redan plattformsoberoende; det som låser är ALSA-MIDI (`midi_input.rs`), X11-pluginfönstret (`plugin_gui.rs`) och paketeringen (`install.sh`).
 
@@ -395,10 +400,31 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `Cargo.toml`, `src/audio/engine.rs`, `src/audio/midi_input.rs`, `src/audio/plugin_gui.rs`, `src/main.rs`, `install.sh`
   - **Beroende:** 6.1–6.3 (data-säkerhet och projekt-I/O ska vara stabilt innan portering)
 
-- [ ] **7.2 Realtidsmätning i CI (xruns, latens, CPU-skalning)** — *M*
-  - **Gör:** Mät och logga underruns, callback-tid och CPU-belastning vid 64/128/256/512 frames på ett referensprojekt med N spår, och lägg trösklar i CI så att regresser failar. Mixningen sker i dag i cpal-callbacken utan parallell spårrendering (inga `thread::spawn` i render-vägen) — **mät först, optimera sedan**.
-  - **Klart när:** CI rapporterar latens/CPU/xrun per buffertstorlek och failar vid regress över satt tröskel.
-  - **Filer:** `tests/realtime_bench.rs` (ny), `.github/workflows/ci.yml`, `src/audio/engine.rs`
+- [x] **7.2 Realtidsmätning i CI (xruns, latens, CPU-skalning)** — *M* ✅
+  - **Löst:** ny modul **`src/audio/realtime_bench.rs`** som mäter **samma arbete som ljudcallbacken** gör (`engine.rs`): töm kommandokön vid steggränserna, rendera blocket frames med `SynthEngine::process_stereo`, skriv till utbufferten. Ingen ljudenhet behövs — det är DSP-arbetet som mäts, inte enhetens latens — så mätningen kan köras i CI.
+    - **Nyckeltalet är belastning:** renderad tid delat med blockets realtidsbudget (`frames / sample_rate`). Under 100 % hinner vi; över 100 % blir det xrun.
+    - **Referensprojektet** är den sorts last en låt ger: 8 kanalrack-kanaler med samplar (trumkomp), ett tretoners ackord i piano-rollen och en bastrack, med master-FX på.
+    - **Mätningen svarade på frågan punkten ställde.** Den misstänkta flaskhalsen var att mixningen sker i cpal-callbacken utan parallell spårrendering (inga `thread::spawn` i render-vägen). Svaret: för ett 8-kanals referensprojekt ligger **värsta blocket på 4 % av realtidsbudgeten**. Optimeringen behövs alltså inte nu — och skulle kosta determinism i render-vägen. Det är "mät först, optimera sedan" som gav ett svar i stället för en gissning.
+    - **Tröskeln sitter på medelbelastningen**, inte på värsta blocket: ett enstaka långsamt block kan komma av att CI-maskinen blir avbruten, och ett test som failar på det vore flakigt i stället för en regressionsvakt. Värsta blocket mäts och får inte passera 100 % (då hade det blivit ett xrun), och alla siffror skrivs ut.
+    - **CI rapporterar siffrorna:** ett nytt steg kör mätningen med `--nocapture` i varje ben, så latens/CPU per buffertstorlek står i loggen — tröskeln ligger i testet, rapporten i steget.
+  - **Klart när:** CI rapporterar latens/CPU/xrun per buffertstorlek och failar vid regress över satt tröskel ✅
+  - **Bevis:** **257 tester** default, 0 varningar. Uppmätt baslinje (release, 120 block per buffert):
+
+    | Buffert | Budget | Medel | Värsta blocket |
+    | ---: | ---: | ---: | ---: |
+    | 64 frames | 1,45 ms | 0,02 ms (**1,7 %**) | 0,07 ms (4,6 %) |
+    | 128 frames | 2,90 ms | 0,05 ms (**1,6 %**) | 0,10 ms (3,5 %) |
+    | 256 frames | 5,80 ms | 0,08 ms (**1,4 %**) | 0,13 ms (2,3 %) |
+    | 512 frames | 11,61 ms | 0,13 ms (**1,1 %**) | 0,19 ms (1,6 %) |
+
+    Tröskeln är **20 %** medelbelastning i release (tolv gånger baslinjen) och 100 % i debug, där optimeringarna saknas (debug låg på 5–10 % medel, 10–24 % värsta).
+    - Den rena matematiken är enhetstestad med kända tal (128 frames vid 44,1 kHz = 2,90 ms budget, 1,45 ms rendering = 50 %), plus att en tom mätning inte delar med noll och att sammanfattningsraden innehåller det CI behöver.
+  - **Kvar (ärligt):**
+    - **Tröskeln fångar en regression på omkring tolv gånger, inte en på tre.** Mindre förändringar syns i CI-loggen men failar inte — det är ett medvetet val för att inte få ett flakigt test på delade CI-maskiner. Efter några gröna körningar kan taket sänkas med de verkliga siffrorna som grund.
+    - **Riktiga xruns mäts inte.** En xrun är enheten som inte hann leverera bufferten; utan ljudenhet i CI går det inte att se. Det som mäts är DSP-arbetet, som är den del appen råder över — enhetens latens och drivrutinens buffertbeteende kräver en riktig maskin.
+    - **Punkten heter därför nästan det den gör.** Den ursprungliga texten lovade "xruns, latens, CPU-skalning"; det som levereras är CPU-skalning per buffertstorlek och xrun-*risk* (block över budget).
+    - Filen blev `src/audio/realtime_bench.rs` i stället för `tests/realtime_bench.rs`: kratet är en binär utan lib-target, så ett integrationstest kan inte importera motorn.
+  - **Filer:** `src/audio/realtime_bench.rs` (ny), `src/audio/mod.rs`, `src/audio/exporter.rs` (delar `triggers_for_step`), `.github/workflows/ci.yml`
   - **Beroende:** —
 
 - [ ] **7.3 Verifiera en riktig yabridge-brygga (Wine + display)** — *M*

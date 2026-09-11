@@ -50,6 +50,18 @@ jobs:
             cargo test --release --locked
           fi
 
+      # Fas 7.2: siffrorna ska synas i loggen, inte bara finnas som tröskel.
+      # (Samma test körs redan i steget ovan och failar vid regress; det här
+      # steget visar latens/CPU per buffertstorlek.)
+      - name: Realtidsmätning (Fas 7.2)
+        run: |
+          FEATURES="${{ matrix.features }}"
+          if [ -n "$FEATURES" ]; then
+            cargo test --release --locked --features "$FEATURES" realtime_budget -- --nocapture
+          else
+            cargo test --release --locked realtime_budget -- --nocapture
+          fi
+
   neural:
     name: Build & test (neural, non-blocking)
     runs-on: ubuntu-latest
