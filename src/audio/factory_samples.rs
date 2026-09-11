@@ -922,27 +922,94 @@ pub struct ScannedSampleItem {
     pub file_path: String,
 }
 
-fn cache_fingerprint() -> String {
+/// Fingeravtryck för biblioteket: `(mtime, storlek)` per rot, i fast ordning.
+///
+/// Medvetet **utan sökvägar**: fingeravtrycket ska beskriva bibliotekets
+/// *innehåll*, inte var det ligger. Med sökvägarna inbakade förkastades cachen
+/// varje gång strukturen flyttades (Fas 6.0) — och en förkastad cache betyder en
+/// full omscan, vilket med 14 GB samples tar ~2 minuter (mätt 2026-09-11:
+/// 10 630 samplar på 125,2 s).
+fn fingerprint_of(roots: &[std::path::PathBuf]) -> String {
+    let mut fp = String::new();
+    for r in roots {
+        let (mtime, size) = std::fs::metadata(r)
+            .map(|m| {
+                let secs = m
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_secs())
+                    .unwrap_or(0);
+                (secs, m.len())
+            })
+            .unwrap_or((0, 0));
+        fp.push_str(&format!("{mtime}:{size};"));
+    }
+    fp
+}
+
+fn library_roots() -> [std::path::PathBuf; 4] {
     let paths = crate::paths::paths();
-    let roots = [
+    [
         paths.factory_samples_dir(),
         paths.sample_packs_dir(),
         paths.samples_dir(),
         paths.legacy_samples_dir(),
-    ];
-    let mut fp = String::new();
-    for r in roots {
-        fp.push_str(&r.to_string_lossy());
-        fp.push(':');
-        fp.push_str(&std::fs::metadata(&r).map(|m| m.len()).unwrap_or(0).to_string());
-        fp.push(';');
+    ]
+}
+
+fn cache_fingerprint() -> String {
+    fingerprint_of(&library_roots())
+}
+
+/// Godkänner ett **äldre** fingeravtryck (Fas 6.0 och bakåt): där bakades
+/// sökvägen in och bara katalogens storlek ingick (`/väg/till/Samples:144;`).
+///
+/// Utan detta skulle varje cache skriven före denna ändring förkastas en enda
+/// gång — och priset är en full omscan (mätt: 125 s för 14 GB samples). Den
+/// gamla formen innehåller ingen tidsstämpel, så jämförelsen blir svagare
+/// (storlek per rot, i samma ordning). Den används därför bara som
+/// engångsbrygga: cachen skrivs om med det nya fingeravtrycket så snart den
+/// har lästs in (se `upgrade_cache_header`).
+fn legacy_fingerprint_matches(stored: &str, roots: &[std::path::PathBuf]) -> bool {
+    let stored_sizes: Option<Vec<u64>> = stored
+        .split(';')
+        .filter(|seg| !seg.is_empty())
+        .map(|seg| seg.rsplit(':').next().and_then(|n| n.parse::<u64>().ok()))
+        .collect();
+    let Some(stored_sizes) = stored_sizes else {
+        return false;
+    };
+    if stored_sizes.len() != roots.len() {
+        return false;
     }
-    fp
+    roots.iter().zip(stored_sizes).all(|(root, size)| {
+        std::fs::metadata(root).map(|m| m.len()).unwrap_or(0) == size
+    })
 }
 
 fn cache_path() -> std::path::PathBuf {
     // Flyttad till cachekatalogen i Fas 6.0 (var `~/Music/Sonix/library_cache.tsv`).
     crate::paths::paths().library_cache_file()
+}
+
+/// Skriver om fingeravtrycksraden i en cache som lästs in i det gamla formatet
+/// (se `legacy_fingerprint_matches`). Best effort: misslyckas det används cachen
+/// ändå, och nästa start tar en ny chans.
+fn upgrade_cache_header() {
+    let path = cache_path();
+    let Ok(contents) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let mut parts = contents.splitn(3, '\n');
+    let magic = parts.next().unwrap_or("");
+    let _old_fp = parts.next().unwrap_or("");
+    let rest = parts.next().unwrap_or("");
+    if magic != "SONIXLIB1" {
+        return;
+    }
+    let upgraded = format!("SONIXLIB1\n{}\n{}", cache_fingerprint(), rest);
+    let _ = crate::autosave::write_atomic(&path, upgraded.as_bytes());
 }
 
 fn write_library_cache(items: &[ScannedSampleItem]) {
@@ -982,7 +1049,11 @@ fn write_library_cache(items: &[ScannedSampleItem]) {
     if let Some(parent) = cache_path().parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-    let _ = std::fs::write(cache_path(), s);
+    // Atomiskt: en avbruten skrivning får inte lämna en cachen fil på plats.
+    // Läsaren förkastar i och för sig en trunkerad cache (den ser ett avbrutet
+    // "I"-block), men priset är en full omscan av hela biblioteket — mätt till
+    // 125 s för 14 GB samples. Samma temp+rename som autosaven använder.
+    let _ = crate::autosave::write_atomic(&cache_path(), s.as_bytes());
 }
 
 fn read_library_cache() -> Option<Vec<ScannedSampleItem>> {
@@ -991,8 +1062,17 @@ fn read_library_cache() -> Option<Vec<ScannedSampleItem>> {
     if lines.next()? != "SONIXLIB1" {
         return None;
     }
-    if lines.next()? != cache_fingerprint() {
-        return None;
+    let stored_fp = lines.next()?;
+    let expected = cache_fingerprint();
+    let legacy = stored_fp != expected;
+    if legacy {
+        if !legacy_fingerprint_matches(stored_fp, &library_roots()) {
+            return None;
+        }
+        // Engångsbrygga: cachen är giltig men skriven i det gamla formatet.
+        // Huvudet skrivs om direkt så nästa start jämför exakt — och så att
+        // en framtida flyttad struktur inte kastar cachen i onödan.
+        upgrade_cache_header();
     }
     let mut items = Vec::new();
     while let Some(header) = lines.next() {
@@ -1208,4 +1288,81 @@ fn format_clean_sample_name(stem: &str, lower_path: &str) -> String {
     }
 
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("sonix_fp_{}_{}", tag, std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("testkatalog");
+        dir
+    }
+
+    #[test]
+    fn fingerprint_does_not_contain_the_path() {
+        // Kärnan i fixen: fingeravtrycket ska beskriva innehållet, inte var det
+        // ligger. Bakades sökvägen in förkastades cachen så fort strukturen
+        // flyttades (Fas 6.0) — och en förkastad cache är en full omscan.
+        let dir = test_dir("path");
+        let fp = fingerprint_of(&[dir.clone()]);
+        assert!(
+            !fp.contains(&*dir.to_string_lossy()),
+            "fingeravtrycket innehåller sökvägen: {fp}"
+        );
+        assert!(!fp.contains("sonix_fp_path"), "fingeravtrycket läcker katalognamnet: {fp}");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fingerprint_is_stable_for_an_unchanged_directory() {
+        let dir = test_dir("stable");
+        assert_eq!(fingerprint_of(&[dir.clone()]), fingerprint_of(&[dir.clone()]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fingerprint_changes_when_the_library_changes() {
+        // Ett tillägg i biblioteket måste ogiltigförklara cachen, annars visas
+        // en gammal sampellista. Väntar in tidsstämpelns upplösning (1 s) så
+        // testet inte blir ett lotteri på filsystemets mtime-granularitet.
+        let dir = test_dir("changed");
+        let before = fingerprint_of(&[dir.clone()]);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        std::fs::write(dir.join("ny.wav"), b"RIFF").expect("skriv");
+        let after = fingerprint_of(&[dir.clone()]);
+        assert_ne!(before, after, "fingeravtrycket missar en ny fil i biblioteket");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fingerprint_handles_missing_roots() {
+        let missing = std::env::temp_dir().join("sonix_fp_finns_inte_alls");
+        let _ = std::fs::remove_dir_all(&missing);
+        let fp = fingerprint_of(&[missing]);
+        assert_eq!(fp, "0:0;", "saknad rot ska ge nollställd post, inte panik: {fp}");
+    }
+
+    #[test]
+    fn legacy_fingerprint_is_accepted_when_the_sizes_match() {
+        // Bryggan: en cache skriven före denna ändring har sökväg + storlek per
+        // rot. Utan den skulle varje sådan cache kastas en gång = en ny omscan
+        // (125 s för 14 GB). Den gamla formen har ingen tidsstämpel, så bara
+        // storlekarna kan jämföras — därför engångsbrygga, inte permanent väg.
+        let dir = test_dir("legacy");
+        let size = std::fs::metadata(&dir).expect("metadata").len();
+        let legacy = format!("/någon/gammal/väg:{size};");
+        assert!(legacy_fingerprint_matches(&legacy, &[dir.clone()]));
+
+        // Fel storlek, fel antal rötter och skräp ska alla förkastas.
+        assert!(!legacy_fingerprint_matches("/väg:1;", &[dir.clone()]));
+        assert!(!legacy_fingerprint_matches(
+            &format!("/väg:{size};/en/annan:1;"),
+            &[dir.clone()]
+        ));
+        assert!(!legacy_fingerprint_matches("inte-ett-fingeravtryck", &[dir.clone()]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
