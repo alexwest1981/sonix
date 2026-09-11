@@ -418,6 +418,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     | 512 frames | 11,61 ms | 0,13 ms (**1,1 %**) | 0,19 ms (1,6 %) |
 
     Tröskeln är **20 %** medelbelastning i release (tolv gånger baslinjen) och 100 % i debug, där optimeringarna saknas (debug låg på 5–10 % medel, 10–24 % värsta).
+    - **CI-maskinen (ubuntu-latest) ger samma bild, lite snabbare:** 1,3 % / 1,2 % / 1,1 % / 0,9 % medel och 2,1 % / 1,9 % / 1,4 % / 1,1 % värsta block (64→512 frames). Två maskiner, samma storleksordning — mätningen är reproducerbar, och tröskeln har tolv gångers marginal även där. Siffrorna skrivs ut i varje CI-körning, så en trend syns utan att någon behöver mäta lokalt.
     - Den rena matematiken är enhetstestad med kända tal (128 frames vid 44,1 kHz = 2,90 ms budget, 1,45 ms rendering = 50 %), plus att en tom mätning inte delar med noll och att sammanfattningsraden innehåller det CI behöver.
   - **Kvar (ärligt):**
     - **Tröskeln fångar en regression på omkring tolv gånger, inte en på tre.** Mindre förändringar syns i CI-loggen men failar inte — det är ett medvetet val för att inte få ett flakigt test på delade CI-maskiner. Efter några gröna körningar kan taket sänkas med de verkliga siffrorna som grund.
