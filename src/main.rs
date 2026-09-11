@@ -1,5 +1,13 @@
 mod audio;
 mod autosave;
+// CLAP-värden använder X11 för plugin-fönster och memfd för sandlådan — båda
+// är Linux-specifika. I stället för att falla på `libc`/X11 med kryptiska fel
+// säger vi det rakt ut (Fas 7.1; porten är en egen uppgift).
+#[cfg(all(feature = "plugin-host", not(target_os = "linux")))]
+compile_error!(
+    "plugin-host (CLAP-värd med X11-fönster och memfd-sandlåda) är Linux-only i den här versionen. Bygg utan --features plugin-host, eller se Fas 7.1 i ROADMAP.md."
+);
+
 mod i18n;
 mod midi_take;
 mod rng;

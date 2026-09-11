@@ -1441,6 +1441,10 @@ pub struct SonixApp {
     pub custom_stem_path_input: String,
     pub custom_project_path_input: String,
     pub pending_file_dialog_result: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    /// Fylls av filväljartråden när den inte kunde öppnas alls (t.ex. saknad
+    /// `zenity`). Läses av nästa bildruta och hamnar i statusraden — en
+    /// filväljare som tiger är värre än ett tydligt fel (Fas 7.1).
+    pub pending_file_dialog_error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     pub is_file_dialog_active: std::sync::Arc<std::sync::atomic::AtomicBool>,
     // Selected Audio Region Inspector & Drag-to-Edit State
     pub selected_audio_region: Option<(usize, usize)>,
@@ -2077,6 +2081,7 @@ impl SonixApp {
                 .to_string_lossy()
                 .to_string(),
             pending_file_dialog_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            pending_file_dialog_error: std::sync::Arc::new(std::sync::Mutex::new(None)),
             is_file_dialog_active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             // Selected Audio Region Inspector & Drag-to-Edit State
             selected_audio_region: None,
@@ -2979,11 +2984,36 @@ impl SonixApp {
     pub fn spawn_async_file_picker(&self, filter: &'static str, title: &'static str) {
         let active = self.is_file_dialog_active.clone();
         let target = self.pending_file_dialog_result.clone();
+        let trouble = self.pending_file_dialog_error.clone();
         if !active.swap(true, std::sync::atomic::Ordering::SeqCst) {
             std::thread::spawn(move || {
                 let output = std::process::Command::new("zenity")
                     .args(["--file-selection", filter, &format!("--title={}", title)])
                     .output();
+                match &output {
+                    Err(e) => {
+                        if let Ok(mut slot) = trouble.lock() {
+                            *slot = Some(crate::tstatus!(
+                                "⚠ Kunde inte öppna filväljaren (zenity): {}. Importera i stället via menyn eller genom att dra filen hit.",
+                                e
+                            ));
+                        }
+                    }
+                    Ok(out) if !out.status.success() => {
+                        if let Ok(mut slot) = trouble.lock() {
+                            let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
+                            *slot = Some(crate::tstatus!(
+                                "⚠ Filväljaren avslutades utan fil (zenity{})",
+                                if why.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(": {}", why)
+                                }
+                            ));
+                        }
+                    }
+                    Ok(_) => {}
+                }
                 if let Ok(out) = output && out.status.success() {
                     let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
                     if !path.is_empty() {
@@ -6297,6 +6327,13 @@ impl eframe::App for SonixApp {
                 }
                 self.screenshot_state = ScreenshotState::Idle;
             }
+        }
+
+        // Kunde filväljaren inte ens öppnas? Säg det i stället för att tiga.
+        if let Ok(mut lock) = self.pending_file_dialog_error.try_lock()
+            && let Some(why) = lock.take()
+        {
+            self.status_message = why;
         }
 
         // Check for async file dialog results
