@@ -406,12 +406,19 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     - **`MidiKeyboardInput` och `McuInput` är gated per plattform:** Linux-vägen är orörd (samma ALSA-sequencer), och på andra plattformar finns en **stubbe som svarar med ett begripligt fel** ("MIDI-klaviatur kräver ALSA-sequencern, som bara finns på Linux i den här versionen") i stället för att kratet inte ska gå att bygga. `note_to_roll_offset` (ren funktion, används av inspelningen) ligger kvar ogated, och det gör **OSC också** — det är UDP och fungerar alltså på alla plattformar redan nu.
     - Linux oförändrat: **258 tester, 0 varningar**, `cargo check --locked` rent.
     - Efter det: korschecken faller bara på `ring` — alltså inget av vår egen kod och inget ALSA kvar.
+  - **Steg 2 klart (2026-09-11) — mätningen svarade:** Windows-jobbet körde och **fellistan var tom**. Efter ALSA-gaten checkar hela kratet för Windows. Jobbet visade samtidigt **fem varningar i vår egen kod**, som ingen hade sett eftersom inget bygge hade tittat på Windows förut:
+    - `use std::thread::{self, JoinHandle}` och `use std::time::Duration` i `midi_input.rs` — tråden och sömnen hör till ALSA-läsaren → importerna gated till Linux.
+    - Stubbarna för `MidiKeyboardInput` och `McuInput` hårdkodade sina svar → de **läser nu samma fält som Linux-vägen** (fälten fylls bara av ALSA-tråden, så svaren är identiska) och då behövs ingen allow.
+    - `ControlEvent::MidiNote` konstrueras bara av ALSA-läsaren → riktad `allow(dead_code, reason = …)`, eftersom varianten hör till appens API och blir levande när MIDI-in portas.
+    - CI-steget är skärpt: **det failar nu även på varningar** (repots krav är noll, och en varning på Windows som ingen ser är hur porten tystnar), och ett nytt steg **länkar fram en riktig `sonix.exe`**. Bevis från körningen: `Compiling sonix v0.9.0` → `Finished` utan varningar, och artefakten **`sonix.exe`, 22 216 192 byte**.
+    - Jobbet är därmed **inte längre icke-blockerande** — det håller porten kvar i stället för att bara visa hur långt den kommit.
   - **Kvar (nästa steg, i tur och ordning):**
-    1. **Läs Windows-jobbets fellista** och åtgärda det den visar (det är den riktiga mätningen; jag gissar inte vilka fel som återstår).
+    1. **Köra den på en riktig Windows-maskin.** Det är den enda delen av kriteriet som ingen automatisk mätning kan svara på: en runner har varken skärm eller ljudenhet, så "startar, spelar upp ljud och tar emot MIDI" kräver en riktig dator. Artefakten går att hämta från CI (`gh run download`).
     2. **Porta MIDI-in till `midir`** i stället för ALSA-seq, så att stubbarna kan ersättas av en riktig implementation även på Windows/macOS.
     3. **`paths.rs`:** i dag byggs sökvägarna som XDG-kataloger med `$HOME`-fallback — på Windows fungerar det (allt hamnar under användarens hemkatalog) men det är inte plattformens egen layout (`%APPDATA%`/`%LOCALAPPDATA%`).
-    4. **`xdg-open`** (två ställen: visa projektmappen, plugin-mappen) bör bli `explorer`/`open` per plattform. Felen hanteras redan, så det är kosmetiskt.
-    5. **Plugin-GUI:t** (X11) är undantaget i kriteriet, men `plugin-host`-featuren bör ändå gatas så att den *säger* att den är Linux-only i stället för att falla på `libc`/X11.
+    4. **`zenity`-filväljaren** är appens enda sätt att öppna en fil (den saknas på Windows). Den bör ersättas av en plattformsoberoende väljare (`rfd`) — och den säger nu åtminstone *varför* den inte öppnas.
+    5. **`xdg-open`** (två ställen: visa projektmappen, plugin-mappen) bör bli `explorer`/`open` per plattform. Felen hanteras redan, så det är kosmetiskt.
+    6. **Plugin-GUI:t** (X11) är undantaget i kriteriet. `plugin-host`-featuren har en `compile_error!` som säger att den är Linux-only i stället för att falla på `libc`/X11.
   - **Filer:** `Cargo.toml`, `src/audio/midi_input.rs`, `src/audio/hardware_control.rs`, `.github/workflows/ci.yml`
   - **Beroende:** 6.1–6.3 (data-säkerhet och projekt-I/O ska vara stabilt innan portering)
 

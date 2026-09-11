@@ -86,13 +86,14 @@ jobs:
 
   # Fas 7.1: portabiliteten mäts på en riktig Windows-maskin. Där finns MSVC, så
   # byggskripten (ring m.fl.) går igenom — till skillnad från en korscheck från
-  # Linux, som stoppar redan i ring. Jobbet är icke-blockerande medan porten
-  # pågår: det visar hur långt den kommer i stället för att gissa. När allt utom
-  # plugin-GUI:t checkar flyttas det in i den blockerande kön.
+  # Linux, som stoppar redan i ring.
+  #
+  # Jobbet var icke-blockerande medan porten pågick. Det är det inte längre: hela
+  # kratet checkar och bygger på Windows med noll varningar, så nu håller jobbet
+  # porten kvar i stället för att bara visa hur långt den kommit.
   windows-check:
-    name: cargo check (Windows, Fas 7.1 — icke-blockerande)
+    name: cargo check + build (Windows, Fas 7.1)
     runs-on: windows-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
