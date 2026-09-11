@@ -236,6 +236,14 @@ static const clap_plugin_descriptor_t mock_desc = {
 typedef struct mock_state {
     double gain;
     double mix;
+    /* `clap.gui` lifecycle state. It lives here (and not in file-scope
+     * globals) so that parallel host tests can each drive their own instance
+     * without clobbering one another. */
+    bool gui_created;
+    bool gui_shown;
+    uint32_t gui_width;
+    uint32_t gui_height;
+    uintptr_t gui_parent;
 } mock_state_t;
 
 /* Each plugin instance owns its state via `plugin_data`, so parallel host
@@ -424,12 +432,6 @@ static const clap_plugin_preset_load_t mock_preset_load = {preset_from_location}
  * create/get_size/set_size/set_parent/show/hide/destroy are driven correctly
  * and with a correctly laid-out `clap_window_t`.
  */
-static bool mock_gui_created = false;
-static bool mock_gui_shown = false;
-static uint32_t mock_gui_width = 320;
-static uint32_t mock_gui_height = 240;
-static uintptr_t mock_gui_parent = 0;
-
 static bool gui_is_api_supported(const clap_plugin_t *p, const char *api, bool is_floating) {
     (void)p; (void)is_floating;
     return api && strcmp(api, "x11") == 0;
@@ -443,27 +445,25 @@ static bool gui_get_preferred_api(const clap_plugin_t *p, const char **api, bool
 }
 
 static bool gui_create(const clap_plugin_t *p, const char *api, bool is_floating) {
-    (void)p; (void)is_floating;
+    (void)is_floating;
     if (!api || strcmp(api, "x11") != 0) return false;
-    if (mock_gui_created) return false;
-    mock_gui_created = true;
+    if (state_of(p)->gui_created) return false;
+    state_of(p)->gui_created = true;
     return true;
 }
 
 static void gui_destroy(const clap_plugin_t *p) {
-    (void)p;
-    mock_gui_created = false;
-    mock_gui_shown = false;
-    mock_gui_parent = 0;
+    state_of(p)->gui_created = false;
+    state_of(p)->gui_shown = false;
+    state_of(p)->gui_parent = 0;
 }
 
 static bool gui_set_scale(const clap_plugin_t *p, double scale) { (void)p; return scale > 0.0; }
 
 static bool gui_get_size(const clap_plugin_t *p, uint32_t *width, uint32_t *height) {
-    (void)p;
-    if (!mock_gui_created) return false;
-    if (width) *width = mock_gui_width;
-    if (height) *height = mock_gui_height;
+    if (!state_of(p)->gui_created) return false;
+    if (width) *width = state_of(p)->gui_width;
+    if (height) *height = state_of(p)->gui_height;
     return true;
 }
 
@@ -485,19 +485,17 @@ static bool gui_adjust_size(const clap_plugin_t *p, uint32_t *width, uint32_t *h
 }
 
 static bool gui_set_size(const clap_plugin_t *p, uint32_t width, uint32_t height) {
-    (void)p;
-    if (!mock_gui_created || width == 0 || height == 0) return false;
-    mock_gui_width = width;
-    mock_gui_height = height;
+    if (!state_of(p)->gui_created || width == 0 || height == 0) return false;
+    state_of(p)->gui_width = width;
+    state_of(p)->gui_height = height;
     return true;
 }
 
 static bool gui_set_parent(const clap_plugin_t *p, const clap_window_t *window) {
-    (void)p;
-    if (!mock_gui_created || !window || !window->api) return false;
+    if (!state_of(p)->gui_created || !window || !window->api) return false;
     if (strcmp(window->api, "x11") != 0) return false;
     if (window->x11 == 0) return false;
-    mock_gui_parent = window->x11;
+    state_of(p)->gui_parent = window->x11;
     return true;
 }
 
@@ -512,15 +510,13 @@ static bool gui_suggest_title(const clap_plugin_t *p, const char *title) {
 }
 
 static bool gui_show(const clap_plugin_t *p) {
-    (void)p;
-    if (!mock_gui_created) return false;
-    mock_gui_shown = true;
+    if (!state_of(p)->gui_created) return false;
+    state_of(p)->gui_shown = true;
     return true;
 }
 
 static bool gui_hide(const clap_plugin_t *p) {
-    (void)p;
-    mock_gui_shown = false;
+    state_of(p)->gui_shown = false;
     return true;
 }
 
@@ -575,6 +571,11 @@ static const clap_plugin_t *factory_create_plugin(const clap_plugin_factory_t *f
     *plugin = mock_plugin_template;
     state->gain = 1.0;
     state->mix = 1.0;
+    state->gui_created = false;
+    state->gui_shown = false;
+    state->gui_width = 320;
+    state->gui_height = 240;
+    state->gui_parent = 0;
     plugin->plugin_data = state;
     return plugin;
 }
