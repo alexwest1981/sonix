@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  release:
+    name: Build & publish Linux binary
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libasound2-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --release --locked --features plugin-host
+
+      - name: Build
+        run: cargo build --release --locked --features plugin-host
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          arch="$(uname -m)"
+          name="sonix-${version}-${arch}-unknown-linux-gnu"
+          mkdir -p "dist/${name}"
+          cp target/release/sonix "dist/${name}/"
+          strip --strip-unneeded "dist/${name}/sonix" || true
+          cp README.md README_SV.md CHANGELOG.md MANUAL.md \
+             LICENSE-MIT LICENSE-APACHE "dist/${name}/"
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+          ( cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256" )
+          ls -la dist
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          awk -v ver="$version" '
+            index($0, "## [" ver "]") == 1 { capture = 1; next }
+            capture && (index($0, "## [") == 1 || index($0, "]: ") > 0) { exit }
+            capture { print }
+          ' CHANGELOG.md > RELEASE_NOTES.md
+          if [ ! -s RELEASE_NOTES.md ]; then
+            echo "No CHANGELOG entry for ${version}; will fall back to generated notes."
+          fi
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -s RELEASE_NOTES.md ]; then
+            gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.sha256 \
+              --title "Sonix Studio ${GITHUB_REF_NAME}" \
+              --notes-file RELEASE_NOTES.md
+          else
+            gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.sha256 \
+              --title "Sonix Studio ${GITHUB_REF_NAME}" \
+              --generate-notes
+          fi
