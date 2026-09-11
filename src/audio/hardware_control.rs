@@ -15,6 +15,14 @@ pub enum ControlEvent {
     BusVolume { bus: usize, value: f32 },
     VcaVolume { vca: usize, value: f32 },
     /// A note on/off from a real MIDI keyboard (`on == false` = note off).
+    ///
+    /// Bara ALSA-läsaren konstruerar den i den här versionen, så utanför Linux
+    /// ser den ut som död kod — den blir levande igen när MIDI-in portas
+    /// (Fas 7.1), och varianten hör till appens API, inte till ALSA.
+    #[cfg_attr(
+        not(target_os = "linux"),
+        allow(dead_code, reason = "konstrueras bara av ALSA-läsaren tills MIDI-in portas (Fas 7.1)")
+    )]
     MidiNote { note: u8, velocity: u8, on: bool },
 }
 
@@ -238,12 +246,17 @@ impl McuInput {
         )
     }
 
+    /// Samma kod som Linux-vägen: fälten fylls av lästråden där ALSA finns och
+    /// står kvar på noll respektive tomt här.
     pub fn received(&self) -> usize {
-        0
+        self.event_count.load(Ordering::Relaxed)
     }
 
     pub fn device_list(&self) -> Vec<String> {
-        Vec::new()
+        self.devices
+            .lock()
+            .map(|d| d.clone())
+            .unwrap_or_default()
     }
 }
 

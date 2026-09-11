@@ -103,6 +103,21 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       # Runnern är redan x86_64-pc-windows-msvc, så det här är exakt kriteriet i
-      # Fas 7.1: `cargo check --target x86_64-pc-windows-msvc`.
-      - name: cargo check (Windows)
-        run: cargo check --locked
+      # Fas 7.1: `cargo check --target x86_64-pc-windows-msvc`. Steget failar
+      # också på varningar: repots krav är noll, och en varning på Windows som
+      # ingen ser är hur porten tystnar.
+      - name: cargo check (Windows, noll varningar)
+        run: |
+          cargo check --locked 2>&1 | Tee-Object -Variable out
+          if ($out -match 'warning') { Write-Error "Varningar i Windows-bygget"; exit 1 }
+        shell: pwsh
+
+      # Ett steg längre än check: det här länkar fram en riktig sonix.exe. Det som
+      # INTE kan mätas här är att den startar, spelar ljud och tar emot MIDI — en
+      # runner har varken skärm eller ljudenhet. Det kräver en riktig Windows-maskin
+      # (utskrivet i ROADMAP.md, Fas 7.1).
+      - name: cargo build (Windows, länkar en .exe)
+        run: |
+          cargo build --locked
+          Get-Item target/debug/sonix.exe | Select-Object Name,Length
+        shell: pwsh

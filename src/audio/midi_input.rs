@@ -3,7 +3,12 @@ use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
-use std::thread::{self, JoinHandle};
+use std::thread::JoinHandle;
+// Tråden och dess sömn hör till ALSA-läsaren: på andra plattformar finns ingen
+// tråd, så importerna ska inte ligga där heller (annars varnar bygget).
+#[cfg(target_os = "linux")]
+use std::thread;
+#[cfg(target_os = "linux")]
 use std::time::Duration;
 
 use super::hardware_control::ControlEvent;
@@ -61,12 +66,18 @@ impl MidiKeyboardInput {
         )
     }
 
+    /// Samma kod som Linux-vägen: fälten fylls av lästråden där ALSA finns, och
+    /// står kvar på noll respektive tomt här. Att läsa dem (i stället för att
+    /// hårdkoda svar) gör att strukturen betyder samma sak på alla plattformar.
     pub fn received(&self) -> usize {
-        0
+        self.event_count.load(Ordering::Relaxed)
     }
 
     pub fn device_list(&self) -> Vec<String> {
-        Vec::new()
+        self.devices
+            .lock()
+            .map(|d| d.clone())
+            .unwrap_or_default()
     }
 }
 
