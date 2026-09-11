@@ -518,7 +518,6 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem." => "The software marker is always set to Sonix Studio. Leave fields empty to omit them.",
         "Status:" => "Status:",
         "🚀 STARTA EXPORT" => "🚀 START EXPORT",
-        "Stäng" => "Close",
         // --- auto-merged i18n EN entries (EN_MAP + EXTRA) ---
         "  Stäng  " => "  Close  ",
         " ⏸ PAUSA " => " ⏸ PAUSE ",
