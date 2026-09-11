@@ -84,6 +84,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .with_app_id("sonix-daw")
     };
 
+    let viewport = viewport.with_icon(
+        eframe::icon_data::from_png_bytes(include_bytes!("../assets/sonix.png"))
+            .expect("embedded app icon (assets/sonix.png) must be a valid PNG"),
+    );
+
     let options = eframe::NativeOptions {
         viewport,
         ..Default::default()

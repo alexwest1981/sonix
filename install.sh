@@ -291,12 +291,25 @@ step_menu() {
     fi
 
     mkdir -p "${HOME}/.local/share/applications"
-    mkdir -p "${HOME}/.local/share/icons/hicolor/256x256/apps"
 
-    # Copy the icon so the menu entry works even if the clone is moved/deleted.
+    # Copy the icon into the hicolor theme so the menu entry works even if the
+    # clone is moved or deleted. Generate the common sizes when ImageMagick is
+    # available; otherwise install the source PNG at its native size.
     if [[ -f "$SCRIPT_DIR/$ICON_SRC_REL" ]]; then
-        install -m 0644 "$SCRIPT_DIR/$ICON_SRC_REL" \
-            "${HOME}/.local/share/icons/hicolor/256x256/apps/${APP_EXE}.png"
+        local installed_any=0
+        for size in 512 256 128 64 48 32; do
+            local icon_dir="${HOME}/.local/share/icons/hicolor/${size}x${size}/apps"
+            mkdir -p "$icon_dir"
+            if command -v magick >/dev/null 2>&1; then
+                magick "$SCRIPT_DIR/$ICON_SRC_REL" -resize "${size}x${size}" \
+                    "$icon_dir/${APP_EXE}.png" && installed_any=1
+            fi
+        done
+        if [[ "$installed_any" -eq 0 ]]; then
+            mkdir -p "${HOME}/.local/share/icons/hicolor/512x512/apps"
+            install -m 0644 "$SCRIPT_DIR/$ICON_SRC_REL" \
+                "${HOME}/.local/share/icons/hicolor/512x512/apps/${APP_EXE}.png"
+        fi
     fi
 
     local desktop_file="${HOME}/.local/share/applications/${APP_EXE}.desktop"
