@@ -10,6 +10,9 @@ A modern, lightning-fast graphical Digital Audio Workstation (DAW) built with **
 
 Sonix is a native Linux DAW written in **Rust** and **egui**. You run it by building from source with Cargo. The built-in mode that captures the 29 screenshots is only used by maintainers (see the note under the gallery below) and is **not** part of installing or running the app.
 
+> 📦 **Prebuilt binary (no Rust needed):**
+> Grab the latest `sonix-<version>-x86_64-unknown-linux-gnu.tar.gz` from the [Releases page](https://github.com/alexwest1981/sonix/releases/latest), unpack it and run `./sonix`. The archive ships the binary, both READMEs, the manual, the changelog and the licenses, plus a `.sha256` checksum. It is built with `--features plugin-host` for x86-64 (glibc ≥ 2.35).
+
 > ⚡ **Fastest way (guided installer):**
 > Download and run `install.sh` – it confirms every step for you (dependencies, compilation, binary + start-menu entry) with no other terminal commands needed:
 > ```bash

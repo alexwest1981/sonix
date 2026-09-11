@@ -10,6 +10,9 @@ Ett modernt, blixtsnabbt grafiskt musikproduktionsprogram skapat i **Rust** och 
 
 Sonix är en inhemsk Linux-DAW skriven i **Rust** och **egui**. Du kör den genom att kompilera från källkod med Cargo. Det inbyggda läget som tar de 29 skärmdumparna används bara av underhållarna (se notisen under galleriet nedan) och är **inte** en del av att installera eller köra programmet.
 
+> 📦 **Färdig binär (kräver ingen Rust):**
+> Hämta senaste `sonix-<version>-x86_64-unknown-linux-gnu.tar.gz` från [Releases-sidan](https://github.com/alexwest1981/sonix/releases/latest), packa upp och kör `./sonix`. Arkivet innehåller binären, båda README-filerna, manualen, ändringsloggen och licenserna, samt en `.sha256`-checksumma. Den är byggd med `--features plugin-host` för x86-64 (glibc ≥ 2.35).
+
 > ⚡ **Snabbaste sättet (guidad installerare):**
 > Ladda ner och kör `install.sh` – den bekräftar varje steg åt dig (beroenden, kompilering, binär + startmenypost) och kräver inga terminalkommandon utöver:
 > ```bash
