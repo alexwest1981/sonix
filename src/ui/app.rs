@@ -756,10 +756,69 @@ pub struct LoadedProjectPayload {
 #[derive(Clone, Debug)]
 pub struct TimelineUndoSnapshot {
     pub playlist_tracks: Vec<PlaylistTrack>,
+    /// Buss- och VCA-nivåer (Fas 6.2). De ligger utanför `playlist_tracks`, så
+    /// utan dem kunde en bussändring inte ångras alls.
+    pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
+    pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
+    pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
+    pub vca_faders: [f32; crate::audio::synth::NUM_VCAS],
+    pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
+    pub vca_solos: [bool; crate::audio::synth::NUM_VCAS],
     pub selected_timeline_track: usize,
     pub selected_audio_region: Option<(usize, usize)>,
     pub song_time: f32,
     pub description: String,
+}
+
+/// Sammanfattning av mixerns ljudbild: varje värde som `sync_track_audio_state`
+/// och `sync_group_state` skickar till motorn, hashat till ett tal.
+///
+/// Används av mixer-undon (Fas 6.2) för att upptäcka *att* mixern ändrats utan
+/// att jämföra hela projektet, och av testet som bevisar att varje mixat fält
+/// faktiskt ingår. Ändrar du vad motorn tar emot ska du ändra här också —
+/// testet `mixer_digest_covers_every_mixed_field` räknar upp fälten.
+fn mixer_digest(
+    tracks: &[PlaylistTrack],
+    bus_volume: &[f32],
+    bus_muted: &[bool],
+    bus_solo: &[bool],
+    vca_faders: &[f32],
+    vca_muted: &[bool],
+    vca_solos: &[bool],
+) -> u64 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let mut mix = |v: f32| {
+        for b in v.to_bits().to_le_bytes() {
+            h ^= b as u64;
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    };
+    for t in tracks {
+        mix(t.volume);
+        mix(t.pan);
+        mix(if t.muted { 1.0 } else { 0.0 });
+        mix(if t.solo { 1.0 } else { 0.0 });
+        mix(t.comp_threshold_db);
+        mix(t.comp_ratio);
+        mix(t.reverb_send);
+        mix(t.delay_send);
+        mix(t.pitch_semitones);
+        mix(t.bus as f32);
+        mix(t.vca.map(|v| v as f32).unwrap_or(-1.0));
+        mix(t.eq.low_gain_db);
+        mix(t.eq.low_freq);
+        mix(t.eq.mid_gain_db);
+        mix(t.eq.mid_freq);
+        mix(t.eq.high_gain_db);
+        mix(t.eq.high_freq);
+    }
+    for v in bus_volume.iter().chain(vca_faders.iter()).copied() {
+        mix(v);
+    }
+    for b in bus_muted.iter().chain(bus_solo).chain(vca_muted).chain(vca_solos).copied() {
+        mix(if b { 1.0 } else { 0.0 });
+    }
+    h
 }
 
 pub struct SonixApp {
@@ -1023,6 +1082,11 @@ pub struct SonixApp {
     /// muterande funktion, så en autosave som skrevs där skulle fånga läget
     /// före ändringen (och därmed hoppas över som "oförändrat").
     pub autosave_pending: bool,
+    /// Mixer-undon (Fas 6.2): mixerns läge senast det var i vila, plus dess
+    /// sammanfattning och om pekaren var nere förra frameen. Se `update`.
+    pub mixer_settled_snapshot: Option<TimelineUndoSnapshot>,
+    pub mixer_settled_digest: u64,
+    pub mixer_pointer_was_down: bool,
     /// Autosaves som är nyare än den manuella filen, ifyllda vid start.
     pub recovery_candidates: Vec<RecoveryCandidate>,
     pub show_recovery_modal: bool,
@@ -1589,6 +1653,9 @@ impl SonixApp {
             autosave_last_fp: None,
             autosave_last_write: None,
             autosave_pending: false,
+            mixer_settled_snapshot: None,
+            mixer_settled_digest: 0,
+            mixer_pointer_was_down: false,
             recovery_candidates,
             show_recovery_modal,
             new_project_name_input: crate::i18n::t("Mitt Beat").to_string(),
@@ -1609,6 +1676,11 @@ impl SonixApp {
         if let Ok(json) = serde_json::to_string_pretty(&app.project_data(&app.project_name)) {
             app.autosave_last_fp = Some(crate::autosave::fingerprint(json.as_bytes()));
         }
+
+        // Mixerns viloläge (Fas 6.2) måste finnas redan från start, annars har
+        // den första reglageändringen inget "läge före" att lägga på historiken.
+        app.mixer_settled_digest = app.mixer_state_digest();
+        app.mixer_settled_snapshot = Some(app.current_snapshot("mixer"));
         app
     }
 
@@ -2461,48 +2533,84 @@ impl SonixApp {
         }
     }
 
-    pub fn push_undo(&mut self, description: &str) {
-        let snapshot = TimelineUndoSnapshot {
+    /// Bygger en ångringspunkt av läget just nu (Fas 6.2: mixern ingår).
+    fn current_snapshot(&self, description: &str) -> TimelineUndoSnapshot {
+        TimelineUndoSnapshot {
             playlist_tracks: self.playlist_tracks.clone(),
+            bus_volume: self.bus_volume,
+            bus_muted: self.bus_muted,
+            bus_solo: self.bus_solo,
+            vca_faders: self.vca_faders,
+            vca_muted: self.vca_muted,
+            vca_solos: self.vca_solos,
             selected_timeline_track: self.selected_timeline_track,
             selected_audio_region: self.selected_audio_region,
             song_time: self.song_time,
             description: description.to_string(),
-        };
+        }
+    }
+
+    /// Mixerns ljudbild just nu — se [`mixer_digest`].
+    fn mixer_state_digest(&self) -> u64 {
+        mixer_digest(
+            &self.playlist_tracks,
+            &self.bus_volume,
+            &self.bus_muted,
+            &self.bus_solo,
+            &self.vca_faders,
+            &self.vca_muted,
+            &self.vca_solos,
+        )
+    }
+
+    /// Lägger en färdig ångringspunkt på historiken.
+    fn push_undo_snapshot(&mut self, snapshot: TimelineUndoSnapshot) {
         self.undo_stack.push(snapshot);
         if self.undo_stack.len() > 60 {
             self.undo_stack.remove(0);
         }
         self.redo_stack.clear();
-
-        // En strukturell ändring är exakt det som ska skyddas av en autosave
-        // (Fas 6.1). Men `push_undo` anropas *först* i varje muterande funktion,
-        // alltså innan ändringen är genomförd — en autosave som skrevs här skulle
-        // fånga läget före och därför hoppas över som "oförändrat" (mätt i GUI:
-        // Ctrl+D gav ingen skrivning, bara 60 s-timern räddade läget). Därför
-        // märks ändringen här och skrivs vid frame-gränsen, i `update`.
+        // Ändringen skrivs av autosaven vid frame-gränsen (se `update`).
         self.autosave_pending = true;
+    }
+
+    pub fn push_undo(&mut self, description: &str) {
+        let snapshot = self.current_snapshot(description);
+        self.push_undo_snapshot(snapshot);
+    }
+
+    /// Lägger tillbaka ett snapshot i appens state **och** i ljudmotorn, så att
+    /// en ångring hörs och inte bara syns (Fas 6.2). `sync_track_regions` räcker
+    /// inte: volym, pan, mute/solo, EQ, kompressor, sends och routing ligger i
+    /// `sync_track_audio_state`, och buss/VCA i `sync_group_state`.
+    fn restore_snapshot(&mut self, snapshot: &TimelineUndoSnapshot) {
+        self.playlist_tracks = snapshot.playlist_tracks.clone();
+        self.bus_volume = snapshot.bus_volume;
+        self.bus_muted = snapshot.bus_muted;
+        self.bus_solo = snapshot.bus_solo;
+        self.vca_faders = snapshot.vca_faders;
+        self.vca_muted = snapshot.vca_muted;
+        self.vca_solos = snapshot.vca_solos;
+        self.selected_timeline_track = snapshot.selected_timeline_track;
+        self.selected_audio_region = snapshot.selected_audio_region;
+        self.song_time = snapshot.song_time;
+
+        for t_idx in 0..self.playlist_tracks.len() {
+            self.sync_track_regions(t_idx);
+            self.sync_track_audio_state(t_idx);
+        }
+        self.sync_group_state();
+        // Historiens läge är nu "viloläge" för mixer-undon, annars skulle
+        // ångringen själv registreras som en ny mixerändring.
+        self.mixer_settled_digest = self.mixer_state_digest();
     }
 
     pub fn undo(&mut self) {
         if let Some(snapshot) = self.undo_stack.pop() {
-            let current = TimelineUndoSnapshot {
-                playlist_tracks: self.playlist_tracks.clone(),
-                selected_timeline_track: self.selected_timeline_track,
-                selected_audio_region: self.selected_audio_region,
-                song_time: self.song_time,
-                description: snapshot.description.clone(),
-            };
+            let current = self.current_snapshot(&snapshot.description);
             self.redo_stack.push(current);
 
-            self.playlist_tracks = snapshot.playlist_tracks;
-            self.selected_timeline_track = snapshot.selected_timeline_track;
-            self.selected_audio_region = snapshot.selected_audio_region;
-            self.song_time = snapshot.song_time;
-
-            for t_idx in 0..self.playlist_tracks.len() {
-                self.sync_track_regions(t_idx);
-            }
+            self.restore_snapshot(&snapshot);
             // Även en ångring är en strukturell ändring som ska skyddas.
             self.autosave_pending = true;
             self.status_message = crate::tstatus!("↶ Ångrade: {} (Ctrl+Z)", snapshot.description);
@@ -2513,23 +2621,10 @@ impl SonixApp {
 
     pub fn redo(&mut self) {
         if let Some(snapshot) = self.redo_stack.pop() {
-            let current = TimelineUndoSnapshot {
-                playlist_tracks: self.playlist_tracks.clone(),
-                selected_timeline_track: self.selected_timeline_track,
-                selected_audio_region: self.selected_audio_region,
-                song_time: self.song_time,
-                description: snapshot.description.clone(),
-            };
+            let current = self.current_snapshot(&snapshot.description);
             self.undo_stack.push(current);
 
-            self.playlist_tracks = snapshot.playlist_tracks;
-            self.selected_timeline_track = snapshot.selected_timeline_track;
-            self.selected_audio_region = snapshot.selected_audio_region;
-            self.song_time = snapshot.song_time;
-
-            for t_idx in 0..self.playlist_tracks.len() {
-                self.sync_track_regions(t_idx);
-            }
+            self.restore_snapshot(&snapshot);
             // Även en omgörning ändrar projektet — skyddas på samma sätt.
             self.autosave_pending = true;
             self.status_message = crate::tstatus!("↷ Gjorde om: {} (Ctrl+Y)", snapshot.description);
@@ -5295,6 +5390,32 @@ impl eframe::App for SonixApp {
             self.autosave_pending = false;
             self.autosave_after_structural_change();
         }
+
+        // Mixer-undon (Fas 6.2). Ett reglage ändras kontinuerligt medan man drar,
+        // så en ångringspunkt per frame skulle fylla historiken på ett drag. I
+        // stället hålls mixerns "viloläge" — läget från senaste frameen där inget
+        // rördes — och läggs som ångringspunkt första gången mixern ändras under
+        // en interaktion. Det är exakt läget före draget. Ett nytt viloläge tas
+        // först när pekaren är släppt, så ett drag ger en ångring, inte sextio.
+        let mixer_now = self.mixer_state_digest();
+        let mixer_pointer_down = ctx.input(|i| i.pointer.any_down());
+        let mixer_touching = mixer_pointer_down || self.mixer_pointer_was_down;
+        if mixer_now != self.mixer_settled_digest {
+            let pending = self.mixer_settled_snapshot.take();
+            if mixer_touching {
+                // Användaren rör mixern: lägg läget före ändringen på historiken.
+                if let Some(mut prev) = pending {
+                    prev.description = crate::i18n::t("🎚 Mixerändring").to_string();
+                    self.push_undo_snapshot(prev);
+                }
+            } else {
+                // Programmatisk ändring (projektladdning, preset, ångring): inget
+                // att ångra, men viloläget måste följa med.
+                self.mixer_settled_snapshot = Some(self.current_snapshot("mixer"));
+                self.mixer_settled_digest = mixer_now;
+            }
+        }
+        self.mixer_pointer_was_down = mixer_pointer_down;
         self.sync_mic_monitoring();
 
         // Check if window is minimized or not focused (Wayland / Hyprland safety)
@@ -14280,6 +14401,117 @@ mod tests {
 
     /// Kärnan i Fas 6.1: vid start ska bara arbete som *inte* finns i den
     /// manuella filen erbjudas — annars blir varningen brus.
+    /// Mixer-undon (Fas 6.2): varje fält som motorn tar emot måste ingå i
+    /// sammanfattningen, annars kan en mixerändring ske helt utan att en
+    /// ångringspunkt skapas. Fälten räknas upp i samma ordning som
+    /// `sync_track_audio_state` och `sync_group_state` skickar dem.
+    #[test]
+    fn mixer_digest_covers_every_mixed_field() {
+        let base_track = PlaylistTrack::new(
+            "Testkanal".to_string(),
+            "🎹",
+            TrackKind::SynthLead,
+            Color32::WHITE,
+        );
+        let bus_volume = [1.0_f32; crate::audio::synth::NUM_BUSES];
+        let bus_muted = [false; crate::audio::synth::NUM_BUSES];
+        let bus_solo = [false; crate::audio::synth::NUM_BUSES];
+        let vca_faders = [1.0_f32; crate::audio::synth::NUM_VCAS];
+        let vca_muted = [false; crate::audio::synth::NUM_VCAS];
+        let vca_solos = [false; crate::audio::synth::NUM_VCAS];
+
+        let dig = |tracks: &[PlaylistTrack]| {
+            mixer_digest(
+                tracks,
+                &bus_volume,
+                &bus_muted,
+                &bus_solo,
+                &vca_faders,
+                &vca_muted,
+                &vca_solos,
+            )
+        };
+        let base = dig(&[base_track.clone()]);
+
+        let probe = |name: &str, mutate: &dyn Fn(&mut PlaylistTrack)| {
+            let mut t = base_track.clone();
+            mutate(&mut t);
+            assert_ne!(dig(&[t]), base, "fältet '{name}' saknas i mixer-digesten");
+        };
+
+        probe("volume", &|t| t.volume += 0.1);
+        probe("pan", &|t| t.pan -= 0.2);
+        probe("muted", &|t| t.muted = !t.muted);
+        probe("solo", &|t| t.solo = !t.solo);
+        probe("comp_threshold_db", &|t| t.comp_threshold_db += 1.0);
+        probe("comp_ratio", &|t| t.comp_ratio += 0.5);
+        probe("reverb_send", &|t| t.reverb_send += 0.1);
+        probe("delay_send", &|t| t.delay_send += 0.1);
+        probe("pitch_semitones", &|t| t.pitch_semitones += 1.0);
+        probe("bus", &|t| t.bus += 1);
+        probe("vca", &|t| t.vca = t.vca.map(|v| v + 1).or(Some(0)));
+        probe("eq.low_gain_db", &|t| t.eq.low_gain_db += 1.0);
+        probe("eq.low_freq", &|t| t.eq.low_freq += 10.0);
+        probe("eq.mid_gain_db", &|t| t.eq.mid_gain_db += 1.0);
+        probe("eq.mid_freq", &|t| t.eq.mid_freq += 10.0);
+        probe("eq.high_gain_db", &|t| t.eq.high_gain_db += 1.0);
+        probe("eq.high_freq", &|t| t.eq.high_freq += 10.0);
+
+        // Buss- och VCA-nivåerna ligger utanför spåren och måste också fångas,
+        // annars går en bussändring att göra utan ångringspunkt.
+        let digest_with = |bv: &[f32], bm: &[bool], bs: &[bool], vf: &[f32], vm: &[bool], vs: &[bool]| {
+            mixer_digest(&[base_track.clone()], bv, bm, bs, vf, vm, vs)
+        };
+        let mut bv = bus_volume;
+        bv[0] = 0.5;
+        assert_ne!(digest_with(&bv, &bus_muted, &bus_solo, &vca_faders, &vca_muted, &vca_solos), base, "bussvolym saknas i mixer-digesten");
+        let mut bm = bus_muted;
+        bm[0] = true;
+        assert_ne!(digest_with(&bus_volume, &bm, &bus_solo, &vca_faders, &vca_muted, &vca_solos), base, "buss-mute saknas i mixer-digesten");
+        let mut bs = bus_solo;
+        bs[0] = true;
+        assert_ne!(digest_with(&bus_volume, &bus_muted, &bs, &vca_faders, &vca_muted, &vca_solos), base, "buss-solo saknas i mixer-digesten");
+        let mut vf = vca_faders;
+        vf[0] = 0.25;
+        assert_ne!(digest_with(&bus_volume, &bus_muted, &bus_solo, &vf, &vca_muted, &vca_solos), base, "VCA-volym saknas i mixer-digesten");
+        let mut vm = vca_muted;
+        vm[0] = true;
+        assert_ne!(digest_with(&bus_volume, &bus_muted, &bus_solo, &vca_faders, &vm, &vca_solos), base, "VCA-mute saknas i mixer-digesten");
+        let mut vs = vca_solos;
+        vs[0] = true;
+        assert_ne!(digest_with(&bus_volume, &bus_muted, &bus_solo, &vca_faders, &vca_muted, &vs), base, "VCA-solo saknas i mixer-digesten");
+
+        // Och det viktigaste: ångringspunkten bär hela ljudbilden. Glöms ett fält
+        // i `current_snapshot`/`restore_snapshot` går ändringen att göra men inte
+        // att ångra — då fångar jämförelsen här det.
+        let snapshot = TimelineUndoSnapshot {
+            playlist_tracks: vec![base_track.clone()],
+            bus_volume,
+            bus_muted,
+            bus_solo,
+            vca_faders,
+            vca_muted,
+            vca_solos,
+            selected_timeline_track: 0,
+            selected_audio_region: None,
+            song_time: 0.0,
+            description: "test".to_string(),
+        };
+        assert_eq!(
+            mixer_digest(
+                &snapshot.playlist_tracks,
+                &snapshot.bus_volume,
+                &snapshot.bus_muted,
+                &snapshot.bus_solo,
+                &snapshot.vca_faders,
+                &snapshot.vca_muted,
+                &snapshot.vca_solos,
+            ),
+            base,
+            "ångringspunktens ljudbild skiljer sig från den levande state:n"
+        );
+    }
+
     #[test]
     fn recovery_offers_newer_autosaves_and_skips_already_saved_work() {
         let paths = isolated_paths("recovery");

@@ -375,6 +375,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🎼 Importera Stämmor / Stems... (Ctrl+I)" => "🎼 Import Stems / Vocal Stems... (Ctrl+I)",
         "↗ Exportera projekt (Ctrl+E)" => "↗ Export Project (Ctrl+E)",
         "🚪 Avsluta" => "🚪 Quit",
+        "🎚 Mixerändring" => "🎚 Mixer change",
 
         // --- Fas 6.1: autosave, kraschåterställning och läslista ---
         "🕘 Senaste projekt" => "🕘 Recent projects",
