@@ -478,6 +478,45 @@ pub fn sanitize_filename(name: &str) -> String {
     cleaned.split_whitespace().collect::<Vec<_>>().join("_")
 }
 
+/// Dither-inställningar för export (Fas 6.5).
+#[derive(Clone, Copy, Debug)]
+pub struct DitherSettings {
+    /// Dither vid kvantisering till 16 bitar. På som standard: det är
+    /// standardpraxis och kostar ingenting utom en kvantnivås brus.
+    pub enabled: bool,
+    /// Noise shaping: flyttar bruset uppåt i frekvens. Av som standard, eftersom
+    /// det lägger mer energi i diskanten — en smaksak.
+    pub noise_shaping: bool,
+    pub seed: u64,
+}
+
+impl Default for DitherSettings {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            noise_shaping: false,
+            seed: crate::audio::dither::DEFAULT_SEED,
+        }
+    }
+}
+
+/// Som [`write_export`], men med valfria dither-inställningar.
+pub fn write_export_with(
+    path: &str,
+    fmt: ExportFormat,
+    samples_lr: &[f32],
+    sample_rate: u32,
+    meta: &ExportMeta,
+    dither: DitherSettings,
+) -> Result<(), String> {
+    match fmt {
+        ExportFormat::Wav16 => write_wav(path, samples_lr, sample_rate, 16, false, meta, dither),
+        ExportFormat::Wav24 => write_wav(path, samples_lr, sample_rate, 24, false, meta, dither),
+        ExportFormat::Wav32 => write_wav(path, samples_lr, sample_rate, 32, true, meta, dither),
+        _ => write_export(path, fmt, samples_lr, sample_rate, meta),
+    }
+}
+
 pub fn write_export(
     path: &str,
     format: ExportFormat,
@@ -486,9 +525,15 @@ pub fn write_export(
     meta: &ExportMeta,
 ) -> Result<(), String> {
     match format {
-        ExportFormat::Wav16 => write_wav(path, samples_lr, sample_rate, 16, false, meta),
-        ExportFormat::Wav24 => write_wav(path, samples_lr, sample_rate, 24, false, meta),
-        ExportFormat::Wav32 => write_wav(path, samples_lr, sample_rate, 32, true, meta),
+        ExportFormat::Wav16 => {
+            write_wav(path, samples_lr, sample_rate, 16, false, meta, DitherSettings::default())
+        }
+        ExportFormat::Wav24 => {
+            write_wav(path, samples_lr, sample_rate, 24, false, meta, DitherSettings::default())
+        }
+        ExportFormat::Wav32 => {
+            write_wav(path, samples_lr, sample_rate, 32, true, meta, DitherSettings::default())
+        }
         ExportFormat::Flac => write_flac(path, samples_lr, sample_rate, 24, meta),
         ExportFormat::Mp3 | ExportFormat::Ogg | ExportFormat::Aac => {
             write_with_ffmpeg(path, format, samples_lr, sample_rate, meta)
@@ -520,6 +565,7 @@ fn write_wav(
     bits: u16,
     is_float: bool,
     meta: &ExportMeta,
+    dither: DitherSettings,
 ) -> Result<(), String> {
     let channels: u16 = 2;
     let bytes_per_sample = bits / 8;
@@ -567,9 +613,21 @@ fn write_wav(
             file.push(((v >> 16) & 0xff) as u8);
         }
     } else {
-        for &s in samples {
-            let v = (clamp01(s) * 32767.0) as i16;
-            file.extend_from_slice(&v.to_le_bytes());
+        // 16 bitar: dither (Fas 6.5). Utan det blir kvantiseringsfelet korrelerat
+        // med materialet och hörs som distorsion på svaga partier; med TPDF blir
+        // det ett jämnt brusgolv. Kanalerna håller egna shaping-tillstånd.
+        if dither.enabled {
+            let mut d = crate::audio::dither::TpdfDither::new(dither.seed)
+                .with_noise_shaping(dither.noise_shaping);
+            for (i, &s) in samples.iter().enumerate() {
+                let v = d.quantize_i16(s, i % 2);
+                file.extend_from_slice(&v.to_le_bytes());
+            }
+        } else {
+            for &s in samples {
+                let v = (clamp01(s) * 32767.0) as i16;
+                file.extend_from_slice(&v.to_le_bytes());
+            }
         }
     }
 
@@ -681,7 +739,15 @@ fn write_with_ffmpeg(
     let dir = std::path::Path::new(path).parent().unwrap_or(std::path::Path::new("."));
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let tmp_path = dir.join(format!(".sonix_export_tmp_{}.wav", std::process::id()));
-    write_wav(&tmp_path.to_string_lossy(), samples, sample_rate, 24, false, meta)?;
+    write_wav(
+        &tmp_path.to_string_lossy(),
+        samples,
+        sample_rate,
+        24,
+        false,
+        meta,
+        DitherSettings::default(),
+    )?;
 
     let (codec_args, _label): (Vec<String>, &str) = match format {
         ExportFormat::Mp3 => (
@@ -868,6 +934,171 @@ mod tests {
             assert!(String::from_utf8_lossy(&bytes).contains("ISFT"));
         }
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Läser ut 16-bitars-PCM ur en WAV-fil som `write_export` skrev.
+    fn read_wav_i16(path: &std::path::Path) -> Vec<i16> {
+        let bytes = std::fs::read(path).unwrap();
+        // Hitta "data"-chunken och läs den som i16.
+        let mut i = 12;
+        while i + 8 <= bytes.len() {
+            let id = &bytes[i..i + 4];
+            let size = u32::from_le_bytes([bytes[i + 4], bytes[i + 5], bytes[i + 6], bytes[i + 7]]) as usize;
+            if id == b"data" {
+                let start = i + 8;
+                let end = (start + size).min(bytes.len());
+                return bytes[start..end]
+                    .chunks_exact(2)
+                    .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                    .collect();
+            }
+            i += 8 + size + (size % 2);
+        }
+        panic!("ingen data-chunk i {}", path.display());
+    }
+
+    #[test]
+    fn dither_reaches_the_16_bit_file_and_removes_the_bias() {
+        // Fas 6.5 "klart när", mätt på **filens bytes** — inte bara i modulen.
+        let dir = std::env::temp_dir().join("sonix_export_test_dither");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // En svag ton (≈ −80 dBFS) är värsta fallet för kvantisering.
+        let n = 20_000;
+        let amp = 0.6 / 32768.0;
+        let buf: Vec<f32> = (0..n)
+            .map(|i| amp * (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / 44_100.0).sin())
+            .collect();
+
+        let with_path = dir.join("med_dither.wav");
+        let without_path = dir.join("utan_dither.wav");
+        write_export_with(
+            &with_path.to_string_lossy(),
+            ExportFormat::Wav16,
+            &buf,
+            44_100,
+            &meta(),
+            DitherSettings { enabled: true, noise_shaping: false, seed: 4242 },
+        )
+        .unwrap();
+        write_export_with(
+            &without_path.to_string_lossy(),
+            ExportFormat::Wav16,
+            &buf,
+            44_100,
+            &meta(),
+            DitherSettings { enabled: false, noise_shaping: false, seed: 4242 },
+        )
+        .unwrap();
+
+        let with = read_wav_i16(&with_path);
+        let without = read_wav_i16(&without_path);
+        assert_eq!(with.len(), n, "lika många samples i båda filerna");
+        assert_ne!(with, without, "dithern ska höras i bytesen");
+
+        // Måttet som gäller för en ton är hur felet hänger ihop med signalen —
+        // inte medelfelet. Trunkering är ensidig i *belopp*, så felet byter tecken
+        // mellan halvperioderna och tar ut sig i medel; det är korrelationen som
+        // hörs som distorsion.
+        let corr = |q: &[i16]| {
+            let mut num = 0.0f64;
+            let mut de = 0.0f64;
+            let mut ds = 0.0f64;
+            for (i, &v) in q.iter().enumerate() {
+                let s = buf[i] as f64;
+                let e = v as f64 / 32768.0 - s;
+                num += e * s;
+                de += e * e;
+                ds += s * s;
+            }
+            (num / (de.sqrt() * ds.sqrt() + 1e-30)).abs()
+        };
+        let corr_with = corr(&with);
+        let corr_without = corr(&without);
+
+        assert!(
+            corr_without > 0.7,
+            "en odithrad svag ton ska ha felet klistrat vid signalen, var {corr_without}"
+        );
+        assert!(
+            corr_with < 0.2,
+            "dithrad fil ska ha okorrelerat fel, var {corr_with}"
+        );
+
+        // Och dithern får inte skada materialet: på normal nivå ska varje sample
+        // ligga inom ett kvantsteg från originalet.
+        let mut loud = Vec::with_capacity(2000);
+        for i in 0..2000 {
+            loud.push(0.2 * (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / 44_100.0).sin());
+        }
+        let loud_path = dir.join("normal_niva.wav");
+        write_export_with(
+            &loud_path.to_string_lossy(),
+            ExportFormat::Wav16,
+            &loud,
+            44_100,
+            &meta(),
+            DitherSettings::default(),
+        )
+        .unwrap();
+        let read_back = read_wav_i16(&loud_path);
+        for (i, &v) in read_back.iter().enumerate() {
+            let diff = (v as f64 / 32768.0 - loud[i] as f64).abs();
+            assert!(
+                diff <= 1.5 / 32768.0,
+                "sample {i} avvek {diff} (mer än ett kvantsteg)"
+            );
+        }
+
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Skriver två 16-bitarsfiler till /tmp — en dithrad och en odithrad svag ton
+    /// — för extern kontroll med `ffprobe`/`ffmpeg` och spektrummätning.
+    /// Ignoreras av vanliga testkörningar:
+    /// `cargo test --locked --bin sonix -- --ignored dump_dither`.
+    #[test]
+    #[ignore]
+    fn dump_dither_16bit_sample_for_external_check() {
+        // −60 dBFS: svagt nog att kvantiseringsfelet syns i spektrumet.
+        // Bufferten är **interleaved stereo**, precis som `render_buffer` ger —
+        // en monobuffer skulle bli halva samplingsfrekvensen i filen.
+        let n = 44_100;
+        let amp = 0.001;
+        let mut buf: Vec<f32> = Vec::with_capacity(n * 2);
+        for i in 0..n {
+            let s = amp * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 44_100.0).sin();
+            buf.push(s);
+            buf.push(s);
+        }
+        write_export_with(
+            "/tmp/sonix_dither_med.wav",
+            ExportFormat::Wav16,
+            &buf,
+            44_100,
+            &meta(),
+            DitherSettings::default(),
+        )
+        .unwrap();
+        write_export_with(
+            "/tmp/sonix_dither_utan.wav",
+            ExportFormat::Wav16,
+            &buf,
+            44_100,
+            &meta(),
+            DitherSettings { enabled: false, noise_shaping: false, seed: 1 },
+        )
+        .unwrap();
+        write_export_with(
+            "/tmp/sonix_dither_shaping.wav",
+            ExportFormat::Wav16,
+            &buf,
+            44_100,
+            &meta(),
+            DitherSettings { enabled: true, noise_shaping: true, seed: 1 },
+        )
+        .unwrap();
+        println!("skrev tre filer i /tmp ({} samples, {:.0} dBFS)", n, 20.0 * amp.log10());
     }
 
     #[test]

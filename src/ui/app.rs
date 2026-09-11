@@ -1383,6 +1383,10 @@ pub struct SonixApp {
     pub take_seed_counter: u64,
     /// Rutnätet kvantiseringen drar noterna mot (Fas 6.4), som index i `TakeGrid::ALL`.
     pub take_grid_idx: usize,
+    /// Dither vid 16-bitars export (Fas 6.5). På som standard.
+    pub export_dither: bool,
+    /// Noise shaping vid 16-bitars export (Fas 6.5). Av som standard.
+    pub export_noise_shaping: bool,
     /// Kvantiseringens styrka 0–1 (Fas 6.4).
     pub take_strength: f32,
     /// Hur mycket humaniseringen ska lägga på, 0–1 (Fas 6.4).
@@ -1980,6 +1984,8 @@ impl SonixApp {
             midi_record_armed: false,
             take_seed_counter: 0,
             take_grid_idx: crate::midi_take::TakeGrid::Sixteenth.index(),
+            export_dither: true,
+            export_noise_shaping: false,
             take_strength: 1.0,
             take_humanize: 0.5,
             midi_held_notes: std::collections::HashSet::new(),
@@ -12430,6 +12436,15 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         self.loop_end_bar.clamp(4, 32)
     }
 
+    /// Dither-inställningarna från exportdialogen (Fas 6.5).
+    fn export_dither_settings(&self) -> crate::audio::DitherSettings {
+        crate::audio::DitherSettings {
+            enabled: self.export_dither,
+            noise_shaping: self.export_noise_shaping,
+            seed: crate::audio::dither::DEFAULT_SEED,
+        }
+    }
+
     fn export_sample_rate(&self) -> u32 {
         match self.render_sample_rate_idx {
             1 => 48000,
@@ -12636,6 +12651,24 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             }
                         }
                     });
+
+                    // Dither (Fas 6.5): gäller 16-bitars WAV, där kvantiseringen
+                    // annars lägger felet som distorsion i stället för brus.
+                    // Etiketterna läses först: `&mut self.fält` och `self.tr(...)` får
+                    // inte samsas i samma anrop.
+                    let dither_label = self.tr("Dither (TPDF, 16-bitars WAV)");
+                    let shaping_label = self.tr("Noise shaping");
+                    let dither_hint = crate::i18n::t("Gör kvantiseringsfelet okorrelerat med materialet: jämnt brusgolv i stället för distorsion på svaga partier.");
+                    let shaping_hint = crate::i18n::t("Flyttar bruset uppåt i frekvens, där örat hör det sämre. Lägger mer energi i diskanten.");
+                    let dither_on = self.export_dither;
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut self.export_dither, dither_label)
+                            .on_hover_text(dither_hint);
+                        ui.add_enabled_ui(dither_on, |ui| {
+                            ui.checkbox(&mut self.export_noise_shaping, shaping_label)
+                                .on_hover_text(shaping_hint);
+                        });
+                    });
                 });
 
                 ui.add_space(6.0);
@@ -12827,7 +12860,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 if stem_meta.title.trim().is_empty() || stem_meta.title == base {
                     stem_meta.title = format!("{} ({})", base, track_name);
                 }
-                match crate::audio::write_export(&path, fmt, &buf, sample_rate, &stem_meta) {
+                let dither = self.export_dither_settings();
+                match crate::audio::write_export_with(&path, fmt, &buf, sample_rate, &stem_meta, dither) {
                     Ok(_) => written_files.push(path),
                     Err(e) => { last_error = Some(e); break; }
                 }
@@ -12850,7 +12884,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     ));
                 }
                 let path = format!("{}/{}_{:.0}bpm.{}", folder, base, self.bpm, fmt.ext());
-                match crate::audio::write_export(&path, fmt, &buf, sample_rate, &meta) {
+                let dither = self.export_dither_settings();
+                match crate::audio::write_export_with(&path, fmt, &buf, sample_rate, &meta, dither) {
                     Ok(_) => written_files.push(path),
                     Err(e) => last_error = Some(e),
                 }

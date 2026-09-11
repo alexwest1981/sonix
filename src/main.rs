@@ -2,6 +2,7 @@ mod audio;
 mod autosave;
 mod i18n;
 mod midi_take;
+mod rng;
 mod paths;
 mod ui;
 

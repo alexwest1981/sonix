@@ -95,37 +95,7 @@ pub struct Take {
     pub notes: Vec<TakeNote>,
 }
 
-/// Liten deterministisk slumptalare (xorshift64*). Egen i stället för ett nytt
-/// beroende, och framför allt för att humaniseringen ska gå att testa: samma
-/// frö ger samma resultat, varje gång.
-#[derive(Clone, Copy, Debug)]
-pub struct Rng(u64);
-
-impl Rng {
-    pub fn new(seed: u64) -> Self {
-        // 0 är en fast punkt i xorshift och skulle ge samma tal för alltid.
-        Rng(if seed == 0 { 0x9E37_79B9_7F4A_7C15 } else { seed })
-    }
-
-    pub fn next_u64(&mut self) -> u64 {
-        let mut x = self.0;
-        x ^= x >> 12;
-        x ^= x << 25;
-        x ^= x >> 27;
-        self.0 = x;
-        x.wrapping_mul(0x2545_F491_4F6C_DD1D)
-    }
-
-    /// jämnt fördelat i [0, 1)
-    pub fn next_f32(&mut self) -> f32 {
-        (self.next_u64() >> 40) as f32 / (1u32 << 24) as f32
-    }
-
-    /// jämnt fördelat i [-1, 1)
-    pub fn next_sym(&mut self) -> f32 {
-        self.next_f32() * 2.0 - 1.0
-    }
-}
+pub use crate::rng::Rng;
 
 impl Take {
     pub fn new() -> Self {

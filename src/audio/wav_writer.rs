@@ -32,8 +32,12 @@ pub fn write_pcm_f32_to_wav(
     writer.write_all(b"data")?;
     writer.write_all(&data_chunk_size.to_le_bytes())?;
 
-    for &s in samples {
-        let i16_sample = (s.clamp(-1.0, 1.0) * 32767.0) as i16;
+    // Dither (Fas 6.5): filen är 16 bitar, så kvantiseringen ska ha TPDF-dither —
+    // annars lägger kvantiseringsfelet sig som distorsion i stället för brus.
+    let mut dither = crate::audio::dither::TpdfDither::new(crate::audio::dither::DEFAULT_SEED);
+    let channels_usize = num_channels as usize;
+    for (i, &s) in samples.iter().enumerate() {
+        let i16_sample = dither.quantize_i16(s, i % channels_usize.max(1));
         writer.write_all(&i16_sample.to_le_bytes())?;
     }
 

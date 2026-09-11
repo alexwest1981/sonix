@@ -45,7 +45,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, projektfilen) | 7 | 8 | **88 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, projektfilen) | 8 | 8 | **100 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 0 | 4 | **0 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
@@ -344,10 +344,28 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/ui/app.rs` (format + mappning + `restore_saved_music` + tester)
   - **Beroende:** —
 
-- [ ] **6.5 Dither vid export** — *S*
-  - **Gör:** TPDF-dither (och valfritt noise shaping) när mastern kvantiseras till 16-bitars WAV; av för 24/32-bitars och FLAC.
-  - **Klart när:** 16-bitars export dithras (test: dekorrelerat brusgolv, inte korrelerat kvantiseringsbrus) och 24-bitars export är bitidentisk med dagens.
-  - **Filer:** `src/audio/wav_writer.rs`, `src/audio/exporter.rs`, `src/ui/app.rs`
+- [x] **6.5 Dither vid export** — *S* ✅
+  - **Löst:** egen modul **`src/audio/dither.rs`** — TPDF-dither (två oberoende rektangulära slumptal summrade ger en triangulär fördelning över ±1 kvantsteg, vilket är det som gör felet *och* medelvärdet oberoende av insignalen) med **valfritt noise shaping** av första ordningen (felet från föregående sample dras av före kvantiseringen, så utfelet blir `d + (1 − z⁻¹)·e`, dvs högpassformat). Per-kanal-tillstånd, eftersom en interleaved stereofil annars skulle låta vänster kanal styra höger.
+    - **Kvantiseringen avrundar** nu i stället för att trunkera. Trunkering är ensidig och lägger ett systematiskt fel på en halv kvantnivå ovanpå distorsionen.
+    - **Dithern är på som standard** för 16-bitars WAV; noise shaping är en smaksak och av som standard. Båda finns som kryssrutor i renderingsdialogen ("2. FORMAT & LJUDKVALITET"), och 24-bitars/float lämnas orörda.
+    - **Fast frö** (`DEFAULT_SEED`) i stället för tiden: samma projekt + samma inställningar ger samma fil. En export ska vara reproducerbar.
+    - Kopplad i **båda** 16-bitarsvägarna: `exporter.rs` (WAV-exporten) och `wav_writer.rs` (inspelade tagningar och fabriksljud). `write_export_with(…, DitherSettings)` är den nya vägen; `write_export` finns kvar som tunt skal med standardinställningar, så inga befintliga anrop ändras.
+    - Slumptalaren flyttades till **`src/rng.rs`** — 6.4:s humanisering och 6.5:s dither använder nu samma källa i stället för varsin kopia.
+  - **Klart när:** 16-bitars export dithras (test: dekorrelerat brusgolv, inte korrelerat) ✅ (se mätningen)
+  - **Bevis:** **241 tester** default (287 med plugin-host, 1 ignorerad: den externa mätningen), 0 varningar.
+    - `dither.rs` har 8 tester: en stark signal håller sig inom ett kvantsteg, dithern är deterministisk per frö, den är **omedelvärdesriktig** (en konstant mitt emellan två nivåer får medelfelet < 0.05 kvantsteg, medan trunkeringen ligger exakt på 0.5), felet blir **okorrelerat** med en svag ton (|r| < 0.15 mot > 0.5 för trunkering), tystnad får bara en viskning inom ett kvantsteg, shaping ger högpassformat (lag-1-autokorrelation < −0.2 mot ≈ 0 för vanligt dither) **och** mindre lågbandig/mer högbandig brusenergi (Goertzel), kanalerna har egna tillstånd, och insignal utanför ±1 klipps i stället för att slå runt.
+    - `exporter.rs` har ett test som mäter på **filens bytes**: en svag ton exporteras med och utan dither, och det odithrade felet hänger ihop med signalen (r > 0.7) medan det dithrade inte gör det (r < 0.2). Dessutom att dithern inte skadar materialet: på normal nivå ligger varje sample inom ett kvantsteg.
+  - **Extern mätning** (`/tmp/sonix_dither_{utan,med,shaping}.wav`, skrivna av ett `#[ignore]`-test, `cargo test --bin sonix -- --ignored dump_dither`): en −60 dBFS-ton på 440 Hz exporterad till 16 bitar, analyserad i Python (Hann-fönstrad DFT), dB relativt grundtonen:
+
+    | Fil | 880 Hz | **1320 Hz** | 1760 Hz | **2200 Hz** | Brusgolv |
+    | :--- | ---: | ---: | ---: | ---: | ---: |
+    | utan dither (trunkering) | −83.4 | **−44.3** | −87.0 | **−46.7** | −102.8 |
+    | TPDF | −71.7 | −85.0 | −77.4 | −69.4 | −76.7 |
+    | TPDF + shaping | −76.6 | −71.5 | −76.6 | −74.9 | −78.4 |
+
+    Trunkeringen ger **udda övertoner 44 dB under grundtonen** — hörbar distorsion (jämna övertoner saknas, vilket är signaturen för trunkering mot noll). Med TPDF försvinner övertonerna ner i ett jämnt brusgolv 77 dB under tonen. Shaping sänker bruset i låga band och lyfter det i höga (200–2 k: −76.5 mot −75.3; 15–21 k: −73.0 mot −75.1). Filerna läses dessutom av **ffprobe** som `pcm_s16le, s16, 44100 Hz, 2 kanaler`.
+  - **Kvar (ärligt):** noise shaping är första ordningen (2:a/3:e ordningen ger mer men kräver mer kod och kan bli instabilt nära full skala); dither läggs bara på 16-bitars fast punkt (24-bitars WAV kvantiseras utan, vilket är försumbart); och att kryssrutorna i dialogen fungerar är inte klickat i GUI av mig.
+  - **Filer:** `src/audio/dither.rs` (ny), `src/rng.rs` (ny), `src/audio/{mod,exporter,wav_writer}.rs`, `src/ui/app.rs`, `src/i18n.rs`
   - **Beroende:** —
 
 - [x] **6.6 Återkopplingssäkring för direktlyssning (rundgång)** — *S* ✅
@@ -440,11 +458,13 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**6.5 Dither vid export** (*S*): sista punkten i Tier 0. När mastern kvantiseras till 16 bitar ska ett TPDF-dither (och valfritt noise shaping) läggas på, så att brusgolvet blir dekorrelerat i stället för korrelerat med materialet. Det är den sista "det här låter fel om det inte görs"-detaljen för ett projekt som ska kunna lämna huset.
+**Tier 0 är därmed stängd.** Alla åtta punkter är klara: sökvägar (6.0), autosave/kraschåterställning (6.1), undo för mixer/FX/automation (6.2), MIDI-fil I/O (6.3), kvantisering & humanisering (6.4), dither (6.5), rundgångssäkring (6.6) och projektfilen som bär hela arbetet (6.7).
+
+**Nästa är Tier 1 — Fas 7 (Plattform & prestanda).** Första punkten är **7.4 Starttid** (biblioteksskanningen får inte blockera fönstret: 125 s och ~10 GB vid första starten, 0,4 s med tomt bibliotek — cachen är fixad, blockeringen kvar), därefter 7.1 (bryt ut ALSA/X11 till backend-gränssnitt och porta), 7.2 och 7.3. Innan dess: de tre GUI-kvittenserna på 6.4/6.5/6.7 har inte klickats av mig (se respektive punkt).
 
 Därefter i Tier 0 (Fas 6): 6.5 dither.
 
-Nyss klart: **6.4** (tagningen sparas med sin tajming, kvantiseringen/humaniseringen är hörbar, mätbar, ångringsbar och har reglage för rutnät/styrka/mängd), **6.7** projektfilen sparar hela arbetet (mönster, kanalrack, stegvolymer — hittad och stängd under 6.3), **6.3** MIDI-fil import/export (egen SMF-kodek, arrangemanget exporteras, import routar till rätt kanaler, externt validerad) samt **6.2** mixer/FX/automation i undo-historiken.
+Nyss klart: **6.5** dither (TPDF + noise shaping, på som standard för 16 bitar, mätt på filen: udda övertoner 44 dB under grundtonen försvinner ner i ett jämnt brusgolv), **6.4** (tagningen sparas med sin tajming, kvantiseringen/humaniseringen är hörbar, mätbar, ångringsbar och har reglage för rutnät/styrka/mängd), **6.7** projektfilen sparar hela arbetet (mönster, kanalrack, stegvolymer — hittad och stängd under 6.3), **6.3** MIDI-fil import/export (egen SMF-kodek, arrangemanget exporteras, import routar till rätt kanaler, externt validerad) samt **6.2** mixer/FX/automation i undo-historiken.
 
 Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
 

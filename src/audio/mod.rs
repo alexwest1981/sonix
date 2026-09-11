@@ -1,6 +1,7 @@
 pub mod ai_client;
 pub mod ai_generator;
 pub mod command;
+pub mod dither;
 pub mod drum;
 pub mod effects;
 pub mod engine;
@@ -54,7 +55,7 @@ pub use envelope::AdsrParams;
 #[allow(unused_imports)]
 pub use exporter::{
     build_offline_engine, load_timeline_into_engine, render_project_offline, sanitize_filename,
-    write_export, ExportFormat, ExportMeta, FxState, PatternSnap, RackChannel, RenderSpec,
+    write_export, write_export_with, DitherSettings, ExportFormat, ExportMeta, FxState, PatternSnap, RackChannel, RenderSpec,
     TrackAudioSnap, TrackRole, TrackSnap, VoiceSpec,
 };
 #[allow(unused_imports)]
