@@ -5628,9 +5628,33 @@ impl SonixApp {
             .map(|c| if has_solo { c.solo } else { !c.muted })
             .unwrap_or(false);
         if grid_active && chan6_audible {
+            // Tagningen (Fas 6.4 steg 2): noterna kan ligga mellan stegen. De spelas
+            // med sin fördröjning, och rutnätets rutor för dem hoppas över så att
+            // samma not inte triggas två gånger.
+            let take_plan = match self.patterns.get(self.selected_pattern) {
+                Some(pat) => {
+                    let grid = &self.piano_roll_grid;
+                    crate::midi_take::plan_for_step(&pat.take, step, self.step_samples(step), &|key, slot| {
+                        (48..72).contains(&key) && grid[(key - 48) as usize][slot]
+                    })
+                }
+                None => crate::midi_take::TakePlan::default(),
+            };
+            for (note, delay, take_vel) in &take_plan.play {
+                let freq = midi_to_freq(*note);
+                let _ = self.engine.send_command(AudioCommand::NoteOnDelayed {
+                    note: *note,
+                    freq,
+                    velocity: vel * take_vel,
+                    delay_samples: *delay,
+                });
+            }
             for row in 0..24 {
                 if self.piano_roll_grid[row][step] {
                     let note = 48 + row as u8;
+                    if take_plan.skip.contains(&note) {
+                        continue;
+                    }
                     let freq = midi_to_freq(note);
                     let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: vel });
                 }
@@ -5693,9 +5717,31 @@ impl SonixApp {
                             let grid_active = track.kind == TrackKind::SynthLead
                                 && (0..24).any(|r| pat.piano_roll_grid[r][step_in_bar]);
                             if grid_active {
+                                // Tagningens mikro-tajming (Fas 6.4 steg 2), samma
+                                // väg som i pattern-läget.
+                                let take_plan = crate::midi_take::plan_for_step(
+                                    &pat.take,
+                                    step_in_bar,
+                                    self.step_samples(step_in_bar),
+                                    &|key, slot| {
+                                        (48..72).contains(&key) && pat.piano_roll_grid[(key - 48) as usize][slot]
+                                    },
+                                );
+                                for (note, delay, take_vel) in &take_plan.play {
+                                    let freq = midi_to_freq(*note);
+                                    let _ = self.engine.send_command(AudioCommand::NoteOnDelayed {
+                                        note: *note,
+                                        freq,
+                                        velocity: track.volume * vel * take_vel,
+                                        delay_samples: *delay,
+                                    });
+                                }
                                 for row in 0..24 {
                                     if pat.piano_roll_grid[row][step_in_bar] {
                                         let note = 48 + row as u8;
+                                        if take_plan.skip.contains(&note) {
+                                            continue;
+                                        }
                                         let freq = midi_to_freq(note);
                                         let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
                                     }
@@ -5766,6 +5812,14 @@ impl SonixApp {
         } else if self.midi_held_notes.remove(&note) {
             self.release_note(note);
         }
+    }
+
+    /// Hur många samples ett steg är (Fas 6.4 steg 2). Tagningens mikro-tajming
+    /// räknas om till samples med motorns egen frekvens, eftersom kön i motorn
+    /// räknar ned per sample.
+    fn step_samples(&self, step: usize) -> u32 {
+        let secs = self.step_duration(step).as_secs_f32();
+        (secs * self.engine.sample_rate as f32).max(1.0) as u32
     }
 
     /// Positionen i takten (i steg) för en not som spelas just nu (Fas 6.4).

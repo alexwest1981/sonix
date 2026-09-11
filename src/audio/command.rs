@@ -91,6 +91,16 @@ pub enum AudioCommand {
     NoteOff {
         note: u8,
     },
+    /// En not som ska klinga en bit in i steget (Fas 6.4 steg 2), för tagningens
+    /// mikro-tajming. Motorn har redan kön `scheduled_notes` (samma som
+    /// `StrumChord` använder), så noten triggas samplenoggrant efter
+    /// `delay_samples` i stället för att tvingas fram på steggränsen.
+    NoteOnDelayed {
+        note: u8,
+        freq: f32,
+        velocity: f32,
+        delay_samples: u32,
+    },
     /// Schedules a chord/arpeggio: each note in `notes` is triggered after
     /// `spread_samples * i` samples. `mode`: 0 = Block, 1 = Up, 2 = Down,
     /// 3 = Random. Used by the Chord Matrix audition/strum.

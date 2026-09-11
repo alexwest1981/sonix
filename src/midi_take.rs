@@ -171,6 +171,46 @@ impl Take {
     }
 }
 
+/// Vad som ska spelas vid ett steg, ur tagningen (Fas 6.4 steg 2).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct TakePlan {
+    /// Noter att spela nu: (notnummer, fördröjning i samples, anslag 0–1).
+    pub play: Vec<(u8, u32, f32)>,
+    /// Notnummer vars ruta på det här steget sköts av tagningen. Rutnätets ruta
+    /// ska hoppas över, annars triggas noten två gånger.
+    pub skip: Vec<u8>,
+}
+
+/// Läser tagningen och avgör vad som ska hända vid `step`.
+///
+/// `is_on(not, rutnätssteg)` säger om rutan är tänd: en not som spelades in men
+/// sedan klickats bort ska inte klinga. Är tagningen tom blir planen tom och
+/// uppspelningen sköts av rutnätet precis som förut — den som aldrig spelat in
+/// något märker ingen skillnad.
+pub fn plan_for_step(
+    take: &Take,
+    step: usize,
+    step_samples: u32,
+    is_on: &dyn Fn(u8, usize) -> bool,
+) -> TakePlan {
+    let mut plan = TakePlan::default();
+    if take.is_empty() {
+        return plan;
+    }
+    for n in &take.notes {
+        let slot = Take::slot(n);
+        if slot == step && !plan.skip.contains(&n.key) {
+            plan.skip.push(n.key);
+        }
+        let (trigger_step, frac) = Take::playback_slot(n);
+        if trigger_step == step && is_on(n.key, slot) {
+            let delay = (frac * step_samples as f32).max(0.0) as u32;
+            plan.play.push((n.key, delay, n.velocity.clamp(0.0, 1.0)));
+        }
+    }
+    plan
+}
+
 /// Positionen en not får i tagningen, ur sekvenserns steg och fasen inom steget.
 ///
 /// Ren funktion (Fas 6.4) så att räkningen kan testas: `step` 3 med fasen 0.25
@@ -352,6 +392,69 @@ mod tests {
         // Fas utanför 0–1 (klockglapp) får inte putta noten ur takten.
         assert_eq!(take_pos_from(15, 3.0), STEPS_PER_BAR - 0.01);
         assert_eq!(take_pos_from(0, -1.0), 0.0);
+    }
+
+    #[test]
+    fn a_plan_without_a_take_is_empty() {
+        // Utan tagning ska uppspelningen skötas av rutnätet precis som förut.
+        let plan = plan_for_step(&Take::new(), 3, 1000, &|_, _| true);
+        assert_eq!(plan, TakePlan::default());
+        assert!(plan.play.is_empty());
+        assert!(plan.skip.is_empty());
+    }
+
+    #[test]
+    fn a_late_note_gets_a_delay_and_takes_over_its_grid_cell() {
+        let mut t = Take::new();
+        t.push(2.25, 60, 0.7); // en fjärdedels steg efter steg 2
+        let plan = plan_for_step(&t, 2, 1000, &|_, _| true);
+        assert_eq!(plan.play, vec![(60, 250, 0.7)]);
+        assert_eq!(plan.skip, vec![60], "rutnätets ruta får inte trigga om noten");
+    }
+
+    #[test]
+    fn an_early_note_plays_from_the_step_before_its_cell() {
+        // Spelad strax före steg 3: rutan hamnar på steg 3, men noten ska höras
+        // redan under steg 2 (0.7 steg in) — och steg 3 ska hoppa över den.
+        let mut t = Take::new();
+        t.push(2.7, 60, 0.7);
+        let at_two = plan_for_step(&t, 2, 1000, &|_, _| true);
+        assert_eq!(at_two.play, vec![(60, 700, 0.7)]);
+        let at_three = plan_for_step(&t, 3, 1000, &|_, _| true);
+        assert!(at_three.play.is_empty(), "den spelades redan");
+        assert_eq!(at_three.skip, vec![60], "men rutan på steg 3 ska hoppas över");
+    }
+
+    #[test]
+    fn a_note_whose_cell_was_cleared_does_not_play() {
+        let mut t = Take::new();
+        t.push(2.25, 60, 0.7);
+        // is_on säger att rutan är släckt → tagningen får inte spela den ändå.
+        let plan = plan_for_step(&t, 2, 1000, &|_, _| false);
+        assert!(plan.play.is_empty());
+    }
+
+    #[test]
+    fn a_tight_note_plays_with_no_delay() {
+        let mut t = Take::new();
+        t.push(4.0, 62, 0.9);
+        let plan = plan_for_step(&t, 4, 1000, &|_, _| true);
+        assert_eq!(plan.play, vec![(62, 0, 0.9)]);
+    }
+
+    #[test]
+    fn the_plan_asks_about_the_right_grid_cell() {
+        // is_on får notens *rutnätssteg*, inte trigger-steget: en tidig not på
+        // 2.7 frågar om ruta (60, 3) medan den spelas från steg 2.
+        let mut t = Take::new();
+        t.push(2.7, 60, 0.5);
+        let asked = std::cell::RefCell::new(Vec::new());
+        let plan = plan_for_step(&t, 2, 1000, &|key, slot| {
+            asked.borrow_mut().push((key, slot));
+            true
+        });
+        assert_eq!(*asked.borrow(), vec![(60, 3)]);
+        assert_eq!(plan.play.len(), 1);
     }
 
     #[test]

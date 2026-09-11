@@ -90,6 +90,7 @@ fn describe_cmd(cmd: &AudioCommand) -> String {
 fn variant_name(cmd: &AudioCommand) -> &'static str {
     match cmd {
         AudioCommand::NoteOn { .. } => "NoteOn",
+        AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
         AudioCommand::StrumChord { .. } => "StrumChord",
         AudioCommand::TriggerDrum(_) => "TriggerDrum",
@@ -569,6 +570,21 @@ impl SynthEngine {
                 }
                 let idx = target_idx.unwrap_or(0);
                 self.voices[idx].trigger(note, freq, velocity, self.sample_rate);
+            }
+            AudioCommand::NoteOnDelayed { note, freq, velocity, delay_samples } => {
+                // Samma kö som StrumChord. Fördröjning 0 betyder "nästa sample",
+                // vilket i praktiken är direkt — så en not utan mikro-tajming
+                // låter som förut.
+                self.scheduled_notes.push(ScheduledNote {
+                    samples_until: delay_samples,
+                    note,
+                    freq,
+                    velocity,
+                });
+                if self.scheduled_notes.len() > 256 {
+                    let overflow = self.scheduled_notes.len() - 256;
+                    self.scheduled_notes.drain(0..overflow);
+                }
             }
             AudioCommand::NoteOff { note } => {
                 for voice in &mut self.voices {
@@ -1438,6 +1454,41 @@ mod tests {
 
     fn active_voices(synth: &SynthEngine) -> usize {
         synth.voices.iter().filter(|v| v.is_active()).count()
+    }
+
+    #[test]
+    fn a_delayed_note_fires_after_its_delay() {
+        // Fas 6.4 steg 2: noten ska inte låta på steggränsen utan senare.
+        let mut synth = SynthEngine::new(48_000.0);
+        synth.handle_command(AudioCommand::NoteOnDelayed {
+            note: 64,
+            freq: 329.63,
+            velocity: 0.8,
+            delay_samples: 200,
+        });
+        assert_eq!(synth.scheduled_notes.len(), 1);
+
+        synth.process_stereo(); // räknar ned till 199
+        assert_eq!(active_voices(&synth), 0, "noten ska inte ha låtit än");
+
+        for _ in 0..200 {
+            synth.process_stereo();
+        }
+        assert_eq!(active_voices(&synth), 1, "noten ska klinga efter fördröjningen");
+        assert!(synth.scheduled_notes.is_empty());
+    }
+
+    #[test]
+    fn a_zero_delay_note_fires_immediately() {
+        let mut synth = SynthEngine::new(48_000.0);
+        synth.handle_command(AudioCommand::NoteOnDelayed {
+            note: 60,
+            freq: 261.63,
+            velocity: 0.8,
+            delay_samples: 0,
+        });
+        synth.process_stereo();
+        assert_eq!(active_voices(&synth), 1);
     }
 
     #[test]
