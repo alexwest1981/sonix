@@ -12579,6 +12579,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         let patterns = self.patterns.iter().map(|p| PatternSnap {
             steps: p.channel_steps.clone(),
             notes: p.channel_notes.clone(),
+            piano_roll: p.piano_roll_grid,
         }).collect();
 
         let tracks = self.playlist_tracks.iter().map(|t| {

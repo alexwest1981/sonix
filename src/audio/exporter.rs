@@ -57,6 +57,12 @@ pub struct PatternSnap {
     pub steps: Vec<[bool; 16]>,
     /// Per Channel-Rack channel note grid.
     pub notes: Vec<[u8; 16]>,
+    /// Piano-rollen, 24 rader × 16 steg (MIDI 48–71).
+    ///
+    /// Den behövs för att exporten ska spela samma noter som uppspelningen: den
+    /// vanliga kanal 6-rutan bär bara **en** not per steg (den flattenade
+    /// spegeln), så ett polyfont piano-roll-steg blev en enda not i filen.
+    pub piano_roll: [[bool; 16]; 24],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -248,6 +254,20 @@ fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioComm
                 }
             }
             TrackRole::Synth | TrackRole::Bass => {
+                // Piano-rollen först, precis som i `trigger_song_step`: är någon
+                // rad tänd på detta steg spelar rutnätet, och då ska exporten
+                // spela **alla** tända rader — inte den flattenade kanal
+                // 6-spegeln, som bara bär en not per steg.
+                if track.role == TrackRole::Synth && (0..24).any(|r| pat.piano_roll[r][sib]) {
+                    for row in 0..24 {
+                        if pat.piano_roll[row][sib] {
+                            let note = 48 + row as u8;
+                            let freq = midi_to_freq(note);
+                            cmds.push(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
+                        }
+                    }
+                    continue;
+                }
                 let ch_idx = if track.role == TrackRole::Synth { 6 } else { 7 };
                 let Some(ch_steps) = pat.steps.get(ch_idx) else { continue };
                 if !ch_steps[sib] {
@@ -852,6 +872,160 @@ mod tests {
             vca_volume: [1.0; crate::audio::synth::NUM_VCAS],
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
             vca_solo: [false; crate::audio::synth::NUM_VCAS],
+        }
+    }
+
+    /// En spec med ett synthspår som spelar pattern 0 i takt 0.
+    fn synth_spec_with(piano_roll: [[bool; 16]; 24], channel6_steps: [bool; 16], channel6_note: u8) -> RenderSpec {
+        // Åtta kanalrader, som appens specc: index 6 är synthkanalen.
+        let mut steps = vec![[false; 16]; 8];
+        steps[6] = channel6_steps;
+        let mut notes = vec![[60u8; 16]; 8];
+        notes[6] = [channel6_note; 16];
+        let mut patterns = Vec::new();
+        patterns.push(PatternSnap {
+            steps,
+            notes,
+            piano_roll,
+        });
+        RenderSpec {
+            sample_rate: 44100,
+            bpm: 120.0,
+            swing: 0.0,
+            num_bars: 1,
+            pattern_mode: false,
+            rack: Vec::new(),
+            patterns,
+            tracks: vec![TrackSnap {
+                role: TrackRole::Synth,
+                clips: {
+                    let mut c = [None; 32];
+                    c[0] = Some(0);
+                    c
+                },
+                volume: 1.0,
+                muted: false,
+                solo: false,
+            }],
+            timeline: vec![],
+            velocities: [1.0; 16],
+            solo_track: None,
+            tail_secs: 0.05,
+            bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
+            bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_solo: [false; crate::audio::synth::NUM_BUSES],
+            vca_volume: [1.0; crate::audio::synth::NUM_VCAS],
+            vca_muted: [false; crate::audio::synth::NUM_VCAS],
+            vca_solo: [false; crate::audio::synth::NUM_VCAS],
+        }
+    }
+
+    fn note_keys(cmds: &[AudioCommand]) -> Vec<u8> {
+        cmds.iter()
+            .filter_map(|c| match c {
+                AudioCommand::NoteOn { note, .. } => Some(*note),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn a_polyphonic_piano_roll_step_exports_every_note() {
+        // Ett ackord i piano-rollen (rad 0, 4 och 7 = MIDI 48, 52, 55) ska bli
+        // tre noter i exporten — uppspelningen spelar alla rader, så filen måste
+        // göra detsamma. Kanal 6-rutan bär bara en not per steg.
+        let mut grid = [[false; 16]; 24];
+        grid[0][0] = true;
+        grid[4][0] = true;
+        grid[7][0] = true;
+        let mut ch_steps = [false; 16];
+        ch_steps[0] = true;
+        let spec = synth_spec_with(grid, ch_steps, 55);
+
+        let cmds = triggers_for_step(&spec, 0, 0);
+        let mut keys = note_keys(&cmds);
+        keys.sort();
+        assert_eq!(keys, vec![48, 52, 55], "hela ackordet ska med i exporten");
+    }
+
+    #[test]
+    fn a_step_without_piano_roll_notes_still_uses_the_channel_grid() {
+        // Är rutnätet tomt ska kanal 6-rutan spela som förut (en not).
+        let grid = [[false; 16]; 24];
+        let mut ch_steps = [false; 16];
+        ch_steps[3] = true;
+        let spec = synth_spec_with(grid, ch_steps, 62);
+
+        let cmds = triggers_for_step(&spec, 0, 3);
+        assert_eq!(note_keys(&cmds), vec![62]);
+        assert!(note_keys(&triggers_for_step(&spec, 0, 0)).is_empty());
+    }
+
+    #[test]
+    fn the_piano_roll_wins_over_the_channel_grid_for_the_same_step() {
+        // Precis som i uppspelningen: är rutnätet tänt på steget spelar det, och
+        // kanalrutans not ska inte läggas ovanpå (annars blev det en dubbelnot).
+        let mut grid = [[false; 16]; 24];
+        grid[12][5] = true; // MIDI 60
+        let mut ch_steps = [false; 16];
+        ch_steps[5] = true;
+        let spec = synth_spec_with(grid, ch_steps, 40);
+
+        let cmds = triggers_for_step(&spec, 0, 5);
+        assert_eq!(note_keys(&cmds), vec![60], "bara rutnätets not på det steget");
+    }
+
+    /// Energin vid en frekvens (Goertzel), för att mäta vilka toner som hörs.
+    fn tone_energy(buf: &[f32], freq: f32, sr: f32) -> f32 {
+        let k = 2.0 * (2.0 * std::f32::consts::PI * freq / sr).cos();
+        let (mut s1, mut s2) = (0.0f32, 0.0f32);
+        for &x in buf {
+            let s0 = x + k * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        ((s1 * s1 + s2 * s2 - k * s1 * s2).max(0.0)).sqrt() / buf.len() as f32
+    }
+
+    #[test]
+    fn every_note_of_a_polyphonic_step_is_audible_in_the_render() {
+        // Kommandolistan räcker inte som bevis: tonerna ska höras i ljudet också.
+        // Ackordet C-dur (MIDI 48, 52, 55 = 130.81, 164.81, 196.00 Hz).
+        let mut grid = [[false; 16]; 24];
+        grid[0][0] = true;
+        grid[4][0] = true;
+        grid[7][0] = true;
+        let mut ch_steps = [false; 16];
+        ch_steps[0] = true;
+        let spec = synth_spec_with(grid, ch_steps, 60);
+
+        let fx = FxState {
+            waveform: super::super::command::Waveform::Sine,
+            adsr: AdsrParams { attack: 0.005, decay: 0.2, sustain: 0.8, release: 0.2 },
+            filter: FilterParams::default(),
+            delay: DelayParams::default(),
+            reverb: ReverbParams::default(),
+            drive: 1.0,
+            master_volume: 1.0,
+            master_fx: MasterFxParams::default(),
+        };
+        let mut engine = build_offline_engine(&spec, &fx);
+        let buf = render_project_offline(&mut engine, &spec);
+        assert!(!buf.is_empty(), "renderingen gav inget ljud");
+
+        let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
+        let energies: Vec<f32> = [130.81, 164.81, 196.00]
+            .iter()
+            .map(|f| tone_energy(&left, *f, spec.sample_rate as f32))
+            .collect();
+        // En kontrollton som inte spelas, för att ha något att jämföra med.
+        let control = tone_energy(&left, 155.56, spec.sample_rate as f32);
+
+        for (f, e) in [130.81, 164.81, 196.00].iter().zip(energies.iter()) {
+            assert!(
+                *e > control * 4.0,
+                "tonen {f} Hz hörs inte: {e} mot kontrollen {control}"
+            );
         }
     }
 
