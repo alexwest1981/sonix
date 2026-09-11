@@ -506,6 +506,18 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
   - **CPU-besparingen är mätt, inte påstådd** — och mätningen jämför **identiskt ljud** genom två vägar (referensljudet renderas först och matas tillbaka som stem, så det inte är fråga om att enklare musik går fortare): medelbelastning **1,4 % → 0,3 %** och värsta blocket **2,2 % → 0,3 %** i release (256 frames) — runt **4,7 gånger lägre**. I debug 7,3 % → 2,6 %. Tröskeln i testet jämför de två mätningarna och gäller bara i release, med generös marginal (20 % billigare), av samma skäl som 7.2:s tröskel: en tidsgräns som slår till slumpmässigt skyddar ingenting.
   - **Kvar, utskrivet:** (1) **inget GUI-körtest** (att det *låter* likadant och att en upptining ger tillbaka exakt samma musik) — kräver Alex; (2) frysningen gäller **sång-läget**: pattern-läget spelar kanalracket och har inget spår att frysa, vilket står i koden; (3) bussarnas läge är inte med i fingeravtrycket (mastern renderas torr, så det spelar ingen roll för ljudet — men det ska inte heller påstås vara fångat); (4) ett spår med plugin-insert kan inte frysas alls (vägras med besked i statusraden).
   - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
-- [ ] **8.2 Tempo map** — tempobyten och taktart i låten (rör projektformat, export och SMF).
+- [ ] **8.2 Tempo map** — tempobyten och taktart i låten (rör projektformat, export och SMF). — *inventerad 2026-09-11, inte påbörjad (väntar på beslut)*
+  - **Mätt först, och mitt första tal var fel.** En snabb mätning sa "132 ställen i `app.rs` räknar takter ↔ sekunder med ett tempo". Det är antalet **rader**, och en rad är inte en risk. Mätt i arbetsenheter i stället:
+    - **20 funktioner** definierar en egen `sec_per_bar = 60/bpm*4` — det är de som antar att tiden är linjär, och det är dem som måste bli positionsmedvetna.
+    - **22** ställen räknar steg↔sekunder direkt (`60/bpm/4`).
+    - **24** ställen formaterar tid för visning (lägst risk — de ska bara visa rätt).
+    - **1** klocka: `step_duration()` + `song_time += dur` — den centrala, och den som avgör om uppspelningen alls följer kartan.
+  - **Varför den är *L* och inte *S*:** i dag är tiden linjär överallt, så takter × sekunder-per-takt stämmer överallt. En tempo map gör den **styckvis linjär**, och då är varje omräkning som inte konsulterar kartan *tyst fel* — regioner hamnar fel, exporten blir fel längd, SMF-tickarna pekar fel, och spelhuvudet glider. Felet syns inte förrän något låter fel, vilket är den sämsta sortens fel.
+  - **Plan, i tre steg (så att inget kan gå sönder osynligt):**
+    1. **Typen och beviset.** `TempoMap` (i `audio/`, eftersom exporten behöver den) med `secs_at_bar`/`bar_at_secs`/`secs_per_bar_at`, `#[serde(default)]` så att äldre filer läses och deras `bpm` blir första punkten. **Beviset:** tester som visar att **ett enda tempo ger exakt samma siffror som i dag** — inte "ungefär", utan samma f32 — och att omräkningen går att vända fram och tillbaka utan att glida.
+    2. **Kärnan:** klockan, exporten/render-specen och frysningen (frysningens regionlängd räknas redan ur bufferten i stället för ur takter, så den är redan oberoende av tempot — det ska stå kvar så). Här hörs tidsfelen.
+    3. **Resten:** de 20 funktionerna och de 22 stegomräkningarna, en i taget, med sviten som skydd; sist de 24 visningsställena.
+  - **Kriteriet för att stega vidare:** hela testsviten grön efter varje delsteg, och kompatibilitetstestet från steg 1 orört. Går det inte att hålla är steget för stort och ska delas igen.
+  - **Kvar att bestämma:** omfånget för taktart (bara tempo, eller även 3/4, 6/8 …) — taktart rör fler ställen än tempo, och det är en egen fråga.
 - [ ] **8.3 Routing på riktigt** (utöver bussar/VCA: sends och sidokedjor mellan spår).
 - [ ] **8.4 Sampler** (ett riktigt samplerinstrument i kanalracket, inte bara en WAV-spelare).
