@@ -17,10 +17,12 @@
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use super::command::StemRegionPlayback;
 use super::exporter::{
-    build_offline_engine, triggers_for_step, FxState, PatternSnap, RackChannel, RenderSpec, TrackSnap,
-    TrackRole, VoiceSpec,
+    build_offline_engine, render_project_offline, triggers_for_step, FxState, PatternSnap,
+    RackChannel, RenderSpec, TrackAudioSnap, TrackSnap, TrackRole, VoiceSpec,
 };
+use super::master_fx::TrackEqSettings;
 
 /// Standardbuffertar att mäta (frames per block).
 pub const BUFFER_SIZES: [usize; 4] = [64, 128, 256, 512];
@@ -205,6 +207,60 @@ pub fn reference_fx() -> FxState {
     }
 }
 
+/// Samma musik, men med spåren frysta: pattern-spåren har inga klipp kvar, och
+/// deras färdigrenderade ljud ligger i tidslinjen som ett stem-spår — precis som
+/// `freeze_track` gör i appen.
+///
+/// Ljudet renderas av `live` själv, så jämförelsen gäller **identiskt ljud**
+/// genom två uppspelningsvägar, inte två olika låtar. Utan det vore mätningen
+/// bara ett påstående om att enklare musik går fortare.
+pub fn frozen_spec(live: &RenderSpec) -> RenderSpec {
+    let mut engine = build_offline_engine(live, &reference_fx());
+    let rendered = render_project_offline(&mut engine, live);
+    let frames = rendered.len() / 2;
+    let mut left = Vec::with_capacity(frames);
+    let mut right = Vec::with_capacity(frames);
+    for f in 0..frames {
+        left.push(rendered[f * 2]);
+        right.push(rendered[f * 2 + 1]);
+    }
+    let seconds = frames as f32 / live.sample_rate.max(1) as f32;
+
+    let mut spec = live.clone();
+    for t in spec.tracks.iter_mut() {
+        t.clips = [None; 32];
+    }
+    spec.timeline = vec![TrackAudioSnap {
+        track_index: 0,
+        left: Arc::new(left),
+        right: Arc::new(right),
+        sample_rate: live.sample_rate,
+        volume: 1.0,
+        pan: 0.0,
+        muted: false,
+        regions: vec![StemRegionPlayback {
+            start_time_secs: 0.0,
+            length_secs: seconds,
+            sample_offset_sec: 0.0,
+            gain: 1.0,
+            fade_in_sec: 0.0,
+            fade_out_sec: 0.0,
+            muted: false,
+            is_reverse: false,
+            loop_length_secs: 0.0,
+        }],
+        eq: TrackEqSettings::default(),
+        comp_threshold_db: 0.0,
+        comp_ratio: 1.0,
+        reverb_send: 0.0,
+        delay_send: 0.0,
+        pitch_semitones: 0.0,
+        bus: 0,
+        vca: None,
+    }];
+    spec
+}
+
 /// Mäter `blocks` block om `frames` frames: exakt det callbacken gör, utom
 /// enhetskonverteringen.
 pub fn measure(spec: &RenderSpec, frames: usize, blocks: usize, fx: &FxState) -> BlockStats {
@@ -240,6 +296,54 @@ pub fn measure(spec: &RenderSpec, frames: usize, blocks: usize, fx: &FxState) ->
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Vad frysningen är värd, mätt i stället för påstådd: samma ljud genom
+    /// två vägar — syntes mot strömning.
+    ///
+    /// Tröskeln jämför de två mätningarna med varandra och gäller bara i
+    /// release, av samma skäl som 7.2:s tröskel: i debug är DSP:n så pass mycket
+    /// långsammare att talen inte säger något, och en tidsgräns som slår till
+    /// slumpmässigt skyddar ingenting. Marginalen är generös (20 % billigare) —
+    /// det som fångas är att frysningen slutar spara arbete, inte små skillnader.
+    #[test]
+    fn freezing_trades_synthesis_for_streaming_and_costs_less() {
+        let live = reference_spec();
+        let frozen = frozen_spec(&live);
+        let fx = reference_fx();
+
+        // Strukturellt, och alltså deterministiskt: frysningen tystar patterns
+        // och lägger ljudet i tidslinjen i stället.
+        assert!(
+            frozen.tracks.iter().all(|t| t.clips.iter().all(|c| c.is_none())),
+            "frysta spår ska inte trigga patterns"
+        );
+        assert_eq!(frozen.timeline.len(), 1, "ljudet ska ligga som ett stem-spår");
+        assert!(
+            frozen.timeline[0].regions[0].length_secs > 0.0,
+            "regionen ska täcka ljudet"
+        );
+
+        let frames = 256;
+        let blocks = 60;
+        let live_stats = measure(&live, frames, blocks, &fx);
+        let frozen_stats = measure(&frozen, frames, blocks, &fx);
+        println!(
+            "Frysning (Fas 8.1) — {} block per väg, {} frames\n  ofruset: {}\n  fruset:  {}",
+            blocks,
+            frames,
+            live_stats.summary(),
+            frozen_stats.summary()
+        );
+
+        if !cfg!(debug_assertions) {
+            assert!(
+                frozen_stats.load_percent < live_stats.load_percent * 0.8,
+                "frysningen ska kosta mindre: ofruset {:.1} % mot fruset {:.1} %",
+                live_stats.load_percent,
+                frozen_stats.load_percent
+            );
+        }
+    }
 
     #[test]
     fn the_load_is_the_rendered_time_over_the_budget() {
