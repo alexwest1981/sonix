@@ -278,6 +278,13 @@ Alla sökvägar byggs av en enda modul och följer XDG-standarden. Kör `sonix -
 
 Vill du flytta något (t.ex. projekt till en extern disk) sätter du `SONIX_PROJECTS_DIR`, `SONIX_SAMPLES_DIR`, `SONIX_CONFIG_DIR`, `SONIX_DATA_DIR`, `SONIX_STATE_DIR` eller `SONIX_CACHE_DIR` innan du startar.
 
+### Vad innehåller en projektfil?
+En `.sonix`-fil är läsbar JSON och innehåller allt du arbetat med: tempot, spåren med volym/pan/mute/solo, klipp och ljudregioner, automation, EQ/kompressor, sändningar, buss- och VCA-nivåer, plugin-inställningar — och sedan **Fas 6.7** även **mönstren med noterna** (trumsteg, piano-roll, kanalernas toner), **Channel Racket** med kanalernas inställningar, och **stegvolymerna**.
+
+Kanalernas ljud sparas **inte** i filen — bara sökvägen till samplen. Ljudet ligger redan på disk, läses tillbaka när projektet öppnas och vågformen ritas om ur det. Det håller projektfilen liten: en kanal kostar några rader i stället för hundratals kilobyte.
+
+En fil som sparades före Fas 6.7 saknar de fälten. Den öppnas som förut — då står standardpatterns och standardracket kvar i stället för att nollställas.
+
 ### Autosparning och återställning
 * **Var 60:e sekund** autosparas projektet om något har ändrats, och **direkt efter strukturella ändringar** (klipp, duplicera, ta bort spår, mute, inklistring, rensning). En skrivning sker högst var tionde sekund, så en snabb redigeringsföljd inte fyller disken.
 * **5 versioner per projekt** behålls i `~/.local/state/sonix/autosave/`; äldre versioner roteras bort automatiskt. Det ger dig möjlighet att gå tillbaka till ett läge från några minuter sedan.

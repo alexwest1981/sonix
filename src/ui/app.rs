@@ -471,6 +471,57 @@ fn push_recent_project(entries: &mut Vec<RecentProject>, name: &str, path: &str)
     entries.truncate(RECENT_MAX);
 }
 
+/// Ett pattern som det sparas i projektfilen (Fas 6.7).
+///
+/// `Pattern` själv kan inte serialiseras (Color32 saknar serde), och färgen
+/// sparas därför som RGBA.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct SavedPattern {
+    pub name: String,
+    #[serde(default = "default_ui_color")]
+    pub color: [u8; 4],
+    pub channel_steps: Vec<[bool; 16]>,
+    pub channel_notes: Vec<[u8; 16]>,
+    pub piano_roll_grid: [[bool; 16]; 24],
+}
+
+/// En kanal i Channel Racket som den sparas (Fas 6.7).
+///
+/// `pcm_audio` och `waveform_preview` sparas **inte**: ljudet ligger redan på
+/// disk och läses tillbaka från `sample_path`, och vågformen räknas om ur
+/// ljudet. Att spara dem skulle blåsa upp projektfilen med hundratals kilobyte
+/// per kanal utan att tillföra något.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+pub struct SavedChannel {
+    pub name: String,
+    #[serde(default)]
+    pub icon: String,
+    #[serde(default = "default_ui_color")]
+    pub color: [u8; 4],
+    pub volume: f32,
+    pub pan: f32,
+    pub muted: bool,
+    pub solo: bool,
+    pub steps: [bool; 16],
+    pub notes: [u8; 16],
+    #[serde(default)]
+    pub pitch_semitones: i8,
+    #[serde(default)]
+    pub pitch_fine_cents: f32,
+    #[serde(default)]
+    pub sample_start: f32,
+    #[serde(default = "default_sample_end")]
+    pub sample_end: f32,
+    #[serde(default)]
+    pub attack_decay: f32,
+    #[serde(default)]
+    pub is_reverse: bool,
+    #[serde(default)]
+    pub sample_path: Option<String>,
+    #[serde(default)]
+    pub sample_base_note: u8,
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SonixProjectData {
     pub name: String,
@@ -497,11 +548,161 @@ pub struct SonixProjectData {
     pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
     #[serde(default)]
     pub vca_solo: [bool; crate::audio::synth::NUM_VCAS],
+    /// Mönstren med noterna (Fas 6.7). Saknas i äldre projekt — då skapas
+    /// standardpattern som förut, men nya projekt får med sig arbetet.
+    #[serde(default)]
+    pub patterns: Vec<SavedPattern>,
+    #[serde(default)]
+    pub selected_pattern: usize,
+    /// Stegvolymerna i trumsekvenserna (Fas 6.7). `None` = filen skrevs före
+    /// den här ändringen, och då lämnas appens nuvarande värden orörda.
+    #[serde(default)]
+    pub step_velocities: Option<[f32; 16]>,
+    /// Channel Racket (Fas 6.7).
+    #[serde(default)]
+    pub channels: Vec<SavedChannel>,
 }
 
 fn default_bus_volume() -> [f32; crate::audio::synth::NUM_BUSES] {
     [1.0; crate::audio::synth::NUM_BUSES]
 }
+
+fn default_ui_color() -> [u8; 4] {
+    [120, 120, 130, 255]
+}
+
+fn default_sample_end() -> f32 {
+    1.0
+}
+
+/// Vågform för kanalvisningen, räknad ur ljudet (Fas 6.7). Toppvärdet per
+/// fönster räcker — det är samma sorts översikt kanalracket ritar.
+fn waveform_preview_from_pcm(pcm: &[f32], points: usize) -> Vec<f32> {
+    if pcm.is_empty() || points == 0 {
+        return Vec::new();
+    }
+    let bucket = (pcm.len() / points).max(1);
+    pcm.chunks(bucket)
+        .map(|c| c.iter().fold(0.0f32, |m, s| m.max(s.abs())))
+        .take(points)
+        .collect()
+}
+
+/// Det som ska tillbaka in i appen när en projektfil öppnas (Fas 6.7).
+pub struct SavedMusic<'a> {
+    pub patterns: &'a [SavedPattern],
+    pub selected_pattern: usize,
+    pub step_velocities: Option<[f32; 16]>,
+    pub channels: &'a [SavedChannel],
+}
+
+/// Lägger tillbaka mönster, kanalrack och stegvolymer.
+///
+/// Ren funktion (Fas 6.7), så att *inläsningsvägen* kan testas utan GUI — det
+/// var just den vägen som saknades: filen hade inga noter att läsa, och ingen
+/// kod som ens försökte. Har filen inga mönster (skriven före den här
+/// ändringen) lämnas appens standardpatterns och standardrack orörda.
+pub fn restore_saved_music(
+    saved: &SavedMusic,
+    patterns: &mut Vec<Pattern>,
+    channels: &mut [ChannelStrip],
+    selected_pattern: &mut usize,
+    step_velocities: &mut [f32; 16],
+) {
+    if !saved.patterns.is_empty() {
+        for (i, s) in saved.patterns.iter().enumerate() {
+            let restored = saved_to_pattern(s);
+            if i < patterns.len() {
+                patterns[i] = restored;
+            } else {
+                patterns.push(restored);
+            }
+        }
+        *selected_pattern = saved.selected_pattern.min(patterns.len().saturating_sub(1));
+    }
+    if let Some(v) = saved.step_velocities {
+        *step_velocities = v;
+    }
+    for (i, s) in saved.channels.iter().enumerate() {
+        if i < channels.len() {
+            channels[i] = saved_to_channel(s);
+        }
+    }
+}
+
+fn pattern_to_saved(p: &Pattern) -> SavedPattern {
+    SavedPattern {
+        name: p.name.clone(),
+        color: p.color.to_array(),
+        channel_steps: p.channel_steps.clone(),
+        channel_notes: p.channel_notes.clone(),
+        piano_roll_grid: p.piano_roll_grid,
+    }
+}
+
+fn saved_to_pattern(s: &SavedPattern) -> Pattern {
+    Pattern {
+        name: s.name.clone(),
+        color: Color32::from_rgba_premultiplied(s.color[0], s.color[1], s.color[2], s.color[3]),
+        channel_steps: s.channel_steps.clone(),
+        channel_notes: s.channel_notes.clone(),
+        piano_roll_grid: s.piano_roll_grid,
+    }
+}
+
+fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
+    SavedChannel {
+        name: c.name.clone(),
+        icon: c.icon.clone(),
+        color: c.color.to_array(),
+        volume: c.volume,
+        pan: c.pan,
+        muted: c.muted,
+        solo: c.solo,
+        steps: c.steps,
+        notes: c.notes,
+        pitch_semitones: c.pitch_semitones,
+        pitch_fine_cents: c.pitch_fine_cents,
+        sample_start: c.sample_start,
+        sample_end: c.sample_end,
+        attack_decay: c.attack_decay,
+        is_reverse: c.is_reverse,
+        sample_path: c.sample_path.clone(),
+        sample_base_note: c.sample_base_note,
+    }
+}
+
+/// Bygger tillbaka en kanal. Ljudet läses från `sample_path` igen och vågformen
+/// räknas om ur ljudet — det är därför de två inte sparas.
+fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
+    let pcm = s.sample_path.as_deref().and_then(load_sample_pcm_arcs);
+    let preview = match &pcm {
+        Some((left, _, _)) => waveform_preview_from_pcm(left, 128),
+        None => Vec::new(),
+    };
+    ChannelStrip {
+        name: s.name.clone(),
+        icon: s.icon.clone(),
+        color: Color32::from_rgba_premultiplied(s.color[0], s.color[1], s.color[2], s.color[3]),
+        volume: s.volume,
+        pan: s.pan,
+        muted: s.muted,
+        solo: s.solo,
+        steps: s.steps,
+        notes: s.notes,
+        pitch_semitones: s.pitch_semitones,
+        pitch_fine_cents: s.pitch_fine_cents,
+        sample_start: s.sample_start,
+        sample_end: s.sample_end,
+        attack_decay: s.attack_decay,
+        is_reverse: s.is_reverse,
+        waveform_preview: preview,
+        sample_path: s.sample_path.clone(),
+        pcm_audio: pcm,
+        sample_base_note: s.sample_base_note,
+    }
+}
+
 
 fn default_vca_volume() -> [f32; crate::audio::synth::NUM_VCAS] {
     [1.0; crate::audio::synth::NUM_VCAS]
@@ -750,6 +951,11 @@ pub struct LoadedProjectPayload {
     pub vca_volume: [f32; crate::audio::synth::NUM_VCAS],
     pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
     pub vca_solo: [bool; crate::audio::synth::NUM_VCAS],
+    /// Mönster, kanalrack och stegvolymer (Fas 6.7).
+    pub patterns: Vec<SavedPattern>,
+    pub selected_pattern: usize,
+    pub step_velocities: Option<[f32; 16]>,
+    pub channels: Vec<SavedChannel>,
     pub file_path: String,
 }
 
@@ -2257,6 +2463,10 @@ impl SonixApp {
                     vca_volume: default_vca_volume(),
                     vca_muted: [false; crate::audio::synth::NUM_VCAS],
                     vca_solo: [false; crate::audio::synth::NUM_VCAS],
+                    patterns: Vec::new(),
+                    selected_pattern: 0,
+                    step_velocities: None,
+                    channels: Vec::new(),
                     file_path: "demo".to_string(),
                 });
             }
@@ -3258,6 +3468,10 @@ impl SonixApp {
             vca_volume: self.vca_faders,
             vca_muted: self.vca_muted,
             vca_solo: self.vca_solos,
+            patterns: self.patterns.iter().map(pattern_to_saved).collect(),
+            selected_pattern: self.selected_pattern,
+            step_velocities: Some(self.step_velocities),
+            channels: self.channels.iter().map(channel_to_saved).collect(),
             plugin_slots: self
                 .plugin_slots
                 .iter()
@@ -3533,6 +3747,10 @@ impl SonixApp {
                     vca_volume: data.vca_volume,
                     vca_muted: data.vca_muted,
                     vca_solo: data.vca_solo,
+                    patterns: data.patterns,
+                    selected_pattern: data.selected_pattern,
+                    step_velocities: data.step_velocities,
+                    channels: data.channels,
                     file_path: path,
                 });
             }
@@ -3555,6 +3773,10 @@ impl SonixApp {
         let vca_volume = payload.vca_volume;
         let vca_muted = payload.vca_muted;
         let vca_solo = payload.vca_solo;
+        let patterns = payload.patterns;
+        let selected_pattern = payload.selected_pattern;
+        let step_velocities = payload.step_velocities;
+        let channels = payload.channels;
 
         self.project_name = payload.name;
         self.bpm = payload.bpm;
@@ -3567,6 +3789,20 @@ impl SonixApp {
         self.vca_faders = vca_volume;
         self.vca_muted = vca_muted;
         self.vca_solos = vca_solo;
+
+        // Mönstren, kanalracket och stegvolymerna (Fas 6.7).
+        restore_saved_music(
+            &SavedMusic {
+                patterns: &patterns,
+                selected_pattern,
+                step_velocities,
+                channels: &channels,
+            },
+            &mut self.patterns,
+            &mut self.channels,
+            &mut self.selected_pattern,
+            &mut self.step_velocities,
+        );
         self.sync_group_state();
 
         self.playlist_tracks.clear();
@@ -14968,6 +15204,230 @@ mod tests {
         assert_eq!(drum_channel_for_key(75), None);
     }
 
+    /// Kanal med varje fält satt till ett omisskännligt värde, så att ett
+    /// bortglömt fält i sparandet syns direkt.
+    fn test_channel() -> ChannelStrip {
+        ChannelStrip {
+            name: "Virvel".to_string(),
+            icon: "🥁".to_string(),
+            color: Color32::from_rgba_premultiplied(10, 20, 30, 255),
+            volume: 0.42,
+            pan: -0.25,
+            muted: true,
+            solo: true,
+            steps: [true; 16],
+            notes: [42; 16],
+            pitch_semitones: -7,
+            pitch_fine_cents: 12.5,
+            sample_start: 0.125,
+            sample_end: 0.875,
+            attack_decay: 0.375,
+            is_reverse: true,
+            waveform_preview: vec![0.5; 4],
+            sample_path: Some("/tmp/sonix-finns-inte.wav".to_string()),
+            pcm_audio: None,
+            sample_base_note: 43,
+        }
+    }
+
+    #[test]
+    fn saved_channel_round_trip_keeps_every_field() {
+        // Fullständighetsvakt (Fas 6.7): läggs ett fält till i ChannelStrip utan
+        // att följa med i sparandet, failar det här testet i stället för att
+        // tyst tappa inställningen när projektet öppnas igen.
+        let ch = test_channel();
+        let json = serde_json::to_string(&channel_to_saved(&ch)).unwrap();
+        let back: SavedChannel = serde_json::from_str(&json).unwrap();
+        let r = saved_to_channel(&back);
+
+        assert_eq!(r.name, ch.name);
+        assert_eq!(r.icon, ch.icon);
+        assert_eq!(r.color.to_array(), ch.color.to_array());
+        assert_eq!(r.volume, ch.volume);
+        assert_eq!(r.pan, ch.pan);
+        assert_eq!(r.muted, ch.muted);
+        assert_eq!(r.solo, ch.solo);
+        assert_eq!(r.steps, ch.steps);
+        assert_eq!(r.notes, ch.notes);
+        assert_eq!(r.pitch_semitones, ch.pitch_semitones);
+        assert_eq!(r.pitch_fine_cents, ch.pitch_fine_cents);
+        assert_eq!(r.sample_start, ch.sample_start);
+        assert_eq!(r.sample_end, ch.sample_end);
+        assert_eq!(r.attack_decay, ch.attack_decay);
+        assert_eq!(r.is_reverse, ch.is_reverse);
+        assert_eq!(r.sample_path, ch.sample_path);
+        assert_eq!(r.sample_base_note, ch.sample_base_note);
+        // Ljudet sparas inte utan läses från disk: sökvägen finns inte här, så
+        // både PCM och vågform ska vara tomma — men sökvägen själv ska med.
+        assert!(r.pcm_audio.is_none());
+        assert!(r.waveform_preview.is_empty());
+    }
+
+    #[test]
+    fn project_file_carries_the_notes_and_the_drum_rack() {
+        // "Klart när" för Fas 6.7: en sparad fil ska ge tillbaka noterna, inte
+        // bara spåren. Före den här ändringen fanns varken `patterns` eller
+        // `channels` i projektformatet — musiken tappades vid varje sparning.
+        let mut pat = test_pattern();
+        pat.channel_steps[0][0] = true;
+        pat.channel_notes[0][0] = 36;
+        pat.channel_steps[3][7] = true;
+        pat.piano_roll_grid[12][5] = true;
+        pat.piano_roll_grid[0][15] = true;
+
+        let mut ch = test_channel();
+        ch.steps[2] = true;
+        ch.notes[2] = 42;
+
+        let mut step_velocities = [1.0f32; 16];
+        step_velocities[3] = 0.25;
+
+        let data = SonixProjectData {
+            name: "Testprojekt".to_string(),
+            bpm: 133.0,
+            swing: 0.2,
+            master_volume: 0.8,
+            master_pan: 0.0,
+            tracks: Vec::new(),
+            plugin_slots: Vec::new(),
+            bus_volume: default_bus_volume(),
+            bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_solo: [false; crate::audio::synth::NUM_BUSES],
+            vca_volume: default_vca_volume(),
+            vca_muted: [false; crate::audio::synth::NUM_VCAS],
+            vca_solo: [false; crate::audio::synth::NUM_VCAS],
+            patterns: vec![pattern_to_saved(&pat)],
+            selected_pattern: 0,
+            step_velocities: Some(step_velocities),
+            channels: vec![channel_to_saved(&ch)],
+        };
+
+        let json = serde_json::to_string(&data).unwrap();
+        assert!(
+            json.contains("piano_roll_grid"),
+            "noterna ska stå i filen, inte bara i minnet"
+        );
+        assert!(json.contains("channel_steps"));
+
+        let back: SonixProjectData = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.patterns.len(), 1);
+        let restored = saved_to_pattern(&back.patterns[0]);
+        assert_eq!(restored.channel_steps, pat.channel_steps, "trumstegen tillbaka");
+        assert_eq!(restored.channel_notes, pat.channel_notes, "trumtonerna tillbaka");
+        assert_eq!(restored.piano_roll_grid, pat.piano_roll_grid, "piano-rollen tillbaka");
+        assert_eq!(restored.name, pat.name);
+        assert_eq!(restored.color.to_array(), pat.color.to_array());
+        assert_eq!(back.channels.len(), 1);
+        assert_eq!(back.channels[0].steps, ch.steps);
+        assert_eq!(back.channels[0].notes, ch.notes);
+        assert_eq!(back.step_velocities.unwrap()[3], 0.25, "stegvolymen tillbaka");
+        assert_eq!(back.selected_pattern, 0);
+    }
+
+    #[test]
+    fn old_project_files_without_patterns_still_load() {
+        // Bakåtkompatibilitet (Fas 6.7): en fil skriven före den här ändringen
+        // har varken patterns, channels eller step_velocities. Den ska fortfarande
+        // läsas, och då lämnas standardpatterns och standardracket orörda.
+        let old = r#"{
+            "name": "Gammalt",
+            "bpm": 120.0,
+            "swing": 0.0,
+            "master_volume": 0.9,
+            "master_pan": 0.0,
+            "tracks": []
+        }"#;
+        let data: SonixProjectData = serde_json::from_str(old).expect("gammal fil ska gå att läsa");
+        assert!(data.patterns.is_empty());
+        assert!(data.channels.is_empty());
+        assert_eq!(data.selected_pattern, 0);
+        assert!(
+            data.step_velocities.is_none(),
+            "en gammal fil ska inte påstå något om stegvolymer"
+        );
+        assert_eq!(data.bpm, 120.0);
+    }
+
+    #[test]
+    fn restoring_a_saved_project_puts_the_notes_back() {
+        // Inläsningsvägen (Fas 6.7): appen står med tomma standardpatterns och
+        // ett tomt rack, filen har noterna — efter återställningen ska arbetet
+        // finnas i appen igen.
+        let mut app_patterns = vec![test_pattern(), test_pattern()];
+        let mut app_channels = vec![test_channel(), test_channel()];
+        let mut app_selected = 0usize;
+        let mut app_velocities = [1.0f32; 16];
+
+        let mut saved_pattern = test_pattern();
+        saved_pattern.name = "Beat".to_string();
+        saved_pattern.channel_steps[2][3] = true; // bastrumma på steg 3
+        saved_pattern.channel_notes[2][3] = 36;
+        saved_pattern.piano_roll_grid[4][11] = true;
+        let mut saved_channel = test_channel();
+        saved_channel.steps[5] = true;
+        saved_channel.notes[5] = 49;
+        let mut velocities = [1.0f32; 16];
+        velocities[6] = 0.4;
+
+        let saved = SavedMusic {
+            patterns: &[pattern_to_saved(&saved_pattern)],
+            // Filen pekar på ett patternnummer som inte finns här: ska klämmas
+            // till ett giltigt index i stället för att lämna appen utanför listan.
+            selected_pattern: 99,
+            step_velocities: Some(velocities),
+            channels: &[channel_to_saved(&saved_channel)],
+        };
+        restore_saved_music(
+            &saved,
+            &mut app_patterns,
+            &mut app_channels,
+            &mut app_selected,
+            &mut app_velocities,
+        );
+
+        assert_eq!(app_patterns[0].name, "Beat");
+        assert!(app_patterns[0].channel_steps[2][3], "trumslaget tillbaka");
+        assert_eq!(app_patterns[0].channel_notes[2][3], 36);
+        assert!(app_patterns[0].piano_roll_grid[4][11], "piano-rollen tillbaka");
+        assert_eq!(app_selected, app_patterns.len() - 1, "valt pattern kläms till listan");
+        assert_eq!(app_velocities[6], 0.4, "stegvolymen tillbaka");
+        assert!(app_channels[0].steps[5], "kanalens steg tillbaka");
+        assert_eq!(app_channels[0].notes[5], 49);
+    }
+
+    #[test]
+    fn restoring_an_old_project_leaves_the_defaults_alone() {
+        // En fil skriven före Fas 6.7 har inga mönster. Då ska appens egna
+        // pattern och rack stå kvar — inte nollställas.
+        let mut app_patterns = vec![test_pattern()];
+        app_patterns[0].name = "Mitt eget".to_string();
+        app_patterns[0].channel_steps[1][1] = true;
+        let mut app_channels = vec![test_channel()];
+        app_channels[0].name = "Min kanal".to_string();
+        let mut app_selected = 0usize;
+        let mut app_velocities = [0.5f32; 16];
+
+        let saved = SavedMusic {
+            patterns: &[],
+            selected_pattern: 0,
+            step_velocities: None,
+            channels: &[],
+        };
+        restore_saved_music(
+            &saved,
+            &mut app_patterns,
+            &mut app_channels,
+            &mut app_selected,
+            &mut app_velocities,
+        );
+
+        assert_eq!(app_patterns.len(), 1);
+        assert_eq!(app_patterns[0].name, "Mitt eget");
+        assert!(app_patterns[0].channel_steps[1][1]);
+        assert_eq!(app_channels[0].name, "Min kanal");
+        assert_eq!(app_velocities[0], 0.5, "stegvolymerna rörs inte");
+    }
+
     #[test]
     fn mixer_digest_covers_every_mixed_field() {
         let base_track = PlaylistTrack::new(
@@ -15436,6 +15896,10 @@ mod tests {
             vca_volume: default_vca_volume(),
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
             vca_solo: [false; crate::audio::synth::NUM_VCAS],
+            patterns: Vec::new(),
+            selected_pattern: 0,
+            step_velocities: None,
+            channels: Vec::new(),
         };
         let json = serde_json::to_string(&data).unwrap();
         let back: SonixProjectData = serde_json::from_str(&json).unwrap();

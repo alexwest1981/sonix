@@ -45,7 +45,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 5 | 7 | **71 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, **projektfilen**) | 6 | 8 | **75 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 0 | 4 | **0 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
@@ -307,6 +307,19 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/ui/app.rs`, `src/audio/midi_input.rs`, `src/i18n.rs`
   - **Beroende:** 6.3 (samma notmodell)
 
+- [x] **6.7 Projektfilen sparar hela arbetet (mönster, kanalrack, stegvolymer)** — *S* ✅ *(hittad under 6.3-arbetet)*
+  - **Fyndet:** Projektformatet (`SonixProjectData`) innehöll **bara** `name, bpm, swing, master_volume, master_pan, tracks` (+ bussar/VCA:er och plugin-slots). Mönstren, kanalracket och stegvolymerna fanns inte med — och inläsningen saknade helt kod för att läsa tillbaka dem. En sparad låt behöll alltså *vilket* pattern som spelar i vilken takt (`clips`) men tappade **vad som står i det**: trumkompet och piano-rollen var borta när filen öppnades igen. **Verifierat mot användarens egna projektfiler** (`~/Music/Sonix/Projects/*.sonix`, fem filer i tre formatvarianter): ingen av dem har notdata, och storleken kommer från ljudregionerna. Det var alltså inte ett sent refaktoreringsfel — formatet har aldrig burit musiken. Hittades när 6.3:s export skulle kopplas mot patterns och sparandet granskades.
+  - **Löst:** `SavedPattern` och `SavedChannel` + fyra nya fält i projektformatet (`patterns`, `selected_pattern`, `step_velocities`, `channels`) med `#[serde(default)]`, så äldre filer läses som förut och då lämnas appens standardpatterns orörda (`step_velocities` är `Option` just för att en gammal fil inte ska nollställa dem). `pcm_audio` och `waveform_preview` sparas **inte** — ljudet ligger redan på disk och läses tillbaka från `sample_path`, vågformen räknas om ur ljudet; att spara dem hade blåst upp filen med hundratals kilobyte per kanal utan att tillföra något.
+  - **Klart när:** Efter en sparning och en ny inläsning står noterna, kanalernas steg/toner/inställningar och stegvolymerna tillbaka, och en fil från före ändringen öppnas fortfarande ✅
+  - **Bevis:** **197 tester** default, 0 varningar.
+    - `saved_channel_round_trip_keeps_every_field` är en **fullständighetsvakt**: den sätter varje fält i `ChannelStrip` till ett omisskännligt värde och failar om ett fält läggs till utan att följa med i sparandet.
+    - `project_file_carries_the_notes_and_the_drum_rack`: hela vägen genom `serde_json` — noter, rutnät, kanalsteg, stegvolymer. Testet kontrollerar också att `piano_roll_grid` **står i filen**, inte bara i minnet.
+    - `old_project_files_without_patterns_still_load`: en fil i det gamla formatet (bara `name, bpm, swing, master_volume, master_pan, tracks`) läses, och `step_velocities` är då `None`.
+    - Inläsningsvägen är utbruten till den rena funktionen `restore_saved_music` (samma grepp som `collect_recovery_candidates_in` i 6.1): `restoring_a_saved_project_puts_the_notes_back` visar att noterna kommer tillbaka och att `selected_pattern: 99` kläms till ett giltigt index; `restoring_an_old_project_leaves_the_defaults_alone` visar att en gammal fil **inte** rör appens egna pattern och rack.
+  - **Kvar (ärligt):** Att spara ett beat, stänga och öppna filen igen är **inte** kört i GUI av mig — klicket uteblev och fönstret tog fokus. Logiken är enhetstestad inklusive inläsningsvägen; en GUI-kvittens (spara → öppna) återstår, precis som `Restore`-knappen i 6.1.
+  - **Filer:** `src/ui/app.rs` (format + mappning + `restore_saved_music` + tester)
+  - **Beroende:** —
+
 - [ ] **6.5 Dither vid export** — *S*
   - **Gör:** TPDF-dither (och valfritt noise shaping) när mastern kvantiseras till 16-bitars WAV; av för 24/32-bitars och FLAC.
   - **Klart när:** 16-bitars export dithras (test: dekorrelerat brusgolv, inte korrelerat kvantiseringsbrus) och 24-bitars export är bitidentisk med dagens.
@@ -407,7 +420,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 Därefter i Tier 0 (Fas 6): 6.5 dither.
 
-Nyss klart: **6.3** MIDI-fil import/export (egen SMF-kodek, arrangemanget exporteras, import routar till rätt kanaler, externt validerad) samt **6.2** mixer/FX/automation i undo-historiken.
+Nyss klart: **6.7** projektfilen sparar hela arbetet (mönster, kanalrack, stegvolymer — hittad och stängd under 6.3), **6.3** MIDI-fil import/export (egen SMF-kodek, arrangemanget exporteras, import routar till rätt kanaler, externt validerad) samt **6.2** mixer/FX/automation i undo-historiken.
 
 Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
 
