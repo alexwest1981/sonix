@@ -13,9 +13,70 @@
 /// Antal steg i en takt (4/4, 16-delar).
 pub const STEPS_PER_BAR: f32 = 16.0;
 
-/// Hur långt fram en udda gridlinje flyttas vid swing = 1.0. En tredjedels steg
-/// ger den klassiska triolfeelingen (2 mot 3).
-pub const SWING_MAX_STEPS: f32 = 0.33;
+/// Hur långt fram en udda rutnätslinje flyttas vid swing = 1.0, som andel av
+/// rutnätets steg. En tredjedel ger den klassiska triolfeelingen (2 mot 3).
+pub const SWING_MAX_FRACTION: f32 = 0.33;
+
+/// Rutnäten kvantiseringen kan dra noterna mot (Fas 6.4).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TakeGrid {
+    Quarter,
+    Eighth,
+    Sixteenth,
+    ThirtySecond,
+    /// 1/8-triol: tre per fjärdedel, tolv per takt.
+    TripletEighth,
+    /// 1/16-triol: sex per fjärdedel.
+    TripletSixteenth,
+}
+
+impl TakeGrid {
+    pub const ALL: [TakeGrid; 6] = [
+        TakeGrid::Quarter,
+        TakeGrid::Eighth,
+        TakeGrid::Sixteenth,
+        TakeGrid::ThirtySecond,
+        TakeGrid::TripletEighth,
+        TakeGrid::TripletSixteenth,
+    ];
+
+    /// Antal rutnätslinjer i en takt.
+    pub fn lines_per_bar(self) -> u32 {
+        match self {
+            TakeGrid::Quarter => 4,
+            TakeGrid::Eighth => 8,
+            TakeGrid::Sixteenth => 16,
+            TakeGrid::ThirtySecond => 32,
+            TakeGrid::TripletEighth => 12,
+            TakeGrid::TripletSixteenth => 24,
+        }
+    }
+
+    /// Avståndet mellan två linjer, i steg.
+    pub fn step_size(self) -> f32 {
+        STEPS_PER_BAR / self.lines_per_bar() as f32
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            TakeGrid::Quarter => "1/4",
+            TakeGrid::Eighth => "1/8",
+            TakeGrid::Sixteenth => "1/16",
+            TakeGrid::ThirtySecond => "1/32",
+            TakeGrid::TripletEighth => "1/8-triol",
+            TakeGrid::TripletSixteenth => "1/16-triol",
+        }
+    }
+
+    /// Index i `ALL`, för UI-läget.
+    pub fn index(self) -> usize {
+        Self::ALL.iter().position(|g| *g == self).unwrap_or(2)
+    }
+
+    pub fn from_index(idx: usize) -> Self {
+        Self::ALL.get(idx).copied().unwrap_or(TakeGrid::Sixteenth)
+    }
+}
 
 /// En inspelad not.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -107,21 +168,25 @@ impl Take {
         sum / self.notes.len() as f32
     }
 
-    /// Var en rutnätslinje ligger med sväng inräknad: udda 16-delar skjuts fram.
-    pub fn swung_line(line: usize, swing: f32) -> f32 {
+    /// Var en rutnätslinje ligger med sväng inräknad: udda linjer skjuts fram.
+    /// Svängen skalas med rutnätet, så "en tredjedel" känns likadan i 1/8 som i
+    /// 1/16 — annars vore svängen bara rätt i ett av rutnäten.
+    pub fn swung_line(line: usize, swing: f32, grid: TakeGrid) -> f32 {
+        let step = grid.step_size();
+        let base = line as f32 * step;
         if line % 2 == 1 {
-            line as f32 + swing.clamp(0.0, 1.0) * SWING_MAX_STEPS
+            base + swing.clamp(0.0, 1.0) * step * SWING_MAX_FRACTION
         } else {
-            line as f32
+            base
         }
     }
 
     /// Rutnätslinjen som ligger närmast `pos`, med sväng inräknad.
-    pub fn nearest_line(pos: f32, swing: f32) -> f32 {
+    pub fn nearest_line(pos: f32, swing: f32, grid: TakeGrid) -> f32 {
         let mut best = 0.0f32;
         let mut best_d = f32::MAX;
-        for line in 0..STEPS_PER_BAR as usize {
-            let target = Self::swung_line(line, swing);
+        for line in 0..grid.lines_per_bar() as usize {
+            let target = Self::swung_line(line, swing, grid);
             let d = (target - pos).abs();
             if d < best_d {
                 best_d = d;
@@ -134,11 +199,12 @@ impl Take {
     /// Kvantisering: dra varje not mot sin närmaste rutnätslinje.
     ///
     /// `strength` 0.0 = ingen ändring, 1.0 = exakt på rutnätet (då är tagningen
-    /// så tight den kan bli). `swing` 0.0 = rakt, 1.0 = triolkänsla.
-    pub fn quantize(&mut self, strength: f32, swing: f32) {
+    /// så tight den kan bli). `swing` 0.0 = rakt, 1.0 = triolkänsla. `grid` är
+    /// rutnätet noterna dras mot (1/4 … 1/32 eller trioler).
+    pub fn quantize(&mut self, strength: f32, swing: f32, grid: TakeGrid) {
         let strength = strength.clamp(0.0, 1.0);
         for n in &mut self.notes {
-            let target = Self::nearest_line(n.pos, swing);
+            let target = Self::nearest_line(n.pos, swing, grid);
             n.pos += (target - n.pos) * strength;
             n.pos = n.pos.clamp(0.0, STEPS_PER_BAR - 0.01);
         }
@@ -252,7 +318,7 @@ mod tests {
         let mut t = Take::new();
         t.push(0.4, 36, 0.9);
         t.push(4.1, 38, 0.9);
-        t.quantize(1.0, 0.0);
+        t.quantize(1.0, 0.0, TakeGrid::Sixteenth);
         assert_eq!(t.notes[0].pos, 0.0);
         assert_eq!(t.notes[1].pos, 4.0);
         assert_eq!(t.tightness(), 0.0);
@@ -262,7 +328,7 @@ mod tests {
     fn half_strength_moves_halfway() {
         let mut t = Take::new();
         t.push(2.4, 36, 0.9);
-        t.quantize(0.5, 0.0);
+        t.quantize(0.5, 0.0, TakeGrid::Sixteenth);
         assert!((t.notes[0].pos - 2.2).abs() < 1e-6, "{}", t.notes[0].pos);
     }
 
@@ -271,7 +337,7 @@ mod tests {
         let mut t = Take::new();
         t.push(2.7, 36, 0.9); // närmare 3 än 2
         t.push(2.2, 38, 0.9); // närmare 2
-        t.quantize(1.0, 0.0);
+        t.quantize(1.0, 0.0, TakeGrid::Sixteenth);
         assert_eq!(t.notes[0].pos, 3.0, "en släpande not dras framåt");
         assert_eq!(t.notes[1].pos, 2.0, "en tidig not dras bakåt");
     }
@@ -281,22 +347,28 @@ mod tests {
         let mut t = Take::new();
         t.push(2.4, 36, 0.9);
         let before = t.clone();
-        t.quantize(0.0, 0.0);
+        t.quantize(0.0, 0.0, TakeGrid::Sixteenth);
         assert_eq!(t, before);
     }
 
     #[test]
     fn swing_delays_the_odd_lines() {
-        assert_eq!(Take::swung_line(0, 1.0), 0.0);
-        assert_eq!(Take::swung_line(2, 1.0), 2.0);
-        assert!((Take::swung_line(1, 1.0) - (1.0 + SWING_MAX_STEPS)).abs() < 1e-6);
-        assert_eq!(Take::swung_line(1, 0.0), 1.0, "utan sväng ligger linjen rakt");
+        assert_eq!(Take::swung_line(0, 1.0, TakeGrid::Sixteenth), 0.0);
+        assert_eq!(Take::swung_line(2, 1.0, TakeGrid::Sixteenth), 2.0);
+        assert!(
+            (Take::swung_line(1, 1.0, TakeGrid::Sixteenth) - (1.0 + SWING_MAX_FRACTION)).abs() < 1e-6
+        );
+        assert_eq!(
+            Take::swung_line(1, 0.0, TakeGrid::Sixteenth),
+            1.0,
+            "utan sväng ligger linjen rakt"
+        );
 
         // En not som spelades rakt på en udda 16-del hamnar efter linjen med sväng.
         let mut t = Take::new();
         t.push(1.0, 36, 0.9);
-        t.quantize(1.0, 1.0);
-        assert!((t.notes[0].pos - (1.0 + SWING_MAX_STEPS)).abs() < 1e-6);
+        t.quantize(1.0, 1.0, TakeGrid::Sixteenth);
+        assert!((t.notes[0].pos - (1.0 + SWING_MAX_FRACTION)).abs() < 1e-6);
     }
 
     #[test]
@@ -304,7 +376,7 @@ mod tests {
         let mut t = Take::new();
         t.push(0.05, 36, 0.9);
         t.push(4.05, 38, 0.9);
-        t.quantize(1.0, 1.0);
+        t.quantize(1.0, 1.0, TakeGrid::Sixteenth);
         assert_eq!(t.notes[0].pos, 0.0);
         assert_eq!(t.notes[1].pos, 4.0);
     }
@@ -351,7 +423,7 @@ mod tests {
         let mut t = tight_take();
         t.humanize(0.12, 0.2, 5);
         assert!(t.tightness() > 0.0, "humaniseringen ska synas på tajmingen");
-        t.quantize(1.0, 0.0);
+        t.quantize(1.0, 0.0, TakeGrid::Sixteenth);
         assert_eq!(t.tightness(), 0.0);
         for (n, orig) in t.notes.iter().zip(tight_take().notes.iter()) {
             assert_eq!(n.pos, orig.pos, "tillbaka på samma steg");
@@ -382,6 +454,59 @@ mod tests {
         let (step, frac) = Take::playback_slot(&n);
         assert_eq!(step, 3);
         assert_eq!(frac, 0.0);
+    }
+
+    #[test]
+    fn quantizing_to_eighths_uses_only_the_eighth_lines() {
+        let mut t = Take::new();
+        t.push(2.4, 60, 0.9);
+        t.quantize(1.0, 0.0, TakeGrid::Eighth); // linjer vid 0, 2, 4 …
+        assert_eq!(t.notes[0].pos, 2.0);
+    }
+
+    #[test]
+    fn quantizing_to_quarters_moves_further_than_sixteenths() {
+        let mut t = Take::new();
+        t.push(2.6, 60, 0.9);
+        t.quantize(1.0, 0.0, TakeGrid::Quarter); // linjer vid 0, 4, 8, 12
+        assert_eq!(t.notes[0].pos, 4.0, "närmaste fjärdedel är 4.0, inte 2.0");
+    }
+
+    #[test]
+    fn triplet_grids_land_on_thirds() {
+        let mut t = Take::new();
+        t.push(1.4, 60, 0.9);
+        t.quantize(1.0, 0.0, TakeGrid::TripletEighth); // 0, 1.333, 2.667 …
+        assert!((t.notes[0].pos - 4.0 / 3.0).abs() < 0.01, "{}", t.notes[0].pos);
+
+        let mut t = Take::new();
+        t.push(0.7, 60, 0.9);
+        t.quantize(1.0, 0.0, TakeGrid::TripletSixteenth); // 0, 0.667, 1.333 …
+        assert!((t.notes[0].pos - 2.0 / 3.0).abs() < 0.01, "{}", t.notes[0].pos);
+    }
+
+    #[test]
+    fn swing_scales_with_the_grid() {
+        // Svängen ska kännas likadan i 1/8 som i 1/16: en tredjedel av *rutnätets*
+        // eget steg, inte en tredjedels 16-del.
+        let eighth = Take::swung_line(1, 1.0, TakeGrid::Eighth);
+        assert!(
+            (eighth - (2.0 + 2.0 * SWING_MAX_FRACTION)).abs() < 1e-6,
+            "{eighth}"
+        );
+        let sixteenth = Take::swung_line(1, 1.0, TakeGrid::Sixteenth);
+        assert!((sixteenth - (1.0 + SWING_MAX_FRACTION)).abs() < 1e-6);
+    }
+
+    #[test]
+    fn every_grid_has_a_label_and_a_round_trip_index() {
+        for g in TakeGrid::ALL {
+            assert_eq!(TakeGrid::from_index(g.index()), g, "{:?}", g);
+            assert!(!g.label().is_empty());
+            assert!(g.lines_per_bar() >= 4);
+        }
+        assert_eq!(TakeGrid::Sixteenth.index(), 2);
+        assert_eq!(TakeGrid::from_index(99), TakeGrid::Sixteenth, "ogiltigt index ger 1/16");
     }
 
     #[test]
@@ -461,7 +586,7 @@ mod tests {
     fn an_empty_take_is_harmless() {
         let mut t = Take::new();
         assert_eq!(t.tightness(), 0.0);
-        t.quantize(1.0, 0.5);
+        t.quantize(1.0, 0.5, TakeGrid::Sixteenth);
         t.humanize(0.2, 0.2, 1);
         assert!(t.is_empty());
     }

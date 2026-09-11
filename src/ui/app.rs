@@ -123,7 +123,7 @@ pub struct ChannelStrip {
     pub sample_base_note: u8,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Pattern {
     pub name: String,
     pub color: Color32,
@@ -971,6 +971,9 @@ pub struct LoadedProjectPayload {
 #[derive(Clone, Debug)]
 pub struct TimelineUndoSnapshot {
     pub playlist_tracks: Vec<PlaylistTrack>,
+    /// Mönstren med noterna och tagningen (Fas 6.4). Utan dem gick det inte att
+    /// ångra en kvantisering: tagningen ligger i `patterns`, inte i spåren.
+    pub patterns: Vec<Pattern>,
     /// Buss- och VCA-nivåer (Fas 6.2). De ligger utanför `playlist_tracks`, så
     /// utan dem kunde en bussändring inte ångras alls.
     pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
@@ -1378,6 +1381,12 @@ pub struct SonixApp {
     pub midi_record_armed: bool,
     /// Räknare som ger humaniseringen ett nytt frö varje gång (Fas 6.4).
     pub take_seed_counter: u64,
+    /// Rutnätet kvantiseringen drar noterna mot (Fas 6.4), som index i `TakeGrid::ALL`.
+    pub take_grid_idx: usize,
+    /// Kvantiseringens styrka 0–1 (Fas 6.4).
+    pub take_strength: f32,
+    /// Hur mycket humaniseringen ska lägga på, 0–1 (Fas 6.4).
+    pub take_humanize: f32,
     pub midi_held_notes: std::collections::HashSet<u8>,
     pub control_tx: std::sync::mpsc::Sender<ControlEvent>,
     pub control_rx: std::sync::mpsc::Receiver<ControlEvent>,
@@ -1970,6 +1979,9 @@ impl SonixApp {
             midi_note_count: 0,
             midi_record_armed: false,
             take_seed_counter: 0,
+            take_grid_idx: crate::midi_take::TakeGrid::Sixteenth.index(),
+            take_strength: 1.0,
+            take_humanize: 0.5,
             midi_held_notes: std::collections::HashSet::new(),
             control_tx,
             control_rx,
@@ -3141,6 +3153,7 @@ impl SonixApp {
     fn current_snapshot(&self, description: &str) -> TimelineUndoSnapshot {
         TimelineUndoSnapshot {
             playlist_tracks: self.playlist_tracks.clone(),
+            patterns: self.patterns.clone(),
             bus_volume: self.bus_volume,
             bus_muted: self.bus_muted,
             bus_solo: self.bus_solo,
@@ -3189,6 +3202,10 @@ impl SonixApp {
     /// `sync_track_audio_state`, och buss/VCA i `sync_group_state`.
     fn restore_snapshot(&mut self, snapshot: &TimelineUndoSnapshot) {
         self.playlist_tracks = snapshot.playlist_tracks.clone();
+        // Mönstren först, sedan UI-spegeln: `load_pattern_into_ui` skriver inte
+        // över `patterns` med det gamla UI-läget, vilket `select_pattern` hade gjort.
+        self.patterns = snapshot.patterns.clone();
+        self.load_pattern_into_ui(self.selected_pattern);
         self.bus_volume = snapshot.bus_volume;
         self.bus_muted = snapshot.bus_muted;
         self.bus_solo = snapshot.bus_solo;
@@ -3965,6 +3982,24 @@ impl SonixApp {
         }
     }
 
+    /// Lägger ett pattern i UI:t — kanalernas steg/toner och piano-rollen —
+    /// **utan** att först spara det som står där.
+    ///
+    /// Används av ångringen (Fas 6.4), som redan har skrivit tillbaka rätt
+    /// `patterns` och inte får skriva över dem med det gamla UI-läget.
+    fn load_pattern_into_ui(&mut self, pat_idx: usize) {
+        if pat_idx >= self.patterns.len() {
+            return;
+        }
+        for (ch_i, ch) in self.channels.iter_mut().enumerate() {
+            if ch_i < self.patterns[pat_idx].channel_steps.len() {
+                ch.steps = self.patterns[pat_idx].channel_steps[ch_i];
+                ch.notes = self.patterns[pat_idx].channel_notes[ch_i];
+            }
+        }
+        self.piano_roll_grid = self.patterns[pat_idx].piano_roll_grid;
+    }
+
     pub fn select_pattern(&mut self, pat_idx: usize) {
         if pat_idx < self.patterns.len() {
             // Save current channel steps to current pattern
@@ -3978,13 +4013,7 @@ impl SonixApp {
 
             // Load new pattern
             self.selected_pattern = pat_idx;
-            for (ch_i, ch) in self.channels.iter_mut().enumerate() {
-                if ch_i < self.patterns[pat_idx].channel_steps.len() {
-                    ch.steps = self.patterns[pat_idx].channel_steps[ch_i];
-                    ch.notes = self.patterns[pat_idx].channel_notes[ch_i];
-                }
-            }
-            self.piano_roll_grid = self.patterns[pat_idx].piano_roll_grid;
+            self.load_pattern_into_ui(pat_idx);
             self.status_message = crate::tstatus!("Aktivt mönster: {}", self.patterns[pat_idx].name);
         }
     }
@@ -5854,7 +5883,10 @@ impl SonixApp {
     /// (Fas 6.4): "otajthet" är medelavståndet från noterna till rutnätet i steg,
     /// så både före och efter går att skriva ut i siffror i stället för att
     /// påstås.
-    fn quantize_take(&mut self, strength: f32) {
+    fn quantize_take(&mut self, strength: f32, grid: crate::midi_take::TakeGrid) {
+        // Ångringspunkten tas *före* ändringen (Fas 6.4), som för allt annat som
+        // ändrar projektet.
+        self.push_undo("🎯 Kvantisering av tagningen");
         let swing = self.swing;
         let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
             return;
@@ -5868,11 +5900,12 @@ impl SonixApp {
         }
         let before = pat.take.tightness();
         let notes = pat.take.len();
-        pat.take.quantize(strength, swing);
+        pat.take.quantize(strength, swing, grid);
         let after = pat.take.tightness();
         self.status_message = crate::tstatus!(
-            "🎯 Kvantiserade {} noter (styrka {:.0} %, sväng {:.0} %): {:.2} → {:.2} steg otajt",
+            "🎯 Kvantiserade {} noter ({}, styrka {:.0} %, sväng {:.0} %): {:.2} → {:.2} steg otajt",
             notes,
+            grid.label(),
             strength * 100.0,
             swing * 100.0,
             before,
@@ -5882,7 +5915,11 @@ impl SonixApp {
 
     /// Lägger medveten mänsklig variation på tagningen (Fas 6.4). Slumptalet
     /// räknas upp varje gång, så två tryck ger inte exakt samma tagning.
-    fn humanize_take(&mut self, timing_steps: f32, velocity_amount: f32) {
+    fn humanize_take(&mut self, amount: f32) {
+        self.push_undo("🌀 Humanisering av tagningen");
+        let amount = amount.clamp(0.0, 1.0);
+        let timing_steps = 0.15 * amount;
+        let velocity_amount = 0.3 * amount;
         self.take_seed_counter = self.take_seed_counter.wrapping_add(1);
         let seed = self
             .take_seed_counter
@@ -5903,8 +5940,9 @@ impl SonixApp {
         pat.take.humanize(timing_steps, velocity_amount, seed);
         let after = pat.take.tightness();
         self.status_message = crate::tstatus!(
-            "🌀 Humaniserade {} noter (tid ±{:.2} steg, anslag ±{:.0} %): {:.2} → {:.2} steg otajt",
+            "🌀 Humaniserade {} noter (mängd {:.0} %: tid ±{:.2} steg, anslag ±{:.0} %): {:.2} → {:.2} steg otajt",
             notes,
+            amount * 100.0,
             timing_steps,
             velocity_amount * 100.0,
             before,
@@ -10512,12 +10550,42 @@ impl SonixApp {
                     .size(10.5)
                     .color(if take_notes == 0 { Theme::TEXT_MUTED } else { Theme::TEXT_BRIGHT }),
                 );
+                ui.label(egui::RichText::new(crate::i18n::t("Rutnät:")).size(11.0).color(Theme::TEXT_MUTED));
+                let cur_grid = crate::midi_take::TakeGrid::from_index(self.take_grid_idx);
+                egui::ComboBox::from_id_salt("take_grid_combo")
+                    .selected_text(cur_grid.label())
+                    .width(74.0)
+                    .show_ui(ui, |ui| {
+                        for grid in crate::midi_take::TakeGrid::ALL {
+                            if ui.selectable_label(grid == cur_grid, grid.label()).clicked() {
+                                self.take_grid_idx = grid.index();
+                            }
+                        }
+                    });
+                ui.label(egui::RichText::new(crate::i18n::t("Styrka")).size(11.0).color(Theme::TEXT_MUTED));
+                ui.add(
+                    egui::Slider::new(&mut self.take_strength, 0.0..=1.0)
+                        .show_value(false)
+                        .fixed_decimals(2),
+                )
+                .on_hover_text(crate::i18n::t("Hur hårt noterna dras mot rutnätet (0 % = oförändrat, 100 % = exakt på rutnätet)"));
+
                 let take_btn = Color32::from_rgb(32, 38, 48);
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Kvantisera")).strong().size(10.5).color(Theme::TEXT_BRIGHT)).fill(take_btn)).on_hover_text(crate::i18n::t("Dra tagningens noter till närmaste steg, med projektets sväng")).clicked() {
-                    self.quantize_take(1.0);
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Kvantisera")).strong().size(10.5).color(Theme::TEXT_BRIGHT)).fill(take_btn)).on_hover_text(crate::i18n::t("Dra tagningens noter till närmaste rutnätslinje, med projektets sväng")).clicked() {
+                    let grid = crate::midi_take::TakeGrid::from_index(self.take_grid_idx);
+                    let strength = self.take_strength;
+                    self.quantize_take(strength, grid);
                 }
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🌀 Humanisera")).strong().size(10.5).color(Theme::TEXT_BRIGHT)).fill(take_btn)).on_hover_text(crate::i18n::t("Lägg på lite mänsklig otajthet och dynamik (varierar mellan trycken)")).clicked() {
-                    self.humanize_take(0.08, 0.15);
+                ui.label(egui::RichText::new(crate::i18n::t("Humanisering")).size(11.0).color(Theme::TEXT_MUTED));
+                ui.add(
+                    egui::Slider::new(&mut self.take_humanize, 0.0..=1.0)
+                        .show_value(false)
+                        .fixed_decimals(2),
+                )
+                .on_hover_text(crate::i18n::t("Hur mycket mänsklig otajthet och dynamik som läggs på"));
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🌀 Humanisera")).strong().size(10.5).color(Theme::TEXT_BRIGHT)).fill(take_btn)).on_hover_text(crate::i18n::t("Lägg på mänsklig otajthet och dynamik (varierar mellan trycken)")).clicked() {
+                    let amount = self.take_humanize;
+                    self.humanize_take(amount);
                 }
 
                 ui.separator();
@@ -15781,6 +15849,7 @@ mod tests {
         // att ångra — då fångar jämförelsen här det.
         let snapshot = TimelineUndoSnapshot {
             playlist_tracks: vec![base_track.clone()],
+            patterns: Vec::new(),
             bus_volume,
             bus_muted,
             bus_solo,
