@@ -5689,19 +5689,21 @@ impl SonixApp {
         let chan6_audible = self.channels.get(6)
             .map(|c| if has_solo { c.solo } else { !c.muted })
             .unwrap_or(false);
-        if grid_active && chan6_audible {
-            // Tagningen (Fas 6.4 steg 2): noterna kan ligga mellan stegen. De spelas
-            // med sin fördröjning, och rutnätets rutor för dem hoppas över så att
-            // samma not inte triggas två gånger.
-            let take_plan = match self.patterns.get(self.selected_pattern) {
-                Some(pat) => {
-                    let grid = &self.piano_roll_grid;
-                    crate::midi_take::plan_for_step(&pat.take, step, self.step_samples(step), &|key, slot| {
-                        (48..72).contains(&key) && grid[(key - 48) as usize][slot]
-                    })
-                }
-                None => crate::midi_take::TakePlan::default(),
-            };
+        // Tagningen (Fas 6.4 steg 2) läses **före** grinden: en not som spelades
+        // sent i ett steg har sin ruta på nästa steg (det är `floor(pos)` som är
+        // steget den klingar från), och med grinden först skulle en sådan not
+        // aldrig spelas — varken härifrån eller från sin egen ruta.
+        let take_plan = match self.patterns.get(self.selected_pattern) {
+            Some(pat) => {
+                let grid = &self.piano_roll_grid;
+                crate::midi_take::plan_for_step(&pat.take, step, self.step_samples(step), &|key, slot| {
+                    (48..72).contains(&key) && grid[(key - 48) as usize][slot]
+                })
+            }
+            None => crate::midi_take::TakePlan::default(),
+        };
+        let grid_plays_here = grid_active || !take_plan.play.is_empty();
+        if grid_plays_here && chan6_audible {
             for (note, delay, take_vel) in &take_plan.play {
                 let freq = midi_to_freq(*note);
                 let _ = self.engine.send_command(AudioCommand::NoteOnDelayed {
@@ -5776,19 +5778,21 @@ impl SonixApp {
                         }
                         TrackKind::SynthLead | TrackKind::Bassline => {
                             let ch_idx = if track.kind == TrackKind::SynthLead { 6 } else { 7 };
+                            // Tagningens mikro-tajming (Fas 6.4 steg 2), samma väg
+                            // som i pattern-läget — och läses före grinden, annars
+                            // tystnar en not som spelades sent i föregående steg.
+                            let take_plan = crate::midi_take::plan_for_step(
+                                &pat.take,
+                                step_in_bar,
+                                self.step_samples(step_in_bar),
+                                &|key, slot| {
+                                    (48..72).contains(&key) && pat.piano_roll_grid[(key - 48) as usize][slot]
+                                },
+                            );
                             let grid_active = track.kind == TrackKind::SynthLead
-                                && (0..24).any(|r| pat.piano_roll_grid[r][step_in_bar]);
+                                && ((0..24).any(|r| pat.piano_roll_grid[r][step_in_bar])
+                                    || !take_plan.play.is_empty());
                             if grid_active {
-                                // Tagningens mikro-tajming (Fas 6.4 steg 2), samma
-                                // väg som i pattern-läget.
-                                let take_plan = crate::midi_take::plan_for_step(
-                                    &pat.take,
-                                    step_in_bar,
-                                    self.step_samples(step_in_bar),
-                                    &|key, slot| {
-                                        (48..72).contains(&key) && pat.piano_roll_grid[(key - 48) as usize][slot]
-                                    },
-                                );
                                 for (note, delay, take_vel) in &take_plan.play {
                                     let freq = midi_to_freq(*note);
                                     let _ = self.engine.send_command(AudioCommand::NoteOnDelayed {
@@ -12580,6 +12584,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             steps: p.channel_steps.clone(),
             notes: p.channel_notes.clone(),
             piano_roll: p.piano_roll_grid,
+            take: p.take.clone(),
         }).collect();
 
         let tracks = self.playlist_tracks.iter().map(|t| {

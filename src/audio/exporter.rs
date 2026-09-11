@@ -63,6 +63,12 @@ pub struct PatternSnap {
     /// vanliga kanal 6-rutan bär bara **en** not per steg (den flattenade
     /// spegeln), så ett polyfont piano-roll-steg blev en enda not i filen.
     pub piano_roll: [[bool; 16]; 24],
+    /// Den inspelade tagningen med sin mikro-tajming (Fas 6.4/6.5-uppföljning).
+    ///
+    /// Utan den renderade exporten noterna på rutnätet medan uppspelningen
+    /// spelade dem där de faktiskt spelades — alltså ännu en skillnad mellan
+    /// filen och det du hör.
+    pub take: crate::midi_take::Take,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -258,10 +264,35 @@ fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioComm
                 // rad tänd på detta steg spelar rutnätet, och då ska exporten
                 // spela **alla** tända rader — inte den flattenade kanal
                 // 6-spegeln, som bara bär en not per steg.
-                if track.role == TrackRole::Synth && (0..24).any(|r| pat.piano_roll[r][sib]) {
+                // Samma plan som uppspelningen använder (Fas 6.4): noter vars
+                // floor(pos) är detta steg spelas med sin fördröjning och sitt
+                // anslag, och rutnätets rutor för dem hoppas över. Planen läses före
+                // grinden, annars tystnar en not som spelades sent i förra steget.
+                let step_samples = (60.0 / spec.bpm.max(1.0) / 4.0 * spec.sample_rate as f32) as u32;
+                let plan = crate::midi_take::plan_for_step(
+                    &pat.take,
+                    sib,
+                    step_samples,
+                    &|key, slot| (48..72).contains(&key) && pat.piano_roll[(key - 48) as usize][slot],
+                );
+                if track.role == TrackRole::Synth
+                    && ((0..24).any(|r| pat.piano_roll[r][sib]) || !plan.play.is_empty())
+                {
+                    for (note, delay, take_vel) in &plan.play {
+                        let freq = midi_to_freq(*note);
+                        cmds.push(AudioCommand::NoteOnDelayed {
+                            note: *note,
+                            freq,
+                            velocity: track.volume * vel * take_vel,
+                            delay_samples: *delay,
+                        });
+                    }
                     for row in 0..24 {
                         if pat.piano_roll[row][sib] {
                             let note = 48 + row as u8;
+                            if plan.skip.contains(&note) {
+                                continue;
+                            }
                             let freq = midi_to_freq(note);
                             cmds.push(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
                         }
@@ -877,6 +908,15 @@ mod tests {
 
     /// En spec med ett synthspår som spelar pattern 0 i takt 0.
     fn synth_spec_with(piano_roll: [[bool; 16]; 24], channel6_steps: [bool; 16], channel6_note: u8) -> RenderSpec {
+        synth_spec_with_take(piano_roll, channel6_steps, channel6_note, crate::midi_take::Take::new())
+    }
+
+    fn synth_spec_with_take(
+        piano_roll: [[bool; 16]; 24],
+        channel6_steps: [bool; 16],
+        channel6_note: u8,
+        take: crate::midi_take::Take,
+    ) -> RenderSpec {
         // Åtta kanalrader, som appens specc: index 6 är synthkanalen.
         let mut steps = vec![[false; 16]; 8];
         steps[6] = channel6_steps;
@@ -887,6 +927,7 @@ mod tests {
             steps,
             notes,
             piano_roll,
+            take,
         });
         RenderSpec {
             sample_rate: 44100,
@@ -918,6 +959,16 @@ mod tests {
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
             vca_solo: [false; crate::audio::synth::NUM_VCAS],
         }
+    }
+
+    /// (notnummer, fördröjning i samples) för de fördröjda noterna.
+    fn delayed_notes(cmds: &[AudioCommand]) -> Vec<(u8, u32)> {
+        cmds.iter()
+            .filter_map(|c| match c {
+                AudioCommand::NoteOnDelayed { note, delay_samples, .. } => Some((*note, *delay_samples)),
+                _ => None,
+            })
+            .collect()
     }
 
     fn note_keys(cmds: &[AudioCommand]) -> Vec<u8> {
@@ -985,6 +1036,62 @@ mod tests {
             s1 = s0;
         }
         ((s1 * s1 + s2 * s2 - k * s1 * s2).max(0.0)).sqrt() / buf.len() as f32
+    }
+
+    #[test]
+    fn the_take_moves_a_note_off_the_grid_in_the_export() {
+        // En not inspelad 0.25 steg sent ska exporteras med sin fördröjning, inte
+        // på rutnätet — annars matchar filen inte det du hör.
+        let mut grid = [[false; 16]; 24];
+        grid[12][2] = true; // MIDI 60 på steg 2
+        let mut take = crate::midi_take::Take::new();
+        take.push(2.25, 60, 0.8);
+        let spec = synth_spec_with_take(grid, [false; 16], 60, take);
+
+        // Steg 2: en fördröjning på en fjärdedels steg (0.25 × 5512 samples).
+        let cmds = triggers_for_step(&spec, 0, 2);
+        let delayed = delayed_notes(&cmds);
+        assert_eq!(delayed.len(), 1, "en fördröjd not: {delayed:?}");
+        let (note, delay) = delayed[0];
+        assert_eq!(note, 60);
+        assert!((delay as i64 - 1378).abs() <= 2, "fördröjningen var {delay}");
+        // Och ingen dubbelnot: rutan hoppas över när tagningen sköter den.
+        assert!(note_keys(&cmds).is_empty(), "ingen odelajad not också");
+
+        // Steg 3 ska vara tyst (noten hör till steg 2).
+        assert!(triggers_for_step(&spec, 0, 3).is_empty());
+    }
+
+    #[test]
+    fn a_note_played_late_in_a_step_still_sounds_from_that_step() {
+        // Noten spelades 0.7 steg in i steg 2, alltså *efter* mitten: dess ruta
+        // hamnar på steg 3 (närmaste rutnätslinje) medan den klingar från steg 2.
+        // Läses tagningen efter grinden tystnar noten helt — det var en riktig
+        // bugg i 6.4 tills den här grinden flyttades.
+        let mut grid = [[false; 16]; 24];
+        grid[12][3] = true; // rutan hamnade på steg 3
+        let mut take = crate::midi_take::Take::new();
+        take.push(2.7, 60, 0.8);
+        let spec = synth_spec_with_take(grid, [false; 16], 60, take);
+
+        // Steg 2 har ingen ruta tänd alls — ändå ska noten spelas därifrån.
+        assert!(!(0..24).any(|r| spec.patterns[0].piano_roll[r][2]));
+        let delayed = delayed_notes(&triggers_for_step(&spec, 0, 2));
+        assert_eq!(delayed.len(), 1, "noten ska klinga från steg 2: {delayed:?}");
+        assert!((delayed[0].1 as i64 - 3858).abs() <= 2, "fördröjningen var {}", delayed[0].1);
+
+        // Och steg 3 ska inte spela den igen.
+        assert!(triggers_for_step(&spec, 0, 3).is_empty(), "ingen dubbelnot på rutan");
+    }
+
+    #[test]
+    fn a_take_note_whose_cell_was_cleared_is_not_exported() {
+        // Rutnätet är fortfarande sanningen om vad som är på.
+        let grid = [[false; 16]; 24];
+        let mut take = crate::midi_take::Take::new();
+        take.push(2.25, 60, 0.8);
+        let spec = synth_spec_with_take(grid, [false; 16], 60, take);
+        assert!(triggers_for_step(&spec, 0, 2).is_empty());
     }
 
     #[test]
