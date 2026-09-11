@@ -237,7 +237,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 >
 > **Nuläge, verifierat i koden (2026-09-11):** **0 träffar** på `autosave`/`recover`/`backup`; undo-historiken i `app.rs` (`undo_stack`/`redo_stack`) matas från **14 anropsställen**, samtliga tidslinjeoperationer (klipp, duplicera/ta bort spår, klistra in, mute, reverse, rensa); **ingen** SMF/MIDI-filkod finns (`smf`/`midi_file`/`import_midi`/`export_midi` = 0 träffar); ingen dither (`dither` = 0 träffar); kvantisering finns bara som rutnätssnap vid inmatning (`snap_time_secs`, `piano_roll_snap_to_scale`), inte som efterarbete.
 >
-> **Sökvägar (samma genomgång):** sökvägar byggs på **10+ ställen** med egen `env::var("HOME")`-logik, fyra filkategorier heter olika saker fast de betyder samma (`Samples` vs `User_Samples`, `Exporterat` vs "Renders"), ONNX-modeller (stora filer) ligger i **konfigkatalogen**, och två ställen faller tillbaka på en **hårdkodad `/home/alex`** (`app.rs:1408` exportmapp, `app.rs:11472` Suno-scan). Det finns ingen läslista för senaste projekt och ingen "visa i filhanteraren". → **6.0 löser detta först.**
+> **Sökvägar (samma genomgång):** sökvägar byggs på **10+ ställen** med egen `env::var("HOME")`-logik (inklusive en egen `expand_tilde` i `plugin_host.rs`), fyra filkategorier heter olika saker fast de betyder samma (`Samples` vs `User_Samples`, `Exporterat` vs "Renders"), konfigfilerna heter `config.json` (bara språk) + `audio.json` (ljud) utan inbördes system, ONNX-modeller (stora filer) ligger i **konfigkatalogen**, ljudtrådens kraschlogg skrivs till **musikmappen** (`~/Music/Sonix/audio_crash.log`), och två ställen faller tillbaka på en **hårdkodad `/home/alex`** (`app.rs:1408` exportmapp, `app.rs:11472` Suno-scan). Det finns ingen läslista för senaste projekt och ingen "visa i filhanteraren". → **6.0 löser detta först.**
 
 - [ ] **6.0 En enda sökvägsmodul + kanonisk filstruktur** — *M* **(förkunna för 6.1)**
   - **Varför:** "Alla hittar sina filer" är inte en fråga om var filerna ligger, utan om att (a) sökvägar byggs på **ett** ställe, (b) samma sak heter samma sak, (c) användarsynliga filer ligger där filhanteraren och XDG säger, och (d) appen visar dem (läslista, full sökväg, "visa i filhanteraren") i stället för att kräva att man minns en katalog.
@@ -250,11 +250,12 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     | `~/Music/Sonix/Projects/<namn>/` | projektets eget material: `Recordings/`, `Stems/`, `Samples/`, `Renders/` | projektet äger sina media → portabelt ("samla projektet") |
     | `~/Music/Sonix/Samples/` | egna samplingar, delade mellan projekt | en gemensam bank, inte fyra |
     | `~/Music/Sonix/Factory_Samples/` | appens medföljande | skrivskyddat, återskapas |
-    | `~/Music/Sonix/Templates/` | egna startmallar | användarsynligt |
-    | `~/.config/sonix/config.json`, `ai.json` | ljudinställningar, AI-providers (0600) | konfiguration, små filer |
+    | `~/Music/Sonix/Templates/` | egna startmallar *(ny plats — mallar finns inte än)* | användarsynligt |
+    | `~/.config/sonix/config.json` (språk), `audio.json` (ljud), `ai.json` (AI-providers, 0600) | konfiguration, små filer — konsekvent namngivna | konfiguration |
     | `~/.local/share/sonix/models/` | ONNX-modeller (HTDemucs) | **data**, inte konfiguration — flyttas från `~/.config/sonix/models` |
-    | `~/.local/share/sonix/plugins/` | plugin-databasens cache | maskindata |
+    | `~/.local/share/sonix/plugins/` | plugin-databas *(ny plats — skanningen persisteras inte alls i dag)* | maskindata |
     | `~/.local/state/sonix/recent.json`, `window.json` | läslista, fönsterläge | tillstånd, inte konfiguration |
+    | `~/.local/state/sonix/logs/` | krasch- och fellogg | i dag skrivs `audio_crash.log` i **musikmappen** (`engine.rs`) — fel plats |
     | `~/.local/state/sonix/autosave/` | autosave + kraschmarkör (N versioner) | överlever krasch; ska **inte** följa med ett projekt som kopieras/synkas |
     | `~/.cache/sonix/waveforms/` | peak-/vågformscache | återskapbart, får kastas |
 
