@@ -53,13 +53,15 @@ jobs:
       # Fas 7.2: siffrorna ska synas i loggen, inte bara finnas som tröskel.
       # (Samma test körs redan i steget ovan och failar vid regress; det här
       # steget visar latens/CPU per buffertstorlek.)
-      - name: Realtidsmätning (Fas 7.2)
+      # Filtret är modulnamnet, inte ett enskilt testnamn: då rapporteras BÅDE
+      # realtidsmätningen (7.2) och frysningsjämförelsen (8.1) i varje körning.
+      - name: Realtids- och frysningsmätning (7.2 + 8.1)
         run: |
           FEATURES="${{ matrix.features }}"
           if [ -n "$FEATURES" ]; then
-            cargo test --release --locked --features "$FEATURES" realtime_budget -- --nocapture
+            cargo test --release --locked --features "$FEATURES" audio::realtime_bench -- --nocapture
           else
-            cargo test --release --locked realtime_budget -- --nocapture
+            cargo test --release --locked audio::realtime_bench -- --nocapture
           fi
 
   neural:
