@@ -376,6 +376,32 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "↗ Exportera projekt (Ctrl+E)" => "↗ Export Project (Ctrl+E)",
         "🚪 Avsluta" => "🚪 Quit",
         "🎚 Mixerändring" => "🎚 Mixer change",
+        "❄ Frys spår" => "❄ Freeze track",
+        "🔥 Tina" => "🔥 Unfreeze",
+        "🔥 Tina (inaktuell)" => "🔥 Unfreeze (out of date)",
+        "⚠ ändrat sedan frysningen" => "⚠ changed since freeze",
+        "Spåret spelas som färdigt ljud. Tina upp det för att köra patterns igen — musiken är oförändrad." =>
+            "The track plays as rendered audio. Unfreeze it to run patterns again — the music is unchanged.",
+        "Mönstret eller ljudet har ändrats efter frysningen, så ljudet är inte längre det du hör av patterns. Tina och frys igen." =>
+            "The pattern or the sound changed after the freeze, so the rendered audio no longer matches what the patterns play. Unfreeze and freeze again.",
+        "Renderar spåret till ljud och spelar det i stället för patterns — sparar CPU i stora projekt. Patterns finns kvar, och Ctrl+Z tar tillbaka frysningen." =>
+            "Renders the track to audio and plays that instead of patterns — saves CPU in large projects. The patterns remain, and Ctrl+Z undoes the freeze.",
+        "❄ Spåret kan inte frysas — det är redan fruset, eller ett ljudspår som redan ligger som ljud" =>
+            "❄ The track cannot be frozen — it is already frozen, or an audio track that is already audio",
+        "❄ Spåret har en plugin-insert, och offline-renderingen kan inte återskapa den — ta bort den först" =>
+            "❄ The track has a plugin insert, and the offline render cannot reproduce it — remove it first",
+        "❄ '{}' är tyst i den här låten — det finns inget att frysa" =>
+            "❄ '{}' is silent in this song — there is nothing to freeze",
+        "❄ Kunde inte rendera spåret: {}" => "❄ Could not render the track: {}",
+        "❄ Kunde inte skriva den frusna filen: {}" => "❄ Could not write the frozen file: {}",
+        "❄ Den frusna filen gick inte att läsa tillbaka: {}" =>
+            "❄ The frozen file could not be read back: {}",
+        "❄ Frös '{}': {:.1} s ljud, och pattern-uppspelningen hoppas över [Ångra: Ctrl+Z]" =>
+            "❄ Froze '{}': {:.1} s of audio, and pattern playback is skipped [Undo: Ctrl+Z]",
+        "🔥 '{}' är upptinat — pattern-uppspelningen är tillbaka [Ångra: Ctrl+Z]" =>
+            "🔥 '{}' is unfrozen — pattern playback is back [Undo: Ctrl+Z]",
+        "⚠ '{}' är fruset men filen saknas: {}" =>
+            "⚠ '{}' is frozen but its file is missing: {}",
 
         // --- Fas 6.4: tagning, kvantisering och humanisering ---
         "🎯 Kvantisera" => "🎯 Quantize",

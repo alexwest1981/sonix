@@ -767,6 +767,66 @@ pub struct SavedTrackData {
     /// Optional VCA group assignment (Fas 5.2).
     #[serde(default)]
     pub vca: Option<usize>,
+    /// Fruset spår (Tier 2): var ljudet ligger och fingeravtrycket av källan.
+    /// Äldre projektfil utan fältet läses som ofrusade.
+    #[serde(default)]
+    pub frozen: Option<SavedFrozenTrack>,
+}
+
+/// Ett fruset spår i projektfilen. Ljudet ligger i en fil i projektets egen
+/// materialmapp — filen bär sökvägen, inte ljudet, precis som för samplingar.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct SavedFrozenTrack {
+    pub path: String,
+    pub digest: u64,
+    #[serde(default)]
+    pub stamp: u64,
+}
+
+/// Ett fruset spår (Tier 2): spåret ligger färdigrenderat som ljud, och
+/// pattern-uppspelningen hoppas över till förmån för det. Motorn strömmar
+/// ljudet som ett stem-spår — samma väg ljudspåren redan använder — så ingen ny
+/// uppspelningsväg behöver underhållas.
+#[derive(Clone, Debug)]
+pub struct FrozenTrack {
+    /// WAV-filen i projektets egen materialmapp (`Frozen/`).
+    pub path: String,
+    /// Fingeravtryck av det som påverkade renderingen: tempo, spårets klipp och
+    /// fader, mönstren klippen pekar på, kanalracket och röstinställningarna.
+    /// Ändras något av det visas frysningen som inaktuell i stället för att
+    /// spela fel ljud tyst. Det är en varning, inte ett bevis: fingeravtrycket
+    /// ser att något skiljer sig, det avgör inte vad som är rätt.
+    pub digest: u64,
+    /// Unix-tid för frysningen, så att åldern går att visa.
+    pub stamp: u64,
+}
+
+/// Klippen som ska trigga i en rendering: ett fruset spår har sitt ljud i
+/// stället, så dess patterns ska vara tysta — annars räknas spåret två gånger i
+/// både uppspelning och export. Ren funktion, så att regeln går att pröva.
+pub fn render_clips_for(track: &PlaylistTrack) -> [Option<usize>; 32] {
+    if track.is_frozen() {
+        [None; 32]
+    } else {
+        track.clips
+    }
+}
+
+/// Regionen ett fruset spår spelar: hela filen från början. Längden räknas ur
+/// bufferten i stället för ur takter, så den följer med automatiskt när
+/// frysningen görs om eller tempot ändras.
+pub fn frozen_region(left: &[f32], sample_rate: u32) -> crate::audio::StemRegionPlayback {
+    crate::audio::StemRegionPlayback {
+        start_time_secs: 0.0,
+        length_secs: left.len() as f32 / sample_rate.max(1) as f32,
+        sample_offset_sec: 0.0,
+        gain: 1.0,
+        fade_in_sec: 0.0,
+        fade_out_sec: 0.0,
+        muted: false,
+        is_reverse: false,
+        loop_length_secs: 0.0,
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -789,6 +849,11 @@ pub struct PlaylistTrack {
     #[allow(dead_code)]
     pub custom_clip_name: Option<String>,
     pub pcm_audio: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    /// Fruset spår (Tier 2): färdigrenderat ljud + fingeravtrycket av källan.
+    pub frozen: Option<FrozenTrack>,
+    /// Det frusna ljudet inläst, så att en omladdning (ClearAllStemTracks +
+    /// resync, som vid projektinläsning) kan skicka det igen.
+    pub frozen_pcm: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
     pub eq: TrackEq,
     pub comp_threshold_db: f32,
     pub comp_ratio: f32,
@@ -818,6 +883,20 @@ pub fn default_bus_for_kind(kind: TrackKind) -> usize {
 }
 
 impl PlaylistTrack {
+    /// Ett spår kan frysas om det spelas upp av patterns — ljudspår ligger
+    /// redan som färdigt ljud och har inget att tjäna på det.
+    pub fn can_freeze(&self) -> bool {
+        self.frozen.is_none()
+            && matches!(
+                self.kind,
+                TrackKind::Drums | TrackKind::SynthLead | TrackKind::Bassline
+            )
+    }
+
+    pub fn is_frozen(&self) -> bool {
+        self.frozen.is_some()
+    }
+
     pub fn new(name: String, icon: &'static str, kind: TrackKind, color: Color32) -> Self {
         Self {
             name,
@@ -834,6 +913,8 @@ impl PlaylistTrack {
             audio_waveform: None,
             custom_clip_name: None,
             pcm_audio: None,
+            frozen: None,
+            frozen_pcm: None,
             eq: TrackEq::default(),
             comp_threshold_db: 0.0,
             comp_ratio: 1.0,
@@ -927,6 +1008,7 @@ pub struct ProjectLoadProgress {
 
 #[derive(Clone)]
 pub struct PreloadedTrackData {
+    pub frozen: Option<SavedFrozenTrack>,
     pub name: String,
     pub volume: f32,
     pub pan: f32,
@@ -2494,6 +2576,7 @@ impl SonixApp {
             for (name, kind, _col) in track_defs {
                 let clips = [None; 32];
                 tracks.push(PreloadedTrackData {
+                    frozen: None,
                     name: name.to_string(),
                     volume: 0.90,
                     pan: 0.0,
@@ -2557,7 +2640,10 @@ impl SonixApp {
         if track_idx < self.playlist_tracks.len() {
             let sec_per_bar = 60.0 / self.bpm * 4.0;
             let t = &self.playlist_tracks[track_idx];
-            let mut region_playbacks = Vec::with_capacity(t.regions.len());
+            let mut region_playbacks = Vec::new();
+            if let Some((l, _r, sr)) = t.frozen_pcm.as_ref() {
+                region_playbacks.push(frozen_region(l, *sr));
+            }
             for r in &t.regions {
                 region_playbacks.push(StemRegionPlayback {
                     start_time_secs: r.start_bar * sec_per_bar,
@@ -3543,6 +3629,11 @@ impl SonixApp {
             solo: t.solo,
             clips: t.clips,
             regions: t.regions.clone(),
+            frozen: t.frozen.as_ref().map(|f| SavedFrozenTrack {
+                path: f.path.clone(),
+                digest: f.digest,
+                stamp: f.stamp,
+            }),
             eq: t.eq.clone(),
             comp_threshold_db: t.comp_threshold_db,
             comp_ratio: t.comp_ratio,
@@ -3789,6 +3880,19 @@ impl SonixApp {
                 let track_name = st.name.clone();
                 let ratio = 0.10 + ((t_idx + 1) as f32 / total_tracks.max(1) as f32) * 0.85;
 
+                if let Some(f) = &st.frozen
+                    && !std::path::Path::new(&f.path).exists()
+                {
+                    // Säg det i stället för att tyst spela ett ofruset spår: en
+                    // frysning vars fil försvunnit är inte samma sak.
+                    if let Ok(mut p) = progress.lock() {
+                        p.error_message = Some(crate::tstatus!(
+                            "⚠ '{}' är fruset men filen saknas: {}",
+                            st.name,
+                            f.path
+                        ));
+                    }
+                }
                 if let Ok(mut p) = progress.lock() {
                     p.stage = crate::tstatus!("Läser in och avkodar ljudspår ({}/{})...", t_idx + 1, total_tracks);
                     p.current_track = track_name.clone();
@@ -3805,8 +3909,21 @@ impl SonixApp {
                         }
                     }
                 }
+                // Ett fruset spår har sitt ljud i en fil i projektets mapp. Att
+                // lägga den i stem_pcms gör att samma väg som ljudspåren används
+                // — både vid inläsning och vid en senare omsynk.
+                if let Some(f) = &st.frozen
+                    && let Ok((pcm_l, pcm_r, sr)) = crate::audio::load_wav_pcm(&f.path)
+                {
+                    stem_pcms.push((
+                        std::sync::Arc::new(pcm_l),
+                        std::sync::Arc::new(pcm_r),
+                        sr,
+                    ));
+                }
 
                 preloaded_tracks.push(PreloadedTrackData {
+                    frozen: st.frozen,
                     name: st.name,
                     volume: st.volume,
                     pan: st.pan,
@@ -3930,6 +4047,15 @@ impl SonixApp {
             loaded_track.solo = st.solo;
             loaded_track.regions = st.regions;
             loaded_track.clips = st.clips;
+            if st.frozen.is_some() {
+                // Ljudet kom in via stem_pcms ovan; här knyts läget till spåret.
+                loaded_track.frozen = st.frozen.map(|f| FrozenTrack {
+                    path: f.path,
+                    digest: f.digest,
+                    stamp: f.stamp,
+                });
+                loaded_track.frozen_pcm = track_pcm.clone();
+            }
             loaded_track.eq = st.eq;
             loaded_track.comp_threshold_db = st.comp_threshold_db;
             loaded_track.comp_ratio = st.comp_ratio;
@@ -4362,19 +4488,28 @@ impl SonixApp {
     pub fn sync_track_stem_to_engine(&mut self, track_idx: usize) {
         if track_idx < self.playlist_tracks.len() {
             let t = &self.playlist_tracks[track_idx];
-            if let Some((ref l, ref r, sr)) = t.pcm_audio {
+            // Ett fruset spår har sitt ljud i frozen_pcm och sin region ur
+            // bufferten. Utan det här skulle den här funktionen — som körs vid
+            // varje uppspelningsstart — skicka en TOM regionlista för spåret och
+            // tysta frysningen.
+            let frozen_pcm = t.frozen_pcm.clone();
+            if let Some((l, r, sr)) = frozen_pcm.as_ref().or(t.pcm_audio.as_ref()) {
                 let _ = self.engine.send_command(AudioCommand::LoadStemTrack {
                     track_index: track_idx,
                     left: l.clone(),
                     right: r.clone(),
-                    sample_rate: sr as f32,
+                    sample_rate: *sr as f32,
                     volume: t.volume,
                     pan: t.pan,
                     start_time_secs: 0.0,
                 });
             }
             let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-            let stem_regions: Vec<crate::audio::command::StemRegionPlayback> = t.regions.iter().map(|r| {
+            let mut stem_regions: Vec<crate::audio::command::StemRegionPlayback> = Vec::new();
+            if let Some((l, _r, sr)) = t.frozen_pcm.as_ref() {
+                stem_regions.push(frozen_region(l, *sr));
+            }
+            stem_regions.extend(t.regions.iter().map(|r| {
                 crate::audio::command::StemRegionPlayback {
                     start_time_secs: r.start_bar * sec_per_bar,
                     length_secs: r.length_bars * sec_per_bar,
@@ -4386,7 +4521,7 @@ impl SonixApp {
                     is_reverse: r.is_reverse,
                     loop_length_secs: r.loop_length_bars * sec_per_bar,
                 }
-            }).collect();
+            }));
             let _ = self.engine.send_command(AudioCommand::SetStemTrackRegions {
                 track_index: track_idx,
                 regions: stem_regions,
@@ -5776,6 +5911,13 @@ impl SonixApp {
         for (_t_idx, track) in self.playlist_tracks.iter().enumerate() {
             let is_audible = if has_track_solo { track.solo } else { !track.muted };
             if !is_audible {
+                continue;
+            }
+            // Ett fruset spår ligger färdigrenderat: ljudet strömmas av motorn
+            // som ett stem-spår, och pattern-triggningen ska vara tyst — annars
+            // hörs spåret två gånger. (Pattern-LÄGET rör kanalracket, inte
+            // spåret, och påverkas därför inte.)
+            if track.is_frozen() {
                 continue;
             }
 
@@ -12633,9 +12775,12 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 TrackKind::Bassline => TrackRole::Bass,
                 TrackKind::VocalAudio | TrackKind::CustomAudio | TrackKind::Fx => TrackRole::Audio,
             };
+            // Ett fruset spår bidrar med sitt LJUd i stället för sina patterns
+            // (se render_clips_for); ljudet ligger i tidslinjen nedan.
+            let clips = render_clips_for(t);
             TrackSnap {
                 role,
-                clips: t.clips,
+                clips,
                 volume: t.volume,
                 muted: t.muted,
                 solo: t.solo,
@@ -12643,36 +12788,54 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         }).collect();
 
         let timeline = self.playlist_tracks.iter().enumerate().filter_map(|(idx, t)| {
-            t.pcm_audio.as_ref().map(|(l, r, sr)| {
-                let regions = t.regions.iter().map(|r| crate::audio::StemRegionPlayback {
-                    start_time_secs: r.start_bar * sec_per_bar,
-                    length_secs: r.length_bars * sec_per_bar,
-                    sample_offset_sec: r.sample_offset_sec,
-                    gain: r.volume,
-                    fade_in_sec: r.fade_in_bars * sec_per_bar,
-                    fade_out_sec: r.fade_out_bars * sec_per_bar,
-                    muted: r.muted,
-                    is_reverse: r.is_reverse,
-                    loop_length_secs: r.loop_length_bars * sec_per_bar,
-                }).collect();
-                TrackAudioSnap {
-                    track_index: idx,
-                    left: l.clone(),
-                    right: r.clone(),
-                    sample_rate: *sr,
-                    volume: t.volume,
-                    pan: t.pan,
-                    muted: t.muted,
-                    regions,
-                    eq: t.eq.to_settings(),
-                    comp_threshold_db: t.comp_threshold_db,
-                    comp_ratio: t.comp_ratio,
-                    reverb_send: t.reverb_send,
-                    delay_send: t.delay_send,
-                    pitch_semitones: t.pitch_semitones,
-                    bus: t.bus,
-                    vca: t.vca,
-                }
+            // Ett fruset spår ligger som ett enda långt ljud från låtens början;
+            // ljudspår har sina egna regioner. Pattern-läget renderar kanalracket
+            // och ska inte få spårets ljud med sig.
+            let frozen = if pattern_mode { None } else { t.frozen_pcm.as_ref() };
+            let (l, r, sr) = frozen.or(t.pcm_audio.as_ref())?;
+            let regions = if frozen.is_some() {
+                vec![frozen_region(r, *sr)]
+            } else {
+                t.regions
+                    .iter()
+                    .map(|r| crate::audio::StemRegionPlayback {
+                        start_time_secs: r.start_bar * sec_per_bar,
+                        length_secs: r.length_bars * sec_per_bar,
+                        sample_offset_sec: r.sample_offset_sec,
+                        gain: r.volume,
+                        fade_in_sec: r.fade_in_bars * sec_per_bar,
+                        fade_out_sec: r.fade_out_bars * sec_per_bar,
+                        muted: r.muted,
+                        is_reverse: r.is_reverse,
+                        loop_length_secs: r.loop_length_bars * sec_per_bar,
+                    })
+                    .collect()
+            };
+            // Sends hör till ljudspårens väg. Pattern-vägen som frysningen
+            // ersätter har inga, så de nollas för det frusna spåret — annars
+            // skulle det plötsligt få klang som live-uppspelningen inte hade.
+            let (reverb_send, delay_send) = if frozen.is_some() {
+                (0.0, 0.0)
+            } else {
+                (t.reverb_send, t.delay_send)
+            };
+            Some(TrackAudioSnap {
+                track_index: idx,
+                left: l.clone(),
+                right: r.clone(),
+                sample_rate: *sr,
+                volume: t.volume,
+                pan: t.pan,
+                muted: t.muted,
+                regions,
+                eq: t.eq.to_settings(),
+                comp_threshold_db: t.comp_threshold_db,
+                comp_ratio: t.comp_ratio,
+                reverb_send,
+                delay_send,
+                pitch_semitones: t.pitch_semitones,
+                bus: t.bus,
+                vca: t.vca,
             })
         }).collect();
 
@@ -12730,6 +12893,220 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
     /// Peak level, used to skip completely empty stem files.
     fn peak_of(buf: &[f32]) -> f32 {
         buf.iter().fold(0.0f32, |m, &s| m.max(s.abs()))
+    }
+
+    /// Fingeravtryck av allt som påverkar hur ett spår låter i en offline-render.
+    ///
+    /// Det är en **varning** om något ändrats, inte ett bevis på att ljudet är
+    /// identiskt: fingeravtrycket ser att något skiljer sig, det avgör inte vad
+    /// som är rätt. Mastern och bussarna är medvetet inte med — frysningen
+    /// renderas torr och mastern gäller live även efteråt — och en ändring av ett
+    /// *annat* spår spelar ingen roll, eftersom renderingen är solad.
+    fn frozen_digest(&self, t_idx: usize) -> u64 {
+        use std::fmt::Write as _;
+        let mut text = String::new();
+        let _ = write!(text, "bpm={:.4};swing={:.4};", self.bpm, self.swing);
+        if let Some(t) = self.playlist_tracks.get(t_idx) {
+            let _ = write!(
+                text,
+                "spår={:?}|{:.4},{:.4},{};",
+                t.clips, t.volume, t.pan, t.muted
+            );
+            // Mönstren klippen pekar på. Andra spår kan peka på samma mönster —
+            // då är de frusna på samma innehåll, vilket är riktigt.
+            for pat_idx in t.clips.iter().flatten() {
+                if let Some(p) = self.patterns.get(*pat_idx) {
+                    let _ = write!(text, "mönster{:?};", p);
+                }
+            }
+        }
+        for ch in self.channels.iter() {
+            let _ = write!(
+                text,
+                "kanal={:?},{:.4},{:.4},{:.4},{:.4},{},{};",
+                ch.sample_path,
+                ch.volume,
+                ch.sample_start,
+                ch.sample_end,
+                ch.pitch_semitones,
+                ch.sample_base_note,
+                ch.is_reverse
+            );
+        }
+        let _ = write!(text, "röst={:?},{:?},{:?};", self.waveform, self.adsr, self.filter);
+        crate::autosave::fingerprint(text.as_bytes())
+    }
+
+    /// Har spåret ändrats sedan det frystes? Då spelar det frusna ljudet inte
+    /// längre det som står i projektet, och det sägs i stället för att tigas.
+    pub fn frozen_is_stale(&self, t_idx: usize) -> bool {
+        self.playlist_tracks
+            .get(t_idx)
+            .and_then(|t| t.frozen.as_ref())
+            .is_some_and(|f| f.digest != self.frozen_digest(t_idx))
+    }
+
+    /// Var ett fruset spår ligger: projektets egen materialmapp, samma plats som
+    /// inspelningar och stems. Namnet är deterministiskt, så en ny frysning
+    /// skriver över sin egen fil i stället för att lämna skräp.
+    pub fn frozen_path(&self, t_idx: usize, name: &str) -> String {
+        crate::paths::paths()
+            .project_assets_dir(&self.project_name)
+            .join("Frozen")
+            .join(format!("{}-{}.wav", crate::autosave::slug(name), t_idx))
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    /// Fryser ett spår: renderar det offline och lägger in ljudet som ett
+    /// stem-spår, så att uppspelningen slipper köra syntesen för det.
+    ///
+    /// Renderingen går genom **samma väg som exporten** (torr, solad på spåret),
+    /// och spårets fader lämnas utanför — den ska fortsätta gälla live, som på
+    /// ett ofruset spår.
+    pub fn freeze_track(&mut self, t_idx: usize) {
+        let Some(track) = self.playlist_tracks.get(t_idx) else {
+            return;
+        };
+        if !track.can_freeze() {
+            self.status_message = crate::i18n::t(
+                "❄ Spåret kan inte frysas — det är redan fruset, eller ett ljudspår som redan ligger som ljud",
+            )
+            .to_string();
+            return;
+        }
+        if self.plugin_slots.get(t_idx).is_some_and(|s| s.is_some()) {
+            self.status_message = crate::i18n::t(
+                "❄ Spåret har en plugin-insert, och offline-renderingen kan inte återskapa den — ta bort den först",
+            )
+            .to_string();
+            return;
+        }
+        let name = track.name.clone();
+        let (volume, pan) = (track.volume, track.pan);
+        let sample_rate = self.engine.sample_rate;
+
+        // Sola på spåret och ta bort dess fader ur specen: det som renderas är
+        // spårets eget ljud, inte dess placering i mixen.
+        let mut spec = self.build_render_spec(Some(t_idx), sample_rate);
+        if let Some(t) = spec.tracks.get_mut(t_idx) {
+            t.volume = 1.0;
+        }
+        let buffer = match self.render_buffer(&spec, true) {
+            Ok(b) => b,
+            Err(e) => {
+                self.status_message =
+                    crate::tstatus!("❄ Kunde inte rendera spåret: {}", e);
+                return;
+            }
+        };
+        if buffer.is_empty() || Self::peak_of(&buffer) <= 0.0 {
+            self.status_message = crate::tstatus!(
+                "❄ '{}' är tyst i den här låten — det finns inget att frysa",
+                name
+            );
+            return;
+        }
+
+        let path = self.frozen_path(t_idx, &name);
+        if let Some(dir) = std::path::Path::new(&path).parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        // 32-bitars flyttal: en frysning är ett mellansteg och ska inte kvantisera
+        // en enda gång innan den riktiga exporten gör det.
+        let meta = crate::audio::ExportMeta {
+            title: name.clone(),
+            artist: String::new(),
+            album: String::new(),
+            genre: String::new(),
+            year: String::new(),
+            comment: "Fruset spår (mellansteg i Sonix)".to_string(),
+        };
+        if let Err(e) = crate::audio::write_export_with(
+            &path,
+            crate::audio::ExportFormat::Wav32,
+            &buffer,
+            sample_rate,
+            &meta,
+            crate::audio::DitherSettings::default(),
+        ) {
+            self.status_message =
+                crate::tstatus!("❄ Kunde inte skriva den frusna filen: {}", e);
+            return;
+        }
+        // Läs tillbaka från filen i stället för att behålla bufferten: då är det
+        // filen som är sanningen, och en trasig skrivning upptäcks nu.
+        let Some((l, r, pcm_sr)) = load_sample_pcm_arcs(&path) else {
+            self.status_message = crate::tstatus!(
+                "❄ Den frusna filen gick inte att läsa tillbaka: {}",
+                path
+            );
+            return;
+        };
+
+        self.push_undo(&format!("Frys '{}'", name));
+        let len_secs = l.len() as f32 / pcm_sr as f32;
+        let _ = self.engine.send_command(AudioCommand::LoadStemTrack {
+            track_index: t_idx,
+            left: l.clone(),
+            right: r.clone(),
+            sample_rate: pcm_sr as f32,
+            volume,
+            pan,
+            start_time_secs: 0.0,
+        });
+        let digest = self.frozen_digest(t_idx);
+        if let Some(t) = self.playlist_tracks.get_mut(t_idx) {
+            t.frozen = Some(FrozenTrack {
+                path: path.clone(),
+                digest,
+                stamp: crate::autosave::now_stamp(),
+            });
+            t.frozen_pcm = Some((l, r, pcm_sr));
+        }
+        self.sync_track_regions(t_idx);
+        self.status_message = crate::tstatus!(
+            "❄ Frös '{}': {:.1} s ljud, och pattern-uppspelningen hoppas över [Ångra: Ctrl+Z]",
+            name,
+            len_secs
+        );
+    }
+
+    /// Tina upp ett spår: pattern-uppspelningen tar över igen.
+    ///
+    /// Den frusna filen lämnas kvar i projektets mapp — den är användarens
+    /// material, och en ny frysning skriver över samma namn.
+    pub fn unfreeze_track(&mut self, t_idx: usize) {
+        let Some(track) = self.playlist_tracks.get(t_idx) else {
+            return;
+        };
+        if !track.is_frozen() {
+            return;
+        }
+        let name = track.name.clone();
+        let (volume, pan) = (track.volume, track.pan);
+        self.push_undo(&format!("Tina '{}'", name));
+        // Att lasta ett stem med TOM ljudbuffert tömmer platsen i motorn: den
+        // behåller eq/comp/plugin och det positionella indexet, vilket en
+        // borttagen post inte skulle göra.
+        let _ = self.engine.send_command(AudioCommand::LoadStemTrack {
+            track_index: t_idx,
+            left: std::sync::Arc::new(Vec::new()),
+            right: std::sync::Arc::new(Vec::new()),
+            sample_rate: self.engine.sample_rate as f32,
+            volume,
+            pan,
+            start_time_secs: 0.0,
+        });
+        if let Some(t) = self.playlist_tracks.get_mut(t_idx) {
+            t.frozen = None;
+            t.frozen_pcm = None;
+        }
+        self.sync_track_regions(t_idx);
+        self.status_message = crate::tstatus!(
+            "🔥 '{}' är upptinat — pattern-uppspelningen är tillbaka [Ångra: Ctrl+Z]",
+            name
+        );
     }
 
     fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
@@ -14537,6 +14914,11 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         let mut trigger_region_sync = false;
         let mut navigate_idx: Option<usize> = None;
         let mut seek_to_sec: Option<f32> = None;
+        // Frysningen görs efter stängningen: anropet behöver &mut self, och
+        // inne i panelen lånas spåret.
+        let mut freeze_request: Option<usize> = None;
+        let mut unfreeze_request: Option<usize> = None;
+        let frozen_stale = self.frozen_is_stale(t_idx);
 
         let sec_per_bar = 60.0 / self.bpm * 4.0;
 
@@ -14592,6 +14974,41 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                         if ui.add(egui::Button::new(egui::RichText::new(if track.muted { "🔇 MUTAD" } else { "🔊 AKTIV" }).strong().color(mute_fg)).fill(mute_bg)).clicked() {
                             track.muted = !track.muted;
                             trigger_audio_sync = true;
+                        }
+
+                        // FRYS / TINA (Tier 2). Ett fruset spår ligger som
+                        // färdigt ljud: uppspelningen slipper köra syntesen, och
+                        // patterns finns kvar i projektet så att en upptining
+                        // återställer exakt samma musik.
+                        ui.separator();
+                        if track.is_frozen() {
+                            let label = if frozen_stale {
+                                crate::i18n::t("🔥 Tina (inaktuell)")
+                            } else {
+                                crate::i18n::t("🔥 Tina")
+                            };
+                            let bg = if frozen_stale {
+                                Color32::from_rgb(150, 100, 30)
+                            } else {
+                                Color32::from_rgb(40, 70, 90)
+                            };
+                            if ui.add(egui::Button::new(egui::RichText::new(label).strong().color(Color32::WHITE)).fill(bg))
+                                .on_hover_text(crate::i18n::t("Spåret spelas som färdigt ljud. Tina upp det för att köra patterns igen — musiken är oförändrad."))
+                                .clicked()
+                            {
+                                unfreeze_request = Some(t_idx);
+                            }
+                            if frozen_stale {
+                                ui.label(egui::RichText::new(crate::i18n::t("⚠ ändrat sedan frysningen")).size(10.0).color(Theme::FL_ORANGE))
+                                    .on_hover_text(crate::i18n::t("Mönstret eller ljudet har ändrats efter frysningen, så ljudet är inte längre det du hör av patterns. Tina och frys igen."));
+                            }
+                        } else if track.can_freeze() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("❄ Frys spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(35, 60, 80)))
+                                .on_hover_text(crate::i18n::t("Renderar spåret till ljud och spelar det i stället för patterns — sparar CPU i stora projekt. Patterns finns kvar, och Ctrl+Z tar tillbaka frysningen."))
+                                .clicked()
+                            {
+                                freeze_request = Some(t_idx);
+                            }
                         }
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -15084,6 +15501,13 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     _ => {}
                 }
             });
+
+        if let Some(target) = freeze_request {
+            self.freeze_track(target);
+        }
+        if let Some(target) = unfreeze_request {
+            self.unfreeze_track(target);
+        }
 
         if let Some(target_idx) = navigate_idx {
             self.focused_stem_track = Some(target_idx);
@@ -16468,6 +16892,87 @@ mod tests {
         assert_eq!(slot.path, "/plugins/Gain.clap");
         assert_eq!(slot.name, "Gain");
         assert_eq!(slot.state, vec![0, 1, 2, 250, 255]);
+    }
+
+    #[test]
+    fn a_frozen_track_plays_its_audio_and_not_its_patterns() {
+        let mut track =
+            PlaylistTrack::new("Trummor".to_string(), "🥁", TrackKind::Drums, Color32::BLACK);
+        track.clips[0] = Some(1);
+        track.clips[4] = Some(1);
+        assert_eq!(
+            render_clips_for(&track)[0],
+            Some(1),
+            "ett ofruset spår ska trigga sina klipp"
+        );
+
+        track.frozen = Some(FrozenTrack {
+            path: "/tmp/trummor-0.wav".to_string(),
+            digest: 7,
+            stamp: 1_700_000_000,
+        });
+        assert!(
+            render_clips_for(&track).iter().all(|c| c.is_none()),
+            "ett fruset spår ska vara tyst i pattern-vägen — annars hörs det två gånger"
+        );
+    }
+
+    #[test]
+    fn only_pattern_tracks_can_be_frozen() {
+        for kind in [TrackKind::Drums, TrackKind::SynthLead, TrackKind::Bassline] {
+            let track = PlaylistTrack::new("Spår".to_string(), "🎛", kind, Color32::BLACK);
+            assert!(track.can_freeze(), "{kind:?} spelas av patterns och kan frysas");
+        }
+        // Ett ljudspår ligger redan som färdigt ljud — det finns inget att tjäna.
+        let audio = PlaylistTrack::new("Sång".to_string(), "🎤", TrackKind::VocalAudio, Color32::BLACK);
+        assert!(!audio.can_freeze());
+        assert!(!audio.is_frozen());
+    }
+
+    #[test]
+    fn the_frozen_region_covers_the_whole_file() {
+        // 1,5 sekunder vid 44100 Hz.
+        let left = vec![0.25f32; 66_150];
+        let region = frozen_region(&left, 44_100);
+        assert!(
+            (region.length_secs - 1.5).abs() < 1e-3,
+            "längden ska räknas ur bufferten, fick {}",
+            region.length_secs
+        );
+        assert_eq!(region.start_time_secs, 0.0);
+        assert_eq!(region.gain, 1.0);
+        assert!(!region.muted);
+        assert!((frozen_region(&left, 0).length_secs - 66_150.0).abs() < 1.0, "noll samplingsfrekvens får inte ge oändlig längd");
+    }
+
+    #[test]
+    fn a_frozen_track_survives_the_project_file() {
+        let saved = SavedFrozenTrack {
+            path: "/home/x/Music/Sonix/Projects/Beat/Frozen/trummor-0.wav".to_string(),
+            digest: 42,
+            stamp: 1_700_000_000,
+        };
+        let json = serde_json::to_string(&saved).unwrap();
+        let back: SavedFrozenTrack = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, saved);
+    }
+
+    #[test]
+    fn an_old_project_file_without_a_frozen_field_loads_as_unfrozen() {
+        // Exakt den form en fil hade innan fältet fanns: allt annat har defaults.
+        let json = r#"{
+            "name": "Trummor",
+            "volume": 0.8,
+            "pan": 0.0,
+            "muted": false,
+            "solo": false,
+            "clips": [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,
+                      null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+            "regions": []
+        }"#;
+        let track: SavedTrackData = serde_json::from_str(json).expect("äldre fil ska läsas");
+        assert!(track.frozen.is_none(), "utan fältet är spåret ofrusat");
+        assert_eq!(track.name, "Trummor");
     }
 
     #[test]

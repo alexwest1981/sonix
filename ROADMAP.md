@@ -47,7 +47,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 | :--- | :---: | :---: | :---: |
 | **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, projektfilen) | 8 | 8 | **100 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 2 | 4 | **50 %** |
-| **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
+| **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 1 | 4 | **25 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
 
 > **Prioritet just nu: Tier 1 (Fas 7) — Tier 0 (Fas 6) är stängd, 8 av 8.** Ordningen är inte förhandlingsbar: en proffsmusiker som tappat ett projekt en gång bryr sig inte om hur bra AI:n är. Tier 0 mäts i att inget arbete går förlorat och att allt går att ångra.
@@ -483,3 +483,28 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/audio/factory_samples.rs`, `src/ui/app.rs`, `src/i18n.rs`
   - **Beroende:** —
 
+---
+
+## ⬜ Fas 8 — Arbetsflödesdjup (Tier 2)
+
+Djupet som skiljer en DAW från en leksak: att frysa spår, byta tempo mitt i låten,
+routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
+
+- [x] **8.1 Frysning av spår** — *M* ✅ (2026-09-11)
+  - **Gör:** Rendera ett pattern-spår till ljud offline och spela ljudet i stället för syntesen, så att stora projekt inte tappar realtid.
+  - **Klart när:** Ett fruset spår låter likadant som ofruset, går att tina upp till exakt samma musik, överlever projektfilen, och belastningen blir lägre. ✅ *utom* den sista delen — belastningen är **inte uppmätt än** (nästa steg) — och körtestet i GUI, som kräver Alex.
+  - **Vad som gjordes.** Frysningen återanvänder två saker som redan fanns i stället för att bygga en ny väg:
+    - **Renderingen** går genom `build_render_spec(Some(t_idx), …)` + `render_buffer(spec, dry = true)` — exakt samma väg som exporten, solad på spåret. Torr (utan master) och med spårets fader borttagen ur specen, så att **fadern fortsätter gälla live** och mastern inte appliceras två gånger.
+    - **Uppspelningen** går genom motorns **stem-spår** (`LoadStemTrack` + `SetStemTrackRegions`) — samma maskin ljudspåren använder. Ingen ny uppspelningsväg behöver underhållas, och `SetStemTrackState` gör att fader, pan, mute och solo fungerar på ett fruset spår precis som på ett ofruset.
+  - **Två regler ligger som rena funktioner** (`render_clips_for`, `frozen_region`) i stället för att vara inbäddade i UI-koden — just för att de är det som *gör* frysningen, och för att de ska gå att pröva.
+  - **Ärlighet mot användaren i stället för tyst fel ljud:** `frozen_digest` är ett fingeravtryck av allt som påverkade renderingen (tempo, sväng, spårets klipp och fader, mönstren klippen pekar på, kanalracket, röstinställningarna). Ändras något av det visas **"⚠ ändrat sedan frysningen"** på spåret i stället för att tyst spela gammalt ljud. Det är en varning, inte ett bevis — fingeravtrycket ser att något skiljer sig, det avgör inte vad som är rätt, och det står i koden.
+  - **En riktig bugg hittades i integrationen, inte i koden:** `sync_track_stem_to_engine` körs vid **varje uppspelningsstart** och skickade regionlistan från spårets egna regioner — som för ett pattern-spår är **tom**. Det hade tystat frysningen så fort man tryckte Play, och ingen enhetstest hade kunnat se det eftersom det kräver ett spelande projekt. Fixat i båda synkvägarna.
+  - **"Att tina" är att lasta ett tomt stem.** Ingen ny motor-kommandon behövdes: `LoadStemTrack` med tomma buffrar tömmer platsen men **behåller eq/comp/plugin och det positionella indexet**, vilket en borttagen post inte hade gjort.
+  - **Filen lämnas kvar vid upptining.** Ljudet är användarens material; en ny frysning skriver över samma deterministiska namn (`Frozen/<spår>-<index>.wav`, 32-bitars flyttal så att mellansteget inte kvantiserar innan exporten gör det).
+  - **Vägrat:** ett spår med **plugin-insert** kan inte frysas — offline-renderingen kan inte återskapa pluginljudet, och statusraden säger varför i stället för att rendera något annat än det som hörs.
+  - **Bevis:** 269 tester default, 315 med plugin-host, 0 varningar. Fem nya: ett fruset spår triggar inte sina patterns · bara pattern-spår kan frysas · regionen räknas ur bufferten (och noll samplingsfrekvens ger inte oändlig längd) · frysningen överlever projektfilen · en äldre projektfil utan fältet läses som **ofrusad**.
+  - **Kvar, utskrivet:** (1) **CPU-besparingen är inte mätt** — det var en del av "klart när", och den ska mätas med realtidsmätningen från 7.2; (2) **inget GUI-körtest** (att det låter likadant och att en upptining ger tillbaka exakt samma musik) — kräver Alex; (3) frysningen gäller **sång-läget**: pattern-läget spelar kanalracket och har inget spår att frysa, vilket står i koden; (4) bussarnas läge är inte med i fingeravtrycket (mastern renderas torr, så det spelar ingen roll för ljudet — men det ska inte heller påstås vara fångat).
+  - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
+- [ ] **8.2 Tempo map** — tempobyten och taktart i låten (rör projektformat, export och SMF).
+- [ ] **8.3 Routing på riktigt** (utöver bussar/VCA: sends och sidokedjor mellan spår).
+- [ ] **8.4 Sampler** (ett riktigt samplerinstrument i kanalracket, inte bara en WAV-spelare).
