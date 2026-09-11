@@ -45,7 +45,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 3 | 7 | **43 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 4 | 7 | **57 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 0 | 4 | **0 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
@@ -265,10 +265,18 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/autosave.rs` (ny), `src/main.rs`, `src/ui/app.rs`, `src/i18n.rs`, `README.md`, `README_SV.md`, `MANUAL.md`
   - **Beroende:** **6.0** ✅
 
-- [ ] **6.2 Undo/redo för mixer, FX och automation** — *M*
-  - **Gör:** Låt undo-historiken omfatta fader/pan/mute/solo, EQ, kompressor, reverb-/delay-send, buss-/VCA-state, master-FX, plugin-parametrar och automationskurvor — och `push_undo` vid varje sådan commit (i dag täcks enbart tidslinjen). Snapshot-mekaniken finns redan; detta är utbyggnad, inte ny arkitektur.
-  - **Klart när:** En felaktig mixerändring kan ångras med Ctrl+Z, och undo följt av redo ger samma ljudande state (test).
-  - **Filer:** `src/ui/app.rs`, `src/audio/command.rs`
+- [x] **6.2 Undo/redo för mixer, FX och automation** — *M* ✅
+  - **Löst:** Ångringshistoriken omfattar nu mixerns ljudbild, inte bara tidslinjen:
+    - **Snapshoten bär hela ljudbilden.** `TimelineUndoSnapshot` har fått `bus_volume`/`bus_muted`/`bus_solo` och `vca_faders`/`vca_muted`/`vca_solos` — de låg utanför `playlist_tracks`, så en bussändring gick inte ens att fånga. Spårfälten (volym, pan, mute/solo, EQ, kompressor, sends, automation, routing) fanns redan i snapshoten men saknade anrop.
+    - **Ångringen hörs, inte bara syns.** `undo()`/`redo()` kör nu `restore_snapshot()`, som anropar `sync_track_audio_state()` per spår och `sync_group_state()` — förut kördes bara `sync_track_regions()`, så en ångrad volym visades i UI:t men låg kvar i motorn.
+    - **Mixerändringar skapar ångringspunkter.** Ett reglage ändras varje frame under ett drag, så en punkt per frame skulle fylla historiken på ett enda drag. I stället hålls mixerns *viloläge* — `mixer_digest()`, en hash av varje värde motorn tar emot — och läggs som ångringspunkt första gången digesten ändras under en interaktion (pekare nere i denna eller förra frameen, eller en MCU/OSC-kontroll). Nytt viloläge tas först när pekaren släppts: **ett drag ger en ångring, inte sextio.** Programmatiska ändringar (projektladdning, preset, själva ångringen) flyttar bara viloläget.
+  - **Klart när:** En felaktig mixerändring kan ångras med Ctrl+Z ✅ (kod + enhetstest) · undo följt av redo ger samma ljudande state ✅ (`mixer_digest_covers_every_mixed_field` räknar upp varje fält motorn tar emot och failar om ett fält glöms i digesten eller inte bärs av snapshoten).
+  - **Bevis:** 180 tester default, 0 varningar. CI grön (`1adfa25`, `34593203114`).
+  - **Kvar (ärligt):**
+    - **GUI-verifieringen av en musdragen fader är inte gjord.** Miljön kan inte injicera musklick i ett Wayland-fönster (cua-drivers X11-vägar når inte winit, och Hyprlands Lua-API har `cursor.move` men ingen klick-dispatch), och att ta tangentbordsfokus från Alex medan han arbetar var inte värt det. Fönstret står öppet i mixervyn på DP-3: dra i en fader och tryck **Ctrl+Z** → statusraden ska visa *"↶ Ångrade: 🎚 Mixerändring (Ctrl+Z)"* och värdet gå tillbaka. Mätt i GUI denna session: F6 byter till mixervyn ✅, `Ctrl+Z` utan föregående mixerändring svarar "Nothing to undo" ✅ (dvs. inga falska ångringspunkter).
+    - **Plugin-parametrar och master-FX** (delay/reverb/drive) ingår inte — de ligger utanför `playlist_tracks`. Nästa steg: låt snapshoten bära `plugin_slots` och master-FX-kedjan, och skicka dem till motorn vid `restore_snapshot`.
+    - Automation ingår via `playlist_tracks[].automation`, men de *enskilda* punkterna har ingen egen etikett i historiken.
+  - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
   - **Beroende:** —
 
 - [ ] **6.3 MIDI-fil import/export (SMF)** — *M*
@@ -379,11 +387,11 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**6.2 Undo/redo för mixer, FX och automation** (*M*): undo-historiken (`undo_stack`/`redo_stack` i `app.rs`) matas i dag från **14 anropsställen**, och samtliga är tidslinjeoperationer. En fader-, EQ- eller send-ändring går alltså inte att ångra. Snapshot-mekaniken finns redan — detta är utbyggnad: låt `TimelineUndoSnapshot` (eller en syskon-snapshot) omfatta `playlist_tracks`-fälten som redan är serialiserade (volym, pan, mute/solo, EQ, kompressor, sends, automation) samt buss-/VCA-state och plugin-parametrar, och anropa `push_undo` vid varje commit av dessa. Klart när en felaktig mixerändring kan ångras med Ctrl+Z och undo följt av redo ger samma ljudande state (test).
+**6.3 MIDI-fil import/export (SMF)** (*M*): nästa punkt i Tier 0. Ingen SMF-kod finns i repot (`smf`/`midi_file`/`import_midi`/`export_midi` = 0 träffar), medan appen redan har patterns, piano roll och ett sequencer-steg — det som saknas är filformatet. Klart när en fil exporterad från Sonix kan öppnas i en annan DAW och en SMF därifrån kan importeras tillbaka till samma noter och längder.
 
-Därefter i Tier 0 (Fas 6): 6.3 SMF import/export, 6.4 kvantisering/humanisering, 6.5 dither.
+Därefter i Tier 0 (Fas 6): 6.4 kvantisering/humanisering, 6.5 dither.
 
-Nyss klart: **6.1** autosave/kraschåterställning + versionshistorik (5 versioner per projekt, atomiska skrivningar, återställningsdialog vid start, `recent.json` + "Senaste projekt" och "Visa i projektmappen") samt **6.0** sökvägsmodulen (`src/paths.rs`, kanonisk filstruktur, `sonix --paths`, dokumenterad i README/MANUAL) och **6.6** rundgången/bastonen (80 Hz-högpass, anti-rundgång, monitorering av som standard).
+Nyss klart: **6.2** mixer/FX/automation i undo-historiken (snapshoten bär buss/VCA, undo skickar tillbaka till motorn, ett drag ger en ångring) samt **6.1** autosave/kraschåterställning och **6.0** sökvägsmodulen.
 
 Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
 

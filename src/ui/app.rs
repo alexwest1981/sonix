@@ -1087,6 +1087,9 @@ pub struct SonixApp {
     pub mixer_settled_snapshot: Option<TimelineUndoSnapshot>,
     pub mixer_settled_digest: u64,
     pub mixer_pointer_was_down: bool,
+    /// Satt när en MCU/OSC-kontroll använts det här frameen — en sådan ändring
+    /// har ingen pekare men ska ändå ge en ångringspunkt.
+    pub mixer_control_event: bool,
     /// Autosaves som är nyare än den manuella filen, ifyllda vid start.
     pub recovery_candidates: Vec<RecoveryCandidate>,
     pub show_recovery_modal: bool,
@@ -1656,6 +1659,7 @@ impl SonixApp {
             mixer_settled_snapshot: None,
             mixer_settled_digest: 0,
             mixer_pointer_was_down: false,
+            mixer_control_event: false,
             recovery_candidates,
             show_recovery_modal,
             new_project_name_input: crate::i18n::t("Mitt Beat").to_string(),
@@ -5143,6 +5147,10 @@ impl SonixApp {
                 self.status_message = crate::tstatus!("🎯 MIDI Learn fångade kontroll: {}", format!("{:?}", ev));
             }
             self.apply_control_event(ev);
+            // En hårdvarukontroll (MCU/OSC) ändrar mixern utan pekare. Den ska
+            // ändå ge en ångringspunkt (Fas 6.2), annars vore en faderändring
+            // från en kontrollyta omöjlig att ångra.
+            self.mixer_control_event = true;
         }
         if let Some(server) = &self.osc_server {
             self.osc_rx_count = server.received();
@@ -5399,7 +5407,8 @@ impl eframe::App for SonixApp {
         // först när pekaren är släppt, så ett drag ger en ångring, inte sextio.
         let mixer_now = self.mixer_state_digest();
         let mixer_pointer_down = ctx.input(|i| i.pointer.any_down());
-        let mixer_touching = mixer_pointer_down || self.mixer_pointer_was_down;
+        let mixer_touching =
+            mixer_pointer_down || self.mixer_pointer_was_down || self.mixer_control_event;
         if mixer_now != self.mixer_settled_digest {
             let pending = self.mixer_settled_snapshot.take();
             if mixer_touching {
@@ -5416,6 +5425,7 @@ impl eframe::App for SonixApp {
             }
         }
         self.mixer_pointer_was_down = mixer_pointer_down;
+        self.mixer_control_event = false;
         self.sync_mic_monitoring();
 
         // Check if window is minimized or not focused (Wayland / Hyprland safety)
