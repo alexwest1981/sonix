@@ -45,7 +45,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (autosave, undo, MIDI-I/O, kvantisering, dither) | 0 | 5 | **0 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither) | 0 | 6 | **0 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge) | 0 | 3 | **0 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
@@ -236,12 +236,39 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 > **Varför denna fas ligger först:** en DAW kan ha världens bästa AI och ändå vara oanvändbar professionellt om den tappar arbete, inte kan ångra mixerändringar eller inte pratar med andra DAW:er. Ingenting i Fas 7–9 är värt något förrän detta sitter.
 >
 > **Nuläge, verifierat i koden (2026-09-11):** **0 träffar** på `autosave`/`recover`/`backup`; undo-historiken i `app.rs` (`undo_stack`/`redo_stack`) matas från **14 anropsställen**, samtliga tidslinjeoperationer (klipp, duplicera/ta bort spår, klistra in, mute, reverse, rensa); **ingen** SMF/MIDI-filkod finns (`smf`/`midi_file`/`import_midi`/`export_midi` = 0 träffar); ingen dither (`dither` = 0 träffar); kvantisering finns bara som rutnätssnap vid inmatning (`snap_time_secs`, `piano_roll_snap_to_scale`), inte som efterarbete.
+>
+> **Sökvägar (samma genomgång):** sökvägar byggs på **10+ ställen** med egen `env::var("HOME")`-logik, fyra filkategorier heter olika saker fast de betyder samma (`Samples` vs `User_Samples`, `Exporterat` vs "Renders"), ONNX-modeller (stora filer) ligger i **konfigkatalogen**, och två ställen faller tillbaka på en **hårdkodad `/home/alex`** (`app.rs:1408` exportmapp, `app.rs:11472` Suno-scan). Det finns ingen läslista för senaste projekt och ingen "visa i filhanteraren". → **6.0 löser detta först.**
+
+- [ ] **6.0 En enda sökvägsmodul + kanonisk filstruktur** — *M* **(förkunna för 6.1)**
+  - **Varför:** "Alla hittar sina filer" är inte en fråga om var filerna ligger, utan om att (a) sökvägar byggs på **ett** ställe, (b) samma sak heter samma sak, (c) användarsynliga filer ligger där filhanteraren och XDG säger, och (d) appen visar dem (läslista, full sökväg, "visa i filhanteraren") i stället för att kräva att man minns en katalog.
+  - **Gör:** Ny `src/paths.rs` som är den **enda** platsen som konstruerar sökvägar. Alla anrop migreras dit; de hårdkodade `/home/alex`-fallbackarna tas bort. Miljövariabler `SONIX_PROJECTS_DIR`, `SONIX_DATA_DIR`, `SONIX_CONFIG_DIR`, `SONIX_STATE_DIR`, `SONIX_CACHE_DIR` överstyr, annars följs XDG (`XDG_MUSIC_DIR`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`) med `$HOME`-standardvärden.
+  - **Kanonisk struktur:**
+
+    | Sökväg | Innehåll | Varför där |
+    | :--- | :--- | :--- |
+    | `~/Music/Sonix/Projects/<namn>.sonix` | projektfiler | användarsynligt, flyttbart (XDG_MUSIC_DIR) |
+    | `~/Music/Sonix/Projects/<namn>/` | projektets eget material: `Recordings/`, `Stems/`, `Samples/`, `Renders/` | projektet äger sina media → portabelt ("samla projektet") |
+    | `~/Music/Sonix/Samples/` | egna samplingar, delade mellan projekt | en gemensam bank, inte fyra |
+    | `~/Music/Sonix/Factory_Samples/` | appens medföljande | skrivskyddat, återskapas |
+    | `~/Music/Sonix/Templates/` | egna startmallar | användarsynligt |
+    | `~/.config/sonix/config.json`, `ai.json` | ljudinställningar, AI-providers (0600) | konfiguration, små filer |
+    | `~/.local/share/sonix/models/` | ONNX-modeller (HTDemucs) | **data**, inte konfiguration — flyttas från `~/.config/sonix/models` |
+    | `~/.local/share/sonix/plugins/` | plugin-databasens cache | maskindata |
+    | `~/.local/state/sonix/recent.json`, `window.json` | läslista, fönsterläge | tillstånd, inte konfiguration |
+    | `~/.local/state/sonix/autosave/` | autosave + kraschmarkör (N versioner) | överlever krasch; ska **inte** följa med ett projekt som kopieras/synkas |
+    | `~/.cache/sonix/waveforms/` | peak-/vågformscache | återskapbart, får kastas |
+
+  - **Migrering:** Vid start flyttas äldre platser (t.ex. `~/.config/sonix/models` → `~/.local/share/sonix/models`, `User_Samples` → `Samples`) **utan att radera** något, med en engångsnotis i statusraden. En befintlig `Exporterat`-mapp lämnas orörd men läses in som standardexportmapp.
+  - **Hittbarhet i UI:t:** **Senaste projekt** i menyn (från `recent.json`), projektväljaren visar **flera rötter** (Projektmappen + senaste + valfri mapp), varje projektrad visar **full sökväg** och har **"📂 Visa i filhanteraren"**, och `sonix --paths` skriver ut hela kartan (för support och för den som undrar var filerna tog vägen).
+  - **Klart när:** Ingen modul utanför `paths.rs` bygger sökvägar av `$HOME`; `sonix --paths` listar den kanoniska kartan; migreringen är testad (flyttar, raderar aldrig, tål att köras två gånger); den fullständiga kartan finns dokumenterad i README/MANUAL.
+  - **Filer:** `src/paths.rs` (ny), `src/main.rs`, `src/ui/app.rs`, `src/audio/engine.rs`, `src/audio/ai_client.rs`, `src/audio/neural_separator.rs`, `src/audio/factory_samples.rs`, `src/audio/plugin_host.rs`, `src/ui/plugins_view.rs`, `README.md`, `README_SV.md`, `MANUAL.md`
+  - **Beroende:** —
 
 - [ ] **6.1 Autosave, kraschåterställning & versionshistorik** — *M*
-  - **Gör:** Autospara projektet till en roterande backup (t.ex. var 60:e sekund och vid varje strukturell ändring) och visa en återställningsdialog vid start när autosaven är nyare än senaste manuella sparning. Behåll N senaste versioner så att en trasig redigering kan rullas tillbaka. Skriv alltid till temp-fil + `rename` så att en avbruten skrivning aldrig ersätter en hel projektfil.
+  - **Gör:** Autospara projektet till en roterande backup i `paths::autosave_dir()` (`~/.local/state/sonix/autosave/`, se 6.0) — t.ex. var 60:e sekund och vid varje strukturell ändring — och visa en återställningsdialog vid start när autosaven är nyare än senaste manuella sparning. Behåll N senaste versioner så att en trasig redigering kan rullas tillbaka. Skriv alltid till temp-fil + `rename` så att en avbruten skrivning aldrig ersätter en hel projektfil.
   - **Klart när:** Processen kan dödas mitt i en inspelning och nästa start erbjuder en autosave med allt arbete kvar; en tidigare version kan återställas; test verifierar rotationen och att halvskrivna filer aldrig blir den aktiva projektfilen.
-  - **Filer:** `src/ui/app.rs`, `src/audio/project_io.rs` (ny, eller utökad `save_project`/`load_project_file`), `src/i18n.rs`
-  - **Beroende:** —
+  - **Filer:** `src/ui/app.rs`, `src/paths.rs`, `src/i18n.rs`
+  - **Beroende:** **6.0** (autosaven måste ligga på den kanoniska platsen)
 
 - [ ] **6.2 Undo/redo för mixer, FX och automation** — *M*
   - **Gör:** Låt undo-historiken omfatta fader/pan/mute/solo, EQ, kompressor, reverb-/delay-send, buss-/VCA-state, master-FX, plugin-parametrar och automationskurvor — och `push_undo` vid varje sådan commit (i dag täcks enbart tidslinjen). Snapshot-mekaniken finns redan; detta är utbyggnad, inte ny arkitektur.
@@ -341,7 +368,9 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**6.1 Autosave, kraschåterställning & versionshistorik** (*M*): Sonix sparar i dag bara när användaren själv sparar — `save_project`/`load_project_file` i `app.rs` mot `~/Music/Sonix/Projects/*.sonix`, utan autosave, backup eller återställning (**0 träffar** på `autosave`/`recover`/`backup`). Därför är detta den första punkten i **Tier 0 (Fas 6)**: allt annat i Fas 6–9 vilar på att appen inte tappar arbete.
+**6.0 En enda sökvägsmodul + kanonisk filstruktur** (*M*): i dag byggs sökvägar på 10+ ställen med egen `$HOME`-logik, fyra kategorier heter olika saker fast de betyder samma (`Samples` vs `User_Samples`, `Exporterat` vs "Renders"), ONNX-modeller ligger i konfigkatalogen och två ställen faller tillbaka på en hårdkodad `/home/alex` (`app.rs:1408`, `app.rs:11472`). Ny `src/paths.rs` blir den enda platsen som konstruerar sökvägar (med `SONIX_*`-overrides + XDG), med migrering som flyttar men aldrig raderar — och därefter byggs **6.1 (autosave)** ovanpå den.
+
+Därefter i Tier 0 (Fas 6): 6.1 autosave/kraschåterställning, 6.2 undo för mixer/FX/automation, 6.3 SMF import/export, 6.4 kvantisering/humanisering, 6.5 dither.
 
 Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
 
