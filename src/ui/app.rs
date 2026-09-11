@@ -2981,15 +2981,24 @@ impl SonixApp {
                     .unwrap_or(0);
                 self.autosave_last_fp = Some(fp);
                 self.autosave_last_write = Some(stamp);
-                self.status_message = if removed > 0 {
-                    crate::tstatus!(
-                        "🛟 Autosparade '{}' ({} äldre versioner städade)",
-                        name,
-                        removed
-                    )
-                } else {
-                    crate::tstatus!("🛟 Autosparade '{}'", name)
-                };
+                // Autosaven är en bakgrundshändelse och får inte skriva över en
+                // färsk ångringsbekräftelse. Mätt i GUI: ångringen märker
+                // ändringen för autosave, autosaven skriver nästa frame och
+                // ersatte "↶ Ångrade …" inom millisekunder — så användaren kunde
+                // inte läsa vad som just ångrades.
+                let fresh_undo = self.status_message.starts_with("↶ ")
+                    || self.status_message.starts_with("↷ ");
+                if !fresh_undo {
+                    self.status_message = if removed > 0 {
+                        crate::tstatus!(
+                            "🛟 Autosparade '{}' ({} äldre versioner städade)",
+                            name,
+                            removed
+                        )
+                    } else {
+                        crate::tstatus!("🛟 Autosparade '{}'", name)
+                    };
+                }
                 let _ = path;
             }
             Err(e) => {
