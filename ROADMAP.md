@@ -45,7 +45,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither) | 0 | 6 | **0 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 1 | 6 | **14 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge) | 0 | 3 | **0 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
@@ -239,30 +239,12 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 >
 > **Sökvägar (samma genomgång):** sökvägar byggs på **10+ ställen** med egen `env::var("HOME")`-logik (inklusive en egen `expand_tilde` i `plugin_host.rs`), fyra filkategorier heter olika saker fast de betyder samma (`Samples` vs `User_Samples`, `Exporterat` vs "Renders"), konfigfilerna heter `config.json` (bara språk) + `audio.json` (ljud) utan inbördes system, ONNX-modeller (stora filer) ligger i **konfigkatalogen**, ljudtrådens kraschlogg skrivs till **musikmappen** (`~/Music/Sonix/audio_crash.log`), och två ställen faller tillbaka på en **hårdkodad `/home/alex`** (`app.rs:1408` exportmapp, `app.rs:11472` Suno-scan). Det finns ingen läslista för senaste projekt och ingen "visa i filhanteraren". → **6.0 löser detta först.**
 
-- [ ] **6.0 En enda sökvägsmodul + kanonisk filstruktur** — *M* **(förkunna för 6.1)**
-  - **Varför:** "Alla hittar sina filer" är inte en fråga om var filerna ligger, utan om att (a) sökvägar byggs på **ett** ställe, (b) samma sak heter samma sak, (c) användarsynliga filer ligger där filhanteraren och XDG säger, och (d) appen visar dem (läslista, full sökväg, "visa i filhanteraren") i stället för att kräva att man minns en katalog.
-  - **Gör:** Ny `src/paths.rs` som är den **enda** platsen som konstruerar sökvägar. Alla anrop migreras dit; de hårdkodade `/home/alex`-fallbackarna tas bort. Miljövariabler `SONIX_PROJECTS_DIR`, `SONIX_DATA_DIR`, `SONIX_CONFIG_DIR`, `SONIX_STATE_DIR`, `SONIX_CACHE_DIR` överstyr, annars följs XDG (`XDG_MUSIC_DIR`, `XDG_CONFIG_HOME`, `XDG_DATA_HOME`, `XDG_STATE_HOME`, `XDG_CACHE_HOME`) med `$HOME`-standardvärden.
-  - **Kanonisk struktur:**
-
-    | Sökväg | Innehåll | Varför där |
-    | :--- | :--- | :--- |
-    | `~/Music/Sonix/Projects/<namn>.sonix` | projektfiler | användarsynligt, flyttbart (XDG_MUSIC_DIR) |
-    | `~/Music/Sonix/Projects/<namn>/` | projektets eget material: `Recordings/`, `Stems/`, `Samples/`, `Renders/` | projektet äger sina media → portabelt ("samla projektet") |
-    | `~/Music/Sonix/Samples/` | egna samplingar, delade mellan projekt | en gemensam bank, inte fyra |
-    | `~/Music/Sonix/Factory_Samples/` | appens medföljande | skrivskyddat, återskapas |
-    | `~/Music/Sonix/Templates/` | egna startmallar *(ny plats — mallar finns inte än)* | användarsynligt |
-    | `~/.config/sonix/config.json` (språk), `audio.json` (ljud), `ai.json` (AI-providers, 0600) | konfiguration, små filer — konsekvent namngivna | konfiguration |
-    | `~/.local/share/sonix/models/` | ONNX-modeller (HTDemucs) | **data**, inte konfiguration — flyttas från `~/.config/sonix/models` |
-    | `~/.local/share/sonix/plugins/` | plugin-databas *(ny plats — skanningen persisteras inte alls i dag)* | maskindata |
-    | `~/.local/state/sonix/recent.json`, `window.json` | läslista, fönsterläge | tillstånd, inte konfiguration |
-    | `~/.local/state/sonix/logs/` | krasch- och fellogg | i dag skrivs `audio_crash.log` i **musikmappen** (`engine.rs`) — fel plats |
-    | `~/.local/state/sonix/autosave/` | autosave + kraschmarkör (N versioner) | överlever krasch; ska **inte** följa med ett projekt som kopieras/synkas |
-    | `~/.cache/sonix/waveforms/` | peak-/vågformscache | återskapbart, får kastas |
-
-  - **Migrering:** Vid start flyttas äldre platser (t.ex. `~/.config/sonix/models` → `~/.local/share/sonix/models`, `User_Samples` → `Samples`) **utan att radera** något, med en engångsnotis i statusraden. En befintlig `Exporterat`-mapp lämnas orörd men läses in som standardexportmapp.
-  - **Hittbarhet i UI:t:** **Senaste projekt** i menyn (från `recent.json`), projektväljaren visar **flera rötter** (Projektmappen + senaste + valfri mapp), varje projektrad visar **full sökväg** och har **"📂 Visa i filhanteraren"**, och `sonix --paths` skriver ut hela kartan (för support och för den som undrar var filerna tog vägen).
-  - **Klart när:** Ingen modul utanför `paths.rs` bygger sökvägar av `$HOME`; `sonix --paths` listar den kanoniska kartan; migreringen är testad (flyttar, raderar aldrig, tål att köras två gånger); den fullständiga kartan finns dokumenterad i README/MANUAL.
-  - **Filer:** `src/paths.rs` (ny), `src/main.rs`, `src/ui/app.rs`, `src/audio/engine.rs`, `src/audio/ai_client.rs`, `src/audio/neural_separator.rs`, `src/audio/factory_samples.rs`, `src/audio/plugin_host.rs`, `src/ui/plugins_view.rs`, `README.md`, `README_SV.md`, `MANUAL.md`
+- [x] **6.0 En enda sökvägsmodul + kanonisk filstruktur** — *M* ✅
+  - **Löst:** `src/paths.rs` är nu den enda platsen som bygger sökvägar: XDG följs (`XDG_MUSIC_DIR` läses även ur `~/.config/user-dirs.dirs`, eftersom variabeln normalt inte är exporterad), `SONIX_PROJECTS_DIR`/`SONIX_SAMPLES_DIR`/`SONIX_CONFIG_DIR`/`SONIX_DATA_DIR`/`SONIX_STATE_DIR`/`SONIX_CACHE_DIR` överstyr, och `~/` expanderas. 15 anropsställen migrerade; de hårdkodade `/home/alex`-fallbackarna är borta (exportmappen ×2, Suno-scan, projektväljarens standardvärden, ett maskinberoende test). Kraschloggen flyttad från **musikmappen** till `~/.local/state/sonix/logs/`, sample-bibliotekets cache till `~/.cache/sonix/`, ONNX-modellerna till `~/.local/share/sonix/models/`, och sample-sökningen täcker nu även den kanoniska `Samples/` (tidigare försvann sparade samples ur webbläsaren vid omstart). `sonix --paths` skriver ut hela kartan med ✓/· per post. Migreringen flyttar men **raderar aldrig**, skriver aldrig över ett mål som redan har filer, och tål att köras varje start (verifierad mot isolerad `HOME`).
+  - **Klart när:** Ingen modul utanför `paths.rs` bygger sökvägar av `$HOME` ✅ · `sonix --paths` listar kartan ✅ · migreringen testad ✅ · dokumenterad i README/MANUAL → **kvar** (görs i samma svep som 6.1).
+  - **Kvar (medvetet):** "Senaste projekt"-läslistan och "📂 Visa i filhanteraren" i UI:t (kräver `recent.json` — tas i 6.1 som ändå rör samma state), plugin-databasen persisteras fortfarande inte, och `mic_settings.direct_monitoring` är en dubblett av `vocal_track.monitoring_on` som inte styr något (tas i **6.6**).
+  - **Bevis:** 10 nya tester i `paths.rs` (kanonisk layout, fyra åtskilda rötter, `user-dirs.dirs`-parsning, överstyrningar, legacy-exportmapp, idempotent migrering, `ensure_dirs`) — 153 tester default, 199 med `plugin-host`, 0 varningar.
+  - **Filer:** `src/paths.rs` (ny), `src/main.rs`, `src/ui/app.rs`, `src/ui/plugins_view.rs`, `src/audio/engine.rs`, `src/audio/synth.rs`, `src/audio/ai_client.rs`, `src/audio/neural_separator.rs`, `src/audio/factory_samples.rs`, `src/audio/plugin_host.rs`, `src/i18n.rs`
   - **Beroende:** —
 
 - [ ] **6.1 Autosave, kraschåterställning & versionshistorik** — *M*
@@ -293,6 +275,14 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Gör:** TPDF-dither (och valfritt noise shaping) när mastern kvantiseras till 16-bitars WAV; av för 24/32-bitars och FLAC.
   - **Klart när:** 16-bitars export dithras (test: dekorrelerat brusgolv, inte korrelerat kvantiseringsbrus) och 24-bitars export är bitidentisk med dagens.
   - **Filer:** `src/audio/wav_writer.rs`, `src/audio/exporter.rs`, `src/ui/app.rs`
+  - **Beroende:** —
+
+- [ ] **6.6 Återkopplingssäkring för direktlyssning (rundgång)** — *S*
+  - **Bakgrund:** Direktlyssningen adderade mikrofonen **1:1** in i masterbussen (`synth.rs` 8c), så **mastervolymen var det enda reglaget** som bröt en rundgång — och den var **på** som standard (`recorder.rs`, `monitoring_on: true`). Med högtalare i stället för hörlurar blir det rundgång, precis som rapporterat ("försvinner när jag sänker main vol").
+  - **Löst (delvis):** `monitoring_on: false` som standard, ny **MONITOR-ratt** (`AudioCommand::SetMonitorLevel`) som ger monitor-signalen egen nivå i `vocal_studio_view.rs`, och hover-text som varnar för högtalare.
+  - **Kvar:** (a) automatisk detektion — om ingången självsvänger (växande amplitud på en stabil frekvens) ska monitoreringen stängas och ett tydligt meddelande visas; (b) slå ihop de två kryssrutorna: `mic_settings.direct_monitoring` styr ingenting i dag (dubblett av `vocal_track.monitoring_on`).
+  - **Klart när:** En självsvängning dämpar sig själv inom en sekund utan att användaren rör mastervolymen, och det finns bara **en** kryssruta för direktlyssning.
+  - **Filer:** `src/ui/vocal_studio_view.rs`, `src/ui/app.rs`, `src/audio/synth.rs`, `src/audio/recorder.rs`, `src/audio/command.rs`
   - **Beroende:** —
 
 ---

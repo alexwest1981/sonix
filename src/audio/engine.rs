@@ -7,6 +7,18 @@ use std::sync::Arc;
 use super::command::AudioCommand;
 use super::synth::SynthEngine;
 
+/// Lägger en rad i ljudloggen under `~/.local/state/sonix/logs/` (Fas 6.0 —
+/// tidigare skrevs den i musikmappen). Skapar katalogen vid behov.
+fn append_audio_log(line: &str) {
+    let path = crate::paths::paths().log_file("audio_crash.log");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        let _ = std::io::Write::write_all(&mut f, line.as_bytes());
+    }
+}
+
 #[allow(dead_code)]
 pub struct AudioEngine {
     _stream: Option<Stream>,
@@ -36,10 +48,7 @@ pub struct AudioSettings {
 
 impl AudioSettings {
     pub fn config_path() -> Option<std::path::PathBuf> {
-        let base = std::env::var_os("XDG_CONFIG_HOME")
-            .map(std::path::PathBuf::from)
-            .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))?;
-        Some(base.join("sonix").join("audio.json"))
+        Some(crate::paths::paths().audio_config_file())
     }
 
     pub fn load() -> Self {
@@ -271,15 +280,7 @@ impl AudioEngine {
 
         let err_fn = |err| {
             eprintln!("[Sonix Audio Error] {}", err);
-            if let Ok(log) = std::env::var("HOME") {
-                let path = std::path::Path::new(&log).join("Music/Sonix/audio_crash.log");
-                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-                    let _ = std::io::Write::write_all(
-                        &mut f,
-                        format!("[{}] [Audio Error] {}\n", std::process::id(), err).as_bytes(),
-                    );
-                }
-            }
+            append_audio_log(&format!("[{}] [Audio Error] {}\n", std::process::id(), err));
         };
 
         device.build_output_stream(
@@ -335,16 +336,7 @@ impl AudioEngine {
                         "okänd panik".to_string()
                     };
                     eprintln!("[Sonix] AUDIO-KRASCH i ljudtråd: {}", msg);
-                    if let Ok(log) = std::env::var("HOME") {
-                        let path = std::path::Path::new(&log)
-                            .join("Music/Sonix/audio_crash.log");
-                        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-                            let _ = std::io::Write::write_all(
-                                &mut f,
-                                format!("[{}] {}\n", std::process::id(), msg).as_bytes(),
-                            );
-                        }
-                    }
+                    append_audio_log(&format!("[{}] {}\n", std::process::id(), msg));
                 }
             },
             err_fn,

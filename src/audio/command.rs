@@ -200,11 +200,16 @@ pub enum AudioCommand {
     },
     StopAudition,
     /// Registers the microphone's post-auto-tune mono monitor buffer. The
-    /// output engine drains it and mixes it into the master bus for
-    /// zero-latency direct monitoring. Sent again after every reconfigure.
+    /// audio thread mixes it into the master bus scaled by
+    /// [`AudioCommand::SetMonitorLevel`] (default 1.0, i.e. unity).
+    /// Sent again after every reconfigure.
     SetMonitorRing {
         ring: Arc<Mutex<Vec<f32>>>,
     },
+    /// Nivå för direktlyssningen (0.0–1.0). Utan den är mastervolymen enda
+    /// reglaget för monitor-signalen, vilket gör återkoppling (rundgång) svår
+    /// att bryta utan att sänka hela mixen.
+    SetMonitorLevel(f32),
     SetAuditionParams {
         volume: f32,
         pitch_ratio: f32,

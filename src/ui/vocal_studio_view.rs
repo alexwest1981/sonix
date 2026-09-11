@@ -69,7 +69,13 @@ pub fn render_vocal_studio_view(
                         ui.separator();
 
                         ui.checkbox(&mut vocal_track.is_armed, "🔴 Armera");
-                        ui.checkbox(&mut vocal_track.monitoring_on, "🎧 Direct Monitoring");
+                        ui.checkbox(&mut vocal_track.monitoring_on, "🎧 Direct Monitoring")
+                            .on_hover_text(crate::i18n::t(
+                                "Spelar upp mikrofonen genom mastern (zero-latency). Använd hörlurar — med högtalare uppstår rundgång.",
+                            ));
+                        if vocal_track.monitoring_on {
+                            rotary_knob(ui, &mut vocal_track.monitor_level, 0.0, 1.0, "MONITOR", Theme::FL_CYAN, 18.0);
+                        }
                         ui.checkbox(&mut vocal_track.realtime_autotune, crate::i18n::t("🎙️ Realtids-Auto-Tune"))
                             .on_hover_text(crate::i18n::t("Korrigerar mikrofonen i realtid mot vald skala (styrka = AUTO-TUNE-ratten)"));
 

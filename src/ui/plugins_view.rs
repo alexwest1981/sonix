@@ -504,11 +504,7 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
         let mut to_remove = None;
 
         for (idx, scan_path) in manager.scan_paths.iter_mut().enumerate() {
-            let expanded = if let Some(stripped) = scan_path.path.strip_prefix("~/") {
-                std::env::var("HOME").map(|h| std::path::PathBuf::from(h).join(stripped)).unwrap_or_else(|_| std::path::PathBuf::from(&scan_path.path))
-            } else {
-                std::path::PathBuf::from(&scan_path.path)
-            };
+            let expanded = crate::paths::expand_tilde(&scan_path.path);
             let exists_on_disk = expanded.exists();
 
             ui.group(|ui| {

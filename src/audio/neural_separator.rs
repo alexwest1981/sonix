@@ -37,22 +37,12 @@ pub const MODEL_ENV: &str = "SONIX_DEMUCS_ONNX";
 /// File names accepted inside the model directories.
 pub const MODEL_FILE_NAMES: [&str; 3] = ["htdemucs.onnx", "demucs.onnx", "htdemucs_ft.onnx"];
 
-/// Candidate directories searched for a model, most specific first.
+/// Candidate directories searched for a model, most specific first:
+/// the canonical data dir (`~/.local/share/sonix/models/`) and the older
+/// configuration dir (`~/.config/sonix/models/`) which is still read.
 pub fn model_dirs() -> Vec<PathBuf> {
-    let mut dirs = Vec::new();
-    if let Some(base) = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-    {
-        dirs.push(base.join("sonix").join("models"));
-    }
-    if let Some(base) = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
-    {
-        dirs.push(base.join("sonix").join("models"));
-    }
-    dirs
+    let paths = crate::paths::paths();
+    vec![paths.models_dir(), paths.legacy_models_dir()]
 }
 
 /// Pure helper: first existing model candidate inside `dirs`.

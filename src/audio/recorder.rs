@@ -529,6 +529,10 @@ pub struct VocalStudioTrack {
     pub recording_mode: RecordingMode,
     pub recording_elapsed_secs: f32,
     pub monitoring_on: bool,
+    /// Egen nivå för direktlyssningen (0.0–1.0). Utan den är masterns volym
+    /// enda reglaget för monitor-signalen — vilket gör återkoppling svår att
+    /// bryta utan att sänka hela mixen.
+    pub monitor_level: f32,
     pub realtime_autotune: bool,
     pub input_gain: f32,
     pub mic_vu_level: f32,
@@ -558,7 +562,11 @@ impl Default for VocalStudioTrack {
             custom_recording_elapsed_secs: 0.0,
             recording_mode: RecordingMode::LeadVocals,
             recording_elapsed_secs: 0.0,
-            monitoring_on: true,
+            // Direktlyssning är AV som standard: den spelar upp mikrofonen genom
+            // mastern, och med högtalare (i stället för hörlurar) slutar det i
+            // rundgång. Slås på medvetet i Inspelningsdeck.
+            monitoring_on: false,
+            monitor_level: 1.0,
             realtime_autotune: false,
             input_gain: settings.input_gain,
             mic_vu_level: 0.0,

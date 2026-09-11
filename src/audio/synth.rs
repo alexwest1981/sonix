@@ -10,30 +10,29 @@ use super::patcher::{PatchProcessor, PatchSpec};
 use super::plugin_host_live::{PdcDelay, PluginInsert};
 use super::vocal_harmonizer::{FormantPitchShifter, Wsola};
 
-/// Debug logging to ~/Music/Sonix/audio_debug.log. Enabled when the
-/// SONIX_AUDIO_DEBUG env var is set OR when the marker file
-/// ~/Music/Sonix/debug_on exists (so normal desktop starts can log too).
+/// Felsökningsloggning till `~/.local/state/sonix/logs/audio_debug.log`.
+/// Påslagen när `SONIX_AUDIO_DEBUG` är satt, eller när markörfilen
+/// `~/.local/state/sonix/debug_on` finns (så vanliga skrivbordsstarter kan
+/// logga). Den äldre markören `~/Music/Sonix/debug_on` läses fortfarande.
 fn dbg_enabled() -> bool {
     if std::env::var("SONIX_AUDIO_DEBUG").is_ok() {
         return true;
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let marker = std::path::Path::new(&home).join("Music/Sonix/debug_on");
-        return marker.exists();
-    }
-    false
+    let paths = crate::paths::paths();
+    paths.debug_marker_file().exists() || paths.legacy_library_file("debug_on").exists()
 }
 
 fn dbg_log(tag: &str, msg: &str) {
     if !dbg_enabled() {
         return;
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let path = std::path::Path::new(&home).join("Music/Sonix/audio_debug.log");
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-            use std::io::Write;
-            let _ = writeln!(f, "[{}] {}: {}", std::process::id(), tag, msg);
-        }
+    let path = crate::paths::paths().log_file("audio_debug.log");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        use std::io::Write;
+        let _ = writeln!(f, "[{}] {}: {}", std::process::id(), tag, msg);
     }
 }
 
@@ -121,6 +120,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::PlayAudition { .. } => "PlayAudition",
         AudioCommand::StopAudition => "StopAudition",
         AudioCommand::SetMonitorRing { .. } => "SetMonitorRing",
+        AudioCommand::SetMonitorLevel(_) => "SetMonitorLevel",
         AudioCommand::SetAuditionParams { .. } => "SetAuditionParams",
         AudioCommand::TriggerSampleVoice { .. } => "TriggerSampleVoice",
         AudioCommand::SetPatcherGraph(_) => "SetPatcherGraph",
@@ -433,6 +433,8 @@ pub struct SynthEngine {
     pub monitor_ring: Option<Arc<Mutex<Vec<f32>>>>,
     monitor_buf: Vec<f32>,
     monitor_idx: usize,
+    /// Nivå för direktlyssningen (0.0–1.0), satt med `SetMonitorLevel`.
+    monitor_level: f32,
     // Polyphonic WAV one-shot voices for the Channel Rack sample player
     pub sample_voices: [SampleVoice; MAX_SAMPLE_VOICES],
     pub sample_voice_cursor: usize,
@@ -485,6 +487,7 @@ impl SynthEngine {
             monitor_ring: None,
             monitor_buf: Vec::new(),
             monitor_idx: 0,
+            monitor_level: 1.0,
             sample_voices: std::array::from_fn(|_| SampleVoice::new()),
             sample_voice_cursor: 0,
             scheduled_notes: Vec::new(),
@@ -920,6 +923,9 @@ impl SynthEngine {
                 self.monitor_ring = Some(ring);
                 self.monitor_buf.clear();
                 self.monitor_idx = 0;
+            }
+            AudioCommand::SetMonitorLevel(level) => {
+                self.monitor_level = level.clamp(0.0, 1.0);
             }
             AudioCommand::SetAuditionParams {
                 volume,
@@ -1365,7 +1371,8 @@ impl SynthEngine {
         // 8c. Zero-latency microphone direct monitoring (post auto-tune).
         //     Drains the ring once per buffer and plays the mono signal on both
         //     channels, routed through the master bus so the limiter catches
-        //     peaks and the master volume controls the level.
+        //     peaks. Nivån kommer från MONITOR-ratten (`SetMonitorLevel`) — utan
+        //     egen nivå vore mastervolymen enda sättet att bryta en rundgång.
         if let Some(ring) = self.monitor_ring.as_ref() {
             if self.monitor_idx >= self.monitor_buf.len() {
                 self.monitor_buf.clear();
@@ -1377,7 +1384,7 @@ impl SynthEngine {
                 }
             }
             if self.monitor_idx < self.monitor_buf.len() {
-                let m = self.monitor_buf[self.monitor_idx];
+                let m = self.monitor_buf[self.monitor_idx] * self.monitor_level;
                 self.monitor_idx += 1;
                 stem_mix_l += m;
                 stem_mix_r += m;

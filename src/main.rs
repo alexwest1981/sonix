@@ -1,9 +1,26 @@
 mod audio;
 mod i18n;
+mod paths;
 mod ui;
 
 use audio::{AudioEngine, AudioSettings};
 use ui::SonixApp;
+
+/// `sonix --paths`: den kanoniska filkartan, utan att starta ljudmotor eller GUI.
+fn print_paths() {
+    let p = paths::paths();
+    println!("Sonix – filkarta (Fas 6.0)");
+    println!("  hem: {}", p.home().display());
+    println!();
+    for (label, path) in paths::table() {
+        let mark = if path.exists() { '✓' } else { '·' };
+        println!("  {mark} {label:<22} {}", path.display());
+    }
+    println!();
+    println!("  ✓ = finns   · = skapas vid behov");
+    println!("  Överstyr med SONIX_PROJECTS_DIR, SONIX_SAMPLES_DIR, SONIX_CONFIG_DIR,");
+    println!("  SONIX_DATA_DIR, SONIX_STATE_DIR, SONIX_CACHE_DIR (annars följs XDG).");
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Out-of-process plugin sandbox worker (Fas 4.5a): re-executed self with a
@@ -20,6 +37,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             return Ok(());
         }
+    }
+
+    // Filkartan skrivs ut före ljudmotorn så att kommandot fungerar utan ljudkort.
+    if std::env::args().any(|a| a == "--paths") {
+        print_paths();
+        return Ok(());
+    }
+
+    // Fas 6.0: flytta äldre platser hit FÖRST (ensure_dirs skapar annars ett tomt
+    // mål, vilket skulle blockera flytten), därefter skapa resten.
+    let path_notes = paths::migrate();
+    for (dir, err) in paths::paths().ensure_dirs() {
+        eprintln!("⚠ Kunde inte skapa {}: {err}", dir.display());
     }
 
     // Install a robust panic hook that logs detailed backtrace to stderr and /tmp/sonix_crash.log
@@ -99,6 +129,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         options,
         Box::new(move |_cc| {
             let mut app = SonixApp::new(engine);
+            // Fas 6.0: berätta en gång om något flyttades eller läses från en
+            // äldre plats — annars undrar användaren var filerna tog vägen.
+            if !path_notes.is_empty() {
+                for note in &path_notes {
+                    println!("{note}");
+                }
+                app.status_message = path_notes.join("   ");
+            }
             if !screenshot_dir.is_empty() {
                 println!("📸 Enabling automatic screenshot capture to: {}", screenshot_dir);
                 app.enable_screenshot_mode(std::path::Path::new(&screenshot_dir));

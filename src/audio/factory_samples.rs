@@ -906,8 +906,7 @@ pub fn generate_all_factory_samples() -> Vec<GeneratedSample> {
 }
 
 pub fn ensure_factory_samples_directory() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let dir = std::path::PathBuf::from(format!("{}/Music/Sonix/Factory_Samples", home));
+    let dir = crate::paths::paths().factory_samples_dir();
     let _ = std::fs::create_dir_all(&dir);
     dir
 }
@@ -924,15 +923,16 @@ pub struct ScannedSampleItem {
 }
 
 fn cache_fingerprint() -> String {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
+    let paths = crate::paths::paths();
     let roots = [
-        format!("{}/Music/Sonix/Factory_Samples", home),
-        format!("{}/Music/Sonix/Sample_Packs", home),
-        format!("{}/Music/Sonix/User_Samples", home),
+        paths.factory_samples_dir(),
+        paths.sample_packs_dir(),
+        paths.samples_dir(),
+        paths.legacy_samples_dir(),
     ];
     let mut fp = String::new();
     for r in roots {
-        fp.push_str(&r);
+        fp.push_str(&r.to_string_lossy());
         fp.push(':');
         fp.push_str(&std::fs::metadata(&r).map(|m| m.len()).unwrap_or(0).to_string());
         fp.push(';');
@@ -941,8 +941,8 @@ fn cache_fingerprint() -> String {
 }
 
 fn cache_path() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    std::path::PathBuf::from(format!("{}/Music/Sonix/library_cache.tsv", home))
+    // Flyttad till cachekatalogen i Fas 6.0 (var `~/Music/Sonix/library_cache.tsv`).
+    crate::paths::paths().library_cache_file()
 }
 
 fn write_library_cache(items: &[ScannedSampleItem]) {
@@ -1069,17 +1069,18 @@ fn perform_full_sample_scan() -> Vec<ScannedSampleItem> {
     }
     eprintln!("🧪 DSP klart på {:.1}s", scan_start.elapsed().as_secs_f32());
 
-    // 2. Scan Sample_Packs directory
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-    let pack_dirs = [
-        format!("{}/Music/Sonix/Sample_Packs", home),
-        format!("{}/Music/Sonix/User_Samples", home),
-    ];
+    // 2. Scan the user sample banks (canonical `Samples/` first, then the older
+    //    `User_Samples/`) plus imported sample packs. The canonical dir holds the
+    //    samples this app saves from the timeline, so it must be scanned —
+    //    otherwise they vanish from the browser on restart.
+    let paths = crate::paths::paths();
+    let mut pack_dirs = vec![paths.sample_packs_dir()];
+    pack_dirs.extend(paths.user_sample_dirs());
 
     for p_dir in &pack_dirs {
         let path = Path::new(p_dir);
         if path.exists() {
-            eprintln!("🧪 Skannar mapp: {}", p_dir);
+            eprintln!("🧪 Skannar mapp: {}", p_dir.display());
             scan_dir_recursive(path, &mut results);
             eprintln!("🧪 Klar mapp ({:.1}s, totalt {} samplar)", scan_start.elapsed().as_secs_f32(), results.len());
         }

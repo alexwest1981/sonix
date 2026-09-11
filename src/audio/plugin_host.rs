@@ -139,13 +139,11 @@ pub struct PluginManager {
     pub manual_import_category_idx: usize,
 }
 
+/// Expanderar ett inledande `~/` mot hemkatalogen. All sökvägslogik bor i
+/// [`crate::paths`] (Fas 6.0); denna wrapper finns för att plugin-koden ska
+/// slippa importera modulen överallt.
 fn expand_tilde(path: &str) -> PathBuf {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Ok(home) = std::env::var("HOME") {
-            return PathBuf::from(home).join(stripped);
-        }
-    }
-    PathBuf::from(path)
+    crate::paths::expand_tilde(path)
 }
 
 impl Default for PluginManager {

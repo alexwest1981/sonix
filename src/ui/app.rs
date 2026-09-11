@@ -668,6 +668,8 @@ pub struct SonixApp {
     /// Monitor ring currently registered with the audio engine (re-sent after
     /// every reconfigure, which recreates the synth engine).
     pub monitor_ring_sent: Option<std::sync::Arc<std::sync::Mutex<Vec<f32>>>>,
+    /// Senast skickade monitor-nivå (så kommandon inte spammas varje frame).
+    pub monitor_level_sent: Option<f32>,
     pub stem_import_progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
     pub project_load_progress: std::sync::Arc<std::sync::Mutex<ProjectLoadProgress>>,
     // Transport & Clock
@@ -1067,20 +1069,20 @@ fn channel_sample_trigger_command(ch: &ChannelStrip, note: u8, velocity: f32) ->
 }
 
 fn ui_dbg(msg: &str) {
+    let paths = crate::paths::paths();
     let on = std::env::var("SONIX_AUDIO_DEBUG").is_ok()
-        || std::env::var("HOME")
-            .ok()
-            .map(|h| std::path::Path::new(&h).join("Music/Sonix/debug_on").exists())
-            .unwrap_or(false);
+        || paths.debug_marker_file().exists()
+        || paths.legacy_library_file("debug_on").exists();
     if !on {
         return;
     }
-    if let Ok(home) = std::env::var("HOME") {
-        let path = std::path::Path::new(&home).join("Music/Sonix/audio_debug.log");
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
-            use std::io::Write;
-            let _ = writeln!(f, "[{}] UI: {}", std::process::id(), msg);
-        }
+    let path = paths.log_file("audio_debug.log");
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(path) {
+        use std::io::Write;
+        let _ = writeln!(f, "[{}] UI: {}", std::process::id(), msg);
     }
 }
 
@@ -1253,6 +1255,7 @@ impl SonixApp {
         let mut app = Self {
             engine,
             monitor_ring_sent: None,
+            monitor_level_sent: None,
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),
             is_playing: false,
@@ -1405,8 +1408,7 @@ impl SonixApp {
             render_progress: 0.0,
             render_queue_status: crate::i18n::t("Klar för rendering").to_string(),
             export_folder: {
-                let home = std::env::var("HOME").unwrap_or_else(|_| "/home/alex".to_string());
-                format!("{}/Music/Sonix/Exporterat", home)
+                crate::paths::paths().exports_dir().to_string_lossy().to_string()
             },
             export_base_name: crate::i18n::t("Min_Låt").to_string(),
             export_metadata: crate::audio::ExportMeta::default(),
@@ -1430,8 +1432,11 @@ impl SonixApp {
             project_name: crate::i18n::t("Namnlöst Projekt").to_string(),
             show_suno_import_modal: false,
             detected_suno_zips: Vec::new(),
-            custom_stem_path_input: "/home/alex/Music".to_string(),
-            custom_project_path_input: "/home/alex/Music/Sonix/Projects".to_string(),
+            custom_stem_path_input: crate::paths::paths().music_dir().to_string_lossy().to_string(),
+            custom_project_path_input: crate::paths::paths()
+                .projects_dir()
+                .to_string_lossy()
+                .to_string(),
             pending_file_dialog_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
             is_file_dialog_active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             // Selected Audio Region Inspector & Drag-to-Edit State
@@ -2062,12 +2067,8 @@ impl SonixApp {
         let reg_len_sec = (region.length_bars * sec_per_bar).max(0.05);
         let reg_offset_sec = region.sample_offset_sec.max(0.0);
 
-        // Determine destination folder ~/Music/Sonix/Samples or fallback
-        let save_dir = if let Ok(home) = std::env::var("HOME") {
-            std::path::PathBuf::from(home).join("Music").join("Sonix").join("Samples")
-        } else {
-            std::path::PathBuf::from("samples")
-        };
+        // Destination: the canonical user sample bank (Fas 6.0).
+        let save_dir = crate::paths::paths().samples_dir();
         let _ = std::fs::create_dir_all(&save_dir);
 
         // Sanitize name for file
@@ -2605,12 +2606,15 @@ impl SonixApp {
     }
 
     pub fn save_project(&mut self, name: &str) {
-        let clean_name = if name.trim().is_empty() { crate::i18n::t("Namnlöst Projekt") } else { name.trim() };
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-        let dir = std::path::PathBuf::from(home).join("Music/Sonix/Projects");
+        let clean_name = if name.trim().is_empty() {
+            crate::i18n::t("Namnlöst Projekt")
+        } else {
+            name.trim()
+        };
+        let dir = crate::paths::paths().projects_dir();
         let _ = std::fs::create_dir_all(&dir);
 
-        let file_path = dir.join(format!("{}.sonix", clean_name.replace('/', "_")));
+        let file_path = crate::paths::paths().project_file(clean_name);
         let saved_tracks: Vec<SavedTrackData> = self.playlist_tracks.iter().map(|t| SavedTrackData {
             name: t.name.clone(),
             volume: t.volume,
@@ -4867,6 +4871,15 @@ impl SonixApp {
             let _ = self.engine.send_command(AudioCommand::SetMonitorRing { ring: r.clone() });
             self.monitor_ring_sent = Some(r);
         }
+        // Egen nivå för direktlyssningen: med den kan rundgång brytas utan att
+        // sänka mastervolymen (som tidigare var enda reglaget).
+        let level = self.vocal_studio.monitor_level.clamp(0.0, 1.0);
+        if self.monitor_level_sent != Some(level) {
+            let _ = self
+                .engine
+                .send_command(AudioCommand::SetMonitorLevel(level));
+            self.monitor_level_sent = Some(level);
+        }
         self.vocal_studio.sync_live_effects(
             self.vocal_studio.realtime_autotune,
             self.vocal_harmonizer.autotune_speed,
@@ -4881,6 +4894,7 @@ impl SonixApp {
     /// recreates the `SynthEngine` from scratch.
     fn resync_engine_after_reconfigure(&mut self) {
         self.monitor_ring_sent = None;
+        self.monitor_level_sent = None;
         let _ = self.engine.send_command(AudioCommand::SetWaveform(self.waveform));
         let _ = self.engine.send_command(AudioCommand::SetAdsr(self.adsr));
         let _ = self.engine.send_command(AudioCommand::SetFilter(self.filter));
@@ -11363,7 +11377,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         let fmt = Self::EXPORT_FORMATS[fmt_idx];
         let sample_rate = self.export_sample_rate();
         let folder = if self.export_folder.trim().is_empty() {
-            "/home/alex/Projects/sonix/exports".to_string()
+            crate::paths::paths().exports_dir().to_string_lossy().to_string()
         } else {
             self.export_folder.trim().to_string()
         };
@@ -11469,12 +11483,12 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
 
     pub fn scan_for_suno_stems(&mut self) {
         let mut results = Vec::new();
-        let home = std::env::var("HOME").unwrap_or_else(|_| "/home/alex".to_string());
-        let scan_dirs = [
-            format!("{}/Music", home),
-            format!("{}/Downloads", home),
-            "./imported_stems".to_string(),
-        ];
+        let scan_dirs: Vec<String> = crate::paths::paths()
+            .scan_dirs()
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .chain(std::iter::once("./imported_stems".to_string()))
+            .collect();
 
         for dir in &scan_dirs {
             if let Ok(entries) = std::fs::read_dir(dir) {
@@ -12194,10 +12208,16 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 });
 
                 ui.add_space(8.0);
-                ui.label(egui::RichText::new(crate::i18n::t("📂 SPARADE PROJEKT (~/Music/Sonix/Projects):")).strong().color(Theme::FL_CYAN));
-
-                let home = std::env::var("HOME").unwrap_or_else(|_| ".".to_string());
-                let projects_dir = std::path::PathBuf::from(home).join("Music/Sonix/Projects");
+                let projects_dir = crate::paths::paths().projects_dir();
+                ui.label(
+                    egui::RichText::new(format!(
+                        "{} {}",
+                        crate::i18n::t("📂 SPARADE PROJEKT:"),
+                        projects_dir.display()
+                    ))
+                    .strong()
+                    .color(Theme::FL_CYAN),
+                );
                 let mut saved_files = Vec::new();
                 if let Ok(entries) = std::fs::read_dir(&projects_dir) {
                     for entry in entries.flatten() {
@@ -13817,8 +13837,10 @@ mod tests {
 
     #[test]
     fn test_vagen_hit_project_loads_with_colors_and_mic_track() {
-        let path = "/home/alex/Music/Sonix/Projects/Vägen hit.sonix";
-        if let Ok(content) = std::fs::read_to_string(path) {
+        // Maskinoberoende: läser projektet ur den kanoniska projektmappen om det
+        // finns (hoppar över annars).
+        let path = crate::paths::paths().project_file("Vägen hit");
+        if let Ok(content) = std::fs::read_to_string(&path) {
             let data: SonixProjectData = serde_json::from_str(&content).expect("Valid JSON");
             assert_eq!(data.tracks.len(), 10, "Original file has 10 tracks");
 
