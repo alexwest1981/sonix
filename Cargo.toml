@@ -27,9 +27,15 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 flacenc = "0.5"
-alsa = "0.9"
 ureq = "2"
 ort = { version = "2.0.0-rc.13", optional = true }
 libloading = { version = "0.8", optional = true }
 libc = { version = "0.2", optional = true }
+
+# ALSA är Linux-only: MIDI-klaviatur och MCU tar emot noter via ALSA-sequencern
+# (Fas 7.1). Beroendet ligger därför bara på Linux, så att kratet kan byggas och
+# checkas på andra plattformar — där svarar i stället stubbarna i
+# `midi_input.rs` och `hardware_control.rs` med ett begripligt fel.
+[target.'cfg(target_os = "linux")'.dependencies]
+alsa = "0.9"
 

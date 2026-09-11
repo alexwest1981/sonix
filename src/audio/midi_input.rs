@@ -1,3 +1,4 @@
+#[cfg(target_os = "linux")]
 use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
@@ -48,6 +49,28 @@ pub struct MidiKeyboardInput {
     join: Option<JoinHandle<()>>,
 }
 
+#[cfg(not(target_os = "linux"))]
+impl MidiKeyboardInput {
+    /// På andra plattformar än Linux finns ingen ALSA-sequencer. Stubben svarar
+    /// med ett begripligt fel i stället för att kratet inte ska gå att bygga —
+    /// porten till `midir` är en egen uppgift i Fas 7.1.
+    pub fn connect(_tx: Sender<ControlEvent>) -> Result<Self, String> {
+        Err(
+            "MIDI-klaviatur kräver ALSA-sequencern, som bara finns på Linux i den här versionen"
+                .to_string(),
+        )
+    }
+
+    pub fn received(&self) -> usize {
+        0
+    }
+
+    pub fn device_list(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+#[cfg(target_os = "linux")]
 impl MidiKeyboardInput {
     pub fn connect(tx: Sender<ControlEvent>) -> Result<Self, String> {
         use alsa::seq::{PortCap, PortType, Seq};

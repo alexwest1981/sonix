@@ -223,6 +223,31 @@ pub struct McuInput {
     join: Option<JoinHandle<()>>,
 }
 
+#[cfg(not(target_os = "linux"))]
+impl McuInput {
+    /// MCU-protokollet går över ALSA-sequencern, som bara finns på Linux. Stubben
+    /// svarar med ett begripligt fel i stället för att kratet inte ska gå att
+    /// bygga — porten är en egen uppgift i Fas 7.1.
+    ///
+    /// OSC fungerar däremot överallt: det är UDP (`OscServer`) och har ingen
+    /// plattformsbunden kod.
+    pub fn connect(_tx: Sender<ControlEvent>) -> Result<Self, String> {
+        Err(
+            "MCU-kontroll kräver ALSA-sequencern, som bara finns på Linux i den här versionen"
+                .to_string(),
+        )
+    }
+
+    pub fn received(&self) -> usize {
+        0
+    }
+
+    pub fn device_list(&self) -> Vec<String> {
+        Vec::new()
+    }
+}
+
+#[cfg(target_os = "linux")]
 impl McuInput {
     /// Opens an ALSA sequencer input port. External controllers connect to
     /// "Sonix MCU In" (e.g. with `aconnect`).
@@ -331,6 +356,7 @@ impl Drop for McuInput {
     }
 }
 
+#[cfg(target_os = "linux")]
 fn mcu_note_to_event(n: alsa::seq::EvNote, is_on: bool) -> Option<ControlEvent> {
     match n.note {
         94 => Some(ControlEvent::Play(is_on)),
@@ -344,6 +370,7 @@ fn mcu_note_to_event(n: alsa::seq::EvNote, is_on: bool) -> Option<ControlEvent> 
     }
 }
 
+#[cfg(target_os = "linux")]
 fn mcu_cc_to_event(c: alsa::seq::EvCtrl, is_bend: bool) -> Option<ControlEvent> {
     if is_bend {
         // MCU motor faders: 14-bit pitch bend on channels 0..7 -> track volume.

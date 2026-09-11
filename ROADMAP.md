@@ -394,10 +394,25 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 > **Varför:** FL Studio finns på Windows och macOS. Så länge Sonix är Linux-only kan den inte tävla som produkt — bara vara bäst i en nisch. `cpal` och `egui` är redan plattformsoberoende; det som låser är ALSA-MIDI (`midi_input.rs`), X11-pluginfönstret (`plugin_gui.rs`) och paketeringen (`install.sh`).
 
-- [ ] **7.1 Bryt ut ALSA/X11 till backend-gränssnitt och porta mot Windows** — *XL*
+- [ ] **7.1 Bryt ut ALSA/X11 till backend-gränssnitt och porta mot Windows** — *XL* — **steg 1 klart, mätningen pågår i CI**
   - **Gör:** Inför traits för ljud-, MIDI- och plugin-fönsterbackend (ALSA → cpal/WASAPI/CoreAudio, ALSA-seq → `midir`, X11 → HWND/NSView) med Linux-vägen som första implementation.
   - **Klart när:** `cargo check --target x86_64-pc-windows-msvc` passerar för allt utom plugin-GUI:t, och en Windows-build startar, spelar upp ljud och tar emot MIDI.
-  - **Filer:** `Cargo.toml`, `src/audio/engine.rs`, `src/audio/midi_input.rs`, `src/audio/plugin_gui.rs`, `src/main.rs`, `install.sh`
+  - **Uppmätt nuläge (2026-09-11):** Windows-målet installerades och en riktig korscheck kördes. Två hinder, i tur och ordning:
+    1. **`alsa-sys` byggskript** föll direkt — pkg-config kan inte korskompilera, och ALSA finns inte på Windows. `alsa` var ett **ovillkorligt** beroende, så kratet kunde inte ens påbörja checken för målet.
+    2. **`ring` byggskript** (via `ureq`/rustls) kräver en Windows-kompilator. Det är alltså **inte** vår kod: en korscheck från Linux kan inte komma förbi det, hur ren porteringen än är.
+  - **Slutsats om verifieringen:** kriteriet kan inte mätas med en korscheck härifrån. Det mäts i stället på en **riktig Windows-runner** i CI (`windows-latest`, där MSVC finns) — ett nytt jobb som är **icke-blockerande** medan porten pågår, så att det visar hur långt den kommer i stället för att gissa. När allt utom plugin-GUI:t checkar flyttas jobbet in i den blockerande kön.
+  - **Steg 1 klart (2026-09-11):**
+    - `alsa` ligger nu under `[target.'cfg(target_os = "linux")'.dependencies]` — beroendet finns bara där det behövs, och `Cargo.lock` är oförändrad.
+    - **`MidiKeyboardInput` och `McuInput` är gated per plattform:** Linux-vägen är orörd (samma ALSA-sequencer), och på andra plattformar finns en **stubbe som svarar med ett begripligt fel** ("MIDI-klaviatur kräver ALSA-sequencern, som bara finns på Linux i den här versionen") i stället för att kratet inte ska gå att bygga. `note_to_roll_offset` (ren funktion, används av inspelningen) ligger kvar ogated, och det gör **OSC också** — det är UDP och fungerar alltså på alla plattformar redan nu.
+    - Linux oförändrat: **258 tester, 0 varningar**, `cargo check --locked` rent.
+    - Efter det: korschecken faller bara på `ring` — alltså inget av vår egen kod och inget ALSA kvar.
+  - **Kvar (nästa steg, i tur och ordning):**
+    1. **Läs Windows-jobbets fellista** och åtgärda det den visar (det är den riktiga mätningen; jag gissar inte vilka fel som återstår).
+    2. **Porta MIDI-in till `midir`** i stället för ALSA-seq, så att stubbarna kan ersättas av en riktig implementation även på Windows/macOS.
+    3. **`paths.rs`:** i dag byggs sökvägarna som XDG-kataloger med `$HOME`-fallback — på Windows fungerar det (allt hamnar under användarens hemkatalog) men det är inte plattformens egen layout (`%APPDATA%`/`%LOCALAPPDATA%`).
+    4. **`xdg-open`** (två ställen: visa projektmappen, plugin-mappen) bör bli `explorer`/`open` per plattform. Felen hanteras redan, så det är kosmetiskt.
+    5. **Plugin-GUI:t** (X11) är undantaget i kriteriet, men `plugin-host`-featuren bör ändå gatas så att den *säger* att den är Linux-only i stället för att falla på `libc`/X11.
+  - **Filer:** `Cargo.toml`, `src/audio/midi_input.rs`, `src/audio/hardware_control.rs`, `.github/workflows/ci.yml`
   - **Beroende:** 6.1–6.3 (data-säkerhet och projekt-I/O ska vara stabilt innan portering)
 
 - [x] **7.2 Realtidsmätning i CI (xruns, latens, CPU-skalning)** — *M* ✅
