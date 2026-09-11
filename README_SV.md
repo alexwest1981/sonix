@@ -24,7 +24,7 @@ Sonix är en inhemsk Linux-DAW skriven i **Rust** och **egui**. Du kör den geno
 
 - 64-bitars Linux med en ljudserver i gång — **PipeWire** (rekommenderas), **JACK** eller **ALSA**.
 - **Rust** (stable, edition 2024) plus en C-kompilator.
-- Ett par körtidsverktyg som används av vissa funktioner: `zenity` (fildialoger) och `unzip` (Suno ZIP-import). Båda valfria.
+- Ett körtidsverktyg som används av en viss funktion: `unzip` (Suno ZIP-import). Valfritt. Fildialogerna kommer sedan Fas 7.1 från skrivbordets egen portal (`xdg-desktop-portal`, installerad med de flesta skrivbordsmiljöer) — `zenity` behövs inte längre.
 - Valfritt, för Windows-VST: **yabridge** + **Wine**.
 
 Installera förutsättningarna:
@@ -32,21 +32,21 @@ Installera förutsättningarna:
 **Omarchy / Arch Linux:**
 
 ```bash
-sudo pacman -S --needed base-devel alsa-lib zenity unzip rustup
+sudo pacman -S --needed base-devel alsa-lib unzip rustup
 rustup default stable
 ```
 
 **Debian / Ubuntu:**
 
 ```bash
-sudo apt install build-essential libasound2-dev zenity unzip curl
+sudo apt install build-essential libasound2-dev unzip curl
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install gcc-c++ alsa-lib-devel zenity unzip curl
+sudo dnf install gcc-c++ alsa-lib-devel unzip curl
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 

@@ -26,7 +26,7 @@ Sonix is a native Linux DAW written in **Rust** and **egui**. You run it by buil
 
 - 64-bit Linux with a running audio server — **PipeWire** (recommended), **JACK** or **ALSA**.
 - **Rust** (stable, edition 2024) plus a C toolchain.
-- A couple of runtime helpers used by specific features: `zenity` (file dialogs) and `unzip` (Suno ZIP import). Both optional.
+- One runtime helper used by a specific feature: `unzip` (Suno ZIP import). Optional. File dialogs have come from the desktop's own portal since Fas 7.1 (`xdg-desktop-portal`, installed with most desktop environments) — `zenity` is no longer needed.
 - Optional, for Windows VSTs: **yabridge** + **Wine**.
 
 Install the prerequisites:
@@ -34,21 +34,21 @@ Install the prerequisites:
 **Omarchy / Arch Linux:**
 
 ```bash
-sudo pacman -S --needed base-devel alsa-lib zenity unzip rustup
+sudo pacman -S --needed base-devel alsa-lib unzip rustup
 rustup default stable
 ```
 
 **Debian / Ubuntu:**
 
 ```bash
-sudo apt install build-essential libasound2-dev zenity unzip curl
+sudo apt install build-essential libasound2-dev unzip curl
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 **Fedora:**
 
 ```bash
-sudo dnf install gcc-c++ alsa-lib-devel zenity unzip curl
+sudo dnf install gcc-c++ alsa-lib-devel unzip curl
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 

@@ -376,10 +376,6 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "↗ Exportera projekt (Ctrl+E)" => "↗ Export Project (Ctrl+E)",
         "🚪 Avsluta" => "🚪 Quit",
         "🎚 Mixerändring" => "🎚 Mixer change",
-        "⚠ Kunde inte öppna filväljaren (zenity): {}. Importera i stället via menyn eller genom att dra filen hit." =>
-            "⚠ Could not open the file picker (zenity): {}. Import from the menu instead, or drop the file here.",
-        "⚠ Filväljaren avslutades utan fil (zenity{})" =>
-            "⚠ The file picker closed without a file (zenity{})",
 
         // --- Fas 6.4: tagning, kvantisering och humanisering ---
         "🎯 Kvantisera" => "🎯 Quantize",

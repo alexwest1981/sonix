@@ -312,11 +312,15 @@ pub fn render_vocal_studio_view(
                                     egui::Button::new(egui::RichText::new(crate::i18n::t("📂 Importera Fil")).size(10.5).color(Color32::WHITE))
                                         .fill(Color32::from_rgb(45, 90, 120)),
                                 ).on_hover_text(crate::i18n::t("Ladda in extern WAV/Audio-fil som tagning")).clicked() {
-                                    let output = std::process::Command::new("zenity")
-                                        .args(["--file-selection", "--file-filter=*.wav *.mp3 *.flac *.ogg", crate::i18n::t("--title=Välj Ljudfil")])
-                                        .output();
-                                    if let Ok(out) = output && out.status.success() {
-                                        let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                                    // Plattformens egen dialog (rfd). Anropet är
+                                    // synkront, precis som zenity var — en modal
+                                    // filväljare håller kvar tills användaren svarat.
+                                    let picked = rfd::FileDialog::new()
+                                        .set_title(crate::i18n::t("Välj Ljudfil"))
+                                        .add_filter("Ljudfiler", &["wav", "mp3", "flac", "ogg"])
+                                        .pick_file();
+                                    if let Some(picked) = picked {
+                                        let path = picked.to_string_lossy().into_owned();
                                         if !path.is_empty() {
                                             if let Ok((l, _, sr)) = crate::audio::load_wav_pcm(&path) {
                                                 let p = std::path::Path::new(&path);

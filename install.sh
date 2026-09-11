@@ -118,7 +118,9 @@ alsa_dev_ok() {
 }
 
 # Packages from official package sources. Groups: build dependencies (must be
-# present to compile) and tools (zenity/unzip are needed by the app at runtime).
+# present to compile) and tools (unzip is needed by the app at runtime; the file
+# dialogs come from the desktop's own portal since Fas 7.1, so zenity is no
+# longer needed).
 build_pkgs_for() {
     case "$1" in
         pacman) echo "base-devel alsa-lib" ;;
@@ -127,7 +129,7 @@ build_pkgs_for() {
     esac
 }
 tool_pkgs_for() {
-    echo "zenity unzip curl git"
+    echo "unzip curl git"
 }
 
 pm_install() {
@@ -153,7 +155,7 @@ step_deps() {
         missing_build=1
     fi
     local t
-    for t in zenity unzip curl git; do
+    for t in unzip curl git; do
         if ! has_cmd "$t"; then
             missing_tools=1
             break
@@ -182,15 +184,15 @@ step_deps() {
                 if confirm "Install missing tools via '${pm}' (official package sources)?"; then
                     pm_install "$pm" "$(tool_pkgs_for)"
                 else
-                    info "   Skipped – zenity/unzip are needed by the app at runtime."
+                    info "   Skipped – unzip is needed by Suno ZIP import at runtime."
                 fi
             else
-                info "Tools (zenity, unzip, curl, git) are already present."
+                info "Tools (unzip, curl, git) are already present."
             fi
             ;;
         unknown)
             echo "   ⚠️  Unknown distribution – cannot install automatically."
-            echo "   Install manually from official channels: Rust + C compiler + ALSA development library (+ zenity, unzip)."
+            echo "   Install manually from official channels: Rust + C compiler + ALSA development library (+ unzip)."
             ;;
     esac
 

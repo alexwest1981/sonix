@@ -28,6 +28,10 @@ serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 flacenc = "0.5"
 ureq = "2"
+# Plattformens egen filväljare: Windows/macOS inbyggda dialoger och XDG-portalen
+# på Linux. Ersätter `zenity` (Fas 7.1) — standardfeatures använder portalen, inte
+# GTK3, så inga GTK-dev-huvuden behövs för att bygga.
+rfd = "0.15"
 ort = { version = "2.0.0-rc.13", optional = true }
 libloading = { version = "0.8", optional = true }
 libc = { version = "0.2", optional = true }

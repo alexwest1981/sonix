@@ -1441,10 +1441,6 @@ pub struct SonixApp {
     pub custom_stem_path_input: String,
     pub custom_project_path_input: String,
     pub pending_file_dialog_result: std::sync::Arc<std::sync::Mutex<Option<String>>>,
-    /// Fylls av filväljartråden när den inte kunde öppnas alls (t.ex. saknad
-    /// `zenity`). Läses av nästa bildruta och hamnar i statusraden — en
-    /// filväljare som tiger är värre än ett tydligt fel (Fas 7.1).
-    pub pending_file_dialog_error: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     pub is_file_dialog_active: std::sync::Arc<std::sync::atomic::AtomicBool>,
     // Selected Audio Region Inspector & Drag-to-Edit State
     pub selected_audio_region: Option<(usize, usize)>,
@@ -2081,7 +2077,6 @@ impl SonixApp {
                 .to_string_lossy()
                 .to_string(),
             pending_file_dialog_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
-            pending_file_dialog_error: std::sync::Arc::new(std::sync::Mutex::new(None)),
             is_file_dialog_active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             // Selected Audio Region Inspector & Drag-to-Edit State
             selected_audio_region: None,
@@ -2981,46 +2976,34 @@ impl SonixApp {
         self.status_message = crate::tstatus!("🎙 Öppnade region '{}' i Sångstudion (Tagning {})!", r_name, new_take_idx + 1);
     }
 
-    pub fn spawn_async_file_picker(&self, filter: &'static str, title: &'static str) {
+    /// Öppnar plattformens egen filväljare i en egen tråd, så att appen fortsätter
+    /// rita medan dialogen är uppe.
+    ///
+    /// `label` är vad filtret heter i dialogen och `extensions` är filändelserna
+    /// **utan punkt** (`["wav", "mp3"]`). Både skiftlägen tas med där äldre
+    /// filter listade dem, eftersom filtreringen är skiftlägeskänslig på vissa
+    /// plattformar.
+    ///
+    /// En dialog som inte kunde öppnas ger `None`, precis som en avbruten dialog —
+    /// rfd lämnar ingen felorsak. Det är därför ingen skillnad görs här.
+    pub fn spawn_async_file_picker(
+        &self,
+        label: &'static str,
+        extensions: &'static [&'static str],
+        title: &'static str,
+    ) {
         let active = self.is_file_dialog_active.clone();
         let target = self.pending_file_dialog_result.clone();
-        let trouble = self.pending_file_dialog_error.clone();
         if !active.swap(true, std::sync::atomic::Ordering::SeqCst) {
             std::thread::spawn(move || {
-                let output = std::process::Command::new("zenity")
-                    .args(["--file-selection", filter, &format!("--title={}", title)])
-                    .output();
-                match &output {
-                    Err(e) => {
-                        if let Ok(mut slot) = trouble.lock() {
-                            *slot = Some(crate::tstatus!(
-                                "⚠ Kunde inte öppna filväljaren (zenity): {}. Importera i stället via menyn eller genom att dra filen hit.",
-                                e
-                            ));
-                        }
-                    }
-                    Ok(out) if !out.status.success() => {
-                        if let Ok(mut slot) = trouble.lock() {
-                            let why = String::from_utf8_lossy(&out.stderr).trim().to_string();
-                            *slot = Some(crate::tstatus!(
-                                "⚠ Filväljaren avslutades utan fil (zenity{})",
-                                if why.is_empty() {
-                                    String::new()
-                                } else {
-                                    format!(": {}", why)
-                                }
-                            ));
-                        }
-                    }
-                    Ok(_) => {}
-                }
-                if let Ok(out) = output && out.status.success() {
-                    let path = String::from_utf8_lossy(&out.stdout).trim().to_string();
-                    if !path.is_empty() {
-                        if let Ok(mut lock) = target.lock() {
-                            *lock = Some(path);
-                        }
-                    }
+                let picked = rfd::FileDialog::new()
+                    .set_title(title)
+                    .add_filter(label, extensions)
+                    .pick_file();
+                if let Some(path) = picked
+                    && let Ok(mut lock) = target.lock()
+                {
+                    *lock = Some(path.to_string_lossy().into_owned());
                 }
                 active.store(false, std::sync::atomic::Ordering::SeqCst);
             });
@@ -6329,13 +6312,6 @@ impl eframe::App for SonixApp {
             }
         }
 
-        // Kunde filväljaren inte ens öppnas? Säg det i stället för att tiga.
-        if let Ok(mut lock) = self.pending_file_dialog_error.try_lock()
-            && let Some(why) = lock.take()
-        {
-            self.status_message = why;
-        }
-
         // Check for async file dialog results
         let mut picked_file = None;
         if let Ok(mut lock) = self.pending_file_dialog_result.try_lock() {
@@ -7224,7 +7200,11 @@ impl eframe::App for SonixApp {
                             if actions.request_separation {
                                 self.pending_stem_separation = true;
                                 self.spawn_async_file_picker(
-                                    "--file-filter=Ljudfiler | *.wav *.WAV *.mp3 *.MP3 *.flac *.FLAC *.ogg *.OGG *.m4a *.aiff",
+                                    "Ljudfiler",
+                                    &[
+                                        "wav", "WAV", "mp3", "MP3", "flac", "FLAC", "ogg", "OGG",
+                                        "m4a", "aiff",
+                                    ],
                                     "Välj mix att separera i stämspår",
                                 );
                             }
@@ -10396,7 +10376,8 @@ impl SonixApp {
         if let Some(tmpl) = import_req {
             self.pending_add_track_import = Some(tmpl);
             self.spawn_async_file_picker(
-                "--file-filter=*.wav",
+                "WAV",
+                &["wav", "WAV"],
                 crate::i18n::t("Välj ljudfil (WAV) att importera"),
             );
         }
@@ -13488,7 +13469,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     ui.separator();
                     ui.horizontal(|ui| {
                         if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📁 Välj ZIP-fil från datorn...")).strong().size(11.5).color(Color32::WHITE)).fill(Color32::from_rgb(60, 90, 150))).clicked() {
-                            self.spawn_async_file_picker("--file-filter=*.zip", crate::i18n::t("Välj ZIP Stempaket"));
+                            self.spawn_async_file_picker("Stempaket", &["zip"], crate::i18n::t("Välj ZIP Stempaket"));
                         }
 
                         ui.separator();
@@ -13854,7 +13835,11 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                         close = true;
                     }
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📂 Välj .sonix från datorn...")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(60, 90, 150))).clicked() {
-                        self.spawn_async_file_picker("--file-filter=*.sonix", crate::i18n::t("Välj Sonix Projektfil (.sonix)"));
+                        self.spawn_async_file_picker(
+                            "Sonix-projekt",
+                            &["sonix"],
+                            crate::i18n::t("Välj Sonix Projektfil (.sonix)"),
+                        );
                     }
                     if ui.button(egui::RichText::new(crate::i18n::t("🎼 Importera Suno ZIP...")).strong().color(Theme::FL_ORANGE)).clicked() {
                         show_suno = true;
