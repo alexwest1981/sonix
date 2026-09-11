@@ -219,7 +219,7 @@ En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, gener
 
 **Helhetsbedömning:** ungefär **90–95 %** av funktionerna som utlovas i gränssnittet är genuint implementerade och inkopplade i ljudmotorn. Den största kvarvarande delen är **plugin-hosting** (CLAP, **VST3 och VST2**-laddning + parameterinspektion + per-spår-ljudprocessning med PDC + state-sparning + CLAP-GUI i eget X11-fönster + separat-process-sandbox med krasch/omstart och delat-minne-ljudtransport fungerar opt-in; LV2, MIDI-instrument-routing och att verifiera en riktig Wine/yabridge-brygga återstår); neural stem-separation är byggd (opt-in `--features neural` + en egen HTDemucs-ONNX).
 
-Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finns i **[ROADMAP.md](ROADMAP.md)**.
+Den fullständiga, prioriterade utvecklingsplanen med avbockningsbara faser finns i **[ROADMAP.md](ROADMAP.md)**. En komplett katalog över alla inbyggda effekter, kanalprocessorer och instrument — med vad var och en gör och dess rattar — finns i **[PLUGINS.md](PLUGINS.md)**.
 
 ---
 

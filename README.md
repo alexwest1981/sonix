@@ -221,7 +221,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 
 **Overall:** roughly **90–95 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine. The largest outstanding piece is **plugin hosting** (CLAP, **VST3 and VST2** load + parameter inspection + per-track audio processing with PDC + state save-load + CLAP GUI in its own X11 window + separate-process sandbox with crash restart and shared-memory audio transport work opt-in; LV2, MIDI instrument routing and verifying a real Wine/yabridge bridge remain); neural stem separation is implemented (opt-in `--features neural` + a user-supplied HTDemucs ONNX).
 
-The full, prioritised development plan with check-off phases lives in **[ROADMAP.md](ROADMAP.md)**.
+The full, prioritised development plan with check-off phases lives in **[ROADMAP.md](ROADMAP.md)**. A complete catalogue of every built-in effect, channel processor and instrument — with what each one does and its controls — lives in **[PLUGINS.md](PLUGINS.md)**.
 
 ---
 

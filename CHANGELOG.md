@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   semitones in real time while keeping the formants in place, at 1-cent
   resolution. Holding Shift fine-tunes; double-click resets to 0. Offline
   export applies the same shift.
+- **[PLUGINS.md](PLUGINS.md)** — a complete catalogue of every built-in Sonix
+  effect, channel processor and instrument (FX Rack pedals, per-track strip,
+  master bus utilities, Vocal Studio, synth/drum/patcher, plugin host), what
+  each one does and its controls, linked from both READMEs.
 
 ### Changed
 
