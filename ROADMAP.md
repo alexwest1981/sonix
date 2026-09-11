@@ -301,10 +301,23 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/audio/smf.rs` (ny), `src/audio/mod.rs`, `src/ui/app.rs`, `src/i18n.rs`
   - **Beroende:** —
 
-- [ ] **6.4 Kvantisering & humanisering av inspelad MIDI** — *S*
-  - **Gör:** Kvantisera valda noter till valfritt rutnät (1/4 … 1/32, trioler) med styrka (0–100 %) och swing, plus humanisering (tid/velocity). Efterarbetet på MIDI-inspelningen som finns sedan 5.3 men ännu saknas.
-  - **Klart när:** Inspelade noter kan kvantiseras/humaniseras, ändringen är hörbar, ångringsbar och testad (tid + velocity).
-  - **Filer:** `src/ui/app.rs`, `src/audio/midi_input.rs`, `src/i18n.rs`
+- [ ] **6.4 Kvantisering & humanisering av inspelad MIDI** — *S* (visade sig vara **M**) — **steg 1 av 2 klart**
+  - **Varför den blev större:** Live-inspelningen kvantiserar redan **vid inmatningen** — `record_midi_note_at_step` skriver noten vid steggränsen, så tidpunkten *inom* steget kastades, och något per-not-anslag fanns inte. Det fanns alltså ingen otajt data att kvantisera i efterhand; tagningen måste börja sparas först.
+  - **Steg 1 klart (2026-09-11):** ny modul **`src/midi_take.rs`** — tagningen som ren data (position i takt i *steg*, notnummer, anslag):
+    - `quantize(strength, swing)` drar varje not mot sin **närmaste** rutnätslinje (både bakåt och framåt, det är därför `quantize_moves_to_the_nearest_line_in_both_directions` finns), och svängen flyttar udda 16-delar framåt (triolkänsla vid 1.0). Använder **projektets** sväng.
+    - `humanize(timing, velocity, seed)` lägger på medveten mänsklig variation. Slumptalet är en egen liten xorshift **med frö**, så samma tagning + frö ger samma resultat — annars vore funktionen omöjlig att testa. Fröet räknas upp vid varje tryck, så två tryck inte ger exakt samma tagning.
+    - `tightness()` = medelavståndet från noterna till rutnätet i steg. Det är **mätetalet**: statusraden skriver "0.28 → 0.00 steg otajt" i stället för ett omdöme.
+    - `playback_slot()` räknar ut vilket steg som ska trigga en not och hur långt in i steget den ska klinga: en not strax före steg 3 (2.7) triggas av steg 2 och klingar 0.7 steg in — alltså *före* slaget, som den spelades.
+    - **Inspelningen sparar tagningen:** `handle_midi_note` lägger notens faktiska position (steg + fas ur sekvenserns stegklocka) i det valda patternets `take`, och att arma ⏺ MIDI-REC börjar en **ny** tagning så att flera försök inte växer ihop. Tagningen följer med i projektfilen (Fas 6.7) och äldre filer läses med tom tagning.
+    - **UI:** i piano-rollen står "Tagning: N noter · X steg otajt" plus **🎯 Kvantisera** och **🌀 Humanisera**, och statusraden visar före → efter.
+  - **Klart när (steg 1):** En slarvigt inspelad tagning kan kvantiseras till takten och humaniseras tillbaka med bevarad karaktär, verifierat av tester på notdata ✅
+  - **Bevis:** **215 tester** default, 0 varningar. `midi_take` har **16 tester**: en tight tagning mäter 0.0; otajtheten är medelavståndet (0.25/0.0/0.25 → 0.5/3); full styrka snäpper till rutnätet; halv styrka flyttar halvvägs; kvantisering går till **närmaste** linje i båda riktningarna; noll styrka ändrar inget; svängen flyttar udda linjer men lämnar jämna; humaniseringen är deterministisk per frö (och olika för olika frön); den håller sig inom takten och anslagsgränserna; en måttlig humanisering **behåller noternas steg** (mätbar "bevarad karaktär"); humanisering följt av hård kvantisering är tillbaka på exakt samma steg; notens position räknas rätt ur steg + fas (även vid klockglapp utanför 0–1). I `app`: tagningen överlever projektfilens round-trip, och ett pattern sparat före 6.4 läses med tom tagning.
+  - **Kvar till steg 2 (ärligt):**
+    - **Uppspelningen följer ännu inte mikro-tajmingen eller per-not-anslaget.** Tagningen *sparas* och kan kvantiseras/humaniseras, men ljudet kommer fortfarande från rutnätet. Motorn har redan kön `scheduled_notes` och `StrumChord.start_samples`, så en fördröjd not är ~12 rader (`AudioCommand::NoteOnDelayed` + samma kö) — det är nästa steg, tillsammans med att skicka notens anslag i trigger-vägen.
+    - **Fasta värden i stället för reglage:** kvantiseringen kör styrka 1.0, humaniseringen ±0.08 steg / ±15 % anslag. Styrka, sväng och mängd ska bli reglage.
+    - **Fångstens upplösning är en bildruta** (≈16 ms vid 60 Hz), eftersom sekvenserns stegklocka (`last_step_time`) går i UI-tråden. Det räcker för att skilja "på slaget" från "efter slaget", men är inte samplenoggrant.
+    - **Ingen ångring av tagningen:** kvantisering/humanisering rör `take`, som `TimelineUndoSnapshot` inte bär.
+  - **Filer:** `src/midi_take.rs` (ny), `src/main.rs`, `src/ui/app.rs`, `src/i18n.rs`
   - **Beroende:** 6.3 (samma notmodell)
 
 - [x] **6.7 Projektfilen sparar hela arbetet (mönster, kanalrack, stegvolymer)** — *S* ✅ *(hittad under 6.3-arbetet)*
@@ -416,11 +429,11 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**6.4 Kvantisering & humanisering av inspelad MIDI** (*S*): den sista av Tier 0:s "arbetet blir rätt"-punkter tillsammans med 6.5. Kvantisering finns i dag bara som rutnätssnap *vid inmatning* (`snap_time_secs`, `piano_roll_snap_to_scale`) — det som saknas är efterarbetet: ta en inspelad tagning och dra noterna till närmaste steg (med styrka och valfritt sväng), eller humanisera dem medvetet (liten slumpmässig tids- och styrkevariation så det inte låter maskinellt). Klart när en slarvigt inspelad tagning kan kvantiseras till takten och humaniseras tillbaka med bevarad karaktär, verifierat av tester på notdata.
+**6.4 Kvantisering & humanisering av inspelad MIDI** (*S*, visade sig vara *M*) — steg 1 är klart: tagningen sparas med sin tajming, och kvantisering/humanisering finns med mätetal i statusraden. **Nästa konkreta uppgift är steg 2:** låt uppspelningen följa tagningens mikro-tajming och anslag. Motorn har redan kön `scheduled_notes` och `StrumChord.start_samples`, så det handlar om en `AudioCommand::NoteOnDelayed` och att skicka notens anslag i trigger-vägen — då blir humaniseringen hörbar i stället för bara mätbar.
 
 Därefter i Tier 0 (Fas 6): 6.5 dither.
 
-Nyss klart: **6.7** projektfilen sparar hela arbetet (mönster, kanalrack, stegvolymer — hittad och stängd under 6.3), **6.3** MIDI-fil import/export (egen SMF-kodek, arrangemanget exporteras, import routar till rätt kanaler, externt validerad) samt **6.2** mixer/FX/automation i undo-historiken.
+Nyss klart: **6.4 steg 1** (tagningen sparas med sin tajming, kvantisering/humanisering med mätetal), **6.7** projektfilen sparar hela arbetet (mönster, kanalrack, stegvolymer — hittad och stängd under 6.3), **6.3** MIDI-fil import/export (egen SMF-kodek, arrangemanget exporteras, import routar till rätt kanaler, externt validerad) samt **6.2** mixer/FX/automation i undo-historiken.
 
 Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
 

@@ -130,6 +130,10 @@ pub struct Pattern {
     pub channel_steps: Vec<[bool; 16]>,
     pub channel_notes: Vec<[u8; 16]>,
     pub piano_roll_grid: [[bool; 16]; 24],
+    /// Den inspelade tagningen med sin faktiska tajming (Fas 6.4). Rutnätet
+    /// säger *vilka* steg som spelar, tagningen säger *när* inom steget — det är
+    /// den som gör kvantisering och humanisering möjliga i efterhand.
+    pub take: crate::midi_take::Take,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -483,6 +487,9 @@ pub struct SavedPattern {
     pub channel_steps: Vec<[bool; 16]>,
     pub channel_notes: Vec<[u8; 16]>,
     pub piano_roll_grid: [[bool; 16]; 24],
+    /// Tagningen med sin tajming (Fas 6.4). Tom i äldre projekt.
+    #[serde(default)]
+    pub take: crate::midi_take::Take,
 }
 
 /// En kanal i Channel Racket som den sparas (Fas 6.7).
@@ -637,6 +644,7 @@ fn pattern_to_saved(p: &Pattern) -> SavedPattern {
         channel_steps: p.channel_steps.clone(),
         channel_notes: p.channel_notes.clone(),
         piano_roll_grid: p.piano_roll_grid,
+        take: p.take.clone(),
     }
 }
 
@@ -647,6 +655,7 @@ fn saved_to_pattern(s: &SavedPattern) -> Pattern {
         channel_steps: s.channel_steps.clone(),
         channel_notes: s.channel_notes.clone(),
         piano_roll_grid: s.piano_roll_grid,
+        take: s.take.clone(),
     }
 }
 
@@ -1367,6 +1376,8 @@ pub struct SonixApp {
     pub midi_device_name: String,
     pub midi_note_count: usize,
     pub midi_record_armed: bool,
+    /// Räknare som ger humaniseringen ett nytt frö varje gång (Fas 6.4).
+    pub take_seed_counter: u64,
     pub midi_held_notes: std::collections::HashSet<u8>,
     pub control_tx: std::sync::mpsc::Sender<ControlEvent>,
     pub control_rx: std::sync::mpsc::Receiver<ControlEvent>,
@@ -1739,6 +1750,7 @@ impl SonixApp {
             channel_steps: vec![[false; 16]; 8],
             channel_notes: vec![[60; 16]; 8],
             piano_roll_grid: [[false; 16]; 24],
+            take: crate::midi_take::Take::default(),
         };
 
         let pat2 = Pattern {
@@ -1747,6 +1759,7 @@ impl SonixApp {
             channel_steps: vec![[false; 16]; 8],
             channel_notes: vec![[60; 16]; 8],
             piano_roll_grid: [[false; 16]; 24],
+            take: crate::midi_take::Take::default(),
         };
 
         let pat3 = Pattern {
@@ -1755,6 +1768,7 @@ impl SonixApp {
             channel_steps: vec![[false; 16]; 8],
             channel_notes: vec![[60; 16]; 8],
             piano_roll_grid: [[false; 16]; 24],
+            take: crate::midi_take::Take::default(),
         };
 
         let pat4 = Pattern {
@@ -1763,6 +1777,7 @@ impl SonixApp {
             channel_steps: vec![[false; 16]; 8],
             channel_notes: vec![[60; 16]; 8],
             piano_roll_grid: [[false; 16]; 24],
+            take: crate::midi_take::Take::default(),
         };
 
         let patterns = vec![pat1, pat2, pat3, pat4];
@@ -1954,6 +1969,7 @@ impl SonixApp {
             midi_device_name: crate::i18n::t("Inte ansluten").to_string(),
             midi_note_count: 0,
             midi_record_armed: false,
+            take_seed_counter: 0,
             midi_held_notes: std::collections::HashSet::new(),
             control_tx,
             control_rx,
@@ -5738,11 +5754,108 @@ impl SonixApp {
                 self.play_note_velocity(note, velocity as f32 / 127.0);
                 if self.midi_record_armed && self.is_playing {
                     self.record_midi_note_at_step(note);
+                    // Tagningen (Fas 6.4): noten skrivs till rutnätet *och* sparas
+                    // med sin faktiska tid, så att den går att kvantisera eller
+                    // humanisera i efterhand. Rutnätet ensamt kastade tiden.
+                    let pos = self.current_take_pos();
+                    if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
+                        pat.take.push(pos, note, velocity as f32 / 127.0);
+                    }
                 }
             }
         } else if self.midi_held_notes.remove(&note) {
             self.release_note(note);
         }
+    }
+
+    /// Positionen i takten (i steg) för en not som spelas just nu (Fas 6.4).
+    ///
+    /// Stegfasen mäts mot sekvenserns stegklocka, som går i UI-tråden:
+    /// upplösningen är därför en bildruta (≈16 ms vid 60 Hz), inte samplen.
+    fn current_take_pos(&self) -> f32 {
+        let step_secs = self.step_duration(self.current_step).as_secs_f32();
+        let phase = if step_secs > 0.0 {
+            self.last_step_time.elapsed().as_secs_f32() / step_secs
+        } else {
+            0.0
+        };
+        crate::midi_take::take_pos_from(self.current_step, phase)
+    }
+
+    /// Börjar en ny tagning i det valda patternet (Fas 6.4). Utan detta skulle
+    /// flera inspelningsförsök växa ihop till en enda tagning.
+    fn begin_new_take(&mut self) {
+        let name = self
+            .patterns
+            .get(self.selected_pattern)
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
+            pat.take = crate::midi_take::Take::new();
+        }
+        self.status_message = crate::tstatus!("🔴 Inspelning armar — ny tagning i '{}'", name);
+    }
+
+    /// Kvantiserar tagningen i det valda patternet och *mäter* skillnaden
+    /// (Fas 6.4): "otajthet" är medelavståndet från noterna till rutnätet i steg,
+    /// så både före och efter går att skriva ut i siffror i stället för att
+    /// påstås.
+    fn quantize_take(&mut self, strength: f32) {
+        let swing = self.swing;
+        let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+            return;
+        };
+        if pat.take.is_empty() {
+            self.status_message = crate::i18n::t(
+                "⚠ Ingen tagning att kvantisera — armera ⏺ MIDI-REC och spela in först",
+            )
+            .to_string();
+            return;
+        }
+        let before = pat.take.tightness();
+        let notes = pat.take.len();
+        pat.take.quantize(strength, swing);
+        let after = pat.take.tightness();
+        self.status_message = crate::tstatus!(
+            "🎯 Kvantiserade {} noter (styrka {:.0} %, sväng {:.0} %): {:.2} → {:.2} steg otajt",
+            notes,
+            strength * 100.0,
+            swing * 100.0,
+            before,
+            after
+        );
+    }
+
+    /// Lägger medveten mänsklig variation på tagningen (Fas 6.4). Slumptalet
+    /// räknas upp varje gång, så två tryck ger inte exakt samma tagning.
+    fn humanize_take(&mut self, timing_steps: f32, velocity_amount: f32) {
+        self.take_seed_counter = self.take_seed_counter.wrapping_add(1);
+        let seed = self
+            .take_seed_counter
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .wrapping_add(0x1234_5678);
+        let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+            return;
+        };
+        if pat.take.is_empty() {
+            self.status_message = crate::i18n::t(
+                "⚠ Ingen tagning att humanisera — armera ⏺ MIDI-REC och spela in först",
+            )
+            .to_string();
+            return;
+        }
+        let before = pat.take.tightness();
+        let notes = pat.take.len();
+        pat.take.humanize(timing_steps, velocity_amount, seed);
+        let after = pat.take.tightness();
+        self.status_message = crate::tstatus!(
+            "🌀 Humaniserade {} noter (tid ±{:.2} steg, anslag ±{:.0} %): {:.2} → {:.2} steg otajt",
+            notes,
+            timing_steps,
+            velocity_amount * 100.0,
+            before,
+            after
+        );
     }
 
     /// Writes a held MIDI note into the Piano Roll grid at the current step.
@@ -10301,6 +10414,58 @@ impl SonixApp {
                     self.piano_roll_snap_to_scale = !self.piano_roll_snap_to_scale;
                 }
 
+                // Tagningen (Fas 6.4): kvantisera eller humanisera det som spelades in.
+                let take_notes = self
+                    .patterns
+                    .get(self.selected_pattern)
+                    .map(|p| p.take.len())
+                    .unwrap_or(0);
+                let take_tightness = self
+                    .patterns
+                    .get(self.selected_pattern)
+                    .map(|p| p.take.tightness())
+                    .unwrap_or(0.0);
+                // Spannet och hur många noter som faktiskt ligger utanför rutnätet:
+                // "4 med tajming" säger att humaniseringen hörs, inte bara mäts.
+                let (take_first, take_last, take_moved) = self
+                    .patterns
+                    .get(self.selected_pattern)
+                    .map(|p| {
+                        let first = p.take.notes.iter().map(crate::midi_take::Take::slot).min();
+                        let last = p.take.notes.iter().map(crate::midi_take::Take::slot).max();
+                        let moved = p
+                            .take
+                            .notes
+                            .iter()
+                            .filter(|n| crate::midi_take::Take::playback_slot(n).1 > 0.001)
+                            .count();
+                        (first, last, moved)
+                    })
+                    .unwrap_or((None, None, 0));
+                let take_span = match (take_first, take_last) {
+                    (Some(a), Some(b)) => crate::tstatus!("steg {}–{}", a, b),
+                    _ => crate::i18n::t("tom").to_string(),
+                };
+                ui.separator();
+                ui.label(
+                    egui::RichText::new(crate::tstatus!(
+                        "Tagning: {} noter ({}, {} med tajming) · {:.2} steg otajt",
+                        take_notes,
+                        take_span,
+                        take_moved,
+                        take_tightness
+                    ))
+                    .size(10.5)
+                    .color(if take_notes == 0 { Theme::TEXT_MUTED } else { Theme::TEXT_BRIGHT }),
+                );
+                let take_btn = Color32::from_rgb(32, 38, 48);
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Kvantisera")).strong().size(10.5).color(Theme::TEXT_BRIGHT)).fill(take_btn)).on_hover_text(crate::i18n::t("Dra tagningens noter till närmaste steg, med projektets sväng")).clicked() {
+                    self.quantize_take(1.0);
+                }
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🌀 Humanisera")).strong().size(10.5).color(Theme::TEXT_BRIGHT)).fill(take_btn)).on_hover_text(crate::i18n::t("Lägg på lite mänsklig otajthet och dynamik (varierar mellan trycken)")).clicked() {
+                    self.humanize_take(0.08, 0.15);
+                }
+
                 ui.separator();
 
                 // Chord Stamp Selector
@@ -10359,6 +10524,9 @@ impl SonixApp {
                 let mrec_fg = if self.midi_record_armed { Color32::WHITE } else { Theme::TEXT_BRIGHT };
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ MIDI-REC")).strong().size(10.0).color(mrec_fg)).fill(mrec_bg)).on_hover_text(crate::i18n::t("Spela in hållna MIDI-toner i rutnätet under uppspelning.")).clicked() {
                     self.midi_record_armed = !self.midi_record_armed;
+                    if self.midi_record_armed {
+                        self.begin_new_take();
+                    }
                 }
 
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Töm")).size(10.5).color(Color32::from_rgb(255, 120, 120))).fill(Color32::from_rgb(50, 20, 25))).on_hover_text(crate::i18n::t("Rensa mönster")).clicked() {
@@ -12020,6 +12188,9 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     };
                     if ui.add(egui::Button::new(egui::RichText::new(rec_txt).strong().size(10.5).color(Color32::WHITE)).fill(rec_bg)).on_hover_text(crate::i18n::t("När armerad skrivs hållna MIDI-klaviaturtoner in i det aktiva mönstrets rutnät under uppspelning.")).clicked() {
                         self.midi_record_armed = !self.midi_record_armed;
+                    if self.midi_record_armed {
+                        self.begin_new_take();
+                    }
                     }
                     ui.label(egui::RichText::new(crate::i18n::t("Tips: koppla ihop porten med 'aconnect <klaviatur> 'Sonix Keys:0'' och aktivera läget i Piano Roll.")).size(9.5).color(Theme::TEXT_MUTED));
                 });
@@ -15052,6 +15223,7 @@ mod tests {
             channel_steps: vec![[false; 16]; 8],
             channel_notes: vec![[60; 16]; 8],
             piano_roll_grid: [[false; 16]; 24],
+            take: crate::midi_take::Take::default(),
         }
     }
 
@@ -15426,6 +15598,52 @@ mod tests {
         assert!(app_patterns[0].channel_steps[1][1]);
         assert_eq!(app_channels[0].name, "Min kanal");
         assert_eq!(app_velocities[0], 0.5, "stegvolymerna rörs inte");
+    }
+
+    #[test]
+    fn the_recorded_take_survives_the_project_round_trip() {
+        // Fas 6.4: tagningens tajming är också arbete — den ska med i filen.
+        let mut pat = test_pattern();
+        pat.take.push(2.75, 60, 0.8);
+        pat.take.push(6.1, 64, 0.6);
+        assert!(pat.take.tightness() > 0.0);
+
+        let json = serde_json::to_string(&pattern_to_saved(&pat)).unwrap();
+        assert!(json.contains("take"), "tagningen ska stå i filen");
+        let back: SavedPattern = serde_json::from_str(&json).unwrap();
+        let restored = saved_to_pattern(&back);
+
+        assert_eq!(restored.take, pat.take, "samma tagning tillbaka");
+        assert!((restored.take.tightness() - pat.take.tightness()).abs() < 1e-6);
+    }
+
+    #[test]
+    fn an_old_pattern_file_loads_with_an_empty_take() {
+        // Bakåtkompatibilitet: ett pattern sparat före Fas 6.4 har ingen tagning.
+        let old = r#"{
+            "name": "Gammalt pattern",
+            "channel_steps": [[true, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]],
+            "channel_notes": [[36, 38, 39, 42, 46, 49, 36, 38, 39, 42, 46, 49, 36, 38, 39, 42]],
+            "piano_roll_grid": [[false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]]
+        }"#;
+        // piano_roll_grid är 24 rader i appen; testet nedan använder rätt form.
+        let old = old.replace(
+            r#""piano_roll_grid": [[false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]]"#,
+            &format!(
+                r#""piano_roll_grid": [{}]"#,
+                vec![
+                    "[false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false]";
+                    24
+                ]
+                .join(",")
+            ),
+        );
+        let back: SavedPattern = serde_json::from_str(&old).expect("gammalt pattern ska gå att läsa");
+        assert!(back.take.is_empty(), "ingen tagning i en gammal fil");
+        let restored = saved_to_pattern(&back);
+        assert_eq!(restored.name, "Gammalt pattern");
+        assert!(restored.channel_steps[0][0], "stegen läses som förut");
+        assert!(restored.take.is_empty());
     }
 
     #[test]

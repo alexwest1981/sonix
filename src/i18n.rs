@@ -377,6 +377,20 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🚪 Avsluta" => "🚪 Quit",
         "🎚 Mixerändring" => "🎚 Mixer change",
 
+        // --- Fas 6.4: tagning, kvantisering och humanisering ---
+        "🎯 Kvantisera" => "🎯 Quantize",
+        "🌀 Humanisera" => "🌀 Humanize",
+        "Dra tagningens noter till närmaste steg, med projektets sväng" => "Pull the take's notes to the nearest step, using the project swing",
+        "Lägg på lite mänsklig otajthet och dynamik (varierar mellan trycken)" => "Add a touch of human timing and dynamics (varies between presses)",
+        "Tagning: {} noter ({}, {} med tajming) · {:.2} steg otajt" => "Take: {} notes ({}, {} with timing) · {:.2} steps off the grid",
+        "steg {}–{}" => "steps {}–{}",
+        "tom" => "empty",
+        "⚠ Ingen tagning att kvantisera — armera ⏺ MIDI-REC och spela in först" => "⚠ No take to quantize — arm ⏺ MIDI-REC and record something first",
+        "⚠ Ingen tagning att humanisera — armera ⏺ MIDI-REC och spela in först" => "⚠ No take to humanize — arm ⏺ MIDI-REC and record something first",
+        "🔴 Inspelning armar — ny tagning i '{}'" => "🔴 Recording armed — new take in '{}'",
+        "🎯 Kvantiserade {} noter (styrka {:.0} %, sväng {:.0} %): {:.2} → {:.2} steg otajt" => "🎯 Quantized {} notes (strength {:.0}%, swing {:.0}%): {:.2} → {:.2} steps off the grid",
+        "🌀 Humaniserade {} noter (tid ±{:.2} steg, anslag ±{:.0} %): {:.2} → {:.2} steg otajt" => "🌀 Humanized {} notes (timing ±{:.2} steps, velocity ±{:.0}%): {:.2} → {:.2} steps off the grid",
+
         // --- Fas 6.3: MIDI-fil import/export (SMF) ---
         "🎼 Exportera sång som MIDI (.mid)" => "🎼 Export song as MIDI (.mid)",
         "🎼 Importera MIDI-fil (.mid)..." => "🎼 Import MIDI file (.mid)...",
