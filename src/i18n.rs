@@ -752,7 +752,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "• Mönster P1–P4: Skapa variationer för vers, refräng och stick." => "• Patterns P1–P4: Create variations for verse, chorus and bridge.",
         "• När fönstret täcks av ett annat fönster eller minimeras fortsätter ljudmotorn att spela utan avbrott samtidigt som GUI-uppritningen vilar för att förhindra krascher." => "• When the window is covered or minimized the audio engine keeps playing without interruption while GUI rendering rests to prevent crashes.",
         "• PipeWire & ALSA Native – Ansluter direkt till Linux moderna ljudserver." => "• PipeWire & ALSA native – Connects directly to Linux's modern audio server.",
-        "• Pitch Shifter: Transponera stämman upp/ned ±12 halvtoner." => "• Pitch shifter: Transpose the stem up/down ±12 semitones.",
+        "• Pitch Shifter: Transponera stämman ±12 halvtoner med bevarade formanter (1-centprecision, Shift = finjustering, dubbelklick = nollställ)." => "• Pitch shifter: Transpose the stem ±12 semitones with formants preserved (1-cent precision, Shift = fine, double-click = reset).",
         "• Realtids Multi-Track Audio Streaming & Mixmotor i Rust" => "• Real-time multi-track audio streaming & mixing engine in Rust",
         "• Reverb & Delay sends." => "• Reverb & delay sends.",
         "• Sampling & Recorder: Spela in egna ljud, klappar och instrument med din mikrofon." => "• Sampling & recorder: Record your own sounds, claps and instruments with your microphone.",

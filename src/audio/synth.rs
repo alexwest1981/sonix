@@ -8,7 +8,7 @@ use super::filter::{FilterParams, StateVariableFilter};
 use super::master_fx::{Compressor, CompressorParams, MasterFxChain, RemixFx, StereoEq, TapeStop, TrackEqSettings};
 use super::patcher::{PatchProcessor, PatchSpec};
 use super::plugin_host_live::{PdcDelay, PluginInsert};
-use super::vocal_harmonizer::Wsola;
+use super::vocal_harmonizer::{FormantPitchShifter, Wsola};
 
 /// Debug logging to ~/Music/Sonix/audio_debug.log. Enabled when the
 /// SONIX_AUDIO_DEBUG env var is set OR when the marker file
@@ -262,7 +262,12 @@ pub struct StemVoiceTrack {
     pub reverb_send: f32,
     pub delay: StereoDelay,
     pub delay_send: f32,
-    pub pitch_ratio: f32,
+    /// Requested transposition in semitones (±12, cents resolution).
+    pub pitch_semitones: f32,
+    /// Real-time, formant-preserving pitch shifter for this stem.
+    pub pitch_shifter: FormantPitchShifter,
+    /// Whether the shifter is engaged (false = bit-exact bypass).
+    pub pitch_active: bool,
     /// Optional CLAP insert on this track (Fas 4.2).
     pub plugin: Option<PluginInsert>,
     /// Delay line that aligns this track with the project's max plugin latency.
@@ -307,7 +312,9 @@ impl StemVoiceTrack {
             reverb_send: 0.0,
             delay: StereoDelay::new(engine_sample_rate),
             delay_send: 0.0,
-            pitch_ratio: 1.0,
+            pitch_semitones: 0.0,
+            pitch_shifter: FormantPitchShifter::new(engine_sample_rate),
+            pitch_active: false,
             plugin: None,
             pdc: PdcDelay::new(),
             bus: 0,
@@ -653,7 +660,10 @@ impl SynthEngine {
                     track.comp_ratio = comp_ratio;
                     track.reverb_send = reverb_send.clamp(0.0, 1.0);
                     track.delay_send = delay_send.clamp(0.0, 1.0);
-                    track.pitch_ratio = 2.0_f32.powf(pitch_semitones / 12.0);
+                    track.pitch_semitones = pitch_semitones.clamp(-24.0, 24.0);
+                    track.pitch_shifter.set_ratio(2.0_f32.powf(track.pitch_semitones / 12.0));
+                    track.pitch_active = track.pitch_semitones.abs() > 0.005;
+                    track.pitch_shifter.set_active(track.pitch_active);
                 }
             }
             AudioCommand::SetRemixFx { mode, bpm } => {
@@ -742,7 +752,7 @@ impl SynthEngine {
                 if track_index < self.stem_tracks.len() {
                     let eq = self.stem_tracks[track_index].eq;
                     let old = &mut self.stem_tracks[track_index];
-                    let (ct, cr, rs, ds, pr) = (old.comp_threshold_db, old.comp_ratio, old.reverb_send, old.delay_send, old.pitch_ratio);
+                    let (ct, cr, rs, ds, ps, pa) = (old.comp_threshold_db, old.comp_ratio, old.reverb_send, old.delay_send, old.pitch_semitones, old.pitch_active);
                     // Preserve a live plugin insert (and its PDC line) across reloads.
                     let plugin = old.plugin.take();
                     let pdc = std::mem::replace(&mut old.pdc, PdcDelay::new());
@@ -753,7 +763,10 @@ impl SynthEngine {
                     new_track.comp_ratio = cr;
                     new_track.reverb_send = rs;
                     new_track.delay_send = ds;
-                    new_track.pitch_ratio = pr;
+                    new_track.pitch_semitones = ps;
+                    new_track.pitch_shifter.set_ratio(2.0_f32.powf(ps / 12.0));
+                    new_track.pitch_shifter.set_active(pa);
+                    new_track.pitch_active = pa;
                     new_track.plugin = plugin;
                     new_track.pdc = pdc;
                     self.stem_tracks[track_index] = new_track;
@@ -811,9 +824,15 @@ impl SynthEngine {
             }
             AudioCommand::SeekSongPosition(secs) => {
                 self.song_time_samples = (secs.max(0.0) * self.sample_rate) as usize;
+                for track in &mut self.stem_tracks {
+                    track.pitch_shifter.reset();
+                }
             }
             AudioCommand::SetSongPlayback(playing) => {
                 self.song_playing = playing;
+                for track in &mut self.stem_tracks {
+                    track.pitch_shifter.reset();
+                }
             }
             AudioCommand::PlayAudition {
                 left,
@@ -1047,7 +1066,19 @@ impl SynthEngine {
         let max_plugin_latency = if self.song_playing {
             self.stem_tracks
                 .iter()
-                .filter_map(|t| t.plugin.as_ref().map(|p| p.latency_frames()))
+                .map(|t| {
+                    let plugin = t
+                        .plugin
+                        .as_ref()
+                        .map(|p| p.latency_frames())
+                        .unwrap_or(0);
+                    let pitch = if t.pitch_active {
+                        t.pitch_shifter.latency_frames()
+                    } else {
+                        0
+                    };
+                    plugin + pitch
+                })
                 .max()
                 .unwrap_or(0)
         } else {
@@ -1087,6 +1118,12 @@ impl SynthEngine {
                     !track.muted && !group_muted
                 };
                 if !audible || track.left.is_empty() {
+                    // Keep an engaged shifter primed with silence so that it is
+                    // continuous (and latency-aligned) the moment the track is
+                    // heard again.
+                    if track.pitch_active && !track.left.is_empty() {
+                        track.pitch_shifter.process(0.0, 0.0);
+                    }
                     continue;
                 }
                 let group_gain =
@@ -1130,7 +1167,7 @@ impl SynthEngine {
                                     region.sample_offset_sec + rel_time
                                 }
                             };
-                            let sample_pos = (sample_pos_sec * track.sample_rate * track.pitch_ratio).max(0.0);
+                            let sample_pos = (sample_pos_sec * track.sample_rate).max(0.0);
                             let idx0 = sample_pos.floor() as usize;
                             let frac = sample_pos - idx0 as f32;
 
@@ -1157,7 +1194,7 @@ impl SynthEngine {
                     // Fallback to full track streaming
                     let track_rel_time = current_time_sec - track.start_time_secs;
                     if track_rel_time >= 0.0 {
-                        let sample_pos = (track_rel_time * track.sample_rate * track.pitch_ratio).max(0.0);
+                        let sample_pos = (track_rel_time * track.sample_rate).max(0.0);
                         let idx0 = sample_pos.floor() as usize;
                         let frac = sample_pos - idx0 as f32;
 
@@ -1177,6 +1214,15 @@ impl SynthEngine {
                             track_r += raw_r * track.volume * pan_r;
                         }
                     }
+                }
+
+                // Real-time formant-preserving pitch shift (always run when
+                // engaged, feeding silence through on empty frames so the
+                // grain pipeline never stalls).
+                if track.pitch_active {
+                    let (pl, pr) = track.pitch_shifter.process(track_l, track_r);
+                    track_l = pl;
+                    track_r = pr;
                 }
 
                 // Per-track 3-band parametric EQ
@@ -1219,14 +1265,17 @@ impl SynthEngine {
 
                 // Optional CLAP insert, then PDC-align this track to the
                 // project's maximum plugin latency.
-                let track_latency = if let Some(plugin) = &mut track.plugin {
-                    let (pl, pr) = plugin.process_sample(tl, tr);
-                    tl = pl;
-                    tr = pr;
-                    plugin.latency_frames()
+                let mut track_latency = if track.pitch_active {
+                    track.pitch_shifter.latency_frames()
                 } else {
                     0
                 };
+                if let Some(plugin) = &mut track.plugin {
+                    let (pl, pr) = plugin.process_sample(tl, tr);
+                    tl = pl;
+                    tr = pr;
+                    track_latency += plugin.latency_frames();
+                }
                 track.pdc.set_delay(max_plugin_latency.saturating_sub(track_latency));
                 let (tl, tr) = track.pdc.process(tl, tr);
 
@@ -1587,6 +1636,71 @@ mod tests {
         synth.process_stereo();
         assert_eq!(synth.stem_tracks[1].pdc.delay(), 0);
         assert!(synth.stem_tracks[0].plugin.is_none());
+    }
+
+    #[test]
+    fn pitch_shift_engages_shifter_and_compensates_latency() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_tracks(&mut synth);
+        synth.handle_command(AudioCommand::SetTrackMix {
+            track_index: 0,
+            comp_threshold_db: 0.0,
+            comp_ratio: 1.0,
+            reverb_send: 0.0,
+            delay_send: 0.0,
+            pitch_semitones: 12.0,
+        });
+        assert!(synth.stem_tracks[0].pitch_active);
+        assert!((synth.stem_tracks[0].pitch_semitones - 12.0).abs() < 1e-6);
+        let latency = synth.stem_tracks[0].pitch_shifter.latency_frames();
+        assert!(latency > 0, "engaged shifter must report latency");
+        synth.process_stereo();
+        // The shifted track defines the maximum latency; the other is delayed.
+        assert_eq!(synth.stem_tracks[0].pdc.delay(), 0);
+        assert_eq!(synth.stem_tracks[1].pdc.delay(), latency);
+    }
+
+    #[test]
+    fn pitch_shift_zero_bypasses_shifter() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_tracks(&mut synth);
+        synth.handle_command(AudioCommand::SetTrackMix {
+            track_index: 0,
+            comp_threshold_db: 0.0,
+            comp_ratio: 1.0,
+            reverb_send: 0.0,
+            delay_send: 0.0,
+            pitch_semitones: 0.0,
+        });
+        assert!(!synth.stem_tracks[0].pitch_active);
+        synth.process_stereo();
+        assert_eq!(synth.stem_tracks[0].pdc.delay(), 0);
+        assert_eq!(synth.stem_tracks[1].pdc.delay(), 0);
+    }
+
+    #[test]
+    fn pitch_shift_survives_stem_reload() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_impulse_tracks(&mut synth);
+        synth.handle_command(AudioCommand::SetTrackMix {
+            track_index: 0,
+            comp_threshold_db: 0.0,
+            comp_ratio: 1.0,
+            reverb_send: 0.0,
+            delay_send: 0.0,
+            pitch_semitones: -5.0,
+        });
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 0,
+            left: Arc::new(vec![1.0_f32; 8]),
+            right: Arc::new(vec![1.0_f32; 8]),
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        assert!(synth.stem_tracks[0].pitch_active);
+        assert!((synth.stem_tracks[0].pitch_semitones + 5.0).abs() < 1e-6);
     }
 
     // -- Fas 5.2: sub-mix bussar & VCA-grupper -------------------------------

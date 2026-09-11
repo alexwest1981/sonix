@@ -26,6 +26,35 @@ pub fn rotary_knob_full(
     color: Color32,
     size: f32,
 ) -> (bool, bool) {
+    rotary_knob_impl(ui, value, min, max, label, color, size, 0.0, None)
+}
+
+/// A superprecise pitch knob: values snap to `step` (1 cent), holding Shift
+/// gives fine control, and double-clicking resets to 0.
+pub fn pitch_knob(
+    ui: &mut Ui,
+    value: &mut f32,
+    min: f32,
+    max: f32,
+    label: &str,
+    color: Color32,
+    size: f32,
+) -> bool {
+    rotary_knob_impl(ui, value, min, max, label, color, size, 0.01, Some(0.0)).0
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rotary_knob_impl(
+    ui: &mut Ui,
+    value: &mut f32,
+    min: f32,
+    max: f32,
+    label: &str,
+    color: Color32,
+    size: f32,
+    step: f32,
+    reset_to: Option<f32>,
+) -> (bool, bool) {
     let mut changed = false;
     let knob_width = size.max(46.0);
     let desired_size = Vec2::new(knob_width, size + 16.0);
@@ -37,13 +66,27 @@ pub fn rotary_knob_full(
     if response.dragged() {
         let delta = response.drag_delta();
         let range = max - min;
-        // Dragging up increases, down decreases
-        let change = (-delta.y + delta.x * 0.5) * (range / 150.0);
-        let new_val = (*value + change).clamp(min, max);
+        // Dragging up increases, down decreases. Shift slows the drag down for
+        // cent-level tweaks.
+        let fine = ui.input(|i| i.modifiers.shift);
+        let sensitivity = if fine { 0.1 } else { 1.0 };
+        let change = (-delta.y + delta.x * 0.5) * (range / 150.0) * sensitivity;
+        let mut new_val = (*value + change).clamp(min, max);
+        if step > 0.0 {
+            new_val = (new_val / step).round() * step;
+            new_val = new_val.clamp(min, max);
+        }
         if new_val != *value {
             *value = new_val;
             changed = true;
         }
+    }
+    if response.double_clicked()
+        && let Some(reset) = reset_to
+        && *value != reset
+    {
+        *value = reset;
+        changed = true;
     }
 
     // Normalized value 0.0 .. 1.0

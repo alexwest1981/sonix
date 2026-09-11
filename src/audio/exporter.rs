@@ -88,6 +88,13 @@ pub struct TrackAudioSnap {
     pub muted: bool,
     pub regions: Vec<StemRegionPlayback>,
     pub eq: TrackEqSettings,
+    /// Channel-strip dynamics / send values, so offline render matches live.
+    pub comp_threshold_db: f32,
+    pub comp_ratio: f32,
+    pub reverb_send: f32,
+    pub delay_send: f32,
+    /// Formant-preserving transposition in semitones.
+    pub pitch_semitones: f32,
     /// Sub-mix bus assignment (Fas 5.2).
     pub bus: usize,
     /// Optional VCA group assignment (Fas 5.2).
@@ -299,6 +306,14 @@ pub fn load_timeline_into_engine(engine: &mut SynthEngine, timeline: &[TrackAudi
         engine.handle_command(AudioCommand::SetTrackEq {
             track_index: t.track_index,
             settings: t.eq,
+        });
+        engine.handle_command(AudioCommand::SetTrackMix {
+            track_index: t.track_index,
+            comp_threshold_db: t.comp_threshold_db,
+            comp_ratio: t.comp_ratio,
+            reverb_send: t.reverb_send,
+            delay_send: t.delay_send,
+            pitch_semitones: t.pitch_semitones,
         });
     }
 }

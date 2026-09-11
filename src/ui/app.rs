@@ -29,7 +29,7 @@ use super::tuner_modal::{render_tuner_modal, TunerState};
 use super::vocal_studio_view::render_vocal_studio_view;
 use super::widgets::{
     alchemy_transform_matrix, drummer_xy_matrix, eq_curve_visualizer, fl_step_button,
-    mini_track_eq_curve, oscilloscope_display, rotary_knob, vertical_fader,
+    mini_track_eq_curve, oscilloscope_display, pitch_knob, rotary_knob, vertical_fader,
 };
 
 fn midi_to_freq(note: u8) -> f32 {
@@ -10445,8 +10445,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
 
                                     ui.vertical_centered(|ui| {
                                         ui.label(egui::RichText::new(crate::i18n::t("TONHÖJD")).size(8.0).color(Theme::FL_YELLOW));
-                                        track_dirty |= rotary_knob(ui, &mut track_mut.pitch_semitones, -12.0, 12.0, "PITCH", Theme::FL_YELLOW, 17.0);
-                                        ui.label(egui::RichText::new(format!("{:+.0} st", track_mut.pitch_semitones)).size(7.5).color(Theme::TEXT_MUTED));
+                                        track_dirty |= pitch_knob(ui, &mut track_mut.pitch_semitones, -12.0, 12.0, "PITCH", Theme::FL_YELLOW, 17.0);
+                                        ui.label(egui::RichText::new(format!("{:+.2} st", track_mut.pitch_semitones)).size(7.5).color(Theme::TEXT_MUTED));
                                     });
                                 });
                             });
@@ -11100,6 +11100,11 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                     muted: t.muted,
                     regions,
                     eq: t.eq.to_settings(),
+                    comp_threshold_db: t.comp_threshold_db,
+                    comp_ratio: t.comp_ratio,
+                    reverb_send: t.reverb_send,
+                    delay_send: t.delay_send,
+                    pitch_semitones: t.pitch_semitones,
                     bus: t.bus,
                     vca: t.vca,
                 }
@@ -13281,7 +13286,12 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             ui.add_space(8.0);
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("Tonhöjd (Pitch Shift):")).size(11.0).color(Theme::TEXT_MUTED));
-                                ui.add(egui::Slider::new(&mut track.pitch_semitones, -12.0..=12.0).text("Halvtoner"));
+                                ui.add(
+                                    egui::Slider::new(&mut track.pitch_semitones, -12.0..=12.0)
+                                        .step_by(0.01)
+                                        .fixed_decimals(2)
+                                        .suffix(" st"),
+                                );
                                 if ui.button(crate::i18n::t("Nollställ Pitch")).clicked() {
                                     track.pitch_semitones = 0.0;
                                 }
@@ -13641,7 +13651,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                                             ui.label(crate::i18n::t("• Volymreglage med exakt dB-visning och '±0.1 dB' finjusteringsknappar."));
                                             ui.label(crate::i18n::t("• Stereopanorering med snabbcentrering ('Center')."));
                                             ui.label(crate::i18n::t("• Kompressor: Justerbar Threshold (-30 dB till 0 dB) och Ratio (1:1 till 8:1)."));
-                                            ui.label(crate::i18n::t("• Pitch Shifter: Transponera stämman upp/ned ±12 halvtoner."));
+                                            ui.label(crate::i18n::t("• Pitch Shifter: Transponera stämman ±12 halvtoner med bevarade formanter (1-centprecision, Shift = finjustering, dubbelklick = nollställ)."));
                                             ui.label(crate::i18n::t("• Reverb & Delay sends."));
                                         });
 

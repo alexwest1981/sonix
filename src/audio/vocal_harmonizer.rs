@@ -953,6 +953,335 @@ impl RealtimeAutotune {
     }
 }
 
+/// Real-time, stereo, formant-preserving pitch shifter for stem tracks.
+///
+/// The core is the same WSOLA + resampling design as
+/// [`StreamingPitchShifter`], extended in two ways:
+///
+/// * both channels share one analysis position, so the stereo image stays
+///   locked, and
+/// * every overlap-add grain receives a cepstral spectral-envelope correction
+///   (the same trick used by the offline [`formant_preserving_shift`]) that
+///   pre-warps the formants by the pitch ratio, exactly cancelling the formant
+///   drag introduced by the resampling stage.
+///
+/// Duration is untouched: exactly one output sample is produced for every input
+/// sample, so changing the pitch never changes the timing of the track. The
+/// shifter reports [`latency_frames`](Self::latency_frames) so the engine's
+/// plug-in delay compensation can align it with the rest of the project.
+pub struct FormantPitchShifter {
+    frame: usize,
+    hop: usize,
+    search: usize,
+    lifter: usize,
+    window: Vec<f32>,
+    ring_l: Vec<f32>,
+    ring_r: Vec<f32>,
+    write: usize,
+    ana: f64,
+    prev_tail: Vec<f32>,
+    ola_l: Vec<f32>,
+    ola_r: Vec<f32>,
+    out_l: Vec<f32>,
+    out_r: Vec<f32>,
+    out_read: f64,
+    started: bool,
+    ratio: f32,
+    active: bool,
+    scratch_re: Vec<f32>,
+    scratch_im: Vec<f32>,
+    grain_l: Vec<f32>,
+    grain_r: Vec<f32>,
+    mag: Vec<f32>,
+    env: Vec<f32>,
+    target: Vec<f32>,
+}
+
+impl FormantPitchShifter {
+    pub fn new(_sample_rate: f32) -> Self {
+        let frame = 1024usize;
+        let hop = frame / 2;
+        let search = 512usize;
+        let lifter = 32usize;
+        let two_pi = std::f32::consts::TAU;
+        let window: Vec<f32> = (0..frame)
+            .map(|i| 0.5 - 0.5 * (two_pi * i as f32 / (frame - 1) as f32).cos())
+            .collect();
+        Self {
+            frame,
+            hop,
+            search,
+            lifter,
+            window,
+            ring_l: vec![0.0; (frame + search) * 4],
+            ring_r: vec![0.0; (frame + search) * 4],
+            write: 0,
+            ana: 0.0,
+            prev_tail: vec![0.0; frame - hop],
+            ola_l: vec![0.0; frame],
+            ola_r: vec![0.0; frame],
+            out_l: Vec::with_capacity(frame * 2),
+            out_r: Vec::with_capacity(frame * 2),
+            out_read: 0.0,
+            started: false,
+            ratio: 1.0,
+            active: false,
+            scratch_re: vec![0.0; frame],
+            scratch_im: vec![0.0; frame],
+            grain_l: vec![0.0; frame],
+            grain_r: vec![0.0; frame],
+            mag: vec![0.0; frame],
+            env: vec![0.0; frame],
+            target: vec![0.0; frame],
+        }
+    }
+
+    /// Samples of latency this shifter introduces (constant).
+    pub fn latency_frames(&self) -> usize {
+        self.frame
+    }
+
+    pub fn reset(&mut self) {
+        self.ring_l.iter_mut().for_each(|v| *v = 0.0);
+        self.ring_r.iter_mut().for_each(|v| *v = 0.0);
+        self.write = 0;
+        self.ana = 0.0;
+        self.prev_tail.iter_mut().for_each(|v| *v = 0.0);
+        self.ola_l.iter_mut().for_each(|v| *v = 0.0);
+        self.ola_r.iter_mut().for_each(|v| *v = 0.0);
+        self.out_l.clear();
+        self.out_r.clear();
+        self.out_read = 0.0;
+        self.started = false;
+    }
+
+    /// Enables or bypasses the shifter. Switching on starts from a clean state.
+    pub fn set_active(&mut self, active: bool) {
+        if active && !self.active {
+            self.reset();
+        }
+        self.active = active;
+    }
+
+    pub fn set_ratio(&mut self, ratio: f32) {
+        self.ratio = ratio.clamp(0.25, 4.0);
+    }
+
+    #[inline]
+    fn read_l(&self, idx: usize) -> f32 {
+        let len = self.ring_l.len();
+        if idx < self.write && idx + len > self.write {
+            self.ring_l[idx % len]
+        } else {
+            0.0
+        }
+    }
+
+    #[inline]
+    fn read_r(&self, idx: usize) -> f32 {
+        let len = self.ring_r.len();
+        if idx < self.write && idx + len > self.write {
+            self.ring_r[idx % len]
+        } else {
+            0.0
+        }
+    }
+
+    fn best_start(&self, nominal: isize) -> usize {
+        let ov = self.frame - self.hop;
+        let energy: f32 = self.prev_tail.iter().map(|v| v * v).sum();
+        if energy < 1e-9 {
+            return nominal.max(0) as usize;
+        }
+        let score = |cand: isize| -> Option<f32> {
+            if cand < 0 || cand as usize + self.frame > self.write {
+                return None;
+            }
+            let cand = cand as usize;
+            let mut dot = 0.0_f32;
+            let mut na = 0.0_f32;
+            for i in 0..ov {
+                let a = 0.5 * (self.read_l(cand + i) + self.read_r(cand + i));
+                let b = self.prev_tail[i];
+                dot += a * b;
+                na += a * a;
+            }
+            Some(dot / (na.sqrt() + 1e-9))
+        };
+        let search = self.search as isize;
+        let coarse = (search / 8).max(1);
+        let mut best = nominal.max(0);
+        let mut best_score = f32::NEG_INFINITY;
+        let mut d = -search;
+        while d <= search {
+            if let Some(s) = score(nominal + d) {
+                if s > best_score {
+                    best_score = s;
+                    best = nominal + d;
+                }
+            }
+            d += coarse;
+        }
+        let lo = (best - coarse).max(-search);
+        let hi = (best + coarse).min(search);
+        let mut d = lo;
+        while d <= hi {
+            if let Some(s) = score(nominal + d) {
+                if s > best_score {
+                    best_score = s;
+                    best = nominal + d;
+                }
+            }
+            d += 1;
+        }
+        best.max(0) as usize
+    }
+
+    /// Real-cepstral envelope of `self.mag`, written to `self.env`.
+    fn envelope_from_mag(&mut self) {
+        let n = self.frame;
+        for k in 0..n {
+            self.scratch_re[k] = (self.mag[k] + 1e-9).ln();
+            self.scratch_im[k] = 0.0;
+        }
+        fft_radix2(&mut self.scratch_re, &mut self.scratch_im, true);
+        let hi = (n - self.lifter + 1).min(n);
+        for k in self.lifter..hi {
+            self.scratch_re[k] = 0.0;
+            self.scratch_im[k] = 0.0;
+        }
+        fft_radix2(&mut self.scratch_re, &mut self.scratch_im, false);
+        for k in 0..n {
+            self.env[k] = self.scratch_re[k].exp();
+        }
+    }
+
+    /// Applies the shared correction curve to one channel's grain in place.
+    fn apply_correction(&mut self, left: bool) {
+        let n = self.frame;
+        for i in 0..n {
+            self.scratch_re[i] = if left { self.grain_l[i] } else { self.grain_r[i] };
+            self.scratch_im[i] = 0.0;
+        }
+        fft_radix2(&mut self.scratch_re, &mut self.scratch_im, false);
+        for k in 0..n {
+            let corr = (self.target[k] / (self.env[k] + 1e-9)).clamp(0.1, 10.0);
+            self.scratch_re[k] *= corr;
+            self.scratch_im[k] *= corr;
+        }
+        fft_radix2(&mut self.scratch_re, &mut self.scratch_im, true);
+        for i in 0..n {
+            if left {
+                self.grain_l[i] = self.scratch_re[i];
+            } else {
+                self.grain_r[i] = self.scratch_re[i];
+            }
+        }
+    }
+
+    fn gen_frame(&mut self) {
+        let n = self.frame;
+        let nominal = self.ana.round() as isize;
+        let start = if self.started { self.best_start(nominal) } else { 0 };
+
+        for i in 0..n {
+            let w = self.window[i];
+            self.grain_l[i] = self.read_l(start + i) * w;
+            self.grain_r[i] = self.read_r(start + i) * w;
+        }
+
+        // Formant correction: pre-warp the grain envelope by the pitch ratio so
+        // the resampling stage lands the formants back where they started.
+        if (self.ratio - 1.0).abs() > 1e-4 {
+            for i in 0..n {
+                self.scratch_re[i] = 0.5 * (self.grain_l[i] + self.grain_r[i]);
+                self.scratch_im[i] = 0.0;
+            }
+            fft_radix2(&mut self.scratch_re, &mut self.scratch_im, false);
+            for k in 0..n {
+                self.mag[k] = (self.scratch_re[k] * self.scratch_re[k]
+                    + self.scratch_im[k] * self.scratch_im[k])
+                    .sqrt();
+            }
+            self.envelope_from_mag();
+            let half = n / 2;
+            for k in 0..n {
+                let idx = ((k as f32) * self.ratio).round();
+                let idx = idx.clamp(0.0, half as f32) as usize;
+                self.target[k] = self.env[idx];
+            }
+            self.apply_correction(true);
+            self.apply_correction(false);
+        }
+
+        for i in 0..n {
+            self.ola_l[i] += self.grain_l[i];
+            self.ola_r[i] += self.grain_r[i];
+        }
+        for i in 0..self.hop {
+            self.out_l.push(self.ola_l[i]);
+            self.out_r.push(self.ola_r[i]);
+        }
+        self.ola_l.copy_within(self.hop..n, 0);
+        self.ola_r.copy_within(self.hop..n, 0);
+        for i in (n - self.hop)..n {
+            self.ola_l[i] = 0.0;
+            self.ola_r[i] = 0.0;
+        }
+
+        let ov = n - self.hop;
+        for i in 0..ov {
+            self.prev_tail[i] =
+                0.5 * (self.read_l(start + self.hop + i) + self.read_r(start + self.hop + i));
+        }
+        self.started = true;
+        // Advance from the *actual* analysis position so successive frames stay
+        // locally phase-continuous even when the correlation search moves us.
+        self.ana = start as f64 + self.hop as f64 / self.ratio.max(0.05) as f64;
+    }
+
+    fn push(&mut self, l: f32, r: f32) {
+        let len = self.ring_l.len();
+        self.ring_l[self.write % len] = l;
+        self.ring_r[self.write % len] = r;
+        self.write += 1;
+    }
+
+    fn pull(&mut self) -> (f32, f32) {
+        while (self.out_l.len() as f64 - self.out_read) < 2.0
+            && (self.ana as usize + self.frame) <= self.write
+        {
+            self.gen_frame();
+        }
+        if self.out_l.is_empty() || self.out_read >= self.out_l.len() as f64 {
+            return (0.0, 0.0);
+        }
+        let i0 = self.out_read.floor() as usize;
+        let frac = (self.out_read - i0 as f64) as f32;
+        let i0 = i0.min(self.out_l.len() - 1);
+        let i1 = (i0 + 1).min(self.out_l.len() - 1);
+        let l = self.out_l[i0] + (self.out_l[i1] - self.out_l[i0]) * frac;
+        let r = self.out_r[i0] + (self.out_r[i1] - self.out_r[i0]) * frac;
+        self.out_read += self.ratio.max(0.05) as f64;
+        if self.out_read > 8192.0 {
+            let drop = self.out_read.floor() as usize;
+            self.out_l.drain(0..drop);
+            self.out_r.drain(0..drop);
+            self.out_read -= drop as f64;
+        }
+        (l, r)
+    }
+
+    /// Shifts one stereo sample. When inactive this is a bit-exact passthrough.
+    pub fn process(&mut self, l: f32, r: f32) -> (f32, f32) {
+        if !self.active {
+            return (l, r);
+        }
+        self.push(l, r);
+        self.pull()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1159,5 +1488,81 @@ mod tests {
             (f - 440.0).abs() / 440.0 < 0.02,
             "autotune should pull the note to 440 Hz, got {f}"
         );
+    }
+
+    #[test]
+    fn formant_pitch_shifter_bypasses_when_inactive() {
+        let mut sh = FormantPitchShifter::new(48000.0);
+        for i in 0..1000 {
+            let x = (i as f32 * 0.01).sin();
+            let (l, r) = sh.process(x, -x);
+            assert_eq!(l, x, "inactive must be a bit-exact passthrough");
+            assert_eq!(r, -x);
+        }
+    }
+
+    #[test]
+    fn formant_pitch_shifter_shifts_pitch_and_keeps_length() {
+        let sr = 44100.0;
+        let src = sine(220.0, sr, 44100);
+        let mut sh = FormantPitchShifter::new(sr);
+        sh.set_ratio(2.0);
+        sh.set_active(true);
+        let mut out = Vec::with_capacity(src.len());
+        for &x in &src {
+            out.push(sh.process(x, x).0);
+        }
+        assert_eq!(out.len(), src.len(), "one output sample per input sample");
+        let f = detect_pitch_hz(&out[20000..30000], sr).expect("pitched");
+        assert!((f - 440.0).abs() / 440.0 < 0.06, "expected ~440 Hz, got {f}");
+        assert!(out.iter().all(|s| s.is_finite()));
+    }
+
+    #[test]
+    fn formant_pitch_shifter_shifts_down_octave() {
+        let sr = 44100.0;
+        let src = sine(440.0, sr, 44100);
+        let mut sh = FormantPitchShifter::new(sr);
+        sh.set_ratio(0.5);
+        sh.set_active(true);
+        let mut out = Vec::with_capacity(src.len());
+        for &x in &src {
+            out.push(sh.process(x, x).0);
+        }
+        let f = detect_pitch_hz(&out[20000..30000], sr).expect("pitched");
+        assert!((f - 220.0).abs() / 220.0 < 0.08, "expected ~220 Hz, got {f}");
+        assert!(out.iter().all(|s| s.is_finite()));
+    }
+
+    #[test]
+    fn formant_pitch_shifter_preserves_formant_peak() {
+        let sr = 44100.0;
+        let src = vowel(110.0, 900.0, sr, 44100);
+        // Classic granular shift drags the formant up with the pitch.
+        let classic = pitch_shift(&src, sr, 12.0);
+        let mut sh = FormantPitchShifter::new(sr);
+        sh.set_ratio(2.0);
+        sh.set_active(true);
+        let mut out = Vec::with_capacity(src.len());
+        for &x in &src {
+            out.push(sh.process(x, x).0);
+        }
+        let f_classic = dominant_formant(&classic, sr);
+        let f_formant = dominant_formant(&out, sr);
+        assert!(
+            f_classic > 1400.0,
+            "classic shift should drag the formant up, got {f_classic}"
+        );
+        assert!(
+            (f_formant - 900.0).abs() < 350.0,
+            "formant-preserving shift should keep the peak near 900 Hz, got {f_formant}"
+        );
+    }
+
+    #[test]
+    fn formant_pitch_shifter_reports_constant_latency() {
+        let sh = FormantPitchShifter::new(44100.0);
+        assert!(sh.latency_frames() > 0);
+        assert_eq!(sh.latency_frames(), FormantPitchShifter::new(48000.0).latency_frames());
     }
 }

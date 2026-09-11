@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Formant-preserving real-time pitch shift for stems** — the mixer's PITCH
+  knob and the stem editor's "Tonhöjd" slider now transpose a stem ±12
+  semitones in real time while keeping the formants in place, at 1-cent
+  resolution. Holding Shift fine-tunes; double-click resets to 0. Offline
+  export applies the same shift.
+
+### Changed
+
+- **Stem pitch no longer changes timing** — the previous per-track pitch
+  control was a varispeed resample that altered pitch *and* playback speed. It
+  is replaced by a dedicated WSOLA + cepstral-envelope shifter whose latency is
+  covered by the existing plug-in delay compensation, so the stem stays aligned
+  with the rest of the project.
+
 ## [0.9.0] - 2026-09-11
 
 First public release. Everything advertised in the UI is backed by the real
