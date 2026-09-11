@@ -122,3 +122,13 @@ jobs:
           cargo build --locked
           Get-Item target/debug/sonix.exe | Select-Object Name,Length
         shell: pwsh
+
+      # Artefakten gör kriteriets sista del möjlig: någon måste kunna köra den på
+      # en riktig Windows-maskin, eftersom en runner varken har skärm eller
+      # ljudenhet. Hämtas med `gh run download <run-id> -n sonix-windows`.
+      - name: Ladda upp sonix.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonix-windows
+          path: target/debug/sonix.exe
+          if-no-files-found: error
