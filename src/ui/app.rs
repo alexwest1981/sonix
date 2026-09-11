@@ -821,6 +821,171 @@ fn mixer_digest(
     h
 }
 
+
+/// Standardnotnummer per trumkanal (kanal 0–5) — samma som trumspåret använder
+/// när en kanal saknar eget sample.
+const DRUM_CHANNEL_KEYS: [u8; 6] = [36, 38, 39, 42, 46, 49];
+
+/// MIDI-noterna ett pattern ger upphov till för ett spår av en viss typ.
+///
+/// Ren funktion (Fas 6.3): mappningen från appens 16-stegsrutor till noter ska
+/// kunna testas utan GUI eller ljudmotor. Mappningen speglar `trigger_song_step`
+/// — trummor tar kanal 0–5, synthspåret tar piano-roll-rutnätet (med kanal 6 som
+/// reserv när rutnätet är tomt) och basspåret kanal 7.
+fn pattern_bar_notes(
+    pattern: &Pattern,
+    kind: TrackKind,
+    channel: u8,
+    bar_start_step: u32,
+    velocities: &[u8; 16],
+) -> Vec<crate::audio::smf::MidiNote> {
+    use crate::audio::smf::{MidiNote, TICKS_PER_STEP_16TH};
+    let mut out: Vec<MidiNote> = Vec::new();
+    let place = |key: u8, step: usize, chan: u8, out: &mut Vec<MidiNote>| {
+        out.push(MidiNote {
+            start: (bar_start_step + step as u32) * TICKS_PER_STEP_16TH,
+            length: TICKS_PER_STEP_16TH,
+            channel: chan,
+            key: key.min(127),
+            velocity: velocities[step].clamp(1, 127),
+        });
+    };
+    match kind {
+        TrackKind::Drums => {
+            for ch in 0..DRUM_CHANNEL_KEYS.len() {
+                let Some(steps) = pattern.channel_steps.get(ch) else {
+                    continue;
+                };
+                let notes = pattern.channel_notes.get(ch);
+                for step in 0..16 {
+                    if steps[step] {
+                        let key = notes.map(|n| n[step]).unwrap_or(DRUM_CHANNEL_KEYS[ch]);
+                        place(key, step, 9, &mut out);
+                    }
+                }
+            }
+        }
+        TrackKind::SynthLead => {
+            let grid_active = (0..24).any(|r| (0..16).any(|s| pattern.piano_roll_grid[r][s]));
+            if grid_active {
+                for row in 0..24 {
+                    for step in 0..16 {
+                        if pattern.piano_roll_grid[row][step] {
+                            place(48 + row as u8, step, channel, &mut out);
+                        }
+                    }
+                }
+            } else if let (Some(steps), Some(notes)) = (
+                pattern.channel_steps.get(6),
+                pattern.channel_notes.get(6),
+            ) {
+                for step in 0..16 {
+                    if steps[step] {
+                        place(notes[step], step, channel, &mut out);
+                    }
+                }
+            }
+        }
+        TrackKind::Bassline => {
+            if let (Some(steps), Some(notes)) = (
+                pattern.channel_steps.get(7),
+                pattern.channel_notes.get(7),
+            ) {
+                for step in 0..16 {
+                    if steps[step] {
+                        place(notes[step], step, channel, &mut out);
+                    }
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
+
+/// MIDI-kanal för ett melodiskt spår. Kanal 9 är percussion, så den hoppas över.
+fn midi_channel_for_track(track_index: usize) -> u8 {
+    let c = if track_index >= 9 { track_index + 1 } else { track_index };
+    (c % 16) as u8
+}
+
+/// Trumtangent → appens trumkanal 0–5 (nära General MIDI).
+fn drum_channel_for_key(key: u8) -> Option<usize> {
+    match key {
+        35..=37 => Some(0),              // bastrumma
+        38 | 40 => Some(1),              // virvel
+        39 => Some(2),                   // handklapp
+        41..=44 => Some(3),              // sluten hi-hat
+        45..=48 => Some(4),              // öppen hi-hat
+        49..=59 => Some(5),              // crash/cymbal (utom 54, 56, 58 = tamburin/klocka)
+        _ => None,
+    }
+}
+
+/// Vad en MIDI-import gjorde med filen.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct MidiImportReport {
+    pub notes_placed: usize,
+    /// Noter som ligger efter första takten (pattern är en takt).
+    pub dropped_later_bars: usize,
+    /// Noter utanför appens rutnät (trumtangenter utan kanal, toner utanför 48–71).
+    pub dropped_out_of_range: usize,
+}
+
+/// Lägger SMF-noter i ett pattern. Första takten blir steg 0–15.
+///
+/// Noterna routas dit appen själv spelar dem: percussion (kanal 9) till
+/// trumkanalerna 0–5, 48–71 till piano-rollen, och allt under 48 till
+/// baskanalen (7) — appens basspår spelar kanal 7 med råa notnummer, så en
+/// basstämma från en annan DAW hör hemma där i stället för att slängas.
+///
+/// Ren funktion (Fas 6.3). Allt som ändå inte får plats räknas i stället för
+/// att tyst försvinna — en import som tappar halva filen måste säga det.
+fn apply_midi_to_pattern(
+    notes: &[crate::audio::smf::MidiNote],
+    file_ppq: u16,
+    pattern: &mut Pattern,
+) -> MidiImportReport {
+    let step_ticks = (file_ppq as u32 / 4).max(1);
+    let mut rep = MidiImportReport::default();
+    while pattern.channel_steps.len() < 8 {
+        pattern.channel_steps.push([false; 16]);
+    }
+    while pattern.channel_notes.len() < 8 {
+        pattern.channel_notes.push([60; 16]);
+    }
+
+    for n in notes {
+        let idx = n.start / step_ticks;
+        if idx >= 16 {
+            rep.dropped_later_bars += 1;
+            continue;
+        }
+        let step = idx as usize;
+        if n.channel == 9 {
+            match drum_channel_for_key(n.key) {
+                Some(ch) => {
+                    pattern.channel_steps[ch][step] = true;
+                    pattern.channel_notes[ch][step] = n.key;
+                    rep.notes_placed += 1;
+                }
+                None => rep.dropped_out_of_range += 1,
+            }
+        } else if (48..72).contains(&n.key) {
+            pattern.piano_roll_grid[(n.key - 48) as usize][step] = true;
+            rep.notes_placed += 1;
+        } else if n.key < 48 {
+            // Basstämma: appens basspår spelar kanal 7 med notnumret direkt.
+            pattern.channel_steps[7][step] = true;
+            pattern.channel_notes[7][step] = n.key;
+            rep.notes_placed += 1;
+        } else {
+            rep.dropped_out_of_range += 1;
+        }
+    }
+    rep
+}
+
 pub struct SonixApp {
     pub engine: AudioEngine,
     /// Monitor ring currently registered with the audio engine (re-sent after
@@ -1087,6 +1252,9 @@ pub struct SonixApp {
     pub mixer_settled_snapshot: Option<TimelineUndoSnapshot>,
     pub mixer_settled_digest: u64,
     pub mixer_pointer_was_down: bool,
+    /// MIDI-fil import/export (Fas 6.3).
+    pub show_midi_import_modal: bool,
+    pub midi_import_path: String,
     /// Satt när en MCU/OSC-kontroll använts det här frameen — en sådan ändring
     /// har ingen pekare men ska ändå ge en ångringspunkt.
     pub mixer_control_event: bool,
@@ -1659,6 +1827,8 @@ impl SonixApp {
             mixer_settled_snapshot: None,
             mixer_settled_digest: 0,
             mixer_pointer_was_down: false,
+            show_midi_import_modal: false,
+            midi_import_path: crate::paths::paths().exports_dir().to_string_lossy().to_string(),
             mixer_control_event: false,
             recovery_candidates,
             show_recovery_modal,
@@ -2535,6 +2705,210 @@ impl SonixApp {
                 active.store(false, std::sync::atomic::Ordering::SeqCst);
             });
         }
+    }
+
+    /// Samlar arrangemanget som MIDI-spår (Fas 6.3). Ljudspår (regioner) hoppas
+    /// över — de har ingen MIDI-motsvarighet.
+    fn collect_song_midi(&self) -> Vec<crate::audio::smf::MidiTrack> {
+        let mut tracks: Vec<crate::audio::smf::MidiTrack> = Vec::new();
+        for (t_idx, track) in self.playlist_tracks.iter().enumerate() {
+            if !matches!(
+                track.kind,
+                TrackKind::Drums | TrackKind::SynthLead | TrackKind::Bassline
+            ) {
+                continue;
+            }
+            let velocities: [u8; 16] = std::array::from_fn(|i| {
+                (self.step_velocities[i] * track.volume * 127.0).clamp(1.0, 127.0) as u8
+            });
+            let channel = midi_channel_for_track(t_idx);
+            let mut notes = Vec::new();
+            for bar in 0..32usize {
+                if let Some(pat_idx) = track.clips[bar]
+                    && let Some(pat) = self.patterns.get(pat_idx)
+                {
+                    notes.extend(pattern_bar_notes(
+                        pat,
+                        track.kind,
+                        channel,
+                        (bar * 16) as u32,
+                        &velocities,
+                    ));
+                }
+            }
+            tracks.push(crate::audio::smf::MidiTrack {
+                name: track.name.clone(),
+                notes,
+            });
+        }
+        if tracks.iter().all(|t| t.notes.is_empty()) {
+            // Ingen spelad patternrad: exportera det valda patternet som en takt,
+            // så knappen inte ger en tom fil.
+            if let Some(pat) = self.patterns.get(self.selected_pattern) {
+                let velocities: [u8; 16] = std::array::from_fn(|i| {
+                    (self.step_velocities[i] * 127.0).clamp(1.0, 127.0) as u8
+                });
+                let mut notes = pattern_bar_notes(pat, TrackKind::Drums, 9, 0, &velocities);
+                notes.extend(pattern_bar_notes(pat, TrackKind::SynthLead, 0, 0, &velocities));
+                notes.extend(pattern_bar_notes(pat, TrackKind::Bassline, 1, 0, &velocities));
+                tracks.clear();
+                tracks.push(crate::audio::smf::MidiTrack {
+                    name: pat.name.clone(),
+                    notes,
+                });
+            }
+        }
+        tracks
+    }
+
+    /// Skriver arrangemanget som `.mid` i exportmappen (Fas 6.3).
+    pub fn export_song_midi(&mut self) {
+        let tracks = self.collect_song_midi();
+        let note_count: usize = tracks.iter().map(|t| t.notes.len()).sum();
+        if note_count == 0 {
+            self.status_message =
+                crate::i18n::t("⚠ Inga MIDI-noter att exportera — rita i ett pattern först.")
+                    .to_string();
+            return;
+        }
+        let bytes = crate::audio::smf::write_midi(self.bpm, &tracks);
+        let dir = crate::paths::paths().exports_dir();
+        let _ = std::fs::create_dir_all(&dir);
+        let file = dir.join(format!("{}.mid", crate::autosave::slug(&self.project_name)));
+        match crate::autosave::write_atomic(&file, &bytes) {
+            Ok(()) => {
+                self.status_message = crate::tstatus!(
+                    "🎼 Exporterade {} noter i {} spår till {}",
+                    note_count,
+                    tracks.len(),
+                    file.display()
+                );
+            }
+            Err(e) => {
+                self.status_message =
+                    crate::tstatus!("⚠ Kunde inte skriva MIDI-filen: {}", e);
+            }
+        }
+    }
+
+    /// Importerar en `.mid` till det valda patternet (Fas 6.3).
+    pub fn import_midi_into_selected_pattern(&mut self, path: &str) -> Result<MidiImportReport, String> {
+        let bytes = std::fs::read(path).map_err(|e| format!("kunde inte läsa {path}: {e}"))?;
+        let parsed = crate::audio::smf::parse_midi(&bytes)?;
+        let total: usize = parsed.tracks.iter().map(|t| t.notes.len()).sum();
+        if total == 0 {
+            return Err("filen innehöll inga noter".to_string());
+        }
+        let notes: Vec<crate::audio::smf::MidiNote> = parsed
+            .notes_with_track()
+            .into_iter()
+            .map(|(_, n)| n.clone())
+            .collect();
+        let idx = self.selected_pattern.min(self.patterns.len().saturating_sub(1));
+        let Some(pat) = self.patterns.get_mut(idx) else {
+            return Err("inget pattern att importera till".to_string());
+        };
+        let name = pat.name.clone();
+        let report = apply_midi_to_pattern(&notes, parsed.ppq, pat);
+        if self.bpm_source_is_file() {
+            // Tempot i filen används bara som förslag när projektet står kvar på
+            // sin ursprungs-BPM; annars vore en import en tyst tempoändring.
+            if let Some(bpm) = parsed.bpm {
+                self.bpm = bpm.clamp(40.0, 260.0);
+            }
+        }
+        let fmt = if parsed.format == 0 {
+            crate::i18n::t(" [format 0: en spår]")
+        } else {
+            ""
+        };
+        self.status_message = if report.dropped_later_bars + report.dropped_out_of_range == 0 {
+            crate::tstatus!(
+                "🎼 Importerade {} noter till pattern '{}'{}",
+                report.notes_placed,
+                name,
+                fmt
+            )
+        } else {
+            crate::tstatus!(
+                "🎼 Importerade {} noter till '{}'{} — hoppade över {} efter första takten och {} utanför rutnätet",
+                report.notes_placed,
+                name,
+                fmt,
+                report.dropped_later_bars,
+                report.dropped_out_of_range
+            )
+        };
+        Ok(report)
+    }
+
+    /// Sant när projektets tempo inte ändrats sedan starten — då får en import
+    /// föreslå filens tempo.
+    fn bpm_source_is_file(&self) -> bool {
+        (self.bpm - 120.0).abs() < 0.05
+    }
+
+    /// Import av `.mid` (Fas 6.3): fil, målpattern och vad som hände.
+    fn render_midi_import_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_midi_import_modal {
+            return;
+        }
+        let mut path = self.midi_import_path.clone();
+        let target = self
+            .patterns
+            .get(self.selected_pattern)
+            .map(|p| p.name.clone())
+            .unwrap_or_default();
+        let mut do_import = false;
+        let mut close_clicked = false;
+        let mut open = self.show_midi_import_modal;
+        egui::Window::new(crate::i18n::t("🎼 Importera MIDI-fil (.mid)"))
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .default_size(Vec2::new(600.0, 190.0))
+            .show(ctx, |ui| {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "Noterna läggs i det valda patternet (första takten). Trummor går till trumkanalerna, toner till piano-rollen.",
+                    ))
+                    .size(11.5)
+                    .color(Theme::TEXT_BRIGHT),
+                );
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    ui.label(crate::i18n::t("Fil:"));
+                    ui.add(
+                        egui::TextEdit::singleline(&mut path)
+                            .desired_width(440.0)
+                            .hint_text("/sökväg/till/fil.mid"),
+                    );
+                });
+                ui.add_space(8.0);
+                if ui.button(crate::i18n::t("  Importera  ")).clicked() {
+                    do_import = true;
+                }
+                if ui.button(crate::i18n::t("Stäng")).clicked() {
+                    close_clicked = true;
+                }
+                if !target.is_empty() {
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new(crate::tstatus!("Målpattern: '{}'", target))
+                            .size(11.0)
+                            .color(Theme::FL_CYAN),
+                    );
+                }
+            });
+        self.midi_import_path = path;
+        if do_import {
+            let file = self.midi_import_path.clone();
+            if let Err(e) = self.import_midi_into_selected_pattern(&file) {
+                self.status_message = crate::tstatus!("⚠ Kunde inte importera MIDI: {}", e);
+            }
+        }
+        self.show_midi_import_modal = open && !close_clicked;
     }
 
     /// Bygger en ångringspunkt av läget just nu (Fas 6.2: mixern ingår).
@@ -5758,6 +6132,15 @@ impl eframe::App for SonixApp {
                             ui.close_menu();
                         }
                         ui.separator();
+                        if ui.button(self.tr("🎼 Exportera sång som MIDI (.mid)")).clicked() {
+                            self.export_song_midi();
+                            ui.close_menu();
+                        }
+                        if ui.button(self.tr("🎼 Importera MIDI-fil (.mid)...")).clicked() {
+                            self.show_midi_import_modal = true;
+                            ui.close_menu();
+                        }
+                        ui.separator();
                         if ui.button(self.tr("🚪 Avsluta")).clicked() {
                             std::process::exit(0);
                         }
@@ -6340,6 +6723,7 @@ impl eframe::App for SonixApp {
         self.render_stem_import_progress_modal(ctx);
         self.render_project_load_progress_modal(ctx);
         self.render_about_modal(ctx);
+        self.render_midi_import_modal(ctx);
         self.render_recovery_modal(ctx);
         self.render_project_manager_modal(ctx);
         self.render_ai_settings_modal(ctx);
@@ -14424,6 +14808,166 @@ mod tests {
     /// sammanfattningen, annars kan en mixerändring ske helt utan att en
     /// ångringspunkt skapas. Fälten räknas upp i samma ordning som
     /// `sync_track_audio_state` och `sync_group_state` skickar dem.
+    /// Testpattern med åtta kanaler, som appen bygger dem.
+    fn test_pattern() -> Pattern {
+        Pattern {
+            name: "Testpattern".to_string(),
+            color: Color32::WHITE,
+            channel_steps: vec![[false; 16]; 8],
+            channel_notes: vec![[60; 16]; 8],
+            piano_roll_grid: [[false; 16]; 24],
+        }
+    }
+
+    #[test]
+    fn pattern_bar_notes_maps_drums_synth_and_bass() {
+        use crate::audio::smf::TICKS_PER_STEP_16TH;
+        let mut pat = test_pattern();
+        // Bastrumma på steg 0 och 8 (kanal 0), virvel på steg 4 (kanal 1).
+        pat.channel_steps[0][0] = true;
+        pat.channel_steps[0][8] = true;
+        pat.channel_notes[0][0] = 36;
+        pat.channel_notes[0][8] = 36;
+        pat.channel_steps[1][4] = true;
+        pat.channel_notes[1][4] = 38;
+        // Synth: rutnätet, rad 12 = MIDI 60, på steg 2.
+        pat.piano_roll_grid[12][2] = true;
+        // Bas: kanal 7, MIDI 40, på steg 3.
+        pat.channel_steps[7][3] = true;
+        pat.channel_notes[7][3] = 40;
+
+        let vels = [100u8; 16];
+        let drums = pattern_bar_notes(&pat, TrackKind::Drums, 0, 0, &vels);
+        assert_eq!(drums.len(), 3, "tre trumslag: {drums:?}");
+        assert!(drums.iter().all(|n| n.channel == 9), "trummor ska ligga på kanal 9");
+        assert!(drums.iter().any(|n| n.key == 36 && n.start == 0));
+        assert!(drums.iter().any(|n| n.key == 36 && n.start == 8 * TICKS_PER_STEP_16TH));
+        assert!(drums.iter().any(|n| n.key == 38 && n.start == 4 * TICKS_PER_STEP_16TH));
+
+        let synth = pattern_bar_notes(&pat, TrackKind::SynthLead, 3, 0, &vels);
+        assert_eq!(synth.len(), 1);
+        assert_eq!(synth[0].key, 60);
+        assert_eq!(synth[0].channel, 3);
+        assert_eq!(synth[0].start, 2 * TICKS_PER_STEP_16TH);
+
+        let bass = pattern_bar_notes(&pat, TrackKind::Bassline, 4, 0, &vels);
+        assert_eq!(bass.len(), 1);
+        assert_eq!(bass[0].key, 40);
+        assert_eq!(bass[0].start, 3 * TICKS_PER_STEP_16TH);
+
+        // En takt längre fram flyttar noterna i tid.
+        let bar2 = pattern_bar_notes(&pat, TrackKind::Drums, 0, 16, &vels);
+        assert!(bar2.iter().all(|n| n.start >= 16 * TICKS_PER_STEP_16TH));
+    }
+
+    #[test]
+    fn exported_midi_can_be_imported_back_with_the_same_notes() {
+        // "Klart när": en fil exporterad från Sonix ska kunna läsas tillbaka
+        // till samma noter och längder. Här hela vägen genom kodningen.
+        use crate::audio::smf;
+        let mut pat = test_pattern();
+        pat.channel_steps[0][0] = true;
+        pat.channel_notes[0][0] = 36;
+        pat.channel_steps[1][2] = true;
+        pat.channel_notes[1][2] = 38;
+        pat.piano_roll_grid[0][5] = true; // MIDI 48
+        pat.piano_roll_grid[23][15] = true; // MIDI 71
+        pat.channel_steps[7][9] = true;
+        pat.channel_notes[7][9] = 43;
+
+        let vels = [100u8; 16];
+        let mut notes = pattern_bar_notes(&pat, TrackKind::Drums, 9, 0, &vels);
+        notes.extend(pattern_bar_notes(&pat, TrackKind::SynthLead, 0, 0, &vels));
+        notes.extend(pattern_bar_notes(&pat, TrackKind::Bassline, 1, 0, &vels));
+        let exported = smf::write_midi(120.0, &[smf::MidiTrack {
+            name: "Allt".to_string(),
+            notes: notes.clone(),
+        }]);
+
+        let parsed = smf::parse_midi(&exported).expect("egen fil ska gå att läsa");
+        let back: Vec<smf::MidiNote> = parsed
+            .notes_with_track()
+            .into_iter()
+            .map(|(_, n)| n.clone())
+            .collect();
+        assert_eq!(parsed.bpm.map(|b| b.round()), Some(120.0));
+        assert_eq!(back.len(), notes.len(), "samma antal noter tillbaka");
+
+        // Tillbaka in i ett tomt pattern: samma rutor ska tändas igen.
+        let mut target = test_pattern();
+        let report = apply_midi_to_pattern(&back, parsed.ppq, &mut target);
+        assert_eq!(report.dropped_later_bars, 0);
+        assert_eq!(report.dropped_out_of_range, 0);
+        assert_eq!(report.notes_placed, notes.len());
+        assert!(target.channel_steps[0][0], "bastrumman tillbaka på steg 0");
+        assert_eq!(target.channel_notes[0][0], 36);
+        assert!(target.channel_steps[1][2], "virveln tillbaka på steg 2");
+        assert!(target.piano_roll_grid[0][5], "MIDI 48 → rad 0");
+        assert!(target.piano_roll_grid[23][15], "MIDI 71 → rad 23");
+        assert!(target.channel_steps[7][9], "basen tillbaka på steg 9");
+        assert_eq!(target.channel_notes[7][9], 43);
+    }
+
+    #[test]
+    fn midi_import_reports_what_it_had_to_drop() {
+        use crate::audio::smf::{MidiNote, TICKS_PER_STEP_16TH};
+        let notes = vec![
+            // Går bra: trumma på steg 0.
+            MidiNote { start: 0, length: 10, channel: 9, key: 36, velocity: 100 },
+            // Andra takten — utanför patternets 16 steg.
+            MidiNote { start: 16 * TICKS_PER_STEP_16TH, length: 10, channel: 9, key: 36, velocity: 100 },
+            // Okänd trumtangent (claves 75).
+            MidiNote { start: 0, length: 10, channel: 9, key: 75, velocity: 100 },
+            // Ton utanför piano-rollens 48–71.
+            MidiNote { start: 0, length: 10, channel: 0, key: 30, velocity: 100 },
+        ];
+        let mut pat = test_pattern();
+        let rep = apply_midi_to_pattern(&notes, crate::audio::smf::PPQ, &mut pat);
+        assert_eq!(rep.notes_placed, 2, "trumman och den låga bastonen");
+        assert_eq!(rep.dropped_later_bars, 1, "noten i takt 2");
+        assert_eq!(rep.dropped_out_of_range, 1, "trumtangenten 75");
+        assert!(pat.channel_steps[0][0]);
+        assert!(
+            pat.channel_steps[7][0] && pat.channel_notes[7][0] == 30,
+            "tonen under 48 ska hamna på baskanalen"
+        );
+    }
+
+    #[test]
+    fn midi_import_follows_the_files_own_resolution() {
+        // En fil med 96 PPQ (vanligt från andra DAW:er) ska hamna på rätt steg,
+        // inte skalas fel.
+        use crate::audio::smf::MidiNote;
+        let notes = vec![MidiNote {
+            start: 96, // = fjärdedelsnot = steg 4 vid 96 PPQ
+            length: 24,
+            channel: 0,
+            key: 60,
+            velocity: 100,
+        }];
+        let mut pat = test_pattern();
+        let rep = apply_midi_to_pattern(&notes, 96, &mut pat);
+        assert_eq!(rep.notes_placed, 1);
+        assert!(!pat.piano_roll_grid[12][0]);
+        assert!(pat.piano_roll_grid[12][4], "96 tick vid 96 PPQ är steg 4");
+    }
+
+    #[test]
+    fn midi_channels_skip_percussion() {
+        // Kanal 9 är percussion, så melodiska spår får aldrig den kanalen.
+        assert_eq!(midi_channel_for_track(0), 0);
+        assert_eq!(midi_channel_for_track(8), 8);
+        assert_eq!(midi_channel_for_track(9), 10);
+        for t in 0..16 {
+            assert_ne!(midi_channel_for_track(t), 9, "spår {t} fick percussionkanalen");
+        }
+        assert_eq!(drum_channel_for_key(36), Some(0));
+        assert_eq!(drum_channel_for_key(38), Some(1));
+        assert_eq!(drum_channel_for_key(42), Some(3));
+        assert_eq!(drum_channel_for_key(49), Some(5));
+        assert_eq!(drum_channel_for_key(75), None);
+    }
+
     #[test]
     fn mixer_digest_covers_every_mixed_field() {
         let base_track = PlaylistTrack::new(

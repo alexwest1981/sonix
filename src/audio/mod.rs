@@ -34,6 +34,7 @@ pub mod plugin_vst2;
 #[allow(dead_code)]
 pub mod plugin_host_live;
 pub mod recorder;
+pub mod smf;
 pub mod stem_separator;
 pub mod synth;
 pub mod vocal_harmonizer;

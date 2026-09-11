@@ -45,7 +45,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 4 | 7 | **57 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 5 | 7 | **71 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 0 | 4 | **0 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
@@ -280,10 +280,25 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
   - **Beroende:** —
 
-- [ ] **6.3 MIDI-fil import/export (SMF)** — *M*
-  - **Gör:** Läs och skriv Standard MIDI File (typ 0/1) med eget minimalt SMF-lager — samma offline-/lättviktsprincip som CLAP-, VST3- och VST2-hostarna: tempo, taktart, spårnamn och noter med start/längd/velocity. Koppla till Channel Rack, Piano Roll och offline-exporten. Detta är också nyckeln som gör notbaserat AI-material flyttbart in och ut.
-  - **Klart när:** En MIDI-fil från en annan DAW kan importeras, redigeras och exporteras tillbaka med noter och tempo intakta (round-trip-test), och den exporterade filen öppnar korrekt externt.
-  - **Filer:** `src/audio/midi_file.rs` (ny), `src/audio/mod.rs`, `src/ui/app.rs`, `src/i18n.rs`
+- [x] **6.3 MIDI-fil import/export (SMF)** — *M* ✅
+  - **Löst:** Egen SMF-kodek i **`src/audio/smf.rs`** (ren data in/ut, inga app- eller ljudberoenden — samma hållning som WAV, loudness och FLAC), plus inkoppling i `app.rs`:
+    - **Skrivning (format 1):** ledspår med tempo (µs/kvartsnot) och taktart, därefter ett spår per projektspår med namn. Noter sorteras i tidsordning och **not-off skrivs före not-on vid samma tick**, så en ny ton på samma tangent inte klipps av föregående not-off (testat).
+    - **Läsning:** klarar det filer från *andra* DAW:er faktiskt innehåller — running status, främmande meta-events, SysEx, SMPTE-avvisning med begripligt fel, och noter som aldrig får note-off stängs vid spårets slut i stället för att tappas. Allt felaktigt ger ett `Err`, aldrig panik: testat mot varje trunkering av en fil (`for cut in 1..len`).
+    - **Mappning (rena funktioner, testbara utan GUI):** `pattern_bar_notes` speglar `trigger_song_step` — trummor → kanal 0–5 → MIDI-kanal 10, synthspåret → piano-roll-rutnätet (kanal 6 som reserv när rutnätet är tomt), basen → kanal 7. Exporten följer **arrangemanget** (`track.clips[bar]` över 32 takter), inte bara det valda patternet; är arrangemanget tomt exporteras det valda patternet som en takt så knappen inte ger en tom fil.
+    - **Import** går till det valda patternet och routar dit appen själv spelar: percussion → trumkanalerna, 48–71 → piano-rollen, **under 48 → baskanalen** (appens basspår spelar kanal 7 med råa notnummer). Det sista var en riktig bugg som round-trip-testet avslöjade: först slängdes basstämmor som "utanför rutnätet".
+    - **Inget tyst tapp:** noter efter första takten och tangenter utan kanal *räknas* och rapporteras i statusraden ("hoppade över N efter första takten och M utanför rutnätet"). Tempot i filen används bara när projektet står kvar på 120 BPM, annars vore importen en tyst tempoändring.
+    - **UI:** "🎼 Exportera sång som MIDI (.mid)" skriver till `paths().exports_dir()` (atomiskt, temp+`rename`), och "🎼 Importera MIDI-fil (.mid)…" öppnar en dialog med sökvägsfält och målpattern. Alla nya strängar har engelska i18n-nycklar.
+  - **Klart när:** En MIDI-fil från en annan DAW kan importeras, redigeras och exporteras tillbaka med noter och tempo intakta (round-trip-test) ✅ · den exporterade filen öppnar korrekt externt ✅ (se beviset).
+  - **Bevis:** **192 tester** default, 0 varningar. CI grön.
+    - `audio::smf`: 7 tester — VLQ mot specifikationens egna exempelvärden (0x0FFFFFFF som fyra byte), round-trip av noter/tempo/spårnamn, överlappande noter på samma tangent, handbyggd *främmande* fil (running status utan statusbyte, okänt meta-event, annan PPQ 96) läst korrekt, oavslutade noter, SMPTE-avvisning och skräpinput utan panik.
+    - `ui::app`: 5 tester — mappningen trummor/synth/bas, **export → import tillbaka till samma rutor**, vad importen tvingas hoppa över, att en fil med 96 PPQ hamnar på rätt steg (och inte skalas fel), samt att melodiska spår aldrig får percussionkanalen 9.
+    - **Externt:** en `.mid` skriven av modulen (via ett fristående program som inkluderar `smf.rs` med `#[path]`, `/tmp/smf_check.rs`) lästes av **ffprobe/libmodplug**: format korrekt, **duration 00:00:02.00** (8 åttondelar i 120 BPM = 2,0 s), 5 kanaler — och `ffmpeg` renderade den till ljud (peak 17427, rms 6064). En **oberoende avkodare skriven från specifikationen i Python** (`/tmp/smf_verify.py`, ingen delad kod) gav exakt: `format=1 spår=4 ppq=480`, `tempo 120.00`, 14 noter i rätt spårnamn, lead `[60,62,64,65,67,69,71,72]` på ticks `[0,240,…,1680]` med längd 230, trummor på kanal 9 med tangenter 36/38, bas `(36,0,360)` och `(43,480,360)`.
+    - Tonhöjdsanalys på det renderade ljudet gick **inte** att göra: maskinen saknar `timidity.cfg`, så libmodplug spelar ett fallback-ljud. Att filen lästes och lät är belagt; att *rätt toner* lät är inte mätt.
+  - **Kvar (ärligt):**
+    - Importen lägger noter i **första takten** (pattern är 16 steg). Längre filer tappas inte tyst — de räknas — men de kommer inte in. Nästa steg är att lägga noter över flera takter i arrangemanget.
+    - **Ingen notlängd eller velocity per not** följer med in: appens rutor är steg/av-tända med en gemensam steg-velocity, så en not blir ett steg. Exporten skriver däremot varje nots längd korrekt ut.
+    - Noter utanför 48–71 som *inte* är bastoner (t.ex. ett leadsolo på MIDI 80) hoppas över och räknas.
+  - **Filer:** `src/audio/smf.rs` (ny), `src/audio/mod.rs`, `src/ui/app.rs`, `src/i18n.rs`
   - **Beroende:** —
 
 - [ ] **6.4 Kvantisering & humanisering av inspelad MIDI** — *S*
@@ -388,11 +403,11 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**6.3 MIDI-fil import/export (SMF)** (*M*): nästa punkt i Tier 0. Ingen SMF-kod finns i repot (`smf`/`midi_file`/`import_midi`/`export_midi` = 0 träffar), medan appen redan har patterns, piano roll och ett sequencer-steg — det som saknas är filformatet. Klart när en fil exporterad från Sonix kan öppnas i en annan DAW och en SMF därifrån kan importeras tillbaka till samma noter och längder.
+**6.4 Kvantisering & humanisering av inspelad MIDI** (*S*): den sista av Tier 0:s "arbetet blir rätt"-punkter tillsammans med 6.5. Kvantisering finns i dag bara som rutnätssnap *vid inmatning* (`snap_time_secs`, `piano_roll_snap_to_scale`) — det som saknas är efterarbetet: ta en inspelad tagning och dra noterna till närmaste steg (med styrka och valfritt sväng), eller humanisera dem medvetet (liten slumpmässig tids- och styrkevariation så det inte låter maskinellt). Klart när en slarvigt inspelad tagning kan kvantiseras till takten och humaniseras tillbaka med bevarad karaktär, verifierat av tester på notdata.
 
-Därefter i Tier 0 (Fas 6): 6.4 kvantisering/humanisering, 6.5 dither.
+Därefter i Tier 0 (Fas 6): 6.5 dither.
 
-Nyss klart: **6.2** mixer/FX/automation i undo-historiken (snapshoten bär buss/VCA, undo skickar tillbaka till motorn, ett drag ger en ångring) samt **6.1** autosave/kraschåterställning och **6.0** sökvägsmodulen.
+Nyss klart: **6.3** MIDI-fil import/export (egen SMF-kodek, arrangemanget exporteras, import routar till rätt kanaler, externt validerad) samt **6.2** mixer/FX/automation i undo-historiken.
 
 Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
 

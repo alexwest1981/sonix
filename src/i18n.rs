@@ -377,6 +377,23 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🚪 Avsluta" => "🚪 Quit",
         "🎚 Mixerändring" => "🎚 Mixer change",
 
+        // --- Fas 6.3: MIDI-fil import/export (SMF) ---
+        "🎼 Exportera sång som MIDI (.mid)" => "🎼 Export song as MIDI (.mid)",
+        "🎼 Importera MIDI-fil (.mid)..." => "🎼 Import MIDI file (.mid)...",
+        "🎼 Importera MIDI-fil (.mid)" => "🎼 Import MIDI file (.mid)",
+        "Noterna läggs i det valda patternet (första takten). Trummor går till trumkanalerna, toner till piano-rollen." => "Notes go into the selected pattern (first bar). Drums land on the drum channels, tones in the piano roll.",
+        "⚠ Inga MIDI-noter att exportera — rita i ett pattern först." => "⚠ No MIDI notes to export — draw something in a pattern first.",
+        "🎼 Exporterade {} noter i {} spår till {}" => "🎼 Exported {} notes across {} tracks to {}",
+        "⚠ Kunde inte skriva MIDI-filen: {}" => "⚠ Could not write the MIDI file: {}",
+        "🎼 Importerade {} noter till pattern '{}'{}" => "🎼 Imported {} notes into pattern '{}'{}",
+        "🎼 Importerade {} noter till '{}'{} — hoppade över {} efter första takten och {} utanför rutnätet" => "🎼 Imported {} notes into '{}'{} — skipped {} past the first bar and {} outside the grid",
+        "⚠ Kunde inte importera MIDI: {}" => "⚠ Could not import MIDI: {}",
+        "Fil:" => "File:",
+        "  Importera  " => "  Import  ",
+        "Stäng" => "Close",
+        "Målpattern: '{}'" => "Target pattern: '{}'",
+        " [format 0: en spår]" => " [format 0: single track]",
+
         // --- Fas 6.1: autosave, kraschåterställning och läslista ---
         "🕘 Senaste projekt" => "🕘 Recent projects",
         "📂 Visa projektmappen i filhanteraren" => "📂 Show project folder in file manager",
