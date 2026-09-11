@@ -197,6 +197,34 @@ update-desktop-database ~/.local/share/applications
 
 ---
 
+## 📁 File Locations & Autosave
+
+Every path is built in **one** place (`src/paths.rs`) and follows XDG. Run `sonix --paths` to print the map for your machine (✓ = exists, · = created on demand).
+
+| Location | Contents |
+| :--- | :--- |
+| `~/Music/Sonix/` | The library (`XDG_MUSIC_DIR` is honoured, including via `~/.config/user-dirs.dirs`) |
+| `~/Music/Sonix/Projects/` | `<name>.sonix` + `<name>/` with the project's own media (Recordings, Stems, Samples, Renders) |
+| `~/Music/Sonix/Samples/` · `Factory_Samples/` · `Templates/` | Your samples, factory sounds, project templates |
+| `~/.config/sonix/` | `config.json` (language), `audio.json` (stream), `ai.json` (keys, chmod 0600) |
+| `~/.local/share/sonix/` | `models/` (ONNX), `plugins/` |
+| `~/.local/state/sonix/` | `recent.json` (recent projects), `window.json`, `logs/` (audio-thread crash log), **`autosave/`** |
+| `~/.cache/sonix/` | `waveforms/`, `library_cache.tsv` |
+
+**Override with environment variables:** `SONIX_PROJECTS_DIR`, `SONIX_SAMPLES_DIR`, `SONIX_CONFIG_DIR`, `SONIX_DATA_DIR`, `SONIX_STATE_DIR`, `SONIX_CACHE_DIR` (otherwise `XDG_*` applies).
+
+### Autosave & crash recovery
+
+- The project is autosaved **every 60 seconds** if anything changed, and **immediately after structural edits** (cuts, tracks, mute, paste …) — rate-limited to one write per ten seconds.
+- The **5 most recent versions per project** are kept in `~/.local/state/sonix/autosave/`; older ones are rotated out.
+- Everything is written **atomically** (temp file + `rename`), so an interrupted write can never replace a whole project file with half of one.
+- If Sonix starts and finds an autosave **newer than the project file on disk**, a recovery dialog is shown. A restored copy is *retired* (renamed to `*.restored`) rather than deleted.
+- The project menu has **🕘 Recent projects** (reads `recent.json`) and **📂 Show project folder in file manager**.
+
+Undo currently covers the timeline; undo for mixer/FX/automation is planned as item 6.2 in [ROADMAP.md](ROADMAP.md).
+
+---
+
 ## 🧭 What's Left & How Far From "Real"
 
 A candid status of the remaining gaps. The audio engine, timeline, mixer, generators and I/O are real; the items below are the honest exceptions.

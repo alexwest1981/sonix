@@ -195,6 +195,34 @@ update-desktop-database ~/.local/share/applications
 
 ---
 
+## 📁 Filplatser & autosparning
+
+Alla sökvägar byggs på **en** plats (`src/paths.rs`) och följer XDG. Kör `sonix --paths` för att se hela kartan på din maskin (✓ = finns, · = skapas vid behov).
+
+| Plats | Innehåll |
+| :--- | :--- |
+| `~/Music/Sonix/` | Biblioteket (`XDG_MUSIC_DIR` följs, även ur `~/.config/user-dirs.dirs`) |
+| `~/Music/Sonix/Projects/` | `<namn>.sonix` + `<namn>/` med projektets egna media (Recordings, Stems, Samples, Renders) |
+| `~/Music/Sonix/Samples/` · `Factory_Samples/` · `Templates/` | Egna samples, fabriksljud, projektmallar |
+| `~/.config/sonix/` | `config.json` (språk), `audio.json` (ström), `ai.json` (nycklar, chmod 0600) |
+| `~/.local/share/sonix/` | `models/` (ONNX), `plugins/` |
+| `~/.local/state/sonix/` | `recent.json` (senaste projekt), `window.json`, `logs/` (ljudtrådens kraschlogg), **`autosave/`** |
+| `~/.cache/sonix/` | `waveforms/`, `library_cache.tsv` |
+
+**Överstyr med miljövariabler:** `SONIX_PROJECTS_DIR`, `SONIX_SAMPLES_DIR`, `SONIX_CONFIG_DIR`, `SONIX_DATA_DIR`, `SONIX_STATE_DIR`, `SONIX_CACHE_DIR` (annars följs `XDG_*`).
+
+### Autosparning & kraschåterställning
+
+- Projektet autosparas **var 60:e sekund** om något ändrats, och **direkt efter strukturella ändringar** (klipp, spår, mute, inklistring …) — dock högst en skrivning var tionde sekund.
+- **5 senaste versionerna per projekt** behålls i `~/.local/state/sonix/autosave/`; äldre roteras bort automatiskt.
+- Allt skrivs **atomiskt** (temp-fil + `rename`), så en avbruten skrivning kan aldrig ersätta en hel projektfil med en halv.
+- Startar Sonix och hittar en autosave som är **nyare än projektfilen på disk** visas en återställningsdialog. En återställd kopia *pensioneras* (döps om till `*.restored`) i stället för att raderas.
+- Projektmenyn har **🕘 Senaste projekt** (läser `recent.json`) och **📂 Visa projektmappen i filhanteraren**.
+
+Projektet använder en *endimensionell* ångra-historik för tidslinjen; undo för mixer/FX/automation är planerat i Fas 6.2 i [ROADMAP.md](ROADMAP.md).
+
+---
+
 ## 🧭 Vad som är kvar & hur långt ifrån "äkta"
 
 En ärlig status över kvarvarande luckor. Ljudmotorn, tidslinjen, mixern, generatorerna och I/O är äkta; punkterna nedan är de ärliga undantagen.

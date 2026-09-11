@@ -16,6 +16,7 @@
 10. [Mixer Console, Effektrack & Routing (F6)](#10-mixer-console-effektrack--routing-f6)
 11. [Export & Master-rendering (Ctrl+E)](#11-export--master-rendering-ctrle)
 12. [Ljudinställningar (PipeWire/ALSA/JACK) & Hårdvarukontrollers (MCU/OSC)](#12-ljudinställningar-pipewirealsajack--hårdvarukontrollers-mcuosc)
+13. [Filplatser, autosparning & kraschåterställning](#13-filplatser-autosparning--kraschåterställning)
 
 ---
 
@@ -260,4 +261,35 @@ När din produktion är klar exporterar du enkelt till högkvalitativt ljud:
 * **Open Sound Control (OSC)**: Trådlös styrning via surfplattor (TouchOSC / Lemur) via UDP-port 8000/9000.
 
 ---
+## 13. Filplatser, autosparning & kraschåterställning
+
+### Var ligger allt?
+Alla sökvägar byggs av en enda modul och följer XDG-standarden. Kör `sonix --paths` i terminalen för hela kartan på din maskin (✓ = finns, · = skapas vid behov).
+
+| Plats | Innehåll |
+| :--- | :--- |
+| `~/Music/Sonix/Projects/` | Dina projekt: `<namn>.sonix` + en mapp `<namn>/` för projektets egna media |
+| `~/Music/Sonix/Samples/` | Dina egna samples (sparas hit när du klipper ur tidslinjen) |
+| `~/Music/Sonix/Factory_Samples/` · `Templates/` | Fabriksljud (genereras första gången) och projektmallar |
+| `~/.config/sonix/` | `config.json` (språk), `audio.json` (ljudström), `ai.json` (API-nycklar, endast läsbar för dig) |
+| `~/.local/share/sonix/` | `models/` (ONNX-modeller för stem-separation), `plugins/` |
+| `~/.local/state/sonix/` | `recent.json`, `window.json`, `logs/`, **`autosave/`** |
+| `~/.cache/sonix/` | Vågforms-cache och sample-bibliotekets index |
+
+Vill du flytta något (t.ex. projekt till en extern disk) sätter du `SONIX_PROJECTS_DIR`, `SONIX_SAMPLES_DIR`, `SONIX_CONFIG_DIR`, `SONIX_DATA_DIR`, `SONIX_STATE_DIR` eller `SONIX_CACHE_DIR` innan du startar.
+
+### Autosparning och återställning
+* **Var 60:e sekund** autosparas projektet om något har ändrats, och **direkt efter strukturella ändringar** (klipp, duplicera, ta bort spår, mute, inklistring, rensning). En skrivning sker högst var tionde sekund, så en snabb redigeringsföljd inte fyller disken.
+* **5 versioner per projekt** behålls i `~/.local/state/sonix/autosave/`; äldre versioner roteras bort automatiskt. Det ger dig möjlighet att gå tillbaka till ett läge från några minuter sedan.
+* Skrivningen är **atomisk** (temp-fil + `rename`). Om datorn dör mitt i en skrivning är projektfilen på disk antingen den gamla eller den nya — aldrig en halv.
+* Har Sonix avslutats utan att du sparade (krasch, strömavbrott, `kill -9`) visas en **återställningsdialog vid nästa start** med de autosaves som är nyare än projektfilen. Välj **Återställ** för att öppna läget och granska det, eller **Fortsätt utan att återställa**.
+* En återställd kopia **pensioneras** (döps om till `*.restored`) i stället för att raderas — frågan ställs inte igen, men filen finns kvar.
+* En autosave skrivs bara när innehållet faktiskt skiljer sig från det du senast sparade, så ett orört projekt skapar inga kopior och ingen falsk varning.
+
+### Senaste projekt & filhanteraren
+* **🕘 Senaste projekt** i projektmenyn listar de åtta senast öppnade/sparade projekten (från `~/.local/state/sonix/recent.json`). Poster vars fil raderats utanför Sonix filtreras bort automatiskt.
+* **📂 Visa projektmappen i filhanteraren** öppnar `~/Music/Sonix/Projects/` i systemets filhanterare — Sonix har ingen egen filbläddrare, utan lämnar över till din.
+
+---
+
 *Sonix Studio Pro – Skapad med kraften av Rust & Linux Audio.*

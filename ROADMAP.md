@@ -45,7 +45,7 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 2 | 7 | **29 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång) | 3 | 7 | **43 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge) | 0 | 3 | **0 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 0 | 4 | **0 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
@@ -241,17 +241,28 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 - [x] **6.0 En enda sökvägsmodul + kanonisk filstruktur** — *M* ✅
   - **Löst:** `src/paths.rs` är nu den enda platsen som bygger sökvägar: XDG följs (`XDG_MUSIC_DIR` läses även ur `~/.config/user-dirs.dirs`, eftersom variabeln normalt inte är exporterad), `SONIX_PROJECTS_DIR`/`SONIX_SAMPLES_DIR`/`SONIX_CONFIG_DIR`/`SONIX_DATA_DIR`/`SONIX_STATE_DIR`/`SONIX_CACHE_DIR` överstyr, och `~/` expanderas. 15 anropsställen migrerade; de hårdkodade `/home/alex`-fallbackarna är borta (exportmappen ×2, Suno-scan, projektväljarens standardvärden, ett maskinberoende test). Kraschloggen flyttad från **musikmappen** till `~/.local/state/sonix/logs/`, sample-bibliotekets cache till `~/.cache/sonix/`, ONNX-modellerna till `~/.local/share/sonix/models/`, och sample-sökningen täcker nu även den kanoniska `Samples/` (tidigare försvann sparade samples ur webbläsaren vid omstart). `sonix --paths` skriver ut hela kartan med ✓/· per post. Migreringen flyttar men **raderar aldrig**, skriver aldrig över ett mål som redan har filer, och tål att köras varje start (verifierad mot isolerad `HOME`).
-  - **Klart när:** Ingen modul utanför `paths.rs` bygger sökvägar av `$HOME` ✅ · `sonix --paths` listar kartan ✅ · migreringen testad ✅ · dokumenterad i README/MANUAL → **kvar** (görs i samma svep som 6.1).
-  - **Kvar (medvetet):** "Senaste projekt"-läslistan och "📂 Visa i filhanteraren" i UI:t (kräver `recent.json` — tas i 6.1 som ändå rör samma state), plugin-databasen persisteras fortfarande inte, och `mic_settings.direct_monitoring` är en dubblett av `vocal_track.monitoring_on` som inte styr något (tas i **6.6**).
+  - **Klart när:** Ingen modul utanför `paths.rs` bygger sökvägar av `$HOME` ✅ · `sonix --paths` listar kartan ✅ · migreringen testad ✅ · dokumenterad i README/MANUAL ✅ (kartan + `SONIX_*`-variablerna står nu i README.md, README_SV.md och MANUAL.md kap. 13).
+  - **Kvar (medvetet):** plugin-databasen persisteras fortfarande inte, och `mic_settings.direct_monitoring` är en dubblett av `vocal_track.monitoring_on` som inte styr något (tas i **6.6** ✅ — där konstaterat att den fortfarande är död).
   - **Bevis:** 10 nya tester i `paths.rs` (kanonisk layout, fyra åtskilda rötter, `user-dirs.dirs`-parsning, överstyrningar, legacy-exportmapp, idempotent migrering, `ensure_dirs`) — 153 tester default, 199 med `plugin-host`, 0 varningar.
   - **Filer:** `src/paths.rs` (ny), `src/main.rs`, `src/ui/app.rs`, `src/ui/plugins_view.rs`, `src/audio/engine.rs`, `src/audio/synth.rs`, `src/audio/ai_client.rs`, `src/audio/neural_separator.rs`, `src/audio/factory_samples.rs`, `src/audio/plugin_host.rs`, `src/i18n.rs`
   - **Beroende:** —
 
-- [ ] **6.1 Autosave, kraschåterställning & versionshistorik** — *M*
-  - **Gör:** Autospara projektet till en roterande backup i `paths::autosave_dir()` (`~/.local/state/sonix/autosave/`, se 6.0) — t.ex. var 60:e sekund och vid varje strukturell ändring — och visa en återställningsdialog vid start när autosaven är nyare än senaste manuella sparning. Behåll N senaste versioner så att en trasig redigering kan rullas tillbaka. Skriv alltid till temp-fil + `rename` så att en avbruten skrivning aldrig ersätter en hel projektfil.
-  - **Klart när:** Processen kan dödas mitt i en inspelning och nästa start erbjuder en autosave med allt arbete kvar; en tidigare version kan återställas; test verifierar rotationen och att halvskrivna filer aldrig blir den aktiva projektfilen.
-  - **Filer:** `src/ui/app.rs`, `src/paths.rs`, `src/i18n.rs`
-  - **Beroende:** **6.0** (autosaven måste ligga på den kanoniska platsen)
+- [x] **6.1 Autosave, kraschåterställning & versionshistorik** — *M* ✅
+  - **Löst:** Ny modul **`src/autosave.rs`** (ren filsystemlogik, ingen GUI- eller ljudberoende) plus inkoppling i `app.rs`:
+    - **Atomisk skrivning överallt.** `write_atomic()` skriver temp-fil i samma katalog och `rename`ar på plats — `save_project` använder den nu också (tidigare `fs::write` rakt på projektfilen). En avbruten skrivning kan därmed aldrig lämna en halv projektfil som den aktiva.
+    - **Två utlösare.** Var 60:e sekund (`INTERVAL_SECS`) och **direkt efter strukturella ändringar** — `push_undo()` är krokpunkten, eftersom det är samma operationer som historiken redan mäter — men högst en skrivning per 10 s, så en snabb redigeringsföljd inte skriver en fil per steg.
+    - **Bara när något faktiskt ändrats.** Ett fingeravtryck (FNV-1a över den serialiserade projektfilen) jämförs mot förra autosaven *och* mot filen på disk. Ett orört projekt skriver inga kopior, och en orörd start skapar ingen falsk varning (utgångsläget seedas vid konstruktion).
+    - **Rotation:** de **5 senaste versionerna per projekt** behålls; äldre tas bort per projekt, inte globalt.
+    - **Återställningsdialog vid start** (`render_recovery_modal`) som bara listar autosaves som är **nyare än sin manuella projektfil** (eller saknar manuell fil = krasch före första sparningen), med ålder i läsbar form, sökväg i tooltip och **Återställ** per rad. En återställd kopia **pensioneras** till `*.restored` i stället för att raderas, så frågan inte ställs igen men filen finns kvar.
+    - **`recent.json` + meny:** "🕘 Senaste projekt" (8 poster, senaste först, dubletter flyttas upp, poster vars fil raderats utanför Sonix filtreras bort) och "📂 Visa projektmappen i filhanteraren" (`xdg-open` mot `paths().projects_dir()`).
+    - **Dokumenterat:** filkartan, `SONIX_*`-variablerna och autosave-beteendet i `README.md`, `README_SV.md` och `MANUAL.md` (kap. 13) — vilket stänger 6.0:s sista dellinje.
+  - **Bevis:** 12 nya tester — 10 i `autosave.rs` (slug är filsystemsäker, filnamn tur och retur, fingeravtryck är innehållskänsligt, atomisk skrivning ersätter hela filen utan temp-rester, samma sekund skriver inte över förra versionen, sortering nyaste först, rotation behåller rätt 5 per projekt, "erbjud bara om nyare", pensionering döljer men behåller, ålder i rätt enhet) och 2 i `app.rs` (`recovery_offers_newer_autosaves_and_skips_already_saved_work`, `recent_list_keeps_the_newest_projects_and_drops_missing_files`) — mot isolerad `HOME`, så testerna rör aldrig riktiga projekt. **174 tester default, 220 med `plugin-host`, 0 varningar.**
+  - **Kvar (ärligt):**
+    - **`kill -9`-testet i GUI:t är inte kört här** — miljön har ingen display och ingen Xvfb, och jag startar inte ett fönster på din skärm oannonserat. Logiken är testtäckt (rotation, atomisk skrivning, "erbjud bara om nyare", pensionering), men själva start-loopen bör verifieras i en session med bildskärm: starta Sonix, ändra något, `kill -9`, starta igen → dialogen ska komma.
+    - Autosaven täcker det som ligger i projektfilen. Inspelade tagningar ligger redan som filer i projektmappen och överlever därför en krasch, men **plugin-databasen persisteras fortfarande inte** (oförändrat från 6.0).
+    - Upp till 60 sekunders arbete kan tappa om appen dödas *utan* en strukturell ändring i mellanrummet (en fader- eller rattändring är ingen undo-punkt). Ska det bli tightare är nästa steg fler krokpunkter, inte kortare intervall — annars roterar historiken bort sig själv under mixning.
+  - **Filer:** `src/autosave.rs` (ny), `src/main.rs`, `src/ui/app.rs`, `src/i18n.rs`, `README.md`, `README_SV.md`, `MANUAL.md`
+  - **Beroende:** **6.0** ✅
 
 - [ ] **6.2 Undo/redo för mixer, FX och automation** — *M*
   - **Gör:** Låt undo-historiken omfatta fader/pan/mute/solo, EQ, kompressor, reverb-/delay-send, buss-/VCA-state, master-FX, plugin-parametrar och automationskurvor — och `push_undo` vid varje sådan commit (i dag täcks enbart tidslinjen). Snapshot-mekaniken finns redan; detta är utbyggnad, inte ny arkitektur.
@@ -359,9 +370,11 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
 
 ## 🎯 Nästa uppgift
 
-**6.0 En enda sökvägsmodul + kanonisk filstruktur** (*M*): i dag byggs sökvägar på 10+ ställen med egen `$HOME`-logik, fyra kategorier heter olika saker fast de betyder samma (`Samples` vs `User_Samples`, `Exporterat` vs "Renders"), ONNX-modeller ligger i konfigkatalogen och två ställen faller tillbaka på en hårdkodad `/home/alex` (`app.rs:1408`, `app.rs:11472`). Ny `src/paths.rs` blir den enda platsen som konstruerar sökvägar (med `SONIX_*`-overrides + XDG), med migrering som flyttar men aldrig raderar — och därefter byggs **6.1 (autosave)** ovanpå den.
+**6.2 Undo/redo för mixer, FX och automation** (*M*): undo-historiken (`undo_stack`/`redo_stack` i `app.rs`) matas i dag från **14 anropsställen**, och samtliga är tidslinjeoperationer. En fader-, EQ- eller send-ändring går alltså inte att ångra. Snapshot-mekaniken finns redan — detta är utbyggnad: låt `TimelineUndoSnapshot` (eller en syskon-snapshot) omfatta `playlist_tracks`-fälten som redan är serialiserade (volym, pan, mute/solo, EQ, kompressor, sends, automation) samt buss-/VCA-state och plugin-parametrar, och anropa `push_undo` vid varje commit av dessa. Klart när en felaktig mixerändring kan ångras med Ctrl+Z och undo följt av redo ger samma ljudande state (test).
 
-Därefter i Tier 0 (Fas 6): 6.1 autosave/kraschåterställning, 6.2 undo för mixer/FX/automation, 6.3 SMF import/export, 6.4 kvantisering/humanisering, 6.5 dither.
+Därefter i Tier 0 (Fas 6): 6.3 SMF import/export, 6.4 kvantisering/humanisering, 6.5 dither.
+
+Nyss klart: **6.1** autosave/kraschåterställning + versionshistorik (5 versioner per projekt, atomiska skrivningar, återställningsdialog vid start, `recent.json` + "Senaste projekt" och "Visa i projektmappen") samt **6.0** sökvägsmodulen (`src/paths.rs`, kanonisk filstruktur, `sonix --paths`, dokumenterad i README/MANUAL) och **6.6** rundgången/bastonen (80 Hz-högpass, anti-rundgång, monitorering av som standard).
 
 Tidigare klart: Fas 2 (formant-bevarande pitch, WSOLA-time-stretch, per-voice filter/ADSR), neural stem-separation (3.1) samt plugin-hostens laddning (4.1), instansiering + audio/PDC (4.2), state/preset save-load (4.3), GUI-ABI/livscykel (4.4a), GUI-fönster (4.4b), sandbox-processgräns (4.5a), sandbox-ljudtransport (4.5b), VST3-modul/ABI/inspektion (4.6a), VST3-ljud/state (4.6b), VST2-ABI/ljud/state (4.6c), MIDI-inspelning (5.3), automation (5.4), loudness-normalisering (5.5), VCA-grupper/sub-mix-bussar (5.2) och realtids-/plugin-tester (5.1). Kvar i Fas 4: 4.6 (riktig yabridge-brygga — flyttad till Tier 1, se **7.3**).
 
