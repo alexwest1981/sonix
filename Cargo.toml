@@ -43,3 +43,9 @@ libc = { version = "0.2", optional = true }
 [target.'cfg(target_os = "linux")'.dependencies]
 alsa = "0.9"
 
+# Utanför Linux är midir MIDI-backenden (Windows: WinMM, macOS: CoreMIDI). På
+# Linux finns ALSA-seq-vägen redan och är den som används — midir blir den
+# plattformsoberoende backenden, precis som Fas 7.1 beskrev.
+[target.'cfg(not(target_os = "linux"))'.dependencies]
+midir = "0.11"
+

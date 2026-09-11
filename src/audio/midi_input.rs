@@ -1,8 +1,11 @@
 #[cfg(target_os = "linux")]
 use std::ffi::CString;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(target_os = "linux")]
+use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
+#[cfg(target_os = "linux")]
 use std::thread::JoinHandle;
 // Tråden och dess sömn hör till ALSA-läsaren: på andra plattformar finns ingen
 // tråd, så importerna ska inte ligga där heller (annars varnar bygget).
@@ -50,35 +53,132 @@ pub fn note_to_roll_offset(note: u8, base: u8, rows: usize) -> Option<usize> {
 pub struct MidiKeyboardInput {
     pub event_count: Arc<AtomicUsize>,
     pub devices: Arc<Mutex<Vec<String>>>,
+    /// Stoppflaggan hör till lästråden, som bara finns i ALSA-vägen.
+    #[cfg(target_os = "linux")]
     running: Arc<AtomicBool>,
+    /// ALSA-vägen läser i en egen tråd …
+    #[cfg(target_os = "linux")]
     join: Option<JoinHandle<()>>,
+    /// … medan midir anropar tillbaka från sin egen kö. Anslutningarna måste
+    /// hållas vid liv så länge vi vill ta emot något: att släppa dem kopplar ner.
+    #[cfg(not(target_os = "linux"))]
+    connections: Vec<midir::MidiInputConnection<()>>,
+}
+
+/// Tolkar en MIDI-messages bytes som appens kontrollhändelser.
+///
+/// Ren funktion utan plattformsberoenden, så att den kan prövas i CI på Linux
+/// även om den bara anropas av midir-vägen. Bara noter blir händelser — samma
+/// mappning som ALSA-läsaren gör (`velocity == 0` på note-on betyder note-off).
+#[cfg_attr(
+    target_os = "linux",
+    allow(dead_code, reason = "anropas av midir-backenden; Linux-läsaren får färdigtolkade ALSA-händelser")
+)]
+pub fn control_events_from_midi(bytes: &[u8]) -> Vec<ControlEvent> {
+    let Some(&status) = bytes.first() else {
+        return Vec::new();
+    };
+    // Systemmeddelanden (0xF0 och uppåt) bär ingen not och har olika längd.
+    if status >= 0xF0 {
+        return Vec::new();
+    }
+    let kind = status & 0xF0;
+    if kind != 0x80 && kind != 0x90 {
+        return Vec::new();
+    }
+    let (Some(&note), Some(&velocity)) = (bytes.get(1), bytes.get(2)) else {
+        return Vec::new();
+    };
+    // Note-on med velocity 0 är note-off (vanligt bland klaviaturer).
+    let on = kind == 0x90 && velocity > 0;
+    vec![ControlEvent::MidiNote {
+        note: note & 0x7F,
+        velocity: velocity & 0x7F,
+        on,
+    }]
 }
 
 #[cfg(not(target_os = "linux"))]
 impl MidiKeyboardInput {
-    /// På andra plattformar än Linux finns ingen ALSA-sequencer. Stubben svarar
-    /// med ett begripligt fel i stället för att kratet inte ska gå att bygga —
-    /// porten till `midir` är en egen uppgift i Fas 7.1.
-    pub fn connect(_tx: Sender<ControlEvent>) -> Result<Self, String> {
-        Err(
-            "MIDI-klaviatur kräver ALSA-sequencern, som bara finns på Linux i den här versionen"
-                .to_string(),
-        )
+    /// Öppnar alla MIDI-in-portar midir hittar och kopplar var och en till en
+    /// egen anslutning. Varje anslutning får sin egen `MidiInput`, eftersom
+    /// `connect` tar över instansen.
+    ///
+    /// Att inga portar finns är **inte** ett fel: klaviaturen kan kopplas in
+    /// senare, och då hittas den av `device_list`. Bara ett fel som hindrar
+    /// själva starten rapporteras.
+    pub fn connect(tx: Sender<ControlEvent>) -> Result<Self, String> {
+        let event_count = Arc::new(AtomicUsize::new(0));
+        let probe = midir::MidiInput::new("Sonix Keys")
+            .map_err(|e| format!("Kunde inte starta MIDI-in: {}", e))?;
+        let devices = Arc::new(Mutex::new(port_names(&probe)));
+        let ports = probe.ports();
+        drop(probe);
+
+        let mut connections = Vec::new();
+        let mut failures = Vec::new();
+        for port in ports {
+            let Ok(input) = midir::MidiInput::new("Sonix Keys") else {
+                continue;
+            };
+            let name = input.port_name(&port).unwrap_or_else(|_| "?".to_string());
+            let count_t = event_count.clone();
+            let tx_t = tx.clone();
+            match input.connect(
+                &port,
+                "sonix-keys",
+                move |_when, bytes, _| {
+                    for ev in control_events_from_midi(bytes) {
+                        count_t.fetch_add(1, Ordering::Relaxed);
+                        let _ = tx_t.send(ev);
+                    }
+                },
+                (),
+            ) {
+                Ok(conn) => connections.push(conn),
+                Err(e) => failures.push(format!("{}: {}", name, e)),
+            }
+        }
+
+        // Att ingen port kunde öppnas är ett fel värt att visa; att det inte
+        // fanns någon port alls är det inte.
+        if connections.is_empty() && !failures.is_empty() {
+            return Err(format!("Kunde inte öppna MIDI-in: {}", failures.join(", ")));
+        }
+
+        Ok(Self {
+            event_count,
+            devices,
+            connections,
+        })
     }
 
-    /// Samma kod som Linux-vägen: fälten fylls av lästråden där ALSA finns, och
-    /// står kvar på noll respektive tomt här. Att läsa dem (i stället för att
-    /// hårdkoda svar) gör att strukturen betyder samma sak på alla plattformar.
     pub fn received(&self) -> usize {
         self.event_count.load(Ordering::Relaxed)
     }
 
+    /// Listan hämtas färsk varje gång: midir ser aktuella portar när en ny
+    /// `MidiInput` skapas, så en klaviatur som kopplas in mitt i en session
+    /// dyker upp utan omstart. Går det inte att fråga behålls den senaste listan.
     pub fn device_list(&self) -> Vec<String> {
-        self.devices
-            .lock()
-            .map(|d| d.clone())
-            .unwrap_or_default()
+        match midir::MidiInput::new("Sonix Keys") {
+            Ok(input) => port_names(&input),
+            Err(_) => self
+                .devices
+                .lock()
+                .map(|d| d.clone())
+                .unwrap_or_default(),
+        }
     }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn port_names(input: &midir::MidiInput) -> Vec<String> {
+    input
+        .ports()
+        .iter()
+        .map(|p| input.port_name(p).unwrap_or_else(|_| "?".to_string()))
+        .collect()
 }
 
 #[cfg(target_os = "linux")]
@@ -178,12 +278,78 @@ impl MidiKeyboardInput {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for MidiKeyboardInput {
     fn drop(&mut self) {
         self.running.store(false, Ordering::Relaxed);
         if let Some(j) = self.join.take() {
             let _ = j.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod midir_parser_tests {
+    use super::*;
+
+    fn note(note: u8, velocity: u8, on: bool) -> ControlEvent {
+        ControlEvent::MidiNote {
+            note,
+            velocity,
+            on,
+        }
+    }
+
+    #[test]
+    fn a_note_on_and_a_note_off_become_note_events() {
+        assert_eq!(control_events_from_midi(&[0x90, 60, 100]), vec![note(60, 100, true)]);
+        assert_eq!(control_events_from_midi(&[0x80, 60, 0]), vec![note(60, 0, false)]);
+    }
+
+    #[test]
+    fn note_on_with_velocity_zero_counts_as_note_off() {
+        // Vanligt bland klaviaturer: samma statusbyte, velocity 0 släpper noten.
+        assert_eq!(control_events_from_midi(&[0x90, 64, 0]), vec![note(64, 0, false)]);
+    }
+
+    #[test]
+    fn every_channel_is_read() {
+        // Statusbytet bär kanalen i de fyra låga bitarna (0x9n = note-on, kanal n).
+        for ch in 0..16u8 {
+            assert_eq!(
+                control_events_from_midi(&[0x90 | ch, 48, 90]),
+                vec![note(48, 90, true)],
+                "kanal {ch} tappades"
+            );
+        }
+    }
+
+    #[test]
+    fn messages_that_are_not_notes_are_ignored() {
+        // CC, pitch bend, aftertouch, programbyte och systemmeddelanden.
+        assert!(control_events_from_midi(&[0xB0, 7, 100]).is_empty());
+        assert!(control_events_from_midi(&[0xE0, 0, 64]).is_empty());
+        assert!(control_events_from_midi(&[0xD0, 40]).is_empty());
+        assert!(control_events_from_midi(&[0xC0, 5]).is_empty());
+        assert!(control_events_from_midi(&[0xF8]).is_empty());
+        assert!(control_events_from_midi(&[0xF0, 0x7E, 0x7F]).is_empty());
+    }
+
+    #[test]
+    fn short_or_empty_messages_do_not_panic() {
+        assert!(control_events_from_midi(&[]).is_empty());
+        assert!(control_events_from_midi(&[0x90]).is_empty());
+        assert!(control_events_from_midi(&[0x90, 60]).is_empty());
+        assert!(control_events_from_midi(&[0x80, 60]).is_empty());
+    }
+
+    #[test]
+    fn data_bytes_are_masked_to_seven_bits() {
+        // Skräp i de höga bitarna ska inte läcka in i notnumret.
+        assert_eq!(
+            control_events_from_midi(&[0x90, 0xFF, 0xFF]),
+            vec![note(0x7F, 0x7F, true)]
+        );
     }
 }
 
