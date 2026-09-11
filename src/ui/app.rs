@@ -1556,6 +1556,25 @@ fn init_sample_library_start() -> (
     }
 }
 
+/// Slår ihop en färdig biblioteksskanning med det som redan låg i biblioteket
+/// (Fas 7.4).
+///
+/// Skanningen tar minuter, och under tiden kan användaren ha importerat ett eget
+/// sample. En rak ersättning skulle tysta tappa den importen — alltså behålls
+/// poster som inte finns i skanningen.
+fn merge_library(
+    scanned: Vec<LibrarySampleItem>,
+    existing: &[LibrarySampleItem],
+) -> Vec<LibrarySampleItem> {
+    let mut merged = scanned;
+    for old in existing {
+        if !merged.iter().any(|new| new.file_path == old.file_path) {
+            merged.push(old.clone());
+        }
+    }
+    merged
+}
+
 fn library_items_from_scanned(scanned: Vec<crate::audio::factory_samples::ScannedSampleItem>) -> Vec<LibrarySampleItem> {
     let mut items = Vec::new();
 
@@ -5919,23 +5938,25 @@ impl SonixApp {
             }
             crate::audio::factory_samples::ScanPoll::Done(items) => {
                 let count = items.len();
-                self.sample_library = library_items_from_scanned(items);
+                let scanned = library_items_from_scanned(items);
+                let existing = self.sample_library.clone();
+                self.sample_library = merge_library(scanned, &existing);
                 // Ge de inbyggda trumkanalerna riktiga samplar — men rör inte en
-                // kanal användaren redan lagt ett eget ljud på.
+                // kanal användaren redan lagt ett eget ljud på. Kit-tilldelaren tar
+                // en hel slice, så de orörda kanalerna lyfts ut, tilldelas och
+                // läggs tillbaka på samma platser.
                 if !self.sample_library.is_empty() {
-                    let library = self.sample_library.clone();
-                    let mut untouched: Vec<usize> = (0..self.channels.len().min(6))
+                    let untouched: Vec<usize> = (0..self.channels.len().min(6))
                         .filter(|i| self.channels[*i].sample_path.is_none())
                         .collect();
                     if !untouched.is_empty() {
-                        let mut rack: Vec<ChannelStrip> =
+                        let mut scope: Vec<ChannelStrip> =
                             untouched.iter().map(|i| self.channels[*i].clone()).collect();
-                        auto_assign_default_kit(&mut rack, &library);
-                        for (slot, i) in untouched.iter_mut().enumerate() {
-                            self.channels[*i] = rack[slot].clone();
+                        auto_assign_default_kit(&mut scope, &self.sample_library);
+                        for (slot, i) in untouched.iter().enumerate() {
+                            self.channels[*i] = scope[slot].clone();
                         }
                     }
-                    untouched.clear();
                 }
                 self.status_message = crate::tstatus!(
                     "🎵 Ljudbiblioteket klart: {} samplar på {:.1} s",
@@ -15901,6 +15922,46 @@ mod tests {
         assert_eq!(restored.name, "Gammalt pattern");
         assert!(restored.channel_steps[0][0], "stegen läses som förut");
         assert!(restored.take.is_empty());
+    }
+
+    #[test]
+    fn a_late_scan_does_not_throw_away_a_fresh_import() {
+        // Fas 7.4: skanningen tar minuter. Importerar användaren ett eget sample
+        // under tiden får den färdiga skanningen inte skriva över den.
+        let scanned = vec![
+            test_library_item(0, "Kick", "/samples/kick.wav"),
+            test_library_item(1, "Snare", "/samples/snare.wav"),
+        ];
+        let existing = vec![
+            test_library_item(9, "Mitt eget", "/home/alex/Music/Sonix/Samples/mitt.wav"),
+            // En post som skanningen också hittade: ska inte bli dubbel.
+            test_library_item(1, "Snare", "/samples/snare.wav"),
+        ];
+        let merged = merge_library(scanned.clone(), &existing);
+
+        assert_eq!(merged.len(), 3, "två skannade + en egen import");
+        assert!(merged.iter().any(|i| i.name == "Mitt eget"));
+        assert_eq!(
+            merged
+                .iter()
+                .filter(|i| i.file_path.as_deref() == Some("/samples/snare.wav"))
+                .count(),
+            1,
+            "ingen dubblett av det skanningen hittade"
+        );
+    }
+
+    fn test_library_item(id: usize, name: &str, path: &str) -> LibrarySampleItem {
+        LibrarySampleItem {
+            id,
+            name: name.to_string(),
+            category: "Test".to_string(),
+            icon: "🎵".to_string(),
+            default_note: 60,
+            color: Color32::WHITE,
+            waveform: Vec::new(),
+            file_path: Some(path.to_string()),
+        }
     }
 
     #[test]
