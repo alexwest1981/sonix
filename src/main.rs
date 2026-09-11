@@ -1,5 +1,12 @@
+// En GUI-app ska inte öppna en konsolruta bredvid fönstret på Windows. Mätt på
+// artefakten: utan det här stod det "Subsystem: Windows CUI" i den färdiga
+// .exe-filen. I debug behålls konsolen, så att utskrifter och panik går att se.
+// Innerattributet måste stå först i filen, före alla moduler.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod audio;
 mod autosave;
+
 // CLAP-värden använder X11 för plugin-fönster och memfd för sandlådan — båda
 // är Linux-specifika. I stället för att falla på `libc`/X11 med kryptiska fel
 // säger vi det rakt ut (Fas 7.1; porten är en egen uppgift).

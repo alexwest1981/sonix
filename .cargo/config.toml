@@ -1,0 +1,9 @@
+# Windows-bygget länkar CRT statiskt.
+#
+# Mätt på CI-artefakten: det dynamiska läget importerar VCRUNTIME140.dll, alltså
+# kräver den färdiga binären Microsofts VC++-redistributable — på en maskin utan
+# den startar den inte alls. Med statisk CRT försvinner det kravet och filen går
+# att köra direkt. Sektionen gäller bara Windows-målet, så Linux-bygget är
+# oförändrat (och proc-makron, som måste länka dynamiskt, påverkas inte).
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
