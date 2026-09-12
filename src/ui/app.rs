@@ -639,26 +639,43 @@ fn stem_files_for_import(
     (kept, skipped)
 }
 
+/// Källfiler som inte gick att läsa, för statusraden (Fas 8.5).
+///
+/// **Varför delad och inte en parameter.** Det finns elva ställen som läser ljud,
+/// och alla utom ett gjorde `if let Ok(...)` **utan `else`**: en fil som inte kunde
+/// läsas föll bort utan ett ord, och klippet ritades ändå ur sin sparade översikt.
+/// Ett klipp som ser ut att ha ljud men är tyst är värre än ett som är tomt.
+///
+/// Med en lista per anrop måste varje ställe komma ihåg att skicka in den, och den
+/// som glömmer får tystnad igen. En delad lista kan inte glömmas: anropet ser
+/// likadant ut överallt, och den som läser av den (en gång per bildruta) får hellre
+/// en rad för mycket än en tystnad.
+static UNREADABLE_SOURCES: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
 /// Laddar en regions ljud — och minns när det inte gick.
 ///
-/// Alla sex ställen i appen gjorde `if let Ok(...) = load_wav_pcm(path)` **utan
-/// `else`**: en fil som inte kunde läsas föll bort utan ett ord, och klippet
-/// ritades ändå ur sin sparade översikt. Ett klipp som ser ut att ha ljud men är
-/// tyst är värre än ett som är tomt — det kostade en hel dags felsökning.
-///
-/// Formen är avsiktligt densamma som `load_wav_pcm` (en `Option` i stället för en
-/// `Result`), så att anropen bara behöver byta huvud och kropparna stå orörda.
-fn load_audio_or_report(
-    path: &str,
-    failed: &mut Vec<String>,
-) -> Option<(Vec<f32>, Vec<f32>, u32)> {
+/// Samma form som `load_wav_pcm` (en `Option` i stället för en `Result`), så att
+/// anropen bara byter namn: `&& let Some((l, r, sr)) = load_audio_or_report(path)`.
+fn load_audio_or_report(path: &str) -> Option<(Vec<f32>, Vec<f32>, u32)> {
     match crate::audio::load_wav_pcm(path) {
         Ok((l, r, sr)) => Some((l, r, sr)),
         Err(_) => {
-            failed.push(path.to_string());
+            if let Ok(mut list) = UNREADABLE_SOURCES.lock()
+                && !list.iter().any(|p| p == path)
+            {
+                list.push(path.to_string());
+            }
             None
         }
     }
+}
+
+/// Tar listan av oläsbara källor och tömmer den. Anropas en gång per bildruta.
+fn take_unreadable_sources() -> Vec<String> {
+    UNREADABLE_SOURCES
+        .lock()
+        .map(|mut l| std::mem::take(&mut *l))
+        .unwrap_or_default()
 }
 
 /// Identiteten hos en ljudbuffert: adress, längd och första/sista sample.
@@ -3229,7 +3246,7 @@ impl SonixApp {
                 }
             }
         } else if let Some(ref src_p) = region.source_path
-            && let Ok((l, r, track_sr)) = crate::audio::load_wav_pcm(src_p) {
+            && let Some((l, r, track_sr)) = load_audio_or_report(src_p) {
                 let start_sample = ((reg_offset_sec * track_sr as f32) as usize).min(l.len());
                 let num_samples = ((reg_len_sec * track_sr as f32) as usize).min(l.len().saturating_sub(start_sample));
                 if num_samples > 0 {
@@ -3294,7 +3311,7 @@ impl SonixApp {
 
         let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
         let mut pcm_opt = None;
-        let duration_secs = if let Some(ref path) = item.file_path && let Ok((l, r, sr)) = crate::audio::load_wav_pcm(path) {
+        let duration_secs = if let Some(ref path) = item.file_path && let Some((l, r, sr)) = load_audio_or_report(path) {
             let dur = l.len() as f32 / sr as f32;
             pcm_opt = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
             dur
@@ -3343,7 +3360,7 @@ impl SonixApp {
 
         let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
         let mut pcm_opt = None;
-        let duration_secs = if let Some(ref path) = item.file_path && let Ok((l, r, sr)) = crate::audio::load_wav_pcm(path) {
+        let duration_secs = if let Some(ref path) = item.file_path && let Some((l, r, sr)) = load_audio_or_report(path) {
             let dur = l.len() as f32 / sr as f32;
             pcm_opt = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
             dur
@@ -3389,7 +3406,7 @@ impl SonixApp {
     }
 
     pub fn open_sample_in_vocal_studio(&mut self, item: &LibrarySampleItem) {
-        let pcm = if let Some(ref path) = item.file_path && let Ok((l, _, _)) = crate::audio::load_wav_pcm(path) {
+        let pcm = if let Some(ref path) = item.file_path && let Some((l, _, _)) = load_audio_or_report(path) {
             l
         } else {
             (0..44100 * 2).map(|i| {
@@ -3426,7 +3443,7 @@ impl SonixApp {
             if start_idx < l.len() {
                 extracted_pcm = l[start_idx..end_idx.min(l.len())].to_vec();
             }
-        } else if let Some(ref path) = r_source && let Ok((l, _, srate)) = crate::audio::load_wav_pcm(path) {
+        } else if let Some(ref path) = r_source && let Some((l, _, srate)) = load_audio_or_report(path) {
             sr = srate;
             extracted_pcm = l;
         }
@@ -4346,35 +4363,21 @@ impl SonixApp {
                 }
 
                 let mut stem_pcms = Vec::new();
-                let mut unreadable: Vec<String> = Vec::new();
                 for r in &st.regions {
                     if let Some(ref p_src) = r.source_path
-                        && let Some((pcm_l, pcm_r, sr)) = load_audio_or_report(p_src, &mut unreadable)
+                        && let Some((pcm_l, pcm_r, sr)) = load_audio_or_report(p_src)
                     {
                         stem_pcms.push((std::sync::Arc::new(pcm_l), std::sync::Arc::new(pcm_r), sr));
                     }
                 }
-                // Tyst bortfall är det som gör en sådan här sak osynlig. Står det
-                // inget i statusraden ser klippet ut att ha ljud — det har bara en
-                // vågform.
-                if !unreadable.is_empty()
-                    && let Ok(mut p) = progress.lock()
-                {
-                    let msg = crate::tstatus!(
-                        "⚠ {} klipp kunde inte läsas och är tysta: {}",
-                        unreadable.len(),
-                        unreadable.join(", ")
-                    );
-                    p.error_message = Some(match p.error_message.take() {
-                        Some(prev) => format!("{prev}\n{msg}"),
-                        None => msg,
-                    });
-                }
+                // Tyst bortfall är det som gör en sådan här sak osynlig. Rapporten
+                // sker nu på ett ställe (take_unreadable_sources) i stället för här,
+                // så att alla elva anrop omfattas — inte bara projektinläsningen.
                 // Ett fruset spår har sitt ljud i en fil i projektets mapp. Att
                 // lägga den i stem_pcms gör att samma väg som ljudspåren används
                 // — både vid inläsning och vid en senare omsynk.
                 if let Some(f) = &st.frozen
-                    && let Ok((pcm_l, pcm_r, sr)) = crate::audio::load_wav_pcm(&f.path)
+                    && let Some((pcm_l, pcm_r, sr)) = load_audio_or_report(&f.path)
                 {
                     stem_pcms.push((
                         std::sync::Arc::new(pcm_l),
@@ -6864,6 +6867,20 @@ impl SonixApp {
 
 impl eframe::App for SonixApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+
+        // Källfiler som inte gick att läsa: säg det i statusraden i stället för att tiga.
+        // En gång per bildruta, på ett ställe — alla elva anrop omfattas, inte bara
+        // projektinläsningen. Ett klipp som ser ut att ha ljud men är tyst är värre än
+        // ett som är tomt; då ska det stå varför.
+        let unreadable = take_unreadable_sources();
+        if !unreadable.is_empty() {
+            self.status_message = crate::tstatus!(
+                "⚠ {} fil(er) kunde inte läsas och är tysta: {}",
+                unreadable.len(),
+                unreadable.join(", ")
+            )
+            .to_string();
+        }
         // Auto-open the MIDI keyboard input port once, so external keyboards
         // work as soon as they are connected with `aconnect`.
         if !self.midi_auto_connect_attempted {
@@ -8042,7 +8059,7 @@ impl SonixApp {
 
                             card_ui.horizontal_wrapped(|ui| {
                                 if ui.button(egui::RichText::new(crate::i18n::t("▶")).size(9.5)).on_hover_text(crate::i18n::t("Provspela sample med äkta ljud")).clicked() {
-                                    if let Some(ref path) = item.file_path && let Ok((l, r, sr)) = crate::audio::load_wav_pcm(path) {
+                                    if let Some(ref path) = item.file_path && let Some((l, r, sr)) = load_audio_or_report(path) {
                                         let _ = self.engine.send_command(AudioCommand::PlayAudition {
                                             left: std::sync::Arc::new(l),
                                             right: std::sync::Arc::new(r),
