@@ -711,14 +711,22 @@ Frågan ställs av `render_wav_question_modal` och gäller **alla vägar in**:
   tittar på **samma** lista. Engelsk rad för hela 8.5-familjen (35 strängar) så att
   fallbacken inte visar svenska för en engelsk användare.
 - **Ej klickad i GUI:** dialogen är inte sedd med egna ögon i den här sessionen.
-  Appens egen skärmdumpsloop (som gav `screenshots/` 2026-09-11) stannar nu: den
-  skickar `ViewportCommand::Screenshot` och väntar på `Event::Screenshot` som aldrig
-  kommer, så bara den första vyn blir satt. `grim` mot DP-3 (och alla tre skärmarna)
-  gav i stället bara bakgrundsbilden. En ny målbild finns för ändamålet
-  (`ScreenshotTarget::WavQuestionModal` → `30_dialog_mp3_eller_wav.png`), så nästa
-  gång loopen fungerar blir den fångad automatiskt. Tills dess: kör
-  `sonix <mapp>` med en wav + en mp3 med samma stämnamn i mappen — frågan kommer
-  direkt vid start.
+  Mätt, inte gissat: appens skärmdumpsloop (`--capture-screenshots`, den som gav
+  `screenshots/` 2026-09-11) **kör inga bildrutor alls** i det här fönsterläget —
+  ingen rad skrivs efter starten, ingen PNG blir till, och räkningen i `update()`
+  kommer aldrig igång (alltså inte ens "första vyn satt"). `grim` mot DP-3 och mot
+  hela skärmen gav bara bakgrundsbilden på alla tre skärmarna, så fönstret ritas
+  uppenbarligen inte. Fönstret syntes ändå som `mapped=True, visible=True` på DP-3
+  (Alex fokuserade skärm var DP-1), och `hyprctl dispatch focuswindow` går inte att
+  använda i den här Hyprland-versionen (ny Lua-syntax) — fokus gick inte att tvinga
+  fram. **Ett verktygsfel som detta ska inte vara tyst:** loopen har nu ett tålamod
+  (`SCREENSHOT_WAIT_FRAMES = 180`, ≈3 s) som skriver ut felet och avbryter i stället
+  för att vänta för evigt. Det skyddar den väg där bildrutor kommer men svaret inte —
+  den här gången kom inga bildrutor, så tålamodet hann inte prövas.
+  En ny målbild finns för ändamålet (`ScreenshotTarget::WavQuestionModal` →
+  `30_dialog_mp3_eller_wav.png`), så nästa gång loopen fungerar blir den fångad
+  automatiskt. Tills dess: kör `sonix <mapp>` med en wav + en mp3 med samma stämnamn
+  i mappen — frågan kommer direkt vid start.
 
 ### Separatören skriver stämmorna till disk (KLART 2026-09-12)
 

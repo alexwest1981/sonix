@@ -1956,8 +1956,19 @@ pub enum ScreenshotTarget {
 pub enum ScreenshotState {
     Idle,
     Preparing { target: ScreenshotTarget, dest: std::path::PathBuf, frames_left: usize },
-    AwaitingCapture { dest: std::path::PathBuf },
+    /// Väntar på `Event::Screenshot`. `frames_left` är tålamodet: en begäran som
+    /// aldrig besvaras ska säga det i stället för att vänta för evigt.
+    AwaitingCapture { dest: std::path::PathBuf, frames_left: u32 },
 }
+
+/// Hur många bildrutor en skärmdump får vänta på sitt svar innan körningen ger upp.
+///
+/// `ViewportCommand::Screenshot` är en **begäran**: svaret kommer tillbaka som ett
+/// `Event::Screenshot`. I vissa sessioner kommer det aldrig — 2026-09-12 stod
+/// loopen stilla på första målet för evigt, med fönstret uppe och synligt, utan ett
+/// ord om varför. Ett verktyg som väntar i det tysta ser ut att arbeta; 180
+/// bildrutor (≈3 s) räcker för den som svarar, och den som inte svarar får ett fel.
+const SCREENSHOT_WAIT_FRAMES: u32 = 180;
 
 /// Startar ljudbiblioteket (Fas 7.4).
 ///
@@ -7322,7 +7333,7 @@ impl eframe::App for SonixApp {
         });
 
         if let Some(img) = received_screenshot {
-            if let ScreenshotState::AwaitingCapture { dest } = &self.screenshot_state {
+            if let ScreenshotState::AwaitingCapture { dest, .. } = &self.screenshot_state {
                 let w = img.size[0] as u32;
                 let h = img.size[1] as u32;
                 let raw_bytes: Vec<u8> = img.pixels.iter().flat_map(|c| [c.r(), c.g(), c.b(), c.a()]).collect();
@@ -8374,13 +8385,33 @@ impl eframe::App for SonixApp {
                         self.screenshot_state = ScreenshotState::Preparing { target, dest, frames_left: frames_left - 1 };
                         ctx.request_repaint();
                     } else {
-                        self.screenshot_state = ScreenshotState::AwaitingCapture { dest };
+                        self.screenshot_state = ScreenshotState::AwaitingCapture {
+                            dest,
+                            frames_left: SCREENSHOT_WAIT_FRAMES,
+                        };
                         ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot);
                         ctx.request_repaint();
                     }
                 }
-                ScreenshotState::AwaitingCapture { .. } => {
-                    ctx.request_repaint();
+                ScreenshotState::AwaitingCapture { dest, frames_left } => {
+                    if frames_left == 0 {
+                        // Svaret kom aldrig. Säg det, städa och stäng — en loop som
+                        // väntar för evigt ser ut att arbeta, och det är värre än
+                        // ett tydligt fel.
+                        eprintln!(
+                            "❌ Ingen skärmdump kom tillbaka för {:?} efter {} bildrutor. \
+                             Ingen ruta har besvarat begäran — körningen avbryts så att felet syns.",
+                            dest, SCREENSHOT_WAIT_FRAMES
+                        );
+                        self.screenshot_queue.clear();
+                        self.screenshot_state = ScreenshotState::Idle;
+                        self.screenshot_mode_active = false;
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                    } else {
+                        self.screenshot_state =
+                            ScreenshotState::AwaitingCapture { dest, frames_left: frames_left - 1 };
+                        ctx.request_repaint();
+                    }
                 }
             }
         }
