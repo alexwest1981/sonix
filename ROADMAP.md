@@ -56,8 +56,10 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 ## ⬜ Vad som återstår (räknat ur listan 2026-09-12)
 
-Sex punkter är obockade. Fyra av dem går att göra vid datorn; två kräver Wine och en
-display. Ordningen nedan är den som ger mest per timme.
+**Tio punkter är obockade:** sex från den första räkningen, plus fyra som kom till
+2026-09-12 efter researchen om plugins och chopping (rad 7–10 i den andra tabellen). Sju går
+att göra vid datorn, två kräver Wine och en display, och en kräver en Windows-maskin för
+kvittensen. Ordningen nedan är den som ger mest per timme.
 
 | # | Punkt | Storlek | Vad som återstår | Blockerare |
 | :--- | :--- | :---: | :--- | :--- |
@@ -67,6 +69,20 @@ display. Ordningen nedan är den som ger mest per timme.
 | 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
+
+**Nya punkter 2026-09-12, efter research om plugins och chopping.** Underlaget ligger i
+`sonix`-skillen: `references/daw-research/05-audacity-plugins-effekter-klipp.md`,
+`06-flstudio-plugins-chopping.md` och `07-chopping-och-onset-detektering.md` (primärkällor —
+Image-Lines onlinemanual, Audacitys manual/release notes/GitHub, Ableton/Reaper/Bitwig, aubio/
+librosa/Essentia, Böck & Widmer DAFx-13). Punkterna står för sig själva nedanför den gamla
+listan i stället för att knuffa om dess ordning.
+
+| # | Punkt | Storlek | Vad som återstår | Blockerare |
+| :--- | :--- | :---: | :--- | :--- |
+| 7 | **8.7 Chopper → slicemappning** | *M* | Den mest **synliga** luckan i ett arbetsflöde: choppern har en trim-ruta och en knapp märkt "Transient" som bara sätter slutet till 18 % | — |
+| 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** | *M* | Det FL:s Fruity Wrapper kan och inte Sonix | — |
+| 9 | **8.8 Automatisering av fler parametrar** | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
+| 10 | **8.9 Makron: en kedja av kommandon över många filer** | *S* | Audacitys Macros — finns inte alls hos oss | — |
 
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
 release, ett bevisstycke här i roadmapen — och för det som hörs eller syns, en kvittens
@@ -82,6 +98,16 @@ tempopunkt-UI väntar alla på att Alex ser dem.
 > 8.4 är den mest grundläggande funktionen som saknas helt, och 8.2-resten är billigast. Sonix står
 > starkare än de stora på tre punkter: native Linux, CLAP med out-of-process-sandbox, och
 > AI/Suno-vägen — ingen av de undersökta DAW:erna har AI-genererad musik som utgångspunkt.
+>
+> Plugin- och chop-researchen (2026-09-12) flyttar bilden på två sätt. **Audacity är inte
+> måttstocken för plugins:** där kör allt i samma process (en plugin kan fälla appen), CLAP
+> nämns inte, VST-instrument stöds inte, och Audacity 4 har skurit ned till VST3 + Nyquist
+> (+ LV2/AU per plattform). Sonix står starkare: sandbox, CLAP, LV2, egna X11-fönster för
+> plugin-GUI:t och ett besked när en sparad plugin saknas. **FL Studio är måttstocken för
+> chopping:** deras chop-väg går via Edison/Slicex/Slicer 2 och slutar alltid i noter
+> ("Convert to score and dump to piano roll", "Dump score"), medan vår chopper är en enda
+> trim-ruta. Audacity har ingen slice-till-noter-väg alls — där exporterar man klipp som
+> ljudfiler (Export Multiple / Label Sounds).
 
 ---
 
@@ -628,6 +654,94 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     koppling som skulle bli en slinga. **Eget pass, med färskt sammanhang** — inte
     ihopträngt i slutet av ett annat.
 - [ ] **8.4 Sampler** (ett riktigt samplerinstrument i kanalracket, inte bara en WAV-spelare).
+- [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*
+  - **Läget hos oss, mätt 2026-09-12:** Sonix hostar VST2/VST3/CLAP/LV2, skyddar sig mot
+    krascher med en **egen out-of-process-sandbox** (övervakaren startar om en död worker),
+    öppnar plugin-GUI:t i ett **eget X11-fönster** (`plugin_gui.rs`), listar pluginens
+    parametrar (`plugins_view.rs`) och **säger till när en sparad plugin inte kunde
+    återställas** ("⚠ N plugin(s) kunde inte återställas") — samma besked som Audacity
+    införde i PR #3801. Det är alltså inte där gapet sitter.
+  - **Tre saker FL:s Fruity Wrapper har som vi inte har:**
+    1. **32-bitars plugin.** FL:s IL Bridge kör dem i en separat OS-process (ca 2 % extra
+       CPU per plugin, och bridgade plugins stjäl tangentbordsfokus); Sonix hostar bara
+       64-bitars.
+    2. **Egna utgångar.** FL:s "Auto map inputs/outputs" ger en multi-out-plugin lika många
+       mixerspår som dess utgångar. Sonix VST3-hostning processar **en** in- och **en**
+       utbuss per anrop (`num_inputs: 1, num_outputs: 1` i `plugin_vst3.rs`) — buss-API:t
+       finns inläst (`getBusCount`/`getBusInfo`/`activateBus`) men extra utgångar routas
+       inte till egna spår. VST2 läser `num_outputs` (1–8) utan att använda dem.
+    3. **Sidokedja in i en plugin.** I FL: högerklicka Track Send på målspåret → "Sidechain
+       to this track", peka sedan pluginens Sidechain-selector på källan (send-nivå 0 % =
+       ren sidechain; Fruity Compressor fick det först i 2025.2). Sonix kan ducka spår mot
+       spår (8.3, 2026-09-12) men har **ingen** sidechain-ingång i en plugin.
+  - **Två mindre saker på samma lista:** ett **manuellt latens-offset per plugin** (FL visar
+    "manual + plugin" och sparar ett eget offset vid sidan av den automatiska PDC:n — Sonix
+    har bara den automatiska), och **"Smart disable"** (FL slutar processa inaktiva plugins,
+    "can dramatically reduce CPU load"; Sonix processar dem).
+  - **Källa:** `plugin-flstudio-research-sv.md` (Image-Lines onlinemanual; wrapper, mixer,
+    plugin-installation). Audacity har ingen av de tre — plugins kör i samma process och kan
+    fälla appen, och CLAP nämns inte alls i deras dokumentation.
+- [ ] **8.7 Chopper: från en trim-ruta till en slicemappning** — *M*
+  - **Läget i koden (mätt 2026-09-12):** `active_chopper_channel` ger **en** trim-ruta per
+    kanal (`sample_start`/`sample_end` i procent av filen) med snabbval `1/2`, `1/4`, `2/4` …
+    och en knapp märkt **"⚡ Transient"** som bara sätter `sample_end = 0.18`. Ingen
+    slicemappning, ingen detektering, ingen koppling till steg eller piano roll, ingen
+    slice-export. **Namnet lovar mer än koden gör, och ska rättas oavsett vad som byggs.**
+  - **Vad de etablerade gör — samma tre steg:** analysera ljudet och hitta transients/onsets
+    (eller dela på fasta divisioner) → mappa varje slice till en not/pad → låt användaren
+    nudga, fadea och trigga slicen från **sin egen start** (tiden glider inte, för slicen är
+    ingen position i en global loop).
+    - **FL Studio:** Edison (Auto slice Dull/Medium/Sharp, Detect beats, Zero-cross check,
+      "Convert to score and dump to piano roll"), Slicex (automatisk slicing, region → tangent,
+      "Dump score" med presets, per-region AMP/FILTER/SPEED, färg 15/16 = reverse), Fruity
+      Slicer 2 (2025.2), Playlist Chop (Bar/Beat/Beat Random) och Slice-verktyget.
+    - **Ableton:** Simpler "Slice By" Transient/Beat/Region/Manual (max 64 slices, per-slice
+      Fade In/Out) och **Slice to New MIDI Track** (en not per slice, kromatiskt, in i ett
+      Drum Rack — max 128 kedjor).
+    - **Reaper:** Dynamic Split Items (transients **eller** noise gate, min slice length,
+      leading/trailing pad, **Fade pad**) och **Create chromatic MIDI item from slices**.
+    - **Bitwig:** Divisions/Beats/**Onsets** (med Onset Sensitivity)/Pitch/Manual.
+  - **Algoritmen, belagd:** energy/HFC/spectral flux med peak picking är det enklaste som
+    faktiskt fungerar på trummor — aubio defaultar till `hfc` och kallar det effektivt för
+    perkussiva onsets; librossas `onset_detect(backtrack=True)` back-trackar en onset till
+    närmaste föregående energiminimum och är gjord just för "onsets as slice points".
+    SuperFlux (Böck & Widmer, DAFx-13) behövs främst vid vibrato/pitchat material, och CNN
+    (Schlüter & Böck) är starkare men kräver en modell. Frame 1024 / hop 512 ≈ 11,6 ms
+    upplösning vid 44,1 kHz är en rimlig start.
+  - **Minsta ärliga första steg:** (1) onset-detektering som ger **N** slicepunkter,
+    (2) en slicekarta med start/slut per slice, (3) mappning till steg/tangenter och en dump
+    till piano rollen, (4) fade på 1–5 ms vid slice-kanterna (klickskyddet som Reapers Fade
+    pad och Abeltons per-slice-fade ger), (5) nudge av en enstaka slicegräns. Går att dela i
+    två pass: först detektering + slicekarta (hörs direkt vid uppspelning), sedan
+    mappning/dump.
+  - **Källa:** `chopping-and-effects-research-sv.md` + FL-avsnittet i
+    `plugin-flstudio-research-sv.md`.
+- [ ] **8.8 Automatisering av fler parametrar** (plugin-, EQ-, kompressor- och buss-/VCA-parametrar) — *S–M*
+  - **Läget i koden (mätt 2026-09-12):** `AutomationParam` har fyra varianter — `Volume`,
+    `Pan`, `ReverbSend`, `DelaySend`. Alltså ingen plugin-parameter, ingen EQ- eller
+    kompressorparameter, ingen buss-/VCA-fader.
+  - **Varför:** när en DAW hostar plugins med exponerade parametrar förväntar sig användaren
+    att kunna rita en kurva för dem — det är så automation används i praktiken. Pluginens
+    parametrar finns redan i UI:t, så steget är att låta automationens mål peka på dem **och**
+    att kurvan läses per sample i stället för per UI-bildruta (samma sak som gap 6 i
+    `references/daw-comparison.md`: `apply_automation()` körs i `update()`).
+  - **Ärlig brasklapp:** den här researchrundan belade **inte** FL:s exakta automation av
+    plugin-parametrar, och Audacitys parametrar i realtidsstacken står som **INTE VERIFIERAT**
+    i rapporten. Kontrollera den raden innan punkten blir ett krav. Sonix-läget ovan är
+    däremot mätt i koden.
+- [ ] **8.9 Makron: en kedja av kommandon över många filer** — *S*
+  - **Vad Audacity har:** en **Macro** är en sekvens förkonfigurerade kommandon (mest
+    effekter, men också Select-kommandon, Find Clipping och exportkommandon) som körs
+    automatiskt — på ett projekt eller i **batch över filer** (rekommenderat max 500 i taget,
+    utdata i mappen `macro-output`). De byggs i **Tools > Manage Macros** och sparas som TXT.
+    Alla effektformat kan ingå (built-in, LADSPA, LV2, Nyquist, VST, AU).
+  - **Hos oss:** det finns en exportkö och en stämimportväg, men **ingen** kedja av
+    kommandon som kan köras på flera filer med sparade inställningar. Nyttan är densamma som
+    Audacitys: samma behandling på tjugo tagningar utan tjugo handgrepp.
+  - **Noterat samtidigt:** Audacitys *skriptväg* (Nyquist/Python) och Reapers ReaScript/Lua
+    är fortfarande gap 5 i `references/daw-comparison.md` — det är en större sak än ett
+    makro och hör inte till den här punkten.
+  - **Källa:** `plugin-audacity-research-sv.md` (avsnitt 3).
 
 ### 8.3 Exakta vågformer (Alex krav, 2026-09-12)
 
