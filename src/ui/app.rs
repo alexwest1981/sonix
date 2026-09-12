@@ -115,6 +115,10 @@ pub struct ChannelStrip {
     pub pitch_fine_cents: f32, // -100.0 .. +100.0 cents
     pub sample_start: f32, // 0.0 .. 1.0 (Chopping start)
     pub sample_end: f32, // 0.0 .. 1.0 (Chopping end)
+    /// Slicekartan ur kanalens ljud (Fas 8.7): `(start, slut)` i 0..1, i den
+    /// ordning slagen kommer. Tom = ingen detektering har gjorts (eller så
+    /// hittades inga slag). Slicen som spelas är `sample_start`/`sample_end`.
+    pub slices: Vec<(f32, f32)>,
     pub attack_decay: f32, // 0.0 .. 1.0
     pub is_reverse: bool,
     pub waveform_preview: Vec<f32>,
@@ -519,6 +523,14 @@ pub struct SavedChannel {
     pub sample_start: f32,
     #[serde(default = "default_sample_end")]
     pub sample_end: f32,
+    /// Slicekartan ur kanalens ljud (Fas 8.7).
+    ///
+    /// Den **sparas**, till skillnad från PCM och vågformen: den är ett resultat
+    /// av en analys men också något användaren kan ha valt ut, och ett projekt
+    /// ska se ut och låta som det gjorde när det stängdes. En gammal fil utan
+    /// fältet läses som en kanal utan slicar.
+    #[serde(default)]
+    pub slices: Vec<(f32, f32)>,
     #[serde(default)]
     pub attack_decay: f32,
     #[serde(default)]
@@ -902,6 +914,7 @@ fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
         pitch_fine_cents: c.pitch_fine_cents,
         sample_start: c.sample_start,
         sample_end: c.sample_end,
+        slices: c.slices.clone(),
         attack_decay: c.attack_decay,
         is_reverse: c.is_reverse,
         sample_path: c.sample_path.clone(),
@@ -931,6 +944,9 @@ fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
         pitch_fine_cents: s.pitch_fine_cents,
         sample_start: s.sample_start,
         sample_end: s.sample_end,
+        // Slicekartan följer med i projektfilen (se `SavedChannel::slices`): den är
+        // ett resultat av en analys, men också något användaren kan ha valt ut.
+        slices: s.slices.clone(),
         attack_decay: s.attack_decay,
         is_reverse: s.is_reverse,
         waveform_preview: preview,
@@ -2214,56 +2230,56 @@ impl SonixApp {
             volume: 0.95, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [36; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.3, is_reverse: false,
             waveform_preview: make_wave(20.0, 0.8),
-            sample_path: None, pcm_audio: None, sample_base_note: 60,
+            slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let snare = ChannelStrip {
             name: "909 Snare".to_string(), icon: "🥁".to_string(), color: Theme::FL_CYAN,
             volume: 0.85, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [38; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, is_reverse: false,
             waveform_preview: make_wave(45.0, 0.9),
-            sample_path: None, pcm_audio: None, sample_base_note: 60,
+            slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let clap = ChannelStrip {
             name: "Electro Clap".to_string(), icon: "👏".to_string(), color: Theme::FL_YELLOW,
             volume: 0.80, pan: -0.1, muted: false, solo: false, steps: [false; 16], notes: [39; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, is_reverse: false,
             waveform_preview: make_wave(35.0, 0.85),
-            sample_path: None, pcm_audio: None, sample_base_note: 60,
+            slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let hat = ChannelStrip {
             name: "Crisp Hat".to_string(), icon: "⚡".to_string(), color: Theme::FL_PURPLE,
             volume: 0.75, pan: 0.15, muted: false, solo: false, steps: [false; 16], notes: [42; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.2, is_reverse: false,
             waveform_preview: make_wave(70.0, 0.95),
-            sample_path: None, pcm_audio: None, sample_base_note: 60,
+            slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let open_hat = ChannelStrip {
             name: "Open Hat".to_string(), icon: "🌊".to_string(), color: Theme::FL_CYAN,
             volume: 0.70, pan: -0.2, muted: false, solo: false, steps: [false; 16], notes: [46; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.6, is_reverse: false,
             waveform_preview: make_wave(50.0, 0.5),
-            sample_path: None, pcm_audio: None, sample_base_note: 60,
+            slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let crash = ChannelStrip {
             name: "Cyber Crash".to_string(), icon: "✨".to_string(), color: Color32::from_rgb(255, 180, 50),
             volume: 0.75, pan: 0.25, muted: false, solo: false, steps: [false; 16], notes: [49; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.7, is_reverse: false,
             waveform_preview: make_wave(30.0, 0.4),
-            sample_path: None, pcm_audio: None, sample_base_note: 60,
+            slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let synth_lead = ChannelStrip {
             name: "303 Lead".to_string(), icon: "🎹".to_string(), color: Theme::FL_GREEN,
             volume: 0.85, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [60; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, is_reverse: false,
             waveform_preview: make_wave(60.0, 0.3),
-            sample_path: None, pcm_audio: None, sample_base_note: 60,
+            slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let sub_bass = ChannelStrip {
             name: "Sub Bass".to_string(), icon: "🎸".to_string(), color: Color32::from_rgb(255, 80, 140),
             volume: 0.90, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [36; 16],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, is_reverse: false,
             waveform_preview: make_wave(25.0, 0.6),
-            sample_path: None, pcm_audio: None, sample_base_note: 60,
+            slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
 
         let mut channels = vec![kick, snare, clap, hat, open_hat, crash, synth_lead, sub_bass];
@@ -11684,6 +11700,19 @@ impl SonixApp {
                                     ui.painter().rect_filled(dim_rect, Rounding::ZERO, Color32::from_black_alpha(150));
                                 }
 
+                                // Slicekartan (Fas 8.7): varje hittad gräns som ett tunt
+                                // streck. Den aktiva slicens ram ritas ovanpå.
+                                for (si, (s0, _s1)) in ch.slices.iter().enumerate() {
+                                    if si == 0 {
+                                        continue;
+                                    }
+                                    let x = wf_rect.min.x + s0 * wf_rect.width();
+                                    ui.painter().line_segment(
+                                        [Pos2::new(x, wf_rect.min.y), Pos2::new(x, wf_rect.max.y)],
+                                        Stroke::new(1.0_f32, Theme::FL_CYAN),
+                                    );
+                                }
+
                                 let active_slice_rect = Rect::from_min_max(Pos2::new(start_x, wf_rect.min.y), Pos2::new(end_x, wf_rect.max.y));
                                 ui.painter().rect_stroke(active_slice_rect, Rounding::ZERO, Stroke::new(1.5_f32, Theme::FL_YELLOW));
                                 ui.painter().line_segment([Pos2::new(start_x, wf_rect.min.y), Pos2::new(start_x, wf_rect.max.y)], Stroke::new(2.5_f32, Theme::FL_GREEN));
@@ -11699,8 +11728,98 @@ impl SonixApp {
                                     if ui.button(crate::i18n::t("2/4")).clicked() { ch.sample_start = 0.25; ch.sample_end = 0.5; }
                                     if ui.button(crate::i18n::t("3/4")).clicked() { ch.sample_start = 0.50; ch.sample_end = 0.75; }
                                     if ui.button(crate::i18n::t("4/4")).clicked() { ch.sample_start = 0.75; ch.sample_end = 1.0; }
-                                    if ui.button(crate::i18n::t("⚡ Transient")).clicked() { ch.sample_start = 0.0; ch.sample_end = 0.18; }
                                 });
+
+                                // Slagletning (Fas 8.7). Knappen som förut hette
+                                // "⚡ Transient" satte bara slutet till 18 % av filen —
+                                // ett påhittat svar på en riktig fråga. Nu letas slagen
+                                // i filen, och resultatet är en slicekarta.
+                                ui.horizontal(|ui| {
+                                    let mut detected: Option<(Vec<(f32, f32)>, usize)> = None;
+                                    let mut message: Option<String> = None;
+                                    if ui
+                                        .button(egui::RichText::new(crate::i18n::t("🔍 Hitta slag")).color(Theme::FL_CYAN))
+                                        .on_hover_text(crate::i18n::t("Leta transients i filen och dela den i slicar"))
+                                        .clicked()
+                                    {
+                                        match ch.pcm_audio.as_ref() {
+                                            // 8.5-regeln: går ljudet inte att läsa säger vi det.
+                                            None => {
+                                                message = Some(crate::i18n::t("⚠ Kanalens ljud går inte att läsa — inga slag kan hittas").to_string());
+                                            }
+                                            Some((left, _right, sr)) => {
+                                                let onsets = crate::audio::onset::detect_onsets(
+                                                    left,
+                                                    *sr as f32,
+                                                    &crate::audio::onset::OnsetParams::default(),
+                                                );
+                                                let slices = crate::audio::onset::slices_from_onsets(
+                                                    &onsets,
+                                                    left.len(),
+                                                    *sr as f32,
+                                                    30.0,
+                                                );
+                                                if slices.is_empty() {
+                                                    message = Some(crate::i18n::t("Inga slag hittades i filen").to_string());
+                                                } else {
+                                                    let total = left.len().max(1) as f32;
+                                                    detected = Some((
+                                                        slices
+                                                            .iter()
+                                                            .map(|s| (s.start as f32 / total, s.end as f32 / total))
+                                                            .collect(),
+                                                        onsets.len(),
+                                                    ));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if let Some(msg) = message {
+                                        self.status_message = msg;
+                                    }
+                                    if let Some((slices, onsets)) = detected {
+                                        ch.sample_start = slices[0].0;
+                                        ch.sample_end = slices[0].1;
+                                        ch.slices = slices;
+                                        self.status_message = crate::tstatus!(
+                                            "🔍 {} slag hittade — {} slicar (den första spelas nu)",
+                                            onsets,
+                                            ch.slices.len()
+                                        );
+                                    }
+                                    if !ch.slices.is_empty() {
+                                        ui.label(
+                                            egui::RichText::new(format!("{} {}", ch.slices.len(), crate::i18n::t("slicar")))
+                                                .size(10.0)
+                                                .color(Theme::TEXT_MUTED),
+                                        );
+                                    }
+                                });
+
+                                // Slicarna som knappar: att välja en sätter trimfönstret,
+                                // och trimfönstret är vad provspelningen spelar.
+                                if !ch.slices.is_empty() {
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(
+                                            egui::RichText::new(crate::i18n::t("Slicar (klicka för att höra):"))
+                                                .size(10.0)
+                                                .color(Theme::TEXT_MUTED),
+                                        );
+                                        let active = (0..ch.slices.len()).find(|&i| {
+                                            (ch.sample_start - ch.slices[i].0).abs() < 1e-4
+                                                && (ch.sample_end - ch.slices[i].1).abs() < 1e-4
+                                        });
+                                        for i in 0..ch.slices.len() {
+                                            if ui.selectable_label(active == Some(i), format!("{}", i + 1)).clicked() {
+                                                ch.sample_start = ch.slices[i].0;
+                                                ch.sample_end = ch.slices[i].1;
+                                            }
+                                        }
+                                        if ui.button(crate::i18n::t("Rensa slicar")).clicked() {
+                                            ch.slices.clear();
+                                        }
+                                    });
+                                }
                             });
 
                             ui.separator();
@@ -17563,6 +17682,7 @@ mod tests {
             pitch_fine_cents: 12.5,
             sample_start: 0.125,
             sample_end: 0.875,
+            slices: vec![(0.0, 0.125), (0.125, 0.875), (0.875, 1.0)],
             attack_decay: 0.375,
             is_reverse: true,
             waveform_preview: vec![0.5; 4],
@@ -17595,6 +17715,7 @@ mod tests {
         assert_eq!(r.pitch_fine_cents, ch.pitch_fine_cents);
         assert_eq!(r.sample_start, ch.sample_start);
         assert_eq!(r.sample_end, ch.sample_end);
+        assert_eq!(r.slices, ch.slices, "slicekartan ska med i projektfilen");
         assert_eq!(r.attack_decay, ch.attack_decay);
         assert_eq!(r.is_reverse, ch.is_reverse);
         assert_eq!(r.sample_path, ch.sample_path);

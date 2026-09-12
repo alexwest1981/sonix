@@ -39,6 +39,7 @@ pub mod plugin_host_live;
 /// en del av appen, så den byggs bara i testläget.
 #[cfg(test)]
 pub mod realtime_bench;
+pub mod onset;
 pub mod recorder;
 pub mod smf;
 pub mod tempo;
