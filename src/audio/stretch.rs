@@ -29,10 +29,24 @@ pub const MIN_RATIO: f32 = 0.25;
 pub const MAX_RATIO: f32 = 4.0;
 
 /// Vad som ska räknas fram för ett klipp.
+///
+/// **Två faktorer, och de är varandras inverterade.** Det här är den fälla som
+/// gjorde att planen först räknade filens längd åt fel håll: motorn mäter
+/// *källsekunder per utsekund* (projekt/källa), medan filen mäts som *ut-tid
+/// genom in-tid* (källa/projekt). Vid ett höjt tempo ska klippet bli **kortare**
+/// — och då måste filen bli kortare, inte längre. En fil som blev längre och
+/// ändå spelades med faktor 1,0 i ett kortare klipp vore en smurf, alltså precis
+/// det 8.10 steg 2 finns för att ta bort.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StretchPlan {
-    /// Ut-tid / in-tid. 1,25 = klippet blir 25 % längre.
-    pub ratio: f32,
+    /// **Motorns faktor: källsekunder per utsekund = projekt/källa.**
+    /// 1,25 = klippet spelas 25 % snabbare och tar 20 % kortare tid på tidslinjen.
+    /// Samma tal som `stretch_ratio_for` ger motorn i bandspelarläget.
+    pub playback_ratio: f32,
+    /// **Filens faktor: ut-tid / in-tid = källa/projekt** = `1.0 / playback_ratio`.
+    /// 0,8 = den sträckta filen blir 20 % kortare än källan — precis så lång som
+    /// klippet är på tidslinjen vid det nya tempot.
+    pub file_ratio: f32,
     /// Antal stereoframes den färdiga filen ska ha.
     pub out_frames: usize,
 }
@@ -40,7 +54,7 @@ pub struct StretchPlan {
 impl StretchPlan {
     /// Är planen en faktisk ändring? (Faktor 1,0 ska aldrig rendera något.)
     pub fn changes_anything(&self) -> bool {
-        (self.ratio - 1.0).abs() > 1e-4
+        (self.playback_ratio - 1.0).abs() > 1e-4
     }
 }
 
@@ -58,12 +72,19 @@ pub fn plan(source_bpm: f32, project_bpm: f32, source_frames: usize) -> Option<S
     if source_frames == 0 || source_bpm <= 0.0 || project_bpm <= 0.0 {
         return None;
     }
-    let ratio = (project_bpm / source_bpm).clamp(MIN_RATIO, MAX_RATIO);
-    if (ratio - 1.0).abs() <= 1e-4 {
+    let playback_ratio = (project_bpm / source_bpm).clamp(MIN_RATIO, MAX_RATIO);
+    if (playback_ratio - 1.0).abs() <= 1e-4 {
         return None;
     }
-    let out_frames = ((source_frames as f64) * (ratio as f64)).round().max(1.0) as usize;
-    Some(StretchPlan { ratio, out_frames })
+    // Filen skalas ned när tempot går upp: klippet blir kortare, alltså måste
+    // ljudet rymmas i mindre tid. Spannet är detsamma, bara inverterat.
+    let file_ratio = 1.0 / playback_ratio;
+    let out_frames = ((source_frames as f64) * (file_ratio as f64)).round().max(1.0) as usize;
+    Some(StretchPlan {
+        playback_ratio,
+        file_ratio,
+        out_frames,
+    })
 }
 
 /// Vad som ska hända med **ett** klipp när tempot rör sig.
@@ -269,6 +290,248 @@ pub fn render_to_file(
     Ok(final_path.to_string_lossy().into_owned())
 }
 
+/// En färdigsträckt stereobuffert: vänster, höger, samplingsfrekvens.
+pub type StretchedAudio = (std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, f32);
+
+/// Ett arbete åt arbetstråden.
+#[derive(Clone)]
+struct RenderJob {
+    key: String,
+    source_path: String,
+    source_bpm: f32,
+    project_bpm: f32,
+    dir: PathBuf,
+}
+
+/// Vad ett arbete gav.
+struct RenderDone {
+    key: String,
+    /// `Some` = ljudet, `None` = avvisat (då bär `error` skälet).
+    source: Option<StretchedAudio>,
+    error: Option<String>,
+}
+
+/// Cachen av färdigsträckta filer, med **en** arbetstråd.
+///
+/// Appen frågar [`StretchCache::get`] varje bildruta. Finns svaret inte och ingen
+/// rendering är på väg beställs en. Nyckeln bär **både** källans och projektets
+/// tempo (se [`cache_key`]), så en fil från ett annat tempo kan aldrig läsas som
+/// giltig — det var precis den sortens föråldrade sammanfattning som gav pixlarna
+/// i vågformen.
+///
+/// Arbetstråden gör hela arbetet utanför ljudtråden: avkoda källan, sträcka,
+/// pröva, skriva atomiskt, läsa tillbaka. Ljudtråden får en färdig buffert och
+/// spelar den som vilken fil som helst — **ingen ny felkälla i uppspelningen**.
+pub struct StretchCache {
+    /// Färdiga svar. `None` = avvisad, och då står skälet i `reasons`.
+    ready: std::collections::HashMap<String, Option<StretchedAudio>>,
+    /// Skälet en avvisad rendering fick — det som ska stå i statusraden.
+    reasons: std::collections::HashMap<String, String>,
+    /// Nycklar en tråd arbetar med just nu.
+    pending: std::collections::HashSet<String>,
+    tx: Option<std::sync::mpsc::Sender<RenderJob>>,
+    rx: Option<std::sync::mpsc::Receiver<RenderDone>>,
+}
+
+impl Default for StretchCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl StretchCache {
+    pub fn new() -> Self {
+        Self {
+            ready: std::collections::HashMap::new(),
+            reasons: std::collections::HashMap::new(),
+            pending: std::collections::HashSet::new(),
+            tx: None,
+            rx: None,
+        }
+    }
+
+    /// Ljudet för en nyckel — bara om det finns **och** godkändes.
+    pub fn get(&self, key: &str) -> Option<&StretchedAudio> {
+        self.ready.get(key).and_then(|a| a.as_ref())
+    }
+
+    /// Finns ett svar, är ett på väg, eller har det redan avvisats? Då ska inget
+    /// beställas igen: en avvisad sträckning ska inte försöka om varje bildruta.
+    pub fn knows(&self, key: &str) -> bool {
+        self.ready.contains_key(key) || self.pending.contains(key)
+    }
+
+    /// Skälet en avvisad rendering fick, om något.
+    pub fn reason(&self, key: &str) -> Option<&str> {
+        self.reasons.get(key).map(|s| s.as_str())
+    }
+
+    /// Hur många renderingar som är på väg.
+    pub fn pending_count(&self) -> usize {
+        self.pending.len()
+    }
+
+    /// Beställ en sträckning — om svaret inte redan finns eller är på väg.
+    ///
+    /// Tråden skapas vid första beställningen (samma grepp som vågformscachen),
+    /// så att en app som aldrig ändrar tempot aldrig startar den.
+    pub fn request(
+        &mut self,
+        dir: &Path,
+        key: String,
+        source_path: String,
+        source_bpm: f32,
+        project_bpm: f32,
+    ) {
+        if self.knows(&key) {
+            return;
+        }
+        if self.tx.is_none() {
+            let (tx, rx) = std::sync::mpsc::channel::<RenderJob>();
+            let (done_tx, done_rx) = std::sync::mpsc::channel::<RenderDone>();
+            std::thread::spawn(move || worker(rx, done_tx));
+            self.tx = Some(tx);
+            self.rx = Some(done_rx);
+        }
+        let job = RenderJob {
+            key: key.clone(),
+            source_path,
+            source_bpm,
+            project_bpm,
+            dir: dir.to_path_buf(),
+        };
+        let sent = matches!(self.tx.as_ref().map(|tx| tx.send(job)), Some(Ok(())));
+        if sent {
+            self.pending.insert(key);
+        }
+    }
+
+    /// Tar emot färdiga renderingar. Anropas en gång per bildruta.
+    ///
+    /// Returnerar nycklarna som blev klara, så att appen kan säga till motorn om
+    /// dem — en stämma som blivit sträckt ska spelas om, inte vänta på nästa
+    /// tempoändring.
+    pub fn poll(&mut self) -> Vec<String> {
+        let mut done = Vec::new();
+        if let Some(rx) = self.rx.as_ref() {
+            while let Ok(d) = rx.try_recv() {
+                self.pending.remove(&d.key);
+                match d.source {
+                    Some(audio) => {
+                        self.reasons.remove(&d.key);
+                        self.ready.insert(d.key.clone(), Some(audio));
+                    }
+                    None => {
+                        if let Some(e) = d.error {
+                            self.reasons.insert(d.key.clone(), e);
+                        }
+                        self.ready.insert(d.key.clone(), None);
+                    }
+                }
+                done.push(d.key);
+            }
+        }
+        done
+    }
+}
+
+/// Arbetstråden: ett arbete i taget, i tur och ordning.
+fn worker(rx: std::sync::mpsc::Receiver<RenderJob>, tx: std::sync::mpsc::Sender<RenderDone>) {
+    while let Ok(job) = rx.recv() {
+        let done = render_one(&job);
+        if tx.send(done).is_err() {
+            return; // appen är borta; inget mer att göra
+        }
+    }
+}
+
+/// Sträcker ett klipp till en fil och läser tillbaka den.
+///
+/// **Läser tillbaka filen vi just skrev.** Den buffert tidslinjen spelar är då
+/// filens innehåll, bokstavligen — filen och högtalarna kan inte säga olika saker,
+/// och en skrivning som inte gick att läsa upptäcks här i stället för i örat.
+fn render_one(job: &RenderJob) -> RenderDone {
+    let key = job.key.clone();
+    let fail = |e: String| RenderDone {
+        key: key.clone(),
+        source: None,
+        error: Some(e),
+    };
+    let ok = |l: Vec<f32>, r: Vec<f32>, sr: u32| RenderDone {
+        key: key.clone(),
+        source: Some((
+            std::sync::Arc::new(l),
+            std::sync::Arc::new(r),
+            sr as f32,
+        )),
+        error: None,
+    };
+
+    // 1. Ligger den redan i cachen? Då är det bara att läsa den.
+    let path = cache_path(&job.dir, &job.key);
+    let path_str = path.to_string_lossy().to_string();
+    if path.exists() {
+        match crate::audio::load_wav_pcm(&path_str) {
+            Ok((l, r, sr)) => return ok(l, r, sr),
+            // En trasig fil i cachen ska inte göra klippet ospelbart: den räknas om.
+            // (Filen skrivs atomiskt, så det här är sista utvägen, inte första.)
+            Err(_) => {}
+        }
+    }
+
+    // 2. Avkoda källan, sträck, pröva, skriv.
+    let (l, r, sr) = match crate::audio::load_wav_pcm(&job.source_path) {
+        Ok(x) => x,
+        Err(e) => return fail(e),
+    };
+    let Some(plan) = plan(job.source_bpm, job.project_bpm, l.len()) else {
+        return fail(crate::i18n::t("inget att sträcka — faktorn är 1,0").to_string());
+    };
+    // Skulle någon beställa en sträckning med faktor 1,0 ändå ska vi inte skriva en
+    // kopia av källan och kalla den sträckt.
+    if !plan.changes_anything() {
+        return fail(crate::i18n::t("inget att sträcka — faktorn är 1,0").to_string());
+    }
+    match render_to_file(&job.dir, &job.key, &l, &r, plan.file_ratio, sr as f32) {
+        Ok(written) => match crate::audio::load_wav_pcm(&written) {
+            Ok((sl, sr2, ssr)) => ok(sl, sr2, ssr),
+            Err(e) => fail(e),
+        },
+        Err(e) => fail(e),
+    }
+}
+
+/// Väntar på att tempot ska stå still innan en rendering beställs.
+///
+/// Reglaget byter värde varje bildruta medan det dras, och varje värde är en egen
+/// fil. Utan den här spärren blir en dragning från 120 till 150 i praktiken en
+/// beställning per bildruta — arbete ingen bad om, på en fil som ingen hann spela.
+#[derive(Clone, Copy, Debug)]
+pub struct TempoSettle {
+    last: f32,
+    frames: u32,
+}
+
+impl TempoSettle {
+    pub fn new(bpm: f32) -> Self {
+        Self { last: bpm, frames: 0 }
+    }
+
+    /// Räknar en bildruta. `true` = tempot har stått still `needed` bildrutor.
+    pub fn tick(&mut self, bpm: f32, needed: u32) -> bool {
+        if (bpm - self.last).abs() > 0.0005 {
+            self.last = bpm;
+            self.frames = 0;
+            return false;
+        }
+        self.frames = self.frames.saturating_add(1);
+        self.frames >= needed
+    }
+}
+
+/// Hur många bildrutor tempot ska stå still innan en sträckning beställs (~0,3 s).
+pub const TEMPO_SETTLE_FRAMES: u32 = 20;
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,24 +569,45 @@ mod tests {
         assert_eq!(plan(120.0, 0.0, 44_100), None);
     }
 
+    /// Faktorerna, och att de är varandras inverterade.
+    ///
+    /// Fysiken: fyra takter i 120 BPM är 8 sekunder, i 150 BPM 6,4 sekunder. Ska
+    /// samma fyra takter låta lika högt i det högre tempot måste filen bli
+    /// **kortare** (6,4 s), inte längre. Motorn får däremot 1,25 som faktor — den
+    /// räknar källsekunder per utsekund.
     #[test]
-    fn the_plan_is_the_tempo_ratio_and_the_frame_count_follows() {
-        let p = plan(120.0, 150.0, 44_100).expect("150 mot 120 ska sträckas");
-        assert!((p.ratio - 1.25).abs() < 1e-6, "faktorn: {}", p.ratio);
-        assert_eq!(p.out_frames, 55_125, "1,25 × 44 100 frames");
-        assert!(p.changes_anything());
+    fn a_higher_tempo_gives_a_shorter_file_and_a_faster_playback_ratio() {
+        let up = plan(120.0, 150.0, 44_100).expect("150 mot 120 ska sträckas");
+        assert!((up.playback_ratio - 1.25).abs() < 1e-6, "motorn: {}", up.playback_ratio);
+        assert!((up.file_ratio - 0.8).abs() < 1e-6, "filen: {}", up.file_ratio);
+        assert_eq!(up.out_frames, 35_280, "0,8 × 44 100 frames — kortare, inte längre");
+        assert!(up.changes_anything());
 
         let down = plan(150.0, 120.0, 44_100).expect("120 mot 150 ska sträckas ned");
-        assert!((down.ratio - 0.8).abs() < 1e-6);
-        assert_eq!(down.out_frames, 35_280);
+        assert!((down.playback_ratio - 0.8).abs() < 1e-6);
+        assert!((down.file_ratio - 1.25).abs() < 1e-6);
+        assert_eq!(down.out_frames, 55_125, "1,25 × 44 100 frames");
+
+        // Och de två hör ihop: filens faktor gånger motorns är 1,0.
+        for (src, dst) in [(120.0, 150.0), (150.0, 120.0), (90.0, 174.0)] {
+            let p = plan(src, dst, 44_100).expect("en plan finns");
+            assert!(
+                (p.file_ratio * p.playback_ratio - 1.0).abs() < 1e-5,
+                "{src}→{dst}: {} × {} ska bli 1,0",
+                p.file_ratio,
+                p.playback_ratio
+            );
+        }
     }
 
     #[test]
     fn the_plan_clamps_extreme_tempos_instead_of_producing_a_monster() {
         let fast = plan(120.0, 10_000.0, 1_000).expect("en plan finns");
-        assert!((fast.ratio - MAX_RATIO).abs() < 1e-6);
+        assert!((fast.playback_ratio - MAX_RATIO).abs() < 1e-6);
+        assert!(fast.out_frames >= 1, "en klämd plan får aldrig bli noll frames");
         let slow = plan(120.0, 1.0, 1_000).expect("en plan finns");
-        assert!((slow.ratio - MIN_RATIO).abs() < 1e-6);
+        assert!((slow.playback_ratio - MIN_RATIO).abs() < 1e-6);
+        assert!(slow.out_frames >= 1);
     }
 
     /// **Acceptanskriterium 1:** vid faktor 1,0 händer ingenting alls — bit-exakt.
@@ -435,6 +719,100 @@ mod tests {
     }
 
     /// Hela vägen: räkna, pröva, skriv — och läs tillbaka med appens egen avkodare.
+    /// **Vad en sträckning kostar** (mätning, körs manuellt):
+    /// `cargo test --release --bin sonix the_render_cost -- --ignored --nocapture`
+    ///
+    /// En fyraminutersstämma är det mått vågformscachen mättes med (1 min/4 min/10 min),
+    /// så siffrorna går att jämföra: priset för att tidslinjen ska kunna spela en vanlig
+    /// fil är att någon räknar en gång per (källa, tempo).
+    #[test]
+    #[ignore]
+    fn the_render_cost() {
+        for minutes in [1u32, 4] {
+            let secs = (minutes * 60) as f32;
+            let src = tone(220.0, secs, 0.5);
+            let t0 = std::time::Instant::now();
+            let (out, _) = stretch_stereo(&src, &src, 1.25, SR);
+            let stretch_ms = t0.elapsed().as_millis();
+
+            let dir = std::env::temp_dir().join(format!("sonix_stretch_cost_{minutes}"));
+            let _ = std::fs::remove_dir_all(&dir);
+            let t1 = std::time::Instant::now();
+            let written = render_to_file(&dir, "kostnad", &src, &src, 1.25, SR)
+                .expect("renderingen ska lyckas");
+            let total_ms = t1.elapsed().as_millis();
+            let size_mb = std::fs::metadata(&written).map(|m| m.len()).unwrap_or(0) as f64 / 1e6;
+            println!(
+                "{minutes} min stereo: sträckning {stretch_ms} ms, hela vägen (sträck + prövning + skrivning + tillbakaläsning) {total_ms} ms, fil {size_mb:.1} MB, {} frames",
+                out.len()
+            );
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    /// **Acceptanskriterium 2, hela vägen:** en ton i ett klipp har samma
+    /// grundfrekvens efter en tempoändring — och det tidslinjen spelar är filen
+    /// cachen skrev.
+    ///
+    /// Provet går genom `StretchCache` (beställning → arbetstråd → fil → tillbaka),
+    /// alltså samma väg appen tar. Att bara pröva `stretch_stereo` skulle inte säga
+    /// något om att filen blir rätt, eller att den som skrevs är den som läses.
+    #[test]
+    fn the_cache_renders_a_file_and_the_tone_keeps_its_pitch() {
+        let dir = std::env::temp_dir().join(format!("sonix_stretch_cache_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("testmappen ska gå att skapa");
+        let src_path = dir.join("kalla.wav");
+        let src_str = src_path.to_string_lossy().to_string();
+        let tone = tone(220.0, 1.0, 0.6); // 1,0 s vid SR
+        crate::audio::exporter::write_stem_wav(&src_str, &tone, &tone, SR as u32)
+            .expect("källfilen ska gå att skriva");
+
+        let mut cache = StretchCache::new();
+        let key = cache_key(&src_str, 120.0, 180.0);
+        cache.request(
+            &dir,
+            key.clone(),
+            src_str.clone(),
+            120.0,
+            180.0,
+        );
+
+        // Arbetstråden renderar utanför testet: vänta in den (med ett tak).
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        while cache.get(&key).is_none() && std::time::Instant::now() < deadline {
+            cache.poll();
+            std::thread::sleep(std::time::Duration::from_millis(20));
+        }
+        let (left, right, _sr) = cache
+            .get(&key)
+            .expect("sträckningen ska bli klar inom taket")
+            .clone();
+        assert_eq!(left.len(), right.len(), "kanalerna ska vara lika långa");
+
+        // 1,0 s källa i 120 BPM, projektet i 180: filen blir 120/180 = 0,667 s.
+        let expected = (SR * (120.0 / 180.0)).round() as usize;
+        assert!(
+            left.len().abs_diff(expected) <= 2,
+            "längden ska bli kortare: {} mot {}",
+            left.len(),
+            expected
+        );
+
+        // Tonhöjden står still: 220 Hz dominerar över den smurf 1,5× hade gett (330 Hz).
+        let mid = &left[left.len() / 4..left.len() * 3 / 4];
+        let at_pitch = energy(mid, 220.0);
+        let at_smurf = energy(mid, 330.0);
+        assert!(
+            at_pitch > at_smurf * 4.0,
+            "grundtonen ska dominera efter en tempoändring (220 Hz: {at_pitch:.5} mot 330 Hz: {at_smurf:.5})"
+        );
+
+        // Och filen ligger kvar i cachen: en ny beställning ska hitta den.
+        assert!(cache_path(&dir, &key).exists(), "filen ska finnas i cachen");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn a_rendered_stretch_lands_on_disk_and_reads_back() {
         let dir = std::env::temp_dir().join(format!("sonix_stretch_{}", std::process::id()));

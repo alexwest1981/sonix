@@ -280,6 +280,9 @@ pub fn render_vocal_studio_view(
 
                                         let region = AudioRegion {
                                             source_bpm: bpm, // tagningen gjordes i projektets tempo (8.10)
+                                            // En tagning är inte en bandspelare: blir tempot ett
+                                            // annat sträcks den med bevarad tonhöjd (8.10 steg 2).
+                                            tape: false,
                                             id: region_id,
                                             name: format!("🎙 {}", take_name),
                                             start_bar: 0.0,

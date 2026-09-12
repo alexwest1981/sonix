@@ -1327,23 +1327,32 @@ impl SynthEngine {
                             // Var i källjudet regionen är (Fas 8.10): ren funktion,
                             // så att tidsmappningen kan prövas utan ljudmotor.
                             let sample_pos_sec = region_source_secs(region, rel_time);
-                            let sample_pos = (sample_pos_sec * track.sample_rate).max(0.0);
+                            // Klippets eget källjud (Fas 8.10 steg 2): en färdigsträckt
+                            // fil läses i stället för spårets buffert, och då är faktorn
+                            // 1,0. Allt annat i den här vägen är oförändrat — ingen ny
+                            // felkälla i uppspelningen.
+                            let (src_left, src_right, src_rate): (&[f32], &[f32], f32) =
+                                match region.source_audio.as_ref() {
+                                    Some((l, r, sr)) => (l.as_slice(), r.as_slice(), *sr),
+                                    None => (track.left.as_slice(), track.right.as_slice(), track.sample_rate),
+                                };
+                            let sample_pos = (sample_pos_sec * src_rate).max(0.0);
                             let idx0 = sample_pos.floor() as usize;
                             let frac = sample_pos - idx0 as f32;
 
-                            if idx0 + 1 < track.left.len() {
-                                let raw_l = track.left[idx0] + (track.left[idx0 + 1] - track.left[idx0]) * frac;
-                                let raw_r = if idx0 + 1 < track.right.len() {
-                                    track.right[idx0] + (track.right[idx0 + 1] - track.right[idx0]) * frac
+                            if idx0 + 1 < src_left.len() {
+                                let raw_l = src_left[idx0] + (src_left[idx0 + 1] - src_left[idx0]) * frac;
+                                let raw_r = if idx0 + 1 < src_right.len() {
+                                    src_right[idx0] + (src_right[idx0 + 1] - src_right[idx0]) * frac
                                 } else {
                                     raw_l
                                 };
                                 let g = track.volume * region.gain * env;
                                 track_l += raw_l * g * pan_l;
                                 track_r += raw_r * g * pan_r;
-                            } else if idx0 < track.left.len() {
-                                let raw_l = track.left[idx0];
-                                let raw_r = if idx0 < track.right.len() { track.right[idx0] } else { raw_l };
+                            } else if idx0 < src_left.len() {
+                                let raw_l = src_left[idx0];
+                                let raw_r = if idx0 < src_right.len() { src_right[idx0] } else { raw_l };
                                 let g = track.volume * region.gain * env;
                                 track_l += raw_l * g * pan_l;
                                 track_r += raw_r * g * pan_r;
@@ -1658,6 +1667,7 @@ mod tests {
             is_reverse,
             loop_length_secs,
             stretch_ratio,
+            source_audio: None,
         }
     }
 
@@ -1704,6 +1714,62 @@ mod tests {
                 expected,
                 "rate={rate}: toppen blev {peak} — anslaget ska {}höras inom 0,25 s",
                 if expected { "" } else { "INTE " }
+            );
+        }
+    }
+
+    /// Ett klipp med eget källjud spelar **filen**, inte spårets buffert (Fas 8.10 steg 2).
+    ///
+    /// Det är hela poängen med att räkna offline: tidslinjen spelar en färdigsträckt fil
+    /// med faktor 1,0, och uppspelningsvägen får ingen ny felkälla. Testet mäter **var**
+    /// anslaget hörs — på filens egen sekund (0,1 s) i stället för spårets (0,5 s).
+    #[test]
+    fn a_region_with_its_own_audio_plays_that_file_instead_of_the_track() {
+        let sr = 48_000u32;
+        let with_ping = |at: usize| -> Arc<Vec<f32>> {
+            let mut v = vec![0.0f32; sr as usize];
+            v[at] = 1.0;
+            Arc::new(v)
+        };
+        let track = with_ping(24_000); // spårets anslag: 0,5 s
+        let file = with_ping(4_800); // den sträckta filens: 0,1 s
+
+        for own_file in [false, true] {
+            let mut synth = SynthEngine::new(sr as f32);
+            synth.handle_command(AudioCommand::LoadStemTrack {
+                track_index: 0,
+                left: track.clone(),
+                right: track.clone(),
+                sample_rate: sr as f32,
+                volume: 1.0,
+                pan: 0.0,
+                start_time_secs: 0.0,
+            });
+            let mut region = region_under_test(1.0, 0.0, 0.0, false, 1.0);
+            if own_file {
+                region.source_audio = Some((file.clone(), file.clone(), sr as f32));
+            }
+            synth.handle_command(AudioCommand::SetStemTrackRegions {
+                track_index: 0,
+                regions: vec![region],
+            });
+            synth.handle_command(AudioCommand::SetSongPlayback(true));
+
+            // 6 000 block ≈ 0,125 s: filens anslag hinns med, spårets är 0,5 s bort.
+            let mut peak = 0.0f32;
+            for _ in 0..6_000 {
+                let (l, _r) = synth.process_stereo();
+                peak = peak.max(l.abs());
+            }
+            assert_eq!(
+                peak > 0.3,
+                own_file,
+                "eget källjud={own_file}: toppen blev {peak} — {}",
+                if own_file {
+                    "filens anslag på 0,1 s ska höras"
+                } else {
+                    "spårets anslag ligger på 0,5 s och ska inte ha hunnit"
+                }
             );
         }
     }

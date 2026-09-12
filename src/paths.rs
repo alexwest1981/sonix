@@ -397,6 +397,16 @@ impl Paths {
         self.cache_dir().join("waveforms")
     }
 
+    /// De färdigsträckta filerna (Fas 8.10 steg 2).
+    ///
+    /// Återskapbara: en fil här är en kopia av källjudet i ett annat tempo, och
+    /// nyckeln innehåller både källans och projektets tempo. Att radera mappen
+    /// kostar en omräkning, ingenting annat — därför hör den till cachen och inte
+    /// till `~/Music/Sonix`.
+    pub fn stretch_cache_dir(&self) -> PathBuf {
+        self.cache_dir().join("stretch")
+    }
+
     /// Cache för sample-bibliotekets genomsökning (Flyttad från biblioteket).
     pub fn library_cache_file(&self) -> PathBuf {
         self.cache_dir().join("library_cache.tsv")

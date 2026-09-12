@@ -299,4 +299,10 @@ pub struct StemRegionPlayback {
     /// Räknas av appen ur regionens `source_bpm` och projektets tempo; motorn
     /// multiplicerar bara tiden med den. Se `region_source_secs`.
     pub stretch_ratio: f32,
+    /// Eget källjud för det här klippet (Fas 8.10 steg 2): en **färdigsträckt fil**.
+    ///
+    /// Finns den läses den i stället för spårets buffert, och `stretch_ratio` är 1,0 —
+    /// tidslinjen spelar då en vanlig fil och uppspelningsvägen får ingen ny
+    /// felkälla. `None` = spela spårets eget ljud med faktorn, som förut.
+    pub source_audio: Option<super::stretch::StretchedAudio>,
 }

@@ -1248,6 +1248,36 @@ fn region_source_span_samples(region_secs: f32, rate: f32, sample_rate: u32) -> 
     (region_secs.max(0.0) * rate.max(0.05) * sample_rate.max(1) as f32).max(1.0) as usize
 }
 
+/// Vad ett klipp ska spelas med, givet beslutet och om filen redan finns
+/// (Fas 8.10 steg 2).
+///
+/// **Ren funktion**, så att regeln går att pröva utan fönster och utan ljudmotor —
+/// och så att tidslinjen, ritningen och exporten får samma svar. Faktorn är
+/// källsekunder per utsekund, och är 1,0 både när inget ska hända och när klippet
+/// spelar en färdigsträckt fil (den *är* redan i rätt tempo).
+pub fn playback_for(
+    decision: crate::audio::stretch::FollowDecision,
+    stretched_ready: bool,
+) -> (f32, bool) {
+    match decision.mode {
+        crate::audio::stretch::FollowMode::Stretch => (1.0, stretched_ready),
+        _ => (decision.ratio, false),
+    }
+}
+
+/// Var i källjudet ett klipp börjar när det spelas från en färdigsträckt fil
+/// (Fas 8.10 steg 2).
+///
+/// Filen är källan skalad med källa/projekt: ett utsnitt som låg 12 s in i en källa
+/// i 120 BPM ligger 12 × 0,8 = 9,6 s in i filen när projektet står i 150. Utan känt
+/// tempo — eller utan en sträckt fil — är offsetten oförändrad, precis som före 8.10.
+pub fn stretched_offset_secs(offset_sec: f32, source_bpm: f32, bpm_here: f32) -> f32 {
+    if source_bpm <= 0.0 || bpm_here <= 0.0 {
+        return offset_sec;
+    }
+    offset_sec * (source_bpm / bpm_here)
+}
+
 /// Gränserna för [`stretch_ratio_for`] — samma spann som sångstudiens reglage.
 pub const MIN_STRETCH_RATIO: f32 = 0.25;
 pub const MAX_STRETCH_RATIO: f32 = 4.0;
@@ -1268,6 +1298,7 @@ pub fn frozen_region(left: &[f32], sample_rate: u32) -> crate::audio::StemRegion
         // och dit (Fas 8.1). Att sträcka en gammal frysning vore att spela fel
         // ljud utan att säga det.
         stretch_ratio: 1.0,
+        source_audio: None,
     }
 }
 
@@ -1549,6 +1580,10 @@ pub struct LoadedProjectPayload {
     /// piano rollen och AI-kontexten visar samma tonart som när filen sparades.
     pub song_key_root: u8,
     pub song_key_scale: usize,
+    /// "Följ tempot" (Fas 8.10 steg 2) — läses ur projektfilen så att switchen står
+    /// där den stod när filen sparades. Äldre filer saknar fältet och får
+    /// `default_follow_tempo()` = på, samma värde som en ny app har.
+    pub follow_tempo: bool,
     pub swing: f32,
     pub master_volume: f32,
     pub master_pan: f32,
@@ -2117,6 +2152,11 @@ pub struct SonixApp {
     /// ritningen visar den gamla vägen tills svaret kommer.
     pub waveform_cache_tx: Option<std::sync::mpsc::Sender<(usize, u64, crate::audio::waveform::WaveformCache)>>,
     pub waveform_cache_rx: Option<std::sync::mpsc::Receiver<(usize, u64, crate::audio::waveform::WaveformCache)>>,
+    /// Färdigsträckta filer (Fas 8.10 steg 2): en cache med en egen arbetstråd.
+    /// Ljudtråden får en färdig buffert och spelar den som vilken fil som helst.
+    pub stretch_cache: crate::audio::stretch::StretchCache,
+    /// Väntar på att tempot ska stå still innan en sträckning beställs.
+    pub tempo_settle: crate::audio::stretch::TempoSettle,
     pub show_tempo_modal: bool,
     /// Tempot som regionerna i motorn senast räknades för (Fas 8.10).
     ///
@@ -2809,6 +2849,8 @@ impl SonixApp {
             show_stem_focus_modal: false,
             waveform_cache_tx: None,
             waveform_cache_rx: None,
+            stretch_cache: crate::audio::stretch::StretchCache::new(),
+            tempo_settle: crate::audio::stretch::TempoSettle::new(120.0),
             show_tempo_modal: false,
             follow_tempo: true,
             stems_synced_bpm: 120.0,
@@ -3283,6 +3325,7 @@ impl SonixApp {
                 p.completed_payload = Some(LoadedProjectPayload {
                     name: "Sonix Synthwave Demo".to_string(),
                     bpm: 126.0,
+                    follow_tempo: true,
                     swing: 0.15,
                     tempo_points: Vec::new(),
                     song_key_root: 3,
@@ -3392,6 +3435,41 @@ impl SonixApp {
                         ))
                         .size(9.5)
                         .color(Theme::TEXT_MUTED),
+                    );
+                }
+
+                // "Följ tempot" (Fas 8.10 steg 2): projektets enda val, och ingen
+                // algoritm att välja. Att stänga av den betyder att inget klipp följer
+                // tempot alls — varken sträckning eller bandspelare.
+                ui.separator();
+                let mut follow = self.follow_tempo;
+                let pending = self.stretch_cache.pending_count();
+                if ui
+                    .checkbox(&mut follow, crate::i18n::t("🎚 Följ tempot (bevara tonhöjden)"))
+                    .on_hover_text(crate::i18n::t(
+                        "På: klipp med känt inspelningstempo sträcks när tempot ändras, med bevarad tonhöjd. Av: inget klipp följer tempot. Ett enstaka klipp kan i stället sättas i bandspelarläge (tonhöjden följer med) i klippmenyn.",
+                    ))
+                    .changed()
+                {
+                    self.follow_tempo = follow;
+                    // Ett enda val ska slå igenom direkt: motorn får nya regioner.
+                    for t_idx in 0..self.playlist_tracks.len() {
+                        self.sync_track_regions(t_idx);
+                    }
+                    self.status_message = if follow {
+                        crate::i18n::t("🎚 Klippen följer tempot med bevarad tonhöjd").to_string()
+                    } else {
+                        crate::i18n::t("➡ Klippen står still när tempot ändras (Följ tempot av)")
+                            .to_string()
+                    };
+                }
+                if pending > 0 {
+                    // En kontroll som ingen läser är ingen funktion — och en väntan som
+                    // ingen säger något om ser ut som att ingenting händer.
+                    ui.label(
+                        egui::RichText::new(crate::tstatus!("⏳ Sträcker {} klipp …", pending))
+                            .size(9.5)
+                            .color(Theme::TEXT_MUTED),
                     );
                     ui.add_space(6.0);
                 }
@@ -3533,6 +3611,137 @@ impl SonixApp {
             .sum()
     }
 
+    /// Vad motorn ska spela för ett klipp just nu (Fas 8.10 steg 2).
+    ///
+    /// **Ett ställe.** Tidslinjen, ritningen, "spara region som sample" och exporten
+    /// frågar samma funktion — annars kan filen och högtalarna säga olika saker, och
+    /// den fällan har kostat tid två gånger redan (8.5 och sidokedjan).
+    ///
+    /// Tre svar, och bara tre (se [`crate::audio::stretch::decide`]):
+    /// - **Untouched** — okänt tempo eller switchen av: faktorn är 1,0.
+    /// - **Tape** — klippet vill ha bandspelarljudet: projekt/källa, tonhöjden följer.
+    /// - **Stretch** — en färdigsträckt fil spelas med faktor 1,0. Är den inte klar
+    ///   (eller avvisades) spelas originalet i **sitt eget tempo**: ingen smurf uppstår
+    ///   av misstag, och statusraden säger vad som väntar.
+    fn region_playback(
+        &self,
+        r: &AudioRegion,
+        bpm_here: f32,
+    ) -> (f32, Option<crate::audio::stretch::StretchedAudio>) {
+        let decision =
+            crate::audio::stretch::decide(r.source_bpm, bpm_here, self.follow_tempo, r.tape);
+        let audio = if decision.mode == crate::audio::stretch::FollowMode::Stretch {
+            self.stretched_audio_for(r, bpm_here)
+        } else {
+            None
+        };
+        let (rate, _) = playback_for(decision, audio.is_some());
+        (rate, audio)
+    }
+
+    /// Nyckeln en sträckning har i cachen: källans sökväg **och båda tempon**.
+    ///
+    /// Ett enda ställe som bygger den, så att uppslagningen och beställningen inte
+    /// kan glida ifrån varandra.
+    fn stretch_key_for(r: &AudioRegion, bpm_here: f32) -> Option<String> {
+        let path = r.source_path.as_deref()?;
+        if path.is_empty() {
+            return None; // ingen källa på disk: det finns inget att sträcka
+        }
+        Some(crate::audio::stretch::cache_key(path, r.source_bpm, bpm_here))
+    }
+
+    /// Den färdigsträckta filen för ett klipp, om den finns och godkändes.
+    fn stretched_audio_for(
+        &self,
+        r: &AudioRegion,
+        bpm_here: f32,
+    ) -> Option<crate::audio::stretch::StretchedAudio> {
+        let key = Self::stretch_key_for(r, bpm_here)?;
+        self.stretch_cache.get(&key).cloned()
+    }
+
+    /// Beställer sträckningen av de klipp som behöver den (Fas 8.10 steg 2).
+    ///
+    /// Anropas en gång per bildruta. Tempot måste ha stått still en stund först:
+    /// reglaget byter värde varje bildruta medan det dras, och varje värde är en
+    /// egen fil att räkna fram — arbete ingen hann höra.
+    pub fn ensure_stretched(&mut self) {
+        // Först: ta emot vad arbetstråden blivit klar med. Ett klipp som blivit
+        // sträckt ska spelas om direkt, annars hörs det först nästa gång tempot rörs.
+        let finished = self.stretch_cache.poll();
+        if !finished.is_empty() {
+            let failed: Vec<String> = finished
+                .iter()
+                .filter_map(|k| self.stretch_cache.reason(k).map(|r| r.to_string()))
+                .collect();
+            for t_idx in 0..self.playlist_tracks.len() {
+                self.sync_track_regions(t_idx);
+            }
+            self.status_message = if failed.is_empty() {
+                crate::tstatus!(
+                    "🎚 {} klipp sträckta till {:.1} BPM (tonhöjden bevarad).",
+                    finished.len(),
+                    self.bpm
+                )
+            } else {
+                // 8.5-regeln: säg vad som gick fel i stället för att tiga. Originalet
+                // spelar under tiden — ett besked, inte en tystnad.
+                crate::tstatus!(
+                    "⚠ Kunde inte sträcka {} klipp: {} — originalet spelar.",
+                    failed.len(),
+                    failed[0]
+                )
+            };
+        }
+
+        if !self
+            .tempo_settle
+            .tick(self.bpm, crate::audio::stretch::TEMPO_SETTLE_FRAMES)
+        {
+            return;
+        }
+
+        // Vilka klipp behöver en sträckning, och vilka svar saknas?
+        let mut wanted: Vec<(String, String, f32, f32)> = Vec::new();
+        for t in &self.playlist_tracks {
+            for r in &t.regions {
+                let bpm_here = self.tempo_map().bpm_at(r.start_bar as f64);
+                let decision =
+                    crate::audio::stretch::decide(r.source_bpm, bpm_here, self.follow_tempo, r.tape);
+                if decision.mode != crate::audio::stretch::FollowMode::Stretch {
+                    continue;
+                }
+                let Some(key) = Self::stretch_key_for(r, bpm_here) else {
+                    continue;
+                };
+                if self.stretch_cache.knows(&key) {
+                    continue;
+                }
+                wanted.push((
+                    key,
+                    r.source_path.clone().unwrap_or_default(),
+                    r.source_bpm,
+                    bpm_here,
+                ));
+            }
+        }
+        if wanted.is_empty() {
+            return;
+        }
+        let dir = crate::paths::paths().stretch_cache_dir();
+        let count = wanted.len();
+        for (key, source_path, source_bpm, project_bpm) in wanted {
+            self.stretch_cache
+                .request(&dir, key, source_path, source_bpm, project_bpm);
+        }
+        self.status_message = crate::tstatus!(
+            "⏳ Sträcker {} klipp till {:.1} BPM — originalet spelar under tiden.",
+            count,
+            self.bpm
+        );
+    }
+
     fn ensure_waveform_cache(&mut self, t_idx: usize) {
         // Först: ta emot vad arbetstrådarna blivit klara med.
         if let Some(rx) = self.waveform_cache_rx.as_ref() {
@@ -3601,20 +3810,34 @@ impl SonixApp {
         }
         regions.extend(t.regions.iter().map(|r| {
             let from = r.start_bar as f64;
+            let bpm_here = tempo.bpm_at(from);
+            // Faktorn och källjudet kommer från SAMMA beslut (Fas 8.10 steg 2): en
+            // färdigsträckt fil spelas med faktor 1,0, bandspelarläget med faktorn,
+            // och okänt tempo med 1,0. Ritningen och exporten frågar samma funktion.
+            let (rate, source_audio) = self.region_playback(r, bpm_here);
+            // Är filen sträckt ligger utsnittet på en annan sekund i den: filen är
+            // källan skalad med källa/projekt. Utan en sträckt fil är offsetten
+            // oförändrad — precis som före 8.10.
+            let sample_offset_sec = if source_audio.is_some() {
+                stretched_offset_secs(r.sample_offset_sec, r.source_bpm, bpm_here)
+            } else {
+                r.sample_offset_sec
+            };
             StemRegionPlayback {
                 start_time_secs: tempo.secs_at_bar(from) as f32,
                 length_secs: tempo.secs_for_bars_at(from, r.length_bars as f64) as f32,
-                sample_offset_sec: r.sample_offset_sec,
+                sample_offset_sec,
+                source_audio,
                 gain: r.volume,
                 fade_in_sec: tempo.secs_for_bars_at(from, r.fade_in_bars as f64) as f32,
                 fade_out_sec: tempo.secs_for_bars_at(from, r.fade_out_bars as f64) as f32,
                 muted: r.muted,
                 is_reverse: r.is_reverse,
                 loop_length_secs: tempo.secs_for_bars_at(from, r.loop_length_bars as f64) as f32,
-                // Klippet följer projektets tempo (Fas 8.10). Faktorn tas från
-                // tempot vid klossens START: en kloss som sträcker sig över ett
-                // tempobyte får en faktor, inte en kurva — kvar att lösa (8.10).
-                stretch_ratio: stretch_ratio_for(r.source_bpm, tempo.bpm_at(from)),
+                // Faktorn kommer från tempot vid klossens START: en kloss som
+                // sträcker sig över ett tempobyte får en faktor, inte en kurva —
+                // kvar att lösa (8.10).
+                stretch_ratio: rate,
             }
         }));
         regions
@@ -4747,6 +4970,32 @@ impl SonixApp {
         }
     }
 
+    /// Klippets eget val: bandspelaren i stället för den tonhöjdsbevarande
+    /// sträckningen (Fas 8.10 steg 2).
+    ///
+    /// Undantaget, aldrig standarden: en smurf som uppstår av misstag är värre än en
+    /// effekt man får leta efter (Abletons ordning — *Re-Pitch* är undantaget).
+    pub fn toggle_region_tape(&mut self, t_idx: usize, r_idx: usize) {
+        if t_idx >= self.playlist_tracks.len()
+            || r_idx >= self.playlist_tracks[t_idx].regions.len()
+        {
+            return;
+        }
+        self.push_undo("Klippets temoläge");
+        let tape = {
+            let r = &mut self.playlist_tracks[t_idx].regions[r_idx];
+            r.tape = !r.tape;
+            r.tape
+        };
+        self.sync_track_regions(t_idx);
+        self.status_message = if tape {
+            crate::i18n::t("📼 Klippet följer tempot som en bandspelare (tonhöjden följer med)")
+                .to_string()
+        } else {
+            crate::i18n::t("🎚 Klippet sträcks med bevarad tonhöjd när tempot ändras").to_string()
+        };
+    }
+
     pub fn reverse_selected_region(&mut self) {
         if let Some((t_idx, r_idx)) = self.selected_audio_region {
             if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
@@ -4794,6 +5043,7 @@ impl SonixApp {
         SonixProjectData {
             name: name.to_string(),
             bpm: self.bpm,
+            follow_tempo: self.follow_tempo,
             tempo_points: self.tempo_points.clone(),
             song_key_root: self.song_key_root,
             song_key_scale: self.song_key_scale,
@@ -5162,6 +5412,7 @@ impl SonixApp {
                 p.completed_payload = Some(LoadedProjectPayload {
                     name: data.name,
                     bpm: data.bpm,
+                    follow_tempo: data.follow_tempo,
                     tempo_points: data.tempo_points,
                     song_key_root: 3,
                     song_key_scale: 0,
@@ -7816,6 +8067,10 @@ impl eframe::App for SonixApp {
         self.sync_patcher_graph();
         self.sync_stem_separator_engine();
         self.sync_tempo_follow();
+        // Sträckningen är offline (Fas 8.10 steg 2): beställ de filer som saknas och
+        // ta emot dem som blivit klara. Ligger efter tempoföljningen, så att motorn
+        // redan vet vilket tempo klippen ska följa.
+        self.ensure_stretched();
         // Keep embedded plugin editors responsive (Fas 4.4b).
         self.poll_plugin_guis();
         // Supervise the out-of-process sandbox worker (Fas 4.5a).
@@ -9566,7 +9821,7 @@ impl SonixApp {
                             .to_string()
                         } else {
                             crate::tstatus!(
-                                "Klippens tempo: {} klipp har ett känt inspelningstempo och följer med när du ändrar tempot (tonhöjden följer med, som på en bandspelare). Klipp med okänt tempo rörs inte.",
+                                "Klippens tempo: {} klipp har ett känt inspelningstempo och följer med när du ändrar tempot — med bevarad tonhöjd (Fas 8.10 steg 2). Enstaka klipp kan i stället sättas i bandspelarläge i klippmenyn. Klipp med okänt tempo rörs inte.",
                                 with_tempo
                             )
                         };
@@ -11580,6 +11835,7 @@ impl SonixApp {
                     let mut do_loop_factor: Option<f32> = None;
                     let mut do_duplicate = false;
                     let mut do_reverse = false;
+                    let mut do_tape = false;
                     let mut do_open_focus = false;
                     let mut do_open_vocal_studio = false;
                     let mut do_save_sample = false;
@@ -11590,6 +11846,7 @@ impl SonixApp {
                     let r_len_sec = r.length_bars * sec_per_bar;
                     let r_name = r.name.clone();
                     let is_rev = r.is_reverse;
+                    let is_tape = r.tape;
 
                     ui.add_space(4.0);
                     ui.group(|ui| {
@@ -11737,6 +11994,24 @@ impl SonixApp {
                                     do_reverse = true;
                                 }
 
+                            // Klippets temoläge (Fas 8.10 steg 2): sträcks med bevarad
+                            // tonhöjd (standard) eller bandspelaren (undantaget).
+                            let tape_label = if is_tape {
+                                crate::i18n::t("📼 Bandspelare")
+                            } else {
+                                crate::i18n::t("🎚 Sträcks (bevarad tonhöjd)")
+                            };
+                            let tape_bg = if is_tape { Theme::FL_ORANGE } else { Color32::from_rgb(30, 48, 44) };
+                            if ui
+                                .add(egui::Button::new(egui::RichText::new(tape_label).strong().size(10.5).color(Color32::WHITE)).fill(tape_bg))
+                                .on_hover_text(crate::i18n::t(
+                                    "Standard: klippet sträcks med bevarad tonhöjd när tempot ändras (tonhöjden står still). Bandspelarläget låter tonhöjden följa med — det är en effekt, inte standarden.",
+                                ))
+                                .clicked()
+                            {
+                                do_tape = true;
+                            }
+
                             // Mute toggle
                             let mute_bg = if r.muted { Theme::FL_ORANGE } else { Color32::from_rgb(32, 38, 48) };
                             if ui.add(egui::Button::new(egui::RichText::new(if r.muted { "🔇 Mutad" } else { "🔊 Aktiv" }).strong().size(10.5).color(Color32::WHITE)).fill(mute_bg)).clicked() {
@@ -11788,6 +12063,8 @@ impl SonixApp {
                         self.save_region_to_sound_browser(t_idx, r_idx);
                     } else if do_reverse {
                         self.reverse_selected_region();
+                    } else if do_tape {
+                        self.toggle_region_tape(t_idx, r_idx);
                     } else if do_delete {
                         self.delete_selected_region();
                     } else if do_duplicate {
@@ -14777,7 +15054,6 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         crate::audio::RenderSpec {
             sample_rate,
             bpm: self.bpm,
-            follow_tempo: self.follow_tempo,
             swing: self.swing,
             num_bars: self.export_bars(),
             pattern_mode,
@@ -18367,6 +18643,7 @@ mod tests {
         let data = SonixProjectData {
             name: "Testprojekt".to_string(),
             bpm: 133.0,
+            follow_tempo: false,
             tempo_points: Vec::new(),
             song_key_root: 3,
             song_key_scale: 0,
@@ -18407,6 +18684,7 @@ mod tests {
         assert_eq!(back.channels[0].notes, ch.notes);
         assert_eq!(back.step_velocities.unwrap()[3], 0.25, "stegvolymen tillbaka");
         assert_eq!(back.selected_pattern, 0);
+        assert!(!back.follow_tempo, "switchen ska med i filen, inte bara i minnet");
     }
 
     #[test]
@@ -18431,6 +18709,11 @@ mod tests {
             "en gammal fil ska inte påstå något om stegvolymer"
         );
         assert_eq!(data.bpm, 120.0);
+        assert!(
+            data.follow_tempo,
+            "en fil som sparades innan fältet fanns ska läsa som PÅ — annars hade en \
+             uppgradering tyst stängt av tempoföljningen för alla gamla projekt"
+        );
     }
 
     #[test]
@@ -18597,6 +18880,53 @@ mod tests {
             waveform: Vec::new(),
             file_path: Some(path.to_string()),
         }
+    }
+
+    /// De tre svaren i tidslinjen (Fas 8.10 steg 2), som en tabell.
+    ///
+    /// Regeln är rena funktioner just för att den ska kunna prövas utan fönster — och
+    /// för att tidslinjen, ritningen och exporten ska kunna svara likadant.
+    #[test]
+    fn the_tempo_follow_mapping_has_three_answers() {
+        use crate::audio::stretch::{decide, FollowMode};
+        // Okänt inspelningstempo: rör inte ljudet.
+        let unknown = decide(0.0, 150.0, true, false);
+        assert_eq!(unknown.mode, FollowMode::Untouched);
+        assert_eq!(playback_for(unknown, false), (1.0, false));
+        // Samma tempo: inget att göra.
+        let same = decide(120.0, 120.0, true, false);
+        assert_eq!(same.mode, FollowMode::Untouched);
+        assert_eq!(playback_for(same, false), (1.0, false));
+        // Switchen av: inget klipp följer tempot, varken sträckt eller bandspelare.
+        let off = decide(120.0, 150.0, false, false);
+        assert_eq!(off.mode, FollowMode::Untouched);
+        assert_eq!(playback_for(off, false), (1.0, false));
+        // Bandspelarläget: faktorn, aldrig en fil.
+        let tape = decide(120.0, 150.0, true, true);
+        assert_eq!(tape.mode, FollowMode::Tape);
+        let (rate, file) = playback_for(tape, true);
+        assert!((rate - 1.25).abs() < 1e-5, "bandspelarens faktor: {rate}");
+        assert!(!file, "bandspelarläget spelar aldrig en sträckt fil");
+        // Sträckning med filen inte klar: originalet i sitt eget tempo — ingen smurf.
+        let stretch = decide(120.0, 150.0, true, false);
+        assert_eq!(stretch.mode, FollowMode::Stretch);
+        assert_eq!(playback_for(stretch, false), (1.0, false));
+        // ... och med filen klar: filen spelas med faktor 1,0.
+        assert_eq!(playback_for(stretch, true), (1.0, true));
+    }
+
+    /// Ett trimmat klipp behåller sin plats i den sträckta filen.
+    #[test]
+    fn a_trimmed_clip_keeps_its_place_in_the_stretched_file() {
+        // 12 s in i en källa i 120 BPM, projektet i 150: filen är 0,8 gånger så lång,
+        // alltså ligger samma ställe 9,6 s in i den.
+        assert!((stretched_offset_secs(12.0, 120.0, 150.0) - 9.6).abs() < 1e-4);
+        // Och åt andra hållet: filen blir längre, stället flyttas framåt.
+        assert!((stretched_offset_secs(12.0, 150.0, 120.0) - 15.0).abs() < 1e-4);
+        // Utan känt tempo rörs utsnittet inte — 8.10:s regel.
+        assert_eq!(stretched_offset_secs(12.0, 0.0, 150.0), 12.0);
+        // Och ett projekt utan tempo är inget att räkna mot.
+        assert_eq!(stretched_offset_secs(12.0, 120.0, 0.0), 12.0);
     }
 
     #[test]
@@ -19067,6 +19397,7 @@ mod tests {
         let data = SonixProjectData {
             name: "Plugin Test".into(),
             bpm: 120.0,
+            follow_tempo: true,
             tempo_points: Vec::new(),
             song_key_root: 3,
             song_key_scale: 0,
