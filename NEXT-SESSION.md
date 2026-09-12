@@ -151,6 +151,35 @@ mätt, och var nästa andetag ska tas.*
 6. **Riktig BPM-detektor** om någon behöver den: onset-styrka + tempokam
    (aubio/librosa/Essentia). Underlaget ligger i `sonix`-skillens research.
 
+## 4b. Nästa pass: motorn (färskt sammanhang — roadmapen säger det själv)
+
+**Frågan är redan ett tal.** `the_stretch_artefacts_on_a_real_stem` (kör manuellt, se
+nedan) mäter **var** anslagen hamnar och **hur många** de blir på Alex' egna stämmor vid
+120 → 110 BPM, med repots egen validerade slagletning. Mätt 2026-09-12:
+
+| Stämma | Anslag i källan | I renderingen | Överskott |
+| :--- | ---: | ---: | ---: |
+| Vocals | 3 205 | 3 536 | +10,3 % |
+| Backing Vocals | 5 932 | 6 483 | +9,3 % |
+| Drums | 4 273 | 4 682 | +9,6 % |
+| Bass | 1 793 | 2 613 | +45,7 % |
+
+**Tidpunkterna håller** (felet mot `källans tid × faktorn`: median 1,8–3,9 ms, p95
+4,4–8,5 ms). Det är **antalet** som felar: WSOLA lägger till transienter, och det är
+kornkanterna Alex hör som skorr.
+
+`cargo test --release --bin sonix the_stretch_artefacts -- --ignored --nocapture`
+
+**Steg 1 (inget nytt beroende):** transientmedveten kornplacering i vår egen WSOLA —
+`src/audio/vocal_harmonizer.rs`, `struct Wsola` (frame 1024, hop 512, `search: 128`,
+`best_start()` som gör den normaliserade korskorrelationen mot `prev_tail`). Klassiskt
+grepp: vid ett anslag får sökningen **inte** flytta kornet (då smetas attacken), och
+överlappningen ska inte korsfadas över anslaget (då dubblas det). Slagpunkterna finns
+färdiga: `crate::audio::onset::detect_onsets`.
+**Steg 2 om det inte räcker:** `signalsmith-stretch` (MIT) som **renderingsmotor** — aldrig
+i uppspelningen. Samma prov avgör; blir det inte bättre behåller vi vår egen, och siffran
+ovan står kvar som bevis.
+
 ## 5. Fällor som kostat tid (läs dessa innan du patchar)
 
 - **`gh run list` stödjer inte `--arg`**, och `-c` kräver **full** SHA. Kort SHA ger tomt.
