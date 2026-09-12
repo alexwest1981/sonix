@@ -73,6 +73,15 @@ release, ett bevisstycke här i roadmapen — och för det som hörs eller syns,
 i GUI. Den sista raden är den som oftast återstår: 6.2, 6.4, 6.5, 7.4 och 8.2:s
 tempopunkt-UI väntar alla på att Alex ser dem.
 
+> **Underlag för prioriteringen:** djupjämförelsen mot de etablerade DAW:erna (FL Studio,
+> Ableton, Bitwig, Logic, Cubase, Studio Pro, Pro Tools, DP, Reaper, Ardour, Waveform,
+> Mixcraft, Renoise, Zrythm + angränsande verktyg) ligger i `sonix`-skillen,
+> `references/daw-comparison.md`, med de fem researchrapporterna i `references/daw-research/`.
+> Kortversionen: **8.3 är det enda kvarvarande gapet som hörs i en färdig mix**, 8.4 är den
+> mest grundläggande funktionen som saknas helt, och 8.2-resten är billigast. Sonix står
+> starkare än de stora på tre punkter: native Linux, CLAP med out-of-process-sandbox, och
+> AI/Suno-vägen — ingen av de undersökta DAW:erna har AI-genererad musik som utgångspunkt.
+
 ---
 
 ## ✅ Fas 0 — Klar baslinje (det som redan är äkta)
