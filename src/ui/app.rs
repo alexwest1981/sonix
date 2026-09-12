@@ -4308,8 +4308,12 @@ impl SonixApp {
         self.recovery_candidates.clear();
         self.show_recovery_modal = false;
         match crate::autosave::retire(&path) {
-            Ok(_) => {
-                self.load_project_file(path.to_string_lossy().as_ref());
+            // Sökvägen som retire LÄMNAR TILLBAKA är den filen nu finns på. Att läsa
+            // den gamla — vilket koden gjorde — kan aldrig fungera: retire har just
+            // döpt om den. Alex' "Restore gör inget" var precis detta: filen blev
+            // `*.restored`, och läste man sedan det gamla namnet fanns inget där.
+            Ok(retired) => {
+                self.load_project_file(retired.to_string_lossy().as_ref());
                 self.autosave_accum = 0.0;
                 self.autosave_last_fp = None;
                 self.status_message = crate::tstatus!(
