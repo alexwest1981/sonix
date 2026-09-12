@@ -11,6 +11,12 @@ pub struct AudioTake {
     pub name: String,
     pub pcm_samples: Vec<f32>,
     pub waveform_data: Vec<f32>,
+    /// Exakta (min, max) per kolumn ur tagningens EGNA samplar (8.3).
+    ///
+    /// `waveform_data` är en grov översikt (`max(abs)`, tak 512) — den kan bara ge
+    /// en höjd, inte en form, och vyn tvingades därför spegla den kring mitten. Här
+    /// räknas både topp och botten per kolumn, en gång när tagningen är färdig.
+    pub waveform_pairs: Vec<(f32, f32)>,
     pub sample_rate: u32,
     pub duration_secs: f32,
     pub is_selected: bool,
@@ -1026,6 +1032,7 @@ impl VocalStudioTrack {
         }
         self.takes.push(AudioTake {
             name,
+            waveform_pairs: crate::audio::waveform::envelope_per_pixel(&pcm, 2048),
             pcm_samples: pcm,
             waveform_data,
             sample_rate: sr,
@@ -1163,6 +1170,7 @@ impl VocalStudioTrack {
 
         let new_take = AudioTake {
             name: format!("{} {} ({:.1}s)", crate::i18n::t("Tagning"), count, duration),
+            waveform_pairs: crate::audio::waveform::envelope_per_pixel(&samples, 2048),
             pcm_samples: samples,
             waveform_data: visual_peaks,
             sample_rate: mic_sr,
@@ -1254,11 +1262,14 @@ impl VocalStudioTrack {
         self.takes[self.active_comp_take].name = format!("{} (Del 1)", orig_take.name);
         self.takes[self.active_comp_take].pcm_samples = part1_samples.clone();
         self.takes[self.active_comp_take].waveform_data = t1_peaks;
+        self.takes[self.active_comp_take].waveform_pairs =
+            crate::audio::waveform::envelope_per_pixel(&part1_samples, 2048);
         self.takes[self.active_comp_take].duration_secs = part1_samples.len() as f32 / sr as f32;
 
         // Insert Part 2 as new take
         self.takes.push(AudioTake {
             name: format!("{} (Del 2)", orig_take.name),
+            waveform_pairs: crate::audio::waveform::envelope_per_pixel(&part2_samples, 2048),
             pcm_samples: part2_samples.clone(),
             waveform_data: t2_peaks,
             sample_rate: sr,
@@ -1356,6 +1367,7 @@ impl VocalStudioTrack {
         };
         self.takes.push(AudioTake {
             name: if name.is_empty() { format!("{} {} ({})", crate::i18n::t("Tagning"), count, crate::i18n::t("Testton")) } else { name.to_string() },
+            waveform_pairs: crate::audio::waveform::envelope_per_pixel(&pcm, 2048),
             pcm_samples: pcm,
             waveform_data: new_wave,
             sample_rate: sr,
@@ -1390,6 +1402,7 @@ impl VocalStudioTrack {
 
         let new_take = AudioTake {
             name: name.to_string(),
+            waveform_pairs: crate::audio::waveform::envelope_per_pixel(&pcm, 2048),
             pcm_samples: pcm,
             waveform_data: visual_peaks,
             sample_rate,

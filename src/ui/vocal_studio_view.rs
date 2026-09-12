@@ -528,9 +528,34 @@ pub fn render_vocal_studio_view(
                         let sel_rect = Rect::from_min_max(Pos2::new(sel_start_x, canvas_rect.min.y), Pos2::new(sel_end_x, canvas_rect.max.y));
                         painter.rect_filled(sel_rect, Rounding::ZERO, Color32::from_rgba_unmultiplied(take_color.r(), take_color.g(), take_color.b(), 25));
 
-                        // Draw Waveform bars
+                        // Exakt väg (8.3): (min, max) per kolumn ur tagningens EGNA
+                        // samplar. Den gamla vägen ritade `mid ± h` ur en grov översikt
+                        // (max(abs), tak 512) — ett symmetriskt hölje som såg trovärdigt
+                        // ut men inte var signalen. Finns paren ritas de; annars gamla.
                         let wave = &take.waveform_data;
-                        if !wave.is_empty() {
+                        let pairs = &take.waveform_pairs;
+                        if !pairs.is_empty() {
+                            let col_w = canvas_rect.width() / pairs.len() as f32;
+                            let half = canvas_rect.height() * 0.44;
+                            let gain = take.gain_linear.clamp(0.0, 4.0);
+                            for (i, (lo, hi)) in pairs.iter().enumerate() {
+                                let x = canvas_rect.min.x + i as f32 * col_w;
+                                let norm_pos = i as f32 / pairs.len() as f32;
+                                let in_sel = norm_pos >= crop_s && norm_pos <= crop_e;
+                                let y_hi = mid_y - (hi * gain).clamp(-1.0, 1.0) * half;
+                                let y_lo = mid_y - (lo * gain).clamp(-1.0, 1.0) * half;
+                                let (top, bot) = (y_hi.min(y_lo), y_hi.max(y_lo));
+                                let col = if in_sel { take_color } else { Color32::from_rgb(60, 75, 95) };
+                                painter.rect_filled(
+                                    Rect::from_min_max(
+                                        Pos2::new(x, top),
+                                        Pos2::new((x + col_w * 0.85).max(x + 1.0), (bot).max(top + 0.8)),
+                                    ),
+                                    Rounding::same(1.0),
+                                    col,
+                                );
+                            }
+                        } else if !wave.is_empty() {
                             let step_x = canvas_rect.width() / wave.len() as f32;
                             for (i, &amp) in wave.iter().enumerate() {
                                 let x = canvas_rect.min.x + i as f32 * step_x;
