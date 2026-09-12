@@ -883,6 +883,8 @@ pub struct PlaylistTrack {
     /// ny cache utan att någon behöver komma ihåg att säga till. Att bygga den på
     /// de tio ställen där `pcm_audio` sätts vore tio chanser att glömma ett.
     pub waveform_cache: Option<(u64, crate::audio::waveform::WaveformCache)>,
+    /// Nyckeln som en arbetstråd håller på att bygga, om någon gör det.
+    pub waveform_cache_pending: Option<u64>,
     #[allow(dead_code)]
     pub custom_clip_name: Option<String>,
     pub pcm_audio: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
@@ -948,6 +950,7 @@ impl PlaylistTrack {
             regions: Vec::new(),
             clips: [None; 32],
             waveform_cache: None,
+            waveform_cache_pending: None,
             custom_clip_name: None,
             pcm_audio: None,
             frozen: None,
@@ -1616,6 +1619,14 @@ pub struct SonixApp {
     pub focused_stem_track: Option<usize>,
     pub show_stem_focus_modal: bool,
     /// Tempokartan som fönster (Fas 8.2).
+    /// Arbetstrådarna som bygger vågformscachar (Fas 8.4).
+    ///
+    /// Bygget får ALDRIG ske i en bildruta: en cache för tio minuters ljud tar
+    /// 2,5 s, och ett projekt med åtta stems låste hela fönstret tills
+    /// window-managern gav upp ("not responding"). Nu byggs de vid sidan om, och
+    /// ritningen visar den gamla vägen tills svaret kommer.
+    pub waveform_cache_tx: Option<std::sync::mpsc::Sender<(usize, u64, crate::audio::waveform::WaveformCache)>>,
+    pub waveform_cache_rx: Option<std::sync::mpsc::Receiver<(usize, u64, crate::audio::waveform::WaveformCache)>>,
     pub show_tempo_modal: bool,
     /// Takten som högerklicket på linjalen gällde.
     ///
@@ -2259,6 +2270,8 @@ impl SonixApp {
             // Focused Stem Detail & Sound Editor Modal
             focused_stem_track: None,
             show_stem_focus_modal: false,
+            waveform_cache_tx: None,
+            waveform_cache_rx: None,
             show_tempo_modal: false,
             tempo_menu_bar: None,
             stem_focus_active_tab: 0,
@@ -2854,19 +2867,48 @@ impl SonixApp {
     /// Anropas en gång per spår och bildruta. Är cachen byggd ur samma buffert
     /// som spåret har nu, kostar anropet en jämförelse av fyra tal.
     fn ensure_waveform_cache(&mut self, t_idx: usize) {
-        let Some(track) = self.playlist_tracks.get_mut(t_idx) else {
+        // Först: ta emot vad arbetstrådarna blivit klara med.
+        if let Some(rx) = self.waveform_cache_rx.as_ref() {
+            while let Ok((idx, key, cache)) = rx.try_recv() {
+                if let Some(t) = self.playlist_tracks.get_mut(idx) {
+                    t.waveform_cache = Some((key, cache));
+                    t.waveform_cache_pending = None;
+                }
+            }
+        }
+
+        let Some(track) = self.playlist_tracks.get(t_idx) else {
             return;
         };
         let Some((left, _right, _sr)) = track.frozen_pcm.as_ref().or(track.pcm_audio.as_ref())
         else {
-            track.waveform_cache = None;
             return;
         };
         let key = waveform_key(left);
         if track.waveform_cache.as_ref().map(|(k, _)| *k) == Some(key) {
-            return;
+            return; // redan byggd för det här ljudet
         }
-        track.waveform_cache = Some((key, crate::audio::waveform::WaveformCache::build(left)));
+        if track.waveform_cache_pending == Some(key) {
+            return; // en tråd bygger den redan
+        }
+
+        // Kanalen skapas vid behov, så att konstruktorn inte behöver röras.
+        if self.waveform_cache_rx.is_none() {
+            let (tx, rx) = std::sync::mpsc::channel();
+            self.waveform_cache_tx = Some(tx);
+            self.waveform_cache_rx = Some(rx);
+        }
+        let Some(tx) = self.waveform_cache_tx.as_ref().cloned() else {
+            return;
+        };
+        let left = left.clone();
+        // Den gamla cachen (för annat ljud) får inte användas medan den nya byggs.
+        self.playlist_tracks[t_idx].waveform_cache = None;
+        self.playlist_tracks[t_idx].waveform_cache_pending = Some(key);
+        std::thread::spawn(move || {
+            let cache = crate::audio::waveform::WaveformCache::build(&left);
+            let _ = tx.send((t_idx, key, cache));
+        });
     }
 
     fn tempo_map(&self) -> crate::audio::tempo::TempoMap {

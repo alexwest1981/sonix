@@ -240,6 +240,15 @@ impl WaveformCache {
         self.levels.len()
     }
 
+    /// Hur mycket nivåerna tar i minnet. `Vec`ens kapacitet räknas, inte bara
+    /// längden — det är kapaciteten som ligger i RAM.
+    pub fn allocation_bytes(&self) -> usize {
+        self.levels
+            .iter()
+            .map(|l| l.peaks.capacity() * std::mem::size_of::<(f32, f32)>())
+            .sum()
+    }
+
     /// Höljet för ett **utsnitt** av samplen: `len` samplar från `start`, ritat
     /// över `pixels` bildpunkter.
     ///
@@ -471,6 +480,40 @@ mod tests {
         for (lo, hi) in env {
             assert!((lo + 0.8).abs() < 1e-6, "botten ska vara -0,8, blev {lo}");
             assert!((hi - 0.2).abs() < 1e-6, "toppen ska vara 0,2, blev {hi}");
+        }
+    }
+
+    /// MÄTNING: vad kostar cachebygget på ett långt klipp?
+    ///
+    /// Testet finns för att nästa gång ge ett TAL i stället för ett antagande.
+    /// Siffran "~50 ms för fyra minuter" stod i en commit-text utan att vara mätt,
+    /// och den gissningen är hela skälet att den här mätningen finns nu.
+    ///
+    /// Ingen tidsgräns sätts: en gräns som slår slumpmässigt på en belastad maskin
+    /// skyddar ingenting (samma princip som realtidsmätningen i `realtime_bench`).
+    /// Kör med:
+    ///   cargo test --locked --bin sonix the_build_cost -- --ignored --nocapture
+    #[test]
+    #[ignore = "mätning, inte en grind — körs manuellt"]
+    fn the_build_cost_is_measured_on_a_realistic_buffer() {
+        for minutes in [1u32, 4, 10] {
+            let n = 48_000 * 60 * minutes as usize;
+            let samples = noisy(n, 5);
+            let t0 = std::time::Instant::now();
+            let cache = WaveformCache::build(&samples);
+            let build = t0.elapsed();
+            let mib = cache.allocation_bytes() as f64 / (1024.0 * 1024.0);
+            eprintln!(
+                "  {minutes} min ({n} samplar): bygge {build:?}, {} nivåer, {mib:.1} MiB",
+                cache.level_count()
+            );
+            // Strukturella gränser (inte tid): nivåerna halveras och antalet är
+            // logaritmiskt, så en orimlig nivålista är ett fel i koden.
+            assert!(cache.level_count() <= 40, "orimligt många nivåer");
+            assert!(
+                mib < 64.0,
+                "cachen ska inte ta mer än 64 MiB för tio minuter"
+            );
         }
     }
 
