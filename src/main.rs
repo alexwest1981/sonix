@@ -62,7 +62,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_paths();
         return Ok(());
     }
-    // `sonix --clean-tags <fil...>`: visar vad filerna bär och tar bort ID3-taggarna.
+    // `sonix --clean-tags <fil...>`: visar vad filerna bär och tar bort taggarna —
+    // ID3 i mp3, `LIST`/`INFO` i wav.
     // Sunos mp3:er har `comment = "Made with Suno; Created=...; id=..."` — deras text
     // om din fil. Ljudet rörs inte; bara taggarna försvinner. (Att en kontroll läser
     // LJUDET och inte taggen står i metadata.rs — och är skälet att det här inte är
@@ -82,8 +83,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
                     println!(
-                        "  {f}: {} byte tagg (v2={} v1={})",
-                        report.removable_bytes, report.has_id3v2, report.has_id3v1
+                        "  {f}: {} byte metadata (ID3v2={} ID3v1={} RIFF={})",
+                        report.removable_bytes,
+                        report.has_id3v2,
+                        report.has_id3v1,
+                        report.has_riff_metadata
                     );
                     for e in &report.excerpts {
                         println!("      hittade: {e}");

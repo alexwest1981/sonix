@@ -621,7 +621,11 @@ fn info_tag(out: &mut Vec<u8>, fourcc: &[u8; 4], value: &str) {
     }
 }
 
-fn write_wav(
+/// Skriver en wav med givna sampel och metadata.
+///
+/// `pub(crate)` för att `write_stem_wav` (och testerna i `metadata.rs`, som prövar
+/// städningen mot en **riktig** fil från den här skrivaren) ska kunna nå den.
+pub(crate) fn write_wav(
     path: &str,
     samples: &[f32],
     sample_rate: u32,
