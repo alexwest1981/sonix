@@ -80,6 +80,46 @@ pub fn pixels_needed(region_pixels: f32) -> usize {
 /// blir ~1,4 MB i finaste nivån, knappt 3 MB för alla nivåer.
 pub const FINEST_BUCKET: usize = 64;
 
+/// Hur en vågform ska ritas vid en viss zoom (Fas 8.4).
+///
+/// Erfarenheten från riktiga DAW:er (se `references/waveform-rendering.md` i
+/// `sonix`-skillen): **"tydligare ju mer man zoomar" kommer inte av sig själv.**
+/// En stapel per bildpunkt är grumlig när pixlarna är få och samplarna är många,
+/// hur exakt höljet än är — så ritaren måste **byta representation** vid trösklar.
+/// Ardour säger det rakt ut: höljet är en approximation, och den verkliga
+/// vågformen syns bara högst upp i zoomningen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ZoomRegime {
+    /// Många samplar per bildpunkt: ett min/max-hölje per kolumn.
+    Envelope,
+    /// Ungefär ett sampel per bildpunkt: en **kurva genom samplarna** — vågformen
+    /// löses upp till sin riktiga form.
+    Samples,
+    /// Flera bildpunkter per sampel: **en punkt per sampel**, med linje emellan.
+    /// (Audacitys "dots".) Här ser man exakt var ett anslag börjar.
+    SampleDots,
+}
+
+/// Från hur många bildpunkter ett sampel får innan det ritas som en egen punkt.
+///
+/// Fyra är samma tröskel Audacity använder i praktiken: under den flyter punkterna
+/// ihop till en linje och ska ritas som en.
+pub const DOTS_PIXELS_PER_SAMPLE: f64 = 4.0;
+
+/// Väljer representationsläge ur hur många samplar en bildpunkt täcker.
+///
+/// Vid `<= 1.0` får varje sampel minst en egen bildpunkt — då finns den riktiga
+/// vågformen att visa, och då ska den visas.
+pub fn zoom_regime(samples_per_pixel: f64) -> ZoomRegime {
+    if samples_per_pixel > 1.0 {
+        ZoomRegime::Envelope
+    } else if samples_per_pixel > 1.0 / DOTS_PIXELS_PER_SAMPLE {
+        ZoomRegime::Samples
+    } else {
+        ZoomRegime::SampleDots
+    }
+}
+
 /// En nivå: ett (min, max) per `samples_per_bucket` samplar.
 #[derive(Clone, Debug, PartialEq)]
 pub struct PeakLevel {
@@ -390,6 +430,45 @@ mod tests {
             assert!((lo + 0.8).abs() < 1e-6, "botten ska vara -0,8, blev {lo}");
             assert!((hi - 0.2).abs() < 1e-6, "toppen ska vara 0,2, blev {hi}");
         }
+    }
+
+    /// Trösklarna är själva poängen: vid ett sampel per bildpunkt finns sanningen,
+    /// och då ska den visas i stället för ett hölje.
+    #[test]
+    fn the_regime_changes_when_the_truth_becomes_available() {
+        assert_eq!(zoom_regime(1000.0), ZoomRegime::Envelope);
+        assert_eq!(zoom_regime(2.0), ZoomRegime::Envelope);
+        assert_eq!(zoom_regime(1.0001), ZoomRegime::Envelope);
+        // Ett sampel per bildpunkt: nu finns den riktiga vågformen.
+        assert_eq!(zoom_regime(1.0), ZoomRegime::Samples);
+        assert_eq!(zoom_regime(0.5), ZoomRegime::Samples);
+        assert_eq!(zoom_regime(0.26), ZoomRegime::Samples);
+        // Fyra bildpunkter per sampel: punkterna blir åtskilda nog att ritas.
+        assert_eq!(zoom_regime(0.25), ZoomRegime::SampleDots);
+        assert_eq!(zoom_regime(0.01), ZoomRegime::SampleDots);
+    }
+
+    /// Regimen får aldrig backa när man zoomar in: hölje -> kurva -> punkter, i
+    /// den ordningen och aldrig tillbaka. Annars flimrar vågformen vid tröskeln.
+    #[test]
+    fn zooming_in_never_goes_backwards() {
+        let order = |r: ZoomRegime| match r {
+            ZoomRegime::Envelope => 0,
+            ZoomRegime::Samples => 1,
+            ZoomRegime::SampleDots => 2,
+        };
+        let mut last = 0;
+        let mut spp = 64.0f64;
+        while spp > 0.001 {
+            let now = order(zoom_regime(spp));
+            assert!(
+                now >= last,
+                "regimen backade vid {spp} samplar per bildpunkt"
+            );
+            last = now;
+            spp /= 1.05;
+        }
+        assert_eq!(last, 2, "hela vägen in ska sluta i punkter");
     }
 
     /// Pseudoslump utan beroenden: samma indata ger samma test varje gång.
