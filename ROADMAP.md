@@ -56,10 +56,18 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 ## ⬜ Vad som återstår (räknat ur listan 2026-09-12)
 
-**Tio punkter är obockade:** sex från den första räkningen, plus fyra som kom till
-2026-09-12 efter researchen om plugins och chopping (rad 7–10 i den andra tabellen). Sju går
-att göra vid datorn, två kräver Wine och en display, och en kräver en Windows-maskin för
-kvittensen. Ordningen nedan är den som ger mest per timme.
+**Elva punkter är obockade:** sex från den första räkningen, fyra som kom till
+2026-09-12 efter researchen om plugins och chopping — och en som kom till samma kväll,
+när **8.5** (tysta klipp) visade sig vara en egen klass. Sju går att göra vid datorn, två
+kräver Wine och en display, och en kräver en Windows-maskin för kvittensen. Ordningen
+nedan är den som ger mest per timme.
+
+**Ändrat 2026-09-12 kväll:** klass-fixen i **8.5** stängde elva ställen som läste ljud
+utan att säga till när det misslyckades, och de två vägarna från Sound Browser som
+skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den var trasig**
+(`retire`s returvärde kastades bort, så koden läste sökvägen den just pensionerat) och
+är fixad. **Kvar i 8.5:** stämseparatorn skriver inga stämmor till disk, sångstudiovägarna
+och ▶-förhandslyssningen avbryter inte, och import-dialogen (regeln är byggd och testad).
 
 | # | Punkt | Storlek | Vad som återstår | Blockerare |
 | :--- | :--- | :---: | :--- | :--- |
