@@ -2685,6 +2685,16 @@ impl SonixApp {
 
     /// Regionerna ett spår spelar, i sekunder, som motorn vill ha dem.
     ///
+    /// Projektets tempokarta.
+    ///
+    /// I dag en enda punkt: projektets tempo. Det är avsiktligt att allt som
+    /// räknar tid frågar den här i stället för att läsa `bpm` själv — annars
+    /// uppstår den andra sanningen om takter och sekunder, och den här gången
+    /// blir det ingen.
+    fn tempo_map(&self) -> crate::audio::tempo::TempoMap {
+        crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+    }
+
     /// **Ett ställe för omräkningen takter→sekunder.** Tre funktioner gjorde
     /// samma sak förut (två synkvägar och exporten), vilket är hur två svar på
     /// samma fråga uppstår. Nu går de genom tempokartan (Fas 8.2), så att en
@@ -3233,7 +3243,17 @@ impl SonixApp {
                     .to_string();
             return;
         }
-        let bytes = crate::audio::smf::write_midi(self.bpm, &tracks);
+        // Exporten frågar tempokartan i stället för att räkna själv: i dag har
+        // kartan en enda punkt (projektets tempo) och filen blir byte för byte
+        // den samma som förut — men den dag projekten har tempobyten följer de
+        // med ut i MIDI-filen utan att någon behöver komma ihåg det här stället.
+        let tempo_points: Vec<(f64, f32)> = self
+            .tempo_map()
+            .points()
+            .iter()
+            .map(|p| (p.start_bar as f64, p.bpm))
+            .collect();
+        let bytes = crate::audio::smf::write_midi_with_tempo(&tempo_points, &tracks);
         let dir = crate::paths::paths().exports_dir();
         let _ = std::fs::create_dir_all(&dir);
         let file = dir.join(format!("{}.mid", crate::autosave::slug(&self.project_name)));

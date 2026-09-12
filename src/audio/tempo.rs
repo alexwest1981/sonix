@@ -87,10 +87,6 @@ impl TempoMap {
         Self { points: unique }
     }
 
-    #[cfg_attr(
-        not(test),
-        allow(dead_code, reason = "väntar på UI:t för tempobyten (8.2 steg 3)")
-    )]
     pub fn points(&self) -> &[TempoPoint] {
         &self.points
     }

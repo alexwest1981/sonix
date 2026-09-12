@@ -57,7 +57,9 @@ fn write_vlq(out: &mut Vec<u8>, mut value: u32) {
 fn read_vlq(bytes: &[u8], pos: &mut usize) -> Result<u32, String> {
     let mut value: u32 = 0;
     for _ in 0..4 {
-        let b = *bytes.get(*pos).ok_or("filen tar slut mitt i en längdkodning")?;
+        let b = *bytes
+            .get(*pos)
+            .ok_or("filen tar slut mitt i en längdkodning")?;
         *pos += 1;
         value = (value << 7) | (b & 0x7f) as u32;
         if b & 0x80 == 0 {
@@ -132,8 +134,33 @@ fn write_track_chunk(out: &mut Vec<u8>, track: &MidiTrack) {
 }
 
 /// Skriver en format 1-fil: första spåret är tempot, därefter ett spår per
-/// `MidiTrack`.
+/// `MidiTrack`, med ett enda tempo.
+///
+/// Enkel-tempovarianten. Appen skriver via `write_midi_with_tempo` (den går
+/// genom tempokartan), men den här är den form de flesta anrop vill ha och
+/// testerna använder den.
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "appen skriver via write_midi_with_tempo; testerna använder denna"
+    )
+)]
 pub fn write_midi(bpm: f32, tracks: &[MidiTrack]) -> Vec<u8> {
+    write_midi_with_tempo(&[(0.0, bpm)], tracks)
+}
+
+/// Skriver en format 1-fil med tempobyten: varje punkt `(takt, BPM)` blir en
+/// egen händelse i ledspåret, med avståndet i tick till nästa.
+///
+/// Punkterna kommer in som tal i stället för som en `TempoMap`, av samma skäl
+/// som modulen inte har några andra beroenden: kodeken ska kunna läsas för sig
+/// själv. Den som har en karta projicerar den hit — det är ett ställe.
+///
+/// Med en enda punkt blir filen **bitvis** identisk med den gamla skrivaren, och
+/// det bevisas av ett test som jämför byte för byte. En tempokarta ska inte
+/// ändra en enda fil som inte har några byten.
+pub fn write_midi_with_tempo(points: &[(f64, f32)], tracks: &[MidiTrack]) -> Vec<u8> {
     let mut out: Vec<u8> = Vec::new();
     out.extend_from_slice(b"MThd");
     out.extend_from_slice(&6u32.to_be_bytes());
@@ -141,19 +168,24 @@ pub fn write_midi(bpm: f32, tracks: &[MidiTrack]) -> Vec<u8> {
     out.extend_from_slice(&((tracks.len() + 1) as u16).to_be_bytes());
     out.extend_from_slice(&PPQ.to_be_bytes());
 
-    // Ledspår med tempo och taktart.
+    // Ledspår med tempo och taktart. Första tempot först, därefter taktarten
+    // (båda på takt 0), och sedan resten av tempopunkterna i stigande ordning —
+    // så står de i en sequencer, och så blir en fil utan byten oförändrad.
     let mut conductor: Vec<u8> = Vec::new();
-    let us_per_quarter = (60_000_000.0 / bpm.clamp(20.0, 300.0)).round() as u32;
-    conductor.push(0x00);
-    conductor.push(0xff);
-    conductor.push(0x51);
-    conductor.push(0x03);
-    conductor.extend_from_slice(&us_per_quarter.to_be_bytes()[1..4]);
+    let mut last_tick: u32 = 0;
+    if let Some((_, bpm)) = points.first() {
+        push_tempo_event(&mut conductor, 0, *bpm);
+    }
     conductor.push(0x00);
     conductor.push(0xff);
     conductor.push(0x58);
     conductor.push(0x04);
     conductor.extend_from_slice(&[4, 2, 24, 8]); // 4/4, 24 klockor, 8 32-delar
+    for (bar, bpm) in points.iter().skip(1) {
+        let tick = (bar * PPQ as f64 * 4.0).round().max(0.0) as u32;
+        push_tempo_event(&mut conductor, tick.saturating_sub(last_tick), *bpm);
+        last_tick = tick;
+    }
     conductor.push(0x00);
     conductor.push(0xff);
     conductor.push(0x2f);
@@ -166,6 +198,19 @@ pub fn write_midi(bpm: f32, tracks: &[MidiTrack]) -> Vec<u8> {
         write_track_chunk(&mut out, track);
     }
     out
+}
+
+/// Skriver en tempo-händelse (FF 51 03) med `delta` tick före sig.
+///
+/// Tempot klampar till 20–300 BPM, precis som den gamla skrivaren gjorde: en
+/// fil med ett orimligt tempo ska bli en fil, inte ett fel.
+fn push_tempo_event(out: &mut Vec<u8>, delta: u32, bpm: f32) {
+    write_vlq(out, delta);
+    out.push(0xff);
+    out.push(0x51);
+    out.push(0x03);
+    let us_per_quarter = (60_000_000.0 / bpm.clamp(20.0, 300.0)).round() as u32;
+    out.extend_from_slice(&us_per_quarter.to_be_bytes()[1..4]);
 }
 
 /// Ett läst spår.
@@ -181,6 +226,18 @@ pub struct ParsedMidi {
     pub format: u16,
     pub ppq: u16,
     pub bpm: Option<f32>,
+    /// Alla tempohändelser i filen som (takt, BPM), i den ordning de står.
+    ///
+    /// `bpm` är den första av dem — det är den som gäller från början. Med en
+    /// tempokarta i filen räcker inte ett enda tal, och då behövs de här.
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "läses av importen när den tar med tempobyten (8.2 steg 3)"
+        )
+    )]
+    pub tempo_events: Vec<(f64, f32)>,
     pub tracks: Vec<ParsedTrack>,
 }
 
@@ -219,6 +276,7 @@ pub fn parse_midi(bytes: &[u8]) -> Result<ParsedMidi, String> {
     let mut pos = 8 + header_len;
     let mut tracks: Vec<ParsedTrack> = Vec::new();
     let mut bpm: Option<f32> = None;
+    let mut tempo_events: Vec<(f64, f32)> = Vec::new();
 
     for _ in 0..ntrks {
         if pos + 8 > bytes.len() {
@@ -296,7 +354,13 @@ pub fn parse_midi(bytes: &[u8]) -> Result<ParsedMidi, String> {
                                     | ((data[1] as u32) << 8)
                                     | data[2] as u32;
                                 if us > 0 {
-                                    bpm = Some(60_000_000.0 / us as f32);
+                                    let b = 60_000_000.0 / us as f32;
+                                    // Första händelsen är filens begynnelsetempo;
+                                    // senare händelser är byten och hör till kartan.
+                                    if bpm.is_none() {
+                                        bpm = Some(b);
+                                    }
+                                    tempo_events.push((tick as f64 / (ppq as f64 * 4.0), b));
                                 }
                             }
                             0x2f => {
@@ -339,12 +403,105 @@ pub fn parse_midi(bytes: &[u8]) -> Result<ParsedMidi, String> {
         format,
         ppq,
         bpm,
+        tempo_events,
         tracks,
     })
 }
 
 #[cfg(test)]
 mod tests {
+    /// Ett tempo ska ge EXAKT den gamla filen, byte för byte.
+    ///
+    /// Det här är testet som gör tempokartan ofarlig för alla filer som inte har
+    /// några byten: ledspåret skrivs med samma bytes i samma ordning som förut,
+    /// och skulle någon ändra ordningen fälls det här — inte av ett öra.
+    #[test]
+    fn one_tempo_writes_the_same_bytes_as_before() {
+        for bpm in [60.0f32, 120.0, 128.0, 174.0] {
+            let us = (60_000_000.0 / bpm).round() as u32;
+            let mut conductor: Vec<u8> = vec![
+                0x00,
+                0xff,
+                0x51,
+                0x03,
+                us.to_be_bytes()[1],
+                us.to_be_bytes()[2],
+                us.to_be_bytes()[3],
+                0x00,
+                0xff,
+                0x58,
+                0x04,
+                4,
+                2,
+                24,
+                8,
+                0x00,
+                0xff,
+                0x2f,
+                0x00,
+            ];
+            let mut expected: Vec<u8> = Vec::new();
+            expected.extend_from_slice(b"MThd");
+            expected.extend_from_slice(&6u32.to_be_bytes());
+            expected.extend_from_slice(&1u16.to_be_bytes());
+            expected.extend_from_slice(&1u16.to_be_bytes());
+            expected.extend_from_slice(&PPQ.to_be_bytes());
+            expected.extend_from_slice(b"MTrk");
+            expected.extend_from_slice(&(conductor.len() as u32).to_be_bytes());
+            expected.append(&mut conductor);
+            assert_eq!(
+                write_midi(bpm, &[]),
+                expected,
+                "{bpm} BPM ska ge exakt samma bytes som förut"
+            );
+        }
+    }
+
+    /// Ett tempobyte ska gå att läsa tillbaka på rätt takt.
+    #[test]
+    fn a_tempo_change_survives_the_round_trip() {
+        let bytes = write_midi_with_tempo(&[(0.0, 120.0), (4.0, 90.0), (12.5, 174.0)], &[]);
+        let parsed = parse_midi(&bytes).expect("filen ska gå att läsa");
+        assert_eq!(
+            parsed.tempo_events.len(),
+            3,
+            "alla tre punkterna ska finnas"
+        );
+        for ((bar, bpm), (want_bar, want_bpm)) in
+            parsed
+                .tempo_events
+                .iter()
+                .zip([(0.0, 120.0), (4.0, 90.0), (12.5, 174.0)])
+        {
+            assert!(
+                (bar - want_bar).abs() < 1e-6,
+                "takten blev {bar}, väntade {want_bar}"
+            );
+            assert!(
+                (bpm - want_bpm).abs() < 0.01,
+                "tempot blev {bpm}, väntade {want_bpm}"
+            );
+        }
+        // Första händelsen är filens begynnelsetempo.
+        let first = parsed.bpm.expect("begynnelsetempot ska finnas");
+        assert!(
+            (first - 120.0).abs() < 0.01,
+            "begynnelsetempot blev {first}"
+        );
+    }
+
+    /// Ett orimligt tempo ska bli en fil, inte ett fel — och klampar som förut.
+    #[test]
+    fn an_impossible_tempo_is_clamped_not_refused() {
+        let bytes = write_midi_with_tempo(&[(0.0, 5000.0)], &[]);
+        let parsed = parse_midi(&bytes).expect("filen ska gå att läsa");
+        let bpm = parsed.bpm.expect("tempot ska finnas");
+        assert!(
+            (bpm - 300.0).abs() < 0.01,
+            "5000 BPM skulle klamps till 300, blev {bpm}"
+        );
+    }
+
     use super::*;
 
     fn note(start: u32, key: u8) -> MidiNote {
@@ -432,8 +589,16 @@ mod tests {
         let tracks = vec![MidiTrack {
             name: "Lead".to_string(),
             notes: vec![
-                MidiNote { start: 0, length: 240, ..note(0, 60) },
-                MidiNote { start: 240, length: 240, ..note(0, 60) },
+                MidiNote {
+                    start: 0,
+                    length: 240,
+                    ..note(0, 60)
+                },
+                MidiNote {
+                    start: 240,
+                    length: 240,
+                    ..note(0, 60)
+                },
             ],
         }];
         let parsed = parse_midi(&write_midi(120.0, &tracks)).unwrap();
@@ -454,7 +619,7 @@ mod tests {
         track.extend_from_slice(&[0x00, 0xff, 0x01, 0x03, b'a', b'b', b'c']); // text
         track.extend_from_slice(&[0x00, 0x90, 60, 100]); // note on
         track.extend_from_slice(&[0x81, 0x40, 60, 0]); // note off (running status): 0x81 0x40 = 192
-        // Running status: INGET statusbyte, bara delta + tonhöjd + styrka.
+                                                       // Running status: INGET statusbyte, bara delta + tonhöjd + styrka.
         track.extend_from_slice(&[0x00, 64, 90]);
         track.extend_from_slice(&[0x81, 0x40, 64, 0]); // note off, 192 tick senare
         track.extend_from_slice(&[0x00, 0xff, 0x7f, 0x02, 0xde, 0xad]); // okänt meta
@@ -518,7 +683,13 @@ mod tests {
         file.extend_from_slice(&[0x00, 0x90, 60]); // nothändelse utan styrka
         assert!(parse_midi(&file).is_err());
         // Trunkerad fil ska inte heller fälla något.
-        let full = write_midi(120.0, &[MidiTrack { name: "x".into(), notes: vec![note(0, 60)] }]);
+        let full = write_midi(
+            120.0,
+            &[MidiTrack {
+                name: "x".into(),
+                notes: vec![note(0, 60)],
+            }],
+        );
         for cut in 1..full.len() {
             let _ = parse_midi(&full[..cut]);
         }
