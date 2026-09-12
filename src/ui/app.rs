@@ -15046,6 +15046,40 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         }
         let total_files = stem_files.len();
 
+        // 🧹 Städa främmande metadata ur filerna INNAN de läses in (8.5b).
+        //
+        // Här är rätt ögonblick: det som städas nu kan inte följa med ut i ett projekt
+        // eller en export senare, och det sker medan användaren redan väntar på
+        // importen. Suno skriver t.ex. `comment = "Made with Suno; Created=…; id=…"`
+        // i sina filer — deras anspråk och användarens prompt, i användarens fil.
+        //
+        // Tyst städning vore samma sorts tystnad som gav de tysta klippen. Därför
+        // räknas den och skrivs i statusraden: vad som togs bort, och hur mycket.
+        let mut cleaned_tags: Vec<String> = Vec::new();
+        for f in &stem_files {
+            let f_str = f.to_string_lossy().to_string();
+            if let Ok(report) = crate::audio::metadata::scan(&f_str)
+                && report.removable_bytes > 0
+                && crate::audio::metadata::strip_tags(&f_str).is_ok()
+            {
+                let name = f
+                    .file_name()
+                    .map(|n| n.to_string_lossy().to_string())
+                    .unwrap_or_else(|| f_str.clone());
+                cleaned_tags.push(format!("{name} ({} byte)", report.removable_bytes));
+            }
+        }
+        if !cleaned_tags.is_empty()
+            && let Ok(mut p) = progress.lock()
+        {
+            p.error_message = Some(crate::tstatus!(
+                "🧹 Städade metadata ur {} fil(er): {}",
+                cleaned_tags.len(),
+                cleaned_tags.join(", ")
+            ));
+        }
+
+
         {
             if let Ok(mut p) = progress.lock() {
                 p.total_files = total_files;
