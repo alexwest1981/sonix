@@ -193,18 +193,28 @@ impl TempoMap {
         self.secs_at_bar(from_bar + bars) - self.secs_at_bar(from_bar)
     }
 
+    /// Antalet takter som ryms i `secs` sekunder, räknat från takten `from_bar`.
+    ///
+    /// Inversen till `secs_for_bars_at`. Med ett enda tempo **exakt** `secs /
+    /// sekunder-per-takt` (samma division som i dag); med flera punkter räknas
+    /// positionen ut först och avståndet i takter sedan, så att en inspelning
+    /// som sträcker sig över ett tempobyte får rätt längd i takter.
+    pub fn bars_for_secs_at(&self, from_bar: f64, secs: f64) -> f64 {
+        if secs <= 0.0 {
+            return 0.0;
+        }
+        if self.is_single() {
+            let spb = (60.0 / self.points[0].bpm) * 4.0;
+            return (secs / spb as f64).max(0.0);
+        }
+        self.bar_at_secs(self.secs_at_bar(from_bar) + secs) - from_bar
+    }
+
     /// Takten som innehåller sekunden `secs` — kartans invers.
     ///
     /// Inversen är **inte** exakt i flyttal (den är en division), så den som
     /// behöver ett exakt taktnummer ska hålla reda på takten i stället för att
     /// räkna tillbaka den.
-    #[cfg_attr(
-        not(test),
-        allow(
-            dead_code,
-            reason = "behövs när importerade filers längd räknas om till takter (8.2 steg 3)"
-        )
-    )]
     pub fn bar_at_secs(&self, secs: f64) -> f64 {
         if secs <= 0.0 {
             return 0.0;
@@ -356,6 +366,25 @@ mod tests {
                 "takt {bar} -> {secs} s -> {back} (ska vara samma takt)"
             );
         }
+    }
+
+    /// Inversen till längden: samma division som i dag med ett tempo.
+    #[test]
+    fn a_duration_in_seconds_comes_back_as_bars() {
+        for bpm in [40.0f32, 120.0, 174.0] {
+            let map = TempoMap::single(bpm);
+            let legacy = (60.0 / bpm) * 4.0;
+            for (from, secs) in [(0.0f64, 8.0f64), (3.0, 2.0), (1.5, 0.5), (12.0, 30.0)] {
+                assert_eq!(
+                    map.bars_for_secs_at(from, secs),
+                    (secs / legacy as f64) as f64,
+                    "{secs} s från takt {from} vid {bpm} BPM ska vara exakt som i dag"
+                );
+            }
+            assert_eq!(map.bars_for_secs_at(0.0, 0.0), 0.0);
+        }
+        // Fyra sekunder vid 120 BPM är två takter.
+        assert!((TempoMap::single(120.0).bars_for_secs_at(0.0, 4.0) - 2.0).abs() < 1e-9);
     }
 
     #[test]

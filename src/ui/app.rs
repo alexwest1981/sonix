@@ -2727,8 +2727,8 @@ impl SonixApp {
     }
 
     pub fn find_region_at_playhead(&self) -> Option<(usize, usize)> {
-        let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-        let current_playhead_bar = self.song_time / sec_per_bar;
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        let current_playhead_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
 
         // First check selected track
         if self.selected_timeline_track < self.playlist_tracks.len() {
@@ -2751,8 +2751,8 @@ impl SonixApp {
     }
 
     pub fn split_selected_region_at_playhead(&mut self) {
-        let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-        let current_playhead_bar = self.song_time / sec_per_bar;
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        let current_playhead_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
         let cur_cut_sec = (self.song_time * 100.0).round() / 100.0;
 
         // Target region: either explicitly selected (and its target split point), or region under playhead, or selected track's region
@@ -2784,9 +2784,10 @@ impl SonixApp {
         if let Some((t_idx, r_idx, cut_bar)) = target {
             if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
                 let orig = self.playlist_tracks[t_idx].regions[r_idx].clone();
-                let orig_start_sec = orig.start_bar * sec_per_bar;
-                let orig_len_sec = orig.length_bars * sec_per_bar;
-                let raw_cut_sec = cut_bar * sec_per_bar;
+                let orig_start_sec = tempo.secs_at_bar(orig.start_bar as f64) as f32;
+                let orig_len_sec =
+                    tempo.secs_for_bars_at(orig.start_bar as f64, orig.length_bars as f64) as f32;
+                let raw_cut_sec = tempo.secs_at_bar(cut_bar as f64) as f32;
                 let mut cut_sec = (raw_cut_sec * 100.0).round() / 100.0;
 
                 // Ensure cut point is inside this region
@@ -2797,7 +2798,13 @@ impl SonixApp {
                 }
 
                 let split_offset_sec = (cut_sec - orig_start_sec).clamp(0.01, orig_len_sec - 0.01);
-                let split_offset_bar = (split_offset_sec / sec_per_bar * 100.0).round() / 100.0;
+                let split_offset_bar = (tempo.bars_for_secs_at(
+                    orig.start_bar as f64,
+                    split_offset_sec as f64,
+                ) as f32
+                    * 100.0)
+                    .round()
+                    / 100.0;
 
                 let split_points = if orig_len_sec > 0.001 {
                     ((split_offset_sec / orig_len_sec) * orig.waveform_peaks.len() as f32) as usize
@@ -4421,7 +4428,7 @@ impl SonixApp {
 
     pub fn toggle_timeline_recording(&mut self) {
         if self.is_recording_timeline {
-            let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
+            let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
             let take_result = self.vocal_studio.stop_recording();
             self.is_recording_timeline = false;
             self.is_playing = false;
@@ -4434,7 +4441,9 @@ impl SonixApp {
                 if let Some(take) = self.vocal_studio.takes.get(take_idx).cloned() {
                     let armed_idx = self.playlist_tracks.iter().position(|t| t.is_rec_armed).unwrap_or(0);
                     let start_bar = self.timeline_rec_start_bar;
-                    let length_bars = (take.duration_secs / sec_per_bar).max(0.25);
+                    let length_bars =
+                (tempo.bars_for_secs_at(start_bar as f64, take.duration_secs as f64) as f32)
+                    .max(0.25);
                     let mic_sr = take.sample_rate;
 
                     let pcm_arc = std::sync::Arc::new(take.pcm_samples);
@@ -4466,8 +4475,8 @@ impl SonixApp {
                 self.playlist_tracks[0].is_rec_armed = true;
             }
             let armed_idx = self.playlist_tracks.iter().position(|t| t.is_rec_armed).unwrap_or(0);
-            let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-            self.timeline_rec_start_bar = self.song_time / sec_per_bar;
+            let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+            self.timeline_rec_start_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
             self.is_recording_timeline = true;
             if let Err(e) = self.vocal_studio.start_recording() {
                 self.status_message = format!("❌ {}", e);
@@ -4495,7 +4504,9 @@ impl SonixApp {
             let song_secs = if self.pattern_mode {
                 0.0
             } else {
-                (self.song_bar as f32 + self.song_step_in_bar as f32 / 16.0) * (60.0 / self.bpm * 4.0)
+                crate::audio::tempo::TempoMap::single(self.bpm.max(40.0)).secs_at_bar(
+                self.song_bar as f64 + self.song_step_in_bar as f64 / 16.0,
+            ) as f32
             };
             self.song_time = song_secs;
             let _ = self.engine.send_command(AudioCommand::SeekSongPosition(song_secs));
@@ -4531,16 +4542,18 @@ impl SonixApp {
     pub fn seek_song_bar(&mut self, bar: usize) {
         self.song_bar = bar;
         self.song_step_in_bar = 0;
-        self.song_time = bar as f32 * (60.0 / self.bpm * 4.0);
+        self.song_time =
+            crate::audio::tempo::TempoMap::single(self.bpm.max(40.0)).secs_at_bar(bar as f64)
+                as f32;
         let _ = self.engine.send_command(AudioCommand::SeekSongPosition(self.song_time));
         self.status_message = crate::tstatus!("Flyttade markör till Takt {}", bar + 1);
     }
 
     pub fn seek_song_time(&mut self, time_secs: f32) {
-        let sec_per_bar = 60.0 / self.bpm * 4.0;
         let clamped = time_secs.max(0.0);
         self.song_time = clamped;
-        let bar_float = clamped / sec_per_bar;
+        let bar_float = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+            .bar_at_secs(clamped as f64) as f32;
         self.song_bar = bar_float.floor() as usize;
         let rem_bar = (bar_float - self.song_bar as f32).max(0.0);
         self.song_step_in_bar = ((rem_bar * 16.0).floor() as usize).min(15);
