@@ -40,6 +40,7 @@ pub mod plugin_host_live;
 pub mod realtime_bench;
 pub mod recorder;
 pub mod smf;
+pub mod tempo;
 pub mod stem_separator;
 pub mod synth;
 pub mod vocal_harmonizer;

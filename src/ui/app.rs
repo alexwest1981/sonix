@@ -1234,8 +1234,9 @@ pub struct MidiImportReport {
     pub dropped_out_of_range: usize,
 }
 
-/// Steg per takt: 16-delssteg i 4/4, samma rutnät som appens pattern.
-pub const STEPS_PER_BAR: usize = 16;
+/// Steg per takt: samma rutnät som appens pattern — hämtat från tempokartan,
+/// så att det bara finns en källa.
+pub const STEPS_PER_BAR: usize = crate::audio::tempo::STEPS_PER_BAR;
 /// Arrangemangets längd i takter — `clips` har 32 platser.
 pub const ARRANGEMENT_BARS: usize = 32;
 
@@ -5819,7 +5820,12 @@ impl SonixApp {
     }
 
     fn step_duration(&self, step: usize) -> std::time::Duration {
-        let base_seconds = (60.0 / self.bpm) / 4.0;
+        // Stegets längd kommer från tempokartan (Fas 8.2, steg 1). Med ett enda
+        // tempo är talet exakt detsamma som förut — det är bevisat i
+        // `audio::tempo`-testerna — så klockan är oförändrad tills kartan får
+        // fler punkter.
+        let map = crate::audio::tempo::TempoMap::single(self.bpm);
+        let base_seconds = map.secs_per_step_at(self.song_bar as f64) as f32;
         let swing_factor = if step % 2 == 1 {
             1.0 + self.swing * 0.35
         } else {
