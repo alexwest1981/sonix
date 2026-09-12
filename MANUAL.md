@@ -300,3 +300,47 @@ En fil som sparades före Fas 6.7 saknar de fälten. Den öppnas som förut — 
 ---
 
 *Sonix Studio Pro – Skapad med kraften av Rust & Linux Audio.*
+
+---
+
+## 14. MIDI in och ut (.mid)
+
+Sonix läser och skriver standard-MIDI-filer (SMF) med en egen kodek — ingen extern
+konverterare behövs, och filen du skickar ut kan läsas av andra program (den är
+prövad mot `ffprobe` och mot en oberoende avkodare).
+
+### Exportera
+
+**Menyn → 🎹 MIDI → Exportera.** Hela arrangemanget skrivs ut: ett spår per
+spårtyp, trummor på kanal 10, tempo och taktart i ledspåret. Ljudspår (regioner)
+hoppas över — de har ingen MIDI-motsvarighet.
+
+### Importera
+
+**Menyn → 🎹 MIDI → Importera.** Välj en `.mid`-fil:
+
+- **Noterna routas dit appen spelar dem.** Percussion (kanal 10) till
+  trumkanalerna, toner i 48–71 till piano-rollen, och allt under 48 till
+  baskanalen — en basstämma från en annan DAW hamnar alltså på basspåret i
+  stället för att slängas.
+- **Notlängden följer med.** En ton som håller över ett steg tänder alla steg den
+  klingar igenom. Ett trumslag tänder bara sitt eget steg.
+- **Hela filen kommer in, takt för takt.** En fil på fyra takter blir fyra
+  mönster, och de placeras som klossar på det valda spåret (takt 1–4), så att du
+  ser dem och kan spela upp dem direkt. En fil på **en** takt fyller bara det
+  markerade mönstret utan att sätta någon kloss — den som bygger mönster för hand
+  vill placera dem själv.
+- **Tempot** i filen föreslås bara om projektet står kvar på sin ursprungs-BPM.
+  Annars vore en import en tyst tempoändring.
+- **Statusraden säger vad som hände**: hur många noter, i hur många mönster, och
+  vad som eventuellt hoppades över (tangenter utan trumkanal, toner utanför
+  rutnätet, takter bortom arrangemangets 32).
+
+### Vad som inte följer med
+
+**Anslaget per not.** Modellen har stegvolymer — sexton delade värden per mönster
+— och ingen plats för ett anslagsvärde per not. Det är en modellfråga, inte en
+importfråga, och den står kvar som sådan.
+
+Filer med en annan upplösning än 480 PPQ (t.ex. 96, som är vanligt) skalas rätt:
+importen läser filens egen upplösning i stället för att anta en.

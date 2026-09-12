@@ -376,6 +376,12 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "↗ Exportera projekt (Ctrl+E)" => "↗ Export Project (Ctrl+E)",
         "🚪 Avsluta" => "🚪 Quit",
         "🎚 Mixerändring" => "🎚 Mixer change",
+        "🎼 Importerade {} noter{}{}" => "🎼 Imported {} notes{}{}",
+        " i {} mönster på spåret (takt 1–{})" => " into {} patterns on the track (bars 1–{})",
+        " till pattern '{}'" => " into pattern '{}'",
+        "🎼 Importerade {} noter{}{} — hoppade över {} bortom takt {} och {} utanför rutnätet" =>
+            "🎼 Imported {} notes{}{} — skipped {} beyond bar {} and {} outside the grid",
+        "{} ⋅ takt {}" => "{} ⋅ bar {}",
         "❄ Frys spår" => "❄ Freeze track",
         "🔥 Tina" => "🔥 Unfreeze",
         "🔥 Tina (inaktuell)" => "🔥 Unfreeze (out of date)",

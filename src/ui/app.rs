@@ -1226,22 +1226,54 @@ fn drum_channel_for_key(key: u8) -> Option<usize> {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct MidiImportReport {
     pub notes_placed: usize,
-    /// Noter som ligger efter första takten (pattern är en takt).
-    pub dropped_later_bars: usize,
+    /// Takter som fick ett eget mönster (och, vid fler än en, en kloss på spåret).
+    pub bars_imported: usize,
+    /// Noter vars takt ligger utanför arrangemanget (32 takter).
+    pub dropped_beyond_arrangement: usize,
     /// Noter utanför appens rutnät (trumtangenter utan kanal, toner utanför 48–71).
     pub dropped_out_of_range: usize,
 }
 
-/// Lägger SMF-noter i ett pattern. Första takten blir steg 0–15.
+/// Steg per takt: 16-delssteg i 4/4, samma rutnät som appens pattern.
+pub const STEPS_PER_BAR: usize = 16;
+/// Arrangemangets längd i takter — `clips` har 32 platser.
+pub const ARRANGEMENT_BARS: usize = 32;
+
+/// Noterna grupperade per takt, i taktordning.
+///
+/// Ren funktion (Fas 6.3), så att "inga noter tappas" går att pröva utan att
+/// starta appen: en fil på fyra takter ska ge fyra grupper, inte en.
+pub fn notes_by_bar(
+    notes: &[crate::audio::smf::MidiNote],
+    file_ppq: u16,
+) -> Vec<(usize, Vec<crate::audio::smf::MidiNote>)> {
+    let step_ticks = (file_ppq as u32 / 4).max(1);
+    let mut groups: Vec<(usize, Vec<crate::audio::smf::MidiNote>)> = Vec::new();
+    for n in notes {
+        let bar = (n.start / step_ticks / STEPS_PER_BAR as u32) as usize;
+        match groups.iter_mut().find(|(b, _)| *b == bar) {
+            Some((_, list)) => list.push(n.clone()),
+            None => groups.push((bar, vec![n.clone()])),
+        }
+    }
+    groups.sort_by_key(|(b, _)| *b);
+    groups
+}
+
+/// Lägger EN takts SMF-noter i ett pattern (steg 0–15).
 ///
 /// Noterna routas dit appen själv spelar dem: percussion (kanal 9) till
 /// trumkanalerna 0–5, 48–71 till piano-rollen, och allt under 48 till
 /// baskanalen (7) — appens basspår spelar kanal 7 med råa notnummer, så en
 /// basstämma från en annan DAW hör hemma där i stället för att slängas.
 ///
+/// **Notlängden följer med** för toner: en not som håller över ett steg tänder
+/// alla steg den klingar igenom. Trumslag tänder bara sitt eget steg — ett slag
+/// är ett slag, och en lång not i en trumkanal är inte tre slag.
+///
 /// Ren funktion (Fas 6.3). Allt som ändå inte får plats räknas i stället för
 /// att tyst försvinna — en import som tappar halva filen måste säga det.
-fn apply_midi_to_pattern(
+fn apply_bar_to_pattern(
     notes: &[crate::audio::smf::MidiNote],
     file_ppq: u16,
     pattern: &mut Pattern,
@@ -1256,12 +1288,7 @@ fn apply_midi_to_pattern(
     }
 
     for n in notes {
-        let idx = n.start / step_ticks;
-        if idx >= 16 {
-            rep.dropped_later_bars += 1;
-            continue;
-        }
-        let step = idx as usize;
+        let step = ((n.start / step_ticks) % STEPS_PER_BAR as u32) as usize;
         if n.channel == 9 {
             match drum_channel_for_key(n.key) {
                 Some(ch) => {
@@ -1271,13 +1298,21 @@ fn apply_midi_to_pattern(
                 }
                 None => rep.dropped_out_of_range += 1,
             }
-        } else if (48..72).contains(&n.key) {
-            pattern.piano_roll_grid[(n.key - 48) as usize][step] = true;
+            continue;
+        }
+        // Toner: längden i steg, minst ett, klippt mot taktens slut.
+        let span = (n.length.div_ceil(step_ticks).max(1) as usize).min(STEPS_PER_BAR - step);
+        if (48..72).contains(&n.key) {
+            for s in step..step + span {
+                pattern.piano_roll_grid[(n.key - 48) as usize][s] = true;
+            }
             rep.notes_placed += 1;
         } else if n.key < 48 {
             // Basstämma: appens basspår spelar kanal 7 med notnumret direkt.
-            pattern.channel_steps[7][step] = true;
-            pattern.channel_notes[7][step] = n.key;
+            for s in step..step + span {
+                pattern.channel_steps[7][s] = true;
+                pattern.channel_notes[7][s] = n.key;
+            }
             rep.notes_placed += 1;
         } else {
             rep.dropped_out_of_range += 1;
@@ -3193,12 +3228,54 @@ impl SonixApp {
             .into_iter()
             .map(|(_, n)| n.clone())
             .collect();
+        let groups = notes_by_bar(&notes, parsed.ppq);
+        let bars_in_file = groups.len();
         let idx = self.selected_pattern.min(self.patterns.len().saturating_sub(1));
-        let Some(pat) = self.patterns.get_mut(idx) else {
+        let Some(pat) = self.patterns.get(idx) else {
             return Err("inget pattern att importera till".to_string());
         };
         let name = pat.name.clone();
-        let report = apply_midi_to_pattern(&notes, parsed.ppq, pat);
+        let color = pat.color;
+
+        // En fil på en takt beter sig precis som förut — mönstret fylls, och
+        // ingen kloss sätts, för den som bygger mönster för hand vill placera dem
+        // själv. En fil på flera takter blir i stället ett arrangemang: en kloss
+        // per takt på det valda spåret, annars skulle noterna bara hamna i
+        // mönster man inte ser.
+        let as_arrangement = bars_in_file > 1;
+        let track_idx = self.selected_timeline_track;
+        let mut report = MidiImportReport::default();
+
+        for (bar, bar_notes) in groups {
+            if bar >= ARRANGEMENT_BARS {
+                report.dropped_beyond_arrangement += bar_notes.len();
+                continue;
+            }
+            let pat_idx = if bar == 0 {
+                idx
+            } else {
+                self.patterns.push(Pattern {
+                    name: crate::tstatus!("{} ⋅ takt {}", name, bar + 1),
+                    color,
+                    channel_steps: Vec::new(),
+                    channel_notes: Vec::new(),
+                    piano_roll_grid: [[false; 16]; 24],
+                    take: crate::midi_take::Take::new(),
+                });
+                self.patterns.len() - 1
+            };
+            if let Some(pat) = self.patterns.get_mut(pat_idx) {
+                let r = apply_bar_to_pattern(&bar_notes, parsed.ppq, pat);
+                report.notes_placed += r.notes_placed;
+                report.dropped_out_of_range += r.dropped_out_of_range;
+            }
+            if as_arrangement
+                && let Some(track) = self.playlist_tracks.get_mut(track_idx)
+            {
+                track.clips[bar] = Some(pat_idx);
+            }
+            report.bars_imported += 1;
+        }
         if self.bpm_source_is_file() {
             // Tempot i filen används bara som förslag när projektet står kvar på
             // sin ursprungs-BPM; annars vore en import en tyst tempoändring.
@@ -3211,20 +3288,30 @@ impl SonixApp {
         } else {
             ""
         };
-        self.status_message = if report.dropped_later_bars + report.dropped_out_of_range == 0 {
+        let placed_where = if as_arrangement {
             crate::tstatus!(
-                "🎼 Importerade {} noter till pattern '{}'{}",
+                " i {} mönster på spåret (takt 1–{})",
+                report.bars_imported,
+                report.bars_imported
+            )
+        } else {
+            format!(" till pattern '{}'", name)
+        };
+        self.status_message = if report.dropped_beyond_arrangement + report.dropped_out_of_range == 0 {
+            crate::tstatus!(
+                "🎼 Importerade {} noter{}{}",
                 report.notes_placed,
-                name,
+                placed_where,
                 fmt
             )
         } else {
             crate::tstatus!(
-                "🎼 Importerade {} noter till '{}'{} — hoppade över {} efter första takten och {} utanför rutnätet",
+                "🎼 Importerade {} noter{}{} — hoppade över {} bortom takt {} och {} utanför rutnätet",
                 report.notes_placed,
-                name,
+                placed_where,
                 fmt,
-                report.dropped_later_bars,
+                report.dropped_beyond_arrangement,
+                ARRANGEMENT_BARS,
                 report.dropped_out_of_range
             )
         };
@@ -16027,8 +16114,8 @@ mod tests {
 
         // Tillbaka in i ett tomt pattern: samma rutor ska tändas igen.
         let mut target = test_pattern();
-        let report = apply_midi_to_pattern(&back, parsed.ppq, &mut target);
-        assert_eq!(report.dropped_later_bars, 0);
+        let report = apply_bar_to_pattern(&back, parsed.ppq, &mut target);
+        assert_eq!(report.dropped_beyond_arrangement, 0);
         assert_eq!(report.dropped_out_of_range, 0);
         assert_eq!(report.notes_placed, notes.len());
         assert!(target.channel_steps[0][0], "bastrumman tillbaka på steg 0");
@@ -16041,23 +16128,26 @@ mod tests {
     }
 
     #[test]
-    fn midi_import_reports_what_it_had_to_drop() {
-        use crate::audio::smf::{MidiNote, TICKS_PER_STEP_16TH};
+    /// En not i en *annan* takt kastas inte längre — den hör till sin egen takt
+    /// och blir ett eget mönster (se runtgångstestet). Det som fortfarande
+    /// redovisas som tappat är det som inte får plats i rutnätet alls.
+    fn midi_import_reports_notes_outside_the_grid() {
+        use crate::audio::smf::MidiNote;
         let notes = vec![
             // Går bra: trumma på steg 0.
             MidiNote { start: 0, length: 10, channel: 9, key: 36, velocity: 100 },
-            // Andra takten — utanför patternets 16 steg.
-            MidiNote { start: 16 * TICKS_PER_STEP_16TH, length: 10, channel: 9, key: 36, velocity: 100 },
             // Okänd trumtangent (claves 75).
             MidiNote { start: 0, length: 10, channel: 9, key: 75, velocity: 100 },
-            // Ton utanför piano-rollens 48–71.
+            // Ton under piano-rollen men spelbar av basspåret.
             MidiNote { start: 0, length: 10, channel: 0, key: 30, velocity: 100 },
+            // Ton ovanför piano-rollens 48–71: tappas, och räknas.
+            MidiNote { start: 0, length: 10, channel: 0, key: 90, velocity: 100 },
         ];
         let mut pat = test_pattern();
-        let rep = apply_midi_to_pattern(&notes, crate::audio::smf::PPQ, &mut pat);
+        let rep = apply_bar_to_pattern(&notes, crate::audio::smf::PPQ, &mut pat);
         assert_eq!(rep.notes_placed, 2, "trumman och den låga bastonen");
-        assert_eq!(rep.dropped_later_bars, 1, "noten i takt 2");
-        assert_eq!(rep.dropped_out_of_range, 1, "trumtangenten 75");
+        assert_eq!(rep.dropped_out_of_range, 2, "trumtangenten 75 och tonen på 90");
+        assert_eq!(rep.dropped_beyond_arrangement, 0, "allt låg i den här takten");
         assert!(pat.channel_steps[0][0]);
         assert!(
             pat.channel_steps[7][0] && pat.channel_notes[7][0] == 30,
@@ -16078,7 +16168,7 @@ mod tests {
             velocity: 100,
         }];
         let mut pat = test_pattern();
-        let rep = apply_midi_to_pattern(&notes, 96, &mut pat);
+        let rep = apply_bar_to_pattern(&notes, 96, &mut pat);
         assert_eq!(rep.notes_placed, 1);
         assert!(!pat.piano_roll_grid[12][0]);
         assert!(pat.piano_roll_grid[12][4], "96 tick vid 96 PPQ är steg 4");
@@ -16892,6 +16982,133 @@ mod tests {
         assert_eq!(slot.path, "/plugins/Gain.clap");
         assert_eq!(slot.name, "Gain");
         assert_eq!(slot.state, vec![0, 1, 2, 250, 255]);
+    }
+
+    /// Beviset för att hålet i 6.3 är stängt: en låt på fyra takter skrivs ut,
+    /// läses tillbaka och delas upp per takt — och **varje not finns kvar i rätt
+    /// takt**. Före det här var importen en första-takt-import som räknade in
+    /// resten och kastade den.
+    #[test]
+    fn an_exported_song_comes_back_bar_by_bar_without_losing_a_note() {
+        use crate::audio::smf::{parse_midi, write_midi, MidiNote, MidiTrack};
+        let step = crate::audio::smf::TICKS_PER_STEP_16TH;
+        let bar_ticks = step * STEPS_PER_BAR as u32;
+
+        // Fyra takter: en ton på steg 0 och ett trumslag på steg 8 i varje.
+        let mut notes = Vec::new();
+        for bar in 0..4u32 {
+            notes.push(MidiNote {
+                start: bar * bar_ticks,
+                length: step / 2,
+                channel: 0,
+                key: 60 + bar as u8,
+                velocity: 100,
+            });
+            notes.push(MidiNote {
+                start: bar * bar_ticks + 8 * step,
+                length: step / 2,
+                channel: 9,
+                key: 36,
+                velocity: 96,
+            });
+        }
+        let bytes = write_midi(
+            120.0,
+            &[MidiTrack {
+                name: "Fyra takter".to_string(),
+                notes: notes.clone(),
+            }],
+        );
+        let parsed = parse_midi(&bytes).expect("egen fil ska gå att läsa");
+        let back: Vec<MidiNote> = parsed
+            .notes_with_track()
+            .into_iter()
+            .map(|(_, n)| n.clone())
+            .collect();
+        assert_eq!(back.len(), notes.len(), "alla noter ska komma tillbaka ur filen");
+
+        let groups = notes_by_bar(&back, parsed.ppq);
+        assert_eq!(groups.len(), 4, "fyra takter ska bli fyra grupper, inte en");
+        assert_eq!(
+            groups.iter().map(|(_, n)| n.len()).sum::<usize>(),
+            notes.len(),
+            "ingen not får tappas i uppdelningen"
+        );
+
+        for (bar, bar_notes) in &groups {
+            let mut pat = test_pattern();
+            let rep = apply_bar_to_pattern(bar_notes, parsed.ppq, &mut pat);
+            assert_eq!(
+                rep.notes_placed + rep.dropped_out_of_range,
+                bar_notes.len(),
+                "takt {bar} ska redovisas helt"
+            );
+            assert_eq!(rep.dropped_out_of_range, 0, "takt {bar} ska inte tappa något");
+            let row = (60 + *bar as u8 - 48) as usize;
+            assert!(
+                pat.piano_roll_grid[row][0],
+                "tonen i takt {bar} ska ligga på steg 0"
+            );
+            assert!(pat.channel_steps[0][8], "bastrumman i takt {bar} ska ligga på steg 8");
+            assert_eq!(pat.channel_notes[0][8], 36);
+        }
+    }
+
+    /// Notlängden följer med in (den var ett eget hål i 6.3): en ton som håller
+    /// över ett steg tänder alla steg den klingar igenom, medan ett trumslag
+    /// bara tänder sitt eget — ett slag är ett slag.
+    #[test]
+    fn a_held_note_fills_the_steps_it_sounds_but_a_drum_hit_does_not() {
+        use crate::audio::smf::MidiNote;
+        let step = crate::audio::smf::TICKS_PER_STEP_16TH;
+        let notes = vec![
+            // Ton som håller i tre steg från steg 4.
+            MidiNote { start: 4 * step, length: 3 * step, channel: 0, key: 64, velocity: 100 },
+            // Trumslag med (orimligt) lång not: ska ändå bara tända sitt steg.
+            MidiNote { start: 2 * step, length: 8 * step, channel: 9, key: 38, velocity: 100 },
+        ];
+        let mut pat = test_pattern();
+        let rep = apply_bar_to_pattern(&notes, crate::audio::smf::PPQ, &mut pat);
+        assert_eq!(rep.notes_placed, 2);
+        let row = (64 - 48) as usize;
+        for s in 4..7 {
+            assert!(pat.piano_roll_grid[row][s], "tonen ska tona i steg {s}");
+        }
+        assert!(!pat.piano_roll_grid[row][7], "och tystna efter sin längd");
+        assert!(pat.channel_steps[1][2], "virveln ska ligga på steg 2");
+        assert!(
+            !pat.channel_steps[1][3],
+            "ett slag får inte bli flera för att noten är lång"
+        );
+    }
+
+    /// Uppdelningen är ren och ska tåla kanter: inga noter, en not, och noter
+    /// långt bortom arrangemanget.
+    #[test]
+    fn notes_by_bar_handles_the_edges() {
+        use crate::audio::smf::MidiNote;
+        let step = crate::audio::smf::TICKS_PER_STEP_16TH;
+        assert!(notes_by_bar(&[], crate::audio::smf::PPQ).is_empty());
+
+        let notes = vec![
+            MidiNote { start: 0, length: step, channel: 0, key: 60, velocity: 100 },
+            // Takt 40 — utanför arrangemangets 32 takter.
+            MidiNote {
+                start: 40 * STEPS_PER_BAR as u32 * step,
+                length: step,
+                channel: 0,
+                key: 62,
+                velocity: 100,
+            },
+        ];
+        let groups = notes_by_bar(&notes, crate::audio::smf::PPQ);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].0, 0);
+        assert_eq!(groups[1].0, 40);
+        assert!(
+            groups[1].0 >= ARRANGEMENT_BARS,
+            "takten utanför arrangemanget ska gå att upptäcka och redovisas"
+        );
     }
 
     #[test]
