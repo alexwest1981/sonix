@@ -468,6 +468,37 @@ impl StemProject {
                 waveform_data: super::recorder::visual_peaks_from(&mono),
             });
         }
+
+        // Stämmorna skrivs till disk (8.5a). Tidigare lämnade en separation inga
+        // filer alls: bara en grov översikt och en `source_path` till originalet.
+        // Var originalet en mp3 — som appen inte kan avkoda — blev stämman ett tyst
+        // klipp med trovärdig vågform. Nu finns ljudet som fil och kan läsas.
+        let project_name = std::path::Path::new(source_path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Projekt".to_string());
+        let assets = crate::paths::paths().project_assets_dir(&project_name);
+        if std::fs::create_dir_all(&assets).is_ok() {
+            let types_for_files = [
+                StemType::Vocals,
+                StemType::Drums,
+                StemType::Bass,
+                StemType::Instruments,
+            ];
+            for (idx, stem_type) in types_for_files.iter().enumerate() {
+                if idx >= self.stem_audio.len() {
+                    break;
+                }
+                let audio = &self.stem_audio[idx];
+                let file = crate::paths::stem_file(&assets, stem_type.name());
+                let _ = crate::audio::exporter::write_stem_wav(
+                    file.to_string_lossy().as_ref(),
+                    &audio.left,
+                    &audio.right,
+                    self.sample_rate,
+                );
+            }
+        }
     }
 
     /// Synchronous separation using the best backend (kept for tests and simple

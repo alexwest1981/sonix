@@ -1531,3 +1531,100 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 }
+
+/// Skriver en stämma (separat stereopar) som en 32-bitars flyttals-wav (8.5a).
+///
+/// `write_wav` tar **interleaved** stereo — den räknar `channels = 2` själv — så
+/// `left`/`right` måste flätas `L0 R0 L1 R1 …` innan de lämnas vidare. 32-bitars
+/// float är samma väg som exporterarens egen `Wav32`, alltså rätt format för en
+/// arbetsfil: ingen dither, ingen kvantisering, inget att förlora.
+///
+/// Sökvägen kommer färdig från anroparen: **bara `paths.rs` får bygga sökvägar**
+/// (6.0), så den här funktionen äger bara flätningen och skrivningen.
+///
+/// Varför den finns: stämseparatorn lämnade tidigare inga filer alls — bara en
+/// grov översikt och en `source_path` till originalet. Var originalet en mp3,
+/// som appen inte kan avkoda, blev stämman ett tyst klipp med trovärdig vågform.
+pub fn write_stem_wav(
+    path: &str,
+    left: &[f32],
+    right: &[f32],
+    sample_rate: u32,
+) -> Result<(), String> {
+    let frames = left.len().min(right.len());
+    if frames == 0 {
+        return Err("stämman är tom".to_string());
+    }
+    let mut interleaved = Vec::with_capacity(frames * 2);
+    for i in 0..frames {
+        interleaved.push(left[i]);
+        interleaved.push(right[i]);
+    }
+    let meta = ExportMeta {
+        title: std::path::Path::new(path)
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default(),
+        artist: String::new(),
+        album: String::new(),
+        genre: String::new(),
+        year: String::new(),
+        comment: String::new(),
+    };
+    write_wav(
+        path,
+        &interleaved,
+        sample_rate,
+        32,
+        true,
+        &meta,
+        DitherSettings::default(),
+    )
+}
+
+#[cfg(test)]
+mod stem_wav_tests {
+    use super::*;
+
+    /// En stämma som skrivs till disk ska gå att läsa tillbaka med appens egen
+    /// avkodare — samma längd, och samplen på plats. Det är hela poängen: en
+    /// stämma som finns som fil kan aldrig bli ett tyst klipp.
+    #[test]
+    fn a_stem_written_to_disk_reads_back_with_the_same_audio() {
+        let dir = std::env::temp_dir().join("sonix_stem_wav_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("Stämma (Test).wav");
+        let path_str = path.to_string_lossy().to_string();
+
+        let n = 1000;
+        let left: Vec<f32> = (0..n).map(|i| (i as f32 / n as f32) * 0.5).collect();
+        let right: Vec<f32> = (0..n).map(|i| -((i as f32 / n as f32) * 0.5)).collect();
+
+        write_stem_wav(&path_str, &left, &right, 44100).expect("skrivningen ska lyckas");
+        assert!(path.exists(), "filen ska finnas på disk");
+
+        let (l, r, sr) = crate::audio::load_wav_pcm(&path_str).expect("filen ska gå att läsa");
+        assert_eq!(sr, 44100);
+        assert_eq!(l.len(), n, "längden ska bevaras");
+        assert_eq!(r.len(), n);
+        // En 32-bitars float-wav är förlustfri: samplen ska komma tillbaka som de var.
+        for i in [0, 1, n / 2, n - 1] {
+            assert!(
+                (l[i] - left[i]).abs() < 1e-6,
+                "vänsterkanalen vid {i}: {} mot {}",
+                l[i],
+                left[i]
+            );
+            assert!(
+                (r[i] - right[i]).abs() < 1e-6,
+                "högerkanalen vid {i}: {} mot {}",
+                r[i],
+                right[i]
+            );
+        }
+        // Osymmetri ska bevaras — en stämma är inte ett symmetriskt hölje.
+        assert!(l[500] > 0.0 && r[500] < 0.0, "kanalerna ska inte blandas ihop");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

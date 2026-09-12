@@ -871,3 +871,13 @@ XDG_PICTURES_DIR="/mnt/bilder"
         }
     }
 }
+
+/// Filen för en renderad stämma i ett projekts egen materialmapp (8.5a).
+///
+/// Fri funktion i stället för en metod på `Paths`, eftersom projektmappen redan
+/// kommer färdig från [`Paths::project_assets_dir`]. Poängen är densamma som för
+/// hela modulen: sökvägen byggs på **ett** ställe, så namn och ändelse inte kan
+/// glida isär mellan separatorn, sparandet och inläsningen.
+pub fn stem_file(project_assets_dir: &std::path::Path, stem_name: &str) -> std::path::PathBuf {
+    project_assets_dir.join(format!("{} (stämma).wav", sanitize_name(stem_name)))
+}
