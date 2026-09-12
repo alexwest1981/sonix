@@ -47,27 +47,29 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 | :--- | :---: | :---: | :---: |
 | **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, projektfilen) | 8 | 0 | **100 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 2 | 4 | **50 %** |
-| **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 1 | 4 | **25 %** |
+| **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler + plugin-/chop-punkterna) | 2 | 8 | **20 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
 
-> **Prioritet just nu: Tier 1 (Fas 7) — Tier 0 (Fas 6) är stängd, 8 av 8.** Ordningen är inte förhandlingsbar: en proffsmusiker som tappat ett projekt en gång bryr sig inte om hur bra AI:n är. Tier 0 mäts i att inget arbete går förlorat och att allt går att ångra.
+> **Prioritet just nu: Tier 2 (Fas 8).** Tier 0 (Fas 6) är stängd, 8 av 8 — ordningen där var inte förhandlingsbar: en proffsmusiker som tappat ett projekt en gång bryr sig inte om hur bra AI:n är, och Tier 0 mäts i att inget arbete går förlorat och att allt går att ångra. Tier 1 står på **2 av 6** och de fyra som är kvar väntar alla på samma sak — en Windows-maskin (7.1) eller Wine + en display (7.3, 4.6, och X11-fönstret på en riktig skärm). Tier 2 är det som går att göra vid datorn nu: elva punkter, `Vad som återstår` ovan.
 
 ---
 
 ## ⬜ Vad som återstår (räknat ur listan 2026-09-12)
 
-**Elva punkter är obockade:** sex från den första räkningen, fyra som kom till
-2026-09-12 efter researchen om plugins och chopping — och en som kom till samma kväll,
-när **8.5** (tysta klipp) visade sig vara en egen klass. Sju går att göra vid datorn, två
-kräver Wine och en display, och en kräver en Windows-maskin för kvittensen. Ordningen
-nedan är den som ger mest per timme.
+**Elva punkter är obockade.** Sex från den första räkningen, fyra som kom till 2026-09-12
+efter researchen om plugins och chopping (rad 7–10; underlaget ligger i `sonix`-skillen som
+`references/daw-research/05-audacity-plugins-effekter-klipp.md`,
+`06-flstudio-plugins-chopping.md` och `07-chopping-och-onset-detektering.md`, alla med
+primärkällor), och en som kom till samma kväll när **8.5a** visade sig ha en steg 2. Sju går
+att göra vid datorn, två kräver Wine och en display, och en kräver en Windows-maskin för
+kvittensen. Ordningen är den som ger mest per timme.
 
 **Ändrat 2026-09-12 kväll:** klass-fixen i **8.5** stängde elva ställen som läste ljud
 utan att säga till när det misslyckades, och de två vägarna från Sound Browser som
 skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den var trasig**
 (`retire`s returvärde kastades bort, så koden läste sökvägen den just pensionerat) och
-är fixad. **Kvar i 8.5:** stämseparatorn skriver inga stämmor till disk, sångstudiovägarna
-och ▶-förhandslyssningen avbryter inte, och import-dialogen (regeln är byggd och testad).
+är fixad. **8.5a steg 1 är klart samma kväll** — separatören skriver sina stämmor som
+32-bitars wav i projektets `Stems/`-mapp; det som återstår där är steg 2 (rad 11).
 
 | # | Punkt | Storlek | Vad som återstår | Blockerare |
 | :--- | :--- | :---: | :--- | :--- |
@@ -77,20 +79,11 @@ och ▶-förhandslyssningen avbryter inte, och import-dialogen (regeln är byggd
 | 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
-
-**Nya punkter 2026-09-12, efter research om plugins och chopping.** Underlaget ligger i
-`sonix`-skillen: `references/daw-research/05-audacity-plugins-effekter-klipp.md`,
-`06-flstudio-plugins-chopping.md` och `07-chopping-och-onset-detektering.md` (primärkällor —
-Image-Lines onlinemanual, Audacitys manual/release notes/GitHub, Ableton/Reaper/Bitwig, aubio/
-librosa/Essentia, Böck & Widmer DAFx-13). Punkterna står för sig själva nedanför den gamla
-listan i stället för att knuffa om dess ordning.
-
-| # | Punkt | Storlek | Vad som återstår | Blockerare |
-| :--- | :--- | :---: | :--- | :--- |
-| 7 | **8.7 Chopper → slicemappning** | *M* | Den mest **synliga** luckan i ett arbetsflöde: choppern har en trim-ruta och en knapp märkt "Transient" som bara sätter slutet till 18 % | — |
-| 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** | *M* | Det FL:s Fruity Wrapper kan och inte Sonix | — |
-| 9 | **8.8 Automatisering av fler parametrar** | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
-| 10 | **8.9 Makron: en kedja av kommandon över många filer** | *S* | Audacitys Macros — finns inte alls hos oss | — |
+| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | Den mest **synliga** luckan i ett arbetsflöde: choppern har en trim-ruta och en knapp märkt "Transient" som bara sätter slutet till 18 % | — |
+| 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
+| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
+| 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
+| 11 | **8.5a steg 2** *(2026-09-12 kväll)* | *S* | Separatörens **egen** väg: `install_separation` skriver filerna men pekar regionerna på originalet och kastar skrivfelet (`let _ = write_stem_wav`) — knappen "exportera stämmorna" gör hela jobbet, den automatiska vägen gör det inte | — |
 
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
 release, ett bevisstycke här i roadmapen — och för det som hörs eller syns, en kvittens
@@ -116,6 +109,69 @@ tempopunkt-UI väntar alla på att Alex ser dem.
 > ("Convert to score and dump to piano roll", "Dump score"), medan vår chopper är en enda
 > trim-ruta. Audacity har ingen slice-till-noter-väg alls — där exporterar man klipp som
 > ljudfiler (Export Multiple / Label Sounds).
+
+---
+
+## ✅ Gjort — allt som är klart, samlat (2026-09-12)
+
+Hela den avbockade listan på ett ställe. Bevis, mätningar och skälen till att något ser ut
+som det gör står under respektive fas längre ned — det här är översikten, inte ersättningen.
+**334 tester default, 380 med plugin-host, 0 varningar i båda release-byggena** (mätt
+2026-09-12, `b50f9f4`).
+
+**Baslinjen (Fas 0) — det som redan var äkta:** kärnmotor (oscillatorer, trumsyntes,
+delay/reverb, filter/envelope, master-FX, patcher) · sequencer (tidslinje/multitrack,
+kanalrack 16 steg, piano roll, låtsektioner, transport/loop) · mixer (faders, riktiga VU:er,
+per-spår EQ/kompressor/sends/pitch) · sångstudio (mic, take lanes/comping, pitch-editor,
+offline autotune, harmonizer) · generatorer (ackord, tärning, Session Drummer, tuner,
+spårskapare) · AI (lokal kompositör + extern LLM + ljud-API) · stämimport (Suno-ZIP +
+ffmpeg-format) · export (WAV/FLAC i appen, MP3/OGG/AAC via ffmpeg, metadata) · hårdvara
+(ALSA MIDI/MCU + OSC) · plugin-katalog (skanning, ELF/PE-verifiering, yabridge-detektion) ·
+system (cpal/ALSA-realtid, kraschsäker callback, 7 språk).
+
+**Fas 1 — ärlighet (5 av 5):** 1.1 topologisk sortering i Modular Patcher · 1.2
+patchernodernas etiketter mot DSP:n · 1.3 legacy-modal för AI-inställningar · 1.4
+samplingsfrekvens och buffertstorlek tillämpas faktiskt · 1.5 `.fst`-preset.
+
+**Fas 2 — ljudkvalitet (4 av 4):** 2.1 realtids-autotune i ljudtråden · 2.2
+formantbevarande pitch-shift · 2.3 pitch-bevarande time-stretch · 2.4 per-voice filter/ADSR
+i Alchemy.
+
+**Fas 3 (1 av 1):** 3.1 HTDemucs via ONNX Runtime (opt-in: `--features neural`).
+
+**Fas 4 — plugin-hosting (7 av 7):** 4.1 ABI-val och host-modul · 4.2 instansiering +
+audio/MIDI-routing + PDC · 4.3 state/preset · 4.4a GUI-ABI och livscykel · 4.4b GUI i ett
+eget X11-fönster · 4.5a out-of-process-sandbox med kraschdetektering och automatisk omstart ·
+4.5b ljudtransport över delat minne. *(Kvar i samma fas är bara kvittensen mot en riktig
+Wine-/yabridge-brygga — 7.3 och 4.6 i listan ovan.)*
+
+**Fas 5 — polish (5 av 5):** 5.1 integrationstester för realtids- och plugin-vägarna · 5.2
+VCA-grupper + sub-mix-bussar · 5.3 MIDI-inspelning till piano roll · 5.4 automationskurvor på
+tidslinjen · 5.5 export-presets och loudness-normalisering.
+
+**Fas 6 — Tier 0, trovärdighet (8 av 8):** 6.0 en enda sökvägsmodul · 6.1 autosave,
+kraschåterställning och versionshistorik · 6.2 undo/redo för mixer, FX och automation · 6.3
+SMF import/export · 6.4 kvantisering och humanisering · 6.5 dither vid export · 6.6
+återkopplingssäkring för direktlyssning · 6.7 projektfilen sparar hela arbetet.
+
+**Fas 7 — Tier 1 (2 av 4 klara):** 7.2 realtidsmätning i CI (xruns, latens, CPU-skalning) ·
+7.4 starttid (biblioteksskanningen i bakgrunden i stället för före fönstret).
+
+**Fas 8 — Tier 2 (i arbete):** 8.1 frysning av spår (2026-09-11) · **8.3 halva punkten:
+sidokedjor mellan spår** (2026-09-12 — duckning, väljare i mixern, projektfilen, samma väg i
+exporten, nio tester; kvar är sends) · **8.5 tysta klipp** (2026-09-12 — elva ställen som
+läste ljud utan att säga till, de fyra "påhittade ljud"-vägarna, import-dialogen mp3/wav) ·
+**8.5a steg 1** (separatören skriver 32-bitars wav till projektets `Stems/`) · **8.5b**
+(`sonix --clean-tags` tar bort tjänsternas taggar utan att röra ljudet) · stämvyn ritar den
+sanna vågformen ur stämmans egna samplar · 6.2:s återställ-knapp (den var trasig, inte
+obekräftad).
+
+**Verktyg och underhåll (inte roadmap-punkter, men gjort samma dygn):** skärmdumpsloopen får
+tålamod och skriver ut felet i stället för att vänta för evigt · realtidsbänken räknar antalet
+missade block i stället för att fälla på ett enskilt (CI-flaken som fällde en körning i onödan)
+· underlaget: `references/daw-comparison.md` och åtta researchrapporter i `sonix`-skillen
+(FL Studio, Ableton/Bitwig, proffs-DAW:erna, open source/smalteam, angränsande verktyg,
+Audacity, FL:s plugins/chopping, chopping och onset-detektering).
 
 ---
 
@@ -943,7 +999,18 @@ låt- eller filttitel kan inte lägga stämman utanför katalogen (testat).
 
 ---
 
-## 8.5a Stämseparatorn skriver stämmorna till disk — plan (läst och researchad 2026-09-12)
+## 8.5a Stämseparatorn skriver stämmorna till disk (steg 1 klart 2026-09-12)
+
+**Status:** **steg 1 klart** (`7561491`) — `install_separation` skriver varje stämma som
+32-bitars flyttals-wav till `<projektmappen>/Stems/` via `write_stem_wav` i `exporter.rs`,
+och sökvägarna byggs av `paths::stem_file` (bara `paths.rs` bygger sökvägar, 6.0).
+**Steg 2 kvar:** den skrivna vägen används inte av separatörens egen väg — `let _ =
+write_stem_wav` kastar både sökvägen och ett eventuellt fel, och `install_separation` sätter
+fortfarande `self.source_path = Some(source_path)` (originalet). Knappen *exportera
+stämmorna* (`export_separated_stems`) gör hela jobbet — skriver, läser tillbaka och låter
+regionen peka på filen — men en vanlig separation gör det inte. Det är rad 11 i listan ovan,
+och samma regel som 8.5 vilar på: en väg som skapar ett klipp ska peka på sitt eget ljud och
+säga till när skrivningen misslyckas.
 
 **Läget:** `stem_separator.rs` tar färdig PCM in (`separate_stems(left, right, sr_f)`) och
 skriver aldrig ut något. Dess enda spår blir `StemChannel.waveform_data` — den grova
