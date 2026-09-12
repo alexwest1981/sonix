@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# Vakt mot stora filer (anledning: 416 MB ljud hamnade i historiken och låg kvar
+# i månader innan någon såg det).
+#
+# Gränsen är 5 MB. Screenshots och källkod ligger långt under; ljud, video och
+# modelldata ligger långt över, och de hör inte i ett källkods-repo.
+#
+# Kör igång den med:  git config core.hooksPath .githooks
+# (En klon måste göra det en gång — därför står det i README.)
+#
+# Medvetet undantag:  SONIX_ALLOW_BIG_COMMIT=1 git commit ...
+set -uo pipefail
+
+LIMIT_BYTES=$((5 * 1024 * 1024))
+
+if [ "${SONIX_ALLOW_BIG_COMMIT:-0}" = "1" ]; then
+    echo "stora-filer-vakten: förbigången (SONIX_ALLOW_BIG_COMMIT=1)"
+    exit 0
+fi
+
+big=""
+while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    size=$(stat -c %s "$f" 2>/dev/null || echo 0)
+    if [ "$size" -gt "$LIMIT_BYTES" ]; then
+        big="$big$(printf '  %6.1f MB  %s\n' "$(echo "$size" | awk '{print $1/1048576}')" "$f")"$'\n'
+    fi
+done < <(git diff --cached --name-only --diff-filter=ACMR)
+
+if [ -n "$big" ]; then
+    echo "✋ stora-filer-vakten: dessa är över 5 MB och hör inte i git:"
+    printf '%s' "$big"
+    echo
+    echo "  Ljud, video och modelldata ska inte versionshanteras här. Om filen ändå"
+    echo "  hör hit: SONIX_ALLOW_BIG_COMMIT=1 git commit ..."
+    exit 1
+fi
+exit 0

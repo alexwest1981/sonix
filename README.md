@@ -104,6 +104,58 @@ update-desktop-database ~/.local/share/applications
 
 ---
 
+## 🎧 Samples, stems and your own music
+
+**The repository contains no audio files at all** — deliberately, in both directions:
+
+- No third-party sample packs are shipped. Their licences don't allow redistribution.
+- No stems or recordings of your own music are ever committed — `imported_stems/`,
+  `*.wav`, `*.mp3`, `*.flac` and `*.ogg` are in `.gitignore`.
+- A guard rejects any staged file over 5 MB (`git config core.hooksPath .githooks` once per
+  clone — that is why the 416 MB of audio that once ended up in this repo's history cannot
+  happen again by accident).
+
+**The app is fully playable without any of it.** The drum voices (kick, snare, clap, hats,
+crash) are synthesised, so the Channel Rack, the sequencer and the demo song work out of the
+box. Samples are an upgrade, not a requirement.
+
+### Where sounds go
+
+| What | Where |
+|---|---|
+| Sample packs — the library the Sound Browser scans | `~/Music/Sonix/Sample_Packs/` |
+| Factory sounds | `~/Music/Sonix/Factory_Samples/` |
+| Your own samples | `~/Music/Sonix/Samples/` |
+| Imported stems and recordings (gitignored) | `imported_stems/` in the project folder |
+| Templates | `~/Music/Sonix/Templates/` |
+
+Every path can be moved. Run `sonix --paths` to see the map your machine actually uses — it
+also prints which directories exist and which would be created.
+
+### Where to get packs
+
+Free, licensed starting points: **Freesound** (CC — check each file), **99Sounds**,
+**Bedroom Producers Blog** and **Cymatics**' free packs. Paid subscriptions such as
+**Splice** or **Loopcloud** drop straight into `Sample_Packs/` as well. Check a pack's
+licence before releasing music made with it.
+
+### Naming — how the drum rack finds your samples
+
+When the library is scanned, the six built-in drum channels fill themselves from the first
+file whose name contains one of these words:
+
+| Channel | Matches on |
+|---|---|
+| Kick | `kick`, `bass drum`, `bd0`, `bd-` |
+| Snare | `snare` |
+| Clap | `clap`, `handclap` |
+| Closed hi-hat | `closed hat`, `chh`, `hat closed` |
+| Open hi-hat | `open hat`, `ohh`, `hat open` |
+| Crash | `crash`, `cymbal`, `cy` |
+
+Name files accordingly (`909 kick.wav`, `snare_tight.wav`) and they land in the right channel
+on the next start. Everything else still appears in the Sound Browser.
+
 ## 🎨 Features & Implementation Status
 
 **Legend:** ✅ Real & wired · 🟡 Partial / approximation · 🔜 Not yet implemented

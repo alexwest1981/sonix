@@ -102,6 +102,58 @@ update-desktop-database ~/.local/share/applications
 
 ---
 
+## 🎧 Samplingar, stämmor och din egen musik
+
+**Repot innehåller inga ljudfiler alls** — och det är medvetet, åt båda hållen:
+
+- Inga tredjepartspaket med samplingar följer med. Deras licenser tillåter inte vidare­spridning.
+- Inga stämmor eller inspelningar av din egen musik hamnar i git — `imported_stems/`,
+  `*.wav`, `*.mp3`, `*.flac` och `*.ogg` står i `.gitignore`.
+- En vakt stoppar staged filer över 5 MB (`git config core.hooksPath .githooks` en gång per
+  klon — det är därför de 416 MB ljud som en gång låg i det här repots historik inte kan
+  hamna där igen av misstag).
+
+**Appen går att spela med helt utan.** Trumljuden (kick, virvel, clap, hats, crash) är
+syntetiserade, så kanalracket, sequencern och demosången fungerar direkt. Samplingar är en
+uppgradering, inte ett krav.
+
+### Var ljuden ska ligga
+
+| Vad | Var |
+|---|---|
+| Samplingpaket — biblioteket som ljudväljaren skannar | `~/Music/Sonix/Sample_Packs/` |
+| Fabriksljud | `~/Music/Sonix/Factory_Samples/` |
+| Egna samplingar | `~/Music/Sonix/Samples/` |
+| Importerade stämmor och inspelningar (gitignorerade) | `imported_stems/` i projektmappen |
+| Mallar | `~/Music/Sonix/Templates/` |
+
+Alla sökvägar går att flytta. Kör `sonix --paths` för att se kartan din maskin faktiskt
+använder — den visar också vilka mappar som finns och vilka som skulle skapas.
+
+### Var man får tag i paket
+
+Gratis och licensierat att börja med: **Freesound** (CC — kontrollera varje fil),
+**99Sounds**, **Bedroom Producers Blog** och **Cymatics** gratispaket. Betalabonnemang som
+**Splice** eller **Loopcloud** hamnar också direkt i `Sample_Packs/`. Kolla paketets licens
+innan du släpper musik gjord med det.
+
+### Namngivning — så hittar trumracket dina samplingar
+
+När biblioteket skannas fyller de sex inbyggda trumkanalerna sig själva från första filen
+vars namn innehåller något av de här orden:
+
+| Kanal | Matchar |
+|---|---|
+| Kick | `kick`, `bass drum`, `bd0`, `bd-` |
+| Virvel | `snare` |
+| Clap | `clap`, `handclap` |
+| Stängd hi-hat | `closed hat`, `chh`, `hat closed` |
+| Öppen hi-hat | `open hat`, `ohh`, `hat open` |
+| Crash | `crash`, `cymbal`, `cy` |
+
+Döp filerna därefter (`909 kick.wav`, `snare_tight.wav`) och de hamnar i rätt kanal vid nästa
+start. Allt annat syns ändå i ljudväljaren.
+
 ## 🎨 Funktioner & Implementationsstatus
 
 **Teckenförklaring:** ✅ Äkta & inkopplad · 🟡 Delvis / approximation · 🔜 Ännu inte implementerad
