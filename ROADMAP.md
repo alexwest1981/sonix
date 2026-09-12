@@ -1220,13 +1220,63 @@ ett **end-to-end genom mixern**: ett anslag 0,5 s in i källjudet hörs inom 0,2
 faktor 2,0 — och inte alls vid 1,0. **Ej kvitterat i GUI** (ingen Xvfb på maskinen):
 hjälptexten är läst, inte sedd, och det är Alex' öra som avgör om bandspelarlogiken duger.
 
+**Gjort (steg 2):**
+
+- **Ett val, inte två.** Användaren möter **en** switch — 🎚 *Följ tempot*, **på** som
+  standard — och ingen algoritm. Ett enstaka klipp kan sättas i **bandspelarläge** i
+  klippmenyn; det är undantaget, aldrig standarden (Abletons ordning: *Re-Pitch* är
+  undantaget, den pitch-bevarande sträckningen är normen).
+- **Beslutet är en ren funktion med tre utfall** (`stretch::decide`): `Untouched`
+  (okänt tempo, samma tempo, eller switchen av), `Tape` (klippets eget val — faktorn
+  är projekt/källa och tonhöjden följer) och `Stretch` (en fil, spelad med faktor 1,0).
+- **Sträckningen räknas offline till en fil**, som Pro Tools' *Rendered Only*-läge och
+  Studio Ones *Timestretch Cache*: WSOLA (`stretch_stereo`, båda kanalerna genom samma
+  grainsökning), **prövad** (`check_rendered`: tom, fel längd, NaN eller tyst → avvisad),
+  skriven **atomiskt** (temp + rename) och **tillbakaläst** — den buffert tidslinjen
+  spelar är filens innehåll, bokstavligen. Cachen ligger i `~/.cache/sonix/stretch/` och
+  nycklas på källans sökväg **och båda tempon**.
+- **Tidslinjen spelar en vanlig fil.** `StemRegionPlayback` fick ett eget `source_audio`
+  per klipp; motorn läser den i stället för spårets buffert, och faktorn är 1,0. Ingen ny
+  felkälla i uppspelningsvägen, och ingen DSP i ljudtråden.
+- **En fälla som inte var uppenbar: filens faktor är den inverterade.** Motorn mäter
+  *källsekunder per utsekund* (projekt/källa = 1,25 vid 120→150), men filen mäts som
+  *ut-tid genom in-tid* (källa/projekt = 0,8). Första versionen räknade filens längd med
+  motorns faktor, alltså **längre** fil vid **högre** tempo — och en längre fil som spelas
+  med faktor 1,0 i ett kortare klipp är en smurf. Delen var aldrig inkopplad, så inget
+  test hade fångat den. Nu bär `StretchPlan` båda faktorerna med namn, och testet
+  `a_higher_tempo_gives_a_shorter_file_and_a_faster_playback_ratio` håller dem mot fysiken
+  (fyra takter i 120 BPM är 8 s, i 150 BPM 6,4 s).
+- **Samma ljud i filen som i högtalarna:** exporten bygger sina regioner med **samma**
+  `stem_regions_for` som uppspelningen, så en sträckt fil ligger i exporten också.
+- **Tempot måste stå still först.** En dragning i tempo-reglaget byter värde varje
+  bildruta, och varje värde är en egen fil. `TempoSettle` väntar 20 bildrutor (~0,3 s)
+  innan något beställs.
+- **En trasig sträckning spelas aldrig:** arbetstråden lämnar `None` med ett skäl, klippet
+  fortsätter spela **originalet i sitt eget tempo** (ingen smurf av misstag) och
+  statusraden säger vad som hände. 8.5:s regel, i ännu en väg.
+- **Bevis:** `the_cache_renders_a_file_and_the_tone_keeps_its_pitch` går **hela vägen**
+  genom cachen (beställning → arbetstråd → fil → tillbaka) och mäter både längden
+  (0,667 × vid 120→180) och grundtonen (220 Hz dominerar över smurfen på 330 Hz);
+  `a_region_with_its_own_audio_plays_that_file_instead_of_the_track` mäter i motorn att
+  anslaget hörs på **filens** sekund (0,1 s) och inte på spårets (0,5 s);
+  `the_tempo_follow_mapping_has_three_answers` och
+  `a_trimmed_clip_keeps_its_place_in_the_stretched_file` prövar regeln utan fönster.
+  **392 tester default, 438 med plugin-host, 0 varningar.**
+- **Inte kvitterat i GUI** (ingen skärm på maskinen): switchen, klippmenyns temoläge och
+  statusraderna är lästa, inte sedda.
+
 **Kvar på 8.10:**
 
-1. **Pitch-bevarande (WSOLA)** — steg 2, och Alex' öra avgör om det behövs. Realtid i
-   `StemVoiceTrack` (som Ableton/Reaper) eller en renderad fil per tempo; realtidsbudgeten
-   finns att mäta mot (`realtime_bench`), och `Wsola`-tillståndet finns i audition-vägen.
-2. **En kloss över ett tempobyte** får i dag **en** faktor, räknad från tempot vid dess
-   start. Rätt är att dela klossen vid bytet (eller att låta faktorn följa kartan).
+1. **En kloss över ett tempobyte** får fortfarande **en** faktor, räknad från tempot vid
+   dess start — nu också för den sträckta filen (den renderas för ett tempo). Rätt är att
+   dela klossen vid bytet, eller att rendera ett stycke per tempoavsnitt. **Kvar.**
+2. **Vad en sträckning kostar, mätt (`the_render_cost`, release, stereo):** **1 min:**
+   125 ms sträckning, 177 ms hela vägen (sträck + prövning + skrivning + tillbakaläsning),
+   26,5 MB fil. **4 min:** 526 ms / 730 ms / **105,8 MB**. Åtta fyraminutersstämmor är
+   alltså ≈ **6 s** och **≈ 850 MB** per tempo — engångskostnaden för att tidslinjen ska
+   kunna spela en vanlig fil. Två saker följer av siffrorna: **cachen har ingen
+   utrensning** (tio tempon à åtta stämmor är 8,5 GB i `~/.cache/sonix/stretch/`), och
+   filerna är okomprimerade wav. En storleksgräns eller en LRU är nästa steg där.
 3. **Klippet visar inte i vyn att det är sträckt** — bara tempofältets hjälptext och
    tempokartans räknare säger det.
 4. **Omvänt klipp med `sample_offset_sec > 0`** ligger utanför sitt eget utsnitt. Det

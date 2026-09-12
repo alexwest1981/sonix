@@ -15,11 +15,13 @@ mätt, och var nästa andetag ska tas.*
 - **Tester:** 376 default / 422 med `--features plugin-host`, **0 varningar** i båda.
   CI fäller numera **alla** ben på varningar, inte bara Windows.
 - **Senaste commit:** `1d3fc1a` (8.3: sends till bussar)
-- **En andra session kan jobba i samma repo.** 2026-09-12 byggdes 8.10 steg 2 i en egen
-  worktree: `~/Projects/sonix-tempo`, branch `tempo-follow` (två commits + ocommitterat).
-  **Kolla `git status` och filernas mtime innan du bygger** — två skrivare i samma `app.rs`
-  är hur man tappar någons arbete. Den sessionen väntade medvetet på att sends skulle landa,
-  eftersom båda rör samma funktioner; nu är den vägen fri.
+- **En andra session jobbar i en egen worktree.** `~/Projects/sonix-tempo`, branch
+  `tempo-follow`: **8.10 steg 2 (pitch-bevarande sträckning) är byggd och verifierad där**
+  — switchen, den offline-renderade filen, cachen och motorns `source_audio`. Se roadmapens
+  8.10 för bevisen och för vad som är kvar. Grenen bär också master fram till `1d3fc1a`
+  (sends), så den kan möta master utan konflikt. **Kolla `git status` och filernas mtime
+  innan du bygger i något av träden** — två skrivare i samma `app.rs` är hur man tappar
+  någons arbete.
 - **Kör igång:** `cargo build --release --locked` (release krävs — det är den binären
   Alex startar). Efter varje ändring: `cargo build --release --locked`, `cargo test
   --locked --bin sonix`, `cargo test --locked --features plugin-host --bin sonix`.
@@ -131,12 +133,14 @@ mätt, och var nästa andetag ska tas.*
    exporten, UI i mixerns kanalpanel). **Kvar av punkten:** sends **mellan spår** — en annan
    och större sak (spårloopen i `process_stereo` måste delas i två faser + en slingkontroll),
    och den ligger kvar i roadmapen med sitt eget pass.
-5. **8.10 steg 2 (pitch-bevarande sträckning)** — påbörjad i `~/Projects/sonix-tempo`
-   (branch `tempo-follow`): motorn `src/audio/stretch.rs` är byggd och testad, policyn likaså,
-   men **inkopplingen i tidslinjen är halvfärdig och kompilerar inte** (fyra fel: `follow_tempo`
-   i `SonixProjectData`, i `LoadedProjectPayload`, i `RenderSpec`, samt `tape` i
-   `vocal_studio_view`). Nästa andetag: gör klart datamodellen, koppla in, verifiera och
-   committa — sedan är grenen redo att möta master (som nu har sends, alltså det den väntade på).
+5. **8.10 steg 2 (pitch-bevarande sträckning)** — **KLAR i `~/Projects/sonix-tempo`**
+   (branch `tempo-follow`), **392 tester default / 438 med plugin-host, 0 varningar**.
+   Switchen (🎚 Följ tempot, på som standard), klippets bandspelarläge, den
+   offline-renderade filen med cache, och motorns `source_audio`. Bevisen står i
+   roadmapens 8.10. Kvar: klipp över ett tempobyte får fortfarande en faktor (klossen
+   delas inte), cachen har ingen utrensning (≈106 MB per fyraminutersstämma och tempo,
+   mätt), och **Alex' öra** — GUI:t är inte klickat (ingen skärm): switchen, klippmenyns
+   temoläge och statusraderna är lästa, inte sedda.
 6. **`--clean-tags` för wav** (RIFF `LIST/INFO`) — samma sak som ID3 men andra chunks.
 7. **Tempomarkering i taktlinjalen** vid tempobyten (syns bara i listan i dag).
 6. **Riktig BPM-detektor** om någon behöver den: onset-styrka + tempokam
