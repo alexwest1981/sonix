@@ -1593,6 +1593,13 @@ pub struct SonixApp {
     // Focused Stem Detail & Sound Editor Modal
     pub focused_stem_track: Option<usize>,
     pub show_stem_focus_modal: bool,
+    /// Tempokartan som fönster (Fas 8.2).
+    pub show_tempo_modal: bool,
+    /// Takten som högerklicket på linjalen gällde.
+    ///
+    /// Sparas för att menyn ritas om varje bildruta: inne i menyn står pekaren
+    /// över menyn, så takten går inte att räkna ut där.
+    pub tempo_menu_bar: Option<u32>,
     pub stem_focus_active_tab: usize,
     // Modals
     pub show_about_modal: bool,
@@ -2230,6 +2237,8 @@ impl SonixApp {
             // Focused Stem Detail & Sound Editor Modal
             focused_stem_track: None,
             show_stem_focus_modal: false,
+            show_tempo_modal: false,
+            tempo_menu_bar: None,
             stem_focus_active_tab: 0,
             // Modals
             show_about_modal: false,
@@ -2703,8 +2712,121 @@ impl SonixApp {
     ///
     /// I dag en enda punkt: projektets tempo. Det är avsiktligt att allt som
     /// räknar tid frågar den här i stället för att läsa `bpm` själv — annars
+    /// Sätter ett tempobyte (Fas 8.2).
+    ///
+    /// `bpm` speglar kartans första punkt så länge en karta finns. Det är en
+    /// avbild av sanningen, inte en andra sanning: `tempo_map()` läser kartan.
+    /// Skälet att spegla är att resten av appen visar `bpm`, och en siffra som
+    /// visar något annat än det som hörs är en lögn.
+    fn set_tempo_point(&mut self, bar: u32, bpm: f32) {
+        crate::audio::tempo::set_tempo_point(&mut self.tempo_points, bar, bpm);
+        self.bpm = self.tempo_map().bpm_at(0.0);
+        self.status_message = crate::tstatus!("⏱ Tempobyte: Takt {} = {:.1} BPM", bar + 1, bpm);
+    }
+
+    /// Tar bort ett tempobyte. Takt 1 går inte — den är kartans början.
+    fn remove_tempo_point(&mut self, bar: u32) {
+        if crate::audio::tempo::remove_tempo_point(&mut self.tempo_points, bar) {
+            self.bpm = self.tempo_map().bpm_at(0.0);
+            self.status_message = crate::tstatus!("🗑 Tempobyte i takt {} borttaget", bar + 1);
+        } else if bar == 0 {
+            self.status_message = crate::i18n::t(
+                "Tempot i takt 1 går inte att ta bort — ändra det i stället.",
+            )
+            .to_string();
+        }
+    }
     /// uppstår den andra sanningen om takter och sekunder, och den här gången
     /// blir det ingen.
+    /// Tempokartan som lista (Fas 8.2).
+    ///
+    /// Punkterna sätts med högerklick på taktlinjalen; här syns de och kan
+    /// ändras eller tas bort. En rad per byte är den enklaste form som går att
+    /// förstå utan att någon visat den.
+    fn render_tempo_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_tempo_modal {
+            return;
+        }
+        let mut open = self.show_tempo_modal;
+        let mut remove: Option<u32> = None;
+        let mut set: Option<(u32, f32)> = None;
+        egui::Window::new(crate::i18n::t("⏱ Tempokarta"))
+            .open(&mut open)
+            .resizable(false)
+            .collapsible(false)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .default_size(Vec2::new(340.0, 220.0))
+            .show(ctx, |ui| {
+                if self.tempo_points.is_empty() {
+                    ui.label(crate::tstatus!(
+                        "Projektet har ett enda tempo: {:.1} BPM.",
+                        self.bpm
+                    ));
+                    ui.add_space(4.0);
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t(
+                            "Högerklicka på taktlinjalen för att sätta ett byte.",
+                        ))
+                        .size(9.5)
+                        .color(Theme::TEXT_MUTED),
+                    );
+                    return;
+                }
+                ui.label(crate::i18n::t("Ett byte gäller från sin takt och framåt:"));
+                ui.add_space(4.0);
+                egui::ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
+                    for point in &self.tempo_points {
+                        let bar = point.start_bar;
+                        ui.horizontal(|ui| {
+                            ui.label(crate::tstatus!("Takt {}", bar + 1));
+                            let mut bpm = point.bpm;
+                            if ui
+                                .add(
+                                    egui::DragValue::new(&mut bpm)
+                                        .speed(0.5)
+                                        .range(40.0..=260.0)
+                                        .suffix(" BPM"),
+                                )
+                                .changed()
+                            {
+                                set = Some((bar, bpm));
+                            }
+                            if bar > 0 {
+                                if ui
+                                    .button("🗑")
+                                    .on_hover_text(crate::i18n::t("Ta bort bytet"))
+                                    .clicked()
+                                {
+                                    remove = Some(bar);
+                                }
+                            } else {
+                                ui.label(
+                                    egui::RichText::new(crate::i18n::t("(start)"))
+                                        .size(9.5)
+                                        .color(Theme::TEXT_MUTED),
+                                );
+                            }
+                        });
+                    }
+                });
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "Högerklicka på taktlinjalen för att lägga till eller ta bort.",
+                    ))
+                    .size(9.5)
+                    .color(Theme::TEXT_MUTED),
+                );
+            });
+        self.show_tempo_modal = open;
+        if let Some((bar, bpm)) = set {
+            self.set_tempo_point(bar, bpm);
+        }
+        if let Some(bar) = remove {
+            self.remove_tempo_point(bar);
+        }
+    }
+
     fn tempo_map(&self) -> crate::audio::tempo::TempoMap {
         if self.tempo_points.is_empty() {
             return crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
@@ -6718,6 +6840,7 @@ impl eframe::App for SonixApp {
             || self.show_suno_import_modal
             || self.show_render_queue_modal
             || self.show_stem_focus_modal
+            || self.show_tempo_modal
             || self.show_controller_modal
             || self.show_about_modal
             || self.show_recovery_modal
@@ -7619,6 +7742,7 @@ impl eframe::App for SonixApp {
         self.render_tuner_modal_view(ctx);
         self.render_dice_generator_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
+        self.render_tempo_modal(ctx);
         self.render_song_structure_modal_view(ctx);
         self.render_stem_focus_modal(ctx);
         self.render_help_manual_modal(ctx);
@@ -8230,6 +8354,22 @@ impl SonixApp {
                             self.status_message = crate::tstatus!("Loop-region satt till Takt {}-{}", self.loop_start_bar + 1, self.loop_end_bar);
                         }
 
+                        if ui
+                            .add(
+                                egui::Button::new(
+                                    egui::RichText::new(crate::i18n::t("⏱ Tempo"))
+                                        .size(10.5)
+                                        .strong()
+                                        .color(Color32::WHITE),
+                                )
+                                .fill(Color32::from_rgb(45, 40, 70)),
+                            )
+                            .on_hover_text(crate::i18n::t("Tempokarta — byten i låten"))
+                            .clicked()
+                        {
+                            self.show_tempo_modal = true;
+                        }
+
                         if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Mik")).size(10.5).strong().color(Color32::WHITE)).fill(Color32::from_rgb(30, 80, 110))).on_hover_text(crate::i18n::t("Mikrofoninställningar")).clicked() {
                             self.show_mic_settings_modal = true;
                         }
@@ -8805,6 +8945,44 @@ impl SonixApp {
                             // 1. Timeline Ruler Strip
                             let (ruler_rect, ruler_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, ruler_h), Sense::click_and_drag());
                             let timeline_left_x = ruler_rect.min.x;
+                            // Högerklick på linjalen: sätt eller ta bort ett tempobyte
+                            // (Fas 8.2). Taktnumret räknas ut HÄR, på klicket — inne i
+                            // menyn står pekaren över menyn, inte över linjalen, och då
+                            // hade bytet hamnat på fel takt.
+                            if ruler_resp.secondary_clicked()
+                                && let Some(pos) = ruler_resp.interact_pointer_pos()
+                            {
+                                let bar =
+                                    (((pos.x - ruler_rect.min.x) / bar_w).floor().max(0.0)) as u32;
+                                self.tempo_menu_bar = Some(bar);
+                            }
+                            let mut tempo_set_here = false;
+                            let mut tempo_remove_here = false;
+                            ruler_resp.clone().context_menu(|ui| {
+                                let bar = self.tempo_menu_bar.unwrap_or(0);
+                                ui.label(crate::tstatus!("Takt {}", bar + 1));
+                                if ui.button(crate::i18n::t("⏱ Sätt tempo här")).clicked() {
+                                    tempo_set_here = true;
+                                    ui.close_menu();
+                                }
+                                let has_point =
+                                    self.tempo_points.iter().any(|p| p.start_bar == bar);
+                                if has_point
+                                    && ui
+                                        .button(crate::i18n::t("🗑 Ta bort tempobyte här"))
+                                        .clicked()
+                                {
+                                    tempo_remove_here = true;
+                                    ui.close_menu();
+                                }
+                            });
+                            if tempo_set_here {
+                                let bar = self.tempo_menu_bar.unwrap_or(0);
+                                let bpm = self.tempo_map().bpm_at(bar as f64);
+                                self.set_tempo_point(bar, bpm);
+                            } else if tempo_remove_here {
+                                self.remove_tempo_point(self.tempo_menu_bar.unwrap_or(0));
+                            }
                             ui.painter().rect_filled(ruler_rect, Rounding::ZERO, Color32::from_rgb(16, 19, 26));
                             ui.painter().line_segment([Pos2::new(ruler_rect.min.x, ruler_rect.max.y), Pos2::new(ruler_rect.max.x, ruler_rect.max.y)], Stroke::new(1.0_f32, Color32::from_rgb(45, 52, 68)));
 

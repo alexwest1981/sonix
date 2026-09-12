@@ -25,6 +25,41 @@ pub struct TempoPoint {
     pub bpm: f32,
 }
 
+/// Sätter ett tempobyte på `bar`.
+///
+/// En punkt per takt: finns det redan en på takten ersätts den i stället för att
+/// en andra läggs bredvid. Två punkter på samma takt vore två svar på samma fråga,
+/// och den som råkade ligga sist skulle vinna utan att någon bett om det.
+///
+/// Tar `points` i stället för att bygga en karta, så att UI:t kan ändra listan
+/// utan att gå omvägen över en karta varje gång — och så att regeln kan testas
+/// utan ett fönster.
+pub fn set_tempo_point(points: &mut Vec<TempoPoint>, bar: u32, bpm: f32) {
+    if let Some(existing) = points.iter_mut().find(|p| p.start_bar == bar) {
+        existing.bpm = bpm;
+        return;
+    }
+    points.push(TempoPoint {
+        start_bar: bar,
+        bpm,
+    });
+    points.sort_by_key(|p| p.start_bar);
+}
+
+/// Tar bort ett tempobyte på `bar`. Säger till om det fanns något.
+///
+/// **Takt 0 går inte att ta bort.** En karta måste ha ett tempo från början, och
+/// att tyst låta bli att ta bort något vore värre än att säga nej — den som
+/// klickar ska få veta varför ingenting hände.
+pub fn remove_tempo_point(points: &mut Vec<TempoPoint>, bar: u32) -> bool {
+    if bar == 0 {
+        return false;
+    }
+    let before = points.len();
+    points.retain(|p| p.start_bar != bar);
+    points.len() != before
+}
+
 /// Tempot som funktion av taktnummer.
 ///
 /// Normaliserad när den skapas: sorterad, en punkt per takt (den sista vinner),
@@ -365,6 +400,48 @@ mod tests {
     }
 
     /// Inversen till längden: samma division som i dag med ett tempo.
+    /// Att sätta ett byte två gånger på samma takt får inte ge två punkter: den
+    /// sista ska vinna, och det ska bara finnas en.
+    #[test]
+    fn a_point_per_bar_and_the_last_one_wins() {
+        let mut points = vec![TempoPoint {
+            start_bar: 0,
+            bpm: 120.0,
+        }];
+        set_tempo_point(&mut points, 8, 90.0);
+        set_tempo_point(&mut points, 8, 100.0);
+        assert_eq!(points.len(), 2, "två punkter, inte tre");
+        assert_eq!(points[1].start_bar, 8);
+        assert!((points[1].bpm - 100.0).abs() < 0.01, "den sista ska gälla");
+
+        // Osorterat in ska sorteras ut.
+        set_tempo_point(&mut points, 4, 110.0);
+        let bars: Vec<u32> = points.iter().map(|p| p.start_bar).collect();
+        assert_eq!(bars, vec![0, 4, 8], "punkterna ska stå i taktordning");
+    }
+
+    /// Takt 0 är kartans början och får inte tas bort — men den ska gå att ändra.
+    #[test]
+    fn the_first_point_stays_and_can_be_changed() {
+        let mut points = vec![TempoPoint {
+            start_bar: 0,
+            bpm: 128.0,
+        }];
+        set_tempo_point(&mut points, 8, 90.0);
+
+        assert!(
+            !remove_tempo_point(&mut points, 0),
+            "takt 0 ska inte gå att ta bort"
+        );
+        assert_eq!(points.len(), 2, "och ingenting ska ha försvunnit tyst");
+        assert!(remove_tempo_point(&mut points, 8));
+        assert_eq!(points.len(), 1);
+        assert!(!remove_tempo_point(&mut points, 8), "borta är borta");
+
+        set_tempo_point(&mut points, 0, 100.0);
+        assert!((points[0].bpm - 100.0).abs() < 0.01);
+    }
+
     #[test]
     fn a_duration_in_seconds_comes_back_as_bars() {
         for bpm in [40.0f32, 120.0, 174.0] {
