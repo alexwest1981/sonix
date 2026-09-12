@@ -876,7 +876,6 @@ pub struct PlaylistTrack {
     pub regions: Vec<AudioRegion>,   // Continuous multi-track audio stems and slices
     pub clips: [Option<usize>; 32],  // Pattern triggers
     #[allow(dead_code)]
-    pub audio_waveform: Option<Vec<f32>>,
     /// Vågformens flernivå-cache (Fas 8.3): `(nyckel, cache)`.
     ///
     /// Byggs vid behov när spårets regioner ritas, och görs om när ljudet byts —
@@ -948,7 +947,6 @@ impl PlaylistTrack {
             is_rec_armed: false,
             regions: Vec::new(),
             clips: [None; 32],
-            audio_waveform: None,
             waveform_cache: None,
             custom_clip_name: None,
             pcm_audio: None,
@@ -5962,7 +5960,6 @@ impl SonixApp {
             track.muted = ch.muted;
             track.solo = ch.solo;
             track.regions = vec![region];
-            track.audio_waveform = Some(peaks);
             track.pcm_audio = Some((
                 std::sync::Arc::new(audio.left.clone()),
                 std::sync::Arc::new(audio.right.clone()),
@@ -6022,7 +6019,6 @@ impl SonixApp {
             tmpl.color,
         );
         track.pcm_audio = Some((arc_l, arc_r, sr));
-        track.audio_waveform = Some(peaks.clone());
         track.custom_clip_name = Some(clean_name.clone());
         track.regions = vec![AudioRegion {
             id: new_id,
@@ -8174,7 +8170,6 @@ impl SonixApp {
         let path_str = path.to_string_lossy().to_string();
 
         let (l, r, sr) = crate::audio::load_audio_pcm(&path_str)?;
-        let wave = crate::audio::recorder::visual_peaks_from(&l);
 
         let title: String = prompt.chars().take(24).collect();
         let mut track = PlaylistTrack::new(
@@ -8184,7 +8179,6 @@ impl SonixApp {
             Color32::from_rgb(120, 200, 255),
         );
         track.volume = 0.90;
-        track.audio_waveform = Some(wave);
         track.pcm_audio = Some((
             std::sync::Arc::new(l),
             std::sync::Arc::new(r),
@@ -8244,11 +8238,9 @@ impl SonixApp {
                     sr,
                     prompt_seed ^ (idx as u64).wrapping_mul(0x9e3779b97f4a7c15),
                 );
-                let wave = crate::audio::recorder::visual_peaks_from(&pcm_l);
 
                 let mut track = PlaylistTrack::new(s_name.to_string(), "✨", *kind, *col);
                 track.volume = 0.90;
-                track.audio_waveform = Some(wave);
                 track.pcm_audio = Some((std::sync::Arc::new(pcm_l), std::sync::Arc::new(pcm_r), sr));
                 track.custom_clip_name = Some(format!("Stem: {}", prompt));
                 for b in self.loop_start_bar..self.loop_end_bar.min(32) {
@@ -8273,11 +8265,9 @@ impl SonixApp {
             };
 
             let (pcm_l, pcm_r) = crate::audio::ai_generator::render_generated_audio(style, bpm, bars, sr, prompt_seed);
-            let new_wave = crate::audio::recorder::visual_peaks_from(&pcm_l);
 
             let mut new_track = PlaylistTrack::new(track_name.to_string(), "✨", TrackKind::CustomAudio, Color32::from_rgb(175, 115, 255));
             new_track.volume = 0.90;
-            new_track.audio_waveform = Some(new_wave);
             new_track.pcm_audio = Some((std::sync::Arc::new(pcm_l), std::sync::Arc::new(pcm_r), sr));
             new_track.custom_clip_name = Some(format!("AI Clip: {}", prompt));
 
@@ -14192,7 +14182,6 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             track.volume = 0.9;
             track.is_rec_armed = false;
             track.regions = vec![initial_region];
-            track.audio_waveform = Some(dt.wave_env);
             track.custom_clip_name = Some(dt.clean_name);
 
             for b in 0..32 {
