@@ -484,6 +484,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Ta bort senden" => "Remove the send",
         "➕ Ny send" => "➕ New send",
         "Skicka en del av spåret till en buss — t.ex. FX-bussen" => "Send part of the track to a bus — e.g. the FX bus",
+        "ℹ Tempot ändrat, men {} klipp står still: de saknar känt inspelningstempo. Öppna ⏱ Tempokarta för att låta dem följa — eller importera stämmorna på nytt." => "ℹ The tempo changed, but {} clips stay put: they have no known recording tempo. Open ⏱ Tempo map to make them follow — or import the stems again.",
+        "🎚 Tempot ändrat: {} klipp följer, {} står still (okänt inspelningstempo — se ⏱ Tempokarta)." => "🎚 Tempo changed: {} clips follow, {} stay put (unknown recording tempo — see ⏱ Tempo map).",
         "🎚 Följ tempot (bevara tonhöjden)" => "🎚 Follow the tempo (preserve pitch)",
         "På: klipp med känt inspelningstempo sträcks när tempot ändras, med bevarad tonhöjd. Av: inget klipp följer tempot. Ett enstaka klipp kan i stället sättas i bandspelarläge (tonhöjden följer med) i klippmenyn." => "On: clips with a known recording tempo are stretched when the tempo changes, with the pitch preserved. Off: no clip follows the tempo. A single clip can instead be put in tape mode (pitch follows) in the clip menu.",
         "🎚 Klippen följer tempot med bevarad tonhöjd" => "🎚 The clips follow the tempo with the pitch preserved",

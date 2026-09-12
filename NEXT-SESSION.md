@@ -133,7 +133,11 @@ mätt, och var nästa andetag ska tas.*
    exporten, UI i mixerns kanalpanel). **Kvar av punkten:** sends **mellan spår** — en annan
    och större sak (spårloopen i `process_stereo` måste delas i två faser + en slingkontroll),
    och den ligger kvar i roadmapen med sitt eget pass.
-5. **8.10 steg 2 (pitch-bevarande sträckning)** — **KLAR och mergad till master**, med en
+5. **Två rättelser efter Alex' öron och ögon (kväll 2026-09-12):** sträckningen fyllde inte
+   klippet (geometrin vinner nu över analystalet) och "inget hände" i Rock and Hard Place
+   (klippen saknade känt tempo — och appen **sade ingenting**; nu står det i statusraden med
+   pekaren till ⏱ Tempokarta). Båda står i roadmapens 8.10 med sina mätningar.
+6. **8.10 steg 2 (pitch-bevarande sträckning)** — **KLAR och mergad till master**, med en
    rättelse efter Alex' öron: klippen bar 120,98828 medan geometrin sa 120,0000, och filen
    blev 2,3 s för lång vid 110 BPM (hela låten gled ur takt). Nu vinner geometrin inom en
    procent — se roadmapens 8.10. **Kvar av hans rapport:** WSOLA skorrar på sång (motorn,

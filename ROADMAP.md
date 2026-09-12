@@ -1309,6 +1309,26 @@ tempoanalys. Sträckningen räknar `filsekunder × källa/projekt` medan klossen
   (signalsmith-stretch är MIT och passar vår licens) — ett motorbyte är ett eget pass, och det
   är där kvaliteten sitter, inte i en kryssruta.
 
+**"Inget hände" (Rock and Hard Place, samma kväll):** Alex bytte tempo och *ingenting* rörde
+sig. Alla nio klipp saknade känt inspelningstempo, och appen **sade ingenting** — vilket gör en
+kontroll som vägrar arbeta identisk med en död kontroll. Det är samma familj som
+`piano_roll_snap_to_scale`: en kontroll ingen läser (eller en tystnad ingen hör).
+
+- **Nu står det i statusraden** när tempot ändras och klipp inte kan följa, med antalet och
+  pekaren till åtgärden: `tempo_change_note(following, stuck)` är en **ren funktion** med
+  testet `a_tempo_change_that_nothing_follows_is_never_silent` (nio stillastående ⇒ en rad
+  med nio och ⏱; noll stillastående ⇒ ingen rad alls).
+- **Mätt på hans fil:** klippen är **118,18 takter** medan filerna är 259,28 s, alltså måttet
+  `118,18 × 240 / 259,28` = **109,392** mot projektets 120 → 8,8 % fel, och då **vägrar måttet**
+  (med rätta: en gissning hade sträckt fel, precis som roadmapen sagt hela dagen). 109,392
+  kommer från en tempoändring i den sessionen, inte från filen.
+- **Två följder att känna igen:** (1) klippens **längd** är satt med samma 109,392, så de är
+  236,36 s långa och **låtens sista 22,9 sekunder ligger utanför klippen** — hörbart som ett
+  tvärt slut, och *osynligt* i ritningen eftersom vågformen ritas ur filens början; (2)
+  åtgärden är **stämpeln** i ⏱ Tempokarta ("klippen låter som de ska nu"), som sätter klippens
+  tempo till projektets — användarens eget svar på frågan, inte en gissning. Importen gissar
+  inte själv: `parse_suno_zip_info` ger 120,0 när filnamnet saknar BPM.
+
 **Kvar på 8.10:**
 
 1. **En kloss över ett tempobyte** får fortfarande **en** faktor, räknad från tempot vid

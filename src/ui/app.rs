@@ -1239,6 +1239,32 @@ fn source_bpm_from_region(region: &AudioRegion, source_secs: f32, project_bpm: f
     }
 }
 
+/// Vad statusraden ska säga när tempot har ändrats (Fas 8.10).
+///
+/// **Tyst bortfall är det som gör en sådan här sak osynlig.** Ett klipp utan känt
+/// inspelningstempo rörs inte när tempot ändras — och då ser kontrollen ut att inte göra
+/// något alls. Alex drog i tempot i ett projekt där **alla** klipp saknade måttet och fick
+/// ingen återkoppling alls; det här är den raden han skulle fått i stället.
+///
+/// Ren funktion: regeln går att pröva utan fönster, och den räknar i stället för att gissa.
+pub fn tempo_change_note(following: usize, stuck: usize) -> Option<String> {
+    if stuck == 0 {
+        return None; // alla klipp följer; inget att säga
+    }
+    if following == 0 {
+        // Det här är fallet som ser ut som en död kontroll.
+        return Some(crate::tstatus!(
+            "ℹ Tempot ändrat, men {} klipp står still: de saknar känt inspelningstempo. Öppna ⏱ Tempokarta för att låta dem följa — eller importera stämmorna på nytt.",
+            stuck
+        ));
+    }
+    Some(crate::tstatus!(
+        "🎚 Tempot ändrat: {} klipp följer, {} står still (okänt inspelningstempo — se ⏱ Tempokarta).",
+        following,
+        stuck
+    ))
+}
+
 /// Sätter inspelningstempo på klipp som saknar det (Fas 8.10).
 ///
 /// Användarens egen handling: "klippen låter som de ska nu — låt dem följa tempot
@@ -3586,6 +3612,14 @@ impl SonixApp {
             return;
         }
         self.stems_synced_bpm = self.bpm;
+        // Säg vad som hände — eller inte hände (Fas 8.10). Utan den här raden är ett
+        // klipp utan känt tempo en kontroll som ser död ut i stället för en förklaring.
+        if let Some(note) = tempo_change_note(
+            self.clips_with_source_tempo(),
+            self.clips_without_source_tempo(),
+        ) {
+            self.status_message = note;
+        }
         for t_idx in 0..self.playlist_tracks.len() {
             let has_audio = self.playlist_tracks[t_idx].pcm_audio.is_some()
                 || self.playlist_tracks[t_idx].frozen_pcm.is_some();
@@ -18931,6 +18965,32 @@ mod tests {
         assert_eq!(playback_for(stretch, false), (1.0, false));
         // ... och med filen klar: filen spelas med faktor 1,0.
         assert_eq!(playback_for(stretch, true), (1.0, true));
+    }
+
+    /// **Felet i Alex' "inget hände".**
+    ///
+    /// Rock and Hard Place: alla nio klipp saknar känt inspelningstempo, så inget följer
+    /// tempot. Appen sade ingenting alls, och en kontroll som tiger ser ut att vara död.
+    /// Nu säger den vad som gäller — och **vilken** åtgärd som finns.
+    #[test]
+    fn a_tempo_change_that_nothing_follows_is_never_silent() {
+        // Alla klipp står still: det här är fallet som såg ut som en död kontroll.
+        let all_stuck = tempo_change_note(0, 9).expect("nio stillastående klipp ska sägas högt");
+        assert!(all_stuck.contains('9'), "antalet ska stå i raden: {all_stuck}");
+        // Texten är i18n:ad (testkörningen får engelska), så provet håller sig till det som
+        // är lika i båda: antalet och pekaren till åtgärden.
+        assert!(
+            all_stuck.contains('⏱'),
+            "raden ska peka på åtgärden: {all_stuck}"
+        );
+
+        // Delat läge: både de som följer och de som står still ska räknas.
+        let mixed = tempo_change_note(3, 2).expect("delat läge ska sägas");
+        assert!(mixed.contains('3') && mixed.contains('2'), "{mixed}");
+
+        // Och när allt följer finns inget att säga — ingen rad, ingen tystnad att förklara.
+        assert_eq!(tempo_change_note(9, 0), None);
+        assert_eq!(tempo_change_note(0, 0), None);
     }
 
     /// Ett trimmat klipp behåller sin plats i den sträckta filen.
