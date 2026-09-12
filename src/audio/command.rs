@@ -179,6 +179,18 @@ pub enum AudioCommand {
         bus: usize,
         vca: Option<usize>,
     },
+    /// Kopplar en sidokedja (Fas 8.3): `track_index` duckas av `from`s ljud.
+    ///
+    /// `amount_db` är hur mycket spåret sänks när key-signalen är över
+    /// `threshold_db`. `from = None` kopplar bort sidokedjan. Ett `from` som
+    /// pekar på spåret självt (eller utanför listan) ignoreras av motorn — en
+    /// slinga skulle aldrig kunna beräknas.
+    SetStemTrackSidechain {
+        track_index: usize,
+        from: Option<usize>,
+        amount_db: f32,
+        threshold_db: f32,
+    },
     /// Sets a sub-mix bus's group gain, mute and solo (Fas 5.2). The bus is
     /// clamped to `0..NUM_BUSES`.
     SetBusState {

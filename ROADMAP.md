@@ -61,7 +61,7 @@ display. Ordningen nedan är den som ger mest per timme.
 
 | # | Punkt | Storlek | Vad som återstår | Blockerare |
 | :--- | :--- | :---: | :--- | :--- |
-| 1 | **8.3 Routing på riktigt** | *M* | Sends OCH sidokedjor mellan spår (bussar/VCA finns redan) | — |
+| 1 | **8.3 Routing på riktigt** | *M* | **Sidokedjorna klara 2026-09-12**; kvar: sends mellan spår (bussar/VCA finns sedan tidigare) | — |
 | 2 | **8.4 Sampler** | *M* | Ett riktigt samplerinstrument i kanalracket (WAV-spelaren finns) | — |
 | 3 | **8.2 Tempo map** | *S–M* | De 4 visningsställena, automation-lanen (sekunder vs takter), drag-utökningen | — |
 | 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
@@ -77,8 +77,9 @@ tempopunkt-UI väntar alla på att Alex ser dem.
 > Ableton, Bitwig, Logic, Cubase, Studio Pro, Pro Tools, DP, Reaper, Ardour, Waveform,
 > Mixcraft, Renoise, Zrythm + angränsande verktyg) ligger i `sonix`-skillen,
 > `references/daw-comparison.md`, med de fem researchrapporterna i `references/daw-research/`.
-> Kortversionen: **8.3 är det enda kvarvarande gapet som hörs i en färdig mix**, 8.4 är den
-> mest grundläggande funktionen som saknas helt, och 8.2-resten är billigast. Sonix står
+> Kortversionen: **8.3 är det enda kvarvarande gapet som hörs i en färdig mix** — och
+> halva punkten är stängd sedan 2026-09-12 (sidokedjorna; **sends mellan spår** är kvar).
+> 8.4 är den mest grundläggande funktionen som saknas helt, och 8.2-resten är billigast. Sonix står
 > starkare än de stora på tre punkter: native Linux, CLAP med out-of-process-sandbox, och
 > AI/Suno-vägen — ingen av de undersökta DAW:erna har AI-genererad musik som utgångspunkt.
 
@@ -581,6 +582,40 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
   - **Kvar till steg 3:** de 4 visningsställena (`render_playlist_arranger` ×3, `render_stem_focus_modal` ×1), automation-lanen (punkterna ligger i sekunder — egen fråga: ska automation flytta med tempot?), drag-utökningen, och en GUI-kvittens på tempopunkt-UI:t (samma sorts kvittens som 6.2, 6.4, 6.5 och 7.4 väntar på).
   - **En läxa om verktyg, för framtiden:** `cargo fmt` får **inte** köras i det här repot. Det är inte rustfmt-formaterat, så en körning gav 11 123 rader churn i 51 filer — allt backat, och nya filer formateras enskilt (`rustfmt <fil>`) i stället.
 - [ ] **8.3 Routing på riktigt** (utöver bussar/VCA: sends och sidokedjor mellan spår).
+  - **Sidokedjorna är klara (2026-09-12).** Ett spår kan duckas av ett annat spårs ljud:
+    `AudioCommand::SetStemTrackSidechain { track_index, from, amount_db, threshold_db }`,
+    en `Ducker` per spår i `src/audio/synth.rs`, "Sidokedja:"-väljaren med Duckning och
+    Tröskel i mixerns kanalpanel, fält i projektfilen (`sidechain_from`,
+    `sidechain_amount_db`, `sidechain_threshold_db`, alla `#[serde(default)]`) och samma
+    kommando i offline-exporten (`load_timeline_into_engine`) — alltså samma ljud i filen
+    som i högtalarna.
+  - **Varför en `Ducker` och inte en kompressor med extern nyckel:** det är samma
+    matematik (envelopföljare på key-signalen, och gainen multipliceras på det egna
+    spåret), men utskriven och med två reglage i stället för fem: tröskel och duckning i
+    dB, med fasta tider (5 ms attack, 120 ms release — vad en duckare brukar ha).
+  - **Nyckeln är som mest ett sample gammal.** Spårloopen går i indexordning, så ett
+    key-spår med högre index har passerat förra samplet när målet räknas (20 µs vid
+    48 kHz, mot tider i millisekunder). Ett key-spår med lägre index är exakt i fas. Att
+    kräva exakt samma sample hade krävt en omsortering av hela loopen per sample.
+  - **En slinga kan inte uppstå:** `from` som pekar på spåret självt ignoreras när det
+    sätts, och ett `from` utanför spårlistan ignoreras vid användning — så ett borttaget
+    spår duckar ingen i stället för att få motorn att läsa utanför bufferten.
+  - **Bevis:** `a_sidechain_ducks_the_target_track` mäter energin vid **880 Hz**
+    (Goertzel) med nyckeln på 220 Hz — målet dämpas och nyckeln hörs som förut;
+    `an_unset_sidechain_leaves_the_signal_untouched` (bitvis lika utan koppling),
+    `removing_a_sidechain_lets_the_level_come_back`, `a_sidechain_never_points_at_the_track_itself_or_outside_the_list`,
+    `a_ducker_stays_open_below_the_threshold_and_closes_above_it`,
+    `a_zero_amount_ducker_never_touches_the_signal`, `a_sidechain_follows_the_offline_render`
+    (exporten duckar likadant) och två projektfilstester (en gammal fil utan fältet läses
+    som ett spår utan sidokedja med standardtröskeln −30 dB; en fil med fältet får exakt
+    samma värden tillbaka). **327 tester default, 373 med plugin-host, 0 varningar.**
+  - **Kvar på samma punkt: sends mellan spår** — att skicka ett spår in i ett annat spårs
+    kedja. Det är större än sidokedjan: key-signalen är en *mätning* (ett sample sent går
+    bra), men en send är *ljud* och måste vara exakt i fas, annars tar den ut sig själv mot
+    originalsignalen. Det kräver att spårloopen i `process_stereo` delas i två faser
+    (källor först, kedjor sedan i topologisk ordning) plus en kontroll som vägrar en
+    koppling som skulle bli en slinga. **Eget pass, med färskt sammanhang** — inte
+    ihopträngt i slutet av ett annat.
 - [ ] **8.4 Sampler** (ett riktigt samplerinstrument i kanalracket, inte bara en WAV-spelare).
 
 ### 8.3 Exakta vågformer (Alex krav, 2026-09-12)

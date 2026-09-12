@@ -995,10 +995,24 @@ pub struct SavedTrackData {
     /// Optional VCA group assignment (Fas 5.2).
     #[serde(default)]
     pub vca: Option<usize>,
+    /// Sidokedja (Fas 8.3): spåret duckas av det här spårets ljud. Saknas i
+    /// äldre projekt — då finns ingen sidokedja, precis som förut.
+    #[serde(default)]
+    pub sidechain_from: Option<usize>,
+    #[serde(default)]
+    pub sidechain_amount_db: f32,
+    #[serde(default = "default_sidechain_threshold_db")]
+    pub sidechain_threshold_db: f32,
     /// Fruset spår (Tier 2): var ljudet ligger och fingeravtrycket av källan.
     /// Äldre projektfil utan fältet läses som ofrusade.
     #[serde(default)]
     pub frozen: Option<SavedFrozenTrack>,
+}
+
+/// Standardtröskel för en sidokedja (Fas 8.3): −30 dB är där en duckare brukar
+/// börja, och en äldre projektfil ska få samma värde som ett nytt spår.
+fn default_sidechain_threshold_db() -> f32 {
+    -30.0
 }
 
 /// Ett fruset spår i projektfilen. Ljudet ligger i en fil i projektets egen
@@ -1116,6 +1130,12 @@ pub struct PlaylistTrack {
     pub bus: usize,
     /// Optional VCA control group (`0..NUM_VCAS`) — Fas 5.2.
     pub vca: Option<usize>,
+    /// Sidokedja (Fas 8.3): spåret duckas av det här spårets ljud. `None` = ingen.
+    pub sidechain_from: Option<usize>,
+    /// Hur mycket spåret sänks (dB) när key-signalen är över tröskeln.
+    pub sidechain_amount_db: f32,
+    /// Tröskeln key-signalen måste över för att ducka (dB).
+    pub sidechain_threshold_db: f32,
 }
 
 /// Default sub-mix bus for a track kind (Fas 5.2): drums → Trummor, bass and
@@ -1173,6 +1193,9 @@ impl PlaylistTrack {
             automation_last: [f32::NAN; 4],
             bus: default_bus_for_kind(kind),
             vca: None,
+            sidechain_from: None,
+            sidechain_amount_db: 0.0,
+            sidechain_threshold_db: -30.0,
         }
     }
 }
@@ -1298,6 +1321,11 @@ pub struct PreloadedTrackData {
     pub automation: Vec<AutomationLane>,
     pub bus: usize,
     pub vca: Option<usize>,
+    /// Sidokedja (Fas 8.3), med i förinläsningen så att ett laddat projekt
+    /// duckar precis som det gjorde när det sparades.
+    pub sidechain_from: Option<usize>,
+    pub sidechain_amount_db: f32,
+    pub sidechain_threshold_db: f32,
     pub stem_pcms: Vec<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
     /// Det **frusna** spårets ljud, om filen gick att läsa vid inläsningen.
     /// Hålls åtskild från `stem_pcms`: `track_pcm` blir det *sista* som lades i
@@ -2981,6 +3009,9 @@ impl SonixApp {
                     automation: Vec::new(),
                     bus: default_bus_for_kind(kind),
                     vca: None,
+                    sidechain_from: None,
+                    sidechain_amount_db: 0.0,
+                    sidechain_threshold_db: -30.0,
                     stem_pcms: Vec::new(),
                     frozen_pcm: None,
                 });
@@ -4383,6 +4414,9 @@ impl SonixApp {
             automation: t.automation.clone(),
             bus: t.bus,
             vca: t.vca,
+            sidechain_from: t.sidechain_from,
+            sidechain_amount_db: t.sidechain_amount_db,
+            sidechain_threshold_db: t.sidechain_threshold_db,
         }).collect();
 
         SonixProjectData {
@@ -4705,6 +4739,9 @@ impl SonixApp {
                     automation: st.automation,
                     bus: st.bus,
                     vca: st.vca,
+                    sidechain_from: st.sidechain_from,
+                    sidechain_amount_db: st.sidechain_amount_db,
+                    sidechain_threshold_db: st.sidechain_threshold_db,
                     stem_pcms,
                     frozen_pcm,
                 });
@@ -4854,6 +4891,13 @@ impl SonixApp {
             loaded_track.automation = st.automation;
             loaded_track.bus = st.bus.min(crate::audio::synth::NUM_BUSES - 1);
             loaded_track.vca = st.vca.filter(|&v| v < crate::audio::synth::NUM_VCAS);
+            // Sidokedjan får bara peka på ett spår som finns — ett sparat projekt
+            // kan ha färre spår än när det skrevs.
+            loaded_track.sidechain_from = st
+                .sidechain_from
+                .filter(|&k| k < t_idx && k < self.playlist_tracks.len());
+            loaded_track.sidechain_amount_db = st.sidechain_amount_db.clamp(0.0, 60.0);
+            loaded_track.sidechain_threshold_db = st.sidechain_threshold_db.clamp(-80.0, 0.0);
             loaded_track.pcm_audio = track_pcm;
             self.playlist_tracks.push(loaded_track);
             self.sync_track_regions(t_idx);
@@ -5266,6 +5310,12 @@ impl SonixApp {
                 bus: t.bus,
                 vca: t.vca,
             });
+            let _ = self.engine.send_command(AudioCommand::SetStemTrackSidechain {
+                track_index: track_idx,
+                from: t.sidechain_from,
+                amount_db: t.sidechain_amount_db,
+                threshold_db: t.sidechain_threshold_db,
+            });
             let _ = self.engine.send_command(AudioCommand::SetTrackEq {
                 track_index: track_idx,
                 settings: t.eq.to_settings(),
@@ -5337,6 +5387,12 @@ impl SonixApp {
                 track_index: track_idx,
                 bus: t.bus,
                 vca: t.vca,
+            });
+            let _ = self.engine.send_command(AudioCommand::SetStemTrackSidechain {
+                track_index: track_idx,
+                from: t.sidechain_from,
+                amount_db: t.sidechain_amount_db,
+                threshold_db: t.sidechain_threshold_db,
             });
             let _ = self.engine.send_command(AudioCommand::SetTrackEq {
                 track_index: track_idx,
@@ -13131,6 +13187,46 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                                 }
                             });
 
+                        // Sidokedja (Fas 8.3): spåret duckas av ett annat spårs ljud.
+                        ui.label(egui::RichText::new(crate::i18n::t("Sidokedja:")).size(10.0).color(Theme::TEXT_MUTED));
+                        if self.playlist_tracks.len() < 2 {
+                            // En sidokedja behöver ett annat spår att lyssna på.
+                            ui.label(egui::RichText::new(crate::i18n::t("(behöver två spår)")).size(10.0).color(Theme::TEXT_MUTED));
+                        } else {
+                            let cur_key = self.playlist_tracks[sel_idx].sidechain_from;
+                            egui::ComboBox::from_id_salt("sel_track_sidechain")
+                                .selected_text(match cur_key {
+                                    Some(k) => format!("{} {}", crate::i18n::t("Spår"), k + 1),
+                                    None => crate::i18n::t("Ingen").to_string(),
+                                })
+                                .width(84.0)
+                                .show_ui(ui, |ui| {
+                                    if ui.selectable_label(cur_key.is_none(), crate::i18n::t("Ingen")).clicked() && cur_key.is_some() {
+                                        self.playlist_tracks[sel_idx].sidechain_from = None;
+                                        track_dirty = true;
+                                    }
+                                    for k in 0..self.playlist_tracks.len() {
+                                        // Ett spår kan inte ducka sig självt — det är en slinga.
+                                        if k == sel_idx {
+                                            continue;
+                                        }
+                                        if ui.selectable_label(cur_key == Some(k), format!("{} {}", crate::i18n::t("Spår"), k + 1)).clicked() && cur_key != Some(k) {
+                                            self.playlist_tracks[sel_idx].sidechain_from = Some(k);
+                                            track_dirty = true;
+                                        }
+                                    }
+                                });
+                            if cur_key.is_some() {
+                                let sc_track = &mut self.playlist_tracks[sel_idx];
+                                track_dirty |= ui
+                                    .add(egui::Slider::new(&mut sc_track.sidechain_amount_db, 0.0..=24.0).text(crate::i18n::t("Duckning (dB)")))
+                                    .changed();
+                                track_dirty |= ui
+                                    .add(egui::Slider::new(&mut sc_track.sidechain_threshold_db, -60.0..=0.0).text(crate::i18n::t("Tröskel (dB)")))
+                                    .changed();
+                            }
+                        }
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.label(egui::RichText::new(crate::tstatus!("Spår {} av {}", sel_idx + 1, self.playlist_tracks.len())).size(10.5).color(Theme::TEXT_MUTED));
                         });
@@ -13986,6 +14082,9 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 pitch_semitones: t.pitch_semitones,
                 bus: t.bus,
                 vca: t.vca,
+                sidechain_from: t.sidechain_from,
+                sidechain_amount_db: t.sidechain_amount_db,
+                sidechain_threshold_db: t.sidechain_threshold_db,
             })
         }).collect();
 
@@ -18533,6 +18632,58 @@ mod tests {
         let track: SavedTrackData = serde_json::from_str(json).expect("äldre fil ska läsas");
         assert!(track.frozen.is_none(), "utan fältet är spåret ofrusat");
         assert_eq!(track.name, "Trummor");
+    }
+
+    /// Fas 8.3: en gammal projektfil har inga sidokedjefält — den ska läsas som
+    /// ett spår utan sidokedja, med samma standardtröskel som ett nytt spår får.
+    #[test]
+    fn an_old_project_file_without_a_sidechain_loads_with_none() {
+        let json = r#"{
+            "name": "Bas",
+            "volume": 0.8,
+            "pan": 0.0,
+            "muted": false,
+            "solo": false,
+            "clips": [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,
+                      null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+            "regions": []
+        }"#;
+        let track: SavedTrackData = serde_json::from_str(json).expect("äldre fil ska läsas");
+        assert!(track.sidechain_from.is_none(), "utan fältet finns ingen sidokedja");
+        assert_eq!(track.sidechain_amount_db, 0.0);
+        assert_eq!(track.sidechain_threshold_db, -30.0);
+    }
+
+    /// Och en fil **med** fältet ska få tillbaka exakt samma sidokedja: källspåret,
+    /// duckningen och tröskeln, både läst och skrivet.
+    #[test]
+    fn a_sidechain_survives_the_project_file() {
+        let json = r#"{
+            "name": "Bas",
+            "volume": 0.8,
+            "pan": 0.0,
+            "muted": false,
+            "solo": false,
+            "clips": [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,
+                      null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+            "regions": [],
+            "sidechain_from": 2,
+            "sidechain_amount_db": 9.5,
+            "sidechain_threshold_db": -24.0
+        }"#;
+        let track: SavedTrackData = serde_json::from_str(json).expect("filen ska läsas");
+        assert_eq!(track.sidechain_from, Some(2));
+        assert_eq!(track.sidechain_amount_db, 9.5);
+        assert_eq!(track.sidechain_threshold_db, -24.0);
+
+        // Rundgång: det som skrivs ska vara det som läses tillbaka.
+        let written = serde_json::to_value(&track).expect("projektfilen ska kunna skrivas");
+        assert_eq!(written["sidechain_from"], serde_json::json!(2));
+        assert_eq!(written["sidechain_amount_db"], serde_json::json!(9.5));
+        assert_eq!(written["sidechain_threshold_db"], serde_json::json!(-24.0));
+        let back: SavedTrackData = serde_json::from_value(written).expect("rundgången ska hålla");
+        assert_eq!(back.sidechain_from, Some(2));
+        assert_eq!(back.sidechain_amount_db, 9.5);
     }
 
     #[test]

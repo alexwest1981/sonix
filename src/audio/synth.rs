@@ -76,6 +76,9 @@ fn describe_cmd(cmd: &AudioCommand) -> String {
         AudioCommand::SetStemTrackRouting { track_index, bus, vca } => {
             format!("SetStemTrackRouting(idx={} bus={} vca={:?})", track_index, bus, vca)
         }
+        AudioCommand::SetStemTrackSidechain { track_index, from, amount_db, threshold_db } => {
+            format!("SetStemTrackSidechain(idx={} from={:?} amount={} threshold={})", track_index, from, amount_db, threshold_db)
+        }
         AudioCommand::SetBusState { bus, volume, muted, solo } => {
             format!("SetBusState(bus={} vol={} muted={} solo={})", bus, volume, muted, solo)
         }
@@ -114,6 +117,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetStemTrackState { .. } => "SetStemTrackState",
         AudioCommand::SetStemTrackRegions { .. } => "SetStemTrackRegions",
         AudioCommand::SetStemTrackRouting { .. } => "SetStemTrackRouting",
+        AudioCommand::SetStemTrackSidechain { .. } => "SetStemTrackSidechain",
         AudioCommand::SetBusState { .. } => "SetBusState",
         AudioCommand::SetVcaState { .. } => "SetVcaState",
         AudioCommand::SeekSongPosition(_) => "SeekSongPosition",
@@ -242,6 +246,60 @@ impl Voice {
 
 use std::sync::Arc;
 
+/// Sidokedje-duckare (Fas 8.3).
+///
+/// **Varför en egen liten DSP och inte en kompressor:** en kompressor med extern
+/// nyckel gör samma sak som att köra kompressorn på key-signalen och multiplicera
+/// den egna signalen med dess gain reduction. Det här är samma matematik, men
+/// utskriven: ett envelopföljande steg på key-signalen och en gain som går mot
+/// `-amount_db` när nyckeln är över tröskeln. Tidkonstanterna är fasta (5 ms
+/// attack, 120 ms release) — det är de värden en duckare brukar ha, och ett
+/// reglage mindre att förklara.
+///
+/// **Nyckeln är som mest ett sample gammal.** Spårloopen går i indexordning, så
+/// ett key-spår med högre index än målet har redan passerat förra samplet när
+/// målet räknas. 20 µs vid 48 kHz, mot tidkonstanter i millisekunder — att kräva
+/// samma sample hade krävt en omsortering av hela loopen per sample, och det
+/// hade varit en mycket dyrare konstruktion för en omätbar skillnad.
+#[derive(Clone, Copy, Debug)]
+pub struct Ducker {
+    /// Utjämnad nyckelnivå (linjär).
+    env: f32,
+    attack: f32,
+    release: f32,
+}
+
+impl Ducker {
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        Self {
+            env: 0.0,
+            attack: 1.0 - (-1.0 / (0.005 * sr)).exp(),
+            release: 1.0 - (-1.0 / (0.120 * sr)).exp(),
+        }
+    }
+
+    /// Lämnar gainen för det här samplet (1.0 = orörd).
+    pub fn process(&mut self, key_l: f32, key_r: f32, threshold_db: f32, amount_db: f32) -> f32 {
+        let peak = key_l.abs().max(key_r.abs());
+        let coeff = if peak > self.env { self.attack } else { self.release };
+        self.env += (peak - self.env) * coeff;
+        let env_db = 20.0 * self.env.max(1e-6).log10();
+        if env_db <= threshold_db {
+            return 1.0;
+        }
+        let target = 10.0f32.powf(-amount_db.clamp(0.0, 60.0) / 20.0);
+        // Mjuk övergång: 6 dB över tröskeln ger hela duckningen. Utan den hade
+        // gränsen blivit ett hörbart knäpp.
+        let over = ((env_db - threshold_db) / 6.0).clamp(0.0, 1.0);
+        1.0 - (1.0 - target) * over
+    }
+
+    pub fn reset(&mut self) {
+        self.env = 0.0;
+    }
+}
+
 pub struct StemVoiceTrack {
     pub left: Arc<Vec<f32>>,
     pub right: Arc<Vec<f32>>,
@@ -277,6 +335,17 @@ pub struct StemVoiceTrack {
     pub bus: usize,
     /// Optional VCA control group (`0..NUM_VCAS`) — Fas 5.2.
     pub vca: Option<usize>,
+    /// Sidokedja (Fas 8.3): spåret duckas av det här spårets ljud.
+    pub sidechain_from: Option<usize>,
+    /// Hur mycket spåret sänks när key-signalen är över tröskeln.
+    pub sidechain_amount_db: f32,
+    /// Tröskeln key-signalen måste över för att ducka.
+    pub sidechain_threshold_db: f32,
+    /// Duckarens tillstånd (en per spår — annars styr ett spår ett annat).
+    pub sidechain_ducker: Ducker,
+    /// Spårets senaste utgångssample, för sidokedjor som pekar hit.
+    pub last_out_l: f32,
+    pub last_out_r: f32,
 }
 
 impl StemVoiceTrack {
@@ -320,6 +389,12 @@ impl StemVoiceTrack {
             pdc: PdcDelay::new(),
             bus: 0,
             vca: None,
+            sidechain_from: None,
+            sidechain_amount_db: 0.0,
+            sidechain_threshold_db: -30.0,
+            sidechain_ducker: Ducker::new(engine_sample_rate),
+            last_out_l: 0.0,
+            last_out_r: 0.0,
         }
     }
 
@@ -829,6 +904,18 @@ impl SynthEngine {
                     track.vca = vca.filter(|&v| v < NUM_VCAS);
                 }
             }
+            AudioCommand::SetStemTrackSidechain { track_index, from, amount_db, threshold_db } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    // Ett `from` som pekar på spåret självt är ingen sidokedja —
+                    // det är en slinga, och den släpps inte in här. Ett `from`
+                    // utanför listan kan bli giltigt senare (spår läggs till), så
+                    // det sparas och filtreras vid användning.
+                    track.sidechain_from = from.filter(|&k| k != track_index);
+                    track.sidechain_amount_db = amount_db.clamp(0.0, 60.0);
+                    track.sidechain_threshold_db = threshold_db.clamp(-80.0, 0.0);
+                    track.sidechain_ducker.reset();
+                }
+            }
             AudioCommand::SetBusState { bus, volume, muted, solo } => {
                 let b = bus.min(NUM_BUSES - 1);
                 self.bus_volume[b] = volume.max(0.0);
@@ -1128,8 +1215,16 @@ impl SynthEngine {
                 || bus_solo.iter().any(|&s| s)
                 || vca_solo.iter().any(|&s| s);
             let current_time_sec = self.song_time_samples as f32 / self.sample_rate;
+            // Sidokedjor (Fas 8.3): nyckelsignalerna är varje spårs senaste
+            // utgångssample. De kopieras hit av samma skäl som gruppläget ovan —
+            // loopen lånar `stem_tracks` mutabelt och kan inte läsa ett annat spår.
+            let key_taps: Vec<(f32, f32)> = self
+                .stem_tracks
+                .iter()
+                .map(|t| (t.last_out_l, t.last_out_r))
+                .collect();
 
-            for track in &mut self.stem_tracks {
+            for (track_idx, track) in self.stem_tracks.iter_mut().enumerate() {
                 let bus = track.bus.min(NUM_BUSES - 1);
                 let vca = track.vca.filter(|&v| v < NUM_VCAS);
                 let group_soloed = bus_solo[bus] || vca.map(|v| vca_solo[v]).unwrap_or(false);
@@ -1299,7 +1394,28 @@ impl SynthEngine {
                     track_latency += plugin.latency_frames();
                 }
                 track.pdc.set_delay(max_plugin_latency.saturating_sub(track_latency));
-                let (tl, tr) = track.pdc.process(tl, tr);
+                let (mut tl, mut tr) = track.pdc.process(tl, tr);
+
+                // Sidokedjan duckar spårets **eget** ljud, efter dess kedja: det är
+                // där en kompressor med extern nyckel hade suttit, och det är det
+                // som hörs. Nyckeln är key-spårets senaste utgång (se `Ducker` för
+                // varför den är som mest ett sample gammal).
+                if let Some(key) = track
+                    .sidechain_from
+                    .filter(|&k| k != track_idx && k < key_taps.len())
+                {
+                    let (kl, kr) = key_taps[key];
+                    let gain = track.sidechain_ducker.process(
+                        kl,
+                        kr,
+                        track.sidechain_threshold_db,
+                        track.sidechain_amount_db,
+                    );
+                    tl *= gain;
+                    tr *= gain;
+                }
+                track.last_out_l = tl;
+                track.last_out_r = tr;
 
                 stem_mix_l += tl * group_gain;
                 stem_mix_r += tr * group_gain;
@@ -1933,5 +2049,224 @@ mod tests {
         });
         assert!((synth.bus_volume[NUM_BUSES - 1] - 0.3).abs() < 1e-6);
         assert!((synth.vca_volume[NUM_VCAS - 1] - 0.4).abs() < 1e-6);
+    }
+
+    // -- Fas 8.3: sidokedjor -------------------------------------------------
+
+    /// Energin vid **en** frekvens (Goertzel). Behövs för sidokedjetestet: nyckeln
+    /// och målet ligger på olika toner, och då mäter den här bara målet — annars
+    /// hade nyckelns egen ton drunknat i mätningen.
+    fn goertzel(buf: &[f32], freq: f32, sr: f32) -> f32 {
+        let n = buf.len() as f32;
+        let w = 2.0 * std::f32::consts::PI * freq / sr;
+        let (mut s1, mut s2) = (0.0f32, 0.0f32);
+        for &x in buf {
+            let s0 = x + 2.0 * w.cos() * s1 - s2;
+            s2 = s1;
+            s1 = s0;
+        }
+        ((s1 * s1 + s2 * s2 - 2.0 * w.cos() * s1 * s2).max(0.0)).sqrt() / n
+    }
+
+    /// Ett spår med en ren ton på `freq` i 3 s — samma form som
+    /// `load_impulse_and_silence` använder, men på valfri frekvens (en
+    /// likströmston hade high-passats bort) och lång nog för ett test som duckar,
+    /// släpper och mäter efteråt.
+    fn load_tone_track(synth: &mut SynthEngine, track_index: usize, freq: f32) {
+        // 3 s: ett sidokedjetest hinner både ducka, släppa och mäta efteråt.
+        let tone: Vec<f32> = (0..144_000)
+            .map(|i| (2.0 * std::f32::consts::PI * freq * i as f32 / 48_000.0).sin() * 0.6)
+            .collect();
+        let arc = Arc::new(tone);
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index,
+            left: arc.clone(),
+            right: arc,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+    }
+
+    fn render_left(synth: &mut SynthEngine, frames: usize) -> Vec<f32> {
+        (0..frames).map(|_| synth.process_stereo().0).collect()
+    }
+
+    /// Två spår: nyckeln på 220 Hz (spår 0) och målet på 880 Hz (spår 1).
+    fn sidechain_pair() -> SynthEngine {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_tone_track(&mut synth, 0, 220.0);
+        load_tone_track(&mut synth, 1, 880.0);
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+        synth
+    }
+
+    /// Duckarens egen matematik: öppen under tröskeln, ned mot `amount_db` över
+    /// den, och tillbaka igen när nyckeln tystnar.
+    #[test]
+    fn a_ducker_stays_open_below_the_threshold_and_closes_above_it() {
+        let mut d = Ducker::new(48_000.0);
+        for _ in 0..4_800 {
+            assert!((d.process(0.0, 0.0, -30.0, 12.0) - 1.0).abs() < 1e-6, "tyst nyckel ska inte ducka");
+        }
+        let mut gain = 1.0;
+        for _ in 0..4_800 {
+            gain = d.process(0.9, 0.9, -30.0, 12.0);
+        }
+        // −12 dB är 10^(−12/20) = 0.251. Mjuk övergång över 6 dB gör att en nyckel
+        // 30 dB över tröskeln ligger vid full duckning.
+        assert!(gain < 0.30 && gain > 0.20, "gainen ska ned mot −12 dB, fick {gain}");
+
+        // Nyckeln tystnar → duckaren öppnar igen (release 120 ms).
+        for _ in 0..96_000 {
+            gain = d.process(0.0, 0.0, -30.0, 12.0);
+        }
+        assert!(gain > 0.99, "duckaren ska ha öppnat igen, fick {gain}");
+    }
+
+    /// Noll duckning ska vara samma sak som ingen duckning — gainen ska aldrig
+    /// röra signalen.
+    #[test]
+    fn a_zero_amount_ducker_never_touches_the_signal() {
+        let mut d = Ducker::new(48_000.0);
+        for _ in 0..4_800 {
+            assert!((d.process(1.0, 1.0, -30.0, 0.0) - 1.0).abs() < 1e-4);
+        }
+    }
+
+    /// **Det som hörs:** spår 1 (880 Hz) duckas av spår 0 (220 Hz). Energin vid
+    /// 880 Hz mäts med och utan sidokedja — nyckelns egen ton ligger på en annan
+    /// frekvens, så den blandas inte in.
+    #[test]
+    fn a_sidechain_ducks_the_target_track() {
+        let own = {
+            let mut synth = sidechain_pair();
+            let buf = render_left(&mut synth, 48_000);
+            goertzel(&buf[9_600..], 880.0, 48_000.0)
+        };
+        let ducked = {
+            let mut synth = sidechain_pair();
+            synth.handle_command(AudioCommand::SetStemTrackSidechain {
+                track_index: 1,
+                from: Some(0),
+                amount_db: 18.0,
+                threshold_db: -30.0,
+            });
+            let buf = render_left(&mut synth, 48_000);
+            goertzel(&buf[9_600..], 880.0, 48_000.0)
+        };
+
+        assert!(own > 0.0, "målspåret ska höras utan sidokedja");
+        assert!(
+            ducked < own * 0.5,
+            "880 Hz ska ha dämpats av nyckeln: {own} → {ducked}"
+        );
+        assert!(ducked > 0.0, "dämpat, inte tystat");
+        // Och nyckeln själv ska vara kvar på sin frekvens.
+        let mut synth = sidechain_pair();
+        synth.handle_command(AudioCommand::SetStemTrackSidechain {
+            track_index: 1,
+            from: Some(0),
+            amount_db: 18.0,
+            threshold_db: -30.0,
+        });
+        let buf = render_left(&mut synth, 48_000);
+        assert!(goertzel(&buf[9_600..], 220.0, 48_000.0) > 0.01, "nyckeln ska höras som förut");
+    }
+
+    /// Ett `from` som pekar på spåret självt är en slinga och ignoreras — både när
+    /// det sätts och om spårlistan ändras efteråt. Ett `from` utanför listan duckar
+    /// ingen i stället för att få motorn att gå utanför bufferten.
+    #[test]
+    fn a_sidechain_never_points_at_the_track_itself_or_outside_the_list() {
+        let mut synth = sidechain_pair();
+        synth.handle_command(AudioCommand::SetStemTrackSidechain {
+            track_index: 0,
+            from: Some(0),
+            amount_db: 12.0,
+            threshold_db: -30.0,
+        });
+        assert_eq!(synth.stem_tracks[0].sidechain_from, None, "självreferens ska inte sparas");
+
+        synth.handle_command(AudioCommand::SetStemTrackSidechain {
+            track_index: 1,
+            from: Some(99),
+            amount_db: 12.0,
+            threshold_db: -30.0,
+        });
+        assert_eq!(synth.stem_tracks[1].sidechain_from, Some(99));
+        let buf = render_left(&mut synth, 4_800);
+        assert!(buf.iter().all(|s| s.is_finite()), "utanför listan: ingen panik, inget NaN");
+    }
+
+    /// En sidokedja som **inte** är kopplad får inte färga signalen alls: samma
+    /// motor, samma spår, en med ett uttryckligt `from: None` och en utan kommandot
+    /// — utsignalerna ska vara bitvis lika.
+    #[test]
+    fn an_unset_sidechain_leaves_the_signal_untouched() {
+        let mut plain = sidechain_pair();
+        let mut unset = sidechain_pair();
+        unset.handle_command(AudioCommand::SetStemTrackSidechain {
+            track_index: 1,
+            from: None,
+            amount_db: 24.0,
+            threshold_db: -40.0,
+        });
+
+        let mut identical = true;
+        for _ in 0..10_000 {
+            let (a, _) = plain.process_stereo();
+            let (b, _) = unset.process_stereo();
+            if (a - b).abs() > 1e-9 {
+                identical = false;
+                break;
+            }
+        }
+        assert!(identical, "utan kopplad sidokedja ska signalen vara orörd");
+    }
+
+    /// Och när en kopplad sidokedja tas bort ska nivån tillbaka. Här mäts **nivå**,
+    /// inte bitvis likhet: master-kedjans dynamik har minne av den duckade
+    /// perioden, så två motorer med olika historia kan inte jämföras sample för
+    /// sample. Nivån är det användaren hör.
+    #[test]
+    fn removing_a_sidechain_lets_the_level_come_back() {
+        // Referensen: samma spår, ingen sidokedja alls, samma mätfönster.
+        let mut plain = sidechain_pair();
+        let plain_buf = render_left(&mut plain, 48_000);
+        let expected = goertzel(&plain_buf[9_600..24_000], 880.0, 48_000.0);
+
+        let mut synth = sidechain_pair();
+        synth.handle_command(AudioCommand::SetStemTrackSidechain {
+            track_index: 1,
+            from: Some(0),
+            amount_db: 24.0,
+            threshold_db: -40.0,
+        });
+        let ducked_buf = render_left(&mut synth, 48_000);
+        let ducked = goertzel(&ducked_buf[9_600..24_000], 880.0, 48_000.0);
+
+        synth.handle_command(AudioCommand::SetStemTrackSidechain {
+            track_index: 1,
+            from: None,
+            amount_db: 24.0,
+            threshold_db: -40.0,
+        });
+        // 0,5 s: duckarens release är 120 ms, och master-kedjan ska hinna med.
+        // Räkningen måste stämma med källtonens längd (3 s = 144 000 samples):
+        // 48 000 (duckat) + 24 000 (återhämtning) + 24 000 (mätning) = 96 000.
+        let _ = render_left(&mut synth, 24_000);
+        let after_buf = render_left(&mut synth, 24_000);
+        let restored = goertzel(&after_buf, 880.0, 48_000.0);
+
+        assert!(
+            ducked < expected * 0.6,
+            "före borttagningen ska nivån vara dämpad: {ducked} mot {expected}"
+        );
+        assert!(
+            restored > expected * 0.8,
+            "efter borttagningen ska nivån tillbaka: {restored} mot {expected}"
+        );
     }
 }

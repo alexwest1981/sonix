@@ -259,6 +259,22 @@ Mixern ger full kontroll över balans, frekvenser och rumsakustik:
 * **Reverb & Delay Sends**: Justera rumsstorlek, efterklangstid och stereofördröjning.
 * **Master Limiter / Maximizer**: Säkerställer hög kommersiell ljudstyrka utan digital distorsion.
 
+### Sidokedja (duckning) — att låta ett spår styra ett annat
+
+Välj ett spår i mixern och leta upp raden **Sidokedja:** i kanalpanelen (bredvid Buss och VCA):
+
+* **Sidokedja:** vilket spår som ska styra. *Ingen* = avstängt. Ett spår kan inte ducka sig självt.
+* **Duckning (dB):** hur mycket spåret sänks när key-signalen är stark (0–24 dB).
+* **Tröskel (dB):** hur stark key-signalen måste vara innan duckningen börjar (−60–0 dB).
+
+Vanligast är att låta basen ge plats åt kicken, eller att låta sången trycka ned en pad.
+Ställ tröskeln så att bara kicken öppnar duckningen, och duckningen så pass att det hörs —
+4–8 dB räcker oftast. Tiderna är fasta (snabb attack, ~120 ms release), så det klickar inte
+och spåret är tillbaka fort.
+
+Sidokedjan följer med i **exporten** och sparas i **projektfilen**, så filen låter som det du
+hörde i högtalarna. Ett äldre projekt öppnas utan sidokedja, precis som förut.
+
 ---
 
 ## 11. Export & Master-rendering (Ctrl+E)

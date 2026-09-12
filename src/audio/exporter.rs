@@ -111,6 +111,10 @@ pub struct TrackAudioSnap {
     pub bus: usize,
     /// Optional VCA group assignment (Fas 5.2).
     pub vca: Option<usize>,
+    /// Sidokedja (Fas 8.3): spåret duckas av det här spårets ljud.
+    pub sidechain_from: Option<usize>,
+    pub sidechain_amount_db: f32,
+    pub sidechain_threshold_db: f32,
 }
 
 /// Master FX / synth settings snapshot.
@@ -355,6 +359,12 @@ pub fn load_timeline_into_engine(engine: &mut SynthEngine, timeline: &[TrackAudi
             track_index: t.track_index,
             bus: t.bus,
             vca: t.vca,
+        });
+        engine.handle_command(AudioCommand::SetStemTrackSidechain {
+            track_index: t.track_index,
+            from: t.sidechain_from,
+            amount_db: t.sidechain_amount_db,
+            threshold_db: t.sidechain_threshold_db,
         });
         engine.handle_command(AudioCommand::SetTrackEq {
             track_index: t.track_index,
@@ -1161,6 +1171,95 @@ mod tests {
         let min_frames = 2 * 16 * (step_frames - 1) + 4410;
         let max_frames = 2 * 16 * (step_frames + 1) + 4410 + 64;
         assert!(frames >= min_frames && frames <= max_frames, "unexpected frame count {}", frames);
+    }
+
+    /// Fas 8.3 i exporten: en sidokedja följer med offline-renderingen. Spår 1
+    /// (880 Hz) duckas av spår 0 (220 Hz) — energin vid 880 Hz mäts i den färdiga
+    /// mixen, alltså samma sak som hörs vid uppspelning. Utan det här testet hade
+    /// exporten kunnat tappa en duckning som uppspelningen har.
+    #[test]
+    fn a_sidechain_follows_the_offline_render() {
+        fn spec_with_sidechain(sidechain: bool) -> RenderSpec {
+            let mut spec = render_smoke_spec();
+            // Tyst kanalrack: bara de två tidslinjespåren ska höras.
+            for ch in spec.rack.iter_mut() {
+                ch.steps = [false; 16];
+            }
+            // Tidslinjespåren hörs bara när sången spelas (inte pattern-läget).
+            spec.pattern_mode = false;
+            let tone = |freq: f32| -> Arc<Vec<f32>> {
+                let n = 44_100 * 3;
+                Arc::new(
+                    (0..n)
+                        .map(|i| {
+                            (2.0 * std::f32::consts::PI * freq * i as f32 / 44_100.0).sin() * 0.5
+                        })
+                        .collect(),
+                )
+            };
+            let snap = |track_index: usize, freq: f32, from: Option<usize>| TrackAudioSnap {
+                track_index,
+                left: tone(freq),
+                right: tone(freq),
+                sample_rate: 44_100,
+                volume: 1.0,
+                pan: 0.0,
+                muted: false,
+                regions: vec![StemRegionPlayback {
+                    start_time_secs: 0.0,
+                    length_secs: 3.0,
+                    sample_offset_sec: 0.0,
+                    gain: 1.0,
+                    fade_in_sec: 0.0,
+                    fade_out_sec: 0.0,
+                    muted: false,
+                    is_reverse: false,
+                    loop_length_secs: 0.0,
+                }],
+                eq: TrackEqSettings::default(),
+                comp_threshold_db: 0.0,
+                comp_ratio: 1.0,
+                reverb_send: 0.0,
+                delay_send: 0.0,
+                pitch_semitones: 0.0,
+                bus: 0,
+                vca: None,
+                sidechain_from: from,
+                sidechain_amount_db: 18.0,
+                sidechain_threshold_db: -30.0,
+            };
+            spec.timeline = vec![
+                snap(0, 220.0, None),
+                snap(1, 880.0, if sidechain { Some(0) } else { None }),
+            ];
+            spec
+        }
+
+        let energy_880 = |sidechain: bool| -> f32 {
+            let spec = spec_with_sidechain(sidechain);
+            let fx = FxState {
+                waveform: super::super::command::Waveform::Square,
+                adsr: AdsrParams { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.1 },
+                filter: FilterParams::default(),
+                delay: DelayParams::default(),
+                reverb: ReverbParams::default(),
+                drive: 1.0,
+                master_volume: 0.9,
+                master_fx: MasterFxParams::default(),
+            };
+            let mut engine = build_offline_engine(&spec, &fx);
+            let buf = render_project_offline(&mut engine, &spec);
+            let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
+            tone_energy(&left[44_100..], 880.0, 44_100.0)
+        };
+
+        let open = energy_880(false);
+        let ducked = energy_880(true);
+        assert!(open > 0.0, "målspåret ska höras i exporten");
+        assert!(
+            ducked < open * 0.6,
+            "exporten ska ha duckningen: {open} → {ducked}"
+        );
     }
 
     fn sine_buffer(rate: u32, secs: f32) -> Vec<f32> {

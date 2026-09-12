@@ -1740,6 +1740,11 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Bussar summerar spår; VCA styr grupper utan att routa ljudet." => "Buses sum tracks; VCAs control groups without routing audio.",
         "Buss:" => "Bus:",
         "Ingen" => "None",
+        "Sidokedja:" => "Sidechain:",
+        "Duckning (dB)" => "Ducking (dB)",
+        "Tröskel (dB)" => "Threshold (dB)",
+        "(behöver två spår)" => "(needs two tracks)",
+        "Spår" => "Track",
         "Trummor" => "Drums",
         _ => return None,
     })
