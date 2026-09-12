@@ -1948,6 +1948,8 @@ pub enum ScreenshotTarget {
     AddTrackModal,
     HelpGuideModal,
     AboutModal,
+    /// Frågan om mp3 eller wav (Fas 8.5).
+    WavQuestionModal,
 }
 
 #[derive(Clone, Debug)]
@@ -2625,6 +2627,7 @@ impl SonixApp {
             (ScreenshotTarget::AddTrackModal, out_dir.join("27_dialog_lagg_till_spar.png")),
             (ScreenshotTarget::HelpGuideModal, out_dir.join("28_dialog_hjalpguide_manual.png")),
             (ScreenshotTarget::AboutModal, out_dir.join("29_dialog_om_sonix.png")),
+            (ScreenshotTarget::WavQuestionModal, out_dir.join("30_dialog_mp3_eller_wav.png")),
         ];
 
         self.screenshot_queue = targets;
@@ -2680,6 +2683,19 @@ impl SonixApp {
             ScreenshotTarget::SunoImportModal => {
                 self.view_mode = ViewMode::PlaylistArranger;
                 self.show_suno_import_modal = true;
+            }
+            ScreenshotTarget::WavQuestionModal => {
+                // Ett påhittat men trovärdigt underlag: frågan ser ut som den gör
+                // när en import har tre mp3:er som redan har sina wav-syskon.
+                self.view_mode = ViewMode::PlaylistArranger;
+                self.pending_wav_question = Some(WavQuestion::StemImport {
+                    source: StemImportSource::Folder(
+                        crate::paths::paths().samples_dir().to_string_lossy().into_owned(),
+                    ),
+                    title: "Cyberpunk Odyssey".to_string(),
+                    bpm: 126.0,
+                    duplicates: 3,
+                });
             }
             ScreenshotTarget::ControllerModal => {
                 self.view_mode = ViewMode::PlaylistArranger;
@@ -8313,7 +8329,9 @@ impl eframe::App for SonixApp {
                         self.screenshot_state = ScreenshotState::Preparing { target, dest, frames_left: 4 };
                         ctx.request_repaint();
                     } else {
-                        println!("🎉 Alla 29 skärmdumpar har genererats och sparats framgångsrikt!");
+                        // Antalet står inte här: listan växer när en dialog läggs
+                        // till, och en siffra i en utskrift blir fel tyst.
+                        println!("🎉 Alla skärmdumpar har genererats och sparats framgångsrikt!");
                         self.screenshot_mode_active = false;
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }

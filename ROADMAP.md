@@ -636,12 +636,12 @@ som riktiga vågor. Alex lyssnade och konstaterade att de pixlade var **tysta**.
   `keep_mp3` behåller allt. Inkopplad i `scan_for_suno_stems`, med antalet
   överhoppade i statusraden. Två tester.
 
-### Modellen framåt — det som återstår att följa
+### Modellen framåt — genomgången (KLAR 2026-09-12)
 
-`import_audio_file_as_track` gör redan rätt: den **rapporterar och avbryter** när
-ljudet inte kan läsas. Den skapar aldrig ett klipp utan ljud. Alla vägar som skapar
-en region bör följa den modellen i stället för att skapa ett klipp med
-nollängd/tom vågform. Att gå igenom dem är nästa steg:
+`import_audio_file_as_track` gör rätt: den **rapporterar och avbryter** när ljudet
+inte kan läsas. Den skapar aldrig ett klipp utan ljud. Nu följer alla vägar som
+skapar en region eller ett klipp den modellen — och de tre som i stället **hittade
+på ett ljud** hittar inte på något längre:
 
 - ~~`add_sample_item_to_timeline` (två varianter)~~ — **KLART.** Båda hittade på en
   längd (fyra takter) när avkodningen misslyckades och skapade regionen ändå, med
@@ -649,21 +649,84 @@ nollängd/tom vågform. Att gå igenom dem är nästa steg:
   exakt hur Alex' korta klipp blev tysta med trovärdiga vågor. Nu: rapportera och
   avbryt, som `import_audio_file_as_track`. I `add_sample_item_to_track_at_bar`
   ligger guarden **före** spårskapandet — annars blev ett tomt spår kvar.
-- `open_sample_in_vocal_studio` / `open_region_in_vocal_studio`.
-- ▶-förhandslyssningen i Sound Browser (gör inget alls vid fel, utan att säga det).
-- Det frusna spårets avkodning.
-- `load_sample_pcm_arcs`-anroparna rapporterar nu, men **avbryter** inte.
+- ~~`open_sample_in_vocal_studio` / `open_region_in_vocal_studio`~~ — **KLART.**
+  Båda byggde en **syntetisk sinuston** när filen inte gick att läsa (sample-vägen:
+  två sekunder ur samplens `default_note`; region-vägen: 220 Hz) och öppnade den
+  som en tagning i Sångstudion. En mp3 blev alltså en *påkittad* tagning i stället
+  för ett besked, och den som lyssnade hörde något som varken var samplen eller
+  tystnad. Nu: besked i statusraden och ingen tagning. Sample-vägen skickar också
+  med **filens egen** samplerate (förut sades 44100 oavsett, så en 48 kHz-tagning
+  spelades i fel hastighet).
+- ~~▶-förhandslyssningen i Sound Browser~~ — **KLART**, och felet var större än
+  raden antydde: vägen hade **två fall men tre situationer**. En sample utan fil
+  spelar appens egen syntröst (riktigt svar), men en sample *med* fil som inte gick
+  att läsa föll ned i samma gren — den som lyssnade hörde en syntetisk trumma och
+  trodde det var filen. Samma sak i `audition_library_sample` (som också anropas
+  från kanalväljaren). Nu: ingen fil → syntrösten, läsbar fil → filen, oläsbar fil
+  → ett besked.
+- ~~Det frusna spårets avkodning~~ — **KLART.** `frozen_pcm` ärvde `track_pcm`,
+  alltså spårets eget klippljud när frysfilen inte gick att läsa: ett spår som ser
+  fruset ut spelade sin **ofrusna** mix (och i värsta fall tyst). Nu bär
+  `PreloadedTrackData.frozen_pcm` bara det frusna ljudet, "filen saknas" och "filen
+  går inte att läsa" ger samma besked, och alla problem samlas i stället för att
+  skriva över varandra — förut nämndes bara den sista filen.
+- ~~`load_sample_pcm_arcs`-anroparna rapporterar nu, men **avbryter** inte~~
+  — **KLART för de två som *väljer* ett ljud:** `assign_library_sample_to_channel`
+  flyttade förut in namn, färg, steg och bibliotekets grova vågform i kanalen även
+  när filen inte kunde läsas, medan `pcm_audio` blev tom — kanalen såg ut att ha ett
+  eget sample och spelade den inbyggda synten. Nu läses ljudet **först**; går det
+  inte är kanalen orörd och beskedet står i statusraden. **Medvetet undantag:**
+  `saved_to_channel` (projektinläsning) kan inte avbrytas för en saknad samplefil —
+  där blir i stället vågformen **tom** (den räknas ur ljudet) så att inget ser ut att
+  ha ljud, och filen nämns i statusraden genom samma lista. Testat
+  (`a_channel_with_an_unreadable_sample_carries_no_waveform`).
 
-### Dialog vid import (Alex' förslag, inte byggd)
+**Bevis:** 316 tester default, 362 med `plugin-host`, 0 varningar i båda profilerna.
+Nya tester: stämmorna skrivs och läses tillbaka med hela ljudet, vågformen kommer ur
+filen, ett snedstreck i titeln kan inte lämna katalogen, noll stämmor är ett fel, en
+katalog som inte går att skapa är ett fel, namnregeln för stämfilerna, kanalen orörd
+vid oläsbar fil (och ljudet med när filen går att läsa), kanal utan vågform när
+samplen är oläsbar, frågans räkning ger samma svar som importen, wav-syskonet hittas
+bara när det finns, och (ignorerad, körd) en mätning mot ett **riktigt** zip-arkiv.
 
-En dialog som frågar om mp3:erna ska med. Regeln finns redan
-(`stem_files_for_import`, `keep_mp3`-vägen är dess "ja"), så dialogen blir en fråga
-om detta enda val — och den ska gälla även stämseparatorn.
+### Dialog vid import (byggd 2026-09-12)
 
-### Separatören skriver inget till disk
+Frågan ställs av `render_wav_question_modal` och gäller **alla vägar in**:
 
-`stem_separator.rs` tar färdig PCM in och skriver aldrig ut stämmorna som filer.
-Dess enda spår blir den grova översikten (512 punkter, `visual_peaks_from`) plus en
-`source_path` som pekar på **originalet**. Kommer originalet från en mp3 uppstår
-precis den kombination Alex såg: en trovärdig vågform, inget ljud. Att skriva
-stämmorna som wav är den naturliga fixen.
+- **Mappimport och ZIP-import:** frågan kommer innan avkodningen börjar, och bara
+  när det finns något att fråga om (mp3:er med wav-syskon — annars går importen rakt
+  igenom som förut). Standardvalet är regeln: hoppa över dem. ZIP-frågan måste
+  komma **före** uppackningen, eftersom uppackningen sker i bakgrunden; arkivets
+  innehållsförteckning läses därför med `unzip -Z1` utan att packa upp.
+- **Stämseparatorn:** väljer man en mp3 som har sin wav bredvid sig ställs samma
+  fråga — separera wav-filen (rekommenderas) eller mp3-filen. Båda ger samma ljud,
+  men mp3:an måste konverteras först, och den som *vill* använda mp3:an (kanske den
+  enda mastern) kan säga det.
+- Regeln och frågan delar kod: `stem_files_for_import` väljer, `duplicate_mp3_count`
+  räknar (samma regel), `list_stem_audio_files` ser till att frågan och importen
+  tittar på **samma** lista. Engelsk rad för hela 8.5-familjen (35 strängar) så att
+  fallbacken inte visar svenska för en engelsk användare.
+- **Ej klickad i GUI:** dialogen är inte sedd med egna ögon i den här sessionen.
+  Appens egen skärmdumpsloop (som gav `screenshots/` 2026-09-11) stannar nu: den
+  skickar `ViewportCommand::Screenshot` och väntar på `Event::Screenshot` som aldrig
+  kommer, så bara den första vyn blir satt. `grim` mot DP-3 (och alla tre skärmarna)
+  gav i stället bara bakgrundsbilden. En ny målbild finns för ändamålet
+  (`ScreenshotTarget::WavQuestionModal` → `30_dialog_mp3_eller_wav.png`), så nästa
+  gång loopen fungerar blir den fångad automatiskt. Tills dess: kör
+  `sonix <mapp>` med en wav + en mp3 med samma stämnamn i mappen — frågan kommer
+  direkt vid start.
+
+### Separatören skriver stämmorna till disk (KLART 2026-09-12)
+
+`stem_separator.rs` skrev aldrig ut stämmorna: dess enda spår blev den grova
+översikten (512 punkter) plus en `source_path` som pekade på **originalet**. Kom
+originalet från en mp3 uppstod precis den kombination Alex såg — en trovärdig
+vågform och inget ljud — och tystnaden kom tillbaka varje gång projektet öppnades.
+
+Nu skriver `write_stems_to_dir` varje stämma som **32-bitars flyttals-WAV** i
+projektets egen materialmapp (`<projektmappen>/Stems/<källa>-vocals.wav` osv), och
+`write_stems_and_read_envelopes` läser tillbaka dem: regionens `source_path` **och**
+dess vågform kommer båda ur den filen. Klippet pekar alltså på sitt eget ljud, och
+en trasig eller tom skrivning blir ett fel i statusraden i stället för fyra tysta
+klipp. Filnamnet byggs med `crate::autosave::slug`, så ett snedstreck eller `..` i en
+låt- eller filttitel kan inte lägga stämman utanför katalogen (testat).
