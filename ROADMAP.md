@@ -56,13 +56,15 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 ## ⬜ Vad som återstår (räknat ur listan 2026-09-12)
 
-**Tio punkter är obockade.** Sex från den första räkningen och fyra som kom till 2026-09-12
-efter researchen om plugins och chopping (rad 7–10; underlaget ligger i `sonix`-skillen som
+**Tolv rader.** Sex från den första räkningen, fyra som kom till 2026-09-12 efter researchen om
+plugins och chopping (rad 7–10; underlaget ligger i `sonix`-skillen som
 `references/daw-research/05-audacity-plugins-effekter-klipp.md`,
 `06-flstudio-plugins-chopping.md` och `07-chopping-och-onset-detektering.md`, alla med
-primärkällor). Sju går att göra vid datorn, två kräver Wine och en display, och en kräver en
-Windows-maskin för kvittensen. Ordningen är den som ger mest per timme. (8.5a steg 2 stod som
-en elfte rad och är **klart** sedan samma kväll — se `Gjort`.)
+primärkällor), och två som kom till samma kväll och dygn: **8.10** (ljudet följer tempot — rad
+11) och **8.11** (tonarten — rad 12, byggd och väntar bara på Alex' ögon). Sju går att göra vid
+datorn, två kräver Wine och en display, och en kräver en Windows-maskin för kvittensen.
+Ordningen är den som ger mest per timme. (8.5a steg 2 stod här som en elfte rad och är **klart**
+— se `Gjort`.)
 
 **Ändrat 2026-09-12 kväll:** klass-fixen i **8.5** stängde elva ställen som läste ljud
 utan att säga till när det misslyckades, och de två vägarna från Sound Browser som
@@ -83,7 +85,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
-| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *S–M* | **Steg 1 klart och kvitterat av Alex** (`f0dc8eb` + `a510775`); kvar: pitch-bevarande (WSOLA), klipp över ett tempobyte, och att vyn visar att klippet är sträckt | — |
+| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **Steg 1 klart och kvitterat av Alex** (`f0dc8eb` + `a510775`). **Vägen framåt är nu researchad och vald** (se "Vad researchunderlaget säger" under 8.10): pitch-bevarande sträckning **offline till fil + cache**, egen DSP som bas, **en enda switch** för användaren. Kvar: koppla in sträckningen i tidslinjen, klipp över ett tempobyte, och att vyn visar att klippet är sträckt | — |
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **Klart** (`392a30c`): en tabell, ett index, låset gör något, tonarten sparas — se fas 8.11 | Alex' ögon på markeringen |
 
 
@@ -1208,7 +1210,99 @@ hjälptexten är läst, inte sedd, och det är Alex' öra som avgör om bandspel
    beteendet är oförändrat sedan före 8.10 (medvetet: ingen tyst beteendeändring), men det
    är fel och förtjänar en egen rad.
 
+### Vad researchunderlaget säger (2026-09-12)
+
+**Alex' krav, ordagrant:** det ska vara "så enkelt att ett dumhuvud kan hantera det", det ska
+finnas "i systemet om plugin är aktiverat", och det "får inte upplevas som en möjlig spricka i
+rustningen" — **stabilitet före funktion**. Underlaget: `references/daw-research/08-tempo-stretch-ableton-flstudio.md`,
+`09-tempo-stretch-ovriga-dawer.md` och `10-tempo-stretch-algoritmer.md` (primärkällor:
+Abletons manual och Audio Fact Sheet, Image-Lines onlinemanual, Reapers User Guide, Apples,
+Steinbergs, PreSonus' och Avids manualer, Bitwigs userguide, CLAP:s och VST3:s specifikationer,
+Driedger & Müller 2016, Laroche & Dolson 1999, Verhelst & Roelands 1993, samt zplanes,
+Rubber Bands, SoundTouchs och signalsmith-stretch's egna dokumentation).
+
+**1. Premissen rättas: formanter är inte problemet.** En korrekt pitch-bevarande tidsskalning
+flyttar **inte** formanterna — frekvenserna står kvar, bara ramarnas placering i tiden ändras.
+Formant-reglage är **pitch-shift-funktioner**: Ableton säger om Complex Pro:s Formants-reglage
+att det "has no effect if the sample's transposition is not changed", Rubber Band lägger till
+`OptionFormantPreserved` "if you are pitch-shifting vocals … to avoid the chipmunk effect", och
+zplane säljer det som "formant-preserving **pitch shifting**". **Smurfen vid en BPM-ändring
+försvinner alltså så snart sträckningen bevarar tonhöjden** — ingen formant-flagga behövs för
+det. Kvar blir motorns kvalitet på sång: fas-vocoderns "phasiness" och WSOLA:s
+transientdubbling/warbling gör rösten tunn. Det är motorvalet som avgör, inte en kryssruta.
+
+**2. Vad de etablerade gör — och antalet val en användare möter.**
+
+| DAW | Följer tempot | Varispeed-läget (smurfen) | Sångläget | Val som krävs |
+| :--- | :--- | :--- | :--- | :--- |
+| Ableton | ja som **default** (warpat) | *Re-Pitch* | *Tones* (monofont), *Complex Pro* (polyfont) | globalt default + 1 per klipp |
+| FL Studio | **nej som default** ("TIME = (none)") | *Resample* | e3/e2 *Mono* | 2–3 per kanal |
+| Reaper | ja (projektets timebase) | utan "Preserve pitch" | **Élastique SOLOIST** | globalt *eller* per item |
+| Logic | Flex av som default | *Speed* | *Monophonic* (Automatic väljer) | 1 per region + algoritm per spår |
+| Cubase | opt-in (Musical Mode) | *Tape* | *Standard – Vocals/Solo* | 1 per klipp + preset |
+| Studio One | *Follow*/*Timestretch* per spår | *Tape* | **Solo** (Elastique Pro Monophonic Formant) | 1 per spår + materialläge |
+| Pro Tools | tick-based per spår | *Varispeed* | *Monophonic* (**default är Polyphonic**) | 1 per spår + algoritm |
+
+**3. Enkelheten: ingen av de sex klarar ett enda val.** Minimum är *två* (följ tempot +
+algoritm); Reaper och Studio One låter båda sättas en gång globalt, Cubase är närmast ett enda
+kryss — och **Pro Tools väljer fel åt sångaren** (Polyphonic, inte Monophonic). Zrythm valde
+global PÅ/AV med per-klipp-override. **Vårt mål är därför att göra bättre än alla sex: en enda
+switch, "Följ tempot", och ingen algoritm att välja.** Klipp med känt `source_bpm` följer
+tempot; motorn väljs av klippets typ (röst/monofont → monofon sträckning, rytmiskt → sträckning,
+och *tape* bara som ett uttryckligt undantag för den som vill ha effekten). 8.10:s regel står:
+ett klipp med **okänt** tempo rörs inte.
+
+**4. Stabiliteten: egen DSP är basen, offline-render är vägen.** Ingen av de sex DAW:erna skickar
+sin tempo-följning till en **hostad** plugin — mönstret är inbäddade licensierade motorer
+(zplane élastique hos Pro Tools, Cubase, Studio One, Bitwig och Reaper) eller egen DSP (Logic).
+Pro Tools har visserligen pluginen X-Form (iZotope Radius), men den är **Rendered Only** — "cannot
+process in real-time". Det bekräftar valet: sträckningen räknas **offline till en fil** och
+cachas (Pro Tools' Rendered-läge, Studio Ones *Timestretch Cache*), varefter tidslinjen spelar en
+vanlig fil och **uppspelningsvägen inte får någon ny felkälla**. Sonix egen WSOLA (redan i
+`vocal_harmonizer.rs`, testad) är basen; en plugin kan senare få ersätta **renderingssteget** —
+aldrig uppspelningen — och dess utdata ska valideras (längd, ändliga sampel, inte tyst) innan den
+accepteras, annars faller vi tillbaka på vår egen DSP och **säger det**.
+Felfalls-mönstret att kopiera är mätt: **Ableton** varnar och spelar **tyst** för en offline-fil
+("cannot be played until analyzed"), medan **FL inaktiverar** (gråar ut) utan varning och en
+misslyckad stretch bara *hörs*. Vi väljer Abletons tydlighet: besked i statusraden, och originalet
+kvar — samma regel som 8.5.
+
+**5. Plugin-frågan, besvarad.** En hostad plugin ser bara sin egen kanal och ersätter därför
+inte en projektmekanism; den kan vara **motorn som mekanismen anropar**. Tekniskt finns vägen:
+CLAP bär tempo i `clap_event_transport` (`tempo`, `CLAP_TRANSPORT_HAS_TEMPO`) — det finns **ingen
+`clap.tempo`-extension** — och CLAP har `clap.render` med `CLAP_RENDER_OFFLINE` ("The plugin may
+use more expensive algorithms for higher sound quality"), vilket är exakt rätt dörr för en
+offline-render. VST3 bär samma sak i `ProcessContext.tempo` med `kTempoValid`. Bland färdiga
+plugins är **ELASTIQUE PITCH** (zplane, VST3/AU/AAX, ~175–199 USD) en realtids-*pitch*-plugin,
+medan **élastiqueAAX** är offline-render förpackad som plugin ("no realtime operation"). Ingen
+dokumenterad DAW lägger ut just tempo-stretch på en generell hostad CLAP/VST3-plugin — det är
+**INTE VERIFIERAT** att någon gör det.
+
+**6. Motorn: vad vi har, och vad vi kan låna.** Vår WSOLA är billig och realtidsvänlig men
+transientdubblar och warbler på polyfonisk sång (Driedger & Müller § 4.2). Kvalitetsvägen är en
+fusion: separera harmoniskt/perkussivt, fas-vocoder med *identity phase locking* på det
+harmoniska och kort OLA på det perkussiva — det är familjen de kommersiella motorerna bygger på.
+Licenserna utesluter det mesta: `rubberband`-craten är **GPL-2.0-or-later** (kommersiell licens
+590/1 490/9 320 GBP), `soundtouch` är **LGPL-2.1**, medan **signalsmith-stretch är MIT** och
+därmed den enda som passar Sonix' `MIT OR Apache-2.0` utan vidare — och den är dessutom
+"best for more modest changes (between 0.75x and 1.5x)", vilket är precis spannet en
+tempoändring rör sig i. zplanes élastique (Pro/SOLOIST, monofont med formantbevarande
+pitch-shift) är det dyraste men bästa alternativet, licensierat per sålt exemplar.
+
+**7. Acceptanskriterier (mätbara, innan punkten får kallas klar).**
+
+1. **Bit-exakt vid faktor 1,0** — ett klipp vars `source_bpm` = projektets tempo ger samma
+   sampel som före ändringen (samma regressionsvakt som `region_source_secs` redan har).
+2. **Tonhöjden står still vid tempoändring**: en sinuston i ett klipp har samma uppmätta
+   grundfrekvens före och efter en BPM-ändring på ±20 %, medan längden ändras med faktorn.
+3. **En trasig sträckning spelas aldrig**: en renderad fil som är tom, för kort eller innehåller
+   NaN avvisas, originalet fortsätter spela och statusraden säger varför.
+4. **Ett klipp med okänt tempo rörs inte** (8.10), och ett klipp över ett tempobyte följer bytet.
+5. **Antalet val för användaren är ett** — "Följ tempot" — och ingen algoritm väljs manuellt.
+
 ---
+
+
 
 ## 8.11 Tonarten som tonart (Alex' svar 2026-09-12)
 
