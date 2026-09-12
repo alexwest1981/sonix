@@ -279,6 +279,7 @@ pub fn render_vocal_studio_view(
                                         playlist_tracks[target_idx].pcm_audio = Some((pcm_arc.clone(), pcm_arc, take.sample_rate));
 
                                         let region = AudioRegion {
+                                            source_bpm: bpm, // tagningen gjordes i projektets tempo (8.10)
                                             id: region_id,
                                             name: format!("🎙 {}", take_name),
                                             start_bar: 0.0,

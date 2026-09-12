@@ -479,6 +479,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "↶ Ångra (Ctrl+Z)" => "↶ Undo (Ctrl+Z)",
         "↷ Gör om (Ctrl+Y)" => "↷ Redo (Ctrl+Y)",
         "✂ Klipp vid spelhuvud (Ctrl+B / S)" => "✂ Cut at playhead (Ctrl+B / S)",
+        "Klippens tempo: inga klipp har ett känt inspelningstempo ännu, så ljudet rörs inte när du ändrar tempot." => "Clip tempo: no clips have a known recording tempo yet, so the audio is left alone when you change the tempo.",
+        "Klippens tempo: {} klipp har ett känt inspelningstempo och följer med när du ändrar tempot (tonhöjden följer med, som på en bandspelare). Klipp med okänt tempo rörs inte." => "Clip tempo: {} clips have a known recording tempo and follow when you change the project tempo (pitch follows, as on a tape machine). Clips with an unknown tempo are left alone.",
         "📋 Duplicera markerat (Ctrl+D)" => "📋 Duplicate selection (Ctrl+D)",
         "🗑 Ta bort markerat (Del)" => "🗑 Delete selection (Del)",
         "🧹 Rensa alla spår" => "🧹 Clear all tracks",

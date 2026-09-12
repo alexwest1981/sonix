@@ -300,6 +300,39 @@ impl Ducker {
     }
 }
 
+/// Var i spårets ljud en region befinner sig vid en given tid in i klossen
+/// (Fas 8.10).
+///
+/// **Ren funktion**, för att kunna prövas utan ljudmotor — motorn anropar den en
+/// gång per sample. Utan sträckning (`stretch_ratio == 1.0`) ger den exakt samma
+/// svar som före 8.10: samma uttryck, bara med tiden flyttad till källans
+/// tidslinje. Vid 1.0 är vägen alltså bit-exakt som förut.
+///
+/// `rel_time` är sekunder in i regionen (ut-tid), svaret sekunder in i spårets ljud
+/// (käll-tid). En slingad kloss upprepar ett stycke: perioden är
+/// `loop_length_secs` i ut-tid, och källan som hinns igenom per varv är lika lång
+/// gånger sträckningen.
+pub fn region_source_secs(region: &StemRegionPlayback, rel_time: f32) -> f32 {
+    let rate = region.stretch_ratio.max(0.05);
+    let moved = rel_time * rate;
+    if region.loop_length_secs > 0.02 {
+        let loop_src = region.loop_length_secs * rate;
+        let phase = (region.sample_offset_sec + moved) % loop_src;
+        if region.is_reverse {
+            (loop_src - phase).max(0.0)
+        } else {
+            phase
+        }
+    } else if region.is_reverse {
+        // Samma uttryck som före 8.10, med tiden sträckt. (Ett omvänt klipp med
+        // `sample_offset_sec > 0` hamnar utanför sitt eget utsnitt — det beteendet
+        // är oförändrat här och står som en egen punkt i roadmapen.)
+        (region.length_secs * rate - (region.sample_offset_sec + moved)).max(0.0)
+    } else {
+        region.sample_offset_sec + moved
+    }
+}
+
 pub struct StemVoiceTrack {
     pub left: Arc<Vec<f32>>,
     pub right: Arc<Vec<f32>>,
@@ -1269,21 +1302,9 @@ impl SynthEngine {
                                 env *= (time_left / region.fade_out_sec).clamp(0.0, 1.0);
                             }
 
-                            let sample_pos_sec = if region.loop_length_secs > 0.02 {
-                                let loop_dur = region.loop_length_secs;
-                                let eff_time = (region.sample_offset_sec + rel_time) % loop_dur;
-                                if region.is_reverse {
-                                    (loop_dur - eff_time).max(0.0)
-                                } else {
-                                    eff_time
-                                }
-                            } else {
-                                if region.is_reverse {
-                                    (region.length_secs - (region.sample_offset_sec + rel_time)).max(0.0)
-                                } else {
-                                    region.sample_offset_sec + rel_time
-                                }
-                            };
+                            // Var i källjudet regionen är (Fas 8.10): ren funktion,
+                            // så att tidsmappningen kan prövas utan ljudmotor.
+                            let sample_pos_sec = region_source_secs(region, rel_time);
                             let sample_pos = (sample_pos_sec * track.sample_rate).max(0.0);
                             let idx0 = sample_pos.floor() as usize;
                             let frac = sample_pos - idx0 as f32;
@@ -1567,6 +1588,126 @@ impl SynthEngine {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// En region för tidsmappningstesterna (Fas 8.10).
+    fn region_under_test(
+        length_secs: f32,
+        offset: f32,
+        loop_length_secs: f32,
+        is_reverse: bool,
+        stretch_ratio: f32,
+    ) -> StemRegionPlayback {
+        StemRegionPlayback {
+            start_time_secs: 0.0,
+            length_secs,
+            sample_offset_sec: offset,
+            gain: 1.0,
+            fade_in_sec: 0.0,
+            fade_out_sec: 0.0,
+            muted: false,
+            is_reverse,
+            loop_length_secs,
+            stretch_ratio,
+        }
+    }
+
+    /// Klippet följer tempot **på riktigt**, genom mixern — inte bara i
+    /// aritmetiken (Fas 8.10).
+    ///
+    /// Ett anslag som ligger 0,5 s in i källjudet ska höras efter 0,25 s ut-tid när
+    /// klossen spelas dubbelt så fort, och efter 0,5 s när den inte är sträckt.
+    /// Samma ljud, samma region, olika faktor.
+    #[test]
+    fn a_stretched_clip_plays_its_transient_earlier() {
+        let sr = 48_000u32;
+        let mut source = vec![0.0f32; sr as usize];
+        source[24_000] = 1.0; // anslaget ligger på 0,5 s i källan
+        let left = Arc::new(source.clone());
+        let right = Arc::new(source);
+
+        // Fram till 0,25 s ut-tid (12 100 block): anslaget hinns bara med när
+        // klossen går dubbelt så fort.
+        for (rate, expected) in [(1.0f32, false), (2.0f32, true)] {
+            let mut synth = SynthEngine::new(sr as f32);
+            synth.handle_command(AudioCommand::LoadStemTrack {
+                track_index: 0,
+                left: left.clone(),
+                right: right.clone(),
+                sample_rate: sr as f32,
+                volume: 1.0,
+                pan: 0.0,
+                start_time_secs: 0.0,
+            });
+            synth.handle_command(AudioCommand::SetStemTrackRegions {
+                track_index: 0,
+                regions: vec![region_under_test(1.0, 0.0, 0.0, false, rate)],
+            });
+            synth.handle_command(AudioCommand::SetSongPlayback(true));
+
+            let mut peak = 0.0f32;
+            for _ in 0..12_100 {
+                let (l, _r) = synth.process_stereo();
+                peak = peak.max(l.abs());
+            }
+            assert_eq!(
+                peak > 0.3,
+                expected,
+                "rate={rate}: toppen blev {peak} — anslaget ska {}höras inom 0,25 s",
+                if expected { "" } else { "INTE " }
+            );
+        }
+    }
+
+    /// Vid 1,0 är tidsmappningen **exakt** den som gällde före 8.10.
+    ///
+    /// Det här är regressionsvakten: inför tempoföljningen får ingen region som
+    /// inte är sträckt spela ett sample annorlunda än förut.
+    #[test]
+    fn a_region_at_rate_one_maps_time_exactly_as_before() {
+        let plain = region_under_test(4.0, 0.0, 0.0, false, 1.0);
+        for t in [0.0f32, 0.25, 1.0, 3.999] {
+            assert!((region_source_secs(&plain, t) - t).abs() < 1e-6, "t={t}");
+        }
+
+        // Med offset: positionen flyttas med offset, precis som förut.
+        let offset = region_under_test(4.0, 1.5, 0.0, false, 1.0);
+        assert!((region_source_secs(&offset, 0.5) - 2.0).abs() < 1e-5);
+
+        // Slinga: fasen är (offset + tid) modulo loopen — som förut.
+        let looped = region_under_test(8.0, 0.0, 2.0, false, 1.0);
+        assert!((region_source_secs(&looped, 0.5) - 0.5).abs() < 1e-5);
+        assert!((region_source_secs(&looped, 2.5) - 0.5).abs() < 1e-5, "varv två börjar om");
+        assert!((region_source_secs(&looped, 4.25) - 0.25).abs() < 1e-5);
+
+        // Omvänt: räknar nedåt från slutet.
+        let reversed = region_under_test(4.0, 0.0, 0.0, true, 1.0);
+        assert!((region_source_secs(&reversed, 0.0) - 4.0).abs() < 1e-5);
+        assert!((region_source_secs(&reversed, 1.0) - 3.0).abs() < 1e-5);
+    }
+
+    /// Sträckt: källan läses fortare, så samma ut-tid når längre in i ljudet.
+    #[test]
+    fn a_stretched_region_reads_further_into_the_audio() {
+        // Dubbelt tempo: efter 0,5 s ut-tid har 1,0 s källjud gått.
+        let fast = region_under_test(4.0, 0.0, 0.0, false, 2.0);
+        assert!((region_source_secs(&fast, 0.5) - 1.0).abs() < 1e-5);
+        assert!((region_source_secs(&fast, 2.0) - 4.0).abs() < 1e-5);
+
+        // Halva tempot: efter 1,0 s har bara 0,5 s ljud gått.
+        let slow = region_under_test(4.0, 0.0, 0.0, false, 0.5);
+        assert!((region_source_secs(&slow, 1.0) - 0.5).abs() < 1e-5);
+    }
+
+    /// En slingad kloss behåller sin period i ut-tid men läser mer källjud per
+    /// varv när den är sträckt — annars hade slingan spelat fel stycke.
+    #[test]
+    fn a_looped_region_keeps_its_period_and_reads_a_longer_pass() {
+        let looped = region_under_test(8.0, 0.0, 2.0, false, 2.0);
+        // Perioden i ut-tid är 2 s: 2,5 s in i klossen är man 0,5 s in i varv två.
+        assert!((region_source_secs(&looped, 2.5) - 1.0).abs() < 1e-5);
+        // Ett helt varv täcker 4 s källjud (2 s × 2,0).
+        assert!((region_source_secs(&looped, 1.999) - 3.998).abs() < 1e-3);
+    }
 
     fn active_voices(synth: &SynthEngine) -> usize {
         synth.voices.iter().filter(|v| v.is_active()).count()

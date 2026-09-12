@@ -273,4 +273,9 @@ pub struct StemRegionPlayback {
     pub muted: bool,
     pub is_reverse: bool,
     pub loop_length_secs: f32,
+    /// Källsekunder per utsekund (Fas 8.10). 1.0 = spela som inspelat.
+    ///
+    /// Räknas av appen ur regionens `source_bpm` och projektets tempo; motorn
+    /// multiplicerar bara tiden med den. Se `region_source_secs`.
+    pub stretch_ratio: f32,
 }

@@ -263,6 +263,7 @@ pub fn frozen_spec(live: &RenderSpec) -> RenderSpec {
             muted: false,
             is_reverse: false,
             loop_length_secs: 0.0,
+            stretch_ratio: 1.0,
         }],
         eq: TrackEqSettings::default(),
         comp_threshold_db: 0.0,

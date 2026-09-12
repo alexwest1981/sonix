@@ -203,6 +203,14 @@ pub struct AudioRegion {
     pub color: Color32,
     #[serde(default)]
     pub loop_length_bars: f32,
+    /// Tempot klippets ljud spelades in i (Fas 8.10).
+    ///
+    /// **0,0 = okänt**, och då rörs ljudet inte när projektets tempo ändras. Det
+    /// gäller varje projekt som sparades innan fältet fanns (fältet är
+    /// `#[serde(default)]`) och allt som kommer från biblioteket — en källa utan
+    /// känt tempo sträcks inte i smyg.
+    #[serde(default)]
+    pub source_bpm: f32,
 }
 
 fn default_region_color() -> Color32 {
@@ -1129,6 +1137,42 @@ pub fn frozen_audio_in_render(track: &PlaylistTrack, pattern_mode: bool) -> bool
 /// Regionen ett fruset spår spelar: hela filen från början. Längden räknas ur
 /// bufferten i stället för ur takter, så den följer med automatiskt när
 /// frysningen görs om eller tempot ändras.
+/// Hur mycket snabbare källjudet ska gå för att klippet ska följa projektets
+/// tempo (Fas 8.10).
+///
+/// `rate` = källsekunder per utsekund. Ett klipp inspelat i 120 BPM som spelas i
+/// ett projekt på 240 BPM ska hinna igenom dubbelt så mycket ljud på samma takter
+/// — alltså 2,0. Vid 120 i ett 120-projekt blir det 1,0, och då är vägen
+/// **bit-exakt** den gamla (ingen omsampling alls).
+///
+/// **Okänt ursprung (`source_bpm <= 0`) ger 1,0.** Att gissa ett tempo där vore att
+/// hitta på data, och det är samma regel som 8.5 vilar på: säg hellre att inget
+/// ändras än att ändra något ingen bett om.
+///
+/// Gränserna är desamma som sångstudiens reglage (0,25–4,0): utanför dem är
+/// omsamplingen mer artefakt än musik, och en felaktig siffra i ett projektfält
+/// ska inte kunna göra ett klipp oanvändbart.
+pub fn stretch_ratio_for(source_bpm: f32, project_bpm: f32) -> f32 {
+    if source_bpm <= 0.0 || project_bpm <= 0.0 {
+        return 1.0;
+    }
+    (project_bpm / source_bpm).clamp(MIN_STRETCH_RATIO, MAX_STRETCH_RATIO)
+}
+
+/// Hur många sampel av spårets ljud en region täcker (Fas 8.10).
+///
+/// Ett klipp som spelades in i ett lägre tempo än projektets rymmer **mer** ljud än
+/// den tid det tar på tidslinjen, och ett inspelat i ett högre tempo mindre. Faktorn
+/// är därför med: utan den ritar vågformen, och kopierar exporten, ett annat stycke
+/// än det som hörs.
+fn region_source_span_samples(region_secs: f32, rate: f32, sample_rate: u32) -> usize {
+    (region_secs.max(0.0) * rate.max(0.05) * sample_rate.max(1) as f32).max(1.0) as usize
+}
+
+/// Gränserna för [`stretch_ratio_for`] — samma spann som sångstudiens reglage.
+pub const MIN_STRETCH_RATIO: f32 = 0.25;
+pub const MAX_STRETCH_RATIO: f32 = 4.0;
+
 pub fn frozen_region(left: &[f32], sample_rate: u32) -> crate::audio::StemRegionPlayback {
     crate::audio::StemRegionPlayback {
         start_time_secs: 0.0,
@@ -1140,6 +1184,11 @@ pub fn frozen_region(left: &[f32], sample_rate: u32) -> crate::audio::StemRegion
         muted: false,
         is_reverse: false,
         loop_length_secs: 0.0,
+        // En frysning är renderad i ett visst tempo och bär det i sitt digest:
+        // ändras tempot visas den som inaktuell i stället för att sträckas hit
+        // och dit (Fas 8.1). Att sträcka en gammal frysning vore att spela fel
+        // ljud utan att säga det.
+        stretch_ratio: 1.0,
     }
 }
 
@@ -1965,6 +2014,13 @@ pub struct SonixApp {
     pub waveform_cache_tx: Option<std::sync::mpsc::Sender<(usize, u64, crate::audio::waveform::WaveformCache)>>,
     pub waveform_cache_rx: Option<std::sync::mpsc::Receiver<(usize, u64, crate::audio::waveform::WaveformCache)>>,
     pub show_tempo_modal: bool,
+    /// Tempot som regionerna i motorn senast räknades för (Fas 8.10).
+    ///
+    /// Klippens sträckning hänger på projektets tempo, och tempot kan ändras från
+    /// flera håll (reglaget, TAP, ett tempobyte i kartan, ett inläst projekt).
+    /// I stället för en sync i varje sådan dörr jämförs det här talet med `bpm`
+    /// en gång per bildruta: en olikhet betyder att motorn ska ha nya regioner.
+    pub stems_synced_bpm: f32,
     /// Takten som högerklicket på linjalen gällde.
     ///
     /// Sparas för att menyn ritas om varje bildruta: inne i menyn står pekaren
@@ -2640,6 +2696,7 @@ impl SonixApp {
             waveform_cache_tx: None,
             waveform_cache_rx: None,
             show_tempo_modal: false,
+            stems_synced_bpm: 120.0,
             tempo_menu_bar: None,
             stem_focus_active_tab: 0,
             // Modals
@@ -2907,6 +2964,7 @@ impl SonixApp {
             t0.name = "🎤 Lead Vocals (Suno AI)".to_string();
             t0.regions = vec![
                 AudioRegion {
+                    source_bpm: 0.0,
                     id: 101,
                     name: "Chorus Take 1 (Main)".to_string(),
                     start_bar: 1.0,
@@ -2923,6 +2981,7 @@ impl SonixApp {
                     loop_length_bars: 0.0,
                 },
                 AudioRegion {
+                    source_bpm: 0.0,
                     id: 102,
                     name: "Verse Hook (Harmonized)".to_string(),
                     start_bar: 9.0,
@@ -2945,6 +3004,7 @@ impl SonixApp {
             t1.name = "🎧 Backing Choir".to_string();
             t1.regions = vec![
                 AudioRegion {
+                    source_bpm: 0.0,
                     id: 201,
                     name: "Stereo Choir Pad (4-Part)".to_string(),
                     start_bar: 3.0,
@@ -3251,6 +3311,38 @@ impl SonixApp {
     ///
     /// Anropas en gång per spår och bildruta. Är cachen byggd ur samma buffert
     /// som spåret har nu, kostar anropet en jämförelse av fyra tal.
+    /// Låter klippen följa tempot (Fas 8.10).
+    ///
+    /// **Ett ställe, inte en per dörr.** Tempot ändras av reglaget, av TAP, av ett
+    /// tempobyte i kartan och av att ett projekt läses; en sync i varje väg vore
+    /// fyra chanser att glömma en. Jämförelsen kostar ett tal per bildruta.
+    ///
+    /// Klipp med okänt inspelningstempo (`source_bpm == 0`) får faktorn 1,0 och
+    /// rörs inte — se [`stretch_ratio_for`].
+    pub fn sync_tempo_follow(&mut self) {
+        if (self.bpm - self.stems_synced_bpm).abs() <= 0.0005 {
+            return;
+        }
+        self.stems_synced_bpm = self.bpm;
+        for t_idx in 0..self.playlist_tracks.len() {
+            let has_audio = self.playlist_tracks[t_idx].pcm_audio.is_some()
+                || self.playlist_tracks[t_idx].frozen_pcm.is_some();
+            if has_audio {
+                self.sync_track_regions(t_idx);
+            }
+        }
+    }
+
+    /// Hur många klipp som **har** ett känt inspelningstempo (och alltså följer
+    /// med i stället för att stå still).
+    pub fn clips_with_source_tempo(&self) -> usize {
+        self.playlist_tracks
+            .iter()
+            .flat_map(|t| t.regions.iter())
+            .filter(|r| r.source_bpm > 0.0)
+            .count()
+    }
+
     fn ensure_waveform_cache(&mut self, t_idx: usize) {
         // Först: ta emot vad arbetstrådarna blivit klara med.
         if let Some(rx) = self.waveform_cache_rx.as_ref() {
@@ -3329,6 +3421,10 @@ impl SonixApp {
                 muted: r.muted,
                 is_reverse: r.is_reverse,
                 loop_length_secs: tempo.secs_for_bars_at(from, r.loop_length_bars as f64) as f32,
+                // Klippet följer projektets tempo (Fas 8.10). Faktorn tas från
+                // tempot vid klossens START: en kloss som sträcker sig över ett
+                // tempobyte får en faktor, inte en kurva — kvar att lösa (8.10).
+                stretch_ratio: stretch_ratio_for(r.source_bpm, tempo.bpm_at(from)),
             }
         }));
         regions
@@ -3450,6 +3546,7 @@ impl SonixApp {
                 };
 
                 let r_left = AudioRegion {
+                    source_bpm: orig.source_bpm, // halvan ärver klippets källa
                     id: orig.id,
                     name: format!("{} [Del 1]", clean_title),
                     start_bar: orig.start_bar,
@@ -3467,6 +3564,7 @@ impl SonixApp {
                 };
 
                 let r_right = AudioRegion {
+                    source_bpm: orig.source_bpm, // halvan ärver klippets källa
                     id: orig.id + 1000 + (self.playlist_tracks[t_idx].regions.len() * 10),
                     name: format!("{} [Del 2]", clean_title),
                     start_bar: orig.start_bar + split_offset_bar,
@@ -3508,6 +3606,9 @@ impl SonixApp {
             (tempo.secs_for_bars_at(region.start_bar as f64, region.length_bars as f64) as f32)
                 .max(0.05);
         let reg_offset_sec = region.sample_offset_sec.max(0.0);
+        // Klippet kan vara sträckt (Fas 8.10): utsnittet som kopieras är det
+        // vågformen visar, inte regionens tid på tidslinjen.
+        let reg_rate = stretch_ratio_for(region.source_bpm, self.bpm);
 
         // Destination: the canonical user sample bank (Fas 6.0).
         let save_dir = crate::paths::paths().samples_dir();
@@ -3529,7 +3630,8 @@ impl SonixApp {
 
         if let Some((ref l, ref r, track_sr)) = self.playlist_tracks[track_idx].pcm_audio {
             let start_sample = ((reg_offset_sec * track_sr as f32) as usize).min(l.len());
-            let num_samples = ((reg_len_sec * track_sr as f32) as usize).min(l.len().saturating_sub(start_sample));
+            let num_samples = region_source_span_samples(reg_len_sec, reg_rate, track_sr)
+                .min(l.len().saturating_sub(start_sample));
             if num_samples > 0 {
                 out_pcm.reserve(num_samples);
                 for i in 0..num_samples {
@@ -3541,7 +3643,8 @@ impl SonixApp {
         } else if let Some(ref src_p) = region.source_path
             && let Some((l, r, track_sr)) = load_audio_or_report(src_p) {
                 let start_sample = ((reg_offset_sec * track_sr as f32) as usize).min(l.len());
-                let num_samples = ((reg_len_sec * track_sr as f32) as usize).min(l.len().saturating_sub(start_sample));
+                let num_samples = region_source_span_samples(reg_len_sec, reg_rate, track_sr)
+                    .min(l.len().saturating_sub(start_sample));
                 if num_samples > 0 {
                     out_pcm.reserve(num_samples);
                     for i in 0..num_samples {
@@ -3625,6 +3728,7 @@ impl SonixApp {
         let reg_len_bars = (tempo.bars_for_secs_at(0.0, duration_secs as f64) as f32).max(0.25);
 
         let region = AudioRegion {
+            source_bpm: 0.0, // bibliotekssamplens tempo är okänt → rör inte ljudet (8.10)
             id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as usize,
             name: item.name.clone(),
             start_bar: 0.0,
@@ -3691,6 +3795,7 @@ impl SonixApp {
 
         let reg_id = self.next_region_id();
         let region = AudioRegion {
+            source_bpm: 0.0, // bibliotekssamplens tempo är okänt → rör inte ljudet (8.10)
             id: reg_id,
             name: item.name.clone(),
             start_bar: start_bar.max(0.0),
@@ -3774,7 +3879,11 @@ impl SonixApp {
             let len_sec =
                 tempo.secs_for_bars_at(reg.start_bar as f64, reg.length_bars as f64) as f32;
             let start_idx = (start_sec * sr as f32) as usize;
-            let end_idx = ((start_sec + len_sec) * sr as f32) as usize;
+            // Sträckt kloss (Fas 8.10): utsnittet är regionens tid gånger faktorn,
+            // alltså samma stycke som vågformen visar.
+            let end_idx =
+                ((start_sec + len_sec * stretch_ratio_for(reg.source_bpm, self.bpm)) * sr as f32)
+                    as usize;
             if start_idx < l.len() {
                 extracted_pcm = l[start_idx..end_idx.min(l.len())].to_vec();
             }
@@ -5252,6 +5361,7 @@ impl SonixApp {
                     self.playlist_tracks[armed_idx].pcm_audio = Some((pcm_arc.clone(), pcm_arc, mic_sr));
 
                     let region = AudioRegion {
+                        source_bpm: self.bpm, // tagningen gjordes i projektets tempo (8.10)
                         id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as usize,
                         name: format!("🎤 {}", take.name),
                         start_bar,
@@ -6637,6 +6747,7 @@ impl SonixApp {
             let ch = &self.stem_project.stems[i];
             let audio = &self.stem_project.stem_audio[i];
             let region = AudioRegion {
+                source_bpm: self.bpm, // stämmorna byggdes mot projektets tempo (8.10)
                 id: i + 1,
                 name: ch.stem_type.name().to_string(),
                 start_bar: 0.0,
@@ -6724,6 +6835,7 @@ impl SonixApp {
         track.pcm_audio = Some((arc_l, arc_r, sr));
         track.custom_clip_name = Some(clean_name.clone());
         track.regions = vec![AudioRegion {
+            source_bpm: 0.0, // filens tempo är okänt → rör inte ljudet (8.10)
             id: new_id,
             name: clean_name.clone(),
             start_bar: 0.0,
@@ -7459,6 +7571,7 @@ impl eframe::App for SonixApp {
         self.poll_library_scan();
         self.sync_patcher_graph();
         self.sync_stem_separator_engine();
+        self.sync_tempo_follow();
         // Keep embedded plugin editors responsive (Fas 4.4b).
         self.poll_plugin_guis();
         // Supervise the out-of-process sandbox worker (Fas 4.5a).
@@ -9197,13 +9310,29 @@ impl SonixApp {
                         // DragValue visar en textmarkör vid klick och tar siffror,
                         // Enter, och Escape (avbryter) — beteendet kommer från egui,
                         // inte från en egen tolkning av tangenttryck.
-                        ui.put(
+                        // Hjälptexten säger vad som händer med LJUDET när tempot
+                        // ändras (Fas 8.10) — annars är det en kontroll som ser ut
+                        // att bara styra klockan. Antalet räknas, inte cachas.
+                        let with_tempo = self.clips_with_source_tempo();
+                        let tempo_hover = if with_tempo == 0 {
+                            crate::i18n::t(
+                                "Klippens tempo: inga klipp har ett känt inspelningstempo ännu, så ljudet rörs inte när du ändrar tempot.",
+                            )
+                            .to_string()
+                        } else {
+                            crate::tstatus!(
+                                "Klippens tempo: {} klipp har ett känt inspelningstempo och följer med när du ändrar tempot (tonhöjden följer med, som på en bandspelare). Klipp med okänt tempo rörs inte.",
+                                with_tempo
+                            )
+                        };
+                        let tempo_field = ui.put(
                             bpm_rect.shrink2(Vec2::new(4.0, 2.0)),
                             egui::DragValue::new(&mut self.bpm)
                                 .speed(0.5)
                                 .range(40.0..=280.0)
                                 .suffix(" BPM"),
                         );
+                        tempo_field.on_hover_text(tempo_hover);
 
                         if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 TAP")).strong().size(10.0).color(Color32::WHITE)).fill(Color32::from_rgb(180, 70, 20))).on_hover_text(crate::i18n::t("Klicka i takt för att sätta tempo (Tap Tempo)")).clicked() {
                             self.tap_tempo();
@@ -10246,16 +10375,32 @@ impl SonixApp {
                                                     let start_sample =
                                                         (region.sample_offset_sec.max(0.0) * sr as f32)
                                                             as usize;
-                                                    let total_samples =
-                                                        (region_secs * sr as f32).max(1.0) as usize;
+                                                    // Klippet följer tempot (Fas 8.10): källan en
+                                                    // region täcker är längre än dess tid på
+                                                    // tidslinjen när den spelades in i ett lägre
+                                                    // tempo. Utan faktorn här skulle vågformen visa
+                                                    // ett annat stycke än det som hörs — samma sorts
+                                                    // lögn som 8.3 stängde.
+                                                    let region_rate = stretch_ratio_for(
+                                                        region.source_bpm,
+                                                        self.bpm,
+                                                    );
+                                                    let total_samples = region_source_span_samples(
+                                                        region_secs,
+                                                        region_rate,
+                                                        sr,
+                                                    );
                                                     let cols =
                                                         ((draw_end_x - draw_start_x).max(1.0)).ceil() as usize;
                                                     // En slingad kloss upprepar ett kortare
                                                     // stycke: då följer bildpunkterna
                                                     // upprepningen, inte en sammanhängande
                                                     // sampelmängd.
-                                                    let loop_samples =
-                                                        (loop_sec * sr as f32).max(1.0) as usize;
+                                                    let loop_samples = region_source_span_samples(
+                                                        loop_sec,
+                                                        region_rate,
+                                                        sr,
+                                                    );
                                                     let env = if is_looped && loop_sec > 0.01 {
                                                         cache.envelope_looped(
                                                             pcm,
@@ -10901,6 +11046,7 @@ impl SonixApp {
                                             };
 
                                             let r_left = AudioRegion {
+                                                source_bpm: orig.source_bpm, // halvan ärver klippets källa
                                                 id: orig.id,
                                                 name: format!("{} [Del 1]", clean_title),
                                                 start_bar: orig.start_bar,
@@ -10918,6 +11064,7 @@ impl SonixApp {
                                             };
 
                                             let r_right = AudioRegion {
+                                                source_bpm: orig.source_bpm, // halvan ärver klippets källa
                                                 id: orig.id + 1000 + (self.playlist_tracks[t_idx].regions.len() * 10),
                                                 name: format!("{} [Del 2]", clean_title),
                                                 start_bar: orig.start_bar + split_offset_bar,
@@ -15300,6 +15447,10 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 is_reverse: false,
                 color,
                 loop_length_bars: 0.0,
+                // Klippet spelades in i Sunos tempo, som är det projektet står i
+                // just nu (Fas 8.10). Ändras tempot sedan följer ljudet med i
+                // stället för att hamna ur takt.
+                source_bpm: res.bpm,
             };
 
             let mut track = PlaylistTrack::new(format!("{} {}", icon, clean_name), icon, kind, color);
@@ -18414,6 +18565,7 @@ mod tests {
 
         // Add to track 0 at bar 4.5
         let region = AudioRegion {
+            source_bpm: 0.0, // testklippet har inget känt inspelningstempo
             id: 101,
             name: sample_item.name.clone(),
             start_bar: 4.5,
@@ -18444,6 +18596,7 @@ mod tests {
             sample_item.color,
         );
         let new_reg = AudioRegion {
+            source_bpm: 0.0, // testklippet har inget känt inspelningstempo
             id: 102,
             name: sample_item.name.clone(),
             start_bar: 8.0,
@@ -19237,6 +19390,40 @@ mod tests {
             crate::audio::tempo::tempo_points_for_import(&parsed.tempo_events, 100.0).is_none()
         );
     }
+    /// Klippet följer projektets tempo — men bara när inspelningstemot är känt
+    /// (Fas 8.10).
+    #[test]
+    fn the_stretch_ratio_follows_the_known_tempo_and_leaves_the_unknown_alone() {
+        // Inspelad i 120, spelad i 240: dubbelt så fort.
+        assert!((stretch_ratio_for(120.0, 240.0) - 2.0).abs() < 1e-5);
+        // Samma tempo: ingen omsampling alls (bit-exakt väg).
+        assert!((stretch_ratio_for(120.0, 120.0) - 1.0).abs() < 1e-6);
+        // Inspelad i 180, spelad i 90: halva farten.
+        assert!((stretch_ratio_for(180.0, 90.0) - 0.5).abs() < 1e-5);
+
+        // Okänt inspelningstempo: rör inte ljudet. Det här är vägen för varje
+        // projekt sparat före fältet, och för allt som kommer från biblioteket.
+        assert_eq!(stretch_ratio_for(0.0, 240.0), 1.0);
+        assert_eq!(stretch_ratio_for(120.0, 0.0), 1.0);
+
+        // Och gränserna: ett orimligt fält i ett projekt ska inte göra klippet
+        // oanvändbart.
+        assert_eq!(stretch_ratio_for(1.0, 280.0), MAX_STRETCH_RATIO);
+        assert_eq!(stretch_ratio_for(280.0, 40.0), MIN_STRETCH_RATIO);
+    }
+
+    /// Utsnittet en region täcker: mer ljud än tid när klippet spelades in
+    /// långsammare än projektet (Fas 8.10).
+    #[test]
+    fn a_slower_source_clip_covers_more_audio_than_its_length() {
+        // 2 sekunder på tidslinjen i 48 kHz, inspelad i halva tempot: 4 sekunder ljud.
+        assert_eq!(region_source_span_samples(2.0, 2.0, 48_000), 192_000);
+        // I samma tempo: precis sin egen längd.
+        assert_eq!(region_source_span_samples(2.0, 1.0, 48_000), 96_000);
+        // Aldrig noll — en region ska alltid gå att rita.
+        assert_eq!(region_source_span_samples(0.0, 1.0, 48_000), 1);
+    }
+
     /// Ett enstaka anslag får inte försvinna i översikten (Fas 8.3).
     ///
     /// Den gamla vägen läste **var 64:e sample** inom varje punkt, så ett anslag
