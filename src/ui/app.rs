@@ -1181,6 +1181,11 @@ pub struct PreloadedTrackData {
     pub bus: usize,
     pub vca: Option<usize>,
     pub stem_pcms: Vec<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    /// Det **frusna** spårets ljud, om filen gick att läsa vid inläsningen.
+    /// Hålls åtskild från `stem_pcms`: `track_pcm` blir det *sista* som lades i
+    /// stem_pcms, och ett fruset spår vars fil saknas får inte ärva spårets egna
+    /// klippljud och kalla det för sin frysning.
+    pub frozen_pcm: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
 }
 
 #[derive(Clone)]
@@ -1909,7 +1914,22 @@ fn load_sample_pcm_arcs(path: &str) -> Option<(std::sync::Arc<Vec<f32>>, std::sy
 /// Assigns a library sample to a Channel Rack channel strip. Loads the real
 /// PCM into memory so step playback triggers the actual WAV instead of the
 /// built-in synthesizer drum voices.
-fn assign_library_sample_to_channel(ch: &mut ChannelStrip, item: &LibrarySampleItem) {
+///
+/// Lämnar `false` och rör **ingenting** när filen inte går att läsa. Förut tog
+/// kanalen samplen ändå: namn, färg, steg och bibliotekets grova vågform flyttades
+/// in medan `pcm_audio` blev `None`, så kanalen såg ut att ha ett eget sample och
+/// spelade den inbyggda synten i stället. Det är samma familj som de tysta
+/// klippen, i kanalracket i stället för på tidslinjen.
+fn assign_library_sample_to_channel(ch: &mut ChannelStrip, item: &LibrarySampleItem) -> bool {
+    // Ljudet läses FÖRST. En guard som ligger efter ändringarna lämnar en
+    // halvflyttad kanal efter sig — den ser ut att ha ett sample den inte har.
+    let pcm = match item.file_path.as_deref() {
+        Some(path) => match load_sample_pcm_arcs(path) {
+            Some(pcm) => Some(pcm),
+            None => return false,
+        },
+        None => None,
+    };
     ch.name = item.name.clone();
     ch.icon = item.icon.clone();
     ch.color = item.color;
@@ -1920,16 +1940,9 @@ fn assign_library_sample_to_channel(ch: &mut ChannelStrip, item: &LibrarySampleI
     ch.pitch_semitones = 0;
     ch.pitch_fine_cents = 0.0;
     ch.sample_base_note = item.default_note;
-    match &item.file_path {
-        Some(path) => {
-            ch.sample_path = Some(path.clone());
-            ch.pcm_audio = load_sample_pcm_arcs(path);
-        }
-        None => {
-            ch.sample_path = None;
-            ch.pcm_audio = None;
-        }
-    }
+    ch.sample_path = item.file_path.clone();
+    ch.pcm_audio = pcm;
+    true
 }
 
 /// Picks a fitting real WAV from the library for each built-in drum channel
@@ -1967,7 +1980,9 @@ fn auto_assign_default_kit(channels: &mut [ChannelStrip], library: &[LibrarySamp
             if let Some(p) = item.file_path.clone() {
                 used_paths.push(p);
             }
-            assign_library_sample_to_channel(&mut channels[ch_idx], item);
+            // Går filen inte att läsa tas samplen inte alls (se funktionen) — då
+            // behåller kanalen sin inbyggda röst i stället för ett namn utan ljud.
+            let _ = assign_library_sample_to_channel(&mut channels[ch_idx], item);
         }
     }
 }
@@ -2819,6 +2834,7 @@ impl SonixApp {
                     bus: default_bus_for_kind(kind),
                     vca: None,
                     stem_pcms: Vec::new(),
+                    frozen_pcm: None,
                 });
             }
 
@@ -3459,16 +3475,34 @@ impl SonixApp {
         self.status_message = crate::tstatus!("🎵 Placerade sample '{}' på spår {} vid takt {:.2}!", item.name, track_idx + 1, start_bar + 1.0);
     }
 
+    /// Öppnar ett bibliotekssample i Sångstudion som en tagning.
+    ///
+    /// **Ingen påhittad ton.** Vägen byggde förut en syntetisk sinuston (två
+    /// sekunder, ur samplens `default_note`) när filen inte gick att läsa, och
+    /// öppnade Sångstudion med den. En mp3 — som appen inte kan avkoda — blev
+    /// alltså en påkittad tagning i stället för ett besked, och den som lyssnade
+    /// hörde något som varken var samplen eller tystnad. Nu gäller samma regel som
+    /// `import_audio_file_as_track`: säg det och avbryt.
+    ///
+    /// Provspelningen får också **filens egen** samplerate. Förut sades 44100
+    /// oavsett vad filen innehöll, så en tagning ur ett 48 kHz-sample spelades i
+    /// fel hastighet.
     pub fn open_sample_in_vocal_studio(&mut self, item: &LibrarySampleItem) {
-        let pcm = if let Some(ref path) = item.file_path && let Some((l, _, _)) = load_audio_or_report(path) {
-            l
-        } else {
-            (0..44100 * 2).map(|i| {
-                let t = i as f32 / 44100.0;
-                (t * midi_to_freq(item.default_note) * std::f32::consts::TAU).sin() * (1.0 - t * 0.45) * 0.8
-            }).collect()
+        let Some(ref path) = item.file_path else {
+            self.status_message = crate::tstatus!(
+                "⚠ '{}' har ingen ljudfil — kan inte öppnas i Sångstudion",
+                item.name
+            );
+            return;
         };
-        let new_take_idx = self.vocal_studio.load_sample_or_region_as_take(&item.name, pcm, 44100, item.color);
+        let Some((pcm, _, sample_rate)) = load_audio_or_report(path) else {
+            self.status_message = crate::tstatus!(
+                "⚠ Kunde inte läsa '{}' — öppnas inte i Sångstudion (mp3 stöds inte, konvertera till wav)",
+                item.name
+            );
+            return;
+        };
+        let new_take_idx = self.vocal_studio.load_sample_or_region_as_take(&item.name, pcm, sample_rate, item.color);
         self.view_mode = ViewMode::VocalStudio;
         self.status_message = crate::tstatus!("🎙 Öppnade sample '{}' i Sångstudion (Tagning {}) för isolerad provspelning & formning!", item.name, new_take_idx + 1);
     }
@@ -3503,10 +3537,22 @@ impl SonixApp {
         }
 
         if extracted_pcm.is_empty() {
-            extracted_pcm = (0..44100 * 2).map(|i| {
-                let t = i as f32 / 44100.0;
-                (t * 220.0 * std::f32::consts::TAU).sin() * 0.7
-            }).collect();
+            // Ingen påhittad ton. Här låg förut en syntetisk 220 Hz-sinuston som
+            // öppnades som en tagning: den som lyssnade hörde *något*, och det var
+            // varken regionen eller källfilen. Ett spår vars källa är en mp3, och
+            // som inte har någon inläst PCM än, gav en påkittad tagning i stället
+            // för ett besked.
+            let reason = if r_source.is_some() {
+                crate::i18n::t("källfilen går inte att läsa (mp3 stöds inte, konvertera till wav)")
+            } else {
+                crate::i18n::t("regionen har ingen källfil")
+            };
+            self.status_message = crate::tstatus!(
+                "⚠ Kunde inte öppna '{}' i Sångstudion — {}",
+                r_name,
+                reason
+            );
+            return;
         }
 
         let new_take_idx = self.vocal_studio.load_sample_or_region_as_take(&r_name, extracted_pcm, sr, r_color);
@@ -4394,24 +4440,46 @@ impl SonixApp {
 
             let total_tracks = data.tracks.len();
             let mut preloaded_tracks = Vec::with_capacity(total_tracks);
+            // Problem med frusna filer samlas och sägs en gång efter inläsningen:
+            // förut skrev varje problem över det förra i samma fält, så bara den
+            // sista filen nämndes.
+            let mut frozen_problems: Vec<String> = Vec::new();
 
             for (t_idx, st) in data.tracks.into_iter().enumerate() {
                 let track_name = st.name.clone();
                 let ratio = 0.10 + ((t_idx + 1) as f32 / total_tracks.max(1) as f32) * 0.85;
 
-                if let Some(f) = &st.frozen
-                    && !std::path::Path::new(&f.path).exists()
-                {
-                    // Säg det i stället för att tyst spela ett ofruset spår: en
-                    // frysning vars fil försvunnit är inte samma sak.
-                    if let Ok(mut p) = progress.lock() {
-                        p.error_message = Some(crate::tstatus!(
-                            "⚠ '{}' är fruset men filen saknas: {}",
-                            st.name,
-                            f.path
-                        ));
-                    }
-                }
+                // Ett fruset spår har sitt ljud i en fil i projektets egen mapp.
+                // Filen måste finnas **och** gå att läsa: en frysning vars fil
+                // försvunnit eller inte kan avkodas är inte samma sak som ett
+                // ofruset spår, och det ska sägas högt i stället för att tyst
+                // spela något annat. "Filen saknas" och "filen går inte att läsa"
+                // är samma besked för den som står vid datorn — förut fick bara
+                // den första av dem ett ord.
+                let frozen_pcm = match st.frozen.as_ref() {
+                    Some(f) => match load_audio_or_report(&f.path) {
+                        Some((pcm_l, pcm_r, sr)) => Some((
+                            std::sync::Arc::new(pcm_l),
+                            std::sync::Arc::new(pcm_r),
+                            sr,
+                        )),
+                        None => {
+                            let why = if std::path::Path::new(&f.path).exists() {
+                                crate::i18n::t("filen går inte att läsa")
+                            } else {
+                                crate::i18n::t("filen saknas")
+                            };
+                            frozen_problems.push(crate::tstatus!(
+                                "'{}' är fruset men {}: {}",
+                                st.name,
+                                why,
+                                f.path
+                            ));
+                            None
+                        }
+                    },
+                    None => None,
+                };
                 if let Ok(mut p) = progress.lock() {
                     p.stage = crate::tstatus!("Läser in och avkodar ljudspår ({}/{})...", t_idx + 1, total_tracks);
                     p.current_track = track_name.clone();
@@ -4433,15 +4501,10 @@ impl SonixApp {
                 // så att alla elva anrop omfattas — inte bara projektinläsningen.
                 // Ett fruset spår har sitt ljud i en fil i projektets mapp. Att
                 // lägga den i stem_pcms gör att samma väg som ljudspåren används
-                // — både vid inläsning och vid en senare omsynk.
-                if let Some(f) = &st.frozen
-                    && let Some((pcm_l, pcm_r, sr)) = load_audio_or_report(&f.path)
-                {
-                    stem_pcms.push((
-                        std::sync::Arc::new(pcm_l),
-                        std::sync::Arc::new(pcm_r),
-                        sr,
-                    ));
+                // — både vid inläsning och vid en senare omsynk. Bara när filen
+                // gick att läsa: annars får spåret inget fruset ljud alls.
+                if let Some(pcm) = frozen_pcm.clone() {
+                    stem_pcms.push(pcm);
                 }
 
                 preloaded_tracks.push(PreloadedTrackData {
@@ -4462,9 +4525,25 @@ impl SonixApp {
                     bus: st.bus,
                     vca: st.vca,
                     stem_pcms,
+                    frozen_pcm,
                 });
 
                 std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+
+            if !frozen_problems.is_empty()
+                && let Ok(mut p) = progress.lock()
+            {
+                let list = frozen_problems.join(" · ");
+                p.error_message = Some(if frozen_problems.len() == 1 {
+                    crate::tstatus!("en frusen fil kunde inte användas: {}", list)
+                } else {
+                    crate::tstatus!(
+                        "{} frusna filer kunde inte användas: {}",
+                        frozen_problems.len(),
+                        list
+                    )
+                });
             }
 
             if let Ok(mut p) = progress.lock() {
@@ -4578,7 +4657,13 @@ impl SonixApp {
                     digest: f.digest,
                     stamp: f.stamp,
                 });
-                loaded_track.frozen_pcm = track_pcm.clone();
+                // Bara det **frusna** ljudet får bli `frozen_pcm` (Fas 8.5). Förut
+                // ärvde spåret `track_pcm`, som är det sista som lades i stem_pcms
+                // och alltså kan vara spårets eget klippljud: ett spår som ser
+                // fruset ut spelade då sin ofrusna mix — något annat än det som
+                // renderades, och i värsta fall tyst. `None` här betyder att
+                // motorn och exporten faller tillbaka på spårets egna klipp.
+                loaded_track.frozen_pcm = st.frozen_pcm.clone();
             }
             loaded_track.eq = st.eq;
             loaded_track.comp_threshold_db = st.comp_threshold_db;
@@ -4746,30 +4831,51 @@ impl SonixApp {
     }
 
     pub fn select_sound_for_channel(&mut self, ch_idx: usize, item: &LibrarySampleItem) {
-        if ch_idx < self.channels.len() {
-            assign_library_sample_to_channel(&mut self.channels[ch_idx], item);
-            let item_name = item.name.clone();
-            self.status_message = crate::tstatus!("Kanal {} ändrad till: {}", ch_idx + 1, item_name);
-            self.audition_library_sample(item);
+        if ch_idx >= self.channels.len() {
+            return;
         }
+        if !assign_library_sample_to_channel(&mut self.channels[ch_idx], item) {
+            self.status_message = crate::tstatus!(
+                "⚠ Kunde inte läsa '{}' — kanalen behåller sitt ljud (mp3 stöds inte, konvertera till wav)",
+                item.name
+            );
+            return;
+        }
+        let item_name = item.name.clone();
+        self.status_message = crate::tstatus!("Kanal {} ändrad till: {}", ch_idx + 1, item_name);
+        self.audition_library_sample(item);
     }
 
-    /// Auditions a library sample. Plays the real WAV when available, otherwise
-    /// falls back to the built-in synthesizer for the matching sound category.
+    /// Provspelar ett bibliotekssample.
+    ///
+    /// **Tre fall, inte två.** Har samplen ingen fil alls spelar den inbyggda
+    /// synten sin röst för kategorin — det är appens eget ljud och ett riktigt
+    /// svar. Men hade samplen en fil som **inte gick att läsa** (mp3, trasig wav)
+    /// föll samma väg ned i syntrösten också: den som lyssnade hörde ett ljud och
+    /// trodde det var filen. Nu står det i statusraden i stället.
     pub fn audition_library_sample(&mut self, item: &LibrarySampleItem) {
-        if let Some(ref path) = item.file_path
-            && let Some((l, r, sr)) = load_sample_pcm_arcs(path)
-        {
-            let _ = self.engine.send_command(AudioCommand::PlayAudition {
-                left: l,
-                right: r,
-                sample_rate: sr as f32,
-                volume: 0.95,
-                pitch_ratio: 1.0,
-                time_stretch_ratio: 1.0,
-                is_reverse: false,
-                loop_playback: false,
-            });
+        if let Some(path) = item.file_path.as_deref() {
+            match load_sample_pcm_arcs(path) {
+                Some((l, r, sr)) => {
+                    let _ = self.engine.send_command(AudioCommand::PlayAudition {
+                        left: l,
+                        right: r,
+                        sample_rate: sr as f32,
+                        volume: 0.95,
+                        pitch_ratio: 1.0,
+                        time_stretch_ratio: 1.0,
+                        is_reverse: false,
+                        loop_playback: false,
+                    });
+                }
+                None => {
+                    self.status_message = crate::tstatus!(
+                        "⚠ Kunde inte provspela '{}' — filen går inte att läsa: {} (mp3 stöds inte, konvertera till wav)",
+                        item.name,
+                        path
+                    );
+                }
+            }
             return;
         }
 
@@ -8176,18 +8282,36 @@ impl SonixApp {
 
                             card_ui.horizontal_wrapped(|ui| {
                                 if ui.button(egui::RichText::new(crate::i18n::t("▶")).size(9.5)).on_hover_text(crate::i18n::t("Provspela sample med äkta ljud")).clicked() {
-                                    if let Some(ref path) = item.file_path && let Some((l, r, sr)) = load_audio_or_report(path) {
-                                        let _ = self.engine.send_command(AudioCommand::PlayAudition {
-                                            left: std::sync::Arc::new(l),
-                                            right: std::sync::Arc::new(r),
-                                            sample_rate: sr as f32,
-                                            volume: 0.95,
-                                            pitch_ratio: 1.0,
-                                            time_stretch_ratio: 1.0,
-                                            is_reverse: false,
-                                            loop_playback: false,
-                                        });
-                                    } else {
+                                    // Samma tre fall som `audition_library_sample`: ingen fil →
+                                    // appens egen syntröst; fil som inte går att läsa → ett besked,
+                                    // aldrig en syntetisk trumma i samplens ställe.
+                                    let mut handled = false;
+                                    if let Some(ref path) = item.file_path {
+                                        match load_audio_or_report(path) {
+                                            Some((l, r, sr)) => {
+                                                let _ = self.engine.send_command(AudioCommand::PlayAudition {
+                                                    left: std::sync::Arc::new(l),
+                                                    right: std::sync::Arc::new(r),
+                                                    sample_rate: sr as f32,
+                                                    volume: 0.95,
+                                                    pitch_ratio: 1.0,
+                                                    time_stretch_ratio: 1.0,
+                                                    is_reverse: false,
+                                                    loop_playback: false,
+                                                });
+                                                handled = true;
+                                            }
+                                            None => {
+                                                self.status_message = crate::tstatus!(
+                                                    "⚠ Kunde inte provspela '{}' — filen går inte att läsa: {} (mp3 stöds inte, konvertera till wav)",
+                                                    item.name,
+                                                    path
+                                                );
+                                                handled = true;
+                                            }
+                                        }
+                                    }
+                                    if !handled {
                                         match item.category.as_str() {
                                             "Kicks" => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Kick)); },
                                             "Snares" => { let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::Snare)); },
@@ -18057,5 +18181,120 @@ mod tests {
         assert_eq!(stem_base_name(Some("   "), "Titel"), "Titel");
         assert_eq!(stem_base_name(None, "   "), "stems");
         assert_eq!(stem_base_name(Some(""), ""), "stems");
+    }
+
+    /// Fas 8.5 i kanalracket: en sample vars fil **inte** går att läsa får inte
+    /// flytta in sitt namn, sin färg och sin vågform i kanalen. Förut gjorde den
+    /// det — kanalen såg ut att ha ett eget sample och bar bibliotekets grova
+    /// vågform medan `pcm_audio` var tom, och stegen spelade den inbyggda synten.
+    /// Testet mäter båda sidorna: en läsbar fil tas, en oläsbar rör ingenting.
+    #[test]
+    fn a_channel_keeps_its_sound_when_the_sample_cannot_be_read() {
+        let root = std::env::temp_dir().join(format!(
+            "sonix_channel_assign_{}_{}",
+            std::process::id(),
+            crate::autosave::now_stamp()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("tmpdir");
+        let wav = root.join("kick.wav");
+        let samples: Vec<f32> = (0..4410)
+            .flat_map(|i| {
+                let v = (i as f32 * 0.05).sin() * 0.8;
+                [v, v]
+            })
+            .collect();
+        crate::audio::write_export_with(
+            &wav.to_string_lossy(),
+            crate::audio::ExportFormat::Wav16,
+            &samples,
+            44_100,
+            &crate::audio::ExportMeta::default(),
+            crate::audio::DitherSettings::default(),
+        )
+        .expect("testwav");
+
+        let item = |name: &str, path: Option<String>| LibrarySampleItem {
+            id: 1,
+            name: name.to_string(),
+            category: "Kicks".to_string(),
+            icon: "🥁".to_string(),
+            default_note: 36,
+            color: Color32::from_rgb(255, 80, 50),
+            waveform: vec![0.9, 0.6, 0.3],
+            file_path: path,
+        };
+
+        // 1. Filen finns och går att läsa: samplen tas, ljudet följer med.
+        let mut ch = test_channel();
+        assert!(
+            assign_library_sample_to_channel(
+                &mut ch,
+                &item("Kick 808", Some(wav.to_string_lossy().into_owned()))
+            ),
+            "en läsbar fil ska tas"
+        );
+        assert_eq!(ch.name, "Kick 808");
+        assert!(ch.pcm_audio.is_some(), "ljudet ska ha följt med samplen");
+        assert_eq!(ch.waveform_preview, vec![0.9, 0.6, 0.3]);
+
+        // 2. Filen går inte att läsa (mp3 eller borta): kanalen ska vara orörd.
+        let mut ch = test_channel();
+        let before = (
+            ch.name.clone(),
+            ch.icon.clone(),
+            ch.sample_path.clone(),
+            ch.steps,
+            ch.pcm_audio.is_some(),
+            ch.waveform_preview.clone(),
+        );
+        assert!(
+            !assign_library_sample_to_channel(
+                &mut ch,
+                &item(
+                    "Sång (mp3)",
+                    Some(root.join("finns-inte.mp3").to_string_lossy().into_owned())
+                )
+            ),
+            "en oläsbar fil ska inte tas"
+        );
+        assert_eq!(
+            (
+                ch.name.clone(),
+                ch.icon.clone(),
+                ch.sample_path.clone(),
+                ch.steps,
+                ch.pcm_audio.is_some(),
+                ch.waveform_preview.clone(),
+            ),
+            before,
+            "kanalen ska vara orörd när filen inte går att läsa"
+        );
+
+        // 3. Sample utan fil: appens egen röst, ingen fil att läsa.
+        let mut ch = test_channel();
+        assert!(assign_library_sample_to_channel(&mut ch, &item("Synth Kick", None)));
+        assert_eq!(ch.name, "Synth Kick");
+        assert!(ch.pcm_audio.is_none());
+        assert!(ch.sample_path.is_none());
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Samma familj, i projektinläsningen: en kanal vars sample inte går att läsa
+    /// får inte bära en vågform som ser ut som ljud. Vågformen räknas ur ljudet —
+    /// finns inget ljud blir den tom, och då syns det att kanalen är tyst. Det är
+    /// den enda ärliga utvägen här: en projektinläsning kan inte avbrytas för att
+    /// en samplefil saknas, men den får inte låtsas att ljudet finns.
+    #[test]
+    fn a_channel_with_an_unreadable_sample_carries_no_waveform() {
+        let mut saved = channel_to_saved(&test_channel());
+        saved.sample_path = Some("/tmp/sonix-finns-inte-alls.mp3".to_string());
+        let ch = saved_to_channel(&saved);
+        assert!(ch.pcm_audio.is_none());
+        assert!(ch.waveform_preview.is_empty(), "ingen vågform utan ljud");
+        assert_eq!(ch.sample_path.as_deref(), Some("/tmp/sonix-finns-inte-alls.mp3"));
+        assert_eq!(ch.name, "Virvel", "inställningarna ska ändå med");
+        assert_eq!(ch.steps, [true; 16]);
     }
 }

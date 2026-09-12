@@ -62,15 +62,6 @@ pub fn envelope_per_pixel(samples: &[f32], pixels: usize) -> Vec<(f32, f32)> {
     out
 }
 
-/// Hur många bildpunkter höljet behöver för att vara exakt vid den här bredden.
-///
-/// Finns för att ritningen ska kunna fråga i stället för att gissa: ett hölje
-/// med färre punkter än bredden är *per definition* utsträckt och därmed
-/// "pixlat", hur snyggt det än ritas.
-pub fn pixels_needed(region_pixels: f32) -> usize {
-    region_pixels.max(0.0).ceil() as usize
-}
-
 /// Fackstorleken på den finaste nivån. 64 samplar ≈ 1,3 ms vid 48 kHz.
 ///
 /// Siffran är en avvägning som Alex' öra avgjorde: med 256 (≈ 5 ms) blev höljet
