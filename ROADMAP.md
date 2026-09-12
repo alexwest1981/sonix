@@ -1265,6 +1265,36 @@ hjälptexten är läst, inte sedd, och det är Alex' öra som avgör om bandspel
 - **Inte kvitterat i GUI** (ingen skärm på maskinen): switchen, klippmenyns temoläge och
   statusraderna är lästa, inte sedda.
 
+**Rättat efter Alex' öron (kväll 2026-09-12): "sången började innan musiken började
+spela … sänker jag till 110 så hamnar all back vocal ur synk."**
+
+Mätt, inte gissat: stämmorna är **254,000 s** och klippen **127 takter**, alltså är innehållet
+`127 × 240 / 254 = **120,0000**` BPM. Klippen bar **120,98828** — en siffra ur en
+tempoanalys. Sträckningen räknar `filsekunder × källa/projekt` medan klossen är
+`takter × 240/projekt`, och de möts **bara** när `källa = takter × 240 / filsekunder`. Med
+120,98828 blev filen **0,82 % för lång**: vid 110 BPM 279,37 s där klossen är 277,09 s.
+
+- **Det är inte en artefakt i en ton — hela låten glider ur takt**, mer ju längre den spelar
+  (2,3 s över fyra minuter). Mätt på hans egen stämma
+  (`the_stretch_fills_the_clip_on_a_real_stem`, `#[ignore]`d): gamla siffran **+2,09 s** vid
+  120 BPM och **+2,28 s** vid 110; geometrin **+0,00 s** i båda.
+- **Regeln:** säger den sparade siffran och måttet samma sak inom en procent är de samma
+  tempo, och då vinner **geometrin** — den är det enda tal tidslinjen kan räkna med. Ligger de
+  längre ifrån varandra står den sparade siffran kvar. Priset är dokumenterat i koden: en kloss
+  trimmad med mindre än en procent får måttets tal i stället för det sparade.
+- **Vid 120 BPM blir beslutet nu `Untouched`** — ingen fil alls och den bit-exakta vägen, i
+  stället för en fil som var 2 s för lång.
+- Provet `a_tempo_that_does_not_fill_the_clip_is_replaced_by_the_geometry` håller fast hela
+  felet: 120,98828 → 120,0000, och filen möter klossen vid 120/110/102/133 BPM.
+- **Cachen var 5,7 GB** (35 filer, alla räknade med den gamla siffran) och är rensad. Siffran
+  gör utrensningen mer brådskande än den lät: tio tempon à nio stämmor är inte 8,5 GB i teorin
+  utan 5,7 GB i praktiken, för *fem* tempon.
+- **Det som ÅTERSTÅR av hans rapport:** "vissa toner gick helt ur fas och skorrade". Det är
+  **motorn**, inte faktorn: WSOLA warbler på polyfonisk sång (modulens egen doc säger det), och
+  vid 110 är sträckningen 9 %. Researchunderlaget ligger klart i `references/daw-research/10`
+  (signalsmith-stretch är MIT och passar vår licens) — ett motorbyte är ett eget pass, och det
+  är där kvaliteten sitter, inte i en kryssruta.
+
 **Kvar på 8.10:**
 
 1. **En kloss över ett tempobyte** får fortfarande **en** faktor, räknad från tempot vid

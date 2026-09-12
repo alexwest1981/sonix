@@ -133,7 +133,12 @@ mätt, och var nästa andetag ska tas.*
    exporten, UI i mixerns kanalpanel). **Kvar av punkten:** sends **mellan spår** — en annan
    och större sak (spårloopen i `process_stereo` måste delas i två faser + en slingkontroll),
    och den ligger kvar i roadmapen med sitt eget pass.
-5. **8.10 steg 2 (pitch-bevarande sträckning)** — **KLAR i `~/Projects/sonix-tempo`**
+5. **8.10 steg 2 (pitch-bevarande sträckning)** — **KLAR och mergad till master**, med en
+   rättelse efter Alex' öron: klippen bar 120,98828 medan geometrin sa 120,0000, och filen
+   blev 2,3 s för lång vid 110 BPM (hela låten gled ur takt). Nu vinner geometrin inom en
+   procent — se roadmapens 8.10. **Kvar av hans rapport:** WSOLA skorrar på sång (motorn,
+   inte faktorn) och cachen hade ingen utrensning (5,7 GB för fem tempon, nu rensad).
+   **Det gamla (worktreen):**
    (branch `tempo-follow`), **392 tester default / 438 med plugin-host, 0 varningar**.
    Switchen (🎚 Följ tempot, på som standard), klippets bandspelarläge, den
    offline-renderade filen med cache, och motorns `source_audio`. Bevisen står i

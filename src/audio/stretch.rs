@@ -750,6 +750,56 @@ mod tests {
         }
     }
 
+    /// **Mätning mot en riktig stämma** (körs manuellt, hoppar tyst om filen inte finns):
+    /// `cargo test --release --bin sonix the_stretch_fills -- --ignored --nocapture`
+    ///
+    /// Alex' Broken-stämmor är 254,000 s och klippen 127 takter, alltså 120,0000 BPM.
+    /// Frågan provet svarar på: **blir den sträckta filen exakt så lång som klossen är
+    /// på tidslinjen?** Gör den inte det glider ljudet ur takt, mer ju längre låten
+    /// spelar — det var felet han hörde 2026-09-12 (0,82 % fel = 2,3 s över fyra
+    /// minuter). Provet jämför den gamla siffran (120,98828) med geometrins (120,0).
+    #[test]
+    #[ignore]
+    fn the_stretch_fills_the_clip_on_a_real_stem() {
+        let stem = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+            .join("imported_stems/Broken/Broken (Drums).wav");
+        if !stem.exists() {
+            println!("hoppar: {} finns inte", stem.display());
+            return;
+        }
+        let Ok((l, r, sr)) = crate::audio::load_wav_pcm(&stem.to_string_lossy()) else {
+            println!("hoppar: kunde inte läsa {}", stem.display());
+            return;
+        };
+        let file_secs = l.len() as f32 / sr as f32;
+        let bars = 127.0f32;
+        let geometry = bars * 240.0 / file_secs;
+        println!(
+            "källan: {file_secs:.3} s, {bars} takter -> geometrin {geometry:.4} BPM \
+             (klippet bar 120,98828)"
+        );
+
+        let dir = std::env::temp_dir().join("sonix_stretch_real");
+        let _ = std::fs::remove_dir_all(&dir);
+        for (label, source_bpm) in [("gammal siffra", 120.98828f32), ("geometrin", geometry)] {
+            for project in [120.0f32, 110.0] {
+                let file_ratio = source_bpm / project;
+                let written = render_to_file(&dir, &format!("{label} {project}"), &l, &r, file_ratio, sr as f32)
+                    .expect("renderingen ska lyckas");
+                let out_secs = std::fs::metadata(&written).map(|m| m.len()).unwrap_or(0) as f32;
+                let clip_secs = bars * 240.0 / project;
+                // 48 kHz, 2 kanaler, 32-bitars float + header.
+                let rendered_secs = out_secs / (sr as f32 * 2.0 * 4.0);
+                println!(
+                    "  {label:14} vid {project:5.1} BPM: filen {rendered_secs:8.2} s, \
+                     klossen {clip_secs:8.2} s, fel {:+6.2} s",
+                    rendered_secs - clip_secs
+                );
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// **Acceptanskriterium 2, hela vägen:** en ton i ett klipp har samma
     /// grundfrekvens efter en tempoändring — och det tidslinjen spelar är filen
     /// cachen skrev.

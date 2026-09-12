@@ -1206,14 +1206,32 @@ pub fn stretch_ratio_for(source_bpm: f32, project_bpm: f32) -> f32 {
 /// Stämmer det inte lämnas 0,0: då är klossen trimmad, eller så har tempot ändrats
 /// sedan importen, och att gissa vore att hitta på data. Användaren kan sätta
 /// tempot själv i stället (⏱ Tempokarta → "låt klippen följa tempot").
+///
+/// **Två källor kan säga samma sak med olika tal — och då vinner geometrin.**
+/// Klossens mått (`takter × 240 / filens sekunder`) är det tempo klossen är byggd
+/// med, och det är den **enda** siffran som gör att en sträckt fil fyller klossen:
+/// filen blir `filsekunder × källa/projekt` lång medan klossen är
+/// `takter × 240/projekt`, och de möts bara när `källa = takter × 240/filsekunder`.
+/// En sparad siffra inom en procent av måttet är samma tempo, och geometrin är då
+/// den sanna: 0,8 % fel låter rätt i första takten och ligger **2,3 sekunder fel**
+/// efter fyra minuter. Mätt på Alex' Broken 2026-09-12: klossarna bar 120,98828,
+/// filerna är 254,000 s och klossarna 127 takter = **120,0000** BPM — en fil som
+/// blev 2,3 s för lång vid 110, alltså hörbart ur synk.
+///
+/// Ligger de längre ifrån varandra står den sparade siffran kvar: då är de inte
+/// samma tempo, och att byta ut den vore att gissa.
 fn source_bpm_from_region(region: &AudioRegion, source_secs: f32, project_bpm: f32) -> f32 {
-    if region.source_bpm > 0.0 {
-        return region.source_bpm; // redan känt — räkna inte om det
-    }
     if source_secs <= 0.0 || project_bpm <= 0.0 || region.length_bars <= 0.0 {
-        return 0.0;
+        return region.source_bpm.max(0.0); // inget att mäta mot: behåll det vi vet
     }
     let derived = region.length_bars as f32 * 240.0 / source_secs;
+    if region.source_bpm > 0.0 {
+        return if ((derived - region.source_bpm) / region.source_bpm).abs() <= 0.01 {
+            derived // samma tempo, olika tal: geometrin vinner (se docen)
+        } else {
+            region.source_bpm
+        };
+    }
     if ((derived - project_bpm) / project_bpm).abs() <= 0.01 {
         project_bpm
     } else {
@@ -20140,6 +20158,69 @@ mod tests {
 
         // Utan ljud (ingen längd) finns inget att mäta.
         assert_eq!(source_bpm_from_region(&region(120.0, 0.0), 0.0, 120.0), 0.0);
+        // Utan längd att mäta mot behålls det sparade värdet — det är bättre än 0,0.
+        assert_eq!(source_bpm_from_region(&region(120.0, 118.0), 0.0, 120.0), 118.0);
+    }
+
+    /// **Felet Alex hörde 2026-09-12, som ett test.**
+    ///
+    /// Hans stämmor är 254,000 s och klippen 127 takter, alltså är innehållet
+    /// 127 × 240 / 254 = **120,0000** BPM. Klippen bar 120,98828 (en siffra ur en
+    /// tempoanalys). Sträckningen räknar `filsekunder × källa/projekt`, klossen är
+    /// `takter × 240/projekt` — och med 120,98828 blev filen **2,3 sekunder för
+    /// lång** vid 110 BPM. Det är inte en artefakt i en ton: det är hela låten som
+    /// glider ur takt, mer ju längre den spelar.
+    #[test]
+    fn a_tempo_that_does_not_fill_the_clip_is_replaced_by_the_geometry() {
+        let (file_secs, bars, stored) = (254.0_f32, 127.0_f32, 120.98828_f32);
+        let geometry = bars * 240.0 / file_secs;
+        assert!(
+            (geometry - 120.0).abs() < 1e-4,
+            "stämmorna är exakt 127 takter i 120,0000 BPM: {geometry}"
+        );
+
+        let region = |bars: f32, source_bpm: f32| AudioRegion {
+            id: 1,
+            name: "Stämma".to_string(),
+            start_bar: 0.0,
+            length_bars: bars,
+            sample_offset_sec: 0.0,
+            source_path: Some("/tmp/stam.wav".to_string()),
+            waveform_peaks: Vec::new(),
+            volume: 1.0,
+            fade_in_bars: 0.0,
+            fade_out_bars: 0.0,
+            muted: false,
+            is_reverse: false,
+            color: Color32::WHITE,
+            loop_length_bars: 0.0,
+            source_bpm,
+            tape: false,
+        };
+        let source = source_bpm_from_region(&region(bars, stored), file_secs, 120.0);
+        assert!(
+            (source - 120.0).abs() < 1e-4,
+            "geometrin ska vinna över analystalet: {source}"
+        );
+
+        // Filen och klossen möts nu vid varje projekt-tempo — det är hela poängen.
+        for project in [120.0_f32, 110.0, 102.0, 133.0] {
+            let clip_secs = bars * 240.0 / project;
+            let rendered = file_secs * (source / project);
+            assert!(
+                (clip_secs - rendered).abs() < 0.02,
+                "vid {project} BPM: filen {rendered:.2} s mot klossen {clip_secs:.2} s"
+            );
+        }
+
+        // Och med den gamla siffran kvar är felet sekunder, inte millisekunder.
+        let wrong = file_secs * (stored / 110.0);
+        let right = bars * 240.0 / 110.0;
+        assert!(
+            wrong - right > 2.0,
+            "felet ska vara hörbart stort: {:.2} s",
+            wrong - right
+        );
     }
 
     /// Stämpeln: klipp utan känt tempo får projektets, och vid det tempot ändras
