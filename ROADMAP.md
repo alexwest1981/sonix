@@ -83,7 +83,8 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
-| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *S–M* | **Steg 1 klart** (`f0dc8eb`, bandspelarlogik = tonhöjden följer); kvar: pitch-bevarande (WSOLA), klipp över ett tempobyte, och att vyn visar att klippet är sträckt | Alex' öra för steg 2 |
+| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *S–M* | **Steg 1 klart och kvitterat av Alex** (`f0dc8eb` + `a510775`); kvar: pitch-bevarande (WSOLA), klipp över ett tempobyte, och att vyn visar att klippet är sträckt | — |
+| 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **Klart** (`392a30c`): en tabell, ett index, låset gör något, tonarten sparas — se fas 8.11 | Alex' ögon på markeringen |
 
 
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
@@ -172,6 +173,14 @@ obekräftad).
 kasta felet med `let _ =`, och använder samma mapp och samma basnamn som exportknappen — så en
 separation och en export skriver samma fil en gång, inte två gånger på två ställen. Två vägar
 som skrev stämfiler blev en (`paths::stem_file`, utan användare, togs bort).
+
+**8.11 tonarten (2026-09-12 kväll, `392a30c`):** Alex' svar på den öppna frågan — "gör
+kontrollen sann". Fem saker var osanna: två skalalistor med korsande index (Dorian blev
+Moll), tretton grundtonsnamn för tolv toner (fyra av tolv val gav fel ton), tonarten nådde
+bara AI-kontexten, skal-låset lästes aldrig av någon, och tonarten sparades inte. Nu finns
+`src/audio/scale.rs` med en tabell och reglerna som rena funktioner, ett fältpar, markering
+som följer projektets tonart, ett lås som flyttar klicket till närmaste skalton, och
+tonarten i projektfilen.
 
 **8.10 steg 1 (2026-09-12 kväll, `f0dc8eb`):** klippen följer projektets tempo —
 Alex' svar på frågan som stod öppen i fas 8.10 nedan. Bandspelarlogik (Abletons
@@ -1198,3 +1207,63 @@ hjälptexten är läst, inte sedd, och det är Alex' öra som avgör om bandspel
 4. **Omvänt klipp med `sample_offset_sec > 0`** ligger utanför sitt eget utsnitt. Det
    beteendet är oförändrat sedan före 8.10 (medvetet: ingen tyst beteendeändring), men det
    är fel och förtjänar en egen rad.
+
+---
+
+## 8.11 Tonarten som tonart (Alex' svar 2026-09-12)
+
+**Kravet, ur Alex' egen mun:** "Gör kontrollen sann: markera skalan i piano roll (och låt
+Dur/Moll betyda något)." Efter 8.10, där hans kvittens visade att en kontroll kan se rätt
+ut och göra fel, var det här samma fråga i tonartens kläder.
+
+**Mätt läge före (läst i koden — fem saker var osanna, inte en):**
+
+1. **Två skalalistor med korsande index.** Arrangeraren hade fem namn
+   (`Dur, Moll, Dorian, Blues, Synthwave`), piano rollen tio
+   (`Kromatisk, Dur (Maj), Moll (Min), ...`). Båda skrev till den andra med sitt eget
+   index: **"Dorian" i arrangeraren blev "Moll" i piano rollen.** AI-kontexten läste
+   arrangerarens *namn*, så den beskrev en annan skala än den piano rollen visade.
+2. **13 grundtonsnamn för 12 tonhöjdsklasser** (`C C# D D# Eb E F F# G Ab A Bb B`).
+   Index 4 visade "Eb" och satte tonhöjd 4 = **E**; samma sak för 5, 9 och 11. Fyra av
+   tolv val gav en annan ton än den man klickade på — och grundtonen styr markeringen.
+3. **Tonarten nådde bara AI-kontexten.** Piano rollen hade egna kopior
+   (`piano_roll_root_note`, `selected_scale`), så arrangerarens kontroll styrde inte vyn
+   den lovade att styra.
+4. **`piano_roll_snap_to_scale` lästes aldrig.** 🔒-knappen satte en flagga som ingen
+   läste: låset såg funktionellt ut och gjorde ingenting.
+5. **Tonarten sparades inte** i projektfilen — den var borta vid varje omladdning.
+
+**Gjort (`392a30c`):**
+
+- **`src/audio/scale.rs`**: en tabell (`SCALES`: elva skalor med intervall, `Dur` först
+  eftersom index 0 är vad arrangeraren alltid har *sagt*), tolv grundtonsnamn, och
+  reglerna som rena funktioner: `scale_notes`, `in_scale`, `nearest_in_scale`, `snap_row`,
+  `key_label`, `Scale::is_minor` (mollters = tre halvtoner över grundtonen, durters = fyra;
+  kromatisk har båda och är varken eller).
+- **Ett fältpar.** `selected_scale` och `piano_roll_root_note` är borttagna; kvar finns
+  `song_key_root` + `song_key_scale`. Arrangerarens två menyer och piano rollens två läser
+  **samma** tabell, alltså betyder ett index samma sak överallt.
+- **Markeringen** i rutnätet (grundtonsraden med stjärna, icke-skaltoner nedtonade) följer
+  nu projektets tonart.
+- **Låset gör något:** en klickad rad utanför skalan hamnar på **närmaste** rad i skalan,
+  och markeringen visar var den hamnade. Lika nära upp som ned → **nedåt** vinner (regeln
+  är vald, står på ett ställe och är testad).
+- **Tonarten sparas** i projektfilen (`#[serde(default)]`): äldre projekt läses som förut,
+  Eb Dur.
+
+**Bevis:** 365 tester default / 411 med `plugin-host`, 0 varningar. Nio nya tester: namnen
+unika, intervallen stigande och inom oktaven, grundtonerna tolv med rätt namn (testet som
+hade fångat tretton-namnlistan), rätt toner i Dur/Moll från C och Eb, närmaste skalton
+(inklusive lika-langt-fallet), låsets radflytt och att det aldrig lämnar rutnätet eller rör
+en kromatisk skala, dur/moll ur tersen — och att ett äldre projekt utan tonart läses som
+Eb Dur.
+
+**Ändrat beteende att veta om:** piano rollen startar nu på **Dur** i stället för
+Kromatisk, eftersom den följer projektets tonart och arrangeraren alltid har *sagt* Dur.
+Med låset av betyder skalan bara markeringen.
+
+**Kvar på 8.11:** (1) Alex' ögon på markeringen och menyernas bredd (104/120 px för de
+längre skalnamnen — läst i koden, inte sett i fönstret); (2) skalnamnen är svenska
+strängar, inte i18n-nycklar (de var literaler på två ställen förut, nu på ett — men
+fortfarande utanför `i18n.rs`); (3) transponering av ett helt mönster till tonarten finns
+inte (`transpose_active_pattern` tar halvtoner för hand).

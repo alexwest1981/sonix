@@ -12,9 +12,9 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 354 default / 400 med `--features plugin-host`, **0 varningar** i båda.
+- **Tester:** 365 default / 411 med `--features plugin-host`, **0 varningar** i båda.
   CI fäller numera **alla** ben på varningar, inte bara Windows.
-- **Senaste commit:** `f0dc8eb`
+- **Senaste commit:** `392a30c`
 - **Kör igång:** `cargo build --release --locked` (release krävs — det är den binären
   Alex startar). Efter varje ändring: `cargo build --release --locked`, `cargo test
   --locked --bin sonix`, `cargo test --locked --features plugin-host --bin sonix`.
@@ -48,6 +48,8 @@ mätt, och var nästa andetag ska tas.*
 | `78eb13e` | Den här överlämningen |
 | `cb9f152` | **Pixeleringen efter import, stängd på datanivå:** cachen byggs i avkodningstråden, spåret får PCM + cache (se §4 — punkten är klar) |
 | `f0dc8eb` | **8.10 steg 1:** klippen följer projektets tempo (bandspelarlogik — tonhöjden följer), bit-exakt vid faktor 1,0 |
+| `a510775` | **Alex hörde inget** — hans projektfil saknade fältet. Inspelningstemot mäts nu fram vid inläsning (hans Broken: 9/9 klipp), plus en stämpel i ⏱ Tempokarta |
+| `392a30c` | **8.11 tonarten:** en tabell och ett index i stället för två listor, skal-låset gör något, tonarten sparas |
 
 ## 3. Mätt, inte gissat (bär dessa vidare — de är dyra att ta fram igen)
 
@@ -108,9 +110,15 @@ mätt, och var nästa andetag ska tas.*
    hände. Nu mäts inspelningstemot fram vid inläsning när filen och projektets tempo
    stämmer (hans Broken: 9/9 klipp), och ⏱ Tempokarta har en stämpel för resten.
    **Nästa andetag här är steg 2** — och det är Alex' öra som avgör om det behövs.
-3. **Tonarten som faktisk tonart:** `song_key_scale` når i dag bara AI-kontexten
-   (`refresh_ai_context`); `piano_roll_root_note` styr piano roll. Koppla skalan till
-   piano roll så Dur/Moll betyder något, eller döp om kontrollen.
+3. ~~**Tonarten som faktisk tonart**~~ — **KLAR 2026-09-12 (`392a30c`).** Fem saker var
+   osanna: två skalalistor med korsande index (arrangerarens "Dorian" blev piano rollens
+   "Moll"), **13 grundtonsnamn för 12 toner** (fyra av tolv val gav fel ton), tonarten
+   nådde bara AI-kontexten, `piano_roll_snap_to_scale` lästes **aldrig** (🔒-knappen
+   gjorde ingenting), och tonarten sparades inte. Nu: `src/audio/scale.rs` med en tabell
+   och rena regler, ett fältpar (`song_key_root` + `song_key_scale`), markeringen följer
+   projektets tonart, låset flyttar klicket till närmaste skalton (nedåt vid lika avstånd),
+   och tonarten ligger i projektfilen. **Kvar:** Alex' ögon på markeringen, skalnamnen är
+   svenska strängar (inte i18n), och ingen transponering-till-tonart.
 4. **`--clean-tags` för wav** (RIFF `LIST/INFO`) — samma sak som ID3 men andra chunks.
 5. **Tempomarkering i taktlinjalen** vid tempobyten (syns bara i listan i dag).
 6. **Riktig BPM-detektor** om någon behöver den: onset-styrka + tempokam
@@ -150,6 +158,11 @@ mätt, och var nästa andetag ska tas.*
   filer över 5 MB. README förklarar hur man skaffar ljud.
 - Alex' stämmor: `~/imported_stems/<Projekt>/` (relativ sökväg i projektfilen!).
 - Sandlådor: `/tmp/sonix_*`. Alex' riktiga `~/.local/state/sonix/` rörs inte.
+- **En flagga ingen läser är ingen funktion.** `piano_roll_snap_to_scale` sattes av en
+  knapp och lästes av ingen — den såg funktionell ut i månader. När du rör en kontroll:
+  `search_files` **alla** läsare av fältet, inte bara skrivarna. Samma sak med två listor
+  för samma sak: de driver isär, och den som visar ett namn och gör något annat är värre än
+  ingen kontroll alls.
 - **Långa inline-kommandon (heredoc, jätte-ettor) blockeras av kommandoparsern.**
   Lägg skriptet i `/tmp/*.sh` med `write_file` och kör `bash /tmp/skriptet.sh` —
   det var vägen runt blockningen 2026-09-12. Samma sak för grepp-kedjor med `-A`.
