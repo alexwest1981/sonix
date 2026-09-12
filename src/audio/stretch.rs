@@ -66,6 +66,67 @@ pub fn plan(source_bpm: f32, project_bpm: f32, source_frames: usize) -> Option<S
     Some(StretchPlan { ratio, out_frames })
 }
 
+/// Vad som ska hända med **ett** klipp när tempot rör sig.
+///
+/// Tre utfall, och bara tre — det är hela användarvända regeln bakom "ett dumhuvud ska klara
+/// det". Ingen algoritm väljs manuellt; klippets typ och switchen avgör.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum FollowMode {
+    /// Ljudet rörs inte: okänt inspelningstempo, samma tempo, eller switchen av.
+    Untouched,
+    /// Bandspelaren: tonhöjden följer med. Ett **aktivt** val per klipp (den som vill ha
+    /// effekten), aldrig standard — det är smurfen.
+    Tape,
+    /// Tonhöjdsbevarande sträckning till en fil, spelad med faktor 1,0.
+    Stretch,
+}
+
+/// Beslutet för ett klipp, med faktorn när en sträckning behövs.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FollowDecision {
+    pub mode: FollowMode,
+    /// Ut-tid / in-tid. 1,0 när inget ska hända.
+    pub ratio: f32,
+}
+
+/// Regeln: **följ tempot, bevara tonhöjden** — utom där klippet självt säger tape.
+///
+/// Ordningen är vald så att inget kan hända av misstag:
+/// 1. **Okänt inspelningstempo** (`source_bpm <= 0`) → rör inte ljudet (8.10:s regel).
+/// 2. **Switchen av** → rör inte ljudet. "Följ tempot" är en switch, inte en halv.
+/// 3. **Klippet vill bandspelare** (`per_clip_tape`) → [`FollowMode::Tape`], tonhöjden följer.
+/// 4. **Samma tempo** → inget att göra (faktor 1,0, bit-exakt väg).
+/// 5. Annars → [`FollowMode::Stretch`] med projekt/källa, klämt till samma spann som
+///    sångstudiens reglage.
+pub fn decide(
+    source_bpm: f32,
+    project_bpm: f32,
+    follow_tempo: bool,
+    per_clip_tape: bool,
+) -> FollowDecision {
+    let untouched = FollowDecision {
+        mode: FollowMode::Untouched,
+        ratio: 1.0,
+    };
+    if source_bpm <= 0.0 || project_bpm <= 0.0 || !follow_tempo {
+        return untouched;
+    }
+    let raw = (project_bpm / source_bpm).clamp(MIN_RATIO, MAX_RATIO);
+    if (raw - 1.0).abs() <= 1e-4 {
+        return untouched;
+    }
+    if per_clip_tape {
+        return FollowDecision {
+            mode: FollowMode::Tape,
+            ratio: raw,
+        };
+    }
+    FollowDecision {
+        mode: FollowMode::Stretch,
+        ratio: raw,
+    }
+}
+
 /// Sträcker ett stereopar med bevarad tonhöjd.
 ///
 /// Kanalerna går genom **samma** WSOLA-instans, så grainsökningen (som avgör var varje korn
@@ -414,5 +475,42 @@ mod tests {
         let err = render_to_file(&dir, "tomt", &[], &[], 1.5, SR).expect_err("ska avvisas");
         assert!(!err.is_empty(), "felet ska förklara sig: {err}");
         assert!(!dir.exists(), "ingen katalog ska ha skapats i onödan");
+    }
+
+    /// **Policyn**, i en tabell: vad som händer med ett klipp i varje läge.
+    #[test]
+    fn the_policy_never_surprises_the_user() {
+        let untouched = FollowDecision {
+            mode: FollowMode::Untouched,
+            ratio: 1.0,
+        };
+
+        // 1. Okänt inspelningstempo (8.10) — även med switchen på.
+        assert_eq!(decide(0.0, 160.0, true, false), untouched);
+        // 2. Switchen av: ingen följning alls, varken sträckning eller bandspelare.
+        assert_eq!(decide(120.0, 160.0, false, false), untouched);
+        assert_eq!(decide(120.0, 160.0, false, true), untouched);
+        // 3. Klippet vill ha bandspelaren: tonhöjden följer, och det är ett aktivt val.
+        let tape = decide(120.0, 150.0, true, true);
+        assert_eq!(tape.mode, FollowMode::Tape);
+        assert!((tape.ratio - 1.25).abs() < 1e-6);
+        // 4. Samma tempo: ingenting att göra.
+        assert_eq!(decide(128.0, 128.0, true, false), untouched);
+        // 5. Standardvägen: sträck, bevara tonhöjden.
+        let stretch = decide(120.0, 150.0, true, false);
+        assert_eq!(stretch.mode, FollowMode::Stretch);
+        assert!((stretch.ratio - 1.25).abs() < 1e-6);
+        // Och nedåt lika självklart.
+        let down = decide(150.0, 120.0, true, false);
+        assert_eq!(down.mode, FollowMode::Stretch);
+        assert!((down.ratio - 0.8).abs() < 1e-6);
+    }
+
+    /// En extrem tempodiff får inte ge en orimlig faktor, och inte heller en tyst väg runt
+    /// klämningen: samma gränser som sångstudiens reglage gäller.
+    #[test]
+    fn the_policy_clamps_like_the_vocal_studio_does() {
+        assert!((decide(120.0, 10_000.0, true, false).ratio - MAX_RATIO).abs() < 1e-6);
+        assert!((decide(120.0, 1.0, true, false).ratio - MIN_RATIO).abs() < 1e-6);
     }
 }
