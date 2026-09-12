@@ -877,6 +877,31 @@ Dessutom räknades bara `max(abs(x))` per fönster: ett **symmetriskt** hölje. 
 
 **Läget efter inkopplingen (mätt i koden, 2026-09-12):** tidslinjen ritar ett äkta (min, max) per bildpunkt ur cachen för **icke-slingade** regioner med PCM; den gamla vägen ligger kvar orörd som fallback för regioner utan PCM och för slingade regioner. Cachen byggs på ett ställe (`ensure_waveform_cache`, i spårloopen) och nycklas på buffertens identitet, så en ny tagning eller en frysning ger automatiskt en ny cache. Kostnaden är en O(samplar)-genomgång per spår och ljud (~50 ms för fyra minuter), en gång.
 
+**Importen bygger cachen själv — hålet som gav pixeleringen (`cb9f152`, 2026-09-12).**
+Ritningen var inkopplad, men importen gav aldrig spåret något ljud: `apply_imported_stems`
+skickade den avkodade PCM:en till motorn och **kastade** den på UI-sidan, så
+`ensure_waveform_cache` hade inget att bygga ur. Ritningen föll därför tillbaka på
+regionens grova översikt — och blev kvar där. Det var den pixelering Alex såg efter en
+import: en representation som ser ut som sanning medan det verkliga svaret är borta
+(samma familj som 8.5).
+
+- **Var:** `background_decode_stems` bygger `WaveformCache` i den tråd som redan avkodat
+  filen, och den följer med `DecodedStemTrack` ut till spåret. Motorn och spåret delar
+  **samma** `Arc`-buffert (`LoadStemTrack` tar redan ett `Arc`), så ingen kopia av ljudet
+  tillkommer — och nyckeln stämmer, alltså ritar tidslinjen det exakta höljet redan i
+  första bildrutan.
+- **Regeln som ren funktion:** `imported_track_waveform` — PCM och cache till spåret,
+  cachen **nycklad på bufferten**, och ingen cache alls när det inte finns ljud att rita.
+  Testad utan fönster, som resten av importreglerna.
+- **Översikten** som följer med regionen räknas nu ur cachen i stället för att läsa var
+  64:e sample. Mätt: av 200 enstaka anslag försvann **100** i den gamla vägen (vid det
+  steg en riktig stämma ger: 6000 samplar per punkt, steg 93), **0** i cache-vägen.
+- **Vad det kostar, mätt:** cachebygget är 62 ms per minut i release (4 min: 279 ms,
+  2,7 MiB). Åtta fyra minuters stämmor ≈ 2,5 s extra importtid, i arbetstråden.
+
+Kvar att kvittera är detsamma som förut: att vågformen **ser** rätt ut i fönstret kräver
+Alex' ögon (ingen Xvfb på maskinen). På datanivå är vägen stängd.
+
 **Kvar på 8.3:** (1) slingade regioner har sin funktion (`envelope_looped`, testad: samma svar varje varv, och ingen förlust vid skarven) och den är **inkopplad** sedan 2026-09-12: ritningen väljer väg efter om regionen är slingad — deras bildpunkter följer upprepningen och kräver en egen lösning; (2) `render_playlist_arranger`s `px_per_sec` och linjalens sekundetiketter är kvar i sekunder (samma pass som 8.2:s visning); (3) ⏱ **klart 2026-09-12:** `PlaylistTrack.audio_waveform` var död kod (sattes på sex ställen, lästes aldrig) och är borttagen — med den tre `visual_peaks_from`-anrop som räknade O(samplar) i onödan vid varje import, tagning och AI-stämma.
 
 ### 8.4 Vågformer som blir tydligare ju mer man zoomar (Alex önskemål, 2026-09-12)
