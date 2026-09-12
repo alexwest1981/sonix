@@ -268,6 +268,38 @@ impl TempoMap {
     }
 }
 
+/// Tempopunkterna en MIDI-import ska lägga in i projektet (Fas 8.2, steg 3).
+///
+/// **Regeln är appens, inte funktionens påhitt:** filens tempo får bara bli
+/// projektets när projektet står kvar på sitt ursprungliga 120 BPM — annars
+/// vore importen en tyst tempoändring av en låt någon redan satt tempot på.
+///
+/// Händelserna kommer ur en SMF som `(takt, BPM)`, och takten kan vara en
+/// bråkdel (ett tempobyte mitt i en takt). Modellen har en punkt **per takt**,
+/// så en sådan avrundas till närmaste takt: en takt är den minsta plats
+/// modellen har, och att tyst kasta bytet vore att tappa det.
+///
+/// Lämnar `None` när inget ska ändras, så att anroparen kan säga varför i
+/// stället för att tiga.
+pub fn tempo_points_for_import(
+    events: &[(f64, f32)],
+    project_bpm: f32,
+) -> Option<Vec<TempoPoint>> {
+    if events.is_empty() || (project_bpm - 120.0).abs() >= 0.05 {
+        return None;
+    }
+    let mut points: Vec<TempoPoint> = Vec::with_capacity(events.len());
+    for (bar, bpm) in events {
+        // Samma spann som projektets eget tempo: en import ska inte kunna
+        // lämna appen med ett tempo den inte kan visa eller spela.
+        set_tempo_point(&mut points, bar.round().max(0.0) as u32, bpm.clamp(40.0, 260.0));
+    }
+    // Normaliseringen (sorterad, en punkt per takt, alltid en i takt 0) bor i
+    // kartan — den ska inte finnas i två varianter.
+    Some(TempoMap::from_points(points).points().to_vec())
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -556,5 +588,41 @@ mod tests {
         let default: TempoMap = TempoMap::default();
         assert!(default.is_single());
         assert_eq!(default.bpm_at(0.0), 120.0);
+    }
+
+    /// Importens regel (Fas 8.2, steg 3): filens tempobyten blir projektets
+    /// **bara** när projektet står kvar på sitt ursprungliga 120 BPM — och då en
+    /// punkt per takt, där ett byte mitt i en takt avrundas till närmaste.
+    #[test]
+    fn imported_tempo_events_become_project_points_only_at_the_default_tempo() {
+        let events = [(0.0, 128.0), (3.5, 90.0), (7.0, 150.0)];
+
+        let points = tempo_points_for_import(&events, 120.0).expect("kartan ska tas in");
+        assert_eq!(points.len(), 3);
+        assert_eq!(points[0], TempoPoint { start_bar: 0, bpm: 128.0 });
+        assert_eq!(
+            points[1],
+            TempoPoint { start_bar: 4, bpm: 90.0 },
+            "ett byte på 3.5 hamnar på närmaste takt"
+        );
+        assert_eq!(points[2], TempoPoint { start_bar: 7, bpm: 150.0 });
+
+        // Ett projekt som redan har ett eget tempo behåller det: inget tas in.
+        assert!(tempo_points_for_import(&events, 140.0).is_none());
+        assert!(tempo_points_for_import(&events, 100.0).is_none());
+        // En fil utan tempohändelser har inget att ta in.
+        assert!(tempo_points_for_import(&[], 120.0).is_none());
+
+        // En fil vars första byte inte står i takt 0 får sin första punkt i takt 0
+        // av normaliseringen — annars vore takten före den utan svar.
+        let late = tempo_points_for_import(&[(2.0, 100.0)], 120.0).unwrap();
+        assert_eq!(late.len(), 1);
+        assert_eq!(late[0], TempoPoint { start_bar: 0, bpm: 100.0 });
+
+        // Två byten i samma takt blir **en** punkt, och den sista vinner — samma
+        // regel som när kartan byggs av punkter.
+        let dup = tempo_points_for_import(&[(1.0, 100.0), (1.0, 111.0)], 120.0).unwrap();
+        assert_eq!(dup.len(), 1);
+        assert_eq!(dup[0], TempoPoint { start_bar: 0, bpm: 111.0 });
     }
 }

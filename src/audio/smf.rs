@@ -230,13 +230,7 @@ pub struct ParsedMidi {
     ///
     /// `bpm` är den första av dem — det är den som gäller från början. Med en
     /// tempokarta i filen räcker inte ett enda tal, och då behövs de här.
-    #[cfg_attr(
-        not(test),
-        allow(
-            dead_code,
-            reason = "läses av importen när den tar med tempobyten (8.2 steg 3)"
-        )
-    )]
+    /// Importen tar dem genom `tempo::tempo_points_for_import` (8.2 steg 3).
     pub tempo_events: Vec<(f64, f32)>,
     pub tracks: Vec<ParsedTrack>,
 }

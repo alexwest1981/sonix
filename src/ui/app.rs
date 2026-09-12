@@ -3886,11 +3886,41 @@ impl SonixApp {
             }
             report.bars_imported += 1;
         }
-        if self.bpm_source_is_file() {
-            // Tempot i filen används bara som förslag när projektet står kvar på
-            // sin ursprungs-BPM; annars vore en import en tyst tempoändring.
-            if let Some(bpm) = parsed.bpm {
-                self.bpm = bpm.clamp(40.0, 260.0);
+        // Tempot i filen används bara som förslag när projektet står kvar på sin
+        // ursprungs-BPM; annars vore en import en tyst tempoändring. Samma regel
+        // gäller filens **tempobyten** (Fas 8.2 steg 3), och regeln ligger som en
+        // ren funktion i `tempo`, så att den kan prövas utan fönster.
+        let from_file = self.bpm_source_is_file();
+        let imported_points = if from_file {
+            crate::audio::tempo::tempo_points_for_import(&parsed.tempo_events, self.bpm)
+        } else {
+            None
+        };
+        let mut tempo_note = String::new();
+        match imported_points {
+            Some(points) => {
+                let count = points.len();
+                self.tempo_points = points;
+                // `bpm` speglar kartans första punkt (Fas 8.2) — samma regel som
+                // när ett tempobyte sätts för hand.
+                self.bpm = self.tempo_map().bpm_at(0.0);
+                if count > 1 {
+                    tempo_note = crate::tstatus!(" — och {} tempopunkter ur filen", count);
+                }
+            }
+            None => {
+                if from_file {
+                    if let Some(bpm) = parsed.bpm {
+                        self.bpm = bpm.clamp(40.0, 260.0);
+                    }
+                } else if parsed.tempo_events.len() > 1 {
+                    // Filens byten togs inte in. Att tiga om det vore att tappa
+                    // dem utan att säga till.
+                    tempo_note = crate::tstatus!(
+                        " — filens {} tempobyten togs inte in (projektet har eget tempo)",
+                        parsed.tempo_events.len()
+                    );
+                }
             }
         }
         let fmt = if parsed.format == 0 {
@@ -3925,6 +3955,9 @@ impl SonixApp {
                 report.dropped_out_of_range
             )
         };
+        if !tempo_note.is_empty() {
+            self.status_message = format!("{}{}", self.status_message, tempo_note);
+        }
         Ok(report)
     }
 
@@ -18715,5 +18748,47 @@ mod tests {
         assert!(zip_entry_names("/finns/inte/alls.zip").is_empty());
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Fas 8.2 steg 3, hela vägen: tempobyten skrivs **ut** i filen och läses
+    /// **in** igen som projektets tempopunkter. Rundgången är beviset — inte att
+    /// funktionen finns. (Skrivaren och läsaren är varandras motparter: tick =
+    /// takt × PPQ × 4 ut, takt = tick ÷ (PPQ × 4) in.)
+    #[test]
+    fn midi_tempo_changes_survive_the_round_trip() {
+        use crate::audio::smf::{self, MidiNote, MidiTrack};
+        let bytes = smf::write_midi_with_tempo(
+            &[(0.0, 128.0), (4.0, 90.0)],
+            &[MidiTrack {
+                name: "Takt".to_string(),
+                notes: vec![MidiNote {
+                    start: 0,
+                    length: 120,
+                    channel: 9,
+                    key: 36,
+                    velocity: 100,
+                }],
+            }],
+        );
+        let parsed = smf::parse_midi(&bytes).expect("egen fil ska gå att läsa");
+        assert_eq!(
+            parsed.tempo_events.len(),
+            2,
+            "båda tempobytena ska stå i filen: {:?}",
+            parsed.tempo_events
+        );
+
+        let imported = crate::audio::tempo::tempo_points_for_import(&parsed.tempo_events, 120.0)
+            .expect("kartan ska tas in i ett projekt som står på 120");
+        assert_eq!(imported.len(), 2);
+        assert_eq!(imported[0].start_bar, 0);
+        assert!((imported[0].bpm - 128.0).abs() < 0.5, "{:?}", imported[0]);
+        assert_eq!(imported[1].start_bar, 4);
+        assert!((imported[1].bpm - 90.0).abs() < 0.5, "{:?}", imported[1]);
+
+        // Och ett projekt som redan har ett eget tempo behåller sitt.
+        assert!(
+            crate::audio::tempo::tempo_points_for_import(&parsed.tempo_events, 100.0).is_none()
+        );
     }
 }
