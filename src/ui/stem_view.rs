@@ -133,7 +133,31 @@ pub fn render_stem_separator_view(
 
                     let mid_y = wave_rect.center().y;
                     let num_bars = stem.waveform_data.len();
-                    if num_bars > 0 {
+                    // Exakt väg (8.3): (min, max) per kolumn ur stämmans egna samplar.
+                    // Den gamla vägen ritade `mid ± amp`, alltså ett symmetriskt hölje
+                    // ur en översikt på 512 punkter — en vågform som såg trovärdig ut
+                    // men inte var signalen. Finns paren ritas de; annars gamla vägen.
+                    let pairs = &stem.waveform_pairs;
+                    if !pairs.is_empty() {
+                        let col_w = (wave_rect.width() - 8.0).max(1.0) / pairs.len() as f32;
+                        let half = wave_rect.height() * 0.46;
+                        for (idx, (lo, hi)) in pairs.iter().enumerate() {
+                            let bx = wave_rect.min.x + 4.0 + idx as f32 * col_w;
+                            let y_hi = mid_y - hi.clamp(-1.0, 1.0) * half;
+                            let y_lo = mid_y - lo.clamp(-1.0, 1.0) * half;
+                            let (top, bot) = (y_hi.min(y_lo), y_hi.max(y_lo));
+                            let col_rect = Rect::from_min_max(
+                                Pos2::new(bx, top),
+                                Pos2::new(bx + col_w.max(0.7), (bot).max(top + 0.6)),
+                            );
+                            let fill = if stem.muted {
+                                Color32::from_rgb(40, 45, 55)
+                            } else {
+                                col
+                            };
+                            painter.rect_filled(col_rect, Rounding::same(0.5), fill);
+                        }
+                    } else if num_bars > 0 {
                         let bar_w = (wave_rect.width() - 8.0).max(1.0) / num_bars as f32;
 
                         for (idx, &amp) in stem.waveform_data.iter().enumerate() {

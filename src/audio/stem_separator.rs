@@ -38,7 +38,17 @@ pub struct StemChannel {
     pub solo: bool,
     pub pitch_shift: i8,
     pub time_stretch: f32,
+    /// Grov översikt (512 punkter, `max(abs)`). Behålls för bakåtkompatibilitet —
+    /// stämvyns nya väg använder `waveform_pairs` i stället.
     pub waveform_data: Vec<f32>,
+    /// Exakt (min, max) per kolumn ur stämmanS EGNA SAMPLAR (8.3).
+    ///
+    /// Skillnaden mot `waveform_data` är hela poängen: `visual_peaks_from` trycker
+    /// ihop filen till högst 512 punkter och behåller bara `max(abs)` — alltså ett
+    /// symmetriskt hölje utan tecken. Här räknas både topp och botten per kolumn,
+    /// en gång, vid separationen (några millisekunder för fyra minuter), så vyn
+    /// kan rita den sanna formen utan att röra samplen per bildruta.
+    pub waveform_pairs: Vec<(f32, f32)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -466,6 +476,9 @@ impl StemProject {
                 pitch_shift: 0,
                 time_stretch: 1.0,
                 waveform_data: super::recorder::visual_peaks_from(&mono),
+                // 2048 kolumner är tätare än någon skärmbredd för en 70 px-remsa
+                // (2,5 kolumner per bildpunkt vid 800 px), och varje sample räknas.
+                waveform_pairs: super::waveform::envelope_per_pixel(&mono, 2048),
             });
         }
 
@@ -563,6 +576,50 @@ mod tests {
         }
         let est = estimate_bpm(&l, &r, sr);
         assert!((est - 120.0).abs() < 5.0, "estimated {est} BPM");
+    }
+
+    /// Stämvyn ritade ett symmetriskt hölje ur en 512-punktsöversikt förut. Nu
+    /// bär varje stämma exakta (min, max)-par ur sina egna samplar.
+    ///
+    /// Här prövas att paren FYLLS med riktigt innehåll. Att de bevarar osymmetri
+    /// prövas i `waveform::tests`, på `envelope_per_pixel` — samma funktion den här
+    /// vägen använder. Ett försök att pröva det här med en negativ halvvåg föll:
+    /// stämmorna banddelas, och en banddelning tar bort just en sådan förskjutning.
+    /// Testet hade fel, inte koden.
+    #[test]
+    fn stems_carry_exact_pairs_from_their_own_samples() {
+        let sr = 44100.0f32;
+        let n = 44100;
+        // Bredbandigt och deterministiskt (LCG) — når alla fyra banden, till
+        // skillnad från en enskild ton som bara hamnar i ett av dem.
+        let mut seed: u32 = 12345;
+        let mut next = || {
+            seed = seed.wrapping_mul(1664525).wrapping_add(1013904223);
+            (seed >> 8) as f32 / 8_388_608.0 - 1.0
+        };
+        let left: Vec<f32> = (0..n).map(|_| next() * 0.7).collect();
+        let right: Vec<f32> = (0..n).map(|_| next() * 0.7).collect();
+
+        let result = run_separation(&left, &right, sr as u32, &|_| {});
+        let mut project = StemProject::default();
+        project.install_separation(result, "/tmp/prov.wav");
+
+        assert!(!project.stems.is_empty(), "separationen ska ge stämmor");
+        for stem in &project.stems {
+            assert!(
+                !stem.waveform_pairs.is_empty(),
+                "varje stämma ska bära exakta par"
+            );
+        }
+        let loudest = project
+            .stems
+            .iter()
+            .flat_map(|s| s.waveform_pairs.iter())
+            .fold(0.0f32, |acc, (lo, hi)| acc.max(hi.abs()).max(lo.abs()));
+        assert!(
+            loudest > 0.01,
+            "bredbandig insignal ska ge riktigt innehåll i något band, fick {loudest}"
+        );
     }
 
     #[test]
