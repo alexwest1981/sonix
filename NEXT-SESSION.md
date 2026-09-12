@@ -12,9 +12,9 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 348 default / 394 med `--features plugin-host`, **0 varningar** i båda.
+- **Tester:** 354 default / 400 med `--features plugin-host`, **0 varningar** i båda.
   CI fäller numera **alla** ben på varningar, inte bara Windows.
-- **Senaste commit:** `cb9f152`
+- **Senaste commit:** `f0dc8eb`
 - **Kör igång:** `cargo build --release --locked` (release krävs — det är den binären
   Alex startar). Efter varje ändring: `cargo build --release --locked`, `cargo test
   --locked --bin sonix`, `cargo test --locked --features plugin-host --bin sonix`.
@@ -47,6 +47,7 @@ mätt, och var nästa andetag ska tas.*
 | `fc5d830` | Metadata städas **vid inläsning**, i filen, med besked i statusraden |
 | `78eb13e` | Den här överlämningen |
 | `cb9f152` | **Pixeleringen efter import, stängd på datanivå:** cachen byggs i avkodningstråden, spåret får PCM + cache (se §4 — punkten är klar) |
+| `f0dc8eb` | **8.10 steg 1:** klippen följer projektets tempo (bandspelarlogik — tonhöjden följer), bit-exakt vid faktor 1,0 |
 
 ## 3. Mätt, inte gissat (bär dessa vidare — de är dyra att ta fram igen)
 
@@ -87,7 +88,15 @@ mätt, och var nästa andetag ska tas.*
    i pixlar (§8.4 i roadmapen: vertikal upplösning är ett eget tak) eller
    projektinläsningens första bildruta (den bygger sin cache i bakgrundstråd —
    `ensure_waveform_cache` — och visar den grova översikten i någon bildruta först).
-2. **Ljudet följer tempot** (`time_stretch`-kopplingen, se §3). **Nästa andetag.**
+2. ~~**Ljudet följer tempot**~~ — **STEG 1 KLAR 2026-09-12 (`f0dc8eb`).** Alex svarade
+   "tempo-kontrollen styr allt" och valde bandspelarlogik först (tonhöjden följer), med
+   pitch-bevarandet som steg 2 när han hört det. Gjort: `AudioRegion.source_bpm` (0 = okänt
+   → rör inte ljudet), `stretch_ratio_for`, `region_source_secs` (ren mappning i motorn,
+   bit-exakt vid 1,0), `region_source_span_samples` (ritning + exportdörrar), och
+   `sync_tempo_follow` som fångar tempot **en gång per bildruta** i stället för en sync per
+   dörr. **Kvar av punkten:** pitch-bevarande (WSOLA), kloss över ett tempobyte, och att
+   klippet syns vara sträckt i vyn. Se fas 8.10 i roadmapen.
+   **Nästa andetag här är steg 2** — och det är Alex' öra som avgör om det behövs.
 3. **Tonarten som faktisk tonart:** `song_key_scale` når i dag bara AI-kontexten
    (`refresh_ai_context`); `piano_roll_root_note` styr piano roll. Koppla skalan till
    piano roll så Dur/Moll betyder något, eller döp om kontrollen.

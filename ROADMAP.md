@@ -83,6 +83,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
+| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *S–M* | **Steg 1 klart** (`f0dc8eb`, bandspelarlogik = tonhöjden följer); kvar: pitch-bevarande (WSOLA), klipp över ett tempobyte, och att vyn visar att klippet är sträckt | Alex' öra för steg 2 |
 
 
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
@@ -171,6 +172,12 @@ obekräftad).
 kasta felet med `let _ =`, och använder samma mapp och samma basnamn som exportknappen — så en
 separation och en export skriver samma fil en gång, inte två gånger på två ställen. Två vägar
 som skrev stämfiler blev en (`paths::stem_file`, utan användare, togs bort).
+
+**8.10 steg 1 (2026-09-12 kväll, `f0dc8eb`):** klippen följer projektets tempo —
+Alex' svar på frågan som stod öppen i fas 8.10 nedan. Bandspelarlogik (Abletons
+Re-Pitch): tonhöjden följer med, och tidsmappningen är fortfarande ren aritmetik per
+sample, alltså noll tillstånd och bit-exakt vid faktor 1,0. Pitch-bevarandet (WSOLA)
+är nästa steg, och det väntar på hans öra.
 
 **8.7 steg 1 (2026-09-12 kväll, `23c3b6b`):** choppern hittar slagen i filen i stället för att
 sätta slutet till 18 % (se fas 8.7 — algoritmen, mätningarna och varför tidsdomän räcker för
@@ -1112,3 +1119,57 @@ tillbaka filen** — det kan göras headless, till skillnad från GUI-kvittensen
 `source_path` pekar på dem, och en avkodning av den skrivna filen ger samma längd och
 ljud som stämman i minnet. Då kan en stämma aldrig mer bli tyst av att originalet är i
 ett format appen inte läser.
+
+---
+
+## 8.10 Ljudet följer tempot (Alex' svar 2026-09-12)
+
+**Kravet, ur Alex' egen mun:** tempo-kontrollen ska styra **allt** — klippen sträcks när
+projektets tempo ändras, som i Ableton/Reaper. Han valde vägen framåt själv: **steg 1 är
+bandspelarlogik** (Abletons *Re-Pitch*, tonhöjden följer med), och pitch-bevarandet byggs
+när han hört hur det låter.
+
+**Mätt läge före (läst i koden):** motorns regionuppspelning är **stateless aritmetik per
+sample** — `sample_pos_sec` räknas ur tiden varje sample. Det är därför loop och reverse
+fungerar utan tillstånd, och det är därför en faktor räcker: `källa = offset + tid ×
+faktor`. Det fanns ingen sträckning alls (`StemRegionPlayback` hade inget fält, och
+`StemVoiceTrack` ingen stretch), men väl en formantbevarande pitch-shifter sedan 8.2 och
+WSOLA i audition-vägen — underlaget för steg 2 finns alltså redan.
+
+**Gjort (steg 1, `f0dc8eb`):**
+
+- **`AudioRegion.source_bpm`** (`#[serde(default)]`): tempot klippets ljud spelades in i.
+  **0,0 = okänt**, och då rörs ljudet inte. Gamla projekt läses exakt som förut (0,0), och
+  allt från biblioteket likaså — en källa utan känt tempo sträcks inte i smyg. Importen
+  sätter Sunos tempo (projektets, just då) → faktorn 1,0 → **ingenting ändras vid importen**.
+- **`stretch_ratio_for(source_bpm, project_bpm)`** = projekt/source, klämd till 0,25–4,0
+  (samma spann som sångstudiens reglage). Ren funktion med test.
+- **`region_source_secs`** i `synth.rs`: mappningen som ren funktion, prövbar utan
+  ljudmotor. Vid 1,0 ger den **exakt** det gamla svaret — det är regressionsvakten, för
+  varje klipp utan känt tempo går genom den vägen.
+- **`region_source_span_samples`**: ett klipp inspelat i ett lägre tempo rymmer **mer**
+  ljud än den tid det tar på tidslinjen. Ritningen, "spara region som sample" och "öppna i
+  Sångstudion" använder samma hjälpare — utan den skulle både bilden och utsnittet visa ett
+  annat stycke än det som hörs (samma sorts lögn som 8.3 stängde).
+- **`sync_tempo_follow`**: tempot kan ändras av reglaget, av TAP, av ett tempobyte i kartan
+  och av ett inläst projekt. I stället för en sync i varje dörr jämförs tempot med det
+  motorn senast fick, en gång per bildruta.
+- **Tempofältets hjälptext** säger hur många klipp som följer och vad som händer med
+  ljudet. Annars är det en kontroll som ser ut att bara styra klockan.
+
+**Bevis:** 354 tester default / 400 med `plugin-host`, 0 varningar. Sex nya tester, varav
+ett **end-to-end genom mixern**: ett anslag 0,5 s in i källjudet hörs inom 0,25 s ut-tid vid
+faktor 2,0 — och inte alls vid 1,0. **Ej kvitterat i GUI** (ingen Xvfb på maskinen):
+hjälptexten är läst, inte sedd, och det är Alex' öra som avgör om bandspelarlogiken duger.
+
+**Kvar på 8.10:**
+
+1. **Pitch-bevarande (WSOLA)** — steg 2, och Alex' öra avgör om det behövs. Realtid i
+   `StemVoiceTrack` (som Ableton/Reaper) eller en renderad fil per tempo; realtidsbudgeten
+   finns att mäta mot (`realtime_bench`), och `Wsola`-tillståndet finns i audition-vägen.
+2. **En kloss över ett tempobyte** får i dag **en** faktor, räknad från tempot vid dess
+   start. Rätt är att dela klossen vid bytet (eller att låta faktorn följa kartan).
+3. **Klippet visar inte i vyn att det är sträckt** — bara tempofältets hjälptext säger det.
+4. **Omvänt klipp med `sample_offset_sec > 0`** ligger utanför sitt eget utsnitt. Det
+   beteendet är oförändrat sedan före 8.10 (medvetet: ingen tyst beteendeändring), men det
+   är fel och förtjänar en egen rad.
