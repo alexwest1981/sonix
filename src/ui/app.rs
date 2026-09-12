@@ -639,6 +639,24 @@ fn stem_files_for_import(
     (kept, skipped)
 }
 
+/// Basnamnet stämfilerna får: källfilens namn utan ändelse, annars låtens titel.
+///
+/// Ren funktion, så att namnregeln kan prövas utan fönster — och så att
+/// stämseparatorn och en framtida import kan använda samma namn.
+fn stem_base_name(source_path: Option<&str>, title: &str) -> String {
+    let from_path = source_path
+        .map(std::path::Path::new)
+        .and_then(|p| p.file_stem())
+        .and_then(|s| s.to_str())
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty());
+    let from_title = title.trim();
+    from_path
+        .or(if from_title.is_empty() { None } else { Some(from_title) })
+        .unwrap_or("stems")
+        .to_string()
+}
+
 /// Källfiler som inte gick att läsa, för statusraden (Fas 8.5).
 ///
 /// **Varför delad och inte en parameter.** Det finns elva ställen som läser ljud,
@@ -6100,29 +6118,83 @@ impl SonixApp {
         }
     }
 
-    /// Adds the four separated stems as real timeline tracks.
+    /// Lägger de separerade stämmorna som riktiga tidslinjespår.
+    ///
+    /// **Stämmorna skrivs till disk först.** Klippet får inte skapas utan sitt
+    /// ljud — samma regel som `import_audio_file_as_track` och de övriga
+    /// 8.5-vägarna. Förut pekade varje stämregion på **originalfilen** medan
+    /// vågformen kom från stämman i minnet. Var originalet en mp3, som appen inte
+    /// kan avkoda, blev klippet tyst men ritades som om det hade ljud — och
+    /// tystnaden kom tillbaka varje gång projektet öppnades igen. Nu skrivs varje
+    /// stämma som en 32-bitars WAV i projektets egen materialmapp, **läses
+    /// tillbaka** (så att en trasig skrivning upptäcks här i stället för i en tyst
+    /// uppspelning), och regionens `source_path` och vågform kommer båda ur den
+    /// filen.
     pub fn export_separated_stems(&mut self) {
         if self.stem_project.stem_audio.is_empty() {
             self.status_message = crate::i18n::t("⚠ Ingen separerad mix att exportera.").to_string();
             return;
         }
+        // Antalet punkter den grova översikten ritades med förut (512).
+        const WAVEFORM_POINTS: usize = 512;
+        let dir = crate::paths::paths()
+            .project_assets_dir(&self.project_name)
+            .join("Stems");
+        let base = stem_base_name(
+            self.stem_project.source_path.as_deref(),
+            &self.stem_project.track_title,
+        );
+        let paths = match crate::audio::stem_separator::write_stems_and_read_envelopes(
+            &dir,
+            &base,
+            &self.stem_project.stem_audio,
+            self.stem_project.sample_rate,
+            WAVEFORM_POINTS,
+        ) {
+            Ok(written) => written,
+            Err(e) => {
+                self.status_message = crate::tstatus!(
+                    "⚠ Kunde inte skriva stämmorna till disk: {} — inga klipp skapas",
+                    e
+                );
+                return;
+            }
+        };
+        // Vågformen kommer ur filerna, i samma ordning som stämmorna. Det är
+        // filen som är sanningen om vad klippet kommer att spela — inte den
+        // grova översikt som räckte förut.
+        let mut envelopes: Vec<Vec<f32>> = Vec::with_capacity(paths.len());
+        let mut files: Vec<String> = Vec::with_capacity(paths.len());
+        for (path, envelope) in paths {
+            files.push(path.to_string_lossy().into_owned());
+            envelopes.push(envelope);
+        }
+
         let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
         let bars =
             (tempo.bars_for_secs_at(0.0, self.stem_project.duration_seconds as f64) as f32)
                 .max(1.0);
         let kinds = [TrackKind::VocalAudio, TrackKind::Drums, TrackKind::Bassline, TrackKind::CustomAudio];
         let mut new_tracks = Vec::new();
-        for (i, ch) in self.stem_project.stems.iter().enumerate() {
+        // Stämman, kanalens inställningar och filen hör ihop tre och tre — gå
+        // aldrig utanför någon av listorna.
+        let count = self
+            .stem_project
+            .stems
+            .len()
+            .min(self.stem_project.stem_audio.len())
+            .min(files.len());
+        for i in 0..count {
+            let ch = &self.stem_project.stems[i];
             let audio = &self.stem_project.stem_audio[i];
-            let peaks = ch.waveform_data.clone();
             let region = AudioRegion {
                 id: i + 1,
                 name: ch.stem_type.name().to_string(),
                 start_bar: 0.0,
                 length_bars: bars,
                 sample_offset_sec: 0.0,
-                source_path: self.stem_project.source_path.clone(),
-                waveform_peaks: peaks.clone(),
+                source_path: Some(files[i].clone()),
+                waveform_peaks: envelopes[i].clone(),
                 volume: 1.0,
                 fade_in_bars: 0.0,
                 fade_out_bars: 0.0,
@@ -6144,9 +6216,14 @@ impl SonixApp {
             ));
             new_tracks.push(track);
         }
+        let added = new_tracks.len();
         self.playlist_tracks.extend(new_tracks);
         self.sync_all_stems_to_engine();
-        self.status_message = crate::tstatus!("📥 Exporterade 4 stämspår till Song Arranger");
+        self.status_message = crate::tstatus!(
+            "📥 Lade in {} stämspår i arrangeraren (som wav-filer i {})",
+            added,
+            dir.display()
+        );
     }
 
     /// Loads a real audio file from disk and adds it as a new timeline track
@@ -17961,5 +18038,24 @@ mod tests {
         }"#;
         let data: SonixProjectData = serde_json::from_str(legacy).unwrap();
         assert!(data.plugin_slots.is_empty());
+    }
+
+    /// Namnregeln för stämfilerna (Fas 8.5): källfilen först, låtens titel som
+    /// reserv — och aldrig ett tomt namn. En tom bas hade gett filer som heter
+    /// `-vocals.wav`, alltså ett namn som inte går att skilja mellan två låtar.
+    #[test]
+    fn stem_files_are_named_after_the_source_and_never_after_nothing() {
+        assert_eq!(
+            stem_base_name(Some("/home/alex/Music/Min Låt.mp3"), "Titel"),
+            "Min Låt"
+        );
+        assert_eq!(
+            stem_base_name(Some("/home/alex/Music/../Sång.wav"), "Titel"),
+            "Sång"
+        );
+        assert_eq!(stem_base_name(None, "  Min Låt  "), "Min Låt");
+        assert_eq!(stem_base_name(Some("   "), "Titel"), "Titel");
+        assert_eq!(stem_base_name(None, "   "), "stems");
+        assert_eq!(stem_base_name(Some(""), ""), "stems");
     }
 }

@@ -330,8 +330,103 @@ pub fn run_separation(
     }
 }
 
+/// Filnamnen stämmorna får på disk, i samma ordning som [`separate_stems`]
+/// lämnar dem (och som [`StemProject::install_separation`] mappar dem till
+/// [`StemType`]).
+pub const STEM_FILE_NAMES: [&str; 4] = ["vocals", "drums", "bass", "instruments"];
+
+/// Skriver stämmorna som 32-bitars flyttals-WAV i `dir` och lämnar tillbaka
+/// sökvägarna i stämmornas ordning.
+///
+/// **Varför stämmorna måste bli filer.** En stämma som bara finns i minnet blir
+/// ett klipp vars `source_path` pekar på **originalet** — och kommer originalet
+/// från en mp3, som appen inte kan avkoda, blir klippet tyst men ritas ändå ur
+/// sin grova översikt. Precis den kombinationen (trovärdig vågform, inget ljud)
+/// var det Alex såg. Med stämmorna som egna filer pekar klippet på sitt eget ljud,
+/// och en omladdning av projektet spelar dem igen.
+///
+/// Filnamnet byggs av `base` genom [`crate::autosave::slug`], så ett snedstreck
+/// eller `..` i en fil- eller låttitel kan inte lämna `dir`.
+pub fn write_stems_to_dir(
+    dir: &std::path::Path,
+    base: &str,
+    stems: &[StemAudio],
+    sample_rate: u32,
+) -> Result<Vec<std::path::PathBuf>, String> {
+    if stems.is_empty() {
+        return Err(crate::i18n::t("Inga stämmor att skriva till disk").to_string());
+    }
+    std::fs::create_dir_all(dir)
+        .map_err(|e| crate::tstatus!("Kunde inte skapa '{}': {}", dir.display(), e))?;
+    let slug = crate::autosave::slug(base);
+    let mut paths = Vec::with_capacity(stems.len());
+    for (i, stem) in stems.iter().enumerate() {
+        let name = STEM_FILE_NAMES
+            .get(i)
+            .copied()
+            .map(|n| n.to_string())
+            .unwrap_or_else(|| format!("stem{}", i + 1));
+        let path = dir.join(format!("{}-{}.wav", slug, name));
+        // Interleaved stereo — samma form WAV-skrivaren förväntar sig.
+        let mut buffer = Vec::with_capacity(stem.left.len().min(stem.right.len()) * 2);
+        for (l, r) in stem.left.iter().zip(stem.right.iter()) {
+            buffer.push(*l);
+            buffer.push(*r);
+        }
+        let meta = super::ExportMeta {
+            title: format!("{} ({})", base, name),
+            artist: String::new(),
+            album: String::new(),
+            genre: String::new(),
+            year: String::new(),
+            comment: "Stämma ur Sonix stämseparator (mellansteg)".to_string(),
+        };
+        // 32-bitars flyttal: en stämma är ett mellansteg och ska inte kvantisera
+        // en enda gång innan den riktiga exporten gör det.
+        super::write_export_with(
+            &path.to_string_lossy(),
+            super::ExportFormat::Wav32,
+            &buffer,
+            sample_rate,
+            &meta,
+            super::DitherSettings::default(),
+        )?;
+        paths.push(path);
+    }
+    Ok(paths)
+}
+
+/// Skriver stämmorna och läser tillbaka **deras vågform ur filerna**.
+///
+/// Steget finns för att klippet ska byggas av det som faktiskt ligger på disk:
+/// stämfilen skrivs, läses tillbaka, och vågformen som ritas är filens egen.
+/// En trasig eller tom skrivning blir ett fel här — inte ett klipp som ser ut
+/// att ha ljud men är tyst.
+///
+/// Lämnar `(sökväg, vågform)` i stämmornas ordning.
+pub fn write_stems_and_read_envelopes(
+    dir: &std::path::Path,
+    base: &str,
+    stems: &[StemAudio],
+    sample_rate: u32,
+    points: usize,
+) -> Result<Vec<(std::path::PathBuf, Vec<f32>)>, String> {
+    let paths = write_stems_to_dir(dir, base, stems, sample_rate)?;
+    let mut out = Vec::with_capacity(paths.len());
+    for path in paths {
+        let shown = path.to_string_lossy().into_owned();
+        let envelope = super::read_wav_envelope(&shown, points).map_err(|e| {
+            crate::tstatus!("Kunde inte läsa tillbaka stämfilen '{}': {}", shown, e)
+        })?;
+        if envelope.is_empty() {
+            return Err(crate::tstatus!("Stämfilen '{}' är tom", shown));
+        }
+        out.push((path, envelope));
+    }
+    Ok(out)
+}
+
 impl StemProject {
-    /// Installs a finished separation run and refreshes the view model.
     pub fn install_separation(&mut self, result: SeparationResult, source_path: &str) {
         self.sample_rate = result.sample_rate;
         self.source_path = Some(source_path.to_string());
@@ -475,5 +570,135 @@ mod tests {
             assert_eq!(stem.left.len(), n);
             assert!(stem.left.iter().all(|v| v.is_finite()));
         }
+    }
+
+    /// En hörbar ton i `seconds` sekunder — används för att en stämma som skrivs
+    /// till disk ska ha något att mäta i filen efteråt.
+    fn tone(freq: f32, seconds: f32) -> Vec<f32> {
+        let sr = 44100.0f32;
+        let n = (sr * seconds) as usize;
+        (0..n)
+            .map(|i| (i as f32 / sr * freq * std::f32::consts::TAU).sin() * 0.8)
+            .collect()
+    }
+
+    fn test_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "sonix_stems_{}_{}",
+            tag,
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        dir
+    }
+
+    fn four_tone_stems() -> Vec<StemAudio> {
+        [220.0, 880.0, 110.0, 1320.0]
+            .iter()
+            .map(|f| StemAudio { left: tone(*f, 0.2), right: tone(*f, 0.2) })
+            .collect()
+    }
+
+    /// Det Alex såg: en stämma som bara finns i minnet blir ett klipp som pekar
+    /// på originalet och är tyst. Skrivs stämmorna som filer ska filen gå att
+    /// läsa tillbaka med **hela** ljudet i sig — inte bara finnas.
+    #[test]
+    fn stems_are_written_as_files_that_can_be_read_back() {
+        let dir = test_dir("roundtrip");
+        let sr = 44100u32;
+        let stems = four_tone_stems();
+        let paths = write_stems_to_dir(&dir, "Cyberpunk Odyssey (Suno AI)", &stems, sr)
+            .expect("stämmorna ska gå att skriva");
+
+        assert_eq!(paths.len(), 4);
+        let mut names = std::collections::HashSet::new();
+        for (path, stem) in paths.iter().zip(stems.iter()) {
+            assert!(path.is_file(), "filen ska finnas: {}", path.display());
+            assert!(
+                names.insert(path.file_name().unwrap().to_string_lossy().to_string()),
+                "två stämmor fick samma filnamn"
+            );
+            let (l, r, read_sr) = super::super::load_wav_pcm(&path.to_string_lossy())
+                .expect("filen ska gå att läsa tillbaka");
+            assert_eq!(read_sr, sr);
+            assert_eq!(l.len(), stem.left.len(), "hela ljudet ska finnas i filen");
+            assert_eq!(r.len(), stem.right.len());
+            let peak = l.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            assert!(peak > 0.5, "stämman ska ha ljud i filen, inte bara en fil");
+        }
+        // Exakt fyra filer: ingen temp-fil eller delskrivning kvar i katalogen.
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Filnamnet kommer från en fil- eller låttitel, alltså från användarens disk.
+    /// Ett snedstreck eller `..` får inte kunna lägga stämmor utanför katalogen.
+    #[test]
+    fn a_title_with_a_slash_cannot_escape_the_stem_directory() {
+        let dir = test_dir("escape");
+        let paths = write_stems_to_dir(&dir, "../../etc/Min Låt", &four_tone_stems(), 44100)
+            .expect("stämmorna ska gå att skriva");
+        for path in &paths {
+            assert_eq!(
+                path.parent().unwrap(),
+                dir.as_path(),
+                "stämman hamnade utanför katalogen: {}",
+                path.display()
+            );
+            assert!(!path.to_string_lossy().contains(".."));
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Att skriva noll stämmor ska vara ett fel, inte en tyst tom uppsättning
+    /// filer som anroparen tror är fyra.
+    #[test]
+    fn writing_no_stems_is_an_error() {
+        let dir = test_dir("empty");
+        let err = write_stems_to_dir(&dir, "Tom", &[], 44100).unwrap_err();
+        assert!(!err.is_empty());
+        assert!(!dir.exists(), "ingen katalog ska skapas för noll stämmor");
+    }
+
+    /// Vågformen klippet ritar ska komma ur **filen**, inte ur den grova
+    /// översikten i minnet. Testet läser tillbaka och mäter: fyra vågformer som
+    /// bär stämmornas ljud, i stämmornas ordning.
+    #[test]
+    fn the_waveform_comes_from_the_written_file() {
+        let dir = test_dir("envelope");
+        let written = write_stems_and_read_envelopes(
+            &dir,
+            "Min Låt",
+            &four_tone_stems(),
+            44100,
+            64,
+        )
+        .expect("skrivning och återläsning ska gå igenom");
+
+        assert_eq!(written.len(), 4);
+        for (i, (path, envelope)) in written.iter().enumerate() {
+            assert!(path.is_file(), "filen ska finnas: {}", path.display());
+            assert_eq!(envelope.len(), 64, "en punkt per begärd punkt");
+            assert!(envelope.iter().all(|v| v.is_finite()));
+            let mean: f32 = envelope.iter().sum::<f32>() / envelope.len() as f32;
+            assert!(
+                mean > 0.3,
+                "stämma {i}: vågformen är (nästan) tom ({mean}) — en tyst fil hade ritats som ljud"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// En katalog som inte går att skapa ska bli ett fel. Annars hade anroparen
+    /// fått fyra regioner som pekar på filer som inte finns — den tysta klassen
+    /// som 8.5 stänger.
+    #[test]
+    fn a_directory_that_cannot_be_created_is_an_error() {
+        let blocked = test_dir("blocked");
+        std::fs::write(&blocked, b"en fil, inte en katalog").expect("tmpfil");
+        let err =
+            write_stems_to_dir(&blocked, "Min Låt", &four_tone_stems(), 44100).unwrap_err();
+        assert!(!err.is_empty());
+        let _ = std::fs::remove_file(&blocked);
     }
 }
