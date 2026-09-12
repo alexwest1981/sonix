@@ -155,6 +155,23 @@ mätt, och var nästa andetag ska tas.*
 6. **Riktig BPM-detektor** om någon behöver den: onset-styrka + tempokam
    (aubio/librosa/Essentia). Underlaget ligger i `sonix`-skillens research.
 
+## 4a. Först av allt: två ritfel som hör ihop med 8.10 (små, men de ljuger i vyn)
+
+1. **Vågformen inuti ett klipp ritas med steg 1:s faktor.** `src/ui/app.rs` (~rad 10986):
+   `let region_rate = stretch_ratio_for(region.source_bpm, self.bpm);`. Ett klipp som
+   **sträcks** spelas nu från en färdigsträckt fil med faktor **1,0**, så ritningen visar ett
+   annat stycke av ljudet än det som hörs — exakt den lögn 8.3 stängde. Rita med samma
+   hjälpare som spelar (`region_playback(region, bpm_here)`), så att dörrarna inte kan glida
+   ifrån varandra. **Obs:** klipp utan känt tempo har faktorn 1,0 och är opåverkade, så felet
+   syns bara i projekt där tempot faktiskt följs.
+2. **Alex: "får inte riktigt markören att matcha vågformerna oavsett bpm".** Två fall, och de
+   ska inte blandas: (a) tempot — ljudet ligger i Sunos tempo och rutnätet i projektets, så de
+   möts bara vid rätt tempo (Rock and Hard Place: **140**); (b) **inledningen** — om det
+   fortfarande inte stämmer vid rätt tempo ligger låtens första slag inte på takt 1 i filen,
+   och då är åtgärden att **trimma klippets vänsterkant** (`sample_offset_sec`) så att slaget
+   landar på rutnätet. Inget tempo lagar (b), och appen har i dag **ingen** synlig väg för det
+   ("sätt takt 1 här") — det är en egen fråga värd en rad i roadmapen.
+
 ## 4b. Nästa pass: motorn (färskt sammanhang — roadmapen säger det själv)
 
 **Frågan är redan ett tal.** `the_stretch_artefacts_on_a_real_stem` (kör manuellt, se
