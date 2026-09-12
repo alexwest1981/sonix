@@ -71,9 +71,14 @@ pub fn pixels_needed(region_pixels: f32) -> usize {
     region_pixels.max(0.0).ceil() as usize
 }
 
-/// Fackstorleken på den finaste nivån. 256 samplar ≈ 5 ms vid 48 kHz: under den
-/// gränsen ritas höljet exakt ur samplen, över den används nivåerna.
-pub const FINEST_BUCKET: usize = 256;
+/// Fackstorleken på den finaste nivån. 64 samplar ≈ 1,3 ms vid 48 kHz.
+///
+/// Siffran är en avvägning som Alex' öra avgjorde: med 256 (≈ 5 ms) blev höljet
+/// upp till en pixels bredd suddigt, och det gick inte att pricka in var ett ljud
+/// börjar. Ett fack är den största möjliga oskärpan, så den ska vara så liten att
+/// den inte syns. 64 ger 1,3 ms — och minnet växer linjärt: en fyra minuters fil
+/// blir ~1,4 MB i finaste nivån, knappt 3 MB för alla nivåer.
+pub const FINEST_BUCKET: usize = 64;
 
 /// En nivå: ett (min, max) per `samples_per_bucket` samplar.
 #[derive(Clone, Debug, PartialEq)]
@@ -406,8 +411,10 @@ mod tests {
     fn the_cache_is_exact_when_zoomed_in() {
         let samples = noisy(20_000, 7);
         let cache = WaveformCache::build(&samples);
-        // 20 000 samplar och 200 pixlar = 100 samplar per pixel < 256.
-        for pixels in [200usize, 400, 1000] {
+        // Inzoomad förbi finaste facket — nivån räknas ur konstanten, inte ur en
+        // siffra som råkar stå i testet.
+        let zoomed = (20_000 / FINEST_BUCKET) + 1;
+        for pixels in [zoomed, zoomed * 2, zoomed * 4] {
             assert_eq!(
                 cache.envelope(&samples, pixels),
                 envelope_per_pixel(&samples, pixels),
@@ -459,7 +466,7 @@ mod tests {
             // Under 256 samplar per bildpunkt är man förbi finaste facket, och
             // då SKA svaret komma ur samplen — därför räknas zoomnivån ur
             // utsnittets längd i stället för att gissas.
-            let zoomed = (len / 200).max(2);
+            let zoomed = len / FINEST_BUCKET + 1;
             for pixels in [zoomed, zoomed * 2] {
                 assert_eq!(
                     cache.envelope_at(&samples, start, len, pixels),

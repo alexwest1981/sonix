@@ -9454,8 +9454,7 @@ impl SonixApp {
                                                 // följer upprepningen, inte en sammanhängande
                                                 // sampelmängd, och det är en egen fråga.
                                                 let mut drew_exact = false;
-                                                if !is_looped
-                                                    && region.length_bars > 0.001
+                                                if region.length_bars > 0.001
                                                     && let Some(wave) = {
                                                         let track = &self.playlist_tracks[t_idx];
                                                         track.waveform_cache.as_ref().and_then(|(_, c)| {
@@ -9467,9 +9466,11 @@ impl SonixApp {
                                                         })
                                                     }
                                                 {
-                                                    // Samma kanter som den gamla vägen använder.
-                                                    let draw_start_x = r_rect.min.x + 2.0;
-                                                    let draw_end_x = r_rect.max.x - 2.0;
+                                                    // Hela rektangeln, utan indrag: indraget
+                                                    // försköt hela mappningen, och det är
+                                                    // precis då startpunkten blir svår att pricka.
+                                                    let draw_start_x = r_rect.min.x;
+                                                    let draw_end_x = r_rect.max.x;
                                                     let (cache, pcm, sr) = wave;
                                                     let region_secs = self
                                                         .tempo_map()
@@ -9480,15 +9481,39 @@ impl SonixApp {
                                                     let start_sample =
                                                         (region.sample_offset_sec.max(0.0) * sr as f32)
                                                             as usize;
-                                                    let len_samples =
+                                                    let total_samples =
                                                         (region_secs * sr as f32).max(1.0) as usize;
                                                     let cols =
                                                         ((draw_end_x - draw_start_x).max(1.0)).ceil() as usize;
-                                                    let env =
-                                                        cache.envelope_at(pcm, start_sample, len_samples, cols);
+                                                    // En slingad kloss upprepar ett kortare
+                                                    // stycke: då följer bildpunkterna
+                                                    // upprepningen, inte en sammanhängande
+                                                    // sampelmängd.
+                                                    let env = if is_looped && loop_sec > 0.01 {
+                                                        let loop_samples =
+                                                            (loop_sec * sr as f32).max(1.0) as usize;
+                                                        cache.envelope_looped(
+                                                            pcm,
+                                                            start_sample,
+                                                            loop_samples,
+                                                            total_samples,
+                                                            cols,
+                                                        )
+                                                    } else {
+                                                        cache.envelope_at(
+                                                            pcm,
+                                                            start_sample,
+                                                            total_samples,
+                                                            cols,
+                                                        )
+                                                    };
                                                     let half = r_rect.height() * 0.42;
                                                     let vol = region.volume.clamp(0.2, 1.8);
-                                                    let mut x = draw_start_x;
+                                                    // På pixelcentra: en en-pixels linje som
+                                                    // hamnar mellan två pixlar flyter ut över
+                                                    // båda och ser mjuk ut. Halva pixeln är
+                                                    // centrum i egui.
+                                                    let mut x = draw_start_x.round() + 0.5;
                                                     for (lo, hi) in &env {
                                                         // Toppen är max och botten är min: en
                                                         // osymmetrisk signal ska se osymmetrisk ut.
