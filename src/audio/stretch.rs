@@ -224,6 +224,15 @@ pub fn cache_key(source: &str, source_bpm: f32, project_bpm: f32) -> String {
     )
 }
 
+/// Sökvägen en sträckning har (eller ska få) i cachen.
+///
+/// **En enda plats för namnet**, så uppslagningen och skrivningen inte kan glida ifrån
+/// varandra — en cache som skrivs under ett namn och letas under ett annat är en cache som
+/// aldrig träffar, och då räknas allt om varje gång utan att någon märker varför.
+pub fn cache_path(dir: &Path, key: &str) -> PathBuf {
+    dir.join(format!("{}.wav", crate::autosave::slug(key)))
+}
+
 /// Sträcker, prövar och skriver en sträckt version av ett klipp. Lämnar sökvägen.
 ///
 /// Skrivningen är **atomisk**: först en tempfil, sedan `rename`. En avbruten skrivning lämnar
@@ -245,7 +254,7 @@ pub fn render_to_file(
 
     std::fs::create_dir_all(dir)
         .map_err(|e| crate::tstatus!("kunde inte skapa '{}': {}", dir.display(), e))?;
-    let final_path: PathBuf = dir.join(format!("{}.wav", crate::autosave::slug(key)));
+    let final_path: PathBuf = cache_path(dir, key);
     let temp_path = dir.join(format!("{}.wav.tmp", crate::autosave::slug(key)));
     let temp_str = temp_path.to_string_lossy().to_string();
     super::exporter::write_stem_wav(&temp_str, &out_l, &out_r, sample_rate as u32)?;

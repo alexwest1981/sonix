@@ -211,6 +211,13 @@ pub struct AudioRegion {
     /// känt tempo sträcks inte i smyg.
     #[serde(default)]
     pub source_bpm: f32,
+    /// Klippet vill ha **bandspelaren** (Fas 8.10 steg 2).
+    ///
+    /// Ett **aktivt val, aldrig standard**: höjs tempot följer tonhöjden med (Abletons
+    /// *Re-Pitch*, FL:s *Resample*). Standard är tonhöjdsbevarande sträckning, för en smurf
+    /// som uppstår av misstag är värre än en effekt man får leta efter.
+    #[serde(default)]
+    pub tape: bool,
 }
 
 fn default_region_color() -> Color32 {
@@ -560,6 +567,12 @@ pub struct SonixProjectData {
     /// Tonarten (Fas 8.11). Saknas i äldre projekt — då gäller Eb/Dur, samma
     /// standard som konstruktorn sätter (`#[serde(default)]` för skalan, och
     /// `default_song_key_root` för grundtonen).
+    /// "Följ tempot" (Fas 8.10 steg 2). **På som standard** — en smurf som uppstår av
+    /// misstag är värre än en effekt man får leta efter (Abletons ordning: pitch-bevarande
+    /// är default, Re-Pitch är undantaget). En gammal projektfil läses som PÅ, eftersom det
+    /// är vad 8.10 steg 1 redan gjorde med klipp som hade ett känt tempo.
+    #[serde(default = "default_follow_tempo")]
+    pub follow_tempo: bool,
     #[serde(default = "default_song_key_root")]
     pub song_key_root: u8,
     #[serde(default)]
@@ -1093,6 +1106,11 @@ pub struct SavedTrackData {
 
 /// Standardtröskel för en sidokedja (Fas 8.3): −30 dB är där en duckare brukar
 /// börja, och en äldre projektfil ska få samma värde som ett nytt spår.
+/// Standard för "Följ tempot": **på** (se `SonixProjectData::follow_tempo`).
+fn default_follow_tempo() -> bool {
+    true
+}
+
 fn default_sidechain_threshold_db() -> f32 {
     -30.0
 }
@@ -2087,6 +2105,9 @@ pub struct SonixApp {
     /// flera håll (reglaget, TAP, ett tempobyte i kartan, ett inläst projekt).
     /// I stället för en sync i varje sådan dörr jämförs det här talet med `bpm`
     /// en gång per bildruta: en olikhet betyder att motorn ska ha nya regioner.
+    /// "Följ tempot" (Fas 8.10 steg 2): ett enda val för hela projektet. Av betyder att
+    /// inget klipp följer tempot alls — varken sträckning eller bandspelare.
+    pub follow_tempo: bool,
     pub stems_synced_bpm: f32,
     /// Takten som högerklicket på linjalen gällde.
     ///
@@ -2770,6 +2791,7 @@ impl SonixApp {
             waveform_cache_tx: None,
             waveform_cache_rx: None,
             show_tempo_modal: false,
+            follow_tempo: true,
             stems_synced_bpm: 120.0,
             tempo_menu_bar: None,
             stem_focus_active_tab: 0,
@@ -3039,6 +3061,7 @@ impl SonixApp {
             t0.regions = vec![
                 AudioRegion {
                     source_bpm: 0.0,
+                    tape: false,
                     id: 101,
                     name: "Chorus Take 1 (Main)".to_string(),
                     start_bar: 1.0,
@@ -3056,6 +3079,7 @@ impl SonixApp {
                 },
                 AudioRegion {
                     source_bpm: 0.0,
+                    tape: false,
                     id: 102,
                     name: "Verse Hook (Harmonized)".to_string(),
                     start_bar: 9.0,
@@ -3079,6 +3103,7 @@ impl SonixApp {
             t1.regions = vec![
                 AudioRegion {
                     source_bpm: 0.0,
+                    tape: false,
                     id: 201,
                     name: "Stereo Choir Pad (4-Part)".to_string(),
                     start_bar: 3.0,
@@ -3692,6 +3717,7 @@ impl SonixApp {
 
                 let r_left = AudioRegion {
                     source_bpm: orig.source_bpm, // halvan ärver klippets källa
+                    tape: false,
                     id: orig.id,
                     name: format!("{} [Del 1]", clean_title),
                     start_bar: orig.start_bar,
@@ -3710,6 +3736,7 @@ impl SonixApp {
 
                 let r_right = AudioRegion {
                     source_bpm: orig.source_bpm, // halvan ärver klippets källa
+                    tape: false,
                     id: orig.id + 1000 + (self.playlist_tracks[t_idx].regions.len() * 10),
                     name: format!("{} [Del 2]", clean_title),
                     start_bar: orig.start_bar + split_offset_bar,
@@ -3874,6 +3901,7 @@ impl SonixApp {
 
         let region = AudioRegion {
             source_bpm: 0.0, // bibliotekssamplens tempo är okänt → rör inte ljudet (8.10)
+            tape: false,
             id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as usize,
             name: item.name.clone(),
             start_bar: 0.0,
@@ -3941,6 +3969,7 @@ impl SonixApp {
         let reg_id = self.next_region_id();
         let region = AudioRegion {
             source_bpm: 0.0, // bibliotekssamplens tempo är okänt → rör inte ljudet (8.10)
+            tape: false,
             id: reg_id,
             name: item.name.clone(),
             start_bar: start_bar.max(0.0),
@@ -5158,6 +5187,7 @@ impl SonixApp {
 
         self.project_name = payload.name;
         self.bpm = payload.bpm;
+        self.follow_tempo = payload.follow_tempo;
         self.tempo_points = payload.tempo_points;
         self.song_key_root = payload.song_key_root;
         self.song_key_scale = payload.song_key_scale;
@@ -5530,6 +5560,7 @@ impl SonixApp {
 
                     let region = AudioRegion {
                         source_bpm: self.bpm, // tagningen gjordes i projektets tempo (8.10)
+                        tape: false,
                         id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as usize,
                         name: format!("🎤 {}", take.name),
                         start_bar,
@@ -6916,6 +6947,7 @@ impl SonixApp {
             let audio = &self.stem_project.stem_audio[i];
             let region = AudioRegion {
                 source_bpm: self.bpm, // stämmorna byggdes mot projektets tempo (8.10)
+                tape: false,
                 id: i + 1,
                 name: ch.stem_type.name().to_string(),
                 start_bar: 0.0,
@@ -7004,6 +7036,7 @@ impl SonixApp {
         track.custom_clip_name = Some(clean_name.clone());
         track.regions = vec![AudioRegion {
             source_bpm: 0.0, // filens tempo är okänt → rör inte ljudet (8.10)
+            tape: false,
             id: new_id,
             name: clean_name.clone(),
             start_bar: 0.0,
@@ -11252,6 +11285,7 @@ impl SonixApp {
 
                                             let r_left = AudioRegion {
                                                 source_bpm: orig.source_bpm, // halvan ärver klippets källa
+                                                tape: false,
                                                 id: orig.id,
                                                 name: format!("{} [Del 1]", clean_title),
                                                 start_bar: orig.start_bar,
@@ -11270,6 +11304,7 @@ impl SonixApp {
 
                                             let r_right = AudioRegion {
                                                 source_bpm: orig.source_bpm, // halvan ärver klippets källa
+                                                tape: false,
                                                 id: orig.id + 1000 + (self.playlist_tracks[t_idx].regions.len() * 10),
                                                 name: format!("{} [Del 2]", clean_title),
                                                 start_bar: orig.start_bar + split_offset_bar,
@@ -14641,6 +14676,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         crate::audio::RenderSpec {
             sample_rate,
             bpm: self.bpm,
+            follow_tempo: self.follow_tempo,
             swing: self.swing,
             num_bars: self.export_bars(),
             pattern_mode,
@@ -15657,6 +15693,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 // just nu (Fas 8.10). Ändras tempot sedan följer ljudet med i
                 // stället för att hamna ur takt.
                 source_bpm: res.bpm,
+                tape: false,
             };
 
             let mut track = PlaylistTrack::new(format!("{} {}", icon, clean_name), icon, kind, color);
@@ -18774,6 +18811,7 @@ mod tests {
         // Add to track 0 at bar 4.5
         let region = AudioRegion {
             source_bpm: 0.0, // testklippet har inget känt inspelningstempo
+            tape: false,
             id: 101,
             name: sample_item.name.clone(),
             start_bar: 4.5,
@@ -18805,6 +18843,7 @@ mod tests {
         );
         let new_reg = AudioRegion {
             source_bpm: 0.0, // testklippet har inget känt inspelningstempo
+            tape: false,
             id: 102,
             name: sample_item.name.clone(),
             start_bar: 8.0,
@@ -19635,6 +19674,7 @@ mod tests {
             color: Color32::WHITE,
             loop_length_bars: 0.0,
             source_bpm,
+            tape: false,
         };
 
         // 120 takter ur 240 sekunder = 120 BPM, och projektet står i 120: klippet
@@ -19677,6 +19717,7 @@ mod tests {
                 color: Color32::WHITE,
                 loop_length_bars: 0.0,
                 source_bpm: 0.0,
+                tape: false,
             },
             AudioRegion {
                 id: 2,
@@ -19694,6 +19735,7 @@ mod tests {
                 color: Color32::WHITE,
                 loop_length_bars: 0.0,
                 source_bpm: 96.0,
+                tape: false,
             },
         ];
         let stamped = stamp_source_tempo(regions.iter_mut(), 120.0);
