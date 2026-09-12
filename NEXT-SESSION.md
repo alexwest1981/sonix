@@ -75,6 +75,14 @@ mätt, och var nästa andetag ska tas.*
 - **`write_with_ffmpeg` kodar från en temp-wav som `write_wav` skriver** — därför är
   Sonix egna exporter redan fria från främmande taggar, per konstruktion.
 - **Frystabell:** ofruset 1,4 %/2,2 % → fruset 0,3 %/0,3 % (~4,7×).
+- **Alex' projektfil är den enda källan till sanning om hur Sonix ser ut i bruk.** Dagens
+  lärdom: funktionen "klippen följer tempot" var osynlig för honom därför att alla hans
+  projekt sparades **innan** `source_bpm` fanns — fältet förekommer inte i en enda av dem.
+  Ett fält som läggs till i dag når inte bakåt; ett ärligt standardvärde ("rör inte") blir
+  i praktiken "ingenting händer". **Mät därför mot hans filer, inte bara mot sandlådor:**
+  `./tmp/sonix_proj_diag.py`-mönstret (parsa .sonix, slå upp filens längd med `ffprobe`,
+  räkna `takter × 240 / sekunder`) ligger i commit-texten för `a510775` och gav 9/9, 11/11
+  och 0/9 — svaret på varför han inte hörde något.
 
 ## 4. Nästa steg, i ordning
 
@@ -96,6 +104,9 @@ mätt, och var nästa andetag ska tas.*
    `sync_tempo_follow` som fångar tempot **en gång per bildruta** i stället för en sync per
    dörr. **Kvar av punkten:** pitch-bevarande (WSOLA), kloss över ett tempobyte, och att
    klippet syns vara sträckt i vyn. Se fas 8.10 i roadmapen.
+   **Efter hans kvittens (`a510775`):** gamla projekt saknade fältet helt, så ingenting
+   hände. Nu mäts inspelningstemot fram vid inläsning när filen och projektets tempo
+   stämmer (hans Broken: 9/9 klipp), och ⏱ Tempokarta har en stämpel för resten.
    **Nästa andetag här är steg 2** — och det är Alex' öra som avgör om det behövs.
 3. **Tonarten som faktisk tonart:** `song_key_scale` når i dag bara AI-kontexten
    (`refresh_ai_context`); `piano_roll_root_note` styr piano roll. Koppla skalan till

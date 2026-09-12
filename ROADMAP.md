@@ -1157,7 +1157,31 @@ WSOLA i audition-vägen — underlaget för steg 2 finns alltså redan.
 - **Tempofältets hjälptext** säger hur många klipp som följer och vad som händer med
   ljudet. Annars är det en kontroll som ser ut att bara styra klockan.
 
-**Bevis:** 354 tester default / 400 med `plugin-host`, 0 varningar. Sex nya tester, varav
+**Alex' kvittens (`a510775`): "jag märker ingen nämnvärd skillnad när jag sänker bpm —
+det påverkar bara hastigheten den kör markören på."** Han hade rätt, och felet var inte i
+motorn: **varje projekt som sparades innan fältet fanns har `source_bpm = 0`** på sina
+klipp, alltså "okänt", alltså faktorn 1,0. Mätt på hans egna filer: fältet förekommer inte
+i någon av dem.
+
+Två vägar ut, båda så att ingenting hörs förrän tempot rörs:
+
+1. **Mät fram det vid inläsning.** Klossens takter byggdes en gång ur filens sekunder, så
+   `takter × 240 / sekunder` är det tempo klossen byggdes i. Stämmer det med projektets
+   tempo (inom 1 %) sätts det — **mätt, inte gissat** — annars står 0,0 kvar. Mätningen
+   sker i arbetstråden där regionens **egen** fil ligger i handen, och bara när tempokartan
+   är enkel. Mätt mot hans riktiga projekt: **Broken.sonix 9 av 9** klipp, **Vägen hit
+   2.sonix 11 av 11** — och **Rock and Hard Place.sonix 0 av 9**, där klippen är trimmade
+   (måttet blir 109,4 mot projektets 120; en gissning hade sträckt dem fel).
+2. **Stämpeln, för resten.** ⏱ Tempokarta visar "🎚 Klipp som följer tempot: N (av kända M)"
+   och en knapp som sätter projektets nuvarande tempo som inspelningstempo på de okända.
+   Vid det tempot är faktorn 1,0: ingenting hörs förrän man rör tempot. Användarens egen
+   handling, inte en gissning i smyg.
+
+**Bevis:** 356 tester default / 402 med `plugin-host`, 0 varningar (`a510775`). De två nya
+reglerna är rena funktioner med tester: trimmad kloss, ändrat tempo sedan importen, redan
+känt tempo, och klipp utan ljud har var sitt fall.
+
+**Bevis (steg 1):** 354 tester default / 400 med `plugin-host`, 0 varningar. Sex nya tester, varav
 ett **end-to-end genom mixern**: ett anslag 0,5 s in i källjudet hörs inom 0,25 s ut-tid vid
 faktor 2,0 — och inte alls vid 1,0. **Ej kvitterat i GUI** (ingen Xvfb på maskinen):
 hjälptexten är läst, inte sedd, och det är Alex' öra som avgör om bandspelarlogiken duger.
@@ -1169,7 +1193,8 @@ hjälptexten är läst, inte sedd, och det är Alex' öra som avgör om bandspel
    finns att mäta mot (`realtime_bench`), och `Wsola`-tillståndet finns i audition-vägen.
 2. **En kloss över ett tempobyte** får i dag **en** faktor, räknad från tempot vid dess
    start. Rätt är att dela klossen vid bytet (eller att låta faktorn följa kartan).
-3. **Klippet visar inte i vyn att det är sträckt** — bara tempofältets hjälptext säger det.
+3. **Klippet visar inte i vyn att det är sträckt** — bara tempofältets hjälptext och
+   tempokartans räknare säger det.
 4. **Omvänt klipp med `sample_offset_sec > 0`** ligger utanför sitt eget utsnitt. Det
    beteendet är oförändrat sedan före 8.10 (medvetet: ingen tyst beteendeändring), men det
    är fel och förtjänar en egen rad.
