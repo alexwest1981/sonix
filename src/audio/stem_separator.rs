@@ -196,7 +196,7 @@ pub fn separate_stems(left: &[f32], right: &[f32], sample_rate: f32) -> Vec<Stem
 /// Estimates the tempo (BPM) from the mix by autocorrelating an onset-strength
 /// envelope built from the high-passed center channel. Returns 0.0 when the
 /// signal is too short or has no clear pulse, so the UI can show "unknown".
-fn estimate_bpm(left: &[f32], right: &[f32], sample_rate: f32) -> f32 {
+pub fn estimate_bpm(left: &[f32], right: &[f32], sample_rate: f32) -> f32 {
     let len = left.len().min(right.len());
     if (len as f32) < sample_rate {
         return 0.0;
@@ -865,4 +865,18 @@ mod tests {
         assert!(!err.is_empty());
         let _ = std::fs::remove_file(&blocked);
     }
+}
+
+/// Läser en ljudfil och uppskattar tempot ur mixen (8.5c).
+///
+/// Tunn wrapper så att analysen kan köras och MÄTAS på riktiga filer — från
+/// `sonix --detect-bpm <fil>` och, när den är mätt, från stämimporten. Att
+/// analysen kan köras utanför fönstret är själva poängen: ett tempo som gissas
+/// fel ställer hela projektet fel, och det ska synas innan det händer.
+pub fn detect_bpm_from_file(path: &str) -> Result<f32, String> {
+    let (l, r, sr) = crate::audio::load_wav_pcm(path)?;
+    if l.len().min(r.len()) < 1024 {
+        return Err("filen är för kort för att tempot ska kunna uppskattas".to_string());
+    }
+    Ok(estimate_bpm(&l, &r, sr.max(1) as f32))
 }

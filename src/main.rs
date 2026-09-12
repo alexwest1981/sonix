@@ -103,6 +103,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(0);
     }
 
+    // `sonix --detect-bpm <fil...>`: uppskattar tempot ur en ljudfil. Verktyget finns
+    // för att analysen ska kunna MÄTAS mot riktiga stämmor innan den får styra ett
+    // projekt — ett gissat tempo ställer hela låten fel.
+    if let Some(pos) = std::env::args().position(|a| a == "--detect-bpm") {
+        let files: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if files.is_empty() {
+            eprintln!("användning: sonix --detect-bpm <fil> [fler filer]");
+            std::process::exit(2);
+        }
+        for f in &files {
+            match audio::stem_separator::detect_bpm_from_file(f) {
+                Ok(bpm) => println!("  {bpm:7.2} BPM  {}", f),
+                Err(e) => println!("  ⚠ {f}: {e}"),
+            }
+        }
+        std::process::exit(0);
+    }
+
+
 
     // Fas 6.0: flytta äldre platser hit FÖRST (ensure_dirs skapar annars ett tomt
     // mål, vilket skulle blockera flytten), därefter skapa resten.
