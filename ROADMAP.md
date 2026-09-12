@@ -579,7 +579,16 @@ Dessutom räknades bara `max(abs(x))` per fönster: ett **symmetriskt** hölje. 
 - **Varför ingen cachefil:** att skriva nivåerna till `waveform_cache_dir()` är en optimering, inte ett krav — det är en engångskostnad per fil. En cachefil till är en sak som kan bli gammal och fel, och `visual_peaks_from`-problemet var just att en *föråldrad* sammanfattning ritades. Bygg i minnet först; mät om det någonsin behövs.
 - **Kvittensen hos Alex:** vågformen ska visa **enskilda anslag** när man zoomar in, och en kloss som korsar ett tempobyte ska sluta glida.
 
+**Skärpt efter Alex' kvittens ("under hyfsad nivå, dock ännu pixlad — svårt att få exakt punkt där ljud börjar").** Fyra orsaker, alla mätta och åtgärdade:
+
+- **Facket var 256 samplar = 5,3 ms.** Ett fack är den största möjliga oskärpan i höljet, och 5 ms syntes. Nu 64 = 1,3 ms (~1,4 MB för fyra minuter i finaste nivån, knappt 3 MB för alla nivåer).
+- **Slingade klossar** gick fortfarande genom de gamla 512 punkterna. Nu `envelope_looped`.
+- **Vågformen ritades indragen 2 px** från klossens kanter, vilket försköt *hela* x-mappningen — mest i början av klossen, alltså precis där startpunkten ska prickas. Nu ritas hela rektangeln.
+- **Kolumner mellan pixlar** flöt ut över två pixlar och såg mjuka ut. Nu ritas de på pixelcentra.
+
+**Kvar att kvittera:** om startpunkten fortfarande är svår att pricka är nästa fråga klossens **höjd** i pixlar (vertikal upplösning), inte höljet — det taket är orört.
+
 **Läget efter inkopplingen (mätt i koden, 2026-09-12):** tidslinjen ritar ett äkta (min, max) per bildpunkt ur cachen för **icke-slingade** regioner med PCM; den gamla vägen ligger kvar orörd som fallback för regioner utan PCM och för slingade regioner. Cachen byggs på ett ställe (`ensure_waveform_cache`, i spårloopen) och nycklas på buffertens identitet, så en ny tagning eller en frysning ger automatiskt en ny cache. Kostnaden är en O(samplar)-genomgång per spår och ljud (~50 ms för fyra minuter), en gång.
 
-**Kvar på 8.3:** (1) slingade regioner har sin funktion (`envelope_looped`, testad: samma svar varje varv, och ingen förlust vid skarven) men den är **ännu inte inkopplad** — ritningen hoppar fortfarande över dem och ritar dem ur 512-punkterna — deras bildpunkter följer upprepningen och kräver en egen lösning; (2) `render_playlist_arranger`s `px_per_sec` och linjalens sekundetiketter är kvar i sekunder (samma pass som 8.2:s visning); (3) `PlaylistTrack.audio_waveform` är död kod (sätts på sex ställen, läses aldrig) — den kan tas bort när någon har tid, men den rör ingenting.
+**Kvar på 8.3:** (1) slingade regioner har sin funktion (`envelope_looped`, testad: samma svar varje varv, och ingen förlust vid skarven) och den är **inkopplad** sedan 2026-09-12: ritningen väljer väg efter om regionen är slingad — deras bildpunkter följer upprepningen och kräver en egen lösning; (2) `render_playlist_arranger`s `px_per_sec` och linjalens sekundetiketter är kvar i sekunder (samma pass som 8.2:s visning); (3) ⏱ **klart 2026-09-12:** `PlaylistTrack.audio_waveform` var död kod (sattes på sex ställen, lästes aldrig) och är borttagen — med den tre `visual_peaks_from`-anrop som räknade O(samplar) i onödan vid varje import, tagning och AI-stämma.
 
