@@ -586,6 +586,22 @@ fn default_sample_end() -> f32 {
     1.0
 }
 
+/// Identiteten hos en ljudbuffert: adress, längd och första/sista sample.
+///
+/// Räcker för att avgöra om vågformscachen hör till ljudet som ligger där nu, och
+/// är billig nog att räkna varje bildruta. Innehållet kontrolleras i båda ändar
+/// eftersom en frigjord buffert kan få samma adress igen.
+fn waveform_key(buf: &std::sync::Arc<Vec<f32>>) -> u64 {
+    let ptr = std::sync::Arc::as_ptr(buf) as usize as u64;
+    let len = buf.len() as u64;
+    let first = buf.first().copied().unwrap_or(0.0).to_bits() as u64;
+    let last = buf.last().copied().unwrap_or(0.0).to_bits() as u64;
+    ptr.wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        ^ len.rotate_left(17)
+        ^ first.rotate_left(31)
+        ^ last.rotate_left(47)
+}
+
 /// Vågform för kanalvisningen, räknad ur ljudet (Fas 6.7). Toppvärdet per
 /// fönster räcker — det är samma sorts översikt kanalracket ritar.
 fn waveform_preview_from_pcm(pcm: &[f32], points: usize) -> Vec<f32> {
@@ -861,6 +877,13 @@ pub struct PlaylistTrack {
     pub clips: [Option<usize>; 32],  // Pattern triggers
     #[allow(dead_code)]
     pub audio_waveform: Option<Vec<f32>>,
+    /// Vågformens flernivå-cache (Fas 8.3): `(nyckel, cache)`.
+    ///
+    /// Byggs vid behov när spårets regioner ritas, och görs om när ljudet byts —
+    /// nyckeln är buffertens identitet, så en ny tagning eller en frysning ger en
+    /// ny cache utan att någon behöver komma ihåg att säga till. Att bygga den på
+    /// de tio ställen där `pcm_audio` sätts vore tio chanser att glömma ett.
+    pub waveform_cache: Option<(u64, crate::audio::waveform::WaveformCache)>,
     #[allow(dead_code)]
     pub custom_clip_name: Option<String>,
     pub pcm_audio: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
@@ -926,6 +949,7 @@ impl PlaylistTrack {
             regions: Vec::new(),
             clips: [None; 32],
             audio_waveform: None,
+            waveform_cache: None,
             custom_clip_name: None,
             pcm_audio: None,
             frozen: None,
@@ -2825,6 +2849,26 @@ impl SonixApp {
         if let Some(bar) = remove {
             self.remove_tempo_point(bar);
         }
+    }
+
+    /// Ser till att spårets vågformscache finns och hör till dess nuvarande ljud.
+    ///
+    /// Anropas en gång per spår och bildruta. Är cachen byggd ur samma buffert
+    /// som spåret har nu, kostar anropet en jämförelse av fyra tal.
+    fn ensure_waveform_cache(&mut self, t_idx: usize) {
+        let Some(track) = self.playlist_tracks.get_mut(t_idx) else {
+            return;
+        };
+        let Some((left, _right, _sr)) = track.frozen_pcm.as_ref().or(track.pcm_audio.as_ref())
+        else {
+            track.waveform_cache = None;
+            return;
+        };
+        let key = waveform_key(left);
+        if track.waveform_cache.as_ref().map(|(k, _)| *k) == Some(key) {
+            return;
+        }
+        track.waveform_cache = Some((key, crate::audio::waveform::WaveformCache::build(left)));
     }
 
     fn tempo_map(&self) -> crate::audio::tempo::TempoMap {
@@ -9141,6 +9185,9 @@ impl SonixApp {
 
                             // 2. Track Lanes (Audio Waveforms, Clips, Grids)
                             for t_idx in 0..self.playlist_tracks.len() {
+                                // Vågformscachen byggs här och inte på de tio ställen
+                                // där pcm_audio sätts (Fas 8.3).
+                                self.ensure_waveform_cache(t_idx);
                                 let track_color = self.playlist_tracks[t_idx].color;
                                 let track_name = self.playlist_tracks[t_idx].name.clone();
                                 let is_mic_track = track_name.to_lowercase().contains("mic")
@@ -9409,7 +9456,74 @@ impl SonixApp {
                                                     if region.length_bars > 0.001 { region.length_bars * sec_per_bar } else { 1.0 }
                                                 };
 
-                                                let num_peaks = region.waveform_peaks.len();
+                                                // Fas 8.3: rita ur spårets cache när den finns —
+                                                // ett äkta (min, max) per bildpunkt, i stället för
+                                                // en fast array utsträckt över regionens bredd.
+                                                //
+                                                // En slingad region hoppas över: dess bildpunkter
+                                                // följer upprepningen, inte en sammanhängande
+                                                // sampelmängd, och det är en egen fråga.
+                                                let mut drew_exact = false;
+                                                if !is_looped
+                                                    && region.length_bars > 0.001
+                                                    && let Some(wave) = {
+                                                        let track = &self.playlist_tracks[t_idx];
+                                                        track.waveform_cache.as_ref().and_then(|(_, c)| {
+                                                            track
+                                                                .frozen_pcm
+                                                                .as_ref()
+                                                                .or(track.pcm_audio.as_ref())
+                                                                .map(|(l, _, sr)| (c, l.as_slice(), *sr))
+                                                        })
+                                                    }
+                                                {
+                                                    // Samma kanter som den gamla vägen använder.
+                                                    let draw_start_x = r_rect.min.x + 2.0;
+                                                    let draw_end_x = r_rect.max.x - 2.0;
+                                                    let (cache, pcm, sr) = wave;
+                                                    let region_secs = self
+                                                        .tempo_map()
+                                                        .secs_for_bars_at(
+                                                            region.start_bar as f64,
+                                                            region.length_bars as f64,
+                                                        ) as f32;
+                                                    let start_sample =
+                                                        (region.sample_offset_sec.max(0.0) * sr as f32)
+                                                            as usize;
+                                                    let len_samples =
+                                                        (region_secs * sr as f32).max(1.0) as usize;
+                                                    let cols =
+                                                        ((draw_end_x - draw_start_x).max(1.0)).ceil() as usize;
+                                                    let env =
+                                                        cache.envelope_at(pcm, start_sample, len_samples, cols);
+                                                    let half = r_rect.height() * 0.42;
+                                                    let vol = region.volume.clamp(0.2, 1.8);
+                                                    let mut x = draw_start_x;
+                                                    for (lo, hi) in &env {
+                                                        // Toppen är max och botten är min: en
+                                                        // osymmetrisk signal ska se osymmetrisk ut.
+                                                        let top = mid_y - (hi * half * vol).min(half);
+                                                        let bot = mid_y - (lo * half * vol).max(-half);
+                                                        ui.painter().line_segment(
+                                                            [
+                                                                Pos2::new(x, top),
+                                                                Pos2::new(x, bot.max(top + 0.5)),
+                                                            ],
+                                                            Stroke::new(1.0_f32, wave_col),
+                                                        );
+                                                        x += 1.0;
+                                                    }
+                                                    drew_exact = true;
+                                                }
+
+                                                // Den gamla vägen, för regioner utan PCM och för
+                                                // slingade regioner. `drew_exact` gör att den inte
+                                                // ritar ovanpå det exakta höljet.
+                                                let num_peaks = if drew_exact {
+                                                    0
+                                                } else {
+                                                    region.waveform_peaks.len()
+                                                };
                                                 if num_peaks > 0 {
                                                     // Draw subtle center baseline
                                                     ui.painter().line_segment(
