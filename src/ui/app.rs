@@ -9509,6 +9509,12 @@ impl SonixApp {
                                                     };
                                                     let half = r_rect.height() * 0.42;
                                                     let vol = region.volume.clamp(0.2, 1.8);
+                                                    // dB-skalan (Fas 8.4): utan den är
+                                                    // svaga partier i praktiken osynliga.
+                                                    // Audacity: örat behöver −18 dB för
+                                                    // halva styrkan, linjärt räcker −6.
+                                                    const WAVE_SCALE: crate::audio::waveform::AmplitudeScale =
+                                                        crate::audio::waveform::AmplitudeScale::Decibel;
                                                     // På pixelcentra: en en-pixels linje som
                                                     // hamnar mellan två pixlar flyter ut över
                                                     // båda och ser mjuk ut. Halva pixeln är
@@ -9528,10 +9534,16 @@ impl SonixApp {
                                                             for (lo, hi) in &env {
                                                                 // Toppen är max och botten är min: en
                                                                 // osymmetrisk signal ska se osymmetrisk ut.
-                                                                let top =
-                                                                    mid_y - (hi * half * vol).min(half);
-                                                                let bot =
-                                                                    mid_y - (lo * half * vol).max(-half);
+                                                                let top = mid_y
+                                                                    - (crate::audio::waveform::amplitude_curve(*hi, WAVE_SCALE)
+                                                                        * half
+                                                                        * vol)
+                                                                        .min(half);
+                                                                let bot = mid_y
+                                                                    - (crate::audio::waveform::amplitude_curve(*lo, WAVE_SCALE)
+                                                                        * half
+                                                                        * vol)
+                                                                        .max(-half);
                                                                 ui.painter().line_segment(
                                                                     [
                                                                         Pos2::new(x, top),
@@ -9565,7 +9577,10 @@ impl SonixApp {
                                                                 };
                                                                 let v = pcm.get(k).copied().unwrap_or(0.0);
                                                                 let y = mid_y
-                                                                    - (v * half * vol).clamp(-half, half);
+                                                                    - (crate::audio::waveform::amplitude_curve(v, WAVE_SCALE)
+                                                                        * half
+                                                                        * vol)
+                                                                        .clamp(-half, half);
                                                                 let x = start_x + i as f32;
                                                                 let p = Pos2::new(x, y);
                                                                 if let Some(q) = prev {

@@ -80,6 +80,48 @@ pub fn pixels_needed(region_pixels: f32) -> usize {
 /// blir ~1,4 MB i finaste nivån, knappt 3 MB för alla nivåer.
 pub const FINEST_BUCKET: usize = 64;
 
+/// Hur ett sampelvärde blir en höjd i vågformen (Fas 8.4).
+///
+/// **Varför inte linjärt.** Audacitys manual: örat behöver **−18 dB** för att
+/// uppfatta halva styrkan, medan den linjära skalan redan vid −6 dB visar halva
+/// höjden. Följden är att svaga partier blir i praktiken osynliga — precis det
+/// Alex såg: "minsta ljud måste markeras, så man kan se var man behöver klippa".
+/// En dB-kurva ger de svaga partierna plats, och tystnad ligger kvar vid noll.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AmplitudeScale {
+    /// +1,0 → full höjd. Detta är vad Sonix gjorde före 8.4.
+    Linear,
+    /// Decibel, mättat vid `DEFAULT_FLOOR_DB`. Tystnad blir en tunn linje.
+    Decibel,
+}
+
+/// Under den här nivån ritas inget mer: allt svagare blir noll (tunn linje).
+pub const DEFAULT_FLOOR_DB: f32 = 60.0;
+
+/// Omvandlar ett sampelvärde (−1..1) till en andel av halva höjden (−1..1).
+///
+/// Tecknet bevaras, så en osymmetrisk signal ser fortfarande osymmetrisk ut.
+/// Värden över 1,0 mättas (ett hett spår ska inte ritas utanför sin ruta).
+pub fn amplitude_curve(v: f32, scale: AmplitudeScale) -> f32 {
+    let a = v.abs().min(1.0);
+    let mapped = match scale {
+        AmplitudeScale::Linear => a,
+        AmplitudeScale::Decibel => {
+            if a <= 0.0 {
+                0.0
+            } else {
+                let db = 20.0 * a.log10();
+                ((db + DEFAULT_FLOOR_DB) / DEFAULT_FLOOR_DB).clamp(0.0, 1.0)
+            }
+        }
+    };
+    if v < 0.0 {
+        -mapped
+    } else {
+        mapped
+    }
+}
+
 /// Hur en vågform ska ritas vid en viss zoom (Fas 8.4).
 ///
 /// Erfarenheten från riktiga DAW:er (se `references/waveform-rendering.md` i
@@ -430,6 +472,80 @@ mod tests {
             assert!((lo + 0.8).abs() < 1e-6, "botten ska vara -0,8, blev {lo}");
             assert!((hi - 0.2).abs() < 1e-6, "toppen ska vara 0,2, blev {hi}");
         }
+    }
+
+    /// Den linjära kurvan ska vara EXAKT som förut — annars vore skalan ett
+    /// smygande beteendebyte för den som inte bad om dB.
+    #[test]
+    fn the_linear_scale_is_exactly_the_old_behaviour() {
+        for v in [0.0f32, 0.001, 0.5, -0.5, 0.999, -1.0, 1.0] {
+            assert_eq!(
+                amplitude_curve(v, AmplitudeScale::Linear),
+                v,
+                "linjärt: {v}"
+            );
+        }
+        // Och ett hett spår mättas i stället för att ritas utanför rutan.
+        assert_eq!(amplitude_curve(1.7, AmplitudeScale::Linear), 1.0);
+        assert_eq!(amplitude_curve(-1.7, AmplitudeScale::Linear), -1.0);
+    }
+
+    /// Det här är hela poängen med 8.4: ett ljud som är osynligt linjärt ska ha
+    /// verklig höjd i dB-läget, och tystnad ska förbli en tunn linje.
+    #[test]
+    fn a_quiet_sound_gets_height_in_decibel_scale() {
+        // −40 dB (0,01) ritas av den linjära skalan som 1 % av höjden — osynligt.
+        let linear = amplitude_curve(0.01, AmplitudeScale::Linear);
+        let db = amplitude_curve(0.01, AmplitudeScale::Decibel);
+        assert!(
+            linear < 0.02,
+            "linjärt ska vara nästan platt, blev {linear}"
+        );
+        assert!(
+            db > 0.3,
+            "−40 dB ska få en tredjedel av höjden, blev {db} — annars syns inte svaga ljud"
+        );
+        assert!(
+            db > linear * 30.0,
+            "och skillnaden ska vara stor, inte kosmetisk"
+        );
+
+        // Tystnad är en tunn linje: exakt noll, både i och under golvet.
+        assert_eq!(amplitude_curve(0.0, AmplitudeScale::Decibel), 0.0);
+        assert_eq!(amplitude_curve(0.0005, AmplitudeScale::Decibel), 0.0); // −66 dB
+        assert_eq!(amplitude_curve(0.001, AmplitudeScale::Decibel), 0.0); // −60 dB = golvet
+
+        // Full styrka är full höjd, och tecknet bevaras hela vägen.
+        assert!((amplitude_curve(1.0, AmplitudeScale::Decibel) - 1.0).abs() < 1e-6);
+        // −0,5 är −6 dB, alltså 90 % av höjden. Linjärt hade samma ljud fått 50 % —
+        // det är hela skillnaden, och skälet att dB-vyn är den som går att klippa i.
+        let half_quiet = amplitude_curve(-0.5, AmplitudeScale::Decibel);
+        assert!(
+            (half_quiet + 0.9).abs() < 0.02,
+            "−6 dB ska ge 90 % av höjden, blev {half_quiet}"
+        );
+        assert!(half_quiet.abs() > amplitude_curve(-0.5, AmplitudeScale::Linear).abs() * 1.7);
+    }
+
+    /// Kurvan ska vara monoton: starkare ljud får aldrig mindre höjd. Annars
+    /// ljuger vågformen om vilket av två ljud som är starkast.
+    #[test]
+    fn the_curve_never_inverts() {
+        let mut last = -1.0f32;
+        let mut v = 0.0f32;
+        while v <= 1.0 {
+            let h = amplitude_curve(v, AmplitudeScale::Decibel);
+            assert!(h >= last - 1e-6, "kurvan backade vid {v}: {h} efter {last}");
+            last = h;
+            v += 0.001;
+        }
+        // Ändpunkten prövas för sig: loopen stannar strax under 1,0 och ska inte
+        // avgöra om kurvan når taket.
+        assert_eq!(amplitude_curve(1.0, AmplitudeScale::Decibel), 1.0);
+        assert!(
+            last > 0.999,
+            "och den sista punkten i svepet ska ligga nära taket"
+        );
     }
 
     /// Trösklarna är själva poängen: vid ett sampel per bildpunkt finns sanningen,
