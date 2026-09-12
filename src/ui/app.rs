@@ -5786,7 +5786,17 @@ impl SonixApp {
                 let source = self.stem_project.source_path.clone().unwrap_or_default();
                 let neural = result.used_neural;
                 let fallback = result.fallback_reason.clone();
-                self.stem_project.install_separation(result, &source);
+                // Samma mapp och samma basnamn som *exportera stämmorna* använder:
+                // då pekar regionen på en fil som redan finns, i stället för att
+                // samma stämma skrivs två gånger på två ställen.
+                let stems_dir = crate::paths::paths()
+                    .project_assets_dir(&self.project_name)
+                    .join("Stems");
+                let base = stem_base_name(Some(&source), &self.stem_project.track_title);
+                let write_error = self
+                    .stem_project
+                    .install_separation(result, &source, &stems_dir, &base)
+                    .err();
                 self.load_separated_stems_to_engine();
                 self.view_mode = ViewMode::StemSeparator;
                 let backend = if neural {
@@ -5804,6 +5814,15 @@ impl SonixApp {
                     && let Some(reason) = fallback
                 {
                     self.status_message = format!("{} — {}", self.status_message, reason);
+                }
+                // Separationen lyckades, men filerna kom inte till disk. Då finns
+                // stämmorna bara i minnet: att tiga om det vore att lova ett klipp
+                // som inte kan spelas upp igen efter en omladdning.
+                if let Some(err) = write_error {
+                    self.status_message = crate::tstatus!(
+                        "⚠ Separationen är klar, men stämmorna kunde inte skrivas till disk: {} — de finns bara i minnet",
+                        err
+                    );
                 }
             }
             Err(err) => {

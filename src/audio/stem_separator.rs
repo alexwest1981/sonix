@@ -74,6 +74,12 @@ pub struct StemProject {
     pub stem_audio_base: Vec<StemAudio>,
     pub sample_rate: u32,
     pub source_path: Option<String>,
+    /// Stämfilerna på disk, i stämmornas ordning (Fas 8.5a steg 2).
+    ///
+    /// Fylls av [`StemProject::install_separation`] när stämmorna skrivs. Tom =
+    /// ingen skrivning har lyckats, och då ska ingen region peka på en fil som
+    /// inte finns.
+    pub stem_files: Vec<String>,
 }
 
 impl Default for StemProject {
@@ -91,6 +97,7 @@ impl Default for StemProject {
             stem_audio_base: Vec::new(),
             sample_rate: 44100,
             source_path: None,
+            stem_files: Vec::new(),
         }
     }
 }
@@ -377,29 +384,15 @@ pub fn write_stems_to_dir(
             .map(|n| n.to_string())
             .unwrap_or_else(|| format!("stem{}", i + 1));
         let path = dir.join(format!("{}-{}.wav", slug, name));
-        // Interleaved stereo — samma form WAV-skrivaren förväntar sig.
-        let mut buffer = Vec::with_capacity(stem.left.len().min(stem.right.len()) * 2);
-        for (l, r) in stem.left.iter().zip(stem.right.iter()) {
-            buffer.push(*l);
-            buffer.push(*r);
-        }
-        let meta = super::ExportMeta {
-            title: format!("{} ({})", base, name),
-            artist: String::new(),
-            album: String::new(),
-            genre: String::new(),
-            year: String::new(),
-            comment: "Stämma ur Sonix stämseparator (mellansteg)".to_string(),
-        };
-        // 32-bitars flyttal: en stämma är ett mellansteg och ska inte kvantisera
-        // en enda gång innan den riktiga exporten gör det.
-        super::write_export_with(
-            &path.to_string_lossy(),
-            super::ExportFormat::Wav32,
-            &buffer,
+        // En väg för att skriva en stämfil, inte två: `write_stem_wav` skriver
+        // 32-bitars flyttal (ett mellansteg ska inte kvantisera en enda gång
+        // innan den riktiga exporten gör det) och är samma funktion som
+        // separatören använder.
+        crate::audio::exporter::write_stem_wav(
+            path.to_string_lossy().as_ref(),
+            &stem.left,
+            &stem.right,
             sample_rate,
-            &meta,
-            super::DitherSettings::default(),
         )?;
         paths.push(path);
     }
@@ -437,7 +430,24 @@ pub fn write_stems_and_read_envelopes(
 }
 
 impl StemProject {
-    pub fn install_separation(&mut self, result: SeparationResult, source_path: &str) {
+    /// Installerar en färdig separation och skriver stämmorna till disk.
+    ///
+    /// `stems_dir` och `base` kommer från anroparen (appen), så att en separation
+    /// och en efterföljande export hamnar på **samma filnamn och samma plats** —
+    /// då kan regionen peka på en fil som redan finns.
+    ///
+    /// `Err` betyder att skrivningen misslyckades, inte att separationen gjorde
+    /// det: stämmorna finns kvar i minnet och går att spela, men de finns inte på
+    /// disk. Anroparen ansvarar för att säga det högt — en tyst misslyckad
+    /// skrivning är precis den sortens tystnad 8.5 stänger.
+    pub fn install_separation(
+        &mut self,
+        result: SeparationResult,
+        source_path: &str,
+        stems_dir: &std::path::Path,
+        base: &str,
+    ) -> Result<(), String> {
+        self.stem_files.clear();
         self.sample_rate = result.sample_rate;
         self.source_path = Some(source_path.to_string());
         self.track_title = std::path::Path::new(source_path)
@@ -482,50 +492,23 @@ impl StemProject {
             });
         }
 
-        // Stämmorna skrivs till disk (8.5a). Tidigare lämnade en separation inga
-        // filer alls: bara en grov översikt och en `source_path` till originalet.
-        // Var originalet en mp3 — som appen inte kan avkoda — blev stämman ett tyst
-        // klipp med trovärdig vågform. Nu finns ljudet som fil och kan läsas.
-        let project_name = std::path::Path::new(source_path)
-            .file_stem()
-            .map(|s| s.to_string_lossy().to_string())
-            .unwrap_or_else(|| "Projekt".to_string());
-        let assets = crate::paths::paths().project_assets_dir(&project_name);
-        if std::fs::create_dir_all(&assets).is_ok() {
-            let types_for_files = [
-                StemType::Vocals,
-                StemType::Drums,
-                StemType::Bass,
-                StemType::Instruments,
-            ];
-            for (idx, stem_type) in types_for_files.iter().enumerate() {
-                if idx >= self.stem_audio.len() {
-                    break;
-                }
-                let audio = &self.stem_audio[idx];
-                let file = crate::paths::stem_file(&assets, stem_type.name());
-                let _ = crate::audio::exporter::write_stem_wav(
-                    file.to_string_lossy().as_ref(),
-                    &audio.left,
-                    &audio.right,
-                    self.sample_rate,
-                );
-            }
-        }
-    }
-
-    /// Synchronous separation using the best backend (kept for tests and simple
-    /// callers; the UI runs [`run_separation`] on a background thread instead).
-    #[allow(dead_code)]
-    pub fn separate_from_pcm(
-        &mut self,
-        left: &[f32],
-        right: &[f32],
-        sample_rate: u32,
-        source_path: &str,
-    ) {
-        let result = run_separation(left, right, sample_rate, &|_| {});
-        self.install_separation(result, source_path);
+        // Stämmorna skrivs till disk (8.5a steg 2). Tidigare lämnade en separation
+        // antingen inga filer alls eller filer vars sökvägar **kastades**, och ett
+        // misslyckande svaldes av `let _ =` — alltså samma tystnad som 8.5 stänger,
+        // fast i skrivriktningen. Nu skrivs filerna en gång, sökvägarna sparas, och
+        // ett fel går tillbaka till anroparen.
+        //
+        // Kostnaden: skrivningen sker på den tråd som anropar (UI-tråden, när
+        // separationens resultat hämtas i `update`). Fyra 32-bitars stämmor av en
+        // fyra minuters låt är några hundra MB. Att flytta skrivningen till
+        // bakgrundstråden är nästa steg — det står i ROADMAP, inte här som en tyst
+        // fördröjning.
+        let written = write_stems_to_dir(stems_dir, base, &self.stem_audio, self.sample_rate);
+        self.stem_files = written?
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        Ok(())
     }
 }
 
@@ -602,7 +585,11 @@ mod tests {
 
         let result = run_separation(&left, &right, sr as u32, &|_| {});
         let mut project = StemProject::default();
-        project.install_separation(result, "/tmp/prov.wav");
+        let dir = std::env::temp_dir().join(format!("sonix_stem_pairs_{}", std::process::id()));
+        // Skrivningen får inte fälla testet om katalogen inte går att skapa — det
+        // som prövas här är paren, och det egna testet nedan prövar skrivningen.
+        let _ = project.install_separation(result, "/tmp/prov.wav", &dir, "prov");
+        let _ = std::fs::remove_dir_all(&dir);
 
         assert!(!project.stems.is_empty(), "separationen ska ge stämmor");
         for stem in &project.stems {
@@ -620,6 +607,95 @@ mod tests {
             loudest > 0.01,
             "bredbandig insignal ska ge riktigt innehåll i något band, fick {loudest}"
         );
+    }
+
+    /// **Fas 8.5a steg 2:** en separation skriver sina stämmor till disk **och
+    /// minns var de ligger**, och filen går att läsa tillbaka med appens egen
+    /// avkodare — samma längd och samma ljud som stämman i minnet. Det är hela
+    /// poängen: ett klipp som pekar på en fil som finns kan inte bli tyst.
+    #[test]
+    fn a_separation_writes_its_stems_and_remembers_where() {
+        let sr = 44100u32;
+        let n = 8_000;
+        let left: Vec<f32> = (0..n).map(|i| (i as f32 / n as f32) * 0.6 - 0.3).collect();
+        let right: Vec<f32> = left.iter().map(|s| s * 0.5).collect();
+        let result = run_separation(&left, &right, sr, &|_| {});
+
+        let dir = std::env::temp_dir().join(format!("sonix_stem_write_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let mut project = StemProject::default();
+        project
+            .install_separation(result, "/tmp/Min Låt.mp3", &dir, "Min Låt")
+            .expect("skrivningen ska lyckas i en tom katalog");
+
+        assert_eq!(
+            project.stem_files.len(),
+            project.stem_audio.len(),
+            "en sökväg per stämma"
+        );
+        for path in &project.stem_files {
+            assert!(
+                std::path::Path::new(path).is_file(),
+                "stämfilen ska finnas på disk: {path}"
+            );
+        }
+        // Läs tillbaka den första stämman och jämför med stämman i minnet.
+        let (read_l, read_r, read_sr) = crate::audio::wav_reader::load_wav_pcm(&project.stem_files[0])
+            .expect("den skrivna filen ska gå att läsa");
+        assert_eq!(read_sr, project.sample_rate, "samma samplerate");
+        assert_eq!(
+            read_l.len(),
+            project.stem_audio[0].left.len(),
+            "samma längd som stämman i minnet"
+        );
+        let stem = &project.stem_audio[0];
+        let mid = read_l.len() / 2;
+        assert!(
+            (read_l[mid] - stem.left[mid]).abs() < 1e-4 && (read_r[mid] - stem.right[mid]).abs() < 1e-4,
+            "samma ljud: ({}, {}) mot ({}, {})",
+            read_l[mid],
+            read_r[mid],
+            stem.left[mid],
+            stem.right[mid]
+        );
+        // Osymmetri ska bevaras — kanalerna får inte blandas ihop.
+        assert!(
+            (read_l[mid] - read_r[mid]).abs() > 1e-3,
+            "vänster och höger ska vara olika, som de var"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// En skrivning som inte går (målet är en **fil**, inte en katalog) ska komma
+    /// tillbaka som ett fel — och stämmorna ska ändå finnas kvar i minnet, för
+    /// separationen lyckades. Tystnaden var problemet, inte att disken är full.
+    #[test]
+    fn a_failed_write_is_reported_and_the_stems_stay_playable() {
+        let sr = 44100u32;
+        let n = 2_000;
+        let left = vec![0.25f32; n];
+        let right = vec![0.1f32; n];
+        let result = run_separation(&left, &right, sr, &|_| {});
+
+        // En fil där katalogen ska ligga: create_dir_all kan inte lyckas.
+        let blocked = std::env::temp_dir().join(format!("sonix_stem_block_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&blocked);
+        std::fs::write(&blocked, b"inte en katalog").expect("testfilen ska gå att skriva");
+
+        let mut project = StemProject::default();
+        let err = project
+            .install_separation(result, "/tmp/Tyst.mp3", &blocked, "Tyst")
+            .expect_err("skrivningen ska rapportera ett fel");
+        assert!(!err.is_empty(), "felet ska förklara sig: {err}");
+        assert!(
+            project.stem_files.is_empty(),
+            "inga sökvägar ska lovas när skrivningen misslyckades"
+        );
+        assert!(
+            !project.stems.is_empty() && !project.stem_audio.is_empty(),
+            "stämmorna ska finnas kvar i minnet och gå att spela"
+        );
+        let _ = std::fs::remove_file(&blocked);
     }
 
     #[test]
