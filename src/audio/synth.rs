@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 use std::sync::Mutex;
-use super::command::{AudioCommand, Preset, StemRegionPlayback, Waveform};
+use super::command::{AudioCommand, Preset, StemRegionPlayback, StemSend, Waveform};
 use super::drum::{DrumType, DrumVoice};
 use super::effects::{DelayParams, ReverbParams, SimpleReverb, StereoDelay};
 use super::envelope::{AdsrParams, AdsrVoice};
@@ -76,6 +76,9 @@ fn describe_cmd(cmd: &AudioCommand) -> String {
         AudioCommand::SetStemTrackRouting { track_index, bus, vca } => {
             format!("SetStemTrackRouting(idx={} bus={} vca={:?})", track_index, bus, vca)
         }
+        AudioCommand::SetStemTrackSends { track_index, sends } => {
+            format!("SetStemTrackSends(idx={} antal={})", track_index, sends.len())
+        }
         AudioCommand::SetStemTrackSidechain { track_index, from, amount_db, threshold_db } => {
             format!("SetStemTrackSidechain(idx={} from={:?} amount={} threshold={})", track_index, from, amount_db, threshold_db)
         }
@@ -114,6 +117,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::StopAll => "StopAll",
         AudioCommand::LoadStemTrack { .. } => "LoadStemTrack",
         AudioCommand::ClearAllStemTracks => "ClearAllStemTracks",
+        AudioCommand::SetStemTrackSends { .. } => "SetStemTrackSends",
         AudioCommand::SetStemTrackState { .. } => "SetStemTrackState",
         AudioCommand::SetStemTrackRegions { .. } => "SetStemTrackRegions",
         AudioCommand::SetStemTrackRouting { .. } => "SetStemTrackRouting",
@@ -368,6 +372,8 @@ pub struct StemVoiceTrack {
     pub bus: usize,
     /// Optional VCA control group (`0..NUM_VCAS`) — Fas 5.2.
     pub vca: Option<usize>,
+    /// Sends (Fas 8.13): parallella vägar till andra bussar.
+    pub sends: Vec<StemSend>,
     /// Sidokedja (Fas 8.3): spåret duckas av det här spårets ljud.
     pub sidechain_from: Option<usize>,
     /// Hur mycket spåret sänks när key-signalen är över tröskeln.
@@ -422,6 +428,7 @@ impl StemVoiceTrack {
             pdc: PdcDelay::new(),
             bus: 0,
             vca: None,
+            sends: Vec::new(),
             sidechain_from: None,
             sidechain_amount_db: 0.0,
             sidechain_threshold_db: -30.0,
@@ -937,6 +944,21 @@ impl SynthEngine {
                     track.vca = vca.filter(|&v| v < NUM_VCAS);
                 }
             }
+            AudioCommand::SetStemTrackSends { track_index, sends } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    // Kläms här, en gång: målet till en buss som finns, nivån till
+                    // 0..2 (en send ska kunna vara starkare än spåret, men inte
+                    // oändligt), och en send utan nivå är ingen send.
+                    track.sends = sends
+                        .into_iter()
+                        .filter(|s| s.level.is_finite() && s.level.abs() > 1e-6)
+                        .map(|s| StemSend {
+                            target_bus: s.target_bus.min(NUM_BUSES - 1),
+                            level: s.level.clamp(0.0, 2.0),
+                        })
+                        .collect();
+                }
+            }
             AudioCommand::SetStemTrackSidechain { track_index, from, amount_db, threshold_db } => {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
                     // Ett `from` som pekar på spåret självt är ingen sidokedja —
@@ -1440,6 +1462,34 @@ impl SynthEngine {
 
                 stem_mix_l += tl * group_gain;
                 stem_mix_r += tr * group_gain;
+
+                // Sends (Fas 8.13): en del av spårets signal går till en ANNAN buss
+                // också. Post-fader — signalen är densamma som går till spårets egen
+                // buss, alltså efter volym, EQ, kompressor och sidokedja.
+                //
+                // Målets bussnivå läggs på här i stället för i en egen summering:
+                // bussarna har ingen egen bearbetning (bara nivå, mute och solo), så
+                // summan är linjär och det är samma sak — men det syns i koden att
+                // det är ett antagande, och det är därför det står här.
+                for send in &track.sends {
+                    let target = send.target_bus.min(NUM_BUSES - 1);
+                    // Målets eget gruppläge gäller målet: en tystad buss tar inte
+                    // emot, och när något är soloat hörs bara det soloades väg. Att
+                    // spåret självt är hörbart räcker alltså inte — samma regel som
+                    // för spårets egen buss, räknad för MÅLET. (Mätt: utan den här
+                    // raden lade en send till en tystad buss till signal.)
+                    let target_audible = if has_solo {
+                        bus_solo[target]
+                    } else {
+                        !bus_muted[target]
+                    };
+                    if !target_audible {
+                        continue;
+                    }
+                    let g = send.level * bus_volume[target];
+                    stem_mix_l += tl * g;
+                    stem_mix_r += tr * g;
+                }
             }
 
             self.song_time_samples += 1;
@@ -2235,6 +2285,131 @@ mod tests {
     }
 
     /// Två spår: nyckeln på 220 Hz (spår 0) och målet på 880 Hz (spår 1).
+    /// Ett par spår för send-testerna: spår 0 bär ljudet, spår 1 är tomt.
+    fn send_pair() -> SynthEngine {
+        let mut synth = SynthEngine::new(48_000.0);
+        let one = Arc::new(vec![1.0_f32; 4800]);
+        let silent = Arc::new(vec![0.0_f32; 4800]);
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 0,
+            left: one.clone(),
+            right: one,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 0,
+            left: Arc::new(vec![1.0_f32; 4800]),
+            right: Arc::new(vec![1.0_f32; 4800]),
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        let _ = silent;
+        synth.handle_command(AudioCommand::SetStemTrackRegions {
+            track_index: 0,
+            regions: vec![region_under_test(1.0, 0.0, 0.0, false, 1.0)],
+        });
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+        synth
+    }
+
+    /// Mäter toppen ur ett par block.
+    fn run_peak(synth: &mut SynthEngine, frames: usize) -> f32 {
+        let mut peak = 0.0f32;
+        for _ in 0..frames {
+            let (l, _r) = synth.process_stereo();
+            peak = peak.max(l.abs());
+        }
+        peak
+    }
+
+    /// En send till en buss med lägre nivå **hörs**: spåret går till sin egen buss
+    /// som förut, och en del går en parallell väg.
+    ///
+    /// Att skicka till en buss med samma nivå som spårets egen hörs däremot inte —
+    /// summan är linjär — och det är därför målets nivå är nedsatt i testet: annars
+    /// mätte det ingenting.
+    #[test]
+    fn a_send_into_a_quieter_bus_adds_signal() {
+        let base = {
+            let mut synth = send_pair();
+            run_peak(&mut synth, 8)
+        };
+
+        let mut synth = send_pair();
+        synth.handle_command(AudioCommand::SetBusState {
+            bus: 3,
+            volume: 0.5,
+            muted: false,
+            solo: false,
+        });
+        synth.handle_command(AudioCommand::SetStemTrackSends {
+            track_index: 0,
+            sends: vec![StemSend { target_bus: 3, level: 1.0 }],
+        });
+        let with_send = run_peak(&mut synth, 8);
+
+        assert!(
+            with_send > base * 1.05,
+            "senden ska höras: utan {base}, med {with_send}"
+        );
+    }
+
+    /// En send till en **tystad** buss hörs inte: bussens mute gäller målet, och
+    /// därför blir det ingen extra signal.
+    #[test]
+    fn a_send_into_a_muted_bus_adds_nothing() {
+        let base = {
+            let mut synth = send_pair();
+            synth.handle_command(AudioCommand::SetBusState {
+                bus: 3,
+                volume: 1.0,
+                muted: true,
+                solo: false,
+            });
+            run_peak(&mut synth, 8)
+        };
+        let mut synth = send_pair();
+        synth.handle_command(AudioCommand::SetBusState {
+            bus: 3,
+            volume: 1.0,
+            muted: true,
+            solo: false,
+        });
+        synth.handle_command(AudioCommand::SetStemTrackSends {
+            track_index: 0,
+            sends: vec![StemSend { target_bus: 3, level: 1.0 }],
+        });
+        let with_send = run_peak(&mut synth, 8);
+        assert!(
+            (with_send - base).abs() < 1e-4,
+            "en send till en tystad buss ska inte höras: {base} mot {with_send}"
+        );
+    }
+
+    /// Målet kläms till de bussar som finns, nivån till 0..2, och en send utan nivå
+    /// filtreras bort — ett projektfält kan innehålla vad som helst.
+    #[test]
+    fn a_send_is_clamped_to_the_buses_that_exist() {
+        let mut synth = send_pair();
+        synth.handle_command(AudioCommand::SetStemTrackSends {
+            track_index: 0,
+            sends: vec![
+                StemSend { target_bus: 99, level: 9.0 },
+                StemSend { target_bus: 1, level: 0.0 },
+                StemSend { target_bus: 2, level: f32::NAN },
+            ],
+        });
+        let sends = &synth.stem_tracks[0].sends;
+        assert_eq!(sends.len(), 1, "bara den med en nivå ska bli kvar: {sends:?}");
+        assert_eq!(sends[0].target_bus, NUM_BUSES - 1);
+        assert!((sends[0].level - 2.0).abs() < 1e-6);
+    }
+
     fn sidechain_pair() -> SynthEngine {
         let mut synth = SynthEngine::new(48_000.0);
         load_tone_track(&mut synth, 0, 220.0);
