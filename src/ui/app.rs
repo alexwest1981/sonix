@@ -639,6 +639,98 @@ fn stem_files_for_import(
     (kept, skipped)
 }
 
+/// Filändelserna appen läser in som stämmor (samma lista som mappläsningen).
+const STEM_AUDIO_EXTS: [&str; 4] = ["wav", "mp3", "flac", "ogg"];
+
+/// Ljudfilerna i en mapp, sorterade.
+///
+/// Ren funktion utan fönster, så att importen och frågan **ovanför** den ser
+/// exakt samma lista — annars kan frågan nämna ett antal som importen sedan inte
+/// känner igen.
+fn list_stem_audio_files(dir: &str) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if let Some(ext) = path.extension().and_then(|e| e.to_str())
+                && STEM_AUDIO_EXTS.iter().any(|e| ext.eq_ignore_ascii_case(e))
+            {
+                files.push(path);
+            }
+        }
+    }
+    files.sort();
+    files
+}
+
+/// Hur många mp3:er i en namnmängd som har sin stämma som wav också.
+///
+/// Samma regel som [`stem_files_for_import`] (filnamnet utan ändelse avgör om två
+/// filer är samma stämma), men den här **räknar** i stället för att välja: frågan
+/// till användaren behöver siffran. Namnen kommer antingen ur en mapp eller ur
+/// ett ZIP-arkivs innehållsförteckning, och därför jämförs bara filnamnet —
+/// `unzip -Z1` ger `Stems/vocals.mp3` där mappen ger en hel sökväg.
+fn duplicate_mp3_count(names: &[String]) -> usize {
+    let paths: Vec<std::path::PathBuf> = names.iter().map(std::path::PathBuf::from).collect();
+    let wav_keys: std::collections::HashSet<String> = paths
+        .iter()
+        .filter(|p| has_extension(p, "wav"))
+        .filter_map(|p| stem_key(p))
+        .collect();
+    paths
+        .iter()
+        .filter(|p| has_extension(p, "mp3"))
+        .filter_map(|p| stem_key(p))
+        .filter(|k| wav_keys.contains(k))
+        .count()
+}
+
+/// Wav-syskonet till en fil, om det finns i samma mapp (Fas 8.5).
+///
+/// Stämseparatorn tar **en** fil. Är det en mp3 som har sin wav bredvid sig finns
+/// ingen anledning att gå omvägen över ett format appen inte kan spela — men
+/// valet är användarens, så frågan ställs med den här sökningen som underlag.
+fn wav_sibling(path: &str) -> Option<String> {
+    let p = std::path::Path::new(path);
+    if has_extension(p, "wav") {
+        return None;
+    }
+    let key = stem_key(p)?;
+    let dir = p.parent()?;
+    let mut entries: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    entries.sort();
+    entries
+        .into_iter()
+        .find(|c| has_extension(c, "wav") && stem_key(c).as_deref() == Some(key.as_str()))
+        .map(|c| c.to_string_lossy().into_owned())
+}
+
+/// Namnen i ett ZIP-arkiv, utan att packa upp det (`unzip -Z1`).
+///
+/// Frågan om mp3:erna måste ställas **innan** uppackningen, och uppackningen sker
+/// i bakgrunden. `unzip -Z1` läser bara innehållsförteckningen — millisekunder
+/// för ett stäm-arkiv. Går det inte (unzip saknas, trasigt arkiv, arkivet är
+/// krypterat) blir listan tom, frågan ställs inte, och importen gör som förut.
+fn zip_entry_names(zip_path: &str) -> Vec<String> {
+    std::process::Command::new("unzip")
+        .args(["-Z1", zip_path])
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(|l| l.trim().to_string())
+                .filter(|l| !l.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Basnamnet stämfilerna får: källfilens namn utan ändelse, annars låtens titel.
 ///
 /// Ren funktion, så att namnregeln kan prövas utan fönster — och så att
@@ -1113,6 +1205,32 @@ pub fn classify_track_style(name: &str) -> (TrackKind, &'static str, Color32) {
     } else {
         (TrackKind::CustomAudio, "🎵", Color32::from_rgb(160, 175, 200))
     }
+}
+
+/// Var en stämimport kommer ifrån (Fas 8.5): frågan om mp3:erna ställs innan
+/// arbetet börjar, och svaret måste kunna starta **samma** väg igen.
+#[derive(Clone)]
+pub enum StemImportSource {
+    Folder(String),
+    Zip(String),
+}
+
+/// Frågan som ställs innan en stämimport eller en separation börjar (Alex'
+/// förslag, Fas 8.5): mp3:erna som redan har sin stämma som wav.
+///
+/// Regeln ligger i [`stem_files_for_import`] sedan tidigare — det här är bara
+/// valet, och valet är användarens. Två sammanhang, samma fråga.
+#[derive(Clone)]
+pub enum WavQuestion {
+    /// En import där `duplicates` mp3:er har wav-syskon.
+    StemImport {
+        source: StemImportSource,
+        title: String,
+        bpm: f32,
+        duplicates: usize,
+    },
+    /// Stämseparatorn: den valda filen har ett wav-syskon.
+    Separate { chosen: String, sibling: String },
 }
 
 #[derive(Clone, Default)]
@@ -1724,6 +1842,8 @@ pub struct SonixApp {
     // Project Metadata & Suno Multi-Track Stems
     pub project_name: String,
     pub show_suno_import_modal: bool,
+    /// Frågan om mp3/wav som väntar på svar (Fas 8.5). `None` = ingen fråga uppe.
+    pub pending_wav_question: Option<WavQuestion>,
     pub detected_suno_zips: Vec<String>,
     pub custom_stem_path_input: String,
     pub custom_project_path_input: String,
@@ -2389,6 +2509,7 @@ impl SonixApp {
             // Project Metadata & Suno Multi-Track Stems
             project_name: crate::i18n::t("Namnlöst Projekt").to_string(),
             show_suno_import_modal: false,
+            pending_wav_question: None,
             detected_suno_zips: Vec::new(),
             custom_stem_path_input: crate::paths::paths().music_dir().to_string_lossy().to_string(),
             custom_project_path_input: crate::paths::paths()
@@ -5451,7 +5572,26 @@ impl SonixApp {
     /// Decodes the chosen file and runs stem separation on a background thread.
     /// Uses the neural HTDemucs backend when a model is installed, otherwise the
     /// built-in DSP separator.
+    /// Startar en separation — och frågar först om den valda filen har sin wav
+    /// bredvid sig (Fas 8.5).
+    ///
+    /// Frågan finns för att båda vägarna leder till samma ljud men olika arbete:
+    /// mp3:an måste konverteras först, och appen kan inte spela den direkt. Den
+    /// som *vill* separera mp3:an (den kanske är den enda som finns i den
+    /// mastern) kan säga det.
     pub fn start_stem_separation(&mut self, path: &str) {
+        if let Some(sibling) = wav_sibling(path) {
+            self.pending_wav_question = Some(WavQuestion::Separate {
+                chosen: path.to_string(),
+                sibling,
+            });
+            return;
+        }
+        self.start_stem_separation_with(path);
+    }
+
+    /// Själva separationen (bakgrundstråden). Kallas också när frågan är besvarad.
+    pub fn start_stem_separation_with(&mut self, path: &str) {
         let (l, r, sr) = match crate::audio::load_audio_pcm(path) {
             Ok(v) => v,
             Err(e) => {
@@ -8143,6 +8283,7 @@ impl eframe::App for SonixApp {
         self.render_hardware_controller_modal(ctx);
         self.render_batch_export_modal(ctx);
         self.render_suno_stem_import_modal(ctx);
+        self.render_wav_question_modal(ctx);
         self.render_stem_import_progress_modal(ctx);
         self.render_project_load_progress_modal(ctx);
         self.render_about_modal(ctx);
@@ -14417,7 +14558,31 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         self.start_suno_zip_import(zip_path);
     }
 
+    /// Startar en ZIP-import — och frågar först om mp3:erna (Fas 8.5).
+    ///
+    /// Frågan måste ställas **innan** uppackningen, eftersom uppackningen sker i
+    /// bakgrunden: innehållsförteckningen läses därför utan att packa upp.
     pub fn start_suno_zip_import(&mut self, zip_path: &str) {
+        let (title, bpm) = Self::parse_suno_zip_info(zip_path);
+        let duplicates = duplicate_mp3_count(&zip_entry_names(zip_path));
+        if duplicates > 0 {
+            self.pending_wav_question = Some(WavQuestion::StemImport {
+                source: StemImportSource::Zip(zip_path.to_string()),
+                title,
+                bpm,
+                duplicates,
+            });
+            self.status_message = crate::tstatus!(
+                "❓ {} mp3 i arkivet har redan sin stämma som wav — välj vad som ska läsas in",
+                duplicates
+            );
+            return;
+        }
+        self.start_suno_zip_import_choice(zip_path, false);
+    }
+
+    /// Själva ZIP-importen. Kallas också när frågan är besvarad.
+    pub fn start_suno_zip_import_choice(&mut self, zip_path: &str, keep_mp3: bool) {
         let (title, bpm) = Self::parse_suno_zip_info(zip_path);
         let sanitized = title.replace([' ', '/', '\\', '(', ')', '\'', '"'], "_");
         let dest_dir = format!("./imported_stems/{}", sanitized);
@@ -14461,15 +14626,42 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 }
             }
 
-            Self::background_decode_stems(&dest_dir, &title, bpm, progress);
+            Self::background_decode_stems(&dest_dir, &title, bpm, keep_mp3, progress);
         });
     }
 
+    /// Startar en mappimport — och frågar först om mp3:erna (Fas 8.5).
+    ///
+    /// Frågan ställs bara när den har något att fråga om: finns inga mp3:er med
+    /// wav-syskon går importen rakt igenom som förut.
     pub fn import_suno_stems_from_folder(&mut self, folder_path: &str, project_title: &str, bpm: f32) {
-        self.start_suno_folder_import(folder_path, project_title, bpm);
+        let files = list_stem_audio_files(folder_path);
+        let (_, duplicates) = stem_files_for_import(files, false);
+        if duplicates > 0 {
+            self.pending_wav_question = Some(WavQuestion::StemImport {
+                source: StemImportSource::Folder(folder_path.to_string()),
+                title: project_title.to_string(),
+                bpm,
+                duplicates,
+            });
+            self.status_message = crate::tstatus!(
+                "❓ {} mp3 har redan sin stämma som wav — välj vad som ska läsas in",
+                duplicates
+            );
+            return;
+        }
+        self.start_suno_folder_import(folder_path, project_title, bpm, false);
     }
 
-    pub fn start_suno_folder_import(&mut self, folder_path: &str, project_title: &str, bpm: f32) {
+    /// Själva mappimporten. `keep_mp3` är svaret på frågan ovan (`false` = regeln:
+    /// en mp3 vars stämma redan finns som wav hoppas över).
+    pub fn start_suno_folder_import(
+        &mut self,
+        folder_path: &str,
+        project_title: &str,
+        bpm: f32,
+        keep_mp3: bool,
+    ) {
         let progress = self.stem_import_progress.clone();
         let folder = folder_path.to_string();
         let title = project_title.to_string();
@@ -14490,7 +14682,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         self.status_message = crate::tstatus!("⏳ Startade inläsning av stämmor för '{}' i bakgrunden...", project_title);
 
         std::thread::spawn(move || {
-            Self::background_decode_stems(&folder, &title, bpm, progress);
+            Self::background_decode_stems(&folder, &title, bpm, keep_mp3, progress);
         });
     }
 
@@ -14498,20 +14690,12 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         folder_path: &str,
         project_title: &str,
         bpm: f32,
+        keep_mp3: bool,
         progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
     ) {
-        let mut stem_files = Vec::new();
-        if let Ok(entries) = std::fs::read_dir(folder_path) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-                    let ext_lower = ext.to_lowercase();
-                    if ext_lower == "wav" || ext_lower == "mp3" || ext_lower == "flac" || ext_lower == "ogg" {
-                        stem_files.push(path);
-                    }
-                }
-            }
-        }
+        // Samma listning som frågan ovanför använder — annars kunde frågan nämna
+        // ett antal som den här vägen inte känner igen.
+        let stem_files = list_stem_audio_files(folder_path);
 
         if stem_files.is_empty() {
             if let Ok(mut p) = progress.lock() {
@@ -14521,12 +14705,11 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             return;
         }
 
-        stem_files.sort();
         // Samma stämma som wav behöver sin mp3 inte — appen kan inte spela mp3,
         // bara konvertera, och det är ett varv utan vinst. Utan wav-syskon tas
-        // mp3:n med. (Alex' förslag: en dialog som frågar. Regeln här är samma
-        // logik, så dialogen blir en fråga om detta enda val.)
-        let (stem_files, skipped_mp3) = stem_files_for_import(stem_files, false);
+        // mp3:n med. `keep_mp3` är användarens svar på frågan (Fas 8.5); den här
+        // vägen kör samma regel som frågan bygger på.
+        let (stem_files, skipped_mp3) = stem_files_for_import(stem_files, keep_mp3);
         if skipped_mp3 > 0
             && let Ok(mut p) = progress.lock()
         {
@@ -14706,6 +14889,126 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         self.view_mode = ViewMode::PlaylistArranger;
     }
 
+    /// Frågan om mp3 eller wav (Alex' förslag, Fas 8.5).
+    ///
+    /// **Varför en fråga och inte en regel som bara kör.** Appen kan inte spela
+    /// mp3 — den konverteras först — så en mp3 vars stämma redan finns som wav är
+    /// ett extra varv utan vinst. Men den som importerar kan ha skäl att vilja ha
+    /// mp3-filerna med (de finns i projektet, de kan användas utanför Sonix), så
+    /// valet är användarens. Standardvalet är regeln: hoppa över dem.
+    fn render_wav_question_modal(&mut self, ctx: &egui::Context) {
+        let Some(question) = self.pending_wav_question.clone() else {
+            return;
+        };
+        let mut keep_mp3: Option<bool> = None;
+        let mut separate_sibling = false;
+        let mut separate_chosen = false;
+        let mut cancel = false;
+        egui::Window::new(crate::i18n::t("🎧 mp3 eller wav?"))
+            .collapsible(false)
+            .resizable(false)
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .default_size(Vec2::new(620.0, 200.0))
+            .show(ctx, |ui| match &question {
+                WavQuestion::StemImport { duplicates, title, .. } => {
+                    ui.label(
+                        egui::RichText::new(crate::tstatus!(
+                            "{} mp3-filer i '{}' har redan sin stämma som wav-fil.",
+                            duplicates,
+                            title
+                        ))
+                        .size(12.5)
+                        .color(Theme::TEXT_BRIGHT),
+                    );
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t(
+                            "Sonix kan inte spela mp3 — den konverteras först, vilket är ett extra varv när wav-filen redan finns. En stämma som bara finns som mp3 tas alltid med.",
+                        ))
+                        .size(11.0)
+                        .color(Theme::TEXT_MUTED),
+                    );
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button(crate::i18n::t("Hoppa över mp3:erna (rekommenderas)"))
+                            .clicked()
+                        {
+                            keep_mp3 = Some(false);
+                        }
+                        if ui.button(crate::i18n::t("Ta med mp3:erna också")).clicked() {
+                            keep_mp3 = Some(true);
+                        }
+                        if ui.button(crate::i18n::t("Avbryt importen")).clicked() {
+                            cancel = true;
+                        }
+                    });
+                }
+                WavQuestion::Separate { chosen, sibling } => {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t(
+                            "Du valde en mp3 — och wav-filen finns bredvid.",
+                        ))
+                        .size(12.5)
+                        .color(Theme::TEXT_BRIGHT),
+                    );
+                    ui.label(
+                        egui::RichText::new(crate::tstatus!("mp3:  {}", chosen))
+                            .size(10.5)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                    ui.label(
+                        egui::RichText::new(crate::tstatus!("wav:  {}", sibling))
+                            .size(10.5)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                    ui.add_space(10.0);
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button(crate::i18n::t("Separera wav-filen (rekommenderas)"))
+                            .clicked()
+                        {
+                            separate_sibling = true;
+                        }
+                        if ui.button(crate::i18n::t("Separera mp3-filen")).clicked() {
+                            separate_chosen = true;
+                        }
+                        if ui.button(crate::i18n::t("Avbryt")).clicked() {
+                            cancel = true;
+                        }
+                    });
+                }
+            });
+
+        if cancel {
+            self.pending_wav_question = None;
+            self.status_message = crate::i18n::t("Avbrutet — inget lästes in").to_string();
+            return;
+        }
+        match question {
+            WavQuestion::StemImport { source, title, bpm, .. } => {
+                let Some(keep) = keep_mp3 else {
+                    return;
+                };
+                self.pending_wav_question = None;
+                match source {
+                    StemImportSource::Folder(dir) => {
+                        self.start_suno_folder_import(&dir, &title, bpm, keep)
+                    }
+                    StemImportSource::Zip(zip) => self.start_suno_zip_import_choice(&zip, keep),
+                }
+            }
+            WavQuestion::Separate { chosen, sibling } => {
+                if separate_sibling {
+                    self.pending_wav_question = None;
+                    self.start_stem_separation_with(&sibling);
+                } else if separate_chosen {
+                    self.pending_wav_question = None;
+                    self.start_stem_separation_with(&chosen);
+                }
+            }
+        }
+    }
+
     fn render_suno_stem_import_modal(&mut self, ctx: &egui::Context) {
         if !self.show_suno_import_modal {
             return;
@@ -14844,7 +15147,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         }
 
         if let Some((folder, title, bpm)) = folder_to_import {
-            self.start_suno_folder_import(&folder, &title, bpm);
+            self.import_suno_stems_from_folder(&folder, &title, bpm);
             close = true;
         }
 
@@ -18296,5 +18599,103 @@ mod tests {
         assert_eq!(ch.sample_path.as_deref(), Some("/tmp/sonix-finns-inte-alls.mp3"));
         assert_eq!(ch.name, "Virvel", "inställningarna ska ändå med");
         assert_eq!(ch.steps, [true; 16]);
+    }
+
+    /// Frågan om mp3:erna (Fas 8.5) behöver en siffra, och siffran ska räknas med
+    /// **samma** regel som importen använder — annars kan dialogen säga "3" och
+    /// importen hoppa över 2.
+    #[test]
+    fn the_mp3_question_counts_with_the_same_rule_as_the_import() {
+        let names = |v: &[&str]| -> Vec<String> { v.iter().map(|s| s.to_string()).collect() };
+
+        let set = names(&[
+            "vocals.wav",
+            "vocals.mp3",
+            "drums.WAV",
+            "drums.MP3", // skiftläge ska inte spela roll
+            "bass.mp3",  // ingen wav med samma namn — räknas inte
+            "other.wav",
+        ]);
+        assert_eq!(duplicate_mp3_count(&set), 2);
+        // Samma svar som importen ger: den hoppar över precis de två.
+        let paths: Vec<std::path::PathBuf> = set.iter().map(std::path::PathBuf::from).collect();
+        assert_eq!(stem_files_for_import(paths, false).1, 2);
+
+        // ZIP-listan bär mappnamn; bara filnamnet avgör.
+        let zip = names(&["Stems/vocals.mp3", "Stems/vocals.wav", "Stems/bass.mp3"]);
+        assert_eq!(duplicate_mp3_count(&zip), 1);
+
+        assert_eq!(duplicate_mp3_count(&[]), 0);
+        assert_eq!(duplicate_mp3_count(&names(&["a.mp3", "b.mp3"])), 0);
+    }
+
+    /// Separatören: wav-syskonet hittas när det finns, och frågan ställs aldrig
+    /// för en fil som redan är wav eller för en mp3 utan syskon.
+    #[test]
+    fn the_separator_finds_a_wav_sibling_and_never_asks_for_a_wav() {
+        let dir = std::env::temp_dir().join(format!(
+            "sonix_sibling_{}_{}",
+            std::process::id(),
+            crate::autosave::now_stamp()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("tmpdir");
+        for name in ["Sång 1.mp3", "Sång 1.wav", "Annan.mp3", "anteckningar.txt"] {
+            std::fs::write(dir.join(name), b"x").expect("tmpfil");
+        }
+
+        let mp3 = dir.join("Sång 1.mp3").to_string_lossy().into_owned();
+        let wav = dir.join("Sång 1.wav").to_string_lossy().into_owned();
+        assert_eq!(wav_sibling(&mp3).as_deref(), Some(wav.as_str()));
+        assert_eq!(wav_sibling(&wav), None, "en wav har ingen fråga");
+        assert_eq!(
+            wav_sibling(&dir.join("Annan.mp3").to_string_lossy()),
+            None,
+            "utan syskon finns inget att välja"
+        );
+        assert_eq!(wav_sibling("/finns/inte/alls.mp3"), None);
+
+        // Listningen tar ljudfilerna och lämnar anteckningen.
+        assert_eq!(list_stem_audio_files(&dir.to_string_lossy()).len(), 3);
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Den enda delen av frågan som inte går att pröva på namn: att `unzip -Z1`
+    /// verkligen lämnar arkivets namn (och bara dem). Ignorerad som standard
+    /// eftersom den kräver `zip` på maskinen — samma hållning som den externa
+    /// dither-mätningen, som kräver ffprobe.
+    ///
+    /// Körs med: `cargo test --bin sonix -- --ignored zip_question`
+    #[test]
+    #[ignore]
+    fn zip_question_sees_the_duplicates_in_a_real_archive() {
+        let dir = std::env::temp_dir().join(format!(
+            "sonix_zip_question_{}_{}",
+            std::process::id(),
+            crate::autosave::now_stamp()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("Stems")).expect("tmpdir");
+        for name in ["Stems/vocals.wav", "Stems/vocals.mp3", "Stems/bass.mp3", "Stems/drums.wav"] {
+            std::fs::write(dir.join(name), b"x").expect("tmpfil");
+        }
+        let zip_path = dir.join("Stems (120BPM).zip");
+        let made = std::process::Command::new("zip")
+            .args(["-q", "-r", &zip_path.to_string_lossy(), "Stems"])
+            .current_dir(&dir)
+            .output()
+            .expect("zip");
+        assert!(made.status.success(), "zip misslyckades");
+
+        // Arkivet innehåller en mp3 med wav-syskon (vocals) och en utan (bass).
+        let names = zip_entry_names(&zip_path.to_string_lossy());
+        assert!(names.iter().any(|n| n.ends_with("vocals.wav")), "namnen: {names:?}");
+        assert_eq!(duplicate_mp3_count(&names), 1);
+
+        // Ett arkiv som inte finns ger en tom lista — ingen fråga, ingen panik.
+        assert!(zip_entry_names("/finns/inte/alls.zip").is_empty());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

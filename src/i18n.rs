@@ -1556,6 +1556,42 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "⏳ Separerar '{}' i bakgrunden med {}..." => "⏳ Separating '{}' in the background with {}...",
         "✅ Separerade '{}' i 4 spelbara stämspår med {} ({:.1}s)" => "✅ Separated '{}' into 4 playable stem tracks with {} ({:.1}s)",
         "⚠ Separation misslyckades: {}" => "⚠ Separation failed: {}",
+        // --- Fas 8.5: stämimport, tysta klipp och frågan om mp3/wav ---
+        "⚠ '{}' har ingen ljudfil — läggs inte till" => "⚠ '{}' has no audio file — not added",
+        "⚠ Kunde inte läsa '{}' — läggs inte till på tidslinjen (mp3 stöds inte, konvertera till wav)" => "⚠ Could not read '{}' — not added to the timeline (mp3 is not supported, convert to wav)",
+        "⚠ '{}' har ingen ljudfil — kan inte öppnas i Sångstudion" => "⚠ '{}' has no audio file — cannot be opened in the Vocal Studio",
+        "⚠ Kunde inte läsa '{}' — öppnas inte i Sångstudion (mp3 stöds inte, konvertera till wav)" => "⚠ Could not read '{}' — not opened in the Vocal Studio (mp3 is not supported, convert to wav)",
+        "källfilen går inte att läsa (mp3 stöds inte, konvertera till wav)" => "the source file cannot be read (mp3 is not supported, convert to wav)",
+        "regionen har ingen källfil" => "the region has no source file",
+        "⚠ Kunde inte öppna '{}' i Sångstudion — {}" => "⚠ Could not open '{}' in the Vocal Studio — {}",
+        "⚠ Kunde inte läsa '{}' — kanalen behåller sitt ljud (mp3 stöds inte, konvertera till wav)" => "⚠ Could not read '{}' — the channel keeps its sound (mp3 is not supported, convert to wav)",
+        "⚠ Kunde inte provspela '{}' — filen går inte att läsa: {} (mp3 stöds inte, konvertera till wav)" => "⚠ Could not audition '{}' — the file cannot be read: {} (mp3 is not supported, convert to wav)",
+        "⏭ Hoppade över {} mp3 — samma stämma finns som wav" => "⏭ Skipped {} mp3 — the same stem exists as wav",
+        "⚠ Kunde inte skriva stämmorna till disk: {} — inga klipp skapas" => "⚠ Could not write the stems to disk: {} — no clips are created",
+        "📥 Lade in {} stämspår i arrangeraren (som wav-filer i {})" => "📥 Added {} stem tracks to the arranger (as wav files in {})",
+        "🎧 mp3 eller wav?" => "🎧 mp3 or wav?",
+        "{} mp3-filer i '{}' har redan sin stämma som wav-fil." => "{} mp3 files in '{}' already have their stem as a wav file.",
+        "Sonix kan inte spela mp3 — den konverteras först, vilket är ett extra varv när wav-filen redan finns. En stämma som bara finns som mp3 tas alltid med." => "Sonix cannot play mp3 — it is converted first, an extra round trip when the wav file already exists. A stem that only exists as mp3 is always included.",
+        "Hoppa över mp3:erna (rekommenderas)" => "Skip the mp3 files (recommended)",
+        "Ta med mp3:erna också" => "Include the mp3 files too",
+        "Avbryt importen" => "Cancel the import",
+        "Du valde en mp3 — och wav-filen finns bredvid." => "You picked an mp3 — and the wav file sits right next to it.",
+        "mp3:  {}" => "mp3:  {}",
+        "wav:  {}" => "wav:  {}",
+        "Separera wav-filen (rekommenderas)" => "Separate the wav file (recommended)",
+        "Separera mp3-filen" => "Separate the mp3 file",
+        "Avbrutet — inget lästes in" => "Cancelled — nothing was read",
+        "❓ {} mp3 har redan sin stämma som wav — välj vad som ska läsas in" => "❓ {} mp3 already have their stem as wav — choose what to read",
+        "❓ {} mp3 i arkivet har redan sin stämma som wav — välj vad som ska läsas in" => "❓ {} mp3 in the archive already have their stem as wav — choose what to read",
+        "'{}' är fruset men {}: {}" => "'{}' is frozen but {}: {}",
+        "filen går inte att läsa" => "the file cannot be read",
+        "filen saknas" => "the file is missing",
+        "en frusen fil kunde inte användas: {}" => "one frozen file could not be used: {}",
+        "{} frusna filer kunde inte användas: {}" => "{} frozen files could not be used: {}",
+        "Inga stämmor att skriva till disk" => "No stems to write to disk",
+        "Stämfilen '{}' är tom" => "The stem file '{}' is empty",
+        "Kunde inte läsa tillbaka stämfilen '{}': {}" => "Could not read the stem file '{}' back: {}",
+        "Kunde inte skapa '{}': {}" => "Could not create '{}': {}",
         "Ingen neural modell hittades — använder inbyggd DSP-separation" => "No neural model found — using the built-in DSP separation",
         "Neural separation är inte inbyggd i den här builden (bygg med --features neural)" => "Neural separation is not built into this binary (build with --features neural)",
         "Ingen neural modell hittades. Lägg en HTDemucs-ONNX i {} (eller sätt {})" => "No neural model found. Put a HTDemucs ONNX in {} (or set {})",
@@ -2377,6 +2413,29 @@ mod tests {
             "Hel låt – Master Mix (Fullt Projekt)",
             "VY:",
         ]
+    }
+
+    /// Fas 8.5-familjen: raderna som säger att ett ljud inte gick att läsa. De är
+    /// värda en engelsk rad — utan den visar fallbacken svenska för en engelsk
+    /// användare, och det är just de här raderna som måste förstås.
+    fn stem_error_keys() -> [&'static str; 6] {
+        [
+            "⚠ Kunde inte läsa '{}' — läggs inte till på tidslinjen (mp3 stöds inte, konvertera till wav)",
+            "⚠ Kunde inte läsa '{}' — kanalen behåller sitt ljud (mp3 stöds inte, konvertera till wav)",
+            "⚠ Kunde inte provspela '{}' — filen går inte att läsa: {} (mp3 stöds inte, konvertera till wav)",
+            "⚠ Kunde inte läsa '{}' — öppnas inte i Sångstudion (mp3 stöds inte, konvertera till wav)",
+            "⚠ Kunde inte skriva stämmorna till disk: {} — inga klipp skapas",
+            "🎧 mp3 eller wav?",
+        ]
+    }
+
+    #[test]
+    fn the_8_5_error_messages_have_english() {
+        for k in stem_error_keys() {
+            assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
+            assert_ne!(translate(Language::En, k), k, "faller tillbaka på svenska: {k}");
+            assert_eq!(translate(Language::Sv, k), k, "svenskan ska vara nyckeln");
+        }
     }
 
     #[test]
