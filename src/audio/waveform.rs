@@ -201,6 +201,86 @@ impl WaveformCache {
         out
     }
 
+    /// Höljet för en **slingad** region: `loop_len` samplar som upprepas från
+    /// `start`, ritat över `total_len` samplar utdata och `pixels` bildpunkter.
+    ///
+    /// Skillnaden mot `envelope_at` är att en bildpunkt kan innehålla slutet av en
+    /// repetition och början av nästa. Varje kolumn är därför en union av högst
+    /// två sammanhängande intervall, och båda måste läsas — annars tappas ljudet
+    /// precis vid skarven, vilket är den plats i en loop man lyssnar mest på.
+    pub fn envelope_looped(
+        &self,
+        samples: &[f32],
+        start: usize,
+        loop_len: usize,
+        total_len: usize,
+        pixels: usize,
+    ) -> Vec<(f32, f32)> {
+        if pixels == 0 || loop_len == 0 {
+            return vec![(0.0, 0.0); pixels.max(1)];
+        }
+        let loop_end = (start + loop_len).min(samples.len());
+        if start >= loop_end {
+            return vec![(0.0, 0.0); pixels];
+        }
+        let loop_len = loop_end - start;
+        let total = total_len.max(1);
+        let samples_per_pixel = total as f64 / pixels as f64;
+        let level = self.level_for(samples_per_pixel);
+        let mut out = Vec::with_capacity(pixels);
+        for p in 0..pixels {
+            let k0 = p * total / pixels;
+            let k1 = ((p + 1) * total / pixels).max(k0 + 1);
+            let a = k0 % loop_len;
+            let b = k1 % loop_len;
+            let (mut lo, mut hi) = (f32::INFINITY, f32::NEG_INFINITY);
+            // Ett varv eller fler: hela loopen ligger under bildpunkten.
+            let spans: Vec<(usize, usize)> = if k1 - k0 >= loop_len {
+                vec![(0, loop_len)]
+            } else if b > a {
+                vec![(a, b)]
+            } else {
+                vec![(a, loop_len), (0, b)]
+            };
+            for (slo, shi) in spans {
+                if shi <= slo {
+                    continue;
+                }
+                match level {
+                    // Inzoomad: läs samplen själva.
+                    None => {
+                        for &v in &samples[start + slo..start + shi] {
+                            if v < lo {
+                                lo = v;
+                            }
+                            if v > hi {
+                                hi = v;
+                            }
+                        }
+                    }
+                    Some(l) => {
+                        // Facken räknas från BUFFERTENS början, inte från regionens:
+                        // utan `start` här läses fel fack, och en region med offset
+                        // ritas tyst där det finns ljud.
+                        let bucket = l.samples_per_bucket;
+                        let first = (start + slo) / bucket;
+                        let last = (start + shi).div_ceil(bucket).min(l.peaks.len());
+                        for &(blo, bhi) in &l.peaks[first..last.max(first + 1).min(l.peaks.len())] {
+                            if blo < lo {
+                                lo = blo;
+                            }
+                            if bhi > hi {
+                                hi = bhi;
+                            }
+                        }
+                    }
+                }
+            }
+            out.push(if lo.is_finite() { (lo, hi) } else { (0.0, 0.0) });
+        }
+        out
+    }
+
     /// Den finaste nivå vars fack ryms inom en bildpunkt.
     ///
     /// `None` betyder "inget fack är så litet" — alltså är man inzoomad längre än
@@ -412,6 +492,60 @@ mod tests {
             cache.envelope_at(&samples, 400_000, 1000, 10),
             vec![(0.0, 0.0); 10]
         );
+    }
+
+    /// En slingad region ska visa samma sak varje varv — och aldrig tappa ljudet
+    /// vid skarven. Referensen är den exakta sanningen: en brute-force över de
+    /// samplar som faktiskt ligger under varje bildpunkt.
+    #[test]
+    fn a_looped_region_repeats_and_never_losses_the_seam() {
+        let mut loop_part = noisy(4_000, 31);
+        // Ett tydligt anslag precis i slutet av loopen: det är där en skarv kan tappa.
+        loop_part[3_998] = 1.0;
+        let mut samples = vec![0.0f32; 2_000]; // före
+        samples.extend_from_slice(&loop_part);
+        samples.extend_from_slice(&vec![0.0f32; 500]); // efter
+        let start = 2_000usize;
+        let loop_len = loop_part.len();
+        let total = loop_len * 4;
+        let cache = WaveformCache::build(&samples);
+
+        for pixels in [40usize, 160, 4_000] {
+            let env = cache.envelope_looped(&samples, start, loop_len, total, pixels);
+            assert_eq!(env.len(), pixels);
+            for p in 0..pixels {
+                // Sanningen: min/max över de samplar som ligger under kolumnen.
+                let k0 = p * total / pixels;
+                let k1 = ((p + 1) * total / pixels).max(k0 + 1);
+                let mut lo = f32::INFINITY;
+                let mut hi = f32::NEG_INFINITY;
+                for k in k0..k1 {
+                    let v = samples[start + (k % loop_len)];
+                    if v < lo {
+                        lo = v;
+                    }
+                    if v > hi {
+                        hi = v;
+                    }
+                }
+                let (clo, chi) = env[p];
+                assert!(
+                    clo <= lo + 1e-6 && chi >= hi - 1e-6,
+                    "kolumn {p} av {pixels} dolde ljud: {clo},{chi} mot exakt {lo},{hi}"
+                );
+            }
+            // Varje varv ska se likadant ut: kolumn p och p + pixels/4.
+            let quarter = pixels / 4;
+            if quarter > 0 {
+                for p in 0..quarter {
+                    let (a, b) = (env[p], env[p + quarter]);
+                    assert!(
+                        a == b,
+                        "varv 1 och varv 2 skiljer sig i kolumn {p}: {a:?} mot {b:?}"
+                    );
+                }
+            }
+        }
     }
 
     /// Ritningen ska läsa högst två fack per bildpunkt. Det är den egenskapen
