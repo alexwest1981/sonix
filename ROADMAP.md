@@ -1329,6 +1329,39 @@ kontroll som vägrar arbeta identisk med en död kontroll. Det är samma familj 
   tempo till projektets — användarens eget svar på frågan, inte en gissning. Importen gissar
   inte själv: `parse_suno_zip_info` ger 120,0 när filnamnet saknar BPM.
 
+**Tempot går att MÄTA — och det är luckan bakom allt tre: Suno säger 140 (Alex, samma kväll).**
+
+Alex bytte tempo i Rock and Hard Place och "inget hände"; projektet stod på **120**, autosaven
+(återställd) på **68**, och Sunos egen sida säger **140**. Båda talen i appen var alltså fel, och
+det syns inte: ljudet spelas som inspelat och *låter* rätt medan rutnätet går i fel tempo.
+
+**Metoden som hittade 140** (vikning — anslagsstyrkan viks modulo kandidatperioden, och ett
+tempo som stämmer ger en skarp puckel; måttet är topp/medel):
+
+| Material | Topp | Nästa |
+| :--- | ---: | ---: |
+| Kontroll: syntetisk klick i 120,00 | **120,00** (47,9) | 160,00 (15,1) |
+| Rock and Hard Place, trummor (**facit 140**) | **140,00** (6,41) | 112,00 (3,51) |
+
+Den är alltså prövad mot ett känt facit **och** mot en riktig låt, med 1,8–3× marginal till
+nästa kandidat. Tre tidigare försök (rutnätsdom per fönster, autokorrelation vid slaget) gav
+**ingen dom** på riktig musik; vikningen ger en. Skriptet låg i `/tmp/sonix_tempo_fold.py`
+(efemärt): anslagsenvelopp = spektralflux i 40–400 Hz, 5,3 ms hopp; vik över `min(120 s)`;
+topp/medel som mått. **Nästa pass: flytta in den i Rust** (`onset.rs` har enveloppen redan).
+
+**Luckan som ska stängas:** `parse_suno_zip_info` läser BPM ur *filnamnet* och faller annars
+tillbaka på **120 i tysthet**. Ett Suno-*stämm*-zip har inget BPM i namnet ("Rock and Hard
+Place Stems.zip"), så varje sådan import har gissat 120 — och gissningen har blivit klippens
+**geometri**, som är det enda måttet senare mätningar kan utgå från. Det är därför tre projekt
+i rad har fått fel tempo: 109,392 (Rock, från en tempoändring i sessionen), 120 (där gissningen
+räckte), 120,98828 (Broken, från en tempoändring). Importen ska **fråga** i stället för att
+gissa — eller föreslå vikningsmätningens svar, som användaren får bekräfta.
+
+**Följden i Rock and Hard Place, mätt:** klippen är `118,18` takter, alltså **202,6 s** i 140
+BPM, medan stämmorna är **259,28 s** — **låtens sista 57 sekunder ligger utanför klippen** (och
+vid 120 var det 23 s). Klippens längd rättas med fördel ur filen: `takter = sekunder ×
+källa/240` = 151,2 vid 140.
+
 **Kvar på 8.10:**
 
 1. **En kloss över ett tempobyte** får fortfarande **en** faktor, räknad från tempot vid
