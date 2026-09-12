@@ -592,3 +592,18 @@ Dessutom räknades bara `max(abs(x))` per fönster: ett **symmetriskt** hölje. 
 
 **Kvar på 8.3:** (1) slingade regioner har sin funktion (`envelope_looped`, testad: samma svar varje varv, och ingen förlust vid skarven) och den är **inkopplad** sedan 2026-09-12: ritningen väljer väg efter om regionen är slingad — deras bildpunkter följer upprepningen och kräver en egen lösning; (2) `render_playlist_arranger`s `px_per_sec` och linjalens sekundetiketter är kvar i sekunder (samma pass som 8.2:s visning); (3) ⏱ **klart 2026-09-12:** `PlaylistTrack.audio_waveform` var död kod (sattes på sex ställen, lästes aldrig) och är borttagen — med den tre `visual_peaks_from`-anrop som räknade O(samplar) i onödan vid varje import, tagning och AI-stämma.
 
+### 8.4 Vågformer som blir tydligare ju mer man zoomar (Alex önskemål, 2026-09-12)
+
+**Önskemålet:** "supertydliga vågor, och när man zoomar in ska den bli tydligare ju mer man zoomar, så man ser EXAKT när ett ljud börjar".
+
+**Efterforskningen** (Reaper, Ardour, BBC audiowaveform, Audacity) finns i `sonix`-skillen, `references/waveform-rendering.md`. Kärnan: **"tydligare ju mer man zoomar" kommer inte av sig själv.** En stapel per bildpunkt är grumlig när pixlarna är få och samplarna många, hur exakt höljet än är — Ardour säger rakt ut att höljet är en *approximation* och att den verkliga vågformen bara syns högst upp i zoomningen. Ritaren måste alltså **byta representation**:
+
+| Läge | När | Vad som ritas |
+|---|---|---|
+| Envelope | > 1 sampel per bildpunkt | min/max per kolumn |
+| Samples | ≈ 1 sampel per bildpunkt | **kurva genom samplarna** |
+| SampleDots | ≤ 0,25 sampel per bildpunkt | **punkt per sampel + linje** (Audacitys "dots") |
+
+**Gjort:** `zoom_regime()` som ren funktion med tester (trösklarna, och att regimen aldrig backar när man zoomar in — annars flimrar vågformen vid tröskeln), och alla tre lägena inkopplade i regionritningen. Slingade klossar går genom samma växel.
+
+**Kvar:** Y-skalan. En kloss på 30 px har 30 steg upp och ned — det är ett tak, inte ett fel, och det kräver högre klossar eller en egen höjd-zoom (Ardours log-skala är alternativet för svaga partier). RMS-band som tillval är också kvar.

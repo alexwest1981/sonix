@@ -9489,9 +9489,9 @@ impl SonixApp {
                                                     // stycke: då följer bildpunkterna
                                                     // upprepningen, inte en sammanhängande
                                                     // sampelmängd.
+                                                    let loop_samples =
+                                                        (loop_sec * sr as f32).max(1.0) as usize;
                                                     let env = if is_looped && loop_sec > 0.01 {
-                                                        let loop_samples =
-                                                            (loop_sec * sr as f32).max(1.0) as usize;
                                                         cache.envelope_looped(
                                                             pcm,
                                                             start_sample,
@@ -9513,20 +9513,75 @@ impl SonixApp {
                                                     // hamnar mellan två pixlar flyter ut över
                                                     // båda och ser mjuk ut. Halva pixeln är
                                                     // centrum i egui.
-                                                    let mut x = draw_start_x.round() + 0.5;
-                                                    for (lo, hi) in &env {
-                                                        // Toppen är max och botten är min: en
-                                                        // osymmetrisk signal ska se osymmetrisk ut.
-                                                        let top = mid_y - (hi * half * vol).min(half);
-                                                        let bot = mid_y - (lo * half * vol).max(-half);
-                                                        ui.painter().line_segment(
-                                                            [
-                                                                Pos2::new(x, top),
-                                                                Pos2::new(x, bot.max(top + 0.5)),
-                                                            ],
-                                                            Stroke::new(1.0_f32, wave_col),
-                                                        );
-                                                        x += 1.0;
+                                                    let start_x = draw_start_x.round() + 0.5;
+                                                    // Läget avgör vad som ritas (Fas 8.4): ett
+                                                    // hölje är en approximation, och den riktiga
+                                                    // vågformen finns bara där varje sampel får
+                                                    // sin egen bildpunkt. Att rita finare kolumner
+                                                    // gör den aldrig tydligare — representationen
+                                                    // måste bytas.
+                                                    match crate::audio::waveform::zoom_regime(
+                                                        total_samples as f64 / cols as f64,
+                                                    ) {
+                                                        crate::audio::waveform::ZoomRegime::Envelope => {
+                                                            let mut x = start_x;
+                                                            for (lo, hi) in &env {
+                                                                // Toppen är max och botten är min: en
+                                                                // osymmetrisk signal ska se osymmetrisk ut.
+                                                                let top =
+                                                                    mid_y - (hi * half * vol).min(half);
+                                                                let bot =
+                                                                    mid_y - (lo * half * vol).max(-half);
+                                                                ui.painter().line_segment(
+                                                                    [
+                                                                        Pos2::new(x, top),
+                                                                        Pos2::new(
+                                                                            x,
+                                                                            bot.max(top + 0.5),
+                                                                        ),
+                                                                    ],
+                                                                    Stroke::new(1.0_f32, wave_col),
+                                                                );
+                                                                x += 1.0;
+                                                            }
+                                                        }
+                                                        regime => {
+                                                            // Ett sampel per bildpunkt: kurva genom
+                                                            // samplarna, och punkter när de hunnit
+                                                            // åtskilda (som Audacity).
+                                                            let dots = regime
+                                                                == crate::audio::waveform::ZoomRegime::SampleDots;
+                                                            let mut prev: Option<Pos2> = None;
+                                                            for i in 0..cols {
+                                                                let k = if is_looped
+                                                                    && loop_samples > 0
+                                                                {
+                                                                    start_sample
+                                                                        + (i * total_samples / cols)
+                                                                            % loop_samples
+                                                                } else {
+                                                                    start_sample
+                                                                        + i * total_samples / cols
+                                                                };
+                                                                let v = pcm.get(k).copied().unwrap_or(0.0);
+                                                                let y = mid_y
+                                                                    - (v * half * vol).clamp(-half, half);
+                                                                let x = start_x + i as f32;
+                                                                let p = Pos2::new(x, y);
+                                                                if let Some(q) = prev {
+                                                                    ui.painter().line_segment(
+                                                                        [q, p],
+                                                                        Stroke::new(1.0_f32, wave_col),
+                                                                    );
+                                                                }
+                                                                if dots {
+                                                                    ui.painter().circle_filled(
+                                                                        p, 1.6, wave_col,
+                                                                    );
+                                                                }
+                                                                prev = Some(p);
+                                                            }
+                                                        }
                                                     }
                                                     drew_exact = true;
                                                 }
