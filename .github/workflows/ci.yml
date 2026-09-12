@@ -32,13 +32,23 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Build
+      # Repots krav är noll varningar, och det prövas nu även här — inte bara i
+      # Windows-jobbet. Anledningen står i historiken: en commit med fem oanvända
+      # metoder gick igenom Linux-benet (som inte brydde sig) och föll först i
+      # Windows-jobbet. Varningen syntes lokalt och lästes förbi; nu fälls den av
+      # bygget i stället.
+      - name: Build (noll varningar)
         run: |
           FEATURES="${{ matrix.features }}"
           if [ -n "$FEATURES" ]; then
-            cargo build --release --locked --features "$FEATURES"
+            cargo build --release --locked --features "$FEATURES" 2>&1 | tee /tmp/build.log
           else
-            cargo build --release --locked
+            cargo build --release --locked 2>&1 | tee /tmp/build.log
+          fi
+          if grep -qE '^warning' /tmp/build.log; then
+            echo "::error::Varningar i bygget — repots krav är noll"
+            grep -E '^warning' /tmp/build.log
+            exit 1
           fi
 
       - name: Test
