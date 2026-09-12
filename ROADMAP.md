@@ -1289,6 +1289,14 @@ därmed den enda som passar Sonix' `MIT OR Apache-2.0` utan vidare — och den �
 tempoändring rör sig i. zplanes élastique (Pro/SOLOIST, monofont med formantbevarande
 pitch-shift) är det dyraste men bästa alternativet, licensierat per sålt exemplar.
 
+**7a. Beslutet om standardvalet (Alex 2026-09-12).** Alex delegerade valet ("jag följer din
+rekommendation, det är du som gjort jobbet och forskat"), och beslutet är: **"Följ tempot" är
+PÅ som standard, med automatiskt motorval.** Klipp med känt `source_bpm` sträcks alltså när
+tempot ändras, och **tape blir ett aktivt val** för den som vill ha bandspelarljudet — det är
+Abletons ordning (pitch-bevarande är default, *Re-Pitch* är undantaget), och skälet är att en
+smurf som uppstår av misstag är värre än en effekt man får leta efter. Konsekvensen ska stå i
+hjälptexten vid tempofältet, inte upptäckas av användaren.
+
 **7. Acceptanskriterier (mätbara, innan punkten får kallas klar).**
 
 1. **Bit-exakt vid faktor 1,0** — ett klipp vars `source_bpm` = projektets tempo ger samma
