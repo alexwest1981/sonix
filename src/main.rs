@@ -62,6 +62,47 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_paths();
         return Ok(());
     }
+    // `sonix --clean-tags <fil...>`: visar vad filerna bär och tar bort ID3-taggarna.
+    // Sunos mp3:er har `comment = "Made with Suno; Created=...; id=..."` — deras text
+    // om din fil. Ljudet rörs inte; bara taggarna försvinner. (Att en kontroll läser
+    // LJUDET och inte taggen står i metadata.rs — och är skälet att det här inte är
+    // ett verktyg för att dölja något.)
+    if let Some(pos) = std::env::args().position(|a| a == "--clean-tags") {
+        let files: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if files.is_empty() {
+            eprintln!("användning: sonix --clean-tags <fil> [fler filer]");
+            std::process::exit(2);
+        }
+        let mut cleaned = 0usize;
+        for f in &files {
+            match audio::metadata::scan(f) {
+                Ok(report) => {
+                    if report.removable_bytes == 0 {
+                        println!("  ren: {f} (inga taggar)");
+                        continue;
+                    }
+                    println!(
+                        "  {f}: {} byte tagg (v2={} v1={})",
+                        report.removable_bytes, report.has_id3v2, report.has_id3v1
+                    );
+                    for e in &report.excerpts {
+                        println!("      hittade: {e}");
+                    }
+                    match audio::metadata::strip_tags(f) {
+                        Ok(n) => {
+                            println!("      ✅ {n} byte borttagna, ljudet orört");
+                            cleaned += 1;
+                        }
+                        Err(e) => println!("      ⚠ {e}"),
+                    }
+                }
+                Err(e) => println!("  ⚠ {e}"),
+            }
+        }
+        println!("Städat: {cleaned} fil(er).");
+        std::process::exit(0);
+    }
+
 
     // Fas 6.0: flytta äldre platser hit FÖRST (ensure_dirs skapar annars ett tomt
     // mål, vilket skulle blockera flytten), därefter skapa resten.

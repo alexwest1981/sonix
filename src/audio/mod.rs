@@ -12,6 +12,7 @@ pub mod filter;
 pub mod hardware_control;
 pub mod loudness;
 pub mod master_fx;
+pub mod metadata;
 pub mod midi_input;
 // Helpers here are exercised by the optional `neural` backend and by unit
 // tests; in the default (non-neural) build several are intentionally unused.
