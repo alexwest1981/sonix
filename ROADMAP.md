@@ -1289,6 +1289,20 @@ tempoanalys. Sträckningen räknar `filsekunder × källa/projekt` medan klossen
 - **Cachen var 5,7 GB** (35 filer, alla räknade med den gamla siffran) och är rensad. Siffran
   gör utrensningen mer brådskande än den lät: tio tempon à nio stämmor är inte 8,5 GB i teorin
   utan 5,7 GB i praktiken, för *fem* tempon.
+- **Motorn, mätt (2026-09-12 kväll).** Frågan "skorrar det?" är nu ett tal i stället för
+  ett omdöme: `the_stretch_artefacts_on_a_real_stem` mäter **var** anslagen hamnar och **hur
+  många** de blir, med repots egen validerade slagletning, på Alex' egna stämmor vid
+  120 → 110 BPM. Resultatet: **tidpunkterna håller** (felet mot den förväntade platsen:
+  median 1,8–3,9 ms, p95 4,4–8,5 ms) och **antalet stämmer inte** — WSOLA lägger till
+  falska transienter: sång **+10,3 %**, körsång **+9,3 %**, trummor **+9,6 %**, bas
+  **+45,7 %**. Det är kornkanterna vi hör som skorr. Basen är värst, och det är rimligt:
+  låga toner har långa korn och långsamma anslag.
+  **Det här är baslinjen en motorändring ska slå:** samma prov, samma stämmor, lägre
+  överskott. Ordningen är den doctrine redan slagit fast — vår egen DSP är basen, och en
+  transientmedveten kornplacering (hoppa över överlappningen *vid* ett anslag i stället för
+  att lägga ett korn där) är det billiga försöket **utan** nytt beroende; blir det inte
+  tillräckligt är `signalsmith-stretch` (MIT, "best for 0.75x–1.5x", alltså precis ett
+  tempobyte) nästa steg. En plugin får ersätta **renderingssteget**, aldrig uppspelningen.
 - **Det som ÅTERSTÅR av hans rapport:** "vissa toner gick helt ur fas och skorrade". Det är
   **motorn**, inte faktorn: WSOLA warbler på polyfonisk sång (modulens egen doc säger det), och
   vid 110 är sträckningen 9 %. Researchunderlaget ligger klart i `references/daw-research/10`

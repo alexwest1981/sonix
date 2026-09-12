@@ -750,6 +750,97 @@ mod tests {
         }
     }
 
+    /// **Hur mycket skorrar sträckningen?** (mätning mot riktiga stämmor, kör manuellt):
+    /// `cargo test --release --bin sonix the_stretch_artefacts -- --ignored --nocapture`
+    ///
+    /// Alex hörde "vissa toner gick helt ur fas och skorrade" vid 110 BPM. Det går att
+    /// mäta: **ligger anslagen där de ska, och blir de fler?** WSOLA dubblar korn och
+    /// fasar — ett anslag som flyttat sig syns som ett tidsfel mot den förväntade
+    /// platsen (`källans tid × faktorn`), och ett dubbelt anslag som en träff källan
+    /// inte hade. Repots egen slagletning är validerad ("en jämn ton ger noll slag"), så
+    /// den får vara instrumentet. Minsta avstånd sätts till 5 ms: en dubblering ligger
+    /// typiskt ett korn isär, och 30 ms hade smält ihop den med originalet.
+    #[test]
+    #[ignore]
+    fn the_stretch_artefacts_on_a_real_stem() {
+        // Två inställningar: den täta fångar kornkanterna (där skorret sitter), den
+        // tydliga räknar musikaliska anslag. Utan båda kan "överskottet" vara
+        // detektorns eget brus i stället för sträckningens.
+        let dense = crate::audio::onset::OnsetParams {
+            min_gap_ms: 5.0,
+            ..Default::default()
+        };
+        let clear = crate::audio::onset::OnsetParams {
+            sensitivity: 2.5,
+            min_gap_ms: 20.0,
+            window_ms: 80.0,
+        };
+        let home = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
+        let dir = std::env::temp_dir().join("sonix_stretch_artefacts");
+        let _ = std::fs::remove_dir_all(&dir);
+        let project = 110.0f32;
+        let file_ratio = 120.0 / project;
+
+        for name in [
+            "Broken (Vocals).wav",
+            "Broken (Backing Vocals).wav",
+            "Broken (Drums).wav",
+            "Broken (Bass).wav",
+        ] {
+            let path = home.join("imported_stems/Broken").join(name);
+            if !path.exists() {
+                println!("hoppar: {name} finns inte");
+                continue;
+            }
+            let Ok((l, r, sr)) = crate::audio::load_wav_pcm(&path.to_string_lossy()) else {
+                println!("hoppar: {name} gick inte att läsa");
+                continue;
+            };
+            let src_dense = crate::audio::onset::detect_onsets(&l, sr as f32, &dense);
+            let src_clear = crate::audio::onset::detect_onsets(&l, sr as f32, &clear);
+            let written = render_to_file(&dir, name, &l, &r, file_ratio, sr as f32)
+                .expect("renderingen ska lyckas");
+            let (rl, _rr, rsr) = crate::audio::load_wav_pcm(&written).expect("läs tillbaka");
+            let out_dense = crate::audio::onset::detect_onsets(&rl, rsr as f32, &dense);
+            let out_clear = crate::audio::onset::detect_onsets(&rl, rsr as f32, &clear);
+            let out_secs: Vec<f32> = out_dense.iter().map(|&i| i as f32 / rsr as f32).collect();
+
+            let mut errors: Vec<f32> = Vec::new();
+            let mut missing = 0usize;
+            for &o in &src_dense {
+                let expected = o as f32 / sr as f32 * file_ratio;
+                let nearest = out_secs
+                    .iter()
+                    .map(|&t| (t - expected).abs())
+                    .fold(f32::INFINITY, f32::min);
+                if nearest <= 0.030 {
+                    errors.push(nearest);
+                } else {
+                    missing += 1;
+                }
+            }
+            errors.sort_by(|a, b| a.partial_cmp(b).unwrap());
+            let median = errors.get(errors.len() / 2).copied().unwrap_or(0.0);
+            let p95 = errors.get(errors.len() * 95 / 100).copied().unwrap_or(0.0);
+            println!(
+                "{name}\n   tätt:   källan {} anslag, renderingen {} (överskott {}), flyttade/saknade >30 ms: \
+                 {missing}, felet median {:.1} ms / p95 {:.1} ms\n   tydligt: källan {} anslag, renderingen {} \
+                 ({:+} %, musikaliska anslag)",
+                src_dense.len(),
+                out_dense.len(),
+                out_dense.len() as i64 - src_dense.len() as i64,
+                median * 1000.0,
+                p95 * 1000.0,
+                src_clear.len(),
+                out_clear.len(),
+                if src_clear.is_empty() { 0.0 } else {
+                    100.0 * (out_clear.len() as f32 - src_clear.len() as f32) / src_clear.len() as f32
+                }
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// **Mätning mot en riktig stämma** (körs manuellt, hoppar tyst om filen inte finns):
     /// `cargo test --release --bin sonix the_stretch_fills -- --ignored --nocapture`
     ///
