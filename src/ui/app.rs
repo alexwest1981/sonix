@@ -2343,6 +2343,12 @@ fn auto_assign_default_kit(channels: &mut [ChannelStrip], library: &[LibrarySamp
 /// sequencer step. Returns None when the channel has no PCM loaded, in which
 /// case the caller falls back to the built-in synthesizer.
 fn channel_sample_trigger_command(ch: &ChannelStrip, note: u8, velocity: f32) -> Option<AudioCommand> {
+    let (start01, end01) = crate::audio::onset::window_for_note(
+        &ch.slices,
+        ch.sample_base_note,
+        note,
+        (ch.sample_start, ch.sample_end),
+    );
     ch.pcm_audio.as_ref().map(|(l, r, sr)| AudioCommand::TriggerSampleVoice {
         left: l.clone(),
         right: r.clone(),
@@ -2354,8 +2360,11 @@ fn channel_sample_trigger_command(ch: &ChannelStrip, note: u8, velocity: f32) ->
         velocity,
         volume: ch.volume,
         reverse: ch.is_reverse,
-        start01: ch.sample_start,
-        end01: ch.sample_end,
+        // Slicekartan (8.7): noten **är** adressen — `bas + i` spelar slice `i`,
+        // och samma regel används i exporten. Utan den hade en kanal med slicar
+        // låtit olika i filen och i högtalarna.
+        start01,
+        end01,
     })
 }
 
@@ -14557,6 +14566,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             });
             RackChannel {
                 voice,
+                slices: ch.slices.clone(),
                 fallback_volume: ch.volume,
                 steps: ch.steps,
                 notes: ch.notes,

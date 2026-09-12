@@ -138,6 +138,7 @@ pub fn reference_spec() -> RenderSpec {
             }
         }
         rack.push(RackChannel {
+            slices: Vec::new(),
             voice: Some(VoiceSpec {
                 left: left.clone(),
                 right: right.clone(),

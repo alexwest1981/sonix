@@ -44,6 +44,10 @@ pub struct VoiceSpec {
 #[derive(Clone)]
 pub struct RackChannel {
     pub voice: Option<VoiceSpec>,
+    /// Slicekartan ur kanalens ljud (Fas 8.7). Noten `base_note + i` spelar
+    /// slice `i` — samma regel i uppspelningen och i exporten, annars låter
+    /// filen inte som det du hörde.
+    pub slices: Vec<(f32, f32)>,
     /// Fallback gain used for the built-in synth/bass voices when a channel
     /// has no loaded sample (mirrors `ChannelStrip.volume`).
     pub fallback_volume: f32,
@@ -168,6 +172,8 @@ fn sample_trigger_command(ch: &RackChannel, note: u8, velocity: f32) -> Option<A
     if v.left.is_empty() {
         return None;
     }
+    let (start01, end01) =
+        crate::audio::onset::window_for_note(&ch.slices, v.base_note, note, (v.start, v.end));
     Some(AudioCommand::TriggerSampleVoice {
         left: v.left.clone(),
         right: v.right.clone(),
@@ -179,8 +185,8 @@ fn sample_trigger_command(ch: &RackChannel, note: u8, velocity: f32) -> Option<A
         velocity,
         volume: v.volume,
         reverse: v.reverse,
-        start01: v.start,
-        end01: v.end,
+        start01,
+        end01,
     })
 }
 
@@ -895,6 +901,7 @@ mod tests {
             steps[8] = true;
             rack.push(RackChannel {
                 voice,
+                slices: Vec::new(),
                 fallback_volume: 0.85,
                 steps,
                 notes: [36; 16],

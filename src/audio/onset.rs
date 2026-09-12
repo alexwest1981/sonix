@@ -221,6 +221,37 @@ pub fn slices_from_onsets(
     slices
 }
 
+/// Fönstret en not ska spela på en kanal med en **slicekarta** (Fas 8.7 steg 2).
+///
+/// **Kromatiskt från basnoten:** noten `bas + i` spelar slice `i`. Det är samma
+/// princip som Reapers "Create chromatic MIDI item from slices" och Abeltons
+/// Slice-to-MIDI, och den gör att slicekartan kan spelas från stegraden, från
+/// piano rollen och i exporten utan ytterligare data — noten **är** adressen.
+///
+/// Noter utanför kartan (under basnoten, eller ovanför sista slicen) spelar
+/// kanalens eget trimfönster, precis som innan kartan fanns. Att i stället
+/// upprepa sista slicen hade varit ett påhittat ljud — samma regel som 8.5 vilar
+/// på — och att låta dem vara tysta hade gjort ett tangentbord över kartan stumt
+/// utan förklaring.
+pub fn window_for_note(
+    slices: &[(f32, f32)],
+    base_note: u8,
+    note: u8,
+    fallback: (f32, f32),
+) -> (f32, f32) {
+    if slices.is_empty() {
+        return fallback;
+    }
+    let idx = note as i32 - base_note as i32;
+    if idx < 0 {
+        return fallback;
+    }
+    match slices.get(idx as usize).copied() {
+        Some((start, end)) if end > start => (start, end),
+        _ => fallback,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -326,6 +357,26 @@ mod tests {
         assert!(slices_from_onsets(&[], 0, SR, 30.0).is_empty());
         // Utan sampel blir det ingen karta — inte en karta med en tom slice.
         assert!(slices_from_onsets(&[10, 20], 0, SR, 30.0).is_empty());
+    }
+
+    #[test]
+    fn a_note_plays_its_slice_and_notes_outside_the_map_keep_the_trim_window() {
+        let slices = [(0.0f32, 0.25f32), (0.25, 0.5), (0.5, 1.0)];
+        let fallback = (0.1f32, 0.9f32);
+
+        // Kromatiskt från basnoten: bas + i spelar slice i.
+        assert_eq!(window_for_note(&slices, 36, 36, fallback), (0.0, 0.25));
+        assert_eq!(window_for_note(&slices, 36, 37, fallback), (0.25, 0.5));
+        assert_eq!(window_for_note(&slices, 36, 38, fallback), (0.5, 1.0));
+        // Under basnoten och ovanför sista slicen: kanalens eget trimfönster.
+        assert_eq!(window_for_note(&slices, 36, 35, fallback), fallback);
+        assert_eq!(window_for_note(&slices, 36, 39, fallback), fallback);
+        // Utan karta: exakt som förut.
+        assert_eq!(window_for_note(&[], 36, 36, fallback), fallback);
+        // En trasig slice (slut före start) får inte bli ett tyst klipp med
+        // trovärdig ram — den faller tillbaka på trimfönstret.
+        assert_eq!(window_for_note(&[(0.5, 0.5)], 36, 36, fallback), fallback);
+        assert_eq!(window_for_note(&[(0.8, 0.2)], 36, 36, fallback), fallback);
     }
 
     #[test]
