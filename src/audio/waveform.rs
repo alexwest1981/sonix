@@ -153,6 +153,54 @@ impl WaveformCache {
         self.levels.len()
     }
 
+    /// Höljet för ett **utsnitt** av samplen: `len` samplar från `start`, ritat
+    /// över `pixels` bildpunkter.
+    ///
+    /// En region på tidslinjen är inte hela filen — den börjar på en offset i
+    /// spårets ljud (`sample_offset_sec`) och täcker en del av det. Därför räknas
+    /// utsnittet i samplar och nivåerna läses med absoluta index, så att facken
+    /// hamnar där de ska och inte där buffertens början råkar ligga.
+    pub fn envelope_at(
+        &self,
+        samples: &[f32],
+        start: usize,
+        len: usize,
+        pixels: usize,
+    ) -> Vec<(f32, f32)> {
+        let end = (start + len).min(samples.len());
+        if pixels == 0 || start >= end {
+            return vec![(0.0, 0.0); pixels];
+        }
+        let span = end - start;
+        let samples_per_pixel = span as f64 / pixels as f64;
+        let Some(level) = self.level_for(samples_per_pixel) else {
+            // Inzoomad förbi finaste facket: exakt ur samplen.
+            return envelope_per_pixel(&samples[start..end], pixels);
+        };
+        let bucket = level.samples_per_bucket;
+        let mut out = Vec::with_capacity(pixels);
+        for p in 0..pixels {
+            let a = start + p * span / pixels;
+            let b = start + ((p + 1) * span / pixels).max((p * span / pixels) + 1);
+            let b = b.min(end);
+            let first = a / bucket;
+            let last = b.div_ceil(bucket).min(level.peaks.len());
+            let upto = last.max(first + 1).min(level.peaks.len());
+            let mut lo = f32::INFINITY;
+            let mut hi = f32::NEG_INFINITY;
+            for &(blo, bhi) in &level.peaks[first..upto] {
+                if blo < lo {
+                    lo = blo;
+                }
+                if bhi > hi {
+                    hi = bhi;
+                }
+            }
+            out.push((lo, hi));
+        }
+        out
+    }
+
     /// Den finaste nivå vars fack ryms inom en bildpunkt.
     ///
     /// `None` betyder "inget fack är så litet" — alltså är man inzoomad längre än
@@ -317,6 +365,53 @@ mod tests {
                 "topparna ska finnas kvar"
             );
         }
+    }
+
+    /// Ett utsnitt ska ge samma svar som om utsnittet vore hela filen — det är
+    /// kontraktet som gör att en region kan ritas ur spårets cache.
+    #[test]
+    fn a_slice_reads_the_same_as_a_buffer_of_its_own() {
+        let samples = noisy(300_000, 23);
+        let cache = WaveformCache::build(&samples);
+        for (start, len) in [(0usize, 300_000usize), (1_000, 200_000), (250_000, 50_000)] {
+            let slice = &samples[start..start + len];
+            // Inzoomad: utsnittet ska vara EXAKT ur sina egna samplar.
+            // Under 256 samplar per bildpunkt är man förbi finaste facket, och
+            // då SKA svaret komma ur samplen — därför räknas zoomnivån ur
+            // utsnittets längd i stället för att gissas.
+            let zoomed = (len / 200).max(2);
+            for pixels in [zoomed, zoomed * 2] {
+                assert_eq!(
+                    cache.envelope_at(&samples, start, len, pixels),
+                    envelope_per_pixel(slice, pixels),
+                    "utsnitt {start}..{} vid {pixels} pixlar",
+                    start + len
+                );
+            }
+            // Utzoomad: får aldrig dölja något som FINNS. Referensen är den
+            // exakta sanningen (`envelope_per_pixel` läser varje sample), inte en
+            // annan fackindelning — två approximationer kan skilja sig åt åt båda
+            // hållen, och då prövar man inte det som spelar roll.
+            //
+            // Nivåerna kan bara göra höljet BREDARE (de läser hela fack, även de
+            // som bara delvis ligger under bildpunkten). Att det aldrig blir
+            // smalare är precis det som gör att ett anslag inte kan försvinna.
+            for pixels in [50usize, 300, 1200, zoomed] {
+                let a = cache.envelope_at(&samples, start, len, pixels);
+                let exact = envelope_per_pixel(slice, pixels);
+                for (i, ((alo, ahi), (elo, ehi))) in a.iter().zip(&exact).enumerate() {
+                    assert!(
+                        *alo <= *elo + 1e-6 && *ahi >= *ehi - 1e-6,
+                        "kolumn {i} dolde något i utsnittet: {alo},{ahi} mot exakt {elo},{ehi}"
+                    );
+                }
+            }
+        }
+        // Ett utsnitt utanför bufferten är tomt, inte panik.
+        assert_eq!(
+            cache.envelope_at(&samples, 400_000, 1000, 10),
+            vec![(0.0, 0.0); 10]
+        );
     }
 
     /// Ritningen ska läsa högst två fack per bildpunkt. Det är den egenskapen
