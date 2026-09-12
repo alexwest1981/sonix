@@ -822,6 +822,51 @@ fn waveform_key(buf: &std::sync::Arc<Vec<f32>>) -> u64 {
         ^ last.rotate_left(47)
 }
 
+/// Den grova översikten som följer med en region — räknad **ur cachen**, ur en
+/// genomgång som redan är gjord (Fas 8.3).
+///
+/// Symmetriskt toppvärde per punkt, samma form som regionritningens fallback och
+/// projektfilen väntar sig. Skillnaden mot den gamla raka samplingen (`var 64:e
+/// sample`) är att inget sample kan falla mellan två punkter: den som tittar på
+/// översikten ser varje anslag som finns i filen.
+fn overview_peaks_from(
+    cache: &crate::audio::waveform::WaveformCache,
+    samples: &[f32],
+    points: usize,
+) -> Vec<f32> {
+    cache
+        .envelope(samples, points)
+        .into_iter()
+        .map(|(lo, hi)| lo.abs().max(hi.abs()).clamp(0.04, 0.98))
+        .collect()
+}
+
+/// Vad en importerad stämma lägger på spåret: PCM och den cache som hör till
+/// **just den bufferten** (Fas 8.3).
+///
+/// Regeln ligger här och inte inuti `apply_imported_stems` för att kunna prövas
+/// utan ett fönster (repots konvention). Cachen nycklas på bufferten — hör den
+/// till ett annat ljud än spåret har lämnas den ifrån sig, för annars ritar
+/// tidslinjen fel ljud och tror att det är rätt.
+///
+/// Utan PCM blir det ingen cache: en cache utan ljud är precis den sorts
+/// trovärdiga bild som 8.5 handlade om.
+fn imported_track_waveform(
+    pcm: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    cache: Option<crate::audio::waveform::WaveformCache>,
+) -> (
+    Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    Option<(u64, crate::audio::waveform::WaveformCache)>,
+) {
+    match pcm {
+        Some((left, right, sr)) => {
+            let keyed = cache.map(|cache| (waveform_key(&left), cache));
+            (Some((left, right, sr)), keyed)
+        }
+        None => (None, None),
+    }
+}
+
 /// Vågform för kanalvisningen, räknad ur ljudet (Fas 6.7). Toppvärdet per
 /// fönster räcker — det är samma sorts översikt kanalracket ritar.
 fn waveform_preview_from_pcm(pcm: &[f32], points: usize) -> Vec<f32> {
@@ -1296,6 +1341,13 @@ pub struct DecodedStemTrack {
     pub sample_rate: u32,
     pub file_bars: f32,
     pub wave_env: Vec<f32>,
+    /// Flernivåcachen för stämman (Fas 8.3), byggd i avkodningstråden.
+    ///
+    /// Här är enda stället den kan byggas utan att någon väntar: samplen är redan
+    /// i cacheminnet efter avkodningen, och tråden är ändå en arbetstråd. Byggdes
+    /// den först när spåret ritas stod den grova översikten i bildrutan tills
+    /// `ensure_waveform_cache` hunnit ikapp i en andra tråd.
+    pub waveform_cache: Option<crate::audio::waveform::WaveformCache>,
 }
 
 #[derive(Clone)]
@@ -15120,6 +15172,12 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             let mut pcm_r_opt = None;
             let mut sample_rate = 44100u32;
             let mut wave_env = Vec::new();
+            // Vågformscachen byggs HÄR och inte i ritningen (Fas 8.3): samplen är
+            // redan varma efter avkodningen, och den här tråden är ändå en
+            // arbetstråd. Annars står den grova översikten i bildrutan tills en
+            // andra tråd hunnit bygga cachen — och Alex' krav är att vågformen är
+            // exakt från första bildrutan.
+            let mut waveform_cache = None;
 
             if let Ok((l, r, sr)) = crate::audio::load_audio_pcm(&path_str) {
                     sample_rate = sr;
@@ -15128,28 +15186,23 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                         (tempo.bars_for_secs_at(0.0, total_secs as f64) as f32).max(1.0);
                     max_stem_bars = max_stem_bars.max(file_bars);
 
-                    // Compute waveform peaks in-memory
-                    let num_points = ((file_bars * 16.0) as usize).clamp(240, 4800);
-                    let chunk_size = (l.len() / num_points).max(1);
-                    wave_env.reserve(num_points);
-                    for p_i in 0..num_points {
-                        let s_start = p_i * chunk_size;
-                        let s_end = (s_start + chunk_size).min(l.len());
-                        let mut peak: f32 = 0.04;
-                        let step = ((s_end - s_start) / 64).max(1);
-                        let mut s = s_start;
-                        while s < s_end {
-                            let v = l[s].abs();
-                            if v > peak {
-                                peak = v;
-                            }
-                            s += step;
-                        }
-                        wave_env.push(peak.clamp(0.04, 0.98));
-                    }
+                    let arc_l = std::sync::Arc::new(l);
+                    let arc_r = std::sync::Arc::new(r);
 
-                    pcm_l_opt = Some(std::sync::Arc::new(l));
-                    pcm_r_opt = Some(std::sync::Arc::new(r));
+                    // EN genomgång av samplen ger både det tidslinjen ritar
+                    // (cachen) och den grova översikt som följer med regionen.
+                    //
+                    // Den gamla översikten läste var 64:e sample, så ett enstaka
+                    // anslag kunde falla mellan två läsningar och försvinna helt.
+                    // Ett (min, max) per fack kan inte missa något — varje sample
+                    // ligger i ett fack.
+                    let cache = crate::audio::waveform::WaveformCache::build(&arc_l);
+                    let num_points = ((file_bars * 16.0) as usize).clamp(240, 4800);
+                    wave_env = overview_peaks_from(&cache, &arc_l, num_points);
+
+                    waveform_cache = Some(cache);
+                    pcm_l_opt = Some(arc_l);
+                    pcm_r_opt = Some(arc_r);
                 }
 
             if wave_env.is_empty() {
@@ -15171,6 +15224,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 sample_rate,
                 file_bars,
                 wave_env,
+                waveform_cache,
             });
         }
 
@@ -15192,12 +15246,39 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         let mut new_tracks = Vec::new();
 
         for (idx, dt) in res.tracks.into_iter().enumerate() {
-            if let (Some(arc_l), Some(arc_r)) = (dt.pcm_left, dt.pcm_right) {
+            let DecodedStemTrack {
+                clean_name,
+                path_str,
+                kind,
+                icon,
+                color,
+                pcm_left,
+                pcm_right,
+                sample_rate,
+                file_bars,
+                wave_env,
+                waveform_cache,
+            } = dt;
+
+            // Motorn och spåret delar SAMMA buffert (Arc), inte en kopia var: spåret
+            // behöver ljudet för att kunna rita vågformen och för att kunna klippa
+            // och exportera ur minnet, och `LoadStemTrack` tar redan ett Arc.
+            //
+            // Cachen byggdes ur just den bufferten i avkodningstråden, så nyckeln
+            // stämmer och tidslinjen ritar det exakta höljet redan i första
+            // bildrutan — i stället för den grova översikten tills en andra tråd
+            // hunnit ikapp.
+            let (track_pcm, track_waveform) = imported_track_waveform(
+                pcm_left.zip(pcm_right).map(|(l, r)| (l, r, sample_rate)),
+                waveform_cache,
+            );
+
+            if let Some((arc_l, arc_r, sr)) = track_pcm.clone() {
                 let _ = self.engine.send_command(AudioCommand::LoadStemTrack {
                     track_index: idx,
                     left: arc_l,
                     right: arc_r,
-                    sample_rate: dt.sample_rate as f32,
+                    sample_rate: sr as f32,
                     volume: 0.9,
                     pan: 0.0,
                     start_time_secs: 0.0,
@@ -15206,26 +15287,28 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
 
             let initial_region = AudioRegion {
                 id: idx + 1,
-                name: dt.clean_name.clone(),
+                name: clean_name.clone(),
                 start_bar: 0.0,
-                length_bars: dt.file_bars,
+                length_bars: file_bars,
                 sample_offset_sec: 0.0,
-                source_path: Some(dt.path_str),
-                waveform_peaks: dt.wave_env.clone(),
+                source_path: Some(path_str),
+                waveform_peaks: wave_env,
                 volume: 1.0,
                 fade_in_bars: 0.0,
                 fade_out_bars: 0.0,
                 muted: false,
                 is_reverse: false,
-                color: dt.color,
+                color,
                 loop_length_bars: 0.0,
             };
 
-            let mut track = PlaylistTrack::new(format!("{} {}", dt.icon, dt.clean_name), dt.icon, dt.kind, dt.color);
+            let mut track = PlaylistTrack::new(format!("{} {}", icon, clean_name), icon, kind, color);
             track.volume = 0.9;
             track.is_rec_armed = false;
             track.regions = vec![initial_region];
-            track.custom_clip_name = Some(dt.clean_name);
+            track.custom_clip_name = Some(clean_name);
+            track.waveform_cache = track_waveform;
+            track.pcm_audio = track_pcm;
 
             for b in 0..32 {
                 track.clips[b] = Some(idx);
@@ -19153,5 +19236,230 @@ mod tests {
         assert!(
             crate::audio::tempo::tempo_points_for_import(&parsed.tempo_events, 100.0).is_none()
         );
+    }
+    /// Ett enstaka anslag får inte försvinna i översikten (Fas 8.3).
+    ///
+    /// Den gamla vägen läste **var 64:e sample** inom varje punkt, så ett anslag
+    /// som ligger mellan två läsningar syntes inte alls: översikten visade
+    /// tystnad där det fanns ljud. Cache-vägen lägger varje sample i ett fack och
+    /// kan inte missa något, hur kort anslaget än är.
+    #[test]
+    fn a_single_sample_transient_is_visible_in_the_overview() {
+        let length = 48_000usize;
+        // Positioner valda så att de ligger mitt emellan två läsningar i den
+        // gamla vägen (64-samplars steg), plus första och sista samplet.
+        for position in [0usize, 1, 63, 64, 65, 12_345, 47_999] {
+            let mut samples = vec![0.0f32; length];
+            samples[position] = 0.9;
+            let arc = std::sync::Arc::new(samples);
+            let cache = crate::audio::waveform::WaveformCache::build(&arc);
+            let peaks = overview_peaks_from(&cache, &arc, 480);
+            assert_eq!(peaks.len(), 480, "en punkt per fack");
+            assert!(
+                peaks.iter().any(|p| *p > 0.5),
+                "anslaget på sample {position} syntes inte i översikten"
+            );
+        }
+    }
+
+    /// MÄTNING: hur många anslag tappade den gamla översikten?
+    ///
+    /// Reproducerar den borttagna raka samplingen (`var 64:e sample` inom varje
+    /// punkt) och räknar hur många enstaka anslag som föll mellan två läsningar,
+    /// mot cache-vägens noll.
+    ///
+    /// Samma **steg** som en riktig stämma ger: en fyra minuter lång fil i 48 kHz
+    /// blir, vid 120 BPM, 1920 punkter (`file_bars * 16`) — alltså 6000 samplar
+    /// per punkt och ett steg på 6000/64 = **93**. Här är filen kortare men
+    /// förhållandet detsamma (600 000 / 100 = 6000), så det är samma läckage som
+    /// mäts — utan att testet behöver bygga en 46 MB-buffert 200 gånger.
+    ///
+    /// Kör med:
+    ///   cargo test --locked --bin sonix the_old_overview -- --ignored --nocapture
+    #[test]
+    #[ignore = "mätning, inte en grind — körs manuellt"]
+    fn the_old_overview_lost_the_shortest_transients() {
+        let length = 600_000usize;
+        let points = 100usize;
+        let chunk_size = (length / points).max(1); // 6000, som för en stämma
+        let mut samples = vec![0.0f32; length];
+        let mut old_missed = 0usize;
+        let mut new_missed = 0usize;
+        let positions = 200usize;
+        for i in 0..positions {
+            let at = i * (length / positions);
+            samples[at] = 0.9;
+
+            let mut old_peaks = Vec::with_capacity(points);
+            for p_i in 0..points {
+                let s_start = p_i * chunk_size;
+                let s_end = (s_start + chunk_size).min(length);
+                let mut peak = 0.04f32;
+                let step = ((s_end - s_start) / 64).max(1);
+                let mut s = s_start;
+                while s < s_end {
+                    let v = samples[s].abs();
+                    if v > peak {
+                        peak = v;
+                    }
+                    s += step;
+                }
+                old_peaks.push(peak.clamp(0.04, 0.98));
+            }
+
+            let arc = std::sync::Arc::new(samples.clone());
+            let cache = crate::audio::waveform::WaveformCache::build(&arc);
+            let new_peaks = overview_peaks_from(&cache, &arc, points);
+
+            if !old_peaks.iter().any(|p| *p > 0.5) {
+                old_missed += 1;
+            }
+            if !new_peaks.iter().any(|p| *p > 0.5) {
+                new_missed += 1;
+            }
+            samples[at] = 0.0;
+        }
+        eprintln!(
+            "  av {positions} enstaka anslag: gamla översikten missade {old_missed}, cache-vägen missade {new_missed}"
+        );
+        assert_eq!(new_missed, 0, "cache-vägen får inte tappa ett anslag");
+        assert!(
+            old_missed > 0,
+            "mätningen ska visa den gamla vägens förlust — annars mäter den inget"
+        );
+    }
+
+    /// Cachen nycklas på **bufferten**, inte på Arc-handtaget.
+    ///
+    /// Motorn får ett eget handtag till samma buffert vid import
+    /// (`LoadStemTrack`), och spårets cache måste kännas igen som giltig för den.
+    #[test]
+    fn the_waveform_key_follows_the_buffer_not_the_handle() {
+        let left = std::sync::Arc::new(vec![0.1f32; 1000]);
+        let engine_side = left.clone();
+        assert_eq!(
+            waveform_key(&left),
+            waveform_key(&engine_side),
+            "samma buffert genom två handtag är samma ljud"
+        );
+        let other = std::sync::Arc::new(vec![0.1f32; 1001]);
+        assert_ne!(
+            waveform_key(&left),
+            waveform_key(&other),
+            "olika buffertar får inte få samma nyckel"
+        );
+    }
+
+    /// En importerad stämma får sin PCM och sin cache — och ingen cache när det
+    /// inte finns något ljud att rita (Fas 8.3 + 8.5).
+    #[test]
+    fn an_imported_stem_gets_its_pcm_and_a_cache_that_belongs_to_it() {
+        let left = std::sync::Arc::new(vec![0.25f32; 480]);
+        let right = std::sync::Arc::new(vec![-0.25f32; 480]);
+        let cache = crate::audio::waveform::WaveformCache::build(&left);
+
+        let (pcm, keyed) = imported_track_waveform(
+            Some((left.clone(), right.clone(), 48_000)),
+            Some(cache.clone()),
+        );
+        let (l, r, sr) = pcm.expect("PCM ska med till spåret");
+        assert_eq!(sr, 48_000);
+        assert_eq!(r.len(), 480);
+        // Samma buffert som motorn fick (`LoadStemTrack`), inte en kopia:
+        // annars vore nyckeln en annan och cachen oanvändbar.
+        assert_eq!(
+            std::sync::Arc::as_ptr(&l),
+            std::sync::Arc::as_ptr(&left),
+            "spåret ska hålla motorns buffert"
+        );
+        let (key, cache_in_track) = keyed.expect("cachen ska följa med");
+        assert_eq!(key, waveform_key(&l));
+        assert_eq!(
+            cache_in_track.envelope_at(&l, 0, l.len(), 40),
+            cache.envelope_at(&left, 0, left.len(), 40),
+            "cachen på spåret ska svara för samma ljud"
+        );
+
+        // Utan PCM: ingen cache alls.
+        let (pcm, keyed) = imported_track_waveform(None, Some(cache));
+        assert!(pcm.is_none());
+        assert!(keyed.is_none(), "en cache utan ljud får inte följa med");
+    }
+
+    /// Importen ger tidslinjen en cache för **samma** samplar som motorn får
+    /// (Fas 8.3).
+    ///
+    /// Det är skillnaden mot förut: spåret fick ingen PCM, så ritningen föll
+    /// tillbaka på den grova översikten och blev kvar där. Nu byggs cachen i
+    /// avkodningstråden och nycklas på bufferten motorn fick — `ensure_waveform_cache`
+    /// känner igen den och ritar det exakta höljet redan i första bildrutan.
+    ///
+    /// Kör hela importvägen (avkodningstråden) mot en riktig wav-fil på disk, i
+    /// en sandlåda under `/tmp` — Alex' egna stämmor rörs inte.
+    #[test]
+    fn the_import_hands_the_timeline_a_cache_for_the_samples_the_engine_gets() {
+        let root = std::env::temp_dir().join(format!(
+            "sonix_import_cache_{}_{}",
+            std::process::id(),
+            crate::autosave::now_stamp()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("sandlådan ska gå att skapa");
+
+        let sr = 48_000u32;
+        let frames = 4_800usize;
+        let mut left = vec![0.0f32; frames];
+        left[4_320] = 0.9; // ett anslag på 90 % av filen
+        let right = left.clone();
+        let wav = root.join("01_Drums.wav");
+        crate::audio::exporter::write_stem_wav(&wav.to_string_lossy(), &left, &right, sr)
+            .expect("stämman ska gå att skriva");
+
+        let progress = std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default()));
+        SonixApp::background_decode_stems(
+            &root.to_string_lossy(),
+            "Cachetest",
+            120.0,
+            false,
+            progress.clone(),
+        );
+
+        let res = {
+            let p = progress.lock().expect("låset");
+            p.completed_payload.clone().expect("importen ska bli klar")
+        };
+        assert_eq!(res.tracks.len(), 1, "en wav in, ett spår ut");
+        let dt = &res.tracks[0];
+
+        let pcm_left = dt.pcm_left.clone().expect("wav-filen ska avkodas");
+        assert_eq!(pcm_left.len(), frames, "hela ljudet ska med");
+        let cache = dt
+            .waveform_cache
+            .clone()
+            .expect("cachen ska byggas i avkodningstråden");
+
+        // Spåret nycklar cachen på den buffert motorn får: samma handtag ur
+        // spårvyns perspektiv, alltså samma nyckel — ingen omslagning i onödan.
+        let engine_side = pcm_left.clone();
+        assert_eq!(waveform_key(&pcm_left), waveform_key(&engine_side));
+
+        // Djupt inzoomad är höljet ur cachen det **exakta** höljet för samma
+        // samplar (färre samplar per bildpunkt än finaste facket → ur samplen).
+        let pixels = 200usize; // 4800/200 = 24 samplar per bildpunkt < 64
+        assert_eq!(
+            cache.envelope_at(&pcm_left, 0, pcm_left.len(), pixels),
+            crate::audio::waveform::envelope_per_pixel(&pcm_left, pixels),
+            "ur cachen ska samma svar komma som ur samplen"
+        );
+
+        // Och översikten som följer med regionen bär anslaget.
+        assert!(!dt.wave_env.is_empty(), "regionen ska ha en översikt");
+        assert!(
+            dt.wave_env.iter().any(|p| *p > 0.5),
+            "anslaget ska synas i översikten: {:?}",
+            dt.wave_env
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
