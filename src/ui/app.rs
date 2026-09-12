@@ -533,6 +533,10 @@ pub struct SavedChannel {
 pub struct SonixProjectData {
     pub name: String,
     pub bpm: f32,
+    /// Tempobyten (Fas 8.2). Saknas i äldre projekt — då gäller `bpm` som förut,
+    /// och filen läses exakt som den skrevs.
+    #[serde(default)]
+    pub tempo_points: Vec<crate::audio::tempo::TempoPoint>,
     pub swing: f32,
     pub master_volume: f32,
     pub master_pan: f32,
@@ -1042,6 +1046,9 @@ pub struct PreloadedTrackData {
 pub struct LoadedProjectPayload {
     pub name: String,
     pub bpm: f32,
+    /// Tempobyten (Fas 8.2). Saknas i äldre projekt — då gäller `bpm` som förut
+    /// (fältet är `#[serde(default)]` i `SonixProjectData`, som är den som läses).
+    pub tempo_points: Vec<crate::audio::tempo::TempoPoint>,
     pub swing: f32,
     pub master_volume: f32,
     pub master_pan: f32,
@@ -1344,6 +1351,11 @@ pub struct SonixApp {
     pub project_load_progress: std::sync::Arc<std::sync::Mutex<ProjectLoadProgress>>,
     // Transport & Clock
     pub is_playing: bool,
+    /// Tempobyten (Fas 8.2). Tomt = projektet har ett enda tempo (`bpm`).
+    ///
+    /// Fältet är tomt så länge inga byten finns, och då är `bpm` sanningen. Finns
+    /// en karta är `tempo_map()` sanningen — aldrig båda samtidigt.
+    pub tempo_points: Vec<crate::audio::tempo::TempoPoint>,
     pub bpm: f32,
     pub swing: f32,
     pub current_step: usize,
@@ -2020,6 +2032,7 @@ impl SonixApp {
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),
             is_playing: false,
             bpm: 120.0,
+            tempo_points: Vec::new(),
             swing: 0.0,
             current_step: 0,
             song_bar: 0,
@@ -2663,6 +2676,7 @@ impl SonixApp {
                     name: "Sonix Synthwave Demo".to_string(),
                     bpm: 126.0,
                     swing: 0.15,
+                    tempo_points: Vec::new(),
                     master_volume: 0.90,
                     master_pan: 0.0,
                     tracks,
@@ -2692,7 +2706,10 @@ impl SonixApp {
     /// uppstår den andra sanningen om takter och sekunder, och den här gången
     /// blir det ingen.
     fn tempo_map(&self) -> crate::audio::tempo::TempoMap {
-        crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+        if self.tempo_points.is_empty() {
+            return crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        }
+        crate::audio::tempo::TempoMap::from_points(self.tempo_points.clone())
     }
 
     /// **Ett ställe för omräkningen takter→sekunder.** Tre funktioner gjorde
@@ -3792,6 +3809,7 @@ impl SonixApp {
         SonixProjectData {
             name: name.to_string(),
             bpm: self.bpm,
+            tempo_points: self.tempo_points.clone(),
             swing: self.swing,
             master_volume: self.master_volume,
             master_pan: self.master_pan,
@@ -4096,6 +4114,7 @@ impl SonixApp {
                 p.completed_payload = Some(LoadedProjectPayload {
                     name: data.name,
                     bpm: data.bpm,
+                    tempo_points: data.tempo_points,
                     swing: data.swing,
                     master_volume: data.master_volume,
                     master_pan: data.master_pan,
@@ -4140,6 +4159,7 @@ impl SonixApp {
 
         self.project_name = payload.name;
         self.bpm = payload.bpm;
+        self.tempo_points = payload.tempo_points;
         self.swing = payload.swing;
         self.master_volume = payload.master_volume;
         self.master_pan = payload.master_pan;
@@ -16310,6 +16330,7 @@ mod tests {
         let data = SonixProjectData {
             name: "Testprojekt".to_string(),
             bpm: 133.0,
+            tempo_points: Vec::new(),
             swing: 0.2,
             master_volume: 0.8,
             master_pan: 0.0,
@@ -16989,6 +17010,7 @@ mod tests {
         let data = SonixProjectData {
             name: "Plugin Test".into(),
             bpm: 120.0,
+            tempo_points: Vec::new(),
             swing: 0.0,
             master_volume: 1.0,
             master_pan: 0.0,
@@ -17148,6 +17170,38 @@ mod tests {
             groups[1].0 >= ARRANGEMENT_BARS,
             "takten utanför arrangemanget ska gå att upptäcka och redovisas"
         );
+    }
+
+    /// Tempobyten ska överleva en tur genom projektfilen — och en gammal fil utan
+    /// fältet ska läsas som ett enda tempo, exakt som den skrevs.
+    ///
+    /// Det andra är det viktigaste: `#[serde(default)]` är hela skälet till att
+    /// fältet kan läggas till utan att röra en enda befintlig projektfil.
+    #[test]
+    fn tempo_points_survive_the_project_file() {
+        let with_points = r#"{"name":"x","bpm":120.0,"swing":0.0,"master_volume":1.0,
+            "master_pan":0.0,"tracks":[],
+            "tempo_points":[{"start_bar":0,"bpm":120.0},{"start_bar":8,"bpm":90.0}]}"#;
+        let data: SonixProjectData =
+            serde_json::from_str(with_points).expect("fil med tempobyten ska gå att läsa");
+        assert_eq!(data.tempo_points.len(), 2, "båda punkterna ska med");
+        assert_eq!(data.tempo_points[1].start_bar, 8);
+
+        // Kartan som byggs ur dem svarar rätt på båda sidor om bytet.
+        let map = crate::audio::tempo::TempoMap::from_points(data.tempo_points.clone());
+        assert!((map.bpm_at(4.0) - 120.0).abs() < 0.01, "före bytet");
+        assert!((map.bpm_at(9.0) - 90.0).abs() < 0.01, "efter bytet");
+
+        // En gammal projektfil har inte fältet alls.
+        let old = r#"{"name":"x","bpm":128.0,"swing":0.0,"master_volume":1.0,
+            "master_pan":0.0,"tracks":[]}"#;
+        let data: SonixProjectData =
+            serde_json::from_str(old).expect("gammal projektfil ska fortfarande gå att läsa");
+        assert!(
+            data.tempo_points.is_empty(),
+            "en gammal fil har inga byten — då gäller bpm som förut"
+        );
+        assert!((data.bpm - 128.0).abs() < 0.01, "och tempot ska vara kvar");
     }
 
     #[test]
