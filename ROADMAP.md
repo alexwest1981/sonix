@@ -607,3 +607,59 @@ Dessutom räknades bara `max(abs(x))` per fönster: ett **symmetriskt** hölje. 
 **Gjort:** `zoom_regime()` som ren funktion med tester (trösklarna, och att regimen aldrig backar när man zoomar in — annars flimrar vågformen vid tröskeln), och alla tre lägena inkopplade i regionritningen. Slingade klossar går genom samma växel.
 
 **Kvar:** Y-skalan. En kloss på 30 px har 30 steg upp och ned — det är ett tak, inte ett fel, och det kräver högre klossar eller en egen höjd-zoom (Ardours log-skala är alternativet för svaga partier). RMS-band som tillval är också kvar.
+
+
+---
+
+## 8.5 Stämimport och tysta klipp (Alex 2026-09-12)
+
+**Utgångspunkten var en skärmbild:** korta klipp ritade som pixlade staplar, långa
+som riktiga vågor. Alex lyssnade och konstaterade att de pixlade var **tysta**.
+
+### Vad som är mätt och stängt
+
+- **Appen har ingen mp3-avkodare.** Inga symphonia/rodio/minimp3 i beroendena, och
+  `load_wav_pcm` läser WAV. En mp3 som kommer in i en regions `source_path` blir
+  därför ett **tyst klipp, varje gång** — och eftersom översikten fanns kvar ritades
+  det ändå, som om det hade ljud.
+- **Rotorsaken till att tystnaden var osynlig:** elva ställen läste ljud med
+  `if let Ok(...)` **utan `else`**. En fil som inte gick att läsa föll bort utan ett
+  ord. **Stängt:** `load_audio_or_report` + en delad lista (`UNREADABLE_SOURCES`),
+  avläst en gång per bildruta i `update`, som skriver i statusraden. Sju anrop
+  bytta; `load_sample_pcm_arcs` (fyra anropare, bl.a. kanalernas ljud) rapporterar
+  nu genom samma lista.
+- **Alex' projektfil** (utanför repot): nio regioner pekade på `.mp3` medan
+  `.wav`-filerna fanns på disk. Omskrivna, backup, atomiskt, verifierat genom
+  återläsning (`mp3=0, wav=18, saknade filer=0`). Klippen spelar.
+- **`stem_files_for_import(files, keep_mp3)`**: en stämma importeras en gång — en
+  mp3 vars stämma redan finns som wav hoppas över, en mp3 utan wav-syskon tas med,
+  `keep_mp3` behåller allt. Inkopplad i `scan_for_suno_stems`, med antalet
+  överhoppade i statusraden. Två tester.
+
+### Modellen framåt — det som återstår att följa
+
+`import_audio_file_as_track` gör redan rätt: den **rapporterar och avbryter** när
+ljudet inte kan läsas. Den skapar aldrig ett klipp utan ljud. Alla vägar som skapar
+en region bör följa den modellen i stället för att skapa ett klipp med
+nollängd/tom vågform. Att gå igenom dem är nästa steg:
+
+- `add_sample_item_to_timeline` (två varianter) — skapar regionen även när
+  avkodningen misslyckats (längden blir då fel, inte bara ljudet).
+- `open_sample_in_vocal_studio` / `open_region_in_vocal_studio`.
+- ▶-förhandslyssningen i Sound Browser (gör inget alls vid fel, utan att säga det).
+- Det frusna spårets avkodning.
+- `load_sample_pcm_arcs`-anroparna rapporterar nu, men **avbryter** inte.
+
+### Dialog vid import (Alex' förslag, inte byggd)
+
+En dialog som frågar om mp3:erna ska med. Regeln finns redan
+(`stem_files_for_import`, `keep_mp3`-vägen är dess "ja"), så dialogen blir en fråga
+om detta enda val — och den ska gälla även stämseparatorn.
+
+### Separatören skriver inget till disk
+
+`stem_separator.rs` tar färdig PCM in och skriver aldrig ut stämmorna som filer.
+Dess enda spår blir den grova översikten (512 punkter, `visual_peaks_from`) plus en
+`source_path` som pekar på **originalet**. Kommer originalet från en mp3 uppstår
+precis den kombination Alex såg: en trovärdig vågform, inget ljud. Att skriva
+stämmorna som wav är den naturliga fixen.

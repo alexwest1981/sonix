@@ -660,13 +660,19 @@ fn load_audio_or_report(path: &str) -> Option<(Vec<f32>, Vec<f32>, u32)> {
     match crate::audio::load_wav_pcm(path) {
         Ok((l, r, sr)) => Some((l, r, sr)),
         Err(_) => {
-            if let Ok(mut list) = UNREADABLE_SOURCES.lock()
-                && !list.iter().any(|p| p == path)
-            {
-                list.push(path.to_string());
-            }
+            report_unreadable(path);
             None
         }
+    }
+}
+
+/// Minns en källfil som inte gick att läsa. En plats, två vägar (här och i
+/// `load_sample_pcm_arcs`) — alla elva anrop i appen täcks av samma lista.
+fn report_unreadable(path: &str) {
+    if let Ok(mut list) = UNREADABLE_SOURCES.lock()
+        && !list.iter().any(|p| p == path)
+    {
+        list.push(path.to_string());
     }
 }
 
@@ -1872,7 +1878,13 @@ fn library_items_from_scanned(scanned: Vec<crate::audio::factory_samples::Scanne
 fn load_sample_pcm_arcs(path: &str) -> Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)> {
     match crate::audio::load_wav_pcm(path) {
         Ok((l, r, sr)) => Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr)),
-        Err(_) => None,
+        // Samma tystnad som de sju andra ställena hade: en fil som inte går att
+        // läsa blev None och den som frågade fick inget veta. Kanalernas ljud, i
+        // den här vägen, kunde försvinna utan ett ord — det är samma familj.
+        Err(_) => {
+            report_unreadable(path);
+            None
+        }
     }
 }
 
