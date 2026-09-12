@@ -45,12 +45,33 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 | Område | Klart | Kvar | Procent |
 | :--- | :---: | :---: | :---: |
-| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, projektfilen) | 8 | 8 | **100 %** |
+| **Tier 0** — Trovärdighet (sökvägar, autosave, undo, MIDI-I/O, kvantisering, dither, rundgång, projektfilen) | 8 | 0 | **100 %** |
 | **Tier 1** — Plattform & prestanda (backend-utbrytning, realtidsmätning, yabridge, starttid) | 2 | 4 | **50 %** |
 | **Tier 2** — Arbetsflödesdjup (freeze, tempo map, routing, sampler) | 1 | 4 | **25 %** |
 | **Tier 3** — AI-kilen (agent, lokal modell, moln-API) | 0 | 3 | **0 %** |
 
 > **Prioritet just nu: Tier 1 (Fas 7) — Tier 0 (Fas 6) är stängd, 8 av 8.** Ordningen är inte förhandlingsbar: en proffsmusiker som tappat ett projekt en gång bryr sig inte om hur bra AI:n är. Tier 0 mäts i att inget arbete går förlorat och att allt går att ångra.
+
+---
+
+## ⬜ Vad som återstår (räknat ur listan 2026-09-12)
+
+Sex punkter är obockade. Fyra av dem går att göra vid datorn; två kräver Wine och en
+display. Ordningen nedan är den som ger mest per timme.
+
+| # | Punkt | Storlek | Vad som återstår | Blockerare |
+| :--- | :--- | :---: | :--- | :--- |
+| 1 | **8.3 Routing på riktigt** | *M* | Sends OCH sidokedjor mellan spår (bussar/VCA finns redan) | — |
+| 2 | **8.4 Sampler** | *M* | Ett riktigt samplerinstrument i kanalracket (WAV-spelaren finns) | — |
+| 3 | **8.2 Tempo map** | *S–M* | De 4 visningsställena, automation-lanen (sekunder vs takter), drag-utökningen | — |
+| 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
+| 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
+| 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
+
+**Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
+release, ett bevisstycke här i roadmapen — och för det som hörs eller syns, en kvittens
+i GUI. Den sista raden är den som oftast återstår: 6.2, 6.4, 6.5, 7.4 och 8.2:s
+tempopunkt-UI väntar alla på att Alex ser dem.
 
 ---
 
