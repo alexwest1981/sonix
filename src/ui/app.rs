@@ -557,6 +557,13 @@ pub struct SonixProjectData {
     /// och filen läses exakt som den skrevs.
     #[serde(default)]
     pub tempo_points: Vec<crate::audio::tempo::TempoPoint>,
+    /// Tonarten (Fas 8.11). Saknas i äldre projekt — då gäller Eb/Dur, samma
+    /// standard som konstruktorn sätter (`#[serde(default)]` för skalan, och
+    /// `default_song_key_root` för grundtonen).
+    #[serde(default = "default_song_key_root")]
+    pub song_key_root: u8,
+    #[serde(default)]
+    pub song_key_scale: usize,
     pub swing: f32,
     pub master_volume: f32,
     pub master_pan: f32,
@@ -592,6 +599,12 @@ pub struct SonixProjectData {
     /// Channel Racket (Fas 6.7).
     #[serde(default)]
     pub channels: Vec<SavedChannel>,
+}
+
+/// Standardgrundton för ett projekt som sparades innan tonarten fanns (Fas 8.11):
+/// Eb, samma värde som `SonixApp::new` sätter.
+fn default_song_key_root() -> u8 {
+    3
 }
 
 fn default_bus_volume() -> [f32; crate::audio::synth::NUM_BUSES] {
@@ -1502,6 +1515,10 @@ pub struct LoadedProjectPayload {
     /// Tempobyten (Fas 8.2). Saknas i äldre projekt — då gäller `bpm` som förut
     /// (fältet är `#[serde(default)]` i `SonixProjectData`, som är den som läses).
     pub tempo_points: Vec<crate::audio::tempo::TempoPoint>,
+    /// Tonarten (Fas 8.11) — läses ur projektfilen och sätts på appen, så att
+    /// piano rollen och AI-kontexten visar samma tonart som när filen sparades.
+    pub song_key_root: u8,
+    pub song_key_scale: usize,
     pub swing: f32,
     pub master_volume: f32,
     pub master_pan: f32,
@@ -1870,13 +1887,19 @@ pub struct SonixApp {
     pub pending_add_track_import: Option<TrackTemplate>,
     pub metronome_enabled: bool,
     pub tap_tempo_times: Vec<std::time::Instant>,
+    /// Tonartens grundton (0 = C, tonhöjdsklass) och skala (index i
+    /// [`crate::audio::scale::SCALES`]).
+    ///
+    /// **Ett par, ett ställe** (Alex' kvittens 2026-09-12): piano rollen hade förut
+    /// egna kopior (`piano_roll_root_note`, `selected_scale`) med **egna listor**, så
+    /// arrangerarens "Dorian" blev piano rollens "Moll" och fyra av tolv grundtoner
+    /// visade fel namn. Nu finns bara den här tonarten, och varje meny läser samma
+    /// tabell. Fälten sparas i projektfilen (`#[serde(default)]`).
     pub song_key_root: u8,
     pub song_key_scale: usize,
     pub time_signature: (u8, u8),
     // Piano Roll & Scale Snapping
     pub piano_roll_grid: [[bool; 16]; 24],
-    pub selected_scale: usize,
-    pub piano_roll_root_note: u8,
     pub piano_roll_snap_to_scale: bool,
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
@@ -2597,8 +2620,6 @@ impl SonixApp {
             song_key_scale: 0, // Dur
             time_signature: (4, 4),
             piano_roll_grid: initial_grid,
-            selected_scale: 0,
-            piano_roll_root_note: 3, // Eb
             piano_roll_snap_to_scale: false,
             piano_roll_poly_mode: false,
             chord_stamp: 0,
@@ -3210,6 +3231,8 @@ impl SonixApp {
                     bpm: 126.0,
                     swing: 0.15,
                     tempo_points: Vec::new(),
+                    song_key_root: 3,
+                    song_key_scale: 0,
                     master_volume: 0.90,
                     master_pan: 0.0,
                     tracks,
@@ -4713,6 +4736,8 @@ impl SonixApp {
             name: name.to_string(),
             bpm: self.bpm,
             tempo_points: self.tempo_points.clone(),
+            song_key_root: self.song_key_root,
+            song_key_scale: self.song_key_scale,
             swing: self.swing,
             master_volume: self.master_volume,
             master_pan: self.master_pan,
@@ -5078,6 +5103,8 @@ impl SonixApp {
                     name: data.name,
                     bpm: data.bpm,
                     tempo_points: data.tempo_points,
+                    song_key_root: 3,
+                    song_key_scale: 0,
                     swing: data.swing,
                     master_volume: data.master_volume,
                     master_pan: data.master_pan,
@@ -5123,6 +5150,8 @@ impl SonixApp {
         self.project_name = payload.name;
         self.bpm = payload.bpm;
         self.tempo_points = payload.tempo_points;
+        self.song_key_root = payload.song_key_root;
+        self.song_key_scale = payload.song_key_scale;
         self.swing = payload.swing;
         self.master_volume = payload.master_volume;
         self.master_pan = payload.master_pan;
@@ -9291,10 +9320,11 @@ impl SonixApp {
     /// Feeds live project state into the AI assistant so prompts are grounded
     /// in the current key/tempo/selection (Etapp D).
     pub fn refresh_ai_context(&mut self) {
-        const ROOT_NAMES: [&str; 12] = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-        const SCALE_NAMES: [&str; 5] = ["Dur", "Moll", "Dorian", "Blues", "Synthwave"];
         let root = (self.song_key_root % 12) as usize;
-        let scale = self.song_key_scale.min(SCALE_NAMES.len() - 1);
+        // Tonarten kommer ur projektets EGEN tabell (Fas 8.11): etiketten AI:n får är
+        // samma sträng som menyerna visar, inte en tredje lista med egna index.
+        let key_label = crate::audio::scale::key_label(self.song_key_root, self.song_key_scale);
+        let key_is_minor = crate::audio::scale::scale_at(self.song_key_scale).is_minor();
         let selected_track = self
             .playlist_tracks
             .get(self.selected_timeline_track)
@@ -9308,9 +9338,9 @@ impl SonixApp {
         self.ai_assistant.context = crate::audio::ai_generator::GenContext {
             project_name: self.project_name.clone(),
             bpm: self.bpm,
-            key_label: format!("{} {}", ROOT_NAMES[root], SCALE_NAMES[scale]),
+            key_label,
             key_pc: Some(root as u8),
-            is_minor: scale != 0,
+            is_minor: key_is_minor,
             selected_track,
             selected_region,
         };
@@ -9477,31 +9507,38 @@ impl SonixApp {
                     ui.set_height(26.0);
                     ui.horizontal(|ui| {
                         ui.label(egui::RichText::new(crate::i18n::t("🎼")).size(11.0));
-                        let root_names = ["C", "C#", "D", "D#", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
-                        let cur_root = root_names.get(self.song_key_root as usize % 12).unwrap_or(&"Eb");
+                        // Tonarten (Fas 8.11): samma tabell och samma index som piano
+                        // rollen. Förut hade de här menyerna egna listor, och "Dorian"
+                        // här blev "Moll" där; fyra av tolv grundtoner visade dessutom
+                        // fel namn (en tretton-namnlista för tolv tonhöjder).
+                        let cur_root = crate::audio::scale::root_name(self.song_key_root);
                         egui::ComboBox::from_id_salt("arr_key_root")
-                            .selected_text(*cur_root)
-                            .width(38.0)
+                            .selected_text(cur_root)
+                            .width(40.0)
                             .show_ui(ui, |ui| {
-                                for (idx, &r_name) in root_names.iter().enumerate() {
+                                for (idx, &r_name) in crate::audio::scale::ROOT_NAMES.iter().enumerate() {
                                     if ui.selectable_label(self.song_key_root as usize == idx, r_name).clicked() {
                                         self.song_key_root = idx as u8;
-                                        self.piano_roll_root_note = idx as u8;
-                                        self.status_message = crate::tstatus!("🎼 Tonart ändrad till {}", r_name);
+                                        self.status_message = crate::tstatus!(
+                                            "🎼 Tonart: {}",
+                                            crate::audio::scale::key_label(self.song_key_root, self.song_key_scale)
+                                        );
                                     }
                                 }
                             });
 
-                        let scale_names = ["Dur", "Moll", "Dorian", "Blues", "Synthwave"];
-                        let cur_sc = scale_names.get(self.song_key_scale.min(4)).unwrap_or(&"Dur");
+                        let cur_sc = crate::audio::scale::scale_at(self.song_key_scale).name;
                         egui::ComboBox::from_id_salt("arr_key_scale")
-                            .selected_text(*cur_sc)
-                            .width(55.0)
+                            .selected_text(cur_sc)
+                            .width(104.0)
                             .show_ui(ui, |ui| {
-                                for (s_idx, &s_name) in scale_names.iter().enumerate() {
-                                    if ui.selectable_label(self.song_key_scale == s_idx, s_name).clicked() {
+                                for (s_idx, sc) in crate::audio::scale::SCALES.iter().enumerate() {
+                                    if ui.selectable_label(self.song_key_scale == s_idx, sc.name).clicked() {
                                         self.song_key_scale = s_idx;
-                                        self.selected_scale = s_idx;
+                                        self.status_message = crate::tstatus!(
+                                            "🎼 Tonart: {}",
+                                            crate::audio::scale::key_label(self.song_key_root, self.song_key_scale)
+                                        );
                                     }
                                 }
                             });
@@ -12342,22 +12379,10 @@ impl SonixApp {
         }
     }
 
+    /// Tonerna i projektets tonart. Regeln bor i `crate::audio::scale` — här finns
+    /// bara projektets grundton och skala (Fas 8.11).
     pub fn get_scale_notes(&self) -> Vec<u8> {
-        let root = self.piano_roll_root_note % 12;
-        let intervals: &[u8] = match self.selected_scale {
-            1 => &[0, 2, 4, 5, 7, 9, 11], // Dur (Major)
-            2 => &[0, 2, 3, 5, 7, 8, 10], // Moll (Minor)
-            3 => &[0, 2, 3, 5, 7, 8, 11], // Harmonisk Moll
-            4 => &[0, 2, 3, 5, 7, 9, 11], // Melodisk Moll
-            5 => &[0, 2, 3, 5, 7, 9, 10], // Dorian
-            6 => &[0, 2, 4, 5, 7, 9, 10], // Mixolydian
-            7 => &[0, 2, 4, 7, 9],        // Pentatonisk Dur
-            8 => &[0, 3, 5, 7, 10],       // Pentatonisk Moll
-            9 => &[0, 3, 5, 6, 7, 10],    // Blues
-            10 => &[0, 1, 3, 5, 7, 8, 10], // Synthwave (Phrygian)
-            _ => &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], // Kromatisk
-        };
-        intervals.iter().map(|&i| (root + i) % 12).collect()
+        crate::audio::scale::scale_notes(self.song_key_root, self.song_key_scale)
     }
 
     pub fn humanize_active_pattern(&mut self) {
@@ -12448,15 +12473,13 @@ impl SonixApp {
 
                 // Root Key Picker
                 ui.label(egui::RichText::new(crate::i18n::t("Grundton:")).size(11.0).color(Theme::TEXT_MUTED));
-                let root_names = ["C", "C#", "D", "D#", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
-                let cur_root = root_names.get(self.piano_roll_root_note as usize % 12).unwrap_or(&"C");
+                let cur_root = crate::audio::scale::root_name(self.song_key_root);
                 egui::ComboBox::from_id_salt("pr_root_combo")
-                    .selected_text(*cur_root)
+                    .selected_text(cur_root)
                     .width(45.0)
                     .show_ui(ui, |ui| {
-                        for (idx, &r_name) in root_names.iter().enumerate() {
-                            if ui.selectable_label(self.piano_roll_root_note as usize == idx, r_name).clicked() {
-                                self.piano_roll_root_note = idx as u8;
+                        for (idx, &r_name) in crate::audio::scale::ROOT_NAMES.iter().enumerate() {
+                            if ui.selectable_label(self.song_key_root as usize == idx, r_name).clicked() {
                                 self.song_key_root = idx as u8;
                             }
                         }
@@ -12464,18 +12487,13 @@ impl SonixApp {
 
                 // Scale Snapping Selector
                 ui.label(egui::RichText::new(crate::i18n::t("Skala:")).size(11.0).color(Theme::TEXT_MUTED));
-                let scales = [
-                    "Kromatisk", "Dur (Maj)", "Moll (Min)", "Harm. Moll", "Mel. Moll",
-                    "Dorian", "Mixolydian", "Pentatonisk", "Blues", "Synthwave",
-                ];
-                let cur_scale = scales.get(self.selected_scale).unwrap_or(&"Kromatisk");
+                let cur_scale = crate::audio::scale::scale_at(self.song_key_scale).name;
                 egui::ComboBox::from_id_salt("pr_scale_combo")
-                    .selected_text(*cur_scale)
-                    .width(95.0)
+                    .selected_text(cur_scale)
+                    .width(120.0)
                     .show_ui(ui, |ui| {
-                        for (s_idx, &s_name) in scales.iter().enumerate() {
-                            if ui.selectable_label(self.selected_scale == s_idx, s_name).clicked() {
-                                self.selected_scale = s_idx;
+                        for (s_idx, sc) in crate::audio::scale::SCALES.iter().enumerate() {
+                            if ui.selectable_label(self.song_key_scale == s_idx, sc.name).clicked() {
                                 self.song_key_scale = s_idx;
                             }
                         }
@@ -12653,14 +12671,15 @@ impl SonixApp {
 
             let base_midi = 48; // C3
             let semitones_count = 24;
-            let scale_notes = self.get_scale_notes();
-            let root_note_val = self.piano_roll_root_note % 12;
+            let key_root = self.song_key_root;
+            let key_scale = self.song_key_scale;
+            let root_note_val = key_root % 12;
 
             egui::ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
                 for note_offset in (0..semitones_count).rev() {
                     let midi_note = base_midi + note_offset as u8;
                     let note_val = midi_note % 12;
-                    let note_in_scale = scale_notes.contains(&note_val);
+                    let note_in_scale = crate::audio::scale::in_scale(note_val, key_root, key_scale);
                     let is_root = note_val == root_note_val;
                     let is_sharp = [1, 3, 6, 8, 10].contains(&note_val);
                     let n_name = note_name(midi_note);
@@ -12707,6 +12726,24 @@ impl SonixApp {
                                     let any_left = (0..24).any(|o| self.piano_roll_grid[o][step]);
                                     self.channels[6].steps[step] = any_left;
                                 } else {
+                                    // Skal-låset (Fas 8.11). Knappen fanns förut men
+                                    // lästes aldrig — den gjorde ingenting. Nu flyttas
+                                    // en klickad rad utanför skalan till **närmaste** rad
+                                    // som är i den, och markeringen i rutnätet visar
+                                    // vilken rad det blev. Att tysta klicket vore att
+                                    // låtsas att tangenten fanns.
+                                    let row = if self.piano_roll_snap_to_scale {
+                                        crate::audio::scale::snap_row(
+                                            note_offset,
+                                            base_midi,
+                                            semitones_count,
+                                            self.song_key_root,
+                                            self.song_key_scale,
+                                        )
+                                    } else {
+                                        note_offset
+                                    };
+                                    let row_midi = base_midi + row as u8;
                                     if !self.piano_roll_poly_mode {
                                         for o in 0..24 {
                                             self.piano_roll_grid[o][step] = false;
@@ -12724,13 +12761,13 @@ impl SonixApp {
                                     };
 
                                     for &c_off in stamp_offsets {
-                                        let target_off = note_offset + c_off;
+                                        let target_off = row + c_off;
                                         if target_off < 24 {
                                             self.piano_roll_grid[target_off][step] = true;
                                         }
                                     }
                                     self.channels[6].steps[step] = true;
-                                    self.channels[6].notes[step] = midi_note;
+                                    self.channels[6].notes[step] = row_midi;
                                 }
                                 self.sync_active_pattern_from_ui();
                             }
@@ -18154,6 +18191,8 @@ mod tests {
             name: "Testprojekt".to_string(),
             bpm: 133.0,
             tempo_points: Vec::new(),
+            song_key_root: 3,
+            song_key_scale: 0,
             swing: 0.2,
             master_volume: 0.8,
             master_pan: 0.0,
@@ -18836,6 +18875,8 @@ mod tests {
             name: "Plugin Test".into(),
             bpm: 120.0,
             tempo_points: Vec::new(),
+            song_key_root: 3,
+            song_key_scale: 0,
             swing: 0.0,
             master_volume: 1.0,
             master_pan: 0.0,
@@ -19520,6 +19561,21 @@ mod tests {
             crate::audio::tempo::tempo_points_for_import(&parsed.tempo_events, 100.0).is_none()
         );
     }
+    /// Ett projekt som sparades innan tonarten fanns läses exakt som förut: Eb och Dur
+    /// (Fas 8.11) — och tonarten betyder samma sak i varje meny, för det finns bara en.
+    #[test]
+    fn an_old_project_without_a_key_reads_as_eb_major() {
+        let data: SonixProjectData =
+            serde_json::from_str(&minimal_project_json("Gammalt")).expect("filen ska gå att läsa");
+        assert_eq!(data.song_key_root, 3, "Eb");
+        assert_eq!(data.song_key_scale, 0, "Dur");
+        assert_eq!(crate::audio::scale::scale_at(data.song_key_scale).name, "Dur");
+        assert!(
+            crate::audio::scale::in_scale(3, data.song_key_root, data.song_key_scale),
+            "Eb ska finnas i Eb-dur"
+        );
+    }
+
     /// Gamla projekt: inspelningstemot går att MÄTA fram ur filen — men bara när
     /// måttet stämmer med projektets tempo (Fas 8.10).
     #[test]

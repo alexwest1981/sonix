@@ -48,6 +48,7 @@ pub mod synth;
 pub mod vocal_harmonizer;
 pub mod wav_reader;
 pub mod wav_writer;
+pub mod scale;
 pub mod waveform;
 
 #[allow(unused_imports)]
