@@ -738,6 +738,29 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     som ett spår utan sidokedja med standardtröskeln −30 dB; en fil med fältet får exakt
     samma värden tillbaka). **328 tester default, 374 med plugin-host, 0 varningar** (det
     sista testet är bänkens nya räknare, se 7.2-raden).
+  - **Sends till bussar klara (2026-09-12, `1d3fc1a`).** Ett spår kan skicka en del av sin
+    signal till en **annan buss** vid sidan av sin egen: `StemSend { target_bus, level }` och
+    `AudioCommand::SetStemTrackSends { track_index, sends }`.
+    - **Post-fader** — samma signal som går till spårets egen buss, alltså efter volym, EQ,
+      kompressor och sidokedja. En send tappar inte EQ:n eller duckningen på vägen, och den
+      kan inte smyga sig förbi spårets egen mute.
+    - **Målets eget gruppläge gäller målet:** en tystad buss tar inte emot, och när något är
+      soloat hörs bara det soloades väg. Det var en riktig bugg i första försöket (en send
+      till en tystad buss lade till signal) — `a_send_into_a_muted_bus_adds_nothing` står
+      kvar som vakt, tillsammans med `a_send_into_a_quieter_bus_adds_signal` och
+      `a_send_is_clamped_to_the_buses_that_exist`.
+    - **En slinga kan inte uppstå:** målet är en buss, och en buss skickar inte vidare. Det är
+      därför den här delen gick att bygga utan att röra spårloopen — och därför den *inte*
+      löser sends mellan spår (nästa stycke).
+    - **Samma ljud i filen som i högtalarna:** `TrackAudioSnap.sends` + samma kommando i
+      offline-exporten. Bevis: `a_send_follows_the_offline_render` mäter energin vid 880 Hz
+      när spår 1 skickar till buss 3 (neddragen till 0,5) — utan den hade exporten tappat en
+      väg som uppspelningen har, samma fälla som sidokedjan och vågformen redan gick i.
+    - Mixerns kanalpanel har **Skicka till buss:** (mål + nivå, ➕ Ny send / 🗑, högst fyra per
+      spår; FX-bussen är standardmål). Mixer-digest-testet prövar att **målet och nivån** syns,
+      inte bara att listan är tom. Frusna spår skickar inget — deras fil renderades utan sends,
+      och då ska högtalarna och filen säga samma sak. **376 tester default, 422 med
+      plugin-host, 0 varningar.**
   - **Kvar på samma punkt: sends mellan spår** — att skicka ett spår in i ett annat spårs
     kedja. Det är större än sidokedjan: key-signalen är en *mätning* (ett sample sent går
     bra), men en send är *ljud* och måste vara exakt i fas, annars tar den ut sig själv mot
