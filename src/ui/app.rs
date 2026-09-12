@@ -3322,14 +3322,25 @@ impl SonixApp {
         track.volume = 0.90;
 
         let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
-        let mut pcm_opt = None;
-        let duration_secs = if let Some(ref path) = item.file_path && let Some((l, r, sr)) = load_audio_or_report(path) {
-            let dur = l.len() as f32 / sr as f32;
-            pcm_opt = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
-            dur
-        } else {
-            tempo.secs_for_bars_at(0.0, 4.0) as f32
+        let Some(ref path) = item.file_path else {
+            self.status_message =
+                crate::tstatus!("⚠ '{}' har ingen ljudfil — läggs inte till", item.name);
+            return;
         };
+        // Klippet får inte skapas utan sitt ljud. Den här vägen hittade på en längd
+        // (fyra takter) när avkodningen misslyckades och skapade regionen ändå, med
+        // bibliotekets grova översikt som vågform och originalfilen som källa. Kunde
+        // filen inte läsas — t.ex. en mp3, som appen inte kan avkoda — blev klippet
+        // tyst men ritades som om det hade ljud. Det var precis Alex' korta klipp.
+        let Some((l, r, sr)) = load_audio_or_report(path) else {
+            self.status_message = crate::tstatus!(
+                "⚠ Kunde inte läsa '{}' — läggs inte till på tidslinjen (mp3 stöds inte, konvertera till wav)",
+                item.name
+            );
+            return;
+        };
+        let duration_secs = l.len() as f32 / sr as f32;
+        let pcm_opt = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
         let reg_len_bars = (tempo.bars_for_secs_at(0.0, duration_secs as f64) as f32).max(0.25);
 
         let region = AudioRegion {
@@ -3364,6 +3375,27 @@ impl SonixApp {
     }
 
     pub fn add_sample_item_to_track_at_bar(&mut self, track_idx: usize, item: &LibrarySampleItem, start_bar: f32) {
+        // Guarden ligger FÖRE spårskapandet nedan: annars skulle ett tomt spår bli
+        // kvar när ljudet inte kan läsas. Klippet får inte skapas utan sitt ljud —
+        // den här vägen hittade på en längd (fyra takter) när avkodningen misslyckades
+        // och lade regionen på spåret ändå, med bibliotekets grova översikt som vågform
+        // och originalfilen som källa. En mp3, som appen inte kan avkoda, blev ett tyst
+        // klipp som ritades som om det hade ljud. Det var precis Alex' korta klipp.
+        let Some(ref path) = item.file_path else {
+            self.status_message =
+                crate::tstatus!("⚠ '{}' har ingen ljudfil — läggs inte till", item.name);
+            return;
+        };
+        let Some((l, r, sr)) = load_audio_or_report(path) else {
+            self.status_message = crate::tstatus!(
+                "⚠ Kunde inte läsa '{}' — läggs inte till på tidslinjen (mp3 stöds inte, konvertera till wav)",
+                item.name
+            );
+            return;
+        };
+        let duration_secs = l.len() as f32 / sr as f32;
+        let pcm_opt = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
+
         if track_idx >= self.playlist_tracks.len() {
             let mut track = PlaylistTrack::new(format!("🎵 {}", item.name), "🎵", TrackKind::CustomAudio, item.color);
             track.volume = 0.90;
@@ -3371,14 +3403,6 @@ impl SonixApp {
         }
 
         let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
-        let mut pcm_opt = None;
-        let duration_secs = if let Some(ref path) = item.file_path && let Some((l, r, sr)) = load_audio_or_report(path) {
-            let dur = l.len() as f32 / sr as f32;
-            pcm_opt = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
-            dur
-        } else {
-            tempo.secs_for_bars_at(0.0, 4.0) as f32
-        };
         // Längden mäts från takten där klippet hamnar, inte från noll: över ett
         // tempobyte är antalet takter inte samma sak beroende på var man mäter.
         let reg_len_bars =

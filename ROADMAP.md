@@ -643,8 +643,12 @@ ljudet inte kan läsas. Den skapar aldrig ett klipp utan ljud. Alla vägar som s
 en region bör följa den modellen i stället för att skapa ett klipp med
 nollängd/tom vågform. Att gå igenom dem är nästa steg:
 
-- `add_sample_item_to_timeline` (två varianter) — skapar regionen även när
-  avkodningen misslyckats (längden blir då fel, inte bara ljudet).
+- ~~`add_sample_item_to_timeline` (två varianter)~~ — **KLART.** Båda hittade på en
+  längd (fyra takter) när avkodningen misslyckades och skapade regionen ändå, med
+  bibliotekets grova översikt som vågform och originalfilen som källa. Det var
+  exakt hur Alex' korta klipp blev tysta med trovärdiga vågor. Nu: rapportera och
+  avbryt, som `import_audio_file_as_track`. I `add_sample_item_to_track_at_bar`
+  ligger guarden **före** spårskapandet — annars blev ett tomt spår kvar.
 - `open_sample_in_vocal_studio` / `open_region_in_vocal_studio`.
 - ▶-förhandslyssningen i Sound Browser (gör inget alls vid fel, utan att säga det).
 - Det frusna spårets avkodning.
