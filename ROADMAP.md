@@ -548,3 +548,23 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
   - **En läxa om verktyg, för framtiden:** `cargo fmt` får **inte** köras i det här repot. Det är inte rustfmt-formaterat, så en körning gav 11 123 rader churn i 51 filer — allt backat, och nya filer formateras enskilt (`rustfmt <fil>`) i stället.
 - [ ] **8.3 Routing på riktigt** (utöver bussar/VCA: sends och sidokedjor mellan spår).
 - [ ] **8.4 Sampler** (ett riktigt samplerinstrument i kanalracket, inte bara en WAV-spelare).
+
+### 8.3 Exakta vågformer (Alex krav, 2026-09-12)
+
+**Kravet, ordagrant:** vågformerna i tidslinjen ska vara **exakta**, inte "pixlade" som i dag — musikskapande och klippning kräver exakthet.
+
+**Orsaken, mätt (inte gissad):** `visual_peaks_from` trycker ihop hela filen till **högst 512 punkter** *en gång*, oavsett zoom (`let count = 512.min(samples.len().max(64))`). En fyra minuter lång tagning är 11,5 miljoner samplar → en punkt per **~0,47 sekund**. De 512 punkterna sträcks sedan ut över hur många bildpunkter regionen än upptar, och då syns de som trappsteg. Det går inte att klippa exakt i en vågform som visar en halv sekund per steg.
+
+Dessutom räknades bara `max(abs(x))` per fönster: ett **symmetriskt** hölje. Det ser rimligt ut för en sinuston men ljuger om en osymmetrisk signal — och formen är just vad man tittar på när man letar efter var ett anslag börjar.
+
+**Gjort:** `src/audio/waveform.rs` — `envelope_per_pixel(samples, pixels)` ger ett **äkta (min, max) per bildpunkt**. Fyra tester håller det fast:
+
+- ett anslag på sample 900 av 1000 hamnar i kolumn 90 av 100 (och i sista kolumnen av 10),
+- osymmetri bevaras (+0,2/−0,8 är inte ±0,8),
+- varje sample räknas exakt en gång och i ordning,
+- bredden ger exakt så många kolumner, också när det finns fler pixlar än samplar.
+
+**Kvar till kravet är uppfyllt i fönstret:**
+
+1. **Flernivå-cache (mip)** i `waveform_cache_dir()`: att räkna om höljet ur hela PCM:en varje bildruta är O(samplar) per bildruta och går inte för en lång fil. Cachen ska ge *samma svar snabbare* — och kan därför prövas mot `envelope_per_pixel`, vilket är skälet att den funktionen skrevs först.
+2. **Koppla in den i ritningen** (samma pass som tidlinjens `px_per_sec`), där vågformen ritas som vertikala streck mellan min och max i stället för som en kurva genom 512 punkter.
