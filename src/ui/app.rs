@@ -586,6 +586,59 @@ fn default_sample_end() -> f32 {
     1.0
 }
 
+/// Har sökvägen den ändelsen? (skiftlägesoberoende)
+fn has_extension(path: &std::path::Path, ext: &str) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.eq_ignore_ascii_case(ext))
+        .unwrap_or(false)
+}
+
+/// Nyckeln som avgör om två filer är SAMMA stämma: filnamnet utan ändelse.
+fn stem_key(path: &std::path::Path) -> Option<String> {
+    path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_lowercase())
+}
+
+/// Väljer vilka stämmor som ska importeras (Fas 8.5). Returnerar urvalet och hur
+/// många mp3:er som hoppades över.
+///
+/// **Varför:** appen kan inte spela mp3 — bara konvertera den till wav. Finns
+/// samma stämma redan som wav är mp3:n ett extra varv genom konverteringen utan
+/// att tillföra något, och det var precis det Alex såg: importören läste mp3:erna
+/// några sekunder och fortsatte sedan med wav-filerna. Finns stämman *bara* som
+/// mp3 ska den förstås med — då ÄR den stämman.
+///
+/// Regeln ligger som en egen funktion för att kunna prövas utan fönster, och för
+/// att den dialog Alex föreslog ska kunna återanvända exakt samma logik: frågan
+/// är bara om man vill behålla mp3-filerna när wav redan finns.
+fn stem_files_for_import(
+    files: Vec<std::path::PathBuf>,
+    keep_mp3: bool,
+) -> (Vec<std::path::PathBuf>, usize) {
+    if keep_mp3 {
+        return (files, 0);
+    }
+    let wav_stems: std::collections::HashSet<String> = files
+        .iter()
+        .filter(|p| has_extension(p, "wav"))
+        .filter_map(|p| stem_key(p))
+        .collect();
+    let mut kept = Vec::with_capacity(files.len());
+    let mut skipped = 0usize;
+    for f in files {
+        let duplicate = has_extension(&f, "mp3")
+            && stem_key(&f)
+                .map(|k| wav_stems.contains(&k))
+                .unwrap_or(false);
+        if duplicate {
+            skipped += 1;
+        } else {
+            kept.push(f);
+        }
+    }
+    (kept, skipped)
+}
+
 /// Laddar en regions ljud — och minns när det inte gick.
 ///
 /// Alla sex ställen i appen gjorde `if let Ok(...) = load_wav_pcm(path)` **utan
@@ -14211,6 +14264,19 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         }
 
         stem_files.sort();
+        // Samma stämma som wav behöver sin mp3 inte — appen kan inte spela mp3,
+        // bara konvertera, och det är ett varv utan vinst. Utan wav-syskon tas
+        // mp3:n med. (Alex' förslag: en dialog som frågar. Regeln här är samma
+        // logik, så dialogen blir en fråga om detta enda val.)
+        let (stem_files, skipped_mp3) = stem_files_for_import(stem_files, false);
+        if skipped_mp3 > 0
+            && let Ok(mut p) = progress.lock()
+        {
+            p.error_message = Some(crate::tstatus!(
+                "⏭ Hoppade över {} mp3 — samma stämma finns som wav",
+                skipped_mp3
+            ));
+        }
         let total_files = stem_files.len();
 
         {
@@ -17674,7 +17740,54 @@ mod tests {
         assert!((data.bpm - 128.0).abs() < 0.01, "och tempot ska vara kvar");
     }
 
+        /// Importens urvalsregel: en mp3 vars stämma redan finns som wav hoppas över,
+    /// en mp3 utan wav-syskon tas med. (Alex' förslag om en dialog bygger på samma
+    /// regel — dialogen blir en fråga om just detta val.)
     #[test]
+    fn a_stem_is_imported_once_and_the_wav_wins() {
+        use std::path::PathBuf;
+        let f = |n: &str| PathBuf::from(format!("/stems/{n}"));
+        let files = vec![
+            f("Rock (FX).wav"),
+            f("Rock (FX).mp3"),
+            f("Rock (Bass).wav"),
+            f("Rock (Bass).mp3"),
+            f("Endast mp3 (Synth).mp3"),
+        ];
+        let (kept, skipped) = stem_files_for_import(files, false);
+        assert_eq!(skipped, 2, "båda mp3:erna hade wav-syskon");
+        assert_eq!(kept.len(), 3, "två wav + den ensamma mp3:n");
+        assert!(
+            kept.iter()
+                .any(|p| p.to_string_lossy().contains("Endast mp3")),
+            "en mp3 utan wav-syskon ÄR stämman och ska med"
+        );
+        assert!(
+            !kept.iter()
+                .any(|p| p.to_string_lossy().ends_with("(FX).mp3")),
+            "men den som har ett wav-syskon ska bort"
+        );
+    }
+
+    /// Skiftläge och "behåll allt" ska inte kunna överraska.
+    #[test]
+    fn the_import_rule_handles_case_and_the_keep_everything_choice() {
+        use std::path::PathBuf;
+        let f = |n: &str| PathBuf::from(format!("/stems/{n}"));
+        let (kept, skipped) = stem_files_for_import(vec![f("A.WAV"), f("A.MP3")], false);
+        assert_eq!((kept.len(), skipped), (1, 1), "versaler ska inte lura regeln");
+
+        let all = vec![f("A.wav"), f("A.mp3"), f("B.mp3")];
+        let (kept, skipped) = stem_files_for_import(all.clone(), true);
+        assert_eq!(
+            (kept.len(), skipped),
+            (3, 0),
+            "keep_mp3 = allt med, inget tyst bortfall"
+        );
+        assert_eq!(kept, all);
+    }
+
+#[test]
     fn a_frozen_track_plays_its_audio_and_not_its_patterns() {
         let mut track =
             PlaylistTrack::new("Trummor".to_string(), "🥁", TrackKind::Drums, Color32::BLACK);
