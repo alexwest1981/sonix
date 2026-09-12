@@ -56,13 +56,13 @@ Siffrorna ovan mäter **det gränssnittet redan utlovar**. Fas 6–9 är nytt sc
 
 ## ⬜ Vad som återstår (räknat ur listan 2026-09-12)
 
-**Elva punkter är obockade.** Sex från den första räkningen, fyra som kom till 2026-09-12
+**Tio punkter är obockade.** Sex från den första räkningen och fyra som kom till 2026-09-12
 efter researchen om plugins och chopping (rad 7–10; underlaget ligger i `sonix`-skillen som
 `references/daw-research/05-audacity-plugins-effekter-klipp.md`,
 `06-flstudio-plugins-chopping.md` och `07-chopping-och-onset-detektering.md`, alla med
-primärkällor), och en som kom till samma kväll när **8.5a** visade sig ha en steg 2. Sju går
-att göra vid datorn, två kräver Wine och en display, och en kräver en Windows-maskin för
-kvittensen. Ordningen är den som ger mest per timme.
+primärkällor). Sju går att göra vid datorn, två kräver Wine och en display, och en kräver en
+Windows-maskin för kvittensen. Ordningen är den som ger mest per timme. (8.5a steg 2 stod som
+en elfte rad och är **klart** sedan samma kväll — se `Gjort`.)
 
 **Ändrat 2026-09-12 kväll:** klass-fixen i **8.5** stängde elva ställen som läste ljud
 utan att säga till när det misslyckades, och de två vägarna från Sound Browser som
@@ -79,11 +79,11 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
-| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | Den mest **synliga** luckan i ett arbetsflöde: choppern har en trim-ruta och en knapp märkt "Transient" som bara sätter slutet till 18 % | — |
+| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** (slagen hittas, slicekarta, sparas i projektfilen); kvar: nudge, per-slice-fade och dump till steg/piano roll | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
-| 11 | **8.5a steg 2** *(2026-09-12 kväll)* | *S* | Separatörens **egen** väg: `install_separation` skriver filerna men pekar regionerna på originalet och kastar skrivfelet (`let _ = write_stem_wav`) — knappen "exportera stämmorna" gör hela jobbet, den automatiska vägen gör det inte | — |
+
 
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
 release, ett bevisstycke här i roadmapen — och för det som hörs eller syns, en kvittens
@@ -165,6 +165,16 @@ läste ljud utan att säga till, de fyra "påhittade ljud"-vägarna, import-dial
 (`sonix --clean-tags` tar bort tjänsternas taggar utan att röra ljudet) · stämvyn ritar den
 sanna vågformen ur stämmans egna samplar · 6.2:s återställ-knapp (den var trasig, inte
 obekräftad).
+
+**8.5a steg 2 (2026-09-12 kväll, `5408b56`):** `install_separation` skriver sina stämmor och
+**minns var de ligger** (`stem_files`), säger till när skrivningen misslyckas i stället för att
+kasta felet med `let _ =`, och använder samma mapp och samma basnamn som exportknappen — så en
+separation och en export skriver samma fil en gång, inte två gånger på två ställen. Två vägar
+som skrev stämfiler blev en (`paths::stem_file`, utan användare, togs bort).
+
+**8.7 steg 1 (2026-09-12 kväll, `23c3b6b`):** choppern hittar slagen i filen i stället för att
+sätta slutet till 18 % (se fas 8.7 — algoritmen, mätningarna och varför tidsdomän räcker för
+trummor).
 
 **Verktyg och underhåll (inte roadmap-punkter, men gjort samma dygn):** skärmdumpsloopen får
 tålamod och skriver ut felet i stället för att vänta för evigt · realtidsbänken räknar antalet
@@ -746,7 +756,26 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     plugin-installation). Audacity har ingen av de tre — plugins kör i samma process och kan
     fälla appen, och CLAP nämns inte alls i deras dokumentation.
 - [ ] **8.7 Chopper: från en trim-ruta till en slicemappning** — *M*
-  - **Läget i koden (mätt 2026-09-12):** `active_chopper_channel` ger **en** trim-ruta per
+  - **Steg 1 klart (2026-09-12, `23c3b6b`).** Slagen hittas i filen: `src/audio/onset.rs`
+    (anslags-hölje = halvvågslikriktad förstadifferens + enpolsfilter, lokal **centrerad**
+    tröskel, lokala maxima, minsta avstånd mellan slag, och backtrack till energiminimumet
+    före anslaget — samma som librossas `onset_detect(backtrack=True)`, så slicen börjar
+    strax **före** attacken i stället för mitt i den). `slices_from_onsets` delar hela filen
+    utan glapp och utan överlapp. I mixerns chopper: **"🔍 Hitta slag"** och sliceknappar
+    (ett klick sätter trimfönstret, alltså samma väg som provspelningen spelar),
+    slicegränserna ritas i vågformen, och slicekartan **följer med i projektfilen** (6.7:s
+    fullständighetsvakt krävde det). Går ljudet inte att läsa säger choppern det i stället
+    för att hitta på slag. **Den påhittade "⚡ Transient"-knappen är borta.**
+    **Mätt under arbetet:** ett boxfilter i höljet gav moiré på en jämn ton (20 falska slag),
+    2 ms enpolsfilter gav 32, och en *släpande* tröskellinje gav 5 falska slag i sitt
+    uppvaknande — först 4 ms enpolsfilter + centrerad tröskel ger 0 slag i en jämn ton och
+    exakt rätt antal i ett klickmönster. 8 tester i modulen.
+  - **Steg 2 kvar:** flytta en slicegräns (**nudge**), **per-slice-fade** 1–5 ms vid
+    kanterna (Reapers Fade pad, Abeltons per-slice-fade), och **dumpa slicarna till steg eller
+    piano roll** (FL:s "Convert to score and dump to piano roll", Reapers "Create chromatic
+    MIDI item from slices"). Spektral flux med FFT i stället för tidsdomänen hör också hit —
+    starkare på melodiöst och vibrato-rikt material, onödigt för trummor.
+  - **Läget i koden före steg 1 (mätt 2026-09-12):** `active_chopper_channel` ger **en** trim-ruta per
     kanal (`sample_start`/`sample_end` i procent av filen) med snabbval `1/2`, `1/4`, `2/4` …
     och en knapp märkt **"⚡ Transient"** som bara sätter `sample_end = 0.18`. Ingen
     slicemappning, ingen detektering, ingen koppling till steg eller piano roll, ingen
