@@ -140,6 +140,29 @@ Sonix stöder fullständig flerspårs-stämimport från alla källor:
   - `FX / Other` ➔ ✨ Effektsändning.
 * Bakgrundsinläsningen visar en **progress bar** som visar exakt vilket spår som avkodas just nu.
 
+### mp3 eller wav? — frågan innan importen
+Finns både en mp3 och en wav för **samma stämma** frågar Sonix vilka filer som ska läsas in, och frågan kommer **innan** avkodningen börjar:
+
+* **Hoppa över mp3:erna (rekommenderas)** — standard. Sonix spelar wav; en mp3 som måste konverteras först är ett extra varv när wav-filen redan finns.
+* **Ta med mp3:erna också** — allt läses in.
+* En stämma som **bara** finns som mp3 tas alltid med — då *är* mp3:an stämman.
+
+Frågan gäller alla vägar in: ZIP-arkiv, mapp, drag & drop — och stämseparatorn, där frågan i stället är *vilken* fil som ska separeras när vald mp3 har sin wav bredvid sig.
+
+### Stämseparatorn (🧠 Stems)
+Vyn **🧠 Stems** separerar en färdig mix i fyra stämmor — sång, trummor, bas och instrument. Motorn är din lokala HTDemucs-modell om en sådan finns installerad (kräver en build med `--features neural`), annars Sonix egen DSP-separator; statusraden säger vilken som användes.
+
+När du lägger stämmorna i arrangeraren skrivs de som **32-bitars WAV-filer** i projektets egen materialmapp — `~/Music/Sonix/Projects/<projekt>/Stems/<källa>-vocals.wav` (och `-drums`, `-bass`, `-instruments`). Klippet pekar alltså på **sitt eget ljud** i stället för på originalet, och spelar därför även nästa gång projektet öppnas. Går en fil inte att skriva, eller inte att läsa tillbaka, skapas **inga klipp** och statusraden säger vad som gick fel.
+
+### Ljud som inte går att läsa — Sonix tiger inte
+WAV läses nativt. mp3, flac, ogg och m4a läses genom **ffmpeg** där vägen stöder det (stämseparatorn gör det); tidslinjen, kanalracket och Sångstudion arbetar med WAV.
+
+En fil som inte kan läsas blir därför **aldrig ett tyst klipp som ser ut att ha ljud**: vägen rapporterar och avbryter (eller hoppar över filen) och statusraden namnger filen. Samma sak gäller en inspelning eller ett fruset spår vars fil försvunnit. Vill du ha en mp3 på tidslinjen, konvertera den först:
+
+```
+ffmpeg -i låt.mp3 låt.wav
+```
+
 ---
 
 ## 6. Dedikerad Stämeditor & Ljudfokus (Stem Detail & Focus Editor)
@@ -269,6 +292,8 @@ Alla sökvägar byggs av en enda modul och följer XDG-standarden. Kör `sonix -
 | Plats | Innehåll |
 | :--- | :--- |
 | `~/Music/Sonix/Projects/` | Dina projekt: `<namn>.sonix` + en mapp `<namn>/` för projektets egna media |
+| `<projektmappen>/Frozen/` | Frusna spår som 32-bitars WAV (mellansteg — skrivs om när du fryser igen) |
+| `<projektmappen>/Stems/` | Separerade stämmor som 32-bitars WAV, skrivna när de läggs i arrangeraren |
 | `~/Music/Sonix/Samples/` | Dina egna samples (sparas hit när du klipper ur tidslinjen) |
 | `~/Music/Sonix/Factory_Samples/` · `Templates/` | Fabriksljud (genereras första gången) och projektmallar |
 | `~/.config/sonix/` | `config.json` (språk), `audio.json` (ljudström), `ai.json` (API-nycklar, endast läsbar för dig) |
