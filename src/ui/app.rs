@@ -8378,8 +8378,8 @@ impl SonixApp {
 
                         // High Precision LCD Time Display (Hundredths of a second)
                         let time_str = format_time_hundredths(self.song_time);
-                        let sec_per_bar = 60.0 / self.bpm * 4.0;
-                        let bar_float = self.song_time / sec_per_bar;
+                        let bar_float =
+                            self.tempo_map().bar_at_secs(self.song_time as f64) as f32;
                         let bar_text = format_bar_subdivisions(bar_float);
                         let full_time_str = format!("⏱ {}  {}", time_str, bar_text);
                         ui.label(egui::RichText::new(full_time_str).monospace().strong().size(11.5).color(Theme::FL_CYAN));
@@ -9098,18 +9098,30 @@ impl SonixApp {
                                 ui.memory_mut(|m| m.stop_text_input());
                                 if let Some(mouse_pos) = ruler_resp.hover_pos() {
                                     let click_bar = (mouse_pos.x - ruler_rect.min.x) / bar_w;
-                                    let raw_sec = click_bar * sec_per_bar;
+                                    // Snäppningen sker i TAKTER, inte i sekunder: ett
+                                    // 16-delssteg är en plats i takten, och över ett
+                                    // tempobyte finns inget enda "sekunder per takt" att
+                                    // räkna steg med. Sekunderna kommer ur kartan på ett
+                                    // ställe, efteråt.
+                                    let tempo = self.tempo_map();
                                     let target_sec = match self.timeline_snap_mode {
-                                        TimeSnapMode::FreeHundredth => (raw_sec * 100.0).round() / 100.0,
+                                        TimeSnapMode::FreeHundredth => {
+                                            // Hundradelar är en TID, inte en plats:
+                                            // där är sekunden själv enheten.
+                                            let raw_sec = tempo.secs_at_bar(click_bar as f64) as f32;
+                                            (raw_sec * 100.0).round() / 100.0
+                                        }
                                         TimeSnapMode::Snap16th => {
-                                            let step_sec = sec_per_bar / 16.0;
-                                            (raw_sec / step_sec).round() * step_sec
+                                            let bar = (click_bar * 16.0).round() / 16.0;
+                                            tempo.secs_at_bar(bar as f64) as f32
                                         }
                                         TimeSnapMode::SnapBeat => {
-                                            let beat_sec = sec_per_bar / 4.0;
-                                            (raw_sec / beat_sec).round() * beat_sec
+                                            let bar = (click_bar * 4.0).round() / 4.0;
+                                            tempo.secs_at_bar(bar as f64) as f32
                                         }
-                                        TimeSnapMode::SnapBar => (raw_sec / sec_per_bar).round() * sec_per_bar,
+                                        TimeSnapMode::SnapBar => {
+                                            tempo.secs_at_bar(click_bar.round() as f64) as f32
+                                        }
                                     };
                                     scrub_target_sec = Some(target_sec.max(0.0));
                                     self.pattern_mode = false;
@@ -9119,7 +9131,8 @@ impl SonixApp {
                             // Ruler Hover Tooltip with exact hundredths
                             if let Some(hover_pos) = ruler_resp.hover_pos() {
                                 let h_bar = (hover_pos.x - ruler_rect.min.x) / bar_w;
-                                let h_sec = (h_bar * sec_per_bar).max(0.0);
+                                let h_sec = (self.tempo_map().secs_at_bar(h_bar as f64) as f32)
+                                    .max(0.0);
                                 ruler_resp.clone().on_hover_text(format!("⏱ {} {}\n{}", crate::i18n::t("Tid:"), format_time_hundredths(h_sec), format_bar_subdivisions(h_bar)));
                             }
 
