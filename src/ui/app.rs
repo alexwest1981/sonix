@@ -9132,18 +9132,25 @@ impl SonixApp {
                 ui.group(|ui| {
                     ui.set_height(26.0);
                     ui.horizontal(|ui| {
-                        let (bpm_rect, bpm_resp) = ui.allocate_exact_size(Vec2::new(65.0, 20.0), Sense::click_and_drag());
-                        if bpm_resp.dragged() {
-                            let dy = bpm_resp.drag_delta().y;
-                            self.bpm = (self.bpm - dy * 0.5).clamp(40.0, 280.0);
-                        }
-                        ui.painter().rect_filled(bpm_rect, Rounding::same(2.0), Color32::from_rgb(26, 32, 42));
-                        ui.painter().text(
-                            bpm_rect.center(),
-                            egui::Align2::CENTER_CENTER,
-                            format!("{:.1} BPM", self.bpm),
-                            egui::FontId::monospace(11.0),
-                            Theme::TEXT_BRIGHT,
+                        let (bpm_rect, _) =
+                            ui.allocate_exact_size(Vec2::new(72.0, 20.0), Sense::hover());
+                        ui.painter().rect_filled(
+                            bpm_rect,
+                            Rounding::same(2.0),
+                            Color32::from_rgb(26, 32, 42),
+                        );
+                        // Skrivbart OCH dragbart — samma kontroll som tempodialogen
+                        // använder. Att bara kunna dra tvingade fram skrubbande tills
+                        // det blev "nästan" rätt; nu går det att skriva 48.2 exakt.
+                        // DragValue visar en textmarkör vid klick och tar siffror,
+                        // Enter, och Escape (avbryter) — beteendet kommer från egui,
+                        // inte från en egen tolkning av tangenttryck.
+                        ui.put(
+                            bpm_rect.shrink2(Vec2::new(4.0, 2.0)),
+                            egui::DragValue::new(&mut self.bpm)
+                                .speed(0.5)
+                                .range(40.0..=280.0)
+                                .suffix(" BPM"),
                         );
 
                         if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 TAP")).strong().size(10.0).color(Color32::WHITE)).fill(Color32::from_rgb(180, 70, 20))).on_hover_text(crate::i18n::t("Klicka i takt för att sätta tempo (Tap Tempo)")).clicked() {
