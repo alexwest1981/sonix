@@ -5651,7 +5651,7 @@ impl SonixApp {
         self.autosave_accum = 0.0;
         self.selected_audio_region = None;
         let opened_name = self.project_name.clone();
-        self.status_message = if plugin_errors.is_empty() {
+        let opened = if plugin_errors.is_empty() {
             crate::tstatus!("📂 Öppnade projekt '{}'!", opened_name)
         } else {
             crate::tstatus!(
@@ -5659,6 +5659,20 @@ impl SonixApp {
                 opened_name,
                 plugin_errors.len()
             )
+        };
+        // **Säg det vid inläsningen, inte först när tempot rörs** (Fas 8.10).
+        //
+        // Ett projekt vars klipp saknar känt inspelningstempo ser ut som ett projekt där
+        // tempokontrollen är död: rutnätet går i projektets tempo medan ljudet står still.
+        // Alex mötte precis det — ett återställt tempo på 68 BPM (hans eget drag) och nio
+        // klipp utan mått — och fick ingen ledtråd förrän han bytte tempo. En rad vid
+        // inläsningen hade sagt det direkt.
+        self.status_message = match tempo_change_note(
+            self.clips_with_source_tempo(),
+            self.clips_without_source_tempo(),
+        ) {
+            Some(note) => crate::tstatus!("{} {}", opened, note),
+            None => opened,
         };
     }
 
@@ -18965,6 +18979,20 @@ mod tests {
         assert_eq!(playback_for(stretch, false), (1.0, false));
         // ... och med filen klar: filen spelas med faktor 1,0.
         assert_eq!(playback_for(stretch, true), (1.0, true));
+    }
+
+    /// Och raden ska komma **vid inläsningen**, inte först när tempot rörs: ett projekt
+    /// vars klipp saknar mått ser annars ut som ett projekt där kontrollen är död.
+    #[test]
+    fn the_load_message_carries_the_same_note() {
+        let opened = "📂 Öppnade projekt 'Rock and Hard Place'!";
+        let note = tempo_change_note(0, 9).expect("nio klipp utan mått ska sägas");
+        assert!(
+            format!("{opened} {note}").contains('9'),
+            "inläsningsraden ska bära antalet"
+        );
+        // Och ett projekt där allt följer får ingen extra rad.
+        assert_eq!(tempo_change_note(9, 0), None);
     }
 
     /// **Felet i Alex' "inget hände".**
