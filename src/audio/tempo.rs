@@ -51,6 +51,13 @@ impl TempoMap {
     }
 
     /// Bygger en karta och normaliserar den.
+    ///
+    /// Används av testerna i dag, och av UI:t när tempobyten får en egen vy
+    /// (steg 3) — därför står den kvar även om inget anropar den än.
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "väntar på UI:t för tempobyten (8.2 steg 3)")
+    )]
     pub fn from_points(mut points: Vec<TempoPoint>) -> Self {
         points.sort_by_key(|p| p.start_bar);
         // En punkt per takt, och den SISTA vinner: två svar på samma takt vore
@@ -80,6 +87,10 @@ impl TempoMap {
         Self { points: unique }
     }
 
+    #[cfg_attr(
+        not(test),
+        allow(dead_code, reason = "väntar på UI:t för tempobyten (8.2 steg 3)")
+    )]
     pub fn points(&self) -> &[TempoPoint] {
         &self.points
     }
@@ -113,6 +124,17 @@ impl TempoMap {
             return (((60.0 / self.points[0].bpm) * 4.0) as f64).max(0.0);
         }
         ((60.0f64 / self.bpm_at(bar) as f64) * 4.0).max(0.0)
+    }
+
+    /// Sekunder per taktslag (fjärdedelsnot) i takten `bar`.
+    ///
+    /// Samma uttryck som appen använder för svepets svans och för SMF, så att
+    /// även det är bitvis oförändrat med ett tempo.
+    pub fn secs_per_beat_at(&self, bar: f64) -> f64 {
+        if self.is_single() {
+            return ((60.0 / self.points[0].bpm) as f64).max(0.0);
+        }
+        (60.0f64 / self.bpm_at(bar) as f64).max(0.0)
     }
 
     /// Sekunder per 16-delssteg i takten `bar`.
@@ -154,11 +176,35 @@ impl TempoMap {
         secs.max(0.0)
     }
 
+    /// Längden i sekunder av `bars` takter som börjar i takten `from_bar`.
+    ///
+    /// Med ett enda tempo **exakt** `bars * sekunder-per-takt`, räknat som i dag
+    /// — inte en differens av två positioner, som kan skilja i sista biten. Med
+    /// flera punkter summeras varje tempoavsnitt för sig, så att en kloss som
+    /// sträcker sig över ett tempobyte får sin rätta längd i stället för att
+    /// mätas med tempot som råkade gälla där den började.
+    pub fn secs_for_bars_at(&self, from_bar: f64, bars: f64) -> f64 {
+        if bars <= 0.0 {
+            return 0.0;
+        }
+        if self.is_single() {
+            return (((60.0 / self.points[0].bpm) * 4.0) as f64 * bars).max(0.0);
+        }
+        self.secs_at_bar(from_bar + bars) - self.secs_at_bar(from_bar)
+    }
+
     /// Takten som innehåller sekunden `secs` — kartans invers.
     ///
     /// Inversen är **inte** exakt i flyttal (den är en division), så den som
     /// behöver ett exakt taktnummer ska hålla reda på takten i stället för att
     /// räkna tillbaka den.
+    #[cfg_attr(
+        not(test),
+        allow(
+            dead_code,
+            reason = "behövs när importerade filers längd räknas om till takter (8.2 steg 3)"
+        )
+    )]
     pub fn bar_at_secs(&self, secs: f64) -> f64 {
         if secs <= 0.0 {
             return 0.0;
@@ -243,6 +289,47 @@ mod tests {
             "fyra takter i vardera tempot"
         );
         assert!((map.secs_at_bar(5.0) - (4.0 * two + one)).abs() < 1e-9);
+    }
+
+    /// Längden ska vara exakt dagens multiplikation med ett tempo, och rätt
+    /// summerad över ett tempobyte med flera.
+    #[test]
+    fn a_length_is_exact_with_one_tempo_and_piecewise_with_several() {
+        for bpm in [40.0f32, 120.0, 174.0] {
+            let map = TempoMap::single(bpm);
+            let legacy = ((60.0 / bpm) * 4.0) as f64;
+            for (from, bars) in [(0.0f64, 1.0f64), (3.0, 4.0), (0.5, 0.25), (12.0, 3.5)] {
+                assert_eq!(
+                    map.secs_for_bars_at(from, bars),
+                    legacy * bars,
+                    "{bars} takter från {from} vid {bpm} BPM ska vara exakt som i dag"
+                );
+            }
+            assert_eq!(map.secs_for_bars_at(0.0, 0.0), 0.0);
+            assert_eq!(
+                map.secs_for_bars_at(5.0, -1.0),
+                0.0,
+                "negativ längd ger noll"
+            );
+        }
+
+        // Tempobyte mitt i klossen: 120 BPM i takt 0–3, 60 BPM därefter.
+        let map = TempoMap::from_points(vec![
+            TempoPoint {
+                start_bar: 0,
+                bpm: 120.0,
+            },
+            TempoPoint {
+                start_bar: 4,
+                bpm: 60.0,
+            },
+        ]);
+        let two = (60.0f64 / 120.0) * 4.0;
+        let one = (60.0f64 / 60.0) * 4.0;
+        // Från takt 2, fyra takter lång: 2 takter i 120 + 2 i 60.
+        assert!((map.secs_for_bars_at(2.0, 4.0) - (2.0 * two + 2.0 * one)).abs() < 1e-9);
+        // Helt inom ett tempoavsnitt: exakt.
+        assert_eq!(map.secs_for_bars_at(4.0, 2.0), one * 2.0);
     }
 
     #[test]

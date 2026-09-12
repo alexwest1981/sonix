@@ -812,6 +812,17 @@ pub fn render_clips_for(track: &PlaylistTrack) -> [Option<usize>; 32] {
     }
 }
 
+/// Ska ett spårs ljud med i en rendering?
+///
+/// Ett fruset spår hörs som ljud i **sång-läget**. Pattern-läget renderar
+/// kanalracket, och där hör spårets frysta ljud inte hemma — utan den regeln
+/// hamnar det i en pattern-export som inte bad om det. Regeln ligger som en egen
+/// funktion för att den gick att tappa bort i en omskrivning (den gjorde det,
+/// under arbetet med tempokartan) och för att den nu prövas av sviten.
+pub fn frozen_audio_in_render(track: &PlaylistTrack, pattern_mode: bool) -> bool {
+    !(pattern_mode && track.frozen_pcm.is_some())
+}
+
 /// Regionen ett fruset spår spelar: hela filen från början. Längden räknas ur
 /// bufferten i stället för ur takter, så den följer med automatiskt när
 /// frysningen görs om eller tempot ändras.
@@ -2672,27 +2683,42 @@ impl SonixApp {
         });
     }
 
+    /// Regionerna ett spår spelar, i sekunder, som motorn vill ha dem.
+    ///
+    /// **Ett ställe för omräkningen takter→sekunder.** Tre funktioner gjorde
+    /// samma sak förut (två synkvägar och exporten), vilket är hur två svar på
+    /// samma fråga uppstår. Nu går de genom tempokartan (Fas 8.2), så att en
+    /// framtida tempokarta slår igenom i uppspelning och export samtidigt.
+    ///
+    /// Ett fruset spår är ETT långt ljud från början; ett ljudspår har sina egna
+    /// regioner. Längder räknas som längder (inte som en differens av två
+    /// positioner), eftersom en kloss kan sträcka sig över ett tempobyte.
+    fn stem_regions_for(&self, t: &PlaylistTrack) -> Vec<StemRegionPlayback> {
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        let mut regions: Vec<StemRegionPlayback> = Vec::new();
+        if let Some((l, _r, sr)) = t.frozen_pcm.as_ref() {
+            regions.push(frozen_region(l, *sr));
+        }
+        regions.extend(t.regions.iter().map(|r| {
+            let from = r.start_bar as f64;
+            StemRegionPlayback {
+                start_time_secs: tempo.secs_at_bar(from) as f32,
+                length_secs: tempo.secs_for_bars_at(from, r.length_bars as f64) as f32,
+                sample_offset_sec: r.sample_offset_sec,
+                gain: r.volume,
+                fade_in_sec: tempo.secs_for_bars_at(from, r.fade_in_bars as f64) as f32,
+                fade_out_sec: tempo.secs_for_bars_at(from, r.fade_out_bars as f64) as f32,
+                muted: r.muted,
+                is_reverse: r.is_reverse,
+                loop_length_secs: tempo.secs_for_bars_at(from, r.loop_length_bars as f64) as f32,
+            }
+        }));
+        regions
+    }
+
     pub fn sync_track_regions(&mut self, track_idx: usize) {
         if track_idx < self.playlist_tracks.len() {
-            let sec_per_bar = 60.0 / self.bpm * 4.0;
-            let t = &self.playlist_tracks[track_idx];
-            let mut region_playbacks = Vec::new();
-            if let Some((l, _r, sr)) = t.frozen_pcm.as_ref() {
-                region_playbacks.push(frozen_region(l, *sr));
-            }
-            for r in &t.regions {
-                region_playbacks.push(StemRegionPlayback {
-                    start_time_secs: r.start_bar * sec_per_bar,
-                    length_secs: r.length_bars * sec_per_bar,
-                    sample_offset_sec: r.sample_offset_sec,
-                    gain: r.volume,
-                    fade_in_sec: r.fade_in_bars * sec_per_bar,
-                    fade_out_sec: r.fade_out_bars * sec_per_bar,
-                    muted: r.muted,
-                    is_reverse: r.is_reverse,
-                    loop_length_secs: r.loop_length_bars * sec_per_bar,
-                });
-            }
+            let region_playbacks = self.stem_regions_for(&self.playlist_tracks[track_idx]);
             let _ = self.engine.send_command(AudioCommand::SetStemTrackRegions {
                 track_index: track_idx,
                 regions: region_playbacks,
@@ -4592,24 +4618,7 @@ impl SonixApp {
                     start_time_secs: 0.0,
                 });
             }
-            let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-            let mut stem_regions: Vec<crate::audio::command::StemRegionPlayback> = Vec::new();
-            if let Some((l, _r, sr)) = t.frozen_pcm.as_ref() {
-                stem_regions.push(frozen_region(l, *sr));
-            }
-            stem_regions.extend(t.regions.iter().map(|r| {
-                crate::audio::command::StemRegionPlayback {
-                    start_time_secs: r.start_bar * sec_per_bar,
-                    length_secs: r.length_bars * sec_per_bar,
-                    sample_offset_sec: r.sample_offset_sec,
-                    gain: r.volume,
-                    fade_in_sec: r.fade_in_bars * sec_per_bar,
-                    fade_out_sec: r.fade_out_bars * sec_per_bar,
-                    muted: r.muted,
-                    is_reverse: r.is_reverse,
-                    loop_length_secs: r.loop_length_bars * sec_per_bar,
-                }
-            }));
+            let stem_regions = self.stem_regions_for(t);
             let _ = self.engine.send_command(AudioCommand::SetStemTrackRegions {
                 track_index: track_idx,
                 regions: stem_regions,
@@ -12830,7 +12839,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
     fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u32) -> crate::audio::RenderSpec {
         use crate::audio::{PatternSnap, RackChannel, TrackAudioSnap, TrackRole, TrackSnap, VoiceSpec};
 
-        let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
         let pattern_mode = self.pattern_mode;
 
         let rack = self.channels.iter().map(|ch| {
@@ -12881,33 +12890,17 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         }).collect();
 
         let timeline = self.playlist_tracks.iter().enumerate().filter_map(|(idx, t)| {
-            // Ett fruset spår ligger som ett enda långt ljud från låtens början;
-            // ljudspår har sina egna regioner. Pattern-läget renderar kanalracket
-            // och ska inte få spårets ljud med sig.
-            let frozen = if pattern_mode { None } else { t.frozen_pcm.as_ref() };
-            let (l, r, sr) = frozen.or(t.pcm_audio.as_ref())?;
-            let regions = if frozen.is_some() {
-                vec![frozen_region(r, *sr)]
-            } else {
-                t.regions
-                    .iter()
-                    .map(|r| crate::audio::StemRegionPlayback {
-                        start_time_secs: r.start_bar * sec_per_bar,
-                        length_secs: r.length_bars * sec_per_bar,
-                        sample_offset_sec: r.sample_offset_sec,
-                        gain: r.volume,
-                        fade_in_sec: r.fade_in_bars * sec_per_bar,
-                        fade_out_sec: r.fade_out_bars * sec_per_bar,
-                        muted: r.muted,
-                        is_reverse: r.is_reverse,
-                        loop_length_secs: r.loop_length_bars * sec_per_bar,
-                    })
-                    .collect()
-            };
+            if !frozen_audio_in_render(t, pattern_mode) {
+                return None;
+            }
+            let (l, r, sr) = t.frozen_pcm.as_ref().or(t.pcm_audio.as_ref())?;
+            // Samma väg som uppspelningen använder — ett ställe för
+            // omräkningen takter→sekunder, i stället för ett här och ett där.
+            let regions = self.stem_regions_for(t);
             // Sends hör till ljudspårens väg. Pattern-vägen som frysningen
             // ersätter har inga, så de nollas för det frusna spåret — annars
             // skulle det plötsligt få klang som live-uppspelningen inte hade.
-            let (reverb_send, delay_send) = if frozen.is_some() {
+            let (reverb_send, delay_send) = if t.frozen_pcm.is_some() {
                 (0.0, 0.0)
             } else {
                 (t.reverb_send, t.delay_send)
@@ -12944,7 +12937,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             timeline,
             velocities: self.step_velocities,
             solo_track,
-            tail_secs: (60.0 / self.bpm.max(40.0)).min(2.0),
+            tail_secs: (tempo.secs_per_beat_at(0.0) as f32).min(2.0),
             bus_volume: self.bus_volume,
             bus_muted: self.bus_muted,
             bus_solo: self.bus_solo,
@@ -17138,6 +17131,30 @@ mod tests {
             render_clips_for(&track).iter().all(|c| c.is_none()),
             "ett fruset spår ska vara tyst i pattern-vägen — annars hörs det två gånger"
         );
+    }
+
+    #[test]
+    fn a_frozen_track_is_left_out_of_a_pattern_render() {
+        let mut frozen =
+            PlaylistTrack::new("Trummor".to_string(), "🥁", TrackKind::Drums, Color32::BLACK);
+        frozen.frozen = Some(FrozenTrack {
+            path: "/tmp/x.wav".to_string(),
+            digest: 1,
+            stamp: 2,
+        });
+        frozen.frozen_pcm = Some((std::sync::Arc::new(vec![0.0; 8]), std::sync::Arc::new(vec![0.0; 8]), 44_100));
+
+        // Sång-läget: spåret hörs som ljud, och det ska med.
+        assert!(frozen_audio_in_render(&frozen, false));
+        // Pattern-läget renderar kanalracket — spårets frysta ljud ska inte med.
+        assert!(
+            !frozen_audio_in_render(&frozen, true),
+            "ett fruset spår får inte hamna i en pattern-export"
+        );
+        // Ett ofruset spår påverkas inte av läget (det har inget fryst ljud).
+        let plain = PlaylistTrack::new("Bas".to_string(), "🎸", TrackKind::Bassline, Color32::BLACK);
+        assert!(frozen_audio_in_render(&plain, true));
+        assert!(frozen_audio_in_render(&plain, false));
     }
 
     #[test]
