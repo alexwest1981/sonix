@@ -53,7 +53,7 @@ pub mod scale;
 pub mod waveform;
 
 #[allow(unused_imports)]
-pub use command::{AudioCommand, Preset, StemRegionPlayback, Waveform};
+pub use command::{AudioCommand, Preset, StemRegionPlayback, StemSend, Waveform};
 #[allow(unused_imports)]
 pub use drum::DrumType;
 #[allow(unused_imports)]

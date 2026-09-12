@@ -1098,6 +1098,10 @@ pub struct SavedTrackData {
     pub sidechain_amount_db: f32,
     #[serde(default = "default_sidechain_threshold_db")]
     pub sidechain_threshold_db: f32,
+    /// Sends (Fas 8.13): parallella vägar till andra bussar. Saknas i äldre
+    /// projekt — då finns inga sends, precis som förut.
+    #[serde(default)]
+    pub sends: Vec<crate::audio::StemSend>,
     /// Fruset spår (Tier 2): var ljudet ligger och fingeravtrycket av källan.
     /// Äldre projektfil utan fältet läses som ofrusade.
     #[serde(default)]
@@ -1321,6 +1325,10 @@ pub struct PlaylistTrack {
     pub sidechain_amount_db: f32,
     /// Tröskeln key-signalen måste över för att ducka (dB).
     pub sidechain_threshold_db: f32,
+    /// Sends (Fas 8.13): en del av spårets signal till andra bussar, utöver den
+    /// egna. Målet är en buss — en buss skickar inte vidare, så en send kan aldrig
+    /// bli en slinga.
+    pub sends: Vec<crate::audio::StemSend>,
 }
 
 /// Default sub-mix bus for a track kind (Fas 5.2): drums → Trummor, bass and
@@ -1381,6 +1389,7 @@ impl PlaylistTrack {
             sidechain_from: None,
             sidechain_amount_db: 0.0,
             sidechain_threshold_db: -30.0,
+            sends: Vec::new(),
         }
     }
 }
@@ -1518,6 +1527,9 @@ pub struct PreloadedTrackData {
     pub sidechain_from: Option<usize>,
     pub sidechain_amount_db: f32,
     pub sidechain_threshold_db: f32,
+    /// Sends (Fas 8.13), med i förinläsningen så att ett laddat projekt skickar
+    /// sin signal till samma bussar som när det sparades.
+    pub sends: Vec<crate::audio::StemSend>,
     pub stem_pcms: Vec<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
     /// Det **frusna** spårets ljud, om filen gick att läsa vid inläsningen.
     /// Hålls åtskild från `stem_pcms`: `track_pcm` blir det *sista* som lades i
@@ -1611,6 +1623,13 @@ fn mixer_digest(
         mix(t.pitch_semitones);
         mix(t.bus as f32);
         mix(t.vca.map(|v| v as f32).unwrap_or(-1.0));
+        // Sends (Fas 8.13) hör till mixen: målet OCH nivån, och antalet — en send
+        // som tas bort ändrar ljudet även om de kvarvarande är likadana.
+        mix(t.sends.len() as f32);
+        for send in &t.sends {
+            mix(send.target_bus as f32);
+            mix(send.level);
+        }
         mix(t.eq.low_gain_db);
         mix(t.eq.low_freq);
         mix(t.eq.mid_gain_db);
@@ -3239,6 +3258,7 @@ impl SonixApp {
                     sidechain_from: None,
                     sidechain_amount_db: 0.0,
                     sidechain_threshold_db: -30.0,
+                    sends: Vec::new(),
                     stem_pcms: Vec::new(),
                     frozen_pcm: None,
                 });
@@ -4768,6 +4788,7 @@ impl SonixApp {
             sidechain_from: t.sidechain_from,
             sidechain_amount_db: t.sidechain_amount_db,
             sidechain_threshold_db: t.sidechain_threshold_db,
+            sends: t.sends.clone(),
         }).collect();
 
         SonixProjectData {
@@ -5112,6 +5133,7 @@ impl SonixApp {
                     sidechain_from: st.sidechain_from,
                     sidechain_amount_db: st.sidechain_amount_db,
                     sidechain_threshold_db: st.sidechain_threshold_db,
+                    sends: st.sends,
                     stem_pcms,
                     frozen_pcm,
                 });
@@ -5271,6 +5293,15 @@ impl SonixApp {
             loaded_track.sidechain_from = st
                 .sidechain_from
                 .filter(|&k| k < t_idx && k < self.playlist_tracks.len());
+            loaded_track.sends = st
+                .sends
+                .into_iter()
+                .filter(|s| s.level.is_finite() && s.level.abs() > 1e-6)
+                .map(|s| crate::audio::StemSend {
+                    target_bus: s.target_bus.min(crate::audio::synth::NUM_BUSES - 1),
+                    level: s.level.clamp(0.0, 2.0),
+                })
+                .collect();
             loaded_track.sidechain_amount_db = st.sidechain_amount_db.clamp(0.0, 60.0);
             loaded_track.sidechain_threshold_db = st.sidechain_threshold_db.clamp(-80.0, 0.0);
             loaded_track.pcm_audio = track_pcm;
@@ -5693,6 +5724,12 @@ impl SonixApp {
                 amount_db: t.sidechain_amount_db,
                 threshold_db: t.sidechain_threshold_db,
             });
+            // Sends (Fas 8.13): samma ställe som sidokedjan, av samma skäl —
+            // en omsynk efter ett spårbyte eller en ångring ska höras.
+            let _ = self.engine.send_command(AudioCommand::SetStemTrackSends {
+                track_index: track_idx,
+                sends: t.sends.clone(),
+            });
             let _ = self.engine.send_command(AudioCommand::SetTrackEq {
                 track_index: track_idx,
                 settings: t.eq.to_settings(),
@@ -5770,6 +5807,12 @@ impl SonixApp {
                 from: t.sidechain_from,
                 amount_db: t.sidechain_amount_db,
                 threshold_db: t.sidechain_threshold_db,
+            });
+            // Sends (Fas 8.13): samma ställe som sidokedjan, av samma skäl —
+            // en omsynk efter ett spårbyte eller en ångring ska höras.
+            let _ = self.engine.send_command(AudioCommand::SetStemTrackSends {
+                track_index: track_idx,
+                sends: t.sends.clone(),
             });
             let _ = self.engine.send_command(AudioCommand::SetTrackEq {
                 track_index: track_idx,
@@ -13811,6 +13854,56 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             }
                         }
 
+                        // Sends (Fas 8.13): en del av spårets signal till en ANNAN buss,
+                        // utöver spårets egen. Målet är en buss och inte ett spår, och därför
+                        // kan en send aldrig bli en slinga — en buss skickar inte vidare.
+                        ui.label(egui::RichText::new(crate::i18n::t("Skicka till buss:")).size(10.0).color(Theme::TEXT_MUTED));
+                        {
+                            let sends = &mut self.playlist_tracks[sel_idx].sends;
+                            let mut remove_send: Option<usize> = None;
+                            for (s_idx, send) in sends.iter_mut().enumerate() {
+                                ui.horizontal(|ui| {
+                                    let b = send.target_bus.min(crate::audio::synth::NUM_BUSES - 1);
+                                    egui::ComboBox::from_id_salt(format!("sel_track_send_{s_idx}"))
+                                        .selected_text(crate::audio::synth::BUS_NAMES[b])
+                                        .width(84.0)
+                                        .show_ui(ui, |ui| {
+                                            for (bi, name) in crate::audio::synth::BUS_NAMES.iter().enumerate() {
+                                                if ui.selectable_label(b == bi, *name).clicked() && b != bi {
+                                                    send.target_bus = bi;
+                                                    track_dirty = true;
+                                                }
+                                            }
+                                        });
+                                    track_dirty |= ui
+                                        .add(egui::Slider::new(&mut send.level, 0.0..=2.0).show_value(true))
+                                        .on_hover_text(crate::i18n::t("Hur mycket av spåret som går till bussen (1,0 = lika starkt som spårets egen utgång)"))
+                                        .changed();
+                                    if ui.button("🗑").on_hover_text(crate::i18n::t("Ta bort senden")).clicked() {
+                                        remove_send = Some(s_idx);
+                                    }
+                                });
+                            }
+                            if let Some(i) = remove_send {
+                                sends.remove(i);
+                                track_dirty = true;
+                            }
+                            if sends.len() < 4
+                                && ui
+                                    .button(crate::i18n::t("➕ Ny send"))
+                                    .on_hover_text(crate::i18n::t("Skicka en del av spåret till en buss — t.ex. FX-bussen"))
+                                    .clicked()
+                            {
+                                // FX-bussen är standardmål: det är den vanligaste
+                                // parallella vägen, och den kan ändras direkt.
+                                sends.push(crate::audio::StemSend {
+                                    target_bus: crate::audio::synth::NUM_BUSES - 1,
+                                    level: 0.5,
+                                });
+                                track_dirty = true;
+                            }
+                        }
+
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             ui.label(egui::RichText::new(crate::tstatus!("Spår {} av {}", sel_idx + 1, self.playlist_tracks.len())).size(10.5).color(Theme::TEXT_MUTED));
                         });
@@ -14650,6 +14743,13 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             } else {
                 (t.reverb_send, t.delay_send)
             };
+            // Sends (Fas 8.13) hör till samma väg: ett fruset spår spelar sin
+            // färdigrenderade fil, och den renderades utan sends.
+            let sends = if t.frozen_pcm.is_some() {
+                Vec::new()
+            } else {
+                t.sends.clone()
+            };
             Some(TrackAudioSnap {
                 track_index: idx,
                 left: l.clone(),
@@ -14670,6 +14770,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 sidechain_from: t.sidechain_from,
                 sidechain_amount_db: t.sidechain_amount_db,
                 sidechain_threshold_db: t.sidechain_threshold_db,
+                sends,
             })
         }).collect();
 
@@ -18543,6 +18644,20 @@ mod tests {
         probe("pitch_semitones", &|t| t.pitch_semitones += 1.0);
         probe("bus", &|t| t.bus += 1);
         probe("vca", &|t| t.vca = t.vca.map(|v| v + 1).or(Some(0)));
+        probe("sends", &|t| {
+            t.sends.push(crate::audio::StemSend { target_bus: 1, level: 0.5 })
+        });
+        // Sends (Fas 8.13): målet och nivån måste ingå, inte bara antalet — annars
+        // kunde en send byta buss utan att mixern såg det.
+        let with_send = |bus: usize, level: f32| {
+            let mut t = base_track.clone();
+            t.sends = vec![crate::audio::StemSend { target_bus: bus, level }];
+            dig(&[t])
+        };
+        assert_ne!(with_send(1, 0.5), base, "en send ska synas i mixern");
+        assert_ne!(with_send(1, 0.5), with_send(2, 0.5), "målet ska synas");
+        assert_ne!(with_send(1, 0.5), with_send(1, 0.9), "nivån ska synas");
+
         probe("eq.low_gain_db", &|t| t.eq.low_gain_db += 1.0);
         probe("eq.low_freq", &|t| t.eq.low_freq += 10.0);
         probe("eq.mid_gain_db", &|t| t.eq.mid_gain_db += 1.0);

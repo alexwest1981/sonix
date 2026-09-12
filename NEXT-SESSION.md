@@ -12,9 +12,14 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 365 default / 411 med `--features plugin-host`, **0 varningar** i båda.
+- **Tester:** 376 default / 422 med `--features plugin-host`, **0 varningar** i båda.
   CI fäller numera **alla** ben på varningar, inte bara Windows.
-- **Senaste commit:** `392a30c`
+- **Senaste commit:** `1d3fc1a` (8.3: sends till bussar)
+- **En andra session kan jobba i samma repo.** 2026-09-12 byggdes 8.10 steg 2 i en egen
+  worktree: `~/Projects/sonix-tempo`, branch `tempo-follow` (två commits + ocommitterat).
+  **Kolla `git status` och filernas mtime innan du bygger** — två skrivare i samma `app.rs`
+  är hur man tappar någons arbete. Den sessionen väntade medvetet på att sends skulle landa,
+  eftersom båda rör samma funktioner; nu är den vägen fri.
 - **Kör igång:** `cargo build --release --locked` (release krävs — det är den binären
   Alex startar). Efter varje ändring: `cargo build --release --locked`, `cargo test
   --locked --bin sonix`, `cargo test --locked --features plugin-host --bin sonix`.
@@ -50,6 +55,8 @@ mätt, och var nästa andetag ska tas.*
 | `f0dc8eb` | **8.10 steg 1:** klippen följer projektets tempo (bandspelarlogik — tonhöjden följer), bit-exakt vid faktor 1,0 |
 | `a510775` | **Alex hörde inget** — hans projektfil saknade fältet. Inspelningstemot mäts nu fram vid inläsning (hans Broken: 9/9 klipp), plus en stämpel i ⏱ Tempokarta |
 | `392a30c` | **8.11 tonarten:** en tabell och ett index i stället för två listor, skal-låset gör något, tonarten sparas |
+| `1797cb7` | **8.7 steg 2:** slicekartan spelas från steg och piano roll (den andra sessionen) |
+| `1d3fc1a` | **8.3 sends till bussar:** post-fader, mål-bussens mute/solo gäller, med i exporten, UI i mixern |
 
 ## 3. Mätt, inte gissat (bär dessa vidare — de är dyra att ta fram igen)
 
@@ -119,8 +126,19 @@ mätt, och var nästa andetag ska tas.*
    projektets tonart, låset flyttar klicket till närmaste skalton (nedåt vid lika avstånd),
    och tonarten ligger i projektfilen. **Kvar:** Alex' ögon på markeringen, skalnamnen är
    svenska strängar (inte i18n), och ingen transponering-till-tonart.
-4. **`--clean-tags` för wav** (RIFF `LIST/INFO`) — samma sak som ID3 men andra chunks.
-5. **Tempomarkering i taktlinjalen** vid tempobyten (syns bara i listan i dag).
+4. ~~**Sends**~~ — **SENDS TILL BUSSAR KLARA 2026-09-12 (`1d3fc1a`).** Ett spår kan skicka en
+   del av sin signal till en annan buss (post-fader, mål-bussens mute/solo gäller, med i
+   exporten, UI i mixerns kanalpanel). **Kvar av punkten:** sends **mellan spår** — en annan
+   och större sak (spårloopen i `process_stereo` måste delas i två faser + en slingkontroll),
+   och den ligger kvar i roadmapen med sitt eget pass.
+5. **8.10 steg 2 (pitch-bevarande sträckning)** — påbörjad i `~/Projects/sonix-tempo`
+   (branch `tempo-follow`): motorn `src/audio/stretch.rs` är byggd och testad, policyn likaså,
+   men **inkopplingen i tidslinjen är halvfärdig och kompilerar inte** (fyra fel: `follow_tempo`
+   i `SonixProjectData`, i `LoadedProjectPayload`, i `RenderSpec`, samt `tape` i
+   `vocal_studio_view`). Nästa andetag: gör klart datamodellen, koppla in, verifiera och
+   committa — sedan är grenen redo att möta master (som nu har sends, alltså det den väntade på).
+6. **`--clean-tags` för wav** (RIFF `LIST/INFO`) — samma sak som ID3 men andra chunks.
+7. **Tempomarkering i taktlinjalen** vid tempobyten (syns bara i listan i dag).
 6. **Riktig BPM-detektor** om någon behöver den: onset-styrka + tempokam
    (aubio/librosa/Essentia). Underlaget ligger i `sonix`-skillens research.
 

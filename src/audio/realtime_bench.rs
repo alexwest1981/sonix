@@ -277,6 +277,7 @@ pub fn frozen_spec(live: &RenderSpec) -> RenderSpec {
         sidechain_from: None,
         sidechain_amount_db: 0.0,
         sidechain_threshold_db: -30.0,
+        sends: Vec::new(),
     }];
     spec
 }

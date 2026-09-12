@@ -191,6 +191,15 @@ pub enum AudioCommand {
         amount_db: f32,
         threshold_db: f32,
     },
+    /// Skickar en del av spårets signal till andra bussar (Fas 8.13).
+    ///
+    /// En **send** är en parallell väg: spåret går fortfarande till sin egen buss,
+    /// och det här är extra. Nivån är linjär (1,0 = lika starkt som spårets egen
+    /// utgång), och målet kläms till `0..NUM_BUSES`.
+    SetStemTrackSends {
+        track_index: usize,
+        sends: Vec<StemSend>,
+    },
     /// Sets a sub-mix bus's group gain, mute and solo (Fas 5.2). The bus is
     /// clamped to `0..NUM_BUSES`.
     SetBusState {
@@ -260,6 +269,18 @@ pub enum AudioCommand {
         velocity: f32,
     },
     PatcherNoteOff,
+}
+
+/// En send: en del av spårets signal till en annan buss (Fas 8.13).
+///
+/// `level` är linjär (1,0 = lika starkt som spårets egen utgång). Målet är en
+/// buss, inte ett spår: en buss skickar inte vidare, så en send kan aldrig bli en
+/// slinga — och en slinga är det enda en routering mellan spår kan bli som inte
+/// går att beräkna.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct StemSend {
+    pub target_bus: usize,
+    pub level: f32,
 }
 
 #[derive(Debug, Clone)]
