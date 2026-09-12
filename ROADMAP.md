@@ -940,3 +940,54 @@ dess vågform kommer båda ur den filen. Klippet pekar alltså på sitt eget lju
 en trasig eller tom skrivning blir ett fel i statusraden i stället för fyra tysta
 klipp. Filnamnet byggs med `crate::autosave::slug`, så ett snedstreck eller `..` i en
 låt- eller filttitel kan inte lägga stämman utanför katalogen (testat).
+
+---
+
+## 8.5a Stämseparatorn skriver stämmorna till disk — plan (läst och researchad 2026-09-12)
+
+**Läget:** `stem_separator.rs` tar färdig PCM in (`separate_stems(left, right, sr_f)`) och
+skriver aldrig ut något. Dess enda spår blir `StemChannel.waveform_data` — den grova
+översikten (`visual_peaks_from`, 512 punkter) — plus en `source_path` som pekar på
+**originalfilen**. Kommer originalet från en mp3 blir kombinationen: trovärdig vågform,
+inget ljud. (Inte längre den troliga boven bakom Alex' klipp — de kom från
+Sound Browser-vägarna, som nu avbryter — men det är fortfarande rätt att stänga.)
+
+**Research (repots egna underlag, `sonix`-skillen):** Ableton, Reaper och Bitwig har
+riktig freeze — en renderad fil som klippet refererar. FL Studios "Consolidate track/s"
+renderar alla klipp på ett spår till **ett ljudklipp och mutar källklippen**; deras regel
+före destruktiva edits är "**Make unique as sample**". `daw-comparison.md` noterar att
+Sonix redan har riktig freeze (8.1). Konventionen är alltså entydig: **renderingen blir
+en fil, och klippet pekar på filen** — inte på originalet.
+
+**Det som behövs (alla fakta lästa, inget gissat):**
+
+1. `write_wav(path: &str, samples: &[f32], sample_rate: u32, bits: u16, is_float: bool,
+   meta: &ExportMeta, dither: DitherSettings) -> Result<(), String>` i
+   `src/audio/exporter.rs` — **privat i dag**, behöver en `pub` väg eller en tunn
+   `pub fn write_stem_wav(...)` i samma modul.
+2. **`samples` är interleaved stereo** (`channels = 2` räknas internt): `StemAudio { left,
+   right }` måste flätas `L0 R0 L1 R1 …` innan anropet.
+3. **32-bit float** (`bits = 32, is_float = true`) är rätt för arbetsfiler — samma väg
+   som exporterarens egen `Wav32`. `ExportMeta` har inget `Default`; konstruera den
+   (fälten är `title, artist, album, genre, year, comment`) och sätt titeln till
+   stämmans namn. `DitherSettings::default()`.
+4. **Sökvägen:** `paths().project_assets_dir(<projektnamn>).join("stems")` — dvs
+   `~/Music/Sonix/Projects/<Projekt>/stems/<Stämma>.wav`. `project_assets_dir` finns
+   redan och sanerar namnet. **Bara `paths.rs` får bygga sökvägar** (6.0) — kalla den,
+   bygg inte själv.
+5. **Var:** `install_separation(&mut self, result, source_path)` (`stem_separator.rs:335`)
+   har stämmorna och källan; anropet sker från `app.rs:5789`. Namnet på mappen tas från
+   `source_path`s filstam, så samma separation hamnar på samma ställe varje gång.
+6. **Klippets källa:** efter skrivningen ska `source_path` peka på **stämfilen**, inte på
+   originalet. Det är hela fixen — och det är samma beslut som `import_audio_file_as_track`
+   redan tar (den pekar på det den kan läsa).
+
+**Formen:** regeln som **ren funktion** (repots konvention, och det som gjorde 8.5
+testbart): `write_stem_wav(dir, namn, audio) -> Option<String>` som skriver och lämnar
+sökvägen, eller `None` med orsaken. Testet skriver till en temp-katalog och **läser
+tillbaka filen** — det kan göras headless, till skillnad från GUI-kvittensen.
+
+**Klart när:** en separation ger fyra wav-filer i projektets `stems/`-mapp, regionernas
+`source_path` pekar på dem, och en avkodning av den skrivna filen ger samma längd och
+ljud som stämman i minnet. Då kan en stämma aldrig mer bli tyst av att originalet är i
+ett format appen inte läser.
