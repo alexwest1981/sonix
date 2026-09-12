@@ -10188,6 +10188,35 @@ impl SonixApp {
                                 }
                             }
 
+                            // Tempobyten i linjalen (Fas 8.2 — synliga sedan 8.12).
+                            //
+                            // Bytet fanns bara i ⏱ Tempokarta-listan; i linjalen syntes
+                            // ingenting, så en låt med tre tempon såg ut som en med ett.
+                            // Strecket gäller från sin takt och framåt, och BPM står
+                            // strax till VÄNSTER om strecket — taktnumret står till höger
+                            // om samma linje, så de två krockar inte.
+                            //
+                            // Ritas efter tick-varvet: en taktlinje ligger på samma x,
+                            // och ritades bytet först skulle den grå linjen lägga sig
+                            // över markeringen.
+                            for point in &self.tempo_points {
+                                let px = ruler_rect.min.x + point.start_bar as f32 * bar_w;
+                                ui.painter().line_segment(
+                                    [
+                                        Pos2::new(px, ruler_rect.min.y),
+                                        Pos2::new(px, ruler_rect.max.y),
+                                    ],
+                                    Stroke::new(2.0_f32, Theme::FL_YELLOW),
+                                );
+                                ui.painter().text(
+                                    Pos2::new(px - 3.0, ruler_rect.min.y + 6.0),
+                                    egui::Align2::RIGHT_CENTER,
+                                    format!("⏱{:.0}", point.bpm),
+                                    egui::FontId::proportional(9.5),
+                                    Theme::FL_YELLOW,
+                                );
+                            }
+
                             // Ruler Interaction: Click / Drag / Scrub with high hundredth-second precision
                             if ruler_resp.clicked() || ruler_resp.dragged() {
                                 ui.memory_mut(|m| m.stop_text_input());
