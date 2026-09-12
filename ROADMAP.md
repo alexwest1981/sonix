@@ -568,3 +568,14 @@ Dessutom räknades bara `max(abs(x))` per fönster: ett **symmetriskt** hölje. 
 
 1. **Flernivå-cache (mip)** i `waveform_cache_dir()`: att räkna om höljet ur hela PCM:en varje bildruta är O(samplar) per bildruta och går inte för en lång fil. Cachen ska ge *samma svar snabbare* — och kan därför prövas mot `envelope_per_pixel`, vilket är skälet att den funktionen skrevs först.
 2. **Koppla in den i ritningen** (samma pass som tidlinjens `px_per_sec`), där vågformen ritas som vertikala streck mellan min och max i stället för som en kurva genom 512 punkter.
+
+**Nästa steg är inkopplingen, och den är förberedd (2026-09-12):**
+
+- **Var:** `render_playlist_arranger` i `src/ui/app.rs`. Två saker där är kvar i sekunder: regionens vågform ritas ur `region.waveform_data` (512 punkter från `visual_peaks_from`) och `px_per_sec` räknas ur ett enda tempo.
+- **Vad:**
+  1. Håll en `WaveformCache` per spår — byggd **en gång** ur `pcm_audio` (eller `frozen_pcm` för ett fruset spår). Kostnaden är en O(samplar)-genomgång, ~50 ms för en fyra minuters fil, och minnet några hundra kB per fil.
+  2. Rita **en vertikal linje per bildpunkt** ur `cache.envelope(&pcm, bredd_i_pixlar)` i stället för en kurva genom 512 punkter. Klossarnas x-positioner är redan i takt-rymd (`start_bar * bar_w`) — det är vågformens *insida* som ska följa efter.
+  3. Räkna regionernas tid ur `tempo_map()` i stället för `px_per_sec` (samma sak som gjordes för snäppningen ovan: takter först, sekunder en gång efteråt).
+- **Varför ingen cachefil:** att skriva nivåerna till `waveform_cache_dir()` är en optimering, inte ett krav — det är en engångskostnad per fil. En cachefil till är en sak som kan bli gammal och fel, och `visual_peaks_from`-problemet var just att en *föråldrad* sammanfattning ritades. Bygg i minnet först; mät om det någonsin behövs.
+- **Kvittensen hos Alex:** vågformen ska visa **enskilda anslag** när man zoomar in, och en kloss som korsar ett tempobyte ska sluta glida.
+
