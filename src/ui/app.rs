@@ -2885,8 +2885,10 @@ impl SonixApp {
         }
 
         let region = self.playlist_tracks[track_idx].regions[region_idx].clone();
-        let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-        let reg_len_sec = (region.length_bars * sec_per_bar).max(0.05);
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        let reg_len_sec =
+            (tempo.secs_for_bars_at(region.start_bar as f64, region.length_bars as f64) as f32)
+                .max(0.05);
         let reg_offset_sec = region.sample_offset_sec.max(0.0);
 
         // Destination: the canonical user sample bank (Fas 6.0).
@@ -2982,17 +2984,16 @@ impl SonixApp {
         let mut track = PlaylistTrack::new(format!("🎵 {}", item.name), "🎵", TrackKind::CustomAudio, item.color);
         track.volume = 0.90;
 
-        let bpm = self.bpm.max(40.0);
-        let sec_per_bar = (60.0 / bpm) * 4.0;
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
         let mut pcm_opt = None;
         let duration_secs = if let Some(ref path) = item.file_path && let Ok((l, r, sr)) = crate::audio::load_wav_pcm(path) {
             let dur = l.len() as f32 / sr as f32;
             pcm_opt = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
             dur
         } else {
-            4.0 * sec_per_bar
+            tempo.secs_for_bars_at(0.0, 4.0) as f32
         };
-        let reg_len_bars = (duration_secs / sec_per_bar).max(0.25);
+        let reg_len_bars = (tempo.bars_for_secs_at(0.0, duration_secs as f64) as f32).max(0.25);
 
         let region = AudioRegion {
             id: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as usize,
@@ -3032,17 +3033,19 @@ impl SonixApp {
             self.playlist_tracks.push(track);
         }
 
-        let bpm = self.bpm.max(40.0);
-        let sec_per_bar = (60.0 / bpm) * 4.0;
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
         let mut pcm_opt = None;
         let duration_secs = if let Some(ref path) = item.file_path && let Ok((l, r, sr)) = crate::audio::load_wav_pcm(path) {
             let dur = l.len() as f32 / sr as f32;
             pcm_opt = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
             dur
         } else {
-            4.0 * sec_per_bar
+            tempo.secs_for_bars_at(0.0, 4.0) as f32
         };
-        let reg_len_bars = (duration_secs / sec_per_bar).max(0.25);
+        // Längden mäts från takten där klippet hamnar, inte från noll: över ett
+        // tempobyte är antalet takter inte samma sak beroende på var man mäter.
+        let reg_len_bars =
+            (tempo.bars_for_secs_at(start_bar as f64, duration_secs as f64) as f32).max(0.25);
 
         let reg_id = self.next_region_id();
         let region = AudioRegion {
@@ -3106,9 +3109,10 @@ impl SonixApp {
 
         if let Some((ref l, _, srate)) = self.playlist_tracks[track_idx].pcm_audio {
             sr = srate;
-            let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-            let start_sec = reg.start_bar * sec_per_bar + reg.sample_offset_sec;
-            let len_sec = reg.length_bars * sec_per_bar;
+            let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+            let start_sec = tempo.secs_at_bar(reg.start_bar as f64) as f32 + reg.sample_offset_sec;
+            let len_sec =
+                tempo.secs_for_bars_at(reg.start_bar as f64, reg.length_bars as f64) as f32;
             let start_idx = (start_sec * sr as f32) as usize;
             let end_idx = ((start_sec + len_sec) * sr as f32) as usize;
             if start_idx < l.len() {
@@ -3644,8 +3648,8 @@ impl SonixApp {
                 return;
             }
             let target_track = self.selected_timeline_track.min(self.playlist_tracks.len() - 1);
-            let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-            let paste_bar = (self.song_time / sec_per_bar).max(0.0);
+            let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+            let paste_bar = (tempo.bar_at_secs(self.song_time as f64) as f32).max(0.0);
 
             self.push_undo(&format!("Klistra in '{}'", copied.name));
             let mut new_r = copied.clone();
@@ -5721,8 +5725,10 @@ impl SonixApp {
             self.status_message = crate::i18n::t("⚠ Ingen separerad mix att exportera.").to_string();
             return;
         }
-        let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-        let bars = (self.stem_project.duration_seconds / sec_per_bar).max(1.0);
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        let bars =
+            (tempo.bars_for_secs_at(0.0, self.stem_project.duration_seconds as f64) as f32)
+                .max(1.0);
         let kinds = [TrackKind::VocalAudio, TrackKind::Drums, TrackKind::Bassline, TrackKind::CustomAudio];
         let mut new_tracks = Vec::new();
         for (i, ch) in self.stem_project.stems.iter().enumerate() {
@@ -5774,8 +5780,8 @@ impl SonixApp {
             }
         };
         let duration_secs = if sr > 0 { l.len() as f32 / sr as f32 } else { 0.0 };
-        let sec_per_bar = (60.0 / self.bpm.max(40.0)) * 4.0;
-        let length_bars = (duration_secs / sec_per_bar).max(0.25);
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        let length_bars = (tempo.bars_for_secs_at(0.0, duration_secs as f64) as f32).max(0.25);
 
         // Downsample a peak envelope for the timeline waveform display.
         let points = 256usize;
@@ -7879,7 +7885,7 @@ impl SonixApp {
         }
         let prompt = self.suno_prompt_input.clone();
         let bars = (self.loop_end_bar.max(self.loop_start_bar + 4) - self.loop_start_bar).clamp(1, 32);
-        let duration_secs = bars as f32 * (60.0 / self.bpm.max(40.0)) * 4.0;
+        let duration_secs = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0)).secs_for_bars_at(0.0, bars as f64) as f32;
         let slot: std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, String>>>> =
             std::sync::Arc::new(std::sync::Mutex::new(None));
         self.ai_audio_pending = Some((slot.clone(), prompt.clone()));
@@ -13704,7 +13710,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             }
         }
 
-        let sec_per_bar = 60.0 / bpm * 4.0;
+        let tempo = crate::audio::tempo::TempoMap::single(bpm.max(40.0));
         let mut max_stem_bars = 32.0_f32;
         let mut decoded_tracks = Vec::with_capacity(total_files);
 
@@ -13740,7 +13746,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             if let Ok((l, r, sr)) = crate::audio::load_audio_pcm(&path_str) {
                     sample_rate = sr;
                     let total_secs = l.len() as f32 / sr.max(1) as f32;
-                    file_bars = (total_secs / sec_per_bar).max(1.0);
+                    file_bars =
+                        (tempo.bars_for_secs_at(0.0, total_secs as f64) as f32).max(1.0);
                     max_stem_bars = max_stem_bars.max(file_bars);
 
                     // Compute waveform peaks in-memory
