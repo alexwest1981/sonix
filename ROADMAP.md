@@ -569,7 +569,7 @@ Dessutom räknades bara `max(abs(x))` per fönster: ett **symmetriskt** hölje. 
 1. **Flernivå-cache (mip)** i `waveform_cache_dir()`: att räkna om höljet ur hela PCM:en varje bildruta är O(samplar) per bildruta och går inte för en lång fil. Cachen ska ge *samma svar snabbare* — och kan därför prövas mot `envelope_per_pixel`, vilket är skälet att den funktionen skrevs först.
 2. **Koppla in den i ritningen** (samma pass som tidlinjens `px_per_sec`), där vågformen ritas som vertikala streck mellan min och max i stället för som en kurva genom 512 punkter.
 
-**Nästa steg är inkopplingen, och den är förberedd (2026-09-12):**
+**Inkopplingen är GJORD (2026-09-12).** Det som står nedan är vad som gjordes, sparat för att nästa läsare ska se varför det ser ut som det gör — inte som en kvarvarande uppgift.
 
 - **Var:** `render_playlist_arranger` i `src/ui/app.rs`. Två saker där är kvar i sekunder: regionens vågform ritas ur `region.waveform_data` (512 punkter från `visual_peaks_from`) och `px_per_sec` räknas ur ett enda tempo.
 - **Vad:**
@@ -578,4 +578,8 @@ Dessutom räknades bara `max(abs(x))` per fönster: ett **symmetriskt** hölje. 
   3. Räkna regionernas tid ur `tempo_map()` i stället för `px_per_sec` (samma sak som gjordes för snäppningen ovan: takter först, sekunder en gång efteråt).
 - **Varför ingen cachefil:** att skriva nivåerna till `waveform_cache_dir()` är en optimering, inte ett krav — det är en engångskostnad per fil. En cachefil till är en sak som kan bli gammal och fel, och `visual_peaks_from`-problemet var just att en *föråldrad* sammanfattning ritades. Bygg i minnet först; mät om det någonsin behövs.
 - **Kvittensen hos Alex:** vågformen ska visa **enskilda anslag** när man zoomar in, och en kloss som korsar ett tempobyte ska sluta glida.
+
+**Läget efter inkopplingen (mätt i koden, 2026-09-12):** tidslinjen ritar ett äkta (min, max) per bildpunkt ur cachen för **icke-slingade** regioner med PCM; den gamla vägen ligger kvar orörd som fallback för regioner utan PCM och för slingade regioner. Cachen byggs på ett ställe (`ensure_waveform_cache`, i spårloopen) och nycklas på buffertens identitet, så en ny tagning eller en frysning ger automatiskt en ny cache. Kostnaden är en O(samplar)-genomgång per spår och ljud (~50 ms för fyra minuter), en gång.
+
+**Kvar på 8.3:** (1) slingade regioner ritas fortfarande ur 512-punkterna — deras bildpunkter följer upprepningen och kräver en egen lösning; (2) `render_playlist_arranger`s `px_per_sec` och linjalens sekundetiketter är kvar i sekunder (samma pass som 8.2:s visning); (3) `PlaylistTrack.audio_waveform` är död kod (sätts på sex ställen, läses aldrig) — den kan tas bort när någon har tid, men den rör ingenting.
 
