@@ -123,8 +123,9 @@ mätt, och var nästa andetag ska tas.*
    överlever omladdningen, motorn räknar vad den faktiskt har
    (`stretched_track_count`, speglad som spelhuvudets klocka) och **statusraden säger
    ifrån** när talen går isär. Provet `a_track_reload_keeps_the_stretched_regions`
-   fäller den gamla koden (kontrollerat). **Kvar:** Alex' öra — starta om, sätt 100 och
-   tryck play.
+   fäller den gamla koden (kontrollerat). **KVITTERAT av Alex 2026-09-13 (kväll):** *"Så här
+   långt låter allt perfekt."* — rätt tempo, rätt tonhöjd, ingen artefakt, spelhuvudet följer
+   ljudet. Kedjan 8.13b → 8.10b → 8.10c → 8.10d är därmed bekräftad av örat.
    0e. ~~**Artefaktljud vid tempobyte**~~ — **RÄTTAT 2026-09-13 (8.10c).** Alex: *"Test av att
    sänka bpm resulterade i artefaktljud när den sänkte tempot, men ljudet höll rätt ton."*
    Faktorn var rätt (1,1667) och tonhöjden stod still; det var kvaliteten. Orsaken:
@@ -147,7 +148,8 @@ mätt, och var nästa andetag ska tas.*
    *projektets* tempo — i 200 hade en sänkning till 100 sträckt ljudet till halv
    hastighet. Nu: `geometry_source_bpm` (takter × 240 / filens sekunder) används av
    stämpeln, **talet visas i ⏱ Tempokarta och i statusraden**, och importen stämplar
-   projektets tempo när Suno inget ger. **Kvar: Alex' öra** — stämpla, sätt tempot, lyssna.
+   projektets tempo när Suno inget ger. **KVITTERAT av Alex 2026-09-13 (kväll)** — tempot hörs
+   nu ändra sig, och måttet är rätt för det ljud projektet faktiskt har.
    0c. ~~**Spelhuvudet låg efter ljudet**~~ — **RÄTTAT 2026-09-13 (8.13b).** Alex: *"markören
    står där ljudet börjar, men enligt vågformen är det ännu cirka 0,7 s kvar."* Mätt i hans
    egen fil: `Rock and Hard Place (Vocals).wav` är exakt noll till 5,0 s, första frasen

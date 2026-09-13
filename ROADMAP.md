@@ -1660,6 +1660,9 @@ felet, och fönstervikten `2·hop/frame` håller summan 1,0 för både 50 % och 
 `the_offline_stretcher_searches_wide_and_the_realtime_one_does_not` (sökfönstret ≥ 10 ms, 50 %
 överlapp, realtidsläget är det billiga) och `the_cache_key_carries_the_engine_version`.
 
+**Kvitterat av Alex 2026-09-13 (kväll):** fladdret är borta ur ljudet, inte bara ur mätningen —
+*"Så här långt låter allt perfekt."*
+
 **Kvar (mätt, inte gissat):** (1) sträckningen tappar **~2,5 dB mer energi än längden förklarar**
 (−3,15 dB mot förväntade −0,67 dB) — WSOLA:s korn upprepas och släcker varandra på polyfoniskt
 material; det hörs som att låten blir *svagare* när tempot sänks, och det är en **annan** sak än
@@ -1719,6 +1722,10 @@ når wave, och ingen märkbar skillnad på tempo."*
 3. **Provet som fäller den gamla koden:** `a_track_reload_keeps_the_stretched_regions`
    (`audio::synth`) — kontrollerat: med raden borta faller det på *"klippet ska överleva
    omladdningen"*, med den på plats går det igenom.
+
+**Kvitterat av Alex 2026-09-13 (kväll):** *"Så här långt låter allt perfekt."* — efter omstart,
+tempo 100 och play: rätt tempo, rätt tonhöjd, ingen artefakt, och spelhuvudet följer ljudet.
+Hela kedjan 8.13b → 8.10b → 8.10c → 8.10d står alltså bekräftad av örat, inte bara av mätningen.
 
 **Lärdomen att bära:** motorn får aldrig tysta state. `LoadStemTrack`, `ClearAllStemTracks` och
 `SetStemTrackRegions` räknar nu om talet, och appen läser det i stället för att anta att kommandot
