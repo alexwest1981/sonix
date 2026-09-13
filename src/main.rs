@@ -62,12 +62,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_paths();
         return Ok(());
     }
-    // `sonix --clean-tags <fil...>`: visar vad filerna bär och tar bort taggarna —
-    // ID3 i mp3, `LIST`/`INFO` i wav.
-    // Sunos mp3:er har `comment = "Made with Suno; Created=...; id=..."` — deras text
-    // om din fil. Ljudet rörs inte; bara taggarna försvinner. (Att en kontroll läser
-    // LJUDET och inte taggen står i metadata.rs — och är skälet att det här inte är
-    // ett verktyg för att dölja något.)
+    // `sonix --clean-tags <fil...>`: visar vad filerna bär och tar bort
+    // AI-/Sunohärkomsten — inte musiken. Titel, artist, låttext och omslag lämnas
+    // (Alex 2026-09-13: den första versionen tog hela taggen, och det var för
+    // mycket). Ljudet rörs inte; bara härkomsten försvinner. (Att en kontroll
+    // läser LJUDET och inte taggen står i metadata.rs — och är skälet att det här
+    // inte är ett verktyg för att dölja något.)
     if let Some(pos) = std::env::args().position(|a| a == "--clean-tags") {
         let files: Vec<String> = std::env::args().skip(pos + 1).collect();
         if files.is_empty() {
@@ -78,19 +78,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         for f in &files {
             match audio::metadata::scan(f) {
                 Ok(report) => {
+                    for k in &report.kept {
+                        println!("  {f} — lämnas: {k}");
+                    }
+                    for n in &report.notes {
+                        println!("  {f} — ⚠ {n}");
+                    }
                     if report.removable_bytes == 0 {
-                        println!("  ren: {f} (inga taggar)");
+                        println!("  ren: {f} (ingen härkomst att ta)");
                         continue;
                     }
                     println!(
-                        "  {f}: {} byte metadata (ID3v2={} ID3v1={} RIFF={})",
+                        "  {f}: {} byte härkomst (ID3v2={} ID3v1={} RIFF={})",
                         report.removable_bytes,
                         report.has_id3v2,
                         report.has_id3v1,
                         report.has_riff_metadata
                     );
                     for e in &report.excerpts {
-                        println!("      hittade: {e}");
+                        println!("      tas bort: {e}");
                     }
                     match audio::metadata::strip_tags(f) {
                         Ok(n) => {

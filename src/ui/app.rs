@@ -15932,12 +15932,16 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         }
         let total_files = stem_files.len();
 
-        // 🧹 Städa främmande metadata ur filerna INNAN de läses in (8.5b).
+        // 🧹 Städa bort AI-/Sunohärkomsten ur filerna INNAN de läses in (8.5b).
         //
         // Här är rätt ögonblick: det som städas nu kan inte följa med ut i ett projekt
         // eller en export senare, och det sker medan användaren redan väntar på
         // importen. Suno skriver t.ex. `comment = "Made with Suno; Created=…; id=…"`
-        // i sina filer — deras anspråk och användarens prompt, i användarens fil.
+        // i sina filer — deras anspråk och spår, i användarens fil.
+        //
+        // **Bara härkomsten.** Titel, artist, låttext och omslag är musik, och de
+        // lämnas (Alex 2026-09-13: den första versionen tog hela taggen, alltså också
+        // låttexten och omslaget — för mycket). Regeln står i `metadata.rs`.
         //
         // Tyst städning vore samma sorts tystnad som gav de tysta klippen. Därför
         // räknas den och skrivs i statusraden: vad som togs bort, och hur mycket.
@@ -15959,7 +15963,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             && let Ok(mut p) = progress.lock()
         {
             p.error_message = Some(crate::tstatus!(
-                "🧹 Städade metadata ur {} fil(er): {}",
+                "🧹 Tog bort AI-/Sunohärkomst ur {} fil(er) (text, id, C2PA): {} — titel, sångtext och omslag lämnas.",
                 cleaned_tags.len(),
                 cleaned_tags.join(", ")
             ));
