@@ -120,8 +120,8 @@ tempopunkt-UI väntar alla på att Alex ser dem.
 
 Hela den avbockade listan på ett ställe. Bevis, mätningar och skälen till att något ser ut
 som det gör står under respektive fas längre ned — det här är översikten, inte ersättningen.
-**417 tester default, 463 med plugin-host, 0 varningar i båda release-byggena** (mätt
-2026-09-13, efter 8.10c — sträckningens sökfönster — 8.10b, 8.13b och metadata-rättelsen).
+**418 tester default, 464 med plugin-host, 0 varningar i båda release-byggena** (mätt
+2026-09-13, efter 8.10d — de tömda klippen — 8.10c, 8.10b, 8.13b och metadata-rättelsen).
 
 **Baslinjen (Fas 0) — det som redan var äkta:** kärnmotor (oscillatorer, trumsyntes,
 delay/reverb, filter/envelope, master-FX, patcher) · sequencer (tidslinje/multitrack,
@@ -1676,6 +1676,54 @@ de byttes sedan mot de **gamla filnamnen** (`Rock and Hard Place (Vocals).wav`, 
 ger korrelation 0,107 (samma tagning hade gett >0,5). Båda är stämplade 140, så sträckningen beter sig
 lika — men om avsikten var 140-zipens stämmor pekar klippen på fel ljud, och då är det nästa sak att
 reda ut.
+
+---
+
+## 8.10d Klippen tömdes vid varje uppspelningsstart (Alex' rapport 2026-09-13, kväll)
+
+**Alex, ordagrant:** *"Nu är vi tillbaka i att marker och wave inte synkar, ljud börjar innan marker
+når wave, och ingen märkbar skillnad på tempo."*
+
+**Ett fel, båda symptomen.** Motorn spelade originalet medan vyn ritade den sträckta filen.
+
+**Beviset i tur och ordning** (allt mätt, inget antaget):
+
+1. Cachen var **full av korrekta filer**: `rock-and-hard-place-drums-140-00-till-100-00-v2.wav`,
+   362,99 s = 259,28 × 140/100 ✓, första anslaget **0,838 s** = källans 0,598 × 1,4 ✓, sista ljudet
+   359,1 s ✓, och tempot **i filen** mäter **100 BPM** (kammätning) mot källans 140 ✓. Filerna läses
+   också tillbaka av `load_wav_pcm` (17423616 bildrutor, 48 kHz) ✓ — så `render_one` kunde inte ha
+   misslyckats.
+2. Autosaven från **13:00:34** visar `bpm 140,0` med alla nio klipp på `src_bpm 140,00` — vid 140 mot
+   140 **finns inget att sträcka**, så där *ska* ljudet stå still. Renderingarna i cachen (12:54 → 160,
+   12:55 → 100) är från de ögonblick han drog i reglaget. Projektet stod alltså på 140 när han skrev.
+3. Alltså: vid 100/160 spelades originalet i stället för filen — och **vyn ritar med
+   `stretch_ratio_for(region.source_bpm, self.bpm)`**, så den visade 1,4×-utsnittet medan örat hörde
+   1,0×. Därav "ljud börjar innan marker når wave": det *här* är en ritnings-lögn som uppstår när
+   ljudet inte följer med, inte ett eget ritfel.
+4. **Orsaken stod i motorn:** `LoadStemTrack` bygger ett **helt nytt** `StemVoiceTrack` och ärver
+   eq, kompressor, sends, pitch, plugin och PDC — men **inte `regions`**. Appen skickar
+   `LoadStemTrack` **vid varje uppspelningsstart** (`sync_track_stem_to_engine`, app.rs:6314), så
+   varje play tömde klippen och motorn föll tillbaka till spårets eget ljud i naturligt tempo.
+   Symptomet ("ingen skillnad på tempot") är detsamma som när allt fungerar — därför var det tyst.
+
+**Byggt:**
+
+1. **Regionerna överlever en omladdning** (`new_track.regions = std::mem::take(&mut old.regions)`) —
+   de är state som eq och plugin, och `LoadStemTrack` är en omladdning av *ljudet*, inte av
+   klipplistan.
+2. **Motorn räknar vad den faktiskt har** (`SynthEngine::stretched_region_tracks`, speglad till
+   `AudioEngine::stretched_track_count` via samma atom som spelhuvudets klocka). Appen jämför med
+   vad den skickade och **säger det högt** när talen går isär:
+   *"⚠ Sträckningen nådde inte motorn: X av Y spår spelar sträckt ljud — originalet spelar för
+   resten."* Utan den raden är nästa gång lika tyst.
+3. **Provet som fäller den gamla koden:** `a_track_reload_keeps_the_stretched_regions`
+   (`audio::synth`) — kontrollerat: med raden borta faller det på *"klippet ska överleva
+   omladdningen"*, med den på plats går det igenom.
+
+**Lärdomen att bära:** motorn får aldrig tysta state. `LoadStemTrack`, `ClearAllStemTracks` och
+`SetStemTrackRegions` räknar nu om talet, och appen läser det i stället för att anta att kommandot
+landade. Nästa gång ett "inget händer"-fel rapporteras ska statusraden kunna svara på frågan i
+stället för att jag ska behöva läsa 21 000 rader för att hitta den.
 
 ---
 

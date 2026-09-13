@@ -21,7 +21,7 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 417 default / 463 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 418 default / 464 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13, efter spelhuvud-rättelsen 8.13b och tempomåttet 8.10b). CI fäller
   numera **alla** ben på varningar, inte bara Windows.
 - **Senaste commit:** `398910d` (metadata: bara härkomsten tas), `7f87924` (mätarna i
@@ -113,6 +113,18 @@ mätt, och var nästa andetag ska tas.*
    (`made with suno` / `suno.com` / `suno studio` / `c2pa`), ram för ram och underchunk för
    underchunk. **Rör du en väg som läser ljud eller filhuvuden: läs roadmapens 8.5-rättelse
    och `src/audio/metadata.rs` först.**
+   0f. ~~**"marker och wave synkar inte" + "ingen skillnad på tempo"**~~ — **RÄTTAT
+   2026-09-13 (8.10d).** Ett fel, båda symptomen: `LoadStemTrack` — som appen skickar
+   **vid varje uppspelningsstart** — byggde ett nytt spår och tömde `regions` tyst, så
+   motorn spelade originalet i naturligt tempo medan vyn ritade den sträckta filen
+   (1,4×-utsnittet). Bevisen: cachen var full av korrekta filer (362,99 s, första
+   anslaget 0,838 s, tempot i filen mäter 100 BPM), `load_wav_pcm` läste dem, och
+   autosaven 13:00:34 stod på 140/140 där inget ska sträckas. **Byggt:** regionerna
+   överlever omladdningen, motorn räknar vad den faktiskt har
+   (`stretched_track_count`, speglad som spelhuvudets klocka) och **statusraden säger
+   ifrån** när talen går isär. Provet `a_track_reload_keeps_the_stretched_regions`
+   fäller den gamla koden (kontrollerat). **Kvar:** Alex' öra — starta om, sätt 100 och
+   tryck play.
    0e. ~~**Artefaktljud vid tempobyte**~~ — **RÄTTAT 2026-09-13 (8.10c).** Alex: *"Test av att
    sänka bpm resulterade i artefaktljud när den sänkte tempot, men ljudet höll rätt ton."*
    Faktorn var rätt (1,1667) och tonhöjden stod still; det var kvaliteten. Orsaken:

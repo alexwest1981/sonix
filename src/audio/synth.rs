@@ -543,6 +543,14 @@ pub struct SynthEngine {
     // Multi-track audio stem streaming
     pub stem_tracks: Vec<StemVoiceTrack>,
     pub has_stem_solo: bool,
+    /// Hur många spår som **faktiskt** har en sträckt fil i sin regionlista (Fas 8.10c).
+    ///
+    /// Räknas om när regioner eller spår byts — aldrig i sample-loopen. Appen läser
+    /// talet och kan säga "motorn spelar 8 av 9" i stället för att anta att kommandot
+    /// landade. **Mätt 2026-09-13:** `LoadStemTrack` byggde ett nytt spår och tömde
+    /// regionerna tyst — Alex hörde "ingen märkbar skillnad på tempo" medan cachen var
+    /// full av korrekta filer och vyn ritade som om de spelades.
+    pub stretched_region_tracks: u32,
     pub song_playing: bool,
     pub song_time_samples: usize,
     // Isolated audition for Vocal Studio & Sound Browser
@@ -599,6 +607,7 @@ impl SynthEngine {
             drums: [DrumVoice::new(sample_rate); MAX_DRUMS],
             stem_tracks: Vec::new(),
             has_stem_solo: false,
+            stretched_region_tracks: 0,
             song_playing: false,
             song_time_samples: 0,
             audition: None,
@@ -905,6 +914,12 @@ impl SynthEngine {
                     new_track.pitch_active = pa;
                     new_track.plugin = plugin;
                     new_track.pdc = pdc;
+                    // **Regionerna överlever en omladdning** (Fas 8.10c). De är state som
+                    // eq, kompressor och plugin — och att tappa dem tyst var precis vad
+                    // som gjorde en tempoändring ohörbar: appen skickade `LoadStemTrack`
+                    // vid varje uppspelningsstart och klippen föll tillbaka till
+                    // originalet medan vyn fortsatte rita den sträckta filen.
+                    new_track.regions = std::mem::take(&mut old.regions);
                     self.stem_tracks[track_index] = new_track;
                 } else {
                     while self.stem_tracks.len() < track_index {
@@ -921,10 +936,12 @@ impl SynthEngine {
                     self.stem_tracks.push(track);
                 }
                 self.has_stem_solo = self.stem_tracks.iter().any(|t| t.solo);
+                self.recount_stretched_tracks();
             }
             AudioCommand::ClearAllStemTracks => {
                 self.stem_tracks.clear();
                 self.has_stem_solo = false;
+                self.recount_stretched_tracks();
             }
             AudioCommand::SetStemTrackState { track_index, volume, pan, muted, solo } => {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
@@ -939,6 +956,7 @@ impl SynthEngine {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
                     track.regions = regions;
                 }
+                self.recount_stretched_tracks();
             }
             AudioCommand::SetStemTrackRouting { track_index, bus, vca } => {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
@@ -1105,6 +1123,19 @@ impl SynthEngine {
     }
 
     #[inline(always)]
+    /// Räknar om [`Self::stretched_region_tracks`] ur spåren (Fas 8.10c).
+    ///
+    /// Ett tal som svarar på **vad motorn har**, inte på vad appen skickade. Anropas
+    /// där regioner eller spår byts — några spår, några regioner, ingen kostnad i
+    /// sample-loopen.
+    fn recount_stretched_tracks(&mut self) {
+        self.stretched_region_tracks = self
+            .stem_tracks
+            .iter()
+            .filter(|t| t.regions.iter().any(|r| r.source_audio.is_some()))
+            .count() as u32;
+    }
+
     pub fn process_stereo(&mut self) -> (f32, f32) {
         // 0. Fire any due scheduled chord/strum notes.
         if !self.scheduled_notes.is_empty() {
@@ -1818,6 +1849,56 @@ mod tests {
     ///
     /// Det här är regressionsvakten: inför tempoföljningen får ingen region som
     /// inte är sträckt spela ett sample annorlunda än förut.
+    /// **En omladdning får inte tömma klippen** (Fas 8.10c).
+    ///
+    /// `LoadStemTrack` byggde ett nytt spår och ärvde eq, kompressor, sends och plugin —
+    /// men **inte** `regions`. Appen skickar `LoadStemTrack` vid varje uppspelningsstart,
+    /// så en tempoändring blev ohörbar: motorn föll tillbaka till originalet medan vyn
+    /// ritade den sträckta filen. Mätt på Alex' RAHP140 2026-09-13 (9 klipp, 140 → 100).
+    #[test]
+    fn a_track_reload_keeps_the_stretched_regions() {
+        let sr = 48_000u32;
+        let pcm = Arc::new(vec![0.0f32; sr as usize]);
+        fn load(synth: &mut SynthEngine, pcm: &Arc<Vec<f32>>, sr: u32) {
+            synth.handle_command(AudioCommand::LoadStemTrack {
+                track_index: 0,
+                left: pcm.clone(),
+                right: pcm.clone(),
+                sample_rate: sr as f32,
+                volume: 1.0,
+                pan: 0.0,
+                start_time_secs: 0.0,
+            });
+        }
+        let mut synth = SynthEngine::new(sr as f32);
+        load(&mut synth, &pcm, sr);
+        let mut region = region_under_test(1.0, 0.0, 0.0, false, 1.0);
+        region.source_audio = Some((pcm.clone(), pcm.clone(), sr as f32));
+        synth.handle_command(AudioCommand::SetStemTrackRegions {
+            track_index: 0,
+            regions: vec![region],
+        });
+        assert_eq!(
+            synth.stretched_region_tracks, 1,
+            "motorn ska ha ett sträckt spår efter beställningen"
+        );
+
+        load(&mut synth, &pcm, sr); // uppspelningsstart: det var här klippen tömdes
+        assert_eq!(
+            synth.stem_tracks[0].regions.len(),
+            1,
+            "klippet ska överleva omladdningen"
+        );
+        assert!(
+            synth.stem_tracks[0].regions[0].source_audio.is_some(),
+            "och det sträckta ljudet med"
+        );
+        assert_eq!(
+            synth.stretched_region_tracks, 1,
+            "räknaren ska stå kvar — den är vad appen läser"
+        );
+    }
+
     #[test]
     fn a_region_at_rate_one_maps_time_exactly_as_before() {
         let plain = region_under_test(4.0, 0.0, 0.0, false, 1.0);

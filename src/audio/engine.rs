@@ -32,6 +32,9 @@ pub struct AudioEngine {
     peak_r: Arc<AtomicU32>,
     /// Låtens position i LJUDTRÅDENS klocka — det spelhuvudet ska visa (8.13b).
     song_pos_secs: Arc<AtomicU32>,
+    /// Hur många spår motorn håller sträckt ljud för (Fas 8.10c) — speglad ur
+    /// ljudtråden, samma väg som spelhuvudets klocka.
+    stretched_tracks: Arc<AtomicU32>,
     audition_active: Arc<AtomicBool>,
     master_gr_db: Arc<AtomicU32>,
     scope_rx: Consumer<f32>,
@@ -106,6 +109,7 @@ impl AudioEngine {
         let peak_l = Arc::new(AtomicU32::new(0));
         let peak_r = Arc::new(AtomicU32::new(0));
         let song_pos_secs = Arc::new(AtomicU32::new(0));
+        let stretched_tracks = Arc::new(AtomicU32::new(0));
         let audition_active = Arc::new(AtomicBool::new(false));
         let master_gr_db = Arc::new(AtomicU32::new(0));
 
@@ -123,6 +127,7 @@ impl AudioEngine {
             &peak_l,
             &peak_r,
             &song_pos_secs,
+            &stretched_tracks,
             &audition_active,
             &master_gr_db,
         ) {
@@ -138,6 +143,7 @@ impl AudioEngine {
                     &peak_l,
                     &peak_r,
                     &song_pos_secs,
+                    &stretched_tracks,
                     &audition_active,
                     &master_gr_db,
                 )?
@@ -162,6 +168,7 @@ impl AudioEngine {
             peak_l,
             peak_r,
             song_pos_secs,
+            stretched_tracks,
             audition_active,
             master_gr_db,
             scope_rx,
@@ -198,7 +205,7 @@ impl AudioEngine {
             &self.peak_level,
             &self.peak_l,
             &self.peak_r,
-            &self.song_pos_secs,
+            &self.song_pos_secs, &self.stretched_tracks,
             &self.audition_active,
             &self.master_gr_db,
         ) {
@@ -213,7 +220,7 @@ impl AudioEngine {
                     &self.peak_level,
                     &self.peak_l,
                     &self.peak_r,
-                    &self.song_pos_secs,
+                    &self.song_pos_secs, &self.stretched_tracks,
                     &self.audition_active,
                     &self.master_gr_db,
                 ) {
@@ -250,6 +257,7 @@ impl AudioEngine {
         peak_l: &Arc<AtomicU32>,
         peak_r: &Arc<AtomicU32>,
         song_pos_secs: &Arc<AtomicU32>,
+        stretched_tracks: &Arc<AtomicU32>,
         audition_active: &Arc<AtomicBool>,
         master_gr_db: &Arc<AtomicU32>,
     ) -> Result<(Stream, Producer<AudioCommand>, Consumer<f32>), Box<dyn std::error::Error>> {
@@ -257,9 +265,9 @@ impl AudioEngine {
         let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
 
         let stream = match sample_format {
-            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
             _ => return Err(crate::i18n::t("Ljudformatet stöds inte").into()),
         };
 
@@ -285,6 +293,15 @@ impl AudioEngine {
     /// siffran, och de två kan inte längre säga olika saker.
     pub fn song_position_secs(&self) -> f32 {
         f32::from_bits(self.song_pos_secs.load(Ordering::Relaxed))
+    }
+
+    /// Hur många spår **ljudtråden** håller sträckt ljud för (Fas 8.10c).
+    ///
+    /// Appen skickar regioner och kan tro att de landade. Det här talet är mätt i
+    /// motorn i stället: är det lägre än antalet skickade har kommandot inte nått
+    /// fram, och då säger statusraden det i stället för att tyst spela originalet.
+    pub fn stretched_track_count(&self) -> u32 {
+        self.stretched_tracks.load(Ordering::Relaxed)
     }
 
     /// Toppnivå per kanal sedan förra bildrutan: `(vänster, höger)`.
@@ -328,6 +345,7 @@ impl AudioEngine {
         peak_l: Arc<AtomicU32>,
         peak_r: Arc<AtomicU32>,
         song_pos_secs: Arc<AtomicU32>,
+        stretched_tracks: Arc<AtomicU32>,
         audition_active: Arc<AtomicBool>,
         master_gr_db: Arc<AtomicU32>,
         mut scope_tx: Producer<f32>,
@@ -391,6 +409,10 @@ impl AudioEngine {
                     // Låtens position ur ljudtrådens egen klocka. Spelhuvudet i UI:t
                     // läser den här siffran i stället för att räkna egna steg — två
                     // klockor för samma sak går isär, och gjorde det (8.13b).
+                    stretched_tracks.store(
+                        synth.stretched_region_tracks,
+                        Ordering::Relaxed,
+                    );
                     song_pos_secs.store(
                         (synth.song_time_samples as f32 / synth.sample_rate).to_bits(),
                         Ordering::Relaxed,

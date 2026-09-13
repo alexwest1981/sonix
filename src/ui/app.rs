@@ -3926,19 +3926,39 @@ impl SonixApp {
             for t_idx in 0..self.playlist_tracks.len() {
                 self.sync_track_regions(t_idx);
             }
-            self.status_message = if failed.is_empty() {
-                crate::tstatus!(
-                    "🎚 {} klipp sträckta till {:.1} BPM (tonhöjden bevarad).",
-                    finished.len(),
-                    self.bpm
-                )
-            } else {
+            // **Mätt i motorn, inte antaget** (Fas 8.10c): hur många spår spelar
+            // sträckt ljud *efter* omsynken? Kommandot kan ha fallit bort på vägen —
+            // och då ska det sägas högt, för symptomet ("ingen skillnad på tempot")
+            // är detsamma som när allt fungerar.
+            let sent = self
+                .playlist_tracks
+                .iter()
+                .filter(|t| {
+                    self.stem_regions_for(t)
+                        .iter()
+                        .any(|r| r.source_audio.is_some())
+                })
+                .count() as u32;
+            let engine_play = self.engine.stretched_track_count();
+            self.status_message = if !failed.is_empty() {
                 // 8.5-regeln: säg vad som gick fel i stället för att tiga. Originalet
                 // spelar under tiden — ett besked, inte en tystnad.
                 crate::tstatus!(
                     "⚠ Kunde inte sträcka {} klipp: {} — originalet spelar.",
                     failed.len(),
                     failed[0]
+                )
+            } else if engine_play < sent {
+                crate::tstatus!(
+                    "⚠ Sträckningen nådde inte motorn: {} av {} spår spelar sträckt ljud — originalet spelar för resten.",
+                    engine_play,
+                    sent
+                )
+            } else {
+                crate::tstatus!(
+                    "🎚 {} klipp sträckta till {:.1} BPM (tonhöjden bevarad).",
+                    finished.len(),
+                    self.bpm
                 )
             };
         }
