@@ -22,6 +22,8 @@
 //! fönster runt sig (60 ms som standard). En global tröskel hade missat slaget
 //! efter ett starkt parti och hittat brus i det svaga — det var det felet
 //! "Transient"-knappen gjorde i sin enklaste form.
+//! Status: stabil — slagletning och slicekarta (8.7 steg 1 + 2)
+//! Rör inte: mät på en jämn ton först: en detektor är en mätning, och 4 ms enpolsfilter + centrerad tröskel är den enda variant som ger noll falska slag
 
 /// Hur känslig detekteringen ska vara och hur tätt slag får ligga.
 #[derive(Clone, Copy, Debug, PartialEq)]

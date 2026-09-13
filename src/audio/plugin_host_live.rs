@@ -17,6 +17,8 @@
 //!
 //! Everything that does not touch the ABI (the data types and `inspect`) is
 //! compiled in both configurations, so the UI can always show an honest status.
+//! Status: stabil (4.x) — CLAP-värden i egen process
+//! Rör inte: en plugin i uppspelningsvägen får aldrig kunna tysta eller krascha motorn
 
 use std::collections::VecDeque;
 use std::sync::Arc;

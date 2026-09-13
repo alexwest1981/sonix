@@ -1,3 +1,4 @@
+//! Status: stabil — fabriksbiblioteket och `merge_library`
 use std::f32::consts::TAU;
 use std::path::Path;
 use super::wav_writer::write_pcm_f32_to_wav;

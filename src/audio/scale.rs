@@ -18,6 +18,8 @@
 //!
 //! Nu finns skalorna på ett ställe: samma tabell ger arrangerarens meny,
 //! piano rollens meny, skalmarkeringen i rutnätet och AI-kontextens etikett.
+//! Status: stabil (8.11) — en tabell och ett index för tonarten
+//! Rör inte: en tabell, ett index, en test som räknar namnen — två listor för samma sak driver isär
 
 /// Grundtonernas namn, index = tonhöjdsklass (0 = C).
 ///

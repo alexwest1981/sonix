@@ -16,6 +16,7 @@
 //! ABI notes: the vtables are declared in the exact order of the VST 3 headers
 //! and the interface IDs use the non-COM `INLINE_UID` byte order (each 32-bit
 //! word stored big-endian), matching a Linux VST3 build.
+//! Status: stabil (4.6a) — VST3-värden, en utbuss
 
 #![allow(dead_code)]
 

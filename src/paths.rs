@@ -37,6 +37,8 @@
 //! `SONIX_DATA_DIR`, `SONIX_STATE_DIR`, `SONIX_CACHE_DIR` vinner över XDG.
 //! XDG följs i sin tur först, med `$HOME`-standardvärden som sista utväg.
 //! Ett `~/`-prefix expanderas alltid. Se [`Paths::from_env`].
+//! Status: fryst — enda modulen som får bygga sökvägar
+//! Rör inte: nya sökvägar läggs här, aldrig hos anroparen
 
 use std::io;
 use std::path::{Path, PathBuf};

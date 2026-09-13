@@ -7,6 +7,8 @@
 //!
 //! Modulen är ren data in och data ut (inga app- eller ljudberoenden), så hela
 //! kodningen kan testas utan GUI.
+//! Status: stabil — MIDI-export med tempobyten (8.2 steg 3)
+//! Rör inte: gyllene test: en orörd fil ska vara byte-identisk
 
 /// Pulser per fjärdedelsnot. 480 är den vanligaste upplösningen och delbart
 /// med både 16-delar (120), 32-delar (60) och tripletter (160).

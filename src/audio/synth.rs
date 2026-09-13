@@ -1,3 +1,5 @@
+//! Status: stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends
+//! Rör inte: sends mellan spår kräver att spårloopen i `process_stereo` delas i två faser + slingkontroll
 use std::f32::consts::PI;
 use std::sync::Mutex;
 use super::command::{AudioCommand, Preset, StemRegionPlayback, StemSend, Waveform};

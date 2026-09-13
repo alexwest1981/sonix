@@ -191,6 +191,25 @@ kornkanterna Alex hör som skorr.
 
 `cargo test --release --bin sonix the_stretch_artefacts -- --ignored --nocapture`
 
+**MÄTT 2026-09-13 — kornplaceringen vid anslag är INTE orsaken.** Två varianter prövades
+mot samma fyra stämmor och samma test, och båda gav **sämre** siffror än utgångsläget:
+
+| Variant | Sång | Bakgrundssång | Trummor | Bas |
+| :--- | ---: | ---: | ---: | ---: |
+| Utgångsläget (mätt 2026-09-12) | +10,3 % | +9,3 % | +9,6 % | +45,7 % |
+| 1. Anslag gör ramen **orörbar** (sökningen hoppas över) | +10,7 % | +9,7 % | +11,7 % | +53,7 % |
+| 2. Anslag **flyttar** ramen dit (framåt, monotont) | +10,2 % | +9,7 % | +10,5 % | +53,1 % |
+
+Båda är **återställda** — en ändring som lägger till artefakter är sämre än ingen ändring, och
+siffran i tabellen ovan står kvar som bevis. Slutsatsen är att överskottet inte kommer av att
+sökningen flyttar kornet: det kommer av **överlappningen** (två Hann-fönster över samma
+anslag, 512 sampel ≈ 11,6 ms) eller av kornlängden/hopet självt. Nästa försök ska därför
+mäta på **överlappet**, inte på sökningen — eller gå till steg 2 direkt.
+
+Kvar som vakt: `the_engine_does_not_invent_transients` (klickföljd, syntetisk). Den visar
+**0** överskott både före och efter båda varianterna, alltså fångar den en grov regression
+men inte den fina — det står i testets doc-kommentar så ingen tror annat.
+
 **Steg 1 (inget nytt beroende):** transientmedveten kornplacering i vår egen WSOLA —
 `src/audio/vocal_harmonizer.rs`, `struct Wsola` (frame 1024, hop 512, `search: 128`,
 `best_start()` som gör den normaliserade korskorrelationen mot `prev_tail`). Klassiskt

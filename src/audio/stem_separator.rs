@@ -1,3 +1,5 @@
+//! Status: stabil (8.5a) — separatorn skriver stämmorna till disk och minns var de ligger
+//! Rör inte: 8.5-regeln: en väg som skapar ett klipp eller en fil får aldrig hitta på ljud — säg fel och avbryt
 use eframe::egui::Color32;
 
 #[derive(Debug, Clone, Copy, PartialEq)]

@@ -1,3 +1,4 @@
+//! Status: stabil — inspelning
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleFormat, Stream, StreamConfig};
 use eframe::egui::Color32;

@@ -19,6 +19,8 @@
 //! `waveform_cache_dir()`, så att ritningen bara läser några fack per pixel.
 //! Funktionen här är den som avgör *vad* som ska stå i varje pixel; cachen ska
 //! ge samma svar snabbare, och kan prövas mot den (samma indata, samma utdata).
+//! Status: stabil — exakt hölje och flernivåcache (8.3)
+//! Rör inte: representationen ska bytas vid zoomtrösklar, aldrig göras finare kolumn för kolumn
 
 // Modulen är klar och prövad men ännu inte inkopplad i ritningen (Fas 8.3): allt
 // här prövas av testerna, och attributet försvinner när tidlinjen ritar ur cachen.

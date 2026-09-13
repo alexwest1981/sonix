@@ -1,3 +1,5 @@
+//! Status: byggs — kommando-protokollet (AI-vägen)
+//! Rör inte: nya kommandon ska gå genom `Command` så att agenten och UI:t gör samma sak
 use super::drum::DrumType;
 use super::effects::{DelayParams, ReverbParams};
 use super::envelope::AdsrParams;

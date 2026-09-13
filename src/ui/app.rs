@@ -1,3 +1,5 @@
+//! Status: byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen
+//! Rör inte: två sessioner har krockat i den här filen; kolla `git status` och mtime före varje skrivning
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Vec2};
 use std::collections::HashSet;
 use std::time::Instant;

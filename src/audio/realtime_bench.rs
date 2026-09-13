@@ -13,6 +13,8 @@
 //! Inte med i mätningen (och varför): `catch_unwind`-ramen, `cpal`s
 //! samplingskonvertering och scope-ringen. De är billiga men de är inte DSP; att
 //! ta med dem hade gjort talet svårare att jämföra mellan körningar.
+//! Status: stabil — realtidsmätningen
+//! Rör inte: release tillåter högst 2 missade block av 120; en spik är ett fel, inte brus
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};

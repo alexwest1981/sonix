@@ -1,3 +1,5 @@
+//! Status: fryst — nycklar på engelska, texter på svenska
+//! Rör inte: nya strängar går via `t()`/`tstatus!`, aldrig som literaler i UI:t
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU8, Ordering};
 

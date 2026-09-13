@@ -12,6 +12,8 @@
 //!
 //! **Omfång i det här steget:** tempobyten sker på **taktgränser**. Taktart (3/4,
 //! 6/8 …) är en egen fråga och ingår inte — den rör fler ställen än tempot.
+//! Status: stabil — tempokartan och `region_source_secs`
+//! Rör inte: bit-exakt vid faktor 1,0; ändra bara med ett test som visar samma sak
 
 use serde::{Deserialize, Serialize};
 
