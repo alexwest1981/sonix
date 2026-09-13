@@ -5443,16 +5443,21 @@ impl SonixApp {
         );
     }
 
-    /// **"Hitta första slaget"** (Fas 8.14): mäter i klippets eget ljud i stället för
-    /// att be användaren pricka slaget på pixeln — och sätter det sedan som klippets
-    /// första sampel med samma regel som "Sätt takt 1 här".
+    /// **"Hitta första slaget"** (Fas 8.14): mäter **var ljudet börjar** i klippets egen
+    /// fil i stället för att be användaren pricka slaget på pixeln — och sätter det sedan
+    /// som klippets första sampel med samma regel som "Sätt takt 1 här".
     ///
     /// Det är den etablerade DAW-vägen (Ableton visar detekterade transients och låter
     /// dig sätta en av dem som klippets början), och den gör ett snap **ärligt**: talet
     /// kommer ur en mätning i filen, inte ur ett antagande om rutnätet.
     ///
-    /// **Ingen träff är ett giltigt svar.** En pad eller en stråke har inget första
-    /// slag; då sägs det, och ingenting flyttas.
+    /// **Ankaret är ljudet, inte detektorn** — mätt på Alex' fem stämmor 2026-09-13:
+    /// träffen på 0,6008 s (backningen sa 0,502), sången 7,18 (mjuka attacken sågs inte
+    /// alls), basen 1,6885, gitarren **0,0** (inget att trimma), och en stämma som är
+    /// tyst i 20 s svarar `None`. Se [`crate::audio::onset::music_start_source_secs`].
+    ///
+    /// **Ingen träff är ett giltigt svar.** En pad, en stråke eller ett tyst parti har
+    /// ingen början att sätta; då sägs det, och ingenting flyttas.
     pub fn align_clip_to_first_beat(&mut self) {
         let Some((t_idx, r_idx)) = self.selected_audio_region else {
             return;
@@ -5492,7 +5497,7 @@ impl SonixApp {
         };
 
         let params = crate::audio::onset::OnsetParams::default();
-        let Some(onset_src) = crate::audio::onset::first_onset_source_secs(
+        let Some(onset_src) = crate::audio::onset::music_start_source_secs(
             &mono,
             sr as f32,
             r.sample_offset_sec,
@@ -5500,7 +5505,7 @@ impl SonixApp {
             &params,
         ) else {
             self.status_message = crate::tstatus!(
-                "🔍 Hittade inget slag inom {:.0} s i '{}' — använd \"Sätt takt 1 här\" och peka själv.",
+                "🔍 Hörde inget ljud inom {:.0} s i början av '{}' — använd \"Sätt takt 1 här\" och peka själv.",
                 FIRST_BEAT_SEARCH_SECS,
                 r.name
             );
@@ -5541,7 +5546,7 @@ impl SonixApp {
         }
         self.sync_track_regions(t_idx);
         self.status_message = crate::tstatus!(
-            "🎯 Hittade slaget {:.3} s in i filen — '{}' börjar nu där.",
+            "🎯 Musiken börjar {:.3} s in i filen — '{}' börjar nu där.",
             onset_src,
             r.name
         );
@@ -12031,7 +12036,7 @@ impl SonixApp {
                                                     "🔍 Hitta första slaget (mät i filen)",
                                                 ))
                                                 .on_hover_text(crate::i18n::t(
-                                                    "Letar efter det första anslaget i klippets ljud och sätter det som klippets början — samma regel som \"Sätt takt 1 här\", men talet kommer ur en mätning i stället för ur spelhuvudets position. En jämn ton har inget slag; då händer ingenting.",
+                                                    "Mäter var ljudet börjar i klippets fil och sätter det som klippets början — samma regel som \"Sätt takt 1 här\", men talet kommer ur en mätning i stället för ur spelhuvudets position. Ett tyst parti i början (eller en stämma som inte hörs inom 20 s) ger inget svar; då händer ingenting.",
                                                 ))
                                                 .clicked()
                                             {
@@ -19735,7 +19740,7 @@ mod tests {
         let at = (sr * 0.42) as usize;
         pcm[at] = 0.9;
         pcm[at + 1] = -0.7;
-        let onset = crate::audio::onset::first_onset_source_secs(
+        let onset = crate::audio::onset::music_start_source_secs(
             &pcm,
             sr,
             0.0,

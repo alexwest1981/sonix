@@ -186,17 +186,32 @@ pub fn detect_onsets(samples: &[f32], sample_rate: f32, params: &OnsetParams) ->
     peaks
 }
 
-/// **Första slaget i ett fönster**, som sekunder i källan (Fas 8.14).
+/// **Var musiken börjar** i ett fönster, som sekunder i källan (Fas 8.14 steg 2).
 ///
-/// Samma detektor som choppern använder, men en annan fråga: *"var börjar musiken?"*
-/// i stället för *"var är alla slagen?"*. Letar från `from_secs` och `window_secs`
-/// framåt — klippets eget ljud, inte filens början.
+/// Frågan är *"var börjar musiken?"* — inte *"var är alla slagen?"* (det är
+/// [`detect_onsets`]) och inte *"var ligger anslaget?"*. Svaret är **första stunden
+/// ljud**: 20 ms RMS över en golv-nivå som ligger −40 dB under fönstrets topp, så att
+/// en tyst stämma och en stark stämma döms med samma mått.
 ///
-/// **Ingen träff är ett giltigt svar.** En jämn ton (pad, stråke, sång utan anslag)
-/// har inga slag, och då ska klippet inte flyttas på en gissning (8.5-regeln: hitta
-/// aldrig på ett ljud). Det är samma krav som modulens eget prov ställer på detektorn,
-/// och därför står provet även här: en jämn ton ska ge **noll** slag.
-pub fn first_onset_source_secs(
+/// **Varför inte detektorns svar rakt av** — mätt på Alex' egna stämmor 2026-09-13:
+///
+/// | Stämma | Hörbart | Detektorns första slag | Skillnad |
+/// | :--- | ---: | ---: | ---: |
+/// | Trummor | 0,600 s | 0,502 s | **−98 ms** (backningen före attacken) |
+/// | Sång | 7,18 s | 7,28 s | +100 ms (den mjuka attacken sågs inte) |
+/// | Gitarr | 0,00 s | 0,178 s | +178 ms (**inget** anslag i början) |
+/// | Bas | 1,68 s | 1,689 s | +9 ms |
+///
+/// Backningen är rätt för en *slice* (den ska börja före sin attack), men fel för ett
+/// *rutnät*: 98 ms är 5,7 % av ett slag i 140 BPM och hörs som flam — det var Alex'
+/// *"hoppade till markören och klippte bort början"*. Och en mjuk stråke eller ett
+/// legato-anslag har inget anslag alls för HFC-höljet att hitta. Därför är ljudet
+/// ankaret, och detektorn får **finputsa** när den ser samma sak: ligger ett slag inom
+/// 20 ms av den hörbara starten används dess sampelnoggrannhet.
+///
+/// `None` betyder att fönstret är tyst: ingen musik att sätta på ett rutnät, och då
+/// hittar vi inte på någon (8.5-regeln).
+pub fn music_start_source_secs(
     samples: &[f32],
     sample_rate: f32,
     from_secs: f32,
@@ -215,10 +230,39 @@ pub fn first_onset_source_secs(
     if to <= from {
         return None;
     }
-    detect_onsets(&samples[from..to], sample_rate, params)
-        .first()
-        .map(|&i| (from + i) as f32 / sample_rate)
+    let slice = &samples[from..to];
+    let secs_at = |i: usize| (from + i) as f32 / sample_rate;
+
+    // 1. Var hörs ljudet? 20 ms RMS mot fönstrets egen topp, −40 dB under den.
+    let win = ((0.020 * sample_rate) as usize).max(1);
+    let mut peak = 0.0f32;
+    let mut env: Vec<f32> = Vec::with_capacity(slice.len() / win + 1);
+    for c in slice.chunks(win) {
+        let e = (c.iter().map(|s| s * s).sum::<f32>() / c.len() as f32).sqrt();
+        peak = peak.max(e);
+        env.push(e);
+    }
+    if peak <= 0.0 {
+        return None;
+    }
+    let floor = (peak * 10f32.powf(-40.0 / 20.0)).max(1e-5);
+    let first_bucket = env.iter().position(|&e| e > floor)?;
+    let audible = secs_at(first_bucket * win);
+
+    // 2. Finputs: detektorns slag om det ligger inom 20 ms av det hörbara.
+    let refined = detect_onsets(slice, sample_rate, params)
+        .into_iter()
+        .map(secs_at)
+        .filter(|t| (t - audible).abs() <= 0.020)
+        .min_by(|a, b| {
+            (a - audible)
+                .abs()
+                .partial_cmp(&(b - audible).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+    Some(refined.unwrap_or(audible))
 }
+
 
 /// Räknar fram en slicekarta ur slagpunkterna.
 ///
@@ -435,58 +479,104 @@ mod tests {
         assert_eq!(env_d.iter().fold(0.0f32, |m, v| m.max(*v)), 0.0, "utklingningen ska inte ge något");
     }
 
-    /// **Första slaget i ett fönster** (Fas 8.14): den fråga "hitta första slaget"
-    /// ställer — var börjar musiken, inte var ligger alla slag.
+    /// **Var musiken börjar** (Fas 8.14 steg 2): första stunden ljud — inte detektorns
+    /// backning och inte ett senare anslag.
     #[test]
-    fn the_first_onset_in_a_window_is_the_first_click() {
+    fn the_music_starts_where_the_sound_starts() {
         let buf = clicks(&[0.20, 0.70, 1.20], 2.0);
         let p = OnsetParams::default();
-        let first = first_onset_source_secs(&buf, SR, 0.0, 2.0, &p).expect("klick finns");
-        assert!((first - 0.20).abs() < 0.02, "första klicket ligger på 0,20 s: {first}");
-    }
-
-    /// Sökningen börjar där klippet börjar — ett anslag **före** klippets första sampel
-    /// är inte klippets första slag.
-    #[test]
-    fn the_search_starts_at_the_clips_first_sample() {
-        let buf = clicks(&[0.20, 0.70, 1.20], 2.0);
-        let p = OnsetParams::default();
-        let first = first_onset_source_secs(&buf, SR, 0.50, 2.0, &p).expect("klick finns");
+        let start = music_start_source_secs(&buf, SR, 0.0, 2.0, &p).expect("klick finns");
         assert!(
-            (first - 0.70).abs() < 0.02,
-            "från 0,50 s är nästa slag 0,70 s, inte 0,20: {first}"
+            (start - 0.20).abs() < 0.005,
+            "musiken börjar vid första klicket: {start}"
         );
     }
 
-    /// **En jämn ton ska ge noll slag** — samma krav som modulens eget prov ställer på
-    /// detektorn, och skälet att `None` måste vara ett giltigt svar här också: en pad
-    /// har inget första slag, och då flyttas ingenting.
+    /// **Trumfallet, mätt** (Alex' stämma 2026-09-13): tystnad till 0,600 s, sedan en
+    /// träff. Detektorn backar till 0,502 s — rätt för en slice, fel för ett rutnät.
+    /// Svaret ska vara träffen: 98 ms är 5,7 % av ett slag i 140 BPM, och skillnaden
+    /// mellan "slaget på rutnätet" och "flam".
     #[test]
-    fn a_steady_tone_has_no_first_onset() {
+    fn the_music_start_is_the_hit_not_the_backtrack() {
+        let mut buf = vec![0.0f32; (SR * 1.5) as usize];
+        let hit = (SR * 0.600) as usize;
+        buf[hit] = 0.9;
+        buf[hit + 1] = -0.7;
+        let p = OnsetParams::default();
+        assert!(
+            detect_onsets(&buf, SR, &p)[0] < hit,
+            "detektorn ska backa före träffen — annars prövar provet inget"
+        );
+        let start = music_start_source_secs(&buf, SR, 0.0, 1.5, &p).expect("ljud finns");
+        assert!(
+            (start - 0.600).abs() < 0.005,
+            "starten ska vara träffen på 0,600 s, inte backningen: {start}"
+        );
+    }
+
+    /// **Ett mjukt anslag har inget slag för HFC-höljet att hitta** — sångens och
+    /// stråkens fall. Där är ljudet ankaret: en ton som börjar 0,50 s in ska ge 0,50 s,
+    /// fastän detektorn inte hittar något alls i den.
+    #[test]
+    fn a_soft_attack_is_found_by_the_sound_and_not_by_the_detector() {
         let sr = 48_000.0f32;
-        let tone: Vec<f32> = (0..(sr as usize * 2))
-            .map(|i| 0.8 * (std::f32::consts::TAU * 220.0 * i as f32 / sr).sin())
-            .collect();
+        let mut buf = vec![0.0f32; (sr * 2.0) as usize];
+        let start_at = (sr * 0.5) as usize;
+        for i in start_at..buf.len() {
+            let t = (i - start_at) as f32 / sr;
+            let env = (t / 0.2).min(1.0);
+            buf[i] = 0.6 * env * (std::f32::consts::TAU * 220.0 * t).sin();
+        }
         let p = OnsetParams::default();
         assert_eq!(
-            first_onset_source_secs(&tone, sr, 0.0, 2.0, &p),
-            None,
-            "en jämn ton har inga slag"
+            detect_onsets(&buf, sr, &p).len(),
+            0,
+            "en mjuk ton ska inte ge några slag — därför måste ljudet vara ankaret"
+        );
+        let start = music_start_source_secs(&buf, sr, 0.0, 2.0, &p).expect("ljud finns");
+        assert!(
+            (start - 0.50).abs() < 0.03,
+            "starten ska vara där tonen börjar (0,50 s): {start}"
         );
     }
 
-    /// Tystnad och ett fönster utanför ljudet är `None`, inte en panik eller en gissning.
+    /// Ett fönster utan ljud är `None`: det finns ingen musik att sätta på ett rutnät,
+    /// och då flyttas ingenting (8.5). Sökningen börjar dessutom där klippet börjar —
+    /// ljud **före** klippets första sampel är inte klippets början.
     #[test]
-    fn silence_and_the_end_of_the_buffer_are_none() {
+    fn a_silent_window_has_no_music_start() {
         let p = OnsetParams::default();
         let quiet = vec![0.0f32; (SR * 1.0) as usize];
-        assert_eq!(first_onset_source_secs(&quiet, SR, 0.0, 1.0, &p), None);
-        let buf = clicks(&[0.20], 1.0);
-        assert_eq!(
-            first_onset_source_secs(&buf, SR, 5.0, 1.0, &p),
-            None,
-            "utanför bufferten finns inget att hitta"
+        assert_eq!(music_start_source_secs(&quiet, SR, 0.0, 1.0, &p), None);
+        assert_eq!(music_start_source_secs(&[], SR, 0.0, 1.0, &p), None);
+        let buf = clicks(&[0.20, 0.70], 1.0);
+        let start = music_start_source_secs(&buf, SR, 0.50, 0.5, &p).expect("klick på 0,70");
+        assert!(
+            (start - 0.70).abs() < 0.01,
+            "från 0,50 s är musiken klicket på 0,70 s, inte 0,20: {start}"
         );
-        assert_eq!(first_onset_source_secs(&[], SR, 0.0, 1.0, &p), None);
+    }
+
+    /// **Mätning på Alex' riktiga stämma** (Fas 8.14 steg 2): var börjar ljudet, och vad
+    /// svarar funktionen? Körs manuellt mot en riktig fil:
+    ///
+    /// ```text
+    /// SONIX_ONSET_FILE="…/Rock and Hard Place (Drums).wav" \
+    ///   cargo test --release --locked --bin sonix the_music_start_against_a_real_stem \
+    ///   -- --ignored --nocapture
+    /// ```
+    #[test]
+    #[ignore]
+    fn the_music_start_against_a_real_stem() {
+        let path = std::env::var("SONIX_ONSET_FILE").expect("SONIX_ONSET_FILE");
+        let (left, _right, sr) = crate::audio::load_wav_pcm(&path).expect("filen ska gå att läsa");
+        let p = OnsetParams::default();
+        let raw = detect_onsets(&left, sr as f32, &p)
+            .first()
+            .map(|&i| i as f32 / sr as f32);
+        let found = music_start_source_secs(&left, sr as f32, 0.0, 20.0, &p);
+        eprintln!("fil: {path}");
+        eprintln!("  detektorns råa första slag {raw:?} s");
+        eprintln!("  funktionens svar (musikens start) {found:?} s");
     }
 }

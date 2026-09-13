@@ -119,11 +119,14 @@ mätt, och var nästa andetag ska tas.*
    still (Abletons 1.1.1 + Audacitys kant-trim). Ren funktion `align_clip_start_to_point`
    med **fyra prov**: 0,30 s i 140 BPM ✓, samma sträcka i 100 BPM blir 0,2143 s av *filen* ✓,
    klippet står kvar ✓, och ett nej är ett nej (spelhuvudet utanför klippet → inget ändrat) ✓.
-   **Och steg 2 är byggt samma kväll:** *"🔍 Hitta första slaget (mät i filen)"* — samma meny,
-   men talet kommer ur slagletningen (`audio::onset`) i stället för ur spelhuvudets position.
-   Kedjan är tre rena funktioner med sammanlagt sex prov, plus ett prov som binder ihop hela
-   kedjan på syntetiskt ljud (klick 0,42 s in → offset 0,42 s). **Ingen träff är ett giltigt
-   svar:** en jämn ton ger noll slag, och då sägs det i stället för att något flyttas.
+   **Och steg 2 är byggt samma kväll:** *"🔍 Hitta första slaget (mät i filen)"* — samma meny.
+   **Första försöket använde detektorns svar rakt av, och Alex' öra fällde det** ("hoppade
+   till markören och klippte bort början på trummorna"): backningen ligger 98 ms före träffen
+   (= 5,7 % av ett slag i 140 BPM), och för sång/gitarr hittar HFC-höljet inget alls. Ankaret
+   är nu **ljudet** (`music_start_source_secs`: 20 ms RMS, −40 dB under fönstrets topp) med
+   detektorn som finputs inom 20 ms. Mätt på fem av hans stämmor: trummor **0,6008** (mot
+   backningens 0,502), sång **7,18**, bas **1,6885**, gitarr **0,0** (inget att trimma),
+   backing vocals `None` (tyst i 20 s). Se roadmapens 8.14 för hela tabellen.
    0f. ~~**"marker och wave synkar inte" + "ingen skillnad på tempo"**~~ — **RÄTTAT
    2026-09-13 (8.10d).** Ett fel, båda symptomen: `LoadStemTrack` — som appen skickar
    **vid varje uppspelningsstart** — byggde ett nytt spår och tömde `regions` tyst, så

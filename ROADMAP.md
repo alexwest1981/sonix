@@ -1776,36 +1776,56 @@ vilken sekund filen läses från — talet, inte ett omdöme.
 
 Han pekade själv ut nästa steg: *"det som är industristandard, och mest önskvärt."* Etablerade
 DAW:er visar detekterade transients (Ableton: grå markörer som kan skapas/raderas) och låter dig
-sätta en av dem som klippets början. Sonix hade redan slagletningen (`audio::onset`, Fas 8.7) —
-den ställde frågan *"var är alla slagen?"*. Den nya funktionen ställer en annan: **"var börjar
-musiken?"** (`first_onset_source_secs`: sök från klippets första sampel och `FIRST_BEAT_SEARCH_SECS`
-= 20 s framåt, ta det första slaget).
+sätta en av dem som klippets början. Sonix hade redan slagletningen (`audio::onset`, Fas 8.7).
 
-**Kedjan är tre rena funktioner**, och var och en har egna prov — ingen App, ingen motor, inget ljud:
+**Första försöket var fel, och hans öra fällde det.** *"När jag gjorde det högerklicka och mätte,
+så hoppade den till markören, och klippte bort början på trummorna."* Autosaven från 15:44:17 visar
+exakt vad som hände: trummorna fick `offset 0,5025 s` och `bars 150,9536` — alltså *precis* vad
+kodprovet påstod, och 15:45:15 var det ångrat. Felet var inte aritmetiken utan **frågan**:
 
-1. `first_onset_source_secs` (`audio::onset`) — fyra prov: första klicket ✓, sökningen börjar vid
-   klippets sampel (ett anslag **före** klippet är inte klippets första slag) ✓, **en jämn ton ger
-   noll slag** ✓ (modulens eget krav: en detektor är en mätning), tystnad och fönster utanför
-   bufferten är `None` ✓.
-2. `timeline_point_for_source_secs` (`ui::app`) — omvändningen, med samma faktor som motorn spelar
-   med: 0,2143 s källa i ett 100-projekt blir 0,30 s ut ✓, och ett slag före klippets första sampel
-   avvisas ✓.
-3. `align_clip_start_to_point` — samma regel som i steg 1 ✓.
+Detektorn backar strax *före* anslaget. Det är rätt för en slice — den ska börja före sin attack så
+att attacken inte kapas — men fel för ett rutnät. **Mätt på hans egna fem stämmor:**
 
-Ett prov binder ihop hela kedjan på syntetiskt ljud: ett klick 0,42 s in i filen hittas av
-detektorn, räknas om till tidslinjen och blir klippets första sampel — **utan att en enda sampel
-spelas**.
+| Stämma | Var ljudet hörs | Detektorns första slag | Skillnad |
+| :--- | ---: | ---: | ---: |
+| Trummor | 0,600 s | 0,502 s | **−98 ms** (backningen) |
+| Sång | 7,18 s | 7,28 s | +100 ms (mjuka attacken sågs inte) |
+| Gitarr | 0,00 s | 0,178 s | +178 ms (**inget** anslag i början) |
+| Bas | 1,68 s | 1,689 s | +9 ms |
+| Backing Vocals | — | 135,67 s | tyst i 20 s |
 
-**Ingen träff är ett giltigt svar.** En pad eller en stråke har inget första slag; då står det i
-statusraden och ingenting flyttas. Det är samma 8.5-regel som resten av appen, och skälet att ett
-snap nu får finnas: talet kommer ur en **mätning i filen**, inte ur ett antagande om rutnätet
-(jämför provet som fällde den gissade snapen i steg 1).
+98 ms är 5,7 % av ett slag i 140 BPM: slaget hamnade **inte** på rutnätet utan 0,098 s fel — hörbart
+som flam. Och för sång, stråke och gitarr hittar HFC-höljet inget alls, för det finns inget anslag.
 
-**Rör inte:** letar bara i klippets egen fil och bara inom 20 s. Fönstret är ett tak för *arbetet*,
-inte en åsikt om musiken — hittas inget sägs det, i stället för att en hel låt genomsöks efter
-något att flytta.
+**Därför är ljudet ankaret** (`music_start_source_secs`): första stunden ljud i klippets fönster —
+20 ms RMS mot en golv-nivå som ligger −40 dB under fönstrets topp, så att en tyst och en stark stämma
+döms med samma mått. Detektorn får **finputsa** när den ser samma sak: ligger ett slag inom 20 ms av
+den hörbara starten används dess sampelnoggrannhet. Efter fixen, samma fem filer:
 
----
+| Stämma | Svar | Vad det betyder |
+| :--- | ---: | :--- |
+| Trummor | **0,6008 s** | träffen, inte backningen (0,8 ms fel) |
+| Sång | **7,18 s** | den mjuka attacken, som detektorn inte kunde se |
+| Bas | **1,6885 s** | detektorn bekräftade ljudet (9 ms) |
+| Gitarr | **0,0 s** | inget att trimma — musiken börjar redan på första sampeln |
+| Backing Vocals | `None` | tyst i 20 s: inget att sätta, inget ändrat |
+
+Fyra prov i `audio::onset` (första klicket; trumfallet där detektorns backning *måste* ligga före
+träffen för att provet ska pröva något; den mjuka tonen som detektorn ger **noll** slag i men ljudet
+hittar; och ett tyst fönster som svarar `None`), ett mätprov (`#[ignore]`) som kör mot en riktig fil,
+plus ett kedjeprov i `ui::app` på syntetiskt ljud.
+
+**Kvar till ett eget pass — och det är en *observations*-fråga, inte en mätfråga:** fönstret är 20 s
+(`FIRST_BEAT_SEARCH_SECS`). En stämma som är tyst längre än så svarar "hörde inget ljud" och får
+pekas manuellt i stället. Att *hitta* rätt bland flera kandidater (är första träffen en upptakt?)
+kräver taktdetektering, inte anslagsdetektering — Ableton löser det genom att visa *alla* transients
+och låta användaren välja en. Det är nästa steg om han vill ha det.
+
+**En fälla att känna igen (orörd i den här omgången):** högerklick på en lane **väljer inte**
+klippet under pekaren — menyn visar posterna för det klipp som redan är valt, och rubriken
+(`🎵 namn`) är enda skyddet. Det gäller alla poster i menyn, inte bara de här, och det är värt ett
+eget pass: antingen väljer högerklick det man pekar på, eller så märks posterna med vilket klipp de
+kommer att träffa.
 
 ## 8.11 Tonarten som tonart (Alex' svar 2026-09-12)
 
