@@ -79,7 +79,9 @@ pub fn plan(source_bpm: f32, project_bpm: f32, source_frames: usize) -> Option<S
     // Filen skalas ned när tempot går upp: klippet blir kortare, alltså måste
     // ljudet rymmas i mindre tid. Spannet är detsamma, bara inverterat.
     let file_ratio = 1.0 / playback_ratio;
-    let out_frames = ((source_frames as f64) * (file_ratio as f64)).round().max(1.0) as usize;
+    let out_frames = ((source_frames as f64) * (file_ratio as f64))
+        .round()
+        .max(1.0) as usize;
     Some(StretchPlan {
         playback_ratio,
         file_ratio,
@@ -459,11 +461,7 @@ fn render_one(job: &RenderJob) -> RenderDone {
     };
     let ok = |l: Vec<f32>, r: Vec<f32>, sr: u32| RenderDone {
         key: key.clone(),
-        source: Some((
-            std::sync::Arc::new(l),
-            std::sync::Arc::new(r),
-            sr as f32,
-        )),
+        source: Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr as f32)),
         error: None,
     };
 
@@ -514,7 +512,10 @@ pub struct TempoSettle {
 
 impl TempoSettle {
     pub fn new(bpm: f32) -> Self {
-        Self { last: bpm, frames: 0 }
+        Self {
+            last: bpm,
+            frames: 0,
+        }
     }
 
     /// Räknar en bildruta. `true` = tempot har stått still `needed` bildrutor.
@@ -578,9 +579,20 @@ mod tests {
     #[test]
     fn a_higher_tempo_gives_a_shorter_file_and_a_faster_playback_ratio() {
         let up = plan(120.0, 150.0, 44_100).expect("150 mot 120 ska sträckas");
-        assert!((up.playback_ratio - 1.25).abs() < 1e-6, "motorn: {}", up.playback_ratio);
-        assert!((up.file_ratio - 0.8).abs() < 1e-6, "filen: {}", up.file_ratio);
-        assert_eq!(up.out_frames, 35_280, "0,8 × 44 100 frames — kortare, inte längre");
+        assert!(
+            (up.playback_ratio - 1.25).abs() < 1e-6,
+            "motorn: {}",
+            up.playback_ratio
+        );
+        assert!(
+            (up.file_ratio - 0.8).abs() < 1e-6,
+            "filen: {}",
+            up.file_ratio
+        );
+        assert_eq!(
+            up.out_frames, 35_280,
+            "0,8 × 44 100 frames — kortare, inte längre"
+        );
         assert!(up.changes_anything());
 
         let down = plan(150.0, 120.0, 44_100).expect("120 mot 150 ska sträckas ned");
@@ -604,7 +616,10 @@ mod tests {
     fn the_plan_clamps_extreme_tempos_instead_of_producing_a_monster() {
         let fast = plan(120.0, 10_000.0, 1_000).expect("en plan finns");
         assert!((fast.playback_ratio - MAX_RATIO).abs() < 1e-6);
-        assert!(fast.out_frames >= 1, "en klämd plan får aldrig bli noll frames");
+        assert!(
+            fast.out_frames >= 1,
+            "en klämd plan får aldrig bli noll frames"
+        );
         let slow = plan(120.0, 1.0, 1_000).expect("en plan finns");
         assert!((slow.playback_ratio - MIN_RATIO).abs() < 1e-6);
         assert!(slow.out_frames >= 1);
@@ -760,6 +775,60 @@ mod tests {
     /// inte hade. Repots egen slagletning är validerad ("en jämn ton ger noll slag"), så
     /// den får vara instrumentet. Minsta avstånd sätts till 5 ms: en dubblering ligger
     /// typiskt ett korn isär, och 30 ms hade smält ihop den med originalet.
+    /// **Motorn får inte hitta på anslag** — den enkla halvan av kravet.
+    ///
+    /// En klickföljd med känt antal slag sträcks och antalet slag i renderingen får inte
+    /// överstiga källans. Vakten är syntetisk med flit: Alex' stämmor ligger i
+    /// `~/imported_stems` och finns inte i CI, och en mätning som bara kan köras på en
+    /// maskin är ingen vakt.
+    ///
+    /// **Vad den inte bevisar:** att överskottet i tät musik är borta. Mätt 2026-09-13
+    /// klarar en isolerad klickföljd sig med **0** överskott både före och efter varje
+    /// försök att styra kornplaceringen vid anslag — så testet fångar en grov regression,
+    /// inte den fina. Det fina mäts av `the_stretch_artefacts_on_a_real_stem` (ignorerad,
+    /// körs mot Alex' stämmor).
+    #[test]
+    fn the_engine_does_not_invent_transients() {
+        let sr = 44_100.0f32;
+        let clicks = 24usize;
+        let gap_secs = 0.4f32;
+        let total = (sr * (gap_secs * clicks as f32 + 1.0)) as usize;
+        let mut left = vec![0.0f32; total];
+        let mut right = vec![0.0f32; total];
+        let mut seed = 0x1234_5678u32;
+        let burst = (sr * 0.001) as usize; // 1 ms: ett klick, inte en ton
+        for k in 0..clicks {
+            let at = (k as f32 * gap_secs * sr) as usize;
+            for i in 0..burst {
+                if at + i >= total {
+                    break;
+                }
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let v = ((seed >> 9) as f32 / 8_388_608.0) - 1.0;
+                left[at + i] = v * 0.8;
+                right[at + i] = v * 0.8;
+            }
+        }
+
+        let params = crate::audio::onset::OnsetParams {
+            sensitivity: 2.0,
+            min_gap_ms: 20.0,
+            window_ms: 80.0,
+        };
+        let ratio = 120.0f32 / 110.0;
+        let src = crate::audio::onset::detect_onsets(&left, sr, &params).len();
+        let (out_l, _) = stretch_stereo(&left, &right, ratio, sr);
+        let out = crate::audio::onset::detect_onsets(&out_l, sr, &params).len();
+
+        println!("klickföljd vid {ratio:.4}×: källan {src} slag, renderingen {out}");
+        assert_eq!(src, clicks, "detektorn ska hitta alla klick i källan");
+        assert!(
+            out <= src,
+            "motorn hittade på {} anslag ({out} mot {src})",
+            out.saturating_sub(src)
+        );
+    }
+
     #[test]
     #[ignore]
     fn the_stretch_artefacts_on_a_real_stem() {
@@ -875,8 +944,15 @@ mod tests {
         for (label, source_bpm) in [("gammal siffra", 120.98828f32), ("geometrin", geometry)] {
             for project in [120.0f32, 110.0] {
                 let file_ratio = source_bpm / project;
-                let written = render_to_file(&dir, &format!("{label} {project}"), &l, &r, file_ratio, sr as f32)
-                    .expect("renderingen ska lyckas");
+                let written = render_to_file(
+                    &dir,
+                    &format!("{label} {project}"),
+                    &l,
+                    &r,
+                    file_ratio,
+                    sr as f32,
+                )
+                .expect("renderingen ska lyckas");
                 let out_secs = std::fs::metadata(&written).map(|m| m.len()).unwrap_or(0) as f32;
                 let clip_secs = bars * 240.0 / project;
                 // 48 kHz, 2 kanaler, 32-bitars float + header.
@@ -911,13 +987,7 @@ mod tests {
 
         let mut cache = StretchCache::new();
         let key = cache_key(&src_str, 120.0, 180.0);
-        cache.request(
-            &dir,
-            key.clone(),
-            src_str.clone(),
-            120.0,
-            180.0,
-        );
+        cache.request(&dir, key.clone(), src_str.clone(), 120.0, 180.0);
 
         // Arbetstråden renderar utanför testet: vänta in den (med ett tak).
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
