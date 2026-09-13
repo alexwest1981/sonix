@@ -21,10 +21,12 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 410 default / 456 med `--features plugin-host`, **0 varningar** i båda
-  (mätt 2026-09-13). CI fäller numera **alla** ben på varningar, inte bara Windows.
-- **Senaste commit:** `398910d` (metadata: bara härkomsten tas) och därefter
-  mätarna i toppraden (8.13) — se `git log --oneline -3` för det exakta läget.
+- **Tester:** 413 default / 459 med `--features plugin-host`, **0 varningar** i båda
+  (mätt 2026-09-13, efter spelhuvud-rättelsen 8.13b). CI fäller numera **alla** ben på
+  varningar, inte bara Windows.
+- **Senaste commit:** `398910d` (metadata: bara härkomsten tas), `7f87924` (mätarna i
+  toppraden, 8.13) och därefter spelhuvudets klocka (8.13b) — se `git log --oneline -3`
+  för det exakta läget.
 - **Bara en arbetskatalog.** Worktreen `~/Projects/sonix-tempo` (8.10 steg 2) är **borta** —
   grenen är mergad till master och trädet städat. `git worktree list` ska visa en enda rad.
   **Kolla `git status` innan du bygger** om något ser märkligt ut: två skrivare i samma
@@ -111,6 +113,18 @@ mätt, och var nästa andetag ska tas.*
    (`made with suno` / `suno.com` / `suno studio` / `c2pa`), ram för ram och underchunk för
    underchunk. **Rör du en väg som läser ljud eller filhuvuden: läs roadmapens 8.5-rättelse
    och `src/audio/metadata.rs` först.**
+   0c. ~~**Spelhuvudet låg efter ljudet**~~ — **RÄTTAT 2026-09-13 (8.13b).** Alex: *"markören
+   står där ljudet börjar, men enligt vågformen är det ännu cirka 0,7 s kvar."* Mätt i hans
+   egen fil: `Rock and Hard Place (Vocals).wav` är exakt noll till 5,0 s, första frasen
+   7,155 s, nästa 13,3 s — och han stod på 12,64 s, alltså **0,66 s**. Felet var
+   sekvenserns klocka: `last_step_time = Instant::now()` flyttade ankaret till NU varje
+   steg, så varje steg blev en bildruta sent och felet **summerades** (118 sextondelar ×
+   5,6 ms ≈ 0,64 s vid 89 Hz). Stegklockan räknas nu från förra deadline
+   (`steps_elapsed`), och **spelhuvudet läser ljudtrådens egen klocka**
+   (`AudioEngine::song_position_secs`) i stället för att räkna egna steg. Slingpunkten
+   söker nu också motorn — det är en **beteendeändring** (ljudet följer slingan), läs
+   8.13b i roadmapen. **Kvar: Alex' ögon** vid 400 %; kvar i så fall en bildruta (11 ms),
+   inte en sekund.
    0b. ~~**Nivå- och registermätare i toppraden**~~ — **BYGGT 2026-09-13 (8.13)**: L/R-mätare
    och register-EQ bredvid oscilloskopet, före MASTER. Mätningarna (och de två
    konstruktionsmissar siffrorna dömde ut) står i roadmapens 8.13. **Kvar: Alex' ögon** på

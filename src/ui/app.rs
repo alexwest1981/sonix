@@ -1295,6 +1295,28 @@ fn region_source_span_samples(region_secs: f32, rate: f32, sample_rate: u32) -> 
     (region_secs.max(0.0) * rate.max(0.05) * sample_rate.max(1) as f32).max(1.0) as usize
 }
 
+/// Hur många hela steg klockan har hunnit förbi sedan ankaret (Fas 8.13b).
+///
+/// **Ren funktion**, så att regeln går att pröva utan fönster. Lärdomen den bär är
+/// mätt i Alex' projekt 2026-09-13: spelhuvudet låg **0,66 s efter ljudet** 12,64 s
+/// in i Rock and Hard Place, alltså 118 sextondelar × drygt halva bildrutetiden.
+/// Felet kom av att ankaret flyttades till NU i stället för till nästa deadline —
+/// varje steg blev upp till en bildruta för sent, och felet summerades. Att i stället
+/// räkna *hur många steg tiden hunnit förbi* gör felet avgränsat till ett steg, hur
+/// länge det än spelas: samma sak som DAW:ar gör när de låter spelhuvudet följa
+/// ljudklockan.
+///
+/// Ett steg som ännu inte är inne räknas inte (golv, inte avrundning): spelhuvudet ska
+/// aldrig ligga före ljudet.
+fn steps_elapsed(anchor: Instant, step: std::time::Duration, now: Instant) -> usize {
+    let step = step.as_nanos();
+    if step == 0 {
+        return 0;
+    }
+    let elapsed = now.duration_since(anchor).as_nanos();
+    (elapsed / step) as usize
+}
+
 /// Vad ett klipp ska spelas med, givet beslutet och om filen redan finns
 /// (Fas 8.10 steg 2).
 ///
@@ -6003,6 +6025,8 @@ impl SonixApp {
             ) as f32
             };
             self.song_time = song_secs;
+            // Stegklockan ankras i NU: en paus är inte tid som ska spelas in.
+            self.last_step_time = Instant::now();
             let _ = self.engine.send_command(AudioCommand::SeekSongPosition(song_secs));
             let _ = self.engine.send_command(AudioCommand::SetSongPlayback(true));
         } else {
@@ -6025,6 +6049,7 @@ impl SonixApp {
         self.song_bar = 0;
         self.song_step_in_bar = 0;
         self.song_time = 0.0;
+        self.last_step_time = Instant::now();
         let _ = self.engine.send_command(AudioCommand::SetSongPlayback(false));
         let _ = self.engine.send_command(AudioCommand::SeekSongPosition(0.0));
         let _ = self.engine.send_command(AudioCommand::StopAll);
@@ -6039,6 +6064,7 @@ impl SonixApp {
         self.song_time =
             crate::audio::tempo::TempoMap::single(self.bpm.max(40.0)).secs_at_bar(bar as f64)
                 as f32;
+        self.last_step_time = Instant::now();
         let _ = self.engine.send_command(AudioCommand::SeekSongPosition(self.song_time));
         self.status_message = crate::tstatus!("Flyttade markör till Takt {}", bar + 1);
     }
@@ -7483,15 +7509,34 @@ impl SonixApp {
         (max_region_end.ceil() as usize).max(self.loop_end_bar).max(32)
     }
 
+    /// Tak för hur många steg en och samma bildruta får ta igen (Fas 8.13b).
+    ///
+    /// En lång paus ska inte avfyra femtio noter på en bildruta; att tappa steg är
+    /// mindre illa än att spränga låten.
+    const MAX_STEPS_PER_FRAME: usize = 8;
+
     fn advance_sequencer(&mut self) {
         if !self.is_playing {
             return;
         }
 
-        let cur = if self.pattern_mode { self.current_step } else { self.song_step_in_bar };
-        let dur = self.step_duration(cur);
-        if self.last_step_time.elapsed() >= dur {
-            self.last_step_time = Instant::now();
+        // Stegklockan räknas från den förra DEADLINE, ett steg i taget (Fas 8.13b).
+        //
+        // **Mätt 2026-09-13 (Alex: "markören står där ljudet börjar, men vågformen
+        // visar 0,7 s kvar"):** på 12,64 s in i Rock and Hard Place låg spelhuvudet
+        // **0,66 s efter** ljudet — 118 sextondelar × drygt halva bildrutetiden.
+        // Orsaken stod här: `last_step_time = Instant::now()` flyttade ankaret till NU,
+        // alltså upp till en bildruta för SENT varje gång, och felet summerades. Se
+        // `steps_elapsed` — regeln den bär prövas i `mod tests` längst ned.
+        let mut steps_taken = 0usize;
+        loop {
+            let cur = if self.pattern_mode { self.current_step } else { self.song_step_in_bar };
+            let dur = self.step_duration(cur);
+            if steps_elapsed(self.last_step_time, dur, Instant::now()) == 0 {
+                break;
+            }
+            self.last_step_time += dur;
+            steps_taken += 1;
             self.song_time += dur.as_secs_f32();
 
             if self.pattern_mode {
@@ -7505,6 +7550,12 @@ impl SonixApp {
                     let max_bars = self.get_max_project_bars();
                     if self.song_bar >= self.loop_end_bar || self.song_bar >= max_bars {
                         self.song_bar = self.loop_start_bar;
+                        // Slingan ska gälla LJUDET också. Utan sökningen fortsätter
+                        // motor-klockan framåt medan takträknaren hoppar tillbaka, och
+                        // då går spelhuvud och ljud isär vid slingpunkten.
+                        let back_to = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+                            .secs_at_bar(self.loop_start_bar as f64) as f32;
+                        let _ = self.engine.send_command(AudioCommand::SeekSongPosition(back_to));
                     }
                 }
                 self.current_step = self.song_step_in_bar;
@@ -7518,6 +7569,21 @@ impl SonixApp {
                     self.record_midi_note_at_step(note);
                 }
             }
+
+            if steps_taken >= Self::MAX_STEPS_PER_FRAME {
+                // En lång paus (fönstret har stått still) ska inte avfyra femtio noter
+                // på en bildruta. Hellre tappa steg än spränga låten — och ankaret
+                // flyttas fram, så att vi inte hamnar i evig eftersläpning.
+                self.last_step_time = Instant::now();
+                break;
+            }
+        }
+
+        // Spelhuvudet följer LJUDET (Fas 8.13b). Motorn räknar sina egna bildrutor,
+        // och det är den klockan örat hör. I mönsterläget styr stegklockan själv.
+        let audio_pos = self.engine.song_position_secs();
+        if audio_pos > 0.0 && !self.pattern_mode {
+            self.song_time = audio_pos;
         }
     }
 
@@ -20447,6 +20513,82 @@ mod tests {
         assert_eq!(region_source_span_samples(2.0, 1.0, 48_000), 96_000);
         // Aldrig noll — en region ska alltid gå att rita.
         assert_eq!(region_source_span_samples(0.0, 1.0, 48_000), 1);
+    }
+
+    /// Stegklockan räknar hela steg och ligger aldrig före ljudet (Fas 8.13b).
+    #[test]
+    fn the_step_clock_counts_whole_steps_and_never_runs_ahead() {
+        let t0 = Instant::now();
+        let at = |ms: u64| t0 + std::time::Duration::from_millis(ms);
+        let step = std::time::Duration::from_micros(107_143); // sextondel i 140 BPM
+
+        // Inget steg är inne än: noll.
+        assert_eq!(steps_elapsed(t0, step, at(0)), 0);
+        assert_eq!(steps_elapsed(t0, step, at(107)), 0);
+        // Första hela steget, och sedan ett per steg — inte avrundat uppåt.
+        assert_eq!(steps_elapsed(t0, step, at(108)), 1);
+        assert_eq!(steps_elapsed(t0, step, at(214)), 1);
+        assert_eq!(steps_elapsed(t0, step, at(215)), 2);
+        // En bildruta som stått still länge tar med alla steg den hann förbi.
+        assert_eq!(steps_elapsed(t0, step, at(1_000)), 9);
+        // Ett steg utan längd kan inte ge något.
+        assert_eq!(steps_elapsed(t0, std::time::Duration::ZERO, at(1_000)), 0);
+    }
+
+    /// Den gamla stegklockan sackade efter ljudet — felet växte med tiden.
+    ///
+    /// **Mätt i Alex' projekt 2026-09-13:** spelhuvudet låg 0,66 s efter ljudet
+    /// 12,64 s in i Rock and Hard Place (Rock and a Hard Place (Vocals): tystnad
+    /// till 5,0 s, första frasen 7,155 s, nästa fras 13,3 s — och spelhuvudet stod på
+    /// 12,64 s när den frasen hördes). Den gamla regeln var
+    /// `last_step_time = Instant::now()`: nästa deadline sattes en bildruta för sent,
+    /// varje gång. Här simuleras en bildruta på 11,2 ms (≈89 Hz, det som ger just
+    /// 0,66 s) steg för steg, och båda reglerna får samma bildrutor att arbeta med.
+    #[test]
+    fn the_old_step_clock_lagged_the_sound_and_the_error_grew() {
+        let frame = std::time::Duration::from_micros(11_200);
+        let step = std::time::Duration::from_micros(107_143); // sextondel i 140 BPM
+        let song_secs = 12.64_f64; // där Alex stod
+        let t0 = Instant::now();
+
+        let (mut old_lag, mut new_lag) = (0.0_f64, 0.0_f64);
+        for rule in ["gammal", "ny"] {
+            let (mut anchor, mut song, mut frames) = (t0, 0.0_f64, 0u64);
+            loop {
+                let now = t0 + frame * frames as u32;
+                if now.duration_since(t0).as_secs_f64() > song_secs {
+                    break;
+                }
+                if rule == "gammal" {
+                    if now.duration_since(anchor) >= step {
+                        anchor = now; // ← ankaret till NU: felet summeras
+                        song += step.as_secs_f64();
+                    }
+                } else {
+                    let due = steps_elapsed(anchor, step, now); // ← hela steg från deadline
+                    if due > 0 {
+                        anchor += step * due as u32;
+                        song += step.as_secs_f64() * due as f64;
+                    }
+                }
+                frames += 1;
+            }
+            let lag = song_secs - song;
+            if rule == "gammal" {
+                old_lag = lag;
+            } else {
+                new_lag = lag;
+            }
+        }
+
+        assert!(
+            old_lag > 0.5,
+            "den gamla klockan skulle sackat mer än en halv sekund: {old_lag:.3} s"
+        );
+        assert!(
+            new_lag <= step.as_secs_f64(),
+            "den nya klockan ska hålla sig inom ett steg: {new_lag:.3} s"
+        );
     }
 
     /// Ett enstaka anslag får inte försvinna i översikten (Fas 8.3).

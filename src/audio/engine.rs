@@ -30,6 +30,8 @@ pub struct AudioEngine {
     /// Toppnivå per kanal sedan förra bildrutan — för höger/vänster-mätaren (8.13).
     peak_l: Arc<AtomicU32>,
     peak_r: Arc<AtomicU32>,
+    /// Låtens position i LJUDTRÅDENS klocka — det spelhuvudet ska visa (8.13b).
+    song_pos_secs: Arc<AtomicU32>,
     audition_active: Arc<AtomicBool>,
     master_gr_db: Arc<AtomicU32>,
     scope_rx: Consumer<f32>,
@@ -103,6 +105,7 @@ impl AudioEngine {
         let peak_level = Arc::new(AtomicU32::new(0));
         let peak_l = Arc::new(AtomicU32::new(0));
         let peak_r = Arc::new(AtomicU32::new(0));
+        let song_pos_secs = Arc::new(AtomicU32::new(0));
         let audition_active = Arc::new(AtomicBool::new(false));
         let master_gr_db = Arc::new(AtomicU32::new(0));
 
@@ -119,6 +122,7 @@ impl AudioEngine {
             &peak_level,
             &peak_l,
             &peak_r,
+            &song_pos_secs,
             &audition_active,
             &master_gr_db,
         ) {
@@ -133,6 +137,7 @@ impl AudioEngine {
                     &peak_level,
                     &peak_l,
                     &peak_r,
+                    &song_pos_secs,
                     &audition_active,
                     &master_gr_db,
                 )?
@@ -156,6 +161,7 @@ impl AudioEngine {
             peak_level,
             peak_l,
             peak_r,
+            song_pos_secs,
             audition_active,
             master_gr_db,
             scope_rx,
@@ -192,6 +198,7 @@ impl AudioEngine {
             &self.peak_level,
             &self.peak_l,
             &self.peak_r,
+            &self.song_pos_secs,
             &self.audition_active,
             &self.master_gr_db,
         ) {
@@ -206,6 +213,7 @@ impl AudioEngine {
                     &self.peak_level,
                     &self.peak_l,
                     &self.peak_r,
+                    &self.song_pos_secs,
                     &self.audition_active,
                     &self.master_gr_db,
                 ) {
@@ -241,6 +249,7 @@ impl AudioEngine {
         peak_level: &Arc<AtomicU32>,
         peak_l: &Arc<AtomicU32>,
         peak_r: &Arc<AtomicU32>,
+        song_pos_secs: &Arc<AtomicU32>,
         audition_active: &Arc<AtomicBool>,
         master_gr_db: &Arc<AtomicU32>,
     ) -> Result<(Stream, Producer<AudioCommand>, Consumer<f32>), Box<dyn std::error::Error>> {
@@ -248,9 +257,9 @@ impl AudioEngine {
         let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
 
         let stream = match sample_format {
-            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
             _ => return Err(crate::i18n::t("Ljudformatet stöds inte").into()),
         };
 
@@ -265,6 +274,17 @@ impl AudioEngine {
     pub fn get_peak_level(&self) -> f32 {
         let bits = self.peak_level.load(Ordering::Relaxed);
         f32::from_bits(bits)
+    }
+
+    /// Låtens position enligt LJUDTRÅDEN, i sekunder (Fas 8.13b).
+    ///
+    /// Motorn räknar sina egna bildrutor (`SynthEngine::song_time_samples`) och det
+    /// är den klockan örat hör. UI:t hade sin egen stegklocka, som räknade *steg per
+    /// bildruta* och därför sackade efter: mätt 2026-09-13 låg spelhuvudet **0,66 s
+    /// efter ljudet** 12,64 s in i Rock and Hard Place. Spelhuvudet läser nu den här
+    /// siffran, och de två kan inte längre säga olika saker.
+    pub fn song_position_secs(&self) -> f32 {
+        f32::from_bits(self.song_pos_secs.load(Ordering::Relaxed))
     }
 
     /// Toppnivå per kanal sedan förra bildrutan: `(vänster, höger)`.
@@ -307,6 +327,7 @@ impl AudioEngine {
         peak_level: Arc<AtomicU32>,
         peak_l: Arc<AtomicU32>,
         peak_r: Arc<AtomicU32>,
+        song_pos_secs: Arc<AtomicU32>,
         audition_active: Arc<AtomicBool>,
         master_gr_db: Arc<AtomicU32>,
         mut scope_tx: Producer<f32>,
@@ -367,6 +388,13 @@ impl AudioEngine {
                     peak_level.store(max_peak.to_bits(), Ordering::Relaxed);
                     peak_l.store(max_l.to_bits(), Ordering::Relaxed);
                     peak_r.store(max_r.to_bits(), Ordering::Relaxed);
+                    // Låtens position ur ljudtrådens egen klocka. Spelhuvudet i UI:t
+                    // läser den här siffran i stället för att räkna egna steg — två
+                    // klockor för samma sak går isär, och gjorde det (8.13b).
+                    song_pos_secs.store(
+                        (synth.song_time_samples as f32 / synth.sample_rate).to_bits(),
+                        Ordering::Relaxed,
+                    );
 
                     // 4. Mirror the real audition state so the UI can clear its
                     //    "playing" indicator once playback ends naturally.

@@ -120,8 +120,8 @@ tempopunkt-UI väntar alla på att Alex ser dem.
 
 Hela den avbockade listan på ett ställe. Bevis, mätningar och skälen till att något ser ut
 som det gör står under respektive fas längre ned — det här är översikten, inte ersättningen.
-**410 tester default, 456 med plugin-host, 0 varningar i båda release-byggena** (mätt
-2026-09-13, efter 8.13 och metadata-rättelsen).
+**413 tester default, 459 med plugin-host, 0 varningar i båda release-byggena** (mätt
+2026-09-13, efter 8.13b — spelhuvudets klocka — och metadata-rättelsen).
 
 **Baslinjen (Fas 0) — det som redan var äkta:** kärnmotor (oscillatorer, trumsyntes,
 delay/reverb, filter/envelope, master-FX, patcher) · sequencer (tidslinje/multitrack,
@@ -1645,3 +1645,66 @@ i toppraden, bredden (48 px mätare, 128 px register) och om staplarna är läsb
 fönsterbredd är **lästa i koden, inte sedda**; (2) registret mäter mono-mixen ur scope-historiken
 — ett L/R-register vore nästa steg om någon vill se skillnaden mellan kanalerna; (3) ingen
 peak-hold-markör i registret (nivåmätaren har sitt 0 dB-märke).
+
+---
+
+## 8.13b Spelhuvudet följer ljudet, inte antalet bildrutor (Alex' rapport 2026-09-13)
+
+**Alex, ordagrant:** *"Om du tittar var markören är i tidslinjen (inzoomat till 400%), på Rock
+and a Hard Place (Vocals) — den cerise längst ned — så är det var ljudet börjar vid uppspelning,
+men enligt vågformen så är det ännu cirka 0,7 s tills ljudet egentligen börjar."*
+
+**Mätt i hans egna filer först, för att veta vilka tal det handlar om.** Källfilen
+`~/imported_stems/Rock_and_Hard_Place/Rock and Hard Place (Vocals).wav` (48 kHz, 259,28 s) är
+**exakt noll** de första **5,0 s** (inte "nästan tyst" — `wave`-läsningen ger 0,0 i varje sampel),
+första frasen börjar vid **7,155 s** och nästa fras vid **13,3 s**. Han stod på **12,64 s**:
+13,3 − 12,64 = **0,66 s** — rapportens "0,7 s" är alltså inte ett intryck utan ett avstånd i hans
+fil, och det gick att räkna fram utan att se skärmen.
+
+**Var felet satt:** sekvenserns klocka i `ui/app.rs` (`advance_sequencer`):
+
+```rust
+if self.last_step_time.elapsed() >= dur {
+    self.last_step_time = Instant::now();   // ← ankaret flyttades till NU
+    self.song_time += dur.as_secs_f32();    // ← spelhuvudet räknade STEG, inte tid
+```
+
+Varje steg lades `dur` sekunder efter den **bildruta som råkade upptäcka** det — alltså upp till en
+bildruta för sent, varje gång, och felet **summerades**. Vid 140 BPM är en sextondel 0,107143 s, så
+12,64 s in i låten är 118 steg tagna; med en bildruta på 11,2 ms (≈89 Hz) blir eftersläpningen
+118 × 5,6 ms ≈ **0,64 s**. Simuleringen i testet ger 0,640 s — samma tal som hans öra gav. Det är
+förklaringen, inte en gissning: **felet växte med tiden** och syntes därför tydligast långt in i en
+låt med skarpa anslag.
+
+**Byggt — tre saker, och en av dem rör beteende:**
+
+1. **Stegklockan räknas från den förra DEADLINE**, ett steg i taget
+   (`steps_elapsed`, ren funktion: `(nu − ankare) / steg`, golv och inte avrundning — spelhuvudet
+   ska aldrig ligga före ljudet). En bildruta som hunnit förbi flera steg tar med dem alla, annars
+   tappas steg i stället. Taket är **8 steg per bildruta** (`MAX_STEPS_PER_FRAME`): en lång paus
+   ska inte avfyra femtio noter på en bildruta — hellre tappa steg än spränga låten.
+2. **Spelhuvudet läser LJUDTRÅDENS klocka** (`AudioEngine::song_position_secs`, nytt atomiskt tal
+   bredvid toppnivåerna, satt ur `SynthEngine::song_time_samples`). Motorn räknar en bildruta per
+   renderad bildruta — det är den klockan örat hör. **Två klockor för samma sak går isär, och
+   gjorde det.** I mönsterläget styr stegklockan fortfarande, som förut.
+3. **Motorns klocka går nu med transporten även utan stämmor.** Den låg förut inuti
+   `if song_playing && !stem_tracks.is_empty()`, så ett projekt utan importerade filer hade fått
+   ett spelhuvud som stod still. Den är spelhuvudets klocka nu och får inte bero på innehållet.
+4. **Beteendeändring att känna till:** slingpunkten söker nu **också motorn**
+   (`SeekSongPosition` när takträknaren hoppar tillbaka). Förut fortsatte ljudet framåt medan
+   taktmätaren började om — med spelhuvudet i ljudklockan hade den motsägelsen blivit synlig direkt
+   vid slingpunkten. Det här är vad en slinga ska göra, men det är en ändring i vad som hörs och
+   den står här för att den ska vara lätt att hitta om Alex hör något oväntat vid en slinga.
+
+**Bevis:** tre tester. `the_step_clock_counts_whole_steps_and_never_runs_ahead` (hela steg, aldrig
+före, noll för ett steg utan längd), `the_old_step_clock_lagged_the_sound_and_the_error_grew`
+(**mätningen som test**: samma bildrutor på 11,2 ms genom båda reglerna — den gamla regeln sackar
+mer än en halv sekund, den nya håller sig inom ett steg), och `the_song_clock_counts_rendered_frames`
+i `audio::synth` (klockan står still i paus, räknar exakt en bildruta per renderad bildruta, håller
+kvar positionen när transporten stannar).
+
+**Kvar:** **Alex' ögon och öron.** Att spelhuvudet *ritas* ur den nya klockan är läst i koden; att
+det stämmer i fönstret vid 400 % är hans mätning. Om en rest finns kvar är den nu avgränsad: i så
+fall är den en bildruta (11 ms), inte en sekund — och nästa steg är att låta noterna schemaläggas i
+ljudtråden i stället för i UI-tråden (stegklockan är fortfarande en UI-klocka, upplösning en
+bildruta; se `current_take_pos`).

@@ -1502,7 +1502,16 @@ impl SynthEngine {
                     stem_mix_r += tr * g;
                 }
             }
+        }
 
+        // Ljudklockan går så länge transporten rullar (Fas 8.13b) — också i ett projekt
+        // utan stämmor. UI:ts spelhuvud läser den här siffran i stället för att räkna
+        // egna steg, och den får inte stanna bara för att inga filer är importerade.
+        //
+        // **Mätt 2026-09-13:** spelhuvudet låg 0,66 s efter ljudet 12,64 s in i Rock
+        // and Hard Place, för att UI:t hade en egen klocka. Det här är den klockan örat
+        // hör: en bildruta i taget, i den takt motorn spelar.
+        if self.song_playing {
             self.song_time_samples += 1;
         }
 
@@ -1718,6 +1727,35 @@ mod tests {
                 if expected { "" } else { "INTE " }
             );
         }
+    }
+
+    /// Ljudklockan räknar **renderade bildrutor** — det är spelhuvudets klocka (8.13b).
+    ///
+    /// Spelhuvudet läste förut UI:ts egen stegklocka, och de två gick isär: mätt
+    /// 2026-09-13 låg markören 0,66 s efter ljudet. Den här klockan står still i paus,
+    /// räknar exakt en bildruta per renderad bildruta när transporten går — och gör det
+    /// även i ett projekt utan stämmor, så att spelhuvudet aldrig kan fastna.
+    #[test]
+    fn the_song_clock_counts_rendered_frames() {
+        let mut synth = SynthEngine::new(44_100.0);
+        for _ in 0..4_410 {
+            synth.process_stereo();
+        }
+        assert_eq!(synth.song_time_samples, 0, "en pausad transport ska inte röra klockan");
+
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+        for _ in 0..4_410 {
+            synth.process_stereo();
+        }
+        assert_eq!(synth.song_time_samples, 4_410, "0,1 s ljud = 4 410 bildrutor i 44,1 kHz");
+        let secs = synth.song_time_samples as f32 / synth.sample_rate;
+        assert!((secs - 0.1).abs() < 1e-4, "sekunderna kommer ur samma räkning: {secs}");
+
+        synth.handle_command(AudioCommand::SetSongPlayback(false));
+        for _ in 0..1_000 {
+            synth.process_stereo();
+        }
+        assert_eq!(synth.song_time_samples, 4_410, "paus håller kvar positionen");
     }
 
     /// Ett klipp med eget källjud spelar **filen**, inte spårets buffert (Fas 8.10 steg 2).
