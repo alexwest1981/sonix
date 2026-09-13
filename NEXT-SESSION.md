@@ -119,8 +119,11 @@ mätt, och var nästa andetag ska tas.*
    still (Abletons 1.1.1 + Audacitys kant-trim). Ren funktion `align_clip_start_to_point`
    med **fyra prov**: 0,30 s i 140 BPM ✓, samma sträcka i 100 BPM blir 0,2143 s av *filen* ✓,
    klippet står kvar ✓, och ett nej är ett nej (spelhuvudet utanför klippet → inget ändrat) ✓.
-   **Kvar:** appen kan inte *hitta* slaget (bara sätta det han pekar på) — nästa steg är
-   "hitta första slaget" ur `audio::onset`, och först då är ett snap ärligt.
+   **Och steg 2 är byggt samma kväll:** *"🔍 Hitta första slaget (mät i filen)"* — samma meny,
+   men talet kommer ur slagletningen (`audio::onset`) i stället för ur spelhuvudets position.
+   Kedjan är tre rena funktioner med sammanlagt sex prov, plus ett prov som binder ihop hela
+   kedjan på syntetiskt ljud (klick 0,42 s in → offset 0,42 s). **Ingen träff är ett giltigt
+   svar:** en jämn ton ger noll slag, och då sägs det i stället för att något flyttas.
    0f. ~~**"marker och wave synkar inte" + "ingen skillnad på tempo"**~~ — **RÄTTAT
    2026-09-13 (8.10d).** Ett fel, båda symptomen: `LoadStemTrack` — som appen skickar
    **vid varje uppspelningsstart** — byggde ett nytt spår och tömde `regions` tyst, så

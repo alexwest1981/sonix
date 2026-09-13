@@ -1486,6 +1486,40 @@ pub fn align_clip_start_to_point(
     })
 }
 
+/// Var på tidslinjen ett slag i **källan** ligger (Fas 8.14).
+///
+/// Omvändningen av [`align_clip_start_to_point`]: där *ges* punkten på tidslinjen,
+/// här kommer den ur filens egen tid. Faktorn är [`stretch_ratio_for`] —
+/// **källsekunder per utsekund** — så en sträckt fil räknas rätt: ett slag 0,2143 s in
+/// i en källa som spelas i 100 av ett 140-klipp ligger 0,30 s in på tidslinjen.
+///
+/// `None` när slaget ligger **före** klippets första sampel: då finns det inget att
+/// sätta, och då hittar vi inte på ett (8.5-regeln).
+pub fn timeline_point_for_source_secs(
+    onset_source_secs: f32,
+    start_bar: f32,
+    sample_offset_sec: f32,
+    source_bpm: f32,
+    tempo: &crate::audio::tempo::TempoMap,
+) -> Option<f64> {
+    let head_source = (onset_source_secs - sample_offset_sec) as f64;
+    if head_source < 0.0 {
+        return None;
+    }
+    let ratio = stretch_ratio_for(source_bpm, tempo.bpm_at(start_bar as f64)) as f64;
+    if ratio <= 0.0 {
+        return None;
+    }
+    Some(tempo.secs_at_bar(start_bar as f64) + head_source / ratio)
+}
+
+/// Hur långt in i klippets ljud "hitta första slaget" letar (Fas 8.14).
+///
+/// Ett anslag i början av en stämma ligger inom de första sekunderna. Talet är ett tak
+/// för **arbetet**, inte en åsikt om musiken: hittas inget inom fönstret säger appen
+/// det i stället för att leta vidare i en hel låt efter något att flytta.
+pub const FIRST_BEAT_SEARCH_SECS: f32 = 20.0;
+
 /// Gränserna för [`stretch_ratio_for`] — samma spann som sångstudiens reglage.
 pub const MIN_STRETCH_RATIO: f32 = 0.25;
 pub const MAX_STRETCH_RATIO: f32 = 4.0;
@@ -5406,6 +5440,110 @@ impl SonixApp {
             "🎯 '{}' läser filen från {:.3} s — slaget ligger på rutnätet.",
             r.name,
             align.sample_offset_sec
+        );
+    }
+
+    /// **"Hitta första slaget"** (Fas 8.14): mäter i klippets eget ljud i stället för
+    /// att be användaren pricka slaget på pixeln — och sätter det sedan som klippets
+    /// första sampel med samma regel som "Sätt takt 1 här".
+    ///
+    /// Det är den etablerade DAW-vägen (Ableton visar detekterade transients och låter
+    /// dig sätta en av dem som klippets början), och den gör ett snap **ärligt**: talet
+    /// kommer ur en mätning i filen, inte ur ett antagande om rutnätet.
+    ///
+    /// **Ingen träff är ett giltigt svar.** En pad eller en stråke har inget första
+    /// slag; då sägs det, och ingenting flyttas.
+    pub fn align_clip_to_first_beat(&mut self) {
+        let Some((t_idx, r_idx)) = self.selected_audio_region else {
+            return;
+        };
+        if t_idx >= self.playlist_tracks.len()
+            || r_idx >= self.playlist_tracks[t_idx].regions.len()
+        {
+            return;
+        }
+        let tempo = self.tempo_map();
+        let r = self.playlist_tracks[t_idx].regions[r_idx].clone();
+
+        // Klippets eget ljud: **filen klippet pekar på** när den finns — då är svaret
+        // rätt även när klippet flyttats in på ett annat spår. Annars spårets buffert,
+        // och ett fel sägs högt i stället för att tigas (8.5).
+        let (mono, sr) = match r.source_path.as_deref().filter(|p| !p.is_empty()) {
+            Some(path) => match load_audio_or_report(path) {
+                Some((l, _r, sr)) => (l, sr),
+                None => {
+                    self.status_message = crate::tstatus!(
+                        "⚠ Kunde inte läsa '{}' — inget ändrat.",
+                        r.name
+                    );
+                    return;
+                }
+            },
+            None => match self.playlist_tracks[t_idx].pcm_audio.as_ref() {
+                Some((l, _r, sr)) => (l.as_ref().clone(), *sr),
+                None => {
+                    self.status_message = crate::tstatus!(
+                        "⚠ '{}' har ingen fil att mäta i — inget ändrat.",
+                        r.name
+                    );
+                    return;
+                }
+            },
+        };
+
+        let params = crate::audio::onset::OnsetParams::default();
+        let Some(onset_src) = crate::audio::onset::first_onset_source_secs(
+            &mono,
+            sr as f32,
+            r.sample_offset_sec,
+            FIRST_BEAT_SEARCH_SECS,
+            &params,
+        ) else {
+            self.status_message = crate::tstatus!(
+                "🔍 Hittade inget slag inom {:.0} s i '{}' — använd \"Sätt takt 1 här\" och peka själv.",
+                FIRST_BEAT_SEARCH_SECS,
+                r.name
+            );
+            return;
+        };
+
+        let Some(point) = timeline_point_for_source_secs(
+            onset_src,
+            r.start_bar,
+            r.sample_offset_sec,
+            r.source_bpm,
+            &tempo,
+        ) else {
+            self.status_message = crate::tstatus!(
+                "⚠ Slaget ligger före '{}' första sampel — inget ändrat.",
+                r.name
+            );
+            return;
+        };
+        let Some(align) = align_clip_start_to_point(
+            r.start_bar,
+            r.length_bars,
+            r.sample_offset_sec,
+            r.source_bpm,
+            point,
+            &tempo,
+        ) else {
+            self.status_message = crate::tstatus!(
+                "⚠ Flytten skulle tömma '{}' — inget ändrat.",
+                r.name
+            );
+            return;
+        };
+        self.push_undo(crate::i18n::t("Hitta första slaget"));
+        if let Some(reg) = self.playlist_tracks[t_idx].regions.get_mut(r_idx) {
+            reg.sample_offset_sec = align.sample_offset_sec;
+            reg.length_bars = align.length_bars;
+        }
+        self.sync_track_regions(t_idx);
+        self.status_message = crate::tstatus!(
+            "🎯 Hittade slaget {:.3} s in i filen — '{}' börjar nu där.",
+            onset_src,
+            r.name
         );
     }
 
@@ -11886,6 +12024,18 @@ impl SonixApp {
                                             ui.separator();
                                             if ui.button(self.tr("✂ Klipp vid spelhuvud (Ctrl+B / S)")).clicked() {
                                                 self.split_selected_region_at_playhead();
+                                                ui.close_menu();
+                                            }
+                                            if ui
+                                                .button(crate::i18n::t(
+                                                    "🔍 Hitta första slaget (mät i filen)",
+                                                ))
+                                                .on_hover_text(crate::i18n::t(
+                                                    "Letar efter det första anslaget i klippets ljud och sätter det som klippets början — samma regel som \"Sätt takt 1 här\", men talet kommer ur en mätning i stället för ur spelhuvudets position. En jämn ton har inget slag; då händer ingenting.",
+                                                ))
+                                                .clicked()
+                                            {
+                                                self.align_clip_to_first_beat();
                                                 ui.close_menu();
                                             }
                                             if ui
@@ -19547,6 +19697,67 @@ mod tests {
             a.sample_offset_sec
         );
         let _ = secs_per_bar;
+    }
+
+    /// Ett hittat slag räknas om till tidslinjen med **samma** faktor som motorn spelar
+    /// med, så en sträckt fil hamnar rätt: 0,2143 s in i en källa som spelas i 100 av
+    /// ett 140-klipp ligger 0,30 s in på tidslinjen.
+    #[test]
+    fn a_found_beat_maps_through_the_stretch() {
+        let tempo = crate::audio::tempo::TempoMap::single(100.0);
+        let p = timeline_point_for_source_secs(0.2143, 0.0, 0.0, 140.0, &tempo)
+            .expect("slaget ligger efter klippets början");
+        assert!(
+            (p - 0.30).abs() < 1e-3,
+            "0,2143 s källa ska bli 0,30 s ut i ett 100-projekt: {p}"
+        );
+        assert!(
+            timeline_point_for_source_secs(
+                0.5,
+                4.0,
+                0.9,
+                120.0,
+                &crate::audio::tempo::TempoMap::single(120.0)
+            )
+            .is_none(),
+            "ett slag före klippets första sampel finns inte att sätta"
+        );
+    }
+
+    /// **Hela kedjan "hitta första slaget"** — ur ljudet, inte ur en gissning: klicket i
+    /// filen hittas av detektorn, räknas om till tidslinjen, och blir klippets första
+    /// sampel. Provet binder ihop de tre rena funktionerna, så att kedjan kan prövas utan
+    /// fönster, utan motor och utan att en enda sampel spelas.
+    #[test]
+    fn finding_the_first_beat_aligns_the_clip_on_the_found_onset() {
+        let sr = 48_000.0f32;
+        let mut pcm = vec![0.0f32; (sr * 2.0) as usize];
+        let at = (sr * 0.42) as usize;
+        pcm[at] = 0.9;
+        pcm[at + 1] = -0.7;
+        let onset = crate::audio::onset::first_onset_source_secs(
+            &pcm,
+            sr,
+            0.0,
+            FIRST_BEAT_SEARCH_SECS,
+            &crate::audio::onset::OnsetParams::default(),
+        )
+        .expect("klicket ska hittas");
+        assert!(
+            onset <= 0.42 && onset > 0.30,
+            "detektorn backar strax före anslaget: {onset}"
+        );
+
+        let tempo = crate::audio::tempo::TempoMap::single(140.0);
+        let point = timeline_point_for_source_secs(onset, 0.0, 0.0, 140.0, &tempo)
+            .expect("slaget ligger efter klippets början");
+        let a = align_clip_start_to_point(0.0, 32.0, 0.0, 140.0, point, &tempo)
+            .expect("flytten går");
+        assert!(
+            (a.sample_offset_sec - onset).abs() < 1e-4,
+            "offsetten ska bli det hittade slaget: {} mot {onset}",
+            a.sample_offset_sec
+        );
     }
 
     /// **Ett nej ska vara ett nej** (8.5): går flytten inte att göra ska ingenting

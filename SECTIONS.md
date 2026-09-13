@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**61 moduler · 64173 rader kod · 19 med status · 42 utan.**
+**61 moduler · 64473 rader kod · 19 med status · 42 utan.**
 
 ## Så läser du kartan
 
@@ -15,9 +15,9 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 21275 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 69 (+1 ign) |  |
+| `src/ui/app.rs` | 21486 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 71 (+1 ign) |  |
 | `src/audio/synth.rs` | 2776 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 96 | 35 |  |
-| `src/i18n.rs` | 2512 | fryst — nycklar på engelska, texter på svenska | 1316 | 4 |  |
+| `src/i18n.rs` | 2512 | fryst — nycklar på engelska, texter på svenska | 1319 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 1758 | stabil — offline-rendering och export | 9 | 16 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
 | `src/audio/recorder.rs` | 1700 | stabil — inspelning | 7 | 16 |  |
@@ -41,19 +41,19 @@
 | `src/ui/widgets.rs` | 734 | — | 4 | 0 |  |
 | `src/audio/ai_client.rs` | 715 | — | 8 | 8 |  |
 | `src/audio/smf.rs` | 706 | stabil — MIDI-export med tempobyten (8.2 steg 3) | 33 | 10 | Standard MIDI File (SMF) — skriv och läs `.mid` utan externa beroenden.  |
-| `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 39 | 12 | Tempokarta (Fas 8.2, steg 1).  |
+| `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 43 | 12 | Tempokarta (Fas 8.2, steg 1).  |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
 | `src/ui/chord_generator_modal.rs` | 516 | — | 1 | 0 |  |
 | `src/audio/engine.rs` | 503 | — | 1 | 1 |  |
 | `src/audio/realtime_bench.rs` | 496 | stabil — realtidsmätningen | 0 | 6 | Realtidsmätning av render-vägen (Fas 7.2).  |
 | `src/audio/hardware_control.rs` | 493 | — | 3 | 5 |  |
+| `src/audio/onset.rs` | 493 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 18 | 13 | Onset-detektering och slicekarta (Fas 8.7).  |
 | `src/ui/dice_generator_modal.rs` | 470 | — | 2 | 0 |  |
 | `src/audio/neural_separator.rs` | 463 | — | 3 | 9 | Neural stem separation through an ONNX model (HTDemucs / Demucs family).  |
 | `src/audio/plugin_gui.rs` | 462 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
 | `src/autosave.rs` | 430 | — | 42 | 10 | Autosave, versionsrotation och kraschåterställning (Fas 6.1).  |
 | `src/ui/add_track_modal.rs` | 428 | — | 1 | 0 |  |
-| `src/audio/onset.rs` | 404 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 14 | 9 | Onset-detektering och slicekarta (Fas 8.7).  |
 | `src/audio/midi_input.rs` | 394 | — | 1 | 10 |  |
 | `src/audio/loudness.rs` | 358 | — | 1 | 5 | Loudness measurement and normalization (ITU-R BS.1770 / EBU R128).  |
 | `src/ui/tuner_modal.rs` | 351 | — | 1 | 0 |  |
@@ -139,7 +139,7 @@
 ### `src/audio/onset.rs`
 - **Status:** stabil — slagletning och slicekarta (8.7 steg 1 + 2)
 - **Rör inte:** mät på en jämn ton först: en detektor är en mätning, och 4 ms enpolsfilter + centrerad tröskel är den enda variant som ger noll falska slag
-- **Publika ingångar:** `OnsetParams`, `Slice`, `onset_envelope`, `detect_onsets`, `slices_from_onsets`, `window_for_note`
+- **Publika ingångar:** `OnsetParams`, `Slice`, `onset_envelope`, `detect_onsets`, `first_onset_source_secs`, `slices_from_onsets`, `window_for_note`
 
 ### `src/audio/patcher.rs`
 - **Publika ingångar:** `NodeType`, `PatcherNode`, `PatchCable`, `ModularGraph`, `load_default_preset`, `add_node`, `PatchNodeSpec`, `PatchSpec`, `to_spec`, `has_cycle`, `PatchProcessor`, `new` … (+4)
@@ -251,7 +251,7 @@
 ### `src/ui/app.rs`
 - **Status:** byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen
 - **Rör inte:** två sessioner har krockat i den här filen; kolla `git status` och mtime före varje skrivning
-- **Publika ingångar:** `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions`, `TrackKind`, `SongMarker` … (+166)
+- **Publika ingångar:** `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions`, `TrackKind`, `SongMarker` … (+169)
 
 ### `src/ui/chord_generator_modal.rs`
 - **Publika ingångar:** `ScaleType`, `all`, `intervals`, `GeneratedChord`, `ChordGeneratorState`, `get_chord_pads`, `load_progression_preset`, `play_chord_sound`, `audition_progression`, `render_chord_generator_modal`

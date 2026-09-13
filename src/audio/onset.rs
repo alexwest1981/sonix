@@ -186,6 +186,40 @@ pub fn detect_onsets(samples: &[f32], sample_rate: f32, params: &OnsetParams) ->
     peaks
 }
 
+/// **Första slaget i ett fönster**, som sekunder i källan (Fas 8.14).
+///
+/// Samma detektor som choppern använder, men en annan fråga: *"var börjar musiken?"*
+/// i stället för *"var är alla slagen?"*. Letar från `from_secs` och `window_secs`
+/// framåt — klippets eget ljud, inte filens början.
+///
+/// **Ingen träff är ett giltigt svar.** En jämn ton (pad, stråke, sång utan anslag)
+/// har inga slag, och då ska klippet inte flyttas på en gissning (8.5-regeln: hitta
+/// aldrig på ett ljud). Det är samma krav som modulens eget prov ställer på detektorn,
+/// och därför står provet även här: en jämn ton ska ge **noll** slag.
+pub fn first_onset_source_secs(
+    samples: &[f32],
+    sample_rate: f32,
+    from_secs: f32,
+    window_secs: f32,
+    params: &OnsetParams,
+) -> Option<f32> {
+    if sample_rate <= 0.0 || samples.is_empty() {
+        return None;
+    }
+    let from = (from_secs.max(0.0) * sample_rate) as usize;
+    if from >= samples.len() {
+        return None;
+    }
+    let to = ((from_secs.max(0.0) + window_secs.max(0.01)) * sample_rate) as usize;
+    let to = to.min(samples.len());
+    if to <= from {
+        return None;
+    }
+    detect_onsets(&samples[from..to], sample_rate, params)
+        .first()
+        .map(|&i| (from + i) as f32 / sample_rate)
+}
+
 /// Räknar fram en slicekarta ur slagpunkterna.
 ///
 /// Slicarna täcker **hela** filen utan glapp och utan överlapp: varje slice
@@ -399,5 +433,60 @@ mod tests {
         let env_d = onset_envelope(&decay, SR);
         assert!(env_a[100] > 0.0, "anslaget ska synas i höljet");
         assert_eq!(env_d.iter().fold(0.0f32, |m, v| m.max(*v)), 0.0, "utklingningen ska inte ge något");
+    }
+
+    /// **Första slaget i ett fönster** (Fas 8.14): den fråga "hitta första slaget"
+    /// ställer — var börjar musiken, inte var ligger alla slag.
+    #[test]
+    fn the_first_onset_in_a_window_is_the_first_click() {
+        let buf = clicks(&[0.20, 0.70, 1.20], 2.0);
+        let p = OnsetParams::default();
+        let first = first_onset_source_secs(&buf, SR, 0.0, 2.0, &p).expect("klick finns");
+        assert!((first - 0.20).abs() < 0.02, "första klicket ligger på 0,20 s: {first}");
+    }
+
+    /// Sökningen börjar där klippet börjar — ett anslag **före** klippets första sampel
+    /// är inte klippets första slag.
+    #[test]
+    fn the_search_starts_at_the_clips_first_sample() {
+        let buf = clicks(&[0.20, 0.70, 1.20], 2.0);
+        let p = OnsetParams::default();
+        let first = first_onset_source_secs(&buf, SR, 0.50, 2.0, &p).expect("klick finns");
+        assert!(
+            (first - 0.70).abs() < 0.02,
+            "från 0,50 s är nästa slag 0,70 s, inte 0,20: {first}"
+        );
+    }
+
+    /// **En jämn ton ska ge noll slag** — samma krav som modulens eget prov ställer på
+    /// detektorn, och skälet att `None` måste vara ett giltigt svar här också: en pad
+    /// har inget första slag, och då flyttas ingenting.
+    #[test]
+    fn a_steady_tone_has_no_first_onset() {
+        let sr = 48_000.0f32;
+        let tone: Vec<f32> = (0..(sr as usize * 2))
+            .map(|i| 0.8 * (std::f32::consts::TAU * 220.0 * i as f32 / sr).sin())
+            .collect();
+        let p = OnsetParams::default();
+        assert_eq!(
+            first_onset_source_secs(&tone, sr, 0.0, 2.0, &p),
+            None,
+            "en jämn ton har inga slag"
+        );
+    }
+
+    /// Tystnad och ett fönster utanför ljudet är `None`, inte en panik eller en gissning.
+    #[test]
+    fn silence_and_the_end_of_the_buffer_are_none() {
+        let p = OnsetParams::default();
+        let quiet = vec![0.0f32; (SR * 1.0) as usize];
+        assert_eq!(first_onset_source_secs(&quiet, SR, 0.0, 1.0, &p), None);
+        let buf = clicks(&[0.20], 1.0);
+        assert_eq!(
+            first_onset_source_secs(&buf, SR, 5.0, 1.0, &p),
+            None,
+            "utanför bufferten finns inget att hitta"
+        );
+        assert_eq!(first_onset_source_secs(&[], SR, 0.0, 1.0, &p), None);
     }
 }

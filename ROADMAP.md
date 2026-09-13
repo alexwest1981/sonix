@@ -1772,11 +1772,38 @@ och utan motor — fyra prov, alla med tal:
 klippets början)"*, med en rad om att klippet inte flyttas. Beskedet i statusraden säger exakt
 vilken sekund filen läses från — talet, inte ett omdöme.
 
-**Kvar till ett eget pass:** appen kan i dag **inte hitta** slaget åt honom, bara sätta det han
-pekar på. Etablerade DAW:er visar detekterade transients (Ableton: grå markörer som går att
-skapa/radera; Sonix har redan slagletningen i `audio::onset`, Fas 8.7) — nästa steg är en
-*"hitta första slaget"* som mäter i stället för att peka. Det är också först då ett **snap** är
-ärligt: ett rutnät som gissar är sämre än ingen snap (se provet som fällde min första variant).
+### Steg 2: "Hitta första slaget" — mätningen i stället för pekfingret (byggt samma kväll)
+
+Han pekade själv ut nästa steg: *"det som är industristandard, och mest önskvärt."* Etablerade
+DAW:er visar detekterade transients (Ableton: grå markörer som kan skapas/raderas) och låter dig
+sätta en av dem som klippets början. Sonix hade redan slagletningen (`audio::onset`, Fas 8.7) —
+den ställde frågan *"var är alla slagen?"*. Den nya funktionen ställer en annan: **"var börjar
+musiken?"** (`first_onset_source_secs`: sök från klippets första sampel och `FIRST_BEAT_SEARCH_SECS`
+= 20 s framåt, ta det första slaget).
+
+**Kedjan är tre rena funktioner**, och var och en har egna prov — ingen App, ingen motor, inget ljud:
+
+1. `first_onset_source_secs` (`audio::onset`) — fyra prov: första klicket ✓, sökningen börjar vid
+   klippets sampel (ett anslag **före** klippet är inte klippets första slag) ✓, **en jämn ton ger
+   noll slag** ✓ (modulens eget krav: en detektor är en mätning), tystnad och fönster utanför
+   bufferten är `None` ✓.
+2. `timeline_point_for_source_secs` (`ui::app`) — omvändningen, med samma faktor som motorn spelar
+   med: 0,2143 s källa i ett 100-projekt blir 0,30 s ut ✓, och ett slag före klippets första sampel
+   avvisas ✓.
+3. `align_clip_start_to_point` — samma regel som i steg 1 ✓.
+
+Ett prov binder ihop hela kedjan på syntetiskt ljud: ett klick 0,42 s in i filen hittas av
+detektorn, räknas om till tidslinjen och blir klippets första sampel — **utan att en enda sampel
+spelas**.
+
+**Ingen träff är ett giltigt svar.** En pad eller en stråke har inget första slag; då står det i
+statusraden och ingenting flyttas. Det är samma 8.5-regel som resten av appen, och skälet att ett
+snap nu får finnas: talet kommer ur en **mätning i filen**, inte ur ett antagande om rutnätet
+(jämför provet som fällde den gissade snapen i steg 1).
+
+**Rör inte:** letar bara i klippets egen fil och bara inom 20 s. Fönstret är ett tak för *arbetet*,
+inte en åsikt om musiken — hittas inget sägs det, i stället för att en hel låt genomsöks efter
+något att flytta.
 
 ---
 
