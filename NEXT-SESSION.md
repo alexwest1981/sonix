@@ -6,6 +6,15 @@ mätt, och var nästa andetag ska tas.*
 
 ---
 
+
+> **Kartan finns nu: `SECTIONS.md`** (genererad av `tools/sections.py`). Läs den i stället för att
+> greppa hela koden: den listar varje moduls radantal, publika ingångar, antal anropare utanför
+> filen och antal tester — plus modulens **egen** status, som står i modulens `//!`-dokumentation:
+> `//! Status: fryst — …` och `//! Rör inte: …`. Saknas statusen står modulen i listan "utan
+> status" sist i filen: lägg raden i modulen och kör om skriptet. `python3 tools/sections.py --check`
+> ger exit 1 när kartan är inaktuell (kan läggas i CI). **En ägare per faktum** — samma läxa som
+> de två listorna för samma sak.
+
 ## 1. Var allt står
 
 - **Arbetskatalog:** `~/Projects/sonix`, branch `master`, remote `origin` → github.com/alexwest1981/sonix
