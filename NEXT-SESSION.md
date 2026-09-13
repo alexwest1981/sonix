@@ -123,8 +123,9 @@ mätt, och var nästa andetag ska tas.*
    (`steps_elapsed`), och **spelhuvudet läser ljudtrådens egen klocka**
    (`AudioEngine::song_position_secs`) i stället för att räkna egna steg. Slingpunkten
    söker nu också motorn — det är en **beteendeändring** (ljudet följer slingan), läs
-   8.13b i roadmapen. **Kvar: Alex' ögon** vid 400 %; kvar i så fall en bildruta (11 ms),
-   inte en sekund.
+   8.13b i roadmapen. **Bekräftad av Alex 2026-09-13:** *"Nu verkar waveform och marker synka."*
+   (Kvar i samma familj, som egen mindre punkt: notschemat ligger fortfarande i UI-tråden —
+   upplösning en bildruta; hörs inte som glid längre.)
    0b. ~~**Nivå- och registermätare i toppraden**~~ — **BYGGT 2026-09-13 (8.13)**: L/R-mätare
    och register-EQ bredvid oscilloskopet, före MASTER. Mätningarna (och de två
    konstruktionsmissar siffrorna dömde ut) står i roadmapens 8.13. **Kvar: Alex' ögon** på

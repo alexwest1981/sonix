@@ -1703,8 +1703,10 @@ mer än en halv sekund, den nya håller sig inom ett steg), och `the_song_clock_
 i `audio::synth` (klockan står still i paus, räknar exakt en bildruta per renderad bildruta, håller
 kvar positionen när transporten stannar).
 
-**Kvar:** **Alex' ögon och öron.** Att spelhuvudet *ritas* ur den nya klockan är läst i koden; att
-det stämmer i fönstret vid 400 % är hans mätning. Om en rest finns kvar är den nu avgränsad: i så
-fall är den en bildruta (11 ms), inte en sekund — och nästa steg är att låta noterna schemaläggas i
-ljudtråden i stället för i UI-tråden (stegklockan är fortfarande en UI-klocka, upplösning en
-bildruta; se `current_take_pos`).
+**Bekräftat av Alex 2026-09-13, vid 400 %:** *"Nu verkar waveform och marker synka."* Punkten är
+därmed stängd — inte bara byggd utan kvitterad av det öra och öga som såg felet.
+
+**Kvar i samma familj (en egen, mindre sak):** noterna schemaläggs fortfarande i UI-tråden med
+stegklockan (upplösning en bildruta ≈11 ms, se `current_take_pos`). Det hörs inte som glid längre —
+stegklockan räknas från deadline och spelhuvudet följer ljudet — men den riktiga lösningen är att
+lägga notschemat i ljudtråden. Det är en egen punkt, inte en rest av den här.
