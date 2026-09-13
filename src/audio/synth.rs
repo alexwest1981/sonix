@@ -2,7 +2,7 @@
 //! Rör inte: sends mellan spår kräver att spårloopen i `process_stereo` delas i två faser + slingkontroll
 use std::f32::consts::PI;
 use std::sync::Mutex;
-use super::command::{AudioCommand, Preset, StemRegionPlayback, StemSend, Waveform};
+use super::command::{AudioCommand, Preset, SendTarget, StemRegionPlayback, StemSend, Waveform};
 use super::drum::{DrumType, DrumVoice};
 use super::effects::{DelayParams, ReverbParams, SimpleReverb, StereoDelay};
 use super::envelope::{AdsrParams, AdsrVoice};
@@ -580,6 +580,20 @@ pub struct SynthEngine {
     pub vca_volume: [f32; NUM_VCAS],
     pub vca_muted: [bool; NUM_VCAS],
     pub vca_solo: [bool; NUM_VCAS],
+    /// **Ordningen stämmorna räknas i** (Fas 8.3): topologisk över spår-sends, så att en
+    /// mottagare alltid räknas **efter** sina sändare. Räknas om när sends eller spår
+    /// ändras — aldrig per sample.
+    pub stem_order: Vec<usize>,
+    /// Utgångarna för det **pågående samplet** (Fas 8.3). En spår-send läser sändarens
+    /// utgång härifrån, så att den kommer fram exakt i fas i stället för en sample sent.
+    /// Buffetarna återanvänds — ingen allokering per sample.
+    pub track_out_l: Vec<f32>,
+    pub track_out_r: Vec<f32>,
+    /// **Vilka som skickar till ett spår** (Fas 8.3): för varje spår en lista av
+    /// `(sändare, nivå)`. Byggs i samma pass som `stem_order` — samma graf, samma ställe —
+    /// så att ordningen och vägarna inte kan driva isär. Sends ändras bara via
+    /// `SetStemTrackSends`, som räknar om båda.
+    pub stem_incoming: Vec<Vec<(usize, f32)>>,
     // Debug heartbeat counters (only used when SONIX_AUDIO_DEBUG is set)
     pub dbg_frames: u64,
 }
@@ -628,6 +642,10 @@ impl SynthEngine {
             vca_volume: [1.0; NUM_VCAS],
             vca_muted: [false; NUM_VCAS],
             vca_solo: [false; NUM_VCAS],
+            stem_order: Vec::new(),
+            track_out_l: Vec::new(),
+            track_out_r: Vec::new(),
+            stem_incoming: Vec::new(),
             dbg_frames: 0,
         }
     }
@@ -937,11 +955,13 @@ impl SynthEngine {
                 }
                 self.has_stem_solo = self.stem_tracks.iter().any(|t| t.solo);
                 self.recount_stretched_tracks();
+                self.recompute_stem_order();
             }
             AudioCommand::ClearAllStemTracks => {
                 self.stem_tracks.clear();
                 self.has_stem_solo = false;
                 self.recount_stretched_tracks();
+                self.recompute_stem_order();
             }
             AudioCommand::SetStemTrackState { track_index, volume, pan, muted, solo } => {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
@@ -973,10 +993,20 @@ impl SynthEngine {
                         .into_iter()
                         .filter(|s| s.level.is_finite() && s.level.abs() > 1e-6)
                         .map(|s| StemSend {
-                            target_bus: s.target_bus.min(NUM_BUSES - 1),
+                            // Bussmål klampas (samma regel som förut); ett spårmål behålls
+                            // orört — spåret kan laddas senare, och att klampa till "sista
+                            // spåret" vore att routa till fel spår i stället för inget.
+                            target: match s.target {
+                                SendTarget::Bus { target_bus } => {
+                                    SendTarget::Bus { target_bus: target_bus.min(NUM_BUSES - 1) }
+                                }
+                                other => other,
+                            },
                             level: s.level.clamp(0.0, 2.0),
                         })
                         .collect();
+                    // Ordningen kan ha ändrats av den här senden (Fas 8.3).
+                    self.recompute_stem_order();
                 }
             }
             AudioCommand::SetStemTrackSidechain { track_index, from, amount_db, threshold_db } => {
@@ -1128,6 +1158,58 @@ impl SynthEngine {
     /// Ett tal som svarar på **vad motorn har**, inte på vad appen skickade. Anropas
     /// där regioner eller spår byts — några spår, några regioner, ingen kostnad i
     /// sample-loopen.
+    /// Räknar om **spårordningen** (Fas 8.3). Anropas när sends eller spårlistan ändras —
+    /// aldrig per sample.
+    ///
+    /// En slinga kan inte bli en ordning. Då behålls den förra (och är den ogiltig för den
+    /// nya spårlistan, den naturliga ordningen), och det skrivs i loggen: motorn **gissar
+    /// aldrig** på en routering — en tyst omsortering vore en gissning. Ett spår vars sändare
+    /// räknas senare får sin send **en sample senare** i stället, vilket är den gamla
+    /// ordningens kända beteende sedan tidigare (sidokedjan läser också förra samplet).
+    fn recompute_stem_order(&mut self) {
+        let n = self.stem_tracks.len();
+        let graph: Vec<Vec<usize>> = self
+            .stem_tracks
+            .iter()
+            .map(|t| t.sends.iter().filter_map(|s| s.target.as_track()).collect())
+            .collect();
+        match super::command::plan_track_order(n, &graph) {
+            Ok(order) => self.stem_order = order,
+            Err((a, b)) => {
+                dbg_log(
+                    "sends",
+                    &format!(
+                        "slinga mellan spår {} och {} — behåller förra ordningen",
+                        a + 1,
+                        b + 1
+                    ),
+                );
+                let valid = self.stem_order.len() == n
+                    && {
+                        let mut seen = self.stem_order.clone();
+                        seen.sort_unstable();
+                        seen == (0..n).collect::<Vec<_>>()
+                    };
+                if !valid {
+                    self.stem_order = (0..n).collect();
+                }
+            }
+        }
+        let mut incoming: Vec<Vec<(usize, f32)>> = vec![Vec::new(); n];
+        for (from, track) in self.stem_tracks.iter().enumerate() {
+            for send in &track.sends {
+                if let Some(to) = send.target.as_track() {
+                    if to != from && to < n {
+                        incoming[to].push((from, send.level));
+                    }
+                }
+            }
+        }
+        self.stem_incoming = incoming;
+        self.track_out_l.resize(n, 0.0);
+        self.track_out_r.resize(n, 0.0);
+    }
+
     fn recount_stretched_tracks(&mut self) {
         self.stretched_region_tracks = self
             .stem_tracks
@@ -1312,7 +1394,30 @@ impl SynthEngine {
                 .map(|t| (t.last_out_l, t.last_out_r))
                 .collect();
 
-            for (track_idx, track) in self.stem_tracks.iter_mut().enumerate() {
+            // Buffetarna för det **pågående samplet** tas ut ur self: loopen lånar
+            // `stem_tracks` mutabelt och kan inte läsa en annan medlem samtidigt. De
+            // seedas med förra samplets utgångar, så att en send som (mot förmodan, i en
+            // handredigerad fil) pekar bakåt ger förra samplet i stället för tystnad.
+            let mut out_l = std::mem::take(&mut self.track_out_l);
+            let mut out_r = std::mem::take(&mut self.track_out_r);
+            let incoming = std::mem::take(&mut self.stem_incoming);
+            for (i, last) in self.stem_tracks.iter().enumerate() {
+                if i < out_l.len() {
+                    out_l[i] = last.last_out_l;
+                    out_r[i] = last.last_out_r;
+                }
+            }
+
+            let track_count = self.stem_tracks.len();
+            for order_pos in 0..track_count {
+                let track_idx = self
+                    .stem_order
+                    .get(order_pos)
+                    .copied()
+                    .unwrap_or(order_pos)
+                    .min(track_count.saturating_sub(1));
+                let here: &[(usize, f32)] = incoming.get(track_idx).map(|v| v.as_slice()).unwrap_or(&[]);
+                let track = &mut self.stem_tracks[track_idx];
                 let bus = track.bus.min(NUM_BUSES - 1);
                 let vca = track.vca.filter(|&v| v < NUM_VCAS);
                 let group_soloed = bus_solo[bus] || vca.map(|v| vca_solo[v]).unwrap_or(false);
@@ -1338,6 +1443,21 @@ impl SynthEngine {
                 let pan_r = track.pan_r;
                 let mut track_l = 0.0_f32;
                 let mut track_r = 0.0_f32;
+
+                // **Spår-sends in i kedjan** (Fas 8.3): en del av sändarens utgång läggs
+                // till här — *före* pitch, EQ och kompressor — så att mottagarens kedja
+                // bearbetar den precis som sitt eget ljud. Sändaren är alltid räknad först
+                // (`stem_order`), alltså är den exakt i fas och inte en sample sen.
+                //
+                // Målets eget läge gäller: en tystad mottagare kommer aldrig hit (loopen
+                // hoppar över den ovan), och när något är soloat hörs bara den soloades
+                // väg — samma regel som för buss-sends.
+                for &(sender, level) in here {
+                    if sender < out_l.len() {
+                        track_l += out_l[sender] * level;
+                        track_r += out_r[sender] * level;
+                    }
+                }
 
                 if !track.regions.is_empty() {
                     // Play defined audio regions/slices
@@ -1501,6 +1621,11 @@ impl SynthEngine {
                 }
                 track.last_out_l = tl;
                 track.last_out_r = tr;
+                // Spårets utgång för det här samplet: det är den en spår-send läser.
+                if track_idx < out_l.len() {
+                    out_l[track_idx] = tl;
+                    out_r[track_idx] = tr;
+                }
 
                 stem_mix_l += tl * group_gain;
                 stem_mix_r += tr * group_gain;
@@ -1514,7 +1639,12 @@ impl SynthEngine {
                 // summan är linjär och det är samma sak — men det syns i koden att
                 // det är ett antagande, och det är därför det står här.
                 for send in &track.sends {
-                    let target = send.target_bus.min(NUM_BUSES - 1);
+                    // Bara bussmål hör hit. Ett spårmål går in i mottagarens kedja i
+                    // stället (spår-senden, Fas 8.3) — det är hela skillnaden.
+                    let SendTarget::Bus { target_bus } = send.target else {
+                        continue;
+                    };
+                    let target = target_bus.min(NUM_BUSES - 1);
                     // Målets eget gruppläge gäller målet: en tystad buss tar inte
                     // emot, och när något är soloat hörs bara det soloades väg. Att
                     // spåret självt är hörbart räcker alltså inte — samma regel som
@@ -1533,6 +1663,10 @@ impl SynthEngine {
                     stem_mix_r += tr * g;
                 }
             }
+
+            self.track_out_l = out_l;
+            self.track_out_r = out_r;
+            self.stem_incoming = incoming;
         }
 
         // Ljudklockan går så länge transporten rullar (Fas 8.13b) — också i ett projekt
@@ -2536,7 +2670,7 @@ mod tests {
         });
         synth.handle_command(AudioCommand::SetStemTrackSends {
             track_index: 0,
-            sends: vec![StemSend { target_bus: 3, level: 1.0 }],
+            sends: vec![StemSend { target: SendTarget::bus(3), level: 1.0 }],
         });
         let with_send = run_peak(&mut synth, 8);
 
@@ -2569,7 +2703,7 @@ mod tests {
         });
         synth.handle_command(AudioCommand::SetStemTrackSends {
             track_index: 0,
-            sends: vec![StemSend { target_bus: 3, level: 1.0 }],
+            sends: vec![StemSend { target: SendTarget::bus(3), level: 1.0 }],
         });
         let with_send = run_peak(&mut synth, 8);
         assert!(
@@ -2586,14 +2720,14 @@ mod tests {
         synth.handle_command(AudioCommand::SetStemTrackSends {
             track_index: 0,
             sends: vec![
-                StemSend { target_bus: 99, level: 9.0 },
-                StemSend { target_bus: 1, level: 0.0 },
-                StemSend { target_bus: 2, level: f32::NAN },
+                StemSend { target: SendTarget::bus(99), level: 9.0 },
+                StemSend { target: SendTarget::bus(1), level: 0.0 },
+                StemSend { target: SendTarget::bus(2), level: f32::NAN },
             ],
         });
         let sends = &synth.stem_tracks[0].sends;
         assert_eq!(sends.len(), 1, "bara den med en nivå ska bli kvar: {sends:?}");
-        assert_eq!(sends[0].target_bus, NUM_BUSES - 1);
+        assert_eq!(sends[0].target.as_bus(), Some(NUM_BUSES - 1));
         assert!((sends[0].level - 2.0).abs() < 1e-6);
     }
 
@@ -2771,5 +2905,215 @@ mod tests {
             restored > expected * 0.8,
             "efter borttagningen ska nivån tillbaka: {restored} mot {expected}"
         );
+    }
+
+    // -- Fas 8.3: spår-till-spår-sends ----------------------------------------
+
+    /// Två spår: **spår 0 tar emot** (tyst buffert), **spår 1 sänder** (en 1 kHz-ton).
+    /// Spår 1 skickar sin utgång till spår 0 på nivån `level`. Båda ligger på buss 0, och
+    /// mottagaren är tyst — därför är utgången sändarens egen väg, plus senden när den är
+    /// inkopplad.
+    fn sender_and_receiver(level: f32) -> SynthEngine {
+        let mut synth = SynthEngine::new(48_000.0);
+        let silent = Arc::new(vec![0.0_f32; 144_000]);
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 0,
+            left: silent.clone(),
+            right: silent,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        let tone: Vec<f32> = (0..144_000)
+            .map(|i| (2.0 * std::f32::consts::PI * 1_000.0 * i as f32 / 48_000.0).sin() * 0.6)
+            .collect();
+        let arc = Arc::new(tone);
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: 1,
+            left: arc.clone(),
+            right: arc,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        synth.handle_command(AudioCommand::SetStemTrackSends {
+            track_index: 1,
+            sends: vec![StemSend {
+                target: SendTarget::track(0),
+                level,
+            }],
+        });
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+        synth
+    }
+
+    /// En 1 kHz-ton på 3 s — samma buffer som testerna ovan använder.
+    fn tone_buffer() -> Vec<f32> {
+        (0..144_000)
+            .map(|i| (2.0 * std::f32::consts::PI * 1_000.0 * i as f32 / 48_000.0).sin() * 0.6)
+            .collect()
+    }
+
+    /// Lägger ett spår på en buss med given buffert.
+    fn load_on_bus(synth: &mut SynthEngine, track_index: usize, bus: usize, buffer: Arc<Vec<f32>>) {
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index,
+            left: buffer.clone(),
+            right: buffer,
+            sample_rate: 48_000.0,
+            volume: 1.0,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        synth.handle_command(AudioCommand::SetStemTrackRouting {
+            track_index,
+            bus,
+            vca: None,
+        });
+    }
+
+    /// **Fasen är hela poängen med en spår-send** (Fas 8.3): senden ska komma fram i
+    /// **samma sample** som sin källa, inte i nästa.
+    ///
+    /// Provet jämför en send mot en **kontroll på samma nivå**: mottagaren (buss 1) får sin
+    /// egen ton *plus* en send med samma ton, och kontrollen har i stället en buffert som
+    /// redan är dubbelt så stark. Ligger senden rätt är de två renderingarna samma sak —
+    /// **sample för sample**. Kommer senden en sample sent blir skillnaden i stället
+    /// `x[n] − x[n−1]` ≈ 0,08 vid 1 kHz, alltså tusentals gånger över toleransen.
+    ///
+    /// Sändarens egen buss skruvas ned till noll, så att det bara är mottagarens utgång som
+    /// hörs — senden tappas **före** bussnivån och påverkas inte.
+    #[test]
+    fn a_track_send_arrives_in_phase() {
+        let tone = tone_buffer();
+        let doubled: Vec<f32> = tone.iter().map(|v| v * 2.0).collect();
+
+        let mut send = SynthEngine::new(48_000.0);
+        load_on_bus(&mut send, 0, 1, Arc::new(tone.clone())); // mottagaren
+        load_on_bus(&mut send, 1, 0, Arc::new(tone.clone())); // sändaren
+        send.handle_command(AudioCommand::SetBusState {
+            bus: 0,
+            volume: 0.0,
+            muted: false,
+            solo: false,
+        });
+        send.handle_command(AudioCommand::SetStemTrackSends {
+            track_index: 1,
+            sends: vec![StemSend {
+                target: SendTarget::track(0),
+                level: 1.0,
+            }],
+        });
+        send.handle_command(AudioCommand::SetSongPlayback(true));
+
+        let mut control = SynthEngine::new(48_000.0);
+        load_on_bus(&mut control, 0, 1, Arc::new(doubled));
+        control.handle_command(AudioCommand::SetSongPlayback(true));
+
+        let a = render_left(&mut send, 2_000);
+        let b = render_left(&mut control, 2_000);
+        let largest = b.iter().fold(0.0_f32, |m, v| m.max(v.abs()));
+        assert!(largest > 0.5, "kontrollen ska låta (största {largest})");
+        for (i, (&x, &y)) in a.iter().zip(b.iter()).enumerate() {
+            assert!(
+                (x - y).abs() < 1e-5,
+                "sample {i}: senden gav {x}, kontrollen på samma nivå {y} — senden kom inte i fas"
+            );
+        }
+    }
+
+    /// ... och motprovet: samma uppställning **utan** send ger en helt annan kurva, så att
+    /// provet ovan inte kan bli grönt av att ingenting skickas.
+    #[test]
+    fn the_send_path_is_silent_without_the_send() {
+        let mut synth = SynthEngine::new(48_000.0);
+        load_on_bus(&mut synth, 0, 1, Arc::new(tone_buffer()));
+        load_on_bus(&mut synth, 1, 0, Arc::new(tone_buffer()));
+        synth.handle_command(AudioCommand::SetBusState {
+            bus: 0,
+            volume: 0.0,
+            muted: false,
+            solo: false,
+        });
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+        let out = render_left(&mut synth, 2_000);
+        let largest = out.iter().fold(0.0_f32, |m, v| m.max(v.abs()));
+        assert!(
+            largest > 0.2,
+            "mottagarens egen ton ska höras (största {largest}) — annars är send-vägen tyst av fel skäl"
+        );
+    }
+
+    /// Ordningen syns i motorn: en send bakåt i spårlistan vänder den. (Det hörbara
+    /// beviset är fasprovet ovan; det här visar mekanismen när något går fel.)
+    #[test]
+    fn the_order_follows_the_sends() {
+        // Spår 1 → spår 0: sändaren ligger *efter* mottagaren i listan och måste därför
+        // räknas först — ordningen vänds.
+        let mut synth = sender_and_receiver(0.5);
+        assert_eq!(
+            synth.stem_order,
+            vec![1, 0],
+            "en send bakåt i listan ska vända ordningen"
+        );
+        // Sedan en send tillbaka: nu är det en slinga, och då behålls den förra ordningen.
+        synth.handle_command(AudioCommand::SetStemTrackSends {
+            track_index: 0,
+            sends: vec![StemSend {
+                target: SendTarget::track(1),
+                level: 0.5,
+            }],
+        });
+        assert_eq!(
+            synth.stem_order,
+            vec![1, 0],
+            "0 → 1 plus 1 → 0 är en slinga: förra ordningen behålls, inget gissas"
+        );
+    }
+
+    /// **Målets eget läge gäller** — samma regel som för buss-sendarna: en tystad mottagare
+    /// tar inte emot. Utan det hade en tystad kanal ändå låtit, via någon annans send.
+    #[test]
+    fn a_send_into_a_muted_receiver_adds_nothing() {
+        let mut without = sender_and_receiver(0.0);
+        let reference = render_left(&mut without, 1_000);
+
+        let mut muted = sender_and_receiver(1.0);
+        muted.handle_command(AudioCommand::SetStemTrackState {
+            track_index: 0,
+            volume: 1.0,
+            pan: 0.0,
+            muted: true,
+            solo: false,
+        });
+        let out = render_left(&mut muted, 1_000);
+        for (i, (&x, &y)) in reference.iter().zip(out.iter()).enumerate() {
+            assert!((x - y).abs() < 1e-6, "sample {i}: en tystad mottagare tog emot en send");
+        }
+    }
+
+    /// Ett mål som inte finns (eller ett spår som skickar till sig självt) får inte
+    /// återkoppla, och får inte heller ändra ljudet: regeln är "ingenting", inte "närmast".
+    #[test]
+    fn a_send_to_a_track_that_is_not_there_does_nothing() {
+        let mut reference_synth = sender_and_receiver(0.0);
+        let reference = render_left(&mut reference_synth, 1_000);
+
+        for target in [SendTarget::track(9), SendTarget::track(1)] {
+            let mut synth = sender_and_receiver(0.0);
+            synth.handle_command(AudioCommand::SetStemTrackSends {
+                track_index: 1,
+                sends: vec![StemSend { target, level: 1.0 }],
+            });
+            let out = render_left(&mut synth, 1_000);
+            for (i, (&x, &y)) in reference.iter().zip(out.iter()).enumerate() {
+                assert!(
+                    (x - y).abs() < 1e-6,
+                    "mål {target:?}, sample {i}: ett mål som inte finns ska inte höras"
+                );
+            }
+        }
     }
 }

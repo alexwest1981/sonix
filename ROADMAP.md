@@ -75,7 +75,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 
 | # | Punkt | Storlek | Vad som återstår | Blockerare |
 | :--- | :--- | :---: | :--- | :--- |
-| 1 | **8.3 Routing på riktigt** | *M* | **Sidokedjorna klara 2026-09-12**; kvar: sends mellan spår (bussar/VCA finns sedan tidigare) | — |
+| 1 | **8.3 Routing på riktigt** | *M* | **Klar 2026-09-13**: sidokedjor (`09-12`), bussar/VCA (`09-12`), sends mellan spår (`09-13`) | — |
 | 2 | **8.4 Sampler** | *M* | Ett riktigt samplerinstrument i kanalracket (WAV-spelaren finns) | — |
 | 3 | **8.2 Tempo map** | *S–M* | De 4 visningsställena, automation-lanen (sekunder vs takter), drag-utökningen | — |
 | 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
@@ -759,15 +759,50 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     - Mixerns kanalpanel har **Skicka till buss:** (mål + nivå, ➕ Ny send / 🗑, högst fyra per
       spår; FX-bussen är standardmål). Mixer-digest-testet prövar att **målet och nivån** syns,
       inte bara att listan är tom. Frusna spår skickar inget — deras fil renderades utan sends,
-      och då ska högtalarna och filen säga samma sak. **376 tester default, 422 med
-      plugin-host, 0 varningar.**
-  - **Kvar på samma punkt: sends mellan spår** — att skicka ett spår in i ett annat spårs
-    kedja. Det är större än sidokedjan: key-signalen är en *mätning* (ett sample sent går
-    bra), men en send är *ljud* och måste vara exakt i fas, annars tar den ut sig själv mot
-    originalsignalen. Det kräver att spårloopen i `process_stereo` delas i två faser
-    (källor först, kedjor sedan i topologisk ordning) plus en kontroll som vägrar en
-    koppling som skulle bli en slinga. **Eget pass, med färskt sammanhang** — inte
-    ihopträngt i slutet av ett annat.
+      och då ska högtalarna och filen säga samma sak.
+  - **Sends mellan spår — klart 2026-09-13.** Ett spår kan nu skicka in i ett annat spårs
+    kedja, inte bara till en buss. Det var den del som krävde att spårloopen i
+    `process_stereo` räknas i **ordning**, och ordningen är hela saken:
+    - **Samma sample, inte nästa.** Spåren räknas i **topologisk ordning** (`stem_order`,
+      räknad om när sends eller spårlistan ändras — aldrig per sample, och via en
+      **inkommande-lista** byggd i samma pass, så att ordningen och vägarna inte kan driva
+      isär). Sändarens utgång för *det här* samplet finns alltså färdig när mottagarens
+      kedja kör. En send som kom en sample sent hade inte hörts som ett klick — den hade
+      hörts som att signalen tar ut sig själv mot mottagarens egen signal.
+    - **Beviset är fasen, och formen på provet är vald med flit.**
+      `a_track_send_arrives_in_phase` jämför en send mot en **kontroll på samma nivå** (en
+      buffert som redan är dubbelt så stark), sample för sample: masterns kurva är inte
+      linjär, så "summan blir 2×" hade varit fel mått — två renderingar på samma nivå tar ut
+      kurvan. Att provet **fäller** en felaktig ordning är kontrollerat: med
+      `recompute_stem_order` bortkopplad gav senden förra samplets värde (0,0443 mot
+      kontrollens 0,0884), alltså felet provet finns för.
+    - **`plan_track_order` är en ren funktion** (`command.rs`) som vägrar en slinga och
+      **namnger de två spåren**. Motorn behåller då sin förra ordning och skriver i loggen —
+      den gissar aldrig på en routering — och mixern **vägrar skapa** en slinga, med besked
+      om vilka spår det gällde. Ett spår som skickar till sig självt är också en slinga.
+    - **Målets eget läge gäller**, som för bussarna: en tystad mottagare tar inte emot
+      (`a_send_into_a_muted_receiver_adds_nothing`), och ett mål som inte finns (eller ett
+      spår som skickar till sig självt) gör **ingenting** — inte "närmast rätt"
+      (`a_send_to_a_track_that_is_not_there_does_nothing`). En bussnivå på noll stoppar
+      däremot **inte** en send: tappen ligger före bussnivån, och det är den egenskapen
+      fasprovet använder för att kunna mäta send-vägen ensam.
+    - **Projektfilen är oförändrad för gamla filer.** Målet ligger i samma flata fältnamn
+      som förut (`target_bus` för en buss, `target_track` för ett spår), så en fil sparad före
+      den här punkten läses exakt som förr — `old_project_files_read_a_bus_send_as_before`
+      håller den kvar, och `a_track_send_round_trips_in_the_same_flat_shape` att rundgången
+      är exakt.
+    - Mixerns rad heter nu **Skicka till:** och listar både bussar och de andra spåren
+      (namngivna med nummer). Ett fruset spår skickar inget (`TrackAudioSnap.sends` blir tom
+      för båda slagen — filen renderades utan dem), men *tar emot* som förut.
+    - **Samma ljud i filen som i högtalarna:**
+      `a_track_send_follows_the_offline_render` lägger sändaren på en buss med nivån noll, så
+      att tonen i exporten bara kan komma från senden — vägen in i mottagarens kedja.
+    - **Kvar att veta (ärligt):** sends är **post-fader** (som bussarna — ingen pre-fader-
+      variant finns), nivån kläms till 0..2 (en inverterad send går alltså inte att göra), och
+      **PDC är inte vägd in i send-vägen**: den går genom mottagarens kedja och får därför
+      mottagarens latens också. Utan plugins i mottagaren är latensen noll och senden är
+      exakt (fasprovet); med en plugin i mottagaren är senden förskjuten med mottagarens
+      latens — **läst ur vägen, inte mätt i ljud**.
 - [ ] **8.4 Sampler** (ett riktigt samplerinstrument i kanalracket, inte bara en WAV-spelare).
 - [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*
   - **Läget hos oss, mätt 2026-09-12:** Sonix hostar VST2/VST3/CLAP/LV2, skyddar sig mot

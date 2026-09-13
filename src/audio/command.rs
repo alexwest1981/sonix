@@ -277,11 +277,130 @@ pub enum AudioCommand {
 ///
 /// `level` är linjär (1,0 = lika starkt som spårets egen utgång). Målet är en
 /// buss, inte ett spår: en buss skickar inte vidare, så en send kan aldrig bli en
-/// slinga — och en slinga är det enda en routering mellan spår kan bli som inte
-/// går att beräkna.
+impl SendTarget {
+    /// En buss som mål.
+    pub fn bus(target_bus: usize) -> Self {
+        SendTarget::Bus { target_bus }
+    }
+    /// Ett spår som mål.
+    pub fn track(target_track: usize) -> Self {
+        SendTarget::Track { target_track }
+    }
+    /// Buss-numret, om målet är en buss.
+    pub fn as_bus(self) -> Option<usize> {
+        match self {
+            SendTarget::Bus { target_bus } => Some(target_bus),
+            SendTarget::Track { .. } => None,
+        }
+    }
+    /// Spår-numret, om målet är ett spår.
+    pub fn as_track(self) -> Option<usize> {
+        match self {
+            SendTarget::Track { target_track } => Some(target_track),
+            SendTarget::Bus { .. } => None,
+        }
+    }
+}
+
+/// **Ordningen spåren måste räknas i** (Fas 8.3) — topologisk, så att ett spår som tar emot
+/// en send alltid räknas **efter** sina sändare.
+///
+/// Annars läser mottagaren en utgång som ännu inte finns för det samplet, och senden kommer
+/// fram en sample sent. Det hörs inte som ett klick — det hörs som att signalen tar ut sig
+/// själv mot mottagarens egen signal, för en förskjuten kopia av samma ljud släcker sig själv
+/// i diskanten. Roadmapen pekade ut just det som det svåra med den här punkten.
+///
+/// **Ren funktion:** antal spår och varje spårs spår-mål in, ordningen ut. `Err((a, b))`
+/// betyder att en slinga går genom `a` och `b` — då finns ingen giltig ordning, och motorn
+/// behåller sin förra i stället för att gissa. Ett spår som skickar till **sig självt** är en
+/// slinga och svarar `Err((a, a))`.
+///
+/// **Stabil:** spår utan inbördes beroende behåller sin naturliga ordning, så att ljudet inte
+/// ändras av att ordningen råkar bli en annan. Mål utanför spårlistan ignoreras (de kan gälla
+/// ett spår som ännu inte laddats), och en dubblerad kant räknas två gånger — precis som
+/// grafen säger.
+pub fn plan_track_order(
+    track_count: usize,
+    track_sends: &[Vec<usize>],
+) -> Result<Vec<usize>, (usize, usize)> {
+    let mut indegree = vec![0usize; track_count];
+    for (from, targets) in track_sends.iter().enumerate() {
+        if from >= track_count {
+            break;
+        }
+        for &to in targets {
+            if to == from {
+                return Err((from, from)); // ett spår kan inte skicka till sig självt
+            }
+            if to < track_count {
+                indegree[to] += 1;
+            }
+        }
+    }
+    let mut order = Vec::with_capacity(track_count);
+    let mut done = vec![false; track_count];
+    while order.len() < track_count {
+        let Some(next) = (0..track_count).find(|&i| !done[i] && indegree[i] == 0) else {
+            // Alla kvarvarande spår väntar på någon annan: en slinga. Namnge två av dem.
+            let a = (0..track_count)
+                .find(|&i| !done[i])
+                .unwrap_or(0);
+            let b = track_sends
+                .get(a)
+                .and_then(|v| {
+                    v.iter()
+                        .copied()
+                        .find(|&t| t < track_count && !done[t])
+                })
+                .unwrap_or(a);
+            return Err((a, b));
+        };
+        done[next] = true;
+        order.push(next);
+        if let Some(targets) = track_sends.get(next) {
+            for &to in targets {
+                if to < track_count {
+                    indegree[to] = indegree[to].saturating_sub(1);
+                }
+            }
+        }
+    }
+    Ok(order)
+}
+
+/// **Vart en send går** (Fas 8.13 bussar, Fas 8.3 spår).
+///
+/// En send är *ljud*, inte en mätning: den måste komma fram **exakt i fas**, annars tar den
+/// ut sig själv mot mottagarens egen signal. Därför går en spår-send in i mottagarens kedja
+/// **före** dess pitch, EQ och kompressor — samma sak som FL:s *Track Send* och Abletons
+/// *Audio To* — och motorn räknar spåren i en ordning där sändaren alltid är klar först
+/// ([`plan_track_order`]).
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(untagged)]
+pub enum SendTarget {
+    /// En buss (`0..NUM_BUSES`). Bussen har ingen egen bearbetning — bara nivå, mute och
+    /// solo — och den skickar inte vidare.
+    Bus { target_bus: usize },
+    /// Ett annat spår (`0..antal spår`). Signalen hamnar i mottagarens kedja, och följer
+    /// sedan med till mottagarens buss.
+    Track { target_track: usize },
+}
+
+/// En send från ett spår: vart den går och hur starkt (`1,0` = lika starkt som spårets
+/// egen utgång).
+///
+/// **Post-fader**, och samma signal som går till spårets egen buss — efter volym, EQ,
+/// kompressor och sidokedja. En send tappar alltså inte EQ:n eller duckningen på vägen, och
+/// den kan inte smyga sig förbi spårets egen mute.
+///
+/// **Serde-formen är flat och bakåtkompatibel:** en buss-send skrivs `{target_bus, level}`
+/// precis som förut, så en gammal projektfil läses oförändrat, och en spår-send skrivs
+/// `{target_track, level}`. Provet `old_project_files_read_a_bus_send_as_before` håller
+/// den formen kvar — den är inte kosmetisk.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StemSend {
-    pub target_bus: usize,
+    #[serde(flatten)]
+    pub target: SendTarget,
     pub level: f32,
 }
 
@@ -308,3 +427,83 @@ pub struct StemRegionPlayback {
     /// felkälla. `None` = spela spårets eget ljud med faktorn, som förut.
     pub source_audio: Option<super::stretch::StretchedAudio>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- Fas 8.3: sändningarnas form och ordning -------------------------------
+
+    /// **En gammal projektfil läses exakt som förut.** En buss-send skrevs
+    /// `{target_bus, level}` före den här punkten, och den formen får inte ha ändrats —
+    /// annars tappar ett sparat projekt sin send utan ett ord.
+    #[test]
+    fn old_project_files_read_a_bus_send_as_before() {
+        let old = r#"[{"target_bus":2,"level":0.5}]"#;
+        let sends: Vec<StemSend> = serde_json::from_str(old).expect("gammal form ska läsas");
+        assert_eq!(sends.len(), 1);
+        assert_eq!(sends[0].target, SendTarget::bus(2));
+        assert!((sends[0].level - 0.5).abs() < 1e-6);
+        assert_eq!(sends[0].target.as_bus(), Some(2));
+        assert_eq!(sends[0].target.as_track(), None);
+    }
+
+    /// **En spår-send skrivs och läses i samma flata form** — `{target_track, level}` —
+    /// så att en ny fil är lika läsbar som en gammal, och rundgången är exakt.
+    #[test]
+    fn a_track_send_round_trips_in_the_same_flat_shape() {
+        let sends = vec![
+            StemSend { target: SendTarget::track(3), level: 0.25 },
+            StemSend { target: SendTarget::bus(1), level: 0.75 },
+        ];
+        let json = serde_json::to_string(&sends).expect("ska gå att skriva");
+        assert!(json.contains("\"target_track\":3"), "spårmålet ska synas i filen: {json}");
+        assert!(json.contains("\"target_bus\":1"), "bussmålet ska synas i filen: {json}");
+        let back: Vec<StemSend> = serde_json::from_str(&json).expect("rundgång");
+        assert_eq!(back, sends);
+    }
+
+    /// **Ordningen: en sändare räknas alltid före sin mottagare** (Fas 8.3). Provet som
+    /// fångar en kedja som ligger baklänges i spårlistan — den naturliga ordningen hade
+    /// gett senden en sample sent, och då tar signalen ut sig själv i diskanten.
+    #[test]
+    fn the_order_puts_senders_before_receivers() {
+        // 2 → 1 → 0: spåren ligger baklänges, ordningen måste vända dem.
+        let order = plan_track_order(3, &[vec![], vec![0], vec![1]]).expect("en kedja är ingen slinga");
+        assert_eq!(order, vec![2, 1, 0]);
+        // Utan sends behålls den naturliga ordningen (stabilitet: ljudet ska inte ändras
+        // av att en ordning råkar bli en annan).
+        assert_eq!(plan_track_order(3, &[vec![], vec![], vec![]]).expect("tom graf"), vec![0, 1, 2]);
+        // Diamant: 0 → 1, 0 → 2, 1 → 3, 2 → 3.
+        assert_eq!(
+            plan_track_order(4, &[vec![1, 2], vec![3], vec![3], vec![]]).expect("diamant"),
+            vec![0, 1, 2, 3]
+        );
+        // Noll spår är en giltig (tom) ordning, inte ett fel.
+        assert_eq!(plan_track_order(0, &[]).expect("tomt"), Vec::<usize>::new());
+    }
+
+    /// **En slinga kan inte bli en ordning** — och den namnges i stället för att gissas.
+    /// Ett spår som skickar till sig självt är också en slinga (och svarar `(a, a)`).
+    #[test]
+    fn a_loop_is_named_instead_of_guessed() {
+        assert_eq!(plan_track_order(2, &[vec![1], vec![0]]), Err((0, 1)));
+        assert_eq!(plan_track_order(3, &[vec![1], vec![2], vec![0]]), Err((0, 1)));
+        assert_eq!(plan_track_order(1, &[vec![0]]), Err((0, 0)));
+        // Slingan får inte döljas av att en del av grafen är acyklisk: 3 → 0 är fritt,
+        // men 0 ↔ 1 är en slinga och ska fällas.
+        assert_eq!(plan_track_order(3, &[vec![1], vec![0], vec![0]]), Err((0, 1)));
+    }
+
+    /// **Mål utanför spårlistan ignoreras** (spåret kan laddas senare), och en dubblerad
+    /// kant räknas två gånger — precis som grafen säger. Ingen av dem får panikera.
+    #[test]
+    fn targets_that_do_not_exist_yet_are_ignored() {
+        let order = plan_track_order(2, &[vec![7, 7], vec![99]]).expect("okända mål är inga slingor");
+        assert_eq!(order.len(), 2);
+        assert_eq!(order[0], 0, "inget beroende kvar: naturlig ordning");
+        // En dubblerad kant från ett senare spår vänder fortfarande ordningen.
+        assert_eq!(plan_track_order(2, &[vec![], vec![0, 0]]).expect("dubbel kant"), vec![1, 0]);
+    }
+}
+

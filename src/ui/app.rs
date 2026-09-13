@@ -1995,7 +1995,15 @@ fn mixer_digest(
         // som tas bort ändrar ljudet även om de kvarvarande är likadana.
         mix(t.sends.len() as f32);
         for send in &t.sends {
-            mix(send.target_bus as f32);
+            // Målet hör till mixen oavsett sort — en buss och ett spår med samma nummer
+            // är inte samma väg. Spår-mål läggs i ett eget intervall så att de inte kan
+            // förväxlas med en buss i digesten.
+            match send.target {
+                crate::audio::SendTarget::Bus { target_bus } => mix(target_bus as f32),
+                crate::audio::SendTarget::Track { target_track } => {
+                    mix(1000.0 + target_track as f32)
+                }
+            }
             mix(send.level);
         }
         mix(t.eq.low_gain_db);
@@ -6272,7 +6280,15 @@ impl SonixApp {
                 .into_iter()
                 .filter(|s| s.level.is_finite() && s.level.abs() > 1e-6)
                 .map(|s| crate::audio::StemSend {
-                    target_bus: s.target_bus.min(crate::audio::synth::NUM_BUSES - 1),
+                    target: match s.target {
+                        crate::audio::SendTarget::Bus { target_bus } => {
+                            crate::audio::SendTarget::bus(
+                                target_bus.min(crate::audio::synth::NUM_BUSES - 1),
+                            )
+                        }
+                        // Ett spårmål behålls orört: spåret kan komma senare i filen.
+                        other => other,
+                    },
                     level: s.level.clamp(0.0, 2.0),
                 })
                 .collect();
@@ -14985,30 +15001,99 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             }
                         }
 
-                        // Sends (Fas 8.13): en del av spårets signal till en ANNAN buss,
-                        // utöver spårets egen. Målet är en buss och inte ett spår, och därför
-                        // kan en send aldrig bli en slinga — en buss skickar inte vidare.
-                        ui.label(egui::RichText::new(crate::i18n::t("Skicka till buss:")).size(10.0).color(Theme::TEXT_MUTED));
+                        // Sends (Fas 8.13 bussar, Fas 8.3 spår): en del av spårets signal
+                        // till en annan **buss** eller in i ett annat **spårs kedja**.
+                        // Post-fader i båda fallen — samma signal som går till spårets
+                        // egen buss, efter volym, EQ, kompressor och sidokedja.
+                        //
+                        // En spår-send kan bli en slinga (A → B → A), och en slinga går
+                        // inte att beräkna: den skulle mata sig själv. Därför prövas varje
+                        // ändring mot `plan_track_order` **innan** den får skrivas, och
+                        // ett nej säger vilka två spår det gällde. Motorn har samma regel
+                        // och behåller sin förra ordning om en fil ändå skulle bära en
+                        // slinga — den gissar aldrig.
+                        ui.label(egui::RichText::new(crate::i18n::t("Skicka till:")).size(10.0).color(Theme::TEXT_MUTED));
                         {
+                            // Kandidaterna och grafen samlas in **före** det mutabla lånet
+                            // av spårets send-lista: att läsa ett annat spår inifrån den
+                            // låningen går inte.
+                            let track_choices: Vec<(usize, String)> = self
+                                .playlist_tracks
+                                .iter()
+                                .enumerate()
+                                .filter(|(i, _)| *i != sel_idx)
+                                .map(|(i, t)| (i, crate::tstatus!("{} — {}", i + 1, t.name)))
+                                .collect();
+                            let track_count = self.playlist_tracks.len();
+                            let base_graph: Vec<Vec<usize>> = self
+                                .playlist_tracks
+                                .iter()
+                                .map(|t| {
+                                    t.sends
+                                        .iter()
+                                        .map(|s| s.target.as_track().unwrap_or(usize::MAX))
+                                        .collect()
+                                })
+                                .collect();
+
                             let sends = &mut self.playlist_tracks[sel_idx].sends;
                             let mut remove_send: Option<usize> = None;
                             for (s_idx, send) in sends.iter_mut().enumerate() {
                                 ui.horizontal(|ui| {
-                                    let b = send.target_bus.min(crate::audio::synth::NUM_BUSES - 1);
+                                    let selected = match send.target {
+                                        crate::audio::SendTarget::Bus { target_bus } => {
+                                            let b = target_bus.min(crate::audio::synth::NUM_BUSES - 1);
+                                            crate::audio::synth::BUS_NAMES[b].to_string()
+                                        }
+                                        crate::audio::SendTarget::Track { target_track } => {
+                                            format!("Spår {}", target_track + 1)
+                                        }
+                                    };
                                     egui::ComboBox::from_id_salt(format!("sel_track_send_{s_idx}"))
-                                        .selected_text(crate::audio::synth::BUS_NAMES[b])
-                                        .width(84.0)
+                                        .selected_text(selected)
+                                        .width(120.0)
                                         .show_ui(ui, |ui| {
+                                            ui.label(egui::RichText::new(crate::i18n::t("Bussar")).size(10.0).color(Theme::TEXT_MUTED));
                                             for (bi, name) in crate::audio::synth::BUS_NAMES.iter().enumerate() {
-                                                if ui.selectable_label(b == bi, *name).clicked() && b != bi {
-                                                    send.target_bus = bi;
+                                                if ui
+                                                    .selectable_label(send.target.as_bus() == Some(bi), *name)
+                                                    .clicked()
+                                                {
+                                                    send.target = crate::audio::SendTarget::bus(bi);
                                                     track_dirty = true;
+                                                }
+                                            }
+                                            ui.separator();
+                                            ui.label(egui::RichText::new(crate::i18n::t("Spår (in i dess kedja)")).size(10.0).color(Theme::TEXT_MUTED));
+                                            for (ti, name) in &track_choices {
+                                                if ui
+                                                    .selectable_label(send.target.as_track() == Some(*ti), name)
+                                                    .clicked()
+                                                {
+                                                    // Slingkontrollen: samma graf, men med
+                                                    // den här raden ändrad.
+                                                    let mut graph = base_graph.clone();
+                                                    if let Some(row) = graph.get_mut(sel_idx).and_then(|r| r.get_mut(s_idx)) {
+                                                        *row = *ti;
+                                                    }
+                                                    match crate::audio::command::plan_track_order(track_count, &graph) {
+                                                        Ok(_) => {
+                                                            send.target = crate::audio::SendTarget::track(*ti);
+                                                            track_dirty = true;
+                                                        }
+                                                        Err((a, b)) => {
+                                                            self.status_message = crate::tstatus!(
+                                                                "⚠ Det skulle bli en slinga (spår {} → spår {}) — senden ändrades inte.",
+                                                                a + 1, b + 1
+                                                            );
+                                                        }
+                                                    }
                                                 }
                                             }
                                         });
                                     track_dirty |= ui
                                         .add(egui::Slider::new(&mut send.level, 0.0..=2.0).show_value(true))
-                                        .on_hover_text(crate::i18n::t("Hur mycket av spåret som går till bussen (1,0 = lika starkt som spårets egen utgång)"))
+                                        .on_hover_text(crate::i18n::t("Hur mycket av spåret som går till målet (1,0 = lika starkt som spårets egen utgång)"))
                                         .changed();
                                     if ui.button("🗑").on_hover_text(crate::i18n::t("Ta bort senden")).clicked() {
                                         remove_send = Some(s_idx);
@@ -15022,13 +15107,13 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             if sends.len() < 4
                                 && ui
                                     .button(crate::i18n::t("➕ Ny send"))
-                                    .on_hover_text(crate::i18n::t("Skicka en del av spåret till en buss — t.ex. FX-bussen"))
+                                    .on_hover_text(crate::i18n::t("Skicka en del av spåret till en buss eller in i ett annat spårs kedja — t.ex. FX-bussen"))
                                     .clicked()
                             {
                                 // FX-bussen är standardmål: det är den vanligaste
                                 // parallella vägen, och den kan ändras direkt.
                                 sends.push(crate::audio::StemSend {
-                                    target_bus: crate::audio::synth::NUM_BUSES - 1,
+                                    target: crate::audio::SendTarget::bus(crate::audio::synth::NUM_BUSES - 1),
                                     level: 0.5,
                                 });
                                 track_dirty = true;
@@ -15874,8 +15959,10 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             } else {
                 (t.reverb_send, t.delay_send)
             };
-            // Sends (Fas 8.13) hör till samma väg: ett fruset spår spelar sin
-            // färdigrenderade fil, och den renderades utan sends.
+            // Sends (Fas 8.13 bussar, Fas 8.3 spår) hör till samma väg: ett fruset spår
+            // spelar sin färdigrenderade fil, och den renderades utan sends — alltså faller
+            // båda slagen bort. Att *ta emot* en send är däremot som förut: mottagarens
+            // kedja är densamma, och senden går in i den precis som sitt eget ljud.
             let sends = if t.frozen_pcm.is_some() {
                 Vec::new()
             } else {
@@ -20039,13 +20126,13 @@ mod tests {
         probe("bus", &|t| t.bus += 1);
         probe("vca", &|t| t.vca = t.vca.map(|v| v + 1).or(Some(0)));
         probe("sends", &|t| {
-            t.sends.push(crate::audio::StemSend { target_bus: 1, level: 0.5 })
+            t.sends.push(crate::audio::StemSend { target: crate::audio::SendTarget::bus(1), level: 0.5 })
         });
         // Sends (Fas 8.13): målet och nivån måste ingå, inte bara antalet — annars
         // kunde en send byta buss utan att mixern såg det.
         let with_send = |bus: usize, level: f32| {
             let mut t = base_track.clone();
-            t.sends = vec![crate::audio::StemSend { target_bus: bus, level }];
+            t.sends = vec![crate::audio::StemSend { target: crate::audio::SendTarget::bus(bus), level }];
             dig(&[t])
         };
         assert_ne!(with_send(1, 0.5), base, "en send ska synas i mixern");

@@ -1221,7 +1221,7 @@ mod tests {
                         .collect(),
                 )
             };
-            let snap = |track_index: usize, freq: f32, sends: Vec<StemSend>| TrackAudioSnap {
+            let snap = |track_index: usize, freq: f32, bus: usize, sends: Vec<StemSend>| TrackAudioSnap {
                 track_index,
                 left: tone(freq),
                 right: tone(freq),
@@ -1248,7 +1248,7 @@ mod tests {
                 reverb_send: 0.0,
                 delay_send: 0.0,
                 pitch_semitones: 0.0,
-                bus: 1,
+                bus,
                 vca: None,
                 sidechain_from: None,
                 sidechain_amount_db: 0.0,
@@ -1256,12 +1256,13 @@ mod tests {
                 sends,
             };
             spec.timeline = vec![
-                snap(0, 220.0, Vec::new()),
+                snap(0, 220.0, 1, Vec::new()),
                 snap(
                     1,
                     880.0,
+                    1,
                     if send {
-                        vec![StemSend { target_bus: 3, level: 1.0 }]
+                        vec![StemSend { target: crate::audio::command::SendTarget::bus(3), level: 1.0 }]
                     } else {
                         Vec::new()
                     },
@@ -1294,6 +1295,122 @@ mod tests {
         assert!(
             with > without * 1.05,
             "senden ska höras i exporten: {without} → {with}"
+        );
+    }
+
+    /// Fas 8.3 i exporten: en **spår-send** följer med offline-renderingen.
+    ///
+    /// Sändaren läggs på en buss vars nivå är noll, så att 880 Hz-tonen i exporten **bara**
+    /// kan komma från senden — vägen in i mottagarens kedja. Utan det här provet hade
+    /// exporten kunnat tappa en send som uppspelningen har, och filen hade låtit annat än
+    /// högtalarna.
+    #[test]
+    fn a_track_send_follows_the_offline_render() {
+        fn spec_with_track_send(send: bool) -> RenderSpec {
+            let mut spec = render_smoke_spec();
+            for ch in spec.rack.iter_mut() {
+                ch.steps = [false; 16];
+            }
+            spec.pattern_mode = false;
+            // Sändarens buss är tyst: bara senden kan bära dess ton vidare.
+            spec.bus_volume[2] = 0.0;
+            let tone = |freq: f32| -> Arc<Vec<f32>> {
+                let n = 44_100 * 3;
+                Arc::new(
+                    (0..n)
+                        .map(|i| {
+                            (2.0 * std::f32::consts::PI * freq * i as f32 / 44_100.0).sin() * 0.5
+                        })
+                        .collect(),
+                )
+            };
+            let snap = |track_index: usize, freq: f32, bus: usize, sends: Vec<StemSend>| {
+                TrackAudioSnap {
+                    track_index,
+                    left: tone(freq),
+                    right: tone(freq),
+                    sample_rate: 44_100,
+                    volume: 1.0,
+                    pan: 0.0,
+                    muted: false,
+                    regions: vec![StemRegionPlayback {
+                        start_time_secs: 0.0,
+                        length_secs: 3.0,
+                        sample_offset_sec: 0.0,
+                        gain: 1.0,
+                        fade_in_sec: 0.0,
+                        fade_out_sec: 0.0,
+                        muted: false,
+                        is_reverse: false,
+                        loop_length_secs: 0.0,
+                        stretch_ratio: 1.0,
+                        source_audio: None,
+                    }],
+                    eq: TrackEqSettings::default(),
+                    comp_threshold_db: 0.0,
+                    comp_ratio: 1.0,
+                    reverb_send: 0.0,
+                    delay_send: 0.0,
+                    pitch_semitones: 0.0,
+                    bus,
+                    vca: None,
+                    sidechain_from: None,
+                    sidechain_amount_db: 0.0,
+                    sidechain_threshold_db: -30.0,
+                    sends,
+                }
+            };
+            spec.timeline = vec![
+                snap(0, 220.0, 1, Vec::new()),
+                snap(
+                    1,
+                    880.0,
+                    2,
+                    if send {
+                        vec![StemSend {
+                            target: crate::audio::command::SendTarget::track(0),
+                            level: 1.0,
+                        }]
+                    } else {
+                        Vec::new()
+                    },
+                ),
+            ];
+            spec
+        }
+
+        let energy_880 = |send: bool| -> f32 {
+            let spec = spec_with_track_send(send);
+            let fx = FxState {
+                waveform: super::super::command::Waveform::Square,
+                adsr: AdsrParams {
+                    attack: 0.005,
+                    decay: 0.2,
+                    sustain: 0.1,
+                    release: 0.1,
+                },
+                filter: FilterParams::default(),
+                delay: DelayParams::default(),
+                reverb: ReverbParams::default(),
+                drive: 1.0,
+                master_volume: 0.9,
+                master_fx: MasterFxParams::default(),
+            };
+            let mut engine = build_offline_engine(&spec, &fx);
+            let buf = render_project_offline(&mut engine, &spec);
+            let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
+            tone_energy(&left[44_100..], 880.0, 44_100.0)
+        };
+
+        let without = energy_880(false);
+        let with = energy_880(true);
+        assert!(
+            with > 0.001,
+            "senden ska höras i exporten (mätt {with}) — annars prövar provet ingenting"
+        );
+        assert!(
+            with > without * 10.0,
+            "spår-senden ska bära tonen i exporten: {without} → {with}"
         );
     }
 

@@ -26,12 +26,12 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 433 default / 479 med `--features plugin-host`, **0 varningar** i båda
-  (mätt 2026-09-13, efter klipp-mätningen 8.14 steg 2, högerklick-valet 8.15 och
-  stämgruppen 8.15b). CI fäller numera **alla** ben på varningar, inte bara Windows.
-- **Senaste commit:** `398910d` (metadata: bara härkomsten tas), `7f87924` (mätarna i
-  toppraden, 8.13) och därefter spelhuvudets klocka (8.13b) — se `git log --oneline -3`
-  för det exakta läget.
+- **Tester:** 444 default / 490 med `--features plugin-host`, **0 varningar** i båda
+  (mätt 2026-09-13 kväll, efter sends mellan spår 8.3). CI fäller numera **alla** ben på
+  varningar, inte bara Windows.
+- **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
+  så den raden är sanningen. Bakom ligger 8.3 (sends mellan spår), 8.10e (motorvalet),
+  8.14/8.15/8.15b och spelhuvudets klocka (8.13b).
 - **Bara en arbetskatalog.** Worktreen `~/Projects/sonix-tempo` (8.10 steg 2) är **borta** —
   grenen är mergad till master och trädet städat. `git worktree list` ska visa en enda rad.
   **Kolla `git status` innan du bygger** om något ser märkligt ut: två skrivare i samma
@@ -338,6 +338,32 @@ inaktuell** — den var mätt före 8.10c, och basens +45,7 % är i dag +11,0 %.
 Kvar: hans öra på `the_two_engines_for_the_ear` (två flac-filer i `~/.local/state/sonix/ab/`).
 Motorn ligger som **dev-beroende** (C++/bindgen/libclang behövs bara av `cargo test`), och
 cachenyckeln står kvar på 2 eftersom produktionsvägen är oförändrad.
+
+## 4c. Klart efter den här texten: sends mellan spår (2026-09-13 kväll)
+
+**8.3 är i mål.** Ett spår kan skicka in i ett annat spårs kedja — den del som krävde att
+spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vidare:
+
+- **Ordningen är mekanismen.** `stem_order` (topologisk, via rena `plan_track_order` i
+  `command.rs`) ser till att sändarens utgång för *det här* samplet finns när mottagarens
+  kedja kör. `stem_incoming` — listan av `(sändare, nivå)` per spår — byggs i **samma** pass,
+  så ordningen och vägarna inte kan driva isär.
+- **Fasprovet är modellen för hur en sådan här sak ska bevisas:**
+  `a_track_send_arrives_in_phase` jämför mot en **kontroll på samma nivå**, inte mot "2×",
+  för masterns kurva är inte linjär. Och det är **kontrollerat att provet fäller**: kopplar
+  man bort `recompute_stem_order` ger senden förra samplets värde (0,0443 mot 0,0884).
+- **Ett nej är ett nej:** en slinga namnges (`Err((a, b))`), motorn behåller sin förra
+  ordning och skriver i loggen, och mixern **vägrar skapa** en slinga med besked. Ett mål
+  som inte finns gör ingenting — inte "närmast rätt".
+- **Projektfilen är bakåtkompatibel:** `target_bus` / `target_track` i samma flata form som
+  förut, med prov både för gamla filer och för rundgång.
+- **Ärliga gränser:** post-fader (ingen pre-fader-variant), nivån kläms till 0..2 (ingen
+  inverterad send), och **PDC är inte vägd in i send-vägen** — den får mottagarens latens
+  också. Utan plugins i mottagaren är den noll och senden exakt; med plugin är senden
+  förskjuten. Det står i roadmapens 8.3 med samma ord.
+
+**Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
+kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
 
 ## 5. Fällor som kostat tid (läs dessa innan du patchar)
 
