@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**61 moduler · 63597 rader kod · 19 med status · 42 utan.**
+**61 moduler · 63813 rader kod · 19 med status · 42 utan.**
 
 ## Så läser du kartan
 
@@ -21,11 +21,11 @@
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 1758 | stabil — offline-rendering och export | 9 | 16 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
 | `src/audio/recorder.rs` | 1700 | stabil — inspelning | 7 | 16 |  |
+| `src/audio/vocal_harmonizer.rs` | 1632 | — | 15 | 12 |  |
 | `src/audio/factory_samples.rs` | 1575 | stabil — fabriksbiblioteket och `merge_library` | 9 | 10 |  |
-| `src/audio/vocal_harmonizer.rs` | 1570 | — | 8 | 12 |  |
 | `src/audio/plugin_vst3.rs` | 1454 | stabil (4.6a) — VST3-värden, en utbuss | 4 | 9 | Minimal in-process **VST3** host (Fas 4.6a).  |
 | `src/audio/metadata.rs` | 1451 | stabil (8.5b) — bara härkomst tas; musik, text och omslag lämnas | 4 | 18 | Tar bort AI-/Sunohärkomst ur ljudfiler — och ingenting annat (8.5b).  |
-| `src/audio/stretch.rs` | 1115 | — | 17 | 17 (+3 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
+| `src/audio/stretch.rs` | 1269 | — | 17 | 20 (+4 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
 | `src/ui/plugins_view.rs` | 1059 | — | 1 | 0 |  |
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
 | `src/audio/master_fx.rs` | 1016 | — | 5 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
@@ -197,7 +197,7 @@
 - **Publika ingångar:** `StemType`, `name`, `color`, `StemChannel`, `StemAudio`, `StemProject`, `separate_stems`, `estimate_bpm`, `SeparationResult`, `run_separation`, `STEM_FILE_NAMES`, `write_stems_to_dir` … (+3)
 
 ### `src/audio/stretch.rs`
-- **Publika ingångar:** `MIN_RATIO`, `MAX_RATIO`, `StretchPlan`, `changes_anything`, `plan`, `FollowMode`, `FollowDecision`, `decide`, `stretch_stereo`, `check_rendered`, `cache_key`, `cache_path` … (+13)
+- **Publika ingångar:** `MIN_RATIO`, `MAX_RATIO`, `StretchPlan`, `changes_anything`, `plan`, `FollowMode`, `FollowDecision`, `decide`, `stretch_stereo`, `stretch_stereo_with`, `check_rendered`, `STRETCH_ENGINE_VERSION` … (+15)
 
 ### `src/audio/synth.rs`
 - **Status:** stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends
@@ -210,7 +210,7 @@
 - **Publika ingångar:** `STEPS_PER_BAR`, `TempoPoint`, `set_tempo_point`, `remove_tempo_point`, `TempoMap`, `single`, `from_points`, `points`, `is_single`, `bpm_at`, `secs_per_bar_at`, `secs_per_beat_at` … (+6)
 
 ### `src/audio/vocal_harmonizer.rs`
-- **Publika ingångar:** `PitchBlob`, `HarmonyVoice`, `VocalHarmonizer`, `scale_mask`, `freq_to_midi`, `snap_midi_to_scale`, `pitch_shift_variable`, `pitch_shift`, `fft_radix2`, `formant_preserving_shift`, `Wsola`, `new` … (+29)
+- **Publika ingångar:** `PitchBlob`, `HarmonyVoice`, `VocalHarmonizer`, `scale_mask`, `freq_to_midi`, `snap_midi_to_scale`, `pitch_shift_variable`, `pitch_shift`, `fft_radix2`, `formant_preserving_shift`, `Wsola`, `new` … (+32)
 
 ### `src/audio/wav_reader.rs`
 - **Publika ingångar:** `read_wav_envelope`, `load_wav_pcm`, `load_audio_pcm`

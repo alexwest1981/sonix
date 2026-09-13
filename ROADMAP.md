@@ -120,8 +120,8 @@ tempopunkt-UI väntar alla på att Alex ser dem.
 
 Hela den avbockade listan på ett ställe. Bevis, mätningar och skälen till att något ser ut
 som det gör står under respektive fas längre ned — det här är översikten, inte ersättningen.
-**415 tester default, 461 med plugin-host, 0 varningar i båda release-byggena** (mätt
-2026-09-13, efter 8.10b — tempomåttet — 8.13b och metadata-rättelsen).
+**417 tester default, 463 med plugin-host, 0 varningar i båda release-byggena** (mätt
+2026-09-13, efter 8.10c — sträckningens sökfönster — 8.10b, 8.13b och metadata-rättelsen).
 
 **Baslinjen (Fas 0) — det som redan var äkta:** kärnmotor (oscillatorer, trumsyntes,
 delay/reverb, filter/envelope, master-FX, patcher) · sequencer (tidslinje/multitrack,
@@ -1600,6 +1600,76 @@ Suno lägger den i taggarna ska den läsas därifrån i stället; (4) **slingpun
 hoppar till `loop_start_bar` när den når `loop_end_bar` (= projektets sista takt), och sedan 8.13b
 söker ljudet med. Vid låtens slut hörs alltså en loop, inte tystnad — det är appens beteende och
 inte rört här, men det bör vara ett *val* (slinga på/av) i stället för något som alltid sker.
+
+---
+
+## 8.10c Sträckningens artefakter: sökfönstret, inte kornet (Alex' rapport 2026-09-13)
+
+**Alex, ordagrant:** *"Test av att sänka bpm resulterade i artefaktljud när den sänkte tempot, men
+ljudet höll rätt ton."*
+
+Faktorn var rätt (302,49 s ut av 259,28 s = 1,1667 ✓) och tonhöjden stod still ✓ — det var
+**kvaliteten** som brast. Och orsaken stod i koden: tidsskalningen lånade **sångstudiens
+harmonizer-WSOLA**, som är byggd för realtid per sample och därför har ett sökfönster på
+**±128 sampel = ±2,7 ms**. Det är mindre än en period av en 150 Hz-ton (6,7 ms): skarven hittar
+inte rätt fas, och fassteget blir ett klick plus tappad diskant.
+
+**Mätt på Alex' egen stämma** (140 → 120 BPM, samma musikstycke i varje kolumn, hela filen
+259,28 s → 302,49 s, `WaveformCache`-oberoende numpy-mätning: RMS, diskantandel 8–16 kHz,
+anslag per minut ur spektralt flöde, F0-fladder mellan 20 ms-fönster på säkra toner):
+
+| Variant | RMS | Diskant (andel) | Anslag/min | F0-fladder |
+| :--- | ---: | ---: | ---: | ---: |
+| källan (140 BPM) | −22,36 dB | 0,03314 | 536,0 | 48,8 cent |
+| 21 ms korn, ±2,7 ms sök *(då i drift)* | −25,87 (−3,51 dB) | 0,02984 (−10 %) | 552,9 | **132,6** |
+| 60 ms korn, 75 % överlapp, ±12 ms sök *(först tänkt)* | −27,00 (−4,65 dB) | 0,01833 (**−45 %**) | 545,1 | 34,6 |
+| **21 ms korn, ±12 ms sök *(vald)*** | **−25,51 (−3,15 dB)** | 0,02773 (−16 %) | 546,9 | **39,9** |
+
+**Den första tanken var fel, och siffrorna dömde ut den.** Längre korn och 75 % överlapp tog bort
+fladdret men åt diskanten (−45 %): fyra överlappande korn fasar mot varandra, och det straffar det
+mest fas-känsliga — de höga frekvenserna. Det som *botar* fasstegen är sökfönstret, och det behöver
+inte kosta kornstorleken. Källans eget fladder på 48,8 cent **är sångarens vibrato**; att den
+sträckta filen hamnar på 39,9 cent betyder att sträckningen nu bevarar den i stället för att lägga
+till eget fladder. (En ren 220 Hz-ton gav exakt samma topp in och ut i alla lägen — nivån är inte
+felet, och fönstervikten `2·hop/frame` håller summan 1,0 för både 50 % och 75 % överlapp.)
+
+**Byggt:**
+
+1. **Egen motor för offline-läget** (`Wsola::offline`): korta korn som förut, sökfönster **±12 ms**
+   (en hel period ned till 42 Hz — röster och bas). Harmonizerns realtidsläge är orört
+   (`Wsola::new`), så sångstudiens väg är oförändrad.
+2. **Nivån normaliseras för överlappet** (`gain = 2·hop/frame`): +6 dB-smällen som annars hade
+   kommit med 75 % överlapp är borta, och 50 %-fallet är bit-för-bit som förut.
+3. **Svansen fylls ut** (högst 50 ms tystnad) så att det sista kornets saknade källa inte gör filen
+   "för kort" — vilket hade fått `check_rendered` att **avvisa** en fullt godkänd sträckning.
+4. **Motorns version i cachenyckeln** (`STRETCH_ENGINE_VERSION`, `…-v2`). Utan den hade de nio
+   gamla cacharna (±2,7 ms) spelats upp trots motorbytet — ändringen i koden hade inte hörts.
+   *Det var den fällan som gjorde att fixen först inte syntes.*
+5. **Mätharnesset** `render_stretch_variants_for_measurement` (`#[ignore]`) skriver samma källa
+   genom valfria parameteruppsättningar som rå f32-PCM, så en motorfråga kan avgöras på siffror
+   nästa gång också: `SONIX_AB_SRC=… SONIX_AB_RATIO=1.1666667 cargo test --release --locked
+   --bin sonix render_stretch_variants -- --ignored --nocapture`.
+
+**Bevis:** 417 tester default / 463 med plugin-host, 0 varningar. Kontraktsprov:
+`the_offline_stretcher_searches_wide_and_the_realtime_one_does_not` (sökfönstret ≥ 10 ms, 50 %
+överlapp, realtidsläget är det billiga) och `the_cache_key_carries_the_engine_version`.
+
+**Kvar (mätt, inte gissat):** (1) sträckningen tappar **~2,5 dB mer energi än längden förklarar**
+(−3,15 dB mot förväntade −0,67 dB) — WSOLA:s korn upprepas och släcker varandra på polyfoniskt
+material; det hörs som att låten blir *svagare* när tempot sänks, och det är en **annan** sak än
+fladdret; (2) diskanten tappar ~16 % i andel; (3) nästa kvalitetssteg är fortfarande det 8.10 § 6
+pekar på — HPSS + fas-vocoder med *identity phase locking*, eller `signalsmith-stretch` (**MIT**,
+"best for more modest changes (between 0.75× and 1.5×)") som den enda licenskompatibla
+färdiga motorn; (4) **ta reda på varför projektet använder den gamla tagningen** — se nedan.
+
+**Sidoobservationen, för den som fortsätter (mätt, inte tolkad):** det nya projektet hämtade först
+in **140-zipens** stämmor (`0 Lead Vocals.wav` … `8 Other.wav`, 237,03 s, klipp 138,26671 takter) och
+de byttes sedan mot de **gamla filnamnen** (`Rock and Hard Place (Vocals).wav`, 259,28 s, klipp
+151,24666 takter = 259,28 s i 140 BPM ✓ geometrin stämmer för *den* filen). De två uppsättningarna är
+**olika tagningar**, inte samma musik i två tempon: bästa skalning+förskjutning av anslagsenveloperna
+ger korrelation 0,107 (samma tagning hade gett >0,5). Båda är stämplade 140, så sträckningen beter sig
+lika — men om avsikten var 140-zipens stämmor pekar klippen på fel ljud, och då är det nästa sak att
+reda ut.
 
 ---
 

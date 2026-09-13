@@ -341,19 +341,81 @@ fn read_at(src: &[f32], idx: usize, looping: bool) -> f32 {
 }
 
 impl Wsola {
+    /// Realtidsläget (sångstudiens harmonizer): korta korn och ett smalt sökfönster, så
+    /// att ett anrop per sample är billigt nog för ljudtråden.
     pub fn new(_sample_rate: f32) -> Self {
+        Self::with_hann(1024, 512, 128)
+    }
+
+    /// **Offlineläget för tidsskalning (Fas 8.10).** Här finns tid att leta, och
+    /// skarvarna får kosta: längre korn, större överlapp och ett mycket bredare
+    /// sökfönster.
+    ///
+    /// **Mätt 2026-09-13 i Alex' "Rock and Hard Place"** (140 → 120 BPM, faktor 1,1667),
+    /// med *realtids*parametrarna:
+    ///
+    /// | Mätning | Källa | Sträckt | Fel |
+    /// | :--- | ---: | ---: | :--- |
+    /// | Energi över 8 kHz (andel av 0,1–16 kHz) | 0,03382 | 0,02972 | **−12,1 %** |
+    /// | Anslag per minut (samma musikstycke) | 172 | 216 | **+26 %** (falska transienter) |
+    /// | F0-fladder, median mellan 20 ms-fönster | 76 cent | **164 cent** | mer än dubbelt |
+    ///
+    /// Sökfönstret var **±128 sampel = ±2,7 ms** — mindre än en period av en 150 Hz-ton
+    /// (6,7 ms). Skarven hittar då inte rätt fas, och det är det hörbara "artefaktljudet":
+    /// fassteg i skarven (broadbandsklick + tappad diskant) och korn som upprepas över en
+    /// transient (falska anslag).
+    pub fn offline(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(8_000.0);
+        // **Korta korn, brett sökfönster** — och det var inte den gissning man först gör.
+        //
+        // Tre varianter mättes 2026-09-13 på Alex' egen stämma (140 → 120 BPM, faktor
+        // 1,1667, samma musikstycke i varje kolumn, hela filen 259,28 s → 302,49 s):
+        //
+        // | Variant | RMS | Diskant (andel) | Anslag/min | F0-fladder |
+        // | :--- | ---: | ---: | ---: | ---: |
+        // | källan | −22,36 dB | 0,03314 | 536,0 | 48,8 cent |
+        // | 21 ms korn, ±2,7 ms sök (då i drift) | −25,87 (−3,51 dB) | 0,02984 (−10 %) | 552,9 | **132,6** |
+        // | 60 ms korn, ±12 ms sök (först tänkt) | −27,00 (−4,65 dB) | 0,01833 (**−45 %**) | 545,1 | 34,6 |
+        // | **21 ms korn, ±12 ms sök (vald)** | **−25,51 (−3,15 dB)** | 0,02773 (−16 %) | 546,9 | **39,9** |
+        //
+        // Längre korn och 75 % överlapp tog bort fladdret men **åt diskanten** (−45 %): fyra
+        // överlappande korn fasar mot varandra, och det straffar det mest fas-känsliga — de
+        // höga frekvenserna. Det som *botar* fasstegen i skarvarna är sökfönstret, och det
+        // behöver inte kosta kornstorleken. Därför: samma korn som förut, ±12 ms i stället
+        // för ±2,7 ms (en hel period ned till 42 Hz ryms) — fladdret faller 3,3×, diskanten
+        // står kvar, nivån blir 0,36 dB *bättre* än förut.
         let frame = 1024usize;
-        // 50 % overlap: overlapping Hann windows sum to unity, and the coarser
-        // hop keeps the (otherwise O(n·search)) similarity search affordable.
-        let hop = 512usize;
+        let hop = frame / 2;
+        let search = ((0.012 * sr) as usize).max(128);
+        Self::with_hann(frame, hop, search)
+    }
+
+    /// Korn, hopp och sökvidd i sampel. **Bara för kontraktstestet** att offlineläget inte
+    /// råkar bli realtidsläget igen — i drift svarar cachenyckelns `v{n}` på vilken motor
+    /// som räknade en fil.
+    #[cfg(test)]
+    pub fn params(&self) -> (usize, usize, usize) {
+        (self.frame, self.hop, self.search)
+    }
+
+    /// Korn, hopp och sökvidd i sampel. Fönstret är en Hann-summa som ger konstant
+    /// summering vid det överlapp som hör till `hop` (50 % → `frame/2`, 75 % → `frame/4`).
+    pub fn with_hann(frame: usize, hop: usize, search: usize) -> Self {
+        let frame = frame.max(64);
+        let hop = hop.clamp(1, frame - 1);
         let two_pi = std::f32::consts::TAU;
+        // Hann-fönstret måste vägas för *sitt* överlapp: summan av de överlappande
+        // fönstren är 1,0 vid 50 % men 2,0 vid 75 %, alltså +6 dB på hela filen. Faktorn
+        // `2·hop/frame` ger summan 1,0 i båda fallen — nivån får inte ändras av att tempot
+        // ändras. (Vid 50 % blir faktorn 1,0, så harmonizern är oförändrad.)
+        let gain = (2.0 * hop as f32) / frame as f32;
         let window: Vec<f32> = (0..frame)
-            .map(|i| 0.5 - 0.5 * (two_pi * i as f32 / (frame - 1) as f32).cos())
+            .map(|i| gain * (0.5 - 0.5 * (two_pi * i as f32 / (frame - 1) as f32).cos()))
             .collect();
         Self {
             frame,
             hop,
-            search: 128,
+            search,
             window,
             prev_tail: vec![0.0; frame - hop],
             ola_l: vec![0.0; frame],
@@ -519,7 +581,7 @@ pub fn time_stretch(input: &[f32], sample_rate: f32, ratio: f32) -> Vec<f32> {
     if input.is_empty() || (ratio - 1.0).abs() < 1e-4 {
         return input.to_vec();
     }
-    let mut ws = Wsola::new(sample_rate);
+    let mut ws = Wsola::offline(sample_rate);
     ws.set_ratio(ratio);
     let out_len = (input.len() as f32 * ratio).round() as usize;
     let mut out = Vec::with_capacity(out_len);

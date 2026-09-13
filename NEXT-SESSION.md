@@ -21,7 +21,7 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 415 default / 461 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 417 default / 463 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13, efter spelhuvud-rättelsen 8.13b och tempomåttet 8.10b). CI fäller
   numera **alla** ben på varningar, inte bara Windows.
 - **Senaste commit:** `398910d` (metadata: bara härkomsten tas), `7f87924` (mätarna i
@@ -113,6 +113,19 @@ mätt, och var nästa andetag ska tas.*
    (`made with suno` / `suno.com` / `suno studio` / `c2pa`), ram för ram och underchunk för
    underchunk. **Rör du en väg som läser ljud eller filhuvuden: läs roadmapens 8.5-rättelse
    och `src/audio/metadata.rs` först.**
+   0e. ~~**Artefaktljud vid tempobyte**~~ — **RÄTTAT 2026-09-13 (8.10c).** Alex: *"Test av att
+   sänka bpm resulterade i artefaktljud när den sänkte tempot, men ljudet höll rätt ton."*
+   Faktorn var rätt (1,1667) och tonhöjden stod still; det var kvaliteten. Orsaken:
+   tidsskalningen lånade **sångstudiens realtids-WSOLA** med sökfönster **±128 sampel =
+   ±2,7 ms** — mindre än en period av en 150 Hz-ton, så skarvarna hamnade ur fas. **Mätt på
+   hans stämma:** F0-fladdret föll **132,6 → 39,9 cent** (källans 48,8 = sångarens vibrato,
+   alltså är tillagt fladder nu ≈ 0) medan kornstorleken behölls — den första tanken (60 ms
+   korn, 75 % överlapp) tog bort fladdret men **åt diskanten −45 %**, och siffrorna dömde ut
+   den. Nu: `Wsola::offline` = korta korn + ±12 ms sök, nivån normaliserad för överlappet,
+   svansen fylld, och **motorns version i cachenyckeln** (`-v2`) — utan den hade de gamla
+   cacharna spelats upp och fixen inte hörts. **Kvar (mätt):** sträckningen tappar ~2,5 dB
+   mer energi än längden förklarar, diskanten −16 % i andel, och nästa kvalitetssteg är
+   HPSS/fas-vocoder eller `signalsmith-stretch` (MIT) enligt 8.10 § 6.
    0d. ~~**"Tempot påverkar inte" + "låten skars av i slutet"**~~ — **RÄTTAT 2026-09-13
    (8.10b).** Samma rot i båda: klippen i Rock and Hard Place hade `source_bpm = 0` för
    att Suno inte gav något BPM (varken i arkivnamnet eller i taggarna). **Mätt:** filerna

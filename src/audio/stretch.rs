@@ -164,6 +164,23 @@ pub fn stretch_stereo(
     ratio: f32,
     sample_rate: f32,
 ) -> (Vec<f32>, Vec<f32>) {
+    // Produktionsvägen: **offlineläget** (se `Wsola::offline`).
+    let mut wsola = super::vocal_harmonizer::Wsola::offline(sample_rate);
+    stretch_stereo_with(left, right, ratio, sample_rate, &mut wsola)
+}
+
+/// Som [`stretch_stereo`], men med en given WSOLA.
+///
+/// Finns för **mätningen**: samma källfil genom två parameteruppsättningar, så att
+/// artefakterna kan jämföras i siffror i stället för att beskrivas. Produktionsvägen
+/// skickar alltid offlineläget.
+pub fn stretch_stereo_with(
+    left: &[f32],
+    right: &[f32],
+    ratio: f32,
+    sample_rate: f32,
+    wsola: &mut super::vocal_harmonizer::Wsola,
+) -> (Vec<f32>, Vec<f32>) {
     let frames = left.len().min(right.len());
     if frames == 0 || sample_rate <= 0.0 {
         return (Vec::new(), Vec::new());
@@ -174,7 +191,6 @@ pub fn stretch_stereo(
     }
     let out_frames = ((frames as f64) * (ratio as f64)).round().max(1.0) as usize;
 
-    let mut wsola = super::vocal_harmonizer::Wsola::new(sample_rate);
     wsola.set_ratio(ratio);
     let mut out_l = Vec::with_capacity(out_frames);
     let mut out_r = Vec::with_capacity(out_frames);
@@ -187,6 +203,15 @@ pub fn stretch_stereo(
         }
         out_l.push(l);
         out_r.push(r);
+    }
+    // Svansen: det sista kornet kan sakna källa, och då blir filen några sampel för kort —
+    // och en för kort fil **avvisas** av `check_rendered` (alltså spelas originalet i
+    // stället). En kort svans (högst 50 ms) fylls därför ut med tystnad; är filen kortare
+    // än så är något fel, och då får den vara kort så att valideringen säger ifrån.
+    let short = out_frames.saturating_sub(out_l.len());
+    if short > 0 && short <= (sample_rate * 0.05) as usize {
+        out_l.resize(out_frames, 0.0);
+        out_r.resize(out_frames, 0.0);
     }
     (out_l, out_r)
 }
@@ -234,16 +259,25 @@ pub fn check_rendered(left: &[f32], right: &[f32], expected_frames: usize) -> Re
 ///
 /// Båda tempon måste med, annars kan en gammal cache från ett annat tempo läsas som giltig —
 /// samma sorts föråldrade sammanfattning som `visual_peaks_from`-fällan.
+/// **Motorns version i cachenyckeln.** Höj när sträckningen ändras.
+///
+/// Utan den är nyckeln bara källans namn och de två tempona — och en fil räknad med den
+/// gamla motorn läses som giltig efter ett motorbyte. Det hände 2026-09-13: nio cachar
+/// räknade med ±2,7 ms sökfönster låg kvar och hade spelats upp trots att motorn bytts —
+/// ändringen var gjord i koden men hördes inte i ljudet.
+pub const STRETCH_ENGINE_VERSION: u32 = 2;
+
 pub fn cache_key(source: &str, source_bpm: f32, project_bpm: f32) -> String {
     let stem = Path::new(source)
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| "klipp".to_string());
     format!(
-        "{}-{:.2}-till-{:.2}",
+        "{}-{:.2}-till-{:.2}-v{}",
         crate::autosave::slug(&stem),
         source_bpm,
-        project_bpm
+        project_bpm,
+        STRETCH_ENGINE_VERSION
     )
 }
 
@@ -538,6 +572,126 @@ mod tests {
     use super::*;
 
     const SR: f32 = 44_100.0;
+
+    /// Offlineläget får inte råka bli realtidsläget igen (Fas 8.10).
+    ///
+    /// Felet som gav Alex "artefaktljud": sökfönstret var **±2,7 ms** — mindre än en
+    /// period av en 150 Hz-ton — så skarvarna hamnade ur fas. Mätt på hans egen stämma
+    /// (140 → 120 BPM): F0-fladdret föll från 132,6 till 39,9 cent när fönstret breddades,
+    /// medan kornstorleken och därmed diskanten stod kvar. Det här provet håller talet kvar.
+    #[test]
+    fn the_offline_stretcher_searches_wide_and_the_realtime_one_does_not() {
+        let sr = 48_000.0;
+        let (frame, hop, search) = crate::audio::vocal_harmonizer::Wsola::offline(sr).params();
+        assert_eq!(hop, frame / 2, "50 % överlapp är nivåexakt (mätt på ren ton)");
+        assert!(
+            search as f32 / sr >= 0.010,
+            "sökfönstret ska rymma en hel period ned till {:.0} Hz, inte {:.1} ms",
+            sr / search as f32,
+            1000.0 * search as f32 / sr
+        );
+        let (_, _, realtime) = crate::audio::vocal_harmonizer::Wsola::new(sr).params();
+        assert!(
+            realtime < search / 2,
+            "realtidsläget ska vara det billiga: {realtime} mot {search} sampel"
+        );
+    }
+
+    /// Cachenyckeln bär motorns version (Fas 8.10).
+    ///
+    /// Utan versionen läses en fil räknad med den **gamla** motorn som giltig efter ett
+    /// motorbyte — och då hörs inte fixen. Mätt 2026-09-13: nio cachar räknade med
+    /// ±2,7 ms sökfönster låg kvar och spelades upp.
+    #[test]
+    fn the_cache_key_carries_the_engine_version() {
+        let key = cache_key("/tmp/x.wav", 140.0, 120.0);
+        assert!(
+            key.ends_with(&format!("-v{STRETCH_ENGINE_VERSION}")),
+            "nyckeln ska bära motorns version: {key}"
+        );
+        assert_ne!(
+            cache_key("/tmp/x.wav", 140.0, 120.0),
+            cache_key("/tmp/x.wav", 140.0, 121.0),
+            "och tempot ska fortfarande avgöra"
+        );
+    }
+
+    /// **Mätning på riktig fil, inte på en sinuston** (Fas 8.10).
+    ///
+    /// Skriver samma källa genom två parameteruppsättningar — harmonizerns realtidsläge
+    /// och offlineläget — som rå f32-PCM, så att artefakterna kan mätas i siffror i
+    /// stället för att beskrivas. Körs bara på begäran:
+    ///
+    /// ```text
+    /// SONIX_AB_SRC=~/imported_stems/.../x.wav \
+    ///   cargo test --locked --bin sonix render_stretch_variants -- --ignored --nocapture
+    /// ```
+    ///
+    /// (Filerna hamnar i `/tmp/sonix_stretch_ab/`.)
+    #[test]
+    #[ignore]
+    fn render_stretch_variants_for_measurement() {
+        let src = std::env::var("SONIX_AB_SRC").unwrap_or_default();
+        let ratio: f32 = std::env::var("SONIX_AB_RATIO")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(140.0 / 120.0);
+        let Ok((l, r, sr)) = crate::audio::load_audio_pcm(&src) else {
+            eprintln!("kunde inte läsa '{src}' (sätt SONIX_AB_SRC)");
+            return;
+        };
+        let dir = std::path::Path::new("/tmp/sonix_stretch_ab");
+        let _ = std::fs::create_dir_all(dir);
+        let interleave = |a: &[f32], b: &[f32]| -> Vec<u8> {
+            let mut out = Vec::with_capacity(a.len() * 8);
+            for i in 0..a.len() {
+                out.extend_from_slice(&a[i].to_le_bytes());
+                out.extend_from_slice(&b[i].to_le_bytes());
+            }
+            out
+        };
+        // Tre varianter, för att kunna välja på siffror i stället för på känsla:
+        // realtidsläget (som var i drift), offlineläget, och en mellanväg som bara breddar
+        // sökfönstret och behåller de korta kornen (korta korn bevarar transienter och
+        // diskant bättre; bred sökning är det som tar bort fasstegen i skarvarna).
+        let sr_f = sr as f32;
+        let mut variants: Vec<(&str, crate::audio::vocal_harmonizer::Wsola)> = vec![
+            ("gammal", crate::audio::vocal_harmonizer::Wsola::new(sr_f)),
+            (
+                "ny",
+                crate::audio::vocal_harmonizer::Wsola::with_hann(
+                    ((0.060 * sr_f) as usize / 4 * 4).max(1024),
+                    (((0.060 * sr_f) as usize / 4 * 4).max(1024)) / 4,
+                    ((0.012 * sr_f) as usize).max(128),
+                ),
+            ),
+            (
+                "sok",
+                crate::audio::vocal_harmonizer::Wsola::with_hann(
+                    1024,
+                    512,
+                    ((0.012 * sr_f) as usize).max(128),
+                ),
+            ),
+        ];
+        for (name, wsola) in variants.iter_mut() {
+            let (ol, or) = stretch_stereo_with(&l, &r, ratio, sr_f, wsola);
+            let path = dir.join(format!("{name}.f32"));
+            std::fs::write(&path, interleave(&ol, &or)).unwrap();
+            // Nivån hör till mätningen: en sträckning får inte ändra den.
+            let peak_src = l.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            let peak_out = ol.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            println!(
+                "{name}: {} frames (väntat {}), topp källa {:.4} → ut {:.4} ({:+.2} dB) → {}",
+                ol.len(),
+                (l.len() as f64 * ratio as f64).round() as usize,
+                peak_src,
+                peak_out,
+                20.0 * (peak_out.max(1e-9) / peak_src.max(1e-9)).log10(),
+                path.display()
+            );
+        }
+    }
 
     fn tone(freq: f32, secs: f32, amp: f32) -> Vec<f32> {
         let n = (SR * secs) as usize;
