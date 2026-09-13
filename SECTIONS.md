@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**60 moduler · 61958 rader kod · 19 med status · 41 utan.**
+**61 moduler · 63165 rader kod · 19 med status · 42 utan.**
 
 ## Så läser du kartan
 
@@ -15,16 +15,17 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 20627 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 61 (+1 ign) |  |
+| `src/ui/app.rs` | 20678 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 61 (+1 ign) |  |
 | `src/audio/synth.rs` | 2657 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 96 | 33 |  |
 | `src/i18n.rs` | 2512 | fryst — nycklar på engelska, texter på svenska | 1313 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 1758 | stabil — offline-rendering och export | 9 | 16 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
 | `src/audio/recorder.rs` | 1700 | stabil — inspelning | 7 | 16 |  |
-| `src/audio/vocal_harmonizer.rs` | 1696 | stabil (motorn) — WSOLA, formantbevarande skift och sångstudiens röster | 7 | 12 |  |
 | `src/audio/factory_samples.rs` | 1575 | stabil — fabriksbiblioteket och `merge_library` | 9 | 10 |  |
+| `src/audio/vocal_harmonizer.rs` | 1570 | — | 8 | 12 |  |
 | `src/audio/plugin_vst3.rs` | 1454 | stabil (4.6a) — VST3-värden, en utbuss | 4 | 9 | Minimal in-process **VST3** host (Fas 4.6a).  |
-| `src/audio/stretch.rs` | 1140 | byggs (8.10 steg 2) — motorn, valideringen och beslutet är klara och testade. Kvar: klipp över ett tempobyte, cachen har ingen utrensning, vyn visar inte att klippet är sträckt | 17 | 17 (+3 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
+| `src/audio/metadata.rs` | 1451 | stabil (8.5b) — bara härkomst tas; musik, text och omslag lämnas | 4 | 18 | Tar bort AI-/Sunohärkomst ur ljudfiler — och ingenting annat (8.5b).  |
+| `src/audio/stretch.rs` | 1115 | — | 17 | 17 (+3 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
 | `src/ui/plugins_view.rs` | 1059 | — | 1 | 0 |  |
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
 | `src/audio/master_fx.rs` | 1016 | — | 5 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
@@ -37,11 +38,10 @@
 | `src/audio/ai_generator.rs` | 790 | — | 6 | 7 |  |
 | `src/audio/patcher.rs` | 782 | — | 4 | 6 |  |
 | `src/audio/plugin_host.rs` | 757 | — | 3 | 7 |  |
+| `src/ui/widgets.rs` | 734 | — | 4 | 0 |  |
 | `src/audio/ai_client.rs` | 715 | — | 8 | 8 |  |
 | `src/audio/smf.rs` | 706 | stabil — MIDI-export med tempobyten (8.2 steg 3) | 33 | 10 | Standard MIDI File (SMF) — skriv och läs `.mid` utan externa beroenden.  |
-| `src/audio/metadata.rs` | 660 | — | 4 | 10 | Städar främmande metadata ur ljudfiler (8.5b).  |
 | `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 33 | 12 | Tempokarta (Fas 8.2, steg 1).  |
-| `src/ui/widgets.rs` | 612 | — | 4 | 0 |  |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
 | `src/ui/chord_generator_modal.rs` | 516 | — | 1 | 0 |  |
@@ -50,13 +50,14 @@
 | `src/ui/dice_generator_modal.rs` | 470 | — | 2 | 0 |  |
 | `src/audio/neural_separator.rs` | 463 | — | 3 | 9 | Neural stem separation through an ONNX model (HTDemucs / Demucs family).  |
 | `src/audio/plugin_gui.rs` | 462 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
+| `src/audio/engine.rs` | 453 | — | 1 | 1 |  |
 | `src/autosave.rs` | 430 | — | 42 | 10 | Autosave, versionsrotation och kraschåterställning (Fas 6.1).  |
 | `src/ui/add_track_modal.rs` | 428 | — | 1 | 0 |  |
-| `src/audio/onset.rs` | 404 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 18 | 9 | Onset-detektering och slicekarta (Fas 8.7).  |
-| `src/audio/engine.rs` | 401 | — | 1 | 1 |  |
+| `src/audio/onset.rs` | 404 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 14 | 9 | Onset-detektering och slicekarta (Fas 8.7).  |
 | `src/audio/midi_input.rs` | 394 | — | 1 | 10 |  |
 | `src/audio/loudness.rs` | 358 | — | 1 | 5 | Loudness measurement and normalization (ITU-R BS.1770 / EBU R128).  |
 | `src/ui/tuner_modal.rs` | 351 | — | 1 | 0 |  |
+| `src/audio/spectrum.rs` | 335 | ny (8.13) — toppradens nivå- och registermätare | 9 | 7 (+2 ign) | Registret i utgången — vilka frekvensband som bär energi — och mätarskalan (8.13).  |
 | `src/audio/scale.rs` | 323 | stabil (8.11) — en tabell och ett index för tonarten | 18 | 8 | Tonarter: **en** tabell och **ett** index (Alex' kvittens 2026-09-12).  |
 | `src/audio/command.rs` | 311 | byggs — kommando-protokollet (AI-vägen) | 11 | 0 |  |
 | `src/ui/patcher_view.rs` | 303 | — | 1 | 0 |  |
@@ -65,12 +66,12 @@
 | `src/audio/wav_reader.rs` | 283 | — | 4 | 3 |  |
 | `src/ui/ai_assistant_view.rs` | 260 | — | 1 | 0 |  |
 | `src/audio/drum.rs` | 252 | — | 4 | 3 |  |
-| `src/main.rs` | 237 | — | 0 | 0 |  |
+| `src/main.rs` | 243 | — | 0 | 0 |  |
 | `src/audio/effects.rs` | 216 | — | 5 | 4 |  |
 | `src/ui/stem_view.rs` | 185 | — | 1 | 0 |  |
 | `src/audio/envelope.rs` | 170 | — | 5 | 3 |  |
 | `src/audio/filter.rs` | 104 | — | 5 | 2 |  |
-| `src/audio/mod.rs` | 100 | — | 0 | 0 |  |
+| `src/audio/mod.rs` | 101 | — | 0 | 0 |  |
 | `src/rng.rs` | 82 | — | 2 | 4 | En liten deterministisk slumptalare (xorshift64\*).  |
 | `src/audio/wav_writer.rs` | 48 | — | 3 | 0 |  |
 | `src/ui/theme.rs` | 30 | — | 13 | 0 |  |
@@ -99,7 +100,7 @@
 - **Publika ingångar:** `DelayParams`, `StereoDelay`, `new`, `process`, `ReverbParams`, `SimpleReverb`, `new`, `process`
 
 ### `src/audio/engine.rs`
-- **Publika ingångar:** `AudioEngine`, `AudioSettings`, `config_path`, `load`, `save`, `new`, `new_with`, `reconfigure`, `send_command`, `get_peak_level`, `is_audition_playing`, `master_gain_reduction_db` … (+1)
+- **Publika ingångar:** `AudioEngine`, `AudioSettings`, `config_path`, `load`, `save`, `new`, `new_with`, `reconfigure`, `send_command`, `get_peak_level`, `get_stereo_peaks`, `is_audition_playing` … (+2)
 
 ### `src/audio/envelope.rs`
 - **Publika ingångar:** `EnvelopeStage`, `AdsrParams`, `AdsrVoice`, `new`, `gate_on`, `gate_off`, `reset`, `is_active`, `next_sample`
@@ -126,7 +127,8 @@
 - **Publika ingångar:** `TrackEqSettings`, `is_flat`, `StereoEq`, `new`, `set_settings`, `process`, `CompressorParams`, `Compressor`, `new`, `process`, `DoublerParams`, `Doubler` … (+35)
 
 ### `src/audio/metadata.rs`
-- **Publika ingångar:** `id3v2_span`, `id3v1_offset`, `riff_metadata_spans`, `riff_has_audio`, `TagReport`, `scan`, `strip_tags`
+- **Status:** stabil (8.5b) — bara härkomst tas; musik, text och omslag lämnas
+- **Publika ingångar:** `id3v2_span`, `id3v1_offset`, `riff_metadata_spans`, `riff_has_audio`, `carries_provenance`, `CleanPlan`, `removed_bytes`, `removes_anything`, `plan_clean`, `TagReport`, `scan`, `strip_tags`
 
 ### `src/audio/midi_input.rs`
 - **Publika ingångar:** `note_to_roll_offset`, `MidiKeyboardInput`, `control_events_from_midi`, `connect`, `received`, `device_list`, `connect`, `received`, `device_list`
@@ -185,14 +187,16 @@
 - **Rör inte:** gyllene test: en orörd fil ska vara byte-identisk
 - **Publika ingångar:** `PPQ`, `TICKS_PER_STEP_16TH`, `MidiNote`, `MidiTrack`, `write_midi`, `write_midi_with_tempo`, `ParsedTrack`, `ParsedMidi`, `notes_with_track`, `parse_midi`
 
+### `src/audio/spectrum.rs`
+- **Status:** ny (8.13) — toppradens nivå- och registermätare
+- **Publika ingångar:** `REGISTERS`, `WINDOW`, `FLOOR_DB`, `CEIL_DB`, `db_to_unit`, `amp_to_unit`, `band_levels`, `smooth`
+
 ### `src/audio/stem_separator.rs`
 - **Status:** stabil (8.5a) — separatorn skriver stämmorna till disk och minns var de ligger
 - **Rör inte:** 8.5-regeln: en väg som skapar ett klipp eller en fil får aldrig hitta på ljud — säg fel och avbryt
 - **Publika ingångar:** `StemType`, `name`, `color`, `StemChannel`, `StemAudio`, `StemProject`, `separate_stems`, `estimate_bpm`, `SeparationResult`, `run_separation`, `STEM_FILE_NAMES`, `write_stems_to_dir` … (+3)
 
 ### `src/audio/stretch.rs`
-- **Status:** byggs (8.10 steg 2) — motorn, valideringen och beslutet är klara och testade. Kvar: klipp över ett tempobyte, cachen har ingen utrensning, vyn visar inte att klippet är sträckt
-- **Rör inte:** `check_rendered` är 8.5-regeln i siffror — en rendering som inte godkänns får aldrig spelas
 - **Publika ingångar:** `MIN_RATIO`, `MAX_RATIO`, `StretchPlan`, `changes_anything`, `plan`, `FollowMode`, `FollowDecision`, `decide`, `stretch_stereo`, `check_rendered`, `cache_key`, `cache_path` … (+13)
 
 ### `src/audio/synth.rs`
@@ -206,9 +210,7 @@
 - **Publika ingångar:** `STEPS_PER_BAR`, `TempoPoint`, `set_tempo_point`, `remove_tempo_point`, `TempoMap`, `single`, `from_points`, `points`, `is_single`, `bpm_at`, `secs_per_bar_at`, `secs_per_beat_at` … (+6)
 
 ### `src/audio/vocal_harmonizer.rs`
-- **Status:** stabil (motorn) — WSOLA, formantbevarande skift och sångstudiens röster
-- **Rör inte:** `Wsola` är sträckningens motor; anslag kommer in via `set_onsets`, motorn gissar dem aldrig
-- **Publika ingångar:** `PitchBlob`, `HarmonyVoice`, `VocalHarmonizer`, `scale_mask`, `freq_to_midi`, `snap_midi_to_scale`, `pitch_shift_variable`, `pitch_shift`, `formant_preserving_shift`, `Wsola`, `new`, `set_ratio` … (+29)
+- **Publika ingångar:** `PitchBlob`, `HarmonyVoice`, `VocalHarmonizer`, `scale_mask`, `freq_to_midi`, `snap_midi_to_scale`, `pitch_shift_variable`, `pitch_shift`, `fft_radix2`, `formant_preserving_shift`, `Wsola`, `new` … (+29)
 
 ### `src/audio/wav_reader.rs`
 - **Publika ingångar:** `read_wav_envelope`, `load_wav_pcm`, `load_audio_pcm`
@@ -282,7 +284,7 @@
 - **Publika ingångar:** `render_vocal_studio_view`
 
 ### `src/ui/widgets.rs`
-- **Publika ingångar:** `rotary_knob`, `rotary_knob_full`, `pitch_knob`, `fl_step_button`, `oscilloscope_display`, `vertical_fader`, `eq_curve_visualizer`, `mini_track_eq_curve`, `drummer_xy_matrix`, `alchemy_transform_matrix`
+- **Publika ingångar:** `rotary_knob`, `rotary_knob_full`, `pitch_knob`, `fl_step_button`, `oscilloscope_display`, `vertical_fader`, `eq_curve_visualizer`, `mini_track_eq_curve`, `drummer_xy_matrix`, `alchemy_transform_matrix`, `stereo_meter`, `register_eq`
 
 ## Moduler utan status
 
@@ -299,7 +301,6 @@ De här är inte klassade än. Lägg till en `//! Status:`-rad i modulen (och `/
 - `src/audio/hardware_control.rs`
 - `src/audio/loudness.rs`
 - `src/audio/master_fx.rs`
-- `src/audio/metadata.rs`
 - `src/audio/midi_input.rs`
 - `src/audio/mod.rs`
 - `src/audio/neural_separator.rs`
@@ -309,6 +310,8 @@ De här är inte klassade än. Lägg till en `//! Status:`-rad i modulen (och `/
 - `src/audio/plugin_sandbox.rs`
 - `src/audio/plugin_vst2.rs`
 - `src/audio/sandbox_audio.rs`
+- `src/audio/stretch.rs`
+- `src/audio/vocal_harmonizer.rs`
 - `src/audio/wav_reader.rs`
 - `src/audio/wav_writer.rs`
 - `src/autosave.rs`

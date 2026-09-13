@@ -144,7 +144,8 @@ pub fn pitch_shift(input: &[f32], sample_rate: f32, semitones: f32) -> Vec<f32> 
 /// In-place iterative radix-2 Cooley–Tukey FFT. `re`/`im` must have a power-of-two
 /// length. When `invert` is true this performs the inverse transform including
 /// the `1/N` scaling.
-fn fft_radix2(re: &mut [f32], im: &mut [f32], invert: bool) {
+/// (Delas med `audio::spectrum` — **en** FFT i repot, inte två.)
+pub(crate) fn fft_radix2(re: &mut [f32], im: &mut [f32], invert: bool) {
     let n = re.len();
     if n <= 1 {
         return;

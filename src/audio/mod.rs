@@ -45,6 +45,7 @@ pub mod smf;
 pub mod tempo;
 pub mod stem_separator;
 pub mod stretch;
+pub mod spectrum;
 pub mod synth;
 pub mod vocal_harmonizer;
 pub mod wav_reader;

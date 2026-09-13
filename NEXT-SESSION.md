@@ -21,16 +21,14 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 376 default / 422 med `--features plugin-host`, **0 varningar** i båda.
-  CI fäller numera **alla** ben på varningar, inte bara Windows.
-- **Senaste commit:** `1d3fc1a` (8.3: sends till bussar)
-- **En andra session jobbar i en egen worktree.** `~/Projects/sonix-tempo`, branch
-  `tempo-follow`: **8.10 steg 2 (pitch-bevarande sträckning) är byggd och verifierad där**
-  — switchen, den offline-renderade filen, cachen och motorns `source_audio`. Se roadmapens
-  8.10 för bevisen och för vad som är kvar. Grenen bär också master fram till `1d3fc1a`
-  (sends), så den kan möta master utan konflikt. **Kolla `git status` och filernas mtime
-  innan du bygger i något av träden** — två skrivare i samma `app.rs` är hur man tappar
-  någons arbete.
+- **Tester:** 410 default / 456 med `--features plugin-host`, **0 varningar** i båda
+  (mätt 2026-09-13). CI fäller numera **alla** ben på varningar, inte bara Windows.
+- **Senaste commit:** `398910d` (metadata: bara härkomsten tas) och därefter
+  mätarna i toppraden (8.13) — se `git log --oneline -3` för det exakta läget.
+- **Bara en arbetskatalog.** Worktreen `~/Projects/sonix-tempo` (8.10 steg 2) är **borta** —
+  grenen är mergad till master och trädet städat. `git worktree list` ska visa en enda rad.
+  **Kolla `git status` innan du bygger** om något ser märkligt ut: två skrivare i samma
+  `app.rs` är fortfarande hur man tappar någons arbete.
 - **Kör igång:** `cargo build --release --locked` (release krävs — det är den binären
   Alex startar). Efter varje ändring: `cargo build --release --locked`, `cargo test
   --locked --bin sonix`, `cargo test --locked --features plugin-host --bin sonix`.
@@ -105,6 +103,18 @@ mätt, och var nästa andetag ska tas.*
   och 0/9 — svaret på varför han inte hörde något.
 
 ## 4. Nästa steg, i ordning
+
+0. ~~**Städningen tvättade för mycket**~~ — **RÄTTAT 2026-09-13.** Alex' invändning
+   ("inte tvätta för mycket info om stämmor som hämtas från Suno") var riktig: den första
+   versionen tog **hela** taggen, alltså också `USLT` (låttexten, 2 130 B) och `APIC`
+   (omslaget, 11–15 kB) — mätt i hans egna zip-original. Nu tas bara härkomsten
+   (`made with suno` / `suno.com` / `suno studio` / `c2pa`), ram för ram och underchunk för
+   underchunk. **Rör du en väg som läser ljud eller filhuvuden: läs roadmapens 8.5-rättelse
+   och `src/audio/metadata.rs` först.**
+   0b. ~~**Nivå- och registermätare i toppraden**~~ — **BYGGT 2026-09-13 (8.13)**: L/R-mätare
+   och register-EQ bredvid oscilloskopet, före MASTER. Mätningarna (och de två
+   konstruktionsmissar siffrorna dömde ut) står i roadmapens 8.13. **Kvar: Alex' ögon** på
+   placering och bredd — GUI:t är läst i koden, inte sett.
 
 1. ~~**Importen analyserar varje stämma** → vågformer exakta från första bildrutan.~~
    **KLAR 2026-09-12 (`cb9f152`).** Gjort: `WaveformCache` byggs i

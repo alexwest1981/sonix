@@ -27,6 +27,9 @@ pub struct AudioEngine {
     command_capacity: usize,
     command_tx: Producer<AudioCommand>,
     peak_level: Arc<AtomicU32>,
+    /// Toppnivå per kanal sedan förra bildrutan — för höger/vänster-mätaren (8.13).
+    peak_l: Arc<AtomicU32>,
+    peak_r: Arc<AtomicU32>,
     audition_active: Arc<AtomicBool>,
     master_gr_db: Arc<AtomicU32>,
     scope_rx: Consumer<f32>,
@@ -98,6 +101,8 @@ impl AudioEngine {
         let default_stream_config: StreamConfig = default_config.into();
 
         let peak_level = Arc::new(AtomicU32::new(0));
+        let peak_l = Arc::new(AtomicU32::new(0));
+        let peak_r = Arc::new(AtomicU32::new(0));
         let audition_active = Arc::new(AtomicBool::new(false));
         let master_gr_db = Arc::new(AtomicU32::new(0));
 
@@ -112,13 +117,25 @@ impl AudioEngine {
             &config,
             ring_buffer_size,
             &peak_level,
+            &peak_l,
+            &peak_r,
             &audition_active,
             &master_gr_db,
         ) {
             Ok(v) => v,
             Err(_) if preferences_changed => {
                 config = default_stream_config.clone();
-                Self::open_stream(&device, sample_format, &config, ring_buffer_size, &peak_level, &audition_active, &master_gr_db)?
+                Self::open_stream(
+                    &device,
+                    sample_format,
+                    &config,
+                    ring_buffer_size,
+                    &peak_level,
+                    &peak_l,
+                    &peak_r,
+                    &audition_active,
+                    &master_gr_db,
+                )?
             }
             Err(e) => return Err(e),
         };
@@ -137,6 +154,8 @@ impl AudioEngine {
             command_capacity: ring_buffer_size,
             command_tx,
             peak_level,
+            peak_l,
+            peak_r,
             audition_active,
             master_gr_db,
             scope_rx,
@@ -171,6 +190,8 @@ impl AudioEngine {
             &config,
             self.command_capacity,
             &self.peak_level,
+            &self.peak_l,
+            &self.peak_r,
             &self.audition_active,
             &self.master_gr_db,
         ) {
@@ -183,6 +204,8 @@ impl AudioEngine {
                     &fallback,
                     self.command_capacity,
                     &self.peak_level,
+                    &self.peak_l,
+                    &self.peak_r,
                     &self.audition_active,
                     &self.master_gr_db,
                 ) {
@@ -216,6 +239,8 @@ impl AudioEngine {
         config: &StreamConfig,
         ring_buffer_size: usize,
         peak_level: &Arc<AtomicU32>,
+        peak_l: &Arc<AtomicU32>,
+        peak_r: &Arc<AtomicU32>,
         audition_active: &Arc<AtomicBool>,
         master_gr_db: &Arc<AtomicU32>,
     ) -> Result<(Stream, Producer<AudioCommand>, Consumer<f32>), Box<dyn std::error::Error>> {
@@ -223,9 +248,9 @@ impl AudioEngine {
         let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
 
         let stream = match sample_format {
-            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
             _ => return Err(crate::i18n::t("Ljudformatet stöds inte").into()),
         };
 
@@ -240,6 +265,19 @@ impl AudioEngine {
     pub fn get_peak_level(&self) -> f32 {
         let bits = self.peak_level.load(Ordering::Relaxed);
         f32::from_bits(bits)
+    }
+
+    /// Toppnivå per kanal sedan förra bildrutan: `(vänster, höger)`.
+    ///
+    /// `get_peak_level` svarar på "hur högt låter det" och är kvar för alla ställen
+    /// som bara vill ha ett tal. Den här svarar på den andra frågan — **vilken
+    /// kanal** — och de två räknas ur samma buffert i ljudtråden, så de kan inte
+    /// säga emot varandra.
+    pub fn get_stereo_peaks(&self) -> (f32, f32) {
+        (
+            f32::from_bits(self.peak_l.load(Ordering::Relaxed)),
+            f32::from_bits(self.peak_r.load(Ordering::Relaxed)),
+        )
     }
 
     /// True while the isolated audition player (Vocal Studio / sound browser)
@@ -267,6 +305,8 @@ impl AudioEngine {
         config: &StreamConfig,
         mut command_rx: Consumer<AudioCommand>,
         peak_level: Arc<AtomicU32>,
+        peak_l: Arc<AtomicU32>,
+        peak_r: Arc<AtomicU32>,
         audition_active: Arc<AtomicBool>,
         master_gr_db: Arc<AtomicU32>,
         mut scope_tx: Producer<f32>,
@@ -294,12 +334,22 @@ impl AudioEngine {
 
                     // 2. Render samples for this buffer block
                     let mut max_peak: f32 = 0.0;
+                    let mut max_l: f32 = 0.0;
+                    let mut max_r: f32 = 0.0;
 
                     for frame in data.chunks_mut(channels) {
                         let (sample_l, sample_r) = synth.process_stereo();
                         let peak_s = sample_l.abs().max(sample_r.abs());
                         if peak_s > max_peak {
                             max_peak = peak_s;
+                        }
+                        // Kanalerna var för sig: max(L,R) kan inte visa att en sida
+                        // är tyst, och det är den frågan mätaren ska svara på.
+                        if sample_l.abs() > max_l {
+                            max_l = sample_l.abs();
+                        }
+                        if sample_r.abs() > max_r {
+                            max_r = sample_r.abs();
                         }
                         // Feed the real output waveform to the scope (mono mix).
                         // If the ring is full the oldest samples are dropped,
@@ -315,6 +365,8 @@ impl AudioEngine {
 
                     // 3. Atomically store peak level for UI visualization
                     peak_level.store(max_peak.to_bits(), Ordering::Relaxed);
+                    peak_l.store(max_l.to_bits(), Ordering::Relaxed);
+                    peak_r.store(max_r.to_bits(), Ordering::Relaxed);
 
                     // 4. Mirror the real audition state so the UI can clear its
                     //    "playing" indicator once playback ends naturally.

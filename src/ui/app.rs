@@ -31,7 +31,8 @@ use super::tuner_modal::{render_tuner_modal, TunerState};
 use super::vocal_studio_view::render_vocal_studio_view;
 use super::widgets::{
     alchemy_transform_matrix, drummer_xy_matrix, eq_curve_visualizer, fl_step_button,
-    mini_track_eq_curve, oscilloscope_display, pitch_knob, rotary_knob, vertical_fader,
+    mini_track_eq_curve, oscilloscope_display, pitch_knob, register_eq, rotary_knob,
+    stereo_meter, vertical_fader,
 };
 
 fn midi_to_freq(note: u8) -> f32 {
@@ -2087,6 +2088,10 @@ pub struct SonixApp {
     pub active_keys: HashSet<u8>,
     pub anim_phase: f32,
     pub scope_history: Vec<f32>,
+    /// Registrets bandnivåer (0..1) ur `audio::spectrum` (Fas 8.13). Egen cache så
+    /// att mätaren kan FALLA när ljudet tar slut i stället för att stå kvar och se
+    /// levande ut.
+    pub spectrum_levels: Vec<f32>,
     pub language: crate::i18n::Language,
     // Sub-Mixing, VCA Groups & PDC (Fas 5.2)
     pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
@@ -2804,6 +2809,7 @@ impl SonixApp {
             active_keys: HashSet::new(),
             anim_phase: 0.0,
             scope_history: Vec::new(),
+            spectrum_levels: vec![0.0; crate::audio::spectrum::REGISTERS.len()],
             language,
             // Sub-Mixing, VCA Groups & PDC (Fas 5.2)
             bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
@@ -4840,13 +4846,40 @@ impl SonixApp {
     /// and keeps a sliding history for the oscilloscope display.
     fn update_scope_history(&mut self) {
         let new = self.engine.drain_scope_samples();
-        if new.is_empty() {
-            return;
+        let had_new = !new.is_empty();
+        if had_new {
+            self.scope_history.extend(new);
+            if self.scope_history.len() > Self::SCOPE_HISTORY_MAX {
+                let excess = self.scope_history.len() - Self::SCOPE_HISTORY_MAX;
+                self.scope_history.drain(0..excess);
+            }
         }
-        self.scope_history.extend(new);
-        if self.scope_history.len() > Self::SCOPE_HISTORY_MAX {
-            let excess = self.scope_history.len() - Self::SCOPE_HISTORY_MAX;
-            self.scope_history.drain(0..excess);
+        self.update_spectrum_levels(had_new);
+    }
+
+    /// Registret i utgången (Fas 8.13): bandnivåerna räknas ur scope-historiken.
+    ///
+    /// Registret och nivåmätaren använder **samma** dB-skala (`spectrum::FLOOR_DB`),
+    /// så de två kan inte visa olika höjd för samma ljud. Golvet är satt ur en
+    /// mätning: Alex' stämmor toppar mellan 0,005 och 0,36, och ett högre golv hade
+    /// gjort registret till en tom ruta på riktig musik.
+    ///
+    /// Utan nya sampel ska mätaren **falla**, inte stå kvar och se levande ut. Ett
+    /// instrument som visar något fastän inget spelas är samma sorts lögn som de
+    /// tysta klippen i 8.5 — därför är det två vägar, inte en.
+    fn update_spectrum_levels(&mut self, had_new: bool) {
+        if self.spectrum_levels.len() != crate::audio::spectrum::REGISTERS.len() {
+            self.spectrum_levels = vec![0.0; crate::audio::spectrum::REGISTERS.len()];
+        }
+        if had_new {
+            let rate = self.engine.sample_rate.max(1) as f32;
+            let new = crate::audio::spectrum::band_levels(&self.scope_history, rate);
+            // Upp fort, ned långsamt — en mätare som studsar är omöjlig att läsa.
+            crate::audio::spectrum::smooth(&mut self.spectrum_levels, &new, 0.55, 0.12);
+        } else {
+            for level in &mut self.spectrum_levels {
+                *level *= 0.85;
+            }
         }
     }
 
@@ -8855,6 +8888,20 @@ impl eframe::App for SonixApp {
                     // Oscilloscope Display (real output waveform from audio thread)
                     let peak = self.engine.get_peak_level();
                     oscilloscope_display(ui, &self.scope_history, peak, Vec2::new(50.0, 22.0));
+
+                    ui.separator();
+
+                    // Nivå per kanal och registret (Fas 8.13, Alex 2026-09-13):
+                    // scopen visar VÅGFORMEN, mätaren visar NIVÅN per kanal, och
+                    // registret visar VAR i frekvensbanden energin ligger.
+                    let (peak_l, peak_r) = self.engine.get_stereo_peaks();
+                    stereo_meter(ui, peak_l, peak_r, Vec2::new(48.0, 22.0));
+                    register_eq(
+                        ui,
+                        &self.spectrum_levels,
+                        &crate::audio::spectrum::REGISTERS.map(|r| r.0),
+                        Vec2::new(128.0, 22.0),
+                    );
 
                     ui.separator();
 

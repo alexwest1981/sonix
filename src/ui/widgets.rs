@@ -609,3 +609,125 @@ pub fn alchemy_transform_matrix(
     changed
 }
 
+/// En höger/vänster-nivåmätare: en stapel per kanal (Fas 8.13, Alex 2026-09-13).
+///
+/// **Två staplar, inte en.** En mätare som visar `max(L, R)` kan inte visa att en
+/// kanal är tyst — och det är hela poängen med att kunna se vänster och höger.
+/// Mätarställningen kommer ur `audio::spectrum` (dB-skalan), samma mappning som
+/// registerstapeln, så de två kan inte visa olika höjd för samma ljud.
+pub fn stereo_meter(ui: &mut Ui, left: f32, right: f32, size: Vec2) {
+    use crate::audio::spectrum::{amp_to_unit, db_to_unit};
+
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let painter = ui.painter();
+
+    painter.rect_filled(rect, Rounding::same(3.0), Color32::from_rgb(10, 14, 18));
+    painter.rect_stroke(
+        rect,
+        Rounding::same(3.0),
+        Stroke::new(1.0_f32, Color32::from_rgb(30, 38, 48)),
+    );
+
+    let inner = Rect::from_min_max(rect.min + Vec2::new(2.0, 2.0), rect.max - Vec2::new(2.0, 2.0));
+    let bar_h = ((inner.height() - 2.0) / 2.0).max(3.0);
+
+    for (i, (amp, channel)) in [(left, "L"), (right, "R")].into_iter().enumerate() {
+        let y = inner.min.y + i as f32 * (bar_h + 2.0);
+        let bar = Rect::from_min_size(
+            Pos2::new(inner.min.x + 8.0, y),
+            Vec2::new((inner.width() - 8.0).max(4.0), bar_h),
+        );
+        painter.rect_filled(bar, Rounding::same(1.5), Color32::from_rgb(18, 22, 28));
+        painter.text(
+            Pos2::new(inner.min.x + 1.0, y + bar_h * 0.5),
+            egui::Align2::LEFT_CENTER,
+            channel,
+            egui::FontId::proportional(7.5),
+            Color32::from_rgb(150, 160, 180),
+        );
+
+        let unit = amp_to_unit(amp);
+        let color = if amp >= 0.99 {
+            Color32::from_rgb(240, 70, 60) // klipp
+        } else if unit >= db_to_unit(-3.0) {
+            Color32::from_rgb(240, 190, 60) // nära taket
+        } else {
+            Color32::from_rgb(60, 200, 120)
+        };
+        painter.rect_filled(
+            Rect::from_min_size(bar.min, Vec2::new(bar.width() * unit, bar.height())),
+            Rounding::same(1.5),
+            color,
+        );
+
+        // 0 dB-märket: var gränsen går. Utan det går stapeln att se men inte läsa.
+        let x0 = bar.min.x + bar.width() * db_to_unit(0.0);
+        painter.line_segment(
+            [Pos2::new(x0, bar.min.y), Pos2::new(x0, bar.max.y)],
+            Stroke::new(1.0_f32, Color32::from_rgb(90, 100, 120)),
+        );
+    }
+}
+
+/// Registret: en stapel per frekvensband, med registrens namn under (Fas 8.13).
+///
+/// **Det här är ingen EQ man rör — den visar var energin ligger.** Frågan den
+/// svarar på är den man faktiskt ställer när en mix inte sitter: är det botten,
+/// mitten eller toppen som låter? Namnen kommer ur `audio::spectrum::REGISTERS`
+/// (en tabell, ett index), och staplarna ur samma dB-skala som nivåmätaren.
+pub fn register_eq(ui: &mut Ui, levels: &[f32], labels: &[&str], size: Vec2) {
+    let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
+    let painter = ui.painter();
+
+    painter.rect_filled(rect, Rounding::same(3.0), Color32::from_rgb(10, 14, 18));
+    painter.rect_stroke(
+        rect,
+        Rounding::same(3.0),
+        Stroke::new(1.0_f32, Color32::from_rgb(30, 38, 48)),
+    );
+    if levels.is_empty() {
+        return;
+    }
+
+    let label_h = 8.0;
+    let area = Rect::from_min_max(
+        rect.min + Vec2::new(2.0, 2.0),
+        Pos2::new(rect.max.x - 2.0, rect.max.y - 2.0 - label_h),
+    );
+    let n = levels.len();
+    let slot = area.width() / n as f32;
+    let bar_w = (slot - 2.0).max(1.5);
+
+    for (i, level) in levels.iter().enumerate() {
+        let x = area.min.x + i as f32 * slot;
+        // Spåret i botten: ett tomt band ska synas som ett band, inte som tom plats.
+        painter.rect_filled(
+            Rect::from_min_size(Pos2::new(x, area.min.y), Vec2::new(bar_w, 1.5)),
+            Rounding::same(0.5),
+            Color32::from_rgb(30, 38, 48),
+        );
+        let level = level.clamp(0.0, 1.0);
+        let h = (area.height() * level).max(1.0);
+        let color = if level >= 0.95 {
+            Color32::from_rgb(235, 70, 60)
+        } else if level >= 0.8 {
+            Color32::from_rgb(240, 190, 60)
+        } else {
+            Color32::from_rgb(80, 200, 140)
+        };
+        painter.rect_filled(
+            Rect::from_min_size(Pos2::new(x, area.max.y - h), Vec2::new(bar_w, h)),
+            Rounding::same(1.0),
+            color,
+        );
+        if let Some(name) = labels.get(i) {
+            painter.text(
+                Pos2::new(x + bar_w * 0.5, rect.max.y - 1.0),
+                egui::Align2::CENTER_BOTTOM,
+                *name,
+                egui::FontId::proportional(7.0),
+                Color32::from_rgb(120, 132, 150),
+            );
+        }
+    }
+}

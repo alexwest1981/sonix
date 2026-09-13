@@ -120,8 +120,8 @@ tempopunkt-UI väntar alla på att Alex ser dem.
 
 Hela den avbockade listan på ett ställe. Bevis, mätningar och skälen till att något ser ut
 som det gör står under respektive fas längre ned — det här är översikten, inte ersättningen.
-**334 tester default, 380 med plugin-host, 0 varningar i båda release-byggena** (mätt
-2026-09-12, `b50f9f4`).
+**410 tester default, 456 med plugin-host, 0 varningar i båda release-byggena** (mätt
+2026-09-13, efter 8.13 och metadata-rättelsen).
 
 **Baslinjen (Fas 0) — det som redan var äkta:** kärnmotor (oscillatorer, trumsyntes,
 delay/reverb, filter/envelope, master-FX, patcher) · sequencer (tidslinje/multitrack,
@@ -1094,6 +1094,44 @@ låt- eller filttitel kan inte lägga stämman utanför katalogen (testat).
 
 ---
 
+### Bara härkomsten städas — rättat 2026-09-13 (Alex' invändning)
+
+**Alex, ordagrant:** *"jag tror att vi måste vara noga med att inte tvätta för mycket info om
+stämmor som hämtas från suno, då det finns risk att vi tvättar bort viktig info med. Bara info
+som rör AI, Suno och all härkomst från deras plattform bör vara det som tvättas."*
+
+**Han hade rätt, och det mättes i hans egna filer** (originalen i zip-arkiven, 2026-09-13):
+
+| Fil | Vad taggen bar |
+| :--- | :--- |
+| `Broken (Vocals).mp3` (ID3v2.4, 25 471 B) | `TIT2` stämnamnet · `TPE1` alexwest · `TSSE` Lavf60.16.100 · **`USLT` hela låttexten (2 130 B)** · **`APIC` omslaget (11–15 kB)** · `WOAS` suno.com-länken · `TXXX`+`COMM` "made with suno; created=…; id=…" · **`GEOB` C2PA-manifestet (13 724 B)** |
+| `Broken (Vocals).wav` (48 768 172 B) | `LIST`/`INFO`: `ICMT` "made with suno; created=…; id=…" · `ISFT` Lavf60.16.100 |
+
+Den första versionen (8.5b) tog **hela taggen** — alltså också låttexten och omslaget. Nu läses
+**ramar** (ID3v2.3/2.4) och **underchunkar** (RIFF `LIST`/`INFO`) i stället för behållare, och
+bara det som bär en härkomst-markör tas: `made with suno`, `suno studio`, `suno.com`, `c2pa` —
+i **en** tabell (`PROVENANCE_MARKERS`). Regeln, vägskälet och fällorna står i `metadata.rs`.
+
+- **ID3v2:** härkomst-ramarna tas, allt annat skrivs tillbaka ordagrant. Är inget kvar går hela
+  taggen (ingen tom tio-byte-header). `ID3v1` tas bara när texten i den är härkomst — den bär
+  annars bara musik.
+- **RIFF:** `LIST`/`INFO` behålls med sina kvarvarande underchunkar, padden följer sin chunk,
+  RIFF-huvudet räknas om. `data` rörs aldrig.
+- **Hellre inget än en gissning:** osynkroniserad tagg, annan version än 2.3/2.4 eller en
+  ramstorlek utanför taggen → filen lämnas i fred **och det står i rapporten** (`notes`).
+  En tystnad vore samma lögn som de tysta klippen i 8.5.
+- **Ett vägskäl:** `scan` och `strip_tags` bygger båda på `plan_clean`, så rapporten och
+  skrivningen kan inte glida ifrån varandra. Rapporten visar både det som tas och det som
+  **lämnas**, och för binära ramar (C2PA) visas markören i stället för ingenting.
+- **Läget i hans projekt:** inget av hans material har hunnit städas än — alla importer ligger
+  före regeln (Broken 09-11, A Box of You 09-12 08:41; städningen kom 09-12 14:01). Ingenting
+  är förlorat, och de filerna bär fortfarande sina taggar.
+
+**Bevis:** 18 tester i `metadata.rs` — härkomst bort och musik kvar (titel, artist, låttext,
+omslag, kodare), UTF-16-text, C2PA mot ett omslag, `ID3v1` med och utan Sunos kommentar, osynk
+och okänd version lämnas **och säger det**, RIFF-paddens inverkan på allt efter, och att Sonix
+**egen** export behåller sin kodarrad (överstädning är samma fel som städning av fel sak).
+
 ## 8.5a Stämseparatorn skriver stämmorna till disk (steg 1 klart 2026-09-12)
 
 **Status:** **steg 1 klart** (`7561491`) — `install_separation` skriver varje stämma som
@@ -1539,3 +1577,63 @@ längre skalnamnen — läst i koden, inte sett i fönstret); (2) skalnamnen är
 strängar, inte i18n-nycklar (de var literaler på två ställen förut, nu på ett — men
 fortfarande utanför `i18n.rs`); (3) transponering av ett helt mönster till tonarten finns
 inte (`transpose_active_pattern` tar halvtoner för hand).
+
+---
+
+## 8.13 Nivå- och registermätare i toppraden (Alex önskemål 2026-09-13)
+
+**Alex, ordagrant:** *"bredvid den oscillerande mätaren, innan Master, en höger/vänster
+volym-mätare, och efter den, en visuell EQ som visar registret."*
+
+**Byggt:** toppraden är nu `[oscilloskop] [L/R-nivåmätare] [register-EQ] [MASTER] [PAN]`.
+
+- **Höger/vänster-mätaren** (`widgets::stereo_meter`) — en stapel per kanal, med 0 dB-märke och
+  klippindikering. Kanalerna mäts **i ljudtråden** (`AudioEngine::get_stereo_peaks`, två atomiska
+  tal bredvid `get_peak_level`), ur samma buffert som den befintliga toppen: de kan inte säga
+  emot varandra. `max(L,R)` i EN stapel hade inte kunnat visa att en sida är tyst — det är hela
+  frågan mätaren ska svara på.
+- **Register-EQ:n** (`widgets::register_eq`) — en stapel per frekvensband med registrens namn
+  under, ur `audio::spectrum`. Sex register i **en** tabell: SUB 20–80 · BAS 80–300 ·
+  L-MID 300–1k · MID 1k–3k · DISK 3k–8k · TOPP 8k–16k. Fönstret är 1024 sampel (≈ 23 ms) Hann
+  över de **sista** samplen — det som hörs nu.
+
+**Mätt, inte tyckt (och två konstruktionsmissar som siffrorna dömde ut):**
+
+1. **Medelvärdet över bandet diskvalificerade sig självt.** En fullskalig 1981 Hz-ton lästes som
+   **0,68** i stället för 0,91: en enda delton dränks av bandets bredd, och felet växer med bandet
+   (TOPP är sexton gånger bredare än SUB). Varje register rapporterar nu sitt **starkaste** värde.
+   En ton är det enkla fallet — instrumentet prövas där först (samma läxa som slagletningen 8.7).
+2. **Normalisering per fönster var sämre än ingen.** Ett försök lät varje fönster normeras mot sin
+   egen starkaste delton; resultatet blev att **nästan varje band stod på full höjd** hela tiden —
+   varje 23 ms har någon delton som är starkast, så normaliseringen kastade bort just den
+   information man vill se. Skalan är därför **absolut**, och golvet sattes ur en mätning:
+   Alex' stämmor toppar mellan **0,005 och 0,36** (trummorna 0,026!), så ett golv på −60 dB gjorde
+   registret till en tom ruta. Golvet är nu **−72 dB**, och **samma** skala används av både
+   nivåmätaren och registret (två skalor för samma ljud vore två svar på samma fråga).
+
+**Mätning på hans egna stämmor** (`the_register_view_on_real_stems`, `#[ignore]`, tolv fönster
+över varje stam, högsta värdet per band). Fem av nio stämmor visade; de övriga fyra ligger i samma läge:
+
+| Stämma | Toppnivå | Starkast | SUB | BAS | L-MID | MID | DISK | TOPP |
+| :--- | ---: | :--- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Bass | 0,187 | BAS | 0,67 | 0,67 | 0,23 | 0,00 | 0,00 | 0,00 |
+| Drums | 0,026 | BAS | 0,47 | 0,47 | 0,24 | 0,25 | 0,14 | 0,05 |
+| Vocals | 0,237 | BAS | 0,48 | 0,67 | 0,64 | 0,59 | 0,47 | 0,43 |
+| Keyboard | 0,067 | BAS | 0,24 | 0,50 | 0,48 | 0,29 | 0,00 | 0,00 |
+| Strings | 0,005 | MID | 0,00 | 0,01 | 0,16 | 0,17 | 0,00 | 0,00 |
+
+Basen ligger i botten, sången brett över registret, stråkarna svaga — det örat hör. **Det här är
+också första gången hans stämmor har mätts som nivå:** de toppar mellan −46 och −9 dBFS, alltså
+genomgående lågt inspelade. Det förklarar varför ett högt mätargolv såg dött ut.
+
+**Bevis:** sex tester i `audio::spectrum` — tabellen ordnad och komplett (räknad, inte gissad),
+en jämn ton hamnar i **sitt eget** register, tystnad och nästan-tystnad är tomma (under golvet
+visas ingenting), en stark delton läses högt medan en som ligger 60 dB under läses lågt i *samma*
+fönster, skalan håller sig inom 0..1, och mätaren går upp fort och ned långsamt utan översläng.
+FFT:n är repots egen (radix-2 ur `vocal_harmonizer`) — **en** FFT, inte två.
+
+**Kvar på 8.13:** (1) **Alex' ögon** — jag kan inte klicka i GUI:t (ingen skärm), så placeringen
+i toppraden, bredden (48 px mätare, 128 px register) och om staplarna är läsbara vid normal
+fönsterbredd är **lästa i koden, inte sedda**; (2) registret mäter mono-mixen ur scope-historiken
+— ett L/R-register vore nästa steg om någon vill se skillnaden mellan kanalerna; (3) ingen
+peak-hold-markör i registret (nivåmätaren har sitt 0 dB-märke).
