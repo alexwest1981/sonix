@@ -7,7 +7,7 @@ pub enum EnvelopeStage {
     Release,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct AdsrParams {
     pub attack: f32,  // in seconds
     pub decay: f32,   // in seconds
@@ -23,6 +23,32 @@ impl Default for AdsrParams {
             sustain: 0.7,
             release: 0.2,
         }
+    }
+}
+
+impl AdsrParams {
+    /// **Identiteten** — ingen envelop alls: full nivå från första samplet, ingen
+    /// nedgång, inget släpp.
+    ///
+    /// Den finns som ett **namngivet** värde och inte som en flagga, av samma skäl som
+    /// `plan_track_order` finns som en ren funktion: samplern (Fas 8.4) ska kunna säga
+    /// "ingen envelop är vald" utan att ha ett dolt läge vid sidan av siffrorna. Ett
+    /// projekt som sparades innan samplern fanns bär den här, och då är ljudet exakt
+    /// som förut — `the_identity_envelope_changes_nothing` håller den.
+    pub fn identity() -> Self {
+        Self {
+            attack: 0.0,
+            decay: 0.0,
+            sustain: 1.0,
+            release: 0.0,
+        }
+    }
+
+    /// Är det här identiteten, alltså ingen envelop? Jämförelsen är exakt (talen kommer
+    /// från UI-reglage och jämförs som de skrivs), för en "nästan identitet" är en
+    /// förändring av ljudet.
+    pub fn is_identity(&self) -> bool {
+        self.attack <= 0.0 && self.decay <= 0.0 && self.sustain >= 1.0 && self.release <= 0.0
     }
 }
 

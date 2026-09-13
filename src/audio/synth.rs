@@ -2,7 +2,10 @@
 //! Rör inte: sends mellan spår kräver att spårloopen i `process_stereo` delas i två faser + slingkontroll
 use std::f32::consts::PI;
 use std::sync::Mutex;
-use super::command::{AudioCommand, Preset, SendTarget, StemRegionPlayback, StemSend, Waveform};
+use super::command::{
+    AudioCommand, LoopMode, Preset, SendTarget, StemRegionPlayback, StemSend, Waveform,
+    loop_frames,
+};
 use super::drum::{DrumType, DrumVoice};
 use super::effects::{DelayParams, ReverbParams, SimpleReverb, StereoDelay};
 use super::envelope::{AdsrParams, AdsrVoice};
@@ -134,6 +137,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetMonitorLevel(_) => "SetMonitorLevel",
         AudioCommand::SetAuditionParams { .. } => "SetAuditionParams",
         AudioCommand::TriggerSampleVoice { .. } => "TriggerSampleVoice",
+        AudioCommand::ReleaseSampleVoices { .. } => "ReleaseSampleVoices",
         AudioCommand::SetPatcherGraph(_) => "SetPatcherGraph",
         AudioCommand::SetPatcherEnabled(_) => "SetPatcherEnabled",
         AudioCommand::PatcherNoteOn { .. } => "PatcherNoteOn",
@@ -485,6 +489,30 @@ pub struct SampleVoice {
     pub attack_frames: u32,
     pub frames_done: u32,
     pub active: bool,
+    /// **Kanalen rösten tillhör** (Fas 8.4) — not-av gäller en kanal i taget, och poolen
+    /// har ingen annan identitet.
+    pub channel: u32,
+    /// **Samplerns loop** (Fas 8.4): läge, loopens spann i källramar (redan klämt och
+    /// ordnat av `loop_frames` — `None` = ingen loop, alltså en-skottsbeteendet) och om
+    /// loopen vänder i sina ändar.
+    pub loop_mode: LoopMode,
+    pub loop_span: Option<(f32, f32)>,
+    pub ping_pong: bool,
+    /// Riktningen **just nu** (1,0 framåt, −1,0 bakåt). `reverse` är startläget; den här
+    /// ändras av ping-pong.
+    pub dir: f32,
+    /// Noten har släppts (not-av, eller efter notens längd): `UntilRelease` spelar då
+    /// resten efter loopen i stället för att loopa.
+    pub released: bool,
+    /// **Notens längd i utramar** (Fas 8.4). `None` = ingen not-av alls (dagens
+    /// en-skottsbeteende).
+    pub hold_frames: Option<u32>,
+    /// Amplitud-ADSR på rösten. `env_on` är falskt när parametrarna är **identiteten**
+    /// (`AdsrParams::identity`), och då rörs envelopen inte alls — det är vad som gör ett
+    /// projekt från före samplern byte-identiskt.
+    pub amp_env: AdsrVoice,
+    pub env_params: AdsrParams,
+    pub env_on: bool,
 }
 
 impl SampleVoice {
@@ -504,6 +532,16 @@ impl SampleVoice {
             attack_frames: 0,
             frames_done: 0,
             active: false,
+            channel: 0,
+            loop_mode: LoopMode::Off,
+            loop_span: None,
+            ping_pong: false,
+            dir: 1.0,
+            released: false,
+            hold_frames: None,
+            amp_env: AdsrVoice::new(44_100.0),
+            env_params: AdsrParams::identity(),
+            env_on: false,
         }
     }
 
@@ -674,6 +712,7 @@ impl SynthEngine {
     pub fn handle_command(&mut self, cmd: AudioCommand) {
         let significant = matches!(
             &cmd,
+
             AudioCommand::StopAll
                 | AudioCommand::SetSongPlayback(_)
                 | AudioCommand::SetMasterVolume(_)
@@ -1087,6 +1126,13 @@ impl SynthEngine {
                 reverse,
                 start01,
                 end01,
+                channel,
+                loop_mode,
+                loop_start01,
+                loop_end01,
+                ping_pong,
+                amp_env,
+                hold_secs,
             } => {
                 if left.is_empty() {
                     return;
@@ -1114,6 +1160,27 @@ impl SynthEngine {
                 } else {
                     v.pos = v.start_frame;
                 }
+                // Samplern (Fas 8.4): loopen kläms och ordnas av `loop_frames` (ett
+                // bakvänt par är ingen loop — då spelar rösten som en en-skottsprovare),
+                // notens längd räknas i **utramar** (det `frames_done` räknar), och
+                // envelopen är avstängd när parametrarna är identiteten.
+                v.channel = channel;
+                v.loop_mode = loop_mode;
+                v.loop_span = loop_frames(v.left.len(), loop_start01, loop_end01);
+                v.ping_pong = ping_pong;
+                v.dir = if reverse { -1.0 } else { 1.0 };
+                v.released = false;
+                v.hold_frames = if hold_secs.is_finite() && hold_secs > 0.0 {
+                    Some((hold_secs * self.sample_rate).round() as u32)
+                } else {
+                    None
+                };
+                v.env_params = amp_env;
+                v.env_on = !amp_env.is_identity();
+                v.amp_env = AdsrVoice::new(self.sample_rate);
+                if v.env_on {
+                    v.amp_env.gate_on();
+                }
                 v.volume = (volume * velocity).clamp(0.0, 1.5);
                 let p: f32 = 0.0; // pan handled on the channel strip in future
                 v.pan_l = ((1.0 - p) * 0.5).sqrt();
@@ -1121,6 +1188,19 @@ impl SynthEngine {
                 v.attack_frames = ((self.sample_rate * 0.0015) as u32).max(1);
                 v.frames_done = 0;
                 v.active = true;
+            }
+
+            AudioCommand::ReleaseSampleVoices { channel } => {
+                // **Not-av** (Fas 8.4): bara rösterna på den kanalen. En röst som redan
+                // släppts rörs inte (annars startade släppet om varje gång).
+                for v in &mut self.sample_voices {
+                    if v.channel == channel && !v.released {
+                        v.released = true;
+                        if v.env_on {
+                            v.amp_env.gate_off();
+                        }
+                    }
+                }
             }
             AudioCommand::StopAudition => {
                 if let Some(ref mut aud) = self.audition {
@@ -1298,7 +1378,50 @@ impl SynthEngine {
                 sv.active = false;
                 continue;
             }
-            if (sv.reverse && sv.pos <= sv.start_frame) || (!sv.reverse && sv.pos >= sv.end_frame) {
+            // Not-av (Fas 8.4): uttryckligt (`ReleaseSampleVoices`) eller efter notens
+            // längd. För en lopande röst betyder det "spela resten efter loopen"; för en
+            // en-skottsröst betyder det ingenting, för den tar slut själv.
+            if !sv.released && sv.hold_frames.is_some_and(|h| sv.frames_done >= h) {
+                sv.released = true;
+            }
+            if sv.released && sv.env_on {
+                sv.amp_env.gate_off();
+            }
+            let looping = match sv.loop_mode {
+                LoopMode::Off => false,
+                LoopMode::Forever => sv.loop_span.is_some(),
+                LoopMode::UntilRelease => sv.loop_span.is_some() && !sv.released,
+            };
+
+            // Loopen vrids (eller vänder, med ping-pong) i sina ändar.
+            if looping
+                && let Some((lo, hi)) = sv.loop_span
+            {
+                if sv.dir >= 0.0 && sv.pos >= hi {
+                    let over = sv.pos - hi;
+                    sv.pos = if sv.ping_pong { hi - over } else { lo + over };
+                    sv.pos = sv.pos.max(lo);
+                    if sv.ping_pong {
+                        sv.dir = -1.0;
+                    }
+                } else if sv.dir < 0.0 && sv.pos <= lo {
+                    let over = lo - sv.pos;
+                    sv.pos = if sv.ping_pong { hi + over } else { hi - over };
+                    sv.pos = sv.pos.min(hi);
+                    if sv.ping_pong {
+                        sv.dir = 1.0;
+                    }
+                }
+            }
+
+            // Slutvillkoret: utan loop är det exakt som förut, för `dir` är då samma som
+            // `reverse` och ändras aldrig.
+            let past_end = if sv.dir >= 0.0 {
+                sv.pos >= sv.end_frame
+            } else {
+                sv.pos <= sv.start_frame
+            };
+            if past_end {
                 sv.active = false;
                 continue;
             }
@@ -1321,12 +1444,21 @@ impl SynthEngine {
             if sv.frames_done < sv.attack_frames {
                 g *= sv.frames_done as f32 / sv.attack_frames as f32;
             }
+            // Amplitud-ADSR (Fas 8.4) — bara när den är vald. Identiteten rör ingenting,
+            // alltså är en-skottsvägen oförändrad (se provet om byte-identitet).
+            if sv.env_on {
+                g *= sv.amp_env.next_sample(&sv.env_params);
+            }
             sample_mix += (s_l + s_r) * 0.5 * g;
+            if sv.env_on && !sv.amp_env.is_active() {
+                sv.active = false;
+                continue;
+            }
 
-            if sv.reverse {
-                sv.pos -= sv.step;
-            } else {
+            if sv.dir >= 0.0 {
                 sv.pos += sv.step;
+            } else {
+                sv.pos -= sv.step;
             }
             sv.frames_done += 1;
         }
@@ -3115,5 +3247,194 @@ mod tests {
                 );
             }
         }
+    }
+
+    // -- Fas 8.4: samplern ----------------------------------------------------
+
+    /// Triggar en kanal med ett känt ljud och givna sampler-inställningar.
+    ///
+    /// Ljudet är en **ramp** på 4 000 ramar, alltså ett värde per ram som går att känna
+    /// igen: om rösten spelar "fel" ram syns det direkt i utgången, och en loop går att
+    /// räkna på.
+    fn trigger_sampler(
+        loop_mode: LoopMode,
+        loop_span01: (f32, f32),
+        ping_pong: bool,
+        hold_secs: f32,
+        amp_env: AdsrParams,
+    ) -> SynthEngine {
+        let mut synth = SynthEngine::new(48_000.0);
+        let n = 4_000usize;
+        let ramp: Vec<f32> = (0..n).map(|i| i as f32 / n as f32 * 0.5).collect();
+        let arc = Arc::new(ramp);
+        synth.handle_command(AudioCommand::TriggerSampleVoice {
+            left: arc.clone(),
+            right: arc,
+            sample_rate: 48_000,
+            base_note: 60,
+            note: 60, // samma not som basnoten: ingen transponering, steg = 1,0
+            pitch_semitones: 0,
+            pitch_cents: 0.0,
+            velocity: 1.0,
+            volume: 1.0,
+            reverse: false,
+            start01: 0.0,
+            end01: 1.0,
+            channel: 0,
+            loop_mode,
+            loop_start01: loop_span01.0,
+            loop_end01: loop_span01.1,
+            ping_pong,
+            amp_env,
+            hold_secs,
+        });
+        let _ = synth.process_stereo();
+        synth
+    }
+
+    fn voice(synth: &SynthEngine) -> &SampleVoice {
+        synth
+            .sample_voices
+            .iter()
+            .find(|v| v.active)
+            .expect("rösten ska vara igång")
+    }
+
+    /// **En-skottsprovspelaren är oförändrad** (Fas 8.4): med standardinställningarna
+    /// (inget loopläge, ingen envelop) tar rösten slut när ljudet tar slut — precis som
+    /// före samplern. Det är det provet som gör att ett sparat projekt från i går låter
+    /// likadant i dag.
+    #[test]
+    fn the_defaults_are_still_a_one_shot() {
+        let mut synth = trigger_sampler(LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity());
+        for _ in 0..4_100 {
+            let _ = synth.process_stereo();
+        }
+        assert!(
+            !synth.sample_voices.iter().any(|v| v.active),
+            "en en-skottsröst ska ha tystnat efter ljudets slut"
+        );
+    }
+
+    /// ... och en notlängd får **inte** klippa den: med identiteten som envelop finns
+    /// inget släpp att gå in i, så en en-skottsröst spelar sitt ljud till slutet även om
+    /// noten släpps på vägen.
+    #[test]
+    fn a_hold_does_not_cut_a_one_shot_without_an_envelope() {
+        let mut synth = trigger_sampler(LoopMode::Off, (0.0, 1.0), false, 0.001, AdsrParams::identity());
+        for _ in 0..2_000 {
+            let _ = synth.process_stereo();
+        }
+        assert!(
+            synth.sample_voices.iter().any(|v| v.active),
+            "noten släpptes efter 1 ms, men utan envelop ska ljudet spela vidare"
+        );
+    }
+
+    /// **Loopen är exakt periodisk** (Fas 8.4): rösten stannar kvar och positionen
+    /// upprepar sig med loopens längd — sample för sample, inte "ungefär".
+    #[test]
+    fn a_forever_loop_repeats_exactly() {
+        // 4 000 ramar, loop 10 % .. 30 %. Perioden läses ur **rösten** — det är motorn som
+        // äger spannet, och provet ska inte räkna om samma sak och sedan jämföra med sig
+        // själv.
+        let mut synth = trigger_sampler(LoopMode::Forever, (0.1, 0.3), false, 0.0, AdsrParams::identity());
+        let (lo, hi) = voice(&synth).loop_span.expect("loopen ska finnas");
+        assert!(hi - lo >= 1.0, "loopen ska vara minst en ram: {lo} .. {hi}");
+        let period = (hi - lo).round() as usize;
+        // Värm förbi loopens början: den *första* sträckan är inspelningen fram till
+        // loopen, och den upprepar sig förstås inte.
+        for _ in 0..(lo as usize + period) {
+            let _ = synth.process_stereo();
+        }
+        let mut seen = Vec::new();
+        for _ in 0..3 {
+            let p = voice(&synth).pos;
+            seen.push(p);
+            for _ in 0..period {
+                let _ = synth.process_stereo();
+            }
+        }
+        assert!(synth.sample_voices.iter().any(|v| v.active), "loopen ska hålla rösten vid liv");
+        for i in 1..seen.len() {
+            assert!(
+                (seen[i] - seen[i - 1]).abs() < 1.5,
+                "varv {i}: positionen {seen:?} — loopen är inte periodisk"
+            );
+        }
+    }
+
+    /// **Not-av: `UntilRelease` spelar resten efter loopen** och tystnar sedan. Det är
+    /// skillnaden mot `Forever`, som loopar vidare förbi släppet.
+    #[test]
+    fn until_release_plays_the_tail_and_forever_does_not() {
+        // Noten hålls 200 ramar, loopen ligger 10 % .. 30 %.
+        let frames_hold = 200u32;
+        let mut released = trigger_sampler(
+            LoopMode::UntilRelease,
+            (0.1, 0.3),
+            false,
+            frames_hold as f32 / 48_000.0,
+            AdsrParams::identity(),
+        );
+        let mut forever = trigger_sampler(
+            LoopMode::Forever,
+            (0.1, 0.3),
+            false,
+            frames_hold as f32 / 48_000.0,
+            AdsrParams::identity(),
+        );
+        for _ in 0..1_500 {
+            let _ = released.process_stereo();
+            let _ = forever.process_stereo();
+        }
+        let r = released.sample_voices.iter().find(|v| v.active);
+        assert!(
+            r.map(|v| v.pos > 1_199.0).unwrap_or(true),
+            "efter not-avet ska rösten ha lämnat loopen och gått vidare"
+        );
+        let f = voice(&forever);
+        assert!(
+            (399.0..=1_199.5).contains(&f.pos),
+            "Forever ska ligga kvar i loopen efter not-avet, men står på {}",
+            f.pos
+        );
+    }
+
+    /// **Ping-pong vänder i loopens ändar** i stället för att vrida tillbaka.
+    #[test]
+    fn ping_pong_turns_around() {
+        let mut synth = trigger_sampler(LoopMode::Forever, (0.1, 0.3), true, 0.0, AdsrParams::identity());
+        let mut directions = Vec::new();
+        for _ in 0..2_000 {
+            let _ = synth.process_stereo();
+            if let Some(v) = synth.sample_voices.iter().find(|v| v.active) {
+                directions.push(v.dir);
+            }
+        }
+        assert!(
+            directions.iter().any(|d| *d < 0.0) && directions.iter().any(|d| *d > 0.0),
+            "ping-pong ska vända riktningen: {directions:?}"
+        );
+    }
+
+    /// **En envelop gör rösten färdig**: efter not-avet fasar släppet ut den och rösten
+    /// tystnar när envelopen är klar — det är vad som gör en loopad not spelbar.
+    #[test]
+    fn an_envelope_ends_the_voice_after_the_release() {
+        let env = AdsrParams {
+            attack: 0.0,
+            decay: 0.0,
+            sustain: 1.0,
+            release: 0.005,
+        };
+        let mut synth = trigger_sampler(LoopMode::Forever, (0.1, 0.3), false, 0.001, env);
+        for _ in 0..2_000 {
+            let _ = synth.process_stereo();
+        }
+        assert!(
+            !synth.sample_voices.iter().any(|v| v.active),
+            "släppet är 5 ms — efter 2 000 ramar ska rösten ha tystnat"
+        );
     }
 }

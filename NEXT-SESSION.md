@@ -26,11 +26,11 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 444 default / 490 med `--features plugin-host`, **0 varningar** i båda
-  (mätt 2026-09-13 kväll, efter sends mellan spår 8.3). CI fäller numera **alla** ben på
+- **Tester:** 453 default / 499 med `--features plugin-host`, **0 varningar** i båda
+  (mätt 2026-09-13 kväll, efter sends mellan spår 8.3 och samplern 8.4). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
-  så den raden är sanningen. Bakom ligger 8.3 (sends mellan spår), 8.10e (motorvalet),
+  så den raden är sanningen. Bakom ligger 8.4 (samplern), 8.3 (sends mellan spår), 8.10e (motorvalet),
   8.14/8.15/8.15b och spelhuvudets klocka (8.13b).
 - **Bara en arbetskatalog.** Worktreen `~/Projects/sonix-tempo` (8.10 steg 2) är **borta** —
   grenen är mergad till master och trädet städat. `git worktree list` ska visa en enda rad.
@@ -364,6 +364,37 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
+
+## 4d. Klart efter den här texten: samplern (2026-09-13 kväll)
+
+**8.4 är i mål.** Kanalrackets kanal är nu ett instrument och inte en provspelare: den kan
+hålla en not. Det som är värt att bära vidare:
+
+- **De tre looplägena är de etablerade**, inte påhittade: `Off` / `UntilRelease` / `Forever`
+  (OP-XY:s trio; "loop until release" är eget läge i Ableton, Kontakt, SFZ, EXS24, Renoise och
+  SoundFont 2). Ping-pong är en riktning, inte ett fjärde läge.
+- **Loop-punkter är hela ramar**, och det var provet som avgjorde saken: en loop på 399,6 ram
+  drev 0,4 ram per varv, och `a_forever_loop_repeats_exactly` skrev ut positionerna
+  `[1.0, 801.0, 801.2]`. `loop_frames` (ren, i `command.rs`) klämmer, ordnar och **vägrar** ett
+  bakvänt par — "ett nej är ett nej", samma regel som för sends.
+- **Identiteten är ett namngivet värde, inte en flagga.** `AdsrParams::identity()` =
+  ingen envelop, och då rör motorn den inte alls. Det är den som gör att ett projekt från i går
+  låter som i går (`the_defaults_are_still_a_one_shot`).
+- **Den döda ratten var en riktig fälla:** kanalpanelen visade en "Attack / Decay"-ratt som
+  *ingen* DSP läste. Fältet är kvar (`attack_decay`, migreringar raderar inte) och får nu sätta
+  attacken när ett gammalt projekt öppnas. **Ser du ett fält som ingen läser: det är den här
+  familjen, och det är värt att röja.**
+- **Ett steg är nu en not med en längd** (`step_hold_secs`, en sextondel med swing, samma tal i
+  uppspelningen och i exporten) — det är vad som gör `UntilRelease` meningsfull i kanalracket.
+- **Exporten följer med** (`a_sampler_loop_follows_the_offline_render`), OCH provet mäts **torrt**
+  (eko/rymd av): annars hade efterklangen låtit som en loop.
+
+**Ärligt kvar, egna pass:** ingen velocitetsstyrning, ingen filterenvelop, inga multi-samples
+(keymaps), och loop-punkterna sätts med reglage i stället för att dras i vågformen.
+
+**Nästa andetag:** roadmapens lista pekar på **8.2 Tempo map** (de fyra visningsställena,
+automation-lanen, drag-utökningen) eller **8.6 plugins** (bryggning, egna utgångar, sidokedja in
+i en plugin).
 
 ## 5. Fällor som kostat tid (läs dessa innan du patchar)
 

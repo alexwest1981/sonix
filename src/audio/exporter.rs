@@ -17,7 +17,7 @@ use std::io::Write;
 use std::process::Command;
 use std::sync::Arc;
 
-use super::command::{AudioCommand, StemRegionPlayback, StemSend};
+use super::command::{AudioCommand, LoopMode, StemRegionPlayback, StemSend};
 use super::drum::DrumType;
 use super::effects::{DelayParams, ReverbParams};
 use super::envelope::AdsrParams;
@@ -41,6 +41,12 @@ pub struct VoiceSpec {
     pub reverse: bool,
     pub start: f32,
     pub end: f32,
+    /// **Samplern** (Fas 8.4): loopläge, loop-punkter, riktning och amplitud-ADSR.
+    pub loop_mode: LoopMode,
+    pub loop_start: f32,
+    pub loop_end: f32,
+    pub ping_pong: bool,
+    pub amp_env: AdsrParams,
 }
 
 #[derive(Clone)]
@@ -173,7 +179,16 @@ pub fn midi_to_freq(note: u8) -> f32 {
     440.0 * 2.0_f32.powf((note as f32 - 69.0) / 12.0)
 }
 
-fn sample_trigger_command(ch: &RackChannel, note: u8, velocity: f32) -> Option<AudioCommand> {
+/// Bygger triggern för **ett steg** i kanalracket. `channel` är kanalens index (rösten
+/// behöver det för not-av) och `hold_secs` stegets längd, så att en lopande not håller
+/// lika länge i filen som i högtalarna (Fas 8.4).
+fn sample_trigger_command(
+    ch: &RackChannel,
+    channel: usize,
+    note: u8,
+    velocity: f32,
+    hold_secs: f32,
+) -> Option<AudioCommand> {
     let v = ch.voice.as_ref()?;
     if v.left.is_empty() {
         return None;
@@ -193,6 +208,13 @@ fn sample_trigger_command(ch: &RackChannel, note: u8, velocity: f32) -> Option<A
         reverse: v.reverse,
         start01,
         end01,
+        channel: channel as u32,
+        loop_mode: v.loop_mode,
+        loop_start01: v.loop_start,
+        loop_end01: v.loop_end,
+        ping_pong: v.ping_pong,
+        amp_env: v.amp_env,
+        hold_secs,
     })
 }
 
@@ -221,7 +243,8 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 continue;
             }
             let note = ch.notes[sib];
-            if let Some(cmd) = sample_trigger_command(ch, note, vel) {
+            let hold = crate::audio::command::step_hold_secs(spec.bpm, spec.swing, sib);
+            if let Some(cmd) = sample_trigger_command(ch, idx, note, vel, hold) {
                 cmds.push(cmd);
                 continue;
             }
@@ -269,7 +292,8 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                     }
                     let note = pat.notes.get(ch_idx).map(|n| n[sib]).unwrap_or(36);
                     if let Some(rack_ch) = spec.rack.get(ch_idx) {
-                        if let Some(cmd) = sample_trigger_command(rack_ch, note, track.volume * vel) {
+                        let hold = crate::audio::command::step_hold_secs(spec.bpm, spec.swing, sib);
+                        if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold) {
                             cmds.push(cmd);
                             continue;
                         }
@@ -324,7 +348,8 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 }
                 let note = pat.notes.get(ch_idx).map(|n| n[sib]).unwrap_or(60);
                 if let Some(rack_ch) = spec.rack.get(ch_idx) {
-                    if let Some(cmd) = sample_trigger_command(rack_ch, note, track.volume * vel) {
+                    let hold = crate::audio::command::step_hold_secs(spec.bpm, spec.swing, sib);
+                        if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold) {
                         cmds.push(cmd);
                         continue;
                     }
@@ -902,6 +927,11 @@ mod tests {
                     reverse: false,
                     start: 0.0,
                     end: 1.0,
+                    loop_mode: LoopMode::Off,
+                    loop_start: 0.0,
+                    loop_end: 1.0,
+                    ping_pong: false,
+                    amp_env: AdsrParams::identity(),
                 })
             } else {
                 None
@@ -1295,6 +1325,94 @@ mod tests {
         assert!(
             with > without * 1.05,
             "senden ska höras i exporten: {without} → {with}"
+        );
+    }
+
+    /// Fas 8.4 i exporten: **samplerns loop följer med filen**.
+    ///
+    /// Ett kort ljud (0,2 s) med loopen på "för evigt" ska höras även i slutet av en
+    /// rendering på en sekund — där en en-skottsröst för länge sedan har tystnat. Provet
+    /// jämför mot **samma uppställning utan loop**, så att det inte kan bli grönt av att
+    /// något annat låter.
+    #[test]
+    fn a_sampler_loop_follows_the_offline_render() {
+        fn spec_with_loop(loop_mode: LoopMode) -> RenderSpec {
+            let mut spec = render_smoke_spec();
+            spec.pattern_mode = true;
+            for ch in spec.rack.iter_mut() {
+                ch.steps = [false; 16];
+                ch.voice = None;
+            }
+            // Ett kort ljud: 0,2 s vid 44,1 kHz.
+            let n = 44_100 / 5;
+            let tone: Arc<Vec<f32>> = Arc::new(
+                (0..n)
+                    .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 44_100.0).sin() * 0.5)
+                    .collect(),
+            );
+            spec.rack[0].voice = Some(VoiceSpec {
+                left: tone.clone(),
+                right: tone,
+                sample_rate: 44_100,
+                base_note: 36,
+                semitones: 0,
+                cents: 0.0,
+                volume: 1.0,
+                reverse: false,
+                start: 0.0,
+                end: 1.0,
+                loop_mode,
+                // Sista fjärdedelen: en loop som hörs.
+                loop_start: 0.75,
+                loop_end: 1.0,
+                ping_pong: false,
+                amp_env: AdsrParams::identity(),
+            });
+            spec.rack[0].steps[0] = true;
+            spec.rack[0].notes[0] = 36;
+            spec
+        }
+
+        let tail_energy = |loop_mode: LoopMode| -> f32 {
+            let spec = spec_with_loop(loop_mode);
+            let fx = FxState {
+                waveform: super::super::command::Waveform::Square,
+                adsr: AdsrParams::default(),
+                filter: FilterParams::default(),
+                // Torrt: utan eko och rymd är svansen tyst när rösten tystnar, så provet
+                // mäter **loopen** och inte en efterklang.
+                delay: DelayParams {
+                    mix: 0.0,
+                    ..DelayParams::default()
+                },
+                reverb: ReverbParams {
+                    mix: 0.0,
+                    ..ReverbParams::default()
+                },
+                drive: 1.0,
+                master_volume: 0.9,
+                master_fx: MasterFxParams::default(),
+            };
+            let mut engine = build_offline_engine(&spec, &fx);
+            let buf = render_project_offline(&mut engine, &spec);
+            let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
+            // Sista fjärdedelen av renderingen: där en en-skottsröst är tyst.
+            let from = left.len() * 3 / 4;
+            if from >= left.len() {
+                return 0.0;
+            }
+            left[from..].iter().fold(0.0_f32, |m, v| m.max(v.abs()))
+        };
+
+        let one_shot = tail_energy(LoopMode::Off);
+        let forever = tail_energy(LoopMode::Forever);
+        assert!(
+            one_shot < 1e-4,
+            "utan loop ska svansen vara tyst (mätt {one_shot}) — annars prövar provet ingenting"
+        );
+        assert!(
+            forever > 0.01,
+            "med loopen på ska ljudet höras i svansen (mätt {forever}) — annars tappar filen en loop som högtalarna har"
         );
     }
 

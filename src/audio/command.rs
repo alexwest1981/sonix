@@ -262,6 +262,26 @@ pub enum AudioCommand {
         reverse: bool,
         start01: f32,
         end01: f32,
+        /// **Kanalen rösten tillhör** (Fas 8.4): not-av ska kunna gälla en kanal i taget,
+        /// och en röst i poolen har ingen annan identitet.
+        channel: u32,
+        /// Loopläge, loop-punkter (andelar av filen, som `start01`/`end01`) och riktning.
+        loop_mode: LoopMode,
+        loop_start01: f32,
+        loop_end01: f32,
+        ping_pong: bool,
+        /// Amplitud-ADSR. Standardvärdet är **identiteten** (ingen envelop alls), så att
+        /// varje projekt som sparades före Fas 8.4 låter exakt som förut.
+        amp_env: super::envelope::AdsrParams,
+        /// **Notens längd i sekunder** (Fas 8.4). `0,0` = ingen not-av alls, alltså dagens
+        /// en-skottsbeteende. Annars släpps rösten efter den tiden — det är så ett steg i
+        /// kanalracket kan vara en *not* med en längd i stället för bara en trigger.
+        hold_secs: f32,
+    },
+    /// **Not-av** (Fas 8.4): släpper rösterna på en kanal, så att `UntilRelease` spelar
+    /// resten efter loopen och envelopen går in i sitt släpp.
+    ReleaseSampleVoices {
+        channel: u32,
     },
     // Modular Patcher (node graph) — real DSP graph evaluated per sample
     SetPatcherGraph(crate::audio::patcher::PatchSpec),
@@ -428,11 +448,112 @@ pub struct StemRegionPlayback {
     pub source_audio: Option<super::stretch::StretchedAudio>,
 }
 
+/// **Samplerns loopläge** (Fas 8.4).
+///
+/// De tre lägena är de etablerade: `Off` är en en-skottsprovspelning (dagens beteende, och
+/// standard så att ett gammalt projekt låter exakt som förut), `UntilRelease` är
+/// "loop until release" — loopen går medan noten hålls och *resten efter loopens slut*
+/// spelas vid not-av (samma läge som Ableton, Kontakt, SFZ, EXS24, Renoise och SoundFont 2
+/// har, och som OP-XY kallar just "loop until release"), och `Forever` loopar förbi
+/// not-avet, så att envelopen släpper ovanpå loopen.
+///
+/// Ping-pong är en **riktning**, inte ett fjärde läge: loopen vänder i sina ändar.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoopMode {
+    Off,
+    UntilRelease,
+    Forever,
+}
+
+impl Default for LoopMode {
+    fn default() -> Self {
+        LoopMode::Off
+    }
+}
+
+/// **Notens längd för ett steg i kanalracket** (Fas 8.4): en sextondel av takten, med
+/// swing — samma tal i uppspelningen och i offline-exporten, annars håller en lopande not
+/// olika länge i filen och i högtalarna. Ren funktion, för att de två vägarna inte ska
+/// kunna driva isär.
+///
+/// Uppspelningen kan räkna samma sak ur tempokartan (`step_duration`), och gör det: så
+/// länge kartan har en punkt är talen identiska (bevisat i `audio::tempo`-testerna). När
+/// kartan får fler punkter är **kartan** ägaren, och den här funktionen ska inte växa
+/// förbi det enskilda tempot utan att någon säger till.
+pub fn step_hold_secs(bpm: f32, swing: f32, step_in_bar: usize) -> f32 {
+    let base = 60.0 / bpm.max(20.0) / 4.0;
+    let swing_factor = if step_in_bar % 2 == 1 {
+        1.0 + swing * 0.35
+    } else {
+        1.0 - swing * 0.35
+    };
+    (base * swing_factor).max(0.001)
+}
+
+/// **Loopens spann i sampelramar** — eller `None` när det inte finns någon loop (Fas 8.4).
+///
+/// Ren funktion, för att regeln ska kunna prövas utan fönster och utan att bygga en röst.
+/// Den klämmer ändarna till filen och **vänder inte** på ett bakvänt par: `loop_end <=
+/// loop_start` betyder att användaren inte har satt någon loop, och då spelar rösten som
+/// en en-skottsprovspelning — inte "närmast rätt". En loop är dessutom minst en ram bred;
+/// en loop på noll ramar är ingen loop.
+pub fn loop_frames(len: usize, loop_start01: f32, loop_end01: f32) -> Option<(f32, f32)> {
+    if len == 0 || !loop_start01.is_finite() || !loop_end01.is_finite() {
+        return None;
+    }
+    let last = (len - 1) as f32;
+    // **Hela ramar.** En loop som ligger på 399,6 driver 0,4 ram per varv — och en sampler
+    // loopar ett antal *ramar*, inte en bråkdel. `floor` är samma avrundning som triggern
+    // använder för `start_f`/`end_f`, så spannet och spelområdet talar samma språk.
+    let start = (loop_start01.max(0.0).min(1.0) * last).floor();
+    let end = (loop_end01.max(0.0).min(1.0) * last).floor();
+    if end - start < 1.0 {
+        return None;
+    }
+    Some((start, end))
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     // -- Fas 8.3: sändningarnas form och ordning -------------------------------
+
+    // -- Fas 8.4: samplern ---------------------------------------------------------
+
+    /// **Loopens spann** kläms till filen och ett bakvänt par är **ingen loop** — ett nej
+    /// är ett nej, inte "närmast rätt". En loop på noll ramar är heller ingen loop.
+    #[test]
+    fn a_loop_is_clamped_and_a_backwards_pair_is_none() {
+        // 1000 ramar: 10 % .. 60 % blir **hela** ramar, 99 .. 599
+        let (lo, hi) = loop_frames(1000, 0.1, 0.6).expect("ett rimligt par är en loop");
+        assert_eq!((lo, hi), (99.0, 599.0), "loop-punkter är hela ramar");
+        // Bakvänt: inget spann, alltså ingen loop (rösten spelar som en en-skottsprovare).
+        assert_eq!(loop_frames(1000, 0.6, 0.1), None);
+        assert_eq!(loop_frames(1000, 0.5, 0.5), None);
+        // Utanför filen kläms det in; ändarna blir då hela filen.
+        let (lo, hi) = loop_frames(1000, -2.0, 7.0).expect("klämt till hela filen");
+        assert_eq!((lo, hi), (0.0, 999.0));
+        // Skräp in: ingen loop, ingen panik.
+        assert_eq!(loop_frames(0, 0.0, 1.0), None);
+        assert_eq!(loop_frames(1000, f32::NAN, 1.0), None);
+    }
+
+    /// **Notens längd** är en sextondel med swing — samma tal i uppspelningen och i
+    /// exporten. Vid 120 BPM är en sextondel 0,125 s; swinget förlänger udda steg och
+    /// kortar jämna lika mycket.
+    #[test]
+    fn the_step_holds_a_sixteenth_with_swing() {
+        assert!((step_hold_secs(120.0, 0.0, 0) - 0.125).abs() < 1e-6);
+        let even = step_hold_secs(120.0, 1.0, 0);
+        let odd = step_hold_secs(120.0, 1.0, 1);
+        assert!(odd > 0.125 && even < 0.125, "{even} / {odd}");
+        assert!((even + odd - 0.25).abs() < 1e-6, "swinget flyttar, det lägger inte till");
+        // Ett orimligt tempo får inte ge en orimlig längd (eller en nolla).
+        assert!(step_hold_secs(0.0, 0.0, 0) > 0.0);
+    }
 
     /// **En gammal projektfil läses exakt som förut.** En buss-send skrevs
     /// `{target_bus, level}` före den här punkten, och den formen får inte ha ändrats —

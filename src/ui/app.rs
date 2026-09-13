@@ -122,7 +122,18 @@ pub struct ChannelStrip {
     /// ordning slagen kommer. Tom = ingen detektering har gjorts (eller så
     /// hittades inga slag). Slicen som spelas är `sample_start`/`sample_end`.
     pub slices: Vec<(f32, f32)>,
+    /// Den **gamla** attack/decay-ratten (0.0 .. 1.0). Ingen DSP läste den — den finns
+    /// kvar därför att ett sparat projekt inte ska tappa ett värde, och den får sätta
+    /// attacken första gången ett gammalt projekt öppnas i samplern (Fas 8.4).
     pub attack_decay: f32, // 0.0 .. 1.0
+    /// **Samplern** (Fas 8.4): loopläge, loop-punkter som andelar av filen, riktning och
+    /// amplitud-ADSR. `LoopMode::Off` + `AdsrParams::identity()` = en-skottsprovspelning,
+    /// alltså exakt det kanalen gjorde innan samplern fanns.
+    pub loop_mode: crate::audio::LoopMode,
+    pub sample_loop_start: f32,
+    pub sample_loop_end: f32,
+    pub ping_pong: bool,
+    pub amp_env: crate::audio::envelope::AdsrParams,
     pub is_reverse: bool,
     pub waveform_preview: Vec<f32>,
     pub sample_path: Option<String>,
@@ -549,8 +560,23 @@ pub struct SavedChannel {
     /// fältet läses som en kanal utan slicar.
     #[serde(default)]
     pub slices: Vec<(f32, f32)>,
+    /// Den gamla attack/decay-ratten. Ingen DSP läste den, men den **sparas** fortfarande:
+    /// migreringar flyttar men raderar aldrig. Ett gammalt projekts värde får sätta
+    /// samplerns attack när filen öppnas i en version med samplern (Fas 8.4).
     #[serde(default)]
     pub attack_decay: f32,
+    /// **Samplern** (Fas 8.4). Saknas fälten i en äldre fil läses kanalen som en
+    /// en-skottsprovspelare utan envelop — alltså precis som den lät då.
+    #[serde(default)]
+    pub loop_mode: crate::audio::LoopMode,
+    #[serde(default)]
+    pub sample_loop_start: f32,
+    #[serde(default = "default_sample_end")]
+    pub sample_loop_end: f32,
+    #[serde(default)]
+    pub ping_pong: bool,
+    #[serde(default = "default_sampler_env")]
+    pub amp_env: crate::audio::envelope::AdsrParams,
     #[serde(default)]
     pub is_reverse: bool,
     #[serde(default)]
@@ -633,6 +659,13 @@ fn default_ui_color() -> [u8; 4] {
 
 fn default_sample_end() -> f32 {
     1.0
+}
+
+/// Samplerns envelop som standard: **identiteten** (Fas 8.4). Ett projekt som sparades
+/// innan samplern fanns har inget `amp_env`-fält, och då ska kanalen låta exakt som den
+/// gjorde — inte få den inbyggda syntens standard-ADSR på köpet.
+fn default_sampler_env() -> crate::audio::envelope::AdsrParams {
+    crate::audio::envelope::AdsrParams::identity()
 }
 
 /// Har sökvägen den ändelsen? (skiftlägesoberoende)
@@ -998,6 +1031,11 @@ fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
         sample_end: c.sample_end,
         slices: c.slices.clone(),
         attack_decay: c.attack_decay,
+        loop_mode: c.loop_mode,
+        sample_loop_start: c.sample_loop_start,
+        sample_loop_end: c.sample_loop_end,
+        ping_pong: c.ping_pong,
+        amp_env: c.amp_env,
         is_reverse: c.is_reverse,
         sample_path: c.sample_path.clone(),
         sample_base_note: c.sample_base_note,
@@ -1030,6 +1068,22 @@ fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
         // ett resultat av en analys, men också något användaren kan ha valt ut.
         slices: s.slices.clone(),
         attack_decay: s.attack_decay,
+        // **Migreringen** (Fas 8.4): ett projekt som sparades innan samplern fanns har
+        // ingen envelop alls (`identity`), och då får den gamla attack/decay-ratten sätta
+        // attacken — värdet flyttas i stället för att tappas. Har filen ett `amp_env`
+        // används det rakt av.
+        amp_env: if s.amp_env.is_identity() && s.attack_decay > 0.0 {
+            crate::audio::envelope::AdsrParams {
+                attack: (s.attack_decay * 0.5).max(0.0),
+                ..crate::audio::envelope::AdsrParams::identity()
+            }
+        } else {
+            s.amp_env
+        },
+        loop_mode: s.loop_mode,
+        sample_loop_start: s.sample_loop_start,
+        sample_loop_end: s.sample_loop_end,
+        ping_pong: s.ping_pong,
         is_reverse: s.is_reverse,
         waveform_preview: preview,
         sample_path: s.sample_path.clone(),
@@ -2767,7 +2821,13 @@ fn auto_assign_default_kit(channels: &mut [ChannelStrip], library: &[LibrarySamp
 /// Builds the audio command that plays a channel's loaded WAV sample for one
 /// sequencer step. Returns None when the channel has no PCM loaded, in which
 /// case the caller falls back to the built-in synthesizer.
-fn channel_sample_trigger_command(ch: &ChannelStrip, note: u8, velocity: f32) -> Option<AudioCommand> {
+fn channel_sample_trigger_command(
+    ch: &ChannelStrip,
+    channel: usize,
+    note: u8,
+    velocity: f32,
+    hold_secs: f32,
+) -> Option<AudioCommand> {
     let (start01, end01) = crate::audio::onset::window_for_note(
         &ch.slices,
         ch.sample_base_note,
@@ -2790,6 +2850,16 @@ fn channel_sample_trigger_command(ch: &ChannelStrip, note: u8, velocity: f32) ->
         // låtit olika i filen och i högtalarna.
         start01,
         end01,
+        // Samplern (Fas 8.4): kanalen (för not-av), loopläget med sina punkter,
+        // riktningen, envelopen och notens längd — stegets egen längd, så att en
+        // lopande not håller lika länge som steget varar.
+        channel: channel as u32,
+        loop_mode: ch.loop_mode,
+        loop_start01: ch.sample_loop_start,
+        loop_end01: ch.sample_loop_end,
+        ping_pong: ch.ping_pong,
+        amp_env: ch.amp_env,
+        hold_secs,
     })
 }
 
@@ -2837,56 +2907,56 @@ impl SonixApp {
         let kick = ChannelStrip {
             name: "808 Kick".to_string(), icon: "💥".to_string(), color: Theme::FL_ORANGE,
             volume: 0.95, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [36; 16],
-            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.3, is_reverse: false,
+            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.3, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), is_reverse: false,
             waveform_preview: make_wave(20.0, 0.8),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let snare = ChannelStrip {
             name: "909 Snare".to_string(), icon: "🥁".to_string(), color: Theme::FL_CYAN,
             volume: 0.85, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [38; 16],
-            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, is_reverse: false,
+            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), is_reverse: false,
             waveform_preview: make_wave(45.0, 0.9),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let clap = ChannelStrip {
             name: "Electro Clap".to_string(), icon: "👏".to_string(), color: Theme::FL_YELLOW,
             volume: 0.80, pan: -0.1, muted: false, solo: false, steps: [false; 16], notes: [39; 16],
-            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, is_reverse: false,
+            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), is_reverse: false,
             waveform_preview: make_wave(35.0, 0.85),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let hat = ChannelStrip {
             name: "Crisp Hat".to_string(), icon: "⚡".to_string(), color: Theme::FL_PURPLE,
             volume: 0.75, pan: 0.15, muted: false, solo: false, steps: [false; 16], notes: [42; 16],
-            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.2, is_reverse: false,
+            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.2, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), is_reverse: false,
             waveform_preview: make_wave(70.0, 0.95),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let open_hat = ChannelStrip {
             name: "Open Hat".to_string(), icon: "🌊".to_string(), color: Theme::FL_CYAN,
             volume: 0.70, pan: -0.2, muted: false, solo: false, steps: [false; 16], notes: [46; 16],
-            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.6, is_reverse: false,
+            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.6, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), is_reverse: false,
             waveform_preview: make_wave(50.0, 0.5),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let crash = ChannelStrip {
             name: "Cyber Crash".to_string(), icon: "✨".to_string(), color: Color32::from_rgb(255, 180, 50),
             volume: 0.75, pan: 0.25, muted: false, solo: false, steps: [false; 16], notes: [49; 16],
-            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.7, is_reverse: false,
+            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.7, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), is_reverse: false,
             waveform_preview: make_wave(30.0, 0.4),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let synth_lead = ChannelStrip {
             name: "303 Lead".to_string(), icon: "🎹".to_string(), color: Theme::FL_GREEN,
             volume: 0.85, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [60; 16],
-            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, is_reverse: false,
+            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), is_reverse: false,
             waveform_preview: make_wave(60.0, 0.3),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let sub_bass = ChannelStrip {
             name: "Sub Bass".to_string(), icon: "🎸".to_string(), color: Color32::from_rgb(255, 80, 140),
             volume: 0.90, pan: 0.0, muted: false, solo: false, steps: [false; 16], notes: [36; 16],
-            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, is_reverse: false,
+            pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), is_reverse: false,
             waveform_preview: make_wave(25.0, 0.6),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
@@ -8253,7 +8323,8 @@ impl SonixApp {
             let is_audible = if has_solo { ch.solo } else { !ch.muted };
             if ch.steps[step] && is_audible {
                 let note = ch.notes[step];
-                if let Some(cmd) = channel_sample_trigger_command(ch, note, vel) {
+                let hold = self.step_duration(step).as_secs_f32();
+                if let Some(cmd) = channel_sample_trigger_command(ch, idx, note, vel, hold) {
                     let _ = self.engine.send_command(cmd);
                     continue;
                 }
@@ -8359,8 +8430,9 @@ impl SonixApp {
                             for ch_idx in 0..=5 {
                                 if ch_idx < pat.channel_steps.len() && pat.channel_steps[ch_idx][step_in_bar] {
                                     let note = pat.channel_notes.get(ch_idx).map(|n| n[step_in_bar]).unwrap_or(36);
+                                    let hold = self.step_duration(step_in_bar).as_secs_f32();
                                     let sample_cmd = self.channels.get(ch_idx)
-                                        .and_then(|ch| channel_sample_trigger_command(ch, note, track.volume * vel));
+                                        .and_then(|ch| channel_sample_trigger_command(ch, ch_idx, note, track.volume * vel, hold));
                                     if let Some(cmd) = sample_cmd {
                                         let _ = self.engine.send_command(cmd);
                                     } else {
@@ -8419,8 +8491,9 @@ impl SonixApp {
                                 }
                             } else if pat.channel_steps.len() > ch_idx && pat.channel_steps[ch_idx][step_in_bar] {
                                 let note = pat.channel_notes[ch_idx][step_in_bar];
+                                let hold = self.step_duration(step_in_bar).as_secs_f32();
                                 let sample_cmd = self.channels.get(ch_idx)
-                                    .and_then(|ch| channel_sample_trigger_command(ch, note, track.volume * vel));
+                                    .and_then(|ch| channel_sample_trigger_command(ch, ch_idx, note, track.volume * vel, hold));
                                 if let Some(cmd) = sample_cmd {
                                     let _ = self.engine.send_command(cmd);
                                 } else {
@@ -13480,7 +13553,7 @@ impl SonixApp {
 
                                 ui.separator();
 
-                                ui.label(egui::RichText::new(crate::i18n::t("Chop Trim & Envelope:")).strong().size(11.0).color(Theme::TEXT_MUTED));
+                                ui.label(egui::RichText::new(crate::i18n::t("Klipp & Sampler:")).strong().size(11.0).color(Theme::TEXT_MUTED));
                                 ui.horizontal(|ui| {
                                     ui.label(crate::i18n::t("Start Trim:"));
                                     ui.add(egui::Slider::new(&mut ch.sample_start, 0.0..=1.0));
@@ -13489,11 +13562,90 @@ impl SonixApp {
                                     ui.label(crate::i18n::t("End Trim:"));
                                     ui.add(egui::Slider::new(&mut ch.sample_end, 0.0..=1.0));
                                 });
-                                ui.horizontal(|ui| {
-                                    ui.label(crate::i18n::t("Attack / Decay:"));
-                                    ui.add(egui::Slider::new(&mut ch.attack_decay, 0.01..=1.0));
-                                });
                                 ui.checkbox(&mut ch.is_reverse, "🔄 Reverse Waveform");
+
+                                // **Samplern** (Fas 8.4). Före den här panelen fanns en
+                                // "Attack / Decay"-ratt som *ingen* DSP läste — fältet fanns,
+                                // reglaget syntes, och ingenting hördes. Den är ersatt av en
+                                // riktig envelop, och det gamla värdet flyttas in i attacken
+                                // när ett projekt från förr öppnas (se `from_saved`).
+                                ui.separator();
+                                ui.label(egui::RichText::new(crate::i18n::t("Loop:")).strong().size(11.0).color(Theme::TEXT_MUTED));
+                                ui.vertical(|ui| {
+                                    for (mode, label) in [
+                                        (crate::audio::LoopMode::Off, crate::i18n::t("Av (en skott)")),
+                                        (crate::audio::LoopMode::UntilRelease, crate::i18n::t("Till not-av")),
+                                        (crate::audio::LoopMode::Forever, crate::i18n::t("För evigt")),
+                                    ] {
+                                        if ui
+                                            .radio_value(&mut ch.loop_mode, mode, label)
+                                            .on_hover_text(crate::i18n::t("Av = spela en gång. Till not-av = loopen går medan noten hålls och resten efter loopen spelas vid not-av. För evigt = loopen fortsätter även efter not-avet."))
+                                            .changed()
+                                        {
+                                            // En ny loop utan punkter vore en loop ingen hör:
+                                            // sätt ett hörbart spann (sista fjärdedelen) första
+                                            // gången ett läge slås på.
+                                            if mode != crate::audio::LoopMode::Off
+                                                && ch.sample_loop_end <= ch.sample_loop_start + 0.01
+                                            {
+                                                ch.sample_loop_start = 0.75;
+                                                ch.sample_loop_end = 1.0;
+                                            }
+                                        }
+                                    }
+                                    let looping = ch.loop_mode != crate::audio::LoopMode::Off;
+                                    ui.add_enabled_ui(looping, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(crate::i18n::t("Loopstart:"));
+                                            ui.add(egui::Slider::new(&mut ch.sample_loop_start, 0.0..=1.0));
+                                        });
+                                        ui.horizontal(|ui| {
+                                            ui.label(crate::i18n::t("Loopslut:"));
+                                            ui.add(egui::Slider::new(&mut ch.sample_loop_end, 0.0..=1.0));
+                                        });
+                                        // Ett bakvänt par är ingen loop — säg det i stället för
+                                        // att tiga, för motorn spelar då som en en-skottsprovare.
+                                        if looping && ch.sample_loop_end <= ch.sample_loop_start {
+                                            ui.label(
+                                                egui::RichText::new(crate::i18n::t("⚠ Loopslut måste ligga efter loopstart — nu spelas ljudet som en skott."))
+                                                    .color(Theme::FL_YELLOW)
+                                                    .size(10.0),
+                                            );
+                                        }
+                                        ui.checkbox(&mut ch.ping_pong, crate::i18n::t("↔ Ping-pong (vänd i ändarna)"));
+                                    });
+                                });
+
+                                ui.separator();
+                                ui.label(egui::RichText::new(crate::i18n::t("Envelope (ADSR):")).strong().size(11.0).color(Theme::TEXT_MUTED));
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("Attack:"));
+                                    ui.add(egui::Slider::new(&mut ch.amp_env.attack, 0.0..=2.0).suffix(" s").fixed_decimals(3));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("Decay:"));
+                                    ui.add(egui::Slider::new(&mut ch.amp_env.decay, 0.0..=2.0).suffix(" s").fixed_decimals(3));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("Sustain:"));
+                                    ui.add(egui::Slider::new(&mut ch.amp_env.sustain, 0.0..=1.0));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("Release:"));
+                                    ui.add(egui::Slider::new(&mut ch.amp_env.release, 0.0..=4.0).suffix(" s").fixed_decimals(3));
+                                });
+                                ui.horizontal(|ui| {
+                                    if ui
+                                        .button(crate::i18n::t("Ingen envelop"))
+                                        .on_hover_text(crate::i18n::t("Identiteten: full nivå från första samplet, inget släpp. Det är så en kanal utan envelop låter — och så ett projekt från före samplern låter."))
+                                        .clicked()
+                                    {
+                                        ch.amp_env = crate::audio::envelope::AdsrParams::identity();
+                                    }
+                                    if ch.amp_env.is_identity() {
+                                        ui.label(egui::RichText::new(crate::i18n::t("(ingen envelop vald)")).color(Theme::TEXT_MUTED).size(10.0));
+                                    }
+                                });
                             });
                         });
                     });
@@ -15907,6 +16059,13 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 reverse: ch.is_reverse,
                 start: ch.sample_start,
                 end: ch.sample_end,
+                // Samplern (Fas 8.4) följer med till filen — samma ljud i exporten
+                // som i högtalarna, samma krav som för sidokedjan och sendarna.
+                loop_mode: ch.loop_mode,
+                loop_start: ch.sample_loop_start,
+                loop_end: ch.sample_loop_end,
+                ping_pong: ch.ping_pong,
+                amp_env: ch.amp_env,
             });
             RackChannel {
                 voice,
@@ -19530,6 +19689,11 @@ mod tests {
             sample_end: 0.875,
             slices: vec![(0.0, 0.125), (0.125, 0.875), (0.875, 1.0)],
             attack_decay: 0.375,
+            loop_mode: crate::audio::LoopMode::Off,
+            sample_loop_start: 0.0,
+            sample_loop_end: 1.0,
+            ping_pong: false,
+            amp_env: crate::audio::envelope::AdsrParams::identity(),
             is_reverse: true,
             waveform_preview: vec![0.5; 4],
             sample_path: Some("/tmp/sonix-finns-inte.wav".to_string()),

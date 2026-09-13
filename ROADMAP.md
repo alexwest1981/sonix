@@ -76,7 +76,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | # | Punkt | Storlek | Vad som återstår | Blockerare |
 | :--- | :--- | :---: | :--- | :--- |
 | 1 | **8.3 Routing på riktigt** | *M* | **Klar 2026-09-13**: sidokedjor (`09-12`), bussar/VCA (`09-12`), sends mellan spår (`09-13`) | — |
-| 2 | **8.4 Sampler** | *M* | Ett riktigt samplerinstrument i kanalracket (WAV-spelaren finns) | — |
+| 2 | **8.4 Sampler** | *M* | **Klar 2026-09-13**: looplägen, not-av, ADSR och export — se stycket nedan | — |
 | 3 | **8.2 Tempo map** | *S–M* | De 4 visningsställena, automation-lanen (sekunder vs takter), drag-utökningen | — |
 | 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
@@ -803,7 +803,52 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
       mottagarens latens också. Utan plugins i mottagaren är latensen noll och senden är
       exakt (fasprovet); med en plugin i mottagaren är senden förskjuten med mottagarens
       latens — **läst ur vägen, inte mätt i ljud**.
-- [ ] **8.4 Sampler** (ett riktigt samplerinstrument i kanalracket, inte bara en WAV-spelare).
+- [x] **8.4 Sampler** — *M* — ett riktigt samplerinstrument i kanalracket (**klar 2026-09-13**).
+  - **Vad som saknades:** kanalen kunde spela ett WAV **en gång** (`SampleVoice` med rotnot,
+    pitch, reverse och klippgränser från 8.7) men hade varken **loop eller envelop**. Det är
+    skillnaden mellan en provspelare och ett instrument: en röst som inte kan hålla en not kan
+    inte spelas. Dessutom visade panelen en **"Attack / Decay"-ratt som ingen DSP läste** —
+    fältet fanns, reglaget syntes, ingenting hördes (samma familj som `piano_roll_snap_to_scale`).
+  - **Looplägena är de etablerade tre:** `Off`, `UntilRelease` ("loop until release" — loopen går
+    medan noten hålls och **resten efter loopen** spelas vid not-av) och `Forever`. Det är samma
+    trio som OP-XY kallar loop off/loop until release/loop forever, och Ableton, Kontakt, SFZ,
+    EXS24, Renoise och SoundFont 2 har `UntilRelease` som ett eget läge. **Ping-pong är en
+    riktning**, inte ett fjärde läge: loopen vänder i sina ändar (`reverse` är startriktningen,
+    `dir` den aktuella).
+  - **Loop-punkter är hela ramar** — `loop_frames` (ren, i `command.rs`, med prov) klämmer,
+    ordnar och **vägrar** ett bakvänt par: `loop_end <= loop_start` är ingen loop, och då spelar
+    rösten som en en-skottsprovare i stället för "närmast rätt". Att bråkdelen måste bort hittade
+    provet: en loop på 399,6 ram drev 0,4 ram per varv, och `a_forever_loop_repeats_exactly`
+    visade det i klartext (positionerna `[1.0, 801.0, 801.2]`) innan spannet blev hela ramar.
+  - **Not-av finns nu på riktigt:** `ReleaseSampleVoices { channel }` (kanalen är röstens enda
+    identitet i poolen) och en **notlängd** per trigger. Kanalrackets steg skickar stegets egen
+    längd (`step_hold_secs`, en sextondel med swing — samma tal i uppspelningen och i exporten),
+    så ett steg är en *not* med en längd i stället för bara en trigger.
+  - **ADSR per röst**, med **identiteten som namngivet standardvärde** (`AdsrParams::identity`,
+    med eget prov): är envelopen identiteten rörs den inte alls, och då är en-skottsvägen
+    oförändrad. Det är därför ett projekt som sparades i går låter exakt som i går —
+    `the_defaults_are_still_a_one_shot` håller det, och `a_hold_does_not_cut_a_one_shot...`
+    att en notlängd inte klipper ett ljud som saknar släpp.
+  - **Den döda ratten migreras, den raderas inte:** `attack_decay` finns kvar i projektfilen och
+    får sätta attacken när ett gammalt projekt öppnas i samplern (`amp_env.is_identity() &&
+    attack_decay > 0`). Fältet är kvar, men nu läser någon det.
+  - **Samma ljud i filen som i högtalarna:** `VoiceSpec` bär loopläge, loop-punkter, riktning och
+    envelop till offline-exporten. Bevis: `a_sampler_loop_follows_the_offline_render` lägger ett
+    0,2 s ljud med loopen på *för evigt* och mäter svansen av en sekunds rendering — den ska
+    **låta** med loopen och vara **tyst** utan (torrt, alltså utan eko som kan luras).
+  - **Panelen** (kanalens högerpanel) har nu Loop (läge, start, slut, ping-pong) och Envelope
+    (A/D/S/R + "Ingen envelop"). Slår man på en loop utan punkter sätts ett hörbart spann
+    (sista fjärdedelen) i stället för en loop ingen hör, och ett bakvänt par sägs rakt ut i
+    panelen: *"Loopslut måste ligga efter loopstart — nu spelas ljudet som en skott."*
+  - **Prov:** `a_loop_is_clamped_and_a_backwards_pair_is_none`, `the_step_holds_a_sixteenth_with_swing`,
+    `the_identity_envelope_changes_nothing`, `the_defaults_are_still_a_one_shot`,
+    `a_hold_does_not_cut_a_one_shot_without_an_envelope`, `a_forever_loop_repeats_exactly`,
+    `until_release_plays_the_tail_and_forever_does_not`, `ping_pong_turns_around`,
+    `an_envelope_ends_the_voice_after_the_release`, `a_sampler_loop_follows_the_offline_render`.
+  - **Ärligt kvar (egna pass):** ingen **velocitetsstyrning** (velocity går till nivån som förut,
+    inte till envelopen), ingen **filterenvelop** (FL:s Sampler har en), inga **multi-samples**
+    (keymaps/velocity-lager = DirectWave-nivån), och loop-punkterna sätts med reglage i stället
+    för att kunna dras i vågformen.
 - [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*
   - **Läget hos oss, mätt 2026-09-12:** Sonix hostar VST2/VST3/CLAP/LV2, skyddar sig mot
     krascher med en **egen out-of-process-sandbox** (övervakaren startar om en död worker),
