@@ -1734,6 +1734,52 @@ stället för att jag ska behöva läsa 21 000 rader för att hitta den.
 
 ---
 
+## 8.14 "Sätt takt 1 här" — rutnätet mot musiken (Alex' fråga 2026-09-13)
+
+**Gapet stod redan skrivet** (NEXT-SESSION §4a, punkt 2): *"om det fortfarande inte stämmer vid
+rätt tempo ligger låtens första slag inte på takt 1 i filen, och då är åtgärden att trimma
+klippets vänsterkant (`sample_offset_sec`) så att slaget landar på rutnätet. **Inget tempo lagar
+det**, och appen har i dag ingen synlig väg för det."* Det var sista biten av Alex' återkommande
+*"får inte riktigt markören att matcha vågformerna oavsett bpm"*.
+
+**Researchen** (`references/daw-research/`, `references/daw-comparison.md`):
+
+| DAW | Manövern |
+| :--- | :--- |
+| Ableton | Warp-markören under pekaren sätts som klippets **1.1.1** ("Set 1.1.1 Here") — klippet står kvar, innehållet flyttas |
+| Audacity | Klippet **trimmas icke-destruktivt** i vänsterkanten: vågformen döljs, raderas inte, kan återställas |
+| Reaper | "Move item contents" — flyttar ljudet inuti klossen utan att flytta klossen |
+| FL Studio | "Track delay" för tidsalignering (samma familj, en annan ratt) |
+
+**Designen som följer:** klippet står kvar där användaren ställt det (**var** slaget ska landa är
+hans val — flytta klippet dit först), spelhuvudets punkt blir klippets första sampel, och
+högerkanten står still. Det som kapas är början. Filen rörs inte, och en ångring tar tillbaka den.
+
+**Regeln är en ren funktion** (`align_clip_start_to_point` i `ui::app`), så den prövas utan fönster
+och utan motor — fyra prov, alla med tal:
+
+- **0,30 s in i filen i 140 BPM:** offset 0,30 s, klippet 0,30 s kortare, högerkanten still ✓
+- **samma 0,30 s men projekt i 100:** offset 0,30 × 100/140 = **0,2143 s av filen** — filens tid, inte
+  tidslinjens. Det är samma faktor motorn spelar med (`stretch_ratio_for`, källsekunder per
+  utsekund); att använda tidslinjens tal rakt av vore den inverterade konventionen som kostade tid
+  i 8.10.
+- **klippet står kvar:** ett klipp på takt 4 med offset 0,25 s och spelhuvudet 2,0 s in i det ger
+  offset 2,25 s och längden 8 → 7 takter ✓
+- **ett nej är ett nej:** spelhuvudet före klippets början eller ett klipp som skulle försvinna ger
+  `None` — ingenting ändras, och statusraden säger varför (8.5-regeln: hitta aldrig på ett ljud).
+
+**I gränssnittet:** klippets högerklicksmeny → *"🎯 Sätt takt 1 här (ljudet under spelhuvudet blir
+klippets början)"*, med en rad om att klippet inte flyttas. Beskedet i statusraden säger exakt
+vilken sekund filen läses från — talet, inte ett omdöme.
+
+**Kvar till ett eget pass:** appen kan i dag **inte hitta** slaget åt honom, bara sätta det han
+pekar på. Etablerade DAW:er visar detekterade transients (Ableton: grå markörer som går att
+skapa/radera; Sonix har redan slagletningen i `audio::onset`, Fas 8.7) — nästa steg är en
+*"hitta första slaget"* som mäter i stället för att peka. Det är också först då ett **snap** är
+ärligt: ett rutnät som gissar är sämre än ingen snap (se provet som fällde min första variant).
+
+---
+
 ## 8.11 Tonarten som tonart (Alex' svar 2026-09-12)
 
 **Kravet, ur Alex' egen mun:** "Gör kontrollen sann: markera skalan i piano roll (och låt

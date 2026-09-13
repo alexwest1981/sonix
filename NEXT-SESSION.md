@@ -113,6 +113,14 @@ mätt, och var nästa andetag ska tas.*
    (`made with suno` / `suno.com` / `suno studio` / `c2pa`), ram för ram och underchunk för
    underchunk. **Rör du en väg som läser ljud eller filhuvuden: läs roadmapens 8.5-rättelse
    och `src/audio/metadata.rs` först.**
+   0g. ~~**Låtens första slag mot rutnätet**~~ — **BYGGT 2026-09-13 (8.14).** Alex' sista bit
+   av "markören matchar inte vågformerna": *"Sätt takt 1 här"* i klippets högerklicksmeny —
+   ljudet under spelhuvudet blir klippets första sampel, klippet står kvar, högerkanten står
+   still (Abletons 1.1.1 + Audacitys kant-trim). Ren funktion `align_clip_start_to_point`
+   med **fyra prov**: 0,30 s i 140 BPM ✓, samma sträcka i 100 BPM blir 0,2143 s av *filen* ✓,
+   klippet står kvar ✓, och ett nej är ett nej (spelhuvudet utanför klippet → inget ändrat) ✓.
+   **Kvar:** appen kan inte *hitta* slaget (bara sätta det han pekar på) — nästa steg är
+   "hitta första slaget" ur `audio::onset`, och först då är ett snap ärligt.
    0f. ~~**"marker och wave synkar inte" + "ingen skillnad på tempo"**~~ — **RÄTTAT
    2026-09-13 (8.10d).** Ett fel, båda symptomen: `LoadStemTrack` — som appen skickar
    **vid varje uppspelningsstart** — byggde ett nytt spår och tömde `regions` tyst, så
@@ -256,8 +264,9 @@ mätt, och var nästa andetag ska tas.*
    möts bara vid rätt tempo (Rock and Hard Place: **140**); (b) **inledningen** — om det
    fortfarande inte stämmer vid rätt tempo ligger låtens första slag inte på takt 1 i filen,
    och då är åtgärden att **trimma klippets vänsterkant** (`sample_offset_sec`) så att slaget
-   landar på rutnätet. Inget tempo lagar (b), och appen har i dag **ingen** synlig väg för det
-   ("sätt takt 1 här") — det är en egen fråga värd en rad i roadmapen.
+   landar på rutnätet. Inget tempo lagar (b) — och sedan **2026-09-13 finns vägen:
+   "🎯 Sätt takt 1 här"** i klippets högerklicksmeny (roadmapens **8.14**). Appen kan
+   fortfarande inte *hitta* slaget åt honom; det är nästa steg och det står i 8.14.
 
 ## 4b. Nästa pass: motorn (färskt sammanhang — roadmapen säger det själv)
 

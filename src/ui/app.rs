@@ -1426,6 +1426,66 @@ pub fn stretched_offset_secs(offset_sec: f32, source_bpm: f32, bpm_here: f32) ->
     offset_sec * (source_bpm / bpm_here)
 }
 
+/// Vad "sätt takt 1 här" gör med ett klipp (Fas 8.14).
+///
+/// Ljudet som ligger under spelhuvudet blir klippets **första sampel**. Klippet står
+/// kvar där det står — **var** slaget ska landa är användarens val (flytta klippet
+/// dit först), precis som i Abletons "Set 1.1.1 Here" — och det som ändras är
+/// klippets innehåll: offsetten in i filen växer med sträckan fram till spelhuvudet,
+/// och längden krymper lika mycket så att **högerkanten står still**.
+///
+/// Utan det här går en låt vars första slag inte ligger på takt 1 i filen inte att
+/// få i takt med rutnätet: **inget tempo lagar det** (Alex 2026-09-13: "får inte
+/// riktigt markören att matcha vågformerna oavsett bpm"). Manövern är densamma som
+/// Audacitys kant-trim: början kapas, filen rörs inte, och en ångring tar tillbaka den.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClipStartAlign {
+    /// Nytt avstånd in i filen, i sekunder.
+    pub sample_offset_sec: f32,
+    /// Ny längd i takter, så att högerkanten hamnar där den var.
+    pub length_bars: f32,
+    /// Hur långt klippet flyttades in i filen, i sekunder (för beskedet i statusraden).
+    pub moved_source_secs: f32,
+}
+
+/// Räknar fram [`ClipStartAlign`] — eller `None` när flytten inte går att göra.
+///
+/// **Ren funktion:** inget fönster, ingen motor, inget ljud. `None` betyder att
+/// spelhuvudet står utanför klippets innehåll (före dess början eller så långt in att
+/// klippet skulle försvinna). Då ska ingenting ändras och den som frågade ska få veta
+/// varför — 8.5-regeln: hitta aldrig på ett ljud.
+///
+/// Faktorn är [`stretch_ratio_for`] = **källsekunder per utsekund**, samma tal motorn
+/// spelar med. Flytten hamnar därför i filens tid och inte i tidslinjens: 0,30 s på
+/// tidslinjen är 0,30 s av filen när tempot är detsamma, men 0,21 s av filen när
+/// projektet står i 100 och klippet i 140.
+pub fn align_clip_start_to_point(
+    start_bar: f32,
+    length_bars: f32,
+    sample_offset_sec: f32,
+    source_bpm: f32,
+    point_sec: f64,
+    tempo: &crate::audio::tempo::TempoMap,
+) -> Option<ClipStartAlign> {
+    let point_sec = point_sec.max(0.0);
+    let start_sec = tempo.secs_at_bar(start_bar as f64);
+    if point_sec <= start_sec {
+        return None; // spelhuvudet står före klippets början: det finns inget att sätta
+    }
+    let head_secs = point_sec - start_sec; // ut-tid som kapas
+    let ratio = stretch_ratio_for(source_bpm, tempo.bpm_at(start_bar as f64)) as f64;
+    let new_offset = sample_offset_sec as f64 + head_secs * ratio;
+    let new_length = length_bars as f64 - tempo.bars_for_secs_at(start_bar as f64, head_secs);
+    if new_length < 0.01 {
+        return None; // hela klippet skulle försvinna
+    }
+    Some(ClipStartAlign {
+        sample_offset_sec: new_offset.max(0.0) as f32,
+        length_bars: new_length as f32,
+        moved_source_secs: (head_secs * ratio) as f32,
+    })
+}
+
 /// Gränserna för [`stretch_ratio_for`] — samma spann som sångstudiens reglage.
 pub const MIN_STRETCH_RATIO: f32 = 0.25;
 pub const MAX_STRETCH_RATIO: f32 = 4.0;
@@ -5300,6 +5360,53 @@ impl SonixApp {
                 self.status_message = crate::i18n::t("🔄 Vände ljudregion baklänges (Reverse)!").to_string();
             }
         }
+    }
+
+    /// **"Sätt takt 1 här"** (Fas 8.14): ljudet under spelhuvudet blir klippets första
+    /// sampel. Klippet står kvar där det står och högerkanten står still — det är
+    /// början som kapas, som i Audacitys kant-trim.
+    ///
+    /// Regeln bor i [`align_clip_start_to_point`] (ren funktion, fyra egna prov); det
+    /// här är bara inkopplingen: ångring, besked och en omsynk så att motorn hör
+    /// ändringen direkt.
+    pub fn set_beat_one_at_playhead(&mut self) {
+        let Some((t_idx, r_idx)) = self.selected_audio_region else {
+            return;
+        };
+        if t_idx >= self.playlist_tracks.len()
+            || r_idx >= self.playlist_tracks[t_idx].regions.len()
+        {
+            return;
+        }
+        let tempo = self.tempo_map();
+        let r = self.playlist_tracks[t_idx].regions[r_idx].clone();
+        let point = self.song_time as f64;
+        let Some(align) = align_clip_start_to_point(
+            r.start_bar,
+            r.length_bars,
+            r.sample_offset_sec,
+            r.source_bpm,
+            point,
+            &tempo,
+        ) else {
+            // 8.5-regeln: säg varför i stället för att tiga eller gissa.
+            self.status_message = crate::tstatus!(
+                "⚠ Spelhuvudet står utanför '{}' — inget ändrat. Flytta det in i klippet först.",
+                r.name
+            );
+            return;
+        };
+        self.push_undo(crate::i18n::t("Sätt takt 1 här"));
+        if let Some(reg) = self.playlist_tracks[t_idx].regions.get_mut(r_idx) {
+            reg.sample_offset_sec = align.sample_offset_sec;
+            reg.length_bars = align.length_bars;
+        }
+        self.sync_track_regions(t_idx);
+        self.status_message = crate::tstatus!(
+            "🎯 '{}' läser filen från {:.3} s — slaget ligger på rutnätet.",
+            r.name,
+            align.sample_offset_sec
+        );
     }
 
     /// Bygger projektets serialiserbara form.
@@ -11779,6 +11886,18 @@ impl SonixApp {
                                             ui.separator();
                                             if ui.button(self.tr("✂ Klipp vid spelhuvud (Ctrl+B / S)")).clicked() {
                                                 self.split_selected_region_at_playhead();
+                                                ui.close_menu();
+                                            }
+                                            if ui
+                                                .button(crate::i18n::t(
+                                                    "🎯 Sätt takt 1 här (ljudet under spelhuvudet blir klippets början)",
+                                                ))
+                                                .on_hover_text(crate::i18n::t(
+                                                    "Kapar början av klippet så att slaget under spelhuvudet hamnar på rutnätet. Högerkanten står still. Klippet flyttas inte — flytta det dit slaget ska landa först.",
+                                                ))
+                                                .clicked()
+                                            {
+                                                self.set_beat_one_at_playhead();
                                                 ui.close_menu();
                                             }
                                             if ui.button(crate::i18n::t("💾 Spara som sample i Sound Browser")).clicked() {
@@ -19355,6 +19474,95 @@ mod tests {
         assert_eq!(stretched_offset_secs(12.0, 0.0, 150.0), 12.0);
         // Och ett projekt utan tempo är inget att räkna mot.
         assert_eq!(stretched_offset_secs(12.0, 120.0, 0.0), 12.0);
+    }
+
+    /// **"Sätt takt 1 här"** (Fas 8.14): ljudet under spelhuvudet blir klippets första
+    /// sampel medan klippet står kvar, och högerkanten står still.
+    ///
+    /// Fallet är Alex' eget: en stämma där musiken börjar 0,30 s in i filen. Klippet
+    /// ligger på takt 0 och är exakt filens längd i 140 BPM (259,28 s = 151,24667
+    /// takter). Står spelhuvudet på det första slaget ska filen läsas från 0,30 s och
+    /// klippet bli 0,30 s kortare — musiken flyttas 0,30 s bakåt på tidslinjen och
+    /// slaget hamnar på rutnätet.
+    #[test]
+    fn setting_beat_one_puts_the_sound_on_the_grid() {
+        let tempo = crate::audio::tempo::TempoMap::single(140.0);
+        let bars = 151.24667_f32;
+        let a = align_clip_start_to_point(0.0, bars, 0.0, 140.0, 0.30, &tempo)
+            .expect("0,30 s in i filen ska gå att sätta som första sampel");
+        assert!(
+            (a.sample_offset_sec - 0.30).abs() < 1e-5,
+            "filen ska läsas från 0,30 s: {}",
+            a.sample_offset_sec
+        );
+        assert!(
+            (a.moved_source_secs - 0.30).abs() < 1e-5,
+            "beskedet ska bära flytten: {}",
+            a.moved_source_secs
+        );
+        let expected = bars as f64 - tempo.bars_for_secs_at(0.0, 0.30);
+        assert!(
+            (a.length_bars as f64 - expected).abs() < 1e-4,
+            "högerkanten ska stå still: längden {expected}, blev {}",
+            a.length_bars
+        );
+    }
+
+    /// Vid en sträckning flyttas **filens** tid, inte tidslinjens.
+    ///
+    /// 0,30 s på tidslinjen i ett 100-projekt med ett 140-klipp är 0,30 × 100/140 =
+    /// 0,2143 s av filen — samma faktor som motorn spelar med. Att använda
+    /// tidslinjens tal rakt av vore den inverterade konventionen som kostade tid i 8.10.
+    #[test]
+    fn setting_beat_one_uses_the_source_timebase() {
+        let tempo = crate::audio::tempo::TempoMap::single(100.0);
+        let a = align_clip_start_to_point(0.0, 151.24667, 0.0, 140.0, 0.30, &tempo)
+            .expect("flytten ska gå");
+        let expected = 0.30 * (100.0 / 140.0);
+        assert!(
+            (a.sample_offset_sec as f64 - expected).abs() < 1e-4,
+            "0,30 s ut = {expected} s källa, blev {}",
+            a.sample_offset_sec
+        );
+    }
+
+    /// Klippet står kvar — bara innehållet flyttas. Ett klipp som redan är trimmat
+    /// (offset > 0) lägger flytten ovanpå det, och längden räknas i takter ur samma
+    /// tempokarta som klippet ligger i.
+    #[test]
+    fn setting_beat_one_keeps_the_clip_where_it_is() {
+        let tempo = crate::audio::tempo::TempoMap::single(120.0);
+        let secs_per_bar = tempo.secs_per_bar_at(0.0); // 2,0 s i 120 BPM
+        let a = align_clip_start_to_point(4.0, 8.0, 0.25, 120.0, 10.0, &tempo)
+            .expect("tio sekunder in i ett klipp som börjar på åtta ska gå");
+        // Klippet börjar på 8,0 s; spelhuvudet står 2,0 s in — alltså en takt.
+        assert!(
+            (a.length_bars - 7.0).abs() < 1e-3,
+            "en takt kapas: {}",
+            a.length_bars
+        );
+        assert!(
+            (a.sample_offset_sec as f64 - 2.25).abs() < 1e-4,
+            "offsetten växer med 2,0 s: {}",
+            a.sample_offset_sec
+        );
+        let _ = secs_per_bar;
+    }
+
+    /// **Ett nej ska vara ett nej** (8.5): går flytten inte att göra ska ingenting
+    /// hända. Här står spelhuvudet före klippets början — då finns inget ljud att
+    /// sätta som första sampel, och då hittar vi inte på ett.
+    #[test]
+    fn setting_beat_one_refuses_when_the_playhead_is_outside() {
+        let tempo = crate::audio::tempo::TempoMap::single(120.0);
+        assert!(
+            align_clip_start_to_point(4.0, 8.0, 0.0, 120.0, 0.0, &tempo).is_none(),
+            "spelhuvudet står före klippet"
+        );
+        assert!(
+            align_clip_start_to_point(0.0, 1.0, 0.0, 120.0, 20.0, &tempo).is_none(),
+            "ett klipp kortare än ett hundradels slag är inget klipp"
+        );
     }
 
     #[test]
