@@ -1513,6 +1513,34 @@ pub fn timeline_point_for_source_secs(
     Some(tempo.secs_at_bar(start_bar as f64) + head_source / ratio)
 }
 
+/// Vilket klipp en punkt i en lane träffar (Fas 8.15).
+///
+/// **Ren funktion, och en enda regel för två dörrar:** vänsterklickets dragstart och
+/// högerklickets val frågar samma funktion. Utan det kunde "Radera region" träffa ett
+/// annat klipp än det man pekade på — menyn gäller det *valda* klippet, och högerklick
+/// valde inte.
+///
+/// Åtta pixlars marginal utanför kanterna är samma marginal som handtagen använder, så
+/// att ett klipp som är några pixlar brett fortfarande går att peka på. Vid överlapp
+/// vinner det **första** klippet i listan — samma ordning som dragstarten alltid har
+/// haft.
+pub fn region_under_x(
+    regions: &[AudioRegion],
+    mouse_x: f32,
+    lane_min_x: f32,
+    bar_w: f32,
+) -> Option<usize> {
+    const SLOP: f32 = 8.0;
+    if bar_w <= 0.0 || !mouse_x.is_finite() {
+        return None;
+    }
+    regions.iter().position(|r| {
+        let x0 = lane_min_x + r.start_bar * bar_w;
+        let x1 = x0 + r.length_bars * bar_w;
+        mouse_x >= x0 - SLOP && mouse_x <= x1 + SLOP
+    })
+}
+
 /// Hur långt in i klippets ljud "hitta första slaget" letar (Fas 8.14).
 ///
 /// Ett anslag i början av en stämma ligger inom de första sekunderna. Talet är ett tak
@@ -11789,42 +11817,50 @@ impl SonixApp {
                                                 .or_else(|| ui.input(|i| i.pointer.press_origin()))
                                                 .or_else(|| ui.ctx().pointer_latest_pos())
                                                 .or_else(|| lane_resp.hover_pos());
-                                            if let Some(mouse_pos) = mouse_pos_opt {
-                                                for (r_i, r) in regions_snapshot.iter().enumerate() {
-                                                    let rx_start = lane_rect.min.x + r.start_bar * bar_w;
-                                                    let rx_end = rx_start + r.length_bars * bar_w;
-                                                    let region_hit_rect = Rect::from_min_max(
-                                                        Pos2::new(rx_start - 8.0, lane_rect.min.y),
-                                                        Pos2::new(rx_end + 8.0, lane_rect.max.y),
-                                                    );
-                                                    if region_hit_rect.contains(mouse_pos) {
-                                                        let (mode, init_loop_bars) = if mouse_pos.x <= rx_start + 16.0 || (mouse_pos.x - rx_start).abs() <= 10.0 {
-                                                            (RegionDragMode::TrimStart, if r.loop_length_bars > 0.001 { r.loop_length_bars } else { r.length_bars })
-                                                        } else if mouse_pos.x >= rx_end - 16.0 || (mouse_pos.x - rx_end).abs() <= 10.0 {
-                                                            (RegionDragMode::TrimEnd, if r.loop_length_bars > 0.001 { r.loop_length_bars } else { r.length_bars })
-                                                        } else {
-                                                            (RegionDragMode::Move, if r.loop_length_bars > 0.001 { r.loop_length_bars } else { r.length_bars })
-                                                        };
-                                                        self.push_undo(match mode {
-                                                            RegionDragMode::TrimStart => crate::i18n::t("Trimma start (Vänster)"),
-                                                            RegionDragMode::TrimEnd => crate::i18n::t("Justera längd / loop (Höger)"),
-                                                            RegionDragMode::Move => crate::i18n::t("Flytta region"),
-                                                        });
-                                                        self.region_drag_state = Some(RegionDragState {
-                                                            track_idx: t_idx,
-                                                            region_idx: r_i,
-                                                            mode,
-                                                            initial_start_bar: r.start_bar,
-                                                            initial_length_bars: r.length_bars,
-                                                            initial_sample_offset_sec: r.sample_offset_sec,
-                                                            initial_loop_length_bars: init_loop_bars,
-                                                            drag_start_mouse_x: mouse_pos.x,
-                                                        });
-                                                        self.selected_audio_region = Some((t_idx, r_i));
-                                                        self.selected_timeline_track = t_idx;
-                                                        break;
-                                                    }
-                                                }
+                                            if let Some(mouse_pos) = mouse_pos_opt
+                                                && let Some(r_i) = region_under_x(
+                                                    &regions_snapshot,
+                                                    mouse_pos.x,
+                                                    lane_rect.min.x,
+                                                    bar_w,
+                                                )
+                                            {
+                                                let r = &regions_snapshot[r_i];
+                                                let rx_start = lane_rect.min.x + r.start_bar * bar_w;
+                                                let rx_end = rx_start + r.length_bars * bar_w;
+                                                let init_loop_bars = if r.loop_length_bars > 0.001 {
+                                                    r.loop_length_bars
+                                                } else {
+                                                    r.length_bars
+                                                };
+                                                let mode = if mouse_pos.x <= rx_start + 16.0
+                                                    || (mouse_pos.x - rx_start).abs() <= 10.0
+                                                {
+                                                    RegionDragMode::TrimStart
+                                                } else if mouse_pos.x >= rx_end - 16.0
+                                                    || (mouse_pos.x - rx_end).abs() <= 10.0
+                                                {
+                                                    RegionDragMode::TrimEnd
+                                                } else {
+                                                    RegionDragMode::Move
+                                                };
+                                                self.push_undo(match mode {
+                                                    RegionDragMode::TrimStart => crate::i18n::t("Trimma start (Vänster)"),
+                                                    RegionDragMode::TrimEnd => crate::i18n::t("Justera längd / loop (Höger)"),
+                                                    RegionDragMode::Move => crate::i18n::t("Flytta region"),
+                                                });
+                                                self.region_drag_state = Some(RegionDragState {
+                                                    track_idx: t_idx,
+                                                    region_idx: r_i,
+                                                    mode,
+                                                    initial_start_bar: r.start_bar,
+                                                    initial_length_bars: r.length_bars,
+                                                    initial_sample_offset_sec: r.sample_offset_sec,
+                                                    initial_loop_length_bars: init_loop_bars,
+                                                    drag_start_mouse_x: mouse_pos.x,
+                                                });
+                                                self.selected_audio_region = Some((t_idx, r_i));
+                                                self.selected_timeline_track = t_idx;
                                             }
                                         }
 
@@ -11987,6 +12023,32 @@ impl SonixApp {
                                                     }
                                                 }
                                             }
+                                    }
+                                }
+
+                                // **Högerklick väljer klippet under pekaren** (Fas 8.15).
+                                //
+                                // Menyn nedan gäller det *valda* klippet, och utan det här
+                                // kunde "Radera region" träffa ett annat klipp än det man
+                                // pekade på: valet var det man senast vänsterklickade. Samma
+                                // regel som dragstarten (`region_under_x`), så de två dörrarna
+                                // inte kan välja olika klipp.
+                                //
+                                // Klickar man utanför ett klipp lämnas valet orört — rubriken
+                                // i menyn (`🎵 namn`) visar vilket klipp posterna gäller.
+                                if lane_resp.secondary_clicked()
+                                    && let Some(mouse_pos) = lane_resp.hover_pos()
+                                {
+                                    // Samma lista som menyn nedan läser — en källa.
+                                    let hit = region_under_x(
+                                        &self.playlist_tracks[t_idx].regions,
+                                        mouse_pos.x,
+                                        lane_rect.min.x,
+                                        bar_w,
+                                    );
+                                    if let Some(r_i) = hit {
+                                        self.selected_audio_region = Some((t_idx, r_i));
+                                        self.selected_timeline_track = t_idx;
                                     }
                                 }
 
@@ -21486,5 +21548,56 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// Ett klipp att peka på i proven nedan: bara det geometrin bryr sig om.
+    fn region_at(start_bar: f32, length_bars: f32) -> AudioRegion {
+        AudioRegion {
+            id: 0,
+            name: String::new(),
+            start_bar,
+            length_bars,
+            sample_offset_sec: 0.0,
+            source_path: None,
+            waveform_peaks: Vec::new(),
+            volume: 1.0,
+            fade_in_bars: 0.0,
+            fade_out_bars: 0.0,
+            muted: false,
+            is_reverse: false,
+            color: super::default_region_color(),
+            loop_length_bars: 0.0,
+            source_bpm: 0.0,
+            tape: false,
+        }
+    }
+
+    /// **Högerklick väljer klippet under pekaren** (Fas 8.15) — samma regel som
+    /// dragstarten frågar, alltså kan de två dörrarna inte välja olika klipp. Det var
+    /// fällan: menyn gäller det *valda* klippet, och högerklick valde inte, så
+    /// "Radera region" kunde träffa ett annat klipp än det man pekade på.
+    #[test]
+    fn the_region_under_the_pointer_is_the_one_the_menu_acts_on() {
+        let lane_min_x = 100.0;
+        let bar_w = 40.0;
+        let regions = vec![region_at(0.0, 2.0), region_at(4.0, 2.0)];
+
+        // Rakt på klippet.
+        assert_eq!(region_under_x(&regions, 140.0, lane_min_x, bar_w), Some(0));
+        assert_eq!(region_under_x(&regions, 300.0, lane_min_x, bar_w), Some(1));
+
+        // Åtta pixlars marginal utanför kanterna — handtagens marginal, så att ett
+        // klipp som är några pixlar brett fortfarande går att peka på.
+        assert_eq!(region_under_x(&regions, 96.0, lane_min_x, bar_w), Some(0));
+        assert_eq!(region_under_x(&regions, 186.0, lane_min_x, bar_w), Some(0));
+
+        // Glappet mellan klippen är ingens: då väljs ingenting (valet lämnas orört).
+        assert_eq!(region_under_x(&regions, 220.0, lane_min_x, bar_w), None);
+        assert_eq!(region_under_x(&regions, 80.0, lane_min_x, bar_w), None);
+
+        // Tom lane, ingen bredd (får inte bli NaN) och en punkt utan tal.
+        assert_eq!(region_under_x(&[], 140.0, lane_min_x, bar_w), None);
+        assert_eq!(region_under_x(&regions, 140.0, lane_min_x, 0.0), None);
+        assert_eq!(region_under_x(&regions, f32::NAN, lane_min_x, bar_w), None);
     }
 }

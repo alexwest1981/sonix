@@ -21,8 +21,8 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 418 default / 464 med `--features plugin-host`, **0 varningar** i båda
-  (mätt 2026-09-13, efter spelhuvud-rättelsen 8.13b och tempomåttet 8.10b). CI fäller
+- **Tester:** 429 default / 475 med `--features plugin-host`, **0 varningar** i båda
+  (mätt 2026-09-13, efter klipp-mätningen 8.14 steg 2 och högerklick-valet 8.15). CI fäller
   numera **alla** ben på varningar, inte bara Windows.
 - **Senaste commit:** `398910d` (metadata: bara härkomsten tas), `7f87924` (mätarna i
   toppraden, 8.13) och därefter spelhuvudets klocka (8.13b) — se `git log --oneline -3`

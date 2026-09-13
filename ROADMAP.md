@@ -1821,11 +1821,9 @@ pekas manuellt i stället. Att *hitta* rätt bland flera kandidater (är första
 kräver taktdetektering, inte anslagsdetektering — Ableton löser det genom att visa *alla* transients
 och låta användaren välja en. Det är nästa steg om han vill ha det.
 
-**En fälla att känna igen (orörd i den här omgången):** högerklick på en lane **väljer inte**
-klippet under pekaren — menyn visar posterna för det klipp som redan är valt, och rubriken
-(`🎵 namn`) är enda skyddet. Det gäller alla poster i menyn, inte bara de här, och det är värt ett
-eget pass: antingen väljer högerklick det man pekar på, eller så märks posterna med vilket klipp de
-kommer att träffa.
+**Fällan som hittades här är fixad samma kväll (8.15):** högerklick på en lane valde inte klippet
+under pekaren — menyn visar posterna för det klipp som redan är valt, och rubriken (`🎵 namn`) var
+enda skyddet. Det gällde alla poster i menyn, inte bara de här. Se 8.15.
 
 ## 8.11 Tonarten som tonart (Alex' svar 2026-09-12)
 
@@ -2009,3 +2007,35 @@ därmed stängd — inte bara byggd utan kvitterad av det öra och öga som såg
 stegklockan (upplösning en bildruta ≈11 ms, se `current_take_pos`). Det hörs inte som glid längre —
 stegklockan räknas från deadline och spelhuvudet följer ljudet — men den riktiga lösningen är att
 lägga notschemat i ljudtråden. Det är en egen punkt, inte en rest av den här.
+
+---
+
+## 8.15 Högerklick väljer klippet man pekar på (Alex' svar 2026-09-13, *"Fixa, tack"*)
+
+Hittad på vägen när 8.14 steg 2 felsöktes, och dokumenterad där i stället för att tigas ihjäl:
+**högerklick på en lane valde inte klippet under pekaren.** Menyn (`lane_resp.context_menu`) visar
+sina klipposter när `selected_audio_region` pekar på *den lanens* klipp — och valet sattes bara av
+vänsterklick. Alltså: välj klipp A, högerklicka klipp B, och posterna gällde **A**. Skyddet var
+rubriken (`🎵 namn`) och ingenting annat. Det gäller hela menyn — *"Radera region"*, *"Dela klipp"*,
+*"Sätt takt 1 här"*, *"Hitta första slaget"* — inte bara de nya posterna.
+
+**Fixen är en regel med två dörrar.** Träffytan låg tidigare inbakad i vänsterklickets dragstart (en
+`Rect::contains` med 8 px marginal, `break` vid första träffen). Den är nu en ren funktion,
+`ui::app::region_under_x(regions, mouse_x, lane_min_x, bar_w)`, som **både** dragstarten och
+högerklickets val frågar. Då kan de inte välja olika klipp. Åtta pixlars marginal runt kanterna är
+kvar (samma marginal som handtagen), liksom ordningen vid överlapp: första klippet i listan vinner,
+precis som förut.
+
+**Vad som *inte* ändrades:** klickar man utanför ett klipp lämnas valet orört. Att tömma det hade
+gjort högerklick på tom lane till ett sätt att tappa sitt val, och rubriken i menyn visar ändå vilket
+klipp posterna gäller. Om det visar sig vara fel väg är nästa steg att dölja klipposterna när
+klicket inte träffade ett klipp — men det är en *observations*-fråga, och Alex pekar ut den bättre än
+jag gissar.
+
+Ett prov i `ui::app`: rakt på klippet, i marginalen, i glappet mellan två klipp (ingenting), tom
+lista, `bar_w = 0` (får inte bli NaN) och en punkt utan tal. 429 default / 475 med plugin-host,
+0 varningar, CI grön.
+
+**Kvar i samma familj:** träffytan mäts i x — y är lanens eget svar, eftersom både hover och
+interact_pointer_pos bara finns inuti lanen. Skulle lanes någon gång ritas över varandra är det
+här stället att läsa igen.
