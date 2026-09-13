@@ -150,7 +150,105 @@ pub fn decide(
     }
 }
 
-/// Sträcker ett stereopar med bevarad tonhöjd.
+/// **Signalsmith Stretch som renderingsmotor** (Fas 8.10 steg 2).
+///
+/// Vår egen WSOLA lägger till transienter som inte finns i källan. Mätt på Alex' Broken-
+/// stämmor 2026-09-13 (120 → 110 BPM, det tydliga provet): **+9,8 % / +9,5 % / +13,6 % /
+/// +11,0 %** för sång, bakgrundssång, trummor och bas. Det är de falska anslagen som hörs
+/// som skorr. Två försök att laga vår egen sökning blev **sämre** och rullades tillbaka —
+/// därför prövas i stället `signalsmith-stretch` (MIT), motorn branschen använder för det
+/// här, och **samma prov avgör**: blir det inte bättre behåller vi vår egen.
+///
+/// **Bara renderingen.** Realtidsvägen i Sångstudion ligger kvar på vår egen WSOLA — den
+/// sträcker strömmande ljud, där en fil som räknas en gång inte är ett alternativ.
+///
+/// **Kanalkartan:** biblioteket tar **interleaved** in och ut (L,R,L,R …), så kanalerna
+/// läggs i varandra och plockas isär igen. Att skicka två monolistor som om de vore en
+/// kanal är den klassiska förväxlingen — stereobilden skulle kollapsa till mono.
+///
+/// Vid faktor 1,0 returneras ingången oförändrad: ingen process, ingen förlust.
+///
+/// **Test-kod med avsikt:** motorn förlorade domen (se roadmapens 8.10) och får inte ligga
+/// i produktionsvägen — men A/B:et ska kunna göras om. Provet är `the_two_engines_on_the_same_stems`.
+#[cfg(test)]
+pub fn stretch_signalsmith(
+    left: &[f32],
+    right: &[f32],
+    ratio: f32,
+    sample_rate: f32,
+) -> (Vec<f32>, Vec<f32>) {
+    stretch_signalsmith_with(
+        left,
+        right,
+        ratio,
+        sample_rate,
+        SIGNALSMITH_BLOCK_MS,
+        SIGNALSMITH_INTERVAL_MS,
+    )
+}
+
+/// Blocklängd och intervall för Signalsmith (millisekunder) — **mätt fram**, inte gissat.
+///
+/// Bibliotekets förval är 120/30 ms, och det är gjort för musik i största allmänhet. På en
+/// **klickföljd** smetade det ut 24 anslag till 52 (skyddsprovet
+/// `the_engine_does_not_invent_transients` fällde det direkt): en lång FFT-ruta med glest
+/// intervall hinner inte följa en transient. Svepet som valde talen står i
+/// `the_block_and_interval_sweep` — korta intervall köper transienter, långa rutor köper
+/// tonal jämnhet, och tabellen avgjorde avvägningen. 40/10 ms är vad svepet lämnade:
+/// förvalet 120/30 smetade ut 24 klick till 44 anslag, 120/10 till 91, medan **40/10 gav
+/// 24 — noll överskott** — och 20/5 gav samma sak till lägre tonal marginal.
+#[cfg(test)]
+pub const SIGNALSMITH_BLOCK_MS: f32 = 40.0;
+#[cfg(test)]
+pub const SIGNALSMITH_INTERVAL_MS: f32 = 10.0;
+
+/// Som [`stretch_signalsmith`], men med givna block- och intervalltal (för mätningen).
+#[cfg(test)]
+pub fn stretch_signalsmith_with(
+    left: &[f32],
+    right: &[f32],
+    ratio: f32,
+    sample_rate: f32,
+    block_ms: f32,
+    interval_ms: f32,
+) -> (Vec<f32>, Vec<f32>) {
+    let frames = left.len().min(right.len());
+    if frames == 0 || sample_rate <= 0.0 {
+        return (Vec::new(), Vec::new());
+    }
+    let ratio = ratio.clamp(MIN_RATIO, MAX_RATIO);
+    if (ratio - 1.0).abs() <= 1e-4 {
+        return (left[..frames].to_vec(), right[..frames].to_vec());
+    }
+    let out_frames = ((frames as f64) * (ratio as f64)).round().max(1.0) as usize;
+
+    let mut interleaved = Vec::with_capacity(frames * 2);
+    for i in 0..frames {
+        interleaved.push(left[i]);
+        interleaved.push(right[i]);
+    }
+    let mut out = vec![0.0f32; out_frames * 2];
+
+    let block = ((block_ms / 1000.0) * sample_rate).round().max(4.0) as usize;
+    let interval = ((interval_ms / 1000.0) * sample_rate).round().max(1.0) as usize;
+    let interval = interval.min(block.saturating_sub(1)).max(1);
+    let mut stretch = signalsmith_stretch::Stretch::new(2, block, interval);
+    if !stretch.exact(&interleaved, &mut out) {
+        // 8.5-regeln: hellre tomt än påhittat. `check_rendered` avvisar det, och appen
+        // säger ifrån i stället för att spela något som inte är filen.
+        return (Vec::new(), Vec::new());
+    }
+
+    let mut out_l = Vec::with_capacity(out_frames);
+    let mut out_r = Vec::with_capacity(out_frames);
+    for i in 0..out_frames {
+        out_l.push(out[i * 2]);
+        out_r.push(out[i * 2 + 1]);
+    }
+    (out_l, out_r)
+}
+
+/// Sträcker ett stereopar med bevarad tonhöjd — **produktionsvägen**.
 ///
 /// Kanalerna går genom **samma** WSOLA-instans, så grainsökningen (som avgör var varje korn
 /// läggs) görs en gång för båda kanalerna. Att köra två separata instanser skulle kunna välja
@@ -158,6 +256,10 @@ pub fn decide(
 /// separat monoklipp per kanal.
 ///
 /// Vid faktor 1,0 returneras ingången oförändrad: ingen grain-process, ingen förlust.
+///
+/// **Motorn är vald av en mätning, inte av en inställning** (Fas 8.10 steg 2, 2026-09-13):
+/// `signalsmith-stretch` prövades och förlorade på transienterna — se
+/// [`stretch_signalsmith`] och roadmapens 8.10. Vår egen WSOLA står kvar.
 pub fn stretch_stereo(
     left: &[f32],
     right: &[f32],
@@ -265,6 +367,12 @@ pub fn check_rendered(left: &[f32], right: &[f32], expected_frames: usize) -> Re
 /// gamla motorn läses som giltig efter ett motorbyte. Det hände 2026-09-13: nio cachar
 /// räknade med ±2,7 ms sökfönster låg kvar och hade spelats upp trots att motorn bytts —
 /// ändringen var gjord i koden men hördes inte i ljudet.
+///
+/// - 2: WSOLA med ±12 ms sökfönster (8.10c) — **den motor som gäller**.
+/// - 3 var ämnad för Signalsmith Stretch (8.10 steg 2), men den motorn förlorade domen och
+///   ligger kvar som mät-dörr. Numret är därför inte taget i bruk: produktionsvägen är
+///   oförändrad, och hans cachar ska fortsätta träffa. **Om motorn byts en dag: höj den då** —
+///   annars spelas gamla cachar upp och bytet hörs inte (det hände 2026-09-13).
 pub const STRETCH_ENGINE_VERSION: u32 = 2;
 
 pub fn cache_key(source: &str, source_bpm: f32, project_bpm: f32) -> String {
@@ -1290,5 +1398,229 @@ mod tests {
     fn the_policy_clamps_like_the_vocal_studio_does() {
         assert!((decide(120.0, 10_000.0, true, false).ratio - MAX_RATIO).abs() < 1e-6);
         assert!((decide(120.0, 1.0, true, false).ratio - MIN_RATIO).abs() < 1e-6);
+    }
+
+
+    /// **Diskantmått**: RMS av första differensen delat med RMS — en billig, längdoberoende
+    /// proxy för hur mycket av de höga frekvenserna som finns kvar. En tonhöjdsbevarande
+    /// sträckning ska lämna den *oförändrad*; faller den har motorn ätit diskant, stiger den
+    /// har den lagt till brus. Samma sorts fråga som 8.10c avgjorde med −45 % för 60 ms-kornet.
+    fn brightness(x: &[f32]) -> f32 {
+        if x.len() < 3 {
+            return 0.0;
+        }
+        let mut num = 0.0f64;
+        let mut den = 0.0f64;
+        for i in 1..x.len() {
+            let d = (x[i] - x[i - 1]) as f64;
+            num += d * d;
+            let v = x[i] as f64;
+            den += v * v;
+        }
+        if den <= 0.0 {
+            return 0.0;
+        }
+        ((num / den) as f32).sqrt()
+    }
+
+    /// **Motorerna mot varandra** (körs manuellt):
+    /// `cargo test --release --bin sonix the_two_engines_on_the_same_stems -- --ignored --nocapture`
+    ///
+    /// Samma källfiler, samma slagletning, två motorer — siffrorna är domen, inte intrycket.
+    /// Provet finns för att domen ska gå att göra **om**: byter någon motor, ändras
+    /// överlappet eller kommer en ny version av biblioteket, avgör samma tabell igen.
+    ///
+    /// Det **tydliga** provet räknar musikaliska anslag (den siffra som hörs); det **täta**
+    /// fångar kornkanterna. Båda behövs — utan det täta kan "överskottet" vara detektorns
+    /// eget brus i stället för sträckningens. Längden skrivs ut också: en motor som ger fel
+    /// antal sampel glider ur takt, hur fina anslagen än är.
+    #[test]
+    #[ignore]
+    fn the_two_engines_on_the_same_stems() {
+        let dense = crate::audio::onset::OnsetParams {
+            min_gap_ms: 5.0,
+            ..Default::default()
+        };
+        let clear = crate::audio::onset::OnsetParams {
+            sensitivity: 2.5,
+            min_gap_ms: 20.0,
+            window_ms: 80.0,
+        };
+        let home = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
+        let project = 110.0f32;
+        let file_ratio = 120.0 / project;
+        let expected = |frames: usize| ((frames as f64) * (file_ratio as f64)).round() as usize;
+
+        for name in [
+            "Broken (Vocals).wav",
+            "Broken (Backing Vocals).wav",
+            "Broken (Drums).wav",
+            "Broken (Bass).wav",
+        ] {
+            let path = home.join("imported_stems/Broken").join(name);
+            if !path.exists() {
+                println!("hoppar: {name} finns inte");
+                continue;
+            }
+            let Ok((l, r, sr)) = crate::audio::load_wav_pcm(&path.to_string_lossy()) else {
+                println!("hoppar: {name} gick inte att läsa");
+                continue;
+            };
+            let src_dense = crate::audio::onset::detect_onsets(&l, sr as f32, &dense).len();
+            let src_clear = crate::audio::onset::detect_onsets(&l, sr as f32, &clear).len();
+            let src_bright = brightness(&l);
+            println!("{name}\n   källan: {src_dense} täta, {src_clear} tydliga anslag, diskant {src_bright:.4}");
+            for (engine, out) in [
+                ("WSOLA (vår)", stretch_stereo(&l, &r, file_ratio, sr as f32)),
+                ("Signalsmith", stretch_signalsmith(&l, &r, file_ratio, sr as f32)),
+            ] {
+                let out_dense = crate::audio::onset::detect_onsets(&out.0, sr as f32, &dense).len();
+                let out_clear = crate::audio::onset::detect_onsets(&out.0, sr as f32, &clear).len();
+                let pct = if src_clear == 0 {
+                    0.0
+                } else {
+                    100.0 * (out_clear as f32 - src_clear as f32) / src_clear as f32
+                };
+                let bright = brightness(&out.0);
+                let bright_pct = 100.0 * (bright - src_bright) / src_bright;
+                println!(
+                    "   {engine:12} täta {out_dense:>6} ({:+}), tydliga {out_clear:>5} ({pct:+.2} %), \
+                     diskant {bright:.4} ({bright_pct:+.1} %), längd {} sampel (väntat {})",
+                    out_dense as i64 - src_dense as i64,
+                    out.0.len(),
+                    expected(l.len())
+                );
+            }
+        }
+    }
+
+    /// **Svepet som valde block och intervall** (körs manuellt):
+    /// `cargo test --release --bin sonix the_block_and_interval_sweep -- --ignored --nocapture`
+    ///
+    /// Två domare, för de drar åt olika håll. **Klickföljden** (syntetisk, härledd ur
+    /// `the_engine_does_not_invent_transients`) straffar smetning: en lång FFT-ruta med
+    /// glest intervall hinner inte följa en transient och delar den i flera. **Trummorna**
+    /// (Alex' egen stämma) straffar det motsatta: för korta rutor tappar tonhöjd och kropp.
+    /// Ett par som vinner på båda är det som gäller — vinner ingen, står förvalet kvar och
+    /// siffrorna visar varför.
+    #[test]
+    #[ignore]
+    fn the_block_and_interval_sweep() {
+        let sr = 44_100.0f32;
+        let dense = crate::audio::onset::OnsetParams {
+            min_gap_ms: 5.0,
+            ..Default::default()
+        };
+        let clear = crate::audio::onset::OnsetParams {
+            sensitivity: 2.5,
+            min_gap_ms: 20.0,
+            window_ms: 80.0,
+        };
+
+        // Klickföljden: 24 klick, 4 per sekund i 6 s.
+        let clicks = 24usize;
+        let mut click_buf = vec![0.0f32; (sr * 6.0) as usize];
+        for i in 0..clicks {
+            let at = (i as f32 * sr / 4.0) as usize;
+            if at + 1 < click_buf.len() {
+                click_buf[at] = 0.9;
+                click_buf[at + 1] = -0.7;
+            }
+        }
+        let click_src = crate::audio::onset::detect_onsets(&click_buf, sr, &dense).len();
+
+        let stem = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+            .join("imported_stems/Broken/Broken (Drums).wav");
+        let drums = crate::audio::load_wav_pcm(&stem.to_string_lossy()).ok();
+        let (src_dense, src_clear) = match &drums {
+            Some((l, _, s)) => (
+                crate::audio::onset::detect_onsets(l, *s as f32, &dense).len(),
+                crate::audio::onset::detect_onsets(l, *s as f32, &clear).len(),
+            ),
+            None => (0, 0),
+        };
+        println!("klickföljden: {click_src} anslag i källan — 0 överskott är kravet");
+        if drums.is_some() {
+            println!("trummorna:   {src_dense} täta / {src_clear} tydliga i källan");
+        }
+
+        for (block_ms, interval_ms) in [
+            (120.0, 30.0), // bibliotekets förval — musik, inte transienter
+            (120.0, 10.0),
+            (80.0, 10.0),
+            (40.0, 10.0),
+            (20.0, 5.0),
+        ] {
+            let (cl, _cr) = stretch_signalsmith_with(&click_buf, &click_buf, 120.0 / 110.0, sr, block_ms, interval_ms);
+            let click_out = crate::audio::onset::detect_onsets(&cl, sr, &dense).len();
+            let mut line = format!(
+                "   block {block_ms:>5.0} / intervall {interval_ms:>4.0} ms: klick {click_out:>3} ({:+})",
+                click_out as i64 - click_src as i64
+            );
+            if let Some((l, r, s)) = &drums {
+                let (dl, _dr) = stretch_signalsmith_with(l, r, 120.0 / 110.0, *s as f32, block_ms, interval_ms);
+                let d_dense = crate::audio::onset::detect_onsets(&dl, *s as f32, &dense).len();
+                let d_clear = crate::audio::onset::detect_onsets(&dl, *s as f32, &clear).len();
+                let pct = if src_clear == 0 {
+                    0.0
+                } else {
+                    100.0 * (d_clear as f32 - src_clear as f32) / src_clear as f32
+                };
+                line.push_str(&format!(
+                    " | trummor täta {d_dense:>6} ({:+}), tydliga {d_clear:>5} ({pct:+.2} %) | längd {}",
+                    d_dense as i64 - src_dense as i64,
+                    dl.len()
+                ));
+            }
+            println!("{line}");
+        }
+    }
+
+    /// **Lyssningsprovet** (körs manuellt): samma 20 sekunder genom **båda** motorerna, så att
+    /// örat får döma där siffrorna går isär. Mätt 2026-09-13 (Broken, 120 → 110 BPM):
+    ///
+    /// | | diskant | falska anslag (sång) |
+    /// | :-- | --: | --: |
+    /// | Vår WSOLA | −9,6 % | +9,8 % |
+    /// | Signalsmith | **−2,3 %** | +16,0 % |
+    ///
+    /// Ingen av dem vinner båda. Provet skriver två wav-filer och skriver ut sökvägarna —
+    /// sedan är det öronen som avgör, inte fler tabeller.
+    #[test]
+    #[ignore]
+    fn the_two_engines_for_the_ear() {
+        let home = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default());
+        let path = home.join("imported_stems/Broken/Broken (Vocals).wav");
+        if !path.exists() {
+            println!("hoppar: {} finns inte", path.display());
+            return;
+        }
+        let Ok((l, r, sr)) = crate::audio::load_wav_pcm(&path.to_string_lossy()) else {
+            println!("hoppar: kunde inte läsa {}", path.display());
+            return;
+        };
+        let ratio = 120.0f32 / 110.0;
+        let out_frames = ((20.0 * sr as f32) as usize).max(1);
+        let take = ((out_frames as f32) / ratio) as usize;
+        let take = take.min(l.len());
+        let (l, r) = (l[..take].to_vec(), r[..take].to_vec());
+
+        let dir = std::env::temp_dir().join("sonix_engine_ear");
+        let _ = std::fs::create_dir_all(&dir);
+        for (name, out) in [
+            ("vara-20s", stretch_stereo(&l, &r, ratio, sr as f32)),
+            ("signalsmith-20s", stretch_signalsmith(&l, &r, ratio, sr as f32)),
+        ] {
+            let file = dir.join(format!("{name}.wav"));
+            match crate::audio::exporter::write_stem_wav(
+                &file.to_string_lossy(),
+                &out.0,
+                &out.1,
+                sr,
+            ) {
+                Ok(()) => println!("{}", file.display()),
+                Err(e) => println!("kunde inte skriva {}: {e}", file.display()),
+            }
+        }
     }
 }

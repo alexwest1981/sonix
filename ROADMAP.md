@@ -2090,3 +2090,79 @@ Menyernas hover-texter säger nu vad som gäller. **433 default / 479 med plugin
 **Kvar:** gruppen definieras av starttakt, inte av "samma import". Två oberoende loopar staplade på
 samma takt flyttar därför tillsammans. Om det visar sig fel är nästa steg att knyta gruppen till
 källmappen — men det är en observationsfråga, och Alex pekar ut den bättre än jag gissar.
+
+---
+
+## 8.10e Motorvalet: Signalsmith prövades och föll — på transienterna (2026-09-13, kväll)
+
+Roadmapen hade pekat ut nästa steg själv: *"Steg 2 om det inte räcker: `signalsmith-stretch`
+(MIT) som **renderingsmotor** — aldrig i uppspelningen. Samma prov avgör; blir det inte bättre
+behåller vi vår egen, och siffran ovan står kvar som bevis."* Det är nu gjort, och svaret är
+**nej — men inte på alla punkter**.
+
+**Först: den gamla tabellen var inaktuell.** Den var mätt 2026-09-12, alltså **före** 8.10c.
+Om mätt samma dag, samma prov, samma stämmor (120 → 110 BPM, Broken):
+
+| Stämma | Källa | Rendering | Överskott |
+| :--- | ---: | ---: | ---: |
+| Vocals | 3 205 | 3 518 | +9,8 % |
+| Backing Vocals | 5 932 | 6 498 | +9,5 % |
+| Drums | 4 273 | 4 853 | +13,6 % |
+| Bas | 1 793 | 1 991 | **+11,0 %** (tabellen sa +45,7 %) |
+
+Basens siffra föll alltså från +45,7 % till +11,0 % när sökfönstret vidgades i 8.10c. **Skriv
+aldrig en siffra du inte mätt** — den här gången var det roadmapens egen rad som var gammal.
+
+**Klickvakten fällde bibliotekets förval direkt.** `the_engine_does_not_invent_transients`
+(24 klick i källan) gav **52 anslag** med signalsmiths förval 120/30 ms — en lång FFT-ruta med
+g lest intervall hinner inte följa en transient. Det är exakt den vakt roadmapen lämnade kvar,
+och den gjorde sitt jobb. Svepet (`the_block_and_interval_sweep`) hittade rätt par:
+
+| block / intervall | klick (källan 24) | trummor täta | trummor tydliga |
+| :--- | ---: | ---: | ---: |
+| 120 / 30 (förvalet) | 44 (+20) | 12 063 | +14,3 % |
+| 120 / 10 | 91 (+67) | 12 003 | +15,1 % |
+| 80 / 10 | 41 (+17) | 12 064 | +15,2 % |
+| **40 / 10** | **24 (0)** | 12 027 | +14,8 % |
+| 20 / 5 | **24 (0)** | 11 865 | +14,9 % |
+
+40/10 ms valdes: noll överskott på klickföljden, och längre ruta än 20/5 för tonhöjd och kropp.
+**40 ms är bibliotekets eget "speech"-läge** — det transientvänliga — och det säger något om
+förvalet: det är gjort för musik i största allmänhet, inte för trummor.
+
+**Sedan domen, med `the_two_engines_on_the_same_stems` — samma filer, samma prov, båda
+motorerna i samma körning:**
+
+| Stämma | Mått | Vår WSOLA | Signalsmith |
+| :--- | :--- | ---: | ---: |
+| Vocals | tydliga | **+9,8 %** | +16,0 % |
+| Vocals | täta | **+297** | +844 |
+| Vocals | diskant | −9,6 % | **−2,3 %** |
+| Backing Vocals | tydliga | **+9,5 %** | +10,6 % |
+| Backing Vocals | täta | **+11** | +1 181 |
+| Drums | tydliga | **+13,6 %** | +14,8 % |
+| Drums | täta | **+439** | +1 440 |
+| Drums | diskant | −15,1 % | **−4,0 %** |
+| Bas | tydliga | **+11,0 %** | +16,1 % |
+| Bas | diskant | **+1,6 %** | −1,6 % |
+
+**Två domare, två svar, och det är en riktig avvägning:** signalsmith håller diskanten (tappar
+2–4 % mot vår 8–15 %) men smetar transienterna (fler falska anslag på varje stämma). Det är
+samma två saker Alex har klagat på — skorret *och* en dov klang — och ingen motor vinner båda.
+
+**Beslutet: vår WSOLA står kvar i produktionsvägen.** Skälet är att domen går på *hans* vägnar:
+hans klagomål var artefaktljudet, och där är vår motor bättre på alla fyra stämmorna. Diskanten
+är den kvarvarande svagheten, och den är nu **mätt** i stället för känd som "något dov".
+
+**Motorn är test-kod, inte en inställning.** `signalsmith-stretch` ligger som
+**dev-beroende**: den kan inte råka hamna i produktionsvägen, och den drar in ett C++-bygge med
+`bindgen` (kräver libclang) som därmed bara behövs av `cargo test` — inte av `cargo build` eller
+Windows-jobbets `cargo check`. Cachenyckeln står kvar på **2**: motorn är oförändrad, och hans
+nio cachar ska fortsätta träffa. (Rad 3 står kvar som reserv om motorn någon gång byts — då
+**måste** den höjas, annars spelas gamla cachar upp och bytet hörs inte. Det hände i 8.10c.)
+
+**Kvar — och det är örat, inte fler tabeller:** `the_two_engines_for_the_ear` skriver samma
+20 sekunder genom båda motorerna (`~/.local/state/sonix/ab/vara-20s.flac` och
+`signalsmith-20s.flac`). Siffrorna säger "behåll vår"; om hans öra säger "den andra klingar
+bättre" är bytet en rad — `stretch_stereo` pekar om till `stretch_signalsmith` och
+cachenyckeln höjs.

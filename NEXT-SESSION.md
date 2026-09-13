@@ -329,9 +329,15 @@ men inte den fina — det står i testets doc-kommentar så ingen tror annat.
 grepp: vid ett anslag får sökningen **inte** flytta kornet (då smetas attacken), och
 överlappningen ska inte korsfadas över anslaget (då dubblas det). Slagpunkterna finns
 färdiga: `crate::audio::onset::detect_onsets`.
-**Steg 2 om det inte räcker:** `signalsmith-stretch` (MIT) som **renderingsmotor** — aldrig
-i uppspelningen. Samma prov avgör; blir det inte bättre behåller vi vår egen, och siffran
-ovan står kvar som bevis.
+**Steg 2 är GJORT och dömt (2026-09-13 kväll, roadmapens 8.10e):** `signalsmith-stretch` (MIT)
+prövades som renderingsmotor. **Vår egen WSOLA står kvar** — signalsmith smetar transienterna
+på varje stämma (sång +16,0 % mot vår +9,8 %, trummor täta +1 440 mot +439), även om den håller
+diskanten bättre (−2 % mot vår −10 %). Två domare, två svar: det är en riktig avvägning, och
+domen gick på Alex' eget klagomål (skorret). Notera också att **roadmapens gamla tabell var
+inaktuell** — den var mätt före 8.10c, och basens +45,7 % är i dag +11,0 %.
+Kvar: hans öra på `the_two_engines_for_the_ear` (två flac-filer i `~/.local/state/sonix/ab/`).
+Motorn ligger som **dev-beroende** (C++/bindgen/libclang behövs bara av `cargo test`), och
+cachenyckeln står kvar på 2 eftersom produktionsvägen är oförändrad.
 
 ## 5. Fällor som kostat tid (läs dessa innan du patchar)
 

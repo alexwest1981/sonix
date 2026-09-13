@@ -28,6 +28,7 @@ serde_json = "1.0"
 image = { version = "0.25", default-features = false, features = ["png"] }
 flacenc = "0.5"
 ureq = "2"
+
 # Plattformens egen filväljare: Windows/macOS inbyggda dialoger och XDG-portalen
 # på Linux. Ersätter `zenity` (Fas 7.1) — standardfeatures använder portalen, inte
 # GTK3, så inga GTK-dev-huvuden behövs för att bygga.
@@ -49,3 +50,14 @@ alsa = "0.9"
 [target.'cfg(not(target_os = "linux"))'.dependencies]
 midir = "0.11"
 
+# **Dev-beroende med avsikt:** `signalsmith-stretch` (MIT) prövades som renderingsmotor för
+# tidsskalningen (Fas 8.10 steg 2) och **förlorade domen** mot vår egen WSOLA — den smetar
+# transienterna (fler falska anslag) även om den håller diskanten bättre. Siffrorna står i
+# roadmapens 8.10 och provet är `the_two_engines_on_the_same_stems`.
+#
+# Den ligger här och inte under `[dependencies]` av två skäl: den ska inte kunna hamna i
+# produktionsvägen av misstag, och den drar in ett **C++-bygge med bindgen**, som kräver
+# libclang. Som dev-beroende behövs det bara av `cargo test` — `cargo build` och Windows-
+# jobbets `cargo check` rör den aldrig.
+[dev-dependencies]
+signalsmith-stretch = "0.1.3"
