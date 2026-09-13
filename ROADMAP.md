@@ -1127,7 +1127,15 @@ i **en** tabell (`PROVENANCE_MARKERS`). Regeln, vägskälet och fällorna står 
   före regeln (Broken 09-11, A Box of You 09-12 08:41; städningen kom 09-12 14:01). Ingenting
   är förlorat, och de filerna bär fortfarande sina taggar.
 
-**Bevis:** 18 tester i `metadata.rs` — härkomst bort och musik kvar (titel, artist, låttext,
+**Bevis på riktiga filer** (kopior i `/tmp/sonix_tagprov`, hans original orörda —
+`target/release/sonix --clean-tags`):
+
+| Fil | Före | Efter |
+| :--- | :--- | :--- |
+| `Broken (Vocals).wav` | `LIST`/`INFO` = `ICMT` "made with suno; …; id=3a860808" + `ISFT` Lavf60.16.100 | `ICMT` borta (94 byte), **`ISFT` kvar**, `data`-chunken **identisk** (samma sha256, 48 768 000 byte) |
+| `Broken (Vocals).mp3` | ID3v2.4, 11 ramar, 25 471 B | 8 ramar: **`TIT2`** (stämnamnet), **`TPE1`** (alexwest), `TSSE`, `TXXX` (ffmpeg-atomerna) och **`USLT` 2 396 B (hela låttexten) + `APIC` 11 092 B (omslaget) kvar**; `WOAS`, `TXXX`+`COMM` ("made with suno; …") och `GEOB` (C2PA) borta — **14 119 byte, exakt summan av de fyra ramarna**, och mp3-ljudet byte-identiskt (samma sha256) |
+
+**Bevis i test:** 18 tester i `metadata.rs` — härkomst bort och musik kvar (titel, artist, låttext,
 omslag, kodare), UTF-16-text, C2PA mot ett omslag, `ID3v1` med och utan Sunos kommentar, osynk
 och okänd version lämnas **och säger det**, RIFF-paddens inverkan på allt efter, och att Sonix
 **egen** export behåller sin kodarrad (överstädning är samma fel som städning av fel sak).
