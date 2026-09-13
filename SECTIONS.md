@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**61 moduler · 63813 rader kod · 19 med status · 42 utan.**
+**61 moduler · 63965 rader kod · 19 med status · 42 utan.**
 
 ## Så läser du kartan
 
@@ -15,8 +15,8 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 21044 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 65 (+1 ign) |  |
-| `src/audio/synth.rs` | 2695 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 96 | 34 |  |
+| `src/ui/app.rs` | 21067 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 65 (+1 ign) |  |
+| `src/audio/synth.rs` | 2776 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 96 | 35 |  |
 | `src/i18n.rs` | 2512 | fryst — nycklar på engelska, texter på svenska | 1313 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 1758 | stabil — offline-rendering och export | 9 | 16 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
@@ -25,13 +25,13 @@
 | `src/audio/factory_samples.rs` | 1575 | stabil — fabriksbiblioteket och `merge_library` | 9 | 10 |  |
 | `src/audio/plugin_vst3.rs` | 1454 | stabil (4.6a) — VST3-värden, en utbuss | 4 | 9 | Minimal in-process **VST3** host (Fas 4.6a).  |
 | `src/audio/metadata.rs` | 1451 | stabil (8.5b) — bara härkomst tas; musik, text och omslag lämnas | 4 | 18 | Tar bort AI-/Sunohärkomst ur ljudfiler — och ingenting annat (8.5b).  |
-| `src/audio/stretch.rs` | 1269 | — | 17 | 20 (+4 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
+| `src/audio/stretch.rs` | 1295 | — | 17 | 21 (+5 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
 | `src/ui/plugins_view.rs` | 1059 | — | 1 | 0 |  |
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
 | `src/audio/master_fx.rs` | 1016 | — | 5 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
 | `src/audio/plugin_sandbox.rs` | 945 | — | 9 | 8 | Out-of-process plugin sandbox (Fas 4.5a + 4.5b).  |
 | `src/audio/plugin_vst2.rs` | 908 | — | 4 | 9 | Minimal in-process **VST2** host (Fas 4.6c).  |
-| `src/paths.rs` | 888 | fryst — enda modulen som får bygga sökvägar | 44 | 11 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
+| `src/paths.rs` | 888 | fryst — enda modulen som får bygga sökvägar | 45 | 11 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
 | `src/audio/stem_separator.rs` | 885 | stabil (8.5a) — separatorn skriver stämmorna till disk och minns var de ligger | 6 | 11 |  |
 | `src/audio/waveform.rs` | 851 | stabil — exakt hölje och flernivåcache (8.3) | 29 | 15 | Exakta vågformer: ett (min, max) per skärmpixel (Alex krav, Fas 8.3).  |
 | `src/ui/fx_rack_modal.rs` | 838 | — | 1 | 0 |  |
@@ -45,9 +45,9 @@
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
 | `src/ui/chord_generator_modal.rs` | 516 | — | 1 | 0 |  |
+| `src/audio/engine.rs` | 503 | — | 1 | 1 |  |
 | `src/audio/realtime_bench.rs` | 496 | stabil — realtidsmätningen | 0 | 6 | Realtidsmätning av render-vägen (Fas 7.2).  |
 | `src/audio/hardware_control.rs` | 493 | — | 3 | 5 |  |
-| `src/audio/engine.rs` | 481 | — | 1 | 1 |  |
 | `src/ui/dice_generator_modal.rs` | 470 | — | 2 | 0 |  |
 | `src/audio/neural_separator.rs` | 463 | — | 3 | 9 | Neural stem separation through an ONNX model (HTDemucs / Demucs family).  |
 | `src/audio/plugin_gui.rs` | 462 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
@@ -100,7 +100,7 @@
 - **Publika ingångar:** `DelayParams`, `StereoDelay`, `new`, `process`, `ReverbParams`, `SimpleReverb`, `new`, `process`
 
 ### `src/audio/engine.rs`
-- **Publika ingångar:** `AudioEngine`, `AudioSettings`, `config_path`, `load`, `save`, `new`, `new_with`, `reconfigure`, `send_command`, `get_peak_level`, `song_position_secs`, `get_stereo_peaks` … (+3)
+- **Publika ingångar:** `AudioEngine`, `AudioSettings`, `config_path`, `load`, `save`, `new`, `new_with`, `reconfigure`, `send_command`, `get_peak_level`, `song_position_secs`, `stretched_track_count` … (+4)
 
 ### `src/audio/envelope.rs`
 - **Publika ingångar:** `EnvelopeStage`, `AdsrParams`, `AdsrVoice`, `new`, `gate_on`, `gate_off`, `reset`, `is_active`, `next_sample`
