@@ -1244,12 +1244,15 @@ fn source_bpm_from_region(region: &AudioRegion, source_secs: f32, project_bpm: f
 
 /// Tempot en kloss är **byggd i**, räknat ur dess eget mått (Fas 8.10).
 ///
-/// `takter × 240 / filens sekunder` är det tempo klossen lades ut i, och för ett klipp
-/// som importerades helt (offset 0) är det filens tempo. **Mätt 2026-09-13 på Alex'
-/// "Rock and Hard Place"**, där Suno varken gav ett BPM i arkivnamnet eller i taggarna
-/// (`comment=made with suno; created=…`) och klippen därför stod på 0: alla nio stämmor
-/// ger `129,64 × 240 / 259,28 = 120,000` — samma tal, och hans egen export därifrån
-/// heter `Rock_and_Hard_Place_120bpm.mp3`.
+/// `takter × 240 / filens sekunder` är det tempo klossen **lades ut i** — och det är
+/// *inte* alltid filens eget tempo. **Mätt 2026-09-13 på Alex' "Rock and Hard Place"**,
+/// där Suno varken gav ett BPM i arkivnamnet eller i taggarna
+/// (`comment=made with suno; created=…`): alla nio klipp ger
+/// `129,64 × 240 / 259,28 = 120,000` — men **ljudet går i 140** (kammätning på
+/// trumstämman: 2,658 vid 140 mot 0,748 vid 120, alltså 3,6× starkare). Klippen lades
+/// alltså ut i 120 medan musiken går i 140, och då är måttet 120 — layouten, inte
+/// musiken. Det är skälet att talet **visas i stället för att sättas i smyg**: rätt svar
+/// beror på om klippet byggdes i musikens tempo, och det vet bara användaren.
 ///
 /// Talet är ett **mått, inte en gissning** — men det vilar på att klippet är hela filen.
 /// Har någon klippt i klippet är takterna färre och talet för lågt, och då blir
@@ -3572,7 +3575,7 @@ impl SonixApp {
                     let measured = self.geometry_tempo_for_unknown_clips();
                     let label = match measured {
                         Some(bpm) => crate::tstatus!(
-                            "🎚 Låt de {} klippen följa tempot (inspelningstempo {:.1} BPM ur filernas längd)",
+                            "🎚 Låt de {} klippen följa tempot (byggda i {:.1} BPM — takter × 240 / filernas längd)",
                             unknown,
                             bpm
                         ),
@@ -3594,7 +3597,7 @@ impl SonixApp {
                     if let Some(bpm) = measured {
                         ui.label(
                             egui::RichText::new(crate::tstatus!(
-                                "🧮 Räknat ur klippens takter och filernas längd: {:.1} BPM. Är ett klipp klippt i är talet för lågt — stämpla då i stället vid det tempo där ljudet låter rätt.",
+                                "🧮 Räknat ur klippens takter och filernas längd: {:.1} BPM — det tempo klippen LADES UT i. Är ett klipp klippt i är talet för lågt; hörs musiken i ett annat tempo än projektet står i, sätt projektets tempo till musikens först.",
                                 bpm
                             ))
                             .size(9.5)

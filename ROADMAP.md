@@ -1558,7 +1558,13 @@ sin kloss.
 | **Musik som skars av** | 259,28 − 155,57 = **103,71 s** |
 | Vid 120 BPM | 259,28 s — klippet täcker filen *exakt* |
 
-Talet 120,000 är också vad han själv kallar låten: `~/Music/Sonix/Exporterat/Rock_and_Hard_Place_120bpm.mp3`.
+Talet 120,000 var **layoutens** tempo — och det är en varning att bära vidare. När samma filnamn
+mättes om samma eftermiddag (nya projektet) visade kammätningen på trumstämman **140 BPM (2,658) mot
+120 BPM (0,748)**: musiken går i 140 medan de gamla klippen låg utlagda i 120. Måttet svarar alltså på
+*"vilket tempo lades klossen ut i"*, inte *"vilket tempo går musiken i"* — och därför **visas** det i
+⏱ Tempokarta i stället för att sättas i smyg. I `RAHP140.sonix` (sparad 12:37) sammanfaller de:
+klippen är 151,2467 takter = 259,28 s i 140 BPM, filen är 259,28 s, och ljudet mäter 140 ✓ — **det
+projektet står på fast mark.**
 
 **Roten satt i stämpeln, och den var en fälla.** "Låt klippen följa tempot" satte **projektets
 nuvarande tempo** som inspelningstempo. Det är rätt bara när projektet står i det tempo klippen
