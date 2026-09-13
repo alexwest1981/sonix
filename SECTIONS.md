@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**61 moduler · 63373 rader kod · 19 med status · 42 utan.**
+**61 moduler · 63597 rader kod · 19 med status · 42 utan.**
 
 ## Så läser du kartan
 
@@ -15,7 +15,7 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 20820 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 63 (+1 ign) |  |
+| `src/ui/app.rs` | 21044 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 65 (+1 ign) |  |
 | `src/audio/synth.rs` | 2695 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 96 | 34 |  |
 | `src/i18n.rs` | 2512 | fryst — nycklar på engelska, texter på svenska | 1313 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
@@ -251,7 +251,7 @@
 ### `src/ui/app.rs`
 - **Status:** byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen
 - **Rör inte:** två sessioner har krockat i den här filen; kolla `git status` och mtime före varje skrivning
-- **Publika ingångar:** `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions`, `TrackKind`, `SongMarker` … (+161)
+- **Publika ingångar:** `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions`, `TrackKind`, `SongMarker` … (+163)
 
 ### `src/ui/chord_generator_modal.rs`
 - **Publika ingångar:** `ScaleType`, `all`, `intervals`, `GeneratedChord`, `ChordGeneratorState`, `get_chord_pads`, `load_progression_preset`, `play_chord_sound`, `audition_progression`, `render_chord_generator_modal`

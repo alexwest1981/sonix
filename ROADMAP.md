@@ -120,8 +120,8 @@ tempopunkt-UI väntar alla på att Alex ser dem.
 
 Hela den avbockade listan på ett ställe. Bevis, mätningar och skälen till att något ser ut
 som det gör står under respektive fas längre ned — det här är översikten, inte ersättningen.
-**413 tester default, 459 med plugin-host, 0 varningar i båda release-byggena** (mätt
-2026-09-13, efter 8.13b — spelhuvudets klocka — och metadata-rättelsen).
+**415 tester default, 461 med plugin-host, 0 varningar i båda release-byggena** (mätt
+2026-09-13, efter 8.10b — tempomåttet — 8.13b och metadata-rättelsen).
 
 **Baslinjen (Fas 0) — det som redan var äkta:** kärnmotor (oscillatorer, trumsyntes,
 delay/reverb, filter/envelope, master-FX, patcher) · sequencer (tidslinje/multitrack,
@@ -1527,6 +1527,81 @@ hjälptexten vid tempofältet, inte upptäckas av användaren.
 ---
 
 
+
+## 8.10b Tempot Suno inte gav: måttet ur filen (Alex' rapporter 2026-09-13)
+
+**Alex, ordagrant, två rapporter samma eftermiddag:**
+
+> *"Sänkte till 100bpm, påverkar tyvärr inte tempot"*
+
+> *"Lät låten rulla till slutet, och när stämmorna tog slut på timelinen, så avbröts låten
+> abrupt, trots att den inte var 100% slut hur den egentligen skulle slutat"*
+
+**Båda är samma fel, och det gick att räkna fram ur hans egna filer.** Klippen i
+"Rock and Hard Place" stod med `source_bpm = 0` (okänt inspelningstempo) — Suno gav inget BPM:
+arkivnamnet är `Rock and Hard Place Stems.zip` (utan tal, till skillnad från t.ex.
+`A Box of You … (125.00000000000001BPM).zip`) och taggarna bär
+`comment=made with suno; created=…; id=…` — inget tempo där heller. Ett klipp utan känt tempo
+rörs inte av tempot (8.10), och **det är båda symptomen**: det följer inte, och det fyller inte
+sin kloss.
+
+**Mätt (hans filer, `ffprobe` + `wave`):**
+
+| Mätning | Värde |
+| :--- | ---: |
+| Filerna (nio stämmor) | 259,28 s, 48 kHz |
+| Sista ljudet i filen | **259,28 s** — musiken går till sista samplet, ingen svans |
+| Klippens längd | 129,64 takter, `sample_offset_sec = 0` för alla nio |
+| → klippen byggdes i | `129,64 × 240 / 259,28` = **120,000** (alla nio ger samma tal) |
+| Projektets tempo när rapporten kom | **200,0** (autosaven 11:45) |
+| Klippets räckvidd vid 200 BPM | 129,64 × 240/200 = **155,57 s** |
+| **Musik som skars av** | 259,28 − 155,57 = **103,71 s** |
+| Vid 120 BPM | 259,28 s — klippet täcker filen *exakt* |
+
+Talet 120,000 är också vad han själv kallar låten: `~/Music/Sonix/Exporterat/Rock_and_Hard_Place_120bpm.mp3`.
+
+**Roten satt i stämpeln, och den var en fälla.** "Låt klippen följa tempot" satte **projektets
+nuvarande tempo** som inspelningstempo. Det är rätt bara när projektet står i det tempo klippen
+byggdes i. Här stod projektet i 200 medan klippen byggdes i 120: en stämpel hade sagt "spelad i
+200", och en sänkning till 100 hade då sträckt ljudet till **halva** hastigheten — värre än att
+ingenting hände. Därför tog Alex aldrig det steget, och kontrollen förblev död.
+
+**Byggt:**
+
+1. **`geometry_source_bpm(length_bars, source_secs)`** — måttets tempo, ren funktion. Utanför
+   40–280 BPM blir svaret `None`: hellre inget svar än ett orimligt.
+2. **Stämpeln använder måttet** när det går att räkna, annars projektets tempo som förut
+   (`stamped_tempo`). Ett klipp som börjar en bit in i filen beskriver ett **utsnitt** — då är
+   projektets tempo det ärliga svaret.
+3. **Talet syns innan det används.** ⏱ Tempokarta visar knappen som
+   *"Låt de 9 klippen följa tempot (inspelningstempo 120,0 BPM ur filernas längd)"* och raden
+   under skriver ut räkningen — inklusive varningen att ett klippt klipp ger ett för lågt tal.
+4. **Statusraden bär talet**, både vid tempobyte och vid inläsning: *"…de saknar känt
+   inspelningstempo. Filerna ger 120,0 BPM — öppna ⏱ Tempokarta för att sätta det."* En
+   hänvisning är ett steg för mycket när svaret redan är uträknat.
+5. **Roten stängd i importen:** saknar Suno ett BPM stämplas klippet med **projektets** tempo,
+   eftersom takterna räknades ur filens längd i just det tempot (`bars_for_secs_at`) — filen
+   täcker då klippet exakt. Att lämna 0 där är vad som gjorde att nästa projekt hamnar i samma
+   läge.
+6. **Stämpeln slår igenom direkt** (motorn får nya regioner, inte först vid nästa tempoändring)
+   och säger vad den betyder när måttet skiljer sig från projektets tempo: *"…de sträcks till
+   projektets tempo. Sätt tempot till 120,0 för att höra dem som de spelades in."*
+
+**Bevis:** `the_clip_measure_gives_the_tempo_suno_did_not` (hans exakta siffror: 120,000; 155,57 s
+vid 200; 103,71 s avskuret; filen fyller klossen efter sträckning), `a_clip_that_starts_inside_the_file_keeps_the_project_tempo`,
+och de tre not-testerna som nu prövar att talet står i raden. 415 tester default / 461 med
+plugin-host, 0 varningar.
+
+**Kvar:** (1) **Alex' öra** — att stämpla och sedan sätta 120/100; (2) ett klippt klipp ger ett för
+lågt mått, och det går inte att skilja från ett helt klipp med en annan längd — därför visas talet
+i stället för att sättas i smyg (samma avvägning som 8.10 gjorde för `estimate_bpm`); (3) Sunos
+*egen* BPM-siffra är fortfarande facit när den finns — nu läses den ur arkivnamnet, och den dagen
+Suno lägger den i taggarna ska den läsas därifrån i stället; (4) **slingpunkten**: transporten
+hoppar till `loop_start_bar` när den når `loop_end_bar` (= projektets sista takt), och sedan 8.13b
+söker ljudet med. Vid låtens slut hörs alltså en loop, inte tystnad — det är appens beteende och
+inte rört här, men det bör vara ett *val* (slinga på/av) i stället för något som alltid sker.
+
+---
 
 ## 8.11 Tonarten som tonart (Alex' svar 2026-09-12)
 

@@ -21,9 +21,9 @@ mätt, och var nästa andetag ska tas.*
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
   pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 413 default / 459 med `--features plugin-host`, **0 varningar** i båda
-  (mätt 2026-09-13, efter spelhuvud-rättelsen 8.13b). CI fäller numera **alla** ben på
-  varningar, inte bara Windows.
+- **Tester:** 415 default / 461 med `--features plugin-host`, **0 varningar** i båda
+  (mätt 2026-09-13, efter spelhuvud-rättelsen 8.13b och tempomåttet 8.10b). CI fäller
+  numera **alla** ben på varningar, inte bara Windows.
 - **Senaste commit:** `398910d` (metadata: bara härkomsten tas), `7f87924` (mätarna i
   toppraden, 8.13) och därefter spelhuvudets klocka (8.13b) — se `git log --oneline -3`
   för det exakta läget.
@@ -113,6 +113,16 @@ mätt, och var nästa andetag ska tas.*
    (`made with suno` / `suno.com` / `suno studio` / `c2pa`), ram för ram och underchunk för
    underchunk. **Rör du en väg som läser ljud eller filhuvuden: läs roadmapens 8.5-rättelse
    och `src/audio/metadata.rs` först.**
+   0d. ~~**"Tempot påverkar inte" + "låten skars av i slutet"**~~ — **RÄTTAT 2026-09-13
+   (8.10b).** Samma rot i båda: klippen i Rock and Hard Place hade `source_bpm = 0` för
+   att Suno inte gav något BPM (varken i arkivnamnet eller i taggarna). **Mätt:** filerna
+   259,28 s med ljud till sista samplet, klippen 129,64 takter → byggda i **120,000**;
+   projektet stod i **200**, så klippet räckte 155,57 s och **103,71 s musik skars av**
+   (vid 120 räcker klippet filen exakt). Stämpeln ("låt klippen följa") satte förut
+   *projektets* tempo — i 200 hade en sänkning till 100 sträckt ljudet till halv
+   hastighet. Nu: `geometry_source_bpm` (takter × 240 / filens sekunder) används av
+   stämpeln, **talet visas i ⏱ Tempokarta och i statusraden**, och importen stämplar
+   projektets tempo när Suno inget ger. **Kvar: Alex' öra** — stämpla, sätt tempot, lyssna.
    0c. ~~**Spelhuvudet låg efter ljudet**~~ — **RÄTTAT 2026-09-13 (8.13b).** Alex: *"markören
    står där ljudet börjar, men enligt vågformen är det ännu cirka 0,7 s kvar."* Mätt i hans
    egen fil: `Rock and Hard Place (Vocals).wav` är exakt noll till 5,0 s, första frasen

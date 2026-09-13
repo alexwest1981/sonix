@@ -1242,6 +1242,49 @@ fn source_bpm_from_region(region: &AudioRegion, source_secs: f32, project_bpm: f
     }
 }
 
+/// Tempot en kloss är **byggd i**, räknat ur dess eget mått (Fas 8.10).
+///
+/// `takter × 240 / filens sekunder` är det tempo klossen lades ut i, och för ett klipp
+/// som importerades helt (offset 0) är det filens tempo. **Mätt 2026-09-13 på Alex'
+/// "Rock and Hard Place"**, där Suno varken gav ett BPM i arkivnamnet eller i taggarna
+/// (`comment=made with suno; created=…`) och klippen därför stod på 0: alla nio stämmor
+/// ger `129,64 × 240 / 259,28 = 120,000` — samma tal, och hans egen export därifrån
+/// heter `Rock_and_Hard_Place_120bpm.mp3`.
+///
+/// Talet är ett **mått, inte en gissning** — men det vilar på att klippet är hela filen.
+/// Har någon klippt i klippet är takterna färre och talet för lågt, och då blir
+/// sträckningen fel när tempot rörs. Därför sätts det aldrig i smyg: det visas i
+/// ⏱ Tempokarta med sina egna siffror, och användaren trycker.
+///
+/// Utanför ett rimligt tempo (samma spann som tempokontrollen) är svaret `None` —
+/// hellre inget svar än ett orimligt.
+pub fn geometry_source_bpm(length_bars: f32, source_secs: f32) -> Option<f32> {
+    if length_bars <= 0.0 || source_secs <= 0.0 {
+        return None;
+    }
+    let bpm = length_bars * 240.0 / source_secs;
+    if (40.0..=280.0).contains(&bpm) {
+        Some(bpm)
+    } else {
+        None
+    }
+}
+
+/// Vad stämpeln sätter på ett klipp: måttets tempo när det går att räkna, annars
+/// projektets (Fas 8.10).
+///
+/// Ett klipp som börjar en bit in i filen beskriver ett **utsnitt**, inte filen: då är
+/// takterna inte filens tempo, och projektets tempo är det ärliga svaret (faktorn 1,0 —
+/// ingenting hörs förrän man rör tempot).
+fn stamped_tempo(length_bars: f32, offset_sec: f32, file_secs: Option<f32>, project_bpm: f32) -> f32 {
+    if offset_sec > 0.001 {
+        return project_bpm;
+    }
+    file_secs
+        .and_then(|secs| geometry_source_bpm(length_bars, secs))
+        .unwrap_or(project_bpm)
+}
+
 /// Vad statusraden ska säga när tempot har ändrats (Fas 8.10).
 ///
 /// **Tyst bortfall är det som gör en sådan här sak osynlig.** Ett klipp utan känt
@@ -1250,9 +1293,26 @@ fn source_bpm_from_region(region: &AudioRegion, source_secs: f32, project_bpm: f
 /// ingen återkoppling alls; det här är den raden han skulle fått i stället.
 ///
 /// Ren funktion: regeln går att pröva utan fönster, och den räknar i stället för att gissa.
-pub fn tempo_change_note(following: usize, stuck: usize) -> Option<String> {
+pub fn tempo_change_note(following: usize, stuck: usize, measured: Option<f32>) -> Option<String> {
     if stuck == 0 {
         return None; // alla klipp följer; inget att säga
+    }
+    // Går tempot att räkna ur klippen ska talet stå här, inte bara en hänvisning:
+    // "öppna Tempokarta" är ett steg för mycket när svaret redan är uträknat.
+    if let Some(bpm) = measured {
+        if following == 0 {
+            return Some(crate::tstatus!(
+                "ℹ Tempot ändrat, men {} klipp står still: de saknar känt inspelningstempo. Filerna ger {:.1} BPM — öppna ⏱ Tempokarta för att sätta det.",
+                stuck,
+                bpm
+            ));
+        }
+        return Some(crate::tstatus!(
+            "🎚 Tempot ändrat: {} klipp följer, {} står still (okänt inspelningstempo — filerna ger {:.1} BPM, se ⏱ Tempokarta).",
+            following,
+            stuck,
+            bpm
+        ));
     }
     if following == 0 {
         // Det här är fallet som ser ut som en död kontroll.
@@ -1271,18 +1331,34 @@ pub fn tempo_change_note(following: usize, stuck: usize) -> Option<String> {
 /// Sätter inspelningstempo på klipp som saknar det (Fas 8.10).
 ///
 /// Användarens egen handling: "klippen låter som de ska nu — låt dem följa tempot
-/// härifrån". Rent numeriskt är det samma sak som att tempot inte ändras för dem
-/// just nu (faktorn blir 1,0), och det är poängen: ingenting hörs förrän man rör
-/// tempot, och då följer de.
-fn stamp_source_tempo<'a>(regions: impl Iterator<Item = &'a mut AudioRegion>, bpm: f32) -> usize {
+/// härifrån". Tempot tas ur klippets **eget mått** när det går att räkna (se
+/// [`geometry_source_bpm`]); annars projektets, som förut.
+///
+/// **Rättat 2026-09-13:** förut sattes alltid projektets tempo. Det är rätt bara när
+/// projektet står i det tempo klippen byggdes i — och Alex' projekt stod i **200** medan
+/// klippen var byggda i **120**. En stämpel med 200 hade sagt "spelad i 200", och en
+/// sänkning till 100 hade då sträckt ljudet till **halva** hastigheten. Måttet ger
+/// 120,000 för alla nio stämmorna.
+///
+/// Returen är `(antal stämplade, tempot som sattes)` — antalet så att anroparen kan
+/// säga hur många, och tempot så att den kan säga **vilket** (och varna när det inte är
+/// projektets: då sträcks klippen direkt).
+fn stamp_source_tempo<'a>(
+    regions: impl Iterator<Item = &'a mut AudioRegion>,
+    file_secs: Option<f32>,
+    project_bpm: f32,
+) -> (usize, f32) {
     let mut stamped = 0;
+    let mut used = project_bpm;
     for r in regions {
         if r.source_bpm <= 0.0 {
+            let bpm = stamped_tempo(r.length_bars, r.sample_offset_sec, file_secs, project_bpm);
             r.source_bpm = bpm;
+            used = bpm;
             stamped += 1;
         }
     }
-    stamped
+    (stamped, used)
 }
 
 /// Hur många sampel av spårets ljud en region täcker (Fas 8.10).
@@ -3490,18 +3566,40 @@ impl SonixApp {
                 .size(11.0)
                 .color(if unknown == 0 { Theme::FL_GREEN } else { Theme::TEXT_BRIGHT }));
                 if unknown > 0 {
-                    if ui
-                        .button(crate::tstatus!(
+                    // Tempot räknas ur klippens eget mått när det går (Fas 8.10): takter
+                    // och filens längd. Det syns i knappen, för det är den siffra som
+                    // avgör hur ljudet sträcks när tempot sedan ändras.
+                    let measured = self.geometry_tempo_for_unknown_clips();
+                    let label = match measured {
+                        Some(bpm) => crate::tstatus!(
+                            "🎚 Låt de {} klippen följa tempot (inspelningstempo {:.1} BPM ur filernas längd)",
+                            unknown,
+                            bpm
+                        ),
+                        None => crate::tstatus!(
                             "🎚 Låt de {} klippen följa tempot (inspelningstempo {:.1} BPM)",
                             unknown,
                             self.bpm
-                        ))
+                        ),
+                    };
+                    if ui
+                        .button(label)
                         .on_hover_text(crate::i18n::t(
-                            "Klippen låter som de ska nu. Stämpeln säger att de spelades in i projektets nuvarande tempo, så att de följer med när du ändrar det. Ljudet ändras inte förrän du rör tempot.",
+                            "Stämpeln säger vilket tempo klippen byggdes i — räknat ur klippens takter och filernas längd när det går, annars projektets nuvarande tempo. Är det projektets tempo hörs ingenting förrän du rör tempot. Är det ett annat (klippen byggdes i 120 men projektet står i 200) sträcks de till projektets tempo direkt, och då säger statusraden det.",
                         ))
                         .clicked()
                     {
                         stamp = true;
+                    }
+                    if let Some(bpm) = measured {
+                        ui.label(
+                            egui::RichText::new(crate::tstatus!(
+                                "🧮 Räknat ur klippens takter och filernas längd: {:.1} BPM. Är ett klipp klippt i är talet för lågt — stämpla då i stället vid det tempo där ljudet låter rätt.",
+                                bpm
+                            ))
+                            .size(9.5)
+                            .color(Theme::TEXT_MUTED),
+                        );
                     }
                     ui.label(
                         egui::RichText::new(crate::i18n::t(
@@ -3610,12 +3708,29 @@ impl SonixApp {
             });
         self.show_tempo_modal = open;
         if stamp {
-            let n = self.stamp_unknown_source_tempo();
-            self.status_message = crate::tstatus!(
-                "🎚 {} klipp följer nu tempot ({:.1} BPM som inspelningstempo). Ändra tempot och de följer med.",
-                n,
-                self.bpm
-            );
+            let (n, bpm) = self.stamp_unknown_source_tempo();
+            // Stämpeln kan ändra vad som SPELAS: klippen byggdes i ett annat tempo än
+            // projektets just nu. Motorn får nya regioner direkt i stället för först vid
+            // nästa tempoändring — annars står klippets siffra och ljudet inte i samma sak.
+            for t_idx in 0..self.playlist_tracks.len() {
+                self.sync_track_regions(t_idx);
+            }
+            let away = bpm > 0.0 && (bpm - self.bpm).abs() / bpm > 0.01;
+            self.status_message = if away {
+                crate::tstatus!(
+                    "🎚 {} klipp byggdes i {:.1} BPM och projektet står i {:.1} — de sträcks till projektets tempo. Sätt tempot till {:.1} för att höra dem som de spelades in.",
+                    n,
+                    bpm,
+                    self.bpm,
+                    bpm
+                )
+            } else {
+                crate::tstatus!(
+                    "🎚 {} klipp följer nu tempot ({:.1} BPM som inspelningstempo). Ändra tempot och de följer med.",
+                    n,
+                    bpm
+                )
+            };
         }
         if let Some((bar, bpm)) = set {
             self.set_tempo_point(bar, bpm);
@@ -3647,6 +3762,7 @@ impl SonixApp {
         if let Some(note) = tempo_change_note(
             self.clips_with_source_tempo(),
             self.clips_without_source_tempo(),
+            self.geometry_tempo_for_unknown_clips(),
         ) {
             self.status_message = note;
         }
@@ -3681,16 +3797,63 @@ impl SonixApp {
 
     /// "Klippen låter som de ska nu — låt dem följa tempot härifrån" (Fas 8.10).
     ///
-    /// Sätter projektets nuvarande tempo som inspelningstempo på varje klipp som
-    /// saknar ett. Vid det här tempot betyder det faktorn 1,0: **ingenting hörs
-    /// förrän man rör tempot**, och då följer klippen med. Antalet returneras så
-    /// att anroparen kan säga vad som hände i stället för att tiga.
-    pub fn stamp_unknown_source_tempo(&mut self) -> usize {
-        let bpm = self.bpm;
-        self.playlist_tracks
-            .iter_mut()
-            .map(|t| stamp_source_tempo(t.regions.iter_mut(), bpm))
-            .sum()
+    /// Tempot tas ur klippets eget mått när det går att räkna (filens längd och
+    /// klippets takter, se [`geometry_source_bpm`]) — det är det tempo klossen byggdes
+    /// i, och därmed det tal en tempoändring ska mätas mot. Saknas måttet sätts
+    /// projektets tempo, som förut.
+    ///
+    /// Returen är `(antal klipp, tempot som sattes)` så att anroparen kan säga **vilket**
+    /// tempo som gavs i stället för att bara säga hur många.
+    pub fn stamp_unknown_source_tempo(&mut self) -> (usize, f32) {
+        let fallback = self.bpm;
+        let mut stamped = 0usize;
+        let mut used = fallback;
+        for t in self.playlist_tracks.iter_mut() {
+            let file_secs = t
+                .pcm_audio
+                .as_ref()
+                .map(|(l, _, sr)| l.len() as f32 / (*sr).max(1) as f32);
+            let (n, bpm) = stamp_source_tempo(t.regions.iter_mut(), file_secs, fallback);
+            stamped += n;
+            if n > 0 {
+                used = bpm;
+            }
+        }
+        (stamped, used)
+    }
+
+    /// Måttets tempo för klippen som saknar inspelningstempo (Fas 8.10).
+    ///
+    /// Ett tal bara när klippen **säger samma sak**: stämmorna ur samma låt är byggda i
+    /// samma tempo, så nio klipp som ger 120,000 är ett mått (Alex' Rock and Hard Place).
+    /// Ger de olika tal är projektet blandat — eller något klipp klippt — och då visas
+    /// inget: hellre ingen siffra än en siffra som stämmer på en del av klippen.
+    pub fn geometry_tempo_for_unknown_clips(&self) -> Option<f32> {
+        let mut values: Vec<f32> = Vec::new();
+        for t in &self.playlist_tracks {
+            let Some((l, _, sr)) = t.pcm_audio.as_ref() else {
+                continue;
+            };
+            let file_secs = l.len() as f32 / (*sr).max(1) as f32;
+            for r in &t.regions {
+                if r.source_bpm > 0.0 || r.sample_offset_sec > 0.001 {
+                    continue;
+                }
+                if let Some(bpm) = geometry_source_bpm(r.length_bars, file_secs) {
+                    values.push(bpm);
+                }
+            }
+        }
+        if values.is_empty() {
+            return None;
+        }
+        values.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let median = values[values.len() / 2];
+        if values.iter().all(|v| (v - median).abs() / median <= 0.01) {
+            Some(median)
+        } else {
+            None
+        }
     }
 
     /// Vad motorn ska spela för ett klipp just nu (Fas 8.10 steg 2).
@@ -5727,6 +5890,7 @@ impl SonixApp {
         self.status_message = match tempo_change_note(
             self.clips_with_source_tempo(),
             self.clips_without_source_tempo(),
+            self.geometry_tempo_for_unknown_clips(),
         ) {
             Some(note) => crate::tstatus!("{} {}", opened, note),
             None => opened,
@@ -16251,10 +16415,16 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                 is_reverse: false,
                 color,
                 loop_length_bars: 0.0,
-                // Klippet spelades in i Sunos tempo, som är det projektet står i
-                // just nu (Fas 8.10). Ändras tempot sedan följer ljudet med i
-                // stället för att hamna ur takt.
-                source_bpm: res.bpm,
+                // Klippet spelades in i Sunos tempo (Fas 8.10). Ändras tempot sedan
+                // följer ljudet med i stället för att hamna ur takt.
+                //
+                // **Saknar Suno ett BPM** (arkivnamnet "Rock and Hard Place Stems.zip"
+                // bär inget tal, och taggarna bär inget heller) är projektets tempo det
+                // rätta: takterna räknades just ur filens längd i *det* tempot
+                // (`bars_for_secs_at` ovan), så filen täcker klippet exakt. Att lämna 0
+                // där gjorde att klippen varken följde tempot eller räckte till låtens
+                // slut så snart tempot flyttades — Alex' 200 BPM skar av 103,71 s.
+                source_bpm: if res.bpm > 0.0 { res.bpm } else { self.bpm },
                 tape: false,
             };
 
@@ -19105,13 +19275,13 @@ mod tests {
     #[test]
     fn the_load_message_carries_the_same_note() {
         let opened = "📂 Öppnade projekt 'Rock and Hard Place'!";
-        let note = tempo_change_note(0, 9).expect("nio klipp utan mått ska sägas");
+        let note = tempo_change_note(0, 9, None).expect("nio klipp utan mått ska sägas");
         assert!(
             format!("{opened} {note}").contains('9'),
             "inläsningsraden ska bära antalet"
         );
         // Och ett projekt där allt följer får ingen extra rad.
-        assert_eq!(tempo_change_note(9, 0), None);
+        assert_eq!(tempo_change_note(9, 0, None), None);
     }
 
     /// **Felet i Alex' "inget hände".**
@@ -19122,7 +19292,7 @@ mod tests {
     #[test]
     fn a_tempo_change_that_nothing_follows_is_never_silent() {
         // Alla klipp står still: det här är fallet som såg ut som en död kontroll.
-        let all_stuck = tempo_change_note(0, 9).expect("nio stillastående klipp ska sägas högt");
+        let all_stuck = tempo_change_note(0, 9, None).expect("nio stillastående klipp ska sägas högt");
         assert!(all_stuck.contains('9'), "antalet ska stå i raden: {all_stuck}");
         // Texten är i18n:ad (testkörningen får engelska), så provet håller sig till det som
         // är lika i båda: antalet och pekaren till åtgärden.
@@ -19132,12 +19302,22 @@ mod tests {
         );
 
         // Delat läge: både de som följer och de som står still ska räknas.
-        let mixed = tempo_change_note(3, 2).expect("delat läge ska sägas");
+        let mixed = tempo_change_note(3, 2, None).expect("delat läge ska sägas");
         assert!(mixed.contains('3') && mixed.contains('2'), "{mixed}");
 
         // Och när allt följer finns inget att säga — ingen rad, ingen tystnad att förklara.
-        assert_eq!(tempo_change_note(9, 0), None);
-        assert_eq!(tempo_change_note(0, 0), None);
+        assert_eq!(tempo_change_note(9, 0, None), None);
+        assert_eq!(tempo_change_note(0, 0, None), None);
+
+        // **Går tempot att räkna ur klippen ska talet stå i raden**, inte bara en
+        // hänvisning: "öppna Tempokarta" är ett steg för mycket när svaret redan finns.
+        let measured = tempo_change_note(0, 9, Some(120.0)).expect("nio klipp ska sägas");
+        assert!(
+            measured.contains("120") && measured.contains('⏱'),
+            "talet ska stå tillsammans med åtgärden: {measured}"
+        );
+        let mixed_measured = tempo_change_note(3, 2, Some(120.0)).expect("delat läge");
+        assert!(mixed_measured.contains("120"), "{mixed_measured}");
     }
 
     /// Ett trimmat klipp behåller sin plats i den sträckta filen.
@@ -20472,13 +20652,57 @@ mod tests {
                 tape: false,
             },
         ];
-        let stamped = stamp_source_tempo(regions.iter_mut(), 120.0);
+        // Utan fil att mäta mot: projektets tempo, som förut (faktorn 1,0 direkt).
+        let (stamped, used) = stamp_source_tempo(regions.iter_mut(), None, 120.0);
         assert_eq!(stamped, 1, "bara klippet utan tempo ska stämplas");
+        assert_eq!(used, 120.0, "och tempot som sattes ska gå att säga");
         assert_eq!(regions[0].source_bpm, 120.0);
         assert_eq!(regions[1].source_bpm, 96.0, "ett känt tempo rörs inte");
         // Och vid det tempot är faktorn 1,0 — ingenting hörs förrän man rör tempot.
         assert_eq!(stretch_ratio_for(regions[0].source_bpm, 120.0), 1.0);
         assert_eq!(stretch_ratio_for(regions[0].source_bpm, 140.0), 140.0 / 120.0);
+    }
+
+    /// **Felet bakom "tempot påverkar inte" och "låten skar av i slutet".**
+    ///
+    /// Alex' "Rock and Hard Place": Suno gav inget BPM (varken i arkivnamnet eller i
+    /// taggarna), så alla nio klipp stod på 0 och rördes inte av tempot. Filerna är
+    /// 259,28 s och klippen 129,64 takter — alltså byggdes de i **120,000** BPM, vilket
+    /// är det tal sträckningen ska mätas mot. Vid 200 BPM räckte klippet bara 155,57 s
+    /// och **103,71 s musik skars av**; vid 100 BPM blev klippet 311,14 s och filen tog
+    /// slut i förtid. Båda felen är samma sak: ett klipp utan känt tempo varken sträcks
+    /// eller fyller sin kloss.
+    #[test]
+    fn the_clip_measure_gives_the_tempo_suno_did_not() {
+        // Hans egna tal: 129,64 takter, 259,28 s fil.
+        let bpm = geometry_source_bpm(129.64, 259.28).expect("måttet ska gå att räkna");
+        assert!((bpm - 120.0).abs() < 0.01, "nio stämmor ger 120,000: {bpm}");
+
+        // Klippet räcker filen exakt i det tempot — och skär av i alla andra.
+        let clip_secs = |bpm: f32| 129.64 * 240.0 / bpm;
+        assert!((clip_secs(120.0) - 259.28).abs() < 0.01, "hela filen vid 120");
+        assert!((clip_secs(200.0) - 155.57).abs() < 0.01, "klippet tar slut vid 155,57 s");
+        assert!((259.28 - clip_secs(200.0) - 103.71).abs() < 0.01, "103,71 s skars av");
+
+        // Med måttet satt sträcks filen till klossen i stället: 259,28 × 120/200 = 155,57.
+        let factor = stretch_ratio_for(120.0, 200.0);
+        assert!((259.28 / factor - 155.57).abs() < 0.01, "filen fyller klossen");
+
+        // Skräp ger inget svar i stället för ett orimligt.
+        assert_eq!(geometry_source_bpm(0.0, 259.28), None);
+        assert_eq!(geometry_source_bpm(129.64, 0.0), None);
+        assert_eq!(geometry_source_bpm(4.0, 600.0), None, "1,6 BPM är inget tempo");
+    }
+
+    /// Ett klipp som börjar en bit in i filen beskriver ett utsnitt, inte filen.
+    #[test]
+    fn a_clip_that_starts_inside_the_file_keeps_the_project_tempo() {
+        // 129,64 takter ur en 259,28 s fil = 120 BPM — men bara om klippet är hela filen.
+        assert_eq!(stamped_tempo(129.64, 0.0, Some(259.28), 200.0), 120.0);
+        // Börjar det 30 s in är takterna ett utsnitt: projektets tempo gäller.
+        assert_eq!(stamped_tempo(129.64, 30.0, Some(259.28), 200.0), 200.0);
+        // Utan fil att mäta mot: projektets tempo.
+        assert_eq!(stamped_tempo(129.64, 0.0, None, 200.0), 200.0);
     }
 
     /// Klippet följer projektets tempo — men bara när inspelningstemot är känt
