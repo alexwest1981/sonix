@@ -616,6 +616,32 @@ mod tests {
         );
     }
 
+    /// **Läser appen tillbaka filen den själv skrev?** (Fas 8.10c, fältfynd 2026-09-13.)
+    ///
+    /// `render_one` skriver filen och läser den sedan med `load_wav_pcm`. Misslyckas
+    /// läsningen blir svaret `None` — filen ligger kvar på disk, motorn får originalet,
+    /// och Alex hör "ingen skillnad på tempot" medan cachen ser fullt frisk ut.
+    /// Det här provet går mot hans **riktiga** cachefil, inte en syntetisk.
+    #[test]
+    #[ignore]
+    fn the_cached_render_can_be_read_back() {
+        let key = std::env::var("SONIX_CACHE_KEY")
+            .unwrap_or_else(|_| "rock-and-hard-place-drums-140-00-till-100-00-v2".to_string());
+        let path = cache_path(&crate::paths::paths().stretch_cache_dir(), &key);
+        assert!(path.exists(), "cachen ska finnas: {}", path.display());
+        match crate::audio::load_wav_pcm(&path.to_string_lossy()) {
+            Ok((l, r, sr)) => {
+                eprintln!(
+                    "OK: {} frames, sr {sr}, {:.2} s",
+                    l.len(),
+                    l.len() as f32 / sr as f32
+                );
+                assert!(l.len() == r.len() && !l.is_empty());
+            }
+            Err(e) => panic!("KUNDE INTE LÄSA TILLBAKA: {e}"),
+        }
+    }
+
     /// **Mätning på riktig fil, inte på en sinuston** (Fas 8.10).
     ///
     /// Skriver samma källa genom två parameteruppsättningar — harmonizerns realtidsläge
