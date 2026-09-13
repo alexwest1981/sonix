@@ -157,13 +157,29 @@ mätt, och var nästa andetag ska tas.*
 
 ## 4a. Först av allt: två ritfel som hör ihop med 8.10 (små, men de ljuger i vyn)
 
-1. **Vågformen inuti ett klipp ritas med steg 1:s faktor.** `src/ui/app.rs` (~rad 10986):
-   `let region_rate = stretch_ratio_for(region.source_bpm, self.bpm);`. Ett klipp som
-   **sträcks** spelas nu från en färdigsträckt fil med faktor **1,0**, så ritningen visar ett
-   annat stycke av ljudet än det som hörs — exakt den lögn 8.3 stängde. Rita med samma
-   hjälpare som spelar (`region_playback(region, bpm_here)`), så att dörrarna inte kan glida
-   ifrån varandra. **Obs:** klipp utan känt tempo har faktorn 1,0 och är opåverkade, så felet
-   syns bara i projekt där tempot faktiskt följs.
+1. **Påståendet "vågformen ritas med fel faktor" håller INTE — kontrollerat 2026-09-13.**
+   Det stod här att ett sträckt klipp ritades med steg 1:s faktor medan det spelas från en
+   färdigsträckt fil med 1,0, och att vyn därför visar "ett annat stycke". Räkningen säger
+   motsatsen:
+
+   - `stretch_ratio_for(källa, projekt)` = `projekt/källa` = **källsekunder per utsekund**.
+   - Ritningens spann = `region_secs × projekt/källa` **källsekunder** — och det är exakt det
+     källinnehåll klippet täcker. Fyra takter i 120 BPM är 8 s källa; i ett 150-projekt är
+     samma fyra takter 6,4 s ut, och 6,4 × 1,25 = 8 s. Rätt stycke, rätt spann.
+   - Uppspelningen läser **filen** (filfaktor `källa/projekt` = 1/uppspelningsfaktorn) med
+     hastigheten 1,0, alltså `region_secs × källa/projekt` sekunder fil = **samma innehåll**.
+
+   Dörrarna är alltså ense om *innehållet*; de skiljer sig bara i **vilken buffert** de läser
+   (originalet mot den WSOLA-bearbetade filen). Och den föreslagna åtgärden — att rita med
+   `region_playback`:s faktor 1,0 — skulle ge spannet `region_secs × 1,0` ur originalet, alltså
+   6,4 s av ett 8 s klipp: **det** vore att visa fel stycke. Faktorn 1,0 är rätt bara om
+   ritningen läser *filen*.
+
+   Kvar som verkligt (men litet) hål: vyn ritar omsamplet original medan örat hör den
+   sträckta filen. Att rita filens hölje kräver en egen vågformscache för den sträckta
+   bufferten, precis som spåren har — och skillnaden syns bara vid fin zoom. Den skillnaden
+   **är** WSOLA-artefakterna i §4b, inte ett eget ritfel. Mät innan du "lagar": jämför
+   ritningens fönster med filens för ett klipp i olika tempo.
 2. **Alex: "får inte riktigt markören att matcha vågformerna oavsett bpm".** Två fall, och de
    ska inte blandas: (a) tempot — ljudet ligger i Sunos tempo och rutnätet i projektets, så de
    möts bara vid rätt tempo (Rock and Hard Place: **140**); (b) **inledningen** — om det
