@@ -20,10 +20,15 @@ mätt, och var nästa andetag ska tas.*
 - **Arbetskatalog:** `~/Projects/sonix`, branch `master`, remote `origin` → github.com/alexwest1981/sonix
 - **Binären som körs:** `~/.local/bin/sonix` → symlänk till `~/Projects/sonix/target/release/sonix`
   (skrivbordsgenvägen `~/.local/share/applications/sonix.desktop` pekar rätt — den
-  pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12)
-- **Tester:** 429 default / 475 med `--features plugin-host`, **0 varningar** i båda
-  (mätt 2026-09-13, efter klipp-mätningen 8.14 steg 2 och högerklick-valet 8.15). CI fäller
-  numera **alla** ben på varningar, inte bara Windows.
+  pekade på en tre dagar gammal kopia i `~/.cargo/bin/` fram till 2026-09-12).
+  **En binär som gäller (2026-09-13):** den gamla kopian i `~/.cargo/bin/sonix` (9 sept, 19 MB)
+  och en föräldralös mise-shim (`~/.local/share/mise/shims/sonix` → `/usr/bin/mise`, utan
+  registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
+  det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
+  `which -a sonix` ska bara visa `~/.local/bin/sonix`.
+- **Tester:** 433 default / 479 med `--features plugin-host`, **0 varningar** i båda
+  (mätt 2026-09-13, efter klipp-mätningen 8.14 steg 2, högerklick-valet 8.15 och
+  stämgruppen 8.15b). CI fäller numera **alla** ben på varningar, inte bara Windows.
 - **Senaste commit:** `398910d` (metadata: bara härkomsten tas), `7f87924` (mätarna i
   toppraden, 8.13) och därefter spelhuvudets klocka (8.13b) — se `git log --oneline -3`
   för det exakta läget.
@@ -127,6 +132,12 @@ mätt, och var nästa andetag ska tas.*
    detektorn som finputs inom 20 ms. Mätt på fem av hans stämmor: trummor **0,6008** (mot
    backningens 0,502), sång **7,18**, bas **1,6885**, gitarr **0,0** (inget att trimma),
    backing vocals `None` (tyst i 20 s). Se roadmapens 8.14 för hela tabellen.
+   **Och hela stämgruppen flyttar tillsammans (8.15b)** — Alex: *"Trummorna flyttas till 00:00 när
+   jag väljer mätning. Det känns inte som en korrekt feature."* Rätt: ett ensamt trumklipp hamnade
+   0,60 s före bas och gitarr, som ligger låsta på 0 ms mot varandra (korr 0,71, mätt i hans filer).
+   Nu flyttas varje klipp som börjar på ankarets takt med samma skift **i tid** (0,01 takts
+   tolerans), hela planen räknas fram innan något skrivs (en halvflyttad grupp är värre än ingen
+   flytt), och båda dörrarna — "Sätt takt 1 här" och mätningen — går genom samma applikator.
    0f. ~~**"marker och wave synkar inte" + "ingen skillnad på tempo"**~~ — **RÄTTAT
    2026-09-13 (8.10d).** Ett fel, båda symptomen: `LoadStemTrack` — som appen skickar
    **vid varje uppspelningsstart** — byggde ett nytt spår och tömde `regions` tyst, så

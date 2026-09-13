@@ -1823,7 +1823,8 @@ och låta användaren välja en. Det är nästa steg om han vill ha det.
 
 **Fällan som hittades här är fixad samma kväll (8.15):** högerklick på en lane valde inte klippet
 under pekaren — menyn visar posterna för det klipp som redan är valt, och rubriken (`🎵 namn`) var
-enda skyddet. Det gällde alla poster i menyn, inte bara de här. Se 8.15.
+enda skyddet. Det gällde alla poster i menyn, inte bara de här. Se 8.15. **Och mätningen gäller numera hela
+stämgruppen, inte ett klipp** — se 8.15b, som kom ur Alex' nästa rapport.
 
 ## 8.11 Tonarten som tonart (Alex' svar 2026-09-12)
 
@@ -2039,3 +2040,53 @@ lista, `bar_w = 0` (får inte bli NaN) och en punkt utan tal. 429 default / 475 
 **Kvar i samma familj:** träffytan mäts i x — y är lanens eget svar, eftersom både hover och
 interact_pointer_pos bara finns inuti lanen. Skulle lanes någon gång ritas över varandra är det
 här stället att läsa igen.
+
+---
+
+## 8.15b Stämmorna flyttar tillsammans (Alex' rapport 2026-09-13, kväll)
+
+*"Trummorna flyttas till 00:00 när jag väljer mätning. Det känns inte som en korrekt feature."*
+
+**Han hade rätt, och autosaven visade precis vad som hänt.** Trumklippet fick `offset 0,6008125 s`
+och `bars 150,89618` — exakt vad mätningen sa, och `start_bar` stod kvar på 0,0. Koden gjorde alltså
+det den skulle; felet var **frågan**, inte aritmetiken. I ett set av stämmor är ett klipp inte ett
+klipp — det är *en stämma*, och en stämma som flyttas ensam är en sång ur fas.
+
+**Mätt i hans egna filer** (normaliserad korskorrelation på RMS-höljet, 15–45 s, 1 ms-hinkar):
+
+| Par | Förskjutning | Korrelation |
+| :--- | ---: | ---: |
+| Bas vs Gitarr | **0,000 s** | 0,711 |
+| Bas vs Trummor | +0,154 s | 0,274 |
+| Gitarr vs Trummor | −0,168 s | 0,281 |
+
+Bas och gitarr ligger alltså **låsta på 0 ms** med hög korrelation — de kommer från samma mix och är
+i fas. Ett trumklipp som flyttas 0,60 s ensamt hamnar därför 0,60 s före resten. Det var det han
+hörde.
+
+**Regeln** (`plan_group_shift_by_head_secs`, ren funktion): ett och samma skift i **tid** för varje
+klipp som börjar på ankarets takt (tolerans 0,01 takt = det finaste rutnätet), och ingenting för de
+andra. Tid och inte takter, eftersom stämmorna hålls ihop av tid — ett tempo som ändras mitt i låten
+får inte sära på dem. Ankaret är det klipp han valde: där låg slaget.
+
+**Hela planen räknas fram innan något skrivs.** Ett klipp som inte kan flyttas (skiftet skulle tömma
+det) stoppar **allt** och namnges i `Err((spår, klipp))`: en halvflyttad grupp är en sång ur fas, och
+det är värre än ingen flytt alls. Ångringen läggs som **ett** steg, och statusraden säger hur många
+klipp som flyttades och hur långt.
+
+**Samma regel i båda dörrarna:** "Sätt takt 1 här" (manuellt, spelhuvudet) och "Hitta första slaget"
+(mätningen) går nu genom samma applikator. Det var samma läxa som högerklick-fällan i 8.15 — samma
+beteende ska ha **en** regel, inte två som driver isär.
+
+**Ett eget misstag, rättat av provet:** mitt första prov påstod att ett 140-klipp i ett 100-projekt
+flyttas 0,30 × 140/100 s in i filen. Det är fel — filen spelas *långsammare*, så 0,30 s tidslinje är
+0,30 × 100/140 s fil. Den befintliga hjälparen hade rätt hela tiden (och pinnades redan av
+`setting_beat_one_uses_the_source_timebase`); jag rättade provet, inte koden.
+
+Fyra nya prov (gruppen flyttar samma tid och lämnar andra takter i fred; sträckt stämma i sin egen
+tidsbas; ett klipp som inte kan flyttas stoppar allt; ett skift som inte är positivt flyttar inget).
+Menyernas hover-texter säger nu vad som gäller. **433 default / 479 med plugin-host, 0 varningar.**
+
+**Kvar:** gruppen definieras av starttakt, inte av "samma import". Två oberoende loopar staplade på
+samma takt flyttar därför tillsammans. Om det visar sig fel är nästa steg att knyta gruppen till
+källmappen — men det är en observationsfråga, och Alex pekar ut den bättre än jag gissar.

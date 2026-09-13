@@ -1513,6 +1513,69 @@ pub fn timeline_point_for_source_secs(
     Some(tempo.secs_at_bar(start_bar as f64) + head_source / ratio)
 }
 
+/// Ett klipps geometri — allt skiftet behöver veta, utan spår, fönster eller motor.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ClipGeometry {
+    pub start_bar: f32,
+    pub length_bars: f32,
+    pub sample_offset_sec: f32,
+    pub source_bpm: f32,
+}
+
+/// Hur nära två klipp måste börja för att räknas som samma stämgrupp (Fas 8.15b).
+///
+/// En hundradels takt är det finaste rutnätet (`TimeSnapMode::FreeHundredth`). Klipp som
+/// lagts på samma takt hamnar på exakt samma tal — toleransen finns bara för att flyttal
+/// inte ska kunna sära på dem som hör ihop.
+pub const STEM_GROUP_TOLERANCE_BARS: f32 = 0.01;
+
+/// **Planen för hela stämgruppen** (Fas 8.15b): ett och samma skift i tid för varje klipp
+/// som börjar på ankarets takt.
+///
+/// **Varför gruppen och inte klippet.** Ett importerat set (Suno-stämmor) läggs på samma
+/// takt och *hör ihop* — stämmorna är sample-låsta mot varandra. Mätt i Alex' filer
+/// 2026-09-13 låg bas och gitarr på 0 ms mot varandra (korrelation 0,71), medan ett ensamt
+/// trumklipp som mätningen flyttade hamnade 0,60 s före resten: sången gick ur fas, och
+/// han sa ifrån. Skiftet räknas därför i **tid**, inte i takter — med ett tempo som ändras
+/// mitt i låten är det tiden som håller stämmorna ihop.
+///
+/// **Ren funktion:** geometri in, ny geometri ut. Indexen `(spår, klipp)` följer med
+/// oförändrade så att anroparen kan skriva tillbaka dem; proven nedan behöver inga spår.
+///
+/// **Hela planen räknas fram innan något skrivs.** Ett klipp som inte kan flyttas (skiftet
+/// skulle tömma det, eller det ligger före sin egen start) stoppar **allt** och namnges i
+/// `Err((spår, klipp))` — en halvflyttad grupp är en sång ur fas, och det är värre än ingen
+/// flytt alls.
+pub fn plan_group_shift_by_head_secs(
+    clips: &[(usize, usize, ClipGeometry)],
+    anchor_bar: f32,
+    head_secs: f64,
+    tempo: &crate::audio::tempo::TempoMap,
+) -> Result<Vec<(usize, usize, ClipStartAlign)>, (usize, usize)> {
+    let mut plan = Vec::new();
+    if head_secs <= 0.0 {
+        return Ok(plan);
+    }
+    for (t, r, g) in clips {
+        if (g.start_bar - anchor_bar).abs() > STEM_GROUP_TOLERANCE_BARS {
+            continue;
+        }
+        let target = tempo.secs_at_bar(g.start_bar as f64) + head_secs;
+        match align_clip_start_to_point(
+            g.start_bar,
+            g.length_bars,
+            g.sample_offset_sec,
+            g.source_bpm,
+            target,
+            tempo,
+        ) {
+            Some(a) => plan.push((*t, *r, a)),
+            None => return Err((*t, *r)),
+        }
+    }
+    Ok(plan)
+}
+
 /// Vilket klipp en punkt i en lane träffar (Fas 8.15).
 ///
 /// **Ren funktion, och en enda regel för två dörrar:** vänsterklickets dragstart och
@@ -5431,6 +5494,86 @@ impl SonixApp {
     /// Regeln bor i [`align_clip_start_to_point`] (ren funktion, fyra egna prov); det
     /// här är bara inkopplingen: ångring, besked och en omsynk så att motorn hör
     /// ändringen direkt.
+    /// Flyttar **hela stämgruppen** ett och samma skift (Fas 8.15b) — en regel, två dörrar.
+    ///
+    /// Planen räknas fram först ([`plan_group_shift_by_head_secs`]) och skrivs sedan i ett
+    /// svep, så att ett klipp som inte kan flyttas stoppar allt i stället för att lämna
+    /// gruppen halvflyttad. Returnerar antalet klipp som flyttades, eller namnet på klippet
+    /// som stoppade.
+    fn shift_stem_group(
+        &mut self,
+        t_idx: usize,
+        r_idx: usize,
+        head_secs: f64,
+        undo_label: &'static str,
+    ) -> Result<usize, String> {
+        let Some(anchor_bar) = self
+            .playlist_tracks
+            .get(t_idx)
+            .and_then(|t| t.regions.get(r_idx))
+            .map(|r| r.start_bar)
+        else {
+            return Ok(0);
+        };
+        let mut clips: Vec<(usize, usize, ClipGeometry)> = Vec::new();
+        for (t, track) in self.playlist_tracks.iter().enumerate() {
+            for (r, reg) in track.regions.iter().enumerate() {
+                clips.push((
+                    t,
+                    r,
+                    ClipGeometry {
+                        start_bar: reg.start_bar,
+                        length_bars: reg.length_bars,
+                        sample_offset_sec: reg.sample_offset_sec,
+                        source_bpm: reg.source_bpm,
+                    },
+                ));
+            }
+        }
+        let tempo = self.tempo_map();
+        let plan = match plan_group_shift_by_head_secs(&clips, anchor_bar, head_secs, &tempo) {
+            Ok(plan) => plan,
+            Err((t, r)) => {
+                let name = self
+                    .playlist_tracks
+                    .get(t)
+                    .and_then(|track| track.regions.get(r))
+                    .map(|reg| reg.name.clone())
+                    .unwrap_or_default();
+                return Err(name);
+            }
+        };
+        if plan.is_empty() {
+            return Ok(0);
+        }
+        self.push_undo(crate::i18n::t(undo_label));
+        let mut touched: Vec<usize> = Vec::new();
+        for (t, r, align) in &plan {
+            if let Some(reg) = self
+                .playlist_tracks
+                .get_mut(*t)
+                .and_then(|track| track.regions.get_mut(*r))
+            {
+                reg.sample_offset_sec = align.sample_offset_sec;
+                reg.length_bars = align.length_bars;
+            }
+            if !touched.contains(t) {
+                touched.push(*t);
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        Ok(plan.len())
+    }
+
+    /// **"Sätt takt 1 här"** (Fas 8.14): ljudet under spelhuvudet blir klippets första
+    /// sampel medan klippet står kvar — och **hela stämgruppen följer med** (Fas 8.15b),
+    /// annars hamnar stämman ur fas med sina syskon.
+    ///
+    /// Regeln bor i [`align_clip_start_to_point`] och gruppen i
+    /// [`plan_group_shift_by_head_secs`] (rena funktioner, egna prov); det här är bara
+    /// inkopplingen: ångring, besked och en omsynk så att motorn hör ändringen direkt.
     pub fn set_beat_one_at_playhead(&mut self) {
         let Some((t_idx, r_idx)) = self.selected_audio_region else {
             return;
@@ -5442,38 +5585,42 @@ impl SonixApp {
         }
         let tempo = self.tempo_map();
         let r = self.playlist_tracks[t_idx].regions[r_idx].clone();
-        let point = self.song_time as f64;
-        let Some(align) = align_clip_start_to_point(
-            r.start_bar,
-            r.length_bars,
-            r.sample_offset_sec,
-            r.source_bpm,
-            point,
-            &tempo,
-        ) else {
+        let head_secs = self.song_time as f64 - tempo.secs_at_bar(r.start_bar as f64);
+        if head_secs <= 0.0 {
             // 8.5-regeln: säg varför i stället för att tiga eller gissa.
             self.status_message = crate::tstatus!(
                 "⚠ Spelhuvudet står utanför '{}' — inget ändrat. Flytta det in i klippet först.",
                 r.name
             );
             return;
-        };
-        self.push_undo(crate::i18n::t("Sätt takt 1 här"));
-        if let Some(reg) = self.playlist_tracks[t_idx].regions.get_mut(r_idx) {
-            reg.sample_offset_sec = align.sample_offset_sec;
-            reg.length_bars = align.length_bars;
         }
-        self.sync_track_regions(t_idx);
-        self.status_message = crate::tstatus!(
-            "🎯 '{}' läser filen från {:.3} s — slaget ligger på rutnätet.",
-            r.name,
-            align.sample_offset_sec
-        );
+        match self.shift_stem_group(t_idx, r_idx, head_secs, "Sätt takt 1 här") {
+            Err(name) => {
+                self.status_message = crate::tstatus!(
+                    "⚠ Flytten skulle tömma '{}' — inget ändrat, ingenting flyttat.",
+                    name
+                );
+            }
+            Ok(0) => {
+                self.status_message = crate::tstatus!(
+                    "⚠ Hittade inget klipp på takt {:.2} att flytta.",
+                    r.start_bar
+                );
+            }
+            Ok(n) => {
+                self.status_message = crate::tstatus!(
+                    "🎯 {} klipp på takt {:.2} läser filen {:.3} s längre in — slaget ligger på rutnätet.",
+                    n,
+                    r.start_bar,
+                    head_secs
+                );
+            }
+        }
     }
 
     /// **"Hitta första slaget"** (Fas 8.14): mäter **var ljudet börjar** i klippets egen
     /// fil i stället för att be användaren pricka slaget på pixeln — och sätter det sedan
-    /// som klippets första sampel med samma regel som "Sätt takt 1 här".
+    /// som gruppens första sampel med samma regel som "Sätt takt 1 här".
     ///
     /// Det är den etablerade DAW-vägen (Ableton visar detekterade transients och låter
     /// dig sätta en av dem som klippets början), och den gör ett snap **ärligt**: talet
@@ -5483,6 +5630,9 @@ impl SonixApp {
     /// träffen på 0,6008 s (backningen sa 0,502), sången 7,18 (mjuka attacken sågs inte
     /// alls), basen 1,6885, gitarren **0,0** (inget att trimma), och en stämma som är
     /// tyst i 20 s svarar `None`. Se [`crate::audio::onset::music_start_source_secs`].
+    ///
+    /// **Gruppen följer med** (Fas 8.15b): ett klipp i ett set är en stämma, och en stämma
+    /// som flyttas ensam är en sång ur fas. Ankaret är det klipp du valde — där låg slaget.
     ///
     /// **Ingen träff är ett giltigt svar.** En pad, en stråke eller ett tyst parti har
     /// ingen början att sätta; då sägs det, och ingenting flyttas.
@@ -5553,31 +5703,31 @@ impl SonixApp {
             );
             return;
         };
-        let Some(align) = align_clip_start_to_point(
-            r.start_bar,
-            r.length_bars,
-            r.sample_offset_sec,
-            r.source_bpm,
-            point,
-            &tempo,
-        ) else {
+        let head_secs = point - tempo.secs_at_bar(r.start_bar as f64);
+        if head_secs <= 0.0 {
             self.status_message = crate::tstatus!(
-                "⚠ Flytten skulle tömma '{}' — inget ändrat.",
+                "⚠ '{}' börjar redan på slaget — inget ändrat.",
                 r.name
             );
             return;
-        };
-        self.push_undo(crate::i18n::t("Hitta första slaget"));
-        if let Some(reg) = self.playlist_tracks[t_idx].regions.get_mut(r_idx) {
-            reg.sample_offset_sec = align.sample_offset_sec;
-            reg.length_bars = align.length_bars;
         }
-        self.sync_track_regions(t_idx);
-        self.status_message = crate::tstatus!(
-            "🎯 Musiken börjar {:.3} s in i filen — '{}' börjar nu där.",
-            onset_src,
-            r.name
-        );
+        match self.shift_stem_group(t_idx, r_idx, head_secs, "Hitta första slaget") {
+            Err(name) => {
+                self.status_message = crate::tstatus!(
+                    "⚠ Flytten skulle tömma '{}' — inget ändrat, ingenting flyttat.",
+                    name
+                );
+            }
+            Ok(n) => {
+                self.status_message = crate::tstatus!(
+                    "🎯 Musiken börjar {:.3} s in i filen — {} klipp på takt {:.2} flyttades {:.3} s, så stämmorna håller ihop.",
+                    onset_src,
+                    n,
+                    r.start_bar,
+                    head_secs
+                );
+            }
+        }
     }
 
     /// Bygger projektets serialiserbara form.
@@ -12098,7 +12248,7 @@ impl SonixApp {
                                                     "🔍 Hitta första slaget (mät i filen)",
                                                 ))
                                                 .on_hover_text(crate::i18n::t(
-                                                    "Mäter var ljudet börjar i klippets fil och sätter det som klippets början — samma regel som \"Sätt takt 1 här\", men talet kommer ur en mätning i stället för ur spelhuvudets position. Ett tyst parti i början (eller en stämma som inte hörs inom 20 s) ger inget svar; då händer ingenting.",
+                                                    "Mäter var ljudet börjar i klippets fil och sätter det som klippets början — samma regel som \"Sätt takt 1 här\", men talet kommer ur en mätning i stället för ur spelhuvudets position. **Hela stämgruppen följer med**: alla klipp som börjar på samma takt flyttas lika mycket i tid, så att stämmorna inte hamnar ur fas (Ctrl+Z tar tillbaka allt i ett steg). Ett tyst parti i början (eller en stämma som inte hörs inom 20 s) ger inget svar; då händer ingenting.",
                                                 ))
                                                 .clicked()
                                             {
@@ -12110,7 +12260,7 @@ impl SonixApp {
                                                     "🎯 Sätt takt 1 här (ljudet under spelhuvudet blir klippets början)",
                                                 ))
                                                 .on_hover_text(crate::i18n::t(
-                                                    "Kapar början av klippet så att slaget under spelhuvudet hamnar på rutnätet. Högerkanten står still. Klippet flyttas inte — flytta det dit slaget ska landa först.",
+                                                    "Kapar början av klippet så att slaget under spelhuvudet hamnar på rutnätet. Högerkanten står still, och **hela stämgruppen följer med** — alla klipp som börjar på samma takt flyttas lika mycket i tid, annars hamnar stämman ur fas med sina syskon (Ctrl+Z tar tillbaka allt i ett steg). Klippet flyttas inte.",
                                                 ))
                                                 .clicked()
                                             {
@@ -21599,5 +21749,104 @@ mod tests {
         assert_eq!(region_under_x(&[], 140.0, lane_min_x, bar_w), None);
         assert_eq!(region_under_x(&regions, 140.0, lane_min_x, 0.0), None);
         assert_eq!(region_under_x(&regions, f32::NAN, lane_min_x, bar_w), None);
+    }
+
+    /// Klippgeometri för grupproven: bara det skiftet bryr sig om.
+    fn geometry(start_bar: f32, length_bars: f32, sample_offset_sec: f32, source_bpm: f32) -> ClipGeometry {
+        ClipGeometry { start_bar, length_bars, sample_offset_sec, source_bpm }
+    }
+
+    /// **Stämgruppen flyttar tillsammans** (Fas 8.15b): ett och samma skift i *tid* för
+    /// varje klipp som börjar på ankarets takt — och ingenting för de andra.
+    ///
+    /// Fallet är Alex' eget: nio stämmor på takt 0, där mätningen på trummorna sa att
+    /// musiken börjar 0,6008 s in i filen. Flyttades bara trumklippet hamnade det 0,60 s
+    /// före bas och gitarr — som ligger låsta mot varandra på 0 ms.
+    #[test]
+    fn the_stem_group_shifts_by_the_same_time() {
+        let tempo = crate::audio::tempo::TempoMap::single(140.0);
+        let bars = 151.24667_f32;
+        let clips = vec![
+            (0, 0, geometry(0.0, bars, 0.0, 140.0)), // trummorna — ankaret
+            (1, 0, geometry(0.0, bars, 0.0, 140.0)), // basen
+            (2, 0, geometry(8.0, 4.0, 0.0, 140.0)),  // ett klipp på en annan takt
+        ];
+        let plan = plan_group_shift_by_head_secs(&clips, 0.0, 0.6008125, &tempo)
+            .expect("hela gruppen ska gå att flytta");
+        assert_eq!(plan.len(), 2, "bara de två som börjar på takt 0");
+        assert!(plan.iter().all(|(t, r, _)| (*t, *r) == (0, 0) || (*t, *r) == (1, 0)));
+        let expected_len = bars as f64 - tempo.bars_for_secs_at(0.0, 0.6008125);
+        for (t, _, a) in &plan {
+            assert!(
+                (a.sample_offset_sec as f64 - 0.6008125).abs() < 1e-5,
+                "spår {t}: filen ska läsas 0,6008 s längre in: {}",
+                a.sample_offset_sec
+            );
+            assert!(
+                (a.length_bars as f64 - expected_len).abs() < 1e-3,
+                "spår {t}: högerkanten ska stå still: {}",
+                a.length_bars
+            );
+        }
+        assert!(
+            plan.iter().all(|(t, _, _)| *t != 2),
+            "klippet på takt 8 ska stå orört"
+        );
+    }
+
+    /// Vid en sträckning är skiftet fortfarande samma **tid** på tidslinjen, men olika
+    /// många sekunder av filen — samma faktor som motorn spelar med.
+    #[test]
+    fn a_stretched_stem_shifts_in_its_own_timebase() {
+        let tempo = crate::audio::tempo::TempoMap::single(100.0);
+        let clips = vec![
+            (0, 0, geometry(0.0, 151.24667, 0.0, 100.0)), // klippet i projektets tempo
+            (1, 0, geometry(0.0, 151.24667, 0.0, 140.0)), // ett 140-klipp i ett 100-projekt
+        ];
+        let plan =
+            plan_group_shift_by_head_secs(&clips, 0.0, 0.30, &tempo).expect("flytten ska gå");
+        assert_eq!(plan.len(), 2, "båda börjar på takt 0");
+        assert!(
+            (plan[0].2.sample_offset_sec as f64 - 0.30).abs() < 1e-4,
+            "klippet i projektets tempo läser filen 0,30 s längre in: {}",
+            plan[0].2.sample_offset_sec
+        );
+        // Faktorn är tempo/källa (samma som motorn spelar med, och samma som
+        // `setting_beat_one_uses_the_source_timebase` pinnar): en 140-fil i ett
+        // 100-projekt spelas långsammare, så 0,30 s tidslinje är 0,30 × 100/140 s fil.
+        let stretched = 0.30 * (100.0 / 140.0);
+        assert!(
+            (plan[1].2.sample_offset_sec as f64 - stretched).abs() < 1e-3,
+            "0,30 s på tidslinjen är {stretched} s av en 140-fil som spelas i 100: {}",
+            plan[1].2.sample_offset_sec
+        );
+    }
+
+    /// **Ett klipp som inte kan flyttas stoppar allt** (Fas 8.15b): en halvflyttad grupp är
+    /// en sång ur fas, och det är värre än ingen flytt alls. `Err` namnger klippet, och
+    /// anroparen skriver ingenting.
+    #[test]
+    fn a_clip_that_cannot_move_stops_the_whole_group() {
+        let tempo = crate::audio::tempo::TempoMap::single(140.0);
+        let clips = vec![
+            (0, 0, geometry(0.0, 151.24667, 0.0, 140.0)),
+            (7, 2, geometry(0.0, 0.02, 0.0, 140.0)), // 0,02 takter: skiftet tömmer den
+        ];
+        let err = plan_group_shift_by_head_secs(&clips, 0.0, 0.6008125, &tempo)
+            .expect_err("en 0,02 takter lång stämma kan inte kapas 0,35 takter");
+        assert_eq!(err, (7, 2), "klippet som stoppade ska namnges");
+    }
+
+    /// Ett skift som inte är positivt flyttar ingenting — det finns ingen början att sätta.
+    #[test]
+    fn nothing_moves_when_the_head_is_not_positive() {
+        let tempo = crate::audio::tempo::TempoMap::single(140.0);
+        let clips = vec![(0, 0, geometry(0.0, 151.24667, 0.0, 140.0))];
+        assert!(plan_group_shift_by_head_secs(&clips, 0.0, 0.0, &tempo)
+            .expect("noll ska gå")
+            .is_empty());
+        assert!(plan_group_shift_by_head_secs(&clips, 0.0, -0.5, &tempo)
+            .expect("negativt ska gå")
+            .is_empty());
     }
 }
