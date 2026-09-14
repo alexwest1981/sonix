@@ -1416,6 +1416,138 @@ mod tests {
         );
     }
 
+    /// **Kantdämpningen, mätt på ljudet** (Fas 8.7 steg 2). Regeln `slice_edge_gain` har egna
+    /// prov, men de säger inget om att rösten *använder* den. Det här provet gör det — och det
+    /// mäter **formen vid kanten**, inte ett värde någonstans i filen:
+    ///
+    /// * tonen slutar **mitt i en cykel**, så ett klick vore hörbart (447 Hz i 0,2 s är 89,4
+    ///   cykler; 440 Hz hade varit exakt 88 och tystnat av sig själv — ett prov som ser rätt ut
+    ///   och inte prövar något),
+    /// * nivån en bit in är **intakt** (dämpningen är lokal vid kanten, inte en allmän sänkning),
+    /// * och **nedgången till tystnad tar omkring 2 ms** — rampen finns där, med rätt längd.
+    ///
+    /// Mätningen är **relativ** (den letar upp den sista hörbara ramen i stället för att anta en
+    /// förskjutning), så ett förspel eller en annan renderingslängd kan inte flytta mätpunkten
+    /// och göra provet grönt på fel ställe.
+    #[test]
+    fn a_slice_end_is_faded_to_silence_at_the_edge() {
+        const SR: u32 = 44_100;
+        const FREQ: f32 = 447.0; // slutar mitt i en cykel — annars prövas ingenting
+        const AMP: f32 = 0.5;
+        const FRAMES: usize = SR as usize / 5; // 0,2 s
+
+        let mut spec = render_smoke_spec();
+        spec.pattern_mode = true;
+        for ch in spec.rack.iter_mut() {
+            ch.steps = [false; 16];
+            ch.voice = None;
+        }
+        let tone: Arc<Vec<f32>> = Arc::new(
+            (0..FRAMES)
+                .map(|i| (2.0 * std::f32::consts::PI * FREQ * i as f32 / SR as f32).sin() * AMP)
+                .collect(),
+        );
+        spec.rack[0].voice = Some(VoiceSpec {
+            left: tone.clone(),
+            right: tone.clone(),
+            sample_rate: SR,
+            base_note: 36,
+            semitones: 0,
+            cents: 0.0,
+            volume: 1.0,
+            reverse: false,
+            start: 0.0,
+            end: 1.0,
+            loop_mode: LoopMode::Off,
+            loop_start: 0.0,
+            loop_end: 1.0,
+            ping_pong: false,
+            amp_env: AdsrParams::identity(),
+        });
+        spec.rack[0].steps[0] = true;
+        spec.rack[0].notes[0] = 36;
+
+        let fx = FxState {
+            waveform: super::super::command::Waveform::Square,
+            adsr: AdsrParams::default(),
+            filter: FilterParams::default(),
+            delay: DelayParams { mix: 0.0, ..DelayParams::default() },
+            reverb: ReverbParams { mix: 0.0, ..ReverbParams::default() },
+            drive: 1.0,
+            master_volume: 1.0,
+            master_fx: MasterFxParams::default(),
+        };
+        let mut engine = build_offline_engine(&spec, &fx);
+        let buf = render_project_offline(&mut engine, &spec);
+        let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
+
+        // Tonen slutar mitt i en cykel — kontrollera det, för annars är provet värdelöst.
+        let raw_last = (2.0 * std::f32::consts::PI * FREQ * (FRAMES - 1) as f32 / SR as f32).sin() * AMP;
+        assert!(
+            raw_last.abs() > 0.2,
+            "tonen slutar i en nollgenomgång ({raw_last}) — då kan provet inte se ett klick"
+        );
+
+        // **Höljet, inte sampelvärdena.** En 447 Hz-sinus korsar noll var ~49:e ram, så
+        // "första värdet under tröskeln" är nästa nollgenomgång och inte slutet på rampen —
+        // det mätte 13 ramar i stället för 88 när provet skrevs. Samma läxa som slagletningen:
+        // mät på höljet.
+        let env_at = |i: usize| -> f32 {
+            let from = i.saturating_sub(12);
+            let to = (i + 12).min(left.len());
+            left[from..to].iter().fold(0.0_f32, |m, v| m.max(v.abs()))
+        };
+
+        // **Nivån mäts, inte antas.** Renderingen går genom kanal och master, så dess absoluta
+        // nivå är inte provets sak — det är *formen* vid kanten. Trösklarna är därför fraktioner
+        // av den uppmätta toppen, och provet blir inte fel för att kedjan ändrar sin nivå.
+        let peak = left.iter().fold(0.0_f32, |m, v| m.max(v.abs()));
+        assert!(
+            peak > 1e-4,
+            "ingen ton i renderingen (topp {peak}) — då mäter provet ingenting"
+        );
+        let (loud_threshold, quiet_threshold) = (peak * 0.6, peak * 0.02);
+
+        // Sista ramen med (nästan) full nivå, och första ramen där höljet har fallit till tystnad.
+        let loud_end = (0..left.len())
+            .rev()
+            .find(|&i| env_at(i) > loud_threshold)
+            .expect("ingen ton med full nivå — då mäter provet ingenting");
+        let quiet_from = (loud_end..left.len())
+            .find(|&i| env_at(i) < quiet_threshold)
+            .expect("ljudet tystnade aldrig — rampen saknas");
+
+        // 1. Rampen finns och är kort: nedgången tar omkring 2 ms (88 ramar vid 44,1 kHz).
+        //    Höljet är mätt över 25 ramar, så toleransen är rymlig — det som prövas är
+        //    storleksordningen, inte ett exakt antal.
+        let ramp_frames = (quiet_from - loud_end) as f32;
+        assert!(
+            (30.0..=260.0).contains(&ramp_frames),
+            "nedgången tog {ramp_frames} ramar, väntat omkring 88 (2 ms)"
+        );
+
+        // 2. Den är en **ramp** och inte ett klick: höljet faller, det hoppar inte.
+        let mut previous = f32::MAX;
+        for i in loud_end..=quiet_from {
+            let v = env_at(i);
+            assert!(
+                v <= previous + 0.02,
+                "höljet steg inuti nedgången ({v} efter {previous}) — det är ett klick"
+            );
+            previous = v;
+        }
+
+        // 3. Dämpningen är **lokal**: en bit in i slicen är nivån intakt. Utan det här hade
+        //    provet varit grönt även av en allmän sänkning av hela rösten.
+        let before = left[loud_end.saturating_sub((SR as usize / 200).max(1))..loud_end]
+            .iter()
+            .fold(0.0_f32, |m, v| m.max(v.abs()));
+        assert!(
+            before > peak * 0.5,
+            "nivån 5 ms in i slicen var {before} mot toppen {peak} — dämpningen är inte lokal vid kanten"
+        );
+    }
+
     /// Fas 8.3 i exporten: en **spår-send** följer med offline-renderingen.
     ///
     /// Sändaren läggs på en buss vars nivå är noll, så att 880 Hz-tonen i exporten **bara**

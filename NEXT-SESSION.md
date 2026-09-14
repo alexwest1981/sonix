@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 472 default / 518 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 473 default / 519 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -387,11 +387,15 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
   ligger inom Reapers/Abletons 1–5 ms.
 - **`fade_frames = 0` ger exakt den gamla vägen**, med eget prov. Det är kontrollen som gör att
   rampen aldrig kan ändra något den inte ska.
-- **MÄTNINGEN ÅTERSTÅR:** 472 tester gröna, och **ingen** av dem fångade att ljudet ändrades.
-  Regeln är provad och inkopplingen kompilerad, men ingen renderingsmätning visar att rösten
-  dämpas vid slutet. Provet som ska skrivas mäter **formen vid kanten** på en renderad slice —
-  sista ramen nära noll, nivån intakt en bit in — så att dämpningen bevisas vara lokal vid
-  kanten och inte en allmän sänkning. Skriv inte "klart" förrän det finns.
+- **MÄTT PÅ LJUDET:** `a_slice_end_is_faded_to_silence_at_the_edge` mäter formen vid kanten —
+  nedgången tar ~88 ramar (2 ms), höljet faller monotont, nivån 5 ms in är intakt. Provet är
+  kausalt (utan ramp mäter nedgången ~0 ramar).
+- **Två fällor på vägen, båda värda att komma ihåg:** (1) 440 Hz i 0,2 s är exakt 88 cykler, så
+  tonen slutar i en **nollgenomgång** och ett klick vore osynligt — provet använder 447 Hz och
+  **kräver** att tonen slutar mitt i en cykel. (2) "Första värdet under tröskeln" är för en sinus
+  **nästa nollgenomgång**, inte slutet på rampen — det mätte 13 ramar i stället för 88. Mät på
+  **höljet**, samma läxa som slagletningen. Och: mät nivåer som **fraktioner av uppmätt topp**,
+  aldrig mot en absolut tröskel.
 
 ## 4j. 8.7 steg 2: nudge klar (2026-09-14)
 
