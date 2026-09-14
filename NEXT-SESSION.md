@@ -463,10 +463,17 @@ rad: "skriv aldrig en siffra du inte mätt".
      visade 1,25 där jag skrivit 0,8. Samma fälla som 8.10c ("302,49 s ut av 259,28 s = 1,1667").
    - **Fysiken pinnas av fyra tal:** 4 takter i 120 = 8 s, i 150 = 6,4 s, styckena 4,0 + 3,2 =
      7,2 s = exakt vad `TempoMap` säger. Invarianten prövas mot kartan, inte mot ett handräknat tal.
-   - **Kvar:** koppla in på de tre ställena (läs tempot **där klippet ligger**) och rendera ett
-     stycke per tempoavsnitt — cachen bär redan nyckeln (`source`, `source_bpm`, `project_bpm`).
-     **Ett eget pass:** varje ställe har sin kontext, och en felvänd faktor hörs som en smurf.
-     Skulden står som `#[allow(dead_code)]` i koden med sin orsak.
+   - **HALVA INKOPPLINGEN GJORD 2026-09-14:** alla **tre levande ställen** läser nu
+     `self.tempo_map().bpm_at(<klippets start_bar>)` i stället för `self.bpm` — vågformens ritning,
+     utsnittet och spara-som-sample. En kloss *efter* ett tempobyte följer därmed bytet, och för ett
+     projekt med ett enda tempo är `bpm_at` exakt samma tal som förut (bit-identiskt).
+   - **Kvar:** en kloss som *spänner över* ett byte får fortfarande **en** faktor — det kräver att
+     motorn renderar **ett stycke per tempoavsnitt** (cachen bär redan nyckeln `source`,
+     `source_bpm`, `project_bpm`). `stretch_pieces` är byggd och provad och står som
+     `#[allow(dead_code)]`-skuld med sin orsak, redo att kopplas in där.
+   - **Läxan för nästa pass:** sök på **funktionsnamnet** `stretch_ratio_for(`, aldrig på radnummer
+     — radnumren sköt under mig mitt i passet (mina egna infogningar), och att patcha på en rad man
+     inte verifierat är hur en smurf tar sig in.
 2. `sample_offset_sec > 0` kan hamna utanför sitt eget utsnitt. Oförändrat sedan före 8.10
    (medvetet: ingen tyst beteendeändring), men fel — egen rad.
 3. **Alex' öra HAR SVARAT (2026-09-14): "båda har lite artefakter, men andra ljudet lät lite

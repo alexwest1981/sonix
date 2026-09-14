@@ -4851,7 +4851,13 @@ impl SonixApp {
         let reg_offset_sec = region.sample_offset_sec.max(0.0);
         // Klippet kan vara sträckt (Fas 8.10): utsnittet som kopieras är det
         // vågformen visar, inte regionens tid på tidslinjen.
-        let reg_rate = stretch_ratio_for(region.source_bpm, self.bpm);
+        // **Tempot där klippet ligger**, inte ett tal för hela projektet (8.10 punkt 1). Över ett
+        // tempobyte är "projektets bpm" inte ett tal: klippet ska följa tempot på sin egen plats.
+        // För ett projekt med ett enda tempo ger `bpm_at` exakt samma tal som förut.
+        let reg_rate = stretch_ratio_for(
+            region.source_bpm,
+            self.tempo_map().bpm_at(region.start_bar as f64),
+        );
 
         // Destination: the canonical user sample bank (Fas 6.0).
         let save_dir = crate::paths::paths().samples_dir();
@@ -5126,9 +5132,11 @@ impl SonixApp {
             let start_idx = (start_sec * sr as f32) as usize;
             // Sträckt kloss (Fas 8.10): utsnittet är regionens tid gånger faktorn,
             // alltså samma stycke som vågformen visar.
-            let end_idx =
-                ((start_sec + len_sec * stretch_ratio_for(reg.source_bpm, self.bpm)) * sr as f32)
-                    as usize;
+            // Faktorn läses **där klippet ligger** (8.10 punkt 1): `tempo` ovan är en karta för ett
+            // enda tempo, och över ett tempobyte skulle det talet vara fel för allt efter bytet.
+            let end_idx = ((start_sec
+                + len_sec * stretch_ratio_for(reg.source_bpm, self.tempo_map().bpm_at(reg.start_bar as f64)))
+                * sr as f32) as usize;
             if start_idx < l.len() {
                 extracted_pcm = l[start_idx..end_idx.min(l.len())].to_vec();
             }
@@ -12240,9 +12248,13 @@ impl SonixApp {
                                                     // tempo. Utan faktorn här skulle vågformen visa
                                                     // ett annat stycke än det som hörs — samma sorts
                                                     // lögn som 8.3 stängde.
+                                                    // Tempot **där klippet ligger** — samma regel
+                                                    // som de två andra ställena (8.10 punkt 1), så
+                                                    // vyn och ljudet inte kan visa olika tempobyten.
                                                     let region_rate = stretch_ratio_for(
                                                         region.source_bpm,
-                                                        self.bpm,
+                                                        self.tempo_map()
+                                                            .bpm_at(region.start_bar as f64),
                                                     );
                                                     let total_samples = region_source_span_samples(
                                                         region_secs,
