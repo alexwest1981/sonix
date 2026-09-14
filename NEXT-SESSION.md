@@ -365,6 +365,20 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
 
+## 4l. Läget just nu (2026-09-14)
+
+- **Windows-porten är PAUSAD efter besked** (Alex har ingen laptop än): *"Sätt Windows på paus
+  tills jag säger till."* Rör den inte förrän han säger till — det som är klart hålls grönt av
+  CI. Enda kvarvarande portningen är MCU-kontrollen, och den väntar på en **riktig enhet**.
+- **GitHub-biten kring loggan är släppt** (Alex: "Github ser bra ut, den biten kan vi släppa så
+  länge") — social preview behöver inte jagas.
+- **Den installerade ikonen är uppdaterad för hand** (32–512 i `~/.local/share/icons/hicolor/`
+  + cachen ombyggd), eftersom `install.sh` kopierar den vid *installationen*. Kör
+  `bash install.sh --refresh` efter ett logotypbyte i fortsättningen, så slipper det göras för hand.
+- **Nästa arbete, i ordning:** (1) mätningen av kantdämpningen vid slicekanten, (2) dumpen av
+  slicar till steg/piano roll, (3) resten av roadmapen (8.6 plugins, 8.8 fler
+  automatiseringsmål, 8.9 makron, 8.10 sträckningen in i tidslinjen).
+
 ## 4k. 8.7 steg 2: kantdämpning i koden, mätningen kvar (2026-09-14)
 
 - **Starten var dämpad, slutet inte.** `attack_frames` (1,5 ms anti-klick) fanns; en slice som

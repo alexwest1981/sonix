@@ -78,7 +78,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 1 | **8.3 Routing på riktigt** | *M* | **Klar 2026-09-13**: sidokedjor (`09-12`), bussar/VCA (`09-12`), sends mellan spår (`09-13`) | — |
 | 2 | **8.4 Sampler** | *M* | **Klar 2026-09-13**: looplägen, not-av, ADSR och export — se stycket nedan | — |
 | 3 | **8.2 Tempo map** | *S–M* | **Klar 2026-09-14**: visningen genom kartan (`snap_bar` som enda snäppregel) och **automationens punkter i takter** med migrering av gamla projekt genom kartan. Kvar: Alex' ögon på tempopunkt-UI:t | Alex' kvittens |
-| 4 | **7.1 Windows-porten** | *XL* | **Steg 1–8 klara 2026-09-14**: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`) på alla plattformar**. Kvar: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Lånad Windows-laptop |
+| 4 | **7.1 Windows-porten** | *XL* | **PAUSAD EFTER BESKED 2026-09-14** (Alex har ingen laptop än). Steg 1–8 klara: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`)**. Kvar när den tas upp: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Alex säger till |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** + **nudge klar 2026-09-14** (gränsen flyttas för båda grannarna, kläms i stället för att slås ihop, dragen direkt i vågformen); kvar: **mätningen** av kantdämpningen (koden är inne, ljudet inte mätt) och dump till steg/piano roll | — |
@@ -689,6 +689,10 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     5. Ta med `selftest.txt` plus de fyra iakttagelserna tillbaka — då är kriteriets tre delar
        kvitterade: startar, spelar upp ljud, tar emot MIDI (den sista först när `midir`-porten
        är gjord, och det står i utskriften vilket av dem som gäller).
+  - **PORTEN ÄR PAUSAD EFTER BESKED (2026-09-14):** Alex: *"Sätt Windows på paus tills jag säger
+    till då jag inte har någon laptop än."* Inget mer Windows-arbete görs förrän han säger till.
+    Det som är klart står kvar och hålls grönt av CI (jobbet är blockerande). **Den enda kvarvarande
+    portningen är MCU-kontrollen**, och den väntar på en riktig enhet — inte på Windows i sig.
   - **Kvar (när Windows blir aktuellt igen, i tur och ordning):**
     1. **Köra den på en riktig Windows-maskin.** Artifacten + `--selftest` gör den delen till en
        mätning; kvar att göra är att faktiskt låna maskinen (Alex 2026-09-14: "kanske kan låna en
