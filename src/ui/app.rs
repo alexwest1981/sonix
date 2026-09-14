@@ -15529,6 +15529,72 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                                         group_changed = true;
                                     }
                                 });
+                                // **Bussens egna kurvor** (Fas 8.8): här skapas de — vid
+                                // reglaget de hör till. Motorn lyder dem redan; knapparna
+                                // skriver bara ner det läge handen ställt in. Ingen gissning
+                                // om vad kurvan "borde" vara: den blir vad fadern står på.
+                                ui.horizontal(|ui| {
+                                    let ix = self.bus_automation.iter().position(|l| l.bus == b);
+                                    let på = ix.is_some_and(|i| self.bus_automation[i].enabled);
+                                    let punkter = ix.map_or(0, |i| self.bus_automation[i].points.len());
+                                    let färg = if på { Theme::FL_CYAN } else { Theme::TEXT_MUTED };
+                                    if ui
+                                        .add(egui::Button::new(egui::RichText::new("🔗").size(10.0).color(färg)).min_size(egui::vec2(22.0, 16.0)))
+                                        .on_hover_text(crate::tstatus!(
+                                            "Bussens kurva — {} ({} punkter). Bussen äger den själv; flera spår kan skicka hit.",
+                                            if på { crate::i18n::t("på") } else { crate::i18n::t("av") },
+                                            punkter
+                                        ))
+                                        .clicked()
+                                    {
+                                        match ix {
+                                            Some(i) => self.bus_automation[i].enabled = !på,
+                                            None => self.bus_automation.push(BusAutomationLane {
+                                                bus: b,
+                                                enabled: true,
+                                                points: Vec::new(),
+                                            }),
+                                        }
+                                    }
+                                    if ui
+                                        .add(egui::Button::new(egui::RichText::new("＋").size(10.0).color(Theme::TEXT_MUTED)).min_size(egui::vec2(22.0, 16.0)))
+                                        .on_hover_text(crate::i18n::t("Lägg en punkt här, på faderns nuvarande nivå"))
+                                        .clicked()
+                                    {
+                                        let bar = self.tempo_map().bar_at_secs(self.song_time as f64) as f32;
+                                        let value = self.bus_volume[b];
+                                        let i = match ix {
+                                            Some(i) => {
+                                                self.bus_automation[i].enabled = true;
+                                                i
+                                            }
+                                            None => {
+                                                self.bus_automation.push(BusAutomationLane {
+                                                    bus: b,
+                                                    enabled: true,
+                                                    points: Vec::new(),
+                                                });
+                                                self.bus_automation.len() - 1
+                                            }
+                                        };
+                                        let lane = &mut self.bus_automation[i];
+                                        // En punkt per takt: två på samma plats ger en lodrät
+                                        // kurva, och en sådan kan ingen mena.
+                                        lane.points.retain(|p| (p.time_bars - bar).abs() > 1e-3);
+                                        lane.points.push(AutomationPoint { time_bars: bar, value });
+                                        lane.points.sort_by(|x, y| {
+                                            x.time_bars
+                                                .partial_cmp(&y.time_bars)
+                                                .unwrap_or(std::cmp::Ordering::Equal)
+                                        });
+                                        self.status_message = crate::tstatus!(
+                                            "🔗 Buss {}: punkt vid takt {:.2} ({:.0} %)",
+                                            bus_name,
+                                            bar,
+                                            value * 100.0
+                                        );
+                                    }
+                                });
                                 let gain_db = if self.bus_volume[b] <= 0.001 { -60.0 } else { 20.0 * self.bus_volume[b].log10() };
                                 ui.label(egui::RichText::new(format!("{:.0}% {:+.1}dB", self.bus_volume[b] * 100.0, gain_db)).size(8.0).color(Theme::TEXT_MUTED));
                             });

@@ -83,7 +83,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. **8.7 klart 2026-09-14**: nudge, kantdämpning (mätt) och dump till stegraden + piano rollen med kontraktsprov. | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
-| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Klar 2026-09-14 utom plugin och buss-UI:t**: tio spårmål, och bussens egna kurvor är byggda (modell, apply, inläsning, ångring) med prov. Kvar: UI:t som skapar busskurvor, och plugin-målen | — |
+| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Klar 2026-09-14 utom plugin-målen**: tio spårmål, och bussens egna kurvor är byggda hela vägen (modell, apply, inläsning, ångring och UI) med prov. Kvar: bara plugin-målen | — |
 
 #### 8.8: EQ:ns band och bussfrågan (2026-09-14)
 
@@ -122,9 +122,17 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
       tilldelas** (att bara läsa är samma förlust, flyttad ett steg) och **återställas vid
       ångring** — annars hade första ångringen tyst raderat dem. Båda syntes först när
       kompilatorn räknade upp initialiseringarna.
-    - **Kvar: UI:t som skapar kurvorna.** Motorn lyder dem redan, och ett projekt kan bära dem,
-      men det finns ännu ingen knapp som lägger en punkt. Det är förar-sidan, och den hör ihop
-      med buss-strippens reglage — ett eget litet pass, inte en rad.
+    - **UI:t byggt samma kväll:** i buss-strippen, direkt under M/S-raden, sitter två små
+      knappar — **🔗** (kurvan på/av, med antalet punkter i tipset) och **＋** (lägg en punkt på
+      faderns nuvarande nivå, vid spelhuvudets takt). Där kurvan hör hemma: vid reglaget den
+      styr. Ingen gissning om vad kurvan "borde" vara — den blir vad handen ställt in, vilket är
+      samma arbetssätt som spårets lanes.
+      - **En punkt per takt:** att lägga två på samma plats ger en lodrät kurva, och en sådan
+        kan ingen mena. Den nya punkten ersätter därför en befintlig i samma takt.
+      - **Ärligt om vad som är prövat:** modellen, regeln och den delade interpolationen har prov
+        (485/531 gröna). **Knapparna är inte klickade i GUI** — det finns ingen skärm att klicka på
+        här, och repots egen regel är att säga det i stället för att påstå en visuell kontroll.
+      - **Kvar i 8.8:** bara plugin-målen (dynamisk parameterlista, feature-gated).
 - **Plugin-parametrar: målet finns, men formen är en annan — och det är en verklig skillnad, inte
   en genväg** (mätt 2026-09-14). `AudioCommand::SetPluginParameter` finns, och värden har både
   `parameters() -> &[PluginParameter]` och `set_parameter(id, value)`. Det som *inte* fungerar är

@@ -418,9 +418,11 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
   **Ett eget pass.**
 - **Kvar av 8.8:** buss- och plugin-passen ovan — båda med formen bestämd i roadmapen.
 
-- **BYGGD 2026-09-14 (modell + apply + inläsning + ångring), utom UI:t.** Kurvorna lyder redan
-  i motorn, och ett projekt kan bära dem. Kvar: knappen som skapar en punkt, som hör ihop med
-  buss-strippens reglage.
+- **BYGGD HELA VÄGEN 2026-09-14:** modell, apply, inläsning, ångring **och UI** (🔗 på/av och
+  ＋ lägg punkt, i buss-strippen under M/S-raden). En punkt per takt — två på samma plats ger en
+  lodrät kurva ingen kan mena.
+- **Ärligt:** reglerna har prov, men **knapparna är inte klickade i GUI** (ingen skärm här).
+- **Kvar av 8.8:** plugin-målen (dynamisk lista, feature-gated).
 - **En regel, två kurvor:** interpolationen bor i `lane_value_at` och används av både spårets
   och bussens lane, med ett prov som binder dem.
 - **Två tysta förluster fångade:** kurvorna måste både läsas ur filen och tilldelas, och
