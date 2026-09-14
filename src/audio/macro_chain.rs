@@ -229,7 +229,7 @@ pub fn output_dir_for(input: &Path, out_dir: Option<&Path>) -> PathBuf {
 pub fn audio_files_in(dir: &Path) -> Result<Vec<String>, String> {
     const EXTS: [&str; 8] = ["wav", "wave", "flac", "mp3", "ogg", "oga", "m4a", "aac"];
     let entries = std::fs::read_dir(dir)
-        .map_err(|e| format!("{}: {}", crate::i18n::t("Kunde inte läsa mappen"), e))?;
+        .map_err(|e| crate::tstatus!("Kunde inte läsa mappen: {}", e))?;
     let mut files: Vec<String> = Vec::new();
     for entry in entries.flatten() {
         let path = entry.path();
@@ -248,6 +248,107 @@ pub fn audio_files_in(dir: &Path) -> Result<Vec<String>, String> {
     Ok(files)
 }
 
+// ---------------------------------------------------------------------------
+// Stegreglerna — en gång, för båda dörrarna
+// ---------------------------------------------------------------------------
+
+/// **Normaliseringssteget.** Anropas av *både* filvägen och projektvägen, så målet, taket och
+/// ordalydelsen i loggen inte kan glida isär mellan dem.
+///
+/// Målet och taket är två löften, och **taket vinner**: utan tak hade en stämma kunnat tvingas
+/// till målet och klippt. Därför mäts resultatet efteråt och avvikelsen sägs högt — mätt på
+/// Alex' egen Suno-stämma (Broken/Vocals: topp −2,8 dBTP) band taket vid −1 och loudnessen
+/// stannade 3,6 LU under målet.
+pub fn step_normalize(
+    buf: &mut [f32],
+    sample_rate: u32,
+    target_lufs: f32,
+    ceiling_dbtp: f32,
+) -> StepReport {
+    let before = true_peak_db(buf);
+    let measured = normalize_loudness(buf, sample_rate, target_lufs, ceiling_dbtp);
+    let after_lufs = integrated_lufs(buf, sample_rate);
+    let after = true_peak_db(buf);
+    let short = after_lufs < target_lufs - 0.1;
+    StepReport {
+        step: MacroStep::Normalize {
+            target_lufs,
+            ceiling_dbtp,
+        }
+        .label()
+        .to_string(),
+        detail: if short {
+            format!(
+                "{measured:.1} → {after_lufs:.1} LUFS (mål {target_lufs:.1}, {}), topp {before:.1} → {after:.1} dBTP",
+                crate::i18n::t("taket satte gränsen")
+            )
+        } else {
+            format!(
+                "{measured:.1} → {after_lufs:.1} LUFS (mål {target_lufs:.1}), topp {before:.1} → {after:.1} dBTP"
+            )
+        },
+    }
+}
+
+/// **Trimmningssteget.** `Err` när hela bufferten ligger under tröskeln — då finns inget att
+/// skriva, och anroparen säger det i stället för att skriva tyst.
+pub fn step_trim_silence(
+    buf: &mut Vec<f32>,
+    sample_rate: u32,
+    threshold_db: f32,
+    keep_ms: f32,
+) -> Result<StepReport, String> {
+    let frames = buf.len() / 2;
+    let Some((start, end)) = signal_span_frames(buf, sample_rate, threshold_db, keep_ms) else {
+        return Err(crate::tstatus!(
+            "hela filen ligger under tröskeln ({:.0} dB) — inget skrevs",
+            threshold_db
+        ));
+    };
+    let removed_start = start as f32 / sample_rate as f32;
+    let removed_end = (frames - 1 - end) as f32 / sample_rate as f32;
+    *buf = trim_to_span(buf, start, end);
+    Ok(StepReport {
+        step: MacroStep::TrimSilence {
+            threshold_db,
+            keep_ms,
+        }
+        .label()
+        .to_string(),
+        detail: format!(
+            "-{removed_start:.3} s i början, -{removed_end:.3} s i slutet ({:.3} s kvar)",
+            buf.len() as f32 / 2.0 / sample_rate as f32
+        ),
+    })
+}
+
+/// **Stegen utom exporten, på en buffert i minnet** — det öppna projektets väg.
+///
+/// Exporten är anroparens: projektet skriver sin egen rendering, medan filvägen skriver utdata.
+/// Allt annat går genom [`step_trim_silence`] och [`step_normalize`], alltså samma regler som
+/// filvägen använder — en ändring i en regel kan inte hamna i bara den ena vägen.
+pub fn apply_steps_to_buffer(
+    chain: &MacroChain,
+    buf: &mut Vec<f32>,
+    sample_rate: u32,
+) -> Result<Vec<StepReport>, String> {
+    let mut reports = Vec::new();
+    for step in &chain.steps {
+        match step {
+            MacroStep::Normalize {
+                target_lufs,
+                ceiling_dbtp,
+            } => reports.push(step_normalize(buf, sample_rate, *target_lufs, *ceiling_dbtp)),
+            MacroStep::TrimSilence {
+                threshold_db,
+                keep_ms,
+            } => reports.push(step_trim_silence(buf, sample_rate, *threshold_db, *keep_ms)?),
+            MacroStep::Export { .. } => {}
+        }
+    }
+    Ok(reports)
+}
+
 /// **Kör en kedja på en fil.** Det här är den enda vägen som rör filsystemet.
 ///
 /// Ordningen är doktrinen: läs (avbryt vid fel) → stegen i tur och ordning → skriv → **läs
@@ -264,7 +365,7 @@ pub fn run_on_file(
             // Doktrinen: rapportera och avbryt. Ingen tom fil skrivs "för säkerhets skull".
             return FileRun::aborted(
                 input,
-                format!("{} — {}: {}", input, crate::i18n::t("kan inte läsas"), e),
+                crate::tstatus!("{} — kan inte läsas: {}", input, e),
             );
         }
     };
@@ -277,7 +378,7 @@ pub fn run_on_file(
     if buf.is_empty() {
         return FileRun::aborted(
             input,
-            format!("{} — {}", input, crate::i18n::t("filen är tom (inget ljud)")),
+            crate::tstatus!("{} — filen är tom (inget ljud)", input),
         );
     }
     let input_peak = true_peak_db(&buf);
@@ -296,59 +397,16 @@ pub fn run_on_file(
                 target_lufs,
                 ceiling_dbtp,
             } => {
-                let before = true_peak_db(&buf);
-                let measured = normalize_loudness(&mut buf, sample_rate, *target_lufs, *ceiling_dbtp);
-                let after_lufs = integrated_lufs(&buf, sample_rate);
-                let after = true_peak_db(&buf);
-                // **Målet och taket är två löften, och taket vinner.** Utan tak hade en stämma
-                // kunnat tvingas till målet och klippt. Att bara skriva "mål −14" när filen
-                // hamnade på −17,6 vore halva sanningen — mätt på Alex' egen Suno-stämma
-                // (Broken/Vocals: 11,76 s tystnad in, topp −2,8 dBTP) band taket vid −1 och
-                // loudnessen stannade 3,6 LU under målet. Därför mäts resultatet efteråt, och
-                // avvikelsen sägs högt.
-                let short = after_lufs < target_lufs - 0.1;
-                run.reports.push(StepReport {
-                    step: step.label().to_string(),
-                    detail: if short {
-                        format!(
-                            "{measured:.1} → {after_lufs:.1} LUFS (mål {target_lufs:.1}, {}), topp {before:.1} → {after:.1} dBTP",
-                            crate::i18n::t("taket satte gränsen")
-                        )
-                    } else {
-                        format!(
-                            "{measured:.1} → {after_lufs:.1} LUFS (mål {target_lufs:.1}), topp {before:.1} → {after:.1} dBTP"
-                        )
-                    },
-                });
+                run.reports
+                    .push(step_normalize(&mut buf, sample_rate, *target_lufs, *ceiling_dbtp));
             }
             MacroStep::TrimSilence {
                 threshold_db,
                 keep_ms,
-            } => {
-                let frames = buf.len() / 2;
-                let Some((start, end)) = signal_span_frames(&buf, sample_rate, *threshold_db, *keep_ms)
-                else {
-                    return FileRun::aborted(
-                        input,
-                        format!(
-                            "{} — {} ({threshold_db:.0} dB): {}",
-                            input,
-                            crate::i18n::t("hela filen ligger under tröskeln"),
-                            crate::i18n::t("inget skrevs")
-                        ),
-                    );
-                };
-                let removed_start = start as f32 / sample_rate as f32;
-                let removed_end = (frames - 1 - end) as f32 / sample_rate as f32;
-                buf = trim_to_span(&buf, start, end);
-                run.reports.push(StepReport {
-                    step: step.label().to_string(),
-                    detail: format!(
-                        "-{removed_start:.3} s i början, -{removed_end:.3} s i slutet ({:.3} s kvar)",
-                        buf.len() as f32 / 2.0 / sample_rate as f32
-                    ),
-                });
-            }
+            } => match step_trim_silence(&mut buf, sample_rate, *threshold_db, *keep_ms) {
+                Ok(report) => run.reports.push(report),
+                Err(e) => return FileRun::aborted(input, format!("{input} — {e}")),
+            },
             MacroStep::Export {
                 format,
                 suffix,
@@ -363,11 +421,11 @@ pub fn run_on_file(
                 if let Err(e) = std::fs::create_dir_all(&dir) {
                     return FileRun::aborted(
                         input,
-                        format!(
-                            "{} — {} {}: {e}",
+                        crate::tstatus!(
+                            "{} — kunde inte skapa utmappen {}: {}",
                             input,
-                            crate::i18n::t("kunde inte skapa utmappen"),
-                            dir.display()
+                            dir.display(),
+                            e
                         ),
                     );
                 }
@@ -378,11 +436,7 @@ pub fn run_on_file(
                 if input_peak.is_finite() && out_peak < -120.0 {
                     return FileRun::aborted(
                         input,
-                        format!(
-                            "{} — {}",
-                            input,
-                            crate::i18n::t("kedjan gjorde filen tyst; inget skrevs")
-                        ),
+                        crate::tstatus!("{} — kedjan gjorde filen tyst; inget skrevs", input),
                     );
                 }
                 let settings = DitherSettings {
@@ -401,12 +455,7 @@ pub fn run_on_file(
                 ) {
                     return FileRun::aborted(
                         input,
-                        format!(
-                            "{} — {} {}: {e}",
-                            input,
-                            crate::i18n::t("kunde inte skriva"),
-                            path_str
-                        ),
+                        crate::tstatus!("{} — kunde inte skriva {}: {}", input, path_str, e),
                     );
                 }
                 // **Läs tillbaka.** En skrivning som "lyckades" men lämnade en tom eller tyst
@@ -417,10 +466,10 @@ pub fn run_on_file(
                         if frames == 0 {
                             return FileRun::aborted(
                                 input,
-                                format!(
-                                    "{} — {} {path_str}",
+                                crate::tstatus!(
+                                    "{} — utdata är tom; filen skrevs inte korrekt: {}",
                                     input,
-                                    crate::i18n::t("utdata är tom; filen skrevs inte korrekt")
+                                    path_str
                                 ),
                             );
                         }
@@ -433,29 +482,31 @@ pub fn run_on_file(
                         if back_peak < -120.0 {
                             return FileRun::aborted(
                                 input,
-                                format!(
-                                    "{} — {} {path_str}",
+                                crate::tstatus!(
+                                    "{} — utdata är tyst; filen skrevs inte korrekt: {}",
                                     input,
-                                    crate::i18n::t("utdata är tyst; filen skrevs inte korrekt")
+                                    path_str
                                 ),
                             );
                         }
+                        // Raden är en **mätning** (antal sampel ur filen, topp ur filen) och
+                        // hålls därför som siffror och enheter — den översätts inte.
                         run.reports.push(StepReport {
                             step: step.label().to_string(),
                             detail: format!(
-                                "{path_str} ({} sampel, topp {back_peak:.1} dBTP, {} läser tillbaka)",
-                                back.len(),
-                                crate::i18n::t("och den")
+                                "{path_str} ({} sampel, topp {back_peak:.1} dBTP, läses tillbaka ok)",
+                                back.len()
                             ),
                         });
                     }
                     Err(e) => {
                         return FileRun::aborted(
                             input,
-                            format!(
-                                "{} — {} {path_str}: {e}",
+                            crate::tstatus!(
+                                "{} — utdata går inte att läsa tillbaka {}: {}",
                                 input,
-                                crate::i18n::t("utdata går inte att läsa tillbaka")
+                                path_str,
+                                e
                             ),
                         );
                     }
@@ -476,10 +527,29 @@ pub fn run_batch(
     out_dir: Option<&Path>,
     meta: &ExportMeta,
 ) -> Vec<FileRun> {
-    inputs
-        .iter()
-        .map(|input| run_on_file(chain, input, out_dir, meta))
-        .collect()
+    run_batch_with_progress(chain, inputs, out_dir, meta, &mut |_, _, _| {})
+}
+
+/// Som [`run_batch`], men rapporterar **efter varje fil** — en batch på hundra filer ska gå att
+/// följa medan den kör, inte bara efteråt. `on_file` får `(klar, av, körningen)`.
+///
+/// En enda implementation: `run_batch` är samma väg med en tom återkoppling, så de två inte kan
+/// svara olika på samma mapp.
+pub fn run_batch_with_progress(
+    chain: &MacroChain,
+    inputs: &[String],
+    out_dir: Option<&Path>,
+    meta: &ExportMeta,
+    on_file: &mut dyn FnMut(usize, usize, &FileRun),
+) -> Vec<FileRun> {
+    let total = inputs.len();
+    let mut runs = Vec::with_capacity(total);
+    for (i, input) in inputs.iter().enumerate() {
+        let run = run_on_file(chain, input, out_dir, meta);
+        on_file(i + 1, total, &run);
+        runs.push(run);
+    }
+    runs
 }
 
 /// Hur många filer som gick hela vägen.
@@ -523,7 +593,7 @@ pub fn write_batch_log(
     let dir = output_dir_for(first_input, out_dir);
     let path = dir.join(LOG_FILE);
     crate::autosave::write_atomic(&path, batch_log(chain, runs).as_bytes())
-        .map_err(|e| format!("{} {}: {e}", crate::i18n::t("kunde inte skriva"), path.display()))?;
+        .map_err(|e| crate::tstatus!("kunde inte skriva {}: {}", path.display(), e))?;
     Ok(path.to_string_lossy().to_string())
 }
 
@@ -552,24 +622,67 @@ pub fn example_chain() -> MacroChain {
     chain
 }
 
+/// En kedja som hittats i en mapp — eller felet som gjorde att den inte gick att läsa.
+///
+/// **En trasig kedja hoppas inte över tyst.** Den blir en rad med sitt fel, så den syns i
+/// listan i stället för att bara saknas: en fil man sparat och som inte syns är det svåraste
+/// felet att förstå.
+#[derive(Clone, Debug)]
+pub struct ChainEntry {
+    pub path: PathBuf,
+    pub chain: Result<MacroChain, String>,
+}
+
+/// Kedjorna i en mapp, sorterade på filnamn. En mapp som inte finns ger en tom lista — den
+/// skapas när första kedjan sparas, och en lista ska inte vara ett fel innan dess.
+pub fn load_chains_in(dir: &Path) -> Vec<ChainEntry> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut entries: Vec<ChainEntry> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.is_file()
+                && p.extension()
+                    .map(|e| e.eq_ignore_ascii_case("json"))
+                    .unwrap_or(false)
+        })
+        .map(|path| {
+            let chain = load_chain(&path.to_string_lossy());
+            ChainEntry { path, chain }
+        })
+        .collect();
+    entries.sort_by(|a, b| a.path.file_name().cmp(&b.path.file_name()));
+    entries
+}
+
 /// Läser en kedja från en JSON-fil. Felet namnger filen och skälet.
 pub fn load_chain(path: &str) -> Result<MacroChain, String> {
     let text = std::fs::read_to_string(path)
-        .map_err(|e| format!("{} {path}: {e}", crate::i18n::t("kunde inte läsa")))?;
+        .map_err(|e| crate::tstatus!("kunde inte läsa {}: {}", path, e))?;
     serde_json::from_str(&text).map_err(|e| format!("{path}: {e}"))
 }
 
 /// Skriver en kedja till en JSON-fil (temp + rename).
 pub fn save_chain(path: &Path, chain: &MacroChain) -> Result<(), String> {
     let json = serde_json::to_string_pretty(chain)
-        .map_err(|e| format!("{}: {e}", crate::i18n::t("kunde inte serialisera kedjan")))?;
+        .map_err(|e| crate::tstatus!("kunde inte serialisera kedjan: {}", e.to_string()))?;
     crate::autosave::write_atomic(path, json.as_bytes())
-        .map_err(|e| format!("{} {}: {e}", crate::i18n::t("kunde inte skriva"), path.display()))
+        .map_err(|e| crate::tstatus!("kunde inte skriva {}: {}", path.display(), e))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Proven som letar text låser svenskan.** Felmeddelandena går genom `t()` och följer
+    /// gränssnittets språk. Utan låset prövar provet översättningen i stället för felet — och
+    /// värre: det blir grönt av att nyckeln *saknas* (uppslagningen faller då tillbaka på den
+    /// svenska nyckeln). Det var precis vad som hände när engelskan lades in 2026-09-15.
+    fn med_svenska() {
+        crate::i18n::set_current(crate::i18n::Language::Sv);
+    }
 
     /// En buffert med en ton i mitten och tystnad runt om: `(lead_in, tone, tail)` i sekunder.
     fn tone_with_silence(sample_rate: u32, lead_in: f32, tone: f32, tail: f32) -> Vec<f32> {
@@ -824,6 +937,7 @@ mod tests {
     /// innehåll är det scenario där en tyst fil annars hade blivit ett "resultat".
     #[test]
     fn a_chain_that_would_write_silence_stops_instead() {
+        med_svenska();
         let dir = std::env::temp_dir().join("sonix-macro-tests-silent");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -876,6 +990,7 @@ mod tests {
     /// egen Suno-stämma.
     #[test]
     fn when_the_ceiling_binds_the_log_says_so() {
+        med_svenska();
         let dir = std::env::temp_dir().join("sonix-macro-tests-ceiling");
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
@@ -925,6 +1040,127 @@ mod tests {
             rad.contains("→ -1.0 dBTP"),
             "taket ska ha träffats exakt: {rad}"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// **En regel, två dörrar.** Samma kedja på samma ljud ska ge **samma tal** vare sig den går
+    /// genom filvägen eller genom buffertvägen (projektets väg). Provet jämför rapporterna: glider
+    /// de isär är det två regler, och då hör en fix bara den ena vägen.
+    #[test]
+    fn both_doors_report_the_same_numbers() {
+        let dir = std::env::temp_dir().join("sonix-macro-tests-doors");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let input = dir.join("Dörr.wav");
+        let sr = 44_100u32;
+        let buf = tone_with_silence(sr, 1.0, 1.5, 0.5);
+        crate::audio::write_export_with(
+            &input.to_string_lossy(),
+            ExportFormat::Wav32,
+            &buf,
+            sr,
+            &ExportMeta::default(),
+            DitherSettings::default(),
+        )
+        .expect("indatafilen ska skrivas");
+
+        let chain = MacroChain {
+            name: "dörrar".into(),
+            steps: vec![
+                MacroStep::TrimSilence {
+                    threshold_db: -60.0,
+                    keep_ms: 50.0,
+                },
+                MacroStep::Normalize {
+                    target_lufs: -14.0,
+                    ceiling_dbtp: -1.0,
+                },
+                MacroStep::Export {
+                    format: ExportFormat::Wav24,
+                    suffix: "_d".into(),
+                    dither: true,
+                    noise_shaping: false,
+                },
+            ],
+        };
+
+        // Filvägen.
+        let fil = run_on_file(
+            &chain,
+            &input.to_string_lossy(),
+            Some(&dir.join("ut")),
+            &ExportMeta::default(),
+        );
+        assert!(fil.succeeded(), "filvägen föll: {:?}", fil.error);
+
+        // Buffertvägen (den projektet tar): samma ljud, samma kedja.
+        let (l, r, _) = crate::audio::load_audio_pcm(&input.to_string_lossy()).unwrap();
+        let mut samma: Vec<f32> = l.iter().zip(r.iter()).flat_map(|(l, r)| [*l, *r]).collect();
+        let rapporter = apply_steps_to_buffer(&chain, &mut samma, sr).expect("stegen ska gå igenom");
+
+        assert_eq!(
+            rapporter.len(),
+            2,
+            "exportsteget hör till anroparen, inte hit"
+        );
+        assert_eq!(
+            rapporter[0].detail, fil.reports[0].detail,
+            "trimningen sa olika saker i de två vägarna"
+        );
+        assert_eq!(
+            rapporter[1].detail, fil.reports[1].detail,
+            "normaliseringen sa olika saker i de två vägarna"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// En batch ska gå att **följa medan den kör**: återkopplingen kommer efter varje fil, med
+    /// rätt nummer, och den sista filens rad säger att allt är klart.
+    #[test]
+    fn the_batch_reports_after_every_file() {
+        let dir = std::env::temp_dir().join("sonix-macro-tests-progress");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sr = 44_100u32;
+        let riktig = dir.join("A.wav");
+        crate::audio::write_export_with(
+            &riktig.to_string_lossy(),
+            ExportFormat::Wav16,
+            &tone_with_silence(sr, 0.2, 0.3, 0.2),
+            sr,
+            &ExportMeta::default(),
+            DitherSettings::default(),
+        )
+        .expect("indatafilen ska skrivas");
+
+        let chain = MacroChain {
+            name: "följ".into(),
+            steps: vec![MacroStep::Export {
+                format: ExportFormat::Wav16,
+                suffix: "_p".into(),
+                dither: true,
+                noise_shaping: false,
+            }],
+        };
+        let inputs = vec![
+            riktig.to_string_lossy().to_string(),
+            dir.join("finns-inte.wav").to_string_lossy().to_string(),
+        ];
+        let mut steg: Vec<(usize, usize, bool)> = Vec::new();
+        let runs = run_batch_with_progress(
+            &chain,
+            &inputs,
+            Some(&dir.join("ut")),
+            &ExportMeta::default(),
+            &mut |klar, av, run| steg.push((klar, av, run.succeeded())),
+        );
+        assert_eq!(runs.len(), 2);
+        assert_eq!(
+            steg,
+            vec![(1, 2, true), (2, 2, false)],
+            "återkopplingen ska komma per fil, i ordning"
+        );
+        assert_eq!(succeeded(&runs), 1);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

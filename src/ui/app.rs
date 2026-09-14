@@ -80,6 +80,7 @@ mod browser;
 pub(crate) use browser::*;
 
 mod export;
+mod macros;
 
 mod modals;
 
@@ -450,6 +451,9 @@ pub struct SonixApp {
     pub fx_rack_state: FxRackState,
     pub show_song_structure_modal: bool,
     pub song_structure_state: SongStructureState,
+    /// Makron (Fas 8.9 steg 2): kedjan över filer, och tillståndet för dess dialog.
+    pub show_macros_modal: bool,
+    pub macro_state: crate::ui::macros_modal::MacroModalState,
     pub show_project_manager_modal: bool,
     pub project_file_path: Option<String>,
     /// Autosave (Fas 6.1): sekunder sedan senaste kontroll, och fingeravtryck
@@ -896,6 +900,8 @@ impl SonixApp {
             fx_rack_state: FxRackState::default(),
             show_song_structure_modal: false,
             song_structure_state: SongStructureState::default(),
+            show_macros_modal: false,
+            macro_state: crate::ui::macros_modal::MacroModalState::default(),
             show_project_manager_modal: false,
             project_file_path: None,
             autosave_accum: 0.0,

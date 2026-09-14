@@ -1822,6 +1822,70 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "(behöver två spår)" => "(needs two tracks)",
         "Spår" => "Track",
         "Trummor" => "Drums",
+        // Makron (Fas 8.9): kedjan över filer — dialogens etiketter, loggens ord
+        // och felen. Nycklarna är listade i `macro_keys()` och provas där.
+        "🔗 Makron (kedja över filer)" => "🔗 Macros (chain over files)",
+        "🔗 Makron (kedja över filer)..." => "🔗 Macros (chain over files)...",
+        "🔗 MAKRON" => "🔗 MACROS",
+        "Kedjor i mappen" => "Chains in the folder",
+        "Ingen kedja vald" => "No chain selected",
+        "Välj en kedja till vänster, eller skapa en ny ur startmallen." => "Choose a chain on the left, or create one from the starter.",
+        "Samma behandling på många filer — trimma, normalisera, exportera" => "The same treatment on many files — trim, normalize, export",
+        "Projektet renderas som vid export och körs genom kedjans steg." => "The project is rendered as for an export and run through the chain's steps.",
+        "🔄 Läs om" => "🔄 Reload",
+        "✨ Ny kedja (startmallen)" => "✨ New chain (the starter)",
+        "💾 Spara kedjan" => "💾 Save the chain",
+        "Ny kedja — ändra namnet och spara" => "New chain — change the name and save",
+        "Namn:" => "Name:",
+        "Lägg till:" => "Add:",
+        "📁 En mapp" => "📁 A folder",
+        "🎛 Det öppna projektet" => "🎛 The open project",
+        "Läs mappen" => "Read the folder",
+        "▶ Kör kedjan" => "▶ Run the chain",
+        "Välj mapp" => "Choose folder",
+        "Välj utmapp" => "Choose output folder",
+        "Välj en mapp först" => "Choose a folder first",
+        "(tomt = macro-output bredvid filen)" => "(empty = macro-output next to the file)",
+        "In:" => "In:",
+        "Ut:" => "Out:",
+        "Mål" => "Target",
+        "Tak" => "Ceiling",
+        "Tröskel" => "Threshold",
+        "Behåll" => "Keep",
+        "Format" => "Format",
+        "Ändelse" => "Suffix",
+        "Dither" => "Dither",
+        "Exportera" => "Export",
+        "Kedjan har inget exportsteg — inget skrevs" => "The chain has no export step — nothing was written",
+        "⚠ Kedjan har inget exportsteg — den skriver ingenting." => "⚠ The chain has no export step — it writes nothing.",
+        "Kedjan gjorde projektet tyst — inget skrevs" => "The chain made the project silent — nothing was written",
+        "Renderingen gav inget ljud — inget skrevs" => "The render produced no sound — nothing was written",
+        "Projektkörningen är klar" => "The project run is finished",
+        "taket satte gränsen" => "the ceiling set the limit",
+        "hela filen ligger under tröskeln ({:.0} dB) — inget skrevs" => "the whole file is below the threshold ({:.0} dB) — nothing was written",
+        "{} — kan inte läsas: {}" => "{} — cannot be read: {}",
+        "{} — filen är tom (inget ljud)" => "{} — the file is empty (no sound)",
+        "{} — kedjan gjorde filen tyst; inget skrevs" => "{} — the chain made the file silent; nothing was written",
+        "{} — kunde inte skapa utmappen {}: {}" => "{} — could not create the output folder {}: {}",
+        "{} — kunde inte skriva {}: {}" => "{} — could not write {}: {}",
+        "{} — utdata är tom; filen skrevs inte korrekt: {}" => "{} — the output is empty; the file was not written correctly: {}",
+        "{} — utdata är tyst; filen skrevs inte korrekt: {}" => "{} — the output is silent; the file was not written correctly: {}",
+        "{} — utdata går inte att läsa tillbaka {}: {}" => "{} — the output cannot be read back {}: {}",
+        "Utdata {} är tom — filen skrevs inte korrekt" => "Output {} is empty — the file was not written correctly",
+        "Kunde inte läsa mappen: {}" => "Could not read the folder: {}",
+        "Kunde inte skapa utmappen {}: {}" => "Could not create the output folder {}: {}",
+        "Kunde inte skriva {}: {}" => "Could not write {}: {}",
+        "kunde inte läsa {}: {}" => "could not read {}: {}",
+        "kunde inte skriva {}: {}" => "could not write {}: {}",
+        "kunde inte serialisera kedjan: {}" => "could not serialize the chain: {}",
+        "{} ({} byte, {} sampel)" => "{} ({} bytes, {} samples)",
+        "Klar: {} filer" => "Done: {} files",
+        "{} ljudfiler hittades" => "{} audio files found",
+        "{} ({} steg)" => "{} ({} steps)",
+        "{} / {}" => "{} / {}",
+        "⚠ {}: {}" => "⚠ {}: {}",
+        "Sparade {}" => "Saved {}",
+        "✅ Makrokedjan skrev {}" => "✅ The macro chain wrote {}",
         _ => return None,
     })
 }
@@ -2508,6 +2572,93 @@ mod tests {
             "⚠ Kunde inte skriva stämmorna till disk: {} — inga klipp skapas",
             "🎧 mp3 eller wav?",
         ]
+    }
+
+    /// Makrokedjans nycklar (Fas 8.9). **Engelskan är kravet, som för 8.5-familjen:** de
+    /// övriga språken faller tillbaka på engelskan (`translate`), så en rad utan engelsk text
+    /// är en rad som står på svenska i sex gränssnitt.
+    fn macro_keys() -> &'static [&'static str] {
+        &[
+            "🔗 Makron (kedja över filer)",
+            "🔗 Makron (kedja över filer)...",
+            "🔗 MAKRON",
+            "Kedjor i mappen",
+            "Ingen kedja vald",
+            "Välj en kedja till vänster, eller skapa en ny ur startmallen.",
+            "Samma behandling på många filer — trimma, normalisera, exportera",
+            "Projektet renderas som vid export och körs genom kedjans steg.",
+            "🔄 Läs om",
+            "✨ Ny kedja (startmallen)",
+            "💾 Spara kedjan",
+            "Ny kedja — ändra namnet och spara",
+            "Namn:",
+            "Lägg till:",
+            "📁 En mapp",
+            "🎛 Det öppna projektet",
+            "Läs mappen",
+            "▶ Kör kedjan",
+            "Välj mapp",
+            "Välj utmapp",
+            "Välj en mapp först",
+            "(tomt = macro-output bredvid filen)",
+            "In:",
+            "Ut:",
+            "Mål",
+            "Tak",
+            "Tröskel",
+            "Behåll",
+            "Format",
+            "Ändelse",
+            "Dither",
+            "Noise shaping",
+            "Exportera",
+            "Kedjan har inget exportsteg — inget skrevs",
+            "⚠ Kedjan har inget exportsteg — den skriver ingenting.",
+            "Kedjan gjorde projektet tyst — inget skrevs",
+            "Renderingen gav inget ljud — inget skrevs",
+            "Projektkörningen är klar",
+            "taket satte gränsen",
+            "hela filen ligger under tröskeln ({:.0} dB) — inget skrevs",
+            "{} — kan inte läsas: {}",
+            "{} — filen är tom (inget ljud)",
+            "{} — kedjan gjorde filen tyst; inget skrevs",
+            "{} — kunde inte skapa utmappen {}: {}",
+            "{} — kunde inte skriva {}: {}",
+            "{} — utdata är tom; filen skrevs inte korrekt: {}",
+            "{} — utdata är tyst; filen skrevs inte korrekt: {}",
+            "{} — utdata går inte att läsa tillbaka {}: {}",
+            "Utdata {} är tom — filen skrevs inte korrekt",
+            "Kunde inte läsa mappen: {}",
+            "Kunde inte skapa utmappen {}: {}",
+            "Kunde inte skriva {}: {}",
+            "kunde inte läsa {}: {}",
+            "kunde inte skriva {}: {}",
+            "kunde inte serialisera kedjan: {}",
+            "{} ({} byte, {} sampel)",
+            "Klar: {} filer",
+            "{} ljudfiler hittades",
+            "{} ({} steg)",
+            "{} / {}",
+            "⚠ {}: {}",
+            "Sparade {}",
+            "✅ Makrokedjan skrev {}",
+        ]
+    }
+
+    /// **Makrosträngarna har engelska.** Provet är det som gör att en ny rad i modalen inte
+    /// kan smyga in utan översättning — samma spärr som 8.5-familjen fick.
+    ///
+    /// Här prövas **inte** `translate(En, k) != k`: flera av nycklarna är samma ord på båda
+    /// språken ("Format", "Dither", "In:"), och ett sådant krav hade fällt en korrekt rad.
+    /// Att `tr_en` har en egen post är beviset — uppslagningen faller annars tillbaka på
+    /// svenskan, och det är just fallbacken som inte får vara tyst.
+    #[test]
+    fn the_macro_strings_have_english() {
+        for k in macro_keys() {
+            let k = *k;
+            assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
+            assert_eq!(translate(Language::Sv, k), k, "svenskan ska vara nyckeln");
+        }
     }
 
     #[test]

@@ -257,9 +257,38 @@ Det är den delen som går att mäta utan fönster.
   en lista, kör mot en mapp med en resultatrad per fil); (b) **i18n-nycklarna** för de nya
   strängarna (de går genom `crate::i18n::t` och faller i dag tillbaka på svenska); (c) köra en
   kedja på **det öppna projektet**, inte bara på filer — det är Audacitys andra halva.
-- **Ärligt om vad som inte är prövat:** steg 2 finns inte, så **ingenting i 8.9 är klickat i GUI**.
-  Det som är bevisat är filvägen, mätt i dina egna filer med ffmpeg som vittne.
-| 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | **Steg 1 KLAR 2026-09-15** (`macro_chain.rs` + `--run-macro` + `--macro-example`): modell, trim/normalisera/export, batch över filer, logg och felkoder. Mätt på `imported_stems/Broken/` med ffmpeg som vittne. **Kvar:** GUI:t, i18n och kedjan på det öppna projektet | — |
+- **Steg 2 klart 2026-09-15.** (a) **GUI:t**: `🔗 Makron (kedja över filer)` i `🎛 Verktyg` öppnar
+  en dialog som listar kedjorna i `~/.config/sonix/macros/`, redigerar stegen (lägg till, ta bort,
+  flytta, ändra tal), sparar dem och kör dem — mot en mapp (**batch på en arbetstråd**, en rad per
+  fil, framsteg under körningen, sammanfattning efteråt) eller mot **det öppna projektet**
+  (renderas som vid export och går genom kedjans steg: Audacitys andra halva). Stegreglerna bor
+  kvar i `macro_chain`; modalen är inkoppling. (b) **i18n**: 63 engelska rader och ett prov
+  (`the_macro_strings_have_english`) som spärrar nya strängar — samma form som 8.5-familjen.
+  (c) **En regel, två dörrar**: reglerna lyftes ut (`step_normalize`, `step_trim_silence`) och
+  `apply_steps_to_buffer` bär projektvägen; provet `both_doors_report_the_same_numbers` jämför
+  rapporterna rad för rad, så en ändring inte kan hamna i bara den ena vägen.
+- **Fällan som kostade en runda:** `tstatus!` interpolerar **inte** namngivna klamrar (`{e}`) —
+  den slår upp nyckeln och formaterar med *positionella* `{}`-argument. Utan argument blir
+  variabeln oanvänd (varning → röd CI) och texten står literal. Alla 14 anrop är omskrivna.
+- **Fällan i proven:** de tre proven som letar text i felmeddelandena var gröna **av att engelskan
+  saknades** — uppslagningen föll tillbaka på den svenska nyckeln. När engelskan kom in föll de.
+  De låser nu svenskan med flit (`med_svenska()`): ett prov ska inte pröva översättningen när det
+  prövar felet. Två riktiga fel hittades också av proven: en kedja med tomt namn sparades **utan**
+  `.json` (och hade då inte hittats av listan i mappen — sparad och sedan borta), och
+  `chain_file_name` hade en **egen** slug-tabell vid sidan av `autosave::slug`; den använder nu
+  appens, med följden uttalad i doc-raden.
+- **Bevisat:** 514 tester default och 561 med `plugin-host` (25 nya totalt), **0 varningar**,
+  `sonix --selftest` 4/4. Kommandoraden mätt igen på `imported_stems/Broken/Broken (Vocals).mp3`:
+  **−11,696 s** tystnad trimmad (ffmpeg:s `silencedetect` säger 11,75575 s — exakt marginalen
+  60 ms skiljer, alltså är trimningen bekräftad utifrån), **−19,5 → −17,6 LUFS** (taket vid
+  −1,0 dBTP band målet, och **det står i loggen**), utdata 242,318 s FLAC som läses tillbaka och
+  mäts till −17,6 LUFS av ffmpeg. En fil som inte finns får en rad och **felkod 1**.
+- **Ärligt om vad som inte är prövat:** **ingenting i 8.9 är klickat i GUI** — ingen skärm finns
+  här. Bevisat är modellen, körningen (filvägen, mätt i dina egna filer med ffmpeg som vittne),
+  stegreglerna på båda dörrarna och kommandoraden. Dialogens knappar, arbetstrådens framsteg och
+  projektkörningen behöver din hand: **🎛 Verktyg → 🔗 Makron → (välj eller ✨ skapa en kedja) →
+  📁 En mapp → ▶ Kör kedjan**, och sedan samma kedja med **🎛 Det öppna projektet**.
+| 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | **KLAR 2026-09-15** (`audio/macro_chain.rs`, `ui/macros_modal.rs`, `ui/app/macros.rs`, `--run-macro`, `--macro-example`): modellen + trim/normalisera/export, batch över filer med logg och felkoder, dialogen (lista, stegredigering, spara, kör mot mapp på arbetstråd, kör på projektet) och 63 engelska i18n-rader. **Dialogen är inte klickad** — står i kvitteringslistan | — |
 | 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **KLAR 2026-09-14**: sträckning inkopplad, `stretch_pieces` delar klipp vid tempobyten, `ensure_stretched` bygger cacharna, och **uppspelningsloopen (`stem_regions_for`) skickar ett stycke per tempovärde till motorn** med bevarade kontinuerliga offsets och kant-fades. 0 varningar, alla fyra CI-ben gröna (`82d59f9`) | — |
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **KLAR 2026-09-14** (`392a30c` + `76b4015`): tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten. **Markeringen kvitterad i GUI av Alex** ("ser ut att stämma") | — |
 
@@ -269,10 +298,9 @@ tabellen är klara och står i `Gjort`. Kontrollerat i koden, inte bara i texten
 
 | # | Punkt | Storlek | Vad som återstår | Går att göra |
 | :--- | :--- | :---: | :--- | :--- |
-| 1 | **8.9 Makron: steg 2 (GUI, i18n, det öppna projektet)** | *S* | Modellen, batch-vägen och kommandoraden är klara och mätta 2026-09-15 (`macro_chain.rs`, `--run-macro`, `--macro-example`). Kvar: bygga/spara/köra en kedja **inifrån appen**, i18n-nycklarna för de nya strängarna, och kedjan på det **öppna projektet** | vid datorn, nu |
-| 2 | **8.6 Plugins: egna utgångar, sidokedja in i en plugin + två mindre** | *M* | Extra utbussar till egna spår (VST3-buss-API:t är inläst men routas inte), sidechain-**ingång** i en plugin, manuellt latens-offset per plugin, "smart disable". *32-bitars plugins* är inte ett rimligt mål för oss | vid datorn, nu |
-| 3 | **7.3 + 4.6 Wine/yabridge-vägen** | *M + L* | Köra en **riktig** brygga hela vägen (Sytrus/Harmor/Gross Beat): laddning, inspektion, ljud med PDC, state, X11-fönstret. Mock-modulerna är redan gröna | **blockerad** — kräver Wine + display, och du har inga Windows-plugins på disk. Miljön är färdigkonfigurerad den dag de kommer |
-| 4 | **7.1 Windows-porten** | *XL* | MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin. Steg 1–8 är klara | **pausad efter ditt besked** — ingen Windows-laptop än |
+| 1 | **8.6 Plugins: egna utgångar, sidokedja in i en plugin + två mindre** | *M* | Extra utbussar till egna spår (VST3-buss-API:t är inläst men routas inte), sidechain-**ingång** i en plugin, manuellt latens-offset per plugin, "smart disable". *32-bitars plugins* är inte ett rimligt mål för oss | vid datorn, nu |
+| 2 | **7.3 + 4.6 Wine/yabridge-vägen** | *M + L* | Köra en **riktig** brygga hela vägen (Sytrus/Harmor/Gross Beat): laddning, inspektion, ljud med PDC, state, X11-fönstret. Mock-modulerna är redan gröna | **blockerad** — kräver Wine + display, och du har inga Windows-plugins på disk. Miljön är färdigkonfigurerad den dag de kommer |
+| 3 | **7.1 Windows-porten** | *XL* | MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin. Steg 1–8 är klara | **pausad efter ditt besked** — ingen Windows-laptop än |
 
 **Det bara du kan kvittera** (koden är klar och mätt; det är ögat/örat som saknas — ingen Xvfb
 finns på maskinen, så jag kan inte se ett fönster):
@@ -284,6 +312,10 @@ finns på maskinen, så jag kan inte se ett fönster):
 - **Tempoföljningens switch** och klippmenyns temoläge (lästa, inte sedda).
 - **8.8:s plugin-väljare** — ladda en plugin i en slot, slå på 📈 Automation, välj parameter i
   🔌-menyn och rita. (Spår- och busskurvorna kvitterade du redan.)
+- **8.9:s makrodialog** — `🎛 Verktyg → 🔗 Makron (kedja över filer)...`: kedjelistan till vänster,
+  stegredigeringen (lägg till/ta bort/flytta), **💾 Spara kedjan**, **📁 En mapp → 🔽 Läs mappen →
+  ▶ Kör kedjan** (framstegsrad och en resultatrad per fil), och samma kedja mot **🎛 Det öppna
+  projektet**. Allt utom klicket är mätt (se 8.9:s avsnitt ovan).
 
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
 release, ett bevisstycke här i roadmapen — och för det som hörs eller syns, en kvittens
@@ -296,7 +328,8 @@ för att gissas på nytt varje pass.
 > `references/daw-comparison.md`, med de fem researchrapporterna i `references/daw-research/`.
 > Kortversionen (uppdaterad 2026-09-14): **8.3 är stängt** — sidokedjor, bussar/VCA och sends
 > mellan spår är alla byggda och hörs i en färdig mix. **8.4 är byggt** (looplägen, not-av, ADSR,
-> export). Det som återstår i fas 8 är **8.9 (makron)** och **8.6 (plugin-bryggning)** — se
+> export). Det som återstår i fas 8 är **8.6 (plugin-bryggning)** — **8.9 (makron) stängdes
+> 2026-09-15** (dialogen väntar bara på dina ögon). Se
 > "Kvar — i prio-ordning" ovan. Sonix står
 > starkare än de stora på tre punkter: native Linux, CLAP med out-of-process-sandbox, och
 > AI/Suno-vägen — ingen av de undersökta DAW:erna har AI-genererad musik som utgångspunkt.
@@ -1399,7 +1432,11 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     plugin-parametrar, och Audacitys parametrar i realtidsstacken står som **INTE VERIFIERAT**
     i rapporten. Kontrollera den raden innan punkten blir ett krav. Sonix-läget ovan är
     däremot mätt i koden.
-- [ ] **8.9 Makron: en kedja av kommandon över många filer** — *S*
+- [x] **8.9 Makron: en kedja av kommandon över många filer** — *S* — **KLAR 2026-09-15**:
+      modellen (`audio/macro_chain.rs`), batch över filer med logg och felkoder, kommandoraden
+      (`--run-macro`, `--macro-example`), dialogen (`ui/macros_modal.rs` + `ui/app/macros.rs`),
+      63 engelska i18n-rader och "en regel, två dörrar" för fil- och projektvägen.
+      **Dialogen är inte klickad** (ingen skärm här) — se kvitteringslistan.
   - **Vad Audacity har:** en **Macro** är en sekvens förkonfigurerade kommandon (mest
     effekter, men också Select-kommandon, Find Clipping och exportkommandon) som körs
     automatiskt — på ett projekt eller i **batch över filer** (rekommenderat max 500 i taget,

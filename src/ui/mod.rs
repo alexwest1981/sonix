@@ -4,6 +4,7 @@ pub mod app;
 pub mod chord_generator_modal;
 pub mod dice_generator_modal;
 pub mod fx_rack_modal;
+pub mod macros_modal;
 pub mod patcher_view;
 pub mod plugins_view;
 pub mod song_structure_modal;

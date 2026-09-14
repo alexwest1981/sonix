@@ -2747,6 +2747,7 @@ impl SonixApp {
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);
         self.render_song_structure_modal_view(ctx);
+        self.render_macros_modal_view(ctx);
         self.render_stem_focus_modal(ctx);
         self.render_help_manual_modal(ctx);
         self.render_add_track_modal(ctx);

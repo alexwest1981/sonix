@@ -211,6 +211,7 @@ impl SonixApp {
             || self.show_ai_settings_modal
             || self.show_audio_settings_modal
             || self.show_import_modal
+            || self.show_macros_modal
             || is_loading_proj
             || is_importing_stems;
 
@@ -642,6 +643,15 @@ impl SonixApp {
                         }
                         if ui.button(self.tr("📑 Låtstruktur & Formdelar...")).clicked() {
                             self.show_song_structure_modal = true;
+                            ui.close_menu();
+                        }
+                        ui.separator();
+                        if ui.button(self.tr("🔗 Makron (kedja över filer)...")).clicked() {
+                            // Mappen läses om när dialogen öppnas — en kedja man sparat
+                            // utanför appen ska synas utan att starta om.
+                            self.macro_state
+                                .reload(&crate::paths::paths().macros_dir());
+                            self.show_macros_modal = true;
                             ui.close_menu();
                         }
                         ui.separator();

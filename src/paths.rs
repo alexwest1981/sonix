@@ -474,6 +474,12 @@ impl Paths {
         self.state_dir().join("autosave")
     }
 
+    /// Sparade makrokedjor (Fas 8.9). En kedja är en inställning, inte projektdatan — samma
+    /// kedja ska kunna köras över vilket projekt som helst.
+    pub fn macros_dir(&self) -> PathBuf {
+        self.config_dir().join("macros")
+    }
+
     pub fn waveform_cache_dir(&self) -> PathBuf {
         self.cache_dir().join("waveforms")
     }

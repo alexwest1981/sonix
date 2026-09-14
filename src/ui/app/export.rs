@@ -165,7 +165,7 @@ fn export_dither_settings(&self) -> crate::audio::DitherSettings {
 }
 
 impl SonixApp {
-fn export_sample_rate(&self) -> u32 {
+pub(crate) fn export_sample_rate(&self) -> u32 {
     match self.render_sample_rate_idx {
         1 => 48000,
         2 => 96000,
@@ -177,7 +177,7 @@ fn export_sample_rate(&self) -> u32 {
 impl SonixApp {
 /// Snapshot the current project (real Channel Rack samples, patterns,
 /// timeline stems) into the pure renderer data model.
-fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u32) -> crate::audio::RenderSpec {
+pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u32) -> crate::audio::RenderSpec {
     use crate::audio::{PatternSnap, RackChannel, TrackAudioSnap, TrackRole, TrackSnap, VoiceSpec};
 
     let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
@@ -337,7 +337,7 @@ fn export_fx_state(&self, dry: bool) -> crate::audio::FxState {
 
 impl SonixApp {
 /// Render one spec to an interleaved float buffer.
-fn render_buffer(&self, spec: &crate::audio::RenderSpec, dry: bool) -> Result<Vec<f32>, String> {
+pub(crate) fn render_buffer(&self, spec: &crate::audio::RenderSpec, dry: bool) -> Result<Vec<f32>, String> {
     let mut engine = crate::audio::build_offline_engine(spec, &self.export_fx_state(dry));
     Ok(crate::audio::render_project_offline(&mut engine, spec))
 }
