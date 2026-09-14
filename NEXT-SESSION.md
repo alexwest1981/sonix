@@ -455,9 +455,22 @@ rad: "skriv aldrig en siffra du inte mätt".
    eller rendera ett stycke per tempoavsnitt. **Det här är den stora kvarvarande biten.**
 2. `sample_offset_sec > 0` kan hamna utanför sitt eget utsnitt. Oförändrat sedan före 8.10
    (medvetet: ingen tyst beteendeändring), men fel — egen rad.
-3. **Alex' öra:** `the_two_engines_for_the_ear` skriver samma 20 s genom båda motorerna till
-   `~/.local/state/sonix/ab/`. Siffrorna säger "behåll vår"; säger örat något annat är bytet en rad.
-   **Samma slag av kvittens som 8.11:s markering** — och den kan bara han ge.
+3. **Alex' öra HAR SVARAT (2026-09-14): "båda har lite artefakter, men andra ljudet lät lite
+   renare."** Filerna låg i `~/Music/Sonix/Samples/AB_strackning/`, samma medelnivå (−31,4 dB båda,
+   mätt med `volumedetect`) — alltså ett rättvist A/B utan loudness-fusk.
+   - **Inget motorbyte — och roadmapens "bytet är en rad" var FEL.** `signalsmith-stretch` är ett
+     **dev-beroende med avsikt** (`Cargo.toml`), så biblioteket finns inte i binären; att göra det
+     till produktionsmotor är en ny runtime-väg, inte en rad. `stretch_stereo` bär dessutom redan
+     domen i sin doc: "prövades och förlorade på transienterna — vår egen WSOLA står kvar".
+     **Tredje raden i dag som var äldre än verkligheten.**
+   - **Beviset pekar åt andra hållet:** klickvakten ger 52 anslag av 24 klick för signalsmith — den
+     smetar ut transienter. Ett "lite renare" på ett 20-sekundersutsnitt väger lätt mot det, och
+     hans eget "båda har artefakter" säger att vår motor inte heller är ren.
+   - **Det användbara fyndet:** han föredrog den andra i de **hängande** partierna (där 8.10c:s
+     sökfönsterfel hördes), medan transienterna är vår styrka. **Artefakterna sitter i sustain,
+     inte i anslagen** — det är där en förbättring ska riktas.
+   - **Nästa riktiga steg om artefakterna stör:** 8.10 § 6 — HPSS eller fas-vocoder med *identity
+     phase locking*. Ett eget pass på forskningsnivå, inte en kväll.
 
 ## 4l. Läget just nu (2026-09-14)
 
