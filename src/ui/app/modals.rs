@@ -2723,3 +2723,32 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 }
 }
 
+impl SonixApp {
+    /// Alla dialoger, i den ordning de läggs ovanpå varandra.
+    pub(crate) fn render_all_modals(&mut self, ctx: &egui::Context) {
+        // 4. Modals & Dialogs
+        self.render_import_sample_modal(ctx);
+        self.render_hardware_controller_modal(ctx);
+        self.render_batch_export_modal(ctx);
+        self.render_suno_stem_import_modal(ctx);
+        self.render_wav_question_modal(ctx);
+        self.render_stem_import_progress_modal(ctx);
+        self.render_project_load_progress_modal(ctx);
+        self.render_about_modal(ctx);
+        self.render_midi_import_modal(ctx);
+        self.render_recovery_modal(ctx);
+        self.render_project_manager_modal(ctx);
+        self.render_ai_settings_modal(ctx);
+        self.render_audio_settings_modal(ctx);
+        self.render_mic_settings_modal(ctx);
+        self.render_chord_generator_modal_view(ctx);
+        self.render_tuner_modal_view(ctx);
+        self.render_dice_generator_modal_view(ctx);
+        self.render_fx_rack_modal_view(ctx);
+        self.render_tempo_modal(ctx);
+        self.render_song_structure_modal_view(ctx);
+        self.render_stem_focus_modal(ctx);
+        self.render_help_manual_modal(ctx);
+        self.render_add_track_modal(ctx);
+    }
+}
