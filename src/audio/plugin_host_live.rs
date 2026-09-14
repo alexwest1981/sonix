@@ -201,6 +201,25 @@ pub trait PluginProcessor: Send {
     /// Frames of latency the plugin *itself* introduces (not counting the
     /// host's block buffering).
     fn latency_frames(&self) -> u32;
+    /// **Antal sidokedje-ingångar** (Fas 8.6): 1 när pluginen har en sidokedja, annars 0.
+    /// En plugin som säger 1 får ett block via [`set_sidechain_block`] före varje
+    /// `process_stereo`, och det är den enda vägen in.
+    fn sidechain_inputs(&self) -> usize {
+        0
+    }
+    /// **Antal egna utbussar utöver huvudutgången** (Fas 8.6) — pluginens "multi-out".
+    /// Läses efter `process_stereo` med [`take_extra_output`].
+    fn extra_outputs(&self) -> usize {
+        0
+    }
+    /// Sidokedjans ljud för **samma** block som nästa `process_stereo` kör. Längden är
+    /// blockets; har `sidechain_inputs()` sagt 0 anropas den aldrig.
+    fn set_sidechain_block(&mut self, _left: &[f32], _right: &[f32]) {}
+    /// Läser ut en av pluginens egna utbussar efter `process_stereo`. Returnerar `false` när
+    /// porten inte finns, så anroparen inte behöver hålla reda på antalet själv.
+    fn take_extra_output(&mut self, _index: usize, _left: &mut [f32], _right: &mut [f32]) -> bool {
+        false
+    }
     /// Processes `left`/`right` in place. Both slices must be the same length
     /// and must not exceed the maximum frame count the processor was created
     /// with.
@@ -429,12 +448,35 @@ pub struct PluginInsert {
     /// **Smart disable** (Fas 8.6): räknar hur många block som faktiskt processades och hur
     /// många som stod still. Räknaren är det som gör funktionen mätbar i stället för påstådd.
     smart: SmartDisable,
+    /// **Sidokedjans ingångsblock** (Fas 8.6). Allokeras bara när pluginen har en sidokedja —
+    /// annars är de här två vektorerna tomma och ingen tid går åt.
+    side_l: Vec<f32>,
+    side_r: Vec<f32>,
+    sidechain: bool,
+    /// **Pluginens egna utbussar** (Fas 8.6), en kö per port. Lika långa som huvudkön: den som
+    /// läser en buss läser den i samma takt som ljudet.
+    extra_l: Vec<VecDeque<f32>>,
+    extra_r: Vec<VecDeque<f32>>,
+    /// Skräpbuffertar för att läsa ut en buss ur processorn (ingen allokering per block).
+    scratch_l: Vec<f32>,
+    scratch_r: Vec<f32>,
 }
 
 #[allow(dead_code)]
 impl PluginInsert {
     pub fn new(processor: Box<dyn PluginProcessor>, block_frames: usize) -> Self {
         let block_frames = block_frames.max(1);
+        // **Fråga pluginen en gång** (Fas 8.6) i stället för varje block: portantalet ändras
+        // inte medan instansen lever, och en fråga per block hade varit ett anrop in i
+        // pluginens ABI i ljudtråden för ett svar som är konstant.
+        let sidechain = processor.sidechain_inputs() > 0;
+        let extra_ports = processor.extra_outputs();
+        let extra_l = (0..extra_ports)
+            .map(|_| VecDeque::with_capacity(block_frames * 2))
+            .collect();
+        let extra_r = (0..extra_ports)
+            .map(|_| VecDeque::with_capacity(block_frames * 2))
+            .collect();
         Self {
             processor,
             block_frames,
@@ -445,7 +487,54 @@ impl PluginInsert {
             out_r: VecDeque::with_capacity(block_frames * 2),
             frames_processed: 0,
             smart: SmartDisable::default(),
+            side_l: vec![0.0; block_frames],
+            side_r: vec![0.0; block_frames],
+            sidechain,
+            extra_l,
+            extra_r,
+            scratch_l: vec![0.0; block_frames],
+            scratch_r: vec![0.0; block_frames],
         }
+    }
+
+    /// Har inserten en sidokedja att fylla? (Fas 8.6)
+    pub fn has_sidechain(&self) -> bool {
+        self.sidechain
+    }
+
+    /// **Sidokedjans sampel för nästa bildruta.** Anropas av motorn *före*
+    /// `process_sample` för samma bildruta: båda skriver på samma plats i sitt block, så
+    /// sidokedjan och huvudingången hör till samma ögonblick. Har pluginen ingen sidokedja
+    /// gör anropet ingenting — motorn behöver då inte veta skillnaden.
+    #[inline]
+    pub fn feed_sidechain(&mut self, l: f32, r: f32) {
+        if !self.sidechain || self.filled >= self.block_frames {
+            return;
+        }
+        self.side_l[self.filled] = l;
+        self.side_r[self.filled] = r;
+    }
+
+    /// Antal egna utbussar hos pluginen (Fas 8.6).
+    pub fn extra_output_ports(&self) -> usize {
+        self.extra_l.len()
+    }
+
+    /// Läser en av pluginens egna utbussar — **samma bildruta** som `process_sample` gav.
+    /// Returnerar tystnad för en port som inte finns, så anroparen slipper räkna.
+    #[inline]
+    pub fn extra_output_sample(&mut self, port: usize) -> (f32, f32) {
+        let l = self
+            .extra_l
+            .get_mut(port)
+            .and_then(|q| q.pop_front())
+            .unwrap_or(0.0);
+        let r = self
+            .extra_r
+            .get_mut(port)
+            .and_then(|q| q.pop_front())
+            .unwrap_or(0.0);
+        (l, r)
     }
 
     pub fn backend(&self) -> &'static str {
@@ -581,12 +670,43 @@ impl PluginInsert {
                 // Utgången blir tyst och ingången **nollas**: annars låg förra blockets sampel
                 // kvar i bufferten och hade kommit ut som ett eko av gammalt ljud när pluginen
                 // vaknade. Att skriva nollor är det enda som är ärligt här — pluginen får inget
-                // ljud alls, och då ska inget ljud ut.
+                // ljud alls, och då ska inget ljud ut. **Utbussarna får nollor av samma skäl**:
+                // en vilande plugins egna utgångar kan inte innehålla något.
                 self.in_l.fill(0.0);
                 self.in_r.fill(0.0);
+                self.side_l.fill(0.0);
+                self.side_r.fill(0.0);
+                for port in 0..self.extra_l.len() {
+                    for _ in 0..self.block_frames {
+                        self.extra_l[port].push_back(0.0);
+                        self.extra_r[port].push_back(0.0);
+                    }
+                }
             } else {
+                if self.sidechain {
+                    // Sidokedjan ligger i blocket **före** anropet (Fas 8.6).
+                    self.processor.set_sidechain_block(&self.side_l, &self.side_r);
+                }
                 self.processor.process_stereo(&mut self.in_l, &mut self.in_r);
                 self.frames_processed += self.block_frames as u64;
+                for port in 0..self.extra_l.len() {
+                    let ok = self.processor.take_extra_output(
+                        port,
+                        &mut self.scratch_l,
+                        &mut self.scratch_r,
+                    );
+                    for i in 0..self.block_frames {
+                        let (l, r) = if ok {
+                            (self.scratch_l[i], self.scratch_r[i])
+                        } else {
+                            // Pluginen sa att den hade bussen men lämnade den inte: tystnad är
+                            // det enda ärliga svaret. Att hitta på ljud här vore att gissa.
+                            (0.0, 0.0)
+                        };
+                        self.extra_l[port].push_back(l);
+                        self.extra_r[port].push_back(r);
+                    }
+                }
             }
             self.smart.note(decision, in_peak, peak_of(&self.in_l));
             for i in 0..self.block_frames {
@@ -1854,35 +1974,53 @@ mod imp {
         }
     }
 
-    /// Channel counts of the plugin's audio ports (input, output). Falls back
-    /// to a single stereo pair when the extension is missing.
-    unsafe fn audio_port_channels(plugin: *const ClapPlugin) -> (Vec<u32>, Vec<u32>) {
+    /// Kanalantal **och typ** per ljudport (Fas 8.6). Typen är det som skiljer en sidokedja
+    /// från en vanlig ingång: CLAP säger `"sidechain"` i `port_type`, och värden letar upp
+    /// porten efter den — inte efter index. Index hade varit en gissning som stämmer för
+    /// mocken och för en del plugins, och tyst pekar fel för andra.
+    unsafe fn audio_port_channels(
+        plugin: *const ClapPlugin,
+    ) -> (Vec<u32>, Vec<u32>, Vec<bool>) {
+        let fallback = (vec![2], vec![2], vec![false]);
         let get_extension = unsafe { &*plugin }.get_extension;
         let Some(get_extension) = get_extension else {
-            return (vec![2], vec![2]);
+            return fallback;
         };
         let ext = unsafe { get_extension(plugin, CLAP_EXT_AUDIO_PORTS.as_ptr()) };
         if ext.is_null() {
-            return (vec![2], vec![2]);
+            return fallback;
         }
         let ports = unsafe { &*(ext as *const ClapPluginAudioPorts) };
         let (Some(count), Some(get)) = (ports.count, ports.get) else {
-            return (vec![2], vec![2]);
+            return fallback;
         };
-        let read = |is_input: bool| -> Vec<u32> {
+        let read = |is_input: bool| -> (Vec<u32>, Vec<bool>) {
             let total = unsafe { count(plugin, is_input) };
-            let mut out = Vec::new();
+            let mut channels = Vec::new();
+            let mut sidechain = Vec::new();
             for index in 0..total {
                 let mut info: ClapAudioPortInfo = unsafe { std::mem::zeroed() };
                 if unsafe { get(plugin, index, is_input, &mut info) } {
-                    out.push(info.channel_count.max(1));
+                    channels.push(info.channel_count.max(1));
+                    sidechain.push(is_sidechain_port_type(info.port_type));
                 }
             }
-            out
+            (channels, sidechain)
         };
-        let inputs = read(true);
-        let outputs = read(false);
-        (inputs, outputs)
+        let (inputs, input_sc) = read(true);
+        let (outputs, _) = read(false);
+        (inputs, outputs, input_sc)
+    }
+
+    /// Är porttypen `"sidechain"`? CLAP:s egen sträng, jämförd som C-sträng.
+    unsafe fn is_sidechain_port_type(port_type: *const c_char) -> bool {
+        if port_type.is_null() {
+            return false;
+        }
+        unsafe { std::ffi::CStr::from_ptr(port_type) }
+            .to_str()
+            .map(|t| t == "sidechain")
+            .unwrap_or(false)
     }
 
     fn allocate_audio(
@@ -2216,6 +2354,8 @@ mod imp {
         core: Arc<ClapCore>,
         input_channels: Vec<u32>,
         output_channels: Vec<u32>,
+        /// Index för pluginens sidokedje-ingång, om den har någon (Fas 8.6).
+        sidechain_port: Option<usize>,
         in_bufs: Vec<Vec<Vec<f32>>>,
         out_bufs: Vec<Vec<Vec<f32>>>,
         /// Owns the per-port channel-pointer arrays that `in_audio`/`out_audio`
@@ -2243,6 +2383,57 @@ mod imp {
         fn latency_frames(&self) -> u32 {
             super::PluginCore::latency_frames(&*self.core)
         }
+        fn sidechain_inputs(&self) -> usize {
+            usize::from(self.sidechain_port.is_some())
+        }
+
+        fn extra_outputs(&self) -> usize {
+            self.out_bufs.len().saturating_sub(1)
+        }
+
+        fn set_sidechain_block(&mut self, left: &[f32], right: &[f32]) {
+            let Some(port) = self.sidechain_port else {
+                return;
+            };
+            let frames = left.len().min(right.len());
+            if let Some(bufs) = self.in_bufs.get_mut(port) {
+                for (ch, buf) in bufs.iter_mut().enumerate() {
+                    for (i, s) in buf.iter_mut().enumerate().take(frames) {
+                        *s = match ch {
+                            0 => left[i],
+                            1 => right[i],
+                            _ => 0.0,
+                        };
+                    }
+                }
+            }
+        }
+
+        fn take_extra_output(&mut self, index: usize, left: &mut [f32], right: &mut [f32]) -> bool {
+            // Port 0 är huvudutgången; pluginens egna bussar är 1 och framåt.
+            let Some(bufs) = self.out_bufs.get(index + 1) else {
+                return false;
+            };
+            let frames = left.len().min(right.len());
+            for (ch, buf) in bufs.iter().enumerate() {
+                let target = match ch {
+                    0 => &mut *left,
+                    1 => &mut *right,
+                    _ => break,
+                };
+                for (i, s) in target.iter_mut().enumerate().take(frames) {
+                    *s = buf[i];
+                }
+            }
+            if bufs.len() == 1 {
+                // Mono utbuss: samma sampel i båda kanalerna, som för huvudutgången.
+                for (i, s) in right.iter_mut().enumerate().take(frames) {
+                    *s = left[i];
+                }
+            }
+            true
+        }
+
         fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
             let frames = left.len().min(right.len());
             if frames == 0 {
@@ -2250,7 +2441,9 @@ mod imp {
             }
             let frames = frames.min(self.core.max_frames as usize);
 
-            // Fill input port 0 (and silence any additional input ports).
+            // Fill input port 0 from the main signal; the sidechain port is written by
+            // `set_sidechain_block` just before this call. Any *other* input port is
+            // silenced — the plugin asked for it, so it must see a real buffer.
             for (port, bufs) in self.in_bufs.iter_mut().enumerate() {
                 if port == 0 {
                     for (ch, buf) in bufs.iter_mut().enumerate() {
@@ -2262,7 +2455,7 @@ mod imp {
                             };
                         }
                     }
-                } else {
+                } else if Some(port) != self.sidechain_port {
                     for buf in bufs.iter_mut() {
                         for s in buf.iter_mut().take(frames) {
                             *s = 0.0;
@@ -2462,7 +2655,11 @@ mod imp {
             None => 0,
         };
 
-        let (input_channels, output_channels) = unsafe { audio_port_channels(plugin) };
+        let (input_channels, output_channels, input_sidechain) =
+            unsafe { audio_port_channels(plugin) };
+        // **Sidokedjans port hittas efter typ** (Fas 8.6). En plugin kan ha flera ingångar
+        // utan att någon av dem är en sidokedja — då finns ingen, och inget block skickas.
+        let sidechain_port = input_sidechain.iter().position(|&sc| sc);
         let (in_bufs, in_ptrs, in_audio) = allocate_audio(&input_channels, max_frames);
         let (out_bufs, out_ptrs, out_audio) = allocate_audio(&output_channels, max_frames);
 
@@ -2513,6 +2710,7 @@ mod imp {
             }),
             input_channels,
             output_channels,
+            sidechain_port,
             in_bufs,
             out_bufs,
             in_ptrs,
@@ -2687,6 +2885,50 @@ mod imp {
             // keeps the shared ClapCore alive (Fas 4.4b invariant).
             assert_eq!(handle.info().name, "Sonix Mock Gain");
             assert_eq!(handle.latency_frames(), 0);
+        }
+
+        /// **Sidokedja in och egen utbuss ut, mätt mot den riktiga mock-pluginen**
+        /// (Fas 8.6). Mocken deklarerar fyra portar där ingång 1 är en `"sidechain"` och
+        /// utgång 1 är en egen buss, och den leder sidokedjan rakt ut på bussen. Provet
+        /// bevisar därför **båda trådarna på en gång**: att sidokedjan nådde pluginen (annars
+        /// vore bussen tyst) och att bussen går att läsa (annars vore den tom) — plus att
+        /// huvudvägen är orörd (gain 1 = transparent).
+        #[test]
+        fn the_mock_plugin_takes_a_sidechain_and_gives_an_extra_output() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return; // ingen C-kompilator vid bygget
+            };
+            let processor =
+                super::super::load_processor(mock, 48_000.0, 64).expect("mock processor");
+            // Portarna läses ur **pluginens egen beskrivning**, inte ur vår gissning.
+            assert_eq!(processor.sidechain_inputs(), 1, "mocken har en sidokedje-ingång");
+            assert_eq!(processor.extra_outputs(), 1, "och en egen utbuss");
+
+            let mut insert = super::super::PluginInsert::new(processor, 8);
+            assert!(insert.has_sidechain());
+            assert_eq!(insert.extra_output_ports(), 1);
+
+            let mut main = Vec::new();
+            let mut extra = Vec::new();
+            for _ in 0..16 {
+                insert.feed_sidechain(0.25, -0.25);
+                let (l, _) = insert.process_sample(0.5, 0.5);
+                main.push(l);
+                extra.push(insert.extra_output_sample(0));
+            }
+
+            // De första sju anropen är pipelinen som fylls (blocket minus en ram) — samma
+            // fördröjning som insertet alltid har och som PDC:n kompenserar.
+            assert!(
+                main[7..].iter().all(|s| (s - 0.5).abs() < 1e-5),
+                "huvudutgången ska vara transparent (gain 1): {main:?}"
+            );
+            assert!(
+                extra[7..]
+                    .iter()
+                    .all(|(l, r)| (l - 0.25).abs() < 1e-5 && (r + 0.25).abs() < 1e-5),
+                "den egna utbussen ska bära sidokedjan: {extra:?}"
+            );
         }
 
         #[test]

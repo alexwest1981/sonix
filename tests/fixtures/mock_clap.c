@@ -12,6 +12,10 @@
  * "Gain" parameter scales the signal — which lets the Rust tests verify that
  * audio really flows through the plugin.
  *
+ * It also declares **four** audio ports (Fas 8.6): a sidechain input and a second
+ * output. The value that arrives on the sidechain leaves on output bus 1 unchanged,
+ * so one test can prove both wires at once (see `p_process`).
+ *
  * Build (done automatically by build.rs when `--features plugin-host`):
  *   cc -shared -fPIC -O2 -o libsonix_mock_clap.so tests/fixtures/mock_clap.c
  */
@@ -285,6 +289,28 @@ static int32_t p_process(const clap_plugin_t *p, const clap_process_t *proc) {
             o[i] = (float)(x * wet);
         }
     }
+
+    /*
+     * **Den extra utgången får sidokedjan, oförändrad.** Det är inte en musikalisk effekt —
+     * det är en mätbar ledning: det som kommer in på sidokedjan går ut på utbuss 1, så ett
+     * värde kan bevisa **både** att sidokedjan nådde fram till pluginen och att en extra
+     * utbuss går att läsa. Utan den ledningen hade ett grönt prov inte sagt vilken av de två
+     * trådarna som var trasig.
+     */
+    if (proc->audio_outputs_count > 1 && proc->audio_inputs_count > 1) {
+        clap_audio_buffer_t *extra = &proc->audio_outputs[1];
+        const clap_audio_buffer_t *sc = &proc->audio_inputs[1];
+        if (extra->data32 && sc->data32) {
+            for (uint32_t c = 0; c < extra->channel_count; c++) {
+                float *o = extra->data32[c];
+                if (!o) continue;
+                const float *src = (c < sc->channel_count) ? sc->data32[c] : NULL;
+                for (uint32_t i = 0; i < proc->frames_count; i++) {
+                    o[i] = src ? src[i] : 0.0f;
+                }
+            }
+        }
+    }
     return 0;
 }
 
@@ -359,22 +385,42 @@ static const clap_plugin_params_t mock_params = {
     params_value_to_text, params_text_to_value, params_flush,
 };
 
+/*
+ * Fyra portar, så att värden kan bevisa **båda** riktningarna av Fas 8.6:
+ *
+ *   in 0  "Input"      audio       huvudingången
+ *   in 1  "Sidechain"  sidechain   sidokedjan — en egen ingång, som i CLAP
+ *   ut 0  "Output"     audio       huvudutgången
+ *   ut 1  "Output 2"   audio       en extra utbuss (multi-out)
+ *
+ * Att port 1 på ingången har `port_type = "sidechain"` är det som gör den till en
+ * sidokedja: värden letar upp den **efter typ**, inte efter index, precis som med en
+ * riktig plugin.
+ */
 static uint32_t audio_ports_count(const clap_plugin_t *p, bool is_input) {
     (void)p;
-    return is_input ? 1u : 1u;
+    return is_input ? 2u : 2u;
 }
 
 static bool audio_ports_get(const clap_plugin_t *p, uint32_t index, bool is_input,
                             clap_audio_port_info_t *info) {
     (void)p;
-    if (index != 0) return false;
+    if (index > 1) return false;
     memset(info, 0, sizeof(*info));
-    info->id = is_input ? 0u : 1u;
     info->flags = 0;
     info->channel_count = 2;
-    info->port_type = "audio";
     info->in_place_pair = 0;
-    strncpy(info->name, is_input ? "Input" : "Output", CLAP_NAME_SIZE - 1);
+    if (index == 0) {
+        info->id = is_input ? 0u : 1u;
+        info->port_type = "audio";
+        strncpy(info->name, is_input ? "Input" : "Output", CLAP_NAME_SIZE - 1);
+        return true;
+    }
+    info->id = is_input ? 2u : 3u;
+    /* Ut 1 är en vanlig ljudport: CLAP har ingen egen typ för en extra utbuss —
+     * konventionen är att port 0 är huvudutgången och resten är pluginens egna. */
+    info->port_type = is_input ? "sidechain" : "audio";
+    strncpy(info->name, is_input ? "Sidechain" : "Output 2", CLAP_NAME_SIZE - 1);
     return true;
 }
 

@@ -454,7 +454,22 @@ impl SynthEngine {
                     .as_ref()
                     .map(|p| p.latency_frames())
                     .unwrap_or(0);
+                // **Nyckeln till både pluginens sidokedja och vår duckare** (Fas 8.6): en
+                // källa, två mottagare. Har spåret en sidokedja satt och pluginen en
+                // sidokedje-ingång får pluginen nyckelsignalen — samma urval av nyckelspår
+                // som duckaren använder, och samma bildruta som huvudingången, eftersom
+                // `feed_sidechain` skriver på samma plats i sitt block.
+                let side_key = track
+                    .sidechain_from
+                    .filter(|&k| k != track_idx && k < key_taps.len())
+                    .map(|k| key_taps[k]);
                 if let Some(plugin) = &mut track.plugin {
+                    if plugin.has_sidechain() {
+                        // Utan nyckelspår matas **nollor**, inte gammalt ljud: en borttagen
+                        // nyckelkälla ska tystna, inte frysa sitt sista sampel.
+                        let (kl, kr) = side_key.unwrap_or((0.0, 0.0));
+                        plugin.feed_sidechain(kl, kr);
+                    }
                     let (pl, pr) = plugin.process_sample(tl, tr);
                     tl = pl;
                     tr = pr;
