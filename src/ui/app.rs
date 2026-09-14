@@ -1458,6 +1458,10 @@ pub fn frozen_audio_in_render(track: &PlaylistTrack, pattern_mode: bool) -> bool
 /// **Ett enda tempo ger exakt ett stycke** med samma faktor som i dag. Det är avsiktligt: för
 /// projekt utan tempobyten ska ingenting ändras, och då är den här vägen bit-identisk med den
 /// gamla.
+// **Skuld, uttryckligen:** regeln är byggd och provad men ännu **inte inkopplad** på de tre
+// ställena som räknar faktorn (se 8.10 punkt 1 i ROADMAP.md). Att varningen tystas här är ett
+// medvetet val med en orsak, inte en kvällning: kopplas den in försvinner behovet av raden.
+#[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StretchPiece {
     /// Första ut-sekund i stycket, räknat från projektets början.
@@ -1470,6 +1474,7 @@ pub struct StretchPiece {
     pub ratio: f64,
 }
 
+#[allow(dead_code)] // skuld: se StretchPiece — inkopplingen är kvar (8.10 punkt 1)
 pub fn stretch_pieces(
     start_bar: f64,
     length_bars: f64,

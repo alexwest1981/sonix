@@ -450,9 +450,23 @@ rad: "skriv aldrig en siffra du inte mätt".
 
 **Det som faktiskt återstår:**
 
-1. **En kloss över ett tempobyte** får fortfarande **en** faktor, räknad från tempot vid dess start —
-   nu också för den sträckta filen (den renderas för ett tempo). Rätt är att dela klossen vid bytet,
-   eller rendera ett stycke per tempoavsnitt. **Det här är den stora kvarvarande biten.**
+1. **En kloss över ett tempobyte — REGELN BYGGD 2026-09-14, INKOPPLINGEN KVAR.**
+   - **Mätt läge:** faktorn räknas på **tre levande ställen** (vågformens ritning, motorkommandot
+     och ett tredje) och alla tre använder `self.bpm` — **ett enda tal**. Tempokartan (8.2) nådde
+     visningen och automationen men **aldrig sträckningsfaktorn**.
+   - **`stretch_pieces(start_bar, length_bars, sample_offset, source_bpm, tempo)`** delar ut-tiden
+     vid varje byte och ger varje stycke egen faktor, längd och källstart. Ett enda tempo ger
+     **exakt ett stycke med dagens faktor** — bit-identiskt för projekt utan byten, avsiktligt.
+   - **Tre prov fällde mig:** (1) första versionen delade i *sekunder* — i takter är gränsen exakt,
+     i sekunder hamnade jag en hårsmån på fel sida om bytet; (2) jag lade ankaret in dubbelt;
+     (3) **enheten var vänd** — `ratio` är *ut-sekunder per källsekund* (projekt/källa), och provet
+     visade 1,25 där jag skrivit 0,8. Samma fälla som 8.10c ("302,49 s ut av 259,28 s = 1,1667").
+   - **Fysiken pinnas av fyra tal:** 4 takter i 120 = 8 s, i 150 = 6,4 s, styckena 4,0 + 3,2 =
+     7,2 s = exakt vad `TempoMap` säger. Invarianten prövas mot kartan, inte mot ett handräknat tal.
+   - **Kvar:** koppla in på de tre ställena (läs tempot **där klippet ligger**) och rendera ett
+     stycke per tempoavsnitt — cachen bär redan nyckeln (`source`, `source_bpm`, `project_bpm`).
+     **Ett eget pass:** varje ställe har sin kontext, och en felvänd faktor hörs som en smurf.
+     Skulden står som `#[allow(dead_code)]` i koden med sin orsak.
 2. `sample_offset_sec > 0` kan hamna utanför sitt eget utsnitt. Oförändrat sedan före 8.10
    (medvetet: ingen tyst beteendeändring), men fel — egen rad.
 3. **Alex' öra HAR SVARAT (2026-09-14): "båda har lite artefakter, men andra ljudet lät lite
