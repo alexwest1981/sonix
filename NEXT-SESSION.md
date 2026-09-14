@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 477 default / 523 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 481 default / 527 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -382,6 +382,18 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
   de två antalen, och `grid_capacity(rader, steg)` är nu en ren funktion med eget prov, så det
   inte kan komma tillbaka. Skriv provet även för ditt eget misstag.
 
+## 4n. 8.7 klart: spektral flux (2026-09-14)
+
+- **Kvarvarande av 8.7 var spektral flux**, och den blev fyra *mätta* iterationer, inte en
+  gissning. Kontrollprovet — en jämn ton ska ge noll slag — föll tre gånger (19 → 10 → 18 slag)
+  innan kedjan var rätt: log-komprimering → brusgolv relativt ramens topp → normalisering mot
+  ramens egen storlek. Varje steg och dess tal står i koden.
+- **Poängen mättes till slut:** två hållna toner med fortsatt fas (inget hopp i vågformen).
+  Höljesdetektorn: 0 slag. Fluxen: bytet på 68 sampel när. Det är hela värdet.
+- **`rustfft` tillkom** (ren Rust — Windows-benet oförändrat).
+- **En regel, två dörrar:** `detect_slice_map` bär kroppen. Båda knapparna går genom den.
+- **8.7 är därmed klart.** Nästa punkt: läs ROADMAP.md.
+
 ## 4l. Läget just nu (2026-09-14)
 
 - **Windows-porten är PAUSAD efter besked** (Alex har ingen laptop än): *"Sätt Windows på paus
@@ -392,7 +404,7 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
 - **Den installerade ikonen är uppdaterad för hand** (32–512 i `~/.local/share/icons/hicolor/`
   + cachen ombyggd), eftersom `install.sh` kopierar den vid *installationen*. Kör
   `bash install.sh --refresh` efter ett logotypbyte i fortsättningen, så slipper det göras för hand.
-- **Nästa arbete, i ordning:** (1) mätningen av kantdämpningen vid slicekanten, (2) spektral flux till choppern (valfritt), (3) resten av roadmapen (8.6 plugins, 8.8 fler
+- **Nästa arbete, i ordning:** (1) mätningen av kantdämpningen vid slicekanten, (2) nästa punkt i roadmapen, (3) resten av roadmapen (8.6 plugins, 8.8 fler
   automatiseringsmål, 8.9 makron, 8.10 sträckningen in i tidslinjen).
 
 ## 4k. 8.7 steg 2: kantdämpning i koden, mätningen kvar (2026-09-14)

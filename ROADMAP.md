@@ -81,7 +81,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 4 | **7.1 Windows-porten** | *XL* | **PAUSAD EFTER BESKED 2026-09-14** (Alex har ingen laptop än). Steg 1–8 klara: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`)**. Kvar när den tas upp: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Alex säger till |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
-| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. Kvar i 8.7: spektral flux (valfritt) | — |
+| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. **8.7 klart 2026-09-14**: nudge, kantdämpning (mätt) och dump till stegraden + piano rollen med kontraktsprov. | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
@@ -1111,7 +1111,34 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
         (24) som tak och lappade tiden med `% 16` — det hade lagt slice 17 på samma steg som
         slice 1. Taket är det **mindre** av de två antalen, och `grid_capacity(rader, steg)` är en
         ren funktion med eget prov, så misstaget inte kan komma tillbaka.
-      - **Kvar:** inget i 8.7 steg 2. Båda målen ("steg **eller** piano roll") är byggda, och
+      - **Spektral flux (2026-09-14) — och den blev en mätning, inte en gissning.** Kvar av 8.7
+        var en detektor som lyssnar på *klangförändring* i stället för nivå. `rustfft` tillkom
+        (ren Rust, alltså oförändrat Windows-ben). Det tog **fyra mätta iterationer** innan
+        kontrollprovet — *en jämn ton ska ge noll slag* — höll, och varje steg i den kedjan står
+        i koden med sitt tal:
+        1. Rå magnitud-flux gav **19 falska slag** i en jämn 220 Hz-ton, med 4608 sampels mellanrum
+           = **9 hopp**. Orsaken: 220 Hz × 512/44100 = 2,5537 cykler per hopp, så fönstrets fasläge
+           upprepas ungefär var nionde ram — 1024 sampel är inte ett heltal perioder (200,45
+           sampel), alltså **vandrar läckaget med fasen**.
+        2. **Log-komprimering** (litteraturens svar: mät relativ förändring) gav 19 → 10, men
+           median 0,023 mot topp 0,070: de *tysta* läckage-binen blinksr mellan ramarna och
+           logaritmen förstärker varje blinkning. Hög flux överallt.
+        3. **Brusgolv relativt ramens starkaste bin** (2 % ≈ 34 dB under) tog bort det: median
+           **0,00000**. Men fortfarande 18 slag — artefakterna låg 10⁷ gånger över medianen, och
+           en relativ tröskel mot en baslinje som är noll kan inte skilja dem.
+        4. **Normalisering mot ramens egen storlek** gav det skalfria talet: artefakten hamnar på
+           ~10⁻⁸ av ramens innehåll, ett verkligt tonbyte på ~10⁻¹. Med en absolut minsta
+           förändring (0,5 ‰) *och* den anpassade tröskeln blev det **0 slag** — med fluxens topp
+           på 2 % av golvet, alltså bred marginal.
+      - **Provet som avgör om den förtjänar sin plats:** två hållna toner i samma amplitud, fogade
+        med **fortsatt fas** — alltså utan minsta hopp i vågformen. Höljesdetektorn ser **0 slag**,
+        fluxen hittar bytet på **68 sampel (1,5 ms)** när. Utan det provet vore fluxen bara en
+        andra väg till samma sak.
+      - **En regel, två dörrar:** knapparnas kropp bor i `detect_slice_map`, så valet byter
+        *detektor och inget annat*. På ett klickmönster hittar båda **4 slag** — ense på riktig
+        percussion, vilket är vad man vill. Provet prövar formen och enheterna, inte ett fast antal:
+        de två får ge olika antal, för de mäter olika saker.
+      - **Kvar:** inget i 8.7. Båda målen ("steg **eller** piano roll") är byggda, och
         det som återstår av 8.7 är spektral flux (starkare på melodiöst material, onödigt för
         trummor) — en egen punkt. (FL:s "Convert to score and
     dump to piano roll", Reapers "Create chromatic MIDI item from slices"). Dumpen är den stora

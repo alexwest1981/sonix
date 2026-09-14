@@ -48,6 +48,11 @@ libc = { version = "0.2", optional = true }
 # ut mot något sämre. Att välja bort en andra implementation är hela poängen: med en
 # väg försvinner de `cfg`-grenar som bara en av dem kunde prövas i.
 midir = "0.11"
+# **FFT för spektral flux** (Fas 8.7). Ren Rust, inga C-huvuden — alltså bygger
+# Windows-benet utan nya verktyg. En egen DFT var alternativet, men för en
+# stämma på några minuter är den storleksordningar för långsam, och spektral
+# analys utan FFT är i praktiken alltid `rustfft` (samma val som aubio/librosa).
+rustfft = "6.4.1"
 [target.'cfg(target_os = "linux")'.dependencies]
 alsa = "0.9"
 

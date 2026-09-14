@@ -13679,28 +13679,47 @@ impl SonixApp {
                                                 message = Some(crate::i18n::t("⚠ Kanalens ljud går inte att läsa — inga slag kan hittas").to_string());
                                             }
                                             Some((left, _right, sr)) => {
-                                                let onsets = crate::audio::onset::detect_onsets(
+                                                // **En regel, två detektorer** (Fas 8.7 steg 2):
+                                                // kroppen bor i `detect_slice_map`, så båda
+                                                // knapparna går genom samma väg — valet byter
+                                                // detektor och inget annat. Att skriva av
+                                                // blocket en gång per detektor hade varit två
+                                                // vägar till samma sak.
+                                                match crate::audio::onset::detect_slice_map(
                                                     left,
                                                     *sr as f32,
+                                                    false, // höljesdetektorn: rätt för trummor
                                                     &crate::audio::onset::OnsetParams::default(),
-                                                );
-                                                let slices = crate::audio::onset::slices_from_onsets(
-                                                    &onsets,
-                                                    left.len(),
+                                                ) {
+                                                    Some((map, count)) => detected = Some((map, count)),
+                                                    None => message = Some(crate::i18n::t("Inga slag hittades i filen").to_string()),
+                                                }
+                                            }
+                                        }
+                                    }
+                                    // **Andra dörren in i samma regel**: spektral flux. Kroppen
+                                    // är densamma, bara detektorn skiljer — alltså inte en andra
+                                    // väg, bara ett andra val.
+                                    if ui
+                                        .button(crate::i18n::t("🔍 Slagletning (spektral)"))
+                                        .on_hover_text(crate::i18n::t(
+                                            "Samma sak, men letar klangförändring i stället för nivå — starkare på melodiöst material och sång, onödigt för rena trumloopar.",
+                                        ))
+                                        .clicked()
+                                    {
+                                        match ch.pcm_audio.as_ref() {
+                                            None => {
+                                                message = Some(crate::i18n::t("⚠ Kanalens ljud går inte att läsa — inga slag").to_string())
+                                            }
+                                            Some((left, _right, sr)) => {
+                                                match crate::audio::onset::detect_slice_map(
+                                                    left,
                                                     *sr as f32,
-                                                    30.0,
-                                                );
-                                                if slices.is_empty() {
-                                                    message = Some(crate::i18n::t("Inga slag hittades i filen").to_string());
-                                                } else {
-                                                    let total = left.len().max(1) as f32;
-                                                    detected = Some((
-                                                        slices
-                                                            .iter()
-                                                            .map(|s| (s.start as f32 / total, s.end as f32 / total))
-                                                            .collect(),
-                                                        onsets.len(),
-                                                    ));
+                                                    true, // spektral flux
+                                                    &crate::audio::onset::OnsetParams::default(),
+                                                ) {
+                                                    Some((map, count)) => detected = Some((map, count)),
+                                                    None => message = Some(crate::i18n::t("Inga slag hittades i filen").to_string()),
                                                 }
                                             }
                                         }

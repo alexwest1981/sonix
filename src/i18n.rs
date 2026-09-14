@@ -1550,6 +1550,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Korrigerar mikrofonen i realtid mot vald skala (styrka = AUTO-TUNE-ratten)" => "Corrects the microphone in real time toward the selected scale (strength = the AUTO-TUNE knob)",
         "📈 Automation: PÅ" => "📈 Automation: ON",
         "⬇ Slicar → steg" => "⬇ Slices → steps",
+        "🔍 Slagletning (spektral)" => "🔍 Beat detection (spectral)",
+        "Samma sak, men letar klangförändring i stället för nivå — starkare på melodiöst material och sång, onödigt för rena trumloopar." => "The same, but looks for timbre change instead of level — stronger on melodic material and vocals, unnecessary for clean drum loops.",
         "⬇ Slicar → piano roll" => "⬇ Slices → piano roll",
         "Lägger en not per slice i piano rollen, kromatiskt från basnoten. Fler slicar än rutnätet rymmer kapas." => "Puts one note per slice in the piano roll, chromatically from the base note. More slices than the grid holds are cut off.",
         "⬇ {} slicar till piano rollen ({} kapades — rutnätet rymmer {})." => "⬇ {} slices to the piano roll ({} cut off — the grid holds {}).",

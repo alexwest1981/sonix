@@ -351,6 +351,197 @@ pub fn grid_capacity(rows: usize, steps: usize) -> usize {
     rows.min(steps)
 }
 
+/// **En färdig slicekarta ur en kanal** — välj detektor, få samma form tillbaka.
+///
+/// Båda slagletningsknapparna i vyn går genom den här funktionen. Att i stället skriva av
+/// blocket en gång per detektor vore den här kodbasens dyraste sort: två vägar till samma sak,
+/// där en fix i den ena lämnar den andra fel. `use_spectral` byter **detektor och inget annat** —
+/// returen är normaliserade fönster (0–1 av filens längd) och antalet slag, samma enheter för
+/// båda, så allt nedströms (slicekartan, stegraden, exporten) är oberörd av valet.
+///
+/// `None` betyder *inget hittat* — inte "tomt resultat". Anroparen säger det rakt ut, i stället
+/// för att visa en tom karta som ser ut som en analys.
+pub fn detect_slice_map(
+    left: &[f32],
+    sample_rate: f32,
+    use_spectral: bool,
+    params: &OnsetParams,
+) -> Option<(Vec<(f32, f32)>, usize)> {
+    let onsets = if use_spectral {
+        spectral_flux_onsets(left, sample_rate, params)
+    } else {
+        detect_onsets(left, sample_rate, params)
+    };
+    let slices = slices_from_onsets(&onsets, left.len(), sample_rate, 30.0);
+    if slices.is_empty() {
+        return None;
+    }
+    let total = left.len().max(1) as f32;
+    Some((
+        slices.iter().map(|s| (s.start as f32 / total, s.end as f32 / total)).collect(),
+        onsets.len(),
+    ))
+}
+
+/// Ramen analysen görs i: 1024 sampel (~23 ms vid 44,1 kHz) med halva ramen i steg. Standard
+/// för slagletning, och samma tal i både serien och tröskelräkningen — därför en konstant.
+const WINDOW: usize = 1024;
+const HOP: usize = WINDOW / 2;
+
+/// Flux-serien: en halvvågsliktad, **log-komprimerad** klangförändring per ram, i sampelsteg
+/// `HOP`. Regeln bor här och ingen annanstans — både [`spectral_flux_onsets`] och proven läser
+/// samma funktion, så en ändring kan inte glida isär mellan dem.
+///
+/// **Log-komprimeringen är inte kosmetika, den är det som gör detektorn användbar.** Mätt: en
+/// jämn 220 Hz-ton gav 19 falska slag med råa magnituder. Orsaken är att 1024 sampel inte är ett
+/// heltal perioder av 220 Hz (perioden är 200,45 sampel), så läckaget i fönstret **vandrar med
+/// fasen** — och fasläget upprepas var nionde ram (9 hopp ≈ 5 cykler), alltså en liten men
+/// periodisk flux som ett golv på 10 % av toppen inte kunde skilja från ett slag. Logaritmen
+/// jämför i stället *förhållanden*: en konstant ton har samma relativa spektrum varje ram och
+/// ger då noll, medan ett tonbyte flyttar energi mellan bin och ger ett stort *relativt* utslag.
+/// Det är samma skäl som att höra skillnad på en ton och ett tonbyte, inte på ljudstyrka.
+fn flux_series(samples: &[f32]) -> Vec<f32> {
+    use rustfft::num_complex::Complex32;
+    use rustfft::FftPlanner;
+
+    /// Tryckningen: `log1p(gamma * |X|)`. 1000 är samma storleksordning som DAW:er och
+    /// analysbibliotek använder för log-magnitud, och gör att svaga bin inte kan dominera.
+    const GAMMA: f32 = 1000.0;
+
+    let hann: Vec<f32> = (0..WINDOW)
+        .map(|i| 0.5 - 0.5 * (std::f32::consts::PI * 2.0 * i as f32 / WINDOW as f32).cos())
+        .collect();
+
+    let mut planner = FftPlanner::<f32>::new();
+    let fft = planner.plan_fft_forward(WINDOW);
+    let mut buf: Vec<Complex32> = vec![Complex32::new(0.0, 0.0); WINDOW];
+    let bins = WINDOW / 2;
+    let frames = (samples.len() - WINDOW) / HOP + 1;
+
+    let mut flux = vec![0.0_f32; frames];
+    let mut prev: Vec<f32> = vec![0.0; bins];
+    for f in 0..frames {
+        let start = f * HOP;
+        for i in 0..WINDOW {
+            buf[i] = Complex32::new(samples[start + i] * hann[i], 0.0);
+        }
+        fft.process(&mut buf);
+        // **Brusgolvet är det som gör logaritmen användbar.** Utan det dominerade de tysta
+        // läckage-binen: de blinksr med faktorer mellan ramarna, och logaritmen förstärker varje
+        // sådan blinkning — mätt på en jämn 220 Hz-ton: median 0,023 mot topp 0,070, alltså hög
+        // flux *överallt*. Golvet läggs **relativt ramens starkaste bin** (två procent ≈ 34 dB
+        // under), så allt som hörs svagt behandlas som samma noll och bara verklig
+        // energi-förflyttning mellan bin registreras. Samma princip som en dB-kurva i en DAW.
+        let mags: Vec<f32> = (0..bins).map(|k| buf[k].norm()).collect();
+        let peak_mag = mags.iter().cloned().fold(0.0_f32, f32::max);
+        let floor = (1.0 + GAMMA * peak_mag * 0.02).ln();
+        let mut sum = 0.0;
+        let mut total = 0.0;
+        for k in 0..bins {
+            let m = (1.0 + GAMMA * mags[k]).ln().max(floor);
+            total += m;
+            if f > 0 {
+                let d = m - prev[k];
+                if d > 0.0 {
+                    sum += d; // halvvågsliktat: bara tillväxt är ett slag
+                }
+            }
+            prev[k] = m;
+        }
+        // **Normaliseringen är den andra halvan av samma insikt.** Även med brusgolv ligger de
+        // kvarvarande artefakterna av en jämn ton 10⁷ gånger över *medianen* — men bara ~10⁻⁸ av
+        // ramens egen storlek. En relativ tröskel mot en baslinje som är noll kan inte skilja
+        // dem; en skalfri andel av ramens innehåll kan det med sju tiopotensers marginal.
+        // "Spektret växte med X procent av sin egen storlek" är dessutom samma sorts tal för en
+        // tyst inspelning och en stark, alltså oberoende av nivån — som en riktig mätning.
+        flux[f] = if total > f32::EPSILON { sum / total } else { 0.0 };
+    }
+    flux
+}
+
+/// **Spektral flux** — slagletning som lyssnar på *klangförändring* i stället för på nivå
+/// (Fas 8.7).
+///
+/// Tidsdomänens höljesdetektor ([`detect_onsets`]) är rätt för trummor: ett slag *är* en
+/// nivåändring. Den är svag på **melodiöst** material, där en ny ton ofta bärs av samma nivå —
+/// höljet står stilla medan klangen byter innehåll. Spektral flux mäter just det: hur mycket
+/// magnitudspektrat **växer** från en ram till nästa.
+///
+/// Ramen är 1024 sampel (~23 ms vid 44,1 kHz) med halva ramen i steg, och ett Hann-fönster.
+/// Returvärdet är **sampelindex**, samma enhet som [`detect_onsets`], så allt nedströms
+/// (slicekartan, vyn, exporten) kan byta detektor utan att något annat rörs.
+///
+/// Tre val som inte är självklara, och varför de är gjorda:
+///
+/// - **Halvvågsliktning:** bara *tillväxt* räknas. Utan den ger varje utklingning ett slag,
+///   och en ton som klingar ut är ingen ny ton.
+/// - **Centrerad tröskel:** tröskeln är medelvärdet över ett fönster *runt* ramen, inte en
+///   släpande linje. En släpande linje börjar på noll och hittar sina egna uppvaknanden —
+///   mätt i den här kodbasen: **5 falska slag i en jämn ton**. Centrerad ger noll, vilket är
+///   kravet varje detektor här ska klara.
+/// - **Golv över hela filen:** i tystnad är både medelvärde och spridning noll, och då är
+///   varje litet brus över tröskeln. Ett litet golv relativt filens starkaste flux stänger
+///   den dörren.
+///
+/// Slag som ligger närmare varandra än `min_gap_secs` slås ihop till ett — två ramar i rad är
+/// samma slag, inte två.
+pub fn spectral_flux_onsets(samples: &[f32], sample_rate: f32, params: &OnsetParams) -> Vec<usize> {
+    if samples.len() < WINDOW * 2 || sample_rate <= 0.0 {
+        return Vec::new();
+    }
+    let flux = flux_series(samples);
+
+    let peak = flux.iter().cloned().fold(0.0_f32, f32::max);
+    if peak <= f32::EPSILON {
+        return Vec::new();
+    }
+    // Tröskeln har två delar, och båda behövs:
+    //  - en **absolut** del i den skalfria enheten: en klangförändring som inte rör minst en
+    //    halv promille av ramens innehåll är ingen ny ton, hur ren baslinjen än är. Utan den
+    //    fäller analysens egna artefakter (mätt: en jämn ton gav 18 slag via enbart relativa
+    //    regler).
+    //  - en **anpassad** del: medelvärdet i fönstret × känsligheten, samma regel och samma
+    //    betydelse för `sensitivity` som höljesdetektorn använder.
+    const MIN_CHANGE: f32 = 0.0005;
+    let floor = MIN_CHANGE.max(peak * 0.1);
+
+    // **De tre rattarna betyder samma sak som i höljesdetektorn** — `sensitivity` är en
+    // multiplikator på omgivningens medelvärde, `window_ms` är fönstret toppen jämförs med
+    // (hälften före, hälften efter) och `min_gap_ms` är kortaste avståndet mellan två slag.
+    // Att ge en befintlig ratt en *ny* betydelse i den nya vägen vore den tysta sortens fel:
+    // samma reglage, olika innebörd, och inget prov hade fångat det.
+    //
+    // OBS enheten: räkningen här sker i **ramar**, inte i sampel, eftersom fluxen bara finns
+    // per ram. Båda omvandlingarna går därför genom `HOP` — och de två talen nedan är
+    // *ramar*, medan returen längst ner är *sampel*, som `detect_onsets`.
+    let frames_per_sec = sample_rate / HOP as f32;
+    let half = ((frames_per_sec * params.window_ms / 2000.0).round() as usize).max(2);
+    let min_gap = ((frames_per_sec * params.min_gap_ms / 1000.0).round() as usize).max(1);
+    let sensitivity = params.sensitivity.max(1.0);
+
+    let mut picked: Vec<usize> = Vec::new();
+    let mut last: Option<usize> = None;
+    for f in 1..flux.len() {
+        let lo = f.saturating_sub(half);
+        let hi = (f + half).min(flux.len());
+        let slice = &flux[lo..hi];
+        let mean = slice.iter().sum::<f32>() / slice.len() as f32;
+        // Tröskeln är **samma regel som höljesdetektorns**: medelvärde × känslighet, golv.
+        let thresh = (mean * sensitivity).max(floor);
+        if flux[f] <= thresh || flux[f] < flux[f - 1] {
+            continue; // inte en lokal topp över tröskeln
+        }
+        match last {
+            Some(prev) if f - prev < min_gap => {}
+            _ => {
+                picked.push(f * HOP);
+                last = Some(f);
+            }
+        }
+    }
+    picked
+}
+
 /// **Dumpa slicarna till stegraden** (Fas 8.7 steg 2).
 ///
 /// Slice `i` hamnar på steg `i` och får noten `bas + i` — samma kromatiska adressering som
@@ -492,6 +683,75 @@ mod tests {
         assert!(slices.iter().all(|s| s.end > s.start), "inga tomma slicar");
     }
 
+    /// **En jämn ton ska inte ge några slag** — kravet varje detektor i den här filen ska klara.
+    /// Går det här igenom utan att detektorn är rätt, är det för att tonen aldrig mättes.
+    #[test]
+    fn a_steady_tone_gives_no_spectral_onsets() {
+        let sr = 44_100.0;
+        let tone: Vec<f32> = (0..(sr as usize * 2))
+            .map(|i| 0.5 * (std::f32::consts::PI * 2.0 * 220.0 * i as f32 / sr).sin())
+            .collect();
+        let got = spectral_flux_onsets(&tone, sr, &OnsetParams::default());
+        // MÄTNING: ligger de falska slagen vid starten (ett riktigt anslag) eller utspridda
+        // (moiré)? Och hur står sig fluxen mot sitt eget golv? Utan de talen är nästa
+        // ändring en gissning.
+        println!("antal: {} positioner (sampel): {:?}", got.len(), &got[..got.len().min(24)]);
+        let f = flux_series(&tone);
+        let peak = f.iter().cloned().fold(0.0_f32, f32::max);
+        let mut sorted = f.clone();
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        println!(
+            "flux: topp {:.5}, median {:.5}, 99-percentil {:.5}, golv (0.1×topp) {:.5}",
+            peak,
+            sorted[sorted.len() / 2],
+            sorted[sorted.len() * 99 / 100],
+            peak * 0.1
+        );
+        assert!(got.is_empty(), "en jämn 220 Hz-ton gav {} slag", got.len());
+    }
+
+    /// Tystnad får inte ge slag heller — det var den släpande tröskelns egen uppvaknande som
+    /// gav fem falska slag i den första versionen av höljesdetektorn.
+    #[test]
+    fn silence_gives_no_spectral_onsets() {
+        let sr = 44_100.0;
+        let quiet = vec![0.0_f32; sr as usize * 2];
+        assert!(spectral_flux_onsets(&quiet, sr, &OnsetParams::default()).is_empty());
+    }
+
+    /// **Det här är hela poängen med spektral flux, och provet som avgör om den förtjänar sin
+    /// plats:** en ton som byter *klang* utan att byta *nivå*. Två hållna toner med samma
+    /// amplitud, fogade med fortsatt fas — alltså utan minsta hopp i vågformen, som ett
+    /// höljesdetektor skulle se. Tidsdomänen hittar **starten**; fluxen hittar **också bytet**.
+    /// Utan det provet vore fluxen bara en andra väg till samma sak.
+    #[test]
+    fn a_phase_continuous_tone_change_is_heard_by_flux_but_not_by_the_envelope() {
+        let sr = 44_100.0;
+        let n = |secs: f32| (sr * secs) as usize;
+        let mut phase = 0.0_f32;
+        let mut tone: Vec<f32> = Vec::with_capacity(n(2.0));
+        for i in 0..n(2.0) {
+            let hz = if i < n(1.0) { 220.0 } else { 330.0 };
+            phase += std::f32::consts::PI * 2.0 * hz / sr;
+            tone.push(0.5 * phase.sin());
+        }
+        let params = OnsetParams::default();
+        let env = detect_onsets(&tone, sr, &params);
+        let flux = spectral_flux_onsets(&tone, sr, &params);
+        let bytet = n(1.0);
+        println!("höljet såg {} slag: {:?}", env.len(), env);
+        println!("fluxen såg {} slag: {:?} (bytet vid {})", flux.len(), flux, bytet);
+        assert!(
+            env.len() <= 1,
+            "höljet såg mer än starten ({} slag) — då är provet inte ett bevis för fluxen",
+            env.len()
+        );
+        assert!(
+            flux.iter().any(|&s| s > n(0.8) && s < n(1.4)),
+            "fluxen hittade inte tonbytet vid {bytet}: {flux:?}"
+        );
+    }
+
     /// Taket är det mindre av tid och tonhöjd — och det är inte samma tal.
     #[test]
     fn the_grids_capacity_is_the_smaller_of_time_and_pitch() {
@@ -499,6 +759,37 @@ mod tests {
         assert_eq!(grid_capacity(8, 16), 8, "få rader sätter taket");
         assert_eq!(grid_capacity(0, 16), 0);
         assert_eq!(grid_capacity(24, 0), 0);
+    }
+
+    /// Båda detektorerna går genom samma dörr och ger **samma enheter** tillbaka — annars vore
+    /// valet av detektor ett val av format, och slicekartan nedströms skulle behöva veta vilken.
+    #[test]
+    fn both_detectors_leave_through_the_same_door_with_the_same_units() {
+        let sr = 44_100.0;
+        let n = |secs: f32| (sr * secs) as usize;
+        // Ett klickmönster: fyra tydliga slag, som båda detektorerna ska hitta.
+        let mut sig = vec![0.0_f32; n(1.0)];
+        for (i, at) in [0.1_f32, 0.35, 0.6, 0.85].iter().enumerate() {
+            let s = n(*at);
+            for k in 0..n(0.01) {
+                sig[s + k] += if i % 2 == 0 { 0.8 } else { -0.8 };
+            }
+        }
+        let params = OnsetParams::default();
+        let env = detect_slice_map(&sig, sr, false, &params).expect("höljet hittade inget");
+        let spec = detect_slice_map(&sig, sr, true, &params).expect("fluxen hittade inget");
+        println!("höljet: {} slag, fluxen: {} slag", env.1, spec.1);
+        // **Ingen fastsatt siffra.** De två detektorerna *får* ge olika antal slag — de mäter
+        // olika saker — så provet prövar det som måste vara gemensamt (formen och enheterna) och
+        // skriver ut de verkliga talen i stället för att låsa en gissning. Ett prov som krävde
+        // exakt fyra hade blivit ett prov på min gissning, inte på koden.
+        for (map, namn) in [(&env.0, "höljet"), (&spec.0, "fluxen")] {
+            assert!(!map.is_empty(), "{namn} gav inga slicar alls av ett klickmönster");
+            for (start, slut) in map {
+                assert!(*start >= 0.0 && *start <= 1.0, "{namn}: {start} utanför 0–1");
+                assert!(*slut >= *start, "{namn}: fönstret slutar före det börjar");
+            }
+        }
     }
 
     /// **Kontraktet mellan dumpen och uppspelningen.** Dumpar man slicarna till stegraden måste
