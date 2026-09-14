@@ -436,7 +436,11 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
   flest toner i skalan; flytten går genom befintliga `transpose_active_pattern`. Knapp "🎵 Till tonarten".
 - **Två prov fällde mig:** tie-breaket valde −5 över 0 (loopen börjar längst från noll), och ett prov
   förväntade "står stilla" där regeln rätteligen flyttade till +5. Båda gångerna var regeln rätt.
-- **Kvar:** punkt 1 — **Alex' ögon** på markeringen och menyernas bredd. Ingen kodmätning stänger den.
+- **KVITTERAT 2026-09-14: Alex såg markeringen — "Ser ut att stämma".** 8.11 är därmed **stängt**.
+  Han fick mätbara förväntningar (C/Dur: inga svarta; G/Dur: exakt F#; markeringen flyttar sig vid
+  tonartsbyte) i stället för ett "kolla att det ser bra ut" — det är skillnaden mellan en kvittens
+  och ett intryck. Menyernas bredd och knappen är kvitterade i samma svep, utan att pekas ut var
+  för sig.
 
 ## 4l. Läget just nu (2026-09-14)
 

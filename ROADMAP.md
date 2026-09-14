@@ -152,7 +152,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
     halv väg hade bara kunnat prövas i en av CI:s byggkombinationer.
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
 | 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **Steg 1 klart och kvitterat av Alex** (`f0dc8eb` + `a510775`). **Vägen framåt är nu researchad och vald** (se "Vad researchunderlaget säger" under 8.10): pitch-bevarande sträckning **offline till fil + cache**, egen DSP som bas, **en enda switch** för användaren. Kvar: koppla in sträckningen i tidslinjen, klipp över ett tempobyte, och att vyn visar att klippet är sträckt | — |
-| 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **Klart 2026-09-14**: tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten (`key_transpose` + knapp) | **Bara Alex' ögon** på markeringen och menyernas bredd |
+| 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **KLAR 2026-09-14** (`392a30c` + `76b4015`): tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten. **Markeringen kvitterad i GUI av Alex** ("ser ut att stämma") | — |
 
 
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
@@ -2275,9 +2275,13 @@ Med låset av betyder skalan bara markeringen.
 
 **Kvar på 8.11 (uppdaterat 2026-09-14):**
 
-1. **Bara Alex' ögon** på markeringen och menyernas bredd (104/120 px för de längre skalnamnen —
-   läst i koden, inte sett i fönstret). Det här kan ingen kodmätning stänga: det är en fråga om
-   hur det *ser ut*, och den svarar bara den som tittar.
+1. **KVITTERAT 2026-09-14 av Alex' ögon: "Ser ut att stämma."** Han fick en checklista med
+   *mätbara* förväntningar i stället för ett "kolla att det ser bra ut" — C/Dur ska markera
+   C D E F G A B och **inga svarta**, G/Dur ska markera **exakt en svart (F#)**, A/Moll samma
+   vita med A som grundton, och markeringen ska **flytta sig** vid tonartsbyte. Markeringen
+   kvitterades. De tre övriga punkterna i checklistan (menyernas bredd, startbeteendet på Dur,
+   och "🎵 Till tonarten") är **inte uttryckligen kvitterade var för sig** — de står som
+   lågrisk, och en rad räcker om han vill stänga dem också.
 2. **KLART 2026-09-14: skalnamnen går genom `i18n::t`.** Literalerna bor kvar i `scale.rs` som
    nycklar (repots konvention: nycklarna *är* de svenska strängarna), och elva skalnamn har fått
    engelska i `i18n.rs`. **Grundtonsnamnen är medvetet orörda** — "C", "C#", "D" är inte ord utan
