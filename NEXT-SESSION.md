@@ -404,8 +404,12 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
 - **EQ:n kom samma kväll:** `SetTrackEq` bär hela `TrackEqSettings` och banden ligger på spåret,
   så fyra → **tio** mål. Kommandot bär *hela* inställningen — därför muteras spårets egen EQ och
   skickas tillbaka i sin helhet; att bygga en ny hade tyst nollat frekvenser och Q.
-- **Bussen är kvar som en EGEN FRÅGA, inte ett steg:** en lane hör till ett spår, bussen är
-  global. Bestäm först vem som äger en busskurva.
+- **Bussen är BESVARAD (2026-09-14): bussen äger sina egna kurvor.** Industristandarden är
+  entydig — Ableton (gruppen är ett eget spår), FL (inserten automatiseras, klippet namnges efter
+  bussen), Reaper (foldern har egna enveloper), Logic (aux-strippen har egen automation). Skälet:
+  flera spår kan skicka till samma buss, så en kurva under ett spår hade gjort anspråk på ett
+  globalt värde. Formen står i roadmapen. **Inte byggd än**, och det är avsiktligt: modell utan
+  förbrukare är död kod — modell, apply och UI ska komma i samma pass.
 - **Kvar av 8.8:** plugin-parametrar + bussfrågan.
 
 ## 4l. Läget just nu (2026-09-14)

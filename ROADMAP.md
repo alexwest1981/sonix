@@ -92,11 +92,24 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 - **En detalj värd eftertanke:** kommandot bär *hela* inställningen, så koden muterar spårets egen
   EQ och skickar tillbaka den i sin helhet. Att bygga en ny `TrackEqSettings` på plats hade tyst
   nollat frekvenser och Q — alltså ändrat mer än kurvan rörde.
-- **Bussen är kvar, och den är en egen fråga — inte ett steg.** `bus_volume` finns, men en lane
-  hör till ett **spår** medan bussen är **global**. Vem som äger en busskurva (en buss-lane, eller
-  spårets lane med ett bussmål) är ett designbeslut. Att lägga den under spåret utan att bestämma
-  det hade gett tio lanes som pekar på samma globala värde — och två spår hade kunnat slåss om
-  bussen utan att någon sagt vilken som gäller.
+- **Bussfrågan är BESVARAD (2026-09-14): bussen äger sina egna kurvor.** Frågan var om en
+  busskurva hörde till ett spår (med bussen som mål) eller till bussen själv. Industristandarden
+  är entydig, och fyra DAW:er säger samma sak av samma skäl:
+  - **Ableton:** en grupp är ett eget spår med egna automation-lanes.
+  - **FL Studio:** *inserten* (bussen) automatiseras, och klippet namnges efter bussen — det
+    ligger i spellistan, inte under ett spår.
+  - **Reaper:** folder-spåret har sina egna enveloper.
+  - **Logic:** aux-strippen har egen automation.
+  - **Skälet de delar:** flera spår kan skicka till samma buss. Låg kurvan under ett av dem hade
+    två lanes gjort anspråk på samma globala värde utan att någon sagt vilken som gäller — och
+    vem som "äger" bussen hade berott på vilket spår man råkade titta på.
+  - **Formen när den byggs:** `bus_automation: Vec<BusAutomationLane>` på projektet (som
+    `bus_volume`), med bussens index i lane:n, `#[serde(default)]` så gamla filer läses som tomma,
+    och `SetBusState` som redan bär `bus`, `volume`, `muted` och `solo`. Bussarna har i dag bara
+    nivå och mute — fler parametrar blir en enum *när* de finns, inte förrän dess.
+  - **Varför den inte byggdes samma kväll:** modellen utan förbrukare (eller apply utan UI) vore
+    död kod — exakt det `silent-audio-doctrine` och läxan om låset ingen läste förbjuder. Ett
+    buss-pass ska bära modell, apply och UI tillsammans, och det är ett eget pass.
 - **Kvar av 8.8:** plugin-parametrar (kräver att plugin-värdens parametrar exponeras som mål) och
   bussfrågan ovan.
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
