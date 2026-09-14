@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 473 default / 519 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 476 default / 522 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -365,6 +365,18 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
 
+## 4m. 8.7 steg 2: dump till stegraden klar (2026-09-14)
+
+- **Min anteckning i roadmapen var fel:** "dumpen kräver slice-offset per steg i motorn". Den
+  kromatiska adresseringen (not `bas + i` spelar slice `i`) fanns redan i `window_for_note` och
+  läses av live-vägen, motorn och exporten. Dumpen blev en ren dataoperation — **tredje gången
+  samma kväll** som en misstänkt lucka visade sig vara en väg som redan fanns. Mät anroparen
+  först.
+- **Kontraktsprovet är det viktiga:** varje dumpad `(steg, not)` prövas mot `window_for_note`,
+  så dumpen och uppspelningen inte kan glida isär.
+- **Kvar:** piano roll-varianten (noter i rutnätet med längd) — samma karta, samma adressering,
+  alltså ren inkoppling.
+
 ## 4l. Läget just nu (2026-09-14)
 
 - **Windows-porten är PAUSAD efter besked** (Alex har ingen laptop än): *"Sätt Windows på paus
@@ -375,8 +387,7 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
 - **Den installerade ikonen är uppdaterad för hand** (32–512 i `~/.local/share/icons/hicolor/`
   + cachen ombyggd), eftersom `install.sh` kopierar den vid *installationen*. Kör
   `bash install.sh --refresh` efter ett logotypbyte i fortsättningen, så slipper det göras för hand.
-- **Nästa arbete, i ordning:** (1) mätningen av kantdämpningen vid slicekanten, (2) dumpen av
-  slicar till steg/piano roll, (3) resten av roadmapen (8.6 plugins, 8.8 fler
+- **Nästa arbete, i ordning:** (1) mätningen av kantdämpningen vid slicekanten, (2) piano roll-varianten av dumpen, (3) resten av roadmapen (8.6 plugins, 8.8 fler
   automatiseringsmål, 8.9 makron, 8.10 sträckningen in i tidslinjen).
 
 ## 4k. 8.7 steg 2: kantdämpning i koden, mätningen kvar (2026-09-14)

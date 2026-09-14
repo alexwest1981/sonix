@@ -339,6 +339,28 @@ pub fn nudge_slice_boundary(
     out
 }
 
+/// **Dumpa slicarna till stegraden** (Fas 8.7 steg 2).
+///
+/// Slice `i` hamnar på steg `i` och får noten `bas + i` — samma kromatiska adressering som
+/// [`window_for_note`] redan spelar efter både live, från stegraden och i exporten. Därför
+/// behövs **ingen motorändring**: noten *är* adressen. Det är samma princip som FL:s
+/// "Convert to score and dump to piano roll" och Reapers "Create chromatic MIDI item from
+/// slices" — att låta en analys bli spelbart material utan att kopiera ljud.
+///
+/// Fler slicar än steg **kapas**, och kapat talas om av anroparen. Att tyst slå ihop eller
+/// tappa slicar vore ett annat ljud än kartan visar; den som har fler slicar än steg får välja
+/// en längre takt först, och det är ett beslut — inte något en dump ska fatta i smyg.
+///
+/// Noten kläms till MIDI-omfånget, så en hög basnot inte kan linda runt (not 128 blir 0).
+pub fn slices_to_steps(slices: &[(f32, f32)], base_note: u8, steps: usize) -> Vec<(usize, u8)> {
+    slices
+        .iter()
+        .take(steps)
+        .enumerate()
+        .map(|(i, _)| (i, base_note.saturating_add(i as u8).min(127)))
+        .collect()
+}
+
 /// Fönstret en not ska spela på en kanal med en **slicekarta** (Fas 8.7 steg 2).
 ///
 /// **Kromatiskt från basnoten:** noten `bas + i` spelar slice `i`. Det är samma
@@ -456,6 +478,47 @@ mod tests {
             assert_eq!(w[0].end, w[1].start, "inga glapp och inget överlapp");
         }
         assert!(slices.iter().all(|s| s.end > s.start), "inga tomma slicar");
+    }
+
+    /// **Kontraktet mellan dumpen och uppspelningen.** Dumpar man slicarna till stegraden måste
+    /// varje stegs not spela **just den slicen** — annars är dumpen bara en rad ettor som låter
+    /// fel. Provet prövar dem mot varandra, inte var för sig, så en ändrad adressering i den ena
+    /// fångas av den andra.
+    #[test]
+    fn every_dumped_step_plays_the_slice_it_came_from() {
+        let slices = vec![(0.0, 0.1), (0.1, 0.3), (0.3, 0.6), (0.6, 1.0)];
+        let base = 48;
+        let dumped = slices_to_steps(&slices, base, 16);
+        assert_eq!(dumped.len(), 4);
+        let fallback = (0.0, 1.0);
+        for (i, &(step, note)) in dumped.iter().enumerate() {
+            assert_eq!(step, i, "stegen ska följa slicarnas ordning");
+            let (start, end) = window_for_note(&slices, base, note, fallback);
+            assert_eq!(
+                (start, end),
+                slices[step],
+                "not {note} (steg {step}) spelar fel slice — dumpen och uppspelningen är oense"
+            );
+        }
+    }
+
+    /// Fler slicar än steg **kapas** — inte slås ihop, inte tystas.
+    #[test]
+    fn more_slices_than_steps_are_capped() {
+        let slices: Vec<(f32, f32)> = (0..40).map(|i| (i as f32 / 40.0, (i + 1) as f32 / 40.0)).collect();
+        let dumped = slices_to_steps(&slices, 36, 16);
+        assert_eq!(dumped.len(), 16, "fler steg än raden har");
+        assert_eq!(dumped[15].0, 15);
+        assert!(slices_to_steps(&[], 36, 16).is_empty(), "tom karta ger inga steg");
+    }
+
+    /// En hög basnot får inte linda runt: not 128 är inte not 0 i MIDI.
+    #[test]
+    fn a_high_base_note_clamps_instead_of_wrapping() {
+        let slices = vec![(0.0, 0.5), (0.5, 1.0)];
+        let dumped = slices_to_steps(&slices, 127, 16);
+        assert_eq!(dumped[0].1, 127);
+        assert_eq!(dumped[1].1, 127, "not 128 blev {}", dumped[1].1);
     }
 
     /// **En gräns är delad, och en flytt rör båda sidorna.** Det är hela poängen: flyttas bara

@@ -81,7 +81,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 4 | **7.1 Windows-porten** | *XL* | **PAUSAD EFTER BESKED 2026-09-14** (Alex har ingen laptop än). Steg 1–8 klara: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`)**. Kvar när den tas upp: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Alex säger till |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
-| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** + **nudge klar 2026-09-14** (gränsen flyttas för båda grannarna, kläms i stället för att slås ihop, dragen direkt i vågformen); kvar: **dump till steg/piano roll** (kräver slice-offset per steg i motorn) | — |
+| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 + hela steg 2 klara 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till stegraden** med kontraktsprov. Kvar: piano roll-varianten av dumpen (ren inkoppling) | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
@@ -1085,7 +1085,27 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
       - **Nivåerna antas inte:** trösklarna är fraktioner av den **uppmätta** toppen, så provet
         inte blir fel för att kanal- och masterkedjan ändrar sin nivå. (Första försöket hade en
         absolut tröskel på 0,30 och såg ingen ton alls — renderingen ligger lägre än man tror.)
-  - **Steg 2 kvar:** **dumpa slicarna till steg eller piano roll** (FL:s "Convert to score and
+  - **Steg 2, tredje delen klar (2026-09-14) — dump till stegraden, och en rättelse av mig:**
+    - **Min egen anteckning var fel.** Här stod att dumpen "behöver slice-offset per steg i
+      motorn". Mätt i koden: den kromatiska adresseringen — noten `bas + i` spelar slice `i` —
+      finns **redan** i `window_for_note`, och den läses av live-vägen, av kanalen som skickas
+      till motorn och av exporten. Dumpen behövde alltså **ingen motorändring alls**; den är en
+      ren dataoperation. Tredje gången samma kväll som en misstänkt lucka visade sig vara en väg
+      som redan fanns — mät anroparen innan du bygger.
+    - **`slices_to_steps(slices, bas, steg)`** ger en not per slice, i slicarnas ordning. Fler
+      slicar än steg **kapas** (och anroparen säger hur många), för att tyst slå ihop eller tappa
+      en slice vore ett annat ljud än kartan visar. Noten kläms till MIDI-omfånget, så basnot
+      127+1 inte lindar runt till 0.
+    - **Kontraktsprovet är det som betyder något:** för varje dumpad `(steg, not)` prövas att
+      `window_for_note` ger **just den slicen**. Provet prövar dumpen mot uppspelningen, inte
+      var för sig — ändras adresseringen i den ena fångas det av den andra. (Samma familj som
+      "två listor för samma sak driver isär", men med en vakt.)
+    - **Knappen sitter hos detekteringen** ("⬇ Slicar → steg") och bygger om raden från grunden:
+      en dump beskriver **hela** kartan, så gamla steg kan inte ligga kvar och peka på slicar som
+      inte längre är med. Statusraden skiljer på "dumpat" och "dumpat, N kapades".
+    - **Kvar av "steg eller piano roll":** stegraden, som är den ena av de två. Piano roll-varianten
+      (noter i mönstrets rutnät, med längd) är ett eget litet pass — kartan och adresseringen är
+      desamma, så den delen är ren inkoppling. (FL:s "Convert to score and
     dump to piano roll", Reapers "Create chromatic MIDI item from slices"). Dumpen är den stora
     av de två: den behöver slice-offset per steg i motorn. Spektral flux med FFT i stället för
     tidsdomänen hör också hit — starkare på melodiöst och vibrato-rikt material, onödigt för

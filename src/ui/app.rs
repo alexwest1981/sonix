@@ -13718,6 +13718,52 @@ impl SonixApp {
                                             ch.slices.len()
                                         );
                                     }
+                                    // **Dumpa slicarna till stegraden** (Fas 8.7 steg 2). En not
+                                    // per slice, kromatiskt från basnoten — samma adressering som
+                                    // `window_for_note` redan spelar efter, alltså behövs ingen
+                                    // motorändring: noten *är* adressen. Fler slicar än steg
+                                    // kapas, och det sägs rakt ut i stället för att tigas.
+                                    if ui
+                                        .button(crate::i18n::t("⬇ Slicar → steg"))
+                                        .on_hover_text(crate::i18n::t(
+                                            "Lägger en not per slice på stegraden, kromatiskt från basnoten. Fler slicar än steg kapas.",
+                                        ))
+                                        .clicked()
+                                    {
+                                        let dumped = crate::audio::onset::slices_to_steps(
+                                            &ch.slices,
+                                            ch.sample_base_note,
+                                            ch.steps.len(),
+                                        );
+                                        if dumped.is_empty() {
+                                            self.status_message = crate::i18n::t(
+                                                "⚠ Inga slicar att dumpa — kör en slagletning först.",
+                                            )
+                                            .to_string();
+                                        } else {
+                                            let skipped = ch.slices.len().saturating_sub(dumped.len());
+                                            // Raden byggs om från grunden: en dump beskriver
+                                            // **hela** kartan, så gamla steg kan inte ligga kvar
+                                            // och peka på slicar som inte längre är med.
+                                            // `fill` i stället för ett magiskt 16: radens
+                                            // längd står i typen, och då kan talet inte driva isär.
+                                            ch.steps.fill(false);
+                                            for (step, note) in &dumped {
+                                                ch.steps[*step] = true;
+                                                ch.notes[*step] = *note;
+                                            }
+                                            self.status_message = if skipped > 0 {
+                                                crate::tstatus!(
+                                                    "⬇ {} slicar till stegraden ({} kapades — raden har {} steg).",
+                                                    dumped.len(),
+                                                    skipped,
+                                                    ch.steps.len()
+                                                )
+                                            } else {
+                                                crate::tstatus!("⬇ {} slicar till stegraden.", dumped.len())
+                                            };
+                                        }
+                                    }
                                     if !ch.slices.is_empty() {
                                         ui.label(
                                             egui::RichText::new(format!("{} {}", ch.slices.len(), crate::i18n::t("slicar")))
