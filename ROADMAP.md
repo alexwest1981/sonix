@@ -2586,3 +2586,72 @@ nio cachar ska fortsätta träffa. (Rad 3 står kvar som reserv om motorn någon
 `signalsmith-20s.flac`). Siffrorna säger "behåll vår"; om hans öra säger "den andra klingar
 bättre" är bytet en rad — `stretch_stereo` pekar om till `stretch_signalsmith` och
 cachenyckeln höjs.
+
+## 🏗️ Arkitektur & refaktorisering: Uppdelning av app-ytan och ljudmotorn (2026-09-14)
+
+Under 2026-09-14 genomfördes en omfattande modularisering av kodbasens två största monoliter: GUI-ytan (`src/ui/app.rs`) och ljudmotorn (`src/audio/synth.rs`). Målet var att eliminera kognitiv överbelastning, möjliggöra säkert parallellt arbete utan krockar i gigantiska filer och etablera strikt ansvarsfördelning med bevarat byte- och runtime-beteende.
+
+### 📊 Före vs. Efter i siffror
+
+| Område / Fil | Före (Monolit) | Efter (Moduler) | Minskning / Uppdelning |
+| :--- | :---: | :---: | :---: |
+| **GUI-rot (`src/ui/app.rs`)** | `23 119` rader | `979` rader | **−95,8 %** (17 undermoduler i `src/ui/app/`) |
+| ↳ `update()` (huvudloop) | `1 154` rader | `19` rader | **−98,3 %** (delad i faser via `app/frame.rs`) |
+| ↳ `render_playlist_arranger()` | `2 580` rader | `145` rader | **−94,4 %** (uppdelad i 7 distinkta fasmetoder) |
+| **Ljudmotor (`src/audio/synth.rs`)** | `3 517` rader | `312` rader | **−91,1 %** (4 delmoduler i `src/audio/synth/`) |
+| **Totalt antal moduler** | ~25 moduler | **84 moduler** | **+236 %** högre modularitet |
+
+### 🗺️ Arkitekturöversikt
+
+```mermaid
+graph TD
+    subgraph UI ["GUI-lagret (src/ui/app/)"]
+        APP["app.rs (Rot: 979 rader)"]
+        FRAME["frame.rs (19 rader loop)"]
+        STATE["state.rs (Datamodell)"]
+        ARRANGER["arranger.rs (Tidslinje)"]
+        MIXER["mixer.rs (Mixer & FX)"]
+        MODALS["modals.rs (Dialoger)"]
+        IMPORT["import.rs (Audio import)"]
+        TIMELINE["timeline.rs (Klipp & Ångra)"]
+        STRETCH["stretch.rs (Tempoföljning)"]
+        TESTS_UI["tests.rs (88 tester)"]
+        
+        APP --> FRAME
+        APP --> STATE
+        APP --> ARRANGER
+        APP --> MIXER
+        APP --> MODALS
+        APP --> IMPORT
+        APP --> TIMELINE
+        APP --> STRETCH
+        APP --> TESTS_UI
+    end
+
+    subgraph ENGINE ["Ljudmotor (src/audio/synth/)"]
+        SYNTH["synth.rs (Rot: 312 rader)"]
+        PROCESS["process.rs (Renderingsloop)"]
+        COMMANDS["commands.rs (UI/Engine IPC)"]
+        VOICES["voices.rs (DSP & Spår)"]
+        TESTS_AUDIO["tests.rs (49 tester)"]
+
+        SYNTH --> PROCESS
+        SYNTH --> COMMANDS
+        SYNTH --> VOICES
+        SYNTH --> TESTS_AUDIO
+    end
+
+    UI -->|Trådsäkra kommandon| ENGINE
+```
+
+### 🛠️ Kvalitetssäkring & Verifiering
+
+- **Deterministisk migrering (`tools/module_split.py`):**
+  Flytten genomfördes med ett skräddarsytt valideringsverktyg som kontrollerade tre invarianter före skrivning: unikt funktionsnamn, klammerbalans och multiset-identitet för koden (inga rader tappades eller dubblerades).
+- **Arkitekturkarta (`SECTIONS.md`):**
+  `tools/sections.py` genererar och validerar kartan över alla 84 moduler, deras radantal, externa anropare, status och testtäckning.
+- **Verifiering & Byggstatus:**
+  - **490 tester** (standard) / **536 tester** (`--features plugin-host`) – 100 % grönt.
+  - **0 kompilatorvarningar** i både Linux- och Windows-byggen (hårt CI-krav).
+  - **Ljudintegritet:** `sonix --selftest` verifierar ljudtrådens klocka, latency och masternivåer direkt mot hårdvaran utan regressioner.
+
