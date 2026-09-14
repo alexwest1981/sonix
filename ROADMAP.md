@@ -82,7 +82,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. **8.7 klart 2026-09-14**: nudge, kantdämpning (mätt) och dump till stegraden + piano rollen med kontraktsprov. | — |
-| 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
+| 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | **Påbörjad 2026-09-15:** sidokedja in i en plugin, latens-offset och smart disable klara och mätta; **kvar är routningen av egna utbussar till egna spår** | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **KLAR 2026-09-14.** Spår- och bussautomation kvitterad i GUI av Alex (10 spårmål + bussens kurvor); **plugin-målen byggda samma kväll**: `PluginAutomationLane` + `plugin_automation` i projektfilen, applikation via `SetPluginParameter` med området ur pluginens egen deskriptor, och väljaren som byggs ur den laddade instansens parameterlista. 495/542 gröna tester, 0 varningar. **Knapparna är inte klickade i GUI** (ingen riktig plugin i miljön) | — |
 
 #### 8.8: EQ:ns band och bussfrågan (2026-09-14)
@@ -298,7 +298,7 @@ tabellen är klara och står i `Gjort`. Kontrollerat i koden, inte bara i texten
 
 | # | Punkt | Storlek | Vad som återstår | Går att göra |
 | :--- | :--- | :---: | :--- | :--- |
-| 1 | **8.6 Plugins: egna utgångar, sidokedja in i en plugin + två mindre** | *M* | Extra utbussar till egna spår (VST3-buss-API:t är inläst men routas inte), sidechain-**ingång** i en plugin, manuellt latens-offset per plugin, "smart disable". *32-bitars plugins* är inte ett rimligt mål för oss | vid datorn, nu |
+| 1 | **8.6 Plugins: egna utgångar (routningen kvar)** | *S* | **Klart 2026-09-15:** sidokedja in i en plugin, manuellt latens-offset och smart disable — alla tre mätta (`79adff9`, `6c1b43b`). Pluginens egna utbussar **läses** redan; **kvar** är routningen till egna spår (ingångskant i ordningspasset + konfiguration per plugin + reglaget i vyn). *32-bitars plugins* är inte ett rimligt mål för oss | vid datorn, nu |
 | 2 | **7.3 + 4.6 Wine/yabridge-vägen** | *M + L* | Köra en **riktig** brygga hela vägen (Sytrus/Harmor/Gross Beat): laddning, inspektion, ljud med PDC, state, X11-fönstret. Mock-modulerna är redan gröna | **blockerad** — kräver Wine + display, och du har inga Windows-plugins på disk. Miljön är färdigkonfigurerad den dag de kommer |
 | 3 | **7.1 Windows-porten** | *XL* | MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin. Steg 1–8 är klara | **pausad efter ditt besked** — ingen Windows-laptop än |
 
@@ -1228,6 +1228,8 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     (keymaps/velocity-lager = DirectWave-nivån), och loop-punkterna sätts med reglage i stället
     för att kunna dras i vågformen.
 - [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*
+  **Påbörjad 2026-09-15** (`79adff9`, `6c1b43b`): tre av fyra delar byggda och mätta —
+  **kvar är routningen av pluginens egna utbussar till egna spår** (se nedan).
   - **Läget hos oss, mätt 2026-09-12:** Sonix hostar VST2/VST3/CLAP/LV2, skyddar sig mot
     krascher med en **egen out-of-process-sandbox** (övervakaren startar om en död worker),
     öppnar plugin-GUI:t i ett **eget X11-fönster** (`plugin_gui.rs`), listar pluginens
@@ -1251,6 +1253,31 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     "manual + plugin" och sparar ett eget offset vid sidan av den automatiska PDC:n — Sonix
     har bara den automatiska), och **"Smart disable"** (FL slutar processa inaktiva plugins,
     "can dramatically reduce CPU load"; Sonix processar dem).
+    - ✅ **Båda byggda 2026-09-15** (`79adff9`). Offsetet är i ramar, negativt tillåtet (då dras
+      spåret fram och de andra får mer delay i stället), räknas in i **både** spårets egen
+      latens och projektets maxvärde, överlever `LoadStemTrack` och nollas när pluginen tas
+      bort. Gränssnittet anger ms, motorn ramar (`ms_to_frames`/`frames_to_ms`).
+      **Smart disable mäter i stället för att gissa:** vilan kräver att pluginens **egen**
+      utgång också är tyst, mätt i föregående block, så en svans håller pluginen vaken.
+      Provet räknar mock-pluginens egna `process_stereo`-anrop: en tyst kedja slutar anropa
+      den efter 8 block, och ett ljud väcker den i samma block. Av som standard — en plugin
+      som skapar ljud ur tystnad ser ut som en tyst plugin och skulle somna för gott.
+  - ✅ **Sidokedja in i en plugin: byggd 2026-09-15** (`6c1b43b`). Värden läser nu pluginens
+    **egna** portar: sidokedje-ingången hittas efter `port_type == "sidechain"` — **inte**
+    efter index, som hade stämt för mocken och tyst pekat fel för en plugin med två vanliga
+    ingångar. Motorn matar in spårets nyckelspår där (samma urval som duckaren använder, alltså
+    en källa och två mottagare: vår duckare **och** pluginens port), och nollor när nyckeln
+    saknas. Mätt mot den **riktiga** mock-pluginen via `dlopen`: mocken deklarerar nu fyra
+    portar och leder sidokedjan rakt ut på sin egen utbuss, så ett prov bevisar båda trådarna
+    på en gång — annars hade ett grönt prov inte sagt vilken av dem som var trasig.
+  - ⏳ **Egna utgångar: halva vägen klar 2026-09-15.** Värden **läser** pluginens egna utbussar
+    per port efter varje block (samma takt som ljudet, och nollor när pluginen vilar) — den
+    halvan är mätt mot mocken. **Kvar:** routningen till egna spår. Den ska gå samma väg som
+    spår-senden (Fas 8.3): en **ingångskant** på målspåret i ordningspasset (`stem_order` /
+    `stem_incoming`), så målet processas efter källan och dess ljud hamnar i målspårets kedja
+    i stället för på en buss. Kvar är också: konfigurationen per plugin (port → målspår) i
+    `SavedPluginData`/`PluginSlot` med båda ändarna kopplade, ett kommando till motorn, och
+    reglaget i plugin-vyn.
   - **Källa:** `plugin-flstudio-research-sv.md` (Image-Lines onlinemanual; wrapper, mixer,
     plugin-installation). Audacity har ingen av de tre — plugins kör i samma process och kan
     fälla appen, och CLAP nämns inte alls i deras dokumentation.
