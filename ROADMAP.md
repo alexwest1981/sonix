@@ -83,7 +83,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. **8.7 klart 2026-09-14**: nudge, kantdämpning (mätt) och dump till stegraden + piano rollen med kontraktsprov. | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
-| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Spår- och bussautomation klar och kvitterad i GUI av Alex 2026-09-14**: 10 spårmål + bussens kurvor hela vägen. Kvar: plugin-målen (dynamisk parameterlista) | — |
+| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **KLAR 2026-09-14.** Spår- och bussautomation kvitterad i GUI av Alex (10 spårmål + bussens kurvor); **plugin-målen byggda samma kväll**: `PluginAutomationLane` + `plugin_automation` i projektfilen, applikation via `SetPluginParameter` med området ur pluginens egen deskriptor, och väljaren som byggs ur den laddade instansens parameterlista. 495/542 gröna tester, 0 varningar. **Knapparna är inte klickade i GUI** (ingen riktig plugin i miljön) | — |
 
 #### 8.8: EQ:ns band och bussfrågan (2026-09-14)
 
@@ -132,26 +132,65 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
       - **Ärligt om vad som är prövat:** modellen, regeln och den delade interpolationen har prov
         (485/531 gröna). **Knapparna är inte klickade i GUI** — det finns ingen skärm att klicka på
         här, och repots egen regel är att säga det i stället för att påstå en visuell kontroll.
-      - **Kvar i 8.8:** bara plugin-målen (dynamisk parameterlista, feature-gated).
-- **Plugin-parametrar: målet finns, men formen är en annan — och det är en verklig skillnad, inte
-  en genväg** (mätt 2026-09-14). `AudioCommand::SetPluginParameter` finns, och värden har både
-  `parameters() -> &[PluginParameter]` och `set_parameter(id, value)`. Det som *inte* fungerar är
-  att lägga dem i `AutomationParam`: den enumen är **statisk** — tio varianter kända vid
-  kompilering, `ALL`, och ett index in i en cache med fast längd. En plugins parametrar är en
-  **runtime-lista** som varierar per plugin och per instans, med `u32`-id:n som bara finns efter
-  att plugin-instansen laddats.
-  - **Formen blir som bussens**, av samma skäl: `PluginAutomationLane { track, param_id, points,
-    enabled }` med `#[serde(default)] plugin_automation: Vec<...>` på projektet. `AutomationParam`
-    förblir den statiska listan över *spårets egna* rattar — de två slagen av mål blandas inte.
-  - **Tre delar som hör ihop, och därför ett eget pass:** modellen, apply (via
-    `SetPluginParameter`), och **UI:t som väljer parameter** — och den sista är den stora, för
-    listan är dynamisk och finns bara när en plugin är laddad i en slot. Det går inte att smyga in
-    som "en rad till" i lane-väljaren, som EQ-banden kunde.
-  - **Varför det inte halvbyggs:** samma skäl som bussen — en modell utan förbrukare, eller en
-    apply utan UI, är död kod. Plugin-vägen är dessutom feature-gated (`plugin-host`), så en
-    halv väg hade bara kunnat prövas i en av CI:s byggkombinationer.
+      - **Kvar i 8.8 (2026-09-14):** ingenting — plugin-målen byggdes samma kväll, se nästa
+        avsnitt.
+- **Plugin-parametrarna: byggt 2026-09-14 — formen blev bussens, och skälet står kvar** (mätt i
+  koden). `AudioCommand::SetPluginParameter` fanns redan, och värdet har både
+  `parameters() -> &[PluginParameter]` och `set_parameter(id, value)`. Det som *inte* gick var att
+  lägga dem i `AutomationParam`: den enumen är **statisk** — tio varianter kända vid kompilering,
+  `ALL`, och ett index in i en cache med fast längd. En plugins parametrar är en **runtime-lista**
+  som varierar per plugin och per instans, med `u32`-id:n som bara finns efter att
+  plugin-instansen laddats. Därför blev formen bussens:
+  - **Modellen:** `PluginAutomationLane { track, param_id, param_name, enabled, points, last_sent }`
+    med `#[serde(default)] plugin_automation: Vec<...>` på `SonixProjectData` — en fil från före
+    8.8 läses som en tom lista. `AutomationParam` förblir den statiska listan över *spårets egna*
+    rattar; de två slagen av mål blandas inte i någon lista.
+  - **`param_name` sparas med flit:** ett `u32`-id säger ingenting i ett projekt där pluginen inte
+    är installerad. Kurvan ska gå att läsa ändå, och namnet skrivs in när kurvan skapas — medan
+    pluginen är laddad och vet vad parametern heter.
+  - **`last_sent` är körningens, inte filens** (`#[serde(skip)]`). Bussens kurva behövde ingen
+    cache — bussens *eget* värde är UI-tillstånd — men en plugin-parameters värde ägs av motorn
+    och går inte att läsa tillbaka på UI-tråden. Utan cachen hade varje bildruta under
+    uppspelning skickat ett kommando; med den i filen hade ett värde setts som "redan skickat"
+    och det första värdet efter ett tempobyte tyst uteblivit.
+  - **Applikationen** ligger i `apply_automation`, som ett pass **utanför** spårloopen (lane:n bär
+    sitt eget spår, som bussen). Området läses ur **parameterns egen deskriptor**
+    (`min_value`/`max_value`) — en CLAP-parameter mäter inte i 0..1: en nivå kan gå i dB och en
+    frekvens i Hz — och värdet kläms mot det. Är pluginen inte laddad finns ingen kurva att följa:
+    värdet skickas inte, och `last_sent` förblir `None` så att första värdet går fram när pluginen
+    svarar.
+  - **Nya dörrar i plugin-värden:** `PluginCore::parameters()` + `PluginHandle::parameters()`. Den
+    förra behövdes för att listan ska nå UI-tråden (handtaget är *samma* instans som motorn
+    renderar), den senare för att automationens väljare ska läsa **pluginens** område i stället för
+    ett påhittat. Implementörerna hittades av kompilatorn: `ClapCore` (läser `&self.instance.params`)
+    och provdockan.
+  - **UI:t:** väljaren i arrangörens verktygsrad är en `ComboBox` som byggs ur
+    `plugin_parameters(selected_timeline_track)` — filtrerad på `!is_hidden() && !is_readonly()`.
+    Är ingen plugin laddad ritas **ingen** väljare (inte en tom meny, som bara ser ut som ett fel).
+    Målet blev ett eget begrepp, `AutomationTarget::{Track, Plugin}`: spårkurvan bor på spåret,
+    plugin-kurvan i `plugin_automation`, och ritningen/redigeringen går genom *ett* uppslag
+    (`automation_curve` / `automation_points_mut`) i stället för att känna till två listor. En
+    plugin-kurva vars spår inte är det som ritas ger `None` — den ritas inte över fel spår.
+    `sort_automation_points` är nu **en** sortering för alla tre kurvslagen; de tre kopiorna är
+    borta, och kompilatorn var vittnet när de blev oanvända.
+  - **Ett fel på vägen, rättat:** `bus_automation` byggdes med en **tom lista** i
+    förinläsningsarbetaren (`LoadedProjectPayload`), medan fältet både fanns i filen och lästes
+    tillbaka i `apply_loaded_project_payload`. En laddad busskurva försvann alltså tyst medan
+    sparningen skrev den. Rättat till `data.bus_automation`. Samma veva: plugin-kurvorna knyts mot
+    spåren **efter** att spåren byggts (`playlist_tracks.clear()` ligger mitt i
+    `apply_loaded_project_payload`) — en kontroll mot en halvfärdig lista hade släppt det nya
+    projektets kurvor och behållit det förras.
+  - **Bevisat:** 495 tester default, 542 med `plugin-host` (däribland
+    `the_handle_and_the_insert_report_the_same_parameters`, som kör mot **mock-pluginen** och
+    kräver att handtaget och inserten ger samma lista med `Gain` 0..2 — alltså pluginens område,
+    inte 0..1), 0 varningar i båda release-byggena. Modellprov: `last_sent` skrivs inte till fil,
+    en lane i en handskriven fil får `enabled = true`, ett projekt utan fältet läses som en tom
+    lista, och de tre kurvslagen svarar likadant vid sex takter.
+  - **Ärligt om vad som inte är prövat:** väljaren och kurvritningen är **inte klickade i GUI** —
+    det finns ingen skärm att klicka på här, och en riktig CLAP-plugin finns inte i miljön. Vägen
+    är bevisad i kod och prov (mock-plugin hela vägen till handtaget), inte med ögat.
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
-| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **KLAR 2026-09-14**: sträckning inkopplad, `stretch_pieces` delar klipp vid tempobyten, `ensure_stretched` bygger cacharna, och **uppspelningsloopen (`stem_regions_for`) skickar ett stycke per tempovärde till motorn** med bevarade kontinuerliga offsets och kant-fades. 491/537 gröna tester, 0 varningar | — |
+| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **KLAR 2026-09-14**: sträckning inkopplad, `stretch_pieces` delar klipp vid tempobyten, `ensure_stretched` bygger cacharna, och **uppspelningsloopen (`stem_regions_for`) skickar ett stycke per tempovärde till motorn** med bevarade kontinuerliga offsets och kant-fades. 0 varningar, alla fyra CI-ben gröna (`82d59f9`) | — |
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **KLAR 2026-09-14** (`392a30c` + `76b4015`): tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten. **Markeringen kvitterad i GUI av Alex** ("ser ut att stämma") | — |
 
 
@@ -1245,8 +1284,15 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     mappning/dump.
   - **Källa:** `chopping-and-effects-research-sv.md` + FL-avsnittet i
     `plugin-flstudio-research-sv.md`.
-- [ ] **8.8 Automatisering av fler parametrar** (plugin-, EQ-, kompressor- och buss-/VCA-parametrar) — *S–M*
-  - **Läget i koden (mätt 2026-09-12):** `AutomationParam` har fyra varianter — `Volume`,
+- [x] **8.8 Automatisering av fler parametrar** (plugin-, EQ-, kompressor- och buss-/VCA-parametrar) — *S–M* ✅ **(2026-09-14)**
+  - **Klart:** tio spårmål (volym, pan, två sends, kompressorns tröskel och förhållande,
+    transponering, EQ:ns tre band), bussarnas egna kurvor, och **plugin-parametrarna**
+    (`PluginAutomationLane` + `PluginHandle::parameters()` + väljaren). Se avsnittet
+    "Plugin-parametrarna: byggt 2026-09-14" tidigare i fas 8.
+  - **Ärligt om kvittensen:** spår- och busskurvorna är **kvitterade i GUI av Alex**;
+    plugin-väljaren är **inte klickad** (ingen riktig plugin finns i miljön).
+  - **Läget innan arbetet började (mätt 2026-09-12, alltså historiken — inte nuläget):**
+    `AutomationParam` hade fyra varianter — `Volume`,
     `Pan`, `ReverbSend`, `DelaySend`. Alltså ingen plugin-parameter, ingen EQ- eller
     kompressorparameter, ingen buss-/VCA-fader.
   - **Varför:** när en DAW hostar plugins med exponerade parametrar förväntar sig användaren

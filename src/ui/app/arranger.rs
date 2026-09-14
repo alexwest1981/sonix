@@ -475,12 +475,56 @@ impl SonixApp {
                     }
                     if auto_on {
                         for p in AutomationParam::ALL {
-                            let sel = self.automation_param == p;
+                            let mål = AutomationTarget::Track(p);
+                            let sel = self.automation_target == mål;
                             let pbg = if sel { Theme::FL_ORANGE } else { Color32::from_rgb(28, 32, 40) };
                             let pfg = if sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
                             if ui.add(egui::Button::new(egui::RichText::new(p.label()).strong().size(10.0).color(pfg)).fill(pbg)).clicked() {
-                                self.automation_param = p;
+                                self.automation_target = mål;
                             }
+                        }
+                        // **Plugin-målet kan inte vara en fast knapprad** (Fas 8.8): listan
+                        // kommer från den laddade pluginen och finns bara när en instans
+                        // svarar. Är ingen plugin laddad i spårets slot ritas ingen väljare —
+                        // i stället för en tom meny som ser ut som ett fel.
+                        let valt_spår = self
+                            .selected_timeline_track
+                            .min(self.playlist_tracks.len().saturating_sub(1));
+                        let params: Vec<(u32, String)> = self
+                            .plugin_parameters(valt_spår)
+                            .iter()
+                            .filter(|p| !p.is_hidden() && !p.is_readonly())
+                            .map(|p| {
+                                (
+                                    p.id,
+                                    if p.name.is_empty() { format!("{}", p.id) } else { p.name.clone() },
+                                )
+                            })
+                            .collect();
+                        if !params.is_empty() {
+                            let nu = match self.automation_target {
+                                AutomationTarget::Plugin { track, param_id } if track == valt_spår => {
+                                    params.iter().find(|(id, _)| *id == param_id).map(|(_, n)| n.clone())
+                                }
+                                _ => None,
+                            };
+                            let spår_namn = self.playlist_tracks[valt_spår].name.clone();
+                            egui::ComboBox::from_id_salt("automation_plugin_target")
+                                .selected_text(nu.unwrap_or_else(|| {
+                                    crate::tstatus!("🔌 {} — {}", crate::i18n::t("Plugin-parameter"), spår_namn)
+                                }))
+                                .width(190.0)
+                                .show_ui(ui, |ui| {
+                                    for (id, namn) in &params {
+                                        let mål = AutomationTarget::Plugin { track: valt_spår, param_id: *id };
+                                        if ui
+                                            .selectable_label(self.automation_target == mål, namn)
+                                            .clicked()
+                                        {
+                                            self.automation_target = mål;
+                                        }
+                                    }
+                                });
                         }
                     }
                 });

@@ -217,6 +217,176 @@ pub fn audition_library_sample(&mut self, item: &LibrarySampleItem) {
 }
 
 impl SonixApp {
+/// **Spårets plugin-parametrar** (Fas 8.8) — listan som bara finns när en plugin är laddad.
+///
+/// Handtaget i `plugin_handles` är samma instans som motorn renderar (`PluginHandle` delar
+/// `Arc` med inserten), så listan kommer från pluginen själv och inte från en kopia. Ingen
+/// plugin → ingen lista, och ingen gissning om vilka parametrar den "borde" ha.
+pub(crate) fn plugin_parameters(
+    &self,
+    track: usize,
+) -> &[crate::audio::plugin_host_live::PluginParameter] {
+    self.plugin_handles
+        .get(track)
+        .and_then(|h| h.as_ref())
+        .map_or(&[], |h| h.parameters())
+}
+
+/// En parameter hos spårets plugin, om den finns.
+pub(crate) fn plugin_parameter(
+    &self,
+    track: usize,
+    param_id: u32,
+) -> Option<&crate::audio::plugin_host_live::PluginParameter> {
+    self.plugin_parameters(track)
+        .iter()
+        .find(|p| p.id == param_id)
+}
+
+/// **Målets kurva** (Fas 8.8) — en väg till båda listorna.
+///
+/// Spårkurvan bor på spåret (`playlist_tracks[i].automation`, nycklad på `param`), pluginens
+/// i `plugin_automation` (nycklad på `(spår, param_id)`). Ritningen och redigeringen går
+/// genom det här uppslaget i stället för att känna till listorna var för sig — och ett mål som
+/// hör till ett **annat** spår än det som ritas ger `None`, så en plugin-kurva aldrig ritas
+/// över fel spår.
+pub(crate) fn automation_curve(
+    &self,
+    target: AutomationTarget,
+    track_idx: usize,
+) -> Option<AutomationCurve<'_>> {
+    match target {
+        AutomationTarget::Track(param) => {
+            let lane = self
+                .playlist_tracks
+                .get(track_idx)?
+                .automation
+                .iter()
+                .find(|l| l.param == param)?;
+            Some(AutomationCurve {
+                enabled: lane.enabled,
+                points: &lane.points,
+            })
+        }
+        AutomationTarget::Plugin { track, param_id } => {
+            if track != track_idx {
+                return None;
+            }
+            let lane = self
+                .plugin_automation
+                .iter()
+                .find(|l| l.track == track && l.param_id == param_id)?;
+            Some(AutomationCurve {
+                enabled: lane.enabled,
+                points: &lane.points,
+            })
+        }
+    }
+}
+
+/// Punkterna för målet — och **skapar lane:n om den inte finns**.
+///
+/// Det är första punkten som skapar kurvan, precis som för spårets rattar: en tom lane som
+/// ligger och väntar är en lane som ser ut att finnas utan att göra något. Namnet skrivs in
+/// med en gång för plugin-målet, medan pluginen är laddad och vet vad parametern heter.
+pub(crate) fn automation_points_mut(
+    &mut self,
+    target: AutomationTarget,
+    track_idx: usize,
+) -> Option<&mut Vec<AutomationPoint>> {
+    match target {
+        AutomationTarget::Track(param) => {
+            let track = self.playlist_tracks.get_mut(track_idx)?;
+            if !track.automation.iter().any(|l| l.param == param) {
+                track.automation.push(AutomationLane {
+                    param,
+                    enabled: true,
+                    points: Vec::new(),
+                });
+            }
+            track
+                .automation
+                .iter_mut()
+                .find(|l| l.param == param)
+                .map(|l| &mut l.points)
+        }
+        AutomationTarget::Plugin { track, param_id } => {
+            if track != track_idx {
+                return None;
+            }
+            if !self
+                .plugin_automation
+                .iter()
+                .any(|l| l.track == track && l.param_id == param_id)
+            {
+                let param_name = self
+                    .plugin_parameter(track, param_id)
+                    .map(|p| p.name.clone())
+                    .unwrap_or_default();
+                self.plugin_automation.push(PluginAutomationLane {
+                    track,
+                    param_id,
+                    param_name,
+                    enabled: true,
+                    points: Vec::new(),
+                    last_sent: None,
+                });
+            }
+            self.plugin_automation
+                .iter_mut()
+                .find(|l| l.track == track && l.param_id == param_id)
+                .map(|l| &mut l.points)
+        }
+    }
+}
+
+/// **Målets område** — och varför plugin-målet inte får ett påhittat 0..1.
+///
+/// Spårets rattar har sina egna kända områden (`AutomationParam::range`). En CLAP-parameter
+/// mäter i sitt eget: en nivå kan gå i dB och en frekvens i Hz. Området läses därför ur
+/// **pluginens egen deskriptor**. Är pluginen inte laddad finns inget område att läsa — då
+/// ritas kurvan i 0..1, och värdet kläms först när pluginen svarar (se `apply_automation`).
+pub(crate) fn automation_target_range(&self, target: AutomationTarget) -> (f32, f32) {
+    match target {
+        AutomationTarget::Track(param) => param.range(),
+        AutomationTarget::Plugin { track, param_id } => self
+            .plugin_parameter(track, param_id)
+            .map(|p| (p.min_value as f32, p.max_value as f32))
+            .filter(|(lo, hi)| lo.is_finite() && hi.is_finite() && hi > lo)
+            .unwrap_or((0.0, 1.0)),
+    }
+}
+
+/// Målets etikett i tidslinjen.
+pub(crate) fn automation_target_label(&self, target: AutomationTarget) -> String {
+    match target {
+        AutomationTarget::Track(param) => param.label().to_string(),
+        AutomationTarget::Plugin { track, param_id } => {
+            let namn = self
+                .plugin_parameter(track, param_id)
+                .map(|p| p.name.clone())
+                .filter(|n| !n.is_empty())
+                // **Namnet sparades när kurvan skapades** — just för det här fallet. En
+                // projektfil kan öppnas utan att pluginen är installerad, och en kurva som
+                // bara visar ett id går inte att läsa.
+                .unwrap_or_else(|| {
+                    self.plugin_automation
+                        .iter()
+                        .find(|l| l.track == track && l.param_id == param_id)
+                        .map(|l| l.param_name.clone())
+                        .unwrap_or_default()
+                });
+            if namn.is_empty() {
+                crate::tstatus!("🔌 plugin-parameter {}", param_id)
+            } else {
+                crate::tstatus!("🔌 {}", namn)
+            }
+        }
+    }
+}
+}
+
+impl SonixApp {
 /// Evaluates every enabled automation lane for all tracks at the current
 /// song position and forwards changed values to the audio engine. Values
 /// are cached per parameter so we only emit commands on real changes.
@@ -254,6 +424,43 @@ pub fn apply_automation(&mut self) {
                 solo: self.bus_solo[bus],
             });
         }
+    }
+    // **Plugin-insertarnas kurvor** (Fas 8.8). Samma form som bussen — ett pass utanför
+    // spårloopen, för lane:n bär sitt eget spår — men med en skillnad som är verklig:
+    // bussens nuvarande värde *är* UI-tillstånd, medan en plugin-parameters värde ägs av
+    // motorn och inte går att läsa tillbaka här. Jämförelsen sker därför mot lane:ns egen
+    // `last_sent`, annars hade varje bildruta under uppspelning skickat ett kommando.
+    //
+    // Ingen plugin laddad → ingen kurva att följa: värdet lämnas orört i stället för att
+    // skickas till en insert som inte finns, och `last_sent` förblir `None` så att första
+    // värdet går fram när pluginen väl svarar.
+    for li in 0..self.plugin_automation.len() {
+        let (track, param_id, value, changed) = {
+            let lane = &self.plugin_automation[li];
+            if !lane.enabled {
+                continue;
+            }
+            let Some(param) = self.plugin_parameter(lane.track, lane.param_id) else {
+                continue;
+            };
+            let Some(raw) = lane.value_at(bar) else { continue };
+            // **Området kommer från parametern**, inte från ett påhittat 0..1: en parameter
+            // som mäter i dB eller Hz hade annars fått ett värde ur fel skala.
+            let value = PluginAutomationLane::clamp_to_range(raw, (param.min_value, param.max_value));
+            let changed = lane
+                .last_sent
+                .is_none_or(|last| (value - last).abs() > 1e-4);
+            (lane.track, lane.param_id, value, changed)
+        };
+        if !changed {
+            continue;
+        }
+        self.plugin_automation[li].last_sent = Some(value);
+        let _ = self.engine.send_command(AudioCommand::SetPluginParameter {
+            track_index: track,
+            param_id,
+            value,
+        });
     }
     for ti in 0..self.playlist_tracks.len() {
         let mut target = [f32::NAN; AutomationParam::COUNT];
@@ -391,8 +598,12 @@ pub(crate) fn render_automation_lane(
     // måste veta var i tiden en takt ligger — annars hamnar punkterna fel efter ett byte.
     track_idx: usize,
 ) {
-    let param = self.automation_param;
-    let (lo, hi) = param.range();
+    // **Målet, inte bara spårets rattar** (Fas 8.8): kurvan kan höra till spårets egen ratt
+    // eller till en parameter hos spårets plugin. Området kommer från målet — en plugin-
+    // parameter mäter i sitt eget (dB, Hz), inte i 0..1.
+    let target = self.automation_target;
+    let (lo, hi) = self.automation_target_range(target);
+    let label = self.automation_target_label(target);
     let span = (hi - lo).max(1e-6);
     let val_to_y = |v: f32| rect.max.y - ((v - lo) / span).clamp(0.0, 1.0) * rect.height();
     let y_to_val = |y: f32| lo + ((rect.max.y - y) / rect.height()).clamp(0.0, 1.0) * span;
@@ -405,7 +616,7 @@ pub(crate) fn render_automation_lane(
     painter.text(
         Pos2::new(rect.min.x + 8.0, rect.min.y + 10.0),
         egui::Align2::LEFT_CENTER,
-        crate::tstatus!("📈 {} — {}", param.label(), self.playlist_tracks[track_idx].name),
+        crate::tstatus!("📈 {} — {}", label, self.playlist_tracks[track_idx].name),
         egui::FontId::proportional(10.5),
         Theme::FL_CYAN,
     );
@@ -425,16 +636,12 @@ pub(crate) fn render_automation_lane(
         );
     }
 
-    let lane_idx = self.playlist_tracks[track_idx]
-        .automation
-        .iter()
-        .position(|l| l.param == param);
+    let curve = self.automation_curve(target, track_idx);
 
-    if let Some(li) = lane_idx {
-        let lane = &self.playlist_tracks[track_idx].automation[li];
-        if lane.enabled && !lane.points.is_empty() {
-            let first = &lane.points[0];
-            let last = lane.points.last().unwrap();
+    if let Some(curve) = curve {
+        if curve.enabled && !curve.points.is_empty() {
+            let first = &curve.points[0];
+            let last = curve.points.last().unwrap();
             painter.line_segment(
                 [
                     Pos2::new(rect.min.x, val_to_y(first.value)),
@@ -442,7 +649,7 @@ pub(crate) fn render_automation_lane(
                 ],
                 Stroke::new(2.0_f32, Theme::FL_CYAN),
             );
-            for w in lane.points.windows(2) {
+            for w in curve.points.windows(2) {
                 painter.line_segment(
                     [
                         Pos2::new(bar_to_x(w[0].time_bars), val_to_y(w[0].value)),
@@ -458,9 +665,9 @@ pub(crate) fn render_automation_lane(
                 ],
                 Stroke::new(2.0_f32, Theme::FL_CYAN),
             );
-            for (pi, p) in lane.points.iter().enumerate() {
+            for (pi, p) in curve.points.iter().enumerate() {
                 let c = Pos2::new(bar_to_x(p.time_bars), val_to_y(p.value));
-                let dragging = self.automation_drag == Some((track_idx, li, pi));
+                let dragging = self.automation_drag == Some((track_idx, target, pi));
                 painter.circle_filled(
                     c,
                     if dragging { 6.0 } else { 4.5 },
@@ -479,28 +686,21 @@ pub(crate) fn render_automation_lane(
             let raw_bar = ((pos.x - rect.min.x) / bar_w).max(0.0);
             let bar = snap_bar(self.timeline_snap_mode, raw_bar);
             let val = y_to_val(pos.y).clamp(lo, hi);
-            let li = match lane_idx {
-                Some(li) => li,
-                None => {
-                    self.playlist_tracks[track_idx].automation.push(AutomationLane {
-                        param,
-                        enabled: true,
-                        points: Vec::new(),
-                    });
-                    self.playlist_tracks[track_idx].automation.len() - 1
-                }
-            };
-            let lane = &mut self.playlist_tracks[track_idx].automation[li];
-            lane.points.push(AutomationPoint { time_bars: bar, value: val });
-            lane.sort_points();
-            self.status_message = crate::tstatus!("📈 Automation: la till punkt (takt {:.2}, {:.2})", bar, val);
+            if let Some(points) = self.automation_points_mut(target, track_idx) {
+                points.push(AutomationPoint { time_bars: bar, value: val });
+                sort_automation_points(points);
+                self.status_message = crate::tstatus!("📈 Automation: la till punkt (takt {:.2}, {:.2})", bar, val);
+            }
         }
     }
 
     if resp.drag_started() {
         if let Some(pos) = resp.interact_pointer_pos() {
-            if let Some(li) = lane_idx {
-                let pts = &self.playlist_tracks[track_idx].automation[li].points;
+            // Träffytan läses ur kurvan som **ritades**, samma uppslag som ritningen — två
+            // egna uppslag hade kunnat peka på var sin lane.
+            let pts: Option<&[AutomationPoint]> =
+                self.automation_curve(target, track_idx).map(|c| c.points);
+            if let Some(pts) = pts {
                 let mut best = None;
                 let mut best_d = 14.0_f32;
                 for (pi, p) in pts.iter().enumerate() {
@@ -512,14 +712,15 @@ pub(crate) fn render_automation_lane(
                     }
                 }
                 if let Some(pi) = best {
-                    self.automation_drag = Some((track_idx, li, pi));
+                    self.automation_drag = Some((track_idx, target, pi));
                 }
             }
         }
     }
     if resp.dragged() {
-        if let Some((t, li, pi)) = self.automation_drag
+        if let Some((t, mål, pi)) = self.automation_drag
             && t == track_idx
+            && mål == target
             && let Some(pos) = resp.interact_pointer_pos()
         {
             // **Snäppet sker i takter** (Fas 8.2): ett sextondelssteg är en plats i
@@ -528,10 +729,9 @@ pub(crate) fn render_automation_lane(
             let raw_bar = ((pos.x - rect.min.x) / bar_w).max(0.0);
             let bar = snap_bar(self.timeline_snap_mode, raw_bar);
             let val = y_to_val(pos.y).clamp(lo, hi);
-            if let Some(p) = self.playlist_tracks[track_idx]
-                .automation
-                .get_mut(li)
-                .and_then(|l| l.points.get_mut(pi))
+            if let Some(p) = self
+                .automation_points_mut(target, track_idx)
+                .and_then(|pts| pts.get_mut(pi))
             {
                 p.time_bars = bar;
                 p.value = val;
@@ -539,11 +739,12 @@ pub(crate) fn render_automation_lane(
         }
     }
     if resp.drag_stopped() {
-        if let Some((t, li, _)) = self.automation_drag {
+        if let Some((t, mål, _)) = self.automation_drag {
             if t == track_idx
-                && let Some(lane) = self.playlist_tracks[track_idx].automation.get_mut(li)
+                && mål == target
+                && let Some(points) = self.automation_points_mut(target, track_idx)
             {
-                lane.sort_points();
+                sort_automation_points(points);
             }
         }
         self.automation_drag = None;
@@ -551,8 +752,9 @@ pub(crate) fn render_automation_lane(
 
     if resp.secondary_clicked() {
         if let Some(pos) = resp.interact_pointer_pos() {
-            if let Some(li) = lane_idx {
-                let pts = &self.playlist_tracks[track_idx].automation[li].points;
+            let pts: Option<&[AutomationPoint]> =
+                self.automation_curve(target, track_idx).map(|c| c.points);
+            if let Some(pts) = pts {
                 let mut best = None;
                 let mut best_d = 14.0_f32;
                 for (pi, p) in pts.iter().enumerate() {
@@ -564,8 +766,12 @@ pub(crate) fn render_automation_lane(
                     }
                 }
                 if let Some(pi) = best {
-                    self.playlist_tracks[track_idx].automation[li].points.remove(pi);
-                    self.status_message = crate::tstatus!("📈 Automation: tog bort punkt");
+                    if let Some(points) = self.automation_points_mut(target, track_idx)
+                        && pi < points.len()
+                    {
+                        points.remove(pi);
+                        self.status_message = crate::tstatus!("📈 Automation: tog bort punkt");
+                    }
                 }
             }
         }

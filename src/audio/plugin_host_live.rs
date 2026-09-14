@@ -291,6 +291,12 @@ pub trait PluginProcessor: Send {
 #[allow(dead_code)]
 pub trait PluginCore: Send + Sync {
     fn info(&self) -> &PluginInfo;
+    /// **Parametrarna från instansen själv** (Fas 8.8).
+    ///
+    /// Samma lista som `PluginInsert` ger motorn, men nåbar från huvudtråden: automationens
+    /// mål behöver den för att veta varje parameters `min_value`/`max_value` — en CLAP-
+    /// parameter mäter inte i 0..1, och en kurva ritad i fel skala styr fel.
+    fn parameters(&self) -> &[PluginParameter];
     fn latency_frames(&self) -> u32;
     fn save_state(&self) -> Vec<u8>;
     fn load_state(&self, data: &[u8]) -> bool;
@@ -322,6 +328,11 @@ impl PluginHandle {
     }
     pub fn info(&self) -> &PluginInfo {
         self.0.info()
+    }
+    /// Parametrarna hos instansen handtaget pekar på (Fas 8.8). Listan är pluginens egen —
+    /// tom när pluginen inte rapporterar några.
+    pub fn parameters(&self) -> &[PluginParameter] {
+        self.0.parameters()
     }
     pub fn latency_frames(&self) -> u32 {
         self.0.latency_frames()
@@ -1465,6 +1476,12 @@ mod imp {
         fn info(&self) -> &PluginInfo {
             &self.instance.info
         }
+        /// Pluginens egna parametrar (Fas 8.8). Listan byggdes vid instansieringen och
+        /// ändras inte — den läses härifrån i stället för att frågas ut på nytt, så
+        /// automationens område är samma tal som pluginen rapporterade.
+        fn parameters(&self) -> &[PluginParameter] {
+            &self.instance.params
+        }
         fn latency_frames(&self) -> u32 {
             self.latency_frames
         }
@@ -2100,6 +2117,36 @@ mod imp {
             assert!(params[1].is_stepped());
             // Dropping the instance must destroy + deinit + unload cleanly.
             drop(instance);
+        }
+
+        /// **Handtaget och inserten ska visa samma parameterlista** (Fas 8.8).
+        ///
+        /// Automationens väljare bygger sin lista ur handtaget på huvudtråden, medan motorn
+        /// renderar inserten. Två listor som ser likadana ut men kommer från var sitt håll
+        /// hade låtit kurvan ritas i en skala och styras i en annan — och just det kan inget
+        /// prov på `AutomationParam` fånga, för en plugin-parameters område kommer från
+        /// pluginen. Provet kör mot **mock-pluginen**, alltså samma väg som en riktig plugin.
+        #[test]
+        fn the_handle_and_the_insert_report_the_same_parameters() {
+            let Some(mock) = option_env!("SONIX_MOCK_CLAP") else {
+                return;
+            };
+            let processor =
+                super::super::load_processor(mock, 48_000.0, 512).expect("mock processor");
+            let insert = super::super::PluginInsert::new(processor, 128);
+            let handle = insert
+                .core_handle()
+                .expect("CLAP inserts expose a shared core");
+
+            let från_inserten = insert.parameters();
+            let från_handtaget = handle.parameters();
+            assert_eq!(från_handtaget.len(), 2, "mock-pluginen rapporterar två parametrar");
+            assert_eq!(från_handtaget, från_inserten, "två listor för samma plugin");
+            // **Området är pluginens, inte ett påhittat 0..1** — det är talen automationen
+            // klämmer kurvan mot, så en kurva ritad i 0..1 hade styrt fel skala.
+            assert_eq!(från_handtaget[0].name, "Gain");
+            assert_eq!(från_handtaget[0].min_value, 0.0);
+            assert_eq!(från_handtaget[0].max_value, 2.0);
         }
 
         #[test]

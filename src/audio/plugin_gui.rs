@@ -356,6 +356,12 @@ mod tests {
                 ..Default::default()
             })
         }
+        /// Provdockan har inga parametrar. Att den svarar **tomt** i stället för att gissa är
+        /// samma regel som gäller på riktigt: en plugin utan parametrar ger ingen lista, och
+        /// automationens väljare ritas då inte alls.
+        fn parameters(&self) -> &[crate::audio::plugin_host_live::PluginParameter] {
+            &[]
+        }
         fn latency_frames(&self) -> u32 {
             0
         }

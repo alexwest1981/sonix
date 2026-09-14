@@ -299,6 +299,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             bus_volume: default_bus_volume(),
             bus_muted: [false; crate::audio::synth::NUM_BUSES],
             bus_automation: Vec::new(),
+            plugin_automation: Vec::new(),
             bus_solo: [false; crate::audio::synth::NUM_BUSES],
             vca_volume: default_vca_volume(),
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
@@ -1340,6 +1341,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             bus_volume: default_bus_volume(),
             bus_muted: [false; crate::audio::synth::NUM_BUSES],
             bus_automation: Vec::new(),
+            plugin_automation: Vec::new(),
             bus_solo: [false; crate::audio::synth::NUM_BUSES],
             vca_volume: default_vca_volume(),
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
@@ -2779,25 +2781,40 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         AutomationPoint { time_bars: bar, value }
     }
 
-    /// **Regeln är en regel.** Spårets lane och bussens lane ska ge *samma* svar för samma
-    /// punkter — annars vore de två kurvor som ser likadana ut och beter sig olika.
+    /// **Regeln är en regel.** Spårets lane, bussens lane och plugin-kurvan ska ge *samma* svar
+    /// för samma punkter — annars vore de tre kurvor som ser likadana ut och beter sig olika,
+    /// och en fix i en av dem hade lämnat de andra fel.
     #[test]
-    fn a_bus_lane_and_a_track_lane_follow_the_same_curve() {
+    fn a_bus_lane_a_track_lane_and_a_plugin_lane_follow_the_same_curve() {
         let points = vec![pt(4.0, 0.2), pt(8.0, 1.0)];
         let spår = AutomationLane {
             param: AutomationParam::Volume,
             enabled: true,
             points: points.clone(),
         };
-        let buss = BusAutomationLane { bus: 1, enabled: true, points };
+        let buss = BusAutomationLane { bus: 1, enabled: true, points: points.clone() };
+        let plugin = PluginAutomationLane {
+            track: 1,
+            param_id: 3,
+            param_name: "Cutoff".into(),
+            enabled: true,
+            points,
+            last_sent: None,
+        };
         for bar in [0.0, 4.0, 5.0, 6.0, 8.0, 12.0] {
             assert_eq!(spår.value_at(bar), buss.level_at(bar), "oense vid takt {bar}");
+            assert_eq!(
+                spår.value_at(bar),
+                plugin.value_at(bar),
+                "plugin-kurvan och spårkurvan är oense vid takt {bar}"
+            );
         }
         // Och interpolationen är linjär mitt emellan.
         assert!((buss.level_at(6.0).unwrap() - 0.6).abs() < 1e-4);
+        assert!((plugin.value_at(6.0).unwrap() - 0.6).abs() < 1e-4);
         // Konstant före första och efter sista punkten: en kurva ska inte börja på noll.
         assert_eq!(buss.level_at(0.0), Some(0.2));
-        assert_eq!(buss.level_at(99.0), Some(1.0));
+        assert_eq!(plugin.value_at(99.0), Some(1.0));
     }
 
     /// En tom kurva ger inget värde — den får inte betyda "noll".
@@ -2806,6 +2823,92 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         let tom = BusAutomationLane { bus: 0, enabled: true, points: Vec::new() };
         assert_eq!(tom.level_at(3.0), None);
         assert_eq!(lane_value_at(&[], 3.0), None);
+        let tom_plugin = PluginAutomationLane {
+            track: 0,
+            param_id: 1,
+            param_name: String::new(),
+            enabled: true,
+            points: Vec::new(),
+            last_sent: None,
+        };
+        assert_eq!(tom_plugin.value_at(3.0), None);
+    }
+
+    /// **`last_sent` hör till körningen, inte till filen.** Skrevs cachen ner skulle en öppnad
+    /// fil påstå att ett värde redan skickats — och första värdet efter ett tempobyte hade
+    /// uteblivit, tyst, eftersom jämförelsen då hade ett tal att jämföra mot.
+    #[test]
+    fn a_plugin_lane_is_written_without_the_last_sent_cache() {
+        let lane = PluginAutomationLane {
+            track: 1,
+            param_id: 7,
+            param_name: "Cutoff".into(),
+            enabled: true,
+            points: vec![pt(2.0, 0.5)],
+            last_sent: Some(1234.5),
+        };
+        let json = serde_json::to_string(&lane).unwrap();
+        assert!(!json.contains("last_sent"), "cachen ska inte med i filen: {json}");
+        let back: PluginAutomationLane = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.last_sent, None, "en inläst kurva har inte skickat något än");
+        assert_eq!(back.param_id, 7);
+        assert_eq!(back.param_name, "Cutoff");
+        assert_eq!(back.points.len(), 1);
+        assert!((back.points[0].time_bars - 2.0).abs() < 1e-6);
+    }
+
+    /// **Filformen, läst som den ser ut.** En handskriven lane utan `enabled` ska vara **på**
+    /// (en kurva som tystnar för att ett fält saknas är den värsta sortens standardvärde), och
+    /// målet ska komma tillbaka med spår, id och namn intakt.
+    #[test]
+    fn a_plugin_lane_in_a_project_file_keeps_its_target_and_curve() {
+        let mut value: serde_json::Value =
+            serde_json::from_str(&minimal_project_json("Med kurva")).unwrap();
+        value["plugin_automation"] = serde_json::json!([{
+            "track": 2,
+            "param_id": 41,
+            "param_name": "Cutoff",
+            "points": [{"time_bars": 8.0, "value": 0.25}]
+        }]);
+        let data: SonixProjectData = serde_json::from_value(value).unwrap();
+        assert_eq!(data.plugin_automation.len(), 1);
+        let lane = &data.plugin_automation[0];
+        assert_eq!(lane.track, 2);
+        assert_eq!(lane.param_id, 41);
+        assert_eq!(lane.param_name, "Cutoff");
+        assert!(lane.enabled, "en lane i en fil utan `enabled` ska vara på");
+        assert_eq!(lane.points.len(), 1);
+        assert!((lane.points[0].time_bars - 8.0).abs() < 1e-6);
+    }
+
+    /// **Fältet saknas i filer före 8.8** — då ska det läsas som en tom lista, och ett nytt
+    /// sparande ska skriva det. Utan det andra halvan hade en kurva kunnat skapas i det tysta
+    /// och aldrig kommit med i filen.
+    #[test]
+    fn an_old_project_file_without_plugin_automation_reads_as_an_empty_list() {
+        let data: SonixProjectData =
+            serde_json::from_str(&minimal_project_json("Gammalt")).unwrap();
+        assert!(data.plugin_automation.is_empty());
+        let ny = serde_json::to_string(&data).unwrap();
+        assert!(
+            ny.contains("\"plugin_automation\""),
+            "fältet ska skrivas även när listan är tom: {ny}"
+        );
+    }
+
+    /// **En plugin-parameter mäter inte i 0..1.** Området kommer från parametern, och ett värde
+    /// utanför det kläms — en kurva ritad i fel skala ska inte kunna skicka ett tal pluginen
+    /// inte har. Ett bakvänt område (hi < lo) från en slarvig plugin kläms också rätt.
+    #[test]
+    fn a_plugin_parameter_value_is_clamped_to_the_parameters_own_range() {
+        // En nivå i dB: området är inte 0..1, och 40 är över taket.
+        assert!((PluginAutomationLane::clamp_to_range(40.0, (-60.0, 12.0)) - 12.0).abs() < 1e-9);
+        assert!((PluginAutomationLane::clamp_to_range(-99.0, (-60.0, 12.0)) + 60.0).abs() < 1e-9);
+        // Mitt emellan rörs värdet inte.
+        assert!((PluginAutomationLane::clamp_to_range(0.5, (0.0, 1.0)) - 0.5).abs() < 1e-9);
+        // Bakvänt område: samma svar, inte ett panikvärde.
+        assert!((PluginAutomationLane::clamp_to_range(0.5, (1.0, 0.0)) - 0.5).abs() < 1e-9);
+        assert!((PluginAutomationLane::clamp_to_range(5.0, (1.0, 0.0)) - 1.0).abs() < 1e-9);
     }
     use crate::audio::tempo::{set_tempo_point, TempoMap, TempoPoint};
 

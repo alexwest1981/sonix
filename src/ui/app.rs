@@ -376,9 +376,14 @@ pub struct SonixApp {
     pub show_automation: bool,
     /// Texturen för logotypen (samma bild som fönsterikonen). Laddas första gången den ritas.
     pub logo_texture: Option<egui::TextureHandle>,
-    pub automation_param: AutomationParam,
-    /// (track, lane, point) currently being dragged.
-    pub automation_drag: Option<(usize, usize, usize)>,
+    pub automation_target: AutomationTarget,
+    /// **Plugin-insertarnas egna kurvor** (Fas 8.8). Egna lanes, inte inblandade i
+    /// `PlaylistTrack::automation`: en plugins parametrar är en runtime-lista per instans
+    /// och får inte plats i den statiska `AutomationParam`.
+    pub plugin_automation: Vec<PluginAutomationLane>,
+    /// (spår, mål, punkt) som just nu dras. Målet behövs: kurvan kan höra till spårets egen
+    /// ratt eller till en plugin-parameter, och de två listorna har var sitt indexrum.
+    pub automation_drag: Option<(usize, AutomationTarget, usize)>,
     // Project Metadata & Suno Multi-Track Stems
     pub project_name: String,
     pub show_suno_import_modal: bool,
@@ -842,7 +847,8 @@ impl SonixApp {
             selected_timeline_track: 0,
             show_automation: false,
             logo_texture: None,
-            automation_param: AutomationParam::Volume,
+            automation_target: AutomationTarget::Track(AutomationParam::Volume),
+            plugin_automation: Vec::new(),
             automation_drag: None,
             // Project Metadata & Suno Multi-Track Stems
             project_name: crate::i18n::t("Namnlöst Projekt").to_string(),

@@ -225,6 +225,10 @@ pub struct SonixProjectData {
     /// 8.8 läses som en tom lista — bussen har då bara sin fader, precis som förut.
     #[serde(default)]
     pub bus_automation: Vec<BusAutomationLane>,
+    /// **Plugin-insertarnas kurvor** (Fas 8.8). `#[serde(default)]` av samma skäl: en fil
+    /// från före 8.8 läses som en tom lista, och inga parametrar styrs av någon kurva.
+    #[serde(default)]
+    pub plugin_automation: Vec<PluginAutomationLane>,
     #[serde(default)]
     pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
     /// VCA group gains (Fas 5.2). Defaults to unity for old projects.
@@ -607,6 +611,8 @@ pub struct LoadedProjectPayload {
     pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
     /// **Bussarnas egna kurvor** (Fas 8.8).
     pub bus_automation: Vec<BusAutomationLane>,
+    /// **Plugin-insertarnas kurvor** (Fas 8.8).
+    pub plugin_automation: Vec<PluginAutomationLane>,
     pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
     pub vca_volume: [f32; crate::audio::synth::NUM_VCAS],
     pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
@@ -1161,7 +1167,8 @@ pub fn load_demo_project(&mut self) {
                 plugin_slots: Vec::new(),
                 bus_volume: default_bus_volume(),
                 bus_muted: [false; crate::audio::synth::NUM_BUSES],
-        bus_automation: Vec::new(),
+                bus_automation: Vec::new(),
+                plugin_automation: Vec::new(),
                 bus_solo: [false; crate::audio::synth::NUM_BUSES],
                 vca_volume: default_vca_volume(),
                 vca_muted: [false; crate::audio::synth::NUM_VCAS],
@@ -1228,6 +1235,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         bus_volume: self.bus_volume,
         bus_muted: self.bus_muted,
         bus_automation: self.bus_automation.clone(),
+        plugin_automation: self.plugin_automation.clone(),
         bus_solo: self.bus_solo,
         vca_volume: self.vca_faders,
         vca_muted: self.vca_muted,
@@ -1610,7 +1618,13 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 plugin_slots: data.plugin_slots,
                 bus_volume: data.bus_volume,
                 bus_muted: data.bus_muted,
-                bus_automation: Vec::new(),
+                // **Kurvorna följde inte med genom förinläsningen** (rättat 2026-09-14):
+                // `bus_automation` fanns både i filen och i payloaden, men byggdes här med en
+                // tom lista — så en laddad busskurva försvann tyst, medan sparningen skrev den.
+                // Ett fält som finns på båda sidor är inte samma sak som ett fält som kopplats
+                // ihop.
+                bus_automation: data.bus_automation,
+                plugin_automation: data.plugin_automation,
                 bus_solo: data.bus_solo,
                 vca_volume: data.vca_volume,
                 vca_muted: data.vca_muted,
@@ -1640,6 +1654,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
     let bus_volume = payload.bus_volume;
     let bus_muted = payload.bus_muted;
     let bus_automation = payload.bus_automation;
+    let plugin_automation = payload.plugin_automation;
     let bus_solo = payload.bus_solo;
     let vca_volume = payload.vca_volume;
     let vca_muted = payload.vca_muted;
@@ -1771,6 +1786,17 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
 
     // Ensure Mic track is always at the end & all track colors are properly classified
     self.ensure_mic_track_exists();
+
+    // **Plugin-kurvorna knyts till spåren när spåren finns** (Fas 8.8). Raden ligger *efter*
+    // spårbygget med flit: `playlist_tracks.clear()` sker ovanför, så en kontroll här mot en
+    // halvfärdig lista hade släppt kurvor som hörde till det nya projektet och behållit sådana
+    // som hörde till det förra. En kurva vars spår inte finns kvar släpps — den kan inte styra
+    // något, och att behålla den hade sett levande ut utan att vara det.
+    let track_count = self.playlist_tracks.len();
+    self.plugin_automation = plugin_automation
+        .into_iter()
+        .filter(|l| l.track < track_count)
+        .collect();
 
     // Re-instantiate per-track plugins and restore their state on the main
     // thread (clap.state is main-thread only, so it must not go through the

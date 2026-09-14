@@ -397,6 +397,75 @@ pub struct BusAutomationLane {
     pub points: Vec<AutomationPoint>,
 }
 
+/// **En plugins kurva** (Fas 8.8) — bussens form, och av samma skäl.
+///
+/// `AutomationParam` kan inte bära den: den enumen är **statisk** (tio varianter kända vid
+/// kompilering, `ALL`, och ett index in i en cache med fast längd), medan en plugins
+/// parametrar är en **runtime-lista** som varierar per plugin och per instans, med `u32`-id:n
+/// som bara finns efter att instansen laddats. Lane:n bär därför `param_id` — samma tal som
+/// `AudioCommand::SetPluginParameter` tar — och **namnet**, så att kurvan fortfarande går att
+/// läsa i ett projekt där pluginen inte är laddad: ett id utan namn säger ingenting.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PluginAutomationLane {
+    /// Spåret vars plugin-insert kurvan styr.
+    pub track: usize,
+    pub param_id: u32,
+    #[serde(default)]
+    pub param_name: String,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub points: Vec<AutomationPoint>,
+    /// Senast skickat värde (`None` = aldrig). **Inte en del av filen** — det är motorns
+    /// tillstånd speglat, inte en inställning — och samma skäl som spårets `automation_last`:
+    /// utan cachen hade varje bildruta under uppspelning skickat ett kommando. Bussens kurva
+    /// behövde ingen cache eftersom bussens *eget* värde är UI-tillstånd; en plugin-parameters
+    /// värde ägs av motorn och går inte att läsa tillbaka här.
+    #[serde(skip)]
+    pub last_sent: Option<f64>,
+}
+
+impl PluginAutomationLane {
+    /// Pluginens kurva vid en takt — **samma regel som spårets och bussens**, se
+    /// [`lane_value_at`]. Att de tre går genom samma funktion är vad som gör att en fix i
+    /// kurvan gäller alla; två egna kopior hade sett likadana ut och betett sig olika.
+    pub fn value_at(&self, bar: f32) -> Option<f32> {
+        lane_value_at(&self.points, bar)
+    }
+
+    /// Klämmer ett kurvvärde till parameterns **egna** område.
+    ///
+    /// En CLAP-parameter mäter inte i 0..1: en nivå kan gå i dB och en frekvens i Hz, och
+    /// pluginens `min_value`/`max_value` är det enda som vet. Utan klämningen hade en kurva
+    /// ritad i fel skala skickat värden pluginen inte har — och tyst styrt fel.
+    pub fn clamp_to_range(raw: f32, range: (f64, f64)) -> f64 {
+        let (lo, hi) = if range.0 <= range.1 { range } else { (range.1, range.0) };
+        (raw as f64).clamp(lo, hi)
+    }
+}
+
+/// **Vad en automationskurva styr** (Fas 8.8).
+///
+/// Spårets egna rattar är den statiska listan; pluginens är en runtime-lista. De två slagen
+/// blandas inte i samma lista — men *valet* i gränssnittet är ett enda, och det är det här.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AutomationTarget {
+    /// Spårets egen ratt (`AutomationParam`).
+    Track(AutomationParam),
+    /// En parameter hos spårets plugin-insert: `(spår, pluginets parameter-id)`.
+    Plugin { track: usize, param_id: u32 },
+}
+
+/// Det ritningen behöver av en kurva, oavsett vilken lista den bor i.
+///
+/// Spårkurvan och plugin-kurvan ligger i var sin `Vec` (olika typer, olika livstider), så en
+/// gemensam *referens* är vad som låter ritningskoden förbli en enda väg i stället för två
+/// som driver isär.
+pub struct AutomationCurve<'a> {
+    pub enabled: bool,
+    pub points: &'a [AutomationPoint],
+}
+
 /// **Snäpp en taktposition** (Fas 8.2 steg 3). Ett sextondelssteg är en *plats i takten*,
 /// inte ett antal sekunder — därför räknas snäppet i takter, och sekunden hämtas ur
 /// tempokartan **efteråt**. Ren funktion med egna prov, för att de fem ställena som snäpper
@@ -640,14 +709,19 @@ impl AutomationLane {
     pub fn value_at(&self, bar: f32) -> Option<f32> {
         lane_value_at(&self.points, bar)
     }
+}
 
-    pub(crate) fn sort_points(&mut self) {
-        self.points.sort_by(|a, b| {
-            a.time_bars
-                .partial_cmp(&b.time_bars)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
-    }
+/// **Punkterna i taktordning** (Fas 8.8) — en regel, inte tre kopior.
+///
+/// Kurvan interpolerar mellan *angränsande* punkter, så en osorterad lista ger en kurva som
+/// hoppar. Spårkurvan, busskurvan och plugin-kurvan sorterar därför med samma funktion: tre
+/// egna sorteringar hade sett likadana ut och varit tre chanser att glömma en.
+pub(crate) fn sort_automation_points(points: &mut [AutomationPoint]) {
+    points.sort_by(|a, b| {
+        a.time_bars
+            .partial_cmp(&b.time_bars)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 }
 
 impl PlaylistTrack {

@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**84 moduler · 69938 rader kod · 40 med status · 44 utan.**
+**84 moduler · 70450 rader kod · 40 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,14 +15,14 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app/tests.rs` | 2903 | byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov. | 0 | 89 (+1 ign) | Prov för app-ytan — flyttade ur `app.rs` 2026-09-14 (filen hade vuxit till 23 000 rader).  |
+| `src/ui/app/tests.rs` | 3006 | byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov. | 0 | 93 (+1 ign) | Prov för app-ytan — flyttade ur `app.rs` 2026-09-14 (filen hade vuxit till 23 000 rader).  |
+| `src/ui/app/arranger.rs` | 2776 | byggs — arrangören. | 0 | 0 | Arrangören — tidslinjen som ritas.  |
 | `src/ui/app/modals.rs` | 2755 | byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför. | 0 | 0 | Dialogerna — alla små fönster på ett ställe.  |
-| `src/ui/app/arranger.rs` | 2732 | byggs — arrangören. | 0 | 0 | Arrangören — tidslinjen som ritas.  |
-| `src/i18n.rs` | 2552 | fryst — nycklar på engelska, texter på svenska | 1362 | 4 |  |
-| `src/ui/app/mixer.rs` | 2447 | byggs — mixern och FX-racket. | 1 | 0 | Mixern — kanalracket, FX-racket och automationen.  |
-| `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
+| `src/ui/app/mixer.rs` | 2653 | byggs — mixern och FX-racket. | 1 | 0 | Mixern — kanalracket, FX-racket och automationen.  |
+| `src/i18n.rs` | 2552 | fryst — nycklar på engelska, texter på svenska | 1363 | 4 |  |
+| `src/audio/plugin_host_live.rs` | 2471 | stabil (4.x) — CLAP-värden i egen process | 65 | 25 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 2125 | stabil — offline-rendering och export | 10 | 19 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
-| `src/ui/app/project.rs` | 1838 | byggs — projektformatet; migreringar flyttar men raderar aldrig. | 1 | 0 | Projektfilen — formen på disk, sparande, inläsning, autospar och återställning.  |
+| `src/ui/app/project.rs` | 1864 | byggs — projektformatet; migreringar flyttar men raderar aldrig. | 1 | 0 | Projektfilen — formen på disk, sparande, inläsning, autospar och återställning.  |
 | `src/audio/recorder.rs` | 1700 | stabil — inspelning | 7 | 16 |  |
 | `src/audio/vocal_harmonizer.rs` | 1632 | — | 15 | 12 |  |
 | `src/audio/stretch.rs` | 1627 | — | 18 | 24 (+8 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
@@ -39,7 +39,7 @@
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
 | `src/audio/master_fx.rs` | 1016 | — | 6 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
 | `src/paths.rs` | 1008 | fryst — enda modulen som får bygga sökvägar | 46 | 14 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
-| `src/ui/app.rs` | 979 | byggs — roten: tillståndet, starten och bildrutan. | 5 | 0 | **App-ytan — modulens rot.** Här bor `SonixApp` (tillståndet), `new` (starten) och `update` (bildrutan). Allt annat ligger i undermodulerna nedan, delade efter område |
+| `src/ui/app.rs` | 985 | byggs — roten: tillståndet, starten och bildrutan. | 5 | 0 | **App-ytan — modulens rot.** Här bor `SonixApp` (tillståndet), `new` (starten) och `update` (bildrutan). Allt annat ligger i undermodulerna nedan, delade efter område |
 | `src/audio/plugin_sandbox.rs` | 945 | — | 9 | 8 | Out-of-process plugin sandbox (Fas 4.5a + 4.5b).  |
 | `src/ui/app/transport.rs` | 940 | byggs — uppspelningen. | 1 | 0 | Uppspelningen — stegklockan, sequencern, tangentbordet, tagningarna och hårdvaran.  |
 | `src/ui/app/piano_roll.rs` | 926 | byggs — piano roll och trummisen. | 0 | 0 | Piano roll, trummisen och skalorna.  |
@@ -50,11 +50,11 @@
 | `src/ui/fx_rack_modal.rs` | 838 | — | 1 | 0 |  |
 | `src/audio/ai_generator.rs` | 790 | — | 6 | 7 |  |
 | `src/audio/patcher.rs` | 782 | — | 4 | 6 |  |
+| `src/ui/app/state.rs` | 779 | byggs — datamodellen; nya fält hör hit och ska ha ett ärligt standardvärde. | 1 | 0 | Tillstånd och typer för app-ytan — utbrutet ur `app.rs` 2026-09-14.  |
 | `src/audio/plugin_host.rs` | 757 | — | 3 | 7 |  |
 | `src/ui/widgets.rs` | 734 | — | 4 | 0 |  |
 | `src/audio/ai_client.rs` | 715 | — | 8 | 8 |  |
 | `src/audio/smf.rs` | 706 | stabil — MIDI-export med tempobyten (8.2 steg 3) | 33 | 10 | Standard MIDI File (SMF) — skriv och läs `.mid` utan externa beroenden.  |
-| `src/ui/app/state.rs` | 705 | byggs — datamodellen; nya fält hör hit och ska ha ett ärligt standardvärde. | 1 | 0 | Tillstånd och typer för app-ytan — utbrutet ur `app.rs` 2026-09-14.  |
 | `src/audio/synth/process.rs` | 673 | stabil — motorns renderingsloop (en bildruta ljud i taget). | 40 | 0 | Renderingsloopen: en bildruta ljud i taget — röster, spår, bussar, sidokedjor och master. |
 | `src/ui/app/plugins.rs` | 636 | byggs — plugin-värdarna. | 0 | 0 | Plugin-värdarna i UI:t — ladda, GUI-fönster, slots och sandlådan.  |
 | `src/audio/command.rs` | 631 | byggs — kommando-protokollet (AI-vägen) | 22 | 7 |  |
@@ -69,8 +69,8 @@
 | `src/audio/realtime_bench.rs` | 501 | stabil — realtidsmätningen | 0 | 6 | Realtidsmätning av render-vägen (Fas 7.2).  |
 | `src/audio/hardware_control.rs` | 493 | — | 3 | 5 |  |
 | `src/ui/dice_generator_modal.rs` | 470 | — | 2 | 0 |  |
+| `src/audio/plugin_gui.rs` | 468 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
 | `src/audio/neural_separator.rs` | 463 | — | 3 | 9 | Neural stem separation through an ONNX model (HTDemucs / Demucs family).  |
-| `src/audio/plugin_gui.rs` | 462 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
 | `src/audio/synth/voices.rs` | 445 | stabil — rösterna och spåren; en ny rösttyp hör hit och får eget prov. | 1 | 0 | Rösterna och spåren motorn spelar: synth, duckning, stämspår, audition, samplingar. |
 | `src/autosave.rs` | 430 | — | 42 | 10 | Autosave, versionsrotation och kraschåterställning (Fas 6.1).  |
 | `src/ui/add_track_modal.rs` | 428 | — | 1 | 0 |  |
@@ -176,7 +176,7 @@
 ### `src/audio/plugin_host_live.rs`
 - **Status:** stabil (4.x) — CLAP-värden i egen process
 - **Rör inte:** en plugin i uppspelningsvägen får aldrig kunna tysta eller krascha motorn
-- **Publika ingångar:** `PARAM_IS_STEPPED`, `PARAM_IS_PERIODIC`, `PARAM_IS_HIDDEN`, `PARAM_IS_READONLY`, `PARAM_IS_BYPASS`, `PARAM_IS_AUTOMATABLE`, `PARAM_IS_MODULATABLE`, `PluginParameter`, `is_stepped`, `is_periodic`, `is_hidden`, `is_readonly` … (+103)
+- **Publika ingångar:** `PARAM_IS_STEPPED`, `PARAM_IS_PERIODIC`, `PARAM_IS_HIDDEN`, `PARAM_IS_READONLY`, `PARAM_IS_BYPASS`, `PARAM_IS_AUTOMATABLE`, `PARAM_IS_MODULATABLE`, `PluginParameter`, `is_stepped`, `is_periodic`, `is_hidden`, `is_readonly` … (+104)
 
 ### `src/audio/plugin_sandbox.rs`
 - **Publika ingångar:** `WORKER_FLAG`, `SandboxRequest`, `SandboxResponse`, `SandboxInfo`, `SandboxParam`, `SandboxInspection`, `SandboxState`, `write_frame`, `read_frame`, `info_from_dto`, `param_from_dto`, `serve` … (+16)
@@ -330,7 +330,7 @@
 ### `src/ui/app/mixer.rs`
 - **Status:** byggs — mixern och FX-racket.
 - **Rör inte:** kommandona bär hela inställningen; att bygga en ny nollar tyst frekvenser och Q.
-- **Publika ingångar:** `classify_track_style`, `update_scope_history`, `load_pattern_into_ui`, `select_pattern`, `sync_active_pattern_from_ui`, `select_sound_for_channel`, `audition_library_sample`, `apply_automation`, `render_automation_lane`, `render_channel_rack`, `apply_alchemy_morph`, `render_alchemy_morph_pad` … (+3)
+- **Publika ingångar:** `classify_track_style`, `update_scope_history`, `load_pattern_into_ui`, `select_pattern`, `sync_active_pattern_from_ui`, `select_sound_for_channel`, `audition_library_sample`, `plugin_parameters`, `plugin_parameter`, `automation_curve`, `automation_points_mut`, `automation_target_range` … (+9)
 
 ### `src/ui/app/modals.rs`
 - **Status:** byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför.
@@ -355,7 +355,7 @@
 ### `src/ui/app/state.rs`
 - **Status:** byggs — datamodellen; nya fält hör hit och ska ha ett ärligt standardvärde.
 - **Rör inte:** alla fält är `pub` (syskonmodulerna läser dem); döp inte om ett fält som står i en projektfil.
-- **Publika ingångar:** `midi_to_freq`, `note_name`, `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions` … (+32)
+- **Publika ingångar:** `midi_to_freq`, `note_name`, `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions` … (+37)
 
 ### `src/ui/app/stretch.rs`
 - **Status:** byggs — sträckningen; cachenyckeln byts när motorn byts (motorns version i nyckeln).
