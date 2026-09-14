@@ -143,6 +143,133 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
 
+    // `sonix --macro-example <fil>`: skriver en färdig startkedja. Kedjan är en fil man kan
+    // rätta för hand, så kommandot behövs för att komma igång utan att kunna filformen.
+    if let Some(pos) = std::env::args().position(|a| a == "--macro-example") {
+        let rest: Vec<String> = std::env::args().skip(pos + 1).collect();
+        let Some(path) = rest.first() else {
+            eprintln!("användning: sonix --macro-example <fil.json>");
+            std::process::exit(2);
+        };
+        let chain = audio::macro_chain::example_chain();
+        match audio::macro_chain::save_chain(std::path::Path::new(path), &chain) {
+            Ok(()) => {
+                println!("Skrev startkedjan \"{}\" till {path}:", chain.name);
+                for step in &chain.steps {
+                    println!("  - {}", step.label());
+                }
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("⚠ {e}");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    // `sonix --run-macro <kedja.json> <fil|mapp>... [--out <mapp>]` (Fas 8.9): kör en
+    // sparad kedja över filer — samma behandling på många tagningar. Fönsterlöst med flit,
+    // så en batch går att köra och MÄTAS från en terminal (och från CI, om vi vill).
+    // Felkoderna är en del av kontraktet: 2 = användningsfel, 1 = någon fil föll.
+    if let Some(pos) = std::env::args().position(|a| a == "--run-macro") {
+        let rest: Vec<String> = std::env::args().skip(pos + 1).collect();
+        let mut out_dir: Option<std::path::PathBuf> = None;
+        let mut inputs: Vec<String> = Vec::new();
+        let mut chain_path: Option<String> = None;
+        let mut i = 0usize;
+        while i < rest.len() {
+            match rest[i].as_str() {
+                "--out" => {
+                    i += 1;
+                    if i >= rest.len() {
+                        eprintln!("--out behöver en mapp");
+                        std::process::exit(2);
+                    }
+                    out_dir = Some(std::path::PathBuf::from(&rest[i]));
+                }
+                arg => {
+                    if chain_path.is_none() {
+                        chain_path = Some(arg.to_string());
+                    } else {
+                        inputs.push(arg.to_string());
+                    }
+                }
+            }
+            i += 1;
+        }
+        let Some(chain_path) = chain_path else {
+            eprintln!("användning: sonix --run-macro <kedja.json> <fil|mapp>... [--out <mapp>]");
+            std::process::exit(2);
+        };
+        let chain = match audio::macro_chain::load_chain(&chain_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("kedjan gick inte att läsa: {e}");
+                std::process::exit(2);
+            }
+        };
+        // En mapp blir sina ljudfiler. En fil blir sig själv. En sökväg som inte finns
+        // behålls med flit: då blir den ett **fel i loggen** i stället för en tyst tom körning.
+        let mut files: Vec<String> = Vec::new();
+        for input in &inputs {
+            let path = std::path::Path::new(input);
+            if path.is_dir() {
+                match audio::macro_chain::audio_files_in(path) {
+                    Ok(found) => files.extend(found),
+                    Err(e) => {
+                        eprintln!("⚠ {e}");
+                        std::process::exit(2);
+                    }
+                }
+            } else {
+                files.push(input.clone());
+            }
+        }
+        if files.is_empty() {
+            eprintln!("användning: sonix --run-macro <kedja.json> <fil|mapp>... [--out <mapp>]");
+            std::process::exit(2);
+        }
+        if !chain.has_export() {
+            // En kedja utan exportsteg gör ingenting som syns. Att köra den tyst vore att
+            // lämna ett pass som ser lyckat ut utan att ha skrivit något.
+            eprintln!(
+                "kedjan \"{}\" har inget exportsteg — den skriver ingenting. Lägg till ett export-steg.",
+                chain.name
+            );
+            std::process::exit(2);
+        }
+        println!("Makro: {} ({} steg)", chain.name, chain.steps.len());
+        for step in &chain.steps {
+            println!("  - {}", step.label());
+        }
+        println!("Filer: {}", files.len());
+        let meta = audio::exporter::ExportMeta::default();
+        let runs = audio::macro_chain::run_batch(&chain, &files, out_dir.as_deref(), &meta);
+        for run in &runs {
+            println!("\n{}", run.input);
+            for r in &run.reports {
+                println!("  {}: {}", r.step, r.detail);
+            }
+            if let Some(e) = &run.error {
+                println!("  ⚠ {e}");
+            }
+        }
+        let ok = audio::macro_chain::succeeded(&runs);
+        let failed = runs.len() - ok;
+        match audio::macro_chain::write_batch_log(
+            &chain,
+            &runs,
+            std::path::Path::new(&runs[0].input),
+            out_dir.as_deref(),
+        ) {
+            Ok(path) => println!("\nLogg: {path}"),
+            Err(e) => println!("\n⚠ loggen kunde inte skrivas: {e}"),
+        }
+        println!("Klara: {ok} av {} ({failed} med fel)", runs.len());
+        std::process::exit(if failed > 0 { 1 } else { 0 });
+    }
+
+
     // Fas 6.0: flytta äldre platser hit FÖRST (ensure_dirs skapar annars ett tomt
     // mål, vilket skulle blockera flytten), därefter skapa resten.
     let path_notes = paths::migrate();

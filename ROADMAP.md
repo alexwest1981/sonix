@@ -189,7 +189,77 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
   - **Ärligt om vad som inte är prövat:** väljaren och kurvritningen är **inte klickade i GUI** —
     det finns ingen skärm att klicka på här, och en riktig CLAP-plugin finns inte i miljön. Vägen
     är bevisad i kod och prov (mock-plugin hela vägen till handtaget), inte med ögat.
-| 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
+#### 8.9: Kedjan över filer — steg 1, och mätt på dina egna stämmor (2026-09-15)
+
+Audacitys *Macros* kör en sekvens förkonfigurerade kommandon automatiskt — på ett projekt eller
+**i batch över filer** — och nyttan är densamma här: samma behandling på tjugo tagningar utan
+tjugo handgrepp. **Steg 1 är byggt: modellen, den rena körningen, batchen och en kommandorad.**
+Det är den delen som går att mäta utan fönster.
+
+- **Vad en kedja är, i vår form:** `MacroChain { name, steps: Vec<MacroStep> }` i den nya
+  modulen `src/audio/macro_chain.rs`. Filformen är JSON med engelska fältnamn, som resten av
+  konfigurationen, och läses/skrivs med temp + `rename`:
+  `{"command": "trim_silence", "threshold_db": -55.0, "keep_ms": 60.0}`.
+- **Stegen är maskinerna som redan finns — inte en andra ljudväg.** Tre steg räckte för att
+  täcka arbetsflödet, och varje steg anropar något som redan var byggt och mätt:
+  `TrimSilence` (tröskeln i `signal_span_frames`, ren funktion), `Normalize` (Fas 5.5:s
+  `normalize_loudness`) och `Export` (`write_export_with` med dither ur Fas 6.5). Ett steg som
+  "tar bort brus" hade varit en ny ljudväg — och en sådan hörs som en annan låt.
+- **`format` i filen är gemener** (`"flac"`, `"wav24"`): en kedja är en fil man rättar för hand,
+  och `ExportFormat` fick därför `serde` med `rename_all = "snake_case"`.
+- **Tyst-ljud-doktrinen gäller dubbelt här, och reglerna är byggda, inte lovade.** Den här vägen
+  *skriver* ljudfiler, och en fil som ser ut som ett resultat utan att vara det är värre än ett
+  fel:
+  1. En fil som **inte går att läsa** rapporteras och avbryts — ingen utdata skrivs för den.
+  2. Utdata **läses tillbaka** efter skrivningen (längd > 0 och topp över tystnad). En batch som
+     skriver tomma filer får inte se ut som ett lyckat pass.
+  3. En kedja som gjorde filen **tyst** är ett fel, inte ett resultat.
+- **Utdata-namnet är en ren funktion — för det är här en batch kan äta sin egen indata.**
+  `<stam><suffix>.<ändelse>`, och blir namnet **identiskt med indatafilen** läggs `_1`, `_2` …
+  på tills det skiljer sig (prov: `Stem_01.wav` + tomt suffix → `Stem_01_1.wav`). Standardmappen
+  är `macro-output` bredvid indatafilen, som Audacitys konvention, och mappen **bygger vi själva**.
+- **Kommandoraden (den mätbara änden):**
+  - `sonix --macro-example <fil.json>` skriver en startkedja (trimma tystnaden → normalisera →
+    FLAC 24-bitars, `_master`). Audacity levererar exempel-makron av samma skäl: den som inte har
+    en kedja ska inte behöva kunna filformen utantill för att komma igång.
+  - `sonix --run-macro <kedja.json> <fil|mapp>... [--out <mapp>]` kör batchen. En mapp blir sina
+    ljudfiler i **sorterad** ordning (reproducerbart, och utan att följa undermappar). Felkoderna
+    är en del av kontraktet: **2** = användningsfel (bland annat en kedja **utan exportsteg** —
+    en sådan gör ingenting som syns, och att köra den tyst vore ett pass som ser lyckat ut),
+    **1** = någon fil föll. En fil som faller stoppar inte de andra, men räknas.
+  - En logg (`macro-output/macro-log.txt`) skrivs efter körningen: vad varje steg gjorde, per fil.
+    En batch på hundra filer utan logg går inte att granska i efterhand.
+- **Mätt på dina egna stämmor** (`imported_stems/Broken/`, 254 s MP3, lästa genom `ffmpeg`-vägen):
+
+  | Fil | Steg 1: tystnad | Steg 2: loudness | Utdata |
+  | :--- | :--- | :--- | :--- |
+  | Broken (Vocals).mp3 | −11,696 s i början | −19,5 → −17,6 LUFS (mål −14, **taket satte gränsen**), topp −2,8 → −1,0 dBTP | 242,318 s FLAC, topp −1,0 dBTP |
+  | Broken (Drums).mp3 | −5,990 s i början | −20,9 → −22,6 LUFS (mål −14, **taket satte gränsen**), topp **+0,6** → −1,0 dBTP | 248,023 s FLAC, topp −1,0 dBTP |
+
+  **ffmpeg som utomstående vittne, inte jag själv:** `silencedetect=noise=-55dB` säger att
+  tystnaden i Vocals är **11,75575 s** — och 11,75575 − 0,060 (min `keep_ms`-marginal) = 11,696,
+  alltså exakt det kedjan rapporterade. `ebur128` mäter utfilerna till **−17,6 LUFS / topp
+  −1,0 dBFS** (Vocals) och **−22,5 LUFS / −1,0 dBFS** (Drums) — samma tal som loggen. Trummornas
+  stämma låg alltså **över 0 dBTP** före kedjan och skrevs ut på taket.
+- **Två fel hittade på vägen, båda rättade:**
+  - **Utmappen skapades inte.** `write_wav` skapar ingen katalog, så varje **första** körning föll
+    på `No such file or directory`. Provet fångade det (och städar numera sin egen temp-mapp).
+  - **Loggen sa halva sanningen.** Den skrev "mål −14,0" medan filen hamnade på −17,6 LUFS: taket
+    är ett **andra** löfte, och när det binder vinner det. Utan tak hade stämman kunnat tvingas
+    till målet och klippt. Raden mäter nu resultatet efteråt och säger `taket satte gränsen` —
+    talet ovan kom ur den ändringen. Provet prövar **regeln** (ett mål över vad toppen tillåter),
+    inte en viss signal.
+- **Bevisat:** 507 tester default och 554 med `plugin-host` (12 nya: namnregeln, tystnadsfönstret,
+  filformen, den riktiga körningen med trim + normalisering + export, tyst-filen-vakten,
+  oläsbar-filen-vakten, taket-regeln, mappläsningen), **0 varningar** i båda release-byggena,
+  `sonix --selftest` 4/4 (ljudtråden 107 % av väggklockan, trumman nådde mastern 0,7588).
+- **Kvar i 8.9 (steg 2):** (a) **GUI:t** — bygga, spara och köra en kedja inifrån appen (stegen i
+  en lista, kör mot en mapp med en resultatrad per fil); (b) **i18n-nycklarna** för de nya
+  strängarna (de går genom `crate::i18n::t` och faller i dag tillbaka på svenska); (c) köra en
+  kedja på **det öppna projektet**, inte bara på filer — det är Audacitys andra halva.
+- **Ärligt om vad som inte är prövat:** steg 2 finns inte, så **ingenting i 8.9 är klickat i GUI**.
+  Det som är bevisat är filvägen, mätt i dina egna filer med ffmpeg som vittne.
+| 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | **Steg 1 KLAR 2026-09-15** (`macro_chain.rs` + `--run-macro` + `--macro-example`): modell, trim/normalisera/export, batch över filer, logg och felkoder. Mätt på `imported_stems/Broken/` med ffmpeg som vittne. **Kvar:** GUI:t, i18n och kedjan på det öppna projektet | — |
 | 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **KLAR 2026-09-14**: sträckning inkopplad, `stretch_pieces` delar klipp vid tempobyten, `ensure_stretched` bygger cacharna, och **uppspelningsloopen (`stem_regions_for`) skickar ett stycke per tempovärde till motorn** med bevarade kontinuerliga offsets och kant-fades. 0 varningar, alla fyra CI-ben gröna (`82d59f9`) | — |
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **KLAR 2026-09-14** (`392a30c` + `76b4015`): tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten. **Markeringen kvitterad i GUI av Alex** ("ser ut att stämma") | — |
 
@@ -199,7 +269,7 @@ tabellen är klara och står i `Gjort`. Kontrollerat i koden, inte bara i texten
 
 | # | Punkt | Storlek | Vad som återstår | Går att göra |
 | :--- | :--- | :---: | :--- | :--- |
-| 1 | **8.9 Makron: en kedja av kommandon över många filer** | *S* | Finns inte alls hos oss. Byggstenarna finns: exportkön, kommandolagret och projektfilen | vid datorn, nu |
+| 1 | **8.9 Makron: steg 2 (GUI, i18n, det öppna projektet)** | *S* | Modellen, batch-vägen och kommandoraden är klara och mätta 2026-09-15 (`macro_chain.rs`, `--run-macro`, `--macro-example`). Kvar: bygga/spara/köra en kedja **inifrån appen**, i18n-nycklarna för de nya strängarna, och kedjan på det **öppna projektet** | vid datorn, nu |
 | 2 | **8.6 Plugins: egna utgångar, sidokedja in i en plugin + två mindre** | *M* | Extra utbussar till egna spår (VST3-buss-API:t är inläst men routas inte), sidechain-**ingång** i en plugin, manuellt latens-offset per plugin, "smart disable". *32-bitars plugins* är inte ett rimligt mål för oss | vid datorn, nu |
 | 3 | **7.3 + 4.6 Wine/yabridge-vägen** | *M + L* | Köra en **riktig** brygga hela vägen (Sytrus/Harmor/Gross Beat): laddning, inspektion, ljud med PDC, state, X11-fönstret. Mock-modulerna är redan gröna | **blockerad** — kräver Wine + display, och du har inga Windows-plugins på disk. Miljön är färdigkonfigurerad den dag de kommer |
 | 4 | **7.1 Windows-porten** | *XL* | MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin. Steg 1–8 är klara | **pausad efter ditt besked** — ingen Windows-laptop än |

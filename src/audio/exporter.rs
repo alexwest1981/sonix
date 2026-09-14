@@ -532,7 +532,12 @@ impl ExportMeta {
     pub const SOFTWARE: &'static str = "Sonix Studio";
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+/// Filformatet för export (och för makrokedjans exportsteg, Fas 8.9).
+///
+/// Filformen är **gemener** (`"wav24"`, `"flac"`, `"mp3"`): en makrokedja är en fil användaren
+/// kan öppna och rätta för hand, och då ska den inte bjuda på `"Wav24"`.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExportFormat {
     Wav16,
     Wav24,
