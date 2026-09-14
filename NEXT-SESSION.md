@@ -467,10 +467,19 @@ rad: "skriv aldrig en siffra du inte mätt".
      `self.tempo_map().bpm_at(<klippets start_bar>)` i stället för `self.bpm` — vågformens ritning,
      utsnittet och spara-som-sample. En kloss *efter* ett tempobyte följer därmed bytet, och för ett
      projekt med ett enda tempo är `bpm_at` exakt samma tal som förut (bit-identiskt).
-   - **Kvar:** en kloss som *spänner över* ett byte får fortfarande **en** faktor — det kräver att
-     motorn renderar **ett stycke per tempoavsnitt** (cachen bär redan nyckeln `source`,
-     `source_bpm`, `project_bpm`). `stretch_pieces` är byggd och provad och står som
-     `#[allow(dead_code)]`-skuld med sin orsak, redo att kopplas in där.
+   - **ETT STYCKE PER TEMPOVÄRDE GJORT 2026-09-14:** `ensure_stretched` beställer nu **en
+     sträckning per stycke** i stället för en per klipp. `StretchPiece` bär sitt eget `bpm_here`,
+     läst ur kartan i styckets takt — anroparen ska **inte** räkna fram det ur `ratio`, för det är
+     där den vända enheten uppstår (och den kostade mig ett provfel i kväll).
+     Ett klipp inom ett enda tempo ger exakt ett stycke = dagens nyckel = ingen ändring.
+     `#[allow(dead_code)]`-skulden är **inlöst och raden borta**; 0 varningar.
+   - **Rättelse av min egen rapport:** jag skrev först att tempokartan "aldrig nådde
+     sträckningsfaktorn". Det var för brett. **Renderingsvägen läste redan `bpm_at(start_bar)`**
+     (rad 4537) — det var *visnings- och utsnittsvägen* som använde `self.bpm`. Att läsa raden
+     före påståendet hade sparat en rättelse.
+   - **Kvar:** uppspelningen — de regioner som skickas till motorn (`SetStemTrackRegions`, två
+     ställen) använder fortfarande **en** region per klipp. Sträckningarna per tempovärde finns nu
+     färdiga i cachen att peka på; det är nästa pass, och det rör projektets regionlista.
    - **Läxan för nästa pass:** sök på **funktionsnamnet** `stretch_ratio_for(`, aldrig på radnummer
      — radnumren sköt under mig mitt i passet (mina egna infogningar), och att patcha på en rad man
      inte verifierat är hur en smurf tar sig in.

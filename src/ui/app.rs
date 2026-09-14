@@ -1458,10 +1458,7 @@ pub fn frozen_audio_in_render(track: &PlaylistTrack, pattern_mode: bool) -> bool
 /// **Ett enda tempo ger exakt ett stycke** med samma faktor som i dag. Det är avsiktligt: för
 /// projekt utan tempobyten ska ingenting ändras, och då är den här vägen bit-identisk med den
 /// gamla.
-// **Skuld, uttryckligen:** regeln är byggd och provad men ännu **inte inkopplad** på de tre
-// ställena som räknar faktorn (se 8.10 punkt 1 i ROADMAP.md). Att varningen tystas här är ett
-// medvetet val med en orsak, inte en kvällning: kopplas den in försvinner behovet av raden.
-#[allow(dead_code)]
+// Anropas av `ensure_stretched`: en sträckning per tempovärde i klippets spann (8.10 punkt 1).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StretchPiece {
     /// Första ut-sekund i stycket, räknat från projektets början.
@@ -1472,9 +1469,12 @@ pub struct StretchPiece {
     pub source_offset_secs: f64,
     /// **Ut-sekunder per källsekund** (projektets tempo delat med källans).
     pub ratio: f64,
+    /// Tempot i det här stycket, läst ur kartan i takten stycket börjar på. Det står här för att
+    /// den som beställer en sträckning behöver **exakt** det talet som nyckeln byggdes med —
+    /// räknar anroparen fram det ur `ratio` i stället uppstår den vända enheten på nytt.
+    pub bpm_here: f32,
 }
 
-#[allow(dead_code)] // skuld: se StretchPiece — inkopplingen är kvar (8.10 punkt 1)
 pub fn stretch_pieces(
     start_bar: f64,
     length_bars: f64,
@@ -1514,11 +1514,13 @@ pub fn stretch_pieces(
         }
         // Tempot **i det här stycket**, läst i takten stycket börjar på — inte vid klippets start.
         let ratio = stretch_ratio_for(source_bpm, tempo.bpm_at(piece_bar)) as f64;
+        let bpm_here = tempo.bpm_at(piece_bar);
         pieces.push(StretchPiece {
             out_start_secs,
             out_secs,
             source_offset_secs: source_offset,
             ratio,
+            bpm_here,
         });
         // Källan flyttar sig med **ut-tiden gånger faktorn**, eftersom faktorn är ut-sekunder
         // per källsekund: en ut-sekund gör av med `ratio` källsekunder. Med konventionen i
@@ -4534,24 +4536,40 @@ impl SonixApp {
         let mut wanted: Vec<(String, String, f32, f32)> = Vec::new();
         for t in &self.playlist_tracks {
             for r in &t.regions {
-                let bpm_here = self.tempo_map().bpm_at(r.start_bar as f64);
-                let decision =
-                    crate::audio::stretch::decide(r.source_bpm, bpm_here, self.follow_tempo, r.tape);
-                if decision.mode != crate::audio::stretch::FollowMode::Stretch {
-                    continue;
-                }
-                let Some(key) = Self::stretch_key_for(r, bpm_here) else {
-                    continue;
-                };
-                if self.stretch_cache.knows(&key) {
-                    continue;
-                }
-                wanted.push((
-                    key,
-                    r.source_path.clone().unwrap_or_default(),
+                // **Ett stycke per tempovärde** (8.10 punkt 1): ett klipp som spänner över ett byte
+                // behöver en sträckning per avsnitt, inte en för hela spannet. För ett klipp inom
+                // ett enda tempo blir det **exakt ett** stycke med dagens nyckel — alltså ingen
+                // ändring, ingen extra rendering och inget arbete ingen hör.
+                for piece in stretch_pieces(
+                    r.start_bar as f64,
+                    r.length_bars as f64,
+                    r.sample_offset_sec as f64,
                     r.source_bpm,
-                    bpm_here,
-                ));
+                    &self.tempo_map(),
+                ) {
+                    let bpm_here = piece.bpm_here;
+                    let decision = crate::audio::stretch::decide(
+                        r.source_bpm,
+                        bpm_here,
+                        self.follow_tempo,
+                        r.tape,
+                    );
+                    if decision.mode != crate::audio::stretch::FollowMode::Stretch {
+                        continue;
+                    }
+                    let Some(key) = Self::stretch_key_for(r, bpm_here) else {
+                        continue;
+                    };
+                    if self.stretch_cache.knows(&key) {
+                        continue;
+                    }
+                    wanted.push((
+                        key,
+                        r.source_path.clone().unwrap_or_default(),
+                        r.source_bpm,
+                        bpm_here,
+                    ));
+                }
             }
         }
         if wanted.is_empty() {
