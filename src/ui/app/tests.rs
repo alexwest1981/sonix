@@ -5,8 +5,6 @@
 
 use super::*;
 
-    use super::*;
-
     /// Minimal projektfil — fälten utanför `serde(default)` måste anges.
     fn minimal_project_json(name: &str) -> String {
         format!(
@@ -2725,8 +2723,6 @@ use super::*;
             .is_empty());
     }
 
-    use super::*;
-
     /// **En tabell, ett index.** `ALL`, `index()` och cachen är tre listor för samma sak — den
     /// här kodbasens mest återkommande fel är att två av dem driver isär. Provet räknar dem mot
     /// varandra i stället för att lita på att de skrivs i takt: lägger någon till en variant och
@@ -2774,8 +2770,6 @@ use super::*;
         assert_eq!(AutomationParam::Pitch.range(), (-24.0, 24.0));
     }
 
-    use super::*;
-
     fn pt(bar: f32, value: f32) -> AutomationPoint {
         AutomationPoint { time_bars: bar, value }
     }
@@ -2808,8 +2802,6 @@ use super::*;
         assert_eq!(tom.level_at(3.0), None);
         assert_eq!(lane_value_at(&[], 3.0), None);
     }
-
-    use super::*;
     use crate::audio::tempo::{set_tempo_point, TempoMap, TempoPoint};
 
     /// **Ett enda tempo ger exakt ett stycke, med dagens faktor.** För projekt utan tempobyten
