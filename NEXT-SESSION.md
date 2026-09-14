@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 485 default / 531 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 487 default / 533 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -427,6 +427,16 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
   och bussens lane, med ett prov som binder dem.
 - **Två tysta förluster fångade:** kurvorna måste både läsas ur filen och tilldelas, och
   återställas vid ångring — annars hade första ångringen raderat dem utan ett ljud.
+
+## 4p. 8.11 stängt utom det som kräver ögon (2026-09-14)
+
+- **Punkt 2:** skalnamnen går genom `i18n::t` (elva nycklar). Grundtonsnamnen orörda med flit — notnamn
+  är inte ord. Skriptet läste namnen ur källan och nekade på fem jag hade gissat fel.
+- **Punkt 3:** `key_transpose(rows, bas, rot, skala)` ger det kortaste skiftet (−5..=6) som sätter
+  flest toner i skalan; flytten går genom befintliga `transpose_active_pattern`. Knapp "🎵 Till tonarten".
+- **Två prov fällde mig:** tie-breaket valde −5 över 0 (loopen börjar längst från noll), och ett prov
+  förväntade "står stilla" där regeln rätteligen flyttade till +5. Båda gångerna var regeln rätt.
+- **Kvar:** punkt 1 — **Alex' ögon** på markeringen och menyernas bredd. Ingen kodmätning stänger den.
 
 ## 4l. Läget just nu (2026-09-14)
 

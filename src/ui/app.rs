@@ -11081,13 +11081,13 @@ impl SonixApp {
                                 }
                             });
 
-                        let cur_sc = crate::audio::scale::scale_at(self.song_key_scale).name;
+                        let cur_sc = crate::i18n::t(crate::audio::scale::scale_at(self.song_key_scale).name);
                         egui::ComboBox::from_id_salt("arr_key_scale")
                             .selected_text(cur_sc)
                             .width(104.0)
                             .show_ui(ui, |ui| {
                                 for (s_idx, sc) in crate::audio::scale::SCALES.iter().enumerate() {
-                                    if ui.selectable_label(self.song_key_scale == s_idx, sc.name).clicked() {
+                                    if ui.selectable_label(self.song_key_scale == s_idx, crate::i18n::t(sc.name)).clicked() {
                                         self.song_key_scale = s_idx;
                                         self.status_message = crate::tstatus!(
                                             "🎼 Tonart: {}",
@@ -14423,13 +14423,13 @@ impl SonixApp {
 
                 // Scale Snapping Selector
                 ui.label(egui::RichText::new(crate::i18n::t("Skala:")).size(11.0).color(Theme::TEXT_MUTED));
-                let cur_scale = crate::audio::scale::scale_at(self.song_key_scale).name;
+                let cur_scale = crate::i18n::t(crate::audio::scale::scale_at(self.song_key_scale).name);
                 egui::ComboBox::from_id_salt("pr_scale_combo")
                     .selected_text(cur_scale)
                     .width(120.0)
                     .show_ui(ui, |ui| {
                         for (s_idx, sc) in crate::audio::scale::SCALES.iter().enumerate() {
-                            if ui.selectable_label(self.song_key_scale == s_idx, sc.name).clicked() {
+                            if ui.selectable_label(self.song_key_scale == s_idx, crate::i18n::t(sc.name)).clicked() {
                                 self.song_key_scale = s_idx;
                             }
                         }
@@ -14563,6 +14563,33 @@ impl SonixApp {
                     self.transpose_active_pattern(-12);
                 }
 
+                // **Till tonarten** (Fas 8.11): flyttar hela mönstret till det skift som sätter
+                // flest toner i projektets skala. Regeln räknar bara ut *skiftet*; själva
+                // flytten går genom `transpose_active_pattern` — samma provade väg som
+                // oktavknapparna, alltså en väg och inte två.
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎵 Till tonarten")).size(10.5)).fill(Color32::from_rgb(38, 45, 56))).on_hover_text(crate::i18n::t("Flytta hela mönstret till tonarten — det kortaste skiftet som sätter flest toner i skalan")).clicked() {
+                    let rows: Vec<usize> = (0..crate::audio::scale::PIANO_ROLL_ROWS)
+                        .filter(|&o| self.piano_roll_grid[o].iter().any(|&b| b))
+                        .collect();
+                    let shift = crate::audio::scale::key_transpose(
+                        &rows,
+                        crate::audio::scale::PIANO_ROLL_BASE_MIDI,
+                        self.song_key_root,
+                        self.song_key_scale,
+                    );
+                    if shift == 0 {
+                        self.status_message =
+                            crate::i18n::t("🎵 Mönstret står redan i tonarten").to_string();
+                    } else {
+                        self.transpose_active_pattern(shift);
+                        self.status_message = crate::tstatus!(
+                            "🎵 {} halvtoner till {}",
+                            shift,
+                            crate::audio::scale::key_label(self.song_key_root, self.song_key_scale)
+                        );
+                    }
+                }
+
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Backa")).size(10.5)).fill(Color32::from_rgb(38, 45, 56))).on_hover_text(crate::i18n::t("Vänd tonföljden baklänges")).clicked() {
                     self.reverse_pattern();
                 }
@@ -14605,7 +14632,7 @@ impl SonixApp {
 
             ui.add_space(6.0);
 
-            let base_midi = 48; // C3
+            let base_midi = crate::audio::scale::PIANO_ROLL_BASE_MIDI; // C3
             let semitones_count = 24;
             let key_root = self.song_key_root;
             let key_scale = self.song_key_scale;

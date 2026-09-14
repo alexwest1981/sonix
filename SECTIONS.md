@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**63 moduler · 68677 rader kod · 19 med status · 44 utan.**
+**63 moduler · 68810 rader kod · 19 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,9 +15,9 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 22898 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 85 (+1 ign) |  |
+| `src/ui/app.rs` | 22925 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 85 (+1 ign) |  |
 | `src/audio/synth.rs` | 3518 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 97 | 49 |  |
-| `src/i18n.rs` | 2535 | fryst — nycklar på engelska, texter på svenska | 1355 | 4 |  |
+| `src/i18n.rs` | 2552 | fryst — nycklar på engelska, texter på svenska | 1362 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 2125 | stabil — offline-rendering och export | 10 | 19 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
 | `src/audio/recorder.rs` | 1700 | stabil — inspelning | 7 | 16 |  |
@@ -55,11 +55,11 @@
 | `src/audio/plugin_gui.rs` | 462 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
 | `src/autosave.rs` | 430 | — | 42 | 10 | Autosave, versionsrotation och kraschåterställning (Fas 6.1).  |
 | `src/ui/add_track_modal.rs` | 428 | — | 1 | 0 |  |
+| `src/audio/scale.rs` | 412 | stabil (8.11) — en tabell och ett index för tonarten | 23 | 10 | Tonarter: **en** tabell och **ett** index (Alex' kvittens 2026-09-12).  |
 | `src/audio/loudness.rs` | 358 | — | 1 | 5 | Loudness measurement and normalization (ITU-R BS.1770 / EBU R128).  |
 | `src/selftest.rs` | 353 | — | 1 | 4 | **Självtestet** (Fas 7.1) — den del av Windows-kriteriet som ingen CI-mätning kan svara på.  |
 | `src/ui/tuner_modal.rs` | 351 | — | 1 | 0 |  |
 | `src/audio/spectrum.rs` | 335 | ny (8.13) — toppradens nivå- och registermätare | 9 | 7 (+2 ign) | Registret i utgången — vilka frekvensband som bär energi — och mätarskalan (8.13).  |
-| `src/audio/scale.rs` | 323 | stabil (8.11) — en tabell och ett index för tonarten | 18 | 8 | Tonarter: **en** tabell och **ett** index (Alex' kvittens 2026-09-12).  |
 | `src/ui/patcher_view.rs` | 303 | — | 1 | 0 |  |
 | `src/audio/dither.rs` | 296 | — | 5 | 8 | Dither vid kvantisering till fast punkt (Fas 6.5).  |
 | `src/ui/song_structure_modal.rs` | 295 | — | 1 | 0 |  |
@@ -182,7 +182,7 @@
 ### `src/audio/scale.rs`
 - **Status:** stabil (8.11) — en tabell och ett index för tonarten
 - **Rör inte:** en tabell, ett index, en test som räknar namnen — två listor för samma sak driver isär
-- **Publika ingångar:** `ROOT_NAMES`, `Scale`, `SCALES`, `is_minor`, `scale_at`, `root_name`, `key_label`, `scale_notes`, `in_scale`, `nearest_in_scale`, `snap_row`
+- **Publika ingångar:** `PIANO_ROLL_BASE_MIDI`, `PIANO_ROLL_ROWS`, `ROOT_NAMES`, `Scale`, `SCALES`, `is_minor`, `scale_at`, `root_name`, `key_label`, `scale_notes`, `in_scale`, `nearest_in_scale` … (+2)
 
 ### `src/audio/smf.rs`
 - **Status:** stabil — MIDI-export med tempobyten (8.2 steg 3)

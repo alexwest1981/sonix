@@ -152,7 +152,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
     halv väg hade bara kunnat prövas i en av CI:s byggkombinationer.
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
 | 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **Steg 1 klart och kvitterat av Alex** (`f0dc8eb` + `a510775`). **Vägen framåt är nu researchad och vald** (se "Vad researchunderlaget säger" under 8.10): pitch-bevarande sträckning **offline till fil + cache**, egen DSP som bas, **en enda switch** för användaren. Kvar: koppla in sträckningen i tidslinjen, klipp över ett tempobyte, och att vyn visar att klippet är sträckt | — |
-| 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **Klart** (`392a30c`): en tabell, ett index, låset gör något, tonarten sparas — se fas 8.11 | Alex' ögon på markeringen |
+| 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **Klart 2026-09-14**: tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten (`key_transpose` + knapp) | **Bara Alex' ögon** på markeringen och menyernas bredd |
 
 
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
@@ -2273,11 +2273,32 @@ Eb Dur.
 Kromatisk, eftersom den följer projektets tonart och arrangeraren alltid har *sagt* Dur.
 Med låset av betyder skalan bara markeringen.
 
-**Kvar på 8.11:** (1) Alex' ögon på markeringen och menyernas bredd (104/120 px för de
-längre skalnamnen — läst i koden, inte sett i fönstret); (2) skalnamnen är svenska
-strängar, inte i18n-nycklar (de var literaler på två ställen förut, nu på ett — men
-fortfarande utanför `i18n.rs`); (3) transponering av ett helt mönster till tonarten finns
-inte (`transpose_active_pattern` tar halvtoner för hand).
+**Kvar på 8.11 (uppdaterat 2026-09-14):**
+
+1. **Bara Alex' ögon** på markeringen och menyernas bredd (104/120 px för de längre skalnamnen —
+   läst i koden, inte sett i fönstret). Det här kan ingen kodmätning stänga: det är en fråga om
+   hur det *ser ut*, och den svarar bara den som tittar.
+2. **KLART 2026-09-14: skalnamnen går genom `i18n::t`.** Literalerna bor kvar i `scale.rs` som
+   nycklar (repots konvention: nycklarna *är* de svenska strängarna), och elva skalnamn har fått
+   engelska i `i18n.rs`. **Grundtonsnamnen är medvetet orörda** — "C", "C#", "D" är inte ord utan
+   notnamn, och de är desamma på engelska; att "översätta" dem vore att införa ett fel.
+   Skriptet som skrev nycklarna **läste namnen ur källan** i stället för att gissa, och nekade när
+   fem av dem inte stod i min lista (Harmonisk moll, Melodisk moll, Mixolydian, Pentatonisk
+   moll/dur) — vilket är skillnaden mellan en tabell och en gissning.
+3. **KLART samma kväll: transponering av ett helt mönster till tonarten.** `key_transpose` räknar
+   ut det **kortaste** skiftet (−5..=6) som sätter flest toner i skalan; själva flytten går genom
+   den befintliga, provade `transpose_active_pattern`, så det finns en väg och inte två. Knappen
+   "🎵 Till tonarten" står bredvid oktavknapparna.
+   - **Två prov fällde mig, och båda hade rätt.** Först vann skift −5 en oavgjord omgång mot 0,
+     för min loop gick från −5 och uppåt — alltså *börjar* den längst från noll, tvärtemot vad min
+     egen kommentar påstod. Sedan hade jag skrivit ett prov som förväntade sig "står stilla" för
+     ett mönster med en tritonus, men regeln flyttade det till +5 och satte *fler* toner rätt.
+     Regeln var rätt och min förväntan var naiv; provet fick mäta i stället för att tro.
+   - **"Flest, inte alla"** är själva poängen: tre toner i rad kan aldrig alla hamna i en dur-skala
+     (ingen skala har tre halvtoner i följd), så regeln flyttar mönstret dit *flest* hamnar rätt —
+     den ger inte upp och skriver inte om musiken ton för ton.
+   - `PIANO_ROLL_BASE_MIDI` och `PIANO_ROLL_ROWS` har fått namn: talet 48 stod på två ställen
+     sedan knappen tillkom, och två ställen med samma magiska tal driver isär.
 
 ---
 

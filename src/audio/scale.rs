@@ -25,6 +25,12 @@
 ///
 /// Tolv namn, inte tretton: en blandning av kors och b är läsbarare än bara det ena,
 /// men varje ton får **en** stavning och index är tonhöjdsklassen.
+/// Pianorullens bas (C3) och antal rader. **Ett tal, ett namn:** talet stod förut på två ställen
+/// — ritningen och (sedan 8.11) knappen som flyttar mönstret till tonarten — och två ställen med
+/// samma magiska tal driver isär förr eller senare.
+pub const PIANO_ROLL_BASE_MIDI: u8 = 48;
+pub const PIANO_ROLL_ROWS: usize = 24;
+
 pub const ROOT_NAMES: [&str; 12] = [
     "C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B",
 ];
@@ -154,6 +160,53 @@ pub fn nearest_in_scale(pc: u8, root: u8, scale: usize) -> u8 {
             (up.min(down), down)
         })
         .unwrap_or(pc)
+}
+
+/// **Vilket skift sätter mönstret i tonarten?** (Fas 8.11)
+///
+/// Returnerar det **kortaste** skiftet (−5..=6 halvtoner) som sätter flest av mönstrets toner i
+/// skalan. Regeln räknar bara ut *skiftet*; själva flytten görs av den befintliga, provade
+/// `transpose_active_pattern`, så det finns en väg och inte två.
+///
+/// Tre val som är medvetna:
+///
+/// - **Flest, inte alla.** Ett mönster kan bära en ledton eller en blå ton som inte finns i
+///   skalan. Att tvinga in *varje* ton för sig vore att skriva om musiken — det är en annan
+///   operation (snap per ton, `snap_row`). Här flyttas mönstret som en **helhet**, och det
+///   ursprungliga mönstret ska gå att känna igen i resultatet.
+/// - **Kortaste vägen, inte minsta talet.** Skift 1 och skift 11 sätter samma toner i skalan,
+///   men 11 går nästan ett helt varv uppåt. Signerat skift gör valet till det musikaliska:
+///   −5..=6, alltså aldrig mer än en halv oktav.
+/// - **Noll när det redan stämmer.** Ett mönster i tonarten ska inte röras alls — det är
+///   skillnaden mellan en hjälp och en överraskning.
+pub fn key_transpose(rows_used: &[usize], base_midi: u8, root: u8, scale: usize) -> i8 {
+    if rows_used.is_empty() {
+        return 0;
+    }
+    let mut best = (0_usize, 0_i8);
+    // −5..=6 är samma tolv skift som 0..11, men i den ordning en musiker väljer mellan dem.
+    for shift in -5_i8..=6 {
+        let mut hits = 0_usize;
+        for &row in rows_used {
+            let midi = base_midi as i16 + row as i16 + shift as i16;
+            if midi < 0 || midi > 127 {
+                continue;
+            }
+            if in_scale((midi % 12) as u8, root, scale) {
+                hits += 1;
+            }
+        }
+        // Vid lika vinner skiftet **närmast noll**, och det måste prövas uttryckligt: loopen
+        // går från −5 uppåt, alltså *börjar* den längst från noll på minussidan, och ett
+        // `hits > best.0` hade gett −5 före 0 för ett mönster som redan stod rätt. Provet
+        // fångade det (mätte −5 där svaret skulle vara 0) — därför står jämförelsen här och
+        // inte i en kommentar om tur.
+        let bättre = hits > best.0 || (hits == best.0 && shift.abs() < best.1.abs());
+        if bättre {
+            best = (hits, shift);
+        }
+    }
+    best.1
 }
 
 /// Raden i piano rollen en klickad rad ska hamna på när skal-låset är på.
@@ -319,4 +372,40 @@ mod tests {
             assert!(snap_row(row, 48, 24, 3, 0) < 24);
         }
     }
+    /// **Skiftet ska vara det musikaliska, inte det aritmetiska.** Ett mönster som redan står i
+    /// tonarten rörs inte, och ett som står en halvton fel flyttas en halvton — inte elva.
+    #[test]
+    fn the_shift_is_the_shortest_way_into_the_key() {
+        let dur = 0; // Dur
+        let c = 0; // grundton C
+        // C-D-E-F-G (rad 0,2,4,5,7 från C) står redan rätt.
+        assert_eq!(key_transpose(&[0, 2, 4, 5, 7], 60, c, dur), 0);
+        // Samma mönster en halvton upp (C#-D#-F-F#-G#) ska ner en halvton, inte upp elva.
+        assert_eq!(key_transpose(&[1, 3, 5, 6, 8], 60, c, dur), -1);
+        // Ett tomt mönster har inget att flytta.
+        assert_eq!(key_transpose(&[], 60, c, dur), 0);
+    }
+
+    /// **Flest, inte alla — och provet mäter det i stället för att tro det.** Tre toner i rad
+    /// (C, C#, D) kan *aldrig* alla hamna i en dur-skala, hur mönstret än flyttas: varje skala
+    /// saknar tre halvtoner i följd. Regeln ska då flytta mönstret dit *flest* hamnar rätt i —
+    /// inte ge upp, och inte tvinga in varje ton för sig (det vore att skriva om musiken).
+    #[test]
+    fn a_cluster_that_cannot_all_fit_is_moved_as_far_as_it_goes() {
+        let dur = 0;
+        let c = 0;
+        let skift = key_transpose(&[0, 1, 2], 60, c, dur);
+        let träffar = [0, 1, 2]
+            .iter()
+            .filter(|&&row| {
+                let midi = 60 + row + skift as usize as i32;
+                in_scale((midi % 12) as u8, c, dur)
+            })
+            .count();
+        println!("skift {skift} gav {träffar} av 3 i skalan");
+        assert_eq!(träffar, 2, "två av tre är det bästa som går — skiftet var {skift}");
+        // Och ett mönster som redan står rätt rörs inte alls.
+        assert_eq!(key_transpose(&[0, 2, 4], 60, c, dur), 0);
+    }
+
 }
