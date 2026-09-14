@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**63 moduler · 69005 rader kod · 19 med status · 44 utan.**
+**79 moduler · 69646 rader kod · 35 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,26 +15,37 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 23120 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 88 (+1 ign) |  |
 | `src/audio/synth.rs` | 3518 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 97 | 49 |  |
+| `src/ui/app/tests.rs` | 2879 | byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov. | 0 | 88 (+1 ign) | Prov för app-ytan — flyttade ur `app.rs` 2026-09-14 (filen hade vuxit till 23 000 rader).  |
+| `src/ui/app/modals.rs` | 2726 | byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför. | 0 | 0 | Dialogerna — alla små fönster på ett ställe.  |
+| `src/ui/app/arranger.rs` | 2595 | byggs — arrangören. | 0 | 0 | Arrangören — tidslinjen som ritas.  |
 | `src/i18n.rs` | 2552 | fryst — nycklar på engelska, texter på svenska | 1362 | 4 |  |
+| `src/ui/app/mixer.rs` | 2447 | byggs — mixern och FX-racket. | 1 | 0 | Mixern — kanalracket, FX-racket och automationen.  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 2125 | stabil — offline-rendering och export | 10 | 19 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
+| `src/ui/app.rs` | 2112 | byggs — roten: tillståndet, starten och bildrutan. | 5 | 0 | **App-ytan — modulens rot.** Här bor `SonixApp` (tillståndet), `new` (starten) och `update` (bildrutan). Allt annat ligger i undermodulerna nedan, delade efter område |
+| `src/ui/app/project.rs` | 1838 | byggs — projektformatet; migreringar flyttar men raderar aldrig. | 1 | 0 | Projektfilen — formen på disk, sparande, inläsning, autospar och återställning.  |
 | `src/audio/recorder.rs` | 1700 | stabil — inspelning | 7 | 16 |  |
 | `src/audio/vocal_harmonizer.rs` | 1632 | — | 15 | 12 |  |
-| `src/audio/stretch.rs` | 1627 | — | 17 | 24 (+8 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
+| `src/audio/stretch.rs` | 1627 | — | 18 | 24 (+8 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
 | `src/audio/factory_samples.rs` | 1575 | stabil — fabriksbiblioteket och `merge_library` | 9 | 10 |  |
 | `src/audio/plugin_vst3.rs` | 1454 | stabil (4.6a) — VST3-värden, en utbuss | 4 | 9 | Minimal in-process **VST3** host (Fas 4.6a).  |
 | `src/audio/metadata.rs` | 1451 | stabil (8.5b) — bara härkomst tas; musik, text och omslag lämnas | 4 | 18 | Tar bort AI-/Sunohärkomst ur ljudfiler — och ingenting annat (8.5b).  |
+| `src/ui/app/import.rs` | 1367 | byggs — importvägarna; nya format läggs här, inte i UI:t. | 1 | 0 | Import — stämmor från Suno, filer, separatorn och genererat ljud.  |
+| `src/ui/app/timeline.rs` | 1292 | byggs — ångringen och klippoperationerna. | 1 | 0 | Tidslinjen — klippens geometri, ångringen och klippoperationerna.  |
+| `src/ui/app/stretch.rs` | 1114 | byggs — sträckningen; cachenyckeln byts när motorn byts (motorns version i nyckeln). | 8 | 0 | Tempot och sträckningen — tempokartan, styckena, cachenycklarna och regionerna till motorn.  |
 | `src/ui/plugins_view.rs` | 1059 | — | 1 | 0 |  |
 | `src/audio/onset.rs` | 1040 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 38 | 25 (+1 ign) | Onset-detektering och slicekarta (Fas 8.7).  |
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
 | `src/audio/master_fx.rs` | 1016 | — | 6 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
 | `src/paths.rs` | 1008 | fryst — enda modulen som får bygga sökvägar | 46 | 14 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
 | `src/audio/plugin_sandbox.rs` | 945 | — | 9 | 8 | Out-of-process plugin sandbox (Fas 4.5a + 4.5b).  |
+| `src/ui/app/transport.rs` | 940 | byggs — uppspelningen. | 1 | 0 | Uppspelningen — stegklockan, sequencern, tangentbordet, tagningarna och hårdvaran.  |
+| `src/ui/app/piano_roll.rs` | 926 | byggs — piano roll och trummisen. | 0 | 0 | Piano roll, trummisen och skalorna.  |
 | `src/audio/plugin_vst2.rs` | 908 | — | 4 | 9 | Minimal in-process **VST2** host (Fas 4.6c).  |
+| `src/ui/app/export.rs` | 901 | stabil — offline-renderingen och exporten. | 0 | 0 | Exporten och frysningen.  |
 | `src/audio/stem_separator.rs` | 885 | stabil (8.5a) — separatorn skriver stämmorna till disk och minns var de ligger | 6 | 11 |  |
-| `src/audio/waveform.rs` | 851 | stabil — exakt hölje och flernivåcache (8.3) | 29 | 15 | Exakta vågformer: ett (min, max) per skärmpixel (Alex krav, Fas 8.3).  |
+| `src/audio/waveform.rs` | 851 | stabil — exakt hölje och flernivåcache (8.3) | 30 | 15 | Exakta vågformer: ett (min, max) per skärmpixel (Alex krav, Fas 8.3).  |
 | `src/ui/fx_rack_modal.rs` | 838 | — | 1 | 0 |  |
 | `src/audio/ai_generator.rs` | 790 | — | 6 | 7 |  |
 | `src/audio/patcher.rs` | 782 | — | 4 | 6 |  |
@@ -42,10 +53,14 @@
 | `src/ui/widgets.rs` | 734 | — | 4 | 0 |  |
 | `src/audio/ai_client.rs` | 715 | — | 8 | 8 |  |
 | `src/audio/smf.rs` | 706 | stabil — MIDI-export med tempobyten (8.2 steg 3) | 33 | 10 | Standard MIDI File (SMF) — skriv och läs `.mid` utan externa beroenden.  |
+| `src/ui/app/state.rs` | 705 | byggs — datamodellen; nya fält hör hit och ska ha ett ärligt standardvärde. | 1 | 0 | Tillstånd och typer för app-ytan — utbrutet ur `app.rs` 2026-09-14.  |
+| `src/ui/app/plugins.rs` | 636 | byggs — plugin-värdarna. | 0 | 0 | Plugin-värdarna i UI:t — ladda, GUI-fönster, slots och sandlådan.  |
 | `src/audio/command.rs` | 631 | byggs — kommando-protokollet (AI-vägen) | 22 | 7 |  |
 | `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 56 | 12 | Tempokarta (Fas 8.2, steg 1).  |
+| `src/ui/app/browser.rs` | 613 | byggs — Sound Browser och biblioteksskanningen. | 1 | 0 | Sound Browser och biblioteket.  |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
+| `src/ui/app/midi.rs` | 522 | byggs — MIDI-vägarna. | 1 | 0 | MIDI — notschemat, importen, exporten och trumkanalerna.  |
 | `src/ui/chord_generator_modal.rs` | 516 | — | 1 | 0 |  |
 | `src/audio/engine.rs` | 503 | — | 1 | 1 |  |
 | `src/audio/realtime_bench.rs` | 501 | stabil — realtidsmätningen | 0 | 6 | Realtidsmätning av render-vägen (Fas 7.2).  |
@@ -71,6 +86,7 @@
 | `src/audio/effects.rs` | 216 | — | 5 | 4 |  |
 | `src/audio/envelope.rs` | 196 | — | 23 | 3 |  |
 | `src/ui/stem_view.rs` | 185 | — | 1 | 0 |  |
+| `src/ui/app/waveform.rs` | 148 | stabil — exaktheten och nycklarna; ändra bara med ett prov som visar samma sak. | 26 | 0 | Vågformer i vyn — nyckeln, översikten och den sanna cachen.  |
 | `src/audio/filter.rs` | 104 | — | 5 | 2 |  |
 | `src/audio/mod.rs` | 104 | — | 0 | 0 |  |
 | `src/rng.rs` | 82 | — | 2 | 4 | En liten deterministisk slumptalare (xorshift64\*).  |
@@ -257,9 +273,88 @@
 - **Publika ingångar:** `render_ai_assistant_view`
 
 ### `src/ui/app.rs`
-- **Status:** byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen
-- **Rör inte:** två sessioner har krockat i den här filen; kolla `git status` och mtime före varje skrivning
-- **Publika ingångar:** `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions`, `TrackKind`, `SongMarker` … (+185)
+- **Status:** byggs — roten: tillståndet, starten och bildrutan.
+- **Rör inte:** `update` är den enda ingången per bildruta. En ny panel läggs i sin egen modul
+- **Publika ingångar:** `SonixApp`, `tr`, `new`
+
+### `src/ui/app/arranger.rs`
+- **Status:** byggs — arrangören.
+- **Rör inte:** enheten. Takt är inte sekund; vid ett tempobyte är bara takten rätt plats.
+- **Publika ingångar:** `render_playlist_arranger`
+
+### `src/ui/app/browser.rs`
+- **Status:** byggs — Sound Browser och biblioteksskanningen.
+- **Rör inte:** \`merge_library\` är enda vägen till listan; bygg inte en andra.
+- **Publika ingångar:** `init_sample_library_start`, `merge_library`, `library_items_from_scanned`, `assign_library_sample_to_channel`, `auto_assign_default_kit`, `channel_sample_trigger_command`, `ui_dbg`, `open_sample_in_vocal_studio`, `import_custom_sample`, `poll_library_scan`, `render_browser_sidebar`
+
+### `src/ui/app/export.rs`
+- **Status:** stabil — offline-renderingen och exporten.
+- **Rör inte:** samma väg som uppspelningen; en parallell väg hörs som en annan låt.
+- **Publika ingångar:** `export_separated_stems`, `export_wav`, `open_export_modal`, `frozen_is_stale`, `frozen_path`, `freeze_track`, `unfreeze_track`, `render_batch_export_modal`, `execute_batch_export`
+
+### `src/ui/app/import.rs`
+- **Status:** byggs — importvägarna; nya format läggs här, inte i UI:t.
+- **Rör inte:** `load_audio_or_report` är den enda vägen in till PCM; gå inte förbi den.
+- **Publika ingångar:** `stem_files_for_import`, `list_stem_audio_files`, `duplicate_mp3_count`, `wav_sibling`, `zip_entry_names`, `stem_base_name`, `load_audio_or_report`, `report_unreadable`, `take_unreadable_sources`, `StemImportSource`, `WavQuestion`, `StemImportProgress` … (+24)
+
+### `src/ui/app/midi.rs`
+- **Status:** byggs — MIDI-vägarna.
+- **Rör inte:** `notes_by_bar`/`pattern_bar_notes` är samma notbild som exporten skriver.
+- **Publika ingångar:** `pattern_bar_notes`, `midi_channel_for_track`, `drum_channel_for_key`, `MidiImportReport`, `STEPS_PER_BAR`, `ARRANGEMENT_BARS`, `notes_by_bar`, `apply_bar_to_pattern`, `export_song_midi`, `import_midi_into_selected_pattern`, `render_midi_import_modal`
+
+### `src/ui/app/mixer.rs`
+- **Status:** byggs — mixern och FX-racket.
+- **Rör inte:** kommandona bär hela inställningen; att bygga en ny nollar tyst frekvenser och Q.
+- **Publika ingångar:** `classify_track_style`, `update_scope_history`, `load_pattern_into_ui`, `select_pattern`, `sync_active_pattern_from_ui`, `select_sound_for_channel`, `audition_library_sample`, `apply_automation`, `render_automation_lane`, `render_channel_rack`, `apply_alchemy_morph`, `render_alchemy_morph_pad` … (+3)
+
+### `src/ui/app/modals.rs`
+- **Status:** byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför.
+- **Rör inte:** knapptexten är en instruktion, inte kosmetika — ändra texten när vägen ändras.
+- **Publika ingångar:** `logo_texture_for`, `render_add_track_modal`, `render_import_sample_modal`, `render_hardware_controller_modal`, `render_wav_question_modal`, `render_suno_stem_import_modal`, `render_stem_import_progress_modal`, `render_project_load_progress_modal`, `render_recovery_modal`, `render_about_modal`, `render_project_manager_modal`, `render_ai_settings_modal` … (+10)
+
+### `src/ui/app/piano_roll.rs`
+- **Status:** byggs — piano roll och trummisen.
+- **Rör inte:** en tabell och ett index för tonarten; två listor för samma sak driver isär.
+- **Publika ingångar:** `get_scale_notes`, `humanize_active_pattern`, `transpose_active_pattern`, `arpeggiate_pattern`, `reverse_pattern`, `render_piano_roll_editor`, `apply_drummer_generation`, `render_session_drummer`, `render_touch_piano_keyboard`
+
+### `src/ui/app/plugins.rs`
+- **Status:** byggs — plugin-värdarna.
+- **Rör inte:** feature-grinden `plugin-host`; sandlådans väg får inte bli standardvägen.
+- **Publika ingångar:** `load_plugin_into_track`, `load_plugin_preset_into_track`, `remove_plugin_from_track`, `load_plugin_into_sandbox_track`, `close_all_plugin_guis`, `retire_all_plugin_handles`, `is_plugin_gui_open`, `open_plugin_gui`, `close_plugin_gui`, `poll_plugin_guis`, `sandbox_inspect`, `poll_plugin_sandbox` … (+2)
+
+### `src/ui/app/project.rs`
+- **Status:** byggs — projektformatet; migreringar flyttar men raderar aldrig.
+- **Rör inte:** fältnamnen på disk är ett kontrakt mot filer som redan finns hos användaren.
+- **Publika ingångar:** `RecoveryCandidate`, `collect_recovery_candidates`, `collect_recovery_candidates_in`, `RecentProject`, `RECENT_MAX`, `load_recent_projects`, `load_recent_projects_in`, `store_recent_projects_in`, `push_recent_project`, `SavedPattern`, `SavedChannel`, `SonixProjectData` … (+33)
+
+### `src/ui/app/state.rs`
+- **Status:** byggs — datamodellen; nya fält hör hit och ska ha ett ärligt standardvärde.
+- **Rör inte:** alla fält är `pub` (syskonmodulerna läser dem); döp inte om ett fält som står i en projektfil.
+- **Publika ingångar:** `midi_to_freq`, `note_name`, `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions` … (+32)
+
+### `src/ui/app/stretch.rs`
+- **Status:** byggs — sträckningen; cachenyckeln byts när motorn byts (motorns version i nyckeln).
+- **Rör inte:** \`tempo_map\` är enda källan till takt↔tid; gå inte förbi den med egen matematik.
+- **Publika ingångar:** `StretchPiece`, `stretch_pieces`, `stretch_ratio_for`, `source_bpm_from_region`, `geometry_source_bpm`, `stamped_tempo`, `tempo_change_note`, `stamp_source_tempo`, `region_source_span_samples`, `playback_for`, `stretched_offset_secs`, `FIRST_BEAT_SEARCH_SECS` … (+20)
+
+### `src/ui/app/tests.rs`
+- **Status:** byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov.
+- **Rör inte:** proven läser privata fält genom `use super::*;`, så de måste ligga under `app`.
+
+### `src/ui/app/timeline.rs`
+- **Status:** byggs — ångringen och klippoperationerna.
+- **Rör inte:** alla fält är \`pub\`; döp inte om ett fält som står i en projektfil.
+- **Publika ingångar:** `ClipStartAlign`, `align_clip_start_to_point`, `timeline_point_for_source_secs`, `ClipGeometry`, `STEM_GROUP_TOLERANCE_BARS`, `plan_group_shift_by_head_secs`, `region_under_x`, `TimelineUndoSnapshot`, `find_region_at_playhead`, `split_selected_region_at_playhead`, `save_region_to_sound_browser`, `add_sample_item_to_timeline` … (+21)
+
+### `src/ui/app/transport.rs`
+- **Status:** byggs — uppspelningen.
+- **Rör inte:** `step_duration` och motorns position är samma klocka; lägg inte en tredje.
+- **Publika ingångar:** `steps_elapsed`, `ensure_mic_track_exists`, `toggle_timeline_recording`, `toggle_playback`, `stop_playback`, `seek_song_bar`, `seek_song_time`, `sync_track_audio_state`, `sync_group_state`, `get_max_project_bars`, `advance_sequencer`, `play_note` … (+7)
+
+### `src/ui/app/waveform.rs`
+- **Status:** stabil — exaktheten och nycklarna; ändra bara med ett prov som visar samma sak.
+- **Rör inte:** `imported_track_waveform` är regeln som ger spåret samma cache som motorn fick.
+- **Publika ingångar:** `waveform_key`, `overview_peaks_from`, `imported_track_waveform`, `waveform_preview_from_pcm`, `load_sample_pcm_arcs`, `ensure_waveform_cache`
 
 ### `src/ui/chord_generator_modal.rs`
 - **Publika ingångar:** `ScaleType`, `all`, `intervals`, `GeneratedChord`, `ChordGeneratorState`, `get_chord_pads`, `load_progression_preset`, `play_chord_sound`, `audition_progression`, `render_chord_generator_modal`
