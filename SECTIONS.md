@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**79 moduler · 69646 rader kod · 35 med status · 44 utan.**
+**80 moduler · 69860 rader kod · 36 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -17,13 +17,12 @@
 | :--- | ---: | :--- | ---: | :--- | :--- |
 | `src/audio/synth.rs` | 3518 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 97 | 49 |  |
 | `src/ui/app/tests.rs` | 2879 | byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov. | 0 | 88 (+1 ign) | Prov för app-ytan — flyttade ur `app.rs` 2026-09-14 (filen hade vuxit till 23 000 rader).  |
-| `src/ui/app/modals.rs` | 2726 | byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför. | 0 | 0 | Dialogerna — alla små fönster på ett ställe.  |
-| `src/ui/app/arranger.rs` | 2595 | byggs — arrangören. | 0 | 0 | Arrangören — tidslinjen som ritas.  |
+| `src/ui/app/modals.rs` | 2755 | byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför. | 0 | 0 | Dialogerna — alla små fönster på ett ställe.  |
+| `src/ui/app/arranger.rs` | 2732 | byggs — arrangören. | 0 | 0 | Arrangören — tidslinjen som ritas.  |
 | `src/i18n.rs` | 2552 | fryst — nycklar på engelska, texter på svenska | 1362 | 4 |  |
 | `src/ui/app/mixer.rs` | 2447 | byggs — mixern och FX-racket. | 1 | 0 | Mixern — kanalracket, FX-racket och automationen.  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 2125 | stabil — offline-rendering och export | 10 | 19 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
-| `src/ui/app.rs` | 2112 | byggs — roten: tillståndet, starten och bildrutan. | 5 | 0 | **App-ytan — modulens rot.** Här bor `SonixApp` (tillståndet), `new` (starten) och `update` (bildrutan). Allt annat ligger i undermodulerna nedan, delade efter område |
 | `src/ui/app/project.rs` | 1838 | byggs — projektformatet; migreringar flyttar men raderar aldrig. | 1 | 0 | Projektfilen — formen på disk, sparande, inläsning, autospar och återställning.  |
 | `src/audio/recorder.rs` | 1700 | stabil — inspelning | 7 | 16 |  |
 | `src/audio/vocal_harmonizer.rs` | 1632 | — | 15 | 12 |  |
@@ -33,12 +32,14 @@
 | `src/audio/metadata.rs` | 1451 | stabil (8.5b) — bara härkomst tas; musik, text och omslag lämnas | 4 | 18 | Tar bort AI-/Sunohärkomst ur ljudfiler — och ingenting annat (8.5b).  |
 | `src/ui/app/import.rs` | 1367 | byggs — importvägarna; nya format läggs här, inte i UI:t. | 1 | 0 | Import — stämmor från Suno, filer, separatorn och genererat ljud.  |
 | `src/ui/app/timeline.rs` | 1292 | byggs — ångringen och klippoperationerna. | 1 | 0 | Tidslinjen — klippens geometri, ångringen och klippoperationerna.  |
+| `src/ui/app/frame.rs` | 1181 | byggs — bildrutans faser. | 28 | 0 | Bildrutan — `update` uppdelad i sina faser (2026-09-14).  |
 | `src/ui/app/stretch.rs` | 1114 | byggs — sträckningen; cachenyckeln byts när motorn byts (motorns version i nyckeln). | 8 | 0 | Tempot och sträckningen — tempokartan, styckena, cachenycklarna och regionerna till motorn.  |
 | `src/ui/plugins_view.rs` | 1059 | — | 1 | 0 |  |
 | `src/audio/onset.rs` | 1040 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 38 | 25 (+1 ign) | Onset-detektering och slicekarta (Fas 8.7).  |
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
 | `src/audio/master_fx.rs` | 1016 | — | 6 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
 | `src/paths.rs` | 1008 | fryst — enda modulen som får bygga sökvägar | 46 | 14 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
+| `src/ui/app.rs` | 979 | byggs — roten: tillståndet, starten och bildrutan. | 5 | 0 | **App-ytan — modulens rot.** Här bor `SonixApp` (tillståndet), `new` (starten) och `update` (bildrutan). Allt annat ligger i undermodulerna nedan, delade efter område |
 | `src/audio/plugin_sandbox.rs` | 945 | — | 9 | 8 | Out-of-process plugin sandbox (Fas 4.5a + 4.5b).  |
 | `src/ui/app/transport.rs` | 940 | byggs — uppspelningen. | 1 | 0 | Uppspelningen — stegklockan, sequencern, tangentbordet, tagningarna och hårdvaran.  |
 | `src/ui/app/piano_roll.rs` | 926 | byggs — piano roll och trummisen. | 0 | 0 | Piano roll, trummisen och skalorna.  |
@@ -56,7 +57,7 @@
 | `src/ui/app/state.rs` | 705 | byggs — datamodellen; nya fält hör hit och ska ha ett ärligt standardvärde. | 1 | 0 | Tillstånd och typer för app-ytan — utbrutet ur `app.rs` 2026-09-14.  |
 | `src/ui/app/plugins.rs` | 636 | byggs — plugin-värdarna. | 0 | 0 | Plugin-värdarna i UI:t — ladda, GUI-fönster, slots och sandlådan.  |
 | `src/audio/command.rs` | 631 | byggs — kommando-protokollet (AI-vägen) | 22 | 7 |  |
-| `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 56 | 12 | Tempokarta (Fas 8.2, steg 1).  |
+| `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 58 | 12 | Tempokarta (Fas 8.2, steg 1).  |
 | `src/ui/app/browser.rs` | 613 | byggs — Sound Browser och biblioteksskanningen. | 1 | 0 | Sound Browser och biblioteket.  |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
@@ -280,7 +281,7 @@
 ### `src/ui/app/arranger.rs`
 - **Status:** byggs — arrangören.
 - **Rör inte:** enheten. Takt är inte sekund; vid ett tempobyte är bara takten rätt plats.
-- **Publika ingångar:** `render_playlist_arranger`
+- **Publika ingångar:** `render_playlist_arranger`, `draw_transport_bar`, `draw_arranger_tools_bar`, `draw_arranger_ai_capsule`, `draw_arranger_utility_bar`, `draw_track_headers`, `draw_timeline_lanes`, `TimelineGeometry`, `DeferredActions`, `draw_region_inspector`
 
 ### `src/ui/app/browser.rs`
 - **Status:** byggs — Sound Browser och biblioteksskanningen.
@@ -291,6 +292,11 @@
 - **Status:** stabil — offline-renderingen och exporten.
 - **Rör inte:** samma väg som uppspelningen; en parallell väg hörs som en annan låt.
 - **Publika ingångar:** `export_separated_stems`, `export_wav`, `open_export_modal`, `frozen_is_stale`, `frozen_path`, `freeze_track`, `unfreeze_track`, `render_batch_export_modal`, `execute_batch_export`
+
+### `src/ui/app/frame.rs`
+- **Status:** byggs — bildrutans faser.
+- **Rör inte:** ordningen. Pollarna ligger före ritningen med flit (motorn ska veta
+- **Publika ingångar:** `poll_background_work`, `tick_frame`, `handle_input`, `handle_dropped_files`, `draw_chrome`, `draw_workspace`, `screenshot_tick`
 
 ### `src/ui/app/import.rs`
 - **Status:** byggs — importvägarna; nya format läggs här, inte i UI:t.
@@ -310,7 +316,7 @@
 ### `src/ui/app/modals.rs`
 - **Status:** byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför.
 - **Rör inte:** knapptexten är en instruktion, inte kosmetika — ändra texten när vägen ändras.
-- **Publika ingångar:** `logo_texture_for`, `render_add_track_modal`, `render_import_sample_modal`, `render_hardware_controller_modal`, `render_wav_question_modal`, `render_suno_stem_import_modal`, `render_stem_import_progress_modal`, `render_project_load_progress_modal`, `render_recovery_modal`, `render_about_modal`, `render_project_manager_modal`, `render_ai_settings_modal` … (+10)
+- **Publika ingångar:** `logo_texture_for`, `render_add_track_modal`, `render_import_sample_modal`, `render_hardware_controller_modal`, `render_wav_question_modal`, `render_suno_stem_import_modal`, `render_stem_import_progress_modal`, `render_project_load_progress_modal`, `render_recovery_modal`, `render_about_modal`, `render_project_manager_modal`, `render_ai_settings_modal` … (+11)
 
 ### `src/ui/app/piano_roll.rs`
 - **Status:** byggs — piano roll och trummisen.

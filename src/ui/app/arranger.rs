@@ -144,263 +144,11 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
             self.seek_song_time(target);
         }
 
-        // ================================================================
-        // 2.5 SELECTED AUDIO REGION INSPECTOR (RESPONSIVE 2-TIER / WRAPPED)
-        // ================================================================
-        if let Some((t_idx, r_idx)) = self.selected_audio_region
-            && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
-                let mut do_delete = false;
-                let mut do_split = false;
-                let mut do_copy = false;
-                let mut do_paste = false;
-                let mut do_loop_factor: Option<f32> = None;
-                let mut do_duplicate = false;
-                let mut do_reverse = false;
-                let mut do_tape = false;
-                let mut do_open_focus = false;
-                let mut do_open_vocal_studio = false;
-                let mut do_save_sample = false;
-                let has_copied = self.copied_region.is_some();
-                let copied_name = self.copied_region.as_ref().map(|c| c.name.clone()).unwrap_or_default();
-                let r = &mut self.playlist_tracks[t_idx].regions[r_idx];
-                let r_start_sec = secs_at(r.start_bar);
-                let r_len_sec = secs_len(r.start_bar, r.length_bars);
-                let r_name = r.name.clone();
-                let is_rev = r.is_reverse;
-                let is_tape = r.tape;
-
-                ui.add_space(4.0);
-                ui.group(|ui| {
-                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
-                    ui.spacing_mut().slider_width = 75.0;
-
-                    // Row 1: Title, Time offsets, Sliders (Responsive Wrapped)
-                    ui.horizontal_wrapped(|ui| {
-                        ui.label(egui::RichText::new(format!("🎵 {}", r_name)).strong().color(Theme::FL_CYAN));
-                        ui.separator();
-
-                        // Start time readout with coarse/fine nudging
-                        ui.label(crate::i18n::t("⏱ Start:"));
-                        ui.label(egui::RichText::new(format!("{:.2}t ({})", r.start_bar + 1.0, format_time_hundredths(r_start_sec))).monospace().strong().color(Theme::TEXT_BRIGHT));
-                        if ui.button(crate::i18n::t("-1t")).on_hover_text(crate::i18n::t("Flytta 1 takt bakåt")).clicked() {
-                            r.start_bar = (r.start_bar - 1.0).max(0.0);
-                        }
-                        if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Flytta 0.1s bakåt")).clicked() {
-                            r.start_bar = bars_at((r_start_sec - 0.1).max(0.0));
-                        }
-                        if ui.button(crate::i18n::t("+0.1s")).on_hover_text(crate::i18n::t("Flytta 0.1s framåt")).clicked() {
-                            r.start_bar = bars_at(r_start_sec + 0.1);
-                        }
-                        if ui.button(crate::i18n::t("+1t")).on_hover_text(crate::i18n::t("Flytta 1 takt framåt")).clicked() {
-                            r.start_bar += 1.0;
-                        }
-
-                        ui.separator();
-
-                        // Duration readout with coarse/fine nudging
-                        ui.label(crate::i18n::t("📏 Längd:"));
-                        ui.label(egui::RichText::new(format!("{:.2}t ({})", r.length_bars, format_time_hundredths(r_len_sec))).monospace().strong().color(Theme::TEXT_BRIGHT));
-                        if ui.button(crate::i18n::t("-1t")).on_hover_text(crate::i18n::t("Korta 1 takt")).clicked() {
-                            r.length_bars = (r.length_bars - 1.0).max(0.05);
-                        }
-                        if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Korta 0.1s")).clicked() {
-                            r.length_bars = bars_len(r.start_bar, (r_len_sec - 0.1).max(0.05));
-                        }
-                        if ui.button(crate::i18n::t("+0.1s")).on_hover_text(crate::i18n::t("Förläng 0.1s")).clicked() {
-                            r.length_bars = bars_len(r.start_bar, r_len_sec + 0.1);
-                        }
-                        if ui.button(crate::i18n::t("+1t")).on_hover_text(crate::i18n::t("Förläng 1 takt")).clicked() {
-                            r.length_bars += 1.0;
-                        }
-
-                        ui.separator();
-
-                        // Start-trim offset readout
-                        ui.label(crate::i18n::t("✂ Start-trim:"));
-                        ui.label(egui::RichText::new(format!("{:.2}s", r.sample_offset_sec)).monospace().strong().color(Theme::FL_CYAN));
-                        if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Minska start-trim (visa mer av början)")).clicked() {
-                            r.sample_offset_sec = (r.sample_offset_sec - 0.1).max(0.0);
-                        }
-                        if ui.button(crate::i18n::t("+0.1s")).on_hover_text(crate::i18n::t("Öka start-trim (klipp bort mer av början)")).clicked() {
-                            r.sample_offset_sec += 0.1;
-                        }
-
-                        ui.separator();
-
-                        // Gain Slider
-                        ui.label(crate::i18n::t("🎚 Vol:"));
-                        ui.add(egui::Slider::new(&mut r.volume, 0.0..=2.0).custom_formatter(|v, _| {
-                            let db = if v <= 0.001 { -60.0 } else { 20.0 * v.log10() };
-                            format!("{:.0}dB", db)
-                        }));
-
-                        ui.separator();
-
-                        // Fade In Slider
-                        ui.label(crate::i18n::t("📈 In:"));
-                        ui.add(egui::Slider::new(&mut r.fade_in_bars, 0.0..=(r.length_bars * 0.5).max(0.05)).custom_formatter(|v, _| {
-                            format!("{:.2}s", secs_at(v as f32))
-                        }));
-
-                        ui.separator();
-
-                        // Fade Out Slider
-                        ui.label(crate::i18n::t("📉 Ut:"));
-                        ui.add(egui::Slider::new(&mut r.fade_out_bars, 0.0..=(r.length_bars * 0.5).max(0.05)).custom_formatter(|v, _| {
-                            format!("{:.2}s", secs_at(v as f32))
-                        }));
-                    });
-
-                    ui.separator();
-
-                    // Row 2: Action Buttons (Always clearly visible & wrapped)
-                    ui.horizontal_wrapped(|ui| {
-                        let cur_song_time = self.song_time;
-                        let can_cut = cur_song_time > r_start_sec + 0.02 && cur_song_time < r_start_sec + r_len_sec - 0.02;
-                        let cut_label = if can_cut {
-                            format!("✂ Dela vid spelhuvud ({})", format_time_hundredths(cur_song_time))
-                        } else {
-                            "✂ Dela vid spelhuvud (S / Ctrl+B)".to_string()
-                        };
-                        let cut_bg = if can_cut { Theme::FL_GREEN } else { Color32::from_rgb(45, 60, 50) };
-                        let cut_fg = if can_cut { Color32::BLACK } else { Theme::TEXT_MUTED };
-
-                        if ui.add(egui::Button::new(egui::RichText::new(cut_label).strong().size(10.5).color(cut_fg)).fill(cut_bg))
-                            .on_hover_text(crate::i18n::t("Klipp/dela regionen på exakt denna tidpunkt"))
-                            .clicked() {
-                                do_split = true;
-                            }
-
-                        // Copy
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Kopiera (Ctrl+C)")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(30, 60, 95)))
-                            .on_hover_text(crate::i18n::t("Kopiera detta sample till urklipp"))
-                            .clicked() {
-                                do_copy = true;
-                            }
-
-                        // Paste (if clipboard has region)
-                        if has_copied {
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("📋 Klistra in ({}) (Ctrl+V)", copied_name)).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(35, 85, 125)))
-                                .on_hover_text(crate::i18n::t("Klistra in kopierat sample vid spelhuvudet på aktivt spår"))
-                                .clicked() {
-                                    do_paste = true;
-                                }
-                        }
-
-                        // Duplicate
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Duplicera (Ctrl+D)")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(35, 75, 115)))
-                            .on_hover_text(crate::i18n::t("Duplicera samplen direkt efter den nuvarande"))
-                            .clicked() {
-                                do_duplicate = true;
-                            }
-
-                        // Loop x2 / x4
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Loop x2 (Ctrl+L)")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(20, 85, 100)))
-                            .on_hover_text(crate::i18n::t("Repetera och fördubbla loop-längden"))
-                            .clicked() {
-                                do_loop_factor = Some(2.0);
-                            }
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Loop x4")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(18, 75, 90)))
-                            .on_hover_text(crate::i18n::t("Repetera samplen 4 gånger i följd"))
-                            .clicked() {
-                                do_loop_factor = Some(4.0);
-                            }
-
-                        // Reverse
-                        let rev_label = if is_rev { crate::i18n::t("🔄 Normal (Framlänges)") } else { crate::i18n::t("🔄 Vänd baklänges (Reverse)") };
-                        let rev_bg = if is_rev { Theme::FL_ORANGE } else { Color32::from_rgb(70, 45, 90) };
-                        if ui.add(egui::Button::new(egui::RichText::new(rev_label).strong().size(10.5).color(Color32::WHITE)).fill(rev_bg))
-                            .on_hover_text(crate::i18n::t("Spela upp ljudregionen baklänges i realtid (Ctrl+K / R)"))
-                            .clicked() {
-                                do_reverse = true;
-                            }
-
-                        // Klippets temoläge (Fas 8.10 steg 2): sträcks med bevarad
-                        // tonhöjd (standard) eller bandspelaren (undantaget).
-                        let tape_label = if is_tape {
-                            crate::i18n::t("📼 Bandspelare")
-                        } else {
-                            crate::i18n::t("🎚 Sträcks (bevarad tonhöjd)")
-                        };
-                        let tape_bg = if is_tape { Theme::FL_ORANGE } else { Color32::from_rgb(30, 48, 44) };
-                        if ui
-                            .add(egui::Button::new(egui::RichText::new(tape_label).strong().size(10.5).color(Color32::WHITE)).fill(tape_bg))
-                            .on_hover_text(crate::i18n::t(
-                                "Standard: klippet sträcks med bevarad tonhöjd när tempot ändras (tonhöjden står still). Bandspelarläget låter tonhöjden följa med — det är en effekt, inte standarden.",
-                            ))
-                            .clicked()
-                        {
-                            do_tape = true;
-                        }
-
-                        // Mute toggle
-                        let mute_bg = if r.muted { Theme::FL_ORANGE } else { Color32::from_rgb(32, 38, 48) };
-                        if ui.add(egui::Button::new(egui::RichText::new(if r.muted { "🔇 Mutad" } else { "🔊 Aktiv" }).strong().size(10.5).color(Color32::WHITE)).fill(mute_bg)).clicked() {
-                            r.muted = !r.muted;
-                        }
-
-                        // Save to Sound Browser
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara i Sound Browser")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(32, 95, 80)))
-                            .on_hover_text(crate::i18n::t("Spara denna ljudregion som sample i Sound Browser & på disk"))
-                            .clicked() {
-                                do_save_sample = true;
-                            }
-
-                        // Open Stem Focus Editor
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔍 Öppna Stämeditor")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(140, 70, 20))).clicked() {
-                            do_open_focus = true;
-                        }
-
-                        // Open in Vocal Studio
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Öppna i Sångstudio")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(40, 90, 120)))
-                            .on_hover_text(crate::i18n::t("Ladda in detta sample/region i Sångstudion för isolerad provspelning, pitch, time stretch & effekter"))
-                            .clicked() {
-                                do_open_vocal_studio = true;
-                            }
-
-                        // Delete
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🗑 Ta bort (Del)")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(160, 40, 40))).clicked() {
-                            do_delete = true;
-                        }
-
-                        // Close Inspector
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("❌ Stäng")).size(10.0))).clicked() {
-                            self.selected_audio_region = None;
-                        }
-                    });
-                });
-
-                if do_open_focus {
-                    self.open_stem_focus(t_idx);
-                } else if do_open_vocal_studio {
-                    self.open_region_in_vocal_studio(t_idx, r_idx);
-                } else if do_copy {
-                    self.copy_selected_region();
-                } else if do_paste {
-                    self.paste_region();
-                } else if let Some(factor) = do_loop_factor {
-                    self.repeat_selected_region_loop(factor);
-                } else if do_save_sample {
-                    self.save_region_to_sound_browser(t_idx, r_idx);
-                } else if do_reverse {
-                    self.reverse_selected_region();
-                } else if do_tape {
-                    self.toggle_region_tape(t_idx, r_idx);
-                } else if do_delete {
-                    self.delete_selected_region();
-                } else if do_duplicate {
-                    self.duplicate_selected_region();
-                } else if do_split {
-                    self.split_selected_region_at_playhead();
-                } else {
-                    self.sync_track_regions(t_idx);
-                }
-            }
+        self.draw_region_inspector(ui, &secs_at, &secs_len, &bars_at, &bars_len);
 
         ui.add_space(6.0);
 
         self.draw_arranger_ai_capsule(ui);
-
 
         self.draw_arranger_utility_bar(ui);
 
@@ -2711,4 +2459,273 @@ pub(crate) struct DeferredActions {
     pub(crate) track_delete_idx: Option<usize>,
     pub(crate) track_duplicate_idx: Option<usize>,
     pub(crate) track_paste_idx: Option<usize>,
+}
+
+impl SonixApp {
+    /// Den valda ljudregionens panel (2.5) — två våningar, radbryten, och regionens
+    /// egna handlingar: dela, duplicera, backa, koppla ihop, ta bort.
+    ///
+    /// Kroppen är flyttad ordagrant; bara de fyra tidsfrågorna kommer in utifrån, som
+    /// referenser — de definieras på **ett** ställe, i anroparen.
+    pub(crate) fn draw_region_inspector(
+        &mut self,
+        ui: &mut egui::Ui,
+        secs_at: &dyn Fn(f32) -> f32,
+        secs_len: &dyn Fn(f32, f32) -> f32,
+        bars_at: &dyn Fn(f32) -> f32,
+        bars_len: &dyn Fn(f32, f32) -> f32,
+    ) {
+        // ================================================================
+        // 2.5 SELECTED AUDIO REGION INSPECTOR (RESPONSIVE 2-TIER / WRAPPED)
+        // ================================================================
+        if let Some((t_idx, r_idx)) = self.selected_audio_region
+            && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+                let mut do_delete = false;
+                let mut do_split = false;
+                let mut do_copy = false;
+                let mut do_paste = false;
+                let mut do_loop_factor: Option<f32> = None;
+                let mut do_duplicate = false;
+                let mut do_reverse = false;
+                let mut do_tape = false;
+                let mut do_open_focus = false;
+                let mut do_open_vocal_studio = false;
+                let mut do_save_sample = false;
+                let has_copied = self.copied_region.is_some();
+                let copied_name = self.copied_region.as_ref().map(|c| c.name.clone()).unwrap_or_default();
+                let r = &mut self.playlist_tracks[t_idx].regions[r_idx];
+                let r_start_sec = secs_at(r.start_bar);
+                let r_len_sec = secs_len(r.start_bar, r.length_bars);
+                let r_name = r.name.clone();
+                let is_rev = r.is_reverse;
+                let is_tape = r.tape;
+
+                ui.add_space(4.0);
+                ui.group(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(4.0, 4.0);
+                    ui.spacing_mut().slider_width = 75.0;
+
+                    // Row 1: Title, Time offsets, Sliders (Responsive Wrapped)
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(egui::RichText::new(format!("🎵 {}", r_name)).strong().color(Theme::FL_CYAN));
+                        ui.separator();
+
+                        // Start time readout with coarse/fine nudging
+                        ui.label(crate::i18n::t("⏱ Start:"));
+                        ui.label(egui::RichText::new(format!("{:.2}t ({})", r.start_bar + 1.0, format_time_hundredths(r_start_sec))).monospace().strong().color(Theme::TEXT_BRIGHT));
+                        if ui.button(crate::i18n::t("-1t")).on_hover_text(crate::i18n::t("Flytta 1 takt bakåt")).clicked() {
+                            r.start_bar = (r.start_bar - 1.0).max(0.0);
+                        }
+                        if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Flytta 0.1s bakåt")).clicked() {
+                            r.start_bar = bars_at((r_start_sec - 0.1).max(0.0));
+                        }
+                        if ui.button(crate::i18n::t("+0.1s")).on_hover_text(crate::i18n::t("Flytta 0.1s framåt")).clicked() {
+                            r.start_bar = bars_at(r_start_sec + 0.1);
+                        }
+                        if ui.button(crate::i18n::t("+1t")).on_hover_text(crate::i18n::t("Flytta 1 takt framåt")).clicked() {
+                            r.start_bar += 1.0;
+                        }
+
+                        ui.separator();
+
+                        // Duration readout with coarse/fine nudging
+                        ui.label(crate::i18n::t("📏 Längd:"));
+                        ui.label(egui::RichText::new(format!("{:.2}t ({})", r.length_bars, format_time_hundredths(r_len_sec))).monospace().strong().color(Theme::TEXT_BRIGHT));
+                        if ui.button(crate::i18n::t("-1t")).on_hover_text(crate::i18n::t("Korta 1 takt")).clicked() {
+                            r.length_bars = (r.length_bars - 1.0).max(0.05);
+                        }
+                        if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Korta 0.1s")).clicked() {
+                            r.length_bars = bars_len(r.start_bar, (r_len_sec - 0.1).max(0.05));
+                        }
+                        if ui.button(crate::i18n::t("+0.1s")).on_hover_text(crate::i18n::t("Förläng 0.1s")).clicked() {
+                            r.length_bars = bars_len(r.start_bar, r_len_sec + 0.1);
+                        }
+                        if ui.button(crate::i18n::t("+1t")).on_hover_text(crate::i18n::t("Förläng 1 takt")).clicked() {
+                            r.length_bars += 1.0;
+                        }
+
+                        ui.separator();
+
+                        // Start-trim offset readout
+                        ui.label(crate::i18n::t("✂ Start-trim:"));
+                        ui.label(egui::RichText::new(format!("{:.2}s", r.sample_offset_sec)).monospace().strong().color(Theme::FL_CYAN));
+                        if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Minska start-trim (visa mer av början)")).clicked() {
+                            r.sample_offset_sec = (r.sample_offset_sec - 0.1).max(0.0);
+                        }
+                        if ui.button(crate::i18n::t("+0.1s")).on_hover_text(crate::i18n::t("Öka start-trim (klipp bort mer av början)")).clicked() {
+                            r.sample_offset_sec += 0.1;
+                        }
+
+                        ui.separator();
+
+                        // Gain Slider
+                        ui.label(crate::i18n::t("🎚 Vol:"));
+                        ui.add(egui::Slider::new(&mut r.volume, 0.0..=2.0).custom_formatter(|v, _| {
+                            let db = if v <= 0.001 { -60.0 } else { 20.0 * v.log10() };
+                            format!("{:.0}dB", db)
+                        }));
+
+                        ui.separator();
+
+                        // Fade In Slider
+                        ui.label(crate::i18n::t("📈 In:"));
+                        ui.add(egui::Slider::new(&mut r.fade_in_bars, 0.0..=(r.length_bars * 0.5).max(0.05)).custom_formatter(|v, _| {
+                            format!("{:.2}s", secs_at(v as f32))
+                        }));
+
+                        ui.separator();
+
+                        // Fade Out Slider
+                        ui.label(crate::i18n::t("📉 Ut:"));
+                        ui.add(egui::Slider::new(&mut r.fade_out_bars, 0.0..=(r.length_bars * 0.5).max(0.05)).custom_formatter(|v, _| {
+                            format!("{:.2}s", secs_at(v as f32))
+                        }));
+                    });
+
+                    ui.separator();
+
+                    // Row 2: Action Buttons (Always clearly visible & wrapped)
+                    ui.horizontal_wrapped(|ui| {
+                        let cur_song_time = self.song_time;
+                        let can_cut = cur_song_time > r_start_sec + 0.02 && cur_song_time < r_start_sec + r_len_sec - 0.02;
+                        let cut_label = if can_cut {
+                            format!("✂ Dela vid spelhuvud ({})", format_time_hundredths(cur_song_time))
+                        } else {
+                            "✂ Dela vid spelhuvud (S / Ctrl+B)".to_string()
+                        };
+                        let cut_bg = if can_cut { Theme::FL_GREEN } else { Color32::from_rgb(45, 60, 50) };
+                        let cut_fg = if can_cut { Color32::BLACK } else { Theme::TEXT_MUTED };
+
+                        if ui.add(egui::Button::new(egui::RichText::new(cut_label).strong().size(10.5).color(cut_fg)).fill(cut_bg))
+                            .on_hover_text(crate::i18n::t("Klipp/dela regionen på exakt denna tidpunkt"))
+                            .clicked() {
+                                do_split = true;
+                            }
+
+                        // Copy
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Kopiera (Ctrl+C)")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(30, 60, 95)))
+                            .on_hover_text(crate::i18n::t("Kopiera detta sample till urklipp"))
+                            .clicked() {
+                                do_copy = true;
+                            }
+
+                        // Paste (if clipboard has region)
+                        if has_copied {
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("📋 Klistra in ({}) (Ctrl+V)", copied_name)).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(35, 85, 125)))
+                                .on_hover_text(crate::i18n::t("Klistra in kopierat sample vid spelhuvudet på aktivt spår"))
+                                .clicked() {
+                                    do_paste = true;
+                                }
+                        }
+
+                        // Duplicate
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Duplicera (Ctrl+D)")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(35, 75, 115)))
+                            .on_hover_text(crate::i18n::t("Duplicera samplen direkt efter den nuvarande"))
+                            .clicked() {
+                                do_duplicate = true;
+                            }
+
+                        // Loop x2 / x4
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Loop x2 (Ctrl+L)")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(20, 85, 100)))
+                            .on_hover_text(crate::i18n::t("Repetera och fördubbla loop-längden"))
+                            .clicked() {
+                                do_loop_factor = Some(2.0);
+                            }
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Loop x4")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(18, 75, 90)))
+                            .on_hover_text(crate::i18n::t("Repetera samplen 4 gånger i följd"))
+                            .clicked() {
+                                do_loop_factor = Some(4.0);
+                            }
+
+                        // Reverse
+                        let rev_label = if is_rev { crate::i18n::t("🔄 Normal (Framlänges)") } else { crate::i18n::t("🔄 Vänd baklänges (Reverse)") };
+                        let rev_bg = if is_rev { Theme::FL_ORANGE } else { Color32::from_rgb(70, 45, 90) };
+                        if ui.add(egui::Button::new(egui::RichText::new(rev_label).strong().size(10.5).color(Color32::WHITE)).fill(rev_bg))
+                            .on_hover_text(crate::i18n::t("Spela upp ljudregionen baklänges i realtid (Ctrl+K / R)"))
+                            .clicked() {
+                                do_reverse = true;
+                            }
+
+                        // Klippets temoläge (Fas 8.10 steg 2): sträcks med bevarad
+                        // tonhöjd (standard) eller bandspelaren (undantaget).
+                        let tape_label = if is_tape {
+                            crate::i18n::t("📼 Bandspelare")
+                        } else {
+                            crate::i18n::t("🎚 Sträcks (bevarad tonhöjd)")
+                        };
+                        let tape_bg = if is_tape { Theme::FL_ORANGE } else { Color32::from_rgb(30, 48, 44) };
+                        if ui
+                            .add(egui::Button::new(egui::RichText::new(tape_label).strong().size(10.5).color(Color32::WHITE)).fill(tape_bg))
+                            .on_hover_text(crate::i18n::t(
+                                "Standard: klippet sträcks med bevarad tonhöjd när tempot ändras (tonhöjden står still). Bandspelarläget låter tonhöjden följa med — det är en effekt, inte standarden.",
+                            ))
+                            .clicked()
+                        {
+                            do_tape = true;
+                        }
+
+                        // Mute toggle
+                        let mute_bg = if r.muted { Theme::FL_ORANGE } else { Color32::from_rgb(32, 38, 48) };
+                        if ui.add(egui::Button::new(egui::RichText::new(if r.muted { "🔇 Mutad" } else { "🔊 Aktiv" }).strong().size(10.5).color(Color32::WHITE)).fill(mute_bg)).clicked() {
+                            r.muted = !r.muted;
+                        }
+
+                        // Save to Sound Browser
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara i Sound Browser")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(32, 95, 80)))
+                            .on_hover_text(crate::i18n::t("Spara denna ljudregion som sample i Sound Browser & på disk"))
+                            .clicked() {
+                                do_save_sample = true;
+                            }
+
+                        // Open Stem Focus Editor
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔍 Öppna Stämeditor")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(140, 70, 20))).clicked() {
+                            do_open_focus = true;
+                        }
+
+                        // Open in Vocal Studio
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Öppna i Sångstudio")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(40, 90, 120)))
+                            .on_hover_text(crate::i18n::t("Ladda in detta sample/region i Sångstudion för isolerad provspelning, pitch, time stretch & effekter"))
+                            .clicked() {
+                                do_open_vocal_studio = true;
+                            }
+
+                        // Delete
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🗑 Ta bort (Del)")).strong().size(10.5).color(Color32::WHITE)).fill(Color32::from_rgb(160, 40, 40))).clicked() {
+                            do_delete = true;
+                        }
+
+                        // Close Inspector
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("❌ Stäng")).size(10.0))).clicked() {
+                            self.selected_audio_region = None;
+                        }
+                    });
+                });
+
+                if do_open_focus {
+                    self.open_stem_focus(t_idx);
+                } else if do_open_vocal_studio {
+                    self.open_region_in_vocal_studio(t_idx, r_idx);
+                } else if do_copy {
+                    self.copy_selected_region();
+                } else if do_paste {
+                    self.paste_region();
+                } else if let Some(factor) = do_loop_factor {
+                    self.repeat_selected_region_loop(factor);
+                } else if do_save_sample {
+                    self.save_region_to_sound_browser(t_idx, r_idx);
+                } else if do_reverse {
+                    self.reverse_selected_region();
+                } else if do_tape {
+                    self.toggle_region_tape(t_idx, r_idx);
+                } else if do_delete {
+                    self.delete_selected_region();
+                } else if do_duplicate {
+                    self.duplicate_selected_region();
+                } else if do_split {
+                    self.split_selected_region_at_playhead();
+                } else {
+                    self.sync_track_regions(t_idx);
+                }
+            }
+    }
 }

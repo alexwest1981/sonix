@@ -10,3 +10,6 @@ imported_stems/
 
 # Arbetsanteckningar för pågående pass — vår handoff, inte projektets dokumentation
 NEXT-SESSION.md
+
+# Python-cachar från verktygen i tools/ (module_split.py importeras av skript)
+__pycache__/
