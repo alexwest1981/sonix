@@ -51,6 +51,7 @@ mod tests {
 
         let (program, args_mac) = file_manager_command("macos", &dir);
         assert_eq!(program, "open");
+        assert_eq!(args_mac, vec!["/home/alex/Music/Sonix".to_string()]);
 
         // Ett namn med mellanslag ska vara ETT argument, inte två.
         let spaced = PathBuf::from("/home/alex/Mina Filer/Sonix");

@@ -343,10 +343,92 @@ impl AutomationParam {
 }
 
 /// A single breakpoint on an automation curve.
+///
+/// **Positionen är i takter** (Fas 8.2), inte sekunder: en punkt hör till en plats i musiken.
+/// Med ett enda tempo är det ingen skillnad, men efter ett tempobyte är takten den enda form
+/// som är rätt — och sekunder-per-takt är inte ett tal över ett byte. Filformen skiljer sig
+/// från den här typen: se [`AutomationPointOnDisk`], som också kan läsa gamla projekt.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct AutomationPoint {
-    pub time_secs: f32,
+    pub time_bars: f32,
     pub value: f32,
+}
+
+/// **Hur en punkt ser ut i en fil** — och varför den är en egen typ.
+///
+/// Projekt skrivna före Fas 8.2 har `time_secs`. Att bara byta namn på fältet hade fått en
+/// gammal fil att läsas som *noll* takter (ett saknat fält med `#[serde(default)]` är tyst),
+/// alltså hela kurvan hopklämd på takt 0 utan ett ord om saken. Därför bär filformen **båda**
+/// namnen, och formen avgör vad som gäller: `time_bars` läses rakt av, `time_secs` räknas om
+/// **genom tempokartan** när projektet har laddats (kartan behövs för omräkningen och finns
+/// inte i filen).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AutomationPointOnDisk {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_bars: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_secs: Option<f32>,
+    pub value: f32,
+}
+
+/// Filformen av en lane. Se [`AutomationPointOnDisk`].
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct AutomationLaneOnDisk {
+    pub param: AutomationParam,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub points: Vec<AutomationPointOnDisk>,
+}
+
+impl AutomationLaneOnDisk {
+    /// Räknar om en lane från fil till den levande formen.
+    ///
+    /// `tempo` är **projektets** tempokarta, alltså den som gäller när projektet är laddat —
+    /// det är därför det här steget ligger vid inläsningen och inte i `Deserialize`.
+    /// En punkt som redan står i takter rörs inte; en gammal punkt räknas om via kartan, så
+    /// att den hamnar på samma **ställe i musiken** som den lät på när den skrevs.
+    pub fn to_live(&self, tempo: &crate::audio::tempo::TempoMap) -> AutomationLane {
+        let points = self
+            .points
+            .iter()
+            .map(|p| AutomationPoint {
+                time_bars: match (p.time_bars, p.time_secs) {
+                    // Nya filer: rakt av.
+                    (Some(bars), _) => bars,
+                    // Gamla filer: sekunder genom kartan. Det är en *flytt*, inte en gissning.
+                    (None, Some(secs)) => tempo.bar_at_secs(secs as f64) as f32,
+                    // Varken eller (en handskriven fil): takt 0 är den enda ärliga tolkningen.
+                    (None, None) => 0.0,
+                },
+                value: p.value,
+            })
+            .collect();
+        AutomationLane {
+            param: self.param,
+            enabled: self.enabled,
+            points,
+        }
+    }
+}
+
+impl AutomationLane {
+    /// Skriver en lane till filformen: punkterna i **takter** (det nya formatet), sorterade.
+    pub fn to_disk(&self) -> AutomationLaneOnDisk {
+        AutomationLaneOnDisk {
+            param: self.param,
+            enabled: self.enabled,
+            points: self
+                .points
+                .iter()
+                .map(|p| AutomationPointOnDisk {
+                    time_bars: Some(p.time_bars),
+                    time_secs: None,
+                    value: p.value,
+                })
+                .collect(),
+        }
+    }
 }
 
 /// One automated parameter for a track. Points are kept sorted by time.
@@ -360,25 +442,29 @@ pub struct AutomationLane {
 }
 
 impl AutomationLane {
-    /// Linearly interpolated value at `t`; constant before the first and after
-    /// the last point. `None` when the lane has no points.
-    pub fn value_at(&self, t: f32) -> Option<f32> {
+    /// Linearly interpolated value at **`bar`** (Fas 8.2); constant before the first and
+    /// after the last point. `None` when the lane has no points.
+    ///
+    /// Argumentet är en takt, inte en sekund — samma typ, olika enhet, och därför inget som
+    /// kompilatorn kan vakta. Anroparen konverterar spelhuvudets sekunder **en gång** via
+    /// tempokartan (se `apply_automation`).
+    pub fn value_at(&self, bar: f32) -> Option<f32> {
         if self.points.is_empty() {
             return None;
         }
         let first = &self.points[0];
-        if t <= first.time_secs {
+        if bar <= first.time_bars {
             return Some(first.value);
         }
         let last = self.points.last().unwrap();
-        if t >= last.time_secs {
+        if bar >= last.time_bars {
             return Some(last.value);
         }
         for w in self.points.windows(2) {
             let (a, b) = (&w[0], &w[1]);
-            if t >= a.time_secs && t <= b.time_secs {
-                let span = (b.time_secs - a.time_secs).max(1e-6);
-                let f = (t - a.time_secs) / span;
+            if bar >= a.time_bars && bar <= b.time_bars {
+                let span = (b.time_bars - a.time_bars).max(1e-6);
+                let f = (bar - a.time_bars) / span;
                 return Some(a.value + (b.value - a.value) * f);
             }
         }
@@ -387,8 +473,8 @@ impl AutomationLane {
 
     fn sort_points(&mut self) {
         self.points.sort_by(|a, b| {
-            a.time_secs
-                .partial_cmp(&b.time_secs)
+            a.time_bars
+                .partial_cmp(&b.time_bars)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
     }
@@ -1143,7 +1229,7 @@ pub struct SavedTrackData {
     #[serde(default)]
     pub delay_send: f32,
     #[serde(default)]
-    pub automation: Vec<AutomationLane>,
+    pub automation: Vec<AutomationLaneOnDisk>,
     /// Sub-mix bus assignment (Fas 5.2). Defaults to bus 0 for old projects.
     #[serde(default)]
     pub bus: usize,
@@ -1940,7 +2026,7 @@ pub struct PreloadedTrackData {
     pub comp_ratio: f32,
     pub reverb_send: f32,
     pub delay_send: f32,
-    pub automation: Vec<AutomationLane>,
+    pub automation: Vec<AutomationLaneOnDisk>,
     pub bus: usize,
     pub vca: Option<usize>,
     /// Sidokedja (Fas 8.3), med i förinläsningen så att ett laddat projekt
@@ -5835,7 +5921,10 @@ impl SonixApp {
             comp_ratio: t.comp_ratio,
             reverb_send: t.reverb_send,
             delay_send: t.delay_send,
-            automation: t.automation.clone(),
+            // Punkterna skrivs i **takter** (Fas 8.2). Gamla projekt läses genom
+            // `AutomationLaneOnDisk::to_live`, så en fil som redan är skriven behåller sitt
+            // innehåll — men nya filer bär bara takter, och bara en gång.
+            automation: t.automation.iter().map(|l| l.to_disk()).collect(),
             bus: t.bus,
             vca: t.vca,
             sidechain_from: t.sidechain_from,
@@ -6340,7 +6429,16 @@ impl SonixApp {
             loaded_track.comp_ratio = st.comp_ratio;
             loaded_track.reverb_send = st.reverb_send;
             loaded_track.delay_send = st.delay_send;
-            loaded_track.automation = st.automation;
+            // **Omräkningen sker här** (Fas 8.2), inte i `Deserialize`: en punkt skriven i
+            // sekunder kan bara bli rätt takt med tempokartan, och kartan finns inte i filen.
+            // Projektets eget tempo är laddat vid det här laget, så en gammal kurva hamnar på
+            // samma ställe i musiken som den lät på.
+            let tempo = self.tempo_map();
+            loaded_track.automation = st
+                .automation
+                .iter()
+                .map(|l| l.to_live(&tempo))
+                .collect();
             loaded_track.bus = st.bus.min(crate::audio::synth::NUM_BUSES - 1);
             loaded_track.vca = st.vca.filter(|&v| v < crate::audio::synth::NUM_VCAS);
             // Sidokedjan får bara peka på ett spår som finns — ett sparat projekt
@@ -6924,7 +7022,12 @@ impl SonixApp {
         if !self.is_playing {
             return;
         }
-        let t = self.song_time;
+        // **Automationen utvärderas i takter** (Fas 8.2): punkterna hör till en plats i
+        // musiken, och spelhuvudets sekunder blir en takt först genom tempokartan. Det här är
+        // ett av de ställen kompilatorn inte kan vakta — `value_at` tar en `f32` hur som
+        // helst, och sekunder hade sett precis lika rimliga ut. Konverteringen står därför
+        // ensam och uttryckligt, en gång, utanför loopen.
+        let bar = self.tempo_map().bar_at_secs(self.song_time as f64) as f32;
         for ti in 0..self.playlist_tracks.len() {
             let mut target = [f32::NAN; 4];
             {
@@ -6933,7 +7036,7 @@ impl SonixApp {
                     if !lane.enabled {
                         continue;
                     }
-                    if let Some(v) = lane.value_at(t) {
+                    if let Some(v) = lane.value_at(bar) {
                         let (lo, hi) = lane.param.range();
                         target[lane.param.index()] = v.clamp(lo, hi);
                     }
@@ -7015,7 +7118,6 @@ impl SonixApp {
         // **Tempokartan, inte ett enda tempo** (Fas 8.2 steg 3): lanens punkter ligger i
         // sekunder (om automation ska flytta med tempot är en öppen fråga), men *ritningen*
         // måste veta var i tiden en takt ligger — annars hamnar punkterna fel efter ett byte.
-        tempo: &crate::audio::tempo::TempoMap,
         track_idx: usize,
     ) {
         let param = self.automation_param;
@@ -7023,7 +7125,9 @@ impl SonixApp {
         let span = (hi - lo).max(1e-6);
         let val_to_y = |v: f32| rect.max.y - ((v - lo) / span).clamp(0.0, 1.0) * rect.height();
         let y_to_val = |y: f32| lo + ((rect.max.y - y) / rect.height()).clamp(0.0, 1.0) * span;
-        let sec_to_x = |s: f32| rect.min.x + tempo.bar_at_secs(s as f64) as f32 * bar_w;
+        // Punkterna ligger i **takter**, så ritningen behöver ingen omräkning: x är takten
+        // gånger taktbredden. Före Fas 8.2 gick den här vägen via sekunder och kartan.
+        let bar_to_x = |b: f32| rect.min.x + b * bar_w;
 
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, Rounding::same(4.0), Color32::from_rgb(11, 14, 19));
@@ -7063,28 +7167,28 @@ impl SonixApp {
                 painter.line_segment(
                     [
                         Pos2::new(rect.min.x, val_to_y(first.value)),
-                        Pos2::new(sec_to_x(first.time_secs), val_to_y(first.value)),
+                        Pos2::new(bar_to_x(first.time_bars), val_to_y(first.value)),
                     ],
                     Stroke::new(2.0_f32, Theme::FL_CYAN),
                 );
                 for w in lane.points.windows(2) {
                     painter.line_segment(
                         [
-                            Pos2::new(sec_to_x(w[0].time_secs), val_to_y(w[0].value)),
-                            Pos2::new(sec_to_x(w[1].time_secs), val_to_y(w[1].value)),
+                            Pos2::new(bar_to_x(w[0].time_bars), val_to_y(w[0].value)),
+                            Pos2::new(bar_to_x(w[1].time_bars), val_to_y(w[1].value)),
                         ],
                         Stroke::new(2.0_f32, Theme::FL_CYAN),
                     );
                 }
                 painter.line_segment(
                     [
-                        Pos2::new(sec_to_x(last.time_secs), val_to_y(last.value)),
+                        Pos2::new(bar_to_x(last.time_bars), val_to_y(last.value)),
                         Pos2::new(rect.max.x, val_to_y(last.value)),
                     ],
                     Stroke::new(2.0_f32, Theme::FL_CYAN),
                 );
                 for (pi, p) in lane.points.iter().enumerate() {
-                    let c = Pos2::new(sec_to_x(p.time_secs), val_to_y(p.value));
+                    let c = Pos2::new(bar_to_x(p.time_bars), val_to_y(p.value));
                     let dragging = self.automation_drag == Some((track_idx, li, pi));
                     painter.circle_filled(
                         c,
@@ -7102,7 +7206,7 @@ impl SonixApp {
                 // takten, inte ett antal sekunder, och sekunder-per-takt är inte ett tal över
                 // ett tempobyte. Sekunden hämtas ur kartan **en gång efteråt**.
                 let raw_bar = ((pos.x - rect.min.x) / bar_w).max(0.0);
-                let sec = tempo.secs_at_bar(snap_bar(self.timeline_snap_mode, raw_bar) as f64) as f32;
+                let bar = snap_bar(self.timeline_snap_mode, raw_bar);
                 let val = y_to_val(pos.y).clamp(lo, hi);
                 let li = match lane_idx {
                     Some(li) => li,
@@ -7116,9 +7220,9 @@ impl SonixApp {
                     }
                 };
                 let lane = &mut self.playlist_tracks[track_idx].automation[li];
-                lane.points.push(AutomationPoint { time_secs: sec, value: val });
+                lane.points.push(AutomationPoint { time_bars: bar, value: val });
                 lane.sort_points();
-                self.status_message = crate::tstatus!("📈 Automation: la till punkt ({:.2}s, {:.2})", sec, val);
+                self.status_message = crate::tstatus!("📈 Automation: la till punkt (takt {:.2}, {:.2})", bar, val);
             }
         }
 
@@ -7129,7 +7233,7 @@ impl SonixApp {
                     let mut best = None;
                     let mut best_d = 14.0_f32;
                     for (pi, p) in pts.iter().enumerate() {
-                        let c = Pos2::new(sec_to_x(p.time_secs), val_to_y(p.value));
+                        let c = Pos2::new(bar_to_x(p.time_bars), val_to_y(p.value));
                         let d = c.distance(pos);
                         if d < best_d {
                             best_d = d;
@@ -7151,14 +7255,14 @@ impl SonixApp {
                 // takten, inte ett antal sekunder, och sekunder-per-takt är inte ett tal över
                 // ett tempobyte. Sekunden hämtas ur kartan **en gång efteråt**.
                 let raw_bar = ((pos.x - rect.min.x) / bar_w).max(0.0);
-                let sec = tempo.secs_at_bar(snap_bar(self.timeline_snap_mode, raw_bar) as f64) as f32;
+                let bar = snap_bar(self.timeline_snap_mode, raw_bar);
                 let val = y_to_val(pos.y).clamp(lo, hi);
                 if let Some(p) = self.playlist_tracks[track_idx]
                     .automation
                     .get_mut(li)
                     .and_then(|l| l.points.get_mut(pi))
                 {
-                    p.time_secs = sec;
+                    p.time_bars = bar;
                     p.value = val;
                 }
             }
@@ -7181,7 +7285,7 @@ impl SonixApp {
                     let mut best = None;
                     let mut best_d = 14.0_f32;
                     for (pi, p) in pts.iter().enumerate() {
-                        let c = Pos2::new(sec_to_x(p.time_secs), val_to_y(p.value));
+                        let c = Pos2::new(bar_to_x(p.time_bars), val_to_y(p.value));
                         let d = c.distance(pos);
                         if d < best_d {
                             best_d = d;
@@ -12716,7 +12820,7 @@ impl SonixApp {
                                 let sel = self.selected_timeline_track.min(self.playlist_tracks.len() - 1);
                                 let auto_h = 96.0;
                                 let (auto_rect, auto_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, auto_h), Sense::click_and_drag());
-                                self.render_automation_lane(ui, auto_rect, &auto_resp, bar_w, &tempo, sel);
+                                self.render_automation_lane(ui, auto_rect, &auto_resp, bar_w, sel);
                                 auto_bottom = auto_rect.max.y;
                             }
 
@@ -20706,8 +20810,8 @@ mod tests {
             param: AutomationParam::Volume,
             enabled: true,
             points: vec![
-                AutomationPoint { time_secs: 0.0, value: 0.0 },
-                AutomationPoint { time_secs: 10.0, value: 1.0 },
+                AutomationPoint { time_bars: 0.0, value: 0.0 },
+                AutomationPoint { time_bars: 10.0, value: 1.0 },
             ],
         };
         assert_eq!(lane.value_at(-1.0), Some(0.0));
@@ -20724,14 +20828,75 @@ mod tests {
         assert_eq!(empty.value_at(1.0), None);
     }
 
+    /// **Migrationen, mätt på en fil som den ser ut.** Ett projekt skrivet före Fas 8.2 har
+    /// `time_secs`. Läses det utan omräkning hamnar hela kurvan på takt 0 — tyst, för ett
+    /// saknat fält är tyst. Provet läser en riktig gammal JSON och kräver att punkterna hamnar
+    /// på samma ställe i *musiken* som de lät på.
+    #[test]
+    fn an_old_project_moves_its_automation_points_through_the_tempo_map() {
+        let old = r#"[{"param":"Volume","enabled":true,"points":[
+            {"time_secs":8.0,"value":0.5},{"time_secs":16.0,"value":1.0}]}]"#;
+        let on_disk: Vec<AutomationLaneOnDisk> = serde_json::from_str(old).unwrap();
+        // 120 BPM i 4/4: en takt är två sekunder, så 8 s = takt 4 och 16 s = takt 8.
+        let tempo = crate::audio::tempo::TempoMap::single(120.0);
+        let live = on_disk[0].to_live(&tempo);
+        assert_eq!(live.points.len(), 2, "punkter tappades i migrationen");
+        assert!((live.points[0].time_bars - 4.0).abs() < 1e-3, "{:?}", live.points);
+        assert!((live.points[1].time_bars - 8.0).abs() < 1e-3, "{:?}", live.points);
+        assert!((live.points[0].value - 0.5).abs() < 1e-6);
+    }
+
+    /// **Provet som är hela skälet till bytet.** Ett projekt med ett tempobyte: sekunder och
+    /// takter är inte längre samma sak, och en punkt som står i sekunder hamnar fel i musiken.
+    /// Här: 120 BPM fram till takt 4, sedan 60 (fyra sekunder per takt).
+    #[test]
+    fn a_tempo_change_separates_seconds_from_bars() {
+        let old = r#"[{"param":"Pan","points":[{"time_secs":10.0,"value":0.25}]}]"#;
+        let on_disk: Vec<AutomationLaneOnDisk> = serde_json::from_str(old).unwrap();
+        let tempo = crate::audio::tempo::TempoMap::from_points(vec![
+            crate::audio::tempo::TempoPoint { start_bar: 0, bpm: 120.0 },
+            crate::audio::tempo::TempoPoint { start_bar: 4, bpm: 60.0 },
+        ]);
+        let live = on_disk[0].to_live(&tempo);
+        // Takt 0–4 är 2 s styck (8 s), sedan 4 s per takt: 10 s är en halv takt in i takt 4.
+        assert!(
+            (live.points[0].time_bars - 4.5).abs() < 1e-2,
+            "10 s blev takt {} i stället för 4,5",
+            live.points[0].time_bars
+        );
+    }
+
+    /// Nya filer bär `time_bars` och **inte** `time_secs` — annars hade nästa läsning räknat
+    /// om en punkt som redan står rätt, och felet hade vuxit för varje sparande.
+    #[test]
+    fn a_new_project_writes_bars_and_not_seconds() {
+        let lane = AutomationLane {
+            param: AutomationParam::Volume,
+            enabled: true,
+            points: vec![
+                AutomationPoint { time_bars: 2.5, value: 0.4 },
+                AutomationPoint { time_bars: 7.0, value: 0.9 },
+            ],
+        };
+        let json = serde_json::to_string(&lane.to_disk()).unwrap();
+        assert!(json.contains("time_bars"), "{json}");
+        assert!(!json.contains("time_secs"), "{json}");
+        // Och den läses tillbaka exakt.
+        let back: AutomationLaneOnDisk = serde_json::from_str(&json).unwrap();
+        let live = back.to_live(&crate::audio::tempo::TempoMap::single(120.0));
+        assert_eq!(live.points.len(), 2);
+        assert!((live.points[0].time_bars - 2.5).abs() < 1e-6);
+        assert!((live.points[1].time_bars - 7.0).abs() < 1e-6);
+    }
+
     #[test]
     fn test_automation_lane_serde_roundtrip() {
         let lane = AutomationLane {
             param: AutomationParam::ReverbSend,
             enabled: true,
             points: vec![
-                AutomationPoint { time_secs: 1.5, value: 0.25 },
-                AutomationPoint { time_secs: 4.0, value: 0.9 },
+                AutomationPoint { time_bars: 1.5, value: 0.25 },
+                AutomationPoint { time_bars: 4.0, value: 0.9 },
             ],
         };
         let json = serde_json::to_string(&lane).unwrap();

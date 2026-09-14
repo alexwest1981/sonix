@@ -1549,6 +1549,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🎙️ Realtids-Auto-Tune" => "🎙️ Real-time Auto-Tune",
         "Korrigerar mikrofonen i realtid mot vald skala (styrka = AUTO-TUNE-ratten)" => "Corrects the microphone in real time toward the selected scale (strength = the AUTO-TUNE knob)",
         "📈 Automation: PÅ" => "📈 Automation: ON",
+        "📈 Automation: la till punkt (takt {:.2}, {:.2})" => "📈 Automation: added point (bar {:.2}, {:.2})",
         "📈 Automation: AV" => "📈 Automation: OFF",
         "Visa/redigera automationskurvor för valt spår. Vänsterklicka i kurvan för att lägga till punkter, dra för att flytta, högerklicka för att ta bort." => "Show/edit automation curves for the selected track. Left-click the curve to add points, drag to move, right-click to delete.",
         "Automationskurvor: {}" => "Automation curves: {}",

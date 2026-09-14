@@ -77,7 +77,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | :--- | :--- | :---: | :--- | :--- |
 | 1 | **8.3 Routing på riktigt** | *M* | **Klar 2026-09-13**: sidokedjor (`09-12`), bussar/VCA (`09-12`), sends mellan spår (`09-13`) | — |
 | 2 | **8.4 Sampler** | *M* | **Klar 2026-09-13**: looplägen, not-av, ADSR och export — se stycket nedan | — |
-| 3 | **8.2 Tempo map** | *S–M* | **Visningen klar 2026-09-13** (46 användningar genom kartan, `snap_bar` som enda snäppregel); kvar: automation-punkterna i sekunder (förslag: takter) och GUI-kvittensen | — |
+| 3 | **8.2 Tempo map** | *S–M* | **Klar 2026-09-14**: visningen genom kartan (`snap_bar` som enda snäppregel) och **automationens punkter i takter** med migrering av gamla projekt genom kartan. Kvar: Alex' ögon på tempopunkt-UI:t | Alex' kvittens |
 | 4 | **7.1 Windows-porten** | *XL* | **Steg 1–8 klara 2026-09-14**: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`) på alla plattformar**. Kvar: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Lånad Windows-laptop |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
@@ -618,6 +618,39 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     att ett mappnamn med mellanslag blir **ett** argument. `explorer` avslutar med **1 även när
     den lyckas** — dokumenterat beteende — så anroparen tittar på om *starten* gick igenom och
     aldrig på slutkoden; annars hade en fungerande knapp rapporterat fel.
+  - **Steg 4 klart (2026-09-14) — automationens punkter är takter, och gamla projekt flyttas:**
+    Beslutet var mitt att fatta (Alex delegerar när researchen är gjord) och industristandarden är
+    entydig: Abletons automation ligger i slag, och ett projekt vars klipp är taktbaserade men vars
+    automation är sekundbaserad är den udda kombinationen. Rekommendationen från förra passet är
+    alltså genomförd.
+    - **Filformen är en egen typ, och det är inte kosmetika.** Att bara byta namn på fältet hade
+      fått en **gammal fil att läsas som noll takter** — ett saknat fält med `#[serde(default)]` är
+      *tyst*, så hela kurvan hade klämt ihop sig på takt 0 utan ett ord. Därför bär
+      `AutomationPointOnDisk` **båda** namnen: `time_bars` läses rakt av, `time_secs` räknas om
+      **genom tempokartan**. Nya filer skriver bara `time_bars` — annars hade nästa läsning räknat
+      om en punkt som redan stod rätt, och felet vuxit för varje sparande.
+    - **Omräkningen sker vid inläsningen, inte i `Deserialize`:** kartan behövs för den, och kartan
+      finns inte i filen. Den ligger därför i loopen som gör en laddad fil levande, med projektets
+      eget tempo (som är laddat vid det laget). Det är en **flytt, inte en gissning**: en gammal
+      kurva hamnar på samma ställe i musiken som den lät på.
+    - **Tre prov, varav ett är hela skälet till bytet:** en gammal JSON läses och kräver takt 4 och
+      8 för 8 och 16 sekunder vid 120 BPM; ett projekt **med tempobyte** (120 → 60 i takt 4) kräver
+      att 10 s blir takt 4,5 och inte 5 — där sekunder och takter inte längre är samma sak; och en
+      ny fil får inte innehålla `time_secs`.
+    - **Felet kompilatorn inte kunde vakta:** `apply_automation` skickade spelhuvudets **sekunder**
+      till `value_at`, som nu vill ha **takter**. Samma typ, olika enhet — det hade kompilerat och
+      varit tyst fel. Konverteringen står nu ensam och uttryckligt, en gång, utanför loopen, med
+      kommentaren som säger varför. **Det är den här sortens fel som en migrering kostar om man
+      litar på kompilatorn.**
+    - **Att inkopplingen inte kan bli fel är typernas förtjänst:** en `Vec<AutomationLaneOnDisk>`
+      går inte att tilldela en `Vec<AutomationLane>`, så förväxlingen är omöjlig snarare än
+      frånvarande. Det är därför två typer är värda sitt underhåll här.
+    - **Varningen som var kvittensen igen:** när punkterna blev takter behövdes inte längre
+      tempokartan i lanens ritning — `tempo` blev oanvänd och togs bort, och ritningen är nu
+      `bar * bar_w` rakt av. **Kvar att veta:** en riktig fil med punkter har inte sparats och
+      lästs tillbaka här (testet finns på *regeln*, och typkedjan är kompilerad) — det är en
+      kvittens värd att ta när ett projekt med automation finns i handen.
+
   - **Steg 8 klart (2026-09-14) — MIDI-in är EN väg, `midir`, på alla plattformar:**
     Modulen hade två implementationer: ALSA-sequencern på Linux och `midir` utanför. Bara den
     första användes, och skillnaden var inte bara teknisk — ALSA-vägen **skapade en port**
@@ -799,13 +832,7 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
       `snap_time_secs` är **borta** — varningen "aldrig använd" var beviset för att inget ställe
       snäpper i sekunder längre. Det är samma regel som tidlinjen redan fick: steget är en plats
       i takten, och sekunden hämtas ur kartan **efteråt**.
-    - **Automation-lanen** ritas nu genom kartan (sekunder↔x), så punkterna hamnar rätt efter ett
-      byte. Men punkterna **lagras fortfarande i sekunder**, och där står den öppna frågan kvar:
-      ska automation flytta med tempot? **Rekommendation, om Alex vill ha ett beslut:** ja — flytta
-      punkterna till **takter**, som klippen (Ableton gör det, och ett projekt vars klipp är
-      taktbaserade men vars automation är sekundbaserad är den udda kombinationen). Det är en
-      `#[serde(default)]`-migrering som räknar om punkterna **genom kartan** vid inläsning, alltså
-      inget som tappas — men det är ett eget pass.
+    - ~~**Automation-lanen:** punkterna i sekunder~~ — **klart 2026-09-14, se nedan.**
     - **Kvar, och det är Alex kvittens:** tempopunkt-UI:t (⏱ i transportraden, högerklick på
       linjalen) har aldrig kötts i ett fönster — samma sorts kvittens som 6.2, 6.4, 6.5 och 7.4
       väntar på. **Ingen av visningsändringarna är GUI-verifierad**, och det ska stå så tills

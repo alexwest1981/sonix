@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 462 default / 508 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 465 default / 511 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -364,6 +364,22 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
+
+## 4h. 8.2 stängd: automationen är takter (2026-09-14)
+
+- **Filformen är en egen typ.** Att bara byta namn på `time_secs` hade fått en gammal fil att
+  läsas som **noll takter** — tyst, för ett saknat fält med `#[serde(default)]` är tyst. Nu bär
+  `AutomationPointOnDisk` båda namnen och `time_secs` räknas om genom kartan vid inläsning.
+  Nya filer skriver bara `time_bars`.
+- **Omräkningen sker vid inläsningen** (kartan finns inte i filen), med projektets eget tempo.
+- **Provet som är hela skälet:** ett projekt **med tempobyte** (120 → 60 i takt 4) kräver att
+  10 s blir takt 4,5. Utan byte är sekunder och takter samma sak och felet osynligt.
+- **Varningen var kvittensen igen:** tempokartan behövdes inte längre i lanens ritning.
+- **Läxan att bära med:** `apply_automation` skickade sekunder till en funktion som ville ha
+  takter — **samma typ, olika enhet**, alltså inget kompilatorn kan vakta. Vid varje
+  enhetsbyte: leta upp *anroparen* och konvertera en gång, uttryckligt, med en kommentar.
+- **Kvar:** en riktig projektfil med automation har inte sparats och lästs tillbaka (regeln är
+  testad, typkedjan kompilerad — men den kvittensen är värd att ta).
 
 ## 4g. MIDI-in blev EN väg (2026-09-14)
 
