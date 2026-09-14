@@ -78,7 +78,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 1 | **8.3 Routing på riktigt** | *M* | **Klar 2026-09-13**: sidokedjor (`09-12`), bussar/VCA (`09-12`), sends mellan spår (`09-13`) | — |
 | 2 | **8.4 Sampler** | *M* | **Klar 2026-09-13**: looplägen, not-av, ADSR och export — se stycket nedan | — |
 | 3 | **8.2 Tempo map** | *S–M* | **Visningen klar 2026-09-13** (46 användningar genom kartan, `snap_bar` som enda snäppregel); kvar: automation-punkterna i sekunder (förslag: takter) och GUI-kvittensen | — |
-| 4 | **7.1 Windows-porten** | *XL* | **Steg 1–7 klara 2026-09-14**: `--selftest` (mäter ljudtråd + MIDI), plattformens egna kataloger, filhanterare per plattform. Kvar: `midir` för MIDI-in, och kvittensen på en riktig maskin | Lånad Windows-laptop |
+| 4 | **7.1 Windows-porten** | *XL* | **Steg 1–8 klara 2026-09-14**: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`) på alla plattformar**. Kvar: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Lånad Windows-laptop |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** (slagen hittas, slicekarta, sparas i projektfilen); kvar: nudge, per-slice-fade och dump till steg/piano roll | — |
@@ -587,10 +587,11 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
       ett mätfel drar förhållandet nedåt (en trög tråd är felet vi letar efter).
     - **Att något hörs.** Toppen på mastern läses **medan** en trumma slås — en topp som läses
       efteråt har klingat av och skulle säga "tyst" om ett fungerande ljud.
-    - **MIDI-delen är ärlig i stället för grön:** på Linux hittades **5 riktiga portar** i
-      körningen här; på Windows svarar stubben med sitt skäl och raden blir `➖` (inte mätbar),
-      aldrig `✅`. Porten till `midir` står kvar som punkt 2 nedan, och tills den är gjord ska
-      testet inte låtsas något annat.
+    - **MIDI-delen mäts nu på alla plattformar** (se steg 8). När steget skrevs listade
+      Linux-vägen **5 portar** — men en efterkontroll med `aconnect -l` visade att de var
+      ALSA:s systemklienter (`Timer`, `Announce`) och **PipeWires två infrastrukturklienter**,
+      alltså *inte* klaviaturer. Formuleringen "5 riktiga portar" var för generös och är
+      rättad här: listan var fem **läsbara** portar, varav ingen var ett klaviatur.
     - **Fönsterlöst med flit** (ingen egui), och utskriften slutar med det som *inte* är mätt:
       att fönstret ritas, att transporten startar och att markören rör sig. Det kan bara en
       människa se, och det står separat i stället för att blandas in i siffrorna.
@@ -617,6 +618,30 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     att ett mappnamn med mellanslag blir **ett** argument. `explorer` avslutar med **1 även när
     den lyckas** — dokumenterat beteende — så anroparen tittar på om *starten* gick igenom och
     aldrig på slutkoden; annars hade en fungerande knapp rapporterat fel.
+  - **Steg 8 klart (2026-09-14) — MIDI-in är EN väg, `midir`, på alla plattformar:**
+    Modulen hade två implementationer: ALSA-sequencern på Linux och `midir` utanför. Bara den
+    första användes, och skillnaden var inte bara teknisk — ALSA-vägen **skapade en port**
+    ("Sonix MIDI In") som användaren själv måste koppla sin klaviatur till (`aconnect`), medan
+    `midir`-vägen **ansluter till varje in-port** som finns. Den färdiga vägen låg alltså och
+    väntade på Windows, och den var den bättre av de två.
+    - **Vad som gjordes:** `midir` flyttades från ett Windows-beroende till ett allmänt, och
+      ALSA-grenen ströks. På Linux *är* `midir` fortfarande ALSA-sequencern under huven, så
+      inget byts ut mot något sämre — det som försvinner är en andra implementation att hålla
+      levande, `cfg`-grenar som bara en plattform kunde pröva, och en instruktion som bara var
+      sann för den ena. **Klaviaturen fungerar nu utan `aconnect`.**
+    - **Bytet är bevisat i körning, inte i ett commit-meddelande:** `--selftest` skriver
+      portlistan i back-endens eget format. Före: `14:0 Midi Through Port-0` (ALSA-läsarens
+      format). Efter: `Midi Through:Midi Through Port-0 14:0` (`midir`s). Samma port, ny väg.
+    - **Och listan blev kortare, vilket är rätt:** efterkontrollen med `aconnect -l` visade att
+      de fyra andra "portarna" var ALSA:s systemklienter och PipeWires infrastruktur — `midir`
+      listar bara portar som faktiskt är MIDI. Färre rader, och ingen av dem var en klaviatur.
+    - **Gränssnittet följde med:** "🔌 Anslut MIDI (ALSA Seq)" heter nu "🔌 Anslut MIDI",
+      statusraden säger att klaviaturen ansluts automatiskt, och `aconnect`-tipset är borta —
+      det var sant för den gamla vägen och blev fel i den nya. MCU-texten står kvar: MCU *är*
+      fortfarande ALSA-seq (nästa punkt).
+    - **CI:s Windows-jobb får en ny uppgift av det här:** samma MIDI-kod kompileras nu på båda
+      plattformarna, så en grön Linux-körning säger något om Windows-vägen också — det var
+      precis vad två implementationer omöjliggjorde.
   - **Receptet för en lånad Windows-maskin (det som återstår av kriteriet):**
     1. Hämta artefakten från senaste gröna körningen: Actions → jobbet
        `cargo check + build (Windows, Fas 7.1)` → **Artifacts** → `sonix-windows` (eller
@@ -635,7 +660,7 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     1. **Köra den på en riktig Windows-maskin.** Artifacten + `--selftest` gör den delen till en
        mätning; kvar att göra är att faktiskt låna maskinen (Alex 2026-09-14: "kanske kan låna en
        laptop"). Det är den enda delen av kriteriet som ingen automatisk mätning kan svara på: en runner har varken skärm eller ljudenhet, så "startar, spelar upp ljud och tar emot MIDI" kräver en riktig dator. Artefakten laddas upp av CI och hämtas med `gh run download <run-id> -n sonix-windows` (Alex: "kanske senare"). Den här delen står alltså kvar tills vidare — inget påstående görs om att den är uppfylld.
-    2. **Porta MIDI-in till `midir`** i stället för ALSA-seq, så att stubbarna kan ersättas av en riktig implementation även på Windows/macOS. **Det här är den enda kvarvarande portningen** (steg 6 och 7 är klara), och den är avsiktligt inte gjord än: den skriver om ~885 rader fungerande ALSA-seq-kod (MIDI-klaviatur + MCU), och roadmapens ordning sätter kvittensen på en riktig maskin **före** en omskrivning av en väg som fungerar. Tills den är gjord skriver `--selftest` rakt ut att MIDI-in är en stubbe på icke-Linux.
+    2. ~~**Porta MIDI-in till `midir`**~~ — **klart 2026-09-14** (steg 8). Klaviaturen går genom `midir` på alla plattformar. **Kvar av MIDI är MCU-kontrollen** (`hardware_control.rs`, ~490 rader ALSA-seq): den skulle kunna portas på samma sätt, men den kan **inte verifieras här** — ingen MCU-kontroll finns inkopplad, och en blind omskrivning av en fungerande väg är precis vad det här repot inte gör. Den väntar därför på en riktig enhet (och på Windows-kvittensen).
     3. ~~**`paths.rs`:** XDG-layout med `$HOME`-fallback~~ — **klart 2026-09-14** (steg 6): `%APPDATA%`/`%LOCALAPPDATA%` som ren funktion med prov.
     4. ~~**`xdg-open`**~~ — **klart 2026-09-14** (steg 7): `src/platform.rs`, `explorer`/`open`/`xdg-open`, med `explorer`-fällan noterad.
     5. **Plugin-GUI:t** (X11) är undantaget i kriteriet. `plugin-host`-featuren har en `compile_error!` som säger att den är Linux-only i stället för att falla på `libc`/X11.

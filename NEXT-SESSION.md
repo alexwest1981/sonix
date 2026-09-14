@@ -365,6 +365,26 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
 
+## 4g. MIDI-in blev EN väg (2026-09-14)
+
+- Modulen hade **två** implementationer: ALSA-sequencern (Linux, användes) och `midir`
+  (övriga, färdig men oanvänd). Den senare var den **bättre**: ALSA-vägen krävde att
+  användaren själv kopplade klaviaturen med `aconnect`, `midir`-vägen ansluter automatiskt
+  till alla in-portar. Att "porta" var alltså att låta Linux byta **till** den färdiga vägen
+  och stryka den andra — inte att skriva nytt.
+- **Bevisa bytet i körning:** `--selftest` skriver portlistan i back-endens format. Före
+  `14:0 Midi Through Port-0` (ALSA), efter `Midi Through:Midi Through Port-0 14:0` (`midir`).
+  Samma port, ny väg — och det syns utan att läsa ett enda commit-meddelande.
+- **Den kortare listan var rätt:** efterkontroll med `aconnect -l` visade att fyra av de fem
+  "portarna" var ALSA:s systemklienter och PipeWires infrastruktur. `midir` listar bara
+  riktiga MIDI-portar.
+- **Gränssnittet är en del av porten:** `aconnect`-tipset, knapptexten "(ALSA Seq)" och
+  statusraden var sanna för den gamla vägen och blev fel i den nya. Leta efter dem varje gång
+  en väg byts — texten är inte kosmetika, den är en instruktion som blir osann.
+- **Kvar:** MCU-kontrollen (`hardware_control.rs`) är fortfarande ALSA-seq. Den kan portas
+  likadant, men **kan inte verifieras här** (ingen MCU inkopplad) — och en blind omskrivning av
+  en fungerande väg är inte vad det här repot gör.
+
 ## 4f. Windows-porten: steg 5–7 (2026-09-14)
 
 - **`sonix --selftest`** mäter det CI inte kan: ljudenheten öppnas (med appens egna

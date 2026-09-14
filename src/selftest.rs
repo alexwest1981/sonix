@@ -16,10 +16,10 @@
 //! 3. **Något hörs.** Toppen på mastern läses medan en trumma slås, så "spelar upp ljud" blir
 //!    ett tal och inte en förhoppning.
 //!
-//! MIDI-delen är **ärlig i stället för grön**: i den här versionen finns MIDI-in bara på Linux
-//! (ALSA-sequencern), och på andra plattformar svarar en stubbe varför. Utfallet skriver det
-//! rakt ut — porten till `midir` är nästa steg i roadmapen, och tills den är gjord ska testet
-//! inte låtsas något annat.
+//! **MIDI-delen mäts på alla plattformar** sedan Fas 7.1 gick över till `midir` (se
+//! `audio/midi_input.rs`): samma backend överallt, och listan hämtas färsk så att en klaviatur
+//! som kopplas in mitt i en session syns. Att inga portar hittas är **inte** ett underkänt —
+//! det kan helt enkelt inte sitta något inkopplat — och raden blir då `➖` i stället för `✅`.
 //!
 //! **Fönsterlöst med flit:** ingen egui, ingen skärm. Det som bara en människa kan se står sist
 //! i utskriften, tydligt åtskilt från det som är mätt.
@@ -247,8 +247,10 @@ pub fn run() -> Result<(), String> {
         Ok(keyboard) => {
             let ports = keyboard.device_list();
             if ports.is_empty() {
-                println!("  portar:     inga hittades");
-                checks.push(Check::Note("MIDI-in: inga portar hittades".to_string()));
+                println!("  portar:     inga hittades (inget inkopplat)");
+                checks.push(Check::Note(
+                    "MIDI-in: inga portar hittades (inget inkopplat)".to_string(),
+                ));
             } else {
                 for port in &ports {
                     println!("  port:       {port}");
@@ -257,8 +259,8 @@ pub fn run() -> Result<(), String> {
             }
         }
         Err(e) => {
-            // Stubben svarar med sitt skäl — det skrivs ut som det är, för det är sanningen
-            // om den här plattformen i den här versionen.
+            // Att MIDI-lagret inte gick att starta är ett riktigt fel (drivrutin, behörighet)
+            // och skrivs ut som det är i stället för att tigas bort.
             println!("  ⚠ {e}");
             checks.push(Check::Note(format!("MIDI-in: {e}")));
         }

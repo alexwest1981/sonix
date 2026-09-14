@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**63 moduler · 67373 rader kod · 19 med status · 44 utan.**
+**63 moduler · 67257 rader kod · 19 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,7 +15,7 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 22167 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 77 (+1 ign) |  |
+| `src/ui/app.rs` | 22168 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 77 (+1 ign) |  |
 | `src/audio/synth.rs` | 3441 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 96 | 46 |  |
 | `src/i18n.rs` | 2512 | fryst — nycklar på engelska, texter på svenska | 1336 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
@@ -55,9 +55,8 @@
 | `src/audio/plugin_gui.rs` | 462 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
 | `src/autosave.rs` | 430 | — | 42 | 10 | Autosave, versionsrotation och kraschåterställning (Fas 6.1).  |
 | `src/ui/add_track_modal.rs` | 428 | — | 1 | 0 |  |
-| `src/audio/midi_input.rs` | 394 | — | 2 | 10 |  |
 | `src/audio/loudness.rs` | 358 | — | 1 | 5 | Loudness measurement and normalization (ITU-R BS.1770 / EBU R128).  |
-| `src/selftest.rs` | 351 | — | 1 | 4 | **Självtestet** (Fas 7.1) — den del av Windows-kriteriet som ingen CI-mätning kan svara på.  |
+| `src/selftest.rs` | 353 | — | 1 | 4 | **Självtestet** (Fas 7.1) — den del av Windows-kriteriet som ingen CI-mätning kan svara på.  |
 | `src/ui/tuner_modal.rs` | 351 | — | 1 | 0 |  |
 | `src/audio/spectrum.rs` | 335 | ny (8.13) — toppradens nivå- och registermätare | 9 | 7 (+2 ign) | Registret i utgången — vilka frekvensband som bär energi — och mätarskalan (8.13).  |
 | `src/audio/scale.rs` | 323 | stabil (8.11) — en tabell och ett index för tonarten | 18 | 8 | Tonarter: **en** tabell och **ett** index (Alex' kvittens 2026-09-12).  |
@@ -65,6 +64,7 @@
 | `src/audio/dither.rs` | 296 | — | 5 | 8 | Dither vid kvantisering till fast punkt (Fas 6.5).  |
 | `src/ui/song_structure_modal.rs` | 295 | — | 1 | 0 |  |
 | `src/audio/wav_reader.rs` | 283 | — | 4 | 3 |  |
+| `src/audio/midi_input.rs` | 275 | — | 2 | 10 | **MIDI-klaviatur in — en väg, `midir`, på alla plattformar** (Fas 7.1).  |
 | `src/ui/ai_assistant_view.rs` | 260 | — | 1 | 0 |  |
 | `src/main.rs` | 253 | — | 0 | 0 |  |
 | `src/audio/drum.rs` | 252 | — | 5 | 3 |  |
@@ -133,7 +133,7 @@
 - **Publika ingångar:** `id3v2_span`, `id3v1_offset`, `riff_metadata_spans`, `riff_has_audio`, `carries_provenance`, `CleanPlan`, `removed_bytes`, `removes_anything`, `plan_clean`, `TagReport`, `scan`, `strip_tags`
 
 ### `src/audio/midi_input.rs`
-- **Publika ingångar:** `note_to_roll_offset`, `MidiKeyboardInput`, `control_events_from_midi`, `connect`, `received`, `device_list`, `connect`, `received`, `device_list`
+- **Publika ingångar:** `note_to_roll_offset`, `MidiKeyboardInput`, `control_events_from_midi`, `connect`, `received`, `device_list`
 
 ### `src/audio/neural_separator.rs`
 - **Publika ingångar:** `DEMUCS_SAMPLE_RATE`, `DEFAULT_SEGMENT_SECONDS`, `DEFAULT_OVERLAP_SECONDS`, `NUM_SOURCES`, `NUM_CHANNELS`, `MODEL_ENV`, `MODEL_FILE_NAMES`, `model_dirs`, `find_model_in`, `find_model`, `model_status`, `is_available` … (+7)

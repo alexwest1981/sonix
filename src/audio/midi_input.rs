@@ -1,18 +1,23 @@
-#[cfg(target_os = "linux")]
-use std::ffi::CString;
+//! **MIDI-klaviatur in — en väg, `midir`, på alla plattformar** (Fas 7.1).
+//!
+//! Modulen hade två implementationer: ALSA-sequencern på Linux, `midir` utanför. Bara den
+//! första användes i praktiken, och skillnaden var inte bara teknisk:
+//!
+//! - ALSA-vägen **skapade en port** ("Sonix MIDI In") som användaren själv måste koppla sin
+//!   klaviatur till — `aconnect` eller en patchbay, och instruktionen stod i gränssnittet.
+//! - `midir`-vägen **ansluter till varje in-port** som finns. Klaviaturen fungerar utan ett
+//!   enda handgrepp.
+//!
+//! Den andra vägen låg färdig och väntade på Windows. Nu finns **en** väg och den används
+//! överallt: på Linux är `midir` fortfarande ALSA-sequencern under huven, så inget byts ut mot
+//! något sämre — det som försvinner är en andra implementation att hålla levande, `cfg`-grenar
+//! som bara en plattform kunde pröva, och en instruktion som bara var sann för den ena.
+//!
+//! `control_events_from_midi` är ren och prövad: den tolkar **bytes**, inte plattformar.
+
 use std::sync::atomic::{AtomicUsize, Ordering};
-#[cfg(target_os = "linux")]
-use std::sync::atomic::AtomicBool;
 use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex};
-#[cfg(target_os = "linux")]
-use std::thread::JoinHandle;
-// Tråden och dess sömn hör till ALSA-läsaren: på andra plattformar finns ingen
-// tråd, så importerna ska inte ligga där heller (annars varnar bygget).
-#[cfg(target_os = "linux")]
-use std::thread;
-#[cfg(target_os = "linux")]
-use std::time::Duration;
 
 use super::hardware_control::ControlEvent;
 
@@ -45,41 +50,28 @@ pub fn note_to_roll_offset(note: u8, base: u8, rows: usize) -> Option<usize> {
     }
 }
 
-/// Real MIDI keyboard input over the ALSA sequencer.
+/// MIDI-klaviatur in över `midir`.
 ///
-/// Opens an input port named "Sonix MIDI In". External keyboards connect to it
-/// (e.g. with `aconnect`), and every note on/off is forwarded as a
-/// [`ControlEvent::MidiNote`] so the app can play and record it.
+/// Varje in-port som hittas öppnas och kopplas till en egen anslutning, och varje note-on/off
+/// skickas vidare som [`ControlEvent::MidiNote`] så att appen kan spela och spela in den.
+/// Att inga portar finns är **inte** ett fel: klaviaturen kan kopplas in senare, och
+/// `device_list` frågar efter den aktuella listan varje gång.
 pub struct MidiKeyboardInput {
     pub event_count: Arc<AtomicUsize>,
     pub devices: Arc<Mutex<Vec<String>>>,
-    /// Stoppflaggan hör till lästråden, som bara finns i ALSA-vägen.
-    #[cfg(target_os = "linux")]
-    running: Arc<AtomicBool>,
-    /// ALSA-vägen läser i en egen tråd …
-    #[cfg(target_os = "linux")]
-    join: Option<JoinHandle<()>>,
-    /// … medan midir anropar tillbaka från sin egen kö. Anslutningarna måste
-    /// hållas vid liv så länge vi vill ta emot något: att släppa dem kopplar ner.
-    ///
-    /// Fältet läses aldrig — det finns för sin livstid, inte för sitt värde.
-    /// Det ska stå uttryckligt, annars varnar Windows-bygget för död kod (och
-    /// den varningen fångades av CI, inte av mig: Linux kompilerar inte den här
-    /// vägen alls).
-    #[cfg(not(target_os = "linux"))]
+    /// Anslutningarna måste hållas vid liv så länge vi vill ta emot något: att släppa dem
+    /// kopplar ner. Fältet **läses aldrig** — det finns för sin livstid, inte för sitt värde.
+    /// Det ska stå uttryckligt, annars varnar bygget för död kod. Den varningen fångades av
+    /// CI:s Windows-jobb när vägen bara kompilerades där: Linux såg den aldrig.
     #[allow(dead_code, reason = "bär anslutningarna för sin livstid; att släppa dem kopplar ner")]
     connections: Vec<midir::MidiInputConnection<()>>,
 }
 
 /// Tolkar en MIDI-messages bytes som appens kontrollhändelser.
 ///
-/// Ren funktion utan plattformsberoenden, så att den kan prövas i CI på Linux
-/// även om den bara anropas av midir-vägen. Bara noter blir händelser — samma
-/// mappning som ALSA-läsaren gör (`velocity == 0` på note-on betyder note-off).
-#[cfg_attr(
-    target_os = "linux",
-    allow(dead_code, reason = "anropas av midir-backenden; Linux-läsaren får färdigtolkade ALSA-händelser")
-)]
+/// Ren funktion utan plattformsberoenden. Bara noter blir händelser: CC, pitch bend,
+/// aftertouch, programbyte och systemmeddelanden (0xF0 och uppåt, som har olika längd) lämnas.
+/// `velocity == 0` på note-on betyder note-off — vanligt bland klaviaturer.
 pub fn control_events_from_midi(bytes: &[u8]) -> Vec<ControlEvent> {
     let Some(&status) = bytes.first() else {
         return Vec::new();
@@ -104,15 +96,12 @@ pub fn control_events_from_midi(bytes: &[u8]) -> Vec<ControlEvent> {
     }]
 }
 
-#[cfg(not(target_os = "linux"))]
 impl MidiKeyboardInput {
-    /// Öppnar alla MIDI-in-portar midir hittar och kopplar var och en till en
-    /// egen anslutning. Varje anslutning får sin egen `MidiInput`, eftersom
-    /// `connect` tar över instansen.
+    /// Öppnar alla MIDI-in-portar som hittas och kopplar var och en till en egen anslutning.
+    /// Varje anslutning får sin egen `MidiInput`, eftersom `connect` tar över instansen.
     ///
-    /// Att inga portar finns är **inte** ett fel: klaviaturen kan kopplas in
-    /// senare, och då hittas den av `device_list`. Bara ett fel som hindrar
-    /// själva starten rapporteras.
+    /// Att inga portar finns är **inte** ett fel: klaviaturen kan kopplas in senare, och då
+    /// hittas den av `device_list`. Bara ett fel som hindrar själva starten rapporteras.
     pub fn connect(tx: Sender<ControlEvent>) -> Result<Self, String> {
         let event_count = Arc::new(AtomicUsize::new(0));
         let probe = midir::MidiInput::new("Sonix Keys")
@@ -146,8 +135,8 @@ impl MidiKeyboardInput {
             }
         }
 
-        // Att ingen port kunde öppnas är ett fel värt att visa; att det inte
-        // fanns någon port alls är det inte.
+        // Att ingen port kunde öppnas är ett fel värt att visa; att det inte fanns någon port
+        // alls är det inte.
         if connections.is_empty() && !failures.is_empty() {
             return Err(format!("Kunde inte öppna MIDI-in: {}", failures.join(", ")));
         }
@@ -163,9 +152,9 @@ impl MidiKeyboardInput {
         self.event_count.load(Ordering::Relaxed)
     }
 
-    /// Listan hämtas färsk varje gång: midir ser aktuella portar när en ny
-    /// `MidiInput` skapas, så en klaviatur som kopplas in mitt i en session
-    /// dyker upp utan omstart. Går det inte att fråga behålls den senaste listan.
+    /// Listan hämtas färsk varje gång: `midir` ser aktuella portar när en ny `MidiInput`
+    /// skapas, så en klaviatur som kopplas in mitt i en session dyker upp utan omstart.
+    /// Går det inte att fråga behålls den senaste listan.
     pub fn device_list(&self) -> Vec<String> {
         match midir::MidiInput::new("Sonix Keys") {
             Ok(input) => port_names(&input),
@@ -178,120 +167,12 @@ impl MidiKeyboardInput {
     }
 }
 
-#[cfg(not(target_os = "linux"))]
 fn port_names(input: &midir::MidiInput) -> Vec<String> {
     input
         .ports()
         .iter()
         .map(|p| input.port_name(p).unwrap_or_else(|_| "?".to_string()))
         .collect()
-}
-
-#[cfg(target_os = "linux")]
-impl MidiKeyboardInput {
-    pub fn connect(tx: Sender<ControlEvent>) -> Result<Self, String> {
-        use alsa::seq::{PortCap, PortType, Seq};
-
-        let seq = Seq::open(None, Some(alsa::Direction::Capture), true)
-            .map_err(|e| format!("Kunde inte öppna ALSA-sequencer: {}", e))?;
-        seq.set_client_name(&CString::new("Sonix Keys").unwrap())
-            .map_err(|e| e.to_string())?;
-        seq.create_simple_port(
-            &CString::new("Sonix MIDI In").unwrap(),
-            PortCap::WRITE | PortCap::SUBS_WRITE,
-            PortType::MIDI_GENERIC | PortType::APPLICATION,
-        )
-        .map_err(|e| format!("Kunde inte skapa MIDI-in-port: {}", e))?;
-
-        let devices = Arc::new(Mutex::new(Self::list_devices(&seq)));
-        let event_count = Arc::new(AtomicUsize::new(0));
-        let running = Arc::new(AtomicBool::new(true));
-
-        let running_t = running.clone();
-        let count_t = event_count.clone();
-        let devices_t = devices.clone();
-        let join = thread::spawn(move || {
-            use alsa::seq::{EventType, EvNote};
-            let mut input = seq.input();
-            let mut refresh = 0u32;
-            while running_t.load(Ordering::Relaxed) {
-                match input.event_input() {
-                    Ok(ev) => {
-                        let etype = ev.get_type();
-                        if (etype == EventType::Noteon || etype == EventType::Noteoff)
-                            && let Some(n) = ev.get_data::<EvNote>()
-                        {
-                            let on = etype == EventType::Noteon && n.velocity > 0;
-                            count_t.fetch_add(1, Ordering::Relaxed);
-                            let _ = tx.send(ControlEvent::MidiNote {
-                                note: n.note,
-                                velocity: n.velocity,
-                                on,
-                            });
-                        }
-                    }
-                    Err(_) => thread::sleep(Duration::from_millis(4)),
-                }
-                refresh += 1;
-                if refresh >= 250 {
-                    refresh = 0;
-                    if let Ok(mut d) = devices_t.lock() {
-                        *d = Self::list_devices(&seq);
-                    }
-                }
-            }
-        });
-
-        Ok(Self {
-            event_count,
-            devices,
-            running,
-            join: Some(join),
-        })
-    }
-
-    fn list_devices(seq: &alsa::seq::Seq) -> Vec<String> {
-        use alsa::seq::{ClientIter, PortCap, PortIter};
-        let own = seq.client_id().unwrap_or(-1);
-        let mut out = Vec::new();
-        for client in ClientIter::new(seq) {
-            let cid = client.get_client();
-            if cid == own {
-                continue;
-            }
-            for port in PortIter::new(seq, cid) {
-                let caps = port.get_capability();
-                let can_read = caps.contains(PortCap::READ) || caps.contains(PortCap::SUBS_READ);
-                if can_read {
-                    out.push(format!(
-                        "{}:{} {}",
-                        cid,
-                        port.get_port(),
-                        port.get_name().unwrap_or("?")
-                    ));
-                }
-            }
-        }
-        out
-    }
-
-    pub fn received(&self) -> usize {
-        self.event_count.load(Ordering::Relaxed)
-    }
-
-    pub fn device_list(&self) -> Vec<String> {
-        self.devices.lock().map(|d| d.clone()).unwrap_or_default()
-    }
-}
-
-#[cfg(target_os = "linux")]
-impl Drop for MidiKeyboardInput {
-    fn drop(&mut self) {
-        self.running.store(false, Ordering::Relaxed);
-        if let Some(j) = self.join.take() {
-            let _ = j.join();
-        }
-    }
 }
 
 #[cfg(test)]

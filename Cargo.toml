@@ -40,15 +40,17 @@ libc = { version = "0.2", optional = true }
 # ALSA är Linux-only: MIDI-klaviatur och MCU tar emot noter via ALSA-sequencern
 # (Fas 7.1). Beroendet ligger därför bara på Linux, så att kratet kan byggas och
 # checkas på andra plattformar — där svarar i stället stubbarna i
-# `midi_input.rs` och `hardware_control.rs` med ett begripligt fel.
+# `hardware_control.rs` (MCU) med ett begripligt fel. MIDI-klaviaturen gick över till
+# `midir` i Fas 7.1 och behöver inte längre den här grenen.
+
+# **MIDI-in på alla plattformar** (Fas 7.1). Windows: WinMM, macOS: CoreMIDI, Linux:
+# ALSA-sequencern — samma backend som den Linux-specifika vägen använde, så inget byts
+# ut mot något sämre. Att välja bort en andra implementation är hela poängen: med en
+# väg försvinner de `cfg`-grenar som bara en av dem kunde prövas i.
+midir = "0.11"
 [target.'cfg(target_os = "linux")'.dependencies]
 alsa = "0.9"
 
-# Utanför Linux är midir MIDI-backenden (Windows: WinMM, macOS: CoreMIDI). På
-# Linux finns ALSA-seq-vägen redan och är den som används — midir blir den
-# plattformsoberoende backenden, precis som Fas 7.1 beskrev.
-[target.'cfg(not(target_os = "linux"))'.dependencies]
-midir = "0.11"
 
 # **Dev-beroende med avsikt:** `signalsmith-stretch` (MIT) prövades som renderingsmotor för
 # tidsskalningen (Fas 8.10 steg 2) och **förlorade domen** mot vår egen WSOLA — den smetar

@@ -8791,7 +8791,7 @@ impl SonixApp {
             self.midi_note_count = midi.received();
             let devices = midi.device_list();
             self.midi_device_name = if devices.is_empty() {
-                crate::i18n::t("Sonix MIDI In (väntar – anslut med aconnect)").to_string()
+                crate::i18n::t("Ingen MIDI-klaviatur hittad (koppla in en)").to_string()
             } else {
                 devices.join(", ")
             };
@@ -8939,7 +8939,8 @@ impl eframe::App for SonixApp {
             .to_string();
         }
         // Auto-open the MIDI keyboard input port once, so external keyboards
-        // work as soon as they are connected with `aconnect`.
+        // work as soon as the app is opened — alla in-portar ansluts automatiskt (Fas 7.1:
+        // den gamla ALSA-vägen krävde `aconnect`, midir-vägen gör det själv).
         if !self.midi_auto_connect_attempted {
             self.midi_auto_connect_attempted = true;
             if let Ok(midi) = MidiKeyboardInput::connect(self.control_tx.clone()) {
@@ -15911,11 +15912,11 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                                 self.midi_held_notes.clear();
                                 self.status_message = crate::i18n::t("MIDI-klaviatur frånkopplad.").to_string();
                             }
-                        } else if ui.button(crate::i18n::t("🔌 Anslut MIDI (ALSA Seq)")).clicked() {
+                        } else if ui.button(crate::i18n::t("🔌 Anslut MIDI")).clicked() {
                             match MidiKeyboardInput::connect(self.control_tx.clone()) {
                                 Ok(m) => {
                                     self.midi_input = Some(m);
-                                    self.status_message = crate::i18n::t("✔ MIDI-in-port öppnad. Anslut ett klaviatur med 'aconnect'.").to_string();
+                                    self.status_message = crate::i18n::t("✔ MIDI-in öppnad — klaviaturen ansluts automatiskt.").to_string();
                                 }
                                 Err(e) => {
                                     self.status_message = crate::tstatus!("⚠ Kunde inte öppna MIDI-in: {}", e);
@@ -15940,7 +15941,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                         self.begin_new_take();
                     }
                     }
-                    ui.label(egui::RichText::new(crate::i18n::t("Tips: koppla ihop porten med 'aconnect <klaviatur> 'Sonix Keys:0'' och aktivera läget i Piano Roll.")).size(9.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Tips: klaviaturen ansluts automatiskt. Hittas den inte: koppla in den och anslut igen.")).size(9.5).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(8.0);
