@@ -43,6 +43,18 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+/// Standardkatalogerna för en plattform, som [`Paths::platform_defaults`] räknar fram.
+/// Fälten är baser — appens eget katalognamn (`sonix`) läggs på av `*_dir()`-metoderna.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PlatformDefaults {
+    pub config: Option<PathBuf>,
+    pub data: Option<PathBuf>,
+    pub state: Option<PathBuf>,
+    pub cache: Option<PathBuf>,
+    pub music: Option<PathBuf>,
+    pub downloads: Option<PathBuf>,
+}
+
 /// Katalognamnet under XDG-baskatalogerna (`~/.config/sonix` osv).
 pub const APP_DIR: &str = "sonix";
 
@@ -83,7 +95,10 @@ pub fn expand_tilde(path: &str) -> PathBuf {
 }
 
 fn home_dir() -> Option<PathBuf> {
+    // `HOME` på Unix, `USERPROFILE` på Windows (`HOME` sätts ofta av Git Bash, men inte av
+    // Windows självt — att bara titta på `HOME` hade gett `None` i en vanlig uppstart).
     std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from)
         .filter(|p| !p.as_os_str().is_empty())
 }
@@ -147,28 +162,92 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// Bygger sökvägarna från miljön: `SONIX_*` → `XDG_*` → `user-dirs.dirs` →
-    /// `$HOME`-standardvärden.
+    /// Bygger sökvägarna från miljön: `SONIX_*` → `XDG_*` → plattformens egna
+    /// standardkataloger (se [`platform_defaults`]).
+    ///
+    /// **`SONIX_CONFIG_DIR`/`SONIX_DATA_DIR`/`SONIX_STATE_DIR`/`SONIX_CACHE_DIR` läses
+    /// här.** De stod i modulhuvudet och vann inte över något: en dokumenterad överstyrning
+    /// som ingen läste. Det spelade roll för test, eftersom `env HOME=…` **inte** flyttar
+    /// config/state/cache när skalet exporterar `XDG_*` (vilket Hyprland-sessionen gör) —
+    /// då skrev en isolerad körning ändå i användarens riktiga `~/.local/state/sonix`.
     pub fn from_env() -> Self {
         let home = home_dir();
+        let defaults = Self::platform_defaults(
+            std::env::consts::OS,
+            home.as_deref(),
+            env_path("APPDATA").as_deref(),
+            env_path("LOCALAPPDATA").as_deref(),
+        );
         Self {
-            config_home: env_path("XDG_CONFIG_HOME")
-                .or_else(|| home.as_ref().map(|h| h.join(".config"))),
-            data_home: env_path("XDG_DATA_HOME")
-                .or_else(|| home.as_ref().map(|h| h.join(".local/share"))),
-            state_home: env_path("XDG_STATE_HOME")
-                .or_else(|| home.as_ref().map(|h| h.join(".local/state"))),
-            cache_home: env_path("XDG_CACHE_HOME")
-                .or_else(|| home.as_ref().map(|h| h.join(".cache"))),
+            config_home: env_path(ENV_CONFIG_DIR)
+                .or_else(|| env_path("XDG_CONFIG_HOME"))
+                .or(defaults.config),
+            data_home: env_path(ENV_DATA_DIR)
+                .or_else(|| env_path("XDG_DATA_HOME"))
+                .or(defaults.data),
+            state_home: env_path(ENV_STATE_DIR)
+                .or_else(|| env_path("XDG_STATE_HOME"))
+                .or(defaults.state),
+            cache_home: env_path(ENV_CACHE_DIR)
+                .or_else(|| env_path("XDG_CACHE_HOME"))
+                .or(defaults.cache),
             music_dir: env_path("XDG_MUSIC_DIR")
                 .or_else(|| user_dir_from_user_dirs("XDG_MUSIC_DIR"))
-                .or_else(|| home.as_ref().map(|h| h.join("Music"))),
+                .or(defaults.music),
             downloads_dir: env_path("XDG_DOWNLOAD_DIR")
                 .or_else(|| user_dir_from_user_dirs("XDG_DOWNLOAD_DIR"))
-                .or_else(|| home.as_ref().map(|h| h.join("Downloads"))),
+                .or(defaults.downloads),
             projects_override: env_path(ENV_PROJECTS_DIR),
             samples_override: env_path(ENV_SAMPLES_DIR),
             home,
+        }
+    }
+
+    /// **Plattformens egna standardkataloger** (Fas 7.1) — ren funktion, egen provsvit.
+    ///
+    /// XDG:s tre baser (config/data/state) har ingen motsvarighet på Windows, som har två:
+    /// `%APPDATA%` (följer användaren) och `%LOCALAPPDATA%` (maskinlokal). Appens egna
+    /// filer hamnar därför under `%APPDATA%\sonix` och `%LOCALAPPDATA%\sonix` — vilket är
+    /// exakt hur Windows-program brukar se ut, och skälet att den gamla `$HOME`-fallbacken
+    /// fungerade men var fel: den skrev i användarens hemkatalog på ett sätt inget annat
+    /// program där gör.
+    ///
+    /// Saknas `APPDATA`/`LOCALAPPDATA` (ovanligt men möjligt) faller vi tillbaka på
+    /// `%USERPROFILE%\AppData\…` hellre än att lämna sökvägen tom — en tom sökväg hade
+    /// blivit arbetskatalogen, och då skriver appen sina filer någonstans den inte äger.
+    pub fn platform_defaults(
+        os: &str,
+        home: Option<&Path>,
+        appdata: Option<&Path>,
+        localappdata: Option<&Path>,
+    ) -> PlatformDefaults {
+        let home = home.map(Path::to_path_buf);
+        let under_home = |rel: &str| home.as_ref().map(|h| h.join(rel));
+        if os == "windows" {
+            let roaming = appdata
+                .map(Path::to_path_buf)
+                .or_else(|| under_home("AppData/Roaming"));
+            let local = localappdata
+                .map(Path::to_path_buf)
+                .or_else(|| under_home("AppData/Local"))
+                .or_else(|| roaming.clone());
+            PlatformDefaults {
+                config: roaming.clone(),
+                data: local.clone(),
+                state: local.clone(),
+                cache: local,
+                music: under_home("Music"),
+                downloads: under_home("Downloads"),
+            }
+        } else {
+            PlatformDefaults {
+                config: under_home(".config"),
+                data: under_home(".local/share"),
+                state: under_home(".local/state"),
+                cache: under_home(".cache"),
+                music: under_home("Music"),
+                downloads: under_home("Downloads"),
+            }
         }
     }
 
@@ -636,6 +715,47 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("tmp dir");
         dir
+    }
+
+    /// **Windows-katalogerna** (Fas 7.1): appen ska ligga där Windows-program ligger, inte i
+    /// användarens hemkatalog. Inställningarna i `%APPDATA%` (de följer användaren), resten i
+    /// `%LOCALAPPDATA%` — och musik/nedladdningar under hemkatalogen.
+    #[test]
+    fn windows_uses_its_own_directories() {
+        let home = Path::new("C:/Users/Alex");
+        let roaming = Path::new("C:/Users/Alex/AppData/Roaming");
+        let local = Path::new("C:/Users/Alex/AppData/Local");
+        let d = Paths::platform_defaults("windows", Some(home), Some(roaming), Some(local));
+        assert_eq!(d.config.as_deref(), Some(roaming));
+        assert_eq!(d.data.as_deref(), Some(local));
+        assert_eq!(d.state.as_deref(), Some(local));
+        assert_eq!(d.cache.as_deref(), Some(local));
+        assert_eq!(d.music, Some(home.join("Music")));
+        assert_eq!(d.downloads, Some(home.join("Downloads")));
+    }
+
+    /// Utan `APPDATA`/`LOCALAPPDATA` faller Windows tillbaka på **hemkatalogen**, inte på en
+    /// tom sökväg: en tom sökväg blir arbetskatalogen, och då skriver appen sina filer
+    /// någonstans den inte äger.
+    #[test]
+    fn windows_without_appdata_falls_back_to_the_home_directory() {
+        let home = Path::new("C:/Users/Alex");
+        let d = Paths::platform_defaults("windows", Some(home), None, None);
+        assert_eq!(d.config, Some(home.join("AppData/Roaming")));
+        assert_eq!(d.data, Some(home.join("AppData/Local")));
+    }
+
+    /// **Linux är oförändrat** — det är hela poängen med att porta: XDG-vägen får inte röras,
+    /// och ett prov som bara tittar på Windows hade inte sett om den gjorde det.
+    #[test]
+    fn unix_keeps_the_xdg_layout() {
+        let home = Path::new("/home/alex");
+        let d = Paths::platform_defaults("linux", Some(home), None, None);
+        assert_eq!(d.config, Some(home.join(".config")));
+        assert_eq!(d.data, Some(home.join(".local/share")));
+        assert_eq!(d.state, Some(home.join(".local/state")));
+        assert_eq!(d.cache, Some(home.join(".cache")));
+        assert_eq!(d.music, Some(home.join("Music")));
     }
 
     #[test]

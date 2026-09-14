@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**61 moduler · 66829 rader kod · 19 med status · 42 utan.**
+**63 moduler · 67373 rader kod · 19 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,7 +15,7 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 22166 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 77 (+1 ign) |  |
+| `src/ui/app.rs` | 22167 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 77 (+1 ign) |  |
 | `src/audio/synth.rs` | 3441 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 96 | 46 |  |
 | `src/i18n.rs` | 2512 | fryst — nycklar på engelska, texter på svenska | 1336 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
@@ -29,9 +29,9 @@
 | `src/ui/plugins_view.rs` | 1059 | — | 1 | 0 |  |
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
 | `src/audio/master_fx.rs` | 1016 | — | 5 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
+| `src/paths.rs` | 1008 | fryst — enda modulen som får bygga sökvägar | 46 | 14 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
 | `src/audio/plugin_sandbox.rs` | 945 | — | 9 | 8 | Out-of-process plugin sandbox (Fas 4.5a + 4.5b).  |
 | `src/audio/plugin_vst2.rs` | 908 | — | 4 | 9 | Minimal in-process **VST2** host (Fas 4.6c).  |
-| `src/paths.rs` | 888 | fryst — enda modulen som får bygga sökvägar | 45 | 11 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
 | `src/audio/stem_separator.rs` | 885 | stabil (8.5a) — separatorn skriver stämmorna till disk och minns var de ligger | 6 | 11 |  |
 | `src/audio/waveform.rs` | 851 | stabil — exakt hölje och flernivåcache (8.3) | 29 | 15 | Exakta vågformer: ett (min, max) per skärmpixel (Alex krav, Fas 8.3).  |
 | `src/ui/fx_rack_modal.rs` | 838 | — | 1 | 0 |  |
@@ -41,7 +41,7 @@
 | `src/ui/widgets.rs` | 734 | — | 4 | 0 |  |
 | `src/audio/ai_client.rs` | 715 | — | 8 | 8 |  |
 | `src/audio/smf.rs` | 706 | stabil — MIDI-export med tempobyten (8.2 steg 3) | 33 | 10 | Standard MIDI File (SMF) — skriv och läs `.mid` utan externa beroenden.  |
-| `src/audio/command.rs` | 631 | byggs — kommando-protokollet (AI-vägen) | 20 | 7 |  |
+| `src/audio/command.rs` | 631 | byggs — kommando-protokollet (AI-vägen) | 21 | 7 |  |
 | `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 49 | 12 | Tempokarta (Fas 8.2, steg 1).  |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/audio/onset.rs` | 583 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 33 | 14 (+1 ign) | Onset-detektering och slicekarta (Fas 8.7).  |
@@ -55,8 +55,9 @@
 | `src/audio/plugin_gui.rs` | 462 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
 | `src/autosave.rs` | 430 | — | 42 | 10 | Autosave, versionsrotation och kraschåterställning (Fas 6.1).  |
 | `src/ui/add_track_modal.rs` | 428 | — | 1 | 0 |  |
-| `src/audio/midi_input.rs` | 394 | — | 1 | 10 |  |
+| `src/audio/midi_input.rs` | 394 | — | 2 | 10 |  |
 | `src/audio/loudness.rs` | 358 | — | 1 | 5 | Loudness measurement and normalization (ITU-R BS.1770 / EBU R128).  |
+| `src/selftest.rs` | 351 | — | 1 | 4 | **Självtestet** (Fas 7.1) — den del av Windows-kriteriet som ingen CI-mätning kan svara på.  |
 | `src/ui/tuner_modal.rs` | 351 | — | 1 | 0 |  |
 | `src/audio/spectrum.rs` | 335 | ny (8.13) — toppradens nivå- och registermätare | 9 | 7 (+2 ign) | Registret i utgången — vilka frekvensband som bär energi — och mätarskalan (8.13).  |
 | `src/audio/scale.rs` | 323 | stabil (8.11) — en tabell och ett index för tonarten | 18 | 8 | Tonarter: **en** tabell och **ett** index (Alex' kvittens 2026-09-12).  |
@@ -65,14 +66,15 @@
 | `src/ui/song_structure_modal.rs` | 295 | — | 1 | 0 |  |
 | `src/audio/wav_reader.rs` | 283 | — | 4 | 3 |  |
 | `src/ui/ai_assistant_view.rs` | 260 | — | 1 | 0 |  |
-| `src/audio/drum.rs` | 252 | — | 4 | 3 |  |
-| `src/main.rs` | 243 | — | 0 | 0 |  |
+| `src/main.rs` | 253 | — | 0 | 0 |  |
+| `src/audio/drum.rs` | 252 | — | 5 | 3 |  |
 | `src/audio/effects.rs` | 216 | — | 5 | 4 |  |
 | `src/audio/envelope.rs` | 196 | — | 23 | 3 |  |
 | `src/ui/stem_view.rs` | 185 | — | 1 | 0 |  |
 | `src/audio/filter.rs` | 104 | — | 5 | 2 |  |
 | `src/audio/mod.rs` | 104 | — | 0 | 0 |  |
 | `src/rng.rs` | 82 | — | 2 | 4 | En liten deterministisk slumptalare (xorshift64\*).  |
+| `src/platform.rs` | 62 | — | 2 | 1 | **Plattformens egna sätt** (Fas 7.1) — det som skiljer sig utan att vara sökvägar.  |
 | `src/audio/wav_writer.rs` | 48 | — | 3 | 0 |  |
 | `src/ui/theme.rs` | 30 | — | 13 | 0 |  |
 | `src/ui/mod.rs` | 18 | — | 0 | 0 |  |
@@ -237,10 +239,16 @@
 ### `src/paths.rs`
 - **Status:** fryst — enda modulen som får bygga sökvägar
 - **Rör inte:** nya sökvägar läggs här, aldrig hos anroparen
-- **Publika ingångar:** `APP_DIR`, `LIBRARY_DIR`, `ENV_PROJECTS_DIR`, `ENV_SAMPLES_DIR`, `ENV_CONFIG_DIR`, `ENV_DATA_DIR`, `ENV_STATE_DIR`, `ENV_CACHE_DIR`, `expand_tilde`, `parse_user_dir`, `Paths`, `from_env` … (+47)
+- **Publika ingångar:** `PlatformDefaults`, `APP_DIR`, `LIBRARY_DIR`, `ENV_PROJECTS_DIR`, `ENV_SAMPLES_DIR`, `ENV_CONFIG_DIR`, `ENV_DATA_DIR`, `ENV_STATE_DIR`, `ENV_CACHE_DIR`, `expand_tilde`, `parse_user_dir`, `Paths` … (+49)
+
+### `src/platform.rs`
+- **Publika ingångar:** `file_manager_command`, `open_dir`
 
 ### `src/rng.rs`
 - **Publika ingångar:** `Rng`, `new`, `next_u64`, `next_f32`, `next_sym`
+
+### `src/selftest.rs`
+- **Publika ingångar:** `Check`, `ClockVerdict`, `clock_verdict`, `sound_was_heard`, `summary`, `run`
 
 ### `src/ui/add_track_modal.rs`
 - **Publika ingångar:** `AddTrackCategory`, `TrackTemplate`, `get_track_templates`, `AddTrackModalState`, `render_add_track_modal`
@@ -317,7 +325,9 @@ De här är inte klassade än. Lägg till en `//! Status:`-rad i modulen (och `/
 - `src/autosave.rs`
 - `src/main.rs`
 - `src/midi_take.rs`
+- `src/platform.rs`
 - `src/rng.rs`
+- `src/selftest.rs`
 - `src/ui/add_track_modal.rs`
 - `src/ui/ai_assistant_view.rs`
 - `src/ui/chord_generator_modal.rs`

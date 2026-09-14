@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 454 default / 500 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 462 default / 508 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -364,6 +364,27 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
+
+## 4f. Windows-porten: steg 5–7 (2026-09-14)
+
+- **`sonix --selftest`** mäter det CI inte kan: ljudenheten öppnas (med appens egna
+  inställningar), ljudtråden går i **realtid** (dess egen position mot väggklockan — en enhet
+  som öppnas men aldrig konsumerar ser likadan ut i varje annan mätning) och att en slagen
+  trumma når mastern. `clock_verdict` är ren med prov; för kort fönster ger *"inte mätt"*.
+  MIDI-delen är **ärlig, inte grön**: Linux hittade 5 riktiga portar, Windows säger stubbe
+  tills `midir`-porten är gjord.
+- **Sökvägarna** har plattformens egen layout (`%APPDATA%`/`%LOCALAPPDATA%`) som ren funktion
+  med prov — inklusive att **Linux är oförändrat**, för ett prov som bara tittar på Windows
+  hade inte sett om XDG-vägen rördes.
+- **Ett löfte blev sant:** `SONIX_CONFIG_DIR`/`DATA_DIR`/`STATE_DIR`/`CACHE_DIR` stod som
+  överstyrningar i modulhuvudet men lästes aldrig. Bevisat i körning efteråt: med
+  `SONIX_STATE_DIR=/tmp/…` flyttade tillståndet, medan konfigurationen blev kvar. **`env
+  HOME=…` isolerar INTE när skalet exporterar `XDG_*`** — det gör Hyprland, så gamla
+  "isolerade" körningar skrev i riktiga `~/.local/state/sonix`. Skillen är uppdaterad.
+- **Filhanteraren** per plattform (`src/platform.rs`): `explorer` avslutar med **1 även när den
+  lyckas**, så anroparen tittar på starten och aldrig på slutkoden.
+- **Kvar i portningen:** `midir` i stället för ALSA-seq (~885 rader fungerande kod att skriva
+  om) — avsiktligt efter kvittensen på en riktig maskin, inte före.
 
 ## 4e. Och sedan: 8.2:s visning (2026-09-13, samma kväll)
 

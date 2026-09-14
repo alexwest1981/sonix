@@ -19,6 +19,8 @@ mod i18n;
 mod midi_take;
 mod rng;
 mod paths;
+mod platform;
+mod selftest;
 mod ui;
 
 use audio::{AudioEngine, AudioSettings};
@@ -60,6 +62,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Filkartan skrivs ut före ljudmotorn så att kommandot fungerar utan ljudkort.
     if std::env::args().any(|a| a == "--paths") {
         print_paths();
+        return Ok(());
+    }
+    // `sonix --selftest`: mäter det Windows-kriteriet som CI inte kan svara på — att
+    // ljudenheten spelar och vad MIDI-ingången hittar. Fönsterlöst med flit: det som
+    // bara en människa kan se står sist i utskriften, inte bland det som är mätt.
+    // (Fönster på Windows-substantiv skriver till en omdirigering — se ROADMAP 7.1.)
+    if std::env::args().any(|a| a == "--selftest") {
+        selftest::run()?;
         return Ok(());
     }
     // `sonix --clean-tags <fil...>`: visar vad filerna bär och tar bort

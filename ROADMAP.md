@@ -78,7 +78,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 1 | **8.3 Routing på riktigt** | *M* | **Klar 2026-09-13**: sidokedjor (`09-12`), bussar/VCA (`09-12`), sends mellan spår (`09-13`) | — |
 | 2 | **8.4 Sampler** | *M* | **Klar 2026-09-13**: looplägen, not-av, ADSR och export — se stycket nedan | — |
 | 3 | **8.2 Tempo map** | *S–M* | **Visningen klar 2026-09-13** (46 användningar genom kartan, `snap_bar` som enda snäppregel); kvar: automation-punkterna i sekunder (förslag: takter) och GUI-kvittensen | — |
-| 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
+| 4 | **7.1 Windows-porten** | *XL* | **Steg 1–7 klara 2026-09-14**: `--selftest` (mäter ljudtråd + MIDI), plattformens egna kataloger, filhanterare per plattform. Kvar: `midir` för MIDI-in, och kvittensen på en riktig maskin | Lånad Windows-laptop |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** (slagen hittas, slicekarta, sparas i projektfilen); kvar: nudge, per-slice-fade och dump till steg/piano roll | — |
@@ -573,13 +573,73 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
     - **Verifierat i den nya filen, inte i commit-meddelandet:** `Subsystem 00000002 (Windows GUI)` och `VCRUNTIME140` borta ur importerna. Artefakten gick från 22 275 072 till **11 966 976 byte** (release + statisk CRT).
     - **Den skärpta kontrollen bevisade sig själv:** en körning blev **röd** på `warning: field 'connections' is never read` i midir-vägen — kod som Linux inte kompilerar alls, så ingen lokal körning hade kunnat se den. Fältet bar anslutningarna för sin livstid och läses aldrig; det står nu uttryckligt med orsak. Jobbet failar alltså på varningar, och det gjorde nytta.
   - **Porten är pausad efter beslut (2026-09-11):** Alex: *"Windows-version står inte högst på min prio just nu, kommer dit sen."* Inget mer Windows-arbete görs förrän han säger till. Det som är klart står kvar och hålls grönt av CI (jobbet är blockerande).
+  - **Steg 5 klart (2026-09-14) — `sonix --selftest`, så kvittensen blir en mätning:**
+    Kriteriet har tre delar, och CI kan bara svara på den första. En runner har varken skärm
+    eller ljudenhet, så "spelar upp ljud" och "tar emot MIDI" kräver en riktig dator. I stället
+    för att låta det bli ett *intryck* mäter kommandot tre saker, och de mäter olika fel:
+    - **Att enheten öppnas** — med **appens egna inställningar** (`AudioSettings::load()` +
+      samma ringbuffert som `main`), alltså inte en bekvämare konfiguration än den som används.
+    - **Att ljudtråden går i realtid.** Ljudtrådens **egen** position jämförs med väggklockan.
+      Att en enhet *öppnas* bevisar inte att den *konsumerar* — en callback som aldrig anropas
+      ser identisk ut i varje annan mätning. Regeln är en ren funktion (`clock_verdict`) med
+      egen provsvit, och de tre svaren är `Ran`/`Behind`/`TooShort`: **för kort fönster ger
+      "inte mätt", aldrig en gissning åt något håll.** Positionen läses *före* väggklockan, så
+      ett mätfel drar förhållandet nedåt (en trög tråd är felet vi letar efter).
+    - **Att något hörs.** Toppen på mastern läses **medan** en trumma slås — en topp som läses
+      efteråt har klingat av och skulle säga "tyst" om ett fungerande ljud.
+    - **MIDI-delen är ärlig i stället för grön:** på Linux hittades **5 riktiga portar** i
+      körningen här; på Windows svarar stubben med sitt skäl och raden blir `➖` (inte mätbar),
+      aldrig `✅`. Porten till `midir` står kvar som punkt 2 nedan, och tills den är gjord ska
+      testet inte låtsas något annat.
+    - **Fönsterlöst med flit** (ingen egui), och utskriften slutar med det som *inte* är mätt:
+      att fönstret ritas, att transporten startar och att markören rör sig. Det kan bara en
+      människa se, och det står separat i stället för att blandas in i siffrorna.
+  - **Steg 6 klart (2026-09-14) — `paths.rs` fick plattformens egen layout, och ett löfte blev sant:**
+    - **`%APPDATA%\sonix` för inställningar, `%LOCALAPPDATA%\sonix` för resten**, och
+      `%USERPROFILE%\Music`/`Downloads`. Den gamla `$HOME`-fallbacken fungerade men var fel:
+      den skrev i användarens hemkatalog på ett sätt inget annat Windows-program gör.
+      Saknas `APPDATA`/`LOCALAPPDATA` faller den tillbaka på **hemkatalogen** — aldrig på en tom
+      sökväg, som hade blivit arbetskatalogen och fått appen att skriva där den inte äger.
+    - **Uppdelningen är gjord som en ren funktion** (`Paths::platform_defaults(os, home, appdata,
+      localappdata)`) med egna prov: Windows-layouten, Windows-fallbacken, **och att Linux är
+      oförändrat** — ett prov som bara tittade på Windows hade inte sett om XDG-vägen rördes.
+    - **Modulhuvudet lovade fyra överstyrningar som koden aldrig läste:**
+      `SONIX_CONFIG_DIR`/`SONIX_DATA_DIR`/`SONIX_STATE_DIR`/`SONIX_CACHE_DIR` stod som "vinner
+      över XDG" medan `from_env()` bara tittade på `XDG_*`. Samma familj som låset ingen läste.
+      De läses nu — och det gjorde en **riktig fälla synlig:** `env HOME=…` isolerar *inte*
+      config/state/cache när skalet exporterar `XDG_*` (vilket Hyprland-sessionen gör), så en
+      "isolerad" körning skrev ändå i användarens riktiga `~/.local/state/sonix`. Bevisat i
+      körning: med `SONIX_STATE_DIR=/tmp/…` flyttade tillståndet och cachen, medan konfigurationen
+      (som inte var overridd) blev kvar. Isoleringsreceptet i skillen är uppdaterat med det.
+  - **Steg 7 klart (2026-09-14) — filhanteraren per plattform:** `xdg-open` fanns inte på
+    Windows, så "visa mappen" gjorde ingenting där. `src/platform.rs` ger rätt kommando
+    (`explorer`/`open`/`xdg-open`) och den **rena** delen är prövad för varje plattform, inklusive
+    att ett mappnamn med mellanslag blir **ett** argument. `explorer` avslutar med **1 även när
+    den lyckas** — dokumenterat beteende — så anroparen tittar på om *starten* gick igenom och
+    aldrig på slutkoden; annars hade en fungerande knapp rapporterat fel.
+  - **Receptet för en lånad Windows-maskin (det som återstår av kriteriet):**
+    1. Hämta artefakten från senaste gröna körningen: Actions → jobbet
+       `cargo check + build (Windows, Fas 7.1)` → **Artifacts** → `sonix-windows` (eller
+       `gh run download <run-id> -n sonix-windows`). Packa upp `sonix.exe`.
+    2. Öppna en **terminal** i mappen (PowerShell eller cmd) och kör
+       `sonix.exe --selftest > selftest.txt 2>&1`. **Omdirigeringen behövs:** binären är en
+       GUI-app (`windows_subsystem = "windows"`), så den har ingen egen konsol.
+    3. Starta sedan appen utan flagga och titta på fyra saker: **att fönstret ritas** och att
+       det **inte** står en svart konsolruta bredvid, att **transporten startar och markören rör
+       sig**, att **ljud hörs** (trumma/loop) och att en **filväljare** går att öppna.
+    4. Windows larmar om en osignerad exe: *More info → Run anyway*. Det är väntat, inte ett fel.
+    5. Ta med `selftest.txt` plus de fyra iakttagelserna tillbaka — då är kriteriets tre delar
+       kvitterade: startar, spelar upp ljud, tar emot MIDI (den sista först när `midir`-porten
+       är gjord, och det står i utskriften vilket av dem som gäller).
   - **Kvar (när Windows blir aktuellt igen, i tur och ordning):**
-    1. **Köra den på en riktig Windows-maskin.** Det är den enda delen av kriteriet som ingen automatisk mätning kan svara på: en runner har varken skärm eller ljudenhet, så "startar, spelar upp ljud och tar emot MIDI" kräver en riktig dator. Artefakten laddas upp av CI och hämtas med `gh run download <run-id> -n sonix-windows` (Alex: "kanske senare"). Den här delen står alltså kvar tills vidare — inget påstående görs om att den är uppfylld.
-    2. **Porta MIDI-in till `midir`** i stället för ALSA-seq, så att stubbarna kan ersättas av en riktig implementation även på Windows/macOS.
-    3. **`paths.rs`:** i dag byggs sökvägarna som XDG-kataloger med `$HOME`-fallback — på Windows fungerar det (allt hamnar under användarens hemkatalog) men det är inte plattformens egen layout (`%APPDATA%`/`%LOCALAPPDATA%`).
-    4. **`xdg-open`** (två ställen: visa projektmappen, plugin-mappen) bör bli `explorer`/`open` per plattform. Felen hanteras redan, så det är kosmetiskt.
+    1. **Köra den på en riktig Windows-maskin.** Artifacten + `--selftest` gör den delen till en
+       mätning; kvar att göra är att faktiskt låna maskinen (Alex 2026-09-14: "kanske kan låna en
+       laptop"). Det är den enda delen av kriteriet som ingen automatisk mätning kan svara på: en runner har varken skärm eller ljudenhet, så "startar, spelar upp ljud och tar emot MIDI" kräver en riktig dator. Artefakten laddas upp av CI och hämtas med `gh run download <run-id> -n sonix-windows` (Alex: "kanske senare"). Den här delen står alltså kvar tills vidare — inget påstående görs om att den är uppfylld.
+    2. **Porta MIDI-in till `midir`** i stället för ALSA-seq, så att stubbarna kan ersättas av en riktig implementation även på Windows/macOS. **Det här är den enda kvarvarande portningen** (steg 6 och 7 är klara), och den är avsiktligt inte gjord än: den skriver om ~885 rader fungerande ALSA-seq-kod (MIDI-klaviatur + MCU), och roadmapens ordning sätter kvittensen på en riktig maskin **före** en omskrivning av en väg som fungerar. Tills den är gjord skriver `--selftest` rakt ut att MIDI-in är en stubbe på icke-Linux.
+    3. ~~**`paths.rs`:** XDG-layout med `$HOME`-fallback~~ — **klart 2026-09-14** (steg 6): `%APPDATA%`/`%LOCALAPPDATA%` som ren funktion med prov.
+    4. ~~**`xdg-open`**~~ — **klart 2026-09-14** (steg 7): `src/platform.rs`, `explorer`/`open`/`xdg-open`, med `explorer`-fällan noterad.
     5. **Plugin-GUI:t** (X11) är undantaget i kriteriet. `plugin-host`-featuren har en `compile_error!` som säger att den är Linux-only i stället för att falla på `libc`/X11.
-  - **Filer:** `Cargo.toml`, `src/audio/midi_input.rs`, `src/audio/hardware_control.rs`, `.github/workflows/ci.yml`
+  - **Filer:** `Cargo.toml`, `src/audio/midi_input.rs`, `src/audio/hardware_control.rs`, `.github/workflows/ci.yml`, `src/selftest.rs` (ny), `src/platform.rs` (ny), `src/paths.rs`, `src/main.rs`
   - **Beroende:** 6.1–6.3 (data-säkerhet och projekt-I/O ska vara stabilt innan portering)
 
 - [x] **7.2 Realtidsmätning i CI (xruns, latens, CPU-skalning)** — *M* ✅

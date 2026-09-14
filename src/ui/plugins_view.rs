@@ -436,7 +436,7 @@ fn render_plugin_database_tab(
                                 .parent()
                                 .map(|p| p.to_string_lossy().to_string())
                                 .unwrap_or_else(|| plugin.file_path.clone());
-                            let _ = std::process::Command::new("xdg-open").arg(&dir).spawn();
+                            let _ = crate::platform::open_dir(std::path::Path::new(&dir));
                             *status_msg = crate::tstatus!("📂 Öppnade mapp: {}", dir);
                         }
 

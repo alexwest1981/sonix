@@ -9363,10 +9363,11 @@ impl eframe::App for SonixApp {
                             // användarens filhanterare som gäller.
                             let dir = crate::paths::paths().projects_dir();
                             let _ = std::fs::create_dir_all(&dir);
-                            if let Err(e) = std::process::Command::new("xdg-open")
-                                .arg(&dir)
-                                .spawn()
-                            {
+                            // Plattformens egen filhanterare: xdg-open på Linux,
+                            // explorer/open på Windows/macOS (Fas 7.1). Att titta på
+                            // starten och inte på slutkoden är med flit — explorer
+                            // avslutar med 1 även när den lyckas.
+                            if let Err(e) = crate::platform::open_dir(&dir) {
                                 self.status_message = crate::tstatus!(
                                     "⚠ Kunde inte öppna '{}' i filhanteraren: {}",
                                     dir.display(),
