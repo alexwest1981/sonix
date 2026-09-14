@@ -13723,6 +13723,77 @@ impl SonixApp {
                                     // `window_for_note` redan spelar efter, alltså behövs ingen
                                     // motorändring: noten *är* adressen. Fler slicar än steg
                                     // kapas, och det sägs rakt ut i stället för att tigas.
+                                    // **Dumpa slicarna till piano rollen** (Fas 8.7 steg 2).
+                                    // Samma sak mot ett annat rutnät: `piano_roll_grid` är
+                                    // `[[bool; 16]; 24]`, alltså samma form som stegraden med 24
+                                    // rader i stället för 16 — så samma `slices_to_steps` duger,
+                                    // med radantalet som tak. Raden en slice hamnar på är
+                                    // **slicens index**, precis som noten är `bas + index`; därför
+                                    // slås inga slicar ihop, och adresseringen stämmer fortfarande
+                                    // med `window_for_note`. (Att folda noten med
+                                    // `note_to_roll_offset` vore fel här: den är gjord för *spelade*
+                                    // noter, och en foldning hade lagt två slicar på samma rad.)
+                                    if ui
+                                        .button(crate::i18n::t("⬇ Slicar → piano roll"))
+                                        .on_hover_text(crate::i18n::t(
+                                            "Lägger en not per slice i piano rollen, kromatiskt från basnoten. Fler slicar än rutnätet rymmer kapas.",
+                                        ))
+                                        .clicked()
+                                    {
+                                        // **Rutnätet har två axlar, och de betyder olika saker:**
+                                        // raderna är tonhöjd och stegen är tid. Slice `i` hamnar
+                                        // därför på **steg i** i **rad i** — tid och tonhöjd är båda
+                                        // slicens nummer — och taket är det *mindre* av de två
+                                        // antalen, inte radantalet. (Första försöket tog radantalet
+                                        // och lappade tiden med `% 16`; det hade lagt slice 17 på
+                                        // samma steg som slice 1.)
+                                        let step_count = self
+                                            .patterns
+                                            .get(self.selected_pattern)
+                                            .map_or(0, |p| p.piano_roll_grid.first().map_or(0, |row| row.len()));
+                                        let row_count = self
+                                            .patterns
+                                            .get(self.selected_pattern)
+                                            .map_or(0, |p| p.piano_roll_grid.len());
+                                        let capacity = crate::audio::onset::grid_capacity(row_count, step_count);
+                                        let dumped = crate::audio::onset::slices_to_steps(
+                                            &ch.slices,
+                                            ch.sample_base_note,
+                                            capacity,
+                                        );
+                                        if dumped.is_empty() {
+                                            self.status_message = crate::i18n::t(
+                                                "⚠ Inga slicar att dumpa — kör en slagletning först.",
+                                            )
+                                            .to_string();
+                                        } else if let Some(pattern) =
+                                            self.patterns.get_mut(self.selected_pattern)
+                                        {
+                                            let skipped = ch.slices.len().saturating_sub(dumped.len());
+                                            // Rutnätet töms för de rader dumpen rör, så en
+                                            // gammal dump inte ligger kvar och pekar på slicar
+                                            // som inte längre finns.
+                                            for row in pattern.piano_roll_grid.iter_mut() {
+                                                row.fill(false);
+                                            }
+                                            // Steg och rad är båda slicens nummer: slicarna hamnar
+                                            // i ordning i tiden, och adresseringen (`bas + i`
+                                            // spelar slice `i`) stämmer fortfarande.
+                                            for (i, _note) in &dumped {
+                                                pattern.piano_roll_grid[*i][*i] = true;
+                                            }
+                                            self.status_message = if skipped > 0 {
+                                                crate::tstatus!(
+                                                    "⬇ {} slicar till piano rollen ({} kapades — rutnätet rymmer {}).",
+                                                    dumped.len(),
+                                                    skipped,
+                                                    capacity
+                                                )
+                                            } else {
+                                                crate::tstatus!("⬇ {} slicar till piano rollen.", dumped.len())
+                                            };
+                                        }
+                                    }
                                     if ui
                                         .button(crate::i18n::t("⬇ Slicar → steg"))
                                         .on_hover_text(crate::i18n::t(

@@ -81,7 +81,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 4 | **7.1 Windows-porten** | *XL* | **PAUSAD EFTER BESKED 2026-09-14** (Alex har ingen laptop än). Steg 1–8 klara: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`)**. Kvar när den tas upp: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Alex säger till |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
-| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 + hela steg 2 klara 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till stegraden** med kontraktsprov. Kvar: piano roll-varianten av dumpen (ren inkoppling) | — |
+| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. Kvar i 8.7: spektral flux (valfritt) | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
@@ -1103,9 +1103,17 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     - **Knappen sitter hos detekteringen** ("⬇ Slicar → steg") och bygger om raden från grunden:
       en dump beskriver **hela** kartan, så gamla steg kan inte ligga kvar och peka på slicar som
       inte längre är med. Statusraden skiljer på "dumpat" och "dumpat, N kapades".
-    - **Kvar av "steg eller piano roll":** stegraden, som är den ena av de två. Piano roll-varianten
-      (noter i mönstrets rutnät, med längd) är ett eget litet pass — kartan och adresseringen är
-      desamma, så den delen är ren inkoppling. (FL:s "Convert to score and
+    - **Och piano roll-varianten, samma kväll:** `piano_roll_grid` visade sig vara
+      `[[bool; 16]; 24]` — samma form som stegraden — så **ingen ny regel behövdes**: samma
+      `slices_to_steps`, mot ett annat rutnät. Slice `i` hamnar på **steg `i` i rad `i`**, för
+      stegen är tid och raderna är tonhöjd, och båda är slicens nummer.
+      - **Ett fel jag gjorde och rättade, som nu har ett prov:** första försöket tog radantalet
+        (24) som tak och lappade tiden med `% 16` — det hade lagt slice 17 på samma steg som
+        slice 1. Taket är det **mindre** av de två antalen, och `grid_capacity(rader, steg)` är en
+        ren funktion med eget prov, så misstaget inte kan komma tillbaka.
+      - **Kvar:** inget i 8.7 steg 2. Båda målen ("steg **eller** piano roll") är byggda, och
+        det som återstår av 8.7 är spektral flux (starkare på melodiöst material, onödigt för
+        trummor) — en egen punkt. (FL:s "Convert to score and
     dump to piano roll", Reapers "Create chromatic MIDI item from slices"). Dumpen är den stora
     av de två: den behöver slice-offset per steg i motorn. Spektral flux med FFT i stället för
     tidsdomänen hör också hit — starkare på melodiöst och vibrato-rikt material, onödigt för

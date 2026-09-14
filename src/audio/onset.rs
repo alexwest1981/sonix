@@ -339,6 +339,18 @@ pub fn nudge_slice_boundary(
     out
 }
 
+/// **Hur många slicar ett rutnät rymmer** (Fas 8.7 steg 2).
+///
+/// Stegen är **tid** och raderna är **tonhöjd** — två axlar som betyder olika saker — och en
+/// dump måste rymmas i **båda**. Det är det *mindre* antalet som sätter taket.
+///
+/// Regeln har ett eget prov av ett skäl: när piano roll-varianten skrevs togs radantalet (24)
+/// och tiden lappades med `% 16`, vilket hade lagt slice 17 på samma steg som slice 1. Ett prov
+/// här gör att det misstaget inte kan komma tillbaka.
+pub fn grid_capacity(rows: usize, steps: usize) -> usize {
+    rows.min(steps)
+}
+
 /// **Dumpa slicarna till stegraden** (Fas 8.7 steg 2).
 ///
 /// Slice `i` hamnar på steg `i` och får noten `bas + i` — samma kromatiska adressering som
@@ -478,6 +490,15 @@ mod tests {
             assert_eq!(w[0].end, w[1].start, "inga glapp och inget överlapp");
         }
         assert!(slices.iter().all(|s| s.end > s.start), "inga tomma slicar");
+    }
+
+    /// Taket är det mindre av tid och tonhöjd — och det är inte samma tal.
+    #[test]
+    fn the_grids_capacity_is_the_smaller_of_time_and_pitch() {
+        assert_eq!(grid_capacity(24, 16), 16, "16 steg sätter taket, inte 24 rader");
+        assert_eq!(grid_capacity(8, 16), 8, "få rader sätter taket");
+        assert_eq!(grid_capacity(0, 16), 0);
+        assert_eq!(grid_capacity(24, 0), 0);
     }
 
     /// **Kontraktet mellan dumpen och uppspelningen.** Dumpar man slicarna till stegraden måste
