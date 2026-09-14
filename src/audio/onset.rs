@@ -8,21 +8,22 @@
 //! låter användaren nudga, fadea och trigga slicen från sin egen start. Den här
 //! modulen gör det första: hitta slagen och räkna fram en slicekarta.
 //!
-//! **Varför tidsdomän och ingen FFT.** Repot har ingen FFT (inga fft-beroenden i
-//! `Cargo.toml`), och för det choppern ska göra — hitta slagen i en trumloop — är
-//! den halvvågslikriktade förstadifferensen en beprövad väg: en derivation är ett
-//! högpassfilter, så den betonar precis den höga frekvensenergi som ett anslag
-//! har. Det är samma idé som **HFC** ("high frequency content") — den
-//! onset-funktion aubio defaultar till och kallar effektiv för perkussiva onsets.
-//! Spektral flux med FFT (librosa, SuperFlux) är starkare på melodiöst och
-//! vibrato-rikt material; det står i `ROADMAP.md` som ett senare steg, inte som
-//! något den här modulen låtsas om.
+//! **Tidsdomänen är standardvägen, FFT är tillvalet — och spektral flux är byggd.**
+//! Den halvvågslikriktade förstadifferensen är en beprövad väg för det choppern ska göra:
+//! en derivation är ett högpassfilter, så den betonar precis den höga frekvensenergi ett
+//! anslag har. Det är samma idé som **HFC** ("high frequency content") — den onset-funktion
+//! aubio defaultar till och kallar effektiv för perkussiva onsets. **Spektral flux med FFT**
+//! (librosa, SuperFlux) finns också, för melodiöst och vibrato-rikt material; repot fick
+//! `rustfft` när den byggdes (8.7 steg 2), och valet mellan de två går genom
+//! [`detect_slice_map`]s `use_spectral` — *detektorn och inget annat* byts. Den är inte
+//! standard, för på en trumloop är tidsdomänen billigare och minst lika träffsäker: på ett
+//! klickmönster hittar båda exakt samma slag.
 //!
 //! **Tröskeln är lokal, inte global.** Varje sampel jämförs med medelvärdet i ett
 //! fönster runt sig (60 ms som standard). En global tröskel hade missat slaget
 //! efter ett starkt parti och hittat brus i det svaga — det var det felet
 //! "Transient"-knappen gjorde i sin enklaste form.
-//! Status: stabil — slagletning och slicekarta (8.7 steg 1 + 2)
+//! Status: stabil — slagletning, slicekarta, nudge, kantdämpning och dump (8.7 klart 2026-09-14)
 //! Rör inte: mät på en jämn ton först: en detektor är en mätning, och 4 ms enpolsfilter + centrerad tröskel är den enda variant som ger noll falska slag
 
 /// Hur känslig detekteringen ska vara och hur tätt slag får ligga.

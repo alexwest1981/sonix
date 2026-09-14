@@ -194,18 +194,40 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **KLAR 2026-09-14** (`392a30c` + `76b4015`): tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten. **Markeringen kvitterad i GUI av Alex** ("ser ut att stämma") | — |
 
 
+**Kvar — i prio-ordning (2026-09-14).** Bara det som faktiskt återstår; övriga rader i
+tabellen är klara och står i `Gjort`. Kontrollerat i koden, inte bara i texten.
+
+| # | Punkt | Storlek | Vad som återstår | Går att göra |
+| :--- | :--- | :---: | :--- | :--- |
+| 1 | **8.9 Makron: en kedja av kommandon över många filer** | *S* | Finns inte alls hos oss. Byggstenarna finns: exportkön, kommandolagret och projektfilen | vid datorn, nu |
+| 2 | **8.6 Plugins: egna utgångar, sidokedja in i en plugin + två mindre** | *M* | Extra utbussar till egna spår (VST3-buss-API:t är inläst men routas inte), sidechain-**ingång** i en plugin, manuellt latens-offset per plugin, "smart disable". *32-bitars plugins* är inte ett rimligt mål för oss | vid datorn, nu |
+| 3 | **7.3 + 4.6 Wine/yabridge-vägen** | *M + L* | Köra en **riktig** brygga hela vägen (Sytrus/Harmor/Gross Beat): laddning, inspektion, ljud med PDC, state, X11-fönstret. Mock-modulerna är redan gröna | **blockerad** — kräver Wine + display, och du har inga Windows-plugins på disk. Miljön är färdigkonfigurerad den dag de kommer |
+| 4 | **7.1 Windows-porten** | *XL* | MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin. Steg 1–8 är klara | **pausad efter ditt besked** — ingen Windows-laptop än |
+
+**Det bara du kan kvittera** (koden är klar och mätt; det är ögat/örat som saknas — ingen Xvfb
+finns på maskinen, så jag kan inte se ett fönster):
+
+- **6.2, 6.4, 6.5, 7.4** — återställ-knappen, kvantisering/humanisering, dither-valet och
+  starttiden. Roadmapen har dem som byggda och väntande på dina ögon.
+- **Vågformens startpunkt** — om den fortfarande är svår att pricka är nästa fråga klossens
+  höjd, inte höljet.
+- **Tempoföljningens switch** och klippmenyns temoläge (lästa, inte sedda).
+- **8.8:s plugin-väljare** — ladda en plugin i en slot, slå på 📈 Automation, välj parameter i
+  🔌-menyn och rita. (Spår- och busskurvorna kvitterade du redan.)
+
 **Så räknas en punkt som klar:** kod + tester (default och `plugin-host`), 0 varningar i
 release, ett bevisstycke här i roadmapen — och för det som hörs eller syns, en kvittens
-i GUI. Den sista raden är den som oftast återstår: 6.2, 6.4, 6.5, 7.4 och 8.2:s
-tempopunkt-UI väntar alla på att Alex ser dem.
+i GUI. Den sista raden är den som oftast återstår, och den ligger i listan ovanför i stället
+för att gissas på nytt varje pass.
 
 > **Underlag för prioriteringen:** djupjämförelsen mot de etablerade DAW:erna (FL Studio,
 > Ableton, Bitwig, Logic, Cubase, Studio Pro, Pro Tools, DP, Reaper, Ardour, Waveform,
 > Mixcraft, Renoise, Zrythm + angränsande verktyg) ligger i `sonix`-skillen,
 > `references/daw-comparison.md`, med de fem researchrapporterna i `references/daw-research/`.
-> Kortversionen: **8.3 är det enda kvarvarande gapet som hörs i en färdig mix** — och
-> halva punkten är stängd sedan 2026-09-12 (sidokedjorna; **sends mellan spår** är kvar).
-> 8.4 är den mest grundläggande funktionen som saknas helt, och 8.2-resten är billigast. Sonix står
+> Kortversionen (uppdaterad 2026-09-14): **8.3 är stängt** — sidokedjor, bussar/VCA och sends
+> mellan spår är alla byggda och hörs i en färdig mix. **8.4 är byggt** (looplägen, not-av, ADSR,
+> export). Det som återstår i fas 8 är **8.9 (makron)** och **8.6 (plugin-bryggning)** — se
+> "Kvar — i prio-ordning" ovan. Sonix står
 > starkare än de stora på tre punkter: native Linux, CLAP med out-of-process-sandbox, och
 > AI/Suno-vägen — ingen av de undersökta DAW:erna har AI-genererad musik som utgångspunkt.
 >
@@ -958,7 +980,11 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     - **Bevis, som en rundgång:** två tempon skrivs ut i en fil (128 BPM från takt 0, 90 BPM från takt 4), filen läses tillbaka, och projektets punkter blir `(0, 128)` och `(4, 90)` — skrivarens `tick = takt × PPQ × 4` och läsarens `takt = tick ÷ (PPQ × 4)` är varandras motparter. Plus `tempo_points_for_import`s egna fall: 120 → karta, 140/100 → inget, tom lista → inget, ett sent första byte flyttas till takt 0, två byten i samma takt blir en punkt (den sista vinner). **318 tester default, 364 med plugin-host, 0 varningar.**
   - **Kvar till steg 3:** de 4 visningsställena (`render_playlist_arranger` ×3, `render_stem_focus_modal` ×1), automation-lanen (punkterna ligger i sekunder — egen fråga: ska automation flytta med tempot?), drag-utökningen, och en GUI-kvittens på tempopunkt-UI:t (samma sorts kvittens som 6.2, 6.4, 6.5 och 7.4 väntar på).
   - **En läxa om verktyg, för framtiden:** `cargo fmt` får **inte** köras i det här repot. Det är inte rustfmt-formaterat, så en körning gav 11 123 rader churn i 51 filer — allt backat, och nya filer formateras enskilt (`rustfmt <fil>`) i stället.
-- [ ] **8.3 Routing på riktigt** (utöver bussar/VCA: sends och sidokedjor mellan spår).
+- [x] **8.3 Routing på riktigt** (utöver bussar/VCA: sends och sidokedjor mellan spår). ✅ **(2026-09-12 → 09-13)**
+  - **Bockad 2026-09-14 efter kontroll i koden:** `SendTarget::Track` finns och används av
+    mixerns kanalpanel, av projektfilen och av mixer-digesten; sidokedjorna (2026-09-12) och
+    sends till bussar (2026-09-12) står i sina egna stycken nedan. Rutan hade blivit kvar
+    obockad när delarna byggdes i tur och ordning.
   - **Sidokedjorna är klara (2026-09-12).** Ett spår kan duckas av ett annat spårs ljud:
     `AudioCommand::SetStemTrackSidechain { track_index, from, amount_db, threshold_db }`,
     en `Ducker` per spår i `src/audio/synth.rs`, "Sidokedja:"-väljaren med Duckning och
@@ -1125,7 +1151,10 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
   - **Källa:** `plugin-flstudio-research-sv.md` (Image-Lines onlinemanual; wrapper, mixer,
     plugin-installation). Audacity har ingen av de tre — plugins kör i samma process och kan
     fälla appen, och CLAP nämns inte alls i deras dokumentation.
-- [ ] **8.7 Chopper: från en trim-ruta till en slicemappning** — *M*
+- [x] **8.7 Chopper: från en trim-ruta till en slicemappning** — *M* ✅ **(2026-09-14)**
+  - **Bockad 2026-09-14:** steg 1 (slagletning + slicekarta), steg 2 (nudge, kantdämpning,
+    spektral flux) och dumpen till **både** stegraden och piano rollen är byggda och provade —
+    se styckena nedan, som slutar i "**Kvar:** inget i 8.7".
   - **Steg 1 klart (2026-09-12, `23c3b6b`).** Slagen hittas i filen: `src/audio/onset.rs`
     (anslags-hölje = halvvågslikriktad förstadifferens + enpolsfilter, lokal **centrerad**
     tröskel, lokala maxima, minsta avstånd mellan slag, och backtrack till energiminimumet
@@ -1243,13 +1272,9 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
         *detektor och inget annat*. På ett klickmönster hittar båda **4 slag** — ense på riktig
         percussion, vilket är vad man vill. Provet prövar formen och enheterna, inte ett fast antal:
         de två får ge olika antal, för de mäter olika saker.
-      - **Kvar:** inget i 8.7. Båda målen ("steg **eller** piano roll") är byggda, och
-        det som återstår av 8.7 är spektral flux (starkare på melodiöst material, onödigt för
-        trummor) — en egen punkt. (FL:s "Convert to score and
-    dump to piano roll", Reapers "Create chromatic MIDI item from slices"). Dumpen är den stora
-    av de två: den behöver slice-offset per steg i motorn. Spektral flux med FFT i stället för
-    tidsdomänen hör också hit — starkare på melodiöst och vibrato-rikt material, onödigt för
-    trummor.
+      - **Kvar:** inget i 8.7. Båda målen ("steg **eller** piano roll") är byggda, och spektral
+        flux med FFT är byggd ovan (fyra mätta iterationer, plus provet med fortsatt fas som
+        avgör om den förtjänar sin plats mot höljesdetektorn).
   - **Läget i koden före steg 1 (mätt 2026-09-12):** `active_chopper_channel` ger **en** trim-ruta per
     kanal (`sample_start`/`sample_end` i procent av filen) med snabbval `1/2`, `1/4`, `2/4` …
     och en knapp märkt **"⚡ Transient"** som bara sätter `sample_end = 0.18`. Ingen
