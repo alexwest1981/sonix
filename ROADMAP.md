@@ -83,7 +83,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. **8.7 klart 2026-09-14**: nudge, kantdämpning (mätt) och dump till stegraden + piano rollen med kontraktsprov. | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
-| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Klar 2026-09-14 utom plugin och buss**: fyra → **tio** mål (kompressorns tröskel och förhållande, transponering, EQ:ns tre band). Buss är en **egen fråga**, inte ett steg: en lane hör till ett spår, bussen är global | — |
+| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Klar 2026-09-14 utom plugin och buss-UI:t**: tio spårmål, och bussens egna kurvor är byggda (modell, apply, inläsning, ångring) med prov. Kvar: UI:t som skapar busskurvor, och plugin-målen | — |
 
 #### 8.8: EQ:ns band och bussfrågan (2026-09-14)
 
@@ -107,9 +107,24 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
     `bus_volume`), med bussens index i lane:n, `#[serde(default)]` så gamla filer läses som tomma,
     och `SetBusState` som redan bär `bus`, `volume`, `muted` och `solo`. Bussarna har i dag bara
     nivå och mute — fler parametrar blir en enum *när* de finns, inte förrän dess.
-  - **Varför den inte byggdes samma kväll:** modellen utan förbrukare (eller apply utan UI) vore
-    död kod — exakt det `silent-audio-doctrine` och läxan om låset ingen läste förbjuder. Ett
-    buss-pass ska bära modell, apply och UI tillsammans, och det är ett eget pass.
+  - **BYGGD 2026-09-14, utom UI:t** (Alex: "kör buss-passet, så vi kommer förbi det"):
+    - **En regel, två kurvor.** Interpolationen lyftes ur `AutomationLane::value_at` till en fri
+      `lane_value_at(points, bar)`. Spårets lane och bussens lane går genom **samma** funktion —
+      annars vore det två kurvor som ser likadana ut och beter sig olika, och en fix i den ena
+      skulle lämna den andra fel. Ett prov binder dem: samma punkter, samma svar vid sex takter.
+    - **Modellen:** `BusAutomationLane { bus, enabled, points }` + `bus_automation:
+      Vec<BusAutomationLane>` på `SonixProjectData` med `#[serde(default)]` — en fil från före
+      8.8 läses som en tom lista, alltså bussen med bara sin fader, precis som förut.
+    - **Apply:** ett pass **utanför** spårloopen (bussen ägs av ingen av dem), med bussens
+      nuvarande värde som tillstånd — ingen egen cache behövs, för värdet *är* tillståndet.
+      Nivån kläms till faderns område, så en kurva inte kan ställa bussen utanför sitt reglage.
+    - **Två tysta förluster fångades på vägen:** kurvorna måste både **läsas ur filen och
+      tilldelas** (att bara läsa är samma förlust, flyttad ett steg) och **återställas vid
+      ångring** — annars hade första ångringen tyst raderat dem. Båda syntes först när
+      kompilatorn räknade upp initialiseringarna.
+    - **Kvar: UI:t som skapar kurvorna.** Motorn lyder dem redan, och ett projekt kan bära dem,
+      men det finns ännu ingen knapp som lägger en punkt. Det är förar-sidan, och den hör ihop
+      med buss-strippens reglage — ett eget litet pass, inte en rad.
 - **Plugin-parametrar: målet finns, men formen är en annan — och det är en verklig skillnad, inte
   en genväg** (mätt 2026-09-14). `AudioCommand::SetPluginParameter` finns, och värden har både
   `parameters() -> &[PluginParameter]` och `set_parameter(id, value)`. Det som *inte* fungerar är

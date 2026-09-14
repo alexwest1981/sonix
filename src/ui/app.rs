@@ -504,34 +504,72 @@ pub struct AutomationLane {
     pub points: Vec<AutomationPoint>,
 }
 
+/// **Kurvans regel, på ett ställe** (Fas 8.2 och 8.8).
+///
+/// Linearly interpolated value at **`bar`**; constant before the first and after the last
+/// point. `None` when there are no points. Både spårets lane och bussens lane går genom den
+/// här funktionen — annars vore det två kurvor som ser likadana ut och beter sig olika, och
+/// en fix i den ena skulle lämna den andra fel.
+///
+/// Argumentet är en takt, inte en sekund — samma typ, olika enhet, och därför inget som
+/// kompilatorn kan vakta. Anroparen konverterar spelhuvudets sekunder **en gång** via
+/// tempokartan (se `apply_automation`).
+pub fn lane_value_at(points: &[AutomationPoint], bar: f32) -> Option<f32> {
+    if points.is_empty() {
+        return None;
+    }
+    let first = &points[0];
+    if bar <= first.time_bars {
+        return Some(first.value);
+    }
+    let last = points.last().unwrap();
+    if bar >= last.time_bars {
+        return Some(last.value);
+    }
+    for w in points.windows(2) {
+        let (a, b) = (&w[0], &w[1]);
+        if bar >= a.time_bars && bar <= b.time_bars {
+            let span = (b.time_bars - a.time_bars).max(1e-6);
+            let f = (bar - a.time_bars) / span;
+            return Some(a.value + (b.value - a.value) * f);
+        }
+    }
+    Some(last.value)
+}
+
+/// **En buss äger sina egna kurvor** (Fas 8.8).
+///
+/// Industristandarden är entydig: i Ableton är gruppen ett eget spår med egna lanes, i FL
+/// automatiseras *inserten* och klippet namnges efter bussen, i Reaper har folder-spåret sina
+/// egna enveloper och i Logic har aux-strippen egen automation. Ingen av dem lägger bussens
+/// kurva under ett spår som *skickar* till bussen, och skälet är enkelt: flera spår kan skicka
+/// till samma buss, så en kurva under ett av dem hade gjort anspråk på ett globalt värde — och
+/// vem som ägde bussen hade berott på vilket spår man råkade titta på.
+///
+/// Bussen har i dag bara **nivå** (och mute/solo), så lane:n bär punkter och inget parameterval.
+/// Får bussen fler parametrar blir det här ett val — men inte förrän dess.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct BusAutomationLane {
+    /// Bussen kurvan hör till (`0..NUM_BUSES`). En fil med ett ogiltigt index ignoreras vid
+    /// spelning i stället för att tyst styra buss 0.
+    pub bus: usize,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub points: Vec<AutomationPoint>,
+}
+
+impl BusAutomationLane {
+    /// Bussens nivå vid en takt — **samma regel som spårets kurva**.
+    pub fn level_at(&self, bar: f32) -> Option<f32> {
+        lane_value_at(&self.points, bar)
+    }
+}
+
 impl AutomationLane {
-    /// Linearly interpolated value at **`bar`** (Fas 8.2); constant before the first and
-    /// after the last point. `None` when the lane has no points.
-    ///
-    /// Argumentet är en takt, inte en sekund — samma typ, olika enhet, och därför inget som
-    /// kompilatorn kan vakta. Anroparen konverterar spelhuvudets sekunder **en gång** via
-    /// tempokartan (se `apply_automation`).
+    /// Spårets kurva vid en takt — samma regel som bussens, se [`lane_value_at`].
     pub fn value_at(&self, bar: f32) -> Option<f32> {
-        if self.points.is_empty() {
-            return None;
-        }
-        let first = &self.points[0];
-        if bar <= first.time_bars {
-            return Some(first.value);
-        }
-        let last = self.points.last().unwrap();
-        if bar >= last.time_bars {
-            return Some(last.value);
-        }
-        for w in self.points.windows(2) {
-            let (a, b) = (&w[0], &w[1]);
-            if bar >= a.time_bars && bar <= b.time_bars {
-                let span = (b.time_bars - a.time_bars).max(1e-6);
-                let f = (bar - a.time_bars) / span;
-                return Some(a.value + (b.value - a.value) * f);
-            }
-        }
-        Some(last.value)
+        lane_value_at(&self.points, bar)
     }
 
     fn sort_points(&mut self) {
@@ -771,6 +809,10 @@ pub struct SonixProjectData {
     pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
     #[serde(default)]
     pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
+    /// **Bussarnas egna kurvor** (Fas 8.8). `#[serde(default)]` så en projektfil från före
+    /// 8.8 läses som en tom lista — bussen har då bara sin fader, precis som förut.
+    #[serde(default)]
+    pub bus_automation: Vec<BusAutomationLane>,
     #[serde(default)]
     pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
     /// VCA group gains (Fas 5.2). Defaults to unity for old projects.
@@ -2130,6 +2172,8 @@ pub struct LoadedProjectPayload {
     pub plugin_slots: Vec<Option<SavedPluginData>>,
     pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
     pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
+    /// **Bussarnas egna kurvor** (Fas 8.8).
+    pub bus_automation: Vec<BusAutomationLane>,
     pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
     pub vca_volume: [f32; crate::audio::synth::NUM_VCAS],
     pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
@@ -2152,6 +2196,8 @@ pub struct TimelineUndoSnapshot {
     /// utan dem kunde en bussändring inte ångras alls.
     pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
     pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
+    /// **Bussarnas egna kurvor** (Fas 8.8).
+    pub bus_automation: Vec<BusAutomationLane>,
     pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
     pub vca_faders: [f32; crate::audio::synth::NUM_VCAS],
     pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
@@ -2596,6 +2642,8 @@ pub struct SonixApp {
     // Sub-Mixing, VCA Groups & PDC (Fas 5.2)
     pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
     pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
+    /// **Bussarnas egna kurvor** (Fas 8.8).
+    pub bus_automation: Vec<BusAutomationLane>,
     pub bus_solo: [bool; crate::audio::synth::NUM_BUSES],
     pub vca_faders: [f32; crate::audio::synth::NUM_VCAS],
     pub vca_muted: [bool; crate::audio::synth::NUM_VCAS],
@@ -3332,6 +3380,7 @@ impl SonixApp {
             // Sub-Mixing, VCA Groups & PDC (Fas 5.2)
             bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
             bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_automation: Vec::new(),
             bus_solo: [false; crate::audio::synth::NUM_BUSES],
             vca_faders: [1.0; crate::audio::synth::NUM_VCAS],
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
@@ -3907,6 +3956,7 @@ impl SonixApp {
                     plugin_slots: Vec::new(),
                     bus_volume: default_bus_volume(),
                     bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_automation: Vec::new(),
                     bus_solo: [false; crate::audio::synth::NUM_BUSES],
                     vca_volume: default_vca_volume(),
                     vca_muted: [false; crate::audio::synth::NUM_VCAS],
@@ -5359,6 +5409,7 @@ impl SonixApp {
             patterns: self.patterns.clone(),
             bus_volume: self.bus_volume,
             bus_muted: self.bus_muted,
+            bus_automation: self.bus_automation.clone(),
             bus_solo: self.bus_solo,
             vca_faders: self.vca_faders,
             vca_muted: self.vca_muted,
@@ -5411,6 +5462,7 @@ impl SonixApp {
         self.load_pattern_into_ui(self.selected_pattern);
         self.bus_volume = snapshot.bus_volume;
         self.bus_muted = snapshot.bus_muted;
+        self.bus_automation = snapshot.bus_automation.clone();
         self.bus_solo = snapshot.bus_solo;
         self.vca_faders = snapshot.vca_faders;
         self.vca_muted = snapshot.vca_muted;
@@ -6012,6 +6064,7 @@ impl SonixApp {
             tracks: saved_tracks,
             bus_volume: self.bus_volume,
             bus_muted: self.bus_muted,
+            bus_automation: self.bus_automation.clone(),
             bus_solo: self.bus_solo,
             vca_volume: self.vca_faders,
             vca_muted: self.vca_muted,
@@ -6382,6 +6435,7 @@ impl SonixApp {
                     plugin_slots: data.plugin_slots,
                     bus_volume: data.bus_volume,
                     bus_muted: data.bus_muted,
+                    bus_automation: Vec::new(),
                     bus_solo: data.bus_solo,
                     vca_volume: data.vca_volume,
                     vca_muted: data.vca_muted,
@@ -6408,6 +6462,7 @@ impl SonixApp {
         let plugin_slots = payload.plugin_slots;
         let bus_volume = payload.bus_volume;
         let bus_muted = payload.bus_muted;
+        let bus_automation = payload.bus_automation;
         let bus_solo = payload.bus_solo;
         let vca_volume = payload.vca_volume;
         let vca_muted = payload.vca_muted;
@@ -6427,6 +6482,7 @@ impl SonixApp {
         self.master_volume = payload.master_volume;
         self.master_pan = payload.master_pan;
         self.bus_volume = bus_volume;
+        self.bus_automation = bus_automation;
         self.bus_muted = bus_muted;
         self.bus_solo = bus_solo;
         self.vca_faders = vca_volume;
@@ -7109,6 +7165,31 @@ impl SonixApp {
         // helst, och sekunder hade sett precis lika rimliga ut. Konverteringen står därför
         // ensam och uttryckligt, en gång, utanför loopen.
         let bar = self.tempo_map().bar_at_secs(self.song_time as f64) as f32;
+
+        // **Bussarnas egna kurvor** (Fas 8.8). Passet ligger utanför spårloopen: bussen ägs inte
+        // av något av spåren — flera kan skicka till samma. Ingen egen cache behövs heller:
+        // bussens nuvarande värde *är* tillståndet, så jämförelsen sker mot det.
+        for li in 0..self.bus_automation.len() {
+            let (bus, level) = {
+                let lane = &self.bus_automation[li];
+                if !lane.enabled || lane.bus >= crate::audio::synth::NUM_BUSES {
+                    continue;
+                }
+                (lane.bus, lane.level_at(bar))
+            };
+            let Some(level) = level else { continue };
+            // Samma område som fadern, så en kurva inte kan ställa bussen utanför sitt eget reglage.
+            let level = level.clamp(0.0, 1.5);
+            if (level - self.bus_volume[bus]).abs() > 1e-4 {
+                self.bus_volume[bus] = level;
+                let _ = self.engine.send_command(AudioCommand::SetBusState {
+                    bus,
+                    volume: level,
+                    muted: self.bus_muted[bus],
+                    solo: self.bus_solo[bus],
+                });
+            }
+        }
         for ti in 0..self.playlist_tracks.len() {
             let mut target = [f32::NAN; AutomationParam::COUNT];
             {
@@ -20228,6 +20309,7 @@ mod tests {
             plugin_slots: Vec::new(),
             bus_volume: default_bus_volume(),
             bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_automation: Vec::new(),
             bus_solo: [false; crate::audio::synth::NUM_BUSES],
             vca_volume: default_vca_volume(),
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
@@ -20802,6 +20884,9 @@ mod tests {
             bus_volume,
             bus_muted,
             bus_solo,
+            // Provet jämför en ljudbilds-fingerprint som inte rymmer busskurvorna; tom lista
+            // räcker, och att de inte är med i jämförelsen är ett eget beslut (se digesten).
+            bus_automation: Vec::new(),
             vca_faders,
             vca_muted,
             vca_solos,
@@ -21265,6 +21350,7 @@ mod tests {
             ],
             bus_volume: default_bus_volume(),
             bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_automation: Vec::new(),
             bus_solo: [false; crate::audio::synth::NUM_BUSES],
             vca_volume: default_vca_volume(),
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
@@ -22703,5 +22789,43 @@ mod automation_param_tests {
         }
         assert_eq!(AutomationParam::CompThreshold.range(), (-60.0, 0.0));
         assert_eq!(AutomationParam::Pitch.range(), (-24.0, 24.0));
+    }
+}
+
+#[cfg(test)]
+mod bus_automation_tests {
+    use super::*;
+
+    fn pt(bar: f32, value: f32) -> AutomationPoint {
+        AutomationPoint { time_bars: bar, value }
+    }
+
+    /// **Regeln är en regel.** Spårets lane och bussens lane ska ge *samma* svar för samma
+    /// punkter — annars vore de två kurvor som ser likadana ut och beter sig olika.
+    #[test]
+    fn a_bus_lane_and_a_track_lane_follow_the_same_curve() {
+        let points = vec![pt(4.0, 0.2), pt(8.0, 1.0)];
+        let spår = AutomationLane {
+            param: AutomationParam::Volume,
+            enabled: true,
+            points: points.clone(),
+        };
+        let buss = BusAutomationLane { bus: 1, enabled: true, points };
+        for bar in [0.0, 4.0, 5.0, 6.0, 8.0, 12.0] {
+            assert_eq!(spår.value_at(bar), buss.level_at(bar), "oense vid takt {bar}");
+        }
+        // Och interpolationen är linjär mitt emellan.
+        assert!((buss.level_at(6.0).unwrap() - 0.6).abs() < 1e-4);
+        // Konstant före första och efter sista punkten: en kurva ska inte börja på noll.
+        assert_eq!(buss.level_at(0.0), Some(0.2));
+        assert_eq!(buss.level_at(99.0), Some(1.0));
+    }
+
+    /// En tom kurva ger inget värde — den får inte betyda "noll".
+    #[test]
+    fn an_empty_bus_lane_says_nothing_rather_than_zero() {
+        let tom = BusAutomationLane { bus: 0, enabled: true, points: Vec::new() };
+        assert_eq!(tom.level_at(3.0), None);
+        assert_eq!(lane_value_at(&[], 3.0), None);
     }
 }

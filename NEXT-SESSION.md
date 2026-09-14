@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 483 default / 529 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 485 default / 531 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -417,6 +417,14 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
   UI som väljer parameter) och UI:t är den stora, för listan finns bara när en plugin är laddad.
   **Ett eget pass.**
 - **Kvar av 8.8:** buss- och plugin-passen ovan — båda med formen bestämd i roadmapen.
+
+- **BYGGD 2026-09-14 (modell + apply + inläsning + ångring), utom UI:t.** Kurvorna lyder redan
+  i motorn, och ett projekt kan bära dem. Kvar: knappen som skapar en punkt, som hör ihop med
+  buss-strippens reglage.
+- **En regel, två kurvor:** interpolationen bor i `lane_value_at` och används av både spårets
+  och bussens lane, med ett prov som binder dem.
+- **Två tysta förluster fångade:** kurvorna måste både läsas ur filen och tilldelas, och
+  återställas vid ångring — annars hade första ångringen raderat dem utan ett ljud.
 
 ## 4l. Läget just nu (2026-09-14)
 
