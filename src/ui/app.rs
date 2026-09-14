@@ -342,6 +342,29 @@ impl AutomationParam {
     }
 }
 
+/// **Logotypen i appen** — samma fil som fönsterikonen (`assets/sonix.png`, och samma bytes
+/// som `main.rs` ger `with_icon`).
+///
+/// Den avkodas **en gång** och hålls i en statisk cache: `include_bytes!` gör att bilden följer
+/// med binären (ingen fil som kan saknas vid körning, och ingen sökväg att leta upp i), och
+/// `OnceLock` ser till att avkodningen inte sker per bildruta. `None` betyder att bilden inte
+/// gick att läsa — då ritas ingen bild i stället för en grå ruta, och det syns i `Om`-rutan
+/// vilken väg som togs.
+static SONIX_LOGO: std::sync::OnceLock<Option<egui::ColorImage>> = std::sync::OnceLock::new();
+
+/// Logotypen som `ColorImage`, avkodad en gång. `None` om PNG:n inte gick att läsa.
+pub fn sonix_logo() -> Option<&'static egui::ColorImage> {
+    SONIX_LOGO
+        .get_or_init(|| {
+            let bytes = include_bytes!("../../assets/sonix.png");
+            let img = image::load_from_memory(bytes).ok()?;
+            let rgba = img.to_rgba8();
+            let size = [rgba.width() as usize, rgba.height() as usize];
+            Some(egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw()))
+        })
+        .as_ref()
+}
+
 /// A single breakpoint on an automation curve.
 ///
 /// **Positionen är i takter** (Fas 8.2), inte sekunder: en punkt hör till en plats i musiken.
@@ -2608,6 +2631,8 @@ pub struct SonixApp {
     pub selected_timeline_track: usize,
     // Automation curves (Fas 5.4)
     pub show_automation: bool,
+    /// Texturen för logotypen (samma bild som fönsterikonen). Laddas första gången den ritas.
+    pub logo_texture: Option<egui::TextureHandle>,
     pub automation_param: AutomationParam,
     /// (track, lane, point) currently being dragged.
     pub automation_drag: Option<(usize, usize, usize)>,
@@ -3328,6 +3353,7 @@ impl SonixApp {
             timeline_auto_scroll: true,
             selected_timeline_track: 0,
             show_automation: false,
+            logo_texture: None,
             automation_param: AutomationParam::Volume,
             automation_drag: None,
             // Project Metadata & Suno Multi-Track Stems
@@ -7015,6 +7041,21 @@ impl SonixApp {
         }
     }
 
+    /// Logotypen som textur, laddad **första gången den behövs**. `None` när bilden inte gick
+    /// att avkoda — anroparen ritar då ingen bild, aldrig en tom ruta.
+    fn logo_texture_for(&mut self, ctx: &egui::Context) -> Option<egui::TextureHandle> {
+        if self.logo_texture.is_none()
+            && let Some(img) = sonix_logo()
+        {
+            self.logo_texture = Some(ctx.load_texture(
+                "sonix-logo",
+                img.clone(),
+                egui::TextureOptions::LINEAR,
+            ));
+        }
+        self.logo_texture.clone()
+    }
+
     /// Evaluates every enabled automation lane for all tracks at the current
     /// song position and forwards changed values to the audio engine. Values
     /// are cached per parameter so we only emit commands on real changes.
@@ -9692,7 +9733,13 @@ impl eframe::App for SonixApp {
 
                     ui.separator();
 
-                    ui.label(egui::RichText::new(crate::i18n::t("🍊 SONIX")).strong().size(15.0).color(Theme::FL_ORANGE));
+                    // **Logotypen, inte en apelsin** (Alex 2026-09-14): samma bild som
+                    // fönsterikonen. Faller tillbaka på ordet om bilden inte kan läsas.
+                    let logo = self.logo_texture_for(ui.ctx());
+                    if let Some(tex) = &logo {
+                        ui.add(egui::Image::new(tex).fit_to_exact_size(egui::Vec2::splat(18.0)));
+                    }
+                    ui.label(egui::RichText::new(crate::i18n::t("SONIX")).strong().size(15.0).color(Theme::FL_CYAN));
                     ui.label(egui::RichText::new(crate::i18n::t("STUDIO")).strong().size(12.0).color(Theme::FL_CYAN));
                     ui.separator();
 
@@ -17858,7 +17905,15 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
             .show(ctx, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(10.0);
-                    ui.label(egui::RichText::new(crate::i18n::t("🍊")).size(64.0));
+                    // Samma logga, större — och samma fallback.
+                    match self.logo_texture_for(ctx) {
+                        Some(tex) => {
+                            ui.add(egui::Image::new(&tex).fit_to_exact_size(egui::Vec2::splat(96.0)));
+                        }
+                        None => {
+                            ui.label(egui::RichText::new(crate::i18n::t("SONIX")).size(28.0).color(Theme::FL_CYAN));
+                        }
+                    }
                     ui.heading(egui::RichText::new(crate::i18n::t("SONIX STUDIO")).strong().size(22.0).color(Theme::FL_ORANGE));
                     ui.label(egui::RichText::new(crate::i18n::t("Professionell Digital Audio Workstation & AI Musikstudio för Linux")).size(12.0).color(Theme::FL_CYAN));
                     ui.label(egui::RichText::new(crate::tstatus!("Version {} (PipeWire / ALSA / JACK Audio Engine)", env!("CARGO_PKG_VERSION"))).size(10.5).color(Theme::TEXT_MUTED));
@@ -20826,6 +20881,20 @@ mod tests {
             points: Vec::new(),
         };
         assert_eq!(empty.value_at(1.0), None);
+    }
+
+    /// **Samma fil är ikon och applogga — och den ska gå att läsa.**
+    /// `include_bytes!` gör ett *saknat* asset till ett byggfel, men en trasig eller helsvart
+    /// PNG hade gått rakt genom bygget och gett en tom ruta i appen. Provet avkodar den riktiga
+    /// filen och kräver rätt mått **och** att det finns något ritat i den.
+    #[test]
+    fn the_logo_is_a_readable_square_with_a_mark_in_it() {
+        let img = sonix_logo().expect("assets/sonix.png ska gå att avkoda");
+        assert_eq!(img.size, [512, 512], "ikonen ska vara 512×512 som förut");
+        assert!(
+            img.pixels.iter().any(|p| p.r() > 8 || p.g() > 8 || p.b() > 8),
+            "bilden är helt svart — då syns ingen logga"
+        );
     }
 
     /// **Migrationen, mätt på en fil som den ser ut.** Ett projekt skrivet före Fas 8.2 har

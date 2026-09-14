@@ -343,7 +343,7 @@ run_app() {
     fi
 }
 
-say "🍊 ${APP_NAME} – installer"
+say "${APP_NAME} – installer"
 info "This performs every step from the README with confirmation at each step."
 
 if [[ "$REFRESH" -eq 1 ]]; then

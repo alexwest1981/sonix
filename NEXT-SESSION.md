@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 465 default / 511 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 466 default / 512 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -364,6 +364,26 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
+
+## 4i. Logotypen ersätter apelsinen (2026-09-14)
+
+- **En fil, tre användningar:** `assets/sonix.png` (512×512, Alex' Gemini-logo: ett neon-cyan
+  **S** med en ljudvåg genom sig) är **fönsterikonen** (`main.rs` läser den redan via
+  `icon_data::from_png_bytes(include_bytes!(...))` — ingen kodändring behövdes där), **loggan i
+  headern och i Om-rutan**, och **README:s topp**.
+- **I appen avkodas bilden en gång** (`OnceLock` + `include_bytes!`, alltså ingen fil som kan
+  saknas vid körning) och läggs som textur första bildrutan den ritas. Faller tillbaka på ordet
+  om den inte kan läsas — aldrig en tom ruta.
+- **Provet avkodar den riktiga filen:** rätt mått och att det finns något ritat i den. En
+  helsvart eller trasig PNG hade gått rakt genom bygget annars.
+- **`assets/social-preview.png`** (1280×640) ligger i repot för GitHubs **social preview** —
+  den kan bara sättas för hand: *Settings → General → Social preview → Upload image*. Ta den
+  filen. (Repots README använder 512-ikonen, inte den breda.)
+- **Kvar:** skärmdumparna i `screenshots/` visar den gamla headern med apelsinen. De kan bara
+  göras om med ett fönster framme, så de väntar på Alex.
+- Apelsinen är borta ur README, `install.sh`s banner (där blev det ingen emoji alls — en PNG
+  kan inte stå i en terminal) och appen. **Färgerna** som heter "Orange" i koden (trumspår,
+  varningar, VST3-märken) är kvar: de är betydelser, inte logotypen.
 
 ## 4h. 8.2 stängd: automationen är takter (2026-09-14)
 

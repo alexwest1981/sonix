@@ -1,4 +1,8 @@
-# 🍊 SONIX STUDIO - Professional Native Linux DAW
+<p align="center">
+  <img src="assets/sonix.png" alt="Sonix Studio" width="150">
+</p>
+
+# SONIX STUDIO - Professional Native Linux DAW
 
 > **Languages / Språk:** [🇬🇧 English](README.md) | [🇸🇪 Svenska](README_SV.md)
 
