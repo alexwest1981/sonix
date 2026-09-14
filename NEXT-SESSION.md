@@ -410,7 +410,13 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
   flera spår kan skicka till samma buss, så en kurva under ett spår hade gjort anspråk på ett
   globalt värde. Formen står i roadmapen. **Inte byggd än**, och det är avsiktligt: modell utan
   förbrukare är död kod — modell, apply och UI ska komma i samma pass.
-- **Kvar av 8.8:** plugin-parametrar + bussfrågan.
+- **Plugin-parametrarna: formen utredd, inte byggd.** `SetPluginParameter` finns, men
+  `AutomationParam` är en **statisk** enum medan en plugins parametrar är en **runtime-lista** —
+  därför kan de inte bli varianter i den. Formen blir som bussens:
+  `PluginAutomationLane { track, param_id, points, enabled }`. Tre delar hör ihop (modell, apply,
+  UI som väljer parameter) och UI:t är den stora, för listan finns bara när en plugin är laddad.
+  **Ett eget pass.**
+- **Kvar av 8.8:** buss- och plugin-passen ovan — båda med formen bestämd i roadmapen.
 
 ## 4l. Läget just nu (2026-09-14)
 

@@ -110,8 +110,23 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
   - **Varför den inte byggdes samma kväll:** modellen utan förbrukare (eller apply utan UI) vore
     död kod — exakt det `silent-audio-doctrine` och läxan om låset ingen läste förbjuder. Ett
     buss-pass ska bära modell, apply och UI tillsammans, och det är ett eget pass.
-- **Kvar av 8.8:** plugin-parametrar (kräver att plugin-värdens parametrar exponeras som mål) och
-  bussfrågan ovan.
+- **Plugin-parametrar: målet finns, men formen är en annan — och det är en verklig skillnad, inte
+  en genväg** (mätt 2026-09-14). `AudioCommand::SetPluginParameter` finns, och värden har både
+  `parameters() -> &[PluginParameter]` och `set_parameter(id, value)`. Det som *inte* fungerar är
+  att lägga dem i `AutomationParam`: den enumen är **statisk** — tio varianter kända vid
+  kompilering, `ALL`, och ett index in i en cache med fast längd. En plugins parametrar är en
+  **runtime-lista** som varierar per plugin och per instans, med `u32`-id:n som bara finns efter
+  att plugin-instansen laddats.
+  - **Formen blir som bussens**, av samma skäl: `PluginAutomationLane { track, param_id, points,
+    enabled }` med `#[serde(default)] plugin_automation: Vec<...>` på projektet. `AutomationParam`
+    förblir den statiska listan över *spårets egna* rattar — de två slagen av mål blandas inte.
+  - **Tre delar som hör ihop, och därför ett eget pass:** modellen, apply (via
+    `SetPluginParameter`), och **UI:t som väljer parameter** — och den sista är den stora, för
+    listan är dynamisk och finns bara när en plugin är laddad i en slot. Det går inte att smyga in
+    som "en rad till" i lane-väljaren, som EQ-banden kunde.
+  - **Varför det inte halvbyggs:** samma skäl som bussen — en modell utan förbrukare, eller en
+    apply utan UI, är död kod. Plugin-vägen är dessutom feature-gated (`plugin-host`), så en
+    halv väg hade bara kunnat prövas i en av CI:s byggkombinationer.
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
 | 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **Steg 1 klart och kvitterat av Alex** (`f0dc8eb` + `a510775`). **Vägen framåt är nu researchad och vald** (se "Vad researchunderlaget säger" under 8.10): pitch-bevarande sträckning **offline till fil + cache**, egen DSP som bas, **en enda switch** för användaren. Kvar: koppla in sträckningen i tidslinjen, klipp över ett tempobyte, och att vyn visar att klippet är sträckt | — |
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **Klart** (`392a30c`): en tabell, ett index, låset gör något, tonarten sparas — se fas 8.11 | Alex' ögon på markeringen |
