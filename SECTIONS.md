@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**63 moduler · 68433 rader kod · 19 med status · 44 utan.**
+**63 moduler · 68482 rader kod · 19 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,9 +15,9 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 22662 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 83 (+1 ign) |  |
+| `src/ui/app.rs` | 22708 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 83 (+1 ign) |  |
 | `src/audio/synth.rs` | 3518 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 96 | 49 |  |
-| `src/i18n.rs` | 2527 | fryst — nycklar på engelska, texter på svenska | 1349 | 4 |  |
+| `src/i18n.rs` | 2530 | fryst — nycklar på engelska, texter på svenska | 1352 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
 | `src/audio/exporter.rs` | 2125 | stabil — offline-rendering och export | 10 | 19 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
 | `src/audio/recorder.rs` | 1700 | stabil — inspelning | 7 | 16 |  |
@@ -29,7 +29,7 @@
 | `src/ui/plugins_view.rs` | 1059 | — | 1 | 0 |  |
 | `src/audio/onset.rs` | 1040 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 38 | 25 (+1 ign) | Onset-detektering och slicekarta (Fas 8.7).  |
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
-| `src/audio/master_fx.rs` | 1016 | — | 5 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
+| `src/audio/master_fx.rs` | 1016 | — | 6 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
 | `src/paths.rs` | 1008 | fryst — enda modulen som får bygga sökvägar | 46 | 14 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
 | `src/audio/plugin_sandbox.rs` | 945 | — | 9 | 8 | Out-of-process plugin sandbox (Fas 4.5a + 4.5b).  |
 | `src/audio/plugin_vst2.rs` | 908 | — | 4 | 9 | Minimal in-process **VST2** host (Fas 4.6c).  |

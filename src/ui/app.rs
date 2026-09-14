@@ -311,6 +311,13 @@ pub enum AutomationParam {
     CompRatio,
     /// Transponering i halvtoner.
     Pitch,
+    /// EQ: låg bandets förstärkning i dB (Fas 8.8). Banden ligger på spåret, som lane:n hör
+    /// till — därför hör de hemma här och inte hos en buss.
+    EqLow,
+    /// EQ: mittenbandet.
+    EqMid,
+    /// EQ: hög bandet.
+    EqHigh,
 }
 
 impl AutomationParam {
@@ -318,7 +325,7 @@ impl AutomationParam {
     /// den här listan, inte ur en handskriven siffra per variant. Två listor som måste stämma
     /// överens driver isär förr eller senare — det är den här kodbasens mest återkommande fel —
     /// och då pekar en kurva på fel parameter utan att något larmar.
-    pub const ALL: [AutomationParam; 7] = [
+    pub const ALL: [AutomationParam; 10] = [
         AutomationParam::Volume,
         AutomationParam::Pan,
         AutomationParam::ReverbSend,
@@ -326,6 +333,9 @@ impl AutomationParam {
         AutomationParam::CompThreshold,
         AutomationParam::CompRatio,
         AutomationParam::Pitch,
+        AutomationParam::EqLow,
+        AutomationParam::EqMid,
+        AutomationParam::EqHigh,
     ];
 
     /// Antalet mål. Används som längd på cachen, så arrayen inte kan bli för kort när ett mål
@@ -341,6 +351,9 @@ impl AutomationParam {
             AutomationParam::CompThreshold => crate::i18n::t("Kompressor: tröskel (dB)"),
             AutomationParam::CompRatio => crate::i18n::t("Kompressor: förhållande"),
             AutomationParam::Pitch => crate::i18n::t("Transponering (halvtoner)"),
+            AutomationParam::EqLow => crate::i18n::t("EQ: låg (dB)"),
+            AutomationParam::EqMid => crate::i18n::t("EQ: mitten (dB)"),
+            AutomationParam::EqHigh => crate::i18n::t("EQ: hög (dB)"),
         }
     }
 
@@ -354,6 +367,9 @@ impl AutomationParam {
             | AutomationParam::CompRatio => (0.0, 1.0),
             AutomationParam::CompThreshold => (-60.0, 0.0),
             AutomationParam::Pitch => (-24.0, 24.0),
+            // Ett standardområde för ett band: brett nog att vara ett verkligt ingrepp, inte så
+            // brett att en kurva kan vrida sönder ljudet av misstag.
+            AutomationParam::EqLow | AutomationParam::EqMid | AutomationParam::EqHigh => (-18.0, 18.0),
         }
     }
 
@@ -7109,6 +7125,7 @@ impl SonixApp {
             }
             let mut state_cmd = None;
             let mut mix_cmd = None;
+            let mut eq_cmd: Option<crate::audio::master_fx::TrackEqSettings> = None;
             {
                 let track = &mut self.playlist_tracks[ti];
                 let set = |cache: &mut f32, v: f32| -> bool {
@@ -7152,6 +7169,26 @@ impl SonixApp {
                     track.pitch_semitones = target[6];
                     mix_changed = true;
                 }
+                // **EQ:n (8.8): banden ligger på spåret**, och `SetTrackEq` bär hela
+                // inställningen — därför muteras spårets egen EQ och skickas tillbaka i sin
+                // helhet. Att bygga en ny `TrackEqSettings` här hade tyst nollat frekvenser och
+                // Q, alltså ändrat mer än kurvan rör.
+                let mut eq_changed = false;
+                if set(&mut track.automation_last[7], target[7]) {
+                    track.eq.low_gain_db = target[7];
+                    eq_changed = true;
+                }
+                if set(&mut track.automation_last[8], target[8]) {
+                    track.eq.mid_gain_db = target[8];
+                    eq_changed = true;
+                }
+                if set(&mut track.automation_last[9], target[9]) {
+                    track.eq.high_gain_db = target[9];
+                    eq_changed = true;
+                }
+                if eq_changed {
+                    eq_cmd = Some(track.eq.to_settings());
+                }
                 if state_changed {
                     state_cmd = Some((track.volume, track.pan, track.muted, track.solo));
                 }
@@ -7164,6 +7201,12 @@ impl SonixApp {
                         track.pitch_semitones,
                     ));
                 }
+            }
+            if let Some(settings) = eq_cmd {
+                let _ = self.engine.send_command(AudioCommand::SetTrackEq {
+                    track_index: ti,
+                    settings,
+                });
             }
             if let Some((volume, pan, muted, solo)) = state_cmd {
                 let _ = self.engine.send_command(AudioCommand::SetStemTrackState {
@@ -22648,6 +22691,9 @@ mod automation_param_tests {
             AutomationParam::CompThreshold,
             AutomationParam::CompRatio,
             AutomationParam::Pitch,
+            AutomationParam::EqLow,
+            AutomationParam::EqMid,
+            AutomationParam::EqHigh,
         ] {
             assert!(AutomationParam::ALL.contains(&p), "{p:?} saknas i ALL");
             let (lo, hi) = p.range();

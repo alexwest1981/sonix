@@ -83,7 +83,22 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. **8.7 klart 2026-09-14**: nudge, kantdämpning (mätt) och dump till stegraden + piano rollen med kontraktsprov. | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
-| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Delvis klar 2026-09-14**: fyra → **sju** mål (kompressorns tröskel och förhållande, transponering). Kvar: plugin-, EQ- och buss-parametrar (kräver att kommandona bär dem) | — |
+| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Klar 2026-09-14 utom plugin och buss**: fyra → **tio** mål (kompressorns tröskel och förhållande, transponering, EQ:ns tre band). Buss är en **egen fråga**, inte ett steg: en lane hör till ett spår, bussen är global | — |
+
+#### 8.8: EQ:ns band och bussfrågan (2026-09-14)
+
+- **Femte gången samma kväll som vägen redan fanns:** `SetTrackEq` bär hela `TrackEqSettings`, och
+  banden ligger på **spåret** — precis där en lane hör hemma. Ingen motorändring: fyra → tio mål.
+- **En detalj värd eftertanke:** kommandot bär *hela* inställningen, så koden muterar spårets egen
+  EQ och skickar tillbaka den i sin helhet. Att bygga en ny `TrackEqSettings` på plats hade tyst
+  nollat frekvenser och Q — alltså ändrat mer än kurvan rörde.
+- **Bussen är kvar, och den är en egen fråga — inte ett steg.** `bus_volume` finns, men en lane
+  hör till ett **spår** medan bussen är **global**. Vem som äger en busskurva (en buss-lane, eller
+  spårets lane med ett bussmål) är ett designbeslut. Att lägga den under spåret utan att bestämma
+  det hade gett tio lanes som pekar på samma globala värde — och två spår hade kunnat slåss om
+  bussen utan att någon sagt vilken som gäller.
+- **Kvar av 8.8:** plugin-parametrar (kräver att plugin-värdens parametrar exponeras som mål) och
+  bussfrågan ovan.
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
 | 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **Steg 1 klart och kvitterat av Alex** (`f0dc8eb` + `a510775`). **Vägen framåt är nu researchad och vald** (se "Vad researchunderlaget säger" under 8.10): pitch-bevarande sträckning **offline till fil + cache**, egen DSP som bas, **en enda switch** för användaren. Kvar: koppla in sträckningen i tidslinjen, klipp över ett tempobyte, och att vyn visar att klippet är sträckt | — |
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **Klart** (`392a30c`): en tabell, ett index, låset gör något, tonarten sparas — se fas 8.11 | Alex' ögon på markeringen |

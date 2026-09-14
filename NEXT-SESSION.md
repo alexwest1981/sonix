@@ -401,8 +401,12 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
 - **`AutomationParam` har nu ETT index:** det härleds ur `ALL` med `position`, `COUNT` kommer från
   `ALL.len()`, och cachen har längden `COUNT`. Prov räknar dem mot varandra.
 - **Lane-väljaren fick de tre målen gratis** — den läser `ALL` sedan tidigare.
-- **Kvar av 8.8:** plugin-, EQ- och buss-parametrar. Där finns inget gratisfall: kommandona bär
-  dem inte än, så de måste utökas först.
+- **EQ:n kom samma kväll:** `SetTrackEq` bär hela `TrackEqSettings` och banden ligger på spåret,
+  så fyra → **tio** mål. Kommandot bär *hela* inställningen — därför muteras spårets egen EQ och
+  skickas tillbaka i sin helhet; att bygga en ny hade tyst nollat frekvenser och Q.
+- **Bussen är kvar som en EGEN FRÅGA, inte ett steg:** en lane hör till ett spår, bussen är
+  global. Bestäm först vem som äger en busskurva.
+- **Kvar av 8.8:** plugin-parametrar + bussfrågan.
 
 ## 4l. Läget just nu (2026-09-14)
 
