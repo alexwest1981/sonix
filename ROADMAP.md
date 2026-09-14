@@ -2131,7 +2131,7 @@ stället för att jag ska behöva läsa 21 000 rader för att hitta den.
 
 ## 8.14 "Sätt takt 1 här" — rutnätet mot musiken (Alex' fråga 2026-09-13)
 
-**Gapet stod redan skrivet** (NEXT-SESSION §4a, punkt 2): *"om det fortfarande inte stämmer vid
+**Gapet stod redan skrivet** (ur våra egna arbetsanteckningar, §4a punkt 2): *"om det fortfarande inte stämmer vid
 rätt tempo ligger låtens första slag inte på takt 1 i filen, och då är åtgärden att trimma
 klippets vänsterkant (`sample_offset_sec`) så att slaget landar på rutnätet. **Inget tempo lagar
 det**, och appen har i dag ingen synlig väg för det."* Det var sista biten av Alex' återkommande

@@ -7,3 +7,6 @@ imported_stems/
 *.zip
 *.sonix
 .env
+
+# Arbetsanteckningar för pågående pass — vår handoff, inte projektets dokumentation
+NEXT-SESSION.md
