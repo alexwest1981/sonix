@@ -13613,6 +13613,42 @@ impl SonixApp {
                                 ui.painter().line_segment([Pos2::new(start_x, wf_rect.min.y), Pos2::new(start_x, wf_rect.max.y)], Stroke::new(2.5_f32, Theme::FL_GREEN));
                                 ui.painter().line_segment([Pos2::new(end_x, wf_rect.min.y), Pos2::new(end_x, wf_rect.max.y)], Stroke::new(2.5_f32, Color32::from_rgb(255, 70, 70)));
 
+                                // **Nudge: dra en gräns** (Fas 8.7 steg 2). Gränsen ligger
+                                // mellan två slicar, så `nudge_slice_boundary` flyttar **båda** —
+                                // flyttas bara den ena uppstår ett glapp (tyst i slicen) eller
+                                // ett överlapp (samma ljud två gånger). Filens kanter (den
+                                // första och den sista) ritas men går inte att dra: en karta som
+                                // inte täcker hela filen spelar inte hela filen längre.
+                                //
+                                // Minsta slice i kartans enhet (andel av filen): 0,5 %. Den
+                                // klämningen finns för att en gräns inte ska kunna korsa sin
+                                // granne — detektionens 30 ms är en annan regel (när två slag
+                                // slås ihop) och blandas inte in här.
+                                const MIN_SLICE: f32 = 0.005;
+                                for bi in 1..ch.slices.len() {
+                                    let bx = wf_rect.min.x + ch.slices[bi].0 * wf_rect.width();
+                                    let zone = Rect::from_min_max(
+                                        Pos2::new(bx - 3.0, wf_rect.min.y),
+                                        Pos2::new(bx + 3.0, wf_rect.max.y),
+                                    );
+                                    let resp = ui.interact(
+                                        zone,
+                                        egui::Id::new(("slice-nudge", bi)),
+                                        egui::Sense::drag(),
+                                    );
+                                    if resp.dragged() {
+                                        let delta = resp.drag_delta().x / wf_rect.width();
+                                        if delta != 0.0 {
+                                            ch.slices = crate::audio::onset::nudge_slice_boundary(
+                                                &ch.slices, bi, delta, MIN_SLICE,
+                                            );
+                                        }
+                                    }
+                                    if resp.hovered() || resp.dragged() {
+                                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                                    }
+                                }
+
                                 // Quick Slicer Presets
                                 ui.horizontal(|ui| {
                                     ui.label(egui::RichText::new(crate::i18n::t("Chop Snabbval:")).size(10.0).color(Theme::TEXT_MUTED));

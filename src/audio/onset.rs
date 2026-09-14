@@ -301,6 +301,44 @@ pub fn slices_from_onsets(
     slices
 }
 
+/// **Flytta en slicegräns — nudge** (Fas 8.7 steg 2).
+///
+/// En gräns inne i kartan ligger *mellan* två slicar: slutet på den ena är början på den nästa.
+/// Att flytta bara den ena sidan hade lämnat ett glapp eller ett överlapp, och invarianten som
+/// redan har ett prov — "kartan täcker hela filen utan glapp eller överlapp" — hade brutits.
+/// Därför flyttas **båda**, i en och samma operation, och kartan förblir en sammanhängande
+/// indelning av filen.
+///
+/// `boundary` är gränsens index: `0` är filens början och `slices.len()` är filens slut. De två
+/// yttre är **filens kanter och rörs inte** — en karta som inte börjar på noll eller slutar på
+/// slutet spelar inte hela filen längre, och det är en annan sak än att nudga.
+///
+/// `min_len` är kortaste tillåtna slice i **samma enhet som kartan** (choppern räknar i andel av
+/// filen, 0…1). En gräns som skulle korsa sin granne **kläms** mot grannen i stället för att
+/// slicen tas bort: att tyst slå ihop två slicar vore att ändra kartan, inte att flytta en gräns.
+///
+/// Ett oändligt eller `NaN`-igt `delta` lämnar kartan orörd — hellre oförändrat än förstört.
+pub fn nudge_slice_boundary(
+    slices: &[(f32, f32)],
+    boundary: usize,
+    delta: f32,
+    min_len: f32,
+) -> Vec<(f32, f32)> {
+    if slices.is_empty() || !delta.is_finite() || boundary == 0 || boundary >= slices.len() {
+        return slices.to_vec();
+    }
+    // Gränsen är slutet på slice `boundary - 1` och början på slice `boundary`.
+    let (lower, upper) = (slices[boundary - 1].0, slices[boundary].1);
+    // Grannen på var sida sätter taket: ingen av dem får bli kortare än `min_len`.
+    let lo = (lower + min_len).min(upper);
+    let hi = (upper - min_len).max(lower);
+    let moved = (slices[boundary].0 + delta).clamp(lo.min(hi), hi.max(lo));
+    let mut out = slices.to_vec();
+    out[boundary - 1].1 = moved;
+    out[boundary].0 = moved;
+    out
+}
+
 /// Fönstret en not ska spela på en kanal med en **slicekarta** (Fas 8.7 steg 2).
 ///
 /// **Kromatiskt från basnoten:** noten `bas + i` spelar slice `i`. Det är samma
@@ -418,6 +456,50 @@ mod tests {
             assert_eq!(w[0].end, w[1].start, "inga glapp och inget överlapp");
         }
         assert!(slices.iter().all(|s| s.end > s.start), "inga tomma slicar");
+    }
+
+    /// **En gräns är delad, och en flytt rör båda sidorna.** Det är hela poängen: flyttas bara
+    /// den ena uppstår ett glapp (tyst i slicen) eller ett överlapp (samma ljud två gånger).
+    #[test]
+    fn nudging_a_boundary_moves_it_for_both_neighbours() {
+        let slices = vec![(0.0, 0.25), (0.25, 0.5), (0.5, 1.0)];
+        let moved = nudge_slice_boundary(&slices, 1, 0.05, 0.01);
+        assert!((moved[0].1 - 0.30).abs() < 1e-6, "{:?}", moved);
+        assert!((moved[1].0 - 0.30).abs() < 1e-6, "{:?}", moved);
+        // Grannarna i övrigt orörda, och kartan fortfarande utan glapp eller överlapp.
+        assert_eq!(moved[0].0, 0.0);
+        assert_eq!(moved[2].1, 1.0);
+        for w in moved.windows(2) {
+            assert_eq!(w[0].1, w[1].0, "glapp eller överlapp efter nudge");
+        }
+        // Indelningen är fortfarande lika lång — en nudge tar inte bort någon slice.
+        assert_eq!(moved.len(), slices.len());
+    }
+
+    /// En gräns som skulle korsa sin granne **kläms** — slicar slås inte ihop av en nudge.
+    #[test]
+    fn a_boundary_that_would_cross_its_neighbour_is_clamped_not_merged() {
+        let slices = vec![(0.0, 0.25), (0.25, 0.5), (0.5, 1.0)];
+        let far_left = nudge_slice_boundary(&slices, 1, -10.0, 0.05);
+        assert!((far_left[1].0 - 0.05).abs() < 1e-6, "{:?}", far_left);
+        assert_eq!(far_left.len(), 3, "en slice försvann i stället för att klämmas");
+        let far_right = nudge_slice_boundary(&slices, 2, 10.0, 0.05);
+        assert!((far_right[2].0 - 0.95).abs() < 1e-6, "{:?}", far_right);
+        for w in far_left.windows(2).chain(far_right.windows(2)) {
+            assert!(w[0].1 <= w[1].0 + 1e-6, "överlapp: {:?}", w);
+        }
+    }
+
+    /// Filens kanter är inte gränser man nudgar, och skräp i `delta` ska lämna kartan orörd.
+    #[test]
+    fn the_files_edges_are_not_nudged_and_bad_input_changes_nothing() {
+        let slices = vec![(0.0, 0.5), (0.5, 1.0)];
+        assert_eq!(nudge_slice_boundary(&slices, 0, 0.3, 0.01), slices, "filens början");
+        assert_eq!(nudge_slice_boundary(&slices, 2, -0.3, 0.01), slices, "filens slut");
+        assert_eq!(nudge_slice_boundary(&slices, 9, 0.3, 0.01), slices, "index utanför");
+        assert_eq!(nudge_slice_boundary(&slices, 1, f32::NAN, 0.01), slices, "NaN");
+        assert_eq!(nudge_slice_boundary(&slices, 1, f32::INFINITY, 0.01), slices, "oändligt");
+        assert!(nudge_slice_boundary(&[], 1, 0.1, 0.01).is_empty());
     }
 
     #[test]

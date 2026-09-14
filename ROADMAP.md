@@ -81,7 +81,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 4 | **7.1 Windows-porten** | *XL* | **Steg 1–8 klara 2026-09-14**: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`) på alla plattformar**. Kvar: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Lånad Windows-laptop |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
-| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** (slagen hittas, slicekarta, sparas i projektfilen); kvar: nudge, per-slice-fade och dump till steg/piano roll | — |
+| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** + **nudge klar 2026-09-14** (gränsen flyttas för båda grannarna, kläms i stället för att slås ihop, dragen direkt i vågformen); kvar: per-slice-fade och dump till steg/piano roll | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
@@ -1031,11 +1031,32 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     2 ms enpolsfilter gav 32, och en *släpande* tröskellinje gav 5 falska slag i sitt
     uppvaknande — först 4 ms enpolsfilter + centrerad tröskel ger 0 slag i en jämn ton och
     exakt rätt antal i ett klickmönster. 8 tester i modulen.
-  - **Steg 2 kvar:** flytta en slicegräns (**nudge**), **per-slice-fade** 1–5 ms vid
-    kanterna (Reapers Fade pad, Abeltons per-slice-fade), och **dumpa slicarna till steg eller
-    piano roll** (FL:s "Convert to score and dump to piano roll", Reapers "Create chromatic
-    MIDI item from slices"). Spektral flux med FFT i stället för tidsdomänen hör också hit —
-    starkare på melodiöst och vibrato-rikt material, onödigt för trummor.
+  - **Steg 2, första delen klar (2026-09-14) — nudge:**
+    - **En gräns är delad, och det är hela saken.** Slutet på en slice *är* början på nästa, så
+      `nudge_slice_boundary` flyttar **båda** i en och samma operation. Flyttas bara den ena
+      uppstår ett glapp (tyst i slicen) eller ett överlapp (samma ljud två gånger) — och
+      invarianten som redan hade ett prov, "kartan täcker hela filen utan glapp eller överlapp",
+      hade brutits. En gräns som skulle korsa sin granne **kläms** i stället för att slicen tas
+      bort: att tyst slå ihop två slicar vore att ändra kartan, inte att flytta en gräns.
+    - **Filens kanter rörs inte.** Gräns 0 och gräns `len` är filens början och slut; en karta
+      som inte täcker hela filen spelar inte hela filen längre, och det är en annan sak.
+    - **Tre prov, varav ett är invarianter:** båda sidorna flyttas och kartan förblir
+      sammanhängande; en gräns som dras långt **kläms** och indelningen behåller sitt antal
+      slicar; kanterna och skräpinput (`NaN`, oändligt, index utanför) lämnar kartan orörd.
+    - **Draget sitter i vågformen:** varje inre gräns har en egen träffyta (±3 px) som går att
+      dra, med `ResizeHorizontal`-markören. Ingen ny state behövs — egui äger draget, och
+      `Id::new(("slice-nudge", bi))` är unikt per gräns.
+    - **Mätt att den hörs, inte antaget:** kartan läses av **alla tre** vägarna —
+      `channel_sample_trigger_command` (live, via `window_for_note`), kanalen som skickas till
+      motorn (`RackChannel.slices`) och **exporten** (`exporter.rs`). En nudge ändrar alltså
+      ljudet, inte bara ritningen. Det kontrollerades innan något skrevs, och misstanken att den
+      *inte* var inkopplad var fel.
+  - **Steg 2 kvar:** **per-slice-fade** 1–5 ms vid kanterna (Reapers Fade pad, Abeltons
+    per-slice-fade) och **dumpa slicarna till steg eller piano roll** (FL:s "Convert to score and
+    dump to piano roll", Reapers "Create chromatic MIDI item from slices"). Dumpen är den stora
+    av de två: den behöver slice-offset per steg i motorn. Spektral flux med FFT i stället för
+    tidsdomänen hör också hit — starkare på melodiöst och vibrato-rikt material, onödigt för
+    trummor.
   - **Läget i koden före steg 1 (mätt 2026-09-12):** `active_chopper_channel` ger **en** trim-ruta per
     kanal (`sample_start`/`sample_end` i procent av filen) med snabbval `1/2`, `1/4`, `2/4` …
     och en knapp märkt **"⚡ Transient"** som bara sätter `sample_end = 0.18`. Ingen

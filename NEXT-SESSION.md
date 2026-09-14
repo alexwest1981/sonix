@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 466 default / 512 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 469 default / 515 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -364,6 +364,22 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
+
+## 4j. 8.7 steg 2: nudge klar (2026-09-14)
+
+- **En slicegräns är delad.** `nudge_slice_boundary` flyttar både slutet på den vänstra och
+  början på den högra slicen — annars glapp (tyst) eller överlapp (dubbelt ljud), och invarianten
+  "kartan täcker hela filen" bryts. En gräns som korsar sin granne **kläms**, slicar slås aldrig
+  ihop av en nudge. Filens kanter rörs inte.
+- **Draget sitter i vågformen** (±3 px per inre gräns, `ResizeHorizontal`), utan ny state —
+  egui äger draget.
+- **Mätt att den hörs:** kartan läses av live-vägen, av kanalen som skickas till motorn och av
+  **exporten**. Kontrollera det innan du "fixar" en väg — misstanken att den var okopplad var
+  **fel** den här gången, som två gånger samma kväll. Bygg inte det som redan finns.
+- **Kvar i steg 2:** per-slice-fade (1–5 ms) och dumpen till steg/piano roll — den senare kräver
+  slice-offset per steg i motorn och är den stora av de två.
+- **Inte klickad i GUI:** gränsdragningen är kompilerad och regeln är provad, men ingen har
+  dragit i en gräns i ett fönster.
 
 ## 4i. Logotypen ersätter apelsinen (2026-09-14)
 
