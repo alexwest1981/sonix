@@ -77,13 +77,13 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | :--- | :--- | :---: | :--- | :--- |
 | 1 | **8.3 Routing på riktigt** | *M* | **Klar 2026-09-13**: sidokedjor (`09-12`), bussar/VCA (`09-12`), sends mellan spår (`09-13`) | — |
 | 2 | **8.4 Sampler** | *M* | **Klar 2026-09-13**: looplägen, not-av, ADSR och export — se stycket nedan | — |
-| 3 | **8.2 Tempo map** | *S–M* | **Klar 2026-09-14**: visningen genom kartan (`snap_bar` som enda snäppregel) och **automationens punkter i takter** med migrering av gamla projekt genom kartan. Kvar: Alex' ögon på tempopunkt-UI:t | Alex' kvittens |
+| 3 | **8.2 Tempo map** | *S–M* | **KLAR 2026-09-14**: visningen genom kartan (`snap_bar`), automationens punkter i takter samt **UI kvitterat i GUI av Alex** | — |
 | 4 | **7.1 Windows-porten** | *XL* | **PAUSAD EFTER BESKED 2026-09-14** (Alex har ingen laptop än). Steg 1–8 klara: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`)**. Kvar när den tas upp: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Alex säger till |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
 | 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **8.7 i praktiken klar 2026-09-14**: nudge, kantdämpning (mätt på ljudet) och **dump till både stegraden och piano rollen** med kontraktsprov. **8.7 klart 2026-09-14**: nudge, kantdämpning (mätt) och dump till stegraden + piano rollen med kontraktsprov. | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
-| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Klar 2026-09-14 utom plugin-målen**: tio spårmål, och bussens egna kurvor är byggda hela vägen (modell, apply, inläsning, ångring och UI) med prov. Kvar: bara plugin-målen | — |
+| 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | **Spår- och bussautomation klar och kvitterad i GUI av Alex 2026-09-14**: 10 spårmål + bussens kurvor hela vägen. Kvar: plugin-målen (dynamisk parameterlista) | — |
 
 #### 8.8: EQ:ns band och bussfrågan (2026-09-14)
 
@@ -856,7 +856,7 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
   - **CPU-besparingen är mätt, inte påstådd** — och mätningen jämför **identiskt ljud** genom två vägar (referensljudet renderas först och matas tillbaka som stem, så det inte är fråga om att enklare musik går fortare): medelbelastning **1,4 % → 0,3 %** och värsta blocket **2,2 % → 0,3 %** i release (256 frames) — runt **4,7 gånger lägre**. I debug 7,3 % → 2,6 %. Tröskeln i testet jämför de två mätningarna och gäller bara i release, med generös marginal (20 % billigare), av samma skäl som 7.2:s tröskel: en tidsgräns som slår till slumpmässigt skyddar ingenting.
   - **Kvar, utskrivet:** (1) **inget GUI-körtest** (att det *låter* likadant och att en upptining ger tillbaka exakt samma musik) — kräver Alex; (2) frysningen gäller **sång-läget**: pattern-läget spelar kanalracket och har inget spår att frysa, vilket står i koden; (3) bussarnas läge är inte med i fingeravtrycket (mastern renderas torr, så det spelar ingen roll för ljudet — men det ska inte heller påstås vara fångat); (4) ett spår med plugin-insert kan inte frysas alls (vägras med besked i statusraden).
   - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
-- [ ] **8.2 Tempo map** — tempobyten och taktart i låten (rör projektformat, export och SMF). — *steg 1 klart 2026-09-11, steg 2–3 kvar*
+- [x] **8.2 Tempo map** — tempobyten och taktart i låten (rör projektformat, export och SMF). — *KLAR 2026-09-14, UI kvitterat av Alex*
   - **Mätt först, och mitt första tal var fel.** En snabb mätning sa "132 ställen i `app.rs` räknar takter ↔ sekunder med ett tempo". Det är antalet **rader**, och en rad är inte en risk. Mätt i arbetsenheter i stället:
     - **20 funktioner** definierar en egen `sec_per_bar = 60/bpm*4` — det är de som antar att tiden är linjär, och det är dem som måste bli positionsmedvetna.
     - **22** ställen räknar steg↔sekunder direkt (`60/bpm/4`).
