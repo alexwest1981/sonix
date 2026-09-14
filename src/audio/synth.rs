@@ -470,6 +470,32 @@ pub struct AuditionVoice {
 
 /// A polyphonic one-shot voice that streams a preloaded WAV sample
 /// (Channel Rack steps, drum machines & melodic sample playback).
+/// **Kantdämpningen vid en slicekant** (Fas 8.7 steg 2).
+///
+/// `frames_from_edge` är hur långt in i slicen vi är — eller hur många ramar som återstår till
+/// kanten — och `fade_frames` är rampens längd. Svaret är 0 **vid** kanten och 1 en ramp in.
+/// Samma regel i båda ändarna, för det är samma fenomen: ett klick är en språngvis förändring
+/// av amplituden, och en ramp mot noll är motsatsen.
+///
+/// Ren funktion med egen provsvit. Den är för liten att gömma i renderingsloopen och för
+/// viktig att lämna oprövad — det är den som skiljer ett klick från ett klipp.
+///
+/// `fade_frames = 0` ger **1,0 överallt**, alltså exakt beteendet innan rampen fanns. Det är
+/// avsiktligt: en avstängd dämpning ska vara identisk med den gamla vägen, inte nästan.
+pub fn slice_edge_gain(frames_from_edge: f32, fade_frames: f32) -> f32 {
+    if !frames_from_edge.is_finite() || !fade_frames.is_finite() {
+        return 1.0;
+    }
+    if fade_frames <= 0.0 {
+        return 1.0;
+    }
+    (frames_from_edge / fade_frames).clamp(0.0, 1.0)
+}
+
+/// Längden på kantdämpningen vid en slicekant (Fas 8.7 steg 2): 2 ms, inom det spann
+/// (1–5 ms) Reapers fade pad och Abeltons per-slice-fade använder.
+pub const SLICE_FADE_SECS: f32 = 0.002;
+
 pub struct SampleVoice {
     pub left: Arc<Vec<f32>>,
     pub right: Arc<Vec<f32>>,
@@ -485,8 +511,11 @@ pub struct SampleVoice {
     pub pan_l: f32,
     pub pan_r: f32,
     pub reverse: bool,
-    /// Short anti-click fade-in, measured in output frames.
-    pub attack_frames: u32,
+    /// **Kantdämpningens längd i utramar** (Fas 8.7 steg 2): rampen vid *båda* kanterna av
+    /// fönstret. Starten har haft en sedan tidigare (anti-klick); slutet fick sin när en slice
+    /// som tar slut mitt i en ton visade sig klicka. 2 ms ligger inom det Reaper och Ableton
+    /// använder för sin fade pad (1–5 ms).
+    pub fade_frames: u32,
     pub frames_done: u32,
     pub active: bool,
     /// **Kanalen rösten tillhör** (Fas 8.4) — not-av gäller en kanal i taget, och poolen
@@ -529,7 +558,7 @@ impl SampleVoice {
             pan_l: 1.0,
             pan_r: 1.0,
             reverse: false,
-            attack_frames: 0,
+            fade_frames: 0,
             frames_done: 0,
             active: false,
             channel: 0,
@@ -1185,7 +1214,10 @@ impl SynthEngine {
                 let p: f32 = 0.0; // pan handled on the channel strip in future
                 v.pan_l = ((1.0 - p) * 0.5).sqrt();
                 v.pan_r = ((1.0 + p) * 0.5).sqrt();
-                v.attack_frames = ((self.sample_rate * 0.0015) as u32).max(1);
+                // 2 ms, inte 1,5: samma ramp används nu vid **båda** kanterna, och 2 ms
+                // ligger inom det intervall (1–5 ms) Reapers fade pad och Abeltons
+                // per-slice-fade använder.
+                v.fade_frames = ((self.sample_rate * SLICE_FADE_SECS) as u32).max(1);
                 v.frames_done = 0;
                 v.active = true;
             }
@@ -1441,9 +1473,21 @@ impl SynthEngine {
             s_l *= sv.pan_l;
             s_r *= sv.pan_r;
             let mut g = sv.volume;
-            if sv.frames_done < sv.attack_frames {
-                g *= sv.frames_done as f32 / sv.attack_frames as f32;
-            }
+            // **Kantdämpning vid båda ändarna** (Fas 8.7 steg 2). In: hur långt in vi är.
+            // Ut: hur många ramar som återstår till fönstrets kant — räknat i *utramar*, så
+            // det stämmer även när rösten spelas med annan tonhöjd eller baklänges. Utan den
+            // här sidan klickar en slice som tar slut mitt i en ton.
+            g *= slice_edge_gain(sv.frames_done as f32, sv.fade_frames as f32);
+            let frames_to_edge = if sv.step.abs() > 1e-6 {
+                if sv.dir >= 0.0 {
+                    (sv.end_frame - sv.pos) / sv.step
+                } else {
+                    (sv.pos - sv.start_frame) / sv.step
+                }
+            } else {
+                f32::MAX
+            };
+            g *= slice_edge_gain(frames_to_edge, sv.fade_frames as f32);
             // Amplitud-ADSR (Fas 8.4) — bara när den är vald. Identiteten rör ingenting,
             // alltså är en-skottsvägen oförändrad (se provet om byte-identitet).
             if sv.env_on {
@@ -1949,6 +1993,39 @@ impl SynthEngine {
         }
 
         (out_l, out_r)
+    }
+}
+
+#[cfg(test)]
+mod slice_edge_tests {
+    use super::*;
+
+    /// **Rampen vid kanten.** 0 vid kanten, 1 en ramp in, rakt däremellan — och samma regel
+    /// används i båda ändarna av fönstret, så den behöver bara vara rätt en gång.
+    #[test]
+    fn the_edge_fade_is_zero_at_the_edge_and_one_a_ramp_in() {
+        assert_eq!(slice_edge_gain(0.0, 88.0), 0.0, "vid kanten ska den vara tyst");
+        assert!((slice_edge_gain(44.0, 88.0) - 0.5).abs() < 1e-6);
+        assert_eq!(slice_edge_gain(88.0, 88.0), 1.0);
+        assert_eq!(slice_edge_gain(1000.0, 88.0), 1.0, "långt in rörs inget");
+    }
+
+    /// **Avstängd dämpning ska vara identisk med den gamla vägen, inte nästan.** Det är
+    /// kontrollen som gör att en påslagen ramp aldrig kan ändra något den inte ska.
+    #[test]
+    fn a_zero_length_fade_is_the_old_behaviour_everywhere() {
+        for frames in [0.0, 1.0, 17.0, 1e6] {
+            assert_eq!(slice_edge_gain(frames, 0.0), 1.0, "{frames} ramar");
+        }
+    }
+
+    /// Skräp ska inte tysta en röst: hellre odämpat än tyst.
+    #[test]
+    fn nonsense_inputs_leave_the_voice_audible() {
+        assert_eq!(slice_edge_gain(f32::NAN, 88.0), 1.0);
+        assert_eq!(slice_edge_gain(10.0, f32::NAN), 1.0);
+        assert_eq!(slice_edge_gain(f32::INFINITY, 88.0), 1.0);
+        assert_eq!(slice_edge_gain(-5.0, 88.0), 0.0, "före kanten är tyst");
     }
 }
 

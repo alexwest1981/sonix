@@ -81,7 +81,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | 4 | **7.1 Windows-porten** | *XL* | **Steg 1–8 klara 2026-09-14**: `--selftest`, plattformens egna kataloger, filhanterare per plattform, **en MIDI-väg (`midir`) på alla plattformar**. Kvar: MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin | Lånad Windows-laptop |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
-| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** + **nudge klar 2026-09-14** (gränsen flyttas för båda grannarna, kläms i stället för att slås ihop, dragen direkt i vågformen); kvar: per-slice-fade och dump till steg/piano roll | — |
+| 7 | **8.7 Chopper → slicemappning** *(2026-09-12)* | *M* | **Steg 1 klart** + **nudge klar 2026-09-14** (gränsen flyttas för båda grannarna, kläms i stället för att slås ihop, dragen direkt i vågformen); kvar: **mätningen** av kantdämpningen (koden är inne, ljudet inte mätt) och dump till steg/piano roll | — |
 | 8 | **8.6 Plugins: bryggning, egna utgångar, sidokedja in i en plugin** *(2026-09-12)* | *M* | Det FL:s Fruity Wrapper kan och inte Sonix (tre saker + två mindre, se fas 8.6) | — |
 | 9 | **8.8 Automatisering av fler parametrar** *(2026-09-12)* | *S–M* | I dag fyra mål per spår; plugin-/EQ-/kompressor-/buss-parametrar saknas | — |
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
@@ -1051,8 +1051,27 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
       motorn (`RackChannel.slices`) och **exporten** (`exporter.rs`). En nudge ändrar alltså
       ljudet, inte bara ritningen. Det kontrollerades innan något skrevs, och misstanken att den
       *inte* var inkopplad var fel.
-  - **Steg 2 kvar:** **per-slice-fade** 1–5 ms vid kanterna (Reapers Fade pad, Abeltons
-    per-slice-fade) och **dumpa slicarna till steg eller piano roll** (FL:s "Convert to score and
+  - **Steg 2, andra delen i koden (2026-09-14) — kantdämpning, men ännu inte mätt på ljudet:**
+    - **Starten var redan dämpad, slutet inte.** `SampleVoice` hade `attack_frames` — en
+      anti-klick-ramp på 1,5 ms — och det är *slutet* som hörs när en slice tar slut mitt i en
+      ton: ett klick är en språngvis amplitudändring, och en ramp mot noll är motsatsen.
+    - **En regel, båda kanterna:** `slice_edge_gain(frames_from_edge, fade_frames)` ger 0 vid
+      kanten och 1 en ramp in. Den används nu på båda sidor — in räknat i `frames_done`, ut i
+      **utramar till kanten** (så det stämmer även vid annan tonhöjd eller baklänges). Fältet
+      heter `fade_frames`, rampen är 2 ms (`SLICE_FADE_SECS`), inom det spann (1–5 ms) Reapers
+      fade pad och Abeltons per-slice-fade använder.
+    - **`fade_frames = 0` är exakt den gamla vägen** (retur 1,0 överallt), och det har ett eget
+      prov. En avstängd dämpning ska vara identisk med innan, inte nästan — det är den
+      kontrollen som gör att en påslagen ramp aldrig kan ändra något den inte ska.
+    - **Tre prov på regeln:** 0 vid kanten och 1 en ramp in; nollängdsrampen är den gamla vägen
+      överallt; `NaN`, oändligt och negativt lämnar rösten **ljudande** hellre än tyst.
+    - **MÄTNINGEN ÅTERSTÅR, och det ska stå:** ingen renderingsnivå-mätning bevisar ännu att
+      rösten faktiskt dämpas vid slutet. Att hela sviten förblev grön (472 tester) visar att
+      **ingen gyllene test fångade att ljudet ändrades** — vilket är det ärliga skälet att skriva
+      ut luckan i stället för att kalla delen klar. Provet som saknas ska mäta **formen vid
+      kanten** på en renderad slice: sista ramen nära noll och nivån intakt en bit in, så att
+      dämpningen bevisas vara lokal vid kanten och inte en allmän sänkning.
+  - **Steg 2 kvar:** **dumpa slicarna till steg eller piano roll** (FL:s "Convert to score and
     dump to piano roll", Reapers "Create chromatic MIDI item from slices"). Dumpen är den stora
     av de två: den behöver slice-offset per steg i motorn. Spektral flux med FFT i stället för
     tidsdomänen hör också hit — starkare på melodiöst och vibrato-rikt material, onödigt för

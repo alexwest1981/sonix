@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 469 default / 515 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 472 default / 518 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -364,6 +364,20 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
+
+## 4k. 8.7 steg 2: kantdämpning i koden, mätningen kvar (2026-09-14)
+
+- **Starten var dämpad, slutet inte.** `attack_frames` (1,5 ms anti-klick) fanns; en slice som
+  tar slut mitt i en ton klickade ändå. `slice_edge_gain(frames_from_edge, fade_frames)` är nu
+  **en** regel för båda kanterna — in i `frames_done`, ut i **utramar till kanten** — och 2 ms
+  ligger inom Reapers/Abletons 1–5 ms.
+- **`fade_frames = 0` ger exakt den gamla vägen**, med eget prov. Det är kontrollen som gör att
+  rampen aldrig kan ändra något den inte ska.
+- **MÄTNINGEN ÅTERSTÅR:** 472 tester gröna, och **ingen** av dem fångade att ljudet ändrades.
+  Regeln är provad och inkopplingen kompilerad, men ingen renderingsmätning visar att rösten
+  dämpas vid slutet. Provet som ska skrivas mäter **formen vid kanten** på en renderad slice —
+  sista ramen nära noll, nivån intakt en bit in — så att dämpningen bevisas vara lokal vid
+  kanten och inte en allmän sänkning. Skriv inte "klart" förrän det finns.
 
 ## 4j. 8.7 steg 2: nudge klar (2026-09-14)
 
