@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**63 moduler · 68810 rader kod · 19 med status · 44 utan.**
+**63 moduler · 68970 rader kod · 19 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,7 +15,7 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app.rs` | 22925 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 85 (+1 ign) |  |
+| `src/ui/app.rs` | 23085 | byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen | 5 | 88 (+1 ign) |  |
 | `src/audio/synth.rs` | 3518 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 97 | 49 |  |
 | `src/i18n.rs` | 2552 | fryst — nycklar på engelska, texter på svenska | 1362 | 4 |  |
 | `src/audio/plugin_host_live.rs` | 2424 | stabil (4.x) — CLAP-värden i egen process | 62 | 24 | In-process **CLAP** plugin host.  |
@@ -43,7 +43,7 @@
 | `src/audio/ai_client.rs` | 715 | — | 8 | 8 |  |
 | `src/audio/smf.rs` | 706 | stabil — MIDI-export med tempobyten (8.2 steg 3) | 33 | 10 | Standard MIDI File (SMF) — skriv och läs `.mid` utan externa beroenden.  |
 | `src/audio/command.rs` | 631 | byggs — kommando-protokollet (AI-vägen) | 22 | 7 |  |
-| `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 54 | 12 | Tempokarta (Fas 8.2, steg 1).  |
+| `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 56 | 12 | Tempokarta (Fas 8.2, steg 1).  |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
 | `src/ui/chord_generator_modal.rs` | 516 | — | 1 | 0 |  |
@@ -259,7 +259,7 @@
 ### `src/ui/app.rs`
 - **Status:** byggs — den stora ytan (UI + tillstånd). Kvar här: 8.7:s slice-UI, 8.10-vyns sträckt-märke, 8.4-samplern, 8.2:s fyra visningsställen
 - **Rör inte:** två sessioner har krockat i den här filen; kolla `git status` och mtime före varje skrivning
-- **Publika ingångar:** `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions`, `TrackKind`, `SongMarker` … (+183)
+- **Publika ingångar:** `ViewMode`, `ArrangerTool`, `RegionDragMode`, `RegionDragState`, `LibrarySampleItem`, `ChannelStrip`, `Pattern`, `TimeSnapMode`, `format_time_hundredths`, `format_bar_subdivisions`, `TrackKind`, `SongMarker` … (+185)
 
 ### `src/ui/chord_generator_modal.rs`
 - **Publika ingångar:** `ScaleType`, `all`, `intervals`, `GeneratedChord`, `ChordGeneratorState`, `get_chord_pads`, `load_progression_preset`, `play_chord_sound`, `audition_progression`, `render_chord_generator_modal`

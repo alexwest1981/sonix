@@ -1438,6 +1438,93 @@ pub fn frozen_audio_in_render(track: &PlaylistTrack, pattern_mode: bool) -> bool
 /// Gränserna är desamma som sångstudiens reglage (0,25–4,0): utanför dem är
 /// omsamplingen mer artefakt än musik, och en felaktig siffra i ett projektfält
 /// ska inte kunna göra ett klipp oanvändbart.
+/// **Ett klipp stycke för stycke över tempokartan** (Fas 8.10, sista punkten).
+///
+/// Ett klipp som spänner över ett tempobyte kan inte ha **en** faktor: tempot före bytet och
+/// tempot efter kräver var sitt, och i dag räknas faktorn från tempot vid klippets *start* —
+/// allt efter bytet spelas då i fel tempo.
+///
+/// Regeln delar klippets **ut-tid** vid varje tempobyte som ligger inuti spannet, och ger varje
+/// stycke sin egen faktor, sin egen längd och sin egen start i källan.
+///
+/// Enheten är [`stretch_ratio_for`]: `ratio` = **ut-sekunder per källsekund** — alltså
+/// `projektets tempo / källans tempo`, inte den inverterade kvoten. Det var den här kodbasens
+/// kända fälla redan i 8.10c ("302,49 s ut av 259,28 s = 1,1667"), och **första versionen av
+/// den här funktionen gick i den**: doc-raden påstod motsatsen och provet förväntade 0,8 där
+/// 1,25 var rätt. Att en källa i 120 spelas i ett projekt i 150 ger 150/120 = 1,25, och en
+/// ut-sekund gör då av med 1,25 källsekunder — filen spelas *kortare*, vilket är vad ett högre
+/// tempo betyder.
+///
+/// **Ett enda tempo ger exakt ett stycke** med samma faktor som i dag. Det är avsiktligt: för
+/// projekt utan tempobyten ska ingenting ändras, och då är den här vägen bit-identisk med den
+/// gamla.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StretchPiece {
+    /// Första ut-sekund i stycket, räknat från projektets början.
+    pub out_start_secs: f64,
+    /// Antal ut-sekunder i stycket.
+    pub out_secs: f64,
+    /// Var i källan stycket börjar (källsekunder).
+    pub source_offset_secs: f64,
+    /// **Ut-sekunder per källsekund** (projektets tempo delat med källans).
+    pub ratio: f64,
+}
+
+pub fn stretch_pieces(
+    start_bar: f64,
+    length_bars: f64,
+    sample_offset_secs: f64,
+    source_bpm: f32,
+    tempo: &crate::audio::tempo::TempoMap,
+) -> Vec<StretchPiece> {
+    let from_bar = start_bar;
+    let to_bar = start_bar + length_bars.max(0.0) as f64;
+    if to_bar <= from_bar {
+        return Vec::new();
+    }
+
+    // **Skären ligger i TAKTER, inte i sekunder.** Tempokartan är skriven i takter, och en
+    // sekund som ligger en hårsmån från ett byte hamnar på fel sida om det: första versionen
+    // frågade kartan om `bpm_at(bar_at_secs(gräns + 1e-9))` och fick tempot *före* bytet i
+    // stället för efter — provet mätte 1,0 där 0,8 var rätt. I takter är gränsen exakt.
+    //
+    // Ändpunkterna är inte skär: ett klipp som börjar precis på ett byte hör till det bytet.
+    let mut skär: Vec<f64> = tempo
+        .points()
+        .iter()
+        .map(|p| p.start_bar as f64)
+        .filter(|b| *b > from_bar + 1e-9 && *b < to_bar - 1e-9)
+        .collect();
+    skär.sort_by(|x, y| x.partial_cmp(y).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut pieces = Vec::with_capacity(skär.len() + 1);
+    let mut piece_bar = from_bar;
+    let mut source_offset = sample_offset_secs;
+    for nästa_bar in skär.into_iter().chain(std::iter::once(to_bar)) {
+        let out_start_secs = tempo.secs_at_bar(piece_bar);
+        let out_secs = tempo.secs_at_bar(nästa_bar) - out_start_secs;
+        if out_secs <= 1e-9 {
+            piece_bar = nästa_bar;
+            continue;
+        }
+        // Tempot **i det här stycket**, läst i takten stycket börjar på — inte vid klippets start.
+        let ratio = stretch_ratio_for(source_bpm, tempo.bpm_at(piece_bar)) as f64;
+        pieces.push(StretchPiece {
+            out_start_secs,
+            out_secs,
+            source_offset_secs: source_offset,
+            ratio,
+        });
+        // Källan flyttar sig med **ut-tiden gånger faktorn**, eftersom faktorn är ut-sekunder
+        // per källsekund: en ut-sekund gör av med `ratio` källsekunder. Med konventionen i
+        // motsatt riktning vore det en division — och det felet hörs som en smurf i ena änden
+        // och en långsam fil i den andra.
+        source_offset += out_secs * ratio;
+        piece_bar = nästa_bar;
+    }
+    pieces
+}
+
 pub fn stretch_ratio_for(source_bpm: f32, project_bpm: f32) -> f32 {
     if source_bpm <= 0.0 || project_bpm <= 0.0 {
         return 1.0;
@@ -22920,5 +23007,78 @@ mod bus_automation_tests {
         let tom = BusAutomationLane { bus: 0, enabled: true, points: Vec::new() };
         assert_eq!(tom.level_at(3.0), None);
         assert_eq!(lane_value_at(&[], 3.0), None);
+    }
+}
+
+#[cfg(test)]
+mod stretch_pieces_tests {
+    use super::*;
+    use crate::audio::tempo::{set_tempo_point, TempoMap, TempoPoint};
+
+    /// **Ett enda tempo ger exakt ett stycke, med dagens faktor.** För projekt utan tempobyten
+    /// ska ingenting ändras — den här vägen är då bit-identisk med den gamla.
+    #[test]
+    fn a_single_tempo_gives_exactly_one_piece_with_the_old_factor() {
+        let tempo = TempoMap::single(100.0);
+        let pieces = stretch_pieces(0.0, 4.0, 0.0, 140.0, &tempo);
+        assert_eq!(pieces.len(), 1);
+        assert_eq!(pieces[0].ratio, stretch_ratio_for(140.0, 100.0) as f64);
+        assert_eq!(pieces[0].source_offset_secs, 0.0);
+        // Fyra takter i 100 BPM är 9,6 ut-sekunder.
+        assert!((pieces[0].out_secs - 9.6).abs() < 1e-6);
+    }
+
+    /// **Fysiken, inte en kommentar.** Fyra takter i 120 BPM är 8 s; i 150 BPM 6,4 s. Med ett
+    /// byte vid takt 2 ska de två styckena tillsammans vara exakt 4 + 3,2 = 7,2 ut-sekunder —
+    /// och varje stycke ska ha sin egen faktor.
+    #[test]
+    fn a_change_inside_the_clip_splits_it_and_the_pieces_add_up() {
+        let mut punkter = vec![TempoPoint { start_bar: 0, bpm: 120.0 }];
+        set_tempo_point(&mut punkter, 2, 150.0);
+        let tempo = TempoMap::from_points(punkter);
+
+        let pieces = stretch_pieces(0.0, 4.0, 0.0, 120.0, &tempo);
+        assert_eq!(pieces.len(), 2, "bytet vid takt 2 ligger inuti spannet");
+
+        let summa: f64 = pieces.iter().map(|p| p.out_secs).sum();
+        let ur_kartan = tempo.secs_at_bar(4.0) - tempo.secs_at_bar(0.0);
+        assert!(
+            (summa - ur_kartan).abs() < 1e-9,
+            "styckena summerar till {summa} men kartan säger {ur_kartan}"
+        );
+        assert!((summa - 7.2).abs() < 1e-6, "2 takter à 120 + 2 à 150 = 7,2 s, fick {summa}");
+
+        // Enheten är projekt/källa: källan i 120 i ett projekt i 120 ger 1,0, och samma källa i
+        // ett projekt i 150 ger 150/120 = 1,25 — filen spelas kortare, som ett högre tempo ska.
+        assert!((pieces[0].ratio - 1.0).abs() < 1e-9);
+        assert!(
+            (pieces[1].ratio - 1.25).abs() < 1e-9,
+            "en källa i 120 i ett projekt i 150 ger 150/120 = 1,25, fick {}",
+            pieces[1].ratio
+        );
+        // Och källan fortsätter där det första slutade — inget hopp, inget glapp.
+        let förväntat = pieces[0].source_offset_secs + pieces[0].out_secs * pieces[0].ratio;
+        assert!((pieces[1].source_offset_secs - förväntat).abs() < 1e-9);
+        assert!((pieces[1].out_start_secs - pieces[0].out_secs).abs() < 1e-9);
+    }
+
+    /// Ett byte **utanför** klippet ska inte dela något, och ett klipp som börjar *på* ett byte
+    /// hör till det bytet — ändpunkterna är inte skär.
+    #[test]
+    fn changes_outside_the_clip_do_not_split_it() {
+        let mut punkter = vec![TempoPoint { start_bar: 0, bpm: 120.0 }];
+        set_tempo_point(&mut punkter, 8, 150.0);
+        let tempo = TempoMap::from_points(punkter);
+        assert_eq!(stretch_pieces(0.0, 4.0, 0.0, 120.0, &tempo).len(), 1);
+        assert_eq!(stretch_pieces(8.0, 4.0, 0.0, 120.0, &tempo).len(), 1);
+
+        let mut punkter2 = vec![TempoPoint { start_bar: 0, bpm: 120.0 }];
+        set_tempo_point(&mut punkter2, 4, 150.0);
+        let tempo2 = TempoMap::from_points(punkter2);
+        assert_eq!(
+            stretch_pieces(0.0, 4.0, 0.0, 120.0, &tempo2).len(),
+            1,
+            "bytet ligger precis vid klippets slut, inte inuti"
+        );
     }
 }
