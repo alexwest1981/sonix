@@ -442,6 +442,23 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
   och ett intryck. Menyernas bredd och knappen är kvitterade i samma svep, utan att pekas ut var
   för sig.
 
+## 4q. 8.10: raden var inaktuell, det verkliga läget (2026-09-14)
+
+Läst i stället för ihågkommet. Tabellraden sa "koppla in sträckningen i tidslinjen" — men **det är
+gjort** (8.10d visade hela kedjan ända till örat). Roadmapens egen varning gäller alltså dess egen
+rad: "skriv aldrig en siffra du inte mätt".
+
+**Det som faktiskt återstår:**
+
+1. **En kloss över ett tempobyte** får fortfarande **en** faktor, räknad från tempot vid dess start —
+   nu också för den sträckta filen (den renderas för ett tempo). Rätt är att dela klossen vid bytet,
+   eller rendera ett stycke per tempoavsnitt. **Det här är den stora kvarvarande biten.**
+2. `sample_offset_sec > 0` kan hamna utanför sitt eget utsnitt. Oförändrat sedan före 8.10
+   (medvetet: ingen tyst beteendeändring), men fel — egen rad.
+3. **Alex' öra:** `the_two_engines_for_the_ear` skriver samma 20 s genom båda motorerna till
+   `~/.local/state/sonix/ab/`. Siffrorna säger "behåll vår"; säger örat något annat är bytet en rad.
+   **Samma slag av kvittens som 8.11:s markering** — och den kan bara han ge.
+
 ## 4l. Läget just nu (2026-09-14)
 
 - **Windows-porten är PAUSAD efter besked** (Alex har ingen laptop än): *"Sätt Windows på paus

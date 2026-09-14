@@ -151,7 +151,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
     apply utan UI, är död kod. Plugin-vägen är dessutom feature-gated (`plugin-host`), så en
     halv väg hade bara kunnat prövas i en av CI:s byggkombinationer.
 | 10 | **8.9 Makron: en kedja av kommandon över många filer** *(2026-09-12)* | *S* | Audacitys Macros — finns inte alls hos oss | — |
-| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **Steg 1 klart och kvitterat av Alex** (`f0dc8eb` + `a510775`). **Vägen framåt är nu researchad och vald** (se "Vad researchunderlaget säger" under 8.10): pitch-bevarande sträckning **offline till fil + cache**, egen DSP som bas, **en enda switch** för användaren. Kvar: koppla in sträckningen i tidslinjen, klipp över ett tempobyte, och att vyn visar att klippet är sträckt | — |
+| 11 | **8.10 Ljudet följer tempot** *(2026-09-12)* | *M* | **Raden var inaktuell — rättad 2026-09-14.** Sträckningen ÄR inkopplad i tidslinjen och hela kedjan är kvitterad av örat (8.13b → 8.10b → 8.10c → 8.10d, se avsnitten). **Det som faktiskt återstår:** (1) en kloss över ett **tempobyte** får en faktor räknad från tempot vid dess start — rätt är att dela klossen vid bytet eller rendera ett stycke per tempoavsnitt; (2) `sample_offset_sec > 0` kan hamna utanför sitt eget utsnitt (fel, egen rad); (3) **Alex' öra** på A/B-filen `the_two_engines_for_the_ear` (två motorer, samma 20 s, skrivna till `~/.local/state/sonix/ab/`) | — |
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **KLAR 2026-09-14** (`392a30c` + `76b4015`): tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten. **Markeringen kvitterad i GUI av Alex** ("ser ut att stämma") | — |
 
 
