@@ -26,7 +26,7 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 481 default / 527 med `--features plugin-host`, **0 varningar** i båda
+- **Tester:** 483 default / 529 med `--features plugin-host`, **0 varningar** i båda
   (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
@@ -394,6 +394,16 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
 - **En regel, två dörrar:** `detect_slice_map` bär kroppen. Båda knapparna går genom den.
 - **8.7 är därmed klart.** Nästa punkt: läs ROADMAP.md.
 
+## 4o. 8.8 påbörjad: fyra → sju automatiserade parametrar (2026-09-14)
+
+- **Vägen fanns redan** (fjärde gången i kväll): `SetStemMixParams` bär tröskel, förhållande och
+  transponering. Bara automationens väg till dem saknades.
+- **`AutomationParam` har nu ETT index:** det härleds ur `ALL` med `position`, `COUNT` kommer från
+  `ALL.len()`, och cachen har längden `COUNT`. Prov räknar dem mot varandra.
+- **Lane-väljaren fick de tre målen gratis** — den läser `ALL` sedan tidigare.
+- **Kvar av 8.8:** plugin-, EQ- och buss-parametrar. Där finns inget gratisfall: kommandona bär
+  dem inte än, så de måste utökas först.
+
 ## 4l. Läget just nu (2026-09-14)
 
 - **Windows-porten är PAUSAD efter besked** (Alex har ingen laptop än): *"Sätt Windows på paus
@@ -404,7 +414,7 @@ kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e fö
 - **Den installerade ikonen är uppdaterad för hand** (32–512 i `~/.local/share/icons/hicolor/`
   + cachen ombyggd), eftersom `install.sh` kopierar den vid *installationen*. Kör
   `bash install.sh --refresh` efter ett logotypbyte i fortsättningen, så slipper det göras för hand.
-- **Nästa arbete, i ordning:** (1) mätningen av kantdämpningen vid slicekanten, (2) nästa punkt i roadmapen, (3) resten av roadmapen (8.6 plugins, 8.8 fler
+- **Nästa arbete, i ordning:** (1) mätningen av kantdämpningen vid slicekanten, (2) 8.8:s plugin-/EQ-/buss-parametrar (kommandona måste bära dem först), (3) resten av roadmapen (8.6 plugins, 8.8 fler
   automatiseringsmål, 8.9 makron, 8.10 sträckningen in i tidslinjen).
 
 ## 4k. 8.7 steg 2: kantdämpning i koden, mätningen kvar (2026-09-14)

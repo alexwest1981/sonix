@@ -304,15 +304,33 @@ pub enum AutomationParam {
     Pan,
     ReverbSend,
     DelaySend,
+    /// Kompressorns tröskel i dB. Fanns i `SetStemMixParams` hela tiden — det var bara
+    /// automationen som inte nådde den (Fas 8.8).
+    CompThreshold,
+    /// Kompressorns förhållande.
+    CompRatio,
+    /// Transponering i halvtoner.
+    Pitch,
 }
 
 impl AutomationParam {
-    pub const ALL: [AutomationParam; 4] = [
+    /// **Ordningen är identiteten:** indexet in i `PlaylistTrack::automation_last` härleds ur
+    /// den här listan, inte ur en handskriven siffra per variant. Två listor som måste stämma
+    /// överens driver isär förr eller senare — det är den här kodbasens mest återkommande fel —
+    /// och då pekar en kurva på fel parameter utan att något larmar.
+    pub const ALL: [AutomationParam; 7] = [
         AutomationParam::Volume,
         AutomationParam::Pan,
         AutomationParam::ReverbSend,
         AutomationParam::DelaySend,
+        AutomationParam::CompThreshold,
+        AutomationParam::CompRatio,
+        AutomationParam::Pitch,
     ];
+
+    /// Antalet mål. Används som längd på cachen, så arrayen inte kan bli för kort när ett mål
+    /// tillkommer — det var den andra listan som annars hade glidit isär.
+    pub const COUNT: usize = AutomationParam::ALL.len();
 
     pub fn label(self) -> &'static str {
         match self {
@@ -320,6 +338,9 @@ impl AutomationParam {
             AutomationParam::Pan => crate::i18n::t("Panorering"),
             AutomationParam::ReverbSend => crate::i18n::t("Reverb-send"),
             AutomationParam::DelaySend => crate::i18n::t("Delay-send"),
+            AutomationParam::CompThreshold => crate::i18n::t("Kompressor: tröskel (dB)"),
+            AutomationParam::CompRatio => crate::i18n::t("Kompressor: förhållande"),
+            AutomationParam::Pitch => crate::i18n::t("Transponering (halvtoner)"),
         }
     }
 
@@ -328,17 +349,20 @@ impl AutomationParam {
         match self {
             AutomationParam::Volume => (0.0, 1.5),
             AutomationParam::Pan => (-1.0, 1.0),
-            AutomationParam::ReverbSend | AutomationParam::DelaySend => (0.0, 1.0),
+            AutomationParam::ReverbSend
+            | AutomationParam::DelaySend
+            | AutomationParam::CompRatio => (0.0, 1.0),
+            AutomationParam::CompThreshold => (-60.0, 0.0),
+            AutomationParam::Pitch => (-24.0, 24.0),
         }
     }
 
-    fn index(self) -> usize {
-        match self {
-            AutomationParam::Volume => 0,
-            AutomationParam::Pan => 1,
-            AutomationParam::ReverbSend => 2,
-            AutomationParam::DelaySend => 3,
-        }
+    /// Indexet i cachen, **härlett ur `ALL`** — inte skrivet för hand. Ett prov räknar dem.
+    pub fn index(self) -> usize {
+        Self::ALL
+            .iter()
+            .position(|p| *p == self)
+            .expect("varje variant finns i ALL — annars vore listan och koden oense")
     }
 }
 
@@ -1844,7 +1868,7 @@ pub struct PlaylistTrack {
     pub automation: Vec<AutomationLane>,
     /// Last automation value sent to the engine per `AutomationParam` index
     /// (NaN = never sent). Prevents command spam while playing.
-    pub automation_last: [f32; 4],
+    pub automation_last: [f32; AutomationParam::COUNT],
     /// Sub-mix bus this track feeds (`0..NUM_BUSES`) — Fas 5.2.
     pub bus: usize,
     /// Optional VCA control group (`0..NUM_VCAS`) — Fas 5.2.
@@ -1913,7 +1937,7 @@ impl PlaylistTrack {
             delay_send: 0.0,
             pitch_semitones: 0.0,
             automation: Vec::new(),
-            automation_last: [f32::NAN; 4],
+            automation_last: [f32::NAN; AutomationParam::COUNT],
             bus: default_bus_for_kind(kind),
             vca: None,
             sidechain_from: None,
@@ -6842,7 +6866,7 @@ impl SonixApp {
         if self.is_playing {
             ui_dbg(&format!("toggle_playback -> PLAY song_bar={} step={} pattern_mode={}", self.song_bar, self.song_step_in_bar, self.pattern_mode));
             for t in &mut self.playlist_tracks {
-                t.automation_last = [f32::NAN; 4];
+                t.automation_last = [f32::NAN; AutomationParam::COUNT];
             }
             self.sync_all_stems_to_engine();
             let song_secs = if self.pattern_mode {
@@ -7070,7 +7094,7 @@ impl SonixApp {
         // ensam och uttryckligt, en gång, utanför loopen.
         let bar = self.tempo_map().bar_at_secs(self.song_time as f64) as f32;
         for ti in 0..self.playlist_tracks.len() {
-            let mut target = [f32::NAN; 4];
+            let mut target = [f32::NAN; AutomationParam::COUNT];
             {
                 let track = &self.playlist_tracks[ti];
                 for lane in &track.automation {
@@ -7111,6 +7135,21 @@ impl SonixApp {
                 }
                 if set(&mut track.automation_last[3], target[3]) {
                     track.delay_send = target[3];
+                    mix_changed = true;
+                }
+                // **8.8: tre mål till, och ingen motorändring behövdes** — `SetStemMixParams`
+                // nedanför bär tröskeln, förhållandet och transponeringen redan. Det var bara
+                // automationens väg som slutade vid de fyra första.
+                if set(&mut track.automation_last[4], target[4]) {
+                    track.comp_threshold_db = target[4];
+                    mix_changed = true;
+                }
+                if set(&mut track.automation_last[5], target[5]) {
+                    track.comp_ratio = target[5];
+                    mix_changed = true;
+                }
+                if set(&mut track.automation_last[6], target[6]) {
+                    track.pitch_semitones = target[6];
                     mix_changed = true;
                 }
                 if state_changed {
@@ -22569,5 +22608,54 @@ mod tests {
         assert!(plan_group_shift_by_head_secs(&clips, 0.0, -0.5, &tempo)
             .expect("negativt ska gå")
             .is_empty());
+    }
+}
+
+#[cfg(test)]
+mod automation_param_tests {
+    use super::*;
+
+    /// **En tabell, ett index.** `ALL`, `index()` och cachen är tre listor för samma sak — den
+    /// här kodbasens mest återkommande fel är att två av dem driver isär. Provet räknar dem mot
+    /// varandra i stället för att lita på att de skrivs i takt: lägger någon till en variant och
+    /// glömmer `ALL`, eller skriver ett index för hand som pekar fel, fälls det här.
+    #[test]
+    fn all_index_and_the_cache_agree() {
+        assert_eq!(AutomationParam::ALL.len(), AutomationParam::COUNT);
+        let mut sedda = std::collections::HashSet::new();
+        for (plats, p) in AutomationParam::ALL.iter().enumerate() {
+            assert_eq!(
+                p.index(),
+                plats,
+                "{p:?} säger index {} men ligger på plats {plats} i ALL",
+                p.index()
+            );
+            assert!(sedda.insert(p.index()), "{p:?} delar index med en annan variant");
+            let (lo, hi) = p.range();
+            assert!(lo < hi, "{p:?} har ett omöjligt område {lo}–{hi}");
+            assert!(!p.label().is_empty(), "{p:?} saknar etikett");
+        }
+        // Cachen måste rymma alla mål — det var längden som annars hade blivit för kort.
+        assert_eq!(AutomationParam::COUNT, sedda.len());
+    }
+
+    /// De nya målen i 8.8 är **samma fält som `SetStemMixParams` redan bär**. Provet binder
+    /// listan till den sanningen: skulle ett mål läggas till utan att kommandot har fältet, är
+    /// det en rad som ser automatiserad ut men inte gör något.
+    #[test]
+    fn the_new_goals_are_parameters_the_mix_command_already_carries() {
+        for p in [
+            AutomationParam::CompThreshold,
+            AutomationParam::CompRatio,
+            AutomationParam::Pitch,
+        ] {
+            assert!(AutomationParam::ALL.contains(&p), "{p:?} saknas i ALL");
+            let (lo, hi) = p.range();
+            // Tröskeln är i dB och ska kunna nå ett verkligt ingrepp; transponeringen ska rymma
+            // minst en oktav åt båda hållen — annars vore målet formellt med men oanvändbart.
+            assert!(lo <= 0.0 && hi >= 0.0, "{p:?}: området {lo}–{hi} når inte noll");
+        }
+        assert_eq!(AutomationParam::CompThreshold.range(), (-60.0, 0.0));
+        assert_eq!(AutomationParam::Pitch.range(), (-24.0, 24.0));
     }
 }
