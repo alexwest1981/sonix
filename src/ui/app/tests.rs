@@ -4,6 +4,7 @@
 //! Rör inte: proven läser privata fält genom `use super::*;`, så de måste ligga under `app`.
 
 use super::*;
+use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re-exporteras inte
 
     /// Minimal projektfil — fälten utanför `serde(default)` måste anges.
     fn minimal_project_json(name: &str) -> String {
