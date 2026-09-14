@@ -4,6 +4,10 @@
 //! Rör inte: proven läser privata fält genom `use super::*;`, så de måste ligga under `app`.
 
 use super::*;
+// Moduler vars item bara proven använder re-exporteras inte (det skulle vara en
+// oanvänd import i binärbygget, och CI fäller på varningar).
+use super::midi::{apply_bar_to_pattern, drum_channel_for_key, midi_channel_for_track, notes_by_bar,
+                  pattern_bar_notes, ARRANGEMENT_BARS, STEPS_PER_BAR};
 use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re-exporteras inte
 
     /// Minimal projektfil — fälten utanför `serde(default)` måste anges.
