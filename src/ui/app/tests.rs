@@ -1336,6 +1336,8 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                     name: "Gain".into(),
                     state: vec![0, 1, 2, 250, 255],
                     sandboxed: false,
+                    latency_offset_frames: -37,
+                    smart_disable: true,
                 }),
             ],
             bus_volume: default_bus_volume(),
@@ -1359,6 +1361,34 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(slot.path, "/plugins/Gain.clap");
         assert_eq!(slot.name, "Gain");
         assert_eq!(slot.state, vec![0, 1, 2, 250, 255]);
+        // **Offsetet är med i rundturen, och det negativa tecknet överlever** (Fas 8.6).
+        assert_eq!(slot.latency_offset_frames, -37);
+        assert!(slot.smart_disable, "kryssrutan ska också med i filen");
+    }
+
+    /// **En projektfil från före 8.6 läses som noll offset** — alltså exakt den
+    /// kompensation som gällde då. Provet läser en **riktig gammal JSON** (utan fältet), inte
+    /// en rundtur genom den nya formen: det är den enda formen som visar att
+    /// `#[serde(default)]` gör sitt jobb i stället för att ge ett parsefel på ett projekt
+    /// Alex redan har.
+    #[test]
+    fn an_old_project_file_gets_a_zero_latency_offset() {
+        let json = r#"{
+            "name": "Gammalt",
+            "bpm": 120.0,
+            "swing": 0.0,
+            "master_volume": 1.0,
+            "master_pan": 0.0,
+            "tracks": [],
+            "plugin_slots": [
+                {"path": "/plugins/Gain.clap", "name": "Gain", "state": [], "sandboxed": false}
+            ]
+        }"#;
+        let data: SonixProjectData = serde_json::from_str(json).unwrap();
+        let slot = data.plugin_slots[0].as_ref().unwrap();
+        assert_eq!(slot.name, "Gain");
+        assert_eq!(slot.latency_offset_frames, 0, "en gammal fil har inget offset");
+        assert!(!slot.smart_disable, "och smart disable var inte på då heller");
     }
 
     /// Beviset för att hålet i 6.3 är stängt: en låt på fyra takter skrivs ut,

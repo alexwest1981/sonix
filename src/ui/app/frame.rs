@@ -1067,6 +1067,20 @@ impl SonixApp {
                             let sandbox_status = self.sandbox_status_text();
                             #[cfg(not(feature = "plugin-host"))]
                             let sandbox_status: Option<String> = None;
+                            // Offseten som de **sparade** slotarna bär (Fas 8.6), inte en
+                            // egen kopia i vyn: det som ritas ska vara det som kompenserar.
+                            let latency_offsets: Vec<i32> = self
+                                .plugin_slots
+                                .iter()
+                                .map(|s| {
+                                    s.as_ref().map(|p| p.latency_offset_frames).unwrap_or(0)
+                                })
+                                .collect();
+                            let smart_flags: Vec<bool> = self
+                                .plugin_slots
+                                .iter()
+                                .map(|s| s.as_ref().map(|p| p.smart_disable).unwrap_or(false))
+                                .collect();
                             let actions = render_plugins_view(
                                 ui,
                                 &mut self.plugin_manager,
@@ -1076,6 +1090,9 @@ impl SonixApp {
                                 &active_plugins,
                                 &gui_open,
                                 sandbox_status.as_deref(),
+                                &latency_offsets,
+                                &smart_flags,
+                                self.engine.sample_rate as f32,
                             );
                             if let Some((path, track)) = actions.load_into_track {
                                 self.load_plugin_into_track(&path, track);
@@ -1088,6 +1105,12 @@ impl SonixApp {
                             let _ = actions.load_into_sandbox;
                             if let Some((path, track, location)) = actions.load_preset_into_track {
                                 self.load_plugin_preset_into_track(&path, track, &location);
+                            }
+                            if let Some((track, frames)) = actions.set_latency_offset {
+                                self.set_plugin_latency_offset(track, frames);
+                            }
+                            if let Some((track, on)) = actions.set_smart_disable {
+                                self.set_plugin_smart_disable(track, on);
                             }
                             if let Some(track) = actions.remove_track {
                                 self.remove_plugin_from_track(track);

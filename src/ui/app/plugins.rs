@@ -31,6 +31,8 @@ pub fn load_plugin_into_track(&mut self, path: &str, track_index: usize) {
                     name: name.clone(),
                     state,
                     sandboxed: false,
+                    latency_offset_frames: 0,
+                    smart_disable: false,
                 },
             );
             self.ensure_plugin_vecs(track_index);
@@ -80,6 +82,8 @@ pub fn load_plugin_preset_into_track(&mut self, path: &str, track_index: usize, 
                     name: name.clone(),
                     state,
                     sandboxed: false,
+                    latency_offset_frames: 0,
+                    smart_disable: false,
                 },
             );
             self.ensure_plugin_vecs(track_index);
@@ -115,6 +119,13 @@ pub fn remove_plugin_from_track(&mut self, track_index: usize) {
     if let Some(slot) = self.plugin_slots.get_mut(track_index) {
         *slot = None;
     }
+    // **Offsetet nollas i motorn när pluginen tas bort** (Fas 8.6). Det bor på spåret, så
+    // utan den här raden hade ett offset utan plugin fortsatt skjuta spåret mot de andra —
+    // och eftersom spåret då inte har något som fördröjer det vore förskjutningen ren.
+    let _ = self.engine.send_command(AudioCommand::SetPluginLatencyOffset {
+        track_index,
+        frames: 0,
+    });
     self.plugin_manager.instantiated_plugin = None;
     self.status_message = crate::tstatus!(
         "🗑 Tog bort plugin från stämspår {}",
@@ -203,6 +214,8 @@ pub fn load_plugin_into_sandbox_track(&mut self, path: &str, track_index: usize)
                     name: name.clone(),
                     state,
                     sandboxed: true,
+                    latency_offset_frames: 0,
+                    smart_disable: false,
                 },
             );
             self.ensure_plugin_sandboxes(track_index);
@@ -557,9 +570,65 @@ pub fn sandbox_status_text(&self) -> Option<String> {
 }
 
 impl SonixApp {
-fn record_plugin_slot(&mut self, track_index: usize, slot: PluginSlot) {
+/// **Sätter det manuella latens-offsetet för ett spårs plugin** (Fas 8.6).
+///
+/// En dörr, två mottagare: **sloten** (som sparas med projektet och ritas i vyn) och
+/// **motorn** (som kompenserar med det). Skriver man bara den ena ser projektfilen riktig ut
+/// medan ljudet är fel, eller tvärtom — så de två skrivs här, med samma tal.
+pub fn set_plugin_latency_offset(&mut self, track_index: usize, frames: i32) {
+    let Some(slot) = self.plugin_slots.get_mut(track_index).and_then(|s| s.as_mut()) else {
+        return;
+    };
+    slot.latency_offset_frames = frames;
+    let _ = self
+        .engine
+        .send_command(AudioCommand::SetPluginLatencyOffset { track_index, frames });
+    let ms = crate::audio::plugin_host_live::frames_to_ms(frames, self.engine.sample_rate as f32);
+    let ms_text = format!("{ms:+.2}");
+    self.status_message = crate::tstatus!(
+        "🎯 Latens-offset på stämspår {}: {} ms ({} ramar)",
+        track_index + 1,
+        ms_text,
+        frames
+    );
+}
+}
+
+impl SonixApp {
+/// **Smart disable av/på för ett spårs plugin** (Fas 8.6). Samma två mottagare som offsetet:
+/// sloten (som sparas med projektet) och insertet på ljudtråden (som vilar).
+pub fn set_plugin_smart_disable(&mut self, track_index: usize, enabled: bool) {
+    let Some(slot) = self.plugin_slots.get_mut(track_index).and_then(|s| s.as_mut()) else {
+        return;
+    };
+    slot.smart_disable = enabled;
+    let _ = self
+        .engine
+        .send_command(AudioCommand::SetPluginSmartDisable { track_index, enabled });
+    self.status_message = if enabled {
+        crate::tstatus!("😴 Smart disable på för stämspår {}", track_index + 1)
+    } else {
+        crate::tstatus!("⚡ Smart disable av för stämspår {}", track_index + 1)
+    };
+}
+}
+
+impl SonixApp {
+fn record_plugin_slot(&mut self, track_index: usize, mut slot: PluginSlot) {
     if self.plugin_slots.len() <= track_index {
         self.plugin_slots.resize_with(track_index + 1, || None);
+    }
+    // **Ett offset som redan är satt hör till spåret, inte till plugin-instansen**
+    // (Fas 8.6). Byter man plugin på samma spår behålls det: offsetet beskriver hur spåret
+    // ligger i förhållande till de andra, och att nolla det i smyg vore samma sorts tysta
+    // förlust som `LoadStemTrack`-fällan. Att nollställa är ett medvetet drag i
+    // gränssnittet, inte en bieffekt av att ladda en plugin.
+    if let Some(previous) = self.plugin_slots.get(track_index).and_then(|s| s.as_ref()) {
+        slot.latency_offset_frames = previous.latency_offset_frames;
+        // Kryssrutan ärvs av samma skäl som offsetet: den beskriver hur **spåret** ska
+        // behandlas, och att tappa den vid ett pluginbyte hade tyst satt igång processningen
+        // igen för en plugin användaren medvetet hade låtit vila.
+        slot.smart_disable = previous.smart_disable;
     }
     self.plugin_slots[track_index] = Some(slot);
 }

@@ -85,6 +85,19 @@ pub enum AudioCommand {
         param_id: u32,
         value: f64,
     },
+    /// **Manuellt latens-offset för ett spårs plugin** (Fas 8.6), i ramar. Negativt är
+    /// tillåtet: spåret dras fram i stället, och PDC:n lägger mer delay på de andra. Se
+    /// [`crate::audio::plugin_host_live::compensated_latency`] för varför summan kläms vid noll.
+    SetPluginLatencyOffset {
+        track_index: usize,
+        frames: i32,
+    },
+    /// **Smart disable** (Fas 8.6): låt en plugin som varken får eller ger ljud vila. Flaggan
+    /// bor i insertet (se `SmartDisable`), så den överlever en omladdning av spåret.
+    SetPluginSmartDisable {
+        track_index: usize,
+        enabled: bool,
+    },
     NoteOn {
         note: u8,
         freq: f32,

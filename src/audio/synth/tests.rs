@@ -533,6 +533,96 @@ fn clearing_a_track_plugin_removes_its_pdc() {
     assert!(synth.stem_tracks[0].plugin.is_none());
 }
 
+/// **Manuellt latens-offset: spåret fördröjs, och de andra följer med** (Fas 8.6).
+///
+/// Offsetet finns för den plugin som rapporterar fel — rapporterar den 0 men fördröjer 8
+/// ramar är det bara en människa som kan veta det. Provet mäter att offsetet hamnar i
+/// **både** spårets egen latens och i projektets maxvärde: spår 1 (utan plugin) ska
+/// kompenseras för spår 0:s plugin **och** dess offset.
+#[test]
+fn a_manual_latency_offset_moves_the_track_and_the_others_follow() {
+    let mut synth = SynthEngine::new(48_000.0);
+    load_impulse_tracks(&mut synth);
+    let insert = PluginInsert::new(
+        Box::new(SilentLatencyProcessor {
+            info: PluginInfo::default(),
+            latency: 20,
+        }),
+        DEFAULT_BLOCK_FRAMES,
+    );
+    // Basen läses ur **inserten**, inte ur en hårdkodad 20: `latency_frames()` bär både
+    // pluginens egen rapport och värdenas blockbuffert, och ett prov som räknar med bara
+    // den ena prövar sin egen aritmetik i stället för motorn.
+    let base = insert.latency_frames();
+    synth.handle_command(AudioCommand::SetTrackPlugin {
+        track_index: 0,
+        insert: Some(insert),
+    });
+    synth.handle_command(AudioCommand::SetPluginLatencyOffset {
+        track_index: 0,
+        frames: 8,
+    });
+    synth.process_stereo();
+    assert_eq!(synth.stem_tracks[0].pdc.delay(), 0, "spåret självt är referensen");
+    assert_eq!(synth.stem_tracks[1].pdc.delay(), base + 8);
+}
+
+/// **Ett negativt offset drar fram spåret** i stället: dess totala latens blir mindre, och
+/// då är det de andra spåren som får delayen. Samma mekanik som ett positivt offset — men
+/// det är den här riktningen som är lätt att få bakvänd.
+#[test]
+fn a_negative_offset_pulls_the_track_forward() {
+    let mut synth = SynthEngine::new(48_000.0);
+    load_impulse_tracks(&mut synth);
+    let insert = PluginInsert::new(
+        Box::new(SilentLatencyProcessor {
+            info: PluginInfo::default(),
+            latency: 20,
+        }),
+        DEFAULT_BLOCK_FRAMES,
+    );
+    // −12 ramar **mindre** än vad spåret har: projektets max blir base − 12, spår 0 behöver
+    // ingen egen delay, och spår 1 kompenseras för det som är kvar.
+    let base = insert.latency_frames();
+    synth.handle_command(AudioCommand::SetTrackPlugin {
+        track_index: 0,
+        insert: Some(insert),
+    });
+    synth.handle_command(AudioCommand::SetPluginLatencyOffset {
+        track_index: 0,
+        frames: -12,
+    });
+    synth.process_stereo();
+    assert_eq!(synth.stem_tracks[0].pdc.delay(), 0);
+    assert_eq!(synth.stem_tracks[1].pdc.delay(), base - 12);
+}
+
+/// **Offsetet överlever en omladdning av spåret.** `LoadStemTrack` skickas vid varje
+/// uppspelningsstart, så ett offset som nollades där skulle bara höras som att spåret gled
+/// igen varje gång man tryckte play — en tyst förlust mitt i en vanlig arbetsgång.
+#[test]
+fn a_manual_offset_survives_a_track_reload() {
+    let mut synth = SynthEngine::new(48_000.0);
+    load_impulse_tracks(&mut synth);
+    synth.handle_command(AudioCommand::SetPluginLatencyOffset {
+        track_index: 0,
+        frames: 8,
+    });
+    let impulse = Arc::new(vec![1.0_f32; 8]);
+    synth.handle_command(AudioCommand::LoadStemTrack {
+        track_index: 0,
+        left: impulse.clone(),
+        right: impulse,
+        sample_rate: 48_000.0,
+        volume: 1.0,
+        pan: 0.0,
+        start_time_secs: 0.0,
+    });
+    assert_eq!(synth.stem_tracks[0].manual_latency_frames, 8);
+    synth.process_stereo();
+    assert_eq!(synth.stem_tracks[1].pdc.delay(), 8, "de andra kompenseras fortfarande");
+}
+
 #[test]
 fn pitch_shift_engages_shifter_and_compensates_latency() {
     let mut synth = SynthEngine::new(48_000.0);

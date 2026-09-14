@@ -20,6 +20,13 @@ pub struct PluginViewActions {
     pub close_gui: Option<usize>,
     /// Plugin path to inspect out-of-process in the sandbox (Fas 4.5a).
     pub sandbox_inspect: Option<String>,
+    /// **`(stem track index, på/av)`** — användaren har klickat i smart disable (Fas 8.6).
+    pub set_smart_disable: Option<(usize, bool)>,
+    /// **`(stem track index, offset i ramar)`** — användaren har dragit i latens-offsetet
+    /// (Fas 8.6). Ramar, inte millisekunder: vyn räknar om ms → ramar **en gång** med
+    /// `ms_to_frames`, samma regel som motorn använder, så det inte blir två omräkningar som
+    /// kan glida isär.
+    pub set_latency_offset: Option<(usize, i32)>,
 }
 
 pub fn render_plugins_view(
@@ -31,6 +38,9 @@ pub fn render_plugins_view(
     active_plugins: &[Option<String>],
     gui_open: &[bool],
     sandbox_status: Option<&str>,
+    latency_offsets_frames: &[i32],
+    smart_disable_flags: &[bool],
+    sample_rate: f32,
 ) -> PluginViewActions {
     ui.group(|ui| {
         // ====================================================================
@@ -105,7 +115,15 @@ pub fn render_plugins_view(
         // 3. ACTIVE PER-TRACK INSERTS (Fas 4.2 / 4.3)
         // ====================================================================
         let mut actions = PluginViewActions::default();
-        render_active_inserts(ui, active_plugins, gui_open, &mut actions);
+        render_active_inserts(
+            ui,
+            active_plugins,
+            gui_open,
+            latency_offsets_frames,
+            smart_disable_flags,
+            sample_rate,
+            &mut actions,
+        );
 
         ui.add_space(8.0);
 
@@ -161,6 +179,9 @@ fn render_active_inserts(
     ui: &mut Ui,
     active_plugins: &[Option<String>],
     gui_open: &[bool],
+    latency_offsets_frames: &[i32],
+    smart_disable_flags: &[bool],
+    sample_rate: f32,
     actions: &mut PluginViewActions,
 ) {
     let any = active_plugins.iter().any(|p| p.is_some());
@@ -193,6 +214,52 @@ fn render_active_inserts(
                             .size(9.5)
                             .color(Theme::FL_YELLOW),
                     );
+                }
+                // **Manuellt latens-offset** (Fas 8.6). Ett reglage i millisekunder, för det
+                // är så en människa tänker om fördröjning — motorn räknar i ramar, och
+                // omräkningen görs av `ms_to_frames`/`frames_to_ms` (samma regel som provas i
+                // `plugin_host_live`). Reglaget ritas bara för ett spår som **har** en plugin:
+                // ett offset utan plugin är ren förskjutning.
+                let mut offset_ms =
+                    crate::audio::plugin_host_live::frames_to_ms(
+                        latency_offsets_frames.get(idx).copied().unwrap_or(0),
+                        sample_rate,
+                    );
+                let response = ui
+                    .add(
+                        egui::DragValue::new(&mut offset_ms)
+                            .speed(0.25)
+                            .range(-500.0..=500.0)
+                            .suffix(" ms")
+                            .fixed_decimals(2),
+                    )
+                    .on_hover_text(crate::i18n::t(
+                        "Manuellt latens-offset för det här spåret (Fas 8.6).\n\
+                         Positivt skjuter upp spåret, negativt drar fram det — de andra spåren\n\
+                         kompenseras i stället. Används när en plugin rapporterar fel latens\n\
+                         (rapporterar 0 men fördröjer ändå): bara en människa kan se det.",
+                    ));
+                if response.changed() {
+                    let frames =
+                        crate::audio::plugin_host_live::ms_to_frames(offset_ms, sample_rate);
+                    actions.set_latency_offset = Some((idx, frames));
+                }
+                // **Smart disable** (Fas 8.6): låt pluginen vila när den varken får eller ger
+                // ljud. Standard är **av**, och förklaringen säger varför: en plugin som själv
+                // skapar ljud ur tystnad ser likadan ut som en tyst plugin.
+                let mut smart = smart_disable_flags.get(idx).copied().unwrap_or(false);
+                if ui
+                    .checkbox(&mut smart, crate::i18n::t("😴 Smart disable"))
+                    .on_hover_text(crate::i18n::t(
+                        "Låter pluginen vila när den varken får eller ger ljud (Fas 8.6).\n\
+                         En svans håller den vaken — den vilar bara när utgången också är tyst.\n\
+                         Slå inte på det för en plugin som skapar ljud ur tystnad (en intern\n\
+                         sekvenserare eller oscillator utan ingång): den ser tyst ut och skulle\n\
+                         somna för gott.",
+                    ))
+                    .changed()
+                {
+                    actions.set_smart_disable = Some((idx, smart));
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(crate::i18n::t("🗑 Ta bort")).clicked() {

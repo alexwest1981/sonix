@@ -207,7 +207,13 @@ impl SynthEngine {
                     } else {
                         0
                     };
-                    plugin + pitch
+                    // Det manuella offsetet hör hit också (Fas 8.6): ett spår med offset ska
+                    // dra med sig de andra, annars vore det ingen kompensation.
+                    crate::audio::plugin_host_live::compensated_latency(
+                        plugin,
+                        pitch,
+                        t.manual_latency_frames,
+                    )
                 })
                 .max()
                 .unwrap_or(0)
@@ -438,17 +444,30 @@ impl SynthEngine {
 
                 // Optional CLAP insert, then PDC-align this track to the
                 // project's maximum plugin latency.
-                let mut track_latency = if track.pitch_active {
-                    track.pitch_shifter.latency_frames()
-                } else {
-                    0
-                };
+                //
+                // **Spårtsexakt samma regel som i maxvärdet ovan** (Fas 8.6): pluginens
+                // rapport, tonhöjds-skiftaren och användarens manuella offset. Räknades det
+                // ena stället med offsetet och inte det andra skulle ett offset flytta spåret
+                // utan att de andra följde med — alltså raka motsatsen till kompensation.
+                let plugin_latency = track
+                    .plugin
+                    .as_ref()
+                    .map(|p| p.latency_frames())
+                    .unwrap_or(0);
                 if let Some(plugin) = &mut track.plugin {
                     let (pl, pr) = plugin.process_sample(tl, tr);
                     tl = pl;
                     tr = pr;
-                    track_latency += plugin.latency_frames();
                 }
+                let track_latency = crate::audio::plugin_host_live::compensated_latency(
+                    plugin_latency,
+                    if track.pitch_active {
+                        track.pitch_shifter.latency_frames()
+                    } else {
+                        0
+                    },
+                    track.manual_latency_frames,
+                );
                 track.pdc.set_delay(max_plugin_latency.saturating_sub(track_latency));
                 let (mut tl, mut tr) = track.pdc.process(tl, tr);
 

@@ -155,6 +155,8 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::PatcherNoteOff => "PatcherNoteOff",
         AudioCommand::SetTrackPlugin { .. } => "SetTrackPlugin",
         AudioCommand::SetPluginParameter { .. } => "SetPluginParameter",
+        AudioCommand::SetPluginLatencyOffset { .. } => "SetPluginLatencyOffset",
+        AudioCommand::SetPluginSmartDisable { .. } => "SetPluginSmartDisable",
     }
 }
 

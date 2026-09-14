@@ -426,6 +426,9 @@ pub struct PluginInsert {
     out_r: VecDeque<f32>,
     /// Frames processed since the last reset, for cheap diagnostics/tests.
     frames_processed: u64,
+    /// **Smart disable** (Fas 8.6): räknar hur många block som faktiskt processades och hur
+    /// många som stod still. Räknaren är det som gör funktionen mätbar i stället för påstådd.
+    smart: SmartDisable,
 }
 
 #[allow(dead_code)]
@@ -441,6 +444,7 @@ impl PluginInsert {
             out_l: VecDeque::with_capacity(block_frames * 2),
             out_r: VecDeque::with_capacity(block_frames * 2),
             frames_processed: 0,
+            smart: SmartDisable::default(),
         }
     }
 
@@ -535,6 +539,23 @@ impl PluginInsert {
         self.frames_processed
     }
 
+    /// Är smart disable på för den här inserten? (Fas 8.6)
+    pub fn smart_disable_enabled(&self) -> bool {
+        self.smart.enabled()
+    }
+
+    /// Slår på/av vilan för den här inserten. Flaggan bor **i insertet**, inte på spåret:
+    /// tillståndet den styr (hur länge ingången varit tyst, hur stark svansen är) finns bara
+    /// här, och att ha flaggan någon annanstans hade gjort de två till två sanningar.
+    pub fn set_smart_disable(&mut self, enabled: bool) {
+        self.smart.set_enabled(enabled);
+    }
+
+    /// (processade block, vilade block) — mätningen bakom funktionen.
+    pub fn smart_disable_stats(&self) -> (u64, u64) {
+        self.smart.stats()
+    }
+
     pub fn reset(&mut self) {
         self.processor.reset();
         self.filled = 0;
@@ -550,13 +571,29 @@ impl PluginInsert {
         self.in_r[self.filled] = r;
         self.filled += 1;
         if self.filled == self.block_frames {
-            self.processor.process_stereo(&mut self.in_l, &mut self.in_r);
+            // **Beslutet tas här, vid blockgränsen** (Fas 8.6) — en gång per block, inte per
+            // sampel: regeln behöver en *fönstertopp* för att kunna tala om tystnad (en signal
+            // som passerar noll är under varje tröskel i enstaka sampel), och blocket är det
+            // fönster som redan finns.
+            let in_peak = peak_of(&self.in_l);
+            let decision = self.smart.decide(in_peak);
+            if decision == BlockDecision::Skip {
+                // Utgången blir tyst och ingången **nollas**: annars låg förra blockets sampel
+                // kvar i bufferten och hade kommit ut som ett eko av gammalt ljud när pluginen
+                // vaknade. Att skriva nollor är det enda som är ärligt här — pluginen får inget
+                // ljud alls, och då ska inget ljud ut.
+                self.in_l.fill(0.0);
+                self.in_r.fill(0.0);
+            } else {
+                self.processor.process_stereo(&mut self.in_l, &mut self.in_r);
+                self.frames_processed += self.block_frames as u64;
+            }
+            self.smart.note(decision, in_peak, peak_of(&self.in_l));
             for i in 0..self.block_frames {
                 self.out_l.push_back(self.in_l[i]);
                 self.out_r.push_back(self.in_r[i]);
             }
             self.filled = 0;
-            self.frames_processed += self.block_frames as u64;
         }
         let ol = self.out_l.pop_front().unwrap_or(0.0);
         let or = self.out_r.pop_front().unwrap_or(0.0);
@@ -618,6 +655,465 @@ impl PdcDelay {
 impl Default for PdcDelay {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// **Spårets latens, som kompensationen räknar med** (Fas 8.6): pluginens egen rapport,
+/// tonhöjds-skiftarens buffert och användarens **manuella offset** — FL visar "manual +
+/// plugin" och sparar offsetet vid sidan av den automatiska PDC:n, och skälet är att en
+/// plugin kan rapportera fel: rapporterar den 0 men fördröjer 64 ramar hamnar spåret 64 ramar
+/// fel hur fin PDC:n än är, och bara en människa kan säga vad som gäller.
+///
+/// **En negativ offset är meningsfull** och det är därför talet är `i32`: den drar *fram*
+/// spåret i förhållande till de andra (de andra får mer delay i stället). Summan kan däremot
+/// aldrig bli negativ — en delay-linje kan bara skjuta upp — så den kläms vid noll. En
+/// klämning är tyst av sig själv, och därför ligger den **här**, i en funktion med ett prov,
+/// i stället för i den stora processloopen.
+pub fn compensated_latency(plugin_frames: usize, pitch_frames: usize, manual_frames: i32) -> usize {
+    // Räknat i `i64` hela vägen: `usize as i64` på en 64-bitars maskin är negativt för
+    // stora värden, så en klämning mot `usize::MAX` i den här formen skulle svara noll för
+    // ett fullt rimligt offset. Summan är alltid liten (ramar), så `i64` räcker med god
+    // marginal — det är bara tecknet som behöver rymmas.
+    let base = plugin_frames as i64 + pitch_frames as i64 + manual_frames as i64;
+    if base <= 0 { 0 } else { base as usize }
+}
+
+/// Millisekunder → ramar, för offsetet i gränssnittet (människor anger ms, motorn räknar
+/// ramar). Närmaste ram, aldrig negativ — ett negativt antal ms är ett negativt offset och
+/// hanteras av tecknet, inte av avrundningen.
+pub fn ms_to_frames(ms: f32, sample_rate: f32) -> i32 {
+    if !ms.is_finite() || !sample_rate.is_finite() || sample_rate <= 0.0 {
+        return 0;
+    }
+    (ms * sample_rate / 1000.0).round() as i32
+}
+
+/// Omvändningen, för att visa det sparade offsetet i ms igen.
+pub fn frames_to_ms(frames: i32, sample_rate: f32) -> f32 {
+    if !sample_rate.is_finite() || sample_rate <= 0.0 {
+        return 0.0;
+    }
+    frames as f32 * 1000.0 / sample_rate
+}
+
+/// **Gränsen för tystnad: −120 dBFS** — samma linje som tyst-ljud-doktrinen drar (ett block
+/// under den här toppen är ohörbart, och att låta en plugin vila över den vore att gissa).
+pub const SMART_DISABLE_EPSILON: f32 = 1e-6;
+
+/// Hur många tysta block i rad som krävs innan en plugin får vila. Åtta block är ~21 ms vid
+/// 48 kHz med 128 sampels block — kort nog att spara arbete, långt nog att ett par tysta
+/// sampel mellan två toner inte får en plugin att somna och vakna i onödan.
+pub const SMART_DISABLE_HOLD_BLOCKS: u32 = 8;
+
+/// Toppen i ett block, absolutbelopp. Ren funktion, egen nolla: ett block utan sampel har
+/// ingen topp.
+pub fn peak_of(samples: &[f32]) -> f32 {
+    samples
+        .iter()
+        .fold(0.0_f32, |acc, s| if s.abs() > acc { s.abs() } else { acc })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockDecision {
+    Process,
+    Skip,
+}
+
+/// **Smart disable** (Fas 8.6): en plugin som varken får eller ger ljud behöver inte processas.
+///
+/// FL har det som en kryssruta per plugin, och poängen är CPU. Skillnaden mot FL:s enkla
+/// form är **svansvakten**: vi vilar bara när pluginens *egen utgång* också är tyst, mätt i
+/// föregående block. Ett reverb som fortfarande ringer har en utgång över gränsen och hålls
+/// därför vaken även när ingången är tyst — annars hade en svans klippts av, och det är den
+/// hörbara sortens fel.
+///
+/// **Vad regeln inte klarar, och varför kryssrutan finns:** en plugin som *själv* skapar ljud
+/// ur tystnad (en intern sekvenserare, en oscillator utan ingång) ser exakt ut som en tyst
+/// plugin och skulle somna för gott. Därför är den avstängd som standard och slås på per
+/// plugin av en människa som vet vad pluginen gör.
+#[derive(Debug, Clone)]
+pub struct SmartDisable {
+    enabled: bool,
+    hold_blocks: u32,
+    /// Antal block i rad där **både** ingången och utgången var under gränsen.
+    quiet_blocks: u32,
+    /// Utgångens topp i det senast processade blocket. Svansvakten.
+    last_out_peak: f32,
+    processed_blocks: u64,
+    skipped_blocks: u64,
+}
+
+impl Default for SmartDisable {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            hold_blocks: SMART_DISABLE_HOLD_BLOCKS,
+            quiet_blocks: 0,
+            last_out_peak: 0.0,
+            processed_blocks: 0,
+            skipped_blocks: 0,
+        }
+    }
+}
+
+impl SmartDisable {
+    pub fn enabled(&self) -> bool {
+        self.enabled
+    }
+
+    /// Slår på eller av vilan. **Att slå av nollställer räkningen**, så nästa påslag börjar
+    /// från ett vaket läge i stället för att ärva en gammal tystnadsperiod.
+    pub fn set_enabled(&mut self, enabled: bool) {
+        self.enabled = enabled;
+        if !enabled {
+            self.quiet_blocks = 0;
+            self.last_out_peak = 0.0;
+        }
+    }
+
+    pub fn hold_blocks(&self) -> u32 {
+        self.hold_blocks
+    }
+
+    /// Räkningen: (processade block, vilade block). Mätningen som gör funktionen prövbar.
+    pub fn stats(&self) -> (u64, u64) {
+        (self.processed_blocks, self.skipped_blocks)
+    }
+
+    /// **Ska nästa block processas?** Bara ingångens topp behövs — svansen läses ur det
+    /// senaste blockets utgång, som `note` har sparat.
+    pub fn decide(&self, in_peak: f32) -> BlockDecision {
+        if !self.enabled
+            // Signal in: aldrig vila, och ingen väntetid på vägen tillbaka — en plugin som
+            // vaknar sent tappar början av en transient.
+            || in_peak > SMART_DISABLE_EPSILON
+            // Svansen: pluginen låter fortfarande, alltså arbetar den.
+            || self.last_out_peak > SMART_DISABLE_EPSILON
+        {
+            return BlockDecision::Process;
+        }
+        if self.quiet_blocks >= self.hold_blocks {
+            BlockDecision::Skip
+        } else {
+            BlockDecision::Process
+        }
+    }
+
+    /// Bokför vad blocket blev. `in_peak` och `out_peak` är topparna i **samma** block
+    /// (utgången mätt efter processningen), så räkningen alltid jämför samma sak.
+    pub fn note(&mut self, decision: BlockDecision, in_peak: f32, out_peak: f32) {
+        match decision {
+            BlockDecision::Process => {
+                self.processed_blocks += 1;
+                self.last_out_peak = out_peak;
+                if in_peak <= SMART_DISABLE_EPSILON && out_peak <= SMART_DISABLE_EPSILON {
+                    self.quiet_blocks = self.quiet_blocks.saturating_add(1);
+                } else {
+                    self.quiet_blocks = 0;
+                }
+            }
+            BlockDecision::Skip => {
+                self.skipped_blocks += 1;
+                // Utgången var nollor (insertet skrev dem), och ingången var tyst. Perioden
+                // räknas vidare som tyst, men utan tak — den behöver bara vara över gränsen.
+                self.last_out_peak = 0.0;
+                self.quiet_blocks = self.quiet_blocks.saturating_add(1);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod smart_disable_tests {
+    use super::*;
+
+    /// Ett block med en topp över gränsen.
+    fn loud() -> f32 {
+        0.5
+    }
+
+    fn block(peak: f32) -> Vec<f32> {
+        vec![peak, -peak, peak, -peak]
+    }
+
+    #[test]
+    fn peak_of_is_the_largest_absolute_value() {
+        assert_eq!(peak_of(&[]), 0.0);
+        assert_eq!(peak_of(&block(0.25)), 0.25);
+        assert_eq!(peak_of(&[-0.75, 0.5]), 0.75, "tecknet spelar ingen roll");
+    }
+
+    /// **Avstängd = allt processas.** Kryssrutan av ska bete sig precis som förut.
+    #[test]
+    fn nothing_is_skipped_while_disabled() {
+        let mut sd = SmartDisable::default();
+        for _ in 0..100 {
+            let d = sd.decide(0.0);
+            assert_eq!(d, BlockDecision::Process);
+            sd.note(d, 0.0, 0.0);
+        }
+        assert_eq!(sd.stats(), (100, 0));
+    }
+
+    /// **Tyst plugin somnar — men först efter väntetiden.** Provet mäter *när*: inte ett block
+    /// för tidigt (då hade korta pauser kostat en uppvakning) och inte för sent.
+    #[test]
+    fn a_silent_plugin_falls_asleep_after_the_hold() {
+        let mut sd = SmartDisable::default();
+        sd.set_enabled(true);
+        for i in 1..SMART_DISABLE_HOLD_BLOCKS {
+            let d = sd.decide(0.0);
+            assert_eq!(d, BlockDecision::Process, "block {i} låg före väntetiden");
+            sd.note(d, 0.0, 0.0);
+        }
+        // Det sista blocket i väntetiden processas, och efter det sover pluginen.
+        let d = sd.decide(0.0);
+        assert_eq!(d, BlockDecision::Process);
+        sd.note(d, 0.0, 0.0);
+        assert_eq!(sd.decide(0.0), BlockDecision::Skip);
+        let (processed, _) = sd.stats();
+        assert_eq!(processed, SMART_DISABLE_HOLD_BLOCKS as u64);
+    }
+
+    /// **Svansen håller pluginen vaken** — och det är det här provet som gör regeln säker.
+    /// Ingången är tyst (reverbets svans kommer ur pluginens eget minne), men utgången låter:
+    /// en plugin som vilade här hade klippt av sin egen svans.
+    #[test]
+    fn a_tail_keeps_the_plugin_awake() {
+        let mut sd = SmartDisable::default();
+        sd.set_enabled(true);
+        for _ in 0..1_000 {
+            let d = sd.decide(0.0);
+            assert_eq!(d, BlockDecision::Process, "en svans får inte somna");
+            sd.note(d, 0.0, 0.001);
+        }
+        assert_eq!(sd.stats(), (1_000, 0));
+    }
+
+    /// **Ett nytt ljud väcker pluginen direkt** — ingen väntetid på vägen tillbaka, för en
+    /// sen uppvakning tappar början av transienten.
+    #[test]
+    fn a_new_transient_wakes_it_immediately() {
+        let mut sd = SmartDisable::default();
+        sd.set_enabled(true);
+        for _ in 0..(SMART_DISABLE_HOLD_BLOCKS + 10) {
+            let d = sd.decide(0.0);
+            sd.note(d, 0.0, 0.0);
+        }
+        assert_eq!(sd.decide(0.0), BlockDecision::Skip, "den ska sova nu");
+        assert_eq!(sd.decide(loud()), BlockDecision::Process);
+        // Och efter den vaknade är tystnadsräkningen nollställd: ett tyst block direkt efter
+        // ett ljud får inte börja räkna mot vila från den gamla perioden.
+        sd.note(BlockDecision::Process, loud(), 0.4);
+        assert_eq!(sd.decide(0.0), BlockDecision::Process);
+    }
+
+    /// **Ett enda tyst block är inte tystnad.** Regeln kräver hela väntetiden i rad, och ett
+    /// ljud mitt i nollställer räkningen — annars hade en låt med korta pauser fått en plugin
+    /// som somnade mitt i musiken.
+    #[test]
+    fn a_loud_block_resets_the_quiet_count() {
+        let mut sd = SmartDisable::default();
+        sd.set_enabled(true);
+        for round in 0..5 {
+            for _ in 0..(SMART_DISABLE_HOLD_BLOCKS - 1) {
+                let d = sd.decide(0.0);
+                sd.note(d, 0.0, 0.0);
+            }
+            let d = sd.decide(0.25);
+            assert_eq!(d, BlockDecision::Process);
+            sd.note(d, 0.25, 0.25);
+            assert_eq!(
+                sd.decide(0.0),
+                BlockDecision::Process,
+                "runda {round}: räkningen skulle nollställts"
+            );
+        }
+    }
+
+    /// Att slå **av** kryssrutan nollställer räkningen, så nästa påslag inte ärver en gammal
+    /// tystnadsperiod och somnar i första blocket.
+    #[test]
+    fn disabling_resets_the_count() {
+        let mut sd = SmartDisable::default();
+        sd.set_enabled(true);
+        for _ in 0..(SMART_DISABLE_HOLD_BLOCKS + 1) {
+            let d = sd.decide(0.0);
+            sd.note(d, 0.0, 0.0);
+        }
+        assert_eq!(sd.decide(0.0), BlockDecision::Skip);
+        sd.set_enabled(false);
+        assert_eq!(sd.decide(0.0), BlockDecision::Process);
+        sd.set_enabled(true);
+        assert_eq!(sd.decide(0.0), BlockDecision::Process, "vaken efter påslaget");
+    }
+}
+
+#[cfg(test)]
+mod insert_smart_disable_tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    /// Räknar hur många gånger `process_stereo` faktiskt anropas. **Det är den här räknaren
+    /// som gör smart disable till en mätning** — antalet vilade block i vår egen bokföring
+    /// säger ingenting om vi ändå anropar pluginen.
+    struct CountingProcessor {
+        calls: Arc<AtomicU64>,
+    }
+
+    impl PluginProcessor for CountingProcessor {
+        fn backend(&self) -> &'static str {
+            "test"
+        }
+        fn info(&self) -> &PluginInfo {
+            // En statisk tom info räcker: provet bryr sig bara om anropen.
+            static INFO: std::sync::OnceLock<PluginInfo> = std::sync::OnceLock::new();
+            INFO.get_or_init(PluginInfo::default)
+        }
+        fn parameters(&self) -> &[PluginParameter] {
+            &[]
+        }
+        fn latency_frames(&self) -> u32 {
+            0
+        }
+        fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            // En tyst plugin: den rör inget (utgången är ingången, som är nollor).
+            let _ = (left, right);
+        }
+        fn set_parameter(&mut self, _id: u32, _value: f64) -> bool {
+            false
+        }
+        fn reset(&mut self) {}
+    }
+
+    /// **En tyst kedja slutar anropa pluginen.** Mätt mot pluginens egen räknare: efter
+    /// väntetiden ska den vara stilla, och utgången ska vara exakt tyst (inga gamla sampel
+    /// som läcker ut när den sover).
+    #[test]
+    fn a_silent_insert_stops_calling_the_plugin() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let block = 64;
+        let mut insert = PluginInsert::new(
+            Box::new(CountingProcessor {
+                calls: Arc::clone(&calls),
+            }),
+            block,
+        );
+        insert.set_smart_disable(true);
+
+        let blocks = SMART_DISABLE_HOLD_BLOCKS as usize + 8;
+        let mut out = Vec::new();
+        for _ in 0..(blocks * block) {
+            let (l, _) = insert.process_sample(0.0, 0.0);
+            out.push(l);
+        }
+
+        // Väntetiden är kvar (de blocken processas), resten vilar.
+        assert_eq!(calls.load(Ordering::Relaxed), SMART_DISABLE_HOLD_BLOCKS as u64);
+        let (processed, skipped) = insert.smart_disable_stats();
+        assert_eq!(processed, SMART_DISABLE_HOLD_BLOCKS as u64);
+        assert_eq!(skipped as usize, blocks - SMART_DISABLE_HOLD_BLOCKS as usize);
+        // **Utgången är tyst hela vägen**, också under vilan: en vilande plugin får inte läcka
+        // gammalt ljud.
+        assert!(
+            out.iter().all(|s| s.abs() < f32::EPSILON),
+            "en vilande plugin läckte ljud: topp {}",
+            peak_of(&out)
+        );
+    }
+
+    /// **Ett ljud mitt i väcker den.** Samma mätning, motsatt håll: räknaren ska ticka igen,
+    /// och det **omedelbart** — en fördröjd uppvakning tappar början av transienten.
+    #[test]
+    fn a_transient_wakes_the_insert_and_the_plugin_runs_again() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let block = 64;
+        let mut insert = PluginInsert::new(
+            Box::new(CountingProcessor {
+                calls: Arc::clone(&calls),
+            }),
+            block,
+        );
+        insert.set_smart_disable(true);
+        for _ in 0..((SMART_DISABLE_HOLD_BLOCKS as usize + 4) * block) {
+            insert.process_sample(0.0, 0.0);
+        }
+        let asleep = calls.load(Ordering::Relaxed);
+        // Ett block med ljud: det ska processas, och det direkt.
+        for _ in 0..block {
+            insert.process_sample(0.5, 0.5);
+        }
+        assert_eq!(
+            calls.load(Ordering::Relaxed),
+            asleep + 1,
+            "ett ljud ska väcka pluginen i samma block som det kommer"
+        );
+    }
+
+    /// **Avstängd räknare rör ingenting.** Kryssrutan av = dagens beteende, mätt: varje block
+    /// går till pluginen.
+    #[test]
+    fn a_disabled_insert_still_processes_every_block() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let block = 32;
+        let mut insert = PluginInsert::new(
+            Box::new(CountingProcessor {
+                calls: Arc::clone(&calls),
+            }),
+            block,
+        );
+        for _ in 0..(block * 20) {
+            insert.process_sample(0.0, 0.0);
+        }
+        assert_eq!(calls.load(Ordering::Relaxed), 20);
+        assert_eq!(insert.smart_disable_stats(), (20, 0));
+    }
+}
+
+#[cfg(test)]
+mod latency_tests {
+    use super::*;
+
+    /// **Summan är plugin + tonhöjd + manuellt**, och den manuella delen får vara negativ.
+    #[test]
+    fn the_manual_offset_is_added_to_the_plugin_latency() {
+        assert_eq!(compensated_latency(64, 0, 0), 64);
+        assert_eq!(compensated_latency(64, 0, 16), 80);
+        // Negativt: spåret dras fram. PDC:n lägger i stället mer delay på de andra.
+        assert_eq!(compensated_latency(64, 0, -32), 32);
+        // Tonhöjds-skiftaren räknas med, den är också en fördröjning.
+        assert_eq!(compensated_latency(64, 128, -32), 160);
+    }
+
+    /// **Summan kan inte bli negativ** — en delay-linje kan bara skjuta upp. Ett offset som
+    /// pekar förbi noll kläms, och det är den klämningen provet finns för.
+    #[test]
+    fn a_manual_offset_cannot_make_the_total_negative() {
+        assert_eq!(compensated_latency(0, 0, -1000), 0);
+        assert_eq!(compensated_latency(32, 0, -1000), 0);
+        assert_eq!(compensated_latency(0, 0, i32::MIN), 0);
+        // Och ett stort men rimligt tal slås inte runt: summan är pluginens ramar plus
+        // offsetet, inte ett `u32` som rinner över.
+        assert_eq!(
+            compensated_latency(u32::MAX as usize, 0, i32::MAX),
+            u32::MAX as usize + i32::MAX as usize
+        );
+    }
+
+    /// **Skräpinput ger noll, inte en panik** — gränssnittet kan skicka NaN innan fältet är
+    /// ifyllt, och ett NaN som blir en delay-längd är en krasch i ljudtråden.
+    #[test]
+    fn ms_conversion_survives_garbage() {
+        assert_eq!(ms_to_frames(10.0, 48_000.0), 480);
+        assert_eq!(ms_to_frames(-10.0, 48_000.0), -480);
+        assert_eq!(ms_to_frames(f32::NAN, 48_000.0), 0);
+        assert_eq!(ms_to_frames(10.0, 0.0), 0);
+        assert_eq!(frames_to_ms(480, 48_000.0), 10.0);
+        assert_eq!(frames_to_ms(480, 0.0), 0.0);
+        // Rundgången ska hamna på samma ram.
+        assert_eq!(ms_to_frames(frames_to_ms(-7, 44_100.0), 44_100.0), -7);
     }
 }
 

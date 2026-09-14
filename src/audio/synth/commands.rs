@@ -245,11 +245,33 @@ impl SynthEngine {
                     plugin.set_parameter(param_id, value);
                 }
             }
+            // **Manuellt latens-offset** (Fas 8.6). Offsetet lagras på spåret och räknas in i
+            // PDC:n i `process_stereo` — det ska alltså **inte** röra delay-linjen här:
+            // nästa bildruta sätter den till (max − spårets latens), och en nollställning
+            // här skulle bara kasta bort kön mitt i ett block.
+            AudioCommand::SetPluginLatencyOffset { track_index, frames } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    track.manual_latency_frames = frames;
+                }
+            }
+            // Smart disable (Fas 8.6). Ingen plugin på spåret = inget att slå på, och det är
+            // inte ett fel: kommandot kommer från en vy som kan ha ritats en bildruta före
+            // spårets insert.
+            AudioCommand::SetPluginSmartDisable { track_index, enabled } => {
+                if let Some(plugin) = self
+                    .stem_tracks
+                    .get_mut(track_index)
+                    .and_then(|t| t.plugin.as_mut())
+                {
+                    plugin.set_smart_disable(enabled);
+                }
+            }
             AudioCommand::LoadStemTrack { track_index, left, right, sample_rate, volume, pan, start_time_secs } => {
                 let track = StemVoiceTrack::new(left, right, sample_rate, volume, pan, start_time_secs, self.sample_rate);
                 if track_index < self.stem_tracks.len() {
                     let eq = self.stem_tracks[track_index].eq;
                     let old = &mut self.stem_tracks[track_index];
+                    let old_offset = old.manual_latency_frames;
                     let (ct, cr, rs, ds, ps, pa) = (old.comp_threshold_db, old.comp_ratio, old.reverb_send, old.delay_send, old.pitch_semitones, old.pitch_active);
                     // Preserve a live plugin insert (and its PDC line) across reloads.
                     let plugin = old.plugin.take();
@@ -267,6 +289,11 @@ impl SynthEngine {
                     new_track.pitch_active = pa;
                     new_track.plugin = plugin;
                     new_track.pdc = pdc;
+                    // **Offsetet överlever omladdningen, av samma skäl som plugin och PDC.**
+                    // `LoadStemTrack` skickas vid varje uppspelningsstart, så ett offset som
+                    // inte följde med skulle nollas tyst varje gång man tryckte play — och
+                    // bara höras som att spåret gled igen (Fas 8.6).
+                    new_track.manual_latency_frames = old_offset;
                     // **Regionerna överlever en omladdning** (Fas 8.10c). De är state som
                     // eq, kompressor och plugin — och att tappa dem tyst var precis vad
                     // som gjorde en tempoändring ohörbar: appen skickade `LoadStemTrack`

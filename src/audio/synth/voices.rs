@@ -104,6 +104,9 @@ pub struct StemVoiceTrack {
     pub pitch_active: bool,
     /// Optional CLAP insert on this track (Fas 4.2).
     pub plugin: Option<PluginInsert>,
+    /// **Manuellt latens-offset för spårets plugin, i ramar** (Fas 8.6). Negativt = spåret
+    /// dras fram. Se `compensated_latency` — regeln bor där, inte här.
+    pub manual_latency_frames: i32,
     /// Delay line that aligns this track with the project's max plugin latency.
     pub pdc: PdcDelay,
     /// Sub-mix bus this track feeds (`0..NUM_BUSES`) — Fas 5.2.
@@ -387,6 +390,7 @@ impl StemVoiceTrack {
             pitch_shifter: FormantPitchShifter::new(engine_sample_rate),
             pitch_active: false,
             plugin: None,
+            manual_latency_frames: 0,
             pdc: PdcDelay::new(),
             bus: 0,
             vca: None,

@@ -436,6 +436,14 @@ pub struct SavedPluginData {
     /// Whether the plugin was loaded in an out-of-process sandbox (Fas 4.5b).
     #[serde(default)]
     pub sandboxed: bool,
+    /// **Manuellt latens-offset i ramar** (Fas 8.6). `#[serde(default)]` så en projektfil
+    /// från före 8.6 läses som **noll** — alltså exakt den kompensation som gällde då.
+    #[serde(default)]
+    pub latency_offset_frames: i32,
+    /// **Smart disable** (Fas 8.6). `#[serde(default)]`: en fil från före 8.6 läses som
+    /// **av** — och av är exakt det beteende filen spelades in med.
+    #[serde(default)]
+    pub smart_disable: bool,
 }
 
 /// In-memory mirror of [`SavedPluginData`] kept on [`SonixApp`].
@@ -445,6 +453,10 @@ pub struct PluginSlot {
     pub name: String,
     pub state: Vec<u8>,
     pub sandboxed: bool,
+    /// Manuellt latens-offset i ramar (Fas 8.6). Se `compensated_latency`.
+    pub latency_offset_frames: i32,
+    /// Smart disable (Fas 8.6): låt pluginen vila när den varken får eller ger ljud.
+    pub smart_disable: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -1253,6 +1265,8 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
                     name: s.name.clone(),
                     state: s.state.clone(),
                     sandboxed: s.sandboxed,
+                    latency_offset_frames: s.latency_offset_frames,
+                    smart_disable: s.smart_disable,
                 })
             })
             .collect(),
@@ -1809,6 +1823,8 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
                 name: s.name.clone(),
                 state: s.state.clone(),
                 sandboxed: s.sandboxed,
+                latency_offset_frames: s.latency_offset_frames,
+                smart_disable: s.smart_disable,
             })
         })
         .collect();
@@ -1819,6 +1835,22 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         {
             plugin_errors.push(err);
         }
+        // **Offsetet följer med till motorn** (Fas 8.6). Att bara skriva det i sloten hade
+        // gjort det synligt i gränssnittet och i den sparade filen medan motorn körde utan
+        // kompensation — projektfilen hade sett riktig ut och ljudet varit fel. Nollställs
+        // även för spår **utan** plugin, så en borttagen plugin inte lämnar ett offset kvar
+        // på ett spår som inte längre har något att kompensera.
+        let frames = slot.as_ref().map(|s| s.latency_offset_frames).unwrap_or(0);
+        let _ = self
+            .engine
+            .send_command(AudioCommand::SetPluginLatencyOffset { track_index, frames });
+        // Smart disable (Fas 8.6) går samma väg, av samma skäl: flaggan bor i insertet på
+        // ljudtråden, så den måste skickas dit — att bara spara den i sloten hade gett en
+        // projektfil som ser rätt ut medan pluginen processar hela tiden.
+        let enabled = slot.as_ref().map(|s| s.smart_disable).unwrap_or(false);
+        let _ = self
+            .engine
+            .send_command(AudioCommand::SetPluginSmartDisable { track_index, enabled });
     }
 
     self.loop_end_bar = self.get_max_project_bars().max(32);
