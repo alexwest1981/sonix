@@ -7,10 +7,13 @@ och sexton undermoduler). Verktyget finns kvar därför att nästa fil är samma
 inte göras för hand.
 
     python3 tools/module_split.py <målfil> method|item|impl|mod [--from FIL] [--header TEXT]
-                                  [--unwrap] namn...
+                                  [--unwrap] [--impl-type TYP] namn...
+
+`--impl-type` (standard `SonixApp`) är typen som de utbrutna **metoderna** hamnar i —
+`--impl-type SynthEngine` när källfilen är motorn i stället för app-ytan.
 
 - `method`: en metod inne i ett `impl`-block (indrag 4) → skrivs in i ett eget
-  `impl <typ> { … }` i målfilen, avindenterad 4 steg.
+  `impl <typ> { … }` i målfilen, på samma indrag (4).
 - `item`: ett toppnivå-item (indrag 0, även `impl X {`) → skrivs rakt av.
 - `impl`: matchar hela rubriken, t.ex. `Default for TrackEq` (annars delar två impls namn).
 - `mod`: en `mod x { … }`-modul; med `--unwrap` skalas omslaget av (för en `tests.rs`).
@@ -192,6 +195,7 @@ def main() -> int:
     source = Path("src/ui/app.rs")
     header = None
     unwrap = False
+    impl_type = "SonixApp"
     names: list[str] = []
     i = 0
     while i < len(rest):
@@ -200,6 +204,9 @@ def main() -> int:
             i += 2
         elif rest[i] == "--header":
             header = rest[i + 1]
+            i += 2
+        elif rest[i] == "--impl-type":
+            impl_type = rest[i + 1]
             i += 2
         elif rest[i] == "--unwrap":
             unwrap = True
@@ -231,8 +238,6 @@ def main() -> int:
             if not inner or inner[-1].strip() != "}":
                 raise SystemExit(f"{name}: omslaget slutar inte med `}}` — vägrar gissa")
             block = inner[:-1]
-        if kind == "method":
-            block = [(l[4:] if l.startswith("    ") else l) for l in block]
         blocks.append((block, name))
 
     # --- räkna fram båda filernas nya innehåll ---
@@ -242,7 +247,7 @@ def main() -> int:
         body = ([header.rstrip("\n"), ""] if header else []) + ["use super::*;", ""]
     for block, name in blocks:
         if kind == "method":
-            body.append("impl SonixApp {")
+            body.append(f"impl {impl_type} {{")
             body += block
             body.append("}")
         else:

@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**80 moduler · 69860 rader kod · 36 med status · 44 utan.**
+**84 moduler · 69900 rader kod · 40 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,7 +15,6 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/audio/synth.rs` | 3518 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 97 | 49 |  |
 | `src/ui/app/tests.rs` | 2879 | byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov. | 0 | 88 (+1 ign) | Prov för app-ytan — flyttade ur `app.rs` 2026-09-14 (filen hade vuxit till 23 000 rader).  |
 | `src/ui/app/modals.rs` | 2755 | byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför. | 0 | 0 | Dialogerna — alla små fönster på ett ställe.  |
 | `src/ui/app/arranger.rs` | 2732 | byggs — arrangören. | 0 | 0 | Arrangören — tidslinjen som ritas.  |
@@ -28,6 +27,7 @@
 | `src/audio/vocal_harmonizer.rs` | 1632 | — | 15 | 12 |  |
 | `src/audio/stretch.rs` | 1627 | — | 18 | 24 (+8 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
 | `src/audio/factory_samples.rs` | 1575 | stabil — fabriksbiblioteket och `merge_library` | 9 | 10 |  |
+| `src/audio/synth/tests.rs` | 1519 | stabil — prov, inte kod; flyttar du en funktion, flytta dess prov. | 0 | 49 | Motorns prov: tidmappning, sträckning, regioner, kantrampen och klockan.  |
 | `src/audio/plugin_vst3.rs` | 1454 | stabil (4.6a) — VST3-värden, en utbuss | 4 | 9 | Minimal in-process **VST3** host (Fas 4.6a).  |
 | `src/audio/metadata.rs` | 1451 | stabil (8.5b) — bara härkomst tas; musik, text och omslag lämnas | 4 | 18 | Tar bort AI-/Sunohärkomst ur ljudfiler — och ingenting annat (8.5b).  |
 | `src/ui/app/import.rs` | 1367 | byggs — importvägarna; nya format läggs här, inte i UI:t. | 1 | 0 | Import — stämmor från Suno, filer, separatorn och genererat ljud.  |
@@ -55,10 +55,12 @@
 | `src/audio/ai_client.rs` | 715 | — | 8 | 8 |  |
 | `src/audio/smf.rs` | 706 | stabil — MIDI-export med tempobyten (8.2 steg 3) | 33 | 10 | Standard MIDI File (SMF) — skriv och läs `.mid` utan externa beroenden.  |
 | `src/ui/app/state.rs` | 705 | byggs — datamodellen; nya fält hör hit och ska ha ett ärligt standardvärde. | 1 | 0 | Tillstånd och typer för app-ytan — utbrutet ur `app.rs` 2026-09-14.  |
+| `src/audio/synth/process.rs` | 673 | stabil — motorns renderingsloop (en bildruta ljud i taget). | 40 | 0 | Renderingsloopen: en bildruta ljud i taget — röster, spår, bussar, sidokedjor och master. |
 | `src/ui/app/plugins.rs` | 636 | byggs — plugin-värdarna. | 0 | 0 | Plugin-värdarna i UI:t — ladda, GUI-fönster, slots och sandlådan.  |
 | `src/audio/command.rs` | 631 | byggs — kommando-protokollet (AI-vägen) | 22 | 7 |  |
 | `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 58 | 12 | Tempokarta (Fas 8.2, steg 1).  |
 | `src/ui/app/browser.rs` | 613 | byggs — Sound Browser och biblioteksskanningen. | 1 | 0 | Sound Browser och biblioteket.  |
+| `src/audio/synth/commands.rs` | 604 | stabil — kommandovägen från UI-tråden in i motorn. | 0 | 0 | Kommandovägen: vad motorn gör när UI-tråden säger något — och ordningen spåren ska köras i. |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
 | `src/ui/app/midi.rs` | 522 | byggs — MIDI-vägarna. | 1 | 0 | MIDI — notschemat, importen, exporten och trumkanalerna.  |
@@ -69,6 +71,7 @@
 | `src/ui/dice_generator_modal.rs` | 470 | — | 2 | 0 |  |
 | `src/audio/neural_separator.rs` | 463 | — | 3 | 9 | Neural stem separation through an ONNX model (HTDemucs / Demucs family).  |
 | `src/audio/plugin_gui.rs` | 462 | — | 2 | 3 | X11 window hosting for plugin GUIs (Fas 4.4b).  |
+| `src/audio/synth/voices.rs` | 445 | stabil — rösterna och spåren; en ny rösttyp hör hit och får eget prov. | 1 | 0 | Rösterna och spåren motorn spelar: synth, duckning, stämspår, audition, samplingar. |
 | `src/autosave.rs` | 430 | — | 42 | 10 | Autosave, versionsrotation och kraschåterställning (Fas 6.1).  |
 | `src/ui/add_track_modal.rs` | 428 | — | 1 | 0 |  |
 | `src/audio/scale.rs` | 412 | stabil (8.11) — en tabell och ett index för tonarten | 23 | 10 | Tonarter: **en** tabell och **ett** index (Alex' kvittens 2026-09-12).  |
@@ -76,6 +79,7 @@
 | `src/selftest.rs` | 353 | — | 1 | 4 | **Självtestet** (Fas 7.1) — den del av Windows-kriteriet som ingen CI-mätning kan svara på.  |
 | `src/ui/tuner_modal.rs` | 351 | — | 1 | 0 |  |
 | `src/audio/spectrum.rs` | 335 | ny (8.13) — toppradens nivå- och registermätare | 9 | 7 (+2 ign) | Registret i utgången — vilka frekvensband som bär energi — och mätarskalan (8.13).  |
+| `src/audio/synth.rs` | 317 | stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends | 97 | 0 |  Här bor bara **roten**: `SynthEngine`-tillståndet, `new` och kommandots namn. |
 | `src/ui/patcher_view.rs` | 303 | — | 1 | 0 |  |
 | `src/audio/dither.rs` | 296 | — | 5 | 8 | Dither vid kvantisering till fast punkt (Fas 6.5).  |
 | `src/ui/song_structure_modal.rs` | 295 | — | 1 | 0 |  |
@@ -220,8 +224,23 @@
 
 ### `src/audio/synth.rs`
 - **Status:** stabil — motorn: mixer, bussar, sidokedjor (8.3) och sends
-- **Rör inte:** sends mellan spår kräver att spårloopen i `process_stereo` delas i två faser + slingkontroll
-- **Publika ingångar:** `NUM_BUSES`, `NUM_VCAS`, `BUS_NAMES`, `Voice`, `new`, `trigger`, `release`, `reset`, `is_active`, `next_sample`, `Ducker`, `new` … (+17)
+- **Rör inte:** körordningen — `stem_order` och `stem_incoming` byggs i **samma** pass, så sändarens utgång finns när mottagarens kedja kör (8.3; provet `a_track_send_arrives_in_phase`).
+- **Publika ingångar:** `NUM_BUSES`, `NUM_VCAS`, `BUS_NAMES`, `SynthEngine`, `new`
+
+### `src/audio/synth/commands.rs`
+- **Status:** stabil — kommandovägen från UI-tråden in i motorn.
+- **Rör inte:** ordningen som `recompute_stem_order` räknar fram — mekanismen bakom sends mellan spår (8.3), och ett nej ska vara ett nej (slingan namnges).
+- **Publika ingångar:** `handle_command`
+
+### `src/audio/synth/process.rs`
+- **Status:** stabil — motorns renderingsloop (en bildruta ljud i taget).
+- **Rör inte:** ordningen i `process_stereo` — en sändares utgång måste finnas när mottagarens kedja kör (sends mellan spår, 8.3); mät fasen mot en kontroll på samma nivå, inte mot "2×".
+- **Publika ingångar:** `process_stereo`
+
+### `src/audio/synth/voices.rs`
+- **Status:** stabil — rösterna och spåren; en ny rösttyp hör hit och får eget prov.
+- **Rör inte:** `slice_edge_gain` — `fade_frames = 0` ska ge exakt den gamla vägen (1,0 överallt), inte nästan; det är den som skiljer ett klick från ett klipp.
+- **Publika ingångar:** `Voice`, `Ducker`, `region_source_secs`, `StemVoiceTrack`, `AuditionVoice`, `slice_edge_gain`, `SLICE_FADE_SECS`, `SampleVoice`, `ScheduledNote`, `new`, `trigger`, `release` … (+10)
 
 ### `src/audio/tempo.rs`
 - **Status:** stabil — tempokartan och `region_source_secs`
