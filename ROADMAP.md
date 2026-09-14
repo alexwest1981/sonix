@@ -77,7 +77,7 @@ skapade klipp utan ljud. **6.2:s återställ-knapp var inte obekräftad — den 
 | :--- | :--- | :---: | :--- | :--- |
 | 1 | **8.3 Routing på riktigt** | *M* | **Klar 2026-09-13**: sidokedjor (`09-12`), bussar/VCA (`09-12`), sends mellan spår (`09-13`) | — |
 | 2 | **8.4 Sampler** | *M* | **Klar 2026-09-13**: looplägen, not-av, ADSR och export — se stycket nedan | — |
-| 3 | **8.2 Tempo map** | *S–M* | De 4 visningsställena, automation-lanen (sekunder vs takter), drag-utökningen | — |
+| 3 | **8.2 Tempo map** | *S–M* | **Visningen klar 2026-09-13** (46 användningar genom kartan, `snap_bar` som enda snäppregel); kvar: automation-punkterna i sekunder (förslag: takter) och GUI-kvittensen | — |
 | 4 | **7.1 Windows-porten** | *XL* | Steg 1 klart (ALSA/X11 bakom gränssnitt); resten av portningen + mätningen i CI | Windows-maskin för kvittens |
 | 5 | **7.3 Verifiera en riktig yabridge-brygga** | *M* | Köra en **riktig** brygga (Wine + display) — mock-modulerna är redan gröna | Wine + display |
 | 6 | **4.6 Wine/yabridge-vägen (helhet)** | *L* | Samma kvittens som 7.3, på hela vägen: Sytrus/Harmor/Gross Beat | Wine + display |
@@ -701,7 +701,35 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
   - **Visningsställena påbörjade (2026-09-12).** Klara: transportens taktvisning, **snäppningen på linjalen** och verktygstipset.
     - Snäppningen var den viktigaste, och den var inte "visning": ett 16-delssteg är en **plats i takten**, så den snäpper nu i takter och frågar kartan om sekunderna **en gång efteråt**. Förut räknade den steg med "sekunder per takt", vilket inte är ett tal över ett tempobyte. Hundradelsläget är undantaget och står kvar i sekunder — där *är* sekunden enheten.
     - Vid ett enda tempo ger båda formerna samma svar (matematiskt identiska, isär bara i sista biten), så ingenting har ändrat beteende för den som inte har några byten.
-  - **Kvar på 8.2:s visning:** tidlinjens `px_per_sec` (vågformernas insidor ritas i sekunder ur ett enda tempo), linjalens sekundetiketter, automation-lanen (dess punkter ligger i sekunder — en egen fråga: ska automation flytta med tempot?) och drag-utökningen. Alla är rätt vid ett tempo och en **approximation** vid ett byte; vågformen inuti en kloss som korsar ett byte är den enda som syns tydligt. Det är nästa pass, med färskt sammanhang — inte ihopträngt i slutet av ett annat.
+  - **Visningen migrerad (2026-09-13).** `render_playlist_arranger` och `render_stem_focus_modal`
+    gick genom **tempokartan**, och räkningen visade att "de 4 visningsställena" var fyra
+    *funktioner* med **46 användningar** inuti — samma läxa som i början av 8.2: en rad är inte
+    ett ställe att räkna, utan en arbetsenhet.
+    - **De fyra frågorna blev fyra namngivna svar** i stället för en skalär: `secs_at(bar)` (en
+      *plats* i tiden), `secs_len(from, bars)` (en *längd*), `bars_at(secs)` (omvändningen) och
+      `sec_per_bar_at(bar)` (den *lokala* taktlängden). En enda `sec_per_bar` kunde bara svara
+      rätt på dem så länge tempot var konstant.
+    - **Snäppningen blev en enda ren regel i takter:** `snap_bar(mode, bar)` med egna prov
+      (1,03 takter → 1,0; 0,03125 → 0,0625; hundradelarna orörda). Den gamla sekundbaserade
+      `snap_time_secs` är **borta** — varningen "aldrig använd" var beviset för att inget ställe
+      snäpper i sekunder längre. Det är samma regel som tidlinjen redan fick: steget är en plats
+      i takten, och sekunden hämtas ur kartan **efteråt**.
+    - **Automation-lanen** ritas nu genom kartan (sekunder↔x), så punkterna hamnar rätt efter ett
+      byte. Men punkterna **lagras fortfarande i sekunder**, och där står den öppna frågan kvar:
+      ska automation flytta med tempot? **Rekommendation, om Alex vill ha ett beslut:** ja — flytta
+      punkterna till **takter**, som klippen (Ableton gör det, och ett projekt vars klipp är
+      taktbaserade men vars automation är sekundbaserad är den udda kombinationen). Det är en
+      `#[serde(default)]`-migrering som räknar om punkterna **genom kartan** vid inläsning, alltså
+      inget som tappas — men det är ett eget pass.
+    - **Kvar, och det är Alex kvittens:** tempopunkt-UI:t (⏱ i transportraden, högerklick på
+      linjalen) har aldrig kötts i ett fönster — samma sorts kvittens som 6.2, 6.4, 6.5 och 7.4
+      väntar på. **Ingen av visningsändringarna är GUI-verifierad**, och det ska stå så tills
+      någon har sett dem: att dra i en kloss, sätta ett tempobyte och titta på linjalens
+      sekundetiketter efter bytet.
+    - Det som återstår att veta är också det som hörs minst: en **vågform inuti en kloss som
+      korsar ett byte** går inte att rita exakt, eftersom klippets ljud sträcktes med **en** faktor
+      (projektets tempo mot källans). Klossen är taktbaserad och exakt; insidan är en
+      approximation, och det är den enda av dem som syns tydligt.
     - Ett eget misstag värt att skriva ned: jag gissade indragningen på nästlade funktioner (12 blanksteg, inte 8) och patchen föll tre gånger i rad på det. Att *läsa* de exakta raderna tog en körning; att gissa tog tre.
   - **SMF-vägen båda håll klart (2026-09-12).** Exporten skrev redan tempobyten (`write_midi_with_tempo` med punkter ur tempokartan), men **importen** läste bara filens första tempo: `ParsedMidi.tempo_events` fanns och var oanvänd (med en `dead_code`-förklaring som sade "läses av importen när den tar med tempobyten (8.2 steg 3)").
     - Nu tar importen in dem genom den **rena** funktionen `tempo::tempo_points_for_import(events, project_bpm)`: filens tempobyten blir projektets tempopunkter **bara** när projektet står kvar på sitt ursprungliga 120 BPM — samma regel som för filens `bpm`, av samma skäl (annars vore importen en tyst tempoändring). Ett projekt med eget tempo behåller sitt, och filens byten **sägs högt** i statusraden i stället för att tappas.

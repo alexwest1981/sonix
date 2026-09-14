@@ -26,8 +26,8 @@ mätt, och var nästa andetag ska tas.*
   registrerat verktyg) är borttagna. Kör **aldrig** `cargo install --path .` i det här repot —
   det är precis så kopian uppstod. `cargo build --release` + symlänken är hela kedjan, och
   `which -a sonix` ska bara visa `~/.local/bin/sonix`.
-- **Tester:** 453 default / 499 med `--features plugin-host`, **0 varningar** i båda
-  (mätt 2026-09-13 kväll, efter sends mellan spår 8.3 och samplern 8.4). CI fäller numera **alla** ben på
+- **Tester:** 454 default / 500 med `--features plugin-host`, **0 varningar** i båda
+  (mätt 2026-09-13 kväll, efter sends mellan spår 8.3, samplern 8.4 och 8.2:s visning). CI fäller numera **alla** ben på
   varningar, inte bara Windows.
 - **Senaste commit:** `git log --oneline -1` — hasharna i den här filen har åldrats förr,
   så den raden är sanningen. Bakom ligger 8.4 (samplern), 8.3 (sends mellan spår), 8.10e (motorvalet),
@@ -364,6 +364,22 @@ spårloopen i `process_stereo` räknas i ordning. Det som är värt att bära vi
 
 **Nästa andetag:** roadmapens lista pekar på **8.4 Sampler** (ett riktigt samplerinstrument i
 kanalracket) — eller Alexanders öra på motorn, om han vill avgöra 8.10e först.
+
+## 4e. Och sedan: 8.2:s visning (2026-09-13, samma kväll)
+
+- **"De 4 visningsställena" var fyra funktioner med 46 användningar.** Roadmapen räknade
+  funktioner; arbetsenheterna var fler. Samma läxa som i början av 8.2, och värd att komma ihåg:
+  räkna arbetsenheter, inte rader eller funktioner.
+- **Fyra namngivna svar i stället för en skalär** (`secs_at`, `secs_len`, `bars_at`,
+  `sec_per_bar_at`) — en enda `sec_per_bar` kan bara svara rätt på en *plats*, en *längd* och en
+  *lokal taktlängd* samtidigt så länge tempot är konstant.
+- **`snap_bar` är nu den enda snäppregeln**, i takter, med prov. Att den gamla sekundbaserade
+  `snap_time_secs` blev **oansenlig** ("aldrig använd") var beviset för att migreringen var
+  komplett — låt varningen vara kvittensen, inte en känsla.
+- **Automation-lanen** ritas genom kartan, men punkterna ligger kvar i **sekunder**. Det är den
+  enda kvarvarande frågan på 8.2, och den är ett *beslut* (förslag: flytta dem till takter, som
+  klippen) — inte ett fel.
+- **Inget av detta är GUI-verifierat.** Skriv det, inte "klart".
 
 ## 4d. Klart efter den här texten: samplern (2026-09-13 kväll)
 

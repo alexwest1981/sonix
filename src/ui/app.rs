@@ -394,18 +394,21 @@ impl AutomationLane {
     }
 }
 
-fn snap_time_secs(mode: TimeSnapMode, raw: f32, sec_per_bar: f32) -> f32 {
+/// **Snäpp en taktposition** (Fas 8.2 steg 3). Ett sextondelssteg är en *plats i takten*,
+/// inte ett antal sekunder — därför räknas snäppet i takter, och sekunden hämtas ur
+/// tempokartan **efteråt**. Ren funktion med egna prov, för att de fem ställena som snäpper
+/// (linjalen, släppet, spliten) ska svara likadant: med ett enda tempo är svaret detsamma
+/// som när räkningen gick via sekunder, och efter ett tempobyte är det den enda formen som
+/// är rätt.
+///
+/// `FreeHundredth` lämnas orörd: där *är* sekunden enheten, och avrundningen sker av
+/// anroparen som har kartan.
+fn snap_bar(mode: TimeSnapMode, bar: f32) -> f32 {
     match mode {
-        TimeSnapMode::FreeHundredth => (raw * 100.0).round() / 100.0,
-        TimeSnapMode::Snap16th => {
-            let step = sec_per_bar / 16.0;
-            (raw / step).round() * step
-        }
-        TimeSnapMode::SnapBeat => {
-            let step = sec_per_bar / 4.0;
-            (raw / step).round() * step
-        }
-        TimeSnapMode::SnapBar => (raw / sec_per_bar).round() * sec_per_bar,
+        TimeSnapMode::FreeHundredth => bar,
+        TimeSnapMode::Snap16th => (bar * 16.0).round() / 16.0,
+        TimeSnapMode::SnapBeat => (bar * 4.0).round() / 4.0,
+        TimeSnapMode::SnapBar => bar.round(),
     }
 }
 
@@ -7009,7 +7012,10 @@ impl SonixApp {
         rect: Rect,
         resp: &egui::Response,
         bar_w: f32,
-        sec_per_bar: f32,
+        // **Tempokartan, inte ett enda tempo** (Fas 8.2 steg 3): lanens punkter ligger i
+        // sekunder (om automation ska flytta med tempot är en öppen fråga), men *ritningen*
+        // måste veta var i tiden en takt ligger — annars hamnar punkterna fel efter ett byte.
+        tempo: &crate::audio::tempo::TempoMap,
         track_idx: usize,
     ) {
         let param = self.automation_param;
@@ -7017,8 +7023,7 @@ impl SonixApp {
         let span = (hi - lo).max(1e-6);
         let val_to_y = |v: f32| rect.max.y - ((v - lo) / span).clamp(0.0, 1.0) * rect.height();
         let y_to_val = |y: f32| lo + ((rect.max.y - y) / rect.height()).clamp(0.0, 1.0) * span;
-        let sec_to_x = |s: f32| rect.min.x + s / sec_per_bar * bar_w;
-        let x_to_sec = |x: f32| ((x - rect.min.x) / bar_w * sec_per_bar).max(0.0);
+        let sec_to_x = |s: f32| rect.min.x + tempo.bar_at_secs(s as f64) as f32 * bar_w;
 
         let painter = ui.painter_at(rect);
         painter.rect_filled(rect, Rounding::same(4.0), Color32::from_rgb(11, 14, 19));
@@ -7093,7 +7098,11 @@ impl SonixApp {
 
         if resp.clicked() {
             if let Some(pos) = resp.interact_pointer_pos() {
-                let sec = snap_time_secs(self.timeline_snap_mode, x_to_sec(pos.x), sec_per_bar);
+                // **Snäppet sker i takter** (Fas 8.2): ett sextondelssteg är en plats i
+                // takten, inte ett antal sekunder, och sekunder-per-takt är inte ett tal över
+                // ett tempobyte. Sekunden hämtas ur kartan **en gång efteråt**.
+                let raw_bar = ((pos.x - rect.min.x) / bar_w).max(0.0);
+                let sec = tempo.secs_at_bar(snap_bar(self.timeline_snap_mode, raw_bar) as f64) as f32;
                 let val = y_to_val(pos.y).clamp(lo, hi);
                 let li = match lane_idx {
                     Some(li) => li,
@@ -7138,7 +7147,11 @@ impl SonixApp {
                 && t == track_idx
                 && let Some(pos) = resp.interact_pointer_pos()
             {
-                let sec = snap_time_secs(self.timeline_snap_mode, x_to_sec(pos.x), sec_per_bar);
+                // **Snäppet sker i takter** (Fas 8.2): ett sextondelssteg är en plats i
+                // takten, inte ett antal sekunder, och sekunder-per-takt är inte ett tal över
+                // ett tempobyte. Sekunden hämtas ur kartan **en gång efteråt**.
+                let raw_bar = ((pos.x - rect.min.x) / bar_w).max(0.0);
+                let sec = tempo.secs_at_bar(snap_bar(self.timeline_snap_mode, raw_bar) as f64) as f32;
                 let val = y_to_val(pos.y).clamp(lo, hi);
                 if let Some(p) = self.playlist_tracks[track_idx]
                     .automation
@@ -10943,8 +10956,23 @@ impl SonixApp {
             let bar_w = (60.0 * self.suno_zoom_level).clamp(16.0, 1500.0);
             let row_h = 46.0;
             let ruler_h = 32.0;
-            let sec_per_bar = 60.0 / self.bpm * 4.0;
-            let px_per_sec = bar_w / sec_per_bar;
+            // **Tidsaxeln går genom tempokartan** (Fas 8.2 steg 3). X är fortfarande takter
+            // (`bar_w` per takt); varje gång en *sekund* behövs frågas kartan i stället för att
+            // multiplicera med ett enda tempo. Med ett tempo ger det samma tal som förut, och
+            // efter ett tempobyte är det här siffran är rätt — annars är varje tid efter bytet
+            // tyst fel, och ett fel i visningen syns (en kloss på fel plats).
+            let tempo = self.tempo_map();
+
+            // **De fyra frågorna `sec_per_bar` svarade på — men med fel svar efter ett
+            // tempobyte** (Fas 8.2 steg 3). En *plats* i tiden, en *längd*, en *omvändning*
+            // och en *lokal* sekunder-per-takt är olika frågor; en enda skalär kunde bara
+            // svara rätt på dem så länge tempot var konstant. Med ett tempo ger de samma tal
+            // som förut, bit för bit.
+            let secs_at = |bar: f32| tempo.secs_at_bar(bar as f64) as f32;
+            let secs_len = |from_bar: f32, bars: f32| tempo.secs_for_bars_at(from_bar as f64, bars as f64) as f32;
+            let bars_at = |secs: f32| tempo.bar_at_secs(secs as f64) as f32;
+            let sec_per_bar_at = |bar: f32| tempo.secs_per_bar_at(bar as f64) as f32;
+            let bars_len = |from_bar: f32, secs: f32| tempo.bars_for_secs_at(from_bar as f64, secs as f64) as f32;
 
             // Calculate max song bars based on audio regions
             let max_region_end = self.playlist_tracks.iter()
@@ -11119,7 +11147,7 @@ impl SonixApp {
                             if !self.playlist_tracks[t_idx].regions.is_empty() {
                                 self.selected_audio_region = Some((t_idx, 0));
                                 let reg = &self.playlist_tracks[t_idx].regions[0];
-                                self.status_message = crate::tstatus!("Markerade '{}' [Start: {} | Längd: {}]", reg.name, format_time_hundredths(reg.start_bar * sec_per_bar), format_time_hundredths(reg.length_bars * sec_per_bar));
+                                self.status_message = crate::tstatus!("Markerade '{}' [Start: {} | Längd: {}]", reg.name, format_time_hundredths(tempo.secs_at_bar(reg.start_bar as f64) as f32), format_time_hundredths(tempo.secs_for_bars_at(reg.start_bar as f64, reg.length_bars as f64) as f32));
                             }
                             if let Some(mouse_pos) = h_resp.hover_pos() {
                                 let vu_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 116.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(20.0, if is_mic_track { 28.0 } else { 18.0 }));
@@ -11339,7 +11367,7 @@ impl SonixApp {
                             // Draw dynamic tick marks & time codes
                             for bar_idx in 0..total_bars {
                                 let bar_start_x = ruler_rect.min.x + bar_idx as f32 * bar_w;
-                                let bar_time_sec = bar_idx as f32 * sec_per_bar;
+                                let bar_time_sec = tempo.secs_at_bar(bar_idx as f64) as f32;
 
                                 // Major Bar Tick Line
                                 ui.painter().line_segment(
@@ -11400,9 +11428,12 @@ impl SonixApp {
 
                                 // Sub-second / Hundredth Precision Ticks (Rendered when bar_w >= 500.0)
                                 if bar_w >= 500.0 {
-                                    let tenths = (sec_per_bar * 10.0) as usize;
+                                    // Inne i en takt är tempot konstant, så delstrecken räknas
+                                    // med **den taktens** sekunder per takt — inte projektets.
+                                    let bar_secs = tempo.secs_per_bar_at(bar_idx as f64) as f32;
+                                    let tenths = (bar_secs * 10.0) as usize;
                                     for t in 1..tenths {
-                                        let tx = bar_start_x + (t as f32 * 0.10) * px_per_sec;
+                                        let tx = bar_start_x + (t as f32 * 0.10) * (bar_w / bar_secs);
                                         if tx < bar_start_x + bar_w - 2.0 {
                                             ui.painter().line_segment(
                                                 [Pos2::new(tx, ruler_rect.min.y + 25.0), Pos2::new(tx, ruler_rect.max.y)],
@@ -11486,7 +11517,6 @@ impl SonixApp {
                             }
 
                             ui.add_space(2.0);
-                            let sec_per_bar = 60.0 / self.bpm * 4.0;
 
                             // 2. Track Lanes (Audio Waveforms, Clips, Grids)
                             for t_idx in 0..self.playlist_tracks.len() {
@@ -11557,23 +11587,23 @@ impl SonixApp {
                                         .or_else(|| lane_resp.hover_pos());
                                     if let Some(mouse_pos) = pointer_opt {
                                         if lane_rect.contains(mouse_pos) {
+                                            // **Snäppet sker i takter** (Fas 8.2): ett
+                                            // sextondelssteg är en *plats i takten*, inte ett antal
+                                            // sekunder — och sekunder-per-takt är inte ett tal över
+                                            // ett tempobyte. Hundradelarna är undantaget: där *är*
+                                            // sekunden enheten, och då får kartan svara.
                                             let raw_drop_bar = ((mouse_pos.x - lane_rect.min.x) / bar_w).max(0.0);
-                                            let raw_drop_sec = raw_drop_bar * sec_per_bar;
-                                            let drop_sec = match self.timeline_snap_mode {
-                                                TimeSnapMode::FreeHundredth => (raw_drop_sec * 100.0).round() / 100.0,
-                                                TimeSnapMode::Snap16th => {
-                                                    let step_sec = sec_per_bar / 16.0;
-                                                    (raw_drop_sec / step_sec).round() * step_sec
-                                                }
-                                                TimeSnapMode::SnapBeat => {
-                                                    let beat_sec = sec_per_bar / 4.0;
-                                                    (raw_drop_sec / beat_sec).round() * beat_sec
-                                                }
-                                                TimeSnapMode::SnapBar => (raw_drop_sec / sec_per_bar).round() * sec_per_bar,
+                                            let drop_bar = if self.timeline_snap_mode == TimeSnapMode::FreeHundredth {
+                                                // Hundradelarna är undantaget: där är sekunden enheten.
+                                                let raw_sec = tempo.secs_at_bar(raw_drop_bar as f64) as f32;
+                                                let sec = (raw_sec * 100.0).round() / 100.0;
+                                                tempo.bar_at_secs(sec as f64) as f32
+                                            } else {
+                                                snap_bar(self.timeline_snap_mode, raw_drop_bar)
                                             };
-                                            let drop_bar = (drop_sec / sec_per_bar).max(0.0);
                                             let item_dur_sec: f32 = 2.0;
-                                            let item_dur_bars = (item_dur_sec / sec_per_bar).max(0.25);
+                                            let item_dur_bars =
+                                                (item_dur_sec / tempo.secs_per_bar_at(drop_bar as f64) as f32).max(0.25);
                                             let ghost_x_start = lane_rect.min.x + drop_bar * bar_w;
                                             let ghost_x_end = (ghost_x_start + item_dur_bars * bar_w).min(lane_rect.max.x);
                                             let ghost_rect = Rect::from_min_max(
@@ -11687,8 +11717,8 @@ impl SonixApp {
 
                                                 // Region Header Banner & Exact Time readout (Start & Length down to hundredths!)
                                                 let gain_db = if region.volume <= 0.001 { -60.0 } else { 20.0 * region.volume.log10() };
-                                                let r_start_str = format_time_hundredths(region.start_bar * sec_per_bar);
-                                                let r_len_str = format_time_hundredths(region.length_bars * sec_per_bar);
+                                                let r_start_str = format_time_hundredths(tempo.secs_at_bar(region.start_bar as f64) as f32);
+                                                let r_len_str = format_time_hundredths(tempo.secs_for_bars_at(region.start_bar as f64, region.length_bars as f64) as f32);
                                                 let rev_tag = if region.is_reverse { " 🔄[REV]" } else { "" };
                                                 let loop_tag = if region.loop_length_bars > 0.001 && region.length_bars > region.loop_length_bars + 0.01 {
                                                     let reps = (region.length_bars / region.loop_length_bars).ceil() as usize;
@@ -11756,9 +11786,9 @@ impl SonixApp {
 
                                                 let is_looped = region.loop_length_bars > 0.001 && region.length_bars > region.loop_length_bars + 0.01;
                                                 let loop_sec = if is_looped {
-                                                    region.loop_length_bars * sec_per_bar
+                                                    secs_len(region.start_bar, region.loop_length_bars)
                                                 } else {
-                                                    if region.length_bars > 0.001 { region.length_bars * sec_per_bar } else { 1.0 }
+                                                    if region.length_bars > 0.001 { secs_len(region.start_bar, region.length_bars) } else { 1.0 }
                                                 };
 
                                                 // Fas 8.3: rita ur spårets cache när den finns —
@@ -11954,7 +11984,7 @@ impl SonixApp {
                                                     let mut cur_x = draw_start_x;
                                                     while cur_x <= draw_end_x {
                                                         let rel_x = cur_x - r_rect.min.x;
-                                                        let rel_time = (rel_x / bar_w) * sec_per_bar;
+                                                        let rel_time = secs_at(region.start_bar + rel_x / bar_w);
 
                                                         let sample_time = if is_looped && loop_sec > 0.01 {
                                                             (region.sample_offset_sec + rel_time) % loop_sec
@@ -11976,9 +12006,15 @@ impl SonixApp {
                                                     if is_looped && loop_sec > 0.01 {
                                                         let first_cycle_rem_sec = (loop_sec - (region.sample_offset_sec % loop_sec)) % loop_sec;
                                                         let mut div_sec = if first_cycle_rem_sec > 0.02 { first_cycle_rem_sec } else { loop_sec };
-                                                        let total_reg_sec = region.length_bars * sec_per_bar;
+                                                        let reg_start_sec = tempo.secs_at_bar(region.start_bar as f64) as f32;
+                                                        let total_reg_sec =
+                                                            tempo.secs_for_bars_at(region.start_bar as f64, region.length_bars as f64) as f32;
                                                         while div_sec < total_reg_sec - 0.05 {
-                                                            let div_x = rx_start + (div_sec / sec_per_bar) * bar_w;
+                                                            // Strecket ligger på en *tid* i regionen; x räknas
+                                                            // genom kartan, samma väg som allt annat här.
+                                                            let div_bar = tempo.bar_at_secs((reg_start_sec + div_sec) as f64) as f32
+                                                                - region.start_bar as f32;
+                                                            let div_x = rx_start + div_bar * bar_w;
                                                             if div_x > r_rect.min.x + 4.0 && div_x < r_rect.max.x - 4.0 {
                                                                 ui.painter().line_segment(
                                                                     [Pos2::new(div_x, r_rect.min.y), Pos2::new(div_x, r_rect.max.y)],
@@ -12113,7 +12149,7 @@ impl SonixApp {
                                                     let is_alt_held = ui.input(|i| i.modifiers.alt);
                                                     let raw_delta_bars = (mouse_pos.x - drag.drag_start_mouse_x) / bar_w;
                                                     let grid_step_bars = match self.timeline_snap_mode {
-                                                        TimeSnapMode::FreeHundredth => (0.01 / sec_per_bar).max(0.001),
+                                                        TimeSnapMode::FreeHundredth => (0.01 / sec_per_bar_at(drag.initial_start_bar)).max(0.001),
                                                         TimeSnapMode::Snap16th => 1.0 / 16.0,
                                                         TimeSnapMode::SnapBeat => 0.25,
                                                         TimeSnapMode::SnapBar => 1.0,
@@ -12131,13 +12167,13 @@ impl SonixApp {
                                                                     ((raw_start / grid_step_bars).round() * grid_step_bars).max(0.0)
                                                                 };
                                                                 reg.start_bar = new_start;
-                                                                self.status_message = crate::tstatus!("↔ Flyttar '{}' till takt {:.2} (⏱ {})", reg.name, new_start + 1.0, format_time_hundredths(new_start * sec_per_bar));
+                                                                self.status_message = crate::tstatus!("↔ Flyttar '{}' till takt {:.2} (⏱ {})", reg.name, new_start + 1.0, format_time_hundredths(secs_at(new_start)));
                                                             }
                                                             RegionDragMode::TrimStart => {
                                                                 ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
                                                                 let right_edge = drag.initial_start_bar + drag.initial_length_bars;
                                                                 let max_expand_sec = drag.initial_sample_offset_sec;
-                                                                let orig_sample_start = (drag.initial_start_bar - (max_expand_sec / sec_per_bar)).max(0.0);
+                                                                let orig_sample_start = (drag.initial_start_bar - (max_expand_sec / sec_per_bar_at(drag.initial_start_bar))).max(0.0);
                                                                 let raw_start = drag.initial_start_bar + raw_delta_bars;
 
                                                                 let mut new_start = if is_alt_held {
@@ -12153,7 +12189,7 @@ impl SonixApp {
                                                                 };
                                                                 new_start = new_start.clamp(orig_sample_start, right_edge - 0.05);
                                                                 let new_len = right_edge - new_start;
-                                                                let new_offset = (drag.initial_sample_offset_sec + (new_start - drag.initial_start_bar) * sec_per_bar).max(0.0);
+                                                                let new_offset = (drag.initial_sample_offset_sec + secs_len(drag.initial_start_bar, new_start - drag.initial_start_bar)).max(0.0);
                                                                 reg.start_bar = new_start;
                                                                 reg.length_bars = new_len;
                                                                 reg.sample_offset_sec = new_offset;
@@ -12186,12 +12222,12 @@ impl SonixApp {
                                                                 let is_exact_rep = (reps - reps.round()).abs() < 0.001;
                                                                 if new_len > base_loop_len + 0.05 {
                                                                     if is_exact_rep {
-                                                                        self.status_message = crate::tstatus!("🧲 Loop-snap: '{}' loopad exakt {:.0}x ({} takter, ⏱ {})", reg.name, reps.round(), new_len, format_time_hundredths(new_len * sec_per_bar));
+                                                                        self.status_message = crate::tstatus!("🧲 Loop-snap: '{}' loopad exakt {:.0}x ({} takter, ⏱ {})", reg.name, reps.round(), new_len, format_time_hundredths(secs_len(reg.start_bar, new_len)));
                                                                     } else {
-                                                                        self.status_message = crate::tstatus!("▶ Loopar '{}': {:.2} takter ({:.1}x repetitioner, ⏱ {})", reg.name, new_len, reps, format_time_hundredths(new_len * sec_per_bar));
+                                                                        self.status_message = crate::tstatus!("▶ Loopar '{}': {:.2} takter ({:.1}x repetitioner, ⏱ {})", reg.name, new_len, reps, format_time_hundredths(secs_len(reg.start_bar, new_len)));
                                                                     }
                                                                 } else {
-                                                                    self.status_message = crate::tstatus!("▶ Längd för '{}': {:.2} takter (⏱ {})", reg.name, new_len, format_time_hundredths(new_len * sec_per_bar));
+                                                                    self.status_message = crate::tstatus!("▶ Längd för '{}': {:.2} takter (⏱ {})", reg.name, new_len, format_time_hundredths(secs_len(reg.start_bar, new_len)));
                                                                 }
                                                             }
                                                         }
@@ -12429,7 +12465,7 @@ impl SonixApp {
                                 // Render live in-track recording region if this track is actively recording!
                                 if self.is_recording_timeline && self.playlist_tracks[t_idx].is_rec_armed {
                                     let live_s_bar = self.timeline_rec_start_bar;
-                                    let live_e_bar = (self.song_time / sec_per_bar).max(live_s_bar + 0.05);
+                                    let live_e_bar = bars_at(self.song_time).max(live_s_bar + 0.05);
                                     let rx_start = lane_rect.min.x + live_s_bar * bar_w;
                                     let rx_end = lane_rect.min.x + live_e_bar * bar_w;
                                     let live_rect = Rect::from_min_max(Pos2::new(rx_start + 1.0, lane_rect.min.y + 2.0), Pos2::new(rx_end - 1.0, lane_rect.max.y - 2.0));
@@ -12451,7 +12487,7 @@ impl SonixApp {
                                     ui.painter().text(
                                         Pos2::new(live_rect.min.x + 6.0, live_rect.min.y + 8.0),
                                         egui::Align2::LEFT_CENTER,
-                                        format!("🔴 SPELAR IN... [⏱ {}]", format_time_hundredths((live_e_bar - live_s_bar) * sec_per_bar)),
+                                        format!("🔴 SPELAR IN... [⏱ {}]", format_time_hundredths(secs_len(live_s_bar, live_e_bar - live_s_bar))),
                                         egui::FontId::proportional(9.5),
                                         Color32::WHITE,
                                     );
@@ -12471,7 +12507,7 @@ impl SonixApp {
                                     self.selected_timeline_track = t_idx;
                                     if s_idx < self.playlist_tracks[t_idx].regions.len() {
                                         let reg = &self.playlist_tracks[t_idx].regions[s_idx];
-                                        self.status_message = crate::tstatus!("Markerade '{}' [Start: {} | Längd: {}]", reg.name, format_time_hundredths(reg.start_bar * sec_per_bar), format_time_hundredths(reg.length_bars * sec_per_bar));
+                                        self.status_message = crate::tstatus!("Markerade '{}' [Start: {} | Längd: {}]", reg.name, format_time_hundredths(tempo.secs_at_bar(reg.start_bar as f64) as f32), format_time_hundredths(tempo.secs_for_bars_at(reg.start_bar as f64, reg.length_bars as f64) as f32));
                                     }
                                 }
 
@@ -12482,28 +12518,25 @@ impl SonixApp {
 
                                     if r_idx < self.playlist_tracks[t_idx].regions.len() {
                                         let orig = self.playlist_tracks[t_idx].regions[r_idx].clone();
-                                        let raw_cut_sec = click_bar * sec_per_bar;
+                                        let raw_cut_sec = secs_at(click_bar);
 
-                                        // Apply Snapping Mode
-                                        let cut_sec = match self.timeline_snap_mode {
-                                            TimeSnapMode::FreeHundredth => (raw_cut_sec * 100.0).round() / 100.0,
-                                            TimeSnapMode::Snap16th => {
-                                                let step_sec = sec_per_bar / 16.0;
-                                                (raw_cut_sec / step_sec).round() * step_sec
-                                            }
-                                            TimeSnapMode::SnapBeat => {
-                                                let beat_sec = sec_per_bar / 4.0;
-                                                (raw_cut_sec / beat_sec).round() * beat_sec
-                                            }
-                                            TimeSnapMode::SnapBar => (raw_cut_sec / sec_per_bar).round() * sec_per_bar,
+                                        // **Snäppet sker i takter** (Fas 8.2), samma regel som
+                                        // i tidlinjen: klippet delas på en *plats i takten*, och
+                                        // sekunden hämtas ur kartan efteråt.
+                                        let cut_bar = if self.timeline_snap_mode == TimeSnapMode::FreeHundredth {
+                                            let sec = (raw_cut_sec * 100.0).round() / 100.0;
+                                            bars_at(sec)
+                                        } else {
+                                            snap_bar(self.timeline_snap_mode, click_bar)
                                         };
+                                        let cut_sec = secs_at(cut_bar);
 
-                                        let orig_start_sec = orig.start_bar * sec_per_bar;
-                                        let orig_len_sec = orig.length_bars * sec_per_bar;
+                                        let orig_start_sec = secs_at(orig.start_bar);
+                                        let orig_len_sec = secs_len(orig.start_bar, orig.length_bars);
                                         let split_offset_sec = cut_sec - orig_start_sec;
 
                                         if split_offset_sec > 0.05 && split_offset_sec < orig_len_sec - 0.05 {
-                                            let split_offset_bar = split_offset_sec / sec_per_bar;
+                                            let split_offset_bar = bars_len(orig.start_bar, split_offset_sec);
                                             let split_points = ((split_offset_sec / orig_len_sec) * orig.waveform_peaks.len() as f32) as usize;
 
                                             let left_peaks = orig.waveform_peaks[..split_points.min(orig.waveform_peaks.len())].to_vec();
@@ -12614,22 +12647,22 @@ impl SonixApp {
                                 if let Some(mouse_pos) = pointer_opt {
                                     if add_lane_rect.contains(mouse_pos) {
                                         let raw_drop_bar = ((mouse_pos.x - add_lane_rect.min.x) / bar_w).max(0.0);
-                                        let raw_drop_sec = raw_drop_bar * sec_per_bar;
+                                        let raw_drop_sec = secs_at(raw_drop_bar);
                                         let drop_sec = match self.timeline_snap_mode {
                                             TimeSnapMode::FreeHundredth => (raw_drop_sec * 100.0).round() / 100.0,
                                             TimeSnapMode::Snap16th => {
-                                                let step_sec = sec_per_bar / 16.0;
+                                                let step_sec = sec_per_bar_at(raw_drop_bar) / 16.0;
                                                 (raw_drop_sec / step_sec).round() * step_sec
                                             }
                                             TimeSnapMode::SnapBeat => {
-                                                let beat_sec = sec_per_bar / 4.0;
+                                                let beat_sec = sec_per_bar_at(raw_drop_bar) / 4.0;
                                                 (raw_drop_sec / beat_sec).round() * beat_sec
                                             }
-                                            TimeSnapMode::SnapBar => (raw_drop_sec / sec_per_bar).round() * sec_per_bar,
+                                            TimeSnapMode::SnapBar => (raw_drop_sec / sec_per_bar_at(raw_drop_bar)).round() * sec_per_bar_at(raw_drop_bar),
                                         };
-                                        let drop_bar = (drop_sec / sec_per_bar).max(0.0);
+                                        let drop_bar = bars_at(drop_sec).max(0.0);
                                         let item_dur_sec: f32 = 2.0;
-                                        let item_dur_bars = (item_dur_sec / sec_per_bar).max(0.25);
+                                        let item_dur_bars = (item_dur_sec / sec_per_bar_at(drop_bar)).max(0.25);
                                         let ghost_x_start = add_lane_rect.min.x + drop_bar * bar_w;
                                         let ghost_x_end = (ghost_x_start + item_dur_bars * bar_w).min(add_lane_rect.max.x);
                                         let ghost_rect = Rect::from_min_max(
@@ -12681,14 +12714,14 @@ impl SonixApp {
                                 let sel = self.selected_timeline_track.min(self.playlist_tracks.len() - 1);
                                 let auto_h = 96.0;
                                 let (auto_rect, auto_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, auto_h), Sense::click_and_drag());
-                                self.render_automation_lane(ui, auto_rect, &auto_resp, bar_w, sec_per_bar, sel);
+                                self.render_automation_lane(ui, auto_rect, &auto_resp, bar_w, &tempo, sel);
                                 auto_bottom = auto_rect.max.y;
                             }
 
                             // ====================================================
                             // 2.3 VERTICAL PLAYHEAD NEEDLE ACROSS ALL TRACKS
                             // ====================================================
-                            let playhead_bar = self.song_time / sec_per_bar;
+                            let playhead_bar = bars_at(self.song_time);
                             let playhead_x = timeline_left_x + playhead_bar * bar_w;
                             let track_area_top = ruler_rect.min.y;
                             let track_area_bottom = auto_bottom;
@@ -12785,8 +12818,8 @@ impl SonixApp {
                     let has_copied = self.copied_region.is_some();
                     let copied_name = self.copied_region.as_ref().map(|c| c.name.clone()).unwrap_or_default();
                     let r = &mut self.playlist_tracks[t_idx].regions[r_idx];
-                    let r_start_sec = r.start_bar * sec_per_bar;
-                    let r_len_sec = r.length_bars * sec_per_bar;
+                    let r_start_sec = secs_at(r.start_bar);
+                    let r_len_sec = secs_len(r.start_bar, r.length_bars);
                     let r_name = r.name.clone();
                     let is_rev = r.is_reverse;
                     let is_tape = r.tape;
@@ -12808,10 +12841,10 @@ impl SonixApp {
                                 r.start_bar = (r.start_bar - 1.0).max(0.0);
                             }
                             if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Flytta 0.1s bakåt")).clicked() {
-                                r.start_bar = ((r_start_sec - 0.1).max(0.0)) / sec_per_bar;
+                                r.start_bar = bars_at((r_start_sec - 0.1).max(0.0));
                             }
                             if ui.button(crate::i18n::t("+0.1s")).on_hover_text(crate::i18n::t("Flytta 0.1s framåt")).clicked() {
-                                r.start_bar = (r_start_sec + 0.1) / sec_per_bar;
+                                r.start_bar = bars_at(r_start_sec + 0.1);
                             }
                             if ui.button(crate::i18n::t("+1t")).on_hover_text(crate::i18n::t("Flytta 1 takt framåt")).clicked() {
                                 r.start_bar += 1.0;
@@ -12826,10 +12859,10 @@ impl SonixApp {
                                 r.length_bars = (r.length_bars - 1.0).max(0.05);
                             }
                             if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Korta 0.1s")).clicked() {
-                                r.length_bars = ((r_len_sec - 0.1).max(0.05)) / sec_per_bar;
+                                r.length_bars = bars_len(r.start_bar, (r_len_sec - 0.1).max(0.05));
                             }
                             if ui.button(crate::i18n::t("+0.1s")).on_hover_text(crate::i18n::t("Förläng 0.1s")).clicked() {
-                                r.length_bars = (r_len_sec + 0.1) / sec_per_bar;
+                                r.length_bars = bars_len(r.start_bar, r_len_sec + 0.1);
                             }
                             if ui.button(crate::i18n::t("+1t")).on_hover_text(crate::i18n::t("Förläng 1 takt")).clicked() {
                                 r.length_bars += 1.0;
@@ -12861,7 +12894,7 @@ impl SonixApp {
                             // Fade In Slider
                             ui.label(crate::i18n::t("📈 In:"));
                             ui.add(egui::Slider::new(&mut r.fade_in_bars, 0.0..=(r.length_bars * 0.5).max(0.05)).custom_formatter(|v, _| {
-                                format!("{:.2}s", v as f32 * sec_per_bar)
+                                format!("{:.2}s", secs_at(v as f32))
                             }));
 
                             ui.separator();
@@ -12869,7 +12902,7 @@ impl SonixApp {
                             // Fade Out Slider
                             ui.label(crate::i18n::t("📉 Ut:"));
                             ui.add(egui::Slider::new(&mut r.fade_out_bars, 0.0..=(r.length_bars * 0.5).max(0.05)).custom_formatter(|v, _| {
-                                format!("{:.2}s", v as f32 * sec_per_bar)
+                                format!("{:.2}s", secs_at(v as f32))
                             }));
                         });
 
@@ -18487,7 +18520,18 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
         let mut unfreeze_request: Option<usize> = None;
         let frozen_stale = self.frozen_is_stale(t_idx);
 
-        let sec_per_bar = 60.0 / self.bpm * 4.0;
+        // Samma karta som tidlinjen (Fas 8.2 steg 3): panelen visar tider, och en tid efter
+        // ett tempobyte är bara rätt om den kommer från kartan.
+        let tempo = self.tempo_map();
+
+        // **De fyra frågorna `sec_per_bar` svarade på — men med fel svar efter ett
+        // tempobyte** (Fas 8.2 steg 3). En *plats* i tiden, en *längd*, en *omvändning*
+        // och en *lokal* sekunder-per-takt är olika frågor; en enda skalär kunde bara
+        // svara rätt på dem så länge tempot var konstant. Med ett tempo ger de samma tal
+        // som förut, bit för bit.
+        let secs_at = |bar: f32| tempo.secs_at_bar(bar as f64) as f32;
+        let secs_len = |from_bar: f32, bars: f32| tempo.secs_for_bars_at(from_bar as f64, bars as f64) as f32;
+        let bars_len = |from_bar: f32, secs: f32| tempo.bars_for_secs_at(from_bar as f64, secs as f64) as f32;
 
         egui::Window::new(crate::i18n::t("🎛 Stämeditor & Ljudfokus"))
             .open(&mut open_window)
@@ -18889,8 +18933,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             let mut global_fade_out_sec = 0.05_f32;
 
                             if num_regions > 0 {
-                                global_fade_in_sec = track.regions[0].fade_in_bars * sec_per_bar;
-                                global_fade_out_sec = track.regions[0].fade_out_bars * sec_per_bar;
+                                global_fade_in_sec = secs_len(track.regions[0].start_bar, track.regions[0].fade_in_bars);
+                                global_fade_out_sec = secs_len(track.regions[0].start_bar, track.regions[0].fade_out_bars);
                             }
 
                             ui.horizontal(|ui| {
@@ -18961,8 +19005,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
 
                             if apply_all_fades {
                                 for r in &mut track.regions {
-                                    r.fade_in_bars = global_fade_in_sec / sec_per_bar;
-                                    r.fade_out_bars = global_fade_out_sec / sec_per_bar;
+                                    r.fade_in_bars = bars_len(r.start_bar, global_fade_in_sec);
+                                    r.fade_out_bars = bars_len(r.start_bar, global_fade_out_sec);
                                 }
                                 trigger_region_sync = true;
                             }
@@ -19024,7 +19068,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             if (wave_resp.clicked() || wave_resp.dragged())
                                 && let Some(m_pos) = wave_resp.hover_pos() {
                                     let norm = ((m_pos.x - wave_rect.min.x) / wave_rect.width()).clamp(0.0, 1.0);
-                                    let target_sec = norm * (140.0 * sec_per_bar);
+                                    let target_sec = norm * secs_len(0.0, 140.0);
                                     seek_to_sec = Some(target_sec);
                                 }
 
@@ -19038,8 +19082,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                                         ui.label(egui::RichText::new(format!("#{}: {}", ri + 1, r.name)).strong().color(Theme::TEXT_BRIGHT));
                                         ui.separator();
 
-                                        let r_start_sec = r.start_bar * sec_per_bar;
-                                        let r_len_sec = r.length_bars * sec_per_bar;
+                                        let r_start_sec = secs_at(r.start_bar);
+                                        let r_len_sec = secs_len(r.start_bar, r.length_bars);
                                         ui.label(crate::tstatus!("Start: {}  |  Längd: {}", format_time_hundredths(r_start_sec), format_time_hundredths(r_len_sec)));
 
                                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -20977,6 +21021,24 @@ mod tests {
             render_clips_for(&track).iter().all(|c| c.is_none()),
             "ett fruset spår ska vara tyst i pattern-vägen — annars hörs det två gånger"
         );
+    }
+
+    /// **Snäppet räknas i takter, inte i sekunder** (Fas 8.2 steg 3). Ett sextondelssteg är
+    /// en plats i takten: 1,03 takter snäpper till 1,0 — inte till "1,0 takter omräknat från
+    /// sekunder", som blir ett annat tal så snart tempot inte är konstant.
+    #[test]
+    fn the_snap_counts_in_bars() {
+        assert_eq!(snap_bar(TimeSnapMode::Snap16th, 1.03), 1.0);
+        assert_eq!(snap_bar(TimeSnapMode::Snap16th, 0.97), 1.0);
+        assert_eq!(snap_bar(TimeSnapMode::Snap16th, 0.03125), 0.0625);
+        assert_eq!(snap_bar(TimeSnapMode::SnapBeat, 2.4), 2.5);
+        assert_eq!(snap_bar(TimeSnapMode::SnapBar, 7.4), 7.0);
+        assert_eq!(snap_bar(TimeSnapMode::SnapBar, 7.6), 8.0);
+        // Hundradelarna rörs inte: sekunden är enheten, och avrundningen sker av anroparen
+        // som har kartan.
+        assert_eq!(snap_bar(TimeSnapMode::FreeHundredth, 1.037), 1.037);
+        // Ett negativt larvigt värde får inte bli NaN eller panik.
+        assert_eq!(snap_bar(TimeSnapMode::SnapBar, -0.4), 0.0);
     }
 
     #[test]
