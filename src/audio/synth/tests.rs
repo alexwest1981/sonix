@@ -33,8 +33,6 @@ fn nonsense_inputs_leave_the_voice_audible() {
     assert_eq!(slice_edge_gain(-5.0, 88.0), 0.0, "före kanten är tyst");
 }
 
-use super::*;
-
 /// En region för tidsmappningstesterna (Fas 8.10).
 fn region_under_test(
     length_secs: f32,

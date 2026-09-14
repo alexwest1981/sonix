@@ -2876,3 +2876,27 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         );
     }
 
+    /// Flera delar över tempobyten bevarar kontinuitet i källoffset och delar upp i rätt längder.
+    #[test]
+    fn multi_piece_playback_preserves_offsets_and_calculates_lengths() {
+        let mut punkter = vec![TempoPoint { start_bar: 0, bpm: 120.0 }];
+        set_tempo_point(&mut punkter, 2, 160.0);
+        let tempo = TempoMap::from_points(punkter);
+
+        let pieces = stretch_pieces(0.0, 4.0, 0.0, 120.0, &tempo);
+        assert_eq!(pieces.len(), 2);
+
+        // Piece 0: takter 0..2 @ 120 BPM = 4.0 sekunder
+        assert!((pieces[0].out_start_secs - 0.0).abs() < 1e-6);
+        assert!((pieces[0].out_secs - 4.0).abs() < 1e-6);
+        assert!((pieces[0].source_offset_secs - 0.0).abs() < 1e-6);
+        assert_eq!(pieces[0].bpm_here, 120.0);
+
+        // Piece 1: takter 2..4 @ 160 BPM = 3.0 sekunder (2 * 60 / 160 * 4 = 3.0s)
+        assert!((pieces[1].out_start_secs - 4.0).abs() < 1e-6);
+        assert!((pieces[1].out_secs - 3.0).abs() < 1e-6);
+        // Källan i piece 1 börjar exakt efter 4.0 källsekunder
+        assert!((pieces[1].source_offset_secs - 4.0).abs() < 1e-6);
+        assert_eq!(pieces[1].bpm_here, 160.0);
+    }
+

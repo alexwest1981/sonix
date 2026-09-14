@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**84 moduler · 69900 rader kod · 40 med status · 44 utan.**
+**84 moduler · 69938 rader kod · 40 med status · 44 utan.**
 
 ## Så läser du kartan
 
@@ -15,7 +15,7 @@
 
 | Modul | Rader | Status | Anropare | Tester | Vad den gör |
 | :--- | ---: | :--- | ---: | :--- | :--- |
-| `src/ui/app/tests.rs` | 2879 | byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov. | 0 | 88 (+1 ign) | Prov för app-ytan — flyttade ur `app.rs` 2026-09-14 (filen hade vuxit till 23 000 rader).  |
+| `src/ui/app/tests.rs` | 2903 | byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov. | 0 | 89 (+1 ign) | Prov för app-ytan — flyttade ur `app.rs` 2026-09-14 (filen hade vuxit till 23 000 rader).  |
 | `src/ui/app/modals.rs` | 2755 | byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför. | 0 | 0 | Dialogerna — alla små fönster på ett ställe.  |
 | `src/ui/app/arranger.rs` | 2732 | byggs — arrangören. | 0 | 0 | Arrangören — tidslinjen som ritas.  |
 | `src/i18n.rs` | 2552 | fryst — nycklar på engelska, texter på svenska | 1362 | 4 |  |
@@ -27,13 +27,13 @@
 | `src/audio/vocal_harmonizer.rs` | 1632 | — | 15 | 12 |  |
 | `src/audio/stretch.rs` | 1627 | — | 18 | 24 (+8 ign) | Tempoföljning med bevarad tonhöjd (Fas 8.10, steg 2).  |
 | `src/audio/factory_samples.rs` | 1575 | stabil — fabriksbiblioteket och `merge_library` | 9 | 10 |  |
-| `src/audio/synth/tests.rs` | 1519 | stabil — prov, inte kod; flyttar du en funktion, flytta dess prov. | 0 | 49 | Motorns prov: tidmappning, sträckning, regioner, kantrampen och klockan.  |
+| `src/audio/synth/tests.rs` | 1517 | stabil — prov, inte kod; flyttar du en funktion, flytta dess prov. | 0 | 49 | Motorns prov: tidmappning, sträckning, regioner, kantrampen och klockan.  |
 | `src/audio/plugin_vst3.rs` | 1454 | stabil (4.6a) — VST3-värden, en utbuss | 4 | 9 | Minimal in-process **VST3** host (Fas 4.6a).  |
 | `src/audio/metadata.rs` | 1451 | stabil (8.5b) — bara härkomst tas; musik, text och omslag lämnas | 4 | 18 | Tar bort AI-/Sunohärkomst ur ljudfiler — och ingenting annat (8.5b).  |
 | `src/ui/app/import.rs` | 1367 | byggs — importvägarna; nya format läggs här, inte i UI:t. | 1 | 0 | Import — stämmor från Suno, filer, separatorn och genererat ljud.  |
 | `src/ui/app/timeline.rs` | 1292 | byggs — ångringen och klippoperationerna. | 1 | 0 | Tidslinjen — klippens geometri, ångringen och klippoperationerna.  |
 | `src/ui/app/frame.rs` | 1181 | byggs — bildrutans faser. | 28 | 0 | Bildrutan — `update` uppdelad i sina faser (2026-09-14).  |
-| `src/ui/app/stretch.rs` | 1114 | byggs — sträckningen; cachenyckeln byts när motorn byts (motorns version i nyckeln). | 8 | 0 | Tempot och sträckningen — tempokartan, styckena, cachenycklarna och regionerna till motorn.  |
+| `src/ui/app/stretch.rs` | 1130 | byggs — sträckningen; cachenyckeln byts när motorn byts (motorns version i nyckeln). | 8 | 0 | Tempot och sträckningen — tempokartan, styckena, cachenycklarna och regionerna till motorn.  |
 | `src/ui/plugins_view.rs` | 1059 | — | 1 | 0 |  |
 | `src/audio/onset.rs` | 1040 | stabil — slagletning och slicekarta (8.7 steg 1 + 2) | 38 | 25 (+1 ign) | Onset-detektering och slicekarta (Fas 8.7).  |
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
@@ -58,7 +58,7 @@
 | `src/audio/synth/process.rs` | 673 | stabil — motorns renderingsloop (en bildruta ljud i taget). | 40 | 0 | Renderingsloopen: en bildruta ljud i taget — röster, spår, bussar, sidokedjor och master. |
 | `src/ui/app/plugins.rs` | 636 | byggs — plugin-värdarna. | 0 | 0 | Plugin-värdarna i UI:t — ladda, GUI-fönster, slots och sandlådan.  |
 | `src/audio/command.rs` | 631 | byggs — kommando-protokollet (AI-vägen) | 22 | 7 |  |
-| `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 58 | 12 | Tempokarta (Fas 8.2, steg 1).  |
+| `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 57 | 12 | Tempokarta (Fas 8.2, steg 1).  |
 | `src/ui/app/browser.rs` | 613 | byggs — Sound Browser och biblioteksskanningen. | 1 | 0 | Sound Browser och biblioteket.  |
 | `src/audio/synth/commands.rs` | 604 | stabil — kommandovägen från UI-tråden in i motorn. | 0 | 0 | Kommandovägen: vad motorn gör när UI-tråden säger något — och ordningen spåren ska köras i. |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |

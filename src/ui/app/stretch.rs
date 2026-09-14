@@ -895,43 +895,59 @@ impl SonixApp {
 /// regioner. Längder räknas som längder (inte som en differens av två
 /// positioner), eftersom en kloss kan sträcka sig över ett tempobyte.
 pub(crate) fn stem_regions_for(&self, t: &PlaylistTrack) -> Vec<StemRegionPlayback> {
-    let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+    let tempo = self.tempo_map();
     let mut regions: Vec<StemRegionPlayback> = Vec::new();
     if let Some((l, _r, sr)) = t.frozen_pcm.as_ref() {
         regions.push(frozen_region(l, *sr));
     }
-    regions.extend(t.regions.iter().map(|r| {
-        let from = r.start_bar as f64;
-        let bpm_here = tempo.bpm_at(from);
-        // Faktorn och källjudet kommer från SAMMA beslut (Fas 8.10 steg 2): en
-        // färdigsträckt fil spelas med faktor 1,0, bandspelarläget med faktorn,
-        // och okänt tempo med 1,0. Ritningen och exporten frågar samma funktion.
-        let (rate, source_audio) = self.region_playback(r, bpm_here);
-        // Är filen sträckt ligger utsnittet på en annan sekund i den: filen är
-        // källan skalad med källa/projekt. Utan en sträckt fil är offsetten
-        // oförändrad — precis som före 8.10.
-        let sample_offset_sec = if source_audio.is_some() {
-            stretched_offset_secs(r.sample_offset_sec, r.source_bpm, bpm_here)
-        } else {
-            r.sample_offset_sec
-        };
-        StemRegionPlayback {
-            start_time_secs: tempo.secs_at_bar(from) as f32,
-            length_secs: tempo.secs_for_bars_at(from, r.length_bars as f64) as f32,
-            sample_offset_sec,
-            source_audio,
-            gain: r.volume,
-            fade_in_sec: tempo.secs_for_bars_at(from, r.fade_in_bars as f64) as f32,
-            fade_out_sec: tempo.secs_for_bars_at(from, r.fade_out_bars as f64) as f32,
-            muted: r.muted,
-            is_reverse: r.is_reverse,
-            loop_length_secs: tempo.secs_for_bars_at(from, r.loop_length_bars as f64) as f32,
-            // Faktorn kommer från tempot vid klossens START: en kloss som
-            // sträcker sig över ett tempobyte får en faktor, inte en kurva —
-            // kvar att lösa (8.10).
-            stretch_ratio: rate,
+    for r in &t.regions {
+        let pieces = stretch_pieces(
+            r.start_bar as f64,
+            r.length_bars as f64,
+            r.sample_offset_sec as f64,
+            r.source_bpm,
+            &tempo,
+        );
+        let n_pieces = pieces.len();
+        for (idx, piece) in pieces.into_iter().enumerate() {
+            let bpm_here = piece.bpm_here;
+            // Faktorn och källjudet kommer från SAMMA beslut (Fas 8.10 steg 2): en
+            // färdigsträckt fil spelas med faktor 1,0, bandspelarläget med faktorn,
+            // och okänt tempo med 1,0. Ritningen och exporten frågar samma funktion.
+            let (rate, source_audio) = self.region_playback(r, bpm_here);
+            // Är filen sträckt ligger utsnittet på en annan sekund i den: filen är
+            // källan skalad med källa/projekt. Utan en sträckt fil är offsetten
+            // oförändrad — precis som före 8.10.
+            let sample_offset_sec = if source_audio.is_some() {
+                stretched_offset_secs(piece.source_offset_secs as f32, r.source_bpm, bpm_here)
+            } else {
+                piece.source_offset_secs as f32
+            };
+            let fade_in_sec = if idx == 0 {
+                tempo.secs_for_bars_at(r.start_bar as f64, r.fade_in_bars as f64) as f32
+            } else {
+                0.0
+            };
+            let fade_out_sec = if idx + 1 == n_pieces {
+                tempo.secs_for_bars_at(r.start_bar as f64, r.fade_out_bars as f64) as f32
+            } else {
+                0.0
+            };
+            regions.push(StemRegionPlayback {
+                start_time_secs: piece.out_start_secs as f32,
+                length_secs: piece.out_secs as f32,
+                sample_offset_sec,
+                source_audio,
+                gain: r.volume,
+                fade_in_sec,
+                fade_out_sec,
+                muted: r.muted,
+                is_reverse: r.is_reverse,
+                loop_length_secs: tempo.secs_for_bars_at(r.start_bar as f64, r.loop_length_bars as f64) as f32,
+                stretch_ratio: rate,
+            });
         }
-    }));
+    }
     regions
 }
 }
