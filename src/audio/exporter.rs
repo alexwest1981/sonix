@@ -47,6 +47,9 @@ pub struct VoiceSpec {
     pub loop_end: f32,
     pub ping_pong: bool,
     pub amp_env: AdsrParams,
+    /// **Velocitetskänsligheten** (Fas 8.4/7) följer med till filen — annars hade exporten
+    /// svarat på anslag som högtalarna inte gör, samma krav som för sidokedjan och sendarna.
+    pub velocity_sensitivity: f32,
 }
 
 #[derive(Clone)]
@@ -204,6 +207,7 @@ fn sample_trigger_command(
         pitch_semitones: v.semitones,
         pitch_cents: v.cents,
         velocity,
+        velocity_sensitivity: v.velocity_sensitivity,
         volume: v.volume,
         reverse: v.reverse,
         start01,
@@ -937,6 +941,7 @@ mod tests {
                     loop_end: 1.0,
                     ping_pong: false,
                     amp_env: AdsrParams::identity(),
+                    velocity_sensitivity: 1.0,
                 })
             } else {
                 None
@@ -1372,6 +1377,7 @@ mod tests {
                 loop_end: 1.0,
                 ping_pong: false,
                 amp_env: AdsrParams::identity(),
+                velocity_sensitivity: 1.0,
             });
             spec.rack[0].steps[0] = true;
             spec.rack[0].notes[0] = 36;
@@ -1468,6 +1474,7 @@ mod tests {
             loop_end: 1.0,
             ping_pong: false,
             amp_env: AdsrParams::identity(),
+            velocity_sensitivity: 1.0,
         });
         spec.rack[0].steps[0] = true;
         spec.rack[0].notes[0] = 36;

@@ -1458,6 +1458,19 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                 ui.label(crate::i18n::t("Release:"));
                                 ui.add(egui::Slider::new(&mut ch.amp_env.release, 0.0..=4.0).suffix(" s").fixed_decimals(3));
                             });
+                            // **Anslagets känslighet** (Fas 8.4/7). Den hör ihop med envelopen:
+                            // velocityn skalar dess nivå, inte dess tider — en svagare not är
+                            // svagare, inte kortare. Standardvärdet 1,0 är den linjära faktor
+                            // kanalen alltid har haft, så ett projekt från före ratten låter
+                            // likadant.
+                            ui.horizontal(|ui| {
+                                ui.label(crate::i18n::t("Velocitet:"));
+                                ui.add(
+                                    egui::Slider::new(&mut ch.velocity_sensitivity, 0.0..=1.0)
+                                        .custom_formatter(|v, _| format!("{:.0} %", v * 100.0)),
+                                )
+                                .on_hover_text(crate::i18n::t("Hur mycket notens anslag får påverka nivån. 100 % är den linjära faktor som alltid har funnits, 0 % stänger av den helt — då låter varje anslag lika starkt. Gäller kanalens sampel; inte den inbyggda synten."));
+                            });
                             ui.horizontal(|ui| {
                                 if ui
                                     .button(crate::i18n::t("Ingen envelop"))

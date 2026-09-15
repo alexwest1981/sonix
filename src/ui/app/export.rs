@@ -202,6 +202,7 @@ pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u
             loop_end: ch.sample_loop_end,
             ping_pong: ch.ping_pong,
             amp_env: ch.amp_env,
+            velocity_sensitivity: ch.velocity_sensitivity,
         });
         RackChannel {
             voice,

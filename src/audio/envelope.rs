@@ -52,6 +52,28 @@ impl AdsrParams {
     }
 }
 
+/// **Velociteten som gain** (Fas 8.4/7) — hur hårt noten slogs, som faktor på nivån.
+///
+/// En sampler ska svara på anslaget: en svagare not låter svagare. `sensitivity` är **hur
+/// mycket** velocity får påverka, och det är den ratt varje etablerad sampler har (Ableton
+/// Simpler: "Vel → Volume"; FL:s sampler: "Vel"). Kurvan är den **linjära** — den som
+/// velocityn alltid har haft i den här kanalen (motorn multiplicerade volymen rakt av) — så
+/// att standardvärdet `1,0` ger **exakt** samma tal som förut, inte ett som liknar:
+///
+/// * `sensitivity = 1,0` → `velocity` (identiskt med beteendet före ratten, se provet som
+///   jämför med `==` och inte med en tolerans).
+/// * `sensitivity = 0,0` → alltid `1,0`: anslaget påverkar inte nivån alls.
+/// * däremellan → `(1 - s) + s · velocity`.
+///
+/// Båda ingångarna kläms till `0,0–1,0`. Stegets velocity kläms redan till `0,1–1,0` i
+/// pianorullen, så klämningen ändrar inget för den vägen — den finns för att ett värde utanför
+/// spannet (en trasig MIDI-fil, en framtida automationskurva) inte ska kunna förstärka.
+pub fn velocity_gain(velocity: f32, sensitivity: f32) -> f32 {
+    let v = velocity.clamp(0.0, 1.0);
+    let s = sensitivity.clamp(0.0, 1.0);
+    (1.0 - s) + s * v
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct AdsrVoice {
     pub stage: EnvelopeStage,
@@ -181,6 +203,38 @@ mod tests {
         }
         assert!(!v.is_active(), "envelope should return to idle");
         assert_eq!(v.current_level, 0.0);
+    }
+
+    #[test]
+    fn full_sensitivity_is_exactly_the_velocity() {
+        // **Exakt**, inte nästan: standardvärdet 1,0 ska ge precis det tal motorn räknade
+        // förut (`volume * velocity`), för ett projekt som sparades då ska låta identiskt.
+        for v in [0.1, 0.25, 0.5, 0.9, 1.0] {
+            assert_eq!(velocity_gain(v, 1.0), v, "velocity {v}");
+        }
+    }
+
+    #[test]
+    fn zero_sensitivity_ignores_the_velocity_entirely() {
+        for v in [0.0, 0.1, 0.5, 1.0] {
+            assert_eq!(velocity_gain(v, 0.0), 1.0, "velocity {v}");
+        }
+    }
+
+    #[test]
+    fn sensitivity_blends_between_off_and_the_velocity() {
+        assert_eq!(velocity_gain(0.5, 0.5), 0.75);
+        assert_eq!(velocity_gain(0.25, 0.5), 0.625);
+    }
+
+    #[test]
+    fn out_of_range_values_are_clamped_and_never_amplify() {
+        // En velocity utanför 0–1 får inte bli en förstärkare, och en känslighet utanför
+        // 0–1 får inte vända regeln (negativ känslighet hade gjort en stark not svagare).
+        assert_eq!(velocity_gain(-1.0, 1.0), 0.0);
+        assert_eq!(velocity_gain(2.0, 1.0), 1.0);
+        assert_eq!(velocity_gain(0.5, -1.0), 1.0);
+        assert_eq!(velocity_gain(0.5, 5.0), 0.5);
     }
 
     #[test]

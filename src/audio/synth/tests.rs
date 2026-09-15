@@ -1577,6 +1577,22 @@ fn trigger_sampler(
     hold_secs: f32,
     amp_env: AdsrParams,
 ) -> SynthEngine {
+    // **Fullt anslag och full känslighet** = den linjära faktor velocityn alltid har haft,
+    // alltså precis vad varje prov före anslagsratten prövade.
+    trigger_sampler_velocity(loop_mode, loop_span01, ping_pong, hold_secs, amp_env, 1.0, 1.0)
+}
+
+/// Samma som `trigger_sampler`, men med **anslaget** och **kanalens känslighet** satta
+/// (Fas 8.4/7).
+fn trigger_sampler_velocity(
+    loop_mode: LoopMode,
+    loop_span01: (f32, f32),
+    ping_pong: bool,
+    hold_secs: f32,
+    amp_env: AdsrParams,
+    velocity: f32,
+    velocity_sensitivity: f32,
+) -> SynthEngine {
     let mut synth = SynthEngine::new(48_000.0);
     let n = 4_000usize;
     let ramp: Vec<f32> = (0..n).map(|i| i as f32 / n as f32 * 0.5).collect();
@@ -1589,7 +1605,8 @@ fn trigger_sampler(
         note: 60, // samma not som basnoten: ingen transponering, steg = 1,0
         pitch_semitones: 0,
         pitch_cents: 0.0,
-        velocity: 1.0,
+        velocity,
+        velocity_sensitivity,
         volume: 1.0,
         reverse: false,
         start01: 0.0,
@@ -1612,6 +1629,75 @@ fn voice(synth: &SynthEngine) -> &SampleVoice {
         .iter()
         .find(|v| v.active)
         .expect("rösten ska vara igång")
+}
+
+/// **Anslaget hörs** (Fas 8.4/7): med full känslighet ger halv velocity halv nivå — samma
+/// linjära faktor som `volume * velocity` alltid var, nu räknad **en gång** vid triggen och
+/// buren av rösten. Provet jämför två renderingar på samma nivå, sample för sample.
+#[test]
+fn velocity_scales_the_sample_at_full_sensitivity() {
+    let mut strong = trigger_sampler_velocity(
+        LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 1.0, 1.0,
+    );
+    let mut weak = trigger_sampler_velocity(
+        LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 1.0,
+    );
+    let stark = render_left(&mut strong, 512);
+    let svag = render_left(&mut weak, 512);
+    // **Mätt, inte antaget:** kvoten är exakt 0,5 så länge mastern är linjär (de första
+    // ramarna gav skillnaden 0,000000000), och böjer sig sedan — vid ram 500 är kvoten
+    // 0,500056 och skillnaden 1,2·10⁻⁶. Det är **masterns** kurva som böjer, inte anslaget,
+    // så provet kräver två saker: exakt halva i det linjära området, och svagare hela vägen.
+    for i in 0..32 {
+        assert!(
+            (stark[i] * 0.5 - svag[i]).abs() < 1e-9,
+            "ram {i}: mastern är linjär här, så halvt anslag ska ge exakt halva ({} → {})",
+            stark[i],
+            svag[i]
+        );
+    }
+    for (i, (x, y)) in stark.iter().zip(svag.iter()).enumerate() {
+        assert!(
+            y.abs() <= x.abs() + 1e-9,
+            "ram {i}: ett svagare anslag får aldrig bli starkare ({x} → {y})"
+        );
+    }
+    assert!(
+        svag.iter().any(|v| v.abs() > 1e-4),
+        "ett halvt anslag ska fortfarande höras"
+    );
+}
+
+/// **Känsligheten 0 är identiteten** (Fas 8.4/7): två helt olika anslag ger **byte-identisk**
+/// utdata. Det är formen ett "det här får inte ändra ljudet"-prov ska ha — likhet, inte en
+/// tolerans — för en känslighet som nästan är av är en ändring av ljudet.
+#[test]
+fn zero_sensitivity_makes_the_velocity_inaudible() {
+    let mut stark = trigger_sampler_velocity(
+        LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 1.0, 0.0,
+    );
+    let mut svag = trigger_sampler_velocity(
+        LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.25, 0.0,
+    );
+    let a = render_left(&mut stark, 512);
+    let b = render_left(&mut svag, 512);
+    assert_eq!(a, b, "känsligheten 0 ska göra anslaget ohörbart");
+    assert!(
+        a.iter().any(|v| v.abs() > 1e-4),
+        "ljudet ska höras även när anslaget inte påverkar"
+    );
+}
+
+/// **Kanalens känslighet når rösten** (Fas 8.4/7) — den ena änden mot den andra. Utan det
+/// provet ser en ratt som skickas men aldrig läses precis ut som en som fungerar.
+#[test]
+fn the_channel_sensitivity_reaches_the_voice() {
+    let mut synth = trigger_sampler_velocity(
+        LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 0.5,
+    );
+    let _ = synth.process_stereo();
+    // (1 - 0,5) + 0,5 · 0,5 = 0,75 — halva anslaget får halva sin verkan.
+    assert_eq!(voice(&synth).velocity_gain, 0.75);
 }
 
 /// **En-skottsprovspelaren är oförändrad** (Fas 8.4): med standardinställningarna

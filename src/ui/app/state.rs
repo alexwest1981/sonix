@@ -108,6 +108,10 @@ pub struct ChannelStrip {
     pub sample_loop_end: f32,
     pub ping_pong: bool,
     pub amp_env: crate::audio::envelope::AdsrParams,
+    /// **Velocitetskänsligheten** (Fas 8.4/7), 0,0–1,0: hur mycket en nots anslag får påverka
+    /// nivån. `1,0` är den linjära faktor velocityn alltid har haft (alltså oförändrat ljud för
+    /// ett projekt från före ratten), `0,0` stänger av den helt.
+    pub velocity_sensitivity: f32,
     pub is_reverse: bool,
     pub waveform_preview: Vec<f32>,
     pub sample_path: Option<String>,

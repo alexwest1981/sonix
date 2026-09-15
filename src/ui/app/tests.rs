@@ -223,6 +223,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             sample_loop_end: 1.0,
             ping_pong: false,
             amp_env: crate::audio::envelope::AdsrParams::identity(),
+            velocity_sensitivity: 0.35,
             is_reverse: true,
             waveform_preview: vec![0.5; 4],
             sample_path: Some("/tmp/sonix-finns-inte.wav".to_string()),
@@ -256,6 +257,10 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(r.sample_end, ch.sample_end);
         assert_eq!(r.slices, ch.slices, "slicekartan ska med i projektfilen");
         assert_eq!(r.attack_decay, ch.attack_decay);
+        assert_eq!(
+            r.velocity_sensitivity, ch.velocity_sensitivity,
+            "anslagets känslighet ska med i projektfilen"
+        );
         assert_eq!(r.is_reverse, ch.is_reverse);
         assert_eq!(r.sample_path, ch.sample_path);
         assert_eq!(r.sample_base_note, ch.sample_base_note);
@@ -263,6 +268,31 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         // både PCM och vågform ska vara tomma — men sökvägen själv ska med.
         assert!(r.pcm_audio.is_none());
         assert!(r.waveform_preview.is_empty());
+    }
+
+
+    /// **Ett fält som inte finns i filen får standarden** (Fas 8.4/7). En kanal som sparades
+    /// innan anslagsratten fanns har inget `velocity_sensitivity`, och ska då få **1,0** — den
+    /// linjära faktor velocityn alltid har haft, alltså exakt samma ljud. Provet läser en
+    /// **handskriven gammal JSON** i stället för en rundtur genom den nya formen: en rundtur
+    /// hade skrivit fältet själv och därmed prövat sig själv.
+    #[test]
+    fn an_old_channel_file_gets_the_full_velocity_sensitivity() {
+        let json = r#"{"name":"Gammal","icon":"🥁","color":[10,20,30,255],"volume":0.42,
+            "pan":-0.25,"muted":false,"solo":false,
+            "steps":[false,false,false,false,false,false,false,false,false,false,false,false,false,false,false,false],"notes":[36,36,36,36,36,36,36,36,36,36,36,36,36,36,36,36],
+            "pitch_semitones":3,"pitch_fine_cents":7.0,"sample_start":0.1,"sample_end":0.9,
+            "attack_decay":0.3}"#;
+        let back: SavedChannel = serde_json::from_str(json).expect("en äldre fil ska läsas");
+        assert_eq!(
+            back.velocity_sensitivity, 1.0,
+            "en äldre fil ska få full känslighet — den faktor velocityn alltid har haft"
+        );
+        // Och resten av filen ska läsas som den står, inte nollas av det nya fältet.
+        let ch = saved_to_channel(&back);
+        assert_eq!(ch.name, "Gammal");
+        assert_eq!(ch.pitch_semitones, 3);
+        assert!((ch.pitch_fine_cents - 7.0).abs() < 1e-6);
     }
 
     #[test]

@@ -157,6 +157,7 @@ pub fn reference_spec() -> RenderSpec {
                 loop_end: 1.0,
                 ping_pong: false,
                 amp_env: crate::audio::envelope::AdsrParams::identity(),
+                velocity_sensitivity: 1.0,
             }),
             fallback_volume: 0.8,
             steps,

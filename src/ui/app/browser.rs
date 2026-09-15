@@ -169,6 +169,7 @@ pub(crate) fn channel_sample_trigger_command(
         pitch_semitones: ch.pitch_semitones,
         pitch_cents: ch.pitch_fine_cents,
         velocity,
+        velocity_sensitivity: ch.velocity_sensitivity,
         volume: ch.volume,
         reverse: ch.is_reverse,
         // Slicekartan (8.7): noten **är** adressen — `bas + i` spelar slice `i`,

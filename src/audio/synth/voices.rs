@@ -224,6 +224,11 @@ pub struct SampleVoice {
     pub amp_env: AdsrVoice,
     pub env_params: AdsrParams,
     pub env_on: bool,
+    /// **Velociteten som gain** (Fas 8.4/7): räknad **en gång** vid triggen ur notens anslag och
+    /// kanalens känslighet (`envelope::velocity_gain`). `1,0` = ingen påverkan. Den ligger på
+    /// rösten och inte i `volume` därför att den ska gå att stänga av per kanal — och för att
+    /// envelopen, som ligger efter den i samplevägen, skalas av anslaget.
+    pub velocity_gain: f32,
 }
 
 /// A note waiting to be triggered by the scheduler (chord strum/arpeggio).
@@ -444,6 +449,7 @@ impl SampleVoice {
             amp_env: AdsrVoice::new(44_100.0),
             env_params: AdsrParams::identity(),
             env_on: false,
+            velocity_gain: 1.0,
         }
     }
 

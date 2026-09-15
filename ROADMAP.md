@@ -1230,8 +1230,32 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     `a_hold_does_not_cut_a_one_shot_without_an_envelope`, `a_forever_loop_repeats_exactly`,
     `until_release_plays_the_tail_and_forever_does_not`, `ping_pong_turns_around`,
     `an_envelope_ends_the_voice_after_the_release`, `a_sampler_loop_follows_the_offline_render`.
-  - **Ärligt kvar (egna pass):** ingen **velocitetsstyrning** (velocity går till nivån som förut,
-    inte till envelopen), ingen **filterenvelop** (FL:s Sampler har en), inga **multi-samples**
+  - **Anslagets styrka — KLAR 2026-09-15.** Fyndet var ett annat än ordalydelsen ovan: velocity
+    **gick** redan till nivån (motorn gjorde `volume * velocity` rakt av) men var
+    **okontrollerbar** — ingen kanal kunde stänga av den, och den skalade volymen, inte
+    envelopen. Nu räknas den av den **rena** funktionen `envelope::velocity_gain(velocity,
+    sensitivity)` och bärs av rösten (`SampleVoice::velocity_gain`), så anslaget skalar
+    **envelopens nivå** — och ratten **"Velocitet:"** i kanalens envelopblock styr hur mycket
+    (0–100 %). Kurvan är den **linjära** velocityn alltid har haft, och det är därför
+    standardvärdet 1,0 ger `velocity_gain(v, 1,0) == v` **exakt**: ett projekt från före ratten
+    låter bit-identiskt. Provet jämför med `==`, inte med en tolerans.
+    - **Känsligheten följer med hela vägen:** kanalen → kommandot → rösten, **och** till filen i
+      båda ändarna (`SavedChannel` → `saved_to_channel`, samt `export.rs` → `VoiceSpec` →
+      `exporter::sample_trigger_command`) — exporten ska svara på anslag precis som högtalarna,
+      samma krav som för sidokedjan och sendarna.
+    - **Bevis, 8 nya prov:** `full_sensitivity_is_exactly_the_velocity` (exakt likhet över fem
+      anslag), `zero_sensitivity_ignores_the_velocity_entirely`,
+      `sensitivity_blends_between_off_and_the_velocity`, `out_of_range_values_are_clamped_and_never_amplify`,
+      `velocity_scales_the_sample_at_full_sensitivity` (**mätt**: kvoten är exakt 0,5 i det
+      linjära området — masterns kurva böjer sig efter ram ~200, kvot 0,500056 vid ram 500, så
+      provet kräver exakt halva i de första 32 ramarna och "svagare" hela vägen),
+      `zero_sensitivity_makes_the_velocity_inaudible` (två olika anslag → **byte-identisk**
+      utdata), `the_channel_sensitivity_reaches_the_voice` (ratten → rösten) och
+      `an_old_channel_file_gets_the_full_velocity_sensitivity` (handskriven gammal JSON, inte en
+      rundtur genom den nya formen).
+    - **Kvar på samma rad:** en **väljbar kurva** (kvadratisk, som Abletons "vel curve 2" och
+      FL:s Vel-knapp) och velocity → **filter** (den senare kräver filterenvelopen).
+  - **Ärligt kvar (egna pass):** ingen **filterenvelop** (FL:s Sampler har en), inga **multi-samples**
     (keymaps/velocity-lager = DirectWave-nivån), och loop-punkterna sätts med reglage i stället
     för att kunna dras i vågformen.
 - [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*

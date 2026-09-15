@@ -148,6 +148,11 @@ impl SynthEngine {
             s_l *= sv.pan_l;
             s_r *= sv.pan_r;
             let mut g = sv.volume;
+            // **Anslaget** (Fas 8.4/7): räknat vid triggen, 1,0 när känsligheten är 0. Med
+            // standardkänsligheten är faktorn exakt notens velocity — samma tal som volymen
+            // fick förut — men nu skalas envelopen av den i stället för att volymen gör det,
+            // och den går att stänga av per kanal.
+            g *= sv.velocity_gain;
             // **Kantdämpning vid båda ändarna** (Fas 8.7 steg 2). In: hur långt in vi är.
             // Ut: hur många ramar som återstår till fönstrets kant — räknat i *utramar*, så
             // det stämmer även när rösten spelas med annan tonhöjd eller baklänges. Utan den

@@ -179,6 +179,10 @@ pub struct SavedChannel {
     pub ping_pong: bool,
     #[serde(default = "default_sampler_env")]
     pub amp_env: crate::audio::envelope::AdsrParams,
+    /// **Velocitetskänsligheten** (Fas 8.4/7). Saknas fältet i en äldre fil är värdet `1,0` —
+    /// exakt den linjära faktor velocityn alltid har haft, alltså låter filen som förut.
+    #[serde(default = "default_velocity_sensitivity")]
+    pub velocity_sensitivity: f32,
     #[serde(default)]
     pub is_reverse: bool,
     #[serde(default)]
@@ -278,6 +282,13 @@ fn default_sampler_env() -> crate::audio::envelope::AdsrParams {
     crate::audio::envelope::AdsrParams::identity()
 }
 
+/// Velocitetskänslighetens standard: **1,0**, den faktor velocityn alltid har haft (Fas 8.4/7).
+/// Ett projekt som sparades innan ratten fanns har inget fält — och ska då låta exakt som det
+/// gjorde, inte tappa sitt anslag.
+fn default_velocity_sensitivity() -> f32 {
+    1.0
+}
+
 /// Det som ska tillbaka in i appen när en projektfil öppnas (Fas 6.7).
 pub struct SavedMusic<'a> {
     pub patterns: &'a [SavedPattern],
@@ -364,6 +375,7 @@ pub(crate) fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
         sample_loop_end: c.sample_loop_end,
         ping_pong: c.ping_pong,
         amp_env: c.amp_env,
+        velocity_sensitivity: c.velocity_sensitivity,
         is_reverse: c.is_reverse,
         sample_path: c.sample_path.clone(),
         sample_base_note: c.sample_base_note,
@@ -408,6 +420,9 @@ pub(crate) fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
         } else {
             s.amp_env
         },
+        // **Anslagets känslighet** (Fas 8.4/7) har ingen migrering: fältet saknas i en äldre fil
+        // och blir då 1,0 — exakt den linjära faktor velocityn alltid har haft.
+        velocity_sensitivity: s.velocity_sensitivity,
         loop_mode: s.loop_mode,
         sample_loop_start: s.sample_loop_start,
         sample_loop_end: s.sample_loop_end,
