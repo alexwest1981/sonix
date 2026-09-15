@@ -301,6 +301,9 @@ pub enum AudioCommand {
         /// Amplitud-ADSR. Standardvärdet är **identiteten** (ingen envelop alls), så att
         /// varje projekt som sparades före Fas 8.4 låter exakt som förut.
         amp_env: super::envelope::AdsrParams,
+        /// **Filterenvelopen** (Fas 8.4/7): kanalens filter med sin egen ADSR. Standardvärdet
+        /// är **avstängt**, alltså oförändrat ljud för ett projekt från före filtret.
+        filter: super::filter::SamplerFilter,
         /// **Notens längd i sekunder** (Fas 8.4). `0,0` = ingen not-av alls, alltså dagens
         /// en-skottsbeteende. Annars släpps rösten efter den tiden — det är så ett steg i
         /// kanalracket kan vara en *not* med en längd i stället för bara en trigger.

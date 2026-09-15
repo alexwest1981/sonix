@@ -183,6 +183,11 @@ pub struct SavedChannel {
     /// exakt den linjära faktor velocityn alltid har haft, alltså låter filen som förut.
     #[serde(default = "default_velocity_sensitivity")]
     pub velocity_sensitivity: f32,
+    /// **Filterenvelopen** (Fas 8.4/7). Saknas fältet i en äldre fil är filtret **avstängt** —
+    /// alltså exakt det ljud filen hade. (`SamplerFilter::default()` bär både avstängningen och
+    /// standardvärdena för cutoff/resonans, så det finns bara en tabell för dem.)
+    #[serde(default)]
+    pub filter: crate::audio::filter::SamplerFilter,
     #[serde(default)]
     pub is_reverse: bool,
     #[serde(default)]
@@ -376,6 +381,7 @@ pub(crate) fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
         ping_pong: c.ping_pong,
         amp_env: c.amp_env,
         velocity_sensitivity: c.velocity_sensitivity,
+        filter: c.filter,
         is_reverse: c.is_reverse,
         sample_path: c.sample_path.clone(),
         sample_base_note: c.sample_base_note,
@@ -423,6 +429,7 @@ pub(crate) fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
         // **Anslagets känslighet** (Fas 8.4/7) har ingen migrering: fältet saknas i en äldre fil
         // och blir då 1,0 — exakt den linjära faktor velocityn alltid har haft.
         velocity_sensitivity: s.velocity_sensitivity,
+        filter: s.filter,
         loop_mode: s.loop_mode,
         sample_loop_start: s.sample_loop_start,
         sample_loop_end: s.sample_loop_end,

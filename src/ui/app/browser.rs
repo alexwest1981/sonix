@@ -186,6 +186,7 @@ pub(crate) fn channel_sample_trigger_command(
         loop_end01: ch.sample_loop_end,
         ping_pong: ch.ping_pong,
         amp_env: ch.amp_env,
+        filter: ch.filter,
         hold_secs,
     })
 }

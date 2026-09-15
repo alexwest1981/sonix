@@ -58,6 +58,61 @@ impl StateVariableFilter {
     }
 }
 
+/// **Samplerns filter** (Fas 8.4/7): ett lågpassfilter per röst med en **egen** ADSR som flyttar
+/// cutoffen i oktaver (`filter_cutoff_at`).
+///
+/// Standardvärdet är **avstängt** (`on: false`) — då rörs samplarna inte alls, och ett projekt
+/// från före filtret låter exakt som det gjorde. `cutoff_hz`/`resonance` ärvs ur
+/// `FilterParams::default()` i stället för att skrivas en gång till (två tabeller för samma sak
+/// driver isär), och `env_amount_octaves` är `0,0`: även med filtret **på** står cutoffen still
+/// tills ratten flyttas.
+///
+/// Envelopen har en **musikalisk** standard (attack 0, decay 0,3 s, sustain 0, släpp 0,2 s) och
+/// inte identiteten: filtret är avstängt med `on`, inte med envelopen, och när man väl slår på
+/// det ska amount-ratten ge en **svepande** klang — det är hela poängen med en filterenvelop.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SamplerFilter {
+    pub on: bool,
+    pub cutoff_hz: f32,
+    pub resonance: f32,
+    pub env_amount_octaves: f32,
+    pub env: crate::audio::envelope::AdsrParams,
+}
+
+impl Default for SamplerFilter {
+    fn default() -> Self {
+        let d = FilterParams::default();
+        Self {
+            on: false,
+            cutoff_hz: d.cutoff,
+            resonance: d.resonance,
+            env_amount_octaves: 0.0,
+            env: crate::audio::envelope::AdsrParams {
+                attack: 0.0,
+                decay: 0.3,
+                sustain: 0.0,
+                release: 0.2,
+            },
+        }
+    }
+}
+
+/// **Filterts öppning just nu** (Fas 8.4/7): kanalens cutoff förskjuten av filterenvelopens
+/// nivå, räknad i **oktaver**.
+///
+/// Oktaven är enheten därför att det är den musikaliska: `+4,0` oktaver är samma *avstånd* i
+/// klang oavsett om grundcutoffen är 200 Hz eller 2 kHz, medan en faktor hade betytt olika sak
+/// beroende på var ratten stod. Det är samma val FL:s Sampler och Abletons Simpler gör (deras
+/// env-amount är i oktaver respektive procent av spannet).
+///
+/// `amount = 0,0` → **exakt** `base` (envelopen rör ingenting), vilket är vad en kanal utan
+/// filterenvelop får. Resultatet kläms till det hörbara spannet `20 Hz … 20 kHz`.
+pub fn filter_cutoff_at(base_cutoff_hz: f32, env_amount_octaves: f32, env_level: f32) -> f32 {
+    let base = base_cutoff_hz.clamp(20.0, 20_000.0);
+    let level = env_level.clamp(0.0, 1.0);
+    (base * (env_amount_octaves * level).exp2()).clamp(20.0, 20_000.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -77,6 +132,41 @@ mod tests {
             }
         }
         (sum / measure as f32).sqrt()
+    }
+
+    #[test]
+    fn the_default_filter_is_off_and_moves_nothing() {
+        let f = SamplerFilter::default();
+        assert!(!f.on, "filtret ska vara avstängt som standard");
+        assert_eq!(f.env_amount_octaves, 0.0);
+        // Och även påslaget utan amount står cutoffen exakt still.
+        assert_eq!(filter_cutoff_at(f.cutoff_hz, f.env_amount_octaves, 1.0), f.cutoff_hz);
+    }
+
+    #[test]
+    fn a_zero_amount_leaves_the_cutoff_exactly_where_it_was() {
+        // **Exakt**, inte nästan: en kanal utan filterenvelop ska inte flytta cutoffen alls.
+        for base in [100.0, 440.0, 1000.0, 8000.0] {
+            for level in [0.0, 0.5, 1.0] {
+                assert_eq!(filter_cutoff_at(base, 0.0, level), base, "{base} Hz, nivå {level}");
+            }
+        }
+    }
+
+    #[test]
+    fn an_amount_opens_the_filter_by_octaves() {
+        // Full envelop och +4 oktaver = 16 gånger cutoffen; halv envelop = 2 oktaver = 4 gånger.
+        assert_eq!(filter_cutoff_at(100.0, 4.0, 1.0), 1600.0);
+        assert_eq!(filter_cutoff_at(100.0, 4.0, 0.5), 400.0);
+        assert_eq!(filter_cutoff_at(100.0, 0.0, 1.0), 100.0);
+    }
+
+    #[test]
+    fn the_cutoff_stays_inside_the_audible_range() {
+        assert_eq!(filter_cutoff_at(20_000.0, 8.0, 1.0), 20_000.0);
+        assert_eq!(filter_cutoff_at(20.0, -8.0, 1.0), 20.0);
+        // En negativ amount är en **stängande** envelop, och den är giltig.
+        assert_eq!(filter_cutoff_at(2000.0, -2.0, 1.0), 500.0);
     }
 
     #[test]

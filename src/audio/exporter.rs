@@ -50,6 +50,8 @@ pub struct VoiceSpec {
     /// **Velocitetskänsligheten** (Fas 8.4/7) följer med till filen — annars hade exporten
     /// svarat på anslag som högtalarna inte gör, samma krav som för sidokedjan och sendarna.
     pub velocity_sensitivity: f32,
+    /// **Filtret** (Fas 8.4/7) gör detsamma: samma klang i filen som i högtalarna.
+    pub filter: crate::audio::filter::SamplerFilter,
 }
 
 #[derive(Clone)]
@@ -218,6 +220,7 @@ fn sample_trigger_command(
         loop_end01: v.loop_end,
         ping_pong: v.ping_pong,
         amp_env: v.amp_env,
+        filter: v.filter,
         hold_secs,
     })
 }
@@ -942,6 +945,7 @@ mod tests {
                     ping_pong: false,
                     amp_env: AdsrParams::identity(),
                     velocity_sensitivity: 1.0,
+                    filter: crate::audio::filter::SamplerFilter::default(),
                 })
             } else {
                 None
@@ -1378,6 +1382,7 @@ mod tests {
                 ping_pong: false,
                 amp_env: AdsrParams::identity(),
                 velocity_sensitivity: 1.0,
+                filter: crate::audio::filter::SamplerFilter::default(),
             });
             spec.rack[0].steps[0] = true;
             spec.rack[0].notes[0] = 36;
@@ -1475,6 +1480,7 @@ mod tests {
             ping_pong: false,
             amp_env: AdsrParams::identity(),
             velocity_sensitivity: 1.0,
+            filter: crate::audio::filter::SamplerFilter::default(),
         });
         spec.rack[0].steps[0] = true;
         spec.rack[0].notes[0] = 36;

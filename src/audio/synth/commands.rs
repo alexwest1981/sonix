@@ -492,6 +492,7 @@ impl SynthEngine {
                 loop_end01,
                 ping_pong,
                 amp_env,
+                filter,
                 hold_secs,
             } => {
                 if left.is_empty() {
@@ -535,6 +536,21 @@ impl SynthEngine {
                 } else {
                     None
                 };
+                // **Filtret** (Fas 8.4/7): klämt **en gång** här, så samplevägen slipper göra
+                // det per sample. Filtrets och envelopens tillstånd nollställs per röst — en
+                // återanvänd röst får inte bära förra notens svans i filtret.
+                v.filter = crate::audio::filter::SamplerFilter {
+                    on: filter.on,
+                    cutoff_hz: filter.cutoff_hz.clamp(20.0, 20_000.0),
+                    resonance: filter.resonance.clamp(0.1, 10.0),
+                    env_amount_octaves: filter.env_amount_octaves,
+                    env: filter.env,
+                };
+                v.filter_state = crate::audio::filter::StateVariableFilter::new(self.sample_rate);
+                v.filter_env = AdsrVoice::new(self.sample_rate);
+                if filter.on {
+                    v.filter_env.gate_on();
+                }
                 v.env_params = amp_env;
                 v.env_on = !amp_env.is_identity();
                 v.amp_env = AdsrVoice::new(self.sample_rate);
@@ -567,6 +583,9 @@ impl SynthEngine {
                         v.released = true;
                         if v.env_on {
                             v.amp_env.gate_off();
+                        }
+                        if v.filter.on {
+                            v.filter_env.gate_off();
                         }
                     }
                 }

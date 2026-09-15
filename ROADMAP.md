@@ -1255,9 +1255,37 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
       rundtur genom den nya formen).
     - **Kvar på samma rad:** en **väljbar kurva** (kvadratisk, som Abletons "vel curve 2" och
       FL:s Vel-knapp) och velocity → **filter** (den senare kräver filterenvelopen).
-  - **Ärligt kvar (egna pass):** ingen **filterenvelop** (FL:s Sampler har en), inga **multi-samples**
-    (keymaps/velocity-lager = DirectWave-nivån), och loop-punkterna sätts med reglage i stället
-    för att kunna dras i vågformen.
+  - **Filterenvelopen — KLAR 2026-09-15.** Ett **lågpassfilter per röst** med sin **egen** ADSR:
+    cutoff, resonans och hur många **oktaver** envelopen flyttar cutoffen (samma enhet som FL:s
+    Sampler och Abletons Simpler använder — avståndet i klang är detsamma var cutoffen än står).
+    Den är **filtrets**, inte amplitudens: en "pluck" är filtret som stänger medan nivån står still.
+    - **Identiteten är `on`, inte siffrorna:** ett filter som är av rör samplarna **inte alls**,
+      vilka värden det än står på — `a_filter_that_is_off_ignores_its_own_settings` jämför två
+      renderingar med `==` där den ena har extrema filtervärden men filtret av. Ett projekt från
+      före filtret är därför bit-identiskt, och en äldre fil (fältet saknas) får
+      `SamplerFilter::default()` = **avstängt**.
+    - **En källa för standardvärdena:** `SamplerFilter` bär `on`/`cutoff`/`resonans`/`amount`/
+      envelop, och dess `Default` ärver cutoff och resonans ur `FilterParams::default()` i stället
+      för att skriva dem en gång till. Kanalen, kommandot, projektfilen och exportens `VoiceSpec`
+      bär **samma struktur** — ett fält i stället för fem på varje ställe.
+    - **Bevis, 7 nya prov:** `the_default_filter_is_off_and_moves_nothing`,
+      `a_zero_amount_leaves_the_cutoff_exactly_where_it_was` (exakt likhet, fyra cutoffar × tre
+      envelopnivåer), `an_amount_opens_the_filter_by_octaves`, `the_cutoff_stays_inside_the_audible_range`
+      (en **negativ** amount — en stängande envelop — är giltig och prövas),
+      `a_filter_that_is_off_ignores_its_own_settings`, `a_low_filter_darkens_the_sample`
+      (**mätt**: 0,1153 öppet mot 0,00092 stängt, kvot 125 gånger = −42 dB vid femton gånger
+      cutoff) och `the_filter_envelope_sweeps_the_cutoff_over_time` (svepet kräver att envelopens
+      nivå läses **per sample** — räknades cutoffen ut en gång vid triggen vore början och slutet
+      av noten lika starka).
+    - **Mätfällan som kostade två iterationer, värd att känna igen:** den första proben var ett
+      **växlande ljud** (±0,5 varannan ram), alltså **Nyquist**. I den här filterstrukturen
+      (TPT/bilinjär) mappas digitala Nyquist till **oändligheten** i förlagan, där ett lågpass är
+      exakt noll **oavsett** cutoff — mätt: −78 dB vid 12 kHz, alltså dämpat även av ett "öppet"
+      filter. En probe ska ligga i passbandet eller stopbandet, inte i en punkt där varje svar är
+      noll. Samma läxa som "mät på en jämn ton först".
+  - **Ärligt kvar (egna pass):** inga **multi-samples** (keymaps/velocity-lager = DirectWave-nivån),
+    loop-punkterna sätts med reglage i stället för att kunna dras i vågformen, och anslagets kurva
+    är linjär (ingen väljbar kvadratisk kurva, och inget anslag → filter).
 - [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*
   **Påbörjad 2026-09-15** (`79adff9`, `6c1b43b`): tre av fyra delar byggda och mätta —
   **kvar är routningen av pluginens egna utbussar till egna spår** (se nedan).

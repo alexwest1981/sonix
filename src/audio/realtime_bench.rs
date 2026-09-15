@@ -158,6 +158,7 @@ pub fn reference_spec() -> RenderSpec {
                 ping_pong: false,
                 amp_env: crate::audio::envelope::AdsrParams::identity(),
                 velocity_sensitivity: 1.0,
+                filter: crate::audio::filter::SamplerFilter::default(),
             }),
             fallback_volume: 0.8,
             steps,

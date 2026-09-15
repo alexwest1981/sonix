@@ -112,6 +112,9 @@ pub struct ChannelStrip {
     /// nivån. `1,0` är den linjära faktor velocityn alltid har haft (alltså oförändrat ljud för
     /// ett projekt från före ratten), `0,0` stänger av den helt.
     pub velocity_sensitivity: f32,
+    /// **Filterenvelopen** (Fas 8.4/7): kanalens lågpassfilter med sin **egen** ADSR. Standard
+    /// är avstängt, alltså oförändrat ljud för ett projekt från före filtret.
+    pub filter: crate::audio::filter::SamplerFilter,
     pub is_reverse: bool,
     pub waveform_preview: Vec<f32>,
     pub sample_path: Option<String>,

@@ -7,7 +7,10 @@ pub enum EnvelopeStage {
     Release,
 }
 
-#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
+/// `PartialEq` finns för att kodbasen jämför enveloper **exakt** (talen kommer från UI-reglage
+/// och jämförs som de skrivs — se `is_identity`), och för att `SamplerFilter` ska kunna jämföras
+/// som ett värde i proven.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct AdsrParams {
     pub attack: f32,  // in seconds
     pub decay: f32,   // in seconds

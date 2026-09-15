@@ -229,6 +229,13 @@ pub struct SampleVoice {
     /// rösten och inte i `volume` därför att den ska gå att stänga av per kanal — och för att
     /// envelopen, som ligger efter den i samplevägen, skalas av anslaget.
     pub velocity_gain: f32,
+    /// **Filterenvelopen** (Fas 8.4/7): kanalens filter (av/på, cutoff, resonans, envelopens
+    /// djup i oktaver och envelopen själv) plus **tillståndet** — filtret och envelopen lever
+    /// per röst. Är filtret av rörs samplarna inte alls, och ett projekt från före filtret är
+    /// därför byte-identiskt.
+    pub filter: crate::audio::filter::SamplerFilter,
+    pub filter_state: StateVariableFilter,
+    pub filter_env: AdsrVoice,
 }
 
 /// A note waiting to be triggered by the scheduler (chord strum/arpeggio).
@@ -450,6 +457,9 @@ impl SampleVoice {
             env_params: AdsrParams::identity(),
             env_on: false,
             velocity_gain: 1.0,
+            filter: crate::audio::filter::SamplerFilter::default(),
+            filter_state: StateVariableFilter::new(44_100.0),
+            filter_env: AdsrVoice::new(44_100.0),
         }
     }
 

@@ -94,6 +94,9 @@ impl SynthEngine {
             if sv.released && sv.env_on {
                 sv.amp_env.gate_off();
             }
+            if sv.released && sv.filter.on {
+                sv.filter_env.gate_off();
+            }
             let looping = match sv.loop_mode {
                 LoopMode::Off => false,
                 LoopMode::Forever => sv.loop_span.is_some(),
@@ -168,12 +171,32 @@ impl SynthEngine {
                 f32::MAX
             };
             g *= slice_edge_gain(frames_to_edge, sv.fade_frames as f32);
+            // **Filterenvelopen** (Fas 8.4/7) ligger på röstens bidrag, före gainen: den formar
+            // klangen, inte nivån. Envelopen måste läsas **per sample** — det är dess nivå som
+            // flyttar cutoffen, så den kan inte räknas ut vid triggen. Är filtret av rörs
+            // samplarna inte alls (provet om byte-identitet håller den regeln).
+            let mut mono = (s_l + s_r) * 0.5;
+            if sv.filter.on {
+                let level = sv.filter_env.next_sample(&sv.filter.env);
+                let cutoff = crate::audio::filter::filter_cutoff_at(
+                    sv.filter.cutoff_hz,
+                    sv.filter.env_amount_octaves,
+                    level,
+                );
+                mono = sv.filter_state.process_lowpass(
+                    mono,
+                    &crate::audio::filter::FilterParams {
+                        cutoff,
+                        resonance: sv.filter.resonance,
+                    },
+                );
+            }
             // Amplitud-ADSR (Fas 8.4) — bara när den är vald. Identiteten rör ingenting,
             // alltså är en-skottsvägen oförändrad (se provet om byte-identitet).
             if sv.env_on {
                 g *= sv.amp_env.next_sample(&sv.env_params);
             }
-            sample_mix += (s_l + s_r) * 0.5 * g;
+            sample_mix += mono * g;
             if sv.env_on && !sv.amp_env.is_active() {
                 sv.active = false;
                 continue;

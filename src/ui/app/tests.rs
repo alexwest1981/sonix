@@ -224,6 +224,19 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             ping_pong: false,
             amp_env: crate::audio::envelope::AdsrParams::identity(),
             velocity_sensitivity: 0.35,
+            // Ett filter med **egna** värden: ett tappat filterfält i sparandet ska synas här.
+            filter: crate::audio::filter::SamplerFilter {
+                on: true,
+                cutoff_hz: 1234.0,
+                resonance: 3.5,
+                env_amount_octaves: 2.0,
+                env: crate::audio::envelope::AdsrParams {
+                    attack: 0.01,
+                    decay: 0.2,
+                    sustain: 0.3,
+                    release: 0.4,
+                },
+            },
             is_reverse: true,
             waveform_preview: vec![0.5; 4],
             sample_path: Some("/tmp/sonix-finns-inte.wav".to_string()),
@@ -261,6 +274,10 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             r.velocity_sensitivity, ch.velocity_sensitivity,
             "anslagets känslighet ska med i projektfilen"
         );
+        assert_eq!(
+            r.filter, ch.filter,
+            "filtret ska med i projektfilen — både på/av och siffrorna"
+        );
         assert_eq!(r.is_reverse, ch.is_reverse);
         assert_eq!(r.sample_path, ch.sample_path);
         assert_eq!(r.sample_base_note, ch.sample_base_note);
@@ -288,7 +305,11 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             back.velocity_sensitivity, 1.0,
             "en äldre fil ska få full känslighet — den faktor velocityn alltid har haft"
         );
-        // Och resten av filen ska läsas som den står, inte nollas av det nya fältet.
+        // **Filtret är avstängt** i en fil som inte har fältet — det är hela poängen: filen ska
+        // låta exakt som den gjorde, inte få ett filter på köpet.
+        assert_eq!(back.filter, crate::audio::filter::SamplerFilter::default());
+        assert!(!back.filter.on, "en gammal fil ska inte slå på ett filter");
+        // Och resten av filen ska läsas som den står, inte nollas av de nya fälten.
         let ch = saved_to_channel(&back);
         assert_eq!(ch.name, "Gammal");
         assert_eq!(ch.pitch_semitones, 3);

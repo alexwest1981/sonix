@@ -1470,6 +1470,46 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                         .custom_formatter(|v, _| format!("{:.0} %", v * 100.0)),
                                 )
                                 .on_hover_text(crate::i18n::t("Hur mycket notens anslag får påverka nivån. 100 % är den linjära faktor som alltid har funnits, 0 % stänger av den helt — då låter varje anslag lika starkt. Gäller kanalens sampel; inte den inbyggda synten."));
+
+                            // **Filterenvelopen** (Fas 8.4/7): ett lågpassfilter per röst med sin
+                            // **egen** ADSR. Den är filtrets, inte amplitudens — en "pluck" är
+                            // filtret som stänger, medan nivån står still.
+                            ui.separator();
+                            ui.label(egui::RichText::new(crate::i18n::t("Filter (lågpass):")).strong().size(11.0).color(Theme::TEXT_MUTED));
+                            ui.checkbox(&mut ch.filter.on, crate::i18n::t("Filter på"))
+                                .on_hover_text(crate::i18n::t("Ett lågpassfilter per röst. Avstängt är filtret inte ett filter som står öppet — det rör samplarna inte alls, så ett projekt från före filtret låter exakt som förut."));
+                            ui.add_enabled_ui(ch.filter.on, |ui| {
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("Cutoff:"));
+                                    ui.add(egui::Slider::new(&mut ch.filter.cutoff_hz, 20.0..=20_000.0).logarithmic(true).suffix(" Hz").fixed_decimals(0));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("Resonans:"));
+                                    ui.add(egui::Slider::new(&mut ch.filter.resonance, 0.1..=10.0).fixed_decimals(2));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("Envelop:"));
+                                    ui.add(egui::Slider::new(&mut ch.filter.env_amount_octaves, -4.0..=6.0).suffix(" oktaver").fixed_decimals(2))
+                                        .on_hover_text(crate::i18n::t("Hur långt envelopen flyttar cutoffen, i oktaver — samma avstånd i klang oavsett var cutoffen står (0 = ingen förflyttning alls). Negativt stänger filtret i stället."));
+                                });
+                                // Envelopens egna tider.
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("F-attack:"));
+                                    ui.add(egui::Slider::new(&mut ch.filter.env.attack, 0.0..=2.0).suffix(" s").fixed_decimals(3));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("F-decay:"));
+                                    ui.add(egui::Slider::new(&mut ch.filter.env.decay, 0.0..=2.0).suffix(" s").fixed_decimals(3));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("F-sustain:"));
+                                    ui.add(egui::Slider::new(&mut ch.filter.env.sustain, 0.0..=1.0));
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label(crate::i18n::t("F-släpp:"));
+                                    ui.add(egui::Slider::new(&mut ch.filter.env.release, 0.0..=4.0).suffix(" s").fixed_decimals(3));
+                                });
+                            });
                             });
                             ui.horizontal(|ui| {
                                 if ui

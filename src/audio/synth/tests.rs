@@ -4,6 +4,7 @@
 //! Status: stabil — prov, inte kod; flyttar du en funktion, flytta dess prov.
 
 use super::*;
+use crate::audio::filter::SamplerFilter;
 
 /// **Rampen vid kanten.** 0 vid kanten, 1 en ramp in, rakt däremellan — och samma regel
 /// används i båda ändarna av fönstret, så den behöver bara vara rätt en gång.
@@ -1579,7 +1580,7 @@ fn trigger_sampler(
 ) -> SynthEngine {
     // **Fullt anslag och full känslighet** = den linjära faktor velocityn alltid har haft,
     // alltså precis vad varje prov före anslagsratten prövade.
-    trigger_sampler_velocity(loop_mode, loop_span01, ping_pong, hold_secs, amp_env, 1.0, 1.0)
+    trigger_sampler_velocity(loop_mode, loop_span01, ping_pong, hold_secs, amp_env, 1.0, 1.0, SamplerFilter::default())
 }
 
 /// Samma som `trigger_sampler`, men med **anslaget** och **kanalens känslighet** satta
@@ -1592,6 +1593,7 @@ fn trigger_sampler_velocity(
     amp_env: AdsrParams,
     velocity: f32,
     velocity_sensitivity: f32,
+    filter: SamplerFilter,
 ) -> SynthEngine {
     let mut synth = SynthEngine::new(48_000.0);
     let n = 4_000usize;
@@ -1617,10 +1619,58 @@ fn trigger_sampler_velocity(
         loop_end01: loop_span01.1,
         ping_pong,
         amp_env,
+        filter,
         hold_secs,
     });
     let _ = synth.process_stereo();
     synth
+}
+
+/// Triggar en kanal med en **3 kHz-sin** (±0,5) — en ton mitt i registret, där ett lågpassfilter
+/// hörs som skillnaden mellan "släpper igenom" och "dämpar".
+///
+/// **Proben var först ett växlande ljud (±0,5 varannan ram), och det var fel:** ett sådant ljud
+/// ligger vid **Nyquist**, och i den här filterstrukturen (TPT/bilinjär) mappas digitala Nyquist
+/// till **oändligheten** i förlagan — där är ett lågpass exakt noll, oavsett var cutoffen står.
+/// Mätt: −78 dB vid 12 kHz, alltså dämpat även av ett "öppet" filter. En probe ska ligga i
+/// passbandet eller stopbandet, inte i en punkt där varje svar är noll. En ramp (som
+/// `trigger_sampler` använder) har sin energi i botten och säger nästan ingenting om ett filter.
+fn trigger_sampler_filter(filter: SamplerFilter) -> SynthEngine {
+    let mut synth = SynthEngine::new(48_000.0);
+    let n = 4_000usize;
+    let ton: Vec<f32> = (0..n)
+        .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 3_000.0 * i as f32 / 48_000.0).sin())
+        .collect();
+    let arc = Arc::new(ton);
+    synth.handle_command(AudioCommand::TriggerSampleVoice {
+        left: arc.clone(),
+        right: arc,
+        sample_rate: 48_000,
+        base_note: 60,
+        note: 60,
+        pitch_semitones: 0,
+        pitch_cents: 0.0,
+        velocity: 1.0,
+        velocity_sensitivity: 1.0,
+        volume: 1.0,
+        reverse: false,
+        start01: 0.0,
+        end01: 1.0,
+        channel: 0,
+        loop_mode: LoopMode::Off,
+        loop_start01: 0.0,
+        loop_end01: 1.0,
+        ping_pong: false,
+        amp_env: AdsrParams::identity(),
+        filter,
+        hold_secs: 0.0,
+    });
+    let _ = synth.process_stereo();
+    synth
+}
+
+fn rms(v: &[f32]) -> f32 {
+    (v.iter().map(|x| x * x).sum::<f32>() / v.len().max(1) as f32).sqrt()
 }
 
 fn voice(synth: &SynthEngine) -> &SampleVoice {
@@ -1631,6 +1681,89 @@ fn voice(synth: &SynthEngine) -> &SampleVoice {
         .expect("rösten ska vara igång")
 }
 
+/// **Avstängt är avstängt** (Fas 8.4/7): samma ljud två gånger, där den ena rösten har extrema
+/// filtervärden men filtret **av**. Byte-identiskt — annars läcker inställningarna igenom ändå,
+/// och ett projekt från före filtret låter inte som det gjorde. Identiteten är `on`, inte
+/// siffrorna.
+#[test]
+fn a_filter_that_is_off_ignores_its_own_settings() {
+    let mut av = trigger_sampler_filter(SamplerFilter::default());
+    let mut av_men_installd = trigger_sampler_filter(SamplerFilter {
+        on: false,
+        cutoff_hz: 100.0,
+        resonance: 9.0,
+        env_amount_octaves: 6.0,
+        ..SamplerFilter::default()
+    });
+    assert_eq!(
+        render_left(&mut av, 512),
+        render_left(&mut av_men_installd, 512),
+        "ett filter som är av får inte påverka ljudet, vilka siffror det än står på"
+    );
+}
+
+/// **Ett lågpassfilter dämpar det som ligger högt** (Fas 8.4/7), mätt på ett växlande ljud som
+/// ligger vid Nyquist: 200 Hz ska dämpa det kraftigt mot 12 kHz.
+#[test]
+fn a_low_filter_darkens_the_sample() {
+    let mut oppet = trigger_sampler_filter(SamplerFilter {
+        on: true,
+        cutoff_hz: 12_000.0,
+        resonance: 0.707,
+        env_amount_octaves: 0.0,
+        ..SamplerFilter::default()
+    });
+    let mut stangt = trigger_sampler_filter(SamplerFilter {
+        on: true,
+        cutoff_hz: 200.0,
+        resonance: 0.707,
+        env_amount_octaves: 0.0,
+        ..SamplerFilter::default()
+    });
+    let a = rms(&render_left(&mut oppet, 1_024));
+    let b = rms(&render_left(&mut stangt, 1_024));
+    // **Mätt:** 0,1153 genom det öppna filtret och 0,00092 genom det stängda — en kvot på 125
+    // gånger, alltså −42 dB vid femton gånger cutoff. (Ingången är en 3 kHz-sin på ±0,5, RMS
+    // 0,354; resten av vägen — panorering och master — ger en fast faktor, och den är samma för
+    // båda renderingarna.)
+    assert!(a > 0.05, "det öppna filtret ska släppa igenom 3 kHz ({a})");
+    assert!(
+        b < a * 0.05,
+        "200 Hz ska dämpa 3 kHz kraftigt — två poler vid femton gånger cutoff: {b} mot {a}"
+    );
+}
+
+/// **Envelopen sveper cutoffen över tiden** (Fas 8.4/7) — det som gör en "pluck". Provet kräver
+/// att envelopens nivå läses **per sample**: hade cutoffen räknats ut en gång vid triggen vore
+/// början och slutet av noten lika starka.
+///
+/// Fönstren ligger **inuti** ljudets 4 000 ramar (rösten tar slut med samplen), och attacken är
+/// över efter 2 ms: 0,15 s decay vid 48 kHz är 7 200 ramar, så vid ram 3 200 har envelopen
+/// fallit till ~0,55. Cutoffen går då från 150·2⁵ = 4 800 Hz (3 kHz ligger **under**: släpps
+/// igenom) ned mot 150·2^(5·0,55) ≈ 1 kHz (3 kHz ligger **över**: dämpas).
+#[test]
+fn the_filter_envelope_sweeps_the_cutoff_over_time() {
+    let mut synth = trigger_sampler_filter(SamplerFilter {
+        on: true,
+        cutoff_hz: 150.0,
+        resonance: 0.707,
+        env_amount_octaves: 5.0,
+        env: AdsrParams {
+            attack: 0.0,
+            decay: 0.15,
+            sustain: 0.0,
+            release: 0.1,
+        },
+    });
+    let out = render_left(&mut synth, 4_000);
+    let tidig = rms(&out[120..520]);
+    let sen = rms(&out[3_200..3_900]);
+    assert!(
+        tidig > sen * 3.0,
+        "svepet syns inte: tidig {tidig}, sen {sen} (filtret öppnar och stänger)"
+    );
+}
+
 /// **Anslaget hörs** (Fas 8.4/7): med full känslighet ger halv velocity halv nivå — samma
 /// linjära faktor som `volume * velocity` alltid var, nu räknad **en gång** vid triggen och
 /// buren av rösten. Provet jämför två renderingar på samma nivå, sample för sample.
@@ -1638,9 +1771,11 @@ fn voice(synth: &SynthEngine) -> &SampleVoice {
 fn velocity_scales_the_sample_at_full_sensitivity() {
     let mut strong = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 1.0, 1.0,
+        SamplerFilter::default(),
     );
     let mut weak = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 1.0,
+        SamplerFilter::default(),
     );
     let stark = render_left(&mut strong, 512);
     let svag = render_left(&mut weak, 512);
@@ -1675,9 +1810,11 @@ fn velocity_scales_the_sample_at_full_sensitivity() {
 fn zero_sensitivity_makes_the_velocity_inaudible() {
     let mut stark = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 1.0, 0.0,
+        SamplerFilter::default(),
     );
     let mut svag = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.25, 0.0,
+        SamplerFilter::default(),
     );
     let a = render_left(&mut stark, 512);
     let b = render_left(&mut svag, 512);
@@ -1694,6 +1831,7 @@ fn zero_sensitivity_makes_the_velocity_inaudible() {
 fn the_channel_sensitivity_reaches_the_voice() {
     let mut synth = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 0.5,
+        SamplerFilter::default(),
     );
     let _ = synth.process_stereo();
     // (1 - 0,5) + 0,5 · 0,5 = 0,75 — halva anslaget får halva sin verkan.
