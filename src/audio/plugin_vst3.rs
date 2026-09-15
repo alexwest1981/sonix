@@ -60,6 +60,12 @@ const IID_ICOMPONENT: [u8; 16] = tuid(0xE831_FF31, 0xF2D5_4301, 0x928E_BBEE, 0x2
 const IID_IAUDIO_PROCESSOR: [u8; 16] = tuid(0x4204_3F99, 0xB7DA_453C, 0xA569_E79D, 0x9AAE_C33D);
 const IID_IEDIT_CONTROLLER: [u8; 16] = tuid(0xDCD7_BBE3, 0x7742_448D, 0xA874_AACC, 0x979C_759E);
 const IID_IBSTREAM: [u8; 16] = tuid(0xC3BF_6EA2, 0x3099_4752, 0x9B6B_F990, 0x1EE3_3E9B);
+/// **`IPluginFactory2`** — fabrikens andra version, den som bär `getClassInfo2` och därmed
+/// **versionen**. VST3 lägger till den som ett **eget gränssnitt** (frågat med `queryInterface`),
+/// inte som ett fält i `IPluginFactory`: en plugin som bara svarar på version 1 har ingen
+/// version att ge, och då är tomt rätt svar. Officiellt IID ur `base/ipluginbase.h`:
+/// `DECLARE_CLASS_IID (IPluginFactory2, 0x0007B650, 0xF24B4C0B, 0xA464EDB9, 0xF00B2ABB)`.
+const IID_IPLUGIN_FACTORY2: [u8; 16] = tuid(0x0007_B650, 0xF24B_4C0B, 0xA464_EDB9, 0xF00B_2ABB);
 
 /// `tresult` values (non-COM; only `kResultOk` means success).
 const K_RESULT_FALSE: i32 = 1;
@@ -87,6 +93,27 @@ struct PClassInfo {
     cardinality: i32,
     category: [c_char; 32],
     name: [c_char; 64],
+}
+
+/// **`PClassInfo2`** — klassinformation med version (VST3:s `IPluginFactory2`).
+///
+/// Längderna är de officiella (`PClassInfo::kCategorySize` = 32, `kNameSize` = 64,
+/// `kVendorSize` = `kVersionSize` = 64, `kSubCategoriesSize` = 128) och ordningen är headerns:
+/// `cid, cardinality, category, name, classFlags, subCategories, vendor, version, sdkVersion`.
+/// Fälten ligger i den ordningen för att `vendor`/`version` bara går att läsa rätt om varje
+/// föregående fält har sin riktiga storlek — samma familj av fel som kostade CLAP-värden tre
+/// kraschar 2026-09-15.
+#[repr(C)]
+struct PClassInfo2 {
+    cid: [u8; 16],
+    cardinality: i32,
+    category: [c_char; 32],
+    name: [c_char; 64],
+    class_flags: u32,
+    sub_categories: [c_char; 128],
+    vendor: [c_char; 64],
+    version: [c_char; 64],
+    sdk_version: [c_char; 64],
 }
 
 #[repr(C)]
@@ -133,6 +160,22 @@ struct FactoryVtbl {
     create_instance: Option<
         unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, *mut *mut c_void) -> i32,
     >,
+}
+
+/// `IPluginFactory2`: fabrikens fyra metoder, sedan `getClassInfo2`. Ordningen är headerns —
+/// att lägga fältet på fel plats är samma sorts fel som en felaktig structstorlek.
+#[repr(C)]
+struct Factory2Vtbl {
+    query_interface:
+        Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut *mut c_void) -> i32>,
+    add_ref: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    release: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    get_factory_info: Option<unsafe extern "C" fn(*mut c_void, *mut PFactoryInfo) -> i32>,
+    count_classes: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
+    get_class_info: Option<unsafe extern "C" fn(*mut c_void, i32, *mut PClassInfo) -> i32>,
+    create_instance:
+        Option<unsafe extern "C" fn(*mut c_void, *const c_char, *const c_char, *mut *mut c_void) -> i32>,
+    get_class_info2: Option<unsafe extern "C" fn(*mut c_void, i32, *mut PClassInfo2) -> i32>,
 }
 
 #[repr(C)]
@@ -585,6 +628,31 @@ unsafe fn terminate_plugin_base(obj: *mut c_void) {
     }
 }
 
+/// **Klassinformation version 2** (versionen), om pluginen har den.
+///
+/// Frågan ställs till fabriken via `queryInterface(IPluginFactory2)`, som VST3 föreskriver: en
+/// plugin som bara svarar på version 1 lämnar `None` och då är tom version **rätt svar** — inte
+/// ett fel. Läses **efter** `getClassInfo`, av samma skäl som den finns: namn, kategori och
+/// tillverkare kommer från version 1, medan `vendor`/`version` bara finns här.
+unsafe fn class_info2(factory: *mut c_void, index: i32) -> Option<PClassInfo2> {
+    let f = unsafe { vtable::<FactoryVtbl>(factory) };
+    let query = f.query_interface?;
+    let mut obj: *mut c_void = std::ptr::null_mut();
+    let iid = IID_IPLUGIN_FACTORY2.as_ptr() as *const c_char;
+    if unsafe { query(factory, iid, &mut obj) } != K_RESULT_OK || obj.is_null() {
+        return None;
+    }
+    let vt = unsafe { vtable::<Factory2Vtbl>(obj) };
+    let Some(get_info2) = vt.get_class_info2 else {
+        return None;
+    };
+    let mut info: PClassInfo2 = unsafe { std::mem::zeroed() };
+    if unsafe { get_info2(obj, index, &mut info) } != K_RESULT_OK {
+        return None;
+    }
+    Some(info)
+}
+
 unsafe fn factory_create(
     factory: *mut c_void,
     cid: &[u8; 16],
@@ -608,7 +676,10 @@ unsafe fn factory_create(
     }
 }
 
-unsafe fn pick_component_class(factory: *mut c_void) -> Option<PClassInfo> {
+/// **Klassen och dess index**, inte bara klassen: `IPluginFactory2::getClassInfo2` tar samma
+/// index som `getClassInfo`, och det är samma klass som ska beskrivas. Att leta upp indexet en
+/// gång till vore att leta i samma lista två gånger och kunna svara om olika klasser.
+unsafe fn pick_component_class(factory: *mut c_void) -> Option<(i32, PClassInfo)> {
     let f = unsafe { vtable::<FactoryVtbl>(factory) };
     let count = f.count_classes?;
     let get = f.get_class_info?;
@@ -618,7 +689,7 @@ unsafe fn pick_component_class(factory: *mut c_void) -> Option<PClassInfo> {
         if unsafe { get(factory, index, &mut info) } == K_RESULT_OK
             && fixed_cstr(&info.category) == VST3_AUDIO_MODULE_CLASS
         {
-            return Some(info);
+            return Some((index, info));
         }
     }
     None
@@ -876,7 +947,7 @@ fn open(path: &str) -> Result<VstInstance, String> {
         unsafe { get_info(factory, &mut factory_info) };
     }
 
-    let class_info = unsafe { pick_component_class(factory) }.ok_or_else(|| {
+    let (class_index, class_info) = unsafe { pick_component_class(factory) }.ok_or_else(|| {
         crate::tstatus!("'{}' exporterar ingen VST3-ljudklass", so.display())
     })?;
 
@@ -921,13 +992,65 @@ fn open(path: &str) -> Result<VstInstance, String> {
         }
     }
 
+    // **Komponentens tillstånd till kontrollern** (2026-09-15). VST3 delar på ansvaret:
+    // komponenten äger ljudtillståndet, kontrollern äger parameterlistan, och de kopplas ihop
+    // genom att komponentens state läses ut och skickas till kontrollern. Steget görs före
+    // `gather_parameters` och bara när komponenten faktiskt gav något: en tom ström är inte ett
+    // tillstånd, och att skicka den vore att säga "så här ser jag ut" om ingenting.
+    //
+    // **Mätt 2026-09-15: det här steget räckte INTE för Surge XT** — parametrarna är fortfarande
+    // 0 efteråt (775 i CLAP, 0 i VST3, samma plugin och samma instans). Steget står kvar för att
+    // det hör till protokollet och en annan plugin kan behöva det, men det är **inte** svaret på
+    // varför Surge XT tiger. Nästa spår är **host-kontexten**: båda `initialize`-anropen skickar
+    // `null`, och en kontroller som bygger sin parameterlista ur sin egen lagring (Surge XT:s
+    // `SurgeStorage`) kan behöva ett `IHostApplication` för att hitta sin data — den returnerar
+    // ändå "ok" och har då ingenting att räkna upp. Att gissa vidare utan att mäta vore fel;
+    // mätningen som ska göras är att ge `initialize` en riktig host-kontext och se om talet
+    // ändras.
+    unsafe {
+        let mut stream = StreamState {
+            vtbl: &STREAM_VTBL,
+            data: Vec::new(),
+            pos: 0,
+        };
+        let wrote = vtable::<ComponentVtbl>(component)
+            .get_state
+            .map(|get| {
+                get(
+                    component,
+                    &mut stream as *mut StreamState as *mut c_void,
+                ) == K_RESULT_OK
+            })
+            .unwrap_or(false);
+        if wrote && !stream.data.is_empty() {
+            // Läses från början: `getState` lämnar skrivhuvudet i slutet.
+            stream.pos = 0;
+            if let Some(set) = vtable::<ControllerVtbl>(controller).set_component_state {
+                set(controller, &mut stream as *mut StreamState as *mut c_void);
+            }
+        }
+    }
+
     let params = unsafe { gather_parameters(controller) };
 
+    // **Versionen finns bara i klassinfo version 2** (2026-09-15). Före den här raden stod
+    // `version: String::new()` hårdkodat, och `--inspect-plugin` på en riktig plugin svarade
+    // "Surge Synth Team v" — tomt efter v:et. Mätt mot `~/.vst3/Surge XT.vst3`.
+    let info2 = unsafe { class_info2(factory, class_index) };
+    let version = info2
+        .as_ref()
+        .map(|i| fixed_cstr(&i.version))
+        .unwrap_or_default();
+    let vendor = info2
+        .as_ref()
+        .map(|i| fixed_cstr(&i.vendor))
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| fixed_cstr(&factory_info.vendor));
     let info = PluginInfo {
         id: tuid_hex(&class_info.cid),
         name: fixed_cstr(&class_info.name),
-        vendor: fixed_cstr(&factory_info.vendor),
-        version: String::new(),
+        vendor,
+        version,
         description: fixed_cstr(&class_info.category),
         features: Vec::new(),
     };
