@@ -1270,6 +1270,37 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     saknas. Mätt mot den **riktiga** mock-pluginen via `dlopen`: mocken deklarerar nu fyra
     portar och leder sidokedjan rakt ut på sin egen utbuss, så ett prov bevisar båda trådarna
     på en gång — annars hade ett grönt prov inte sagt vilken av dem som var trasig.
+  - ✅ **Mätt mot en riktig plugin 2026-09-15 (Surge XT 1.3.4).** Surge XT är GPL-3,
+    nedladdningsbar utan konto och CLAP-gemenskapens referensplugin (samma projekt som driver
+    specen), och den finns som CLAP **och** VST3 **och** LV2 — alltså ett riktigt prov för oss.
+    Nedladdad till `~/.clap` och `~/.vst3` (md5 mot projektets egen `md5sum.txt`:
+    `0180f06e…702b`). `sonix --inspect-plugin <fil>` öppnar den huvudlöst och skriver ut
+    identitet, latens, portar och parametrar.
+    - **Tre ABI-fel i vår CLAP-värd, alla osynliga för mocken.** Mocken var grön i månader för
+      att den **speglade våra egna fel**: vår C-fixtur skrev samma struct som vår Rust-kod läste,
+      så båda kunde vara fel på exakt samma sätt. En fixtur som delar ens misstag är ingen
+      kontroll. Felen: (1) `clap_plugin_descriptor_t` har **tio** fält — `url`, `manual_url` och
+      `support_url` låg mellan `vendor` och `version`, och vi saknade dem, så `version` lästes ur
+      en URL och `features` ur `support_url` → `misaligned pointer dereference` och krasch på tre
+      sekunder. (2) `clap_param_info_t` saknade `cookie`, så varje läsning hamnade åtta byte fel:
+      parameternamnen var minnessträngar och id:na sjusiffriga skräptal. (3) `clap.latency`
+      lästes **före** `activate()`, och Surge XT sa ifrån på stdout med specens eget argument.
+      Alla tre rättade (`4b716eb`), och offseten är nu låsta på **båda** sidor: ett Rust-prov med
+      `offset_of!` och `_Static_assert` i C-fixturen.
+    - **Vad som mättes efter fixen:** Surge XT (CLAP) — 775 parametrar, **1 in + 3 ut**, alltså
+      två egna utbussar: precis multi-out-fallet som återstår. Surge XT Effects (CLAP) — 13
+      parametrar, **två ingångar som båda är typen `audio`, ingen sidokedja**. Det sista är det
+      **mätta** skälet att slå upp sidokedjan efter porttyp och inte efter index: med "index 1"
+      hade vi matat en nyckelsignal in i en vanlig ljudingång, tyst och fel.
+    - **Nya fynd, inte åtgärdade (egna pass):** (a) **VST3-vägen läser inga parametrar** — Surge
+      XT visar 775 i CLAP och **0** i VST3, och tillverkare/version kommer ut tomma ("Surge Synth
+      Team v"). (b) **LV2 finns inte som värd.** `.lv2` klassas, filtreras och skannas som ett
+      format i vyn (`/usr/lib/lv2`, "LV2 Linux"), men lasthanteraren skickar bunten till
+      CLAP-laddaren: `undefined symbol: clap_entry`. Vi lovar alltså i gränssnittet något koden
+      inte har — antingen byggs en LV2-värd eller så stryks löftet. (c) **Sidokedja in i en plugin
+      är fortfarande bara mock-verifierad**: ingen riktig CLAP-plugin med en
+      `"sidechain"`-port har testats, för Surge XT Effects har ingen. (d) CI:s
+      "noll varningar"-grind var **blind** (`87b8306`) och är rättad.
   - ⏳ **Egna utgångar: halva vägen klar 2026-09-15.** Värden **läser** pluginens egna utbussar
     per port efter varje block (samma takt som ljudet, och nollor när pluginen vilar) — den
     halvan är mätt mot mocken. **Kvar:** routningen till egna spår. Den ska gå samma väg som
