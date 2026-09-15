@@ -215,6 +215,17 @@ pub enum AudioCommand {
         track_index: usize,
         sends: Vec<StemSend>,
     },
+    /// **Kopplar pluginens egna utbussar till spår** (Fas 8.6). `targets[port]` är målet för
+    /// pluginens utbuss `port` — den första *egna* bussen (CLAP-port 1); port 0 är
+    /// huvudutgången och går alltid till spårets egen kedja.
+    ///
+    /// Ett mål som pekar på spåret självt eller utanför spårlistan **släpps med en rad i
+    /// loggen**. Motorn kan låta bli att läsa en buss, men den gissar aldrig på vart den ska:
+    /// en tyst omdirigering till spår 0 vore en gissning som låter.
+    SetPluginExtraOutputs {
+        track_index: usize,
+        targets: Vec<Option<usize>>,
+    },
     /// Sets a sub-mix bus's group gain, mute and solo (Fas 5.2). The bus is
     /// clamped to `0..NUM_BUSES`.
     SetBusState {

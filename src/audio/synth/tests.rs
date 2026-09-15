@@ -453,6 +453,153 @@ impl PluginProcessor for SilentLatencyProcessor {
     fn reset(&mut self) {}
 }
 
+/// **En plugin med en egen utbuss** (Fas 8.6), för att kunna mäta routningen utan en riktig
+/// plugin. Huvudutgången är **tyst**: allt provet kan höra kommer från utbussen, så en buss som
+/// läcker in i fel spår syns direkt. Bussens värde är en **räknare** — sample `n` bär talet `n` —
+/// och det är den som gör en förskjutning mätbar: en kö som sackar efter en sample syns på
+/// värdet, medan en konstant markör hade sett likadan ut hur fel den än var.
+struct BusRampProcessor {
+    info: PluginInfo,
+    /// Nästa sampels värde. Både huvudutgången och bussen bär samma serie, så provet kan
+    /// jämföra dem **mot varandra** — en kontroll på samma nivå — i stället för mot ett tal
+    /// som bara stämmer om allt annat i kedjan är exakt 1,0.
+    next: f32,
+    /// Seriens första värde i det **pågående** blocket. `process_stereo` och
+    /// `take_extra_output` får samma block, och ska därför bära samma tal.
+    block_start: f32,
+}
+
+impl PluginProcessor for BusRampProcessor {
+    fn backend(&self) -> &'static str {
+        "Fake"
+    }
+    fn info(&self) -> &PluginInfo {
+        &self.info
+    }
+    fn parameters(&self) -> &[PluginParameter] {
+        &[]
+    }
+    fn latency_frames(&self) -> u32 {
+        0
+    }
+    fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.block_start = self.next;
+        for (i, slot) in left.iter_mut().enumerate() {
+            *slot = self.block_start + i as f32;
+        }
+        for (i, slot) in right.iter_mut().enumerate() {
+            *slot = self.block_start + i as f32;
+        }
+        self.next += left.len() as f32;
+    }
+    fn set_parameter(&mut self, _id: u32, _value: f64) -> bool {
+        false
+    }
+    fn reset(&mut self) {}
+    fn extra_outputs(&self) -> usize {
+        1
+    }
+    fn take_extra_output(&mut self, index: usize, left: &mut [f32], right: &mut [f32]) -> bool {
+        if index != 0 {
+            return false;
+        }
+        for (i, slot) in left.iter_mut().enumerate() {
+            *slot = self.block_start + i as f32;
+        }
+        for (i, slot) in right.iter_mut().enumerate() {
+            *slot = self.block_start + i as f32;
+        }
+        true
+    }
+}
+
+/// Kör `samples` bildrutor med bussfixturen på spår 0 och returnerar
+/// `(målspårets utgång, källspårets utgång)`. Med `routed = false` är kopplingen borta — samma
+/// projekt i övrigt, alltså är skillnaden kopplingens och ingenting annats.
+fn run_bus_route(samples: usize, routed: bool) -> (f32, Vec<f32>, usize) {
+    let mut synth = SynthEngine::new(48_000.0);
+    load_impulse_tracks(&mut synth);
+    let insert = PluginInsert::new(
+        Box::new(BusRampProcessor {
+            info: PluginInfo::default(),
+            next: 0.0,
+            block_start: 0.0,
+        }),
+        DEFAULT_BLOCK_FRAMES,
+    );
+    synth.handle_command(AudioCommand::SetTrackPlugin {
+        track_index: 0,
+        insert: Some(insert),
+    });
+    if routed {
+        synth.handle_command(AudioCommand::SetPluginExtraOutputs {
+            track_index: 0,
+            targets: vec![Some(1)],
+        });
+    }
+    let mut source_hist = Vec::with_capacity(samples);
+    for _ in 0..samples {
+        synth.process_stereo();
+        source_hist.push(synth.stem_tracks[0].last_out_l);
+    }
+    (
+        synth.stem_tracks[1].last_out_l,
+        source_hist,
+        synth.stem_tracks[1].pdc.delay(),
+    )
+}
+
+/// **En pluginbuss når sitt eget spår — och bara dit** (Fas 8.6).
+///
+/// Målspåret är tyst i sig självt, så allt som hörs därifrån är bussen. Provet kör samma
+/// projekt två gånger, med och utan kopplingen: utan den ska målspåret vara **tyst**, med den
+/// ska det bära bussens värde. Att bara pröva att den kom fram vore halva provet — en buss som
+/// läcker in i källspåret låter också.
+#[test]
+fn a_plugin_extra_bus_reaches_its_own_track() {
+    // Längre än målspårets PDC-fördröjning (en blocklängd) **och** förbi insättningens egen
+    // blockfördröjning: källans ljud börjar vid bildruta 128, så jämförelsen måste ligga efter
+    // det — annars jämför provet mot tystnaden före musiken.
+    let samples = 600;
+    let (off_target, off_hist, _d) = run_bus_route(samples, false);
+    let (on_target, on_hist, target_delay) = run_bus_route(samples, true);
+
+    assert!(
+        off_target.abs() < 1e-6,
+        "utan koppling ska målspåret vara tyst, inte {off_target}"
+    );
+    // Målspåret kompenseras som alla andra spår: dess egen PDC-fördröjning ligger på allt som
+    // går genom kedjan, också bussen. Alltså är rätt jämförelse bussens sample mot källans
+    // ljud **så många bildrutor tidigare** — inte mot källans samtidiga värde.
+    let expected = on_hist[samples - 1 - target_delay];
+    assert!(expected.abs() > 1.0, "kontrollen måste bära musik: {expected}");
+    assert!(
+        (on_target - expected).abs() < 1e-3,
+        "bussen ska nå målspåret i fas: {on_target} mot källans {expected} \
+         ({target_delay} bildrutor tidigare)"
+    );
+    // Källspåret självt får inte påverkas av att bussen kopplas in: bussen får inte vända
+    // tillbaka in i sitt eget spår.
+    assert_eq!(
+        on_hist, off_hist,
+        "källspårets ljud ändrades av kopplingen"
+    );
+}
+
+/// **Bussen sackar inte efter** (Fas 8.6). Köer läses en sample i taget; missas en läsning
+/// hamnar bussen en sample fel och felet **växer**. Provet kör länge och jämför värdet mot
+/// bildrutenumret, så en förskjutning i blockstorlek syns som hundratals sample.
+#[test]
+fn a_plugin_extra_bus_does_not_drift() {
+    let samples = 3_000;
+    let (target, hist, target_delay) = run_bus_route(samples, true);
+    let expected = hist[samples - 1 - target_delay];
+    assert!(expected.abs() > 2_000.0, "kontrollen måste bära musik: {expected}");
+    assert!(
+        (target - expected).abs() < 1e-3,
+        "bussen har glidit ifrån källans ljud efter {samples} bildrutor: {target} mot {expected}"
+    );
+}
 fn load_impulse_tracks(synth: &mut SynthEngine) {
     let impulse = Arc::new(vec![1.0_f32; 8]);
     let silent = Arc::new(vec![0.0_f32; 8]);

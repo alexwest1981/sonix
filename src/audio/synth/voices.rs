@@ -115,6 +115,11 @@ pub struct StemVoiceTrack {
     pub vca: Option<usize>,
     /// Sends (Fas 8.13): parallella vägar till andra bussar.
     pub sends: Vec<StemSend>,
+    /// **Pluginens egna utbussar till egna spår** (Fas 8.6): `extra_out_targets[port]` är
+    /// spåret som pluginens utbuss `port` matar — den *första egna* bussen, alltså CLAP-port
+    /// 1; port 0 är pluginens huvudutgång och går alltid till spårets egen kedja. `None` =
+    /// bussen läses inte alls, precis som före den här punkten.
+    pub extra_out_targets: Vec<Option<usize>>,
     /// Sidokedja (Fas 8.3): spåret duckas av det här spårets ljud.
     pub sidechain_from: Option<usize>,
     /// Hur mycket spåret sänks när key-signalen är över tröskeln.
@@ -366,6 +371,7 @@ impl StemVoiceTrack {
         let pan_l = ((1.0 - p) * 0.5).sqrt();
         let pan_r = ((1.0 + p) * 0.5).sqrt();
         Self {
+            extra_out_targets: Vec::new(),
             left,
             right,
             sample_rate,

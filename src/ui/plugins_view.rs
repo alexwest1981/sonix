@@ -27,6 +27,9 @@ pub struct PluginViewActions {
     /// `ms_to_frames`, samma regel som motorn använder, så det inte blir två omräkningar som
     /// kan glida isär.
     pub set_latency_offset: Option<(usize, i32)>,
+    /// **`(stämspår, buss, mål)`** — användaren har kopplat en av pluginens egna utbussar till
+    /// ett spår (Fas 8.6). `None` som mål = kopplingen borttagen.
+    pub set_extra_out_target: Option<(usize, usize, Option<usize>)>,
 }
 
 pub fn render_plugins_view(
@@ -40,6 +43,11 @@ pub fn render_plugins_view(
     sandbox_status: Option<&str>,
     latency_offsets_frames: &[i32],
     smart_disable_flags: &[bool],
+    // **Antal egna utbussar per spår** (Fas 8.6) — pluginens eget tal, frågat i app-tråden.
+    // Noll för ett spår utan plugin, eller för en backend som inte kan svara.
+    extra_out_counts: &[usize],
+    // **Kopplade utbussar per spår** (Fas 8.6): `[spår][buss]` = målspår, eller `None`.
+    extra_out_targets: &[Vec<Option<usize>>],
     sample_rate: f32,
 ) -> PluginViewActions {
     ui.group(|ui| {
@@ -121,6 +129,9 @@ pub fn render_plugins_view(
             gui_open,
             latency_offsets_frames,
             smart_disable_flags,
+            extra_out_counts,
+            extra_out_targets,
+            stem_track_count,
             sample_rate,
             &mut actions,
         );
@@ -181,6 +192,9 @@ fn render_active_inserts(
     gui_open: &[bool],
     latency_offsets_frames: &[i32],
     smart_disable_flags: &[bool],
+    extra_out_counts: &[usize],
+    extra_out_targets: &[Vec<Option<usize>>],
+    stem_track_count: usize,
     sample_rate: f32,
     actions: &mut PluginViewActions,
 ) {
@@ -260,6 +274,52 @@ fn render_active_inserts(
                     .changed()
                 {
                     actions.set_smart_disable = Some((idx, smart));
+                }
+                // **Pluginens egna utbussar → spår** (Fas 8.6). En rad per egen buss, och bara
+                // när pluginen har någon: en plugin utan egna utgångar ska inte få ett reglage
+                // som inte kan göra något. Målet är ett **spår**, inte en buss — bussen är
+                // pluginens egen utgång och går in i mottagarens kedja som en spår-send.
+                let bus_count = extra_out_counts.get(idx).copied().unwrap_or(0);
+                for port in 0..bus_count {
+                    let current = extra_out_targets
+                        .get(idx)
+                        .and_then(|v| v.get(port))
+                        .copied()
+                        .flatten();
+                    let none_text = crate::i18n::t("(ingen)").to_string();
+                    ui.label(format!("{} {}", crate::i18n::t("↪ Egen buss"), port + 1))
+                        .on_hover_text(crate::i18n::t(
+                            "Pluginens egen utbuss till ett eget spår (Fas 8.6).\n\
+                             Bussen är pluginens egen utgång och går in i målspårets kedja —\n\
+                             den passerar alltså målspårets effekter, men inte källspårets.",
+                        ));
+                    let mut chosen = current.unwrap_or(usize::MAX);
+                    egui::ComboBox::from_id_salt(("plugin_extra_bus", idx, port))
+                        .selected_text(match current {
+                            Some(to) => format!("{} {}", crate::i18n::t("Spår"), to + 1),
+                            None => none_text.clone(),
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(&mut chosen, usize::MAX, none_text.clone());
+                            for other in 0..stem_track_count {
+                                // Ett spår kan inte mata sig självt: det vore en slinga.
+                                if other == idx {
+                                    continue;
+                                }
+                                ui.selectable_value(
+                                    &mut chosen,
+                                    other,
+                                    format!("{} {}", crate::i18n::t("Spår"), other + 1),
+                                );
+                            }
+                        });
+                    if chosen != current.unwrap_or(usize::MAX) {
+                        actions.set_extra_out_target = Some((
+                            idx,
+                            port,
+                            if chosen == usize::MAX { None } else { Some(chosen) },
+                        ));
+                    }
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(crate::i18n::t("🗑 Ta bort")).clicked() {

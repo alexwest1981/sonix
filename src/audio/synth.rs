@@ -157,6 +157,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetPluginParameter { .. } => "SetPluginParameter",
         AudioCommand::SetPluginLatencyOffset { .. } => "SetPluginLatencyOffset",
         AudioCommand::SetPluginSmartDisable { .. } => "SetPluginSmartDisable",
+        AudioCommand::SetPluginExtraOutputs { .. } => "SetPluginExtraOutputs",
     }
 }
 
@@ -235,6 +236,11 @@ pub struct SynthEngine {
     /// så att ordningen och vägarna inte kan driva isär. Sends ändras bara via
     /// `SetStemTrackSends`, som räknar om båda.
     pub stem_incoming: Vec<Vec<(usize, f32)>>,
+    /// **Pluginens egna utbussar in i sina målspår** (Fas 8.6): för varje spår summan som
+    /// källspårens pluginbussar lagt dit **för det här samplet**. Nollas i början av varje
+    /// sample, så att en buss vars mål är tystat inte blir stående och läcker in i nästa.
+    /// Bufferten återanvänds — ingen allokering per sample.
+    pub plugin_bus_in: Vec<[f32; 2]>,
     // Debug heartbeat counters (only used when SONIX_AUDIO_DEBUG is set)
     pub dbg_frames: u64,
 }
@@ -287,6 +293,7 @@ impl SynthEngine {
             track_out_l: Vec::new(),
             track_out_r: Vec::new(),
             stem_incoming: Vec::new(),
+            plugin_bus_in: Vec::new(),
             dbg_frames: 0,
         }
     }

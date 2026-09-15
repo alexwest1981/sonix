@@ -323,6 +323,11 @@ pub trait PluginCore: Send + Sync {
     /// mål behöver den för att veta varje parameters `min_value`/`max_value` — en CLAP-
     /// parameter mäter inte i 0..1, och en kurva ritad i fel skala styr fel.
     fn parameters(&self) -> &[PluginParameter];
+    /// **Antal egna utbussar** (Fas 8.6), för gränssnittet. Standard 0: en backend som inte
+    /// kan svara (eller inte har några) svarar rätt utan att veta om frågan.
+    fn extra_output_ports(&self) -> usize {
+        0
+    }
     fn latency_frames(&self) -> u32;
     fn save_state(&self) -> Vec<u8>;
     fn load_state(&self, data: &[u8]) -> bool;
@@ -362,6 +367,10 @@ impl PluginHandle {
     }
     pub fn latency_frames(&self) -> u32 {
         self.0.latency_frames()
+    }
+    /// Antal egna utbussar hos instansen (Fas 8.6) — det tal vyn ritar en koppling per.
+    pub fn extra_output_ports(&self) -> usize {
+        self.0.extra_output_ports()
     }
     pub fn save_state(&self) -> Vec<u8> {
         self.0.save_state()
@@ -2156,6 +2165,30 @@ mod imp {
         /// automationens område är samma tal som pluginen rapporterade.
         fn parameters(&self) -> &[PluginParameter] {
             &self.instance.params
+        }
+        /// **Antal egna utbussar** (Fas 8.6): pluginens ljudutgångar minus huvudutgången,
+        /// läst ur `clap.audio-ports`. Frågan ställs till **pluginen** och inte till en kopia
+        /// hos oss — samma källa som ljudvägen läser, så vyn och motorn inte kan visa olika
+        /// tal. `count` är en metadatastorhet, inte en processfråga.
+        fn extra_output_ports(&self) -> usize {
+            let plugin = self.instance.plugin;
+            if plugin.is_null() {
+                return 0;
+            }
+            unsafe {
+                let Some(get_extension) = (*plugin).get_extension else {
+                    return 0;
+                };
+                let ext = get_extension(plugin, CLAP_EXT_AUDIO_PORTS.as_ptr());
+                if ext.is_null() {
+                    return 0;
+                }
+                let ports = &*(ext as *const ClapPluginAudioPorts);
+                let Some(count) = ports.count else {
+                    return 0;
+                };
+                count(plugin, false).saturating_sub(1) as usize
+            }
         }
         fn latency_frames(&self) -> u32 {
             self.latency_frames

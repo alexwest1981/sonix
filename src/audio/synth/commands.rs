@@ -346,6 +346,42 @@ impl SynthEngine {
                     track.vca = vca.filter(|&v| v < NUM_VCAS);
                 }
             }
+            AudioCommand::SetPluginExtraOutputs { track_index, targets } => {
+                let n = self.stem_tracks.len();
+                let mut dropped: Vec<String> = Vec::new();
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    track.extra_out_targets = targets
+                        .into_iter()
+                        .map(|t| match t {
+                            // Ett mål som pekar på spåret självt vore en slinga, och ett mål
+                            // utanför listan finns inte. Båda **släpps**, och sägs högt: en
+                            // koppling som inte gick att göra ska inte se ut som en gjord.
+                            Some(to) if to == track_index => {
+                                dropped.push(format!(
+                                    "spår {}: utbuss till spåret självt — släppt",
+                                    to + 1
+                                ));
+                                None
+                            }
+                            Some(to) if to >= n => {
+                                dropped.push(format!(
+                                    "spår {}: utbuss till spår {} som inte finns — släppt",
+                                    track_index + 1,
+                                    to + 1
+                                ));
+                                None
+                            }
+                            other => other,
+                        })
+                        .collect();
+                }
+                for line in dropped {
+                    dbg_log("plugin", &line);
+                }
+                // Ordningen och ingångskanterna byggs i samma pass, som för sends: en buss
+                // som kommer en sample sent är samma fel som en send som kommer sent.
+                self.recompute_stem_order();
+            }
             AudioCommand::SetStemTrackSends { track_index, sends } => {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
                     // Kläms här, en gång: målet till en buss som finns, nivån till
@@ -579,7 +615,14 @@ impl SynthEngine {
         let graph: Vec<Vec<usize>> = self
             .stem_tracks
             .iter()
-            .map(|t| t.sends.iter().filter_map(|s| s.target.as_track()).collect())
+            .map(|t| {
+                // Spår-sends (8.3) och pluginens egna utbussar (8.6) är samma sorts kant:
+                // mottagaren måste räknas **efter** källan, annars kommer ljudet en sample
+                // sent. En graf, ett ställe — då kan de inte driva isär.
+                let mut edges: Vec<usize> = t.sends.iter().filter_map(|s| s.target.as_track()).collect();
+                edges.extend(t.extra_out_targets.iter().flatten().copied());
+                edges
+            })
             .collect();
         match crate::audio::command::plan_track_order(n, &graph) {
             Ok(order) => self.stem_order = order,
@@ -616,6 +659,7 @@ impl SynthEngine {
         self.stem_incoming = incoming;
         self.track_out_l.resize(n, 0.0);
         self.track_out_r.resize(n, 0.0);
+        self.plugin_bus_in.resize(n, [0.0; 2]);
     }
     }
 

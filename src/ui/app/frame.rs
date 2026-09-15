@@ -1081,6 +1081,22 @@ impl SonixApp {
                                 .iter()
                                 .map(|s| s.as_ref().map(|p| p.smart_disable).unwrap_or(false))
                                 .collect();
+                            // **Antalet egna utbussar frågas hos pluginen** (Fas 8.6), inte hos
+                            // en kopia: vyn ska rita en koppling per buss som faktiskt finns.
+                            let extra_out_counts: Vec<usize> = self
+                                .plugin_handles
+                                .iter()
+                                .map(|h| h.as_ref().map(|h| h.extra_output_ports()).unwrap_or(0))
+                                .collect();
+                            let extra_out_targets: Vec<Vec<Option<usize>>> = self
+                                .plugin_slots
+                                .iter()
+                                .map(|s| {
+                                    s.as_ref()
+                                        .map(|p| p.extra_out_targets.clone())
+                                        .unwrap_or_default()
+                                })
+                                .collect();
                             let actions = render_plugins_view(
                                 ui,
                                 &mut self.plugin_manager,
@@ -1092,6 +1108,8 @@ impl SonixApp {
                                 sandbox_status.as_deref(),
                                 &latency_offsets,
                                 &smart_flags,
+                                &extra_out_counts,
+                                &extra_out_targets,
                                 self.engine.sample_rate as f32,
                             );
                             if let Some((path, track)) = actions.load_into_track {
@@ -1111,6 +1129,9 @@ impl SonixApp {
                             }
                             if let Some((track, on)) = actions.set_smart_disable {
                                 self.set_plugin_smart_disable(track, on);
+                            }
+                            if let Some((track, port, target)) = actions.set_extra_out_target {
+                                self.set_plugin_extra_out_routing(track, port, target);
                             }
                             if let Some(track) = actions.remove_track {
                                 self.remove_plugin_from_track(track);

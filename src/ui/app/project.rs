@@ -444,6 +444,13 @@ pub struct SavedPluginData {
     /// **av** — och av är exakt det beteende filen spelades in med.
     #[serde(default)]
     pub smart_disable: bool,
+    /// **Pluginens egna utbussar → spår** (Fas 8.6): `extra_out_targets[port]` är målet för
+    /// pluginens utbuss `port` — den första *egna* bussen; port 0 är huvudutgången och går
+    /// alltid till spårets egen kedja. `#[serde(default)]`: en fil från före den här punkten
+    /// läses med **inga kopplingar**, alltså exakt det beteende den spelades in med (bussarna
+    /// lästes inte alls).
+    #[serde(default)]
+    pub extra_out_targets: Vec<Option<usize>>,
 }
 
 /// In-memory mirror of [`SavedPluginData`] kept on [`SonixApp`].
@@ -457,6 +464,8 @@ pub struct PluginSlot {
     pub latency_offset_frames: i32,
     /// Smart disable (Fas 8.6): låt pluginen vila när den varken får eller ger ljud.
     pub smart_disable: bool,
+    /// Pluginens egna utbussar → spår (Fas 8.6). Tom = inga kopplingar.
+    pub extra_out_targets: Vec<Option<usize>>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -1267,6 +1276,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
                     sandboxed: s.sandboxed,
                     latency_offset_frames: s.latency_offset_frames,
                     smart_disable: s.smart_disable,
+                    extra_out_targets: s.extra_out_targets.clone(),
                 })
             })
             .collect(),
@@ -1825,6 +1835,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
                 sandboxed: s.sandboxed,
                 latency_offset_frames: s.latency_offset_frames,
                 smart_disable: s.smart_disable,
+                extra_out_targets: s.extra_out_targets.clone(),
             })
         })
         .collect();
@@ -1851,6 +1862,17 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         let _ = self
             .engine
             .send_command(AudioCommand::SetPluginSmartDisable { track_index, enabled });
+        // **Utbussarna till motorn** (Fas 8.6), av exakt samma skäl som offsetet ovan: en
+        // koppling som bara bor i sloten syns i gränssnittet och i filen medan motorn inte
+        // routar något. Tom lista för spår utan plugin, så en borttagen plugin inte lämnar
+        // kvar en koppling i motorn — samma regel som offsetet fick.
+        let targets = slot
+            .as_ref()
+            .map(|s| s.extra_out_targets.clone())
+            .unwrap_or_default();
+        let _ = self
+            .engine
+            .send_command(AudioCommand::SetPluginExtraOutputs { track_index, targets });
     }
 
     self.loop_end_bar = self.get_max_project_bars().max(32);

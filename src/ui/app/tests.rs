@@ -1338,6 +1338,10 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                     sandboxed: false,
                     latency_offset_frames: -37,
                     smart_disable: true,
+                    // **Utbussarna med i filen** (Fas 8.6): buss 2 → spår 3. Två bussar,
+                    // och den första okopplad, för att formen `Option` per buss ska prövas
+                    // och inte bara en lista av tal.
+                    extra_out_targets: vec![None, Some(2)],
                 }),
             ],
             bus_volume: default_bus_volume(),
@@ -1364,6 +1368,12 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         // **Offsetet är med i rundturen, och det negativa tecknet överlever** (Fas 8.6).
         assert_eq!(slot.latency_offset_frames, -37);
         assert!(slot.smart_disable, "kryssrutan ska också med i filen");
+        assert_eq!(
+            slot.extra_out_targets,
+            vec![None, Some(2)],
+            "utbussarnas mål ska med i filen — och `None` ska förbli `None`, \
+             inte bli spår 0"
+        );
     }
 
     /// **En projektfil från före 8.6 läses som noll offset** — alltså exakt den
@@ -1389,6 +1399,11 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(slot.name, "Gain");
         assert_eq!(slot.latency_offset_frames, 0, "en gammal fil har inget offset");
         assert!(!slot.smart_disable, "och smart disable var inte på då heller");
+        assert!(
+            slot.extra_out_targets.is_empty(),
+            "och inga utbussar var kopplade då: bussarna lästes inte alls, alltså låter \
+             filen exakt som den gjorde"
+        );
     }
 
     /// Beviset för att hålet i 6.3 är stängt: en låt på fyra takter skrivs ut,

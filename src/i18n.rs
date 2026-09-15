@@ -1824,6 +1824,11 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Trummor" => "Drums",
         // Manuellt latens-offset och smart disable per plugin (Fas 8.6). Nycklarna listas i
         // `plugin_86_keys()` och provas där — samma spärr som makro- och 8.5-familjerna.
+        "↪ Egen buss" => "↪ Own bus",
+        "(ingen)" => "(none)",
+        "Pluginens egen utbuss till ett eget spår (Fas 8.6).\nBussen är pluginens egen utgång och går in i målspårets kedja —\nden passerar alltså målspårets effekter, men inte källspårets." => "The plugin's own output bus to a track of its own (phase 8.6).\nThe bus is the plugin's own output and enters the target track's chain —\nso it passes the target's effects, but not the source's.",
+        "↪ Buss {} → spår {}" => "↪ Bus {} → track {}",
+        "↪ Buss {} frånkopplad" => "↪ Bus {} disconnected",
         "😴 Smart disable" => "😴 Smart disable",
         "Manuellt latens-offset för det här spåret (Fas 8.6).\nPositivt skjuter upp spåret, negativt drar fram det — de andra spåren\nkompenseras i stället. Används när en plugin rapporterar fel latens\n(rapporterar 0 men fördröjer ändå): bara en människa kan se det." => "Manual latency offset for this track (phase 8.6).\nPositive pushes the track later, negative pulls it earlier — the other tracks\nare compensated instead. Used when a plugin reports the wrong latency\n(reports 0 but still delays): only a human can see that.",
         "🎯 Latens-offset på stämspår {}: {} ms ({} ramar)" => "🎯 Latency offset on stem track {}: {} ms ({} frames)",
@@ -2570,12 +2575,13 @@ mod tests {
 
     const LATENCY_HOVER_SV: &str = "Manuellt latens-offset för det här spåret (Fas 8.6).\nPositivt skjuter upp spåret, negativt drar fram det — de andra spåren\nkompenseras i stället. Används när en plugin rapporterar fel latens\n(rapporterar 0 men fördröjer ändå): bara en människa kan se det.";
     const SMART_DISABLE_HOVER_SV: &str = "Låter pluginen vila när den varken får eller ger ljud (Fas 8.6).\nEn svans håller den vaken — den vilar bara när utgången också är tyst.\nSlå inte på det för en plugin som skapar ljud ur tystnad (en intern\nsekvenserare eller oscillator utan ingång): den ser tyst ut och skulle\nsomna för gott.";
+const EXTRA_BUS_HOVER_SV: &str = "Pluginens egen utbuss till ett eget spår (Fas 8.6).\nBussen är pluginens egen utgång och går in i målspårets kedja —\nden passerar alltså målspårets effekter, men inte källspårets.";
 
     /// Nycklarna för fas 8.6:s två plugin-reglage: latens-offsetet och smart disable. Alla sex
     /// år användarvända — de två förklaringarna vid reglagen och kvittenserna i statusraden —
     /// och utan engelskan står de på svenska i sex gränssnitt, samma krav som för 8.5 och 8.9.
     /// De två långa förklaringarna ligger som konstanter: de skrivs en gång, inte två.
-    fn plugin_86_keys() -> [&'static str; 6] {
+    fn plugin_86_keys() -> [&'static str; 11] {
         [
             LATENCY_HOVER_SV,
             "🎯 Latens-offset på stämspår {}: {} ms ({} ramar)",
@@ -2583,6 +2589,11 @@ mod tests {
             SMART_DISABLE_HOVER_SV,
             "😴 Smart disable på för stämspår {}",
             "⚡ Smart disable av för stämspår {}",
+            "↪ Egen buss",
+            EXTRA_BUS_HOVER_SV,
+            "(ingen)",
+            "↪ Buss {} → spår {}",
+            "↪ Buss {} frånkopplad",
         ]
     }
 

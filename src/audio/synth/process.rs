@@ -258,6 +258,13 @@ impl SynthEngine {
             let mut out_l = std::mem::take(&mut self.track_out_l);
             let mut out_r = std::mem::take(&mut self.track_out_r);
             let incoming = std::mem::take(&mut self.stem_incoming);
+            // Pluginens egna utbussar (Fas 8.6) samlas per spår för **det här** samplet.
+            // Nollningen sker här, en gång per sample: en buss vars mål är tystat läses
+            // aldrig, och utan nollningen hade den blivit stående och läckt in senare.
+            let mut plugin_bus_in = std::mem::take(&mut self.plugin_bus_in);
+            for slot in plugin_bus_in.iter_mut() {
+                *slot = [0.0, 0.0];
+            }
             for (i, last) in self.stem_tracks.iter().enumerate() {
                 if i < out_l.len() {
                     out_l[i] = last.last_out_l;
@@ -314,6 +321,15 @@ impl SynthEngine {
                         track_l += out_l[sender] * level;
                         track_r += out_r[sender] * level;
                     }
+                }
+                // **Pluginens egna utbussar in i kedjan** (Fas 8.6): samma plats och samma
+                // regel som spår-senden ovan — mottagarens pitch, EQ och kompressor
+                // bearbetar bussen precis som sitt eget ljud. Källspåret är alltid räknat
+                // först (`stem_order` får sin kant ur `extra_out_targets`), alltså är
+                // bussen i fas och inte en sample sen.
+                if let Some(bus) = plugin_bus_in.get(track_idx) {
+                    track_l += bus[0];
+                    track_r += bus[1];
                 }
 
                 if !track.regions.is_empty() {
@@ -486,6 +502,35 @@ impl SynthEngine {
                 track.pdc.set_delay(max_plugin_latency.saturating_sub(track_latency));
                 let (mut tl, mut tr) = track.pdc.process(tl, tr);
 
+                // **Pluginens egna utbussar ut ur kedjan** (Fas 8.6): en buss går *förbi*
+                // spårets egen kedja — den är pluginens egen utgång — och läggs i målspårets
+                // ingång. Läsningen sker **efter** PDC-steget ovan och det är inte en detalj:
+                // bussen är samma plugins utgång som huvudutgången, så den ska bära samma
+                // kompensation. Låg den före PDC kom bussen fram *tidigare* än pluginens eget
+                // ljud — mätt 2026-09-15, och det var provet som sa det.
+                //
+                // Före spårets **duckare** (som ligger nedanför): den är världens effekt på
+                // spårets egen mix, medan bussen är pluginens utgång — den ska till ett annat
+                // spår, inte duckas av källspårets sidokedja.
+                //
+                // Varje kopplad port läses **varje** sample, också när målet är tystat: kön
+                // ligger i samma takt som ljudet, så en utebliven läsning vore att bussen
+                // sackade efter en sample för varje gång den inte behövdes.
+                if !track.extra_out_targets.is_empty() {
+                    if let Some(plugin) = &mut track.plugin {
+                        for (port, &target) in track.extra_out_targets.iter().enumerate() {
+                            let (bl, br) = plugin.extra_output_sample(port);
+                            if let Some(to) = target {
+                                if let Some(slot) = plugin_bus_in.get_mut(to) {
+                                    slot[0] += bl;
+                                    slot[1] += br;
+                                }
+                            }
+                        }
+                    }
+                }
+
+
                 // Sidokedjan duckar spårets **eget** ljud, efter dess kedja: det är
                 // där en kompressor med extern nyckel hade suttit, och det är det
                 // som hörs. Nyckeln är key-spårets senaste utgång (se `Ducker` för
@@ -552,6 +597,7 @@ impl SynthEngine {
             self.track_out_l = out_l;
             self.track_out_r = out_r;
             self.stem_incoming = incoming;
+            self.plugin_bus_in = plugin_bus_in;
         }
 
         // Ljudklockan går så länge transporten rullar (Fas 8.13b) — också i ett projekt

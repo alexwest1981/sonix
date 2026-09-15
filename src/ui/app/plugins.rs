@@ -33,6 +33,7 @@ pub fn load_plugin_into_track(&mut self, path: &str, track_index: usize) {
                     sandboxed: false,
                     latency_offset_frames: 0,
                     smart_disable: false,
+                    extra_out_targets: Vec::new(),
                 },
             );
             self.ensure_plugin_vecs(track_index);
@@ -84,6 +85,7 @@ pub fn load_plugin_preset_into_track(&mut self, path: &str, track_index: usize, 
                     sandboxed: false,
                     latency_offset_frames: 0,
                     smart_disable: false,
+                    extra_out_targets: Vec::new(),
                 },
             );
             self.ensure_plugin_vecs(track_index);
@@ -216,6 +218,7 @@ pub fn load_plugin_into_sandbox_track(&mut self, path: &str, track_index: usize)
                     sandboxed: true,
                     latency_offset_frames: 0,
                     smart_disable: false,
+                    extra_out_targets: Vec::new(),
                 },
             );
             self.ensure_plugin_sandboxes(track_index);
@@ -609,6 +612,36 @@ pub fn set_plugin_smart_disable(&mut self, track_index: usize, enabled: bool) {
         crate::tstatus!("😴 Smart disable på för stämspår {}", track_index + 1)
     } else {
         crate::tstatus!("⚡ Smart disable av för stämspår {}", track_index + 1)
+    };
+}
+}
+
+impl SonixApp {
+/// **Kopplar en av pluginens egna utbussar till ett spår** (Fas 8.6).
+///
+/// Båda mottagarna skrivs, som för offsetet och vilan: sloten (som sparas med projektet) och
+/// **motorn** (som routar). Skrev man bara sloten såg projektfilen riktig ut medan motorn inte
+/// routade något — samma fälla som de två andra 8.6-reglagen, och den står i `ROADMAP.md`.
+pub fn set_plugin_extra_out_routing(
+    &mut self,
+    track_index: usize,
+    port: usize,
+    target: Option<usize>,
+) {
+    let Some(slot) = self.plugin_slots.get_mut(track_index).and_then(|s| s.as_mut()) else {
+        return;
+    };
+    if slot.extra_out_targets.len() <= port {
+        slot.extra_out_targets.resize(port + 1, None);
+    }
+    slot.extra_out_targets[port] = target;
+    let targets = slot.extra_out_targets.clone();
+    let _ = self
+        .engine
+        .send_command(AudioCommand::SetPluginExtraOutputs { track_index, targets });
+    self.status_message = match target {
+        Some(to) => crate::tstatus!("↪ Buss {} → spår {}", port + 1, to + 1),
+        None => crate::tstatus!("↪ Buss {} frånkopplad", port + 1),
     };
 }
 }

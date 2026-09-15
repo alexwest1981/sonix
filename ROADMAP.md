@@ -298,7 +298,7 @@ tabellen är klara och står i `Gjort`. Kontrollerat i koden, inte bara i texten
 
 | # | Punkt | Storlek | Vad som återstår | Går att göra |
 | :--- | :--- | :---: | :--- | :--- |
-| 1 | **8.6 Plugins: egna utgångar (routningen kvar)** | *S* | **Klart 2026-09-15:** sidokedja in i en plugin, manuellt latens-offset och smart disable — alla tre mätta (`79adff9`, `6c1b43b`). Pluginens egna utbussar **läses** redan; **kvar** är routningen till egna spår (ingångskant i ordningspasset + konfiguration per plugin + reglaget i vyn). *32-bitars plugins* är inte ett rimligt mål för oss | vid datorn, nu |
+| 1 | ~~**8.6 Plugins: egna utgångar**~~ | *S* | **KLAR 2026-09-15.** Se avsnittet ovan: sidokedja in, manuellt latens-offset, smart disable **och** nu routningen av pluginens egna utbussar till egna spår (`SetPluginExtraOutputs`, `plugin_bus_in`, `extra_out_targets` i spåret/sloten/projektfilen + rad per buss i plugin-vyn). Två prov kör hela vägen mot en fixtur med en egen buss (fas + ingen glidning över 3000 bildrutor), och Surge XT visar att portarna finns på riktigt (**1 in, 3 ut**). Kvar som egna punkter, inte som 8.6: VST3 läser inga parametrar, LV2 saknar värd | — |
 | 2 | **Plugins: VST3-vägen läser inga parametrar** *(fynd 2026-09-15, `4b716eb`)* | *S–M* | Mätt mot Surge XT: **775 parametrar i CLAP, 0 i VST3**, och tillverkare/version kommer ut tomma (`"Surge Synth Team v"`). Laddning, identitet och ljud går fram; parameterlistan gör det inte. Följden är att automation mot en VST3-plugin inte har några mål att välja — och att `--inspect-plugin` säger sanningen om det i stället för att tiga | vid datorn, nu |
 | 3 | **LV2: löftet i vyn har ingen värd bakom sig** *(fynd 2026-09-15)* | *S att stryka / L att bygga* | `.lv2` klassas, filtreras och skannas (`/usr/lib/lv2`, "/usr/lib/vst3", "Linux LV2 Standardbibliotek"), men lasthanteraren skickar bunten till CLAP-laddaren: `undefined symbol: clap_entry`. **Vi lovar i gränssnittet något koden inte har.** Två vägar: bygga en LV2-värd (Lilv + portmodellen — egna veckor) eller stryka löftet ur vyn, formatlistan och skanningsvägarna (S). Rekommendationen är att stryka nu och bygga när något verkligt behöver det | beslut + datorn |
 | 4 | **7.3 + 4.6 Wine/yabridge-vägen** | *M + L* | Köra en **riktig** brygga hela vägen (Sytrus/Harmor/Gross Beat): laddning, inspektion, ljud med PDC, state, X11-fönstret. Mock-modulerna är redan gröna | **blockerad** — kräver Wine + display, och du har inga Windows-plugins på disk. Miljön är färdigkonfigurerad den dag de kommer |
@@ -1308,212 +1308,38 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
       är fortfarande bara mock-verifierad**: ingen riktig CLAP-plugin med en
       `"sidechain"`-port har testats, för Surge XT Effects har ingen. (d) CI:s
       "noll varningar"-grind var **blind** (`87b8306`) och är rättad.
-  - ⏳ **Egna utgångar: halva vägen klar 2026-09-15.** Värden **läser** pluginens egna utbussar
-    per port efter varje block (samma takt som ljudet, och nollor när pluginen vilar) — den
-    halvan är mätt mot mocken. **Kvar:** routningen till egna spår. Den ska gå samma väg som
-    spår-senden (Fas 8.3): en **ingångskant** på målspåret i ordningspasset (`stem_order` /
-    `stem_incoming`), så målet processas efter källan och dess ljud hamnar i målspårets kedja
-    i stället för på en buss. Kvar är också: konfigurationen per plugin (port → målspår) i
-    `SavedPluginData`/`PluginSlot` med båda ändarna kopplade, ett kommando till motorn, och
-    reglaget i plugin-vyn.
-  - **Källa:** `plugin-flstudio-research-sv.md` (Image-Lines onlinemanual; wrapper, mixer,
-    plugin-installation). Audacity har ingen av de tre — plugins kör i samma process och kan
-    fälla appen, och CLAP nämns inte alls i deras dokumentation.
-- [x] **8.7 Chopper: från en trim-ruta till en slicemappning** — *M* ✅ **(2026-09-14)**
-  - **Bockad 2026-09-14:** steg 1 (slagletning + slicekarta), steg 2 (nudge, kantdämpning,
-    spektral flux) och dumpen till **både** stegraden och piano rollen är byggda och provade —
-    se styckena nedan, som slutar i "**Kvar:** inget i 8.7".
-  - **Steg 1 klart (2026-09-12, `23c3b6b`).** Slagen hittas i filen: `src/audio/onset.rs`
-    (anslags-hölje = halvvågslikriktad förstadifferens + enpolsfilter, lokal **centrerad**
-    tröskel, lokala maxima, minsta avstånd mellan slag, och backtrack till energiminimumet
-    före anslaget — samma som librossas `onset_detect(backtrack=True)`, så slicen börjar
-    strax **före** attacken i stället för mitt i den). `slices_from_onsets` delar hela filen
-    utan glapp och utan överlapp. I mixerns chopper: **"🔍 Hitta slag"** och sliceknappar
-    (ett klick sätter trimfönstret, alltså samma väg som provspelningen spelar),
-    slicegränserna ritas i vågformen, och slicekartan **följer med i projektfilen** (6.7:s
-    fullständighetsvakt krävde det). Går ljudet inte att läsa säger choppern det i stället
-    för att hitta på slag. **Den påhittade "⚡ Transient"-knappen är borta.**
-    **Mätt under arbetet:** ett boxfilter i höljet gav moiré på en jämn ton (20 falska slag),
-    2 ms enpolsfilter gav 32, och en *släpande* tröskellinje gav 5 falska slag i sitt
-    uppvaknande — först 4 ms enpolsfilter + centrerad tröskel ger 0 slag i en jämn ton och
-    exakt rätt antal i ett klickmönster. 8 tester i modulen.
-  - **Steg 2, första delen klar (2026-09-14) — nudge:**
-    - **En gräns är delad, och det är hela saken.** Slutet på en slice *är* början på nästa, så
-      `nudge_slice_boundary` flyttar **båda** i en och samma operation. Flyttas bara den ena
-      uppstår ett glapp (tyst i slicen) eller ett överlapp (samma ljud två gånger) — och
-      invarianten som redan hade ett prov, "kartan täcker hela filen utan glapp eller överlapp",
-      hade brutits. En gräns som skulle korsa sin granne **kläms** i stället för att slicen tas
-      bort: att tyst slå ihop två slicar vore att ändra kartan, inte att flytta en gräns.
-    - **Filens kanter rörs inte.** Gräns 0 och gräns `len` är filens början och slut; en karta
-      som inte täcker hela filen spelar inte hela filen längre, och det är en annan sak.
-    - **Tre prov, varav ett är invarianter:** båda sidorna flyttas och kartan förblir
-      sammanhängande; en gräns som dras långt **kläms** och indelningen behåller sitt antal
-      slicar; kanterna och skräpinput (`NaN`, oändligt, index utanför) lämnar kartan orörd.
-    - **Draget sitter i vågformen:** varje inre gräns har en egen träffyta (±3 px) som går att
-      dra, med `ResizeHorizontal`-markören. Ingen ny state behövs — egui äger draget, och
-      `Id::new(("slice-nudge", bi))` är unikt per gräns.
-    - **Mätt att den hörs, inte antaget:** kartan läses av **alla tre** vägarna —
-      `channel_sample_trigger_command` (live, via `window_for_note`), kanalen som skickas till
-      motorn (`RackChannel.slices`) och **exporten** (`exporter.rs`). En nudge ändrar alltså
-      ljudet, inte bara ritningen. Det kontrollerades innan något skrevs, och misstanken att den
-      *inte* var inkopplad var fel.
-  - **Steg 2, andra delen klar (2026-09-14) — kantdämpning vid båda kanterna, mätt på ljudet:**
-    - **Starten var redan dämpad, slutet inte.** `SampleVoice` hade `attack_frames` — en
-      anti-klick-ramp på 1,5 ms — och det är *slutet* som hörs när en slice tar slut mitt i en
-      ton: ett klick är en språngvis amplitudändring, och en ramp mot noll är motsatsen.
-    - **En regel, båda kanterna:** `slice_edge_gain(frames_from_edge, fade_frames)` ger 0 vid
-      kanten och 1 en ramp in. Den används nu på båda sidor — in räknat i `frames_done`, ut i
-      **utramar till kanten** (så det stämmer även vid annan tonhöjd eller baklänges). Fältet
-      heter `fade_frames`, rampen är 2 ms (`SLICE_FADE_SECS`), inom det spann (1–5 ms) Reapers
-      fade pad och Abeltons per-slice-fade använder.
-    - **`fade_frames = 0` är exakt den gamla vägen** (retur 1,0 överallt), och det har ett eget
-      prov. En avstängd dämpning ska vara identisk med innan, inte nästan — det är den
-      kontrollen som gör att en påslagen ramp aldrig kan ändra något den inte ska.
-    - **Tre prov på regeln:** 0 vid kanten och 1 en ramp in; nollängdsrampen är den gamla vägen
-      överallt; `NaN`, oändligt och negativt lämnar rösten **ljudande** hellre än tyst.
-    - **MÄTT PÅ LJUDET (2026-09-14, samma kväll):** `a_slice_end_is_faded_to_silence_at_the_edge`
-      renderar en slice vars ton slutar **mitt i en cykel** och mäter **formen vid kanten**:
-      nedgången till tystnad tar omkring 88 ramar (2 ms), **höljet faller monotont** (alltså en
-      ramp, inte ett klick) och nivån 5 ms in i slicen är intakt — dämpningen är alltså **lokal
-      vid kanten** och inte en allmän sänkning.
-      - **Provet är kausalt, och det var två fällor på vägen dit.** Den första: 440 Hz i 0,2 s är
-        exakt 88 hela cykler, så tonen slutar i en **nollgenomgång** och ett klick hade varit
-        osynligt. 447 Hz slutar mitt i en cykel, och provet **kräver** det (`|raw_last| > 0,2`) —
-        annars är det värdelöst. Den andra: mätningen letade först efter "första värdet under
-        tröskeln", vilket för en sinus är **nästa nollgenomgång** — den mätte 13 ramar i stället
-        för 88. Samma läxa som slagletningen i 8.7: **mät på höljet, inte på samplen.** Utan
-        rampen stannar rösten tvärt och nedgången mäter ~0 ramar, alltså fångar provet en
-        borttagen ramp.
-      - **Nivåerna antas inte:** trösklarna är fraktioner av den **uppmätta** toppen, så provet
-        inte blir fel för att kanal- och masterkedjan ändrar sin nivå. (Första försöket hade en
-        absolut tröskel på 0,30 och såg ingen ton alls — renderingen ligger lägre än man tror.)
-  - **Steg 2, tredje delen klar (2026-09-14) — dump till stegraden, och en rättelse av mig:**
-    - **Min egen anteckning var fel.** Här stod att dumpen "behöver slice-offset per steg i
-      motorn". Mätt i koden: den kromatiska adresseringen — noten `bas + i` spelar slice `i` —
-      finns **redan** i `window_for_note`, och den läses av live-vägen, av kanalen som skickas
-      till motorn och av exporten. Dumpen behövde alltså **ingen motorändring alls**; den är en
-      ren dataoperation. Tredje gången samma kväll som en misstänkt lucka visade sig vara en väg
-      som redan fanns — mät anroparen innan du bygger.
-    - **`slices_to_steps(slices, bas, steg)`** ger en not per slice, i slicarnas ordning. Fler
-      slicar än steg **kapas** (och anroparen säger hur många), för att tyst slå ihop eller tappa
-      en slice vore ett annat ljud än kartan visar. Noten kläms till MIDI-omfånget, så basnot
-      127+1 inte lindar runt till 0.
-    - **Kontraktsprovet är det som betyder något:** för varje dumpad `(steg, not)` prövas att
-      `window_for_note` ger **just den slicen**. Provet prövar dumpen mot uppspelningen, inte
-      var för sig — ändras adresseringen i den ena fångas det av den andra. (Samma familj som
-      "två listor för samma sak driver isär", men med en vakt.)
-    - **Knappen sitter hos detekteringen** ("⬇ Slicar → steg") och bygger om raden från grunden:
-      en dump beskriver **hela** kartan, så gamla steg kan inte ligga kvar och peka på slicar som
-      inte längre är med. Statusraden skiljer på "dumpat" och "dumpat, N kapades".
-    - **Och piano roll-varianten, samma kväll:** `piano_roll_grid` visade sig vara
-      `[[bool; 16]; 24]` — samma form som stegraden — så **ingen ny regel behövdes**: samma
-      `slices_to_steps`, mot ett annat rutnät. Slice `i` hamnar på **steg `i` i rad `i`**, för
-      stegen är tid och raderna är tonhöjd, och båda är slicens nummer.
-      - **Ett fel jag gjorde och rättade, som nu har ett prov:** första försöket tog radantalet
-        (24) som tak och lappade tiden med `% 16` — det hade lagt slice 17 på samma steg som
-        slice 1. Taket är det **mindre** av de två antalen, och `grid_capacity(rader, steg)` är en
-        ren funktion med eget prov, så misstaget inte kan komma tillbaka.
-      - **Spektral flux (2026-09-14) — och den blev en mätning, inte en gissning.** Kvar av 8.7
-        var en detektor som lyssnar på *klangförändring* i stället för nivå. `rustfft` tillkom
-        (ren Rust, alltså oförändrat Windows-ben). Det tog **fyra mätta iterationer** innan
-        kontrollprovet — *en jämn ton ska ge noll slag* — höll, och varje steg i den kedjan står
-        i koden med sitt tal:
-        1. Rå magnitud-flux gav **19 falska slag** i en jämn 220 Hz-ton, med 4608 sampels mellanrum
-           = **9 hopp**. Orsaken: 220 Hz × 512/44100 = 2,5537 cykler per hopp, så fönstrets fasläge
-           upprepas ungefär var nionde ram — 1024 sampel är inte ett heltal perioder (200,45
-           sampel), alltså **vandrar läckaget med fasen**.
-        2. **Log-komprimering** (litteraturens svar: mät relativ förändring) gav 19 → 10, men
-           median 0,023 mot topp 0,070: de *tysta* läckage-binen blinksr mellan ramarna och
-           logaritmen förstärker varje blinkning. Hög flux överallt.
-        3. **Brusgolv relativt ramens starkaste bin** (2 % ≈ 34 dB under) tog bort det: median
-           **0,00000**. Men fortfarande 18 slag — artefakterna låg 10⁷ gånger över medianen, och
-           en relativ tröskel mot en baslinje som är noll kan inte skilja dem.
-        4. **Normalisering mot ramens egen storlek** gav det skalfria talet: artefakten hamnar på
-           ~10⁻⁸ av ramens innehåll, ett verkligt tonbyte på ~10⁻¹. Med en absolut minsta
-           förändring (0,5 ‰) *och* den anpassade tröskeln blev det **0 slag** — med fluxens topp
-           på 2 % av golvet, alltså bred marginal.
-      - **Provet som avgör om den förtjänar sin plats:** två hållna toner i samma amplitud, fogade
-        med **fortsatt fas** — alltså utan minsta hopp i vågformen. Höljesdetektorn ser **0 slag**,
-        fluxen hittar bytet på **68 sampel (1,5 ms)** när. Utan det provet vore fluxen bara en
-        andra väg till samma sak.
-      - **En regel, två dörrar:** knapparnas kropp bor i `detect_slice_map`, så valet byter
-        *detektor och inget annat*. På ett klickmönster hittar båda **4 slag** — ense på riktig
-        percussion, vilket är vad man vill. Provet prövar formen och enheterna, inte ett fast antal:
-        de två får ge olika antal, för de mäter olika saker.
-      - **Kvar:** inget i 8.7. Båda målen ("steg **eller** piano roll") är byggda, och spektral
-        flux med FFT är byggd ovan (fyra mätta iterationer, plus provet med fortsatt fas som
-        avgör om den förtjänar sin plats mot höljesdetektorn).
-  - **Läget i koden före steg 1 (mätt 2026-09-12):** `active_chopper_channel` ger **en** trim-ruta per
-    kanal (`sample_start`/`sample_end` i procent av filen) med snabbval `1/2`, `1/4`, `2/4` …
-    och en knapp märkt **"⚡ Transient"** som bara sätter `sample_end = 0.18`. Ingen
-    slicemappning, ingen detektering, ingen koppling till steg eller piano roll, ingen
-    slice-export. **Namnet lovar mer än koden gör, och ska rättas oavsett vad som byggs.**
-  - **Vad de etablerade gör — samma tre steg:** analysera ljudet och hitta transients/onsets
-    (eller dela på fasta divisioner) → mappa varje slice till en not/pad → låt användaren
-    nudga, fadea och trigga slicen från **sin egen start** (tiden glider inte, för slicen är
-    ingen position i en global loop).
-    - **FL Studio:** Edison (Auto slice Dull/Medium/Sharp, Detect beats, Zero-cross check,
-      "Convert to score and dump to piano roll"), Slicex (automatisk slicing, region → tangent,
-      "Dump score" med presets, per-region AMP/FILTER/SPEED, färg 15/16 = reverse), Fruity
-      Slicer 2 (2025.2), Playlist Chop (Bar/Beat/Beat Random) och Slice-verktyget.
-    - **Ableton:** Simpler "Slice By" Transient/Beat/Region/Manual (max 64 slices, per-slice
-      Fade In/Out) och **Slice to New MIDI Track** (en not per slice, kromatiskt, in i ett
-      Drum Rack — max 128 kedjor).
-    - **Reaper:** Dynamic Split Items (transients **eller** noise gate, min slice length,
-      leading/trailing pad, **Fade pad**) och **Create chromatic MIDI item from slices**.
-    - **Bitwig:** Divisions/Beats/**Onsets** (med Onset Sensitivity)/Pitch/Manual.
-  - **Algoritmen, belagd:** energy/HFC/spectral flux med peak picking är det enklaste som
-    faktiskt fungerar på trummor — aubio defaultar till `hfc` och kallar det effektivt för
-    perkussiva onsets; librossas `onset_detect(backtrack=True)` back-trackar en onset till
-    närmaste föregående energiminimum och är gjord just för "onsets as slice points".
-    SuperFlux (Böck & Widmer, DAFx-13) behövs främst vid vibrato/pitchat material, och CNN
-    (Schlüter & Böck) är starkare men kräver en modell. Frame 1024 / hop 512 ≈ 11,6 ms
-    upplösning vid 44,1 kHz är en rimlig start.
-  - **Minsta ärliga första steg:** (1) onset-detektering som ger **N** slicepunkter,
-    (2) en slicekarta med start/slut per slice, (3) mappning till steg/tangenter och en dump
-    till piano rollen, (4) fade på 1–5 ms vid slice-kanterna (klickskyddet som Reapers Fade
-    pad och Abeltons per-slice-fade ger), (5) nudge av en enstaka slicegräns. Går att dela i
-    två pass: först detektering + slicekarta (hörs direkt vid uppspelning), sedan
-    mappning/dump.
-  - **Källa:** `chopping-and-effects-research-sv.md` + FL-avsnittet i
-    `plugin-flstudio-research-sv.md`.
-- [x] **8.8 Automatisering av fler parametrar** (plugin-, EQ-, kompressor- och buss-/VCA-parametrar) — *S–M* ✅ **(2026-09-14)**
-  - **Klart:** tio spårmål (volym, pan, två sends, kompressorns tröskel och förhållande,
-    transponering, EQ:ns tre band), bussarnas egna kurvor, och **plugin-parametrarna**
-    (`PluginAutomationLane` + `PluginHandle::parameters()` + väljaren). Se avsnittet
-    "Plugin-parametrarna: byggt 2026-09-14" tidigare i fas 8.
-  - **Ärligt om kvittensen:** spår- och busskurvorna är **kvitterade i GUI av Alex**;
-    plugin-väljaren är **inte klickad** (ingen riktig plugin finns i miljön).
-  - **Läget innan arbetet började (mätt 2026-09-12, alltså historiken — inte nuläget):**
-    `AutomationParam` hade fyra varianter — `Volume`,
-    `Pan`, `ReverbSend`, `DelaySend`. Alltså ingen plugin-parameter, ingen EQ- eller
-    kompressorparameter, ingen buss-/VCA-fader.
-  - **Varför:** när en DAW hostar plugins med exponerade parametrar förväntar sig användaren
-    att kunna rita en kurva för dem — det är så automation används i praktiken. Pluginens
-    parametrar finns redan i UI:t, så steget är att låta automationens mål peka på dem **och**
-    att kurvan läses per sample i stället för per UI-bildruta (samma sak som gap 6 i
-    `references/daw-comparison.md`: `apply_automation()` körs i `update()`).
-  - **Ärlig brasklapp:** den här researchrundan belade **inte** FL:s exakta automation av
-    plugin-parametrar, och Audacitys parametrar i realtidsstacken står som **INTE VERIFIERAT**
-    i rapporten. Kontrollera den raden innan punkten blir ett krav. Sonix-läget ovan är
-    däremot mätt i koden.
-- [x] **8.9 Makron: en kedja av kommandon över många filer** — *S* — **KLAR 2026-09-15**:
-      modellen (`audio/macro_chain.rs`), batch över filer med logg och felkoder, kommandoraden
-      (`--run-macro`, `--macro-example`), dialogen (`ui/macros_modal.rs` + `ui/app/macros.rs`),
-      63 engelska i18n-rader och "en regel, två dörrar" för fil- och projektvägen.
-      **Dialogen är inte klickad** (ingen skärm här) — se kvitteringslistan.
-  - **Vad Audacity har:** en **Macro** är en sekvens förkonfigurerade kommandon (mest
-    effekter, men också Select-kommandon, Find Clipping och exportkommandon) som körs
-    automatiskt — på ett projekt eller i **batch över filer** (rekommenderat max 500 i taget,
-    utdata i mappen `macro-output`). De byggs i **Tools > Manage Macros** och sparas som TXT.
-    Alla effektformat kan ingå (built-in, LADSPA, LV2, Nyquist, VST, AU).
-  - **Hos oss:** det finns en exportkö och en stämimportväg, men **ingen** kedja av
-    kommandon som kan köras på flera filer med sparade inställningar. Nyttan är densamma som
-    Audacitys: samma behandling på tjugo tagningar utan tjugo handgrepp.
-  - **Noterat samtidigt:** Audacitys *skriptväg* (Nyquist/Python) och Reapers ReaScript/Lua
-    är fortfarande gap 5 i `references/daw-comparison.md` — det är en större sak än ett
-    makro och hör inte till den här punkten.
-  - **Källa:** `plugin-audacity-research-sv.md` (avsnitt 3).
+  - ✅ **Egna utgångar → egna spår: KLAR 2026-09-15.** Pluginens egna utbussar (CLAP-port 1 och
+    framåt — port 0 är huvudutgången) kan kopplas till ett spår var, och bussen går in i
+    målspårets kedja **som en spår-send**: före pitch, EQ och kompressor, och i fas.
+    - **Vägen:** `AudioCommand::SetPluginExtraOutputs { track_index, targets }` → spårets
+      `extra_out_targets: Vec<Option<usize>>` → `recompute_stem_order` får en **kant** av
+      kopplingen, så målspåret alltid räknas efter källan (samma pass som spår-sendens kanter —
+      en graf, ett ställe). Ljudet samlas i `plugin_bus_in` per spår och sample, nollas i början
+      av varje sample, och läses ur pluginens kö **en gång per sample och kopplad port** — också
+      när målet är tystat. En utebliven läsning vore att bussen sackade en sample varje gång den
+      inte behövdes, och det är därför provet kör 3 000 bildrutor och jämför mot källans ljud.
+    - **Läsningen ligger efter källspårets PDC, inte före.** Det var provet som sa det: bussen är
+      samma plugins utgång som huvudutgången och ska bära samma kompensation. Låg den före PDC
+      kom bussen fram **tidigare** än pluginens eget ljud (mätt: 127 bildrutor fel på en 128-frames
+      insättning). Den ligger också **före** källspårets duckare — den är världens effekt på
+      spårets egen mix, medan bussen är pluginens utgång.
+    - **Bevisat:** två prov i `synth/tests.rs` mot en fixtur vars buss bär en **räknare** (sample
+      `n` bär talet `n`, så en förskjutning syns) och vars huvudutgång bär **samma serie** — då kan
+      provet jämföra bussen mot källans eget ljud i stället för mot ett tal som bara stämmer om
+      hela kedjan är exakt 1,0. Utan koppling är målspåret tyst (|< 1e-6|), med koppling bär det
+      källans ljud förskjutet med målspårets egen PDC, och källspårets ljud är **oförändrat**
+      (bussen läcker inte tillbaka). Plus rundgången i projektfilen: `extra_out_targets` med
+      `None` mitt i listan överlever, och en **riktig gammal JSON** utan fältet läses med inga
+      kopplingar — alltså exakt det beteende filen spelades in med.
+    - **Mätt mot en riktig plugin:** Surge XT rapporterar **3 ljudutgångar** (två egna bussar), och
+      antalet i vyn frågas hos pluginen själv (`clap.audio-ports`, via `PluginCore::extra_output_ports`)
+      i stället för hos en kopia hos oss — vyn och ljudvägen kan inte visa olika tal.
+    - **Ärligt om vad som inte är prövat:** reglaget i plugin-vyn är **inte klickat** (ingen skärm
+      här), och routningen är bara körd mot **fixturen** — ingen riktig plugins bussar har spelats
+      genom ett målspår än. Två kända gränser: (1) ett målspår **utan ljud** hoppas över av
+      spårloopen (`track.left.is_empty()`), samma regel som spår-sends har — en tom mottagare tar
+      inte emot; (2) en **sandboxad** plugin svarar 0 på portfrågan, så vyn ritar inga kopplingar
+      för den (protokollet bär inte portantalet).
 
 ### 8.3 Exakta vågformer (Alex krav, 2026-09-12)
 
