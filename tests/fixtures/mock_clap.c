@@ -25,6 +25,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stddef.h> /* offsetof, för ABI-kontrollerna */
 
 #define CLAP_NAME_SIZE 256
 #define CLAP_PATH_SIZE 1024
@@ -41,15 +42,32 @@ typedef struct clap_version {
 typedef struct clap_host clap_host_t;
 typedef struct clap_plugin clap_plugin_t;
 
+/*
+ * **Tio fält, inte sju.** `url`, `manual_url` och `support_url` ligger mellan `vendor` och
+ * `version` i `include/clap/plugin.h`, och när vår Rust-struct saknade dem läste värden
+ * `version` ur `url` och `features` ur `support_url` — vilket kraschade på en riktig plugin
+ * (Surge XT, 2026-09-15). Mocken kunde inte visa det: den här structen hade samma sju fält.
+ */
 typedef struct clap_plugin_descriptor {
     clap_version_t clap_version;
     const char *id;
     const char *name;
     const char *vendor;
+    const char *url;
+    const char *manual_url;
+    const char *support_url;
     const char *version;
     const char *description;
     const char *const *features;
 } clap_plugin_descriptor_t;
+
+/* Låser ABI:n vid kompilering: samma tal som Rust-provet
+ * `the_clap_structs_have_the_offsets_the_spec_gives` prövar. Glider någon av sidorna,
+ * stannar bygget här i stället för att bli ett skräpnamn i gränssnittet. */
+_Static_assert(offsetof(clap_plugin_descriptor_t, id) == 16, "descriptor: id");
+_Static_assert(offsetof(clap_plugin_descriptor_t, url) == 40, "descriptor: url");
+_Static_assert(offsetof(clap_plugin_descriptor_t, version) == 64, "descriptor: version");
+_Static_assert(offsetof(clap_plugin_descriptor_t, features) == 80, "descriptor: features");
 
 typedef struct clap_audio_buffer {
     float **data32;
@@ -90,12 +108,23 @@ struct clap_plugin {
 typedef struct clap_param_info {
     uint32_t id;
     uint32_t flags;
+    /* Pluginens egen cachepekare. **Den låg här hela tiden och saknades i vår Rust-struct**
+     * (rättat 2026-09-15): mocken speglade samma fel, så proven var gröna medan en riktig
+     * plugin gav skräp som parameternamn. Statiska kontroller nedan låser offseten. */
+    void *cookie;
     char name[CLAP_NAME_SIZE];
     char module[CLAP_PATH_SIZE];
     double min_value;
     double max_value;
     double default_value;
 } clap_param_info_t;
+
+/* Samma tal som Rust-provet prövar. Här, efter typen — en static assert kan inte nämna en
+ * typ som inte finns än, vilket bygget sa ifrån om direkt. */
+_Static_assert(offsetof(clap_param_info_t, cookie) == 8, "param_info: cookie");
+_Static_assert(offsetof(clap_param_info_t, name) == 16, "param_info: name");
+_Static_assert(offsetof(clap_param_info_t, min_value) == 1296, "param_info: min_value");
+_Static_assert(sizeof(clap_param_info_t) == 1320, "param_info: storlek");
 
 typedef struct clap_event_header {
     uint32_t size;
@@ -232,6 +261,11 @@ static const clap_plugin_descriptor_t mock_desc = {
     .id = "com.sonix.mock-gain",
     .name = "Sonix Mock Gain",
     .vendor = "Sonix Test",
+    /* Fyllda med flit: glider offseten är det här de tre fälten som hamnar fel, och då
+     * läser värden en URL där versionen ska stå — ett fel som syns i utskriften. */
+    .url = "https://github.com/alexwest1981/sonix",
+    .manual_url = "https://github.com/alexwest1981/sonix",
+    .support_url = "https://github.com/alexwest1981/sonix",
     .version = "1.0.0",
     .description = "A tiny in-process CLAP gain effect for host tests",
     .features = plugin_features,

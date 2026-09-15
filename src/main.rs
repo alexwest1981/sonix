@@ -168,6 +168,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("  namn:       {} ({})", info.name, info.id);
                     println!("  tillverkare:{} v{}", info.vendor, info.version);
                     println!("  latens:     {} ramar", processor.latency_frames());
+                    // Portarna, i pluginens egen ordning — det är den enda källan till svaret
+                    // på "hur många utbussar har den?" (Fas 8.6:s multi-out).
+                    let ports = processor.port_layout();
+                    if ports.is_empty() {
+                        println!("  portar:     (ingen uppgift från backend)");
+                    } else {
+                        let ins = ports.iter().filter(|p| p.0).count();
+                        let outs = ports.len() - ins;
+                        println!("  portar:     {ins} in, {outs} ut");
+                        for (is_input, channels, kind) in &ports {
+                            println!(
+                                "    {:<3} {:<9} {channels} kanaler",
+                                if *is_input { "in" } else { "ut" },
+                                kind
+                            );
+                        }
+                    }
                     // Fas 8.6: det här är siffrorna som avgör om en plugin kan köras i en
                     // sidokedja eller ha egna utbussar — lästa ur pluginens egen beskrivning.
                     println!(

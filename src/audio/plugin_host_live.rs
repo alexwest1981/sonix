@@ -201,6 +201,13 @@ pub trait PluginProcessor: Send {
     /// Frames of latency the plugin *itself* introduces (not counting the
     /// host's block buffering).
     fn latency_frames(&self) -> u32;
+    /// **Portöversikt** (Fas 8.6): `(är_ingång, kanaler, typ)` per port, i pluginens egen
+    /// ordning. Finns för att en plugin ska kunna **inspekteras** i stället för att gissas —
+    /// "hur många utbussar har den?" är hela frågan i 8.6:s multi-out, och svaret står bara hos
+    /// pluginen. Tom lista = ingen uppgift (en backend som inte läser portar).
+    fn port_layout(&self) -> Vec<(bool, u32, String)> {
+        Vec::new()
+    }
     /// **Antal sidokedje-ingångar** (Fas 8.6): 1 när pluginen har en sidokedja, annars 0.
     /// En plugin som säger 1 får ett block via [`set_sidechain_block`] före varje
     /// `process_stereo`, och det är den enda vägen in.
@@ -1286,12 +1293,33 @@ mod imp {
         pub revision: u32,
     }
 
+    /// **`clap_plugin_descriptor_t` — och den hade tio fält, inte sju.**
+    ///
+    /// Här stod `id, name, vendor, version, description, features` i den ordningen, alltså utan
+    /// `url`, `manual_url` och `support_url`. Följden var att varje läsning hamnade tre fält fel:
+    /// `version` lästes ur pluginens `url`, `description` ur `manual_url`, och `features` ur
+    /// `support_url` — en sträng som sedan lästes som en pekartabell.
+    ///
+    /// **Mocken kunde inte visa det, och det är lärdomen:** vår egen C-fixtur deklarerade samma
+    /// sju fält, så båda sidor var fel på samma sätt. En riktig plugin (Surge XT, 2026-09-15)
+    /// kraschade på tre sekunder med `misaligned pointer dereference`, medan mocken var grön i
+    /// månader. En ABI-struct måste skrivas av mot **specen**, och en fixtur som delar ens
+    /// misstag är ingen kontroll — den är en spegel.
+    ///
+    /// Provet `the_descriptor_field_offsets_match_the_spec` låser offseten mot de tal som
+    /// `include/clap/plugin.h` ger, så en framtida omskrivning inte kan glida igen.
     #[repr(C)]
     pub struct ClapPluginDescriptor {
         pub clap_version: ClapVersion,
         pub id: *const c_char,
         pub name: *const c_char,
         pub vendor: *const c_char,
+        /// Saknades. `url` är pluginens egen sida.
+        pub url: *const c_char,
+        /// Saknades.
+        pub manual_url: *const c_char,
+        /// Saknades.
+        pub support_url: *const c_char,
         pub version: *const c_char,
         pub description: *const c_char,
         pub features: *const *const c_char,
@@ -1353,10 +1381,20 @@ mod imp {
         pub request_callback: Option<unsafe extern "C" fn(*const ClapHost)>,
     }
 
+    /// **`clap_param_info_t` — `cookie` låg emellan och saknades** (rättat 2026-09-15).
+    ///
+    /// Utan `cookie` hamnade varje läsning åtta byte fel: `name` lästes ur `module` och
+    /// `min_value` ur skräp. Det syntes bara mot en riktig plugin — mocken skrev sin
+    /// `clap_param_info_t` med samma saknade fält, så båda sidor var fel på samma sätt och
+    /// proven var gröna. Mätt mot Surge XT: parameternamnen var minnessträngar och id:na
+    /// sjusiffriga skräptal. `cookie` är pluginens egen cachepekare; värden får lämna den
+    /// orörd och det gör vi.
     #[repr(C)]
     pub struct ClapParamInfo {
         pub id: u32,
         pub flags: u32,
+        /// Pluginens egen pekare till sitt parameterobjekt. Vi skickar aldrig tillbaka den.
+        pub cookie: *mut c_void,
         pub name: [c_char; CLAP_NAME_SIZE],
         pub module: [c_char; CLAP_PATH_SIZE],
         pub min_value: f64,
@@ -2386,6 +2424,22 @@ mod imp {
         fn latency_frames(&self) -> u32 {
             super::PluginCore::latency_frames(&*self.core)
         }
+        fn port_layout(&self) -> Vec<(bool, u32, String)> {
+            let mut out = Vec::new();
+            for (index, &channels) in self.input_channels.iter().enumerate() {
+                let kind = if Some(index) == self.sidechain_port {
+                    "sidechain"
+                } else {
+                    "audio"
+                };
+                out.push((true, channels, kind.to_string()));
+            }
+            for &channels in self.output_channels.iter() {
+                out.push((false, channels, "audio".to_string()));
+            }
+            out
+        }
+
         fn sidechain_inputs(&self) -> usize {
             usize::from(self.sidechain_port.is_some())
         }
@@ -2645,19 +2699,12 @@ mod imp {
 
         let gui_ext = plugin_extension(plugin, CLAP_EXT_GUI) as *const ClapPluginGui;
 
-        let latency_frames = match get_extension {
-            Some(f) => {
-                let ext = unsafe { f(plugin, CLAP_EXT_LATENCY.as_ptr()) };
-                if ext.is_null() {
-                    0
-                } else {
-                    let latency = unsafe { &*(ext as *const ClapPluginLatency) };
-                    latency.get.map(|g| unsafe { g(plugin) }).unwrap_or(0)
-                }
-            }
-            None => 0,
-        };
-
+        // **Latensen läses EFTER aktiveringen** (rättat 2026-09-15). Den lästes förut här, och
+        // Surge XT sa ifrån på stdout: "It is wrong to query the latency before the plugin is
+        // activated, because if the plugin dosen't know the sample rate, it can't know the
+        // number of samples of latency." Det är specen: `clap.latency` ger ett svar som beror på
+        // samplerefrekvensen, och den får pluginen först i `activate()`. Mätt mot en riktig
+        // plugin — mocken hade inget att säga om saken.
         let (input_channels, output_channels, input_sidechain) =
             unsafe { audio_port_channels(plugin) };
         // **Sidokedjans port hittas efter typ** (Fas 8.6). En plugin kan ha flera ingångar
@@ -2696,6 +2743,20 @@ mod imp {
                 instance.info.name
             ));
         }
+
+        // Nu vet pluginen sin samplerefrekvens, och först nu är dess latens ett svar.
+        let latency_frames = match get_extension {
+            Some(f) => {
+                let ext = unsafe { f(plugin, CLAP_EXT_LATENCY.as_ptr()) };
+                if ext.is_null() {
+                    0
+                } else {
+                    let latency = unsafe { &*(ext as *const ClapPluginLatency) };
+                    latency.get.map(|g| unsafe { g(plugin) }).unwrap_or(0)
+                }
+            }
+            None => 0,
+        };
 
         Ok(Box::new(ClapProcessor {
             core: Arc::new(ClapCore {
@@ -2787,6 +2848,32 @@ mod imp {
                 err.contains("clap_entry"),
                 "expected a clap_entry error, got: {err}"
             );
+        }
+
+        /// **ABI:n ska ligga där specen säger.** Talen kommer ur `include/clap/plugin.h`
+        /// räknat för hand: `clap_version` är 3 × u32 = 12 byte, sedan 4 byte utfyllnad, och
+        /// varje pekare är 8 byte. Provet finns för att felet som kostade 2026-09-15 inte ska
+        /// kunna smyga tillbaka: vår descriptor saknade `url`/`manual_url`/`support_url`, läste
+        /// därför `version` ur en URL och `features` ur en `support_url` — och kraschade på
+        /// första riktiga plugin (Surge XT). `clap_param_info` saknade `cookie`, vilket gav
+        /// skräp som parameternamn. **C-fixturen har samma tal i `_Static_assert`**, så en
+        /// förskjutning stannar i bygget i stället för att bli ett fel i gränssnittet.
+        #[test]
+        fn the_clap_structs_have_the_offsets_the_spec_gives() {
+            use std::mem::{offset_of, size_of};
+            assert_eq!(offset_of!(ClapPluginDescriptor, id), 16, "descriptor: id");
+            assert_eq!(offset_of!(ClapPluginDescriptor, name), 24, "descriptor: name");
+            assert_eq!(offset_of!(ClapPluginDescriptor, vendor), 32, "descriptor: vendor");
+            assert_eq!(offset_of!(ClapPluginDescriptor, url), 40, "descriptor: url");
+            assert_eq!(offset_of!(ClapPluginDescriptor, manual_url), 48, "descriptor: manual_url");
+            assert_eq!(offset_of!(ClapPluginDescriptor, support_url), 56, "descriptor: support_url");
+            assert_eq!(offset_of!(ClapPluginDescriptor, version), 64, "descriptor: version");
+            assert_eq!(offset_of!(ClapPluginDescriptor, description), 72, "descriptor: description");
+            assert_eq!(offset_of!(ClapPluginDescriptor, features), 80, "descriptor: features");
+            assert_eq!(offset_of!(ClapParamInfo, cookie), 8, "param_info: cookie");
+            assert_eq!(offset_of!(ClapParamInfo, name), 16, "param_info: name");
+            assert_eq!(offset_of!(ClapParamInfo, min_value), 1296, "param_info: min_value");
+            assert_eq!(size_of::<ClapParamInfo>(), 1320, "param_info: storlek");
         }
 
         #[test]
