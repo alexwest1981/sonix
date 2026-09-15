@@ -66,6 +66,14 @@ const IID_IBSTREAM: [u8; 16] = tuid(0xC3BF_6EA2, 0x3099_4752, 0x9B6B_F990, 0x1EE
 /// version att ge, och då är tomt rätt svar. Officiellt IID ur `base/ipluginbase.h`:
 /// `DECLARE_CLASS_IID (IPluginFactory2, 0x0007B650, 0xF24B4C0B, 0xA464EDB9, 0xF00B2ABB)`.
 const IID_IPLUGIN_FACTORY2: [u8; 16] = tuid(0x0007_B650, 0xF24B_4C0B, 0xA464_EDB9, 0xF00B_2ABB);
+/// **`IHostApplication`** — värdens ansikte utåt mot pluginen. VST3 föreskriver att
+/// `initialize` får en host-kontext, och en plugin frågar den om `IHostApplication` (bland annat
+/// för att hitta sin egen data och sina resurser). Officiellt IID ur
+/// `pluginterfaces/vst/ivsthostapplication.h`:
+/// `DECLARE_CLASS_IID (IHostApplication, 0x58E595CC, 0xDB2D4969, 0x8B6AAF8C, 0x36A664E5)`.
+const IID_IHOST_APPLICATION: [u8; 16] = tuid(0x58E5_95CC, 0xDB2D_4969, 0x8B6A_AF8C, 0x36A6_64E5);
+/// `kNotImplemented` — svaret på det en värd inte kan göra (här: skapa en instans åt pluginen).
+const K_NOT_IMPLEMENTED: i32 = -2;
 
 /// `tresult` values (non-COM; only `kResultOk` means success).
 const K_RESULT_FALSE: i32 = 1;
@@ -273,6 +281,114 @@ struct AudioProcessorVtbl {
     set_processing: Option<unsafe extern "C" fn(*mut c_void, u8) -> i32>,
     process: Option<unsafe extern "C" fn(*mut c_void, *mut ProcessData) -> i32>,
     get_tail_samples: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+}
+
+// --------------------------------------------------- host IHostApplication
+//
+// **Vem är värden?** (2026-09-15.) VST3:s `IPluginBase::initialize` tar en `FUnknown*`
+// host-kontext, och både komponenten och kontrollern frågar den om `IHostApplication`. Vi
+// skickade `null`, vilket är ett brott mot protokollet: en värd ska presentera sig. Objektet
+// beskriver **Sonix** och är därför ett för hela processen, inte ett per plugin.
+//
+// **Mätt 2026-09-15: det var inte heller svaret på Surge XT:s tystnad.** Med en riktig
+// host-kontext är parameterantalet fortfarande 0 (775 i CLAP, 0 i VST3). Steget står kvar för
+// att protokollet kräver det, inte för att det löste något — och den mätningen står här så att
+// nästa läsare inte tror att den är prövad och klar. Kvar att mäta: om state-överföringen
+// **verkligen körde** (den kan ha returnerat något annat än `kResultOk`, eller en tom ström) och
+// om `IComponentHandler` (`setComponentHandler`) behövs innan kontrollern räknar upp något.
+
+#[repr(C)]
+struct HostApplicationVtbl {
+    query_interface:
+        Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut *mut c_void) -> i32>,
+    add_ref: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    release: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    get_name: Option<unsafe extern "C" fn(*mut c_void, *mut u16) -> i32>,
+    create_instance:
+        Option<unsafe extern "C" fn(*mut c_void, *const u8, *const u8, *mut *mut c_void) -> i32>,
+}
+
+#[repr(C)]
+struct HostApplication {
+    vtbl: *const HostApplicationVtbl,
+}
+
+// Vtabellen är en statisk konstant och objektet lever i en `OnceLock` för hela processen —
+// alltså är pekaren stabil och objektet oföränderligt. Det är därför de två implarna är säkra.
+unsafe impl Send for HostApplication {}
+unsafe impl Sync for HostApplication {}
+
+unsafe extern "C" fn host_query(
+    this: *mut c_void,
+    iid: *const c_char,
+    out: *mut *mut c_void,
+) -> i32 {
+    unsafe {
+        if out.is_null() {
+            return K_RESULT_FALSE;
+        }
+        let mut wanted = [0u8; 16];
+        std::ptr::copy_nonoverlapping(iid as *const u8, wanted.as_mut_ptr(), 16);
+        if wanted == IID_FUNKNOWN || wanted == IID_IHOST_APPLICATION {
+            *out = this;
+            return K_RESULT_OK;
+        }
+        *out = std::ptr::null_mut();
+        K_NO_INTERFACE
+    }
+}
+
+unsafe extern "C" fn host_add_ref(_this: *mut c_void) -> u32 {
+    1
+}
+
+unsafe extern "C" fn host_release(_this: *mut c_void) -> u32 {
+    1
+}
+
+/// Namnet värden presenterar sig med. `String128` är UTF-16 och **måste** nolltermineras —
+/// en plugin läser tills nollan.
+unsafe extern "C" fn host_get_name(_this: *mut c_void, name: *mut u16) -> i32 {
+    let who: Vec<u16> = "Sonix".encode_utf16().chain(std::iter::once(0)).collect();
+    if name.is_null() {
+        return K_RESULT_FALSE;
+    }
+    unsafe {
+        std::ptr::copy_nonoverlapping(who.as_ptr(), name, who.len());
+    }
+    K_RESULT_OK
+}
+
+/// Sonix skapar inga plugin-instanser åt en plugin (ingen nästlad värd), och det är ett svar,
+/// inte ett fel: `kNotImplemented`.
+unsafe extern "C" fn host_create_instance(
+    _this: *mut c_void,
+    _cid: *const u8,
+    _iid: *const u8,
+    _out: *mut *mut c_void,
+) -> i32 {
+    K_NOT_IMPLEMENTED
+}
+
+static HOST_APP_VTBL: HostApplicationVtbl = HostApplicationVtbl {
+    query_interface: Some(host_query),
+    add_ref: Some(host_add_ref),
+    release: Some(host_release),
+    get_name: Some(host_get_name),
+    create_instance: Some(host_create_instance),
+};
+
+static HOST_APP: std::sync::OnceLock<Box<HostApplication>> = std::sync::OnceLock::new();
+
+/// Värdens host-kontext — skapas en gång och lever lika länge som processen, för en plugin kan
+/// behålla pekaren efter `initialize`.
+fn host_context() -> *mut c_void {
+    let app = HOST_APP.get_or_init(|| {
+        Box::new(HostApplication {
+            vtbl: &HOST_APP_VTBL,
+        })
+    });
+    app.as_ref() as *const HostApplication as *mut c_void
 }
 
 // --------------------------------------------------------- host IBStream ABI
@@ -966,7 +1082,7 @@ fn open(path: &str) -> Result<VstInstance, String> {
             }
         }
         if let Some(init) = vtable::<ComponentVtbl>(component).initialize
-            && init(component, std::ptr::null_mut()) != K_RESULT_OK
+            && init(component, host_context()) != K_RESULT_OK
         {
             return Err(crate::tstatus!(
                 "Kunde inte initiera VST3-komponenten i '{}'",
@@ -983,7 +1099,7 @@ fn open(path: &str) -> Result<VstInstance, String> {
 
     unsafe {
         if let Some(init) = vtable::<ControllerVtbl>(controller).initialize
-            && init(controller, std::ptr::null_mut()) != K_RESULT_OK
+            && init(controller, host_context()) != K_RESULT_OK
         {
             return Err(crate::tstatus!(
                 "Kunde inte initiera VST3-kontrollern i '{}'",
