@@ -66,6 +66,11 @@ const IID_IBSTREAM: [u8; 16] = tuid(0xC3BF_6EA2, 0x3099_4752, 0x9B6B_F990, 0x1EE
 /// version att ge, och då är tomt rätt svar. Officiellt IID ur `base/ipluginbase.h`:
 /// `DECLARE_CLASS_IID (IPluginFactory2, 0x0007B650, 0xF24B4C0B, 0xA464EDB9, 0xF00B2ABB)`.
 const IID_IPLUGIN_FACTORY2: [u8; 16] = tuid(0x0007_B650, 0xF24B_4C0B, 0xA464_EDB9, 0xF00B_2ABB);
+/// **`IConnectionPoint`** — hur en delad komponent och kontroller pratar med varandra. IID ur
+/// `pluginterfaces/vst/ivstmessage.h`:
+/// `DECLARE_CLASS_IID (IConnectionPoint, 0x70A4156F, 0x6E6E4026, 0x989148BF, 0xAA60D8D1)`.
+const IID_ICONNECTION_POINT: [u8; 16] = tuid(0x70A4_156F, 0x6E6E_4026, 0x9891_48BF, 0xAA60_D8D1);
+
 /// **`IHostApplication`** — värdens ansikte utåt mot pluginen. VST3 föreskriver att
 /// `initialize` får en host-kontext, och en plugin frågar den om `IHostApplication` (bland annat
 /// för att hitta sin egen data och sina resurser). Officiellt IID ur
@@ -389,6 +394,173 @@ fn host_context() -> *mut c_void {
         })
     });
     app.as_ref() as *const HostApplication as *mut c_void
+}
+
+/// Vtabellen hos en komponents eller kontrollers `IConnectionPoint`. Ordningen är headerns.
+#[repr(C)]
+struct ConnectionPointVtbl {
+    query_interface:
+        Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut *mut c_void) -> i32>,
+    add_ref: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    release: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    connect: Option<unsafe extern "C" fn(*mut c_void, *mut c_void) -> i32>,
+    disconnect: Option<unsafe extern "C" fn(*mut c_void, *mut c_void) -> i32>,
+    notify: Option<unsafe extern "C" fn(*mut c_void, *mut c_void) -> i32>,
+}
+
+/// **Koppla ihop komponenten och kontrollern** (2026-09-15).
+///
+/// VST3 delar en plugin i två halvor som ska kunna bo i olika moduler, och `IConnectionPoint` är
+/// vägen mellan dem. **För en JUCE-byggd plugin är det här kontrollern får sin parameterlista:**
+/// `JuceVST3EditController::connect` läser in ljudprocessorn ur motparten och bygger först då
+/// sina parametrar (`juce_audio_plugin_client_VST3.cpp`, `installAudioProcessor`). Utan
+/// kopplingen svarar kontrollern `getParameterCount() = 0` — mätt mot Surge XT, medan samma
+/// plugins CLAP-väg ger 775. Tre andra försök (vtabellen, state-överföringen, host-kontexten)
+/// var mätta och negativa innan den här raden fanns; det var JUCE:s egen källkod som pekade hit.
+unsafe fn connect_component_and_controller(component: *mut c_void, controller: *mut c_void) {
+    let iid = IID_ICONNECTION_POINT.as_ptr() as *const c_char;
+    let mut comp_cp: *mut c_void = std::ptr::null_mut();
+    let mut ctrl_cp: *mut c_void = std::ptr::null_mut();
+    let comp_ok = unsafe {
+        vtable::<ComponentVtbl>(component)
+            .query_interface
+            .map(|q| q(component, iid, &mut comp_cp) == K_RESULT_OK)
+            .unwrap_or(false)
+    };
+    let ctrl_ok = unsafe {
+        vtable::<ControllerVtbl>(controller)
+            .query_interface
+            .map(|q| q(controller, iid, &mut ctrl_cp) == K_RESULT_OK)
+            .unwrap_or(false)
+    };
+    vst3_probe(&format!(
+        "IConnectionPoint: komponent={comp_ok} kontroller={ctrl_ok}"
+    ));
+    if !comp_ok || !ctrl_ok || comp_cp.is_null() || ctrl_cp.is_null() {
+        // En plugin utan kopplingspunkter är en plugin som inte behöver dem (CLAP-vägen har
+        // inga alls, och vår egen mock inte heller). Det är ett svar, inte ett fel.
+        return;
+    }
+    // **Kontrollern kopplar till komponenten**, inte tvärtom: det är kontrollern som behöver
+    // något av motparten (ljudprocessorn), och det är den ordningen JUCE:s kod förväntar sig.
+    let res = unsafe {
+        vtable::<ConnectionPointVtbl>(ctrl_cp)
+            .connect
+            .map(|c| c(ctrl_cp, comp_cp))
+    };
+    vst3_probe(&format!("controller.connect(component) = {res:?}"));
+}
+
+// --------------------------------------------------- host IComponentHandler
+//
+// **Hanteraren** (2026-09-15). En VST3-värd ska ge kontrollern en `IComponentHandler` — det är
+// genom den en plugin säger "användaren rörde den här parametern" och "något ändrades, rita
+// om". Vi gav ingen alls, och frågan som mäts nu är om Surge XT:s kontroller bygger sin
+// parameterlista först när den har någon att rapportera till. Officiellt IID ur
+// `pluginterfaces/vst/ivsteditcontroller.h`:
+// `DECLARE_CLASS_IID (IComponentHandler, 0x93A0BEA3, 0x0BD045DB, 0x8E890B0C, 0xC1E46AC6)`.
+const IID_ICOMPONENT_HANDLER: [u8; 16] = tuid(0x93A0_BEA3, 0x0BD0_45DB, 0x8E89_0B0C, 0xC1E4_6AC6);
+
+#[repr(C)]
+struct ComponentHandlerVtbl {
+    query_interface:
+        Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut *mut c_void) -> i32>,
+    add_ref: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    release: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    begin_edit: Option<unsafe extern "C" fn(*mut c_void, u32) -> i32>,
+    perform_edit: Option<unsafe extern "C" fn(*mut c_void, u32, f64) -> i32>,
+    end_edit: Option<unsafe extern "C" fn(*mut c_void, u32) -> i32>,
+    restart_component: Option<unsafe extern "C" fn(*mut c_void, i32) -> i32>,
+}
+
+#[repr(C)]
+struct ComponentHandler {
+    vtbl: *const ComponentHandlerVtbl,
+}
+
+unsafe impl Send for ComponentHandler {}
+unsafe impl Sync for ComponentHandler {}
+
+unsafe extern "C" fn handler_query(
+    this: *mut c_void,
+    iid: *const c_char,
+    out: *mut *mut c_void,
+) -> i32 {
+    unsafe {
+        if out.is_null() {
+            return K_RESULT_FALSE;
+        }
+        let mut wanted = [0u8; 16];
+        std::ptr::copy_nonoverlapping(iid as *const u8, wanted.as_mut_ptr(), 16);
+        if wanted == IID_FUNKNOWN || wanted == IID_ICOMPONENT_HANDLER {
+            *out = this;
+            return K_RESULT_OK;
+        }
+        *out = std::ptr::null_mut();
+        K_NO_INTERFACE
+    }
+}
+
+unsafe extern "C" fn handler_add_ref(_this: *mut c_void) -> u32 {
+    1
+}
+
+unsafe extern "C" fn handler_release(_this: *mut c_void) -> u32 {
+    1
+}
+
+/// En början på en ändring. Vi säger ja: appen har sin egen väg till parametrarna
+/// (`PluginProcessor::set_parameter`), och att neka här vore att säga att pluginen inte får
+/// rapportera — inte att vi gör något med det.
+unsafe extern "C" fn handler_begin_edit(_this: *mut c_void, _id: u32) -> i32 {
+    K_RESULT_OK
+}
+
+/// **En parameterändring från pluginens EGET gränssnitt.** Den tas emot och släpps: `performEdit`
+/// är pluginens väg att säga "användaren drog i den här ratten", och den som drar i Surge XT:s
+/// ratt är användaren i Surge XT:s fönster. Att skriva det vidare till motorn hade krävt en väg
+/// från den här tråden in i ljudtrådens parameterkö — den vägen finns inte än, och att låtsas är
+/// värre än att säga nej. `K_RESULT_OK` här betyder "jag hörde dig", inte "jag gjorde något".
+unsafe extern "C" fn handler_perform_edit(
+    _this: *mut c_void,
+    id: u32,
+    value: f64,
+) -> i32 {
+    if std::env::var_os("SONIX_VST3_DEBUG").is_some() {
+        eprintln!("[vst3] performEdit: parameter {id} = {value:.4} (ingen väg till motorn än)");
+    }
+    K_RESULT_OK
+}
+
+unsafe extern "C" fn handler_end_edit(_this: *mut c_void, _id: u32) -> i32 {
+    K_RESULT_OK
+}
+
+/// Pluginen säger att något ändrades (bussar, parametervärden, titlar). Vi kvitterar; att rita om
+/// är appens sak, och i inspektionsvägen ritas ingenting.
+unsafe extern "C" fn handler_restart(_this: *mut c_void, _flags: i32) -> i32 {
+    K_RESULT_OK
+}
+
+static COMPONENT_HANDLER_VTBL: ComponentHandlerVtbl = ComponentHandlerVtbl {
+    query_interface: Some(handler_query),
+    add_ref: Some(handler_add_ref),
+    release: Some(handler_release),
+    begin_edit: Some(handler_begin_edit),
+    perform_edit: Some(handler_perform_edit),
+    end_edit: Some(handler_end_edit),
+    restart_component: Some(handler_restart),
+};
+
+static COMPONENT_HANDLER: std::sync::OnceLock<Box<ComponentHandler>> = std::sync::OnceLock::new();
+
+fn component_handler() -> *mut c_void {
+    let h = COMPONENT_HANDLER.get_or_init(|| {
+        Box::new(ComponentHandler {
+            vtbl: &COMPONENT_HANDLER_VTBL,
+        })
+    });
+    h.as_ref() as *const ComponentHandler as *mut c_void
 }
 
 // --------------------------------------------------------- host IBStream ABI
@@ -769,6 +941,19 @@ unsafe fn class_info2(factory: *mut c_void, index: i32) -> Option<PClassInfo2> {
     Some(info)
 }
 
+/// **Mätspår för VST3-vägen** (2026-09-15), på när `SONIX_VST3_DEBUG` är satt.
+///
+/// Finns för att svara på sådant som inte går att gissa: *körde* anropet, vad svarade pluginen,
+/// och vad står det i fälten? Surge XT:s parameterlista har kostat tre hypoteser som alla dog på
+/// att de prövades utan att titta — det här är att titta. Skriver till stderr, och bara när
+/// flaggan är satt, så en vanlig körning inte får oväsen. Samma form som motorns `dbg_log`, men
+/// VST3-vägen laddas en gång per plugin i stället för per sample, så en rad per fråga räcker.
+fn vst3_probe(msg: &str) {
+    if std::env::var_os("SONIX_VST3_DEBUG").is_some() {
+        eprintln!("[vst3] {msg}");
+    }
+}
+
 unsafe fn factory_create(
     factory: *mut c_void,
     cid: &[u8; 16],
@@ -817,6 +1002,32 @@ unsafe fn gather_parameters(controller: *mut c_void) -> Vec<PluginParameter> {
         return Vec::new();
     };
     let total = unsafe { count(controller) };
+    vst3_probe(&format!(
+        "controller.getParameterCount() = {total} (controller={:p})",
+        controller
+    ));
+    // **Finns parametrarna ändå?** (2026-09-15.) Ett svar på 0 är inte samma sak som att det
+    // inte finns några: frågan ställs därför **förbi** räkningen, till post 0. Svarar
+    // `getParameterInfo(0)` med ett namn är det räkningen som är udda — svarar den inte alls är 0
+    // pluginens eget svar. Utan den här raden hade nästa steg varit en gissning igen.
+    if total == 0 {
+        let mut first: ParameterInfo = unsafe { std::mem::zeroed() };
+        let res = unsafe { get_info(controller, 0, &mut first) };
+        vst3_probe(&format!(
+            "förbi räkningen: getParameterInfo(0) = {res}, id={} namn={:?}",
+            first.id,
+            utf16_to_string(&first.title)
+        ));
+        let c = unsafe { vtable::<ControllerVtbl>(controller) };
+        if let Some(by_value) = c.get_param_string_by_value {
+            let mut buf = [0u16; 128];
+            let res = unsafe { by_value(controller, 0, 0.5, buf.as_mut_ptr()) };
+            vst3_probe(&format!(
+                "getParamStringByValue(0, 0.5) = {res}, text={:?}",
+                utf16_to_string(&buf)
+            ));
+        }
+    }
     let mut out = Vec::new();
     for index in 0..total {
         let mut info: ParameterInfo = unsafe { std::mem::zeroed() };
@@ -1108,6 +1319,22 @@ fn open(path: &str) -> Result<VstInstance, String> {
         }
     }
 
+    // **Hanteraren först, tillståndet sedan** (2026-09-15). Ordningen är referensvärdarnas:
+    // kontrollern ska ha någon att rapportera till **innan** den tar emot komponentens tillstånd,
+    // för en JUCE-baserad plugin (Surge XT:s VST3 är byggd med JUCE: `JuceVST3EditController`)
+    // kopplar in sina parametervärden genom hanteraren när tillståndet läses in. Stod hanteraren
+    // efteråt blev listan tom — och det var just vad vi mätte.
+    unsafe {
+        if let Some(set) = vtable::<ControllerVtbl>(controller).set_component_handler {
+            set(controller, component_handler());
+        }
+    }
+
+    // **Kopplingen mellan komponenten och kontrollern** — se funktionen. Den ligger **efter**
+    // hanteraren (JUCE:s kontroller ger sin ljudprocessor hanteraren och host-kontexten när den
+    // installeras) och **före** tillståndet: parameterlistan byggs i kopplingen.
+    unsafe { connect_component_and_controller(component, controller) };
+
     // **Komponentens tillstånd till kontrollern** (2026-09-15). VST3 delar på ansvaret:
     // komponenten äger ljudtillståndet, kontrollern äger parameterlistan, och de kopplas ihop
     // genom att komponentens state läses ut och skickas till kontrollern. Steget görs före
@@ -1138,6 +1365,12 @@ fn open(path: &str) -> Result<VstInstance, String> {
                 ) == K_RESULT_OK
             })
             .unwrap_or(false);
+        vst3_probe(&format!(
+            "component.get_state: körd={} resultat_ok={} bytes={}",
+            vtable::<ComponentVtbl>(component).get_state.is_some(),
+            wrote,
+            stream.data.len()
+        ));
         if wrote && !stream.data.is_empty() {
             // Läses från början: `getState` lämnar skrivhuvudet i slutet.
             stream.pos = 0;
@@ -1147,12 +1380,60 @@ fn open(path: &str) -> Result<VstInstance, String> {
         }
     }
 
+    unsafe {
+        let cv = vtable::<ComponentVtbl>(component);
+        let kv = vtable::<ControllerVtbl>(controller);
+        vst3_probe(&format!(
+            "handskakning: component.get_state={} controller.set_component_state={}",
+            cv.get_state.is_some(),
+            kv.set_component_state.is_some()
+        ));
+    }
+
+    // **Den andra vägen till samma svar:** en plugin får vara sin egen kontroller
+    // ("single component effect"). Om komponenten svarar på `IEditController` frågar vi
+    // *den* också, och skriver ut vad den säger — annars hade vi kunnat leta efter parametrar på
+    // fel objekt i månader.
+    unsafe {
+        let cv = vtable::<ComponentVtbl>(component);
+        if let Some(query) = cv.query_interface {
+            let mut alt: *mut c_void = std::ptr::null_mut();
+            let iid = IID_IEDIT_CONTROLLER.as_ptr() as *const c_char;
+            let res = query(component, iid, &mut alt);
+            if res == K_RESULT_OK && !alt.is_null() {
+                let count = vtable::<ControllerVtbl>(alt)
+                    .get_parameter_count
+                    .map(|count| count(alt));
+                vst3_probe(&format!(
+                    "komponenten är också en kontroller: getParameterCount() = {count:?}"
+                ));
+            } else {
+                vst3_probe("komponenten är inte en kontroller (queryInterface gav inget)");
+            }
+        }
+    }
+
     let params = unsafe { gather_parameters(controller) };
+    vst3_probe(&format!(
+        "parametrar: {} stycken efter inläsningen",
+        params.len()
+    ));
 
     // **Versionen finns bara i klassinfo version 2** (2026-09-15). Före den här raden stod
     // `version: String::new()` hårdkodat, och `--inspect-plugin` på en riktig plugin svarade
     // "Surge Synth Team v" — tomt efter v:et. Mätt mot `~/.vst3/Surge XT.vst3`.
     let info2 = unsafe { class_info2(factory, class_index) };
+    vst3_probe(&format!(
+        "klassinfo version 2: {}",
+        match info2.as_ref() {
+            Some(i) => format!(
+                "vendor={:?} version={:?}",
+                fixed_cstr(&i.vendor),
+                fixed_cstr(&i.version)
+            ),
+            None => "saknas (queryInterface(IPluginFactory2) gav inget)".to_string(),
+        }
+    ));
     let version = info2
         .as_ref()
         .map(|i| fixed_cstr(&i.version))
