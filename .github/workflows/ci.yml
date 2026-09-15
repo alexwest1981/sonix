@@ -38,6 +38,10 @@ jobs:
       # Windows-jobbet. Varningen syntes lokalt och lästes förbi; nu fälls den av
       # bygget i stället.
       - name: Build (noll varningar)
+        env:
+          # **Färgen av är en del av grinden, inte kosmetika.** Cargo kan skriva ANSI-koder
+          # före ordet, och då börjar raden med `\x1b[1m\x1b[33m` i stället för `warning`.
+          CARGO_TERM_COLOR: never
         run: |
           FEATURES="${{ matrix.features }}"
           if [ -n "$FEATURES" ]; then
@@ -45,9 +49,23 @@ jobs:
           else
             cargo build --release --locked 2>&1 | tee /tmp/build.log
           fi
-          if grep -qE '^warning' /tmp/build.log; then
+          # Remsa ANSI-koder och leta efter **ordet** `warning`, inte efter en rad som
+          # börjar med det. Mätt 2026-09-15: plugin-host-benet skrev en riktig varning
+          # (E0133) och jobbet var **grönt** — `^warning` såg den inte, för raden hade
+          # ANSI-koder före ordet. En grind som missar en riktig varning är värre än ingen
+          # grind: den ser ut som ett löfte. Falska träffar fäller bygget, och det är rätt
+          # riktning.
+          sed -r 's/\x1b\[[0-9;]*[a-zA-Z]//g' /tmp/build.log > /tmp/build.plain.log
+          # **En grind som inte har sett något ska falla, inte tiga.** Ett tomt eller
+          # oläsligt bygglogg såg förut ut precis som ett rent bygge.
+          if ! grep -qE 'Compiling|Finished|Checking' /tmp/build.plain.log; then
+            echo "::error::Byggloggen innehåller varken Compiling, Checking eller Finished — grinden kan inte lita på den"
+            tail -20 /tmp/build.plain.log
+            exit 1
+          fi
+          if grep -qE 'warning' /tmp/build.plain.log; then
             echo "::error::Varningar i bygget — repots krav är noll"
-            grep -E '^warning' /tmp/build.log
+            grep -E 'warning' /tmp/build.plain.log
             exit 1
           fi
 

@@ -2002,7 +2002,10 @@ mod imp {
                 let mut info: ClapAudioPortInfo = unsafe { std::mem::zeroed() };
                 if unsafe { get(plugin, index, is_input, &mut info) } {
                     channels.push(info.channel_count.max(1));
-                    sidechain.push(is_sidechain_port_type(info.port_type));
+                    // Explicit `unsafe`: i edition 2024 är kroppen i en `unsafe fn` säker
+                    // som standard, och kompilatorn varnar för varje anrop som inte säger
+                    // till. En varning är röd CI här.
+                    sidechain.push(unsafe { is_sidechain_port_type(info.port_type) });
                 }
             }
             (channels, sidechain)

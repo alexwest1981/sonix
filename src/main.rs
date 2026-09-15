@@ -143,6 +143,59 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 
 
+    // `sonix --inspect-plugin <fil...>`: öppnar en plugin **huvudlöst** och skriver ut vad
+    // den rapporterar — identitet, portar, latens och parametrar. Verktyget finns för att
+    // Fas 8.6 ska kunna MÄTAS mot en riktig, nedladdad plugin i stället för bara mot vår egen
+    // mock: pluginens egna portar (sidokedja in, egna utbussar) och dess latens går inte att
+    // gissa, och en gissning hade stämt för mocken och varit fel för allt annat.
+    //
+    // **Detta är den enda vägen som öppnar en plugin utan fönster** — en krasch tar därför
+    // kommandot med sig (och syns som en utgångskod), vilket är ärligare än att en skanning
+    // ser ut att ha lyckats. I appen går samma plugin genom sandlådan i stället.
+    if let Some(pos) = std::env::args().position(|a| a == "--inspect-plugin") {
+        let files: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if files.is_empty() {
+            eprintln!("användning: sonix --inspect-plugin <plugin.clap|plugin.vst3|mapp> [...]");
+            std::process::exit(2);
+        }
+        let mut failed = 0usize;
+        for f in &files {
+            match audio::plugin_host_live::load_processor(f, 48_000.0, 512) {
+                Ok(processor) => {
+                    let info = processor.info();
+                    println!("📦 {}", f);
+                    println!("  backend:    {}", processor.backend());
+                    println!("  namn:       {} ({})", info.name, info.id);
+                    println!("  tillverkare:{} v{}", info.vendor, info.version);
+                    println!("  latens:     {} ramar", processor.latency_frames());
+                    // Fas 8.6: det här är siffrorna som avgör om en plugin kan köras i en
+                    // sidokedja eller ha egna utbussar — lästa ur pluginens egen beskrivning.
+                    println!(
+                        "  sidokedja:  {} ingång(ar)",
+                        processor.sidechain_inputs()
+                    );
+                    println!("  egna utbussar: {}", processor.extra_outputs());
+                    let params = processor.parameters();
+                    println!("  parametrar: {} (automatiserbara: {})", params.len(), params.iter().filter(|p| p.is_automatable()).count());
+                    for p in params.iter().take(8) {
+                        println!(
+                            "    {:>4}  {:<28} {} .. {} (standard {})",
+                            p.id, p.name, p.min_value, p.max_value, p.default_value
+                        );
+                    }
+                    if params.len() > 8 {
+                        println!("    ... {} fler", params.len() - 8);
+                    }
+                }
+                Err(e) => {
+                    println!("⚠ {}: {e}", f);
+                    failed += 1;
+                }
+            }
+        }
+        std::process::exit(if failed == 0 { 0 } else { 1 });
+    }
+
     // `sonix --macro-example <fil>`: skriver en färdig startkedja. Kedjan är en fil man kan
     // rätta för hand, så kommandot behövs för att komma igång utan att kunna filformen.
     if let Some(pos) = std::env::args().position(|a| a == "--macro-example") {
