@@ -375,7 +375,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                 assert_eq!(base_note, 60, "kanalens grundton");
                 assert_eq!((start01, end01), (0.0, 1.0));
             }
-            other => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
+            _ => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
         }
     }
 
@@ -419,7 +419,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                 assert_eq!(base_note, 48, "zonens grundton, inte kanalens");
                 assert_eq!((start01, end01), (0.0, 1.0), "en zon har ingen slicekarta");
             }
-            other => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
+            _ => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
         }
     }
 
@@ -452,7 +452,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                 assert_eq!(left.as_ref(), &vec![0.7], "kanalens ljud när zonen inte täcker");
                 assert_eq!(base_note, 60);
             }
-            other => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
+            _ => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
         }
     }
 
