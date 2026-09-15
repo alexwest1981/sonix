@@ -1589,8 +1589,27 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                     egui::Slider::new(&mut ch.velocity_sensitivity, 0.0..=1.0)
                                         .custom_formatter(|v, _| format!("{:.0} %", v * 100.0)),
                                 )
-                                .on_hover_text(crate::i18n::t("Hur mycket notens anslag får påverka nivån. 100 % är den linjära faktor som alltid har funnits, 0 % stänger av den helt — då låter varje anslag lika starkt. Gäller kanalens sampel; inte den inbyggda synten."));
-
+                                .on_hover_text(crate::i18n::t("Hur mycket notens anslag får påverka nivån. 100 % är den faktor som alltid har funnits, 0 % stänger av den helt — då låter varje anslag lika starkt. Gäller kanalens sampel; inte den inbyggda synten."));
+                            });
+                            // **Kurvan** (Fas 8.4/7): hur anslaget översätts till nivå innan
+                            // känsligheten blandas in. Listan läses ur `VelocityCurve::ALL`, så
+                            // en ny kurva dyker upp här utan en rad ny UI-kod.
+                            ui.horizontal(|ui| {
+                                ui.label(crate::i18n::t("Kurva:"));
+                                egui::ComboBox::from_id_salt("velocity-curve")
+                                    .selected_text(crate::i18n::t(ch.velocity_curve.label()))
+                                    .show_ui(ui, |ui| {
+                                        for c in crate::audio::envelope::VelocityCurve::ALL {
+                                            ui.selectable_value(
+                                                &mut ch.velocity_curve,
+                                                c,
+                                                crate::i18n::t(c.label()),
+                                            );
+                                        }
+                                    })
+                                    .response
+                                    .on_hover_text(crate::i18n::t("Rak: halvt anslag ger halv nivå (kanalen har alltid haft den). Kvadratisk (\"curve 2\", som FL:s sampler och Abletons Simpler): halvt anslag ger en fjärdedels nivå — −12 dB i stället för −6 dB. Skillnaden hörs mest på svaga slag."));
+                            });
                             // **Filterenvelopen** (Fas 8.4/7): ett lågpassfilter per röst med sin
                             // **egen** ADSR. Den är filtrets, inte amplitudens — en "pluck" är
                             // filtret som stänger, medan nivån står still.
@@ -1630,7 +1649,12 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                     ui.add(egui::Slider::new(&mut ch.filter.env.release, 0.0..=4.0).suffix(" s").fixed_decimals(3));
                                 });
                             });
-                            });
+
+                            // **Ingen envelop** — knappen hör till samplern (en syster till
+                            // envelop- och filterraderna), inte till velocitetsraden. Fram till
+                            // 2026-09-15 saknade velocitets-`ui.horizontal` sin egen stängning
+                            // och lånade den här, vilket lade **hela filterblocket inuti en
+                            // radlayout** — alltså i samma rad som reglaget.
                             ui.horizontal(|ui| {
                                 if ui
                                     .button(crate::i18n::t("Ingen envelop"))

@@ -224,6 +224,9 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             ping_pong: false,
             amp_env: crate::audio::envelope::AdsrParams::identity(),
             velocity_sensitivity: 0.35,
+            // **Avsiktligt den kvadratiska** — ett värde som skiljer sig från standarden, så att
+            // rundturen nedan fäller fältet om det inte sparas.
+            velocity_curve: crate::audio::envelope::VelocityCurve::Squared,
             // En **zon** med egna intervall: ett tappat keymap-fält i sparandet ska synas här.
             zones: vec![crate::audio::keymap::SampleZone {
                 sample_path: Some("/finns/inte/zon.wav".to_string()),
@@ -285,6 +288,12 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             "anslagets känslighet ska med i projektfilen"
         );
         assert_eq!(
+            r.velocity_curve,
+            crate::audio::envelope::VelocityCurve::Squared,
+            "anslagets kurva ska med i projektfilen — och det är kanalens egen, inte standarden"
+        );
+        assert_eq!(r.velocity_curve, ch.velocity_curve);
+        assert_eq!(
             r.filter, ch.filter,
             "filtret ska med i projektfilen — både på/av och siffrorna"
         );
@@ -323,6 +332,13 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(
             back.velocity_sensitivity, 1.0,
             "en äldre fil ska få full känslighet — den faktor velocityn alltid har haft"
+        );
+        // **Kurvan är den raka** i en fil utan fältet — inte för att raken råkade bli standard,
+        // utan för att den är kurvan filen skrevs med.
+        assert_eq!(
+            back.velocity_curve,
+            crate::audio::envelope::VelocityCurve::Linear,
+            "en äldre fil ska få den raka kurvan"
         );
         // **Keymappen är tom** i en fil som inte har fältet — och då spelar kanalen sitt eget
         // sampel, alltså exakt som den gjorde.

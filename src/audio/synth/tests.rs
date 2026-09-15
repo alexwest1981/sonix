@@ -1580,7 +1580,7 @@ fn trigger_sampler(
 ) -> SynthEngine {
     // **Fullt anslag och full känslighet** = den linjära faktor velocityn alltid har haft,
     // alltså precis vad varje prov före anslagsratten prövade.
-    trigger_sampler_velocity(loop_mode, loop_span01, ping_pong, hold_secs, amp_env, 1.0, 1.0, SamplerFilter::default())
+    trigger_sampler_velocity(loop_mode, loop_span01, ping_pong, hold_secs, amp_env, 1.0, 1.0, SamplerFilter::default(), crate::audio::envelope::VelocityCurve::Linear)
 }
 
 /// Samma som `trigger_sampler`, men med **anslaget** och **kanalens känslighet** satta
@@ -1594,6 +1594,7 @@ fn trigger_sampler_velocity(
     velocity: f32,
     velocity_sensitivity: f32,
     filter: SamplerFilter,
+    velocity_curve: crate::audio::envelope::VelocityCurve,
 ) -> SynthEngine {
     let mut synth = SynthEngine::new(48_000.0);
     let n = 4_000usize;
@@ -1609,6 +1610,7 @@ fn trigger_sampler_velocity(
         pitch_cents: 0.0,
         velocity,
         velocity_sensitivity,
+        velocity_curve,
         volume: 1.0,
         reverse: false,
         start01: 0.0,
@@ -1652,6 +1654,7 @@ fn trigger_sampler_filter(filter: SamplerFilter) -> SynthEngine {
         pitch_cents: 0.0,
         velocity: 1.0,
         velocity_sensitivity: 1.0,
+        velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
         volume: 1.0,
         reverse: false,
         start01: 0.0,
@@ -1772,10 +1775,12 @@ fn velocity_scales_the_sample_at_full_sensitivity() {
     let mut strong = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 1.0, 1.0,
         SamplerFilter::default(),
+        crate::audio::envelope::VelocityCurve::Linear,
     );
     let mut weak = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 1.0,
         SamplerFilter::default(),
+        crate::audio::envelope::VelocityCurve::Linear,
     );
     let stark = render_left(&mut strong, 512);
     let svag = render_left(&mut weak, 512);
@@ -1806,15 +1811,63 @@ fn velocity_scales_the_sample_at_full_sensitivity() {
 /// **Känsligheten 0 är identiteten** (Fas 8.4/7): två helt olika anslag ger **byte-identisk**
 /// utdata. Det är formen ett "det här får inte ändra ljudet"-prov ska ha — likhet, inte en
 /// tolerans — för en känslighet som nästan är av är en ändring av ljudet.
+/// **Kurvan når ljudet — och den är exakt** (Fas 8.4/7): vid halvt anslag är den kvadratiska
+/// kurvans nivå **exakt hälften** av den rakas (0,25 mot 0,50), ram för ram.
+///
+/// Provet finns för att kurvan först var ett **val i gränssnittet utan en mätning**: en rullista
+/// som skriver till ett fält ingen läser ser precis lika rätt ut som en som fungerar. Här mäts
+/// skillnaden i **utdata från motorn**, med samma trigger och bara kurvan utbytt.
+#[test]
+fn the_squared_curve_reaches_the_audio_and_is_exactly_half() {
+    let mut rak = trigger_sampler_velocity(
+        LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 1.0,
+        SamplerFilter::default(),
+        crate::audio::envelope::VelocityCurve::Linear,
+    );
+    let mut kvadrat = trigger_sampler_velocity(
+        LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 1.0,
+        SamplerFilter::default(),
+        crate::audio::envelope::VelocityCurve::Squared,
+    );
+    let a = render_left(&mut rak, 512);
+    let b = render_left(&mut kvadrat, 512);
+    for i in 0..32 {
+        assert!(
+            (a[i] * 0.5 - b[i]).abs() < 1e-9,
+            "ram {i}: 0,25 mot 0,50 ska ge exakt halva ({} → {})",
+            a[i],
+            b[i]
+        );
+    }
+    assert!(
+        b.iter().any(|v| v.abs() > 1e-4),
+        "den kvadratiska kurvan ska fortfarande höras"
+    );
+    // Och den **raka** kurvan är oförändrad: samma utdata två gånger, alltså är det kurvan som
+    // gör skillnaden och inte en sidoeffekt av triggen.
+    let mut rak_igen = trigger_sampler_velocity(
+        LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 1.0,
+        SamplerFilter::default(),
+        crate::audio::envelope::VelocityCurve::Linear,
+    );
+    assert_eq!(
+        a,
+        render_left(&mut rak_igen, 512),
+        "den raka kurvan ska ge samma utdata varje gång"
+    );
+}
+
 #[test]
 fn zero_sensitivity_makes_the_velocity_inaudible() {
     let mut stark = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 1.0, 0.0,
         SamplerFilter::default(),
+        crate::audio::envelope::VelocityCurve::Linear,
     );
     let mut svag = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.25, 0.0,
         SamplerFilter::default(),
+        crate::audio::envelope::VelocityCurve::Linear,
     );
     let a = render_left(&mut stark, 512);
     let b = render_left(&mut svag, 512);
@@ -1832,6 +1885,7 @@ fn the_channel_sensitivity_reaches_the_voice() {
     let mut synth = trigger_sampler_velocity(
         LoopMode::Off, (0.0, 1.0), false, 0.0, AdsrParams::identity(), 0.5, 0.5,
         SamplerFilter::default(),
+        crate::audio::envelope::VelocityCurve::Linear,
     );
     let _ = synth.process_stereo();
     // (1 - 0,5) + 0,5 · 0,5 = 0,75 — halva anslaget får halva sin verkan.

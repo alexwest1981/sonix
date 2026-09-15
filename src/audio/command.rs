@@ -283,9 +283,12 @@ pub enum AudioCommand {
         pitch_cents: f32,
         velocity: f32,
         /// **Kanalens velocitetskänslighet** (Fas 8.4/7), 0,0–1,0: hur mycket notens anslag får
-        /// påverka nivån. `1,0` är den linjära faktor velocityn alltid har haft, `0,0` stänger
-        /// av den. Värdet räknas om till en gain en gång, vid triggen.
+        /// påverka nivån. `1,0` är den faktor velocityn alltid har haft, `0,0` stänger av den.
+        /// Värdet räknas om till en gain en gång, vid triggen.
         velocity_sensitivity: f32,
+        /// **Anslagets kurva** (Fas 8.4/7): rak (standarden, som alltid har funnits) eller
+        /// kvadratisk ("curve 2"). Se `envelope::VelocityCurve`.
+        velocity_curve: super::envelope::VelocityCurve,
         volume: f32,
         reverse: bool,
         start01: f32,

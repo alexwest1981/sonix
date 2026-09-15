@@ -482,6 +482,7 @@ impl SynthEngine {
                 pitch_cents,
                 velocity,
                 velocity_sensitivity,
+                velocity_curve,
                 volume,
                 reverse,
                 start01,
@@ -561,8 +562,11 @@ impl SynthEngine {
                 // rösten i stället för en rå multiplikation här. Med standardkänsligheten 1,0
                 // är talet detsamma som förut — men nu går det att stänga av per kanal, och
                 // envelopen (som ligger efter i samplevägen) skalas av anslaget.
-                v.velocity_gain =
-                    crate::audio::envelope::velocity_gain(velocity, velocity_sensitivity);
+                v.velocity_gain = crate::audio::envelope::velocity_gain(
+                    velocity,
+                    velocity_sensitivity,
+                    velocity_curve,
+                );
                 v.volume = volume.clamp(0.0, 1.5);
                 let p: f32 = 0.0; // pan handled on the channel strip in future
                 v.pan_l = ((1.0 - p) * 0.5).sqrt();

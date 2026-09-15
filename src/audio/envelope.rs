@@ -71,10 +71,53 @@ impl AdsrParams {
 /// Båda ingångarna kläms till `0,0–1,0`. Stegets velocity kläms redan till `0,1–1,0` i
 /// pianorullen, så klämningen ändrar inget för den vägen — den finns för att ett värde utanför
 /// spannet (en trasig MIDI-fil, en framtida automationskurva) inte ska kunna förstärka.
-pub fn velocity_gain(velocity: f32, sensitivity: f32) -> f32 {
+pub fn velocity_gain(velocity: f32, sensitivity: f32, curve: VelocityCurve) -> f32 {
     let v = velocity.clamp(0.0, 1.0);
     let s = sensitivity.clamp(0.0, 1.0);
-    (1.0 - s) + s * v
+    let formad = curve.apply(v);
+    (1.0 - s) + s * formad
+}
+
+/// **Anslagets kurva** (Fas 8.4/7): hur ett anslag översätts till nivå innan känsligheten blandas
+/// in.
+///
+/// `Linear` är **standarden**, och det av två skäl: den är kurvan kanalen alltid har haft (så ett
+/// projekt från före valet låter identiskt), och den är den enda kurva där ett halvt anslag ger
+/// **exakt** halv nivå — vilket går att pröva med `==` i stället för en tolerans.
+///
+/// `Squared` är "curve 2" som FL:s sampler och Abletons Simpler använder: `0,5` anslag ger `0,25`
+/// nivå, alltså −12 dB i stället för −6 dB. Skillnaden hörs mest på svaga anslag — och det är
+/// poängen: ett svagt anslag ska *kännas* svagt, inte bara ligga lägre.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
+pub enum VelocityCurve {
+    #[default]
+    Linear,
+    Squared,
+}
+
+impl VelocityCurve {
+    /// Alla kurvor, i den ordning rullistan visar dem — listan är **härledd ur listan**, så en ny
+    /// kurva dyker upp i gränssnittet utan en rad UI-kod (och utan risk att peka fel).
+    pub const ALL: [VelocityCurve; 2] = [Self::Linear, Self::Squared];
+
+    /// Kurvan tillämpad på ett klämt anslag (`0,0–1,0`).
+    #[inline(always)]
+    pub fn apply(self, velocity: f32) -> f32 {
+        let v = velocity.clamp(0.0, 1.0);
+        match self {
+            VelocityCurve::Linear => v,
+            VelocityCurve::Squared => v * v,
+        }
+    }
+
+    /// Etiketten i gränssnittet. Nycklarna **är** de svenska strängarna (som i resten av i18n),
+    /// och `i18n::t` faller tillbaka på nyckeln när en översättning saknas.
+    pub fn label(self) -> &'static str {
+        match self {
+            VelocityCurve::Linear => "Rak",
+            VelocityCurve::Squared => "Kvadratisk (curve 2)",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -213,31 +256,74 @@ mod tests {
         // **Exakt**, inte nästan: standardvärdet 1,0 ska ge precis det tal motorn räknade
         // förut (`volume * velocity`), för ett projekt som sparades då ska låta identiskt.
         for v in [0.1, 0.25, 0.5, 0.9, 1.0] {
-            assert_eq!(velocity_gain(v, 1.0), v, "velocity {v}");
+            assert_eq!(velocity_gain(v, 1.0, VelocityCurve::Linear), v, "velocity {v}");
         }
+    }
+
+    /// **Standardkurvan är den som alltid har funnits** (Fas 8.4/7): `Default` ska vara `Linear`,
+    /// annars ändras ljudet i ett projekt som inte valt någon kurva.
+    #[test]
+    fn the_default_curve_is_the_linear_one() {
+        assert_eq!(VelocityCurve::default(), VelocityCurve::Linear);
+        assert_eq!(VelocityCurve::ALL[0], VelocityCurve::Linear);
+        for v in [0.0, 0.25, 0.5, 1.0] {
+            assert_eq!(VelocityCurve::default().apply(v), v, "velocity {v}");
+        }
+    }
+
+    /// **Den kvadratiska kurvan är exakt kvadraten** — halvt anslag ger en fjärdedels nivå, alltså
+    /// −12 dB i stället för −6 dB. Provet jämför med `==`: talen är valda så de går att räkna för
+    /// hand, och en tolerans hade gödslat bort ett fel i formeln.
+    #[test]
+    fn the_squared_curve_is_exactly_the_square() {
+        assert_eq!(VelocityCurve::Squared.apply(0.5), 0.25);
+        assert_eq!(VelocityCurve::Squared.apply(0.25), 0.0625);
+        assert_eq!(VelocityCurve::Squared.apply(1.0), 1.0);
+        // Och känsligheten blandas in **efteråt**: halv känslighet halvvägs mot 1,0.
+        assert_eq!(
+            velocity_gain(0.5, 0.5, VelocityCurve::Squared),
+            0.625,
+            "(1 - 0,5) + 0,5 · 0,25 = 0,625"
+        );
+    }
+
+    #[test]
+    fn every_curve_is_a_value_and_not_a_side_effect() {
+        // Kurvorna ska vara rena funktioner: samma in ger samma ut, och en kurva får inte kunna
+        // ge mer än full nivå (en "boost" vore ett anslag starkare än notens egen nivå).
+        for c in VelocityCurve::ALL {
+            for v in [0.0, 0.3, 0.5, 0.77, 1.0] {
+                assert_eq!(c.apply(v), c.apply(v), "{c:?} vid {v}");
+                assert!((0.0..=1.0).contains(&c.apply(v)), "{c:?} vid {v}");
+            }
+            assert_eq!(c.apply(1.0), 1.0, "{c:?}: fullt anslag är full nivå");
+            assert_eq!(c.apply(0.0), 0.0, "{c:?}: noll anslag är tyst");
+        }
+        // Och den kvadratiska är strikt lägre än den raka mellan ändarna.
+        assert!(VelocityCurve::Squared.apply(0.5) < VelocityCurve::Linear.apply(0.5));
     }
 
     #[test]
     fn zero_sensitivity_ignores_the_velocity_entirely() {
         for v in [0.0, 0.1, 0.5, 1.0] {
-            assert_eq!(velocity_gain(v, 0.0), 1.0, "velocity {v}");
+            assert_eq!(velocity_gain(v, 0.0, VelocityCurve::Linear), 1.0, "velocity {v}");
         }
     }
 
     #[test]
     fn sensitivity_blends_between_off_and_the_velocity() {
-        assert_eq!(velocity_gain(0.5, 0.5), 0.75);
-        assert_eq!(velocity_gain(0.25, 0.5), 0.625);
+        assert_eq!(velocity_gain(0.5, 0.5, VelocityCurve::Linear), 0.75);
+        assert_eq!(velocity_gain(0.25, 0.5, VelocityCurve::Linear), 0.625);
     }
 
     #[test]
     fn out_of_range_values_are_clamped_and_never_amplify() {
         // En velocity utanför 0–1 får inte bli en förstärkare, och en känslighet utanför
         // 0–1 får inte vända regeln (negativ känslighet hade gjort en stark not svagare).
-        assert_eq!(velocity_gain(-1.0, 1.0), 0.0);
-        assert_eq!(velocity_gain(2.0, 1.0), 1.0);
-        assert_eq!(velocity_gain(0.5, -1.0), 1.0);
-        assert_eq!(velocity_gain(0.5, 5.0), 0.5);
+        assert_eq!(velocity_gain(-1.0, 1.0, VelocityCurve::Linear), 0.0);
+        assert_eq!(velocity_gain(2.0, 1.0, VelocityCurve::Linear), 1.0);
+        assert_eq!(velocity_gain(0.5, -1.0, VelocityCurve::Linear), 1.0);
+        assert_eq!(velocity_gain(0.5, 5.0, VelocityCurve::Linear), 0.5);
     }
 
     #[test]

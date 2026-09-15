@@ -52,6 +52,8 @@ pub struct VoiceSpec {
     pub velocity_sensitivity: f32,
     /// **Filtret** (Fas 8.4/7) gör detsamma: samma klang i filen som i högtalarna.
     pub filter: crate::audio::filter::SamplerFilter,
+    /// **Anslagets kurva** (Fas 8.4/7) gör detsamma: filen ska svara på anslag som högtalarna.
+    pub velocity_curve: crate::audio::envelope::VelocityCurve,
     /// **Keymappen** (Fas 8.4/7) följer också med: exporten väljer zon med **samma** funktion som
     /// spelvägen (`keymap::zone_for_note`), så filen och högtalarna kan inte hamna i olika zoner.
     pub zones: Vec<crate::audio::keymap::SampleZone>,
@@ -224,6 +226,7 @@ fn sample_trigger_command(
         pitch_cents: v.cents,
         velocity,
         velocity_sensitivity: v.velocity_sensitivity,
+        velocity_curve: v.velocity_curve,
         volume: v.volume,
         reverse: v.reverse,
         start01,
@@ -954,6 +957,7 @@ mod tests {
             ping_pong: false,
             amp_env: AdsrParams::identity(),
             velocity_sensitivity: 1.0,
+            velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
             filter: crate::audio::filter::SamplerFilter::default(),
             zones: vec![crate::audio::keymap::SampleZone {
                 sample_path: None,
@@ -1025,6 +1029,7 @@ mod tests {
                     ping_pong: false,
                     amp_env: AdsrParams::identity(),
                     velocity_sensitivity: 1.0,
+                    velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
                     filter: crate::audio::filter::SamplerFilter::default(),
                     zones: Vec::new(),
                 })
@@ -1463,6 +1468,7 @@ mod tests {
                 ping_pong: false,
                 amp_env: AdsrParams::identity(),
                 velocity_sensitivity: 1.0,
+                velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
                 filter: crate::audio::filter::SamplerFilter::default(),
                 zones: Vec::new(),
             });
@@ -1562,6 +1568,7 @@ mod tests {
             ping_pong: false,
             amp_env: AdsrParams::identity(),
             velocity_sensitivity: 1.0,
+            velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
             filter: crate::audio::filter::SamplerFilter::default(),
             zones: Vec::new(),
         });

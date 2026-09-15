@@ -203,6 +203,7 @@ pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u
             ping_pong: ch.ping_pong,
             amp_env: ch.amp_env,
             velocity_sensitivity: ch.velocity_sensitivity,
+            velocity_curve: ch.velocity_curve,
             // **Filtret följer med till filen** (Fas 8.4/7) — annars hade exporten haft en
             // annan klang än högtalarna.
             filter: ch.filter,

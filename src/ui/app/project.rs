@@ -183,6 +183,10 @@ pub struct SavedChannel {
     /// exakt den linjära faktor velocityn alltid har haft, alltså låter filen som förut.
     #[serde(default = "default_velocity_sensitivity")]
     pub velocity_sensitivity: f32,
+    /// **Anslagets kurva** (Fas 8.4/7). Saknas fältet i en äldre fil är kurvan **rak** — den
+    /// kanalen alltid har haft, alltså låter filen som förut.
+    #[serde(default)]
+    pub velocity_curve: crate::audio::envelope::VelocityCurve,
     /// **Filterenvelopen** (Fas 8.4/7). Saknas fältet i en äldre fil är filtret **avstängt** —
     /// alltså exakt det ljud filen hade. (`SamplerFilter::default()` bär både avstängningen och
     /// standardvärdena för cutoff/resonans, så det finns bara en tabell för dem.)
@@ -414,6 +418,7 @@ pub(crate) fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
         ping_pong: c.ping_pong,
         amp_env: c.amp_env,
         velocity_sensitivity: c.velocity_sensitivity,
+        velocity_curve: c.velocity_curve,
         filter: c.filter,
         // **Zonerna** (Fas 8.4/7): filen och intervallen sparas, ljudet läses (se `SavedZone`).
         zones: c
@@ -475,6 +480,7 @@ pub(crate) fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
         // **Anslagets känslighet** (Fas 8.4/7) har ingen migrering: fältet saknas i en äldre fil
         // och blir då 1,0 — exakt den linjära faktor velocityn alltid har haft.
         velocity_sensitivity: s.velocity_sensitivity,
+        velocity_curve: s.velocity_curve,
         filter: s.filter,
         // **Zonerna** (Fas 8.4/7): ljudet läses ur filen igen — kanalen gör precis likadant med
         // sitt eget sampel strax ovanför. En zon vars fil inte går att läsa får `pcm: None`, och
