@@ -1115,6 +1115,72 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                 }
                             }
 
+                            // **Loopens punkter går att dra** (Fas 8.4/7). Regeln bor i
+                            // `command::move_loop_point`: punkten kläms till filen och
+                            // **stannar** en minsta loop från sin granne. Utan den klämningen
+                            // kunde ett drag skapa ett bakvänt par — och motorn läser ett
+                            // bakvänt par som "ingen loop", så loopen hade **försvunnit mitt i
+                            // ett drag**. Markörerna ritas och interageras **efter**
+                            // slicekartans gränser, för de ligger ovanpå dem och ska vinna.
+                            //
+                            // Reglaget finns kvar (Loopstart/Loopslut nedanför): samma två tal,
+                            // två dörrar — ett drag för att leta, en siffra för att sätta exakt.
+                            if ch.loop_mode != crate::audio::LoopMode::Off {
+                                let ls_x = wf_rect.min.x + ch.sample_loop_start * wf_rect.width();
+                                let le_x = wf_rect.min.x + ch.sample_loop_end * wf_rect.width();
+                                let loop_rect = Rect::from_min_max(
+                                    Pos2::new(ls_x.min(le_x), wf_rect.min.y),
+                                    Pos2::new(ls_x.max(le_x), wf_rect.max.y),
+                                );
+                                ui.painter().rect_filled(
+                                    loop_rect,
+                                    Rounding::ZERO,
+                                    Color32::from_rgba_unmultiplied(90, 170, 255, 30),
+                                );
+                                for (pi, is_start) in [(0usize, true), (1usize, false)] {
+                                    let (px, value, other) = if is_start {
+                                        (ls_x, ch.sample_loop_start, ch.sample_loop_end)
+                                    } else {
+                                        (le_x, ch.sample_loop_end, ch.sample_loop_start)
+                                    };
+                                    ui.painter().line_segment(
+                                        [
+                                            Pos2::new(px, wf_rect.min.y),
+                                            Pos2::new(px, wf_rect.max.y),
+                                        ],
+                                        Stroke::new(2.0_f32, Theme::FL_CYAN),
+                                    );
+                                    let zone = Rect::from_min_max(
+                                        Pos2::new(px - 4.0, wf_rect.min.y),
+                                        Pos2::new(px + 4.0, wf_rect.max.y),
+                                    );
+                                    let resp = ui.interact(
+                                        zone,
+                                        egui::Id::new(("loop-point", pi)),
+                                        egui::Sense::drag(),
+                                    );
+                                    if resp.dragged() {
+                                        let delta = resp.drag_delta().x / wf_rect.width();
+                                        if delta != 0.0 {
+                                            let moved = crate::audio::command::move_loop_point(
+                                                value + delta,
+                                                is_start,
+                                                other,
+                                            );
+                                            if is_start {
+                                                ch.sample_loop_start = moved;
+                                            } else {
+                                                ch.sample_loop_end = moved;
+                                            }
+                                        }
+                                    }
+                                    if resp.hovered() || resp.dragged() {
+                                        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+                                        resp.on_hover_text(crate::i18n::t("Dra looppunkten. Den stannar en minsta loop från den andra punkten — en loop som försvann mitt i ett drag vore ingen interaktion."));
+                                    }
+                                }
+                            }
+
                             // Quick Slicer Presets
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("Chop Snabbval:")).size(10.0).color(Theme::TEXT_MUTED));

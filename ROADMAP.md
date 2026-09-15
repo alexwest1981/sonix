@@ -1283,9 +1283,25 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
       exakt noll **oavsett** cutoff — mätt: −78 dB vid 12 kHz, alltså dämpat även av ett "öppet"
       filter. En probe ska ligga i passbandet eller stopbandet, inte i en punkt där varje svar är
       noll. Samma läxa som "mät på en jämn ton först".
+  - **Loop-punkterna går att dra i vågformen — KLAR 2026-09-15.** Vågformen i kanalens chopper
+    ritar loopens spann och båda punkterna, och de går att **dra** (samma grepp som 8.7:s
+    slicegränser: en zon på ±4 px som visar `ResizeHorizontal` och en hover-text som säger regeln).
+    - Regeln är **ren** och bor bredvid motorns `loop_frames` i `command.rs`:
+      `move_loop_point(value, is_start, other)` klämmer punkten till filen och **stannar**
+      `MIN_LOOP_SPAN` (0,5 % — samma tal som slicekartans minsta slice, ett tal och inte två) från
+      sin granne. Det är inte kosmetik: motorn läser ett **bakvänt par som "ingen loop"**, så utan
+      klämningen hade loopen **försvunnit mitt i ett drag**.
+    - `a_dragged_pair_is_always_a_real_loop` drar starten genom hela filen i små steg och ställer
+      frågan till **motorn** (`loop_frames`) efter varje steg — provet binder alltså vågformens löfte
+      till motorns regel. En regel, två dörrar.
+    - **f32-läxan:** `0,75 − 0,745` är `0,0049999952`, alltså *mindre* än `0,005`. Provet kräver
+      därför inte ett exakt avstånd i flyttal (ett löfte f32 inte kan hålla) utan att paret **är en
+      loop** — vilket motorn avgör **i hela ramar**.
+    - Reglaget finns kvar: samma två tal, två dörrar — ett drag för att leta, en siffra för att sätta
+      exakt. `loop_frames` är oförändrad, och varningen för ett bakvänt par gäller fortfarande den
+      vägen (draget kan inte skapa ett).
   - **Ärligt kvar (egna pass):** inga **multi-samples** (keymaps/velocity-lager = DirectWave-nivån),
-    loop-punkterna sätts med reglage i stället för att kunna dras i vågformen, och anslagets kurva
-    är linjär (ingen väljbar kvadratisk kurva, och inget anslag → filter).
+    och anslagets kurva är linjär (ingen väljbar kvadratisk kurva, och inget anslag → filter).
 - [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*
   **Påbörjad 2026-09-15** (`79adff9`, `6c1b43b`): tre av fyra delar byggda och mätta —
   **kvar är routningen av pluginens egna utbussar till egna spår** (se nedan).

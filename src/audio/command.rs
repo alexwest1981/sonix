@@ -529,6 +529,30 @@ pub fn step_hold_secs(bpm: f32, swing: f32, step_in_bar: usize) -> f32 {
 /// loop_start` betyder att användaren inte har satt någon loop, och då spelar rösten som
 /// en en-skottsprovspelning — inte "närmast rätt". En loop är dessutom minst en ram bred;
 /// en loop på noll ramar är ingen loop.
+/// **Minsta loop**, i filens enhet (andel av filen): 0,5 %. Samma tal som
+/// `onset::nudge_slice_boundary` använder för en slice (Fas 8.7) — två regler för samma sak
+/// ("hur nära två gränser får ligga") driver isär om de är två tal.
+pub const MIN_LOOP_SPAN: f32 = 0.005;
+
+/// **Flytta en looppunkt** (Fas 8.4/7) — var hamnar den när man **drar** den i vågformen?
+///
+/// `is_start` säger vilken av de två som dras. Punkten kläms till filen (`0,0–1,0`) och
+/// **stannar** `MIN_LOOP_SPAN` från den andra. Det är vad som gör att ett drag aldrig kan skapa
+/// ett bakvänt par — och det är inte kosmetik: `loop_frames` läser ett bakvänt par som "ingen
+/// loop", alltså hade loopen **försvunnit mitt i ett drag**. En interaktion där objektet
+/// försvinner när man drar för långt är inte en interaktion.
+///
+/// Regeln är ren och bor här, bredvid `loop_frames`, så att den som läser motorns loop ser vad
+/// vågformen lovar — och `a_dragged_pair_is_always_a_real_loop` binder de två ihop.
+pub fn move_loop_point(value: f32, is_start: bool, other: f32) -> f32 {
+    let v = value.clamp(0.0, 1.0);
+    if is_start {
+        v.min(other - MIN_LOOP_SPAN).max(0.0)
+    } else {
+        v.max(other + MIN_LOOP_SPAN).min(1.0)
+    }
+}
+
 pub fn loop_frames(len: usize, loop_start01: f32, loop_end01: f32) -> Option<(f32, f32)> {
     if len == 0 || !loop_start01.is_finite() || !loop_end01.is_finite() {
         return None;
@@ -657,5 +681,54 @@ mod tests {
         // En dubblerad kant från ett senare spår vänder fortfarande ordningen.
         assert_eq!(plan_track_order(2, &[vec![], vec![0, 0]]).expect("dubbel kant"), vec![1, 0]);
     }
-}
 
+    #[test]
+    fn a_loop_point_stops_before_its_neighbour() {
+        // Dra starten förbi slutet: den stannar en minsta loop innanför.
+        assert_eq!(move_loop_point(0.9, true, 0.5), 0.5 - MIN_LOOP_SPAN);
+        // Och slutet förbi starten.
+        assert_eq!(move_loop_point(0.1, false, 0.5), 0.5 + MIN_LOOP_SPAN);
+        // Ett drag innanför gränserna är **exakt** det man drog — ingen avrundning.
+        assert_eq!(move_loop_point(0.3, true, 0.8), 0.3);
+        assert_eq!(move_loop_point(0.7, false, 0.2), 0.7);
+    }
+
+    #[test]
+    fn a_loop_point_is_clamped_to_the_file() {
+        assert_eq!(move_loop_point(-1.0, true, 0.5), 0.0);
+        assert_eq!(move_loop_point(2.0, false, 0.5), 1.0);
+        // Starten kan inte tryckas under noll ens av en granne vid kanten.
+        assert_eq!(move_loop_point(-1.0, true, 0.0), 0.0);
+    }
+
+    /// **En regel, två dörrar** (Fas 8.4/7): vad vågformen lovar (draget) ska motorn läsa som en
+    /// **riktig** loop. Provet drar starten genom hela filen i små steg och kräver att
+    /// `loop_frames` svarar `Some` varje gång — hade reglerna varit två olika tal hade ett drag
+    /// kunnat landa i ett par som motorn kallar "ingen loop".
+    #[test]
+    fn a_dragged_pair_is_always_a_real_loop() {
+        let len = 4_000usize;
+        let mut start = 0.25f32;
+        let mut end = 0.75f32;
+        for _ in 0..200 {
+            start = move_loop_point(start + 0.02, true, end);
+            assert!(
+                loop_frames(len, start, end).is_some(),
+                "start {start} mot slut {end} är ingen loop"
+            );
+        }
+        for _ in 0..200 {
+            end = move_loop_point(end - 0.02, false, start);
+            assert!(
+                loop_frames(len, start, end).is_some(),
+                "start {start} mot slut {end} är ingen loop"
+            );
+        }
+        // Och ändarna nås: draget kan inte fastna på vägen. Provet kräver **inte** att avståndet
+        // är exakt `MIN_LOOP_SPAN`: 0,005 är inte exakt 0,005 i `f32` (0,75 − 0,745 blir
+        // 0,0049999952), så en sådan rad vore ett löfte flyttalen inte kan hålla. Frågan som
+        // gäller — är paret en loop? — ställs till **motorn**, och den räknar i hela ramar.
+        assert!(end > start, "start {start} mot slut {end}");
+        assert!(loop_frames(len, start, end).is_some());
+    }
+}
