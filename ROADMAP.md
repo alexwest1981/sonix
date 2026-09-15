@@ -660,7 +660,24 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Bevisat i GUI (2026-09-11, BenQ/DP-3, mixervyn):** Alex drog i en fader → statusraden visade *"Autosaved 'Untitled Project'"* (den raden sätts bara av `push_undo_snapshot`, alltså skapades ångringspunkten) och en autosave skrevs: spår 1:s volym **0.788** kl. 13:38:13 → **1.198** kl. 13:38:29. Sedan **återställde Ctrl+Z inställningarna**, och upprepade tryck gick till slut till *"Nothing to undo"* — exakt en ångringspunkt per drag, och stacken tar slut när den ska. Dessutom: F6 → mixervyn ✅, `Ctrl+Z` utan föregående mixerändring → "Nothing to undo" ✅ (inga falska ångringspunkter från att bara titta på mixern).
   - **Bevis:** 180 tester default, 0 varningar. CI grön (`1adfa25`, `34593203114`).
   - **Kvar (ärligt):**
-    - **Plugin-parametrar och master-FX** (delay/reverb/drive) ingår inte — de ligger utanför `playlist_tracks`. Nästa steg: låt snapshoten bära `plugin_slots` och master-FX-kedjan, och skicka dem till motorn vid `restore_snapshot`.
+    - ✅ **Plugin-kurvorna och master-FX:et ingår nu** (2026-09-15). De ligger utanför
+      `playlist_tracks`, och därför utanför både snapshoten och digesten: en masterändring gick
+      inte att ångra **alls**, och en ändrad plugin-kurva ångrades i gränssnittet medan pluginen
+      spelade vidare med det gamla värdet — samma klass av fel som `sync_track_audio_state` löste
+      för spåren. Nu är de **en klump**, `state::NonTrackSound` (delay, reverb, drive,
+      mastervolym, `build_master_fx_params()`: pedalernas ljudande fält, EQ-noderna,
+      kompressorns release och plugin-kurvorna), och **digesten, snapshoten och återställningen
+      läser samma fältlista** — annars hade de tre glidit isär tyst.
+      - **Mekanismen som gör ångringen hörbar:** `apply_non_track_sound` nollar kurvornas
+        `last_sent` **först**. `apply_automation` går varje bildruta och skickar bara värden som
+        ändrats sedan senast, så ett nollat värde skickas om till pluginen nästa bildruta. Utan
+        nollningen hade kurvan stått rätt i gränssnittet medan ljudet stod kvar.
+      - **På plats eller på id:** pedalerna matchas på **id**, inte på plats i listan. Ett prov
+        lägger appens pedallista i omvänd ordning och faller om matchningen går på index — mätt:
+        med `zip` i stället för `find` blir det 1 fel, och det felet låter fel utan att se fel ut.
+      - **Digestprovet räknar upp varje nytt fält** (`nt_probe`, 24 fält): glöms ett av dem i
+        digesten skapas ingen ångringspunkt när det ändras, och då finns det ingenting att ångra —
+        ett fel som inte syns förrän man försöker. 571 tester default / 620 med plugin-host.
     - Automation ingår via `playlist_tracks[].automation`, men de *enskilda* punkterna har ingen egen etikett i historiken.
     - **Statusraden hade två skribenter** (hittat under GUI-testet): ångringen märker ändringen för autosave, autosaven skriver nästa frame och ersatte *"↶ Ångrade …"* inom millisekunder, så bekräftelsen gick inte att läsa. Åtgärdat i `a98fc7a`: `maybe_autosave()` rör inte statusraden om den redan visar en ångring/omgörning.
   - **Filer:** `src/ui/app.rs`, `src/i18n.rs`
@@ -1329,8 +1346,10 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
   - **Ärligt kvar (egna pass):** anslagets kurva är linjär (ingen väljbar kvadratisk kurva, och
     inget anslag → filter).
 - [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*
-  **Påbörjad 2026-09-15** (`79adff9`, `6c1b43b`): tre av fyra delar byggda och mätta —
-  **kvar är routningen av pluginens egna utbussar till egna spår** (se nedan).
+  **Klar 2026-09-15** (fyra commits): `79adff9` (latens-offset + Smart disable), `6c1b43b`
+  (sidokedja in i en plugin), `bad9b0e` (pluginens egna utbussar till egna spår) — och den
+  sista delen, **32-bitars plugins**, är blockerad på användarmiljön (kräver Wine/brygga, se
+  4.6/7.3: ingen Wine på maskinen, mätt 2026-09-14).
   - **Läget hos oss, mätt 2026-09-12:** Sonix hostar VST2/VST3/CLAP/LV2, skyddar sig mot
     krascher med en **egen out-of-process-sandbox** (övervakaren startar om en död worker),
     öppnar plugin-GUI:t i ett **eget X11-fönster** (`plugin_gui.rs`), listar pluginens

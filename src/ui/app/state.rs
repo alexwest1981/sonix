@@ -457,6 +457,45 @@ impl PluginAutomationLane {
     }
 }
 
+/// **En pedals ljudande fält** — se [`NonTrackSound::pedals`].
+///
+/// Namn, färg och kategori står kvar i `FxPedal`: de är etiketter som aldrig ändrar ljudet, och en
+/// ångring ska inte skapas av att ett fönster byter flik eller en pedal byter namn.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PedalSound {
+    pub id: String,
+    pub enabled: bool,
+    pub p1_val: f32,
+    pub p2_val: f32,
+    pub p3_val: f32,
+}
+
+/// **Det som hörs men ligger utanför spåren** (Fas 6.2): masterns kedja och plugin-kurvorna.
+///
+/// Klumpen finns för att **snapshoten, digesten och återställningen ska läsa samma fältlista**.
+/// Annars hade de varit tre egna listor som sett likadana ut och glidit isär — och felet hade
+/// blivit tyst: en ångring som inte tar med mastern låter fel utan att något *ser* fel ut.
+///
+/// **Läget fram till 2026-09-15:** mastern och plugin-kurvorna låg utanför `playlist_tracks`,
+/// och därmed utanför både ångringen och mixerdigesten. En ändrad master-FX gick inte att ångra
+/// alls, och en ändrad plugin-kurva syntes i gränssnittet medan pluginen spelade vidare med det
+/// gamla värdet — samma klass av fel som `sync_track_audio_state` löste för spåren i 6.2
+/// ("ångringen hörs, inte bara syns").
+#[derive(Clone, Debug)]
+pub struct NonTrackSound {
+    /// Plugin-kurvorna (Fas 8.8). `last_sent` följer med i klonen, men den **nollas** vid
+    /// återställning — den är motorns spegel, inte en inställning, och nollningen är hela
+    /// mekanismen som gör att en ångrad kurva hörs igen (se `apply_non_track_sound`).
+    pub plugin_automation: Vec<PluginAutomationLane>,
+    pub delay: crate::audio::DelayParams,
+    pub reverb: crate::audio::ReverbParams,
+    pub drive: f32,
+    pub master_volume: f32,
+    pub pedals: Vec<PedalSound>,
+    pub eq_nodes: Vec<crate::ui::fx_rack_modal::VisualEqNode>,
+    pub compressor_release_ms: f32,
+}
+
 /// **Vad en automationskurva styr** (Fas 8.8).
 ///
 /// Spårets egna rattar är den statiska listan; pluginens är en runtime-lista. De två slagen

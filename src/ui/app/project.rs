@@ -751,6 +751,7 @@ pub(crate) fn mixer_digest(
     vca_faders: &[f32],
     vca_muted: &[bool],
     vca_solos: &[bool],
+    non_track: &state::NonTrackSound,
 ) -> u64 {
     let mut h: u64 = 0xcbf2_9ce4_8422_2325;
     let mut mix = |v: f32| {
@@ -798,6 +799,47 @@ pub(crate) fn mixer_digest(
     }
     for b in bus_muted.iter().chain(bus_solo).chain(vca_muted).chain(vca_solos).copied() {
         mix(if b { 1.0 } else { 0.0 });
+    }
+    // **Mastern och plugin-kurvorna** (Fas 6.2). De hörs, men ligger utanför `playlist_tracks`,
+    // och av samma skäl som bussarna ovan måste de in i digesten: annars skapas ingen
+    // ångringspunkt när mastern ändras — och då finns det ingenting att ångra.
+    mix(non_track.drive);
+    mix(non_track.master_volume);
+    mix(non_track.delay.time_ms);
+    mix(non_track.delay.feedback);
+    mix(non_track.delay.mix);
+    mix(non_track.reverb.room_size);
+    mix(non_track.reverb.damping);
+    mix(non_track.reverb.mix);
+    // Antalet först: en pedal som tas bort ändrar ljudet även om de kvarvarande står likadant
+    // (samma regel som för sends).
+    mix(non_track.pedals.len() as f32);
+    for p in &non_track.pedals {
+        mix(if p.enabled { 1.0 } else { 0.0 });
+        mix(p.p1_val);
+        mix(p.p2_val);
+        mix(p.p3_val);
+    }
+    mix(non_track.eq_nodes.len() as f32);
+    for n in &non_track.eq_nodes {
+        mix(n.freq_hz);
+        mix(n.gain_db);
+        mix(n.q);
+        mix(if n.is_active { 1.0 } else { 0.0 });
+    }
+    mix(non_track.compressor_release_ms);
+    // Plugin-kurvorna: spår, parameter-id, på/av och **punkterna**. En kurva som flyttas är en
+    // ändring av ljudet, inte av gränssnittet.
+    mix(non_track.plugin_automation.len() as f32);
+    for lane in &non_track.plugin_automation {
+        mix(lane.track as f32);
+        mix(lane.param_id as f32);
+        mix(if lane.enabled { 1.0 } else { 0.0 });
+        mix(lane.points.len() as f32);
+        for p in &lane.points {
+            mix(p.time_bars);
+            mix(p.value);
+        }
     }
     h
 }

@@ -997,7 +997,51 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         let vca_muted = [false; crate::audio::synth::NUM_VCAS];
         let vca_solos = [false; crate::audio::synth::NUM_VCAS];
 
-        let dig = |tracks: &[PlaylistTrack]| {
+        // **Mastern och plugin-kurvorna** (Fas 6.2). Klumpen byggs med udda värden, så en probe
+        // som inte ändrar något syns direkt.
+        let non_track_base = || state::NonTrackSound {
+            plugin_automation: vec![state::PluginAutomationLane {
+                track: 0,
+                param_id: 7,
+                param_name: "Cutoff".to_string(),
+                enabled: true,
+                points: vec![state::AutomationPoint {
+                    time_bars: 0.0,
+                    value: 0.25,
+                }],
+                last_sent: None,
+            }],
+            delay: crate::audio::DelayParams {
+                time_ms: 250.0,
+                feedback: 0.3,
+                mix: 0.2,
+            },
+            reverb: crate::audio::ReverbParams {
+                room_size: 0.5,
+                damping: 0.4,
+                mix: 0.15,
+            },
+            drive: 1.2,
+            master_volume: 0.8,
+            pedals: vec![state::PedalSound {
+                id: "visual_eq".to_string(),
+                enabled: true,
+                p1_val: 0.5,
+                p2_val: 0.5,
+                p3_val: 0.55,
+            }],
+            eq_nodes: vec![crate::ui::fx_rack_modal::VisualEqNode {
+                name: "LOW",
+                freq_hz: 120.0,
+                gain_db: 1.5,
+                q: 0.9,
+                color: Color32::WHITE,
+                is_active: true,
+            }],
+            compressor_release_ms: 120.0,
+        };
+        let nt = non_track_base();
+        let dig = |tracks: &[PlaylistTrack], nt: &state::NonTrackSound| {
             mixer_digest(
                 tracks,
                 &bus_volume,
@@ -1006,14 +1050,19 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                 &vca_faders,
                 &vca_muted,
                 &vca_solos,
+                nt,
             )
         };
-        let base = dig(&[base_track.clone()]);
+        let base = dig(&[base_track.clone()], &nt);
 
         let probe = |name: &str, mutate: &dyn Fn(&mut PlaylistTrack)| {
             let mut t = base_track.clone();
             mutate(&mut t);
-            assert_ne!(dig(&[t]), base, "fältet '{name}' saknas i mixer-digesten");
+            assert_ne!(
+                dig(&[t], &nt),
+                base,
+                "fältet '{name}' saknas i mixer-digesten"
+            );
         };
 
         probe("volume", &|t| t.volume += 0.1);
@@ -1035,7 +1084,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         let with_send = |bus: usize, level: f32| {
             let mut t = base_track.clone();
             t.sends = vec![crate::audio::StemSend { target: crate::audio::SendTarget::bus(bus), level }];
-            dig(&[t])
+            dig(&[t], &nt)
         };
         assert_ne!(with_send(1, 0.5), base, "en send ska synas i mixern");
         assert_ne!(with_send(1, 0.5), with_send(2, 0.5), "målet ska synas");
@@ -1051,7 +1100,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         // Buss- och VCA-nivåerna ligger utanför spåren och måste också fångas,
         // annars går en bussändring att göra utan ångringspunkt.
         let digest_with = |bv: &[f32], bm: &[bool], bs: &[bool], vf: &[f32], vm: &[bool], vs: &[bool]| {
-            mixer_digest(&[base_track.clone()], bv, bm, bs, vf, vm, vs)
+            mixer_digest(&[base_track.clone()], bv, bm, bs, vf, vm, vs, &nt)
         };
         let mut bv = bus_volume;
         bv[0] = 0.5;
@@ -1072,6 +1121,63 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         vs[0] = true;
         assert_ne!(digest_with(&bus_volume, &bus_muted, &bus_solo, &vca_faders, &vca_muted, &vs), base, "VCA-solo saknas i mixer-digesten");
 
+        // **Mastern och plugin-kurvorna** (Fas 6.2) ligger också utanför spåren. Varje fält
+        // prövas för sig: glöms ett av dem i digesten skapas ingen ångringspunkt när det ändras,
+        // och då finns det ingenting att ångra — felet syns inte förrän man försöker.
+        let nt_probe = |name: &str, mutate: &dyn Fn(&mut state::NonTrackSound)| {
+            let mut n = non_track_base();
+            mutate(&mut n);
+            assert_ne!(
+                dig(&[base_track.clone()], &n),
+                base,
+                "fältet '{name}' saknas i mixer-digesten"
+            );
+        };
+        nt_probe("master.drive", &|n| n.drive += 0.1);
+        nt_probe("master.master_volume", &|n| n.master_volume -= 0.1);
+        nt_probe("master.delay.time_ms", &|n| n.delay.time_ms += 5.0);
+        nt_probe("master.delay.feedback", &|n| n.delay.feedback += 0.05);
+        nt_probe("master.delay.mix", &|n| n.delay.mix += 0.05);
+        nt_probe("master.reverb.room_size", &|n| n.reverb.room_size += 0.05);
+        nt_probe("master.reverb.damping", &|n| n.reverb.damping += 0.05);
+        nt_probe("master.reverb.mix", &|n| n.reverb.mix += 0.05);
+        nt_probe("master.pedals[].enabled", &|n| {
+            n.pedals[0].enabled = !n.pedals[0].enabled
+        });
+        nt_probe("master.pedals[].p1_val", &|n| n.pedals[0].p1_val += 0.05);
+        nt_probe("master.pedals[].p2_val", &|n| n.pedals[0].p2_val += 0.05);
+        nt_probe("master.pedals[].p3_val", &|n| n.pedals[0].p3_val += 0.05);
+        nt_probe("master.pedals (antal)", &|n| {
+            let first = n.pedals[0].clone();
+            n.pedals.push(first)
+        });
+        nt_probe("master.eq_nodes[].freq_hz", &|n| n.eq_nodes[0].freq_hz += 10.0);
+        nt_probe("master.eq_nodes[].gain_db", &|n| n.eq_nodes[0].gain_db += 0.5);
+        nt_probe("master.eq_nodes[].q", &|n| n.eq_nodes[0].q += 0.1);
+        nt_probe("master.eq_nodes[].is_active", &|n| {
+            n.eq_nodes[0].is_active = false
+        });
+        nt_probe("master.compressor_release_ms", &|n| {
+            n.compressor_release_ms += 5.0
+        });
+        nt_probe("plugin_automation[].track", &|n| n.plugin_automation[0].track = 1);
+        nt_probe("plugin_automation[].param_id", &|n| {
+            n.plugin_automation[0].param_id = 8
+        });
+        nt_probe("plugin_automation[].enabled", &|n| {
+            n.plugin_automation[0].enabled = false
+        });
+        nt_probe("plugin_automation[].points[].value", &|n| {
+            n.plugin_automation[0].points[0].value += 0.1
+        });
+        nt_probe("plugin_automation[].points[].time_bars", &|n| {
+            n.plugin_automation[0].points[0].time_bars += 1.0
+        });
+        nt_probe("plugin_automation (antal)", &|n| {
+            let first = n.plugin_automation[0].clone();
+            n.plugin_automation.push(first)
+        });
+
         // Och det viktigaste: ångringspunkten bär hela ljudbilden. Glöms ett fält
         // i `current_snapshot`/`restore_snapshot` går ändringen att göra men inte
         // att ångra — då fångar jämförelsen här det.
@@ -1087,6 +1193,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             vca_faders,
             vca_muted,
             vca_solos,
+            non_track: non_track_base(),
             selected_timeline_track: 0,
             selected_audio_region: None,
             song_time: 0.0,
@@ -1101,10 +1208,168 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                 &snapshot.vca_faders,
                 &snapshot.vca_muted,
                 &snapshot.vca_solos,
+                &snapshot.non_track,
             ),
             base,
             "ångringspunktens ljudbild skiljer sig från den levande state:n"
         );
+    }
+
+    /// **Återställningen av mastern HÖRS, inte bara syns** (Fas 6.2).
+    ///
+    /// Regeln prövas i den **rena** funktionen (`write_non_track_sound`), alltså utan ljudenhet.
+    /// Två saker måste stämma, och de är olika sorters fel:
+    ///
+    /// 1. **Värdena hamnar rätt.** Appens pedal-lista ligger i **omvänd ordning** mot den sparade,
+    ///    så en återställning som gick på plats i stället för på id hade gett varje pedal sin
+    ///    grannes rattvärden — ett fel som låter fel utan att något ser fel ut.
+    /// 2. **Cachen nollas** (`last_sent`), och det är mekanismen som gör ångringen hörbar:
+    ///    `apply_automation` skickar bara värden som ändrats sedan senast, så ett nollat värde
+    ///    skickas om till pluginen nästa bildruta. Utan nollningen hade kurvan stått rätt i
+    ///    gränssnittet medan pluginen spelade vidare med det gamla värdet — precis den bugg som
+    ///    `sync_track_audio_state` löste för spåren, och som nu är stängd även för mastern.
+    #[test]
+    fn restoring_the_master_reaches_the_plugin_cache_and_the_right_pedals() {
+        // Det sparade tillståndet (det ångringen ska tillbaka till), med egna tal.
+        let mut sparat = state::NonTrackSound {
+            plugin_automation: vec![state::PluginAutomationLane {
+                track: 2,
+                param_id: 11,
+                param_name: "Cutoff".to_string(),
+                enabled: true,
+                points: vec![state::AutomationPoint {
+                    time_bars: 3.0,
+                    value: 0.42,
+                }],
+                last_sent: Some(0.99), // får inte följa med tillbaka
+            }],
+            delay: crate::audio::DelayParams {
+                time_ms: 90.0,
+                feedback: 0.11,
+                mix: 0.22,
+            },
+            reverb: crate::audio::ReverbParams {
+                room_size: 0.33,
+                damping: 0.44,
+                mix: 0.55,
+            },
+            drive: 1.7,
+            master_volume: 0.66,
+            pedals: Vec::new(),
+            eq_nodes: Vec::new(),
+            compressor_release_ms: 80.0,
+        };
+        let alla_pedaler = crate::ui::fx_rack_modal::FxRackState::default().pedals;
+        sparat.pedals = alla_pedaler
+            .iter()
+            .enumerate()
+            .map(|(i, p)| state::PedalSound {
+                id: p.id.to_string(),
+                // Udda men **per pedal**, så ett felaktigt id-matchande syns.
+                enabled: i % 2 == 0,
+                p1_val: 0.1 + i as f32 * 0.05,
+                p2_val: 0.2 + i as f32 * 0.05,
+                p3_val: 0.3 + i as f32 * 0.05,
+            })
+            .collect();
+        sparat.eq_nodes = vec![crate::ui::fx_rack_modal::VisualEqNode {
+            name: "LOW",
+            freq_hz: 111.0,
+            gain_db: -3.0,
+            q: 1.5,
+            color: Color32::WHITE,
+            is_active: false,
+        }];
+        assert!(
+            sparat.pedals.len() > 1,
+            "provet behöver fler än en pedal för att kunna visa id-matchningen"
+        );
+
+        // Appens nuvarande läge: omvänd ordning och nollade rattar, alltså **fel** överallt.
+        let mut pedaler = alla_pedaler;
+        pedaler.reverse();
+        for p in &mut pedaler {
+            p.enabled = false;
+            p.p1_val = 0.0;
+            p.p2_val = 0.0;
+            p.p3_val = 0.0;
+        }
+        let mut lanes = vec![state::PluginAutomationLane {
+            track: 0,
+            param_id: 11,
+            param_name: "Cutoff".to_string(),
+            enabled: false,
+            points: Vec::new(),
+            last_sent: Some(0.5), // "varm" cache: motorn tror att den redan fått värdet
+        }];
+        let mut delay = crate::audio::DelayParams {
+            time_ms: 500.0,
+            feedback: 0.9,
+            mix: 0.9,
+        };
+        let mut reverb = crate::audio::ReverbParams {
+            room_size: 0.9,
+            damping: 0.9,
+            mix: 0.9,
+        };
+        let mut drive = 3.0;
+        let mut master_volume = 1.0;
+        let mut eq_nodes = Vec::new();
+        let mut release = 5.0;
+
+        crate::ui::app::mixer::write_non_track_sound(
+            &sparat,
+            &mut lanes,
+            &mut delay,
+            &mut reverb,
+            &mut drive,
+            &mut master_volume,
+            &mut pedaler,
+            &mut eq_nodes,
+            &mut release,
+        );
+
+        // (1) Värdena tillbaka, fält för fält.
+        assert_eq!(delay.time_ms, 90.0);
+        assert_eq!(delay.feedback, 0.11);
+        assert_eq!(delay.mix, 0.22);
+        assert_eq!(reverb.room_size, 0.33);
+        assert_eq!(reverb.damping, 0.44);
+        assert_eq!(reverb.mix, 0.55);
+        assert_eq!(drive, 1.7);
+        assert_eq!(master_volume, 0.66);
+        assert_eq!(release, 80.0);
+        assert_eq!(eq_nodes.len(), 1);
+        assert_eq!(eq_nodes[0].freq_hz, 111.0);
+        assert_eq!(eq_nodes[0].gain_db, -3.0);
+        assert!(!eq_nodes[0].is_active);
+
+        // Pedalerna har fått **sina egna** värden, trots att listan ligger i omvänd ordning.
+        let mut antal = 0;
+        for p in &pedaler {
+            let v = sparat
+                .pedals
+                .iter()
+                .find(|sp| sp.id == p.id)
+                .expect("varje pedal finns i både appen och tillståndet");
+            assert_eq!(p.enabled, v.enabled, "pedalen '{}'", p.id);
+            assert_eq!(p.p1_val, v.p1_val, "pedalen '{}'", p.id);
+            assert_eq!(p.p2_val, v.p2_val, "pedalen '{}'", p.id);
+            assert_eq!(p.p3_val, v.p3_val, "pedalen '{}'", p.id);
+            antal += 1;
+        }
+        assert_eq!(antal, sparat.pedals.len(), "ingen pedal ska tappas");
+
+        // (2) Cachen nollad — och kurvans innehåll tillbaka.
+        assert_eq!(lanes.len(), 1);
+        assert!(
+            lanes[0].last_sent.is_none(),
+            "cachen ska nollas, annars skickas värdet aldrig om till pluginen"
+        );
+        assert_eq!(lanes[0].track, 2);
+        assert_eq!(lanes[0].points.len(), 1);
+        assert_eq!(lanes[0].points[0].value, 0.42);
+        assert!(lanes[0].enabled);
     }
 
     #[test]

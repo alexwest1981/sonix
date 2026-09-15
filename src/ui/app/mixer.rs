@@ -386,7 +386,106 @@ pub(crate) fn automation_target_label(&self, target: AutomationTarget) -> String
 }
 }
 
+/// Skriver masterns och plugin-kurvornas tillstånd tillbaka in i appens fält.
+///
+/// **Ren funktion** — ingen motor och ingen `self` — just för att reglerna i återställningen ska
+/// gå att pröva utan en ljudenhet: matchningen på pedal-**id** (en omordning får inte flytta ett
+/// värde till fel pedal) och nollningen av kurvcachen (`last_sent`), som är det som gör att en
+/// ångrad plugin-kurva hörs igen. `apply_non_track_sound` är den tunna hylsan runt den som också
+/// skickar till motorn.
+pub(crate) fn write_non_track_sound(
+    s: &NonTrackSound,
+    plugin_automation: &mut Vec<PluginAutomationLane>,
+    delay: &mut crate::audio::DelayParams,
+    reverb: &mut crate::audio::ReverbParams,
+    drive: &mut f32,
+    master_volume: &mut f32,
+    pedals: &mut [crate::ui::fx_rack_modal::FxPedal],
+    eq_nodes: &mut Vec<crate::ui::fx_rack_modal::VisualEqNode>,
+    compressor_release_ms: &mut f32,
+) {
+    *plugin_automation = s.plugin_automation.clone();
+    for lane in plugin_automation.iter_mut() {
+        lane.last_sent = None;
+    }
+    *delay = s.delay;
+    *reverb = s.reverb;
+    *drive = s.drive;
+    *master_volume = s.master_volume;
+    for pedal in pedals.iter_mut() {
+        if let Some(sp) = s.pedals.iter().find(|sp| sp.id == pedal.id) {
+            pedal.enabled = sp.enabled;
+            pedal.p1_val = sp.p1_val;
+            pedal.p2_val = sp.p2_val;
+            pedal.p3_val = sp.p3_val;
+        }
+    }
+    *eq_nodes = s.eq_nodes.clone();
+    *compressor_release_ms = s.compressor_release_ms;
+}
+
 impl SonixApp {
+/// Läser av det som hörs utanför spåren — se [`NonTrackSound`].
+pub(crate) fn non_track_sound(&self) -> NonTrackSound {
+    NonTrackSound {
+        plugin_automation: self.plugin_automation.clone(),
+        delay: self.delay,
+        reverb: self.reverb,
+        drive: self.drive,
+        master_volume: self.master_volume,
+        pedals: self
+            .fx_rack_state
+            .pedals
+            .iter()
+            .map(|p| PedalSound {
+                id: p.id.to_string(),
+                enabled: p.enabled,
+                p1_val: p.p1_val,
+                p2_val: p.p2_val,
+                p3_val: p.p3_val,
+            })
+            .collect(),
+        eq_nodes: self.fx_rack_state.eq_nodes.clone(),
+        compressor_release_ms: self.fx_rack_state.compressor_release_ms,
+    }
+}
+
+/// Skriver tillbaka det som hörs utanför spåren och **skickar det till motorn** (Fas 6.2).
+///
+/// Ordningen är avsiktlig: plugin-kurvornas `last_sent` nollas **först**, och `apply_automation`
+/// (som kör varje bildruta) skickar då om varje värde nästa bildruta. Utan nollningen hade en
+/// ångrad kurva stått rätt i gränssnittet medan pluginen spelade vidare med det gamla värdet.
+/// Pedalerna matchas på **id**, inte på plats: en omordning får inte flytta ett värde till fel
+/// pedal.
+pub(crate) fn apply_non_track_sound(&mut self, s: &NonTrackSound) {
+    write_non_track_sound(
+        s,
+        &mut self.plugin_automation,
+        &mut self.delay,
+        &mut self.reverb,
+        &mut self.drive,
+        &mut self.master_volume,
+        &mut self.fx_rack_state.pedals,
+        &mut self.fx_rack_state.eq_nodes,
+        &mut self.fx_rack_state.compressor_release_ms,
+    );
+    self.sync_non_track_sound_to_engine();
+}
+
+
+/// Skickar masterns kedja till motorn — delay, reverb, drive, volym och master-FX.
+pub(crate) fn sync_non_track_sound_to_engine(&mut self) {
+    let _ = self.engine.send_command(AudioCommand::SetDelay(self.delay));
+    let _ = self.engine.send_command(AudioCommand::SetReverb(self.reverb));
+    let _ = self.engine.send_command(AudioCommand::SetDrive(self.drive));
+    let _ = self.engine.send_command(AudioCommand::SetMasterVolume(self.master_volume));
+    let _ = self
+        .engine
+        .send_command(AudioCommand::SetMasterFx(
+            self.fx_rack_state.build_master_fx_params(),
+        ));
+}
+
 /// Evaluates every enabled automation lane for all tracks at the current
 /// song position and forwards changed values to the audio engine. Values
 /// are cached per parameter so we only emit commands on real changes.
