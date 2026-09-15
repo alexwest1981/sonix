@@ -58,7 +58,7 @@ pub fn render_plugins_view(
             ui.label(egui::RichText::new(crate::i18n::t("🔌 PLUGIN & FL STUDIO BRIDGE MANAGER")).strong().size(15.0).color(Theme::FL_CYAN));
             ui.separator();
             ui.label(
-                egui::RichText::new(crate::i18n::t("Hantera och importera VST3, CLAP, LV2, FL Studio Native & Windows-plugins via Yabridge"))
+                egui::RichText::new(crate::i18n::t("Hantera och importera VST3, CLAP, FL Studio Native & Windows-plugins via Yabridge"))
                     .size(11.0)
                     .color(Theme::TEXT_MUTED),
             );
@@ -619,7 +619,7 @@ fn render_plugin_database_tab(
 fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
     ui.label(egui::RichText::new(crate::i18n::t("📁 SÖKVÄGAR FÖR PLUGIN-SKANNING")).strong().size(13.5).color(Theme::FL_YELLOW));
     ui.label(
-        egui::RichText::new(crate::i18n::t("Sonix genomsöker följande mappar efter Linux-native VST3/CLAP/LV2 samt Windows/Wine & FL Studio VST-kataloger:"))
+        egui::RichText::new(crate::i18n::t("Sonix genomsöker följande mappar efter Linux-native VST3/CLAP samt Windows/Wine & FL Studio VST-kataloger:"))
             .size(11.0)
             .color(Theme::TEXT_MUTED),
     );
@@ -709,7 +709,7 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
         ui.vertical(|ui| {
             ui.label(egui::RichText::new(crate::i18n::t("📥 MANUELL PLUGIN- OCH PRESET-IMPORT")).strong().size(13.5).color(Theme::FL_CYAN));
             ui.label(
-                egui::RichText::new(crate::i18n::t("Importera fristående filer (.vst3, .clap, .dll, .so, .lv2) eller FL Studio Preset-filer (.fst) direkt:"))
+                egui::RichText::new(crate::i18n::t("Importera fristående filer (.vst3, .clap, .dll, .so) eller FL Studio Preset-filer (.fst) direkt:"))
                     .size(11.0)
                     .color(Theme::TEXT_MUTED),
             );

@@ -160,6 +160,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         let mut failed = 0usize;
         for f in &files {
+            // **LV2: säg sanningen i stället för att försöka som CLAP** (2026-09-15). Sonix har
+            // ingen LV2-värd än; utan den här raden blev svaret `undefined symbol: clap_entry`,
+            // vilket beskriver vår laddare i stället för användarens fil.
+            if audio::plugin_host::is_lv2_path(f) {
+                println!("⚠ {f}: LV2 stöds inte av Sonix än (ingen LV2-värd i programmet)");
+                failed += 1;
+                continue;
+            }
             match audio::plugin_host_live::load_processor(f, 48_000.0, 512) {
                 Ok(processor) => {
                     let info = processor.info();

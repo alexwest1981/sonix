@@ -35,6 +35,75 @@ impl PluginFormat {
     }
 }
 
+/// **Är filen en LV2-bunt?** (2026-09-15)
+///
+/// Sonix har ingen LV2-värd. Utan den här frågan skickades bunten till CLAP-laddaren och svaret
+/// blev `undefined symbol: clap_entry` — ett svar som beskriver **vår** laddare, inte användarens
+/// fil. Regeln bor här och inte i kommandoraden så att den går att pröva utan plugin och utan
+/// fönster, och så att appen och kommandoraden ger samma svar.
+///
+/// Både själva bunten (`…/Surge XT.lv2`) och en fil inuti den (`…/Surge XT.lv2/libSurge XT.so`)
+/// räknas: en användare pekar på vilket som helst av dem.
+pub fn is_lv2_path(path: &str) -> bool {
+    let lower = path.to_ascii_lowercase();
+    lower.ends_with(".lv2")
+        || lower.ends_with(".lv2/")
+        || lower.contains(".lv2/")
+        || lower
+            .rsplit('/')
+            .next()
+            .is_some_and(|name| name.starts_with("manifest.ttl") || name.ends_with(".ttl"))
+}
+
+#[cfg(test)]
+mod lv2_probe_tests {
+    use super::is_lv2_path;
+
+    /// Bunten, filen inuti den, och en `.so` som **inte** är LV2.
+    #[test]
+    fn lv2_paths_are_recognised_and_others_are_not() {
+        assert!(is_lv2_path("/usr/lib/lv2/Surge XT.lv2"));
+        assert!(is_lv2_path("/tmp/surge/Surge XT.lv2/libSurge XT.so"));
+        assert!(is_lv2_path("/tmp/x/Surge XT.lv2/manifest.ttl"));
+        assert!(!is_lv2_path("/tmp/surge/Surge XT.clap"));
+        assert!(!is_lv2_path("/tmp/surge/Surge XT.vst3"));
+        assert!(!is_lv2_path("/home/alex/.vst3/Surge XT Effects.vst3"));
+    }
+
+    /// **Ingen påslagen skanningsväg lovar LV2** (2026-09-15). Det är hela poängen med att
+    /// stänga av raden: en påslagen väg som hittar filer vi inte kan ladda är ett löfte koden
+    /// inte håller. Provet läser **listan**, inte texten — en omskriven beskrivning hade sett
+    /// bra ut medan vägen fortfarande skannade.
+    #[test]
+    fn no_enabled_scan_path_promises_lv2() {
+        let manager = crate::audio::plugin_host::PluginManager::default();
+        let enabled: Vec<&str> = manager
+            .scan_paths
+            .iter()
+            .filter(|p| p.enabled)
+            .map(|p| p.path.as_str())
+            .collect();
+        assert!(
+            !enabled
+                .iter()
+                .any(|p| p.to_ascii_lowercase().contains("lv2")),
+            "en påslagen skanningsväg lovar LV2: {enabled:?}"
+        );
+        // Raden ska stå **kvar**, avstängd och med orsaken: den som undrar var sina LV2-plugins
+        // är ska få svaret i gränssnittet i stället för att leta i en logg.
+        let lv2 = manager
+            .scan_paths
+            .iter()
+            .find(|p| p.path.contains("lv2"))
+            .expect("LV2-raden ska stå kvar, avstängd");
+        assert!(!lv2.enabled, "LV2-raden ska vara avstängd");
+        assert!(
+            !lv2.description.is_empty(),
+            "och orsaken ska stå i beskrivningen"
+        );
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PluginCategory {
     Synth,
@@ -177,10 +246,16 @@ impl Default for PluginManager {
                 is_wine: false,
                 is_fl_path: false,
             },
+            // **LV2: avstängd, och det står varför** (2026-09-15). Sonix har ingen LV2-värd —
+            // bunten skickas till CLAP-laddaren och svarar `undefined symbol: clap_entry`. Att
+            // låta raden vara på och beskrivas som ett stöd var ett löfte koden inte höll: filen
+            // dök upp i listan och gick inte att ladda. Raden står kvar, avstängd och med
+            // orsaken utskriven, i stället för att tyst försvinna — den som undrar var sina
+            // LV2-plugins är får svaret här.
             ScanPath {
                 path: "/usr/lib/lv2".to_string(),
-                enabled: true,
-                description: crate::i18n::t("Linux LV2 Standardbibliotek").to_string(),
+                enabled: false,
+                description: crate::i18n::t("Linux LV2 (ingen LV2-värd i Sonix än)").to_string(),
                 is_wine: false,
                 is_fl_path: false,
             },

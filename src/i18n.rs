@@ -685,12 +685,12 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Grundton (MIDI):" => "Root note (MIDI):",
         "Grundton:" => "Root note:",
         "Gå till start (00:00.00)" => "Go to start (00:00.00)",
-        "Hantera och importera VST3, CLAP, LV2, FL Studio Native & Windows-plugins via Yabridge" => "Manage and import VST3, CLAP, LV2, FL Studio native and Windows plugins via Yabridge",
+        "Hantera och importera VST3, CLAP, FL Studio Native & Windows-plugins via Yabridge" => "Manage and import VST3, CLAP, FL Studio native and Windows plugins via Yabridge",
         "Hi-Hat Rytm:" => "Hi-Hat Rhythm:",
         "Hur du kör Image-Line plugins (Sytrus, Harmor, Gross Beat, FL Studio VSTi) och Windows VSTs i Sonix på Linux" => "How to run Image-Line plugins (Sytrus, Harmor, Gross Beat, FL Studio VSTi) and Windows VSTs in Sonix on Linux",
         "Hörbar klick-metronom vid uppspelning" => "Audible click metronome during playback",
         "Ikon:" => "Icon:",
-        "Importera fristående filer (.vst3, .clap, .dll, .so, .lv2) eller FL Studio Preset-filer (.fst) direkt:" => "Import standalone files (.vst3, .clap, .dll, .so, .lv2) or FL Studio preset files (.fst) directly:",
+        "Importera fristående filer (.vst3, .clap, .dll, .so) eller FL Studio Preset-filer (.fst) direkt:" => "Import standalone files (.vst3, .clap, .dll, .so) or FL Studio preset files (.fst) directly:",
         "Importera kompletta stämpaket (WAV, MP3, FLAC, OGG) från Suno AI, FL Studio, Ableton, Logic m.fl." => "Import complete stem packs (WAV, MP3, FLAC, OGG) from Suno AI, FL Studio, Ableton, Logic and more.",
         "Importera nedladdade ZIP-paket eller mappar med stämmor (Suno, FL Studio, Ableton, Logic m.fl.). Sonix läser ut äkta 48kHz WAV-vågformer, detekterar tempo (BPM) och mappar spåren i tidslinjen." => "Import downloaded ZIP packs or folders of stems (Suno, FL Studio, Ableton, Logic etc.). Sonix reads real 48kHz WAV waveforms, detects the tempo (BPM) and maps the tracks onto the timeline.",
         "Inga .zip-stempaket hittades i ~/Music eller ~/Downloads. Klicka på knappen ovan för att skanna, eller ange sökväg manuellt nedan." => "No .zip stem packs found in ~/Music or ~/Downloads. Click the button above to scan, or enter a path manually below.",
@@ -789,7 +789,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Slut (Ut):" => "End (Out):",
         "Snabbjustering (0.1 dB precision):" => "Quick adjustment (0.1 dB precision):",
         "Snäpp:" => "Snap:",
-        "Sonix genomsöker följande mappar efter Linux-native VST3/CLAP/LV2 samt Windows/Wine & FL Studio VST-kataloger:" => "Sonix scans the following folders for Linux-native VST3/CLAP/LV2 as well as Windows/Wine & FL Studio VST catalogs:",
+        "Sonix genomsöker följande mappar efter Linux-native VST3/CLAP samt Windows/Wine & FL Studio VST-kataloger:" => "Sonix scans the following folders for Linux-native VST3/CLAP as well as Windows/Wine & FL Studio VST catalogs:",
         "Spara denna ljudregion som sample i Sound Browser & på disk" => "Save this audio region as a sample in the Sound Browser and to disk",
         "Spara till disk" => "Save to disk",
         "Spela in instrument, klappar, rösteffekter eller miljöljud direkt via mik" => "Record instruments, claps, voice effects or ambient sounds directly via the mic",
@@ -1379,7 +1379,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Legendarisk upward/downward multiband-kompressor för aggressiv dynamik." => "Legendary upward/downward multiband compressor for aggressive dynamics.",
         "Linux Användar-CLAP" => "Linux User-CLAP",
         "Linux Användar-VST3" => "Linux User-VST3",
-        "Linux LV2 Standardbibliotek" => "Linux LV2 Standard Library",
+        "Linux LV2 (ingen LV2-värd i Sonix än)" => "Linux LV2 (no LV2 host in Sonix yet)",
         "Manuellt importerad pluginfil i Sonix." => "Manually imported plugin file in Sonix.",
         "Ny Refräng" => "New Chorus",
         "Ny Vers" => "New Verse",
@@ -2595,6 +2595,22 @@ const EXTRA_BUS_HOVER_SV: &str = "Pluginens egen utbuss till ett eget spår (Fas
             "↪ Buss {} → spår {}",
             "↪ Buss {} frånkopplad",
         ]
+    }
+
+    /// **LV2-sanningen har engelska** (2026-09-15). Raden som säger att vi inte har någon
+    /// LV2-värd, plus de tre texter där LV2 ströks ur listan över vad vi hanterar — en text som
+    /// lovar ett format koden inte kan öppna är en instruktion som är fel.
+    #[test]
+    fn the_lv2_truth_has_english() {
+        for k in [
+            "Linux LV2 (ingen LV2-värd i Sonix än)",
+            "Hantera och importera VST3, CLAP, FL Studio Native & Windows-plugins via Yabridge",
+            "Importera fristående filer (.vst3, .clap, .dll, .so) eller FL Studio Preset-filer (.fst) direkt:",
+            "Sonix genomsöker följande mappar efter Linux-native VST3/CLAP samt Windows/Wine & FL Studio VST-kataloger:",
+        ] {
+            assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
+            assert_eq!(translate(Language::Sv, k), k, "svenskan ska vara nyckeln: {k}");
+        }
     }
 
     /// **Latens-offsetets rader har engelska.**
