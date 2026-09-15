@@ -69,7 +69,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // bara en människa kan se står sist i utskriften, inte bland det som är mätt.
     // (Fönster på Windows-substantiv skriver till en omdirigering — se ROADMAP 7.1.)
     if std::env::args().any(|a| a == "--selftest") {
-        selftest::run()?;
+        // Tyst är standard (2026-09-15): testet slår kicken med flit, och ett autonomt
+        // pass som körde det i tid och otid spelade trummor i rummet där Alex arbetade.
+        // Mixen mäts lika hårt som förut; `--audible` är den medvetna vägen till att
+        // höra slagen. Regeln bor i `selftest::audible_from_args` (med prov).
+        let args: Vec<String> = std::env::args().collect();
+        selftest::run(selftest::audible_from_args(&args))?;
         return Ok(());
     }
     // `sonix --clean-tags <fil...>`: visar vad filerna bär och tar bort

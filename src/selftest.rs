@@ -14,7 +14,11 @@
 //!    enhet *öppnas* bevisar inte att den *konsumerar*: en tyst callback som aldrig kallas ser
 //!    likadan ut ända fram till att inget låter. Ett förhållande nära 1,0 är det som skiljer.
 //! 3. **Något hörs.** Toppen på mastern läses medan en trumma slås, så "spelar upp ljud" blir
-//!    ett tal och inte en förhoppning.
+//!    ett tal och inte en förhoppning. Sedan 2026-09-15 är läget **tyst som standard**:
+//!    mixen mäts precis som förut, men ingenting skickas till enheten. `--audible` är
+//!    den medvetna vägen till att höra slagen, för en människa som vill kvittera
+//!    högtalaren — skälet är att ett autonomt pass körde testet i tid och otid och
+//!    spelade trummor i rummet där Alex arbetade.
 //!
 //! **MIDI-delen mäts på alla plattformar** sedan Fas 7.1 gick över till `midir` (se
 //! `audio/midi_input.rs`): samma backend överallt, och listan hämtas färsk så att en klaviatur
@@ -119,7 +123,14 @@ pub fn summary(checks: &[Check]) -> String {
 
 /// Kör mätningen och skriv ut den. `Err` bara när inget alls gick att mäta (enheten gick inte
 /// att öppna) — annars bär utskriften utfallet, inklusive underkända delar.
-pub fn run() -> Result<(), String> {
+/// Ska självtestet höras i högtalaren? **Standard är nej.** Testet slår kicken med
+/// flit (det är så "spelar upp ljud" blir en mätning), och standarden är själva
+/// regeln — därför en ren funktion med prov i stället för en rad inuti `run`.
+pub fn audible_from_args(args: &[String]) -> bool {
+    args.iter().any(|a| a == "--audible")
+}
+
+pub fn run(audible: bool) -> Result<(), String> {
     println!("=========================================================");
     println!("  SONIX — SJÄLVTEST (Fas 7.1)");
     println!("=========================================================");
@@ -165,6 +176,16 @@ pub fn run() -> Result<(), String> {
             return Ok(());
         }
     };
+
+    // Tyst läge är standard: flaggan sätts efter toppmätningen i callbacken, alltså
+    // mäter raden nedan samma mix som förut medan enheten får nollor.
+    let silent = !audible;
+    if silent {
+        engine.set_output_silent(true);
+        println!("  läge:       tyst (mixen mäts, inget skickas till enheten)");
+    } else {
+        println!("  läge:       hörbart (--audible)");
+    }
 
     // -- 2. Klockan i realtid, och 3. att något hörs --------------------------------
     // Trumman slås **under** mätfönstret och toppen läses medan den låter: en topp som läses
@@ -239,6 +260,14 @@ pub fn run() -> Result<(), String> {
             "ingen signal nådde mastern (topp {loudest_two:.4}) — enheten spelar, men tyst"
         )));
     }
+    // Tyst läge mäts lika hårt men kvitterar inte högtalaren: säg det, i stället för att
+    // låta en grön rad påstå något den inte täcker.
+    if silent {
+        checks.push(Check::Note(
+            "tyst läge: mixen mättes, men inget skickades till enheten (kör --audible för att höra slagen)"
+                .to_string(),
+        ));
+    }
 
     // -- 4. MIDI-in (ärlig, inte grön) ---------------------------------------------
     println!("\n-- MIDI in --");
@@ -279,6 +308,9 @@ pub fn run() -> Result<(), String> {
     println!("\nDet som INTE är mätt, och bara en människa kan se:");
     println!("  • att fönstret ritas upp och går att klicka i");
     println!("  • att transporten startar och att markören rör sig");
+    if silent {
+        println!("  • att slagen hörs i högtalaren — `sonix --selftest --audible` ger den kvittensen");
+    }
     println!("Öppna appen utan flaggan och tryck på play — då är sista raden kvitterad.");
     Ok(())
 }
@@ -348,5 +380,15 @@ mod tests {
         let line = summary(&with_fail);
         assert!(line.contains("1 av 2 mätbara delar OK"), "{line}");
         assert!(line.contains("underkänt: klockan sackar"), "{line}");
+    }
+
+    /// **Provet som håller standarden fast.** Faller detta om någon gör testet
+    /// hörbart igen, är tystnaden inte en åsikt utan en regel.
+    #[test]
+    fn the_selftest_is_silent_unless_audible_is_asked_for() {
+        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(!audible_from_args(&args(&["sonix", "--selftest"])));
+        assert!(!audible_from_args(&args(&["sonix"])));
+        assert!(audible_from_args(&args(&["sonix", "--selftest", "--audible"])));
     }
 }

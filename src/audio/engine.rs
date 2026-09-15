@@ -37,6 +37,10 @@ pub struct AudioEngine {
     stretched_tracks: Arc<AtomicU32>,
     audition_active: Arc<AtomicBool>,
     master_gr_db: Arc<AtomicU32>,
+    /// Självtestets tysta läge (Fas 7.1): mixen renderas och mäts som vanligt, men
+    /// ingenting skrivs till enheten. Sätts bara av `selftest.rs` när `--audible`
+    /// inte gavs — så ett autonomt pass inte spelar trummor i rummet (2026-09-15).
+    output_silent: Arc<AtomicBool>,
     scope_rx: Consumer<f32>,
     pub sample_rate: u32,
     pub channels: u16,
@@ -112,6 +116,7 @@ impl AudioEngine {
         let stretched_tracks = Arc::new(AtomicU32::new(0));
         let audition_active = Arc::new(AtomicBool::new(false));
         let master_gr_db = Arc::new(AtomicU32::new(0));
+        let output_silent = Arc::new(AtomicBool::new(false));
 
         let mut config = default_stream_config.clone();
         apply_preferences(&device, &mut config, sample_format, preferred_sample_rate, preferred_buffer_frames);
@@ -129,6 +134,7 @@ impl AudioEngine {
             &song_pos_secs,
             &stretched_tracks,
             &audition_active,
+            &output_silent,
             &master_gr_db,
         ) {
             Ok(v) => v,
@@ -145,6 +151,7 @@ impl AudioEngine {
                     &song_pos_secs,
                     &stretched_tracks,
                     &audition_active,
+                    &output_silent,
                     &master_gr_db,
                 )?
             }
@@ -171,6 +178,7 @@ impl AudioEngine {
             stretched_tracks,
             audition_active,
             master_gr_db,
+            output_silent,
             scope_rx,
             sample_rate,
             channels,
@@ -207,6 +215,7 @@ impl AudioEngine {
             &self.peak_r,
             &self.song_pos_secs, &self.stretched_tracks,
             &self.audition_active,
+            &self.output_silent,
             &self.master_gr_db,
         ) {
             Ok(v) => Ok((v, config.clone())),
@@ -222,6 +231,7 @@ impl AudioEngine {
                     &self.peak_r,
                     &self.song_pos_secs, &self.stretched_tracks,
                     &self.audition_active,
+                    &self.output_silent,
                     &self.master_gr_db,
                 ) {
                     Ok(v) => Ok((v, fallback)),
@@ -259,15 +269,16 @@ impl AudioEngine {
         song_pos_secs: &Arc<AtomicU32>,
         stretched_tracks: &Arc<AtomicU32>,
         audition_active: &Arc<AtomicBool>,
+        output_silent: &Arc<AtomicBool>,
         master_gr_db: &Arc<AtomicU32>,
     ) -> Result<(Stream, Producer<AudioCommand>, Consumer<f32>), Box<dyn std::error::Error>> {
         let (command_tx, command_rx) = RingBuffer::<AudioCommand>::new(ring_buffer_size);
         let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
 
         let stream = match sample_format {
-            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), scope_tx)?,
             _ => return Err(crate::i18n::t("Ljudformatet stöds inte").into()),
         };
 
@@ -277,6 +288,12 @@ impl AudioEngine {
 
     pub fn send_command(&mut self, cmd: AudioCommand) -> Result<(), rtrb::PushError<AudioCommand>> {
         self.command_tx.push(cmd)
+    }
+
+    /// Sätter självtestets tysta läge. **Efter** toppmätningen i callbacken: toppen
+    /// mäter mixen och är därför oförändrad, medan enheten får nollor.
+    pub fn set_output_silent(&self, silent: bool) {
+        self.output_silent.store(silent, Ordering::Relaxed);
     }
 
     pub fn get_peak_level(&self) -> f32 {
@@ -347,6 +364,7 @@ impl AudioEngine {
         song_pos_secs: Arc<AtomicU32>,
         stretched_tracks: Arc<AtomicU32>,
         audition_active: Arc<AtomicBool>,
+        output_silent: Arc<AtomicBool>,
         master_gr_db: Arc<AtomicU32>,
         mut scope_tx: Producer<f32>,
     ) -> Result<Stream, cpal::BuildStreamError>
@@ -372,6 +390,9 @@ impl AudioEngine {
                     }
 
                     // 2. Render samples for this buffer block
+                    // Tyst läge: läses en gång per buffert. Bytet slår igenom vid nästa
+                    // buffert, och det räcker för ett självtest.
+                    let silent = output_silent.load(Ordering::Relaxed);
                     let mut max_peak: f32 = 0.0;
                     let mut max_l: f32 = 0.0;
                     let mut max_r: f32 = 0.0;
@@ -394,11 +415,12 @@ impl AudioEngine {
                         // If the ring is full the oldest samples are dropped,
                         // which only makes the scope skip a beat.
                         let _ = scope_tx.push((sample_l + sample_r) * 0.5);
+                        let (out_l, out_r) = output_sample(sample_l, sample_r, silent);
                         if frame.len() >= 2 {
-                            frame[0] = cpal::Sample::from_sample(sample_l);
-                            frame[1] = cpal::Sample::from_sample(sample_r);
+                            frame[0] = cpal::Sample::from_sample(out_l);
+                            frame[1] = cpal::Sample::from_sample(out_r);
                         } else if !frame.is_empty() {
-                            frame[0] = cpal::Sample::from_sample((sample_l + sample_r) * 0.5);
+                            frame[0] = cpal::Sample::from_sample((out_l + out_r) * 0.5);
                         }
                     }
 
@@ -479,6 +501,13 @@ fn apply_preferences(
     }
 }
 
+/// **Utgångssteget, som en ren funktion.** Tyst läge nollar det som skickas till
+/// enheten — *efter* att toppen mätts, så självtestets tal är detsamma i båda
+/// lägena (`selftest.rs`). Ren funktion med prov: regeln går att pröva utan ljudkort.
+pub fn output_sample(l: f32, r: f32, silent: bool) -> (f32, f32) {
+    if silent { (0.0, 0.0) } else { (l, r) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -498,5 +527,14 @@ mod tests {
         let partial: AudioSettings = serde_json::from_str("{}").unwrap();
         assert!(partial.sample_rate.is_none());
         assert!(partial.buffer_frames.is_none());
+    }
+
+    /// **Provet som håller självtestet tyst.** Tyst läge måste nolla utgången och
+    /// lämna mixen orörd — annars finns ingen mätning kvar att döma efter.
+    #[test]
+    fn the_silent_switch_zeroes_the_output_but_not_the_mix() {
+        let (l, r) = (0.5f32, -0.25f32);
+        assert_eq!(output_sample(l, r, false), (l, r));
+        assert_eq!(output_sample(l, r, true), (0.0, 0.0));
     }
 }
