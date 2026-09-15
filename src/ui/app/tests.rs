@@ -224,6 +224,16 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             ping_pong: false,
             amp_env: crate::audio::envelope::AdsrParams::identity(),
             velocity_sensitivity: 0.35,
+            // En **zon** med egna intervall: ett tappat keymap-fält i sparandet ska synas här.
+            zones: vec![crate::audio::keymap::SampleZone {
+                sample_path: Some("/finns/inte/zon.wav".to_string()),
+                pcm: None,
+                root: 48,
+                key_low: 40,
+                key_high: 55,
+                vel_low: 0.6,
+                vel_high: 0.9,
+            }],
             // Ett filter med **egna** värden: ett tappat filterfält i sparandet ska synas här.
             filter: crate::audio::filter::SamplerFilter {
                 on: true,
@@ -278,6 +288,15 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             r.filter, ch.filter,
             "filtret ska med i projektfilen — både på/av och siffrorna"
         );
+        assert_eq!(
+            r.zones.len(),
+            ch.zones.len(),
+            "keymappen ska med i projektfilen"
+        );
+        assert_eq!(r.zones[0].root, 48);
+        assert_eq!((r.zones[0].key_low, r.zones[0].key_high), (40, 55));
+        assert_eq!((r.zones[0].vel_low, r.zones[0].vel_high), (0.6, 0.9));
+        assert_eq!(r.zones[0].sample_path, ch.zones[0].sample_path);
         assert_eq!(r.is_reverse, ch.is_reverse);
         assert_eq!(r.sample_path, ch.sample_path);
         assert_eq!(r.sample_base_note, ch.sample_base_note);
@@ -305,6 +324,9 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             back.velocity_sensitivity, 1.0,
             "en äldre fil ska få full känslighet — den faktor velocityn alltid har haft"
         );
+        // **Keymappen är tom** i en fil som inte har fältet — och då spelar kanalen sitt eget
+        // sampel, alltså exakt som den gjorde.
+        assert!(back.zones.is_empty(), "en gammal fil ska inte få zoner");
         // **Filtret är avstängt** i en fil som inte har fältet — det är hela poängen: filen ska
         // låta exakt som den gjorde, inte få ett filter på köpet.
         assert_eq!(back.filter, crate::audio::filter::SamplerFilter::default());
@@ -314,6 +336,124 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(ch.name, "Gammal");
         assert_eq!(ch.pitch_semitones, 3);
         assert!((ch.pitch_fine_cents - 7.0).abs() < 1e-6);
+    }
+
+    /// **Utan zoner är vägen exakt som förut** (Fas 8.4/7): kanalen spelar sitt eget sampel, med
+    /// sin grundton och sin slicekarta. Det är den regeln som gör att keymappen kunde läggas
+    /// till utan att något gammalt projekt ändras.
+    #[test]
+    fn a_channel_without_zones_triggers_its_own_sample() {
+        let mut ch = test_channel();
+        ch.pcm_audio = Some((
+            std::sync::Arc::new(vec![0.5, -0.5, 0.25]),
+            std::sync::Arc::new(vec![0.4, -0.4, 0.2]),
+            44_100,
+        ));
+        ch.sample_base_note = 60;
+        // **Utan zoner** men med hela filen vald: provet säger vad det menar i stället för att
+        // ärva testkanalens värden (den har en zon, för rundtursvaktens skull).
+        ch.zones.clear();
+        ch.sample_start = 0.0;
+        ch.sample_end = 1.0;
+        // Slicekartan har sina egna prov (8.7) — här prövas **zonvalet**, så testkanalens åtta
+        // slicar tas bort. Annars hade fönstret blivit slice 1/8 (0,125), vilket är rätt svar på
+        // en annan fråga.
+        ch.slices.clear();
+        let cmd = crate::ui::app::browser::channel_sample_trigger_command(&ch, 0, 60, 1.0, 0.5)
+            .expect("kommandot ska byggas");
+        match cmd {
+            AudioCommand::TriggerSampleVoice {
+                left,
+                sample_rate,
+                base_note,
+                start01,
+                end01,
+                ..
+            } => {
+                assert_eq!(left.as_ref(), &vec![0.5, -0.5, 0.25], "kanalens eget ljud");
+                assert_eq!(sample_rate, 44_100);
+                assert_eq!(base_note, 60, "kanalens grundton");
+                assert_eq!((start01, end01), (0.0, 1.0));
+            }
+            other => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
+        }
+    }
+
+    /// **En zon som täcker noten vinner över kanalens eget sampel** (Fas 8.4/7): zonen bär sitt
+    /// eget ljud och sin **egen** grundton, och hela filen spelas — en zon har ingen slicekarta.
+    #[test]
+    fn a_matching_zone_replaces_the_channels_sample() {
+        let mut ch = test_channel();
+        ch.pcm_audio = Some((
+            std::sync::Arc::new(vec![1.0]),
+            std::sync::Arc::new(vec![1.0]),
+            44_100,
+        ));
+        ch.sample_base_note = 60;
+        ch.zones = vec![crate::audio::keymap::SampleZone {
+            sample_path: None,
+            pcm: Some((
+                std::sync::Arc::new(vec![0.1, 0.2]),
+                std::sync::Arc::new(vec![0.1, 0.2]),
+                48_000,
+            )),
+            root: 48,
+            key_low: 40,
+            key_high: 60,
+            vel_low: 0.0,
+            vel_high: 1.0,
+        }];
+        let cmd = crate::ui::app::browser::channel_sample_trigger_command(&ch, 0, 48, 0.8, 0.0)
+            .expect("kommandot ska byggas");
+        match cmd {
+            AudioCommand::TriggerSampleVoice {
+                left,
+                sample_rate,
+                base_note,
+                start01,
+                end01,
+                ..
+            } => {
+                assert_eq!(left.as_ref(), &vec![0.1, 0.2], "zonens ljud");
+                assert_eq!(sample_rate, 48_000, "zonens fil");
+                assert_eq!(base_note, 48, "zonens grundton, inte kanalens");
+                assert_eq!((start01, end01), (0.0, 1.0), "en zon har ingen slicekarta");
+            }
+            other => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
+        }
+    }
+
+    /// **En not utanför zonerna går tillbaka till kanalens eget sampel** — det är därför en
+    /// ofullständig keymap inte tystar det register den inte täcker.
+    #[test]
+    fn a_note_outside_the_zones_falls_back_to_the_channel() {
+        let mut ch = test_channel();
+        ch.pcm_audio = Some((
+            std::sync::Arc::new(vec![0.7]),
+            std::sync::Arc::new(vec![0.7]),
+            44_100,
+        ));
+        ch.sample_base_note = 60;
+        ch.zones = vec![crate::audio::keymap::SampleZone {
+            pcm: Some((
+                std::sync::Arc::new(vec![0.1]),
+                std::sync::Arc::new(vec![0.1]),
+                48_000,
+            )),
+            root: 48,
+            key_low: 40,
+            key_high: 50,
+            ..crate::audio::keymap::SampleZone::full_range(48)
+        }];
+        let cmd = crate::ui::app::browser::channel_sample_trigger_command(&ch, 0, 60, 0.8, 0.0)
+            .expect("kommandot ska byggas");
+        match cmd {
+            AudioCommand::TriggerSampleVoice { left, base_note, .. } => {
+                assert_eq!(left.as_ref(), &vec![0.7], "kanalens ljud när zonen inte täcker");
+                assert_eq!(base_note, 60);
+            }
+            other => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
+        }
     }
 
     #[test]

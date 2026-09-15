@@ -154,17 +154,34 @@ pub(crate) fn channel_sample_trigger_command(
     velocity: f32,
     hold_secs: f32,
 ) -> Option<AudioCommand> {
-    let (start01, end01) = crate::audio::onset::window_for_note(
-        &ch.slices,
-        ch.sample_base_note,
-        note,
-        (ch.sample_start, ch.sample_end),
-    );
-    ch.pcm_audio.as_ref().map(|(l, r, sr)| AudioCommand::TriggerSampleVoice {
-        left: l.clone(),
-        right: r.clone(),
-        sample_rate: *sr,
-        base_note: ch.sample_base_note,
+    // **Multi-samples** (Fas 8.4/7): en keymap med zoner väljer sampel och grundton för noten
+    // och anslaget. **Utan zoner** — eller när ingen zon täcker noten — är vägen exakt som förut:
+    // kanalens eget sampel med sin slicekarta. Det är därför ett projekt från före keymappen
+    // låter identiskt.
+    //
+    // En zon utan läsbart ljud hoppas över här i stället för att tysta noten: filen kan ha
+    // flyttats, och då är kanalens eget sampel det ärliga svaret (samma regel som 8.5).
+    let zon = crate::audio::keymap::zone_for_note(&ch.zones, note, velocity)
+        .and_then(|i| ch.zones.get(i))
+        .and_then(|z| z.pcm.as_ref().filter(|(l, _, _)| !l.is_empty()).map(|p| (p, z.root)));
+    let (left, right, sample_rate, base_note, start01, end01) = match zon {
+        Some(((l, r, sr), root)) => (l.clone(), r.clone(), *sr, root, 0.0, 1.0),
+        None => {
+            let (start01, end01) = crate::audio::onset::window_for_note(
+                &ch.slices,
+                ch.sample_base_note,
+                note,
+                (ch.sample_start, ch.sample_end),
+            );
+            let (l, r, sr) = ch.pcm_audio.as_ref()?;
+            (l.clone(), r.clone(), *sr, ch.sample_base_note, start01, end01)
+        }
+    };
+    Some(AudioCommand::TriggerSampleVoice {
+        left,
+        right,
+        sample_rate,
+        base_note,
         note,
         pitch_semitones: ch.pitch_semitones,
         pitch_cents: ch.pitch_fine_cents,

@@ -52,6 +52,9 @@ pub struct VoiceSpec {
     pub velocity_sensitivity: f32,
     /// **Filtret** (Fas 8.4/7) gör detsamma: samma klang i filen som i högtalarna.
     pub filter: crate::audio::filter::SamplerFilter,
+    /// **Keymappen** (Fas 8.4/7) följer också med: exporten väljer zon med **samma** funktion som
+    /// spelvägen (`keymap::zone_for_note`), så filen och högtalarna kan inte hamna i olika zoner.
+    pub zones: Vec<crate::audio::keymap::SampleZone>,
 }
 
 #[derive(Clone)]
@@ -198,13 +201,24 @@ fn sample_trigger_command(
     if v.left.is_empty() {
         return None;
     }
-    let (start01, end01) =
-        crate::audio::onset::window_for_note(&ch.slices, v.base_note, note, (v.start, v.end));
+    // **Samma val som spelvägen** (Fas 8.4/7) — bokstavligen samma funktion, så en not kan inte
+    // hamna i en zon i filen och en annan i högtalarna.
+    let zon = crate::audio::keymap::zone_for_note(&v.zones, note, velocity)
+        .and_then(|i| v.zones.get(i))
+        .and_then(|z| z.pcm.as_ref().filter(|(l, _, _)| !l.is_empty()).map(|p| (p, z.root)));
+    let (left, right, sample_rate, base_note, start01, end01) = match zon {
+        Some(((l, r, sr), root)) => (l.clone(), r.clone(), *sr, root, 0.0, 1.0),
+        None => {
+            let (start01, end01) =
+                crate::audio::onset::window_for_note(&ch.slices, v.base_note, note, (v.start, v.end));
+            (v.left.clone(), v.right.clone(), v.sample_rate, v.base_note, start01, end01)
+        }
+    };
     Some(AudioCommand::TriggerSampleVoice {
-        left: v.left.clone(),
-        right: v.right.clone(),
-        sample_rate: v.sample_rate,
-        base_note: v.base_note,
+        left,
+        right,
+        sample_rate,
+        base_note,
         note,
         pitch_semitones: v.semitones,
         pitch_cents: v.cents,
@@ -916,6 +930,72 @@ fn write_with_ffmpeg(
 mod tests {
     use super::*;
 
+    /// **Exportdörren väljer zon med samma funktion som spelvägen** (Fas 8.4/7). Påståendet
+    /// "samma väljare, alltså kan filen och högtalarna inte hamna i olika zoner" är bara värt
+    /// något om den vägen faktiskt **anropar** väljaren — det är det här provet.
+    #[test]
+    fn the_export_uses_the_same_zone_choice_as_playback() {
+        let kanal_ljud = Arc::new(vec![9.0_f32; 8]);
+        let zon_ljud = Arc::new(vec![0.25_f32; 8]);
+        let v = VoiceSpec {
+            left: kanal_ljud.clone(),
+            right: kanal_ljud.clone(),
+            sample_rate: 44_100,
+            base_note: 60,
+            semitones: 0,
+            cents: 0.0,
+            volume: 1.0,
+            reverse: false,
+            start: 0.0,
+            end: 1.0,
+            loop_mode: LoopMode::Off,
+            loop_start: 0.0,
+            loop_end: 1.0,
+            ping_pong: false,
+            amp_env: AdsrParams::identity(),
+            velocity_sensitivity: 1.0,
+            filter: crate::audio::filter::SamplerFilter::default(),
+            zones: vec![crate::audio::keymap::SampleZone {
+                sample_path: None,
+                pcm: Some((zon_ljud.clone(), zon_ljud.clone(), 48_000)),
+                root: 48,
+                key_low: 40,
+                key_high: 55,
+                vel_low: 0.0,
+                vel_high: 1.0,
+            }],
+        };
+        let ch = RackChannel {
+            voice: Some(v),
+            slices: Vec::new(),
+            fallback_volume: 1.0,
+            steps: [false; 16],
+            notes: [36; 16],
+        };
+        // Noten 48 ligger i zonen: exporten ska spela **zonens** fil och grundton.
+        match sample_trigger_command(&ch, 0, 48, 0.9, 0.0).expect("kommando") {
+            AudioCommand::TriggerSampleVoice {
+                left,
+                sample_rate,
+                base_note,
+                ..
+            } => {
+                assert_eq!(left.as_ref(), &vec![0.25_f32; 8], "zonens ljud");
+                assert_eq!(sample_rate, 48_000, "zonens fil");
+                assert_eq!(base_note, 48, "zonens grundton");
+            }
+            _ => panic!("fel kommando (inte TriggerSampleVoice)"),
+        }
+        // Och noten 60 **utanför** zonen: kanalens eget ljud, precis som i högtalarna.
+        match sample_trigger_command(&ch, 0, 60, 0.9, 0.0).expect("kommando") {
+            AudioCommand::TriggerSampleVoice { left, base_note, .. } => {
+                assert_eq!(left.as_ref(), &vec![9.0_f32; 8], "kanalens ljud utanför zonen");
+                assert_eq!(base_note, 60);
+            }
+            _ => panic!("fel kommando (inte TriggerSampleVoice)"),
+        }
+    }
+
     fn render_smoke_spec() -> RenderSpec {
         let mut sine = Vec::with_capacity(4410);
         for i in 0..4410 {
@@ -946,6 +1026,7 @@ mod tests {
                     amp_env: AdsrParams::identity(),
                     velocity_sensitivity: 1.0,
                     filter: crate::audio::filter::SamplerFilter::default(),
+                    zones: Vec::new(),
                 })
             } else {
                 None
@@ -1383,6 +1464,7 @@ mod tests {
                 amp_env: AdsrParams::identity(),
                 velocity_sensitivity: 1.0,
                 filter: crate::audio::filter::SamplerFilter::default(),
+                zones: Vec::new(),
             });
             spec.rack[0].steps[0] = true;
             spec.rack[0].notes[0] = 36;
@@ -1481,6 +1563,7 @@ mod tests {
             amp_env: AdsrParams::identity(),
             velocity_sensitivity: 1.0,
             filter: crate::audio::filter::SamplerFilter::default(),
+            zones: Vec::new(),
         });
         spec.rack[0].steps[0] = true;
         spec.rack[0].notes[0] = 36;

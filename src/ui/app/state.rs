@@ -115,6 +115,9 @@ pub struct ChannelStrip {
     /// **Filterenvelopen** (Fas 8.4/7): kanalens lågpassfilter med sin **egen** ADSR. Standard
     /// är avstängt, alltså oförändrat ljud för ett projekt från före filtret.
     pub filter: crate::audio::filter::SamplerFilter,
+    /// **Multi-samples** (Fas 8.4/7): en keymap av zoner — sampel med tonhöjds- och
+    /// anslagsintervall. **Tom = kanalens eget sampel**, alltså exakt beteendet före keymappen.
+    pub zones: Vec<crate::audio::keymap::SampleZone>,
     pub is_reverse: bool,
     pub waveform_preview: Vec<f32>,
     pub sample_path: Option<String>,

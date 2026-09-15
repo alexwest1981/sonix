@@ -1506,6 +1506,60 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                 });
                             });
 
+                            // **Keymap: multi-samples** (Fas 8.4/7). Ordningen i listan **är**
+                            // prioriteten (den sista zonen som matchar noten vinner), så den står
+                            // här i stället för i en hjälptext någon annanstans.
+                            ui.separator();
+                            ui.label(egui::RichText::new(crate::i18n::t("Keymap (multi-samples):")).strong().size(11.0).color(Theme::TEXT_MUTED));
+                            if ui
+                                .button(crate::i18n::t("➕ Lägg till zon av kanalens sampel"))
+                                .on_hover_text(crate::i18n::t("Zonen får kanalens sampel och grundton och täcker alla toner och anslag — snäva in intervallen sedan. Den sista zonen i listan som matchar noten är den som hörs."))
+                                .clicked()
+                            {
+                                let mut z = crate::audio::keymap::SampleZone::full_range(ch.sample_base_note);
+                                z.sample_path = ch.sample_path.clone();
+                                z.pcm = ch.pcm_audio.clone();
+                                ch.zones.push(z);
+                            }
+                            if ch.zones.is_empty() {
+                                ui.label(egui::RichText::new(crate::i18n::t("Inga zoner — kanalen spelar sitt eget sampel.")).size(10.0).color(Theme::TEXT_MUTED));
+                            }
+                            let mut ta_bort: Option<usize> = None;
+                            for (zi, z) in ch.zones.iter_mut().enumerate() {
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new(format!("{}", zi + 1)).strong().size(10.0).color(Theme::FL_CYAN));
+                                    ui.add(egui::DragValue::new(&mut z.root).range(0..=127).speed(0.2).prefix(crate::i18n::t("grund ")))
+                                        .on_hover_text(crate::i18n::t("Sampelns grundton: transponeringen räknas härifrån, så zonen kan ligga i sitt eget register."));
+                                    ui.add(egui::DragValue::new(&mut z.key_low).range(0..=127).speed(0.2).prefix(crate::i18n::t("ton ")));
+                                    ui.label("–");
+                                    ui.add(egui::DragValue::new(&mut z.key_high).range(0..=127).speed(0.2));
+                                    ui.add(egui::Slider::new(&mut z.vel_low, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0} %", v * 100.0)));
+                                    ui.label("–");
+                                    ui.add(egui::Slider::new(&mut z.vel_high, 0.0..=1.0).custom_formatter(|v, _| format!("{:.0} %", v * 100.0)));
+                                    if !z.is_playable() {
+                                        ui.label(egui::RichText::new(crate::i18n::t("⚠ filen kunde inte läsas — kanalens eget sampel spelar")).color(Theme::FL_YELLOW).size(10.0));
+                                    }
+                                    if ui.button("🗑").clicked() {
+                                        ta_bort = Some(zi);
+                                    }
+                                });
+                            }
+                            if let Some(i) = ta_bort {
+                                ch.zones.remove(i);
+                            }
+                            // Ett **bakvänt** intervall täcker ingenting (se `keymap::covers`), så
+                            // det vänds här i stället för att bli en tyst zon som aldrig hörs.
+                            for z in ch.zones.iter_mut() {
+                                if z.key_low > z.key_high {
+                                    std::mem::swap(&mut z.key_low, &mut z.key_high);
+                                }
+                                if z.vel_low > z.vel_high {
+                                    std::mem::swap(&mut z.vel_low, &mut z.vel_high);
+                                }
+                                z.vel_low = z.vel_low.clamp(0.0, 1.0);
+                                z.vel_high = z.vel_high.clamp(0.0, 1.0);
+                            }
+
                             ui.separator();
                             ui.label(egui::RichText::new(crate::i18n::t("Envelope (ADSR):")).strong().size(11.0).color(Theme::TEXT_MUTED));
                             ui.horizontal(|ui| {

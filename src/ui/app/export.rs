@@ -206,6 +206,8 @@ pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u
             // **Filtret följer med till filen** (Fas 8.4/7) — annars hade exporten haft en
             // annan klang än högtalarna.
             filter: ch.filter,
+            // **Och keymappen**: samma zoner, samma väljare, samma svar som spelvägen.
+            zones: ch.zones.clone(),
         });
         RackChannel {
             voice,

@@ -1300,8 +1300,34 @@ routa på riktigt och ha en sampler. Inget av det är AI — det är hantverket.
     - Reglaget finns kvar: samma två tal, två dörrar — ett drag för att leta, en siffra för att sätta
       exakt. `loop_frames` är oförändrad, och varningen för ett bakvänt par gäller fortfarande den
       vägen (draget kan inte skapa ett).
-  - **Ärligt kvar (egna pass):** inga **multi-samples** (keymaps/velocity-lager = DirectWave-nivån),
-    och anslagets kurva är linjär (ingen väljbar kvadratisk kurva, och inget anslag → filter).
+  - **Multi-samples (keymap) — KLAR 2026-09-15.** En kanal kan nu bära en **lista av zoner**
+    (`audio/keymap.rs`): varje zon är ett sampel med ett **tonhöjds-** och ett **anslagsintervall**.
+    Det är samma modell som Kontakt, DirectWave och Abletons Simpler använder — två lager för samma
+    not (mjuk/stark) eller olika sampel per register är nu en inställning i kanalen.
+    - **Tom lista = exakt som förut.** Utan zoner spelar kanalen sitt eget sampel med sin
+      slicekarta, och det är vad ett projekt från före keymappen har.
+      `a_channel_without_zones_triggers_its_own_sample` håller den regeln.
+    - **Ordningen i listan är prioriteten:** den **sista** zonen som täcker noten och anslaget
+      vinner (`zone_for_note`). Alternativet — "den mest specifika" — låter rimligt men gör svaret
+      beroende av en beräkning man inte ser; här *är* ordningen svaret, och den står i
+      gränssnittet. Ett **bakvänt** intervall täcker **ingenting** (medvetet: att byta plats på
+      ändarna hade gjort en felskrivning till en zon som spelar överallt i stället för ingenstans),
+      och gränssnittet vänder hellre paret än att låta en zon tysta ett register.
+    - **En regel, två dörrar — bokstavligen samma funktion:** exporten väljer zon med
+      `keymap::zone_for_note`, och `the_export_uses_the_same_zone_choice_as_playback` prövar att
+      den vägen **anropar** den. En delad hjälpare är bara ett löfte tills någon mäter att den
+      används.
+    - **Ett fynd på vägen, av kompilatorn:** i exporten blev de nya lokalerna oanvända (varningen
+      `unused variable`) medan kommandot fortfarande byggdes ur de gamla fälten — zonen hade alltså
+      **tyst** aldrig nått filen. 0-varningars-regeln fångade det, inte ett prov.
+    - **Bevis, 14 nya prov:** sju i `keymap` (hela registret, registerbyte, anslagslager, sista
+      vinner, ingen täckning → kanalens eget sampel, bakvänt intervall, klämt anslag), tre i
+      app-ytan (zonvalet och återfallet), `the_export_uses_the_same_zone_choice_as_playback`, samt
+      rundtursvakten och en **handskriven gammal fil** utan `zones` (som ska bli en tom lista).
+    - **Kvar (ärligt):** zonlistan är inte **klickad** i GUI — kodvägen är enhetstestad, men fönstret
+      behöver Alex. Zonerna ställs med siffror i listan; ingen väljare på en klaviaturbild.
+  - **Ärligt kvar (egna pass):** anslagets kurva är linjär (ingen väljbar kvadratisk kurva, och
+    inget anslag → filter).
 - [ ] **8.6 Plugins: bryggning, egna utgångar och sidokedja in i en plugin** — *M*
   **Påbörjad 2026-09-15** (`79adff9`, `6c1b43b`): tre av fyra delar byggda och mätta —
   **kvar är routningen av pluginens egna utbussar till egna spår** (se nedan).

@@ -10,6 +10,7 @@ pub mod exporter;
 pub mod factory_samples;
 pub mod filter;
 pub mod hardware_control;
+pub mod keymap;
 pub mod loudness;
 pub mod macro_chain;
 pub mod master_fx;

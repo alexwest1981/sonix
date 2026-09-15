@@ -188,6 +188,10 @@ pub struct SavedChannel {
     /// standardvärdena för cutoff/resonans, så det finns bara en tabell för dem.)
     #[serde(default)]
     pub filter: crate::audio::filter::SamplerFilter,
+    /// **Multi-samples** (Fas 8.4/7): kanalens keymap. Saknas fältet i en äldre fil är listan
+    /// **tom** — och då spelar kanalen sitt eget sampel, precis som den gjorde.
+    #[serde(default)]
+    pub zones: Vec<SavedZone>,
     #[serde(default)]
     pub is_reverse: bool,
     #[serde(default)]
@@ -277,6 +281,35 @@ fn default_ui_color() -> [u8; 4] {
 }
 
 fn default_sample_end() -> f32 {
+    1.0
+}
+
+/// **En zon som den står i projektfilen** (Fas 8.4/7): filen och intervallen. Ljudet sparas
+/// **inte** — det läses ur `sample_path` igen, samma regel som för kanalens eget sampel, och av
+/// samma skäl: ljudet ligger redan på disk och en projektfil ska inte bära kopior av det.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SavedZone {
+    #[serde(default)]
+    pub sample_path: Option<String>,
+    /// Sampelns grundton.
+    #[serde(default)]
+    pub root: u8,
+    #[serde(default)]
+    pub key_low: u8,
+    /// Hela registret som standard: en zon utan intervall ska höras, inte tystna.
+    #[serde(default = "default_key_high")]
+    pub key_high: u8,
+    #[serde(default)]
+    pub vel_low: f32,
+    #[serde(default = "default_vel_high")]
+    pub vel_high: f32,
+}
+
+fn default_key_high() -> u8 {
+    127
+}
+
+fn default_vel_high() -> f32 {
     1.0
 }
 
@@ -382,6 +415,19 @@ pub(crate) fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
         amp_env: c.amp_env,
         velocity_sensitivity: c.velocity_sensitivity,
         filter: c.filter,
+        // **Zonerna** (Fas 8.4/7): filen och intervallen sparas, ljudet läses (se `SavedZone`).
+        zones: c
+            .zones
+            .iter()
+            .map(|z| SavedZone {
+                sample_path: z.sample_path.clone(),
+                root: z.root,
+                key_low: z.key_low,
+                key_high: z.key_high,
+                vel_low: z.vel_low,
+                vel_high: z.vel_high,
+            })
+            .collect(),
         is_reverse: c.is_reverse,
         sample_path: c.sample_path.clone(),
         sample_base_note: c.sample_base_note,
@@ -430,6 +476,22 @@ pub(crate) fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
         // och blir då 1,0 — exakt den linjära faktor velocityn alltid har haft.
         velocity_sensitivity: s.velocity_sensitivity,
         filter: s.filter,
+        // **Zonerna** (Fas 8.4/7): ljudet läses ur filen igen — kanalen gör precis likadant med
+        // sitt eget sampel strax ovanför. En zon vars fil inte går att läsa får `pcm: None`, och
+        // då spelar kanalens eget sampel i stället (och gränssnittet säger att filen inte lästes).
+        zones: s
+            .zones
+            .iter()
+            .map(|z| crate::audio::keymap::SampleZone {
+                pcm: z.sample_path.as_deref().and_then(load_sample_pcm_arcs),
+                sample_path: z.sample_path.clone(),
+                root: z.root,
+                key_low: z.key_low,
+                key_high: z.key_high,
+                vel_low: z.vel_low,
+                vel_high: z.vel_high,
+            })
+            .collect(),
         loop_mode: s.loop_mode,
         sample_loop_start: s.sample_loop_start,
         sample_loop_end: s.sample_loop_end,
