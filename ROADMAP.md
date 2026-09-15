@@ -293,14 +293,16 @@ Det är den delen som går att mäta utan fönster.
 | 12 | **8.11 Tonarten som tonart** *(2026-09-12)* | *S* | **KLAR 2026-09-14** (`392a30c` + `76b4015`): tabellen, indexet, låset, tonarten i filen, skalnamnen i i18n och transponering till tonarten. **Markeringen kvitterad i GUI av Alex** ("ser ut att stämma") | — |
 
 
-**Kvar — i prio-ordning (2026-09-14).** Bara det som faktiskt återstår; övriga rader i
+**Kvar — i prio-ordning (2026-09-15).** Bara det som faktiskt återstår; övriga rader i
 tabellen är klara och står i `Gjort`. Kontrollerat i koden, inte bara i texten.
 
 | # | Punkt | Storlek | Vad som återstår | Går att göra |
 | :--- | :--- | :---: | :--- | :--- |
 | 1 | **8.6 Plugins: egna utgångar (routningen kvar)** | *S* | **Klart 2026-09-15:** sidokedja in i en plugin, manuellt latens-offset och smart disable — alla tre mätta (`79adff9`, `6c1b43b`). Pluginens egna utbussar **läses** redan; **kvar** är routningen till egna spår (ingångskant i ordningspasset + konfiguration per plugin + reglaget i vyn). *32-bitars plugins* är inte ett rimligt mål för oss | vid datorn, nu |
-| 2 | **7.3 + 4.6 Wine/yabridge-vägen** | *M + L* | Köra en **riktig** brygga hela vägen (Sytrus/Harmor/Gross Beat): laddning, inspektion, ljud med PDC, state, X11-fönstret. Mock-modulerna är redan gröna | **blockerad** — kräver Wine + display, och du har inga Windows-plugins på disk. Miljön är färdigkonfigurerad den dag de kommer |
-| 3 | **7.1 Windows-porten** | *XL* | MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin. Steg 1–8 är klara | **pausad efter ditt besked** — ingen Windows-laptop än |
+| 2 | **Plugins: VST3-vägen läser inga parametrar** *(fynd 2026-09-15, `4b716eb`)* | *S–M* | Mätt mot Surge XT: **775 parametrar i CLAP, 0 i VST3**, och tillverkare/version kommer ut tomma (`"Surge Synth Team v"`). Laddning, identitet och ljud går fram; parameterlistan gör det inte. Följden är att automation mot en VST3-plugin inte har några mål att välja — och att `--inspect-plugin` säger sanningen om det i stället för att tiga | vid datorn, nu |
+| 3 | **LV2: löftet i vyn har ingen värd bakom sig** *(fynd 2026-09-15)* | *S att stryka / L att bygga* | `.lv2` klassas, filtreras och skannas (`/usr/lib/lv2`, "/usr/lib/vst3", "Linux LV2 Standardbibliotek"), men lasthanteraren skickar bunten till CLAP-laddaren: `undefined symbol: clap_entry`. **Vi lovar i gränssnittet något koden inte har.** Två vägar: bygga en LV2-värd (Lilv + portmodellen — egna veckor) eller stryka löftet ur vyn, formatlistan och skanningsvägarna (S). Rekommendationen är att stryka nu och bygga när något verkligt behöver det | beslut + datorn |
+| 4 | **7.3 + 4.6 Wine/yabridge-vägen** | *M + L* | Köra en **riktig** brygga hela vägen (Sytrus/Harmor/Gross Beat): laddning, inspektion, ljud med PDC, state, X11-fönstret. Mock-modulerna är redan gröna | **blockerad** — kräver Wine + display, och du har inga Windows-plugins på disk. Miljön är färdigkonfigurerad den dag de kommer |
+| 5 | **7.1 Windows-porten** | *XL* | MCU-kontrollen (kräver en riktig enhet) och kvittensen på en riktig maskin. Steg 1–8 är klara | **pausad efter ditt besked** — ingen Windows-laptop än |
 
 **Det bara du kan kvittera** (koden är klar och mätt; det är ögat/örat som saknas — ingen Xvfb
 finns på maskinen, så jag kan inte se ett fönster):
@@ -311,7 +313,12 @@ finns på maskinen, så jag kan inte se ett fönster):
   höjd, inte höljet.
 - **Tempoföljningens switch** och klippmenyns temoläge (lästa, inte sedda).
 - **8.8:s plugin-väljare** — ladda en plugin i en slot, slå på 📈 Automation, välj parameter i
-  🔌-menyn och rita. (Spår- och busskurvorna kvitterade du redan.)
+  🔌-menyn och rita. (Spår- och busskurvorna kvitterade du redan.) **Nu går den att prova på
+  riktigt:** Surge XT ligger i `~/.clap` (775 parametrar mätta), så väljaren har verkliga mål.
+- **8.6:s två reglage och Surge XT själv** — `VY: Plugin Manager`: skanna, ladda **Surge XT**
+  på ett stämspår, tryck **🪟 Öppna GUI** (ett riktigt X11-fönster), och prova **😴 Smart
+  disable** och latens-offsetet (ms) på raden. Allt utom klicket är mätt — GUI:t i sig har
+  aldrig ritats här.
 - **8.9:s makrodialog** — `🎛 Verktyg → 🔗 Makron (kedja över filer)...`: kedjelistan till vänster,
   stegredigeringen (lägg till/ta bort/flytta), **💾 Spara kedjan**, **📁 En mapp → 🔽 Läs mappen →
   ▶ Kör kedjan** (framstegsrad och en resultatrad per fil), och samma kedja mot **🎛 Det öppna
