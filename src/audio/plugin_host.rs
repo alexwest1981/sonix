@@ -1,7 +1,7 @@
 use eframe::egui::Color32;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PluginFormat {
     Clap,
     Vst3,
@@ -104,7 +104,7 @@ mod lv2_probe_tests {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PluginCategory {
     Synth,
     Effect,
@@ -147,7 +147,7 @@ impl PluginCategory {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PluginDescriptor {
     pub id: String,
     pub name: String,
@@ -162,7 +162,7 @@ pub struct PluginDescriptor {
     pub author_notes: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FlStudioPreset {
     pub file_path: String,
     pub preset_name: String,
@@ -171,7 +171,7 @@ pub struct FlStudioPreset {
     pub filesize_bytes: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ScanPath {
     pub path: String,
     pub enabled: bool,
@@ -216,7 +216,20 @@ fn expand_tilde(path: &str) -> PathBuf {
 }
 
 impl Default for PluginManager {
+    /// Standardläget **skannar disken** — det är vad en ny manager alltid har gjort, och vad
+    /// gränssnittet räknar med när användaren trycker "Skanna". Vill man slippa skanningen (t.ex.
+    /// för att läsa en sparad databas i stället) används [`PluginManager::without_scan`] eller
+    /// [`PluginManager::with_cached_database`].
     fn default() -> Self {
+        let mut mgr = Self::without_scan();
+        mgr.scan_disk();
+        mgr
+    }
+}
+
+impl PluginManager {
+    /// Standardläget **utan** diskskanning: sökvägarna och tomma listor.
+    pub fn without_scan() -> Self {
         let default_scan_paths = vec![
             ScanPath {
                 path: "~/.vst3".to_string(),
@@ -297,7 +310,7 @@ impl Default for PluginManager {
             },
         ];
 
-        let mut mgr = Self {
+        PluginManager {
             plugins: Vec::new(),
             presets: Vec::new(),
             scan_paths: default_scan_paths,
@@ -317,10 +330,7 @@ impl Default for PluginManager {
             manual_import_file_input: String::new(),
             manual_import_vendor_input: String::new(),
             manual_import_category_idx: 0,
-        };
-
-        mgr.scan_disk();
-        mgr
+        }
     }
 }
 
@@ -449,7 +459,172 @@ fn walk_find_so(dir: &Path, depth: usize) -> bool {
     false
 }
 
+/// **Plugin-databasens fil** (Fas 6.0, stängd 2026-09-15): `plugin_db.json` i konfigmappen.
+pub fn plugin_db_file() -> PathBuf {
+    crate::paths::paths().config_dir().join("plugin_db.json")
+}
+
+/// **Formatet på disk.** Versionen är inte dekoration: en fil skriven av en nyare Sonix ska
+/// **läsas som ingenting** i stället för att läsas halvt — en plugin-databas som tappar hälften av
+/// sina fält ser ut som en tom databas, och då letar man felet i skanningen i stället för i filen.
+pub const PLUGIN_DB_VERSION: u32 = 1;
+
+/// Plugin-databasen så som den ligger på disk.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PluginDb {
+    pub version: u32,
+    /// Unix-sekunder när filen skrevs. Åldern visas i gränssnittet, så en gammal lista inte ser
+    /// ut som en ny.
+    pub saved_at_unix: u64,
+    pub scan_paths: Vec<ScanPath>,
+    pub plugins: Vec<PluginDescriptor>,
+    pub presets: Vec<FlStudioPreset>,
+}
+
+/// **Vad starten gör med plugin-databasen** — se [`startup_plan`].
+#[derive(Debug, Clone, PartialEq)]
+pub enum StartupSource {
+    /// Filen fanns och lästes: **ingen skanning**, listan är den som var.
+    Cached(PluginDb),
+    /// Skanna disken. `Some(skäl)` när en fil fanns men inte kunde användas — skälet ska visas,
+    /// för annars ser en trasig fil ut som en tom och nästa skanning verkar omotiverad.
+    Scan(Option<String>),
+}
+
+/// Avgör vad starten ska göra — **ren funktion**, så beslutet går att pröva utan en konfigmapp
+/// och utan att röra användarens filer.
+pub fn startup_plan(loaded: Result<Option<PluginDb>, String>) -> StartupSource {
+    match loaded {
+        Ok(Some(db)) => StartupSource::Cached(db),
+        Ok(None) => StartupSource::Scan(None),
+        Err(e) => StartupSource::Scan(Some(e)),
+    }
+}
+
+/// Sekunder sedan en tidsstämpel — ren funktion, så åldersvisningen går att pröva.
+pub fn age_seconds(now_unix: u64, saved_at_unix: u64) -> u64 {
+    now_unix.saturating_sub(saved_at_unix)
+}
+
+/// Åldern i ord: "nyss", "N minuter sedan", "N timmar sedan", "N dygn sedan".
+pub fn age_text(seconds: u64) -> String {
+    match seconds {
+        0..=59 => crate::i18n::t("nyss").to_string(),
+        60..=3_599 => crate::tstatus!("{} minuter sedan", seconds / 60),
+        3_600..=86_399 => crate::tstatus!("{} timmar sedan", seconds / 3_600),
+        _ => crate::tstatus!("{} dygn sedan", seconds / 86_400),
+    }
+}
+
 impl PluginManager {
+
+    /// **Startläget: med databasen från förra gången om den finns** (2026-09-15).
+    ///
+    /// En plugin-skanning är det långsammaste appen gör vid start, och listan ändras sällan. Finns
+    /// filen läses den därför i stället för att disken gås igenom. Går den **inte** att läsa står
+    /// skälet i statusraden — annars hade en trasig fil sett ut precis som en tom, och nästa
+    /// skanning hade verkat helt omotiverad.
+    ///
+    /// `Default` lämnas **orörd och utan fil-IO**: proven ska inte läsa användarens riktiga
+    /// konfigmapp.
+    pub fn with_cached_database() -> Self {
+        match startup_plan(Self::load_from_disk()) {
+            // **Cachen används utan att disken rörs.** Därför är `without_scan` en egen
+            // konstruktor: `Default::default()` skannar, så en "cache" byggd på den hade skannat
+            // först och läst in efteråt — och då hade den inte sparat någonting alls.
+            StartupSource::Cached(db) => {
+                let mut manager = Self::without_scan();
+                manager.apply_db(db);
+                manager
+            }
+            // Ingen fil (första starten) eller en fil som inte gick att läsa: skanna disken, som
+            // förut. Skälet sätts **efter** skanningen, annars hade skanningsraden skrivit över det.
+            StartupSource::Scan(reason) => {
+                let mut manager = Self::default();
+                if let Some(e) = reason {
+                    manager.scan_status = crate::tstatus!(
+                        "Plugin-databasen kunde inte läsa ({}) — skannade om disken.",
+                        e
+                    );
+                }
+                manager
+            }
+        }
+    }
+
+    /// Databasen som den ser ut nu.
+    pub fn to_db(&self) -> PluginDb {
+        PluginDb {
+            version: PLUGIN_DB_VERSION,
+            saved_at_unix: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs())
+                .unwrap_or(0),
+            scan_paths: self.scan_paths.clone(),
+            plugins: self.plugins.clone(),
+            presets: self.presets.clone(),
+        }
+    }
+
+    /// Skriver databasen **atomiskt** (temp + rename), samma regel som autosaven: en halvskriven
+    /// fil är värre än ingen fil, för den läses vid nästa start och ser ut som en tom databas.
+    pub fn save_to(&self, file: &Path) -> Result<(), String> {
+        let json = serde_json::to_string_pretty(&self.to_db()).map_err(|e| e.to_string())?;
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        }
+        let tmp = file.with_extension("json.tmp");
+        std::fs::write(&tmp, json).map_err(|e| format!("{}: {e}", tmp.display()))?;
+        std::fs::rename(&tmp, file).map_err(|e| format!("{}: {e}", file.display()))?;
+        Ok(())
+    }
+
+    /// Skriver till den riktiga platsen — se [`plugin_db_file`].
+    pub fn save_to_disk(&self) -> Result<(), String> {
+        self.save_to(&plugin_db_file())
+    }
+
+    /// Läser en databasfil. `Ok(None)` = filen finns inte (första starten, **inte** ett fel).
+    /// `Err` = filen finns men går inte att använda, och **skälet står i felet**.
+    pub fn load_from(file: &Path) -> Result<Option<PluginDb>, String> {
+        if !file.exists() {
+            return Ok(None);
+        }
+        let text = std::fs::read_to_string(file).map_err(|e| format!("{}: {e}", file.display()))?;
+        let db: PluginDb = serde_json::from_str(&text)
+            .map_err(|e| format!("{}: inte en plugin-databas ({e})", file.display()))?;
+        if db.version != PLUGIN_DB_VERSION {
+            return Err(format!(
+                "{}: version {} (jag kan läsa {}) — filen lämnas orörd",
+                file.display(),
+                db.version,
+                PLUGIN_DB_VERSION
+            ));
+        }
+        Ok(Some(db))
+    }
+
+    /// Läser från den riktiga platsen — se [`plugin_db_file`].
+    pub fn load_from_disk() -> Result<Option<PluginDb>, String> {
+        Self::load_from(&plugin_db_file())
+    }
+
+    /// Lägger in en läst databas: sökvägarna, pluginsen och presetsen.
+    pub fn apply_db(&mut self, db: PluginDb) {
+        if !db.scan_paths.is_empty() {
+            self.scan_paths = db.scan_paths;
+        }
+        self.plugins = db.plugins;
+        self.presets = db.presets;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        self.last_scan_time = crate::tstatus!(
+            "{} (från databasen)",
+            age_text(age_seconds(now, db.saved_at_unix))
+        );
+    }
 
     /// Scans configured real directories on the file system for plugin bundles & files.
     pub fn scan_disk(&mut self) {
@@ -478,6 +653,18 @@ impl PluginManager {
             self.plugins.len(),
             self.presets.len()
         );
+        // **Databasen sparas direkt efter skanningen** (2026-09-15). Förut levde den bara i
+        // minnet, så varje start skannade om disken — och en plugin-skanning är den långsammaste
+        // saken appen gör vid start. Ett fel att spara får **inte** tigas bort: det står i
+        // statusraden tillsammans med resultatet, för en databas som inte sparas ser ut som en
+        // databas som fungerar, ända till nästa start.
+        if let Err(e) = self.save_to_disk() {
+            self.scan_status = crate::tstatus!(
+                "Skanning klar ({} plugins) — men databasen kunde inte sparas: {}",
+                self.plugins.len(),
+                e
+            );
+        }
     }
 
     fn scan_directory_recursive(&mut self, dir: &Path, depth: usize, count: &mut usize, is_wine: bool) {
@@ -713,8 +900,142 @@ mod tests {
         let dir = std::env::temp_dir().join("sonix_plugin_tests");
         std::fs::create_dir_all(&dir).unwrap();
         let p = dir.join(name);
+        // Även **föräldern** till ett nästlat namn: testerna för plugin-databasen lägger sin fil i
+        // en egen underkatalog, och en hjälpare som bara gör den yttre katalogen hade fällt dem på
+        // "No such file or directory" — ett fel i provet, inte i koden det prövar.
+        if let Some(parent) = p.parent() {
+            std::fs::create_dir_all(parent).unwrap();
+        }
         std::fs::write(&p, bytes).unwrap();
         p
+    }
+
+    /// **Databasen överlever en omstart** (Fas 6.0, 2026-09-15): en manager skrivs till en fil och
+    /// en **ny** manager läser den. Provet jämför **fälten**, inte antalet poster — en fil som
+    /// tappar format, sökväg eller verifieringsnoten är en databas som ser full ut och ändå inte
+    /// går att använda.
+    #[test]
+    fn the_plugin_database_survives_a_restart() {
+        let file = temp_file("db_roundtrip/plugin_db.json", b"{}");
+        let mut skriven = PluginManager::default();
+        // Tomt från början: standardlistan innehåller redan exempelposter, och provet ska räkna
+        // **sina egna** poster — annars mäter det standardlistans längd och kallar det en rundtur.
+        skriven.plugins.clear();
+        skriven.plugins.push(PluginDescriptor {
+            id: "disc_0".to_string(),
+            name: "SuperSynth".to_string(),
+            vendor: "Mock Audio".to_string(),
+            version: "1.2.3".to_string(),
+            format: PluginFormat::Clap,
+            category: PluginCategory::Synth,
+            file_path: "/tmp/SuperSynth.clap".to_string(),
+            file_size_bytes: 4242,
+            verified: true,
+            verify_note: "hittad på disk".to_string(),
+            author_notes: "min anteckning".to_string(),
+        });
+        skriven.last_scan_time = "Nyss".to_string();
+        skriven.save_to(&file).expect("skrivningen ska lyckas");
+
+        let db = PluginManager::load_from(&file)
+            .expect("läsningen ska lyckas")
+            .expect("filen ska finnas");
+        assert_eq!(db.version, PLUGIN_DB_VERSION);
+        let mut läst = PluginManager::default();
+        läst.apply_db(db);
+        assert_eq!(läst.plugins.len(), skriven.plugins.len());
+        assert_eq!(läst.plugins.len(), 1);
+        let p = &läst.plugins[0];
+        assert_eq!(p.name, "SuperSynth");
+        assert_eq!(p.version, "1.2.3");
+        assert_eq!(p.format, PluginFormat::Clap);
+        assert_eq!(p.category, PluginCategory::Synth);
+        assert_eq!(p.file_path, "/tmp/SuperSynth.clap");
+        assert_eq!(p.file_size_bytes, 4242);
+        assert!(p.verified);
+        assert_eq!(p.author_notes, "min anteckning");
+        // Sökvägarna följer också med — annars hade en egen tillagd mapp försvunnit varje start.
+        assert_eq!(läst.scan_paths.len(), skriven.scan_paths.len());
+        // Och tiden står kvar som "från databasen", alltså syns det att listan inte är ny.
+        assert!(läst.last_scan_time.contains("databasen"), "{}", läst.last_scan_time);
+        // Ingen temp-fil kvar efter den atomiska skrivningen.
+        assert!(!file.with_extension("json.tmp").exists(), "temp-filen ska vara borta");
+    }
+
+    /// **En saknad fil är inte ett fel, men en trasig fil är det — och skälet står i klartext**
+    /// (Fas 6.0). Skillnaden är hela poängen: en första start ska vara tyst, en trasig fil ska
+    /// gå att begripa.
+    #[test]
+    fn a_missing_or_broken_plugin_database_is_handled_with_a_reason() {
+        let saknad = std::env::temp_dir().join("sonix_plugin_tests/finns_inte/plugin_db.json");
+        let _ = std::fs::remove_file(&saknad);
+        assert!(
+            PluginManager::load_from(&saknad)
+                .expect("saknad fil är inget fel")
+                .is_none(),
+            "en fil som inte finns ska ge Ok(None)"
+        );
+
+        let trasig = temp_file("db_broken/plugin_db.json", b"{ inte json");
+        let fel = PluginManager::load_from(&trasig).expect_err("trasig fil ska ge ett fel");
+        assert!(fel.contains("plugin_db.json"), "skälet ska peka på filen: {fel}");
+
+        // En fil som är giltig JSON men inte en databas: samma sak — fel med skäl, ingen panik.
+        let fel_typ = temp_file("db_wrong/plugin_db.json", b"{\"hello\":1}");
+        assert!(PluginManager::load_from(&fel_typ).is_err());
+    }
+
+    /// **En fil från en nyare Sonix läses inte halvt** (Fas 6.0): versionen känns igen och filen
+    /// **lämnas orörd**. En halvläst databas ser ut som en tom databas — och då letar man felet i
+    /// skanningen i stället för i filen.
+    #[test]
+    fn a_newer_database_version_is_refused_with_the_reason() {
+        let file = temp_file("db_newer/plugin_db.json", b"{}");
+        let mgr = PluginManager::default();
+        mgr.save_to(&file).expect("skriv");
+        // Skriv upp versionen för hand, som en framtida Sonix skulle ha gjort.
+        let text = std::fs::read_to_string(&file).unwrap();
+        let höjd = text.replacen(&format!("\"version\": {PLUGIN_DB_VERSION}"), "\"version\": 99", 1);
+        assert_ne!(text, höjd, "versionen ska finnas i filen");
+        std::fs::write(&file, höjd).unwrap();
+
+        let fel = PluginManager::load_from(&file).expect_err("nyare version ska nekas");
+        assert!(fel.contains("version 99"), "skälet ska nämna versionen: {fel}");
+        assert!(fel.contains("lämnas orörd"), "och att filen inte rörs: {fel}");
+        // Filen är kvar och orörd.
+        assert!(std::fs::read_to_string(&file).unwrap().contains("99"));
+    }
+
+    /// **En läst fil betyder ingen skanning** (2026-09-15). Provet frågar den **rena** funktionen i
+    /// stället för appen: det är varianten `Cached` som avgör att disken inte rörs, och den
+    /// skillnaden hade varit osynlig om beslutet låg inbäddat i en `if`-kedja med fil-IO.
+    /// De tre fall som finns är alla med: filen läst, filen saknas (första starten), filen trasig.
+    #[test]
+    fn the_startup_plan_uses_the_cache_instead_of_scanning() {
+        let db = PluginManager::without_scan().to_db();
+        match startup_plan(Ok(Some(db.clone()))) {
+            StartupSource::Cached(från_fil) => assert_eq!(från_fil, db),
+            annat => panic!("en läst fil ska ge cachen, inte en skanning: {annat:?}"),
+        }
+        assert_eq!(startup_plan(Ok(None)), StartupSource::Scan(None));
+        assert_eq!(
+            startup_plan(Err("trasig fil".to_string())),
+            StartupSource::Scan(Some("trasig fil".to_string())),
+            "en trasig fil ska ge en skanning **med** skälet"
+        );
+        // Och en manager byggd utan skanning har tomma listor — det är den vägen `Cached` tar.
+        assert!(PluginManager::without_scan().plugins.is_empty());
+    }
+
+    /// Åldern visas i ord — ren funktion, så gränssnittet inte kan säga "nyss" om en vecka.
+    #[test]
+    fn the_age_of_the_database_is_told_in_words() {
+        assert_eq!(age_seconds(1_000, 1_000), 0);
+        assert_eq!(age_seconds(1_000, 1_200), 0, "en framtida stämpel blir noll, inte negativ");
+        assert!(age_text(0).contains("nyss"));
+        assert!(age_text(120).contains("2 minuter"));
+        assert!(age_text(7_200).contains("2 timmar"));
+        assert!(age_text(172_800).contains("2 dygn"));
     }
 
     #[test]

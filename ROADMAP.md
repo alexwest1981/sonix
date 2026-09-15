@@ -646,7 +646,17 @@ Små, tydliga uppgifter som tar bort kvarvarande glapp mellan UI och funktion.
   - **Bevisat i GUI (2026-09-11, BenQ/DP-3, ws 2, sandlådad `XDG_MUSIC_DIR` + `SONIX_*`):** appen startades, `Ctrl+D` duplicerade ett spår (statusraden: *"Duplicated track 'Drums & Beat' below the original track!"*), sedan **`kill -9`** mitt i sessionen. Vid omstart visade appen modalen **"Unsaved work found"** — *"Sonix closed before the project was saved. These automatic copies are newer than the file on disk:"* — med raden `Untitled Project — 5 min ago` och knapparna **Restore** / **Continue without restoring**. Autosavens innehåll innehöll den duplicerade kanalen, alltså arbetet och inte bara ett tomt projekt. Kraschåterställningen fungerar därmed från krasch till dialog, inte bara i enhetstester.
   - **Kvar (ärligt):**
     - **Restore-knappen och den omedelbara skrivningen är inte klickade i GUI än** — fönstret tog fokus vid start och du arbetade i ett annat fönster, så jag skickade inga tangenter dit (bara när appen hade fokus). Fixen är ordningsoberoende till sin konstruktion och enhetstesterna är gröna, men just de två stegen bör ses med egna ögon: klicka **Restore** → projektet ska komma tillbaka och en ny autosave skrivas inom ~1 s; gör sedan en ändring (t.ex. `Ctrl+D`) och kontrollera att en ny fil med ny tidsstämpel dyker upp direkt i `~/.local/state/sonix/autosave/`.
-    - Autosaven täcker det som ligger i projektfilen. Inspelade tagningar ligger redan som filer i projektmappen och överlever därför en krasch, men **plugin-databasen persisteras fortfarande inte** (oförändrat från 6.0).
+    - ✅ **Plugin-databasen persisteras nu** (2026-09-15): den skrivs till `plugin_db.json` i
+      konfigmappen — **atomiskt** (temp + rename, samma regel som autosaven), **versionerad** (en
+      fil från en nyare Sonix nekas med skälet och lämnas orörd i stället för att läsas halvt), och
+      en **saknad fil är inte ett fel** medan en trasig fil ger skälet i statusraden. Åldern visas
+      i ord ("2 timmar sedan (från databasen)"), så en gammal lista inte ser ut som en ny.
+      - **En rättelse under arbetet, värd att komma ihåg:** första versionen byggde cachen på
+        `PluginManager::default()` — men `default()` **skannar disken**. Cachen hade alltså skannat
+        först och läst in efteråt utan att spara någonting, medan kommentaren påstod motsatsen.
+        Nu är `without_scan()` en egen konstruktor, och beslutet ligger i den **rena** funktionen
+        `startup_plan`: varianten `Cached` *är* beslutet att inte röra disken, och det prövas utan
+        en konfigmapp.
     - Upp till 60 sekunders arbete kan tappa om appen dödas *utan* en strukturell ändring i mellanrummet (en fader- eller rattändring är ingen undo-punkt). Ska det bli tightare är nästa steg fler krokpunkter, inte kortare intervall — annars roterar historiken bort sig själv under mixning.
   - **Filer:** `src/autosave.rs` (ny), `src/main.rs`, `src/ui/app.rs`, `src/i18n.rs`, `README.md`, `README_SV.md`, `MANUAL.md`
   - **Beroende:** **6.0** ✅

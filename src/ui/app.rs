@@ -765,7 +765,9 @@ impl SonixApp {
             stem_separation_progress: std::sync::Arc::new(std::sync::Mutex::new(0.0)),
             stem_separation_result: std::sync::Arc::new(std::sync::Mutex::new(None)),
             stem_separation_active: false,
-            plugin_manager: PluginManager::default(),
+            // **Med databasen från förra gången** (2026-09-15): undviker en full skanning vid
+            // varje start, och berättar i statusraden om filen inte gick att läsa.
+            plugin_manager: PluginManager::with_cached_database(),
             plugin_slots: Vec::new(),
             plugin_handles: Vec::new(),
             plugin_gui_sessions: Vec::new(),
