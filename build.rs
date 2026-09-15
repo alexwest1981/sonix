@@ -40,9 +40,22 @@ fn main() {
             .status();
         match status {
             Ok(s) if s.success() => Some(out),
-            _ => {
+            // **Kompilatorn finns men fixturen gick inte att bygga.** Det är ett fel i fixturen,
+            // inte en miljö utan `cc`, och det ska **fälla bygget**.
+            //
+            // Skillnaden kostade en tystnande testsvit 2026-09-15: ett felstavat typpnamn i
+            // `mock_vst3.c` kompilerade inte, `SONIX_MOCK_VST3` uteblev — och proven som skulle
+            // mäta VST3-kopplingen **hoppade över sig själva** (`option_env!` → `return`) och såg
+            // gröna ut medan de inte prövade någonting. En grind som inte har sett något får inte
+            // se ut som ett rent bygge.
+            Ok(s) => panic!(
+                "kunde inte bygga {source} (cc avslutade med {:?}) — fixturen är trasig, och en \
+                 trasig fixtur får inte se ut som ett grönt prov",
+                s.code()
+            ),
+            Err(_) => {
                 println!(
-                    "cargo:warning=could not build {source} (no working C compiler?); \
+                    "cargo:warning=no working C compiler found; \
                      the plugin-host end-to-end tests will be skipped"
                 );
                 None

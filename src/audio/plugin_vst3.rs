@@ -1846,6 +1846,14 @@ mod tests {
         );
     }
 
+    /// **Provet kräver att värden kopplar ihop komponenten och kontrollern** (2026-09-15).
+    ///
+    /// Mockens kontroller svarar **noll** parametrar tills `IConnectionPoint::connect` har körts —
+    /// precis som en JUCE-byggd kontroller (Surge XT:s VST3), som bygger sin parameterlista först
+    /// när den fått ljudprocessorn genom kopplingen. Mätt: med kopplingen avstängd i `open()`
+    /// faller det här provet med `left: 0, right: 2`, alltså **samma symptom** som Surge XT gav
+    /// (0 parametrar medan CLAP-vägen gav 775). Provet är därför inte bara "mocken laddar" — det
+    /// är kvittensen på att handskakningen görs.
     #[test]
     fn loads_mock_module_and_reports_parameters() {
         let Some(mock) = option_env!("SONIX_MOCK_VST3") else {

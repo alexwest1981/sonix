@@ -54,6 +54,11 @@ static const char IID_IComponent[16] = UID(0xE831FF31, 0xF2D54301, 0x928EBBEE, 0
 static const char IID_IAudioProcessor[16] = UID(0x42043F99, 0xB7DA453C, 0xA569E79D, 0x9AAEC33D);
 static const char IID_IEditController[16] = UID(0xDCD7BBE3, 0x7742448D, 0xA874AACC, 0x979C759E);
 static const char IID_IPluginFactory[16] = UID(0x7A4D811C, 0x52114A1F, 0xAED9D2EE, 0x0B43BF9F);
+/* **Kopplingen mellan komponenten och kontrollern** (`vst/ivstmessage.h`): samma IID som värden
+   frågar efter. Den privata "överlämningen" motsvarar JUCE:s `JuceAudioProcessor::iid` — den väg
+   en JUCE-byggd kontroller hämtar sin ljudprocessor (och därmed sin parameterlista) genom. */
+static const char IID_ICONNECTION_POINT[16] = UID(0x70A4156F, 0x6E6E4026, 0x989148BF, 0xAA60D8D1);
+static const char IID_MOCK_PARAMS[16] = UID(0x536F6E69, 0x784D6F63, 0x6B506172, 0x616D7331);
 
 /* Our own class IDs (arbitrary but fixed). */
 static const char COMPONENT_CID[16] = UID(0x11111111, 0x22222222, 0x33333333, 0x44444444);
@@ -260,9 +265,33 @@ typedef struct IEditControllerVtbl {
     void *(*createView)(void *, const char *);
 } IEditControllerVtbl;
 
+typedef struct IConnectionPointVtbl {
+    tresult (*queryInterface)(void *, const char *, void **);
+    uint32 (*addref)(void *);
+    uint32 (*release)(void *);
+    tresult (*connect)(void *, void *);
+    tresult (*disconnect)(void *, void *);
+    tresult (*notify)(void *, void *);
+} IConnectionPointVtbl;
+
+/* ABI-vakten (samma disciplin som CLAP-fixturen): slot 3 är `connect` och slot 5 är `notify`. */
+_Static_assert(offsetof(IConnectionPointVtbl, connect) == 3 * sizeof(void *),
+               "IConnectionPoint: connect ligger i slot 3 (efter FUnknown)");
+_Static_assert(offsetof(IConnectionPointVtbl, notify) == 5 * sizeof(void *),
+               "IConnectionPoint: notify ligger i slot 5");
+
 /* ------------------------------------------------------------------ objects */
 
 typedef struct MockComponent MockComponent;
+
+/* En **shim** för det andra gränssnittet: komponenten och kontrollern är varsitt gränssnitt, och
+   `IConnectionPoint` är ett tredje som pekar tillbaka på ägaren. Shimen ägs av objektet (den
+   ligger inuti det) och lånas ut till värden — därför rör den inga referensräknare. */
+typedef struct ConnectionPoint {
+    const IConnectionPointVtbl *vtbl;
+    void *owner;
+    int32 is_controller;
+} ConnectionPoint;
 
 typedef struct MockProcessor {
     const IAudioProcessorVtbl *vtbl;
@@ -271,6 +300,7 @@ typedef struct MockProcessor {
 
 struct MockComponent {
     const IComponentVtbl *vtbl;
+    ConnectionPoint cp;
     int32 refcount;
     double gain;
     double mix;
@@ -285,10 +315,20 @@ struct MockComponent {
 
 typedef struct MockController {
     const IEditControllerVtbl *vtbl;
+    ConnectionPoint cp;
     int32 refcount;
     double gain;
     double mix;
+    /* **Antalet parametrar är NOLL tills kontrollern har kopplats till komponenten.** Det är
+       precis vad en JUCE-byggd kontroller gör (`JuceVST3EditController::connect` →
+       `installAudioProcessor`): listan byggs först när den har fått ljudprocessorn. Utan den
+       likheten vore det här provet inget prov på att värden kopplar ihop dem. */
+    int32 param_count;
 } MockController;
+
+/* Vad komponenten lämnar över: mockens två parametrar. En riktig plugin lämnar över sin
+   processor; här räcker antalet för att kopplingen ska gå att mäta. */
+static const int32 mock_param_transfer = 2;
 
 typedef struct MockFactory {
     const IPluginFactoryVtbl *vtbl;
@@ -333,6 +373,12 @@ static tresult processor_process(void *, ProcessData *);
 static uint32 processor_tail(void *);
 
 static tresult controller_query(void *, const char *, void **);
+static tresult cp_query(void *, const char *, void **);
+static uint32 cp_addref(void *);
+static uint32 cp_release(void *);
+static tresult cp_connect(void *, void *);
+static tresult cp_disconnect(void *, void *);
+static tresult cp_notify(void *, void *);
 static uint32 controller_addref(void *);
 static uint32 controller_release(void *);
 static tresult controller_initialize(void *, void *);
@@ -371,6 +417,10 @@ static const IAudioProcessorVtbl processor_vtbl = {
     processor_set_bus_arrangements, processor_get_bus_arrangement,
     processor_can_sample_size, processor_latency,     processor_setup,
     processor_set_processing, processor_process,      processor_tail,
+};
+
+static const IConnectionPointVtbl cp_vtbl = {
+    cp_query, cp_addref, cp_release, cp_connect, cp_disconnect, cp_notify,
 };
 
 static const IEditControllerVtbl controller_vtbl = {
@@ -471,6 +521,9 @@ static tresult factory_create(void *self, const char *cid, const char *iid, void
             return kResultFalse;
         }
         c->vtbl = &component_vtbl;
+        c->cp.vtbl = &cp_vtbl;
+        c->cp.owner = c;
+        c->cp.is_controller = 0;
         c->refcount = 1;
         c->gain = 1.0;
         c->mix = 1.0;
@@ -489,13 +542,85 @@ static tresult factory_create(void *self, const char *cid, const char *iid, void
             return kResultFalse;
         }
         c->vtbl = &controller_vtbl;
+        c->cp.vtbl = &cp_vtbl;
+        c->cp.owner = c;
+        c->cp.is_controller = 1;
         c->refcount = 1;
         c->gain = 1.0;
         c->mix = 1.0;
+        c->param_count = 0;
         *obj = c;
         return kResultOk;
     }
     return kNoInterface;
+}
+
+/* --------------------------------------------------- IConnectionPoint-shim */
+
+static tresult cp_query(void *self, const char *iid, void **obj) {
+    ConnectionPoint *cp = (ConnectionPoint *)self;
+    if (uid_eq(iid, IID_FUnknown) || uid_eq(iid, IID_ICONNECTION_POINT)) {
+        *obj = cp;
+        return kResultOk;
+    }
+    /* Allt annat går vidare till **ägarens** queryInterface: den privata överlämningen
+       (`IID_MOCK_PARAMS`) svarar komponenten på, inte shimmen. */
+    if (cp->is_controller) {
+        return ((MockController *)cp->owner)->vtbl->queryInterface(cp->owner, iid, obj);
+    }
+    return ((MockComponent *)cp->owner)->vtbl->queryInterface(cp->owner, iid, obj);
+}
+
+static uint32 cp_addref(void *self) {
+    ConnectionPoint *cp = (ConnectionPoint *)self;
+    if (cp->is_controller) {
+        return ((MockController *)cp->owner)->vtbl->addRef(cp->owner);
+    }
+    return ((MockComponent *)cp->owner)->vtbl->addRef(cp->owner);
+}
+
+static uint32 cp_release(void *self) {
+    ConnectionPoint *cp = (ConnectionPoint *)self;
+    if (cp->is_controller) {
+        return ((MockController *)cp->owner)->vtbl->release(cp->owner);
+    }
+    return ((MockComponent *)cp->owner)->vtbl->release(cp->owner);
+}
+
+static tresult cp_connect(void *self, void *other) {
+    ConnectionPoint *cp = (ConnectionPoint *)self;
+    if (!other) {
+        return kResultFalse;
+    }
+    /* **Kontrollern hämtar sin parameterlista från komponenten** — genom kopplingen, precis som
+       en JUCE-byggd kontroller gör. Det är därför `getParameterCount` är noll före det här
+       anropet, och det är den skillnaden testet mäter. */
+    if (cp->is_controller) {
+        const IConnectionPointVtbl *ov = *(const IConnectionPointVtbl **)other;
+        void *transfer = NULL;
+        if (ov && ov->queryInterface && ov->queryInterface(other, IID_MOCK_PARAMS, &transfer) == kResultOk &&
+            transfer) {
+            ((MockController *)cp->owner)->param_count = *(const int32 *)transfer;
+        }
+    }
+    return kResultOk;
+}
+
+static tresult cp_disconnect(void *self, void *other) {
+    ConnectionPoint *cp = (ConnectionPoint *)self;
+    (void)other;
+    if (cp->is_controller) {
+        ((MockController *)cp->owner)->param_count = 0;
+    }
+    return kResultOk;
+}
+
+static tresult cp_notify(void *self, void *message) {
+    (void)self;
+    (void)message;
+    /* Värden skickar meddelanden mellan halvorna; mocken har inga att skicka, och att svara
+       "inte implementerat" är ett svar (att låtsas ta emot vore värre). */
+    return kNotImplemented;
 }
 
 /* --------------------------------------------------------------- component */
@@ -511,6 +636,14 @@ static tresult component_query(void *self, const char *iid, void **obj) {
     if (uid_eq(iid, IID_IAudioProcessor)) {
         c->refcount++;
         *obj = &c->proc;
+        return kResultOk;
+    }
+    if (uid_eq(iid, IID_ICONNECTION_POINT)) {
+        *obj = &c->cp;
+        return kResultOk;
+    }
+    if (uid_eq(iid, IID_MOCK_PARAMS)) {
+        *obj = (void *)&mock_param_transfer;
         return kResultOk;
     }
     *obj = NULL;
@@ -798,6 +931,10 @@ static tresult controller_query(void *self, const char *iid, void **obj) {
         *obj = c;
         return kResultOk;
     }
+    if (uid_eq(iid, IID_ICONNECTION_POINT)) {
+        *obj = &c->cp;
+        return kResultOk;
+    }
     *obj = NULL;
     return kNoInterface;
 }
@@ -862,8 +999,9 @@ static tresult controller_get_state(void *self, void *state) {
 }
 
 static int32 controller_param_count(void *self) {
-    (void)self;
-    return 2;
+    MockController *c = (MockController *)self;
+    /* Noll tills kopplingen gjorts — se `cp_connect`. */
+    return c->param_count;
 }
 
 static tresult controller_param_info(void *self, int32 index, ParameterInfo *info) {
