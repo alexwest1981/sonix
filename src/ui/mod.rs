@@ -7,6 +7,7 @@ pub mod fx_rack_modal;
 pub mod macros_modal;
 pub mod patcher_view;
 pub mod plugins_view;
+pub mod launcher_view;
 pub mod song_structure_modal;
 pub mod stem_view;
 pub mod theme;

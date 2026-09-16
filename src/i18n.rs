@@ -1507,6 +1507,28 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Tystar bakgrundsbrus och sus när sångaren inte sjunger." => "Silences background noise and hiss when the singer isn't singing.",
         "Täthet: {:.0}%" => "Density: {:.0}%",
         "Välj" => "Choose",
+        "🎛 Scenrutnät (mjuk Launchpad)" => "🎛 Scene grid (software Launchpad)",
+        "🎛 Scenrutnät (mjuk Launchpad)..." => "🎛 Scene grid (software Launchpad)...",
+        "Kvantisering:" => "Quantization:",
+        "1 takt" => "1 bar",
+        "1/2 takt" => "1/2 bar",
+        "1 slag" => "1 beat",
+        "direkt" => "immediate",
+        "Scen" => "Scene",
+        "Startar alla slots i raden" => "Launches every slot in the row",
+        "🎛 scen {} — {} start(er) köade" => "🎛 scene {} — {} launch(es) queued",
+        "🎛 scenen är tom" => "🎛 the scene is empty",
+        "🎛 slotten är tom — ingenting att starta" => "🎛 the slot is empty — nothing to launch",
+        "🎛 stopp köat — slotten spelar till nästa punkt" => "🎛 stop queued — the slot plays until the next point",
+        "🎛 start köad — sker vid nästa {}" => "🎛 launch queued — happens at the next {}",
+        "🎛 kunde inte starta: {}" => "🎛 could not launch: {}",
+        "⏹ Stoppa allt" => "⏹ Stop all",
+        "🎛 allt stoppat till nästa punkt" => "🎛 everything stops at the next point",
+        "transporten går" => "the transport is running",
+        "transporten står still" => "the transport is stopped",
+        "Ett klick startar eller stoppar vid nästa kvantiseringspunkt — kön syns i färgen." => "A click launches or stops at the next quantization point — the queue is visible in the colour.",
+        "🎛 slinga: takt {}–{}" => "🎛 loop: bar {}–{}",
+        "🎛 rutnätet: allt stoppat" => "🎛 the grid: everything stopped",
         "🎸 Instrumentläge" => "🎸 Instrument mode",
         "⚠ ingången går i {} Hz och motorn i {} Hz — monitorn är av (annars hörs fel tempo)" => "⚠ the input runs at {} Hz and the engine at {} Hz — monitoring is off (otherwise the tempo is heard wrong)",
         "🎸 instrument" => "🎸 instrument",
@@ -2625,6 +2647,37 @@ const EXTRA_BUS_HOVER_SV: &str = "Pluginens egen utbuss till ett eget spår (Fas
         ] {
             assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
             assert_eq!(translate(Language::Sv, k), k, "svenskan ska vara nyckeln: {k}");
+        }
+    }
+
+    /// **Scenrutnätets rader har engelska.** Sprint 1, punkt 5: en mjuk Launchpad ska gå att
+    /// använda på engelska också — etiketterna är samma nycklar som modellen matar ut.
+    #[test]
+    fn the_scene_grid_strings_have_english() {
+        for k in [
+            "🎛 Scenrutnät (mjuk Launchpad)",
+            "Kvantisering:",
+            "1 takt",
+            "1/2 takt",
+            "1 slag",
+            "direkt",
+            "Scen",
+            "Startar alla slots i raden",
+            "🎛 scen {} — {} start(er) köade",
+            "🎛 scenen är tom",
+            "🎛 slotten är tom — ingenting att starta",
+            "🎛 stopp köat — slotten spelar till nästa punkt",
+            "🎛 start köad — sker vid nästa {}",
+            "🎛 kunde inte starta: {}",
+            "⏹ Stoppa allt",
+            "🎛 allt stoppat till nästa punkt",
+            "transporten går",
+            "transporten står still",
+            "Ett klick startar eller stoppar vid nästa kvantiseringspunkt — kön syns i färgen.",
+            "🎛 slinga: takt {}–{}",
+            "🎛 rutnätet: allt stoppat",
+        ] {
+            assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
         }
     }
 

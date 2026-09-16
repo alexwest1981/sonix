@@ -645,6 +645,13 @@ impl SonixApp {
                             self.show_song_structure_modal = true;
                             ui.close_menu();
                         }
+                        if ui.button(self.tr("🎛 Scenrutnät (mjuk Launchpad)...")).clicked() {
+                            // Rutnätet byggs om ur sektionerna när rutan öppnas: låtstrukturen
+                            // kan ha ändrats sedan förra gången.
+                            self.rebuild_launcher_from_sections();
+                            self.show_launcher = true;
+                            ui.close_menu();
+                        }
                         ui.separator();
                         if ui.button(self.tr("🔗 Makron (kedja över filer)...")).clicked() {
                             // Mappen läses om när dialogen öppnas — en kedja man sparat

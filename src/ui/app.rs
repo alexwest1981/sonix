@@ -81,6 +81,7 @@ mod browser;
 pub(crate) use browser::*;
 
 mod export;
+mod launcher;
 mod macros;
 
 mod modals;
@@ -455,6 +456,11 @@ pub struct SonixApp {
     pub show_fx_rack_modal: bool,
     pub fx_rack_state: FxRackState,
     pub show_song_structure_modal: bool,
+    /// Scenrutnätet på skärmen (Sprint 1, punkt 5): modellen, kvantiseringen och rutan.
+    pub launcher: crate::audio::launcher::Launcher,
+    pub launch_quantize: crate::audio::launcher::LaunchQuantize,
+    pub launcher_section_count: usize,
+    pub show_launcher: bool,
     pub song_structure_state: SongStructureState,
     /// Makron (Fas 8.9 steg 2): kedjan över filer, och tillståndet för dess dialog.
     pub show_macros_modal: bool,
@@ -908,6 +914,10 @@ impl SonixApp {
             show_fx_rack_modal: false,
             fx_rack_state: FxRackState::default(),
             show_song_structure_modal: false,
+            launcher: crate::audio::launcher::Launcher::new(1, 4, 4),
+            launch_quantize: crate::audio::launcher::LaunchQuantize::Bar,
+            launcher_section_count: 0,
+            show_launcher: false,
             song_structure_state: SongStructureState::default(),
             show_macros_modal: false,
             macro_state: crate::ui::macros_modal::MacroModalState::default(),

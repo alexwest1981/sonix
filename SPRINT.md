@@ -102,7 +102,17 @@ låtsektionerna (`SongSectionItem`) och importvägen som lägger ljud taktbundet
 regler** och **6 MVP-punkter**, 19 källor) är implementerad som en motor med prov, och en inspelning
 kan startas och loopa utan att längden gissas.
 
-**Filer:** `src/audio/looper.rs` (ny), `src/audio/synth/*`, `src/ui/app/*`.
+**Läget 2026-09-16 (steg 1 + 2 byggda, på Alex' fråga "kan vi bygga en mjukvarustyrd?"):**
+modellen `src/audio/launcher.rs` (slot/scen-tillstånd, kö, kvantisering, åtta regler ur
+research-rapporten, `tick` som enda väg från klick till kommando) och ytan
+`src/ui/launcher_view.rs` + `src/ui/app/launcher.rs` (**🎛 Scenrutnät (mjuk Launchpad)** i
+Verktygsmenyn: rutnät ur låtsektionerna, färgen visar kön, scenknapp per rad, ⏹ Stoppa allt).
+13 nya prov; kvantiseringsprovet mätt med flit-bort. **Kvar:** tangentbordsstyrning (spela
+rutnätet med en hand), inspelning till en slot (det som gör det till en *looper* och inte bara
+en startare), och att MIDI-ut (punkt 4) driver exakt samma modell.
+
+**Filer:** `src/audio/launcher.rs` (modellen), `src/ui/launcher_view.rs` (ytan),
+`src/ui/app/launcher.rs` (glue:t), `src/audio/synth/*` (nästa steg: inspelning till slot).
 
 ## Punkt 6 — Ljudingångens klocka och ärliga gränser · *S*
 
