@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**93 moduler · 79462 rader kod · 47 med status · 46 utan.**
+**94 moduler · 79970 rader kod · 48 med status · 46 utan.**
 
 ## Så läser du kartan
 
@@ -69,6 +69,7 @@
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
 | `src/ui/app/midi.rs` | 522 | byggs — MIDI-vägarna. | 1 | 0 | MIDI — notschemat, importen, exporten och trumkanalerna.  |
 | `src/ui/chord_generator_modal.rs` | 516 | — | 1 | 0 |  |
+| `src/audio/loop_station.rs` | 507 | byggs (Sprint 1, punkt 7, steg 1) — modellen och dess regler är prövade. Glue:t | 0 | 10 | **Loop-pad: spela in ett lager i taget och låt det gå runt** — Sprint 1, punkt 7 (steg 1).  |
 | `src/audio/launcher.rs` | 505 | byggs (Sprint 1, punkt 5, steg 1) — modellen och dess regler är prövade; rutnätet | 6 | 10 | **Launch-modellen: en rutnätsstyrd spelare** — Sprint 1, punkt 5 (första steget).  |
 | `src/audio/realtime_bench.rs` | 505 | stabil — realtidsmätningen | 0 | 6 | Realtidsmätning av render-vägen (Fas 7.2).  |
 | `src/audio/hardware_control.rs` | 493 | — | 3 | 5 |  |
@@ -100,8 +101,8 @@
 | `src/audio/keymap.rs` | 162 | — | 13 | 7 | **Multi-samples: en keymap av zoner** (Fas 8.4/7).  |
 | `src/ui/app/waveform.rs` | 148 | stabil — exaktheten och nycklarna; ändra bara med ett prov som visar samma sak. | 26 | 0 | Vågformer i vyn — nyckeln, översikten och den sanna cachen.  |
 | `src/ui/app/macros.rs` | 114 | byggs — steg 2. | 0 | 0 | Makron-modalen i appen (Fas 8.9 steg 2): inkopplingen till `ui::macros_modal`.  |
+| `src/audio/mod.rs` | 109 | — | 0 | 0 |  |
 | `src/ui/app/input_autoconfig.rs` | 109 | byggs (Sprint 1, punkt 1) — automatiken och knappen är samma funktion. | 0 | 0 | **Ingången ställer in sig själv** — Sprint 1, punkt 1.  |
-| `src/audio/mod.rs` | 108 | — | 0 | 0 |  |
 | `src/rng.rs` | 82 | — | 2 | 4 | En liten deterministisk slumptalare (xorshift64\*).  |
 | `src/ui/app/launcher.rs` | 81 | — | 5 | 0 | **App-glue:t för scenrutnätet** — Sprint 1, punkt 5, steg 2.  |
 | `src/platform.rs` | 63 | — | 2 | 1 | **Plattformens egna sätt** (Fas 7.1) — det som skiljer sig utan att vara sökvägar.  |
@@ -164,6 +165,11 @@
 - **Status:** byggs (Sprint 1, punkt 5, steg 1) — modellen och dess regler är prövade; rutnätet
 - **Rör inte:** `tick` är den **enda** vägen från ett klick till ett kommando. Ytorna får skriva
 - **Publika ingångar:** `LaunchQuantize`, `is_point`, `SlotContent`, `is_empty`, `name`, `SlotState`, `Slot`, `LauncherCommand`, `Launcher`, `new`, `tracks`, `scenes` … (+8)
+
+### `src/audio/loop_station.rs`
+- **Status:** byggs (Sprint 1, punkt 7, steg 1) — modellen och dess regler är prövade. Glue:t
+- **Rör inte:** `tick` är den enda vägen från ett tryck till ett kommando. Spelar en yta in själv
+- **Publika ingångar:** `LoopPhase`, `LoopLayer`, `LoopCommand`, `LoopStation`, `new`, `has_loop`, `loop_length_bars`, `is_recording`, `press`, `undo`, `tick`
 
 ### `src/audio/loudness.rs`
 - **Publika ingångar:** `LoudnessPreset`, `ALL`, `enabled`, `label`, `target_lufs`, `ceiling_dbtp`, `integrated_lufs`, `true_peak_db`, `normalize_loudness`, `normalize_to_preset`

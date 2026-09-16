@@ -11,6 +11,7 @@ pub mod factory_samples;
 pub mod filter;
 pub mod hardware_control;
 pub mod keymap;
+pub mod loop_station;
 pub mod launcher;
 pub mod loudness;
 pub mod macro_chain;

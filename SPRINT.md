@@ -128,6 +128,38 @@ olika tempo går att monitorera i stället för att bara vägras — det är nä
 
 **Filer:** `src/audio/input_profile.rs` (`rate_verdict`), `src/ui/app/transport.rs` (vakten).
 
+## Punkt 7 — Loop-pad (loopstation): spela in ett lager i taget · *M–L*
+
+**Vad:** ett tryck spelar in exakt en loop-cykel, tar stopp av sig själv vid cykelns slut och börjar
+genast spela; nästa tryck lägger ett lager ovanpå (ett nytt spår), och ångra tar bort det sista.
+Målet Alex satte: *"spela in en hel låt med bara sin röst"* (Petebox' Creep-cover).
+
+**Reglerna** (samma research som startaren — `~/.sonix-research-looper-sv.md`): inspelning börjar
+vid **nästa kvantpunkt** och transporten startar själv om den stod stilla; `Rec-Length` är
+**loopens** längd, inte hur länge knappen hölls; övergången till uppspelning sker **utan att
+stanna**; när ingen slinga finns får **första lagret bestämma** längden (förfluten tid avrundad
+uppåt till takt, minst en takt); flera pass per tryck är valbara (`At Rec-End`); och stannar
+transporten mitt i avbryts tagningen i stället för att bli ett tyst spår som ligger och skräpar.
+
+**Det som gör det nära i Sonix** (mätt 2026-09-16): spåren är redan PCM i minnet
+(`StemVoiceTrack { left/right: Arc<Vec<f32>>, start_time_secs, .. }`), tagningen är redan PCM
+(`AudioTake { pcm_samples, sample_rate }`), transporten har redan en taktslinga som rullar tillbaka,
+och mikrofonen spelar redan in med monitor och autotune. Kvar är **kopplingen**: tagning → spår vid
+slingans start, och att stoppa inspelningen på takten i stället för på en knapp.
+
+**Steg:**
+1. Modellen och reglerna — ✅ 2026-09-16 (`src/audio/loop_station.rs`, 10 prov).
+2. Kopplingen: tagningen blir ett `StemVoiceTrack` vid slingans start, ett **● Lager**-tryck i
+   gränssnittet, och stoppet sker på takten (appens tick).
+3. Per lager: volym, mute, solo — och lagren syns som vanliga spår i arrangemanget.
+4. Röstbekvämligheter: autotune per lager, panorering, och "harmoniera med dig själv" genom den
+   befintliga stäm-apparaten.
+
+**Filer:** `src/audio/loop_station.rs` (modellen), `src/ui/app/loop_pad.rs` (nästa steg),
+`src/audio/synth/voices.rs` (spåret lagret blir).
+
+---
+
 ---
 
 ## Saker som kräver Alex (och därför inte startas)
