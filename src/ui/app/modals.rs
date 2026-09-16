@@ -1348,16 +1348,21 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
                     let dev_list = self.vocal_studio.mic_settings.available_devices.clone();
                     let mut current_idx = self.vocal_studio.mic_settings.selected_device_idx;
 
+                    // Ingångarna klassas (Sprint 1, punkt 1): en gitarrkabel ska heta gitarrkabel.
+                    // Klassningen läser USB-id ur sysfs — billigt nog att göra när rutan är öppen.
+                    let cards = crate::audio::input_profile::system_cards();
+                    let inputs = crate::audio::input_profile::resolve_inputs(&dev_list, &cards);
+
                     egui::ComboBox::from_label(crate::i18n::t("Välj Mikrofon"))
                         .selected_text(dev_list.get(current_idx).cloned().unwrap_or_else(|| crate::i18n::t("Standardmikrofon").to_string()))
                         .width(360.0)
                         .show_ui(ui, |ui| {
                             for (idx, dev_name) in dev_list.iter().enumerate() {
-                                let is_rec_pref = dev_name.to_lowercase().contains("samson") || dev_name.to_lowercase().contains("usb");
-                                let label = if is_rec_pref {
-                                    format!("🎤 {} (Rekommenderad)", dev_name)
-                                } else {
-                                    format!("🎙 {}", dev_name)
+                                let label = match inputs.get(idx) {
+                                    Some(input) if input.kind != crate::audio::input_profile::InputKind::Unknown => {
+                                        format!("{} — {}", crate::i18n::t(input.kind.badge()), input.label)
+                                    }
+                                    _ => format!("🎙 {}", dev_name),
                                 };
                                 if ui.selectable_value(&mut current_idx, idx, label).clicked() {
                                     let switched = self.vocal_studio.select_microphone(idx);
@@ -1367,6 +1372,27 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
                                 }
                             }
                         });
+
+                    // En känd instrumentingång får en egen rad: ett klick gör den redo —
+                    // samma väg som automatiken vid start använder.
+                    if let Some(instrument) = crate::audio::input_profile::first_instrument(&inputs) {
+                        let device = instrument.device_name.clone();
+                        let label = instrument.label;
+                        let note = instrument.note;
+                        let kind = instrument.kind;
+                        let mut apply = false;
+                        ui.horizontal(|ui| {
+                            apply = ui
+                                .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎸 Instrumentläge")).strong()).fill(Theme::FL_ORANGE))
+                                .on_hover_text(crate::tstatus!("{} — {}", device, note))
+                                .clicked();
+                            ui.label(egui::RichText::new(crate::tstatus!("{} {} hittad", crate::i18n::t(kind.badge()), label)).size(10.5).color(Theme::FL_ORANGE));
+                        });
+                        if apply {
+                            let text = self.apply_instrument_plan(instrument);
+                            self.status_message = text;
+                        }
+                    }
 
                     let active_dev = self.vocal_studio.mic_capture.as_ref().map(|m| m.device_name.as_str()).unwrap_or("Standard");
                     let sr = self.vocal_studio.mic_capture.as_ref().map(|m| m.sample_rate).unwrap_or(44100);

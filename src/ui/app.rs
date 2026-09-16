@@ -72,6 +72,7 @@ mod transport;
 
 mod plugins;
 
+mod input_autoconfig;
 mod midi;
 
 mod piano_roll;
@@ -136,6 +137,8 @@ pub struct SonixApp {
     /// Monitor ring currently registered with the audio engine (re-sent after
     /// every reconfigure, which recreates the synth engine).
     pub monitor_ring_sent: Option<std::sync::Arc<std::sync::Mutex<Vec<f32>>>>,
+    /// Har den automatiska igenkänningen av instrumentingångar körts? (Sprint 1, punkt 1.)
+    pub input_autodetect_done: bool,
     /// Senast skickade monitor-nivå (så kommandon inte spammas varje frame).
     pub monitor_level_sent: Option<f32>,
     pub stem_import_progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
@@ -670,6 +673,7 @@ impl SonixApp {
         let mut app = Self {
             engine,
             monitor_ring_sent: None,
+            input_autodetect_done: false,
             monitor_level_sent: None,
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),

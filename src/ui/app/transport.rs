@@ -904,6 +904,13 @@ impl SonixApp {
 /// reconfigure) and pushes the live monitoring / auto-tune parameters into
 /// the input callback. Cheap enough to call every UI frame.
 pub(crate) fn sync_mic_monitoring(&mut self) {
+    // Sprint 1, punkt 1: en inkopplad instrumentkabel ska användas utan att någon öppnar en
+    // inställningsruta. En gång per appstart — därefter är det användarens val som gäller
+    // ("🔄 Uppdatera enheter" i ljudmodalen tar nya tag).
+    if !self.input_autodetect_done {
+        self.input_autodetect_done = true;
+        self.autodetect_instrument_input();
+    }
     let ring = self
         .vocal_studio
         .mic_capture

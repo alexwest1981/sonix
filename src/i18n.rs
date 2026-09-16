@@ -1507,6 +1507,20 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Tystar bakgrundsbrus och sus när sångaren inte sjunger." => "Silences background noise and hiss when the singer isn't singing.",
         "Täthet: {:.0}%" => "Density: {:.0}%",
         "Välj" => "Choose",
+        "🎸 Instrumentläge" => "🎸 Instrument mode",
+        "🎸 instrument" => "🎸 instrument",
+        "🎚 line" => "🎚 line",
+        "🎤 mikrofon" => "🎤 microphone",
+        "❔ okänd" => "❔ unknown",
+        "{} {} hittad" => "{} {} found",
+        "🎸 {} — {}{}{}" => "🎸 {} — {}{}{}",
+        " · {} Hz (kabelns frekvens)" => " · {} Hz (the cable's rate)",
+        " · kunde inte byta till {} Hz" => " · could not switch to {} Hz",
+        "vald" => "selected",
+        "kunde inte öppnas" => "could not be opened",
+        " · monitor på (sänk MONITOR-ratten om det tjuter)" => " · monitoring on (lower the MONITOR knob if it howls)",
+        " · monitor av — ingång och motor går i olika tempo" => " · monitoring off — input and engine run at different rates",
+        " · monitor av" => " · monitoring off",
         "Välj Mikrofon" => "Select Microphone",
         "Välj Sonix Projektfil (.sonix)" => "Select Sonix Project File (.sonix)",
         "Välj ZIP Stempaket" => "Select ZIP Stem Pack",
@@ -2610,6 +2624,31 @@ const EXTRA_BUS_HOVER_SV: &str = "Pluginens egen utbuss till ett eget spår (Fas
         ] {
             assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
             assert_eq!(translate(Language::Sv, k), k, "svenskan ska vara nyckeln: {k}");
+        }
+    }
+
+    /// **Instrumentingångens rader har engelska.** Sprint 1, punkt 1: en gitarrkabel ska
+    /// presenteras begripligt även på engelska — det är den enda texten som säger vad som
+    /// blev inkopplat.
+    #[test]
+    fn the_instrument_input_strings_have_english() {
+        for k in [
+            "🎸 Instrumentläge",
+            "🎸 instrument",
+            "🎚 line",
+            "🎤 mikrofon",
+            "❔ okänd",
+            "{} {} hittad",
+            "🎸 {} — {}{}{}",
+            " · {} Hz (kabelns frekvens)",
+            " · kunde inte byta till {} Hz",
+            "vald",
+            "kunde inte öppnas",
+            " · monitor på (sänk MONITOR-ratten om det tjuter)",
+            " · monitor av — ingång och motor går i olika tempo",
+            " · monitor av",
+        ] {
+            assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
         }
     }
 
