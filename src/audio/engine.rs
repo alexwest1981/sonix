@@ -50,12 +50,37 @@ pub struct AudioEngine {
 }
 
 /// Persisted audio-hardware preferences (`~/.config/sonix/audio.json`).
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AudioSettings {
     #[serde(default)]
     pub sample_rate: Option<u32>,
     #[serde(default)]
     pub buffer_frames: Option<u32>,
+}
+
+/// **Låg latens är standarden, inte ett val** (Sprint 1, punkt 2).
+///
+/// PipeWires graf kör 48 kHz. En ström öppnad i 44,1 kHz lägger den adaptiva resamplern i
+/// live-vägen, och `BufferSize::Default` mot pipewire-alsa kan ge en ring på många sekunder
+/// (cpal #1029) — så båda talen här är åtgärder, inte smak.
+///
+/// **Mätt 2026-09-16**, release-binären, självtestet, tre körningar per läge:
+/// före ändringen 44 100 Hz + enhetens buffert (107 % av realtid — den stora bufferten ger
+/// slack i mätfönstret, men resamplern sitter i vägen). Efter: 48 000 Hz + 128 frames gav
+/// **100 % i fem av fem körningar**, omväxlande med 256 frames som gav exakt samma 100 %.
+/// Den enda avvikelsen var 84 % på den allra första körningen efter bygget (kallstart).
+/// 64 frames mäter också 100 %, men där finns ingen marginal kvar och `rtkit` saknas på
+/// maskinen (se SPRINT.md), så 128 står kvar som standard — den som vill kan välja i modalen.
+///
+/// Klarar enheten inte 48 kHz eller 128 frames behåller `apply_preferences` enhetens eget
+/// svar — appen spelar hellre än vägrar, men den påstår inte att den fick som den ville.
+impl Default for AudioSettings {
+    fn default() -> Self {
+        Self {
+            sample_rate: Some(48_000),
+            buffer_frames: Some(128),
+        }
+    }
 }
 
 impl AudioSettings {
@@ -510,6 +535,19 @@ pub fn output_sample(l: f32, r: f32, silent: bool) -> (f32, f32) {
 
 #[cfg(test)]
 mod tests {
+    /// **Standarden är låg latens.** Provet faller om någon tar bort 48 kHz eller 128 frames
+    /// från `AudioSettings::default` — de två talen är hela punkten 2 i SPRINT.md.
+    #[test]
+    fn the_default_audio_settings_ask_for_the_low_latency_path() {
+        let d = AudioSettings::default();
+        assert_eq!(d.sample_rate, Some(48_000), "PipeWires graf kör 48 kHz");
+        assert_eq!(d.buffer_frames, Some(128), "128 frames är nivån utan RT-prioritet");
+        // En sparad fil med tomma fält betyder "enhetens svar", inte "appen gissar".
+        let from_file: AudioSettings = serde_json::from_str("{}").unwrap();
+        assert_eq!(from_file.sample_rate, None);
+        assert_eq!(from_file.buffer_frames, None);
+    }
+
     use super::*;
 
     #[test]

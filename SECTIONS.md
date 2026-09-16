@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**90 moduler · 78407 rader kod · 45 med status · 45 utan.**
+**90 moduler · 78445 rader kod · 45 med status · 45 utan.**
 
 ## Så läser du kartan
 
@@ -65,8 +65,8 @@
 | `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 57 | 12 | Tempokarta (Fas 8.2, steg 1).  |
 | `src/audio/input_profile.rs` | 618 | byggs (Sprint 1, punkt 1) — tabell, klassning och sysfs-läsning klara och prövade. | 9 | 11 | **Instrumentingångar som känns igen** (Sprint 1, punkt 1).  |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
+| `src/audio/engine.rs` | 579 | — | 2 | 3 |  |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
-| `src/audio/engine.rs` | 541 | — | 2 | 2 |  |
 | `src/ui/app/midi.rs` | 522 | byggs — MIDI-vägarna. | 1 | 0 | MIDI — notschemat, importen, exporten och trumkanalerna.  |
 | `src/ui/chord_generator_modal.rs` | 516 | — | 1 | 0 |  |
 | `src/audio/realtime_bench.rs` | 505 | stabil — realtidsmätningen | 0 | 6 | Realtidsmätning av render-vägen (Fas 7.2).  |
