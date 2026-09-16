@@ -73,8 +73,19 @@ en trasig plugin tystar inte ingången (8.5-regeln: säg fel, spela inte fel).
 feedback-tick) och (c) en Launchpad-drivrutin (färger via SysEx). Utan hårdvara prövas allt mot
 ALSA:s `Midi Through`-port och en virtuell port (`snd-virmidi`).
 
+**Detaljerna är nu researchade** (`~/.sonix-research-pads-sv.md`): Launchpads rutnät skickar
+`note = 11 + kolumn + 10 × rad`, kanal 1/2/3 = statisk/blink/puls; färger sätts med SysEx
+`F0 00 20 29 02 7F … F7` (Programmer mode vid anslutning, `0E 00` tillbaka till Live-, respektive
+appläget vid avslut) och enheten hittas med Device Inquiry. Abletons modell är fyra begrepp —
+Live Object Model (läs/anropa/**observera**), Element (typ + kanal + nummer), Component (beteende)
+och Layer/Mode (samma knappar, annan uppgift) — och ljuset är **händelsedrivet**: pad → note →
+element → `clip_slot.fire()` → tillståndet ändras → lyssnare → ny färg. En shadow-diff är enda
+vägen till ljuset (skicka bara det som ändrats). Push använder ett eget SysEx-protokoll, APC kör
+CC+not — därför ska drivrutinen vara en tabell över rutnät/knappar och inte en `if` per modell.
+
 **Klart när:** en modul kan skicka not/CC/SysEx till en port, feedback-ticken går utanför ljudtråden,
-och proven täcker mappning + färgkodning utan hårdvara.
+och proven täcker mappning + färgkodning utan hårdvara (virtuell port räcker — allt utom LED,
+latenskänsla och firmware-egenheter går att bygga och mäta utan en Launchpad).
 
 **Filer:** `src/audio/midi_output.rs` (ny), `src/audio/controller.rs` (ny), `src/audio/mod.rs`.
 
@@ -87,9 +98,9 @@ spela upp direkt i slingan.
 **Byggstenar som redan finns:** taktslingan, MIDI-tagningarnas stegtajming, samplerns looplägen,
 låtsektionerna (`SongSectionItem`) och importvägen som lägger ljud taktbundet.
 
-**Klart när:** semantiken i research-rapporten (`~/.sonix-research-looper-sv.md`, de 8–12 gemensamma
-reglerna) är implementerad som en motor med prov, och en inspelning kan startas och loopa utan att
-längden gissas.
+**Klart när:** semantiken i research-rapporten (`~/.sonix-research-looper-sv.md` — **12 gemensamma
+regler** och **6 MVP-punkter**, 19 källor) är implementerad som en motor med prov, och en inspelning
+kan startas och loopa utan att längden gissas.
 
 **Filer:** `src/audio/looper.rs` (ny), `src/audio/synth/*`, `src/ui/app/*`.
 
@@ -99,16 +110,27 @@ längden gissas.
 samma rate *antas*. Punkt 6 gör antagandet till en kontroll: är rate:n olika, säg det och låt bli
 att monitorera i fel tempo. (Bygger på samma fynd som punkt 2.)
 
-**Filer:** `src/audio/recorder.rs`, `src/audio/input_profile.rs`.
+**Läget 2026-09-16:** byggd. Regeln är en ren funktion (`rate_verdict`) med prov, och vakten i
+`sync_mic_monitoring` håller monitorn av och skriver varför: *"⚠ ingången går i 44 100 Hz och
+motorn i 48 000 Hz — monitorn är av (annars hörs fel tempo)"*. Provet är mätt med flit-bort-metoden
+(jämförelsen vänd → provet faller på exakt den raden). **Kvar:** att resampla i monitorvägen, så att
+olika tempo går att monitorera i stället för att bara vägras — det är nästa steg, inte ett prov.
+
+**Filer:** `src/audio/input_profile.rs` (`rate_verdict`), `src/ui/app/transport.rs` (vakten).
 
 ---
 
 ## Saker som kräver Alex (och därför inte startas)
 
-- `[Alex]` **RT-prioritet:** `rtkit` är inte installerat (`mod.rt: RTKit error … ServiceUnknown`), så
-  PipeWires ljudtråd kör `SCHED_OTHER`. Utan RT är quantum 128 den ärliga nivån; 64 kräver RT.
+- `[Alex]` **RT-prioritet:** mätt i rapporten (`~/.sonix-research-linux-ljud-sv.md`) — `rtkit` finns
+  inte ens som paket på maskinen, journalen säger `mod.rt: RTKit error: …ServiceUnknown` följt av
+  *"RTKit does not give us MaxRealtimePriority, using 1"*, `LimitRTPRIO=0` i systemd-uniten, och
+  `chrt -p` visar att `pipewire`, `module-rt` **och `data-loop.0`** (själva ljudtråden) kör
+  `SCHED_OTHER` med `rtprio -`. Ljudtråden har alltså ingen realtidsprioritet alls.
 - `[Alex]` **PipeWire-drop-in** för quantum 128 (`~/.config/pipewire/pipewire.conf.d/99-latency.conf`)
-  — en systemändring, inte en appändring.
+  — en systemändring, inte en appändring. Rapporten mätte också att **Pro Audio-profilen inte är
+  aktiv** (kort 0 står på `output:analog-stereo+input:analog-stereo`), vilket är själva skälet till
+  att PipeWire kör timer-baserade wakeups i stället för JACKs IRQ-drivna graf.
 - `[Alex]` **Kabel/interface:** en gitarr rakt in i ALC1220:s line/mic är fel impedans; en USB-kabel
   med instrumentingång (Rocksmith, Guitar Link, iRig, fokusrite med instrumentläge) behövs för att
   kvittera punkt 1 på riktig hårdvara.

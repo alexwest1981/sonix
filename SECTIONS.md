@@ -2,7 +2,7 @@
 
 *Genererad av `tools/sections.py` — kör om den efter varje ändring: `python3 tools/sections.py`. Alla siffror är räknade ur koden; statusen ägs av modulens egen `//! Status:`-rad. Redigera inte det här dokumentet för hand.*
 
-**90 moduler · 78445 rader kod · 45 med status · 45 utan.**
+**90 moduler · 78513 rader kod · 45 med status · 45 utan.**
 
 ## Så läser du kartan
 
@@ -18,7 +18,7 @@
 | `src/ui/app/tests.rs` | 3523 | byggs — proven hör till sina funktioner; flyttar du en funktion, flytta dess prov. | 0 | 99 (+1 ign) | Prov för app-ytan — flyttade ur `app.rs` 2026-09-14 (filen hade vuxit till 23 000 rader).  |
 | `src/audio/plugin_host_live.rs` | 3332 | stabil (4.x) — CLAP-värden i egen process | 72 | 40 | In-process **CLAP** plugin host.  |
 | `src/ui/app/mixer.rs` | 2949 | byggs — mixern och FX-racket. | 2 | 0 | Mixern — kanalracket, FX-racket och automationen.  |
-| `src/i18n.rs` | 2804 | fryst — nycklar på engelska, texter på svenska | 1443 | 8 |  |
+| `src/i18n.rs` | 2805 | fryst — nycklar på engelska, texter på svenska | 1443 | 8 |  |
 | `src/ui/app/modals.rs` | 2782 | byggs — dialogerna; en ny dialog läggs här och håller sin regel utanför. | 0 | 0 | Dialogerna — alla små fönster på ett ställe.  |
 | `src/ui/app/arranger.rs` | 2776 | byggs — arrangören. | 0 | 0 | Arrangören — tidslinjen som ritas.  |
 | `src/audio/exporter.rs` | 2233 | stabil — offline-rendering och export | 16 | 20 (+1 ign) | Offline full-project rendering and audio export for Sonix Studio.  |
@@ -41,8 +41,8 @@
 | `src/ui/vocal_studio_view.rs` | 1027 | — | 1 | 0 |  |
 | `src/audio/master_fx.rs` | 1016 | — | 6 | 9 | Real-time master bus FX chain and per-track equalizer DSP.  |
 | `src/paths.rs` | 1014 | fryst — enda modulen som får bygga sökvägar | 50 | 14 | Kanoniska sökvägar för Sonix (Fas 6.0).  |
-| `src/ui/app.rs` | 997 | byggs — roten: tillståndet, starten och bildrutan. | 10 | 0 | **App-ytan — modulens rot.** Här bor `SonixApp` (tillståndet), `new` (starten) och `update` (bildrutan). Allt annat ligger i undermodulerna nedan, delade efter område |
-| `src/ui/app/transport.rs` | 947 | byggs — uppspelningen. | 1 | 0 | Uppspelningen — stegklockan, sequencern, tangentbordet, tagningarna och hårdvaran.  |
+| `src/ui/app.rs` | 1000 | byggs — roten: tillståndet, starten och bildrutan. | 10 | 0 | **App-ytan — modulens rot.** Här bor `SonixApp` (tillståndet), `new` (starten) och `update` (bildrutan). Allt annat ligger i undermodulerna nedan, delade efter område |
+| `src/ui/app/transport.rs` | 967 | byggs — uppspelningen. | 1 | 0 | Uppspelningen — stegklockan, sequencern, tangentbordet, tagningarna och hårdvaran.  |
 | `src/audio/plugin_sandbox.rs` | 945 | — | 9 | 8 | Out-of-process plugin sandbox (Fas 4.5a + 4.5b).  |
 | `src/ui/app/piano_roll.rs` | 926 | byggs — piano roll och trummisen. | 0 | 0 | Piano roll, trummisen och skalorna.  |
 | `src/audio/plugin_vst2.rs` | 908 | — | 4 | 9 | Minimal in-process **VST2** host (Fas 4.6c).  |
@@ -61,9 +61,9 @@
 | `src/audio/ai_client.rs` | 715 | — | 8 | 8 |  |
 | `src/audio/smf.rs` | 706 | stabil — MIDI-export med tempobyten (8.2 steg 3) | 33 | 10 | Standard MIDI File (SMF) — skriv och läs `.mid` utan externa beroenden.  |
 | `src/audio/synth/commands.rs` | 705 | stabil — kommandovägen från UI-tråden in i motorn. | 0 | 0 | Kommandovägen: vad motorn gör när UI-tråden säger något — och ordningen spåren ska köras i. |
+| `src/audio/input_profile.rs` | 662 | byggs (Sprint 1, punkt 1) — tabell, klassning och sysfs-läsning klara och prövade. | 11 | 12 | **Instrumentingångar som känns igen** (Sprint 1, punkt 1).  |
 | `src/ui/app/browser.rs` | 633 | byggs — Sound Browser och biblioteksskanningen. | 4 | 0 | Sound Browser och biblioteket.  |
 | `src/audio/tempo.rs` | 631 | stabil — tempokartan och `region_source_secs` | 57 | 12 | Tempokarta (Fas 8.2, steg 1).  |
-| `src/audio/input_profile.rs` | 618 | byggs (Sprint 1, punkt 1) — tabell, klassning och sysfs-läsning klara och prövade. | 9 | 11 | **Instrumentingångar som känns igen** (Sprint 1, punkt 1).  |
 | `src/audio/sandbox_audio.rs` | 602 | — | 10 | 5 | Shared-memory audio transport for the out-of-process plugin sandbox (Fas 4.5b). |
 | `src/audio/engine.rs` | 579 | — | 2 | 3 |  |
 | `src/midi_take.rs` | 564 | — | 29 | 27 | Inspelade nottagningar med sin faktiska tajming (Fas 6.4).  |
@@ -152,7 +152,7 @@
 ### `src/audio/input_profile.rs`
 - **Status:** byggs (Sprint 1, punkt 1) — tabell, klassning och sysfs-läsning klara och prövade.
 - **Rör inte:** `classify` är den enda vägen från ett enhetsnamn till en profil — lägg nya
-- **Publika ingångar:** `InputKind`, `badge`, `InputProfile`, `PROFILES`, `ResolvedInput`, `is_instrument`, `classify`, `InputDefaults`, `MIC_DEFAULTS`, `INSTRUMENT_DEFAULTS`, `defaults_for`, `InputPlan` … (+7)
+- **Publika ingångar:** `InputKind`, `badge`, `InputProfile`, `PROFILES`, `ResolvedInput`, `is_instrument`, `classify`, `InputDefaults`, `MIC_DEFAULTS`, `INSTRUMENT_DEFAULTS`, `defaults_for`, `InputPlan` … (+9)
 
 ### `src/audio/keymap.rs`
 - **Publika ingångar:** `SampleZone`, `full_range`, `covers`, `is_playable`, `zone_for_note`

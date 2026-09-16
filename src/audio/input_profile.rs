@@ -298,6 +298,29 @@ pub fn plan_for(input: &ResolvedInput, engine_rate: u32) -> InputPlan {
     plan
 }
 
+/// Går ingången och motorn i samma tempo? (Sprint 1, punkt 6.)
+///
+/// Monitorns ring dräneras **en sample per ut-sample** (`synth/process.rs`), så vägen antar att
+/// ingången och utgången har samma frekvens. Är de olika hörs ingången i fel hastighet — och det
+/// felet ska stå i klartext, inte höras: samma regel som 8.5 (en väg som ger ljud får inte hitta
+/// på ljudet). Resampling i monitorvägen är nästa steg, se `SPRINT.md`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RateVerdict {
+    Agree,
+    Mismatch { engine: u32, input: u32 },
+}
+
+pub fn rate_verdict(engine_rate: u32, input_rate: u32) -> RateVerdict {
+    if engine_rate == input_rate {
+        RateVerdict::Agree
+    } else {
+        RateVerdict::Mismatch {
+            engine: engine_rate,
+            input: input_rate,
+        }
+    }
+}
+
 /// Ett ljudkort som kärnan ser det, med det som går att läsa ur sysfs.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SoundCard {
@@ -605,6 +628,27 @@ mod tests {
         assert_eq!(
             first_instrument(&resolved).unwrap().label,
             "Rocksmith-kabel"
+        );
+    }
+
+    /// **Samma tempo tiger, olika tempo talar.** Monitorn får bara gå när frekvenserna är lika;
+    /// annars skulle ingången höras i fel hastighet utan att något sade till.
+    #[test]
+    fn the_rate_verdict_speaks_only_when_the_rates_differ() {
+        assert_eq!(rate_verdict(48_000, 48_000), RateVerdict::Agree);
+        assert_eq!(
+            rate_verdict(48_000, 44_100),
+            RateVerdict::Mismatch {
+                engine: 48_000,
+                input: 44_100
+            }
+        );
+        assert_eq!(
+            rate_verdict(44_100, 48_000),
+            RateVerdict::Mismatch {
+                engine: 44_100,
+                input: 48_000
+            }
         );
     }
 

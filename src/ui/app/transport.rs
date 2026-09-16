@@ -904,6 +904,26 @@ impl SonixApp {
 /// reconfigure) and pushes the live monitoring / auto-tune parameters into
 /// the input callback. Cheap enough to call every UI frame.
 pub(crate) fn sync_mic_monitoring(&mut self) {
+    // Sprint 1, punkt 6: monitorns ring dräneras en sample per ut-sample, så den antar att
+    // ingången och motorn går i samma tempo. Är de olika hålls monitorn av med besked i stället
+    // för att höras i fel hastighet. (Resampling i monitorvägen är nästa steg, se SPRINT.md.)
+    if let Some(input_rate) = self.vocal_studio.mic_capture.as_ref().map(|m| m.sample_rate)
+        && let crate::audio::input_profile::RateVerdict::Mismatch { engine, input } =
+            crate::audio::input_profile::rate_verdict(self.engine.sample_rate, input_rate)
+    {
+        self.vocal_studio.monitoring_on = false;
+        if !self.rate_mismatch_reported {
+            self.rate_mismatch_reported = true;
+            self.status_message = crate::tstatus!(
+                "⚠ ingången går i {} Hz och motorn i {} Hz — monitorn är av (annars hörs fel tempo)",
+                input,
+                engine
+            );
+        }
+    } else {
+        self.rate_mismatch_reported = false;
+    }
+
     // Sprint 1, punkt 1: en inkopplad instrumentkabel ska användas utan att någon öppnar en
     // inställningsruta. En gång per appstart — därefter är det användarens val som gäller
     // ("🔄 Uppdatera enheter" i ljudmodalen tar nya tag).

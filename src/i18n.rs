@@ -1508,6 +1508,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Täthet: {:.0}%" => "Density: {:.0}%",
         "Välj" => "Choose",
         "🎸 Instrumentläge" => "🎸 Instrument mode",
+        "⚠ ingången går i {} Hz och motorn i {} Hz — monitorn är av (annars hörs fel tempo)" => "⚠ the input runs at {} Hz and the engine at {} Hz — monitoring is off (otherwise the tempo is heard wrong)",
         "🎸 instrument" => "🎸 instrument",
         "🎚 line" => "🎚 line",
         "🎤 mikrofon" => "🎤 microphone",

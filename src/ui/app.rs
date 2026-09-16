@@ -139,6 +139,8 @@ pub struct SonixApp {
     pub monitor_ring_sent: Option<std::sync::Arc<std::sync::Mutex<Vec<f32>>>>,
     /// Har den automatiska igenkänningen av instrumentingångar körts? (Sprint 1, punkt 1.)
     pub input_autodetect_done: bool,
+    /// Är en frekvensskillnad mellan ingång och motor redan berättad? (Sprint 1, punkt 6.)
+    pub rate_mismatch_reported: bool,
     /// Senast skickade monitor-nivå (så kommandon inte spammas varje frame).
     pub monitor_level_sent: Option<f32>,
     pub stem_import_progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
@@ -674,6 +676,7 @@ impl SonixApp {
             engine,
             monitor_ring_sent: None,
             input_autodetect_done: false,
+            rate_mismatch_reported: false,
             monitor_level_sent: None,
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),
