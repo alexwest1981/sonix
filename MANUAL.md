@@ -385,3 +385,246 @@ importfråga, och den står kvar som sådan.
 
 Filer med en annan upplösning än 480 PPQ (t.ex. 96, som är vanligt) skalas rätt:
 importen läser filens egen upplösning i stället för att anta en.
+
+---
+
+# Appendix A — README detail (English)
+Moved out of `README.md` so the front page stays readable: per-feature detail and caveats (A1–A14), the complete shortcut table (A15), and the remaining 23 gallery views (A16). The Swedish manual above is unchanged.
+
+## A1–A14. Feature detail (the bullets README keeps are the summary + every caveat)
+
+### 1. 🎼 Timeline & Multitrack Arranger — ✅ Real
+* **Continuous Waveform Phase Tracking:** Trimming the start shifts the waveform without squishing or distorting loop cycles.
+
+### 1. 🎼 Timeline & Multitrack Arranger — ✅ Real
+* **Magnetic Loop-Snap (🧲):** Locks onto exact whole-loop multiples (`1x`, `2x`, `3x`, `4x`, `8x`) and grid divisions (`1/16`, `Beat`, `Bar`). Hold `Alt` for free precision.
+
+### 1. 🎼 Timeline & Multitrack Arranger — ✅ Real
+* **Bottom Region Inspector:** Coarse/fine nudge (`±1 bar`, `±0.1s`), start-trim offset, gain, fade in/out, reverse playback, and loop multiplication.
+
+### 1. 🎼 Timeline & Multitrack Arranger — ✅ Real
+* **Tool Palette:** Select (⇱), Paint (✎), Slice (✂), Erase (🗑), Mute (🔇); quick-cut at playhead (Ctrl+B).
+
+### 1. 🎼 Timeline & Multitrack Arranger — ✅ Real
+* **Live In-Track Microphone Recording:** Arm buttons (`⏺`), real zero-latency direct monitoring and real-time waveforms on audio tracks.
+
+### 1. 🎼 Timeline & Multitrack Arranger — ✅ Real
+* **Automation Curves (📈):** Draw per-track curves for volume, pan, reverb and delay sends. Left-click to add points, drag to move (snaps to the grid), right-click to delete. Curves play back in real time and are saved with the project.
+
+### 2. 🥁 Sonix Channel Rack (16-Step Sequencer) — ✅ Real
+* **4-Beat Step Buttons** with glowing center LEDs.
+
+### 2. 🥁 Sonix Channel Rack (16-Step Sequencer) — ✅ Real
+* **Per-Channel Knobs:** Volume, pan, pitch (semitones + cents) and a **sample chopper** (start/end fractions + transient detection).
+
+### 3. 🎹 Piano Roll & Interactive Touch Keyboard — ✅ Real
+* **Playable Virtual Keyboard:** Neon feedback with computer-keyboard typing (A–K).
+
+### 3. 🎹 Piano Roll & Interactive Touch Keyboard — ✅ Real
+* **Real MIDI Keyboard Input (ALSA Seq):** Open a real MIDI-in port ("Sonix MIDI In"), connect a hardware keyboard with `aconnect`, play it live, and arm **⏺ MIDI-REC** to write held notes straight into the Piano Roll grid during playback.
+
+### 4. 🎚 Mixer Console & Per-Track Effects — ✅ Real
+* **Per-Track 3-Band Parametric EQ:** Draggable visual curve + quick presets.
+
+### 4. 🎚 Mixer Console & Per-Track Effects — ✅ Real
+* **Per-Track Dynamics & Sends:** Compressor, reverb/delay sends and pitch — all sent to the audio engine.
+
+### 4. 🎚 Mixer Console & Per-Track Effects — ✅ Real
+* **Master FX Rack:** Gate → 4-band EQ → compressor → de-esser → filter/drive → doubler → limiter, plus reverb & delay, with a **real gain-reduction meter** and a visual EQ editor.
+
+### 4. 🎚 Mixer Console & Per-Track Effects — ✅ Real
+* **Remix FX (live):** Kaoss-style XY pad with beat-repeat/stutter/reverse and a real tape-stop varispeed effect.
+
+### 4. 🎚 Mixer Console & Per-Track Effects — ✅ Real
+* **VCA Groups & Sub-Mix Buses:** 4 sub-mix buses (Vocal, Drums, Synth, FX) and 4 VCA groups, each with fader + mute/solo; per-track bus/VCA routing. Group gain is applied post-fader just before the master, and the state is saved in the project and honoured by offline export.
+
+### 5. 🎛 Analog Alchemy Synth — ✅ Real
+* ✅ **Per-voice:** Each note has its own filter state and filter envelope (the **ENV ±oct** knob sweeps the cutoff per note); envelope parameters are patch-global so knobs are heard live.
+
+### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real
+* **Pitch Editor:** Draggable note blobs (Melodyne-style) and scale-aware correction.
+
+### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real
+* **Autotune & 4-Part Harmonizer** with per-voice level and formant controls; harmony voices use **real formant preservation** (STFT + cepstral envelope correction) so pitch shifts no longer sound "chipmunk".
+
+### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real
+* **Real-time Auto-Tune & direct monitoring:** The 🎙️ Real-time Auto-Tune checkbox corrects the microphone in the audio thread (rolling pitch detection + WSOLA streaming shifter) and is heard through true zero-latency direct monitoring (ring buffer → master bus). Strength = the AUTO-TUNE knob. Recording stays dry.
+
+### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real
+* **Custom Sampler:** Record acoustic one-shots via microphone and map them to instruments/drums.
+
+### 6. 🎙 Vocal Studio & Harmonizer — ✅ Real
+* **Hardware Mic Panel:** Input device selector, hardware gain boost (+0 to +24 dB), noise gate, feedback suppression and vocal character presets.
+
+### 7. 🎛 Creative Generators — ✅ Real
+* **Beat & Melody Dice Generator:** 5 categories, genre presets, live preview → pattern.
+
+### 7. 🎛 Creative Generators — ✅ Real
+* **Session Drummer:** XY complexity/energy pad with 6 genre presets.
+
+### 7. 🎛 Creative Generators — ✅ Real
+* **Song Section Arranger:** Intro/Verse/Chorus/Bridge/Drop/Outro → timeline.
+
+### 7. 🎛 Creative Generators — ✅ Real
+* **Add Track Studio:** 19 templates across 6 categories.
+
+### 7. 🎛 Creative Generators — ✅ Real
+* **Hardware Strobe Tuner:** Real pitch detection, ±cents readout, 7 tuning presets and a reference tone.
+
+### 9. 🤖 AI Music Assistant & Generation — ✅ Real (with honest limits)
+* **Local fallback:** a deterministic, rule-based composer (scale/key aware) when no API is configured.
+
+### 9. 🤖 AI Music Assistant & Generation — ✅ Real (with honest limits)
+* **Suno/AI Stem Importer:** Unzip and decode real audio, detect BPM and map stems onto the timeline.
+
+### 10. 🧠 Stem Separator — ✅ Real (DSP + optional neural HTDemucs)
+* **Optional neural backend:** build with `--features neural` and place an HTDemucs-family `.onnx` model in `~/.config/sonix/models/` (or set `SONIX_DEMUCS_ONNX`) to run genuine Demucs separation through ONNX Runtime — background thread, live progress, 44.1 kHz resampling and overlap-add crossfading. Without a model it falls back to the DSP path and the UI states which backend ran.
+
+### 11. 🔌 Plugin Manager — 🟡 Catalogue + opt-in CLAP/VST3/VST2 host
+* **Opt-in CLAP host:** build with `--features plugin-host` and Sonix can `dlopen` a `.clap` plugin, validate its `clap_entry`, instantiate it, read its descriptor **and parameters** (the "🔎 Load & inspect" button shows them), **run audio through it on a stem track** with plug-in delay compensation (the "▶ Load" button inserts it), **save/restore its state with the project** and **read/drive its `clap.gui` lifecycle**.
+
+### 11. 🔌 Plugin Manager — 🟡 Catalogue + opt-in CLAP/VST3/VST2 host
+* **Plugin GUI in its own window:** an active insert opens the plugin's own UI with **"🪟 Open GUI"** — the host creates a real **X11 window** and embeds the editor via `clap.gui` (`set_parent`/`show`), and the audio and the GUI share the **same plugin instance**. The window is polled every UI frame and torn down cleanly (hide → destroy) when closed.
+
+### 11. 🔌 Plugin Manager — 🟡 Catalogue + opt-in CLAP/VST3/VST2 host
+* **Crash isolation in a separate process:** **"🧪 Sandbox inspect"** runs the plugin in its own process (the same binary re-executed with `--plugin-sandbox-worker`) over a length-prefixed JSON protocol and reads its info + parameters there; a supervisor **automatically restarts it on a crash** (up to three attempts) so Sonix does not go down. **"🧪 Load into sandbox"** goes further: the plugin's **audio processing itself** runs in that separate process, streaming stereo blocks over a **shared-memory ring buffer** (`memfd_create` + `mmap`), with the transport's one-block latency compensated by PDC and automatic re-sync after a restart.
+
+### 12. 💿 Export & Project I/O — ✅ Real
+* Clean metadata tagging (Sonix Studio only), master mix or per-track stems.
+
+### 12. 💿 Export & Project I/O — ✅ Real
+* **Loudness normalization (EBU R128):** Real ITU-R BS.1770 gated loudness (K-weighting) and true-peak ceiling via 4× oversampling. One-click export presets (Streaming −14, Apple Music −16, Broadcast −23, Club/Loud −9 LUFS).
+
+### 12. 💿 Export & Project I/O — ✅ Real
+* Project save/load and template projects.
+
+### 14. 🌐 Localisation & System — ✅ Real
+* **cpal/ALSA realtime engine** with a lock-free command ring and a crash-safe audio callback.
+
+### 14. 🌐 Localisation & System — ✅ Real
+* **Audio Settings** (Ctrl+P) apply the chosen sample rate and buffer size by rebuilding the output stream live; the choice is persisted to `~/.config/sonix/audio.json` and restored on launch. The current host/device and the real active stream config are shown.
+
+## A15. Keyboard & Shortcut Reference
+
+| Key / Shortcut | Function | Description |
+| :--- | :--- | :--- |
+| **Space** | **Play / Pause** | Toggle playback in Song or Pattern mode. |
+| **R** | **Record Arm** | Arm active microphone track for live recording. |
+| **Alt (Hold)** | **Free Slip / Trim** | Bypass magnetic loop and grid snapping for free editing. |
+| **F1** | **User Manual / Help** | Open built-in interactive manual and help center. |
+| **F3** | **Timeline / Arranger** | Switch to the linear multitrack audio playlist. |
+| **F4** | **Channel Rack** | Switch to the 16-step sequencer and drum machine. |
+| **F5** | **Piano Roll** | Switch to the graphical note editor and keyboard. |
+| **F6** | **Mixer Console** | Switch to the multichannel mixer and effects rack. |
+| **F7** | **Analog Synthesizer** | Switch to the synth editor with ADSR, Filter, and Morph Pad. |
+| **F8** | **Vocal Studio** | Switch to the vocal recording console and harmonizer. |
+| **Ctrl + I** | **Import Stems** | Open dialog to import Suno ZIP archives or audio files. |
+| **Ctrl + E** | **Export Master / Stems** | Offline-render the full project (real samples, timeline audio & FX) to WAV, FLAC, MP3, OGG or AAC with clean Sonix-only metadata. |
+| **Ctrl + S** | **Save Project** | Save the current project to disk. |
+| **Ctrl + O** | **Open Project** | Open a saved project from disk. |
+| **Ctrl + P** | **Audio Settings** | Open PipeWire, ALSA, and buffer size configuration. |
+
+---
+
+## A16. Gallery — the remaining views
+
+#### 7. 🤖 AI Music Assistant & Prompt Engine
+Generate chord progressions, melodies, basslines, and song ideas via natural language text prompts (OpenAI, Anthropic/Claude, OpenRouter, or local Ollama), with a built-in rule-based generator as fallback.
+![AI Assistant](screenshots/07_ai_music_assistant.png)
+
+#### 8. ✨ Sonix Alchemy Synthesizer
+Advanced hybrid synth with 4 oscillator waveforms (Sine, Sawtooth, Square, Triangle), a resonant state-variable filter, ADSR envelope, and an 8-point morph vector pad.
+![Alchemy Synth](screenshots/08_alchemy_synth.png)
+
+#### 9. 🥁 Dynamic Session Drummer
+Interactive XY control pad for groove complexity and energy dynamics, with humanize engine, style variations, and fill-ins.
+![Session Drummer](screenshots/09_session_drummer.png)
+
+#### 10. 🧩 Modular Patcher & The Grid
+Visual modular node environment for connecting audio signals, filters, envelopes, LFOs, and distortion with virtual patch cables.
+![Modular Patcher](screenshots/10_modular_patcher.png)
+
+#### 11. 🧠 Stem Separator (DSP + optional Neural ONNX)
+Source separation to isolate vocals, drums, bass, and instruments from mixed tracks. Runs a lightweight spectral DSP separator by default, or a real HTDemucs ONNX model when built with `--features neural` and a model is installed.
+![Stem Separator](screenshots/11_stem_separator.png)
+
+#### 12. 🔌 Plugin & VST/CLAP Bridge Manager
+Cataloguing of FL Studio `.fst` presets and CLAP, VST3, VST2, LV2, and Wine/Yabridge plugin locations (scanning & verification — CLAP, **VST3 and VST2** processing opt-in, LV2 hosting not yet implemented).
+![Plugin Manager](screenshots/12_plugin_manager.png)
+
+#### 13. 🎛 Remix FX (Live Performance Pad)
+Live DJ performance effects with Kaoss-style XY matrix, stutter repeater, vinyl tape stop, and reverse.
+![Remix FX](screenshots/13_remix_fx.png)
+
+---
+
+### 3. 🎙 Creative Studio Panels & Vocal Modules (Soundtrap-Inspired)
+
+#### 14. 🎤 Microphone & Hardware Vocal Panel
+Input device selector, hardware gain boost (+0dB to +24dB), noise gate, acoustic feedback suppression, and vocal character presets.
+![Microphone Settings](screenshots/21_dialog_mikrofon_installningar.png)
+
+#### 15. 🎹 Smart Chord & Harmony Matrix
+Scale-aware Roman numeral chord matrix, strum spread humanizer, block/arpeggiated styles, and one-click Piano Roll stamping.
+![Chord Generator Matrix](screenshots/22_dialog_ackord_matris.png)
+
+#### 16. 🎯 Hardware Strobe Tuner
+Ultra-high precision chromatic strobe tuner with real-time frequency analysis, ±cents deviation, and 440Hz calibration.
+![Hardware Strobe Tuner](screenshots/23_dialog_strobe_tuner.png)
+
+#### 17. 🎲 Beat & Melody Dice Generator
+Algorithmic generator for drum rhythms and melodic hooks with musical scale locks and syncopation controls.
+![Dice Generator](screenshots/24_dialog_tarning_generator.png)
+
+#### 18. 🎛 Modular FX Pedalboard & Vocal Rack
+Multi-effect chain with Vocal Doubler, Analog Tube Compressor, Dynamic De-Esser, Noise Gate, and Resonant Filter.
+![Modular FX Rack](screenshots/25_dialog_modular_fx_rack.png)
+
+#### 19. 🎼 Song Section Arranger
+Define and arrange Intro, Verse, Chorus, Bridge, Drop, and Outro sections on the timeline.
+![Song Structure Arranger](screenshots/26_dialog_latstruktur_arrangemang.png)
+
+#### 20. ➕ Add Track Studio Creator
+Modal for quickly instantiating Vocals/Mic, Sample Audio, 808 Drums, Synth Lead, Bassline, or FX Bus tracks.
+![Add Track Modal](screenshots/27_dialog_lagg_till_spar.png)
+
+---
+
+### 4. ⚙️ Dialogs, Modals & System Configuration
+
+#### 21. ⚙ Audio & Driver Settings
+Shows the real cpal host and output device, the active stream (sample rate · buffer · channels), and lets you apply a new sample rate/buffer by rebuilding the stream live (persisted to `~/.config/sonix/audio.json`).
+![Audio Settings](screenshots/14_dialog_ljudinstallningar.png)
+
+#### 22. 🤖 AI Configuration & API Keys
+Setup credentials and connections for OpenAI, Anthropic/Claude, Stability Stable Audio, and local Ollama servers.
+![AI Settings](screenshots/15_dialog_ai_installningar.png)
+
+#### 23. 💾 Project Manager & Templates
+Create new projects from music templates (Synthwave, Trap, House, Ambient), save, and load projects.
+![Project Manager](screenshots/16_dialog_projekthanterare.png)
+
+#### 24. 💿 Render & Master Export Queue
+Offline full-project rendering (real channel WAV samples + timeline audio stems + FX) to WAV (16/24-bit & float), FLAC (24-bit lossless), MP3 (320 kbps), OGG Vorbis and AAC/M4A. Choose master mix or per-track dry/wet stems, sample rate and clean metadata (title/artist/album/genre/year/comment) tagged only with **Sonix Studio** – never AI/provider info. WAV/FLAC are encoded in-app; MP3/OGG/AAC use `ffmpeg` when installed. Includes **EBU R128 loudness normalization** (BS.1770 K-weighted gated measurement + true-peak ceiling via 4× oversampling) with one-click delivery presets (Streaming/Apple Music/Broadcast/Club).
+![Render Queue](screenshots/17_dialog_render_queue.png)
+
+#### 25. 📥 Suno AI Stem Importer
+Automated loading and unzipping of Suno AI stems directly from zip archives or folders.
+![Suno Import](screenshots/18_dialog_suno_import.png)
+
+#### 26. 🎛 Hardware Controllers & MCU/OSC
+Hardware controller support for Behringer X-Touch, Novation Launchpad, ALSA MIDI, and OSC network control.
+![MIDI Controller](screenshots/19_dialog_midi_controller.png)
+
+#### 27. 🔍 Focused Stem & Region Editor
+Detailed audio region editor with volume envelopes, fade in/out curves, reverse, and sample slicing.
+![Stem Focus Editor](screenshots/20_dialog_stem_focus_editor.png)
+
+#### 28. 📖 Interactive Help Guide & Manual
+Built-in comprehensive manual with shortcut lists, signal flow diagrams, and workflow guides.
+![Help Guide](screenshots/28_dialog_hjalpguide_manual.png)
+
+#### 29. ℹ About Sonix Studio
+Version information, audio engine details, system architecture, and license.
+![About Sonix](screenshots/29_dialog_om_sonix.png)
+
