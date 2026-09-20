@@ -488,6 +488,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Skicka en del av spåret till en buss — t.ex. FX-bussen" => "Send part of the track to a bus — e.g. the FX bus",
         "ℹ Tempot ändrat, men {} klipp står still: de saknar känt inspelningstempo. Öppna ⏱ Tempokarta för att låta dem följa — eller importera stämmorna på nytt." => "ℹ The tempo changed, but {} clips stay put: they have no known recording tempo. Open ⏱ Tempo map to make them follow — or import the stems again.",
         "🎚 Tempot ändrat: {} klipp följer, {} står still (okänt inspelningstempo — se ⏱ Tempokarta)." => "🎚 Tempo changed: {} clips follow, {} stay put (unknown recording tempo — see ⏱ Tempo map).",
+        "⚠ {} klipp sträcks inte: tempot ligger mer än dubbelt från deras inspelningstempo ({:.1} BPM) — de spelar som inspelade. Sätt projektets tempo till {:.1} eller slå av 🎚 Följ tempot." => "⚠ {} clips are not stretched: the tempo sits more than double away from their recording tempo ({:.1} BPM) — they play as recorded. Set the project tempo to {:.1} or turn off 🎚 Follow the tempo.",
         "🎚 Följ tempot (bevara tonhöjden)" => "🎚 Follow the tempo (preserve pitch)",
         "På: klipp med känt inspelningstempo sträcks när tempot ändras, med bevarad tonhöjd. Av: inget klipp följer tempot. Ett enstaka klipp kan i stället sättas i bandspelarläge (tonhöjden följer med) i klippmenyn." => "On: clips with a known recording tempo are stretched when the tempo changes, with the pitch preserved. Off: no clip follows the tempo. A single clip can instead be put in tape mode (pitch follows) in the clip menu.",
         "🎚 Klippen följer tempot med bevarad tonhöjd" => "🎚 The clips follow the tempo with the pitch preserved",
@@ -501,13 +502,13 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Standard: klippet sträcks med bevarad tonhöjd när tempot ändras (tonhöjden står still). Bandspelarläget låter tonhöjden följa med — det är en effekt, inte standarden." => "Default: the clip is stretched with the pitch preserved when the tempo changes (the pitch stays put). Tape mode lets the pitch follow — that is an effect, not the default.",
         "📼 Klippet följer tempot som en bandspelare (tonhöjden följer med)" => "📼 The clip follows the tempo like a tape recorder (the pitch follows)",
         "🎚 Klippet sträcks med bevarad tonhöjd när tempot ändras" => "🎚 The clip is stretched with the pitch preserved when the tempo changes",
-        "🎚 Klipp som följer tempot: {} (av kända {})" => "🎚 Clips that follow the tempo: {} (of {} known)",
+        "🎚 Klipp som följer tempot: {} (av {} med känt tempo)" => "🎚 Clips that follow the tempo: {} (of {} with a known tempo)",
         "🎚 Låt de {} klippen följa tempot (inspelningstempo {:.1} BPM)" => "🎚 Let those {} clips follow the tempo (recording tempo {:.1} BPM)",
         "Klippen låter som de ska nu. Stämpeln säger att de spelades in i projektets nuvarande tempo, så att de följer med när du ändrar det. Ljudet ändras inte förrän du rör tempot." => "The clips sound the way they should right now. The stamp says they were recorded at the project's current tempo, so they follow it when you change it. Nothing changes until you move the tempo.",
         "Klipp utan känt inspelningstempo (importerade i ett äldre projekt, eller från biblioteket) står still när tempot ändras — de sträcks aldrig i smyg." => "Clips without a known recording tempo (imported in an older project, or from the library) stay put when the tempo changes — they are never stretched behind your back.",
         "🎚 {} klipp följer nu tempot ({:.1} BPM som inspelningstempo). Ändra tempot och de följer med." => "🎚 {} clips now follow the tempo ({:.1} BPM as recording tempo). Change the tempo and they follow.",
-        "Klippens tempo: inga klipp har ett känt inspelningstempo ännu, så ljudet rörs inte när du ändrar tempot." => "Clip tempo: no clips have a known recording tempo yet, so the audio is left alone when you change the tempo.",
-        "Klippens tempo: {} klipp har ett känt inspelningstempo och följer med när du ändrar tempot (tonhöjden följer med, som på en bandspelare). Klipp med okänt tempo rörs inte." => "Clip tempo: {} clips have a known recording tempo and follow when you change the project tempo (pitch follows, as on a tape machine). Clips with an unknown tempo are left alone.",
+        "Klippens tempo: inga klipp följer tempot — de saknar antingen ett känt inspelningstempo eller så ligger projektets tempo mer än dubbelt från deras. Ljudet rörs inte." => "Clip tempo: no clips follow the tempo — either they have no known recording tempo, or the project's tempo sits more than double away from theirs. The audio is left alone.",
+        "Klippens tempo: {} klipp följer med när du ändrar tempot — med bevarad tonhöjd (Fas 8.10 steg 2). Klipp vars inspelningstempo ligger mer än dubbelt från projektets spelar som inspelade, och enstaka klipp kan i stället sättas i bandspelarläge i klippmenyn." => "Clip tempo: {} clips follow when you change the tempo — with the pitch preserved. Clips whose recording tempo sits more than double away from the project's play as recorded, and a single clip can be put in tape mode from its clip menu instead.",
         "📋 Duplicera markerat (Ctrl+D)" => "📋 Duplicate selection (Ctrl+D)",
         "🗑 Ta bort markerat (Del)" => "🗑 Delete selection (Del)",
         "🧹 Rensa alla spår" => "🧹 Clear all tracks",
@@ -2729,6 +2730,16 @@ const EXTRA_BUS_HOVER_SV: &str = "Pluginens egen utbuss till ett eget spår (Fas
         ]
     }
 
+    /// Tempoföljningens nya rad (mätt 2026-09-20, "Under Vintergatan"): stämmorna i 163 BPM i
+    /// ett projekt i 40 stod still allihop, och ett klipp som har ett **känt** tempo men ligger
+    /// mer än dubbelt från projektets fick sin egen rad. Utan engelskan står den på svenska i
+    /// sex gränssnitt — samma krav som för 8.5- och makrofamiljerna.
+    fn tempo_follow_keys() -> [&'static str; 1] {
+        [
+            "⚠ {} klipp sträcks inte: tempot ligger mer än dubbelt från deras inspelningstempo ({:.1} BPM) — de spelar som inspelade. Sätt projektets tempo till {:.1} eller slå av 🎚 Följ tempot.",
+        ]
+    }
+
     /// Makrokedjans nycklar (Fas 8.9). **Engelskan är kravet, som för 8.5-familjen:** de
     /// övriga språken faller tillbaka på engelskan (`translate`), så en rad utan engelsk text
     /// är en rad som står på svenska i sex gränssnitt.
@@ -2822,6 +2833,18 @@ const EXTRA_BUS_HOVER_SV: &str = "Pluginens egen utbuss till ett eget spår (Fas
             assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
             assert_ne!(translate(Language::En, k), k, "faller tillbaka på svenska: {k}");
             assert_eq!(translate(Language::Sv, k), k, "svenskan ska vara nyckeln");
+        }
+        for k in tempo_follow_keys() {
+            assert!(tr_en(k).is_some(), "ingen engelsk rad för: {k}");
+            assert_ne!(translate(Language::En, k), k, "faller tillbaka på svenska: {k}");
+            assert_eq!(translate(Language::Sv, k), k, "svenskan ska vara nyckeln");
+            // Platshållarna ska finnas kvar i engelskan: `{:.1}` är BPM-talet, och en
+            // översättning som tappar den ger tyst en rad utan siffra.
+            assert!(
+                tr_en(k).unwrap().matches("{}").count() == 1
+                    && tr_en(k).unwrap().matches("{:.1}").count() == 2,
+                "engelskan ska bära samma platshållare: {k}"
+            );
         }
     }
 

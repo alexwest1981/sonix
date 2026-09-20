@@ -773,13 +773,13 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
     #[test]
     fn the_load_message_carries_the_same_note() {
         let opened = "📂 Öppnade projekt 'Rock and Hard Place'!";
-        let note = tempo_change_note(0, 9, None).expect("nio klipp utan mått ska sägas");
+        let note = tempo_change_note(0, 9, None, None).expect("nio klipp utan mått ska sägas");
         assert!(
             format!("{opened} {note}").contains('9'),
             "inläsningsraden ska bära antalet"
         );
         // Och ett projekt där allt följer får ingen extra rad.
-        assert_eq!(tempo_change_note(9, 0, None), None);
+        assert_eq!(tempo_change_note(9, 0, None, None), None);
     }
 
     /// **Felet i Alex' "inget hände".**
@@ -790,7 +790,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
     #[test]
     fn a_tempo_change_that_nothing_follows_is_never_silent() {
         // Alla klipp står still: det här är fallet som såg ut som en död kontroll.
-        let all_stuck = tempo_change_note(0, 9, None).expect("nio stillastående klipp ska sägas högt");
+        let all_stuck = tempo_change_note(0, 9, None, None).expect("nio stillastående klipp ska sägas högt");
         assert!(all_stuck.contains('9'), "antalet ska stå i raden: {all_stuck}");
         // Texten är i18n:ad (testkörningen får engelska), så provet håller sig till det som
         // är lika i båda: antalet och pekaren till åtgärden.
@@ -800,22 +800,108 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         );
 
         // Delat läge: både de som följer och de som står still ska räknas.
-        let mixed = tempo_change_note(3, 2, None).expect("delat läge ska sägas");
+        let mixed = tempo_change_note(3, 2, None, None).expect("delat läge ska sägas");
         assert!(mixed.contains('3') && mixed.contains('2'), "{mixed}");
 
         // Och när allt följer finns inget att säga — ingen rad, ingen tystnad att förklara.
-        assert_eq!(tempo_change_note(9, 0, None), None);
-        assert_eq!(tempo_change_note(0, 0, None), None);
+        assert_eq!(tempo_change_note(9, 0, None, None), None);
+        assert_eq!(tempo_change_note(0, 0, None, None), None);
 
         // **Går tempot att räkna ur klippen ska talet stå i raden**, inte bara en
         // hänvisning: "öppna Tempokarta" är ett steg för mycket när svaret redan finns.
-        let measured = tempo_change_note(0, 9, Some(120.0)).expect("nio klipp ska sägas");
+        let measured = tempo_change_note(0, 9, None, Some(120.0)).expect("nio klipp ska sägas");
         assert!(
             measured.contains("120") && measured.contains('⏱'),
             "talet ska stå tillsammans med åtgärden: {measured}"
         );
-        let mixed_measured = tempo_change_note(3, 2, Some(120.0)).expect("delat läge");
+        let mixed_measured = tempo_change_note(3, 2, None, Some(120.0)).expect("delat läge");
         assert!(mixed_measured.contains("120"), "{mixed_measured}");
+    }
+
+    /// **Alex' "Under Vintergatan", mätt 2026-09-20.**
+    ///
+    /// Tolv stämmor byggda i **163 BPM** i ett projekt som stod i **40**: ingen av dem fick
+    /// följa (4,075× är över taket i [`crate::audio::stretch::FOLLOW_MAX_RATIO`]), och det som
+    /// hördes var en fyra gånger för lång, kornrepeterad version av låten. Raden ska säga
+    /// **varför** och **vilket tempo** som gäller — annars ser det ut som samma döda kontroll
+    /// som i "inget hände".
+    #[test]
+    fn clips_beyond_the_stretch_ceiling_are_named_with_their_tempo() {
+        let far =
+            tempo_change_note(0, 12, Some((12, 163.0)), None).expect("tolv klipp ska sägas högt");
+        assert!(far.contains("12"), "antalet ska stå i raden: {far}");
+        assert!(far.contains("163"), "klippens tempo ska stå i raden: {far}");
+        assert!(far.contains('🎚'), "åtgärden ska pekas ut: {far}");
+
+        // **Filt-bort-mätningen:** utan `far` (samma antal stillastående, inget mått) är
+        // talet borta ur raden — alltså är det `far` som bär det, inte slumpen.
+        let blind = tempo_change_note(0, 12, None, None).expect("raden finns ändå");
+        assert!(!blind.contains("163"), "utan klippens tempo ska talet inte stå där: {blind}");
+
+        // Följer allt finns inget att säga, även när ett `far`-svar skulle finnas.
+        assert_eq!(tempo_change_note(12, 0, Some((0, 0.0)), None), None);
+    }
+
+    /// **Alex' tolv stämmor, räknade** (mätt 2026-09-20).
+    ///
+    /// "Under Vintergatan" är byggd i **163 BPM**; projektet stod i **40** = 4,075×, alltså
+    /// över taket, alltså sträcktes ingenting — och det han hörde var en fyra gånger för lång,
+    /// kornrepeterad version av låten. Räkningen ska ge noll följande, och radens tal ska
+    /// komma ur **samma** genomräkning som appen visar (inte ur en gissning i provet).
+    #[test]
+    fn twelve_stems_four_times_off_are_counted_by_the_rule_that_plays_them() {
+        let stem = |source_bpm: f32| AudioRegion {
+            id: 1,
+            name: "Stämma".to_string(),
+            start_bar: 0.0,
+            length_bars: 32.0,
+            sample_offset_sec: 0.0,
+            source_path: Some("/tmp/stam.wav".to_string()),
+            waveform_peaks: Vec::new(),
+            volume: 1.0,
+            fade_in_bars: 0.0,
+            fade_out_bars: 0.0,
+            muted: false,
+            is_reverse: false,
+            color: Color32::WHITE,
+            loop_length_bars: 0.0,
+            source_bpm,
+            tape: false,
+        };
+        let stems: Vec<AudioRegion> = (0..12).map(|_| stem(163.0)).collect();
+        let in_forty = crate::audio::tempo::TempoMap::single(40.0);
+
+        let summary = tempo_follow_summary(stems.iter(), &in_forty, true);
+        assert_eq!(summary.following, 0, "4,075× får inte sträckas");
+        assert_eq!(summary.standing_still, 12);
+        assert_eq!(summary.too_far, Some((12, 163.0)), "skälet och tempot ska namnges");
+
+        // Raden hör ihop med räkningen: tolv klipp, och 163 i klartext.
+        let note = tempo_change_note(summary.following, summary.standing_still, summary.too_far, None)
+            .expect("tolv stillastående stämmor ska sägas högt");
+        assert!(note.contains("12") && note.contains("163"), "{note}");
+
+        // I musikens eget tempo följer allt, och det finns inget skäl att peka på.
+        let own_tempo = crate::audio::tempo::TempoMap::single(163.0);
+        let ok = tempo_follow_summary(stems.iter(), &own_tempo, true);
+        assert_eq!(
+            (ok.following, ok.standing_still, ok.too_far),
+            (12, 0, None)
+        );
+        assert_eq!(
+            tempo_change_note(ok.following, ok.standing_still, ok.too_far, None),
+            None
+        );
+
+        // Klipp **utan** känt tempo står still av ett annat skäl — de får inte kallas
+        // "för långt bort", för då pekar raden på fel åtgärd.
+        let unknown: Vec<AudioRegion> = (0..12).map(|_| stem(0.0)).collect();
+        let blind = tempo_follow_summary(unknown.iter(), &in_forty, true);
+        assert_eq!((blind.following, blind.standing_still, blind.too_far), (0, 12, None));
+
+        // Är switchen av är skälet ett annat, och inget "för långt bort" ska rapporteras.
+        let off = tempo_follow_summary(stems.iter(), &in_forty, false);
+        assert_eq!((off.following, off.standing_still, off.too_far), (0, 12, None));
     }
 
     /// Ett trimmat klipp behåller sin plats i den sträckta filen.

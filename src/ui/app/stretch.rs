@@ -180,15 +180,36 @@ pub(crate) fn stamped_tempo(length_bars: f32, offset_sec: f32, file_secs: Option
         .unwrap_or(project_bpm)
 }
 
-/// Vad statusraden ska säga när tempot har ändrats (Fas 8.10).
+/// Vad statusraden ska säga när tempot har ändrats (Fas 8.10, 8.10d).
 ///
 /// **Tyst bortfall är det som gör en sådan här sak osynlig.** Ett klipp utan känt
 /// inspelningstempo rörs inte när tempot ändras — och då ser kontrollen ut att inte göra
 /// något alls. Alex drog i tempot i ett projekt där **alla** klipp saknade måttet och fick
 /// ingen återkoppling alls; det här är den raden han skulle fått i stället.
 ///
+/// **`far` är det tredje skälet ett klipp står still** (mätt fram 2026-09-20): tempot ligger
+/// mer än dubbelt från klippets eget, och då sträcks ingenting (se
+/// [`crate::audio::stretch::FOLLOW_MIN_RATIO`]). Utan den här grenen hade appen sagt "de
+/// saknar känt inspelningstempo" om 12 stämmor som **har** ett — och det är en lögn i
+/// precis det läge där användaren behöver veta varför inget ljud förändrades.
+///
 /// Ren funktion: regeln går att pröva utan fönster, och den räknar i stället för att gissa.
-pub fn tempo_change_note(following: usize, stuck: usize, measured: Option<f32>) -> Option<String> {
+pub fn tempo_change_note(
+    following: usize,
+    stuck: usize,
+    far: Option<(usize, f32)>,
+    measured: Option<f32>,
+) -> Option<String> {
+    // Ett `far` med noll klipp är inget skäl: grenen gäller bara när något faktiskt står
+    // still av det skälet (annars kunde raden påstå något om noll klipp).
+    if let Some((count, bpm)) = far.filter(|(n, _)| *n > 0) {
+        return Some(crate::tstatus!(
+            "⚠ {} klipp sträcks inte: tempot ligger mer än dubbelt från deras inspelningstempo ({:.1} BPM) — de spelar som inspelade. Sätt projektets tempo till {:.1} eller slå av 🎚 Följ tempot.",
+            count,
+            bpm,
+            bpm
+        ));
+    }
     if stuck == 0 {
         return None; // alla klipp följer; inget att säga
     }
@@ -390,15 +411,22 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
             // projekt med ett enda tempo är det vanliga fallet, och det är
             // just där frågan "varför händer inget när jag ändrar tempot?"
             // uppstår.
-            let following = self.clips_with_source_tempo();
+            // **Fyra frågor, fyra svar** (rättat 2026-09-20): "följer" är de där regeln
+            // säger sträckning, "står still" är resten, "med känt tempo" är de där vi vet
+            // vilket tempo filen byggdes i, och "utan känt tempo" är de knappen nedan kan
+            // stämpla. Ett klipp 4× från projektets tempo har ett **känt** tempo och står
+            // ändå still — att räkna det ena och kalla det andra är hur etiketten ljög.
+            let following = self.clips_following_tempo();
+            let known = self.clips_with_source_tempo();
             let unknown = self.clips_without_source_tempo();
+            let stuck = self.clips_standing_still();
             ui.label(egui::RichText::new(crate::tstatus!(
-                "🎚 Klipp som följer tempot: {} (av kända {})",
+                "🎚 Klipp som följer tempot: {} (av {} med känt tempo)",
                 following,
-                following + unknown
+                known
             ))
             .size(11.0)
-            .color(if unknown == 0 { Theme::FL_GREEN } else { Theme::TEXT_BRIGHT }));
+            .color(if stuck == 0 { Theme::FL_GREEN } else { Theme::TEXT_BRIGHT }));
             if unknown > 0 {
                 // Tempot räknas ur klippens eget mått när det går (Fas 8.10): takter
                 // och filens längd. Det syns i knappen, för det är den siffra som
@@ -596,8 +624,9 @@ pub fn sync_tempo_follow(&mut self) {
     // Säg vad som hände — eller inte hände (Fas 8.10). Utan den här raden är ett
     // klipp utan känt tempo en kontroll som ser död ut i stället för en förklaring.
     if let Some(note) = tempo_change_note(
-        self.clips_with_source_tempo(),
-        self.clips_without_source_tempo(),
+        self.clips_following_tempo(),
+        self.clips_standing_still(),
+        self.clips_too_far_from_tempo(),
         self.geometry_tempo_for_unknown_clips(),
     ) {
         self.status_message = note;
@@ -613,14 +642,122 @@ pub fn sync_tempo_follow(&mut self) {
 }
 
 impl SonixApp {
-/// Hur många klipp som **har** ett känt inspelningstempo (och alltså följer
-/// med i stället för att stå still).
+/// Hur många klipp som **har** ett känt inspelningstempo.
+///
+/// **Känt tempo är inte samma sak som att följa** (rättat 2026-09-20): ett klipp 4× från
+/// projektets tempo har ett känt tempo och står ändå still (se
+/// [`crate::audio::stretch::FOLLOW_MIN_RATIO`]). Den här räknaren svarar bara på "vet vi
+/// vilket tempo filen är byggd i", och den som vill veta vad som **hörs** frågar
+/// [`Self::clips_following_tempo`] i stället.
 pub fn clips_with_source_tempo(&self) -> usize {
     self.playlist_tracks
         .iter()
         .flat_map(|t| t.regions.iter())
         .filter(|r| r.source_bpm > 0.0)
         .count()
+}
+}
+
+/// **En genomräkning, tre svar** (mätt fram 2026-09-20).
+///
+/// Klippens tempo mot projektets är samma fråga varje gång appen vill skriva ett tal om
+/// tempoföljning — statusraden, etiketten i Tempokartan och verktygstipset på tempofältet.
+/// Räkningen är därför **en** ren funktion som alla tre läser, i stället för tre filter som
+/// kan glida isär. Det var precis vad som hände: räknaren för känt tempo kallades "följer
+/// med", så i Alex' "Under Vintergatan" (tolv stämmor i 163 BPM, projektet i 40) sade appen
+/// att tolv klipp följde medan **inget** gjorde det. Ett tal som lovar fel sak är värre än
+/// inget tal.
+pub(crate) struct TempoFollowSummary {
+    /// Klipp som sträcks när tempot ändras (`decide` säger Stretch).
+    pub following: usize,
+    /// Klipp som står still, oavsett skäl (okänt tempo, switchen av, eller för långt bort).
+    pub standing_still: usize,
+    /// Klipp som står still **för att** tempot ligger mer än dubbelt från deras eget, med
+    /// sitt inspelningstempo — alltså det tempo projektet ska stå i för att de ska höras som
+    /// inspelade. `None` när inget klipp står still av det skälet (bland annat när switchen
+    /// är av: då är skälet ett annat, och raden ska inte peka på fel sak).
+    pub too_far: Option<(usize, f32)>,
+}
+
+/// Räknar ihop [`TempoFollowSummary`] ur klippen, tempokartan och switchen.
+///
+/// Ren funktion utan fönster: proven bygger riktiga `AudioRegion`-klossar och prövar
+/// siffrorna som statusraden faktiskt visar, och räknaren frågar **samma regel som motorn**
+/// ([`crate::audio::stretch::decide`]) i stället för att gissa.
+pub(crate) fn tempo_follow_summary<'a>(
+    regions: impl Iterator<Item = &'a AudioRegion>,
+    tempo: &crate::audio::tempo::TempoMap,
+    follow_tempo: bool,
+) -> TempoFollowSummary {
+    let mut following = 0usize;
+    let mut far = 0usize;
+    let mut far_bpm: Option<f32> = None;
+    let mut total = 0usize;
+    for r in regions {
+        total += 1;
+        let here = tempo.bpm_at(r.start_bar as f64);
+        // **Frågan är "hänger klippet med", inte "sträcks det just nu"** — se
+        // `audio::stretch::follows_tempo`. Ett klipp som redan ligger i projektets tempo
+        // följer med, och den skillnaden är hela anledningen till att räknaren inte kan
+        // använda `decide` rakt av.
+        if crate::audio::stretch::follows_tempo(r.source_bpm, here, follow_tempo, r.tape) {
+            following += 1;
+        } else if follow_tempo
+            && r.source_bpm > 0.0
+            && !r.tape
+            && crate::audio::stretch::beyond_follow_band(r.source_bpm, here)
+        {
+            // Skälet är "för långt bort" — klippet **har** ett tempo, det får bara inte följa.
+            far += 1;
+            far_bpm.get_or_insert(r.source_bpm);
+        }
+    }
+    TempoFollowSummary {
+        following,
+        standing_still: total - following,
+        too_far: far_bpm.map(|bpm| (far, bpm)),
+    }
+}
+
+impl SonixApp {
+/// Räkningen ovan, mot den här appens klipp och tempo.
+pub(crate) fn tempo_follow(&self) -> TempoFollowSummary {
+    tempo_follow_summary(
+        self.playlist_tracks.iter().flat_map(|t| t.regions.iter()),
+        &self.tempo_map(),
+        self.follow_tempo,
+    )
+}
+}
+
+impl SonixApp {
+/// Hur många klipp som **följer** tempot — de som faktiskt sträcks när tempot ändras.
+pub fn clips_following_tempo(&self) -> usize {
+    self.tempo_follow().following
+}
+}
+
+impl SonixApp {
+/// Hur många klipp som **står still** när tempot ändras — oavsett skäl.
+///
+/// Ett klipp kan stå still av tre skäl (okänt inspelningstempo, switchen av, eller ett tempo
+/// mer än dubbelt från dess eget) och statusraden behöver **antalet**, inte skälet: skälet
+/// räknas fram för sig av [`Self::clips_too_far_from_tempo`] och
+/// [`Self::geometry_tempo_for_unknown_clips`].
+pub fn clips_standing_still(&self) -> usize {
+    self.tempo_follow().standing_still
+}
+}
+
+impl SonixApp {
+/// Klippen som står still **för att tempot ligger mer än dubbelt från deras eget**
+/// (mätt fram 2026-09-20 — se [`crate::audio::stretch::FOLLOW_MIN_RATIO`]).
+///
+/// Returen är `(antal, klippens inspelningstempo)` så att statusraden kan säga **vilket**
+/// tempo projektet ska stå i för att musiken ska höras som den spelades in, i stället för att
+/// bara säga att något står still.
+pub fn clips_too_far_from_tempo(&self) -> Option<(usize, f32)> {
+    self.tempo_follow().too_far
 }
 }
 

@@ -2782,6 +2782,57 @@ nio cachar ska fortsätta träffa. (Rad 3 står kvar som reserv om motorn någon
 bättre" är bytet en rad — `stretch_stereo` pekar om till `stretch_signalsmith` och
 cachenyckeln höjs.
 
+## 8.10f Taket för automatisk följning: ett klipp fyra gånger från tempot spelas som inspelat (Alex' rapport 2026-09-20)
+
+**Rapporten, ordagrant:** *"När jag importerar stämmor i sonix, så laddar den in dem, men ljudet
+stämmer inte alls, det är bara något konstigt knaster i bakgrunden."*
+
+**Vad som hände, mätt i hans egna filer.** Stämmorna i `Under_Vintergatan` är byggda i **163 BPM**
+(importen mätte det ur musiken); projektet de importerades i stod i **40** — reglagets nedre ände.
+40/163 = 0,2454, som klämdes till 0,25: alltså **4,0× sträckning av varje stämma**.
+
+| Mätt 2026-09-20 | Värde |
+| :--- | ---: |
+| Fil per stämma i `~/.cache/sonix/stretch` (`*-163-00-till-40-00-v2.wav`) | **486 MB** |
+| De 21 filerna i den familjen | **8,4 GB** (hela cachen: **17 GB**) |
+| Stämman i den sträckta filen | **21 minuter** i stället för 5:17 |
+| Kornperiod i renderingen (autokorrelation) | **42,7 ms**, topp 0,78 (originalet: 0,02) |
+
+Det som hörs är alltså samma musik fyra gånger långsammare, med en kornrepeterad drill ovanpå —
+precis det "knaster" rapporten beskriver. **Sträckningen är inte trasig; den är bara inte musik.**
+Motorn gjorde rätt sak med en faktor den aldrig borde fått.
+
+**Regeln som saknades, och var gränsen sitter.** 8.10 sade "följ tempot, bevara tonhöjden" utan
+övre gräns. Nu finns **taket** (`FOLLOW_MIN_RATIO`/`FOLLOW_MAX_RATIO` i `src/audio/stretch.rs`):
+ligger klippets inspelningstempo **mer än dubbelt** från projektets spelar klippet **som inspelat**
+(faktor 1,0) i stället för att sträckas. Precis innanför — exakt 2× och exakt 0,5× — följer som
+förut, och klämningen till 0,25–4,0 står kvar för den som sträcker något **med flit** (den som
+väljer bandspelarläge per klipp får fortfarande sin faktor). Att gränsen ligger just vid dubbelt är
+mätt mot vad som hörs: 8.10c mätte **+9,8 % / +13,6 % nya anslag** redan vid 1,09×, alltså är en
+sträckning på 4× inte samma stycke musik längre — och då är originalet det bättre svaret.
+
+**Följden i gränssnittet — och lärdomen.** Ett klipp som står still ska sägas högt, och **varför**
+(samma läxa som 8.10d: "inget hände" är ett tyst bortfall). Statusraden vid ett tempobyte bär nu
+skälet: *"⚠ {} klipp sträcks inte: tempot ligger mer än dubbelt från deras inspelningstempo
+(163,0 BPM) — de spelar som inspelade. Sätt projektets tempo till 163,0 eller slå av 🎚 Följ
+tempot."* På vägen föll tre räknare som sade fel sak om samma klipp:
+
+1. **Räknaren för "känt tempo" kallades "följer med".** Hjälptexten sade "12 klipp har ett känt
+   inspelningstempo och följer med när du ändrar tempot" medan **inget** gjorde det. Den heter nu
+   `clips_following_tempo` och frågar `audio::stretch::follows_tempo` — *hänger klippet med*, inte
+   *sträcks det just nu* (ett klipp som redan ligger i projektets tempo är `Untouched` och följer
+   ändå). `follows_tempo_agrees_with_decide` prövar 4 källtempon × 4 projekttempon × switchen ×
+   bandspelaren och tillåter skillnaden i **exakt ett** fall.
+2. **Tempokartans etikett skiljer nu på frågorna:** "{} av {} **med känt tempo**", medan
+   stämpelknappen fortfarande frågar dem som **saknar** tempo — tre olika tal för tre olika frågor,
+   ur en genomräkning (`tempo_follow_summary`) i stället för tre filter som kan glida isär.
+3. **Proven biter, mätt med flit-bort-metoden:** stängs taket av faller
+   `a_tempo_more_than_double_from_the_source_is_not_stretched` (163 → 40 gav `Stretch 0,25`,
+   alltså exakt Alex' fall) och `follows_tempo_agrees_with_decide`.
+
+**Kvar efter det här:** cachen har fortfarande ingen utrensning (17 GB i
+`~/.cache/sonix/stretch`, varav 8,4 GB är den här buggens filer) — se punkt 2 i "Kvar på 8.10".
+
 ## 🏗️ Arkitektur & refaktorisering: Uppdelning av app-ytan och ljudmotorn (2026-09-14)
 
 Under 2026-09-14 genomfördes en omfattande modularisering av kodbasens två största monoliter: GUI-ytan (`src/ui/app.rs`) och ljudmotorn (`src/audio/synth.rs`). Målet var att eliminera kognitiv överbelastning, möjliggöra säkert parallellt arbete utan krockar i gigantiska filer och etablera strikt ansvarsfördelning med bevarat byte- och runtime-beteende.

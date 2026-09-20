@@ -276,15 +276,18 @@ impl SonixApp {
                     // Hjälptexten säger vad som händer med LJUDET när tempot
                     // ändras (Fas 8.10) — annars är det en kontroll som ser ut
                     // att bara styra klockan. Antalet räknas, inte cachas.
-                    let with_tempo = self.clips_with_source_tempo();
+                    let with_tempo = self.clips_following_tempo();
                     let tempo_hover = if with_tempo == 0 {
+                        // **Två skäl, en sanning.** Räkningen är vad som *hörs*, alltså
+                        // "följer", och då måste texten bära båda skälen till att inget gör
+                        // det: okänt tempo — eller ett tempo mer än dubbelt från klippens.
                         crate::i18n::t(
-                            "Klippens tempo: inga klipp har ett känt inspelningstempo ännu, så ljudet rörs inte när du ändrar tempot.",
+                            "Klippens tempo: inga klipp följer tempot — de saknar antingen ett känt inspelningstempo eller så ligger projektets tempo mer än dubbelt från deras. Ljudet rörs inte.",
                         )
                         .to_string()
                     } else {
                         crate::tstatus!(
-                            "Klippens tempo: {} klipp har ett känt inspelningstempo och följer med när du ändrar tempot — med bevarad tonhöjd (Fas 8.10 steg 2). Enstaka klipp kan i stället sättas i bandspelarläge i klippmenyn. Klipp med okänt tempo rörs inte.",
+                            "Klippens tempo: {} klipp följer med när du ändrar tempot — med bevarad tonhöjd (Fas 8.10 steg 2). Klipp vars inspelningstempo ligger mer än dubbelt från projektets spelar som inspelade, och enstaka klipp kan i stället sättas i bandspelarläge i klippmenyn.",
                             with_tempo
                         )
                     };

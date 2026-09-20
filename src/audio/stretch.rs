@@ -28,6 +28,30 @@ use std::path::{Path, PathBuf};
 pub const MIN_RATIO: f32 = 0.25;
 pub const MAX_RATIO: f32 = 4.0;
 
+/// **Taket för den automatiska följningen** — en faktor per klipp som tempot får följas med
+/// utan att någon har bett om det.
+///
+/// Spannet är en oktav i tempo: 0,5× (projektet står i halva källans tempo) till 2,0×.
+/// Innanför det ligger allt en människa menar med "samma låt i ett annat tempo" —
+/// halv- och dubbeltempo inräknat. Utanför är det inte längre en tempoföljning utan en
+/// omritning av musiken, och den ska vara ett **aktivt val** (sångstudiens reglage eller
+/// bandspelarläget per klipp), inte något som händer för att ett reglage står fel.
+///
+/// **Mätt 2026-09-20, Alex' "Under Vintergatan"** — stämmorna byggda i 163 BPM, projektet i
+/// 40 (= 4,075×, alltså precis utanför): appen sträckte då **varje** stämma till klämningen
+/// 4,0×, skrev **486 MB per stämma** (de 21 filerna i den familjen ligger på **8,4 GB** i
+/// `~/.cache/sonix/stretch` — hela cachen är 17 GB — och varje stämma blev 21 minuter i
+/// stället för 5:17) och spelade det. Det som hörs är samma musik
+/// fyra gånger långsammare — och ovanpå den en **kornrepeterad drill**: vågformen i den
+/// sträckta filen har en topp i autokorrelationen på 42,7 ms (0,78 mot 0,02 för originalet),
+/// alltså kornet upprepat i samma takt. Sträckningen är inte trasig; den är bara inte musik.
+///
+/// Klippet **spelar som inspelat** i stället (faktor 1,0), och [`crate::ui::app::stretch`]
+/// säger varför i statusraden. Klämningen till [`MIN_RATIO`]–[`MAX_RATIO`] finns kvar för
+/// den som sträcker något med flit.
+pub const FOLLOW_MIN_RATIO: f32 = 0.5;
+pub const FOLLOW_MAX_RATIO: f32 = 2.0;
+
 /// Vad som ska räknas fram för ett klipp.
 ///
 /// **Två faktorer, och de är varandras inverterade.** Det här är den fälla som
@@ -117,10 +141,14 @@ pub struct FollowDecision {
 /// Ordningen är vald så att inget kan hända av misstag:
 /// 1. **Okänt inspelningstempo** (`source_bpm <= 0`) → rör inte ljudet (8.10:s regel).
 /// 2. **Switchen av** → rör inte ljudet. "Följ tempot" är en switch, inte en halv.
-/// 3. **Klippet vill bandspelare** (`per_clip_tape`) → [`FollowMode::Tape`], tonhöjden följer.
-/// 4. **Samma tempo** → inget att göra (faktor 1,0, bit-exakt väg).
-/// 5. Annars → [`FollowMode::Stretch`] med projekt/källa, klämt till samma spann som
-///    sångstudiens reglage.
+/// 3. **Samma tempo** → inget att göra (faktor 1,0, bit-exakt väg).
+/// 4. **Klippet vill bandspelare** (`per_clip_tape`) → [`FollowMode::Tape`], tonhöjden följer.
+///    Det är ett aktivt val per klipp och **kostar ingenting** (ingen fil räknas fram), så
+///    det kläms som förut i stället för att ha ett tak.
+/// 5. **Mer än dubbelt från källans tempo** (utanför [`FOLLOW_MIN_RATIO`]–[`FOLLOW_MAX_RATIO`])
+///    → rör inte ljudet. En 4×-sträckning är ett tekniskt genomförbart svar på en fråga ingen
+///    ställt, och den kostar hundratals MB per klipp. Se konstantens doc.
+/// 6. Annars → [`FollowMode::Stretch`] med projekt/källa.
 pub fn decide(
     source_bpm: f32,
     project_bpm: f32,
@@ -144,10 +172,53 @@ pub fn decide(
             ratio: raw,
         };
     }
+    // **Taket** (se [`FOLLOW_MIN_RATIO`]): ovanför det spelar klippet som inspelat.
+    if beyond_follow_band(source_bpm, project_bpm) {
+        return untouched;
+    }
     FollowDecision {
         mode: FollowMode::Stretch,
         ratio: raw,
     }
+}
+
+/// Ligger tempot utanför taket för automatisk följning? (Se [`FOLLOW_MIN_RATIO`].)
+///
+/// **Ren funktion, och samma regel som [`decide`] dömer med** — appen frågar den för att
+/// kunna säga *varför* ett klipp står still i stället för att gissa (statusraden, och
+/// räknaren i ⏱ Tempokarta). Två ställen med samma regel skriver isär; därför är det här
+/// den enda.
+pub fn beyond_follow_band(source_bpm: f32, project_bpm: f32) -> bool {
+    if source_bpm <= 0.0 || project_bpm <= 0.0 {
+        return false; // okänt tempo är ett annat svar (rör inte ljudet, 8.10)
+    }
+    !(FOLLOW_MIN_RATIO..=FOLLOW_MAX_RATIO).contains(&(project_bpm / source_bpm))
+}
+
+/// **Följer klippet tempot?** — frågan som **räknarna** ställer: hänger klippet med när
+/// tempot ändras (och sträcks eller bandas det då)?
+///
+/// Skillnaden mot [`decide`] är **ett** fall, och den är avsiktlig: ett klipp som redan ligger
+/// i projektets tempo får `Untouched` av `decide` — det ska inte sträckas *nu* — men det
+/// **följer** med så fort tempot rör sig. Att räkna "hur många klipp följer tempot" med
+/// `decide` direkt kallar därför tolv stämmor i projektets eget tempo för stillastående, och
+/// det var den sortens tal som sade "tolv klipp följer med" om ett projekt där inget gjorde
+/// det. `follows_tempo_agrees_with_decide` håller de två svaren ihop.
+///
+/// Ett klipp i bandspelarläge följer alltid: tonhöjden får följa med, det är hela valet.
+pub fn follows_tempo(
+    source_bpm: f32,
+    project_bpm: f32,
+    follow_tempo: bool,
+    per_clip_tape: bool,
+) -> bool {
+    if source_bpm <= 0.0 || project_bpm <= 0.0 || !follow_tempo {
+        return false; // okänt tempo eller avstängd switch: ljudet rör sig inte (8.10)
+    }
+    if per_clip_tape {
+        return true;
+    }
+    !beyond_follow_band(source_bpm, project_bpm)
 }
 
 /// **Signalsmith Stretch som renderingsmotor** (Fas 8.10 steg 2).
@@ -1392,12 +1463,81 @@ mod tests {
         assert!((down.ratio - 0.8).abs() < 1e-6);
     }
 
-    /// En extrem tempodiff får inte ge en orimlig faktor, och inte heller en tyst väg runt
-    /// klämningen: samma gränser som sångstudiens reglage gäller.
+    /// **Taket för den automatiska följningen** (mätt 2026-09-20).
+    ///
+    /// Alex' "Under Vintergatan": stämmorna är byggda i **163 BPM**, projektet stod i **40**
+    /// — alltså 4,075× — och appen sträckte då **varje** stämma till klämningen 4,0× och
+    /// skrev **486 MB per stämma** (5,8 GB på tre minuter). Provet håller taket: innanför
+    /// 0,5–2,0 följer klippet tempot, utanför spelar det **som inspelat** i stället.
+    #[test]
+    fn a_tempo_more_than_double_from_the_source_is_not_stretched() {
+        let untouched = FollowDecision {
+            mode: FollowMode::Untouched,
+            ratio: 1.0,
+        };
+        // Alex' fall: 163 → 40 = 4,075×. Det får inte bli en sträckning.
+        assert_eq!(
+            decide(163.0, 40.0, true, false),
+            untouched,
+            "4× från källans tempo ska spela originalet, inte en sträckt version"
+        );
+        // Exakt 2× (163 → 326) och exakt 0,5× (163 → 81,5) är innanför: de följer.
+        let double = decide(163.0, 326.0, true, false);
+        assert_eq!(double.mode, FollowMode::Stretch);
+        assert!((double.ratio - 2.0).abs() < 1e-4);
+        let half = decide(163.0, 81.5, true, false);
+        assert_eq!(half.mode, FollowMode::Stretch);
+        assert!((half.ratio - 0.5).abs() < 1e-4);
+        // Ett vanligt tempodrag följer förstås fortfarande.
+        assert_eq!(decide(163.0, 160.0, true, false).mode, FollowMode::Stretch);
+        // Och samma regel svarar appen med när den ska säga VARFÖR ett klipp står still.
+        assert!(beyond_follow_band(163.0, 40.0));
+        assert!(!beyond_follow_band(163.0, 160.0));
+        assert!(!beyond_follow_band(0.0, 40.0), "okänt tempo är ett annat svar");
+    }
+
+    /// **De två svaren får bara skilja i ett fall** (mätt 2026-09-20).
+    ///
+    /// `decide` svarar "vad ska göras just nu" och `follows_tempo` svarar "hänger klippet med
+    /// när tempot ändras". De är samma regel utom för klippet som **redan ligger rätt**: det
+    /// ska inte sträckas nu, men det följer med nästa gång tempot rör sig. Glider de isär
+    /// någon annanstans faller det här provet — och då är det räknarna i gränssnittet som
+    /// ljuger för Alex, inte ljudet.
+    #[test]
+    fn follows_tempo_agrees_with_decide() {
+        for &source in &[0.0, 163.0, 120.0, 400.0] {
+            for &project in &[40.0, 120.0, 163.0, 240.0] {
+                for &switch in &[true, false] {
+                    for &tape in &[true, false] {
+                        let d = decide(source, project, switch, tape);
+                        let already_right = source > 0.0
+                            && switch
+                            && ((project / source).clamp(MIN_RATIO, MAX_RATIO) - 1.0).abs() <= 1e-4;
+                        assert_eq!(
+                            follows_tempo(source, project, switch, tape),
+                            d.mode != FollowMode::Untouched || already_right,
+                            "källa {source}, projekt {project}, switch {switch}, band {tape}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// **Bandspelaren är ett aktivt val och kläms som förut** — det är följningen
+    /// (sträckningen) som har ett tak. Klämningen till sångstudiens spann bor i
+    /// `ui::app::stretch_ratio_for` och i renderaren, och prövas där.
     #[test]
     fn the_policy_clamps_like_the_vocal_studio_does() {
-        assert!((decide(120.0, 10_000.0, true, false).ratio - MAX_RATIO).abs() < 1e-6);
-        assert!((decide(120.0, 1.0, true, false).ratio - MIN_RATIO).abs() < 1e-6);
+        let tape = decide(120.0, 10_000.0, true, true);
+        assert_eq!(tape.mode, FollowMode::Tape);
+        assert!((tape.ratio - MAX_RATIO).abs() < 1e-6);
+        let tape_down = decide(120.0, 1.0, true, true);
+        assert_eq!(tape_down.mode, FollowMode::Tape);
+        assert!((tape_down.ratio - MIN_RATIO).abs() < 1e-6);
+        // Utan bandspelarläget är samma två fall **orörda**: klippet spelar som inspelat.
+        assert_eq!(decide(120.0, 10_000.0, true, false).ratio, 1.0);
+        assert_eq!(decide(120.0, 1.0, true, false).ratio, 1.0);
     }
 
 

@@ -2037,8 +2037,9 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
     // klipp utan mått — och fick ingen ledtråd förrän han bytte tempo. En rad vid
     // inläsningen hade sagt det direkt.
     self.status_message = match tempo_change_note(
-        self.clips_with_source_tempo(),
-        self.clips_without_source_tempo(),
+        self.clips_following_tempo(),
+        self.clips_standing_still(),
+        self.clips_too_far_from_tempo(),
         self.geometry_tempo_for_unknown_clips(),
     ) {
         Some(note) => crate::tstatus!("{} {}", opened, note),
