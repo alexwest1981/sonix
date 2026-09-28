@@ -623,6 +623,186 @@ fn plan_id3_file(
     out
 }
 
+// ---- FLAC --------------------------------------------------------------------
+//
+// A FLAC file is `fLaC` followed by metadata blocks: one byte where the top bit
+// marks the last block and the low seven bits carry the type, then a 24-bit
+// big-endian length, then the payload. The text lives in the VORBIS_COMMENT block
+// (type 4) — a little-endian vendor string, a little-endian field count, then
+// `KEY=value` fields. STREAMINFO and PICTURE are the music and the cover, so they
+// stay byte for byte; only the fields themselves are touched.
+//
+// Until now FLAC fell through to the mp3 path, found no ID3 and was reported as
+// clean — while Suno's `comment=` was still in the file. A report that says "clean"
+// about a file that is not is worse than no report: it is the silent clip again.
+
+/// One metadata block, with the offsets it occupies in the file.
+#[derive(Clone, Copy, Debug)]
+struct FlacBlock {
+    /// Offset of the 4-byte block header (flag byte + 24-bit length).
+    header: usize,
+    /// Offset of the payload.
+    payload: usize,
+    /// Payload length in bytes.
+    len: usize,
+    /// Block type: 0 = STREAMINFO, 4 = VORBIS_COMMENT, 6 = PICTURE.
+    kind: u8,
+}
+
+/// Reads the metadata block chain. `None` = it cannot be read (truncated file or an
+/// impossible length), and then the caller leaves the file alone.
+///
+/// The last-block flag ends the chain, and a length that points past the end of the
+/// file stops the reading instead of being guessed — the same rule as the RIFF reader.
+fn flac_blocks(data: &[u8]) -> Option<Vec<FlacBlock>> {
+    if data.len() < 4 || &data[0..4] != b"fLaC" {
+        return None;
+    }
+    let mut blocks = Vec::new();
+    let mut pos = 4usize;
+    loop {
+        if pos + 4 > data.len() {
+            return None;
+        }
+        let kind = data[pos] & 0x7F;
+        let len = u32::from_be_bytes([0, data[pos + 1], data[pos + 2], data[pos + 3]]) as usize;
+        let payload = pos + 4;
+        let end = payload.checked_add(len)?;
+        if end > data.len() {
+            return None;
+        }
+        blocks.push(FlacBlock {
+            header: pos,
+            payload,
+            len,
+            kind,
+        });
+        if data[pos] & 0x80 != 0 {
+            return Some(blocks);
+        }
+        pos = end;
+    }
+}
+
+/// The vendor string and the `KEY=value` fields of a VORBIS_COMMENT payload.
+///
+/// `None` when the payload does not add up — a length that runs past the block, or
+/// trailing bytes we do not understand. Then nothing is taken: better nothing than a
+/// guess about a container we did not fully read.
+fn vorbis_parts(payload: &[u8]) -> Option<(&[u8], Vec<&[u8]>)> {
+    fn len32(b: &[u8]) -> Option<u32> {
+        (b.len() >= 4).then(|| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+    }
+    let vlen = len32(payload)? as usize;
+    let vend = 4usize.checked_add(vlen)?;
+    let count = len32(payload.get(vend..)?)? as usize;
+    let mut pos = vend.checked_add(4)?;
+    let mut fields: Vec<&[u8]> = Vec::new();
+    for _ in 0..count {
+        let flen = len32(payload.get(pos..)?)? as usize;
+        let start = pos.checked_add(4)?;
+        let end = start.checked_add(flen)?;
+        fields.push(payload.get(start..end)?);
+        pos = end;
+    }
+    if pos != payload.len() {
+        return None;
+    }
+    Some((&payload[4..vend], fields))
+}
+
+/// A short, readable line about one Vorbis field — for both what goes and what stays.
+fn vorbis_label(field: &[u8]) -> String {
+    let eq = field.iter().position(|&b| b == b'=');
+    let (key, value) = match eq {
+        Some(i) => (
+            String::from_utf8_lossy(&field[..i]).to_lowercase(),
+            &field[i + 1..],
+        ),
+        None => (String::from_utf8_lossy(field).to_lowercase(), &field[field.len()..]),
+    };
+    let text = printable_strings(value, 4).join(" ");
+    let shown = if text.is_empty() {
+        matched_marker(field)
+            .map(|m| format!("carries \"{m}\""))
+            .unwrap_or_default()
+    } else {
+        text
+    };
+    format!(
+        "VORBIS {key}: {}",
+        shown.chars().take(60).collect::<String>()
+    )
+}
+
+/// The FLAC path: only the Vorbis fields that carry provenance go. Title, artist,
+/// lyrics, cover and every other block stay byte for byte.
+///
+/// The block itself stays where it is — an empty Vorbis comment is legal — so no
+/// block flags or lengths outside it have to be rewritten.
+fn plan_flac(
+    data: &[u8],
+    removed: &mut Vec<String>,
+    kept: &mut Vec<String>,
+    notes: &mut Vec<String>,
+) -> Vec<u8> {
+    let Some(blocks) = flac_blocks(data) else {
+        notes.push("FLAC: the metadata block chain cannot be read — file left alone".to_string());
+        return data.to_vec();
+    };
+    let Some(block) = blocks.iter().find(|b| b.kind == 4) else {
+        return data.to_vec();
+    };
+    let payload = &data[block.payload..block.payload + block.len];
+    let Some((vendor, fields)) = vorbis_parts(payload) else {
+        notes.push(
+            "FLAC: the Vorbis comment does not add up field by field — file left alone".to_string(),
+        );
+        return data.to_vec();
+    };
+    let mut left: Vec<&[u8]> = Vec::new();
+    let mut took = 0usize;
+    for field in &fields {
+        if carries_provenance(field) {
+            removed.push(vorbis_label(field));
+            took += 1;
+        } else {
+            kept.push(vorbis_label(field));
+            left.push(field);
+        }
+    }
+    if took == 0 {
+        return data.to_vec();
+    }
+    let mut body: Vec<u8> = Vec::new();
+    body.extend_from_slice(&(vendor.len() as u32).to_le_bytes());
+    body.extend_from_slice(vendor);
+    body.extend_from_slice(&(left.len() as u32).to_le_bytes());
+    for field in &left {
+        body.extend_from_slice(&(field.len() as u32).to_le_bytes());
+        body.extend_from_slice(field);
+    }
+    if body.len() > 0xFF_FFFF {
+        // The block length is 24 bits. It cannot overflow from a real comment, but a
+        // silent wrap would corrupt the file, so it stops here instead.
+        notes.push("FLAC: the rebuilt comment block does not fit in 24 bits — file left alone".to_string());
+        return data.to_vec();
+    }
+    let mut out = Vec::with_capacity(data.len());
+    out.extend_from_slice(&data[..block.header]);
+    out.push(data[block.header]); // same flag byte: the last-block bit is untouched
+    out.extend_from_slice(&(body.len() as u32).to_be_bytes()[1..]);
+    out.extend_from_slice(&body);
+    out.extend_from_slice(&data[block.payload + block.len..]);
+    out
+}
+
+/// Is there still a STREAMINFO block? The guard before a write: a FLAC without it is
+/// not a FLAC, and then the file is left alone.
+fn flac_has_streaminfo(data: &[u8]) -> bool {
+    flac_blocks(data).is_some_and(|blocks| blocks.iter().any(|b| b.kind == 0))
+}
+
 /// Städningens plan för en fil — den nya filen, vad som tas och vad som lämnas.
 ///
 /// **En väg, inte två.** `scan` och `strip_tags` bygger båda på den här, så
@@ -662,8 +842,11 @@ pub fn plan_clean(data: &[u8]) -> CleanPlan {
         ..CleanPlan::default()
     };
     let is_riff = data.len() >= 12 && &data[0..4] == b"RIFF" && &data[8..12] == b"WAVE";
+    let is_flac = data.len() >= 4 && &data[0..4] == b"fLaC";
     let candidate = if is_riff {
         plan_riff(data, &mut plan.removed, &mut plan.kept, &mut plan.notes)
+    } else if is_flac {
+        plan_flac(data, &mut plan.removed, &mut plan.kept, &mut plan.notes)
     } else {
         plan_id3_file(data, &mut plan.removed, &mut plan.kept, &mut plan.notes)
     };
@@ -674,6 +857,8 @@ pub fn plan_clean(data: &[u8]) -> CleanPlan {
     }
     let has_audio = if is_riff {
         riff_has_audio(&candidate)
+    } else if is_flac {
+        flac_has_streaminfo(&candidate)
     } else {
         candidate.len() >= 16
     };
@@ -699,6 +884,8 @@ pub struct TagReport {
     pub has_id3v1: bool,
     /// RIFF-metadata (`LIST`/`INFO` eller en inbäddad `id3 `-chunk) i en wav.
     pub has_riff_metadata: bool,
+    /// A VORBIS_COMMENT block in a FLAC file — where the text lives in that format.
+    pub has_flac_metadata: bool,
     /// Härkomsten som tas, läsbar — det man tar bort ska gå att se.
     pub excerpts: Vec<String>,
     /// Musiken som lämnas (titel, artist, låttext, omslag …).
@@ -716,6 +903,8 @@ pub fn scan(path: &str) -> Result<TagReport, String> {
         has_id3v2: id3v2_span(&data).is_some(),
         has_id3v1: id3v1_offset(&data).is_some(),
         has_riff_metadata: !riff_metadata_spans(&data).is_empty(),
+        has_flac_metadata: flac_blocks(&data)
+            .is_some_and(|blocks| blocks.iter().any(|b| b.kind == 4)),
         excerpts: plan.removed,
         kept: plan.kept,
         notes: plan.notes,
@@ -1446,5 +1635,190 @@ mod tests {
         assert_eq!(after, sound, "ljudet ska vara byte för byte detsamma");
         assert_eq!(strip_tags(&path_str).unwrap(), 0, "idempotent: inget kvar att ta");
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ---- FLAC -----------------------------------------------------------------
+
+    /// One `KEY=value` field, with its little-endian length in front.
+    fn vorbis_field(key: &str, value: &str) -> Vec<u8> {
+        let text = format!("{key}={value}");
+        let mut v = (text.len() as u32).to_le_bytes().to_vec();
+        v.extend_from_slice(text.as_bytes());
+        v
+    }
+
+    /// A VORBIS_COMMENT payload: vendor string, field count, then the fields.
+    fn flac_comment(vendor: &str, fields: &[Vec<u8>]) -> Vec<u8> {
+        let mut p = (vendor.len() as u32).to_le_bytes().to_vec();
+        p.extend_from_slice(vendor.as_bytes());
+        p.extend_from_slice(&(fields.len() as u32).to_le_bytes());
+        for f in fields {
+            p.extend_from_slice(f);
+        }
+        p
+    }
+
+    /// `fLaC`, a STREAMINFO block, an optional comment block, then the audio bytes.
+    fn flac_file(comment: Option<&[u8]>, sound: &[u8]) -> Vec<u8> {
+        let mut out = b"fLaC".to_vec();
+        out.push(0x00); // STREAMINFO, not the last block
+        out.extend_from_slice(&34u32.to_be_bytes()[1..]);
+        out.extend_from_slice(&[0u8; 34]);
+        if let Some(c) = comment {
+            out.push(0x80 | 4); // VORBIS_COMMENT, last block
+            out.extend_from_slice(&(c.len() as u32).to_be_bytes()[1..]);
+            out.extend_from_slice(c);
+        }
+        out.extend_from_slice(sound);
+        out
+    }
+
+    /// The `KEY` of every field in a rebuilt comment block.
+    fn flac_keys(data: &[u8]) -> Vec<String> {
+        let blocks = flac_blocks(data).expect("fortfarande en FLAC-fil");
+        let block = blocks.iter().find(|b| b.kind == 4).expect("kommentarblocket");
+        let payload = &data[block.payload..block.payload + block.len];
+        let (_, fields) = vorbis_parts(payload).expect("läsbar fält för fält");
+        fields
+            .iter()
+            .map(|f| {
+                let end = f.iter().position(|&b| b == b'=').unwrap_or(f.len());
+                String::from_utf8_lossy(&f[..end]).to_string()
+            })
+            .collect()
+    }
+
+    /// FLAC: Sunos `comment=` går, titel/artist/text står kvar, och ljudbyten är
+    /// exakt de som låg i filen. Det var den vägen som saknades — filen rapporterades
+    /// som ren medan Sunos text låg kvar i Vorbis-kommentaren.
+    #[test]
+    fn flac_provenance_goes_and_the_music_stays() {
+        let sound = audio(900);
+        let file = flac_file(
+            Some(&flac_comment(
+                "Lavf63.1.101",
+                &[
+                    vorbis_field("TITLE", "Ashes"),
+                    vorbis_field("ARTIST", "alexwest"),
+                    vorbis_field("LYRICS", "[Verse] My back locks up getting out of bed"),
+                    vorbis_field(
+                        "comment",
+                        "made with suno; created=2026-09-28T13:33:55Z; id=b57570c1",
+                    ),
+                ],
+            )),
+            &sound,
+        );
+
+        let plan = plan_clean(&file);
+        assert!(plan.removes_anything(), "Sunos fält ska hittas");
+        assert!(
+            plan.removed
+                .iter()
+                .any(|s| s.to_lowercase().contains("made with suno")),
+            "texten ska synas innan den tas: {:?}",
+            plan.removed
+        );
+        assert_eq!(
+            flac_keys(&plan.out),
+            vec!["TITLE", "ARTIST", "LYRICS"],
+            "bara härkomsten ska bort"
+        );
+        assert!(
+            plan.out.ends_with(&sound),
+            "ljudet ska ligga kvar byte för byte"
+        );
+        assert!(
+            plan.out.starts_with(b"fLaC"),
+            "filen ska fortfarande vara en FLAC"
+        );
+        assert!(
+            plan.out.len() < file.len(),
+            "något ska faktiskt ha tagits bort"
+        );
+        assert!(
+            !plan_clean(&plan.out).removes_anything(),
+            "idempotent: inget kvar att ta"
+        );
+    }
+
+    /// Hela vägen genom filsystemet: rapporten och skrivningen säger samma sak, och
+    /// `removable_bytes` är de byte som faktiskt försvinner.
+    #[test]
+    fn flac_strip_writes_a_clean_file_and_reports_the_same_bytes() {
+        let dir = std::env::temp_dir().join("sonix_flac_tag_test");
+        let _ = std::fs::create_dir_all(&dir);
+        let path = dir.join("prov.flac");
+        let path_str = path.to_string_lossy().to_string();
+
+        let sound = audio(1024);
+        let file = flac_file(
+            Some(&flac_comment(
+                "Lavf63.1.101",
+                &[
+                    vorbis_field("TITLE", "Ashes"),
+                    vorbis_field("comment", "made with suno; created=2026-09-28; id=abc"),
+                ],
+            )),
+            &sound,
+        );
+        std::fs::write(&path, &file).unwrap();
+
+        let report = scan(&path_str).expect("scanning ska lyckas");
+        assert!(report.has_flac_metadata, "FLAC-metadatan ska synas i rapporten");
+        assert!(report.removable_bytes > 0, "härkomsten ska räknas");
+        let reported = report.removable_bytes;
+
+        let actually = strip_tags(&path_str).expect("städningen ska lyckas");
+        assert_eq!(reported, actually, "rapporten och skrivningen ska vara samma väg");
+
+        let after = std::fs::read(&path).unwrap();
+        assert!(after.ends_with(&sound), "ljudet ska stå kvar orört");
+        assert_eq!(flac_keys(&after), vec!["TITLE"], "titeln ska stå kvar");
+        let text = String::from_utf8_lossy(&after).to_lowercase();
+        assert!(!text.contains("made with suno"), "Sunos text ska vara borta");
+        assert_eq!(strip_tags(&path_str).unwrap(), 0, "idempotent: inget kvar att ta");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// En FLAC utan härkomst lämnas i fred — den ska inte skrivas om i onödan.
+    #[test]
+    fn flac_without_provenance_is_left_alone() {
+        let sound = audio(64);
+        let file = flac_file(
+            Some(&flac_comment(
+                "Lavf63.1.101",
+                &[
+                    vorbis_field("TITLE", "Ashes"),
+                    vorbis_field("comment", "mixed in Sonix"),
+                ],
+            )),
+            &sound,
+        );
+        let plan = plan_clean(&file);
+        assert!(
+            !plan.removes_anything(),
+            "inget att ta: {:?}",
+            plan.removed
+        );
+        assert_eq!(plan.out, file, "orörd byte för byte");
+        assert!(plan.notes.is_empty(), "inget oklart: {:?}", plan.notes);
+    }
+
+    /// En trasig blocklängd: hellre inget än en gissning — och det ska SÄGAS.
+    #[test]
+    fn flac_with_a_broken_block_is_left_alone_and_says_so() {
+        let mut file = b"fLaC".to_vec();
+        file.push(0x84); // VORBIS_COMMENT, sista blocket
+        file.extend_from_slice(&[0xFF, 0xFF, 0xFF]); // längd långt utanför filen
+        file.extend_from_slice(b"made with suno; id=abc");
+        let plan = plan_clean(&file);
+        assert!(!plan.removes_anything(), "inget ska tas ur en fil vi inte förstår");
+        assert_eq!(plan.out, file, "orörd byte för byte");
+        assert!(
+            plan.notes.iter().any(|n| n.contains("FLAC")),
+            "det som inte kunde avgöras ska sägas: {:?}",
+            plan.notes
+        );
     }
 }

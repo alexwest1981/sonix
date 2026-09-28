@@ -104,11 +104,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         continue;
                     }
                     println!(
-                        "  {f}: {} byte härkomst (ID3v2={} ID3v1={} RIFF={})",
+                        "  {f}: {} byte härkomst (ID3v2={} ID3v1={} RIFF={} FLAC={})",
                         report.removable_bytes,
                         report.has_id3v2,
                         report.has_id3v1,
-                        report.has_riff_metadata
+                        report.has_riff_metadata,
+                        report.has_flac_metadata
                     );
                     for e in &report.excerpts {
                         println!("      tas bort: {e}");
