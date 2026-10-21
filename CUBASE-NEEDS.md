@@ -49,11 +49,11 @@ ingen radering enligt villkor, ingen urvalsmodell.
 | ~~2~~ | ~~Anslaget på tagningen~~ | **klart** | `Take::scale_velocity` + två knappar |
 | 3 | **Urval i pianorullen** (villkor: anslag under X, ton = Y, position inom Z) | M | `Take` får ett `selected: bool` per not; operationerna ovan går på urvalet när det finns, annars allt |
 | 4 | **Radera enligt villkor** | S | följer av 3: `retain(keep)` + "Ta bort valda" |
-| 5 | **Logical Editor-lite**: en rad regler (fält, villkor, värde, åtgärd) | M | 247 förval hos dem är facit för vilka fält som behövs: `lePosition`, `leType`, `leProperty`, `leValue` |
-| 6 | **Arranger Track** — sektioner som kan flyttas om | M | markörer finns redan (`shift_song_markers`); sektioner är en lista av intervall med namn |
+| ~~5~~ | ~~**Logical Editor-lite**~~ — **klart**: fält × jämförelse × åtgärd, en rad | M | återanvänder `delete_cells`/`transpose_cells`; bara villkoret är ny kod |
+| ~~6~~ | ~~**Arranger Track**~~ — **klart**: sektionskedja som uppspelningen följer | M | sektionerna var redan markörer med längd; det som saknades var ordningen |
+| ~~9~~ | ~~**Projektmallar**~~ — **klart**: `Templates/`, Arkiv-menyn | S | en mall är ett vanligt projekt i en annan katalog |
 | 7 | **Chord Track** — ett spår andra följer | M | vi har ackordgenerator (`chord_generator_modal.rs`), inte ett spår |
 | 8 | **Control Room** — monitor, cue, talkback | M | 50 av deras 1 148 kommandon; vi har master ut |
-| 9 | **Projektmallar** | S | 38 hos dem, 0 hos oss; en mall är ett sparat projekt |
 | 10 | **Stämmseparering med modell** | L | `neural_separator.rs` finns, ingen modell skeppas |
 
 ## 4. Byggt nu

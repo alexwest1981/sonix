@@ -3020,3 +3020,23 @@ alltså mest **urval och bulk-edit på noter** — inte ljud och inte mixning.
 **Byggt av den lärdomen:** `Take::transpose` + `Take::scale_velocity` med knappar i pianorullen
 (±1/±12 halvtoner, ±10 % anslag), två nya prov. Nästa lucka är en urvalsmodell i tagningen
 (villkor: anslag, ton, position), som de följande operationerna kan gå på.
+
+## Klart från Cubase-listan (21 okt 2026)
+
+| Vad | Commit | Kärna |
+|---|---|---|
+| Transponera + anslag i bulk | `c256f2d` | `Take::transpose`, `Take::scale_velocity` |
+| Urval i rutnätet | `a18c28e` | `piano_roll_sel`, shift-klick, ▲▼▲▲▼▼ + 🗑 |
+| Markera enligt villkor | `aced846` | `select_quiet` — välj svaga, åtgärda sedan |
+| Projektmallar | `e4728f6` | `Templates/`, `new_from_template` glömmer sökvägen |
+| Logical Editor-lite | `4b84c72` | `Rule` + `apply_rule`, återanvänder radera/transponera |
+| Sektionskedja (Arranger) | `582b546` | `next_chain_bar`, kedjan går före loop-punkterna |
+
+**Kvar, med skäl att vänta:**
+- **Chord Track** (M): kräver ett musikteoretiskt vägval — ska spåret *transponera* noterna eller
+  *snappa* dem till ackordstoner, och gäller det uppspelningen eller filen? Båda är rimliga, och
+  valet ändrar hur låten låter. Inte något att gissa.
+- **Control Room** (M): monitor/cue/talkback förutsätter flera utgångar; vi har en master.
+  Att bygga panelen utan utgångarna vore en attrapp.
+- **Stämmseparering med modell** (L): kräver att en ONNX-modell skeppas eller laddas ner —
+  ett storleks- och licensbeslut, inte en kodfråga.
