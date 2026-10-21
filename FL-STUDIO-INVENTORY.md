@@ -16,6 +16,10 @@ Där något inte gick att läsa står det uttryckligen. Siffrorna är räknade, 
 | Filer i filtabellen | **21 339** poster |
 | Läsmetod | NSIS förstaheader → LZMA raw-avkodning → UTF-16-strängar → (katalog, fil)-par |
 
+Tre kompletta referensfiler hör till (§5 och §11): `docs/fl-files.md` (alla 21 339 filposter),
+`docs/fl-command-surface.md` (alla 6 256 menyrader) och `docs/fl-parameter-vocabulary.md`
+(28 657 etiketter). Inget i dem är ett urval.
+
 Block 0 innehåller installationsskriptet, **licenstexten** (RTF, ~12 500 strängar) och
 filtabellen. Filtabellen är det som ger inventariet: varje post är en katalogsträng följd av
 sina filnamn, alltså hela trädet utan att något måste gissas.
@@ -532,6 +536,10 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | Riff-generator | `Riff machine...` · `Piano roll - riff machine` | ✗ |
 | Ackordgenerator | `Generate chord progression...` · `Chord Progression Tool opened` | ◐ (`chord_generator_modal`, utan Markov) |
 
+Hela ordlistan — 28 657 korta etiketter (rattar, reglage, kolumnrubriker) — ligger i
+`docs/fl-parameter-vocabulary.md`, och alla 6 256 menyrader i `docs/fl-command-surface.md`.
+Tabellen ovan är urvalet som namnger *funktioner*.
+
 **Vad det här avsnittet ändrar:** åtta av operationerna ovan är *sådant FL gör utan en plugin* —
 `Consolidate`, score-loggen, groove-extraktion, `Patcherize`, `Split mixer tracks`, bakgrundsrendering,
 declick och korsningar. De syns inte i filtabellen, hur noggrant man än räknar den.
@@ -656,10 +664,19 @@ vocoder, modulationskällor, notation, video och skript-API.
 
 ## 11. Gränser för den här mätningen
 
-- **125 av payloadens block avkodades (68 MB)**, inklusive `FL64.exe`, `FLEngine_x64.dll` och
-  `FLMManaged.dll`. Resten (≈987 MB) ligger bakom en blockkedja som tappar aligeringen vid post 124.
+- **125 av payloadens block avkodades (68 MB)**, inklusive `FL64.exe` (22,2 MB),
+  `FLEngine_x64.dll` (3,3 MB), `FLMManaged.dll` (9,3 MB), ASIO-drivern och 13 PE-filer till.
   Strängarna i de tre stora binärerna är lästa; **koden är inte disassemblerad**, så hur en plugin
   låter eller exakt hur en operation är byggd är inte mätt.
+- **Resten (≈987 MB) gick inte att plocka ut, och det är mätt varför.** Filens förstaheader är
+  `flags=0x30`, `0xDEADBEEF`, `NullsoftInst`, blockstorlek 3 519 116, total 1 105 606 786 — alltså
+  NSIS med **solid LZMA**, där ett block refererar föregående blocks ordbok. `7z l -tNsis` avvisar
+  filen (`Cannot open the file as [Nsis] archive`, även med stubbens 0x10a00 byte bortskurna), och
+  en egen avkodare tappar aligeringen vid post 124 där posterna börjar blandas med strängposter
+  (`Tip=Demo project files`, `Visible=False`). Att forcera resten skulle kräva en riktig
+  solid-block-läsare. **De 200+ plugin-DLL:ernas innehåll är därför namngivet men inte läst.**
+- **Referensfilerna är kompletta i sina dimensioner**: alla filposter (21 339), alla menyrader
+  (6 256), hela etikettordförrådet (28 657). Det som saknas är binärinnehåll, inte inventarium.
 - **Statusarna ✅/◐/✗ är på funktionsnivå.** "✅ Fruity Limiter" betyder att vi har en limiter
   med tak och release, inte att vår kurva är identisk med FL:s.
 - **Ingen körning av FL.** Allt är statisk analys; inga påståenden om beteende i drift bygger på
