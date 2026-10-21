@@ -179,6 +179,8 @@ pub struct SonixApp {
     // Synth Parameters
     pub current_preset: Preset,
     pub waveform: Waveform,
+    /// **FM** (DX10/Sytrus): ratio + index. Standard `index = 0` = oscillatorn utan FM.
+    pub fm: crate::audio::command::FmParams,
     pub adsr: AdsrParams,
     pub filter: FilterParams,
     pub filter_env_amount: f32,
@@ -711,6 +713,7 @@ impl SonixApp {
             stereo_width: 1.0,
             current_preset,
             waveform,
+            fm: crate::audio::command::FmParams::default(),
             adsr,
             filter,
             filter_env_amount: 0.0,

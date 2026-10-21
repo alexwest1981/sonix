@@ -378,8 +378,8 @@ fn filter_env_zero_amount_is_transparent() {
     a.trigger(60, 261.63, 1.0, 48_000.0);
     b.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..500 {
-        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0);
-        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0);
+        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default());
+        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default());
         assert!(
             (sa - sb).abs() < 1e-6,
             "amount 0 must ignore the filter envelope shape"
@@ -398,8 +398,8 @@ fn filter_env_amount_changes_timbre() {
     wet.trigger(60, 261.63, 1.0, 48_000.0);
     let mut diff = 0.0_f32;
     for _ in 0..2000 {
-        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0);
-        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0);
+        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default());
+        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default());
         diff += (a - b).abs();
     }
     assert!(diff > 1.0, "filter envelope should alter the timbre, diff={diff}");
@@ -414,7 +414,7 @@ fn voices_have_independent_filter_envelopes() {
     let mut second = Voice::new(48_000.0);
     first.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..2000 {
-        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0);
+        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default());
     }
     second.trigger(64, 329.63, 1.0, 48_000.0);
     let l1 = first.filter_env.current_level;
@@ -2027,5 +2027,65 @@ fn an_envelope_ends_the_voice_after_the_release() {
     assert!(
         !synth.sample_voices.iter().any(|v| v.active),
         "släppet är 5 ms — efter 2 000 ramar ska rösten ha tystnat"
+    );
+}
+
+/// Amplituden hos en frekvens i en inspelad svit (en bin av en DFT).
+fn mag_at(x: &[f32], freq: f32) -> f32 {
+    let sr = 48_000.0;
+    let w = 2.0 * std::f32::consts::PI * freq / sr;
+    let (mut re, mut im) = (0.0f32, 0.0f32);
+    for (i, v) in x.iter().enumerate() {
+        let ph = w * i as f32;
+        re += v * ph.cos();
+        im += v * ph.sin();
+    }
+    2.0 * (re * re + im * im).sqrt() / x.len() as f32
+}
+
+#[test]
+fn fm_at_zero_index_is_the_plain_oscillator() {
+    // index 0 = ingen fasförskjutning: samma tal, inte "nästan samma".
+    let adsr = AdsrParams::default();
+    let flt = FilterParams { cutoff: 18_000.0, resonance: 0.7 };
+    let env = AdsrParams::default();
+    let mut a = Voice::new(48_000.0);
+    let mut b = Voice::new(48_000.0);
+    a.trigger(57, 220.0, 1.0, 48_000.0);
+    b.trigger(57, 220.0, 1.0, 48_000.0);
+    let fm = FmParams { ratio: 3.0, index: 0.0 };
+    for i in 0..2_000 {
+        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm);
+        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default());
+        assert_eq!(sa, sb, "index 0 ska ge exakt samma sample (frame {i})");
+    }
+}
+
+#[test]
+fn fm_puts_sidebands_where_the_plain_oscillator_has_none() {
+    // Bärvåg 110 Hz, modulator ratio 3 (330 Hz): sidobandet hamnar på 110+330 = 440 Hz,
+    // där en ren sinuston inte har något alls. Det är skillnaden mellan FM och ingen FM.
+    let adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    let flt = FilterParams { cutoff: 18_000.0, resonance: 0.7 };
+    let env = AdsrParams::default();
+    let render = |index: f32| {
+        let mut v = Voice::new(48_000.0);
+        v.trigger(45, 110.0, 1.0, 48_000.0);
+        let fm = FmParams { ratio: 3.0, index };
+        let mut out = Vec::with_capacity(9_600);
+        for _ in 0..9_600 {
+            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm));
+        }
+        out
+    };
+    let plain = render(0.0);
+    let modulated = render(4.0);
+    let h_plain = mag_at(&plain[2_000..], 440.0);
+    let h_fm = mag_at(&modulated[2_000..], 440.0);
+    // Fönstret är inte ett heltal perioder av 440 Hz, så `h_plain` är läckage och inte noll —
+    // därför mäts **kvoten**: sidobandet ska vara minst tio gånger starkare än läckaget.
+    assert!(
+        h_fm > 10.0 * h_plain,
+        "sidobandet på 440 Hz ska dominera: utan FM {h_plain:.5}, med FM {h_fm:.5}"
     );
 }

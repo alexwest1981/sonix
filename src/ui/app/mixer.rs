@@ -2912,6 +2912,18 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     }
                 }
                 ui.separator();
+                ui.label(egui::RichText::new(crate::i18n::t("FM (DX10/Sytrus)")).size(10.0).color(Theme::TEXT_MUTED));
+                let mut fm_changed = false;
+                ui.horizontal(|ui| {
+                    fm_changed |= rotary_knob(ui, &mut self.fm.ratio, 0.25, 8.0, "RATIO", Theme::FL_CYAN, 34.0);
+                    fm_changed |= rotary_knob(ui, &mut self.fm.index, 0.0, 12.0, "INDEX", Theme::FL_CYAN, 34.0);
+                })
+                .response
+                .on_hover_text(crate::i18n::t("Modulatorns frekvens i förhållande till tonen (1 = samma, 2 = oktaven över) och fasdjupet i radianer. 0 = ren oscillator."));
+                if fm_changed {
+                    let _ = self.engine.send_command(AudioCommand::SetFm(self.fm));
+                }
+                ui.separator();
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Oktav:"));
                     if ui.button(crate::i18n::t("➖ (Z)")).clicked() && self.octave > 1 { self.octave -= 1; }

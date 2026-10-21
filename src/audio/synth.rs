@@ -8,7 +8,7 @@
 use std::f32::consts::PI;
 use std::sync::Mutex;
 use super::command::{
-    AudioCommand, LoopMode, Preset, SendTarget, StemRegionPlayback, StemSend, Waveform,
+    AudioCommand, FmParams, LoopMode, Preset, SendTarget, StemRegionPlayback, StemSend, Waveform,
     loop_frames,
 };
 use super::drum::{DrumType, DrumVoice};
@@ -117,6 +117,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::StrumChord { .. } => "StrumChord",
         AudioCommand::TriggerDrum(_) => "TriggerDrum",
         AudioCommand::SetWaveform(_) => "SetWaveform",
+        AudioCommand::SetFm(_) => "SetFm",
         AudioCommand::SetAdsr(_) => "SetAdsr",
         AudioCommand::SetFilter(_) => "SetFilter",
         AudioCommand::SetFilterEnv { .. } => "SetFilterEnv",
@@ -177,6 +178,8 @@ pub struct SynthEngine {
     pub reverb: SimpleReverb,
     pub drive: f32,
     pub master_fx: MasterFxChain,
+    /// FM-inställningen för syntens röster (DX10/Sytrus-vägen).
+    pub fm: FmParams,
     pub remix_fx: RemixFx,
     pub tape_stop: TapeStop,
     pub master_volume: f32,
@@ -261,6 +264,7 @@ impl SynthEngine {
             reverb: SimpleReverb::new(sample_rate),
             drive: 1.0,
             master_fx: MasterFxChain::new(sample_rate),
+            fm: FmParams::default(),
             remix_fx: RemixFx::new(sample_rate),
             tape_stop: TapeStop::new(sample_rate),
             master_volume: 0.8,

@@ -48,6 +48,7 @@ impl SynthEngine {
                     &self.filter_params,
                     &self.filter_env,
                     self.filter_env_amount,
+                    &self.fm,
                 );
                 active_count += 1;
             }

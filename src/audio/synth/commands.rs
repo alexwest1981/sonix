@@ -124,6 +124,9 @@ impl SynthEngine {
             AudioCommand::SetWaveform(wf) => {
                 self.waveform = wf;
             }
+            AudioCommand::SetFm(fm) => {
+                self.fm = fm;
+            }
             AudioCommand::SetAdsr(adsr) => {
                 self.adsr = adsr;
             }

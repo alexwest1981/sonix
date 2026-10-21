@@ -71,6 +71,22 @@ impl Preset {
 
 use std::sync::{Arc, Mutex};
 
+/// **FM-modulation** (FL Studio: *DX10* / *Sytrus*): en modulerande sinus trycker
+/// bärvågens fas fram och tillbaka. `ratio` är modulatorns frekvens i förhållande till
+/// bärvågen (1 = samma ton, 2 = oktaven över), `index` är fasdjupet i radianer — 0 ger
+/// exakt den vanliga oscillatorn (provet `fm_at_zero_index_is_the_plain_oscillator`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FmParams {
+    pub ratio: f32,
+    pub index: f32,
+}
+
+impl Default for FmParams {
+    fn default() -> Self {
+        Self { ratio: 1.0, index: 0.0 }
+    }
+}
+
 #[allow(dead_code)]
 pub enum AudioCommand {
     /// Replaces (or clears, with `None`) the CLAP insert on a stem track. The
@@ -128,6 +144,7 @@ pub enum AudioCommand {
     },
     TriggerDrum(DrumType),
     SetWaveform(Waveform),
+    SetFm(FmParams),
     SetAdsr(AdsrParams),
     SetFilter(FilterParams),
     /// Per-voice filter envelope: `amount` is the cutoff modulation depth in

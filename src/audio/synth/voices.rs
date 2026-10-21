@@ -17,6 +17,9 @@ pub struct Voice {
     pub filter: StateVariableFilter,
     /// Per-voice filter envelope; its level modulates the cutoff per note.
     pub filter_env: AdsrVoice,
+    /// Modulatorns fas (FM). `index == 0` lämnar bärvågen orörd — då är röstens ljud
+    /// bit-identiskt med oscillatorn före FM-vägen.
+    pub mod_phase: f32,
 }
 
 /// Sidokedje-duckare (Fas 8.3).
@@ -257,6 +260,7 @@ impl Voice {
             envelope: AdsrVoice::new(sample_rate),
             filter: StateVariableFilter::new(sample_rate),
             filter_env: AdsrVoice::new(sample_rate),
+            mod_phase: 0.0,
         }
     }
 
@@ -280,6 +284,7 @@ impl Voice {
         self.filter_env.reset();
         self.velocity = 0.0;
         self.phase = 0.0;
+        self.mod_phase = 0.0;
     }
 
     #[inline(always)]
@@ -295,6 +300,7 @@ impl Voice {
         filter_params: &FilterParams,
         filter_env: &AdsrParams,
         filter_env_amount: f32,
+        fm: &FmParams,
     ) -> f32 {
         if !self.envelope.is_active() {
             return 0.0;
@@ -305,26 +311,47 @@ impl Voice {
             return 0.0;
         }
 
+        // FM: modulatorn förskjuter bärvågens fas. Vid index 0 är förskjutningen noll och
+        // `phase` ligger redan i [0, 2π), så båda while-slingorna hoppas över — samma tal,
+        // samma ljud som oscillatorn utan FM.
+        let two_pi = 2.0 * PI;
+        let mut phase = self.phase;
+        if fm.index != 0.0 {
+            phase += self.mod_phase.sin() * fm.index;
+            while phase >= two_pi {
+                phase -= two_pi;
+            }
+            while phase < 0.0 {
+                phase += two_pi;
+            }
+        }
+
         let raw_sample = match waveform {
-            Waveform::Sine => self.phase.sin(),
-            Waveform::Saw => (self.phase / PI) - 1.0,
+            Waveform::Sine => phase.sin(),
+            Waveform::Saw => (phase / PI) - 1.0,
             Waveform::Square => {
-                if self.phase < PI {
+                if phase < PI {
                     1.0
                 } else {
                     -1.0
                 }
             }
             Waveform::Triangle => {
-                let normalized = self.phase / (2.0 * PI);
+                let normalized = phase / two_pi;
                 2.0 * (2.0 * (normalized - (normalized + 0.5).floor())).abs() - 1.0
             }
         };
 
         // Advance phase
         self.phase += self.phase_inc;
-        if self.phase >= 2.0 * PI {
-            self.phase -= 2.0 * PI;
+        if self.phase >= two_pi {
+            self.phase -= two_pi;
+        }
+        if fm.index != 0.0 {
+            self.mod_phase += self.phase_inc * fm.ratio.max(0.01);
+            if self.mod_phase >= two_pi {
+                self.mod_phase -= two_pi;
+            }
         }
 
         // Each voice runs through its own resonant filter instance, and its own

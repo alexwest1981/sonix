@@ -1459,6 +1459,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Klaviatur – Spela synthen live med tangentbordet" => "Keyboard – Play the synth live with the keyboard",
         "Kunde inte läsa filen: {}" => "Could not read file: {}",
         "📥 Importera SoundFont (.sf2)" => "📥 Import SoundFont (.sf2)",
+        "FM (DX10/Sytrus)" => "FM (DX10/Sytrus)",
+        "Modulatorns frekvens i förhållande till tonen (1 = samma, 2 = oktaven över) och fasdjupet i radianer. 0 = ren oscillator." => "The modulator's frequency relative to the note (1 = same, 2 = an octave up) and the phase depth in radians. 0 = plain oscillator.",
         "Läser instrumentets zoner ur filen och lägger dem i keymappen (FL:s Soundfont Player). Preset- och modulationslagret läses inte, och samplets loop-punkter gäller inte — kanalens egen loop-inställning styr." => "Reads the instrument's zones from the file into the keymap (FL's Soundfont Player). The preset and modulation layers are not read, and the sample's loop points do not apply — the channel's own loop setting decides.",
         "🎹 '{}': {} zoner in i keymappen (av {} instrument, {} presets i filen)" => "🎹 '{}': {} zones into the keymap (of {} instruments, {} presets in the file)",
         "⚠️ '{}' har inga zoner med ljud" => "⚠️ '{}' has no zones with sound",
