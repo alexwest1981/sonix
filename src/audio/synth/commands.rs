@@ -31,7 +31,12 @@ impl SynthEngine {
             self.dbg_state("ENGINE", &format!("<< {}", describe_cmd(&cmd)));
         }
         match cmd {
+            AudioCommand::SetModulation { slots } => {
+                self.modulation.set_slots(slots);
+            }
             AudioCommand::NoteOn { note, freq, velocity } => {
+                // Keyboard/Voltage Controller-källorna läser senaste noten.
+                self.modulation.note_on(note, velocity);
                 let mut target_idx = None;
                 for (i, voice) in self.voices.iter().enumerate() {
                     if voice.is_active() && voice.note == note {

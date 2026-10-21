@@ -246,6 +246,12 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Modulationsmatrisen: källor → mål.
+    pub mod_slots: Vec<crate::audio::modulation::ModSlot>,
+    /// Om modulationsfönstret är öppet.
+    pub show_mod_matrix: bool,
+    /// Matrisen har ändrats och ska skickas till motorn.
+    pub mod_dirty: bool,
     /// Nedladdning av neural-modellen: (pågår, andel, meddelande).
     pub model_download: std::sync::Arc<std::sync::Mutex<(bool, f32, String)>>,
     /// Utgångsbussar (kanalpar på ljudenheten), laddade ur `audio.json`.
@@ -803,6 +809,9 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            mod_slots: Vec::new(),
+            show_mod_matrix: false,
+            mod_dirty: false,
             model_download: std::sync::Arc::new(std::sync::Mutex::new((false, 0.0, String::new()))),
             audio_output_buses: crate::audio::engine::AudioSettings::load().output_buses,
             song_chords: Vec::new(),

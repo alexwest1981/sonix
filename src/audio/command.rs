@@ -114,6 +114,11 @@ pub enum AudioCommand {
         track_index: usize,
         enabled: bool,
     },
+    /// Byter modulationsmatrisen. Hela listan skickas — den ändras när användaren
+    /// redigerar, aldrig per sampel.
+    SetModulation {
+        slots: Vec<crate::audio::modulation::ModSlot>,
+    },
     NoteOn {
         note: u8,
         freq: f32,

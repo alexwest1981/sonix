@@ -742,8 +742,24 @@ impl SynthEngine {
         // 9. Master bus FX chain (EQ, compressor, de-esser, doubler, gate, filter, limiter)
         let (fx_l, fx_r) = self.master_fx.process(del_l + stem_mix_l, del_r + stem_mix_r);
 
-        let out_l = (fx_l * self.master_volume).tanh();
-        let out_r = (fx_r * self.master_volume).tanh();
+        // Modulationsmatrisen räknas per sampel, på masterns nivå före volymstegen.
+        // Utan aktiva rader hoppas hela steget över — det är den vanliga vägen.
+        let modulation = if self.modulation.is_empty() {
+            crate::audio::modulation::ModOut { volume: 1.0, pan: 0.0 }
+        } else {
+            let level = fx_l.abs().max(fx_r.abs());
+            self.modulation.tick(self.sample_rate, level)
+        };
+        let gain = (self.master_volume * modulation.volume).clamp(0.0, 4.0);
+        // Equal-power-pan: en panorering som bara sänker ena sidan tappar 3 dB i mitten.
+        let (pan_l, pan_r) = if modulation.pan.abs() < 0.001 {
+            (1.0, 1.0)
+        } else {
+            let angle = (modulation.pan.clamp(-1.0, 1.0) + 1.0) * 0.25 * std::f32::consts::PI;
+            (angle.cos() * std::f32::consts::SQRT_2, angle.sin() * std::f32::consts::SQRT_2)
+        };
+        let out_l = (fx_l * gain * pan_l).tanh();
+        let out_r = (fx_r * gain * pan_r).tanh();
 
         // DJ performance FX on the final master bus.
         let (out_l, out_r) = if self.gate_pattern.enabled {

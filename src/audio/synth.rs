@@ -111,6 +111,7 @@ fn describe_cmd(cmd: &AudioCommand) -> String {
 
 fn variant_name(cmd: &AudioCommand) -> &'static str {
     match cmd {
+        AudioCommand::SetModulation { .. } => "SetModulation",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -187,6 +188,8 @@ pub struct SynthEngine {
     pub step_gate: StepGate,
     pub gate_pattern: GatePatternParams,
     pub tape_stop: TapeStop,
+    /// Modulationsmatrisen (FL:s Envelope/Peak/Keyboard Controller).
+    pub modulation: crate::audio::modulation::ModMatrix,
     pub master_volume: f32,
     pub voices: [Voice; MAX_VOICES],
     pub drums: [DrumVoice; MAX_DRUMS],
@@ -275,6 +278,7 @@ impl SynthEngine {
             gate_pattern: GatePatternParams::default(),
             tape_stop: TapeStop::new(sample_rate),
             master_volume: 0.8,
+            modulation: crate::audio::modulation::ModMatrix::default(),
             voices: [Voice::new(sample_rate); MAX_VOICES],
             drums: [DrumVoice::new(sample_rate); MAX_DRUMS],
             stem_tracks: Vec::new(),

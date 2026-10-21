@@ -937,6 +937,10 @@ impl SonixApp {
                             self.show_song_structure_modal = true;
                             ui.close_menu();
                         }
+                        if ui.button(self.tr("🕹 Modulationsmatris...")).clicked() {
+                            self.show_mod_matrix = true;
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("🎼 Ackordspår...")).clicked() {
                             self.show_chord_track = true;
                             ui.close_menu();

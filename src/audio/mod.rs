@@ -17,6 +17,7 @@ pub mod loudness;
 pub mod macro_chain;
 pub mod master_fx;
 pub mod metadata;
+pub mod modulation;
 pub mod input_profile;
 pub mod midi_input;
 pub mod midi_output;

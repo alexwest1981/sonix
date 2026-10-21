@@ -2089,3 +2089,31 @@ fn fm_puts_sidebands_where_the_plain_oscillator_has_none() {
         "sidobandet på 440 Hz ska dominera: utan FM {h_plain:.5}, med FM {h_fm:.5}"
     );
 }
+
+/// **Modulationen når fram till mastern.** En rad som drar ned volymen med senaste notens
+/// anslag ska göra utfallet tystare — mätt på motorns egen utgång, inte på matrisen.
+#[test]
+fn a_velocity_slot_quiets_the_master_output() {
+    use crate::audio::modulation::{ModSlot, ModSource, ModTarget};
+
+    let mut plain = SynthEngine::new(48_000.0);
+    let mut modulated = SynthEngine::new(48_000.0);
+    modulated.modulation.set_slots(vec![ModSlot::new(ModSource::Velocity, ModTarget::Volume, -1.0)]);
+
+    for engine in [&mut plain, &mut modulated] {
+        engine.handle_command(AudioCommand::NoteOn { note: 60, freq: 261.63, velocity: 1.0 });
+    }
+    let mut peak_plain: f32 = 0.0;
+    let mut peak_mod: f32 = 0.0;
+    for _ in 0..4_800 {
+        let (l, r) = plain.process_stereo();
+        peak_plain = peak_plain.max(l.abs()).max(r.abs());
+        let (l, r) = modulated.process_stereo();
+        peak_mod = peak_mod.max(l.abs()).max(r.abs());
+    }
+    assert!(peak_plain > 0.01, "referensen ska höras: {peak_plain}");
+    assert!(
+        peak_mod < peak_plain * 0.35,
+        "modulationen tog inte: {peak_mod} mot {peak_plain}"
+    );
+}

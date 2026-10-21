@@ -1,0 +1,305 @@
+//! Modulationsmatrisen — FL:s Envelope/Peak/Keyboard/Voltage Controller i en form.
+//!
+//! En slot är **källa → mål med styrka**. Källor: en LFO (egen takt och vågform), ett
+//! envelopföljare på masterns nivå, senaste notens anslag och senaste notens tonhöjd.
+//! Mål: masterns volym och panorering.
+//!
+//! Matrisen räknas **per sampel** — fyra slots är några multiplikationer, och en
+//! modulation som bara uppdateras per buffert hörs som steg när man drar i en ratt.
+
+/// Vågform för en LFO-källa.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum LfoShape {
+    Sine,
+    Triangle,
+    Square,
+    Random,
+}
+
+impl LfoShape {
+    pub const ALL: [LfoShape; 4] = [
+        LfoShape::Sine,
+        LfoShape::Triangle,
+        LfoShape::Square,
+        LfoShape::Random,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            LfoShape::Sine => "sinus",
+            LfoShape::Triangle => "triangel",
+            LfoShape::Square => "fyrkant",
+            LfoShape::Random => "slump",
+        }
+    }
+
+    /// Värdet för en fas 0–1, i −1…1.
+    fn at(self, phase: f32, seed: u32) -> f32 {
+        match self {
+            LfoShape::Sine => (phase * std::f32::consts::TAU).sin(),
+            LfoShape::Triangle => 4.0 * (phase - 0.5).abs() - 1.0,
+            LfoShape::Square => {
+                if phase < 0.5 { 1.0 } else { -1.0 }
+            }
+            // Slump per period, inte per sampel: annars blir det brus, inte en LFO.
+            LfoShape::Random => {
+                let x = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (x >> 9) as f32 / 8_388_608.0 - 1.0
+            }
+        }
+    }
+}
+
+/// Vad en slot läser.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ModSource {
+    Lfo { rate_hz: f32, shape: LfoShape },
+    /// Envelopföljare på masterns nivå — FL:s Peak Controller.
+    Env,
+    /// Senaste notens anslag, 0–1 — FL:s Keyboard Controller med velocity.
+    Velocity,
+    /// Senaste notens tonhöjd, centrerad kring C4 — FL:s Keyboard Controller.
+    Key,
+}
+
+impl ModSource {
+    pub fn label(&self) -> String {
+        match self {
+            ModSource::Lfo { .. } => "LFO".to_string(),
+            ModSource::Env => "Envelop".to_string(),
+            ModSource::Velocity => "Anslag".to_string(),
+            ModSource::Key => "Tonhöjd".to_string(),
+        }
+    }
+}
+
+/// Vad en slot styr.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ModTarget {
+    Volume,
+    Pan,
+}
+
+impl ModTarget {
+    pub const ALL: [ModTarget; 2] = [ModTarget::Volume, ModTarget::Pan];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            ModTarget::Volume => "volym",
+            ModTarget::Pan => "panorering",
+        }
+    }
+}
+
+/// En rad i matrisen.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ModSlot {
+    pub source: ModSource,
+    pub target: ModTarget,
+    /// −1…1. Negativ styrka vänder riktningen.
+    pub amount: f32,
+    pub enabled: bool,
+}
+
+impl ModSlot {
+    pub fn new(source: ModSource, target: ModTarget, amount: f32) -> Self {
+        Self { source, target, amount, enabled: true }
+    }
+}
+
+/// Resultatet för ett sampel.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModOut {
+    /// Multiplikator på masterns volym (1,0 = ingen påverkan).
+    pub volume: f32,
+    /// Panorering −1…1 som läggs till den befintliga.
+    pub pan: f32,
+}
+
+/// Matrisen med sina källors tillstånd.
+#[derive(Clone, Debug, Default)]
+pub struct ModMatrix {
+    pub slots: Vec<ModSlot>,
+    /// En fas per slot, så varje LFO har sin egen takt utan omskalning.
+    phases: Vec<f32>,
+    random_seed: u32,
+    env: f32,
+    /// Senaste notens anslag 0–1.
+    pub last_velocity: f32,
+    /// Senaste notens MIDI-nummer.
+    pub last_key: f32,
+    /// Om senaste noten hörts (annars är Velocity/Key 0).
+    pub has_note: bool,
+}
+
+impl ModMatrix {
+    pub fn is_empty(&self) -> bool {
+        self.slots.iter().all(|s| !s.enabled)
+    }
+
+    /// Byter slots och håller faslistan i takt med dem.
+    pub fn set_slots(&mut self, slots: Vec<ModSlot>) {
+        self.phases.resize(slots.len(), 0.0);
+        self.slots = slots;
+    }
+
+    /// Noterar en spelad not, så Velocity/Key-källorna har något att läsa.
+    pub fn note_on(&mut self, key: u8, velocity: f32) {
+        self.last_key = key as f32;
+        self.last_velocity = velocity.clamp(0.0, 1.0);
+        self.has_note = true;
+    }
+
+    /// Ett sampel: räknar fram volym- och panpåverkan.
+    ///
+    /// `level` är masterns nivå **före** volymstegen, som envelopföljaren lyssnar på.
+    pub fn tick(&mut self, sample_rate: f32, level: f32) -> ModOut {
+        // Följaren går snabbt upp och långsamt ner (som en peak meter), oberoende av
+        // antalet slots — den räknas en gång per sampel.
+        let l = level.abs().min(4.0);
+        let coeff = if l > self.env { 0.01 } else { 0.0005 };
+        self.env += (l - self.env) * coeff;
+
+        if self.slots.is_empty() || self.slots.iter().all(|s| !s.enabled) {
+            return ModOut { volume: 1.0, pan: 0.0 };
+        }
+        if self.phases.len() != self.slots.len() {
+            self.phases.resize(self.slots.len(), 0.0);
+        }
+
+        let mut volume = 0.0f32;
+        let mut pan = 0.0f32;
+
+        for i in 0..self.slots.len() {
+            let slot = self.slots[i];
+            if !slot.enabled || slot.amount == 0.0 {
+                continue;
+            }
+            let value = match slot.source {
+                ModSource::Lfo { rate_hz, shape } => {
+                    let phase = &mut self.phases[i];
+                    *phase += rate_hz.abs().max(0.01) / sample_rate.max(1.0);
+                    if *phase >= 1.0 {
+                        *phase -= phase.floor();
+                        self.random_seed = self.random_seed.wrapping_add(1);
+                    }
+                    shape.at(*phase, self.random_seed.wrapping_add(i as u32))
+                }
+                ModSource::Env => self.env.min(1.0),
+                ModSource::Velocity => {
+                    if self.has_note { self.last_velocity } else { 0.0 }
+                }
+                ModSource::Key => {
+                    if self.has_note {
+                        ((self.last_key - 60.0) / 48.0).clamp(-1.0, 1.0)
+                    } else {
+                        0.0
+                    }
+                }
+            };
+            let scaled = value * slot.amount;
+            match slot.target {
+                ModTarget::Volume => volume += scaled,
+                ModTarget::Pan => pan += scaled,
+            }
+        }
+
+        ModOut {
+            volume: (1.0 + volume).clamp(0.0, 4.0),
+            pan: pan.clamp(-1.0, 1.0),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SR: f32 = 48_000.0;
+
+    #[test]
+    fn an_lfo_at_one_hertz_completes_a_cycle_in_one_second() {
+        let mut m = ModMatrix {
+            slots: vec![ModSlot::new(
+                ModSource::Lfo { rate_hz: 1.0, shape: LfoShape::Sine },
+                ModTarget::Volume,
+                1.0,
+            )],
+            ..Default::default()
+        };
+        // Ett kvarts varv in: sinusen är 1, alltså volymen 2.
+        let mut out = ModOut { volume: 1.0, pan: 0.0 };
+        for _ in 0..(48_000 / 4) {
+            out = m.tick(SR, 0.0);
+        }
+        assert!((out.volume - 2.0).abs() < 0.02, "volymen blev {}", out.volume);
+        // Tre kvarts varv in är sinusen −1, alltså volymen 0 (ett halvt varv är nollgenomgången).
+        for _ in 0..(48_000 / 2) {
+            out = m.tick(SR, 0.0);
+        }
+        assert!(out.volume < 0.05, "volymen blev {}", out.volume);
+    }
+
+    #[test]
+    fn a_disabled_slot_or_zero_amount_changes_nothing() {
+        let mut off = ModSlot::new(ModSource::Env, ModTarget::Volume, 1.0);
+        off.enabled = false;
+        let mut m = ModMatrix { slots: vec![off], ..Default::default() };
+        for _ in 0..1000 {
+            let out = m.tick(SR, 1.0);
+            assert_eq!((out.volume, out.pan), (1.0, 0.0));
+        }
+        let mut zero = ModMatrix {
+            slots: vec![ModSlot::new(ModSource::Env, ModTarget::Volume, 0.0)],
+            ..Default::default()
+        };
+        for _ in 0..1000 {
+            assert_eq!(zero.tick(SR, 1.0).volume, 1.0);
+        }
+    }
+
+    #[test]
+    fn the_envelope_follower_rises_fast_and_falls_slowly() {
+        let mut m = ModMatrix::default();
+        for _ in 0..48_000 {
+            m.tick(SR, 1.0);
+        }
+        let high = m.env;
+        assert!(high > 0.8, "följaren kom bara till {high}");
+        for _ in 0..48_000 {
+            m.tick(SR, 0.0);
+        }
+        assert!(m.env < high * 0.5, "föll för långsamt: {}", m.env);
+        assert!(m.env >= 0.0);
+    }
+
+    #[test]
+    fn velocity_and_key_read_the_last_note_and_leave_center_at_c4() {
+        let mut m = ModMatrix {
+            slots: vec![
+                ModSlot::new(ModSource::Velocity, ModTarget::Volume, 1.0),
+                ModSlot::new(ModSource::Key, ModTarget::Pan, 1.0),
+            ],
+            ..Default::default()
+        };
+        // Ingen not än: båda källorna är 0.
+        let out = m.tick(SR, 0.0);
+        assert_eq!((out.volume, out.pan), (1.0, 0.0));
+
+        m.note_on(72, 0.5);
+        let out = m.tick(SR, 0.0);
+        assert!((out.volume - 1.5).abs() < 0.01, "anslag 0,5 ska ge volym 1,5: {}", out.volume);
+        assert!((out.pan - 0.25).abs() < 0.01, "C5 är en oktav över C4: {}", out.pan);
+    }
+
+    #[test]
+    fn shapes_are_bipolar_and_bounded() {
+        for shape in LfoShape::ALL {
+            for i in 0..64 {
+                let p = i as f32 / 64.0;
+                let v = shape.at(p, 7);
+                assert!((-1.0..=1.0).contains(&v), "{shape:?} gav {v}");
+            }
+        }
+    }
+}

@@ -1778,6 +1778,141 @@ pub(crate) fn render_fx_rack_modal_view(&mut self, ctx: &egui::Context) {
 }
 
 impl SonixApp {
+/// Modulationsmatrisen: FL:s Envelope/Peak/Keyboard Controller i en tabell.
+pub(crate) fn render_mod_matrix_view(&mut self, ctx: &egui::Context) {
+    use crate::audio::modulation::{LfoShape, ModSlot, ModSource, ModTarget};
+    if !self.show_mod_matrix {
+        return;
+    }
+    let mut open = true;
+    let mut changed = false;
+    egui::Window::new(crate::i18n::t("🕹 Modulationsmatris"))
+        .open(&mut open)
+        .default_width(520.0)
+        .show(ctx, |ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t(
+                    "Källa → mål. LFO:n har egen takt per rad, envelopen följer masterns nivå, anslag och tonhöjd läser senaste noten.",
+                ))
+                .size(10.0)
+                .color(Theme::TEXT_MUTED),
+            );
+            ui.separator();
+            if self.mod_slots.is_empty() {
+                ui.label(crate::i18n::t("Inga modulationer än."));
+            }
+            let mut remove: Option<usize> = None;
+            for (i, slot) in self.mod_slots.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    if ui.checkbox(&mut slot.enabled, "").changed() {
+                        changed = true;
+                    }
+                    // Källa
+                    let src_is_lfo = matches!(slot.source, ModSource::Lfo { .. });
+                    egui::ComboBox::from_id_salt(format!("mod_src_{i}"))
+                        .selected_text(slot.source.label())
+                        .width(96.0)
+                        .show_ui(ui, |ui| {
+                            if ui.selectable_label(!src_is_lfo, crate::i18n::t("Envelop")).clicked() {
+                                slot.source = ModSource::Env;
+                                changed = true;
+                            }
+                            if ui.selectable_label(src_is_lfo, "LFO").clicked() {
+                                slot.source = ModSource::Lfo { rate_hz: 1.0, shape: LfoShape::Sine };
+                                changed = true;
+                            }
+                            if ui.selectable_label(false, crate::i18n::t("Anslag")).clicked() {
+                                slot.source = ModSource::Velocity;
+                                changed = true;
+                            }
+                            if ui.selectable_label(false, crate::i18n::t("Tonhöjd")).clicked() {
+                                slot.source = ModSource::Key;
+                                changed = true;
+                            }
+                        });
+                    // LFO-parametrar bara när källan är en LFO.
+                    if let ModSource::Lfo { rate_hz, shape } = &mut slot.source {
+                        if ui
+                            .add(egui::DragValue::new(rate_hz).range(0.01..=30.0).speed(0.05).suffix(" Hz"))
+                            .changed()
+                        {
+                            changed = true;
+                        }
+                        egui::ComboBox::from_id_salt(format!("mod_shape_{i}"))
+                            .selected_text(crate::i18n::t(shape.label()))
+                            .width(84.0)
+                            .show_ui(ui, |ui| {
+                                for s in LfoShape::ALL {
+                                    if ui.selectable_label(*shape == s, crate::i18n::t(s.label())).clicked() {
+                                        *shape = s;
+                                        changed = true;
+                                    }
+                                }
+                            });
+                    }
+                    ui.label(egui::RichText::new("→").size(11.0).color(Theme::TEXT_MUTED));
+                    egui::ComboBox::from_id_salt(format!("mod_tgt_{i}"))
+                        .selected_text(crate::i18n::t(slot.target.label()))
+                        .width(104.0)
+                        .show_ui(ui, |ui| {
+                            for t in ModTarget::ALL {
+                                if ui.selectable_label(slot.target == t, crate::i18n::t(t.label())).clicked() {
+                                    slot.target = t;
+                                    changed = true;
+                                }
+                            }
+                        });
+                    if ui
+                        .add(egui::Slider::new(&mut slot.amount, -1.0..=1.0).fixed_decimals(2).show_value(true))
+                        .changed()
+                    {
+                        changed = true;
+                    }
+                    if ui.small_button("✖").clicked() {
+                        remove = Some(i);
+                    }
+                });
+            }
+            if let Some(i) = remove {
+                self.mod_slots.remove(i);
+                changed = true;
+            }
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button(crate::i18n::t("➕ Lägg till rad")).clicked() {
+                    self.mod_slots.push(ModSlot::new(
+                        ModSource::Lfo { rate_hz: 1.0, shape: LfoShape::Sine },
+                        ModTarget::Volume,
+                        0.2,
+                    ));
+                    changed = true;
+                }
+                if ui
+                    .button(crate::i18n::t("🧹 Rensa"))
+                    .on_hover_text(crate::i18n::t("Ta bort alla rader"))
+                    .clicked()
+                {
+                    self.mod_slots.clear();
+                    changed = true;
+                }
+                ui.label(
+                    egui::RichText::new(crate::tstatus!("{} rad(er)", self.mod_slots.len()))
+                        .size(10.0)
+                        .color(Theme::TEXT_MUTED),
+                );
+            });
+        });
+    self.show_mod_matrix = open;
+    if changed {
+        self.mod_dirty = true;
+    }
+    if self.mod_dirty {
+        let slots = self.mod_slots.clone();
+        let _ = self.engine.send_command(crate::audio::AudioCommand::SetModulation { slots });
+        self.mod_dirty = false;
+    }
+}
+
 /// Ackordspåret: ackord per takt. Snappen flyttar noter till närmaste ackordston, alltså
 /// behålls melodins rörelse — den transponeras inte med ett fast intervall.
 pub(crate) fn render_chord_track_view(&mut self, ctx: &egui::Context) {
@@ -3061,6 +3196,7 @@ impl SonixApp {
         self.render_song_structure_modal_view(ctx);
         self.render_arranger_chain_view(ctx);
         self.render_chord_track_view(ctx);
+        self.render_mod_matrix_view(ctx);
         self.render_launcher_view(ctx);
         self.render_macros_modal_view(ctx);
         self.render_stem_focus_modal(ctx);
