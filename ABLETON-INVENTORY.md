@@ -277,6 +277,49 @@ Samma ordning som för FL: minst kod per stängd lucka, och varje punkt mäts.
 
 ---
 
+## 10. Gränssnittet — mätt mot vårt
+
+| Mått | Ableton | Sonix | Vad det betyder |
+| :--- | ---: | ---: | :--- |
+| Teman som filer | **18** (`.ask`, XML) | 1 inbyggt | deras tema är data; vårt är kod |
+| Färgvärden i ett tema | **276** poster / 222 namn | 17 konstanter | de kan tona en enda sak (t.ex. `ImplicitArm`) utan att röra resten |
+| Ledtrådar (tooltips) | **2 302** `sInfoText*` | 135 `on_hover_text` | deras gränssnitt förklarar sig självt; vårt gör det delvis |
+| Menykommandon | **725** | ~200 genvägar/knappar | deras är tangentbordsstyrt hela vägen |
+| Fokus-kommandon | **10** (`Focus Arranger/Browser/Clip/Device Chain/Groove Pool/Mixer/Session/Transport/Tuning`) | 0 | de kan navigera mellan paneler utan mus |
+| Zoom-kommandon | **~20** (Fit, In/Out Time, Played, Sustain Loop …) | få | deras zoom är adresserbar, inte bara hjul |
+| Tillgänglighet | 6 `Accessibility Speak*`-kommandon | **aktiverat i dag** (AccessKit) | skärmläsare fungerar nu hos oss också |
+| Ytor | **2 fasta** (Session + Arrangement) + flyttbara detaljpaneler | **12 vyer** (`ViewMode`) | se nedan — den viktigaste skillnaden |
+
+**Den viktigaste skillnaden är inte antalet funktioner, utan modellen.** Ableton har två ytor som
+aldrig byts ut, och detaljpanelerna (Clip, Device, Groove Pool, Browser, Tuning) flyttas runt dem.
+Sonix byter hela vyn: `ChannelRack`, `PianoRoll`, `PlaylistArranger`, `SessionDrummer`,
+`AlchemySynth`, `RemixFx`, `VocalStudio`, `AiMusicAssistant`, `ModularPatcher`, `StemSeparator`,
+`PluginManager`, `EffectsMixer`. Tolv lägen betyder tolv sorters muskelminne, och att man tappar
+sammanhanget när man går från arrangemanget till mixern. Abletons modell gör att låten alltid är
+synlig; vår gör att varje vy är fokuserad men isolerad.
+
+Det går att närma sig utan att kasta om allt: behåll vyerna som **paneler** i stället för sidor —
+arrangemanget kvar i bakgrunden, och de fem vanligaste (pianorulle, mixer, clip, browser, patcher)
+som utfällbara paneler ovanpå. Det är den enskilt största UX-skillnaden, och den är strukturell
+(veckor), inte en knapp.
+
+### Vad som krävs för "acceptabel nivå"
+
+| # | Vad | Storlek | Varför den nivån räcker |
+| :--: | :--- | :---: | :--- |
+| 1 | **Paneler i stället för tolv sidor** — arrangemanget kvar, detaljpaneler ovanpå | L | den största upplevelseskillnaden |
+| 2 | **Fokus + Tab-navigering** mellan arrangemang, mixer, browser, pianorulle | M | gör appen tangentbordsstyrd, som deras |
+| 3 | **Temafiler** (JSON) med semantiska namn, 60–80 slots | S | ger egna teman utan att kompilera om |
+| 4 | **Ledtrådar på varje kontroll** i mixer och arrangemang | M | deras 2 302 mot våra 135 är den tydligaste hjälpklacken |
+| 5 | **Zoom-kommandon** (fit, in/out tid, valt område) | S | billigt, och deras modell är adresserbar |
+| 6 | **18 kontrollerytor av 149** — de 18 vanligaste | M | varje yta är en Python-klass hos dem; vi behöver bara de vanliga |
+| 7 | **Inbyggda lektioner** (10 stycken, inte 1 016) | M | undervisning är deras starkaste "gratis" funktion |
+
+Punkt 1–2 är vad som gör att appen *känns* i närheten. Punkt 3–5 är vad som gör att den känns
+färdig. Punkt 6–7 är vad som gör att en ny användare stannar.
+
+---
+
 ## 10. Gränser för den här mätningen
 
 - **Binärerna är lästa som strängar, inte disassemblerade.** Jag kan citera att Ableton har ett ord
