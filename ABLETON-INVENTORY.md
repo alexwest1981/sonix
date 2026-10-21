@@ -267,8 +267,9 @@ Samma ordning som för FL: minst kod per stängd lucka, och varje punkt mäts.
 1. ~~**Tidsoperationer**~~ — **klara i dag**: `insert_time`, `delete_time`, `duplicate_time` på
    regioner + `shift_song_markers`, fyra prov. Menyn ligger i linjalens kontextmeny och arbetar på
    loopmarkeringen (annars en takt vid spelhuvudet).
-2. **Groove-mallar** — en groove är en lista tidsförskjutningar per sextondel. Vi har swing i
-   tagningen; en mall är samma matematik med egna tal, och `.agr`-formatet är känt.
+2. **Groove-mallar** — *omräknad till M*: våra patterns är 16-stegsrutnät (`[bool; 16]` + `Take`),
+   inte fria notpositioner som Abletons. En groove måste alltså läggas som tidsförskjutning per
+   steg i schemaläggningen **och** i exporten — annars spelar filen ett annat sväng än du hör.
 3. **Kompning i spellistan** (take lanes) — kräver en lane-modell ovanpå regionerna.
 4. **Warp-lägen** — Beats/Tones/Texture/Complex är fyra analysstrategier ovanpå vår WSOLA.
 5. **Mikrotonalitet** — ASCL-läsare + oktavdelning i synten.
@@ -307,8 +308,8 @@ som utfällbara paneler ovanpå. Det är den enskilt största UX-skillnaden, och
 
 | # | Vad | Storlek | Varför den nivån räcker |
 | :--: | :--- | :---: | :--- |
-| 1 | **Paneler i stället för tolv sidor** — arrangemanget kvar, detaljpaneler ovanpå | L | den största upplevelseskillnaden |
-| 2 | **Fokus + Tab-navigering** mellan arrangemang, mixer, browser, pianorulle | M | gör appen tangentbordsstyrd, som deras |
+| ~~1~~ | ~~**Paneler i stället för tolv sidor**~~ — **klar i dag**: arrangemanget står kvar, fem vyer kan ligga som panel bredvid (Ctrl+1…5, Esc stänger) | L | den största upplevelseskillnaden |
+| 2 | **Fokus + Tab-navigering** mellan arrangemang, mixer, browser, pianorulle | M | kvar: panelerna nås nu med Ctrl+1…5, men Tab-fokus mellan ytorna finns inte |
 | 3 | **Temafiler** (JSON) med semantiska namn, 60–80 slots | M | `Theme::`-konstanterna används på **805 ställen**; de måste bli en palett som laddas vid start. Mekaniskt, men 805 rader |
 | 4 | **Ledtrådar på varje kontroll** i mixer och arrangemang | M | deras 2 302 mot våra 135 är den tydligaste hjälpklacken; siffran är räknad, inte gissad |
 | 5 | **Zoom-kommandon** (fit, in/out tid, valt område) | S | billigt, och deras modell är adresserbar |

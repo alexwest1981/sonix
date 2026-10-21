@@ -165,6 +165,8 @@ pub struct SonixApp {
     pub song_time: f32,
     pub pattern_mode: bool,
     pub view_mode: ViewMode,
+    /// Panel som ligger bredvid arrangemanget (Ctrl+1…5). `None` = ingen panel.
+    pub docked_panel: Option<ViewMode>,
     pub status_message: String,
     pub show_help_guide: bool,
     pub help_manual_active_tab: usize,
@@ -709,6 +711,7 @@ impl SonixApp {
             song_time: 0.0,
             pattern_mode: false,
             view_mode: ViewMode::PlaylistArranger,
+            docked_panel: None,
             status_message: crate::i18n::t("Välkommen till Sonix Studio! Skapa ett beat eller importera dina stämmor (Stems).").to_string(),
             show_help_guide: false,
             help_manual_active_tab: 0,

@@ -10,6 +10,226 @@
 
 use super::*;
 
+
+/// Namnet som panelen visar i sin rubrik.
+fn view_name(view: ViewMode) -> &'static str {
+    match view {
+        ViewMode::ChannelRack => "🥁 Kanalrack",
+        ViewMode::PianoRoll => "🎹 Pianorulle",
+        ViewMode::PlaylistArranger => "🎼 Tidslinje",
+        ViewMode::SessionDrummer => "🥁 Session",
+        ViewMode::AlchemySynth => "🧪 Alchemy",
+        ViewMode::RemixFx => "🎛 Remix FX",
+        ViewMode::VocalStudio => "🎙 Sångstudio",
+        ViewMode::AiMusicAssistant => "🤖 AI",
+        ViewMode::ModularPatcher => "🔌 Patcher",
+        ViewMode::StemSeparator => "🪄 Stämmor",
+        ViewMode::PluginManager => "🧩 Pluggar",
+        ViewMode::EffectsMixer => "🎚 Mixer",
+    }
+}
+
+/// Vyerna som kan ligga som panel bredvid arrangemanget, i tangentbordsordning Ctrl+1…5.
+pub(crate) const DOCKABLE: [ViewMode; 5] = [
+    ViewMode::PianoRoll,
+    ViewMode::EffectsMixer,
+    ViewMode::ChannelRack,
+    ViewMode::VocalStudio,
+    ViewMode::ModularPatcher,
+];
+
+impl SonixApp {
+    /// Ritar en vy. Samma funktion används både när vyn är en egen sida och när den
+    /// ligger som panel bredvid arrangemanget (Abletons modell: ytorna står kvar).
+    pub(crate) fn render_view(&mut self, view: ViewMode, ui: &mut egui::Ui, ctx: &egui::Context) {
+        match view {
+                ViewMode::PlaylistArranger => {
+                    self.render_playlist_arranger(ui);
+                }
+                ViewMode::ChannelRack => {
+                    self.render_channel_rack(ui);
+                    ui.add_space(10.0);
+                    self.render_synth_hardware_rack(ui);
+                }
+                ViewMode::PianoRoll => {
+                    self.render_piano_roll_editor(ui);
+                    ui.add_space(10.0);
+                    self.render_touch_piano_keyboard(ui, ctx);
+                    ui.add_space(10.0);
+                    self.render_synth_hardware_rack(ui);
+                }
+                ViewMode::SessionDrummer => {
+                    self.render_session_drummer(ui);
+                }
+                ViewMode::AlchemySynth => {
+                    self.render_alchemy_morph_pad(ui);
+                }
+                ViewMode::RemixFx => {
+                    self.render_remix_fx_view(ui);
+                }
+                ViewMode::ModularPatcher => {
+                    let actions = render_patcher_view(
+                        ui,
+                        &mut self.modular_graph,
+                        self.anim_phase,
+                        &mut self.patcher_enabled,
+                    );
+                    if actions.enabled_changed {
+                        let _ = self.engine.send_command(AudioCommand::SetPatcherEnabled(self.patcher_enabled));
+                    }
+                    if let Some((freq, vel)) = actions.note_on {
+                        let _ = self.engine.send_command(AudioCommand::PatcherNoteOn { freq, velocity: vel });
+                    } else if actions.note_off {
+                        let _ = self.engine.send_command(AudioCommand::PatcherNoteOff);
+                    }
+                }
+                ViewMode::StemSeparator => {
+                    let actions = render_stem_separator_view(ui, &mut self.stem_project, self.song_time, self.is_playing, &mut self.status_message);
+                    if actions.request_separation {
+                        self.pending_stem_separation = true;
+                        self.spawn_async_file_picker(
+                            "Ljudfiler",
+                            &[
+                                "wav", "WAV", "mp3", "MP3", "flac", "FLAC", "ogg", "OGG",
+                                "m4a", "aiff",
+                            ],
+                            "Välj mix att separera i stämspår",
+                        );
+                    }
+                    if actions.export_stems {
+                        self.export_separated_stems();
+                    }
+                    if let Some(idx) = actions.speed_changed {
+                        self.apply_stem_time_stretch(idx);
+                        self.status_message = crate::tstatus!("SPEED: tidssträckning tillämpad på stämspår {} (tonhöjd bevarad)", idx + 1);
+                    }
+                }
+                ViewMode::PluginManager => {
+                    let active_plugins: Vec<Option<String>> = self
+                        .plugin_slots
+                        .iter()
+                        .map(|s| s.as_ref().map(|p| p.name.clone()))
+                        .collect();
+                    let stem_track_count = self
+                        .stem_project
+                        .stems
+                        .len()
+                        .max(self.playlist_tracks.len())
+                        .max(active_plugins.len());
+                    let gui_open: Vec<bool> = (0..active_plugins.len())
+                        .map(|i| self.is_plugin_gui_open(i))
+                        .collect();
+                    #[cfg(feature = "plugin-host")]
+                    let sandbox_status = self.sandbox_status_text();
+                    #[cfg(not(feature = "plugin-host"))]
+                    let sandbox_status: Option<String> = None;
+                    // Offseten som de **sparade** slotarna bär (Fas 8.6), inte en
+                    // egen kopia i vyn: det som ritas ska vara det som kompenserar.
+                    let latency_offsets: Vec<i32> = self
+                        .plugin_slots
+                        .iter()
+                        .map(|s| {
+                            s.as_ref().map(|p| p.latency_offset_frames).unwrap_or(0)
+                        })
+                        .collect();
+                    let smart_flags: Vec<bool> = self
+                        .plugin_slots
+                        .iter()
+                        .map(|s| s.as_ref().map(|p| p.smart_disable).unwrap_or(false))
+                        .collect();
+                    // **Antalet egna utbussar frågas hos pluginen** (Fas 8.6), inte hos
+                    // en kopia: vyn ska rita en koppling per buss som faktiskt finns.
+                    let extra_out_counts: Vec<usize> = self
+                        .plugin_handles
+                        .iter()
+                        .map(|h| h.as_ref().map(|h| h.extra_output_ports()).unwrap_or(0))
+                        .collect();
+                    let extra_out_targets: Vec<Vec<Option<usize>>> = self
+                        .plugin_slots
+                        .iter()
+                        .map(|s| {
+                            s.as_ref()
+                                .map(|p| p.extra_out_targets.clone())
+                                .unwrap_or_default()
+                        })
+                        .collect();
+                    let actions = render_plugins_view(
+                        ui,
+                        &mut self.plugin_manager,
+                        &mut self.status_message,
+                        stem_track_count,
+                        self.selected_channel,
+                        &active_plugins,
+                        &gui_open,
+                        sandbox_status.as_deref(),
+                        &latency_offsets,
+                        &smart_flags,
+                        &extra_out_counts,
+                        &extra_out_targets,
+                        self.engine.sample_rate as f32,
+                    );
+                    if let Some((path, track)) = actions.load_into_track {
+                        self.load_plugin_into_track(&path, track);
+                    }
+                    #[cfg(feature = "plugin-host")]
+                    if let Some((path, track)) = actions.load_into_sandbox {
+                        self.load_plugin_into_sandbox_track(&path, track);
+                    }
+                    #[cfg(not(feature = "plugin-host"))]
+                    let _ = actions.load_into_sandbox;
+                    if let Some((path, track, location)) = actions.load_preset_into_track {
+                        self.load_plugin_preset_into_track(&path, track, &location);
+                    }
+                    if let Some((track, frames)) = actions.set_latency_offset {
+                        self.set_plugin_latency_offset(track, frames);
+                    }
+                    if let Some((track, on)) = actions.set_smart_disable {
+                        self.set_plugin_smart_disable(track, on);
+                    }
+                    if let Some((track, port, target)) = actions.set_extra_out_target {
+                        self.set_plugin_extra_out_routing(track, port, target);
+                    }
+                    if let Some(track) = actions.remove_track {
+                        self.remove_plugin_from_track(track);
+                    }
+                    if let Some(track) = actions.open_gui {
+                        self.open_plugin_gui(track);
+                    }
+                    if let Some(track) = actions.close_gui {
+                        self.close_plugin_gui(track);
+                    }
+                    #[cfg(feature = "plugin-host")]
+                    if let Some(path) = actions.sandbox_inspect {
+                        self.sandbox_inspect(&path);
+                    }
+                    #[cfg(not(feature = "plugin-host"))]
+                    let _ = actions.sandbox_inspect;
+                }
+                ViewMode::VocalStudio => {
+                    render_vocal_studio_view(
+                        ui,
+                        &mut self.vocal_studio,
+                        &mut self.vocal_harmonizer,
+                        self.is_playing,
+                        self.current_step,
+                        self.bpm,
+                        self.playlist_tracks.as_mut(),
+                        &mut self.status_message,
+                        &mut self.show_mic_settings_modal,
+                        &mut self.engine,
+                    );
+                }
+                ViewMode::AiMusicAssistant => {
+                    self.refresh_ai_context();
+                    render_ai_assistant_view(ui, &mut self.ai_assistant, &mut self.channels, &mut self.status_message);
+                }
+                ViewMode::EffectsMixer => {
+                    self.render_effects_mixer_rack(ui);
+                }
+            }
+    }
+}
+
 impl SonixApp {
     /// Bakgrundsarbetet: det som händer mellan bildrutorna — oavslutade filer som ska sägas,
     /// MIDI-porten som ansluts en gång, pollarna (hårdvara, bibliotek, patcher, separatorn,
@@ -260,6 +480,40 @@ impl SonixApp {
                         self.release_note(note);
                     }
                 }
+            }
+
+            // Paneler bredvid arrangemanget: Ctrl+1…5 väljer, samma tangent stänger.
+            // Ableton har tio `Focus*`-kommandon för samma sak; vi nöjer oss med de fem
+            // ytor man faktiskt växlar mellan medan man spelar in.
+            let is_cmd0 = i.modifiers.ctrl || i.modifiers.command;
+            if is_cmd0 {
+                let picks = [
+                    (egui::Key::Num1, 0),
+                    (egui::Key::Num2, 1),
+                    (egui::Key::Num3, 2),
+                    (egui::Key::Num4, 3),
+                    (egui::Key::Num5, 4),
+                ];
+                for (key, idx) in picks {
+                    if i.key_pressed(key) {
+                        let target = DOCKABLE[idx];
+                        self.docked_panel = if self.docked_panel == Some(target) {
+                            None
+                        } else {
+                            Some(target)
+                        };
+                        if self.view_mode != ViewMode::PlaylistArranger {
+                            self.view_mode = ViewMode::PlaylistArranger;
+                        }
+                        self.status_message = match self.docked_panel {
+                            Some(v) => crate::tstatus!("🧩 Panel: {} (Ctrl+{} stänger)", view_name(v), idx + 1),
+                            None => crate::i18n::t("🧩 Panelerna är stängda").to_string(),
+                        };
+                    }
+                }
+            }
+            if i.key_pressed(egui::Key::Escape) && self.docked_panel.is_some() && !modal_open {
+                self.docked_panel = None;
             }
 
             // Global Command / Ctrl shortcuts (ALWAYS active)
@@ -992,192 +1246,60 @@ impl SonixApp {
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(Theme::BG_DARK).inner_margin(12.0))
             .show(ctx, |ui| {
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    match self.view_mode {
-                        ViewMode::PlaylistArranger => {
-                            self.render_playlist_arranger(ui);
-                        }
-                        ViewMode::ChannelRack => {
-                            self.render_channel_rack(ui);
-                            ui.add_space(10.0);
-                            self.render_synth_hardware_rack(ui);
-                        }
-                        ViewMode::PianoRoll => {
-                            self.render_piano_roll_editor(ui);
-                            ui.add_space(10.0);
-                            self.render_touch_piano_keyboard(ui, ctx);
-                            ui.add_space(10.0);
-                            self.render_synth_hardware_rack(ui);
-                        }
-                        ViewMode::SessionDrummer => {
-                            self.render_session_drummer(ui);
-                        }
-                        ViewMode::AlchemySynth => {
-                            self.render_alchemy_morph_pad(ui);
-                        }
-                        ViewMode::RemixFx => {
-                            self.render_remix_fx_view(ui);
-                        }
-                        ViewMode::ModularPatcher => {
-                            let actions = render_patcher_view(
-                                ui,
-                                &mut self.modular_graph,
-                                self.anim_phase,
-                                &mut self.patcher_enabled,
-                            );
-                            if actions.enabled_changed {
-                                let _ = self.engine.send_command(AudioCommand::SetPatcherEnabled(self.patcher_enabled));
-                            }
-                            if let Some((freq, vel)) = actions.note_on {
-                                let _ = self.engine.send_command(AudioCommand::PatcherNoteOn { freq, velocity: vel });
-                            } else if actions.note_off {
-                                let _ = self.engine.send_command(AudioCommand::PatcherNoteOff);
-                            }
-                        }
-                        ViewMode::StemSeparator => {
-                            let actions = render_stem_separator_view(ui, &mut self.stem_project, self.song_time, self.is_playing, &mut self.status_message);
-                            if actions.request_separation {
-                                self.pending_stem_separation = true;
-                                self.spawn_async_file_picker(
-                                    "Ljudfiler",
-                                    &[
-                                        "wav", "WAV", "mp3", "MP3", "flac", "FLAC", "ogg", "OGG",
-                                        "m4a", "aiff",
-                                    ],
-                                    "Välj mix att separera i stämspår",
+                // Paneler i stället för sidor (Abletons modell): i arrangemanget står ytan kvar
+                // och den valda vyn ritas bredvid i stället för att ersätta den.
+                let mut close_dock = false;
+                let dock = if self.view_mode == ViewMode::PlaylistArranger {
+                    self.docked_panel
+                } else {
+                    None
+                };
+                if let Some(panel) = dock {
+                    egui::SidePanel::right("sonix_dock")
+                        .resizable(true)
+                        .default_width(470.0)
+                        .min_width(320.0)
+                        .frame(
+                            egui::Frame::none()
+                                .fill(Theme::PANEL_BG)
+                                .inner_margin(8.0)
+                                .stroke(egui::Stroke::new(1.0_f32, Theme::FL_CYAN)),
+                        )
+                        .show_inside(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(view_name(panel))
+                                        .strong()
+                                        .size(12.0)
+                                        .color(Theme::FL_CYAN),
                                 );
-                            }
-                            if actions.export_stems {
-                                self.export_separated_stems();
-                            }
-                            if let Some(idx) = actions.speed_changed {
-                                self.apply_stem_time_stretch(idx);
-                                self.status_message = crate::tstatus!("SPEED: tidssträckning tillämpad på stämspår {} (tonhöjd bevarad)", idx + 1);
-                            }
-                        }
-                        ViewMode::PluginManager => {
-                            let active_plugins: Vec<Option<String>> = self
-                                .plugin_slots
-                                .iter()
-                                .map(|s| s.as_ref().map(|p| p.name.clone()))
-                                .collect();
-                            let stem_track_count = self
-                                .stem_project
-                                .stems
-                                .len()
-                                .max(self.playlist_tracks.len())
-                                .max(active_plugins.len());
-                            let gui_open: Vec<bool> = (0..active_plugins.len())
-                                .map(|i| self.is_plugin_gui_open(i))
-                                .collect();
-                            #[cfg(feature = "plugin-host")]
-                            let sandbox_status = self.sandbox_status_text();
-                            #[cfg(not(feature = "plugin-host"))]
-                            let sandbox_status: Option<String> = None;
-                            // Offseten som de **sparade** slotarna bär (Fas 8.6), inte en
-                            // egen kopia i vyn: det som ritas ska vara det som kompenserar.
-                            let latency_offsets: Vec<i32> = self
-                                .plugin_slots
-                                .iter()
-                                .map(|s| {
-                                    s.as_ref().map(|p| p.latency_offset_frames).unwrap_or(0)
-                                })
-                                .collect();
-                            let smart_flags: Vec<bool> = self
-                                .plugin_slots
-                                .iter()
-                                .map(|s| s.as_ref().map(|p| p.smart_disable).unwrap_or(false))
-                                .collect();
-                            // **Antalet egna utbussar frågas hos pluginen** (Fas 8.6), inte hos
-                            // en kopia: vyn ska rita en koppling per buss som faktiskt finns.
-                            let extra_out_counts: Vec<usize> = self
-                                .plugin_handles
-                                .iter()
-                                .map(|h| h.as_ref().map(|h| h.extra_output_ports()).unwrap_or(0))
-                                .collect();
-                            let extra_out_targets: Vec<Vec<Option<usize>>> = self
-                                .plugin_slots
-                                .iter()
-                                .map(|s| {
-                                    s.as_ref()
-                                        .map(|p| p.extra_out_targets.clone())
-                                        .unwrap_or_default()
-                                })
-                                .collect();
-                            let actions = render_plugins_view(
-                                ui,
-                                &mut self.plugin_manager,
-                                &mut self.status_message,
-                                stem_track_count,
-                                self.selected_channel,
-                                &active_plugins,
-                                &gui_open,
-                                sandbox_status.as_deref(),
-                                &latency_offsets,
-                                &smart_flags,
-                                &extra_out_counts,
-                                &extra_out_targets,
-                                self.engine.sample_rate as f32,
-                            );
-                            if let Some((path, track)) = actions.load_into_track {
-                                self.load_plugin_into_track(&path, track);
-                            }
-                            #[cfg(feature = "plugin-host")]
-                            if let Some((path, track)) = actions.load_into_sandbox {
-                                self.load_plugin_into_sandbox_track(&path, track);
-                            }
-                            #[cfg(not(feature = "plugin-host"))]
-                            let _ = actions.load_into_sandbox;
-                            if let Some((path, track, location)) = actions.load_preset_into_track {
-                                self.load_plugin_preset_into_track(&path, track, &location);
-                            }
-                            if let Some((track, frames)) = actions.set_latency_offset {
-                                self.set_plugin_latency_offset(track, frames);
-                            }
-                            if let Some((track, on)) = actions.set_smart_disable {
-                                self.set_plugin_smart_disable(track, on);
-                            }
-                            if let Some((track, port, target)) = actions.set_extra_out_target {
-                                self.set_plugin_extra_out_routing(track, port, target);
-                            }
-                            if let Some(track) = actions.remove_track {
-                                self.remove_plugin_from_track(track);
-                            }
-                            if let Some(track) = actions.open_gui {
-                                self.open_plugin_gui(track);
-                            }
-                            if let Some(track) = actions.close_gui {
-                                self.close_plugin_gui(track);
-                            }
-                            #[cfg(feature = "plugin-host")]
-                            if let Some(path) = actions.sandbox_inspect {
-                                self.sandbox_inspect(&path);
-                            }
-                            #[cfg(not(feature = "plugin-host"))]
-                            let _ = actions.sandbox_inspect;
-                        }
-                        ViewMode::VocalStudio => {
-                            render_vocal_studio_view(
-                                ui,
-                                &mut self.vocal_studio,
-                                &mut self.vocal_harmonizer,
-                                self.is_playing,
-                                self.current_step,
-                                self.bpm,
-                                self.playlist_tracks.as_mut(),
-                                &mut self.status_message,
-                                &mut self.show_mic_settings_modal,
-                                &mut self.engine,
-                            );
-                        }
-                        ViewMode::AiMusicAssistant => {
-                            self.refresh_ai_context();
-                            render_ai_assistant_view(ui, &mut self.ai_assistant, &mut self.channels, &mut self.status_message);
-                        }
-                        ViewMode::EffectsMixer => {
-                            self.render_effects_mixer_rack(ui);
-                        }
-                    }
+                                ui.with_layout(
+                                    egui::Layout::right_to_left(egui::Align::Center),
+                                    |ui| {
+                                        if ui
+                                            .small_button("✕")
+                                            .on_hover_text(crate::i18n::t("Stäng panelen (Esc)"))
+                                            .clicked()
+                                        {
+                                            close_dock = true;
+                                        }
+                                    },
+                                );
+                            });
+                            ui.separator();
+                            egui::ScrollArea::vertical()
+                                .id_salt("sonix_dock_scroll")
+                                .auto_shrink([false, false])
+                                .show(ui, |ui| {
+                                    self.render_view(panel, ui, ctx);
+                                });
+                        });
+                }
+                if close_dock {
+                    self.docked_panel = None;
+                }
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    self.render_view(self.view_mode, ui, ctx);
                 });
             });
     }
