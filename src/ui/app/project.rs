@@ -1417,6 +1417,53 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
 }
 
 impl SonixApp {
+/// Listar mallarna i en katalog som `(namn, sökväg)`, sorterade på namn. Bara `.sonix`.
+pub(crate) fn list_templates(dir: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<(String, std::path::PathBuf)> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("sonix")))
+        .filter_map(|p| {
+            let name = p.file_stem()?.to_string_lossy().to_string();
+            Some((name, p))
+        })
+        .collect();
+    out.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    out
+}
+
+/// Sparar det aktuella läget som mall. Projektets egen sökväg rörs inte: en mall är en
+/// kopia, inte ett byte av projekt.
+pub(crate) fn save_as_template(&mut self) {
+    let name = if self.project_name.trim().is_empty() {
+        crate::i18n::t("Namnlöst Projekt").to_string()
+    } else {
+        self.project_name.clone()
+    };
+    let dir = crate::paths::paths().templates_dir();
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join(format!("{}.sonix", crate::autosave::slug(&name)));
+    let data = self.project_data(&name);
+    let written = serde_json::to_string_pretty(&data)
+        .map_err(|e| e.to_string())
+        .and_then(|json| crate::autosave::write_atomic(&path, json.as_bytes()).map_err(|e| e.to_string()));
+    self.status_message = match written {
+        Ok(()) => crate::tstatus!("📄 Sparade mallen '{}'", path.display()),
+        Err(e) => crate::tstatus!("❌ Kunde inte spara mallen: {}", e),
+    };
+}
+
+/// Öppnar en mall som ett **nytt** projekt: filens sökväg glöms bort, så Ctrl+S skriver
+/// i projektmappen och aldrig över mallen.
+pub(crate) fn new_from_template(&mut self, path: &str) {
+    self.load_project_file(path);
+    self.project_file_path = None;
+    self.status_message = crate::tstatus!("📄 Nytt projekt från mallen '{}'", path);
+}
+
 pub fn save_project(&mut self, name: &str) {
     let clean_name = if name.trim().is_empty() {
         crate::i18n::t("Namnlöst Projekt")
@@ -2048,3 +2095,30 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
 }
 }
 
+#[cfg(test)]
+mod template_tests {
+    use super::*;
+
+    #[test]
+    fn templates_list_only_sonix_files_sorted_by_name() {
+        let dir = std::env::temp_dir().join(format!("sonix_templates_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("Trumloop.sonix"), b"{}").unwrap();
+        std::fs::write(dir.join("alias.SONIX"), b"{}").unwrap();
+        std::fs::write(dir.join("anteckningar.txt"), b"x").unwrap();
+
+        let found = SonixApp::list_templates(&dir);
+        assert_eq!(found.len(), 2, "bara .sonix-filer, oavsett versaler");
+        assert_eq!(found[0].0, "alias", "sorterat på namn, skiftlägesokänsligt");
+        assert_eq!(found[1].0, "Trumloop");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_missing_template_folder_is_empty_not_an_error() {
+        let dir = std::env::temp_dir().join("sonix_templates_saknas_xyz");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(SonixApp::list_templates(&dir).is_empty());
+    }
+}

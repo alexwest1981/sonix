@@ -702,6 +702,27 @@ impl SonixApp {
                             self.new_empty_project();
                             ui.close_menu();
                         }
+                        // Mallar: ett sparat projekt i `Templates/`. Cubase skeppar 38; vi
+                        // har ingen egen uppsättning, men vägen att göra sina egna.
+                        let templates = SonixApp::list_templates(&crate::paths::paths().templates_dir());
+                        let mut open_template: Option<String> = None;
+                        ui.add_enabled_ui(!templates.is_empty(), |ui| {
+                            ui.menu_button(self.tr("📄 Nytt från mall"), |ui| {
+                                for (name, path) in &templates {
+                                    if ui.button(name).on_hover_text(path.display().to_string()).clicked() {
+                                        open_template = Some(path.to_string_lossy().to_string());
+                                        ui.close_menu();
+                                    }
+                                }
+                            });
+                        });
+                        if let Some(path) = open_template {
+                            self.new_from_template(&path);
+                        }
+                        if ui.button(self.tr("💾 Spara som mall")).on_hover_text(self.tr("Spara det aktuella läget som en mall i Templates-mappen")).clicked() {
+                            self.save_as_template();
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("📂 Öppna projekt... (Ctrl+O)")).clicked() {
                             self.show_project_manager_modal = true;
                             ui.close_menu();
