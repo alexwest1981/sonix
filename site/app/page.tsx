@@ -174,7 +174,7 @@ tar xzf sonix-0.9.0-x86_64-unknown-linux-gnu.tar.gz
           <article className="feature-card accent-card">
             <span className="feature-number">06</span>
             <h3>Open files, open licences</h3>
-            <p>Rust and egui, MIT or Apache-2.0. No account, no subscription, no telemetry. Swedish and English, switched live, both complete.</p>
+            <p>Rust and egui, MIT or Apache-2.0. No account, no subscription, no telemetry. Seven interface languages, switched live, all complete.</p>
             <a href={REPO} target="_blank" rel="noreferrer">See the code ↗</a>
           </article>
         </div>
@@ -214,11 +214,11 @@ tar xzf sonix-0.9.0-x86_64-unknown-linux-gnu.tar.gz
 
       <section className="numbers container">
         <div className="numbers-row">
-          <div><b>707</b><span>automated tests</span></div>
+          <div><b>708</b><span>automated tests</span></div>
           <div><b>0</b><span>warnings in all four builds</span></div>
           <div><b>29</b><span>screenshots in the repo</span></div>
-          <div><b>2</b><span>complete interface languages</span></div>
-          <div><b>336</b><span>commits</span></div>
+          <div><b>7</b><span>interface languages</span></div>
+          <div><b>337</b><span>commits</span></div>
         </div>
       </section>
 
