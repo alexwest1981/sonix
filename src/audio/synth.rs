@@ -118,6 +118,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::TriggerDrum(_) => "TriggerDrum",
         AudioCommand::SetWaveform(_) => "SetWaveform",
         AudioCommand::SetFm(_) => "SetFm",
+        AudioCommand::SetConvolverIr(_) => "SetConvolverIr",
         AudioCommand::SetAdsr(_) => "SetAdsr",
         AudioCommand::SetFilter(_) => "SetFilter",
         AudioCommand::SetFilterEnv { .. } => "SetFilterEnv",

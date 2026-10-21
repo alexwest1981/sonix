@@ -145,6 +145,9 @@ pub enum AudioCommand {
     TriggerDrum(DrumType),
     SetWaveform(Waveform),
     SetFm(FmParams),
+    /// Impulsresponsen till masterns convolver (mono). `None` rensar den. Den bärs för sig
+    /// själv och inte i `MasterFxParams`, som är `Copy` och skickas varje bildruta.
+    SetConvolverIr(Option<Arc<Vec<f32>>>),
     SetAdsr(AdsrParams),
     SetFilter(FilterParams),
     /// Per-voice filter envelope: `amount` is the cutoff modulation depth in

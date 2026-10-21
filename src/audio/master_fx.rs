@@ -5,6 +5,9 @@
 //! shipped through the lock-free command ring buffer without cloning buffers.
 
 use std::f32::consts::PI;
+use std::sync::Arc;
+
+use super::vocal_harmonizer::fft_radix2;
 
 // ---------------------------------------------------------------------------
 // Biquad building blocks
@@ -709,6 +712,212 @@ impl MultibandCompressor {
 }
 
 // ---------------------------------------------------------------------------
+// Convolution reverb (FL Studio: Fruity Convolver)
+// ---------------------------------------------------------------------------
+
+/// Blocklängd för den partitionerade faltningen. 256 sampel = **5,3 ms** vid 48 kHz, och
+/// det är samtidigt våt-signalens latens (se [`Convolver`]). Blocket är en avvägning: mindre
+/// ger kortare latens men fler FFT:er per sekund.
+const CONV_BLOCK: usize = 256;
+const CONV_N: usize = 2 * CONV_BLOCK;
+/// Tak för impulsresponsen: 2 s vid 48 kHz (376 partitioner). `shortcut:` längre rums-
+/// respons klipps, för kostnaden är linjär i antalet partitioner — höj taket när någon
+/// behöver längre rum, inte förrän dess.
+const CONV_MAX_LEN: usize = 96_000;
+
+/// Torr/våt och nivå för convolvern. Själva impulsresponsen ligger **inte** här: den är
+/// hundratusentals sampel och kan inte följa med ett `Copy`-kommando. Den skickas för sig
+/// (`SetConvolverIr`) och ägs av kedjan.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ConvolverParams {
+    pub mix: f32,
+    pub gain_db: f32,
+}
+
+impl Default for ConvolverParams {
+    fn default() -> Self {
+        Self { mix: 0.35, gain_db: 0.0 }
+    }
+}
+
+/// **Faltning med en impulsrespons**, uniformt partitionerad (overlap-save).
+///
+/// Responsen delas i block om [`CONV_BLOCK`]; varje block FFT:as en gång vid laddning och
+/// summeras sedan som `Y = Σ X(n−p)·H(p)` per block. Det ger **linjär** kostnad i
+/// responsens längd och ingen allokering i `process`.
+///
+/// **Latensen är ett block** (5,3 ms vid 48 kHz): den första utsignalen kan inte beräknas
+/// förrän ett helt block inkommit. `mix = 0` är bit-exakt genomgång, och provet
+/// `convolver_delays_by_exactly_one_block` mäter latensen i stället för att dölja den.
+pub struct Convolver {
+    parts: usize,
+    ir_re: Vec<f32>,
+    ir_im: Vec<f32>,
+    hist_l_re: Vec<f32>,
+    hist_l_im: Vec<f32>,
+    hist_r_re: Vec<f32>,
+    hist_r_im: Vec<f32>,
+    hist_pos: usize,
+    ring_l: Vec<f32>,
+    ring_r: Vec<f32>,
+    write: usize,
+    fill: usize,
+    fft_re: Vec<f32>,
+    fft_im: Vec<f32>,
+    acc_re: Vec<f32>,
+    acc_im: Vec<f32>,
+    out_l: Vec<f32>,
+    out_r: Vec<f32>,
+    out_pos: usize,
+}
+
+impl Convolver {
+    pub fn new(_sample_rate: f32) -> Self {
+        Self {
+            parts: 0,
+            ir_re: Vec::new(),
+            ir_im: Vec::new(),
+            hist_l_re: Vec::new(),
+            hist_l_im: Vec::new(),
+            hist_r_re: Vec::new(),
+            hist_r_im: Vec::new(),
+            hist_pos: 0,
+            ring_l: vec![0.0; CONV_N],
+            ring_r: vec![0.0; CONV_N],
+            write: 0,
+            fill: 0,
+            fft_re: vec![0.0; CONV_N],
+            fft_im: vec![0.0; CONV_N],
+            acc_re: vec![0.0; CONV_N],
+            acc_im: vec![0.0; CONV_N],
+            out_l: vec![0.0; CONV_BLOCK],
+            out_r: vec![0.0; CONV_BLOCK],
+            out_pos: CONV_BLOCK,
+        }
+    }
+
+    /// Laddar en (mono) impulsrespons. `None` = ingen faltning alls (bit-exakt genomgång).
+    pub fn set_ir(&mut self, ir: Option<Arc<Vec<f32>>>) {
+        let Some(ir) = ir.filter(|i| !i.is_empty()) else {
+            self.parts = 0;
+            self.ir_re.clear();
+            self.ir_im.clear();
+            return;
+        };
+        let len = ir.len().min(CONV_MAX_LEN);
+        let parts = len.div_ceil(CONV_BLOCK).max(1);
+        self.parts = parts;
+        self.ir_re = vec![0.0; parts * CONV_N];
+        self.ir_im = vec![0.0; parts * CONV_N];
+        let mut block = vec![0.0f32; CONV_N];
+        let mut imag = vec![0.0f32; CONV_N];
+        for p in 0..parts {
+            block.iter_mut().for_each(|v| *v = 0.0);
+            imag.iter_mut().for_each(|v| *v = 0.0);
+            let start = p * CONV_BLOCK;
+            let end = (start + CONV_BLOCK).min(len);
+            block[..end - start].copy_from_slice(&ir[start..end]);
+            fft_radix2(&mut block, &mut imag, false);
+            self.ir_re[p * CONV_N..(p + 1) * CONV_N].copy_from_slice(&block);
+            self.ir_im[p * CONV_N..(p + 1) * CONV_N].copy_from_slice(&imag);
+        }
+        self.hist_l_re = vec![0.0; parts * CONV_N];
+        self.hist_l_im = vec![0.0; parts * CONV_N];
+        self.hist_r_re = vec![0.0; parts * CONV_N];
+        self.hist_r_im = vec![0.0; parts * CONV_N];
+        self.hist_pos = 0;
+        self.ring_l.iter_mut().for_each(|v| *v = 0.0);
+        self.ring_r.iter_mut().for_each(|v| *v = 0.0);
+        self.write = 0;
+        self.fill = 0;
+        self.out_pos = CONV_BLOCK;
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &ConvolverParams) -> (f32, f32) {
+        if self.parts == 0 || p.mix <= 0.001 {
+            return (l, r);
+        }
+        let (wet_l, wet_r) = if self.out_pos < CONV_BLOCK {
+            let s = (self.out_l[self.out_pos], self.out_r[self.out_pos]);
+            self.out_pos += 1;
+            s
+        } else {
+            (0.0, 0.0)
+        };
+
+        self.ring_l[self.write] = l;
+        self.ring_r[self.write] = r;
+        self.write = (self.write + 1) % CONV_N;
+        self.fill += 1;
+        if self.fill == CONV_BLOCK {
+            self.fill = 0;
+            self.convolve_block();
+        }
+
+        let gain = 10.0_f32.powf(p.gain_db / 20.0);
+        let mix = p.mix.clamp(0.0, 1.0);
+        (
+            l + mix * (wet_l * gain - l),
+            r + mix * (wet_r * gain - r),
+        )
+    }
+
+    fn convolve_block(&mut self) {
+        for ch in 0..2 {
+            // Rulla ut de senaste N sampeln ur ringen och FFT:a dem.
+            for i in 0..CONV_N {
+                let v = if ch == 0 {
+                    self.ring_l[(self.write + i) % CONV_N]
+                } else {
+                    self.ring_r[(self.write + i) % CONV_N]
+                };
+                self.fft_re[i] = v;
+                self.fft_im[i] = 0.0;
+            }
+            fft_radix2(&mut self.fft_re, &mut self.fft_im, false);
+            let base = self.hist_pos * CONV_N;
+            if ch == 0 {
+                self.hist_l_re[base..base + CONV_N].copy_from_slice(&self.fft_re);
+                self.hist_l_im[base..base + CONV_N].copy_from_slice(&self.fft_im);
+            } else {
+                self.hist_r_re[base..base + CONV_N].copy_from_slice(&self.fft_re);
+                self.hist_r_im[base..base + CONV_N].copy_from_slice(&self.fft_im);
+            }
+
+            for i in 0..CONV_N {
+                self.acc_re[i] = 0.0;
+                self.acc_im[i] = 0.0;
+            }
+            for p in 0..self.parts {
+                let idx = (self.hist_pos + self.parts - p) % self.parts;
+                let hb = idx * CONV_N;
+                let ib = p * CONV_N;
+                for i in 0..CONV_N {
+                    let (xr, xi) = if ch == 0 {
+                        (self.hist_l_re[hb + i], self.hist_l_im[hb + i])
+                    } else {
+                        (self.hist_r_re[hb + i], self.hist_r_im[hb + i])
+                    };
+                    let (hr, hi) = (self.ir_re[ib + i], self.ir_im[ib + i]);
+                    self.acc_re[i] += xr * hr - xi * hi;
+                    self.acc_im[i] += xr * hi + xi * hr;
+                }
+            }
+            fft_radix2(&mut self.acc_re, &mut self.acc_im, true);
+            // Overlap-save: den **andra** halvan är den giltiga.
+            if ch == 0 {
+                self.out_l.copy_from_slice(&self.acc_re[CONV_BLOCK..CONV_N]);
+            } else {
+                self.out_r.copy_from_slice(&self.acc_re[CONV_BLOCK..CONV_N]);
+            }
+        }
+        self.hist_pos = (self.hist_pos + 1) % self.parts;
+        self.out_pos = 0;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Master filter (with drive) + limiter
 // ---------------------------------------------------------------------------
 
@@ -853,6 +1062,8 @@ pub struct MasterFxParams {
     pub sat_enabled: bool,
     pub multiband: MultibandParams,
     pub multiband_enabled: bool,
+    pub convolver: ConvolverParams,
+    pub convolver_enabled: bool,
     pub gate: GateParams,
     pub gate_enabled: bool,
     pub filter: MasterFilterParams,
@@ -877,6 +1088,8 @@ impl Default for MasterFxParams {
             sat_enabled: false,
             multiband: MultibandParams::default(),
             multiband_enabled: false,
+            convolver: ConvolverParams::default(),
+            convolver_enabled: false,
             gate: GateParams::default(),
             gate_enabled: false,
             filter: MasterFilterParams::default(),
@@ -898,6 +1111,7 @@ pub struct MasterFxChain {
     transient: TransientShaper,
     sat: Saturator,
     multiband: MultibandCompressor,
+    convolver: Convolver,
     gate: NoiseGate,
     filter: MasterFilter,
     limiter: Limiter,
@@ -918,6 +1132,7 @@ impl MasterFxChain {
             transient: TransientShaper::new(sample_rate),
             sat: Saturator::new(sample_rate),
             multiband: MultibandCompressor::new(sample_rate),
+            convolver: Convolver::new(sample_rate),
             gate: NoiseGate::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
@@ -940,6 +1155,12 @@ impl MasterFxChain {
         }
         self.eq_active = params.eq_enabled && any;
         self.multiband.set_params(params.multiband);
+    }
+
+    /// Laddar (eller rensar) convolverns impulsrespons. Responsen är för stor för att
+    /// följa med `MasterFxParams` (som är `Copy`), så den kommer som ett eget kommando.
+    pub fn set_convolver_ir(&mut self, ir: Option<Arc<Vec<f32>>>) {
+        self.convolver.set_ir(ir);
     }
 
     /// Current compressor gain reduction in dB (<= 0.0). Read by the UI meter.
@@ -995,6 +1216,12 @@ impl MasterFxChain {
         // och limitern tar hand om den extra toppen den kan ge.
         if p.multiband_enabled {
             let (nl, nr) = self.multiband.process(l, r);
+            l = nl;
+            r = nr;
+        }
+
+        if p.convolver_enabled {
+            let (nl, nr) = self.convolver.process(l, r, &p.convolver);
             l = nl;
             r = nr;
         }
@@ -1521,5 +1748,56 @@ mod tests {
             (0.9..1.1).contains(&high),
             "diskanten skulle vara orörd, blev {high:.3}"
         );
+    }
+
+    #[test]
+    fn convolver_without_ir_is_a_passthrough() {
+        let mut c = Convolver::new(48_000.0);
+        let p = ConvolverParams { mix: 1.0, gain_db: 0.0 };
+        for i in 0..1_000 {
+            let x = (i as f32 * 0.01).sin();
+            let (l, r) = c.process(x, -x, &p);
+            assert_eq!(l, x);
+            assert_eq!(r, -x);
+        }
+    }
+
+    #[test]
+    fn convolver_delays_by_exactly_one_block() {
+        // IR = [1,0,0…] ska ge insignalen tillbaka, fördröjd med **ett block** (CONV_BLOCK).
+        // Latensen mäts här i stället för att döljas: den är priset för att svaret inte kan
+        // räknas förrän ett helt block inkommit.
+        let mut c = Convolver::new(48_000.0);
+        c.set_ir(Some(Arc::new(vec![1.0])));
+        let p = ConvolverParams { mix: 1.0, gain_db: 0.0 };
+        let mut out = Vec::new();
+        for i in 0..1_024 {
+            let x = if i == 0 { 1.0 } else { 0.0 };
+            let (l, _) = c.process(x, x, &p);
+            out.push(l);
+        }
+        assert!(
+            out[..CONV_BLOCK].iter().all(|v| *v == 0.0),
+            "innan första blocket är färdigt finns inget svar"
+        );
+        assert!((out[CONV_BLOCK] - 1.0).abs() < 1e-5, "impulsen ska komma på plats {}", CONV_BLOCK);
+    }
+
+    #[test]
+    fn convolver_applies_the_ir_shape() {
+        // En två-taps-respons [0,5, −0,5] ska ge två sampel med rätt tecken — alltså är det
+        // filens respons som faltas in, inte en fördröjning.
+        let mut c = Convolver::new(48_000.0);
+        c.set_ir(Some(Arc::new(vec![0.5, -0.5])));
+        let p = ConvolverParams { mix: 1.0, gain_db: 0.0 };
+        let mut out = Vec::new();
+        for i in 0..1_024 {
+            let x = if i == 0 { 1.0 } else { 0.0 };
+            let (l, _) = c.process(x, x, &p);
+            out.push(l);
+        }
+        assert!((out[CONV_BLOCK] - 0.5).abs() < 1e-5, "första tappen: {}", out[CONV_BLOCK]);
+        assert!((out[CONV_BLOCK + 1] + 0.5).abs() < 1e-5, "andra tappen: {}", out[CONV_BLOCK + 1]);
+        assert!(out[CONV_BLOCK + 2].abs() < 1e-5, "responsen är två sampel lång");
     }
 }

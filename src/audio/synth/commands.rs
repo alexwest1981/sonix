@@ -127,6 +127,9 @@ impl SynthEngine {
             AudioCommand::SetFm(fm) => {
                 self.fm = fm;
             }
+            AudioCommand::SetConvolverIr(ir) => {
+                self.master_fx.set_convolver_ir(ir);
+            }
             AudioCommand::SetAdsr(adsr) => {
                 self.adsr = adsr;
             }

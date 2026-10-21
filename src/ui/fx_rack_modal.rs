@@ -1,8 +1,8 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
     AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
-    LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams, MultibandParams,
-    ReverbParams, SaturatorParams, TransientParams,
+    ConvolverParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
+    MultibandParams, ReverbParams, SaturatorParams, TransientParams,
 };
 use crate::ui::theme::Theme;
 use crate::ui::widgets::rotary_knob;
@@ -43,6 +43,11 @@ pub struct FxRackState {
     pub selected_category: &'static str,
     pub eq_nodes: Vec<VisualEqNode>,
     pub compressor_release_ms: f32,
+    /// Convolverns torr/våt och nivå. Impulsresponsen själv ligger i motorn (den är för stor
+    /// för att skickas varje bildruta) — här finns bara namnet, för att veta om en är laddad.
+    pub convolver_mix: f32,
+    pub convolver_gain_db: f32,
+    pub convolver_ir_name: Option<String>,
 }
 
 impl Default for FxRackState {
@@ -226,6 +231,9 @@ impl Default for FxRackState {
                 VisualEqNode { name: "High (Air)", freq_hz: 11000.0, gain_db: 1.5, q: 0.8, color: Color32::from_rgb(0, 200, 255), is_active: true },
             ],
             compressor_release_ms: 120.0,
+            convolver_mix: 0.35,
+            convolver_gain_db: 0.0,
+            convolver_ir_name: None,
         }
     }
 }
@@ -368,12 +376,72 @@ impl FxRackState {
             sat_enabled: sat_p.map(|p| p.enabled).unwrap_or(false),
             multiband,
             multiband_enabled: mb_p.map(|p| p.enabled).unwrap_or(false),
+            convolver: ConvolverParams {
+                mix: self.convolver_mix,
+                gain_db: self.convolver_gain_db,
+            },
+            // Utan impulsrespons finns inget att faltha: flaggan **är** filens närvaro.
+            convolver_enabled: self.convolver_ir_name.is_some(),
             gate,
             gate_enabled: gate_p.map(|p| p.enabled).unwrap_or(false),
             filter,
             limiter,
             limiter_enabled: lim_p.map(|p| p.enabled).unwrap_or(false),
         }
+    }
+
+    /// Läser en `.wav` som impulsrespons och skickar den till motorn.
+    ///
+    /// Filen läses som mono (`(vänster + höger) / 2`) och skalas om linjärt om dess
+    /// samplingsfrekvens skiljer sig från motorns — `shortcut:` linjär interpolering, vilket
+    /// räcker för en rumsrespons; byt till `stretch`-modulens kvalitet om någon hör skillnad.
+    pub fn load_convolver_ir(&mut self, engine: &mut AudioEngine) -> Option<String> {
+        let path = rfd::FileDialog::new()
+            .add_filter("WAV", &["wav"])
+            .pick_file()?;
+        let (l, r, sr) = match crate::audio::load_wav_pcm(&path.to_string_lossy()) {
+            Ok(v) => v,
+            Err(e) => {
+                return Some(crate::tstatus!(
+                    "⚠️ Kunde inte läsa '{}': {}",
+                    path.display(),
+                    e
+                ));
+            }
+        };
+        let mut mono: Vec<f32> = l
+            .iter()
+            .zip(r.iter())
+            .map(|(a, b)| (a + b) * 0.5)
+            .collect();
+        let target = engine.sample_rate as u32;
+        if sr > 0 && target > 0 && sr != target {
+            mono = resample_linear(&mono, sr, target);
+        }
+        if mono.is_empty() {
+            return Some(crate::i18n::t("⚠️ Filen är tom — ingen impulsrespons laddad").to_string());
+        }
+        let len = mono.len();
+        let secs = len as f32 / target.max(1) as f32;
+        let _ = engine.send_command(AudioCommand::SetConvolverIr(Some(std::sync::Arc::new(mono))));
+        let name = path
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.display().to_string());
+        self.convolver_ir_name = Some(name.clone());
+        Some(crate::tstatus!(
+            "🌀 Impulsrespons '{}' laddad ({:.2} s, {} Hz → {} Hz)",
+            name,
+            secs,
+            sr,
+            target
+        ))
+    }
+
+    /// Tar bort impulsresponsen (convolvern blir en bit-exakt genomgång).
+    pub fn clear_convolver_ir(&mut self, engine: &mut AudioEngine) {
+        let _ = engine.send_command(AudioCommand::SetConvolverIr(None));
+        self.convolver_ir_name = None;
     }
 
     /// Push the current rack to the audio engine in real time.
@@ -492,6 +560,44 @@ pub fn render_fx_rack_modal(
                     }
                     _ => {}
                 }
+
+                ui.add_space(8.0);
+
+                // Convolvern har sin egen rad: två reglage och en fil, inte tre rattar som
+                // pedalerna — en impulsrespons är inte en ratt.
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("🌀 CONVOLVER (impulsrespons)"))
+                                .strong()
+                                .color(Theme::FL_CYAN),
+                        );
+                        let name = state
+                            .convolver_ir_name
+                            .clone()
+                            .unwrap_or_else(|| crate::i18n::t("ingen fil laddad").to_string());
+                        ui.label(egui::RichText::new(name).size(10.0).color(Theme::TEXT_MUTED));
+                        if ui.button(crate::i18n::t("📥 Ladda .wav")).clicked() {
+                            if let Some(msg) = state.load_convolver_ir(engine) {
+                                *status_msg = msg;
+                            }
+                        }
+                        if state.convolver_ir_name.is_some() && ui.button(crate::i18n::t("🗑 Rensa")).clicked() {
+                            state.clear_convolver_ir(engine);
+                            *status_msg = crate::i18n::t("🌀 Impulsresponsen är borttagen").to_string();
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        ui.add(
+                            egui::Slider::new(&mut state.convolver_mix, 0.0..=1.0)
+                                .text(crate::i18n::t("Torrt/vått")),
+                        );
+                        ui.add(
+                            egui::Slider::new(&mut state.convolver_gain_db, -24.0..=12.0)
+                                .text(crate::i18n::t("Nivå (dB)")),
+                        );
+                    });
+                });
 
                 ui.add_space(8.0);
 
@@ -911,3 +1017,23 @@ fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_ms
     });
 }
 
+/// Linjär omskalning för en impulsrespons. `shortcut:` rak interpolering — tillräcklig för
+/// ett rums frekvensgång, men den kortar/sträcker rumslängden exakt så mycket som
+/// frekvenserna säger, alltså inte en tonhöjdsbevarande sträckning.
+fn resample_linear(x: &[f32], from: u32, to: u32) -> Vec<f32> {
+    if from == 0 || to == 0 || from == to || x.is_empty() {
+        return x.to_vec();
+    }
+    let ratio = to as f64 / from as f64;
+    let out_len = ((x.len() as f64) * ratio).round().max(1.0) as usize;
+    let mut out = Vec::with_capacity(out_len);
+    for i in 0..out_len {
+        let src = i as f64 / ratio;
+        let i0 = src.floor() as usize;
+        let frac = (src - i0 as f64) as f32;
+        let a = x[i0.min(x.len() - 1)];
+        let b = x[(i0 + 1).min(x.len() - 1)];
+        out.push(a + (b - a) * frac);
+    }
+    out
+}
