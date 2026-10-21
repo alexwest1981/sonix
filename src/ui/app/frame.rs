@@ -1201,7 +1201,7 @@ impl SonixApp {
                     egui::menu::menu_button(ui, egui::RichText::new(lang_title).size(11.0).color(if self.language != crate::i18n::Language::En { Theme::FL_YELLOW } else { Theme::TEXT_MUTED }), |ui| {
                         ui.label(egui::RichText::new(self.tr("🌐 Språk")).strong().size(11.0));
                         ui.separator();
-                        for lang in crate::i18n::Language::all() {
+                        for lang in crate::i18n::Language::shipped() {
                             if ui.selectable_label(self.language == lang, lang.native_name()).clicked() {
                                 self.language = lang;
                                 crate::i18n::set_current(lang);
@@ -1291,6 +1291,17 @@ impl SonixApp {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(8.0, 2.0);
                     ui.label(egui::RichText::new(&self.status_message).size(11.0).color(Theme::FL_CYAN));
+                    let drops = self.engine.command_drops();
+                    if drops > 0 {
+                        ui.label(
+                            egui::RichText::new(format!("⚠ {} {}", drops, self.tr("tappade kommandon")))
+                                .size(10.0)
+                                .color(Theme::FL_YELLOW),
+                        )
+                        .on_hover_text(self.tr(
+                            "Ljudtråden hann inte ta emot kommandon. Spela om handlingen om gränssnittet och ljudet inte stämmer.",
+                        ));
+                    }
                     ui.separator();
                     ui.label(egui::RichText::new(self.tr("PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW")).size(10.0).color(Theme::TEXT_MUTED));
                 });

@@ -18,8 +18,14 @@ pub enum Language {
 }
 
 impl Language {
-    pub fn all() -> [Language; 7] {
-        [Language::En, Language::Sv, Language::Da, Language::No, Language::De, Language::Es, Language::Fr]
+    /// Språken menyn erbjuder: de två vars tabeller är kompletta.
+    ///
+    /// De övriga fem finns kvar i koden men översätter bara menyraden och mixern
+    /// (113 av 1670 nycklar, mätt 2026-10-21). En meny som lovar Deutsch och sedan
+    /// svarar engelska är en lögn i gränssnittet, så de visas inte förrän tabellen
+    /// är ifylld.
+    pub fn shipped() -> [Language; 2] {
+        [Language::Sv, Language::En]
     }
 
     fn disc(self) -> u8 {
@@ -2084,6 +2090,342 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "⚠ {}: {}" => "⚠ {}: {}",
         "Sparade {}" => "Saved {}",
         "✅ Makrokedjan skrev {}" => "✅ The macro chain wrote {}",
+        " ⏸ PAUSE " => " ⏸ PAUSE ",
+        " ⏹ STOP " => " ⏹ STOP ",
+        " ⏹ STOPPA & SPARA KLIPP " => " ⏹ STOP & SAVE CLIP ",
+        " ▶ PLAY " => " ▶ PLAY ",
+        "(ingen envelop vald)" => "(no envelope selected)",
+        "(start)" => "(start)",
+        "+ ✨ Space Reverb" => "+ ✨ Space Reverb",
+        "+ 🌀 LFO Modulator" => "+ 🌀 LFO Modulator",
+        "+ 🌊 Delay" => "+ 🌊 Delay",
+        "+ 🌊 SVF Filter" => "+ 🌊 SVF Filter",
+        "+ 📈 ADSR Envelope" => "+ 📈 ADSR Envelope",
+        "+ 🔊 Oscillator" => "+ 🔊 Oscillator",
+        "+ 🔥 Tube Drive" => "+ 🔥 Tube Drive",
+        "/sökväg/till/preset.clap-preset" => "/path/to/preset.clap-preset",
+        "303 Acid resonant slide" => "303 Acid resonant slide",
+        "ADSR ENVELOPE" => "ADSR ENVELOPE",
+        "AI Music Assistant redo (regelbaserad generativ motor – musikteori, ingen extern modell)" => "AI Music Assistant ready (rule-based generative engine: music theory, no external model)",
+        "Aktiv (Sonix 512-sampels ringbuffert)" => "Active (Sonix 512-sample ring buffer)",
+        "Analog Alchemy Synthesizer (F7):" => "Analog Alchemy Synthesizer (F7):",
+        "Arp Intro" => "Arp Intro",
+        "Arpeggio:" => "Arpeggio:",
+        "Attack:" => "Attack:",
+        "Av (en skott)" => "Off (one shot)",
+        "Av = spela en gång. Till not-av = loopen går medan noten hålls och resten efter loopen spelas vid not-av. För evigt = loopen fortsätter även efter not-avet." => "Off = play once. To note-off = the loop runs while the note is held and the rest after the loop plays at note-off. Forever = the loop keeps going after note-off.",
+        "BEAT PRESETS" => "BEAT PRESETS",
+        "BETA" => "BETA",
+        "Breakdown" => "Breakdown",
+        "Build-Up 1" => "Build-Up 1",
+        "Build-Up 2" => "Build-Up 2",
+        "Bussar" => "Buses",
+        "CLAP-fabriken saknar create_plugin()" => "The CLAP factory has no create_plugin()",
+        "CLAP-fabriken saknar get_plugin_count()" => "The CLAP factory has no get_plugin_count()",
+        "CLAP-fabriken saknar get_plugin_descriptor()" => "The CLAP factory has no get_plugin_descriptor()",
+        "Center" => "Center",
+        "Cutoff:" => "Cutoff:",
+        "DJ FILTER & CRUSH XY PAD" => "DJ FILTER & CRUSH XY PAD",
+        "DJ Intro" => "DJ Intro",
+        "DJ Outro" => "DJ Outro",
+        "DJ PERFORMANCE PADS" => "DJ PERFORMANCE PADS",
+        "DROP 1" => "DROP 1",
+        "Decay:" => "Decay:",
+        "Detekterar tonhöjden i den valda tagningen och ritar riktiga notblock" => "Detects the pitch of the selected take and draws real note blocks",
+        "Dorisk" => "Dorian",
+        "Dra looppunkten. Den stannar en minsta loop från den andra punkten — en loop som försvann mitt i ett drag vore ingen interaktion." => "Drag the loop point. It stops one minimum loop from the other point; a loop that vanished mid-drag would not be an interaction.",
+        "Dur-pentatonisk" => "Major pentatonic",
+        "Eget Ljud" => "Own Sound",
+        "End Trim:" => "End Trim:",
+        "Envelop:" => "Envelop:",
+        "Envelope (ADSR):" => "Envelope (ADSR):",
+        "Ett byte gäller från sin takt och framåt:" => "A change applies from its bar onwards:",
+        "Ett lågpassfilter per röst. Avstängt är filtret inte ett filter som står öppet — det rör samplarna inte alls, så ett projekt från före filtret låter exakt som förut." => "One low-pass filter per voice. Turned off, the filter is not an open filter; it does not touch the samples at all, so a project from before the filter sounds exactly as it did.",
+        "Export & Rendering (Ctrl+E):" => "Export & Rendering (Ctrl+E):",
+        "F-attack:" => "F-attack:",
+        "F-decay:" => "F-decay:",
+        "F-släpp:" => "F-release:",
+        "F-sustain:" => "F-sustain:",
+        "FILLS & GROOVE" => "FILLS & GROOVE",
+        "FL Studio 32-bit VST Plugins (Legacy)" => "FL Studio 32-bit VST Plugins (Legacy)",
+        "FL Studio 64-bit VST Plugins (Image-Line)" => "FL Studio 64-bit VST Plugins (Image-Line)",
+        "Fader Bank:" => "Fader Bank:",
+        "Filen finns inte på disken" => "The file is not on disk",
+        "Filter (lågpass):" => "Filter (low-pass):",
+        "Filter på" => "Filter on",
+        "Fine Cents:" => "Fine Cents:",
+        "För evigt" => "Forever",
+        "GROSS BEAT / STUTTER GLITCH" => "GROSS BEAT / STUTTER GLITCH",
+        "Giltig Linux-binär (ELF)" => "Valid Linux binary (ELF)",
+        "Giltig Windows-binär (PE) – kräver Yabridge" => "Valid Windows binary (PE), requires Yabridge",
+        "Groove" => "Groove",
+        "HIGH SHELF" => "HIGH SHELF",
+        "Hook 1" => "Hook 1",
+        "Hook 2" => "Hook 2",
+        "Hur långt envelopen flyttar cutoffen, i oktaver — samma avstånd i klang oavsett var cutoffen står (0 = ingen förflyttning alls). Negativt stänger filtret i stället." => "How far the envelope moves the cutoff, in octaves; the same distance in pitch wherever the cutoff sits (0 = no movement). Negative closes the filter instead.",
+        "Hur mycket av spåret som går till målet (1,0 = lika starkt som spårets egen utgång)" => "How much of the track goes to the target (1.0 = as loud as the track's own output)",
+        "Hur mycket notens anslag får påverka nivån. 100 % är den faktor som alltid har funnits, 0 % stänger av den helt — då låter varje anslag lika starkt. Gäller kanalens sampel; inte den inbyggda synten." => "How much the note's velocity may affect the level. 100 % is the factor that has always been there, 0 % turns it off completely, and then every hit sounds equally loud. Applies to the channel's sample, not the built-in synth.",
+        "Högerklicka på taktlinjalen för att lägga till eller ta bort." => "Right-click the bar ruler to add or remove.",
+        "Högerklicka på taktlinjalen för att sätta ett byte." => "Right-click the bar ruler to set a change.",
+        "Högpass som tar bort rummets lågfrekvens innan den når mastern. Utan den kan rummet börja vibrera (baston) när direktlyssningen är på." => "High-pass that removes the room's low end before it reaches the master. Without it the room can start to rumble (bass tone) when direct monitoring is on.",
+        "Identiteten: full nivå från första samplet, inget släpp. Det är så en kanal utan envelop låter — och så ett projekt från före samplern låter." => "The identity: full level from the first sample, no release. That is how a channel without an envelope sounds, and how a project from before the sampler sounds.",
+        "Importerat ljud" => "Imported audio",
+        "Inga zoner — kanalen spelar sitt eget sampel." => "No zones; the channel plays its own sample.",
+        "Ingen enhet ansluten" => "No device connected",
+        "Ingen envelop" => "No envelope",
+        "Ingen fil vald" => "No file selected",
+        "Ingen ljuddata fångades – kontrollera mikrofonen" => "No audio data was captured, check the microphone",
+        "Ingen mikrofon är tillgänglig för inspelning" => "No microphone is available for recording",
+        "Ingen mix separerad ännu. Klicka på \"Välj fil & separera\" och välj en WAV/MP3/FLAC-fil — Sonix delar upp den i fyra spelbara stämspår." => "No mix separated yet. Click \"Choose file & separate\" and pick a WAV/MP3/FLAC file; Sonix splits it into four playable stem tracks.",
+        "Ingång" => "Input",
+        "Inspiration:" => "Inspiration:",
+        "Instrument:" => "Instrument:",
+        "Inte skannad ännu" => "Not scanned yet",
+        "Intro" => "Intro",
+        "Kapar början av klippet så att slaget under spelhuvudet hamnar på rutnätet. Högerkanten står still, och **hela stämgruppen följer med** — alla klipp som börjar på samma takt flyttas lika mycket i tid, annars hamnar stämman ur fas med sina syskon (Ctrl+Z tar tillbaka allt i ett steg). Klippet flyttas inte." => "Trims the start of the clip so the hit under the playhead lands on the grid. The right edge stays put, and **the whole stem group follows**: every clip that starts on the same bar moves by the same amount of time, otherwise the stem falls out of phase with its siblings (Ctrl+Z undoes all of it in one step). The clip itself is not moved.",
+        "Keymap (multi-samples):" => "Keymap (multi-samples):",
+        "Kick & Snare:" => "Kick & Snare:",
+        "Klicka på ett notblock och dra lodrätt för att justera tonhöjden." => "Click a note block and drag vertically to adjust its pitch.",
+        "Klipp & Sampler:" => "Clip & Sampler:",
+        "Korrigerar tonhöjden mot vald skala (styrka = AUTO-TUNE-ratten)" => "Corrects the pitch towards the selected scale (strength = the AUTO-TUNE knob)",
+        "Kunde inte läsa filen" => "Could not read the file",
+        "Kurva:" => "Curve:",
+        "Kör pluginen i en separat process och strömmar ljudet via delat minne." => "Runs the plugin in a separate process and streams audio over shared memory.",
+        "LOW SHELF" => "LOW SHELF",
+        "Laddar en ny instans av pluginen med preseten applicerad via clap.preset-load/2." => "Loads a new instance of the plugin with the preset applied via clap.preset-load/2.",
+        "Lead Climax B" => "Lead Climax B",
+        "Linux System-CLAP" => "Linux System-CLAP",
+        "Linux System-VST3" => "Linux System-VST3",
+        "Loop:" => "Loop:",
+        "Loopslut:" => "Loop end:",
+        "Loopstart:" => "Loop start:",
+        "Lägg på mänsklig otajthet och dynamik (varierar mellan trycken)" => "Add human timing and dynamics (varies between hits)",
+        "Lägger till en hörbar referenston (220 Hz) som du kan redigera" => "Adds an audible reference tone (220 Hz) that you can edit",
+        "MAIN DROP" => "MAIN DROP",
+        "MASTER" => "MASTER",
+        "MCU frånkopplad." => "MCU disconnected.",
+        "MID BELL" => "MID BELL",
+        "MUTE" => "MUTE",
+        "Main Theme A" => "Main Theme A",
+        "Mikrofonen är inte armerad – kryssa i 'Armera' först" => "The microphone is not armed, tick 'Arm' first",
+        "Mikrofoninspelning i realtid  •  Live WAV Capture  •  Waveform Editor  •  Pitch Editor" => "Real-time microphone recording  •  Live WAV Capture  •  Waveform Editor  •  Pitch Editor",
+        "Mixolydisk" => "Mixolydian",
+        "Moll-pentatonisk" => "Minor pentatonic",
+        "Mäter var ljudet börjar i klippets fil och sätter det som klippets början — samma regel som \"Sätt takt 1 här\", men talet kommer ur en mätning i stället för ur spelhuvudets position. **Hela stämgruppen följer med**: alla klipp som börjar på samma takt flyttas lika mycket i tid, så att stämmorna inte hamnar ur fas (Ctrl+Z tar tillbaka allt i ett steg). Ett tyst parti i början (eller en stämma som inte hörs inom 20 s) ger inget svar; då händer ingenting." => "Measures where the sound starts in the clip's file and sets that as the clip's start; the same rule as \"Set bar 1 here\", but the number comes from a measurement instead of the playhead position. **The whole stem group follows**: every clip that starts on the same bar moves by the same amount of time, so the stems do not drift out of phase (Ctrl+Z undoes all of it in one step). A silent opening (or a stem that is not heard within 20 s) gives no answer, and then nothing happens.",
+        "Native Linux" => "Native Linux",
+        "Neural modell:" => "Neural model:",
+        "Nivå (dB)" => "Level (dB)",
+        "OSC-server stoppad." => "OSC server stopped.",
+        "OSCILLATOR" => "OSCILLATOR",
+        "Ogiltig sökväg (innehåller NUL)" => "Invalid path (contains NUL)",
+        "Okänt filformat (inte ELF/PE)" => "Unknown file format (not ELF/PE)",
+        "Outro" => "Outro",
+        "Outro (Fade)" => "Outro (Fade)",
+        "Outro Drive" => "Outro Drive",
+        "Paket saknar binär (.so)" => "Package has no binary (.so)",
+        "Piano Roll (F5):" => "Piano Roll (F5):",
+        "Pitch-shiftar tagningen per notblock enligt dina dragningar" => "Pitch-shifts the take per note block according to your drags",
+        "Pitch-shiftar vald tagning per aktiverad stämma och lägger till dem som egna tagningar" => "Pitch-shifts the selected take per enabled voice and adds them as separate takes",
+        "Plugin-hosting är inte inbyggt i den här builden (bygg med --features plugin-host)" => "Plugin hosting is not built into this build (build with --features plugin-host)",
+        "Plugin-paket med binär hittad" => "Plugin package with a binary found",
+        "Plugin-parameter" => "Plugin parameter",
+        "Presets:" => "Presets:",
+        "RESONANT SVF FILTER (12 dB)" => "RESONANT SVF FILTER (12 dB)",
+        "Rak: halvt anslag ger halv nivå (kanalen har alltid haft den). Kvadratisk (\"curve 2\", som FL:s sampler och Abletons Simpler): halvt anslag ger en fjärdedels nivå — −12 dB i stället för −6 dB. Skillnaden hörs mest på svaga slag." => "Linear: half velocity gives half level (the channel has always had this). Quadratic (\"curve 2\", like FL's sampler and Ableton's Simpler): half velocity gives a quarter of the level, -12 dB instead of -6 dB. The difference is heard most on soft hits.",
+        "Release:" => "Release:",
+        "Resonans:" => "Resonance:",
+        "SOLO" => "SOLO",
+        "SONIX" => "SONIX",
+        "SONIX STUDIO" => "SONIX STUDIO",
+        "STUDIO" => "STUDIO",
+        "Sampelns grundton: transponeringen räknas härifrån, så zonen kan ligga i sitt eget register." => "The sample's root note: transposition is counted from here, so the zone can sit in its own register.",
+        "Skicka en del av spåret till en buss eller in i ett annat spårs kedja — t.ex. FX-bussen" => "Send part of the track to a bus or into another track's chain, for example the FX bus",
+        "Skicka till:" => "Send to:",
+        "Sonix MCU In (väntar – anslut enhet med aconnect)" => "Sonix MCU In (waiting, connect a device with aconnect)",
+        "Spår (in i dess kedja)" => "Track (into its chain)",
+        "Start (In):" => "Start (In):",
+        "Start Trim:" => "Start Trim:",
+        "Strum-utbredning:" => "Strum spread:",
+        "Stämpeln säger vilket tempo klippen byggdes i — räknat ur klippens takter och filernas längd när det går, annars projektets nuvarande tempo. Är det projektets tempo hörs ingenting förrän du rör tempot. Är det ett annat (klippen byggdes i 120 men projektet står i 200) sträcks de till projektets tempo direkt, och då säger statusraden det." => "The stamp says which tempo the clips were built in, counted from the clips' bars and the files' length when possible, otherwise the project's current tempo. If it is the project's tempo nothing is heard until you move the tempo. If it is another (the clips were built at 120 but the project is at 200) they are stretched to the project tempo immediately, and the status bar says so.",
+        "Stäng panelen (Esc)" => "Close the panel (Esc)",
+        "Sustain:" => "Sustain:",
+        "Synthesizer Solo" => "Synthesizer Solo",
+        "TRANSFORM PAD" => "TRANSFORM PAD",
+        "Ta bort bytet" => "Remove the change",
+        "Tempo:" => "Tempo:",
+        "Tempokarta — byten i låten" => "Tempo map, changes in the song",
+        "Tempot i takt 1 går inte att ta bort — ändra det i stället." => "The tempo in bar 1 cannot be removed, change it instead.",
+        "Testton" => "Test tone",
+        "Till not-av" => "To note-off",
+        "Torrt/vått" => "Dry/wet",
+        "VELOCITY" => "VELOCITY",
+        "Velocitet:" => "Velocity:",
+        "Voicing:" => "Voicing:",
+        "Välj Ljudfil" => "Choose Audio File",
+        "Välj ljudfil (WAV) att importera" => "Choose audio file (WAV) to import",
+        "Waveform Chop & Slice Trim:" => "Waveform Chop & Slice Trim:",
+        "Windows VST2 Standard (Yabridge)" => "Windows VST2 Standard (Yabridge)",
+        "Windows VST3 Standard (Yabridge / Wine)" => "Windows VST3 Standard (Yabridge / Wine)",
+        "Wine ej installerat" => "Wine is not installed",
+        "Wine/Windows" => "Wine/Windows",
+        "XY PERFORMANCE RADAR" => "XY PERFORMANCE RADAR",
+        "Yabridge-synk klar." => "Yabridge sync complete.",
+        "Zonen får kanalens sampel och grundton och täcker alla toner och anslag — snäva in intervallen sedan. Den sista zonen i listan som matchar noten är den som hörs." => "The zone gets the channel's sample and root note and covers every note and velocity; narrow the ranges afterwards. The last zone in the list that matches the note is the one heard.",
+        "grund " => "root ",
+        "ingen fil laddad" => "no file loaded",
+        "inget att sträcka — faktorn är 1,0" => "nothing to stretch, the factor is 1.0",
+        "korrigering (st)" => "correction (st)",
+        "nyss" => "just now",
+        "sandboxade plugins kräver att Sonix byggs med --features plugin-host" => "sandboxed plugins require Sonix to be built with --features plugin-host",
+        "sträckningen blev tom" => "the stretch came out empty",
+        "sträckningen blev tyst" => "the stretch came out silent",
+        "sträckningen innehåller ogiltiga sampel (NaN)" => "the stretch contains invalid samples (NaN)",
+        "yabridgectl sync misslyckades." => "yabridgectl sync failed.",
+        "• /sonix/transport/play (1/0)\n• /sonix/track/{1..8}/volume (0.0 .. 1.25)\n• /sonix/track/{1..8}/mute (1/0)\n• /sonix/bus/{vocal|drum|synth|fx}/volume (0.0 .. 1.25)\n• /sonix/vca/{1..4}/volume (0.0 .. 1.25)" => "• /sonix/transport/play (1/0)\n• /sonix/track/{1..8}/volume (0.0 .. 1.25)\n• /sonix/track/{1..8}/mute (1/0)\n• /sonix/bus/{vocal|drum|synth|fx}/volume (0.0 .. 1.25)\n• /sonix/vca/{1..4}/volume (0.0 .. 1.25)",
+        "↔ Ping-pong (vänd i ändarna)" => "↔ Ping-pong (reverse at the ends)",
+        "↩ Nollställ notblock" => "↩ Reset note blocks",
+        "⏱ Start:" => "⏱ Start:",
+        "⏱ Sätt tempo här" => "⏱ Set tempo here",
+        "⏱ Tempo" => "⏱ Tempo",
+        "⏱ Tempokarta" => "⏱ Tempo map",
+        "⏳ Time Dilation (Stretch):" => "⏳ Time Dilation (Stretch):",
+        "⏸ TAPE STOP" => "⏸ TAPE STOP",
+        "⏹ Stoppa Provspelning" => "⏹ Stop Preview",
+        "⏹ Stoppa server" => "⏹ Stop server",
+        "⏹ Stoppade provspelning" => "⏹ Stopped preview",
+        "▶ Ladda in med preset" => "▶ Load with preset",
+        "▶ Provspelar slumpat mönster sekvenserat..." => "▶ Previewing randomized pattern sequence...",
+        "▶ Starta server" => "▶ Start server",
+        "◀ Channel Rack" => "◀ Channel Rack",
+        "● ALSA SEQUENCER-PORT ÖPPEN" => "● ALSA SEQUENCER PORT OPEN",
+        "⚠ CLIP" => "⚠ CLIP",
+        "⚠ Ej verifierad" => "⚠ Not verified",
+        "⚠ Ingen separerad mix att exportera." => "⚠ No separated mix to export.",
+        "⚠ Kanalens ljud går inte att läsa — inga slag" => "⚠ The channel's audio cannot be read, no hits",
+        "⚠ Loopslut måste ligga efter loopstart — nu spelas ljudet som en skott." => "⚠ Loop end must be after loop start; right now the audio plays as a one shot.",
+        "⚠ filen kunde inte läsas — kanalens eget sampel spelar" => "⚠ the file could not be read, the channel's own sample plays",
+        "⚠️ Filen är tom — ingen impulsrespons laddad" => "⚠️ The file is empty, no impulse response loaded",
+        "⚠️ Okänt bankindex" => "⚠️ Unknown bank index",
+        "⚡ Arpeggio" => "⚡ Arpeggio",
+        "⚡ Kör yabridgectl sync nu" => "⚡ Run yabridgectl sync now",
+        "⚡ Välj fil & separera" => "⚡ Choose file & separate",
+        "⚪ yabridgectl hittades inte – installera yabridge för Windows-plugins" => "⚪ yabridgectl not found, install yabridge for Windows plugins",
+        "✂ Chop" => "✂ Chop",
+        "✔ MCU-port öppnad. Anslut enhet med 'aconnect'." => "✔ MCU port opened. Connect a device with 'aconnect'.",
+        "✔ Verifierad" => "✔ Verified",
+        "✔ Verifierad binär" => "✔ Verified binary",
+        "✨ Arpeggio" => "✨ Arpeggio",
+        "✨ Auto-Tune" => "✨ Auto-Tune",
+        "✨ Auto-Tune applicerad på vald tagning" => "✨ Auto-Tune applied to the selected take",
+        "✨ MASTER SPACE REVERB" => "✨ MASTER SPACE REVERB",
+        "✨ SONIX ALCHEMY SYNTHESIZER (Transform Pad)" => "✨ SONIX ALCHEMY SYNTHESIZER (Transform Pad)",
+        "➕ Add Track Effects" => "➕ Add Track Effects",
+        "➕ Lägg till zon av kanalens sampel" => "➕ Add zone from the channel's sample",
+        "➕ Skapa Testton (2s)" => "➕ Create Test Tone (2s)",
+        "➕ Skapa körstämmor som tagningar" => "➕ Create backing vocals as takes",
+        "🌀 CONVOLVER (impulsrespons)" => "🌀 CONVOLVER (impulse response)",
+        "🌀 Gross Beat Reverse aktiv" => "🌀 Gross Beat Reverse active",
+        "🌀 Impulsresponsen är borttagen" => "🌀 The impulse response has been removed",
+        "🌊 MASTER STEREO DELAY" => "🌊 MASTER STEREO DELAY",
+        "🎙 SONIX STUDIO RECORDER" => "🎙 SONIX STUDIO RECORDER",
+        "🎚 MACKIE CONTROL UNIVERSAL (MCU)" => "🎚 MACKIE CONTROL UNIVERSAL (MCU)",
+        "🎚 Native preset (sökväg):" => "🎚 Native preset (path):",
+        "🎛 REMIX FX & GROSS BEAT (DJ Performance Touch)" => "🎛 REMIX FX & GROSS BEAT (DJ Performance Touch)",
+        "🎛 SONIX HARDWARE SYNTHESIZER" => "🎛 SONIX HARDWARE SYNTHESIZER",
+        "🎛 SOUNDTRAP FX RACK" => "🎛 SOUNDTRAP FX RACK",
+        "🎛 Sound FX / Riser" => "🎛 Sound FX / Riser",
+        "🎛 Soundtrap Studio Effects & FX Rack" => "🎛 Soundtrap Studio Effects & FX Rack",
+        "🎤 8. Vocal Studio, Melodyne & Harmonizer (F8)" => "🎤 8. Vocal Studio, Melodyne & Harmonizer (F8)",
+        "🎤 Live: — (tyst)" => "🎤 Live: — (silent)",
+        "🎯 Analysera tonhöjd" => "🎯 Analyze pitch",
+        "🎯 Applicera notkorrigering" => "🎯 Apply note correction",
+        "🎯 Notkorrigering applicerad på tagningen" => "🎯 Pitch correction applied to the take",
+        "🎯 Sätt takt 1 här (ljudet under spelhuvudet blir klippets början)" => "🎯 Set bar 1 here (the audio under the playhead becomes the clip's start)",
+        "🎲 Humanize" => "🎲 Humanize",
+        "🎲 SPARK & GENERATOR" => "🎲 SPARK & GENERATOR",
+        "🎵 Groove (.agr)" => "🎵 Groove (.agr)",
+        "🎵 Pitch:" => "🎵 Pitch:",
+        "🎹 7. Piano Roll & Analog Synthesizer (F5 / F7)" => "🎹 7. Piano Roll & Analog Synthesizer (F5 / F7)",
+        "🎹 SONIX CHANNEL RACK" => "🎹 SONIX CHANNEL RACK",
+        "🎹 SONIX PIANO" => "🎹 SONIX PIANO",
+        "🎹 SONIX PIANO ROLL" => "🎹 SONIX PIANO ROLL",
+        "🎹 Testa patchen:" => "🎹 Test the patch:",
+        "🎼 Arranger" => "🎼 Arranger",
+        "🎼 PITCH EDITOR – TONKORRIGERING (NOTBLOCK)" => "🎼 PITCH EDITOR – NOTE CORRECTION (NOTE BLOCKS)",
+        "🏛 Bank:" => "🏛 Bank:",
+        "💡 Guide" => "💡 Guide",
+        "📁 SOUND BROWSER" => "📁 SOUND BROWSER",
+        "📂 Visa i mapp" => "📂 Show in folder",
+        "📖 SONIX STUDIO MASTER MANUAL" => "📖 SONIX STUDIO MASTER MANUAL",
+        "📡 OPEN SOUND CONTROL (OSC / UDP)" => "📡 OPEN SOUND CONTROL (OSC / UDP)",
+        "📤 BATCH EXPORT" => "📤 BATCH EXPORT",
+        "📥 Ladda .wav" => "📥 Load .wav",
+        "📦 Import Stems / Multi-Track Importer" => "📦 Import Stems / Multi-Track Importer",
+        "📦 STEMS" => "📦 STEMS",
+        "📻 VINYL SCRATCH" => "📻 VINYL SCRATCH",
+        "🔁 Loop x2 (Ctrl+L)" => "🔁 Loop x2 (Ctrl+L)",
+        "🔁 Loop x4" => "🔁 Loop x4",
+        "🔄 Normal" => "🔄 Normal",
+        "🔊 Ljudmotor" => "🔊 Audio engine",
+        "🔌 Anslut MCU (ALSA Seq)" => "🔌 Connect MCU (ALSA Seq)",
+        "🔌 Koppla från MCU" => "🔌 Disconnect MCU",
+        "🔌 PLUGIN & FL STUDIO BRIDGE MANAGER" => "🔌 PLUGIN & FL STUDIO BRIDGE MANAGER",
+        "🔍 Hitta första slaget (mät i filen)" => "🔍 Find the first hit (measure in the file)",
+        "🔍 Zoom 100 %" => "🔍 Zoom 100 %",
+        "🔥 MASTER ANALOG DRIVE & LIMITER" => "🔥 MASTER ANALOG DRIVE & LIMITER",
+        "🔴 Spelar in eget ljud..." => "🔴 Recording own audio...",
+        "🗑 Ta bort tempobyte här" => "🗑 Remove tempo change here",
+        "🛡 Plugin-körning:" => "🛡 Plugin execution:",
+        "🟢 yabridgectl hittad i PATH" => "🟢 yabridgectl found in PATH",
+        "🤖 AI MUSIC PROMPT ENGINE & ASSISTANT (Suno & Local AI)" => "🤖 AI MUSIC PROMPT ENGINE & ASSISTANT (Suno & Local AI)",
+        "🥁 SONIX SESSION DRUMMER" => "🥁 SONIX SESSION DRUMMER",
+        "🧩 MODULAR PATCHER & THE GRID (Bitwig & FL Patcher Style)" => "🧩 MODULAR PATCHER & THE GRID (Bitwig & FL Patcher Style)",
+        "🧩 Panelerna är stängda" => "🧩 The panels are closed",
+        "tappade kommandon" => "dropped commands",
+        "Ljudtråden hann inte ta emot kommandon. Spela om handlingen om gränssnittet och ljudet inte stämmer." => "The audio thread could not take the command. Repeat the action if the interface and the sound do not match.",
+        "+0.01s" => "+0.01s",
+        "+0.1 dB" => "+0.1 dB",
+        "+0.10s" => "+0.10s",
+        "+0.1s" => "+0.1s",
+        "+0.5 dB" => "+0.5 dB",
+        "+1dB" => "+1dB",
+        "+1t" => "+1t",
+        "-0.01s" => "-0.01s",
+        "-0.1 dB" => "-0.1 dB",
+        "-0.10s" => "-0.10s",
+        "-0.1s" => "-0.1s",
+        "-0.5 dB" => "-0.5 dB",
+        "-1dB" => "-1dB",
+        "-1t" => "-1t",
+        "0.0 dB (100%)" => "0.0 dB (100%)",
+        "0.00s" => "0.00s",
+        "0dB" => "0dB",
+        "1.00 s" => "1.00 s",
+        "1.0x" => "1.0x",
+        "100 ms" => "100 ms",
+        "100% H" => "100% H",
+        "100% V" => "100% V",
+        "20 ms" => "20 ms",
+        "50 ms" => "50 ms",
+        "50% H" => "50% H",
+        "50% V" => "50% V",
+        "500 ms" => "500 ms",
+        "BPM" => "BPM",
+        "M" => "M",
+        "PAT:" => "PAT:",
+        "REC" => "REC",
+        "Ref:" => "Ref:",
+        "S" => "S",
+        "ton " => "ton ",
+        "— BPM" => "— BPM",
+        "➕ (X)" => "➕ (X)",
+        "➖ (Z)" => "➖ (Z)",
+        "🎚 Vol:" => "🎚 Vol:",
+        "🎛 MCU" => "🎛 MCU",
+        "🎯 TAP" => "🎯 TAP",
+        "📈 In:" => "📈 In:",
+        "📉 -3.0 dB" => "📉 -3.0 dB",
+        "📉 -6.0 dB" => "📉 -6.0 dB",
         _ => return None,
     })
 }
@@ -2746,6 +3088,118 @@ fn tr_fr(key: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn rust_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    rust_files(&path, out);
+                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    out.push(path);
+                }
+            }
+        }
+    }
+
+    /// Nycklarna i `t("…")`- och `tr("…")`-anrop, lästa ur källtexten.
+    ///
+    /// Literalen avkodas som kompilatorn gör det, så `\"`, `\\` och en radbrytning efter
+    /// `\` blir samma tecken som anropet skickar. `some_t(` räknas inte.
+    fn call_keys(src: &str, name: &str) -> Vec<String> {
+        let b = src.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i < b.len() {
+            if !src.is_char_boundary(i) {
+                i += 1;
+                continue;
+            }
+            let is_call = src[i..].starts_with(name)
+                && b.get(i + name.len()) == Some(&b'(')
+                && (i == 0 || !(b[i - 1].is_ascii_alphanumeric() || b[i - 1] == b'_'));
+            if is_call {
+                let mut j = i + name.len() + 1;
+                while j < b.len() && (b[j] as char).is_whitespace() {
+                    j += 1;
+                }
+                if j < b.len() && b[j] == b'"' {
+                    j += 1;
+                    let mut key = String::new();
+                    while j < b.len() {
+                        match b[j] {
+                            b'\\' if j + 1 < b.len() => {
+                                // `\` följt av en radbrytning är en fortsättning: den och
+                                // indragningen på nästa rad ingår inte i strängen.
+                                if b[j + 1] == b'\n' {
+                                    j += 2;
+                                    while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\r') {
+                                        j += 1;
+                                    }
+                                    continue;
+                                }
+                                key.push(match b[j + 1] {
+                                    b'n' => '\n',
+                                    b't' => '\t',
+                                    b'"' => '"',
+                                    b'\\' => '\\',
+                                    other => other as char,
+                                });
+                                j += 2;
+                            }
+                            b'"' => break,
+                            _ => {
+                                let ch = src[j..].chars().next().expect("tecken");
+                                key.push(ch);
+                                j += ch.len_utf8();
+                            }
+                        }
+                    }
+                    out.push(key);
+                }
+            }
+            i += 1;
+        }
+        out
+    }
+
+    /// **Varje nyckel som går genom `t()` ska ha en engelsk rad.**
+    ///
+    /// Standardläget är engelska, och en nyckel som saknas faller tillbaka på den svenska
+    /// strängen: svensk text i den engelska menyn, utan ett ljud. Mätt 2026-10-21 saknades
+    /// 291 nycklar, så listan kan inte hållas för hand. Provet läser källkoden i stället.
+    #[test]
+    fn every_key_passed_to_t_has_an_english_line() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut files = Vec::new();
+        rust_files(&root, &mut files);
+        assert!(files.len() > 50, "hittade bara {} .rs-filer", files.len());
+
+        let mut missing = Vec::new();
+        for path in files {
+            if path.file_name().and_then(|n| n.to_str()) == Some("i18n.rs") {
+                continue;
+            }
+            let src = std::fs::read_to_string(&path).expect("läs källfilen");
+            for key in call_keys(&src, "t").into_iter().chain(call_keys(&src, "tr")) {
+                // En nyckel utan bokstäver ("▶", "1/2", "500 ms") är en enhet eller en
+                // symbol, inte text som ska översättas.
+                if !key.chars().any(|c| c.is_alphabetic()) {
+                    continue;
+                }
+                if tr_en(&key).is_none() {
+                    missing.push(format!("{}: {}", path.display(), key));
+                }
+            }
+        }
+
+        assert!(
+            missing.is_empty(),
+            "{} nycklar saknar engelsk rad:\n{}",
+            missing.len(),
+            missing.join("\n")
+        );
+    }
 
     fn sample_keys() -> [&'static str; 6] {
         [

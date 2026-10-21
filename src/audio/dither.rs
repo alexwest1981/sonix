@@ -290,6 +290,6 @@ mod tests {
             assert!((-1.0..=1.0).contains(&q), "{s} gav {q}");
         }
         let i = d.quantize_i16(3.0, 0);
-        assert!(i <= i16::MAX && i >= 0);
+        assert_eq!(i, i16::MAX, "3.0 ska klämmas till taket");
     }
 }

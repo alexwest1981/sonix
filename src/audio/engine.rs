@@ -19,6 +19,22 @@ fn append_audio_log(line: &str) {
     }
 }
 
+/// Lägger ett kommando i kön och räknar det som inte fick plats.
+///
+/// `rtrb` svarar `Err` när ringen är full. Att kasta svaret (som alla anropare gjorde)
+/// gör en tappad transport till en osynlig skillnad mellan gränssnitt och ljud.
+fn push_counted<T>(
+    tx: &mut Producer<T>,
+    drops: &AtomicU32,
+    item: T,
+) -> Result<(), rtrb::PushError<T>> {
+    let result = tx.push(item);
+    if result.is_err() {
+        drops.fetch_add(1, Ordering::Relaxed);
+    }
+    result
+}
+
 #[allow(dead_code)]
 pub struct AudioEngine {
     _stream: Option<Stream>,
@@ -26,6 +42,10 @@ pub struct AudioEngine {
     sample_format: SampleFormat,
     command_capacity: usize,
     command_tx: Producer<AudioCommand>,
+    /// Kommandon som ringen inte tog emot. `send_command` räknar dem, och statusraden
+    /// läser talet: en tyst drop är skillnaden mellan det gränssnittet visar och det
+    /// som hörs (samma skäl som `stretched_tracks` finns).
+    command_drops: Arc<AtomicU32>,
     peak_level: Arc<AtomicU32>,
     /// Toppnivå per kanal sedan förra bildrutan — för höger/vänster-mätaren (8.13).
     peak_l: Arc<AtomicU32>,
@@ -257,6 +277,7 @@ impl AudioEngine {
             sample_format,
             command_capacity: ring_buffer_size,
             command_tx,
+            command_drops: Arc::new(AtomicU32::new(0)),
             peak_level,
             peak_l,
             peak_r,
@@ -373,7 +394,13 @@ impl AudioEngine {
     }
 
     pub fn send_command(&mut self, cmd: AudioCommand) -> Result<(), rtrb::PushError<AudioCommand>> {
-        self.command_tx.push(cmd)
+        push_counted(&mut self.command_tx, &self.command_drops, cmd)
+    }
+
+    /// Antal kommandon som ringen inte tog emot sedan starten. Noll är det normala;
+    /// ett stigande tal betyder att gränssnittet och ljudet kan visa olika saker.
+    pub fn command_drops(&self) -> u32 {
+        self.command_drops.load(Ordering::Relaxed)
     }
 
     /// Sätter självtestets tysta läge. **Efter** toppmätningen i callbacken: toppen
@@ -637,6 +664,25 @@ mod tests {
         let partial: AudioSettings = serde_json::from_str("{}").unwrap();
         assert!(partial.sample_rate.is_none());
         assert!(partial.buffer_frames.is_none());
+    }
+
+    /// **Ett kommando som inte får plats ska synas i räkningen.** Provet fyller en riktig
+    /// ring till taket och kräver att nästa push ger `Err` och att räknaren går upp ett steg —
+    /// utan det är en tappad transport fortfarande osynlig.
+    #[test]
+    fn a_command_that_does_not_fit_is_counted() {
+        let (mut tx, _rx) = RingBuffer::<u8>::new(4);
+        let drops = AtomicU32::new(0);
+        for i in 0..4u8 {
+            assert!(push_counted(&mut tx, &drops, i).is_ok(), "plats {}", i);
+        }
+        assert_eq!(drops.load(Ordering::Relaxed), 0, "fyra av fyra fick plats");
+        assert!(push_counted(&mut tx, &drops, 4).is_err(), "ringen är full");
+        assert_eq!(
+            drops.load(Ordering::Relaxed),
+            1,
+            "en tappad rad ska räknas en gång"
+        );
     }
 
     /// **Provet som håller självtestet tyst.** Tyst läge måste nolla utgången och
