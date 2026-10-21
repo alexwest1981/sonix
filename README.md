@@ -8,6 +8,8 @@
 
 A modern, lightning-fast graphical Digital Audio Workstation (DAW) built with **Rust** and **egui**, featuring FL Studio-style direct timeline audio editing, magnetic loop snapping, FL Studio/VST3/CLAP plugin **scanning & cataloguing**, Soundtrap-style creative panels, an integrated modular synthesizer, 16-step Channel Rack, Piano Roll, Vocal Studio with live microphone recording, a multichannel Effects Mixer, and Touch Instruments for Linux. Audio runs through the system's realtime backend via **cpal/ALSA** (PipeWire works through its ALSA layer). See **[Features & Implementation Status](#-features--implementation-status)** for exactly what is real today and what is still to come. Full development plan: **[ROADMAP.md](ROADMAP.md)**.
 
+> 🌐 **Website:** **[alexwest1981.github.io/sonix](https://alexwest1981.github.io/sonix/)** — features, download, screenshots and the known limits. Source in [`site/`](site/), published with `bash site/publish.sh`.
+
 ---
 
 ## 🚀 Installation (Linux / Omarchy)

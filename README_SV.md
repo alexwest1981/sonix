@@ -6,6 +6,8 @@ Ett modernt, blixtsnabbt grafiskt musikproduktionsprogram skapat i **Rust** och 
 
 ---
 
+> 🌐 **Webbplats:** **[alexwest1981.github.io/sonix](https://alexwest1981.github.io/sonix/)** — funktioner, nedladdning, skärmbilder och de kända gränserna. Källan ligger i [`site/`](site/), publiceras med `bash site/publish.sh`.
+
 ## 🚀 Installation (Linux / Omarchy)
 
 Sonix är en inhemsk Linux-DAW skriven i **Rust** och **egui**. Du kör den genom att kompilera från källkod med Cargo. Det inbyggda läget som tar de 29 skärmdumparna används bara av underhållarna (se notisen under galleriet nedan) och är **inte** en del av att installera eller köra programmet.
