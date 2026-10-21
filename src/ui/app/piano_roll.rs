@@ -265,6 +265,44 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             }
 
             ui.separator();
+            ui.label(
+                egui::RichText::new(crate::i18n::t("Transponera"))
+                    .size(11.0)
+                    .color(Theme::TEXT_MUTED),
+            );
+            for (label, semitones) in [("−12", -12), ("−1", -1), ("+1", 1), ("+12", 12)] {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(label).strong().size(10.5).color(Theme::TEXT_BRIGHT),
+                        )
+                        .fill(take_btn),
+                    )
+                    .on_hover_text(crate::i18n::t("Transponera hela tagningen"))
+                    .clicked()
+                {
+                    self.transpose_take(semitones);
+                }
+            }
+            ui.label(
+                egui::RichText::new(crate::i18n::t("Anslag")).size(11.0).color(Theme::TEXT_MUTED),
+            );
+            for (label, factor) in [("−10 %", 0.9), ("+10 %", 1.1)] {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(label).strong().size(10.5).color(Theme::TEXT_BRIGHT),
+                        )
+                        .fill(take_btn),
+                    )
+                    .on_hover_text(crate::i18n::t("Ändra anslaget på hela tagningen"))
+                    .clicked()
+                {
+                    self.scale_take_velocity(factor);
+                }
+            }
+
+            ui.separator();
 
             // Chord Stamp Selector
             ui.label(egui::RichText::new(crate::i18n::t("Ackord:")).size(11.0).color(Theme::TEXT_MUTED));

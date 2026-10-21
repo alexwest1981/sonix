@@ -181,6 +181,10 @@ Båda är fixade och mätta; se commit `7329040`.
 
 ## 9. Gap-matris — vad vi saknar, rangordnat
 
+Underlaget för prioriteringen (vad de 610 förvalen faktiskt gör) står i
+[`CUBASE-NEEDS.md`](CUBASE-NEEDS.md). Kort: förvalen är mest **massoperationer på noter och
+event** — därav att transponering och anslagsändring byggdes först.
+
 | # | Vad | Storlek | Varför |
 |---|---|---|---|
 | 1 | **Stämmseparering med modell** (ONNX) | L | vår filterbank kan inte separera källor i samma band; vägen finns i `neural_separator.rs` men ingen modell |

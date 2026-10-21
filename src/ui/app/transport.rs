@@ -745,6 +745,41 @@ pub(crate) fn quantize_take(&mut self, strength: f32, grid: crate::midi_take::Ta
 impl SonixApp {
 /// Lägger medveten mänsklig variation på tagningen (Fas 6.4). Slumptalet
 /// räknas upp varje gång, så två tryck ger inte exakt samma tagning.
+/// Transponerar hela tagningen. Cubase har 31 Logical Editor-förval som gör detta;
+/// vi hade ingen bulk-operation alls på en tagning.
+pub(crate) fn transpose_take(&mut self, semitones: i32) {
+    let Some(pat) = self.patterns.get(self.selected_pattern) else {
+        return;
+    };
+    if pat.take.is_empty() {
+        self.status_message = crate::i18n::t("⚠️ Ingen tagning att transponera").to_string();
+        return;
+    }
+    self.push_undo(&format!("🎹 Transponera {semitones:+}"));
+    let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+        return;
+    };
+    let moved = pat.take.transpose(semitones);
+    self.status_message = crate::tstatus!("🎹 {} not(er) {} halvtoner", moved, semitones);
+}
+
+/// Skalar anslaget på hela tagningen.
+pub(crate) fn scale_take_velocity(&mut self, factor: f32) {
+    let Some(pat) = self.patterns.get(self.selected_pattern) else {
+        return;
+    };
+    if pat.take.is_empty() {
+        self.status_message = crate::i18n::t("⚠️ Ingen tagning att ändra anslaget på").to_string();
+        return;
+    }
+    self.push_undo(&format!("🔉 Anslag ×{factor:.2}"));
+    let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+        return;
+    };
+    let changed = pat.take.scale_velocity(factor);
+    self.status_message = crate::tstatus!("🔉 Anslaget ändrat på {} not(er)", changed);
+}
+
 /// Lägger en groovemall (Abletons `.agr`) på tagningen.
 ///
 /// Tagningen är det lager både uppspelningen och exporten läser, så svänget hörs och hamnar i

@@ -1,0 +1,42 @@
+# Cubase Pro 15.0.30 — 38 projektmallar
+
+Varje mall med de spårnamn och enhetsnamn som står i filen.
+
+- **Cubase AI/Classic House.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase AI/LoFi Hip Hop.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 22 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase AI/Piano Page Layout.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase AI/Rhythm Section Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase AI/Songwriter.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 22 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase AI/String Quartet Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Artist/Classic House.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Artist/LoFi Hip Hop.cpr** — RIFF · XdNUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 20 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Artist/Neo Soul.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Artist/Piano Page Layout.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase Artist/Rhythm Section Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Artist/Songwriter.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 22 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Artist/String Quartet Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Artist/Symphonic Orchestra.cpr** — RIFF · Yj NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Artist/Trap.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Elements/Chamber Orchestra.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Elements/Classic House.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Elements/LoFi Hip Hop.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 22 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase Elements/Piano Page Layout.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase Elements/Rhythm Section Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Elements/Songwriter.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 22 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Elements/String Quartet Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase LE/Classic House.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase LE/LoFi Hip Hop.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 22 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase LE/Piano Page Layout.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase LE/Rhythm Section Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase LE/Songwriter.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 22 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase LE/String Quartet Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Pro/Classic House.cpr** — RIFF · ExNUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Pro/LoFi Hip Hop.cpr** — RIFF · XdNUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 20 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Pro/Neo Soul.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Pro/Piano Page Layout.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase Pro/Rhythm Section Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Pro/Songwriter.cpr** — RIFF · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT · Arrangement1
+- **Cubase Pro/Stereo Mastering.cpr** — RIFF · sBNUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Pro/String Quartet Page Layout.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Pro/Symphonic Orchestra.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.5 · Oct 19 2024 · MAC64 LE · UTF-8 · ROOT
+- **Cubase Pro/Trap.cpr** — RIFF · NUNDROOT · Version · PAppVersionARCH · CmObject · PAppVersion · Cubase · Version 14.0.0 · Sep 19 2024 · MAC64 LE · UTF-8 · ROOT

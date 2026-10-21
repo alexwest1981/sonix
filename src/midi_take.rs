@@ -185,6 +185,33 @@ impl Take {
     /// `timing_steps` = största tidsavvikelse i steg, `velocity_amount` = största
     /// anslagsavvikelse. `seed` styr slumptalet så att samma tagning + samma frö
     /// ger samma resultat — annars vore funktionen omöjlig att testa.
+    /// Transponerar tagningen. Noter som skulle hamna utanför MIDI-omfånget kläms dit
+    /// i stället för att försvinna.
+    pub fn transpose(&mut self, semitones: i32) -> usize {
+        let mut moved = 0;
+        for n in &mut self.notes {
+            let key = (n.key as i32 + semitones).clamp(0, 127) as u8;
+            if key != n.key {
+                n.key = key;
+                moved += 1;
+            }
+        }
+        moved
+    }
+
+    /// Skalar anslaget (0,9 = 10 % svagare). Kläms till 0–1.
+    pub fn scale_velocity(&mut self, factor: f32) -> usize {
+        let mut changed = 0;
+        for n in &mut self.notes {
+            let v = (n.velocity * factor).clamp(0.0, 1.0);
+            if (v - n.velocity).abs() > 0.0005 {
+                n.velocity = v;
+                changed += 1;
+            }
+        }
+        changed
+    }
+
     pub fn humanize(&mut self, timing_steps: f32, velocity_amount: f32, seed: u64) {
         let mut rng = Rng::new(seed);
         let timing = timing_steps.max(0.0);
@@ -257,6 +284,24 @@ pub fn take_pos_from(step: usize, phase: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn transpose_and_velocity_edit_the_take_in_place() {
+        let mut t = Take::new();
+        t.push(0.0, 60, 0.8);
+        t.push(1.0, 127, 0.4);
+        assert_eq!(t.transpose(12), 1, "bara noten som får plats flyttas");
+        assert_eq!(t.notes[0].key, 72);
+        assert_eq!(t.notes[1].key, 127, "över 127 kläms, inte tappas");
+        assert_eq!(t.transpose(-200), 2, "allt kläms ned till 0");
+        assert_eq!(t.notes[0].key, 0);
+
+        assert_eq!(t.scale_velocity(0.5), 2);
+        assert!((t.notes[0].velocity - 0.4).abs() < 1e-4);
+        assert_eq!(t.scale_velocity(0.0), 2, "noll stänger av anslaget");
+        assert_eq!(t.notes[0].velocity, 0.0);
+        assert_eq!(t.scale_velocity(0.5), 0, "redan i botten ändras inget");
+    }
+
     use super::*;
 
     fn tight_take() -> Take {

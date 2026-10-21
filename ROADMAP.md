@@ -3005,3 +3005,18 @@ Två fel, båda mätta: (1) 24- och 32-bitars WAV — WAVE_FORMAT_EXTENSIBLE, so
 för båda — föll i läsarens 8-bitsfall och blev fullskaligt brus; (2) stämmorna normaliserades
 var för sig till 0,92, så fyra stämmor summerade till 3,7 → klippning, som också låter som
 brus. Fixat i `7329040`, fyra nya prov, ett av dem ände-till-ände import → separering.
+
+## Vad Cubase-förvalen lärde oss (21 okt 2026)
+
+Allt utplockat i [`CUBASE-NEEDS.md`](CUBASE-NEEDS.md): 610 förval med sina inbäddade regelnamn
+(`docs/cubase-presets.md`), 27 enheter och 36 plugin-namn (`docs/cubase-devices.md`), 38
+projektmallar (`docs/cubase-templates.md`), 5 `.vstsound` och `AudioPlugs.srf`
+(`docs/cubase-content.md`).
+
+**Uppmätt:** 608 förvalsnamn, vanligaste verb *delete* 29, *select* 24, *toggle* 19, *shift* 14,
+*transpose* 11; vanligaste mål *note* 105, *event* 45, *velocity* 44, *part* 36. Cubases förval är
+alltså mest **urval och bulk-edit på noter** — inte ljud och inte mixning.
+
+**Byggt av den lärdomen:** `Take::transpose` + `Take::scale_velocity` med knappar i pianorullen
+(±1/±12 halvtoner, ±10 % anslag), två nya prov. Nästa lucka är en urvalsmodell i tagningen
+(villkor: anslag, ton, position), som de följande operationerna kan gå på.
