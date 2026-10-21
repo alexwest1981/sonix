@@ -3,6 +3,7 @@ use crate::audio::{
     AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ConvolverParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
     ModFxParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
 use crate::ui::widgets::rotary_knob;
@@ -520,6 +521,27 @@ impl FxRackState {
         self.convolver_ir_name = None;
     }
 
+    /// Genererar en impulsrespons ur banken och skickar in den.
+    ///
+    /// Banken är vår egen modell (brus + tre tal), inte inspelade rum — statusraden säger det,
+    /// så ingen tror att en genererad hall är samma ljud som FL:s inspelade.
+    pub fn load_bank_ir(&mut self, engine: &mut AudioEngine, index: usize) -> String {
+        let Some(recipe) = IR_BANK.get(index) else {
+            return crate::i18n::t("⚠️ Okänt bankindex").to_string();
+        };
+        let ir = synthesize_ir(recipe, engine.sample_rate.max(1) as f32);
+        let secs = ir.len() as f32 / (engine.sample_rate.max(1) as f32);
+        let len = ir.len();
+        let _ = engine.send_command(AudioCommand::SetConvolverIr(Some(std::sync::Arc::new(ir))));
+        self.convolver_ir_name = Some(format!("{} (genererad)", recipe.name));
+        crate::tstatus!(
+            "🏛 '{}' genererad: {:.1} s ({} sampel) — modell, inte en inspelning",
+            recipe.name,
+            secs,
+            len
+        )
+    }
+
     /// Push the current rack to the audio engine in real time.
     pub fn sync_to_engine(&self, engine: &mut AudioEngine) {
         let _ = engine.send_command(AudioCommand::SetMasterFx(self.build_master_fx_params()));
@@ -672,6 +694,18 @@ pub fn render_fx_rack_modal(
                             egui::Slider::new(&mut state.convolver_gain_db, -24.0..=12.0)
                                 .text(crate::i18n::t("Nivå (dB)")),
                         );
+                    });
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("🏛 Bank:"))
+                                .size(10.0)
+                                .color(Theme::TEXT_MUTED),
+                        );
+                        for (i, recipe) in IR_BANK.iter().enumerate() {
+                            if ui.small_button(recipe.name).clicked() {
+                                *status_msg = state.load_bank_ir(engine, i);
+                            }
+                        }
                     });
                 });
 

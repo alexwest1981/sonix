@@ -103,6 +103,7 @@ pub use master_fx::{
     CompressorParams, ConvolverParams, DeEsserParams, DoublerParams, GateParams, LimiterParams, MasterEqBand,
     MasterFilterParams, MasterFxChain, MasterFxParams, ModFxParams, MultibandParams, SaturatorParams,
     StereoEq,
+    IR_BANK, synthesize_ir,
     TrackEqSettings, TransientParams,
 };
 #[allow(unused_imports)]

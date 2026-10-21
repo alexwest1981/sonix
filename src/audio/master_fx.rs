@@ -708,6 +708,97 @@ impl Phaser {
 }
 
 // ---------------------------------------------------------------------------
+// Impulsbank (FL Studio skeppar 260 impulser i 13 kategorier — vi genererar våra egna
+// ur brus och tre tal, så banken är vår egen och ingen annans ljudfiler följer med)
+// ---------------------------------------------------------------------------
+
+/// Recept för en syntetisk impulsrespons.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct IrRecipe {
+    pub name: &'static str,
+    /// Längd i sekunder (kapas till [`CONV_MAX_LEN`]).
+    pub seconds: f32,
+    /// Hur snabbt svansen faller: tau = seconds / decay.
+    pub decay: f32,
+    /// 0 = ljust, 1 = mörkt. Ett enpoligt lågpass vars brytfrekvens sjunker över tiden.
+    pub damping: f32,
+    /// 0 = torrt, 1 = breda tidiga reflektioner.
+    pub width: f32,
+    /// Baklänges svans (swell) i stället för avklingande.
+    pub reverse: bool,
+}
+
+/// Banken som följer med: sex rum, alla genererade. FL:s 260 är riktiga inspelningar;
+/// de här är modeller, och det står i statusraden när de laddas.
+pub const IR_BANK: [IrRecipe; 6] = [
+    IrRecipe { name: "Small Room", seconds: 0.6, decay: 3.2, damping: 0.35, width: 0.30, reverse: false },
+    IrRecipe { name: "Studio Plate", seconds: 1.6, decay: 2.4, damping: 0.15, width: 0.80, reverse: false },
+    IrRecipe { name: "Hall", seconds: 2.8, decay: 1.8, damping: 0.45, width: 0.70, reverse: false },
+    IrRecipe { name: "Cathedral", seconds: 4.5, decay: 1.4, damping: 0.55, width: 0.90, reverse: false },
+    IrRecipe { name: "Reverse Swell", seconds: 2.0, decay: 1.2, damping: 0.30, width: 0.60, reverse: true },
+    IrRecipe { name: "Spring", seconds: 1.2, decay: 2.0, damping: 0.25, width: 0.20, reverse: false },
+];
+
+/// Genererar en monoimpulsrespons ur receptet.
+///
+/// Bruset kommer från en egen LCG med fast frö, alltså **deterministiskt**: samma recept ger
+/// samma respons, vilket är det som gör svansen mätbar i ett prov i stället för hörbar bara ibland.
+pub fn synthesize_ir(recipe: &IrRecipe, sample_rate: f32) -> Vec<f32> {
+    let sr = sample_rate.max(1.0);
+    let len = ((recipe.seconds.max(0.05) * sr) as usize).min(CONV_MAX_LEN).max(64);
+
+    let mut state: u32 = 0x1234_5678;
+    let mut noise = || {
+        // xorshift32: stabilt, inga beroenden, samma följd varje gång.
+        state ^= state << 13;
+        state ^= state >> 17;
+        state ^= state << 5;
+        (state as f32 / u32::MAX as f32) * 2.0 - 1.0
+    };
+
+    let tau = (recipe.seconds.max(0.05) / recipe.decay.max(0.1)).max(0.005);
+    // Ingen predelay: responsen är en insert, och varje millisekund fördröjning där
+    // är latens i hela kedjan. Rumskänslan kommer från reflektionerna i stället.
+    let predelay = 0usize;
+    let mut ir = vec![0.0f32; len];
+    let mut lp = 0.0f32;
+
+    for n in predelay..len {
+        let t = (n - predelay) as f32 / sr;
+        let env = (-t / tau).exp();
+        // Mörkare mot slutet: damping styr hur mycket brytfrekvensen faller.
+        let progress = (n as f32 / len as f32).clamp(0.0, 1.0);
+        let k = (1.0 - recipe.damping.clamp(0.0, 1.0) * progress).clamp(0.05, 1.0) * 0.6;
+        lp += k * (noise() - lp);
+        ir[n] = lp * env;
+    }
+
+    // Tidiga reflektioner: få, tydliga studsar som ger riktning åt rummet.
+    let w = recipe.width.clamp(0.0, 1.0);
+    if w > 0.01 {
+        for i in 1..=6 {
+            let delay = (0.006 + 0.0075 * i as f32 * (1.0 + w)) * sr;
+            let idx = predelay + delay as usize;
+            if idx < len {
+                let sign = if i % 2 == 0 { -1.0 } else { 1.0 };
+                ir[idx] += sign * w * 0.55 / i as f32;
+            }
+        }
+    }
+
+    if recipe.reverse {
+        ir.reverse();
+    }
+
+    // Normalisera toppen till 1,0: då är `gain_db` i ConvolverParams den enda nivåkontrollen.
+    let peak = ir.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+    if peak > 1e-9 {
+        let g = 1.0 / peak;
+        ir.iter_mut().for_each(|v| *v *= g);
+    }
+    ir
+}
+// ---------------------------------------------------------------------------
 // Multiband compressor (FL Studio: Maximus / Fruity Multiband Compressor)
 // ---------------------------------------------------------------------------
 
@@ -2176,6 +2267,58 @@ mod tests {
         assert!(still < 0.01, "nivån rörde sig {still} utan svep");
         assert!(swept > 10.0 * still, "svepet gav {swept}, stilla gav {still}");
         assert!(swept > 0.05, "svepet hörs knappt: {swept}");
+    }
+
+
+    #[test]
+    fn bank_ir_is_bounded_finite_and_normalised() {
+        for recipe in IR_BANK.iter() {
+            let ir = synthesize_ir(recipe, 48_000.0);
+            assert!(ir.len() > 1_000, "{}: {} sampel", recipe.name, ir.len());
+            assert!(ir.iter().all(|v| v.is_finite()), "{}: icke-finita värden", recipe.name);
+            let peak = ir.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+            assert!((peak - 1.0).abs() < 1e-3, "{}: topp {peak}", recipe.name);
+        }
+    }
+
+    #[test]
+    fn bank_ir_decays_and_the_hall_is_longer_than_the_room() {
+        let energy = |ir: &[f32], from: f32, to: f32| -> f32 {
+            let a = (ir.len() as f32 * from) as usize;
+            let b = ((ir.len() as f32 * to) as usize).min(ir.len());
+            ir[a..b].iter().map(|v| v * v).sum::<f32>() / (b - a).max(1) as f32
+        };
+        for recipe in IR_BANK.iter().filter(|r| !r.reverse) {
+            let ir = synthesize_ir(recipe, 48_000.0);
+            let head = energy(&ir, 0.10, 0.20);
+            let tail = energy(&ir, 0.85, 0.95);
+            assert!(head > 4.0 * tail, "{}: svansen dog inte ({head} mot {tail})", recipe.name);
+        }
+        let room = synthesize_ir(&IR_BANK[0], 48_000.0);
+        let hall = synthesize_ir(&IR_BANK[3], 48_000.0);
+        // Convolvern kapar vid CONV_MAX_LEN (2 s), så katedralens recept blir 96 000 sampel.
+        assert!(hall.len() > 3 * room.len(), "katedralen är inte längre än rummet");
+    }
+
+    #[test]
+    fn a_click_through_the_bank_leaves_a_tail() {
+        let mut conv = Convolver::new(48_000.0);
+        conv.set_ir(Some(std::sync::Arc::new(synthesize_ir(&IR_BANK[0], 48_000.0))));
+        let p = ConvolverParams { mix: 1.0, gain_db: 0.0 };
+        let mut out = Vec::new();
+        for i in 0..(48_000 / 2) {
+            let x = if i == 0 { 1.0 } else { 0.0 };
+            out.push(conv.process(x, x, &p));
+        }
+        // Direktljudet ligger en blockfördröjning in; svansen ska leva långt efter det.
+        let peak = out[CONV_BLOCK..CONV_BLOCK + 512]
+            .iter()
+            .fold(0.0f32, |m, (l, _)| m.max(l.abs()));
+        let early: f32 = out[CONV_BLOCK..CONV_BLOCK + 256].iter().map(|(l, _)| l * l).sum();
+        let late: f32 = out[6_000..6_256].iter().map(|(l, _)| l * l).sum();
+        assert!(peak > 0.5, "inget direktljud alls (topp {peak})");
+        assert!(late > 0.0, "svansen är tom 125 ms efter klicket");
+        assert!(late < early, "svansen är starkare än direktljudet ({late} mot {early})");
     }
 
 }

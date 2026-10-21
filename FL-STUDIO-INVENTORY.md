@@ -598,7 +598,7 @@ kedjan finns, "de" = vi har inget som motsvarar det.
 | **Trummor** | FPC, Drumaxx, Drumpad, DrumSynth Live, 1 908 trumsamplingar + 1 718 MIDI-loopar | drum.rs (syntetiska), steprad, egna samplingar | delvis |
 | **Modulationseffekter** | chorus ×3 (Fruity/Hyper/Vintage), flanger ×2, phaser ×2, Love Philter, Effector | chorus, flanger, phaser i masterns kedja (byggda i dag) + doubler; Love Philter/Effector kvar | delvis |
 | **Dynamik** | Limiter, Compressor, Multiband, Maximus, Transient, Soft Clipper, Squeeze | limiter, kompressor, multiband, transient, saturator (i dag) | vi |
-| **Reverb/delay** | Reeverb 1/2, Convolver, Luxeverb, Delay 1/2/3, Delay Bank, Multiband Delay | algoritmiskt reverb, stereodelay (ping-pong), convolver (i dag) | delvis |
+| **Reverb/delay** | Reeverb 1/2, Convolver, Luxeverb, 260 impulser, Delay 1/2/3, Delay Bank, Multiband Delay | algoritmiskt reverb, stereodelay (ping-pong), convolver + **genererad impulsbank** (sex rum, i dag) | delvis |
 | **EQ/filter** | Parametric EQ 1/2, 7 Band, Free Filter, Filter, Fast LP, Frequency Shifter/Splitter | 4-band + per spår + SVF + drive | delvis |
 | **Vocoder** | Vocodex, Fruity Vocoder | inget | de |
 | **Modulationskällor** | Peak/Envelope/Formula/Keyboard/Voltage/XY/XYZ-kontroller, VFX-sviten | inget (automation finns, men inte som källa som styr andra) | de |
@@ -642,6 +642,7 @@ vocoder, modulationskällor, notation, video och skript-API.
 | Fruity / Hyper / Vintage Chorus | `ModDelay` (12 ms ± 8 ms, kvarts periods kanalskillnad) | mix 0 är bit-identisk genomgång; svepet mätt till 12–20 ms, flangern 2,5–4,5 ms |
 | Fruity Flanger (+ Flangus) | samma `ModDelay`, 0,6 återkoppling | kammen sveper 2 ms; provet faller om svepet står stilla |
 | Fruity / Vintage Phaser | `Phaser` (4 allpass, 200 Hz–2 kHz) | kammen vandrar: nivån svänger 10× mer med LFO än utan, och står exakt still vid `depth = 0` |
+| 260 impulser i 13 kategorier | `synthesize_ir` + `IR_BANK` (6 rum) | deterministisk LCG: topp normaliserad till 1,0, svansen faller >4× från 15 % till 90 % av längden, klick genom banken ger mätbar svans vid 125 ms |
 
 ---
 
@@ -650,7 +651,7 @@ vocoder, modulationskällor, notation, video och skript-API.
 | # | Vad | Varför den ordningen | Storlek |
 | :--: | :--- | :--- | :---: |
 | ~~1~~ | ~~**Chorus / Flanger / Phaser**~~ | **Klar i dag**: `ModDelay` + `Phaser` i masterns kedja, tre pedaler, tre prov som biter. | *S* |
-| 2 | **Impulsbanksinläsning i convolvern** | vi har convolvern men ingen bank; FL skeppar 260. En mapp + en lista, ingen DSP. | *S* |
+| ~~2~~ | ~~**Impulsbank till convolvern**~~ | **Klar i dag**: sex genererade rum (0,6–4,5 s) + knappar i FX-racket. FL:s 260 är inspelningar; våra är modeller, och statusraden säger det. | *S* |
 | 3 | **Modulationskällor** (peak/envelope/formel → parameter) | låser upp Love Philter, PanOMatic, VFX-familjen och gör automation tvådimensionell. Kräver en målmodell i motorn. | *M* |
 | 4 | **Granulizer** | enda kvarvarande *instrument*-gapet som är rimligt i den här kodbasen (kanalens 13 initialiseringar + ett grain-läge i `voices.rs`). | *M* |
 | 5 | **Vocoder** | kräver bärvågsingång i masterns kedja — bygg den först, annars blir vocodern halv. | *M* |
