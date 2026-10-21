@@ -18,6 +18,28 @@ pub fn get_scale_notes(&self) -> Vec<u8> {
 }
 
 impl SonixApp {
+/// Snappar rutnätet (urvalet om något är markerat) mot ackordet i den aktuella takten.
+pub(crate) fn snap_to_song_chord(&mut self) {
+    let bar = self.song_bar;
+    let Some(chord) = crate::ui::app::state::chord_at(&self.song_chords, bar) else {
+        self.status_message = crate::tstatus!(
+            "🎼 Inget ackord i takt {} — lägg till ett i ackordspåret",
+            bar + 1
+        );
+        return;
+    };
+    let moved = snap_grid_to_chord(&mut self.piano_roll_grid, &self.piano_roll_sel, &chord);
+    self.status_message = crate::tstatus!(
+        "🎹 {} not(er) snappade till {} i takt {}",
+        moved,
+        chord.name(),
+        bar + 1
+    );
+    if moved > 0 {
+        self.resync_grid_channels();
+    }
+}
+
 /// Kör regeln i UI:t. Urvalet gäller om något är markerat, annars hela rutnätet.
 pub(crate) fn apply_current_rule(&mut self) {
     let field = RuleField::ALL[self.rule_field.min(RuleField::ALL.len() - 1)];
@@ -531,6 +553,21 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     .fixed_decimals(2),
             )
             .on_hover_text(crate::i18n::t("Tröskel för markerade svaga steg"));
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(crate::i18n::t("🎹 Följ ackordet"))
+                            .strong()
+                            .size(10.5)
+                            .color(Theme::TEXT_BRIGHT),
+                    )
+                    .fill(sel_row_bg),
+                )
+                .on_hover_text(crate::i18n::t("Flytta noterna till närmaste ackordston i ackordspåret för takten spelhuvudet står på"))
+                .clicked()
+            {
+                self.snap_to_song_chord();
+            }
         });
         // Logical Editor-lite: en regel, på urvalet om det finns, annars allt.
         ui.horizontal(|ui| {
@@ -1415,6 +1452,40 @@ pub(crate) fn select_quiet(
     sel
 }
 
+/// Snappar noter till ackordets toner — melodins karaktär, inte ett fast intervall.
+///
+/// Noter som skulle hamna utanför rutnätet stannar, samma regel som transponeringen.
+pub fn snap_grid_to_chord(
+    grid: &mut [[bool; 16]; 24],
+    sel: &[[bool; 16]; 24],
+    chord: &crate::ui::app::state::ChordEvent,
+) -> usize {
+    let only_selection = count_selected(sel) > 0;
+    let mut next = *grid;
+    let mut moved = 0;
+    for row in 0..24 {
+        for step in 0..16 {
+            if !grid[row][step] || (only_selection && !sel[row][step]) {
+                continue;
+            }
+            let midi = crate::audio::scale::PIANO_ROLL_BASE_MIDI + row as u8;
+            let snapped = crate::ui::app::state::snap_to_chord(midi, chord);
+            let delta = snapped as i32 - midi as i32;
+            if delta == 0 {
+                continue;
+            }
+            let target = row as i32 + delta;
+            if (0..24).contains(&target) {
+                next[row][step] = false;
+                next[target as usize][step] = true;
+                moved += 1;
+            }
+        }
+    }
+    *grid = next;
+    moved
+}
+
 /// Flyttar markeringen med noterna, så den pekar på samma noter efter en transponering.
 pub(crate) fn transpose_selection(sel: &[[bool; 16]; 24], rows: i32) -> [[bool; 16]; 24] {
     let mut next = [[false; 16]; 24];
@@ -1493,6 +1564,26 @@ mod selection_tests {
         assert!(sel[6][1] && sel[7][1], "båda noterna i det svaga steget markeras");
         assert_eq!(count_selected(&sel), 2);
         assert_eq!(count_selected(&select_quiet(&grid, &vel, 0.1)), 0, "lägre tröskel ger inget");
+    }
+
+    #[test]
+    fn chord_snap_moves_notes_to_the_nearest_chord_tone() {
+        use crate::ui::app::state::{ChordEvent, ChordQuality};
+        let mut grid = [[false; 16]; 24];
+        let mut sel = [[false; 16]; 24];
+        // C3 = bas. Rad 0 = C, rad 4 = E, rad 5 = F.
+        grid[0][0] = true; // C — ackordston, står still
+        grid[5][1] = true; // F — en halvton över E
+        grid[8][2] = true; // G# — en halvton under G, men omarkerad när urval finns
+        sel[0][0] = true;
+        sel[5][1] = true;
+
+        let c = ChordEvent { bar: 0, root: 0, quality: ChordQuality::Major };
+        assert_eq!(snap_grid_to_chord(&mut grid, &sel, &c), 1, "bara F flyttas");
+        assert!(grid[0][0], "C står kvar");
+        assert!(!grid[5][1]);
+        assert!(grid[4][1], "F blev E");
+        assert!(grid[8][2], "omarkerad not rörs inte");
     }
 
     #[test]

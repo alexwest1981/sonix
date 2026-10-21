@@ -1734,6 +1734,92 @@ pub(crate) fn render_fx_rack_modal_view(&mut self, ctx: &egui::Context) {
 }
 
 impl SonixApp {
+/// Ackordspåret: ackord per takt. Snappen flyttar noter till närmaste ackordston, alltså
+/// behålls melodins rörelse — den transponeras inte med ett fast intervall.
+pub(crate) fn render_chord_track_view(&mut self, ctx: &egui::Context) {
+    use crate::ui::app::state::{ChordEvent, ChordQuality};
+    if !self.show_chord_track {
+        return;
+    }
+    let mut open = true;
+    egui::Window::new(crate::i18n::t("🎼 Ackordspår"))
+        .open(&mut open)
+        .default_width(400.0)
+        .show(ctx, |ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t(
+                    "Ackordet gäller från sin takt tills nästa tar över. Noter snappas till närmaste ackordston.",
+                ))
+                .size(10.0)
+                .color(Theme::TEXT_MUTED),
+            );
+            ui.separator();
+            if ui
+                .button(crate::i18n::t("➕ Lägg till i aktuell takt"))
+                .on_hover_text(crate::i18n::t("Lägger ett ackord på takten spelhuvudet står på, med projektets grundton"))
+                .clicked()
+            {
+                let bar = self.song_bar;
+                let root = self.song_key_root % 12;
+                self.song_chords.retain(|c| c.bar != bar);
+                self.song_chords.push(ChordEvent { bar, root, quality: ChordQuality::Major });
+                self.song_chords.sort_by_key(|c| c.bar);
+                self.status_message = crate::tstatus!("🎼 Ackord tillagt i takt {}", bar + 1);
+            }
+            ui.separator();
+            if self.song_chords.is_empty() {
+                ui.label(crate::i18n::t("Inga ackord än."));
+            }
+            let mut remove: Option<usize> = None;
+            for (i, chord) in self.song_chords.iter_mut().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(format!("{}:{}", i + 1, chord.name())).strong().size(10.5).color(Theme::FL_CYAN));
+                    ui.label(crate::i18n::t("takt"));
+                    let mut bar = chord.bar as u32 + 1;
+                    if ui.add(egui::DragValue::new(&mut bar).range(1..=9999)).changed() {
+                        chord.bar = (bar as usize).saturating_sub(1);
+                    }
+                    egui::ComboBox::from_id_salt(format!("chord_root_{i}"))
+                        .selected_text(crate::ui::app::state::note_name_of(chord.root))
+                        .width(52.0)
+                        .show_ui(ui, |ui| {
+                            for r in 0..12u8 {
+                                if ui
+                                    .selectable_label(chord.root == r, crate::ui::app::state::note_name_of(r))
+                                    .clicked()
+                                {
+                                    chord.root = r;
+                                }
+                            }
+                        });
+                    egui::ComboBox::from_id_salt(format!("chord_q_{i}"))
+                        .selected_text(chord.quality.suffix())
+                        .width(56.0)
+                        .show_ui(ui, |ui| {
+                            for q in ChordQuality::ALL {
+                                if ui.selectable_label(chord.quality == q, q.suffix()).clicked() {
+                                    chord.quality = q;
+                                }
+                            }
+                        });
+                    if ui.small_button("✖").clicked() {
+                        remove = Some(i);
+                    }
+                });
+            }
+            if let Some(i) = remove {
+                self.song_chords.remove(i);
+            }
+            ui.separator();
+            ui.label(
+                egui::RichText::new(crate::tstatus!("{} ackord", self.song_chords.len()))
+                    .size(10.0)
+                    .color(Theme::TEXT_MUTED),
+            );
+        });
+    self.show_chord_track = open;
+}
+
 /// Sektionskedjan (arranger track): vilken ordning sektionerna spelas i. Samma sektion får
 /// förekomma flera gånger — A B A C är hela poängen, inte ett specialfall.
 pub(crate) fn render_arranger_chain_view(&mut self, ctx: &egui::Context) {
@@ -2930,6 +3016,7 @@ impl SonixApp {
         self.render_tempo_modal(ctx);
         self.render_song_structure_modal_view(ctx);
         self.render_arranger_chain_view(ctx);
+        self.render_chord_track_view(ctx);
         self.render_launcher_view(ctx);
         self.render_macros_modal_view(ctx);
         self.render_stem_focus_modal(ctx);

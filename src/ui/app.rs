@@ -246,6 +246,10 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Ackordspåret: ackord per takt, sorterade på takt.
+    pub song_chords: Vec<crate::ui::app::state::ChordEvent>,
+    /// Om ackordspårsfönstret är öppet.
+    pub show_chord_track: bool,
     /// Sektionskedja: markörindex i spelordning (Cubases Arranger Track). Tom = linjärt.
     pub arranger_chain: Vec<usize>,
     /// Om uppspelningen ska följa kedjan.
@@ -795,6 +799,8 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            song_chords: Vec::new(),
+            show_chord_track: false,
             arranger_chain: Vec::new(),
             arranger_chain_active: false,
             show_arranger_chain: false,

@@ -222,6 +222,113 @@ pub struct AudioRegion {
 }
 
 /// Flyttar låtsektioner när tid infogas eller tas bort. `delta` är positiv vid infogning.
+/// Ackordkvalitet. Intervallen är halvtoner från grundtonen.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ChordQuality {
+    Major,
+    Minor,
+    Dom7,
+    Min7,
+    Sus4,
+    Dim,
+}
+
+impl ChordQuality {
+    pub const ALL: [ChordQuality; 6] = [
+        ChordQuality::Major,
+        ChordQuality::Minor,
+        ChordQuality::Dom7,
+        ChordQuality::Min7,
+        ChordQuality::Sus4,
+        ChordQuality::Dim,
+    ];
+
+    pub fn intervals(self) -> &'static [u8] {
+        match self {
+            ChordQuality::Major => &[0, 4, 7],
+            ChordQuality::Minor => &[0, 3, 7],
+            ChordQuality::Dom7 => &[0, 4, 7, 10],
+            ChordQuality::Min7 => &[0, 3, 7, 10],
+            ChordQuality::Sus4 => &[0, 5, 7],
+            ChordQuality::Dim => &[0, 3, 6],
+        }
+    }
+
+    pub fn suffix(self) -> &'static str {
+        match self {
+            ChordQuality::Major => "",
+            ChordQuality::Minor => "m",
+            ChordQuality::Dom7 => "7",
+            ChordQuality::Min7 => "m7",
+            ChordQuality::Sus4 => "sus4",
+            ChordQuality::Dim => "dim",
+        }
+    }
+}
+
+/// Ett ackord som gäller från och med en takt tills nästa ackord tar över.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct ChordEvent {
+    pub bar: usize,
+    /// Grundton som pch 0–11 (0 = C).
+    pub root: u8,
+    pub quality: ChordQuality,
+}
+
+const NOTE_NAMES: [&str; 12] = [
+    "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+];
+
+/// Notnamn för en pch (0–11), för fönster och listor.
+pub fn note_name_of(pch: u8) -> &'static str {
+    NOTE_NAMES[(pch % 12) as usize]
+}
+
+impl ChordEvent {
+    pub fn name(&self) -> String {
+        format!("{}{}", NOTE_NAMES[(self.root % 12) as usize], self.quality.suffix())
+    }
+
+    /// Ackordets toner som pch.
+    pub fn pitch_classes(&self) -> Vec<u8> {
+        self.quality
+            .intervals()
+            .iter()
+            .map(|i| (self.root + *i) % 12)
+            .collect()
+    }
+}
+
+/// Ackordet som gäller i en takt: det senaste ackord som börjar på eller före takten.
+pub fn chord_at(chords: &[ChordEvent], bar: usize) -> Option<ChordEvent> {
+    chords
+        .iter()
+        .filter(|c| c.bar <= bar)
+        .max_by_key(|c| c.bar)
+        .copied()
+}
+
+/// Flyttar noten till **närmaste** ackordston.
+///
+/// Det är valet "melodins karaktär": noten rör sig som mest en liten bit i stället för att
+/// transponeras med ett fast intervall, så melodins rörelse och rytmiska profil behålls.
+/// Vid lika avstånd uppåt och nedåt väljs den nedre — den låter minst påträngande.
+pub fn snap_to_chord(midi: u8, chord: &ChordEvent) -> u8 {
+    let classes = chord.pitch_classes();
+    if classes.contains(&(midi % 12)) {
+        return midi;
+    }
+    for step in 1..=6u8 {
+        if midi >= step && classes.contains(&((midi - step) % 12)) {
+            return midi - step;
+        }
+        if midi + step <= 127 && classes.contains(&((midi + step) % 12)) {
+            return midi + step;
+        }
+    }
+    midi
+}
+
 /// Nästa sektion i kedjan när spelhuvudet lämnar sin sista takt.
 ///
 /// `sections` är `(start_bar, length_bars)` per markör och `chain` är markörindex i
@@ -1190,5 +1297,56 @@ mod chain_tests {
         assert_eq!(next_chain_bar(15, &song(), &[1]), Some(8));
         // Tom kedja stänger av helt.
         assert_eq!(next_chain_bar(7, &song(), &[]), None);
+    }
+}
+
+#[cfg(test)]
+mod chord_tests {
+    use super::*;
+
+    fn c_major() -> ChordEvent {
+        ChordEvent { bar: 0, root: 0, quality: ChordQuality::Major }
+    }
+
+    #[test]
+    fn snapping_moves_the_smallest_distance_and_keeps_the_shape() {
+        // C-dur: C E G. F (5) ligger en halvton under E, H (11) en halvton över C.
+        assert_eq!(snap_to_chord(60, &c_major()), 60, "ackordston står still");
+        assert_eq!(snap_to_chord(64, &c_major()), 64, "E är med");
+        assert_eq!(snap_to_chord(65, &c_major()), 64, "F snappar ned till E");
+        assert_eq!(snap_to_chord(71, &c_major()), 72, "H snappar upp till C");
+        // Ett hopp på en liten bit, aldrig ett fast intervall.
+        assert!((snap_to_chord(66, &c_major()) as i32 - 66).abs() <= 2);
+    }
+
+    #[test]
+    fn ties_go_down_and_notes_outside_midi_range_are_left_alone() {
+        // Db (61) ligger en halvton från både C (60) och D som inte är med — bara C är nära.
+        assert_eq!(snap_to_chord(61, &c_major()), 60);
+        // F# (66) ligger en halvton under G: uppåt är närmast.
+        assert_eq!(snap_to_chord(66, &c_major()), 67);
+        // D (62) ligger två från både C och E — lika nära, och då väljs den nedre.
+        assert_eq!(snap_to_chord(62, &c_major()), 60);
+        assert_eq!(snap_to_chord(0, &c_major()), 0, "C i botten står still");
+    }
+
+    #[test]
+    fn a_chord_lasts_until_the_next_one_starts() {
+        let chords = vec![
+            ChordEvent { bar: 0, root: 0, quality: ChordQuality::Major },
+            ChordEvent { bar: 4, root: 9, quality: ChordQuality::Minor },
+        ];
+        assert_eq!(chord_at(&chords, 0).unwrap().name(), "C");
+        assert_eq!(chord_at(&chords, 3).unwrap().name(), "C", "gäller till takt 4");
+        assert_eq!(chord_at(&chords, 4).unwrap().name(), "Am");
+        assert_eq!(chord_at(&chords, 40).unwrap().name(), "Am", "sista gäller vidare");
+        assert!(chord_at(&[], 0).is_none());
+    }
+
+    #[test]
+    fn a_minor_seventh_has_four_tones() {
+        let c = ChordEvent { bar: 0, root: 2, quality: ChordQuality::Min7 };
+        assert_eq!(c.pitch_classes(), vec![2, 5, 9, 0]);
+        assert_eq!(c.name(), "Dm7");
     }
 }
