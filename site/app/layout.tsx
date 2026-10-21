@@ -2,16 +2,16 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'Sonix Studio - DAW för Linux, skriven i Rust',
+  title: 'Sonix Studio - a DAW for Linux, written in Rust',
   description:
-    'Spela in, arrangera, mixa och exportera på Linux. Öppen källkod i Rust och egui, 7,3 MB färdig binär, inget konto och ingen telemetri.',
+    'Record, arrange, mix and export on Linux. Open source in Rust and egui, a 7.3 MB binary, no account and no telemetry.',
   openGraph: {
-    title: 'Sonix Studio - DAW för Linux',
-    description: 'Öppen källkod i Rust och egui. Ladda hem binären eller bygg från källkoden.',
+    title: 'Sonix Studio - a DAW for Linux',
+    description: 'Open source in Rust and egui. Download the binary or build from source.',
     url: 'https://alexwest1981.github.io/sonix/',
     siteName: 'Sonix Studio',
     images: ['https://alexwest1981.github.io/sonix/shots/01_tidslinje_arranger.jpg'],
-    locale: 'sv_SE',
+    locale: 'en_US',
     type: 'website',
   },
 }
@@ -22,5 +22,5 @@ export const viewport: Viewport = {
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="sv"><body>{children}</body></html>
+  return <html lang="en"><body>{children}</body></html>
 }
