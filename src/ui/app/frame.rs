@@ -512,6 +512,23 @@ impl SonixApp {
                     }
                 }
             }
+            // Zoom: Ableton har ~20 zoomkommandon (Fit, In/Out Time, valt område …).
+            // Vi har presets i menyn; här får de tre vanligaste tangenter.
+            if is_cmd0 && !modal_open {
+                if i.key_pressed(egui::Key::Equals) || i.key_pressed(egui::Key::Plus) {
+                    self.suno_zoom_level = (self.suno_zoom_level * 1.25).clamp(0.25, 20.0);
+                    self.status_message = crate::tstatus!("🔍 Zoom {:.0} %", self.suno_zoom_level * 100.0);
+                }
+                if i.key_pressed(egui::Key::Minus) {
+                    self.suno_zoom_level = (self.suno_zoom_level * 0.8).clamp(0.25, 20.0);
+                    self.status_message = crate::tstatus!("🔍 Zoom {:.0} %", self.suno_zoom_level * 100.0);
+                }
+                if i.key_pressed(egui::Key::Num0) {
+                    self.suno_zoom_level = 1.0;
+                    self.status_message = crate::i18n::t("🔍 Zoom 100 %").to_string();
+                }
+            }
+
             if i.key_pressed(egui::Key::Escape) && self.docked_panel.is_some() && !modal_open {
                 self.docked_panel = None;
             }
