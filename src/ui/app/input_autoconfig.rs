@@ -49,6 +49,8 @@ impl SonixApp {
                 let settings = crate::audio::engine::AudioSettings {
                     sample_rate: Some(rate),
                     buffer_frames: self.engine.buffer_frames,
+                    // Utgångsbussarna rörs inte av ett samplingsfrekvensbyte.
+                    ..crate::audio::engine::AudioSettings::load()
                 };
                 let _ = settings.save();
                 rate_note = crate::tstatus!(" · {} Hz (kabelns frekvens)", rate);

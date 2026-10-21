@@ -1339,6 +1339,7 @@ pub(crate) fn render_audio_settings_modal(&mut self, ctx: &egui::Context) {
                             let settings = AudioSettings {
                                 sample_rate: Some(actual_rate),
                                 buffer_frames: actual_buffer,
+                                output_buses: self.audio_output_buses.clone(),
                             };
                             let save_note = match settings.save() {
                                 Ok(_) => String::new(),
@@ -1358,6 +1359,49 @@ pub(crate) fn render_audio_settings_modal(&mut self, ctx: &egui::Context) {
                             self.status_message = crate::tstatus!("⚠ Kunde inte byta ljudkonfiguration: {}", e);
                         }
                     }
+                }
+            });
+
+            ui.add_space(8.0);
+            ui.group(|ui| {
+                let channels = self.engine.channels.max(2) as usize;
+                ui.label(
+                    egui::RichText::new(crate::tstatus!("Utgångsbussar ({} kanaler på enheten)", channels))
+                        .strong()
+                        .color(Theme::FL_CYAN),
+                );
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "Varje buss är ett kanalpar. Bussar utanför enhetens kanalantal används inte.",
+                    ))
+                    .size(10.0)
+                    .color(Theme::TEXT_MUTED),
+                );
+                let mut remove: Option<usize> = None;
+                for (i, bus) in self.audio_output_buses.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut bus.enabled, "");
+                        ui.add(egui::TextEdit::singleline(&mut bus.name).desired_width(110.0));
+                        ui.label(crate::i18n::t("vänster"));
+                        ui.add(egui::DragValue::new(&mut bus.left).range(0..=(channels.saturating_sub(1))));
+                        ui.label(crate::i18n::t("höger"));
+                        ui.add(egui::DragValue::new(&mut bus.right).range(0..=(channels.saturating_sub(1))));
+                        if ui.small_button("✖").clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                }
+                if let Some(i) = remove {
+                    self.audio_output_buses.remove(i);
+                }
+                if ui.button(crate::i18n::t("➕ Lägg till buss")).clicked() {
+                    let n = self.audio_output_buses.len();
+                    let left = (n * 2).min(channels.saturating_sub(2));
+                    self.audio_output_buses.push(crate::audio::engine::OutputBus::new(
+                        "Buss",
+                        left,
+                        (left + 1).min(channels.saturating_sub(1)),
+                    ));
                 }
             });
 

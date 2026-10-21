@@ -49,6 +49,63 @@ pub struct AudioEngine {
     pub host_name: String,
 }
 
+/// En utgångsbuss: ett kanalpar på ljudenheten.
+///
+/// Det här är **ingången för alla tänkbara utgångar**: en enhet med 8 kanaler kan få fyra
+/// bussar (huvud ut, hörlurar, inspelning, reserv), och en enhet med 2 kanaler får en.
+/// Bussar som pekar utanför enhetens kanalantal ignoreras — ingen tyst trunkering.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct OutputBus {
+    pub name: String,
+    #[serde(default)]
+    pub left: usize,
+    #[serde(default = "one")]
+    pub right: usize,
+    #[serde(default = "yes")]
+    pub enabled: bool,
+}
+
+fn one() -> usize {
+    1
+}
+
+fn yes() -> bool {
+    true
+}
+
+impl OutputBus {
+    pub fn new(name: &str, left: usize, right: usize) -> Self {
+        Self { name: name.to_string(), left, right, enabled: true }
+    }
+}
+
+/// Standard: en buss på kanal 0/1 — exakt det beteende appen hade innan bussarna fanns.
+pub fn default_buses() -> Vec<OutputBus> {
+    vec![OutputBus::new("Master", 0, 1)]
+}
+
+/// Kanalparen som faktiskt får ljud: bara aktiva bussar vars **båda** kanaler finns på
+/// enheten, och bara en buss per kanalpar (den första vinner).
+pub fn bus_pairs(buses: &[OutputBus], channels: usize) -> Vec<(usize, usize)> {
+    let mut out: Vec<(usize, usize)> = Vec::new();
+    if channels < 2 {
+        return out;
+    }
+    for bus in buses {
+        if !bus.enabled || bus.left == bus.right {
+            continue;
+        }
+        if bus.left >= channels || bus.right >= channels {
+            continue;
+        }
+        let pair = (bus.left.min(bus.right), bus.left.max(bus.right));
+        if !out.contains(&pair) {
+            out.push(pair);
+        }
+    }
+    out
+}
+
 /// Persisted audio-hardware preferences (`~/.config/sonix/audio.json`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct AudioSettings {
@@ -56,6 +113,9 @@ pub struct AudioSettings {
     pub sample_rate: Option<u32>,
     #[serde(default)]
     pub buffer_frames: Option<u32>,
+    /// Utgångsbussar: vilka kanalpar mixen skrivs till. Tom lista = standard (0/1).
+    #[serde(default = "default_buses")]
+    pub output_buses: Vec<OutputBus>,
 }
 
 /// **Låg latens är standarden, inte ett val** (Sprint 1, punkt 2).
@@ -79,6 +139,7 @@ impl Default for AudioSettings {
         Self {
             sample_rate: Some(48_000),
             buffer_frames: Some(128),
+            output_buses: default_buses(),
         }
     }
 }
@@ -398,6 +459,8 @@ impl AudioEngine {
     {
         let sample_rate = config.sample_rate.0 as f32;
         let channels = config.channels as usize;
+        // Bussarna läses en gång per strömstart — inte per buffert, och aldrig i ljudtråden.
+        let bus_out = bus_pairs(&AudioSettings::load().output_buses, channels);
         let mut synth = SynthEngine::new(sample_rate);
 
         let err_fn = |err| {
@@ -441,9 +504,17 @@ impl AudioEngine {
                         // which only makes the scope skip a beat.
                         let _ = scope_tx.push((sample_l + sample_r) * 0.5);
                         let (out_l, out_r) = output_sample(sample_l, sample_r, silent);
+                        // Mixen skrivs på varje buss kanalpar. Kanaler utan buss nollas:
+                        // på en enhet med fler kanaler läcker annars föregående bufferts
+                        // ljud igenom.
+                        for sample in frame.iter_mut() {
+                            *sample = cpal::Sample::from_sample(0.0f32);
+                        }
                         if frame.len() >= 2 {
-                            frame[0] = cpal::Sample::from_sample(out_l);
-                            frame[1] = cpal::Sample::from_sample(out_r);
+                            for &(bl, br) in &bus_out {
+                                frame[bl] = cpal::Sample::from_sample(out_l);
+                                frame[br] = cpal::Sample::from_sample(out_r);
+                            }
                         } else if !frame.is_empty() {
                             frame[0] = cpal::Sample::from_sample((out_l + out_r) * 0.5);
                         }
@@ -555,6 +626,7 @@ mod tests {
         let settings = AudioSettings {
             sample_rate: Some(48_000),
             buffer_frames: Some(256),
+            output_buses: default_buses(),
         };
         let json = serde_json::to_string(&settings).unwrap();
         let back: AudioSettings = serde_json::from_str(&json).unwrap();
@@ -575,4 +647,41 @@ mod tests {
         assert_eq!(output_sample(l, r, false), (l, r));
         assert_eq!(output_sample(l, r, true), (0.0, 0.0));
     }
+
+#[cfg(test)]
+mod bus_tests {
+    use super::*;
+
+    #[test]
+    fn a_stereo_device_gets_exactly_the_old_behaviour() {
+        assert_eq!(bus_pairs(&default_buses(), 2), vec![(0, 1)]);
+        // En enhet med en kanal kan inte ha något kanalpar alls.
+        assert_eq!(bus_pairs(&default_buses(), 1), Vec::new());
+    }
+
+    #[test]
+    fn buses_beyond_the_device_are_ignored_not_truncated() {
+        let buses = vec![
+            OutputBus::new("Master", 0, 1),
+            OutputBus::new("Hörlurar", 2, 3),
+            OutputBus::new("Reserv", 4, 9),
+        ];
+        assert_eq!(bus_pairs(&buses, 4), vec![(0, 1), (2, 3)], "4/9 finns inte på en 4-kanalig enhet");
+        assert_eq!(bus_pairs(&buses, 8), vec![(0, 1), (2, 3)], "9 finns inte ens på 8 kanaler");
+    }
+
+    #[test]
+    fn disabled_and_degenerate_buses_are_skipped_and_duplicates_collapse() {
+        let mut off = OutputBus::new("Av", 2, 3);
+        off.enabled = false;
+        let buses = vec![
+            OutputBus::new("Master", 0, 1),
+            off,
+            OutputBus::new("Samma par igen", 1, 0),
+            OutputBus::new("Samma kanal", 4, 4),
+        ];
+        assert_eq!(bus_pairs(&buses, 8), vec![(0, 1)], "avstängd, dubblett och L==R hoppas över");
+    }
+}
+
 }
