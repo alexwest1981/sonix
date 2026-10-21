@@ -937,6 +937,14 @@ impl SonixApp {
                             self.show_song_structure_modal = true;
                             ui.close_menu();
                         }
+                        if ui.button(self.tr("🎼 Stämning (.ascl)...")).clicked() {
+                            self.load_tuning_from_file();
+                            ui.close_menu();
+                        }
+                        if ui.button(self.tr("🎼 Tillbaka till 12-TET")).clicked() {
+                            self.reset_tuning();
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("🕹 Modulationsmatris...")).clicked() {
                             self.show_mod_matrix = true;
                             ui.close_menu();

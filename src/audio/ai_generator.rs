@@ -533,7 +533,7 @@ const MINOR: [i32; 7] = [0, 2, 3, 5, 7, 8, 10];
 const TAU: f32 = std::f32::consts::TAU;
 
 fn midi_to_freq(note: i32) -> f32 {
-    440.0 * 2.0f32.powf((note as f32 - 69.0) / 12.0)
+    crate::audio::tuning::midi_to_freq(note.clamp(0, 127) as u8)
 }
 
 /// Renders real stereo PCM for the given style. This is a deterministic

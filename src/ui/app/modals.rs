@@ -1363,6 +1363,23 @@ pub(crate) fn render_audio_settings_modal(&mut self, ctx: &egui::Context) {
             });
 
             ui.add_space(8.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    egui::RichText::new(crate::tstatus!(
+                        "Stämning: {}",
+                        crate::audio::tuning::current_name()
+                    ))
+                    .size(10.5)
+                    .color(Theme::TEXT_MUTED),
+                );
+                if ui.button(crate::i18n::t("🎼 Byt stämning (.ascl)...")).clicked() {
+                    self.load_tuning_from_file();
+                }
+                if ui.button(crate::i18n::t("🎼 12-TET")).clicked() {
+                    self.reset_tuning();
+                }
+            });
+            ui.add_space(8.0);
             ui.group(|ui| {
                 let channels = self.engine.channels.max(2) as usize;
                 ui.label(

@@ -185,8 +185,10 @@ pub struct RenderSpec {
     pub vca_solo: [bool; super::synth::NUM_VCAS],
 }
 
+/// Not → frekvens. Samma funktion som uppspelningen använder, så exporten spelar
+/// samma stämning som du hörde.
 pub fn midi_to_freq(note: u8) -> f32 {
-    440.0 * 2.0_f32.powf((note as f32 - 69.0) / 12.0)
+    crate::audio::tuning::midi_to_freq(note)
 }
 
 /// Bygger triggern för **ett steg** i kanalracket. `channel` är kanalens index (rösten

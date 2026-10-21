@@ -762,6 +762,53 @@ pub(crate) fn quantize_take(&mut self, strength: f32, grid: crate::midi_take::Ta
 impl SonixApp {
 /// Lägger medveten mänsklig variation på tagningen (Fas 6.4). Slumptalet
 /// räknas upp varje gång, så två tryck ger inte exakt samma tagning.
+/// Läser en Scala-stämning (`.ascl`) och gör den aktiv.
+///
+/// Stämningen påverkar **alla** not-till-frekvens-vägar (uppspelning, export,
+/// AI-generatorn), eftersom de går genom `audio::tuning`.
+pub(crate) fn load_tuning_from_file(&mut self) {
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("Stämning (.ascl)", &["ascl"])
+        .set_title("Välj stämning")
+        .pick_file()
+    else {
+        return;
+    };
+    let data = match std::fs::read(&path) {
+        Ok(d) => d,
+        Err(e) => {
+            self.status_message = crate::tstatus!("⚠️ Kunde inte läsa '{}': {}", path.display(), e);
+            return;
+        }
+    };
+    match crate::audio::tuning::parse_ascl(&String::from_utf8_lossy(&data)) {
+        Some(tuning) => {
+            let steps = tuning.cents.len();
+            let period = tuning.period_cents;
+            let name = tuning.name.clone();
+            crate::audio::tuning::set_tuning(Some(tuning));
+            self.status_message = crate::tstatus!(
+                "🎼 Stämning '{}': {} steg, period {:.2} cent",
+                name,
+                steps,
+                period
+            );
+        }
+        None => {
+            self.status_message = crate::tstatus!(
+                "⚠️ '{}' är ingen Scala-stämning vi kan läsa",
+                path.display()
+            );
+        }
+    }
+}
+
+/// Tillbaka till liksvävande tolvton.
+pub(crate) fn reset_tuning(&mut self) {
+    crate::audio::tuning::set_tuning(None);
+    self.status_message = crate::i18n::t("🎼 Tillbaka till 12-TET").to_string();
+}
+
 /// Transponerar hela tagningen. Cubase har 31 Logical Editor-förval som gör detta;
 /// vi hade ingen bulk-operation alls på en tagning.
 pub(crate) fn transpose_take(&mut self, semitones: i32) {

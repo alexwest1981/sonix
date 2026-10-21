@@ -9,8 +9,10 @@
 
 use super::*;
 
+/// Not → frekvens. Går genom `audio::tuning`, som är den enda vägen: annars kan
+/// uppspelningen spela en stämning och exporten en annan.
 pub(crate) fn midi_to_freq(note: u8) -> f32 {
-    440.0 * 2.0_f32.powf((note as f32 - 69.0) / 12.0)
+    crate::audio::tuning::midi_to_freq(note)
 }
 
 pub(crate) fn note_name(note: u8) -> &'static str {
