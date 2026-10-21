@@ -937,6 +937,21 @@ impl SonixApp {
                             self.show_song_structure_modal = true;
                             ui.close_menu();
                         }
+                        ui.menu_button(self.tr("🎚 Warp-läge"), |ui| {
+                            for mode in crate::audio::warp::WarpMode::ALL {
+                                let picked = ui
+                                    .selectable_label(self.warp_mode == mode, crate::i18n::t(mode.label()))
+                                    .clicked();
+                                if picked {
+                                    self.warp_mode = mode;
+                                    self.status_message = crate::tstatus!(
+                                        "🎚 Warp-läge: {} — gäller nästa sträckning",
+                                        mode.label()
+                                    );
+                                    ui.close_menu();
+                                }
+                            }
+                        });
                         if ui.button(self.tr("🎼 Stämning (.ascl)...")).clicked() {
                             self.load_tuning_from_file();
                             ui.close_menu();

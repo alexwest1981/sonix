@@ -981,9 +981,14 @@ pub fn ensure_stretched(&mut self) {
                 if decision.mode != crate::audio::stretch::FollowMode::Stretch {
                     continue;
                 }
-                let Some(key) = Self::stretch_key_for(r, bpm_here) else {
+                let Some(mut key) = Self::stretch_key_for(r, bpm_here) else {
                     continue;
                 };
+                // Läget hör till nyckeln: annars spelar ett byte av läge den gamla filen.
+                if self.warp_mode != crate::audio::warp::WarpMode::Complex {
+                    key.push('-');
+                    key.push_str(&self.warp_mode.label().to_lowercase());
+                }
                 if self.stretch_cache.knows(&key) {
                     continue;
                 }
@@ -1003,7 +1008,7 @@ pub fn ensure_stretched(&mut self) {
     let count = wanted.len();
     for (key, source_path, source_bpm, project_bpm) in wanted {
         self.stretch_cache
-            .request(&dir, key, source_path, source_bpm, project_bpm);
+            .request(&dir, key, source_path, source_bpm, project_bpm, self.warp_mode);
     }
     self.status_message = crate::tstatus!(
         "⏳ Sträcker {} klipp till {:.1} BPM — originalet spelar under tiden.",

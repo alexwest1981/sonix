@@ -331,14 +331,35 @@ pub fn stretch_signalsmith_with(
 /// **Motorn är vald av en mätning, inte av en inställning** (Fas 8.10 steg 2, 2026-09-13):
 /// `signalsmith-stretch` prövades och förlorade på transienterna — se
 /// [`stretch_signalsmith`] och roadmapens 8.10. Vår egen WSOLA står kvar.
+/// Standardvägen (`Complex`) — kvar för proven, som mäter mot den kända
+/// kvaliteten. Produktionen går alltid genom [`stretch_stereo_mode`].
+#[cfg(test)]
 pub fn stretch_stereo(
     left: &[f32],
     right: &[f32],
     ratio: f32,
     sample_rate: f32,
 ) -> (Vec<f32>, Vec<f32>) {
-    // Produktionsvägen: **offlineläget** (se `Wsola::offline`).
-    let mut wsola = super::vocal_harmonizer::Wsola::offline(sample_rate);
+    stretch_stereo_mode(left, right, ratio, sample_rate, crate::audio::warp::WarpMode::Complex)
+}
+
+/// Sträcker med ett valt warp-läge.
+///
+/// Läget ändrar **kornets längd och sökvidden**, inget annat: kort korn följer transienter,
+/// långt korn håller tonhöjd och övertoner. Standard är `Complex`, alltså exakt den väg
+/// [`stretch_stereo`] alltid har tagit.
+pub fn stretch_stereo_mode(
+    left: &[f32],
+    right: &[f32],
+    ratio: f32,
+    sample_rate: f32,
+    mode: crate::audio::warp::WarpMode,
+) -> (Vec<f32>, Vec<f32>) {
+    if (ratio - 1.0).abs() < 1e-6 {
+        return (left.to_vec(), right.to_vec());
+    }
+    let (frame, hop, search) = mode.wsola_params(sample_rate);
+    let mut wsola = super::vocal_harmonizer::Wsola::with_hann(frame, hop, search);
     stretch_stereo_with(left, right, ratio, sample_rate, &mut wsola)
 }
 
@@ -480,12 +501,13 @@ pub fn render_to_file(
     right: &[f32],
     ratio: f32,
     sample_rate: f32,
+    mode: crate::audio::warp::WarpMode,
 ) -> Result<String, String> {
     let frames = left.len().min(right.len());
     let out_frames = ((frames as f64) * (ratio.clamp(MIN_RATIO, MAX_RATIO) as f64))
         .round()
         .max(1.0) as usize;
-    let (out_l, out_r) = stretch_stereo(left, right, ratio, sample_rate);
+    let (out_l, out_r) = stretch_stereo_mode(left, right, ratio, sample_rate, mode);
     check_rendered(&out_l, &out_r, out_frames)?;
 
     std::fs::create_dir_all(dir)
@@ -515,6 +537,7 @@ struct RenderJob {
     source_path: String,
     source_bpm: f32,
     project_bpm: f32,
+    mode: crate::audio::warp::WarpMode,
     dir: PathBuf,
 }
 
@@ -597,6 +620,7 @@ impl StretchCache {
         source_path: String,
         source_bpm: f32,
         project_bpm: f32,
+        mode: crate::audio::warp::WarpMode,
     ) {
         if self.knows(&key) {
             return;
@@ -613,6 +637,7 @@ impl StretchCache {
             source_path,
             source_bpm,
             project_bpm,
+            mode,
             dir: dir.to_path_buf(),
         };
         let sent = matches!(self.tx.as_ref().map(|tx| tx.send(job)), Some(Ok(())));
@@ -703,7 +728,7 @@ fn render_one(job: &RenderJob) -> RenderDone {
     if !plan.changes_anything() {
         return fail(crate::i18n::t("inget att sträcka — faktorn är 1,0").to_string());
     }
-    match render_to_file(&job.dir, &job.key, &l, &r, plan.file_ratio, sr as f32) {
+    match render_to_file(&job.dir, &job.key, &l, &r, plan.file_ratio, sr as f32, job.mode) {
         Ok(written) => match crate::audio::load_wav_pcm(&written) {
             Ok((sl, sr2, ssr)) => ok(sl, sr2, ssr),
             Err(e) => fail(e),
@@ -989,7 +1014,7 @@ mod tests {
     fn a_ratio_of_one_returns_the_input_untouched() {
         let l = tone(220.0, 0.2, 0.7);
         let r: Vec<f32> = l.iter().map(|s| s * 0.5).collect();
-        let (out_l, out_r) = stretch_stereo(&l, &r, 1.0, SR);
+        let (out_l, out_r) = stretch_stereo_mode(&l, &r, 1.0, SR, crate::audio::warp::WarpMode::Complex);
         assert_eq!(out_l, l, "vänster ska vara oförändrad");
         assert_eq!(out_r, r, "höger ska vara oförändrad");
     }
@@ -1000,7 +1025,7 @@ mod tests {
     fn the_pitch_stays_put_while_the_length_changes() {
         let l = tone(220.0, 0.5, 0.7);
         let r = l.clone();
-        let (out_l, _out_r) = stretch_stereo(&l, &r, 1.5, SR);
+        let (out_l, _out_r) = stretch_stereo_mode(&l, &r, 1.5, SR, crate::audio::warp::WarpMode::Complex);
 
         let expected = (l.len() as f64 * 1.5).round() as usize;
         assert!(
@@ -1023,7 +1048,7 @@ mod tests {
     #[test]
     fn slowing_down_does_not_deepen_the_voice() {
         let l = tone(300.0, 0.5, 0.6);
-        let (out_l, _) = stretch_stereo(&l, &l.clone(), 0.75, SR);
+        let (out_l, _) = stretch_stereo_mode(&l, &l.clone(), 0.75, SR, crate::audio::warp::WarpMode::Complex);
         let expected = (l.len() as f64 * 0.75).round() as usize;
         assert!(
             out_l.len().abs_diff(expected) <= 2,
@@ -1043,7 +1068,7 @@ mod tests {
     fn both_channels_go_through_the_same_grains_so_the_stereo_image_survives() {
         let l = tone(220.0, 0.4, 0.8);
         let r: Vec<f32> = l.iter().map(|s| s * 0.5).collect();
-        let (out_l, out_r) = stretch_stereo(&l, &r, 1.25, SR);
+        let (out_l, out_r) = stretch_stereo_mode(&l, &r, 1.25, SR, crate::audio::warp::WarpMode::Complex);
 
         let mut worst = 0.0f32;
         for (a, b) in out_l.iter().zip(out_r.iter()) {
@@ -1106,13 +1131,13 @@ mod tests {
             let secs = (minutes * 60) as f32;
             let src = tone(220.0, secs, 0.5);
             let t0 = std::time::Instant::now();
-            let (out, _) = stretch_stereo(&src, &src, 1.25, SR);
+            let (out, _) = stretch_stereo_mode(&src, &src, 1.25, SR, crate::audio::warp::WarpMode::Complex);
             let stretch_ms = t0.elapsed().as_millis();
 
             let dir = std::env::temp_dir().join(format!("sonix_stretch_cost_{minutes}"));
             let _ = std::fs::remove_dir_all(&dir);
             let t1 = std::time::Instant::now();
-            let written = render_to_file(&dir, "kostnad", &src, &src, 1.25, SR)
+            let written = render_to_file(&dir, "kostnad", &src, &src, 1.25, SR, crate::audio::warp::WarpMode::Complex)
                 .expect("renderingen ska lyckas");
             let total_ms = t1.elapsed().as_millis();
             let size_mb = std::fs::metadata(&written).map(|m| m.len()).unwrap_or(0) as f64 / 1e6;
@@ -1226,7 +1251,7 @@ mod tests {
             };
             let src_dense = crate::audio::onset::detect_onsets(&l, sr as f32, &dense);
             let src_clear = crate::audio::onset::detect_onsets(&l, sr as f32, &clear);
-            let written = render_to_file(&dir, name, &l, &r, file_ratio, sr as f32)
+            let written = render_to_file(&dir, name, &l, &r, file_ratio, sr as f32, crate::audio::warp::WarpMode::Complex)
                 .expect("renderingen ska lyckas");
             let (rl, _rr, rsr) = crate::audio::load_wav_pcm(&written).expect("läs tillbaka");
             let out_dense = crate::audio::onset::detect_onsets(&rl, rsr as f32, &dense);
@@ -1310,6 +1335,7 @@ mod tests {
                     &r,
                     file_ratio,
                     sr as f32,
+                    crate::audio::warp::WarpMode::Complex,
                 )
                 .expect("renderingen ska lyckas");
                 let out_secs = std::fs::metadata(&written).map(|m| m.len()).unwrap_or(0) as f32;
@@ -1346,7 +1372,7 @@ mod tests {
 
         let mut cache = StretchCache::new();
         let key = cache_key(&src_str, 120.0, 180.0);
-        cache.request(&dir, key.clone(), src_str.clone(), 120.0, 180.0);
+        cache.request(&dir, key.clone(), src_str.clone(), 120.0, 180.0, crate::audio::warp::WarpMode::Complex);
 
         // Arbetstråden renderar utanför testet: vänta in den (med ett tak).
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
@@ -1391,7 +1417,7 @@ mod tests {
         let l = tone(220.0, 0.3, 0.6);
         let r: Vec<f32> = l.iter().map(|s| -s * 0.8).collect();
         let key = cache_key("/tmp/Min Låt (Suno).mp3", 120.0, 150.0);
-        let path = render_to_file(&dir, &key, &l, &r, 1.25, SR).expect("skrivningen ska lyckas");
+        let path = render_to_file(&dir, &key, &l, &r, 1.25, SR, crate::audio::warp::WarpMode::Complex).expect("skrivningen ska lyckas");
 
         assert!(Path::new(&path).is_file(), "filen ska finnas: {path}");
         let (read_l, read_r, sr) = crate::audio::wav_reader::load_wav_pcm(&path)
@@ -1429,7 +1455,7 @@ mod tests {
     fn an_empty_clip_never_produces_a_file() {
         let dir = std::env::temp_dir().join(format!("sonix_stretch_empty_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let err = render_to_file(&dir, "tomt", &[], &[], 1.5, SR).expect_err("ska avvisas");
+        let err = render_to_file(&dir, "tomt", &[], &[], 1.5, SR, crate::audio::warp::WarpMode::Complex).expect_err("ska avvisas");
         assert!(!err.is_empty(), "felet ska förklara sig: {err}");
         assert!(!dir.exists(), "ingen katalog ska ha skapats i onödan");
     }
@@ -1763,4 +1789,76 @@ mod tests {
             }
         }
     }
+}
+
+/// **Warp-lägena gör något, och det här är vad de gör** — mätt, inte antaget.
+///
+/// Klickrad sträckt 2× (klick var 250 ms, 40 sampel långa) och en ren 220 Hz-ton
+/// sträckt 2×. Tre tal per läge: topp, crest (topp/medel) och **förhandsläckage** —
+/// energin i de 5 ms *före* varje klick, alltså den utsmetning som hörs som en svans
+/// bakåt i tiden.
+#[test]
+fn the_warp_modes_differ_in_measured_smearing() {
+    use crate::audio::warp::WarpMode;
+    let sr = 48_000.0f32;
+    let mut click = vec![0.0f32; (sr * 2.0) as usize];
+    for k in 0..8 {
+        let at = (k as f32 * 0.25 * sr) as usize;
+        if at + 40 < click.len() {
+            for i in 0..40 {
+                let env = (-(i as f32) / 6.0).exp();
+                click[at + i] = if i % 2 == 0 { 0.9 * env } else { -0.9 * env };
+            }
+        }
+    }
+    let tone: Vec<f32> = (0..(sr * 2.0) as usize)
+        .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / sr).sin())
+        .collect();
+
+    let mut rows = Vec::new();
+    for mode in WarpMode::ALL {
+        let (out, _) = stretch_stereo_mode(&click, &click, 2.0, sr, mode);
+        let peak = out.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        let rms = (out.iter().map(|v| v * v).sum::<f32>() / out.len() as f32).sqrt();
+        // Förhandsläckage: energi strax före varje klick (klicket ligger på 0,5 s intervall
+        // i den sträckta filen, 2× källans intervall).
+        let before = (sr * 0.005) as usize;
+        let mut pre = 0.0f64;
+        for k in 1..8 {
+            let at = (k as f32 * 0.5 * sr) as usize;
+            if at > before && at < out.len() {
+                pre += out[at - before..at].iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>();
+            }
+        }
+        let (tone_out, _) = stretch_stereo_mode(&tone, &tone, 2.0, sr, mode);
+        let tone_rms = (tone_out.iter().map(|v| v * v).sum::<f32>() / tone_out.len() as f32).sqrt();
+        rows.push((mode, peak, peak / rms.max(1e-9), pre.sqrt(), tone_rms));
+    }
+    for (mode, peak, crest, pre, tone_rms) in &rows {
+        println!(
+            "{:8} topp {peak:.3}  crest {crest:6.2}  förhandsläckage {pre:.4}  ton-RMS {tone_rms:.4}",
+            mode.label()
+        );
+    }
+    // Alla lägen ska höras och hålla tonen — det är inte kosmetiska skillnader.
+    for (mode, peak, _, _, tone_rms) in &rows {
+        assert!(*peak > 0.05, "{:?} gav tyst klickutdata", mode);
+        assert!(*tone_rms > 0.2, "{:?} tappade tonen ({tone_rms:.3})", mode);
+    }
+    // Lägena får inte vara samma sak: minst ett av talen skiljer sig klart mellan
+    // det kortaste och det längsta kornet.
+    let fast = &rows[0];
+    let smooth = &rows[2];
+    let differs = (fast.2 - smooth.2).abs() > 1.0
+        || (fast.3 - smooth.3).abs() > 0.001
+        || (fast.4 - smooth.4).abs() > 0.002;
+    assert!(differs, "Fast och Smooth gav samma resultat — då är läget ingen inställning");
+    // Kort korn ska ha **mer** förhandsläckage än långt: det är mätningen, och det är
+    // därför vi inte kallar det kortaste kornet för "Beats".
+    assert!(
+        fast.3 > smooth.3,
+        "kort korn läcker mer bakåt än långt: {:.4} mot {:.4}",
+        fast.3,
+        smooth.3
+    );
 }

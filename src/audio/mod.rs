@@ -18,6 +18,7 @@ pub mod macro_chain;
 pub mod master_fx;
 pub mod metadata;
 pub mod tuning;
+pub mod warp;
 pub mod modulation;
 pub mod input_profile;
 pub mod midi_input;

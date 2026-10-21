@@ -244,6 +244,8 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Warp-läge för sträckningen (Beats/Tones/Texture/Complex).
+    pub warp_mode: crate::audio::warp::WarpMode,
     /// Groove-poolen: flera mallar som läggs på tagningen samtidigt.
     pub groove_pool: Vec<crate::groove::GrooveEntry>,
     /// Modulationsmatrisen: källor → mål.
@@ -808,6 +810,7 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            warp_mode: crate::audio::warp::WarpMode::Complex,
             groove_pool: Vec::new(),
             mod_slots: Vec::new(),
             show_mod_matrix: false,

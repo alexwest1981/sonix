@@ -422,6 +422,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🎼 Ackordspår" => "🎼 Chord Track",
         "🕹 Modulationsmatris" => "🕹 Modulation Matrix",
         "🎼 Stämning (.ascl)..." => "🎼 Tuning (.ascl)...",
+        "🎚 Warp-läge" => "🎚 Warp mode",
+        "🎚 Warp-läge: {} — gäller nästa sträckning" => "🎚 Warp mode: {} — applies to the next stretch",
         "Stämning: {}" => "Tuning: {}",
         "🎵 + mall ({})" => "🎵 + template ({})",
         "▶ Använd poolen" => "▶ Apply the pool",
