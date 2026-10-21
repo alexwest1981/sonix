@@ -1620,6 +1620,47 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                 z.pcm = ch.pcm_audio.clone();
                                 ch.zones.push(z);
                             }
+                            if ui
+                                .button(crate::i18n::t("📥 Importera SoundFont (.sf2)"))
+                                .on_hover_text(crate::i18n::t("Läser instrumentets zoner ur filen och lägger dem i keymappen (FL:s Soundfont Player). Preset- och modulationslagret läses inte, och samplets loop-punkter gäller inte — kanalens egen loop-inställning styr."))
+                                .clicked()
+                                && let Some(p) = rfd::FileDialog::new()
+                                    .add_filter("SoundFont", &["sf2"])
+                                    .pick_file()
+                            {
+                                let read = std::fs::read(&p)
+                                    .map_err(|e| e.to_string())
+                                    .and_then(|b| crate::audio::sf2::parse(&b));
+                                match read {
+                                    Ok(sf) => match sf.instruments.iter().find(|i| !i.zones.is_empty()) {
+                                        Some(inst) => {
+                                            let count = inst.zones.len();
+                                            let name = inst.name.clone();
+                                            ch.zones.extend(inst.zones.iter().cloned());
+                                            self.status_message = crate::tstatus!(
+                                                "🎹 '{}': {} zoner in i keymappen (av {} instrument, {} presets i filen)",
+                                                name,
+                                                count,
+                                                sf.instruments.len(),
+                                                sf.presets.len()
+                                            );
+                                        }
+                                        None => {
+                                            self.status_message = crate::tstatus!(
+                                                "⚠️ '{}' har inga zoner med ljud",
+                                                p.display()
+                                            );
+                                        }
+                                    },
+                                    Err(e) => {
+                                        self.status_message = crate::tstatus!(
+                                            "⚠️ Kunde inte läsa '{}': {}",
+                                            p.display(),
+                                            e
+                                        );
+                                    }
+                                }
+                            }
                             if ch.zones.is_empty() {
                                 ui.label(egui::RichText::new(crate::i18n::t("Inga zoner — kanalen spelar sitt eget sampel.")).size(10.0).color(Theme::TEXT_MUTED));
                             }

@@ -30,6 +30,7 @@ pub mod plugin_host;
 pub mod plugin_sandbox;
 #[cfg(feature = "plugin-host")]
 pub mod sandbox_audio;
+pub mod sf2;
 // Minimal in-process VST3 host (Fas 4.6). Feature-gated like the CLAP ABI.
 #[cfg(feature = "plugin-host")]
 pub mod plugin_vst3;
