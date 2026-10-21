@@ -712,6 +712,67 @@ impl MultibandCompressor {
 }
 
 // ---------------------------------------------------------------------------
+// Step gate (FL Studio: Gross Beat — volymkurvan)
+// ---------------------------------------------------------------------------
+
+/// **Steggrind**: 16 steg om 1/16-del, varje steg en egen nivå. Det är Gross Beats
+/// volymkurva utan tidsmanipulationen — samma sak som en trance-gate, men styrd av ett
+/// mönster i stället för en LFO, alltså rytmiskt i stället för periodiskt.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GatePatternParams {
+    pub gains: [f32; 16],
+    pub bpm: f32,
+    /// 0 = hårda steg (klick i kanten), 1 = mjuk övergång över halva steget.
+    pub smooth: f32,
+    pub enabled: bool,
+}
+
+impl Default for GatePatternParams {
+    fn default() -> Self {
+        Self { gains: [1.0; 16], bpm: 120.0, smooth: 0.0, enabled: false }
+    }
+}
+
+pub struct StepGate {
+    sample_rate: f32,
+    pos: f32,
+    gain: f32,
+}
+
+impl StepGate {
+    pub fn new(sample_rate: f32) -> Self {
+        Self { sample_rate, pos: 0.0, gain: 1.0 }
+    }
+
+    /// Nollställer till steg 0 — anropas när grinden slås på, så mönstret alltid börjar
+    /// från början i stället för mitt i ett steg.
+    pub fn reset(&mut self) {
+        self.pos = 0.0;
+        self.gain = 1.0;
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &GatePatternParams) -> (f32, f32) {
+        let bpm = p.bpm.clamp(20.0, 300.0);
+        let step_len = self.sample_rate * 60.0 / (bpm * 4.0);
+        let index = ((self.pos / step_len) as usize) % p.gains.len();
+        let target = p.gains[index].clamp(0.0, 1.0);
+        if p.smooth <= 0.001 {
+            self.gain = target;
+        } else {
+            // Ett steg långt glid om `smooth = 1`, omedelbart om 0.
+            let coeff = (1.0 / (1.0 + p.smooth * step_len * 0.5)).clamp(0.0, 1.0);
+            self.gain += (target - self.gain) * coeff;
+        }
+        self.pos += 1.0;
+        if self.pos >= step_len * p.gains.len() as f32 {
+            self.pos = 0.0;
+        }
+        (l * self.gain, r * self.gain)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Convolution reverb (FL Studio: Fruity Convolver)
 // ---------------------------------------------------------------------------
 
@@ -1799,5 +1860,36 @@ mod tests {
         assert!((out[CONV_BLOCK] - 0.5).abs() < 1e-5, "första tappen: {}", out[CONV_BLOCK]);
         assert!((out[CONV_BLOCK + 1] + 0.5).abs() < 1e-5, "andra tappen: {}", out[CONV_BLOCK + 1]);
         assert!(out[CONV_BLOCK + 2].abs() < 1e-5, "responsen är två sampel lång");
+    }
+
+    #[test]
+    fn an_all_ones_pattern_is_transparent() {
+        let mut g = StepGate::new(48_000.0);
+        let p = GatePatternParams { enabled: true, ..GatePatternParams::default() };
+        for i in 0..5_000 {
+            let x = (i as f32 * 0.01).sin();
+            let (l, r) = g.process(x, -x, &p);
+            assert_eq!(l, x);
+            assert_eq!(r, -x);
+        }
+    }
+
+    #[test]
+    fn a_gate_pattern_mutes_the_off_steps() {
+        // 120 BPM → ett 1/16-steg är 6 000 sampel. Steg 0 öppet, resten stängt.
+        let mut g = StepGate::new(48_000.0);
+        let mut gains = [0.0f32; 16];
+        gains[0] = 1.0;
+        let p = GatePatternParams { gains, bpm: 120.0, smooth: 0.0, enabled: true };
+        let mut open = Vec::new();
+        let mut closed = Vec::new();
+        for i in 0..12_000 {
+            let x = (i as f32 * 0.05).sin();
+            let (l, _) = g.process(x, x, &p);
+            if i < 6_000 { open.push(l) } else { closed.push(l) }
+        }
+        let rms = |v: &[f32]| (v.iter().map(|s| s * s).sum::<f32>() / v.len() as f32).sqrt();
+        assert!(rms(&open) > 0.5, "steg 0 ska släppa igenom, fick {}", rms(&open));
+        assert_eq!(rms(&closed), 0.0, "steg 1 ska vara tyst");
     }
 }

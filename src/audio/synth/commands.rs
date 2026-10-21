@@ -127,6 +127,13 @@ impl SynthEngine {
             AudioCommand::SetFm(fm) => {
                 self.fm = fm;
             }
+            AudioCommand::SetGatePattern(p) => {
+                if p.enabled && !self.gate_pattern.enabled {
+                    // Slås grinden på börjar mönstret från steg 0.
+                    self.step_gate.reset();
+                }
+                self.gate_pattern = p;
+            }
             AudioCommand::SetConvolverIr(ir) => {
                 self.master_fx.set_convolver_ir(ir);
             }

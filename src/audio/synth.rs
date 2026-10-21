@@ -15,7 +15,7 @@ use super::drum::{DrumType, DrumVoice};
 use super::effects::{DelayParams, ReverbParams, SimpleReverb, StereoDelay};
 use super::envelope::{AdsrParams, AdsrVoice};
 use super::filter::{FilterParams, StateVariableFilter};
-use super::master_fx::{Compressor, CompressorParams, MasterFxChain, RemixFx, StereoEq, TapeStop, TrackEqSettings};
+use super::master_fx::{Compressor, CompressorParams, GatePatternParams, MasterFxChain, RemixFx, StepGate, StereoEq, TapeStop, TrackEqSettings};
 use super::patcher::{PatchProcessor, PatchSpec};
 use super::plugin_host_live::{PdcDelay, PluginInsert};
 use super::vocal_harmonizer::{FormantPitchShifter, Wsola};
@@ -129,6 +129,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetTrackEq { .. } => "SetTrackEq",
         AudioCommand::SetTrackMix { .. } => "SetTrackMix",
         AudioCommand::SetRemixFx { .. } => "SetRemixFx",
+        AudioCommand::SetGatePattern(_) => "SetGatePattern",
         AudioCommand::SetTapeStop { .. } => "SetTapeStop",
         AudioCommand::LoadPreset(_) => "LoadPreset",
         AudioCommand::SetMasterVolume(_) => "SetMasterVolume",
@@ -182,6 +183,9 @@ pub struct SynthEngine {
     /// FM-inställningen för syntens röster (DX10/Sytrus-vägen).
     pub fm: FmParams,
     pub remix_fx: RemixFx,
+    /// Steggrinden (Gross Beats volymkurva).
+    pub step_gate: StepGate,
+    pub gate_pattern: GatePatternParams,
     pub tape_stop: TapeStop,
     pub master_volume: f32,
     pub voices: [Voice; MAX_VOICES],
@@ -267,6 +271,8 @@ impl SynthEngine {
             master_fx: MasterFxChain::new(sample_rate),
             fm: FmParams::default(),
             remix_fx: RemixFx::new(sample_rate),
+            step_gate: StepGate::new(sample_rate),
+            gate_pattern: GatePatternParams::default(),
             tape_stop: TapeStop::new(sample_rate),
             master_volume: 0.8,
             voices: [Voice::new(sample_rate); MAX_VOICES],

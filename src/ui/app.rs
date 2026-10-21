@@ -179,6 +179,11 @@ pub struct SonixApp {
     // Synth Parameters
     pub current_preset: Preset,
     pub waveform: Waveform,
+    /// **Steggrinden** (Gross Beats volymkurva): 16 steg, 1 = öppet, 0 = stängt, och om
+    /// grinden är på. Mönstret skickas till motorn vid varje ändring (med projektets BPM).
+    pub gate_gains: [f32; 16],
+    pub gate_on: bool,
+    pub gate_smooth: f32,
     /// **FM** (DX10/Sytrus): ratio + index. Standard `index = 0` = oscillatorn utan FM.
     pub fm: crate::audio::command::FmParams,
     pub adsr: AdsrParams,
@@ -713,6 +718,9 @@ impl SonixApp {
             stereo_width: 1.0,
             current_preset,
             waveform,
+            gate_gains: [1.0; 16],
+            gate_on: false,
+            gate_smooth: 0.0,
             fm: crate::audio::command::FmParams::default(),
             adsr,
             filter,

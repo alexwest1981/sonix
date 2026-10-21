@@ -2042,6 +2042,72 @@ pub(crate) fn render_remix_fx_view(&mut self, ui: &mut egui::Ui) {
                         }
                     });
 
+                    ui.add_space(8.0);
+                    ui.label(egui::RichText::new(crate::i18n::t("GROSS BEAT / STEGGRIND (16 steg)")).strong().size(11.0).color(Theme::FL_CYAN));
+                    ui.horizontal(|ui| {
+                        let label = if self.gate_on {
+                            crate::i18n::t("🟩 STEGGRIND PÅ")
+                        } else {
+                            crate::i18n::t("⬛ STEGGRIND AV")
+                        };
+                        let fill = if self.gate_on { Theme::FL_GREEN } else { Color32::from_rgb(34, 38, 46) };
+                        let mut changed = false;
+                        if ui
+                            .add(
+                                egui::Button::new(egui::RichText::new(label).strong().size(11.0).color(Color32::WHITE))
+                                    .fill(fill)
+                                    .min_size(Vec2::new(120.0, 26.0)),
+                            )
+                            .clicked()
+                        {
+                            self.gate_on = !self.gate_on;
+                            changed = true;
+                        }
+                        for i in 0..16 {
+                            let on = self.gate_gains[i] > 0.5;
+                            let cell = if on { Theme::FL_CYAN } else { Color32::from_rgb(30, 34, 42) };
+                            let text_col = if on { Color32::BLACK } else { Theme::TEXT_MUTED };
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(format!("{}", i + 1)).size(9.0).color(text_col),
+                                    )
+                                    .fill(cell)
+                                    .min_size(Vec2::new(21.0, 26.0)),
+                                )
+                                .clicked()
+                            {
+                                self.gate_gains[i] = if on { 0.0 } else { 1.0 };
+                                changed = true;
+                            }
+                        }
+                        if changed {
+                            let _ = self.engine.send_command(AudioCommand::SetGatePattern(
+                                crate::audio::master_fx::GatePatternParams {
+                                    gains: self.gate_gains,
+                                    bpm: self.bpm,
+                                    smooth: self.gate_smooth,
+                                    enabled: self.gate_on,
+                                },
+                            ));
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if ui
+                            .add(egui::Slider::new(&mut self.gate_smooth, 0.0..=1.0).text(crate::i18n::t("Mjuk kant")))
+                            .changed()
+                        {
+                            let _ = self.engine.send_command(AudioCommand::SetGatePattern(
+                                crate::audio::master_fx::GatePatternParams {
+                                    gains: self.gate_gains,
+                                    bpm: self.bpm,
+                                    smooth: self.gate_smooth,
+                                    enabled: self.gate_on,
+                                },
+                            ));
+                        }
+                    });
+
                     ui.add_space(10.0);
                     ui.group(|ui| {
                         ui.label(egui::RichText::new(crate::i18n::t("Styr DJ-effekter under uppspelning för live-remixing av dina mönster!")).size(10.0).color(Theme::TEXT_MUTED));

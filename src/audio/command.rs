@@ -145,6 +145,8 @@ pub enum AudioCommand {
     TriggerDrum(DrumType),
     SetWaveform(Waveform),
     SetFm(FmParams),
+    /// Steggrinden (Gross Beats volymkurva): 16 steg, tempo i BPM.
+    SetGatePattern(crate::audio::master_fx::GatePatternParams),
     /// Impulsresponsen till masterns convolver (mono). `None` rensar den. Den bärs för sig
     /// själv och inte i `MasterFxParams`, som är `Copy` och skickas varje bildruta.
     SetConvolverIr(Option<Arc<Vec<f32>>>),

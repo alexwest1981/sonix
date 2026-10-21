@@ -746,6 +746,12 @@ impl SynthEngine {
         let out_r = (fx_r * self.master_volume).tanh();
 
         // DJ performance FX on the final master bus.
+        let (out_l, out_r) = if self.gate_pattern.enabled {
+            self.step_gate.process(out_l, out_r, &self.gate_pattern)
+        } else {
+            (out_l, out_r)
+        };
+
         let (out_l, out_r) = if self.remix_fx.is_active() {
             self.remix_fx.process(out_l, out_r)
         } else {
