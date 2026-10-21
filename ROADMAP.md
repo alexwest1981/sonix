@@ -2940,6 +2940,7 @@ Två **signatureffekter** som saknades helt är byggda i masterns kedja, med pro
 | :--- | :--- | :--- | :--- |
 | **Transient Processor** | anslag och kropp var för sig | fanns inte | `TransientParams`/`TransientShaper` — attack ±12 dB, sustain ±12 dB, känslighet; **bit-identisk vid 0 dB** (`transient_shaper_is_transparent_at_zero`), +12 dB lyfter ett anslag ~4× (`attack_boost_lifts_the_attack_of_a_hit`), −12 dB kropp ger 0,251 av en jämn ton (`sustain_cut_lowers_a_steady_tone`) |
 | **Soft Clipper / Fast Dist / WaveShaper** | mättnad med tak | bara `drive` i filtret | `SaturatorParams`/`Saturator` — `tanh` normaliserad med `1/tanh(drive)`, tonkontroll, mix; tredjetonen mätt: **4,6 % / 13,1 % / 24,4 %** vid drive 2/4/8, aldrig över full skala (`saturator_never_exceeds_full_scale`) |
+| **Maximus / Fruity Multiband Compressor** | tre band med egen dynamik | ingen banddelning alls | `MultibandParams`/`MultibandCompressor` — Linkwitz-Riley 4 (250 Hz / 4 kHz, `Q = 0,7071` i båda stegen), en `Compressor` per band med egen `amount`; delningen mätt platt (100 Hz/1 kHz/10 kHz inom 12 %), och med bara basbandet på: **0,248 av insignalen på 100 Hz, 1,0000 på 5 kHz** — provet biter (mätt: med `amounts = 0` faller det på `1.000`) |
 
 Båda ligger som pedaler i FX-racket (`transient`, `saturator`), avstängda som standard — och
 eftersom `NonTrackSound` redan bär pedaler generiskt (`id` + tre värden + `enabled`) följer
@@ -2950,7 +2951,7 @@ både ångring, digest och snapshot med **utan nya fält**. 630 tester (default)
 
 | # | FL | Läget i Sonix (mätt i koden) | Storlek |
 | :--: | :--- | :--- | :---: |
-| 1 | **Maximus / Fruity Multiband Compressor** | ingen banddelning alls; ordet "multiband" finns bara som i18n-text | *M* |
+| ~~1~~ | ~~**Maximus / Fruity Multiband Compressor**~~ | **byggd 2026-10-21** (se ovan) | *M* |
 | 2 | **Fruity Convolver** | inget `convol*` i koden — reverbet är algoritmiskt | *M* |
 | 3 | **Sytrus / DX10 / Ogun / Harmor** | oscillatorn är `enum Waveform` (Saw/Square/Triangle/Sine) — ingen FM, ingen additiv, ingen spektral | *L* |
 | 4 | **Fruity Granulizer** | inget granularinstrument | *M* |

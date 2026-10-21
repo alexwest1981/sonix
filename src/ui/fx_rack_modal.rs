@@ -1,8 +1,8 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
     AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
-    LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams, ReverbParams,
-    SaturatorParams, TransientParams,
+    LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams, MultibandParams,
+    ReverbParams, SaturatorParams, TransientParams,
 };
 use crate::ui::theme::Theme;
 use crate::ui::widgets::rotary_knob;
@@ -138,6 +138,21 @@ impl Default for FxRackState {
                     p3_val: 0.40,
                     mix: 1.0,
                     description: "Tystar bakgrundsbrus och sus när sångaren inte sjunger.",
+                },
+                FxPedal {
+                    id: "multiband",
+                    name: "📶 MULTIBAND COMP (3 band)",
+                    category: "Glue Mix",
+                    enabled: false,
+                    color: Color32::from_rgb(120, 200, 255),
+                    p1_name: "LOW",
+                    p1_val: 0.0,
+                    p2_name: "MID",
+                    p2_val: 0.0,
+                    p3_name: "HIGH",
+                    p3_val: 0.0,
+                    mix: 1.0,
+                    description: "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band.",
                 },
                 FxPedal {
                     id: "transient",
@@ -286,6 +301,16 @@ impl FxRackState {
             freq: 4000.0 + ds_p.map(|p| p.p2_val).unwrap_or(0.65) * 8000.0,
         };
 
+        let mb_p = self.pedal("multiband");
+        let multiband = MultibandParams {
+            amounts: [
+                mb_p.map(|p| p.p1_val).unwrap_or(0.0),
+                mb_p.map(|p| p.p2_val).unwrap_or(0.0),
+                mb_p.map(|p| p.p3_val).unwrap_or(0.0),
+            ],
+            ..MultibandParams::default()
+        };
+
         let tr_p = self.pedal("transient");
         let transient = TransientParams {
             attack_db: (tr_p.map(|p| p.p1_val).unwrap_or(0.5) * 2.0 - 1.0) * 12.0,
@@ -341,6 +366,8 @@ impl FxRackState {
             transient_enabled: tr_p.map(|p| p.enabled).unwrap_or(false),
             sat,
             sat_enabled: sat_p.map(|p| p.enabled).unwrap_or(false),
+            multiband,
+            multiband_enabled: mb_p.map(|p| p.enabled).unwrap_or(false),
             gate,
             gate_enabled: gate_p.map(|p| p.enabled).unwrap_or(false),
             filter,
