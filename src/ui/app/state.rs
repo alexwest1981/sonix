@@ -222,6 +222,24 @@ pub struct AudioRegion {
 }
 
 /// Flyttar låtsektioner när tid infogas eller tas bort. `delta` är positiv vid infogning.
+/// Nästa sektion i kedjan när spelhuvudet lämnar sin sista takt.
+///
+/// `sections` är `(start_bar, length_bars)` per markör och `chain` är markörindex i
+/// spelordning — samma sektion får förekomma flera gånger, vilket är hela poängen med en
+/// arranger track (A B A C). `None` betyder "spela vidare linjärt": antingen är takten inte
+/// slutet på en sektion, eller så står sektionen utanför kedjan.
+pub fn next_chain_bar(bar: usize, sections: &[(usize, usize)], chain: &[usize]) -> Option<usize> {
+    if chain.is_empty() {
+        return None;
+    }
+    let idx = sections
+        .iter()
+        .position(|(start, len)| *len > 0 && bar + 1 == start + len)?;
+    let pos = chain.iter().position(|c| *c == idx)?;
+    let next = chain[(pos + 1) % chain.len()];
+    sections.get(next).map(|(start, _)| *start)
+}
+
 pub fn shift_song_markers(markers: &mut [SongMarker], at_bar: f32, delta: i64) -> usize {
     let mut moved = 0;
     for m in markers.iter_mut() {
@@ -1143,5 +1161,34 @@ mod time_ops_tests {
         assert_ne!(copy.id, 1, "kopian ska ha eget id");
         let moved = t.regions.iter().find(|r| r.id == 2).unwrap();
         assert_eq!(moved.start_bar, 8.0, "det som låg efter flyttas fram");
+    }
+}
+
+#[cfg(test)]
+mod chain_tests {
+    use super::next_chain_bar;
+
+    /// Vers 0–8, refräng 8–16, brygga 16–24.
+    fn song() -> Vec<(usize, usize)> {
+        vec![(0, 8), (8, 8), (16, 8)]
+    }
+
+    #[test]
+    fn the_chain_decides_what_comes_after_a_section() {
+        // Vers → Refräng → Vers → Refräng: en riktig kedja, inte bara framåt.
+        let chain = vec![0, 1, 0, 1];
+        assert_eq!(next_chain_bar(7, &song(), &chain), Some(8), "versen leder till refrängen");
+        assert_eq!(next_chain_bar(15, &song(), &chain), Some(0), "refrängen leder tillbaka till versen");
+        assert_eq!(next_chain_bar(3, &song(), &chain), None, "mitt i en sektion händer inget");
+    }
+
+    #[test]
+    fn a_section_outside_the_chain_plays_on_linearly_and_the_last_one_wraps() {
+        let chain = vec![0, 1];
+        assert_eq!(next_chain_bar(23, &song(), &chain), None, "bryggan är inte med i kedjan");
+        // Bara refrängen i kedjan: den loopar sig själv.
+        assert_eq!(next_chain_bar(15, &song(), &[1]), Some(8));
+        // Tom kedja stänger av helt.
+        assert_eq!(next_chain_bar(7, &song(), &[]), None);
     }
 }

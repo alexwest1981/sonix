@@ -937,6 +937,10 @@ impl SonixApp {
                             self.show_song_structure_modal = true;
                             ui.close_menu();
                         }
+                        if ui.button(self.tr("🧩 Sektionskedja (Arranger)...")).clicked() {
+                            self.show_arranger_chain = true;
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("🎛 Scenrutnät (mjuk Launchpad)...")).clicked() {
                             // Rutnätet byggs om ur sektionerna när rutan öppnas: låtstrukturen
                             // kan ha ändrats sedan förra gången.

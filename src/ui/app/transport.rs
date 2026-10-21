@@ -366,7 +366,24 @@ pub(crate) fn advance_sequencer(&mut self) {
                 self.song_step_in_bar = 0;
                 self.song_bar += 1;
                 let max_bars = self.get_max_project_bars();
-                if self.song_bar >= self.loop_end_bar || self.song_bar >= max_bars {
+                // Sektionskedjan går före slingan: en arranger track är ett eget val av
+                // ordning, och då ska markörerna styra, inte loop-punkterna.
+                let chain_target = if self.arranger_chain_active && !self.arranger_chain.is_empty() {
+                    let sections: Vec<(usize, usize)> = self
+                        .song_markers
+                        .iter()
+                        .map(|m| (m.start_bar, m.length_bars))
+                        .collect();
+                    crate::ui::app::state::next_chain_bar(self.song_bar, &sections, &self.arranger_chain)
+                } else {
+                    None
+                };
+                if let Some(target) = chain_target {
+                    self.song_bar = target;
+                    let seek = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+                        .secs_at_bar(target as f64) as f32;
+                    let _ = self.engine.send_command(AudioCommand::SeekSongPosition(seek));
+                } else if self.song_bar >= self.loop_end_bar || self.song_bar >= max_bars {
                     self.song_bar = self.loop_start_bar;
                     // Slingan ska gälla LJUDET också. Utan sökningen fortsätter
                     // motor-klockan framåt medan takträknaren hoppar tillbaka, och

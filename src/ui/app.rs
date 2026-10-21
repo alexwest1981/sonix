@@ -246,6 +246,12 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Sektionskedja: markörindex i spelordning (Cubases Arranger Track). Tom = linjärt.
+    pub arranger_chain: Vec<usize>,
+    /// Om uppspelningen ska följa kedjan.
+    pub arranger_chain_active: bool,
+    /// Om kedjefönstret är öppet.
+    pub show_arranger_chain: bool,
     /// Tröskel för "markera svaga": steg med lägre anslag markeras.
     pub piano_roll_quiet_threshold: f32,
     /// Logical Editor-lite: vilket fält regeln jämför (0 anslag, 1 tonhöjd, 2 steg).
@@ -789,6 +795,9 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            arranger_chain: Vec::new(),
+            arranger_chain_active: false,
+            show_arranger_chain: false,
             rule_field: 0,
             rule_cmp: 0,
             rule_value: 0.3,

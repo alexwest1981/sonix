@@ -1734,6 +1734,105 @@ pub(crate) fn render_fx_rack_modal_view(&mut self, ctx: &egui::Context) {
 }
 
 impl SonixApp {
+/// Sektionskedjan (arranger track): vilken ordning sektionerna spelas i. Samma sektion får
+/// förekomma flera gånger — A B A C är hela poängen, inte ett specialfall.
+pub(crate) fn render_arranger_chain_view(&mut self, ctx: &egui::Context) {
+    if !self.show_arranger_chain {
+        return;
+    }
+    let mut open = true;
+    let names: Vec<String> = self.song_markers.iter().map(|m| m.name.clone()).collect();
+    egui::Window::new(crate::i18n::t("🧩 Sektionskedja"))
+        .open(&mut open)
+        .default_width(340.0)
+        .show(ctx, |ui| {
+            ui.checkbox(
+                &mut self.arranger_chain_active,
+                crate::i18n::t("Följ kedjan vid uppspelning"),
+            );
+            ui.label(
+                egui::RichText::new(crate::i18n::t(
+                    "Kedjan går före loop-punkterna: när en sektion tar slut hoppar spelhuvudet till nästa i kedjan.",
+                ))
+                .size(10.0)
+                .color(Theme::TEXT_MUTED),
+            );
+            ui.separator();
+            if names.is_empty() {
+                ui.label(crate::i18n::t("Inga sektioner — skapa låtstruktur först."));
+                return;
+            }
+            ui.horizontal(|ui| {
+                if ui.button(crate::i18n::t("Bygg om från sektionerna")).clicked() {
+                    self.arranger_chain = (0..names.len()).collect();
+                    self.status_message =
+                        crate::tstatus!("🧩 Kedja med {} sektion(er)", names.len());
+                }
+                if ui.button(crate::i18n::t("Töm kedjan")).clicked() {
+                    self.arranger_chain.clear();
+                }
+            });
+            ui.separator();
+            let mut move_up: Option<usize> = None;
+            let mut move_down: Option<usize> = None;
+            let mut remove: Option<usize> = None;
+            for (i, sec) in self.arranger_chain.iter().enumerate() {
+                ui.horizontal(|ui| {
+                    ui.label(egui::RichText::new(format!("{}.", i + 1)).size(10.5).color(Theme::TEXT_MUTED));
+                    if ui.small_button("▲").on_hover_text(crate::i18n::t("Flytta tidigare i kedjan")).clicked() {
+                        move_up = Some(i);
+                    }
+                    if ui.small_button("▼").on_hover_text(crate::i18n::t("Flytta senare i kedjan")).clicked() {
+                        move_down = Some(i);
+                    }
+                    if ui.small_button("✖").on_hover_text(crate::i18n::t("Ta bort ur kedjan")).clicked() {
+                        remove = Some(i);
+                    }
+                    let label = names
+                        .get(*sec)
+                        .cloned()
+                        .unwrap_or_else(|| crate::i18n::t("(borttagen sektion)").to_string());
+                    ui.label(label);
+                });
+            }
+            // Ändringarna görs efter raden, så kedjan inte ändras medan den ritas.
+            if let Some(i) = move_up
+                && i > 0
+                && i < self.arranger_chain.len()
+            {
+                self.arranger_chain.swap(i - 1, i);
+            }
+            if let Some(i) = move_down
+                && i + 1 < self.arranger_chain.len()
+            {
+                self.arranger_chain.swap(i, i + 1);
+            }
+            if let Some(i) = remove
+                && i < self.arranger_chain.len()
+            {
+                self.arranger_chain.remove(i);
+            }
+            ui.separator();
+            egui::ComboBox::from_id_salt("chain_add")
+                .selected_text(crate::i18n::t("Lägg till sektion"))
+                .width(200.0)
+                .show_ui(ui, |ui| {
+                    for (k, n) in names.iter().enumerate() {
+                        if ui.selectable_label(false, n).clicked() {
+                            self.arranger_chain.push(k);
+                        }
+                    }
+                });
+            let steps = self.arranger_chain.len();
+            ui.label(
+                egui::RichText::new(crate::tstatus!("{} steg i kedjan", steps))
+                    .size(10.0)
+                    .color(Theme::TEXT_MUTED),
+            );
+        });
+    self.show_arranger_chain = open;
+}
+
 pub(crate) fn render_song_structure_modal_view(&mut self, ctx: &egui::Context) {
     let mut apply_sections: Option<Vec<SongSectionItem>> = None;
     let mut status = self.status_message.clone();
@@ -2830,6 +2929,7 @@ impl SonixApp {
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);
         self.render_song_structure_modal_view(ctx);
+        self.render_arranger_chain_view(ctx);
         self.render_launcher_view(ctx);
         self.render_macros_modal_view(ctx);
         self.render_stem_focus_modal(ctx);
