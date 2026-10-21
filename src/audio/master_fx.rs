@@ -540,6 +540,174 @@ impl Saturator {
 }
 
 // ---------------------------------------------------------------------------
+// Modulation: chorus, flanger, phaser (FL Studio: Fruity/Hyper/Vintage Chorus,
+// Fruity Flanger, Fruity Phaser — tio varianter av samma tre idéer)
+// ---------------------------------------------------------------------------
+
+/// Gemensamma reglage för de tre modulerande effekterna.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ModFxParams {
+    /// LFO-hastighet i Hz (0,02–8).
+    pub rate: f32,
+    /// 0–1: hur långt delaytiden (chorus/flanger) eller brytfrekvensen (phaser) sveper.
+    pub depth: f32,
+    /// Torr/våt. 0 = ren genomgång. Phaserns kam ligger djupast vid 0,5.
+    pub mix: f32,
+    /// −0,9–0,9 återkoppling: flangerns vassa kam, phaserns resonans.
+    pub feedback: f32,
+}
+
+impl Default for ModFxParams {
+    fn default() -> Self {
+        Self { rate: 0.4, depth: 0.4, mix: 0.0, feedback: 0.0 }
+    }
+}
+
+/// Modulerad fördröjningslinje. Chorus och flanger är samma krets med olika skalor:
+/// chorus har lång bas och litet svep, flangern kort bas, stort svep och återkoppling.
+pub struct ModDelay {
+    sample_rate: f32,
+    buf_l: Vec<f32>,
+    buf_r: Vec<f32>,
+    write: usize,
+    phase: f32,
+    base_ms: f32,
+    swing_ms: f32,
+    delay_ms: f32,
+}
+
+impl ModDelay {
+    pub fn new(sample_rate: f32, base_ms: f32, swing_ms: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        let cap = ((base_ms + swing_ms) * 0.001 * sr).ceil() as usize + 4;
+        Self {
+            sample_rate: sr,
+            buf_l: vec![0.0; cap],
+            buf_r: vec![0.0; cap],
+            write: 0,
+            phase: 0.0,
+            base_ms,
+            swing_ms,
+            delay_ms: base_ms,
+        }
+    }
+
+    /// Aktuell fördröjning i millisekunder — går att mäta direkt i stället för att gissa ur ljudet.
+    #[cfg(test)]
+    pub fn delay_ms(&self) -> f32 {
+        self.delay_ms
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &ModFxParams) -> (f32, f32) {
+        let mix = p.mix.clamp(0.0, 1.0);
+        if mix <= 0.001 {
+            return (l, r);
+        }
+        self.phase += p.rate.clamp(0.02, 8.0) / self.sample_rate;
+        if self.phase >= 1.0 {
+            self.phase -= 1.0;
+        }
+        let depth = p.depth.clamp(0.0, 1.0);
+        // Kvarts period mellan kanalerna: det är bredden i choruset.
+        let lfo_l = 0.5 + 0.5 * (2.0 * PI * self.phase).sin();
+        let lfo_r = 0.5 + 0.5 * (2.0 * PI * (self.phase + 0.25)).sin();
+        self.delay_ms = self.base_ms + self.swing_ms * depth * lfo_l;
+        let delay_r = self.base_ms + self.swing_ms * depth * lfo_r;
+
+        let n = self.buf_l.len() as f32;
+        let max_d = n - 2.0;
+        let tap = |buf: &[f32], write: usize, d: f32| -> f32 {
+            let d = d.clamp(1.0, max_d);
+            let mut read = write as f32 - d;
+            if read < 0.0 {
+                read += n;
+            }
+            let i0 = read.floor() as usize % buf.len();
+            let frac = read - read.floor();
+            let i1 = (i0 + 1) % buf.len();
+            buf[i0] + frac * (buf[i1] - buf[i0])
+        };
+
+        let wet_l = tap(&self.buf_l, self.write, self.delay_ms * 0.001 * self.sample_rate);
+        let wet_r = tap(&self.buf_r, self.write, delay_r * 0.001 * self.sample_rate);
+
+        // Återkopplingen skrivs in i bufferten (inte ut i signalen): kammen blir vass utan att nivån skenar.
+        let fb = p.feedback.clamp(-0.9, 0.9);
+        self.buf_l[self.write] = l + wet_l * fb;
+        self.buf_r[self.write] = r + wet_r * fb;
+        self.write = (self.write + 1) % self.buf_l.len();
+
+        (l + mix * (wet_l - l), r + mix * (wet_r - r))
+    }
+}
+
+/// Fyra allpass-steg med svepande brytfrekvens — phaser. Vid `mix = 1,0` är utgången
+/// bara fasvriden (allpass), så kammen hörs först när torr och våt blandas: 0,5 ger djupast kam.
+pub struct Phaser {
+    sample_rate: f32,
+    phase: f32,
+    x1_l: [f32; 4],
+    x1_r: [f32; 4],
+    y1_l: [f32; 4],
+    y1_r: [f32; 4],
+    fb_l: f32,
+    fb_r: f32,
+    fc_hz: f32,
+}
+
+impl Phaser {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate: sample_rate.max(1.0),
+            phase: 0.0,
+            x1_l: [0.0; 4],
+            x1_r: [0.0; 4],
+            y1_l: [0.0; 4],
+            y1_r: [0.0; 4],
+            fb_l: 0.0,
+            fb_r: 0.0,
+            fc_hz: 200.0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &ModFxParams) -> (f32, f32) {
+        let mix = p.mix.clamp(0.0, 1.0);
+        if mix <= 0.001 {
+            return (l, r);
+        }
+        self.phase += p.rate.clamp(0.02, 8.0) / self.sample_rate;
+        if self.phase >= 1.0 {
+            self.phase -= 1.0;
+        }
+        let lfo = 0.5 + 0.5 * (2.0 * PI * self.phase).sin();
+        self.fc_hz = 200.0 * 10.0_f32.powf(p.depth.clamp(0.0, 1.0) * lfo);
+        let t = (PI * self.fc_hz / self.sample_rate).tan();
+        // a = (tan−1)/(tan+1) hör till y = a·x + x1 − a·y1; den omvända kvoten ger inget filter alls.
+        let c = (t - 1.0) / (t + 1.0);
+        let fb = p.feedback.clamp(-0.9, 0.9);
+
+        let mut xl = l + self.fb_l * fb;
+        let mut xr = r + self.fb_r * fb;
+        for s in 0..4 {
+            let yl = c * xl + self.x1_l[s] - c * self.y1_l[s];
+            self.x1_l[s] = xl;
+            self.y1_l[s] = yl;
+            xl = yl;
+            let yr = c * xr + self.x1_r[s] - c * self.y1_r[s];
+            self.x1_r[s] = xr;
+            self.y1_r[s] = yr;
+            xr = yr;
+        }
+        self.fb_l = xl;
+        self.fb_r = xr;
+
+        (l + mix * (xl - l), r + mix * (xr - r))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Multiband compressor (FL Studio: Maximus / Fruity Multiband Compressor)
 // ---------------------------------------------------------------------------
 
@@ -1121,6 +1289,12 @@ pub struct MasterFxParams {
     pub transient_enabled: bool,
     pub sat: SaturatorParams,
     pub sat_enabled: bool,
+    pub chorus: ModFxParams,
+    pub chorus_enabled: bool,
+    pub flanger: ModFxParams,
+    pub flanger_enabled: bool,
+    pub phaser: ModFxParams,
+    pub phaser_enabled: bool,
     pub multiband: MultibandParams,
     pub multiband_enabled: bool,
     pub convolver: ConvolverParams,
@@ -1147,6 +1321,12 @@ impl Default for MasterFxParams {
             transient_enabled: false,
             sat: SaturatorParams::default(),
             sat_enabled: false,
+            chorus: ModFxParams::default(),
+            chorus_enabled: false,
+            flanger: ModFxParams::default(),
+            flanger_enabled: false,
+            phaser: ModFxParams::default(),
+            phaser_enabled: false,
             multiband: MultibandParams::default(),
             multiband_enabled: false,
             convolver: ConvolverParams::default(),
@@ -1171,6 +1351,9 @@ pub struct MasterFxChain {
     deesser: DeEsser,
     transient: TransientShaper,
     sat: Saturator,
+    chorus: ModDelay,
+    flanger: ModDelay,
+    phaser: Phaser,
     multiband: MultibandCompressor,
     convolver: Convolver,
     gate: NoiseGate,
@@ -1192,6 +1375,9 @@ impl MasterFxChain {
             deesser: DeEsser::new(sample_rate),
             transient: TransientShaper::new(sample_rate),
             sat: Saturator::new(sample_rate),
+            chorus: ModDelay::new(sample_rate, 12.0, 8.0),
+            flanger: ModDelay::new(sample_rate, 2.5, 2.0),
+            phaser: Phaser::new(sample_rate),
             multiband: MultibandCompressor::new(sample_rate),
             convolver: Convolver::new(sample_rate),
             gate: NoiseGate::new(sample_rate),
@@ -1289,6 +1475,26 @@ impl MasterFxChain {
 
         if p.sat_enabled {
             let (nl, nr) = self.sat.process(l, r, &p.sat);
+            l = nl;
+            r = nr;
+        }
+
+        // Modulation efter mättnaden: då sveper kammen i den färgade signalen,
+        // och limitern sist tar hand om toppen återkopplingen kan ge.
+        if p.chorus_enabled {
+            let (nl, nr) = self.chorus.process(l, r, &p.chorus);
+            l = nl;
+            r = nr;
+        }
+
+        if p.flanger_enabled {
+            let (nl, nr) = self.flanger.process(l, r, &p.flanger);
+            l = nl;
+            r = nr;
+        }
+
+        if p.phaser_enabled {
+            let (nl, nr) = self.phaser.process(l, r, &p.phaser);
             l = nl;
             r = nr;
         }
@@ -1892,4 +2098,84 @@ mod tests {
         assert!(rms(&open) > 0.5, "steg 0 ska släppa igenom, fick {}", rms(&open));
         assert_eq!(rms(&closed), 0.0, "steg 1 ska vara tyst");
     }
+
+    #[test]
+    fn mod_fx_is_transparent_at_zero_mix() {
+        for kind in 0..3 {
+            let mut chorus = ModDelay::new(48_000.0, 12.0, 8.0);
+            let mut flanger = ModDelay::new(48_000.0, 2.5, 2.0);
+            let mut phaser = Phaser::new(48_000.0);
+            let p = ModFxParams { rate: 3.0, depth: 1.0, mix: 0.0, feedback: 0.7 };
+            for i in 0..256 {
+                let x = ((i as f32) * 0.01).sin();
+                let out = match kind {
+                    0 => chorus.process(x, -x, &p),
+                    1 => flanger.process(x, -x, &p),
+                    _ => phaser.process(x, -x, &p),
+                };
+                assert_eq!(out.0.to_bits(), x.to_bits(), "kind {kind} ändrade signalen vid mix 0");
+                assert_eq!(out.1.to_bits(), (-x).to_bits(), "kind {kind} ändrade signalen vid mix 0");
+            }
+        }
+    }
+
+    #[test]
+    fn chorus_sweeps_the_delay_and_flanger_sweeps_less() {
+        let p = ModFxParams { rate: 2.0, depth: 1.0, mix: 0.5, feedback: 0.0 };
+        let mut chorus = ModDelay::new(48_000.0, 12.0, 8.0);
+        let (mut lo, mut hi) = (f32::MAX, f32::MIN);
+        for _ in 0..24_000 {
+            chorus.process(0.0, 0.0, &p);
+            lo = lo.min(chorus.delay_ms());
+            hi = hi.max(chorus.delay_ms());
+        }
+        // 12 ms bas ± 8 ms svep: hela svepet ska rymmas, annars rör sig inte LFO:n.
+        assert!(lo < 12.5, "nedre läget {lo} ms nådde inte basen");
+        assert!(hi > 19.0, "övre läget {hi} ms nådde inte toppen");
+
+        let mut flanger = ModDelay::new(48_000.0, 2.5, 2.0);
+        let (mut flo, mut fhi) = (f32::MAX, f32::MIN);
+        for _ in 0..24_000 {
+            flanger.process(0.0, 0.0, &p);
+            flo = flo.min(flanger.delay_ms());
+            fhi = fhi.max(flanger.delay_ms());
+        }
+        assert!((fhi - flo) > 1.8, "flangern svepte bara {} ms", fhi - flo);
+        assert!(fhi < 5.0, "flangern är för långsam: {} ms", fhi);
+    }
+
+    #[test]
+    fn phaser_moves_a_notch_only_when_the_lfo_runs() {
+        let sr = 48_000.0;
+        let blocks = |depth: f32| -> f32 {
+            let mut ph = Phaser::new(sr);
+            let p = ModFxParams { rate: 2.0, depth, mix: 0.5, feedback: 0.0 };
+            let mut levels = Vec::new();
+            let block = 2_400; // 50 ms
+            let mut acc = 0.0;
+            let mut n = 0;
+            for i in 0..(sr as usize) {
+                let x = (2.0 * PI * 1_000.0 * i as f32 / sr).sin() * 0.5;
+                let (out, _) = ph.process(x, x, &p);
+                acc += out * out;
+                n += 1;
+                if n == block {
+                    levels.push((acc / block as f32).sqrt());
+                    acc = 0.0;
+                    n = 0;
+                }
+            }
+            let mean = levels.iter().sum::<f32>() / levels.len() as f32;
+            let max = levels.iter().cloned().fold(f32::MIN, f32::max);
+            let min = levels.iter().cloned().fold(f32::MAX, f32::min);
+            (max - min) / mean.max(1e-6)
+        };
+        let still = blocks(0.0);
+        let swept = blocks(1.0);
+        // Stilla LFO = fast kam = jämn nivå. Svepande = kammen vandrar över tonen.
+        assert!(still < 0.01, "nivån rörde sig {still} utan svep");
+        assert!(swept > 10.0 * still, "svepet gav {swept}, stilla gav {still}");
+        assert!(swept > 0.05, "svepet hörs knappt: {swept}");
+    }
+
 }

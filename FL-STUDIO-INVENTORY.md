@@ -596,7 +596,7 @@ kedjan finns, "de" = vi har inget som motsvarar det.
 | :--- | :--- | :--- | :--- |
 | **Syntes** | 51 generatorer: subtraktiv, FM (Sytrus 6 operatorer), additiv (Harmor/Ogun/Morphine), fysisk modellering (Sakura/Plucked!/Slayer), granulär, bild→ljud (BeepMap) | en subtraktiv synth + 2-op FM + sampler + SF2 | de |
 | **Trummor** | FPC, Drumaxx, Drumpad, DrumSynth Live, 1 908 trumsamplingar + 1 718 MIDI-loopar | drum.rs (syntetiska), steprad, egna samplingar | delvis |
-| **Modulationseffekter** | chorus ×3 (Fruity/Hyper/Vintage), flanger ×2, phaser ×2, Love Philter, Effector | doubler (bredd) — ingen chorus/flanger/phaser | de |
+| **Modulationseffekter** | chorus ×3 (Fruity/Hyper/Vintage), flanger ×2, phaser ×2, Love Philter, Effector | chorus, flanger, phaser i masterns kedja (byggda i dag) + doubler; Love Philter/Effector kvar | delvis |
 | **Dynamik** | Limiter, Compressor, Multiband, Maximus, Transient, Soft Clipper, Squeeze | limiter, kompressor, multiband, transient, saturator (i dag) | vi |
 | **Reverb/delay** | Reeverb 1/2, Convolver, Luxeverb, Delay 1/2/3, Delay Bank, Multiband Delay | algoritmiskt reverb, stereodelay (ping-pong), convolver (i dag) | delvis |
 | **EQ/filter** | Parametric EQ 1/2, 7 Band, Free Filter, Filter, Fast LP, Frequency Shifter/Splitter | 4-band + per spår + SVF + drive | delvis |
@@ -639,6 +639,9 @@ vocoder, modulationskällor, notation, video och skript-API.
 | DX10 / Sytrus (2-op FM) | `FmParams` | sidoband 0,00351 → 0,06796 när index 0 → 4 |
 | Soundfont Player / DirectWave | `audio/sf2.rs` | syntetisk `.sf2` med två sampel ger rätt intervall, grundton och PCM |
 | MIDI Out | `audio/midi_output.rs` | `--selftest` öppnade `Midi Through` och skickade noten |
+| Fruity / Hyper / Vintage Chorus | `ModDelay` (12 ms ± 8 ms, kvarts periods kanalskillnad) | mix 0 är bit-identisk genomgång; svepet mätt till 12–20 ms, flangern 2,5–4,5 ms |
+| Fruity Flanger (+ Flangus) | samma `ModDelay`, 0,6 återkoppling | kammen sveper 2 ms; provet faller om svepet står stilla |
+| Fruity / Vintage Phaser | `Phaser` (4 allpass, 200 Hz–2 kHz) | kammen vandrar: nivån svänger 10× mer med LFO än utan, och står exakt still vid `depth = 0` |
 
 ---
 
@@ -646,7 +649,7 @@ vocoder, modulationskällor, notation, video och skript-API.
 
 | # | Vad | Varför den ordningen | Storlek |
 | :--: | :--- | :--- | :---: |
-| 1 | **Chorus / Flanger / Phaser** | FL har tio varianter, vi har noll — och de är små: en fördröjningslinje med LFO ovanpå `effects.rs`-mönstret. Störst gap per rad kod. | *S* |
+| ~~1~~ | ~~**Chorus / Flanger / Phaser**~~ | **Klar i dag**: `ModDelay` + `Phaser` i masterns kedja, tre pedaler, tre prov som biter. | *S* |
 | 2 | **Impulsbanksinläsning i convolvern** | vi har convolvern men ingen bank; FL skeppar 260. En mapp + en lista, ingen DSP. | *S* |
 | 3 | **Modulationskällor** (peak/envelope/formel → parameter) | låser upp Love Philter, PanOMatic, VFX-familjen och gör automation tvådimensionell. Kräver en målmodell i motorn. | *M* |
 | 4 | **Granulizer** | enda kvarvarande *instrument*-gapet som är rimligt i den här kodbasen (kanalens 13 initialiseringar + ett grain-läge i `voices.rs`). | *M* |

@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ConvolverParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    ModFxParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
 };
 use crate::ui::theme::Theme;
 use crate::ui::widgets::rotary_knob;
@@ -190,6 +190,51 @@ impl Default for FxRackState {
                     description: "Mjuk mättnad (tanh) med tonkontroll — aldrig över full skala.",
                 },
                 FxPedal {
+                    id: "chorus",
+                    name: "🌊 CHORUS",
+                    category: "Sound Design",
+                    enabled: false,
+                    color: Color32::from_rgb(90, 180, 255),
+                    p1_name: "RATE",
+                    p1_val: 0.25,
+                    p2_name: "DEPTH",
+                    p2_val: 0.50,
+                    p3_name: "MIX",
+                    p3_val: 0.50,
+                    mix: 1.0,
+                    description: "Modulerad fördröjning 12 ms ± 8 ms med kvarts periods kanalskillnad — bredd utan grumlighet.",
+                },
+                FxPedal {
+                    id: "flanger",
+                    name: "🌀 FLANGER",
+                    category: "Sound Design",
+                    enabled: false,
+                    color: Color32::from_rgb(120, 255, 210),
+                    p1_name: "RATE",
+                    p1_val: 0.12,
+                    p2_name: "DEPTH",
+                    p2_val: 0.70,
+                    p3_name: "MIX",
+                    p3_val: 0.50,
+                    mix: 1.0,
+                    description: "Kort fördröjning (2,5 ms ± 2 ms) med 0,6 återkoppling — den vassa kammen.",
+                },
+                FxPedal {
+                    id: "phaser",
+                    name: "🌗 PHASER",
+                    category: "Sound Design",
+                    enabled: false,
+                    color: Color32::from_rgb(180, 140, 255),
+                    p1_name: "RATE",
+                    p1_val: 0.30,
+                    p2_name: "DEPTH",
+                    p2_val: 0.70,
+                    p3_name: "MIX",
+                    p3_val: 0.50,
+                    mix: 1.0,
+                    description: "Fyra allpass-steg med svepande brytfrekvens (200 Hz–2 kHz). Kammen ligger djupast vid mix 0,5.",
+                },
+                FxPedal {
                     id: "analog_filter",
                     name: "🎛 SVF FILTER (12 dB)",
                     category: "Sound Design",
@@ -361,6 +406,31 @@ impl FxRackState {
             boost: 0.5 + lim_p.map(|p| p.p3_val).unwrap_or(0.5) * 2.5,
         };
 
+        let ch_p = self.pedal("chorus");
+        let chorus = ModFxParams {
+            rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
+            depth: ch_p.map(|p| p.p2_val).unwrap_or(0.5),
+            mix: ch_p.map(|p| p.p3_val).unwrap_or(0.5),
+            feedback: 0.0,
+        };
+
+        let fl_p = self.pedal("flanger");
+        let flanger = ModFxParams {
+            rate: 0.05 + fl_p.map(|p| p.p1_val).unwrap_or(0.12) * 2.0,
+            depth: fl_p.map(|p| p.p2_val).unwrap_or(0.7),
+            mix: fl_p.map(|p| p.p3_val).unwrap_or(0.5),
+            // 0,6 är det som gör en modulerad fördröjning till en flanger i stället för chorus.
+            feedback: 0.6,
+        };
+
+        let ph_p = self.pedal("phaser");
+        let phaser = ModFxParams {
+            rate: 0.05 + ph_p.map(|p| p.p1_val).unwrap_or(0.3) * 4.0,
+            depth: ph_p.map(|p| p.p2_val).unwrap_or(0.7),
+            mix: ph_p.map(|p| p.p3_val).unwrap_or(0.5),
+            feedback: 0.2,
+        };
+
         MasterFxParams {
             eq_bands,
             eq_enabled: eq_pedal_on,
@@ -374,6 +444,12 @@ impl FxRackState {
             transient_enabled: tr_p.map(|p| p.enabled).unwrap_or(false),
             sat,
             sat_enabled: sat_p.map(|p| p.enabled).unwrap_or(false),
+            chorus,
+            chorus_enabled: ch_p.map(|p| p.enabled).unwrap_or(false),
+            flanger,
+            flanger_enabled: fl_p.map(|p| p.enabled).unwrap_or(false),
+            phaser,
+            phaser_enabled: ph_p.map(|p| p.enabled).unwrap_or(false),
             multiband,
             multiband_enabled: mb_p.map(|p| p.enabled).unwrap_or(false),
             convolver: ConvolverParams {
