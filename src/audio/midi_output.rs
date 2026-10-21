@@ -90,10 +90,15 @@ mod tests {
 
     #[test]
     fn opening_a_missing_port_is_an_error_not_a_panic() {
+        // **Två miljöer, två rimliga fel.** På en maskin med ALSA-sequencer finns `Midi Through`
+        // och felet är "ingen port på plats N"; på en runner *utan* MIDI-stack går själva
+        // `MidiOutput::new` bet. Provet kräver därför att felet finns och har en text — inte
+        // vilken text det är. (Samma läxa som i18n-provet: ett prov som letar en viss sträng
+        // mäter översättningen, inte beteendet.)
         let too_high = MidiOut::ports().len() + 5;
         match MidiOut::open(too_high) {
             Ok(_) => panic!("plats {too_high} finns inte"),
-            Err(msg) => assert!(msg.contains("ingen MIDI-ut-port"), "fel text: {msg}"),
+            Err(msg) => assert!(!msg.is_empty(), "felet måste ha en text"),
         }
     }
 
