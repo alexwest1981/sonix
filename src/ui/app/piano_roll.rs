@@ -18,6 +18,24 @@ pub fn get_scale_notes(&self) -> Vec<u8> {
 }
 
 impl SonixApp {
+/// Efter en operation på rutnätet: kanalens steg och not följer rutnätets översta ton,
+/// och mönstret skrivs om — annars spelar kanalen kvar på den gamla raden.
+pub(crate) fn resync_grid_channels(&mut self) {
+    for step in 0..16 {
+        let mut top = None;
+        for row in 0..24 {
+            if self.piano_roll_grid[row][step] {
+                top = Some(row);
+            }
+        }
+        self.channels[6].steps[step] = top.is_some();
+        if let Some(row) = top {
+            self.channels[6].notes[step] = crate::audio::scale::PIANO_ROLL_BASE_MIDI + row as u8;
+        }
+    }
+    self.sync_active_pattern_from_ui();
+}
+
 pub fn humanize_active_pattern(&mut self) {
     let mut rng_state: u32 = 987654321;
     for v in self.step_velocities.iter_mut() {
@@ -394,6 +412,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
 
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Töm")).size(10.5).color(Color32::from_rgb(255, 120, 120))).fill(Color32::from_rgb(50, 20, 25))).on_hover_text(crate::i18n::t("Rensa mönster")).clicked() {
                 self.piano_roll_grid = [[false; 16]; 24];
+                self.piano_roll_sel = [[false; 16]; 24];
                 self.channels[6].steps = [false; 16];
                 self.sync_active_pattern_from_ui();
                 self.status_message = crate::i18n::t("🧹 Pianorullens mönster rensat!").to_string();
@@ -410,6 +429,65 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
         });
 
         ui.add_space(6.0);
+
+        // Urvalsraden: antal markerade celler och de operationer Cubases förval mest gör.
+        let sel_count = count_selected(&self.piano_roll_sel);
+        let sel_row_bg = Color32::from_rgb(32, 38, 48);
+        ui.horizontal(|ui| {
+            if sel_count == 0 {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("Shift+klick markerar celler"))
+                        .size(10.0)
+                        .color(Theme::TEXT_MUTED),
+                );
+            } else {
+                ui.label(
+                    egui::RichText::new(crate::tstatus!("{} markerade", sel_count))
+                        .size(10.5)
+                        .strong()
+                        .color(Theme::FL_CYAN),
+                );
+                for (label, rows, hint) in [
+                    ("▲", 1, "Transponera markerade en rad upp"),
+                    ("▼", -1, "Transponera markerade en rad ned"),
+                    ("▲▲", 12, "Transponera markerade en oktav upp"),
+                    ("▼▼", -12, "Transponera markerade en oktav ned"),
+                ] {
+                    if ui
+                        .add(egui::Button::new(egui::RichText::new(label).size(10.5).color(Theme::TEXT_BRIGHT)).fill(sel_row_bg))
+                        .on_hover_text(crate::i18n::t(hint))
+                        .clicked()
+                    {
+                        let moved = transpose_cells(&mut self.piano_roll_grid, &self.piano_roll_sel, rows);
+                        let from = if rows > 0 { "▲" } else { "▼" };
+                        self.status_message = crate::tstatus!("{} {} cell(er) flyttade", from, moved);
+                        self.resync_grid_channels();
+                        // Markeringen följer med noterna, annars pekar den på tomma rutor.
+                        self.piano_roll_sel = transpose_selection(&self.piano_roll_sel, rows);
+                    }
+                }
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(crate::i18n::t("🗑 Ta bort valda"))
+                                .size(10.5)
+                                .color(Color32::from_rgb(255, 120, 120)),
+                        )
+                        .fill(Color32::from_rgb(50, 20, 25)),
+                    )
+                    .on_hover_text(crate::i18n::t("Ta bort de markerade cellerna"))
+                    .clicked()
+                {
+                    let removed = delete_cells(&mut self.piano_roll_grid, &self.piano_roll_sel);
+                    self.piano_roll_sel = [[false; 16]; 24];
+                    self.status_message = crate::tstatus!("🗑 {} cell(er) borttagna", removed);
+                    self.resync_grid_channels();
+                }
+                if ui.button(crate::i18n::t("✖ Avmarkera")).clicked() {
+                    self.piano_roll_sel = [[false; 16]; 24];
+                }
+            }
+        });
 
         let base_midi = crate::audio::scale::PIANO_ROLL_BASE_MIDI; // C3
         let semitones_count = 24;
@@ -463,7 +541,10 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         let is_beat_start = step % 4 == 0;
 
                         if response.clicked() {
-                            if is_on {
+                            // Shift-klick markerar cellen (Cubase: 86 av 610 förval väljer).
+                            if ui.input(|i| i.modifiers.shift) {
+                                toggle_cell_selection(&mut self.piano_roll_sel, note_offset, step);
+                            } else if is_on {
                                 self.piano_roll_grid[note_offset][step] = false;
                                 let any_left = (0..24).any(|o| self.piano_roll_grid[o][step]);
                                 self.channels[6].steps[step] = any_left;
@@ -530,6 +611,9 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
 
                         if is_playhead {
                             bg = Color32::from_rgb(255, 230, 100);
+                        }
+                        if self.piano_roll_sel[note_offset][step] {
+                            bg = Color32::from_rgb(90, 150, 255);
                         }
 
                         ui.painter().rect_filled(cell_rect, Rounding::same(1.5), bg);
@@ -997,3 +1081,127 @@ pub(crate) fn render_touch_piano_keyboard(&mut self, ui: &mut egui::Ui, ctx: &eg
 }
 }
 
+// ---- Urval i rutnätet ---------------------------------------------------------
+// Cubase: 86 av 610 förval *väljer*, 29 *tar bort*, 11 *transponerar*. Urvalet är
+// förutsättningen för de andra två, och rutnätet är vår enda yta där noter syns.
+
+/// Växlar markeringen på en cell. Returnerar antalet markerade celler.
+pub(crate) fn toggle_cell_selection(sel: &mut [[bool; 16]; 24], row: usize, step: usize) -> usize {
+    if row < 24 && step < 16 {
+        sel[row][step] = !sel[row][step];
+    }
+    count_selected(sel)
+}
+
+pub(crate) fn count_selected(sel: &[[bool; 16]; 24]) -> usize {
+    sel.iter().map(|r| r.iter().filter(|c| **c).count()).sum()
+}
+
+/// Transponerar markerade celler `rows` rader. Celler som skulle hamna utanför
+/// rutnätet **stannar där de är** i stället för att tappas.
+pub(crate) fn transpose_cells(
+    grid: &mut [[bool; 16]; 24],
+    sel: &[[bool; 16]; 24],
+    rows: i32,
+) -> usize {
+    let mut next = *grid;
+    for row in 0..24 {
+        for step in 0..16 {
+            if sel[row][step] {
+                next[row][step] = false;
+            }
+        }
+    }
+    let mut moved = 0;
+    for row in 0..24 {
+        for step in 0..16 {
+            if !sel[row][step] {
+                continue;
+            }
+            let target = row as i32 + rows;
+            if (0..24).contains(&target) {
+                next[target as usize][step] = true;
+                moved += 1;
+            } else {
+                next[row][step] = true;
+            }
+        }
+    }
+    *grid = next;
+    moved
+}
+
+/// Flyttar markeringen med noterna, så den pekar på samma noter efter en transponering.
+pub(crate) fn transpose_selection(sel: &[[bool; 16]; 24], rows: i32) -> [[bool; 16]; 24] {
+    let mut next = [[false; 16]; 24];
+    for row in 0..24 {
+        for step in 0..16 {
+            if !sel[row][step] {
+                continue;
+            }
+            let target = row as i32 + rows;
+            // Samma regel som cellerna: får den inte plats stannar markeringen kvar på raden,
+            // annars pekar den på en annan not än den som ligger i rutnätet.
+            if (0..24).contains(&target) {
+                next[target as usize][step] = true;
+            } else {
+                next[row][step] = true;
+            }
+        }
+    }
+    next
+}
+
+/// Tar bort markerade celler. Returnerar antalet borttagna.
+pub(crate) fn delete_cells(grid: &mut [[bool; 16]; 24], sel: &[[bool; 16]; 24]) -> usize {
+    let mut removed = 0;
+    for row in 0..24 {
+        for step in 0..16 {
+            if sel[row][step] && grid[row][step] {
+                grid[row][step] = false;
+                removed += 1;
+            }
+        }
+    }
+    removed
+}
+
+#[cfg(test)]
+mod selection_tests {
+    use super::*;
+
+    #[test]
+    fn transpose_moves_selected_cells_and_keeps_the_ones_that_do_not_fit() {
+        let mut grid = [[false; 16]; 24];
+        let mut sel = [[false; 16]; 24];
+        grid[23][0] = true; // rad 23 är överst: kan inte flyttas upp
+        grid[10][4] = true;
+        grid[11][4] = true; // orörd, inte markerad
+        sel[23][0] = true;
+        sel[10][4] = true;
+
+        assert_eq!(transpose_cells(&mut grid, &sel, 2), 1, "bara den som får plats flyttas");
+        assert!(grid[23][0], "cellen som inte fick plats stannar");
+        assert!(!grid[10][4]);
+        assert!(grid[12][4]);
+        assert!(grid[11][4], "omarkerade celler rörs inte");
+
+        let moved_sel = transpose_selection(&sel, 2);
+        assert!(moved_sel[23][0], "markeringen stannar med noten som inte fick plats");
+        assert!(moved_sel[12][4]);
+
+        assert_eq!(delete_cells(&mut grid, &sel), 1);
+        assert!(!grid[23][0]);
+        assert!(grid[12][4], "markeringen gäller ursprungsraden, inte den flyttade");
+    }
+
+    #[test]
+    fn selection_counts_and_toggles() {
+        let mut sel = [[false; 16]; 24];
+        assert_eq!(count_selected(&sel), 0);
+        assert_eq!(toggle_cell_selection(&mut sel, 5, 3), 1);
+        assert!(sel[5][3]);
+        assert_eq!(toggle_cell_selection(&mut sel, 5, 3), 0, "samma cell växlar av");
+        assert_eq!(toggle_cell_selection(&mut sel, 99, 99), 0, "utanför rutnätet gör inget");
+    }
+}

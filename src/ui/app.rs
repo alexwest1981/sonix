@@ -240,6 +240,8 @@ pub struct SonixApp {
     pub time_signature: (u8, u8),
     // Piano Roll & Scale Snapping
     pub piano_roll_grid: [[bool; 16]; 24],
+    /// Markerade celler i rutnätet (samma form som rutnätet). Shift-klick växlar.
+    pub piano_roll_sel: [[bool; 16]; 24],
     pub piano_roll_snap_to_scale: bool,
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
@@ -769,6 +771,7 @@ impl SonixApp {
             song_key_scale: 0, // Dur
             time_signature: (4, 4),
             piano_roll_grid: initial_grid,
+            piano_roll_sel: [[false; 16]; 24],
             piano_roll_snap_to_scale: false,
             piano_roll_poly_mode: false,
             chord_stamp: 0,
