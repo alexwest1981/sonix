@@ -2932,40 +2932,32 @@ disassemblering vore en 28 KB NSIS-laddare, medan musiken ligger i payloaden
 (`FL64.exe`, `FLEngine_x64.dll`). Det som *gav* svaret var att läsa header, avkoda block 0 och
 räkna upp tabellen — ingen gissning om vad som "brukar finnas i FL".
 
-### Vad de gör bra som vi inte hade — och vad som byggdes i dag
+### Vad som byggdes i dag — åtta funktioner, alla mätta
 
-Två **signatureffekter** som saknades helt är byggda i masterns kedja, med prov:
-
-| FL-plugin | Vad den gör | Sonix före | Nu |
+| FL-plugin | Vad den gör | Sonix före | Nu (med provet som bevisar det) |
 | :--- | :--- | :--- | :--- |
-| **Transient Processor** | anslag och kropp var för sig | fanns inte | `TransientParams`/`TransientShaper` — attack ±12 dB, sustain ±12 dB, känslighet; **bit-identisk vid 0 dB** (`transient_shaper_is_transparent_at_zero`), +12 dB lyfter ett anslag ~4× (`attack_boost_lifts_the_attack_of_a_hit`), −12 dB kropp ger 0,251 av en jämn ton (`sustain_cut_lowers_a_steady_tone`) |
-| **Soft Clipper / Fast Dist / WaveShaper** | mättnad med tak | bara `drive` i filtret | `SaturatorParams`/`Saturator` — `tanh` normaliserad med `1/tanh(drive)`, tonkontroll, mix; tredjetonen mätt: **4,6 % / 13,1 % / 24,4 %** vid drive 2/4/8, aldrig över full skala (`saturator_never_exceeds_full_scale`) |
-| **Maximus / Fruity Multiband Compressor** | tre band med egen dynamik | ingen banddelning alls | `MultibandParams`/`MultibandCompressor` — Linkwitz-Riley 4 (250 Hz / 4 kHz, `Q = 0,7071` i båda stegen), en `Compressor` per band med egen `amount`; delningen mätt platt (100 Hz/1 kHz/10 kHz inom 12 %), och med bara basbandet på: **0,248 av insignalen på 100 Hz, 1,0000 på 5 kHz** — provet biter (mätt: med `amounts = 0` faller det på `1.000`) |
+| **Transient Processor** | anslag och kropp var för sig | fanns inte | `TransientShaper` — attack/sustain ±12 dB; **bit-identisk vid 0 dB**, +12 dB lyfter ett anslag ~4×, −12 dB kropp ger **0,251** av en jämn ton |
+| **Soft Clipper / Fast Dist / WaveShaper** | mättnad med tak | bara `drive` i filtret | `Saturator` — `tanh`/`1/tanh(drive)`, tonkontroll, mix; tredjeton **4,6 / 13,1 / 24,4 %** vid drive 2/4/8; aldrig över full skala |
+| **Maximus / Multiband Compressor** | tre band, egen dynamik | ingen banddelning | `MultibandCompressor` — Linkwitz-Riley 4 vid 250 Hz/4 kHz; 100 Hz → **0,248**, 5 kHz → **1,0000**; provet faller med `amounts = 0` |
+| **Fruity Convolver** | faltning med en impulsrespons | algoritmiskt reverb | `Convolver` — partitionerad FFT-faltning; latens **exakt ett block (256 sampel = 5,3 ms)**, `[0,5, −0,5]` ger **±0,5** på plats 256/257 |
+| **Gross Beat (volymkurvan)** | 16 steg, tempo-synkat | bara beat-repeat/tape-stop | `StepGate` — 120 BPM → **6 000 sampel** per steg; steg 0 RMS > 0,5, steg 1 **exakt 0** |
+| **DX10 / Sytrus (FM)** | modulerad bärvåg | bara `enum Waveform` | `FmParams` + röstens modulatorsfas; sidoband på 440 Hz: **0,00351 → 0,06796** (19×) när index går 0 → 4 |
+| **Soundfont Player / DirectWave** | instrument ur en `.sf2` | ingen SF2-läsare | `audio/sf2.rs` — RIFF→pdta/sdta, zoner med `keyRange`, `velRange`, `sampleID`, `overridingRootKey`; prov mot en syntetisk fil med två sampel |
+| **MIDI Out** | noter till extern synt | ingen `MidiOutput` | `audio/midi_output.rs` + `--selftest`-rad: **öppnade `Midi Through` och skickade en not** (att mottagaren hörde den är *inte* mätt, och det står i utdatan) |
 
-Båda ligger som pedaler i FX-racket (`transient`, `saturator`), avstängda som standard — och
-eftersom `NonTrackSound` redan bär pedaler generiskt (`id` + tre värden + `enabled`) följer
-både ångring, digest och snapshot med **utan nya fält**. 630 tester (default) / 679
-(`plugin-host`), 0 varningar i alla fyra byggena.
+Alla åtta är inkopplade i gränssnittet (FX-racket, OSCILLATOR-kolumnen, keymap-sektionen,
+REMIX FX-vyn respektive MIDI-modalen) och avstängda som standard, så ett gammalt projekt låter
+exakt som förut.
 
-### Vad som återstår — rangordnat, ur samma tabell
+### Vad som återstår — och varför det är egna pass, inte kvällar
 
-| # | FL | Läget i Sonix (mätt i koden) | Storlek |
-| :--: | :--- | :--- | :---: |
-| ~~1~~ | ~~**Maximus / Fruity Multiband Compressor**~~ | **byggd 2026-10-21** (se ovan) | *M* |
-| 2 | **Fruity Convolver** | inget `convol*` i koden — reverbet är algoritmiskt | *M* |
-| 3 | **Sytrus / DX10 / Ogun / Harmor** | oscillatorn är `enum Waveform` (Saw/Square/Triangle/Sine) — ingen FM, ingen additiv, ingen spektral | *L* |
-| 4 | **Fruity Granulizer** | inget granularinstrument | *M* |
-| 5 | **Vocodex / Fruity Vocoder** | vocoder nämns bara vid **igenkänning** av externa plugins | *M* |
-| 6 | **MIDI Out** | ingen `MidiOutput` i kodbasen (Sprint 1, punkt 4) | *M* |
-| 7 | **VFX Key Mapper / Keyboard Splitter / Level Scaler** | sampelzoner per tangent finns (`keymap.rs`), men ingen MIDI-omvandling per spår | *S* |
-| 8 | **Soundfont Player / DirectWave** | zoner + `root`/`key_low`/`key_high` finns; **SF2-läsare** finns inte | *M* |
-| 9 | **Gross Beat** | `RemixFx` kan beat-repeat/reverse/tape-stop, men ingen tids-/volymkurva per steg | *M* |
-| 10 | Fruity Video Player · ZGameEditor · Dashboard · NoteBook | saknas (lägst värde för en DAW utan videospår) | *S–M* |
-
-Redan klart hos oss, av samma tabell: **Patcher** (`patcher.rs`), **Slicex/Slicer** (choppern,
-8.7), **Edison** (recorder), **Newtone/Newtime** (stretch + formant), **dB Meter/Wave
-Candy/Spectroman** (`spectrum.rs` + mätarna), **Balance/Send/Stereo Enhancer** (pan, sends,
-`Doubler`), **Fruity Limiter/EQ/Compressor/Gate/De-esser** (masterns kedja).
+| # | FL | Läget i Sonix (mätt i koden) | Storlek | Vad som krävs |
+| :--: | :--- | :--- | :---: | :--- |
+| 1 | **Fruity Granulizer** | inget granularläge i samplern | *M* | ett `grain`-läge på kanalen: 13 `ChannelStrip`-initialiseringar + projektfält + motor + UI. Görs som en egen ändring, inte inklämt |
+| 2 | **Vocodex / Fruity Vocoder** | ingen egen vocoder; namnet finns bara vid **igenkänning** av externa plugins | *M* | kräver en **bärvåg in i effekten** (routing). Vi har sidokedja till plugins (8.6) men ingen bärvågsingång i masterns kedja — bygg den först, annars blir vocodern en effekt utan sin andra halva |
+| 3 | **Sytrus / Ogun / Harmor (full)** | tvåoperator-FM finns nu; additiv/spektral inte | *L* | oscillatorbank per röst + spektral morfning. Det är ett synthprojekt, inte en ratt |
+| 4 | **VFX Key Mapper / Keyboard Splitter / Level Scaler** | `pitch_semitones` per kanal + sampelzoner per tangent; ingen **not→not-omvandling** | *S* | noten går i dag till synten utan kanalidentitet (`NoteOn { note, velocity }`), så en per-kanal-omvandling kräver först en kanal i notkommandot — samma arbete som Sprint 1:s kontrolleryta |
+| 5 | **Fruity Video Player · ZGameEditor · Dashboard · NoteBook** | saknas | *S–L* | NoteBook är en textrad per kanal (13 initialiseringar); video och visualizer är en mediepipeline respektive en GPU-scen, alltså egna projekt |
 
 ### Var de är svaga — och där vi redan gör det bättre
 

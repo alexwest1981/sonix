@@ -295,6 +295,30 @@ pub fn run(audible: bool) -> Result<(), String> {
         }
     }
 
+    // -- MIDI ut (Sprint 1, punkt 4) ------------------------------------------------
+    println!("\n-- MIDI ut --");
+    let out_ports = crate::audio::midi_output::MidiOut::ports();
+    if out_ports.is_empty() {
+        println!("  portar:     inga hittades (inget inkopplat)");
+        checks.push(Check::Note(
+            "MIDI-ut: inga portar hittades (inget inkopplat)".to_string(),
+        ));
+    } else {
+        for port in &out_ports {
+            println!("  port:       {port}");
+        }
+        match crate::audio::midi_output::MidiOut::open(0) {
+            Ok(out) => match out.blip(0, 60, 100) {
+                Ok(()) => checks.push(Check::Pass(format!(
+                    "MIDI-ut skickade en testnot till '{}' (att mottagaren hörde den är inte mätt)",
+                    out.name()
+                ))),
+                Err(e) => checks.push(Check::Fail(format!("MIDI-ut kunde inte skicka: {e}"))),
+            },
+            Err(e) => checks.push(Check::Fail(format!("MIDI-ut: {e}"))),
+        }
+    }
+
     // -- Utfallet -------------------------------------------------------------------
     println!("\n-- Mätt --");
     for check in &checks {

@@ -331,6 +331,8 @@ pub struct SonixApp {
     pub osc_server: Option<OscServer>,
     // Real MIDI keyboard input (Fas 5.3)
     pub midi_input: Option<crate::audio::MidiKeyboardInput>,
+    /// **MIDI ut** (Sprint 1, punkt 4): en öppen utgång, om någon är vald.
+    pub midi_out: Option<crate::audio::midi_output::MidiOut>,
     pub midi_auto_connect_attempted: bool,
     pub midi_keyboard_connected: bool,
     pub midi_device_name: String,
@@ -832,6 +834,7 @@ impl SonixApp {
             mcu_input: None,
             osc_server: None,
             midi_input: None,
+            midi_out: None,
             midi_auto_connect_attempted: false,
             midi_keyboard_connected: false,
             midi_device_name: crate::i18n::t("Inte ansluten").to_string(),

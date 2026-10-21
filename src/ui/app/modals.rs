@@ -311,6 +311,63 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                     }
                 });
 
+                ui.separator();
+                ui.label(egui::RichText::new(crate::i18n::t("🎹 MIDI-UT (extern synt)")).strong().size(12.0).color(Theme::FL_ORANGE));
+                // Utgången tas ut ur fältet medan den används: `blip` lånar den bara som
+                // `&`, men "koppla från" skriver fältet — och då kan båda inte låna `self`.
+                let mut midi_out = self.midi_out.take();
+                let mut disconnect = false;
+                if let Some(out) = &midi_out {
+                    let name = out.name().to_string();
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new(crate::tstatus!("● {}", name)).color(Theme::FL_GREEN));
+                        if ui.button(crate::i18n::t("🎵 Testnot")).clicked() {
+                            match out.blip(0, 60, 100) {
+                                Ok(()) => {
+                                    self.status_message =
+                                        crate::tstatus!("🎵 Testnot (C4) skickad till '{}'", name);
+                                }
+                                Err(e) => {
+                                    self.status_message =
+                                        crate::tstatus!("⚠ Kunde inte skicka MIDI: {}", e);
+                                }
+                            }
+                        }
+                        if ui.button(crate::i18n::t("🔌 Koppla från MIDI-ut")).clicked() {
+                            disconnect = true;
+                        }
+                    });
+                } else {
+                    let ports = crate::audio::midi_output::MidiOut::ports();
+                    if ports.is_empty() {
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("Inga MIDI-ut-portar hittades."))
+                                .size(10.0)
+                                .color(Theme::TEXT_MUTED),
+                        );
+                    }
+                    for (i, name) in ports.iter().enumerate() {
+                        if ui.button(crate::tstatus!("🔌 {}", name)).clicked() {
+                            match crate::audio::midi_output::MidiOut::open(i) {
+                                Ok(out) => {
+                                    self.status_message =
+                                        crate::tstatus!("✔ MIDI-ut öppnad: '{}'", name);
+                                    midi_out = Some(out);
+                                }
+                                Err(e) => {
+                                    self.status_message =
+                                        crate::tstatus!("⚠ Kunde inte öppna MIDI-ut: {}", e);
+                                }
+                            }
+                        }
+                    }
+                }
+                if disconnect {
+                    midi_out = None;
+                    self.status_message = crate::i18n::t("MIDI-ut frånkopplad.").to_string();
+                }
+                self.midi_out = midi_out;
+
                 ui.add_space(4.0);
                 let rec_bg = if self.midi_record_armed { Color32::from_rgb(180, 40, 40) } else { Theme::PANEL_BG };
                 let rec_txt = if self.midi_record_armed {
