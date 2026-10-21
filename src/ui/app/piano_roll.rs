@@ -312,14 +312,15 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             .on_hover_text(crate::i18n::t(
                 "Hur mycket av mallens förskjutning som läggs på (0 % = rak)",
             ));
-            let groove_label = match &self.groove_name {
-                Some(n) => format!("🎵 {}", n),
-                None => crate::i18n::t("🎵 Groove (.agr)").to_string(),
+            let groove_new = if self.groove_pool.is_empty() {
+                crate::i18n::t("🎵 Groove (.agr)").to_string()
+            } else {
+                crate::tstatus!("🎵 + mall ({})", self.groove_pool.len())
             };
             if ui
                 .add(
                     egui::Button::new(
-                        egui::RichText::new(groove_label)
+                        egui::RichText::new(groove_new)
                             .strong()
                             .size(10.5)
                             .color(Theme::TEXT_BRIGHT),
@@ -327,11 +328,46 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     .fill(take_btn),
                 )
                 .on_hover_text(crate::i18n::t(
-                    "Läs en Ableton-groove (.agr) och lägg dess sväng på tagningen",
+                    "Läs en Ableton-groove (.agr) och lägg den i poolen",
                 ))
                 .clicked()
             {
                 self.apply_groove_from_file();
+            }
+            if !self.groove_pool.is_empty() {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(crate::i18n::t("▶ Använd poolen"))
+                                .strong()
+                                .size(10.5)
+                                .color(Theme::FL_GREEN),
+                        )
+                        .fill(take_btn),
+                    )
+                    .on_hover_text(crate::i18n::t("Lägg alla aktiva mallar på tagningen"))
+                    .clicked()
+                {
+                    self.apply_groove_pool_to_take();
+                }
+                let mut remove: Option<usize> = None;
+                for (i, entry) in self.groove_pool.iter_mut().enumerate() {
+                    ui.horizontal(|ui| {
+                        ui.checkbox(&mut entry.enabled, "");
+                        ui.label(egui::RichText::new(&entry.name).size(10.0).color(Theme::TEXT_BRIGHT));
+                        ui.add(
+                            egui::Slider::new(&mut entry.amount, 0.0..=1.0)
+                                .show_value(false)
+                                .fixed_decimals(2),
+                        );
+                        if ui.small_button("✖").clicked() {
+                            remove = Some(i);
+                        }
+                    });
+                }
+                if let Some(i) = remove {
+                    self.groove_pool.remove(i);
+                }
             }
 
             ui.separator();

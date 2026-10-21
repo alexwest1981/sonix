@@ -103,6 +103,21 @@ pub fn parse_agr(text: &str, name: &str) -> Option<Groove> {
     Some(Groove { name: name.to_string(), offsets })
 }
 
+/// En mall i poolen: namn, grooven och hur mycket av den som läggs på.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct GrooveEntry {
+    pub name: String,
+    pub groove: Groove,
+    pub amount: f32,
+    pub enabled: bool,
+}
+
+impl GrooveEntry {
+    pub fn new(groove: Groove, amount: f32) -> Self {
+        Self { name: groove.name.clone(), groove, amount, enabled: true }
+    }
+}
+
 impl Take {
     /// Lägger grooven på tagningen: varje not flyttas med mallens förskjutning för sitt steg,
     /// skalad med `amount` (0 = rak, 1 = full förskjutning).
@@ -124,6 +139,18 @@ impl Take {
             }
         }
         moved
+    }
+
+    /// Lägger **alla aktiva mallar i poolen**, i listans ordning.
+    ///
+    /// Förskjutningarna summeras: två mallar som var för sig skjuter udda sextondelar
+    /// framåt lägger ihop sin verkan, precis som om man staplade dem.
+    pub fn apply_groove_pool(&mut self, pool: &[GrooveEntry]) -> usize {
+        let mut total = 0;
+        for entry in pool.iter().filter(|e| e.enabled) {
+            total += self.apply_groove(&entry.groove, entry.amount);
+        }
+        total
     }
 }
 
@@ -165,6 +192,21 @@ mod tests {
         assert_eq!(take.notes[0].pos, 0.0);
         assert!((take.notes[1].pos - 1.04).abs() < 0.002, "blev {}", take.notes[1].pos);
         assert_eq!(take.notes[2].pos, 2.0);
+    }
+
+    #[test]
+    fn a_pool_stacks_its_templates_and_skips_the_disabled_ones() {
+        let g = parse_agr(&swing_52(), "swing").unwrap();
+        let mut take = Take::new();
+        take.push(1.0, 60, 1.0);
+
+        let mut off = GrooveEntry::new(g.clone(), 1.0);
+        off.enabled = false;
+        let pool = vec![GrooveEntry::new(g.clone(), 0.5), off, GrooveEntry::new(g, 1.0)];
+        let moved = take.apply_groove_pool(&pool);
+        assert!(moved >= 1, "minst en mall ska ha flyttat noten");
+        // 0,04 × 0,5 + 0,04 × 1,0 = 0,06 steg. Den avstängda raden räknas inte.
+        assert!((take.notes[0].pos - 1.06).abs() < 0.003, "blev {}", take.notes[0].pos);
     }
 
     #[test]

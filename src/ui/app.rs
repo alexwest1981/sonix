@@ -167,8 +167,6 @@ pub struct SonixApp {
     pub view_mode: ViewMode,
     /// Groovemallens styrka när den läggs på tagningen (0 = rak, 1 = full förskjutning).
     pub take_groove_amount: f32,
-    /// Namnet på senast laddade groove, för statusrad och knapp.
-    pub groove_name: Option<String>,
     /// Panel som ligger bredvid arrangemanget (Ctrl+1…5). `None` = ingen panel.
     pub docked_panel: Option<ViewMode>,
     pub status_message: String,
@@ -246,6 +244,8 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Groove-poolen: flera mallar som läggs på tagningen samtidigt.
+    pub groove_pool: Vec<crate::groove::GrooveEntry>,
     /// Modulationsmatrisen: källor → mål.
     pub mod_slots: Vec<crate::audio::modulation::ModSlot>,
     /// Om modulationsfönstret är öppet.
@@ -751,7 +751,6 @@ impl SonixApp {
             view_mode: ViewMode::PlaylistArranger,
             docked_panel: None,
             take_groove_amount: 1.0,
-            groove_name: None,
             status_message: crate::i18n::t("Välkommen till Sonix Studio! Skapa ett beat eller importera dina stämmor (Stems).").to_string(),
             show_help_guide: false,
             help_manual_active_tab: 0,
@@ -809,6 +808,7 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            groove_pool: Vec::new(),
             mod_slots: Vec::new(),
             show_mod_matrix: false,
             mod_dirty: false,

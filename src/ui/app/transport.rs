@@ -879,25 +879,38 @@ pub(crate) fn apply_groove_from_file(&mut self) {
         return;
     };
     let amount = self.take_groove_amount.clamp(0.0, 1.0);
+    // Mallen läggs i **poolen** i stället för att läggas på direkt: en pool är flera
+    // mallar, och då måste inläsning och påläggning vara två steg.
+    let depth = groove.depth();
+    self.groove_pool.push(crate::groove::GrooveEntry::new(groove, amount));
+    self.status_message = crate::tstatus!(
+        "🎵 '{}' i poolen ({} mallar, djup {:.1} %) — tryck ▶ för att lägga på",
+        name,
+        self.groove_pool.len(),
+        depth * 100.0
+    );
+}
+
+/// Lägger hela poolen på tagningen — alla aktiva mallar, i listans ordning.
+pub(crate) fn apply_groove_pool_to_take(&mut self) {
+    let active = self.groove_pool.iter().filter(|e| e.enabled).count();
+    if active == 0 {
+        self.status_message = crate::i18n::t("🎵 Poolen är tom").to_string();
+        return;
+    }
     if self.patterns.get(self.selected_pattern).is_none_or(|p| p.take.is_empty()) {
         self.status_message =
             crate::i18n::t("⚠️ Ingen tagning att lägga grooven på — spela in först").to_string();
         return;
     }
-    self.push_undo(&format!("🎵 Groove '{}'", groove.name));
-    let depth = groove.depth();
+    self.push_undo("🎵 Groove-pool");
+    let pool = self.groove_pool.clone();
     let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
         return;
     };
-    let moved = pat.take.apply_groove(&groove, amount);
-    self.groove_name = Some(groove.name.clone());
-    self.status_message = crate::tstatus!(
-        "🎵 '{}' lagd på {} not(er): djup {:.1} % av ett steg, styrka {:.0} %",
-        groove.name,
-        moved,
-        depth * 100.0,
-        amount * 100.0
-    );
+    let moved = pat.take.apply_groove_pool(&pool);
+    self.status_message =
+        crate::tstatus!("🎵 {} mall(ar) lagda på {} not(er)", active, moved);
 }
 
 pub(crate) fn humanize_take(&mut self, amount: f32) {
