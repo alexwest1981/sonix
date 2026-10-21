@@ -10,7 +10,7 @@ Där något inte gick att läsa står det uttryckligen. Siffrorna är räknade, 
 | Kod i exehead | 28 160 B (`.text` 0x6e00) — NSIS-laddaren, ingen musik |
 | NSIS | `NullsoftInst` vid 0x10a04, förstaheader vid 0x10a00 |
 | Block 0 | 400 987 B komprimerat → **3 519 116 B** (LZMA, `5d 00 00 80 00`, 8 MB ordbok) |
-| Payload | LZMA-blockkedja; 49 block avkodade (50 MB) innan aligeringen bryts |
+| Payload | LZMA-blockkedja; **125 block, 68 MB** avkodade. `FL64.exe`, `FLEngine_x64.dll`, `FLMManaged.dll`, ASIO-drivern och 17 andra PE-filer ligger i klartext i scratch |
 | `7z` | öppnar **inte** filen (PE-detekteringen vinner över NSIS-hanteraren) |
 | Kataloger i filtabellen | **1505** |
 | Filer i filtabellen | **21 339** poster |
@@ -20,10 +20,10 @@ Block 0 innehåller installationsskriptet, **licenstexten** (RTF, ~12 500 strän
 filtabellen. Filtabellen är det som ger inventariet: varje post är en katalogsträng följd av
 sina filnamn, alltså hela trädet utan att något måste gissas.
 
-**Vad som inte lästes:** payloaden (de 246 DLL:erna och `FL64.exe`) gick inte att plocka ut
-helt — blockkedjan tappar aligeringen efter 49 block (stoppet syns i `walk.log`). Det betyder
-att *filnamnen* är fullständiga men *innehållet i binärerna* inte är läst. Allt nedan som handlar
-om vad en plugin **heter och levererar med** är mätt; det som handlar om hur den låter är det inte.
+**Vad som lästes ur binärerna:** `FL64.exe` (22,2 MB), `FLEngine_x64.dll` (3,3 MB) och
+`FLMManaged.dll` (9,3 MB) kom ut hela, och strängarna i dem är lästa (§5). Det som *inte* är gjort
+är **disassemblering** — ingen kod är avkodad, så inget påstående om hur en plugin låter eller
+exakt hur en operation är implementerad bygger på mätning.
 
 ---
 
@@ -94,7 +94,7 @@ Trädet på tre nivåer, med antal filer per nod:
 **51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 36** har en motsvarighet, **◐ 41** delvis, **✗ 64** saknas helt.
 
 Räknat **per plugin**, inte per värde: en animerad dansare (`Fruity Dance`) väger lika tungt som
-`Harmor` i den här räkningen. Vikten står i gap-matrisen i stället (avsnitt 7).
+`Harmor` i den här räkningen. Vikten står i gap-matrisen i stället (avsnitt 8).
 
 Siffran i kolumn 2 är antalet filer FL levererar i pluginens egen mapp (förinställningar,
 konstverk, data) — alltså ett mått på hur mycket innehåll som följer med varje plugin.
@@ -481,7 +481,64 @@ Här ligger mycket av det som gör FL till FL, och det syns bara i filstrukturen
 
 ---
 
-## 5. Installationsprogrammet
+## 5. Kommandoytan — vad appen kan göra, inte vad den skeppar
+
+Filnamnen visar plugins och innehåll. De visar inte **operationerna**. Därför lästes strängarna
+ur `FL64.exe` (block 31 i payloaden, 22,2 MB), `FLEngine_x64.dll` (block 43, 3,3 MB) och
+`FLMManaged.dll` (block 39, 9,3 MB):
+
+| Mätning | Värde |
+| :--- | ---: |
+| ASCII-strängar i `FL64.exe` | **225 791** |
+| UTF-16-strängar i `FL64.exe` | **16 231** |
+| Meny-/kommandoliknande rader (filtrerade) | **6 256** |
+| ASCII-strängar i `FLEngine_x64.dll` | 24 964 |
+
+Det är **strängar, inte disassemblerad kod**: jag kan visa att appen har ett ord för en operation
+och citera det, men inte hur den är implementerad. Raderna nedan är hämtade ordagrant.
+
+| FL-operation | Bevis (ordagrant ur binären) | Sonix |
+| :--- | :--- | :--- |
+| Bounca spår till audio | `Consolidate this track` · `Consolidate track(s)` · `Select a folder to consolidate to` | ✗ (`freeze` renderar spåret men lämnar inget klipp) |
+| Spela in allt du spelar i en logg och dumpa den | `Auto dump score` · `Dump score log` · `Convert to score and dump to piano roll` · `Detecting score...` | ✗ (tagningar spelas in per tagning, inte som en logg) |
+| Dela klipp på taktdelar | `Chop in bars` · `Chop in 8th beats` · `Chop in 16th beats` · `Chop in 32nd beats` · `Chop chords` | ◐ (choppern delar vid slag, inte vid taktdel) |
+| Auto-slice med känslighet | `Auto-slice with dull/medium/sharp sensitivity` · `Accentuate beat-aligned slices` | ◐ (en känslighet i choppern) |
+| Extrahera groove | `Flatten (groove)` · `Keep the groove only` · `Load groove pattern...` · `Save groove pattern...` | ✗ |
+| Strumma ackord | `Bypass strum` | ◐ (strum endast i Chord Matrix-avlyssningen) |
+| Artikulation per not | `Articulate...` | ✗ |
+| Arpeggion som verktyg | `Arpeggiate...` | ◐ (arpeggio i synten + `SchedulesChord`) |
+| Skala nivåer | `Scale levels...` | ◐ (`velocity_sensitivity` per kanal) |
+| Tidsförskjuta audio fritt | `Edit in time warper` | ✗ (`sätt takt 1 här` + WSOLA-sträckning finns) |
+| Klicka bort skarvar | `Declick in` · `Declick out all regions` · `Bypass declicker` | ✗ |
+| Automatiska övergångar | `Automatic crossfades` · `Create crossfade` · `Crossfade (bleeding)` | ✗ (fades per region, ingen korsning) |
+| Byta källa för ett klipp | `Pattern clip sources` · `Automation clip sources` · `Current clip source` | ✗ |
+| Spågrupper i spellistan | `All playlist track groups` · `Export all playlist track groups` · `Collapse all grouped tracks` | ✗ |
+| Tagningar vid loopinspelning | `Group loop recorded takes` · `Ignore silent takes` · `Pickup (takeover mode)` | ◐ (MIDI-tagningar med kompning) |
+| Markörer med egen funktion | `Add audio time marker` · `Add key marker` · `Change to marker loop` | ◐ (regioner, men ingen markörloop) |
+| Taktartsbyten | `Add time signature change...` · `Import time signatures` · `Beats per bar` | ◐ (taktart finns, byten i tempokartan oklart) |
+| Rendering i bakgrunden | `Background rendering` · `HQ RENDERING` · `Don't render the tail (rendering loops)` | ✗ (export blockerar) |
+| Exportera mixern som separata spår | `Split mixer tracks` | ✅ (`export_stems`, 58 filer nämner stämmor) |
+| Fler exportformat | `Export Flac` · `Export M4a` · `Export MP3` · `Export OGG` | ✅ (wav/flac/mp3/m4a) |
+| Stänga av oanvända plugins automatiskt | `Smart disable` · `Switch smart disable for all plugins` | ✗ (vi har sandlåda och frysning i stället) |
+| Räkna underrun | `Underruns 0` | ✅ (`realtime_bench`) |
+| Gör om allt till en patch | `Patcherize all` · `Patcherizing will lose automation links` | ✗ (patcher finns, ingen massomvandling) |
+| Redigera vidare i Edison | `Open in Edison` · `Edison Declipper` | ✗ |
+| Slumpa alla parametrar | `Randomize all parameters` · `Randomize bands` | ◐ (tärning i pianorullen, inte per plugin) |
+| NDI ut | `Enable NDI output` · `Add NDI` | ✗ |
+| Molnbackup av projekt | `Back up to FL Cloud storage` · `Download project backup` | ✗ (lokala versioner i `autosave.rs`) |
+| Förmätning före inspelning | `Is precount enabled` · `Recording precount` | ✗ (metronom finns) |
+| Alternativ ångringsmodell | `Alternate undo mode` · `Enable undo for large samples` | ◐ (ångring finns, en modell) |
+| Analysera klang för åter syntes | `Analyze timbre...` · `Analyze single-cycle waveform...` (Harmor) | ✗ |
+| Riff-generator | `Riff machine...` · `Piano roll - riff machine` | ✗ |
+| Ackordgenerator | `Generate chord progression...` · `Chord Progression Tool opened` | ◐ (`chord_generator_modal`, utan Markov) |
+
+**Vad det här avsnittet ändrar:** åtta av operationerna ovan är *sådant FL gör utan en plugin* —
+`Consolidate`, score-loggen, groove-extraktion, `Patcherize`, `Split mixer tracks`, bakgrundsrendering,
+declick och korsningar. De syns inte i filtabellen, hur noggrant man än räknar den.
+
+---
+
+## 6. Installationsprogrammet
 
 Sådant som syns i skriptet och som säger något om hur produkten är byggd:
 
@@ -495,7 +552,7 @@ Sådant som syns i skriptet och som säger något om hur produkten är byggd:
 
 ---
 
-## 6. Sonix i dag — mätt i koden
+## 7. Sonix i dag — mätt i koden
 
 96 filer, **82 572 rader** i `src/`. Områdena nedan är modulerna, inte önskelistan.
 
@@ -521,7 +578,7 @@ byggena, fyra CI-ben (default, plugin-host, Windows, neural) och `--selftest` 5/
 
 ---
 
-## 7. Gap-matrisen
+## 8. Gap-matrisen
 
 Varje rad är ett *område* i FL mätt ovan, ställt mot vad Sonix har. Kolumnen **Dom** är min
 bedömning, inte ett mätvärde: "vi" = vi har en motsvarighet som gör jobbet, "delvis" = halva
@@ -562,7 +619,7 @@ vocoder, modulationskällor, notation, video och skript-API.
 
 ---
 
-## 8. Byggt i dag (2026-10-21)
+## 9. Byggt i dag (2026-10-21)
 
 | FL | Sonix nu | Beviset |
 | :--- | :--- | :--- |
@@ -577,7 +634,7 @@ vocoder, modulationskällor, notation, video och skript-API.
 
 ---
 
-## 9. Kvar — i den ordning jag skulle ta dem
+## 10. Kvar — i den ordning jag skulle ta dem
 
 | # | Vad | Varför den ordningen | Storlek |
 | :--: | :--- | :--- | :---: |
@@ -591,14 +648,18 @@ vocoder, modulationskällor, notation, video och skript-API.
 | 8 | **Notation (LilyPond-vägen)** | FL bäddar in hela LilyPond; vi kan exportera MusicXML och låta LilyPond vara externt. | *M* |
 | 9 | **Video/visualizer** | egen mediepipeline; lägst värde för en DAW utan videospår. | *L* |
 | 10 | **Additiv/spektral syntes** (Harmor/Ogun/Morphine) | ett synthprojekt, inte en ratt. | *XL* |
+| 11 | **`Consolidate` spår → klipp** | `freeze` renderar men lämnar inget klipp; FL:s `Consolidate this track` är samma DSP med ett annat slut — billigt ovanpå frysningen. | *S* |
+| 12 | **Korsningar + declick** | `Automatic crossfades`, `Declick in/out all regions`: rena kantfall i `arranger.rs`, och det hörs direkt när man klipper i audio. | *S* |
+| 13 | **Score-loggen** (`Auto dump score`) | den enda funktionen i listan som ändrar hur man *arbetar*: spela in allt, dumpa det som blev bra. | *M* |
 
 ---
 
-## 10. Gränser för den här mätningen
+## 11. Gränser för den här mätningen
 
-- **Filnamnen är fullständiga; binärerna är det inte.** 49 av payloadens block avkodades
-  (50 MB), sedan tappar kedjan aligeringen. `FL64.exe` och de 246 DLL:erna är alltså *namngivna*
-  men inte *lästa*. Att säga något om hur en plugin låter vore att gissa.
+- **125 av payloadens block avkodades (68 MB)**, inklusive `FL64.exe`, `FLEngine_x64.dll` och
+  `FLMManaged.dll`. Resten (≈987 MB) ligger bakom en blockkedja som tappar aligeringen vid post 124.
+  Strängarna i de tre stora binärerna är lästa; **koden är inte disassemblerad**, så hur en plugin
+  låter eller exakt hur en operation är byggd är inte mätt.
 - **Statusarna ✅/◐/✗ är på funktionsnivå.** "✅ Fruity Limiter" betyder att vi har en limiter
   med tak och release, inte att vår kurva är identisk med FL:s.
 - **Ingen körning av FL.** Allt är statisk analys; inga påståenden om beteende i drift bygger på
