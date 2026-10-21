@@ -2983,3 +2983,25 @@ inte lämna.
 subtraktiva, FM- och wavetable-synteser"* medan koden bara morfar `Waveform`, ADSR och filter —
 ingen FM, ingen wavetable. Texten säger nu vad koden gör (subtraktiv morfning av vågform, ADSR och
 filter). En etikett som lovar mer än motorn är samma fel som en kontroll ingen läser.
+
+## Cubase Pro 15.0.30 — inventerat ur installationsfilen (21 okt 2026)
+
+Fullständig inventering i [`CUBASE-INVENTORY.md`](CUBASE-INVENTORY.md), referensfiler i
+`docs/cubase-files.md` (2 171 poster) och `docs/cubase-command-surface.md` (1 148 kommandon,
+21 527 strängar i fack).
+
+**Mätt:** MSI (WiX), 730,6 MB → 1,70 GiB uppackat, 2 171 filer, 42 PE-filer i 36 komponenter,
+8 VST3-paket, 610 förval, 38 projektmallar, 222 MB `.vstsound` i MSI + 210 MB utanför.
+`Activator/` är en crack och har **inte** rörts.
+
+**Det vi saknar, rangordnat:** stämmseparering med modell (ONNX, 132 MB hos dem), Logical
+Editor (247 förval), Chord Track, Arranger Track, VariAudio, notskrift (ScoringEngine 103 MB),
+Control Room (50 kommandon), MediaBay, Sampler Control, Render in Place/Direct Offline
+Processing, VST Connect, Eucon-ytor, video, projektmallar, DAWproject-import.
+
+## Buggen "brus vid import och stämmseparering" — åtgärdad (21 okt 2026)
+
+Två fel, båda mätta: (1) 24- och 32-bitars WAV — WAVE_FORMAT_EXTENSIBLE, som ffmpeg skriver
+för båda — föll i läsarens 8-bitsfall och blev fullskaligt brus; (2) stämmorna normaliserades
+var för sig till 0,92, så fyra stämmor summerade till 3,7 → klippning, som också låter som
+brus. Fixat i `7329040`, fyra nya prov, ett av dem ände-till-ände import → separering.
