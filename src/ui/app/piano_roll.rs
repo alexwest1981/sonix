@@ -229,6 +229,42 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             }
 
             ui.separator();
+            ui.label(
+                egui::RichText::new(crate::i18n::t("Groove"))
+                    .size(11.0)
+                    .color(Theme::TEXT_MUTED),
+            );
+            ui.add(
+                egui::Slider::new(&mut self.take_groove_amount, 0.0..=1.0)
+                    .show_value(false)
+                    .fixed_decimals(2),
+            )
+            .on_hover_text(crate::i18n::t(
+                "Hur mycket av mallens förskjutning som läggs på (0 % = rak)",
+            ));
+            let groove_label = match &self.groove_name {
+                Some(n) => format!("🎵 {}", n),
+                None => crate::i18n::t("🎵 Groove (.agr)").to_string(),
+            };
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(groove_label)
+                            .strong()
+                            .size(10.5)
+                            .color(Theme::TEXT_BRIGHT),
+                    )
+                    .fill(take_btn),
+                )
+                .on_hover_text(crate::i18n::t(
+                    "Läs en Ableton-groove (.agr) och lägg dess sväng på tagningen",
+                ))
+                .clicked()
+            {
+                self.apply_groove_from_file();
+            }
+
+            ui.separator();
 
             // Chord Stamp Selector
             ui.label(egui::RichText::new(crate::i18n::t("Ackord:")).size(11.0).color(Theme::TEXT_MUTED));

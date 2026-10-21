@@ -745,6 +745,62 @@ pub(crate) fn quantize_take(&mut self, strength: f32, grid: crate::midi_take::Ta
 impl SonixApp {
 /// Lägger medveten mänsklig variation på tagningen (Fas 6.4). Slumptalet
 /// räknas upp varje gång, så två tryck ger inte exakt samma tagning.
+/// Lägger en groovemall (Abletons `.agr`) på tagningen.
+///
+/// Tagningen är det lager både uppspelningen och exporten läser, så svänget hörs och hamnar i
+/// filen på samma sätt — det finns ingen andra väg att hålla i takt.
+pub(crate) fn apply_groove_from_file(&mut self) {
+    let Some(path) = rfd::FileDialog::new()
+        .add_filter("Groove (.agr)", &["agr"])
+        .set_title("Välj groovemall")
+        .pick_file()
+    else {
+        return;
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => {
+            self.status_message = crate::tstatus!("⚠️ Kunde inte läsa '{}': {}", path.display(), e);
+            return;
+        }
+    };
+    let name = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.display().to_string());
+    let Some(groove) = crate::groove::parse_agr_bytes(&bytes, &name) else {
+        self.status_message = if crate::groove::agr_looks_binary(&bytes) {
+            crate::tstatus!(
+                "⚠️ '{}' är en binär groove-fil — 103 av Abletons 219 mallar är det. Välj en XML-mall",
+                name
+            )
+        } else {
+            crate::tstatus!("⚠️ '{}' innehåller inga noter — ingen groove att läsa", name)
+        };
+        return;
+    };
+    let amount = self.take_groove_amount.clamp(0.0, 1.0);
+    if self.patterns.get(self.selected_pattern).is_none_or(|p| p.take.is_empty()) {
+        self.status_message =
+            crate::i18n::t("⚠️ Ingen tagning att lägga grooven på — spela in först").to_string();
+        return;
+    }
+    self.push_undo(&format!("🎵 Groove '{}'", groove.name));
+    let depth = groove.depth();
+    let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+        return;
+    };
+    let moved = pat.take.apply_groove(&groove, amount);
+    self.groove_name = Some(groove.name.clone());
+    self.status_message = crate::tstatus!(
+        "🎵 '{}' lagd på {} not(er): djup {:.1} % av ett steg, styrka {:.0} %",
+        groove.name,
+        moved,
+        depth * 100.0,
+        amount * 100.0
+    );
+}
+
 pub(crate) fn humanize_take(&mut self, amount: f32) {
     self.push_undo("🌀 Humanisering av tagningen");
     let amount = amount.clamp(0.0, 1.0);

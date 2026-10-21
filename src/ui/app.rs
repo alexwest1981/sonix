@@ -165,6 +165,10 @@ pub struct SonixApp {
     pub song_time: f32,
     pub pattern_mode: bool,
     pub view_mode: ViewMode,
+    /// Groovemallens styrka när den läggs på tagningen (0 = rak, 1 = full förskjutning).
+    pub take_groove_amount: f32,
+    /// Namnet på senast laddade groove, för statusrad och knapp.
+    pub groove_name: Option<String>,
     /// Panel som ligger bredvid arrangemanget (Ctrl+1…5). `None` = ingen panel.
     pub docked_panel: Option<ViewMode>,
     pub status_message: String,
@@ -712,6 +716,8 @@ impl SonixApp {
             pattern_mode: false,
             view_mode: ViewMode::PlaylistArranger,
             docked_panel: None,
+            take_groove_amount: 1.0,
+            groove_name: None,
             status_message: crate::i18n::t("Välkommen till Sonix Studio! Skapa ett beat eller importera dina stämmor (Stems).").to_string(),
             show_help_guide: false,
             help_manual_active_tab: 0,

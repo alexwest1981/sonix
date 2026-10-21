@@ -165,7 +165,7 @@ Operationerna som gör Ableton till Ableton, och var Sonix står:
 | `Slice To New MIDI Track`, `Slice To Drum Rack` | ✅ (chopper → slicemap → piano roll) |
 | `Separate Stems To New Audio Tracks`, `Separate Stems For Time Selection` | ✅ (`neural_separator` + `stem_separator`) |
 | `Chop Notes`, `Split Notes`, `Join Notes`, `Legato`, `Fit To Time Range` | ◐ (humanize/kvantisering finns; ingen Legato/Join) |
-| `Quantize Settings`, `Groove Pool`, `Extract Groove`, `Extract Grooves` | ◐ (swing i tagningen; ingen groove-pool) |
+| `Quantize Settings`, `Groove Pool`, `Extract Groove`, `Extract Grooves` | ✅ groove-mallar: `.agr` läses och läggs på tagningen (116 av 219 filer är XML, 103 binära); ingen groove-pool med flera mallar samtidigt |
 | `Follow Action` (A/B, chance, jump index, multiplier), `Create Follow Action Chain` | ✗ |
 | Take lanes: `Insert Take Lane`, `Copy From Take Lane To Content Lane`, `Delete Unused Take Lanes`, `Swap Lane` | ◐ (MIDI-tagningar, ingen kompning i spellistan) |
 | `Warp Mode`: Beats, Tones, Texture, Re-Pitch, Complex, Complex Pro (+ granularity, formants) | ◐ (WSOLA, bandspelare, formantbevarande pitch — inte sex lägen) |
@@ -267,9 +267,10 @@ Samma ordning som för FL: minst kod per stängd lucka, och varje punkt mäts.
 1. ~~**Tidsoperationer**~~ — **klara i dag**: `insert_time`, `delete_time`, `duplicate_time` på
    regioner + `shift_song_markers`, fyra prov. Menyn ligger i linjalens kontextmeny och arbetar på
    loopmarkeringen (annars en takt vid spelhuvudet).
-2. **Groove-mallar** — *omräknad till M*: våra patterns är 16-stegsrutnät (`[bool; 16]` + `Take`),
-   inte fria notpositioner som Abletons. En groove måste alltså läggas som tidsförskjutning per
-   steg i schemaläggningen **och** i exporten — annars spelar filen ett annat sväng än du hör.
+2. ~~**Groove-mallar**~~ — **klar i dag**: `parse_agr`/`parse_agr_bytes` läser XML-mallarna,
+   `Take::apply_groove` lägger förskjutningen på tagningen (som både uppspelning och export läser).
+   Mätt mot Abletons egna filer: Swing 16ths 52 → 0,040 steg, MPC 3000 54 → 0,042 steg.
+   Kvar: de 103 binära mallarna, och en pool med flera mallar samtidigt.
 3. **Kompning i spellistan** (take lanes) — kräver en lane-modell ovanpå regionerna.
 4. **Warp-lägen** — Beats/Tones/Texture/Complex är fyra analysstrategier ovanpå vår WSOLA.
 5. **Mikrotonalitet** — ASCL-läsare + oktavdelning i synten.
