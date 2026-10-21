@@ -2070,6 +2070,25 @@ impl SonixApp {
                                             ui.close_menu();
                                         }
                                     }
+                                    if ui
+                                        .button(crate::i18n::t("🔀 Skapa korsning"))
+                                        .on_hover_text(crate::i18n::t(
+                                            "Tona ut den tidigare och in den senare där två regioner överlappar",
+                                        ))
+                                        .clicked()
+                                    {
+                                        let made = self.playlist_tracks[t_idx].create_crossfades();
+                                        self.sync_track_regions(t_idx);
+                                        self.status_message = if made > 0 {
+                                            crate::tstatus!("🔀 {} korsning(ar) skapade", made)
+                                        } else {
+                                            crate::i18n::t(
+                                                "🔀 Inga regioner överlappar — det finns inget att korsa",
+                                            )
+                                            .to_string()
+                                        };
+                                        ui.close_menu();
+                                    }
                                     if ui.button(crate::i18n::t("📋 Duplicera region (Ctrl+D)")).clicked() {
                                         self.duplicate_selected_region();
                                         ui.close_menu();

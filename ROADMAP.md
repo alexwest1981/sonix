@@ -2937,7 +2937,7 @@ plugg-uppslag med status, innehållet (7 993 presets, 5 135 paket, 2 111 fraser,
 impulser), undersystemen (piano roll-skript, Markov-ackordgenerator, LilyPond, NDI/Spout,
 Demucs, 13 kontrollerytor) och gap-matrisen per område. Här står bara det byggda och det kvarvarande.
 
-### Vad som byggdes i dag — tolv funktioner, alla mätta
+### Vad som byggdes i dag — fjorton funktioner, alla mätta
 
 | FL-plugin | Vad den gör | Sonix före | Nu (med provet som bevisar det) |
 | :--- | :--- | :--- | :--- |
@@ -2953,6 +2953,8 @@ Demucs, 13 kontrollerytor) och gap-matrisen per område. Här står bara det byg
 | **Fruity Flanger** | kort fördröjning med återkoppling | ingen flanger | samma `ModDelay`, 2,5 ms ± 2 ms med 0,6 feedback; kammen sveper **2 ms** |
 | **Fruity / Vintage Phaser** | svepande allpass-kam | ingen phaser | `Phaser` — 4 allpass, 200 Hz–2 kHz; nivån svänger **10× mer** med LFO, **exakt stilla** vid `depth = 0` |
 | **260 impulser (Convolver)** | inspelade rum | bara "ladda .wav" | `synthesize_ir` + `IR_BANK` — sex genererade rum 0,6–4,5 s; svansen **>4× svagare** vid 90 %; klick ger mätbar svans vid **125 ms** |
+| **Declick in/out** | inget klick vid klippkanten | fade 0 gav hård kant | `declick()` — **3 ms golv** på varje regionkant; provet: 0 → 0,003 s, 0,25 s orörd |
+| **Create crossfade** | tona överlapp mellan klipp | ingen korsning | `create_crossfades()` — korsning = överlappet, kapat vid halva regionen; tre prov (1 takt, 1,5 → 1,0, ingen överlapp) |
 
 Alla åtta är inkopplade i gränssnittet (FX-racket, OSCILLATOR-kolumnen, keymap-sektionen,
 REMIX FX-vyn respektive MIDI-modalen) och avstängda som standard, så ett gammalt projekt låter

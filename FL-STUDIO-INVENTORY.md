@@ -604,7 +604,7 @@ kedjan finns, "de" = vi har inget som motsvarar det.
 | **Modulationskällor** | Peak/Envelope/Formula/Keyboard/Voltage/XY/XYZ-kontroller, VFX-sviten | inget (automation finns, men inte som källa som styr andra) | de |
 | **Notbearbetning** | VFX Key Mapper, Keyboard Splitter, Level Scaler, VFX Script, Sequencer | velocity-kurva + pitch per kanal, SchedulesChord, dice-generator | delvis |
 | **Slicing** | Slicer, Slicer 2, Slicex, BeatSlicer (äldre), Edison | chopper: slagletning → slicemap → steg/piano roll | vi |
-| **Ljudredigering** | Edison (inspelare + editor), Newtone (pitch), Newtime (time-align) | recordern, sträckning, "sätt takt 1 här" | delvis |
+| **Ljudredigering** | Edison (inspelare + editor), Newtone (pitch), Newtime (time-align), declick, korsningar | recordern, sträckning, "sätt takt 1 här", declick + korsningar (i dag) | delvis |
 | **Performance** | Gross Beat, Performance mode, touch-klaviatur, 4×4/8×8-mallar | launcher-rutnät, loop-pad, steggrind (i dag), RemixFX | delvis |
 | **Noder/modularitet** | Patcher, Dashboard, Control Creator | patcher.rs (graf), MCU-ytor | delvis |
 | **Notation** | LilyPond + Guile + Ghostscript, notutskrift | inget | de |
@@ -643,6 +643,8 @@ vocoder, modulationskällor, notation, video och skript-API.
 | Fruity Flanger (+ Flangus) | samma `ModDelay`, 0,6 återkoppling | kammen sveper 2 ms; provet faller om svepet står stilla |
 | Fruity / Vintage Phaser | `Phaser` (4 allpass, 200 Hz–2 kHz) | kammen vandrar: nivån svänger 10× mer med LFO än utan, och står exakt still vid `depth = 0` |
 | 260 impulser i 13 kategorier | `synthesize_ir` + `IR_BANK` (6 rum) | deterministisk LCG: topp normaliserad till 1,0, svansen faller >4× från 15 % till 90 % av längden, klick genom banken ger mätbar svans vid 125 ms |
+| `Declick in/out all regions` | `declick()` — 3 ms golv på varje regionkant | provet mäter golvet: 0 → 0,003 s, och en egen fade på 0,25 s rörs inte |
+| `Create crossfade` / `Automatic crossfades` | `PlaylistTrack::create_crossfades` | korsningen blir exakt överlappet (1 takt av 1); ett stort överlapp kapas vid halva regionen (1,5 → 1,0); regioner som möts utan överlapp får ingen |
 
 ---
 
@@ -661,7 +663,7 @@ vocoder, modulationskällor, notation, video och skript-API.
 | 9 | **Video/visualizer** | egen mediepipeline; lägst värde för en DAW utan videospår. | *L* |
 | 10 | **Additiv/spektral syntes** (Harmor/Ogun/Morphine) | ett synthprojekt, inte en ratt. | *XL* |
 | 11 | **`Consolidate` spår → klipp** | `freeze` renderar men lämnar inget klipp; FL:s `Consolidate this track` är samma DSP med ett annat slut — billigt ovanpå frysningen. | *S* |
-| 12 | **Korsningar + declick** | `Automatic crossfades`, `Declick in/out all regions`: rena kantfall i `arranger.rs`, och det hörs direkt när man klipper i audio. | *S* |
+| ~~12~~ | ~~**Korsningar + declick**~~ | **Klar i dag**: `declick()` lägger 3 ms golv på varje klippkant, `create_crossfades()` tonar överlapp. Menyn har `🔀 Skapa korsning`. | *S* |
 | 13 | **Score-loggen** (`Auto dump score`) | den enda funktionen i listan som ändrar hur man *arbetar*: spela in allt, dumpa det som blev bra. | *M* |
 
 ---

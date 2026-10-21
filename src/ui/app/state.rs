@@ -791,6 +791,42 @@ impl PlaylistTrack {
         self.frozen.is_some()
     }
 
+    /// Skapar korsningar där två regioner på spåret överlappar varandra.
+    ///
+    /// Den tidigare regionen får tona ut och den senare tona in, båda lika långa som
+    /// överlappet — dock högst halva respektive region, för då finns det ingen region kvar
+    /// att tona på. Motsvarar FL:s `Automatic crossfades` / `Create crossfade`.
+    /// Returnerar antalet korsningar som skapades.
+    pub fn create_crossfades(&mut self) -> usize {
+        let mut order: Vec<usize> = (0..self.regions.len()).collect();
+        order.sort_by(|a, b| {
+            self.regions[*a]
+                .start_bar
+                .partial_cmp(&self.regions[*b].start_bar)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let mut made = 0;
+        for pair in order.windows(2) {
+            let (a, b) = (pair[0], pair[1]);
+            let end_a = self.regions[a].start_bar + self.regions[a].length_bars;
+            let start_b = self.regions[b].start_bar;
+            let overlap = end_a - start_b;
+            if overlap <= 0.001 {
+                continue;
+            }
+            let fade = overlap
+                .min(self.regions[a].length_bars * 0.5)
+                .min(self.regions[b].length_bars * 0.5);
+            if fade <= 0.001 {
+                continue;
+            }
+            self.regions[a].fade_out_bars = fade;
+            self.regions[b].fade_in_bars = fade;
+            made += 1;
+        }
+        made
+    }
+
     pub fn new(name: String, icon: &'static str, kind: TrackKind, color: Color32) -> Self {
         Self {
             name,
@@ -828,3 +864,69 @@ impl PlaylistTrack {
     }
 }
 
+
+#[cfg(test)]
+mod crossfade_tests {
+    use super::*;
+
+    fn region(id: usize, start: f32, len: f32) -> AudioRegion {
+        AudioRegion {
+            id,
+            name: format!("r{id}"),
+            start_bar: start,
+            length_bars: len,
+            sample_offset_sec: 0.0,
+            source_path: None,
+            waveform_peaks: Vec::new(),
+            volume: 1.0,
+            fade_in_bars: 0.0,
+            fade_out_bars: 0.0,
+            muted: false,
+            is_reverse: false,
+            color: default_region_color(),
+            loop_length_bars: 0.0,
+            source_bpm: 0.0,
+            tape: false,
+        }
+    }
+
+    fn track_with(regions: Vec<AudioRegion>) -> PlaylistTrack {
+        let mut t = PlaylistTrack::new(
+            "test".to_string(),
+            "🎵",
+            TrackKind::CustomAudio,
+            Color32::from_rgb(1, 2, 3),
+        );
+        t.regions = regions;
+        t
+    }
+
+    #[test]
+    fn a_crossfade_is_as_long_as_the_overlap() {
+        // 0–4 och 3–7 överlappar en takt: den tidigare tonar ut, den senare in.
+        let mut t = track_with(vec![region(1, 0.0, 4.0), region(2, 3.0, 4.0)]);
+        assert_eq!(t.create_crossfades(), 1);
+        assert_eq!(t.regions[0].fade_out_bars, 1.0);
+        assert_eq!(t.regions[1].fade_in_bars, 1.0);
+        // Kanterna utåt rörs inte: korsningen är mellan regionerna, inte en fade av allt.
+        assert_eq!(t.regions[0].fade_in_bars, 0.0);
+        assert_eq!(t.regions[1].fade_out_bars, 0.0);
+    }
+
+    #[test]
+    fn a_huge_overlap_stops_at_half_of_each_region() {
+        // 0–2 och 0,5–10: överlappet är 1,5 takter men halva den korta regionen är 1,0.
+        let mut t = track_with(vec![region(1, 0.0, 2.0), region(2, 0.5, 9.5)]);
+        assert_eq!(t.create_crossfades(), 1);
+        assert_eq!(t.regions[0].fade_out_bars, 1.0);
+        assert_eq!(t.regions[1].fade_in_bars, 1.0);
+    }
+
+    #[test]
+    fn regions_that_do_not_touch_get_no_crossfade() {
+        let mut t = track_with(vec![region(1, 0.0, 4.0), region(2, 4.0, 4.0)]);
+        assert_eq!(t.create_crossfades(), 0);
+        assert_eq!(t.regions[0].fade_out_bars, 0.0);
+        assert_eq!(t.regions[1].fade_in_bars, 0.0);
+    }
+}

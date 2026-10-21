@@ -1060,13 +1060,16 @@ pub(crate) fn stem_regions_for(&self, t: &PlaylistTrack) -> Vec<StemRegionPlayba
             } else {
                 piece.source_offset_secs as f32
             };
+            // Declick-golvet läggs bara på regionens ytterkanter. Sträckningens delar
+            // inne i en region möts i samma fas och ska inte tonas — där hade en fade
+            // blivit en hörbar svacka vid varje delgräns.
             let fade_in_sec = if idx == 0 {
-                tempo.secs_for_bars_at(r.start_bar as f64, r.fade_in_bars as f64) as f32
+                declick(tempo.secs_for_bars_at(r.start_bar as f64, r.fade_in_bars as f64) as f32)
             } else {
                 0.0
             };
             let fade_out_sec = if idx + 1 == n_pieces {
-                tempo.secs_for_bars_at(r.start_bar as f64, r.fade_out_bars as f64) as f32
+                declick(tempo.secs_for_bars_at(r.start_bar as f64, r.fade_out_bars as f64) as f32)
             } else {
                 0.0
             };
@@ -1087,6 +1090,18 @@ pub(crate) fn stem_regions_for(&self, t: &PlaylistTrack) -> Vec<StemRegionPlayba
     }
     regions
 }
+}
+
+/// Minsta fade vid varje klippkant — FL:s `Declick in/out`.
+///
+/// 3 ms är kort nog att inte höras som en fade och långt nog att ta bort steget när ett
+/// klipp börjar eller slutar mitt i en vågform. Utan den hörs klippet som ett "tick".
+pub(crate) const DECLICK_SECS: f32 = 0.003;
+
+/// Lägger declick-golvet på en regionfade. Noll betyder "ingen fade" i projektet,
+/// men i ljudet betyder det en hård kant — därför golvet.
+pub(crate) fn declick(fade_secs: f32) -> f32 {
+    fade_secs.max(DECLICK_SECS)
 }
 
 impl SonixApp {
@@ -1264,3 +1279,16 @@ pub(crate) fn resync_engine_after_reconfigure(&mut self) {
 }
 }
 
+
+#[cfg(test)]
+mod declick_tests {
+    use super::*;
+
+    #[test]
+    fn declick_lifts_a_zero_fade_to_three_milliseconds() {
+        assert_eq!(declick(0.0), DECLICK_SECS);
+        assert!(declick(0.0) > 0.0, "en hård kant är precis det som klickar");
+        // En längre fade som användaren själv ställt in rörs inte.
+        assert_eq!(declick(0.25), 0.25);
+    }
+}

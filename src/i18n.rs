@@ -1051,6 +1051,13 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "📋 Klistra in sample vid spelhuvud (Ctrl+V)" => "📋 Paste sample at playhead (Ctrl+V)",
         "📋 Kopiera (Ctrl+C)" => "📋 Copy (Ctrl+C)",
         "📋 Kopiera sample (Ctrl+C)" => "📋 Copy sample (Ctrl+C)",
+        "🔀 Skapa korsning" => "🔀 Create crossfade",
+        "Tona ut den tidigare och in den senare där två regioner överlappar" => {
+            "Fade the earlier one out and the later one in where two regions overlap"
+        }
+        "🔀 Inga regioner överlappar — det finns inget att korsa" => {
+            "🔀 No regions overlap — there is nothing to cross-fade"
+        }
         "📏 Längd:" => "📏 Length:",
         "📑 Låtstruktur & Formdelar (Song Section Arranger)" => "📑 Song Structure & Sections (Song Section Arranger)",
         "📑 STRUKTUR- & ARRANGEMANGSBYGGARE" => "📑 STRUCTURE & ARRANGEMENT BUILDER",
