@@ -309,8 +309,8 @@ som utfällbara paneler ovanpå. Det är den enskilt största UX-skillnaden, och
 | :--: | :--- | :---: | :--- |
 | 1 | **Paneler i stället för tolv sidor** — arrangemanget kvar, detaljpaneler ovanpå | L | den största upplevelseskillnaden |
 | 2 | **Fokus + Tab-navigering** mellan arrangemang, mixer, browser, pianorulle | M | gör appen tangentbordsstyrd, som deras |
-| 3 | **Temafiler** (JSON) med semantiska namn, 60–80 slots | S | ger egna teman utan att kompilera om |
-| 4 | **Ledtrådar på varje kontroll** i mixer och arrangemang | M | deras 2 302 mot våra 135 är den tydligaste hjälpklacken |
+| 3 | **Temafiler** (JSON) med semantiska namn, 60–80 slots | M | `Theme::`-konstanterna används på **805 ställen**; de måste bli en palett som laddas vid start. Mekaniskt, men 805 rader |
+| 4 | **Ledtrådar på varje kontroll** i mixer och arrangemang | M | deras 2 302 mot våra 135 är den tydligaste hjälpklacken; siffran är räknad, inte gissad |
 | 5 | **Zoom-kommandon** (fit, in/out tid, valt område) | S | billigt, och deras modell är adresserbar |
 | 6 | **18 kontrollerytor av 149** — de 18 vanligaste | M | varje yta är en Python-klass hos dem; vi behöver bara de vanliga |
 | 7 | **Inbyggda lektioner** (10 stycken, inte 1 016) | M | undervisning är deras starkaste "gratis" funktion |
