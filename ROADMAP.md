@@ -2932,6 +2932,11 @@ disassemblering vore en 28 KB NSIS-laddare, medan musiken ligger i payloaden
 (`FL64.exe`, `FLEngine_x64.dll`). Det som *gav* svaret var att läsa header, avkoda block 0 och
 räkna upp tabellen — ingen gissning om vad som "brukar finnas i FL".
 
+**Hela inventeringen står i [`FL-STUDIO-INVENTORY.md`](FL-STUDIO-INVENTORY.md)** — 141
+plugg-uppslag med status, innehållet (7 993 presets, 5 135 paket, 2 111 fraser, 260
+impulser), undersystemen (piano roll-skript, Markov-ackordgenerator, LilyPond, NDI/Spout,
+Demucs, 13 kontrollerytor) och gap-matrisen per område. Här står bara det byggda och det kvarvarande.
+
 ### Vad som byggdes i dag — åtta funktioner, alla mätta
 
 | FL-plugin | Vad den gör | Sonix före | Nu (med provet som bevisar det) |

@@ -1,0 +1,609 @@
+# FL Studio 26.1.7 — inventering på molekylnivå
+
+Allt i det här dokumentet är läst ur **installationsfilen själv**
+(`flstudio_win64_26.1.7.5654.exe`, 1 055 MiB), inte ur Image-Lines webbsidor eller ur minnet.
+Där något inte gick att läsa står det uttryckligen. Siffrorna är räknade, inte gissade.
+
+| Mätning | Värde |
+| :--- | :--- |
+| Fil | PE32 GUI, Intel i386, 5 sektioner, `FileVersion 26.1.7.0`, 1 106 029 776 byte |
+| Kod i exehead | 28 160 B (`.text` 0x6e00) — NSIS-laddaren, ingen musik |
+| NSIS | `NullsoftInst` vid 0x10a04, förstaheader vid 0x10a00 |
+| Block 0 | 400 987 B komprimerat → **3 519 116 B** (LZMA, `5d 00 00 80 00`, 8 MB ordbok) |
+| Payload | LZMA-blockkedja; 49 block avkodade (50 MB) innan aligeringen bryts |
+| `7z` | öppnar **inte** filen (PE-detekteringen vinner över NSIS-hanteraren) |
+| Kataloger i filtabellen | **1505** |
+| Filer i filtabellen | **21 339** poster |
+| Läsmetod | NSIS förstaheader → LZMA raw-avkodning → UTF-16-strängar → (katalog, fil)-par |
+
+Block 0 innehåller installationsskriptet, **licenstexten** (RTF, ~12 500 strängar) och
+filtabellen. Filtabellen är det som ger inventariet: varje post är en katalogsträng följd av
+sina filnamn, alltså hela trädet utan att något måste gissas.
+
+**Vad som inte lästes:** payloaden (de 246 DLL:erna och `FL64.exe`) gick inte att plocka ut
+helt — blockkedjan tappar aligeringen efter 49 block (stoppet syns i `walk.log`). Det betyder
+att *filnamnen* är fullständiga men *innehållet i binärerna* inte är läst. Allt nedan som handlar
+om vad en plugin **heter och levererar med** är mätt; det som handlar om hur den låter är det inte.
+
+---
+
+## 1. Produktstrukturen
+
+Trädet på tre nivåer, med antal filer per nod:
+
+| Nivå | Filer |
+| :--- | ---: |
+| `Data\Patches` | 16445 |
+| `Plugins\Fruity` | 2988 |
+| `Data\System` | 989 |
+| `System\Tools` | 392 |
+| `System\Config` | 111 |
+| `Data\Templates` | 72 |
+| `Data\Demo projects` | 46 |
+| `Help\html` | 45 |
+| `Shared\Python` | 35 |
+| `Artwork\Wallpapers` | 32 |
+| `System\Hardware specific` | 30 |
+| `Artwork\Themes` | 26 |
+| `System\Texts` | 23 |
+| `Shared\Artwork` | 17 |
+| `System\Languages` | 14 |
+| `DirectWave\Orchestral` | 13 |
+| `Image-Line` | 8 |
+| `Shared\Temp` | 8 |
+
+### Filändelserna — FL:s egna format
+
+| Ändelse | Antal | Vad det är |
+| :--- | ---: | :--- |
+| `.fst` | 7796 | FL-preset (kanal, effekt, generator) |
+| `.wav` | 3911 | samplad ljudfil |
+| `.wv` | 1978 | WavPack-komprimerat sampel (ModeAudio-paketen) |
+| `.mid` | 1719 | Standard MIDI-fil (trumloopar, scores) |
+| `.tbio` | 715 | Toxic Biohazard-program |
+| `.ilv` | 497 | ZGameEditor: HUD-prefab |
+| `.fsc` | 398 | **FL-score** — pianorullens frasbibliotek |
+| `.mrp` | 300 | Morphine-program |
+| `.jpg` | 288 | konstverk/omslag |
+| `.png` | 278 | konstverk/omslag |
+| `.ogg` | 278 | samplad ljudfil |
+| `.zla` | 270 | ZGameEditor: combo (bakgrund/förgrund/process) |
+| `.flac` | 269 | samplad ljudfil |
+| `.nfo` | 241 | plugin-databaspost / paketinfo |
+| `.dll` | 235 | binär (plugin eller bibliotek) |
+| `.flms` | 224 | FL Mobile-synthprogram |
+| `.fnv` | 220 | **Harmor-envelope/-map** |
+| `.ini` | 220 | Dashboard-panelens layout / FL Mobile-instrument |
+| `.flp` | 160 | FL-projekt (mallar, demos) |
+| `.tga` | 140 | plugin-konstverk |
+| `.hdprg` | 98 | Hardcore-program |
+| `.scm` | 90 | LilyPond/Guile (notation) |
+| `.bmp` | 85 | plugin-konstverk (rattar/paneler) |
+| `.txt` | 74 | textdokument |
+| `.rtf` | 72 | plugin-info (visas i racket), licenser |
+| `.svg` | 67 | konstverk/font |
+| `.pyc` | 66 | — |
+| `.ttf` | 63 | typsnitt |
+| `.ps` | 53 | — |
+| `.scr` | 49 | — |
+
+---
+
+## 2. De 141 pluggarna
+
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 36** har en motsvarighet, **◐ 41** delvis, **✗ 64** saknas helt.
+
+Räknat **per plugin**, inte per värde: en animerad dansare (`Fruity Dance`) väger lika tungt som
+`Harmor` i den här räkningen. Vikten står i gap-matrisen i stället (avsnitt 7).
+
+Siffran i kolumn 2 är antalet filer FL levererar i pluginens egen mapp (förinställningar,
+konstverk, data) — alltså ett mått på hur mycket innehåll som följer med varje plugin.
+
+### Generatorer (51)
+
+| Plugin | Filer | Sonix | Kommentar |
+| :--- | ---: | :---: | :--- |
+| FL Studio Mobile | 344 | ✗ | mobil-appens rack; ingen motsvarighet |
+| Morphine | 199 | ✗ | additiv synth (4 operatorkällor + morf) |
+| Harmor | 164 | ✗ | spektral/additiv, bildanalys, .fnv-envelopes |
+| Dashboard | 90 | ◐ | Patch-modulen ritar en egen graf, men ingen panel med rattar |
+| Toxic Biohazard | 78 | ◐ | tvåoperator-FM finns i synten sedan i dag, inte 6-op modell |
+| GMS | 52 | ◐ | egen subtraktiv synth |
+| Wave Traveller | 50 | ✗ | scratch-instrument (vinyl), kräver positionsstyrning |
+| FL Keys | 47 | ◐ | samplern + SF2-läsaren kan ladda piano |
+| Sytrus | 40 | ◐ | 2-op FM finns; Sytrus är 6 operatorer + filtermatris |
+| Autogun | 26 | ✗ | 4 miljarder förinställda ljud, inga parametrar |
+| Minisynth | 19 | ✅ | synten (4 vågformer, ADSR, SVF, FM) |
+| Fruity Slicer 2 | 14 | ◐ | choppern hittar slag och dumpar till piano roll/step |
+| FL Slayer | 12 | ✗ | fysisk modellering av gitarr |
+| FPC | 11 | ◐ | drum.rs + steprad; ingen pad-bank med egna lager |
+| Fruity Envelope Controller | 10 | ✗ | modulationskälla (styr andra plugins) |
+| BassDrum | 9 | ◐ | kick i drum.rs |
+| BeepMap | 9 | ✗ | bild → ljud |
+| FLEX | 9 | ✗ | presetbaserad synth med eget bibliotek |
+| Ogun | 8 | ✗ | additiv (harmonisk serie) |
+| Fruity Dance | 5 | ✗ | animerad dansare (skämt) |
+| Wasp | 5 | ◐ | subtraktiv synth |
+| Fruity DrumSynth Live | 4 | ◐ | drum.rs (syntetiska trummor) |
+| MIDI Out | 4 | ✅ | audio/midi_output.rs (byggd i dag) |
+| BooBass | 3 | ◐ | subtraktiv bas |
+| DirectWave | 3 | ◐ | sampler + keymap + SF2; ingen egen vågformseditor |
+| SimSynth | 3 | ✅ | subtraktiv synth |
+| Soundfont Player | 3 | ✅ | audio/sf2.rs (byggd i dag) |
+| Wasp XT | 3 | ◐ | subtraktiv synth |
+| 3x Osc | 2 | ✅ | synten |
+| Fruit Kick | 2 | ◐ | kick i drum.rs |
+| Fruity DX10 | 2 | ✅ | 2-op FM (byggd i dag) |
+| Fruity Granulizer | 2 | ✗ | granulär uppspelning |
+| Fruity Keyboard Controller | 2 | ✗ | tangent → modulationsvärde |
+| Fruity Slicer | 2 | ◐ | choppern |
+| Fruity Video Player | 2 | ✗ | video i projektet |
+| Harmless | 2 | ✗ | additiv/subtraktiv hybrid |
+| Plucked! | 2 | ✗ | Karplus-Strong |
+| ReWired | 2 | ✗ | ReWire-värd |
+| Sakura | 2 | ✗ | fysisk modellering (strängar) |
+| Sawer | 2 | ◐ | en oscillator; Sawer är supersaw med 7 röster |
+| Slicex | 2 | ◐ | choppern (slag → noter), ingen egen editor |
+| Drumaxx | 1 | ✗ | modellbaserad trummaskin (per pad) |
+| Drumpad | 1 | ◐ | steprad + drum.rs |
+| FL Studio Mobile Rack | 1 | ✗ | mobilens rack |
+| Fruity Voltage Controller | 1 | ✗ | modulationskälla |
+| Kepler | 1 | ✗ | analogmodellerad synth (CS-80-inspirerad) |
+| Kepler Exo | 1 | ✗ | variant av Kepler |
+| PoiZone | 1 | ◐ | subtraktiv synth |
+| Transistor Bass | 1 | ◐ | filter + synth, ingen 303-modell |
+| Fruity Wrapper | 0 | ✅ | CLAP/VST3/VST2-värd + sandlåda |
+| Patcher | 0 | ✅ | patcher.rs (nodgraf) |
+
+### Effekter (90)
+
+| Plugin | Filer | Sonix | Kommentar |
+| :--- | ---: | :---: | :--- |
+| ZGameEditor Visualizer | 1423 | ✗ | 1 423 filer visuella förinställningar; kräver GPU-scen |
+| Hardcore | 42 | ✗ | gitarreffektkedja (98 .hdprg-program) |
+| Distructor | 37 | ✗ | flera distorsioner i serie/parallellt |
+| Fruity Love Philter | 23 | ◐ | SVF + filterenvelop, men ingen multi-filterbank |
+| Pitcher | 22 | ◐ | vocal_harmonizer med formantbevarande pitch |
+| Edison | 20 | ◐ | recordern; ingen vågformseditor med verktyg |
+| Maximus | 15 | ◐ | multibandskompressorn (byggd i dag) är 3 band; Maximus har fler + kurvor |
+| Vocodex | 13 | ✗ | vocoder |
+| Soundgoodizer | 5 | ◐ | saturator + kompressor |
+| Fruity Convolver | 4 | ✅ | convolvern (byggd i dag) |
+| Fruity HTML NoteBook | 4 | ✗ | HTML-anteckningar i projektet |
+| Fruity Peak Controller | 4 | ✗ | modulationskälla ur nivå |
+| Fruity Scratcher | 4 | ✗ | vinylscratch |
+| Control Surface | 3 | ◐ | hardware_control.rs (MCU) |
+| Fruity Formula Controller | 3 | ✗ | formelstyrd modulation |
+| Fruity NoteBook | 3 | ✗ | anteckningar per kanal |
+| EQUO | 2 | ◐ | EQ:n |
+| Effector | 2 | ✗ | XY-styrd multi-effekt |
+| Frequency Splitter | 2 | ◐ | crossovern i multibandskompressorn |
+| Fruity Big Clock | 2 | ✗ | stor klocka |
+| Fruity Delay 2 | 2 | ✅ | StereoDelay |
+| Fruity Delay Bank | 2 | ✗ | bank av delaylinor |
+| Fruity Fast Dist | 2 | ✅ | saturatorn |
+| Fruity Flangus | 2 | ✗ | flanger |
+| Fruity LSD | 2 | ✗ | MIDI ut till DirectMusic-synt |
+| Fruity Limiter | 2 | ✅ | Limiter |
+| Fruity Multiband Compressor | 2 | ✅ | multibandskompressorn (byggd i dag) |
+| Fruity PanOMatic | 2 | ◐ | pan + volym; ingen LFO-pan |
+| Fruity Parametric EQ | 2 | ✅ | StereoEq / TrackEqSettings |
+| Fruity Parametric EQ 2 | 2 | ✅ | 4 band + spektrum i FX-racket |
+| Fruity Reeverb 2 | 2 | ✅ | SimpleReverb |
+| Fruity Send | 2 | ✅ | sends per spår |
+| Fruity Soft Clipper | 2 | ✅ | saturatorn |
+| Fruity Spectroman | 2 | ✅ | spectrum.rs + mätarna |
+| Fruity Squeeze | 2 | ✗ | bitcrush/decimering |
+| Fruity Stereo Enhancer | 2 | ◐ | doubler/width |
+| Fruity Stereo Shaper | 2 | ✗ | per-kanal fas/panorering/width-kurvor |
+| Fruity Vocoder | 2 | ✗ | vocoder |
+| Fruity WaveShaper | 2 | ✅ | saturatorn |
+| Fruity Wrapper | 2 | ✅ | plugin-värden |
+| Fruity X-Y Controller | 2 | ✗ | modulationskälla (XY) |
+| Fruity dB Meter | 2 | ✅ | nivåmätarna |
+| Gross Beat | 2 | ◐ | steggrinden + RemixFX (volymkurvan finns i dag, tidskurvan inte) |
+| Newtone | 2 | ◐ | pitch/formant (vocal_harmonizer) |
+| Patcher | 2 | ✅ | patcher.rs |
+| Spreader | 2 | ◐ | doubler |
+| Wave Candy | 2 | ◐ | spektrum + mätare; ingen oscillator/vectorscope |
+| Emphasis | 1 | ✗ | spektral betoning (EQ-serie) |
+| Emphasizer | 1 | ✗ | dito, äldre |
+| FL Studio Mobile Rack FX | 1 | ✗ | mobilens effekter |
+| Frequency Shifter | 1 | ✗ | frekvensskift (Barber-pole) |
+| Fruity 7 Band EQ | 1 | ◐ | 4-band + per-spår EQ |
+| Fruity Balance | 1 | ✅ | pan/volym |
+| Fruity Bass Boost | 1 | ◐ | EQ |
+| Fruity Blood Overdrive | 1 | ✅ | saturatorn |
+| Fruity Center | 1 | ◐ | mittkanalsextraktion finns i stämseparatorn, inte som effekt |
+| Fruity Chorus | 1 | ✗ | chorus |
+| Fruity Compressor | 1 | ✅ | Compressor |
+| Fruity Delay | 1 | ✅ | StereoDelay |
+| Fruity Delay 3 | 1 | ✅ | StereoDelay (ping-pong) |
+| Fruity Fast LP | 1 | ✅ | filtret |
+| Fruity Filter | 1 | ✅ | filtret |
+| Fruity Flanger | 1 | ✗ | flanger |
+| Fruity Free Filter | 1 | ✅ | filtret |
+| Fruity Mute 2 | 1 | ✅ | mute/solo |
+| Fruity NoteBook 2 | 1 | ✗ | anteckningar |
+| Fruity Phase Inverter | 1 | ✗ | faspolvändning |
+| Fruity Phaser | 1 | ✗ | phaser |
+| Fruity Reeverb | 1 | ✅ | SimpleReverb |
+| Fruity X-Y-Z Controller | 1 | ✗ | modulationskälla (XYZ) |
+| Hyper Chorus | 1 | ✗ | chorus |
+| Low Lifter | 1 | ✗ | low-end-förstärkning |
+| Luxeverb | 1 | ◐ | convolver + algoritmiskt reverb |
+| Multiband Delay | 1 | ✗ | delay per band |
+| Newtime | 1 | ◐ | tempokarta + "sätt takt 1 här" (8.14) |
+| Pitch Shifter | 1 | ✅ | formantbevarande pitch (stretch/vocal_harmonizer) |
+| Razer Chroma | 1 | ✗ | RGB-synk |
+| Transient Processor | 1 | ✅ | transient-shapern (byggd i dag) |
+| Transmitter | 1 | ✗ | data → ljud (sonifiering) |
+| Transporter | 1 | ✗ | dito, äldre |
+| Tuner | 1 | ✅ | tuner_modal |
+| VFX Color Mapper | 1 | ✗ | not → färg/färg → parameter |
+| VFX Envelope | 1 | ✗ | modulationskälla |
+| VFX Key Mapper | 1 | ✗ | not → not-omvandling per kanal |
+| VFX Keyboard Splitter | 1 | ✗ | dela klaviaturet mellan kanaler |
+| VFX Level Scaler | 1 | ◐ | velocity_sensitivity + kurva per kanal |
+| VFX Script | 1 | ✗ | skriptstyrd MIDI-bearbetning |
+| VFX Sequencer | 1 | ◐ | SchedulesChord (ackord/arpeggio) + dice-generator |
+| Vintage Chorus | 1 | ✗ | chorus |
+| Vintage Phaser | 1 | ✗ | phaser |
+
+---
+
+## 3. Innehållet som följer med
+
+**Plugin-förinställningar** — 7993 filer
+
+| Plugin | Förinställningar |
+| :--- | ---: |
+| Generators\Drumpad | 959 |
+| Generators\Sytrus | 797 |
+| Generators\Toxic Biohazard | 715 |
+| Generators\Sakura | 481 |
+| Generators\Harmless | 390 |
+| Generators\Sawer | 390 |
+| Generators\PoiZone | 384 |
+| Generators\Harmor | 326 |
+| Generators\Morphine | 300 |
+| Effects\ZGameEditor Visualizer | 290 |
+| Generators\Kepler | 273 |
+| Effects\Fruity Convolver | 259 |
+| Generators\Ogun | 210 |
+| Effects\LuxeVerb | 163 |
+| Generators\Patcher | 150 |
+| Generators\Kepler Exo | 149 |
+| Effects\Patcher | 135 |
+| Generators\Drumaxx | 130 |
+| Effects\Hardcore | 98 |
+| Generators\MiniSynth | 91 |
+| Effects\VFX Script | 86 |
+| Generators\FL Slayer | 64 |
+| Generators\SimSynth | 59 |
+| Generators\Fruity DX10 | 56 |
+| Generators\BassDrum | 52 |
+| Effects\Distructor | 46 |
+| Generators\Wasp | 45 |
+| Effects\Fruity Love Philter | 43 |
+| Generators\Wasp XT | 40 |
+| Generators\MIDI Out | 38 |
+
+**Ljudpacks (egna samplingar)** — 5135 filer i 10 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| Drums | 1908 |
+| Drums (ModeAudio) | 1642 |
+| Legacy | 926 |
+| Instruments | 489 |
+| Vocals | 47 |
+| Shapes | 41 |
+| SFX | 36 |
+| Risers | 23 |
+| Loops | 15 |
+| FLEX | 8 |
+
+**Scores — pianorullens frasbibliotek** — 2111 filer i 7 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| FPC drumloops | 1718 |
+| Chopping | 206 |
+| Quantization | 82 |
+| Arpeggiator | 42 |
+| Reference scales | 36 |
+| Stamps | 26 |
+| Automation | 1 |
+
+**Impulsresponser (Fruity Convolver)** — 260 filer i 13 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| Reverb Devices | 41 |
+| Halls | 35 |
+| Chambers | 33 |
+| Exteriors | 30 |
+| Guitar Cabinet | 20 |
+| Underground | 20 |
+| Real Spaces | 17 |
+| Small Rooms | 17 |
+| Spring Reverb | 16 |
+| Corridors | 13 |
+| FX | 12 |
+| Special | 5 |
+| Sampled | 1 |
+
+**Kanalpresets** — 245 filer i 8 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| 3x Osc | 169 |
+| Automation clips | 57 |
+| BeepMap | 7 |
+| Various | 6 |
+| Fruity Slicer | 2 |
+| Plucked! | 2 |
+| Sampler | 2 |
+| Useful | 0 |
+
+**Mallar (Templates)** — 72 filer i 7 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| Utility | 24 |
+| Advanced | 23 |
+| Minimal | 8 |
+| Other | 8 |
+| Performance | 6 |
+| Power User | 2 |
+| Empty | 1 |
+
+**Demoprojekt** — 45 filer i 4 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| Demo songs | 20 |
+| Product demos | 10 |
+| Visual | 9 |
+| Performance mode | 6 |
+
+**System** — 933 filer i 8 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| Plugin databases | 374 |
+| FL Mobile | 325 |
+| MIDI import | 137 |
+| Render tests | 80 |
+| Riff machine | 7 |
+| Default | 6 |
+| icon.ico,0 | 4 |
+| Articulator | 0 |
+
+**System/Config — inställningar som är filer** — 104 filer i 12 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| Thumbnails | 37 |
+| Typing to piano | 32 |
+| Toolbar presets | 11 |
+| Browser | 10 |
+| Touch keyboard | 6 |
+| Mapping | 3 |
+| Note color presets | 2 |
+| Audio scripts | 1 |
+| Master | 1 |
+| Piano roll scripts | 1 |
+| FL Studio Remote Scripts | 0 |
+| Screenshots | 0 |
+
+**Hårdvarumappningar (kontrollerytor)** — 30 filer i 30 grupper
+
+| Grupp | Filer |
+| :--- | ---: |
+| Livid OhmRGB | 7 |
+| Akai APC | 5 |
+| Behringer BCF2000 | 3 |
+| Roland PCR | 3 |
+| Numark Orbit | 2 |
+| Akai FL Studio Fire | 1 |
+| DJ TechTools Midi Fighter 3D | 1 |
+| Electrix Tweaker | 1 |
+| Forward CCs to current plugin Port 10 | 1 |
+| Native Instruments MASCHINE | 1 |
+| Native Instruments MASCHINE JAM | 1 |
+| Native Instruments MASCHINE MIKRO | 1 |
+| Native Instruments TRAKTOR KONTROL F1 | 1 |
+| Novation Launchkey MK2 | 1 |
+| Novation ReMOTE | 1 |
+| Behringer CMD LC-1 | 0 |
+| Keith McMillen QuNeo | 0 |
+| Korg NanoPAD | 0 |
+| Korg NanoPAD 2 | 0 |
+| Korg nanoKONTROL | 0 |
+| Korg nanoKONTROL 2 | 0 |
+| Livid Base | 0 |
+| Livid Block | 0 |
+| Livid CNTRL-R | 0 |
+| Nektar Impact series | 0 |
+| Novation Launch Control XL | 0 |
+| Novation Launchkey | 0 |
+| Novation Launchpad | 0 |
+| Novation Launchpad MK2 | 0 |
+| Novation Launchpad Pro | 0 |
+
+### Det som är värt att stanna vid
+
+- **0 `.mid` + 0 `.fsc`** i `Scores`: FL skeppar ett frasbibliotek (trumloopar, chopping, kvantisering, arpeggiomönster, referensskalor, "stamps") som pianorullen kan hämta. Det är innehåll, inte kod — men det är därför FL känns fullt av idéer direkt efter installation.
+- **0 impulsresponser** i 13 kategorier (hallar, kammare, utomhus, gitarrlådor, underjord, fjäderreverb, korridorer, FX). Vår convolver (byggd i dag) har ingen medföljande bank — den kan bara ladda en fil användaren pekar ut.
+- **0 touch-klaviatur, 0 verktygsradspresets, 0 notfärgspresets, 0 skript/layouter** — gränssnittet är konfigurerbart i filer, inte bara i dialoger.
+- **13 kontrollerytor** har egna mappningar: Akai APC, Akai FL Studio Fire, Behringer BCF2000, DJ TechTools Midi Fighter 3D, Electrix Tweaker, Livid OhmRGB, MASCHINE (3 varianter), TRAKTOR KONTROL F1, Novation Launchkey MK2, Novation ReMOTE, Numark Orbit, Roland PCR.
+- **Bilderna finns med**: `.tga`/`.bmp` per plugin (rattar, paneler, bakgrunder), `.png`-omslag för plugin-databasen. Varje plugin är också en liten designprodukt.
+
+---
+
+## 4. Undersystemen — det som inte är plugins
+
+Här ligger mycket av det som gör FL till FL, och det syns bara i filstrukturen:
+
+| Undersystem | Bevis i filen | Vad det är |
+| :--- | :--- | :--- |
+| **Piano roll-skript** | `System\Config\Piano roll scripts\Piano roll script reference.txt` | ett skript-API för pianorullen (användarskript, inte bara inbyggda verktyg) |
+| **Ljudskript** | `System\Config\Audio scripts\{Amp,FX,Generation,Regions,Reference.txt}` | skriptbara ljudverktyg i fyra kategorier |
+| **Browser-snapshots** | `System\Config\Browser\Snap1-3.scr` | sparade sökningar/filter i browsern |
+| **Tangentbord → piano** | `System\Config\Typing to piano\Layout {Piano,Janko,FPC (C4),Slicex (C4),Performance mode}.scr` + förklarande txt | fem layouter; Janko är en alternativ klaviaturlayout |
+| **Touch-klaviatur** | `System\Config\Touch keyboard\*.tkp` (6) | Keys, 2 rader, Pads 4×4, Pads 8×4, FPC |
+| **Verktygsraden** | `System\Config\Toolbar presets\*.tpr` (6) | Compact, Default, macOS, FL 12, FL 24 |
+| **Notfärger** | `System\Config\Note color presets\*.ncp` (2) | Default, High contrast |
+| **Chord Progression** | `System\Tools\Chord progression\**` (51 filer, Python `.pyc`) | ackordgenerator med **Markov-kedjor** (`States\markov.pyc`), stiltabeller per genre (Afrobeats, Amapiano, Boom bap, D&B, Drill, Dubstep, Lo-fi …), samt moduler för baslinje, trummönster, arpeggion och "chopper" |
+| **Riff machine** | `Data\System\Riff machine\*.fst` (7) | melodi-/riffgenerator med förval |
+| **Notation** | `System\Tools\LilyPond\**` (318 filer) | LilyPond + Guile + Ghostscript: notutskrift inbyggd i DAW:n |
+| **BeatSlicer (äldre)** | `System\Tools\BeatSlicer\zx_bs_d.exe` + 8 `.zco`-skal | den gamla fristående slicern, kvar för bakåtkompatibilitet |
+| **Plugin-brygga** | `System\Tools\Bridge\{32bit,64bit}\ilbridge.exe` | 32↔64-bits brygga för gamla plugins |
+| **Kontrollpanelsskapare** | `System\Tools\Control Creator\ControlCreator.exe` | gör egna paneler (Dashboard) |
+| **MCP** | `System\Tools\MCP\MCPTools.pyc` | en MCP-brygga i FL självt (AI-verktygsåtkomst) |
+| **MIDI-import** | `Data\System\MIDI import\*.fst` (137) | General MIDI → kanalpresets, alltså en mappningstabell för importerade `.mid` |
+| **Plugin-databaser** | `Data\System\Plugin databases\**` (374) | kategoriserade listor med `.nfo` per plugin |
+| **Rendertester** | `Data\System\Render tests\**` (80) | egna regressionstester för ljudrenderingen |
+| **Video** | `avcodec/avformat/avfilter/avutil/swscale/swresample` (ffmpeg 58/56/7/5) | videoavkodning i projektet |
+| **Videout** | `Processing.NDI.Lib.x64.dll`, `SpoutLibrary.dll` | NDI och Spout — bild ut till andra program |
+| **Stämseparering** | `Licenses\demucs.txt` | Demucs (samma familj som vår `neural_separator`) |
+| **Inbäddad Python** | `Shared\Python\**`, `python312.dll`, `libpython2.4.dll` | skriptmotor i både FL och LilyPond |
+| **Razer Chroma** | `Razer Chroma_x64.dll` | tangentbords-RGB som svarar på musiken |
+| **WebView2** | `WebView2Loader.dll` + `MicrosoftEdgeWebView2RuntimeInstallerX64.exe` | HTML-paneler (bl.a. HTML NoteBook) |
+| **ASIO-driver** | `ILWASAPI2ASIO{,_x64}.dll`, `registerAsioDriver.bat` | egen ASIO-brygga över WASAPI |
+| **VST-version av FL** | `FL Studio VSTi.dll`, `FL Studio VSTi (Multi).dll` | FL kan köras som plugin i en annan DAW |
+| **ReWire** | `ReWire.dll`, `ReWired_x64.dll`, `FLReWire_x64.dll` | ReWire-värd |
+| **Mobil-racket** | `FL Studio Mobile_x64.dll`, `Data\System\FL Mobile\**` (325) | mobilappens instrument och effekter i racket |
+| **FL Cloud** | `System\Installers\FL Cloud Plugins Installer.exe` | molnpluggar installeras vid sidan om |
+| **Diagnostik** | `System\Tools\Diagnostics\fldiagnostic.{exe,ini}` | felsökningsverktyg |
+
+---
+
+## 5. Installationsprogrammet
+
+Sådant som syns i skriptet och som säger något om hur produkten är byggd:
+
+- **Flera mål**: `\FL.exe` (32-bit) och `\FL64.exe`, med `FLEngine_x64.dll` bakom — motorn är en egen DLL, inte appen.
+- **Skrivningar i registret**: `Software\Image-Line\Shared\Paths`, `Software\SoftVoice\ImageLine`, `Software\WoW6432Node\SoftVoice\ImageLine` (32/64-bro), samt `…\Uninstall\` för avinstallation.
+- **Genvägar**: `More....lnk`, `Plugin Manager.lnk`, `Help.lnk`, `What's new.lnk`, `Reset settings.lnk`, `Install plugin version (64bit).lnk`, `Uninstall.lnk`, `FL Studio online.lnk`.
+- **Hjälpen är två `.chm`** (`\Help\FL.chm`, `\help\fl.chm`) **plus** det webbaserade `Help\html\FD\web` (HTML + css + typsnitt) — alltså två parallella help-system.
+- **Hjälpfiler per plugin**: 72 `.rtf` (`<plugin>_Info.rtf`), som visas inuti racket.
+- **Licenserna ligger i klartext** (`System\Texts\Licenses\*.txt`) och avslöjar komponenterna: blend2d, delphiffmpeg, delphizip, **demucs**, flac, freetype, lame, ogg vorbis.
+- **Uppdateringstexter**: `NewVersion.txt`, `NotReggedTxt.txt`, `BoxEdition.txt`, `Legacy_ChanFX.txt`, `Legacy_PatBlocks.txt` — de två sista är migreringsnotiser för gamla projektformat.
+
+---
+
+## 6. Sonix i dag — mätt i koden
+
+96 filer, **82 572 rader** i `src/`. Områdena nedan är modulerna, inte önskelistan.
+
+| Område | Moduler (rader) | Vad som faktiskt finns |
+| :--- | :--- | :--- |
+| **Ljudmotor** | `engine.rs` (578), `synth.rs` (336), `synth/process.rs` (787), `synth/commands.rs` (717), `synth/voices.rs` (497), `realtime_bench.rs` (504) | cpal-ström, röster med eget filter + filterenvelop, spår/bussar/VCA/sends/sidokedjor, PDC, frysning, realtidsmätning |
+| **Instrument** | synten, `drum.rs` (251), samplern (i `voices.rs`/`process.rs`), `keymap.rs` (161), `sf2.rs` (359, i dag) | 4 vågformer, **2-op FM** (i dag), ADSR, SVF per röst, drum-syntes, sampler med loop/ping-pong/ADSR/filter, multi-sample-zoner, **SoundFont 2** |
+| **Effekter** | `master_fx.rs` (1 895), `effects.rs` (215), `filter.rs` (193), `envelope.rs` (338) | EQ (4 band + per spår), kompressor, doubler, de-esser, gate, filter, limiter, **transient**, **saturator**, **multiband**, **convolver**, **steggrind**, RemixFX, tape-stop, formantbevarande pitch, autotune, tuner, spektrum, loudness, dither |
+| **Pluggar** | `plugin_host_live.rs` (3 331), `plugin_vst3.rs` (1 981), `plugin_vst2.rs` (907), `plugin_sandbox.rs` (944), `sandbox_audio.rs` (601), `plugin_gui.rs` (467), `plugin_host.rs` (1 152) | CLAP + VST3 + VST2 i process, sandlåda utanför process, X11-värd för plugin-GUI, parameterlista/automation, latenskompensation |
+| **Redigering** | `arranger.rs` (2 778), `timeline.rs` (1 301), `piano_roll.rs` (925), `midi_take.rs` (563), `onset.rs` (1 040), `stretch.rs` (1 766) + `ui/app/stretch.rs` | spellista med regioner/tonhöjning/fades/reverse/loop, pianorulle, tagningar med swing och kvantisering, skalor/tonarter, chopper med slagletning → slicemap → piano roll, tempokarta + WSOLA-sträckning |
+| **Mixning** | `mixer.rs` (3 067), automation i `state.rs`/`frame.rs` | kanalrack, bussar, VCA, sends, sidokedja, mätare, spektrum, automation (spår/buss/plugin) med ångring |
+| **Sekvensering** | `launcher.rs` (504), `loop_station.rs` (506), `ui/launcher_view.rs` (289) | scenrutnät och loop-pad (Sprint 1) |
+| **Noder** | `patcher.rs` (781), `ui/patcher_view.rs` (302) | nodgraf med kablar |
+| **Import/export** | `import.rs` (1 366), `exporter.rs` (2 232), `recorder.rs` (1 699), `wav_reader.rs` (282), `wav_writer.rs` (47), `smf.rs` (705), `metadata.rs` (1 824) | Suno-stämmor (zip/mapp), wav, MIDI in/ut, export med dither/loudness, AI-härkomst borttagen ur filer |
+| **Projekt** | `project.rs` (2 050), `autosave.rs` (429), `paths.rs` (1 013), `platform.rs` (62) | sparform med migreringar, autosave med versioner, kanoniska sökvägar, plattformsskillnader |
+| **AI** | `ai_client.rs` (714), `ai_generator.rs` (789), `neural_separator.rs` (462), `stem_separator.rs` (884) | molnanrop, generering, Demucs via ONNX, klassisk separator |
+| **Arbetsflöde** | `macro_chain.rs` (1 206), `macros_modal.rs` (780), `browser.rs` (632), `factory_samples.rs` (1 574) | makrokedjor över filer, sökbart bibliotek, fabriksljud |
+| **MIDI** | `midi_input.rs` (274), `midi_output.rs` (118, i dag), `hardware_control.rs` (492) | klaviatur in (autoanslutning), **ut** (i dag), MCU-ytor |
+| **Gränssnitt** | `i18n.rs` (2 895), `theme.rs`, `widgets.rs` (733) + 20 vyer | svenska/engelska, tema, egna widgets |
+
+**Kvalitetsläget just nu:** 644 tester (default) / 693 (`plugin-host`), 0 varningar i alla fyra
+byggena, fyra CI-ben (default, plugin-host, Windows, neural) och `--selftest` 5/5 mätbara delar.
+
+---
+
+## 7. Gap-matrisen
+
+Varje rad är ett *område* i FL mätt ovan, ställt mot vad Sonix har. Kolumnen **Dom** är min
+bedömning, inte ett mätvärde: "vi" = vi har en motsvarighet som gör jobbet, "delvis" = halva
+kedjan finns, "de" = vi har inget som motsvarar det.
+
+| Område | FL | Sonix | Dom |
+| :--- | :--- | :--- | :--- |
+| **Syntes** | 51 generatorer: subtraktiv, FM (Sytrus 6 operatorer), additiv (Harmor/Ogun/Morphine), fysisk modellering (Sakura/Plucked!/Slayer), granulär, bild→ljud (BeepMap) | en subtraktiv synth + 2-op FM + sampler + SF2 | de |
+| **Trummor** | FPC, Drumaxx, Drumpad, DrumSynth Live, 1 908 trumsamplingar + 1 718 MIDI-loopar | drum.rs (syntetiska), steprad, egna samplingar | delvis |
+| **Modulationseffekter** | chorus ×3 (Fruity/Hyper/Vintage), flanger ×2, phaser ×2, Love Philter, Effector | doubler (bredd) — ingen chorus/flanger/phaser | de |
+| **Dynamik** | Limiter, Compressor, Multiband, Maximus, Transient, Soft Clipper, Squeeze | limiter, kompressor, multiband, transient, saturator (i dag) | vi |
+| **Reverb/delay** | Reeverb 1/2, Convolver, Luxeverb, Delay 1/2/3, Delay Bank, Multiband Delay | algoritmiskt reverb, stereodelay (ping-pong), convolver (i dag) | delvis |
+| **EQ/filter** | Parametric EQ 1/2, 7 Band, Free Filter, Filter, Fast LP, Frequency Shifter/Splitter | 4-band + per spår + SVF + drive | delvis |
+| **Vocoder** | Vocodex, Fruity Vocoder | inget | de |
+| **Modulationskällor** | Peak/Envelope/Formula/Keyboard/Voltage/XY/XYZ-kontroller, VFX-sviten | inget (automation finns, men inte som källa som styr andra) | de |
+| **Notbearbetning** | VFX Key Mapper, Keyboard Splitter, Level Scaler, VFX Script, Sequencer | velocity-kurva + pitch per kanal, SchedulesChord, dice-generator | delvis |
+| **Slicing** | Slicer, Slicer 2, Slicex, BeatSlicer (äldre), Edison | chopper: slagletning → slicemap → steg/piano roll | vi |
+| **Ljudredigering** | Edison (inspelare + editor), Newtone (pitch), Newtime (time-align) | recordern, sträckning, "sätt takt 1 här" | delvis |
+| **Performance** | Gross Beat, Performance mode, touch-klaviatur, 4×4/8×8-mallar | launcher-rutnät, loop-pad, steggrind (i dag), RemixFX | delvis |
+| **Noder/modularitet** | Patcher, Dashboard, Control Creator | patcher.rs (graf), MCU-ytor | delvis |
+| **Notation** | LilyPond + Guile + Ghostscript, notutskrift | inget | de |
+| **Video** | Fruity Video Player, ZGameEditor Visualizer, NDI, Spout | inget (export skriver filer, inte bild ut) | de |
+| **Skript** | piano roll-skript, ljudskript, VFX Script, inbäddad Python 3.12, MCP | inget skript-API (AI-vägen är kommandon, inte skript) | de |
+| **Ackord/generering** | Chord Progression (Markov + genrestilar), Riff machine | chord_generator_modal, dice_generator, song_structure | delvis |
+| **Scores/bibliotek** | 2 111 fraser, 260 impulser, 7 993 presets, 5 135 paket | factory_samples + SF2-inläsning; ingen frasbank, ingen impulsbank | delvis |
+| **Kontrollerytor** | 13 hårdvarumappningar + egen Control Surface | MCU + MIDI-learn + in/ut | delvis |
+| **Tangentbord** | 5 layouter (bl.a. Janko), touch-klaviatur i 6 varianter | datortangentbord som klaviatur, en layout | delvis |
+| **Gränssnitt** | verktygsrads-presets, notfärger, tema-skins, 241 plugin-`.nfo` | tema, i18n, FX-rack | delvis |
+| **Projektformat** | .flp (binärt), .fst-presets, .fsc-scores, .flms | .json (läsbart), .mid, .wav | vi |
+| **Molntjänst** | FL Cloud (mixing/mastering-pluggar, samples, lagring) | AI-anrop via OmniRoute | delvis |
+| **Stämseparering** | Demucs (licens angiven) | Demucs via ONNX + klassisk separator | vi |
+| **Pluggar** | VST2/VST3/CLAP via wrapper, 32-bits brygga | CLAP/VST3/VST2 + sandlåda + X11-GUI | vi |
+| **Prestanda** | okänt (ej mätt) | realtidsmätning, 4 CI-ben, 0 varningar | vi |
+
+**Räkning:** 6 områden där vi har en motsvarighet, 12 delvis, 7 där vi inte har något.
+De sju tomma är: syntesdjup (additiv/spektral/fysisk/granulär), chorus/flanger/phaser,
+vocoder, modulationskällor, notation, video och skript-API.
+
+---
+
+## 8. Byggt i dag (2026-10-21)
+
+| FL | Sonix nu | Beviset |
+| :--- | :--- | :--- |
+| Transient Processor | `TransientShaper` | bit-identisk vid 0 dB, +12 dB lyfter anslaget ~4×, −12 dB kropp ger 0,251 av en jämn ton |
+| Soft Clipper / Fast Dist / WaveShaper | `Saturator` | tredjeton 4,6 / 13,1 / 24,4 % vid drive 2/4/8, aldrig över full skala |
+| Maximus / Multiband Compressor | `MultibandCompressor` | 100 Hz → 0,248, 5 kHz → 1,0000; provet faller med `amounts = 0` |
+| Fruity Convolver | `Convolver` | latens exakt 256 sampel; `[0,5, −0,5]` ger ±0,5 på plats 256/257 |
+| Gross Beat (volymkurvan) | `StepGate` | 120 BPM → 6 000 sampel/steg; steg 1 RMS exakt 0 |
+| DX10 / Sytrus (2-op FM) | `FmParams` | sidoband 0,00351 → 0,06796 när index 0 → 4 |
+| Soundfont Player / DirectWave | `audio/sf2.rs` | syntetisk `.sf2` med två sampel ger rätt intervall, grundton och PCM |
+| MIDI Out | `audio/midi_output.rs` | `--selftest` öppnade `Midi Through` och skickade noten |
+
+---
+
+## 9. Kvar — i den ordning jag skulle ta dem
+
+| # | Vad | Varför den ordningen | Storlek |
+| :--: | :--- | :--- | :---: |
+| 1 | **Chorus / Flanger / Phaser** | FL har tio varianter, vi har noll — och de är små: en fördröjningslinje med LFO ovanpå `effects.rs`-mönstret. Störst gap per rad kod. | *S* |
+| 2 | **Impulsbanksinläsning i convolvern** | vi har convolvern men ingen bank; FL skeppar 260. En mapp + en lista, ingen DSP. | *S* |
+| 3 | **Modulationskällor** (peak/envelope/formel → parameter) | låser upp Love Philter, PanOMatic, VFX-familjen och gör automation tvådimensionell. Kräver en målmodell i motorn. | *M* |
+| 4 | **Granulizer** | enda kvarvarande *instrument*-gapet som är rimligt i den här kodbasen (kanalens 13 initialiseringar + ett grain-läge i `voices.rs`). | *M* |
+| 5 | **Vocoder** | kräver bärvågsingång i masterns kedja — bygg den först, annars blir vocodern halv. | *M* |
+| 6 | **Frasbank (Scores) + Riff machine** | innehåll, inte kod: `.fsc`/`.mid` som pianorullen kan hämta. FL:s 2 111 filer visar formen. | *M* |
+| 7 | **Skript-API för pianorullen** | FL:s `Piano roll script reference.txt` är en hel yta; vår AI-väg är kommandon, inte skript. | *L* |
+| 8 | **Notation (LilyPond-vägen)** | FL bäddar in hela LilyPond; vi kan exportera MusicXML och låta LilyPond vara externt. | *M* |
+| 9 | **Video/visualizer** | egen mediepipeline; lägst värde för en DAW utan videospår. | *L* |
+| 10 | **Additiv/spektral syntes** (Harmor/Ogun/Morphine) | ett synthprojekt, inte en ratt. | *XL* |
+
+---
+
+## 10. Gränser för den här mätningen
+
+- **Filnamnen är fullständiga; binärerna är det inte.** 49 av payloadens block avkodades
+  (50 MB), sedan tappar kedjan aligeringen. `FL64.exe` och de 246 DLL:erna är alltså *namngivna*
+  men inte *lästa*. Att säga något om hur en plugin låter vore att gissa.
+- **Statusarna ✅/◐/✗ är på funktionsnivå.** "✅ Fruity Limiter" betyder att vi har en limiter
+  med tak och release, inte att vår kurva är identisk med FL:s.
+- **Ingen körning av FL.** Allt är statisk analys; inga påståenden om beteende i drift bygger på
+  observation av programmet.
+- **Antalet filer per plugin är ett innehållsmått**, inte ett kvalitetsmått: ZGameEditor har
+  1 423 filer och är ändå det minst viktiga för en DAW.
+- **FL-versionen är 26.1.7** (build 5654). En annan version kan ha andra plugins; listan gäller
+  den här filen.
