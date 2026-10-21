@@ -82,7 +82,7 @@ pub fn render_stem_separator_view(
                         && ui
                             .button(crate::i18n::t("⬇ Ladda ner modell från repot"))
                             .on_hover_text(crate::i18n::t(
-                                "Hämtar htdemucs.onnx till modellmappen. Modellen ligger inte i installationen.",
+                                "Hämtar HTDemucs (158 MB, MIT) till modellmappen. Modellen ligger inte i installationen.",
                             ))
                             .clicked()
                     {

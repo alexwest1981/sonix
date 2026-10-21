@@ -422,7 +422,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🎼 Ackordspår" => "🎼 Chord Track",
         "Utgångsbussar ({} kanaler på enheten)" => "Output buses ({} channels on the device)",
         "⬇ Ladda ner modell från repot" => "⬇ Download model from the repo",
-        "Hämtar htdemucs.onnx till modellmappen. Modellen ligger inte i installationen." => "Fetches htdemucs.onnx into the models folder. The model is not part of the installation.",
+        "Hämtar HTDemucs (158 MB, MIT) till modellmappen. Modellen ligger inte i installationen." => "Fetches HTDemucs (158 MB, MIT) into the models folder. The model is not part of the installation.",
         "Hämtar modellen..." => "Downloading the model...",
         "Klar: {}" => "Done: {}",
         "Fel: {}" => "Error: {}",

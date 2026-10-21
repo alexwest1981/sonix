@@ -79,12 +79,31 @@ pub fn model_status() -> String {
     }
 }
 
-/// Var modellen hämtas: en release-tillgång i repot.
+/// Var modellen hämtas.
 ///
-/// Modellen ligger **inte** i installationsfilen — den som vill köra neural separering laddar
-/// ner den, alla andra slipper 100–300 MB i skeppningslasten.
+/// **HTDemucs singelfil med fp16-lagrade vikter** (StemSplitios ONNX-export av
+/// `facebookresearch/demucs`, MIT). Valet är gjort på tre mätvärden ur deras model card:
+///
+/// - 166 MB i stället för 316 MB (fp32-vikter), med max avvikelse **4,6 × 10⁻⁵** mot
+///   fp32 — alltså hörbart identisk, och samma minne och tid vid körning (vikterna
+///   räknas i fp32 ändå).
+/// - **En** session i stället för fyra: `htdemucs_ft`-säcken har bättre SDR (9,19 mot
+///   8,8 dB sång) men är 1,26 GB och fyra modeller — den passar inte vår inferens, som
+///   laddar en session och läser ett enda `stems`-tensor.
+/// - Kontraktet är exakt vårt: `mix (1, 2, 343980)` in, `stems (1, 4, 2, 343980)` ut,
+///   ordning `drums, bass, other, vocals`, 44,1 kHz, 7,8 s segment.
+///
+/// Modellen ligger **inte** i installationsfilen: den som vill köra neural separering
+/// hämtar den, alla andra slipper 166 MB i skeppningslasten.
+///
+/// Attribution (MIT): Rouard, Massa & Défossez, *Hybrid Transformers for Music Source
+/// Separation*, ICASSP 2023. ONNX-export och paritetskontroll av StemSplit.
 pub const MODEL_URL: &str =
-    "https://github.com/alexwest1981/sonix/releases/download/models-v1/htdemucs.onnx";
+    "https://huggingface.co/StemSplitio/htdemucs-onnx/resolve/main/htdemucs_fp16weights.onnx";
+
+/// Minsta godtagbara storlek för en hämtad modell. 166 MB i praktiken; gränsen ligger
+/// under det men långt över en fellänk eller en HTML-sida.
+pub const MIN_MODEL_BYTES: u64 = 100 * 1024 * 1024;
 
 /// Är en hämtad fil komplett? En avbruten nedladdning får aldrig se ut som en fungerande
 /// modell — hellre ett tydligt fel än en tyst halv fil som ger brus.
@@ -92,9 +111,11 @@ pub fn download_looks_complete(bytes: u64, expected: Option<u64>) -> Result<(), 
     match expected {
         Some(want) if bytes == want => Ok(()),
         Some(want) => Err(format!("hämtningen avbröts: {bytes} av {want} byte")),
-        // Utan Content-Length finns bara en undre gräns: en modell är aldrig liten.
-        None if bytes >= 1_000_000 => Ok(()),
-        None => Err(format!("filen är bara {bytes} byte — ingen modell")),
+        // Utan Content-Length finns bara en undre gräns: en riktig modell är aldrig liten.
+        None if bytes >= MIN_MODEL_BYTES => Ok(()),
+        None => Err(format!(
+            "filen är bara {bytes} byte — ingen modell (väntade minst {MIN_MODEL_BYTES})"
+        )),
     }
 }
 
@@ -539,13 +560,68 @@ mod download_tests {
         let err = download_looks_complete(40, Some(100)).unwrap_err();
         assert!(err.contains("avbröts"), "{err}");
         // Utan Content-Length finns bara en undre gräns.
-        assert!(download_looks_complete(2_000_000, None).is_ok());
-        assert!(download_looks_complete(12, None).is_err());
+        assert!(download_looks_complete(MIN_MODEL_BYTES, None).is_ok());
+        assert!(download_looks_complete(2_000_000, None).is_err(), "2 MB är ingen modell");
+    }
+
+    /// Kör **en riktig modell** på en syntetisk mix. Opt-in: `SONIX_NEURAL_SMOKE=1`.
+    ///
+    /// Provet svarar på frågan som filstorleken inte kan svara på: går det att köra
+    /// modellen genom vår inferens, och summerar stämmorna tillbaka till källan?
+    #[cfg(feature = "neural")]
+    #[test]
+    fn a_real_model_separates_a_synthetic_mix() {
+        if std::env::var("SONIX_NEURAL_SMOKE").is_err() || !is_available() {
+            return;
+        }
+        let sr = 44_100u32;
+        let n = sr as usize * 4;
+        let mut l = vec![0.0f32; n];
+        let mut r = vec![0.0f32; n];
+        let mut seed: u32 = 12345;
+        for i in 0..n {
+            let t = i as f32 / sr as f32;
+            let bass = 0.30 * (2.0 * std::f32::consts::PI * 110.0 * t).sin();
+            let vocal = 0.25 * (2.0 * std::f32::consts::PI * 660.0 * t).sin();
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            let noise = (seed >> 8) as f32 / 16_777_216.0 * 2.0 - 1.0;
+            let drum = if (t * 4.0).fract() < 0.05 { 0.25 * noise } else { 0.0 };
+            let s = (bass + vocal + drum).clamp(-1.0, 1.0);
+            l[i] = s;
+            r[i] = s;
+        }
+
+        let stems = separate_neural(&l, &r, sr, &|_| {}).expect("modellen ska köra");
+        assert_eq!(stems.len(), NUM_SOURCES, "fyra stämmor");
+
+        // Summerar stämmorna tillbaka till källan? Det är modellens hela uppgift.
+        let mut sum = vec![0.0f32; n];
+        for stem in &stems {
+            for (i, v) in stem.left.iter().enumerate().take(n) {
+                sum[i] += v;
+            }
+        }
+        let rms = |x: &[f32]| (x.iter().map(|v| v * v).sum::<f32>() / x.len() as f32).sqrt();
+        let ratio = rms(&sum) / rms(&l).max(1e-9);
+        assert!(
+            (0.6..1.6).contains(&ratio),
+            "stämmorna summerar till {ratio:.2} av källan — modellen eller mappningen är fel"
+        );
+
+        // Och stämmorna är inte samma signal fyra gånger.
+        let energies: Vec<f32> = stems.iter().map(|s| rms(&s.left)).collect();
+        println!("neural: summering {ratio:.3} av källan, stämmornas RMS {energies:?}");
+        let max = energies.iter().cloned().fold(0.0f32, f32::max);
+        let min = energies.iter().cloned().fold(f32::MAX, f32::min);
+        assert!(max > 0.0, "modellen gav tystnad");
+        assert!(max / min.max(1e-9) > 1.2, "stämmorna är för lika: {energies:?}");
     }
 
     #[test]
-    fn the_model_comes_from_the_repository() {
-        assert!(MODEL_URL.starts_with("https://github.com/alexwest1981/sonix/releases/"));
+    fn the_model_is_the_single_file_htdemucs_export() {
+        // Samma kontrakt som inferensen: en fil, fyra stämmor, fp16-vikter för storleken.
+        assert!(MODEL_URL.starts_with("https://huggingface.co/StemSplitio/htdemucs-onnx/"));
+        assert!(MODEL_URL.ends_with("htdemucs_fp16weights.onnx"), "{MODEL_URL}");
         assert!(!MODEL_URL.starts_with("file:"));
     }
 }

@@ -3052,3 +3052,21 @@ alltså mest **urval och bulk-edit på noter** — inte ljud och inte mixning.
 Kvar av Control Room: sändningsmatrisen (vilken kanal som hörs i monitor A/B, cue-sändningar per
 kanal, talkback). Distributionsdelen — att mixen kan gå till vilka kanalpar som helst — är byggd
 och provad; matrisen kräver att varje kanal får en egen signal, vilket är nästa steg.
+
+### Modellvalet: HTDemucs singelfil, fp16-vikter (21 okt 2026)
+
+Valet gjordes på StemSplitios publicerade mätvärden och prövades sedan mot vår egen inferens.
+
+| Kandidat | Storlek | SDR (sång/drums) | Sessions | Passar vår inferens |
+|---|---|---|---|---|
+| **htdemucs fp16-vikter** (vald) | **158 MiB** | 8,8 / 9,5 dB | **1** | ja — `mix (1,2,343980)` → `stems (1,4,2,343980)` |
+| htdemucs fp32-vikter | 301 MiB | samma | 1 | ja, men dubbel storlek för 4,6 × 10⁻⁵ avvikelse |
+| htdemucs_ft (4-modellsbag) | 1,26 GB | 9,19 / 10,11 dB | 4 | **nej** — vi laddar en session och läser ett tensor |
+| htdemucs_6s | 246 MiB | 8,5 / 9,5 dB | 1 | ja, men gitarr/piano-stämmor som vi inte har plats för |
+
+**Mätt, inte antaget:** modellen hämtades (165 612 636 byte, sha256 `d05c269d…`), och
+`SONIX_NEURAL_SMOKE=1 cargo test --features neural` körde den genom vår inferens på en
+syntetisk mix: stämmorna summerar till **0,997 av källan**, och stämmornas RMS skiljer sig
+(bas 0,212 · instrument 0,176 · trummor 0,032 · sång 0,0003 — en ren sinuston är ingen sång).
+
+Licens: MIT (Rouard, Massa & Défossez, ICASSP 2023; ONNX-export av StemSplit).
