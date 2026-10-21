@@ -1052,6 +1052,16 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "📋 Kopiera (Ctrl+C)" => "📋 Copy (Ctrl+C)",
         "📋 Kopiera sample (Ctrl+C)" => "📋 Copy sample (Ctrl+C)",
         "🔀 Skapa korsning" => "🔀 Create crossfade",
+        "⏱ Infoga tid" => "⏱ Insert Time",
+        "🗑 Ta bort tid" => "🗑 Delete Time",
+        "⏱ Duplicera tid" => "⏱ Duplicate Time",
+        "Skjut allt som ligger efter markeringen framåt" => {
+            "Push everything after the selection forward"
+        }
+        "Ta bort markeringen och flytta ihop resten" => "Remove the selection and close the gap",
+        "Kopiera markeringen och skjut fram resten" => {
+            "Copy the selection and push the rest forward"
+        }
         "Tona ut den tidigare och in den senare där två regioner överlappar" => {
             "Fade the earlier one out and the later one in where two regions overlap"
         }

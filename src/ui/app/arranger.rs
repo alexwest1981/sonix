@@ -10,6 +10,82 @@
 use super::*;
 
 impl SonixApp {
+    /// Abletons tidsoperationer arbetar på **tidsmarkeringen**. Vi har två sorters markering:
+    /// loopområdet när det är aktivt, annars en takt vid spelhuvudet. Statusraden säger vilket.
+    pub(crate) fn time_range_bars(&self) -> (f32, f32) {
+        if self.loop_end_bar > self.loop_start_bar + 1 {
+            (self.loop_start_bar as f32, self.loop_end_bar as f32)
+        } else {
+            let at = self.song_bar.max(0) as f32;
+            (at, at + 1.0)
+        }
+    }
+
+    /// Infoga, ta bort eller duplicera tid på alla spår samtidigt, och flytta låtsektioner
+    /// och loopmarkeringen med. Motsvarar Abletons `Insert Time`, `Delete Time`, `Duplicate Time`.
+    pub fn apply_time_op(&mut self, op: u8, start: f32, end: f32) {
+        let span = (end - start).max(0.0);
+        if span <= 0.0 {
+            return;
+        }
+        let name = match op {
+            1 => "Infoga tid",
+            2 => "Ta bort tid",
+            _ => "Duplicera tid",
+        };
+        self.push_undo(name);
+        let delta = span.round() as i64;
+        let mut touched = 0usize;
+        match op {
+            1 => {
+                for t in &mut self.playlist_tracks {
+                    touched += t.insert_time(start, span);
+                }
+                shift_song_markers(&mut self.song_markers, start, delta);
+            }
+            2 => {
+                for t in &mut self.playlist_tracks {
+                    let (removed, changed) = t.delete_time(start, end);
+                    touched += removed + changed;
+                }
+                shift_song_markers(&mut self.song_markers, end, -delta);
+            }
+            _ => {
+                for t in &mut self.playlist_tracks {
+                    touched += t.duplicate_time(start, end);
+                }
+                shift_song_markers(&mut self.song_markers, end, delta);
+            }
+        }
+        if op == 2 {
+            if self.loop_start_bar as f32 >= end {
+                self.loop_start_bar = (self.loop_start_bar as i64 - delta).max(0) as usize;
+            }
+            if self.loop_end_bar as f32 >= end {
+                self.loop_end_bar = (self.loop_end_bar as i64 - delta).max(0) as usize;
+            }
+        } else {
+            if self.loop_start_bar as f32 >= start {
+                self.loop_start_bar = (self.loop_start_bar as i64 + delta).max(0) as usize;
+            }
+            if self.loop_end_bar as f32 >= start {
+                self.loop_end_bar = (self.loop_end_bar as i64 + delta).max(0) as usize;
+            }
+        }
+        for i in 0..self.playlist_tracks.len() {
+            self.sync_track_regions(i);
+        }
+        self.status_message = crate::tstatus!(
+            "⏱ {}: takt {}–{} ({} takter), {} region(er) ändrade [Ångra: Ctrl+Z]",
+            name,
+            start + 1.0,
+            end + 1.0,
+            span,
+            touched
+        );
+    }
+
+
 pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
     let needs_mic = self.playlist_tracks.is_empty()
         || !self.playlist_tracks.iter().any(|t| {
@@ -1021,6 +1097,7 @@ impl SonixApp {
                         self.tempo_menu_bar = Some(bar);
                     }
                     let mut tempo_set_here = false;
+                    let mut time_op: Option<u8> = None;
                     let mut tempo_remove_here = false;
                     ruler_resp.clone().context_menu(|ui| {
                         let bar = self.tempo_menu_bar.unwrap_or(0);
@@ -1039,6 +1116,43 @@ impl SonixApp {
                             tempo_remove_here = true;
                             ui.close_menu();
                         }
+                        ui.separator();
+                        let (t0, t1) = self.time_range_bars();
+                        ui.label(
+                            egui::RichText::new(crate::tstatus!("⏱ Tid: takt {}–{}", t0 + 1.0, t1 + 1.0))
+                                .size(10.0)
+                                .color(Theme::TEXT_MUTED),
+                        );
+                        if ui
+                            .button(crate::i18n::t("⏱ Infoga tid"))
+                            .on_hover_text(crate::i18n::t(
+                                "Skjut allt som ligger efter markeringen framåt",
+                            ))
+                            .clicked()
+                        {
+                            time_op = Some(1);
+                            ui.close_menu();
+                        }
+                        if ui
+                            .button(crate::i18n::t("🗑 Ta bort tid"))
+                            .on_hover_text(crate::i18n::t(
+                                "Ta bort markeringen och flytta ihop resten",
+                            ))
+                            .clicked()
+                        {
+                            time_op = Some(2);
+                            ui.close_menu();
+                        }
+                        if ui
+                            .button(crate::i18n::t("⏱ Duplicera tid"))
+                            .on_hover_text(crate::i18n::t(
+                                "Kopiera markeringen och skjut fram resten",
+                            ))
+                            .clicked()
+                        {
+                            time_op = Some(3);
+                            ui.close_menu();
+                        }
                     });
                     if tempo_set_here {
                         let bar = self.tempo_menu_bar.unwrap_or(0);
@@ -1046,6 +1160,10 @@ impl SonixApp {
                         self.set_tempo_point(bar, bpm);
                     } else if tempo_remove_here {
                         self.remove_tempo_point(self.tempo_menu_bar.unwrap_or(0));
+                    }
+                    if let Some(op) = time_op {
+                        let (t0, t1) = self.time_range_bars();
+                        self.apply_time_op(op, t0, t1);
                     }
                     ui.painter().rect_filled(ruler_rect, Rounding::ZERO, Color32::from_rgb(16, 19, 26));
                     ui.painter().line_segment([Pos2::new(ruler_rect.min.x, ruler_rect.max.y), Pos2::new(ruler_rect.max.x, ruler_rect.max.y)], Stroke::new(1.0_f32, Color32::from_rgb(45, 52, 68)));

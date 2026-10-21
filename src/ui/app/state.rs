@@ -221,6 +221,19 @@ pub struct AudioRegion {
     pub tape: bool,
 }
 
+/// Flyttar låtsektioner när tid infogas eller tas bort. `delta` är positiv vid infogning.
+pub fn shift_song_markers(markers: &mut [SongMarker], at_bar: f32, delta: i64) -> usize {
+    let mut moved = 0;
+    for m in markers.iter_mut() {
+        if m.start_bar as f32 >= at_bar - 1e-4 {
+            let shifted = m.start_bar as i64 + delta;
+            m.start_bar = shifted.max(0) as usize;
+            moved += 1;
+        }
+    }
+    moved
+}
+
 pub(crate) fn default_region_color() -> Color32 {
     Color32::from_rgb(100, 180, 255)
 }
@@ -791,6 +804,108 @@ impl PlaylistTrack {
         self.frozen.is_some()
     }
 
+    /// **Infoga tid**: allt som börjar vid `at_bar` eller senare flyttas `bars` takter framåt.
+    /// En region som spänner över insättningspunkten förlängs i stället — annars hade dess
+    /// ljud hamnat i otakt med resten av låten. Källan loopas om den är kortare än regionen.
+    /// Motsvarar Abletons `Insert Time`.
+    pub fn insert_time(&mut self, at_bar: f32, bars: f32) -> usize {
+        if bars <= 0.0 {
+            return 0;
+        }
+        let mut touched = 0;
+        for r in &mut self.regions {
+            let end = r.start_bar + r.length_bars;
+            if r.start_bar >= at_bar - 1e-4 {
+                r.start_bar += bars;
+                touched += 1;
+            } else if end > at_bar + 1e-4 {
+                r.length_bars += bars;
+                touched += 1;
+            }
+        }
+        touched
+    }
+
+    /// **Ta bort tid**: intervallet `[start_bar, end_bar)` försvinner och allt efter flyttas ihop.
+    /// Regioner som bara delvis ligger inne kortas; de som ligger helt inne tas bort.
+    /// Returnerar `(borttagna, ändrade)`.
+    pub fn delete_time(&mut self, start_bar: f32, end_bar: f32) -> (usize, usize) {
+        let span = (end_bar - start_bar).max(0.0);
+        if span <= 0.0 {
+            return (0, 0);
+        }
+        let mut removed = 0;
+        let mut changed = 0;
+        self.regions.retain_mut(|r| {
+            let r_end = r.start_bar + r.length_bars;
+            if r_end <= start_bar + 1e-4 {
+                return true; // helt före intervallet
+            }
+            if r.start_bar >= end_bar - 1e-4 {
+                r.start_bar -= span; // helt efter: flyttas ihop
+                changed += 1;
+                return true;
+            }
+            if r.start_bar >= start_bar - 1e-4 && r_end <= end_bar + 1e-4 {
+                removed += 1; // helt inne: bort
+                return false;
+            }
+            if r.start_bar < start_bar && r_end > end_bar {
+                r.length_bars -= span; // spänner över hela: kortas
+                changed += 1;
+                return true;
+            }
+            if r.start_bar < start_bar {
+                r.length_bars = start_bar - r.start_bar; // slutet skärs av
+                changed += 1;
+                return true;
+            }
+            // Börjar inne i intervallet och slutar efter: börja vid intervallets slut.
+            let cut = end_bar - r.start_bar;
+            r.start_bar = start_bar;
+            r.length_bars = r_end - end_bar;
+            r.sample_offset_sec += cut;
+            changed += 1;
+            true
+        });
+        (removed, changed)
+    }
+
+    /// **Duplicera tid**: det som ligger helt inne i intervallet kopieras, och kopian läggs
+    /// direkt efter intervallet; allt som låg där flyttas fram lika mycket.
+    /// Motsvarar Abletons `Duplicate Time`. Returnerar antalet kopierade regioner.
+    pub fn duplicate_time(&mut self, start_bar: f32, end_bar: f32) -> usize {
+        let span = (end_bar - start_bar).max(0.0);
+        if span <= 0.0 {
+            return 0;
+        }
+        let mut next_id = self.regions.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+        let mut copies: Vec<AudioRegion> = self
+            .regions
+            .iter()
+            .filter(|r| {
+                r.start_bar >= start_bar - 1e-4 && r.start_bar + r.length_bars <= end_bar + 1e-4
+            })
+            .cloned()
+            .collect();
+        if copies.is_empty() {
+            return 0;
+        }
+        let n = copies.len();
+        for c in &mut copies {
+            c.start_bar += span;
+            c.id = next_id;
+            next_id += 1;
+        }
+        for r in &mut self.regions {
+            if r.start_bar >= end_bar - 1e-4 {
+                r.start_bar += span;
+            }
+        }
+        self.regions.extend(copies);
+        n
+    }
+
     /// Skapar korsningar där två regioner på spåret överlappar varandra.
     ///
     /// Den tidigare regionen får tona ut och den senare tona in, båda lika långa som
@@ -928,5 +1043,105 @@ mod crossfade_tests {
         assert_eq!(t.create_crossfades(), 0);
         assert_eq!(t.regions[0].fade_out_bars, 0.0);
         assert_eq!(t.regions[1].fade_in_bars, 0.0);
+    }
+}
+
+#[cfg(test)]
+mod time_ops_tests {
+    use super::*;
+
+    fn region(id: usize, start: f32, len: f32, offset: f32) -> AudioRegion {
+        AudioRegion {
+            id,
+            name: format!("r{id}"),
+            start_bar: start,
+            length_bars: len,
+            sample_offset_sec: offset,
+            source_path: None,
+            waveform_peaks: Vec::new(),
+            volume: 1.0,
+            fade_in_bars: 0.0,
+            fade_out_bars: 0.0,
+            muted: false,
+            is_reverse: false,
+            color: default_region_color(),
+            loop_length_bars: 0.0,
+            source_bpm: 0.0,
+            tape: false,
+        }
+    }
+
+    fn track(regions: Vec<AudioRegion>) -> PlaylistTrack {
+        let mut t = PlaylistTrack::new(
+            "t".to_string(),
+            "🎵",
+            TrackKind::CustomAudio,
+            Color32::from_rgb(1, 2, 3),
+        );
+        t.regions = regions;
+        t
+    }
+
+    #[test]
+    fn inserting_time_pushes_later_regions_and_stretches_the_one_it_cuts() {
+        // 0–4 (spänner över takt 2), 6–8. Infoga 2 takter vid takt 2.
+        let mut t = track(vec![region(1, 0.0, 4.0, 0.0), region(2, 6.0, 2.0, 1.5)]);
+        assert_eq!(t.insert_time(2.0, 2.0), 2);
+        assert_eq!(t.regions[0].length_bars, 6.0, "regionen som klipps ska förlängas");
+        assert_eq!(t.regions[0].start_bar, 0.0);
+        assert_eq!(t.regions[1].start_bar, 8.0, "den senare ska flyttas två takter");
+        assert_eq!(t.regions[1].sample_offset_sec, 1.5, "offsetten rörs inte");
+    }
+
+    #[test]
+    fn deleting_time_removes_what_is_inside_and_closes_the_gap() {
+        // 0–1 före, 2–3 inne, 4–8 efter, 1–6 spänner över allt.
+        let mut t = track(vec![
+            region(1, 0.0, 1.0, 0.0),
+            region(2, 2.0, 1.0, 0.0),
+            region(3, 4.0, 4.0, 0.0),
+            region(4, 1.0, 5.0, 2.0),
+        ]);
+        let (removed, changed) = t.delete_time(2.0, 3.0);
+        assert_eq!(removed, 1, "2–3 ligger helt inne och ska bort");
+        assert_eq!(changed, 2, "4–8 flyttas ihop och 1–6 kortas");
+        assert!(t.regions.iter().any(|r| r.start_bar == 0.0), "det som låg före rörs inte");
+        // 4–8 blir 3–7: en takt bort, resten ihop.
+        let after = t.regions.iter().find(|r| r.id == 3).unwrap();
+        assert_eq!(after.start_bar, 3.0);
+        assert_eq!(after.length_bars, 4.0);
+        // 1–6 spänner över hela intervallet: starten står kvar, längden kortas.
+        let spanning = t.regions.iter().find(|r| r.id == 4).unwrap();
+        assert_eq!(spanning.start_bar, 1.0);
+        assert_eq!(spanning.length_bars, 4.0);
+        assert_eq!(spanning.sample_offset_sec, 2.0, "offsetten rörs inte när starten står kvar");
+    }
+
+    #[test]
+    fn deleting_the_start_of_a_region_trims_it_and_moves_the_source() {
+        // 2,5–6 med borttagning 2–3: regionen börjar inne i intervallet, alltså ska den
+        // flyttas till intervallets början och källan hoppa fram lika mycket.
+        let mut t = track(vec![region(1, 2.5, 3.5, 0.0)]);
+        let (_, changed) = t.delete_time(2.0, 3.0);
+        assert_eq!(changed, 1);
+        let r = &t.regions[0];
+        assert_eq!(r.start_bar, 2.0);
+        // Kvar av 2,5–6 är 3–6 = tre takter, lagda där intervallet låg.
+        assert_eq!(r.length_bars, 3.0);
+        assert_eq!(r.sample_offset_sec, 0.5, "ljudet ska börja en halv takt in i källan");
+    }
+
+    #[test]
+    fn duplicating_time_copies_the_inside_and_pushes_the_rest() {
+        // 0–2 (inne i 0–4), 4–6 (efter). Duplicera 0–4 → kopian hamnar 4–6, originalet 4–6 flyttas till 8–10.
+        let mut t = track(vec![region(1, 0.0, 2.0, 0.0), region(2, 4.0, 2.0, 0.0)]);
+        assert_eq!(t.duplicate_time(0.0, 4.0), 1);
+        assert_eq!(t.regions.len(), 3);
+        assert_eq!(t.regions[0].start_bar, 0.0, "originalet ligger kvar");
+        let copy = t.regions.iter().find(|r| r.start_bar == 4.0).unwrap();
+        assert_eq!(copy.length_bars, 2.0);
+        assert_ne!(copy.id, 1, "kopian ska ha eget id");
+        let moved = t.regions.iter().find(|r| r.id == 2).unwrap();
+        assert_eq!(moved.start_bar, 8.0, "det som låg efter flyttas fram");
     }
 }

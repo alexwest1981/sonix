@@ -2937,7 +2937,7 @@ plugg-uppslag med status, innehållet (7 993 presets, 5 135 paket, 2 111 fraser,
 impulser), undersystemen (piano roll-skript, Markov-ackordgenerator, LilyPond, NDI/Spout,
 Demucs, 13 kontrollerytor) och gap-matrisen per område. Här står bara det byggda och det kvarvarande.
 
-### Vad som byggdes i dag — fjorton funktioner, alla mätta
+### Vad som byggdes i dag — sjutton funktioner, alla mätta
 
 | FL-plugin | Vad den gör | Sonix före | Nu (med provet som bevisar det) |
 | :--- | :--- | :--- | :--- |
