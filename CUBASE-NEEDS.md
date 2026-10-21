@@ -52,9 +52,9 @@ ingen radering enligt villkor, ingen urvalsmodell.
 | ~~5~~ | ~~**Logical Editor-lite**~~ — **klart**: fält × jämförelse × åtgärd, en rad | M | återanvänder `delete_cells`/`transpose_cells`; bara villkoret är ny kod |
 | ~~6~~ | ~~**Arranger Track**~~ — **klart**: sektionskedja som uppspelningen följer | M | sektionerna var redan markörer med längd; det som saknades var ordningen |
 | ~~9~~ | ~~**Projektmallar**~~ — **klart**: `Templates/`, Arkiv-menyn | S | en mall är ett vanligt projekt i en annan katalog |
-| 7 | **Chord Track** — ett spår andra följer | M | vi har ackordgenerator (`chord_generator_modal.rs`), inte ett spår |
-| 8 | **Control Room** — monitor, cue, talkback | M | 50 av deras 1 148 kommandon; vi har master ut |
-| 10 | **Stämmseparering med modell** | L | `neural_separator.rs` finns, ingen modell skeppas |
+| ~~7~~ | ~~**Chord Track**~~ — **klart**: ackord per takt + snapp till närmaste ackordston | M | vägvalet var melodins karaktär: snapp, inte transponering |
+| ~~8~~ | ~~**Control Room**~~ — **klart så långt det är komplett**: utgångsbussar på valfria kanalpar | M | 50 av deras kommandon är monitor/cue; vi har distributionsdelen, inte sändningsmatrisen |
+| ~~10~~ | ~~**Stämmseparering med modell**~~ — **vägen klar**: nedladdning från repot, inte i skeppningslasten | L | modellen ligger i en release-tillgång; `download_model` byter namn först när storleken stämmer |
 
 ## 4. Byggt nu
 

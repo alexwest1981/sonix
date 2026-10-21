@@ -3040,3 +3040,15 @@ alltså mest **urval och bulk-edit på noter** — inte ljud och inte mixning.
   Att bygga panelen utan utgångarna vore en attrapp.
 - **Stämmseparering med modell** (L): kräver att en ONNX-modell skeppas eller laddas ner —
   ett storleks- och licensbeslut, inte en kodfråga.
+
+## De tre vägvalen, byggda (21 okt 2026)
+
+| Vad | Commit | Vägvalet |
+|---|---|---|
+| Ackordspår | `d2e9ee8` | **melodins karaktär** — snapp till närmaste ackordston, inte transponering |
+| Utgångsbussar | `ab715d5` | **ingång för alla tänkbara utgångar** — valfria kanalpar, en buss per par |
+| Modellnedladdning | `55c8e47` | **hämtas från repot** — inte i skeppningslasten, `.part` + storlekskontroll |
+
+Kvar av Control Room: sändningsmatrisen (vilken kanal som hörs i monitor A/B, cue-sändningar per
+kanal, talkback). Distributionsdelen — att mixen kan gå till vilka kanalpar som helst — är byggd
+och provad; matrisen kräver att varje kanal får en egen signal, vilket är nästa steg.
