@@ -638,7 +638,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "44.1 kHz • 64 buffert (1.4 ms latency)" => "44.1 kHz • 64 buffer (1.4 ms latency)",
         "5. Spela in melodier: Tryck F5 för Piano Roll eller spela live med datortangentbordet." => "5. Record melodies: Press F5 for the Piano Roll, or play live with the computer keyboard.",
         "6. Mixa & Exportera: Tryck F6 för Mixern och Ctrl+E för att exportera mastrad 48kHz WAV." => "6. Mix & Export: Press F6 for the Mixer and Ctrl+E to export a mastered 48kHz WAV.",
-        "8-punkters realtids-morphing mellan subtraktiva, FM- och wavetable-synteser" => "8-point real-time morphing between subtractive, FM and wavetable synthesis",
+        "8-punkters realtidsmorfning av vågform, ADSR och filter (subtraktiv syntes)" => "8-point real-time morphing of waveform, ADSR and filter (subtractive synthesis)",
         "AKTIVA SYNTPARAMETRAR (MORPHED)" => "ACTIVE SYNTH PARAMETERS (MORPHED)",
         "API-nyckel:" => "API key:",
         "Ackord:" => "Chord:",

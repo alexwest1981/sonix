@@ -2,6 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams, ReverbParams,
+    SaturatorParams, TransientParams,
 };
 use crate::ui::theme::Theme;
 use crate::ui::widgets::rotary_knob;
@@ -139,6 +140,36 @@ impl Default for FxRackState {
                     description: "Tystar bakgrundsbrus och sus när sångaren inte sjunger.",
                 },
                 FxPedal {
+                    id: "transient",
+                    name: "⚡ TRANSIENT SHAPER",
+                    category: "Dynamics",
+                    enabled: false,
+                    color: Color32::from_rgb(255, 200, 60),
+                    p1_name: "ATTACK",
+                    p1_val: 0.5,
+                    p2_name: "SUSTAIN",
+                    p2_val: 0.5,
+                    p3_name: "SENS",
+                    p3_val: 0.5,
+                    mix: 1.0,
+                    description: "Formar anslaget och kroppen var för sig — mer punch utan att höja nivån.",
+                },
+                FxPedal {
+                    id: "saturator",
+                    name: "🔥 SATURATOR",
+                    category: "Sound Design",
+                    enabled: false,
+                    color: Color32::from_rgb(255, 120, 60),
+                    p1_name: "DRIVE",
+                    p1_val: 0.0,
+                    p2_name: "TONE",
+                    p2_val: 0.70,
+                    p3_name: "MIX",
+                    p3_val: 0.50,
+                    mix: 1.0,
+                    description: "Mjuk mättnad (tanh) med tonkontroll — aldrig över full skala.",
+                },
+                FxPedal {
                     id: "analog_filter",
                     name: "🎛 SVF FILTER (12 dB)",
                     category: "Sound Design",
@@ -255,6 +286,20 @@ impl FxRackState {
             freq: 4000.0 + ds_p.map(|p| p.p2_val).unwrap_or(0.65) * 8000.0,
         };
 
+        let tr_p = self.pedal("transient");
+        let transient = TransientParams {
+            attack_db: (tr_p.map(|p| p.p1_val).unwrap_or(0.5) * 2.0 - 1.0) * 12.0,
+            sustain_db: (tr_p.map(|p| p.p2_val).unwrap_or(0.5) * 2.0 - 1.0) * 12.0,
+            sensitivity: tr_p.map(|p| p.p3_val).unwrap_or(0.5),
+        };
+
+        let sat_p = self.pedal("saturator");
+        let sat = SaturatorParams {
+            drive: 1.0 + sat_p.map(|p| p.p1_val).unwrap_or(0.0).clamp(0.0, 1.0) * 19.0,
+            tone: sat_p.map(|p| p.p2_val).unwrap_or(0.7),
+            mix: sat_p.map(|p| p.p3_val).unwrap_or(0.5),
+        };
+
         let gate_p = self.pedal("noise_gate");
         let gate = GateParams {
             threshold: {
@@ -292,6 +337,10 @@ impl FxRackState {
             doubler_enabled: dbl_p.map(|p| p.enabled).unwrap_or(false),
             deesser,
             deesser_enabled: ds_p.map(|p| p.enabled).unwrap_or(false),
+            transient,
+            transient_enabled: tr_p.map(|p| p.enabled).unwrap_or(false),
+            sat,
+            sat_enabled: sat_p.map(|p| p.enabled).unwrap_or(false),
             gate,
             gate_enabled: gate_p.map(|p| p.enabled).unwrap_or(false),
             filter,

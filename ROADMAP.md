@@ -2901,3 +2901,81 @@ graph TD
   - **0 kompilatorvarningar** i både Linux- och Windows-byggen (hårt CI-krav).
   - **Ljudintegritet:** `sonix --selftest` verifierar ljudtrådens klocka, latency och masternivåer direkt mot hårdvaran utan regressioner.
 
+
+---
+
+## 🔎 FL Studio 26.1.7 — inventariet ur installationsfilen (2026-10-21)
+
+**Frågan:** vad har FL Studio som Sonix inte har? Underlaget är **filen själv**, inte en
+funktionslista från webben: `flstudio_win64_26.1.7.5654.exe` (1 055 MiB) lästes statiskt.
+
+### Vad filen är (mätt)
+
+| Mätning | Värde |
+| :--- | :--- |
+| Format | PE32 (GUI), Intel i386, 5 sektioner, `FileVersion 26.1.7.0` |
+| Kod i **exehead** | 28 160 B (`.text` 0x6e00) — alltså bara NSIS-laddaren |
+| NSIS-signatur | `NullsoftInst` vid **0x10a04**, förstaheader vid 0x10a00 |
+| Block 0 | 400 987 B komprimerat → **3 519 116 B**, LZMA (`5d 00 00 80 00`, 8 MB ordbok) |
+| Payload | en kedja LZMA-block efter block 0; första blocket är en PE (396 800 B) |
+| `7z` | **öppnar inte filen** (PE-detekteringen vinner över NSIS-hanteraren) |
+
+Block 0 är skript- och **filtabellen**. Ur den: **26 472 UTF-16-strängar**, varav **13 925
+filnamn** — fördelningen är installationens hela innehåll:
+
+`.fst` 7 796 · `.wav` 3 911 · `.png` 278 · `.ogg` 278 · `.flac` 269 · **`.dll` 246** · `.nfo` 241 ·
+`.ini` 227 · `.fnv` 220 · `.flp` 160 · `.txt` 74 · `.svg` 67 · `.ttf` 63 · `.dat` 47 · `.exe` 35 ·
+`.mp3` 9 · `.chm` 2
+
+**Ghidra är inte installerat på maskinen, och det är rätt beslut här:** målet för en
+disassemblering vore en 28 KB NSIS-laddare, medan musiken ligger i payloaden
+(`FL64.exe`, `FLEngine_x64.dll`). Det som *gav* svaret var att läsa header, avkoda block 0 och
+räkna upp tabellen — ingen gissning om vad som "brukar finnas i FL".
+
+### Vad de gör bra som vi inte hade — och vad som byggdes i dag
+
+Två **signatureffekter** som saknades helt är byggda i masterns kedja, med prov:
+
+| FL-plugin | Vad den gör | Sonix före | Nu |
+| :--- | :--- | :--- | :--- |
+| **Transient Processor** | anslag och kropp var för sig | fanns inte | `TransientParams`/`TransientShaper` — attack ±12 dB, sustain ±12 dB, känslighet; **bit-identisk vid 0 dB** (`transient_shaper_is_transparent_at_zero`), +12 dB lyfter ett anslag ~4× (`attack_boost_lifts_the_attack_of_a_hit`), −12 dB kropp ger 0,251 av en jämn ton (`sustain_cut_lowers_a_steady_tone`) |
+| **Soft Clipper / Fast Dist / WaveShaper** | mättnad med tak | bara `drive` i filtret | `SaturatorParams`/`Saturator` — `tanh` normaliserad med `1/tanh(drive)`, tonkontroll, mix; tredjetonen mätt: **4,6 % / 13,1 % / 24,4 %** vid drive 2/4/8, aldrig över full skala (`saturator_never_exceeds_full_scale`) |
+
+Båda ligger som pedaler i FX-racket (`transient`, `saturator`), avstängda som standard — och
+eftersom `NonTrackSound` redan bär pedaler generiskt (`id` + tre värden + `enabled`) följer
+både ångring, digest och snapshot med **utan nya fält**. 630 tester (default) / 679
+(`plugin-host`), 0 varningar i alla fyra byggena.
+
+### Vad som återstår — rangordnat, ur samma tabell
+
+| # | FL | Läget i Sonix (mätt i koden) | Storlek |
+| :--: | :--- | :--- | :---: |
+| 1 | **Maximus / Fruity Multiband Compressor** | ingen banddelning alls; ordet "multiband" finns bara som i18n-text | *M* |
+| 2 | **Fruity Convolver** | inget `convol*` i koden — reverbet är algoritmiskt | *M* |
+| 3 | **Sytrus / DX10 / Ogun / Harmor** | oscillatorn är `enum Waveform` (Saw/Square/Triangle/Sine) — ingen FM, ingen additiv, ingen spektral | *L* |
+| 4 | **Fruity Granulizer** | inget granularinstrument | *M* |
+| 5 | **Vocodex / Fruity Vocoder** | vocoder nämns bara vid **igenkänning** av externa plugins | *M* |
+| 6 | **MIDI Out** | ingen `MidiOutput` i kodbasen (Sprint 1, punkt 4) | *M* |
+| 7 | **VFX Key Mapper / Keyboard Splitter / Level Scaler** | sampelzoner per tangent finns (`keymap.rs`), men ingen MIDI-omvandling per spår | *S* |
+| 8 | **Soundfont Player / DirectWave** | zoner + `root`/`key_low`/`key_high` finns; **SF2-läsare** finns inte | *M* |
+| 9 | **Gross Beat** | `RemixFx` kan beat-repeat/reverse/tape-stop, men ingen tids-/volymkurva per steg | *M* |
+| 10 | Fruity Video Player · ZGameEditor · Dashboard · NoteBook | saknas (lägst värde för en DAW utan videospår) | *S–M* |
+
+Redan klart hos oss, av samma tabell: **Patcher** (`patcher.rs`), **Slicex/Slicer** (choppern,
+8.7), **Edison** (recorder), **Newtone/Newtime** (stretch + formant), **dB Meter/Wave
+Candy/Spectroman** (`spectrum.rs` + mätarna), **Balance/Send/Stereo Enhancer** (pan, sends,
+`Doubler`), **Fruity Limiter/EQ/Compressor/Gate/De-esser** (masterns kedja).
+
+### Var de är svaga — och där vi redan gör det bättre
+
+Inventariet visar deras modell: **7 796 `.fst`-presetfiler i mappar**, **246 DLL:er i en platt
+katalog**, och tre generationer av samma effekt sida vid sida (`Reeverb`/`Reeverb 2`,
+`Delay`/`Delay 2`/`Delay 3`, `Wasp`/`Wasp XT`). Presetbiblioteket *är* filsystemet, och
+hjälpen är två separata `.chm`. Sonix har i stället **ett sökbart index**
+(`~/.cache/sonix/library_cache.tsv`, `browser.rs`) och **ett** namn per effekt — den vägen ska vi
+inte lämna.
+
+**Rättat i dag, samma familj:** Alchemy-paden lovade *"8-punkters realtids-morphing mellan
+subtraktiva, FM- och wavetable-synteser"* medan koden bara morfar `Waveform`, ADSR och filter —
+ingen FM, ingen wavetable. Texten säger nu vad koden gör (subtraktiv morfning av vågform, ADSR och
+filter). En etikett som lovar mer än motorn är samma fel som en kontroll ingen läser.

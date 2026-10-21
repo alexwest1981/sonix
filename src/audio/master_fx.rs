@@ -407,6 +407,136 @@ impl DeEsser {
 }
 
 // ---------------------------------------------------------------------------
+// Transient shaper (FL Studio: Transient Processor)
+// ---------------------------------------------------------------------------
+
+/// **Anslagskontroll.** Två höljesföljare på samma signal: en snabb som följer anslaget och en
+/// långsam som följer kroppen. Skillnaden dem emellan, delad med den snabba nivån, är hur mycket
+/// av ljudet som *är* ett anslag — och den andelen styr två separata vinster.
+///
+/// Vid 0 dB på båda är förstärkningen exakt 1,0 (10⁰ · 10⁰), alltså bit-identisk genomgång.
+/// `transient_shaper_is_transparent_at_zero` håller den regeln.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TransientParams {
+    /// Anslagets vinst i dB (−12 .. +12). 0 = orörd.
+    pub attack_db: f32,
+    /// Kroppens (svansens) vinst i dB (−12 .. +12). 0 = orörd.
+    pub sustain_db: f32,
+    /// Hur stor skillnad som räknas som anslag (0 = bara knivskarpa, 1 = även mjuka). 0,5 = normal.
+    pub sensitivity: f32,
+}
+
+impl Default for TransientParams {
+    fn default() -> Self {
+        Self { attack_db: 0.0, sustain_db: 0.0, sensitivity: 0.5 }
+    }
+}
+
+pub struct TransientShaper {
+    fast_rel: f32,
+    slow_atk: f32,
+    slow_rel: f32,
+    fast: f32,
+    slow: f32,
+}
+
+impl TransientShaper {
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        Self {
+            fast_rel: (-1.0 / (0.030 * sr)).exp(),
+            slow_atk: 1.0 / (0.150 * sr),
+            slow_rel: (-1.0 / (0.400 * sr)).exp(),
+            fast: 0.0,
+            slow: 0.0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &TransientParams) -> (f32, f32) {
+        let det = l.abs().max(r.abs());
+        // Snabb: omedelbart anslag, 30 ms släpp — topphållaren.
+        self.fast = if det > self.fast { det } else { det + self.fast_rel * (self.fast - det) };
+        // Långsam: 150 ms upp, 400 ms ned — kroppens nivå, utan anslagets spets.
+        self.slow = if det > self.slow {
+            self.slow + self.slow_atk * (det - self.slow)
+        } else {
+            det + self.slow_rel * (self.slow - det)
+        };
+        let peak = self.fast.max(1e-9);
+        let transient = ((self.fast - self.slow) / peak).clamp(0.0, 1.0);
+        let thr = 1.0 - 0.8 * p.sensitivity.clamp(0.0, 1.0);
+        let t = if transient <= thr {
+            0.0
+        } else {
+            ((transient - thr) / (1.0 - thr)).clamp(0.0, 1.0)
+        };
+        let gain = 10.0_f32.powf(p.attack_db * t / 20.0)
+            * 10.0_f32.powf(p.sustain_db * (1.0 - t) / 20.0);
+        (l * gain, r * gain)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Saturator (FL Studio: Fruity Soft Clipper / Fast Dist / WaveShaper)
+// ---------------------------------------------------------------------------
+
+/// **Saturering**: mjuk klippning (`tanh`) med tonkontroll efter distorsionen.
+///
+/// Normaliseringen `1/tanh(drive)` gör att full skala in blir full skala ut **oavsett drive** —
+/// reglaget ändrar hur mycket kurvan böjer, inte hur stark signalen är. Utgången kan därför
+/// aldrig gå över 1,0: `saturator_never_exceeds_full_scale` mäter det.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SaturatorParams {
+    /// Förstärkning in i kurvan (1,0 = ren, 20,0 = hårt mättad).
+    pub drive: f32,
+    /// 0 = mörk (500 Hz), 1 = öppen (20 kHz). Lågpass **efter** kurvan.
+    pub tone: f32,
+    /// Torr/våt (0 = ren genomgång).
+    pub mix: f32,
+}
+
+impl Default for SaturatorParams {
+    fn default() -> Self {
+        Self { drive: 1.0, tone: 1.0, mix: 0.0 }
+    }
+}
+
+pub struct Saturator {
+    sample_rate: f32,
+    lp_l: f32,
+    lp_r: f32,
+}
+
+impl Saturator {
+    pub fn new(sample_rate: f32) -> Self {
+        Self { sample_rate: sample_rate.max(1.0), lp_l: 0.0, lp_r: 0.0 }
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &SaturatorParams) -> (f32, f32) {
+        let mix = p.mix.clamp(0.0, 1.0);
+        if mix <= 0.001 {
+            return (l, r);
+        }
+        let drive = p.drive.clamp(1.0, 20.0);
+        let norm = 1.0 / drive.tanh();
+        let shaped_l = (drive * l).tanh() * norm;
+        let shaped_r = (drive * r).tanh() * norm;
+
+        let fc = 500.0 * 40.0_f32.powf(p.tone.clamp(0.0, 1.0));
+        let coeff = 1.0 - (-2.0 * PI * fc / self.sample_rate).exp();
+        self.lp_l += coeff * (shaped_l - self.lp_l);
+        self.lp_r += coeff * (shaped_r - self.lp_r);
+
+        (
+            l + mix * (self.lp_l - l),
+            r + mix * (self.lp_r - r),
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Master filter (with drive) + limiter
 // ---------------------------------------------------------------------------
 
@@ -545,6 +675,10 @@ pub struct MasterFxParams {
     pub doubler_enabled: bool,
     pub deesser: DeEsserParams,
     pub deesser_enabled: bool,
+    pub transient: TransientParams,
+    pub transient_enabled: bool,
+    pub sat: SaturatorParams,
+    pub sat_enabled: bool,
     pub gate: GateParams,
     pub gate_enabled: bool,
     pub filter: MasterFilterParams,
@@ -563,6 +697,10 @@ impl Default for MasterFxParams {
             doubler_enabled: false,
             deesser: DeEsserParams::default(),
             deesser_enabled: false,
+            transient: TransientParams::default(),
+            transient_enabled: false,
+            sat: SaturatorParams::default(),
+            sat_enabled: false,
             gate: GateParams::default(),
             gate_enabled: false,
             filter: MasterFilterParams::default(),
@@ -581,6 +719,8 @@ pub struct MasterFxChain {
     comp: Compressor,
     doubler: Doubler,
     deesser: DeEsser,
+    transient: TransientShaper,
+    sat: Saturator,
     gate: NoiseGate,
     filter: MasterFilter,
     limiter: Limiter,
@@ -598,6 +738,8 @@ impl MasterFxChain {
             comp: Compressor::new(sample_rate),
             doubler: Doubler::new(sample_rate),
             deesser: DeEsser::new(sample_rate),
+            transient: TransientShaper::new(sample_rate),
+            sat: Saturator::new(sample_rate),
             gate: NoiseGate::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
@@ -637,6 +779,14 @@ impl MasterFxChain {
             r = nr;
         }
 
+        // Anslaget formas före kompressorn: annars hade kompressorn ätit upp den vinst
+        // transientreglaget gjorde, och reglaget hade verkat svagare ju hårdare man komprimerar.
+        if p.transient_enabled {
+            let (nl, nr) = self.transient.process(l, r, &p.transient);
+            l = nl;
+            r = nr;
+        }
+
         if self.eq_active {
             for i in 0..4 {
                 l = self.eq_l[i].process(l, &self.eq_coeffs[i]);
@@ -658,6 +808,14 @@ impl MasterFxChain {
 
         if p.filter.enabled {
             let (nl, nr) = self.filter.process(l, r, &p.filter);
+            l = nl;
+            r = nr;
+        }
+
+        // Sist före limitern: en mättnad som ligger efter allt annat färgar hela kedjan,
+        // och limitern tar hand om den extra toppen den kan ge.
+        if p.sat_enabled {
+            let (nl, nr) = self.sat.process(l, r, &p.sat);
             l = nl;
             r = nr;
         }
@@ -1011,5 +1169,111 @@ mod tests {
             chain.process(0.5, 0.5);
         }
         assert!(chain.gain_reduction_db() < -1.0, "expected gain reduction, got {}", chain.gain_reduction_db());
+    }
+
+    /// Amplituden hos en enskild frekvens, mätt med Goertzel-formen (en bin av en DFT).
+    fn tone_mag(x: &[f32], freq: f32, sr: f32) -> f32 {
+        let w = 2.0 * std::f32::consts::PI * freq / sr;
+        let (mut re, mut im) = (0.0f32, 0.0f32);
+        for (i, s) in x.iter().enumerate() {
+            let ph = w * i as f32;
+            re += s * ph.cos();
+            im += s * ph.sin();
+        }
+        2.0 * (re * re + im * im).sqrt() / x.len() as f32
+    }
+
+    #[test]
+    fn transient_shaper_is_transparent_at_zero() {
+        // 0 dB på båda reglagen måste ge exakt insignalen tillbaka — förstärkningen är
+        // 10⁰ · 10⁰ = 1,0, alltså ingen avrundning alls.
+        let mut ts = TransientShaper::new(48_000.0);
+        let p = TransientParams::default();
+        for i in 0..5_000 {
+            let t = i as f32 / 48_000.0;
+            let x = (t * 220.0 * 2.0 * std::f32::consts::PI).sin() * 0.7;
+            let (l, r) = ts.process(x, -x, &p);
+            assert_eq!(l, x, "frame {i}");
+            assert_eq!(r, -x, "frame {i}");
+        }
+    }
+
+    #[test]
+    fn attack_boost_lifts_the_attack_of_a_hit() {
+        // Ett anslag (1,0 följt av tystnad): med +12 dB ska första samplen upp, resten vara tyst.
+        let mut ts = TransientShaper::new(48_000.0);
+        let p = TransientParams { attack_db: 12.0, sustain_db: 0.0, sensitivity: 0.5 };
+        let (l, _) = ts.process(1.0, 1.0, &p);
+        assert!(l > 3.0, "anslaget skulle lyfts med ~4 gånger, fick {l}");
+        let (l2, _) = ts.process(0.0, 0.0, &p);
+        assert_eq!(l2, 0.0, "tystnad ska förbli tyst");
+    }
+
+    #[test]
+    fn sustain_cut_lowers_a_steady_tone() {
+        // En jämn ton har inget anslag: −12 dB kropp ska ge ~0,25 av insignalen, inte 1,0.
+        let mut ts = TransientShaper::new(48_000.0);
+        let p = TransientParams { attack_db: 0.0, sustain_db: -12.0, sensitivity: 0.5 };
+        let mut out = Vec::new();
+        for i in 0..48_000 {
+            let t = i as f32 / 48_000.0;
+            let x = (t * 220.0 * 2.0 * std::f32::consts::PI).sin() * 0.5;
+            let (l, _) = ts.process(x, x, &p);
+            out.push(l);
+        }
+        let tail = &out[24_000..];
+        let rms = (tail.iter().map(|v| v * v).sum::<f32>() / tail.len() as f32).sqrt();
+        let input_rms = 0.5 / 2.0_f32.sqrt();
+        let ratio = rms / input_rms;
+        assert!(
+            (ratio - 0.251).abs() < 0.03,
+            "jämn ton med −12 dB kropp blev {ratio:.3} av insignalen (väntat ~0,251)"
+        );
+    }
+
+    #[test]
+    fn saturator_is_transparent_at_zero_mix() {
+        let mut sat = Saturator::new(48_000.0);
+        let p = SaturatorParams { drive: 12.0, tone: 0.3, mix: 0.0 };
+        for i in 0..1_000 {
+            let x = (i as f32 * 0.01).sin();
+            let (l, r) = sat.process(x, -x, &p);
+            assert_eq!(l, x);
+            assert_eq!(r, -x);
+        }
+    }
+
+    #[test]
+    fn saturation_harmonics_grow_with_drive() {
+        let sr = 48_000.0;
+        let measure = |drive: f32| {
+            let mut sat = Saturator::new(sr);
+            let p = SaturatorParams { drive, tone: 1.0, mix: 1.0 };
+            let mut out = Vec::new();
+            for i in 0..9_600 {
+                let x = (i as f32 / sr * 1_000.0 * 2.0 * std::f32::consts::PI).sin() * 0.4;
+                let (l, _) = sat.process(x, x, &p);
+                out.push(l);
+            }
+            let f = tone_mag(&out[1_000..], 1_000.0, sr);
+            let h3 = tone_mag(&out[1_000..], 3_000.0, sr);
+            h3 / f
+        };
+        let (d2, d4, d8) = (measure(2.0), measure(4.0), measure(8.0));
+        assert!(d2 < d4 && d4 < d8, "övertonerna ska växa med drive: {d2:.4} {d4:.4} {d8:.4}");
+        assert!(d8 > 0.01, "drive 8 ska ge hörbar tredjeton, fick {d8:.4}");
+    }
+
+    #[test]
+    fn saturator_never_exceeds_full_scale() {
+        // Normaliseringen 1/tanh(drive) håller utgången inom ±1 även för insignal 10.
+        let mut sat = Saturator::new(48_000.0);
+        let p = SaturatorParams { drive: 20.0, tone: 1.0, mix: 1.0 };
+        for i in 0..1_000 {
+            let x = if i % 2 == 0 { 10.0 } else { -10.0 };
+            let (l, r) = sat.process(x, -x, &p);
+            assert!(l.abs() <= 1.0 + 1e-6, "utgång {l} över full skala");
+            assert!(r.abs() <= 1.0 + 1e-6, "utgång {r} över full skala");
+        }
     }
 }

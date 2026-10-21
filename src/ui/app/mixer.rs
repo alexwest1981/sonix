@@ -1838,7 +1838,7 @@ pub(crate) fn render_alchemy_morph_pad(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(crate::i18n::t("✨ SONIX ALCHEMY SYNTHESIZER (Transform Pad)")).strong().size(14.0).color(Theme::FL_CYAN));
             ui.separator();
-            ui.label(egui::RichText::new(crate::i18n::t("8-punkters realtids-morphing mellan subtraktiva, FM- och wavetable-synteser")).size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("8-punkters realtidsmorfning av vågform, ADSR och filter (subtraktiv syntes)")).size(11.0).color(Theme::TEXT_MUTED));
         });
 
         ui.add_space(8.0);
