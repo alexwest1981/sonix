@@ -379,6 +379,31 @@ mod tests {
         (peak, corr)
     }
 
+    /// Mot en fil skriven av **ett annat program** (ffmpeg), när en sådan pekas ut.
+    ///
+    /// En 1 kHz sinus har ~0,045 nollgenomgångar per sampel vid 44,1 kHz. Brus har ~0,5.
+    /// Talet skiljer ton från brus utan att kräva att fasen stämmer — det var precis vad
+    /// som gick fel när 24- och 32-bitarsfiler avkodades som 8-bitars.
+    #[test]
+    fn a_wav_from_another_encoder_is_a_tone_not_noise() {
+        let Ok(path) = std::env::var("SONIX_WAV") else {
+            return;
+        };
+        let (l, _r, sr) = load_wav_pcm(&path).expect("filen ska gå att läsa");
+        assert!(l.len() > 1000, "filen är för kort för mätningen");
+        let zc = l
+            .windows(2)
+            .filter(|w| (w[0] < 0.0) != (w[1] < 0.0))
+            .count() as f32
+            / l.len() as f32;
+        let expected = 2.0 * 1000.0 / sr as f32;
+        println!("{path}: {sr} Hz, nollgenomgångar {zc:.4} (väntat ~{expected:.4})");
+        assert!(
+            (zc - expected).abs() < expected * 0.25,
+            "{path}: nollgenomgångar {zc:.4} mot väntat {expected:.4} — brus avkodat som ton?"
+        );
+    }
+
     #[test]
     fn every_wav_variant_decodes_to_the_sine_that_was_written() {
         for (format, bits, label) in [
