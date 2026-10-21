@@ -160,6 +160,8 @@ pub struct SonixApp {
     pub song_step_in_bar: usize,
     pub loop_start_bar: usize,
     pub loop_end_bar: usize,
+    /// Slinga på/av. Av som standard: en låt ska spelas igenom, inte snurra.
+    pub loop_enabled: bool,
     pub song_markers: Vec<SongMarker>,
     pub last_step_time: Instant,
     pub song_time: f32,
@@ -745,6 +747,7 @@ impl SonixApp {
             song_bar: 0,
             song_step_in_bar: 0,
             loop_start_bar: 0,
+            loop_enabled: false,
             loop_end_bar: 16,
             song_markers: Vec::new(),
             last_step_time: Instant::now(),

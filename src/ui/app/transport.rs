@@ -383,14 +383,33 @@ pub(crate) fn advance_sequencer(&mut self) {
                     let seek = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
                         .secs_at_bar(target as f64) as f32;
                     let _ = self.engine.send_command(AudioCommand::SeekSongPosition(seek));
-                } else if self.song_bar >= self.loop_end_bar || self.song_bar >= max_bars {
-                    self.song_bar = self.loop_start_bar;
-                    // Slingan ska gälla LJUDET också. Utan sökningen fortsätter
-                    // motor-klockan framåt medan takträknaren hoppar tillbaka, och
-                    // då går spelhuvud och ljud isär vid slingpunkten.
-                    let back_to = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
-                        .secs_at_bar(self.loop_start_bar as f64) as f32;
-                    let _ = self.engine.send_command(AudioCommand::SeekSongPosition(back_to));
+                } else {
+                    match crate::ui::app::state::after_bar_end(
+                        self.song_bar,
+                        self.loop_enabled,
+                        self.loop_start_bar,
+                        self.loop_end_bar,
+                        max_bars,
+                    ) {
+                        crate::ui::app::state::BarAdvance::Continue => {}
+                        crate::ui::app::state::BarAdvance::Wrap(target) => {
+                            self.song_bar = target;
+                            // Slingan ska gälla LJUDET också. Utan sökningen fortsätter
+                            // motor-klockan framåt medan takträknaren hoppar tillbaka, och
+                            // då går spelhuvud och ljud isär vid slingpunkten.
+                            let back_to = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+                                .secs_at_bar(target as f64) as f32;
+                            let _ = self.engine.send_command(AudioCommand::SeekSongPosition(back_to));
+                        }
+                        crate::ui::app::state::BarAdvance::Stop => {
+                            // Låten är slut: stanna på plats, utan att nollställa.
+                            self.song_bar = max_bars;
+                            self.is_playing = false;
+                            let _ = self.engine.send_command(AudioCommand::SetSongPlayback(false));
+                            self.status_message =
+                                crate::tstatus!("⏹ Låten slut (takt {})", max_bars);
+                        }
+                    }
                 }
             }
             self.current_step = self.song_step_in_bar;

@@ -349,6 +349,39 @@ pub fn next_chain_bar(bar: usize, sections: &[(usize, usize)], chain: &[usize]) 
     sections.get(next).map(|(start, _)| *start)
 }
 
+/// Vad som händer när takten tar slut.
+///
+/// Slingan gäller **bara när den är på**. Utan det här var slingan obetingad: låten
+/// hoppade tillbaka vid loop-slutet även med slingan avstängd, och allt efter
+/// loop-regionen gick aldrig att höra — det såg ut som att låten stannade.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum BarAdvance {
+    /// Spela vidare linjärt.
+    Continue,
+    /// Hoppa till den här takten (slingan).
+    Wrap(usize),
+    /// Låten är slut: stanna där vi är.
+    Stop,
+}
+
+/// `bar` är takten vi just lämnade (nästa takt är `bar + 1`).
+pub fn after_bar_end(
+    bar: usize,
+    loop_enabled: bool,
+    loop_start: usize,
+    loop_end: usize,
+    max_bars: usize,
+) -> BarAdvance {
+    let next = bar + 1;
+    if loop_enabled && next >= loop_end.max(loop_start + 1) {
+        return BarAdvance::Wrap(loop_start);
+    }
+    if next >= max_bars.max(1) {
+        return BarAdvance::Stop;
+    }
+    BarAdvance::Continue
+}
+
 pub fn shift_song_markers(markers: &mut [SongMarker], at_bar: f32, delta: i64) -> usize {
     let mut moved = 0;
     for m in markers.iter_mut() {
@@ -1350,5 +1383,41 @@ mod chord_tests {
         let c = ChordEvent { bar: 0, root: 2, quality: ChordQuality::Min7 };
         assert_eq!(c.pitch_classes(), vec![2, 5, 9, 0]);
         assert_eq!(c.name(), "Dm7");
+    }
+}
+
+#[cfg(test)]
+mod bar_advance_tests {
+    use super::{BarAdvance, after_bar_end};
+
+    #[test]
+    fn without_the_loop_the_song_plays_past_the_loop_region() {
+        // Slingan av: loop-slutet (18) får inte stoppa något — bara slutet på låten (28).
+        assert_eq!(after_bar_end(17, false, 0, 18, 28), BarAdvance::Continue);
+        assert_eq!(after_bar_end(18, false, 0, 18, 28), BarAdvance::Continue);
+        assert_eq!(after_bar_end(26, false, 0, 18, 28), BarAdvance::Continue);
+        assert_eq!(after_bar_end(27, false, 0, 18, 28), BarAdvance::Stop);
+    }
+
+    #[test]
+    fn with_the_loop_on_it_wraps_at_the_loop_end() {
+        assert_eq!(after_bar_end(16, true, 4, 18, 28), BarAdvance::Continue);
+        assert_eq!(after_bar_end(17, true, 4, 18, 28), BarAdvance::Wrap(4));
+    }
+
+    #[test]
+    fn a_backwards_or_collapsed_loop_becomes_one_bar_at_its_start() {
+        // loop_end <= loop_start (trasig region): slingan blir **en takt** från start, i
+        // stället för en radda hopp till samma takt — och den slår inte till innan vi är
+        // framme vid starttakten.
+        assert_eq!(after_bar_end(9, true, 9, 9, 28), BarAdvance::Wrap(9));
+        assert_eq!(after_bar_end(11, true, 12, 8, 28), BarAdvance::Continue);
+        assert_eq!(after_bar_end(12, true, 12, 8, 28), BarAdvance::Wrap(12));
+    }
+
+    #[test]
+    fn the_loop_wins_over_the_song_end() {
+        // Slingan slutar före sista takten: slingan ska gälla, inte slutet.
+        assert_eq!(after_bar_end(15, true, 0, 16, 16), BarAdvance::Wrap(0));
     }
 }

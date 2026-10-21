@@ -293,9 +293,19 @@ impl SonixApp {
                         self.toggle_playback();
                     }
 
-                    let loop_bg = Color32::from_rgb(38, 45, 55);
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁")).size(10.0).color(Theme::FL_CYAN)).fill(loop_bg)).on_hover_text(crate::i18n::t("Sätt loop")).clicked() {
-                        self.status_message = crate::tstatus!("Loop-region satt till Takt {}-{}", self.loop_start_bar + 1, self.loop_end_bar);
+                    let loop_bg = if self.loop_enabled { Theme::FL_GREEN } else { Color32::from_rgb(38, 45, 55) };
+                    let loop_fg = if self.loop_enabled { Color32::BLACK } else { Theme::FL_CYAN };
+                    if ui
+                        .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁")).size(10.0).strong().color(loop_fg)).fill(loop_bg))
+                        .on_hover_text(crate::i18n::t("Slinga på/av för takt {}–{}"))
+                        .clicked()
+                    {
+                        self.loop_enabled = !self.loop_enabled;
+                        self.status_message = if self.loop_enabled {
+                            crate::tstatus!("🔁 Slinga på: takt {}–{}", self.loop_start_bar + 1, self.loop_end_bar)
+                        } else {
+                            crate::i18n::t("🔁 Slinga av — låten spelas igenom").to_string()
+                        };
                     }
 
                     if ui
@@ -1168,11 +1178,14 @@ impl SonixApp {
                     ui.painter().rect_filled(ruler_rect, Rounding::ZERO, Color32::from_rgb(16, 19, 26));
                     ui.painter().line_segment([Pos2::new(ruler_rect.min.x, ruler_rect.max.y), Pos2::new(ruler_rect.max.x, ruler_rect.max.y)], Stroke::new(1.0_f32, Color32::from_rgb(45, 52, 68)));
 
-                    // Highlight loop region on ruler
-                    let loop_start_x = ruler_rect.min.x + self.loop_start_bar as f32 * bar_w;
-                    let loop_end_x = ruler_rect.min.x + self.loop_end_bar as f32 * bar_w;
-                    let loop_rect = Rect::from_min_max(Pos2::new(loop_start_x, ruler_rect.min.y), Pos2::new(loop_end_x, ruler_rect.max.y));
-                    ui.painter().rect_filled(loop_rect, Rounding::ZERO, Color32::from_rgb(26, 36, 52));
+                    // Slingområdet ritas bara när slingan är på — en ljus yta som inte gör
+                    // något är ett löfte om en loop som inte finns.
+                    if self.loop_enabled {
+                        let loop_start_x = ruler_rect.min.x + self.loop_start_bar as f32 * bar_w;
+                        let loop_end_x = ruler_rect.min.x + self.loop_end_bar as f32 * bar_w;
+                        let loop_rect = Rect::from_min_max(Pos2::new(loop_start_x, ruler_rect.min.y), Pos2::new(loop_end_x, ruler_rect.max.y));
+                        ui.painter().rect_filled(loop_rect, Rounding::ZERO, Color32::from_rgb(26, 36, 52));
+                    }
 
                     // Song section markers (created by the Song Structure arranger)
                     for marker in &self.song_markers {
