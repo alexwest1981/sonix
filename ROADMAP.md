@@ -2937,7 +2937,7 @@ plugg-uppslag med status, innehållet (7 993 presets, 5 135 paket, 2 111 fraser,
 impulser), undersystemen (piano roll-skript, Markov-ackordgenerator, LilyPond, NDI/Spout,
 Demucs, 13 kontrollerytor) och gap-matrisen per område. Här står bara det byggda och det kvarvarande.
 
-### Vad som byggdes i dag — elva funktioner, alla mätta
+### Vad som byggdes i dag — tolv funktioner, alla mätta
 
 | FL-plugin | Vad den gör | Sonix före | Nu (med provet som bevisar det) |
 | :--- | :--- | :--- | :--- |
@@ -2949,6 +2949,10 @@ Demucs, 13 kontrollerytor) och gap-matrisen per område. Här står bara det byg
 | **DX10 / Sytrus (FM)** | modulerad bärvåg | bara `enum Waveform` | `FmParams` + röstens modulatorsfas; sidoband på 440 Hz: **0,00351 → 0,06796** (19×) när index går 0 → 4 |
 | **Soundfont Player / DirectWave** | instrument ur en `.sf2` | ingen SF2-läsare | `audio/sf2.rs` — RIFF→pdta/sdta, zoner med `keyRange`, `velRange`, `sampleID`, `overridingRootKey`; prov mot en syntetisk fil med två sampel |
 | **MIDI Out** | noter till extern synt | ingen `MidiOutput` | `audio/midi_output.rs` + `--selftest`-rad: **öppnade `Midi Through` och skickade en not** (att mottagaren hörde den är *inte* mätt, och det står i utdatan) |
+| **Fruity / Hyper / Vintage Chorus** | modulerad fördröjning, bredd | ingen chorus alls | `ModDelay` — LFO i kvarts periodförskjutning mellan kanalerna; svepet mätt till **12–20 ms**, mix 0 **bit-identisk** |
+| **Fruity Flanger** | kort fördröjning med återkoppling | ingen flanger | samma `ModDelay`, 2,5 ms ± 2 ms med 0,6 feedback; kammen sveper **2 ms** |
+| **Fruity / Vintage Phaser** | svepande allpass-kam | ingen phaser | `Phaser` — 4 allpass, 200 Hz–2 kHz; nivån svänger **10× mer** med LFO, **exakt stilla** vid `depth = 0` |
+| **260 impulser (Convolver)** | inspelade rum | bara "ladda .wav" | `synthesize_ir` + `IR_BANK` — sex genererade rum 0,6–4,5 s; svansen **>4× svagare** vid 90 %; klick ger mätbar svans vid **125 ms** |
 
 Alla åtta är inkopplade i gränssnittet (FX-racket, OSCILLATOR-kolumnen, keymap-sektionen,
 REMIX FX-vyn respektive MIDI-modalen) och avstängda som standard, så ett gammalt projekt låter
