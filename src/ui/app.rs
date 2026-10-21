@@ -248,6 +248,16 @@ pub struct SonixApp {
     pub step_velocities: [f32; 16],
     /// Tröskel för "markera svaga": steg med lägre anslag markeras.
     pub piano_roll_quiet_threshold: f32,
+    /// Logical Editor-lite: vilket fält regeln jämför (0 anslag, 1 tonhöjd, 2 steg).
+    pub rule_field: usize,
+    /// 0 `<`, 1 `>`, 2 `=`.
+    pub rule_cmp: usize,
+    /// Jämförelsevärde — anslag 0–1, tonhöjd som MIDI-nummer, steg 1–16.
+    pub rule_value: f32,
+    /// 0 radera, 1 transponera, 2 sätt anslag.
+    pub rule_action: usize,
+    /// Åtgärdens tal: rader vid transponering, anslag 0–1 vid sätt anslag.
+    pub rule_action_value: f32,
     // GarageBand Virtual Session Drummer
     pub drummer_profile: usize,
     pub drummer_preset: usize,
@@ -779,6 +789,11 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            rule_field: 0,
+            rule_cmp: 0,
+            rule_value: 0.3,
+            rule_action: 0,
+            rule_action_value: 12.0,
             drummer_profile: 0,
             drummer_preset: 0,
             drummer_complexity: 0.5,

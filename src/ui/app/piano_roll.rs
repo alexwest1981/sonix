@@ -18,6 +18,36 @@ pub fn get_scale_notes(&self) -> Vec<u8> {
 }
 
 impl SonixApp {
+/// Kör regeln i UI:t. Urvalet gäller om något är markerat, annars hela rutnätet.
+pub(crate) fn apply_current_rule(&mut self) {
+    let field = RuleField::ALL[self.rule_field.min(RuleField::ALL.len() - 1)];
+    let cmp = RuleCmp::ALL[self.rule_cmp.min(RuleCmp::ALL.len() - 1)];
+    let action = match self.rule_action {
+        1 => RuleAction::Transpose(self.rule_action_value.round() as i32),
+        2 => RuleAction::SetVelocity(self.rule_action_value.clamp(0.0, 1.0)),
+        _ => RuleAction::Delete,
+    };
+    let rule = Rule { field, cmp, value: self.rule_value, action };
+    let scope = if count_selected(&self.piano_roll_sel) > 0 { "urvalet" } else { "hela rutnätet" };
+    let result = apply_rule(
+        &mut self.piano_roll_grid,
+        &self.piano_roll_sel,
+        &mut self.step_velocities,
+        &rule,
+    );
+    self.status_message = crate::tstatus!(
+        "⚙ Regel på {}: {} matchade, {} ändrade",
+        scope,
+        result.matched,
+        result.changed
+    );
+    // Regeln kan ha tagit bort eller flyttat noter — kanalens steg måste följa med.
+    if result.changed > 0 {
+        self.resync_grid_channels();
+        self.piano_roll_sel = [[false; 16]; 24];
+    }
+}
+
 /// Efter en operation på rutnätet: kanalens steg och not följer rutnätets översta ton,
 /// och mönstret skrivs om — annars spelar kanalen kvar på den gamla raden.
 pub(crate) fn resync_grid_channels(&mut self) {
@@ -501,6 +531,92 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     .fixed_decimals(2),
             )
             .on_hover_text(crate::i18n::t("Tröskel för markerade svaga steg"));
+        });
+        // Logical Editor-lite: en regel, på urvalet om det finns, annars allt.
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t("Regel:"))
+                    .size(10.5)
+                    .color(Theme::TEXT_MUTED),
+            );
+            let field = RuleField::ALL[self.rule_field.min(RuleField::ALL.len() - 1)];
+            egui::ComboBox::from_id_salt("rule_field")
+                .selected_text(crate::i18n::t(field.label()))
+                .width(78.0)
+                .show_ui(ui, |ui| {
+                    for (i, f) in RuleField::ALL.iter().enumerate() {
+                        if ui.selectable_label(self.rule_field == i, crate::i18n::t(f.label())).clicked() {
+                            self.rule_field = i;
+                        }
+                    }
+                });
+            let cmp = RuleCmp::ALL[self.rule_cmp.min(RuleCmp::ALL.len() - 1)];
+            egui::ComboBox::from_id_salt("rule_cmp")
+                .selected_text(cmp.label())
+                .width(44.0)
+                .show_ui(ui, |ui| {
+                    for (i, c) in RuleCmp::ALL.iter().enumerate() {
+                        if ui.selectable_label(self.rule_cmp == i, c.label()).clicked() {
+                            self.rule_cmp = i;
+                        }
+                    }
+                });
+            let (min, max, speed) = match field {
+                RuleField::Velocity => (0.0, 1.0, 0.01),
+                RuleField::Key => (0.0, 127.0, 1.0),
+                RuleField::Step => (1.0, 16.0, 1.0),
+            };
+            ui.add(egui::DragValue::new(&mut self.rule_value).range(min..=max).speed(speed))
+                .on_hover_text(crate::i18n::t("Jämförelsevärde: anslag 0–1, tonhöjd som MIDI-nummer, steg 1–16"));
+            ui.label(egui::RichText::new("→").size(11.0).color(Theme::TEXT_MUTED));
+            let actions = [
+                RuleAction::Delete,
+                RuleAction::Transpose(0),
+                RuleAction::SetVelocity(0.0),
+            ];
+            let action = actions[self.rule_action.min(actions.len() - 1)];
+            egui::ComboBox::from_id_salt("rule_action")
+                .selected_text(crate::i18n::t(action.label()))
+                .width(96.0)
+                .show_ui(ui, |ui| {
+                    for (i, a) in actions.iter().enumerate() {
+                        if ui.selectable_label(self.rule_action == i, crate::i18n::t(a.label())).clicked() {
+                            self.rule_action = i;
+                        }
+                    }
+                });
+            if self.rule_action != 0 {
+                let (min, max, speed) = if self.rule_action == 1 {
+                    (-36.0, 36.0, 1.0)
+                } else {
+                    (0.0, 1.0, 0.01)
+                };
+                ui.add(
+                    egui::DragValue::new(&mut self.rule_action_value)
+                        .range(min..=max)
+                        .speed(speed),
+                )
+                .on_hover_text(if self.rule_action == 1 {
+                    crate::i18n::t("Rader att transponera (12 = en oktav)")
+                } else {
+                    crate::i18n::t("Anslaget som ska sättas (0–1)")
+                });
+            }
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(crate::i18n::t("⚙ Använd regel"))
+                            .strong()
+                            .size(10.5)
+                            .color(Theme::TEXT_BRIGHT),
+                    )
+                    .fill(sel_row_bg),
+                )
+                .on_hover_text(crate::i18n::t("Kör regeln på urvalet, eller på hela rutnätet om inget är markerat"))
+                .clicked()
+            {
+                self.apply_current_rule();
+            }
         });
 
         let base_midi = crate::audio::scale::PIANO_ROLL_BASE_MIDI; // C3
@@ -1145,6 +1261,137 @@ pub(crate) fn transpose_cells(
     moved
 }
 
+/// Vad regeln jämför. Anslaget hör till **steget**, inte cellen — både villkoret och
+/// åtgärden läser och skriver samma stegvelocitet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum RuleField {
+    Velocity,
+    Key,
+    Step,
+}
+
+impl RuleField {
+    pub const ALL: [RuleField; 3] = [RuleField::Velocity, RuleField::Key, RuleField::Step];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RuleField::Velocity => "Anslag",
+            RuleField::Key => "Tonhöjd",
+            RuleField::Step => "Steg",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RuleCmp {
+    Less,
+    Greater,
+    Equal,
+}
+
+impl RuleCmp {
+    pub const ALL: [RuleCmp; 3] = [RuleCmp::Less, RuleCmp::Greater, RuleCmp::Equal];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            RuleCmp::Less => "<",
+            RuleCmp::Greater => ">",
+            RuleCmp::Equal => "=",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RuleAction {
+    Delete,
+    Transpose(i32),
+    SetVelocity(f32),
+}
+
+impl RuleAction {
+    pub fn label(self) -> &'static str {
+        match self {
+            RuleAction::Delete => "radera",
+            RuleAction::Transpose(_) => "transponera",
+            RuleAction::SetVelocity(_) => "sätt anslag",
+        }
+    }
+}
+
+/// En regel: `fält cmp värde` → `åtgärd`. Cubases Logical Editor har flera rader och
+/// fältet `lePosition/leType/leValue`; vi har en rad, vilket räcker för de vanligaste förvalen.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Rule {
+    pub field: RuleField,
+    pub cmp: RuleCmp,
+    /// Jämförelsevärde: anslag 0–1, tonhöjd som MIDI-nummer, steg 1–16.
+    pub value: f32,
+    pub action: RuleAction,
+}
+
+impl Rule {
+    fn matches(&self, row: usize, step: usize, velocity: f32) -> bool {
+        let left = match self.field {
+            RuleField::Velocity => velocity,
+            RuleField::Key => (crate::audio::scale::PIANO_ROLL_BASE_MIDI + row as u8) as f32,
+            RuleField::Step => (step + 1) as f32,
+        };
+        match self.cmp {
+            RuleCmp::Less => left < self.value,
+            RuleCmp::Greater => left > self.value,
+            RuleCmp::Equal => (left - self.value).abs() < 0.5,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RuleResult {
+    pub matched: usize,
+    pub changed: usize,
+}
+
+/// Kör regeln. Finns ett urval gäller det, annars hela rutnätet — samma ordning som
+/// radera/transponera-knapparna, så regeln inte blir en tredje sorts sanning.
+pub fn apply_rule(
+    grid: &mut [[bool; 16]; 24],
+    sel: &[[bool; 16]; 24],
+    velocities: &mut [f32; 16],
+    rule: &Rule,
+) -> RuleResult {
+    let only_selection = count_selected(sel) > 0;
+    let mut matched = [[false; 16]; 24];
+    for row in 0..24 {
+        for step in 0..16 {
+            if !grid[row][step] || (only_selection && !sel[row][step]) {
+                continue;
+            }
+            if rule.matches(row, step, velocities[step]) {
+                matched[row][step] = true;
+            }
+        }
+    }
+    let matched_count = count_selected(&matched);
+    let changed = match rule.action {
+        RuleAction::Delete => delete_cells(grid, &matched),
+        RuleAction::Transpose(rows) => {
+            transpose_cells(grid, &matched, rows);
+            matched_count
+        }
+        RuleAction::SetVelocity(v) => {
+            let mut n = 0;
+            for step in 0..16 {
+                let hit = (0..24).any(|row| matched[row][step]);
+                if hit && (velocities[step] - v).abs() > 1e-4 {
+                    velocities[step] = v;
+                    n += 1;
+                }
+            }
+            n
+        }
+    };
+    RuleResult { matched: matched_count, changed }
+}
+
 /// Markerar celler i steg vars anslag ligger under tröskeln.
 ///
 /// Cubase väljer enligt ett villkor och låter sedan åtgärden gå på urvalet — vi har samma
@@ -1246,6 +1493,63 @@ mod selection_tests {
         assert!(sel[6][1] && sel[7][1], "båda noterna i det svaga steget markeras");
         assert_eq!(count_selected(&sel), 2);
         assert_eq!(count_selected(&select_quiet(&grid, &vel, 0.1)), 0, "lägre tröskel ger inget");
+    }
+
+    #[test]
+    fn a_rule_matches_by_key_and_only_touches_the_selection() {
+        let mut grid = [[false; 16]; 24];
+        let mut sel = [[false; 16]; 24];
+        let mut vel = [0.8f32; 16];
+        grid[12][0] = true; // C3 + 12
+        grid[12][2] = true;
+        grid[5][1] = true; // annan tonhöjd
+        sel[12][0] = true; // bara den första är markerad
+
+        let rule = Rule {
+            field: RuleField::Key,
+            cmp: RuleCmp::Equal,
+            value: (crate::audio::scale::PIANO_ROLL_BASE_MIDI + 12) as f32,
+            action: RuleAction::Delete,
+        };
+        let r = apply_rule(&mut grid, &sel, &mut vel, &rule);
+        assert_eq!(r.matched, 1, "bara den markerade cellen med rätt tonhöjd");
+        assert!(!grid[12][0], "markerad och matchande tas bort");
+        assert!(grid[12][2], "samma tonhöjd men omarkerad rörs inte");
+        assert!(grid[5][1]);
+    }
+
+    #[test]
+    fn a_rule_can_set_the_velocity_of_matching_steps_and_transpose() {
+        let mut grid = [[false; 16]; 24];
+        let sel = [[false; 16]; 24];
+        let mut vel = [0.9f32; 16];
+        vel[3] = 0.2;
+        grid[10][3] = true;
+        grid[10][4] = true;
+
+        // Sätt anslaget på de steg som spelar svagare än 0,3.
+        let set = Rule {
+            field: RuleField::Velocity,
+            cmp: RuleCmp::Less,
+            value: 0.3,
+            action: RuleAction::SetVelocity(0.7),
+        };
+        let r = apply_rule(&mut grid, &sel, &mut vel, &set);
+        assert_eq!((r.matched, r.changed), (1, 1));
+        assert!((vel[3] - 0.7).abs() < 1e-4, "det svaga steget fick nytt anslag");
+        assert!((vel[4] - 0.9).abs() < 1e-4, "övriga steg orörda");
+
+        // Transponera steg 4 en oktav upp.
+        let tr = Rule {
+            field: RuleField::Step,
+            cmp: RuleCmp::Equal,
+            value: 5.0,
+            action: RuleAction::Transpose(12),
+        };
+        apply_rule(&mut grid, &sel, &mut vel, &tr);
+        assert!(grid[22][4], "noten på steg 5 flyttades tolv rader upp");
+        assert!(!grid[10][4]);
+        assert!(grid[10][3], "steg 4 är orört");
     }
 
     #[test]
