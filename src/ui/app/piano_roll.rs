@@ -488,6 +488,20 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 }
             }
         });
+        // Villkorsmarkeringen har egen rad: urvalsraden är redan full, och egui radbryter inte.
+        ui.horizontal(|ui| {
+            if ui.button(crate::i18n::t("Markera svaga")).on_hover_text(crate::i18n::t("Markera alla noter i steg som spelar svagare än tröskeln")).clicked() {
+                let threshold = self.piano_roll_quiet_threshold;
+                self.piano_roll_sel = select_quiet(&self.piano_roll_grid, &self.step_velocities, threshold);
+                self.status_message = crate::tstatus!("Markerade {} cell(er) under anslag {:.0} %", count_selected(&self.piano_roll_sel), threshold * 100.0);
+            }
+            ui.add(
+                egui::Slider::new(&mut self.piano_roll_quiet_threshold, 0.05..=1.0)
+                    .show_value(true)
+                    .fixed_decimals(2),
+            )
+            .on_hover_text(crate::i18n::t("Tröskel för markerade svaga steg"));
+        });
 
         let base_midi = crate::audio::scale::PIANO_ROLL_BASE_MIDI; // C3
         let semitones_count = 24;
@@ -1131,6 +1145,29 @@ pub(crate) fn transpose_cells(
     moved
 }
 
+/// Markerar celler i steg vars anslag ligger under tröskeln.
+///
+/// Cubase väljer enligt ett villkor och låter sedan åtgärden gå på urvalet — vi har samma
+/// ordning: markera de svaga, sedan 🗑 eller transponera. Ingen egen raderingsväg.
+pub(crate) fn select_quiet(
+    grid: &[[bool; 16]; 24],
+    velocities: &[f32; 16],
+    threshold: f32,
+) -> [[bool; 16]; 24] {
+    let mut sel = [[false; 16]; 24];
+    for step in 0..16 {
+        if velocities[step] >= threshold {
+            continue;
+        }
+        for row in 0..24 {
+            if grid[row][step] {
+                sel[row][step] = true;
+            }
+        }
+    }
+    sel
+}
+
 /// Flyttar markeringen med noterna, så den pekar på samma noter efter en transponering.
 pub(crate) fn transpose_selection(sel: &[[bool; 16]; 24], rows: i32) -> [[bool; 16]; 24] {
     let mut next = [[false; 16]; 24];
@@ -1193,6 +1230,22 @@ mod selection_tests {
         assert_eq!(delete_cells(&mut grid, &sel), 1);
         assert!(!grid[23][0]);
         assert!(grid[12][4], "markeringen gäller ursprungsraden, inte den flyttade");
+    }
+
+    #[test]
+    fn quiet_steps_are_selected_by_their_velocity() {
+        let mut grid = [[false; 16]; 24];
+        grid[5][0] = true; // starkt steg
+        grid[6][1] = true; // svagt steg
+        grid[7][1] = true;
+        let mut vel = [0.9f32; 16];
+        vel[1] = 0.2;
+
+        let sel = select_quiet(&grid, &vel, 0.3);
+        assert!(!sel[5][0], "starka steget ska inte markeras");
+        assert!(sel[6][1] && sel[7][1], "båda noterna i det svaga steget markeras");
+        assert_eq!(count_selected(&sel), 2);
+        assert_eq!(count_selected(&select_quiet(&grid, &vel, 0.1)), 0, "lägre tröskel ger inget");
     }
 
     #[test]

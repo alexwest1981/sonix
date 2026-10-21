@@ -246,6 +246,8 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Tröskel för "markera svaga": steg med lägre anslag markeras.
+    pub piano_roll_quiet_threshold: f32,
     // GarageBand Virtual Session Drummer
     pub drummer_profile: usize,
     pub drummer_preset: usize,
@@ -776,6 +778,7 @@ impl SonixApp {
             piano_roll_poly_mode: false,
             chord_stamp: 0,
             step_velocities: [0.85; 16],
+            piano_roll_quiet_threshold: 0.3,
             drummer_profile: 0,
             drummer_preset: 0,
             drummer_complexity: 0.5,
