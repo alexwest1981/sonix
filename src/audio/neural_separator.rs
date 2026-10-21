@@ -79,6 +79,75 @@ pub fn model_status() -> String {
     }
 }
 
+/// Var modellen hämtas: en release-tillgång i repot.
+///
+/// Modellen ligger **inte** i installationsfilen — den som vill köra neural separering laddar
+/// ner den, alla andra slipper 100–300 MB i skeppningslasten.
+pub const MODEL_URL: &str =
+    "https://github.com/alexwest1981/sonix/releases/download/models-v1/htdemucs.onnx";
+
+/// Är en hämtad fil komplett? En avbruten nedladdning får aldrig se ut som en fungerande
+/// modell — hellre ett tydligt fel än en tyst halv fil som ger brus.
+pub fn download_looks_complete(bytes: u64, expected: Option<u64>) -> Result<(), String> {
+    match expected {
+        Some(want) if bytes == want => Ok(()),
+        Some(want) => Err(format!("hämtningen avbröts: {bytes} av {want} byte")),
+        // Utan Content-Length finns bara en undre gräns: en modell är aldrig liten.
+        None if bytes >= 1_000_000 => Ok(()),
+        None => Err(format!("filen är bara {bytes} byte — ingen modell")),
+    }
+}
+
+/// Laddar ner modellen till modellmappen och returnerar sökvägen.
+///
+/// Skriver till `<mål>.part` och byter namn först när storleken stämmer, så en avbruten
+/// hämtning lämnar en `.part` efter sig och aldrig en halv modell med rätt namn.
+pub fn download_model<F: FnMut(f32)>(mut progress: F) -> Result<PathBuf, String> {
+    let dir = model_dirs()
+        .into_iter()
+        .next()
+        .ok_or_else(|| "ingen modellmapp".to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("kunde inte skapa {}: {e}", dir.display()))?;
+    let name = MODEL_FILE_NAMES[0];
+    let dest = dir.join(name);
+    let part = dir.join(format!("{name}.part"));
+
+    let response = ureq::get(MODEL_URL)
+        .call()
+        .map_err(|e| format!("kunde inte hämta modellen: {e}"))?;
+    let expected = response
+        .header("Content-Length")
+        .and_then(|v| v.parse::<u64>().ok());
+    let mut reader = response.into_reader();
+    let mut file = std::fs::File::create(&part)
+        .map_err(|e| format!("kunde inte skriva {}: {e}", part.display()))?;
+    let mut written: u64 = 0;
+    let mut buf = vec![0u8; 256 * 1024];
+    loop {
+        let n = std::io::Read::read(&mut reader, &mut buf)
+            .map_err(|e| format!("hämtningen bröts: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        std::io::Write::write_all(&mut file, &buf[..n])
+            .map_err(|e| format!("kunde inte skriva modellen: {e}"))?;
+        written += n as u64;
+        if let Some(want) = expected
+            && want > 0
+        {
+            progress((written as f32 / want as f32).clamp(0.0, 1.0));
+        }
+    }
+    drop(file);
+    if let Err(e) = download_looks_complete(written, expected) {
+        let _ = std::fs::remove_file(&part);
+        return Err(e);
+    }
+    std::fs::rename(&part, &dest).map_err(|e| format!("kunde inte flytta modellen på plats: {e}"))?;
+    progress(1.0);
+    Ok(dest)
+}
+
 /// Whether a neural run is possible right now (feature enabled + model found).
 pub fn is_available() -> bool {
     cfg!(feature = "neural") && find_model().is_some()
@@ -459,4 +528,26 @@ mod tests {
             assert!(!is_available());
         }
     }
+
+#[cfg(test)]
+mod download_tests {
+    use super::*;
+
+    #[test]
+    fn a_short_download_is_an_error_not_a_model() {
+        assert!(download_looks_complete(100, Some(100)).is_ok());
+        let err = download_looks_complete(40, Some(100)).unwrap_err();
+        assert!(err.contains("avbröts"), "{err}");
+        // Utan Content-Length finns bara en undre gräns.
+        assert!(download_looks_complete(2_000_000, None).is_ok());
+        assert!(download_looks_complete(12, None).is_err());
+    }
+
+    #[test]
+    fn the_model_comes_from_the_repository() {
+        assert!(MODEL_URL.starts_with("https://github.com/alexwest1981/sonix/releases/"));
+        assert!(!MODEL_URL.starts_with("file:"));
+    }
+}
+
 }

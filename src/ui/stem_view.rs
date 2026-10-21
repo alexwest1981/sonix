@@ -18,6 +18,7 @@ pub fn render_stem_separator_view(
     current_time: f32,
     is_playing: bool,
     status_msg: &mut String,
+    model_download: &std::sync::Arc<std::sync::Mutex<(bool, f32, String)>>,
 ) -> StemViewActions {
     let mut actions = StemViewActions::default();
     let _ = &status_msg;
@@ -72,6 +73,50 @@ pub fn render_stem_separator_view(
                     ui.label(egui::RichText::new(format!("🧠 {} {} ({})", crate::i18n::t("Neural: ingen modell hittad — använder DSP. Lägg htdemucs.onnx i"), crate::audio::neural_model_status(), crate::i18n::t("bygg med --features neural"))).size(10.5).color(Theme::TEXT_MUTED));
                 }
             });
+            // Modellen skeppas inte med: den som vill köra neural separering hämtar den.
+            if crate::audio::neural_separator::find_model().is_none() {
+                let state = model_download.lock().map(|g| g.clone()).unwrap_or((false, 0.0, String::new()));
+                let (running, progress, message) = state;
+                ui.horizontal(|ui| {
+                    if !running
+                        && ui
+                            .button(crate::i18n::t("⬇ Ladda ner modell från repot"))
+                            .on_hover_text(crate::i18n::t(
+                                "Hämtar htdemucs.onnx till modellmappen. Modellen ligger inte i installationen.",
+                            ))
+                            .clicked()
+                    {
+                        let slot = model_download.clone();
+                        if let Ok(mut g) = slot.lock() {
+                            *g = (true, 0.0, crate::i18n::t("Hämtar modellen...").to_string());
+                        }
+                        std::thread::spawn(move || {
+                            let slot_for_progress = slot.clone();
+                            let result = crate::audio::neural_separator::download_model(|p| {
+                                if let Ok(mut g) = slot_for_progress.lock() {
+                                    g.1 = p;
+                                }
+                            });
+                            if let Ok(mut g) = slot.lock() {
+                                *g = match result {
+                                    Ok(path) => (false, 1.0, crate::tstatus!("Klar: {}", path.display())),
+                                    Err(e) => (false, 0.0, crate::tstatus!("Fel: {}", e)),
+                                };
+                            }
+                        });
+                    }
+                    if running {
+                        ui.add(
+                            egui::ProgressBar::new(progress.clamp(0.0, 1.0))
+                                .desired_width(200.0)
+                                .text(format!("{:.0}%", progress * 100.0)),
+                        );
+                    }
+                    if !message.is_empty() {
+                        ui.label(egui::RichText::new(message).size(10.0).color(Theme::TEXT_MUTED));
+                    }
+                });
+            }
             if project.is_separating {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {

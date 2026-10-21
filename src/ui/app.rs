@@ -246,6 +246,8 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Nedladdning av neural-modellen: (pågår, andel, meddelande).
+    pub model_download: std::sync::Arc<std::sync::Mutex<(bool, f32, String)>>,
     /// Utgångsbussar (kanalpar på ljudenheten), laddade ur `audio.json`.
     pub audio_output_buses: Vec<crate::audio::engine::OutputBus>,
     /// Ackordspåret: ackord per takt, sorterade på takt.
@@ -801,6 +803,7 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            model_download: std::sync::Arc::new(std::sync::Mutex::new((false, 0.0, String::new()))),
             audio_output_buses: crate::audio::engine::AudioSettings::load().output_buses,
             song_chords: Vec::new(),
             show_chord_track: false,
