@@ -36,6 +36,12 @@ pub fn read_wav_envelope(path: &str, points_count: usize) -> Result<Vec<f32>, St
             channels = u16::from_le_bytes([buffer[chunk_data_start + 2], buffer[chunk_data_start + 3]]);
             sample_rate = u32::from_le_bytes([buffer[chunk_data_start + 4], buffer[chunk_data_start + 5], buffer[chunk_data_start + 6], buffer[chunk_data_start + 7]]);
             bits_per_sample = u16::from_le_bytes([buffer[chunk_data_start + 14], buffer[chunk_data_start + 15]]);
+            if audio_format == 0xFFFE && chunk_data_start + 26 <= buffer.len() {
+                let sub = u16::from_le_bytes([buffer[chunk_data_start + 24], buffer[chunk_data_start + 25]]);
+                if sub == 1 || sub == 3 {
+                    audio_format = sub;
+                }
+            }
         } else if chunk_id == b"data" {
             data_offset = chunk_data_start;
             data_size = chunk_size.min(buffer.len().saturating_sub(data_offset));
@@ -131,6 +137,12 @@ pub fn load_wav_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
             channels = u16::from_le_bytes([buffer[chunk_data_start + 2], buffer[chunk_data_start + 3]]);
             sample_rate = u32::from_le_bytes([buffer[chunk_data_start + 4], buffer[chunk_data_start + 5], buffer[chunk_data_start + 6], buffer[chunk_data_start + 7]]);
             bits_per_sample = u16::from_le_bytes([buffer[chunk_data_start + 14], buffer[chunk_data_start + 15]]);
+            if audio_format == 0xFFFE && chunk_data_start + 26 <= buffer.len() {
+                let sub = u16::from_le_bytes([buffer[chunk_data_start + 24], buffer[chunk_data_start + 25]]);
+                if sub == 1 || sub == 3 {
+                    audio_format = sub;
+                }
+            }
         } else if chunk_id == b"data" {
             data_offset = chunk_data_start;
             data_size = chunk_size.min(buffer.len().saturating_sub(data_offset));
@@ -175,9 +187,23 @@ pub fn load_wav_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
                 (3, 32) => {
                     f32::from_le_bytes([buffer[byte_idx], buffer[byte_idx + 1], buffer[byte_idx + 2], buffer[byte_idx + 3]])
                 }
-                _ => {
+                (3, 64) => {
+                    f64::from_le_bytes([
+                        buffer[byte_idx], buffer[byte_idx + 1], buffer[byte_idx + 2], buffer[byte_idx + 3],
+                        buffer[byte_idx + 4], buffer[byte_idx + 5], buffer[byte_idx + 6], buffer[byte_idx + 7],
+                    ]) as f32
+                }
+                (1, 32) => {
+                    let raw = i32::from_le_bytes([
+                        buffer[byte_idx], buffer[byte_idx + 1], buffer[byte_idx + 2], buffer[byte_idx + 3],
+                    ]);
+                    raw as f32 / 2_147_483_648.0
+                }
+                (1, 8) => {
+                    // 8-bitars WAV är **osignerad** (0–255, mitten på 128).
                     buffer[byte_idx] as f32 / 128.0 - 1.0
                 }
+                _ => 0.0,
             }
         };
 
@@ -279,4 +305,99 @@ mod tests {
         let res = load_audio_pcm("/nonexistent/sonix_missing.wav");
         assert!(res.is_err());
     }
+    /// Bygger en WAV i minnet: `format` 1 = PCM, 3 = float, 0xFFFE = extensible.
+    fn build_wav(format: u16, bits: u16, channels: u16, sr: u32, frames: &[f32]) -> Vec<u8> {
+        let bytes_per = (bits / 8) as usize;
+        let data_len = frames.len() * channels as usize * bytes_per;
+        let mut out = Vec::with_capacity(44 + data_len);
+        out.extend_from_slice(b"RIFF");
+        out.extend_from_slice(&((36 + data_len) as u32).to_le_bytes());
+        out.extend_from_slice(b"WAVE");
+        out.extend_from_slice(b"fmt ");
+        // Extensible kräver 40 byte fmt med subformat; övriga klarar 16.
+        let fmt_len: u32 = if format == 0xFFFE { 40 } else { 16 };
+        out.extend_from_slice(&fmt_len.to_le_bytes());
+        out.extend_from_slice(&format.to_le_bytes());
+        out.extend_from_slice(&channels.to_le_bytes());
+        out.extend_from_slice(&sr.to_le_bytes());
+        out.extend_from_slice(&(sr * channels as u32 * bytes_per as u32).to_le_bytes());
+        out.extend_from_slice(&(channels * bytes_per as u16).to_le_bytes());
+        out.extend_from_slice(&bits.to_le_bytes());
+        if format == 0xFFFE {
+            out.extend_from_slice(&22u16.to_le_bytes()); // cbSize
+            out.extend_from_slice(&bits.to_le_bytes()); // valid bits
+            out.extend_from_slice(&0u32.to_le_bytes()); // channel mask
+            // KSUBSFMT: PCM = 1, Float = 3
+            out.extend_from_slice(&1u16.to_le_bytes());
+            out.extend_from_slice(&[0u8; 14]);
+        }
+        out.extend_from_slice(b"data");
+        out.extend_from_slice(&(data_len as u32).to_le_bytes());
+        for &f in frames {
+            for _ch in 0..channels {
+            let v = f.clamp(-1.0, 1.0);
+            match (format, bits) {
+                (3, 32) | (0xFFFE, 32) if format == 3 => out.extend_from_slice(&v.to_le_bytes()),
+                (1, 16) => out.extend_from_slice(&((v * 32767.0) as i16).to_le_bytes()),
+                (1, 8) => out.push(((v * 127.0) + 128.0) as u8),
+                (1, 24) | (0xFFFE, 24) => {
+                    let raw = (v * 8_388_607.0) as i32;
+                    out.extend_from_slice(&raw.to_le_bytes()[0..3]);
+                }
+                (1, 32) | (0xFFFE, 32) => {
+                    let raw = (v * 2_147_483_647.0) as i32;
+                    out.extend_from_slice(&raw.to_le_bytes());
+                }
+                _ => out.extend_from_slice(&v.to_le_bytes()),
+            }
+            }
+        }
+        out
+    }
+
+    /// Laddar en WAV från en temporär fil och jämför med den sinus som skrevs.
+    fn roundtrip(format: u16, bits: u16, label: &str) -> (f32, f32) {
+        let sr = 44_100u32;
+        let n = 2_048usize;
+        let sine: Vec<f32> = (0..n)
+            .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / sr as f32).sin())
+            .collect();
+        let bytes = build_wav(format, bits, 2, sr, &sine);
+        let path = std::env::temp_dir().join(format!("sonix_roundtrip_{label}.wav"));
+        std::fs::write(&path, &bytes).expect("tempfilen ska gå att skriva");
+        let (l, _, got_sr) = load_wav_pcm(path.to_string_lossy().as_ref()).expect("läsaren ska klara filen");
+        assert_eq!(got_sr, sr, "{label}: samplingsfrekvensen ändrades");
+
+        // Topp och korrelation mot sinusen: brus ger låg korrelation, rätt avkodning ger ~1.
+        let peak = l.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        let expected_peak = if bits == 8 { 0.5 } else { 0.5 };
+        let sum_xy: f32 = l.iter().zip(&sine).map(|(a, b)| a * b).sum();
+        let sum_xx: f32 = l.iter().map(|a| a * a).sum::<f32>().sqrt();
+        let sum_yy: f32 = sine.iter().map(|b| b * b).sum::<f32>().sqrt();
+        let corr = if sum_xx > 0.0 && sum_yy > 0.0 { sum_xy / (sum_xx * sum_yy) } else { 0.0 };
+        let _ = expected_peak;
+        (peak, corr)
+    }
+
+    #[test]
+    fn every_wav_variant_decodes_to_the_sine_that_was_written() {
+        for (format, bits, label) in [
+            (1u16, 16u16, "pcm16"),
+            (1, 24, "pcm24"),
+            (1, 32, "pcm32"),
+            (3, 32, "float32"),
+            (0xFFFE, 24, "ext24"),
+        ] {
+            let (peak, corr) = roundtrip(format, bits, label);
+            assert!(
+                (peak - 0.5).abs() < 0.02,
+                "{label}: toppen blev {peak:.3}, väntade 0,5 — fel avkodning ger brus"
+            );
+            assert!(
+                corr > 0.99,
+                "{label}: korrelationen mot sinusen är {corr:.3} — under 0,99 är det brus, inte ton"
+            );
+        }
+    }
+
 }

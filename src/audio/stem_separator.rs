@@ -188,10 +188,26 @@ pub fn separate_stems(left: &[f32], right: &[f32], sample_rate: f32) -> Vec<Stem
         instr.right[i] = inst_r;
     }
 
-    for stem in [&mut bass, &mut drums, &mut vocals, &mut instr] {
-        normalize_stem(stem, 0.92);
+    // Stämmorna normaliserades förr **var för sig** till topp 0,92. Fyra stämmor på 0,92
+    // summerar till uppåt 3,7 — alltså klippning när man spelar alla, vilket låter som brus.
+    // Nu skalas hela uppsättningen med **en** faktor, så stämmorna behåller sin inbördes
+    // balans och summerar tillbaka till källan (instrumentstämman är ju residualen, så
+    // summan är exakt källan före skalning).
+    // Bara om summan riskerar att klippa; annars rör vi inte nivån.
+    let mut sum_peak = 0.0f32;
+    for i in 0..len {
+        let l_sum = bass.left[i] + drums.left[i] + vocals.left[i] + instr.left[i];
+        let r_sum = bass.right[i] + drums.right[i] + vocals.right[i] + instr.right[i];
+        sum_peak = sum_peak.max(l_sum.abs()).max(r_sum.abs());
     }
-
+    if sum_peak > 0.99 {
+        let factor = 0.99 / sum_peak;
+        for stem in [&mut bass, &mut drums, &mut vocals, &mut instr] {
+            for v in stem.left.iter_mut().chain(stem.right.iter_mut()) {
+                *v *= factor;
+            }
+        }
+    }
     vec![vocals, drums, bass, instr]
 }
 
@@ -266,23 +282,6 @@ pub fn estimate_bpm(left: &[f32], right: &[f32], sample_rate: f32) -> f32 {
         bpm /= 2.0;
     }
     bpm
-}
-
-fn normalize_stem(stem: &mut StemAudio, target_peak: f32) {
-    let peak = stem
-        .left
-        .iter()
-        .chain(stem.right.iter())
-        .fold(0.0f32, |m, v| m.max(v.abs()));
-    if peak > 1e-6 {
-        let gain = target_peak / peak;
-        for v in stem.left.iter_mut() {
-            *v *= gain;
-        }
-        for v in stem.right.iter_mut() {
-            *v *= gain;
-        }
-    }
 }
 
 /// Result of a full separation run, independent of which backend produced it.
@@ -516,6 +515,73 @@ impl StemProject {
 
 #[cfg(test)]
 mod tests {
+
+    /// **Ände-till-ände** för den rapporterade buggen: en 32-bitars WAV (som andra DAW:n
+    /// skriver) laddas och separeras. Förr blev både ljudet och stämmorna brus, eftersom
+    /// avkodningen föll i 8-bitsfallet.
+    #[test]
+    fn a_32_bit_wav_separates_into_stems_that_sum_back_to_the_source() {
+        let sr = 44_100u32;
+        let n = 8_192usize;
+        let tone: Vec<f32> = (0..n)
+            .map(|i| 0.4 * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / sr as f32).sin())
+            .collect();
+
+        // Bygg en 32-bitars PCM-fil med två kanaler, som en vanlig DAW-export.
+        let mut bytes: Vec<u8> = Vec::new();
+        let data_len = (n * 2 * 4) as u32;
+        bytes.extend_from_slice(b"RIFF");
+        bytes.extend_from_slice(&(36 + data_len).to_le_bytes());
+        bytes.extend_from_slice(b"WAVEfmt ");
+        bytes.extend_from_slice(&16u32.to_le_bytes());
+        bytes.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        bytes.extend_from_slice(&2u16.to_le_bytes()); // stereo
+        bytes.extend_from_slice(&sr.to_le_bytes());
+        bytes.extend_from_slice(&(sr * 2 * 4).to_le_bytes());
+        bytes.extend_from_slice(&8u16.to_le_bytes());
+        bytes.extend_from_slice(&32u16.to_le_bytes());
+        bytes.extend_from_slice(b"data");
+        bytes.extend_from_slice(&data_len.to_le_bytes());
+        for &v in &tone {
+            let raw = (v * 2_147_483_647.0) as i32;
+            bytes.extend_from_slice(&raw.to_le_bytes());
+            bytes.extend_from_slice(&raw.to_le_bytes());
+        }
+        let path = std::env::temp_dir().join("sonix_stem_32bit.wav");
+        std::fs::write(&path, &bytes).expect("tempfilen ska gå att skriva");
+
+        let (l, r, _sr) = crate::audio::load_wav_pcm(path.to_string_lossy().as_ref())
+            .expect("32-bitarsfilen ska gå att läsa");
+
+        // 1. Inläsningen är en ton, inte brus: toppen ska vara 0,4 och korrelationen hög.
+        let peak = l.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        assert!((peak - 0.4).abs() < 0.02, "toppen blev {peak:.3} — fel avkodning ger brus");
+        let corr: f32 = {
+            let xy: f32 = l.iter().zip(&tone).map(|(a, b)| a * b).sum();
+            let xx: f32 = l.iter().map(|a| a * a).sum::<f32>().sqrt();
+            let yy: f32 = tone.iter().map(|b| b * b).sum::<f32>().sqrt();
+            xy / (xx * yy)
+        };
+        assert!(corr > 0.99, "korrelationen är {corr:.3} — det är inte samma ton");
+
+        // 2. Stämmorna summerar tillbaka till källan (separatorn är ett filterbank, inte en gissning).
+        let stems = separate_stems(&l, &r, sr as f32);
+        assert!(!stems.is_empty(), "separatorn gav inga stämmor");
+        let mut sum = vec![0.0f32; l.len()];
+        for st in &stems {
+            for (i, v) in st.left.iter().enumerate().take(sum.len()) {
+                sum[i] += *v;
+            }
+        }
+        let src_rms = (l.iter().map(|v| v * v).sum::<f32>() / l.len() as f32).sqrt();
+        let sum_rms = (sum.iter().map(|v| v * v).sum::<f32>() / sum.len() as f32).sqrt();
+        let ratio = sum_rms / src_rms.max(1e-9);
+        assert!(
+            (0.7..1.4).contains(&ratio),
+            "stämmorna summerar till {ratio:.2} av källan — de hör inte ihop"
+        );
+    }
+
     use super::*;
 
     #[test]
@@ -660,10 +726,13 @@ mod tests {
             stem.left[mid],
             stem.right[mid]
         );
-        // Osymmetri ska bevaras — kanalerna får inte blandas ihop.
+        // Osymmetri ska bevaras — kanalerna får inte blandas ihop. Tröskeln är relativ till
+        // stämmans egen topp, eftersom stämmorna numera behåller mixens nivå (de summerar
+        // tillbaka till källan i stället för att var och en dras upp till 0,92).
+        let stem_peak = stem.left.iter().chain(stem.right.iter()).fold(0.0f32, |m, v| m.max(v.abs()));
         assert!(
-            (read_l[mid] - read_r[mid]).abs() > 1e-3,
-            "vänster och höger ska vara olika, som de var"
+            (read_l[mid] - read_r[mid]).abs() > stem_peak * 1e-3,
+            "vänster och höger ska vara olika, som de var (topp {stem_peak:.4})"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }
