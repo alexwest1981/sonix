@@ -866,3 +866,61 @@
             );
         }
     }
+    /// **Banken svarar en gång per linje, på sin egen tid.** En impuls in ska ge tre ekon vid
+    /// de tre tiderna, med de tre nivåerna, och ingenting däremellan.
+    #[test]
+    fn the_delay_bank_answers_once_per_line() {
+        let sr = 48_000.0;
+        let mut bank = DelayBank::new(sr);
+        let params = DelayBankParams {
+            times_ms: [50.0, 120.0, 200.0],
+            levels: [1.0, 0.5, 0.25],
+            feedback: 0.0,
+            spread: 0.0,
+            mix: 1.0,
+        };
+        let out: Vec<f32> = (0..24_000)
+            .map(|n| bank.process(if n == 0 { 1.0 } else { 0.0 }, 0.0, &params).0)
+            .collect();
+        let energy = |ms: f32| {
+            let c = (ms * 0.001 * sr) as usize;
+            let half = (0.002 * sr) as usize;
+            out[c.saturating_sub(half)..(c + half).min(out.len())]
+                .iter()
+                .map(|v| v.abs())
+                .sum::<f32>()
+        };
+        let taps: Vec<f32> = [50.0, 120.0, 200.0].iter().map(|&t| energy(t)).collect();
+        println!("linjer: {taps:?}");
+        assert!(taps[0] > 0.4, "linje 1 (nivå 1,0): {:.3}", taps[0]);
+        assert!(taps[1] > 0.2 && taps[1] < taps[0] * 0.8, "linje 2 ska vara svagare: {taps:?}");
+        assert!(taps[2] > 0.1 && taps[2] < taps[1] * 0.8, "linje 3 ska vara svagast: {taps:?}");
+    }
+
+    /// **Återkopplingen ger ett fjärde eko på dubbla tiden** — och utan återkoppling finns
+    /// det inte där. Det är skillnaden mellan en delay med och utan minne.
+    #[test]
+    fn the_delay_bank_feedback_returns_a_second_time_around() {
+        let sr = 48_000.0;
+        let at_100ms = |feedback: f32| {
+            let mut bank = DelayBank::new(sr);
+            let params = DelayBankParams {
+                times_ms: [50.0, 500.0, 900.0],
+                levels: [1.0, 0.0, 0.0],
+                feedback,
+                spread: 0.0,
+                mix: 1.0,
+            };
+            let out: Vec<f32> = (0..24_000)
+                .map(|n| bank.process(if n == 0 { 1.0 } else { 0.0 }, 0.0, &params).0)
+                .collect();
+            let c = (0.1 * sr) as usize;
+            out[c - 100..c + 100].iter().map(|v| v.abs()).sum::<f32>()
+        };
+        let without = at_100ms(0.0);
+        let with = at_100ms(0.6);
+        println!("100 ms: {without:.4} utan återkoppling, {with:.4} med 0,6");
+        assert!(without < 1e-4, "utan återkoppling ska det vara tyst där: {without:.6}");
+        assert!(with > 0.1, "med återkoppling ska andra varvet höras: {with:.4}");
+    }
+

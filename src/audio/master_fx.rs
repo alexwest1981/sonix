@@ -168,6 +168,8 @@ pub struct MasterFxParams {
     pub crush_enabled: bool,
     pub mb_delay: MultibandDelayParams,
     pub mb_delay_enabled: bool,
+    pub delay_bank: DelayBankParams,
+    pub delay_bank_enabled: bool,
     pub control: ControlRoomParams,
 }
 
@@ -207,6 +209,8 @@ impl Default for MasterFxParams {
             crush_enabled: false,
             mb_delay: MultibandDelayParams::default(),
             mb_delay_enabled: false,
+            delay_bank: DelayBankParams::default(),
+            delay_bank_enabled: false,
             control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
@@ -235,6 +239,7 @@ pub struct MasterFxChain {
     freq_shift: FrequencyShifter,
     crusher: BitCrusher,
     mb_delay: MultibandDelay,
+    delay_bank: DelayBank,
     filter: MasterFilter,
     limiter: Limiter,
     params: MasterFxParams,
@@ -263,6 +268,7 @@ impl MasterFxChain {
             freq_shift: FrequencyShifter::new(sample_rate),
             crusher: BitCrusher::new(sample_rate),
             mb_delay: MultibandDelay::new(sample_rate),
+            delay_bank: DelayBank::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
@@ -401,6 +407,12 @@ impl MasterFxChain {
 
         if p.mb_delay_enabled {
             let (nl, nr) = self.mb_delay.process(l, r, &p.mb_delay);
+            l = nl;
+            r = nr;
+        }
+
+        if p.delay_bank_enabled {
+            let (nl, nr) = self.delay_bank.process(l, r, &p.delay_bank);
             l = nl;
             r = nr;
         }

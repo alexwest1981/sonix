@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 46** har en motsvarighet, **◐ 45** delvis, **✗ 50** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 47** har en motsvarighet, **◐ 45** delvis, **✗ 49** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -188,7 +188,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Frequency Splitter | 2 | ◐ | crossovern i multibandskompressorn |
 | Fruity Big Clock | 2 | ✗ | stor klocka |
 | Fruity Delay 2 | 2 | ✅ | StereoDelay |
-| Fruity Delay Bank | 2 | ✗ | bank av delaylinor |
+| Fruity Delay Bank | 2 | ✅ | `DelayBank` — tre linjer med egen tid och nivå, återkoppling, stereospridning |
 | Fruity Fast Dist | 2 | ✅ | saturatorn |
 | Fruity Flangus | 2 | ✅ | `ModDelay` som flanger (2,5–4,5 ms); ingen fler-röstsvariant |
 | Fruity LSD | 2 | ✗ | MIDI ut till DirectMusic-synt |

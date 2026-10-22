@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    DelayBankParams, ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -266,6 +266,21 @@ impl Default for FxRackState {
                     p3_val: 0.45,
                     mix: 0.35,
                     description: "Tre band, tre tider: LÅG under 250 Hz, MID 250 Hz–4 kHz, HÖG över 4 kHz. Tiderna är 20–800 ms i samma skala som ratten.",                    extra: Vec::new(),
+                },
+                FxPedal {
+                    id: "delaybank",
+                    name: "🏦 DELAY BANK",
+                    category: "Delay",
+                    enabled: false,
+                    color: Color32::from_rgb(120, 220, 200),
+                    p1_name: "TID 1",
+                    p1_val: 0.08,
+                    p2_name: "TID 2",
+                    p2_val: 0.23,
+                    p3_name: "TID 3",
+                    p3_val: 0.35,
+                    mix: 0.30,
+                    description: "Tre delaylinjor, 20–1500 ms, med egen nivå, gemensam återkoppling och stereospridning.",                    extra: vec![("NIVÅ 2", 0.7), ("NIVÅ 3", 0.5), ("ÅTERKOPPLING", 0.35), ("SPRIDNING", 0.6)],
                 },
                 FxPedal {
                     id: "chorus",
@@ -543,6 +558,26 @@ impl FxRackState {
             mix: mb_knob(|p| p.mix, 0.35),
         };
 
+        let db_p = self.pedal("delaybank");
+        let db_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            db_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let delay_bank = DelayBankParams {
+            times_ms: [
+                20.0 + db_knob(|p| p.p1_val, 0.08) * 1480.0,
+                20.0 + db_knob(|p| p.p2_val, 0.23) * 1480.0,
+                20.0 + db_knob(|p| p.p3_val, 0.35) * 1480.0,
+            ],
+            levels: [
+                1.0,
+                db_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.7), 0.7),
+                db_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.5), 0.5),
+            ],
+            feedback: db_knob(|p| p.extra.get(2).map(|e| e.1).unwrap_or(0.35), 0.35),
+            spread: db_knob(|p| p.extra.get(3).map(|e| e.1).unwrap_or(0.6), 0.6),
+            mix: db_knob(|p| p.mix, 0.3),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -578,6 +613,8 @@ impl FxRackState {
             crush_enabled: cr_p.map(|p| p.enabled).unwrap_or(false),
             mb_delay,
             mb_delay_enabled: mb_p.map(|p| p.enabled).unwrap_or(false),
+            delay_bank,
+            delay_bank_enabled: db_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,
@@ -1441,6 +1478,37 @@ mod tests {
         let t = params.mb_delay.times_ms;
         assert!((t[0] - 20.0).abs() < 0.1 && (t[1] - 410.0).abs() < 0.1 && (t[2] - 800.0).abs() < 0.1, "tider: {t:?}");
         assert!((params.mb_delay.mix - 0.5).abs() < 0.01);
+    }
+
+    /// **Delay-bankens rattar når sina egna fält** — tre tider, två nivåer, återkoppling,
+    /// spridning och mix.
+    #[test]
+    fn the_delay_bank_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "delaybank")
+            .expect("delay-banken ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 0.0; // 20 ms
+        pedal.p2_val = 0.5; // 760 ms
+        pedal.p3_val = 1.0; // 1500 ms
+        pedal.extra[0].1 = 0.25; // nivå 2
+        pedal.extra[1].1 = 0.10; // nivå 3
+        pedal.extra[2].1 = 0.80; // återkoppling
+        pedal.extra[3].1 = 0.00; // spridning
+        pedal.mix = 0.4;
+
+        let params = state.build_master_fx_params();
+        assert!(params.delay_bank_enabled, "pedalen ska slå på steget");
+        let t = params.delay_bank.times_ms;
+        assert!((t[0] - 20.0).abs() < 0.1 && (t[1] - 760.0).abs() < 0.1 && (t[2] - 1500.0).abs() < 0.1, "tider: {t:?}");
+        assert!((params.delay_bank.levels[1] - 0.25).abs() < 0.01);
+        assert!((params.delay_bank.feedback - 0.80).abs() < 0.01);
+        assert!(params.delay_bank.spread.abs() < 0.01, "spridning: {}", params.delay_bank.spread);
+        assert!((params.delay_bank.mix - 0.4).abs() < 0.01);
     }
 
 }

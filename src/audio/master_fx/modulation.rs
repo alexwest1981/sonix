@@ -423,3 +423,81 @@ impl Default for TapeStop {
         Self::new(48_000.0)
     }
 }
+
+/// **Delay-bank** (FL: Fruity Delay Bank): tre delaylinor med egen tid och nivå, en gemensam
+/// återkoppling och en stereospridning som flyttar linjerna åt varsitt håll. Skillnaden mot
+/// den flerbandiga delayn är att den här delar på **tid**, inte på frekvens: alla tre linjerna
+/// får samma spektrum.
+pub struct DelayBank {
+    sample_rate: f32,
+    buf_l: Vec<f32>,
+    buf_r: Vec<f32>,
+    write: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DelayBankParams {
+    pub times_ms: [f32; 3],
+    pub levels: [f32; 3],
+    pub feedback: f32,
+    /// 0 = alla linjer i mitten, 1 = varannan vänster/höger.
+    pub spread: f32,
+    pub mix: f32,
+}
+
+impl Default for DelayBankParams {
+    fn default() -> Self {
+        Self {
+            times_ms: [180.0, 360.0, 540.0],
+            levels: [1.0, 0.7, 0.5],
+            feedback: 0.35,
+            spread: 0.6,
+            mix: 0.3,
+        }
+    }
+}
+
+impl DelayBank {
+    const MAX_MS: f32 = 1500.0;
+
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        let cap = (Self::MAX_MS * 0.001 * sr).ceil() as usize + 4;
+        Self {
+            sample_rate: sr,
+            buf_l: vec![0.0; cap],
+            buf_r: vec![0.0; cap],
+            write: 0,
+        }
+    }
+
+    pub fn process(&mut self, l: f32, r: f32, p: &DelayBankParams) -> (f32, f32) {
+        let len = self.buf_l.len();
+        let tap = |from: usize, ms: f32| -> usize {
+            let samples = ((ms.clamp(1.0, Self::MAX_MS) * 0.001 * self.sample_rate) as usize)
+                .clamp(1, len - 1);
+            (from + len - samples) % len
+        };
+
+        let (mut wet_l, mut wet_r) = (0.0, 0.0);
+        for (i, &ms) in p.times_ms.iter().enumerate() {
+            let level = p.levels[i].clamp(0.0, 1.0);
+            let idx = tap(self.write, ms);
+            // Varannan linje till vänster, varannan till höger, så mycket som spridningen
+            // säger: 0 ger tre centrerade linjer.
+            let side = if i % 2 == 0 { -1.0 } else { 1.0 } * p.spread.clamp(0.0, 1.0);
+            wet_l += self.buf_l[idx] * level * 0.5 * (1.0 - side);
+            wet_r += self.buf_r[idx] * level * 0.5 * (1.0 + side);
+        }
+
+        // Återkopplingen går tillbaka **in i linjen**, inte in i mixen: annars hade den torra
+        // signalen påverkats av delayens egen utnivå.
+        let fb = p.feedback.clamp(0.0, 0.95);
+        self.buf_l[self.write] = l + wet_l * fb;
+        self.buf_r[self.write] = r + wet_r * fb;
+        self.write = (self.write + 1) % len;
+
+        let mix = p.mix.clamp(0.0, 1.0);
+        (l + wet_l * mix, r + wet_r * mix)
+    }
+}
