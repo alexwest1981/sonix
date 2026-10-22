@@ -47,7 +47,7 @@ use super::widgets::{
 // Undermoduler — den stora ytan är delad efter område (2026-09-14). De ligger **under** `app`
 // med flit: ett barn ser förälderns privata fält, så `SonixApp` och de andra typerna behöver
 // inte göra sina fält publika för att en syskonmodul ska kunna läsa dem.
-mod state;
+pub mod state;
 pub use state::*;
 
 mod project;

@@ -913,6 +913,32 @@ pub fn render_vocal_studio_view(
                             *status_msg = crate::tstatus!("➕ Skapade {} körstämmor från tagningen", count);
                         }
                         ui.add_space(4.0);
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(crate::i18n::t("Bärvåg:"))
+                                    .size(10.0)
+                                    .color(Theme::TEXT_MUTED),
+                            );
+                            let mut note = harmonizer.vocoder_note as i32;
+                            if ui
+                                .add(egui::DragValue::new(&mut note).range(24..=84).speed(0.2))
+                                .on_hover_text(crate::i18n::t(
+                                    "Noten vocoderns bärvåg ligger på. A2 (45) är standard.",
+                                ))
+                                .changed()
+                            {
+                                harmonizer.vocoder_note = note.clamp(24, 84) as u8;
+                            }
+                            let freq =
+                                crate::audio::tuning::midi_to_freq(harmonizer.vocoder_note);
+                            let name = crate::ui::app::state::note_name_of(harmonizer.vocoder_note);
+                            let octave = harmonizer.vocoder_note as i32 / 12 - 1;
+                            ui.label(
+                                egui::RichText::new(format!("{name}{octave}  ({freq:.1} Hz)"))
+                                    .size(10.0)
+                                    .color(Theme::FL_CYAN),
+                            );
+                        });
                         if ui
                             .add_enabled(
                                 !vocal_track.takes.is_empty(),
@@ -932,11 +958,15 @@ pub fn render_vocal_studio_view(
                                 (take.pcm_samples.clone(), take.sample_rate, take.name.clone())
                             };
                             let sr_f = sr as f32;
+                            // Bärvågen är noten med oktav och kvint — en sågtand vardera, så
+                            // vocodern har övertoner i varje band den delar upp.
+                            let root =
+                                crate::audio::tuning::midi_to_freq(harmonizer.vocoder_note);
                             let mut carrier = Vec::with_capacity(pcm.len());
                             for i in 0..pcm.len() {
                                 let t = i as f32 / sr_f;
                                 let saw = |f: f32| 2.0 * ((t * f) % 1.0) - 1.0;
-                                carrier.push(saw(110.0) + 0.5 * saw(220.0) + 0.35 * saw(164.81));
+                                carrier.push(saw(root) + 0.5 * saw(root * 2.0) + 0.35 * saw(root * 1.5));
                             }
                             let vocoded =
                                 crate::audio::vocal_harmonizer::vocode(&pcm, &carrier, sr_f, 16);

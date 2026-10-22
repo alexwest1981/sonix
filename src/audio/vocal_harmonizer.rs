@@ -31,6 +31,8 @@ pub struct VocalHarmonizer {
     pub selected_blob: Option<usize>,
     pub blob_steps: usize,
     pub voices: Vec<HarmonyVoice>,
+    /// Bärvågens not i vocodern (MIDI). 45 = A2, 110 Hz.
+    pub vocoder_note: u8,
 }
 
 impl Default for VocalHarmonizer {
@@ -42,6 +44,7 @@ impl Default for VocalHarmonizer {
             blobs: Vec::new(),
             selected_blob: None,
             blob_steps: 16,
+            vocoder_note: 45,
             voices: vec![
                 HarmonyVoice { name: crate::i18n::t("🎤 Lead Sång (Center)"), interval_semitones: 0, volume: 1.0, enabled: true, formant_shift: 0.0 },
                 HarmonyVoice { name: crate::i18n::t("✨ Hög Ters (+3st)"), interval_semitones: 3, volume: 0.75, enabled: true, formant_shift: 1.5 },
