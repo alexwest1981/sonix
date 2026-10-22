@@ -1,6 +1,7 @@
 use eframe::egui::Color32;
 
 use super::recorder::detect_pitch_hz;
+use super::filter::{FilterParams, StateVariableFilter};
 
 #[derive(Debug, Clone)]
 pub struct PitchBlob {
@@ -393,7 +394,8 @@ impl Wsola {
     /// Korn, hopp och sökvidd i sampel. **Bara för kontraktstestet** att offlineläget inte
     /// råkar bli realtidsläget igen — i drift svarar cachenyckelns `v{n}` på vilken motor
     /// som räknade en fil.
-    #[cfg(test)]
+    
+#[cfg(test)]
     pub fn params(&self) -> (usize, usize, usize) {
         (self.frame, self.hop, self.search)
     }
@@ -1345,6 +1347,48 @@ impl FormantPitchShifter {
     }
 }
 
+/// **Vocoder**: modulatorsignalens spektrum läggs på en bärvåg. Modulatorn (sången) delas i
+/// `bands` band; varje bands nivå följs med en envelop och multipliceras med **bärvågens**
+/// band, som sedan summeras. Det är därför en vocoder låter som en robot som sjunger orden:
+/// ordens form finns i modulatorspektret, tonhöjden i bärvågen.
+///
+/// Banden ligger logaritmiskt mellan 100 Hz och 8 kHz, där rösten finns.
+pub fn vocode(modulator: &[f32], carrier: &[f32], sample_rate: f32, bands: usize) -> Vec<f32> {
+    let n = modulator.len().min(carrier.len());
+    let bands = bands.clamp(4, 32);
+    let mut out = vec![0.0f32; n];
+    if n == 0 {
+        return out;
+    }
+
+    // 5 ms attack, 40 ms släpp: envelopen ska följa stavelser, inte enskilda perioder.
+    let attack = 1.0 - (-1.0 / (0.005 * sample_rate)).exp();
+    let release = 1.0 - (-1.0 / (0.040 * sample_rate)).exp();
+
+    for band in 0..bands {
+        let t = band as f32 / (bands - 1) as f32;
+        let freq = 100.0 * (8_000.0f32 / 100.0).powf(t);
+        let params = FilterParams { cutoff: freq, resonance: 3.0 };
+        let mut mod_band = StateVariableFilter::new(sample_rate);
+        let mut car_band = StateVariableFilter::new(sample_rate);
+        let mut env = 0.0f32;
+        for i in 0..n {
+            let m = mod_band.process_bandpass(modulator[i], &params).abs();
+            let coeff = if m > env { attack } else { release };
+            env += (m - env) * coeff;
+            let c = car_band.process_bandpass(carrier[i], &params);
+            out[i] += c * env;
+        }
+    }
+
+    // Fyra band överlappar varandra i toppen; delningen håller nivån på bärvågens.
+    let gain = 2.0 / (bands as f32).sqrt();
+    for s in out.iter_mut() {
+        *s *= gain;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1628,4 +1672,53 @@ mod tests {
         assert!(sh.latency_frames() > 0);
         assert_eq!(sh.latency_frames(), FormantPitchShifter::new(48000.0).latency_frames());
     }
+    /// **Vocodern tar formen från modulatorn och tonhöjden från bärvågen.** Modulatorn är
+    /// en 1 kHz-ton som slås av och på i 50 ms-fönster; bärvågen är en sågtand på 100 Hz.
+    /// Utgången ska följa av/på-mönstret, och vara tyst där modulatorn är tyst.
+    #[test]
+    fn the_vocoder_follows_the_modulator_and_keeps_the_carrier() {
+        let sr = 48_000.0f32;
+        let n = 96_000;
+        // 200 ms-fönster: envelopens 40 ms släpp hinner stänga mellan dem.
+        let modulator: Vec<f32> = (0..n)
+            .map(|i| {
+                let gate = (i / 9_600) % 2 == 0;
+                if gate {
+                    (2.0 * std::f32::consts::PI * 1_000.0 * i as f32 / sr).sin() * 0.6
+                } else {
+                    0.0
+                }
+            })
+            .collect();
+        let carrier: Vec<f32> = (0..n)
+            .map(|i| 2.0 * ((100.0 * i as f32 / sr) % 1.0) - 1.0)
+            .collect();
+        let out = vocode(&modulator, &carrier, sr, 16);
+
+        // Energin i öppna respektive stängda fönster, mätt på utgången.
+        let (mut open, mut closed) = (0.0f64, 0.0f64);
+        let (mut no, mut nc) = (0usize, 0usize);
+        for i in 0..n {
+            // Mät bara mitten av varje fönster, där övergångarna inte spelar in.
+            if (i % 9_600) < 2_400 || (i % 9_600) > 7_200 {
+                continue;
+            }
+            let e = (out[i] as f64) * (out[i] as f64);
+            if (i / 9_600) % 2 == 0 {
+                open += e;
+                no += 1;
+            } else {
+                closed += e;
+                nc += 1;
+            }
+        }
+        let (open, closed) = (open / no as f64, closed / nc as f64);
+        println!("energi öppet {open:.6}, stängt {closed:.6}");
+        assert!(open > 1e-4, "vocodern ska höras när modulatorn låter: {open:.6}");
+        assert!(
+            closed < open * 0.1,
+            "vocodern ska tystna när modulatorn tystnar: {closed:.6} mot {open:.6}"
+        );
+    }
+
 }

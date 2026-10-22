@@ -36,8 +36,10 @@ impl StateVariableFilter {
         self.ic2eq = 0.0;
     }
 
+    /// Ett steg av TPT-filtret. `(band, lågpass)` — samma tillstånd, två uttag, så en
+    /// vocoder kan ta bandet ur samma beräkning som lågpasset.
     #[inline(always)]
-    pub fn process_lowpass(&mut self, input: f32, params: &FilterParams) -> f32 {
+    fn step(&mut self, input: f32, params: &FilterParams) -> (f32, f32) {
         let cutoff = params.cutoff.clamp(20.0, self.sample_rate * 0.48);
         let q = params.resonance.clamp(0.1, 10.0);
 
@@ -54,7 +56,18 @@ impl StateVariableFilter {
         self.ic1eq = 2.0 * v1 - self.ic1eq;
         self.ic2eq = 2.0 * v2 - self.ic2eq;
 
-        v2
+        // Bandet normaliseras till 0 dB vid centrum, annars blir höga band svagare än låga.
+        (v1 * k, v2)
+    }
+
+    #[inline(always)]
+    pub fn process_lowpass(&mut self, input: f32, params: &FilterParams) -> f32 {
+        self.step(input, params).1
+    }
+
+    #[inline(always)]
+    pub fn process_bandpass(&mut self, input: f32, params: &FilterParams) -> f32 {
+        self.step(input, params).0
     }
 }
 

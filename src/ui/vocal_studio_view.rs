@@ -913,6 +913,43 @@ pub fn render_vocal_studio_view(
                             *status_msg = crate::tstatus!("➕ Skapade {} körstämmor från tagningen", count);
                         }
                         ui.add_space(4.0);
+                        if ui
+                            .add_enabled(
+                                !vocal_track.takes.is_empty(),
+                                egui::Button::new(
+                                    egui::RichText::new(crate::i18n::t("🤖 Vocoder (A2-bärvåg)"))
+                                        .size(10.5),
+                                )
+                                .fill(Theme::FL_CYAN),
+                            )
+                            .on_hover_text(crate::i18n::t(
+                                "Lägger sångens form på en sågtandsvåg: en robot som sjunger orden. Bärvågen är A2 med oktav och kvint.",
+                            ))
+                            .clicked()
+                        {
+                            let (pcm, sr, take_name) = {
+                                let take = &vocal_track.takes[act_idx];
+                                (take.pcm_samples.clone(), take.sample_rate, take.name.clone())
+                            };
+                            let sr_f = sr as f32;
+                            let mut carrier = Vec::with_capacity(pcm.len());
+                            for i in 0..pcm.len() {
+                                let t = i as f32 / sr_f;
+                                let saw = |f: f32| 2.0 * ((t * f) % 1.0) - 1.0;
+                                carrier.push(saw(110.0) + 0.5 * saw(220.0) + 0.35 * saw(164.81));
+                            }
+                            let vocoded =
+                                crate::audio::vocal_harmonizer::vocode(&pcm, &carrier, sr_f, 16);
+                            vocal_track.add_take_from_pcm(
+                                format!("{take_name} (Vocoder)"),
+                                vocoded,
+                                sr,
+                                Color32::from_rgb(120, 200, 255),
+                            );
+                            *status_msg =
+                                crate::tstatus!("🤖 Vocoder: la till en tagning ur {}", take_name);
+                        }
+                        ui.add_space(4.0);
 
                         for voice in &mut harmonizer.voices {
                             ui.horizontal(|ui| {
