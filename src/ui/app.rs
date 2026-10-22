@@ -574,7 +574,8 @@ impl SonixApp {
         let language = crate::i18n::load_language();
         crate::i18n::set_current(language);
         let current_preset = Preset::CleanPluck;
-        let (waveform, adsr, filter) = current_preset.settings();
+        let s = current_preset.settings();
+        let (waveform, adsr, filter) = (s.waveform, s.adsr, s.filter);
         let (control_tx, control_rx) = control_channel();
 
         // Helper for mini waveform generator

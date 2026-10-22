@@ -2509,3 +2509,30 @@ fn the_sub_oscillator_adds_an_octave_below() {
         "grundtonen ska vara orörd: {with_main:.5} mot {plain_main:.5}"
     );
 }
+
+/// **Varje förval når varje parameter.** `LoadPreset` ska ställa in allt som
+/// `settings()` säger — inte bara vågform, envelope och filter, som var allt den gjorde
+/// innan de nya parametrarna fanns.
+#[test]
+fn every_preset_reaches_every_parameter() {
+    for preset in Preset::ALL {
+        let s = preset.settings();
+        let mut engine = SynthEngine::new(48_000.0);
+        engine.handle_command(AudioCommand::LoadPreset(preset));
+        assert_eq!(engine.waveform, s.waveform, "{}: vågform", preset.label());
+        assert_eq!(engine.adsr.release, s.adsr.release, "{}: release", preset.label());
+        assert_eq!(engine.filter_params.cutoff, s.filter.cutoff, "{}: cutoff", preset.label());
+        assert_eq!(engine.filter_env_amount, s.filter_env_amount, "{}: filterenvelop", preset.label());
+        assert_eq!(engine.sub_level, s.sub, "{}: sub", preset.label());
+        assert_eq!(engine.unison_voices, s.unison, "{}: unison", preset.label());
+        assert_eq!(engine.unison_detune_cents, s.detune, "{}: cent", preset.label());
+        assert_eq!(engine.glide_time, s.glide, "{}: glide", preset.label());
+        assert_eq!(engine.filter_drive, s.drive, "{}: drive", preset.label());
+    }
+    // Och förvalen ska faktiskt använda de nya parametrarna, annars mäter provet inget.
+    let any_sub = Preset::ALL.iter().any(|p| p.settings().sub > 0.0);
+    let any_unison = Preset::ALL.iter().any(|p| p.settings().unison > 1);
+    let any_glide = Preset::ALL.iter().any(|p| p.settings().glide > 0.0);
+    let any_drive = Preset::ALL.iter().any(|p| p.settings().drive > 0.0);
+    assert!(any_sub && any_unison && any_glide && any_drive, "förvalen ska spänna över de nya parametrarna");
+}

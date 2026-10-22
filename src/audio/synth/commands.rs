@@ -285,10 +285,16 @@ impl SynthEngine {
                 }
             }
             AudioCommand::LoadPreset(preset) => {
-                let (wf, adsr, flt) = preset.settings();
-                self.waveform = wf;
-                self.adsr = adsr;
-                self.filter_params = flt;
+                let s = preset.settings();
+                self.waveform = s.waveform;
+                self.adsr = s.adsr;
+                self.filter_params = s.filter;
+                self.filter_env_amount = s.filter_env_amount;
+                self.sub_level = s.sub;
+                self.unison_voices = s.unison.clamp(1, 8);
+                self.unison_detune_cents = s.detune;
+                self.glide_time = s.glide;
+                self.filter_drive = s.drive;
                 for voice in &mut self.voices {
                     voice.filter.reset();
                 }

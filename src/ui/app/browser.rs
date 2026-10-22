@@ -228,6 +228,7 @@ pub(crate) fn ui_dbg(msg: &str) {
 }
 
 impl SonixApp {
+    // `Preset` importeras i modulens topp.
 /// Öppnar ett bibliotekssample i Sångstudion som en tagning.
 ///
 /// **Ingen påhittad ton.** Vägen byggde förut en syntetisk sinuston (två
@@ -548,19 +549,13 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                     ui.horizontal(|ui| {
                         if ui.button(crate::i18n::t("▶")).clicked() {
                             self.current_preset = p;
-                            let (wf, adsr, flt) = p.settings();
-                            self.waveform = wf;
-                            self.adsr = adsr;
-                            self.filter = flt;
+                            self.apply_preset_settings(p);
                             let _ = self.engine.send_command(AudioCommand::LoadPreset(p));
                             let _ = self.engine.send_command(AudioCommand::NoteOn { note: 60, freq: 261.63, velocity: 0.85 });
                         }
                         if ui.button(crate::i18n::t("Ladda")).clicked() {
                             self.current_preset = p;
-                            let (wf, adsr, flt) = p.settings();
-                            self.waveform = wf;
-                            self.adsr = adsr;
-                            self.filter = flt;
+                            self.apply_preset_settings(p);
                             let _ = self.engine.send_command(AudioCommand::LoadPreset(p));
                             self.status_message = crate::tstatus!("Laddade preset: {}", name);
                         }
@@ -630,3 +625,19 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
 }
 }
 
+impl SonixApp {
+    /// Ställer appens egna reglage till förvalets värden, så att det som syns i
+    /// gränssnittet är det som spelar. Motorn får samma tal via `LoadPreset`.
+    pub(crate) fn apply_preset_settings(&mut self, preset: Preset) {
+        let s = preset.settings();
+        self.waveform = s.waveform;
+        self.adsr = s.adsr;
+        self.filter = s.filter;
+        self.filter_env_amount = s.filter_env_amount;
+        self.sub_level = s.sub;
+        self.unison_voices = s.unison.clamp(1, 8);
+        self.unison_detune_cents = s.detune;
+        self.glide_time = s.glide;
+        self.filter_drive = s.drive;
+    }
+}

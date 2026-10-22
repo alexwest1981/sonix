@@ -27,6 +27,21 @@ impl Waveform {
     }
 }
 
+/// Ett fabriksförval: de parametrar synten faktiskt har. `settings()` är enda källan —
+/// både motorn och gränssnittet läser samma tal, så reglagen och ljudet inte kan glida isär.
+#[derive(Debug, Clone, Copy)]
+pub struct PresetSettings {
+    pub waveform: Waveform,
+    pub adsr: AdsrParams,
+    pub filter: FilterParams,
+    pub filter_env_amount: f32,
+    pub sub: f32,
+    pub unison: u8,
+    pub detune: f32,
+    pub glide: f32,
+    pub drive: f32,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Preset {
     CleanPluck,
@@ -34,36 +49,107 @@ pub enum Preset {
     AcidBass,
     ChiptuneLead,
     CosmicBrass,
+    SubBass,
+    ReeseBass,
+    GlideLead,
+    SubDrone,
+    Stab,
 }
 
-#[allow(dead_code)]
 impl Preset {
-    pub fn settings(&self) -> (Waveform, AdsrParams, FilterParams) {
+    pub const ALL: [Preset; 10] = [
+        Preset::CleanPluck,
+        Preset::WarmPad,
+        Preset::AcidBass,
+        Preset::ChiptuneLead,
+        Preset::CosmicBrass,
+        Preset::SubBass,
+        Preset::ReeseBass,
+        Preset::GlideLead,
+        Preset::SubDrone,
+        Preset::Stab,
+    ];
+
+    /// Etiketten i gränssnittet. Kodens namn är engelska; det användaren ser är svenskt.
+    pub fn label(self) -> &'static str {
         match self {
-            Preset::CleanPluck => (
+            Preset::CleanPluck => "Ren plock",
+            Preset::WarmPad => "Varm pad",
+            Preset::AcidBass => "Surabass",
+            Preset::ChiptuneLead => "Chiplead",
+            Preset::CosmicBrass => "Bräss",
+            Preset::SubBass => "Subbas",
+            Preset::ReeseBass => "Reese-bas",
+            Preset::GlideLead => "Glidlead",
+            Preset::SubDrone => "Subdrön",
+            Preset::Stab => "Stab",
+        }
+    }
+
+    pub fn settings(self) -> PresetSettings {
+        let s = |waveform, adsr, cutoff, resonance, filter_env_amount, sub, unison, detune, glide, drive| {
+            PresetSettings {
+                waveform,
+                adsr,
+                filter: FilterParams { cutoff, resonance },
+                filter_env_amount,
+                sub,
+                unison,
+                detune,
+                glide,
+                drive,
+            }
+        };
+        match self {
+            Preset::CleanPluck => s(
                 Waveform::Saw,
                 AdsrParams { attack: 0.005, decay: 0.35, sustain: 0.1, release: 0.25 },
-                FilterParams { cutoff: 3800.0, resonance: 1.8 },
+                3800.0, 1.8, 1.0, 0.1, 1, 0.0, 0.0, 0.1,
             ),
-            Preset::WarmPad => (
+            Preset::WarmPad => s(
                 Waveform::Saw,
                 AdsrParams { attack: 0.45, decay: 0.5, sustain: 0.75, release: 0.9 },
-                FilterParams { cutoff: 1400.0, resonance: 0.9 },
+                1400.0, 0.9, 0.3, 0.25, 4, 14.0, 0.0, 0.0,
             ),
-            Preset::AcidBass => (
+            Preset::AcidBass => s(
                 Waveform::Saw,
                 AdsrParams { attack: 0.005, decay: 0.18, sustain: 0.15, release: 0.1 },
-                FilterParams { cutoff: 750.0, resonance: 5.0 },
+                750.0, 5.0, 1.5, 0.3, 1, 0.0, 0.0, 0.35,
             ),
-            Preset::ChiptuneLead => (
+            Preset::ChiptuneLead => s(
                 Waveform::Square,
                 AdsrParams { attack: 0.002, decay: 0.08, sustain: 0.7, release: 0.08 },
-                FilterParams { cutoff: 12000.0, resonance: 0.7 },
+                12000.0, 0.7, 0.0, 0.0, 1, 0.0, 0.0, 0.0,
             ),
-            Preset::CosmicBrass => (
+            Preset::CosmicBrass => s(
                 Waveform::Triangle,
                 AdsrParams { attack: 0.08, decay: 0.3, sustain: 0.65, release: 0.45 },
-                FilterParams { cutoff: 4500.0, resonance: 2.5 },
+                4500.0, 2.5, 0.9, 0.2, 2, 7.0, 0.0, 0.2,
+            ),
+            Preset::SubBass => s(
+                Waveform::Sine,
+                AdsrParams { attack: 0.004, decay: 0.6, sustain: 0.85, release: 0.12 },
+                320.0, 0.8, 0.0, 0.7, 1, 0.0, 0.0, 0.15,
+            ),
+            Preset::ReeseBass => s(
+                Waveform::Saw,
+                AdsrParams { attack: 0.01, decay: 0.5, sustain: 0.9, release: 0.2 },
+                700.0, 1.4, 0.4, 0.5, 3, 22.0, 0.0, 0.35,
+            ),
+            Preset::GlideLead => s(
+                Waveform::Saw,
+                AdsrParams { attack: 0.01, decay: 0.4, sustain: 0.85, release: 0.25 },
+                2400.0, 2.2, 0.5, 0.15, 1, 0.0, 0.12, 0.3,
+            ),
+            Preset::SubDrone => s(
+                Waveform::Sine,
+                AdsrParams { attack: 1.2, decay: 2.0, sustain: 0.9, release: 2.5 },
+                200.0, 0.6, 0.0, 0.9, 2, 4.0, 0.0, 0.0,
+            ),
+            Preset::Stab => s(
+                Waveform::Square,
+                AdsrParams { attack: 0.004, decay: 0.22, sustain: 0.25, release: 0.15 },
+                3200.0, 1.8, 1.2, 0.3, 3, 12.0, 0.0, 0.4,
             ),
         }
     }

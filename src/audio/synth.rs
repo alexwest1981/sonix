@@ -280,7 +280,8 @@ pub struct SynthEngine {
 
 impl SynthEngine {
     pub fn new(sample_rate: f32) -> Self {
-        let (waveform, adsr, filter_params) = Preset::CleanPluck.settings();
+        let s = Preset::CleanPluck.settings();
+        let (waveform, adsr, filter_params) = (s.waveform, s.adsr, s.filter);
         Self {
             sample_rate,
             waveform,

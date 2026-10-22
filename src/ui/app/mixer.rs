@@ -2936,23 +2936,14 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
 
             // Presets
             ui.label(egui::RichText::new(crate::i18n::t("Presets:")).color(Theme::TEXT_MUTED));
-            let presets = [
-                (Preset::CleanPluck, "Clean Pluck"),
-                (Preset::WarmPad, "Warm Pad"),
-                (Preset::AcidBass, "303 Acid Bass"),
-                (Preset::ChiptuneLead, "8-Bit Chiptune"),
-                (Preset::CosmicBrass, "Cosmic Brass"),
-            ];
-            for (p, name) in presets {
+            for p in Preset::ALL {
+                let name = p.label();
                 let is_active = self.current_preset == p;
                 let fill = if is_active { Theme::FL_CYAN } else { Theme::PANEL_BG };
                 let text_color = if is_active { Color32::BLACK } else { Theme::TEXT_BRIGHT };
                 if ui.add(egui::Button::new(egui::RichText::new(name).strong().color(text_color)).fill(fill)).clicked() {
                     self.current_preset = p;
-                    let (wf, adsr, flt) = p.settings();
-                    self.waveform = wf;
-                    self.adsr = adsr;
-                    self.filter = flt;
+                    self.apply_preset_settings(p);
                     let _ = self.engine.send_command(AudioCommand::LoadPreset(p));
                 }
             }
