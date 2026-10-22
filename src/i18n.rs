@@ -540,7 +540,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Läs en Ableton-groove (.agr) och lägg dess sväng på tagningen" => "Read an Ableton groove (.agr) and apply its swing to the take",
         "⚠️ Ingen tagning att lägga grooven på — spela in först" => "⚠️ No take to apply the groove to — record first",
         "⚠️ '{}' innehåller inga noter — ingen groove att läsa" => "⚠️ '{}' contains no notes — no groove to read",
-        "⚠️ '{}' är en binär groove-fil — 103 av Abletons 219 mallar är det. Välj en XML-mall" => "⚠️ '{}' is a binary groove file — 103 of Ableton's 219 templates are. Pick an XML template",
+        "⚠️ '{}' är binär men innehåller ingen notlista att läsa" => "⚠️ '{}' is binary but has no note list we can read",
         "🎵 '{}' lagd på {} not(er): djup {:.1} % av ett steg, styrka {:.0} %" => "🎵 '{}' applied to {} note(s): depth {:.1}% of a step, strength {:.0}%",
         "Dra tagningens noter till närmaste rutnätslinje, med projektets sväng" => "Pull the take's notes to the nearest grid line, using the project swing",
         "Rutnät:" => "Grid:",

@@ -46,8 +46,113 @@ pub fn agr_looks_binary(data: &[u8]) -> bool {
 
 /// Läser en `.agr`-fil från disk. Abletons egna filer är inte alltid UTF-8 (Logic-mallarna
 /// innehåller bytes utanför UTF-8), så avkodningen är förlåtande i stället för att kasta.
+/// 103 av Abletons 219 grooves är **binära**; de läses av [`parse_agr_binary`].
 pub fn parse_agr_bytes(data: &[u8], name: &str) -> Option<Groove> {
+    if agr_looks_binary(data) {
+        return parse_agr_binary(data, name);
+    }
     parse_agr(&String::from_utf8_lossy(data), name)
+}
+
+/// Läser Abletons **binära** groove-format.
+///
+/// Formatet är Abletons egen serialisering och har ingen publik spec. En not är 25 byte:
+/// en flaggbyte, sedan tre `f64` — `(anslag, tid, längd)` — där tiden är i **beats** och
+/// längden för en sextondel är 0,0625. Noterna ligger i en array med 25 byte mellan varje
+/// post och stigande tid, så arrayen hittas genom att leta efter den längsta följden av
+/// poster som har samma längd och stigande tid.
+///
+/// Tolkningen är prövad mot filnamnen: mallar som heter "Swing MPC … 70" får förskjutningar
+/// upp till 0,499 steg (maximal swing), medan "Swing Logic 16ths 63" får 0,000 — Logic-mallen
+/// markerar swing i sitt eget `Grid` i stället. Det är vad man väntar sig om tiden är beats
+/// och förskjutningen mäts mot sextondelsnätet.
+pub fn parse_agr_binary(data: &[u8], name: &str) -> Option<Groove> {
+    const STRIDE: usize = 25;
+    const MIN_RECORDS: usize = 8;
+
+    let f64_at = |at: usize| -> Option<f64> {
+        let bytes = data.get(at..at + 8)?;
+        Some(f64::from_le_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+        ]))
+    };
+    // En post läses från sin flaggbyte: anslag (f64), tid (f64), längd (f64).
+    let record = |start: usize| -> Option<(f64, f64, f64)> {
+        let velocity = f64_at(start + 1)?;
+        let time = f64_at(start + 9)?;
+        let length = f64_at(start + 17)?;
+        Some((velocity, time, length))
+    };
+
+    let mut best: Option<Vec<(f64, f64)>> = None;
+    if data.len() < MIN_RECORDS * STRIDE {
+        return None;
+    }
+    for start in 0..=(data.len() - MIN_RECORDS * STRIDE) {
+        let mut notes: Vec<(f64, f64)> = Vec::with_capacity(MIN_RECORDS);
+        let mut length: Option<f64> = None;
+        let mut ok = true;
+        for k in 0..MIN_RECORDS {
+            let Some((velocity, time, len)) = record(start + k * STRIDE) else {
+                ok = false;
+                break;
+            };
+            if !(-0.5..=2.0).contains(&velocity) || !(0.0..512.0).contains(&time) {
+                ok = false;
+                break;
+            }
+            let expected = *length.get_or_insert(len);
+            // Längden är gemensam för hela arrayen, och den ska vara ett notvärde.
+            if (len - expected).abs() > 1e-12 || !(0.0..=8.0).contains(&len) || len == 0.0 {
+                ok = false;
+                break;
+            }
+            if notes.last().is_some_and(|(_, prev)| time < *prev - 1e-9) {
+                ok = false;
+                break;
+            }
+            notes.push((velocity, time));
+        }
+        if !ok {
+            continue;
+        }
+        // Förläng med så många poster som fortsätter mönstret.
+        let mut k = MIN_RECORDS;
+        while let Some((velocity, time, len)) = record(start + k * STRIDE) {
+            if (len - length.unwrap_or(len)).abs() > 1e-12
+                || !(-0.5..=2.0).contains(&velocity)
+                || !(0.0..512.0).contains(&time)
+                || notes.last().is_some_and(|(_, prev)| time < *prev - 1e-9)
+            {
+                break;
+            }
+            notes.push((velocity, time));
+            k += 1;
+        }
+        if best.as_ref().is_none_or(|b| notes.len() > b.len()) {
+            best = Some(notes);
+        }
+    }
+
+    let notes = best?;
+    // Position i sextondelar = tid i beats × 4. Förskjutningen är avståndet till närmaste
+    // sextondel, medelvärt per steg (en mall kan träffa samma steg flera gånger).
+    let mut sum = [0.0f32; GROOVE_SLOTS];
+    let mut count = [0u32; GROOVE_SLOTS];
+    for (_, time) in &notes {
+        let position = (*time as f32) * 4.0;
+        let slot_pos = position.round();
+        let slot = (slot_pos as i64).rem_euclid(GROOVE_SLOTS as i64) as usize;
+        sum[slot] += position - slot_pos;
+        count[slot] += 1;
+    }
+    let mut offsets = [0.0f32; GROOVE_SLOTS];
+    for slot in 0..GROOVE_SLOTS {
+        if count[slot] > 0 {
+            offsets[slot] = (sum[slot] / count[slot] as f32).clamp(-0.5, 0.5);
+        }
+    }
+    Some(Groove { name: name.to_string(), offsets })
 }
 
 /// Läser en `.agr`-fil och räknar ut förskjutningen per steg.
@@ -239,4 +344,108 @@ mod tests {
         assert!(parse_agr("<Groove></Groove>", "tom").is_none());
         assert!(parse_agr("inte xml alls", "skräp").is_none());
     }
+    /// Bygger en binär `.agr` som Abletons: skräp, sedan 25-byte-poster.
+    fn binary_agr(times: &[f64], length: f64) -> Vec<u8> {
+        let mut out = vec![0xab, 0x1e, 0x56, 0x78, 3, 0x93, 0, 0, 0];
+        out.extend_from_slice(b"\x06Groove");
+        for (i, t) in times.iter().enumerate() {
+            out.push(if i % 2 == 0 { 1 } else { 0x80 });
+            out.extend_from_slice(&0.9f64.to_le_bytes());
+            out.extend_from_slice(&t.to_le_bytes());
+            out.extend_from_slice(&length.to_le_bytes());
+        }
+        out.extend_from_slice(&[0u8; 12]);
+        out
+    }
+
+    #[test]
+    fn a_binary_agr_yields_the_same_offsets_as_the_xml_one() {
+        // Samma swing som en XML-mall: varannan sextondel på 0,6224 beats i stället för 0,5.
+        let times = [
+            0.0, 0.6224, 1.0, 1.6224, 2.0, 2.6224, 3.0, 3.6224, 4.0, 4.6224,
+        ];
+        let data = binary_agr(&times, 0.0625);
+        let g = parse_agr_binary(&data, "swing").expect("binär mall ska gå att läsa");
+        assert!(g.offsets[0].abs() < 0.01, "steg 0 ligger på nätet: {}", g.offsets[0]);
+        // 0,6224 × 4 = 2,4896 → steg 2 med +0,49.
+        assert!(
+            (g.offsets[2] - 0.49).abs() < 0.02,
+            "steg 2 ska ligga 0,49 steg sent: {}",
+            g.offsets[2]
+        );
+        assert_eq!(g.offsets[1], 0.0, "steg utan noter har ingen förskjutning");
+    }
+
+    #[test]
+    fn a_binary_file_without_records_is_rejected() {
+        assert!(parse_agr_binary(&[0u8; 400], "skräp").is_none());
+        // Poster med fallande tid är ingen notlista.
+        let falling = [9.0, 4.0, 3.0, 2.0, 1.0, 0.5, 0.4, 0.3, 0.2, 0.1];
+        assert!(binary_agr(&falling, 0.0625).len() > 0);
+        assert!(parse_agr_binary(&binary_agr(&falling, 0.0625), "fallande").is_none());
+    }
+
+    /// **Alla Abletons groove-mallar**, XML som binära, när katalogen är angiven.
+    /// Namnen är facit: mallar som heter "Swing MPC … 70" ska ha stor förskjutning,
+    /// "Swing Logic 16ths 63" ska ha noll (Logic markerar swing i sitt `Grid`).
+    #[test]
+    fn every_real_ableton_groove_parses_if_a_folder_is_available() {
+        let Ok(root) = std::env::var("SONIX_AGR_DIR") else {
+            return;
+        };
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "agr") {
+                    out.push(path);
+                }
+            }
+        }
+        let mut files = Vec::new();
+        walk(std::path::Path::new(&root), &mut files);
+        files.sort();
+        let total = files.len();
+        let mut parsed = 0usize;
+        let mut binary = 0usize;
+        let mut mpc_depth = 0.0f32;
+        let mut logic_depth = f32::NAN;
+        for path in &files {
+            let Ok(bytes) = std::fs::read(path) else {
+                continue;
+            };
+            let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+            let Some(g) = parse_agr_bytes(&bytes, &name) else {
+                // De fyra "Quantize …"-filerna är **kvantiseringsnät**, inte grooves: de har
+                // tre noter och ingen förskjutning att läsa. De räknas inte som misslyckade.
+                assert!(
+                    name.starts_with("Quantize"),
+                    "bara kvantiseringsnäten får vara oläsbara, inte {name}"
+                );
+                continue;
+            };
+            parsed += 1;
+            if agr_looks_binary(&bytes) {
+                binary += 1;
+            }
+            if name.contains("Swing MPC") {
+                mpc_depth = mpc_depth.max(g.depth());
+            }
+            if name.contains("Swing Logic") {
+                logic_depth = g.depth();
+            }
+        }
+        println!("{parsed} av {total} mallar lästa ({binary} binära)");
+        assert_eq!(parsed, total - 4, "alla grooves ska läsas; bara de fyra kvantiseringsnäten får falla");
+        assert!(mpc_depth > 0.2, "MPC-swingen ska ha tydlig förskjutning: {mpc_depth:.3}");
+        assert!(
+            logic_depth.is_nan() || logic_depth < 0.01,
+            "Logic-mallen markerar swing i Grid, inte i tiderna: {logic_depth:.3}"
+        );
+    }
+
 }

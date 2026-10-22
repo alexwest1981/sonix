@@ -888,10 +888,8 @@ pub(crate) fn apply_groove_from_file(&mut self) {
         .unwrap_or_else(|| path.display().to_string());
     let Some(groove) = crate::groove::parse_agr_bytes(&bytes, &name) else {
         self.status_message = if crate::groove::agr_looks_binary(&bytes) {
-            crate::tstatus!(
-                "⚠️ '{}' är en binär groove-fil — 103 av Abletons 219 mallar är det. Välj en XML-mall",
-                name
-            )
+            // Binära mallar läses sedan 2026-10-22; faller den här är det filen, inte formatet.
+            crate::tstatus!("⚠️ '{}' är binär men innehåller ingen notlista att läsa", name)
         } else {
             crate::tstatus!("⚠️ '{}' innehåller inga noter — ingen groove att läsa", name)
         };
