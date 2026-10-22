@@ -411,6 +411,8 @@ pub struct SonixApp {
     /// Hur mycket humaniseringen ska lägga på, 0–1 (Fas 6.4).
     pub take_humanize: f32,
     /// Hur många steg isär ett ackords noter strummas.
+    /// Text för pianorullens skriptfält.
+    pub script_text: String,
     pub take_strum: f32,
     /// Nedstrum: högsta tonen först.
     pub take_strum_down: bool,
@@ -938,6 +940,7 @@ impl SonixApp {
             export_noise_shaping: false,
             take_strength: 1.0,
             take_humanize: 0.5,
+            script_text: String::new(),
             take_strum: 0.08,
             take_strum_down: false,
             midi_held_notes: std::collections::HashSet::new(),

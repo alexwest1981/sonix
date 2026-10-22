@@ -18,6 +18,7 @@ compile_error!(
 mod groove;
 mod i18n;
 mod midi_take;
+mod piano_script;
 mod rng;
 mod paths;
 mod platform;

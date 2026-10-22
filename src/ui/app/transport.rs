@@ -967,6 +967,39 @@ pub(crate) fn humanize_take(&mut self, amount: f32) {
 }
 
 impl SonixApp {
+/// Kör pianorullsskriptet i textfältet mot vald tagning.
+pub(crate) fn run_piano_script(&mut self) {
+    let text = self.script_text.clone();
+    if text.trim().is_empty() {
+        self.status_message =
+            crate::i18n::t("Skriv ett skript först — t.ex. 'transpose 12'").to_string();
+        return;
+    }
+    self.push_undo("📜 Pianorullsskript");
+    self.take_seed_counter = self.take_seed_counter.wrapping_add(1);
+    let seed = self.take_seed_counter;
+    let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+        return;
+    };
+    match crate::piano_script::run_script(&mut pat.take, &text, seed) {
+        Ok(reports) => {
+            let changed: usize = reports.iter().map(|r| r.changed).sum();
+            let lines = reports.len();
+            self.status_message = crate::tstatus!(
+                "📜 Skriptet kördes: {} rader, {} noter ändrade",
+                lines,
+                changed
+            );
+        }
+        Err(err) => {
+            // Ett trasigt skript ska inte lämna tagningen halvändrad utan att säga det.
+            self.status_message = crate::tstatus!("❌ {}", err);
+        }
+    }
+}
+}
+
+impl SonixApp {
 /// Strummar tagningens ackord: noter på samma slag sprids i tonhöjdsordning.
 pub(crate) fn strum_take(&mut self, spread_steps: f32, down: bool) {
     self.push_undo("🪕 Strumning av tagningen");

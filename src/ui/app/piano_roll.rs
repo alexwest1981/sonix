@@ -338,6 +338,37 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             }
 
             ui.separator();
+            egui::CollapsingHeader::new(
+                egui::RichText::new(crate::i18n::t("📜 Skript")).size(11.0),
+            )
+            .id_salt("piano_roll_script")
+            .show(ui, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.script_text)
+                        .desired_rows(3)
+                        .desired_width(240.0)
+                        .hint_text(crate::i18n::t("transpose 12")),
+                );
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(crate::i18n::t("▶ Kör skript"))
+                                .strong()
+                                .size(10.5)
+                                .color(Theme::TEXT_BRIGHT),
+                        )
+                        .fill(take_btn),
+                    )
+                    .on_hover_text(crate::i18n::t(
+                        "select all / select key > 60 / transpose 12 / velocity *0.8 / humanize 0.5 / strum 0.05 / quantize 100 1 / delete",
+                    ))
+                    .clicked()
+                {
+                    self.run_piano_script();
+                }
+            });
+
+            ui.separator();
             ui.label(
                 egui::RichText::new(crate::i18n::t("Groove"))
                     .size(11.0)
