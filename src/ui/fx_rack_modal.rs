@@ -32,6 +32,9 @@ pub struct FxPedal {
     pub p3_name: &'static str,
     pub p3_val: f32,
     pub mix: f32,
+    /// Fler rattar än de tre fasta, för effekter som behöver fem. Namn och värde 0–1,
+    /// ritade efter p3 och före MIX.
+    pub extra: Vec<(&'static str, f32)>,
     pub description: &'static str,
 }
 
@@ -69,6 +72,7 @@ impl Default for FxRackState {
                     p3_val: 0.55,
                     mix: 1.0,
                     description: "4-bands parametrisk equalizer med interaktiv kurva.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "dyn_comp",
@@ -84,6 +88,7 @@ impl Default for FxRackState {
                     p3_val: 0.30,
                     mix: 0.85,
                     description: "Professionell studiokompressor med Gain Reduction-mätare.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "vocal_doubler",
@@ -99,6 +104,7 @@ impl Default for FxRackState {
                     p3_val: 0.80,
                     mix: 0.75,
                     description: "Skapar fylliga stereostämmor och analog körklang.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "studio_reverb",
@@ -114,6 +120,7 @@ impl Default for FxRackState {
                     p3_val: 0.75,
                     mix: 0.30,
                     description: "Plate, Room och Hall-akustik för djup och rymd.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "de_esser",
@@ -129,6 +136,7 @@ impl Default for FxRackState {
                     p3_val: 0.50,
                     mix: 1.0,
                     description: "Dämpar automatiskt skarpa s- och t-ljud i sånginspelningar.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "noise_gate",
@@ -144,6 +152,7 @@ impl Default for FxRackState {
                     p3_val: 0.40,
                     mix: 1.0,
                     description: "Tystar bakgrundsbrus och sus när sångaren inte sjunger.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "multiband",
@@ -159,6 +168,7 @@ impl Default for FxRackState {
                     p3_val: 0.0,
                     mix: 1.0,
                     description: "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "transient",
@@ -174,6 +184,7 @@ impl Default for FxRackState {
                     p3_val: 0.5,
                     mix: 1.0,
                     description: "Formar anslaget och kroppen var för sig — mer punch utan att höja nivån.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "saturator",
@@ -189,6 +200,7 @@ impl Default for FxRackState {
                     p3_val: 0.50,
                     mix: 1.0,
                     description: "Mjuk mättnad (tanh) med tonkontroll — aldrig över full skala.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "granular",
@@ -200,10 +212,11 @@ impl Default for FxRackState {
                     p1_val: 0.30,
                     p2_name: "TÄTHET",
                     p2_val: 0.20,
-                    p3_name: "MIX",
-                    p3_val: 0.60,
-                    mix: 1.0,
-                    description: "Korn ur de senaste två sekunderna, 20–200 ms långa och 2–60 per sekund. Positionen ligger 120 ms bakåt med 40 ms spridning.",
+                    p3_name: "POSITION",
+                    p3_val: 0.10,
+                    mix: 0.60,
+                    description: "Korn ur de senaste två sekunderna: KORN (20–200 ms), TÄTHET (2–60 per sekund), POSITION (20–1000 ms bakåt), SPRIDNING (0–200 ms) och MIX.",
+                    extra: vec![("SPRIDNING", 0.20)],
                 },
                 FxPedal {
                     id: "chorus",
@@ -219,6 +232,7 @@ impl Default for FxRackState {
                     p3_val: 0.50,
                     mix: 1.0,
                     description: "Modulerad fördröjning 12 ms ± 8 ms med kvarts periods kanalskillnad — bredd utan grumlighet.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "flanger",
@@ -234,6 +248,7 @@ impl Default for FxRackState {
                     p3_val: 0.50,
                     mix: 1.0,
                     description: "Kort fördröjning (2,5 ms ± 2 ms) med 0,6 återkoppling — den vassa kammen.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "phaser",
@@ -249,6 +264,7 @@ impl Default for FxRackState {
                     p3_val: 0.50,
                     mix: 1.0,
                     description: "Fyra allpass-steg med svepande brytfrekvens (200 Hz–2 kHz). Kammen ligger djupast vid mix 0,5.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "analog_filter",
@@ -264,6 +280,7 @@ impl Default for FxRackState {
                     p3_val: 0.20,
                     mix: 1.0,
                     description: "Resonant lågpass- och högpassfilter med analog värme.",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "brickwall_limiter",
@@ -279,6 +296,7 @@ impl Default for FxRackState {
                     p3_val: 0.50,
                     mix: 1.0,
                     description: "Förhindrar digital distorsion och maximerar ljudstyrkan.",
+                    extra: Vec::new(),
                 },
             ],
             selected_preset: 0,
@@ -423,12 +441,15 @@ impl FxRackState {
         };
 
         let gr_p = self.pedal("granular");
+        let knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            gr_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
         let granular = GranularParams {
-            size_ms: 10.0 + gr_p.map(|p| p.p1_val).unwrap_or(0.3).clamp(0.0, 1.0) * 190.0,
-            density: 2.0 + gr_p.map(|p| p.p2_val).unwrap_or(0.2).clamp(0.0, 1.0) * 58.0,
-            position_ms: 120.0,
-            spray_ms: 40.0,
-            mix: gr_p.map(|p| p.p3_val).unwrap_or(0.6),
+            size_ms: 10.0 + knob(|p| p.p1_val, 0.3) * 190.0,
+            density: 2.0 + knob(|p| p.p2_val, 0.2) * 58.0,
+            position_ms: 20.0 + knob(|p| p.p3_val, 0.1) * 980.0,
+            spray_ms: knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.2), 0.2) * 200.0,
+            mix: knob(|p| p.mix, 0.6),
         };
 
         let ch_p = self.pedal("chorus");
@@ -885,6 +906,9 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                             rotary_knob(ui, &mut pedal.p1_val, 0.0, 1.0, pedal.p1_name, pedal.color, 18.0);
                             rotary_knob(ui, &mut pedal.p2_val, 0.0, 1.0, pedal.p2_name, pedal.color, 18.0);
                             rotary_knob(ui, &mut pedal.p3_val, 0.0, 1.0, pedal.p3_name, pedal.color, 18.0);
+                            for (name, val) in pedal.extra.iter_mut() {
+                                rotary_knob(ui, val, 0.0, 1.0, name, pedal.color, 18.0);
+                            }
                             rotary_knob(ui, &mut pedal.mix, 0.0, 1.0, "MIX", Color32::WHITE, 18.0);
                         }
 
@@ -1172,4 +1196,40 @@ fn resample_linear(x: &[f32], from: u32, to: u32) -> Vec<f32> {
         out.push(a + (b - a) * frac);
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// **Granulizerns rattar når sina egna parametrar.** Fem rattar kan bytas om varandra
+    /// utan att något låter fel i bygget — bara i ljudet. Därför mäts mappningen.
+    #[test]
+    fn the_granulizer_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "granular")
+            .expect("granulizerpedalen ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 0.0; // kortaste kornet
+        pedal.p2_val = 1.0; // tätast
+        pedal.p3_val = 1.0; // längst bak
+        pedal.extra[0].1 = 0.0; // ingen spridning
+        pedal.mix = 0.25;
+
+        let params = state.build_master_fx_params();
+        assert!(params.granular_enabled, "pedalen ska slå på steget");
+        assert!((params.granular.size_ms - 10.0).abs() < 0.01, "korn: {}", params.granular.size_ms);
+        assert!((params.granular.density - 60.0).abs() < 0.01, "täthet: {}", params.granular.density);
+        assert!(
+            (params.granular.position_ms - 1000.0).abs() < 0.01,
+            "position: {}",
+            params.granular.position_ms
+        );
+        assert!((params.granular.spray_ms - 0.0).abs() < 0.01, "spridning: {}", params.granular.spray_ms);
+        assert!((params.granular.mix - 0.25).abs() < 0.01, "mix: {}", params.granular.mix);
+    }
 }
