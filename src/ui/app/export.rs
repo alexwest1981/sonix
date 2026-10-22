@@ -552,11 +552,12 @@ pub(crate) fn bounce_track_to_new(&mut self, t_idx: usize) {
     let Some(track) = self.playlist_tracks.get(t_idx) else {
         return;
     };
-    if !track.can_freeze() {
-        self.status_message = crate::i18n::t(
-            "❄ Spåret kan inte bakas — det är redan fruset, eller ett ljudspår som redan ligger som ljud",
-        )
-        .to_string();
+    // **Ett ljudspår får bakas** — det är redan ljud, och bakningen lägger resultatet på ett
+    // nytt spår, så inget går förlorat. Bara ett fruset spår avvisas: det har redan sin
+    // färdiga form, och att baka det igen vore att baka en bakning.
+    if track.is_frozen() {
+        self.status_message =
+            crate::i18n::t("❄ Spåret är redan fruset — tina det innan det bakas").to_string();
         return;
     }
     if self.plugin_slots.get(t_idx).is_some_and(|s| s.is_some()) {

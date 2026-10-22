@@ -2335,4 +2335,47 @@ mod stem_wav_tests {
         assert_eq!(muted(Some(1)), (true, false), "solo 1: bara spår 1 hörs");
     }
 
+
+    /// **Isoleringen hörs också, inte bara flaggas.** `render_project_offline` ger
+    /// **interleaved** stereoljud, så ett prov som mäter spektrum rakt av mäter fel frekvens
+    /// (en ton på f syns på f/2 i en interleavad buffert). Här plockas vänsterkanalen ut
+    /// först, och sedan mäts tonerna.
+    #[test]
+    fn the_solo_render_holds_only_the_soloed_tracks_tone() {
+        let render_left = |solo: Option<usize>| -> Vec<f32> {
+            let spec = tone_spec(solo);
+            let mut engine = build_offline_engine(&spec, &super::tests::fx_for_test());
+            let out = crate::audio::render_project_offline(&mut engine, &spec);
+            out.chunks(2).map(|pair| pair[0]).collect()
+        };
+        let mag = |v: &[f32], f: f32| {
+            let w = &v[..24_000.min(v.len())];
+            let (mut re, mut im) = (0.0f32, 0.0f32);
+            for (n, &x) in w.iter().enumerate() {
+                let ph = 2.0 * std::f32::consts::PI * f * n as f32 / 48_000.0;
+                re += x * ph.cos();
+                im -= x * ph.sin();
+            }
+            (re * re + im * im).sqrt() / w.len() as f32
+        };
+        let both = render_left(None);
+        let low = render_left(Some(0));
+        let high = render_left(Some(1));
+        println!(
+            "båda: 100 Hz {:.3}, 1 kHz {:.3} · solo 0: {:.3}/{:.3} · solo 1: {:.3}/{:.3}",
+            mag(&both, 100.0), mag(&both, 1000.0),
+            mag(&low, 100.0), mag(&low, 1000.0),
+            mag(&high, 100.0), mag(&high, 1000.0)
+        );
+        assert!(mag(&both, 100.0) > 0.05 && mag(&both, 1000.0) > 0.05, "utan solo ska båda höras");
+        assert!(
+            mag(&low, 100.0) > 0.05 && mag(&low, 1000.0) < mag(&low, 100.0) * 0.1,
+            "solo 0 ska bara ge 100 Hz"
+        );
+        assert!(
+            mag(&high, 1000.0) > 0.05 && mag(&high, 100.0) < mag(&high, 1000.0) * 0.1,
+            "solo 1 ska bara ge 1 kHz"
+        );
+    }
+
 }

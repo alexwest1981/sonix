@@ -2284,8 +2284,11 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             ui.label(egui::RichText::new(crate::i18n::t("⚠ ändrat sedan frysningen")).size(10.0).color(Theme::FL_ORANGE))
                                 .on_hover_text(crate::i18n::t("Mönstret eller ljudet har ändrats efter frysningen, så ljudet är inte längre det du hör av patterns. Tina och frys igen."));
                         }
-                    } else if track.can_freeze() {
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("❄ Frys spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(35, 60, 80)))
+                    } else {
+                        // Frysningen byter ut spårets uppspelning och gäller därför bara
+                        // pattern-spår; bakningen lägger ljudet på ett nytt spår och gäller
+                        // alla som inte redan är frusna.
+                        if track.can_freeze() && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("❄ Frys spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(35, 60, 80)))
                             .on_hover_text(crate::i18n::t("Renderar spåret till ljud och spelar det i stället för patterns — sparar CPU i stora projekt. Patterns finns kvar, och Ctrl+Z tar tillbaka frysningen."))
                             .clicked()
                         {
