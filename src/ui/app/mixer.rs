@@ -2990,6 +2990,35 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     let _ = self.engine.send_command(AudioCommand::SetFm(self.fm));
                 }
                 ui.separator();
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("UNISON"))
+                        .size(10.0)
+                        .color(Theme::TEXT_MUTED),
+                );
+                let mut unison_changed = false;
+                ui.horizontal(|ui| {
+                    let mut voices = self.unison_voices as i32;
+                    if ui
+                        .add(egui::Slider::new(&mut voices, 1..=8).show_value(true))
+                        .on_hover_text(crate::i18n::t("Antal röster per not"))
+                        .changed()
+                    {
+                        self.unison_voices = voices.clamp(1, 8) as u8;
+                        unison_changed = true;
+                    }
+                    ui.add(
+                        egui::Slider::new(&mut self.unison_detune_cents, 0.0..=100.0)
+                            .suffix(" cent")
+                            .show_value(true),
+                    )
+                    .on_hover_text(crate::i18n::t("Hur mycket rösterna stäms isär"));
+                });
+                if unison_changed {
+                    let _ = self.engine.send_command(AudioCommand::SetUnison {
+                        voices: self.unison_voices,
+                        detune_cents: self.unison_detune_cents,
+                    });
+                }
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Oktav:"));
                     if ui.button(crate::i18n::t("➖ (Z)")).clicked() && self.octave > 1 { self.octave -= 1; }

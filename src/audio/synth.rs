@@ -112,6 +112,7 @@ fn describe_cmd(cmd: &AudioCommand) -> String {
 fn variant_name(cmd: &AudioCommand) -> &'static str {
     match cmd {
         AudioCommand::SetModulation { .. } => "SetModulation",
+        AudioCommand::SetUnison { .. } => "SetUnison",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -190,6 +191,10 @@ pub struct SynthEngine {
     pub tape_stop: TapeStop,
     /// Modulationsmatrisen (FL:s Envelope/Peak/Keyboard Controller).
     pub modulation: crate::audio::modulation::ModMatrix,
+    /// Unison: hur många röster en not startar, och hur mycket de stäms isär i cent.
+    /// Fler röster ger bredd och rörelse; en röst är exakt som förut.
+    pub unison_voices: u8,
+    pub unison_detune_cents: f32,
     /// Modulationens tonhöjd i semitoner och filtrets brytfrekvens i oktaver, räknade
     /// en gång per sampel och lästa av rösterna. Noll när matrisen är tom.
     pub mod_pitch: f32,
@@ -283,6 +288,8 @@ impl SynthEngine {
             tape_stop: TapeStop::new(sample_rate),
             master_volume: 0.8,
             modulation: crate::audio::modulation::ModMatrix::default(),
+            unison_voices: 1,
+            unison_detune_cents: 12.0,
             mod_pitch: 0.0,
             mod_cutoff: 0.0,
             voices: [Voice::new(sample_rate); MAX_VOICES],

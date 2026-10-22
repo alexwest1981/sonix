@@ -2211,3 +2211,60 @@ fn a_cutoff_slot_opens_the_voice_filter() {
         "öppnat filter ska ge mer diskant: {b:.4} mot {a:.4}"
     );
 }
+
+/// **Unison stämmer isär rösterna, och det hörs som rörelse.** Två eller flera röster
+/// med några cents mellan sig svävar mot varandra; en enda röst står still. Måttet är
+/// spridningen i blockvis RMS, inte en spektralbild.
+#[test]
+fn unison_detune_makes_the_level_move() {
+    let spread = |voices: u8, detune: f32| {
+        let mut engine = SynthEngine::new(48_000.0);
+        engine.filter_params.cutoff = 12_000.0;
+        // Ingen filterenvelope: annars sveper cutoffen och då rör nivån sig av det i
+        // stället för av isärstämningen.
+        engine.filter_env_amount = 0.0;
+        // Platt envelope: spridningen ska komma av isärstämningen, inte av ett decay.
+        engine.adsr = crate::audio::envelope::AdsrParams {
+            attack: 0.005,
+            decay: 0.001,
+            sustain: 1.0,
+            release: 0.05,
+        };
+        engine.handle_command(AudioCommand::SetUnison { voices, detune_cents: detune });
+        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0 });
+        // 50 ms-block: elva perioder av 220 Hz, så blockens RMS inte varierar av fasläget.
+        let mut blocks = Vec::new();
+        for _ in 0..40 {
+            let mut sum = 0.0f32;
+            for _ in 0..2_400 {
+                let (l, _) = engine.process_stereo();
+                sum += l * l;
+            }
+            blocks.push((sum / 2_400.0).sqrt());
+        }
+        // Hoppa över attacken.
+        let tail = &blocks[4..];
+        let mean = tail.iter().sum::<f32>() / tail.len() as f32;
+        let var = tail.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / tail.len() as f32;
+        var.sqrt() / mean.max(1e-9)
+    };
+    let still = spread(1, 0.0);
+    let wide = spread(3, 50.0);
+    println!("RMS-spridning: en röst {still:.4}, tre röster {wide:.4}");
+    // En enda röst har en liten rest (några procent) av att blocken inte ligger exakt på
+    // perioden; det som ska synas är att de isärstämda rösterna rör sig **flera gånger** mer.
+    assert!(still < 0.08, "en röst ska stå nästan still: {still:.4}");
+    assert!(wide > still * 2.0, "tre isärstämda röster ska sväva: {wide:.4} mot {still:.4}");
+}
+
+/// Unisontaket: fler än åtta röster tas inte emot, och noll blir en.
+#[test]
+fn the_unison_count_is_clamped() {
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.handle_command(AudioCommand::SetUnison { voices: 99, detune_cents: 500.0 });
+    assert_eq!(engine.unison_voices, 8);
+    assert!(engine.unison_detune_cents <= 100.0);
+    engine.handle_command(AudioCommand::SetUnison { voices: 0, detune_cents: -5.0 });
+    assert_eq!(engine.unison_voices, 1);
+    assert_eq!(engine.unison_detune_cents, 0.0);
+}

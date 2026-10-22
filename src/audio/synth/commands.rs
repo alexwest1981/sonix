@@ -54,6 +54,37 @@ impl SynthEngine {
                 }
                 let idx = target_idx.unwrap_or(0);
                 self.voices[idx].trigger(note, freq, velocity, self.sample_rate);
+                // Unison: samma not en gång till, stämd isär i cent och med förskjuten fas
+                // så att attacken inte bara blir dubbelt så stark.
+                let count = self.unison_voices.clamp(1, 8) as usize;
+                if count > 1 {
+                    let detune = self.unison_detune_cents.clamp(0.0, 100.0);
+                    let span = (count - 1) as f32;
+                    let mut extra = 0;
+                    for (i, voice) in self.voices.iter_mut().enumerate() {
+                        if extra + 1 >= count {
+                            break;
+                        }
+                        if i == idx || voice.is_active() {
+                            continue;
+                        }
+                        let step = extra as f32 + 1.0;
+                        let cents = detune * (2.0 * step / (span + 1.0) - 1.0);
+                        voice.trigger(
+                            note,
+                            freq * 2.0_f32.powf(cents / 1200.0),
+                            velocity,
+                            self.sample_rate,
+                        );
+                        // Förskjut fasen så att rösterna inte summerar i fas vid anslaget.
+                        voice.phase = (step * 1.7) % std::f32::consts::TAU;
+                        extra += 1;
+                    }
+                }
+            }
+            AudioCommand::SetUnison { voices, detune_cents } => {
+                self.unison_voices = voices.clamp(1, 8);
+                self.unison_detune_cents = detune_cents.clamp(0.0, 100.0);
             }
             AudioCommand::NoteOnDelayed { note, freq, velocity, delay_samples } => {
                 // Samma kö som StrumChord. Fördröjning 0 betyder "nästa sample",

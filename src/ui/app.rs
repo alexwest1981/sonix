@@ -246,6 +246,9 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Unison: röster per not och isärstämning i cent.
+    pub unison_voices: u8,
+    pub unison_detune_cents: f32,
     /// Warp-läge för sträckningen (Beats/Tones/Texture/Complex).
     pub warp_mode: crate::audio::warp::WarpMode,
     /// Groove-poolen: flera mallar som läggs på tagningen samtidigt.
@@ -813,6 +816,8 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            unison_voices: 1,
+            unison_detune_cents: 12.0,
             warp_mode: crate::audio::warp::WarpMode::Complex,
             groove_pool: Vec::new(),
             mod_slots: Vec::new(),

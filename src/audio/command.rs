@@ -119,6 +119,11 @@ pub enum AudioCommand {
     SetModulation {
         slots: Vec<crate::audio::modulation::ModSlot>,
     },
+    /// Unison: antal röster per not (1–8) och hur mycket de stäms isär i cent.
+    SetUnison {
+        voices: u8,
+        detune_cents: f32,
+    },
     NoteOn {
         note: u8,
         freq: f32,
