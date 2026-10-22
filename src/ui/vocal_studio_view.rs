@@ -243,6 +243,8 @@ pub fn render_vocal_studio_view(
                     let mut do_import_pcm: Option<(String, Vec<f32>, u32)> = None;
                     let mut do_export_wav = false;
                     let mut do_crop = false;
+                    let mut do_comp_add = false;
+                    let mut do_comp_build = false;
                     let mut do_slice = false;
                     let mut do_normalize = false;
                     let mut do_delete = false;
@@ -612,6 +614,15 @@ pub fn render_vocal_studio_view(
                                 do_slice = true;
                             }
 
+                            ui.separator();
+                            ui.label(egui::RichText::new(crate::i18n::t("Kompfönster")).size(10.5).color(Theme::TEXT_MUTED));
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Lägg partiet i kompen")).size(11.0).color(Color32::BLACK)).fill(Theme::FL_GREEN)).on_hover_text(crate::i18n::t("Markerar det valda intervallet på den valda tagningen som en del av kompen. Partierna läggs i ordning — senare vinner över tidigare där de överlappar.")).clicked() {
+                                do_comp_add = true;
+                            }
+                            if ui.add_enabled(!vocal_track.comp_regions.is_empty(), egui::Button::new(egui::RichText::new(crate::tstatus!("🎚 Bygg komp ({})", vocal_track.comp_regions.len())).size(11.0)).fill(Theme::FL_CYAN)).clicked() {
+                                do_comp_build = true;
+                            }
+
                             // NORMALIZE BUTTON
                             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎚 Normalisera")).size(11.0).color(Theme::TEXT_BRIGHT))).clicked() {
                                 do_normalize = true;
@@ -636,6 +647,19 @@ pub fn render_vocal_studio_view(
                     } else if do_crop {
                         match vocal_track.crop_selected_take() {
                             Ok(msg) => *status_msg = msg,
+                            Err(err) => *status_msg = format!("❌ {}", err),
+                        }
+                    } else if do_comp_add {
+                        match vocal_track.add_comp_region() {
+                            Ok(msg) => *status_msg = msg,
+                            Err(err) => *status_msg = format!("❌ {}", err),
+                        }
+                    } else if do_comp_build {
+                        match vocal_track.render_comp_take() {
+                            Ok(msg) => {
+                                *status_msg = msg;
+                                vocal_track.comp_regions.clear();
+                            }
                             Err(err) => *status_msg = format!("❌ {}", err),
                         }
                     } else if do_slice {

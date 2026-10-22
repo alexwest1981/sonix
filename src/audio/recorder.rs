@@ -240,6 +240,30 @@ const ANALYSIS_MAX: usize = 16384;
 /// går rummets lägsta frekvenser rakt in i mastern — och eftersom ett rum har
 /// störst akustisk förstärkning vid låga frekvenser är det där en rundgång
 /// låser sig (hörs som en baston som får rummet att vibrera).
+
+/// Ett parti av en tagning som ska in i kompen, i **sampel**.
+pub struct CompPart<'a> {
+    pub start: usize,
+    pub end: usize,
+    pub samples: &'a [f32],
+}
+
+/// **Kompar ihop tagningar till en.** Partierna läggs i ordning och **senare vinner** över
+/// tidigare där de överlappar — det är så en komp byggs i praktiken: man lyssnar, tar partiet
+/// som låter bäst och lägger det ovanpå. Utanför alla partier blir det tyst, aldrig gammalt
+/// ljud från en tagning man inte valt.
+pub fn merge_comp(length: usize, parts: &[CompPart]) -> Vec<f32> {
+    let mut out = vec![0.0f32; length];
+    for part in parts {
+        let end = part.end.min(part.samples.len()).min(length);
+        if part.start >= end {
+            continue;
+        }
+        out[part.start..end].copy_from_slice(&part.samples[part.start..end]);
+    }
+    out
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct HighPassFilter {
     b0: f32,
@@ -833,6 +857,8 @@ pub struct VocalStudioTrack {
     pub howl_detector: HowlDetector,
     pub custom_sample_name_input: String,
     pub takes: Vec<AudioTake>,
+    /// Partier som kompen är byggd av: vilken tagning, och var i den.
+    pub comp_regions: Vec<(usize, usize, usize)>,
     pub custom_sounds: Vec<CustomSoundClip>,
     pub active_comp_take: usize,
     pub live_recording_peaks: Vec<f32>,
@@ -868,6 +894,7 @@ impl Default for VocalStudioTrack {
             howl_detector: HowlDetector::new(),
             custom_sample_name_input: crate::i18n::t("Mitt Akustiska Ljud 1").to_string(),
             takes: Vec::new(),
+            comp_regions: Vec::new(),
             custom_sounds: Vec::new(),
             active_comp_take: 0,
             live_recording_peaks: Vec::new(),
@@ -1196,6 +1223,62 @@ impl VocalStudioTrack {
         self.selected_crop_end_norm = 1.0;
 
         Ok(self.active_comp_take)
+    }
+
+    /// Markerar det valda partiet på den valda tagningen som en del av kompen.
+    pub fn add_comp_region(&mut self) -> Result<String, String> {
+        if self.takes.is_empty() || self.active_comp_take >= self.takes.len() {
+            return Err(crate::i18n::t("Ingen tagning är vald").to_string());
+        }
+        let take = &self.takes[self.active_comp_take];
+        let total = take.pcm_samples.len();
+        if total < 100 {
+            return Err(crate::i18n::t("Tagningen är för kort för att kompa").to_string());
+        }
+        let start_n = self.selected_crop_start_norm.clamp(0.0, 0.99);
+        let end_n = self.selected_crop_end_norm.clamp(start_n + 0.01, 1.0);
+        let (start, end) = (
+            (total as f32 * start_n) as usize,
+            (total as f32 * end_n) as usize,
+        );
+        self.comp_regions.push((self.active_comp_take, start, end));
+        let name = take.name.clone();
+        Ok(crate::tstatus!(
+            "Kompen: lade till {:.2}–{:.2} s ur {}",
+            start as f32 / take.sample_rate.max(1) as f32,
+            end as f32 / take.sample_rate.max(1) as f32,
+            name
+        ))
+    }
+
+    /// Bygger kompen av de markerade partierna och lägger den som en egen tagning.
+    pub fn render_comp_take(&mut self) -> Result<String, String> {
+        if self.comp_regions.is_empty() {
+            return Err(crate::i18n::t("Inga partier är markerade för kompen").to_string());
+        }
+        let length = self
+            .comp_regions
+            .iter()
+            .map(|(_, _, end)| *end)
+            .max()
+            .unwrap_or(0);
+        let parts: Vec<CompPart> = self
+            .comp_regions
+            .iter()
+            .filter_map(|(take, start, end)| {
+                let t = self.takes.get(*take)?;
+                Some(CompPart { start: *start, end: *end, samples: &t.pcm_samples })
+            })
+            .collect();
+        let merged = merge_comp(length, &parts);
+        let sr = self.takes[self.comp_regions[0].0].sample_rate;
+        let name = format!("{} (Komp)", self.takes[self.comp_regions[0].0].name);
+        let count = self.comp_regions.len();
+        self.add_take_from_pcm(name, merged, sr, Color32::from_rgb(255, 200, 80));
+        Ok(crate::tstatus!(
+            "🎚 Kompen byggd av {} partier — ligger som en egen tagning",
+            count
+        ))
     }
 
     pub fn crop_selected_take(&mut self) -> Result<String, String> {
@@ -1695,5 +1778,33 @@ mod tests {
         }
         assert!(det.update(None, 0.0, 0.01).is_none(), "spärren ska släppa");
     }
+    /// **Kompen tar det senare partiet där de överlappar, och är tyst utanför.** Utan det
+    /// sista hade kompen ärvt ljud från en tagning ingen valt.
+    #[test]
+    fn a_comp_takes_the_later_part_where_they_overlap() {
+        let a = [1.0f32, 1.0, 1.0, 1.0, 1.0];
+        let b = [2.0f32, 2.0, 2.0, 2.0, 2.0];
+        let parts = vec![
+            CompPart { start: 0, end: 3, samples: &a },
+            CompPart { start: 2, end: 4, samples: &b },
+        ];
+        let merged = merge_comp(8, &parts);
+        assert_eq!(&merged[..3], &[1.0, 1.0, 2.0], "parti två vinner från sampel 2");
+        assert_eq!(merged[3], 2.0, "parti två gäller till och med sampel 3");
+        assert_eq!(&merged[4..], &[0.0, 0.0, 0.0, 0.0], "utanför partierna är det tyst");
+    }
+
+    /// Ett parti som går förbi tagningslängden klipps, och ett som ligger utanför kompens
+    /// längd skrivs inte alls — annars panikar kopian på index.
+    #[test]
+    fn a_comp_clips_parts_to_the_take_and_the_length() {
+        let a = [1.0f32, 1.0, 1.0];
+        let parts = vec![CompPart { start: 2, end: 9, samples: &a }];
+        let merged = merge_comp(4, &parts);
+        assert_eq!(merged[2], 1.0, "sampel 2 finns i både kompen och tagningen");
+        assert_eq!(merged[3], 0.0, "tagningen tar slut vid 3, så 3 är tyst");
+        assert_eq!(merge_comp(2, &[CompPart { start: 5, end: 9, samples: &a }]), vec![0.0, 0.0]);
+    }
+
 }
 
