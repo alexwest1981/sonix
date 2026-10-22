@@ -637,6 +637,64 @@ pub fn cache_path(dir: &Path, key: &str) -> PathBuf {
     dir.join(format!("{}.wav", crate::autosave::slug(key)))
 }
 
+/// Hur stor sträckningscachen får bli innan de äldsta filerna tas bort. Miljövariabeln
+/// `SONIX_STRETCH_CACHE_MB` sätter taket; standard 8 GB.
+pub fn cache_budget_bytes() -> u64 {
+    std::env::var("SONIX_STRETCH_CACHE_MB")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .filter(|mb| *mb > 0)
+        .map(|mb| mb * 1024 * 1024)
+        .unwrap_or(8 * 1024 * 1024 * 1024)
+}
+
+/// Rensar de **äldsta** sträckningarna tills cachen ryms i budgeten och lämnar antalet filer
+/// som togs bort. `keep` är filen som just skrevs: den får aldrig tas bort, inte ens om den
+/// skulle råka vara äldst (en klocka som gått fel får inte kosta nästa uppspelning 20 minuter).
+///
+/// Cache är återbyggbar data, men dyr: en stämma kan ta tjugo minuter att sträcka om.
+pub fn prune_cache(dir: &Path, budget: u64, keep: &Path) -> usize {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    // Alla filer räknas i budgeten, även den som just skrevs — taket gäller katalogen.
+    let mut files: Vec<(std::time::SystemTime, u64, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let path = e.path();
+            if path.extension().and_then(|x| x.to_str()) != Some("wav") {
+                return None;
+            }
+            let meta = e.metadata().ok()?;
+            Some((
+                meta.modified().unwrap_or(std::time::UNIX_EPOCH),
+                meta.len(),
+                path,
+            ))
+        })
+        .collect();
+    let mut total = files.iter().map(|(_, len, _)| *len).sum::<u64>();
+    if total <= budget {
+        return 0;
+    }
+    // Äldst först: det som användes senast är det som troligen behövs i nästa uppspelning.
+    files.sort_by_key(|(time, _, _)| *time);
+    let mut removed = 0;
+    for (_, len, path) in files {
+        if total <= budget {
+            break;
+        }
+        if path == keep {
+            continue;
+        }
+        if std::fs::remove_file(&path).is_ok() {
+            total = total.saturating_sub(len);
+            removed += 1;
+        }
+    }
+    removed
+}
+
 /// Sträcker, prövar och skriver en sträckt version av ett klipp. Lämnar sökvägen.
 ///
 /// Skrivningen är **atomisk**: först en tempfil, sedan `rename`. En avbruten skrivning lämnar
@@ -671,6 +729,11 @@ pub fn render_to_file(
             e
         )
     })?;
+    // Efter en lyckad skrivning: håll cachen inom budgeten.
+    let removed = prune_cache(dir, cache_budget_bytes(), &final_path);
+    if removed > 0 {
+        eprintln!("sträckningscachen: tog bort {removed} gamla filer");
+    }
     Ok(final_path.to_string_lossy().into_owned())
 }
 
@@ -2233,5 +2296,46 @@ fn real_drum_loops_get_about_the_same_onset_count_in_both_modes_if_available() {
         (complex - transient).abs() <= complex.max(1.0) * 0.5,
         "lägena ska ligga nära varandra på det här måttet: {complex:.2} mot {transient:.2}"
     );
+
 }
 
+/// Cacherensningen har ett eget litet modulblock: provet rör filsystemet, inte ljudet.
+#[cfg(test)]
+mod prune_tests {
+    use super::{prune_cache};
+
+/// **Cachen håller sig inom budgeten och rör inte filen som just skrevs.** Budgeten mäts i
+/// byte, tidpunkten sätts med flit så att provet inte hänger på klockans upplösning.
+#[test]
+fn the_stretch_cache_prunes_the_oldest_files_and_keeps_the_new_one() {
+    let dir = std::env::temp_dir().join(format!("sonix_prune_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let now = std::time::SystemTime::now();
+    let mut paths = Vec::new();
+    for i in 0..4 {
+        let path = dir.join(format!("stem{i}.wav"));
+        std::fs::write(&path, vec![0u8; 1_000]).unwrap();
+        // stem0 är äldst, stem3 nyast.
+        let t = now - std::time::Duration::from_secs(100 - i as u64 * 10);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(t)
+            .unwrap();
+        paths.push(path);
+    }
+    // Budget: två filer. Två ska bort, de två nyaste stanna.
+    let removed = prune_cache(&dir, 2_000, &paths[3]);
+    assert_eq!(removed, 2, "två filer ska tas bort");
+    assert!(!paths[0].exists() && !paths[1].exists(), "de äldsta ska bort");
+    assert!(paths[2].exists() && paths[3].exists(), "de nyaste ska stanna");
+
+    // `keep` skyddas även när den är äldst av allt.
+    let removed = prune_cache(&dir, 1, &paths[2]);
+    assert!(paths[2].exists(), "filen som just skrevs får inte tas bort");
+    assert_eq!(removed, 1);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+}
