@@ -105,6 +105,56 @@ pub struct Take {
     pub notes: Vec<TakeNote>,
 }
 
+
+/// **Villkor för urval i pianorullen** (Cubase): anslag under ett tak, en viss ton, och en
+/// position inom ett intervall. Ett villkor i stället för en markering per not — markeringen
+/// är resultatet av villkoret, inte en flagga som måste hållas i synk med noterna.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NoteFilter {
+    /// Bara noter med lägre anslag än så här. `None` = alla anslag.
+    pub max_velocity: Option<f32>,
+    /// Bara den här tonen. `None` = alla toner.
+    pub key: Option<u8>,
+    /// Intervall i takten, i steg. Hela takten som standard.
+    pub pos_from: f32,
+    pub pos_to: f32,
+}
+
+impl Default for NoteFilter {
+    fn default() -> Self {
+        Self {
+            max_velocity: None,
+            key: None,
+            pos_from: 0.0,
+            pos_to: STEPS_PER_BAR,
+        }
+    }
+}
+
+impl NoteFilter {
+    pub fn matches(&self, note: &TakeNote) -> bool {
+        let vel_ok = self.max_velocity.map(|v| note.velocity < v).unwrap_or(true);
+        let key_ok = self.key.map(|k| note.key == k).unwrap_or(true);
+        let pos_ok = note.pos >= self.pos_from && note.pos < self.pos_to;
+        vel_ok && key_ok && pos_ok
+    }
+}
+
+impl Take {
+    /// Antal noter som villkoret fångar — urvalet, utan att något ändras.
+    pub fn count_matching(&self, filter: &NoteFilter) -> usize {
+        self.notes.iter().filter(|n| filter.matches(n)).count()
+    }
+
+    /// **Radera enligt villkor.** Returnerar antalet borttagna noter, så att gränssnittet kan
+    /// säga hur många det blev i stället för att bara bli tyst.
+    pub fn remove_matching(&mut self, filter: &NoteFilter) -> usize {
+        let before = self.notes.len();
+        self.notes.retain(|n| !filter.matches(n));
+        before - self.notes.len()
+    }
+}
+
 pub use crate::rng::Rng;
 
 impl Take {
@@ -714,6 +764,35 @@ mod tests {
         let at = |key: u8| take.notes.iter().find(|n| n.key == key).unwrap().pos;
         assert!((at(67) - 1.0).abs() < 1e-4, "högst ligger kvar: {}", at(67));
         assert!((at(60) - 1.1).abs() < 1e-4, "lägst sist: {}", at(60));
+    }
+
+    /// **Villkoret fångar det det ska och raderar bara det** — anslag under taket, en ton, och
+    /// bara inom intervallet. Provet har en not utanför varje gräns, så ett filter som glömmer
+    /// en av dem syns.
+    #[test]
+    fn a_note_filter_selects_and_deletes_only_what_it_matches() {
+        let mut take = Take::new();
+        take.push(0.0, 36, 0.2); // utanför intervallet (före 1.0)
+        take.push(8.0, 36, 0.3); // fångas: svagt, rätt ton, i intervallet
+        take.push(4.0, 38, 0.2); // fel ton
+        take.push(4.0, 36, 0.9); // för starkt
+        take.push(8.5, 36, 0.1); // fångas
+
+        let filter = NoteFilter {
+            max_velocity: Some(0.5),
+            key: Some(36),
+            pos_from: 1.0,
+            pos_to: 16.0,
+        };
+        assert_eq!(take.count_matching(&filter), 2, "två noter ska fångas");
+        assert_eq!(take.remove_matching(&filter), 2, "två ska tas bort");
+        assert_eq!(take.notes.len(), 3, "tre ska stå kvar");
+
+        // Utan villkor fångas hela takten, och då töms tagningen.
+        let all = NoteFilter::default();
+        assert_eq!(take.count_matching(&all), 3);
+        assert_eq!(take.remove_matching(&all), 3);
+        assert!(take.notes.is_empty());
     }
 
 }

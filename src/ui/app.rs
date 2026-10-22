@@ -170,6 +170,10 @@ pub struct SonixApp {
     pub follow: Option<crate::follow::FollowAction>,
     /// Takter den valda slingan spelat sedan senaste bytet.
     pub follow_bars: f32,
+    /// Villkoret för urval i pianorullen (Cubase): anslag, ton, position.
+    pub note_filter: crate::midi_take::NoteFilter,
+    /// Senaste urvalsräkningen, så gränssnittet kan visa hur många villkoret fångar.
+    pub note_filter_hits: Option<usize>,
     pub view_mode: ViewMode,
     /// Groovemallens styrka när den läggs på tagningen (0 = rak, 1 = full förskjutning).
     pub take_groove_amount: f32,
@@ -782,6 +786,8 @@ impl SonixApp {
             pattern_mode: false,
             follow: None,
             follow_bars: 0.0,
+            note_filter: crate::midi_take::NoteFilter::default(),
+            note_filter_hits: None,
             view_mode: ViewMode::PlaylistArranger,
             docked_panel: None,
             take_groove_amount: 1.0,

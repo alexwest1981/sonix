@@ -47,8 +47,8 @@ ingen radering enligt villkor, ingen urvalsmodell.
 |---|---|---|---|
 | ~~1~~ | ~~Transponera tagningen~~ | **klart** | `Take::transpose` + fyra knappar |
 | ~~2~~ | ~~Anslaget på tagningen~~ | **klart** | `Take::scale_velocity` + två knappar |
-| 3 | **Urval i pianorullen** (villkor: anslag under X, ton = Y, position inom Z) | M | `Take` får ett `selected: bool` per not; operationerna ovan går på urvalet när det finns, annars allt |
-| 4 | **Radera enligt villkor** | S | följer av 3: `retain(keep)` + "Ta bort valda" |
+| 3 | **Urval i pianorullen** (villkor: anslag under X, ton = Y, position inom Z) | ✅ | `NoteFilter` + `Take::count_matching`/`remove_matching` — urvalet är ett villkor, inte en flagga per not (en flagga måste hållas i synk med noterna) |
+| 4 | **Radera enligt villkor** | ✅ | `remove_matching` returnerar antalet borttagna; knapparna "Räkna" och "Ta bort valda" i pianorullen använder samma villkor |
 | ~~5~~ | ~~**Logical Editor-lite**~~ — **klart**: fält × jämförelse × åtgärd, en rad | M | återanvänder `delete_cells`/`transpose_cells`; bara villkoret är ny kod |
 | ~~6~~ | ~~**Arranger Track**~~ — **klart**: sektionskedja som uppspelningen följer | M | sektionerna var redan markörer med längd; det som saknades var ordningen |
 | ~~9~~ | ~~**Projektmallar**~~ — **klart**: `Templates/`, Arkiv-menyn | S | en mall är ett vanligt projekt i en annan katalog |

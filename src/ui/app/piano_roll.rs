@@ -421,6 +421,51 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             {
                 self.extract_groove_from_track();
             }
+            // **Urval enligt villkor** (Cubase): anslag under ett tak, en viss ton, inom ett
+            // intervall. Räkna först, radera sedan — samma villkor, så det som raderas är det
+            // som räknades.
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(crate::i18n::t("Urval:")).size(10.0).color(Theme::TEXT_MUTED));
+                let mut max_vel = self.note_filter.max_velocity.unwrap_or(1.0);
+                if ui
+                    .add(egui::DragValue::new(&mut max_vel).range(0.02..=1.0).speed(0.01).custom_formatter(|v, _| format!("< {:.0}", v * 127.0)))
+                    .on_hover_text(crate::i18n::t("Anslag under det här värdet"))
+                    .changed()
+                {
+                    self.note_filter.max_velocity = if max_vel >= 0.999 { None } else { Some(max_vel) };
+                }
+                let mut key_on = self.note_filter.key.is_some();
+                if ui.checkbox(&mut key_on, crate::i18n::t("ton")).changed() {
+                    self.note_filter.key = if key_on { Some(60) } else { None };
+                }
+                if let Some(key) = &mut self.note_filter.key {
+                    ui.add(egui::DragValue::new(key).range(0..=127).speed(0.2));
+                }
+                ui.add(egui::DragValue::new(&mut self.note_filter.pos_from).range(0.0..=15.9).speed(0.1).prefix("från "));
+                ui.add(egui::DragValue::new(&mut self.note_filter.pos_to).range(0.1..=16.0).speed(0.1).prefix("till "));
+                if ui.button(crate::i18n::t("Räkna")).clicked() {
+                    let hits = self
+                        .patterns
+                        .get(self.selected_pattern)
+                        .map(|p| p.take.count_matching(&self.note_filter))
+                        .unwrap_or(0);
+                    self.note_filter_hits = Some(hits);
+                    self.status_message = format!("Urvalet fångar {} noter", hits);
+                }
+                if let Some(hits) = self.note_filter_hits {
+                    ui.label(egui::RichText::new(format!("{hits}")).monospace().size(10.0).color(Theme::FL_CYAN));
+                }
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Ta bort valda")).size(10.0).color(Theme::FL_RED))).clicked() {
+                    let mut removed = 0;
+                    if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
+                        removed = p.take.remove_matching(&self.note_filter);
+                    }
+                    self.note_filter_hits = Some(0);
+                    self.status_message = format!("Tog bort {} noter enligt villkoret", removed);
+                }
+            });
+
             if !self.groove_pool.is_empty() {
                 if ui
                     .add(

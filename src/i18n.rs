@@ -376,6 +376,13 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Urval:" => "Selection:",
+        "Anslag under det här värdet" => "Velocity below this value",
+        "ton" => "key",
+        "Räkna" => "Count",
+        "Ta bort valda" => "Delete selected",
+        "Urvalet fångar {} noter" => "The selection catches {} notes",
+        "Tog bort {} noter enligt villkoret" => "Removed {} notes by the condition",
         "FÖLJ: AV" => "FOLLOW: OFF",
         "Nästa" => "Next",
         "Föregående" => "Previous",
@@ -2516,6 +2523,13 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Urval:" => "Udvalg:",
+        "Anslag under det här värdet" => "Anslag under denne værdi",
+        "ton" => "tone",
+        "Räkna" => "Tæl",
+        "Ta bort valda" => "Slet valgte",
+        "Urvalet fångar {} noter" => "Udvalget fanger {} noder",
+        "Tog bort {} noter enligt villkoret" => "Fjernede {} noder efter betingelsen",
         "FÖLJ: AV" => "FØLG: FRA",
         "Nästa" => "Næste",
         "Föregående" => "Forrige",
@@ -4614,6 +4628,13 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Urval:" => "Utvalg:",
+        "Anslag under det här värdet" => "Anslag under denne verdien",
+        "ton" => "tone",
+        "Räkna" => "Tell",
+        "Ta bort valda" => "Fjern valgte",
+        "Urvalet fångar {} noter" => "Utvalget fanger {} noter",
+        "Tog bort {} noter enligt villkoret" => "Fjernet {} noter etter betingelsen",
         "FÖLJ: AV" => "FØLG: AV",
         "Nästa" => "Neste",
         "Föregående" => "Forrige",
@@ -6712,6 +6733,13 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Urval:" => "Auswahl:",
+        "Anslag under det här värdet" => "Anschlag unter diesem Wert",
+        "ton" => "Ton",
+        "Räkna" => "Zählen",
+        "Ta bort valda" => "Auswahl löschen",
+        "Urvalet fångar {} noter" => "Die Auswahl erfasst {} Noten",
+        "Tog bort {} noter enligt villkoret" => "{} Noten nach Bedingung gelöscht",
         "FÖLJ: AV" => "FOLGEN: AUS",
         "Nästa" => "Weiter",
         "Föregående" => "Zurück",
@@ -8810,6 +8838,13 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Urval:" => "Selección:",
+        "Anslag under det här värdet" => "Ataque por debajo de este valor",
+        "ton" => "nota",
+        "Räkna" => "Contar",
+        "Ta bort valda" => "Borrar seleccionados",
+        "Urvalet fångar {} noter" => "La selección captura {} notas",
+        "Tog bort {} noter enligt villkoret" => "Se borraron {} notas según la condición",
         "FÖLJ: AV" => "SEGUIR: NO",
         "Nästa" => "Siguiente",
         "Föregående" => "Anterior",
@@ -10908,6 +10943,13 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Urval:" => "Sélection :",
+        "Anslag under det här värdet" => "Vélocité en dessous de cette valeur",
+        "ton" => "note",
+        "Räkna" => "Compter",
+        "Ta bort valda" => "Supprimer la sélection",
+        "Urvalet fångar {} noter" => "La sélection capture {} notes",
+        "Tog bort {} noter enligt villkoret" => "{} notes supprimées selon la condition",
         "FÖLJ: AV" => "SUIVRE : OFF",
         "Nästa" => "Suivant",
         "Föregående" => "Précédent",
