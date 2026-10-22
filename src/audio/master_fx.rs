@@ -176,6 +176,8 @@ pub struct MasterFxParams {
     pub hardcore_enabled: bool,
     pub effector: EffectorParams,
     pub effector_enabled: bool,
+    pub stereo: StereoParams,
+    pub stereo_enabled: bool,
     pub control: ControlRoomParams,
 }
 
@@ -223,6 +225,8 @@ impl Default for MasterFxParams {
             hardcore_enabled: false,
             effector: EffectorParams::default(),
             effector_enabled: false,
+            stereo: StereoParams::default(),
+            stereo_enabled: false,
             control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
@@ -395,6 +399,13 @@ impl MasterFxChain {
             let (nl, nr) = self.hardcore.process(l, r, &p.hardcore);
             l = nl;
             r = nr;
+        }
+
+        if p.stereo_enabled {
+            let (nl, nr) = p.stereo.apply(l, r);
+            let mix = p.stereo.mix.clamp(0.0, 1.0);
+            l = l * (1.0 - mix) + nl * mix;
+            r = r * (1.0 - mix) + nr * mix;
         }
 
         if p.effector_enabled {

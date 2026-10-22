@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 50** har en motsvarighet, **◐ 45** delvis, **✗ 46** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 52** har en motsvarighet, **◐ 45** delvis, **✗ 44** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -203,7 +203,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Spectroman | 2 | ✅ | spectrum.rs + mätarna |
 | Fruity Squeeze | 2 | ✅ | `BitCrusher` — BITS 1–16, NEDSAMPLING 1–32, TON (lågpass efter krossen) |
 | Fruity Stereo Enhancer | 2 | ◐ | doubler/width |
-| Fruity Stereo Shaper | 2 | ✗ | per-kanal fas/panorering/width-kurvor |
+| Fruity Stereo Shaper | 2 | ✅ | `StereoParams::apply` — bredd på sidan (mitten står still), balans som viktning |
 | Fruity Vocoder | 2 | ✅ | `vocode` i sångstudion, läggs som egen tagning |
 | Fruity WaveShaper | 2 | ✅ | saturatorn |
 | Fruity Wrapper | 2 | ✅ | plugin-värden |
@@ -233,7 +233,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Free Filter | 1 | ✅ | filtret |
 | Fruity Mute 2 | 1 | ✅ | mute/solo |
 | Fruity NoteBook 2 | 1 | ✗ | anteckningar |
-| Fruity Phase Inverter | 1 | ✗ | faspolvändning |
+| Fruity Phase Inverter | 1 | ✅ | `StereoParams::apply` — polaritet per kanal, exakt invertering |
 | Fruity Phaser | 1 | ✅ | `Phaser` — 4 allpass, 200 Hz–2 kHz, stilla vid djup 0 |
 | Fruity Reeverb | 1 | ✅ | SimpleReverb |
 | Fruity X-Y-Z Controller | 1 | ✗ | modulationskälla (XYZ) |

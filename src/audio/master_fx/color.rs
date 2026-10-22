@@ -1196,3 +1196,54 @@ impl Effector {
         (out_l, out_r)
     }
 }
+
+/// **Fruity Phase Inverter** och **Fruity Stereo Shaper** i en krets: polaritet per kanal,
+/// bredd och balans. De är samma räkning på samma två tal, så de delar en struct — FL har dem
+/// som två plugins, men en plugin som bara vänder på fasen är en inställning, inte en effekt.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct StereoParams {
+    /// 0 = mono, 1 = som inspelat, 2 = dubbelt så brett.
+    pub width: f32,
+    /// −1 = allt till vänster, 0 = jämnt, 1 = allt till höger.
+    pub balance: f32,
+    pub invert_l: bool,
+    pub invert_r: bool,
+    pub mix: f32,
+}
+
+impl Default for StereoParams {
+    fn default() -> Self {
+        Self {
+            width: 1.0,
+            balance: 0.0,
+            invert_l: false,
+            invert_r: false,
+            mix: 1.0,
+        }
+    }
+}
+
+impl StereoParams {
+    /// **Bredden verkar på sidan, inte på kanalerna**: mitt och sida skalas var för sig, så
+    /// mitten står still när bredden ändras. Balansen är en ren viktning efteråt.
+    pub fn apply(&self, l: f32, r: f32) -> (f32, f32) {
+        let mid = (l + r) * 0.5;
+        let side = (l - r) * 0.5 * self.width.clamp(0.0, 2.0);
+        let (mut l, mut r) = (mid + side, mid - side);
+        if self.invert_l {
+            l = -l;
+        }
+        if self.invert_r {
+            r = -r;
+        }
+        // Balans: ena sidan dämpas, den andra står still — som en panorering, inte som en
+        // total volymändring.
+        let b = self.balance.clamp(-1.0, 1.0);
+        if b > 0.0 {
+            l *= 1.0 - b;
+        } else if b < 0.0 {
+            r *= 1.0 + b;
+        }
+        (l, r)
+    }
+}

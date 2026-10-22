@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -311,6 +311,21 @@ impl Default for FxRackState {
                     p3_val: 0.60,
                     mix: 1.00,
                     description: "Pedalkedja i serie: KOMP → DRIVE → WAH → DELAY. Distorsion före wah ger den vokalliknande kurvan.",                    extra: vec![("WAH-DJUP", 0.0), ("DELAY", 0.2), ("EKON", 0.0)],
+                },
+                FxPedal {
+                    id: "stereo",
+                    name: "↔ STEREO SHAPER",
+                    category: "Utility",
+                    enabled: false,
+                    color: Color32::from_rgb(120, 200, 220),
+                    p1_name: "BREDD",
+                    p1_val: 0.50,
+                    p2_name: "BALANS",
+                    p2_val: 0.50,
+                    p3_name: "—",
+                    p3_val: 0.0,
+                    mix: 1.00,
+                    description: "Bredd (mitt/sida), balans och polaritet per kanal. Bredd 0,5 = som inspelat.",                    extra: vec![("VÄND V", 0.0), ("VÄND H", 0.0)],
                 },
                 FxPedal {
                     id: "effector",
@@ -664,6 +679,19 @@ impl FxRackState {
             mix: ef_knob(|p| p.mix, 1.0),
         };
 
+        let st_p = self.pedal("stereo");
+        let st_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            st_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let stereo = StereoParams {
+            // BREDD 0–1 blir 0–2×, så mitten av ratten är "som inspelat".
+            width: st_knob(|p| p.p1_val, 0.5) * 2.0,
+            balance: st_knob(|p| p.p2_val, 0.5) * 2.0 - 1.0,
+            invert_l: st_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.0), 0.0) > 0.5,
+            invert_r: st_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.0), 0.0) > 0.5,
+            mix: st_knob(|p| p.mix, 1.0),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -707,6 +735,8 @@ impl FxRackState {
             hardcore_enabled: hc_p.map(|p| p.enabled).unwrap_or(false),
             effector,
             effector_enabled: ef_p.map(|p| p.enabled).unwrap_or(false),
+            stereo,
+            stereo_enabled: st_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,

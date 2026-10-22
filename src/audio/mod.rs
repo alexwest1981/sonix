@@ -110,7 +110,7 @@ pub use master_fx::{
     HardcoreParams, Granular, GranularParams, MultibandDelay, MultibandDelayParams,
     CompressorParams, ConvolverParams, DeEsserParams, DoublerParams, GateParams, LimiterParams, MasterEqBand,
     MasterFilterParams, MasterFxChain, MasterFxParams, ModFxParams, MultibandParams, SaturatorParams,
-    StereoEq,
+    StereoEq, StereoParams,
     IR_BANK, synthesize_ir,
     TrackEqSettings, TransientParams,
 };

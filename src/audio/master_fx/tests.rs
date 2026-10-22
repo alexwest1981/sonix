@@ -1141,3 +1141,41 @@
         assert!(crushed_thd > clean_thd * 2.0, "krossen ska ge övertoner: {clean_thd:.3} → {crushed_thd:.3}");
     }
 
+    /// **Stereo Shaper räknar på mitt och sida**, och polaritetsvändningen är exakt — inte en
+    /// förminskning: vänster kanal ska vara den inverterade signalen sampel för sampel.
+    #[test]
+    fn the_stereo_shaper_widens_the_side_and_flips_one_channel_exactly() {
+        let l = [0.5f32, -0.25, 0.75, -0.5];
+        let r = [0.25f32, 0.25, -0.75, 0.5];
+
+        // Bredd 0: båda kanalerna blir mitten, alltså identiska.
+        let mono = StereoParams { width: 0.0, ..StereoParams::default() };
+        for i in 0..l.len() {
+            let (a, b) = mono.apply(l[i], r[i]);
+            assert!((a - b).abs() < 1e-6, "bredd 0 ska ge mono vid {i}: {a} mot {b}");
+            assert!((a - (l[i] + r[i]) * 0.5).abs() < 1e-6, "mitten ska stå still");
+        }
+
+        // Bredd 2: sidan dubbelt så stor, mitten orörd.
+        let wide = StereoParams { width: 2.0, ..StereoParams::default() };
+        for i in 0..l.len() {
+            let (a, b) = wide.apply(l[i], r[i]);
+            let mid = (l[i] + r[i]) * 0.5;
+            assert!(((a + b) * 0.5 - mid).abs() < 1e-6, "mitten ska stå still vid bredd 2");
+            assert!((a - b).abs() > (l[i] - r[i]).abs() - 1e-6, "sidan ska växa");
+        }
+
+        // Polaritet: exakt invertering, inget mer.
+        let flip = StereoParams { invert_l: true, ..StereoParams::default() };
+        for i in 0..l.len() {
+            assert_eq!(flip.apply(l[i], r[i]).0, -l[i]);
+            assert_eq!(flip.apply(l[i], r[i]).1, r[i]);
+        }
+
+        // Balans till vänster dämpar höger och lämnar vänster orörd.
+        let left = StereoParams { balance: -1.0, ..StereoParams::default() };
+        let (a, b) = left.apply(0.4, 0.4);
+        assert!((a - 0.4).abs() < 1e-6, "vänster ska stå kvar: {a}");
+        assert!(b.abs() < 1e-6, "höger ska tystna: {b}");
+    }
+

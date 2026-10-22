@@ -177,7 +177,7 @@ Operationerna som gör Ableton till Ableton, och var Sonix står:
 | `Exclude Macro From Snapshots`, `Exclude Macro From Randomization` | ◐ (makrokedjor finns; inga snapshots) |
 | `Show Modulation Source`, `Show Controlling Device` | ◐ (automation finns, ingen källa→mål-vy) |
 | `Extensions`, `Max For Live Window`, `Max For Live Developer Mode` | ✗ (inget skript-API; patchern är intern) |
-| `Grid Quintuplet`, `Grid Septuplet` | ✗ (bara raka och trioler) |
+| `Grid Quintuplet`, `Grid Septuplet` | ✅ `TakeGrid::Quintuplet`/`Septuplet` — 20 respektive 28 linjer per takt |
 | `Render To Disk`, `Render To Disk No Video` | ✅ (exporterar wav/flac/mp3/m4a, dither, loudness) |
 | `Freeze`/`Unfreeze`, `Flatten` | ◐ (`freeze` finns, ingen `Flatten`) |
 | `Solo In Place`, `Arm Exclusive`, `Chase Notes` | ◐ (solo/mute finns) |

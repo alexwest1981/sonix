@@ -28,16 +28,22 @@ pub enum TakeGrid {
     TripletEighth,
     /// 1/16-triol: sex per fjärdedel.
     TripletSixteenth,
+    /// 1/4-kvintol: fem per fjärdedel (Abletons `Grid Quintuplet`).
+    Quintuplet,
+    /// 1/4-septol: sju per fjärdedel (Abletons `Grid Septuplet`).
+    Septuplet,
 }
 
 impl TakeGrid {
-    pub const ALL: [TakeGrid; 6] = [
+    pub const ALL: [TakeGrid; 8] = [
         TakeGrid::Quarter,
         TakeGrid::Eighth,
         TakeGrid::Sixteenth,
         TakeGrid::ThirtySecond,
         TakeGrid::TripletEighth,
         TakeGrid::TripletSixteenth,
+        TakeGrid::Quintuplet,
+        TakeGrid::Septuplet,
     ];
 
     /// Antal rutnätslinjer i en takt.
@@ -49,6 +55,8 @@ impl TakeGrid {
             TakeGrid::ThirtySecond => 32,
             TakeGrid::TripletEighth => 12,
             TakeGrid::TripletSixteenth => 24,
+            TakeGrid::Quintuplet => 20,
+            TakeGrid::Septuplet => 28,
         }
     }
 
@@ -65,6 +73,8 @@ impl TakeGrid {
             TakeGrid::ThirtySecond => "1/32",
             TakeGrid::TripletEighth => "1/8-triol",
             TakeGrid::TripletSixteenth => "1/16-triol",
+            TakeGrid::Quintuplet => "1/4-kvintol",
+            TakeGrid::Septuplet => "1/4-septol",
         }
     }
 
@@ -378,6 +388,26 @@ mod tests {
         t.push(2.4, 36, 0.9);
         t.quantize(0.5, 0.0, TakeGrid::Sixteenth);
         assert!((t.notes[0].pos - 2.2).abs() < 1e-6, "{}", t.notes[0].pos);
+    }
+
+    /// **Kvintol och septol delar fjärdedelen i fem respektive sju** — samma mekanik som
+    /// triolerna, bara ett annat tal, så steget blir exakt jämnt fördelat över takten.
+    #[test]
+    fn quintuplets_and_septuplets_split_the_bar_evenly() {
+        for (grid, lines) in [(TakeGrid::Quintuplet, 20u32), (TakeGrid::Septuplet, 28u32)] {
+            assert_eq!(grid.lines_per_bar(), lines);
+            let step = grid.step_size();
+            assert!(
+                (step * lines as f32 - STEPS_PER_BAR).abs() < 0.001,
+                "{:?}: {} × {} ska bli en takt",
+                grid,
+                step,
+                lines
+            );
+        }
+        // Kvintolen ligger tätare än sextondelen men glesare än 1/32.
+        assert!(TakeGrid::Quintuplet.step_size() < TakeGrid::Sixteenth.step_size());
+        assert!(TakeGrid::Septuplet.step_size() > TakeGrid::ThirtySecond.step_size());
     }
 
     #[test]
