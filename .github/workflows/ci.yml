@@ -43,7 +43,7 @@ jobs:
           # **Tre försök med hårt tak per försök.** En seg spegel ska kosta en minut, inte
           # fyra: `timeout` dödar apt om det hänger och nästa försök börjar om. Resultatet
           # kontrolleras sist — ett tyst hopp över ett misslyckande vore värre än ett fel.
-          for försök in 1 2 3; do
+          for attempt in 1 2 3; do
             sudo timeout 60 apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=10 \
               -o Acquire::https::Timeout=10 update || true
             if sudo timeout 90 apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=10 \
@@ -51,7 +51,7 @@ jobs:
               build-essential pkg-config libasound2-dev; then
               break
             fi
-            echo "apt-försök $försök gick inte igenom — försöker igen"
+            echo "apt-försök $attempt gick inte igenom — försöker igen"
             sleep 5
           done
           pkg-config --exists alsa || { echo "ALSA-installationen misslyckades"; exit 1; }
@@ -140,7 +140,7 @@ jobs:
             echo "ALSA finns redan — hoppar över apt"
             exit 0
           fi
-          for försök in 1 2 3; do
+          for attempt in 1 2 3; do
             sudo timeout 60 apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=10 \
               -o Acquire::https::Timeout=10 update || true
             if sudo timeout 90 apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=10 \
@@ -148,7 +148,7 @@ jobs:
               build-essential pkg-config libasound2-dev; then
               break
             fi
-            echo "apt-försök $försök gick inte igenom — försöker igen"
+            echo "apt-försök $attempt gick inte igenom — försöker igen"
             sleep 5
           done
           pkg-config --exists alsa || { echo "ALSA-installationen misslyckades"; exit 1; }
