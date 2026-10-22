@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    DelayBankParams, DistructorParams, HardcoreParams, ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -311,6 +311,21 @@ impl Default for FxRackState {
                     p3_val: 0.60,
                     mix: 1.00,
                     description: "Pedalkedja i serie: KOMP → DRIVE → WAH → DELAY. Distorsion före wah ger den vokalliknande kurvan.",                    extra: vec![("WAH-DJUP", 0.0), ("DELAY", 0.2), ("EKON", 0.0)],
+                },
+                FxPedal {
+                    id: "effector",
+                    name: "🎛️ EFFECTOR",
+                    category: "Performance",
+                    enabled: false,
+                    color: Color32::from_rgb(180, 140, 255),
+                    p1_name: "X",
+                    p1_val: 0.50,
+                    p2_name: "Y",
+                    p2_val: 0.30,
+                    p3_name: "LÄGE",
+                    p3_val: 0.0,
+                    mix: 1.00,
+                    description: "XY-effekt: LÄGE väljer krets (0 = svep, 1 = upprepning, 2 = port, 3 = kross), X styr hur mycket och Y hur hårt.",                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "chorus",
@@ -637,6 +652,18 @@ impl FxRackState {
             mix: hc_knob(|p| p.mix, 1.0),
         };
 
+        let ef_p = self.pedal("effector");
+        let ef_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            ef_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let effector = EffectorParams {
+            x: ef_knob(|p| p.p1_val, 0.5),
+            y: ef_knob(|p| p.p2_val, 0.3),
+            // p3 väljer läge bland `EFFECTOR_MODES`.
+            mode: (ef_knob(|p| p.p3_val, 0.0) * 3.0).round() as u8,
+            mix: ef_knob(|p| p.mix, 1.0),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -678,6 +705,8 @@ impl FxRackState {
             distructor_enabled: ds_p.map(|p| p.enabled).unwrap_or(false),
             hardcore,
             hardcore_enabled: hc_p.map(|p| p.enabled).unwrap_or(false),
+            effector,
+            effector_enabled: ef_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,
@@ -1633,6 +1662,29 @@ mod tests {
         assert!((params.hardcore.delay_ms - 40.0).abs() < 0.1, "delay: {}", params.hardcore.delay_ms);
         assert!((params.hardcore.delay_mix - 1.0).abs() < 0.01);
         assert!((params.hardcore.mix - 0.9).abs() < 0.01);
+    }
+
+    /// **Effectors tre rattar når sina egna fält** — X, Y och läget.
+    #[test]
+    fn the_effector_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "effector")
+            .expect("effector-pedalen ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 0.25;
+        pedal.p2_val = 0.75;
+        pedal.p3_val = 1.0; // högsta läget
+        pedal.mix = 0.5;
+
+        let params = state.build_master_fx_params();
+        assert!(params.effector_enabled, "pedalen ska slå på steget");
+        assert!((params.effector.x - 0.25).abs() < 0.01);
+        assert!((params.effector.y - 0.75).abs() < 0.01);
+        assert_eq!(params.effector.mode, 3, "läget ska bli det högsta");
     }
 
 }

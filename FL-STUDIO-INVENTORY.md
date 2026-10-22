@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 49** har en motsvarighet, **◐ 45** delvis, **✗ 47** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 50** har en motsvarighet, **◐ 45** delvis, **✗ 46** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -184,7 +184,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Formula Controller | 3 | ✗ | formelstyrd modulation |
 | Fruity NoteBook | 3 | ✗ | anteckningar per kanal |
 | EQUO | 2 | ◐ | EQ:n |
-| Effector | 2 | ✗ | XY-styrd multi-effekt |
+| Effector | 2 | ✅ | `Effector` — XY-yta över fyra lägen (svep, upprepning, port, kross); X och Y styr respektive krets |
 | Frequency Splitter | 2 | ◐ | crossovern i multibandskompressorn |
 | Fruity Big Clock | 2 | ✗ | stor klocka |
 | Fruity Delay 2 | 2 | ✅ | StereoDelay |

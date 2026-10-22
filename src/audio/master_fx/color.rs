@@ -1072,3 +1072,127 @@ impl Hardcore {
         (l * mix, r * mix)
     }
 }
+
+/// **Effector** (FL): en XY-styrd performance-effekt. Två rattar styr allt — X är "hur mycket",
+/// Y är "hur hårt" — och läget avgör vilken krets de pekar på. Det är inte åtta effekter i en
+/// låda: det är fyra kretsar som redan finns, med sina viktigaste parametrar dragna ut till en
+/// yta man kan spela på.
+pub struct Effector {
+    filter: MasterFilter,
+    delay: DelayBank,
+    crusher: BitCrusher,
+    shift: FrequencyShifter,
+    gate_phase: f32,
+    sample_rate: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct EffectorParams {
+    /// X: hur mycket. Betydelsen beror på läget.
+    pub x: f32,
+    /// Y: hur hårt. Sekundär parametern.
+    pub y: f32,
+    /// 0 = svep, 1 = upprepning, 2 = port, 3 = kross.
+    pub mode: u8,
+    pub mix: f32,
+}
+
+impl Default for EffectorParams {
+    fn default() -> Self {
+        Self {
+            x: 0.5,
+            y: 0.3,
+            mode: 0,
+            mix: 1.0,
+        }
+    }
+}
+
+impl Effector {
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        Self {
+            filter: MasterFilter::new(sr),
+            delay: DelayBank::new(sr),
+            crusher: BitCrusher::new(sr),
+            shift: FrequencyShifter::new(sr),
+            gate_phase: 0.0,
+            sample_rate: sr,
+        }
+    }
+
+    pub fn process(&mut self, l: f32, r: f32, p: &EffectorParams) -> (f32, f32) {
+        let x = p.x.clamp(0.0, 1.0);
+        let y = p.y.clamp(0.0, 1.0);
+        let (mut out_l, mut out_r) = match p.mode {
+            1 => {
+                // Upprepning: X är tiden, Y är återkopplingen.
+                let time = 60.0 + x * 540.0;
+                self.delay.process(
+                    l,
+                    r,
+                    &DelayBankParams {
+                        times_ms: [time, time * 2.0, time * 3.0],
+                        levels: [1.0, 0.5, 0.25],
+                        feedback: 0.15 + y * 0.75,
+                        spread: 0.3,
+                        mix: 0.6,
+                    },
+                )
+            }
+            2 => {
+                // Port: X är frekvensen, Y är djupet. Fyrkantig grind — en port, inte en
+                // tremolo, så den klipper i stället för att svepa.
+                let rate = 2.0 + x * 14.0;
+                self.gate_phase += rate / self.sample_rate;
+                if self.gate_phase >= 1.0 {
+                    self.gate_phase -= 1.0;
+                }
+                let open = if self.gate_phase < 0.5 { 1.0 } else { 1.0 - y };
+                (l * open, r * open)
+            }
+            3 => {
+                // Kross: X är bitdjupet, Y är frekvensskiftet.
+                let (cl, cr) = self.crusher.process(
+                    l,
+                    r,
+                    &BitCrushParams {
+                        bits: 8.0 - x * 7.0,
+                        downsample: 1.0 + x * 8.0,
+                        tone: 1.0,
+                        mix: 1.0,
+                    },
+                );
+                self.shift.process(
+                    cl,
+                    cr,
+                    &FreqShiftParams {
+                        hz: y * 800.0,
+                        mix: 1.0,
+                        spread: false,
+                    },
+                )
+            }
+            _ => {
+                // Svep: X är delningen, Y är resonansen.
+                let cutoff = 200.0 * (10.0f32).powf(x * 1.8);
+                self.filter.process(
+                    l,
+                    r,
+                    &MasterFilterParams {
+                        cutoff,
+                        resonance: 0.1 + y * 0.8,
+                        drive: 1.0 + y * 3.0,
+                        enabled: true,
+                    },
+                )
+            }
+        };
+        let mix = p.mix.clamp(0.0, 1.0);
+        if mix < 1.0 {
+            out_l = l * (1.0 - mix) + out_l * mix;
+            out_r = r * (1.0 - mix) + out_r * mix;
+        }
+        (out_l, out_r)
+    }
+}

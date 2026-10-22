@@ -1091,3 +1091,53 @@
         assert!(energy_at(150.0) < energy_at(100.0) * 0.2, "och vara borta vid 150 ms");
     }
 
+    /// **Effector är en yta, inte en lista.** X och Y ska göra något mätbart i varje läge, och
+    /// lägena ska göra olika saker — annars är lägesratten en attrapp.
+    #[test]
+    fn the_effector_xy_moves_something_in_every_mode() {
+        let sr = 48_000.0;
+        let render = |params: EffectorParams, frames: usize| {
+            let mut fx = Effector::new(sr);
+            let out: Vec<f32> = (0..frames)
+                .map(|n| {
+                    let t = n as f32 / sr;
+                    let x = (2.0 * std::f32::consts::PI * 220.0 * t).sin() * 0.4
+                        + (2.0 * std::f32::consts::PI * 4000.0 * t).sin() * 0.4;
+                    fx.process(x, x, &params).0
+                })
+                .collect();
+            out[12_000..].to_vec()
+        };
+        let mag = |v: &[f32], f: f32| {
+            let (mut re, mut im) = (0.0f32, 0.0f32);
+            for (n, &x) in v.iter().enumerate() {
+                let ph = 2.0 * std::f32::consts::PI * f * n as f32 / sr;
+                re += x * ph.cos();
+                im -= x * ph.sin();
+            }
+            (re * re + im * im).sqrt() / v.len() as f32
+        };
+        let base = EffectorParams { mix: 1.0, ..EffectorParams::default() };
+
+        // Läge 0 — svep: X flyttar delningen, så diskanten försvinner när X går ned.
+        let dark = render(EffectorParams { mode: 0, x: 0.1, y: 0.2, ..base }, 24_000);
+        let bright = render(EffectorParams { mode: 0, x: 0.9, y: 0.2, ..base }, 24_000);
+        let (dark_hi, bright_hi) = (mag(&dark, 4000.0), mag(&bright, 4000.0));
+
+        // Läge 2 — port: Y är djupet, så modulationen blir djupare med högre Y.
+        let open = render(EffectorParams { mode: 2, x: 0.5, y: 0.0, ..base }, 24_000);
+        let closed = render(EffectorParams { mode: 2, x: 0.5, y: 1.0, ..base }, 24_000);
+        let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+        let (open_rms, closed_rms) = (rms(&open), rms(&closed));
+
+        // Läge 3 — kross: X sänker bitdjupet, alltså mer övertoner.
+        let clean = render(EffectorParams { mode: 3, x: 0.05, y: 0.0, ..base }, 24_000);
+        let crushed = render(EffectorParams { mode: 3, x: 0.95, y: 0.0, ..base }, 24_000);
+        let (clean_thd, crushed_thd) = (thd(&clean, 220.0, sr), thd(&crushed, 220.0, sr));
+
+        println!("svep: 4 kHz {dark_hi:.4} → {bright_hi:.4} · port: RMS {open_rms:.4} → {closed_rms:.4} · kross: THD {clean_thd:.3} → {crushed_thd:.3}");
+        assert!(bright_hi > dark_hi * 3.0, "svepet ska öppna för diskanten: {dark_hi:.4} → {bright_hi:.4}");
+        assert!(closed_rms < open_rms * 0.85, "porten ska stänga: {open_rms:.4} → {closed_rms:.4}");
+        assert!(crushed_thd > clean_thd * 2.0, "krossen ska ge övertoner: {clean_thd:.3} → {crushed_thd:.3}");
+    }
+
