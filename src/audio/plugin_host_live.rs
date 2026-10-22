@@ -513,6 +513,30 @@ impl PluginInsert {
         }
     }
 
+    /// Lägger en buss' värden i kön och **klipper den till ett block**.
+    ///
+    /// En port som ingen läser — ingen målkanal kopplad — skulle annars fyllas med ett block
+    /// per block i evighet: 128 sampel × 2 kanaler × 48 kHz ≈ 384 kB/s per port, `VecDeque`
+    /// som växer (allokering) inne i ljudtråden, och när porten kopplas in senare spelas
+    /// minuter gammalt ljud i stället för det som pågår. Kopplade portar töms varje sampel
+    /// och når aldrig taket, så klippningen rör dem inte.
+    #[inline]
+    fn push_extra(&mut self, port: usize, l: f32, r: f32) {
+        let cap = self.block_frames;
+        if let Some(q) = self.extra_l.get_mut(port) {
+            if q.len() >= cap {
+                q.pop_front();
+            }
+            q.push_back(l);
+        }
+        if let Some(q) = self.extra_r.get_mut(port) {
+            if q.len() >= cap {
+                q.pop_front();
+            }
+            q.push_back(r);
+        }
+    }
+
     /// Har inserten en sidokedja att fylla? (Fas 8.6)
     pub fn has_sidechain(&self) -> bool {
         self.sidechain
@@ -694,8 +718,7 @@ impl PluginInsert {
                 self.side_r.fill(0.0);
                 for port in 0..self.extra_l.len() {
                     for _ in 0..self.block_frames {
-                        self.extra_l[port].push_back(0.0);
-                        self.extra_r[port].push_back(0.0);
+                        self.push_extra(port, 0.0, 0.0);
                     }
                 }
             } else {
@@ -719,8 +742,7 @@ impl PluginInsert {
                             // det enda ärliga svaret. Att hitta på ljud här vore att gissa.
                             (0.0, 0.0)
                         };
-                        self.extra_l[port].push_back(l);
-                        self.extra_r[port].push_back(r);
+                        self.push_extra(port, l, r);
                     }
                 }
             }
@@ -3328,4 +3350,75 @@ mod tests {
         };
         assert!(err.contains("plugin-host"));
     }
+    /// **En buss som ingen läser får inte växa.** En multi-out-plugin vars portar inte är
+    /// kopplade ska inte fylla kön: den ska hålla **ett** block, och det ska vara det
+    /// senaste — annars spelar en senare inkoppling minuter gammalt ljud i stället för det
+    /// som pågår just nu.
+    struct ExtraPortProcessor {
+        seq: f32,
+    }
+
+    impl PluginProcessor for ExtraPortProcessor {
+        fn backend(&self) -> &'static str {
+            "test"
+        }
+        fn info(&self) -> &PluginInfo {
+            static INFO: std::sync::OnceLock<PluginInfo> = std::sync::OnceLock::new();
+            INFO.get_or_init(PluginInfo::default)
+        }
+        fn parameters(&self) -> &[PluginParameter] {
+            &[]
+        }
+        fn latency_frames(&self) -> u32 {
+            0
+        }
+        fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+            let _ = (left, right);
+        }
+        fn extra_outputs(&self) -> usize {
+            1
+        }
+        fn take_extra_output(&mut self, _index: usize, left: &mut [f32], right: &mut [f32]) -> bool {
+            for i in 0..left.len() {
+                self.seq += 1.0;
+                left[i] = self.seq;
+                right[i] = self.seq;
+            }
+            true
+        }
+        fn set_parameter(&mut self, _id: u32, _value: f64) -> bool {
+            false
+        }
+        fn reset(&mut self) {}
+    }
+
+    #[test]
+    fn an_unread_plugin_bus_holds_one_block_not_a_history() {
+        let block = 128;
+        let mut insert = PluginInsert::new(Box::new(ExtraPortProcessor { seq: 0.0 }), block);
+        // Tio block utan att någon läser bussen — som en plugin vars port aldrig kopplats.
+        for _ in 0..(10 * block) {
+            insert.process_sample(0.0, 0.0);
+        }
+        let queued = insert.extra_l[0].len();
+        assert_eq!(queued, block, "kön ska hålla ett block, inte tio: {queued}");
+        assert_eq!(insert.extra_r[0].len(), block);
+
+        // Och det som ligger i kön ska vara det **senaste** blocket.
+        let newest = (10 * block) as f32;
+        let oldest_kept = insert.extra_l[0].front().copied().unwrap();
+        println!("kön: {queued} sampel, äldst kvar {oldest_kept}, nyast {newest}");
+        assert!(
+            oldest_kept >= (9 * block) as f32,
+            "det äldsta som ligger kvar ska vara ur sista blocket, inte ur det första: {oldest_kept}"
+        );
+
+        // Kopplas porten in töms kön i samma takt som ljudet, utan glapp.
+        for _ in 0..block {
+            let (l, _) = insert.extra_output_sample(0);
+            assert!(l > 0.0, "den kopplade porten ska ge ljud");
+        }
+        assert!(insert.extra_l[0].is_empty(), "efter ett block ska kön vara tömd");
+    }
+
 }
