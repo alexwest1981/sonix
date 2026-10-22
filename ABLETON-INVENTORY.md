@@ -170,7 +170,7 @@ Operationerna som gör Ableton till Ableton, och var Sonix står:
 | Take lanes: `Insert Take Lane`, `Copy From Take Lane To Content Lane`, `Delete Unused Take Lanes`, `Swap Lane` | ◐ (MIDI-tagningar, ingen kompning i spellistan) |
 | `Warp Mode`: Beats, Tones, Texture, Re-Pitch, Complex, Complex Pro (+ granularity, formants) | ◐ (WSOLA, bandspelare, formantbevarande pitch — inte sex lägen) |
 | `Show Tuning Pool`, Scala/ASCL | ✅ (`Tuning` + `parse_ascl`; `.ascl` läses i menyn) |
-| `Group Note Probabilities`, `Probability Group` | ✗ |
+| `Group Note Probabilities`, `Probability Group` | ◐ `TakeNote::probability` gates noten vid uppspelning (transporten drar slumptal, offline-renderingen spelar allt); ✗ att sätta sannolikhet på en *grupp* noter i ett svep med egen gruppbeteckning |
 | `MPE Control`, `Per Note Pitch Bend`, `Note Chase` | ✗ (MPE finns inte alls) |
 | `Create Branch`, `Sort Branches`, `Show Branch Names In Editor` | ✗ (arrangemangsversioner) |
 | `Compare Copy`, `Compare Switch` | ✗ (A/B-jämförelse av två versioner) |

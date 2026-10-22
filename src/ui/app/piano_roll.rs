@@ -456,6 +456,19 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 if let Some(hits) = self.note_filter_hits {
                     ui.label(egui::RichText::new(format!("{hits}")).monospace().size(10.0).color(Theme::FL_CYAN));
                 }
+                // **Notsannolikhet** (Ableton): gäller urvalet, alltså samma villkor som
+                // raderingen — det som ändras är det som räknades.
+                ui.add(egui::DragValue::new(&mut self.note_probability).range(0.0..=1.0).speed(0.01).custom_formatter(|v, _| format!("{:.0} %", v * 100.0)))
+                    .on_hover_text(crate::i18n::t("Sannolikheten att noterna i urvalet spelas"));
+                if ui.button(crate::i18n::t("Använd på urvalet")).clicked() {
+                    let p = self.note_probability;
+                    let touched = self
+                        .patterns
+                        .get_mut(self.selected_pattern)
+                        .map(|pat| pat.take.set_probability(&self.note_filter, p))
+                        .unwrap_or(0);
+                    self.status_message = format!("Satte {:.0} % på {} noter", p * 100.0, touched);
+                }
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Ta bort valda")).size(10.0).color(Theme::FL_RED))).clicked() {
                     let mut removed = 0;
                     if let Some(p) = self.patterns.get_mut(self.selected_pattern) {

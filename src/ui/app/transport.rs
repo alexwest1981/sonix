@@ -537,9 +537,21 @@ fn trigger_step(&mut self, step: usize) {
     let take_plan = match self.patterns.get(self.selected_pattern) {
         Some(pat) => {
             let grid = &self.piano_roll_grid;
-            crate::midi_take::plan_for_step(&pat.take, step, self.step_samples(step), &|key, slot| {
-                (48..72).contains(&key) && grid[(key - 48) as usize][slot]
-            })
+            // Slumpen kommer ur klockan: en not med sannolikhet ska kunna falla olika mellan
+            // två varv, annars är sannolikheten bara ett långsammare "alltid".
+            let mut rng = crate::rng::Rng::new(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as u64 | 1)
+                    .unwrap_or(1),
+            );
+            crate::midi_take::plan_for_step_rolled(
+                &pat.take,
+                step,
+                self.step_samples(step),
+                &|key, slot| (48..72).contains(&key) && grid[(key - 48) as usize][slot],
+                &mut || rng.next_f32(),
+            )
         }
         None => crate::midi_take::TakePlan::default(),
     };
@@ -632,13 +644,20 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                         // Tagningens mikro-tajming (Fas 6.4 steg 2), samma väg
                         // som i pattern-läget — och läses före grinden, annars
                         // tystnar en not som spelades sent i föregående steg.
-                        let take_plan = crate::midi_take::plan_for_step(
+                        let mut rng = crate::rng::Rng::new(
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.subsec_nanos() as u64 | 1)
+                                .unwrap_or(1),
+                        );
+                        let take_plan = crate::midi_take::plan_for_step_rolled(
                             &pat.take,
                             step_in_bar,
                             self.step_samples(step_in_bar),
                             &|key, slot| {
                                 (48..72).contains(&key) && pat.piano_roll_grid[(key - 48) as usize][slot]
                             },
+                            &mut || rng.next_f32(),
                         );
                         let grid_active = track.kind == TrackKind::SynthLead
                             && ((0..24).any(|r| pat.piano_roll_grid[r][step_in_bar])

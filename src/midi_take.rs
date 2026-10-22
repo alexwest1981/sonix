@@ -97,6 +97,14 @@ pub struct TakeNote {
     pub key: u8,
     /// Anslag 0.0–1.0.
     pub velocity: f32,
+    /// Sannolikheten att noten spelas, 0–1. 1,0 = alltid (och då beter sig gamla projekt
+    /// precis som förut, eftersom fältet då saknas i filen).
+    #[serde(default = "always")]
+    pub probability: f32,
+}
+
+fn always() -> f32 {
+    1.0
 }
 
 /// En tagning: noterna som spelades, med sin tajming.
@@ -146,6 +154,20 @@ impl Take {
         self.notes.iter().filter(|n| filter.matches(n)).count()
     }
 
+    /// **Sätt sannolikhet på urvalet** (Abletons notsannolikhet): samma villkor som urvalet,
+    /// så det som ändras är det som räknades. Returnerar antalet noter som fick värdet.
+    pub fn set_probability(&mut self, filter: &NoteFilter, probability: f32) -> usize {
+        let p = probability.clamp(0.0, 1.0);
+        let mut touched = 0;
+        for n in self.notes.iter_mut() {
+            if filter.matches(n) {
+                n.probability = p;
+                touched += 1;
+            }
+        }
+        touched
+    }
+
     /// **Radera enligt villkor.** Returnerar antalet borttagna noter, så att gränssnittet kan
     /// säga hur många det blev i stället för att bara bli tyst.
     pub fn remove_matching(&mut self, filter: &NoteFilter) -> usize {
@@ -167,6 +189,7 @@ impl Take {
             pos: pos.clamp(0.0, STEPS_PER_BAR - 0.01),
             key,
             velocity: velocity.clamp(0.0, 1.0),
+            probability: 1.0,
         });
     }
 
@@ -349,6 +372,21 @@ pub fn plan_for_step(
     step_samples: u32,
     is_on: &dyn Fn(u8, usize) -> bool,
 ) -> TakePlan {
+    // Utan slumptal spelas allt: äldre prov och offline-renderingen beter sig som förut.
+    plan_for_step_rolled(take, step, step_samples, is_on, &mut || 0.0)
+}
+
+/// Samma plan, men med slumptal: en not med sannolikhet under slumptalet hoppas över.
+///
+/// Slumptalet matas in så att både live-uppspelning och rendering kan välja sin egen källa —
+/// renderingen en fröad, så att samma låt låter likadant två gånger.
+pub fn plan_for_step_rolled(
+    take: &Take,
+    step: usize,
+    step_samples: u32,
+    is_on: &dyn Fn(u8, usize) -> bool,
+    roll: &mut dyn FnMut() -> f32,
+) -> TakePlan {
     let mut plan = TakePlan::default();
     if take.is_empty() {
         return plan;
@@ -360,6 +398,9 @@ pub fn plan_for_step(
         }
         let (trigger_step, frac) = Take::playback_slot(n);
         if trigger_step == step && is_on(n.key, slot) {
+            if n.probability < 1.0 && roll() >= n.probability {
+                continue;
+            }
             let delay = (frac * step_samples as f32).max(0.0) as u32;
             plan.play.push((n.key, delay, n.velocity.clamp(0.0, 1.0)));
         }
@@ -573,12 +614,12 @@ mod tests {
     fn playback_slot_triggers_early_notes_from_the_step_before() {
         // En not strax före steg 3 (2.7) triggas av steg 2 och klingar 0.7 steg in
         // — den hörs alltså före slaget, som den spelades.
-        let n = TakeNote { pos: 2.7, key: 60, velocity: 0.8 };
+        let n = TakeNote { pos: 2.7, key: 60, velocity: 0.8, probability: 1.0 };
         let (step, frac) = Take::playback_slot(&n);
         assert_eq!(step, 2);
         assert!((frac - 0.7).abs() < 1e-6);
 
-        let n = TakeNote { pos: 3.0, key: 60, velocity: 0.8 };
+        let n = TakeNote { pos: 3.0, key: 60, velocity: 0.8, probability: 1.0 };
         let (step, frac) = Take::playback_slot(&n);
         assert_eq!(step, 3);
         assert_eq!(frac, 0.0);
@@ -793,6 +834,42 @@ mod tests {
         assert_eq!(take.count_matching(&all), 3);
         assert_eq!(take.remove_matching(&all), 3);
         assert!(take.notes.is_empty());
+    }
+
+    /// **Sannolikheten gate:ar noten, inte anslaget.** En not med 0,0 spelas aldrig, en med 1,0
+    /// alltid, och urvalet kan sätta värdet på exakt de noter villkoret fångar.
+    #[test]
+    fn note_probability_decides_whether_the_note_plays() {
+        let mut take = Take::new();
+        take.push(0.0, 36, 0.8);
+        take.push(0.0, 38, 0.8);
+        take.push(0.0, 40, 0.8);
+
+        // Bara noten 38 får 50 %.
+        let only_38 = NoteFilter { key: Some(38), ..NoteFilter::default() };
+        assert_eq!(take.set_probability(&only_38, 0.5), 1);
+        assert_eq!(take.notes[1].probability, 0.5);
+        assert_eq!(take.notes[0].probability, 1.0, "andra noter ska stå orörda");
+
+        // Slumptal under sannolikheten → spelar; över → tyst.
+        let is_on = |_: u8, _: usize| true;
+        let mut low_roll = || 0.2f32;
+        let plays = plan_for_step_rolled(&take, 0, 1000, &is_on, &mut low_roll);
+        assert_eq!(plays.play.len(), 3, "0,2 < 0,5: alla tre spelar");
+        let mut high_roll = || 0.9f32;
+        let silent = plan_for_step_rolled(&take, 0, 1000, &is_on, &mut high_roll);
+        assert_eq!(silent.play.len(), 2, "0,9 ≥ 0,5: noten 38 tystnar");
+        assert!(!silent.play.iter().any(|(k, _, _)| *k == 38));
+
+        // 0,0 spelas aldrig, ens med slumptal 0.
+        let none = NoteFilter::default();
+        take.set_probability(&none, 0.0);
+        let mut zero = || 0.0f32;
+        assert!(plan_for_step_rolled(&take, 0, 1000, &is_on, &mut zero).play.is_empty());
+
+        // Och den gamla vägen (utan slumptal) spelar allt, som förut.
+        take.set_probability(&none, 1.0);
+        assert_eq!(plan_for_step(&take, 0, 1000, &is_on).play.len(), 3);
     }
 
 }
