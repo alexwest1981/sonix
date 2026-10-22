@@ -6,6 +6,13 @@ on:
   pull_request:
     branches: [master]
 
+# **Ett flöde per gren, inte ett per push.** Utan det startar varje push en egen full
+# körning: sex commits i rad blir sex parallella körningar som slåss om samma runners, och
+# den senaste — den som faktiskt gäller — står sist i kön. Den äldre avbryts i stället.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
