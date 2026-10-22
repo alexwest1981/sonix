@@ -1179,3 +1179,49 @@
         assert!(b.abs() < 1e-6, "höger ska tystna: {b}");
     }
 
+    /// **Hyllorna lyfter och sänker där de ska** — nedre hyllan rör basen men inte diskanten,
+    /// och tvärtom. Ett prov som bara mätte "det blev högre" hade godkänt en ren volymökning.
+    #[test]
+    fn the_shelves_move_one_end_of_the_spectrum_each() {
+        let sr = 48_000.0;
+        let render = |params: ShelvesParams, frames: usize| {
+            let mut sh = Shelves::new(sr);
+            (0..frames)
+                .map(|n| {
+                    let t = n as f32 / sr;
+                    let x = (2.0 * std::f32::consts::PI * 60.0 * t).sin() * 0.25
+                        + (2.0 * std::f32::consts::PI * 8000.0 * t).sin() * 0.25;
+                    sh.process(x, x, &params).0
+                })
+                .collect::<Vec<f32>>()
+        };
+        let mag = |v: &[f32], f: f32| {
+            let (mut re, mut im) = (0.0f32, 0.0f32);
+            for (n, &x) in v.iter().enumerate() {
+                let ph = 2.0 * std::f32::consts::PI * f * n as f32 / sr;
+                re += x * ph.cos();
+                im -= x * ph.sin();
+            }
+            (re * re + im * im).sqrt() / v.len() as f32
+        };
+        let flat = render(ShelvesParams::default(), 24_000);
+        let bass = render(ShelvesParams { low_db: 12.0, ..ShelvesParams::default() }, 24_000);
+        let treble = render(ShelvesParams { high_db: 12.0, ..ShelvesParams::default() }, 24_000);
+        let cut = render(ShelvesParams { low_db: -12.0, ..ShelvesParams::default() }, 24_000);
+
+        let (flat_lo, flat_hi) = (mag(&flat[12_000..], 60.0), mag(&flat[12_000..], 8_000.0));
+        let (bass_lo, bass_hi) = (mag(&bass[12_000..], 60.0), mag(&bass[12_000..], 8_000.0));
+        let (t_lo, t_hi) = (mag(&treble[12_000..], 60.0), mag(&treble[12_000..], 8_000.0));
+        let cut_lo = mag(&cut[12_000..], 60.0);
+
+        println!("bas +12: 60 Hz {flat_lo:.4} → {bass_lo:.4}, 8 kHz {flat_hi:.4} → {bass_hi:.4}");
+        println!("diskant +12: 60 Hz {t_lo:.4}, 8 kHz {t_hi:.4} · bas −12: {cut_lo:.4}");
+        // +12 dB är fyra gånger amplituden vid full hylla. 8 kHz ligger 1,4 oktaver över hörnet
+        // och 60 Hz strax under det nedre, så båda landar runt +9 dB — provet kräver 2,5×.
+        assert!(bass_lo > flat_lo * 2.5, "basen ska lyftas: {flat_lo:.4} → {bass_lo:.4}");
+        assert!(bass_hi < flat_hi * 1.2, "diskanten ska stå still: {flat_hi:.4} → {bass_hi:.4}");
+        assert!(t_hi > flat_hi * 2.5, "diskanten ska lyftas: {flat_hi:.4} → {t_hi:.4}");
+        assert!(t_lo < flat_lo * 1.2, "basen ska stå still: {flat_lo:.4} → {t_lo:.4}");
+        assert!(cut_lo < flat_lo * 0.5, "−12 dB ska sänka basen: {flat_lo:.4} → {cut_lo:.4}");
+    }
+

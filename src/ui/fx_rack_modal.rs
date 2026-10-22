@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, ShelvesParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -311,6 +311,21 @@ impl Default for FxRackState {
                     p3_val: 0.60,
                     mix: 1.00,
                     description: "Pedalkedja i serie: KOMP → DRIVE → WAH → DELAY. Distorsion före wah ger den vokalliknande kurvan.",                    extra: vec![("WAH-DJUP", 0.0), ("DELAY", 0.2), ("EKON", 0.0)],
+                },
+                FxPedal {
+                    id: "shelves",
+                    name: "📉 TONKONTUR",
+                    category: "Filter",
+                    enabled: false,
+                    color: Color32::from_rgb(150, 200, 120),
+                    p1_name: "BAS",
+                    p1_val: 0.50,
+                    p2_name: "DISKANT",
+                    p2_val: 0.50,
+                    p3_name: "BASFRQ",
+                    p3_val: 0.35,
+                    mix: 1.00,
+                    description: "Två hyllor: BAS och DISKANT i dB (mitten = 0), BASFRQ väljer var den nedre knäcker. Low Lifter är samma sak med bara den nedre hyllan.",                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "stereo",
@@ -692,6 +707,19 @@ impl FxRackState {
             mix: st_knob(|p| p.mix, 1.0),
         };
 
+        let sh_p = self.pedal("shelves");
+        let sh_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            sh_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let shelves = ShelvesParams {
+            low_hz: 40.0 * (10.0f32).powf(sh_knob(|p| p.p3_val, 0.35) * 1.2),
+            // Ratten står i mitten = 0 dB, och går ±15 dB.
+            low_db: (sh_knob(|p| p.p1_val, 0.5) - 0.5) * 30.0,
+            high_hz: 3_000.0,
+            high_db: (sh_knob(|p| p.p2_val, 0.5) - 0.5) * 30.0,
+            mix: sh_knob(|p| p.mix, 1.0),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -737,6 +765,8 @@ impl FxRackState {
             effector_enabled: ef_p.map(|p| p.enabled).unwrap_or(false),
             stereo,
             stereo_enabled: st_p.map(|p| p.enabled).unwrap_or(false),
+            shelves,
+            shelves_enabled: sh_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,

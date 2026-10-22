@@ -53,6 +53,7 @@ pub mod plugin_host_live;
 pub mod realtime_bench;
 pub mod onset;
 pub mod recorder;
+pub mod repair;
 pub mod smf;
 pub mod tempo;
 pub mod stem_separator;
@@ -110,7 +111,7 @@ pub use master_fx::{
     HardcoreParams, Granular, GranularParams, MultibandDelay, MultibandDelayParams,
     CompressorParams, ConvolverParams, DeEsserParams, DoublerParams, GateParams, LimiterParams, MasterEqBand,
     MasterFilterParams, MasterFxChain, MasterFxParams, ModFxParams, MultibandParams, SaturatorParams,
-    StereoEq, StereoParams,
+    StereoEq, StereoParams, Shelves, ShelvesParams,
     IR_BANK, synthesize_ir,
     TrackEqSettings, TransientParams,
 };

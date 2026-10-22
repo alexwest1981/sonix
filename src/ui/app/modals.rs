@@ -2188,6 +2188,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     // inne i panelen lånas spåret.
     let mut freeze_request: Option<usize> = None;
     let mut bounce_request: Option<usize> = None;
+    let mut declick_request: Option<usize> = None;
     let mut unfreeze_request: Option<usize> = None;
     let frozen_stale = self.frozen_is_stale(t_idx);
 
@@ -2301,6 +2302,15 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             .clicked()
                         {
                             bounce_request = Some(t_idx);
+                        }
+                        // **Klicka bort skarvar:** lagar hopp i det inspelade materialet.
+                        // Bara spår med ljud kan ha klickar att laga.
+                        if track.pcm_audio.is_some()
+                            && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Ta bort klick")).color(Color32::WHITE)).fill(Color32::from_rgb(60, 50, 80)))
+                                .on_hover_text(crate::i18n::t("Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd."))
+                                .clicked()
+                        {
+                            declick_request = Some(t_idx);
                         }
                     }
 
@@ -2800,6 +2810,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     }
     if let Some(target) = bounce_request {
         self.bounce_track_to_new(target);
+    }
+    if let Some(target) = declick_request {
+        self.declick_track(target);
     }
     if let Some(target) = unfreeze_request {
         self.unfreeze_track(target);

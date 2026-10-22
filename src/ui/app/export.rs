@@ -1019,3 +1019,32 @@ pub fn execute_batch_export(&mut self) {
 }
 }
 
+impl SonixApp {
+    /// **Klicka bort skarvar** på ett spår: lagar tvära hopp i det inspelade ljudet.
+    ///
+    /// Arbetar på en kopia och byter först när något faktiskt lagats — ett spår utan klickar ska
+    /// inte få ny identitet på sin buffer (och därmed ingen omritad vågform) för ingenting.
+    pub(crate) fn declick_track(&mut self, t_idx: usize) {
+        let Some(track) = self.playlist_tracks.get_mut(t_idx) else {
+            return;
+        };
+        let Some((l, r, sr)) = track.pcm_audio.clone() else {
+            self.status_message = self.tr("Spåret har inget ljud att laga").to_string();
+            return;
+        };
+        let mut left = (*l).clone();
+        let mut right = (*r).clone();
+        let repaired = crate::audio::repair::declick(&mut left) + crate::audio::repair::declick(&mut right);
+        if repaired == 0 {
+            self.status_message = self.tr("Inga klickar hittades").to_string();
+            return;
+        }
+        track.pcm_audio = Some((
+            std::sync::Arc::new(left),
+            std::sync::Arc::new(right),
+            sr,
+        ));
+        self.sync_all_stems_to_engine();
+        self.status_message = crate::tstatus!("🧹 Lagade {} klickar i spåret", repaired);
+    }
+}

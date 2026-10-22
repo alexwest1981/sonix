@@ -376,6 +376,16 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📉 TONKONTUR" => "📉 TONE SHAPE",
+        "BAS" => "BASS",
+        "DISKANT" => "TREBLE",
+        "BASFRQ" => "BASS FREQ",
+        "Två hyllor: BAS och DISKANT i dB (mitten = 0), BASFRQ väljer var den nedre knäcker. Low Lifter är samma sak med bara den nedre hyllan." => "Two shelves: BASS and TREBLE in dB (centre = 0), BASS FREQ sets where the lower one bends. Low Lifter is the same thing with only the lower shelf.",
+        "🧹 Ta bort klick" => "🧹 Remove clicks",
+        "Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd." => "Finds abrupt jumps in the track and interpolates across them. The music around them is left untouched.",
+        "Spåret har inget ljud att laga" => "The track has no audio to repair",
+        "Inga klickar hittades" => "No clicks found",
+        "🧹 Lagade {} klickar i spåret" => "🧹 Repaired {} clicks in the track",
         "Urval:" => "Selection:",
         "Anslag under det här värdet" => "Velocity below this value",
         "ton" => "key",
@@ -2523,6 +2533,16 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📉 TONKONTUR" => "📉 TONEKONTUR",
+        "BAS" => "BAS",
+        "DISKANT" => "DISKANT",
+        "BASFRQ" => "BASFRK",
+        "Två hyllor: BAS och DISKANT i dB (mitten = 0), BASFRQ väljer var den nedre knäcker. Low Lifter är samma sak med bara den nedre hyllan." => "To hylder: BAS og DISKANT i dB (midten = 0), BASFRK vælger hvor den nederste knækker. Low Lifter er det samme med kun den nederste hylde.",
+        "🧹 Ta bort klick" => "🧹 Fjern klik",
+        "Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd." => "Finder bratte spring i sporets lyd og interpolerer hen over dem. Musikken omkring lades urørt.",
+        "Spåret har inget ljud att laga" => "Sporet har ingen lyd at reparere",
+        "Inga klickar hittades" => "Ingen klik fundet",
+        "🧹 Lagade {} klickar i spåret" => "🧹 Reparerede {} klik i sporet",
         "Urval:" => "Udvalg:",
         "Anslag under det här värdet" => "Anslag under denne værdi",
         "ton" => "tone",
@@ -4628,6 +4648,16 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📉 TONKONTUR" => "📉 TONEKONTUR",
+        "BAS" => "BASS",
+        "DISKANT" => "DISKANT",
+        "BASFRQ" => "BASFRK",
+        "Två hyllor: BAS och DISKANT i dB (mitten = 0), BASFRQ väljer var den nedre knäcker. Low Lifter är samma sak med bara den nedre hyllan." => "To hyller: BASS og DISKANT i dB (midten = 0), BASFRK velger hvor den nederste knekker. Low Lifter er det samme med bare den nederste hyllen.",
+        "🧹 Ta bort klick" => "🧹 Fjern klikk",
+        "Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd." => "Finner bråe hopp i sporets lyd og interpolerer over dem. Musikken rundt står urørt.",
+        "Spåret har inget ljud att laga" => "Sporet har ingen lyd å reparere",
+        "Inga klickar hittades" => "Ingen klikk funnet",
+        "🧹 Lagade {} klickar i spåret" => "🧹 Reparerte {} klikk i sporet",
         "Urval:" => "Utvalg:",
         "Anslag under det här värdet" => "Anslag under denne verdien",
         "ton" => "tone",
@@ -6733,6 +6763,16 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📉 TONKONTUR" => "📉 KLANGREGEL",
+        "BAS" => "BASS",
+        "DISKANT" => "HÖHEN",
+        "BASFRQ" => "BASFREQ",
+        "Två hyllor: BAS och DISKANT i dB (mitten = 0), BASFRQ väljer var den nedre knäcker. Low Lifter är samma sak med bara den nedre hyllan." => "Zwei Regale: BASS und HÖHEN in dB (Mitte = 0), BASFREQ bestimmt, wo das untere abknickt. Low Lifter ist dasselbe nur mit dem unteren Regal.",
+        "🧹 Ta bort klick" => "🧹 Klicks entfernen",
+        "Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd." => "Findet harte Sprünge im Spuraudio und interpoliert darüber. Die Musik drumherum bleibt unberührt.",
+        "Spåret har inget ljud att laga" => "Der Spur hat kein Audio zum Reparieren",
+        "Inga klickar hittades" => "Keine Klicks gefunden",
+        "🧹 Lagade {} klickar i spåret" => "🧹 {} Klicks im Spur repariert",
         "Urval:" => "Auswahl:",
         "Anslag under det här värdet" => "Anschlag unter diesem Wert",
         "ton" => "Ton",
@@ -8838,6 +8878,16 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📉 TONKONTUR" => "📉 CURVA DE TONO",
+        "BAS" => "GRAVES",
+        "DISKANT" => "AGUDOS",
+        "BASFRQ" => "FREC. GRAVES",
+        "Två hyllor: BAS och DISKANT i dB (mitten = 0), BASFRQ väljer var den nedre knäcker. Low Lifter är samma sak med bara den nedre hyllan." => "Dos estantes: GRAVES y AGUDOS en dB (centro = 0), FREC. GRAVES elige dónde dobla el inferior. Low Lifter es lo mismo solo con el estante inferior.",
+        "🧹 Ta bort klick" => "🧹 Quitar clics",
+        "Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd." => "Encuentra saltos bruscos en el audio de la pista e interpola sobre ellos. La música alrededor queda intacta.",
+        "Spåret har inget ljud att laga" => "La pista no tiene audio que reparar",
+        "Inga klickar hittades" => "No se encontraron clics",
+        "🧹 Lagade {} klickar i spåret" => "🧹 Reparados {} clics en la pista",
         "Urval:" => "Selección:",
         "Anslag under det här värdet" => "Ataque por debajo de este valor",
         "ton" => "nota",
@@ -10943,6 +10993,16 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📉 TONKONTUR" => "📉 COURBE DE TON",
+        "BAS" => "GRAVES",
+        "DISKANT" => "AIGUS",
+        "BASFRQ" => "FRÉQ. GRAVES",
+        "Två hyllor: BAS och DISKANT i dB (mitten = 0), BASFRQ väljer var den nedre knäcker. Low Lifter är samma sak med bara den nedre hyllan." => "Deux shelves : GRAVES et AIGUS en dB (centre = 0), FRÉQ. GRAVES choisit où l'inférieur plie. Low Lifter est la même chose avec seulement le shelf inférieur.",
+        "🧹 Ta bort klick" => "🧹 Retirer les clics",
+        "Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd." => "Trouve les sauts brusques dans l'audio de la piste et interpole par-dessus. La musique autour reste intacte.",
+        "Spåret har inget ljud att laga" => "La piste n'a pas d'audio à réparer",
+        "Inga klickar hittades" => "Aucun clic trouvé",
+        "🧹 Lagade {} klickar i spåret" => "🧹 {} clics réparés dans la piste",
         "Urval:" => "Sélection :",
         "Anslag under det här värdet" => "Vélocité en dessous de cette valeur",
         "ton" => "note",

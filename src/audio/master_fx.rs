@@ -178,6 +178,8 @@ pub struct MasterFxParams {
     pub effector_enabled: bool,
     pub stereo: StereoParams,
     pub stereo_enabled: bool,
+    pub shelves: ShelvesParams,
+    pub shelves_enabled: bool,
     pub control: ControlRoomParams,
 }
 
@@ -227,6 +229,8 @@ impl Default for MasterFxParams {
             effector_enabled: false,
             stereo: StereoParams::default(),
             stereo_enabled: false,
+            shelves: ShelvesParams::default(),
+            shelves_enabled: false,
             control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
@@ -259,6 +263,7 @@ pub struct MasterFxChain {
     distructor: Distructor,
     hardcore: Hardcore,
     effector: Effector,
+    shelves: Shelves,
     filter: MasterFilter,
     limiter: Limiter,
     params: MasterFxParams,
@@ -291,6 +296,7 @@ impl MasterFxChain {
             distructor: Distructor::new(sample_rate),
             hardcore: Hardcore::new(sample_rate),
             effector: Effector::new(sample_rate),
+            shelves: Shelves::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
@@ -397,6 +403,12 @@ impl MasterFxChain {
 
         if p.hardcore_enabled {
             let (nl, nr) = self.hardcore.process(l, r, &p.hardcore);
+            l = nl;
+            r = nr;
+        }
+
+        if p.shelves_enabled {
+            let (nl, nr) = self.shelves.process(l, r, &p.shelves);
             l = nl;
             r = nr;
         }

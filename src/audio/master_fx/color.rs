@@ -1247,3 +1247,107 @@ impl StereoParams {
         (l, r)
     }
 }
+
+/// Två hyllor: en nedre och en övre. Det är vad **Low Lifter** (bara den nedre) och en
+/// **tonkontur** i största allmänhet är — samma biquad-form, olika frekvens och riktning.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ShelvesParams {
+    pub low_hz: f32,
+    pub low_db: f32,
+    pub high_hz: f32,
+    pub high_db: f32,
+    pub mix: f32,
+}
+
+impl Default for ShelvesParams {
+    fn default() -> Self {
+        Self {
+            low_hz: 90.0,
+            low_db: 0.0,
+            high_hz: 6_000.0,
+            high_db: 0.0,
+            mix: 1.0,
+        }
+    }
+}
+
+/// RBJ-hylla. `gain_db` > 0 lyfter, < 0 sänker; `slope` 1,0 är en mjuk hylla.
+fn shelf_coeffs(sr: f32, freq: f32, gain_db: f32, high: bool) -> BiquadCoeffs {
+    let a = (10.0f32).powf(gain_db / 40.0);
+    let w0 = 2.0 * std::f32::consts::PI * freq.clamp(20.0, sr * 0.45) / sr;
+    let (sin_w0, cos_w0) = w0.sin_cos();
+    let alpha = sin_w0 / 2.0 * (2.0f32).sqrt();
+    let two_sqrt_a_alpha = 2.0 * a.sqrt() * alpha;
+    if high {
+        // Övre hylla: nämnaren har MINUS framför (A−1)cos — det är enda skillnaden mot den
+        // nedre, och att låna den nedres nämnare ger en hylla som bara lyfter halvvägs.
+        let a0 = (a + 1.0) - (a - 1.0) * cos_w0 + two_sqrt_a_alpha;
+        BiquadCoeffs {
+            b0: (a * ((a + 1.0) + (a - 1.0) * cos_w0 + two_sqrt_a_alpha)) / a0,
+            b1: (-2.0 * a * ((a - 1.0) + (a + 1.0) * cos_w0)) / a0,
+            b2: (a * ((a + 1.0) + (a - 1.0) * cos_w0 - two_sqrt_a_alpha)) / a0,
+            a1: (2.0 * ((a - 1.0) - (a + 1.0) * cos_w0)) / a0,
+            a2: ((a + 1.0) - (a - 1.0) * cos_w0 - two_sqrt_a_alpha) / a0,
+        }
+    } else {
+        let a0 = (a + 1.0) + (a - 1.0) * cos_w0 + two_sqrt_a_alpha;
+        BiquadCoeffs {
+            b0: (a * ((a + 1.0) - (a - 1.0) * cos_w0 + two_sqrt_a_alpha)) / a0,
+            b1: (2.0 * a * ((a - 1.0) - (a + 1.0) * cos_w0)) / a0,
+            b2: (a * ((a + 1.0) - (a - 1.0) * cos_w0 - two_sqrt_a_alpha)) / a0,
+            a1: (-2.0 * ((a - 1.0) + (a + 1.0) * cos_w0)) / a0,
+            a2: ((a + 1.0) + (a - 1.0) * cos_w0 - two_sqrt_a_alpha) / a0,
+        }
+    }
+}
+
+/// De två hyllorna med sina tillstånd, så att de kan ligga i masterkedjan.
+pub struct Shelves {
+    low_l: BiquadState,
+    low_r: BiquadState,
+    high_l: BiquadState,
+    high_r: BiquadState,
+    low_c: BiquadCoeffs,
+    high_c: BiquadCoeffs,
+    cached: (f32, f32, f32, f32),
+    sample_rate: f32,
+}
+
+impl Shelves {
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        let p = ShelvesParams::default();
+        Self {
+            low_l: BiquadState::default(),
+            low_r: BiquadState::default(),
+            high_l: BiquadState::default(),
+            high_r: BiquadState::default(),
+            low_c: shelf_coeffs(sr, p.low_hz, p.low_db, false),
+            high_c: shelf_coeffs(sr, p.high_hz, p.high_db, true),
+            cached: (p.low_hz, p.low_db, p.high_hz, p.high_db),
+            sample_rate: sr,
+        }
+    }
+
+    pub fn process(&mut self, l: f32, r: f32, p: &ShelvesParams) -> (f32, f32) {
+        // Koefficienterna räknas bara om när en ratt flyttats — en hylla som räknas om varje
+        // sampel kostar mer än den gör nytta.
+        if (p.low_hz, p.low_db, p.high_hz, p.high_db) != self.cached {
+            self.low_c = shelf_coeffs(self.sample_rate, p.low_hz, p.low_db, false);
+            self.high_c = shelf_coeffs(self.sample_rate, p.high_hz, p.high_db, true);
+            self.cached = (p.low_hz, p.low_db, p.high_hz, p.high_db);
+        }
+        let mut out_l = l;
+        let mut out_r = r;
+        if p.low_db.abs() > 0.01 {
+            out_l = self.low_l.process(out_l, &self.low_c);
+            out_r = self.low_r.process(out_r, &self.low_c);
+        }
+        if p.high_db.abs() > 0.01 {
+            out_l = self.high_l.process(out_l, &self.high_c);
+            out_r = self.high_r.process(out_r, &self.high_c);
+        }
+        let mix = p.mix.clamp(0.0, 1.0);
+        (l * (1.0 - mix) + out_l * mix, r * (1.0 - mix) + out_r * mix)
+    }
+}

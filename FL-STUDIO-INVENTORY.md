@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 52** har en motsvarighet, **◐ 45** delvis, **✗ 44** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 53** har en motsvarighet, **◐ 47** delvis, **✗ 41** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -214,8 +214,8 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Patcher | 2 | ✅ | patcher.rs |
 | Spreader | 2 | ◐ | doubler |
 | Wave Candy | 2 | ◐ | spektrum + mätare; ingen oscillator/vectorscope |
-| Emphasis | 1 | ✗ | spektral betoning (EQ-serie) |
-| Emphasizer | 1 | ✗ | dito, äldre |
+| Emphasis | 1 | ◐ | Hylla finns (`ShelvesParams`), men FL:s Emphasis lägger till övertoner — det gör vår inte |
+| Emphasizer | 1 | ◐ | Samma som Emphasis: hyllan finns, övertonstillägget gör det inte |
 | FL Studio Mobile Rack FX | 1 | ✗ | mobilens effekter |
 | Frequency Shifter | 1 | ✅ | `FrequencyShifter` — Hilbert 63 tapp, en sidofrekvens, ±2 000 Hz, stereoläge |
 | Fruity 7 Band EQ | 1 | ◐ | 4-band + per-spår EQ |
@@ -238,7 +238,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Reeverb | 1 | ✅ | SimpleReverb |
 | Fruity X-Y-Z Controller | 1 | ✗ | modulationskälla (XYZ) |
 | Hyper Chorus | 1 | ◐ | `ModDelay` har **en** LFO; FL:s Hyper Chorus staplar flera röster |
-| Low Lifter | 1 | ✗ | low-end-förstärkning |
+| Low Lifter | 1 | ✅ | `ShelvesParams` — nedre hyllan (RBJ), samma krets som tonkonturen |
 | Luxeverb | 1 | ◐ | convolver + algoritmiskt reverb |
 | Multiband Delay | 1 | ✅ | `MultibandDelay` — tre band, tre tider, samma delningsfilter som den flerbandiga kompressorn |
 | Newtime | 1 | ◐ | tempokarta + "sätt takt 1 här" (8.14) |
