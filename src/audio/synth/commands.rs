@@ -115,6 +115,11 @@ impl SynthEngine {
                     }
                 }
             }
+            AudioCommand::SetHarmonics { levels } => {
+                for (slot, level) in self.harmonics.iter_mut().zip(levels.iter()) {
+                    *slot = level.clamp(0.0, 1.0);
+                }
+            }
             AudioCommand::SetSub { level } => {
                 self.sub_level = level.clamp(0.0, 1.0);
             }
@@ -295,6 +300,7 @@ impl SynthEngine {
                 self.unison_detune_cents = s.detune;
                 self.glide_time = s.glide;
                 self.filter_drive = s.drive;
+                self.harmonics = s.harmonics;
                 for voice in &mut self.voices {
                     voice.filter.reset();
                 }

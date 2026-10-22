@@ -116,6 +116,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetGlide { .. } => "SetGlide",
         AudioCommand::SetFilterDrive { .. } => "SetFilterDrive",
         AudioCommand::SetSub { .. } => "SetSub",
+        AudioCommand::SetHarmonics { .. } => "SetHarmonics",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -171,6 +172,17 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
 
 use std::sync::Arc;
 
+/// Antal övertoner i den additiva oscillatorn. Sexton räcker för dragstänger och
+/// orgelregister; fler hörs inte i en ackordmatta ändå.
+pub const HARMONIC_COUNT: usize = 16;
+
+/// Standardläget för dragstängerna: bara grundtonen utdragen.
+pub const HARMONICS_DEFAULT: [f32; HARMONIC_COUNT] = {
+    let mut h = [0.0f32; HARMONIC_COUNT];
+    h[0] = 1.0;
+    h
+};
+
 pub struct SynthEngine {
     pub sample_rate: f32,
     pub waveform: Waveform,
@@ -194,6 +206,10 @@ pub struct SynthEngine {
     pub tape_stop: TapeStop,
     /// Modulationsmatrisen (FL:s Envelope/Peak/Keyboard Controller).
     pub modulation: crate::audio::modulation::ModMatrix,
+    /// Nivåerna för den additiva oscillatorns övertoner. Endast `Waveform::Additive`
+    /// läser dem; standard är bara grundtonen, så vågformen låter som en sinus tills
+    /// användaren drar i dragstängerna.
+    pub harmonics: [f32; HARMONIC_COUNT],
     /// Suboscillatorns nivå 0–1: en sinus en oktav under noten, efter filtret.
     pub sub_level: f32,
     /// Filterdrive 0–1: mjuk klippning efter röstens filter (0 = av, exakt som förut).
@@ -302,6 +318,7 @@ impl SynthEngine {
             tape_stop: TapeStop::new(sample_rate),
             master_volume: 0.8,
             modulation: crate::audio::modulation::ModMatrix::default(),
+            harmonics: HARMONICS_DEFAULT,
             sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,

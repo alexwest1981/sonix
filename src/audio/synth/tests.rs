@@ -378,8 +378,8 @@ fn filter_env_zero_amount_is_transparent() {
     a.trigger(60, 261.63, 1.0, 48_000.0);
     b.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..500 {
-        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
-        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
+        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
+        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
         assert!(
             (sa - sb).abs() < 1e-6,
             "amount 0 must ignore the filter envelope shape"
@@ -398,8 +398,8 @@ fn filter_env_amount_changes_timbre() {
     wet.trigger(60, 261.63, 1.0, 48_000.0);
     let mut diff = 0.0_f32;
     for _ in 0..2000 {
-        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
-        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
+        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
+        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
         diff += (a - b).abs();
     }
     assert!(diff > 1.0, "filter envelope should alter the timbre, diff={diff}");
@@ -414,7 +414,7 @@ fn voices_have_independent_filter_envelopes() {
     let mut second = Voice::new(48_000.0);
     first.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..2000 {
-        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
+        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
     }
     second.trigger(64, 329.63, 1.0, 48_000.0);
     let l1 = first.filter_env.current_level;
@@ -2055,8 +2055,8 @@ fn fm_at_zero_index_is_the_plain_oscillator() {
     b.trigger(57, 220.0, 1.0, 48_000.0);
     let fm = FmParams { ratio: 3.0, index: 0.0 };
     for i in 0..2_000 {
-        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0);
-        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0, 0.0);
+        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
+        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
         assert_eq!(sa, sb, "index 0 ska ge exakt samma sample (frame {i})");
     }
 }
@@ -2074,7 +2074,7 @@ fn fm_puts_sidebands_where_the_plain_oscillator_has_none() {
         let fm = FmParams { ratio: 3.0, index };
         let mut out = Vec::with_capacity(9_600);
         for _ in 0..9_600 {
-            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0));
+            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT));
         }
         out
     };
@@ -2379,6 +2379,7 @@ fn filter_drive_compresses_the_crest() {
                 0.0,
                 drive,
                 0.0,
+                &HARMONICS_DEFAULT,
             ));
         }
         let tail = &buf[2_400..];
@@ -2444,6 +2445,7 @@ fn key_tracking_moves_the_cutoff_with_the_note() {
                 0.0,
                 0.0,
                 0.0,
+                &HARMONICS_DEFAULT,
             );
             if i > 2_400 {
                 sum += (s as f64) * (s as f64);
@@ -2493,6 +2495,7 @@ fn the_sub_oscillator_adds_an_octave_below() {
                 0.0,
                 0.0,
                 sub,
+                &HARMONICS_DEFAULT,
             ));
         }
         (mag_at(&out[2_400..], 110.0), mag_at(&out[2_400..], 220.0))
@@ -2528,11 +2531,53 @@ fn every_preset_reaches_every_parameter() {
         assert_eq!(engine.unison_detune_cents, s.detune, "{}: cent", preset.label());
         assert_eq!(engine.glide_time, s.glide, "{}: glide", preset.label());
         assert_eq!(engine.filter_drive, s.drive, "{}: drive", preset.label());
+        assert_eq!(engine.harmonics, s.harmonics, "{}: dragstänger", preset.label());
+        assert_eq!(engine.waveform, s.waveform, "{}: vågform igen", preset.label());
     }
     // Och förvalen ska faktiskt använda de nya parametrarna, annars mäter provet inget.
     let any_sub = Preset::ALL.iter().any(|p| p.settings().sub > 0.0);
     let any_unison = Preset::ALL.iter().any(|p| p.settings().unison > 1);
     let any_glide = Preset::ALL.iter().any(|p| p.settings().glide > 0.0);
     let any_drive = Preset::ALL.iter().any(|p| p.settings().drive > 0.0);
-    assert!(any_sub && any_unison && any_glide && any_drive, "förvalen ska spänna över de nya parametrarna");
+    let any_additive = Preset::ALL
+        .iter()
+        .any(|p| p.settings().waveform == Waveform::Additive && p.settings().harmonics[2] > 0.0);
+    assert!(
+        any_sub && any_unison && any_glide && any_drive && any_additive,
+        "förvalen ska spänna över de nya parametrarna"
+    );
+}
+
+/// **Additiv syntes: bara de övertoner som är utdragna hörs.** Med enbart tredje
+/// dragstången utdragen ska 330 Hz finnas och grundtonen 110 Hz inte.
+#[test]
+fn additive_synthesis_plays_only_the_drawn_harmonics() {
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.waveform = Waveform::Additive;
+    engine.filter_params.cutoff = 18_000.0;
+    engine.filter_env_amount = 0.0;
+    engine.adsr = crate::audio::envelope::AdsrParams {
+        attack: 0.001,
+        decay: 10.0,
+        sustain: 1.0,
+        release: 0.1,
+    };
+    let mut levels = [0.0f32; crate::audio::synth::HARMONIC_COUNT];
+    levels[2] = 1.0;
+    engine.handle_command(AudioCommand::SetHarmonics { levels });
+    engine.handle_command(AudioCommand::NoteOn { note: 45, freq: 110.0, velocity: 1.0 });
+    let mut buf = Vec::new();
+    for _ in 0..9_600 {
+        let (l, _) = engine.process_stereo();
+        buf.push(l);
+    }
+    let tail = &buf[2_400..];
+    let fundamental = mag_at(tail, 110.0);
+    let third = mag_at(tail, 330.0);
+    println!("110 Hz: {fundamental:.4}, 330 Hz: {third:.4}");
+    assert!(third > 0.2, "tredje övertonen ska höras: {third:.4}");
+    assert!(
+        third > fundamental * 20.0,
+        "grundtonen ska vara borta: {fundamental:.4} mot {third:.4}"
+    );
 }

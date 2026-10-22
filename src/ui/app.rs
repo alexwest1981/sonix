@@ -246,6 +246,8 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Nivåerna för den additiva oscillatorns övertoner.
+    pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
     /// Suboscillatorns nivå, 0–1.
     pub sub_level: f32,
     /// Filtrets drivning och key tracking, 0–1.
@@ -824,6 +826,7 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            harmonics: crate::audio::synth::HARMONICS_DEFAULT,
             sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,

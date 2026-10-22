@@ -13,6 +13,8 @@ pub enum Waveform {
     Saw,
     Square,
     Triangle,
+    /// Additiv: summan av `HARMONIC_COUNT` sinusar med egna nivåer (orgeldrag).
+    Additive,
 }
 
 #[allow(dead_code)]
@@ -23,6 +25,7 @@ impl Waveform {
             Waveform::Saw => "Sågtand (Saw)",
             Waveform::Square => "Fyrkant (Square)",
             Waveform::Triangle => "Triangel (Triangle)",
+            Waveform::Additive => "Additiv (Additive)",
         }
     }
 }
@@ -40,6 +43,7 @@ pub struct PresetSettings {
     pub detune: f32,
     pub glide: f32,
     pub drive: f32,
+    pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -54,10 +58,11 @@ pub enum Preset {
     GlideLead,
     SubDrone,
     Stab,
+    AdditiveOrgan,
 }
 
 impl Preset {
-    pub const ALL: [Preset; 10] = [
+    pub const ALL: [Preset; 11] = [
         Preset::CleanPluck,
         Preset::WarmPad,
         Preset::AcidBass,
@@ -68,6 +73,7 @@ impl Preset {
         Preset::GlideLead,
         Preset::SubDrone,
         Preset::Stab,
+        Preset::AdditiveOrgan,
     ];
 
     /// Etiketten i gränssnittet. Kodens namn är engelska; det användaren ser är svenskt.
@@ -83,6 +89,7 @@ impl Preset {
             Preset::GlideLead => "Glidlead",
             Preset::SubDrone => "Subdrön",
             Preset::Stab => "Stab",
+            Preset::AdditiveOrgan => "Additiv orgel",
         }
     }
 
@@ -98,6 +105,7 @@ impl Preset {
                 detune,
                 glide,
                 drive,
+                harmonics: crate::audio::synth::HARMONICS_DEFAULT,
             }
         };
         match self {
@@ -146,6 +154,18 @@ impl Preset {
                 AdsrParams { attack: 1.2, decay: 2.0, sustain: 0.9, release: 2.5 },
                 200.0, 0.6, 0.0, 0.9, 2, 4.0, 0.0, 0.0,
             ),
+            Preset::AdditiveOrgan => {
+                let mut organ = s(
+                    Waveform::Additive,
+                    AdsrParams { attack: 0.02, decay: 0.2, sustain: 0.95, release: 0.25 },
+                    6_000.0, 0.8, 0.0, 0.2, 1, 0.0, 0.0, 0.0,
+                );
+                // Dragstänger 1, 2, 3, 4, 6 och 8: ett orgelregister, inte en sågtand.
+                for (i, level) in [1.0, 0.62, 0.4, 0.28, 0.0, 0.2, 0.0, 0.14].iter().enumerate() {
+                    organ.harmonics[i] = *level;
+                }
+                organ
+            }
             Preset::Stab => s(
                 Waveform::Square,
                 AdsrParams { attack: 0.004, decay: 0.22, sustain: 0.25, release: 0.15 },
@@ -204,6 +224,10 @@ pub enum AudioCommand {
     /// redigerar, aldrig per sampel.
     SetModulation {
         slots: Vec<crate::audio::modulation::ModSlot>,
+    },
+    /// Nivåerna för den additiva oscillatorns övertoner.
+    SetHarmonics {
+        levels: [f32; crate::audio::synth::HARMONIC_COUNT],
     },
     /// Suboscillatorns nivå 0–1.
     SetSub {

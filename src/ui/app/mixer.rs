@@ -2927,6 +2927,8 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
 }
 }
 
+use crate::audio::synth::HARMONIC_COUNT;
+
 impl SonixApp {
 pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
     ui.group(|ui| {
@@ -2960,12 +2962,43 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     (Waveform::Saw, crate::i18n::t("⩘ Sågtand")),
                     (Waveform::Square, crate::i18n::t("⊓ Fyrkant")),
                     (Waveform::Triangle, crate::i18n::t("⋀ Triangel")),
+                    (Waveform::Additive, crate::i18n::t("▥ Additiv")),
                 ];
                 for (wf, name) in waveforms {
                     let is_wf = self.waveform == wf;
                     if ui.selectable_label(is_wf, name).clicked() {
                         self.waveform = wf;
                         let _ = self.engine.send_command(AudioCommand::SetWaveform(wf));
+                    }
+                }
+                if self.waveform == Waveform::Additive {
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("DRAGSTÄNGER (1–16)"))
+                            .size(10.0)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                    let mut changed = false;
+                    ui.horizontal_wrapped(|ui| {
+                        for i in 0..HARMONIC_COUNT {
+                            ui.allocate_ui(egui::vec2(14.0, 44.0), |ui| {
+                                ui.vertical(|ui| {
+                                    changed |= ui
+                                        .add(
+                                            egui::Slider::new(&mut self.harmonics[i], 0.0..=1.0)
+                                                .vertical()
+                                                .show_value(false),
+                                        )
+                                        .changed();
+                                    ui.label(egui::RichText::new(format!("{}", i + 1)).size(8.0));
+                                });
+                            });
+                        }
+                    });
+                    if changed {
+                        let _ = self
+                            .engine
+                            .send_command(AudioCommand::SetHarmonics { levels: self.harmonics });
                     }
                 }
                 ui.separator();

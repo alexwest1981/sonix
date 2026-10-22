@@ -639,5 +639,6 @@ impl SonixApp {
         self.unison_detune_cents = s.detune;
         self.glide_time = s.glide;
         self.filter_drive = s.drive;
+        self.harmonics = s.harmonics;
     }
 }

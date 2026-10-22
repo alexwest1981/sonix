@@ -59,6 +59,7 @@ impl SynthEngine {
                     mod_cutoff,
                     self.filter_drive,
                     self.sub_level,
+                    &self.harmonics,
                 );
                 active_count += 1;
             }
