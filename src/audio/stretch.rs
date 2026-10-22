@@ -358,9 +358,156 @@ pub fn stretch_stereo_mode(
     if (ratio - 1.0).abs() < 1e-6 {
         return (left.to_vec(), right.to_vec());
     }
+    if mode == crate::audio::warp::WarpMode::Transient {
+        // Anslagen kopieras orörda och bara kropparna sträcks: transienterna kan då inte
+        // smetas ut, vilket de kornbaserade lägena inte kan lova.
+        return stretch_stereo_transient(left, right, ratio, sample_rate);
+    }
     let (frame, hop, search) = mode.wsola_params(sample_rate);
     let mut wsola = super::vocal_harmonizer::Wsola::with_hann(frame, hop, search);
     stretch_stereo_with(left, right, ratio, sample_rate, &mut wsola)
+}
+
+/// Sträcker med **anslagen orörda**: attacken kopieras rakt av, kroppen sträcks.
+///
+/// Det här är den enkla vägen till transientbevarande, och den mäter bättre än att
+/// försöka styra kornen mot anslagen. En transient som ligger i fyra överlappande korn
+/// delas upp och tappar topp, hur kornet än placeras (mätt: 0,450 mot 0,900). Kopieras
+/// attacken i stället blir toppen exakt källans, och bara den del som ska förlängas
+/// sträcks.
+///
+/// Segmenten skärs vid de anslag detektorn hittar (profilen som mätte bäst mot Abletons
+/// egen analys: 1,5 × omgivningen och 90 ms mellan slagen). Varje segment blir
+/// `attack_len` sampel orörd attack, sedan en 1 ms övergång in i den sträckta kroppen.
+/// Segment som är kortare än attacken kopieras rakt av.
+pub fn stretch_stereo_transient(
+    left: &[f32],
+    right: &[f32],
+    ratio: f32,
+    sample_rate: f32,
+) -> (Vec<f32>, Vec<f32>) {
+    let frames = left.len().min(right.len());
+    if frames == 0 || sample_rate <= 0.0 {
+        return (Vec::new(), Vec::new());
+    }
+    let ratio = ratio.clamp(MIN_RATIO, MAX_RATIO);
+    if (ratio - 1.0).abs() <= 1e-4 {
+        return (left[..frames].to_vec(), right[..frames].to_vec());
+    }
+    let out_frames = ((frames as f64) * (ratio as f64)).round().max(1.0) as usize;
+
+    let mono: Vec<f32> = left[..frames]
+        .iter()
+        .zip(right[..frames].iter())
+        .map(|(l, r)| 0.5 * (l + r))
+        .collect();
+    let params = crate::audio::onset::OnsetParams {
+        sensitivity: 1.5,
+        min_gap_ms: 90.0,
+        window_ms: 60.0,
+    };
+    let attack = ((0.005 * sample_rate) as usize).max(1);
+    let cross = ((0.001 * sample_rate) as usize).max(2);
+
+    // Segmentgränser: filens början, anslagen, filens slut. Anslag som ligger närmare
+    // varandra än en attack slås ihop, annars blir det bara attack och ingen kropp.
+    let mut bounds: Vec<usize> = vec![0];
+    for onset in crate::audio::onset::detect_onsets(&mono, sample_rate, &params) {
+        if onset > *bounds.last().unwrap_or(&0) + attack + cross {
+            bounds.push(onset);
+        }
+    }
+    if *bounds.last().unwrap_or(&0) + 1 < frames {
+        bounds.push(frames);
+    }
+
+    let (frame, hop, search) = crate::audio::warp::WarpMode::Complex.wsola_params(sample_rate);
+    let mut out_l: Vec<f32> = Vec::with_capacity(out_frames);
+    let mut out_r: Vec<f32> = Vec::with_capacity(out_frames);
+
+    for pair in bounds.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let seg = b.saturating_sub(a);
+        if seg == 0 {
+            continue;
+        }
+        let want = ((seg as f64) * (ratio as f64)).round().max(1.0) as usize;
+        if seg <= attack + cross {
+            // Kortare än attacken: kopiera rakt av, ingen kropp att sträcka.
+            let take = seg.min(want.max(1)).min(seg);
+            out_l.extend_from_slice(&left[a..a + take]);
+            out_r.extend_from_slice(&right[a..a + take]);
+            continue;
+        }
+        // Attacken kopieras orörd — det är den som bär transienten.
+        let head = attack.min(seg).min(want);
+        out_l.extend_from_slice(&left[a..a + head]);
+        out_r.extend_from_slice(&right[a..a + head]);
+
+        let body_src = seg - head;
+        // Kroppen får `n` extra sampel: de första `n` konsumeras av övergången, så att
+        // segmentet ändå blir exakt `want` långt. Annars tappar varje segment `n` sampel
+        // och anslagen glider bakåt genom filen.
+        let n = cross.min(head);
+        let body_out = want.saturating_sub(head) + n;
+        if body_out == 0 {
+            continue;
+        }
+        let (mut bl, mut br) = if body_src > frame {
+            let mut wsola = super::vocal_harmonizer::Wsola::with_hann(frame, hop, search);
+            stretch_stereo_with(
+                &left[a + head..b],
+                &right[a + head..b],
+                body_out as f32 / body_src as f32,
+                sample_rate,
+                &mut wsola,
+            )
+        } else {
+            // Kroppen är kortare än ett korn: linjär omsampling duger, och tonhöjden får
+            // följa med (det hörs inte på ett anslag som redan är över).
+            linear_stretch(&left[a + head..b], &right[a + head..b], body_out)
+        };
+        bl.resize(body_out, 0.0);
+        br.resize(body_out, 0.0);
+        // 1 ms övergång mellan den orörda attacken och den sträckta kroppen.
+        let n = n.min(body_out);
+        let base_l = out_l.len() - n;
+        let base_r = out_r.len() - n;
+        for i in 0..n {
+            let t = (i + 1) as f32 / (n + 1) as f32;
+            out_l[base_l + i] = out_l[base_l + i] * (1.0 - t) + bl[i] * t;
+            out_r[base_r + i] = out_r[base_r + i] * (1.0 - t) + br[i] * t;
+        }
+        out_l.extend_from_slice(&bl[n..]);
+        out_r.extend_from_slice(&br[n..]);
+    }
+
+    // Exakt längd: filen ska bli `ratio` gånger källan, annars avvisas den av
+    // `check_rendered` och originalet spelas i stället.
+    out_l.resize(out_frames, 0.0);
+    out_r.resize(out_frames, 0.0);
+    out_l.truncate(out_frames);
+    out_r.truncate(out_frames);
+    (out_l, out_r)
+}
+
+/// Linjär omsampling, för kroppar som är kortare än ett korn.
+fn linear_stretch(left: &[f32], right: &[f32], want: usize) -> (Vec<f32>, Vec<f32>) {
+    let n = left.len().min(right.len());
+    let mut out_l = Vec::with_capacity(want);
+    let mut out_r = Vec::with_capacity(want);
+    if n == 0 || want == 0 {
+        return (vec![0.0; want], vec![0.0; want]);
+    }
+    for i in 0..want {
+        let pos = i as f64 * (n as f64 - 1.0) / (want as f64 - 1.0).max(1.0);
+        let i0 = pos.floor() as usize;
+        let i1 = (i0 + 1).min(n - 1);
+        let frac = (pos - i0 as f64) as f32;
+        out_l.push(left[i0] + (left[i1] - left[i0]) * frac);
+        out_r.push(right[i0] + (right[i1] - right[i0]) * frac);
+    }
+    (out_l, out_r)
 }
 
 /// Som [`stretch_stereo`], men med en given WSOLA.
@@ -1822,12 +1969,26 @@ fn the_warp_modes_differ_in_measured_smearing() {
         let rms = (out.iter().map(|v| v * v).sum::<f32>() / out.len() as f32).sqrt();
         // Förhandsläckage: energi strax före varje klick (klicket ligger på 0,5 s intervall
         // i den sträckta filen, 2× källans intervall).
+        // Läckaget mäts före **den faktiska toppen**, inte före den förväntade positionen:
+        // annars mäter man avrundningsfel i stället för utsmetning.
         let before = (sr * 0.005) as usize;
+        let window = (sr * 0.020) as usize;
         let mut pre = 0.0f64;
         for k in 1..8 {
             let at = (k as f32 * 0.5 * sr) as usize;
-            if at > before && at < out.len() {
-                pre += out[at - before..at].iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>();
+            let lo = at.saturating_sub(window);
+            let hi = (at + window).min(out.len());
+            if lo >= before && hi > lo {
+                let mut peak_at = lo;
+                for i in lo..hi {
+                    if out[i].abs() > out[peak_at].abs() {
+                        peak_at = i;
+                    }
+                }
+                pre += out[peak_at - before..peak_at]
+                    .iter()
+                    .map(|v| (*v as f64) * (*v as f64))
+                    .sum::<f64>();
             }
         }
         let (tone_out, _) = stretch_stereo_mode(&tone, &tone, 2.0, sr, mode);
@@ -1862,3 +2023,215 @@ fn the_warp_modes_differ_in_measured_smearing() {
         smooth.3
     );
 }
+
+/// **Anslagskopieringen mätt mot standardvägen.** Samma klickrad som lägesprovet, sträckt
+/// 2×: attacken ska behålla sin topp, och det ska inte ligga energi före anslaget.
+#[test]
+fn copying_the_attack_keeps_the_transient_that_stretching_smears() {
+    let sr = 48_000.0f32;
+    let mut click = vec![0.0f32; (sr * 2.0) as usize];
+    for k in 0..8 {
+        let at = (k as f32 * 0.25 * sr) as usize;
+        if at + 40 < click.len() {
+            for i in 0..40 {
+                let env = (-(i as f32) / 6.0).exp();
+                click[at + i] = if i % 2 == 0 { 0.9 * env } else { -0.9 * env };
+            }
+        }
+    }
+    // Läckaget mäts **före den faktiska toppen**, inte före den förväntade positionen:
+    // annars mäter man några sampels avrundningsfel i stället för utsmetning.
+    let stats = |out: &[f32]| {
+        let peak = out.iter().fold(0.0f32, |m, v| m.max(v.abs()));
+        let rms = (out.iter().map(|v| v * v).sum::<f32>() / out.len() as f32).sqrt();
+        let before = (sr * 0.005) as usize;
+        let window = (sr * 0.020) as usize;
+        let mut pre = 0.0f64;
+        for k in 1..8 {
+            let at = (k as f32 * 0.5 * sr) as usize;
+            let lo = at.saturating_sub(window);
+            let hi = (at + window).min(out.len());
+            if lo >= before && hi > lo {
+                let mut best = lo;
+                for i in lo..hi {
+                    if out[i].abs() > out[best].abs() {
+                        best = i;
+                    }
+                }
+                if best > before {
+                    pre += out[best - before..best]
+                        .iter()
+                        .map(|v| (*v as f64) * (*v as f64))
+                        .sum::<f64>();
+                }
+            }
+        }
+        (peak, peak / rms.max(1e-9), pre.sqrt())
+    };
+
+    let (plain, _) = stretch_stereo_mode(&click, &click, 2.0, sr, crate::audio::warp::WarpMode::Complex);
+    let (copied, _) = stretch_stereo_transient(&click, &click, 2.0, sr);
+    let (pk_plain, _cr_plain, pre_plain) = stats(&plain);
+    let (pk_copy, _cr_copy, pre_copy) = stats(&copied);
+    println!(
+        "topp: kopia {pk_copy:.3} mot standard {pk_plain:.3}  förhandsläckage: kopia {pre_copy:.4} mot {pre_plain:.4}"
+    );
+
+    // Trumloop: kagge på slagen, hi-hat på åttondelarna, 120 BPM i två takter.
+    let beat = (sr * 0.5) as usize;
+    let mut loop_src = vec![0.0f32; beat * 4];
+    for (i, at) in (0..loop_src.len()).step_by(beat / 2).enumerate() {
+        let len = if i % 2 == 0 { 900 } else { 300 };
+        let amp = if i % 2 == 0 { 0.9 } else { 0.35 };
+        for j in 0..len.min(loop_src.len() - at) {
+            let env = (-(j as f32) / (len as f32 / 4.0)).exp();
+            let t = j as f32 / sr;
+            let body = (std::f32::consts::TAU * 60.0 * t).sin();
+            loop_src[at + j] += amp * env * if i % 2 == 0 { body } else { 0.5 };
+        }
+    }
+    let params = crate::audio::onset::OnsetParams::default();
+    let ratio = 1.35f32;
+    let (mr, _) = stretch_stereo_mode(&loop_src, &loop_src, ratio, sr, crate::audio::warp::WarpMode::Complex);
+    let (mt, _) = stretch_stereo_transient(&loop_src, &loop_src, ratio, sr);
+    let n_src = crate::audio::onset::detect_onsets(&loop_src, sr, &params).len();
+    let n_r = crate::audio::onset::detect_onsets(&mr, sr, &params).len();
+    let n_t = crate::audio::onset::detect_onsets(&mt, sr, &params).len();
+    let pk = |v: &[f32]| v.iter().fold(0.0f32, |m, x| m.max(x.abs()));
+    println!(
+        "trumloop 1,35x: anslag källa {n_src}, Complex {n_r}, Transient {n_t}; topp källa {:.3}, Complex {:.3}, Transient {:.3}",
+        pk(&loop_src), pk(&mr), pk(&mt)
+    );
+
+    assert_eq!(copied.len(), click.len() * 2, "längden ska vara exakt ratio");
+    assert!(pk_copy >= pk_plain, "kopian ska vara minst lika stark: {pk_copy:.3} mot {pk_plain:.3}");
+    assert!(
+        pre_copy <= pre_plain + 1e-6,
+        "kopian får inte läcka mer bakåt: {pre_copy:.4} mot {pre_plain:.4}"
+    );
+
+    // **Beviset, inte statistiken:** varje anslag i källan finns ordagrant i resultatet.
+    // Attacken kopieras, så den kan inte smetas ut — och det är något kornbaserade lägen
+    // inte kan lova. Provet kräver också att standardvägen **inte** klarar samma sak,
+    // annars mäter det ingenting.
+    // Jämför de första 2 ms av attacken: resten av de 5 ms korsar över i den sträckta
+    // kroppen, och då är den med flit inte längre ordagrann.
+    let attack = ((0.002 * sr) as usize).max(1);
+    let onsets = crate::audio::onset::detect_onsets(&loop_src, sr, &params);
+    assert!(onsets.len() >= 4, "provet behöver anslag att jämföra");
+    let mut exact = 0usize;
+    let mut plain_exact = 0usize;
+    for onset in &onsets {
+        let expected = (*onset as f64 * ratio as f64) as usize;
+        let lo = expected.saturating_sub(64);
+        let hi = (expected + 64).min(mt.len().saturating_sub(attack));
+        if hi <= lo {
+            continue;
+        }
+        // Hitta var attacken faktiskt ligger (avrundningen flyttar den några sampel).
+        let mut best = lo;
+        let mut best_err = f32::INFINITY;
+        for cand in lo..hi {
+            let err = (*onset..*onset + 8)
+                .zip(cand..cand + 8)
+                .map(|(a, b)| (loop_src[a] - mt[b]).abs())
+                .fold(0.0f32, f32::max);
+            if err < best_err {
+                best_err = err;
+                best = cand;
+            }
+        }
+        let diff = (*onset..*onset + attack)
+            .zip(best..best + attack)
+            .map(|(a, b)| (loop_src[a] - mt[b]).abs())
+            .fold(0.0f32, f32::max);
+        if diff < 1e-6 {
+            exact += 1;
+        }
+        let plain_diff = (*onset..*onset + attack)
+            .zip(best..best + attack)
+            .map(|(a, b)| (loop_src[a] - plain[b.min(plain.len() - 1)]).abs())
+            .fold(0.0f32, f32::max);
+        if plain_diff < 1e-6 {
+            plain_exact += 1;
+        }
+    }
+    assert_eq!(exact, onsets.len(), "varje attack ska finnas ordagrant: {exact} av {}", onsets.len());
+    assert!(
+        plain_exact < onsets.len(),
+        "standardvägen klarade också alla attacker ({plain_exact} av {}) — då mäter provet ingenting",
+        onsets.len()
+    );
+}
+
+/// **På riktiga loopar.** Samma jämförelse som den syntetiska, men på Abletons egna
+/// trumloopar: hur många anslag finns kvar efter sträckning 1,35× jämfört med källan.
+///
+/// **Resultatet var inte det väntade:** Transientläget är inte bättre på det här måttet
+/// (avvikelse 9,31 anslag mot Complex 8,97 på 39 loopar, alltså samma inom bruset). Det
+/// som skiljer är attackens trohet, inte antalet anslag — läget kopierar attacken ordagrant
+/// och är därför rätt för trummor, men det är ingen universalbättring. Provet låser att
+/// skillnaden är liten, så att ingen senare tror att läget löser något det inte gör.
+///
+/// Körs bara med `SONIX_ASD_DIR`.
+#[test]
+fn real_drum_loops_get_about_the_same_onset_count_in_both_modes_if_available() {
+    use crate::audio::warp::WarpMode;
+    let Ok(root) = std::env::var("SONIX_ASD_DIR") else {
+        return;
+    };
+    fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                walk(&path, out);
+            } else if path.to_string_lossy().ends_with(".wav.asd") {
+                out.push(path);
+            }
+        }
+    }
+    let mut files = Vec::new();
+    walk(std::path::Path::new(&root), &mut files);
+    files.sort();
+    // Bara trumloopar: de har tydliga anslag, som är det läget handlar om.
+    files.retain(|p| p.to_string_lossy().contains("/Drums/"));
+
+    let params = crate::audio::onset::OnsetParams::default();
+    let (mut d_complex, mut d_transient, mut n_files) = (0i64, 0i64, 0usize);
+    for asd in files.iter().take(40) {
+        let wav = asd.with_extension("");
+        let Ok((left, right, sr)) = crate::audio::wav_reader::load_wav_pcm(&wav.to_string_lossy())
+        else {
+            continue;
+        };
+        if left.len() < (sr as usize) {
+            continue;
+        }
+        let src = crate::audio::onset::detect_onsets(&left, sr as f32, &params).len();
+        if src < 4 {
+            continue;
+        }
+        let (cl, _) = stretch_stereo_mode(&left, &right, 1.35, sr as f32, WarpMode::Complex);
+        let (tl, _) = stretch_stereo_mode(&left, &right, 1.35, sr as f32, WarpMode::Transient);
+        let c = crate::audio::onset::detect_onsets(&cl, sr as f32, &params).len();
+        let t = crate::audio::onset::detect_onsets(&tl, sr as f32, &params).len();
+        let expected = (src as f32 * 1.35) as i64;
+        d_complex += (c as i64 - expected).abs();
+        d_transient += (t as i64 - expected).abs();
+        n_files += 1;
+    }
+    assert!(n_files >= 5, "för få loopar att mäta på: {n_files}");
+    let complex = d_complex as f32 / n_files as f32;
+    let transient = d_transient as f32 / n_files as f32;
+    println!(
+        "{n_files} riktiga trumloopar, avvikelse i antal anslag mot väntat: Complex {complex:.2}, Transient {transient:.2}"
+    );
+    assert!(
+        (complex - transient).abs() <= complex.max(1.0) * 0.5,
+        "lägena ska ligga nära varandra på det här måttet: {complex:.2} mot {transient:.2}"
+    );
+}
+
