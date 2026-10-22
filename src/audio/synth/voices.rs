@@ -24,6 +24,9 @@ pub struct Voice {
     /// `glide_coeff == 0.0` betyder ingen glide, och då är rösten exakt som förut.
     pub target_inc: f32,
     pub glide_coeff: f32,
+    /// Suboscillatorns fas (en oktav under noten), med egen ackumulator så att den inte
+    /// hoppar när huvudoscillatorns fas slår om.
+    pub sub_phase: f32,
     /// Key tracking: filtrets brytfrekvens förskjuts med notens avstånd från C4.
     /// 1,0 = ingen förskjutning (så beter sig gamla projekt).
     pub key_cutoff_ratio: f32,
@@ -271,6 +274,7 @@ impl Voice {
             target_inc: 0.0,
             glide_coeff: 0.0,
             key_cutoff_ratio: 1.0,
+            sub_phase: 0.0,
         }
     }
 
@@ -336,6 +340,7 @@ impl Voice {
         mod_pitch: f32,
         mod_cutoff: f32,
         drive: f32,
+        sub_level: f32,
     ) -> f32 {
         if !self.envelope.is_active() {
             return 0.0;
@@ -418,9 +423,20 @@ impl Voice {
             .process_lowpass(raw_sample * self.velocity * env_gain, &effective);
         // Filterdrive: mjuk klippning i stället för en hård gräns, normaliserad så att en
         // fullskalig sinus behåller sin nivå. drive 0 är exakt den gamla vägen.
-        if drive > 0.0 {
+        let filtered = if drive > 0.0 {
             let g = 1.0 + drive.clamp(0.0, 1.0) * 7.0;
             (filtered * g).tanh() / g.tanh()
+        } else {
+            filtered
+        };
+        // Suboscillatorn läggs på **efter** filtret: en subbas som försvinner när filtret
+        // stängs är inte en subbas.
+        if sub_level > 0.0 {
+            self.sub_phase += self.phase_inc * pitch_ratio * 0.5;
+            if self.sub_phase >= 2.0 * PI {
+                self.sub_phase -= 2.0 * PI;
+            }
+            filtered + self.sub_phase.sin() * sub_level.clamp(0.0, 1.0) * self.velocity * env_gain
         } else {
             filtered
         }

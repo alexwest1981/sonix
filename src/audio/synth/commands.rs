@@ -115,6 +115,9 @@ impl SynthEngine {
                     }
                 }
             }
+            AudioCommand::SetSub { level } => {
+                self.sub_level = level.clamp(0.0, 1.0);
+            }
             AudioCommand::SetFilterDrive { drive, key_track } => {
                 self.filter_drive = drive.clamp(0.0, 1.0);
                 self.filter_key_track = key_track.clamp(0.0, 1.0);

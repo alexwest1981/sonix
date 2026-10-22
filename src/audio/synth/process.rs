@@ -58,6 +58,7 @@ impl SynthEngine {
                     mod_pitch,
                     mod_cutoff,
                     self.filter_drive,
+                    self.sub_level,
                 );
                 active_count += 1;
             }

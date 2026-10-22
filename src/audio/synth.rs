@@ -115,6 +115,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetUnison { .. } => "SetUnison",
         AudioCommand::SetGlide { .. } => "SetGlide",
         AudioCommand::SetFilterDrive { .. } => "SetFilterDrive",
+        AudioCommand::SetSub { .. } => "SetSub",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -193,6 +194,8 @@ pub struct SynthEngine {
     pub tape_stop: TapeStop,
     /// Modulationsmatrisen (FL:s Envelope/Peak/Keyboard Controller).
     pub modulation: crate::audio::modulation::ModMatrix,
+    /// Suboscillatorns nivå 0–1: en sinus en oktav under noten, efter filtret.
+    pub sub_level: f32,
     /// Filterdrive 0–1: mjuk klippning efter röstens filter (0 = av, exakt som förut).
     pub filter_drive: f32,
     /// Key tracking 0–1: hur mycket filtrets brytfrekvens följer noten (0 = av).
@@ -298,6 +301,7 @@ impl SynthEngine {
             tape_stop: TapeStop::new(sample_rate),
             master_volume: 0.8,
             modulation: crate::audio::modulation::ModMatrix::default(),
+            sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,
             glide_time: 0.0,

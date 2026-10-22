@@ -378,8 +378,8 @@ fn filter_env_zero_amount_is_transparent() {
     a.trigger(60, 261.63, 1.0, 48_000.0);
     b.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..500 {
-        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
-        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
+        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
+        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
         assert!(
             (sa - sb).abs() < 1e-6,
             "amount 0 must ignore the filter envelope shape"
@@ -398,8 +398,8 @@ fn filter_env_amount_changes_timbre() {
     wet.trigger(60, 261.63, 1.0, 48_000.0);
     let mut diff = 0.0_f32;
     for _ in 0..2000 {
-        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
-        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
+        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
+        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
         diff += (a - b).abs();
     }
     assert!(diff > 1.0, "filter envelope should alter the timbre, diff={diff}");
@@ -414,7 +414,7 @@ fn voices_have_independent_filter_envelopes() {
     let mut second = Voice::new(48_000.0);
     first.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..2000 {
-        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
+        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0);
     }
     second.trigger(64, 329.63, 1.0, 48_000.0);
     let l1 = first.filter_env.current_level;
@@ -2055,8 +2055,8 @@ fn fm_at_zero_index_is_the_plain_oscillator() {
     b.trigger(57, 220.0, 1.0, 48_000.0);
     let fm = FmParams { ratio: 3.0, index: 0.0 };
     for i in 0..2_000 {
-        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0);
-        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0);
+        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0);
+        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0, 0.0);
         assert_eq!(sa, sb, "index 0 ska ge exakt samma sample (frame {i})");
     }
 }
@@ -2074,7 +2074,7 @@ fn fm_puts_sidebands_where_the_plain_oscillator_has_none() {
         let fm = FmParams { ratio: 3.0, index };
         let mut out = Vec::with_capacity(9_600);
         for _ in 0..9_600 {
-            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0));
+            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0));
         }
         out
     };
@@ -2378,6 +2378,7 @@ fn filter_drive_compresses_the_crest() {
                 0.0,
                 0.0,
                 drive,
+                0.0,
             ));
         }
         let tail = &buf[2_400..];
@@ -2442,6 +2443,7 @@ fn key_tracking_moves_the_cutoff_with_the_note() {
                 0.0,
                 0.0,
                 0.0,
+                0.0,
             );
             if i > 2_400 {
                 sum += (s as f64) * (s as f64);
@@ -2465,5 +2467,45 @@ fn key_tracking_moves_the_cutoff_with_the_note() {
         (low_tracked / low_fixed - 1.0).abs() < 0.35,
         "den lägre noten ska bara flyttas marginellt: {:.3}",
         low_tracked / low_fixed
+    );
+}
+
+/// **Suboscillatorn lägger en oktav under noten, efter filtret.** Filtret står på 400 Hz,
+/// alltså långt över 110 Hz: subben ska höras ändå, annars är den ingen subbas.
+#[test]
+fn the_sub_oscillator_adds_an_octave_below() {
+    let run = |sub: f32| {
+        let adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+        let flt = FilterParams { cutoff: 400.0, resonance: 0.7 };
+        let env = AdsrParams::default();
+        let mut v = Voice::new(48_000.0);
+        v.trigger(57, 220.0, 1.0, 48_000.0);
+        let mut out = Vec::new();
+        for _ in 0..9_600 {
+            out.push(v.next_sample(
+                Waveform::Sine,
+                &adsr,
+                &flt,
+                &env,
+                0.0,
+                &FmParams::default(),
+                0.0,
+                0.0,
+                0.0,
+                sub,
+            ));
+        }
+        (mag_at(&out[2_400..], 110.0), mag_at(&out[2_400..], 220.0))
+    };
+    let (plain_sub, plain_main) = run(0.0);
+    let (with_sub, with_main) = run(0.5);
+    println!("110 Hz: {plain_sub:.5} → {with_sub:.5}, 220 Hz: {plain_main:.5} → {with_main:.5}");
+    assert!(
+        with_sub > plain_sub * 4.0,
+        "subben ska synas på halva frekvensen: {with_sub:.5} mot {plain_sub:.5}"
+    );
+    assert!(
+        (with_main - plain_main).abs() < plain_main * 0.2,
+        "grundtonen ska vara orörd: {with_main:.5} mot {plain_main:.5}"
     );
 }

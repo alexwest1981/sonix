@@ -246,6 +246,8 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Suboscillatorns nivå, 0–1.
+    pub sub_level: f32,
     /// Filtrets drivning och key tracking, 0–1.
     pub filter_drive: f32,
     pub filter_key_track: f32,
@@ -821,6 +823,7 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,
             glide_time: 0.0,

@@ -3038,6 +3038,21 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     }
                 });
                 ui.horizontal(|ui| {
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut self.sub_level, 0.0..=1.0)
+                                .text(crate::i18n::t("Sub:"))
+                                .show_value(false),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Suboscillator: en sinus en oktav under noten, efter filtret",
+                        ))
+                        .changed()
+                    {
+                        let _ = self
+                            .engine
+                            .send_command(AudioCommand::SetSub { level: self.sub_level });
+                    }
                     let mut drive = self.filter_drive;
                     let mut key_track = self.filter_key_track;
                     let a = ui
