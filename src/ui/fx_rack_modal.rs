@@ -1,7 +1,7 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
     AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
-    ControlRoomParams, ConvolverParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
+    ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
     ModFxParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
@@ -220,6 +220,21 @@ impl Default for FxRackState {
                     mix: 0.60,
                     description: "Korn ur de senaste två sekunderna: KORN (20–200 ms), TÄTHET (2–60 per sekund), POSITION (20–1000 ms bakåt), SPRIDNING (0–200 ms) och MIX.",
                     extra: vec![("SPRIDNING", 0.20), ("HASTIGHET", 0.50)],
+                },
+                FxPedal {
+                    id: "freqshift",
+                    name: "📡 FREKVENSSKIFTE",
+                    category: "Sound Design",
+                    enabled: false,
+                    color: Color32::from_rgb(255, 160, 220),
+                    p1_name: "SKIFT",
+                    p1_val: 0.50,
+                    p2_name: "RIKTNING",
+                    p2_val: 0.50,
+                    p3_name: "STEREO",
+                    p3_val: 0.0,
+                    mix: 0.50,
+                    description: "Flyttar hela spektrumet i hertz — SKIFT ±2 000 Hz, mitten är 0. Till skillnad från tonhöjdstransponering behåller intervallerna sitt avstånd.",                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "chorus",
@@ -457,6 +472,19 @@ impl FxRackState {
             mix: knob(|p| p.mix, 0.6),
         };
 
+        let fs_p = self.pedal("freqshift");
+        let fs_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            fs_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let freq_shift = FreqShiftParams {
+            // SKIFT är en magnitud; RIKTNING avgör tecknet.
+            hz: fs_knob(|p| p.p1_val, 0.5)
+                * 2000.0
+                * if fs_knob(|p| p.p2_val, 0.5) >= 0.5 { 1.0 } else { -1.0 },
+            mix: fs_knob(|p| p.mix, 0.5),
+            spread: fs_knob(|p| p.p3_val, 0.0) >= 0.5,
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -486,6 +514,8 @@ impl FxRackState {
             control: self.control_room,
             granular,
             granular_enabled: gr_p.map(|p| p.enabled).unwrap_or(false),
+            freq_shift,
+            freq_shift_enabled: fs_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,
@@ -1273,4 +1303,32 @@ mod tests {
         assert!((params.granular.mix - 0.25).abs() < 0.01, "mix: {}", params.granular.mix);
         assert!((params.granular.speed - 1.0).abs() < 0.01, "hastighet: {}", params.granular.speed);
     }
+    /// **Frekvensskiftets rattar når sina egna fält** — magnitud, riktning och stereoläge är
+    /// tre rattar som alla kan bytas om varandra utan att bygget klagar.
+    #[test]
+    fn the_frequency_shifter_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "freqshift")
+            .expect("frekvensskiftet ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 1.0; // fullt skift
+        pedal.p2_val = 0.0; // nedåt
+        pedal.p3_val = 1.0; // stereoläge
+        pedal.mix = 0.75;
+
+        let params = state.build_master_fx_params();
+        assert!(params.freq_shift_enabled, "pedalen ska slå på steget");
+        assert!(
+            (params.freq_shift.hz + 2000.0).abs() < 0.01,
+            "skift: {}",
+            params.freq_shift.hz
+        );
+        assert!((params.freq_shift.mix - 0.75).abs() < 0.01);
+        assert!(params.freq_shift.spread, "stereoläget ska följa ratten");
+    }
+
 }

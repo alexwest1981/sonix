@@ -95,7 +95,11 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 36** har en motsvarighet, **◐ 41** delvis, **✗ 64** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 44** har en motsvarighet, **◐ 45** delvis, **✗ 52** saknas helt.
+
+*Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
+mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
+stod som ✗ trots att §11 listade dem som byggda.*
 
 Räknat **per plugin**, inte per värde: en animerad dansare (`Fruity Dance`) väger lika tungt som
 `Harmor` i den här räkningen. Vikten står i gap-matrisen i stället (avsnitt 8).
@@ -138,10 +142,10 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | 3x Osc | 2 | ✅ | synten |
 | Fruit Kick | 2 | ◐ | kick i drum.rs |
 | Fruity DX10 | 2 | ✅ | 2-op FM (byggd i dag) |
-| Fruity Granulizer | 2 | ✗ | granulär uppspelning |
+| Fruity Granulizer | 2 | ✅ | `Granular` — granulär motor som mastersteg, sex rattar (korn, täthet, position, spridning, hastighet, mix) |
 | Fruity Keyboard Controller | 2 | ✗ | tangent → modulationsvärde |
 | Fruity Slicer | 2 | ◐ | choppern |
-| Fruity Video Player | 2 | ✗ | video i projektet |
+| Fruity Video Player | 2 | ✅ | `audio::video` + videovy: referensfilm synkad till spelhuvudet, bildrutan hämtas med ffmpeg |
 | Harmless | 2 | ✗ | additiv/subtraktiv hybrid |
 | Plucked! | 2 | ✗ | Karplus-Strong |
 | ReWired | 2 | ✗ | ReWire-värd |
@@ -170,7 +174,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Pitcher | 22 | ◐ | vocal_harmonizer med formantbevarande pitch |
 | Edison | 20 | ◐ | recordern; ingen vågformseditor med verktyg |
 | Maximus | 15 | ◐ | multibandskompressorn (byggd i dag) är 3 band; Maximus har fler + kurvor |
-| Vocodex | 13 | ✗ | vocoder |
+| Vocodex | 13 | ◐ | `vocode` — 16 band, 100 Hz–8 kHz, bärvågen följer sången; ingen formantbandredigerare |
 | Soundgoodizer | 5 | ◐ | saturator + kompressor |
 | Fruity Convolver | 4 | ✅ | convolvern (byggd i dag) |
 | Fruity HTML NoteBook | 4 | ✗ | HTML-anteckningar i projektet |
@@ -186,7 +190,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Delay 2 | 2 | ✅ | StereoDelay |
 | Fruity Delay Bank | 2 | ✗ | bank av delaylinor |
 | Fruity Fast Dist | 2 | ✅ | saturatorn |
-| Fruity Flangus | 2 | ✗ | flanger |
+| Fruity Flangus | 2 | ✅ | `ModDelay` som flanger (2,5–4,5 ms); ingen fler-röstsvariant |
 | Fruity LSD | 2 | ✗ | MIDI ut till DirectMusic-synt |
 | Fruity Limiter | 2 | ✅ | Limiter |
 | Fruity Multiband Compressor | 2 | ✅ | multibandskompressorn (byggd i dag) |
@@ -200,7 +204,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Squeeze | 2 | ✗ | bitcrush/decimering |
 | Fruity Stereo Enhancer | 2 | ◐ | doubler/width |
 | Fruity Stereo Shaper | 2 | ✗ | per-kanal fas/panorering/width-kurvor |
-| Fruity Vocoder | 2 | ✗ | vocoder |
+| Fruity Vocoder | 2 | ✅ | `vocode` i sångstudion, läggs som egen tagning |
 | Fruity WaveShaper | 2 | ✅ | saturatorn |
 | Fruity Wrapper | 2 | ✅ | plugin-värden |
 | Fruity X-Y Controller | 2 | ✗ | modulationskälla (XY) |
@@ -213,27 +217,27 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Emphasis | 1 | ✗ | spektral betoning (EQ-serie) |
 | Emphasizer | 1 | ✗ | dito, äldre |
 | FL Studio Mobile Rack FX | 1 | ✗ | mobilens effekter |
-| Frequency Shifter | 1 | ✗ | frekvensskift (Barber-pole) |
+| Frequency Shifter | 1 | ✅ | `FrequencyShifter` — Hilbert 63 tapp, en sidofrekvens, ±2 000 Hz, stereoläge |
 | Fruity 7 Band EQ | 1 | ◐ | 4-band + per-spår EQ |
 | Fruity Balance | 1 | ✅ | pan/volym |
 | Fruity Bass Boost | 1 | ◐ | EQ |
 | Fruity Blood Overdrive | 1 | ✅ | saturatorn |
 | Fruity Center | 1 | ◐ | mittkanalsextraktion finns i stämseparatorn, inte som effekt |
-| Fruity Chorus | 1 | ✗ | chorus |
+| Fruity Chorus | 1 | ✅ | `ModDelay` — svep 12–20 ms, kvarts periods kanalskillnad, mix 0 bit-identisk |
 | Fruity Compressor | 1 | ✅ | Compressor |
 | Fruity Delay | 1 | ✅ | StereoDelay |
 | Fruity Delay 3 | 1 | ✅ | StereoDelay (ping-pong) |
 | Fruity Fast LP | 1 | ✅ | filtret |
 | Fruity Filter | 1 | ✅ | filtret |
-| Fruity Flanger | 1 | ✗ | flanger |
+| Fruity Flanger | 1 | ✅ | `ModDelay` med flanger-inställning |
 | Fruity Free Filter | 1 | ✅ | filtret |
 | Fruity Mute 2 | 1 | ✅ | mute/solo |
 | Fruity NoteBook 2 | 1 | ✗ | anteckningar |
 | Fruity Phase Inverter | 1 | ✗ | faspolvändning |
-| Fruity Phaser | 1 | ✗ | phaser |
+| Fruity Phaser | 1 | ✅ | `Phaser` — 4 allpass, 200 Hz–2 kHz, stilla vid djup 0 |
 | Fruity Reeverb | 1 | ✅ | SimpleReverb |
 | Fruity X-Y-Z Controller | 1 | ✗ | modulationskälla (XYZ) |
-| Hyper Chorus | 1 | ✗ | chorus |
+| Hyper Chorus | 1 | ◐ | `ModDelay` har **en** LFO; FL:s Hyper Chorus staplar flera röster |
 | Low Lifter | 1 | ✗ | low-end-förstärkning |
 | Luxeverb | 1 | ◐ | convolver + algoritmiskt reverb |
 | Multiband Delay | 1 | ✗ | delay per band |
@@ -251,8 +255,8 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | VFX Level Scaler | 1 | ◐ | velocity_sensitivity + kurva per kanal |
 | VFX Script | 1 | ✗ | skriptstyrd MIDI-bearbetning |
 | VFX Sequencer | 1 | ◐ | SchedulesChord (ackord/arpeggio) + dice-generator |
-| Vintage Chorus | 1 | ✗ | chorus |
-| Vintage Phaser | 1 | ✗ | phaser |
+| Vintage Chorus | 1 | ◐ | samma `ModDelay`; "vintage" är FL:s egen röstning, inte en egen motor |
+| Vintage Phaser | 1 | ◐ | samma `Phaser`; ingen egen kurva för den varianten |
 
 ---
 
@@ -600,7 +604,7 @@ kedjan finns, "de" = vi har inget som motsvarar det.
 | **Dynamik** | Limiter, Compressor, Multiband, Maximus, Transient, Soft Clipper, Squeeze | limiter, kompressor, multiband, transient, saturator (i dag) | vi |
 | **Reverb/delay** | Reeverb 1/2, Convolver, Luxeverb, 260 impulser, Delay 1/2/3, Delay Bank, Multiband Delay | algoritmiskt reverb, stereodelay (ping-pong), convolver + **genererad impulsbank** (sex rum, i dag) | delvis |
 | **EQ/filter** | Parametric EQ 1/2, 7 Band, Free Filter, Filter, Fast LP, Frequency Shifter/Splitter | 4-band + per spår + SVF + drive | delvis |
-| **Vocoder** | Vocodex, Fruity Vocoder | inget | de |
+| **Vocoder** | Vocodex, Fruity Vocoder | `vocode` (16 band, bärvåg som följer sången) | de |
 | **Modulationskällor** | Peak/Envelope/Formula/Keyboard/Voltage/XY/XYZ-kontroller, VFX-sviten | inget (automation finns, men inte som källa som styr andra) | de |
 | **Notbearbetning** | VFX Key Mapper, Keyboard Splitter, Level Scaler, VFX Script, Sequencer | velocity-kurva + pitch per kanal, SchedulesChord, dice-generator | delvis |
 | **Slicing** | Slicer, Slicer 2, Slicex, BeatSlicer (äldre), Edison | chopper: slagletning → slicemap → steg/piano roll | vi |
@@ -608,7 +612,7 @@ kedjan finns, "de" = vi har inget som motsvarar det.
 | **Performance** | Gross Beat, Performance mode, touch-klaviatur, 4×4/8×8-mallar | launcher-rutnät, loop-pad, steggrind (i dag), RemixFX | delvis |
 | **Noder/modularitet** | Patcher, Dashboard, Control Creator | patcher.rs (graf), MCU-ytor | delvis |
 | **Notation** | LilyPond + Guile + Ghostscript, notutskrift | inget | de |
-| **Video** | Fruity Video Player, ZGameEditor Visualizer, NDI, Spout | inget (export skriver filer, inte bild ut) | de |
+| **Video** | Fruity Video Player, ZGameEditor Visualizer, NDI, Spout | `audio::video` + videovy (referensfilm in, ingen bild ut) | de |
 | **Skript** | piano roll-skript, ljudskript, VFX Script, inbäddad Python 3.12, MCP | inget skript-API (AI-vägen är kommandon, inte skript) | de |
 | **Ackord/generering** | Chord Progression (Markov + genrestilar), Riff machine | chord_generator_modal, dice_generator, song_structure | delvis |
 | **Scores/bibliotek** | 2 111 fraser, 260 impulser, 7 993 presets, 5 135 paket | factory_samples + SF2-inläsning; ingen frasbank, ingen impulsbank | delvis |

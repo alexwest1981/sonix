@@ -158,7 +158,7 @@ Operationerna som gör Ableton till Ableton, och var Sonix står:
 | :--- | :--- |
 | `Insert Time…`, `Delete Time`, `Duplicate Time`, `Cut Time`, `Paste Time` | ✅ Insert/Delete/Duplicate Time (byggda i dag); Cut/Paste Time kvar |
 | `Consolidate`, `Consolidate To New Scene` | ◐ (`freeze` renderar men lämnar inget klipp) |
-| `Bounce To New Track`, `Bounce Track In Place`, `Bounce Group In Place` | ✗ |
+| `Bounce To New Track`, `Bounce Track In Place`, `Bounce Group In Place` | ✗ (vi renderar hela låten, inte ett spår till ett klipp) |
 | `Capture MIDI` | ◐ (tagningar spelas in, inte "fånga allt du nyss spelade") |
 | `Capture and Insert Scene` | ✗ |
 | `Convert Melody/Harmony/Drums To New MIDI Track` | ◐ (`onset` + chopper ger slag, inte melodi) |
@@ -169,7 +169,7 @@ Operationerna som gör Ableton till Ableton, och var Sonix står:
 | `Follow Action` (A/B, chance, jump index, multiplier), `Create Follow Action Chain` | ✗ |
 | Take lanes: `Insert Take Lane`, `Copy From Take Lane To Content Lane`, `Delete Unused Take Lanes`, `Swap Lane` | ◐ (MIDI-tagningar, ingen kompning i spellistan) |
 | `Warp Mode`: Beats, Tones, Texture, Re-Pitch, Complex, Complex Pro (+ granularity, formants) | ◐ (WSOLA, bandspelare, formantbevarande pitch — inte sex lägen) |
-| `Show Tuning Pool`, Scala/ASCL | ✗ |
+| `Show Tuning Pool`, Scala/ASCL | ✅ (`Tuning` + `parse_ascl`; `.ascl` läses i menyn) |
 | `Group Note Probabilities`, `Probability Group` | ✗ |
 | `MPE Control`, `Per Note Pitch Bend`, `Note Chase` | ✗ (MPE finns inte alls) |
 | `Create Branch`, `Sort Branches`, `Show Branch Names In Editor` | ✗ (arrangemangsversioner) |
@@ -240,11 +240,11 @@ warplägen där vi har två beteenden.
 | **Instrument** | 13, varav 8 egna syntesmotorer (Operator FM, Wavetable, Meld, Drift, Tension/Collision fysik, Electric) | en subtraktiv synth, 2-op FM, sampler, SF2, trumsyntes | *de* |
 | **Ljudeffekter** | 48, bl.a. Hybrid Reverb, Roar, Corpus, Spectral Time/Resonator, Vocoder, Grain Delay, Beat Repeat, Looper, Drum Buss | 20+ (EQ, komp, limiter, multiband, transient, saturator, chorus/flanger/phaser, convolver, steggrind, delay, reverb, de-esser, gate, tape-stop, pitch) | *delvis* |
 | **MIDI-effekter** | 11 (Scale, Chord, Velocity, Note Echo, Random, Arpeggiator, MPE Control, Envelope MIDI, Note Length, Pitch) | ackord/arpeggio i synten, `SchedulesChord`, dice | *de* |
-| **Tidsoperationer** | Insert/Delete/Duplicate/Cut/Paste Time | ✗ | *de* |
+| **Tidsoperationer** | Insert/Delete/Duplicate/Cut/Paste Time | ✅ (`insert_time`, `delete_time`, `duplicate_time`) | *de* |
 | **Groove** | 220 mallar + extrahera groove ur audio | swing i tagningen | *delvis* |
 | **Kompning** | take lanes i spellistan | MIDI-tagningar | *delvis* |
 | **Warp** | 6 lägen med granularitet/formanter | WSOLA + bandspelare + formant | *delvis* |
-| **Mikrotonalitet** | 152 stämningar, Scala/ASCL, tuning pool | ✗ (12-TET) | *de* |
+| **Mikrotonalitet** | 152 stämningar, Scala/ASCL, tuning pool | ✅ `.ascl` läses; 12-TET är standard | *de* |
 | **MPE** | fullt (per-not pitch bend, MPE Control) | ✗ | *de* |
 | **Skript/utbyggnad** | Max for Live + Extensions SDK + Python-API | patcher (intern graf), AI-kommandon | *de* |
 | **Kontrollerytor** | 149 | MCU + MIDI-learn | *de* |

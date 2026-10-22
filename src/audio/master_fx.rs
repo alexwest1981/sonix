@@ -1514,6 +1514,117 @@ impl Default for ControlRoomParams {
     }
 }
 
+/// **Frekvensskifte** — inte tonhöjd. En 1 kHz-ton som skiftas +200 Hz blir 1 200 Hz och
+/// ingenting annat; en tonhöjdstransponering hade gett 1 200 Hz *och* ändrat formanterna.
+/// Det är skillnaden som gör effekten användbar för att flytta ett helt spektrum utan att
+/// röra intervallerna inom det.
+///
+/// Bygger på en Hilbert-transform (FIR med 63 tapp, Hamming-fönster): den ger signalen i
+/// kvadrat, 90° fasförskjuten, och då räcker en komplex multiplikation för att välja **en**
+/// sidofrekvens i stället för två.
+pub struct FrequencyShifter {
+    sample_rate: f32,
+    buf_l: Vec<f32>,
+    buf_r: Vec<f32>,
+    write: usize,
+    h: Vec<f32>,
+    phase_l: f32,
+    phase_r: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FreqShiftParams {
+    /// Skiftet i hertz. Negativt flyttar spektrumet nedåt.
+    pub hz: f32,
+    pub mix: f32,
+    /// Vänster kanal upp och höger ned (eller tvärtom): samma spektrum på båda sidor blir
+    /// bredare än en vanlig panorering, eftersom kanalerna inte längre är samma signal.
+    pub spread: bool,
+}
+
+impl Default for FreqShiftParams {
+    fn default() -> Self {
+        Self {
+            hz: 0.0,
+            mix: 1.0,
+            spread: false,
+        }
+    }
+}
+
+/// Fasackumulatorn hålls inom en period, annars tappar `sin_cos` precision efter några minuter.
+fn advance(phase: f32, hz: f32, sample_rate: f32) -> f32 {
+    let mut next = phase + 2.0 * std::f32::consts::PI * hz / sample_rate;
+    if next > std::f32::consts::TAU {
+        next -= std::f32::consts::TAU;
+    } else if next < 0.0 {
+        next += std::f32::consts::TAU;
+    }
+    next
+}
+
+impl FrequencyShifter {
+    const TAPS: usize = 63;
+
+    pub fn new(sample_rate: f32) -> Self {
+        let n = Self::TAPS;
+        let center = (n - 1) as f32 / 2.0;
+        let h: Vec<f32> = (0..n)
+            .map(|i| {
+                let d = i as f32 - center;
+                if d.abs() < 1e-6 {
+                    return 0.0;
+                }
+                let s = (std::f32::consts::PI * d / 2.0).sin();
+                let window =
+                    0.54 - 0.46 * (2.0 * std::f32::consts::PI * i as f32 / (n - 1) as f32).cos();
+                2.0 * s * s / (std::f32::consts::PI * d) * window
+            })
+            .collect();
+        Self {
+            sample_rate: sample_rate.max(1.0),
+            buf_l: vec![0.0; n],
+            buf_r: vec![0.0; n],
+            write: 0,
+            h,
+            phase_l: 0.0,
+            phase_r: 0.0,
+        }
+    }
+
+    pub fn process(&mut self, l: f32, r: f32, p: &FreqShiftParams) -> (f32, f32) {
+        let n = self.h.len();
+        let center = n / 2;
+        self.buf_l[self.write] = l;
+        self.buf_r[self.write] = r;
+        let (mut ql, mut qr) = (0.0f32, 0.0f32);
+        for (i, &coeff) in self.h.iter().enumerate() {
+            let idx = (self.write + n - i) % n;
+            ql += coeff * self.buf_l[idx];
+            qr += coeff * self.buf_r[idx];
+        }
+        // Torrsignalen läses vid filtrets mittpunkt: annars hade skiftet fått en fördröjning
+        // mot det torra och blandningen blivit ett kamfilter.
+        let dry_idx = (self.write + n - center) % n;
+        let (dl, dr) = (self.buf_l[dry_idx], self.buf_r[dry_idx]);
+        self.write = (self.write + 1) % n;
+
+        let hz_r = if p.spread { -p.hz } else { p.hz };
+        let (sn_l, cs_l) = self.phase_l.sin_cos();
+        let (sn_r, cs_r) = self.phase_r.sin_cos();
+        self.phase_l = advance(self.phase_l, p.hz, self.sample_rate);
+        self.phase_r = advance(self.phase_r, hz_r, self.sample_rate);
+
+        let wet_l = dl * cs_l - ql * sn_l;
+        let wet_r = dr * cs_r - qr * sn_r;
+        let mix = p.mix.clamp(0.0, 1.0);
+        (
+            dl * (1.0 - mix) + wet_l * mix,
+            dr * (1.0 - mix) + wet_r * mix,
+        )
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MasterFxParams {
     pub eq_bands: [MasterEqBand; 4],
@@ -1545,6 +1656,8 @@ pub struct MasterFxParams {
     pub limiter_enabled: bool,
     pub granular: GranularParams,
     pub granular_enabled: bool,
+    pub freq_shift: FreqShiftParams,
+    pub freq_shift_enabled: bool,
     pub control: ControlRoomParams,
 }
 
@@ -1578,6 +1691,8 @@ impl Default for MasterFxParams {
             filter: MasterFilterParams::default(),
             granular: GranularParams::default(),
             granular_enabled: false,
+            freq_shift: FreqShiftParams::default(),
+            freq_shift_enabled: false,
             control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
@@ -1603,6 +1718,7 @@ pub struct MasterFxChain {
     convolver: Convolver,
     gate: NoiseGate,
     granular: Granular,
+    freq_shift: FrequencyShifter,
     filter: MasterFilter,
     limiter: Limiter,
     params: MasterFxParams,
@@ -1628,6 +1744,7 @@ impl MasterFxChain {
             convolver: Convolver::new(sample_rate),
             gate: NoiseGate::new(sample_rate),
             granular: Granular::new(sample_rate),
+            freq_shift: FrequencyShifter::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
@@ -1748,6 +1865,12 @@ impl MasterFxChain {
 
         if p.phaser_enabled {
             let (nl, nr) = self.phaser.process(l, r, &p.phaser);
+            l = nl;
+            r = nr;
+        }
+
+        if p.freq_shift_enabled {
+            let (nl, nr) = self.freq_shift.process(l, r, &p.freq_shift);
             l = nl;
             r = nr;
         }
@@ -2629,6 +2752,110 @@ mod tests {
             (ratio_db + 20.0).abs() < 0.5,
             "dämpningen ska vara -20 dB: {ratio_db:.2} dB"
         );
+    }
+
+    /// Amplituden vid en frekvens, mätt med en komplex korrelation (det som Goertzel gör).
+    fn mag_at(samples: &[f32], freq: f32, sr: f32) -> f32 {
+        let (mut re, mut im) = (0.0f32, 0.0f32);
+        for (n, &x) in samples.iter().enumerate() {
+            let ph = 2.0 * std::f32::consts::PI * freq * n as f32 / sr;
+            re += x * ph.cos();
+            im -= x * ph.sin();
+        }
+        (re * re + im * im).sqrt() / samples.len() as f32
+    }
+
+    /// **Skiftet flyttar spektrumet, det transponerar det inte.** En 1 kHz-ton skiftad +200 Hz
+    /// ska ge 1 200 Hz — och **inte** 800 Hz, som en ringmodulering hade gett, och inte heller
+    /// kvar på 1 000 Hz. Motsatt riktning prövas i samma prov.
+    #[test]
+    fn the_frequency_shifter_moves_one_side_of_the_spectrum() {
+        let sr = 48_000.0;
+        for (hz, want, unwanted) in [(200.0f32, 1200.0f32, 800.0f32), (-200.0, 800.0, 1200.0)] {
+            let mut shift = FrequencyShifter::new(sr);
+            let params = FreqShiftParams {
+                hz,
+                mix: 1.0,
+                spread: false,
+            };
+            let out: Vec<f32> = (0..24_000)
+                .map(|n| {
+                    let x =
+                        (2.0 * std::f32::consts::PI * 1000.0 * n as f32 / sr).sin() * 0.5;
+                    shift.process(x, x, &params).0
+                })
+                .collect();
+            // Filtret är 63 tapp långt: mät efter att det fyllts.
+            let tail = &out[12_000..];
+            let moved = mag_at(tail, want, sr);
+            let mirror = mag_at(tail, unwanted, sr);
+            let source = mag_at(tail, 1000.0, sr);
+            println!(
+                "{hz:+.0} Hz: {want:.0} Hz = {moved:.4}, {unwanted:.0} Hz = {mirror:.4}, 1 kHz = {source:.4}"
+            );
+            assert!(moved > 0.1, "den skiftade tonen ska finnas kvar: {moved:.4}");
+            assert!(
+                mirror < moved * 0.1,
+                "spegelbilden ska vara borta: {mirror:.4} mot {moved:.4}"
+            );
+            assert!(
+                source < moved * 0.1,
+                "källtonen ska vara borta: {source:.4} mot {moved:.4}"
+            );
+        }
+    }
+
+    /// 0 Hz skift ska vara en ofärgad genomgång — annars hade varje projekt med pedalen på
+    /// slaget läge fått en ljudförändring.
+    #[test]
+    fn a_zero_shift_passes_the_signal_through_uncoloured() {
+        let sr = 48_000.0;
+        let mut shift = FrequencyShifter::new(sr);
+        let params = FreqShiftParams {
+            hz: 0.0,
+            mix: 1.0,
+            spread: false,
+        };
+        let input: Vec<f32> = (0..8_000)
+            .map(|n| (2.0 * std::f32::consts::PI * 440.0 * n as f32 / sr).sin() * 0.5)
+            .collect();
+        let out: Vec<f32> = input
+            .iter()
+            .map(|&x| shift.process(x, x, &params).0)
+            .collect();
+        let rms = |v: &[f32]| (v.iter().map(|s| s * s).sum::<f32>() / v.len() as f32).sqrt();
+        let before = rms(&input);
+        let after = rms(&out[2_000..]);
+        println!("0 Hz: RMS {before:.4} in, {after:.4} ut");
+        assert!((after - before).abs() < before * 0.01, "nivån ska stå still");
+    }
+
+    /// **Stereoläget skiftar kanalerna åt varsitt håll**, alltså inte bara olika panorering:
+    /// vänster får den skiftade tonen, höger får spegelbilden.
+    #[test]
+    fn the_spread_shift_moves_the_channels_in_opposite_directions() {
+        let sr = 48_000.0;
+        let mut shift = FrequencyShifter::new(sr);
+        let params = FreqShiftParams {
+            hz: 200.0,
+            mix: 1.0,
+            spread: true,
+        };
+        let (mut left, mut right) = (Vec::new(), Vec::new());
+        for n in 0..6_000 {
+            let x = (2.0 * std::f32::consts::PI * 1000.0 * n as f32 / sr).sin() * 0.5;
+            let (l, r) = shift.process(x, x, &params);
+            left.push(l);
+            right.push(r);
+        }
+        let (l_tail, r_tail) = (&left[3_000..], &right[3_000..]);
+        let l_up = mag_at(l_tail, 1200.0, sr);
+        let l_down = mag_at(l_tail, 800.0, sr);
+        let r_up = mag_at(r_tail, 1200.0, sr);
+        let r_down = mag_at(r_tail, 800.0, sr);
+        println!("vänster: 1200 Hz {l_up:.4}, 800 Hz {l_down:.4} · höger: 1200 Hz {r_up:.4}, 800 Hz {r_down:.4}");
+        assert!(l_up > 0.1 && l_down < l_up * 0.1, "vänster ska gå upp");
+        assert!(r_down > 0.1 && r_up < r_down * 0.1, "höger ska gå ned");
     }
 
 }
