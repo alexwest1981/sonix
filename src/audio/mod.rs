@@ -19,6 +19,7 @@ pub mod master_fx;
 pub mod metadata;
 pub mod asd;
 pub mod tuning;
+pub mod video;
 pub mod warp;
 pub mod modulation;
 pub mod input_profile;

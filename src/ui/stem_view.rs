@@ -19,7 +19,14 @@ pub fn render_stem_separator_view(
     is_playing: bool,
     status_msg: &mut String,
     model_download: &std::sync::Arc<std::sync::Mutex<(bool, f32, String)>>,
+    stem_six: &mut bool,
 ) -> StemViewActions {
+    // Fyra stämmor är standard; sex lägger till gitarr och piano och kräver 6s-modellen.
+    let model = if *stem_six {
+        crate::audio::neural_separator::StemModel::Six
+    } else {
+        crate::audio::neural_separator::StemModel::Four
+    };
     let mut actions = StemViewActions::default();
     let _ = &status_msg;
     ui.group(|ui| {
@@ -73,8 +80,30 @@ pub fn render_stem_separator_view(
                     ui.label(egui::RichText::new(format!("🧠 {} {} ({})", crate::i18n::t("Neural: ingen modell hittad — använder DSP. Lägg htdemucs.onnx i"), crate::audio::neural_model_status(), crate::i18n::t("bygg med --features neural"))).size(10.5).color(Theme::TEXT_MUTED));
                 }
             });
+            ui.horizontal(|ui| {
+                if ui
+                    .checkbox(stem_six, crate::i18n::t("6 stämmor (gitarr + piano)"))
+                    .on_hover_text(crate::i18n::t(
+                        "Sex stämmor kräver 6s-modellen (136 MB). Fyra stämmor hittar nästan alltid gitarr och piano i 'instrument' i stället.",
+                    ))
+                    .changed()
+                {
+                    // Ett modelldownload för det andra valet kan inte återanvändas.
+                    if let Ok(mut g) = model_download.lock() {
+                        *g = (false, 0.0, String::new());
+                    }
+                }
+                ui.label(
+                    egui::RichText::new(crate::tstatus!(
+                        "Modell: {}",
+                        model.label()
+                    ))
+                    .size(10.0)
+                    .color(Theme::TEXT_MUTED),
+                );
+            });
             // Modellen skeppas inte med: den som vill köra neural separering hämtar den.
-            if crate::audio::neural_separator::find_model().is_none() {
+            if crate::audio::neural_separator::find_model_for(model).is_none() {
                 let state = model_download.lock().map(|g| g.clone()).unwrap_or((false, 0.0, String::new()));
                 let (running, progress, message) = state;
                 ui.horizontal(|ui| {
@@ -92,7 +121,7 @@ pub fn render_stem_separator_view(
                         }
                         std::thread::spawn(move || {
                             let slot_for_progress = slot.clone();
-                            let result = crate::audio::neural_separator::download_model(|p| {
+                            let result = crate::audio::neural_separator::download_model_for(model, |p| {
                                 if let Ok(mut g) = slot_for_progress.lock() {
                                     g.1 = p;
                                 }

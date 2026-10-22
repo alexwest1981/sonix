@@ -31,6 +31,49 @@ pub const NUM_SOURCES: usize = 4;
 /// Stereo.
 pub const NUM_CHANNELS: usize = 2;
 
+
+/// Vilken HTDemucs-variant som används. Fyra stämmor är standard (samma modell som förut);
+/// sex lägger till **gitarr** och **piano**, vilket är den enda off-the-shelf-ONNX som gör
+/// det. Fler än sex finns inte som färdig modell — fler "stämmor" än så vore påhitt.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StemModel {
+    Four,
+    Six,
+}
+
+impl StemModel {
+    /// Källordningen i modellens utdata, exakt som Demucs skriver den.
+    pub const fn sources(self) -> &'static [&'static str] {
+        match self {
+            StemModel::Four => &["drums", "bass", "other", "vocals"],
+            StemModel::Six => &["drums", "bass", "other", "vocals", "guitar", "piano"],
+        }
+    }
+
+    pub const fn url(self) -> &'static str {
+        match self {
+            StemModel::Four => MODEL_URL,
+            StemModel::Six => {
+                "https://huggingface.co/StemSplitio/htdemucs-6s-onnx/resolve/main/htdemucs_6s_fp16weights.onnx"
+            }
+        }
+    }
+
+    pub const fn file_names(self) -> &'static [&'static str] {
+        match self {
+            StemModel::Four => &MODEL_FILE_NAMES,
+            StemModel::Six => &["htdemucs_6s.onnx", "htdemucs_6s_fp16weights.onnx"],
+        }
+    }
+
+    pub const fn label(self) -> &'static str {
+        match self {
+            StemModel::Four => "HTDemucs (4 stämmor)",
+            StemModel::Six => "HTDemucs 6s (6 stämmor: gitarr + piano)",
+        }
+    }
+}
+
 /// Environment variable that points directly at a model file.
 pub const MODEL_ENV: &str = "SONIX_DEMUCS_ONNX";
 
@@ -47,8 +90,12 @@ pub fn model_dirs() -> Vec<PathBuf> {
 
 /// Pure helper: first existing model candidate inside `dirs`.
 pub fn find_model_in(dirs: &[PathBuf]) -> Option<PathBuf> {
+    find_model_in_with(dirs, &MODEL_FILE_NAMES)
+}
+
+pub fn find_model_in_with(dirs: &[PathBuf], names: &[&str]) -> Option<PathBuf> {
     for dir in dirs {
-        for name in MODEL_FILE_NAMES {
+        for name in names {
             let candidate = dir.join(name);
             if candidate.is_file() {
                 return Some(candidate);
@@ -59,6 +106,17 @@ pub fn find_model_in(dirs: &[PathBuf]) -> Option<PathBuf> {
 }
 
 /// Resolves the model to use, honouring [`MODEL_ENV`] first.
+pub fn find_model_for(model: StemModel) -> Option<PathBuf> {
+    if let Some(path) = std::env::var_os(MODEL_ENV).map(PathBuf::from)
+        && path.is_file()
+        && model == StemModel::Four
+    {
+        // Miljövariabeln pekar på 4-stämmorsmodellen; den får inte användas som sexa.
+        return Some(path);
+    }
+    find_model_in_with(&model_dirs(), model.file_names())
+}
+
 pub fn find_model() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os(MODEL_ENV).map(PathBuf::from)
         && path.is_file()
@@ -123,17 +181,22 @@ pub fn download_looks_complete(bytes: u64, expected: Option<u64>) -> Result<(), 
 ///
 /// Skriver till `<mål>.part` och byter namn först när storleken stämmer, så en avbruten
 /// hämtning lämnar en `.part` efter sig och aldrig en halv modell med rätt namn.
-pub fn download_model<F: FnMut(f32)>(mut progress: F) -> Result<PathBuf, String> {
+pub fn download_model<F: FnMut(f32)>(progress: F) -> Result<PathBuf, String> {
+    download_model_for(StemModel::Four, progress)
+}
+
+/// Hämtar modellen för ett givet val (samma `.part`-väg som förut).
+pub fn download_model_for<F: FnMut(f32)>(model: StemModel, mut progress: F) -> Result<PathBuf, String> {
     let dir = model_dirs()
         .into_iter()
         .next()
         .ok_or_else(|| "ingen modellmapp".to_string())?;
     std::fs::create_dir_all(&dir).map_err(|e| format!("kunde inte skapa {}: {e}", dir.display()))?;
-    let name = MODEL_FILE_NAMES[0];
+    let name = model.file_names()[0];
     let dest = dir.join(name);
     let part = dir.join(format!("{name}.part"));
 
-    let response = ureq::get(MODEL_URL)
+    let response = ureq::get(model.url())
         .call()
         .map_err(|e| format!("kunde inte hämta modellen: {e}"))?;
     let expected = response
@@ -172,6 +235,10 @@ pub fn download_model<F: FnMut(f32)>(mut progress: F) -> Result<PathBuf, String>
 /// Whether a neural run is possible right now (feature enabled + model found).
 pub fn is_available() -> bool {
     cfg!(feature = "neural") && find_model().is_some()
+}
+
+pub fn is_available_for(model: StemModel) -> bool {
+    cfg!(feature = "neural") && find_model_for(model).is_some()
 }
 
 /// Linear-interpolation stereo resampler. Deliberately simple — it exists to
@@ -279,6 +346,8 @@ pub fn demucs_source_to_stem(source: usize) -> usize {
         1 => 2, // bass
         2 => 3, // other -> instruments
         3 => 0, // vocals
+        4 => 4, // guitar
+        5 => 5, // piano
         _ => 3,
     }
 }
@@ -291,13 +360,24 @@ pub fn separate_neural(
     sample_rate: u32,
     progress: &dyn Fn(f32),
 ) -> Result<Vec<StemAudio>, String> {
+    separate_neural_with(StemModel::Four, left, right, sample_rate, progress)
+}
+
+/// Som [`separate_neural`], men med vald modell (4 eller 6 stämmor).
+pub fn separate_neural_with(
+    model: StemModel,
+    left: &[f32],
+    right: &[f32],
+    sample_rate: u32,
+    progress: &dyn Fn(f32),
+) -> Result<Vec<StemAudio>, String> {
     #[cfg(feature = "neural")]
     {
-        backend::separate(left, right, sample_rate, progress)
+        backend::separate(model, left, right, sample_rate, progress)
     }
     #[cfg(not(feature = "neural"))]
     {
-        let _ = (left, right, sample_rate, progress);
+        let _ = (model, left, right, sample_rate, progress);
         Err(crate::i18n::t(
             "Neural separation är inte inbyggd i den här builden (bygg med --features neural)",
         )
@@ -313,12 +393,14 @@ mod backend {
 
     /// Runs a Demucs-style ONNX model over a stereo pair with overlap-add.
     pub fn separate(
+        model: StemModel,
         left: &[f32],
         right: &[f32],
         sample_rate: u32,
         progress: &dyn Fn(f32),
     ) -> Result<Vec<StemAudio>, String> {
-        let path = find_model().ok_or_else(|| {
+        let sources = model.sources().len();
+        let path = find_model_for(model).ok_or_else(|| {
             crate::tstatus!(
                 "Ingen neural modell hittades. Lägg en HTDemucs-ONNX i {} (eller sätt {})",
                 model_status(),
@@ -366,7 +448,7 @@ mod backend {
         let starts = plan_segments(n, segment, hop);
         let total = starts.len().max(1);
 
-        let mut acc: Vec<[Vec<f32>; NUM_CHANNELS]> = (0..NUM_SOURCES)
+        let mut acc: Vec<[Vec<f32>; NUM_CHANNELS]> = (0..sources)
             .map(|_| [vec![0.0f32; n], vec![0.0f32; n]])
             .collect();
         let mut weight = vec![0.0f32; n];
@@ -399,7 +481,7 @@ mod backend {
             let last = segment_index + 1 == total;
             let window = segment_window(seg_len, overlap.min(seg_len / 2), first, last);
 
-            for source in 0..NUM_SOURCES {
+            for source in 0..sources {
                 let stem_index = demucs_source_to_stem(source);
                 for channel in 0..NUM_CHANNELS {
                     let slice = source_channel_slice(&shape, data, source, channel, NUM_CHANNELS)?;
@@ -416,8 +498,8 @@ mod backend {
             progress((segment_index + 1) as f32 / total as f32);
         }
 
-        let mut stems = vec![StemAudio::default(); NUM_SOURCES];
-        for stem_index in 0..NUM_SOURCES {
+        let mut stems = vec![StemAudio::default(); sources];
+        for stem_index in 0..sources {
             let mut out_l = vec![0.0f32; n];
             let mut out_r = vec![0.0f32; n];
             for i in 0..n {
@@ -625,5 +707,42 @@ mod download_tests {
         assert!(!MODEL_URL.starts_with("file:"));
     }
 }
+
+    /// **6-stämmorsmodellen har sex källor i Demucs ordning**, och de två sista hamnar rätt
+    /// i Sonix ordning (gitarr 4, piano 5) i stället för att kastas in i "instrument".
+    #[test]
+    fn the_six_stem_model_maps_guitar_and_piano_to_their_own_stems() {
+        assert_eq!(
+            StemModel::Six.sources(),
+            &["drums", "bass", "other", "vocals", "guitar", "piano"]
+        );
+        assert_eq!(StemModel::Four.sources().len(), 4);
+        assert_eq!(demucs_source_to_stem(4), 4, "gitarr → gitarr");
+        assert_eq!(demucs_source_to_stem(5), 5, "piano → piano");
+        // De fyra första är oförändrade, annars hade 4-stämmorsvägen bytt plats på allt.
+        assert_eq!(
+            (0..4).map(demucs_source_to_stem).collect::<Vec<_>>(),
+            vec![1, 2, 3, 0]
+        );
+    }
+
+    /// Sexstämmorsmodellen hämtas från 6s-repot och letas under sina egna filnamn — en
+    /// 4-stämmorsfil i mappen får inte räknas som en sexa.
+    #[test]
+    fn the_six_stem_model_has_its_own_url_and_file_names() {
+        assert!(StemModel::Six.url().contains("htdemucs-6s-onnx"));
+        assert!(StemModel::Six.url().ends_with("htdemucs_6s_fp16weights.onnx"));
+        assert!(StemModel::Six.file_names().iter().all(|n| n.contains("6s")));
+        let dir = std::env::temp_dir().join(format!("sonix_6s_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("htdemucs.onnx"), b"x").unwrap();
+        assert!(
+            find_model_in_with(&[dir.clone()], StemModel::Six.file_names()).is_none(),
+            "4-stämmorsfilen får inte användas som 6s-modell"
+        );
+        std::fs::write(dir.join("htdemucs_6s.onnx"), b"y").unwrap();
+        assert!(find_model_in_with(&[dir.clone()], StemModel::Six.file_names()).is_some());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
 }

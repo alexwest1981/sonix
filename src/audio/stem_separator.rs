@@ -300,7 +300,9 @@ pub struct SeparationResult {
 /// Runs the best available separator: a real neural HTDemucs model when one is
 /// installed (and the `neural` feature is compiled in), otherwise the built-in
 /// spectral DSP separator. `progress` is called with `0.0..=1.0`.
-pub fn run_separation(
+/// Kör separatorn med vald modell (4 eller 6 stämmor).
+pub fn run_separation_with(
+    model: crate::audio::neural_separator::StemModel,
     left: &[f32],
     right: &[f32],
     sample_rate: u32,
@@ -311,8 +313,14 @@ pub fn run_separation(
     let bpm = estimate_bpm(left, right, sr_f);
 
     let mut fallback_reason = None;
-    let neural = if crate::audio::neural_separator::is_available() {
-        match crate::audio::neural_separator::separate_neural(left, right, sample_rate, progress) {
+    let neural = if crate::audio::neural_separator::is_available_for(model) {
+        match crate::audio::neural_separator::separate_neural_with(
+            model,
+            left,
+            right,
+            sample_rate,
+            progress,
+        ) {
             Ok(stems) => Some(stems),
             Err(err) => {
                 fallback_reason = Some(err);
@@ -328,7 +336,7 @@ pub fn run_separation(
     };
 
     let (stems, model_name, used_neural) = match neural {
-        Some(stems) => (stems, "HTDemucs (ONNX Neural)".to_string(), true),
+        Some(stems) => (stems, format!("{} (ONNX Neural)", model.label()), true),
         None => {
             progress(0.0);
             let stems = separate_stems(left, right, sr_f);
@@ -351,7 +359,10 @@ pub fn run_separation(
 /// Filnamnen stämmorna får på disk, i samma ordning som [`separate_stems`]
 /// lämnar dem (och som [`StemProject::install_separation`] mappar dem till
 /// [`StemType`]).
-pub const STEM_FILE_NAMES: [&str; 4] = ["vocals", "drums", "bass", "instruments"];
+/// Filnamnen per stämma, i Sonix ordning. Sex poster därför att 6-stämmorsmodellen ger
+/// gitarr och piano utöver de fyra; DSP-vägen använder bara de fyra första.
+pub const STEM_FILE_NAMES: [&str; 6] =
+    ["vocals", "drums", "bass", "instruments", "guitar", "piano"];
 
 /// Skriver stämmorna som 32-bitars flyttals-WAV i `dir` och lämnar tillbaka
 /// sökvägarna i stämmornas ordning.
@@ -515,6 +526,7 @@ impl StemProject {
 
 #[cfg(test)]
 mod tests {
+    use crate::audio::neural_separator::StemModel::Four;
 
     /// **Ände-till-ände** för den rapporterade buggen: en 32-bitars WAV (som andra DAW:n
     /// skriver) laddas och separeras. Förr blev både ljudet och stämmorna brus, eftersom
@@ -651,7 +663,7 @@ mod tests {
         let left: Vec<f32> = (0..n).map(|_| next() * 0.7).collect();
         let right: Vec<f32> = (0..n).map(|_| next() * 0.7).collect();
 
-        let result = run_separation(&left, &right, sr as u32, &|_| {});
+        let result = run_separation_with(Four, &left, &right, sr as u32, &|_| {});
         let mut project = StemProject::default();
         let dir = std::env::temp_dir().join(format!("sonix_stem_pairs_{}", std::process::id()));
         // Skrivningen får inte fälla testet om katalogen inte går att skapa — det
@@ -687,7 +699,7 @@ mod tests {
         let n = 8_000;
         let left: Vec<f32> = (0..n).map(|i| (i as f32 / n as f32) * 0.6 - 0.3).collect();
         let right: Vec<f32> = left.iter().map(|s| s * 0.5).collect();
-        let result = run_separation(&left, &right, sr, &|_| {});
+        let result = run_separation_with(Four, &left, &right, sr, &|_| {});
 
         let dir = std::env::temp_dir().join(format!("sonix_stem_write_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -746,7 +758,7 @@ mod tests {
         let n = 2_000;
         let left = vec![0.25f32; n];
         let right = vec![0.1f32; n];
-        let result = run_separation(&left, &right, sr, &|_| {});
+        let result = run_separation_with(Four, &left, &right, sr, &|_| {});
 
         // En fil där katalogen ska ligga: create_dir_all kan inte lyckas.
         let blocked = std::env::temp_dir().join(format!("sonix_stem_block_{}", std::process::id()));
@@ -789,7 +801,7 @@ mod tests {
         }
 
         let saw_progress = std::sync::atomic::AtomicBool::new(false);
-        let result = run_separation(&l, &r, sr, &|p| {
+        let result = run_separation_with(Four, &l, &r, sr, &|p| {
             if p > 0.5 {
                 saw_progress.store(true, std::sync::atomic::Ordering::Relaxed);
             }

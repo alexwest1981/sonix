@@ -395,15 +395,26 @@ pub fn start_stem_separation_with(&mut self, path: &str) {
         backend
     );
 
+    let six = self.stem_six;
     let progress = self.stem_separation_progress.clone();
     let slot = self.stem_separation_result.clone();
     std::thread::spawn(move || {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            run_separation(&l, &r, sr, &|value| {
+            crate::audio::stem_separator::run_separation_with(
+                if six {
+                    crate::audio::neural_separator::StemModel::Six
+                } else {
+                    crate::audio::neural_separator::StemModel::Four
+                },
+                &l,
+                &r,
+                sr,
+                &|value| {
                 if let Ok(mut p) = progress.lock() {
                     *p = value;
                 }
-            })
+            },
+            )
         }));
         let value = match result {
             Ok(r) => Ok(r),
