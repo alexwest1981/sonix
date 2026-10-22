@@ -543,6 +543,119 @@ pub fn freeze_track(&mut self, t_idx: usize) {
 }
 
 impl SonixApp {
+/// **Baka spåret till ett nytt spår** (Ableton: Bounce To New Track).
+///
+/// Samma offline-render som frysningen, men källan ligger **kvar**: den tystas bara, och
+/// hela operationen går att ångra. Skillnaden mot frysningen är att frysningen byter ut
+/// spårets uppspelning på plats, medan den här lämnar ett spår du kan jämföra med.
+pub(crate) fn bounce_track_to_new(&mut self, t_idx: usize) {
+    let Some(track) = self.playlist_tracks.get(t_idx) else {
+        return;
+    };
+    if !track.can_freeze() {
+        self.status_message = crate::i18n::t(
+            "❄ Spåret kan inte bakas — det är redan fruset, eller ett ljudspår som redan ligger som ljud",
+        )
+        .to_string();
+        return;
+    }
+    if self.plugin_slots.get(t_idx).is_some_and(|s| s.is_some()) {
+        self.status_message = crate::i18n::t(
+            "❄ Spåret har en plugin-insert, och offline-renderingen kan inte återskapa den — ta bort den först",
+        )
+        .to_string();
+        return;
+    }
+    let name = track.name.clone();
+    let sample_rate = self.engine.sample_rate;
+
+    // Sola på spåret och ta bort dess fader ur specen: det som bakas är spårets eget ljud,
+    // inte dess placering i mixen.
+    let mut spec = self.build_render_spec(Some(t_idx), sample_rate);
+    if let Some(t) = spec.tracks.get_mut(t_idx) {
+        t.volume = 1.0;
+    }
+    let buffer = match self.render_buffer(&spec, true) {
+        Ok(b) => b,
+        Err(e) => {
+            self.status_message = crate::tstatus!("❄ Kunde inte rendera spåret: {}", e);
+            return;
+        }
+    };
+    if buffer.is_empty() || Self::peak_of(&buffer) <= 0.0 {
+        self.status_message =
+            crate::tstatus!("❄ '{}' är tyst i den här låten — det finns inget att baka", name);
+        return;
+    }
+
+    let path = crate::paths::paths()
+        .project_assets_dir(&self.project_name)
+        .join("Bounces")
+        .join(format!(
+            "{}-{}.wav",
+            crate::autosave::slug(&name),
+            crate::autosave::now_stamp()
+        ))
+        .to_string_lossy()
+        .into_owned();
+    if let Some(dir) = std::path::Path::new(&path).parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let meta = crate::audio::ExportMeta {
+        title: format!("{name} (bounce)"),
+        artist: String::new(),
+        album: String::new(),
+        genre: String::new(),
+        year: String::new(),
+        comment: "Bakat spår (mellansteg i Sonix)".to_string(),
+    };
+    if let Err(e) = crate::audio::write_export_with(
+        &path,
+        crate::audio::ExportFormat::Wav32,
+        &buffer,
+        sample_rate,
+        &meta,
+        crate::audio::DitherSettings::default(),
+    ) {
+        self.status_message =
+            crate::tstatus!("❄ Kunde inte skriva den bakade filen: {}", e);
+        return;
+    }
+    // Läs tillbaka från filen: då är filen sanningen, och en trasig skrivning upptäcks nu.
+    let Some((l, r, pcm_sr)) = load_sample_pcm_arcs(&path) else {
+        self.status_message =
+            crate::tstatus!("❄ Den bakade filen gick inte att läsa tillbaka: {}", path);
+        return;
+    };
+
+    self.push_undo(&format!("Baka '{}'", name));
+    let len_secs = l.len() as f32 / pcm_sr as f32;
+    let color = self.playlist_tracks[t_idx].color;
+    let mut baked = PlaylistTrack::new(
+        crate::tstatus!("{} (bakat)", name),
+        "🎧",
+        TrackKind::CustomAudio,
+        color,
+    );
+    baked.volume = 1.0;
+    baked.pcm_audio = Some((l, r, pcm_sr));
+    baked.custom_clip_name = Some(crate::tstatus!("Bakat: {}", name));
+    self.playlist_tracks.push(baked);
+    let new_idx = self.playlist_tracks.len() - 1;
+    self.sync_track_stem_to_engine(new_idx);
+    // Källan tystas — inte tas bort: det är den som gör bakningen jämförbar och ångringsbar.
+    self.playlist_tracks[t_idx].muted = true;
+    self.sync_track_audio_state(t_idx);
+    self.status_message = crate::tstatus!(
+        "🎧 Bakade '{}' till spår {}: {:.1} s ljud, källan tystad [Ångra: Ctrl+Z]",
+        name,
+        new_idx + 1,
+        len_secs
+    );
+}
+}
+
+impl SonixApp {
 /// Tina upp ett spår: pattern-uppspelningen tar över igen.
 ///
 /// Den frusna filen lämnas kvar i projektets mapp — den är användarens

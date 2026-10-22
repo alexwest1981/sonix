@@ -935,6 +935,19 @@ fn write_with_ffmpeg(
 mod tests {
     use super::*;
 
+    pub(super) fn fx_for_test() -> FxState {
+        FxState {
+            waveform: crate::audio::command::Waveform::Saw,
+            adsr: Default::default(),
+            filter: Default::default(),
+            delay: Default::default(),
+            reverb: Default::default(),
+            drive: 0.0,
+            master_volume: 1.0,
+            master_fx: Default::default(),
+        }
+    }
+
     /// **Exportdörren väljer zon med samma funktion som spelvägen** (Fas 8.4/7). Påståendet
     /// "samma väljare, alltså kan filen och högtalarna inte hamna i olika zoner" är bara värt
     /// något om den vägen faktiskt **anropar** väljaren — det är det här provet.
@@ -2231,4 +2244,95 @@ mod stem_wav_tests {
 
         let _ = std::fs::remove_dir_all(&dir);
     }
+    /// Ljud för en ton i en spec, så att ett prov kan fråga "vilka spår hörs?".
+    fn tone_spec(solo: Option<usize>) -> RenderSpec {
+        let sr = 48_000u32;
+        let frames = sr as usize / 4; // 250 ms
+        let tone = |hz: f32| {
+            let v: Vec<f32> = (0..frames)
+                .map(|n| (2.0 * std::f32::consts::PI * hz * n as f32 / sr as f32).sin() * 0.5)
+                .collect();
+            Arc::new(v)
+        };
+        let stem = |index: usize, hz: f32| TrackAudioSnap {
+            track_index: index,
+            left: tone(hz),
+            right: tone(hz),
+            sample_rate: sr,
+            volume: 1.0,
+            pan: 0.0,
+            muted: false,
+            regions: vec![StemRegionPlayback {
+                start_time_secs: 0.0,
+                length_secs: frames as f32 / sr as f32,
+                sample_offset_sec: 0.0,
+                gain: 1.0,
+                fade_in_sec: 0.0,
+                fade_out_sec: 0.0,
+                muted: false,
+                is_reverse: false,
+                loop_length_secs: 0.0,
+                stretch_ratio: 1.0,
+                source_audio: None,
+            }],
+            eq: TrackEqSettings::default(),
+            comp_threshold_db: 0.0,
+            comp_ratio: 1.0,
+            reverb_send: 0.0,
+            delay_send: 0.0,
+            pitch_semitones: 0.0,
+            bus: 0,
+            vca: None,
+            sidechain_from: None,
+            sidechain_amount_db: 0.0,
+            sidechain_threshold_db: -30.0,
+            sends: Vec::new(),
+        };
+        let track = TrackSnap {
+            role: TrackRole::Audio,
+            clips: [None; 32],
+            volume: 1.0,
+            muted: false,
+            solo: false,
+        };
+        RenderSpec {
+            sample_rate: sr,
+            bpm: 120.0,
+            swing: 0.0,
+            num_bars: 1,
+            pattern_mode: false,
+            rack: Vec::new(),
+            patterns: Vec::new(),
+            tracks: vec![track.clone(), track],
+            timeline: vec![stem(0, 100.0), stem(1, 1000.0)],
+            velocities: [1.0; 16],
+            solo_track: solo,
+            tail_secs: 0.0,
+            bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
+            bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_solo: [false; crate::audio::synth::NUM_BUSES],
+            vca_volume: [1.0; crate::audio::synth::NUM_VCAS],
+            vca_muted: [false; crate::audio::synth::NUM_VCAS],
+            vca_solo: [false; crate::audio::synth::NUM_VCAS],
+        }
+    }
+
+
+    /// **Bakningen vilar på att `solo_track` verkligen isolerar spåret.**
+    ///
+    /// Isoleringen är inte en nivå som dras ned: `load_timeline_into_engine` **tystar** varje
+    /// spår som inte är det solade. Provet läser den flaggan i motorn i stället för att mäta
+    /// spektrum — det är flaggan som avgör, och den syns direkt.
+    #[test]
+    fn the_solo_render_mutes_every_other_stem() {
+        let muted = |solo: Option<usize>| {
+            let spec = tone_spec(solo);
+            let engine = build_offline_engine(&spec, &super::tests::fx_for_test());
+            (engine.stem_tracks[0].muted, engine.stem_tracks[1].muted)
+        };
+        assert_eq!(muted(None), (false, false), "utan solo ska ingen tystas");
+        assert_eq!(muted(Some(0)), (false, true), "solo 0: bara spår 0 hörs");
+        assert_eq!(muted(Some(1)), (true, false), "solo 1: bara spår 1 hörs");
+    }
+
 }

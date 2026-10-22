@@ -2187,6 +2187,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     // Frysningen görs efter stängningen: anropet behöver &mut self, och
     // inne i panelen lånas spåret.
     let mut freeze_request: Option<usize> = None;
+    let mut bounce_request: Option<usize> = None;
     let mut unfreeze_request: Option<usize> = None;
     let frozen_stale = self.frozen_is_stale(t_idx);
 
@@ -2289,6 +2290,14 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             .clicked()
                         {
                             freeze_request = Some(t_idx);
+                        }
+                        // Baka till ett **nytt** spår: samma render, men källan ligger kvar
+                        // (tystad) så att de två går att jämföra.
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Baka till nytt spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 70, 45)))
+                            .on_hover_text(crate::i18n::t("Renderar spåret till ett nytt ljudspår och tystar källan. Inget tas bort, och Ctrl+Z tar tillbaka hela bakningen."))
+                            .clicked()
+                        {
+                            bounce_request = Some(t_idx);
                         }
                     }
 
@@ -2785,6 +2794,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
 
     if let Some(target) = freeze_request {
         self.freeze_track(target);
+    }
+    if let Some(target) = bounce_request {
+        self.bounce_track_to_new(target);
     }
     if let Some(target) = unfreeze_request {
         self.unfreeze_track(target);
