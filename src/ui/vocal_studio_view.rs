@@ -706,6 +706,56 @@ pub fn render_vocal_studio_view(
 
                     ui.add_space(4.0);
 
+                    // Kompraden: hur kompen ser ut när partierna läggs i ordning. Varje band
+                    // får sin tagnings färg, så det syns vilken tagning som ligger var.
+                    if !vocal_track.comp_regions.is_empty() {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(crate::i18n::t("Komp"))
+                                    .strong()
+                                    .size(11.0)
+                                    .color(Theme::FL_GREEN),
+                            );
+                            let w_w = (ui.available_width() - 8.0).max(10.0);
+                            let (rect, _) = ui.allocate_exact_size(Vec2::new(w_w, 22.0), Sense::hover());
+                            let painter = ui.painter();
+                            painter.rect_filled(rect, Rounding::same(3.0), Color32::from_rgb(12, 16, 20));
+                            let length = vocal_track
+                                .comp_regions
+                                .iter()
+                                .map(|(_, _, end)| *end)
+                                .max()
+                                .unwrap_or(1)
+                                .max(1);
+                            for (r_take, r_start, r_end) in &vocal_track.comp_regions {
+                                let color = vocal_track
+                                    .takes
+                                    .get(*r_take)
+                                    .map(|t| t.color)
+                                    .unwrap_or(Theme::FL_CYAN);
+                                let x0 = rect.min.x + rect.width() * (*r_start as f32 / length as f32);
+                                let x1 = rect.min.x + rect.width() * (*r_end as f32 / length as f32);
+                                painter.rect_filled(
+                                    Rect::from_min_max(
+                                        Pos2::new(x0, rect.min.y + 1.0),
+                                        Pos2::new(x1.max(x0 + 1.0), rect.max.y - 1.0),
+                                    ),
+                                    Rounding::same(2.0),
+                                    color,
+                                );
+                            }
+                        });
+                        if ui
+                            .add(egui::Button::new(
+                                egui::RichText::new(crate::i18n::t("Töm kompen")).size(10.0),
+                            ))
+                            .clicked()
+                        {
+                            vocal_track.comp_regions.clear();
+                        }
+                        ui.add_space(4.0);
+                    }
+
                     for t_idx in 0..vocal_track.takes.len() {
                         let is_active = vocal_track.active_comp_take == t_idx;
                         let take_color = vocal_track.takes[t_idx].color;
@@ -733,7 +783,7 @@ pub fn render_vocal_studio_view(
 
                             // Waveform display for each lane
                             let w_w = (ui.available_width() - 8.0).max(10.0);
-                            let (w_rect, _) = ui.allocate_exact_size(Vec2::new(w_w, 30.0), Sense::click());
+                            let (w_rect, w_resp) = ui.allocate_exact_size(Vec2::new(w_w, 30.0), Sense::click());
                             let painter = ui.painter();
 
                             painter.rect_filled(w_rect, Rounding::same(3.0), Color32::from_rgb(16, 20, 26));
@@ -749,6 +799,56 @@ pub fn render_vocal_studio_view(
                                     let h = amp * (w_rect.height() * 0.44);
                                     let bar_rect = Rect::from_min_max(Pos2::new(sx, mid_y - h), Pos2::new(sx + step_w * 0.85, mid_y + h));
                                     painter.rect_filled(bar_rect, Rounding::same(1.0), if is_active { take_color } else { Color32::from_rgb(60, 75, 95) });
+                                }
+                            }
+
+                            // Kompens partier på den här lanen: samma band som kompen byggs av,
+                            // så man ser vilka ställen som är tagna härifrån.
+                            let total_samples = vocal_track.takes[t_idx].pcm_samples.len().max(1);
+                            for (r_take, r_start, r_end) in &vocal_track.comp_regions {
+                                if *r_take != t_idx {
+                                    continue;
+                                }
+                                let x0 = w_rect.min.x
+                                    + 3.0
+                                    + w_rect.width() * (*r_start as f32 / total_samples as f32);
+                                let x1 = w_rect.min.x
+                                    + 3.0
+                                    + w_rect.width() * (*r_end as f32 / total_samples as f32);
+                                let band = Rect::from_min_max(
+                                    Pos2::new(x0, w_rect.min.y + 1.0),
+                                    Pos2::new(x1.max(x0 + 1.0), w_rect.max.y - 1.0),
+                                );
+                                painter.rect_filled(
+                                    band,
+                                    Rounding::same(2.0),
+                                    Color32::from_rgba_unmultiplied(
+                                        Theme::FL_GREEN.r(),
+                                        Theme::FL_GREEN.g(),
+                                        Theme::FL_GREEN.b(),
+                                        70,
+                                    ),
+                                );
+                            }
+
+                            // Klick på ett markerat band tar bort det partiet — det är så man
+                            // ångrar en kompning utan att bygga om allt.
+                            if w_resp.clicked() {
+                                if let Some(pos) = w_resp.interact_pointer_pos() {
+                                    let frac = ((pos.x - w_rect.min.x - 3.0)
+                                        / (w_rect.width() - 6.0).max(1.0))
+                                        .clamp(0.0, 1.0);
+                                    let at = (frac * total_samples as f32) as usize;
+                                    let before = vocal_track.comp_regions.len();
+                                    vocal_track
+                                        .comp_regions
+                                        .retain(|(rt, rs, re)| !(*rt == t_idx && at >= *rs && at < *re));
+                                    if vocal_track.comp_regions.len() != before {
+                                        *status_msg = crate::tstatus!(
+                                            "Tog bort ett komp-parti ur {}",
+                                            take_name
+                                        );
+                                    }
                                 }
                             }
 
