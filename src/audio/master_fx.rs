@@ -170,6 +170,8 @@ pub struct MasterFxParams {
     pub mb_delay_enabled: bool,
     pub delay_bank: DelayBankParams,
     pub delay_bank_enabled: bool,
+    pub distructor: DistructorParams,
+    pub distructor_enabled: bool,
     pub control: ControlRoomParams,
 }
 
@@ -211,6 +213,8 @@ impl Default for MasterFxParams {
             mb_delay_enabled: false,
             delay_bank: DelayBankParams::default(),
             delay_bank_enabled: false,
+            distructor: DistructorParams::default(),
+            distructor_enabled: false,
             control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
@@ -240,6 +244,7 @@ pub struct MasterFxChain {
     crusher: BitCrusher,
     mb_delay: MultibandDelay,
     delay_bank: DelayBank,
+    distructor: Distructor,
     filter: MasterFilter,
     limiter: Limiter,
     params: MasterFxParams,
@@ -269,6 +274,7 @@ impl MasterFxChain {
             crusher: BitCrusher::new(sample_rate),
             mb_delay: MultibandDelay::new(sample_rate),
             delay_bank: DelayBank::new(sample_rate),
+            distructor: Distructor::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
@@ -363,6 +369,12 @@ impl MasterFxChain {
 
         if p.convolver_enabled {
             let (nl, nr) = self.convolver.process(l, r, &p.convolver);
+            l = nl;
+            r = nr;
+        }
+
+        if p.distructor_enabled {
+            let (nl, nr) = self.distructor.process(l, r, &p.distructor);
             l = nl;
             r = nr;
         }

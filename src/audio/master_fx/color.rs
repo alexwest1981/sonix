@@ -827,3 +827,101 @@ impl FrequencyShifter {
         )
     }
 }
+
+/// **Distructor** (FL): tre distorsioner med egen drive, kopplade i serie eller parallellt,
+/// med ett tonläge efter.
+///
+/// Serie staplar kurvorna: varje steg får det föregående stegets redan klippta signal.
+/// Parallellt ger varje steg **ingångssignalen** i stället, vilket låter mer än man kan tro —
+/// vid hårt drive kan vikningssteget då arbeta på en renare signal och ge **fler** övertoner
+/// än serien, inte färre. Skillnaden mellan lägena är alltså karaktär, inte mängd.
+pub struct Distructor {
+    sample_rate: f32,
+    lp_l: f32,
+    lp_r: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct DistructorParams {
+    /// Drive per steg, 0–1 → 1× till 40×.
+    pub drive: [f32; 3],
+    /// 0 = serie, 1 = parallellt.
+    pub parallel: f32,
+    /// Tonlägets knä i Hz (enpoligt lågpass efter distorsionen).
+    pub tone_hz: f32,
+    pub mix: f32,
+}
+
+impl Default for DistructorParams {
+    fn default() -> Self {
+        Self {
+            drive: [0.35, 0.35, 0.35],
+            parallel: 0.0,
+            tone_hz: 6_000.0,
+            mix: 0.5,
+        }
+    }
+}
+
+/// Kurvorna de tre stegen använder: mjuk mättnad, hård klippning och vikning.
+fn distructor_curve(stage: usize, x: f32) -> f32 {
+    match stage {
+        0 => x.tanh(),
+        1 => x.clamp(-1.0, 1.0),
+        _ => {
+            // Vikning: över −1..1 vänds kurvan tillbaka, vilket ger en vassare övertonston
+            // än både tanh och klippning.
+            let folded = (x + 1.0).rem_euclid(4.0);
+            let y = if folded <= 2.0 { folded } else { 4.0 - folded };
+            y - 1.0
+        }
+    }
+}
+
+impl Distructor {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate: sample_rate.max(1.0),
+            lp_l: 0.0,
+            lp_r: 0.0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &DistructorParams) -> (f32, f32) {
+        // **Nivån kompenseras per steg.** Utan det hade tre steg i serie med 40× var klättrat
+        // till full klippning redan vid lite drive, och ratten hade inte gjort någon skillnad:
+        // allt över 0,1 lät likadant. Nu normaliseras varje steg mot sin egen kurva vid
+        // fullskala, så det är **kurvans** form som ändras med drivet, inte bara nivån.
+        // **Drivet är stegets förstärkning in i kurvan.** Lågt drive ska ligga under
+        // klipptröskeln — annars viker sig kurvan redan vid 0,1 och ratten gör ingenting.
+        let gain = |i: usize| 0.2 + p.drive[i].clamp(0.0, 1.0) * 7.8;
+        let stage_out = |stage: usize, x: f32| distructor_curve(stage, x * gain(stage));
+        let shape = |x: f32| -> f32 {
+            let parallel = p.parallel.clamp(0.0, 1.0);
+            let mut series = x;
+            for stage in 0..3 {
+                series = stage_out(stage, series);
+            }
+            if parallel <= 0.0 {
+                return series;
+            }
+            // Parallellt: varje steg på **samma** ingång, summerade med samma vikt.
+            let mixed: f32 = (0..3).map(|stage| stage_out(stage, x)).sum::<f32>() / 3.0;
+            series * (1.0 - parallel) + mixed * parallel
+        };
+
+        let (dl, dr) = (shape(l), shape(r));
+        let a = (1.0
+            - (-2.0 * std::f32::consts::PI * p.tone_hz.clamp(200.0, 20_000.0) / self.sample_rate)
+                .exp())
+        .clamp(0.0, 1.0);
+        self.lp_l += a * (dl - self.lp_l);
+        self.lp_r += a * (dr - self.lp_r);
+        let mix = p.mix.clamp(0.0, 1.0);
+        (
+            l * (1.0 - mix) + self.lp_l * mix,
+            r * (1.0 - mix) + self.lp_r * mix,
+        )
+    }
+}

@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 47** har en motsvarighet, **◐ 45** delvis, **✗ 49** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 48** har en motsvarighet, **◐ 45** delvis, **✗ 48** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -169,7 +169,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | :--- | ---: | :---: | :--- |
 | ZGameEditor Visualizer | 1423 | ✗ | 1 423 filer visuella förinställningar; kräver GPU-scen |
 | Hardcore | 42 | ✗ | gitarreffektkedja (98 .hdprg-program) |
-| Distructor | 37 | ✗ | flera distorsioner i serie/parallellt |
+| Distructor | 37 | ✅ | `Distructor` — tre kurvor (mättnad, klippning, vikning) i serie eller parallellt, tonläge efter |
 | Fruity Love Philter | 23 | ◐ | SVF + filterenvelop, men ingen multi-filterbank |
 | Pitcher | 22 | ◐ | vocal_harmonizer med formantbevarande pitch |
 | Edison | 20 | ◐ | recordern; ingen vågformseditor med verktyg |

@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    DelayBankParams, ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    DelayBankParams, DistructorParams, ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -281,6 +281,21 @@ impl Default for FxRackState {
                     p3_val: 0.35,
                     mix: 0.30,
                     description: "Tre delaylinjor, 20–1500 ms, med egen nivå, gemensam återkoppling och stereospridning.",                    extra: vec![("NIVÅ 2", 0.7), ("NIVÅ 3", 0.5), ("ÅTERKOPPLING", 0.35), ("SPRIDNING", 0.6)],
+                },
+                FxPedal {
+                    id: "distructor",
+                    name: "💥 DISTRUCTOR",
+                    category: "Distortion",
+                    enabled: false,
+                    color: Color32::from_rgb(255, 120, 90),
+                    p1_name: "DRIVE 1",
+                    p1_val: 0.35,
+                    p2_name: "DRIVE 2",
+                    p2_val: 0.35,
+                    p3_name: "DRIVE 3",
+                    p3_val: 0.35,
+                    mix: 0.50,
+                    description: "Tre distorsioner: mjuk mättnad, hård klippning och vikning. SERIE staplar dem, PARALLELL blandar dem.",                    extra: vec![("PARALLELL", 0.0), ("TON", 0.70)],
                 },
                 FxPedal {
                     id: "chorus",
@@ -578,6 +593,21 @@ impl FxRackState {
             mix: db_knob(|p| p.mix, 0.3),
         };
 
+        let ds_p = self.pedal("distructor");
+        let ds_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            ds_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let distructor = DistructorParams {
+            drive: [
+                ds_knob(|p| p.p1_val, 0.35),
+                ds_knob(|p| p.p2_val, 0.35),
+                ds_knob(|p| p.p3_val, 0.35),
+            ],
+            parallel: ds_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.0), 0.0),
+            tone_hz: 300.0 * (10.0f32).powf(ds_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.7), 0.7) * 1.8),
+            mix: ds_knob(|p| p.mix, 0.5),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -615,6 +645,8 @@ impl FxRackState {
             mb_delay_enabled: mb_p.map(|p| p.enabled).unwrap_or(false),
             delay_bank,
             delay_bank_enabled: db_p.map(|p| p.enabled).unwrap_or(false),
+            distructor,
+            distructor_enabled: ds_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,
@@ -1509,6 +1541,37 @@ mod tests {
         assert!((params.delay_bank.feedback - 0.80).abs() < 0.01);
         assert!(params.delay_bank.spread.abs() < 0.01, "spridning: {}", params.delay_bank.spread);
         assert!((params.delay_bank.mix - 0.4).abs() < 0.01);
+    }
+
+    /// **Distructors rattar når sina egna fält** — tre drivar, kopplingen, tonen och mixen.
+    #[test]
+    fn the_distructor_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "distructor")
+            .expect("distructor-pedalen ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 1.0;
+        pedal.p2_val = 0.5;
+        pedal.p3_val = 0.0;
+        pedal.extra[0].1 = 1.0; // parallellt
+        pedal.extra[1].1 = 0.0; // lägsta ton
+        pedal.mix = 1.0;
+
+        let params = state.build_master_fx_params();
+        assert!(params.distructor_enabled, "pedalen ska slå på steget");
+        assert!((params.distructor.drive[0] - 1.0).abs() < 0.01);
+        assert!((params.distructor.drive[1] - 0.5).abs() < 0.01);
+        assert!(params.distructor.drive[2].abs() < 0.01);
+        assert!(params.distructor.parallel > 0.99, "kopplingen: {}", params.distructor.parallel);
+        assert!(
+            (params.distructor.tone_hz - 300.0).abs() < 1.0,
+            "tonen ska gå ner till 300 Hz: {}",
+            params.distructor.tone_hz
+        );
     }
 
 }

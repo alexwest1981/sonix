@@ -924,3 +924,82 @@
         assert!(with > 0.1, "med återkoppling ska andra varvet höras: {with:.4}");
     }
 
+    /// Övertoner i förhållande till grundtonen — det som gör distorsion mätbar.
+    fn thd(samples: &[f32], f0: f32, sr: f32) -> f32 {
+        let mag = |f: f32| {
+            let (mut re, mut im) = (0.0f32, 0.0f32);
+            for (n, &x) in samples.iter().enumerate() {
+                let ph = 2.0 * std::f32::consts::PI * f * n as f32 / sr;
+                re += x * ph.cos();
+                im -= x * ph.sin();
+            }
+            (re * re + im * im).sqrt() / samples.len() as f32
+        };
+        let fund = mag(f0);
+        let harmonics: f32 = [3.0f32, 5.0, 7.0].iter().map(|k| mag(f0 * k)).sum();
+        if fund <= 1e-9 { f32::INFINITY } else { harmonics / fund }
+    }
+
+    /// **Distructor biter, och de två kopplingarna låter olika.** Mer drive ska ge mer
+    /// övertoner — annars är det ingen distorsion — och serie/parallellt ska inte ge samma
+    /// resultat, annars är ratten en attrapp.
+    #[test]
+    fn the_distructor_stacks_its_stages_in_series() {
+        let sr = 48_000.0;
+        let render = |drive: f32, parallel: f32| {
+            let mut d = Distructor::new(sr);
+            let params = DistructorParams {
+                drive: [drive; 3],
+                parallel,
+                tone_hz: 20_000.0,
+                mix: 1.0,
+            };
+            let out: Vec<f32> = (0..24_000)
+                .map(|n| {
+                    let x = (2.0 * std::f32::consts::PI * 220.0 * n as f32 / sr).sin() * 0.5;
+                    d.process(x, x, &params).0
+                })
+                .collect();
+            out[12_000..].to_vec()
+        };
+        let soft = thd(&render(0.1, 0.0), 220.0, sr);
+        let hard = thd(&render(0.9, 0.0), 220.0, sr);
+        let par = thd(&render(0.9, 1.0), 220.0, sr);
+        println!("THD: drive 0,1 {soft:.3}, drive 0,9 {hard:.3}, drive 0,9 parallellt {par:.3}");
+        assert!(hard > soft * 2.0, "mer drive ska ge mer övertoner: {soft:.3} → {hard:.3}");
+        assert!(
+            (par - hard).abs() > hard * 0.2,
+            "serie och parallellt ska ge olika övertonston: {par:.3} mot {hard:.3}"
+        );
+    }
+
+    /// **Vikningssteget låter annorlunda än mättnaden** — vid samma drive ska det ge en
+    /// annan övertonston, inte bara mer av samma.
+    #[test]
+    fn the_foldback_stage_differs_from_the_soft_one() {
+        let sr = 48_000.0;
+        let render_one_stage = |drive: [f32; 3]| {
+            let mut d = Distructor::new(sr);
+            let params = DistructorParams {
+                drive,
+                parallel: 1.0,
+                tone_hz: 20_000.0,
+                mix: 1.0,
+            };
+            let out: Vec<f32> = (0..24_000)
+                .map(|n| {
+                    let x = (2.0 * std::f32::consts::PI * 220.0 * n as f32 / sr).sin() * 0.5;
+                    d.process(x, x, &params).0
+                })
+                .collect();
+            out[12_000..].to_vec()
+        };
+        let soft = thd(&render_one_stage([0.8, 0.0, 0.0]), 220.0, sr);
+        let folded = thd(&render_one_stage([0.0, 0.0, 0.8]), 220.0, sr);
+        println!("THD: mjukt steg {soft:.3}, vikning {folded:.3}");
+        assert!(
+            (folded - soft).abs() > soft * 0.25,
+            "stegen ska ge olika övertonston: {soft:.3} mot {folded:.3}"
+        );
+    }
+
