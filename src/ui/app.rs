@@ -166,6 +166,10 @@ pub struct SonixApp {
     pub last_step_time: Instant,
     pub song_time: f32,
     pub pattern_mode: bool,
+    /// Follow action för den valda slingan i mönsterläget. `None` = av.
+    pub follow: Option<crate::follow::FollowAction>,
+    /// Takter den valda slingan spelat sedan senaste bytet.
+    pub follow_bars: f32,
     pub view_mode: ViewMode,
     /// Groovemallens styrka när den läggs på tagningen (0 = rak, 1 = full förskjutning).
     pub take_groove_amount: f32,
@@ -776,6 +780,8 @@ impl SonixApp {
             last_step_time: Instant::now(),
             song_time: 0.0,
             pattern_mode: false,
+            follow: None,
+            follow_bars: 0.0,
             view_mode: ViewMode::PlaylistArranger,
             docked_panel: None,
             take_groove_amount: 1.0,

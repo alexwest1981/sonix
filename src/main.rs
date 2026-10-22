@@ -15,6 +15,7 @@ compile_error!(
     "plugin-host (CLAP-värd med X11-fönster och memfd-sandlåda) är Linux-only i den här versionen. Bygg utan --features plugin-host, eller se Fas 7.1 i ROADMAP.md."
 );
 
+mod follow;
 mod groove;
 mod i18n;
 mod midi_take;

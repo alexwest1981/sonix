@@ -376,6 +376,14 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "FÖLJ: AV" => "FOLLOW: OFF",
+        "Nästa" => "Next",
+        "Föregående" => "Previous",
+        "Första" => "First",
+        "Sista" => "Last",
+        "Hoppa till" => "Jump to",
+        "Stanna" => "Stop",
+        "Samma igen" => "Again",
         "📁 Arkiv" => "📁 File",
         "📄 Nytt tomt projekt (Ctrl+N)" => "📄 New empty project (Ctrl+N)",
         "📂 Öppna projekt... (Ctrl+O)" => "📂 Open project... (Ctrl+O)",
@@ -2508,6 +2516,14 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "FÖLJ: AV" => "FØLG: FRA",
+        "Nästa" => "Næste",
+        "Föregående" => "Forrige",
+        "Första" => "Første",
+        "Sista" => "Sidste",
+        "Hoppa till" => "Hop til",
+        "Stanna" => "Stop",
+        "Samma igen" => "Samme igen",
         "📁 Arkiv" => "📁 Fil",
         "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Nyt tomt projekt (Ctrl+N)",
         "📂 Öppna projekt... (Ctrl+O)" => "📂 Åbn projekt... (Ctrl+O)",
@@ -4598,6 +4614,14 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "FÖLJ: AV" => "FØLG: AV",
+        "Nästa" => "Neste",
+        "Föregående" => "Forrige",
+        "Första" => "Første",
+        "Sista" => "Siste",
+        "Hoppa till" => "Hopp til",
+        "Stanna" => "Stopp",
+        "Samma igen" => "Samme igjen",
         "📁 Arkiv" => "📁 Fil",
         "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Nytt tomt prosjekt (Ctrl+N)",
         "📂 Öppna projekt... (Ctrl+O)" => "📂 Åpne prosjekt... (Ctrl+O)",
@@ -6688,6 +6712,14 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "FÖLJ: AV" => "FOLGEN: AUS",
+        "Nästa" => "Weiter",
+        "Föregående" => "Zurück",
+        "Första" => "Erste",
+        "Sista" => "Letzte",
+        "Hoppa till" => "Springe zu",
+        "Stanna" => "Stopp",
+        "Samma igen" => "Nochmal",
         "📁 Arkiv" => "📁 Datei",
         "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Neues leeres Projekt (Ctrl+N)",
         "📂 Öppna projekt... (Ctrl+O)" => "📂 Projekt öffnen... (Ctrl+O)",
@@ -8778,6 +8810,14 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "FÖLJ: AV" => "SEGUIR: NO",
+        "Nästa" => "Siguiente",
+        "Föregående" => "Anterior",
+        "Första" => "Primera",
+        "Sista" => "Última",
+        "Hoppa till" => "Saltar a",
+        "Stanna" => "Parar",
+        "Samma igen" => "Otra vez",
         "📁 Arkiv" => "📁 Archivo",
         "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Nuevo proyecto vacío (Ctrl+N)",
         "📂 Öppna projekt... (Ctrl+O)" => "📂 Abrir proyecto... (Ctrl+O)",
@@ -10868,6 +10908,14 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "FÖLJ: AV" => "SUIVRE : OFF",
+        "Nästa" => "Suivant",
+        "Föregående" => "Précédent",
+        "Första" => "Première",
+        "Sista" => "Dernière",
+        "Hoppa till" => "Aller à",
+        "Stanna" => "Arrêter",
+        "Samma igen" => "Encore",
         "📁 Arkiv" => "📁 Fichier",
         "📄 Nytt tomt projekt (Ctrl+N)" => "📄 Nouveau projet vide (Ctrl+N)",
         "📂 Öppna projekt... (Ctrl+O)" => "📂 Ouvrir un projet... (Ctrl+O)",

@@ -359,6 +359,41 @@ pub(crate) fn advance_sequencer(&mut self) {
 
         if self.pattern_mode {
             self.current_step = (self.current_step + 1) % 16;
+            // **Follow action:** en takt är 16 steg, så varvet vid 0 är taktgränsen. Åtgärden
+            // prövas en gång per takt — inte per steg — och bara när det finns en.
+            if self.current_step == 0 {
+                self.follow_bars += 1.0;
+                if let Some(action) = self.follow {
+                    if action.due(self.follow_bars) {
+                        // Slumpen dras ur klockan, inte ur ett sparat frö: en follow action ska
+                        // kunna gå olika vägar mellan två spelningar.
+                        // Slumpen dras ur klockan, inte ur ett sparat frö: en follow action ska
+                        // kunna gå olika vägar mellan två spelningar.
+                        let roll = crate::rng::Rng::new(
+                            std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .map(|d| d.subsec_nanos() as u64 | 1)
+                                .unwrap_or(1),
+                        )
+                        .next_f32();
+                        match action.apply(self.selected_pattern, self.patterns.len(), roll) {
+                            crate::follow::FollowOutcome::Switch(next) => {
+                                self.selected_pattern = next;
+                                self.follow_bars = 0.0;
+                                self.status_message = format!("Följd: slinga {}", next + 1);
+                            }
+                            crate::follow::FollowOutcome::Stop => {
+                                self.is_playing = false;
+                                self.follow_bars = 0.0;
+                                let _ = self.engine.send_command(AudioCommand::SetSongPlayback(false));
+                            }
+                            crate::follow::FollowOutcome::Stay => {
+                                self.follow_bars = 0.0;
+                            }
+                        }
+                    }
+                }
+            }
             self.trigger_step(self.current_step);
         } else {
             self.song_step_in_bar += 1;

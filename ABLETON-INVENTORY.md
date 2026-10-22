@@ -166,7 +166,7 @@ Operationerna som gör Ableton till Ableton, och var Sonix står:
 | `Separate Stems To New Audio Tracks`, `Separate Stems For Time Selection` | ✅ (`neural_separator` + `stem_separator`) |
 | `Chop Notes`, `Split Notes`, `Join Notes`, `Legato`, `Fit To Time Range` | ◐ (humanize/kvantisering finns; ingen Legato/Join) |
 | `Quantize Settings`, `Groove Pool`, `Extract Groove`, `Extract Grooves` | ✅ groove-mallar: `.agr` läses och läggs på tagningen (116 av 219 filer är XML, 103 binära); ingen groove-pool med flera mallar samtidigt |
-| `Follow Action` (A/B, chance, jump index, multiplier), `Create Follow Action Chain` | ✗ |
+| `Follow Action` (A/B, chance, jump index, multiplier), `Create Follow Action Chain` | ◐ `src/follow.rs` — sju åtgärder (nästa, föregående, första, sista, hoppa till, stanna, samma igen), taktantAL och chans. ✗ A/B-paret med multiplikator, och inställningen sparas inte i projektet |
 | Take lanes: `Insert Take Lane`, `Copy From Take Lane To Content Lane`, `Delete Unused Take Lanes`, `Swap Lane` | ◐ (MIDI-tagningar, ingen kompning i spellistan) |
 | `Warp Mode`: Beats, Tones, Texture, Re-Pitch, Complex, Complex Pro (+ granularity, formants) | ◐ (WSOLA, bandspelare, formantbevarande pitch — inte sex lägen) |
 | `Show Tuning Pool`, Scala/ASCL | ✅ (`Tuning` + `parse_ascl`; `.ascl` läses i menyn) |

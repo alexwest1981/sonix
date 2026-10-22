@@ -1105,6 +1105,37 @@ impl SonixApp {
                                 self.status_message = (if self.pattern_mode { self.tr("Läge ändrat till: PAT (Mönsterloop)") } else { self.tr("Läge ändrat till: SONG (Låtläge)") }).to_string();
                             }
 
+                            // **Follow action:** syns bara i mönsterläget, där en slinga kan
+                            // spela flera varv. Knappen växlar åtgärd, och AV är ett eget läge i
+                            // varvet — att stänga av ska inte kräva en kryssruta till.
+                            if self.pattern_mode {
+                                ui.separator();
+                                let current = self.follow.map(|f| f.kind);
+                                let label = match current {
+                                    Some(kind) => format!("FÖLJ: {}", self.tr(kind.label())),
+                                    None => self.tr("FÖLJ: AV").to_string(),
+                                };
+                                let color = if current.is_some() { Theme::FL_ORANGE } else { Theme::TEXT_MUTED };
+                                if ui.add(egui::Button::new(egui::RichText::new(label).size(9.0).color(color))).clicked() {
+                                    use crate::follow::{FollowAction, FollowKind};
+                                    self.follow = match current {
+                                        None => Some(FollowAction { kind: FollowKind::Next, ..FollowAction::default() }),
+                                        Some(FollowKind::Next) => Some(FollowAction { kind: FollowKind::Previous, ..FollowAction::default() }),
+                                        Some(FollowKind::Previous) => Some(FollowAction { kind: FollowKind::First, ..FollowAction::default() }),
+                                        Some(FollowKind::First) => Some(FollowAction { kind: FollowKind::Last, ..FollowAction::default() }),
+                                        Some(FollowKind::Last) => Some(FollowAction { kind: FollowKind::Again, ..FollowAction::default() }),
+                                        Some(FollowKind::Again) => Some(FollowAction { kind: FollowKind::Stop, ..FollowAction::default() }),
+                                        Some(FollowKind::Stop) => None,
+                                        Some(FollowKind::Jump) => None,
+                                    };
+                                    self.follow_bars = 0.0;
+                                }
+                                if let Some(action) = &mut self.follow {
+                                    ui.add(egui::DragValue::new(&mut action.after_bars).range(0.25..=64.0).speed(0.25).suffix(" takter").max_decimals(2));
+                                    ui.add(egui::DragValue::new(&mut action.chance).range(0.0..=1.0).speed(0.01).custom_formatter(|v, _| format!("{:.0} %", v * 100.0)));
+                                }
+                            }
+
                             ui.separator();
 
                             let time_str = format_time_hundredths(self.song_time);
