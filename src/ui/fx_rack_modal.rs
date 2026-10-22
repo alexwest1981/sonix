@@ -1,7 +1,7 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
     AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
-    ConvolverParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
+    ControlRoomParams, ConvolverParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
     ModFxParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
@@ -46,6 +46,8 @@ pub struct FxRackState {
     pub search_query: String,
     pub selected_category: &'static str,
     pub eq_nodes: Vec<VisualEqNode>,
+    /// Control Room: monokontroll, dämpning och lyssningsnivå.
+    pub control_room: ControlRoomParams,
     pub compressor_release_ms: f32,
     /// Convolverns torr/våt och nivå. Impulsresponsen själv ligger i motorn (den är för stor
     /// för att skickas varje bildruta) — här finns bara namnet, för att veta om en är laddad.
@@ -57,6 +59,7 @@ pub struct FxRackState {
 impl Default for FxRackState {
     fn default() -> Self {
         Self {
+            control_room: ControlRoomParams::default(),
             pedals: vec![
                 FxPedal {
                     id: "visual_eq",
@@ -480,6 +483,7 @@ impl FxRackState {
         };
 
         MasterFxParams {
+            control: self.control_room,
             granular,
             granular_enabled: gr_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
@@ -650,6 +654,39 @@ pub fn render_fx_rack_modal(
 
                         let rack_btn = ui.selectable_label(state.active_tab == 0, crate::i18n::t("🎛 Effektkedja"));
                         if rack_btn.clicked() { state.active_tab = 0; }
+                    });
+                });
+
+                // Control Room ligger överst därför att den gäller **allt** som lämnar
+                // mastern — den är lyssning, inte effekt.
+                ui.group(|ui| {
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("🎧 CONTROL ROOM"))
+                                .strong()
+                                .size(11.0)
+                                .color(Theme::FL_CYAN),
+                        );
+                        ui.separator();
+                        ui.checkbox(&mut state.control_room.mono, crate::i18n::t("Mono"))
+                            .on_hover_text(crate::i18n::t(
+                                "Lägger ihop kanalerna: en mix som bara håller i stereo faller här.",
+                            ));
+                        ui.checkbox(&mut state.control_room.dim, crate::i18n::t("Dim"))
+                            .on_hover_text(crate::i18n::t("Sänker lyssningen utan att röra mastern."));
+                        ui.add(
+                            egui::DragValue::new(&mut state.control_room.dim_db)
+                                .range(-60.0..=0.0)
+                                .speed(0.5)
+                                .suffix(" dB"),
+                        );
+                        ui.separator();
+                        ui.label(crate::i18n::t("Lyssning:"));
+                        ui.add(
+                            egui::Slider::new(&mut state.control_room.level_db, -40.0..=6.0)
+                                .suffix(" dB")
+                                .fixed_decimals(1),
+                        );
                     });
                 });
 

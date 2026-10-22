@@ -1497,8 +1497,24 @@ impl Granular {
     }
 }
 
+/// **Control Room** (Cubase): lyssningssektionen, efter limitern och därmed efter allt som
+/// påverkar ljudet. Monokontroll, dämpning och lyssningsnivå — verktyg för att kontrollera en
+/// mix, inte för att forma den. Allt av som standard, så utgången är identisk med förut.
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ControlRoomParams {
+    pub mono: bool,
+    pub dim: bool,
+    pub dim_db: f32,
+    pub level_db: f32,
+}
 
+impl Default for ControlRoomParams {
+    fn default() -> Self {
+        Self { mono: false, dim: false, dim_db: -20.0, level_db: 0.0 }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MasterFxParams {
     pub eq_bands: [MasterEqBand; 4],
     pub eq_enabled: bool,
@@ -1529,6 +1545,7 @@ pub struct MasterFxParams {
     pub limiter_enabled: bool,
     pub granular: GranularParams,
     pub granular_enabled: bool,
+    pub control: ControlRoomParams,
 }
 
 impl Default for MasterFxParams {
@@ -1561,6 +1578,7 @@ impl Default for MasterFxParams {
             filter: MasterFilterParams::default(),
             granular: GranularParams::default(),
             granular_enabled: false,
+            control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
         }
@@ -1746,7 +1764,19 @@ impl MasterFxChain {
             r = nr;
         }
 
-        (l, r)
+        // Control Room ligger sist: monokontroll och dämpning ska gälla det som faktiskt
+        // lämnar mastern, inte påverka något steg före sig.
+        let c = p.control;
+        if c.mono {
+            let m = 0.5 * (l + r);
+            l = m;
+            r = m;
+        }
+        let mut gain = 10.0_f32.powf(c.level_db.clamp(-60.0, 12.0) / 20.0);
+        if c.dim {
+            gain *= 10.0_f32.powf(c.dim_db.clamp(-60.0, 0.0) / 20.0);
+        }
+        (l * gain, r * gain)
     }
 }
 
@@ -2562,6 +2592,42 @@ mod tests {
         assert!(
             (ratio - 2.0).abs() < 0.1,
             "dubbel hastighet ska ge dubbel frekvens: {ratio:.3} ({a:.0} Hz mot {b:.0} Hz)"
+        );
+    }
+
+    /// **Monokontroll lägger ihop kanalerna, dämpningen sänker nivån.** Båda mäts efter
+    /// limitern, där Control Room sitter. Kanalerna jämförs **sampel för sampel** — att
+    /// jämföra medelbelopp hade gett samma tal för två olika sinustoner.
+    #[test]
+    fn control_room_folds_to_mono_and_dims_by_the_set_amount() {
+        // (skillnaden mellan kanalerna, summan av vänsterns belopp)
+        let run = |mono: bool, dim: bool, dim_db: f32| {
+            let mut chain = MasterFxChain::new(48_000.0);
+            let mut params = MasterFxParams::default();
+            params.control = ControlRoomParams { mono, dim, dim_db, level_db: 0.0 };
+            chain.set_params(params);
+            let (mut diff, mut energy) = (0.0f64, 0.0f64);
+            for i in 0..4_800 {
+                let t = i as f32 / 48_000.0;
+                let left = (2.0 * std::f32::consts::PI * 440.0 * t).sin() * 0.5;
+                let right = (2.0 * std::f32::consts::PI * 660.0 * t).sin() * 0.5;
+                let (a, b) = chain.process(left, right);
+                diff += (a - b).abs() as f64;
+                energy += a.abs() as f64;
+            }
+            (diff, energy)
+        };
+        let (stereo_diff, stereo_energy) = run(false, false, -20.0);
+        assert!(stereo_diff > 10.0, "stereo ska ha olika kanaler: {stereo_diff:.1}");
+
+        let (mono_diff, _) = run(true, false, -20.0);
+        assert!(mono_diff < 1e-3, "mono ska ge identiska kanaler: {mono_diff:.6}");
+
+        let (_, dim_energy) = run(false, true, -20.0);
+        let ratio_db = 20.0 * (dim_energy / stereo_energy).log10();
+        assert!(
+            (ratio_db + 20.0).abs() < 0.5,
+            "dämpningen ska vara -20 dB: {ratio_db:.2} dB"
         );
     }
 
