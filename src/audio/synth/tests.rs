@@ -378,8 +378,8 @@ fn filter_env_zero_amount_is_transparent() {
     a.trigger(60, 261.63, 1.0, 48_000.0);
     b.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..500 {
-        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default());
-        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default());
+        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
+        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
         assert!(
             (sa - sb).abs() < 1e-6,
             "amount 0 must ignore the filter envelope shape"
@@ -398,8 +398,8 @@ fn filter_env_amount_changes_timbre() {
     wet.trigger(60, 261.63, 1.0, 48_000.0);
     let mut diff = 0.0_f32;
     for _ in 0..2000 {
-        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default());
-        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default());
+        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
+        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
         diff += (a - b).abs();
     }
     assert!(diff > 1.0, "filter envelope should alter the timbre, diff={diff}");
@@ -414,7 +414,7 @@ fn voices_have_independent_filter_envelopes() {
     let mut second = Voice::new(48_000.0);
     first.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..2000 {
-        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default());
+        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
     }
     second.trigger(64, 329.63, 1.0, 48_000.0);
     let l1 = first.filter_env.current_level;
@@ -2055,8 +2055,8 @@ fn fm_at_zero_index_is_the_plain_oscillator() {
     b.trigger(57, 220.0, 1.0, 48_000.0);
     let fm = FmParams { ratio: 3.0, index: 0.0 };
     for i in 0..2_000 {
-        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm);
-        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default());
+        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0);
+        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0);
         assert_eq!(sa, sb, "index 0 ska ge exakt samma sample (frame {i})");
     }
 }
@@ -2074,7 +2074,7 @@ fn fm_puts_sidebands_where_the_plain_oscillator_has_none() {
         let fm = FmParams { ratio: 3.0, index };
         let mut out = Vec::with_capacity(9_600);
         for _ in 0..9_600 {
-            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm));
+            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0));
         }
         out
     };
@@ -2115,5 +2115,99 @@ fn a_velocity_slot_quiets_the_master_output() {
     assert!(
         peak_mod < peak_plain * 0.35,
         "modulationen tog inte: {peak_mod} mot {peak_plain}"
+    );
+}
+
+/// **Tonhöjdsmodulationen når rösterna.** En rad som drar upp tonhöjden en oktav med
+/// senaste notens anslag ska göra utgången en oktav högre. Tonhöjden mäts med
+/// autokorrelation, inte med nollgenomgångar: ett resonant filter lägger till
+/// nollgenomgångar som inte hör till grundtonen.
+#[test]
+fn a_pitch_slot_transposes_the_oscillator() {
+    use crate::audio::modulation::{ModSlot, ModSource, ModTarget};
+
+    // Grundtonsskattning: den lag som ger högst normaliserad autokorrelation.
+    let f0 = |samples: &[f32], sr: f32| -> f32 {
+        let min_lag = (sr / 1200.0) as usize;
+        let max_lag = (sr / 100.0) as usize;
+        let mut best_lag = min_lag;
+        let mut best = f32::NEG_INFINITY;
+        for lag in min_lag..max_lag.min(samples.len() / 2) {
+            let mut dot = 0.0f32;
+            let mut energy = 0.0f32;
+            for i in 0..samples.len() - lag {
+                dot += samples[i] * samples[i + lag];
+                energy += samples[i] * samples[i];
+            }
+            let score = dot / (energy.sqrt() * energy.sqrt() + 1e-9);
+            if score > best {
+                best = score;
+                best_lag = lag;
+            }
+        }
+        sr / best_lag as f32
+    };
+
+    let run = |modulated: bool| {
+        let mut engine = SynthEngine::new(48_000.0);
+        engine.filter_params.cutoff = 12_000.0;
+        if modulated {
+            engine
+                .modulation
+                .set_slots(vec![ModSlot::new(ModSource::Velocity, ModTarget::Pitch, 1.0)]);
+        }
+        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0 });
+        let mut buf = Vec::new();
+        for _ in 0..9_600 {
+            let (l, _) = engine.process_stereo();
+            buf.push(l);
+        }
+        // Hoppa över attacken: skattningen ska göras på det stationära partiet.
+        f0(&buf[2_400..], 48_000.0)
+    };
+
+    let plain = run(false);
+    let bent = run(true);
+    assert!((plain - 220.0).abs() < 12.0, "referensen ska vara 220 Hz: {plain:.1}");
+    let ratio = bent / plain;
+    assert!(
+        (ratio - 2.0).abs() < 0.12,
+        "en oktav upp ska ge dubbel frekvens: {ratio:.2} ({plain:.1} Hz mot {bent:.1} Hz)"
+    );
+}
+
+/// **Filtermodulationen når rösterna.** Samma not med ett lågt stängt filter ska bli
+/// ljusare när modulationsraden öppnar det, mätt som energi i första differensen.
+#[test]
+fn a_cutoff_slot_opens_the_voice_filter() {
+    use crate::audio::modulation::{ModSlot, ModSource, ModTarget};
+
+    let mut closed = SynthEngine::new(48_000.0);
+    let mut opened = SynthEngine::new(48_000.0);
+    for engine in [&mut closed, &mut opened] {
+        engine.waveform = crate::audio::Waveform::Saw;
+        engine.filter_params.cutoff = 220.0;
+        engine.handle_command(AudioCommand::NoteOn { note: 45, freq: 110.0, velocity: 1.0 });
+    }
+    opened
+        .modulation
+        .set_slots(vec![ModSlot::new(ModSource::Velocity, ModTarget::Cutoff, 0.75)]);
+    let brightness = |engine: &mut SynthEngine| {
+        let mut prev = 0.0f32;
+        let mut sum = 0.0f64;
+        for _ in 0..9_600 {
+            let (l, _) = engine.process_stereo();
+            let d = (l - prev) as f64;
+            sum += d * d;
+            prev = l;
+        }
+        sum.sqrt()
+    };
+    let a = brightness(&mut closed);
+    let b = brightness(&mut opened);
+    assert!(a > 1e-6, "referensen ska höras");
+    assert!(
+        b > a * 1.2,
+        "öppnat filter ska ge mer diskant: {b:.4} mot {a:.4}"
     );
 }

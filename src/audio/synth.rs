@@ -190,6 +190,10 @@ pub struct SynthEngine {
     pub tape_stop: TapeStop,
     /// Modulationsmatrisen (FL:s Envelope/Peak/Keyboard Controller).
     pub modulation: crate::audio::modulation::ModMatrix,
+    /// Modulationens tonhöjd i semitoner och filtrets brytfrekvens i oktaver, räknade
+    /// en gång per sampel och lästa av rösterna. Noll när matrisen är tom.
+    pub mod_pitch: f32,
+    pub mod_cutoff: f32,
     pub master_volume: f32,
     pub voices: [Voice; MAX_VOICES],
     pub drums: [DrumVoice; MAX_DRUMS],
@@ -279,6 +283,8 @@ impl SynthEngine {
             tape_stop: TapeStop::new(sample_rate),
             master_volume: 0.8,
             modulation: crate::audio::modulation::ModMatrix::default(),
+            mod_pitch: 0.0,
+            mod_cutoff: 0.0,
             voices: [Voice::new(sample_rate); MAX_VOICES],
             drums: [DrumVoice::new(sample_rate); MAX_DRUMS],
             stem_tracks: Vec::new(),

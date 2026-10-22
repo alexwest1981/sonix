@@ -2,7 +2,7 @@
 //!
 //! En slot är **källa → mål med styrka**. Källor: en LFO (egen takt och vågform), ett
 //! envelopföljare på masterns nivå, senaste notens anslag och senaste notens tonhöjd.
-//! Mål: masterns volym och panorering.
+//! Mål: masterns volym och panorering, rösternas tonhöjd och deras filter.
 //!
 //! Matrisen räknas **per sampel** — fyra slots är några multiplikationer, och en
 //! modulation som bara uppdateras per buffert hörs som steg när man drar i en ratt.
@@ -78,15 +78,36 @@ impl ModSource {
 pub enum ModTarget {
     Volume,
     Pan,
+    /// Tonhöjd i semitoner. Alla deras instrument modulerar pitch; vår matris kunde
+    /// bara volym och panorering, och det var den största funktionella luckan.
+    Pitch,
+    /// Filtrets brytfrekvens i oktaver.
+    Cutoff,
 }
 
 impl ModTarget {
-    pub const ALL: [ModTarget; 2] = [ModTarget::Volume, ModTarget::Pan];
+    pub const ALL: [ModTarget; 4] = [
+        ModTarget::Volume,
+        ModTarget::Pan,
+        ModTarget::Pitch,
+        ModTarget::Cutoff,
+    ];
+
+    /// Hur långt en styrka på 1,0 räcker, i målETS enhet.
+    pub fn full_scale(self) -> f32 {
+        match self {
+            ModTarget::Pitch => 12.0,
+            ModTarget::Cutoff => 4.0,
+            _ => 1.0,
+        }
+    }
 
     pub fn label(self) -> &'static str {
         match self {
             ModTarget::Volume => "volym",
             ModTarget::Pan => "panorering",
+            ModTarget::Pitch => "tonhöjd",
+            ModTarget::Cutoff => "filter",
         }
     }
 }
@@ -114,6 +135,10 @@ pub struct ModOut {
     pub volume: f32,
     /// Panorering −1…1 som läggs till den befintliga.
     pub pan: f32,
+    /// Tonhöjd i semitoner, lagd på rösternas frekvens.
+    pub pitch: f32,
+    /// Filtrets brytfrekvens i oktaver, lagd på rösternas filter.
+    pub cutoff: f32,
 }
 
 /// Matrisen med sina källors tillstånd.
@@ -161,7 +186,7 @@ impl ModMatrix {
         self.env += (l - self.env) * coeff;
 
         if self.slots.is_empty() || self.slots.iter().all(|s| !s.enabled) {
-            return ModOut { volume: 1.0, pan: 0.0 };
+            return ModOut { volume: 1.0, pan: 0.0, pitch: 0.0, cutoff: 0.0 };
         }
         if self.phases.len() != self.slots.len() {
             self.phases.resize(self.slots.len(), 0.0);
@@ -169,6 +194,8 @@ impl ModMatrix {
 
         let mut volume = 0.0f32;
         let mut pan = 0.0f32;
+        let mut pitch = 0.0f32;
+        let mut cutoff = 0.0f32;
 
         for i in 0..self.slots.len() {
             let slot = self.slots[i];
@@ -201,12 +228,18 @@ impl ModMatrix {
             match slot.target {
                 ModTarget::Volume => volume += scaled,
                 ModTarget::Pan => pan += scaled,
+                ModTarget::Pitch => pitch += scaled * slot.target.full_scale(),
+                ModTarget::Cutoff => cutoff += scaled * slot.target.full_scale(),
             }
         }
 
         ModOut {
             volume: (1.0 + volume).clamp(0.0, 4.0),
             pan: pan.clamp(-1.0, 1.0),
+            // Tolv semitoner upp och ner räcker för vibrato, drill och en oktavs svep.
+            pitch: pitch.clamp(-12.0, 12.0),
+            // Fyra oktaver upp och ner: från stängt till helt öppet filter.
+            cutoff: cutoff.clamp(-4.0, 4.0),
         }
     }
 }
@@ -228,7 +261,7 @@ mod tests {
             ..Default::default()
         };
         // Ett kvarts varv in: sinusen är 1, alltså volymen 2.
-        let mut out = ModOut { volume: 1.0, pan: 0.0 };
+        let mut out = ModOut { volume: 1.0, pan: 0.0, pitch: 0.0, cutoff: 0.0 };
         for _ in 0..(48_000 / 4) {
             out = m.tick(SR, 0.0);
         }
@@ -302,4 +335,33 @@ mod tests {
             }
         }
     }
+    #[test]
+    fn pitch_and_cutoff_have_their_own_scales() {
+        let mut m = ModMatrix::default();
+        m.set_slots(vec![
+            ModSlot::new(ModSource::Velocity, ModTarget::Pitch, 1.0),
+            ModSlot::new(ModSource::Velocity, ModTarget::Cutoff, 0.5),
+        ]);
+        m.note_on(60, 1.0);
+        let out = m.tick(48_000.0, 0.0);
+        // Styrka 1,0 på tonhöjd = en oktav; 0,5 på filter = två oktaver.
+        assert!((out.pitch - 12.0).abs() < 1e-4, "tonhöjd: {}", out.pitch);
+        assert!((out.cutoff - 2.0).abs() < 1e-4, "filter: {}", out.cutoff);
+        assert!((out.volume - 1.0).abs() < 1e-4, "volymen ska vara orörd");
+    }
+
+    #[test]
+    fn the_targets_are_clamped_to_their_range() {
+        let mut m = ModMatrix::default();
+        // Tre rader på samma mål: 3 × 12 semitoner får inte bli 36.
+        m.set_slots(vec![
+            ModSlot::new(ModSource::Velocity, ModTarget::Pitch, 1.0),
+            ModSlot::new(ModSource::Velocity, ModTarget::Pitch, 1.0),
+            ModSlot::new(ModSource::Velocity, ModTarget::Pitch, 1.0),
+        ]);
+        m.note_on(60, 1.0);
+        let out = m.tick(48_000.0, 0.0);
+        assert!((out.pitch - 12.0).abs() < 1e-4, "taket ska vara tolv semitoner: {}", out.pitch);
+    }
+
 }

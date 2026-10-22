@@ -301,6 +301,8 @@ impl Voice {
         filter_env: &AdsrParams,
         filter_env_amount: f32,
         fm: &FmParams,
+        mod_pitch: f32,
+        mod_cutoff: f32,
     ) -> f32 {
         if !self.envelope.is_active() {
             return 0.0;
@@ -342,13 +344,19 @@ impl Voice {
             }
         };
 
-        // Advance phase
-        self.phase += self.phase_inc;
+        // Advance phase. Tonhöjdsmodulationen skalas in här i stället för att räkna om
+        // `phase_inc`, så en tremolo/vibrato följer med även genom FM.
+        let pitch_ratio = if mod_pitch.abs() > 1e-6 {
+            2.0_f32.powf(mod_pitch / 12.0)
+        } else {
+            1.0
+        };
+        self.phase += self.phase_inc * pitch_ratio;
         if self.phase >= two_pi {
             self.phase -= two_pi;
         }
         if fm.index != 0.0 {
-            self.mod_phase += self.phase_inc * fm.ratio.max(0.01);
+            self.mod_phase += self.phase_inc * pitch_ratio * fm.ratio.max(0.01);
             if self.mod_phase >= two_pi {
                 self.mod_phase -= two_pi;
             }
@@ -358,7 +366,8 @@ impl Voice {
         // filter envelope modulates the cutoff (in octaves) independently.
         let fenv = self.filter_env.next_sample(filter_env);
         let effective = FilterParams {
-            cutoff: filter_params.cutoff * 2.0_f32.powf(filter_env_amount * fenv),
+            cutoff: filter_params.cutoff
+                * 2.0_f32.powf(filter_env_amount * fenv + mod_cutoff.clamp(-4.0, 4.0)),
             resonance: filter_params.resonance,
         };
         self.filter.process_lowpass(raw_sample * self.velocity * env_gain, &effective)

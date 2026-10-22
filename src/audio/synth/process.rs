@@ -39,6 +39,12 @@ impl SynthEngine {
         let mut mixed = 0.0;
         let mut active_count = 0;
 
+        // Tonhöjd och filter läses från förra sampelns modulationsvärde: matrisen räknas i
+        // mastersteget, där masterns nivå finns. Ett sampels fördröjning (23 µs) är
+        // ohörbar, och att räkna matrisen två gånger per sampel vore slöseri.
+        let mod_pitch = self.mod_pitch;
+        let mod_cutoff = self.mod_cutoff;
+
         // 1. Synthesizer voices (each with its own envelope + filter state)
         for voice in &mut self.voices {
             if voice.is_active() {
@@ -49,6 +55,8 @@ impl SynthEngine {
                     &self.filter_env,
                     self.filter_env_amount,
                     &self.fm,
+                    mod_pitch,
+                    mod_cutoff,
                 );
                 active_count += 1;
             }
@@ -745,11 +753,18 @@ impl SynthEngine {
         // Modulationsmatrisen räknas per sampel, på masterns nivå före volymstegen.
         // Utan aktiva rader hoppas hela steget över — det är den vanliga vägen.
         let modulation = if self.modulation.is_empty() {
-            crate::audio::modulation::ModOut { volume: 1.0, pan: 0.0 }
+            crate::audio::modulation::ModOut {
+                volume: 1.0,
+                pan: 0.0,
+                pitch: 0.0,
+                cutoff: 0.0,
+            }
         } else {
             let level = fx_l.abs().max(fx_r.abs());
             self.modulation.tick(self.sample_rate, level)
         };
+        self.mod_pitch = modulation.pitch;
+        self.mod_cutoff = modulation.cutoff;
         let gain = (self.master_volume * modulation.volume).clamp(0.0, 4.0);
         // Equal-power-pan: en panorering som bara sänker ena sidan tappar 3 dB i mitten.
         let (pan_l, pan_r) = if modulation.pan.abs() < 0.001 {
