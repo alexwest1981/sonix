@@ -1380,12 +1380,14 @@ pub struct GranularParams {
     pub density: f32,     // korn per sekund, 2–60
     pub position_ms: f32, // hur långt bakåt kornet börjar, 20–1000
     pub spray_ms: f32,    // slumpmässig spridning kring positionen, 0–200
+    /// Kornens uppspelningshastighet: 1,0 = som inspelat, 2,0 = en oktav upp.
+    pub speed: f32,
     pub mix: f32,         // 0 = torrt, 1 = bara korn
 }
 
 impl Default for GranularParams {
     fn default() -> Self {
-        Self { size_ms: 60.0, density: 12.0, position_ms: 120.0, spray_ms: 40.0, mix: 0.6 }
+        Self { size_ms: 60.0, density: 12.0, position_ms: 120.0, spray_ms: 40.0, speed: 1.0, mix: 0.6 }
     }
 }
 
@@ -1400,6 +1402,9 @@ pub struct Granular {
     seed: u32,
     /// (start, längd, läst) per kornplats. `läst` är 0 när platsen är ledig.
     grains: [(usize, usize, usize); GRAIN_SLOTS],
+    /// Läspositionen i sampel per korn, med bråkdel — den driver iväg när kornet spelas
+    /// i annan hastighet än 1,0 och kan därför inte vara ett heltal.
+    reads: [f32; GRAIN_SLOTS],
 }
 
 impl Granular {
@@ -1414,6 +1419,7 @@ impl Granular {
             to_next: 0.0,
             seed: 0x2545_F491,
             grains: [(0, 0, 0); GRAIN_SLOTS],
+            reads: [0.0; GRAIN_SLOTS],
         }
     }
 
@@ -1456,19 +1462,29 @@ impl Granular {
             let behind = (position + jitter).min(len - 1);
             let start = (self.write + len - behind) % len;
             self.grains[slot] = (start, size.max(1), 1);
+            self.reads[slot] = start as f32;
         }
 
+        let speed = p.speed.clamp(0.25, 4.0);
         let (mut gl, mut gr) = (0.0f32, 0.0f32);
-        for g in self.grains.iter_mut() {
+        for (slot, g) in self.grains.iter_mut().enumerate() {
             if g.2 == 0 {
                 continue;
             }
-            let index = (g.0 + g.2 - 1) % len;
+            // Bråkdelad läsposition med linjär interpolering: utan den hackar varje korn när
+            // hastigheten inte är 1,0 (heltalssteg hörs som kvantiseringsbrus på ton).
+            let read = self.reads[slot];
+            let i0 = (read as usize) % len;
+            let i1 = (i0 + 1) % len;
+            let frac = read - read.floor();
+            let l = self.l[i0] * (1.0 - frac) + self.l[i1] * frac;
+            let r = self.r[i0] * (1.0 - frac) + self.r[i1] * frac;
             // Hann-fönster: kornet tonar in och ut, annars knäpper varje korn.
             let t = g.2 as f32 / g.1 as f32;
             let w = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * t).cos();
-            gl += self.l[index] * w;
-            gr += self.r[index] * w;
+            gl += l * w;
+            gr += r * w;
+            self.reads[slot] = (read + speed) % len as f32;
             g.2 += 1;
             if g.2 > g.1 {
                 g.2 = 0;
@@ -2463,6 +2479,7 @@ mod tests {
                 density: 20.0,
                 position_ms: 100.0,
                 spray_ms: 30.0,
+                speed: 1.0,
                 mix: 1.0,
             };
             chain.set_params(params);
@@ -2482,6 +2499,70 @@ mod tests {
         println!("medelutgång efter tystnaden: av {off:.5}, på {on:.5}");
         assert!(off < 1e-6, "utan granulizer ska det vara tyst: {off:.6}");
         assert!(on > 0.01, "med granulizer ska kornen höras: {on:.5}");
+    }
+
+    /// **Kornens hastighet transponerar.** Ett enda korn spelas in med 500 Hz och spelas upp
+    /// med hastighet 2,0 — då ska kornet innehålla 1 kHz. Kornet mäts för sig (låg täthet,
+    /// långt korn), eftersom överlappande korn med olika fas summa inte ger en ren ton.
+    #[test]
+    fn the_granular_speed_transposes_the_grains() {
+        let render = |speed: f32| {
+            let mut chain = MasterFxChain::new(48_000.0);
+            let mut params = MasterFxParams::default();
+            params.granular_enabled = true;
+            params.granular = GranularParams {
+                size_ms: 200.0,
+                density: 2.0,
+                position_ms: 100.0,
+                spray_ms: 0.0,
+                speed,
+                mix: 1.0,
+            };
+            chain.set_params(params);
+            let mut out = Vec::new();
+            for i in 0..96_000 {
+                let x = (2.0 * std::f32::consts::PI * 500.0 * i as f32 / 48_000.0).sin() * 0.5;
+                let (l, _) = chain.process(x, x);
+                out.push(l);
+            }
+            out
+        };
+        // Grundton i ett fönster, med autokorrelation. Första toppen, inte högsta — en
+        // periodisk signal toppar också på två och tre perioder.
+        let f0 = |samples: &[f32], sr: f32| -> f32 {
+            let (min_lag, max_lag) = ((sr / 3_000.0) as usize, (sr / 200.0) as usize);
+            let mut scores = Vec::new();
+            for lag in min_lag..max_lag {
+                let mut dot = 0.0f32;
+                let mut energy = 0.0f32;
+                for i in 0..samples.len() - lag {
+                    dot += samples[i] * samples[i + lag];
+                    energy += samples[i] * samples[i];
+                }
+                scores.push((lag, dot / (energy + 1e-9)));
+            }
+            let best = scores.iter().map(|(_, v)| *v).fold(f32::NEG_INFINITY, f32::max);
+            let lag = scores
+                .iter()
+                .find(|(_, v)| *v >= best * 0.9)
+                .map(|(l, _)| *l)
+                .unwrap_or(min_lag);
+            sr / lag as f32
+        };
+        // Korn nummer två börjar vid 24000 sampel; mät mitten av det.
+        let plain = render(1.0);
+        let double = render(2.0);
+        let a = f0(&plain[28_000..32_000], 48_000.0);
+        let b = f0(&double[28_000..32_000], 48_000.0);
+        println!("kornets tonhöjd: 1,0× {a:.0} Hz, 2,0× {b:.0} Hz");
+        // Absolutvärdena ligger några procent högt (autokorrelationen har heltalsfördröjning),
+        // men **kvoten** är det som mäts: två gånger hastigheten ska ge två gånger frekvensen.
+        assert!(a > 400.0, "kornet ska höras: {a:.0} Hz");
+        let ratio = b / a;
+        assert!(
+            (ratio - 2.0).abs() < 0.1,
+            "dubbel hastighet ska ge dubbel frekvens: {ratio:.3} ({a:.0} Hz mot {b:.0} Hz)"
+        );
     }
 
 }

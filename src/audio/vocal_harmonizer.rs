@@ -33,6 +33,8 @@ pub struct VocalHarmonizer {
     pub voices: Vec<HarmonyVoice>,
     /// Bärvågens not i vocodern (MIDI). 45 = A2, 110 Hz.
     pub vocoder_note: u8,
+    /// Låt bärvågen följa sångens tonhöjd i stället för att ligga på `vocoder_note`.
+    pub vocoder_follow_pitch: bool,
 }
 
 impl Default for VocalHarmonizer {
@@ -45,6 +47,7 @@ impl Default for VocalHarmonizer {
             selected_blob: None,
             blob_steps: 16,
             vocoder_note: 45,
+            vocoder_follow_pitch: true,
             voices: vec![
                 HarmonyVoice { name: crate::i18n::t("🎤 Lead Sång (Center)"), interval_semitones: 0, volume: 1.0, enabled: true, formant_shift: 0.0 },
                 HarmonyVoice { name: crate::i18n::t("✨ Hög Ters (+3st)"), interval_semitones: 3, volume: 0.75, enabled: true, formant_shift: 1.5 },
@@ -1392,6 +1395,43 @@ pub fn vocode(modulator: &[f32], carrier: &[f32], sample_rate: f32, bands: usize
     out
 }
 
+
+/// Bärvåg som **följer** modulatorns tonhöjd: en sågtand vars frekvens spåras ur sången
+/// var 20:e millisekund och glider dit i stället för att hoppa. Utan den sjunger vocodern
+/// på en fast ton, och då hamnar orden på fel tonhöjd så fort sången rör sig.
+pub fn pitch_following_carrier(modulator: &[f32], sample_rate: f32) -> Vec<f32> {
+    let n = modulator.len();
+    let mut out = Vec::with_capacity(n);
+    let frame = (0.020 * sample_rate) as usize;
+    let window = 2_048.min(n.max(1));
+    // Glidning per sampel: 25 ms tidskonstant, så spårningen svajar mindre än rösten.
+    let glide = 1.0 - (-1.0 / (0.025 * sample_rate)).exp();
+    let (mut target, mut current) = (110.0f32, 110.0f32);
+    let mut phase = 0.0f32;
+    for i in 0..n {
+        if frame > 0 && i % frame == 0 {
+            let end = (i + frame).min(n);
+            let start = end.saturating_sub(window);
+            if end.saturating_sub(start) >= 1_024 {
+                if let Some(hz) = detect_pitch_hz(&modulator[start..end], sample_rate) {
+                    // Bara röstläget: spårningen ska inte hoppa till brus eller falsettartefakter.
+                    if (60.0..=1_000.0).contains(&hz) {
+                        target = hz;
+                    }
+                }
+            }
+        }
+        // Glid mot målet i stället för steg: ett hopp hörs som ett klick i vocodern.
+        current += (target - current) * glide;
+        out.push(2.0 * ((phase / std::f32::consts::TAU) % 1.0) - 1.0);
+        phase += std::f32::consts::TAU * current / sample_rate;
+        if phase >= std::f32::consts::TAU {
+            phase -= std::f32::consts::TAU;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1722,6 +1762,47 @@ mod tests {
             closed < open * 0.1,
             "vocodern ska tystna när modulatorn tystnar: {closed:.6} mot {open:.6}"
         );
+    }
+
+    /// **Bärvågen följer sångens tonhöjd.** En modulator på 220 Hz ska ge en bärvåg på
+    /// 220 Hz — inte på standardnoten 110 Hz — och en på 330 Hz ska ge 330 Hz.
+    #[test]
+    fn the_carrier_follows_the_singers_pitch() {
+        let f0 = |samples: &[f32], sr: f32| -> f32 {
+            let (min_lag, max_lag) = ((sr / 800.0) as usize, (sr / 80.0) as usize);
+            let mut scores = Vec::new();
+            for lag in min_lag..max_lag {
+                let mut dot = 0.0f32;
+                let mut energy = 0.0f32;
+                for i in 0..samples.len() - lag {
+                    dot += samples[i] * samples[i + lag];
+                    energy += samples[i] * samples[i];
+                }
+                scores.push((lag, dot / (energy + 1e-9)));
+            }
+            let best = scores.iter().map(|(_, v)| *v).fold(f32::NEG_INFINITY, f32::max);
+            let lag = scores
+                .iter()
+                .find(|(_, v)| *v >= best * 0.9)
+                .map(|(l, _)| *l)
+                .unwrap_or(min_lag);
+            sr / lag as f32
+        };
+        let sr = 48_000.0f32;
+        let n = 96_000;
+        for target in [220.0f32, 330.0] {
+            let modulator: Vec<f32> = (0..n)
+                .map(|i| (2.0 * std::f32::consts::PI * target * i as f32 / sr).sin() * 0.6)
+                .collect();
+            let carrier = pitch_following_carrier(&modulator, sr);
+            // Mät efter att spårningen hunnit låsa (första halvsekunden är inkörning).
+            let measured = f0(&carrier[24_000..48_000], sr);
+            println!("modulator {target:.0} Hz → bärvåg {measured:.0} Hz");
+            assert!(
+                (measured - target).abs() < target * 0.05,
+                "bärvågen ska följa {target:.0} Hz: {measured:.0} Hz"
+            );
+        }
     }
 
 }

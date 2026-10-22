@@ -929,6 +929,15 @@ pub fn render_vocal_studio_view(
                             {
                                 harmonizer.vocoder_note = note.clamp(24, 84) as u8;
                             }
+                            ui.add(
+                                egui::Checkbox::new(
+                                    &mut harmonizer.vocoder_follow_pitch,
+                                    crate::i18n::t("Följ sången"),
+                                ),
+                            )
+                            .on_hover_text(crate::i18n::t(
+                                "Bärvågen följer sångens tonhöjd i stället för att ligga på den valda noten.",
+                            ));
                             let freq =
                                 crate::audio::tuning::midi_to_freq(harmonizer.vocoder_note);
                             let name = crate::ui::app::state::note_name_of(harmonizer.vocoder_note);
@@ -960,14 +969,19 @@ pub fn render_vocal_studio_view(
                             let sr_f = sr as f32;
                             // Bärvågen är noten med oktav och kvint — en sågtand vardera, så
                             // vocodern har övertoner i varje band den delar upp.
-                            let root =
-                                crate::audio::tuning::midi_to_freq(harmonizer.vocoder_note);
-                            let mut carrier = Vec::with_capacity(pcm.len());
-                            for i in 0..pcm.len() {
-                                let t = i as f32 / sr_f;
-                                let saw = |f: f32| 2.0 * ((t * f) % 1.0) - 1.0;
-                                carrier.push(saw(root) + 0.5 * saw(root * 2.0) + 0.35 * saw(root * 1.5));
-                            }
+                            let carrier = if harmonizer.vocoder_follow_pitch {
+                                crate::audio::vocal_harmonizer::pitch_following_carrier(&pcm, sr_f)
+                            } else {
+                                let root = crate::audio::tuning::midi_to_freq(harmonizer.vocoder_note);
+                                let mut carrier = Vec::with_capacity(pcm.len());
+                                for i in 0..pcm.len() {
+                                    let t = i as f32 / sr_f;
+                                    let saw = |f: f32| 2.0 * ((t * f) % 1.0) - 1.0;
+                                    carrier
+                                        .push(saw(root) + 0.5 * saw(root * 2.0) + 0.35 * saw(root * 1.5));
+                                }
+                                carrier
+                            };
                             let vocoded =
                                 crate::audio::vocal_harmonizer::vocode(&pcm, &carrier, sr_f, 16);
                             vocal_track.add_take_from_pcm(

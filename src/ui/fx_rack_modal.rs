@@ -216,7 +216,7 @@ impl Default for FxRackState {
                     p3_val: 0.10,
                     mix: 0.60,
                     description: "Korn ur de senaste två sekunderna: KORN (20–200 ms), TÄTHET (2–60 per sekund), POSITION (20–1000 ms bakåt), SPRIDNING (0–200 ms) och MIX.",
-                    extra: vec![("SPRIDNING", 0.20)],
+                    extra: vec![("SPRIDNING", 0.20), ("HASTIGHET", 0.50)],
                 },
                 FxPedal {
                     id: "chorus",
@@ -449,6 +449,8 @@ impl FxRackState {
             density: 2.0 + knob(|p| p.p2_val, 0.2) * 58.0,
             position_ms: 20.0 + knob(|p| p.p3_val, 0.1) * 980.0,
             spray_ms: knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.2), 0.2) * 200.0,
+            // 0,25× till 4× (två oktaver ner, två upp) på en logaritmisk ratt: mitten är 1,0.
+            speed: 2.0f32.powf(knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.5), 0.5) * 4.0 - 2.0),
             mix: knob(|p| p.mix, 0.6),
         };
 
@@ -1218,6 +1220,7 @@ mod tests {
         pedal.p2_val = 1.0; // tätast
         pedal.p3_val = 1.0; // längst bak
         pedal.extra[0].1 = 0.0; // ingen spridning
+        pedal.extra[1].1 = 0.5; // hastighet 1,0
         pedal.mix = 0.25;
 
         let params = state.build_master_fx_params();
@@ -1231,5 +1234,6 @@ mod tests {
         );
         assert!((params.granular.spray_ms - 0.0).abs() < 0.01, "spridning: {}", params.granular.spray_ms);
         assert!((params.granular.mix - 0.25).abs() < 0.01, "mix: {}", params.granular.mix);
+        assert!((params.granular.speed - 1.0).abs() < 0.01, "hastighet: {}", params.granular.speed);
     }
 }
