@@ -1715,6 +1715,25 @@ pub fn load_processor(
         }
     }
 
+    // **Bussarna ska förhandlas innan processorn konfigureras.** VST3 kräver att värden
+    // föreslår en högtalarlayout; gör den inte det får en del plugin (Steinbergs egna
+    // exempel inräknade) ett tillstånd där `setProcessing` vägrar. Stereoin/ut är vad
+    // Sonix spelar, så det är vad som föreslås.
+    unsafe {
+        if let Some(set_arr) = vtable::<AudioProcessorVtbl>(audio_processor).set_bus_arrangements {
+            const K_STEREO: u64 = 3; // kSpeakerL | kSpeakerR
+            let mut ins = [K_STEREO];
+            let mut outs = [K_STEREO];
+            set_arr(
+                audio_processor,
+                ins.as_mut_ptr(),
+                1,
+                outs.as_mut_ptr(),
+                1,
+            );
+        }
+    }
+
     let mut setup = ProcessSetup {
         process_mode: K_REALTIME,
         symbolic_sample_size: K_SAMPLE32,
@@ -1722,35 +1741,49 @@ pub fn load_processor(
         sample_rate,
     };
     unsafe {
-        if let Some(setup_fn) = vtable::<AudioProcessorVtbl>(audio_processor).setup_processing
-            && setup_fn(audio_processor, &mut setup) != K_RESULT_OK
-        {
-            release_object(audio_processor);
-            return Err(crate::tstatus!(
-                "Kunde inte konfigurera VST3-processorn i '{}'",
-                path
-            ));
+        if let Some(setup_fn) = vtable::<AudioProcessorVtbl>(audio_processor).setup_processing {
+            let rc = setup_fn(audio_processor, &mut setup);
+            if rc != K_RESULT_OK {
+                release_object(audio_processor);
+                return Err(crate::tstatus!(
+                    "Kunde inte konfigurera VST3-processorn i '{}' (setupProcessing gav {})",
+                    path,
+                    rc
+                ));
+            }
         }
     }
 
-    let active = unsafe {
+    let (active, active_rc) = unsafe {
         match vtable::<ComponentVtbl>(component).set_active {
-            Some(set) => set(component, 1) == K_RESULT_OK,
-            None => false,
+            Some(set) => {
+                let rc = set(component, 1);
+                (rc == K_RESULT_OK, rc)
+            }
+            None => (false, i32::MIN),
         }
     };
     if !active {
         unsafe { release_object(audio_processor) };
         return Err(crate::tstatus!(
-            "Kunde inte aktivera VST3-komponenten i '{}'",
-            path
+            "Kunde inte aktivera VST3-komponenten i '{}' (setActive gav {})",
+            path,
+            active_rc
         ));
     }
 
-    let processing = unsafe {
+    // **kNotImplemented är ett godkänt svar.** VST3:s basklass `AudioEffect` lämnar
+    // `setProcessing` oimplementerad och returnerar då 3 — en plugin som inte behöver
+    // veta om den är i drift är fortfarande spelbar. Steinbergs eget `again`-exempel gör
+    // precis så, och vår värd avvisade det därför att svaret inte var exakt 0.
+    const K_NOT_IMPLEMENTED: i32 = 3;
+    let (processing, processing_rc) = unsafe {
         match vtable::<AudioProcessorVtbl>(audio_processor).set_processing {
-            Some(set) => set(audio_processor, 1) == K_RESULT_OK,
-            None => false,
+            Some(set) => {
+                let rc = set(audio_processor, 1);
+                (rc == K_RESULT_OK || rc == K_NOT_IMPLEMENTED, rc)
+            }
+            None => (false, i32::MIN),
         }
     };
     if !processing {
@@ -1761,8 +1794,9 @@ pub fn load_processor(
         }
         unsafe { release_object(audio_processor) };
         return Err(crate::tstatus!(
-            "Kunde inte starta VST3-processningen i '{}'",
-            path
+            "Kunde inte starta VST3-processningen i '{}' (setProcessing gav {})",
+            path,
+            processing_rc
         ));
     }
 
@@ -1978,4 +2012,61 @@ mod tests {
         assert_eq!(l[0], 0.0, "reset must clear the delay line");
         assert!((l[8] - 1.0).abs() < 1e-6, "expected 1.0, got {}", l[8]);
     }
+    /// **Ände-till-ände mot en riktig VST3**: laddar ett plugin som byggts med Steinbergs
+    /// eget SDK, kör ljud genom det och kontrollerar att en parameter gör skillnad.
+    ///
+    /// Provet är opt-in (`SONIX_VST3_PROBE` = sökvägen till `.vst3`-mappen eller `.so`-filen),
+    /// eftersom ett VST3-binär inte hör till repot. Steinbergs SDK exempel `again` är en
+    /// förstärkare: dess Gain-parameter sänker och höjer nivån, vilket är mätbart.
+    #[test]
+    fn hosts_a_real_sdk_plugin_when_a_path_is_given() {
+        let Ok(path) = std::env::var("SONIX_VST3_PROBE") else {
+            return;
+        };
+        let inspected = inspect(&path);
+        let mut processor = load_processor(&path, 48_000.0, 512).unwrap_or_else(|err| {
+            panic!(
+                "pluginet ska laddas: {err} (inspekteringen säger: {:?})",
+                inspected.error
+            )
+        });
+        assert!(!processor.parameters().is_empty(), "pluginet ska ha parametrar");
+
+        let make = || -> (Vec<f32>, Vec<f32>) {
+            let l: Vec<f32> = (0..512)
+                .map(|i| (2.0 * std::f32::consts::PI * 440.0 * i as f32 / 48_000.0).sin() * 0.5)
+                .collect();
+            let r = l.clone();
+            (l, r)
+        };
+        let rms = |v: &[f32]| (v.iter().map(|s| s * s).sum::<f32>() / v.len() as f32).sqrt();
+
+        // Parameter 0 är Gain i `again`. Lågt värde ska ge tystare än högt.
+        let gain_id = processor.parameters()[0].id;
+        let mut levels = Vec::new();
+        for value in [0.0f64, 1.0] {
+            processor.reset();
+            assert!(processor.set_parameter(gain_id, value), "parametern ska gå att sätta");
+            let (mut l, mut r) = make();
+            processor.process_stereo(&mut l, &mut r);
+            assert!(
+                l.iter().all(|v| v.is_finite()) && r.iter().all(|v| v.is_finite()),
+                "utgången ska vara ändliga tal"
+            );
+            levels.push(rms(&l));
+        }
+        println!(
+            "VST3 {}: parameter 0 = 0.0 → RMS {:.4}, 1.0 → RMS {:.4}",
+            processor.info().name,
+            levels[0],
+            levels[1]
+        );
+        assert!(
+            (levels[1] - levels[0]).abs() > 1e-3,
+            "Gain ska ändra nivån: {:.4} mot {:.4}",
+            levels[0],
+            levels[1]
+        );
+    }
+
 }
