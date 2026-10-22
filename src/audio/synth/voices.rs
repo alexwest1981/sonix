@@ -20,6 +20,10 @@ pub struct Voice {
     /// Modulatorns fas (FM). `index == 0` lämnar bärvågen orörd — då är röstens ljud
     /// bit-identiskt med oscillatorn före FM-vägen.
     pub mod_phase: f32,
+    /// Portamento: fasökningen glider mot `target_inc` med `glide_coeff` per sampel.
+    /// `glide_coeff == 0.0` betyder ingen glide, och då är rösten exakt som förut.
+    pub target_inc: f32,
+    pub glide_coeff: f32,
 }
 
 /// Sidokedje-duckare (Fas 8.3).
@@ -261,12 +265,36 @@ impl Voice {
             filter: StateVariableFilter::new(sample_rate),
             filter_env: AdsrVoice::new(sample_rate),
             mod_phase: 0.0,
+            target_inc: 0.0,
+            glide_coeff: 0.0,
+        }
+    }
+
+    /// Startar rösten. `from_freq` skiljer sig från `freq` bara när glide är på: då börjar
+    /// rösten på den förra notens frekvens och glider till den nya.
+    pub fn trigger_from(
+        &mut self,
+        note: u8,
+        freq: f32,
+        velocity: f32,
+        sample_rate: f32,
+        from_freq: f32,
+        glide_coeff: f32,
+    ) {
+        self.trigger(note, freq, velocity, sample_rate);
+        self.target_inc = (2.0 * PI * freq) / sample_rate.max(1.0);
+        self.glide_coeff = glide_coeff.clamp(0.0, 1.0);
+        if self.glide_coeff > 0.0 && from_freq > 0.0 {
+            self.phase_inc = (2.0 * PI * from_freq) / sample_rate.max(1.0);
+            self.freq = from_freq;
         }
     }
 
     pub fn trigger(&mut self, note: u8, freq: f32, velocity: f32, sample_rate: f32) {
         self.note = note;
         self.freq = freq;
+        self.target_inc = (2.0 * PI * freq) / sample_rate.max(1.0);
+        self.glide_coeff = 0.0;
         self.velocity = velocity;
         self.phase_inc = (2.0 * PI * freq) / sample_rate;
         self.filter.reset();
@@ -343,6 +371,15 @@ impl Voice {
                 2.0 * (2.0 * (normalized - (normalized + 0.5).floor())).abs() - 1.0
             }
         };
+
+        // Portamento: fasökningen glider mot målet. Utan glide är koefficienten noll och
+        // det här är en addition med noll — exakt samma ljud som förut.
+        if self.glide_coeff > 0.0 {
+            self.phase_inc += (self.target_inc - self.phase_inc) * self.glide_coeff;
+            if (self.target_inc - self.phase_inc).abs() < 1e-9 {
+                self.phase_inc = self.target_inc;
+            }
+        }
 
         // Advance phase. Tonhöjdsmodulationen skalas in här i stället för att räkna om
         // `phase_inc`, så en tremolo/vibrato följer med även genom FM.

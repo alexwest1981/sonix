@@ -119,6 +119,10 @@ pub enum AudioCommand {
     SetModulation {
         slots: Vec<crate::audio::modulation::ModSlot>,
     },
+    /// Portamento: tid i sekunder som tonhöjden glider till nästa not (0 = av).
+    SetGlide {
+        seconds: f32,
+    },
     /// Unison: antal röster per not (1–8) och hur mycket de stäms isär i cent.
     SetUnison {
         voices: u8,

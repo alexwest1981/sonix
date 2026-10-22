@@ -53,7 +53,30 @@ impl SynthEngine {
                     }
                 }
                 let idx = target_idx.unwrap_or(0);
-                self.voices[idx].trigger(note, freq, velocity, self.sample_rate);
+                // Portamento: rösten börjar på förra notens frekvens och glider dit den ska.
+                // Är gliden av är `from` samma som `freq` och koefficienten noll.
+                // Glidtiden är tiden det tar att **nå** målet (99 %), inte en tidskonstant:
+                // en tidskonstant på 0,2 s stannar på 63 % efter 0,2 s, och då stämmer inte
+                // det reglaget lovar.
+                let glide_coeff = if self.glide_time > 0.0 {
+                    1.0 - (-4.605 / (self.glide_time.max(0.001) * self.sample_rate)).exp()
+                } else {
+                    0.0
+                };
+                let from = if self.glide_time > 0.0 && self.last_note_freq > 0.0 {
+                    self.last_note_freq
+                } else {
+                    freq
+                };
+                self.voices[idx].trigger_from(
+                    note,
+                    freq,
+                    velocity,
+                    self.sample_rate,
+                    from,
+                    glide_coeff,
+                );
+                self.last_note_freq = freq;
                 // Unison: samma not en gång till, stämd isär i cent och med förskjuten fas
                 // så att attacken inte bara blir dubbelt så stark.
                 let count = self.unison_voices.clamp(1, 8) as usize;
@@ -70,17 +93,23 @@ impl SynthEngine {
                         }
                         let step = extra as f32 + 1.0;
                         let cents = detune * (2.0 * step / (span + 1.0) - 1.0);
-                        voice.trigger(
+                        let detuned = freq * 2.0_f32.powf(cents / 1200.0);
+                        voice.trigger_from(
                             note,
-                            freq * 2.0_f32.powf(cents / 1200.0),
+                            detuned,
                             velocity,
                             self.sample_rate,
+                            detuned,
+                            0.0,
                         );
                         // Förskjut fasen så att rösterna inte summerar i fas vid anslaget.
                         voice.phase = (step * 1.7) % std::f32::consts::TAU;
                         extra += 1;
                     }
                 }
+            }
+            AudioCommand::SetGlide { seconds } => {
+                self.glide_time = seconds.clamp(0.0, 5.0);
             }
             AudioCommand::SetUnison { voices, detune_cents } => {
                 self.unison_voices = voices.clamp(1, 8);

@@ -3020,6 +3020,24 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     });
                 }
                 ui.horizontal(|ui| {
+                    ui.label(crate::i18n::t("Glide:"));
+                    if ui
+                        .add(
+                            egui::Slider::new(&mut self.glide_time, 0.0..=2.0)
+                                .suffix(" s")
+                                .show_value(true),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Tid för tonhöjden att glida till nästa not (0 = av)",
+                        ))
+                        .changed()
+                    {
+                        let _ = self
+                            .engine
+                            .send_command(AudioCommand::SetGlide { seconds: self.glide_time });
+                    }
+                });
+                ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Oktav:"));
                     if ui.button(crate::i18n::t("➖ (Z)")).clicked() && self.octave > 1 { self.octave -= 1; }
                     ui.label(egui::RichText::new(format!("C{}", self.octave)).strong().color(Theme::FL_CYAN));

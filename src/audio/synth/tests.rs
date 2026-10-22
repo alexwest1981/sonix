@@ -2268,3 +2268,90 @@ fn the_unison_count_is_clamped() {
     assert_eq!(engine.unison_voices, 1);
     assert_eq!(engine.unison_detune_cents, 0.0);
 }
+
+/// **Portamento glider i stället för att hoppa.** 220 Hz, tyst, sedan 440 Hz: strax efter
+/// den andra noten ligger tonhöjden kvar nära 220 och närmar sig 440 först efter glidtiden.
+#[test]
+fn glide_slides_between_notes() {
+    // Grundtonsskattning med autokorrelation över ett kort fönster.
+    let f0 = |samples: &[f32], sr: f32| -> f32 {
+        let min_lag = (sr / 900.0) as usize;
+        let max_lag = (sr / 150.0) as usize;
+        let hi = max_lag.min(samples.len() / 2);
+        let mut scores = Vec::new();
+        for lag in min_lag..hi {
+            let mut dot = 0.0f32;
+            let mut energy = 0.0f32;
+            for i in 0..samples.len() - lag {
+                dot += samples[i] * samples[i + lag];
+                energy += samples[i] * samples[i];
+            }
+            scores.push((lag, dot / (energy + 1e-9)));
+        }
+        let best = scores.iter().map(|(_, s)| *s).fold(f32::NEG_INFINITY, f32::max);
+        // **Första** toppen, inte den högsta: en periodisk signal toppar också på två och tre
+        // perioder, och då väljer den högsta toppen en oktav ned.
+        let lag = scores
+            .iter()
+            .find(|(_, s)| *s >= best * 0.9)
+            .map(|(l, _)| *l)
+            .unwrap_or(min_lag);
+        sr / lag as f32
+    };
+
+    let run = |glide: f32| {
+        let mut engine = SynthEngine::new(48_000.0);
+        engine.filter_params.cutoff = 12_000.0;
+        engine.filter_env_amount = 0.0;
+        engine.adsr = crate::audio::envelope::AdsrParams {
+            attack: 0.002,
+            decay: 0.001,
+            sustain: 1.0,
+            release: 0.002,
+        };
+        engine.handle_command(AudioCommand::SetGlide { seconds: glide });
+        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0 });
+        for _ in 0..4_800 {
+            engine.process_stereo();
+        }
+        engine.handle_command(AudioCommand::NoteOff { note: 57 });
+        for _ in 0..480 {
+            engine.process_stereo();
+        }
+        engine.handle_command(AudioCommand::NoteOn { note: 69, freq: 440.0, velocity: 1.0 });
+        // Första 40 ms efter den andra noten, och efter glidtiden.
+        let mut early = Vec::new();
+        for _ in 0..1_920 {
+            let (l, _) = engine.process_stereo();
+            early.push(l);
+        }
+        let mut late = Vec::new();
+        for _ in 0..9_600 {
+            let (l, _) = engine.process_stereo();
+            late.push(l);
+        }
+        let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+        println!(
+            "  peak early {:.4} late {:.4}",
+            rms(&early), rms(&late)
+        );
+        (f0(&early[240..], 48_000.0), f0(&late[2_400..], 48_000.0))
+    };
+
+    let (jump_early, jump_late) = run(0.0);
+    let (glide_early, glide_late) = run(0.2);
+    println!("utan glide: {jump_early:.0} → {jump_late:.0} Hz");
+    println!("med glide:  {glide_early:.0} → {glide_late:.0} Hz");
+
+    assert!((jump_early - 440.0).abs() < 25.0, "utan glide ska noten vara där direkt");
+    // Gliden ska ha **börjat** röra sig (över 220) men inte vara framme (under målet).
+    // Den exakta siffran beror på att fönstret är en chirp, därför bandet i stället för ett tal.
+    assert!(
+        glide_early > 220.0 && glide_early < jump_early - 20.0,
+        "med glide ska tonhöjden vara på väg: {glide_early:.0} Hz mot målet {jump_early:.0}"
+    );
+    assert!(
+        (glide_late - 440.0).abs() < 15.0,
+        "efter glidtiden ska den ha nått 440: {glide_late:.0} Hz"
+    );
+}
