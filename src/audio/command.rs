@@ -119,6 +119,11 @@ pub enum AudioCommand {
     SetModulation {
         slots: Vec<crate::audio::modulation::ModSlot>,
     },
+    /// Filtrets drivning (0–1) och hur mycket brytfrekvensen följer noten (0–1).
+    SetFilterDrive {
+        drive: f32,
+        key_track: f32,
+    },
     /// Portamento: tid i sekunder som tonhöjden glider till nästa not (0 = av).
     SetGlide {
         seconds: f32,

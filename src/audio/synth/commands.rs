@@ -53,6 +53,13 @@ impl SynthEngine {
                     }
                 }
                 let idx = target_idx.unwrap_or(0);
+                // Key tracking: rösten får sin förskjutning en gång, vid anslaget.
+                let key_ratio = if self.filter_key_track > 0.0 {
+                    2.0_f32.powf((note as f32 - 60.0) / 12.0 * self.filter_key_track.clamp(0.0, 1.0))
+                } else {
+                    1.0
+                };
+                self.voices[idx].key_cutoff_ratio = key_ratio;
                 // Portamento: rösten börjar på förra notens frekvens och glider dit den ska.
                 // Är gliden av är `from` samma som `freq` och koefficienten noll.
                 // Glidtiden är tiden det tar att **nå** målet (99 %), inte en tidskonstant:
@@ -107,6 +114,10 @@ impl SynthEngine {
                         extra += 1;
                     }
                 }
+            }
+            AudioCommand::SetFilterDrive { drive, key_track } => {
+                self.filter_drive = drive.clamp(0.0, 1.0);
+                self.filter_key_track = key_track.clamp(0.0, 1.0);
             }
             AudioCommand::SetGlide { seconds } => {
                 self.glide_time = seconds.clamp(0.0, 5.0);

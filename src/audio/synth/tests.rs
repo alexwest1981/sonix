@@ -378,8 +378,8 @@ fn filter_env_zero_amount_is_transparent() {
     a.trigger(60, 261.63, 1.0, 48_000.0);
     b.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..500 {
-        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
-        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
+        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
+        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
         assert!(
             (sa - sb).abs() < 1e-6,
             "amount 0 must ignore the filter envelope shape"
@@ -398,8 +398,8 @@ fn filter_env_amount_changes_timbre() {
     wet.trigger(60, 261.63, 1.0, 48_000.0);
     let mut diff = 0.0_f32;
     for _ in 0..2000 {
-        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
-        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
+        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
+        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
         diff += (a - b).abs();
     }
     assert!(diff > 1.0, "filter envelope should alter the timbre, diff={diff}");
@@ -414,7 +414,7 @@ fn voices_have_independent_filter_envelopes() {
     let mut second = Voice::new(48_000.0);
     first.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..2000 {
-        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0);
+        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0);
     }
     second.trigger(64, 329.63, 1.0, 48_000.0);
     let l1 = first.filter_env.current_level;
@@ -2055,8 +2055,8 @@ fn fm_at_zero_index_is_the_plain_oscillator() {
     b.trigger(57, 220.0, 1.0, 48_000.0);
     let fm = FmParams { ratio: 3.0, index: 0.0 };
     for i in 0..2_000 {
-        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0);
-        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0);
+        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0);
+        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0);
         assert_eq!(sa, sb, "index 0 ska ge exakt samma sample (frame {i})");
     }
 }
@@ -2074,7 +2074,7 @@ fn fm_puts_sidebands_where_the_plain_oscillator_has_none() {
         let fm = FmParams { ratio: 3.0, index };
         let mut out = Vec::with_capacity(9_600);
         for _ in 0..9_600 {
-            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0));
+            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0));
         }
         out
     };
@@ -2353,5 +2353,117 @@ fn glide_slides_between_notes() {
     assert!(
         (glide_late - 440.0).abs() < 15.0,
         "efter glidtiden ska den ha nått 440: {glide_late:.0} Hz"
+    );
+}
+
+/// **Filterdrive klipper mjukt.** Drivet mäts på **rösten**, inte på mastern: masterns
+/// kedja komprimerar det drivna ljudet och skulle dölja vad drivet gör.
+#[test]
+fn filter_drive_compresses_the_crest() {
+    let run = |drive: f32| {
+        let adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+        let flt = FilterParams { cutoff: 6_000.0, resonance: 0.7 };
+        let env = AdsrParams::default();
+        let mut v = Voice::new(48_000.0);
+        v.trigger(57, 220.0, 1.0, 48_000.0);
+        let mut buf = Vec::new();
+        for _ in 0..9_600 {
+            buf.push(v.next_sample(
+                Waveform::Sine,
+                &adsr,
+                &flt,
+                &env,
+                0.0,
+                &FmParams::default(),
+                0.0,
+                0.0,
+                drive,
+            ));
+        }
+        let tail = &buf[2_400..];
+        let peak = tail.iter().fold(0.0f32, |a, v| a.max(v.abs()));
+        let rms = (tail.iter().map(|v| v * v).sum::<f32>() / tail.len() as f32).sqrt();
+        let mut d = 0.0f32;
+        let mut e = 0.0f32;
+        for w in tail.windows(2) {
+            d += (w[1] - w[0]) * (w[1] - w[0]);
+            e += w[1] * w[1];
+        }
+        (peak / rms.max(1e-9), d / e.max(1e-12), peak)
+    };
+    let (clean_crest, clean_tilt, clean_peak) = run(0.0);
+    let (driven_crest, driven_tilt, driven_peak) = run(1.0);
+    println!(
+        "crest {clean_crest:.3} → {driven_crest:.3}, diskant {clean_tilt:.4} → {driven_tilt:.4}, topp {clean_peak:.3} → {driven_peak:.3}"
+    );
+    // En ren sinus har crest 1,414; driven ska den ner mot 1,0 (fyrkantigare).
+    assert!((clean_crest - 1.414).abs() < 0.12, "oren referens: {clean_crest:.3}");
+    assert!(
+        driven_crest < clean_crest * 0.95,
+        "drive ska ta ner crest: {driven_crest:.3} mot {clean_crest:.3}"
+    );
+    assert!(
+        driven_tilt > clean_tilt * 3.0,
+        "drive ska lägga till övertoner: {driven_tilt:.5} mot {clean_tilt:.5}"
+    );
+    // Normaliseringen ska hålla nivån: en fullskalig sinus får inte bli dubbelt så stark.
+    assert!(
+        driven_peak < clean_peak * 1.6,
+        "drivet ska inte höja nivån nämnvärt: {driven_peak:.3} mot {clean_peak:.3}"
+    );
+}
+
+/// **Key tracking följer klaviaturen.** Samma filter, samma not innehåll, två noter en
+/// oktav isär: med tracking på flyttas brytfrekvensen med noten, så den högre noten får
+/// proportionellt lika mycket av sitt spektrum som den lägre. Mätt som RMS på rösten.
+#[test]
+fn key_tracking_moves_the_cutoff_with_the_note() {
+    let level = |key_track: f32, note: u8, freq: f32| {
+        let adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+        let flt = FilterParams { cutoff: 400.0, resonance: 0.7 };
+        let env = AdsrParams::default();
+        let mut v = Voice::new(48_000.0);
+        v.trigger(note, freq, 1.0, 48_000.0);
+        v.key_cutoff_ratio = if key_track > 0.0 {
+            2.0_f32.powf((note as f32 - 60.0) / 12.0 * key_track)
+        } else {
+            1.0
+        };
+        let mut sum = 0.0f64;
+        let mut n = 0usize;
+        for i in 0..9_600 {
+            let s = v.next_sample(
+                Waveform::Saw,
+                &adsr,
+                &flt,
+                &env,
+                0.0,
+                &FmParams::default(),
+                0.0,
+                0.0,
+                0.0,
+            );
+            if i > 2_400 {
+                sum += (s as f64) * (s as f64);
+                n += 1;
+            }
+        }
+        (sum / n as f64).sqrt() as f32
+    };
+    let low_fixed = level(0.0, 57, 220.0);
+    let high_fixed = level(0.0, 69, 440.0);
+    let low_tracked = level(1.0, 57, 220.0);
+    let high_tracked = level(1.0, 69, 440.0);
+    let fixed_ratio = high_fixed / low_fixed;
+    let tracked_ratio = high_tracked / low_tracked;
+    println!("nivåförhållande hög/låg: {fixed_ratio:.3} utan tracking, {tracked_ratio:.3} med");
+    assert!(
+        tracked_ratio > fixed_ratio * 1.5,
+        "tracking ska lyfta den högre noten: {tracked_ratio:.3} mot {fixed_ratio:.3}"
+    );
+    assert!(
+        (low_tracked / low_fixed - 1.0).abs() < 0.35,
+        "den lägre noten ska bara flyttas marginellt: {:.3}",
+        low_tracked / low_fixed
     );
 }

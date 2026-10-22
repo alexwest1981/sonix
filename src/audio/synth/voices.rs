@@ -24,6 +24,9 @@ pub struct Voice {
     /// `glide_coeff == 0.0` betyder ingen glide, och då är rösten exakt som förut.
     pub target_inc: f32,
     pub glide_coeff: f32,
+    /// Key tracking: filtrets brytfrekvens förskjuts med notens avstånd från C4.
+    /// 1,0 = ingen förskjutning (så beter sig gamla projekt).
+    pub key_cutoff_ratio: f32,
 }
 
 /// Sidokedje-duckare (Fas 8.3).
@@ -267,6 +270,7 @@ impl Voice {
             mod_phase: 0.0,
             target_inc: 0.0,
             glide_coeff: 0.0,
+            key_cutoff_ratio: 1.0,
         }
     }
 
@@ -331,6 +335,7 @@ impl Voice {
         fm: &FmParams,
         mod_pitch: f32,
         mod_cutoff: f32,
+        drive: f32,
     ) -> f32 {
         if !self.envelope.is_active() {
             return 0.0;
@@ -404,10 +409,21 @@ impl Voice {
         let fenv = self.filter_env.next_sample(filter_env);
         let effective = FilterParams {
             cutoff: filter_params.cutoff
+                * self.key_cutoff_ratio
                 * 2.0_f32.powf(filter_env_amount * fenv + mod_cutoff.clamp(-4.0, 4.0)),
             resonance: filter_params.resonance,
         };
-        self.filter.process_lowpass(raw_sample * self.velocity * env_gain, &effective)
+        let filtered = self
+            .filter
+            .process_lowpass(raw_sample * self.velocity * env_gain, &effective);
+        // Filterdrive: mjuk klippning i stället för en hård gräns, normaliserad så att en
+        // fullskalig sinus behåller sin nivå. drive 0 är exakt den gamla vägen.
+        if drive > 0.0 {
+            let g = 1.0 + drive.clamp(0.0, 1.0) * 7.0;
+            (filtered * g).tanh() / g.tanh()
+        } else {
+            filtered
+        }
     }
 }
 

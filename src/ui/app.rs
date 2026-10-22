@@ -246,6 +246,9 @@ pub struct SonixApp {
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
     pub step_velocities: [f32; 16],
+    /// Filtrets drivning och key tracking, 0–1.
+    pub filter_drive: f32,
+    pub filter_key_track: f32,
     /// Portamento: tid i sekunder för tonhöjden att glida till nästa not.
     pub glide_time: f32,
     /// Unison: röster per not och isärstämning i cent.
@@ -818,6 +821,8 @@ impl SonixApp {
             chord_stamp: 0,
             step_velocities: [0.85; 16],
             piano_roll_quiet_threshold: 0.3,
+            filter_drive: 0.0,
+            filter_key_track: 0.0,
             glide_time: 0.0,
             unison_voices: 1,
             unison_detune_cents: 12.0,

@@ -3038,6 +3038,36 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     }
                 });
                 ui.horizontal(|ui| {
+                    let mut drive = self.filter_drive;
+                    let mut key_track = self.filter_key_track;
+                    let a = ui
+                        .add(
+                            egui::Slider::new(&mut drive, 0.0..=1.0)
+                                .text(crate::i18n::t("Drive:"))
+                                .show_value(false),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Hur mycket filtret klipper. 0 = rent, 1 = mjukt klippt",
+                        ));
+                    let b = ui
+                        .add(
+                            egui::Slider::new(&mut key_track, 0.0..=1.0)
+                                .text(crate::i18n::t("Key track:"))
+                                .show_value(false),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Hur mycket brytfrekvensen följer noten. 0 = fast filter",
+                        ));
+                    if a.changed() || b.changed() {
+                        self.filter_drive = drive;
+                        self.filter_key_track = key_track;
+                        let _ = self.engine.send_command(AudioCommand::SetFilterDrive {
+                            drive,
+                            key_track,
+                        });
+                    }
+                });
+                ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Oktav:"));
                     if ui.button(crate::i18n::t("➖ (Z)")).clicked() && self.octave > 1 { self.octave -= 1; }
                     ui.label(egui::RichText::new(format!("C{}", self.octave)).strong().color(Theme::FL_CYAN));
