@@ -31,6 +31,47 @@ impl Groove {
     }
 }
 
+/// **Extrahera en groove ur inspelat ljud** — FL:s "Extrahera groove".
+///
+/// Anslagen ger var tionde sextondel ligger i tiden; skillnaden mot det raka rutnätet **är**
+/// mallen, på samma sätt som Abletons `.agr`-filer bär sina positioner. Bara steg som
+/// förekommer minst två gånger får en förskjutning — ett enda anslag är ett anslag, inte en
+/// vana — och saknas underlag returneras `None` i stället för en tom mall.
+pub fn extract_groove(name: &str, onsets_secs: &[f32], bpm: f32) -> Option<Groove> {
+    if onsets_secs.len() < 8 || bpm <= 0.0 {
+        return None;
+    }
+    let step = 60.0 / bpm / 4.0; // en sextondel i sekunder
+    let mut sums = [0.0f32; GROOVE_SLOTS];
+    let mut counts = [0usize; GROOVE_SLOTS];
+    for &t in onsets_secs {
+        let pos = t / step;
+        let nearest = pos.round();
+        // Förskjutningen mäts mot närmaste steg, i andel av ett steg.
+        let offset = pos - nearest;
+        let slot = (nearest as i64).rem_euclid(GROOVE_SLOTS as i64) as usize;
+        // Ett anslag mer än en halv sextondel fel hör inte till rutnätet: det är en
+        // synkop, inte en förskjuten sextondel, och ska inte dra mallen.
+        if offset.abs() <= 0.5 {
+            sums[slot] += offset;
+            counts[slot] += 1;
+        }
+    }
+    let mut offsets = [0.0f32; GROOVE_SLOTS];
+    for slot in 0..GROOVE_SLOTS {
+        if counts[slot] >= 2 {
+            offsets[slot] = sums[slot] / counts[slot] as f32;
+        }
+    }
+    let groove = Groove {
+        name: name.to_string(),
+        offsets,
+    };
+    // En rak inspelning är ingen groove. Tröskeln är en halv procent av ett steg — under det
+    // är det mänsklig variation i anslaget, inte en rytmisk förskjutning.
+    if groove.depth() < 0.005 { None } else { Some(groove) }
+}
+
 /// Kandidater för ett steg, i takter (4/4): 1/32, 1/16-triol, 1/16, 1/8-triol, 1/8, 1/4.
 const STEP_CANDIDATES: [f32; 6] = [0.0625, 1.0 / 12.0, 0.125, 1.0 / 6.0, 0.25, 0.5];
 
@@ -446,6 +487,66 @@ mod tests {
             logic_depth.is_nan() || logic_depth < 0.01,
             "Logic-mallen markerar swing i Grid, inte i tiderna: {logic_depth:.3}"
         );
+    }
+
+    /// **Extraktionen hittar tillbaka till svängen den fick.** Fyra takter på 120 bpm där
+    /// varannan sextondel ligger 25 % av ett steg sent: mallen ska ge 0,25 på de udda stegen
+    /// och 0 på de jämna. Fyra takter, inte en — ett steg måste förekomma mer än en gång för
+    /// att räknas som en vana.
+    #[test]
+    fn a_swing_is_recovered_from_the_onsets_that_carry_it() {
+        let bpm = 120.0;
+        let step = 60.0 / bpm / 4.0;
+        let onsets: Vec<f32> = (0..64)
+            .map(|i| {
+                let late = if i % 2 == 1 { 0.25 } else { 0.0 };
+                (i as f32 + late) * step
+            })
+            .collect();
+        let groove = extract_groove("ur ljudet", &onsets, bpm).expect("svängen ska hittas");
+        println!("förskjutningar: {:?}", groove.offsets);
+        for slot in 0..GROOVE_SLOTS {
+            let want = if slot % 2 == 1 { 0.25 } else { 0.0 };
+            assert!(
+                (groove.offsets[slot] - want).abs() < 0.01,
+                "steg {slot}: {} i stället för {want}",
+                groove.offsets[slot]
+            );
+        }
+    }
+
+    /// **En rak inspelning ger ingen mall.** Utan det hade varje fyrtakt lagt en tom groove i
+    /// poolen, och poolen hade fyllts av "ingenting" som ser ut som något.
+    #[test]
+    fn a_straight_performance_yields_no_groove() {
+        let bpm = 120.0;
+        let step = 60.0 / bpm / 4.0;
+        let onsets: Vec<f32> = (0..64).map(|i| i as f32 * step).collect();
+        assert!(extract_groove("rak", &onsets, bpm).is_none(), "rak är ingen groove");
+        // Och för få anslag är inget underlag alls.
+        assert!(extract_groove("få", &onsets[..4], bpm).is_none());
+    }
+
+    /// **Ett ensamt anslag blir ingen förskjutning.** Steg som bara förekommer en gång lämnas
+    /// orörda: mallen ska beskriva en vana, inte en slump.
+    #[test]
+    fn a_step_that_occurs_once_gets_no_offset() {
+        let bpm = 120.0;
+        let step = 60.0 / bpm / 4.0;
+        // Åtta takter där bara de udda sextondelarna spelas, med sväng — plus **ett** ensamt
+        // sent anslag på steg 2, som är en synkop och inte en vana.
+        let mut onsets: Vec<f32> = (0..64)
+            .filter(|i| i % 2 == 1)
+            .map(|i| (i as f32 + 0.2) * step)
+            .collect();
+        onsets.push(2.0 * step + 0.45 * step);
+        let groove = extract_groove("nästan rak", &onsets, bpm).unwrap();
+        assert!(
+            groove.offsets[2].abs() < 0.01,
+            "steg 2 ska stå kvar på noll: {}",
+            groove.offsets[2]
+        );
+        assert!((groove.offsets[1] - 0.2).abs() < 0.02, "steg 1: {}", groove.offsets[1]);
     }
 
 }

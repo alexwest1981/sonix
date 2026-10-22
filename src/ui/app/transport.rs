@@ -867,6 +867,60 @@ pub(crate) fn scale_take_velocity(&mut self, factor: f32) {
 ///
 /// Tagningen är det lager både uppspelningen och exporten läser, så svänget hörs och hamnar i
 /// filen på samma sätt — det finns ingen andra väg att hålla i takt.
+/// **Extrahera en groove ur spårets ljud** (FL:s "Extrahera groove").
+///
+/// Anslagen i spåret jämförs med det raka rutnätet vid projektets tempo; skillnaden blir en
+/// mall i poolen, precis som en läst `.agr`. Ingen ny detektor: `detect_onsets` är samma
+/// funktion som slicing och transientläget använder, så extraktionen hör vad de hör.
+pub(crate) fn extract_groove_from_track(&mut self) {
+    let idx = self.selected_timeline_track.min(self.playlist_tracks.len().saturating_sub(1));
+    let Some(track) = self.playlist_tracks.get(idx) else {
+        self.status_message = crate::i18n::t("⚠️ Välj ett spår först").to_string();
+        return;
+    };
+    // Fruset ljud ligger i `frozen_pcm`; annars är det spårets egen tagning.
+    let audio = track
+        .frozen_pcm
+        .clone()
+        .or_else(|| track.pcm_audio.clone());
+    let Some((left, _right, sample_rate)) = audio else {
+        self.status_message = crate::tstatus!(
+            "🎵 '{}' har inget ljud att lyssna på — extrahera ur en tagning i stället",
+            track.name
+        );
+        return;
+    };
+    let onsets = crate::audio::onset::detect_onsets(
+        &left,
+        sample_rate as f32,
+        &crate::audio::onset::OnsetParams::default(),
+    );
+    let secs: Vec<f32> = onsets
+        .iter()
+        .map(|&o| o as f32 / sample_rate as f32)
+        .collect();
+    match crate::groove::extract_groove(&format!("Ur '{}'", track.name), &secs, self.bpm) {
+        Some(groove) => {
+            let depth = groove.depth();
+            let count = onsets.len();
+            self.groove_pool
+                .push(crate::groove::GrooveEntry::new(groove, 1.0));
+            self.status_message = crate::tstatus!(
+                "🎵 Extraherade en groove ur '{}': {} anslag, djup {:.1} % av ett steg",
+                track.name,
+                count,
+                depth * 100.0
+            );
+        }
+        None => {
+            self.status_message = crate::tstatus!(
+                "🎵 '{}' svänger inte — anslagen ligger på rutnätet, så det finns ingen groove att ta",
+                track.name
+            );
+        }
+    }
+}
+
 pub(crate) fn apply_groove_from_file(&mut self) {
     let Some(path) = rfd::FileDialog::new()
         .add_filter("Groove (.agr)", &["agr"])

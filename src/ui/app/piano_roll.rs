@@ -404,6 +404,23 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             {
                 self.apply_groove_from_file();
             }
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(crate::i18n::t("🎧 Extrahera ur spåret"))
+                            .strong()
+                            .size(10.5)
+                            .color(Theme::TEXT_BRIGHT),
+                    )
+                    .fill(take_btn),
+                )
+                .on_hover_text(crate::i18n::t(
+                    "Läs spårets anslag och gör en groove-mall av dem — samma väg som en .agr",
+                ))
+                .clicked()
+            {
+                self.extract_groove_from_track();
+            }
             if !self.groove_pool.is_empty() {
                 if ui
                     .add(

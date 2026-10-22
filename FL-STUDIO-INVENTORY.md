@@ -511,7 +511,7 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | Spela in allt du spelar i en logg och dumpa den | `Auto dump score` · `Dump score log` · `Convert to score and dump to piano roll` · `Detecting score...` | ✗ (tagningar spelas in per tagning, inte som en logg) |
 | Dela klipp på taktdelar | `Chop in bars` · `Chop in 8th beats` · `Chop in 16th beats` · `Chop in 32nd beats` · `Chop chords` | ◐ (choppern delar vid slag, inte vid taktdel) |
 | Auto-slice med känslighet | `Auto-slice with dull/medium/sharp sensitivity` · `Accentuate beat-aligned slices` | ◐ (en känslighet i choppern) |
-| Extrahera groove | `Flatten (groove)` · `Keep the groove only` · `Load groove pattern...` · `Save groove pattern...` | ✗ |
+| Extrahera groove | `Flatten (groove)` · `Keep the groove only` · `Load groove pattern...` · `Save groove pattern...` | ✅ (extraktion; `Flatten`/`Keep` är inte byggda) |
 | Strumma ackord | `Bypass strum` | ◐ (strum endast i Chord Matrix-avlyssningen) |
 | Artikulation per not | `Articulate...` | ✗ |
 | Arpeggion som verktyg | `Arpeggiate...` | ◐ (arpeggio i synten + `SchedulesChord`) |
