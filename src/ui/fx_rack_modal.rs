@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    DelayBankParams, DistructorParams, ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    DelayBankParams, DistructorParams, HardcoreParams, ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -296,6 +296,21 @@ impl Default for FxRackState {
                     p3_val: 0.35,
                     mix: 0.50,
                     description: "Tre distorsioner: mjuk mättnad, hård klippning och vikning. SERIE staplar dem, PARALLELL blandar dem.",                    extra: vec![("PARALLELL", 0.0), ("TON", 0.70)],
+                },
+                FxPedal {
+                    id: "hardcore",
+                    name: "🎸 HARDCORE",
+                    category: "Distortion",
+                    enabled: false,
+                    color: Color32::from_rgb(230, 90, 140),
+                    p1_name: "KOMP",
+                    p1_val: 0.30,
+                    p2_name: "DRIVE",
+                    p2_val: 0.35,
+                    p3_name: "WAH",
+                    p3_val: 0.60,
+                    mix: 1.00,
+                    description: "Pedalkedja i serie: KOMP → DRIVE → WAH → DELAY. Distorsion före wah ger den vokalliknande kurvan.",                    extra: vec![("WAH-DJUP", 0.0), ("DELAY", 0.2), ("EKON", 0.0)],
                 },
                 FxPedal {
                     id: "chorus",
@@ -608,6 +623,20 @@ impl FxRackState {
             mix: ds_knob(|p| p.mix, 0.5),
         };
 
+        let hc_p = self.pedal("hardcore");
+        let hc_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            hc_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let hardcore = HardcoreParams {
+            comp: hc_knob(|p| p.p1_val, 0.3),
+            drive: hc_knob(|p| p.p2_val, 0.35),
+            wah_hz: 300.0 * (10.0f32).powf(hc_knob(|p| p.p3_val, 0.6) * 1.5),
+            wah_depth: hc_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.0), 0.0),
+            delay_ms: 40.0 + hc_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.2), 0.2) * 460.0,
+            delay_mix: hc_knob(|p| p.extra.get(2).map(|e| e.1).unwrap_or(0.0), 0.0),
+            mix: hc_knob(|p| p.mix, 1.0),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -647,6 +676,8 @@ impl FxRackState {
             delay_bank_enabled: db_p.map(|p| p.enabled).unwrap_or(false),
             distructor,
             distructor_enabled: ds_p.map(|p| p.enabled).unwrap_or(false),
+            hardcore,
+            hardcore_enabled: hc_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,
@@ -1572,6 +1603,36 @@ mod tests {
             "tonen ska gå ner till 300 Hz: {}",
             params.distructor.tone_hz
         );
+    }
+
+    /// **Hardcores rattar når sina egna steg** — komp, drive, wah-centrum, wah-djup, delay och ekon.
+    #[test]
+    fn the_hardcore_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "hardcore")
+            .expect("hardcore-pedalen ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 1.0; // full komp
+        pedal.p2_val = 0.0; // rent
+        pedal.p3_val = 0.0; // lägsta wah
+        pedal.extra[0].1 = 1.0;
+        pedal.extra[1].1 = 0.0;
+        pedal.extra[2].1 = 1.0;
+        pedal.mix = 0.9;
+
+        let params = state.build_master_fx_params();
+        assert!(params.hardcore_enabled, "pedalen ska slå på kedjan");
+        assert!((params.hardcore.comp - 1.0).abs() < 0.01);
+        assert!(params.hardcore.drive.abs() < 0.01);
+        assert!((params.hardcore.wah_hz - 300.0).abs() < 1.0, "wah: {}", params.hardcore.wah_hz);
+        assert!((params.hardcore.wah_depth - 1.0).abs() < 0.01);
+        assert!((params.hardcore.delay_ms - 40.0).abs() < 0.1, "delay: {}", params.hardcore.delay_ms);
+        assert!((params.hardcore.delay_mix - 1.0).abs() < 0.01);
+        assert!((params.hardcore.mix - 0.9).abs() < 0.01);
     }
 
 }

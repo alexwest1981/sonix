@@ -172,6 +172,8 @@ pub struct MasterFxParams {
     pub delay_bank_enabled: bool,
     pub distructor: DistructorParams,
     pub distructor_enabled: bool,
+    pub hardcore: HardcoreParams,
+    pub hardcore_enabled: bool,
     pub control: ControlRoomParams,
 }
 
@@ -215,6 +217,8 @@ impl Default for MasterFxParams {
             delay_bank_enabled: false,
             distructor: DistructorParams::default(),
             distructor_enabled: false,
+            hardcore: HardcoreParams::default(),
+            hardcore_enabled: false,
             control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
@@ -245,6 +249,7 @@ pub struct MasterFxChain {
     mb_delay: MultibandDelay,
     delay_bank: DelayBank,
     distructor: Distructor,
+    hardcore: Hardcore,
     filter: MasterFilter,
     limiter: Limiter,
     params: MasterFxParams,
@@ -275,6 +280,7 @@ impl MasterFxChain {
             mb_delay: MultibandDelay::new(sample_rate),
             delay_bank: DelayBank::new(sample_rate),
             distructor: Distructor::new(sample_rate),
+            hardcore: Hardcore::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
@@ -375,6 +381,12 @@ impl MasterFxChain {
 
         if p.distructor_enabled {
             let (nl, nr) = self.distructor.process(l, r, &p.distructor);
+            l = nl;
+            r = nr;
+        }
+
+        if p.hardcore_enabled {
+            let (nl, nr) = self.hardcore.process(l, r, &p.hardcore);
             l = nl;
             r = nr;
         }

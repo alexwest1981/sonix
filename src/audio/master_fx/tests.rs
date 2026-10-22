@@ -1003,3 +1003,91 @@
         );
     }
 
+    /// **Hardcore är en kedja, inte ett påslag.** Drivet ska ge övertoner, wahen ska lyfta sitt
+    /// eget centrum, och delayen ska ge ett eko på sin egen tid — alla tre i samma prov, för
+    /// det är sammansättningen som är effekten.
+    #[test]
+    fn the_hardcore_chain_bites_at_every_stage() {
+        let sr = 48_000.0;
+        let clean = HardcoreParams {
+            comp: 0.0,
+            drive: 0.0,
+            wah_hz: 1_200.0,
+            wah_depth: 0.0,
+            delay_ms: 0.0,
+            delay_mix: 0.0,
+            mix: 1.0,
+        };
+        let render = |params: HardcoreParams, input: &dyn Fn(usize) -> f32, frames: usize| {
+            let mut hc = Hardcore::new(sr);
+            let mut out = Vec::with_capacity(frames);
+            for n in 0..frames {
+                out.push(hc.process(input(n), input(n), &params).0);
+            }
+            out
+        };
+        let sine = |hz: f32| move |n: usize| (2.0 * std::f32::consts::PI * hz * n as f32 / sr).sin() * 0.5;
+
+        // 1. Drive ger övertoner.
+        let soft = render(
+            HardcoreParams { drive: 0.05, ..clean },
+            &sine(220.0),
+            24_000,
+        );
+        let hard = render(HardcoreParams { drive: 0.9, ..clean }, &sine(220.0), 24_000);
+        let (soft_thd, hard_thd) = (thd(&soft[12_000..], 220.0, sr), thd(&hard[12_000..], 220.0, sr));
+        println!("drive: THD {soft_thd:.3} → {hard_thd:.3}");
+
+        // 2. Wahen lyfter sitt eget centrum: två toner in, och den ena vinner beroende på
+        //    var bandpasset står.
+        let two_tones = |n: usize| {
+            let t = n as f32 / sr;
+            ((2.0 * std::f32::consts::PI * 400.0 * t).sin()
+                + (2.0 * std::f32::consts::PI * 2000.0 * t).sin())
+                * 0.25
+        };
+        let low_wah = render(
+            HardcoreParams { wah_hz: 400.0, wah_depth: 1.0, ..clean },
+            &two_tones,
+            24_000,
+        );
+        let high_wah = render(
+            HardcoreParams { wah_hz: 2000.0, wah_depth: 1.0, ..clean },
+            &two_tones,
+            24_000,
+        );
+        let mag = |v: &[f32], f: f32| {
+            let (mut re, mut im) = (0.0f32, 0.0f32);
+            for (n, &x) in v.iter().enumerate() {
+                let ph = 2.0 * std::f32::consts::PI * f * n as f32 / sr;
+                re += x * ph.cos();
+                im -= x * ph.sin();
+            }
+            (re * re + im * im).sqrt() / v.len() as f32
+        };
+        let (low_low, low_high) = (mag(&low_wah[12_000..], 400.0), mag(&low_wah[12_000..], 2_000.0));
+        let (high_low, high_high) = (mag(&high_wah[12_000..], 400.0), mag(&high_wah[12_000..], 2_000.0));
+        println!("wah 400 Hz: 400→{low_low:.4}, 2k→{low_high:.4} · wah 2 kHz: 400→{high_low:.4}, 2k→{high_high:.4}");
+
+        // 3. Delayen svarar på sin egen tid.
+        let echo = render(
+            HardcoreParams { delay_ms: 100.0, delay_mix: 1.0, ..clean },
+            &move |n| if n == 0 { 1.0 } else { 0.0 },
+            24_000,
+        );
+        let energy_at = |ms: f32| {
+            let c = (ms * 0.001 * sr) as usize;
+            echo[c.saturating_sub(100)..(c + 100).min(echo.len())]
+                .iter()
+                .map(|v| v.abs())
+                .sum::<f32>()
+        };
+        println!("eko vid 100 ms {:.4}, vid 150 ms {:.4}", energy_at(100.0), energy_at(150.0));
+
+        assert!(hard_thd > soft_thd * 2.0, "drivet ska ge övertoner: {soft_thd:.3} → {hard_thd:.3}");
+        assert!(low_low > low_high * 2.0, "wah 400 Hz ska lyfta 400 Hz: {low_low:.4} mot {low_high:.4}");
+        assert!(high_high > high_low * 2.0, "wah 2 kHz ska lyfta 2 kHz: {high_high:.4} mot {high_low:.4}");
+        assert!(energy_at(100.0) > 0.05, "ekot ska höras vid 100 ms");
+        assert!(energy_at(150.0) < energy_at(100.0) * 0.2, "och vara borta vid 150 ms");
+    }
+

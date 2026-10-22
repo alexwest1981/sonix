@@ -925,3 +925,150 @@ impl Distructor {
         )
     }
 }
+
+/// **Hardcore** (FL): gitarreffektkedja i serie — kompressor, distorsion, wah och delay, i den
+/// ordningen. Varje steg är en av de kretsar som redan finns i masterkedjan: kedjan är
+/// sammansättningen, inte fyra nya effekter. Ordningen är den som gör ljudet: distorsion före
+/// wah ger en vokalliknande kurva, wah före distorsion ger ett hårdare, plattare ljud.
+pub struct Hardcore {
+    comp: Compressor,
+    dist: Distructor,
+    wah_l: [BiquadState; 2],
+    wah_r: [BiquadState; 2],
+    wah_coeffs: BiquadCoeffs,
+    wah_hz: f32,
+    delay: DelayBank,
+    sample_rate: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct HardcoreParams {
+    /// Kompressionens mängd, 0 = av.
+    pub comp: f32,
+    /// Distorsionens drive, 0 = rent.
+    pub drive: f32,
+    /// Wah: bandpassets centrum i Hz.
+    pub wah_hz: f32,
+    /// Wah: hur mycket bandpasset blandas in, 0 = av.
+    pub wah_depth: f32,
+    /// Delay: tid i ms, 0 = av.
+    pub delay_ms: f32,
+    pub delay_mix: f32,
+    pub mix: f32,
+}
+
+impl Default for HardcoreParams {
+    fn default() -> Self {
+        Self {
+            comp: 0.3,
+            drive: 0.35,
+            wah_hz: 1_200.0,
+            wah_depth: 0.0,
+            delay_ms: 220.0,
+            delay_mix: 0.0,
+            mix: 1.0,
+        }
+    }
+}
+
+/// RBJ-bandpass (0 dB topp, Q styr bredden).
+fn bandpass_coeffs(sr: f32, freq: f32, q: f32) -> BiquadCoeffs {
+    let w0 = 2.0 * std::f32::consts::PI * freq.clamp(20.0, sr * 0.45) / sr;
+    let (sin_w0, cos_w0) = w0.sin_cos();
+    let alpha = sin_w0 / (2.0 * q.max(0.1));
+    let a0 = 1.0 + alpha;
+    BiquadCoeffs {
+        b0: alpha / a0,
+        b1: 0.0,
+        b2: -alpha / a0,
+        a1: -2.0 * cos_w0 / a0,
+        a2: (1.0 - alpha) / a0,
+    }
+}
+
+impl Hardcore {
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        Self {
+            comp: Compressor::new(sr),
+            dist: Distructor::new(sr),
+            wah_l: [BiquadState::default(); 2],
+            wah_r: [BiquadState::default(); 2],
+            wah_coeffs: bandpass_coeffs(sr, 1_200.0, 1.4),
+            wah_hz: 1_200.0,
+            delay: DelayBank::new(sr),
+            sample_rate: sr,
+        }
+    }
+
+    pub fn process(&mut self, l: f32, r: f32, p: &HardcoreParams) -> (f32, f32) {
+        let (mut l, mut r) = (l, r);
+
+        // 1. Kompressor: pedalkedjans första steg, så distorsionen får jämnare insignal.
+        if p.comp > 0.001 {
+            let amount = p.comp.clamp(0.0, 1.0);
+            let params = CompressorParams {
+                threshold_db: -6.0 - 18.0 * amount,
+                ratio: 1.0 + 7.0 * amount,
+                ..CompressorParams::default()
+            };
+            let (nl, nr) = self.comp.process(l, r, &params);
+            l = nl;
+            r = nr;
+        }
+
+        // 2. Distorsion: samma tre kurvor som Distructorn, men alla tre på samma drive.
+        if p.drive > 0.001 {
+            let (nl, nr) = self.dist.process(
+                l,
+                r,
+                &DistructorParams {
+                    drive: [p.drive.clamp(0.0, 1.0); 3],
+                    parallel: 0.0,
+                    tone_hz: 9_000.0,
+                    mix: 1.0,
+                },
+            );
+            l = nl;
+            r = nr;
+        }
+
+        // 3. Wah: bandpass ovanpå signalen. Två biquads i rad ger en brantare kurva, alltså
+        //    en mer uttalad "röst" i stället för en mjuk tonkontroll.
+        if p.wah_depth > 0.001 {
+            if (p.wah_hz - self.wah_hz).abs() > 1.0 {
+                self.wah_coeffs = bandpass_coeffs(self.sample_rate, p.wah_hz, 1.4);
+                self.wah_hz = p.wah_hz;
+            }
+            let mut wl = l;
+            let mut wr = r;
+            for i in 0..2 {
+                wl = self.wah_l[i].process(wl, &self.wah_coeffs);
+                wr = self.wah_r[i].process(wr, &self.wah_coeffs);
+            }
+            let depth = p.wah_depth.clamp(0.0, 1.0);
+            l = l * (1.0 - depth) + wl * depth * 2.0;
+            r = r * (1.0 - depth) + wr * depth * 2.0;
+        }
+
+        // 4. Delay: sist, så ekot bär hela kedjans färg.
+        if p.delay_ms > 1.0 && p.delay_mix > 0.001 {
+            let (nl, nr) = self.delay.process(
+                l,
+                r,
+                &DelayBankParams {
+                    times_ms: [p.delay_ms, p.delay_ms * 2.0, p.delay_ms * 3.0],
+                    levels: [1.0, 0.4, 0.2],
+                    feedback: 0.3,
+                    spread: 0.4,
+                    mix: p.delay_mix.clamp(0.0, 1.0),
+                },
+            );
+            l = nl;
+            r = nr;
+        }
+
+        let mix = p.mix.clamp(0.0, 1.0);
+        (l * mix, r * mix)
+    }
+}
