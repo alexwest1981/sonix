@@ -187,7 +187,24 @@ mod tests {
         let _ = std::fs::create_dir_all(&dir);
         let path = dir.join("two_colors.mp4");
         let path_str = path.to_string_lossy().to_string();
-        let status = Command::new("ffmpeg")
+        // ffmpeg är ett **körtidsberoende**, inte ett byggberoende: finns det inte på
+        // maskinen kan videospåret inte användas, men det ska inte fälla bygget. Provet
+        // hoppar därför över med ett meddelande i stället för att ljuga om grönt.
+        let have = |tool: &str| {
+            Command::new(tool)
+                .arg("-version")
+                .output()
+                .map(|o| o.status.success())
+                .unwrap_or(false)
+        };
+        if !have("ffmpeg") || !have("ffprobe") {
+            println!("hoppar över: ffmpeg/ffprobe finns inte på maskinen");
+            return;
+        }
+        // mpeg4-kodaren finns i varje ffmpeg-bygge; libx264 gör det inte (Ubuntu utan
+        // universe, vissa runners), och provet ska inte hänga på vilken kodare som råkade
+        // följa med.
+        let output = Command::new("ffmpeg")
             .args([
                 "-v",
                 "error",
@@ -202,13 +219,21 @@ mod tests {
                 "color=c=green:s=64x48:d=1:r=10",
                 "-filter_complex",
                 "[0:v][1:v]concat=n=2:v=1:a=0",
+                "-c:v",
+                "mpeg4",
+                "-q:v",
+                "2",
                 "-pix_fmt",
                 "yuv420p",
                 &path_str,
             ])
-            .status()
+            .output()
             .expect("ffmpeg ska finnas");
-        assert!(status.success(), "kunde inte skapa testfilmen");
+        assert!(
+            output.status.success(),
+            "kunde inte skapa testfilmen: {}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
 
         let info = probe(&path_str).expect("ffprobe ska läsa filen");
         assert_eq!((info.width, info.height), (64, 48));
