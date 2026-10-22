@@ -17,6 +17,7 @@ pub mod loudness;
 pub mod macro_chain;
 pub mod master_fx;
 pub mod metadata;
+pub mod asd;
 pub mod tuning;
 pub mod warp;
 pub mod modulation;

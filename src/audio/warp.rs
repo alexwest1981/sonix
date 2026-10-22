@@ -16,6 +16,14 @@
 //! (Klick var 250 ms, 40 sampel; 220 Hz-ton; 48 kHz. Se
 //! `stretch::tests::the_warp_modes_differ_in_measured_smearing`.)
 //!
+//! **Försök som mättes och förkastades (2026-10-22):** att lägga kornet på detekterade
+//! anslag i stället för att fasleta det. Abletons analysfiler (`.asd`) gav ett facit att
+//! mäta mot, och detektorprofilen 90 ms gav F1 0,707 mot deras egna markeringar. Men
+//! snappningen gjorde ljudet **sämre**: topp 0,450 mot 0,900 och förhandsläckage 1,89 mot
+//! 0,000, eftersom en transient som ligger i fyra överlappande korn delas upp och smetas ut
+//! hur kornet än placeras. Det som behövs är **transientjusterad övergång**: kort fade-in på
+//! det nya kornet och snabb fade-out på det gamla, alltså en egen OLA-väg för anslagen.
+//!
 //! `Complex` är bäst på både topp och ton och är därför standard — samma väg som
 //! `stretch_stereo` alltid har tagit. `Fast` är den billiga: kortast korn, bredast sök,
 //! och de tydligaste artefakterna.

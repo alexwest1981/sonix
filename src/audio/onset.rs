@@ -1037,4 +1037,164 @@ mod tests {
         eprintln!("  detektorns råa första slag {raw:?} s");
         eprintln!("  funktionens svar (musikens start) {found:?} s");
     }
+
+    /// **Vår detektor mot Abletons facit.** Varje sampling i Abletons Core Library har en
+    /// analysfil (`.asd`) med deras egna onset-positioner. Här mäts vår detektor mot dem:
+    /// andel av deras anslag vi hittar (täckning) och andel av våra som de också har
+    /// (träffsäkerhet), med 50 ms tolerans.
+    ///
+    /// Körs bara när `SONIX_ASD_DIR` pekar på en uppackad Ableton-installation.
+    #[test]
+    fn a_real_abletons_onset_data_measures_our_detector_if_available() {
+        let Ok(root) = std::env::var("SONIX_ASD_DIR") else {
+            return;
+        };
+
+        fn walk(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+            let Ok(entries) = std::fs::read_dir(dir) else {
+                return;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, out);
+                } else if path.extension().is_some_and(|e| e == "asd") {
+                    out.push(path);
+                }
+            }
+        }
+
+        let mut files = Vec::new();
+        walk(std::path::Path::new(&root), &mut files);
+        files.sort();
+        files.retain(|p| p.to_string_lossy().ends_with(".wav.asd"));
+
+        let tolerance = 0.050f32;
+        let mut hit_total = 0usize;
+        let mut theirs_total = 0usize;
+        let mut ours_total = 0usize;
+        let mut used = 0usize;
+        let mut worst: Vec<(f32, String, usize, usize)> = Vec::new();
+
+        for asd in files.iter().take(400) {
+            let wav = asd.with_extension("");
+            if !wav.exists() {
+                continue;
+            }
+            let Ok(data) = std::fs::read(asd) else {
+                continue;
+            };
+            let Some(theirs) = crate::audio::asd::parse_onsets(&data) else {
+                continue;
+            };
+            let Ok((left, _right, sr)) =
+                crate::audio::wav_reader::load_wav_pcm(&wav.to_string_lossy())
+            else {
+                continue;
+            };
+            if theirs.len() < 3 {
+                continue;
+            }
+            let params = OnsetParams::default();
+            let ours = detect_onsets(&left, sr as f32, &params);
+            if ours.is_empty() {
+                continue;
+            }
+            used += 1;
+            let tol = (tolerance * sr as f32) as i64;
+
+            let mut hits = 0usize;
+            for t in &theirs {
+                let t = *t as i64;
+                if ours.iter().any(|o| (*o as i64 - t).abs() <= tol) {
+                    hits += 1;
+                }
+            }
+            let mut ours_matched = 0usize;
+            for o in &ours {
+                let o = *o as i64;
+                if theirs.iter().any(|t| (o - *t as i64).abs() <= tol) {
+                    ours_matched += 1;
+                }
+            }
+            hit_total += hits;
+            theirs_total += theirs.len();
+            ours_total += ours.len();
+            let recall = hits as f32 / theirs.len() as f32;
+            let precision = ours_matched as f32 / ours.len() as f32;
+            let name = asd.file_name().unwrap_or_default().to_string_lossy().to_string();
+            worst.push((recall * precision, name, theirs.len(), ours.len()));
+        }
+
+        assert!(used >= 10, "för få par att mäta på: {used}");
+
+        // Svep över känslighet och minsta avstånd: facit avgör vilken profil som gäller,
+        // inte magkänslan. (Körs i samma test, på samma filurval.)
+        let mut sweep = Vec::new();
+        for sensitivity in [1.5f32, 2.0, 2.5, 3.0, 4.0] {
+            for min_gap_ms in [30.0f32, 60.0, 90.0, 150.0] {
+                let params = OnsetParams { sensitivity, min_gap_ms, window_ms: 60.0 };
+                let (mut h, mut t, mut o) = (0usize, 0usize, 0usize);
+                for asd in files.iter().take(400) {
+                    let wav = asd.with_extension("");
+                    if !wav.exists() {
+                        continue;
+                    }
+                    let (Ok(data), Ok((left, _r, sr))) = (
+                        std::fs::read(asd),
+                        crate::audio::wav_reader::load_wav_pcm(&wav.to_string_lossy()),
+                    ) else {
+                        continue;
+                    };
+                    let Some(theirs) = crate::audio::asd::parse_onsets(&data) else {
+                        continue;
+                    };
+                    if theirs.len() < 3 {
+                        continue;
+                    }
+                    let ours = detect_onsets(&left, sr as f32, &params);
+                    let tol = (tolerance * sr as f32) as i64;
+                    let hits = theirs
+                        .iter()
+                        .filter(|t| ours.iter().any(|o| (*o as i64 - **t as i64).abs() <= tol))
+                        .count();
+                    h += hits;
+                    t += theirs.len();
+                    o += ours.len();
+                }
+                if t == 0 || o == 0 {
+                    continue;
+                }
+                let rec = h as f32 / t as f32;
+                let prec = h as f32 / o as f32;
+                let f1 = 2.0 * prec * rec / (prec + rec).max(1e-9);
+                sweep.push((f1, sensitivity, min_gap_ms, rec, prec, o));
+            }
+        }
+        sweep.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+        println!("  svep (F1, känslighet, minsta avstånd ms, täckning, träffsäkerhet, antal våra):");
+        for (f1, s, g, rec, prec, o) in sweep.iter().take(6) {
+            println!(
+                "    F1 {f1:.3}  känslighet {s:.1}  avstånd {g:5.0} ms  täckning {:.1} %  träffsäkerhet {:.1} %  våra {o}",
+                rec * 100.0,
+                prec * 100.0
+            );
+        }
+        let recall = hit_total as f32 / theirs_total as f32;
+        let precision = hit_total as f32 / ours_total as f32;
+        let f1 = 2.0 * precision * recall / (precision + recall).max(1e-9);
+        println!(
+            "{used} filer: täckning {:.1} %  träffsäkerhet {:.1} %  F1 {:.3}  (deras {} anslag, våra {})",
+            recall * 100.0,
+            precision * 100.0,
+            f1,
+            theirs_total,
+            ours_total
+        );
+        worst.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+        for (score, name, t, o) in worst.iter().take(3) {
+            println!("  sämst {score:.2}: {name} (deras {t}, våra {o})");
+        }
+    }
+
 }
