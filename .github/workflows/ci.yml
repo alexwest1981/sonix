@@ -20,10 +20,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # apt på GitHubs runner kan hänga i evigheter på en seg spegel (sett två gånger:
+      # 15+ minuter i det här steget medan de andra benen var klara). Tidsgränserna gör att
+      # en seg spegel **faller snabbt** i stället, så en omkörning kostar en minut och inte
+      # en kvart. `timeout-minutes` fångar fallet där apt självt inte ger upp.
       - name: Install system dependencies
+        timeout-minutes: 4
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 install -y --no-install-recommends \
             build-essential pkg-config libasound2-dev
 
       - name: Install Rust toolchain
@@ -99,10 +106,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # apt på GitHubs runner kan hänga i evigheter på en seg spegel (sett två gånger:
+      # 15+ minuter i det här steget medan de andra benen var klara). Tidsgränserna gör att
+      # en seg spegel **faller snabbt** i stället, så en omkörning kostar en minut och inte
+      # en kvart. `timeout-minutes` fångar fallet där apt självt inte ger upp.
       - name: Install system dependencies
+        timeout-minutes: 4
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 update
+          sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=15 \
+            -o Acquire::https::Timeout=15 install -y --no-install-recommends \
             build-essential pkg-config libasound2-dev
 
       - name: Install Rust toolchain
