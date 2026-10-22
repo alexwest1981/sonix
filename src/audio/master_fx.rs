@@ -1514,6 +1514,92 @@ impl Default for ControlRoomParams {
     }
 }
 
+/// **Multiband Delay** (FL): tre band, tre olika fördröjningar. Delningsfiltret är samma
+/// `XoverChan` som den flerbandiga kompressorn använder — samma delning, samma summa.
+///
+/// Ingen återkoppling: tre tider och en mix är vad pedalen har rattar till, och en delay utan
+/// återkoppling är fortfarande en delay.
+pub struct MultibandDelay {
+    sample_rate: f32,
+    coeffs: XoverCoeffs,
+    /// Delningsfrekvenserna som `coeffs` räknades för.
+    xover: (f32, f32),
+    xover_l: XoverChan,
+    xover_r: XoverChan,
+    /// En ringbuffert per band och kanal: 0–2 vänster, 3–5 höger.
+    buf: [Vec<f32>; 6],
+    write: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct MultibandDelayParams {
+    pub times_ms: [f32; 3],
+    pub xover_low: f32,
+    pub xover_high: f32,
+    pub mix: f32,
+}
+
+impl Default for MultibandDelayParams {
+    fn default() -> Self {
+        Self {
+            times_ms: [125.0, 250.0, 375.0],
+            xover_low: 250.0,
+            xover_high: 4000.0,
+            mix: 0.35,
+        }
+    }
+}
+
+impl MultibandDelay {
+    const MAX_MS: f32 = 1000.0;
+
+    pub fn new(sample_rate: f32) -> Self {
+        let sr = sample_rate.max(1.0);
+        let cap = (Self::MAX_MS * 0.001 * sr).ceil() as usize + 4;
+        let (lo, hi) = (250.0, 4000.0);
+        Self {
+            sample_rate: sr,
+            coeffs: XoverCoeffs::new(sr, lo, hi),
+            xover: (lo, hi),
+            xover_l: XoverChan::default(),
+            xover_r: XoverChan::default(),
+            buf: std::array::from_fn(|_| vec![0.0; cap]),
+            write: 0,
+        }
+    }
+
+    pub fn process(&mut self, l: f32, r: f32, p: &MultibandDelayParams) -> (f32, f32) {
+        let (lo, hi) = (p.xover_low.clamp(40.0, 1000.0), p.xover_high.clamp(1000.0, 16000.0));
+        if (lo, hi) != self.xover {
+            self.coeffs = XoverCoeffs::new(self.sample_rate, lo, hi);
+            self.xover = (lo, hi);
+        }
+        let (low_l, mid_l, high_l) = self.xover_l.split(l, &self.coeffs);
+        let (low_r, mid_r, high_r) = self.xover_r.split(r, &self.coeffs);
+        for (band, (bl, br)) in [(low_l, low_r), (mid_l, mid_r), (high_l, high_r)]
+            .into_iter()
+            .enumerate()
+        {
+            self.buf[band][self.write] = bl;
+            self.buf[band + 3][self.write] = br;
+        }
+
+        let len = self.buf[0].len();
+        let (mut wet_l, mut wet_r) = (0.0, 0.0);
+        for (band, &ms) in p.times_ms.iter().enumerate() {
+            let samples = ((ms.clamp(1.0, Self::MAX_MS) * 0.001 * self.sample_rate) as usize)
+                .clamp(1, len - 1);
+            let idx = (self.write + len - samples) % len;
+            wet_l += self.buf[band][idx];
+            wet_r += self.buf[band + 3][idx];
+        }
+        self.write = (self.write + 1) % len;
+
+        let mix = p.mix.clamp(0.0, 1.0);
+        (l + wet_l * mix, r + wet_r * mix)
+    }
+}
+
 /// **Frekvensskifte** — inte tonhöjd. En 1 kHz-ton som skiftas +200 Hz blir 1 200 Hz och
 /// ingenting annat; en tonhöjdstransponering hade gett 1 200 Hz *och* ändrat formanterna.
 /// Det är skillnaden som gör effekten användbar för att flytta ett helt spektrum utan att
@@ -1739,6 +1825,8 @@ pub struct MasterFxParams {
     pub freq_shift_enabled: bool,
     pub crush: BitCrushParams,
     pub crush_enabled: bool,
+    pub mb_delay: MultibandDelayParams,
+    pub mb_delay_enabled: bool,
     pub control: ControlRoomParams,
 }
 
@@ -1776,6 +1864,8 @@ impl Default for MasterFxParams {
             freq_shift_enabled: false,
             crush: BitCrushParams::default(),
             crush_enabled: false,
+            mb_delay: MultibandDelayParams::default(),
+            mb_delay_enabled: false,
             control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
@@ -1803,6 +1893,7 @@ pub struct MasterFxChain {
     granular: Granular,
     freq_shift: FrequencyShifter,
     crusher: BitCrusher,
+    mb_delay: MultibandDelay,
     filter: MasterFilter,
     limiter: Limiter,
     params: MasterFxParams,
@@ -1830,6 +1921,7 @@ impl MasterFxChain {
             granular: Granular::new(sample_rate),
             freq_shift: FrequencyShifter::new(sample_rate),
             crusher: BitCrusher::new(sample_rate),
+            mb_delay: MultibandDelay::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
@@ -1962,6 +2054,12 @@ impl MasterFxChain {
 
         if p.freq_shift_enabled {
             let (nl, nr) = self.freq_shift.process(l, r, &p.freq_shift);
+            l = nl;
+            r = nr;
+        }
+
+        if p.mb_delay_enabled {
+            let (nl, nr) = self.mb_delay.process(l, r, &p.mb_delay);
             l = nl;
             r = nr;
         }
@@ -3014,6 +3112,44 @@ mod tests {
             held * 8 < plain,
             "nedblandningen ska minska ändringarna kraftigt: {held} mot {plain}"
         );
+    }
+
+    /// **Varje band får sin egen tid.** En impuls in ger tre svar: ett vid varje bandtid och
+    /// ingenting däremellan. Ordningen är beviset på att tiderna inte hamnat på samma rad.
+    #[test]
+    fn the_multiband_delay_answers_once_per_band_time() {
+        let sr = 48_000.0;
+        let mut delay = MultibandDelay::new(sr);
+        let params = MultibandDelayParams {
+            times_ms: [50.0, 100.0, 150.0],
+            xover_low: 250.0,
+            xover_high: 4000.0,
+            mix: 1.0,
+        };
+        let out: Vec<f32> = (0..12_000)
+            .map(|n| delay.process(if n == 0 { 1.0 } else { 0.0 }, 0.0, &params).0)
+            .collect();
+        let energy = |center_ms: f32| {
+            let c = (center_ms * 0.001 * sr) as usize;
+            let half = (0.003 * sr) as usize;
+            out[c.saturating_sub(half)..(c + half).min(out.len())]
+                .iter()
+                .map(|v| v.abs())
+                .sum::<f32>()
+        };
+        let peaks: Vec<f32> = [50.0, 100.0, 150.0].iter().map(|&t| energy(t)).collect();
+        let between: Vec<f32> = [75.0, 125.0, 175.0].iter().map(|&t| energy(t)).collect();
+        println!("toppar {peaks:?} · mellan {between:?}");
+        for (i, p) in peaks.iter().enumerate() {
+            assert!(*p > 1e-3, "band {} ska svara vid sin tid: {p}", i);
+            assert!(
+                *p > between[i] * 10.0,
+                "band {} ska svara vid sin tid och inte mellan: {} mot {}",
+                i,
+                p,
+                between[i]
+            );
+        }
     }
 
 }

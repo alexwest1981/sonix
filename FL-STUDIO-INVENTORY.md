@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 45** har en motsvarighet, **◐ 45** delvis, **✗ 51** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 46** har en motsvarighet, **◐ 45** delvis, **✗ 50** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -240,7 +240,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Hyper Chorus | 1 | ◐ | `ModDelay` har **en** LFO; FL:s Hyper Chorus staplar flera röster |
 | Low Lifter | 1 | ✗ | low-end-förstärkning |
 | Luxeverb | 1 | ◐ | convolver + algoritmiskt reverb |
-| Multiband Delay | 1 | ✗ | delay per band |
+| Multiband Delay | 1 | ✅ | `MultibandDelay` — tre band, tre tider, samma delningsfilter som den flerbandiga kompressorn |
 | Newtime | 1 | ◐ | tempokarta + "sätt takt 1 här" (8.14) |
 | Pitch Shifter | 1 | ✅ | formantbevarande pitch (stretch/vocal_harmonizer) |
 | Razer Chroma | 1 | ✗ | RGB-synk |

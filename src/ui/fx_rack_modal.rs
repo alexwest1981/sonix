@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    ModFxParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    ModFxParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -251,6 +251,21 @@ impl Default for FxRackState {
                     mix: 1.0,
                     description: "BITAR kvantiserar amplituden (1–16), NEDSAMPLING håller varje sampel 1–32 steg, TON är ett lågpass efter krossen (200 Hz–20 kHz).",
                     extra: Vec::new(),
+                },
+                FxPedal {
+                    id: "mbdelay",
+                    name: "📶 MULTIBAND DELAY",
+                    category: "Delay",
+                    enabled: false,
+                    color: Color32::from_rgb(140, 200, 255),
+                    p1_name: "LÅG",
+                    p1_val: 0.10,
+                    p2_name: "MID",
+                    p2_val: 0.25,
+                    p3_name: "HÖG",
+                    p3_val: 0.45,
+                    mix: 0.35,
+                    description: "Tre band, tre tider: LÅG under 250 Hz, MID 250 Hz–4 kHz, HÖG över 4 kHz. Tiderna är 20–800 ms i samma skala som ratten.",                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "chorus",
@@ -513,6 +528,21 @@ impl FxRackState {
             mix: cr_knob(|p| p.mix, 1.0),
         };
 
+        let mb_p = self.pedal("mbdelay");
+        let mb_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            mb_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let mb_delay = MultibandDelayParams {
+            times_ms: [
+                20.0 + mb_knob(|p| p.p1_val, 0.1) * 780.0,
+                20.0 + mb_knob(|p| p.p2_val, 0.25) * 780.0,
+                20.0 + mb_knob(|p| p.p3_val, 0.45) * 780.0,
+            ],
+            xover_low: 250.0,
+            xover_high: 4000.0,
+            mix: mb_knob(|p| p.mix, 0.35),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -546,6 +576,8 @@ impl FxRackState {
             freq_shift_enabled: fs_p.map(|p| p.enabled).unwrap_or(false),
             crush,
             crush_enabled: cr_p.map(|p| p.enabled).unwrap_or(false),
+            mb_delay,
+            mb_delay_enabled: mb_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,
@@ -1386,6 +1418,29 @@ mod tests {
             params.crush.downsample
         );
         assert!((params.crush.tone - 0.0).abs() < 0.01, "ton: {}", params.crush.tone);
+    }
+
+    /// **Multiband-delayns rattar når sina egna fält** — tre tider och en mix.
+    #[test]
+    fn the_multiband_delay_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "mbdelay")
+            .expect("multiband-delayn ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 0.0; // 20 ms
+        pedal.p2_val = 0.5; // 410 ms
+        pedal.p3_val = 1.0; // 800 ms
+        pedal.mix = 0.5;
+
+        let params = state.build_master_fx_params();
+        assert!(params.mb_delay_enabled, "pedalen ska slå på steget");
+        let t = params.mb_delay.times_ms;
+        assert!((t[0] - 20.0).abs() < 0.1 && (t[1] - 410.0).abs() < 0.1 && (t[2] - 800.0).abs() < 0.1, "tider: {t:?}");
+        assert!((params.mb_delay.mix - 0.5).abs() < 0.01);
     }
 
 }
