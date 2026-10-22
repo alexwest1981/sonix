@@ -410,6 +410,10 @@ pub struct SonixApp {
     pub take_strength: f32,
     /// Hur mycket humaniseringen ska lägga på, 0–1 (Fas 6.4).
     pub take_humanize: f32,
+    /// Hur många steg isär ett ackords noter strummas.
+    pub take_strum: f32,
+    /// Nedstrum: högsta tonen först.
+    pub take_strum_down: bool,
     pub midi_held_notes: std::collections::HashSet<u8>,
     pub control_tx: std::sync::mpsc::Sender<ControlEvent>,
     pub control_rx: std::sync::mpsc::Receiver<ControlEvent>,
@@ -934,6 +938,8 @@ impl SonixApp {
             export_noise_shaping: false,
             take_strength: 1.0,
             take_humanize: 0.5,
+            take_strum: 0.08,
+            take_strum_down: false,
             midi_held_notes: std::collections::HashSet::new(),
             control_tx,
             control_rx,

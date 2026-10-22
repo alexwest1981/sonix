@@ -967,6 +967,34 @@ pub(crate) fn humanize_take(&mut self, amount: f32) {
 }
 
 impl SonixApp {
+/// Strummar tagningens ackord: noter på samma slag sprids i tonhöjdsordning.
+pub(crate) fn strum_take(&mut self, spread_steps: f32, down: bool) {
+    self.push_undo("🪕 Strumning av tagningen");
+    let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+        return;
+    };
+    if pat.take.is_empty() {
+        self.status_message = crate::i18n::t(
+            "⚠ Ingen tagning att strumma — armera ⏺ MIDI-REC och spela in först",
+        )
+        .to_string();
+        return;
+    }
+    let moved = pat.take.strum(spread_steps, down);
+    self.status_message = if moved == 0 {
+        crate::i18n::t("Inget att strumma: inga noter ligger på samma slag").to_string()
+    } else {
+        crate::tstatus!(
+            "🪕 Strummade {} noter med {:.2} steg mellan varje ({})",
+            moved,
+            spread_steps,
+            if down { "ner" } else { "upp" }
+        )
+    };
+}
+}
+
+impl SonixApp {
 /// Writes a held MIDI note into the Piano Roll grid at the current step.
 fn record_midi_note_at_step(&mut self, note: u8) {
     const BASE_MIDI: u8 = 48;

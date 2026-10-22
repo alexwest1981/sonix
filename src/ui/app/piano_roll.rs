@@ -300,6 +300,45 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
 
             ui.separator();
             ui.label(
+                egui::RichText::new(crate::i18n::t("Strumning"))
+                    .size(11.0)
+                    .color(Theme::TEXT_MUTED),
+            );
+            ui.add(
+                egui::Slider::new(&mut self.take_strum, 0.0..=0.5)
+                    .show_value(false)
+                    .fixed_decimals(2),
+            )
+            .on_hover_text(crate::i18n::t(
+                "Hur många steg isär noterna i ett ackord slås (0 = som en orgel)",
+            ));
+            ui.add(egui::Checkbox::new(
+                &mut self.take_strum_down,
+                crate::i18n::t("Ner"),
+            ))
+            .on_hover_text(crate::i18n::t("Nedstrum: högsta tonen först"));
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(crate::i18n::t("🪕 Strumma ackord"))
+                            .strong()
+                            .size(10.5)
+                            .color(Theme::TEXT_BRIGHT),
+                    )
+                    .fill(take_btn),
+                )
+                .on_hover_text(crate::i18n::t(
+                    "Sprider noter som ligger på samma slag i tonhöjdsordning, som en gitarr",
+                ))
+                .clicked()
+            {
+                let spread = self.take_strum;
+                let down = self.take_strum_down;
+                self.strum_take(spread, down);
+            }
+
+            ui.separator();
+            ui.label(
                 egui::RichText::new(crate::i18n::t("Groove"))
                     .size(11.0)
                     .color(Theme::TEXT_MUTED),

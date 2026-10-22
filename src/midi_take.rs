@@ -222,6 +222,39 @@ impl Take {
         }
     }
 
+    /// **Strumma**: noter som ligger på samma ställe sprids i tonhöjdsordning, så ackordet
+    /// slås ut som på ett stränginstrument i stället för att klippa som en orgel. Noten med
+    /// lägst tonhöjd ligger kvar där den låg; ingen not flyttas bakåt i tiden.
+    pub fn strum(&mut self, spread_steps: f32, down: bool) -> usize {
+        let spread = spread_steps.max(0.0);
+        if spread == 0.0 {
+            return 0;
+        }
+        // Gruppera på position i hundradels steg: noter som ligger på samma slag hör ihop.
+        let mut groups: std::collections::BTreeMap<i64, Vec<usize>> = std::collections::BTreeMap::new();
+        for (i, n) in self.notes.iter().enumerate() {
+            groups.entry((n.pos * 100.0).round() as i64).or_default().push(i);
+        }
+        let mut moved = 0;
+        for (_, mut idxs) in groups {
+            if idxs.len() < 2 {
+                continue;
+            }
+            // Upp: lägsta tonen först. Ner: högsta först — som ett nedstrum.
+            idxs.sort_by_key(|i| self.notes[*i].key);
+            if down {
+                idxs.reverse();
+            }
+            for (order, i) in idxs.iter().enumerate().skip(1) {
+                let shift = spread * order as f32;
+                let pos = self.notes[*i].pos + shift;
+                self.notes[*i].pos = pos.min(STEPS_PER_BAR - 0.01);
+                moved += 1;
+            }
+        }
+        moved
+    }
+
     /// Stegen som ska trigga noten, och hur långt in i steget den ska klinga.
     ///
     /// Noten spelas från steget *före* sin rutnätslinje när den ligger tidigt
@@ -605,4 +638,52 @@ mod tests {
         t.humanize(0.2, 0.2, 1);
         assert!(t.is_empty());
     }
+    /// **Strumning slår ut ett ackord i tonhöjdsordning.** Tre noter på samma slag blir
+    /// 0, 0,05 och 0,10 steg, med den lägsta kvar där den låg — och en ensam not rörs inte.
+    #[test]
+    fn strumming_spreads_a_chord_in_pitch_order() {
+        let mut take = Take::new();
+        take.push(2.0, 64, 0.8);
+        take.push(2.0, 60, 0.8);
+        take.push(2.0, 67, 0.8);
+        take.push(5.0, 72, 0.8); // ensam: ska stå still
+        let moved = take.strum(0.05, false);
+        assert_eq!(moved, 2, "två noter flyttas, den lägsta och den ensamma står still");
+        let at = |key: u8| {
+            take.notes
+                .iter()
+                .find(|n| n.key == key)
+                .map(|n| n.pos)
+                .expect("noten finns")
+        };
+        assert!((at(60) - 2.0).abs() < 1e-4, "lägst ligger kvar: {}", at(60));
+        assert!((at(64) - 2.05).abs() < 1e-4, "mellan: {}", at(64));
+        assert!((at(67) - 2.10).abs() < 1e-4, "högst sist: {}", at(67));
+        assert!((at(72) - 5.0).abs() < 1e-4, "ensam not rörs inte");
+    }
+
+    /// Strumning med noll spridning är en no-op, och noter flyttas aldrig bakåt.
+    #[test]
+    fn strumming_with_zero_spread_changes_nothing() {
+        let mut take = Take::new();
+        take.push(1.0, 60, 0.8);
+        take.push(1.0, 64, 0.8);
+        assert_eq!(take.strum(0.0, false), 0);
+        assert!((take.notes[0].pos - 1.0).abs() < 1e-6);
+        assert!((take.notes[1].pos - 1.0).abs() < 1e-6);
+    }
+
+    /// Nedstrum: då slås den högsta tonen först och den lägsta sist.
+    #[test]
+    fn a_down_strum_starts_with_the_highest_note() {
+        let mut take = Take::new();
+        take.push(1.0, 60, 0.8);
+        take.push(1.0, 67, 0.8);
+        let moved = take.strum(0.1, true);
+        assert_eq!(moved, 1);
+        let at = |key: u8| take.notes.iter().find(|n| n.key == key).unwrap().pos;
+        assert!((at(67) - 1.0).abs() < 1e-4, "högst ligger kvar: {}", at(67));
+        assert!((at(60) - 1.1).abs() < 1e-4, "lägst sist: {}", at(60));
+    }
+
 }
