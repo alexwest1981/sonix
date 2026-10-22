@@ -1366,7 +1366,123 @@ impl MasterEqBand {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Granulizer
+// ---------------------------------------------------------------------------
+
+/// Granulizer: korn läses ur en buffert av det senaste ljudet. Positionen är hur långt
+/// bakåt i historiken kornet börjar, spridningen hur mycket den slumpas, och tätheten hur
+/// många korn per sekund som startas. Kornen ligger på varandra, så ljudet får en svävande,
+/// stammande karaktär — det är hela poängen, inte en artefakt.
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GranularParams {
+    pub size_ms: f32,     // 10–200
+    pub density: f32,     // korn per sekund, 2–60
+    pub position_ms: f32, // hur långt bakåt kornet börjar, 20–1000
+    pub spray_ms: f32,    // slumpmässig spridning kring positionen, 0–200
+    pub mix: f32,         // 0 = torrt, 1 = bara korn
+}
+
+impl Default for GranularParams {
+    fn default() -> Self {
+        Self { size_ms: 60.0, density: 12.0, position_ms: 120.0, spray_ms: 40.0, mix: 0.6 }
+    }
+}
+
+const GRAIN_SLOTS: usize = 4;
+
+pub struct Granular {
+    sample_rate: f32,
+    l: Vec<f32>,
+    r: Vec<f32>,
+    write: usize,
+    to_next: f32,
+    seed: u32,
+    /// (start, längd, läst) per kornplats. `läst` är 0 när platsen är ledig.
+    grains: [(usize, usize, usize); GRAIN_SLOTS],
+}
+
+impl Granular {
+    pub fn new(sample_rate: f32) -> Self {
+        // Två sekunder räcker: längsta positionen (1 s) plus längsta kornet (200 ms).
+        let len = (sample_rate * 2.0) as usize;
+        Self {
+            sample_rate,
+            l: vec![0.0; len],
+            r: vec![0.0; len],
+            write: 0,
+            to_next: 0.0,
+            seed: 0x2545_F491,
+            grains: [(0, 0, 0); GRAIN_SLOTS],
+        }
+    }
+
+    /// Deterministisk slumpsiffra: samma inställning ger samma kornläge, så ett prov kan
+    /// mäta något och en export låter som förhandslyssningen.
+    fn rand(&mut self) -> f32 {
+        self.seed = self.seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        (self.seed >> 8) as f32 / 16_777_216.0
+    }
+
+    pub fn process(&mut self, l: f32, r: f32, p: &GranularParams) -> (f32, f32) {
+        let len = self.l.len();
+        self.l[self.write] = l;
+        self.r[self.write] = r;
+
+        let size = (p.size_ms.clamp(10.0, 200.0) * 0.001 * self.sample_rate) as usize;
+        let position = (p.position_ms.clamp(20.0, 1000.0) * 0.001 * self.sample_rate) as usize;
+        let spray = (p.spray_ms.clamp(0.0, 200.0) * 0.001 * self.sample_rate) as usize;
+
+        self.to_next -= 1.0;
+        if self.to_next <= 0.0 {
+            let density = p.density.clamp(2.0, 60.0);
+            self.to_next += self.sample_rate / density;
+            // Äldsta platsen återanvänds när alla är upptagna.
+            let slot = self
+                .grains
+                .iter()
+                .position(|g| g.2 == 0)
+                .unwrap_or_else(|| {
+                    let (mut oldest, mut at) = (usize::MAX, 0);
+                    for (i, g) in self.grains.iter().enumerate() {
+                        if g.2 > oldest || oldest == usize::MAX {
+                            oldest = g.2;
+                            at = i;
+                        }
+                    }
+                    at
+                });
+            let jitter = if spray > 0 { (self.rand() * spray as f32) as usize } else { 0 };
+            let behind = (position + jitter).min(len - 1);
+            let start = (self.write + len - behind) % len;
+            self.grains[slot] = (start, size.max(1), 1);
+        }
+
+        let (mut gl, mut gr) = (0.0f32, 0.0f32);
+        for g in self.grains.iter_mut() {
+            if g.2 == 0 {
+                continue;
+            }
+            let index = (g.0 + g.2 - 1) % len;
+            // Hann-fönster: kornet tonar in och ut, annars knäpper varje korn.
+            let t = g.2 as f32 / g.1 as f32;
+            let w = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * t).cos();
+            gl += self.l[index] * w;
+            gr += self.r[index] * w;
+            g.2 += 1;
+            if g.2 > g.1 {
+                g.2 = 0;
+            }
+        }
+
+        self.write = (self.write + 1) % len;
+        let mix = p.mix.clamp(0.0, 1.0);
+        (l * (1.0 - mix) + gl * mix, r * (1.0 - mix) + gr * mix)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+
 pub struct MasterFxParams {
     pub eq_bands: [MasterEqBand; 4],
     pub eq_enabled: bool,
@@ -1395,6 +1511,8 @@ pub struct MasterFxParams {
     pub filter: MasterFilterParams,
     pub limiter: LimiterParams,
     pub limiter_enabled: bool,
+    pub granular: GranularParams,
+    pub granular_enabled: bool,
 }
 
 impl Default for MasterFxParams {
@@ -1425,6 +1543,8 @@ impl Default for MasterFxParams {
             gate: GateParams::default(),
             gate_enabled: false,
             filter: MasterFilterParams::default(),
+            granular: GranularParams::default(),
+            granular_enabled: false,
             limiter: LimiterParams::default(),
             limiter_enabled: false,
         }
@@ -1448,6 +1568,7 @@ pub struct MasterFxChain {
     multiband: MultibandCompressor,
     convolver: Convolver,
     gate: NoiseGate,
+    granular: Granular,
     filter: MasterFilter,
     limiter: Limiter,
     params: MasterFxParams,
@@ -1472,6 +1593,7 @@ impl MasterFxChain {
             multiband: MultibandCompressor::new(sample_rate),
             convolver: Convolver::new(sample_rate),
             gate: NoiseGate::new(sample_rate),
+            granular: Granular::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
@@ -1513,6 +1635,12 @@ impl MasterFxChain {
 
         if p.gate_enabled {
             let (nl, nr) = self.gate.process(l, r, &p.gate);
+            l = nl;
+            r = nr;
+        }
+
+        if p.granular_enabled {
+            let (nl, nr) = self.granular.process(l, r, &p.granular);
             l = nl;
             r = nr;
         }
@@ -2319,6 +2447,41 @@ mod tests {
         assert!(peak > 0.5, "inget direktljud alls (topp {peak})");
         assert!(late > 0.0, "svansen är tom 125 ms efter klicket");
         assert!(late < early, "svansen är starkare än direktljudet ({late} mot {early})");
+    }
+
+    /// **Granulizern spelar vidare efter att ljudet tystnat.** Ett 200 ms-burst matas in,
+    /// sedan tystnad: med granulizern på hörs korn ur det som nyss spelades, med den av
+    /// är utgången tyst. Det är skillnaden mellan en granulizer och en efterklang.
+    #[test]
+    fn the_granulizer_keeps_sounding_after_the_input_stops() {
+        let tail_energy = |enabled: bool| {
+            let mut chain = MasterFxChain::new(48_000.0);
+            let mut params = MasterFxParams::default();
+            params.granular_enabled = enabled;
+            params.granular = GranularParams {
+                size_ms: 80.0,
+                density: 20.0,
+                position_ms: 100.0,
+                spray_ms: 30.0,
+                mix: 1.0,
+            };
+            chain.set_params(params);
+            for i in 0..9_600 {
+                let x = (2.0 * std::f32::consts::PI * 1_000.0 * i as f32 / 48_000.0).sin() * 0.5;
+                chain.process(x, x);
+            }
+            let mut sum = 0.0f64;
+            for _ in 0..9_600 {
+                let (l, _) = chain.process(0.0, 0.0);
+                sum += (l as f64).abs();
+            }
+            sum / 9_600.0
+        };
+        let off = tail_energy(false);
+        let on = tail_energy(true);
+        println!("medelutgång efter tystnaden: av {off:.5}, på {on:.5}");
+        assert!(off < 1e-6, "utan granulizer ska det vara tyst: {off:.6}");
+        assert!(on > 0.01, "med granulizer ska kornen höras: {on:.5}");
     }
 
 }

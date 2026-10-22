@@ -1,7 +1,7 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
     AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
-    ConvolverParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
+    ConvolverParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
     ModFxParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
@@ -189,6 +189,21 @@ impl Default for FxRackState {
                     p3_val: 0.50,
                     mix: 1.0,
                     description: "Mjuk mättnad (tanh) med tonkontroll — aldrig över full skala.",
+                },
+                FxPedal {
+                    id: "granular",
+                    name: "🌾 GRANULIZER",
+                    category: "Sound Design",
+                    enabled: false,
+                    color: Color32::from_rgb(200, 255, 120),
+                    p1_name: "KORN",
+                    p1_val: 0.30,
+                    p2_name: "TÄTHET",
+                    p2_val: 0.20,
+                    p3_name: "MIX",
+                    p3_val: 0.60,
+                    mix: 1.0,
+                    description: "Korn ur de senaste två sekunderna, 20–200 ms långa och 2–60 per sekund. Positionen ligger 120 ms bakåt med 40 ms spridning.",
                 },
                 FxPedal {
                     id: "chorus",
@@ -407,6 +422,15 @@ impl FxRackState {
             boost: 0.5 + lim_p.map(|p| p.p3_val).unwrap_or(0.5) * 2.5,
         };
 
+        let gr_p = self.pedal("granular");
+        let granular = GranularParams {
+            size_ms: 10.0 + gr_p.map(|p| p.p1_val).unwrap_or(0.3).clamp(0.0, 1.0) * 190.0,
+            density: 2.0 + gr_p.map(|p| p.p2_val).unwrap_or(0.2).clamp(0.0, 1.0) * 58.0,
+            position_ms: 120.0,
+            spray_ms: 40.0,
+            mix: gr_p.map(|p| p.p3_val).unwrap_or(0.6),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -433,6 +457,8 @@ impl FxRackState {
         };
 
         MasterFxParams {
+            granular,
+            granular_enabled: gr_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,
