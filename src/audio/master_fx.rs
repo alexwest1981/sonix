@@ -1552,6 +1552,85 @@ impl Default for FreqShiftParams {
     }
 }
 
+/// **Bitcrush och decimering** på en gång (FL: Fruity Squeeze): BITS kvantiserar amplituden,
+/// NEDSAMPLING håller kvar varje sampel ett antal steg. Kvantiseringen ger harmonisk
+/// distorsion, nedblandningen ger vikta spegelbilder — två olika ljud, därför två rattar.
+pub struct BitCrusher {
+    hold: f32,
+    last_l: f32,
+    last_r: f32,
+    lp_l: f32,
+    lp_r: f32,
+    sample_rate: f32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct BitCrushParams {
+    /// 1–16 bitar. 16 är i praktiken ofärgat.
+    pub bits: f32,
+    /// 1–32: hur många sampel varje värde hålls.
+    pub downsample: f32,
+    /// Ett enpoligt lågpass efter krossen, 200 Hz–20 kHz. Tar bort det vassaste av
+    /// vikningen utan att röra kvantiseringen.
+    pub tone: f32,
+    pub mix: f32,
+}
+
+impl Default for BitCrushParams {
+    fn default() -> Self {
+        Self {
+            bits: 16.0,
+            downsample: 1.0,
+            tone: 1.0,
+            mix: 1.0,
+        }
+    }
+}
+
+impl BitCrusher {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            hold: 0.0,
+            last_l: 0.0,
+            last_r: 0.0,
+            lp_l: 0.0,
+            lp_r: 0.0,
+            sample_rate: sample_rate.max(1.0),
+        }
+    }
+
+    pub fn process(&mut self, l: f32, r: f32, p: &BitCrushParams) -> (f32, f32) {
+        let step = p.downsample.clamp(1.0, 32.0).round().max(1.0);
+        self.hold -= 1.0;
+        if self.hold <= 0.0 {
+            self.hold = step;
+            let levels = 2.0f32.powf(p.bits.clamp(1.0, 16.0)).max(2.0);
+            let quantize = |x: f32| (x.clamp(-1.0, 1.0) * levels).round() / levels;
+            self.last_l = quantize(l);
+            self.last_r = quantize(r);
+        }
+        let mix = p.mix.clamp(0.0, 1.0);
+        let (mut out_l, mut out_r) = (
+            l * (1.0 - mix) + self.last_l * mix,
+            r * (1.0 - mix) + self.last_r * mix,
+        );
+        // TON = 1,0 är öppet (20 kHz), 0,0 är 200 Hz. Koefficienten är en enpolig RC.
+        // Öppet läge är **exakt** öppet: annars hade en enpoligt filtrerad 20 kHz-kurva
+        // färgat ljudet även när man inte bett om det.
+        let a = if p.tone >= 0.999 {
+            1.0
+        } else {
+            let cutoff = 200.0 * (10.0f32).powf(p.tone.clamp(0.0, 1.0) * 2.0);
+            (1.0 - (-2.0 * std::f32::consts::PI * cutoff / self.sample_rate).exp()).clamp(0.0, 1.0)
+        };
+        self.lp_l += a * (out_l - self.lp_l);
+        self.lp_r += a * (out_r - self.lp_r);
+        out_l = self.lp_l;
+        out_r = self.lp_r;
+        (out_l, out_r)
+    }
+}
+
 /// Fasackumulatorn hålls inom en period, annars tappar `sin_cos` precision efter några minuter.
 fn advance(phase: f32, hz: f32, sample_rate: f32) -> f32 {
     let mut next = phase + 2.0 * std::f32::consts::PI * hz / sample_rate;
@@ -1658,6 +1737,8 @@ pub struct MasterFxParams {
     pub granular_enabled: bool,
     pub freq_shift: FreqShiftParams,
     pub freq_shift_enabled: bool,
+    pub crush: BitCrushParams,
+    pub crush_enabled: bool,
     pub control: ControlRoomParams,
 }
 
@@ -1693,6 +1774,8 @@ impl Default for MasterFxParams {
             granular_enabled: false,
             freq_shift: FreqShiftParams::default(),
             freq_shift_enabled: false,
+            crush: BitCrushParams::default(),
+            crush_enabled: false,
             control: ControlRoomParams::default(),
             limiter: LimiterParams::default(),
             limiter_enabled: false,
@@ -1719,6 +1802,7 @@ pub struct MasterFxChain {
     gate: NoiseGate,
     granular: Granular,
     freq_shift: FrequencyShifter,
+    crusher: BitCrusher,
     filter: MasterFilter,
     limiter: Limiter,
     params: MasterFxParams,
@@ -1745,6 +1829,7 @@ impl MasterFxChain {
             gate: NoiseGate::new(sample_rate),
             granular: Granular::new(sample_rate),
             freq_shift: FrequencyShifter::new(sample_rate),
+            crusher: BitCrusher::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
@@ -1845,6 +1930,12 @@ impl MasterFxChain {
 
         if p.sat_enabled {
             let (nl, nr) = self.sat.process(l, r, &p.sat);
+            l = nl;
+            r = nr;
+        }
+
+        if p.crush_enabled {
+            let (nl, nr) = self.crusher.process(l, r, &p.crush);
             l = nl;
             r = nr;
         }
@@ -2856,6 +2947,73 @@ mod tests {
         println!("vänster: 1200 Hz {l_up:.4}, 800 Hz {l_down:.4} · höger: 1200 Hz {r_up:.4}, 800 Hz {r_down:.4}");
         assert!(l_up > 0.1 && l_down < l_up * 0.1, "vänster ska gå upp");
         assert!(r_down > 0.1 && r_up < r_down * 0.1, "höger ska gå ned");
+    }
+
+    /// **Krossen kvantiserar amplituden.** 2 bitar ger fyra steg per polaritet, alltså sju
+    /// möjliga värden (nollan inräknad). 16 bitar ger i praktiken ett kontinuum — att de två
+    /// skiljer sig är beviset på att ratten biter.
+    #[test]
+    fn the_bit_crusher_quantizes_to_the_chosen_number_of_levels() {
+        let mut crush = BitCrusher::new(48_000.0);
+        let params = BitCrushParams {
+            bits: 2.0,
+            downsample: 1.0,
+            tone: 1.0,
+            mix: 1.0,
+        };
+        let count = |bits: f32| {
+            let mut crush = BitCrusher::new(48_000.0);
+            let params = BitCrushParams {
+                bits,
+                downsample: 1.0,
+                tone: 1.0,
+                mix: 1.0,
+            };
+            let mut levels: Vec<i32> = (0..4_800)
+                .map(|n| {
+                    let x =
+                        (2.0 * std::f32::consts::PI * 220.0 * n as f32 / 48_000.0).sin() * 0.8;
+                    (crush.process(x, x, &params).0 * 400.0).round() as i32
+                })
+                .collect();
+            levels.sort_unstable();
+            levels.dedup();
+            levels.len()
+        };
+        let coarse = count(2.0);
+        let fine = count(16.0);
+        println!("2 bitar: {coarse} nivåer, 16 bitar: {fine} nivåer");
+        assert_eq!(coarse, 7, "2 bitar ska ge sju värden (fyra steg per polaritet + nollan)");
+        assert!(fine > coarse * 20, "16 bitar ska vara i praktiken kontinuerligt: {fine}");
+    }
+
+    /// **Nedblandningen håller sampelvärdena stilla.** Med 16 steg ska antalet ändringar
+    /// mellan intilliggande sampel falla till omkring en sextondel.
+    #[test]
+    fn the_downsampler_holds_each_sample_for_the_chosen_number_of_steps() {
+        let changes = |downsample: f32| {
+            let mut crush = BitCrusher::new(48_000.0);
+            let params = BitCrushParams {
+                bits: 16.0,
+                downsample,
+                tone: 1.0,
+                mix: 1.0,
+            };
+            let out: Vec<f32> = (0..9_600)
+                .map(|n| {
+                    let x = (2.0 * std::f32::consts::PI * 220.0 * n as f32 / 48_000.0).sin() * 0.5;
+                    crush.process(x, x, &params).0
+                })
+                .collect();
+            out.windows(2).filter(|w| (w[1] - w[0]).abs() > 1e-7).count()
+        };
+        let plain = changes(1.0);
+        let held = changes(16.0);
+        println!("ändringar: {plain} utan nedblandning, {held} med 16 steg");
+        assert!(
+            held * 8 < plain,
+            "nedblandningen ska minska ändringarna kraftigt: {held} mot {plain}"
+        );
     }
 
 }

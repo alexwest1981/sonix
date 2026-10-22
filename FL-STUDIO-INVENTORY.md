@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 44** har en motsvarighet, **◐ 45** delvis, **✗ 52** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 45** har en motsvarighet, **◐ 45** delvis, **✗ 51** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -201,7 +201,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Send | 2 | ✅ | sends per spår |
 | Fruity Soft Clipper | 2 | ✅ | saturatorn |
 | Fruity Spectroman | 2 | ✅ | spectrum.rs + mätarna |
-| Fruity Squeeze | 2 | ✗ | bitcrush/decimering |
+| Fruity Squeeze | 2 | ✅ | `BitCrusher` — BITS 1–16, NEDSAMPLING 1–32, TON (lågpass efter krossen) |
 | Fruity Stereo Enhancer | 2 | ◐ | doubler/width |
 | Fruity Stereo Shaper | 2 | ✗ | per-kanal fas/panorering/width-kurvor |
 | Fruity Vocoder | 2 | ✅ | `vocode` i sångstudion, läggs som egen tagning |

@@ -1,6 +1,6 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
-    AudioCommand, AudioEngine, CompressorParams, DeEsserParams, DoublerParams, GateParams,
+    AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
     ModFxParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
@@ -235,6 +235,22 @@ impl Default for FxRackState {
                     p3_val: 0.0,
                     mix: 0.50,
                     description: "Flyttar hela spektrumet i hertz — SKIFT ±2 000 Hz, mitten är 0. Till skillnad från tonhöjdstransponering behåller intervallerna sitt avstånd.",                    extra: Vec::new(),
+                },
+                FxPedal {
+                    id: "bitcrush",
+                    name: "🗜️ SQUEEZE",
+                    category: "Distortion",
+                    enabled: false,
+                    color: Color32::from_rgb(255, 210, 120),
+                    p1_name: "BITAR",
+                    p1_val: 1.00,
+                    p2_name: "NEDSAMPLING",
+                    p2_val: 0.0,
+                    p3_name: "TON",
+                    p3_val: 0.50,
+                    mix: 1.0,
+                    description: "BITAR kvantiserar amplituden (1–16), NEDSAMPLING håller varje sampel 1–32 steg, TON är ett lågpass efter krossen (200 Hz–20 kHz).",
+                    extra: Vec::new(),
                 },
                 FxPedal {
                     id: "chorus",
@@ -485,6 +501,18 @@ impl FxRackState {
             spread: fs_knob(|p| p.p3_val, 0.0) >= 0.5,
         };
 
+        let cr_p = self.pedal("bitcrush");
+        let cr_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            cr_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let crush = BitCrushParams {
+            // 1 bit i botten, 16 i toppen: ratten är bitdjupet, inte ett påslag.
+            bits: 1.0 + cr_knob(|p| p.p1_val, 1.0) * 15.0,
+            downsample: 1.0 + (cr_knob(|p| p.p2_val, 0.0) * 31.0).round(),
+            tone: cr_knob(|p| p.p3_val, 0.5),
+            mix: cr_knob(|p| p.mix, 1.0),
+        };
+
         let ch_p = self.pedal("chorus");
         let chorus = ModFxParams {
             rate: 0.05 + ch_p.map(|p| p.p1_val).unwrap_or(0.25) * 4.0,
@@ -516,6 +544,8 @@ impl FxRackState {
             granular_enabled: gr_p.map(|p| p.enabled).unwrap_or(false),
             freq_shift,
             freq_shift_enabled: fs_p.map(|p| p.enabled).unwrap_or(false),
+            crush,
+            crush_enabled: cr_p.map(|p| p.enabled).unwrap_or(false),
             eq_bands,
             eq_enabled: eq_pedal_on,
             comp,
@@ -1329,6 +1359,33 @@ mod tests {
         );
         assert!((params.freq_shift.mix - 0.75).abs() < 0.01);
         assert!(params.freq_shift.spread, "stereoläget ska följa ratten");
+    }
+
+    /// **Krossens tre rattar når sina egna fält** — bitdjup, nedblandning och ton.
+    #[test]
+    fn the_bit_crusher_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "bitcrush")
+            .expect("squeeze-pedalen ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 0.0; // 1 bit
+        pedal.p2_val = 1.0; // 32 steg
+        pedal.p3_val = 0.0; // stängt lågpass
+        pedal.mix = 1.0;
+
+        let params = state.build_master_fx_params();
+        assert!(params.crush_enabled, "pedalen ska slå på steget");
+        assert!((params.crush.bits - 1.0).abs() < 0.01, "bitar: {}", params.crush.bits);
+        assert!(
+            (params.crush.downsample - 32.0).abs() < 0.01,
+            "nedblandning: {}",
+            params.crush.downsample
+        );
+        assert!((params.crush.tone - 0.0).abs() < 0.01, "ton: {}", params.crush.tone);
     }
 
 }

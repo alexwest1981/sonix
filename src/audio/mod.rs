@@ -105,7 +105,8 @@ pub use loudness::{
 };
 #[allow(unused_imports)]
 pub use master_fx::{
-    ControlRoomParams, FreqShiftParams, FrequencyShifter, Granular, GranularParams,
+    BitCrushParams, BitCrusher, ControlRoomParams, FreqShiftParams, FrequencyShifter,
+    Granular, GranularParams,
     CompressorParams, ConvolverParams, DeEsserParams, DoublerParams, GateParams, LimiterParams, MasterEqBand,
     MasterFilterParams, MasterFxChain, MasterFxParams, ModFxParams, MultibandParams, SaturatorParams,
     StereoEq,
