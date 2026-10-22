@@ -24,7 +24,7 @@ use crate::audio::MidiKeyboardInput;
 use crate::audio::patcher::{ModularGraph, PatchSpec};
 use crate::audio::plugin_host::PluginManager;
 use crate::audio::recorder::{LiveMicrophoneCapture, VocalStudioTrack};
-use crate::audio::stem_separator::{run_separation, SeparationResult, StemProject};
+use crate::audio::stem_separator::{SeparationResult, StemProject};
 use crate::audio::vocal_harmonizer::VocalHarmonizer;
 use super::add_track_modal::{render_add_track_modal, AddTrackModalState, TrackTemplate};
 use super::ai_assistant_view::render_ai_assistant_view;
@@ -412,6 +412,10 @@ pub struct SonixApp {
     pub take_humanize: f32,
     /// Hur många steg isär ett ackords noter strummas.
     /// Text för pianorullens skriptfält.
+    /// Videospåret: referensfilm synkad till tidslinjen.
+    pub video: crate::ui::video_view::VideoState,
+    /// Sex stämmor i stället för fyra (kräver 6s-modellen).
+    pub stem_six: bool,
     pub script_text: String,
     pub take_strum: f32,
     /// Nedstrum: högsta tonen först.
@@ -940,6 +944,8 @@ impl SonixApp {
             export_noise_shaping: false,
             take_strength: 1.0,
             take_humanize: 0.5,
+            video: crate::ui::video_view::VideoState::default(),
+            stem_six: false,
             script_text: String::new(),
             take_strum: 0.08,
             take_strum_down: false,

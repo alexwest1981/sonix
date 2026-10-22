@@ -12,6 +12,7 @@ pub mod song_structure_modal;
 pub mod stem_view;
 pub mod theme;
 pub mod tuner_modal;
+pub mod video_view;
 pub mod vocal_studio_view;
 pub mod widgets;
 

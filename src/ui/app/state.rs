@@ -34,6 +34,7 @@ pub enum ViewMode {
     AiMusicAssistant,
     ModularPatcher,
     StemSeparator,
+    Video,
     PluginManager,
     EffectsMixer,
 }

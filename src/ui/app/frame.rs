@@ -24,6 +24,7 @@ fn view_name(view: ViewMode) -> &'static str {
         ViewMode::AiMusicAssistant => "🤖 AI",
         ViewMode::ModularPatcher => "🔌 Patcher",
         ViewMode::StemSeparator => "🪄 Stämmor",
+        ViewMode::Video => "🎬 Video",
         ViewMode::PluginManager => "🧩 Pluggar",
         ViewMode::EffectsMixer => "🎚 Mixer",
     }
@@ -83,8 +84,17 @@ impl SonixApp {
                         let _ = self.engine.send_command(AudioCommand::PatcherNoteOff);
                     }
                 }
+                ViewMode::Video => {
+                    crate::ui::video_view::render_video_view(
+                        ui,
+                        &mut self.video,
+                        self.song_time as f64,
+                        self.is_playing,
+                        &mut self.status_message,
+                    );
+                }
                 ViewMode::StemSeparator => {
-                    let actions = render_stem_separator_view(ui, &mut self.stem_project, self.song_time, self.is_playing, &mut self.status_message, &self.model_download);
+                    let actions = render_stem_separator_view(ui, &mut self.stem_project, self.song_time, self.is_playing, &mut self.status_message, &self.model_download, &mut self.stem_six);
                     if actions.request_separation {
                         self.pending_stem_separation = true;
                         self.spawn_async_file_picker(
@@ -1252,6 +1262,8 @@ impl SonixApp {
 
                     let stem_btn = ui.selectable_label(self.view_mode == ViewMode::StemSeparator, self.tr("🧠 Stems"));
                     if stem_btn.clicked() { self.view_mode = ViewMode::StemSeparator; }
+                    let video_btn = ui.selectable_label(self.view_mode == ViewMode::Video, self.tr("🎬 Video"));
+                    if video_btn.clicked() { self.view_mode = ViewMode::Video; }
 
                     let plug_btn = ui.selectable_label(self.view_mode == ViewMode::PluginManager, self.tr("🔌 Plugins"));
                     if plug_btn.clicked() { self.view_mode = ViewMode::PluginManager; }
