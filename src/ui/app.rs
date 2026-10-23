@@ -579,6 +579,8 @@ pub struct SonixApp {
     pub show_visualizer: bool,
     /// **VFX Script (lite)**: formel som skrivs in i en automationsbana.
     pub show_script_modal: bool,
+    /// **Fruity Dance**: en figur som dansar i takt.
+    pub show_dance: bool,
     pub script_source: String,
     pub script_param: usize,
     /// Toppmarkörerna i visualizern, en per band.
@@ -1123,6 +1125,7 @@ impl SonixApp {
             show_big_clock: false,
             show_visualizer: false,
             show_script_modal: false,
+            show_dance: false,
             script_source: crate::ui::app::script::DEFAULT_SOURCE.to_string(),
             script_param: 0,
             visualizer_peaks: Vec::new(),

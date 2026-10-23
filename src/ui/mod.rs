@@ -2,6 +2,7 @@ pub mod add_track_modal;
 pub mod ai_assistant_view;
 pub mod app;
 pub mod big_clock;
+pub mod dance;
 pub mod visualizer;
 pub mod chord_generator_modal;
 pub mod dice_generator_modal;

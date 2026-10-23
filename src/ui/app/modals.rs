@@ -3579,6 +3579,58 @@ impl SonixApp {
         self.show_big_clock = open;
     }
 
+    /// **Fruity Dance**: en streckfigur som dansar i takt. Posen räknas i `ui::dance`,
+    /// ritningen här — ingen bild, ingen animationstråd, bara figurens leder per bildruta.
+    pub(crate) fn render_dance_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_dance {
+            return;
+        }
+        let mut open = self.show_dance;
+        egui::Window::new(crate::i18n::t("💃 Fruity Dance"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_size(Vec2::new(240.0, 300.0))
+            .show(ctx, |ui| {
+                let (rect, _) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), 200.0),
+                    Sense::hover(),
+                );
+                let painter = ui.painter_at(rect);
+                painter.rect_filled(rect, Rounding::same(4.0), Color32::BLACK);
+                let steps = crate::ui::app::state::pattern_steps(
+                    self.patterns
+                        .get(self.selected_pattern)
+                        .map_or(1, |p| p.bars),
+                );
+                let phase = if self.is_playing {
+                    (self.current_step % steps) as f32 / steps as f32
+                } else {
+                    0.0
+                };
+                let pose = crate::ui::dance::pose(phase);
+                // −1…1 → rutan, med y uppåt.
+                let to_px = |(x, y): (f32, f32)| {
+                    let scale = rect.height() * 0.42;
+                    Pos2::new(
+                        rect.center().x + x * scale,
+                        rect.center().y - (y + pose.bob) * scale,
+                    )
+                };
+                let hip = to_px(pose.hip);
+                let head = to_px(pose.head);
+                let limb = |from: Pos2, to: Pos2| {
+                    painter.line_segment([from, to], Stroke::new(3.0_f32, Theme::GREEN));
+                };
+                limb(hip, head);
+                limb(hip, to_px(pose.arm_l));
+                limb(hip, to_px(pose.arm_r));
+                limb(hip, to_px(pose.leg_l));
+                limb(hip, to_px(pose.leg_r));
+                painter.circle_filled(head, 12.0, Theme::CYAN);
+            });
+        self.show_dance = open;
+    }
+
     /// **VFX Script (lite)**: formeln skrivs in i en automationsbana på det valda spåret.
     /// Kurvan blir vanliga punkter, så den går att rätta för hand efteråt.
     pub(crate) fn render_script_modal(&mut self, ctx: &egui::Context) {
@@ -3795,6 +3847,7 @@ impl SonixApp {
         self.render_big_clock(ctx);
         self.render_visualizer_modal(ctx);
         self.render_script_modal(ctx);
+        self.render_dance_modal(ctx);
         self.render_dice_generator_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);

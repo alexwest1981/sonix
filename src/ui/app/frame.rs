@@ -993,6 +993,10 @@ impl SonixApp {
                             self.show_script_modal = true;
                             ui.close_menu();
                         }
+                        if ui.button(self.tr("💃 Fruity Dance")).clicked() {
+                            self.show_dance = true;
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("📑 Låtstruktur & Formdelar...")).clicked() {
                             self.show_song_structure_modal = true;
                             ui.close_menu();

@@ -361,18 +361,30 @@ mod tests {
         let f = Formula::compile("sin(t*2)*0.5 + n*0.001 + lfo(3)*0.2").unwrap();
         let compile_us = compile_start.elapsed().as_secs_f64() * 1e6;
 
+        // **Jämför två vägar i samma process**, inte mot en väggklocka: en absolut gräns
+        // faller när maskinen är lastad (den här föll en gång på 11 ms), medan förhållandet
+        // mellan "tolka en gång" och "tolka varje gång" står stilla oavsett last.
+        let n = 5_000;
         let start = std::time::Instant::now();
         let mut sum = 0.0f32;
-        for i in 0..10_000 {
+        for i in 0..n {
             sum += f.eval(i as f32 / 48_000.0, 60.0);
         }
-        let elapsed = start.elapsed();
+        let compiled = start.elapsed();
+
+        let start = std::time::Instant::now();
+        for i in 0..n {
+            let again = Formula::compile("sin(t*2)*0.5 + n*0.001 + lfo(3)*0.2").unwrap();
+            sum += again.eval(i as f32 / 48_000.0, 60.0);
+        }
+        let reparsed = start.elapsed();
         println!(
-            "kompilering: {compile_us:.1} µs, 10 000 eval: {:?} ({:.0} ns/st), summa {sum}",
-            elapsed,
-            elapsed.as_secs_f64() * 1e9 / 10_000.0
+            "kompilering: {compile_us:.1} µs, {n} eval: {compiled:?} mot {reparsed:?} med omtolkning, summa {sum}"
         );
-        assert!(elapsed.as_millis() < 10, "10 000 eval tog {elapsed:?}");
+        assert!(
+            compiled * 2 < reparsed,
+            "färdigtolkad formel ska vara minst dubbelt så snabb: {compiled:?} mot {reparsed:?}"
+        );
         assert!(sum.is_finite());
     }
 }

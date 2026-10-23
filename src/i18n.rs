@@ -376,6 +376,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ The formula cannot be read: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Wrote {} points to '{}' (track {})",
         "⚠ Det finns inget spår att skriva kurvan på" => "⚠ There is no track to write the curve on",
@@ -2692,6 +2693,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ Formeln går inte att läsa: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spår {})",
         "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Det finns inget spår att skriva kurvan på",
@@ -4967,6 +4969,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ Formlen kan ikke læses: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spor {})",
         "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Der er ingen spor at skrive kurven på",
@@ -7242,6 +7245,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ Formelen kan ikke leses: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spor {})",
         "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Det finnes ingen spor å skrive kurven på",
@@ -9517,6 +9521,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ Die Formel ist nicht lesbar: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 {} Punkte auf '{}' geschrieben (Spur {})",
         "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Es gibt keine Spur, auf die die Kurve geschrieben werden kann",
@@ -11792,6 +11797,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ La formule est illisible : {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 {} points écrits sur '{}' (piste {})",
         "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Aucune piste sur laquelle écrire la courbe",

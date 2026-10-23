@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 64** delvis, **✗ 1** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 65** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -133,7 +133,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | BeepMap | 9 | ✅ | `instruments::beepmap_amplitudes(bytes)` — byte → 16 deltonsnivåer, normaliserade. Verktyg → BeepMap |
 | FLEX | 9 | ◐ | **egen förvalsbank**: `audio::flex` sparar reglagen (vågform, ADSR, filter, sub, unison, detune, glide, drive, dragstänger) som namngivna ljud i `~/.local/share/sonix/flex_presets.json`, med ▶-lyssning, Ladda och 🗑 i bläddraren. Tempfil + rename, så en krasch inte lämnar en halv fil; en trasig fil ger tom bank i stället för att appen inte startar. Prov: rundtur bevarar alla parametrar. Kvar: FL:s eget bibliotek och FLEX-specifika vågformer |
 | Ogun | 8 | ◐ | `Waveform::Inharmonic` — sex deltoner på 1 / 2,76 / 5,4 / 8,93 / 13,34 / 18,64. Mätt: 607 Hz 0,2027 mot 440 Hz 0,0018. ✗ egna modulations- och effektkedjor |
-| Fruity Dance | 5 | ✗ | animerad dansare (skämt) |
+| Fruity Dance | 5 | ◐ | **💃 Fruity Dance** i menyn: en streckfigur som dansar i takt. Posen räknas i `ui::dance` (två studs per takt, armar i motfas, ben växelvis) och ritas med fem linjer och ett huvud — ingen bild, ingen tråd. Prov: posen är periodisk över en takt, speglar sig mellan kvart och trekvart och håller sig inom rutan. Kvar: FL:s egna dansare och bildsekvenser |
 | Wasp | 5 | ◐ | subtraktiv synth |
 | Fruity DrumSynth Live | 4 | ◐ | drum.rs (syntetiska trummor) |
 | MIDI Out | 4 | ✅ | audio/midi_output.rs (byggd i dag) |
