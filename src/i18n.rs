@@ -376,6 +376,14 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⚠ Formeln går inte att läsa: {}" => "⚠ The formula cannot be read: {}",
+        "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Wrote {} points to '{}' (track {})",
+        "⚠ Det finns inget spår att skriva kurvan på" => "⚠ There is no track to write the curve on",
+        "Kurvan skrivs på det valda spåret, över patternets takter" => "The curve is written to the selected track, across the pattern's bars",
+        "✍ Skriv kurvan" => "✍ Write the curve",
+        "Mål:" => "Target:",
+        "Formel över tid (t = takter)" => "Formula over time (t = bars)",
+        "📜 Skript..." => "📜 Script...",
         "🌊 Visualizer..." => "🌊 Visualizer...",
         "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "No saved sounds yet",
@@ -2684,6 +2692,14 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⚠ Formeln går inte att läsa: {}" => "⚠ Formeln går inte att läsa: {}",
+        "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spår {})",
+        "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Det finns inget spår att skriva kurvan på",
+        "Kurvan skrivs på det valda spåret, över patternets takter" => "Kurvan skrivs på det valda spåret, över patternets takter",
+        "✍ Skriv kurvan" => "✍ Skriv kurvan",
+        "Mål:" => "Mål:",
+        "Formel över tid (t = takter)" => "Formel över tid (t = takter)",
+        "📜 Skript..." => "📜 Skript...",
         "🌊 Visualizer..." => "🌊 Visualizer...",
         "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "Ingen gemte lyde endnu",
@@ -4951,6 +4967,14 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⚠ Formeln går inte att läsa: {}" => "⚠ Formlen kan ikke læses: {}",
+        "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spor {})",
+        "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Der er ingen spor at skrive kurven på",
+        "Kurvan skrivs på det valda spåret, över patternets takter" => "Kurven skrives på det valgte spor, over patternets takter",
+        "✍ Skriv kurvan" => "✍ Skriv kurven",
+        "Mål:" => "Mål:",
+        "Formel över tid (t = takter)" => "Formel over tid (t = takter)",
+        "📜 Skript..." => "📜 Script...",
         "🌊 Visualizer..." => "🌊 Visualizer...",
         "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "Ingen lagrede lyder ennå",
@@ -7218,6 +7242,14 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⚠ Formeln går inte att läsa: {}" => "⚠ Formelen kan ikke leses: {}",
+        "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spor {})",
+        "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Det finnes ingen spor å skrive kurven på",
+        "Kurvan skrivs på det valda spåret, över patternets takter" => "Kurven skrives på det valgte sporet, over patternets takter",
+        "✍ Skriv kurvan" => "✍ Skriv kurven",
+        "Mål:" => "Mål:",
+        "Formel över tid (t = takter)" => "Formel over tid (t = takter)",
+        "📜 Skript..." => "📜 Skript...",
         "🌊 Visualizer..." => "🌊 Visualizer...",
         "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "Noch keine gespeicherten Klänge",
@@ -9485,6 +9517,14 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⚠ Formeln går inte att läsa: {}" => "⚠ Die Formel ist nicht lesbar: {}",
+        "📜 Skrev {} punkter på '{}' (spår {})" => "📜 {} Punkte auf '{}' geschrieben (Spur {})",
+        "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Es gibt keine Spur, auf die die Kurve geschrieben werden kann",
+        "Kurvan skrivs på det valda spåret, över patternets takter" => "Die Kurve wird auf die gewählte Spur geschrieben, über die Takte des Patterns",
+        "✍ Skriv kurvan" => "✍ Kurve schreiben",
+        "Mål:" => "Ziel:",
+        "Formel över tid (t = takter)" => "Formel über die Zeit (t = Takte)",
+        "📜 Skript..." => "📜 Skript...",
         "🌊 Visualizer..." => "🌊 Visualizer...",
         "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "Aún no hay sonidos guardados",
@@ -11752,6 +11792,14 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⚠ Formeln går inte att läsa: {}" => "⚠ La formule est illisible : {}",
+        "📜 Skrev {} punkter på '{}' (spår {})" => "📜 {} points écrits sur '{}' (piste {})",
+        "⚠ Det finns inget spår att skriva kurvan på" => "⚠ Aucune piste sur laquelle écrire la courbe",
+        "Kurvan skrivs på det valda spåret, över patternets takter" => "La courbe est écrite sur la piste sélectionnée, sur les mesures du pattern",
+        "✍ Skriv kurvan" => "✍ Écrire la courbe",
+        "Mål:" => "Cible :",
+        "Formel över tid (t = takter)" => "Formule dans le temps (t = mesures)",
+        "📜 Skript..." => "📜 Script...",
         "🌊 Visualizer..." => "🌊 Visualiseur...",
         "🌊 Visualizer" => "🌊 Visualiseur",
         "Inga sparade ljud än" => "Aucun son enregistré",

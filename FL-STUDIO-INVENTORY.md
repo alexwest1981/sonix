@@ -95,8 +95,10 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 63** delvis, **✗ 8** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 64** delvis, **✗ 1** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
+
+**Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
 stod som ✗ trots att §11 listade dem som byggda. Två rader rättade 23 okt: Formula Controller
@@ -112,7 +114,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 
 | Plugin | Filer | Sonix | Kommentar |
 | :--- | ---: | :---: | :--- |
-| FL Studio Mobile | 344 | ✗ | mobil-appens rack; ingen motsvarighet |
+| FL Studio Mobile | 344 | — | **ej tillämplig**: mobilappen är en egen produkt för iOS/Android. En Linux-DAW kan inte vara den, och Sonix har inget att vinna på att imitera dess pekgränssnitt. |
 | Morphine | 199 | ◐ | `instruments::morph_spectrum` + `Preset::Morph`: två additiva operatorkällor (glasig, rörledad) och ett läge 0–1 mellan dem — exakt vid 0 och 1, linjärt emellan (provat). ✗ fyra operatorkällor, egna modulationskedjor och de 199 förvalen |
 | Harmor | 164 | ◐ | **bild → spektrum**: `audio::spectral_image` läser en PNG, väger samman alla kolumner och gör bildens nederkant till grundtonen och överkanten till överton 16 (`HARMONIC_COUNT`), normaliserat till 1,0 — knappen **🖼 Från bild…** i dragstångspanelen fyller tabellen. Prov: ljus nederkant → grundtonen 1,0 / toppen 0,0, och tvärtom. Kvar: tidsaxeln (bilden som spelas upp över tid), `.fnv`-envelopes, fler än 16 partialer och blur/prism |
 | Dashboard | 90 | ◐ | Patch-modulen ritar en egen graf, men ingen panel med rattar |
@@ -149,13 +151,13 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Video Player | 2 | ✅ | `audio::video` + videovy: referensfilm synkad till spelhuvudet, bildrutan hämtas med ffmpeg |
 | Harmless | 2 | ◐ | additiv syntes (16 dragstänger) plus syntens filter- och envelopkedja — dess två halvor finns, dess egna förval gör det inte |
 | Plucked! | 2 | ✅ | `Waveform::Pluck` — Karplus-Strong: brus i en dämpad fördröjningslinje. Mätt: 220 Hz in ger 220,7 Hz ut, RMS 0,1588 → 0,0750 |
-| ReWired | 2 | ✗ | ReWire-värd |
+| ReWired | 2 | — | **ej tillämplig**: ReWire lades ned 2020 (Propellerhead) och stöds inte av moderna DAW:er. Motsvarigheten i dag är `AudioCommand`-bryggan och VST3, som redan finns. |
 | Sakura | 2 | ◐ | **båge** över samma stränglinje som Plucked! (`Waveform::Bowed`): brus exciterar linjen varje varv, så tonen bär medan anslaget hålls, genom kroppens två resonanser. Mätt: 220 Hz in → 220,2 Hz ut, RMS 0,0485 → 0,0647 över 2 s. Kvar: bågtryck/stråkposition och artikulationer (pizzicato, harmonic) |
 | Sawer | 2 | ◐ | en oscillator; Sawer är supersaw med 7 röster |
 | Slicex | 2 | ◐ | choppern (slag → noter), ingen egen editor |
 | Drumaxx | 1 | ◐ | `audio::drum::DrumVoice` — tio syntetiserade röster (kagge, virvel, klapp, tre hi-hats, crash, två tommar, metronom) med tonhöjdsenvelop och brus, triggade per kanal i motorn (`[DrumVoice; MAX_DRUMS]`). ✗ egna modeller per pad och pad-redigering — rösterna är fasta |
 | Drumpad | 1 | ◐ | steprad + drum.rs |
-| FL Studio Mobile Rack | 1 | ✗ | mobilens rack |
+| FL Studio Mobile Rack | 1 | — | **ej tillämplig**: mobil-appens rack (se FL Studio Mobile). |
 | Fruity Voltage Controller | 1 | ✅ | `ModSource::Voltage { value }` — fast läge, mätt att det står still |
 | Kepler | 1 | ◐ | `Preset::Kepler` — en analog röst: sågtand, sub en oktav under, filter med envelop. ✗ CS-80:s egna kretsar modelleras inte, och inget av dess 100+ förval finns |
 | Kepler Exo | 1 | ◐ | `Preset::KeplerExo` — pulsvåg, två röster, mer detune. ✗ samma brist som Kepler |
@@ -192,7 +194,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Delay Bank | 2 | ✅ | `DelayBank` — tre linjer med egen tid och nivå, återkoppling, stereospridning |
 | Fruity Fast Dist | 2 | ✅ | saturatorn |
 | Fruity Flangus | 2 | ✅ | `ModDelay` som flanger (2,5–4,5 ms); ingen fler-röstsvariant |
-| Fruity LSD | 2 | ✗ | MIDI ut till DirectMusic-synt |
+| Fruity LSD | 2 | — | **ej tillämplig**: DirectMusic är Windows-specifikt och dessutom avvecklat. Motsvarande behov täcks av MIDI-ut och VST3. |
 | Fruity Limiter | 2 | ✅ | Limiter |
 | Fruity Multiband Compressor | 2 | ✅ | multibandskompressorn (byggd i dag) |
 | Fruity PanOMatic | 2 | ◐ | pan + volym; ingen LFO-pan |
@@ -217,7 +219,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Wave Candy | 2 | ◐ | spektrum + mätare; ingen oscillator/vectorscope |
 | Emphasis | 1 | ◐ | Hylla finns (`ShelvesParams`), men FL:s Emphasis lägger till övertoner — det gör vår inte |
 | Emphasizer | 1 | ◐ | Samma som Emphasis: hyllan finns, övertonstillägget gör det inte |
-| FL Studio Mobile Rack FX | 1 | ✗ | mobilens effekter |
+| FL Studio Mobile Rack FX | 1 | — | **ej tillämplig**: mobil-appens effekter (se FL Studio Mobile). |
 | Frequency Shifter | 1 | ✅ | `FrequencyShifter` — Hilbert 63 tapp, en sidofrekvens, ±2 000 Hz, stereoläge |
 | Fruity 7 Band EQ | 1 | ◐ | 4-band + per-spår EQ |
 | Fruity Balance | 1 | ✅ | pan/volym |
@@ -244,7 +246,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Multiband Delay | 1 | ✅ | `MultibandDelay` — tre band, tre tider, samma delningsfilter som den flerbandiga kompressorn |
 | Newtime | 1 | ◐ | tempokarta + "sätt takt 1 här" (8.14) |
 | Pitch Shifter | 1 | ✅ | formantbevarande pitch (stretch/vocal_harmonizer) |
-| Razer Chroma | 1 | ✗ | RGB-synk |
+| Razer Chroma | 1 | — | **ej tillämplig**: Razer Chromas SDK är Windows-bundet och datorn har Corsair K60 (styrs via `corsair-rgb-lighting`). Att måla någon annans tangentbord är inte en DAW-funktion. |
 | Transient Processor | 1 | ✅ | transient-shapern (byggd i dag) |
 | Transmitter | 1 | ✅ | data → ljud: händelser, förval och wav (`ade2c1a`) |
 | Transporter | 1 | ✅ | samma fönster som Big Clock — FL:s äldre variant visar samma två tal |
@@ -254,7 +256,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | VFX Key Mapper | 1 | ◐ | `audio::key_mapper` — en zon transponerar noten och kan byta kanal/skala anslaget; första träffen vinner. Not → **parameter** går via modulationsmatrisen (`ModSource::Key` → volym/panorering/tonhöjd/cutoff), men inte per zon som i FL |
 | VFX Keyboard Splitter | 1 | ✅ | `audio::key_mapper` — fyra zoner över klaviaturet, varje zon kan skicka noten till egen MIDI-kanal (1–16), transponera och skala anslaget. Följer med projektfilen. Prov: zon 36–47 → kanal 2, +12, ×0,75 ger (52, 60, 2) |
 | VFX Level Scaler | 1 | ✅ | anslaget skalas per zon (`velocity_scale` 0–2×) **och** formas av en kurva (0,2–5: under 1 lyfter svaga slag, över 1 trycker ner dem), klämt till 1–127 så en svag not aldrig blir note-off. Prov: 64 med kurva 0,5 → 90; med kurva 2,0 → 32 |
-| VFX Script | 1 | ✗ | skriptstyrd MIDI-bearbetning |
+| VFX Script | 1 | ◐ | **VFX Script (lite)**: formelspråket i `formula.rs` blir en automationskurva — **📜 Skript...** i menyn, formel (`t` = takter), mål och **✍ Skriv kurvan** skriver 16 punkter per takt i spårets bana, som sedan går att rätta för hand. Prov: `t` över två takter ger 8 punkter 0,5 → 1,0, dålig syntax ger ett läsbart fel. Kvar: egen skriptmotor med tillstånd, händelser och GUI-bygge |
 | VFX Sequencer | 1 | ◐ | SchedulesChord (ackord/arpeggio) + dice-generator |
 | Vintage Chorus | 1 | ◐ | samma `ModDelay`; "vintage" är FL:s egen röstning, inte en egen motor |
 | Vintage Phaser | 1 | ◐ | samma `Phaser`; ingen egen kurva för den varianten |

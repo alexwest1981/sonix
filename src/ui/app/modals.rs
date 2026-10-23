@@ -3579,6 +3579,110 @@ impl SonixApp {
         self.show_big_clock = open;
     }
 
+    /// **VFX Script (lite)**: formeln skrivs in i en automationsbana på det valda spåret.
+    /// Kurvan blir vanliga punkter, så den går att rätta för hand efteråt.
+    pub(crate) fn render_script_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_script_modal {
+            return;
+        }
+        let mut open = self.show_script_modal;
+        let mut apply = false;
+        egui::Window::new(crate::i18n::t("📜 Skript"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_size(Vec2::new(400.0, 200.0))
+            .show(ctx, |ui| {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("Formel över tid (t = takter)"))
+                        .size(Theme::FONT_S),
+                );
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.script_source)
+                        .desired_width(f32::INFINITY)
+                        .font(egui::TextStyle::Monospace),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(crate::i18n::t("Mål:"));
+                    egui::ComboBox::from_id_salt("script_param")
+                        .selected_text(crate::ui::app::state::AutomationParam::ALL
+                            [self.script_param.min(
+                                crate::ui::app::state::AutomationParam::COUNT - 1,
+                            )]
+                        .label())
+                        .show_ui(ui, |ui| {
+                            for (i, p) in
+                                crate::ui::app::state::AutomationParam::ALL.iter().enumerate()
+                            {
+                                if ui.selectable_label(self.script_param == i, p.label()).clicked()
+                                {
+                                    self.script_param = i;
+                                }
+                            }
+                        });
+                    if ui.button(crate::i18n::t("✍ Skriv kurvan")).clicked() {
+                        apply = true;
+                    }
+                });
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "Kurvan skrivs på det valda spåret, över patternets takter",
+                    ))
+                    .size(Theme::FONT_XS)
+                    .color(Theme::TEXT_MUTED),
+                );
+            });
+        self.show_script_modal = open;
+        if apply {
+            self.apply_script_curve();
+        }
+    }
+
+    /// Räknar formeln och lägger punkterna i spårets bana — samma bana som handredigeringen
+    /// använder, så inget särskilt format behöver läras.
+    pub(crate) fn apply_script_curve(&mut self) {
+        let bars = self
+            .patterns
+            .get(self.selected_pattern)
+            .map_or(1, |p| p.bars);
+        match crate::ui::app::script::points_from_formula(&self.script_source, bars, 16) {
+            Ok(points) => {
+                if self.playlist_tracks.is_empty() {
+                    self.status_message =
+                        crate::tstatus!("⚠ Det finns inget spår att skriva kurvan på");
+                    return;
+                }
+                let track_idx = self.selected_timeline_track.min(self.playlist_tracks.len() - 1);
+                let param = crate::ui::app::state::AutomationParam::ALL
+                    [self.script_param.min(crate::ui::app::state::AutomationParam::COUNT - 1)];
+                let track = &mut self.playlist_tracks[track_idx];
+                match track.automation.iter_mut().find(|l| l.param == param) {
+                    Some(lane) => {
+                        lane.points = points;
+                        lane.enabled = true;
+                    }
+                    None => track
+                        .automation
+                        .push(crate::ui::app::state::AutomationLane {
+                            param,
+                            enabled: true,
+                            points,
+                        }),
+                }
+                self.status_message = crate::tstatus!(
+                    "📜 Skrev {} punkter på '{}' (spår {})",
+                    bars * 16,
+                    param.label(),
+                    track_idx + 1
+                );
+            }
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠ Formeln går inte att läsa: {}", e);
+            }
+        }
+    }
+
     /// **Visualizer** — vågformen överst, spektrumstaplar under, med toppmarkör.
     /// Samma data som mixern ritar; ingen egen analys.
     pub(crate) fn render_visualizer_modal(&mut self, ctx: &egui::Context) {
@@ -3690,6 +3794,7 @@ impl SonixApp {
         self.render_tuner_modal_view(ctx);
         self.render_big_clock(ctx);
         self.render_visualizer_modal(ctx);
+        self.render_script_modal(ctx);
         self.render_dice_generator_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);

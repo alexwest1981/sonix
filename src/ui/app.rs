@@ -47,6 +47,7 @@ use super::widgets::{
 // Undermoduler — den stora ytan är delad efter område (2026-09-14). De ligger **under** `app`
 // med flit: ett barn ser förälderns privata fält, så `SonixApp` och de andra typerna behöver
 // inte göra sina fält publika för att en syskonmodul ska kunna läsa dem.
+pub mod script;
 pub mod state;
 pub use state::*;
 
@@ -576,6 +577,10 @@ pub struct SonixApp {
     pub show_big_clock: bool,
     /// **Visualizer** (ZGameEditor-lite): vågform + spektrum i ett eget fönster.
     pub show_visualizer: bool,
+    /// **VFX Script (lite)**: formel som skrivs in i en automationsbana.
+    pub show_script_modal: bool,
+    pub script_source: String,
+    pub script_param: usize,
     /// Toppmarkörerna i visualizern, en per band.
     pub visualizer_peaks: Vec<f32>,
     /// Färgkartan: noterna i rutnätet färgas efter tonhöjd (FL:s VFX Color Mapper).
@@ -1117,6 +1122,9 @@ impl SonixApp {
             show_tuner_modal: false,
             show_big_clock: false,
             show_visualizer: false,
+            show_script_modal: false,
+            script_source: crate::ui::app::script::DEFAULT_SOURCE.to_string(),
+            script_param: 0,
             visualizer_peaks: Vec::new(),
             color_notes: false,
             roll_zoom: 1.0,
