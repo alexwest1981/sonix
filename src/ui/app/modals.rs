@@ -369,11 +369,35 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                                     .speed(0.01)
                                     .fixed_decimals(2),
                             );
+                            // **Not → not**: kvantisera zonen till en skala.
+                            let current = zone
+                                .snap_scale
+                                .map(|s| crate::audio::scale::SCALES[s as usize % crate::audio::scale::SCALES.len()].name)
+                                .unwrap_or("–");
+                            egui::ComboBox::from_id_salt(("zone_scale", i))
+                                .selected_text(current)
+                                .width(90.0)
+                                .show_ui(ui, |ui| {
+                                    if ui.selectable_label(zone.snap_scale.is_none(), "–").clicked() {
+                                        zone.snap_scale = None;
+                                    }
+                                    for (si, scale) in crate::audio::scale::SCALES.iter().enumerate() {
+                                        if ui
+                                            .selectable_label(
+                                                zone.snap_scale == Some(si as u8),
+                                                scale.name,
+                                            )
+                                            .clicked()
+                                        {
+                                            zone.snap_scale = Some(si as u8);
+                                        }
+                                    }
+                                });
                         });
                     }
                     ui.label(
                         egui::RichText::new(crate::i18n::t(
-                            "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal.",
+                            "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not).",
                         ))
                         .size(Theme::FONT_XS)
                         .color(Theme::TEXT_MUTED),

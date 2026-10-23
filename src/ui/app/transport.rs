@@ -815,7 +815,7 @@ fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool, channel: u8) {
     // Kartan läggs på **före** kanalen räknas om, och på både anslag och släpp — annars
     // släpps den transponerade noten aldrig, för note-off bär originaltangenten.
     let (mapped_note, mapped_velocity, mapped_channel) =
-        self.midi_map.apply(note, velocity, channel + 1);
+        self.midi_map.apply(note, velocity, channel + 1, self.song_key_root);
     let is_on = on && velocity > 0;
     if is_on {
         if self.midi_held_notes.insert(note) {

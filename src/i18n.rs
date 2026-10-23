@@ -376,6 +376,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "The first zone covering the note wins. Channel 0 = keep the note's channel. The scale quantizes the note (note → note).",
         "🧵 Tagningar (komp)..." => "🧵 Takes (comp)...",
         "🗑 Tog bort lane {}" => "🗑 Removed lane {}",
         "🧵 Spelar lane {}" => "🧵 Playing lane {}",
@@ -2700,6 +2701,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not).",
         "🧵 Tagningar (komp)..." => "🧵 Tagningar (komp)...",
         "🗑 Tog bort lane {}" => "🗑 Tog bort lane {}",
         "🧵 Spelar lane {}" => "🧵 Spelar lane {}",
@@ -4983,6 +4985,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "Den første zone, der dækker noden, vinder. Kanal 0 = behold nodens kanal. Skalaen kvantiserer noden (node → node).",
         "🧵 Tagningar (komp)..." => "🧵 Tagninger (komp)...",
         "🗑 Tog bort lane {}" => "🗑 Fjernede lane {}",
         "🧵 Spelar lane {}" => "🧵 Spiller lane {}",
@@ -7266,6 +7269,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "Den første sonen som dekker noten vinner. Kanal 0 = behold notens kanal. Skalaen kvantiserer noten (note → note).",
         "🧵 Tagningar (komp)..." => "🧵 Tagninger (komp)...",
         "🗑 Tog bort lane {}" => "🗑 Fjernet lane {}",
         "🧵 Spelar lane {}" => "🧵 Spiller lane {}",
@@ -9549,6 +9553,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "Die erste Zone, die die Note abdeckt, gewinnt. Kanal 0 = Kanal der Note behalten. Die Skala quantisiert die Note (Note → Note).",
         "🧵 Tagningar (komp)..." => "🧵 Takes (Komp)...",
         "🗑 Tog bort lane {}" => "🗑 Lane {} entfernt",
         "🧵 Spelar lane {}" => "🧵 Lane {} wird gespielt",
@@ -11832,6 +11837,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "La première zone couvrant la note gagne. Canal 0 = garder le canal de la note. La gamme quantifie la note (note → note).",
         "🧵 Tagningar (komp)..." => "🧵 Prises (comp)...",
         "🗑 Tog bort lane {}" => "🗑 Voie {} supprimée",
         "🧵 Spelar lane {}" => "🧵 Lecture de la voie {}",

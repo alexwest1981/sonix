@@ -2172,7 +2172,7 @@ use crate::ui::theme::Theme;
         let data: SonixProjectData = serde_json::from_str(json).unwrap();
         assert!(data.midi_map.enabled);
         assert_eq!(
-            data.midi_map.apply(40, 80, 1),
+            data.midi_map.apply(40, 80, 1, 0),
             (52, 60, 2),
             "zonen transponerar, skalar anslaget och flyttar kanalen"
         );
@@ -2182,7 +2182,7 @@ use crate::ui::theme::Theme;
         )
         .unwrap();
         assert!(!old.midi_map.enabled, "utan fältet är kartan avstängd");
-        assert_eq!(old.midi_map.apply(40, 80, 1), (40, 80, 1));
+        assert_eq!(old.midi_map.apply(40, 80, 1, 0), (40, 80, 1));
     }
 
     /// Zoomen går i 10-procentssteg och stannar vid sina ändar.

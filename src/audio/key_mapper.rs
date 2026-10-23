@@ -31,6 +31,10 @@ pub struct MapZone {
     /// över 1 = hårdare. FL:s Level Scaler har samma ratt.
     #[serde(default = "linear_curve")]
     pub curve: f32,
+    /// **Not → not** (FL:s VFX Key Mapper): kvantisera zonen till en skala. `None` = av,
+    /// annars index i [`crate::audio::scale::SCALES`]. Tonarten kommer från projektet.
+    #[serde(default)]
+    pub snap_scale: Option<u8>,
 }
 
 fn linear_curve() -> f32 {
@@ -47,6 +51,7 @@ impl Default for MapZone {
             channel: None,
             velocity_scale: 1.0,
             curve: 1.0,
+            snap_scale: None,
         }
     }
 }
@@ -71,7 +76,7 @@ impl KeyMap {
     ///
     /// Anslaget kläms till 1–127: 0 betyder note-off i MIDI, och en nivåskalning som
     /// råkade ge 0 skulle tyst släppa noten i stället för att spela den svagt.
-    pub fn apply(&self, note: u8, velocity: u8, channel: u8) -> (u8, u8, u8) {
+    pub fn apply(&self, note: u8, velocity: u8, channel: u8, key_root: u8) -> (u8, u8, u8) {
         if !self.enabled {
             return (note, velocity, channel);
         }
@@ -80,6 +85,11 @@ impl KeyMap {
                 continue;
             }
             let transposed = (note as i16 + zone.transpose as i16).clamp(0, 127) as u8;
+            // Not → not: efter transponeringen flyttas tonen till närmaste ton i skalan.
+            let transposed = match zone.snap_scale {
+                Some(scale) => snap_to_scale(transposed, key_root, scale as usize),
+                None => transposed,
+            };
             // Kurvan läggs på det normaliserade anslaget, inte på 0–127: annars blir
             // 1,0-kurvan inte identitet.
             let shaped = (velocity as f32 / 127.0)
@@ -92,6 +102,25 @@ impl KeyMap {
         }
         (note, velocity, channel)
     }
+}
+
+/// Närmaste ton i skalan, högst sex halvtoner bort (det är alltid närmast någon av de
+/// tolv tonklasserna). Hittar ingen (trasigt skalindex) lämnas tonen orörd.
+pub fn snap_to_scale(note: u8, root: u8, scale: usize) -> u8 {
+    use crate::audio::scale::{in_scale, SCALES};
+    if scale >= SCALES.len() {
+        return note;
+    }
+    for distance in 0..=6i16 {
+        for candidate in [note as i16 - distance, note as i16 + distance] {
+            if (0..=127).contains(&candidate)
+                && in_scale((candidate as u8) % 12, root % 12, scale)
+            {
+                return candidate as u8;
+            }
+        }
+    }
+    note
 }
 
 #[cfg(test)]
@@ -110,7 +139,7 @@ mod tests {
     #[test]
     fn without_an_active_zone_the_note_passes_untouched() {
         let map = KeyMap::default();
-        assert_eq!(map.apply(60, 100, 1), (60, 100, 1));
+        assert_eq!(map.apply(60, 100, 1, 0), (60, 100, 1));
     }
 
     #[test]
@@ -122,9 +151,9 @@ mod tests {
             transpose: 12,
             ..MapZone::default()
         });
-        assert_eq!(map.apply(52, 90, 3), (64, 90, 3));
+        assert_eq!(map.apply(52, 90, 3, 0), (64, 90, 3));
         // Utanför zonen: oförändrat.
-        assert_eq!(map.apply(60, 90, 3), (60, 90, 3));
+        assert_eq!(map.apply(60, 90, 3, 0), (60, 90, 3));
     }
 
     #[test]
@@ -136,8 +165,8 @@ mod tests {
             channel: Some(4),
             ..MapZone::default()
         });
-        assert_eq!(map.apply(40, 80, 1), (40, 80, 4));
-        assert_eq!(map.apply(70, 80, 1), (70, 80, 1));
+        assert_eq!(map.apply(40, 80, 1, 0), (40, 80, 4));
+        assert_eq!(map.apply(70, 80, 1, 0), (70, 80, 1));
     }
 
     #[test]
@@ -149,9 +178,9 @@ mod tests {
             velocity_scale: 0.5,
             ..MapZone::default()
         });
-        assert_eq!(map.apply(60, 100, 0).1, 50);
+        assert_eq!(map.apply(60, 100, 0, 0).1, 50);
         // 1 * 0,5 rundas till 1 — aldrig 0, som hade varit note-off.
-        assert_eq!(map.apply(60, 1, 0).1, 1);
+        assert_eq!(map.apply(60, 1, 0, 0).1, 1);
     }
 
     #[test]
@@ -165,14 +194,14 @@ mod tests {
         };
         let map = map_with(soft);
         // (64/127)^0,5 ≈ 0,71 → 90, alltså starkare än 64.
-        assert_eq!(map.apply(60, 64, 0).1, 90);
+        assert_eq!(map.apply(60, 64, 0, 0).1, 90);
         // Fullt anslag ligger kvar på 127.
-        assert_eq!(map.apply(60, 127, 0).1, 127);
+        assert_eq!(map.apply(60, 127, 0, 0).1, 127);
 
         // Över 1 trycker ner de svaga slagen.
         soft.curve = 2.0;
         let hard = map_with(soft);
-        assert_eq!(hard.apply(60, 64, 0).1, 32);
+        assert_eq!(hard.apply(60, 64, 0, 0).1, 32);
     }
 
     #[test]
@@ -195,7 +224,7 @@ mod tests {
             transpose: 7,
             ..MapZone::default()
         };
-        assert_eq!(map.apply(60, 100, 0).0, 61);
+        assert_eq!(map.apply(60, 100, 0, 0).0, 61);
     }
 
     #[test]
@@ -207,6 +236,28 @@ mod tests {
             transpose: 24,
             ..MapZone::default()
         });
-        assert_eq!(map.apply(127, 100, 0).0, 127);
+        assert_eq!(map.apply(127, 100, 0, 0).0, 127);
+    }
+
+    /// **Not → not:** en zon kan kvantisera till en skala — tonen som lämnar kartan är en
+    /// annan än den som kom in, och en ton som redan ligger i skalan rörs inte.
+    #[test]
+    fn a_zone_can_snap_notes_to_a_scale() {
+        let mut map = KeyMap::default();
+        map.enabled = true;
+        map.zones[0].active = true;
+        map.zones[0].low = 0;
+        map.zones[0].high = 127;
+        map.zones[0].snap_scale = Some(0); // Dur
+
+        assert_eq!(map.apply(61, 100, 1, 0).0, 60, "C# i C-dur blir C");
+        assert_eq!(map.apply(66, 100, 1, 0).0, 65, "F# blir F");
+        assert_eq!(map.apply(64, 100, 1, 0).0, 64, "E ligger redan i skalan");
+        assert_eq!(map.apply(61, 100, 1, 1).0, 61, "C# är i C#-dur");
+        assert_eq!(
+            map.apply(61, 100, 1, 99).0,
+            60,
+            "en grundton utanför 0–11 tolkas mod 12"
+        );
     }
 }
