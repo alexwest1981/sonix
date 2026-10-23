@@ -24,9 +24,24 @@ pub struct CapturedNote {
 #[derive(Default)]
 pub struct NoteCapture {
     notes: Vec<CapturedNote>,
+    /// Taket för den här bufferten när den inte är standard (score-loggen vill ha fler
+    /// noter än en fras). `0` betyder `CAPTURE_LIMIT`.
+    limit: usize,
 }
 
 impl NoteCapture {
+    /// En buffert med eget tak. Score-loggen vill hålla en hel session, inte en fras.
+    pub fn with_limit(limit: usize) -> Self {
+        Self {
+            notes: Vec::new(),
+            limit: limit.max(1),
+        }
+    }
+
+    fn cap(&self) -> usize {
+        if self.limit == 0 { CAPTURE_LIMIT } else { self.limit }
+    }
+
     pub fn is_empty(&self) -> bool {
         self.notes.is_empty()
     }
@@ -38,7 +53,7 @@ impl NoteCapture {
     /// Lägg en not. Den äldsta faller bort när bufferten är full — det är de **senaste** noterna
     /// som är frasen.
     pub fn push(&mut self, at_secs: f32, key: u8, velocity: f32) {
-        if self.notes.len() >= CAPTURE_LIMIT {
+        if self.notes.len() >= self.cap() {
             self.notes.remove(0);
         }
         self.notes.push(CapturedNote {
@@ -66,6 +81,26 @@ impl NoteCapture {
     /// Töm bufferten och lämna noterna som steg.
     pub fn drain_to_steps(&mut self, bpm: f32) -> Vec<(f32, u8, f32)> {
         let out = self.to_steps(bpm);
+        self.notes.clear();
+        out
+    }
+
+    /// Noterna som `(steg sedan första noten, not, anslag)` — **utan** att vika runt takten.
+    ///
+    /// Capture MIDI viker in sin fras i en takt; score-loggen får inte göra det, för då
+    /// försvinner pauserna som gör frasen till en fras. Tiden räknas med samma
+    /// `bpm / 15` steg per sekund, så en takt är 16 steg även här.
+    pub fn to_steps_unfolded(&self, bpm: f32) -> Vec<(f32, u8, f32)> {
+        let steps_per_sec = bpm.max(1.0) / 15.0;
+        self.notes
+            .iter()
+            .map(|n| (n.at_secs * steps_per_sec, n.key, n.velocity))
+            .collect()
+    }
+
+    /// Töm bufferten och lämna noterna som ofoldade steg (score-loggen).
+    pub fn drain_unfolded(&mut self, bpm: f32) -> Vec<(f32, u8, f32)> {
+        let out = self.to_steps_unfolded(bpm);
         self.notes.clear();
         out
     }
@@ -107,5 +142,37 @@ mod tests {
         let steps = cap.to_steps(120.0);
         assert!(steps.iter().all(|(pos, _, _)| (0.0..16.0).contains(pos)));
         assert!((steps[CAPTURE_LIMIT - 1].0 - 10.56).abs() < 1e-2);
+    }
+
+    /// Score-loggen får **inte** vika: en paus på fyra sekunder är fyra takter, inte noll.
+    #[test]
+    fn the_unfolded_positions_keep_the_pauses_between_phrases() {
+        let mut log = NoteCapture::with_limit(2048);
+        // 120 bpm = 8 steg/s. 0 s, 0,5 s och 2,25 s → 0, 4 och 18 steg.
+        for (t, key) in [(0.0, 60u8), (0.5, 64), (2.25, 67)] {
+            log.push(t, key, 0.9);
+        }
+        let steps = log.to_steps_unfolded(120.0);
+        assert_eq!(steps.len(), 3);
+        assert!((steps[0].0 - 0.0).abs() < 1e-3);
+        assert!((steps[1].0 - 4.0).abs() < 1e-3);
+        assert!((steps[2].0 - 18.0).abs() < 1e-3, "pausen ska ligga kvar mellan noterna");
+        // Samma buffert vikt hade gett 2 steg — provet fångar skillnaden.
+        assert!((log.to_steps(120.0)[2].0 - 2.0).abs() < 1e-3);
+        assert_eq!(log.drain_unfolded(120.0).len(), 3);
+        assert!(log.is_empty());
+    }
+
+    /// Ett eget tak gäller: score-loggen behåller fler noter än en fras.
+    #[test]
+    fn a_larger_limit_keeps_more_of_the_session() {
+        let mut log = NoteCapture::with_limit(5);
+        for i in 0..12 {
+            log.push(i as f32, 60, 0.5);
+        }
+        assert_eq!(log.len(), 5);
+        // De fem senaste: 7–11 s.
+        let first = log.to_steps_unfolded(120.0)[0].0;
+        assert!((first - 56.0).abs() < 1e-3, "{first}");
     }
 }

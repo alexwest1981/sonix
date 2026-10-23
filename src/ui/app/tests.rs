@@ -3666,3 +3666,19 @@ fn phrase_files_keeps_midi_files_sorted_and_drops_the_rest() {
     assert!(super::transport::phrase_files(&dir.join("finns-inte")).is_empty());
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// **Score-loggen: steg blir pulser på samma 16-del som rutnätet.** 480 PPQ ger 120 pulser
+/// per sextondel, så 18 steg är 2 160 pulser — inte vikt in i en takt.
+#[test]
+fn score_steps_become_ticks_at_a_sixteenth_per_step() {
+    let notes = super::midi::notes_from_score(
+        &[(0.0, 60, 1.0), (18.0, 67, 0.5)],
+        crate::audio::smf::PPQ,
+    );
+    assert_eq!(notes.len(), 2);
+    assert_eq!(notes[0].start, 0);
+    assert_eq!(notes[1].start, 18 * 120);
+    assert_eq!(notes[1].length, 120);
+    assert_eq!(notes[1].key, 67);
+    assert_eq!(notes[1].velocity, 64);
+}

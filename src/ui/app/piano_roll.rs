@@ -638,6 +638,30 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         crate::tstatus!("⏺ Fångade {} noter till tagningen", added)
                     };
                 }
+                // **Score-loggen** (FL:s Auto dump score): allt spelat sedan förra dumpen,
+                // utlagt över de takter det tar. Capture MIDI viker ihop; den här gör det inte.
+                let logged = self.score_log.len();
+                if ui
+                    .add_enabled(
+                        !self.score_log.is_empty(),
+                        egui::Button::new(
+                            egui::RichText::new(crate::tstatus!("📜 Score-logg ({})", logged))
+                                .size(Theme::FONT_S)
+                                .color(Theme::FL_CYAN),
+                        ),
+                    )
+                    .on_hover_text(crate::i18n::t(
+                        "Lägger allt du spelat sedan förra dumpen i patternet, över de takter det tar",
+                    ))
+                    .clicked()
+                {
+                    let placed = self.dump_score_log();
+                    self.status_message = if placed == 0 {
+                        crate::i18n::t("📜 Score-loggen hade inget som gick att lägga in").to_string()
+                    } else {
+                        crate::tstatus!("📜 Score-loggen: {} noter in i patternet", placed)
+                    };
+                }
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Ta bort valda")).size(Theme::FONT_S).color(Theme::FL_RED))).clicked() {
                     let mut removed = 0;
                     if let Some(p) = self.patterns.get_mut(self.selected_pattern) {

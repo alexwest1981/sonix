@@ -162,6 +162,10 @@ pub struct SonixApp {
     pub current_step: usize,
     /// **Capture MIDI**: det som spelades nyss, med tid sedan första noten.
     pub note_capture: crate::note_capture::NoteCapture,
+    /// **Score-loggen** (FL:s Auto dump score): allt spelat sedan förra dumpen, utan att
+    /// vikas in i en takt. Egen klocka, för capture-bufferten nollställs vid sin dump.
+    pub score_log: crate::note_capture::NoteCapture,
+    pub score_clock: Option<std::time::Instant>,
     /// Klockan som tiden räknas från; `None` tills första noten fångas.
     pub capture_clock: Option<std::time::Instant>,
     pub song_bar: usize,
@@ -807,6 +811,8 @@ impl SonixApp {
             swing: 0.0,
             current_step: 0,
             note_capture: crate::note_capture::NoteCapture::default(),
+            score_log: crate::note_capture::NoteCapture::with_limit(2048),
+            score_clock: None,
             capture_clock: None,
             song_bar: 0,
             song_step_in_bar: 0,

@@ -323,54 +323,14 @@ pub fn import_midi_into_selected_pattern(&mut self, path: &str) -> Result<MidiIm
         .into_iter()
         .map(|(_, n)| n.clone())
         .collect();
-    let groups = notes_by_bar(&notes, parsed.ppq);
-    let bars_in_file = groups.len();
-    let idx = self.selected_pattern.min(self.patterns.len().saturating_sub(1));
-    let Some(pat) = self.patterns.get(idx) else {
-        return Err("inget pattern att importera till".to_string());
-    };
-    let name = pat.name.clone();
-    let color = pat.color;
-
-    // En fil på en takt beter sig precis som förut — mönstret fylls, och
-    // ingen kloss sätts, för den som bygger mönster för hand vill placera dem
-    // själv. En fil på flera takter blir i stället ett arrangemang: en kloss
-    // per takt på det valda spåret, annars skulle noterna bara hamna i
-    // mönster man inte ser.
-    let as_arrangement = bars_in_file > 1;
-    let track_idx = self.selected_timeline_track;
-    let mut report = MidiImportReport::default();
-
-    for (bar, bar_notes) in groups {
-        if bar >= ARRANGEMENT_BARS {
-            report.dropped_beyond_arrangement += bar_notes.len();
-            continue;
-        }
-        let pat_idx = if bar == 0 {
-            idx
-        } else {
-            self.patterns.push(Pattern {
-                name: crate::tstatus!("{} ⋅ takt {}", name, bar + 1),
-                color,
-                channel_steps: Vec::new(),
-                channel_notes: Vec::new(),
-                piano_roll_grid: [[false; 16]; 24],
-                take: crate::midi_take::Take::new(),
-            });
-            self.patterns.len() - 1
-        };
-        if let Some(pat) = self.patterns.get_mut(pat_idx) {
-            let r = apply_bar_to_pattern(&bar_notes, parsed.ppq, pat);
-            report.notes_placed += r.notes_placed;
-            report.dropped_out_of_range += r.dropped_out_of_range;
-        }
-        if as_arrangement
-            && let Some(track) = self.playlist_tracks.get_mut(track_idx)
-        {
-            track.clips[bar] = Some(pat_idx);
-        }
-        report.bars_imported += 1;
-    }
+    let report = self.place_notes_into_patterns(&notes, parsed.ppq);
+    let as_arrangement = report.bars_imported > 1;
+    // Namnet behövs bara i statusraden när allt hamnade i det valda patternet.
+    let name = self
+        .patterns
+        .get(self.selected_pattern.min(self.patterns.len().saturating_sub(1)))
+        .map(|p| p.name.clone())
+        .unwrap_or_default();
     // Tempot i filen används bara som förslag när projektet står kvar på sin
     // ursprungs-BPM; annars vore en import en tyst tempoändring. Samma regel
     // gäller filens **tempobyten** (Fas 8.2 steg 3), och regeln ligger som en
@@ -445,6 +405,100 @@ pub fn import_midi_into_selected_pattern(&mut self, path: &str) -> Result<MidiIm
     }
     Ok(report)
 }
+}
+
+impl SonixApp {
+/// Noterna in i det valda patternet — och, när de spänner över flera takter, ett eget
+/// mönster och en kloss per takt på det valda spåret.
+///
+/// Samma väg för MIDI-importen och score-loggen: taktbytet, rutnätets gränser och
+/// arrangemangsklossarna får inte bero på var noterna kom ifrån.
+fn place_notes_into_patterns(
+    &mut self,
+    notes: &[crate::audio::smf::MidiNote],
+    ppq: u16,
+) -> MidiImportReport {
+    let groups = notes_by_bar(notes, ppq);
+    let bars_in_file = groups.len();
+    let idx = self.selected_pattern.min(self.patterns.len().saturating_sub(1));
+    let Some(pat) = self.patterns.get(idx) else {
+        return MidiImportReport::default();
+    };
+    let name = pat.name.clone();
+    let color = pat.color;
+
+    // En fras på en takt fyller det valda mönstret. Flera takter blir ett arrangemang:
+    // en kloss per takt, annars skulle noterna hamna i mönster man inte ser.
+    let as_arrangement = bars_in_file > 1;
+    let track_idx = self.selected_timeline_track;
+    let mut report = MidiImportReport::default();
+
+    for (bar, bar_notes) in groups {
+        if bar >= ARRANGEMENT_BARS {
+            report.dropped_beyond_arrangement += bar_notes.len();
+            continue;
+        }
+        let pat_idx = if bar == 0 {
+            idx
+        } else {
+            self.patterns.push(Pattern {
+                name: crate::tstatus!("{} ⋅ takt {}", name, bar + 1),
+                color,
+                channel_steps: Vec::new(),
+                channel_notes: Vec::new(),
+                piano_roll_grid: [[false; 16]; 24],
+                take: crate::midi_take::Take::new(),
+            });
+            self.patterns.len() - 1
+        };
+        if let Some(pat) = self.patterns.get_mut(pat_idx) {
+            let r = apply_bar_to_pattern(&bar_notes, ppq, pat);
+            report.notes_placed += r.notes_placed;
+            report.dropped_out_of_range += r.dropped_out_of_range;
+        }
+        if as_arrangement
+            && let Some(track) = self.playlist_tracks.get_mut(track_idx)
+        {
+            track.clips[bar] = Some(pat_idx);
+        }
+        report.bars_imported += 1;
+    }
+    report
+}
+/// **Score-loggen** (FL:s Auto dump score): noterna du spelat sedan förra dumpen, utlagda
+/// över de takter de tar. Till skillnad från Capture MIDI viks inget in i en takt — pauserna
+/// är en del av frasen.
+pub(crate) fn dump_score_log(&mut self) -> usize {
+    let steps = self.score_log.drain_unfolded(self.bpm);
+    self.score_clock = None;
+    if steps.is_empty() {
+        return 0;
+    }
+    let ppq = crate::audio::smf::PPQ;
+    let notes = notes_from_score(&steps, ppq);
+    self.place_notes_into_patterns(&notes, ppq).notes_placed
+}
+}
+
+/// Steg → pulser: samma 16-del som rutnätet, en notlängd per not.
+///
+/// Ren funktion så att omräkningen kan prövas utan app: `pos` är steg sedan första
+/// noten, och `PPQ / 4` pulser är ett sextondelssteg.
+pub(crate) fn notes_from_score(
+    steps: &[(f32, u8, f32)],
+    ppq: u16,
+) -> Vec<crate::audio::smf::MidiNote> {
+    let step_ticks = (ppq as f32 / 4.0).max(1.0);
+    steps
+        .iter()
+        .map(|(pos, key, velocity)| crate::audio::smf::MidiNote {
+            start: (pos * step_ticks).round() as u32,
+            length: step_ticks.round() as u32,
+            channel: 0,
+            key: *key,
+            velocity: (velocity * 127.0).round().clamp(1.0, 127.0) as u8,
+        })
+        .collect()
 }
 
 impl SonixApp {

@@ -54,7 +54,7 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 
 ---
 
-**Byggt efter roadmappens senaste revidering:** notlängder (`TakeNote.length_steps`), `Legato`/`Chop`/`Join`, artikulation per not, formelstyrning (`src/formula.rs`), Capture MIDI, strängrösten (dämpning i återkopplingen + kropp), Transmitter, A/B-jämförelse, take-lanes i kompen, i18n-revisionen, `Consolidate` (`82c611d`), `Flatten` (`b4a23ea`) och MusicXML-exporten (`485410d`).
+**Byggt efter roadmappens senaste revidering:** notlängder (`TakeNote.length_steps`), `Legato`/`Chop`/`Join`, artikulation per not, formelstyrning (`src/formula.rs`), Capture MIDI, strängrösten (dämpning i återkopplingen + kropp), Transmitter, A/B-jämförelse, take-lanes i kompen, i18n-revisionen, `Consolidate` (`82c611d`), `Flatten` (`b4a23ea`), MusicXML-exporten (`485410d`), MPE-kanalen (`0223f59`), groove-biblioteket (`b6b6624`), frasbanken (`1f2e4e6`) och **score-loggen** (`dump_score_log` — noterna utlagda över de takter de tar, med prov på både stegräkningen och pulsomräkningen).
 
 ## ⬜ Kvar
 
@@ -63,10 +63,9 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 | # | Vad | Storlek | Varför den ligger här |
 | :--: | :--- | :---: | :--- |
 | 1 | **Frasbank (`.fsc`/`.mid`) + Riff machine** — *◐ .mid klar* | *S* | **🎼 Frasbank** läser en mapp med `.mid`/`.midi` och infogar vald fras i patternet via MIDI-importen (flera takter blir arrangemangsklossar). Riff-generatorn fanns. Kvar: FL:s `.fsc`-format, och att höra frasen innan den infogas |
-| 2 | **Score-loggen** (`Auto dump score`) | *M* | den enda FL-funktionen som ändrar hur man *arbetar*: spela in allt, dumpa det som blev bra |
-| 3 | **Groove-pool** — *◐ biblioteket inkopplat* | *S* | En mapp läses en gång via `GrooveLibrary::load_from_dir`, mallarna väljs ur en lista och hamnar i poolen. Kvar: att höra mallen innan man lägger den på (audition), och att byta mapp utan att stänga pianorullen |
-| 4 | **Temafiler (JSON) med semantiska namn** | *M* | `Theme::` används på **909** ställen (räknat) — mekaniskt, men 909 rader |
-| 5 | **Fokus/Tab mellan ytorna, zoom-kommandon, ledtrådar** | *S–M* | Abletons `Focus*` och `Zoom*` är adresserbara; 2 302 `sInfoText` mot våra 135 `on_hover_text` är den tydligaste hjälpklacken |
+| 1 | **Groove-pool** — *◐ biblioteket inkopplat* | *S* | En mapp läses en gång via `GrooveLibrary::load_from_dir`, mallarna väljs ur en lista och hamnar i poolen. Kvar: att höra mallen innan man lägger den på (audition), och att byta mapp utan att stänga pianorullen |
+| 2 | **Temafiler (JSON) med semantiska namn** | *M* | `Theme::` används på **909** ställen (räknat) — mekaniskt, men 909 rader |
+| 3 | **Fokus/Tab mellan ytorna, zoom-kommandon, ledtrådar** | *S–M* | Abletons `Focus*` och `Zoom*` är adresserbara; 2 302 `sInfoText` mot våra 135 `on_hover_text` är den tydligaste hjälpklacken |
 
 ### Kräver ett nytt lager — inte en ratt
 

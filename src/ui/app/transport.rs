@@ -727,6 +727,16 @@ fn play_note_velocity_on_channel(&mut self, note: u8, velocity: f32, channel: u8
         }
     };
     self.note_capture.push(elapsed, note, velocity);
+    // Score-loggen har sin egen klocka: capture-bufferten töms vid sin dump, loggen ska
+    // fortsätta räknas från sin egen första not.
+    let logged_at = match self.score_clock {
+        Some(start) => start.elapsed().as_secs_f32(),
+        None => {
+            self.score_clock = Some(std::time::Instant::now());
+            0.0
+        }
+    };
+    self.score_log.push(logged_at, note, velocity);
     if !self.active_keys.contains(&note) {
         self.active_keys.insert(note);
         let freq = midi_to_freq(note);
