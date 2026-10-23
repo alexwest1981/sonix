@@ -21,6 +21,7 @@ mod groove;
 mod i18n;
 mod instruments;
 mod midi_take;
+mod musicxml;
 mod note_capture;
 mod piano_script;
 mod riff;
