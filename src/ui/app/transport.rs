@@ -569,7 +569,7 @@ fn trigger_step(&mut self, step: usize) {
                     .unwrap_or(1),
             );
             crate::midi_take::plan_for_step_rolled(
-                &pat.take,
+                pat.active_take(),
                 step,
                 self.step_samples(step),
                 &|key, slot| (48..72).contains(&key) && grid[(key - 48) as usize][slot],
@@ -695,7 +695,7 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                                 .unwrap_or(1),
                         );
                         let take_plan = crate::midi_take::plan_for_step_rolled(
-                            &pat.take,
+                            pat.active_take(),
                             step_in_bar,
                             self.step_samples(step_in_bar),
                             &|key, slot| {
@@ -831,7 +831,7 @@ fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool, channel: u8) {
                 // humanisera i efterhand. Rutnätet ensamt kastade tiden.
                 let pos = self.current_take_pos();
                 if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
-                    pat.take
+                    pat.active_take_mut()
                         .push(pos, mapped_note, mapped_velocity as f32 / 127.0);
                 }
             }
@@ -913,7 +913,14 @@ pub(crate) fn begin_new_take(&mut self) {
         .map(|p| p.name.clone())
         .unwrap_or_default();
     if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
+        // **Take lanes**: varje nytt inspelningsförsök blir en egen lane i stället för att
+        // skriva över det förra. Inspelningen går alltid till lane 1, och den gamla flyttas
+        // till listan — då kan man lyssna på båda och välja.
+        if !pat.take.is_empty() {
+            pat.alt_takes.push(pat.take.clone());
+        }
         pat.take = crate::midi_take::Take::new();
+        pat.active_take = 0;
     }
     self.status_message = crate::tstatus!("🔴 Inspelning armar — ny tagning i '{}'", name);
 }
@@ -932,17 +939,17 @@ pub(crate) fn quantize_take(&mut self, strength: f32, grid: crate::midi_take::Ta
     let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
         return;
     };
-    if pat.take.is_empty() {
+    if pat.active_take().is_empty() {
         self.status_message = crate::i18n::t(
             "⚠ Ingen tagning att kvantisera — armera ⏺ MIDI-REC och spela in först",
         )
         .to_string();
         return;
     }
-    let before = pat.take.tightness();
-    let notes = pat.take.len();
-    pat.take.quantize(strength, swing, grid);
-    let after = pat.take.tightness();
+    let before = pat.active_take().tightness();
+    let notes = pat.active_take().len();
+    pat.active_take_mut().quantize(strength, swing, grid);
+    let after = pat.active_take().tightness();
     self.status_message = crate::tstatus!(
         "🎯 Kvantiserade {} noter ({}, styrka {:.0} %, sväng {:.0} %): {:.2} → {:.2} steg otajt",
         notes,
@@ -1040,7 +1047,7 @@ pub(crate) fn transpose_take(&mut self, semitones: i32) {
     let Some(pat) = self.patterns.get(self.selected_pattern) else {
         return;
     };
-    if pat.take.is_empty() {
+    if pat.active_take().is_empty() {
         self.status_message = crate::i18n::t("⚠️ Ingen tagning att transponera").to_string();
         return;
     }
@@ -1048,7 +1055,7 @@ pub(crate) fn transpose_take(&mut self, semitones: i32) {
     let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
         return;
     };
-    let moved = pat.take.transpose(semitones);
+    let moved = pat.active_take_mut().transpose(semitones);
     self.status_message = crate::tstatus!("🎹 {} not(er) {} halvtoner", moved, semitones);
 }
 
@@ -1057,7 +1064,7 @@ pub(crate) fn scale_take_velocity(&mut self, factor: f32) {
     let Some(pat) = self.patterns.get(self.selected_pattern) else {
         return;
     };
-    if pat.take.is_empty() {
+    if pat.active_take().is_empty() {
         self.status_message = crate::i18n::t("⚠️ Ingen tagning att ändra anslaget på").to_string();
         return;
     }
@@ -1427,7 +1434,7 @@ pub(crate) fn humanize_take(&mut self, amount: f32) {
     let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
         return;
     };
-    if pat.take.is_empty() {
+    if pat.active_take().is_empty() {
         self.status_message = crate::i18n::t(
             "⚠ Ingen tagning att humanisera — armera ⏺ MIDI-REC och spela in först",
         )
@@ -1437,7 +1444,7 @@ pub(crate) fn humanize_take(&mut self, amount: f32) {
     let before = pat.take.tightness();
     let notes = pat.take.len();
     pat.take.humanize(timing_steps, velocity_amount, seed);
-    let after = pat.take.tightness();
+    let after = pat.active_take().tightness();
     self.status_message = crate::tstatus!(
         "🌀 Humaniserade {} noter (mängd {:.0} %: tid ±{:.2} steg, anslag ±{:.0} %): {:.2} → {:.2} steg otajt",
         notes,
@@ -1490,7 +1497,7 @@ pub(crate) fn strum_take(&mut self, spread_steps: f32, down: bool) {
     let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
         return;
     };
-    if pat.take.is_empty() {
+    if pat.active_take().is_empty() {
         self.status_message = crate::i18n::t(
             "⚠ Ingen tagning att strumma — armera ⏺ MIDI-REC och spela in först",
         )

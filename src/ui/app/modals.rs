@@ -3579,6 +3579,72 @@ impl SonixApp {
         self.show_big_clock = open;
     }
 
+    /// **Take lanes** (Ableton-kompning): varje inspelningsförsök blir en lane, och man
+    /// väljer vilken som spelas. Redigering (kvantisera, transponera) gäller den valda.
+    pub(crate) fn render_takes_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_takes_modal {
+            return;
+        }
+        let mut open = self.show_takes_modal;
+        let mut pick: Option<usize> = None;
+        let mut delete: Option<usize> = None;
+        egui::Window::new(crate::i18n::t("🧵 Tagningar"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_size(Vec2::new(360.0, 260.0))
+            .show(ctx, |ui| {
+                let Some(pat) = self.patterns.get(self.selected_pattern) else {
+                    ui.label(crate::i18n::t("Inget pattern valt"));
+                    return;
+                };
+                let active = pat.active_take;
+                let lanes: Vec<(usize, usize)> = pat
+                    .take_lanes()
+                    .iter()
+                    .enumerate()
+                    .map(|(i, t)| (i, t.len()))
+                    .collect();
+                ui.label(
+                    egui::RichText::new(crate::i18n::t(
+                        "Välj tagningen som spelas — inspelning går alltid till lane 1",
+                    ))
+                    .size(Theme::FONT_XS)
+                    .color(Theme::TEXT_MUTED),
+                );
+                ui.add_space(4.0);
+                for (i, notes) in lanes {
+                    ui.horizontal(|ui| {
+                        if ui.selectable_label(active == i, format!("{} {}", crate::i18n::t("Lane"), i + 1)).clicked() {
+                            pick = Some(i);
+                        }
+                        ui.label(
+                            egui::RichText::new(crate::tstatus!("{} noter", notes))
+                                .size(Theme::FONT_S),
+                        );
+                        if i > 0 && ui.button("🗑").clicked() {
+                            delete = Some(i);
+                        }
+                    });
+                }
+            });
+        if let Some(i) = pick
+            && let Some(pat) = self.patterns.get_mut(self.selected_pattern)
+        {
+            pat.active_take = i;
+            self.status_message = crate::tstatus!("🧵 Spelar lane {}", i + 1);
+        }
+        if let Some(i) = delete
+            && let Some(pat) = self.patterns.get_mut(self.selected_pattern)
+            && i > 0
+            && i - 1 < pat.alt_takes.len()
+        {
+            pat.alt_takes.remove(i - 1);
+            pat.active_take = pat.active_take.min(pat.alt_takes.len());
+            self.status_message = crate::tstatus!("🗑 Tog bort lane {}", i + 1);
+        }
+        self.show_takes_modal = open;
+    }
+
     /// **Fruity Dance**: en streckfigur som dansar i takt. Posen räknas i `ui::dance`,
     /// ritningen här — ingen bild, ingen animationstråd, bara figurens leder per bildruta.
     pub(crate) fn render_dance_modal(&mut self, ctx: &egui::Context) {
@@ -3848,6 +3914,7 @@ impl SonixApp {
         self.render_visualizer_modal(ctx);
         self.render_script_modal(ctx);
         self.render_dance_modal(ctx);
+        self.render_takes_modal(ctx);
         self.render_dice_generator_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);

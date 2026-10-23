@@ -376,6 +376,13 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🧵 Tagningar (komp)..." => "🧵 Takes (comp)...",
+        "🗑 Tog bort lane {}" => "🗑 Removed lane {}",
+        "🧵 Spelar lane {}" => "🧵 Playing lane {}",
+        "Inget pattern valt" => "No pattern selected",
+        "Lane" => "Lane",
+        "Välj tagningen som spelas — inspelning går alltid till lane 1" => "Pick the take that plays — recording always goes to lane 1",
+        "🧵 Tagningar" => "🧵 Takes",
         "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ The formula cannot be read: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Wrote {} points to '{}' (track {})",
@@ -2693,6 +2700,13 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🧵 Tagningar (komp)..." => "🧵 Tagningar (komp)...",
+        "🗑 Tog bort lane {}" => "🗑 Tog bort lane {}",
+        "🧵 Spelar lane {}" => "🧵 Spelar lane {}",
+        "Inget pattern valt" => "Inget pattern valt",
+        "Lane" => "Lane",
+        "Välj tagningen som spelas — inspelning går alltid till lane 1" => "Välj tagningen som spelas — inspelning går alltid till lane 1",
+        "🧵 Tagningar" => "🧵 Tagningar",
         "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ Formeln går inte att läsa: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spår {})",
@@ -4969,6 +4983,13 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🧵 Tagningar (komp)..." => "🧵 Tagninger (komp)...",
+        "🗑 Tog bort lane {}" => "🗑 Fjernede lane {}",
+        "🧵 Spelar lane {}" => "🧵 Spiller lane {}",
+        "Inget pattern valt" => "Intet pattern valgt",
+        "Lane" => "Lane",
+        "Välj tagningen som spelas — inspelning går alltid till lane 1" => "Vælg den tagning der spilles — optagelse går altid til lane 1",
+        "🧵 Tagningar" => "🧵 Tagninger",
         "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ Formlen kan ikke læses: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spor {})",
@@ -7245,6 +7266,13 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🧵 Tagningar (komp)..." => "🧵 Tagninger (komp)...",
+        "🗑 Tog bort lane {}" => "🗑 Fjernet lane {}",
+        "🧵 Spelar lane {}" => "🧵 Spiller lane {}",
+        "Inget pattern valt" => "Inget pattern valgt",
+        "Lane" => "Lane",
+        "Välj tagningen som spelas — inspelning går alltid till lane 1" => "Velg tagningen som spilles — innspilling går alltid til lane 1",
+        "🧵 Tagningar" => "🧵 Tagninger",
         "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ Formelen kan ikke leses: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 Skrev {} punkter på '{}' (spor {})",
@@ -9521,6 +9549,13 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🧵 Tagningar (komp)..." => "🧵 Takes (Komp)...",
+        "🗑 Tog bort lane {}" => "🗑 Lane {} entfernt",
+        "🧵 Spelar lane {}" => "🧵 Lane {} wird gespielt",
+        "Inget pattern valt" => "Kein Pattern gewählt",
+        "Lane" => "Lane",
+        "Välj tagningen som spelas — inspelning går alltid till lane 1" => "Wähle den Take, der spielt — Aufnahme geht immer auf Lane 1",
+        "🧵 Tagningar" => "🧵 Takes",
         "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ Die Formel ist nicht lesbar: {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 {} Punkte auf '{}' geschrieben (Spur {})",
@@ -11797,6 +11832,13 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🧵 Tagningar (komp)..." => "🧵 Prises (comp)...",
+        "🗑 Tog bort lane {}" => "🗑 Voie {} supprimée",
+        "🧵 Spelar lane {}" => "🧵 Lecture de la voie {}",
+        "Inget pattern valt" => "Aucun pattern sélectionné",
+        "Lane" => "Voie",
+        "Välj tagningen som spelas — inspelning går alltid till lane 1" => "Choisis la prise jouée — l'enregistrement va toujours sur la voie 1",
+        "🧵 Tagningar" => "🧵 Prises",
         "💃 Fruity Dance" => "💃 Fruity Dance",
         "⚠ Formeln går inte att läsa: {}" => "⚠ La formule est illisible : {}",
         "📜 Skrev {} punkter på '{}' (spår {})" => "📜 {} points écrits sur '{}' (piste {})",

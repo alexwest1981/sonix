@@ -997,6 +997,10 @@ impl SonixApp {
                             self.show_dance = true;
                             ui.close_menu();
                         }
+                        if ui.button(self.tr("🧵 Tagningar (komp)...")).clicked() {
+                            self.show_takes_modal = true;
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("📑 Låtstruktur & Formdelar...")).clicked() {
                             self.show_song_structure_modal = true;
                             ui.close_menu();

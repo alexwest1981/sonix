@@ -43,6 +43,8 @@ use crate::ui::theme::Theme;
             color: Theme::TEXT,
             bars: 1,
             bends: Vec::new(),
+            alt_takes: Vec::new(),
+            active_take: 0,
             channel_steps: vec![[false; crate::audio::tempo::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::audio::tempo::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -1971,6 +1973,41 @@ use crate::ui::theme::Theme;
         );
     }
 
+    /// **Take lanes:** lane 1 är `take`, lane 2 och framåt ligger i `alt_takes`, och den
+    /// valda lane:n är den som spelas och redigeras — inte alltid den första.
+    #[test]
+    fn the_active_take_is_the_one_that_plays_and_is_edited() {
+        let mut pattern = super::state::Pattern {
+            name: "Komp".to_string(),
+            color: eframe::egui::Color32::WHITE,
+            bars: 1,
+            bends: Vec::new(),
+            alt_takes: Vec::new(),
+            active_take: 0,
+            channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
+            channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
+            piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
+            take: crate::midi_take::Take::new(),
+        };
+        pattern.take.push(1.0, 60, 0.8);
+        let mut second = crate::midi_take::Take::new();
+        second.push(2.0, 67, 0.9);
+        pattern.alt_takes.push(second);
+
+        assert_eq!(pattern.active_take().notes[0].key, 60, "lane 1 som standard");
+        pattern.active_take = 1;
+        assert_eq!(pattern.active_take().notes[0].key, 67, "lane 2 när den är vald");
+
+        // Redigering går till samma lane som spelas.
+        pattern.active_take_mut().transpose(12);
+        assert_eq!(pattern.alt_takes[0].notes[0].key, 79);
+        assert_eq!(pattern.take.notes[0].key, 60, "lane 1 rörs inte");
+
+        // En lane som pekar utanför listan faller tillbaka på lane 1.
+        pattern.active_take = 9;
+        assert_eq!(pattern.active_take().notes[0].key, 60);
+    }
+
     /// **Bendkurvan:** en punkt hör till sitt steg, fördröjningen är resten, och en ny
     /// punkt på samma steg och kanal ersätter den gamla i stället för att staplas.
     #[test]
@@ -2058,6 +2095,8 @@ use crate::ui::theme::Theme;
             color: Theme::TEXT,
             bars: 2,
             bends: Vec::new(),
+            alt_takes: Vec::new(),
+            active_take: 0,
             channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
@@ -2086,6 +2125,8 @@ use crate::ui::theme::Theme;
             color: [10, 20, 30, 255],
             bars: 1,
             bends: Vec::new(),
+            alt_takes: Vec::new(),
+            active_take: 0,
             channel_steps: vec![vec![true; 16]],
             channel_notes: vec![vec![60; 16]],
             piano_roll_grid: vec![vec![false; 16]; 24],

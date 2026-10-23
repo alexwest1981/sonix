@@ -259,6 +259,33 @@ pub struct BendPoint {
     pub semitones: f32,
 }
 
+/// Tagningarna i ett pattern, som en lista: lane 1 först.
+impl Pattern {
+    /// Tagningen som spelas och redigeras just nu.
+    pub fn active_take(&self) -> &crate::midi_take::Take {
+        if self.active_take == 0 {
+            &self.take
+        } else {
+            self.alt_takes.get(self.active_take - 1).unwrap_or(&self.take)
+        }
+    }
+
+    pub fn active_take_mut(&mut self) -> &mut crate::midi_take::Take {
+        let slot = self.active_take;
+        if slot == 0 || slot > self.alt_takes.len() {
+            return &mut self.take;
+        }
+        &mut self.alt_takes[slot - 1]
+    }
+
+    /// Alla lanes, lane 1 först.
+    pub fn take_lanes(&self) -> Vec<&crate::midi_take::Take> {
+        std::iter::once(&self.take)
+            .chain(self.alt_takes.iter())
+            .collect()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Pattern {
     pub name: String,
@@ -269,6 +296,11 @@ pub struct Pattern {
     /// MPE-bend som hör till patternet. Ligger i patternet (inte i tagningen), eftersom
     /// det är patternet som spelas — både i pattern-läget och från ett arrangemangsblock.
     pub bends: Vec<BendPoint>,
+    /// **Tagningar** (Ableton take lanes): fler inspelningar av samma slinga. `take` är
+    /// alltid lane 1; de här är lane 2 och framåt. `active_take` väljer vilken som spelas.
+    pub alt_takes: Vec<crate::midi_take::Take>,
+    /// 0 = `take`, 1.. = `alt_takes[n-1]`.
+    pub active_take: usize,
     pub channel_steps: Vec<[bool; MAX_STEPS]>,
     pub channel_notes: Vec<[u8; MAX_STEPS]>,
     pub piano_roll_grid: [[bool; MAX_STEPS]; 24],

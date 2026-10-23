@@ -126,6 +126,11 @@ pub struct SavedPattern {
     /// MPE-bendkurvan. Saknas i äldre filer — då finns inga böjningar.
     #[serde(default)]
     pub bends: Vec<super::state::BendPoint>,
+    /// Fler tagningar (take lanes). Saknas i äldre filer — då finns bara lane 1.
+    #[serde(default)]
+    pub alt_takes: Vec<crate::midi_take::Take>,
+    #[serde(default)]
+    pub active_take: usize,
     /// Raderna sparas som **listor**, inte som fasta arrayer: ett projekt från före
     /// 64-stegsrutnätet har 16 element per rad, och det ska läsas utan migrering.
     pub channel_steps: Vec<Vec<bool>>,
@@ -434,6 +439,8 @@ pub(crate) fn pattern_to_saved(p: &Pattern) -> SavedPattern {
         color: p.color.to_array(),
         bars: p.bars.clamp(1, 4),
         bends: p.bends.clone(),
+        alt_takes: p.alt_takes.clone(),
+        active_take: p.active_take.min(p.alt_takes.len()),
         channel_steps: p.channel_steps.iter().map(|r| r.to_vec()).collect(),
         channel_notes: p.channel_notes.iter().map(|r| r.to_vec()).collect(),
         piano_roll_grid: p.piano_roll_grid.iter().map(|r| r.to_vec()).collect(),
@@ -447,6 +454,8 @@ pub(crate) fn saved_to_pattern(s: &SavedPattern) -> Pattern {
         color: Color32::from_rgba_premultiplied(s.color[0], s.color[1], s.color[2], s.color[3]),
         bars: s.bars.clamp(1, 4),
         bends: s.bends.clone(),
+        alt_takes: s.alt_takes.clone(),
+        active_take: s.active_take.min(s.alt_takes.len()),
         channel_steps: s.channel_steps.iter().map(|r| row_bools(r)).collect(),
         channel_notes: s.channel_notes.iter().map(|r| row_notes(r)).collect(),
         piano_roll_grid: grid_rows(&s.piano_roll_grid),
