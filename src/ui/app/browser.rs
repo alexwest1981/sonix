@@ -537,6 +537,74 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                 self.sample_library.retain(|s| s.id != del_id);
             }
 
+            // **FLEX** — användarens egna ljud.
+            ui.collapsing(crate::i18n::t("🎛 FLEX — MINA LJUD"), |ui| {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(crate::i18n::t("💾 Spara nuvarande ljud"))
+                                .size(Theme::FONT_S),
+                        )
+                        .fill(Theme::PANEL),
+                    )
+                    .on_hover_text(crate::i18n::t("Sparar reglagen som ett förval i din egen bank"))
+                    .clicked()
+                {
+                    self.save_flex_preset();
+                }
+                if self.flex_presets.is_empty() {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("Inga sparade ljud än"))
+                            .size(Theme::FONT_XS)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                }
+                let mut to_delete: Option<usize> = None;
+                // Kopia: knapparna ändrar reglagen, och då kan listan inte vara lånad.
+                let presets = self.flex_presets.clone();
+                for (i, preset) in presets.iter().enumerate() {
+                    let name = preset.name.clone();
+                    let settings = preset.settings.clone();
+                    if !self.browser_search.is_empty()
+                        && !name.to_lowercase().contains(&self.browser_search.to_lowercase())
+                    {
+                        continue;
+                    }
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button(crate::i18n::t("▶"))
+                            .on_hover_text(crate::i18n::t("Lyssna på preset med en testton"))
+                            .clicked()
+                        {
+                            self.apply_flex_settings(settings);
+                            let _ = self.engine.send_command(AudioCommand::NoteOn {
+                                note: 60,
+                                freq: 261.63,
+                                velocity: 0.85,
+                                channel: 0,
+                            });
+                        }
+                        if ui.button(crate::i18n::t("Ladda")).clicked() {
+                            self.apply_flex_settings(settings);
+                            self.status_message = crate::tstatus!("Laddade ljudet '{}'", name);
+                        }
+                        if ui.button("🗑").clicked() {
+                            to_delete = Some(i);
+                        }
+                        ui.label(name);
+                    });
+                }
+                if let Some(i) = to_delete {
+                    if i < self.flex_presets.len() {
+                        let removed = self.flex_presets.remove(i);
+                        if let Some(path) = crate::audio::flex::store_path() {
+                            let _ = crate::audio::flex::save_all(&path, &self.flex_presets);
+                        }
+                        self.status_message = crate::tstatus!("🗑 Tog bort '{}'", removed.name);
+                    }
+                }
+            });
+
             // Synth Presets
             ui.collapsing("🎹 SYNTH PRESETS", |ui| {
                 let synths = [
@@ -649,6 +717,58 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
 impl SonixApp {
     /// Ställer appens egna reglage till förvalets värden, så att det som syns i
     /// gränssnittet är det som spelar. Motorn får samma tal via `LoadPreset`.
+    /// **FLEX**: lägger ett sparat ljud på synten — reglagen och motorn, samma väg som
+    /// Autogun använder. Ingen `Preset` finns för användarljud, så varje parameter skickas.
+    pub(crate) fn apply_flex_settings(&mut self, s: crate::audio::command::PresetSettings) {
+        self.apply_settings(s);
+        let _ = self.engine.send_command(AudioCommand::SetWaveform(s.waveform));
+        let _ = self.engine.send_command(AudioCommand::SetAdsr(s.adsr));
+        let _ = self.engine.send_command(AudioCommand::SetFilter(s.filter));
+        let _ = self.engine.send_command(AudioCommand::SetFilterEnv {
+            amount: s.filter_env_amount,
+            adsr: self.filter_env,
+        });
+        let _ = self.engine.send_command(AudioCommand::SetSub { level: s.sub });
+        let _ = self.engine.send_command(AudioCommand::SetUnison {
+            voices: s.unison.clamp(1, 8),
+            detune_cents: s.detune,
+        });
+        let _ = self.engine.send_command(AudioCommand::SetHarmonics { levels: s.harmonics });
+    }
+
+    /// Ljudet som reglagen står på nu, i samma form som ett sparat förval.
+    pub(crate) fn current_flex_settings(&self) -> crate::audio::command::PresetSettings {
+        crate::audio::command::PresetSettings {
+            waveform: self.waveform,
+            adsr: self.adsr,
+            filter: self.filter,
+            filter_env_amount: self.filter_env_amount,
+            sub: self.sub_level,
+            unison: self.unison_voices,
+            detune: self.unison_detune_cents,
+            glide: self.glide_time,
+            drive: self.filter_drive,
+            harmonics: self.harmonics,
+        }
+    }
+
+    /// Sparar nuvarande ljud i FLEX-biblioteket. Namnet får man av vågformen och numret —
+    /// ett namnbyte är en egen liten sak, inte värt en textruta här.
+    pub(crate) fn save_flex_preset(&mut self) {
+        let name = format!("{} {}", self.waveform.name(), self.flex_presets.len() + 1);
+        self.flex_presets.push(crate::audio::flex::FlexPreset {
+            name: name.clone(),
+            settings: self.current_flex_settings(),
+        });
+        match crate::audio::flex::store_path() {
+            Some(path) => match crate::audio::flex::save_all(&path, &self.flex_presets) {
+                Ok(()) => self.status_message = crate::tstatus!("💾 Sparade ljudet '{}'", name),
+                Err(e) => self.status_message = crate::tstatus!("⚠ Kunde inte spara: {}", e),
+            },
+            None => self.status_message = crate::tstatus!("⚠ Hittar ingen data-mapp att spara i"),
+        }
+    }
+
     pub(crate) fn apply_preset_settings(&mut self, preset: Preset) {
         self.apply_settings(preset.settings());
     }

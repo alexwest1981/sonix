@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct FilterParams {
     pub cutoff: f32,    // Hz (20.0 .. 20000.0)
     pub resonance: f32, // Q (0.1 .. 10.0)

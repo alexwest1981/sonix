@@ -7,7 +7,7 @@ use super::filter::FilterParams;
 use super::master_fx::{MasterFxParams, TrackEqSettings};
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Waveform {
     Sine,
     Saw,
@@ -49,6 +49,7 @@ impl Waveform {
 /// Ett fabriksförval: de parametrar synten faktiskt har. `settings()` är enda källan —
 /// både motorn och gränssnittet läser samma tal, så reglagen och ljudet inte kan glida isär.
 #[derive(Debug, Clone, Copy)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct PresetSettings {
     pub waveform: Waveform,
     pub adsr: AdsrParams,

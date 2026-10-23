@@ -9,6 +9,7 @@ pub mod envelope;
 pub mod exporter;
 pub mod factory_samples;
 pub mod filter;
+pub mod flex;
 pub mod fsc;
 pub mod hardware_control;
 pub mod keymap;

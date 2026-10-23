@@ -376,6 +376,10 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Inga sparade ljud än" => "No saved sounds yet",
+        "Sparar reglagen som ett förval i din egen bank" => "Saves the controls as a preset in your own bank",
+        "💾 Spara nuvarande ljud" => "💾 Save current sound",
+        "🎛 FLEX — MINA LJUD" => "🎛 FLEX — MY SOUNDS",
         "Scratcha samplet fram och tillbaka" => "Scratch the sample back and forth",
         "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Read a PNG as a spectrum — the bottom row becomes the fundamental",
         "🖼 Från bild…" => "🖼 From image…",
@@ -2678,6 +2682,10 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Inga sparade ljud än" => "Ingen gemte lyde endnu",
+        "Sparar reglagen som ett förval i din egen bank" => "Gemmer indstillingerne som et preset i din egen bank",
+        "💾 Spara nuvarande ljud" => "💾 Gem den aktuelle lyd",
+        "🎛 FLEX — MINA LJUD" => "🎛 FLEX — MINE LYDE",
         "Scratcha samplet fram och tillbaka" => "Scratcha samplet fram och tillbaka",
         "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Läs en PNG som spektrum — nedersta raden blir grundtonen",
         "🖼 Från bild…" => "🖼 Från bild…",
@@ -4939,6 +4947,10 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Inga sparade ljud än" => "Ingen lagrede lyder ennå",
+        "Sparar reglagen som ett förval i din egen bank" => "Lagrer innstillingene som et forvalg i din egen bank",
+        "💾 Spara nuvarande ljud" => "💾 Lagre gjeldende lyd",
+        "🎛 FLEX — MINA LJUD" => "🎛 FLEX — MINE LYD",
         "Scratcha samplet fram och tillbaka" => "Scratch samplet frem og tilbage",
         "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Læs en PNG som spektrum — nederste række bliver grundtonen",
         "🖼 Från bild…" => "🖼 Fra billede…",
@@ -7200,6 +7212,10 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Inga sparade ljud än" => "Noch keine gespeicherten Klänge",
+        "Sparar reglagen som ett förval i din egen bank" => "Speichert die Regler als Preset in deiner eigenen Bank",
+        "💾 Spara nuvarande ljud" => "💾 Aktuellen Klang speichern",
+        "🎛 FLEX — MINA LJUD" => "🎛 FLEX — MEINE KLÄNGE",
         "Scratcha samplet fram och tillbaka" => "Scratch samplet fram og tilbake",
         "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Les en PNG som spektrum — nederste rad blir grunntonen",
         "🖼 Från bild…" => "🖼 Fra bilde…",
@@ -9461,6 +9477,10 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Inga sparade ljud än" => "Aún no hay sonidos guardados",
+        "Sparar reglagen som ett förval i din egen bank" => "Guarda los controles como preset en tu propio banco",
+        "💾 Spara nuvarande ljud" => "💾 Guardar el sonido actual",
+        "🎛 FLEX — MINA LJUD" => "🎛 FLEX — MIS SONIDOS",
         "Scratcha samplet fram och tillbaka" => "Sample vor- und zurückscratchten",
         "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "PNG als Spektrum lesen — die unterste Zeile wird der Grundton",
         "🖼 Från bild…" => "🖼 Aus Bild…",
@@ -11722,6 +11742,10 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Inga sparade ljud än" => "Aucun son enregistré",
+        "Sparar reglagen som ett förval i din egen bank" => "Enregistre les réglages comme preset dans ta banque",
+        "💾 Spara nuvarande ljud" => "💾 Enregistrer le son actuel",
+        "🎛 FLEX — MINA LJUD" => "🎛 FLEX — MES SONS",
         "Scratcha samplet fram och tillbaka" => "Scratch del sample de ida y vuelta",
         "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Leer un PNG como espectro — la fila inferior es la fundamental",
         "🖼 Från bild…" => "🖼 Desde imagen…",

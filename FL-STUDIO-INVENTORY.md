@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 61** delvis, **✗ 10** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 62** delvis, **✗ 9** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -129,7 +129,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Envelope Controller | 10 | ◐ | LFO med fyra vågformer och envelopföljare finns; en ritbar flerpunktskurva gör det inte |
 | BassDrum | 9 | ◐ | kick i drum.rs |
 | BeepMap | 9 | ✅ | `instruments::beepmap_amplitudes(bytes)` — byte → 16 deltonsnivåer, normaliserade. Verktyg → BeepMap |
-| FLEX | 9 | ✗ | presetbaserad synth med eget bibliotek |
+| FLEX | 9 | ◐ | **egen förvalsbank**: `audio::flex` sparar reglagen (vågform, ADSR, filter, sub, unison, detune, glide, drive, dragstänger) som namngivna ljud i `~/.local/share/sonix/flex_presets.json`, med ▶-lyssning, Ladda och 🗑 i bläddraren. Tempfil + rename, så en krasch inte lämnar en halv fil; en trasig fil ger tom bank i stället för att appen inte startar. Prov: rundtur bevarar alla parametrar. Kvar: FL:s eget bibliotek och FLEX-specifika vågformer |
 | Ogun | 8 | ◐ | `Waveform::Inharmonic` — sex deltoner på 1 / 2,76 / 5,4 / 8,93 / 13,34 / 18,64. Mätt: 607 Hz 0,2027 mot 440 Hz 0,0018. ✗ egna modulations- och effektkedjor |
 | Fruity Dance | 5 | ✗ | animerad dansare (skämt) |
 | Wasp | 5 | ◐ | subtraktiv synth |

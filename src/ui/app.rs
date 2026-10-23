@@ -303,6 +303,8 @@ pub struct SonixApp {
     pub groove_library: crate::groove::GrooveLibrary,
     /// Mappen mallarna lästes från — så att 🔄 kan läsa om **samma** mapp.
     pub groove_folder: Option<std::path::PathBuf>,
+    /// **FLEX**: användarens sparade ljud, inlästa vid start.
+    pub flex_presets: Vec<crate::audio::flex::FlexPreset>,
     /// Modulationsmatrisen: källor → mål.
     pub mod_slots: Vec<crate::audio::modulation::ModSlot>,
     /// Om modulationsfönstret är öppet.
@@ -926,6 +928,9 @@ impl SonixApp {
             groove_pool: Vec::new(),
             groove_library: crate::groove::GrooveLibrary::default(),
             groove_folder: None,
+            flex_presets: crate::audio::flex::store_path()
+                .map(|p| crate::audio::flex::load_all(&p))
+                .unwrap_or_default(),
             mod_slots: Vec::new(),
             show_mod_matrix: false,
             mod_dirty: false,
