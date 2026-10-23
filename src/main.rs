@@ -16,6 +16,7 @@ compile_error!(
 );
 
 mod follow;
+mod formula;
 mod groove;
 mod i18n;
 mod instruments;
