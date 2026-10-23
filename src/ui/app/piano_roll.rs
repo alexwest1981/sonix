@@ -437,11 +437,18 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         }
                     });
                 if ui
+                    .small_button("📂")
+                    .on_hover_text(crate::i18n::t("Välj en annan mapp"))
+                    .clicked()
+                {
+                    self.load_groove_library();
+                }
+                if ui
                     .small_button("🔄")
                     .on_hover_text(crate::i18n::t("Läs om mappen"))
                     .clicked()
                 {
-                    self.load_groove_library();
+                    self.rescan_groove_library();
                 }
                 if let Some(i) = chosen {
                     let amount = self.take_groove_amount.clamp(0.0, 1.0);

@@ -1108,7 +1108,21 @@ pub(crate) fn load_groove_library(&mut self) {
     else {
         return;
     };
-    let library = crate::groove::GrooveLibrary::load_from_dir(&dir);
+    self.groove_folder = Some(dir.clone());
+    self.read_groove_folder(&dir);
+}
+
+/// Läser om **samma** mapp — så att en mall som lagts dit medan pianorullen var öppen syns
+/// utan att man behöver välja mappen igen.
+pub(crate) fn rescan_groove_library(&mut self) {
+    match self.groove_folder.clone() {
+        Some(dir) => self.read_groove_folder(&dir),
+        None => self.load_groove_library(),
+    }
+}
+
+fn read_groove_folder(&mut self, dir: &std::path::Path) {
+    let library = crate::groove::GrooveLibrary::load_from_dir(dir);
     let found = library.grooves.len();
     self.groove_library = library;
     self.status_message = if found == 0 {

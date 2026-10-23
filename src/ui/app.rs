@@ -301,6 +301,8 @@ pub struct SonixApp {
     /// Mallar som lästs in från en mapp (groove-biblioteket). Poolen är de man valt;
     /// biblioteket är de som finns att välja bland.
     pub groove_library: crate::groove::GrooveLibrary,
+    /// Mappen mallarna lästes från — så att 🔄 kan läsa om **samma** mapp.
+    pub groove_folder: Option<std::path::PathBuf>,
     /// Modulationsmatrisen: källor → mål.
     pub mod_slots: Vec<crate::audio::modulation::ModSlot>,
     /// Om modulationsfönstret är öppet.
@@ -909,6 +911,7 @@ impl SonixApp {
             warp_mode: crate::audio::warp::WarpMode::Complex,
             groove_pool: Vec::new(),
             groove_library: crate::groove::GrooveLibrary::default(),
+            groove_folder: None,
             mod_slots: Vec::new(),
             show_mod_matrix: false,
             mod_dirty: false,
