@@ -249,7 +249,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Transmitter | 1 | ✅ | data → ljud: händelser, förval och wav (`ade2c1a`) |
 | Transporter | 1 | ✅ | samma fönster som Big Clock — FL:s äldre variant visar samma två tal |
 | Tuner | 1 | ✅ | tuner_modal |
-| VFX Color Mapper | 1 | ✗ | not → färg/färg → parameter |
+| VFX Color Mapper | 1 | ◐ | `ui::note_color` + **🎨 Färg** i pianorullen: tolv färger, en per tonklass, så samma ton har samma färg i alla oktaver (C ljusast, ledtonerna dämpade). Kvar: färg → parameter |
 | VFX Envelope | 1 | ✅ | `ModSource::Adsr` — attack/decay/sustain/release som modulationskälla, med `ModMatrix::note_off` kopplad till `AudioCommand::NoteOff`. Prov: 0,50 → 0,89 → 0,50 (sustain), och under 0,05 efter not-av |
 | VFX Key Mapper | 1 | ◐ | `audio::key_mapper` — en zon transponerar noten och kan byta kanal/skala anslaget; första träffen vinner. Not → **parameter** går via modulationsmatrisen (`ModSource::Key` → volym/panorering/tonhöjd/cutoff), men inte per zon som i FL |
 | VFX Keyboard Splitter | 1 | ✅ | `audio::key_mapper` — fyra zoner över klaviaturet, varje zon kan skicka noten till egen MIDI-kanal (1–16), transponera och skala anslaget. Följer med projektfilen. Prov: zon 36–47 → kanal 2, +12, ×0,75 ger (52, 60, 2) |

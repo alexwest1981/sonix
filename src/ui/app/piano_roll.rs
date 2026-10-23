@@ -815,6 +815,16 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 self.arpeggiate_pattern();
             }
 
+            // **Färgkartan** (FL:s VFX Color Mapper): bara rutnätets färg, inget ljud.
+            let color_bg = if self.color_notes {
+                Color32::from_rgb(110, 60, 150)
+            } else {
+                Theme::BORDER_DARK
+            };
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎨 Färg")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(color_bg)).on_hover_text(crate::i18n::t("Färga noterna efter tonhöjd")).clicked() {
+                self.color_notes = !self.color_notes;
+            }
+
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⬆ +Okt")).size(Theme::FONT_S)).fill(Theme::BORDER_DARK)).on_hover_text(crate::i18n::t("Transponera upp 1 oktav (+12 halvtoner)")).clicked() {
                 self.transpose_active_pattern(12);
             }
@@ -1115,6 +1125,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     for step in 0..16 {
                         let (cell_rect, response) = ui.allocate_exact_size(Vec2::new(26.0, 16.0), Sense::click());
                         let is_on = self.piano_roll_grid[note_offset][step];
+                        let cell_key = base_midi + note_offset as u8;
                         let is_playhead = self.is_playing && self.current_step == step;
                         let is_beat_start = step % 4 == 0;
 
@@ -1174,7 +1185,11 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         }
 
                         let mut bg = if is_on {
-                            Theme::FL_GREEN
+                            if self.color_notes {
+                                crate::ui::note_color::pitch_color(cell_key)
+                            } else {
+                                Theme::FL_GREEN
+                            }
                         } else if is_root {
                             Color32::from_rgb(36, 32, 22)
                         } else if !note_in_scale {

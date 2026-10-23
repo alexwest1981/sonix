@@ -572,6 +572,8 @@ pub struct SonixApp {
     pub show_tuner_modal: bool,
     /// Stor klocka (FL:s Big Clock).
     pub show_big_clock: bool,
+    /// Färgkartan: noterna i rutnätet färgas efter tonhöjd (FL:s VFX Color Mapper).
+    pub color_notes: bool,
     pub tuner_state: TunerState,
     pub show_dice_generator_modal: bool,
     pub dice_generator_state: DiceGeneratorState,
@@ -1095,6 +1097,7 @@ impl SonixApp {
             chord_generator_state: ChordGeneratorState::default(),
             show_tuner_modal: false,
             show_big_clock: false,
+            color_notes: false,
             tuner_state: TunerState::default(),
             show_dice_generator_modal: false,
             dice_generator_state: DiceGeneratorState::default(),

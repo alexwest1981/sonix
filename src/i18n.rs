@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎨 Färg" => "🎨 Color",
+        "Färga noterna efter tonhöjd" => "Colour the notes by pitch",
         "⏱ Stor klocka..." => "⏱ Big clock...",
         "⏱ Stor klocka" => "⏱ Big clock",
         "Välj en annan mapp" => "Choose another folder",
@@ -2650,6 +2652,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎨 Färg" => "🎨 Farve",
+        "Färga noterna efter tonhöjd" => "Farve noterne efter tonehøjde",
         "⏱ Stor klocka..." => "⏱ Stor ur...",
         "⏱ Stor klocka" => "⏱ Stor ur",
         "Välj en annan mapp" => "Vælg en anden mappe",
@@ -4883,6 +4887,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎨 Färg" => "🎨 Farge",
+        "Färga noterna efter tonhöjd" => "Farge notene etter tonehøyde",
         "⏱ Stor klocka..." => "⏱ Stor klokke...",
         "⏱ Stor klocka" => "⏱ Stor klokke",
         "Välj en annan mapp" => "Velg en annen mappe",
@@ -7116,6 +7122,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎨 Färg" => "🎨 Farbe",
+        "Färga noterna efter tonhöjd" => "Noten nach Tonhöhe färben",
         "⏱ Stor klocka..." => "⏱ Große Uhr...",
         "⏱ Stor klocka" => "⏱ Große Uhr",
         "Välj en annan mapp" => "Anderen Ordner wählen",
@@ -9349,6 +9357,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎨 Färg" => "🎨 Color",
+        "Färga noterna efter tonhöjd" => "Colorear las notas por altura",
         "⏱ Stor klocka..." => "⏱ Reloj grande...",
         "⏱ Stor klocka" => "⏱ Reloj grande",
         "Välj en annan mapp" => "Elegir otra carpeta",
@@ -11582,6 +11592,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎨 Färg" => "🎨 Couleur",
+        "Färga noterna efter tonhöjd" => "Colorer les notes selon la hauteur",
         "⏱ Stor klocka..." => "⏱ Grande horloge...",
         "⏱ Stor klocka" => "⏱ Grande horloge",
         "Välj en annan mapp" => "Choisir un autre dossier",

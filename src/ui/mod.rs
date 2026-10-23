@@ -6,6 +6,7 @@ pub mod chord_generator_modal;
 pub mod dice_generator_modal;
 pub mod fx_rack_modal;
 pub mod macros_modal;
+pub mod note_color;
 pub mod patcher_view;
 pub mod plugins_view;
 pub mod launcher_view;
