@@ -3123,6 +3123,41 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                             .engine
                             .send_command(AudioCommand::SetHarmonics { levels: self.harmonics });
                     }
+                    // **Harmor: bild → spektrum.** Bildens nederkant blir grundtonen och
+                    // överkanten överton 16; knappen fyller dragstängerna, inget annat.
+                    if ui
+                        .add(egui::Button::new(
+                            egui::RichText::new(crate::i18n::t("🖼 Från bild…"))
+                                .size(Theme::FONT_S),
+                        ))
+                        .on_hover_text(crate::i18n::t(
+                            "Läs en PNG som spektrum — nedersta raden blir grundtonen",
+                        ))
+                        .clicked()
+                        && let Some(path) = rfd::FileDialog::new()
+                            .add_filter("PNG", &["png"])
+                            .pick_file()
+                    {
+                        match crate::audio::spectral_image::envelope_from_file(&path) {
+                            Ok(env) => {
+                                self.harmonics = env;
+                                let _ = self.engine.send_command(AudioCommand::SetHarmonics {
+                                    levels: self.harmonics,
+                                });
+                                self.status_message = crate::tstatus!(
+                                    "🖼 Spektrum från '{}'",
+                                    path.file_name()
+                                        .unwrap_or_default()
+                                        .to_string_lossy()
+                                        .to_string()
+                                );
+                            }
+                            Err(e) => {
+                                self.status_message =
+                                    crate::tstatus!("⚠ Kunde inte läsa bilden: {}", e);
+                            }
+                        }
+                    }
                 }
                 ui.separator();
                 ui.label(egui::RichText::new(crate::i18n::t("FM (DX10/Sytrus)")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));

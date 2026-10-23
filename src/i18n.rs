@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Read a PNG as a spectrum — the bottom row becomes the fundamental",
+        "🖼 Från bild…" => "🖼 From image…",
         "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "Takter" => "Bars",
@@ -2675,6 +2677,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Läs en PNG som spektrum — nedersta raden blir grundtonen",
+        "🖼 Från bild…" => "🖼 Från bild…",
         "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "Takter" => "Takter",
@@ -4933,6 +4937,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Læs en PNG som spektrum — nederste række bliver grundtonen",
+        "🖼 Från bild…" => "🖼 Fra billede…",
         "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "Takter" => "Takter",
@@ -7191,6 +7197,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Les en PNG som spektrum — nederste rad blir grunntonen",
+        "🖼 Från bild…" => "🖼 Fra bilde…",
         "🎸 Gitarr" => "🎸 Gitarre",
         "BEND" => "BEND",
         "Takter" => "Takte",
@@ -9449,6 +9457,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "PNG als Spektrum lesen — die unterste Zeile wird der Grundton",
+        "🖼 Från bild…" => "🖼 Aus Bild…",
         "🎸 Gitarr" => "🎸 Guitarra",
         "BEND" => "PITCH",
         "Takter" => "Compases",
@@ -11707,6 +11717,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Läs en PNG som spektrum — nedersta raden blir grundtonen" => "Leer un PNG como espectro — la fila inferior es la fundamental",
+        "🖼 Från bild…" => "🖼 Desde imagen…",
         "🎸 Gitarr" => "🎸 Guitare",
         "BEND" => "BEND",
         "Takter" => "Mesures",

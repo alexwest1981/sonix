@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 58** delvis, **✗ 13** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 59** delvis, **✗ 12** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -114,7 +114,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | :--- | ---: | :---: | :--- |
 | FL Studio Mobile | 344 | ✗ | mobil-appens rack; ingen motsvarighet |
 | Morphine | 199 | ◐ | `instruments::morph_spectrum` + `Preset::Morph`: två additiva operatorkällor (glasig, rörledad) och ett läge 0–1 mellan dem — exakt vid 0 och 1, linjärt emellan (provat). ✗ fyra operatorkällor, egna modulationskedjor och de 199 förvalen |
-| Harmor | 164 | ✗ | spektral/additiv, bildanalys, .fnv-envelopes |
+| Harmor | 164 | ◐ | **bild → spektrum**: `audio::spectral_image` läser en PNG, väger samman alla kolumner och gör bildens nederkant till grundtonen och överkanten till överton 16 (`HARMONIC_COUNT`), normaliserat till 1,0 — knappen **🖼 Från bild…** i dragstångspanelen fyller tabellen. Prov: ljus nederkant → grundtonen 1,0 / toppen 0,0, och tvärtom. Kvar: tidsaxeln (bilden som spelas upp över tid), `.fnv`-envelopes, fler än 16 partialer och blur/prism |
 | Dashboard | 90 | ◐ | Patch-modulen ritar en egen graf, men ingen panel med rattar |
 | Toxic Biohazard | 78 | ◐ | tvåoperator-FM finns i synten sedan i dag, inte 6-op modell |
 | GMS | 52 | ◐ | egen subtraktiv synth |
