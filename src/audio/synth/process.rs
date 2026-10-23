@@ -140,6 +140,14 @@ impl SynthEngine {
                     sv.pos = sv.pos.max(lo);
                     if sv.ping_pong {
                         sv.dir = -1.0;
+                        // Ett halvt pass klart: när de är slut släpps loopen och rösten
+                        // spelar ut resten — en scratch som tar slut, inte en evig loop.
+                        if sv.scratch_passes > 0 {
+                            sv.scratch_passes -= 1;
+                            if sv.scratch_passes == 0 {
+                                sv.loop_mode = LoopMode::Off;
+                            }
+                        }
                     }
                 } else if sv.dir < 0.0 && sv.pos <= lo {
                     let over = lo - sv.pos;
@@ -147,6 +155,12 @@ impl SynthEngine {
                     sv.pos = sv.pos.min(hi);
                     if sv.ping_pong {
                         sv.dir = 1.0;
+                        if sv.scratch_passes > 0 {
+                            sv.scratch_passes -= 1;
+                            if sv.scratch_passes == 0 {
+                                sv.loop_mode = LoopMode::Off;
+                            }
+                        }
                     }
                 }
             }

@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 59** delvis, **✗ 12** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 61** delvis, **✗ 10** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -118,7 +118,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Dashboard | 90 | ◐ | Patch-modulen ritar en egen graf, men ingen panel med rattar |
 | Toxic Biohazard | 78 | ◐ | tvåoperator-FM finns i synten sedan i dag, inte 6-op modell |
 | GMS | 52 | ◐ | egen subtraktiv synth |
-| Wave Traveller | 50 | ✗ | scratch-instrument (vinyl), kräver positionsstyrning |
+| Wave Traveller | 50 | ◐ | **`AudioCommand::PlayScratch`**: urklippet spelas fram och tillbaka (ping-pong) i vald handhastighet och ett bestämt antal halva pass, så rösten tystnar i stället för att loopa. Prov: efter klippets slut går riktningen bakåt och rösten är tyst när passen är slut. Kvar: LFO/envelope som styr **positionen** löpande (Wave Travellers egen modulering), vinylbrus och flera lager |
 | FL Keys | 47 | ◐ | samplern + SF2-läsaren kan ladda piano |
 | Sytrus | 40 | ◐ | 2-op FM finns; Sytrus är 6 operatorer + filtermatris |
 | Autogun | 26 | ✅ | `instruments::autogun(seed)` — ett spelbart ljud ur ett frö: attacken kläms så noten hörs, filtret så det släpper igenom. Knappen 🎲 i presetlistan |
@@ -180,7 +180,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Convolver | 4 | ✅ | convolvern (byggd i dag) |
 | Fruity HTML NoteBook | 4 | ◐ | textanteckningar per kanal finns; HTML-rendering i anteckningarna gör det inte |
 | Fruity Peak Controller | 4 | ✅ | `ModSource::Env` — envelopföljare på masternivå, snabb upp/långsam ner |
-| Fruity Scratcher | 4 | ✗ | vinylscratch |
+| Fruity Scratcher | 4 | ◐ | samma maskin som Wave Traveller: **🖐** i samplebläddraren scratchar samplet (0,7×, sex halva pass). Prov: `a_scratch_ping_pongs_and_stops_after_its_passes`. Kvar: riktig vinylbrusmodell, handrörelsens kurva och scratch-mönster |
 | Control Surface | 3 | ◐ | hardware_control.rs (MCU) |
 | Fruity Formula Controller | 3 | ✅ | `src/formula.rs` + `ModSource::Formula` — formel som modulationskälla (`11532ea`) |
 | Fruity NoteBook | 3 | ✅ | `PlaylistTrack::notes` — ett anteckningsfält per kanal i kanalinställningarna, `#[serde(default)]` så äldre projekt öppnas med tomma. Prov: `channel_notes_are_empty_in_old_files_and_survive_a_round_trip` |

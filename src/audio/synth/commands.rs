@@ -747,6 +747,54 @@ impl SynthEngine {
                     }
                 }
             }
+            AudioCommand::PlayScratch {
+                left,
+                right,
+                sample_rate,
+                volume,
+                start_frame,
+                end_frame,
+                speed,
+                passes,
+            } => {
+                if left.is_empty() || passes == 0 {
+                    return;
+                }
+                let len = left.len() as f32;
+                let lo = start_frame.clamp(0.0, (len - 2.0).max(0.0));
+                let hi = end_frame.clamp(lo + 1.0, len);
+                let idx = self.sample_voice_cursor % MAX_SAMPLE_VOICES;
+                self.sample_voice_cursor = (self.sample_voice_cursor + 1) % MAX_SAMPLE_VOICES;
+                let v = &mut self.sample_voices[idx];
+                v.left = left;
+                v.right = right;
+                v.src_sample_rate = sample_rate as f32;
+                v.volume = volume.max(0.0);
+                v.pan_l = 1.0;
+                v.pan_r = 1.0;
+                v.start_frame = lo;
+                v.end_frame = hi;
+                v.pos = lo;
+                v.step = ((sample_rate as f32 / self.sample_rate) * speed.clamp(0.05, 4.0))
+                    .max(0.0001);
+                v.reverse = false;
+                v.dir = 1.0;
+                // Ping-pong över urklippet är själva handen; `passes` räknar halva pass,
+                // så rösten tystnar i stället för att gnugga för evigt.
+                v.loop_mode = LoopMode::Forever;
+                v.loop_span = Some((lo, hi));
+                v.ping_pong = true;
+                v.scratch_passes = passes;
+                v.released = false;
+                v.hold_frames = None;
+                v.env_on = false;
+                v.env_params = AdsrParams::identity();
+                v.filter.on = false;
+                v.frames_done = 0;
+                v.fade_frames = 0;
+                v.channel = 0;
+                v.active = true;
+            }
             AudioCommand::StopAudition => {
                 if let Some(ref mut aud) = self.audition {
                     aud.is_playing = false;

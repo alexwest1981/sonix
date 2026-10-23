@@ -272,6 +272,9 @@ pub struct SampleVoice {
     /// Riktningen **just nu** (1,0 framåt, −1,0 bakåt). `reverse` är startläget; den här
     /// ändras av ping-pong.
     pub dir: f32,
+    /// **Scratch** (Fruity Scratcher): antal halva pass kvar innan rösten tystnar.
+    /// 0 = rösten scratchar inte.
+    pub scratch_passes: u8,
     /// Noten har släppts (not-av, eller efter notens längd): `UntilRelease` spelar då
     /// resten efter loopen i stället för att loopa.
     pub released: bool,
@@ -834,6 +837,7 @@ impl SampleVoice {
             loop_span: None,
             ping_pong: false,
             dir: 1.0,
+            scratch_passes: 0,
             released: false,
             hold_frames: None,
             amp_env: AdsrVoice::new(44_100.0),

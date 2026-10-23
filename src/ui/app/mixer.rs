@@ -237,6 +237,41 @@ impl SonixApp {
 /// svar. Men hade samplen en fil som **inte gick att läsa** (mp3, trasig wav)
 /// föll samma väg ned i syntrösten också: den som lyssnade hörde ett ljud och
 /// trodde det var filen. Nu står det i statusraden i stället.
+/// **Fruity Scratcher / Wave Traveller**: gnuggar samplet fram och tillbaka, sex halva
+/// pass i 0,7× hastighet — handen, inte en loop. Rösten tystnar av sig själv.
+pub fn scratch_library_sample(&mut self, item: &LibrarySampleItem) {
+    let Some(path) = item.file_path.as_deref() else {
+        self.status_message = crate::tstatus!(
+            "⚠ '{}' har ingen ljudfil att scratcha — välj ett sample med fil",
+            item.name
+        );
+        return;
+    };
+    match load_sample_pcm_arcs(path) {
+        Some((left, right, sr)) => {
+            let end = left.len() as f32;
+            let _ = self.engine.send_command(AudioCommand::PlayScratch {
+                left,
+                right,
+                sample_rate: sr,
+                volume: 0.95,
+                start_frame: 0.0,
+                end_frame: end,
+                speed: 0.7,
+                passes: 6,
+            });
+            self.status_message = crate::tstatus!("🖐 Scratch: '{}'", item.name);
+        }
+        None => {
+            self.status_message = crate::tstatus!(
+                "⚠ Kunde inte scratcha '{}' — filen går inte att läsa: {}",
+                item.name,
+                path
+            );
+        }
+    }
+}
+
 pub fn audition_library_sample(&mut self, item: &LibrarySampleItem) {
     if let Some(path) = item.file_path.as_deref() {
         match load_sample_pcm_arcs(path) {
@@ -1169,6 +1204,9 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                 ui.horizontal(|ui| {
                                     if ui.button(egui::RichText::new(crate::i18n::t("▶ Prov")).size(Theme::FONT_XS)).on_hover_text(crate::i18n::t("Provspela med riktigt ljud")).clicked() {
                                         self.audition_library_sample(item);
+                                    }
+                                    if ui.button(egui::RichText::new("🖐").size(Theme::FONT_XS)).on_hover_text(crate::i18n::t("Scratcha samplet fram och tillbaka")).clicked() {
+                                        self.scratch_library_sample(item);
                                     }
                                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✅ Välj")).strong().size(Theme::FONT_XS).color(Color32::BLACK)).fill(Theme::GREEN)).clicked() {
                                         chosen_item = Some(item.clone());

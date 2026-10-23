@@ -155,6 +155,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetSongPlayback(_) => "SetSongPlayback",
         AudioCommand::PlayAudition { .. } => "PlayAudition",
         AudioCommand::StopAudition => "StopAudition",
+        AudioCommand::PlayScratch { .. } => "PlayScratch",
         AudioCommand::SetMonitorRing { .. } => "SetMonitorRing",
         AudioCommand::SetMonitorLevel(_) => "SetMonitorLevel",
         AudioCommand::SetAuditionParams { .. } => "SetAuditionParams",

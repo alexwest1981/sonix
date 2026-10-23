@@ -472,6 +472,19 @@ pub enum AudioCommand {
         loop_playback: bool,
     },
     StopAudition,
+    /// **Fruity Scratcher / Wave Traveller**: spelar ett urklipp fram och tillbaka med
+    /// handens hastighet. `passes` är antal halva pass (fram, tillbaka, fram …).
+    PlayScratch {
+        left: Arc<Vec<f32>>,
+        right: Arc<Vec<f32>>,
+        sample_rate: u32,
+        volume: f32,
+        start_frame: f32,
+        end_frame: f32,
+        /// Handens hastighet i förhållande till inspelningen (1,0 = vanlig).
+        speed: f32,
+        passes: u8,
+    },
     /// Registers the microphone's post-auto-tune mono monitor buffer. The
     /// audio thread mixes it into the master bus scaled by
     /// [`AudioCommand::SetMonitorLevel`] (default 1.0, i.e. unity).

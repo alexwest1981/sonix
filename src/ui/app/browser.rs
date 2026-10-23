@@ -452,6 +452,9 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                         });
 
                         card_ui.horizontal_wrapped(|ui| {
+                            if ui.button(egui::RichText::new("🖐").size(Theme::FONT_XS)).on_hover_text(crate::i18n::t("Scratcha samplet fram och tillbaka")).clicked() {
+                                self.scratch_library_sample(item);
+                            }
                             if ui.button(egui::RichText::new(crate::i18n::t("▶")).size(Theme::FONT_XS)).on_hover_text(crate::i18n::t("Provspela sample med äkta ljud")).clicked() {
                                 // Samma tre fall som `audition_library_sample`: ingen fil →
                                 // appens egen syntröst; fil som inte går att läsa → ett besked,

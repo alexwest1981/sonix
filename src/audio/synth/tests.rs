@@ -2789,6 +2789,44 @@ fn an_mpe_bend_reaches_only_the_voice_on_its_channel() {
     assert!((ch3.bend_ratio - 1.0).abs() < 1e-6);
 }
 
+/// **Scratchen vänder och tar slut.** Ett urklipp spelas fram, tillbaka, fram … och rösten
+/// tystnar när de halva passen är slut i stället för att gnugga för evigt.
+#[test]
+fn a_scratch_ping_pongs_and_stops_after_its_passes() {
+    use std::sync::Arc;
+
+    let mut engine = SynthEngine::new(48_000.0);
+    let pcm: Arc<Vec<f32>> = Arc::new((0..48_000).map(|i| i as f32 / 48_000.0).collect());
+    engine.handle_command(AudioCommand::PlayScratch {
+        left: pcm.clone(),
+        right: pcm,
+        sample_rate: 48_000,
+        volume: 1.0,
+        start_frame: 0.0,
+        end_frame: 4_800.0,
+        speed: 1.0,
+        passes: 2,
+    });
+    assert!(engine.sample_voices[0].active, "scratchen ska starta");
+
+    // Förbi klippets slut: handen vänder.
+    for _ in 0..5_200 {
+        engine.process_stereo();
+    }
+    let dir = engine.sample_voices[0].dir;
+    assert!(dir < 0.0, "efter klippets slut ska handen gå tillbaka: dir {dir}");
+
+    // Två halva pass är 9 600 samples; därefter spelar rösten ut resten och tystnar.
+    for _ in 0..10_000 {
+        engine.process_stereo();
+    }
+    assert!(
+        !engine.sample_voices[0].active,
+        "scratchen ska ta slut, inte loopa för evigt (pos {})",
+        engine.sample_voices[0].pos
+    );
+}
+
 /// **En fördröjd bend gäller först efter sin fördröjning** — det är det som gör att en
 /// inspelad kurva kan ligga inne i ett steg utan att kvantiseras till sextondelen.
 #[test]
