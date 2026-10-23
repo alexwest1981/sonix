@@ -52,22 +52,22 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 
 ---
 
+**Byggt efter roadmappens senaste revidering:** notlängder (`TakeNote.length_steps`), `Legato`/`Chop`/`Join`, artikulation per not, formelstyrning (`src/formula.rs`), Capture MIDI, strängrösten (dämpning i återkopplingen + kropp), Transmitter, A/B-jämförelse, take-lanes i kompen och i18n-revisionen.
+
 ## ⬜ Kvar
 
 ### Går att bygga vid datorn nu
 
 | # | Vad | Storlek | Varför den ligger här |
 | :--: | :--- | :---: | :--- |
-| 1 | **Notlängder** | *S* | fältet saknas i `TakeNote`; därefter ett verktyg i rullen. Abletons Note Length-effekt visar formen |
-| 2 | **`Consolidate` spår → klipp** | *S* | `freeze_track` renderar men lägger inget klipp; samma DSP med ett annat slut |
-| 3 | **`Flatten`** | *S* | frysningen finns, men inget kommando som gör den frysta bufferten till en region |
-| 4 | **`Legato`** | *S* | Join och Fit är byggda; att förlänga en not till nästa finns inte |
-| 5 | **Frasbank (`.fsc`/`.mid`) + Riff machine** | *M* | innehåll, inte kod: FL:s 2 111 fraser visar formen och pianorullen kan hämta dem |
-| 6 | **Score-loggen** (`Auto dump score`) | *M* | den enda FL-funktionen som ändrar hur man *arbetar*: spela in allt, dumpa det som blev bra |
-| 7 | **Groove-pool** | *M* | mallarna läses i dag, både XML och de 103 binära (`parse_agr_binary`), men en i taget |
-| 8 | **Temafiler (JSON) med semantiska namn** | *M* | `Theme::` används på **909** ställen (räknat) — mekaniskt, men 909 rader |
-| 9 | **Fokus/Tab mellan ytorna, zoom-kommandon, ledtrådar** | *S–M* | Abletons `Focus*` och `Zoom*` är adresserbara; 2 302 `sInfoText` mot våra 135 `on_hover_text` är den tydligaste hjälpklacken |
-| 10 | **MusicXML-export** | *M* | notation utan att bädda in LilyPond: skriv filen, låt LilyPond vara externt |
+| 1 | **`Consolidate` spår → klipp** | *S* | `freeze_track` renderar men lägger inget klipp; samma DSP med ett annat slut |
+| 2 | **`Flatten`** | *S* | frysningen finns, men inget kommando som gör den frysta bufferten till en region |
+| 1 | **Frasbank (`.fsc`/`.mid`) + Riff machine** | *M* | innehåll, inte kod: FL:s 2 111 fraser visar formen och pianorullen kan hämta dem |
+| 2 | **Score-loggen** (`Auto dump score`) | *M* | den enda FL-funktionen som ändrar hur man *arbetar*: spela in allt, dumpa det som blev bra |
+| 3 | **Groove-pool** | *M* | mallarna läses i dag, både XML och de 103 binära (`parse_agr_binary`), men en i taget |
+| 4 | **Temafiler (JSON) med semantiska namn** | *M* | `Theme::` används på **909** ställen (räknat) — mekaniskt, men 909 rader |
+| 5 | **Fokus/Tab mellan ytorna, zoom-kommandon, ledtrådar** | *S–M* | Abletons `Focus*` och `Zoom*` är adresserbara; 2 302 `sInfoText` mot våra 135 `on_hover_text` är den tydligaste hjälpklacken |
+| 6 | **MusicXML-export** | *M* | notation utan att bädda in LilyPond: skriv filen, låt LilyPond vara externt |
 
 ### Kräver ett nytt lager — inte en ratt
 
@@ -81,7 +81,6 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 | 6 | **Skript-API** (pianorulle, utbyggnad) | *L* | en egen körningsyta. FL:s `Piano roll script reference.txt` och Abletons Max/Extensions är båda det; vår AI-väg är kommandon, inte skript |
 | 7 | **Additiv/spektral syntes i full längd** (Harmor, Ogun, Sytrus 6-op) | *XL* | oscillatorbank per röst + spektral morfning. Morphine-kärnan (två källor) är byggd; resten är ett synthprojekt |
 | 8 | **Control Room-matrisen** | *M* | monitor/cue/talkback per kanal. Utgångsbussarna finns (`ab715d5`), men matrisen kräver att varje kanal får egen signal |
-| 9 | **Formelstyrning** (`Fruity Formula Controller`) | *M* | ett uttrycksspråk i motorn, inte ännu en källa i `ModSource` |
 
 ### Går inte att bygga här — och varför
 
