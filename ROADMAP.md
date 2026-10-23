@@ -64,7 +64,7 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 | :--: | :--- | :---: | :--- |
 | 1 | **Frasbank (`.fsc`/`.mid`) + Riff machine** | *M* | innehåll, inte kod: FL:s 2 111 fraser visar formen och pianorullen kan hämta dem |
 | 2 | **Score-loggen** (`Auto dump score`) | *M* | den enda FL-funktionen som ändrar hur man *arbetar*: spela in allt, dumpa det som blev bra |
-| 3 | **Groove-pool** | *M* | mallarna läses i dag, både XML och de 103 binära (`parse_agr_binary`), men en i taget |
+| 3 | **Groove-pool** — *◐ biblioteket inkopplat* | *S* | En mapp läses en gång via `GrooveLibrary::load_from_dir`, mallarna väljs ur en lista och hamnar i poolen. Kvar: att höra mallen innan man lägger den på (audition), och att byta mapp utan att stänga pianorullen |
 | 4 | **Temafiler (JSON) med semantiska namn** | *M* | `Theme::` används på **909** ställen (räknat) — mekaniskt, men 909 rader |
 | 5 | **Fokus/Tab mellan ytorna, zoom-kommandon, ledtrådar** | *S–M* | Abletons `Focus*` och `Zoom*` är adresserbara; 2 302 `sInfoText` mot våra 135 `on_hover_text` är den tydligaste hjälpklacken |
 

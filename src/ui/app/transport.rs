@@ -1051,6 +1051,31 @@ pub(crate) fn apply_groove_from_file(&mut self) {
     );
 }
 
+/// Läser alla `.agr` i en mapp till biblioteket — en gång per mapp, inte per mall.
+/// Poolen fylls sedan genom att välja ur biblioteket; 220 rader i verktygsraden vore
+/// ingen meny.
+pub(crate) fn load_groove_library(&mut self) {
+    let Some(dir) = rfd::FileDialog::new()
+        .set_title(crate::i18n::t("Välj mapp med .agr-mallar"))
+        .pick_folder()
+    else {
+        return;
+    };
+    let library = crate::groove::GrooveLibrary::load_from_dir(&dir);
+    let found = library.grooves.len();
+    self.groove_library = library;
+    self.status_message = if found == 0 {
+        crate::tstatus!(
+            "⚠️ Inga .agr-mallar i '{}'",
+            dir.file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_else(|| dir.display().to_string())
+        )
+    } else {
+        crate::tstatus!("📚 {} mallar inlästa", found)
+    };
+}
+
 /// Lägger hela poolen på tagningen — alla aktiva mallar, i listans ordning.
 pub(crate) fn apply_groove_pool_to_take(&mut self) {
     let active = self.groove_pool.iter().filter(|e| e.enabled).count();

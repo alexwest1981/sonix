@@ -294,6 +294,9 @@ pub struct SonixApp {
     pub warp_mode: crate::audio::warp::WarpMode,
     /// Groove-poolen: flera mallar som läggs på tagningen samtidigt.
     pub groove_pool: Vec<crate::groove::GrooveEntry>,
+    /// Mallar som lästs in från en mapp (groove-biblioteket). Poolen är de man valt;
+    /// biblioteket är de som finns att välja bland.
+    pub groove_library: crate::groove::GrooveLibrary,
     /// Modulationsmatrisen: källor → mål.
     pub mod_slots: Vec<crate::audio::modulation::ModSlot>,
     /// Om modulationsfönstret är öppet.
@@ -891,6 +894,7 @@ impl SonixApp {
             unison_detune_cents: 12.0,
             warp_mode: crate::audio::warp::WarpMode::Complex,
             groove_pool: Vec::new(),
+            groove_library: crate::groove::GrooveLibrary::default(),
             mod_slots: Vec::new(),
             show_mod_matrix: false,
             mod_dirty: false,

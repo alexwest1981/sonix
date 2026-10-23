@@ -405,6 +405,57 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             {
                 self.apply_groove_from_file();
             }
+            // **Groove-biblioteket**: en mapp med .agr läses en gång, och mallarna väljs ur en
+            // lista. FL:s 220 mallar är för många för en knapp per mall — och för många att
+            // lägga i poolen på en gång.
+            if self.groove_library.grooves.is_empty() {
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new(crate::i18n::t("📚 Malmapp"))
+                                .strong()
+                                .size(Theme::FONT_S)
+                                .color(Theme::TEXT_BRIGHT),
+                        )
+                        .fill(take_btn),
+                    )
+                    .on_hover_text(crate::i18n::t("Läs alla .agr-mallar i en mapp och välj bland dem"))
+                    .clicked()
+                {
+                    self.load_groove_library();
+                }
+            } else {
+                let mut chosen: Option<usize> = None;
+                let grooves = &self.groove_library.grooves;
+                egui::ComboBox::from_id_salt("groove_library")
+                    .selected_text(crate::tstatus!("📚 {} mallar", grooves.len()))
+                    .show_ui(ui, |ui| {
+                        for (i, groove) in grooves.iter().enumerate() {
+                            if ui.selectable_label(false, &groove.name).clicked() {
+                                chosen = Some(i);
+                            }
+                        }
+                    });
+                if ui
+                    .small_button("🔄")
+                    .on_hover_text(crate::i18n::t("Läs om mappen"))
+                    .clicked()
+                {
+                    self.load_groove_library();
+                }
+                if let Some(i) = chosen {
+                    let amount = self.take_groove_amount.clamp(0.0, 1.0);
+                    let groove = self.groove_library.grooves[i].clone();
+                    let name = groove.name.clone();
+                    self.groove_pool
+                        .push(crate::groove::GrooveEntry::new(groove, amount));
+                    self.status_message = crate::tstatus!(
+                        "🎵 '{}' i poolen ({} mallar)",
+                        name,
+                        self.groove_pool.len()
+                    );
+                }
+            }
             if ui
                 .add(
                     egui::Button::new(

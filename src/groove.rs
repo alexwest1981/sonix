@@ -34,12 +34,10 @@ impl Groove {
 
 /// Ett bibliotek av groove-mallar, laddat från en katalog med `.agr`-filer.
 #[derive(Clone, Debug, Default)]
-#[allow(dead_code)] // kopplas in när groove-poolen får en panel; metoderna är provade
 pub struct GrooveLibrary {
     pub grooves: Vec<Groove>,
 }
 
-#[allow(dead_code)]
 impl GrooveLibrary {
     /// Läser alla `.agr` i `dir`, skiftlägesokänsligt på ändelsen. Filer som inte går att läsa
     /// hoppas över tyst: ett bibliotek ska inte fallera på en trasig mall. Filnamnet utan
@@ -70,6 +68,7 @@ impl GrooveLibrary {
     }
 
     /// Letar en mall: exakt namn först, sedan skiftlägesokänsligt.
+    #[allow(dead_code, reason = "bibliotekets uppslags-API är provat; UI:t väljer ur listan")]
     pub fn find(&self, name: &str) -> Option<&Groove> {
         self.grooves
             .iter()
@@ -79,6 +78,7 @@ impl GrooveLibrary {
 
     /// Lägger mallens förskjutningar på notpositionerna: position `i` får steg `i % 16`:s
     /// förskjutning, klämt till en takt (0–15,99).
+    #[allow(dead_code, reason = "provad API-yta; tagningen använder `Take::apply_groove`")]
     pub fn apply_to_notes(&self, groove: &Groove, positions: &mut [f32]) {
         for (i, pos) in positions.iter_mut().enumerate() {
             let shift = groove.offset_for(i % GROOVE_SLOTS);
