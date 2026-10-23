@@ -103,7 +103,7 @@ impl Preset {
             Preset::SubDrone => "Subdrön",
             Preset::Stab => "Stab",
             Preset::AdditiveOrgan => "Additiv orgel",
-            Preset::Kepler => "Kepler (Juno)",
+            Preset::Kepler => "Kepler (analog)",
             Preset::KeplerExo => "Kepler Exo",
         }
     }
@@ -169,7 +169,8 @@ impl Preset {
                 AdsrParams { attack: 1.2, decay: 2.0, sustain: 0.9, release: 2.5 },
                 200.0, 0.6, 0.0, 0.9, 2, 4.0, 0.0, 0.0,
             ),
-            // **Kepler** (Juno-106): sågtand, sub en oktav under, filter med envelop.
+            // **Kepler** (CS-80-inspirerad i FL): en analog röst — sågtand, sub en oktav under,
+            // filter med envelop. Det är delarna vi har; CS-80:s egna kretsar modellerar vi inte.
             Preset::Kepler => s(
                 Waveform::Saw,
                 AdsrParams { attack: 0.004, decay: 0.9, sustain: 0.7, release: 0.25 },

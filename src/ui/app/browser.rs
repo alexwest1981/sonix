@@ -541,8 +541,8 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                     ("303 Acid Bass (Resonant)", Preset::AcidBass),
                     ("8-Bit Chiptune (Retro)", Preset::ChiptuneLead),
                     ("Cosmic Brass (Synthwave)", Preset::CosmicBrass),
-                    ("Kepler (Juno-106)", Preset::Kepler),
-                    ("Kepler Exo (Pulse)", Preset::KeplerExo),
+                    ("Kepler (analog)", Preset::Kepler),
+                    ("Kepler Exo (puls)", Preset::KeplerExo),
                 ];
                 if ui
                     .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Autogun (slumpat ljud)")).size(10.0)).fill(Theme::PANEL_BG))

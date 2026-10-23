@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 61** har en motsvarighet, **◐ 50** delvis, **✗ 30** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 61** har en motsvarighet, **◐ 52** delvis, **✗ 28** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -156,8 +156,8 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Drumpad | 1 | ◐ | steprad + drum.rs |
 | FL Studio Mobile Rack | 1 | ✗ | mobilens rack |
 | Fruity Voltage Controller | 1 | ✅ | `ModSource::Voltage { value }` — fast läge, mätt att det står still |
-| Kepler | 1 | ✗ | analogmodellerad synth (CS-80-inspirerad) |
-| Kepler Exo | 1 | ✗ | variant av Kepler |
+| Kepler | 1 | ◐ | `Preset::Kepler` — en analog röst: sågtand, sub en oktav under, filter med envelop. ✗ CS-80:s egna kretsar modelleras inte, och inget av dess 100+ förval finns |
+| Kepler Exo | 1 | ◐ | `Preset::KeplerExo` — pulsvåg, två röster, mer detune. ✗ samma brist som Kepler |
 | PoiZone | 1 | ◐ | subtraktiv synth |
 | Transistor Bass | 1 | ◐ | filter + synth, ingen 303-modell |
 | Fruity Wrapper | 0 | ✅ | CLAP/VST3/VST2-värd + sandlåda |
