@@ -376,6 +376,13 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📁 Ny grupp" => "📁 New group",
+        "Lägger spåret i en ny grupp som kan fällas ihop" => "Puts the track in a new group that can be collapsed",
+        "📁 Fäll ihop gruppen" => "📁 Collapse the group",
+        "📁 Fäll upp gruppen" => "📁 Expand the group",
+        "🔄 Byt källa" => "🔄 Swap source",
+        "Låter spåret få ett annat ljud men behålla volym, panorering, EQ, sends och automation." => "Gives the track a different sound but keeps volume, pan, EQ, sends and automation.",
+        "🔄 Bytte källa på spåret till '{}' ({:.1} s)" => "🔄 Swapped the track source to '{}' ({:.1} s)",
         "Fånga in den valda slingan som en ny slinga" => "Capture the selected pattern as a new pattern",
         "🎯 Fångade slingan i P{}" => "🎯 Captured the pattern into P{}",
         "Spänning" => "Voltage",
@@ -2540,6 +2547,13 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📁 Ny grupp" => "📁 Ny gruppe",
+        "Lägger spåret i en ny grupp som kan fällas ihop" => "Lægger sporet i en ny gruppe, der kan foldes sammen",
+        "📁 Fäll ihop gruppen" => "📁 Fold gruppen sammen",
+        "📁 Fäll upp gruppen" => "📁 Fold gruppen ud",
+        "🔄 Byt källa" => "🔄 Skift kilde",
+        "Låter spåret få ett annat ljud men behålla volym, panorering, EQ, sends och automation." => "Giver sporet en anden lyd men beholder volumen, pan, EQ, sends og automation.",
+        "🔄 Bytte källa på spåret till '{}' ({:.1} s)" => "🔄 Skiftede kilde på sporet til '{}' ({:.1} s)",
         "Fånga in den valda slingan som en ny slinga" => "Fang det valgte mønster som et nyt mønster",
         "🎯 Fångade slingan i P{}" => "🎯 Fanget mønstret i P{}",
         "Spänning" => "Spænding",
@@ -4662,6 +4676,13 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📁 Ny grupp" => "📁 Ny gruppe",
+        "Lägger spåret i en ny grupp som kan fällas ihop" => "Legger sporet i en ny gruppe som kan felles sammen",
+        "📁 Fäll ihop gruppen" => "📁 Fell sammen gruppen",
+        "📁 Fäll upp gruppen" => "📁 Fell ut gruppen",
+        "🔄 Byt källa" => "🔄 Bytt kilde",
+        "Låter spåret få ett annat ljud men behålla volym, panorering, EQ, sends och automation." => "Gir sporet en annen lyd men beholder volum, pan, EQ, sends og automasjon.",
+        "🔄 Bytte källa på spåret till '{}' ({:.1} s)" => "🔄 Byttet kilde på sporet til '{}' ({:.1} s)",
         "Fånga in den valda slingan som en ny slinga" => "Fang det valgte mønsteret som et nytt mønster",
         "🎯 Fångade slingan i P{}" => "🎯 Fanget mønsteret i P{}",
         "Spänning" => "Spenning",
@@ -6784,6 +6805,13 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📁 Ny grupp" => "📁 Neue Gruppe",
+        "Lägger spåret i en ny grupp som kan fällas ihop" => "Legt die Spur in eine neue Gruppe, die sich einklappen lässt",
+        "📁 Fäll ihop gruppen" => "📁 Gruppe einklappen",
+        "📁 Fäll upp gruppen" => "📁 Gruppe ausklappen",
+        "🔄 Byt källa" => "🔄 Quelle tauschen",
+        "Låter spåret få ett annat ljud men behålla volym, panorering, EQ, sends och automation." => "Gibt der Spur einen anderen Klang, behält aber Lautstärke, Pan, EQ, Sends und Automation.",
+        "🔄 Bytte källa på spåret till '{}' ({:.1} s)" => "🔄 Quelle der Spur auf '{}' getauscht ({:.1} s)",
         "Fånga in den valda slingan som en ny slinga" => "Das gewählte Pattern als neues Pattern einfangen",
         "🎯 Fångade slingan i P{}" => "🎯 Pattern in P{} eingefangen",
         "Spänning" => "Spannung",
@@ -8906,6 +8934,13 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📁 Ny grupp" => "📁 Nuevo grupo",
+        "Lägger spåret i en ny grupp som kan fällas ihop" => "Pone la pista en un grupo nuevo que se puede plegar",
+        "📁 Fäll ihop gruppen" => "📁 Plegar el grupo",
+        "📁 Fäll upp gruppen" => "📁 Desplegar el grupo",
+        "🔄 Byt källa" => "🔄 Cambiar fuente",
+        "Låter spåret få ett annat ljud men behålla volym, panorering, EQ, sends och automation." => "Da a la pista otro sonido pero conserva volumen, panorámica, EQ, envíos y automatización.",
+        "🔄 Bytte källa på spåret till '{}' ({:.1} s)" => "🔄 Fuente de la pista cambiada a '{}' ({:.1} s)",
         "Fånga in den valda slingan som en ny slinga" => "Captura el patrón seleccionado como un patrón nuevo",
         "🎯 Fångade slingan i P{}" => "🎯 Patrón capturado en P{}",
         "Spänning" => "Voltaje",
@@ -11028,6 +11063,13 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📁 Ny grupp" => "📁 Nouveau groupe",
+        "Lägger spåret i en ny grupp som kan fällas ihop" => "Place la piste dans un nouveau groupe repliable",
+        "📁 Fäll ihop gruppen" => "📁 Replier le groupe",
+        "📁 Fäll upp gruppen" => "📁 Déplier le groupe",
+        "🔄 Byt källa" => "🔄 Changer la source",
+        "Låter spåret få ett annat ljud men behålla volym, panorering, EQ, sends och automation." => "Donne un autre son à la piste mais conserve volume, panoramique, EQ, départs et automatisation.",
+        "🔄 Bytte källa på spåret till '{}' ({:.1} s)" => "🔄 Source de la piste changée pour '{}' ({:.1} s)",
         "Fånga in den valda slingan som en ny slinga" => "Capturer le motif sélectionné comme nouveau motif",
         "🎯 Fångade slingan i P{}" => "🎯 Motif capturé dans P{}",
         "Spänning" => "Tension",

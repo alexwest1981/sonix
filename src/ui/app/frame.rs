@@ -325,7 +325,10 @@ impl SonixApp {
         if let Some(path) = picked_file {
             let p_lower = path.to_lowercase();
             let import_tmpl = self.pending_add_track_import.take();
-            if self.pending_stem_separation {
+            let swap_target = self.pending_swap_source.take();
+            if let Some(t_idx) = swap_target {
+                self.swap_track_source(t_idx, &path);
+            } else if self.pending_stem_separation {
                 self.pending_stem_separation = false;
                 self.start_stem_separation(&path);
             } else if p_lower.ends_with(".sonix") {

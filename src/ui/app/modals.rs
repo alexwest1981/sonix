@@ -2207,6 +2207,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     let mut freeze_request: Option<usize> = None;
     let mut bounce_request: Option<usize> = None;
     let mut declick_request: Option<usize> = None;
+    let mut swap_request: Option<usize> = None;
+    let mut group_new_request: Option<usize> = None;
+    let mut group_toggle_request: Option<usize> = None;
     let mut unfreeze_request: Option<usize> = None;
     let frozen_stale = self.frozen_is_stale(t_idx);
 
@@ -2323,6 +2326,34 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                         }
                         // **Klicka bort skarvar:** lagar hopp i det inspelade materialet.
                         // Bara spår med ljud kan ha klickar att laga.
+                        // **Spågrupp** (FL): lägg spåret i en grupp och fäll ihop den. Det
+                        // första spåret i gruppen syns alltid, så att raden man fäller upp
+                        // gruppen med inte försvinner.
+                        match track.group {
+                            None => {
+                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📁 Ny grupp")).size(10.0)))
+                                    .on_hover_text(crate::i18n::t("Lägger spåret i en ny grupp som kan fällas ihop"))
+                                    .clicked()
+                                {
+                                    group_new_request = Some(t_idx);
+                                }
+                            }
+                            Some(g) => {
+                                let collapsed = self.track_groups.get(g).map(|gr| gr.collapsed).unwrap_or(false);
+                                let label = if collapsed { crate::i18n::t("📁 Fäll upp gruppen") } else { crate::i18n::t("📁 Fäll ihop gruppen") };
+                                if ui.add(egui::Button::new(egui::RichText::new(label).size(10.0))).clicked() {
+                                    group_toggle_request = Some(g);
+                                }
+                            }
+                        }
+                        // **Byt källa:** spåret behåller mix och inställningar, bara ljudet byts.
+                        if track.pcm_audio.is_some()
+                            && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔄 Byt källa")).color(Color32::WHITE)).fill(Color32::from_rgb(50, 70, 60)))
+                                .on_hover_text(crate::i18n::t("Låter spåret få ett annat ljud men behålla volym, panorering, EQ, sends och automation."))
+                                .clicked()
+                        {
+                            swap_request = Some(t_idx);
+                        }
                         if track.pcm_audio.is_some()
                             && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Ta bort klick")).color(Color32::WHITE)).fill(Color32::from_rgb(60, 50, 80)))
                                 .on_hover_text(crate::i18n::t("Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd."))
@@ -2831,6 +2862,24 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     }
     if let Some(target) = declick_request {
         self.declick_track(target);
+    }
+    if let Some(t_idx) = group_new_request {
+        let name = crate::tstatus!("Grupp {}", self.track_groups.len() + 1);
+        self.track_groups.push(crate::ui::app::state::TrackGroup { name, collapsed: false });
+        let g = self.track_groups.len() - 1;
+        if let Some(track) = self.playlist_tracks.get_mut(t_idx) {
+            track.group = Some(g);
+        }
+    }
+    if let Some(g) = group_toggle_request
+        && let Some(group) = self.track_groups.get_mut(g)
+    {
+        group.collapsed = !group.collapsed;
+    }
+    if let Some(target) = swap_request {
+        // Filväljaren går i egen tråd; svaret tas emot i `frame.rs` och kopplas till spåret.
+        self.pending_swap_source = Some(target);
+        self.spawn_async_file_picker("Ljud", &["wav", "mp3", "flac", "ogg", "m4a"], "Byt källa");
     }
     if let Some(target) = unfreeze_request {
         self.unfreeze_track(target);

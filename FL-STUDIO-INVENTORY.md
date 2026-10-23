@@ -519,8 +519,8 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | Tidsförskjuta audio fritt | `Edit in time warper` | ✗ (`sätt takt 1 här` + WSOLA-sträckning finns) |
 | Klicka bort skarvar | `Declick in` · `Declick out all regions` · `Bypass declicker` | ✗ |
 | Automatiska övergångar | `Automatic crossfades` · `Create crossfade` · `Crossfade (bleeding)` | ✗ (fades per region, ingen korsning) |
-| Byta källa för ett klipp | `Pattern clip sources` · `Automation clip sources` · `Current clip source` | ✗ |
-| Spågrupper i spellistan | `All playlist track groups` · `Export all playlist track groups` · `Collapse all grouped tracks` | ✗ |
+| Byta källa för ett klipp | `Pattern clip sources` · `Automation clip sources` · `Current clip source` | ✅ | `swap_track_source` — nytt ljud, samma volym, pan, EQ, sends, inserts, automation och placering; vågformscachen nollas så den byggs om |
+| Spågrupper i spellistan | `All playlist track groups` · `Export all playlist track groups` · `Collapse all grouped tracks` | ◐ | `TrackGroup` + `track_hidden`: en ihopfälld grupp ritar bara sitt första spår, provat. ✗ exportera grupper som egna filer, grupperna sparas inte i projektet |
 | Tagningar vid loopinspelning | `Group loop recorded takes` · `Ignore silent takes` · `Pickup (takeover mode)` | ◐ (MIDI-tagningar med kompning) |
 | Markörer med egen funktion | `Add audio time marker` · `Add key marker` · `Change to marker loop` | ◐ (regioner, men ingen markörloop) |
 | Taktartsbyten | `Add time signature change...` · `Import time signatures` · `Beats per bar` | ◐ (taktart finns, byten i tempokartan oklart) |

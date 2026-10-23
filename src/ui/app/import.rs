@@ -1375,3 +1375,44 @@ pub fn apply_imported_stems(&mut self, res: StemImportResult) {
 }
 }
 
+impl SonixApp {
+    /// **Byta källa för ett klipp** (FL): spåret behåller allt — volym, panorering, EQ, sends,
+    /// inserts, automation, placering — och får ett nytt ljud. Det är skillnaden mot att
+    /// importera igen, som ger ett nytt spår och en ny plats i mixen.
+    ///
+    /// Vågformscachen nollas, så att den byggs om för det nya ljudet i stället för att visa den
+    /// gamlas form.
+    pub(crate) fn swap_track_source(&mut self, t_idx: usize, path: &str) {
+        let (l, r, sr) = match crate::audio::load_wav_pcm(path) {
+            Ok(v) => v,
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠️ Kunde inte läsa '{}': {}", path, e);
+                return;
+            }
+        };
+        let secs = if sr > 0 { l.len() as f32 / sr as f32 } else { 0.0 };
+        let Some(track) = self.playlist_tracks.get_mut(t_idx) else {
+            return;
+        };
+        track.pcm_audio = Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr));
+        track.waveform_cache = None;
+        // Regionen behåller sin start men får den nya längden räknad i takter — annars ser
+        // klippet ut att vara kvar i den gamla längden och resten av ljudet blir osynligt.
+        let bars = (crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+            .bars_for_secs_at(0.0, secs as f64) as f32)
+            .max(0.25);
+        for region in track.regions.iter_mut() {
+            region.length_bars = bars;
+            region.source_path = Some(path.to_string());
+        }
+        self.sync_all_stems_to_engine();
+        self.status_message = crate::tstatus!(
+            "🔄 Bytte källa på spåret till '{}' ({:.1} s)",
+            std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            secs
+        );
+    }
+}

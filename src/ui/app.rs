@@ -176,6 +176,10 @@ pub struct SonixApp {
     pub note_filter_hits: Option<usize>,
     /// Notsannolikheten som knappen sätter på urvalet (0–1).
     pub note_probability: f32,
+    /// Spåret som väntar på en ny ljudkälla från filväljaren ("byta källa").
+    pub pending_swap_source: Option<usize>,
+    /// Grupper i spellistan.
+    pub track_groups: Vec<crate::ui::app::state::TrackGroup>,
     pub view_mode: ViewMode,
     /// Groovemallens styrka när den läggs på tagningen (0 = rak, 1 = full förskjutning).
     pub take_groove_amount: f32,
@@ -791,6 +795,8 @@ impl SonixApp {
             note_filter: crate::midi_take::NoteFilter::default(),
             note_filter_hits: None,
             note_probability: 1.0,
+            pending_swap_source: None,
+            track_groups: Vec::new(),
             view_mode: ViewMode::PlaylistArranger,
             docked_panel: None,
             take_groove_amount: 1.0,

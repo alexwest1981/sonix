@@ -144,6 +144,30 @@ pub struct Pattern {
     pub take: crate::midi_take::Take,
 }
 
+/// En grupp spår i spellistan (FL). Spåren i en grupp kan fällas ihop, och då syns bara det
+/// första — annars gick gruppen inte att fälla upp igen utan att leta i menyer.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct TrackGroup {
+    pub name: String,
+    pub collapsed: bool,
+}
+
+/// Är spåret dolt därför att dess grupp är ihopfälld? Det **första** spåret i gruppen syns
+/// alltid, så att gruppen har en rad att klicka på.
+pub fn track_hidden(tracks: &[PlaylistTrack], groups: &[TrackGroup], idx: usize) -> bool {
+    let Some(group_idx) = tracks.get(idx).and_then(|t| t.group) else {
+        return false;
+    };
+    let Some(group) = groups.get(group_idx) else {
+        return false;
+    };
+    if !group.collapsed {
+        return false;
+    }
+    let first_member = tracks.iter().position(|t| t.group == Some(group_idx));
+    first_member != Some(idx)
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum TimeSnapMode {
     FreeHundredth, // ⚡ 0.01s (Fri / Högsta precision)
@@ -754,6 +778,8 @@ pub struct PlaylistTrack {
     /// Last automation value sent to the engine per `AutomationParam` index
     /// (NaN = never sent). Prevents command spam while playing.
     pub automation_last: [f32; AutomationParam::COUNT],
+    /// Grupp i spellistan (`None` = ingen grupp). Sparas inte i projektet än.
+    pub group: Option<usize>,
     /// Sub-mix bus this track feeds (`0..NUM_BUSES`) — Fas 5.2.
     pub bus: usize,
     /// Optional VCA control group (`0..NUM_VCAS`) — Fas 5.2.
@@ -1119,6 +1145,7 @@ impl PlaylistTrack {
             waveform_cache: None,
             waveform_cache_pending: None,
             custom_clip_name: None,
+            group: None,
             pcm_audio: None,
             frozen: None,
             frozen_pcm: None,
@@ -1420,5 +1447,41 @@ mod bar_advance_tests {
     fn the_loop_wins_over_the_song_end() {
         // Slingan slutar före sista takten: slingan ska gälla, inte slutet.
         assert_eq!(after_bar_end(15, true, 0, 16, 16), BarAdvance::Wrap(0));
+    }
+}
+
+#[cfg(test)]
+mod track_group_tests {
+    use super::*;
+
+    fn track(group: Option<usize>) -> PlaylistTrack {
+        let mut t = PlaylistTrack::new("Spår".to_string(), "🎚", TrackKind::CustomAudio, Color32::GRAY);
+        t.group = group;
+        t
+    }
+
+    fn group(collapsed: bool) -> TrackGroup {
+        TrackGroup { name: "G".to_string(), collapsed }
+    }
+
+    /// **En ihopfälld grupp visar sitt första spår och gömmer resten** — och det första syns
+    /// även när gruppen är ihopfälld, annars gick den aldrig att fälla upp igen.
+    #[test]
+    fn a_collapsed_group_hides_all_but_its_first_track() {
+        let tracks = vec![track(Some(0)), track(Some(0)), track(None), track(Some(0))];
+        let open = vec![group(false)];
+        let closed = vec![group(true)];
+
+        for i in 0..tracks.len() {
+            assert!(!track_hidden(&tracks, &open, i), "öppen grupp gömmer inget ({i})");
+        }
+        assert!(!track_hidden(&tracks, &closed, 0), "första spåret ska synas");
+        assert!(track_hidden(&tracks, &closed, 1), "andra ska gömmas");
+        assert!(!track_hidden(&tracks, &closed, 2), "spår utan grupp ska synas");
+        assert!(track_hidden(&tracks, &closed, 3), "tredje medlemmen ska gömmas");
+
+        // Ett gruppindex som inte finns får inte gömma något.
+        let broken = vec![track(Some(7))];
+        assert!(!track_hidden(&broken, &closed, 0));
     }
 }

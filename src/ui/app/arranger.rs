@@ -793,6 +793,11 @@ impl SonixApp {
 
             // Track Header Cards (Spår 1 .. N)
             for t_idx in 0..self.playlist_tracks.len() {
+                // Ihopfällda grupper ritar bara sitt första spår — raden är det man fäller upp
+                // gruppen med.
+                if crate::ui::app::state::track_hidden(&self.playlist_tracks, &self.track_groups, t_idx) {
+                    continue;
+                }
                 let is_sel_track = self.selected_timeline_track == t_idx;
                 let track_color = self.playlist_tracks[t_idx].color;
                 let track_muted = self.playlist_tracks[t_idx].muted;
@@ -1367,6 +1372,9 @@ impl SonixApp {
 
                     // 2. Track Lanes (Audio Waveforms, Clips, Grids)
                     for t_idx in 0..self.playlist_tracks.len() {
+                        if crate::ui::app::state::track_hidden(&self.playlist_tracks, &self.track_groups, t_idx) {
+                            continue;
+                        }
                         // Vågformscachen byggs här och inte på de tio ställen
                         // där pcm_audio sätts (Fas 8.3).
                         self.ensure_waveform_cache(t_idx);
