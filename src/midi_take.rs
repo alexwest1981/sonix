@@ -285,9 +285,15 @@ impl Take {
     /// Skalar anslaget (0,9 = 10 % svagare). Kläms till 0–1.
     /// **Spegla tonhöjderna** kring en pivot: en not som ligger `d` halvtoner över pivoten
     /// hamnar `d` under den. Kläms mot 0–127, så en spegling vid kanten tappar inte noten.
-    pub fn invert(&mut self, pivot: u8) -> usize {
+    ///
+    /// Bara noter som matchar `filter` speglas — samma villkor som raderingen och
+    /// sannolikheten, så det som ändras är det som räknades.
+    pub fn invert(&mut self, filter: &NoteFilter, pivot: u8) -> usize {
         let mut touched = 0;
         for n in &mut self.notes {
+            if !filter.matches(n) {
+                continue;
+            }
             let mirrored = 2 * pivot as i32 - n.key as i32;
             let clamped = mirrored.clamp(0, 127) as u8;
             if clamped != n.key {
@@ -894,9 +900,18 @@ mod tests {
         t.push(2.0, 67, 0.8);  // 7 över → 7 under
         t.push(4.0, 53, 0.8);  // 7 under → 7 över
         t.push(6.0, 2, 0.8);   // 58 under 60 → 118, alltså inte nere vid 0
-        assert_eq!(t.invert(60), 3, "noten på pivoten ska inte räknas som ändrad");
+        assert_eq!(t.invert(&NoteFilter::default(), 60), 3, "noten på pivoten ska inte räknas som ändrad");
         let keys: Vec<u8> = t.notes.iter().map(|n| n.key).collect();
         assert_eq!(keys, vec![60, 53, 67, 118]);
+
+        // Bara det som matchar urvalet speglas — samma villkor som raderingen använder.
+        let mut t = Take::new();
+        t.push(0.0, 67, 0.8);
+        t.push(2.0, 72, 0.8);
+        let only_g = NoteFilter { key: Some(67), ..NoteFilter::default() };
+        assert_eq!(t.invert(&only_g, 60), 1);
+        let keys: Vec<u8> = t.notes.iter().map(|n| n.key).collect();
+        assert_eq!(keys, vec![53, 72], "72:an ligger utanför urvalet och ska stå kvar");
     }
 
 }
