@@ -178,6 +178,8 @@ pub struct SonixApp {
     pub note_probability: f32,
     /// Spåret som väntar på en ny ljudkälla från filväljaren ("byta källa").
     pub pending_swap_source: Option<usize>,
+    /// Väntar på en fil till BeepMap (bild → deltoner).
+    pub pending_beepmap: bool,
     /// Projektets anteckningar (FL:s NoteBook), sparas i projektfilen.
     pub project_notes: String,
     /// Om anteckningsfönstret är uppe.
@@ -802,6 +804,7 @@ impl SonixApp {
             note_filter_hits: None,
             note_probability: 1.0,
             pending_swap_source: None,
+            pending_beepmap: false,
             project_notes: String::new(),
             show_notes_modal: false,
             riff_scale: crate::riff::Scale::Minor,

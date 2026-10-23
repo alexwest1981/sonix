@@ -542,6 +542,13 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                     ("8-Bit Chiptune (Retro)", Preset::ChiptuneLead),
                     ("Cosmic Brass (Synthwave)", Preset::CosmicBrass),
                 ];
+                if ui
+                    .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Autogun (slumpat ljud)")).size(10.0)).fill(Theme::PANEL_BG))
+                    .on_hover_text(crate::i18n::t("Slumpar fram ett komplett ljud ur syntens egna parametrar"))
+                    .clicked()
+                {
+                    self.load_autogun();
+                }
                 for (name, p) in synths {
                     if !self.browser_search.is_empty() && !name.to_lowercase().contains(&self.browser_search.to_lowercase()) {
                         continue;
@@ -629,7 +636,54 @@ impl SonixApp {
     /// Ställer appens egna reglage till förvalets värden, så att det som syns i
     /// gränssnittet är det som spelar. Motorn får samma tal via `LoadPreset`.
     pub(crate) fn apply_preset_settings(&mut self, preset: Preset) {
-        let s = preset.settings();
+        self.apply_settings(preset.settings());
+    }
+
+    /// **Autogun**: ett framslumpat ljud, applicerat på samma väg som ett fabriksförval.
+    pub(crate) fn load_autogun(&mut self) {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos() as u64)
+            .unwrap_or(1);
+        let settings = crate::instruments::autogun(seed);
+        self.apply_settings(settings);
+        // Motorn får samma tal som reglagen: det finns inget `Preset` för Autogun, så varje
+        // parameter skickas för sig.
+        let _ = self.engine.send_command(AudioCommand::SetWaveform(settings.waveform));
+        let _ = self.engine.send_command(AudioCommand::SetAdsr(settings.adsr));
+        let _ = self.engine.send_command(AudioCommand::SetFilter(settings.filter));
+        let _ = self.engine.send_command(AudioCommand::SetFilterEnv {
+            amount: settings.filter_env_amount,
+            adsr: self.filter_env,
+        });
+        let _ = self.engine.send_command(AudioCommand::SetSub { level: settings.sub });
+        let _ = self.engine.send_command(AudioCommand::SetUnison {
+            voices: settings.unison.clamp(1, 8),
+            detune_cents: settings.detune,
+        });
+        let _ = self.engine.send_command(AudioCommand::SetHarmonics { levels: settings.harmonics });
+        self.status_message = crate::tstatus!("🎲 Autogun: {}", settings.waveform.name());
+    }
+
+    /// **BeepMap**: filens byte blir deltonsnivåer. Additiv vågform, så dragstängerna syns och
+    /// kan dras vidare för hand efteråt.
+    pub(crate) fn apply_beepmap(&mut self, path: &str) {
+        let bytes = match std::fs::read(path) {
+            Ok(b) => b,
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠️ Kunde inte läsa '{}': {}", path, e);
+                return;
+            }
+        };
+        let levels = crate::instruments::beepmap_amplitudes(&bytes);
+        self.harmonics = levels;
+        self.waveform = Waveform::Additive;
+        let _ = self.engine.send_command(AudioCommand::SetHarmonics { levels });
+        let _ = self.engine.send_command(AudioCommand::SetWaveform(Waveform::Additive));
+        self.status_message = crate::tstatus!("🖼 BeepMap: {} byte → 16 deltoner", bytes.len());
+    }
+
+    fn apply_settings(&mut self, s: crate::audio::command::PresetSettings) {
         self.waveform = s.waveform;
         self.adsr = s.adsr;
         self.filter = s.filter;

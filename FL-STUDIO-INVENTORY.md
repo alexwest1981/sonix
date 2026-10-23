@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 59** har en motsvarighet, **◐ 49** delvis, **✗ 33** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 61** har en motsvarighet, **◐ 50** delvis, **✗ 30** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -120,14 +120,14 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Wave Traveller | 50 | ✗ | scratch-instrument (vinyl), kräver positionsstyrning |
 | FL Keys | 47 | ◐ | samplern + SF2-läsaren kan ladda piano |
 | Sytrus | 40 | ◐ | 2-op FM finns; Sytrus är 6 operatorer + filtermatris |
-| Autogun | 26 | ✗ | 4 miljarder förinställda ljud, inga parametrar |
+| Autogun | 26 | ✅ | `instruments::autogun(seed)` — ett spelbart ljud ur ett frö: attacken kläms så noten hörs, filtret så det släpper igenom. Knappen 🎲 i presetlistan |
 | Minisynth | 19 | ✅ | synten (4 vågformer, ADSR, SVF, FM) |
 | Fruity Slicer 2 | 14 | ◐ | choppern hittar slag och dumpar till piano roll/step |
 | FL Slayer | 12 | ✗ | fysisk modellering av gitarr |
 | FPC | 11 | ◐ | drum.rs + steprad; ingen pad-bank med egna lager |
 | Fruity Envelope Controller | 10 | ◐ | LFO med fyra vågformer och envelopföljare finns; en ritbar flerpunktskurva gör det inte |
 | BassDrum | 9 | ◐ | kick i drum.rs |
-| BeepMap | 9 | ✗ | bild → ljud |
+| BeepMap | 9 | ✅ | `instruments::beepmap_amplitudes(bytes)` — byte → 16 deltonsnivåer, normaliserade. Verktyg → BeepMap |
 | FLEX | 9 | ✗ | presetbaserad synth med eget bibliotek |
 | Ogun | 8 | ◐ | `Waveform::Inharmonic` — sex deltoner på 1 / 2,76 / 5,4 / 8,93 / 13,34 / 18,64. Mätt: 607 Hz 0,2027 mot 440 Hz 0,0018. ✗ egna modulations- och effektkedjor |
 | Fruity Dance | 5 | ✗ | animerad dansare (skämt) |
@@ -146,7 +146,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Keyboard Controller | 2 | ✅ | `ModSource::Velocity` och `ModSource::Key` — anslag och tonhöjd centrerad kring C4 |
 | Fruity Slicer | 2 | ◐ | choppern |
 | Fruity Video Player | 2 | ✅ | `audio::video` + videovy: referensfilm synkad till spelhuvudet, bildrutan hämtas med ffmpeg |
-| Harmless | 2 | ✗ | additiv/subtraktiv hybrid |
+| Harmless | 2 | ◐ | additiv syntes (16 dragstänger) plus syntens filter- och envelopkedja — dess två halvor finns, dess egna förval gör det inte |
 | Plucked! | 2 | ✅ | `Waveform::Pluck` — Karplus-Strong: brus i en dämpad fördröjningslinje. Mätt: 220 Hz in ger 220,7 Hz ut, RMS 0,1588 → 0,0750 |
 | ReWired | 2 | ✗ | ReWire-värd |
 | Sakura | 2 | ✗ | fysisk modellering (strängar) |

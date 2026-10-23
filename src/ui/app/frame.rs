@@ -325,8 +325,10 @@ impl SonixApp {
         if let Some(path) = picked_file {
             let p_lower = path.to_lowercase();
             let import_tmpl = self.pending_add_track_import.take();
-            let swap_target = self.pending_swap_source.take();
-            if let Some(t_idx) = swap_target {
+            let beepmap = std::mem::take(&mut self.pending_beepmap);
+            if beepmap {
+                self.apply_beepmap(&path);
+            } else if let Some(t_idx) = self.pending_swap_source.take() {
                 self.swap_track_source(t_idx, &path);
             } else if self.pending_stem_separation {
                 self.pending_stem_separation = false;
@@ -929,6 +931,11 @@ impl SonixApp {
 
                     // Verktyg & Kreativa Generatorer
                     ui.menu_button(self.tr("🎛 Verktyg"), |ui| {
+                        if ui.button(self.tr("🖼 BeepMap (bild → ljud)…")).clicked() {
+                            self.pending_beepmap = true;
+                            self.spawn_async_file_picker("Bild eller ljud", &["png", "jpg", "jpeg", "bmp", "wav"], "BeepMap");
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("📓 Anteckningar…")).clicked() {
                             self.show_notes_modal = true;
                             ui.close_menu();

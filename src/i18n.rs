@@ -376,6 +376,11 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🖼 BeepMap (bild → ljud)…" => "🖼 BeepMap (image → sound)…",
+        "🖼 BeepMap: {} byte → 16 deltoner" => "🖼 BeepMap: {} bytes → 16 partials",
+        "🎲 Autogun (slumpat ljud)" => "🎲 Autogun (random sound)",
+        "Slumpar fram ett komplett ljud ur syntens egna parametrar" => "Rolls a complete sound out of the synth's own parameters",
+        "🎲 Autogun: {}" => "🎲 Autogun: {}",
         "𝄞 Sträng" => "𝄞 Pluck",
         "⛭ Metall" => "⛭ Metal",
         "📓 Anteckningar…" => "📓 Notes…",
@@ -2556,6 +2561,11 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🖼 BeepMap (bild → ljud)…" => "🖼 BeepMap (billede → lyd)…",
+        "🖼 BeepMap: {} byte → 16 deltoner" => "🖼 BeepMap: {} byte → 16 deltoner",
+        "🎲 Autogun (slumpat ljud)" => "🎲 Autogun (tilfældig lyd)",
+        "Slumpar fram ett komplett ljud ur syntens egna parametrar" => "Ruller en komplet lyd op af synths egne parametre",
+        "🎲 Autogun: {}" => "🎲 Autogun: {}",
         "𝄞 Sträng" => "𝄞 Streng",
         "⛭ Metall" => "⛭ Metal",
         "📓 Anteckningar…" => "📓 Notater…",
@@ -4694,6 +4704,11 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🖼 BeepMap (bild → ljud)…" => "🖼 BeepMap (bilde → lyd)…",
+        "🖼 BeepMap: {} byte → 16 deltoner" => "🖼 BeepMap: {} byte → 16 deltoner",
+        "🎲 Autogun (slumpat ljud)" => "🎲 Autogun (tilfeldig lyd)",
+        "Slumpar fram ett komplett ljud ur syntens egna parametrar" => "Ruller en komplett lyd ut av synthsens egne parametre",
+        "🎲 Autogun: {}" => "🎲 Autogun: {}",
         "𝄞 Sträng" => "𝄞 Streng",
         "⛭ Metall" => "⛭ Metall",
         "📓 Anteckningar…" => "📓 Notater…",
@@ -6832,6 +6847,11 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🖼 BeepMap (bild → ljud)…" => "🖼 BeepMap (Bild → Klang)…",
+        "🖼 BeepMap: {} byte → 16 deltoner" => "🖼 BeepMap: {} Bytes → 16 Teiltöne",
+        "🎲 Autogun (slumpat ljud)" => "🎲 Autogun (Zufallsklang)",
+        "Slumpar fram ett komplett ljud ur syntens egna parametrar" => "Würfelt einen kompletten Klang aus den Parametern des Synths",
+        "🎲 Autogun: {}" => "🎲 Autogun: {}",
         "𝄞 Sträng" => "𝄞 Saite",
         "⛭ Metall" => "⛭ Metall",
         "📓 Anteckningar…" => "📓 Notizen…",
@@ -8970,6 +8990,11 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🖼 BeepMap (bild → ljud)…" => "🖼 BeepMap (imagen → sonido)…",
+        "🖼 BeepMap: {} byte → 16 deltoner" => "🖼 BeepMap: {} bytes → 16 parciales",
+        "🎲 Autogun (slumpat ljud)" => "🎲 Autogun (sonido aleatorio)",
+        "Slumpar fram ett komplett ljud ur syntens egna parametrar" => "Saca un sonido completo de los propios parámetros del sintetizador",
+        "🎲 Autogun: {}" => "🎲 Autogun: {}",
         "𝄞 Sträng" => "𝄞 Cuerda",
         "⛭ Metall" => "⛭ Metal",
         "📓 Anteckningar…" => "📓 Notas…",
@@ -11108,6 +11133,11 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🖼 BeepMap (bild → ljud)…" => "🖼 BeepMap (image → son)…",
+        "🖼 BeepMap: {} byte → 16 deltoner" => "🖼 BeepMap : {} octets → 16 partiels",
+        "🎲 Autogun (slumpat ljud)" => "🎲 Autogun (son aléatoire)",
+        "Slumpar fram ett komplett ljud ur syntens egna parametrar" => "Tire un son complet des paramètres du synthé",
+        "🎲 Autogun: {}" => "🎲 Autogun: {}",
         "𝄞 Sträng" => "𝄞 Corde",
         "⛭ Metall" => "⛭ Métal",
         "📓 Anteckningar…" => "📓 Notes…",

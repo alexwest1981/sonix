@@ -18,6 +18,7 @@ compile_error!(
 mod follow;
 mod groove;
 mod i18n;
+mod instruments;
 mod midi_take;
 mod piano_script;
 mod riff;
