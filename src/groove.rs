@@ -8,6 +8,7 @@
 //! steg. Det gör mallen oberoende av Abletons `<Grid>`-koder, som är otydliga utan dokumentation.
 
 use crate::midi_take::Take;
+use std::path::Path;
 
 /// Steg per takt som grooven arbetar på (fjärdedelar räknas som takter här).
 pub const GROOVE_SLOTS: usize = 16;
@@ -28,6 +29,62 @@ impl Groove {
     /// Förskjutningen för ett steg (0–15), i andel av ett steg.
     pub fn offset_for(&self, slot: usize) -> f32 {
         self.offsets[slot % GROOVE_SLOTS]
+    }
+}
+
+/// Ett bibliotek av groove-mallar, laddat från en katalog med `.agr`-filer.
+#[derive(Clone, Debug, Default)]
+pub struct GrooveLibrary {
+    pub grooves: Vec<Groove>,
+}
+
+impl GrooveLibrary {
+    /// Läser alla `.agr` i `dir`, skiftlägesokänsligt på ändelsen. Filer som inte går att läsa
+    /// hoppas över tyst: ett bibliotek ska inte fallera på en trasig mall. Filnamnet utan
+    /// ändelse blir namnet, eftersom filerna inte bär något eget.
+    pub fn load_from_dir(dir: &Path) -> GrooveLibrary {
+        let mut grooves = Vec::new();
+        let Ok(entries) = std::fs::read_dir(dir) else {
+            return GrooveLibrary { grooves };
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("agr")) {
+                continue;
+            }
+            let Ok(bytes) = std::fs::read(&path) else {
+                continue;
+            };
+            let name = path
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.display().to_string());
+            if let Some(groove) = parse_agr_bytes(&bytes, &name) {
+                grooves.push(groove);
+            }
+        }
+        grooves.sort_by(|a, b| a.name.cmp(&b.name));
+        GrooveLibrary { grooves }
+    }
+
+    /// Letar en mall: exakt namn först, sedan skiftlägesokänsligt.
+    pub fn find(&self, name: &str) -> Option<&Groove> {
+        self.grooves
+            .iter()
+            .find(|g| g.name == name)
+            .or_else(|| self.grooves.iter().find(|g| g.name.eq_ignore_ascii_case(name)))
+    }
+
+    /// Lägger mallens förskjutningar på notpositionerna: position `i` får steg `i % 16`:s
+    /// förskjutning, klämt till en takt (0–15,99).
+    pub fn apply_to_notes(&self, groove: &Groove, positions: &mut [f32]) {
+        for (i, pos) in positions.iter_mut().enumerate() {
+            let shift = groove.offset_for(i % GROOVE_SLOTS);
+            if shift == 0.0 {
+                continue;
+            }
+            *pos = (*pos + shift).clamp(0.0, 15.99);
+        }
     }
 }
 
@@ -424,6 +481,82 @@ mod tests {
         let falling = [9.0, 4.0, 3.0, 2.0, 1.0, 0.5, 0.4, 0.3, 0.2, 0.1];
         assert!(binary_agr(&falling, 0.0625).len() > 0);
         assert!(parse_agr_binary(&binary_agr(&falling, 0.0625), "fallande").is_none());
+    }
+
+    /// Temporär katalog för bibliotekstesterna, egen per prov och process.
+    fn tmpdir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "sonix_groove_{}_{}_{}",
+            tag,
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("tmpdir");
+        dir
+    }
+
+    #[test]
+    fn a_folder_becomes_a_library_sorted_by_name_and_skips_the_unreadable() {
+        let dir = tmpdir("library");
+        std::fs::write(dir.join("zeta.AGR"), swing_52()).unwrap();
+        std::fs::write(dir.join("alfa.agr"), swing_52()).unwrap();
+        std::fs::write(dir.join("skräp.agr"), b"inte xml alls").unwrap();
+        std::fs::write(dir.join("anteckning.txt"), swing_52()).unwrap();
+
+        let lib = GrooveLibrary::load_from_dir(&dir);
+        assert_eq!(lib.grooves.len(), 2, "skräpet och .txt-filen ska inte bli mallar");
+        assert_eq!(lib.grooves[0].name, "alfa");
+        assert_eq!(lib.grooves[1].name, "zeta", "stor bokstav i ändelsen räknas");
+        // Samma mall i båda filerna: filnamnet blev namnet, innehållet styr förskjutningen.
+        assert!((lib.grooves[0].offset_for(1) - 0.04).abs() < 0.002);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn find_prefers_an_exact_name_then_ignores_case() {
+        let lib = GrooveLibrary {
+            grooves: vec![
+                parse_agr(&swing_52(), "Swing 16ths").unwrap(),
+                parse_agr(&swing_52(), "swing 16ths 52").unwrap(),
+            ],
+        };
+        assert_eq!(
+            lib.find("swing 16ths 52").map(|g| g.name.as_str()),
+            Some("swing 16ths 52"),
+            "exakt namn vinner över skiftlägesokänsligt"
+        );
+        assert_eq!(
+            lib.find("SWING 16THS").map(|g| g.name.as_str()),
+            Some("Swing 16ths")
+        );
+        assert!(lib.find("finns inte").is_none());
+    }
+
+    #[test]
+    fn applying_a_library_groove_moves_only_the_offbeat_positions() {
+        let groove = parse_agr(&swing_52(), "swing").unwrap();
+        let lib = GrooveLibrary { grooves: vec![groove.clone()] };
+        // Positionerna är **inom takten** (0–15,99); mallen upprepas per takt, så en andra
+        // takt får samma förskjutningar. Att skicka in 16 eller 17 vore att blanda ihop
+        // position med index.
+        let mut positions: Vec<f32> = (0..16).map(|i| i as f32).collect();
+        positions[3] = 15.99;
+        lib.apply_to_notes(&groove, &mut positions);
+
+        assert_eq!(positions[0], 0.0, "jämnt steg står still");
+        assert!((positions[1] - 1.04).abs() < 0.002, "udda steg flyttas: {}", positions[1]);
+        assert_eq!(positions[2], 2.0);
+        assert_eq!(positions[3], 15.99, "förskjutningen kläms vid taktens slut");
+
+        // Nästa takt: samma mönster, eftersom slotten räknas modulo 16.
+        let mut next: Vec<f32> = (0..16).map(|i| i as f32).collect();
+        lib.apply_to_notes(&groove, &mut next);
+        assert_eq!(next[0], positions[0]);
+        assert!((next[1] - positions[1]).abs() < 1e-6, "steg 1 flyttas lika i nästa takt");
     }
 
     /// **Alla Abletons groove-mallar**, XML som binära, när katalogen är angiven.
