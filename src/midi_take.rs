@@ -88,6 +88,63 @@ impl TakeGrid {
     }
 }
 
+/// **Artikulation per not** (FL:s `Articulate...`): hur noten ska formas vid spelning.
+///
+/// Den lagras på noten och appliceras en gång på anslag och längd — inte vid varje
+/// uppspelning, så samma tagning låter likadant två gånger.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Articulation {
+    /// Oförändrat anslag och längd.
+    #[default]
+    Normal,
+    /// Kort not: halva längden.
+    Staccato,
+    /// Utliden not: 1,6 gånger längden.
+    Legato,
+    /// Hårdare anslag: 1,3 gånger, klämt till 0–1.
+    Accent,
+}
+
+// Formerna finns för pianorullens meny; den som kallar dem finns ännu inte i UI:t.
+#[allow(dead_code)]
+impl Articulation {
+    pub const ALL: [Articulation; 4] = [
+        Articulation::Normal,
+        Articulation::Staccato,
+        Articulation::Legato,
+        Articulation::Accent,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Articulation::Normal => "Normal",
+            Articulation::Staccato => "Staccato",
+            Articulation::Legato => "Legato",
+            Articulation::Accent => "Accent",
+        }
+    }
+
+    /// Vad artikulationen gör med (anslag, längd i steg).
+    ///
+    /// Längd 0,0 betyder okänd längd — då finns inget att skala, och då rör
+    /// artikulationen bara anslaget.
+    pub fn shape(self, velocity: f32, length_steps: f32) -> (f32, f32) {
+        let len = |factor: f32| {
+            if length_steps <= 0.0 {
+                length_steps
+            } else {
+                length_steps * factor
+            }
+        };
+        match self {
+            Articulation::Normal => (velocity, length_steps),
+            Articulation::Staccato => (velocity, len(0.5)),
+            Articulation::Legato => (velocity, len(1.6)),
+            Articulation::Accent => ((velocity * 1.3).clamp(0.0, 1.0), length_steps),
+        }
+    }
+}
+
 /// En inspelad not.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TakeNote {
@@ -101,6 +158,16 @@ pub struct TakeNote {
     /// precis som förut, eftersom fältet då saknas i filen).
     #[serde(default = "always")]
     pub probability: f32,
+    /// Notens längd i steg. 0,0 = okänd (äldre tagningar), och då skalas ingen längd.
+    #[serde(default)]
+    pub length_steps: f32,
+    /// Artikulationen noten ska formas med. Saknas i filen = Normal.
+    #[serde(default)]
+    pub articulation: Articulation,
+    /// Om artikulationen redan är applicerad på anslag och längd, så att den
+    /// inte dämpas två gånger vid ett andra anrop.
+    #[serde(default)]
+    pub applied: bool,
 }
 
 fn always() -> f32 {
@@ -168,6 +235,38 @@ impl Take {
         touched
     }
 
+    /// **Sätt artikulation på urvalet** — samma villkor som de andra redigeringarna, så det som
+    /// ändras är det som räknades. Anslag och längd rörs inte förrän `apply_articulations`.
+    #[allow(dead_code)] // menyn som kallar den är inte inkopplad än
+    pub fn set_articulation(&mut self, filter: &NoteFilter, art: Articulation) -> usize {
+        let mut touched = 0;
+        for n in self.notes.iter_mut() {
+            if filter.matches(n) {
+                n.articulation = art;
+                touched += 1;
+            }
+        }
+        touched
+    }
+
+    /// **Forma noterna efter sin artikulation**, en gång. Redan applicerade noter hoppas över,
+    /// så ett andra anrop inte dämpar staccaton till hälften en gång till.
+    #[allow(dead_code)] // likaså: anropas när menyn finns
+    pub fn apply_articulations(&mut self) -> usize {
+        let mut applied = 0;
+        for n in self.notes.iter_mut() {
+            if n.applied {
+                continue;
+            }
+            let (velocity, length) = n.articulation.shape(n.velocity, n.length_steps);
+            n.velocity = velocity;
+            n.length_steps = length;
+            n.applied = true;
+            applied += 1;
+        }
+        applied
+    }
+
     /// **Radera enligt villkor.** Returnerar antalet borttagna noter, så att gränssnittet kan
     /// säga hur många det blev i stället för att bara bli tyst.
     pub fn remove_matching(&mut self, filter: &NoteFilter) -> usize {
@@ -190,6 +289,10 @@ impl Take {
             key,
             velocity: velocity.clamp(0.0, 1.0),
             probability: 1.0,
+            // Inspelningen vet inte hur länge tangenten hölls: okänd längd.
+            length_steps: 0.0,
+            articulation: Articulation::Normal,
+            applied: false,
         });
     }
 
@@ -689,12 +792,12 @@ mod tests {
     fn playback_slot_triggers_early_notes_from_the_step_before() {
         // En not strax före steg 3 (2.7) triggas av steg 2 och klingar 0.7 steg in
         // — den hörs alltså före slaget, som den spelades.
-        let n = TakeNote { pos: 2.7, key: 60, velocity: 0.8, probability: 1.0 };
+        let n = TakeNote { pos: 2.7, key: 60, velocity: 0.8, probability: 1.0, length_steps: 0.0, articulation: Articulation::Normal, applied: false };
         let (step, frac) = Take::playback_slot(&n);
         assert_eq!(step, 2);
         assert!((frac - 0.7).abs() < 1e-6);
 
-        let n = TakeNote { pos: 3.0, key: 60, velocity: 0.8, probability: 1.0 };
+        let n = TakeNote { pos: 3.0, key: 60, velocity: 0.8, probability: 1.0, length_steps: 0.0, articulation: Articulation::Normal, applied: false };
         let (step, frac) = Take::playback_slot(&n);
         assert_eq!(step, 3);
         assert_eq!(frac, 0.0);
@@ -1004,6 +1107,66 @@ mod tests {
         t.nudge(&NoteFilter { key: Some(62), ..NoteFilter::default() }, -1.0);
         assert!((t.notes[0].pos - 0.25).abs() < 1e-4);
         assert!((t.notes[1].pos - 14.99).abs() < 1e-4);
+    }
+
+    /// **Artikulationen har exakt de fyra formerna** — normal rör inget, staccato halverar
+    /// längden, legato drar ut den till 1,6 gånger och accent höjer anslaget 1,3 gånger.
+    #[test]
+    fn each_articulation_shapes_the_attack_and_the_length() {
+        let (v, l) = (0.5f32, 4.0f32);
+        assert_eq!(Articulation::Normal.shape(v, l), (v, l), "normal är oförändrad");
+        assert_eq!(Articulation::Staccato.shape(v, l), (v, 2.0), "halva längden");
+        let (vel, len) = Articulation::Legato.shape(v, l);
+        assert_eq!(vel, v);
+        assert!((len - 6.4).abs() < 1e-6, "4 × 1,6 = 6,4, blev {len}");
+        let (vel, len) = Articulation::Accent.shape(v, l);
+        assert!((vel - 0.65).abs() < 1e-6, "0,5 × 1,3 = 0,65, blev {vel}");
+        assert_eq!(len, l, "accent rör inte längden");
+    }
+
+    /// **Okänd längd skalas inte**: 0,0 är ingen längd, och då får artikulationen bara
+    /// röra anslaget — annars blev en staccaton med okänd längd fortfarande 0,0 och det
+    /// såg ut som att något hänt.
+    #[test]
+    fn an_unknown_length_stays_unknown() {
+        for art in [Articulation::Staccato, Articulation::Legato] {
+            assert_eq!(art.shape(0.8, 0.0), (0.8, 0.0), "{:?}", art);
+        }
+        assert_eq!(Articulation::Accent.shape(0.9, 0.0).0, 1.0, "anslaget kläms vid 1,0");
+    }
+
+    /// Artikulationen sätts bara på urvalet, och appliceringen rör bara det som valts —
+    /// noten utanför urvalet behåller både anslag och längd.
+    #[test]
+    fn articulation_is_set_on_the_selection_only() {
+        let mut t = Take::new();
+        t.push(0.0, 36, 0.8);
+        t.push(0.0, 38, 0.8);
+        for n in &mut t.notes {
+            n.length_steps = 4.0;
+        }
+        let only_36 = NoteFilter { key: Some(36), ..NoteFilter::default() };
+        assert_eq!(t.set_articulation(&only_36, Articulation::Staccato), 1);
+        assert_eq!(t.notes[0].articulation, Articulation::Staccato);
+        assert_eq!(t.notes[1].articulation, Articulation::Normal, "utanför urvalet");
+
+        assert_eq!(t.apply_articulations(), 2, "båda noterna formas, normal utan verkan");
+        assert_eq!(t.notes[0].length_steps, 2.0);
+        assert_eq!(t.notes[1].length_steps, 4.0);
+    }
+
+    /// **Två anrop dämpar inte två gånger**: staccaton halveras en gång, sedan händer inget.
+    #[test]
+    fn applying_articulations_twice_changes_nothing_the_second_time() {
+        let mut t = Take::new();
+        t.push(0.0, 36, 0.8);
+        t.notes[0].length_steps = 4.0;
+        t.set_articulation(&NoteFilter::default(), Articulation::Staccato);
+        assert_eq!(t.apply_articulations(), 1);
+        let once = t.clone();
+        assert!((t.notes[0].length_steps - 2.0).abs() < 1e-6);
+        assert_eq!(t.apply_articulations(), 0, "andra anropet applicerar inget");
+        assert_eq!(t, once, "och ändrar inget");
     }
 
 }
