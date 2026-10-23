@@ -493,6 +493,27 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         .unwrap_or(0);
                     self.status_message = format!("Satte {:.0} % på {} noter", p * 100.0, touched);
                 }
+                // **Capture MIDI** (Ableton): noterna du nyss spelade, utan att ha spelat in.
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ Fånga nyss spelade noter")).size(10.0).color(Theme::FL_ORANGE)))
+                    .on_hover_text(crate::i18n::t("Lägger noterna du spelat sedan den första i den valda tagningen, räknade till taktens steg."))
+                    .clicked()
+                {
+                    let bpm = self.bpm;
+                    let steps = self.note_capture.drain_to_steps(bpm);
+                    self.capture_clock = None;
+                    let mut added = 0;
+                    if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
+                        for (pos, key, vel) in steps {
+                            p.take.push(pos, key, vel);
+                            added += 1;
+                        }
+                    }
+                    self.status_message = if added == 0 {
+                        crate::i18n::t("Inget att fånga — spela några noter först").to_string()
+                    } else {
+                        crate::tstatus!("⏺ Fångade {} noter till tagningen", added)
+                    };
+                }
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Ta bort valda")).size(10.0).color(Theme::FL_RED))).clicked() {
                     let mut removed = 0;
                     if let Some(p) = self.patterns.get_mut(self.selected_pattern) {

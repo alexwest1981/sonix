@@ -710,6 +710,16 @@ pub(crate) fn play_note(&mut self, note: u8) {
 
 impl SonixApp {
 fn play_note_velocity(&mut self, note: u8, velocity: f32) {
+    // **Capture MIDI**: varje spelad not hamnar i bufferten, med tid sedan den första. Det är
+    // samma väg som allt levande spel går genom, så ingen tangent kan smyga sig förbi.
+    let elapsed = match self.capture_clock {
+        Some(start) => start.elapsed().as_secs_f32(),
+        None => {
+            self.capture_clock = Some(std::time::Instant::now());
+            0.0
+        }
+    };
+    self.note_capture.push(elapsed, note, velocity);
     if !self.active_keys.contains(&note) {
         self.active_keys.insert(note);
         let freq = midi_to_freq(note);

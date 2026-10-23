@@ -159,7 +159,7 @@ Operationerna som gör Ableton till Ableton, och var Sonix står:
 | `Insert Time…`, `Delete Time`, `Duplicate Time`, `Cut Time`, `Paste Time` | ✅ Insert/Delete/Duplicate Time (byggda i dag); Cut/Paste Time kvar |
 | `Consolidate`, `Consolidate To New Scene` | ◐ (`freeze` renderar men lämnar inget klipp) |
 | `Bounce To New Track`, `Bounce Track In Place`, `Bounce Group In Place` | ✅ alla tre: `bounce_track_to_new`, `freeze_track` och `bounce_group_to_new` — gruppen solas via samma regel som live-solon (`group_member_mask`), ljudspåren i gruppen får sina buffertar tömda eftersom de går genom timeline-motorn, och resultatet läggs på ett nytt spår medan källorna tystas |
-| `Capture MIDI` | ◐ (tagningar spelas in, inte "fånga allt du nyss spelade") |
+| `Capture MIDI` | ✅ `note_capture::NoteCapture`: varje levande not fångas med tid sedan den första, och knappen **⏺ Fånga nyss spelade noter** lägger dem i tagningen räknade till taktens steg (16 steg/takt, `bpm/15` steg per sekund). ✗ flera takter — frasen viks in i en takt, se `shortcut` i modulen |
 | `Capture and Insert Scene` | ✗ |
 | `Convert Melody/Harmony/Drums To New MIDI Track` | ◐ (`onset` + chopper ger slag, inte melodi) |
 | `Slice To New MIDI Track`, `Slice To Drum Rack` | ✅ (chopper → slicemap → piano roll) |

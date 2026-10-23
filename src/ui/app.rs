@@ -156,6 +156,10 @@ pub struct SonixApp {
     pub bpm: f32,
     pub swing: f32,
     pub current_step: usize,
+    /// **Capture MIDI**: det som spelades nyss, med tid sedan första noten.
+    pub note_capture: crate::note_capture::NoteCapture,
+    /// Klockan som tiden räknas från; `None` tills första noten fångas.
+    pub capture_clock: Option<std::time::Instant>,
     pub song_bar: usize,
     pub song_step_in_bar: usize,
     pub loop_start_bar: usize,
@@ -789,6 +793,8 @@ impl SonixApp {
             tempo_points: Vec::new(),
             swing: 0.0,
             current_step: 0,
+            note_capture: crate::note_capture::NoteCapture::default(),
+            capture_clock: None,
             song_bar: 0,
             song_step_in_bar: 0,
             loop_start_bar: 0,

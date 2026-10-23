@@ -20,6 +20,7 @@ mod groove;
 mod i18n;
 mod instruments;
 mod midi_take;
+mod note_capture;
 mod piano_script;
 mod riff;
 mod rng;
