@@ -184,6 +184,8 @@ pub struct SonixApp {
     pub note_filter_hits: Option<usize>,
     /// Notsannolikheten som knappen sätter på urvalet (0–1).
     pub note_probability: f32,
+    /// A/B-jämförelsen av mixen: två fångade mixar och vilken som hörs.
+    pub compare: crate::ui::app::compare::Compare,
     /// Spåret som väntar på en ny ljudkälla från filväljaren ("byta källa").
     pub pending_swap_source: Option<usize>,
     /// Väntar på en fil till BeepMap (bild → deltoner).
@@ -813,6 +815,7 @@ impl SonixApp {
             note_filter: crate::midi_take::NoteFilter::default(),
             note_filter_hits: None,
             note_probability: 1.0,
+            compare: crate::ui::app::compare::Compare::default(),
             pending_swap_source: None,
             pending_beepmap: false,
             project_notes: String::new(),
