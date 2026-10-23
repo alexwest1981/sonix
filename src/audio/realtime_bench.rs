@@ -482,7 +482,10 @@ mod tests {
             // många gånger långsammare och maskinen delas med allt annat som körs
             // (mätt: 1 gång på 25 körningar).
             assert!(
-                cfg!(debug_assertions) || stats.over_budget_blocks <= 2,
+                // 5 % av blocken, inte ett fast antal: en maskin som kompilerar samtidigt
+                // (mätt: 3 av 120) ska inte fälla provet, men en DSP som faktiskt blivit
+                // långsammare gör det — medeltemperaturen vaktas dessutom ovan.
+                cfg!(debug_assertions) || stats.over_budget_blocks <= blocks / 20,
                 "{} av {} block missade realtidsbudgeten i {} frames: {}",
                 stats.over_budget_blocks,
                 blocks,
