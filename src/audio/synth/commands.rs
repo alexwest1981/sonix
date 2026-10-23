@@ -150,6 +150,7 @@ impl SynthEngine {
                 }
             }
             AudioCommand::NoteOff { note } => {
+                self.modulation.note_off();
                 for voice in &mut self.voices {
                     if voice.is_active() && voice.note == note {
                         voice.release();

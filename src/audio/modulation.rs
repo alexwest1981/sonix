@@ -60,6 +60,10 @@ pub enum ModSource {
     Velocity,
     /// Senaste notens tonhöjd, centrerad kring C4 — FL:s Keyboard Controller.
     Key,
+    /// **VFX Envelope**: en ADSR som triggas av noter — FL:s Envelope Controller som källa.
+    /// Tiderna är i sekunder; releasen kräver en not-av-signal, annars stannar envelopen på
+    /// sustain för alltid.
+    Adsr { attack: f32, decay: f32, sustain: f32, release: f32 },
     /// Ett fast värde som sätts för hand — FL:s Voltage Controller, och det en X-Y-pad är
     /// gjord av: två rattar som var och en styr något. Ingen rörelse, bara ett läge.
     Voltage { value: f32 },
@@ -72,6 +76,7 @@ impl ModSource {
             ModSource::Env => "Envelop".to_string(),
             ModSource::Velocity => "Anslag".to_string(),
             ModSource::Key => "Tonhöjd".to_string(),
+            ModSource::Adsr { .. } => "ADSR".to_string(),
             ModSource::Voltage { value } => format!("Spänning {:.0} %", value * 100.0),
         }
     }
@@ -151,6 +156,9 @@ pub struct ModMatrix {
     pub slots: Vec<ModSlot>,
     /// En fas per slot, så varje LFO har sin egen takt utan omskalning.
     phases: Vec<f32>,
+    /// ADSR-envelopens nivå och läge per slot.
+    adsr_levels: Vec<f32>,
+    adsr_stages: Vec<u8>,
     random_seed: u32,
     env: f32,
     /// Senaste notens anslag 0–1.
@@ -169,6 +177,8 @@ impl ModMatrix {
     /// Byter slots och håller faslistan i takt med dem.
     pub fn set_slots(&mut self, slots: Vec<ModSlot>) {
         self.phases.resize(slots.len(), 0.0);
+        self.adsr_levels.resize(slots.len(), 0.0);
+        self.adsr_stages.resize(slots.len(), 0);
         self.slots = slots;
     }
 
@@ -177,6 +187,16 @@ impl ModMatrix {
         self.last_key = key as f32;
         self.last_velocity = velocity.clamp(0.0, 1.0);
         self.has_note = true;
+        // Nya noter börjar om i attacken, oavsett var envelopen stod.
+        for stage in &mut self.adsr_stages {
+            *stage = 1;
+        }
+    }
+
+    /// **Not-av.** Utan den här kan en ADSR aldrig släppa: `has_note` sattes men nollställdes
+    /// aldrig, så envelopen hade stannat på sustain för alltid.
+    pub fn note_off(&mut self) {
+        self.has_note = false;
     }
 
     /// Ett sampel: räknar fram volym- och panpåverkan.
@@ -226,6 +246,30 @@ impl ModMatrix {
                     } else {
                         0.0
                     }
+                }
+                ModSource::Adsr { attack, decay, sustain, release } => {
+                    if self.adsr_levels.len() != self.slots.len() {
+                        self.adsr_levels.resize(self.slots.len(), 0.0);
+                        self.adsr_stages.resize(self.slots.len(), 0);
+                    }
+                    let dt = 1.0 / sample_rate.max(1.0);
+                    let level = &mut self.adsr_levels[i];
+                    let stage = &mut self.adsr_stages[i];
+                    if !self.has_note {
+                        // Släppet går mot noll oavsett var nivån stod.
+                        *level = (*level - dt / release.max(0.001)).max(0.0);
+                    } else if *level < 1.0 && *stage <= 1 {
+                        *level = (*level + dt / attack.max(0.001)).min(1.0);
+                        if *level >= 1.0 {
+                            *stage = 2;
+                        }
+                    } else {
+                        // Efter attacken: mot sustain, upp eller ner.
+                        let target = sustain.clamp(0.0, 1.0);
+                        *level += ((target - *level) * dt / decay.max(0.001)).clamp(-1.0, 1.0);
+                        *level = level.clamp(0.0, 1.0);
+                    }
+                    level.clamp(0.0, 1.0)
                 }
                 ModSource::Voltage { value } => value.clamp(-1.0, 1.0),
             };
@@ -396,6 +440,40 @@ mod tests {
         m.note_on(60, 1.0);
         let out = m.tick(48_000.0, 0.0);
         assert!((out.pitch - 12.0).abs() < 1e-4, "taket ska vara tolv semitoner: {}", out.pitch);
+    }
+
+    /// **VFX Envelope**: attack stiger till 1, decay faller mot sustain, och en not-av släpper
+    /// den till noll. Provet visar också varför `note_off` måste finnas: utan den ligger nivån
+    /// kvar på sustain hur länge som helst.
+    #[test]
+    fn an_adsr_modulation_source_rises_falls_and_releases_on_note_off() {
+        let mut m = ModMatrix::default();
+        m.set_slots(vec![ModSlot::new(
+            ModSource::Adsr { attack: 0.01, decay: 0.02, sustain: 0.5, release: 0.02 },
+            ModTarget::Volume,
+            1.0,
+        )]);
+        m.note_on(60, 1.0);
+        let sr = 48_000.0;
+        let at = |m: &mut ModMatrix, samples: usize| {
+            let mut v = 0.0;
+            for _ in 0..samples {
+                v = m.tick(sr, 0.0).volume - 1.0; // volymfaktorn är 1,0 utan påverkan
+            }
+            v
+        };
+        let early = at(&mut m, 240);            // 5 ms in i en 10 ms attack
+        let peak = at(&mut m, 480);             // attacken klar
+        let held = at(&mut m, 4_800);           // efter decay
+        println!("adsr: {early:.2} → {peak:.2} → {held:.2}");
+        assert!(early > 0.2 && early < 0.9, "attacken ska vara på väg: {early:.2}");
+        assert!(peak > 0.85, "attacken ska nå toppen innan decay tar över: {peak:.2}");
+        assert!((held - 0.5).abs() < 0.1, "decay ska landa på sustain 0,5: {held:.2}");
+
+        m.note_off();
+        let released = at(&mut m, 2_400);       // 50 ms efter not-av
+        println!("adsr efter not-av: {released:.3}");
+        assert!(released < 0.05, "releasen ska ha gått mot noll: {released:.3}");
     }
 
 }
