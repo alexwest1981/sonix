@@ -75,6 +75,10 @@ mod plugins;
 mod input_autoconfig;
 mod midi;
 
+// Inte kopplad till mixern än — tas bort när panelen anropar den.
+#[allow(dead_code)]
+mod compare;
+
 mod piano_roll;
 
 mod browser;
