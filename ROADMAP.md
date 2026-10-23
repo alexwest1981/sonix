@@ -7,7 +7,9 @@
 > läses inte längre som sanning, för den slutade stämma i oktober.
 
 **Läsordning:** den här filen för läget · [`FL-STUDIO-INVENTORY.md`](FL-STUDIO-INVENTORY.md) och
-[`ABLETON-INVENTORY.md`](ABLETON-INVENTORY.md) för vad de två DAW:erna har · `docs/` för de
+[`ABLETON-INVENTORY.md`](ABLETON-INVENTORY.md) för vad de två DAW:erna har ·
+[`SOUNDTRAP-INVENTORY.md`](SOUNDTRAP-INVENTORY.md) för vad en webb-DAW har som vi inte har (samarbete,
+molndelning, innehåll) · `docs/` för de
 kompletta referenslistorna (filposter, menyrader, parameterordförråd) · `README.md` för vad
 gränssnittet lovar.
 
