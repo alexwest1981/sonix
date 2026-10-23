@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Lyssna på mallen" => "Preview the groove",
+        "▶ mall '{}' ({} noter)" => "▶ groove '{}' ({} notes)",
         "Kurva" => "Curve",
         "Lyssna på frasen" => "Preview the phrase",
         "▶ '{}' ({} noter)" => "▶ '{}' ({} notes)",
@@ -2645,6 +2647,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Lyssna på mallen" => "Lyt til mallen",
+        "▶ mall '{}' ({} noter)" => "▶ mall '{}' ({} noder)",
         "Kurva" => "Kurve",
         "Lyssna på frasen" => "Lyt til frasen",
         "▶ '{}' ({} noter)" => "▶ '{}' ({} noder)",
@@ -4873,6 +4877,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Lyssna på mallen" => "Lytt til malen",
+        "▶ mall '{}' ({} noter)" => "▶ mal '{}' ({} noter)",
         "Kurva" => "Kurve",
         "Lyssna på frasen" => "Lytt til frasen",
         "▶ '{}' ({} noter)" => "▶ '{}' ({} noter)",
@@ -7101,6 +7107,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Lyssna på mallen" => "Groove anhören",
+        "▶ mall '{}' ({} noter)" => "▶ Groove '{}' ({} Noten)",
         "Kurva" => "Kurve",
         "Lyssna på frasen" => "Phrase anhören",
         "▶ '{}' ({} noter)" => "▶ '{}' ({} Noten)",
@@ -9329,6 +9337,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Lyssna på mallen" => "Escuchar el patrón",
+        "▶ mall '{}' ({} noter)" => "▶ patrón '{}' ({} notas)",
         "Kurva" => "Curva",
         "Lyssna på frasen" => "Escuchar la frase",
         "▶ '{}' ({} noter)" => "▶ '{}' ({} notas)",
@@ -11557,6 +11567,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Lyssna på mallen" => "Écouter le groove",
+        "▶ mall '{}' ({} noter)" => "▶ groove '{}' ({} notes)",
         "Kurva" => "Courbe",
         "Lyssna på frasen" => "Écouter la phrase",
         "▶ '{}' ({} noter)" => "▶ '{}' ({} notes)",

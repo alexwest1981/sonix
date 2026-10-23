@@ -1205,7 +1205,32 @@ pub(crate) fn preview_notes_from_file(
         }
     }
 
-    /// Tystar lyssningen och släpper allt som klingar.
+    /// Spelar en demorytm med mallen i poolen — så att man hör den innan den läggs på.
+    pub(crate) fn preview_groove(&mut self, index: usize) {
+        let Some(entry) = self.groove_pool.get(index) else {
+            return;
+        };
+        let name = entry.name.clone();
+        let notes: Vec<crate::audio::phrase_preview::PreviewNote> = entry
+            .groove
+            .demo_notes(entry.amount)
+            .into_iter()
+            .map(|(start, length, key, velocity)| {
+                crate::audio::phrase_preview::PreviewNote {
+                    start,
+                    length,
+                    key,
+                    velocity,
+                }
+            })
+            .collect();
+        self.stop_phrase_preview();
+        let count = notes.len();
+        self.phrase_preview = Some(crate::audio::phrase_preview::PhrasePreview::new(notes));
+        self.status_message = crate::tstatus!("▶ mall '{}' ({} noter)", name, count);
+    }
+
+/// Tystar lyssningen och släpper allt som klingar.
     pub(crate) fn stop_phrase_preview(&mut self) {
         if let Some(preview) = self.phrase_preview.take() {
             for note in preview.sounding() {

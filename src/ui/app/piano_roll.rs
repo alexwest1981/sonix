@@ -708,8 +708,16 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     self.apply_groove_pool_to_take();
                 }
                 let mut remove: Option<usize> = None;
+                let mut preview: Option<usize> = None;
                 for (i, entry) in self.groove_pool.iter_mut().enumerate() {
                     ui.horizontal(|ui| {
+                        if ui
+                            .small_button("▶")
+                            .on_hover_text(crate::i18n::t("Lyssna på mallen"))
+                            .clicked()
+                        {
+                            preview = Some(i);
+                        }
                         ui.checkbox(&mut entry.enabled, "");
                         ui.label(egui::RichText::new(&entry.name).size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
                         ui.add(
@@ -724,6 +732,9 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 }
                 if let Some(i) = remove {
                     self.groove_pool.remove(i);
+                }
+                if let Some(i) = preview {
+                    self.preview_groove(i);
                 }
             }
 

@@ -30,6 +30,33 @@ impl Groove {
     pub fn offset_for(&self, slot: usize) -> f32 {
         self.offsets[slot % GROOVE_SLOTS]
     }
+
+    /// En demorytm att höra mallen på: fyra kickar, två virvlar och en hi-hat på varje
+    /// sextondel — hatten är den som gör swing hörbar. Positionerna är i tick vid 480 PPQ,
+    /// och förskjutningen kläms till stegets egen längd så att en hård mall inte kan skjuta
+    /// en not förbi nästa.
+    pub fn demo_notes(&self, amount: f32) -> Vec<(u32, u32, u8, f32)> {
+        let step = crate::audio::smf::TICKS_PER_STEP_16TH;
+        let amount = amount.clamp(0.0, 1.0);
+        let mut notes = Vec::new();
+        for slot in 0..GROOVE_SLOTS {
+            let shift = (self.offset_for(slot) * amount).clamp(-0.9, 0.9);
+            let start = (slot as f32 * step as f32 + shift * step as f32)
+                .round()
+                .clamp(0.0, (slot as f32 + 0.99) * step as f32) as u32;
+            let velocity = if slot % 4 == 0 { 0.9 } else { 0.55 };
+            notes.push((start, step / 2, 42, velocity));
+            match slot {
+                0 | 4 | 8 | 12 => notes.push((start, step / 2, 36, 1.0)),
+                _ => {}
+            }
+            if slot == 4 || slot == 12 {
+                notes.push((start, step / 2, 38, 0.85));
+            }
+        }
+        notes.sort_by_key(|n| n.0);
+        notes
+    }
 }
 
 /// Ett bibliotek av groove-mallar, laddat från en katalog med `.agr`-filer.
@@ -684,4 +711,35 @@ mod tests {
         assert!((groove.offsets[1] - 0.2).abs() < 0.02, "steg 1: {}", groove.offsets[1]);
     }
 
+    #[test]
+    fn the_demo_rhythm_is_hearable_and_follows_the_groove() {
+        let straight = Groove { name: "Rak".into(), offsets: [0.0; GROOVE_SLOTS] };
+        let notes = straight.demo_notes(1.0);
+        // 16 hi-hats + 4 kickar + 2 virvlar.
+        assert_eq!(notes.len(), 22);
+        let hats: Vec<u32> = notes.iter().filter(|n| n.2 == 42).map(|n| n.0).collect();
+        assert_eq!(hats[0], 0);
+        assert_eq!(hats[1], crate::audio::smf::TICKS_PER_STEP_16TH);
+
+        // Halva steget på de udda sextondelarna — då ska hatten på steg 1 flytta sig.
+        let mut offsets = [0.0; GROOVE_SLOTS];
+        for slot in (1..GROOVE_SLOTS).step_by(2) {
+            offsets[slot] = 0.25;
+        }
+        let swung = Groove { name: "Swing".into(), offsets };
+        let hat_one = swung
+            .demo_notes(1.0)
+            .into_iter()
+            .find(|n| n.2 == 42 && n.0 > 0)
+            .unwrap();
+        assert_eq!(hat_one.0, crate::audio::smf::TICKS_PER_STEP_16TH * 5 / 4);
+
+        // Mängden skalar förskjutningen: 0,5 ger halva.
+        let half = swung
+            .demo_notes(0.5)
+            .into_iter()
+            .find(|n| n.2 == 42 && n.0 > 0)
+            .unwrap();
+        assert_eq!(half.0, crate::audio::smf::TICKS_PER_STEP_16TH * 9 / 8);
+    }
 }
