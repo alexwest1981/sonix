@@ -2295,6 +2295,23 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(track.name, "Trummor");
     }
 
+    /// Kanalanteckningar (Fruity NoteBook): en fil som sparades innan fältet fanns ska öppnas med
+    /// tomma anteckningar, och en fil som har dem ska behålla dem genom en rundgång.
+    #[test]
+    fn channel_notes_are_empty_in_old_files_and_survive_a_round_trip() {
+        let old = r#"{"name":"Trummor","volume":0.8,"pan":0.0,"muted":false,"solo":false,
+            "clips": [null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,
+                      null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null],
+            "regions": []}"#;
+        let track: SavedTrackData = serde_json::from_str(old).expect("äldre fil ska läsas");
+        assert_eq!(track.notes, "", "utan fältet blir anteckningarna tomma");
+
+        let mut written = serde_json::to_value(&track).expect("skriv");
+        written["notes"] = serde_json::json!("spela in körsången om igen");
+        let back: SavedTrackData = serde_json::from_value(written).expect("rundgången ska hålla");
+        assert_eq!(back.notes, "spela in körsången om igen");
+    }
+
     /// Fas 8.3: en gammal projektfil har inga sidokedjefält — den ska läsas som
     /// ett spår utan sidokedja, med samma standardtröskel som ett nytt spår får.
     #[test]

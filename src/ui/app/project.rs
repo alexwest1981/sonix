@@ -564,6 +564,10 @@ pub struct PluginSlot {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SavedTrackData {
     pub name: String,
+    /// Kanalens anteckningar. `#[serde(default)]` så att en fil som sparades innan fältet
+    /// fanns öppnas med tomma anteckningar i stället för att vägra.
+    #[serde(default)]
+    pub notes: String,
     pub volume: f32,
     pub pan: f32,
     pub muted: bool,
@@ -671,6 +675,7 @@ pub fn frozen_audio_in_render(track: &PlaylistTrack, pattern_mode: bool) -> bool
 pub struct PreloadedTrackData {
     pub frozen: Option<SavedFrozenTrack>,
     pub name: String,
+    pub notes: String,
     pub volume: f32,
     pub pan: f32,
     pub muted: bool,
@@ -1272,6 +1277,7 @@ pub fn load_demo_project(&mut self) {
             tracks.push(PreloadedTrackData {
                 frozen: None,
                 name: name.to_string(),
+                notes: String::new(),
                 volume: 0.90,
                 pan: 0.0,
                 muted: false,
@@ -1352,6 +1358,7 @@ impl SonixApp {
 pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
     let saved_tracks: Vec<SavedTrackData> = self.playlist_tracks.iter().map(|t| SavedTrackData {
         name: t.name.clone(),
+        notes: t.notes.clone(),
         volume: t.volume,
         pan: t.pan,
         muted: t.muted,
@@ -1771,6 +1778,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
             preloaded_tracks.push(PreloadedTrackData {
                 frozen: st.frozen,
                 name: st.name,
+                notes: st.notes,
                 volume: st.volume,
                 pan: st.pan,
                 muted: st.muted,
@@ -1929,6 +1937,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
 
         let (kind, icon, color) = classify_track_style(&st.name);
         let mut loaded_track = PlaylistTrack::new(st.name, icon, kind, color);
+        loaded_track.notes = st.notes;
         loaded_track.volume = st.volume;
         loaded_track.pan = st.pan;
         loaded_track.muted = st.muted;

@@ -2752,6 +2752,17 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             trigger_region_sync = true;
                         }
 
+                        // Kanalanteckningar (FL:s Fruity NoteBook). Inget som hörs, så ingen
+                        // synk behövs mot motorn — bara fältet som följer med projektfilen.
+                        ui.add_space(6.0);
+                        ui.collapsing(crate::i18n::t("📓 Kanalanteckningar"), |ui| {
+                            ui.add(
+                                egui::TextEdit::multiline(&mut track.notes)
+                                    .desired_rows(3)
+                                    .desired_width(320.0),
+                            );
+                        });
+
                         // Korsningen lägger bara fade-värden där klipp överlappar — regeln
                         // (och dess halvering vid stora överlapp) bor i `create_crossfades`.
                         ui.add_space(6.0);

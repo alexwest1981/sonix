@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 61** har en motsvarighet, **◐ 53** delvis, **✗ 27** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 63** har en motsvarighet, **◐ 54** delvis, **✗ 25** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -177,12 +177,12 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Vocodex | 13 | ◐ | `vocode` — 16 band, 100 Hz–8 kHz, bärvågen följer sången; ingen formantbandredigerare |
 | Soundgoodizer | 5 | ◐ | saturator + kompressor |
 | Fruity Convolver | 4 | ✅ | convolvern (byggd i dag) |
-| Fruity HTML NoteBook | 4 | ✗ | HTML-anteckningar i projektet |
+| Fruity HTML NoteBook | 4 | ◐ | textanteckningar per kanal finns; HTML-rendering i anteckningarna gör det inte |
 | Fruity Peak Controller | 4 | ✅ | `ModSource::Env` — envelopföljare på masternivå, snabb upp/långsam ner |
 | Fruity Scratcher | 4 | ✗ | vinylscratch |
 | Control Surface | 3 | ◐ | hardware_control.rs (MCU) |
 | Fruity Formula Controller | 3 | ✗ | formelstyrd modulation |
-| Fruity NoteBook | 3 | ✗ | anteckningar per kanal |
+| Fruity NoteBook | 3 | ✅ | `PlaylistTrack::notes` — ett anteckningsfält per kanal i kanalinställningarna, `#[serde(default)]` så äldre projekt öppnas med tomma. Prov: `channel_notes_are_empty_in_old_files_and_survive_a_round_trip` |
 | EQUO | 2 | ◐ | EQ:n |
 | Effector | 2 | ✅ | `Effector` — XY-yta över fyra lägen (svep, upprepning, port, kross); X och Y styr respektive krets |
 | Frequency Splitter | 2 | ◐ | crossovern i multibandskompressorn |
@@ -232,7 +232,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Flanger | 1 | ✅ | `ModDelay` med flanger-inställning |
 | Fruity Free Filter | 1 | ✅ | filtret |
 | Fruity Mute 2 | 1 | ✅ | mute/solo |
-| Fruity NoteBook 2 | 1 | ✗ | anteckningar |
+| Fruity NoteBook 2 | 1 | ✅ | samma fält (FL har två versioner av samma sak) |
 | Fruity Phase Inverter | 1 | ✅ | `StereoParams::apply` — polaritet per kanal, exakt invertering |
 | Fruity Phaser | 1 | ✅ | `Phaser` — 4 allpass, 200 Hz–2 kHz, stilla vid djup 0 |
 | Fruity Reeverb | 1 | ✅ | SimpleReverb |

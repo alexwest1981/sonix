@@ -794,6 +794,8 @@ pub struct PlaylistTrack {
     /// egna. Målet är en buss — en buss skickar inte vidare, så en send kan aldrig
     /// bli en slinga.
     pub sends: Vec<crate::audio::StemSend>,
+    /// Anteckningar för kanalen — FL:s Fruity NoteBook. Följer med projektfilen.
+    pub notes: String,
 }
 
 /// Default sub-mix bus for a track kind (Fas 5.2): drums → Trummor, bass and
@@ -1163,6 +1165,7 @@ impl PlaylistTrack {
             sidechain_amount_db: 0.0,
             sidechain_threshold_db: -30.0,
             sends: Vec::new(),
+            notes: String::new(),
         }
     }
 }
