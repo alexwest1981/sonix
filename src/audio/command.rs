@@ -67,6 +67,11 @@ pub enum Preset {
     SubDrone,
     Stab,
     AdditiveOrgan,
+    /// **Kepler**: Juno-106:s röst — sågtand, sub en oktav under och ett filter med envelop.
+    Kepler,
+    /// **Kepler Exo**: samma röst men pulsvåg och lite mer detune, som EX-variantens extra
+    /// vågformer låter.
+    KeplerExo,
 }
 
 impl Preset {
@@ -98,6 +103,8 @@ impl Preset {
             Preset::SubDrone => "Subdrön",
             Preset::Stab => "Stab",
             Preset::AdditiveOrgan => "Additiv orgel",
+            Preset::Kepler => "Kepler (Juno)",
+            Preset::KeplerExo => "Kepler Exo",
         }
     }
 
@@ -161,6 +168,18 @@ impl Preset {
                 Waveform::Sine,
                 AdsrParams { attack: 1.2, decay: 2.0, sustain: 0.9, release: 2.5 },
                 200.0, 0.6, 0.0, 0.9, 2, 4.0, 0.0, 0.0,
+            ),
+            // **Kepler** (Juno-106): sågtand, sub en oktav under, filter med envelop.
+            Preset::Kepler => s(
+                Waveform::Saw,
+                AdsrParams { attack: 0.004, decay: 0.9, sustain: 0.7, release: 0.25 },
+                2400.0, 0.28, 0.45, 0.35, 1, 0.0, 0.0, 0.12,
+            ),
+            // **Kepler Exo**: pulsvåg, två röster och lite mer detune.
+            Preset::KeplerExo => s(
+                Waveform::Square,
+                AdsrParams { attack: 0.002, decay: 0.6, sustain: 0.6, release: 0.18 },
+                3200.0, 0.35, 0.55, 0.2, 2, 9.0, 0.0, 0.2,
             ),
             Preset::AdditiveOrgan => {
                 let mut organ = s(
