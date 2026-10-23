@@ -1851,6 +1851,11 @@ pub(crate) fn render_mod_matrix_view(&mut self, ctx: &egui::Context) {
                                 slot.source = ModSource::Voltage { value: 0.5 };
                                 changed = true;
                             }
+                            // ADSR (VFX Envelope): en envelop som triggas av noter.
+                            if ui.selectable_label(matches!(slot.source, ModSource::Adsr { .. }), crate::i18n::t("ADSR")).clicked() {
+                                slot.source = ModSource::Adsr { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.3 };
+                                changed = true;
+                            }
                         });
                     if let ModSource::Voltage { value } = &mut slot.source
                         && ui
@@ -1864,6 +1869,28 @@ pub(crate) fn render_mod_matrix_view(&mut self, ctx: &egui::Context) {
                             .changed()
                     {
                         changed = true;
+                    }
+                    // ADSR-tider, bara när källan är en ADSR.
+                    if let ModSource::Adsr { attack, decay, sustain, release } = &mut slot.source {
+                        ui.horizontal(|ui| {
+                            let mut secs = |ui: &mut egui::Ui, value: &mut f32, label: &str| {
+                                if ui
+                                    .add(egui::DragValue::new(value).range(0.001..=10.0).speed(0.005).prefix(format!("{label} ")).suffix(" s"))
+                                    .changed()
+                                {
+                                    changed = true;
+                                }
+                            };
+                            secs(ui, attack, "A");
+                            secs(ui, decay, "D");
+                            secs(ui, release, "R");
+                            if ui
+                                .add(egui::DragValue::new(sustain).range(0.0..=1.0).speed(0.01).prefix("S ").custom_formatter(|v, _| format!("{:.0} %", v * 100.0)))
+                                .changed()
+                            {
+                                changed = true;
+                            }
+                        });
                     }
                     // LFO-parametrar bara när källan är en LFO.
                     if let ModSource::Lfo { rate_hz, shape } = &mut slot.source {
