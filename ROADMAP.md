@@ -62,7 +62,7 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 
 | # | Vad | Storlek | Varför den ligger här |
 | :--: | :--- | :---: | :--- |
-| 1 | **Frasbank (`.fsc`/`.mid`) + Riff machine** | *M* | innehåll, inte kod: FL:s 2 111 fraser visar formen och pianorullen kan hämta dem |
+| 1 | **Frasbank (`.fsc`/`.mid`) + Riff machine** — *◐ .mid klar* | *S* | **🎼 Frasbank** läser en mapp med `.mid`/`.midi` och infogar vald fras i patternet via MIDI-importen (flera takter blir arrangemangsklossar). Riff-generatorn fanns. Kvar: FL:s `.fsc`-format, och att höra frasen innan den infogas |
 | 2 | **Score-loggen** (`Auto dump score`) | *M* | den enda FL-funktionen som ändrar hur man *arbetar*: spela in allt, dumpa det som blev bra |
 | 3 | **Groove-pool** — *◐ biblioteket inkopplat* | *S* | En mapp läses en gång via `GrooveLibrary::load_from_dir`, mallarna väljs ur en lista och hamnar i poolen. Kvar: att höra mallen innan man lägger den på (audition), och att byta mapp utan att stänga pianorullen |
 | 4 | **Temafiler (JSON) med semantiska namn** | *M* | `Theme::` används på **909** ställen (räknat) — mekaniskt, men 909 rader |

@@ -867,6 +867,33 @@ pub(crate) fn quantize_take(&mut self, strength: f32, grid: crate::midi_take::Ta
 }
 }
 
+/// Fraserna i en mapp: `(namn utan ändelse, sökväg)`, sorterade skiftlägesokänsligt.
+///
+/// Ren funktion så att filtret kan prövas utan en filväljare: bara `.mid`/`.midi`,
+/// skiftlägesokänsligt — samma regel som MIDI-importen.
+pub(crate) fn phrase_files(dir: &std::path::Path) -> Vec<(String, std::path::PathBuf)> {
+    let mut phrases = Vec::new();
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return phrases;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let is_midi = path.extension().is_some_and(|e| {
+            e.eq_ignore_ascii_case("mid") || e.eq_ignore_ascii_case("midi")
+        });
+        if !is_midi {
+            continue;
+        }
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| path.display().to_string());
+        phrases.push((name, path));
+    }
+    phrases.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    phrases
+}
+
 impl SonixApp {
 /// Lägger medveten mänsklig variation på tagningen (Fas 6.4). Slumptalet
 /// räknas upp varje gång, så två tryck ger inte exakt samma tagning.
@@ -1074,6 +1101,48 @@ pub(crate) fn load_groove_library(&mut self) {
     } else {
         crate::tstatus!("📚 {} mallar inlästa", found)
     };
+}
+
+
+/// Frasbanken (FL): läser en mapp med `.mid`-fraser till listan. Filtreringen är
+/// densamma som importen använder — bara .mid/.midi, skiftlägesokänsligt.
+pub(crate) fn load_phrase_bank(&mut self) {
+    let Some(dir) = rfd::FileDialog::new()
+        .set_title(crate::i18n::t("Välj mapp med .mid-fraser"))
+        .pick_folder()
+    else {
+        return;
+    };
+    let phrases = phrase_files(&dir);
+    let found = phrases.len();
+    self.phrases = phrases;
+    self.phrase_folder = Some(dir);
+    self.show_phrase_bank = true;
+    self.status_message = if found == 0 {
+        crate::i18n::t("⚠ Inga .mid-fraser i mappen").to_string()
+    } else {
+        crate::tstatus!("🎼 {} fraser", found)
+    };
+}
+
+/// Infogar en fras i det valda patternet — samma väg som MIDI-importen, så noter,
+/// taktbyte och arrangemangsklossar beter sig likadant.
+pub(crate) fn insert_phrase(&mut self, path: &std::path::Path) {
+    let name = path
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| path.display().to_string());
+    let path = path.to_string_lossy().to_string();
+    match self.import_midi_into_selected_pattern(&path) {
+        Ok(report) => {
+            self.status_message =
+                crate::tstatus!("🎼 '{}' infogad ({} noter)", name, report.notes_placed);
+        }
+        Err(e) => {
+            self.status_message =
+                crate::tstatus!("⚠ Kunde inte läsa frasen '{}': {}", name, e);
+        }
+    }
 }
 
 /// Lägger hela poolen på tagningen — alla aktiva mallar, i listans ordning.

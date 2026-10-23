@@ -3638,3 +3638,31 @@ fn a_group_render_hears_only_the_groups_members() {
     );
     assert_eq!(SonixApp::group_member_mask(0, &[0]), Vec::<bool>::new());
 }
+
+/// **Frasbanken: filtret är regeln, inte filväljaren.** Bara .mid/.midi, skiftlägesokänsligt,
+/// sorterat på namn oavsett om filen skrevs med versal eller gemen.
+#[test]
+fn phrase_files_keeps_midi_files_sorted_and_drops_the_rest() {
+    let dir = std::env::temp_dir().join(format!(
+        "sonix-phrases-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    for name in ["bass.mid", "Chord.MIDI", "Lead.Mid", "notes.txt", "cover.png"] {
+        std::fs::write(dir.join(name), b"x").unwrap();
+    }
+
+    let found: Vec<String> = super::transport::phrase_files(&dir)
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect();
+    assert_eq!(found, vec!["bass", "Chord", "Lead"], "{found:?}");
+
+    // En mapp som inte finns ger en tom lista, inte panik.
+    assert!(super::transport::phrase_files(&dir.join("finns-inte")).is_empty());
+    std::fs::remove_dir_all(&dir).ok();
+}

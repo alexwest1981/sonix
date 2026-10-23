@@ -3375,6 +3375,7 @@ impl SonixApp {
             || self.show_macros_modal
             || self.show_suno_import_modal
             || self.show_midi_import_modal
+            || self.show_phrase_bank
             || self.show_about_modal
             || self.show_recovery_modal
             || self.show_project_manager_modal
@@ -3391,6 +3392,68 @@ impl SonixApp {
             || self.show_help_guide
             || self.show_add_track_modal
             || self.show_render_queue_modal
+    }
+
+    /// **Frasbanken** (FL): en mapp med `.mid`-fraser, listade. Ett klick infogar frasen i det
+    /// valda patternet genom samma väg som MIDI-importen — ingen egen notläsning.
+    pub(crate) fn render_phrase_bank_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_phrase_bank {
+            return;
+        }
+        let mut open = self.show_phrase_bank;
+        let mut pick = false;
+        let mut chosen: Option<std::path::PathBuf> = None;
+        egui::Window::new(crate::i18n::t("🎼 Frasbank"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_size(Vec2::new(340.0, 420.0))
+            .show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button(crate::i18n::t("📂 Välj mapp")).clicked() {
+                        pick = true;
+                    }
+                    if let Some(dir) = &self.phrase_folder {
+                        let name = dir
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_else(|| dir.display().to_string());
+                        ui.label(
+                            egui::RichText::new(name)
+                                .size(Theme::FONT_S)
+                                .color(Theme::TEXT_MUTED),
+                        );
+                    }
+                });
+                ui.separator();
+                if self.phrases.is_empty() {
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("Inga fraser inlästa"))
+                            .size(Theme::FONT_S)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                } else {
+                    egui::ScrollArea::vertical()
+                        .max_height(340.0)
+                        .show(ui, |ui| {
+                            for (name, path) in &self.phrases {
+                                if ui
+                                    .selectable_label(false, name)
+                                    .on_hover_text(path.display().to_string())
+                                    .clicked()
+                                {
+                                    chosen = Some(path.clone());
+                                }
+                            }
+                        });
+                }
+            });
+        self.show_phrase_bank = open;
+        if pick {
+            self.load_phrase_bank();
+        }
+        if let Some(path) = chosen {
+            self.insert_phrase(&path);
+        }
     }
 
     /// Alla dialoger, i den ordning de läggs ovanpå varandra.
@@ -3414,6 +3477,7 @@ impl SonixApp {
         self.render_project_load_progress_modal(ctx);
         self.render_about_modal(ctx);
         self.render_midi_import_modal(ctx);
+        self.render_phrase_bank_modal(ctx);
         self.render_recovery_modal(ctx);
         self.render_project_manager_modal(ctx);
         self.render_ai_settings_modal(ctx);

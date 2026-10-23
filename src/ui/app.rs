@@ -595,6 +595,10 @@ pub struct SonixApp {
     pub mixer_pointer_was_down: bool,
     /// MIDI-fil import/export (Fas 6.3).
     pub show_midi_import_modal: bool,
+    /// Frasbanken (FL): en mapp med .mid-fraser, listade i en modal.
+    pub show_phrase_bank: bool,
+    pub phrase_folder: Option<std::path::PathBuf>,
+    pub phrases: Vec<(String, std::path::PathBuf)>,
     pub midi_import_path: String,
     /// Satt när en MCU/OSC-kontroll använts det här frameen — en sådan ändring
     /// har ingen pekare men ska ändå ge en ångringspunkt.
@@ -1096,6 +1100,9 @@ impl SonixApp {
             mixer_settled_digest: 0,
             mixer_pointer_was_down: false,
             show_midi_import_modal: false,
+            show_phrase_bank: false,
+            phrase_folder: None,
+            phrases: Vec::new(),
             midi_import_path: crate::paths::paths().exports_dir().to_string_lossy().to_string(),
             mixer_control_event: false,
             recovery_candidates,

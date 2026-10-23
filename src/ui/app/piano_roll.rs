@@ -456,6 +456,27 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     );
                 }
             }
+            // **Frasbanken** (FL): fraser på disk i stället för en tom ruta. Frasen infogas
+            // genom MIDI-importens väg, så taktbytet och rutnätet är samma.
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new(crate::i18n::t("🎼 Frasbank"))
+                            .strong()
+                            .size(Theme::FONT_S)
+                            .color(Theme::TEXT_BRIGHT),
+                    )
+                    .fill(take_btn),
+                )
+                .on_hover_text(crate::i18n::t("Infoga en MIDI-fras från en mapp i det valda patternet"))
+                .clicked()
+            {
+                if self.phrases.is_empty() {
+                    self.load_phrase_bank();
+                } else {
+                    self.show_phrase_bank = true;
+                }
+            }
             if ui
                 .add(
                     egui::Button::new(
