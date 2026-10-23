@@ -608,6 +608,54 @@ pub(crate) fn bounce_track_to_new(&mut self, t_idx: usize) {
     );
 }
 
+/// **Platta till** (Abletons `Flatten`): den frysta bufferten blir en riktig region på samma
+/// spår, och spåret är därmed ljud i stället för patterns. Frysningen är redan renderad — det
+/// här lägger bara regionen som motorn spelar.
+pub(crate) fn flatten_track(&mut self, t_idx: usize) -> bool {
+    let Some(track) = self.playlist_tracks.get(t_idx) else {
+        return false;
+    };
+    let Some((left, _right, sr)) = track.frozen_pcm.clone() else {
+        self.status_message =
+            crate::i18n::t("❄ Spåret är inte fruset — det finns inget att platta till").to_string();
+        return false;
+    };
+    let (name, color) = (track.name.clone(), track.color);
+    let secs = left.len() as f32 / sr as f32;
+    let peaks: Vec<f32> = left
+        .chunks((left.len() / 256).max(1))
+        .map(|c| c.iter().fold(0.0f32, |m, x| m.max(x.abs())))
+        .collect();
+    let bars = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+        .bars_for_secs_at(0.0, secs as f64) as f32;
+
+    self.push_undo(&format!("Platta till '{}'", name));
+    let track = &mut self.playlist_tracks[t_idx];
+    track.frozen = None;
+    track.frozen_pcm = None;
+    track.regions = vec![AudioRegion {
+        id: t_idx + 1,
+        name: name.clone(),
+        start_bar: 0.0,
+        length_bars: bars.max(0.25),
+        sample_offset_sec: 0.0,
+        source_path: None,
+        waveform_peaks: peaks,
+        volume: 1.0,
+        fade_in_bars: 0.0,
+        fade_out_bars: 0.0,
+        muted: false,
+        is_reverse: false,
+        color,
+        loop_length_bars: 0.0,
+        source_bpm: 0.0,
+        tape: false,
+    }];
+    self.sync_track_regions(t_idx);
+    self.status_message = crate::tstatus!("🎵 Plattade '{}' till en region: {:.1} s", name, secs);
+    true
+}
+
 /// **Baka grupp till nytt spår** (Abletons `Bounce Group In Place`).
 ///
 /// Gruppen renderas som den hörs: medlemmarna solas, allt annat faller bort i samma regel som

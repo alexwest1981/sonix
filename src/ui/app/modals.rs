@@ -2239,6 +2239,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     let mut group_new_request: Option<usize> = None;
     let mut group_toggle_request: Option<usize> = None;
     let mut unfreeze_request: Option<usize> = None;
+    let mut flatten_request: Option<usize> = None;
     let frozen_stale = self.frozen_is_stale(t_idx);
 
     // Samma karta som tidlinjen (Fas 8.2 steg 3): panelen visar tider, och en tid efter
@@ -2329,6 +2330,14 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             .clicked()
                         {
                             unfreeze_request = Some(t_idx);
+                        }
+                        // **Platta till**: den frysta bufferten blir en region, så spåret är
+                        // ljud på riktigt och går att klippa i som vilket ljudspår som helst.
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎵 Platta till")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 60, 45)))
+                            .on_hover_text(crate::i18n::t("Gör den frysta bufferten till en region på samma spår — sedan beter sig spåret som inspelat ljud."))
+                            .clicked()
+                        {
+                            flatten_request = Some(t_idx);
                         }
                         if frozen_stale {
                             ui.label(egui::RichText::new(crate::i18n::t("⚠ ändrat sedan frysningen")).size(10.0).color(Theme::FL_ORANGE))
@@ -2913,6 +2922,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
 
     if let Some(target) = freeze_request {
         self.freeze_track(target);
+    }
+    if let Some(target) = flatten_request {
+        self.flatten_track(target);
     }
     if let Some(target) = bounce_request {
         self.bounce_track_to_new(target);
