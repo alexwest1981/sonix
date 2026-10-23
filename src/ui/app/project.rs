@@ -119,6 +119,9 @@ pub struct SavedPattern {
     pub name: String,
     #[serde(default = "default_ui_color")]
     pub color: [u8; 4],
+    /// Saknas i filer från före flertaktsmönstren — de var en takt.
+    #[serde(default = "one_bar")]
+    pub bars: usize,
     /// Raderna sparas som **listor**, inte som fasta arrayer: ett projekt från före
     /// 64-stegsrutnätet har 16 element per rad, och det ska läsas utan migrering.
     pub channel_steps: Vec<Vec<bool>>,
@@ -269,7 +272,7 @@ pub struct SonixProjectData {
     /// Stegvolymerna i trumsekvenserna (Fas 6.7). `None` = filen skrevs före
     /// den här ändringen, och då lämnas appens nuvarande värden orörda.
     #[serde(default)]
-    pub step_velocities: Option<[f32; 16]>,
+    pub step_velocities: Option<Vec<f32>>,
     /// Channel Racket (Fas 6.7).
     #[serde(default)]
     pub channels: Vec<SavedChannel>,
@@ -344,7 +347,7 @@ fn default_velocity_sensitivity() -> f32 {
 pub struct SavedMusic<'a> {
     pub patterns: &'a [SavedPattern],
     pub selected_pattern: usize,
-    pub step_velocities: Option<[f32; 16]>,
+    pub step_velocities: Option<Vec<f32>>,
     pub channels: &'a [SavedChannel],
 }
 
@@ -359,7 +362,7 @@ pub fn restore_saved_music(
     patterns: &mut Vec<Pattern>,
     channels: &mut [ChannelStrip],
     selected_pattern: &mut usize,
-    step_velocities: &mut [f32; 16],
+    step_velocities: &mut [f32; crate::audio::tempo::MAX_STEPS],
 ) {
     if !saved.patterns.is_empty() {
         for (i, s) in saved.patterns.iter().enumerate() {
@@ -372,14 +375,21 @@ pub fn restore_saved_music(
         }
         *selected_pattern = saved.selected_pattern.min(patterns.len().saturating_sub(1));
     }
-    if let Some(v) = saved.step_velocities {
-        *step_velocities = v;
+    if let Some(v) = &saved.step_velocities {
+        // Äldre filer har 16 värden; resten av rutnätet behåller appens värden.
+        for (i, x) in v.iter().take(step_velocities.len()).enumerate() {
+            step_velocities[i] = *x;
+        }
     }
     for (i, s) in saved.channels.iter().enumerate() {
         if i < channels.len() {
             channels[i] = saved_to_channel(s);
         }
     }
+}
+
+fn one_bar() -> usize {
+    1
 }
 
 /// En sparad rad blir en fast rad igen: korta rader (16 från ett äldre projekt) fylls ut
@@ -414,6 +424,7 @@ pub(crate) fn pattern_to_saved(p: &Pattern) -> SavedPattern {
     SavedPattern {
         name: p.name.clone(),
         color: p.color.to_array(),
+        bars: p.bars.clamp(1, 4),
         channel_steps: p.channel_steps.iter().map(|r| r.to_vec()).collect(),
         channel_notes: p.channel_notes.iter().map(|r| r.to_vec()).collect(),
         piano_roll_grid: p.piano_roll_grid.iter().map(|r| r.to_vec()).collect(),
@@ -425,6 +436,7 @@ pub(crate) fn saved_to_pattern(s: &SavedPattern) -> Pattern {
     Pattern {
         name: s.name.clone(),
         color: Color32::from_rgba_premultiplied(s.color[0], s.color[1], s.color[2], s.color[3]),
+        bars: s.bars.clamp(1, 4),
         channel_steps: s.channel_steps.iter().map(|r| row_bools(r)).collect(),
         channel_notes: s.channel_notes.iter().map(|r| row_notes(r)).collect(),
         piano_roll_grid: grid_rows(&s.piano_roll_grid),
@@ -775,7 +787,7 @@ pub struct LoadedProjectPayload {
     /// Mönster, kanalrack och stegvolymer (Fas 6.7).
     pub patterns: Vec<SavedPattern>,
     pub selected_pattern: usize,
-    pub step_velocities: Option<[f32; 16]>,
+    pub step_velocities: Option<Vec<f32>>,
     pub channels: Vec<SavedChannel>,
     /// MIDI-kartan som den stod när filen sparades.
     pub midi_map: crate::audio::key_mapper::KeyMap,
@@ -1446,7 +1458,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         vca_solo: self.vca_solos,
         patterns: self.patterns.iter().map(pattern_to_saved).collect(),
         selected_pattern: self.selected_pattern,
-        step_velocities: Some(self.step_velocities),
+        step_velocities: Some(self.step_velocities.to_vec()),
         channels: self.channels.iter().map(channel_to_saved).collect(),
         midi_map: self.midi_map.clone(),
         plugin_slots: self

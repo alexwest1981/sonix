@@ -1,7 +1,7 @@
 # Patternlängd — så ska flertaktsrutor samexistera med arrangemangsblocken
 
-*Skrivet 2026-10-23 inför arbetet med 16 → 64 steg. Läget i koden just nu: **steg 1 är gjort**,
-steg 2 och 3 är kvar.*
+*Skrivet 2026-10-23 inför arbetet med 16 → 64 steg. Läget i koden just nu: **steg 1 och 2 är
+gjorda**, steg 3 (block med längd) är kvar.*
 
 ## Nuläget
 
@@ -27,7 +27,7 @@ Rutnätet rymmer 64 steg och sparformatet tål båda storlekarna:
   16-stegstiden läses alltså oförändrat (prov: `a_sixteen_step_pattern_is_padded_when_it_is_read`).
 - **Ingen beteendeförändring**: alla slingor går fortfarande `0..16`, och exporten renderar en takt.
 
-## Steg 2 — patternlängd (nästa)
+## Steg 2 — patternlängd (klart, 0.9.20)
 
 1. `Pattern.bars: usize` (1–4, `#[serde(default = "one_bar")]`).
 2. Pianorullen ritar `bars * 16` steg och får en väljare **Takter 1–4**. Att korta ett pattern
@@ -37,7 +37,17 @@ Rutnätet rymmer 64 steg och sparformatet tål båda storlekarna:
 5. `place_notes_into_patterns` får skriva inom hela rutnätet när målet är ett flertaktsmönster,
    men behåller dagens beteende (en pattern per takt) när målet är entakt.
 
-Klart när: en tvåtaktsruta spelar 32 steg i pattern-läget, sparas, läses och exporteras lika långt.
+Klart när: en tvåtaktsruta spelar 32 steg i pattern-läget, sparas och läses lika långt.
+
+**Gjort:** `Pattern.bars` (1–4, `#[serde(default)]`), väljaren **Takter** i pianorullens
+verktygsrad, rutnätet och velocity-fältet ritar `bars × 16` steg (båda riktningarna rullar),
+pattern-läget loopar `bars × 16`, och alla rutnätsverktyg (transponera, arpeggio, humanize,
+regler, urval) täcker hela 64-stegsrutnätet. Stegvolymerna breddades till 64 och sparas som
+lista, så äldre filer med 16 värden läses oförändrat.
+
+**Kvar till steg 3:** arrangemanget spelar bara mönstrets första takt (ett block = en takt).
+Exporten räknar fortfarande hela projektet i takter om 16 steg, vilket är rätt så länge
+arrangemanget är entaktsblock.
 
 ## Steg 3 — block med längd
 

@@ -376,6 +376,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Takter" => "Bars",
         "🎻 Båge" => "🎻 Bowed",
         "Tysta kanalen (M)" => "Mute the channel (M)",
         "Solo: hör bara den här kanalen (S)" => "Solo: hear only this channel (S)",
@@ -2672,6 +2673,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Takter" => "Takter",
         "🎻 Båge" => "🎻 Bue",
         "Tysta kanalen (M)" => "Dæmp kanalen (M)",
         "Solo: hör bara den här kanalen (S)" => "Solo: hør kun denne kanal (S)",
@@ -4927,6 +4929,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Takter" => "Takter",
         "🎻 Båge" => "🎻 Bue",
         "Tysta kanalen (M)" => "Demp kanalen (M)",
         "Solo: hör bara den här kanalen (S)" => "Solo: hør bare denne kanalen (S)",
@@ -7182,6 +7185,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Takter" => "Takte",
         "🎻 Båge" => "🎻 Bogen",
         "Tysta kanalen (M)" => "Kanal stummschalten (M)",
         "Solo: hör bara den här kanalen (S)" => "Solo: nur diesen Kanal hören (S)",
@@ -9437,6 +9441,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Takter" => "Compases",
         "🎻 Båge" => "🎻 Arco",
         "Tysta kanalen (M)" => "Silenciar el canal (M)",
         "Solo: hör bara den här kanalen (S)" => "Solo: escuchar solo este canal (S)",
@@ -11692,6 +11697,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Takter" => "Mesures",
         "🎻 Båge" => "🎻 Archet",
         "Tysta kanalen (M)" => "Couper le canal (M)",
         "Solo: hör bara den här kanalen (S)" => "Solo : n'écouter que ce canal (S)",

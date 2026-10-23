@@ -172,10 +172,27 @@ pub struct ChannelStrip {
 
 pub use crate::audio::tempo::MAX_STEPS;
 
+/// Antal steg som spelas i ett pattern: en takt är 16, och ett pattern är 1–4 takter.
+pub fn pattern_steps(bars: usize) -> usize {
+    bars.clamp(1, 4) * crate::audio::tempo::STEPS_PER_BAR
+}
+
+/// Nästa steg i pattern-läget, med omslag vid patternets längd (inte vid 16).
+pub fn next_pattern_step(step: usize, len: usize) -> usize {
+    if len == 0 {
+        0
+    } else {
+        (step + 1) % len
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Pattern {
     pub name: String,
     pub color: Color32,
+    /// 1–4 takter. Rutnätet rymmer alltid 64 steg, så en längdändring kastar aldrig noter —
+    /// stegen utanför längden ligger kvar och hörs igen om patternet blir längre.
+    pub bars: usize,
     pub channel_steps: Vec<[bool; MAX_STEPS]>,
     pub channel_notes: Vec<[u8; MAX_STEPS]>,
     pub piano_roll_grid: [[bool; MAX_STEPS]; 24],

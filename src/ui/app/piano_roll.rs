@@ -74,7 +74,7 @@ pub(crate) fn apply_current_rule(&mut self) {
 /// Efter en operation på rutnätet: kanalens steg och not följer rutnätets översta ton,
 /// och mönstret skrivs om — annars spelar kanalen kvar på den gamla raden.
 pub(crate) fn resync_grid_channels(&mut self) {
-    for step in 0..16 {
+    for step in 0..crate::audio::tempo::MAX_STEPS {
         let mut top = None;
         for row in 0..24 {
             if self.piano_roll_grid[row][step] {
@@ -106,7 +106,7 @@ impl SonixApp {
 pub fn transpose_active_pattern(&mut self, semitones: i8) {
     let mut new_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     for offset in 0..24 {
-        for step in 0..16 {
+        for step in 0..crate::audio::tempo::MAX_STEPS {
             if self.piano_roll_grid[offset][step] {
                 let target = offset as i8 + semitones;
                 if target >= 0 && target < 24 {
@@ -116,7 +116,7 @@ pub fn transpose_active_pattern(&mut self, semitones: i8) {
         }
     }
     self.piano_roll_grid = new_grid;
-    for step in 0..16 {
+    for step in 0..crate::audio::tempo::MAX_STEPS {
         for offset in 0..24 {
             if self.piano_roll_grid[offset][step] {
                 self.channels[6].notes[step] = 48 + offset as u8;
@@ -134,7 +134,7 @@ pub fn arpeggiate_pattern(&mut self) {
     let base_scale = self.get_scale_notes();
     let scale_len = base_scale.len().max(1);
     self.piano_roll_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
-    for step in 0..16 {
+    for step in 0..crate::audio::tempo::MAX_STEPS {
         let note_in_scale = base_scale[step % scale_len];
         let octave = (step / 4) % 2;
         let note_offset = (note_in_scale as usize + octave * 12).min(23);
@@ -829,6 +829,32 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 self.color_notes = !self.color_notes;
             }
 
+            // **Patternlängd** (1–4 takter). Stegen utanför längden ligger kvar i rutnätet,
+            // så en ändring kastar aldrig noter — de hörs bara när patternet blir längre.
+            let mut bars_pick = self
+                .patterns
+                .get(self.selected_pattern)
+                .map_or(1, |p| p.bars)
+                .clamp(1, 4);
+            ui.label(
+                egui::RichText::new(crate::i18n::t("Takter"))
+                    .size(Theme::FONT_S)
+                    .color(Theme::TEXT_MUTED),
+            );
+            egui::ComboBox::from_id_salt("pattern_bars")
+                .selected_text(format!("{bars_pick}"))
+                .width(48.0)
+                .show_ui(ui, |ui| {
+                    for b in 1..=4 {
+                        if ui.selectable_label(bars_pick == b, format!("{b}")).clicked() {
+                            bars_pick = b;
+                        }
+                    }
+                });
+            if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
+                p.bars = bars_pick;
+            }
+
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⬆ +Okt")).size(Theme::FONT_S)).fill(Theme::BORDER_DARK)).on_hover_text(crate::i18n::t("Transponera upp 1 oktav (+12 halvtoner)")).clicked() {
                 self.transpose_active_pattern(12);
             }
@@ -1089,8 +1115,16 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
         // Ctrl + +/− zoomar rutnätet; både radhöjd och cellbredd följer med, annars ser
         // en förstorad rad ut som en trasig tabell.
         let zoom = self.roll_zoom.clamp(0.6, 2.0);
+        // Fyra takter får plats i rutnätet; panels bredd räcker inte, så båda riktningarna
+        // rullar. Längden läses ur patternet, inte ur en inställning i pianorullen.
+        let bars = self
+            .patterns
+            .get(self.selected_pattern)
+            .map_or(1, |p| p.bars)
+            .clamp(1, 4);
+        let steps = crate::ui::app::state::pattern_steps(bars);
 
-        egui::ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
+        egui::ScrollArea::both().max_height(250.0).show(ui, |ui| {
             for note_offset in (0..semitones_count).rev() {
                 let midi_note = base_midi + note_offset as u8;
                 let note_val = midi_note % 12;
@@ -1128,8 +1162,8 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         key_text,
                     );
 
-                    // 16 Grid Columns
-                    for step in 0..16 {
+                    // 16 kolumner per takt, 1–4 takter
+                    for step in 0..steps {
                         let (cell_rect, response) = ui.allocate_exact_size(Vec2::new(26.0 * zoom, 16.0 * zoom), Sense::click());
                         let is_on = self.piano_roll_grid[note_offset][step];
                         let cell_key = base_midi + note_offset as u8;
@@ -1229,7 +1263,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(crate::i18n::t("VELOCITY")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
             ui.allocate_exact_size(Vec2::new(10.0, 24.0), Sense::hover());
-            for s in 0..16 {
+            for s in 0..steps {
                 let (v_rect, v_resp) = ui.allocate_exact_size(Vec2::new(26.0 * zoom, 24.0 * zoom), Sense::click_and_drag());
                 if v_resp.dragged() {
                     let dy = v_resp.drag_delta().y;
@@ -1352,7 +1386,7 @@ pub fn apply_drummer_generation(&mut self) {
             }
         }
         1 => {
-            for step in 0..16 {
+            for step in 0..crate::audio::tempo::MAX_STEPS {
                 if step % 4 == 2 {
                     hat_o[step] = true;
                 } else {
@@ -1361,7 +1395,7 @@ pub fn apply_drummer_generation(&mut self) {
             }
         }
         2 => {
-            for step in 0..16 {
+            for step in 0..crate::audio::tempo::MAX_STEPS {
                 if step % 2 == 0 {
                     hat_c[step] = true;
                 } else if comp > 0.4 {
@@ -1370,7 +1404,7 @@ pub fn apply_drummer_generation(&mut self) {
             }
         }
         _ => {
-            for step in 0..16 {
+            for step in 0..crate::audio::tempo::MAX_STEPS {
                 hat_c[step] = true;
             }
             if comp > 0.5 {
@@ -1706,7 +1740,7 @@ pub(crate) fn transpose_cells(
 ) -> usize {
     let mut next = *grid;
     for row in 0..24 {
-        for step in 0..16 {
+        for step in 0..crate::audio::tempo::MAX_STEPS {
             if sel[row][step] {
                 next[row][step] = false;
             }
@@ -1714,7 +1748,7 @@ pub(crate) fn transpose_cells(
     }
     let mut moved = 0;
     for row in 0..24 {
-        for step in 0..16 {
+        for step in 0..crate::audio::tempo::MAX_STEPS {
             if !sel[row][step] {
                 continue;
             }
@@ -1825,13 +1859,13 @@ pub struct RuleResult {
 pub fn apply_rule(
     grid: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24],
     sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
-    velocities: &mut [f32; 16],
+    velocities: &mut [f32; crate::audio::tempo::MAX_STEPS],
     rule: &Rule,
 ) -> RuleResult {
     let only_selection = count_selected(sel) > 0;
     let mut matched = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     for row in 0..24 {
-        for step in 0..16 {
+        for step in 0..crate::audio::tempo::MAX_STEPS {
             if !grid[row][step] || (only_selection && !sel[row][step]) {
                 continue;
             }
@@ -1849,7 +1883,7 @@ pub fn apply_rule(
         }
         RuleAction::SetVelocity(v) => {
             let mut n = 0;
-            for step in 0..16 {
+            for step in 0..crate::audio::tempo::MAX_STEPS {
                 let hit = (0..24).any(|row| matched[row][step]);
                 if hit && (velocities[step] - v).abs() > 1e-4 {
                     velocities[step] = v;
@@ -1868,11 +1902,11 @@ pub fn apply_rule(
 /// ordning: markera de svaga, sedan 🗑 eller transponera. Ingen egen raderingsväg.
 pub(crate) fn select_quiet(
     grid: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
-    velocities: &[f32; 16],
+    velocities: &[f32; crate::audio::tempo::MAX_STEPS],
     threshold: f32,
 ) -> [[bool; crate::ui::app::state::MAX_STEPS]; 24] {
     let mut sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
-    for step in 0..16 {
+    for step in 0..crate::audio::tempo::MAX_STEPS {
         if velocities[step] >= threshold {
             continue;
         }
@@ -1897,7 +1931,7 @@ pub fn snap_grid_to_chord(
     let mut next = *grid;
     let mut moved = 0;
     for row in 0..24 {
-        for step in 0..16 {
+        for step in 0..crate::audio::tempo::MAX_STEPS {
             if !grid[row][step] || (only_selection && !sel[row][step]) {
                 continue;
             }
@@ -1923,7 +1957,7 @@ pub fn snap_grid_to_chord(
 pub(crate) fn transpose_selection(sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24], rows: i32) -> [[bool; crate::ui::app::state::MAX_STEPS]; 24] {
     let mut next = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     for row in 0..24 {
-        for step in 0..16 {
+        for step in 0..crate::audio::tempo::MAX_STEPS {
             if !sel[row][step] {
                 continue;
             }
@@ -1944,7 +1978,7 @@ pub(crate) fn transpose_selection(sel: &[[bool; crate::ui::app::state::MAX_STEPS
 pub(crate) fn delete_cells(grid: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24], sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24]) -> usize {
     let mut removed = 0;
     for row in 0..24 {
-        for step in 0..16 {
+        for step in 0..crate::audio::tempo::MAX_STEPS {
             if sel[row][step] && grid[row][step] {
                 grid[row][step] = false;
                 removed += 1;
@@ -1989,7 +2023,7 @@ mod selection_tests {
         grid[5][0] = true; // starkt steg
         grid[6][1] = true; // svagt steg
         grid[7][1] = true;
-        let mut vel = [0.9f32; 16];
+        let mut vel = [0.9f32; crate::audio::tempo::MAX_STEPS];
         vel[1] = 0.2;
 
         let sel = select_quiet(&grid, &vel, 0.3);
@@ -2023,7 +2057,7 @@ mod selection_tests {
     fn a_rule_matches_by_key_and_only_touches_the_selection() {
         let mut grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         let mut sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
-        let mut vel = [0.8f32; 16];
+        let mut vel = [0.8f32; crate::audio::tempo::MAX_STEPS];
         grid[12][0] = true; // C3 + 12
         grid[12][2] = true;
         grid[5][1] = true; // annan tonhöjd
@@ -2046,7 +2080,7 @@ mod selection_tests {
     fn a_rule_can_set_the_velocity_of_matching_steps_and_transpose() {
         let mut grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         let sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
-        let mut vel = [0.9f32; 16];
+        let mut vel = [0.9f32; crate::audio::tempo::MAX_STEPS];
         vel[3] = 0.2;
         grid[10][3] = true;
         grid[10][4] = true;

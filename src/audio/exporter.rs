@@ -168,7 +168,7 @@ pub struct RenderSpec {
     pub tracks: Vec<TrackSnap>,
     /// Audio stems parallel to `tracks` (empty = no audio on that index).
     pub timeline: Vec<TrackAudioSnap>,
-    pub velocities: [f32; 16],
+    pub velocities: [f32; crate::audio::tempo::MAX_STEPS],
     /// When exporting a single stem, only this track index triggers patterns
     /// and only its audio stem is audible. `None` = full mix (live mute/solo
     /// semantics are respected).
@@ -1072,7 +1072,7 @@ mod tests {
             patterns: vec![],
             tracks: vec![],
             timeline: vec![],
-            velocities: [0.85; 16],
+            velocities: [0.85; crate::audio::tempo::MAX_STEPS],
             solo_track: None,
             tail_secs: 0.1,
             bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
@@ -1127,7 +1127,7 @@ mod tests {
                 solo: false,
             }],
             timeline: vec![],
-            velocities: [1.0; 16],
+            velocities: [1.0; crate::audio::tempo::MAX_STEPS],
             solo_track: None,
             tail_secs: 0.05,
             bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
@@ -2305,7 +2305,7 @@ mod stem_wav_tests {
             patterns: Vec::new(),
             tracks: vec![track.clone(), track],
             timeline: vec![stem(0, 100.0), stem(1, 1000.0)],
-            velocities: [1.0; 16],
+            velocities: [1.0; crate::audio::tempo::MAX_STEPS],
             solo_track: solo,
             tail_secs: 0.0,
             bus_volume: [1.0; crate::audio::synth::NUM_BUSES],

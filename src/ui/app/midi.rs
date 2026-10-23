@@ -444,6 +444,7 @@ pub(crate) fn place_notes_into_patterns(
             self.patterns.push(Pattern {
                 name: crate::tstatus!("{} ⋅ takt {}", name, bar + 1),
                 color,
+                bars: 1,
                 channel_steps: Vec::new(),
                 channel_notes: Vec::new(),
                 piano_roll_grid: [[false; crate::ui::app::state::MAX_STEPS]; 24],

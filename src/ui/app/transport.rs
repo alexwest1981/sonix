@@ -358,7 +358,7 @@ pub(crate) fn advance_sequencer(&mut self) {
         self.song_time += dur.as_secs_f32();
 
         if self.pattern_mode {
-            self.current_step = (self.current_step + 1) % 16;
+            self.current_step = crate::ui::app::state::next_pattern_step(self.current_step, self.pattern_len());
             // **Follow action:** en takt är 16 steg, så varvet vid 0 är taktgränsen. Åtgärden
             // prövas en gång per takt — inte per steg — och bara när det finns en.
             if self.current_step == 0 {
@@ -448,6 +448,9 @@ pub(crate) fn advance_sequencer(&mut self) {
                 }
             }
             self.current_step = self.song_step_in_bar;
+            // shortcut: ett flertaktsmönster spelas bara sin **första** takt i arrangemanget,
+            // eftersom ett block är en takt. Spela flertaktsmönster i pattern-läget tills
+            // blocken får längd (PATTERN-LENGTH.md, steg 3).
             self.trigger_song_step(self.song_bar, self.song_step_in_bar);
         }
 
@@ -1442,12 +1445,19 @@ pub(crate) fn strum_take(&mut self, spread_steps: f32, down: bool) {
 }
 
 impl SonixApp {
+/// Längden på det spelande patternet i steg: 1–4 takter × 16.
+fn pattern_len(&self) -> usize {
+    crate::ui::app::state::pattern_steps(
+        self.patterns.get(self.selected_pattern).map_or(1, |p| p.bars),
+    )
+}
+
 /// Writes a held MIDI note into the Piano Roll grid at the current step.
 fn record_midi_note_at_step(&mut self, note: u8) {
     const BASE_MIDI: u8 = 48;
     const ROWS: usize = 24;
     if let Some(off) = crate::audio::note_to_roll_offset(note, BASE_MIDI, ROWS) {
-        let step = self.current_step.min(15);
+        let step = self.current_step.min(self.pattern_len() - 1);
         self.piano_roll_grid[off][step] = true;
         self.channels[6].steps[step] = true;
         self.channels[6].notes[step] = BASE_MIDI + off as u8;

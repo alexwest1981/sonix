@@ -41,6 +41,7 @@ use crate::ui::theme::Theme;
         Pattern {
             name: "Testpattern".to_string(),
             color: Color32::WHITE,
+            bars: 1,
             channel_steps: vec![[false; crate::audio::tempo::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::audio::tempo::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -515,7 +516,7 @@ use crate::ui::theme::Theme;
             vca_solo: [false; crate::audio::synth::NUM_VCAS],
             patterns: vec![pattern_to_saved(&pat)],
             selected_pattern: 0,
-            step_velocities: Some(step_velocities),
+            step_velocities: Some(step_velocities.to_vec()),
             channels: vec![channel_to_saved(&ch)],
             midi_map: Default::default(),
         };
@@ -580,7 +581,7 @@ use crate::ui::theme::Theme;
         let mut app_patterns = vec![test_pattern(), test_pattern()];
         let mut app_channels = vec![test_channel(), test_channel()];
         let mut app_selected = 0usize;
-        let mut app_velocities = [1.0f32; 16];
+        let mut app_velocities = [1.0f32; crate::audio::tempo::MAX_STEPS];
 
         let mut saved_pattern = test_pattern();
         saved_pattern.name = "Beat".to_string();
@@ -598,7 +599,7 @@ use crate::ui::theme::Theme;
             // Filen pekar på ett patternnummer som inte finns här: ska klämmas
             // till ett giltigt index i stället för att lämna appen utanför listan.
             selected_pattern: 99,
-            step_velocities: Some(velocities),
+            step_velocities: Some(velocities.to_vec()),
             channels: &[channel_to_saved(&saved_channel)],
         };
         restore_saved_music(
@@ -629,7 +630,7 @@ use crate::ui::theme::Theme;
         let mut app_channels = vec![test_channel()];
         app_channels[0].name = "Min kanal".to_string();
         let mut app_selected = 0usize;
-        let mut app_velocities = [0.5f32; 16];
+        let mut app_velocities = [0.5f32; crate::audio::tempo::MAX_STEPS];
 
         let saved = SavedMusic {
             patterns: &[],
@@ -1969,6 +1970,42 @@ use crate::ui::theme::Theme;
         );
     }
 
+    /// **Patternlängden är 1–4 takter och följer med filen.** Längden är bara en siffra:
+    /// rutnätet rymmer 64 steg, så steg 16–31 finns kvar även när patternet är en takt.
+    #[test]
+    fn pattern_bars_give_the_length_and_survive_the_file() {
+        assert_eq!(super::state::pattern_steps(1), 16);
+        assert_eq!(super::state::pattern_steps(2), 32);
+        assert_eq!(super::state::pattern_steps(4), 64);
+        assert_eq!(super::state::pattern_steps(9), 64, "fler än fyra takter kläms");
+        assert_eq!(super::state::pattern_steps(0), 16, "noll takter blir en");
+        // Slingan vänder vid patternets längd: 32 steg betyder steg 31 → 0, inte 15 → 0.
+        assert_eq!(super::state::next_pattern_step(15, 32), 16);
+        assert_eq!(super::state::next_pattern_step(31, 32), 0);
+        assert_eq!(super::state::next_pattern_step(15, 16), 0);
+
+        let mut pattern = super::state::Pattern {
+            name: "Två takter".to_string(),
+            color: eframe::egui::Color32::WHITE,
+            bars: 2,
+            channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
+            channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
+            piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
+            take: crate::midi_take::Take::new(),
+        };
+        // En ton i takt 2 ska överleva både sparandet och läsningen.
+        pattern.piano_roll_grid[3][20] = true;
+
+        let saved = super::project::pattern_to_saved(&pattern);
+        let json = serde_json::to_string(&saved).unwrap();
+        let back: super::project::SavedPattern = serde_json::from_str(&json).unwrap();
+        let loaded = super::project::saved_to_pattern(&back);
+
+        assert_eq!(loaded.bars, 2);
+        assert_eq!(super::state::pattern_steps(loaded.bars), 32);
+        assert!(loaded.piano_roll_grid[3][20], "tonen i takt 2 ligger kvar");
+    }
+
     /// **Sparformatet är framåtkompatibelt**: ett projekt från 16-stegsrutnätet läses in i
     /// det bredare rutnätet (raderna fylls ut med nollor i stället för att filen fallerar),
     /// och det som låg i stegen är kvar på samma plats.
@@ -1977,6 +2014,7 @@ use crate::ui::theme::Theme;
         let saved = super::project::SavedPattern {
             name: "Gammal".to_string(),
             color: [10, 20, 30, 255],
+            bars: 1,
             channel_steps: vec![vec![true; 16]],
             channel_notes: vec![vec![60; 16]],
             piano_roll_grid: vec![vec![false; 16]; 24],

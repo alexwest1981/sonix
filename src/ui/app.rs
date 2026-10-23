@@ -281,7 +281,7 @@ pub struct SonixApp {
     pub piano_roll_snap_to_scale: bool,
     pub piano_roll_poly_mode: bool,
     pub chord_stamp: usize,
-    pub step_velocities: [f32; 16],
+    pub step_velocities: [f32; crate::audio::tempo::MAX_STEPS],
     /// Nivåerna för den additiva oscillatorns övertoner.
     pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
     /// Suboscillatorns nivå, 0–1.
@@ -730,6 +730,7 @@ impl SonixApp {
         let pat1 = Pattern {
             name: "Pat 1: Beats & Groove".to_string(),
             color: Theme::FL_ORANGE,
+            bars: 1,
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::ui::app::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -739,6 +740,7 @@ impl SonixApp {
         let pat2 = Pattern {
             name: "Pat 2: Lead & Synthesizer".to_string(),
             color: Theme::FL_CYAN,
+            bars: 1,
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::ui::app::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -748,6 +750,7 @@ impl SonixApp {
         let pat3 = Pattern {
             name: "Pat 3: Synth Arp".to_string(),
             color: Theme::FL_GREEN,
+            bars: 1,
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::ui::app::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -757,6 +760,7 @@ impl SonixApp {
         let pat4 = Pattern {
             name: "Pat 4: Deep Bass".to_string(),
             color: Color32::from_rgb(255, 80, 140),
+            bars: 1,
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::ui::app::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -905,7 +909,7 @@ impl SonixApp {
             piano_roll_snap_to_scale: false,
             piano_roll_poly_mode: false,
             chord_stamp: 0,
-            step_velocities: [0.85; 16],
+            step_velocities: [0.85; crate::audio::tempo::MAX_STEPS],
             piano_roll_quiet_threshold: 0.3,
             harmonics: crate::audio::synth::HARMONICS_DEFAULT,
             sub_level: 0.0,

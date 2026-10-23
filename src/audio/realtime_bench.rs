@@ -208,7 +208,7 @@ pub fn reference_spec() -> RenderSpec {
             TrackSnap { role: TrackRole::Bass, clips, volume: 1.0, muted: false, solo: false },
         ],
         timeline: Vec::new(),
-        velocities: [0.85; 16],
+        velocities: [0.85; crate::audio::tempo::MAX_STEPS],
         solo_track: None,
         tail_secs: 0.0,
         bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
