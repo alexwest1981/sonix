@@ -1294,29 +1294,29 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 Sense::click_and_drag(),
             );
             let painter = ui.painter_at(rect);
-            painter.rect_filled(rect, Rounding::same(2.0), Theme::PANEL_BG);
+            painter.rect_filled(rect, Rounding::same(2.0), Theme::PANEL);
             let mid = rect.center().y;
             let half = rect.height() * 0.45;
             for s in (0..=steps).step_by(4) {
                 let x = rect.min.x + s as f32 * cell_w;
                 painter.line_segment(
                     [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
-                    Stroke::new(0.5_f32, Theme::BORDER_DARK),
+                    Stroke::new(0.5_f32, Theme::BORDER),
                 );
             }
             painter.line_segment(
                 [Pos2::new(rect.min.x, mid), Pos2::new(rect.max.x, mid)],
-                Stroke::new(1.0_f32, Color32::from_rgb(60, 70, 90)),
+                Stroke::new(1.0_f32, Theme::BORDER_SOFT),
             );
 
             let to_y = |semis: f32| mid - (semis.clamp(-48.0, 48.0) / 48.0) * half;
             let from_y = |y: f32| ((mid - y) / half * 48.0).clamp(-48.0, 48.0);
             let bend_color = |ch: u8| match ch {
-                0 => Color32::from_rgb(255, 255, 255),
-                1 => Theme::FL_CYAN,
-                2 => Color32::from_rgb(255, 170, 60),
-                3 => Color32::from_rgb(160, 120, 255),
-                _ => Color32::from_rgb(120, 220, 140),
+                0 => Theme::TEXT,
+                1 => Theme::CYAN,
+                2 => Theme::AMBER,
+                3 => Theme::PURPLE,
+                _ => Theme::GREEN,
             };
 
             let pat_idx = self.selected_pattern;
