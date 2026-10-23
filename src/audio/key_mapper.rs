@@ -27,6 +27,14 @@ pub struct MapZone {
     pub channel: Option<u8>,
     /// Anslagets multiplikator (1,0 = orört).
     pub velocity_scale: f32,
+    /// Kurvan för anslaget: 1,0 = linjärt, under 1 = mjukare (svaga slag starkare),
+    /// över 1 = hårdare. FL:s Level Scaler har samma ratt.
+    #[serde(default = "linear_curve")]
+    pub curve: f32,
+}
+
+fn linear_curve() -> f32 {
+    1.0
 }
 
 impl Default for MapZone {
@@ -38,6 +46,7 @@ impl Default for MapZone {
             transpose: 0,
             channel: None,
             velocity_scale: 1.0,
+            curve: 1.0,
         }
     }
 }
@@ -71,7 +80,12 @@ impl KeyMap {
                 continue;
             }
             let transposed = (note as i16 + zone.transpose as i16).clamp(0, 127) as u8;
-            let scaled = (velocity as f32 * zone.velocity_scale.clamp(0.0, 2.0))
+            // Kurvan läggs på det normaliserade anslaget, inte på 0–127: annars blir
+            // 1,0-kurvan inte identitet.
+            let shaped = (velocity as f32 / 127.0)
+                .powf(zone.curve.clamp(0.2, 5.0))
+                * 127.0;
+            let scaled = (shaped * zone.velocity_scale.clamp(0.0, 2.0))
                 .round()
                 .clamp(1.0, 127.0) as u8;
             return (transposed, scaled, zone.channel.unwrap_or(channel));
@@ -138,6 +152,27 @@ mod tests {
         assert_eq!(map.apply(60, 100, 0).1, 50);
         // 1 * 0,5 rundas till 1 — aldrig 0, som hade varit note-off.
         assert_eq!(map.apply(60, 1, 0).1, 1);
+    }
+
+    #[test]
+    fn the_curve_makes_soft_notes_harder_without_moving_the_loud_ones() {
+        let mut soft = MapZone {
+            active: true,
+            low: 0,
+            high: 127,
+            curve: 0.5,
+            ..MapZone::default()
+        };
+        let map = map_with(soft);
+        // (64/127)^0,5 ≈ 0,71 → 90, alltså starkare än 64.
+        assert_eq!(map.apply(60, 64, 0).1, 90);
+        // Fullt anslag ligger kvar på 127.
+        assert_eq!(map.apply(60, 127, 0).1, 127);
+
+        // Över 1 trycker ner de svaga slagen.
+        soft.curve = 2.0;
+        let hard = map_with(soft);
+        assert_eq!(hard.apply(60, 64, 0).1, 32);
     }
 
     #[test]

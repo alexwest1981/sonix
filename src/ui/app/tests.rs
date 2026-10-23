@@ -2007,6 +2007,36 @@ use crate::ui::theme::Theme;
         assert_eq!(old.midi_map.apply(40, 80, 1), (40, 80, 1));
     }
 
+    /// Fraslyssningen läser samma fil som infogningen — och noterna kommer ut i appens
+    /// 480 PPQ med anslaget som 0–1.
+    #[test]
+    fn a_midi_phrase_is_read_for_listening_at_the_apps_ppq() {
+        use crate::audio::smf::{write_midi, MidiNote, MidiTrack};
+        let bytes = write_midi(
+            120.0,
+            &[MidiTrack {
+                name: "Fras".to_string(),
+                notes: vec![
+                    MidiNote { start: 0, length: 120, channel: 0, key: 60, velocity: 127 },
+                    MidiNote { start: 480, length: 240, channel: 0, key: 67, velocity: 64 },
+                ],
+            }],
+        );
+        let dir = std::env::temp_dir().join("sonix_preview_probe");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("fras.mid");
+        std::fs::write(&path, &bytes).unwrap();
+
+        let notes = super::SonixApp::preview_notes_from_file(&path).unwrap();
+        assert_eq!(notes.len(), 2);
+        assert_eq!((notes[0].start, notes[0].length, notes[0].key), (0, 120, 60));
+        assert!((notes[0].velocity - 1.0).abs() < 0.01);
+        assert_eq!((notes[1].start, notes[1].length, notes[1].key), (480, 240, 67));
+        assert!((notes[1].velocity - 0.503).abs() < 0.01);
+
+        std::fs::remove_file(&path).ok();
+    }
+
     /// Beviset för att hålet i 6.3 är stängt: en låt på fyra takter skrivs ut,
     /// läses tillbaka och delas upp per takt — och **varje not finns kvar i rätt
     /// takt**. Före det här var importen en första-takt-import som räknade in

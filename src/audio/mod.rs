@@ -19,6 +19,7 @@ pub mod loudness;
 pub mod macro_chain;
 pub mod master_fx;
 pub mod metadata;
+pub mod phrase_preview;
 pub mod asd;
 pub mod tuning;
 pub mod video;

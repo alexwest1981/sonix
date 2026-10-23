@@ -1145,6 +1145,99 @@ pub(crate) fn load_phrase_bank(&mut self) {
     };
 }
 
+/// Läser en fras (`.fsc` eller `.mid`) till noter för lyssning, normaliserade till 480 PPQ.
+pub(crate) fn preview_notes_from_file(
+    path: &std::path::Path,
+) -> Result<Vec<crate::audio::phrase_preview::PreviewNote>, String> {
+    use crate::audio::phrase_preview::PreviewNote;
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("fsc"))
+    {
+        let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+        let score = crate::audio::fsc::parse_fsc(&bytes)?;
+        let notes = crate::audio::fsc::to_midi_notes(&score, crate::audio::smf::PPQ);
+        return Ok(notes
+            .into_iter()
+            .map(|n| PreviewNote {
+                start: n.start,
+                length: n.length,
+                key: n.key,
+                velocity: n.velocity as f32 / 127.0,
+            })
+            .collect());
+    }
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    let parsed = crate::audio::smf::parse_midi(&bytes)?;
+    // Filens egen PPQ kan vara 96 eller 960; lyssningen räknar i 480 som resten av appen.
+    let scale = |tick: u32| (tick as u64 * crate::audio::smf::PPQ as u64 / parsed.ppq.max(1) as u64) as u32;
+    Ok(parsed
+        .notes_with_track()
+        .into_iter()
+        .map(|(_, n)| PreviewNote {
+            start: scale(n.start),
+            length: scale(n.length).max(1),
+            key: n.key,
+            velocity: n.velocity as f32 / 127.0,
+        })
+        .collect())
+}
+
+/// Spelar frasen en gång — infogar ingenting.
+    pub(crate) fn preview_phrase(&mut self, path: &std::path::Path) {
+        self.stop_phrase_preview();
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        match Self::preview_notes_from_file(path) {
+            Ok(notes) if !notes.is_empty() => {
+                let count = notes.len();
+                self.phrase_preview = Some(crate::audio::phrase_preview::PhrasePreview::new(notes));
+                self.status_message = crate::tstatus!("▶ '{}' ({} noter)", name, count);
+            }
+            Ok(_) => {
+                self.status_message = crate::tstatus!("⚠ '{}' innehöll inga noter", name);
+            }
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte läsa '{}': {}", name, e);
+            }
+        }
+    }
+
+    /// Tystar lyssningen och släpper allt som klingar.
+    pub(crate) fn stop_phrase_preview(&mut self) {
+        if let Some(preview) = self.phrase_preview.take() {
+            for note in preview.sounding() {
+                self.release_note(note);
+            }
+        }
+    }
+
+    /// En bildruta av lyssningen: noter som ska tändas eller släckas just nu.
+    ///
+    /// Tiden räknas från `Instant` och omvandlas till frasens tick med projektets tempo —
+    /// samma tick som filen skrevs i, alltså hörs frasen i det tempo den infogas i.
+    pub(crate) fn advance_phrase_preview(&mut self) {
+        let bpm = self.bpm;
+        let Some(preview) = self.phrase_preview.as_mut() else {
+            return;
+        };
+        let tick =
+            (preview.elapsed_ms() * bpm * crate::audio::smf::PPQ as f32 / 60_000.0) as u32;
+        let step = preview.step(tick);
+        let finished = preview.finished(tick);
+        for note in step.stop {
+            self.release_note(note);
+        }
+        for (note, velocity) in step.start {
+            self.play_note_velocity(note, velocity);
+        }
+        if finished {
+            self.phrase_preview = None;
+        }
+    }
+
 /// Infogar en fras i det valda patternet. En `.fsc` (FL:s egen frasbank) läses av
 /// `audio::fsc` och går samma väg som MIDI-noterna; allt annat läses som `.mid`.
 pub(crate) fn insert_phrase(&mut self, path: &std::path::Path) {

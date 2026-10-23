@@ -253,7 +253,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | VFX Envelope | 1 | ✅ | `ModSource::Adsr` — attack/decay/sustain/release som modulationskälla, med `ModMatrix::note_off` kopplad till `AudioCommand::NoteOff`. Prov: 0,50 → 0,89 → 0,50 (sustain), och under 0,05 efter not-av |
 | VFX Key Mapper | 1 | ◐ | `audio::key_mapper` — en zon transponerar noten (och kan byta kanal/skala anslaget); första träffen vinner. Kvar: not → *parameter* som i FL |
 | VFX Keyboard Splitter | 1 | ✅ | `audio::key_mapper` — fyra zoner över klaviaturet, varje zon kan skicka noten till egen MIDI-kanal (1–16), transponera och skala anslaget. Följer med projektfilen. Prov: zon 36–47 → kanal 2, +12, ×0,75 ger (52, 60, 2) |
-| VFX Level Scaler | 1 | ◐ | anslaget skalas per zon (`velocity_scale`, 0–2×, klämt till 1–127 så en svag not aldrig blir note-off). Kvar: kurvan |
+| VFX Level Scaler | 1 | ✅ | anslaget skalas per zon (`velocity_scale` 0–2×) **och** formas av en kurva (0,2–5: under 1 lyfter svaga slag, över 1 trycker ner dem), klämt till 1–127 så en svag not aldrig blir note-off. Prov: 64 med kurva 0,5 → 90; med kurva 2,0 → 32 |
 | VFX Script | 1 | ✗ | skriptstyrd MIDI-bearbetning |
 | VFX Sequencer | 1 | ◐ | SchedulesChord (ackord/arpeggio) + dice-generator |
 | Vintage Chorus | 1 | ◐ | samma `ModDelay`; "vintage" är FL:s egen röstning, inte en egen motor |

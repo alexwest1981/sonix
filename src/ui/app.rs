@@ -428,6 +428,8 @@ pub struct SonixApp {
     pub midi_input: Option<MidiKeyboardInput>,
     /// MIDI-kartan: FL:s splitter, key mapper och level scaler i en tabell.
     pub midi_map: crate::audio::key_mapper::KeyMap,
+    /// Fraslyssning: klingar en fras innan den infogas.
+    pub phrase_preview: Option<crate::audio::phrase_preview::PhrasePreview>,
     /// **MIDI ut** (Sprint 1, punkt 4): en öppen utgång, om någon är vald.
     pub midi_out: Option<crate::audio::midi_output::MidiOut>,
     pub midi_auto_connect_attempted: bool,
@@ -993,6 +995,7 @@ impl SonixApp {
             osc_server: None,
             midi_input: None,
             midi_map: crate::audio::key_mapper::KeyMap::default(),
+            phrase_preview: None,
             midi_out: None,
             midi_auto_connect_attempted: false,
             midi_keyboard_connected: false,
@@ -1156,6 +1159,8 @@ impl eframe::App for SonixApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
 
         self.poll_background_work(ctx);
+
+        self.advance_phrase_preview();
 
         self.tick_frame(ctx);
 

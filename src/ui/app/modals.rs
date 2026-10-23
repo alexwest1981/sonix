@@ -362,6 +362,13 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                                     .speed(0.01)
                                     .fixed_decimals(2),
                             );
+                            ui.label(crate::i18n::t("Kurva"));
+                            ui.add(
+                                egui::DragValue::new(&mut zone.curve)
+                                    .range(0.2..=5.0)
+                                    .speed(0.01)
+                                    .fixed_decimals(2),
+                            );
                         });
                     }
                     ui.label(
@@ -3465,6 +3472,7 @@ impl SonixApp {
         let mut open = self.show_phrase_bank;
         let mut pick = false;
         let mut chosen: Option<std::path::PathBuf> = None;
+        let mut preview: Option<std::path::PathBuf> = None;
         egui::Window::new(crate::i18n::t("🎼 Frasbank"))
             .open(&mut open)
             .collapsible(false)
@@ -3498,22 +3506,39 @@ impl SonixApp {
                         .max_height(340.0)
                         .show(ui, |ui| {
                             for (name, path) in &self.phrases {
-                                if ui
-                                    .selectable_label(false, name)
-                                    .on_hover_text(path.display().to_string())
-                                    .clicked()
-                                {
-                                    chosen = Some(path.clone());
-                                }
+                                ui.horizontal(|ui| {
+                                    // Lyssna först, infoga sedan: ▶ rör inte patternet.
+                                    if ui
+                                        .small_button("▶")
+                                        .on_hover_text(crate::i18n::t("Lyssna på frasen"))
+                                        .clicked()
+                                    {
+                                        preview = Some(path.clone());
+                                    }
+                                    if ui
+                                        .selectable_label(false, name)
+                                        .on_hover_text(path.display().to_string())
+                                        .clicked()
+                                    {
+                                        chosen = Some(path.clone());
+                                    }
+                                });
                             }
                         });
                 }
             });
         self.show_phrase_bank = open;
+        if !open {
+            self.stop_phrase_preview();
+        }
         if pick {
             self.load_phrase_bank();
         }
+        if let Some(path) = preview {
+            self.preview_phrase(&path);
+        }
         if let Some(path) = chosen {
+            self.stop_phrase_preview();
             self.insert_phrase(&path);
         }
     }

@@ -376,6 +376,11 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kurva" => "Curve",
+        "Lyssna på frasen" => "Preview the phrase",
+        "▶ '{}' ({} noter)" => "▶ '{}' ({} notes)",
+        "⚠ '{}' innehöll inga noter" => "⚠ '{}' contained no notes",
+        "⚠ Kunde inte läsa '{}': {}" => "⚠ Could not read '{}': {}",
         "🎛 MIDI-KARTA (splitter)" => "🎛 MIDI MAP (splitter)",
         "Aktivera zoner" => "Enable zones",
         "Transp." => "Transp.",
@@ -2640,6 +2645,11 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kurva" => "Kurve",
+        "Lyssna på frasen" => "Lyt til frasen",
+        "▶ '{}' ({} noter)" => "▶ '{}' ({} noder)",
+        "⚠ '{}' innehöll inga noter" => "⚠ '{}' indeholdt ingen noder",
+        "⚠ Kunde inte läsa '{}': {}" => "⚠ Kunne ikke læse '{}': {}",
         "🎛 MIDI-KARTA (splitter)" => "🎛 MIDI-KORT (splitter)",
         "Aktivera zoner" => "Aktivér zoner",
         "Transp." => "Transp.",
@@ -4863,6 +4873,11 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kurva" => "Kurve",
+        "Lyssna på frasen" => "Lytt til frasen",
+        "▶ '{}' ({} noter)" => "▶ '{}' ({} noter)",
+        "⚠ '{}' innehöll inga noter" => "⚠ '{}' inneholdt ingen noter",
+        "⚠ Kunde inte läsa '{}': {}" => "⚠ Kunne ikke lese '{}': {}",
         "🎛 MIDI-KARTA (splitter)" => "🎛 MIDI-KART (splitter)",
         "Aktivera zoner" => "Aktiver soner",
         "Transp." => "Transp.",
@@ -7086,6 +7101,11 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kurva" => "Kurve",
+        "Lyssna på frasen" => "Phrase anhören",
+        "▶ '{}' ({} noter)" => "▶ '{}' ({} Noten)",
+        "⚠ '{}' innehöll inga noter" => "⚠ '{}' enthielt keine Noten",
+        "⚠ Kunde inte läsa '{}': {}" => "⚠ '{}' konnte nicht gelesen werden: {}",
         "🎛 MIDI-KARTA (splitter)" => "🎛 MIDI-KARTE (Splitter)",
         "Aktivera zoner" => "Zonen aktivieren",
         "Transp." => "Transp.",
@@ -9309,6 +9329,11 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kurva" => "Curva",
+        "Lyssna på frasen" => "Escuchar la frase",
+        "▶ '{}' ({} noter)" => "▶ '{}' ({} notas)",
+        "⚠ '{}' innehöll inga noter" => "⚠ '{}' no contenía notas",
+        "⚠ Kunde inte läsa '{}': {}" => "⚠ No se pudo leer '{}': {}",
         "🎛 MIDI-KARTA (splitter)" => "🎛 MAPA MIDI (splitter)",
         "Aktivera zoner" => "Activar zonas",
         "Transp." => "Transp.",
@@ -11532,6 +11557,11 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kurva" => "Courbe",
+        "Lyssna på frasen" => "Écouter la phrase",
+        "▶ '{}' ({} noter)" => "▶ '{}' ({} notes)",
+        "⚠ '{}' innehöll inga noter" => "⚠ '{}' ne contenait aucune note",
+        "⚠ Kunde inte läsa '{}': {}" => "⚠ Impossible de lire '{}' : {}",
         "🎛 MIDI-KARTA (splitter)" => "🎛 CARTE MIDI (splitter)",
         "Aktivera zoner" => "Activer les zones",
         "Transp." => "Transp.",
