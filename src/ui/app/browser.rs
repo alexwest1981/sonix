@@ -557,7 +557,11 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                         continue;
                     }
                     ui.horizontal(|ui| {
-                        if ui.button(crate::i18n::t("▶")).clicked() {
+                        if ui
+                            .button(crate::i18n::t("▶"))
+                            .on_hover_text(crate::i18n::t("Lyssna på preset med en testton"))
+                            .clicked()
+                        {
                             self.current_preset = p;
                             self.apply_preset_settings(p);
                             let _ = self.engine.send_command(AudioCommand::LoadPreset(p));
@@ -613,7 +617,11 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                         continue;
                     }
                     ui.horizontal(|ui| {
-                        if ui.button(crate::i18n::t("▶")).clicked() {
+                        if ui
+                            .button(crate::i18n::t("▶"))
+                            .on_hover_text(crate::i18n::t("Lyssna på samplet"))
+                            .clicked()
+                        {
                             let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq: midi_to_freq(note), velocity: 0.9, channel: 0 });
                         }
                         ui.label(name);

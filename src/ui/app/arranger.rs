@@ -670,7 +670,7 @@ impl SonixApp {
                         ui.group(|ui| {
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(clip_label).size(Theme::FONT_S).color(Color32::WHITE));
-                                if ui.add(egui::Button::new(crate::i18n::t("✕")).small().fill(fill)).clicked() {
+                                if ui.add(egui::Button::new(crate::i18n::t("✕")).small().fill(fill)).on_hover_text(crate::i18n::t("Rensa textrutan")).clicked() {
                                     clear_context = true;
                                 }
                             });
@@ -704,7 +704,7 @@ impl SonixApp {
 
                     // Submit / Generate Button (↑)
                     let gen_bg = if self.suno_is_generating { Color32::RED } else { Theme::FL_GREEN };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⬆ ")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(gen_bg)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⬆ ")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(gen_bg)).on_hover_text(crate::i18n::t("Skicka prompten och generera")).clicked() {
                         self.trigger_suno_ai_generation();
                     }
                 });

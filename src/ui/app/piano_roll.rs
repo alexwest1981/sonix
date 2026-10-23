@@ -732,7 +732,11 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                                 .show_value(false)
                                 .fixed_decimals(2),
                         );
-                        if ui.small_button("✖").clicked() {
+                        if ui
+                            .small_button("✖")
+                            .on_hover_text(crate::i18n::t("Ta bort mallen från poolen"))
+                            .clicked()
+                        {
                             remove = Some(i);
                         }
                     });

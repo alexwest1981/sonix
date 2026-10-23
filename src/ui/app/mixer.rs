@@ -1027,11 +1027,11 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
             ui.horizontal(|ui| {
                 // Mute & Solo LEDs
                 let mute_color = if ch.muted { Color32::from_rgb(50, 20, 20) } else { Theme::FL_GREEN };
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("M")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(mute_color).min_size(Vec2::new(18.0, 18.0))).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("M")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(mute_color).min_size(Vec2::new(18.0, 18.0))).on_hover_text(crate::i18n::t("Tysta kanalen (M)")).clicked() {
                     ch.muted = !ch.muted;
                 }
                 let solo_color = if ch.solo { Theme::FL_ORANGE } else { Color32::from_rgb(40, 35, 25) };
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("S")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(solo_color).min_size(Vec2::new(18.0, 18.0))).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("S")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(solo_color).min_size(Vec2::new(18.0, 18.0))).on_hover_text(crate::i18n::t("Solo: hör bara den här kanalen (S)")).clicked() {
                     ch.solo = !ch.solo;
                 }
 
@@ -1364,13 +1364,16 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                             // Quick Slicer Presets
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("Chop Snabbval:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
-                                if ui.button(crate::i18n::t("Fullt")).clicked() { ch.sample_start = 0.0; ch.sample_end = 1.0; }
-                                if ui.button(crate::i18n::t("1/2")).clicked() { ch.sample_start = 0.0; ch.sample_end = 0.5; }
-                                if ui.button(crate::i18n::t("2/2")).clicked() { ch.sample_start = 0.5; ch.sample_end = 1.0; }
-                                if ui.button(crate::i18n::t("1/4")).clicked() { ch.sample_start = 0.0; ch.sample_end = 0.25; }
-                                if ui.button(crate::i18n::t("2/4")).clicked() { ch.sample_start = 0.25; ch.sample_end = 0.5; }
-                                if ui.button(crate::i18n::t("3/4")).clicked() { ch.sample_start = 0.50; ch.sample_end = 0.75; }
-                                if ui.button(crate::i18n::t("4/4")).clicked() { ch.sample_start = 0.75; ch.sample_end = 1.0; }
+                                // Samma ledtråd på alla sju: knapparna väljer **vilken del** av
+                                // samplet som spelas, och etiketten säger redan vilken.
+                                let chop_hint = crate::i18n::t("Spela bara den här delen av samplet");
+                                if ui.button(crate::i18n::t("Fullt")).on_hover_text(chop_hint).clicked() { ch.sample_start = 0.0; ch.sample_end = 1.0; }
+                                if ui.button(crate::i18n::t("1/2")).on_hover_text(chop_hint).clicked() { ch.sample_start = 0.0; ch.sample_end = 0.5; }
+                                if ui.button(crate::i18n::t("2/2")).on_hover_text(chop_hint).clicked() { ch.sample_start = 0.5; ch.sample_end = 1.0; }
+                                if ui.button(crate::i18n::t("1/4")).on_hover_text(chop_hint).clicked() { ch.sample_start = 0.0; ch.sample_end = 0.25; }
+                                if ui.button(crate::i18n::t("2/4")).on_hover_text(chop_hint).clicked() { ch.sample_start = 0.25; ch.sample_end = 0.5; }
+                                if ui.button(crate::i18n::t("3/4")).on_hover_text(chop_hint).clicked() { ch.sample_start = 0.50; ch.sample_end = 0.75; }
+                                if ui.button(crate::i18n::t("4/4")).on_hover_text(chop_hint).clicked() { ch.sample_start = 0.75; ch.sample_end = 1.0; }
                             });
 
                             // Slagletning (Fas 8.7). Knappen som förut hette
@@ -1760,7 +1763,7 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                     if !z.is_playable() {
                                         ui.label(egui::RichText::new(crate::i18n::t("⚠ filen kunde inte läsas — kanalens eget sampel spelar")).color(Theme::FL_YELLOW).size(Theme::FONT_S));
                                     }
-                                    if ui.button("🗑").clicked() {
+                                    if ui.button("🗑").on_hover_text(crate::i18n::t("Ta bort zonen")).clicked() {
                                         ta_bort = Some(zi);
                                     }
                                 });
@@ -2446,13 +2449,13 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             ui.horizontal(|ui| {
                                 let muted = self.bus_muted[b];
                                 let m_col = if muted { Theme::FL_RED } else { Theme::TEXT_MUTED };
-                                if ui.add(egui::Button::new(egui::RichText::new("M").size(Theme::FONT_S).color(m_col)).min_size(egui::vec2(22.0, 16.0))).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new("M").size(Theme::FONT_S).color(m_col)).min_size(egui::vec2(22.0, 16.0))).on_hover_text(crate::i18n::t("Tysta bussen (M)")).clicked() {
                                     self.bus_muted[b] = !muted;
                                     group_changed = true;
                                 }
                                 let solo = self.bus_solo[b];
                                 let s_col = if solo { Theme::FL_YELLOW } else { Theme::TEXT_MUTED };
-                                if ui.add(egui::Button::new(egui::RichText::new("S").size(Theme::FONT_S).color(s_col)).min_size(egui::vec2(22.0, 16.0))).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new("S").size(Theme::FONT_S).color(s_col)).min_size(egui::vec2(22.0, 16.0))).on_hover_text(crate::i18n::t("Solo för bussen (S)")).clicked() {
                                     self.bus_solo[b] = !solo;
                                     group_changed = true;
                                 }
@@ -2544,13 +2547,13 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                             ui.horizontal(|ui| {
                                 let muted = self.vca_muted[v];
                                 let m_col = if muted { Theme::FL_RED } else { Theme::TEXT_MUTED };
-                                if ui.add(egui::Button::new(egui::RichText::new("M").size(Theme::FONT_S).color(m_col)).min_size(egui::vec2(22.0, 16.0))).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new("M").size(Theme::FONT_S).color(m_col)).min_size(egui::vec2(22.0, 16.0))).on_hover_text(crate::i18n::t("Tysta gruppen (M)")).clicked() {
                                     self.vca_muted[v] = !muted;
                                     group_changed = true;
                                 }
                                 let solo = self.vca_solos[v];
                                 let s_col = if solo { Theme::FL_YELLOW } else { Theme::TEXT_MUTED };
-                                if ui.add(egui::Button::new(egui::RichText::new("S").size(Theme::FONT_S).color(s_col)).min_size(egui::vec2(22.0, 16.0))).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new("S").size(Theme::FONT_S).color(s_col)).min_size(egui::vec2(22.0, 16.0))).on_hover_text(crate::i18n::t("Solo för gruppen (S)")).clicked() {
                                     self.vca_solos[v] = !solo;
                                     group_changed = true;
                                 }

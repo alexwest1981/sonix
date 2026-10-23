@@ -376,6 +376,19 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta kanalen (M)" => "Mute the channel (M)",
+        "Solo: hör bara den här kanalen (S)" => "Solo: hear only this channel (S)",
+        "Tysta bussen (M)" => "Mute the bus (M)",
+        "Solo för bussen (S)" => "Solo the bus (S)",
+        "Tysta gruppen (M)" => "Mute the group (M)",
+        "Solo för gruppen (S)" => "Solo the group (S)",
+        "Ta bort zonen" => "Remove the zone",
+        "Spela bara den här delen av samplet" => "Play only this part of the sample",
+        "Ta bort mallen från poolen" => "Remove the template from the pool",
+        "Lyssna på preset med en testton" => "Preview the preset with a test note",
+        "Lyssna på samplet" => "Preview the sample",
+        "Rensa textrutan" => "Clear the text field",
+        "Skicka prompten och generera" => "Send the prompt and generate",
         "Kopiera mönstret — originalet rörs inte" => "Copy the pattern — the original is untouched",
         "{} (kopia)" => "{} (copy)",
         "⧉ '{}' kopierat till P{}" => "⧉ '{}' copied to P{}",
@@ -2658,6 +2671,19 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta kanalen (M)" => "Dæmp kanalen (M)",
+        "Solo: hör bara den här kanalen (S)" => "Solo: hør kun denne kanal (S)",
+        "Tysta bussen (M)" => "Dæmp bussen (M)",
+        "Solo för bussen (S)" => "Solo til bussen (S)",
+        "Tysta gruppen (M)" => "Dæmp gruppen (M)",
+        "Solo för gruppen (S)" => "Solo til gruppen (S)",
+        "Ta bort zonen" => "Fjern zonen",
+        "Spela bara den här delen av samplet" => "Spil kun denne del af samplet",
+        "Ta bort mallen från poolen" => "Fjern skabelonen fra puljen",
+        "Lyssna på preset med en testton" => "Lyt til preset med en testtone",
+        "Lyssna på samplet" => "Lyt til samplet",
+        "Rensa textrutan" => "Ryd tekstfeltet",
+        "Skicka prompten och generera" => "Send prompten og generér",
         "Kopiera mönstret — originalet rörs inte" => "Kopiér mønsteret — originalen er urørt",
         "{} (kopia)" => "{} (kopi)",
         "⧉ '{}' kopierat till P{}" => "⧉ '{}' kopieret til P{}",
@@ -4899,6 +4925,19 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta kanalen (M)" => "Demp kanalen (M)",
+        "Solo: hör bara den här kanalen (S)" => "Solo: hør bare denne kanalen (S)",
+        "Tysta bussen (M)" => "Demp bussen (M)",
+        "Solo för bussen (S)" => "Solo for bussen (S)",
+        "Tysta gruppen (M)" => "Demp gruppen (M)",
+        "Solo för gruppen (S)" => "Solo for gruppen (S)",
+        "Ta bort zonen" => "Fjern sonen",
+        "Spela bara den här delen av samplet" => "Spill bare denne delen av samplet",
+        "Ta bort mallen från poolen" => "Fjern malen fra puljen",
+        "Lyssna på preset med en testton" => "Lytt til preset med en testtone",
+        "Lyssna på samplet" => "Lytt til samplet",
+        "Rensa textrutan" => "Tøm tekstfeltet",
+        "Skicka prompten och generera" => "Send prompten og generer",
         "Kopiera mönstret — originalet rörs inte" => "Kopier mønsteret — originalen er urørt",
         "{} (kopia)" => "{} (kopi)",
         "⧉ '{}' kopierat till P{}" => "⧉ '{}' kopiert til P{}",
@@ -7140,6 +7179,19 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta kanalen (M)" => "Kanal stummschalten (M)",
+        "Solo: hör bara den här kanalen (S)" => "Solo: nur diesen Kanal hören (S)",
+        "Tysta bussen (M)" => "Bus stummschalten (M)",
+        "Solo för bussen (S)" => "Bus solo (S)",
+        "Tysta gruppen (M)" => "Gruppe stummschalten (M)",
+        "Solo för gruppen (S)" => "Gruppe solo (S)",
+        "Ta bort zonen" => "Zone entfernen",
+        "Spela bara den här delen av samplet" => "Nur diesen Teil des Samples abspielen",
+        "Ta bort mallen från poolen" => "Vorlage aus dem Pool entfernen",
+        "Lyssna på preset med en testton" => "Preset mit einem Testton anhören",
+        "Lyssna på samplet" => "Sample anhören",
+        "Rensa textrutan" => "Textfeld leeren",
+        "Skicka prompten och generera" => "Prompt senden und generieren",
         "Kopiera mönstret — originalet rörs inte" => "Pattern kopieren — das Original bleibt unberührt",
         "{} (kopia)" => "{} (Kopie)",
         "⧉ '{}' kopierat till P{}" => "⧉ '{}' nach P{} kopiert",
@@ -9381,6 +9433,19 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta kanalen (M)" => "Silenciar el canal (M)",
+        "Solo: hör bara den här kanalen (S)" => "Solo: escuchar solo este canal (S)",
+        "Tysta bussen (M)" => "Silenciar el bus (M)",
+        "Solo för bussen (S)" => "Solo del bus (S)",
+        "Tysta gruppen (M)" => "Silenciar el grupo (M)",
+        "Solo för gruppen (S)" => "Solo del grupo (S)",
+        "Ta bort zonen" => "Eliminar la zona",
+        "Spela bara den här delen av samplet" => "Reproducir solo esta parte del sample",
+        "Ta bort mallen från poolen" => "Quitar la plantilla del pool",
+        "Lyssna på preset med en testton" => "Escuchar el preset con una nota de prueba",
+        "Lyssna på samplet" => "Escuchar el sample",
+        "Rensa textrutan" => "Vaciar el campo de texto",
+        "Skicka prompten och generera" => "Enviar el prompt y generar",
         "Kopiera mönstret — originalet rörs inte" => "Copiar el patrón — el original no se toca",
         "{} (kopia)" => "{} (copia)",
         "⧉ '{}' kopierat till P{}" => "⧉ '{}' copiado a P{}",
@@ -11622,6 +11687,19 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta kanalen (M)" => "Couper le canal (M)",
+        "Solo: hör bara den här kanalen (S)" => "Solo : n'écouter que ce canal (S)",
+        "Tysta bussen (M)" => "Couper le bus (M)",
+        "Solo för bussen (S)" => "Solo du bus (S)",
+        "Tysta gruppen (M)" => "Couper le groupe (M)",
+        "Solo för gruppen (S)" => "Solo du groupe (S)",
+        "Ta bort zonen" => "Supprimer la zone",
+        "Spela bara den här delen av samplet" => "Lire seulement cette partie de l'échantillon",
+        "Ta bort mallen från poolen" => "Retirer le modèle du pool",
+        "Lyssna på preset med en testton" => "Écouter le preset avec une note de test",
+        "Lyssna på samplet" => "Écouter l'échantillon",
+        "Rensa textrutan" => "Vider le champ de texte",
+        "Skicka prompten och generera" => "Envoyer le prompt et générer",
         "Kopiera mönstret — originalet rörs inte" => "Copier le motif — l'original reste intact",
         "{} (kopia)" => "{} (copie)",
         "⧉ '{}' kopierat till P{}" => "⧉ '{}' copié dans P{}",
