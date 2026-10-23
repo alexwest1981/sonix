@@ -72,8 +72,8 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 
 | # | Vad | Storlek | Lagret som måste byggas först |
 | :--: | :--- | :---: | :--- |
-| 1 | **MPE / per-not pitch bend** | *M* | `NoteOn { note, velocity }` bär ingen kanal. Samma spärr som VFX Key Mapper och Keyboard Splitter: kanalen måste in i notkommandot |
-| 2 | **VFX Key Mapper / Keyboard Splitter / Level Scaler** | *S–M* | en not→not-omvandling kräver kanalidentitet i noten — samma arbete som MPE |
+| 1 | **MPE / per-not pitch bend** — *◐ live-bend klar* | *M* | Kanalen finns nu i `NoteOn`/`NoteOff` (`channel`), och `ChannelPitchBend` böjer bara rösterna på samma kanal; mastern (0) böjer allt. Kvar: spela in bend i tagningen (TakeNote bär ingen bend), och rita det i pianorullen. Tre prov i `synth::tests` + ett i MIDI-tolken |
+| 2 | **VFX Key Mapper / Keyboard Splitter / Level Scaler** | *S–M* | kanalidentiteten finns nu (se ovan), så en not→not-omvandling är nästa steg — ingen ny modell behövs |
 | 3 | **Kompning i spellistan (take lanes)** | *M* | MIDI-tagningarna finns; spellistans lanes kräver en lane-modell ovanpå regionerna |
 | 4 | **Warp-lägena** (Beats/Tones/Texture/Complex) | *L* | fyra analysstrategier ovanpå WSOLA, inte fyra rattar på samma strategi |
 | 5 | **Bärvågsingång i masterns kedja** | *M* | vocodern finns i sångstudion (`vocode`, 16 band, bärvåg som följer sången); som **effekt** kräver den en andra ingång. Sidokedja till plugins finns, inte till masterns kedja |

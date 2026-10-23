@@ -504,7 +504,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                                         _ => {
                                             let note = item.default_note;
                                             let freq = midi_to_freq(note);
-                                            let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: 0.9 });
+                                            let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: 0.9, channel: 0 });
                                         }
                                     }
                                 }
@@ -561,7 +561,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                             self.current_preset = p;
                             self.apply_preset_settings(p);
                             let _ = self.engine.send_command(AudioCommand::LoadPreset(p));
-                            let _ = self.engine.send_command(AudioCommand::NoteOn { note: 60, freq: 261.63, velocity: 0.85 });
+                            let _ = self.engine.send_command(AudioCommand::NoteOn { note: 60, freq: 261.63, velocity: 0.85, channel: 0 });
                         }
                         if ui.button(crate::i18n::t("Ladda")).clicked() {
                             self.current_preset = p;
@@ -614,7 +614,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                     }
                     ui.horizontal(|ui| {
                         if ui.button(crate::i18n::t("▶")).clicked() {
-                            let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq: midi_to_freq(note), velocity: 0.9 });
+                            let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq: midi_to_freq(note), velocity: 0.9, channel: 0 });
                         }
                         ui.label(name);
                     });

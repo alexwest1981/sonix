@@ -61,6 +61,11 @@ pub struct Voice {
     /// Key tracking: filtrets brytfrekvens förskjuts med notens avstånd från C4.
     /// 1,0 = ingen förskjutning (så beter sig gamla projekt).
     pub key_cutoff_ratio: f32,
+    /// MIDI-kanal + 1 (1–16) för en not som kom in över MIDI, annars 0. MPE:s
+    /// pitch bend letar upp röster på samma kanal.
+    pub channel: u8,
+    /// Pitch bend som multiplikator på fasökningen (1,0 = ingen böjning).
+    pub bend_ratio: f32,
 }
 
 /// Sidokedje-duckare (Fas 8.3).
@@ -314,6 +319,8 @@ impl Voice {
             glide_coeff: 0.0,
             key_cutoff_ratio: 1.0,
             sub_phase: 0.0,
+            channel: 0,
+            bend_ratio: 1.0,
         }
     }
 
@@ -340,6 +347,8 @@ impl Voice {
     pub fn trigger(&mut self, note: u8, freq: f32, velocity: f32, sample_rate: f32) {
         self.note = note;
         self.freq = freq;
+        self.channel = 0;
+        self.bend_ratio = 1.0;
         self.target_inc = (2.0 * PI * freq) / sample_rate.max(1.0);
         self.glide_coeff = 0.0;
         self.velocity = velocity;
@@ -429,7 +438,7 @@ impl Voice {
                 } else {
                     48_000.0
                 };
-                let len = (sr / self.freq.max(20.0)).clamp(2.0, 4095.0) as usize;
+                let len = (sr / (self.freq * self.bend_ratio).max(20.0)).clamp(2.0, 4095.0) as usize;
                 if !self.pluck_started {
                     // Brus med fast frö per not: samma not låter likadant varje gång.
                     let mut seed = 0x9E37_79B9u32 ^ (self.note as u32) << 16 | 1;
@@ -534,12 +543,13 @@ impl Voice {
         }
 
         // Advance phase. Tonhöjdsmodulationen skalas in här i stället för att räkna om
-        // `phase_inc`, så en tremolo/vibrato följer med även genom FM.
+        // `phase_inc`, så en tremolo/vibrato följer med även genom FM. Pitch bend från
+        // MIDI (MPE) är samma multiplikation: 1,0 när ingen böjer.
         let pitch_ratio = if mod_pitch.abs() > 1e-6 {
             2.0_f32.powf(mod_pitch / 12.0)
         } else {
             1.0
-        };
+        } * self.bend_ratio;
         self.phase += self.phase_inc * pitch_ratio;
         if self.phase >= two_pi {
             self.phase -= two_pi;

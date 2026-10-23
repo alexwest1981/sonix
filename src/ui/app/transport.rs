@@ -510,12 +510,12 @@ fn trigger_step(&mut self, step: usize) {
                 6 => {
                     if !grid_active {
                         let freq = midi_to_freq(note);
-                        let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: ch.volume * vel });
+                        let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: ch.volume * vel, channel: 0 });
                     }
                 }
                 7 => {
                     let freq = midi_to_freq(note);
-                    let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: ch.volume * vel });
+                    let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: ch.volume * vel, channel: 0 });
                 }
                 _ => {}
             }
@@ -573,7 +573,7 @@ fn trigger_step(&mut self, step: usize) {
                     continue;
                 }
                 let freq = midi_to_freq(note);
-                let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: vel });
+                let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: vel, channel: 0 });
             }
         }
     }
@@ -679,7 +679,7 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                                         continue;
                                     }
                                     let freq = midi_to_freq(note);
-                                    let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
+                                    let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel, channel: 0 });
                                 }
                             }
                         } else if pat.channel_steps.len() > ch_idx && pat.channel_steps[ch_idx][step_in_bar] {
@@ -691,7 +691,7 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                                 let _ = self.engine.send_command(cmd);
                             } else {
                                 let freq = midi_to_freq(note);
-                                let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
+                                let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel, channel: 0 });
                             }
                         }
                     }
@@ -710,6 +710,13 @@ pub(crate) fn play_note(&mut self, note: u8) {
 
 impl SonixApp {
 fn play_note_velocity(&mut self, note: u8, velocity: f32) {
+    self.play_note_velocity_on_channel(note, velocity, 0);
+}
+}
+
+impl SonixApp {
+/// `channel` 0 = tangentbord/UI, 1–16 = MIDI-kanal + 1 (MPE).
+fn play_note_velocity_on_channel(&mut self, note: u8, velocity: f32, channel: u8) {
     // **Capture MIDI**: varje spelad not hamnar i bufferten, med tid sedan den första. Det är
     // samma väg som allt levande spel går genom, så ingen tangent kan smyga sig förbi.
     let elapsed = match self.capture_clock {
@@ -727,6 +734,7 @@ fn play_note_velocity(&mut self, note: u8, velocity: f32) {
             note,
             freq,
             velocity: velocity.clamp(0.05, 1.0),
+            channel,
         });
     }
 }
@@ -734,19 +742,27 @@ fn play_note_velocity(&mut self, note: u8, velocity: f32) {
 
 impl SonixApp {
 pub(crate) fn release_note(&mut self, note: u8) {
+    self.release_note_on_channel(note, 0);
+}
+}
+
+impl SonixApp {
+pub(crate) fn release_note_on_channel(&mut self, note: u8, channel: u8) {
     self.active_keys.remove(&note);
-    let _ = self.engine.send_command(AudioCommand::NoteOff { note });
+    let _ = self.engine.send_command(AudioCommand::NoteOff { note, channel });
 }
 }
 
 impl SonixApp {
 /// Handles a real MIDI keyboard note event: plays it, and (when armed and
 /// the transport is running) records it into the active Piano Roll pattern.
-fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool) {
+fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool, channel: u8) {
+    // Kanal 0 i motorn betyder "inte från MIDI"; MIDI:s kanal 0 (mastern) blir 1.
+    let engine_channel = channel + 1;
     let is_on = on && velocity > 0;
     if is_on {
         if self.midi_held_notes.insert(note) {
-            self.play_note_velocity(note, velocity as f32 / 127.0);
+            self.play_note_velocity_on_channel(note, velocity as f32 / 127.0, engine_channel);
             if self.midi_record_armed && self.is_playing {
                 self.record_midi_note_at_step(note);
                 // Tagningen (Fas 6.4): noten skrivs till rutnätet *och* sparas
@@ -759,8 +775,17 @@ fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool) {
             }
         }
     } else if self.midi_held_notes.remove(&note) {
-        self.release_note(note);
+        self.release_note_on_channel(note, engine_channel);
     }
+}
+
+/// MPE: mastern (kanal 0) böjer allt, medlemskanalerna bara sina egna noter.
+fn handle_midi_pitch_bend(&mut self, channel: u8, semitones: f32) {
+    let engine_channel = if channel == 0 { 0 } else { channel + 1 };
+    let _ = self.engine.send_command(AudioCommand::ChannelPitchBend {
+        channel: engine_channel,
+        semitones,
+    });
 }
 }
 
@@ -1245,8 +1270,11 @@ fn apply_control_event(&mut self, ev: ControlEvent) {
                 self.sync_group_state();
             }
         }
-        ControlEvent::MidiNote { note, velocity, on } => {
-            self.handle_midi_note(note, velocity, on);
+        ControlEvent::MidiNote { note, velocity, on, channel } => {
+            self.handle_midi_note(note, velocity, on, channel);
+        }
+        ControlEvent::PitchBend { channel, semitones } => {
+            self.handle_midi_pitch_bend(channel, semitones);
         }
     }
 }

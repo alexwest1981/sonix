@@ -19,11 +19,17 @@ pub enum ControlEvent {
     /// Bara ALSA-läsaren konstruerar den i den här versionen, så utanför Linux
     /// ser den ut som död kod — den blir levande igen när MIDI-in portas
     /// (Fas 7.1), och varianten hör till appens API, inte till ALSA.
+    ///
+    /// `channel` är den råa MIDI-kanalen (0–15). Kanal 0 är MPE-mastern; noter på
+    /// 1–15 bär sin egen kanal så att pitch bend kan träffa bara dem.
     #[cfg_attr(
         not(target_os = "linux"),
         allow(dead_code, reason = "konstrueras bara av ALSA-läsaren tills MIDI-in portas (Fas 7.1)")
     )]
-    MidiNote { note: u8, velocity: u8, on: bool },
+    MidiNote { note: u8, velocity: u8, on: bool, channel: u8 },
+    /// Pitch bend, redan omräknad till halvtoner. Kanal 0 (mastern) böjer allt
+    /// ±2 halvtoner; medlemskanalerna 1–15 böjer bara sina egna noter, ±48.
+    PitchBend { channel: u8, semitones: f32 },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -320,9 +320,9 @@ pub fn render_tuner_modal(
                         if ui.add(egui::Button::new(egui::RichText::new(btn_txt).strong().color(Color32::WHITE)).fill(btn_col).min_size(Vec2::new(200.0, 30.0))).clicked() {
                             state.is_tone_playing = !state.is_tone_playing;
                             if state.is_tone_playing {
-                                let _ = engine.send_command(AudioCommand::NoteOn { note: midi_note, freq: target_freq, velocity: 0.70 });
+                                let _ = engine.send_command(AudioCommand::NoteOn { note: midi_note, freq: target_freq, velocity: 0.70, channel: 0 });
                             } else {
-                                let _ = engine.send_command(AudioCommand::NoteOff { note: midi_note });
+                                let _ = engine.send_command(AudioCommand::NoteOff { note: midi_note, channel: 0 });
                             }
                         }
 
@@ -335,7 +335,7 @@ pub fn render_tuner_modal(
                 ui.horizontal(|ui| {
                     if ui.button(crate::i18n::t("Stäng")).clicked() {
                         if state.is_tone_playing {
-                            let _ = engine.send_command(AudioCommand::NoteOff { note: midi_note });
+                            let _ = engine.send_command(AudioCommand::NoteOff { note: midi_note, channel: 0 });
                             state.is_tone_playing = false;
                         }
                         close = true;

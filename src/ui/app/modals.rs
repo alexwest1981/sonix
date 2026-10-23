@@ -140,8 +140,7 @@ pub(crate) fn render_import_sample_modal(&mut self, ctx: &egui::Context) {
                     let _ = self.engine.send_command(AudioCommand::NoteOn {
                         note: self.custom_import_note,
                         freq,
-                        velocity: 0.9,
-                    });
+                        velocity: 0.9, channel: 0 });
                 }
 
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara i Bibliotek")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {

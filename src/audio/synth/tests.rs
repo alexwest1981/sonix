@@ -2101,7 +2101,7 @@ fn a_velocity_slot_quiets_the_master_output() {
     modulated.modulation.set_slots(vec![ModSlot::new(ModSource::Velocity, ModTarget::Volume, -1.0)]);
 
     for engine in [&mut plain, &mut modulated] {
-        engine.handle_command(AudioCommand::NoteOn { note: 60, freq: 261.63, velocity: 1.0 });
+        engine.handle_command(AudioCommand::NoteOn { note: 60, freq: 261.63, velocity: 1.0, channel: 0 });
     }
     let mut peak_plain: f32 = 0.0;
     let mut peak_mod: f32 = 0.0;
@@ -2156,7 +2156,7 @@ fn a_pitch_slot_transposes_the_oscillator() {
                 .modulation
                 .set_slots(vec![ModSlot::new(ModSource::Velocity, ModTarget::Pitch, 1.0)]);
         }
-        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0 });
+        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0, channel: 0 });
         let mut buf = Vec::new();
         for _ in 0..9_600 {
             let (l, _) = engine.process_stereo();
@@ -2187,7 +2187,7 @@ fn a_cutoff_slot_opens_the_voice_filter() {
     for engine in [&mut closed, &mut opened] {
         engine.waveform = crate::audio::Waveform::Saw;
         engine.filter_params.cutoff = 220.0;
-        engine.handle_command(AudioCommand::NoteOn { note: 45, freq: 110.0, velocity: 1.0 });
+        engine.handle_command(AudioCommand::NoteOn { note: 45, freq: 110.0, velocity: 1.0, channel: 0 });
     }
     opened
         .modulation
@@ -2231,7 +2231,7 @@ fn unison_detune_makes_the_level_move() {
             release: 0.05,
         };
         engine.handle_command(AudioCommand::SetUnison { voices, detune_cents: detune });
-        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0 });
+        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0, channel: 0 });
         // 50 ms-block: elva perioder av 220 Hz, så blockens RMS inte varierar av fasläget.
         let mut blocks = Vec::new();
         for _ in 0..40 {
@@ -2310,15 +2310,15 @@ fn glide_slides_between_notes() {
             release: 0.002,
         };
         engine.handle_command(AudioCommand::SetGlide { seconds: glide });
-        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0 });
+        engine.handle_command(AudioCommand::NoteOn { note: 57, freq: 220.0, velocity: 1.0, channel: 0 });
         for _ in 0..4_800 {
             engine.process_stereo();
         }
-        engine.handle_command(AudioCommand::NoteOff { note: 57 });
+        engine.handle_command(AudioCommand::NoteOff { note: 57, channel: 0 });
         for _ in 0..480 {
             engine.process_stereo();
         }
-        engine.handle_command(AudioCommand::NoteOn { note: 69, freq: 440.0, velocity: 1.0 });
+        engine.handle_command(AudioCommand::NoteOn { note: 69, freq: 440.0, velocity: 1.0, channel: 0 });
         // Första 40 ms efter den andra noten, och efter glidtiden.
         let mut early = Vec::new();
         for _ in 0..1_920 {
@@ -2565,7 +2565,7 @@ fn additive_synthesis_plays_only_the_drawn_harmonics() {
     let mut levels = [0.0f32; crate::audio::synth::HARMONIC_COUNT];
     levels[2] = 1.0;
     engine.handle_command(AudioCommand::SetHarmonics { levels });
-    engine.handle_command(AudioCommand::NoteOn { note: 45, freq: 110.0, velocity: 1.0 });
+    engine.handle_command(AudioCommand::NoteOn { note: 45, freq: 110.0, velocity: 1.0, channel: 0 });
     let mut buf = Vec::new();
     for _ in 0..9_600 {
         let (l, _) = engine.process_stereo();
@@ -2705,4 +2705,97 @@ fn the_inharmonic_wave_puts_its_partials_off_the_harmonic_series() {
     println!("ogun: 220 Hz {fund:.4}, 440 Hz {second:.4}, 607 Hz {metal:.4}");
     assert!(fund > 0.05, "grundtonen ska höras: {fund:.4}");
     assert!(metal > second * 2.0, "2,76× ska dominera över 2×: {metal:.4} mot {second:.4}");
+}
+
+/// **MPE: kanalen följer med noten hela vägen till rösten.** En pitch bend på en
+/// medlemskanal ska böja bara den kanalens noter. Utan `channel` i `NoteOn` faller
+/// provet på att båda rösterna får samma `bend_ratio`.
+#[test]
+fn an_mpe_bend_reaches_only_the_voice_on_its_channel() {
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.handle_command(AudioCommand::NoteOn {
+        note: 60,
+        freq: 261.63,
+        velocity: 1.0,
+        channel: 2,
+    });
+    engine.handle_command(AudioCommand::NoteOn {
+        note: 67,
+        freq: 392.0,
+        velocity: 1.0,
+        channel: 3,
+    });
+
+    engine.handle_command(AudioCommand::ChannelPitchBend {
+        channel: 3,
+        semitones: 12.0,
+    });
+
+    let active: Vec<&Voice> = engine.voices.iter().filter(|v| v.is_active()).collect();
+    assert_eq!(active.len(), 2, "båda noterna ska klinga");
+    let ch2 = active.iter().find(|v| v.channel == 2).expect("kanal 2");
+    let ch3 = active.iter().find(|v| v.channel == 3).expect("kanal 3");
+    assert_eq!(ch2.bend_ratio, 1.0, "kanal 2 ska stå orörd");
+    assert!(
+        (ch3.bend_ratio - 2.0).abs() < 1e-5,
+        "kanal 3 ska en oktav upp, fick {}",
+        ch3.bend_ratio
+    );
+
+    // Tillbaka till mitten = ingen böjning.
+    engine.handle_command(AudioCommand::ChannelPitchBend {
+        channel: 3,
+        semitones: 0.0,
+    });
+    let ch3 = engine.voices.iter().find(|v| v.channel == 3).expect("kanal 3");
+    assert!((ch3.bend_ratio - 1.0).abs() < 1e-6);
+}
+
+/// Samma tangent på två kanaler är två röster, och note-off på den ena tar bara den.
+#[test]
+fn the_same_note_on_two_channels_is_two_voices_and_note_off_takes_one() {
+    use crate::audio::envelope::EnvelopeStage;
+
+    let mut engine = SynthEngine::new(48_000.0);
+    for channel in [2, 3] {
+        engine.handle_command(AudioCommand::NoteOn {
+            note: 60,
+            freq: 261.63,
+            velocity: 1.0,
+            channel,
+        });
+    }
+    assert_eq!(engine.voices.iter().filter(|v| v.is_active()).count(), 2);
+
+    engine.handle_command(AudioCommand::NoteOff { note: 60, channel: 3 });
+
+    let ch2 = engine.voices.iter().find(|v| v.channel == 2).expect("kanal 2");
+    let ch3 = engine.voices.iter().find(|v| v.channel == 3).expect("kanal 3");
+    assert_ne!(ch2.envelope.stage, EnvelopeStage::Release, "kanal 2 ska hålla");
+    assert_eq!(ch3.envelope.stage, EnvelopeStage::Release, "kanal 3 ska släppa");
+}
+
+/// Mastern (kanal 0) böjer allt — den gamla vägen för en vanlig klaviatur.
+#[test]
+fn a_master_bend_moves_every_voice() {
+    let mut engine = SynthEngine::new(48_000.0);
+    for (note, freq, channel) in [(60, 261.63, 0), (67, 392.0, 3)] {
+        engine.handle_command(AudioCommand::NoteOn {
+            note,
+            freq,
+            velocity: 1.0,
+            channel,
+        });
+    }
+    engine.handle_command(AudioCommand::ChannelPitchBend {
+        channel: 0,
+        semitones: -12.0,
+    });
+    for voice in engine.voices.iter().filter(|v| v.is_active()) {
+        assert!(
+            (voice.bend_ratio - 0.5).abs() < 1e-5,
+            "röst utan böjning kvar: {}",
+            voice.bend_ratio
+        );
+    }
 }

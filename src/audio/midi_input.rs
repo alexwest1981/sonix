@@ -69,9 +69,13 @@ pub struct MidiKeyboardInput {
 
 /// Tolkar en MIDI-messages bytes som appens kontrollhändelser.
 ///
-/// Ren funktion utan plattformsberoenden. Bara noter blir händelser: CC, pitch bend,
+/// Ren funktion utan plattformsberoenden. Noter och pitch bend blir händelser: CC,
 /// aftertouch, programbyte och systemmeddelanden (0xF0 och uppåt, som har olika längd) lämnas.
 /// `velocity == 0` på note-on betyder note-off — vanligt bland klaviaturer.
+///
+/// Pitch bend räknas om till halvtoner direkt: kanal 0 (MPE-mastern) ±2, medlemskanalerna
+/// 1–15 ±48. Att göra det här i stället för i motorn håller `ControlEvent` ren och gör
+/// omräkningen prövbar utan ljudenhet.
 pub fn control_events_from_midi(bytes: &[u8]) -> Vec<ControlEvent> {
     let Some(&status) = bytes.first() else {
         return Vec::new();
@@ -81,6 +85,20 @@ pub fn control_events_from_midi(bytes: &[u8]) -> Vec<ControlEvent> {
         return Vec::new();
     }
     let kind = status & 0xF0;
+    let channel = status & 0x0F;
+    if kind == 0xE0 {
+        let (Some(&lsb), Some(&msb)) = (bytes.get(1), bytes.get(2)) else {
+            return Vec::new();
+        };
+        // 14 bitar, mitten 8192 = ingen böjning.
+        let raw = (((msb & 0x7F) as i32) << 7) | (lsb & 0x7F) as i32;
+        let norm = (raw - 8192) as f32 / 8192.0;
+        let range = if channel == 0 { 2.0 } else { 48.0 };
+        return vec![ControlEvent::PitchBend {
+            channel,
+            semitones: norm * range,
+        }];
+    }
     if kind != 0x80 && kind != 0x90 {
         return Vec::new();
     }
@@ -93,6 +111,7 @@ pub fn control_events_from_midi(bytes: &[u8]) -> Vec<ControlEvent> {
         note: note & 0x7F,
         velocity: velocity & 0x7F,
         on,
+        channel,
     }]
 }
 
@@ -184,6 +203,7 @@ mod midir_parser_tests {
             note,
             velocity,
             on,
+            channel: 0,
         }
     }
 
@@ -205,17 +225,53 @@ mod midir_parser_tests {
         for ch in 0..16u8 {
             assert_eq!(
                 control_events_from_midi(&[0x90 | ch, 48, 90]),
-                vec![note(48, 90, true)],
+                vec![ControlEvent::MidiNote {
+                    note: 48,
+                    velocity: 90,
+                    on: true,
+                    channel: ch
+                }],
                 "kanal {ch} tappades"
             );
         }
     }
 
     #[test]
-    fn messages_that_are_not_notes_are_ignored() {
-        // CC, pitch bend, aftertouch, programbyte och systemmeddelanden.
+    fn the_master_bends_two_semitones_and_members_forty_eight() {
+        // Mitten = ingen böjning.
+        assert_eq!(
+            control_events_from_midi(&[0xE0, 0, 64]),
+            vec![ControlEvent::PitchBend {
+                channel: 0,
+                semitones: 0.0
+            }]
+        );
+        // Full upp på mastern (kanal 0): +2 halvtoner.
+        let up = control_events_from_midi(&[0xE0, 0x7F, 0x7F]);
+        let ControlEvent::PitchBend { channel, semitones } = up[0] else {
+            panic!("inte en pitch bend")
+        };
+        assert_eq!(channel, 0);
+        assert!((semitones - 2.0).abs() < 0.01, "{semitones}");
+        // Full upp på medlemskanal 1: +48.
+        let up = control_events_from_midi(&[0xE1, 0x7F, 0x7F]);
+        let ControlEvent::PitchBend { channel, semitones } = up[0] else {
+            panic!("inte en pitch bend")
+        };
+        assert_eq!(channel, 1);
+        assert!((semitones - 48.0).abs() < 0.1, "{semitones}");
+        // Full ner ger minus.
+        let down = control_events_from_midi(&[0xE2, 0x00, 0x00]);
+        let ControlEvent::PitchBend { semitones, .. } = down[0] else {
+            panic!("inte en pitch bend")
+        };
+        assert!(semitones < -47.9, "{semitones}");
+    }
+
+    #[test]
+    fn messages_that_are_not_notes_or_bends_are_ignored() {
+        // CC, aftertouch, programbyte och systemmeddelanden.
         assert!(control_events_from_midi(&[0xB0, 7, 100]).is_empty());
-        assert!(control_events_from_midi(&[0xE0, 0, 64]).is_empty());
         assert!(control_events_from_midi(&[0xD0, 40]).is_empty());
         assert!(control_events_from_midi(&[0xC0, 5]).is_empty());
         assert!(control_events_from_midi(&[0xF8]).is_empty());

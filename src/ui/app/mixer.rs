@@ -283,7 +283,7 @@ pub fn audition_library_sample(&mut self, item: &LibrarySampleItem) {
         }
         _ => {
             let freq = midi_to_freq(item.default_note);
-            let _ = self.engine.send_command(AudioCommand::NoteOn { note: item.default_note, freq, velocity: 0.9 });
+            let _ = self.engine.send_command(AudioCommand::NoteOn { note: item.default_note, freq, velocity: 0.9, channel: 0 });
         }
     }
 }
@@ -1203,7 +1203,7 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                             let note = (ch.notes[0] as i16 + ch.pitch_semitones as i16).clamp(0, 127) as u8;
                             let base_freq = midi_to_freq(note);
                             let fine_mul = (ch.pitch_fine_cents / 1200.0).exp2();
-                            let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq: base_freq * fine_mul, velocity: ch.volume });
+                            let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq: base_freq * fine_mul, velocity: ch.volume, channel: 0 });
                         }
                         if ui.button(egui::RichText::new(crate::i18n::t("✖ Stäng Chopper")).color(Color32::from_rgb(255, 100, 100))).clicked() {
                             self.active_chopper_channel = None;

@@ -284,9 +284,21 @@ pub enum AudioCommand {
         note: u8,
         freq: f32,
         velocity: f32,
+        /// MIDI-kanal + 1 (1–16), eller 0 för noter som inte kommer från MIDI.
+        /// Kanalen finns för MPE: en pitch bend på en medlemskanal ska bara böja
+        /// de noter som spelades på samma kanal.
+        channel: u8,
     },
     NoteOff {
         note: u8,
+        /// 0 = släpp noten på alla kanaler (den gamla vägen), annars bara den kanalen.
+        channel: u8,
+    },
+    /// Pitch bend från en MIDI-kontroller. `channel` 0 = mastern (böjer alla röster),
+    /// 1–16 = medlemskanal (böjer bara rösterna som spelades på den kanalen).
+    ChannelPitchBend {
+        channel: u8,
+        semitones: f32,
     },
     /// En not som ska klinga en bit in i steget (Fas 6.4 steg 2), för tagningens
     /// mikro-tajming. Motorn har redan kön `scheduled_notes` (samma som

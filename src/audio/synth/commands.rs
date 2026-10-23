@@ -34,12 +34,17 @@ impl SynthEngine {
             AudioCommand::SetModulation { slots } => {
                 self.modulation.set_slots(slots);
             }
-            AudioCommand::NoteOn { note, freq, velocity } => {
+            AudioCommand::NoteOn { note, freq, velocity, channel } => {
                 // Keyboard/Voltage Controller-källorna läser senaste noten.
                 self.modulation.note_on(note, velocity);
                 let mut target_idx = None;
                 for (i, voice) in self.voices.iter().enumerate() {
-                    if voice.is_active() && voice.note == note {
+                    // En not från MIDI får bara återanvända en röst på samma kanal; annars
+                    // skulle en MPE-kontroller som håller samma ton på två kanaler tappa en.
+                    if voice.is_active()
+                        && voice.note == note
+                        && (channel == 0 || voice.channel == channel)
+                    {
                         target_idx = Some(i);
                         break;
                     }
@@ -83,6 +88,8 @@ impl SynthEngine {
                     from,
                     glide_coeff,
                 );
+                self.voices[idx].channel = channel;
+                self.voices[idx].bend_ratio = 1.0;
                 self.last_note_freq = freq;
                 // Unison: samma not en gång till, stämd isär i cent och med förskjuten fas
                 // så att attacken inte bara blir dubbelt så stark.
@@ -111,6 +118,8 @@ impl SynthEngine {
                         );
                         // Förskjut fasen så att rösterna inte summerar i fas vid anslaget.
                         voice.phase = (step * 1.7) % std::f32::consts::TAU;
+                        voice.channel = channel;
+                        voice.bend_ratio = 1.0;
                         extra += 1;
                     }
                 }
@@ -149,11 +158,24 @@ impl SynthEngine {
                     self.scheduled_notes.drain(0..overflow);
                 }
             }
-            AudioCommand::NoteOff { note } => {
+            AudioCommand::NoteOff { note, channel } => {
                 self.modulation.note_off();
                 for voice in &mut self.voices {
-                    if voice.is_active() && voice.note == note {
+                    if voice.is_active()
+                        && voice.note == note
+                        && (channel == 0 || voice.channel == channel)
+                    {
                         voice.release();
+                    }
+                }
+            }
+            AudioCommand::ChannelPitchBend { channel, semitones } => {
+                // Kanal 0 är MPE-mastern och böjer allt; en medlemskanal böjer bara de
+                // röster som spelades på den. Röster utan kanal (0) nås bara av mastern.
+                let ratio = 2.0_f32.powf(semitones / 12.0);
+                for voice in &mut self.voices {
+                    if voice.is_active() && (channel == 0 || voice.channel == channel) {
+                        voice.bend_ratio = ratio;
                     }
                 }
             }

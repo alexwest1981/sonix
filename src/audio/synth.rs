@@ -120,6 +120,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
+        AudioCommand::ChannelPitchBend { .. } => "ChannelPitchBend",
         AudioCommand::StrumChord { .. } => "StrumChord",
         AudioCommand::TriggerDrum(_) => "TriggerDrum",
         AudioCommand::SetWaveform(_) => "SetWaveform",

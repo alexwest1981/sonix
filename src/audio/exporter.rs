@@ -278,7 +278,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 0..=5 => cmds.push(drum_cmd(idx)),
                 6 | 7 => {
                     let freq = midi_to_freq(note);
-                    cmds.push(AudioCommand::NoteOn { note, freq, velocity: ch.fallback_volume * vel });
+                    cmds.push(AudioCommand::NoteOn { note, freq, velocity: ch.fallback_volume * vel, channel: 0 });
                 }
                 _ => {}
             }
@@ -362,7 +362,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                                 continue;
                             }
                             let freq = midi_to_freq(note);
-                            cmds.push(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
+                            cmds.push(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel, channel: 0 });
                         }
                     }
                     continue;
@@ -381,7 +381,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                     }
                 }
                 let freq = midi_to_freq(note);
-                cmds.push(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel });
+                cmds.push(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel, channel: 0 });
             }
             TrackRole::Audio => {}
         }

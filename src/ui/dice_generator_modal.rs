@@ -214,11 +214,10 @@ fn trigger_preview_step(state: &DiceGeneratorState, engine: &mut AudioEngine, s:
                     let _ = engine.send_command(AudioCommand::NoteOn {
                         note: n.note,
                         freq,
-                        velocity: n.velocity,
-                    });
+                        velocity: n.velocity, channel: 0 });
                 }
                 if n.step + n.length_steps == s {
-                    let _ = engine.send_command(AudioCommand::NoteOff { note: n.note });
+                    let _ = engine.send_command(AudioCommand::NoteOff { note: n.note, channel: 0 });
                 }
             }
         }
@@ -444,7 +443,7 @@ pub fn render_dice_generator_modal(
                             *status_msg = crate::i18n::t("▶ Provspelar slumpat mönster sekvenserat...").to_string();
                         } else {
                             for n in &state.generated_notes {
-                                let _ = engine.send_command(AudioCommand::NoteOff { note: n.note });
+                                let _ = engine.send_command(AudioCommand::NoteOff { note: n.note, channel: 0 });
                             }
                             *status_msg = crate::i18n::t("⏹ Stoppade provspelning").to_string();
                         }
