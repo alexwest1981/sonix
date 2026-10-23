@@ -3211,6 +3211,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
                                             ("Del / Backspace", "Radera markerat ljudklipp"),
                                             ("Ctrl + Scroll", "Mjuk horisontell zoomning i tidslinjen"),
                                             ("A, W, S, E, D...", "Klaviatur – Spela synthen live med tangentbordet"),
+                                            ("Tab / Shift + Tab", "Byt yta framåt / bakåt"),
                                         ];
                                         for (k, desc) in shortcuts {
                                             ui.horizontal(|ui| {

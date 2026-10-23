@@ -451,6 +451,20 @@ impl SonixApp {
             self.midi_held_notes.clear();
         }
 
+        // **Tab byter yta** (Shift+Tab bakåt). Görs före tangentbordsblocket nedan, så att
+        // ytan är bytt när pianots tangenter läses av i samma bildruta.
+        if !modal_open
+            && !wants_keyboard
+            && ctx.input(|i| i.key_pressed(egui::Key::Tab))
+        {
+            let backwards = ctx.input(|i| i.modifiers.shift);
+            self.view_mode = if backwards {
+                self.view_mode.prev()
+            } else {
+                self.view_mode.next()
+            };
+        }
+
         // Keyboard Shortcuts
         ctx.input(|i| {
             // Virtual Piano keys ONLY when Piano Roll is active on screen, no modal is open, and not typing text

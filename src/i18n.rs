@@ -376,6 +376,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Byt yta framåt / bakåt" => "Switch view forward / backward",
         "🎨 Färg" => "🎨 Color",
         "Färga noterna efter tonhöjd" => "Colour the notes by pitch",
         "⏱ Stor klocka..." => "⏱ Big clock...",
@@ -2652,6 +2653,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Byt yta framåt / bakåt" => "Skift visning frem / tilbage",
         "🎨 Färg" => "🎨 Farve",
         "Färga noterna efter tonhöjd" => "Farve noterne efter tonehøjde",
         "⏱ Stor klocka..." => "⏱ Stor ur...",
@@ -4887,6 +4889,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Byt yta framåt / bakåt" => "Bytt visning frem / tilbake",
         "🎨 Färg" => "🎨 Farge",
         "Färga noterna efter tonhöjd" => "Farge notene etter tonehøyde",
         "⏱ Stor klocka..." => "⏱ Stor klokke...",
@@ -7122,6 +7125,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Byt yta framåt / bakåt" => "Ansicht vor / zurück wechseln",
         "🎨 Färg" => "🎨 Farbe",
         "Färga noterna efter tonhöjd" => "Noten nach Tonhöhe färben",
         "⏱ Stor klocka..." => "⏱ Große Uhr...",
@@ -9357,6 +9361,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Byt yta framåt / bakåt" => "Cambiar de vista adelante / atrás",
         "🎨 Färg" => "🎨 Color",
         "Färga noterna efter tonhöjd" => "Colorear las notas por altura",
         "⏱ Stor klocka..." => "⏱ Reloj grande...",
@@ -11592,6 +11597,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Byt yta framåt / bakåt" => "Changer de vue avant / arrière",
         "🎨 Färg" => "🎨 Couleur",
         "Färga noterna efter tonhöjd" => "Colorer les notes selon la hauteur",
         "⏱ Stor klocka..." => "⏱ Grande horloge...",

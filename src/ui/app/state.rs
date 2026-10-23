@@ -39,6 +39,37 @@ pub enum ViewMode {
     EffectsMixer,
 }
 
+impl ViewMode {
+    /// Ytorna i den ordning Tab går genom dem.
+    pub const ALL: [ViewMode; 13] = [
+        ViewMode::ChannelRack,
+        ViewMode::PianoRoll,
+        ViewMode::PlaylistArranger,
+        ViewMode::SessionDrummer,
+        ViewMode::AlchemySynth,
+        ViewMode::RemixFx,
+        ViewMode::VocalStudio,
+        ViewMode::AiMusicAssistant,
+        ViewMode::ModularPatcher,
+        ViewMode::StemSeparator,
+        ViewMode::Video,
+        ViewMode::PluginManager,
+        ViewMode::EffectsMixer,
+    ];
+
+    /// Nästa yta, med omslag från sista till första.
+    pub fn next(self) -> ViewMode {
+        let at = Self::ALL.iter().position(|v| *v == self).unwrap_or(0);
+        Self::ALL[(at + 1) % Self::ALL.len()]
+    }
+
+    /// Föregående yta, med omslag från första till sista.
+    pub fn prev(self) -> ViewMode {
+        let at = Self::ALL.iter().position(|v| *v == self).unwrap_or(0);
+        Self::ALL[(at + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArrangerTool {
     Select, // ⇱ Markör / Flytta / Trimma

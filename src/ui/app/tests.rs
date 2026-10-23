@@ -2007,6 +2007,26 @@ use crate::ui::theme::Theme;
         assert_eq!(old.midi_map.apply(40, 80, 1), (40, 80, 1));
     }
 
+    /// Tab går genom alla ytor och vänder vid slutet; Shift+Tab går bakåt.
+    #[test]
+    fn tab_walks_every_view_and_wraps_around() {
+        let mut view = ViewMode::ChannelRack;
+        for _ in 0..ViewMode::ALL.len() {
+            view = view.next();
+        }
+        assert_eq!(view, ViewMode::ChannelRack, "efter ett varv är vi tillbaka");
+        assert_eq!(ViewMode::ChannelRack.prev(), ViewMode::EffectsMixer);
+        assert_eq!(ViewMode::EffectsMixer.next(), ViewMode::ChannelRack);
+
+        let unique: std::collections::HashSet<String> =
+            ViewMode::ALL.iter().map(|v| format!("{v:?}")).collect();
+        assert_eq!(
+            unique.len(),
+            ViewMode::ALL.len(),
+            "en yta får inte stå två gånger i Tab-ordningen"
+        );
+    }
+
     /// Fraslyssningen läser samma fil som infogningen — och noterna kommer ut i appens
     /// 480 PPQ med anslaget som 0–1.
     #[test]
