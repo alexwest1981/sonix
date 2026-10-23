@@ -493,6 +493,26 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         .unwrap_or(0);
                     self.status_message = format!("Satte {:.0} % på {} noter", p * 100.0, touched);
                 }
+                // **Join / Fit** (Ableton): städa dubbletter och drag ihop frasen.
+                if ui.button(egui::RichText::new(crate::i18n::t("⧉ Slå ihop dubbletter")).size(10.0))
+                    .on_hover_text(crate::i18n::t("Två noter på samma position och ton blir en — den starkaste."))
+                    .clicked()
+                {
+                    let mut joined = 0;
+                    if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
+                        joined = p.take.dedupe();
+                    }
+                    self.status_message = crate::tstatus!("⧉ slog ihop {} dubbletter", joined);
+                }
+                if ui.button(egui::RichText::new(crate::i18n::t("⇥ Tryck ihop frasen ×2")).size(10.0))
+                    .on_hover_text(crate::i18n::t("Halverar avstånden mellan noterna, räknat från den första."))
+                    .clicked()
+                {
+                    if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
+                        p.take.scale_positions(2.0);
+                    }
+                    self.status_message = crate::i18n::t("⇥ frasen hopdragen till halva längden").to_string();
+                }
                 // **Spegla** (FL: `Invert`): tonhöjderna vänds kring mitten av urvalets intervall,
                 // så en uppgång blir en nedgång med samma intervall.
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("↕ Spegla tonhöjder")).size(10.0)))

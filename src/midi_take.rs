@@ -283,6 +283,43 @@ impl Take {
     }
 
     /// Skalar anslaget (0,9 = 10 % svagare). Kläms till 0–1.
+    /// **Slå ihop dubbletter** (Abletons `Join Notes`, i den form tagningen kan bära): två noter på
+    /// samma position och ton är samma not — kvar blir den starkaste. Utan det här blir en dubbel
+    /// inspelning två noter som spelas samtidigt och låter starkare än de andra.
+    pub fn dedupe(&mut self) -> usize {
+        let before = self.notes.len();
+        let mut kept: Vec<TakeNote> = Vec::with_capacity(before);
+        for n in self.notes.drain(..) {
+            let id = (Take::slot(&n), n.key);
+            match kept.iter_mut().find(|k| (Take::slot(k), k.key) == id) {
+                Some(existing) => {
+                    if n.velocity > existing.velocity {
+                        existing.velocity = n.velocity;
+                    }
+                }
+                None => kept.push(n),
+            }
+        }
+        self.notes = kept;
+        before - self.notes.len()
+    }
+
+    /// **Tryck ihop eller dra ut frasen** (Abletons `Fit To Range`): alla positioner skalas kring
+    /// den första noten, så en fras som ligger utspridd över hela takten kan samlas i en fjärdedel
+    /// — eller spridas ut. Kläms mot taktens 16 steg.
+    pub fn scale_positions(&mut self, divisor: f32) -> usize {
+        let d = if divisor.is_finite() && divisor > 0.0 { divisor } else { 1.0 };
+        let Some(first) = self.notes.iter().map(|n| n.pos).fold(None, |acc: Option<f32>, p| {
+            Some(acc.map_or(p, |a| a.min(p)))
+        }) else {
+            return 0;
+        };
+        for n in &mut self.notes {
+            n.pos = (first + (n.pos - first) / d).clamp(0.0, STEPS_PER_BAR - 0.01);
+        }
+        self.notes.len()
+    }
+
     /// **Spegla tonhöjderna** kring en pivot: en not som ligger `d` halvtoner över pivoten
     /// hamnar `d` under den. Kläms mot 0–127, så en spegling vid kanten tappar inte noten.
     ///
@@ -912,6 +949,30 @@ mod tests {
         assert_eq!(t.invert(&only_g, 60), 1);
         let keys: Vec<u8> = t.notes.iter().map(|n| n.key).collect();
         assert_eq!(keys, vec![53, 72], "72:an ligger utanför urvalet och ska stå kvar");
+    }
+
+    /// `Join Notes` och `Fit To Range` i den form tagningen kan bära: dubbletter slås ihop till
+    /// den starkaste, och positionerna kan dras ihop kring frasens början.
+    #[test]
+    fn duplicates_join_to_the_loudest_and_the_phrase_can_be_compressed() {
+        let mut t = Take::new();
+        t.push(4.0, 60, 0.4);
+        t.push(4.0, 60, 0.9);   // samma position och ton: ska slås ihop
+        t.push(4.0, 64, 0.5);   // samma position, annan ton: ska stå kvar
+        t.push(8.0, 60, 0.6);   // samma ton, annan position: ska stå kvar
+        assert_eq!(t.dedupe(), 1);
+        assert_eq!(t.notes.len(), 3);
+        let merged = t.notes.iter().find(|n| n.key == 60 && (n.pos - 4.0).abs() < 0.01).unwrap();
+        assert!((merged.velocity - 0.9).abs() < 1e-6, "den starkaste ska vara kvar");
+
+        // Fras 4…12 trycks ihop till hälften: 8 blir 6, 12 blir 8.
+        let mut t = Take::new();
+        t.push(4.0, 60, 0.8);
+        t.push(12.0, 62, 0.8);
+        t.scale_positions(2.0);
+        let pos: Vec<f32> = t.notes.iter().map(|n| n.pos).collect();
+        assert!((pos[0] - 4.0).abs() < 1e-4, "den första noten är ankaret");
+        assert!((pos[1] - 8.0).abs() < 1e-4, "12 → 4 + (12−4)/2 = 8");
     }
 
 }
