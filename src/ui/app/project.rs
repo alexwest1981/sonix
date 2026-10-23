@@ -271,6 +271,10 @@ pub struct SonixProjectData {
     /// Channel Racket (Fas 6.7).
     #[serde(default)]
     pub channels: Vec<SavedChannel>,
+    /// **MIDI-kartan** (FL:s splitter/key mapper/level scaler). Saknas i äldre projekt —
+    /// då är den avstängd och noterna går rakt igenom, precis som förut.
+    #[serde(default)]
+    pub midi_map: crate::audio::key_mapper::KeyMap,
 }
 
 /// Standardgrundton för ett projekt som sparades innan tonarten fanns (Fas 8.11):
@@ -743,6 +747,8 @@ pub struct LoadedProjectPayload {
     pub selected_pattern: usize,
     pub step_velocities: Option<[f32; 16]>,
     pub channels: Vec<SavedChannel>,
+    /// MIDI-kartan som den stod när filen sparades.
+    pub midi_map: crate::audio::key_mapper::KeyMap,
     pub file_path: String,
 }
 
@@ -1342,6 +1348,7 @@ pub fn load_demo_project(&mut self) {
                 selected_pattern: 0,
                 step_velocities: None,
                 channels: Vec::new(),
+                midi_map: Default::default(),
                 file_path: "demo".to_string(),
             });
         }
@@ -1411,6 +1418,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         selected_pattern: self.selected_pattern,
         step_velocities: Some(self.step_velocities),
         channels: self.channels.iter().map(channel_to_saved).collect(),
+        midi_map: self.midi_map.clone(),
         plugin_slots: self
             .plugin_slots
             .iter()
@@ -1828,8 +1836,8 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 notes: data.notes,
                 follow_tempo: data.follow_tempo,
                 tempo_points: data.tempo_points,
-                song_key_root: 3,
-                song_key_scale: 0,
+                song_key_root: data.song_key_root,
+                song_key_scale: data.song_key_scale,
                 swing: data.swing,
                 master_volume: data.master_volume,
                 master_pan: data.master_pan,
@@ -1852,6 +1860,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 selected_pattern: data.selected_pattern,
                 step_velocities: data.step_velocities,
                 channels: data.channels,
+                midi_map: data.midi_map,
                 file_path: path,
             });
         }
@@ -1886,6 +1895,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
     self.project_name = payload.name;
     self.bpm = payload.bpm;
     self.project_notes = payload.notes;
+    self.midi_map = payload.midi_map;
     self.follow_tempo = payload.follow_tempo;
     self.tempo_points = payload.tempo_points;
     self.song_key_root = payload.song_key_root;

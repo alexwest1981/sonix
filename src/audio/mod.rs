@@ -12,6 +12,7 @@ pub mod filter;
 pub mod fsc;
 pub mod hardware_control;
 pub mod keymap;
+pub mod key_mapper;
 pub mod loop_station;
 pub mod launcher;
 pub mod loudness;

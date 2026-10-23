@@ -312,6 +312,68 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                 });
 
                 ui.separator();
+                // **MIDI-kartan** (FL:s Keyboard Splitter / Key Mapper / Level Scaler):
+                // fyra zoner, första träffen vinner. Kanal 0 = behåll notens kanal.
+                egui::CollapsingHeader::new(
+                    egui::RichText::new(crate::i18n::t("🎛 MIDI-KARTA (splitter)"))
+                        .strong()
+                        .size(Theme::FONT_S)
+                        .color(Theme::FL_GREEN),
+                )
+                .default_open(self.midi_map.enabled)
+                .show(ui, |ui| {
+                    ui.checkbox(&mut self.midi_map.enabled, crate::i18n::t("Aktivera zoner"));
+                    for (i, zone) in self.midi_map.zones.iter_mut().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.checkbox(&mut zone.active, crate::tstatus!("Zon {}", i + 1));
+                            ui.add(
+                                egui::DragValue::new(&mut zone.low)
+                                    .range(0..=127)
+                                    .speed(1.0),
+                            );
+                            ui.label("–");
+                            ui.add(
+                                egui::DragValue::new(&mut zone.high)
+                                    .range(0..=127)
+                                    .speed(1.0),
+                            );
+                            ui.label(crate::i18n::t("Transp."));
+                            ui.add(
+                                egui::DragValue::new(&mut zone.transpose)
+                                    .range(-48..=48)
+                                    .speed(1.0),
+                            );
+                            ui.label(crate::i18n::t("Kanal"));
+                            let mut channel = zone.channel.unwrap_or(0);
+                            if ui
+                                .add(
+                                    egui::DragValue::new(&mut channel)
+                                        .range(0..=16)
+                                        .speed(1.0),
+                                )
+                                .changed()
+                            {
+                                zone.channel = if channel == 0 { None } else { Some(channel) };
+                            }
+                            ui.label(crate::i18n::t("Anslag"));
+                            ui.add(
+                                egui::DragValue::new(&mut zone.velocity_scale)
+                                    .range(0.0..=2.0)
+                                    .speed(0.01)
+                                    .fixed_decimals(2),
+                            );
+                        });
+                    }
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t(
+                            "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal.",
+                        ))
+                        .size(Theme::FONT_XS)
+                        .color(Theme::TEXT_MUTED),
+                    );
+                });
+
+                ui.separator();
                 ui.label(egui::RichText::new(crate::i18n::t("🎹 MIDI-UT (extern synt)")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
                 // Utgången tas ut ur fältet medan den används: `blip` lånar den bara som
                 // `&`, men "koppla från" skriver fältet — och då kan båda inte låna `self`.

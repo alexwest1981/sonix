@@ -768,24 +768,32 @@ impl SonixApp {
 /// the transport is running) records it into the active Piano Roll pattern.
 fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool, channel: u8) {
     // Kanal 0 i motorn betyder "inte från MIDI"; MIDI:s kanal 0 (mastern) blir 1.
-    let engine_channel = channel + 1;
+    // Kartan läggs på **före** kanalen räknas om, och på både anslag och släpp — annars
+    // släpps den transponerade noten aldrig, för note-off bär originaltangenten.
+    let (mapped_note, mapped_velocity, mapped_channel) =
+        self.midi_map.apply(note, velocity, channel + 1);
     let is_on = on && velocity > 0;
     if is_on {
         if self.midi_held_notes.insert(note) {
-            self.play_note_velocity_on_channel(note, velocity as f32 / 127.0, engine_channel);
+            self.play_note_velocity_on_channel(
+                mapped_note,
+                mapped_velocity as f32 / 127.0,
+                mapped_channel,
+            );
             if self.midi_record_armed && self.is_playing {
-                self.record_midi_note_at_step(note);
+                self.record_midi_note_at_step(mapped_note);
                 // Tagningen (Fas 6.4): noten skrivs till rutnätet *och* sparas
                 // med sin faktiska tid, så att den går att kvantisera eller
                 // humanisera i efterhand. Rutnätet ensamt kastade tiden.
                 let pos = self.current_take_pos();
                 if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
-                    pat.take.push(pos, note, velocity as f32 / 127.0);
+                    pat.take
+                        .push(pos, mapped_note, mapped_velocity as f32 / 127.0);
                 }
             }
         }
     } else if self.midi_held_notes.remove(&note) {
-        self.release_note_on_channel(note, engine_channel);
+        self.release_note_on_channel(mapped_note, mapped_channel);
     }
 }
 

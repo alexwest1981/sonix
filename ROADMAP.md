@@ -19,15 +19,14 @@ gränssnittet lovar.
 
 | Mått | Räknat | Så räknades det |
 | :--- | ---: | :--- |
-| **FL-pluggarna** (51 generatorer + 90 effekter) | **✅ 66 · ◐ 55 · ✗ 20** av 141 | `awk` på statuskolumnen i `FL-STUDIO-INVENTORY.md` §2 |
-| — andel | **47 %** helt · **86 %** helt eller delvis · **14 %** saknas | 66 / (66+55) / 20 av 141 |
+| **FL-pluggarna** (51 generatorer + 90 effekter) | **✅ 67 · ◐ 56 · ✗ 18** av 141 | `awk` på statuskolumnen i `FL-STUDIO-INVENTORY.md` §2 — och **namnen är kontrollerade mot installationen**: 51 + 90 mappar i `Plugins/Fruity`, noll skillnader mot inventariets 141 rader |
+| — andel | **47 %** helt · **87 %** helt eller delvis · **13 %** saknas | 67 / (67+56) / 18 av 141 |
 | **Ableton-enheterna** | 72: 13 instrument + 48 ljudeffekter + 11 MIDI-effekter | `ABLETON-INVENTORY.md` §2 |
 | **Ableton gap-matris** | 6 områden där vi ligger före · 4 delvis · 8 efter | 18 rader i §8, räknade på dom-kolumnen |
-| **Koden** | 117 filer · **109 355 rader** i `src/` · **911 `#[test]`** | `find` / `cat` / `grep -c` 2026-10-23 |
+| **Koden** | 119 filer · **110 858 rader** i `src/` · **931 `#[test]`** | `find` / `cat` / `grep -c` 2026-10-23 |
 
-Två räknefel i inventariernas egna rubriker är rättade samma dag: FL:s rubrik sa **◐ 56** när
-tabellen har 55, och Ableton sa **5 delvis** när matrisen har 4. Tabellerna var rätt, summeringen
-var det inte.
+Ett räknefel i en inventarierubrik är rättat samma dag: Ableton sa **5 delvis** när matrisen har
+4 — matrisen var rätt, summeringen var det inte. FL:s rubrik stämmer nu med tabellen (67/56/18).
 
 **Testtalet är antalet `#[test]`-funktioner i trädet, inte en körd svit.** Inventariernas
 644/693 gäller en äldre commit; den siffran ska mätas om med `cargo test` innan den citeras igen.

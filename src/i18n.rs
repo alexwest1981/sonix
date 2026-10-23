@@ -376,6 +376,12 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎛 MIDI-KARTA (splitter)" => "🎛 MIDI MAP (splitter)",
+        "Aktivera zoner" => "Enable zones",
+        "Transp." => "Transp.",
+        "Kanal" => "Channel",
+        "Zon {}" => "Zone {}",
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal." => "The first zone covering the note wins. Channel 0 = keep the note's channel.",
         "Artikulation:" => "Articulation:",
         "Normal" => "Normal",
         "Staccato" => "Staccato",
@@ -2634,6 +2640,12 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎛 MIDI-KARTA (splitter)" => "🎛 MIDI-KORT (splitter)",
+        "Aktivera zoner" => "Aktivér zoner",
+        "Transp." => "Transp.",
+        "Kanal" => "Kanal",
+        "Zon {}" => "Zone {}",
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal." => "Den første zone, der dækker noden, vinder. Kanal 0 = behold nodens kanal.",
         "Artikulation:" => "Artikulation:",
         "Normal" => "Normal",
         "Staccato" => "Staccato",
@@ -4851,6 +4863,12 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎛 MIDI-KARTA (splitter)" => "🎛 MIDI-KART (splitter)",
+        "Aktivera zoner" => "Aktiver soner",
+        "Transp." => "Transp.",
+        "Kanal" => "Kanal",
+        "Zon {}" => "Sone {}",
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal." => "Den første sonen som dekker noten vinner. Kanal 0 = behold notens kanal.",
         "Artikulation:" => "Artikulasjon:",
         "Normal" => "Normal",
         "Staccato" => "Staccato",
@@ -7068,6 +7086,12 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎛 MIDI-KARTA (splitter)" => "🎛 MIDI-KARTE (Splitter)",
+        "Aktivera zoner" => "Zonen aktivieren",
+        "Transp." => "Transp.",
+        "Kanal" => "Kanal",
+        "Zon {}" => "Zone {}",
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal." => "Die erste Zone, die die Note abdeckt, gewinnt. Kanal 0 = Kanal der Note behalten.",
         "Artikulation:" => "Artikulation:",
         "Normal" => "Normal",
         "Staccato" => "Staccato",
@@ -9285,6 +9309,12 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎛 MIDI-KARTA (splitter)" => "🎛 MAPA MIDI (splitter)",
+        "Aktivera zoner" => "Activar zonas",
+        "Transp." => "Transp.",
+        "Kanal" => "Canal",
+        "Zon {}" => "Zona {}",
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal." => "Gana la primera zona que cubre la nota. Canal 0 = mantener el canal de la nota.",
         "Artikulation:" => "Articulación:",
         "Normal" => "Normal",
         "Staccato" => "Staccato",
@@ -11502,6 +11532,12 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎛 MIDI-KARTA (splitter)" => "🎛 CARTE MIDI (splitter)",
+        "Aktivera zoner" => "Activer les zones",
+        "Transp." => "Transp.",
+        "Kanal" => "Canal",
+        "Zon {}" => "Zone {}",
+        "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal." => "La première zone couvrant la note gagne. Canal 0 = garder le canal de la note.",
         "Artikulation:" => "Articulation :",
         "Normal" => "Normal",
         "Staccato" => "Staccato",

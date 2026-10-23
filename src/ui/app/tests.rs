@@ -517,6 +517,7 @@ use crate::ui::theme::Theme;
             selected_pattern: 0,
             step_velocities: Some(step_velocities),
             channels: vec![channel_to_saved(&ch)],
+            midi_map: Default::default(),
         };
 
         let json = serde_json::to_string(&data).unwrap();
@@ -1917,6 +1918,7 @@ use crate::ui::theme::Theme;
             selected_pattern: 0,
             step_velocities: None,
             channels: Vec::new(),
+            midi_map: Default::default(),
         };
         let json = serde_json::to_string(&data).unwrap();
         let back: SonixProjectData = serde_json::from_str(&json).unwrap();
@@ -1965,6 +1967,44 @@ use crate::ui::theme::Theme;
             "och inga utbussar var kopplade då: bussarna lästes inte alls, alltså låter \
              filen exakt som den gjorde"
         );
+    }
+
+    /// **MIDI-kartan följer med filen** — och ett projekt från före fältet får en avstängd
+    /// karta, alltså exakt det ljud som gällde då (noterna går rakt igenom).
+    #[test]
+    fn the_midi_map_survives_the_project_file_and_old_files_get_it_off() {
+        let json = r#"{
+            "name": "Karta",
+            "bpm": 120.0,
+            "swing": 0.0,
+            "master_volume": 1.0,
+            "master_pan": 0.0,
+            "tracks": [],
+            "plugin_slots": [],
+            "midi_map": {
+                "enabled": true,
+                "zones": [
+                    {"active": true, "low": 36, "high": 47, "transpose": 12, "channel": 2, "velocity_scale": 0.75},
+                    {"active": false, "low": 0, "high": 127, "transpose": 0, "channel": null, "velocity_scale": 1.0},
+                    {"active": false, "low": 0, "high": 127, "transpose": 0, "channel": null, "velocity_scale": 1.0},
+                    {"active": false, "low": 0, "high": 127, "transpose": 0, "channel": null, "velocity_scale": 1.0}
+                ]
+            }
+        }"#;
+        let data: SonixProjectData = serde_json::from_str(json).unwrap();
+        assert!(data.midi_map.enabled);
+        assert_eq!(
+            data.midi_map.apply(40, 80, 1),
+            (52, 60, 2),
+            "zonen transponerar, skalar anslaget och flyttar kanalen"
+        );
+
+        let old: SonixProjectData = serde_json::from_str(
+            r#"{"name":"Gammal","bpm":120.0,"swing":0.0,"master_volume":1.0,"master_pan":0.0,"tracks":[],"plugin_slots":[]}"#,
+        )
+        .unwrap();
+        assert!(!old.midi_map.enabled, "utan fältet är kartan avstängd");
+        assert_eq!(old.midi_map.apply(40, 80, 1), (40, 80, 1));
     }
 
     /// Beviset för att hålet i 6.3 är stängt: en låt på fyra takter skrivs ut,

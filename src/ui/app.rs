@@ -425,7 +425,9 @@ pub struct SonixApp {
     pub mcu_input: Option<McuInput>,
     pub osc_server: Option<OscServer>,
     // Real MIDI keyboard input (Fas 5.3)
-    pub midi_input: Option<crate::audio::MidiKeyboardInput>,
+    pub midi_input: Option<MidiKeyboardInput>,
+    /// MIDI-kartan: FL:s splitter, key mapper och level scaler i en tabell.
+    pub midi_map: crate::audio::key_mapper::KeyMap,
     /// **MIDI ut** (Sprint 1, punkt 4): en öppen utgång, om någon är vald.
     pub midi_out: Option<crate::audio::midi_output::MidiOut>,
     pub midi_auto_connect_attempted: bool,
@@ -990,6 +992,7 @@ impl SonixApp {
             mcu_input: None,
             osc_server: None,
             midi_input: None,
+            midi_map: crate::audio::key_mapper::KeyMap::default(),
             midi_out: None,
             midi_auto_connect_attempted: false,
             midi_keyboard_connected: false,
