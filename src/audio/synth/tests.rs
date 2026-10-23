@@ -3014,4 +3014,44 @@ fn the_guitar_is_brighter_and_more_compressed_than_a_plucked_string() {
     assert!((pitch - 220.0).abs() < 12.0, "strängen ska stämma: {pitch:.1} Hz");
     let late = (guitar[38_400..].iter().map(|x| x * x).sum::<f32>() / 9600.0).sqrt();
     assert!(late > 0.005, "gitarren ska klinga ut, inte dö direkt: {late:.4}");
+
+    /// **Control Room rör bara den motor som fick kommandot.** Samma not ger ljud i en
+    /// motor som inte vet om monitorläget, och tystnad i en som är tystad — det är
+    /// skillnaden mellan monitor och export.
+    #[test]
+    fn the_control_room_silences_only_the_engine_that_was_told() {
+        let mut live = SynthEngine::new(48_000.0);
+        let mut render_peak = |engine: &mut SynthEngine| {
+            engine.handle_command(AudioCommand::NoteOn {
+                note: 60,
+                freq: 261.63,
+                velocity: 1.0,
+                channel: 0,
+            });
+            let mut peak: f32 = 0.0;
+            for _ in 0..4_800 {
+                let (l, r) = engine.process_stereo();
+                peak = peak.max(l.abs()).max(r.abs());
+            }
+            peak
+        };
+        let loud = render_peak(&mut live);
+        assert!(loud > 0.01, "motorn ska låta först: {loud}");
+
+        live.handle_command(AudioCommand::SetControlRoom(
+            crate::audio::command::ControlRoomState {
+                level: 1.0,
+                dim: false,
+                mono: false,
+                mute: true,
+            },
+        ));
+        let muted = render_peak(&mut live);
+        assert_eq!(muted, 0.0, "tyst monitor ska ge tystnad, fick {muted}");
+
+        // En ny motor (den exporten bygger) har aldrig fått kommandot.
+        let mut export = SynthEngine::new(48_000.0);
+        let exported = render_peak(&mut export);
+        assert!(exported > 0.01, "exportmotorn ska vara opåverkad: {exported}");
+    }
 }

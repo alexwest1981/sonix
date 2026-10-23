@@ -116,6 +116,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetGlide { .. } => "SetGlide",
         AudioCommand::SetFilterDrive { .. } => "SetFilterDrive",
         AudioCommand::SetSub { .. } => "SetSub",
+        AudioCommand::SetControlRoom(_) => "SetControlRoom",
         AudioCommand::SetHarmonics { .. } => "SetHarmonics",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
@@ -160,7 +161,6 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetMonitorLevel(_) => "SetMonitorLevel",
         AudioCommand::SetAuditionParams { .. } => "SetAuditionParams",
         AudioCommand::TriggerSampleVoice { .. } => "TriggerSampleVoice",
-        AudioCommand::ReleaseSampleVoices { .. } => "ReleaseSampleVoices",
         AudioCommand::SetPatcherGraph(_) => "SetPatcherGraph",
         AudioCommand::SetPatcherEnabled(_) => "SetPatcherEnabled",
         AudioCommand::PatcherNoteOn { .. } => "PatcherNoteOn",
@@ -188,6 +188,9 @@ pub const HARMONICS_DEFAULT: [f32; HARMONIC_COUNT] = {
 
 pub struct SynthEngine {
     pub sample_rate: f32,
+    /// **Control Room**: monitorläget. Neutralt tills den levande utgången säger annat —
+    /// exportmotorn sätter det aldrig, så en dimmad monitor hamnar inte i en renderad fil.
+    pub control_room: crate::audio::command::ControlRoomState,
     pub waveform: Waveform,
     pub adsr: AdsrParams,
     pub filter_params: FilterParams,
@@ -309,6 +312,7 @@ impl SynthEngine {
         let (waveform, adsr, filter_params) = (s.waveform, s.adsr, s.filter);
         Self {
             sample_rate,
+            control_room: crate::audio::command::ControlRoomState::default(),
             waveform,
             adsr,
             filter_params,

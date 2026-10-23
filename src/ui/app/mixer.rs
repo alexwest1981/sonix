@@ -2320,6 +2320,56 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
 
                 ui.separator();
 
+                // **CONTROL ROOM** — det man lyssnar genom. Sitter efter masterns FX-kedja
+                // och rör aldrig exporten.
+                ui.group(|ui| {
+                    ui.set_width(96.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("CONTROL ROOM"))
+                                .strong()
+                                .size(Theme::FONT_XS)
+                                .color(Theme::CYAN),
+                        );
+                        ui.add_space(2.0);
+                        let cr = &mut self.control_room;
+                        let mut changed = false;
+                        changed |= vertical_fader(ui, &mut cr.level, 0.0, 2.0, 0.0, Theme::CYAN, 90.0);
+                        ui.label(
+                            egui::RichText::new(format!("{:+.1} dB", if cr.level <= 0.001 { -60.0 } else { 20.0 * cr.level.log10() }))
+                                .size(Theme::FONT_XS)
+                                .color(Theme::CYAN),
+                        );
+                        ui.horizontal(|ui| {
+                            changed |= ui
+                                .add(egui::Button::new(egui::RichText::new("DIM").size(Theme::FONT_XS)).selected(cr.dim))
+                                .on_hover_text(crate::i18n::t("Dimma monitorerna −20 dB (rör inte exporten)"))
+                                .clicked()
+                                && { cr.dim = !cr.dim; true };
+                            changed |= ui
+                                .add(egui::Button::new(egui::RichText::new("MONO").size(Theme::FONT_XS)).selected(cr.mono))
+                                .on_hover_text(crate::i18n::t("Lyssna i mono — kontrollera att mixen håller utan bredd"))
+                                .clicked()
+                                && { cr.mono = !cr.mono; true };
+                        });
+                        changed |= ui
+                            .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔇 TYST")).size(Theme::FONT_XS)).selected(cr.mute))
+                            .on_hover_text(crate::i18n::t("Tysta monitorerna — spelet fortsätter"))
+                            .clicked()
+                            && { cr.mute = !cr.mute; true };
+                        if changed {
+                            let _ = self.engine.send_command(AudioCommand::SetControlRoom(
+                                crate::audio::command::ControlRoomState {
+                                    level: cr.level,
+                                    dim: cr.dim,
+                                    mono: cr.mono,
+                                    mute: cr.mute,
+                                },
+                            ));
+                        }
+                    });
+                });
+
                 // Channel Strips for each Playlist Track in the user's project
                 let num_tracks = self.playlist_tracks.len();
                 for t_idx in 0..num_tracks {

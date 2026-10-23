@@ -191,6 +191,9 @@ impl SynthEngine {
                     }
                 }
             }
+            AudioCommand::SetControlRoom(state) => {
+                self.control_room = state;
+            }
             AudioCommand::ChannelPitchBend { channel, semitones } => {
                 self.apply_channel_bend(channel, semitones);
             }
@@ -730,22 +733,6 @@ impl SynthEngine {
                 v.fade_frames = ((self.sample_rate * SLICE_FADE_SECS) as u32).max(1);
                 v.frames_done = 0;
                 v.active = true;
-            }
-
-            AudioCommand::ReleaseSampleVoices { channel } => {
-                // **Not-av** (Fas 8.4): bara rösterna på den kanalen. En röst som redan
-                // släppts rörs inte (annars startade släppet om varje gång).
-                for v in &mut self.sample_voices {
-                    if v.channel == channel && !v.released {
-                        v.released = true;
-                        if v.env_on {
-                            v.amp_env.gate_off();
-                        }
-                        if v.filter.on {
-                            v.filter_env.gate_off();
-                        }
-                    }
-                }
             }
             AudioCommand::PlayScratch {
                 left,

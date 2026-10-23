@@ -236,7 +236,31 @@ impl Default for FmParams {
 }
 
 #[allow(dead_code)]
+/// **Control Room**: monitorläget. Skickas bara av den levande utgången — exportmotorn
+/// får aldrig detta kommando och är därför alltid neutral.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ControlRoomState {
+    pub level: f32,
+    pub dim: bool,
+    pub mono: bool,
+    pub mute: bool,
+}
+
+impl Default for ControlRoomState {
+    fn default() -> Self {
+        let d = crate::audio::control_room::ControlRoom::default();
+        Self {
+            level: d.level,
+            dim: d.dim,
+            mono: d.mono,
+            mute: d.mute,
+        }
+    }
+}
+
 pub enum AudioCommand {
+    /// Sätt monitorläget (nivå, dim, mono, tyst). Påverkar bara det som hörs.
+    SetControlRoom(ControlRoomState),
     /// Replaces (or clears, with `None`) the CLAP insert on a stem track. The
     /// insert is built on the UI thread and handed to the audio thread here.
     SetTrackPlugin {
@@ -541,13 +565,7 @@ pub enum AudioCommand {
         /// en-skottsbeteende. Annars släpps rösten efter den tiden — det är så ett steg i
         /// kanalracket kan vara en *not* med en längd i stället för bara en trigger.
         hold_secs: f32,
-    },
-    /// **Not-av** (Fas 8.4): släpper rösterna på en kanal, så att `UntilRelease` spelar
-    /// resten efter loopen och envelopen går in i sitt släpp.
-    ReleaseSampleVoices {
-        channel: u32,
-    },
-    // Modular Patcher (node graph) — real DSP graph evaluated per sample
+    },    // Modular Patcher (node graph) — real DSP graph evaluated per sample
     SetPatcherGraph(crate::audio::patcher::PatchSpec),
     SetPatcherEnabled(bool),
     PatcherNoteOn {

@@ -112,9 +112,9 @@ impl SynthEngine {
                 sv.active = false;
                 continue;
             }
-            // Not-av (Fas 8.4): uttryckligt (`ReleaseSampleVoices`) eller efter notens
-            // längd. För en lopande röst betyder det "spela resten efter loopen"; för en
-            // en-skottsröst betyder det ingenting, för den tar slut själv.
+            // Not-av (Fas 8.4): efter notens längd. För en lopande röst betyder det
+            // "spela resten efter loopen"; för en en-skottsröst betyder det ingenting,
+            // för den tar slut själv.
             if !sv.released && sv.hold_frames.is_some_and(|h| sv.frames_done >= h) {
                 sv.released = true;
             }
@@ -821,6 +821,19 @@ impl SynthEngine {
             (out_l, out_r)
         };
         let (out_l, out_r) = self.tape_stop.process(out_l, out_r);
+
+        // **Control Room** sitter efter masterns FX-kedja: det man hör kan dimmas eller
+        // lyssnas i mono utan att det man exporterar ändras (exportmotorn får aldrig
+        // kommandot, så dess `control_room` är neutral).
+        let (out_l, out_r) = {
+            let cr = crate::audio::control_room::ControlRoom {
+                level: self.control_room.level,
+                dim: self.control_room.dim,
+                mono: self.control_room.mono,
+                mute: self.control_room.mute,
+            };
+            cr.apply(out_l, out_r)
+        };
 
         self.dbg_frames += 1;
         if self.dbg_frames % 48000 == 0 {

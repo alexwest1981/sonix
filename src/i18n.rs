@@ -376,6 +376,11 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta monitorerna — spelet fortsätter" => "Mute the monitors — playback continues",
+        "🔇 TYST" => "🔇 MUTE",
+        "Lyssna i mono — kontrollera att mixen håller utan bredd" => "Listen in mono — check that the mix holds without width",
+        "Dimma monitorerna −20 dB (rör inte exporten)" => "Dim the monitors −20 dB (does not touch the export)",
+        "CONTROL ROOM" => "CONTROL ROOM",
         "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "The first zone covering the note wins. Channel 0 = keep the note's channel. The scale quantizes the note (note → note).",
         "🧵 Tagningar (komp)..." => "🧵 Takes (comp)...",
         "🗑 Tog bort lane {}" => "🗑 Removed lane {}",
@@ -2701,6 +2706,11 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta monitorerna — spelet fortsätter" => "Tysta monitorerna — spelet fortsätter",
+        "🔇 TYST" => "🔇 TYST",
+        "Lyssna i mono — kontrollera att mixen håller utan bredd" => "Lyssna i mono — kontrollera att mixen håller utan bredd",
+        "Dimma monitorerna −20 dB (rör inte exporten)" => "Dimma monitorerna −20 dB (rör inte exporten)",
+        "CONTROL ROOM" => "CONTROL ROOM",
         "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not).",
         "🧵 Tagningar (komp)..." => "🧵 Tagningar (komp)...",
         "🗑 Tog bort lane {}" => "🗑 Tog bort lane {}",
@@ -4985,6 +4995,11 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta monitorerna — spelet fortsätter" => "Sluk monitorerne — afspilningen fortsætter",
+        "🔇 TYST" => "🔇 LYD LØS",
+        "Lyssna i mono — kontrollera att mixen håller utan bredd" => "Lyt i mono — tjek at mixen holder uden bredde",
+        "Dimma monitorerna −20 dB (rör inte exporten)" => "Dæmp monitorerne −20 dB (rører ikke eksporten)",
+        "CONTROL ROOM" => "CONTROL ROOM",
         "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "Den første zone, der dækker noden, vinder. Kanal 0 = behold nodens kanal. Skalaen kvantiserer noden (node → node).",
         "🧵 Tagningar (komp)..." => "🧵 Tagninger (komp)...",
         "🗑 Tog bort lane {}" => "🗑 Fjernede lane {}",
@@ -7269,6 +7284,11 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta monitorerna — spelet fortsätter" => "Demp monitorene — avspillingen fortsetter",
+        "🔇 TYST" => "🔇 DEMPET",
+        "Lyssna i mono — kontrollera att mixen håller utan bredd" => "Lytt i mono — sjekk at miksen holder uten bredde",
+        "Dimma monitorerna −20 dB (rör inte exporten)" => "Demp monitorerne −20 dB (rører ikke eksporten)",
+        "CONTROL ROOM" => "CONTROL ROOM",
         "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "Den første sonen som dekker noten vinner. Kanal 0 = behold notens kanal. Skalaen kvantiserer noten (note → note).",
         "🧵 Tagningar (komp)..." => "🧵 Tagninger (komp)...",
         "🗑 Tog bort lane {}" => "🗑 Fjernet lane {}",
@@ -9553,6 +9573,11 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta monitorerna — spelet fortsätter" => "Monitore stumm — Wiedergabe läuft weiter",
+        "🔇 TYST" => "🔇 STUMM",
+        "Lyssna i mono — kontrollera att mixen håller utan bredd" => "In Mono hören — prüfen, ob der Mix ohne Breite trägt",
+        "Dimma monitorerna −20 dB (rör inte exporten)" => "Monitore um −20 dB dämpfen (Export bleibt unberührt)",
+        "CONTROL ROOM" => "CONTROL ROOM",
         "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "Die erste Zone, die die Note abdeckt, gewinnt. Kanal 0 = Kanal der Note behalten. Die Skala quantisiert die Note (Note → Note).",
         "🧵 Tagningar (komp)..." => "🧵 Takes (Komp)...",
         "🗑 Tog bort lane {}" => "🗑 Lane {} entfernt",
@@ -11837,6 +11862,11 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tysta monitorerna — spelet fortsätter" => "Couper les monitors — la lecture continue",
+        "🔇 TYST" => "🔇 MUET",
+        "Lyssna i mono — kontrollera att mixen håller utan bredd" => "Écouter en mono — vérifier que le mix tient sans largeur",
+        "Dimma monitorerna −20 dB (rör inte exporten)" => "Atténue les monitors de −20 dB (l'export n'est pas touché)",
+        "CONTROL ROOM" => "CONTROL ROOM",
         "Första zonen som täcker noten vinner. Kanal 0 = behåll notens kanal. Skalan kvantiserar noten (not → not)." => "La première zone couvrant la note gagne. Canal 0 = garder le canal de la note. La gamme quantifie la note (note → note).",
         "🧵 Tagningar (komp)..." => "🧵 Prises (comp)...",
         "🗑 Tog bort lane {}" => "🗑 Voie {} supprimée",

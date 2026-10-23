@@ -583,6 +583,8 @@ pub struct SonixApp {
     pub show_dance: bool,
     /// **Take lanes** (Ableton-kompning): välj vilken tagning som spelas.
     pub show_takes_modal: bool,
+    /// **Control Room**: monitorläget (nivå, dim, mono, tyst).
+    pub control_room: crate::audio::control_room::ControlRoom,
     pub script_source: String,
     pub script_param: usize,
     /// Toppmarkörerna i visualizern, en per band.
@@ -1137,6 +1139,7 @@ impl SonixApp {
             show_script_modal: false,
             show_dance: false,
             show_takes_modal: false,
+            control_room: crate::audio::control_room::ControlRoom::default(),
             script_source: crate::ui::app::script::DEFAULT_SOURCE.to_string(),
             script_param: 0,
             visualizer_peaks: Vec::new(),

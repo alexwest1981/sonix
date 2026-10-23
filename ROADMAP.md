@@ -77,7 +77,7 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 | 5 | **Bärvågsingång i masterns kedja** | *M* | vocodern finns i sångstudion (`vocode`, 16 band, bärvåg som följer sången); som **effekt** kräver den en andra ingång. Sidokedja till plugins finns, inte till masterns kedja |
 | 6 | **Skript-API** (pianorulle, utbyggnad) | *L* | en egen körningsyta. FL:s `Piano roll script reference.txt` och Abletons Max/Extensions är båda det; vår AI-väg är kommandon, inte skript |
 | 7 | **Additiv/spektral syntes i full längd** (Harmor, Ogun, Sytrus 6-op) | *XL* | oscillatorbank per röst + spektral morfning. Morphine-kärnan (två källor) är byggd; resten är ett synthprojekt |
-| 8 | **Control Room-matrisen** | *M* | monitor/cue/talkback per kanal. Utgångsbussarna finns (`ab715d5`), men matrisen kräver att varje kanal får egen signal |
+| 8 | **Control Room** — *◐ monitorsektion klar* | *M* | `audio::control_room::ControlRoom` sitter **efter** masterns FX-kedja: nivå 0–2×, **DIM** (−20 dB), **MONO** och **TYST**, med egen ratt i mixern. Exportmotorn får aldrig kommandot, så monitorläget kan inte hamna i en fil (prov: tystad motor ger 0,0, färsk motor låter). Kvar: cue-sends A/B och talkback per kanal |
 
 ### Går inte att bygga här — och varför
 
