@@ -256,7 +256,7 @@ warplägen där vi har två beteenden.
 | **Pluginformat** | VST3/VST2/AU | CLAP + VST3 + VST2 + sandlåda | *vi* |
 | **Analysfiler** | `.asd` bredvid varje sampling | egen cache | *vi* |
 
-**Räkning:** 8 områden där vi ligger efter, 5 där vi ligger delvis, 6 där vi ligger före.
+**Räkning:** 8 områden där vi ligger efter, 4 där vi ligger delvis, 6 där vi ligger före.
 
 ---
 

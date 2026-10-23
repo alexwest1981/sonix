@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 64** har en motsvarighet, **◐ 56** delvis, **✗ 22** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 64** har en motsvarighet, **◐ 55** delvis, **✗ 22** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
