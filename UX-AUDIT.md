@@ -8,7 +8,7 @@
 
 ## 1. Svaret i en rad
 
-Av 13 hantverksaxlar är **1 i nivå, 6 delvis, 6 inte**. Men de sex som faller är inte sex problem:
+Av 13 hantverksaxlar är **1 i nivå, 6 delvis, 6 inte** (mätt före passet; läget efter står i §8 — nu 4 · 7 · 2). De sex som föll var inte sex problem:
 de är **tre lager** — typografi, färg, ikoner — plus en hierarki som faller ut ur dem.
 Det som känns hemsnickrat är alltså inte mängden kod (108 782 rader i `src/`), utan att varje
 skärm får bestämma sina egna storlekar, färger och glyfer.
@@ -17,12 +17,12 @@ skärm får bestämma sina egna storlekar, färger och glyfer.
 
 | Axel | Sonix (mätt) | Soundtrap (observerat) | Dom |
 | :--- | :--- | :--- | :---: |
-| Typografisk skala | 22 storlekar, halvsteg (9,5 · 10,5 · 11,5 · 12,5 · 13,5) | ~3 storlekar, en familj, två vikter | ✗ |
-| Färgsystem | 16 tokens i `theme.rs`, men **642 literala `from_rgb` → 362 unika färger i 22 nyanskluster**; 6 accenter som betyder olika saker | 1 accent (violett) + 2 innehållsfärger (röd, ockra), ~10 tokens | ✗ |
+| Typografisk skala | 22 storlekar, halvsteg (9,5 · 10,5 · 11,5 · 12,5 · 13,5) → **fem** sedan `37c2520` | ~3 storlekar, en familj, två vikter | ✅ |
+| Färgsystem | **642 literaler → 362 unika färger**; 142 av anropen flyttade in i `Theme` (`093c04c`), **484 kvar** som innehållsfärger | 1 accent (violett) + 2 innehållsfärger (röd, ockra), ~10 tokens | ◐ |
 | Ikonografi | **88 distinkta emoji, 1 350 förekomster** i `src/ui`; emoji ligger även i i18n-nycklarna | en linjeikonfamilj, ~1,5 px, 16–20 px stora | ✗ |
 | Komponentfamilj | 12 publika widgetfunktioner mot 235 `pub fn` i `src/ui`; 287 råa `ui.button(`; 5–6 kontrollhöjder i samma rad | en knappfamilj i två storlekar (28–32 px) | ✗ |
-| Primär handling | orange är markering, aktivt steg, primär-CTA **och** avvisa-knapp; i återställningsdialogen är "Fortsätt utan att återställa" den enda fyllda knappen (`modals.rs:952`) | en fylld CTA per yta (Export), allt annat neutralt | ✗ |
-| Lager och fokus | 29 `egui::Window::new`, **0 scrim/dim** — modaler flyter över en fullt upplyst bakgrund | modaler/paneler med egen elevation, bakgrunden dämpas | ✗ |
+| Primär handling | orange är markering, aktivt steg, primär-CTA **och** avvisa-knapp; återställningsdialogen rättad `093c04c` (Återställ = grön kant, avvisa = neutral) | en fylld CTA per yta (Export), allt annat neutralt | ✅ |
+| Lager och fokus | 29 `egui::Window::new`, **0 scrim/dim** före `093c04c`; nu en `Theme::SCRIM` i `render_all_modals` | modaler/paneler med egen elevation, bakgrunden dämpas | ✅ |
 | Avståndsrytm | 9 `add_space`-värden, 4/6/8 dominerar; 4 px bas finns | 4/8-bas | ◐ |
 | Panelgrid och linjering | spårrad 46 px; ytterkanter linjerar, inre innehåll glider (master saknar EQ-rad) | spårrader i linje med lanes, fast 3-zonslayout | ◐ |
 | Hover-hjälp | 199 `on_hover_text` mot 287 knappar och 21 vyer | verktygstips på det mesta | ◐ |
@@ -102,3 +102,30 @@ rg --no-filename -c 'on_hover_text' src -g '*.rs' | awk '{s+=$1} END{print s}'  
   misstanken om för låg kontrast är inte verifierad mot WCAG-tal här.
 - **Emoji-räkningen är textbaserad.** Hur de faktiskt ritas (egui:s typsnitt, fallback-glyfer) är
   bedömt ur skärmdumparna, inte ur teckentabeller.
+
+## 8. Efter första passet (2026-10-23)
+
+Två commits, `37c2520` och `093c04c`, körda genom repots grind (0 varningar i alla fyra byggena,
+845 prov utan och 895 med `plugin-host`, alla gröna) och synade i 30 nya skärmdumpar.
+
+| Axel | Före | Efter | Så mäts det |
+| :--- | :--- | :--- | :--- |
+| Typografiska storlekar | 22 | **5** (`Theme::FONT_XS..XL`), 0 numeriska `.size()` kvar | `rg -o '\.size\(([0-9.]+)\)'` |
+| Färgtokens i bruk | 16 | **22** (krom + accenter; `Theme::SCRIM` tillkom) | `rg -o 'Theme::[A-Z_0-9]+' \| sort -u` |
+| Literala färger utanför `theme.rs` | 642 | **513** (varav 29 kom med någon annans `Consolidate`-commit) | `rg -c 'Color32::from_rgb' src` |
+| Dämpning bakom dialoger | ingen | **`Theme::SCRIM`** i `render_all_modals`, och `any_modal_open()` som enda lista | läs `modals.rs` |
+| Primär handling i återställningsdialogen | avvisa-knappen fylld | **Återställ** markerad, avvisa neutral | `modals.rs` |
+
+Bara färger inom **ΔE 6** flyttades — alltså inget som syns i pixlarna; det var hela poängen
+med att göra det mekaniskt först. Det som *syns* av passet är typografin (färre, större steg och
+jämnare rader), dämpningen och att rätt knapp är den starka.
+
+**Kvar till nästa pass, i den ordningen:**
+
+1. **Paletten.** 513 literaler är innehållsfärger (mätare, EQ-grafer, spårtoner). Att slå ihop dem
+   till ~24 tokens är ett *designbeslut*: mätt kostar en sammanslagning till 100 färger ΔE ≤ 10
+   per anrop, till 24 färger betydligt mer. Det ska göras med före/efter-bilder, inte med en sökning.
+2. **Ikonerna.** 88 emoji i 1 350 strängar, även inuti i18n-nycklarna. Kräver en ikonfamilj
+   (ett inbäddat glyfset) och en `icon()`-hjälpare som strippar i renderingslagret — inte i nycklarna.
+3. **Komponentfamiljen.** 12 publika widgetfunktioner mot 235 `pub fn` i `src/ui`: knappar, fält och
+   paneler byggs på plats. En `widgets`-yta med tre knappstorlekar och en fälttyp är nästa lager.
