@@ -32,4 +32,7 @@ impl Theme {
     pub const FONT_M: f32 = 13.0;
     pub const FONT_L: f32 = 16.0;
     pub const FONT_XL: f32 = 22.0;
+
+    /// Dämpning bakom dialoger: en dialog ska vara det enda som lyser.
+    pub const SCRIM: Color32 = Color32::from_black_alpha(120);
 }

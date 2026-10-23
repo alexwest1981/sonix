@@ -123,7 +123,7 @@ pub(crate) fn render_import_sample_modal(&mut self, ctx: &egui::Context) {
             }).collect();
 
             let (wf_rect, _) = ui.allocate_exact_size(Vec2::new(380.0, 32.0), egui::Sense::hover());
-            ui.painter().rect_filled(wf_rect, Rounding::same(3.0), Color32::from_rgb(18, 20, 24));
+            ui.painter().rect_filled(wf_rect, Rounding::same(3.0), Theme::BG_DARK);
             let mid_y = wf_rect.center().y;
             let dx = wf_rect.width() / 32.0;
             for (wi, &val) in preview_wave.iter().enumerate() {
@@ -248,7 +248,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                         ui.vertical_centered(|ui| {
                             ui.label(egui::RichText::new(format!("CH{}", i + 1)).size(Theme::FONT_XS));
                             let (rect, _) = ui.allocate_exact_size(Vec2::new(12.0, 36.0), Sense::hover());
-                            ui.painter().rect_filled(rect, Rounding::same(2.0), Color32::from_rgb(20, 24, 30));
+                            ui.painter().rect_filled(rect, Rounding::same(2.0), Theme::BG_DARK);
                             let h = (ch_vol * 34.0).clamp(0.0, 34.0);
                             let fill_rect = Rect::from_min_max(Pos2::new(rect.min.x + 1.0, rect.max.y - h), Pos2::new(rect.max.x - 1.0, rect.max.y - 1.0));
                             ui.painter().rect_filled(fill_rect, Rounding::same(1.0), Theme::FL_ORANGE);
@@ -923,7 +923,13 @@ pub(crate) fn render_recovery_modal(&mut self, ctx: &egui::Context) {
                         .color(Theme::FL_CYAN),
                     );
                     if ui
-                        .button(crate::i18n::t("  Återställ  "))
+                        .add(
+                            egui::Button::new(
+                                egui::RichText::new(crate::i18n::t("  Återställ  "))
+                                    .size(Theme::FONT_S),
+                            )
+                            .stroke(egui::Stroke::new(1.0_f32, Theme::FL_GREEN)),
+                        )
                         .on_hover_text(path)
                         .clicked()
                     {
@@ -945,13 +951,7 @@ pub(crate) fn render_recovery_modal(&mut self, ctx: &egui::Context) {
             ui.add_space(6.0);
             ui.horizontal(|ui| {
                 if ui
-                    .add(
-                        egui::Button::new(
-                            egui::RichText::new(crate::i18n::t("  Fortsätt utan att återställa  "))
-                                .size(Theme::FONT_S),
-                        )
-                        .fill(Theme::FL_ORANGE),
-                    )
+                    .button(crate::i18n::t("  Fortsätt utan att återställa  "))
                     .clicked()
                 {
                     // Stäng bara: autosparningarna ligger kvar och kan
@@ -2304,7 +2304,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                     }
 
                     // MUTE TOGGLE
-                    let mute_bg = if track.muted { Color32::from_rgb(180, 40, 40) } else { Color32::from_rgb(35, 40, 50) };
+                    let mute_bg = if track.muted { Color32::from_rgb(180, 40, 40) } else { Theme::CHANNEL_BG };
                     let mute_fg = if track.muted { Color32::WHITE } else { Theme::TEXT_MUTED };
                     if ui.add(egui::Button::new(egui::RichText::new(if track.muted { "🔇 MUTAD" } else { "🔊 AKTIV" }).strong().color(mute_fg)).fill(mute_bg)).clicked() {
                         track.muted = !track.muted;
@@ -2587,7 +2587,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                         p.line_segment([Pos2::new(eq_rect.min.x, mid_y + 30.0), Pos2::new(eq_rect.max.x, mid_y + 30.0)], Stroke::new(0.5_f32, Color32::from_rgb(35, 42, 56)));
 
                         p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y - 30.0), egui::Align2::LEFT_CENTER, "+6 dB", egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(100, 110, 130));
-                        p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y), egui::Align2::LEFT_CENTER, "0 dB", egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(120, 140, 160));
+                        p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y), egui::Align2::LEFT_CENTER, "0 dB", egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
                         p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y + 30.0), egui::Align2::LEFT_CENTER, "-6 dB", egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(100, 110, 130));
 
                         // Frequency Grid Markers
@@ -3367,8 +3367,43 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 }
 
 impl SonixApp {
+    /// Sant när minst en dialog ligger ovanpå arrangören — används för att dämpa
+    /// bakgrunden och för att släppa tangentbordet till dialogen.
+    pub(crate) fn any_modal_open(&self) -> bool {
+        self.show_notes_modal
+            || self.show_import_modal
+            || self.show_controller_modal
+            || self.show_macros_modal
+            || self.show_suno_import_modal
+            || self.show_midi_import_modal
+            || self.show_about_modal
+            || self.show_recovery_modal
+            || self.show_project_manager_modal
+            || self.show_ai_settings_modal
+            || self.show_audio_settings_modal
+            || self.show_mic_settings_modal
+            || self.show_chord_generator_modal
+            || self.show_tuner_modal
+            || self.show_dice_generator_modal
+            || self.show_fx_rack_modal
+            || self.show_tempo_modal
+            || self.show_song_structure_modal
+            || self.show_stem_focus_modal
+            || self.show_help_guide
+            || self.show_add_track_modal
+            || self.show_render_queue_modal
+    }
+
     /// Alla dialoger, i den ordning de läggs ovanpå varandra.
     pub(crate) fn render_all_modals(&mut self, ctx: &egui::Context) {
+        // En dialog ska vara det enda som lyser: resten av ytan dämpas.
+        if self.any_modal_open() {
+            ctx.layer_painter(egui::LayerId::new(
+                egui::Order::Middle,
+                egui::Id::new("modal_scrim"),
+            ))
+            .rect_filled(ctx.screen_rect(), 0.0, Theme::SCRIM);
+        }
         // 4. Modals & Dialogs
         self.render_notes_modal(ctx);
         self.render_import_sample_modal(ctx);

@@ -225,7 +225,7 @@ pub fn render_stem_separator_view(
                                 Pos2::new(bx + col_w.max(0.7), (bot).max(top + 0.6)),
                             );
                             let fill = if stem.muted {
-                                Color32::from_rgb(40, 45, 55)
+                                Theme::CHANNEL_BG
                             } else {
                                 col
                             };
@@ -238,7 +238,7 @@ pub fn render_stem_separator_view(
                             let bx = wave_rect.min.x + 4.0 + idx as f32 * bar_w;
                             let h = amp * (wave_rect.height() * 0.42);
                             let bar_rect = Rect::from_min_max(Pos2::new(bx, mid_y - h), Pos2::new(bx + bar_w * 0.8, mid_y + h));
-                            let fill = if stem.muted { Color32::from_rgb(40, 45, 55) } else { col };
+                            let fill = if stem.muted { Theme::CHANNEL_BG } else { col };
                             painter.rect_filled(bar_rect, Rounding::same(1.0), fill);
                         }
                     }

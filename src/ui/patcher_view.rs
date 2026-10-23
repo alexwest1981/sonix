@@ -49,7 +49,7 @@ pub fn render_patcher_view(
             let mut any_down = false;
             for (i, note) in notes.iter().enumerate() {
                 let black = matches!(note % 12, 1 | 3 | 6 | 8 | 10);
-                let fill = if black { Color32::from_rgb(30, 34, 42) } else { Color32::from_rgb(220, 224, 230) };
+                let fill = if black { Theme::PANEL_BG } else { Color32::from_rgb(220, 224, 230) };
                 let btn = egui::Button::new("").fill(fill).min_size(Vec2::new(26.0, 46.0));
                 let resp = ui.add(btn);
                 if resp.is_pointer_button_down_on() {

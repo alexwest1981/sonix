@@ -100,12 +100,12 @@ fn rotary_knob_impl(
     let painter = ui.painter();
 
     // 1. Knob outer shadow & body
-    painter.circle_filled(center, radius + 2.0, Color32::from_rgb(12, 14, 18));
-    painter.circle_filled(center, radius, Color32::from_rgb(36, 40, 50));
-    painter.circle_stroke(center, radius, Stroke::new(1.5_f32, Color32::from_rgb(55, 62, 75)));
+    painter.circle_filled(center, radius + 2.0, Theme::LCD_BG);
+    painter.circle_filled(center, radius, Theme::CHANNEL_BG);
+    painter.circle_stroke(center, radius, Stroke::new(1.5_f32, Theme::BORDER_DARK));
 
     // 2. Inner dial cap
-    painter.circle_filled(center, radius * 0.72, Color32::from_rgb(26, 30, 38));
+    painter.circle_filled(center, radius * 0.72, Theme::PANEL_BG);
 
     // 3. Indicator track arc (background)
     let arc_radius = radius * 0.88;
@@ -115,7 +115,7 @@ fn rotary_knob_impl(
         let dot_color = if a <= current_angle {
             color
         } else {
-            Color32::from_rgb(45, 50, 60)
+            Theme::BORDER_DARK
         };
         painter.circle_filled(dot_pos, 1.2, dot_color);
     }
@@ -158,9 +158,9 @@ pub fn fl_step_button(
 
     // Base body color (FL Studio 4-beat color alternating grouping)
     let (base_bg, top_highlight) = if beat_group_a {
-        (Color32::from_rgb(46, 52, 64), Color32::from_rgb(60, 68, 84))
+        (Theme::BORDER_DARK, Color32::from_rgb(60, 68, 84))
     } else {
-        (Color32::from_rgb(32, 36, 44), Color32::from_rgb(44, 50, 60))
+        (Theme::CHANNEL_BG, Theme::BORDER_DARK)
     };
 
     let (bg_color, stroke_color) = if is_playhead {
@@ -168,7 +168,7 @@ pub fn fl_step_button(
     } else if active {
         (accent_color, Color32::from_rgb(220, 240, 255))
     } else {
-        (base_bg, Color32::from_rgb(20, 22, 28))
+        (base_bg, Theme::BG_DARK)
     };
 
     // 1. Button beveled body
@@ -189,7 +189,7 @@ pub fn fl_step_button(
         painter.circle_filled(led_center, led_radius + 2.5, Color32::from_rgba_unmultiplied(255, 255, 255, 120));
         painter.circle_filled(led_center, led_radius, Color32::WHITE);
     } else {
-        painter.circle_filled(led_center, 2.0, Color32::from_rgb(18, 20, 26));
+        painter.circle_filled(led_center, 2.0, Theme::BG_DARK);
     }
 
     response
@@ -286,26 +286,26 @@ pub fn vertical_fader(
     painter.rect_filled(
         Rect::from_min_max(Pos2::new(track_x - 3.0, track_top), Pos2::new(track_x + 3.0, track_bottom)),
         Rounding::same(2.0),
-        Color32::from_rgb(14, 16, 20),
+        Theme::LCD_BG,
     );
     painter.rect_stroke(
         Rect::from_min_max(Pos2::new(track_x - 3.0, track_top), Pos2::new(track_x + 3.0, track_bottom)),
         Rounding::same(2.0),
-        Stroke::new(1.0_f32, Color32::from_rgb(32, 38, 48)),
+        Stroke::new(1.0_f32, Theme::CHANNEL_BG),
     );
 
     // 2. dB Scale Markings (-inf, -24, -12, -6, 0dB, +3dB)
     let marks = [
         (1.0, "+3", Color32::from_rgb(255, 100, 80)),
         (0.8, " 0", Color32::from_rgb(220, 230, 245)),
-        (0.6, "-6", Color32::from_rgb(140, 150, 170)),
+        (0.6, "-6", Theme::TEXT_MUTED),
         (0.4, "-12", Color32::from_rgb(110, 120, 140)),
         (0.2, "-24", Color32::from_rgb(90, 100, 120)),
         (0.0, "-∞", Color32::from_rgb(70, 80, 100)),
     ];
     for (m_norm, m_txt, m_col) in marks {
         let y = track_bottom - m_norm * (track_bottom - track_top);
-        painter.line_segment([Pos2::new(fader_rect.min.x + 2.0, y), Pos2::new(track_x - 5.0, y)], Stroke::new(1.0_f32, Color32::from_rgb(45, 52, 65)));
+        painter.line_segment([Pos2::new(fader_rect.min.x + 2.0, y), Pos2::new(track_x - 5.0, y)], Stroke::new(1.0_f32, Theme::BORDER_DARK));
         painter.text(
             Pos2::new(fader_rect.min.x + 1.0, y),
             egui::Align2::LEFT_CENTER,
@@ -322,7 +322,7 @@ pub fn vertical_fader(
     let thumb_rect = Rect::from_center_size(Pos2::new(track_x, thumb_y), Vec2::new(thumb_width, thumb_height));
 
     // Cap gradient & bevel
-    painter.rect_filled(thumb_rect, Rounding::same(3.0), Color32::from_rgb(50, 56, 68));
+    painter.rect_filled(thumb_rect, Rounding::same(3.0), Theme::BORDER_DARK);
     painter.rect_stroke(thumb_rect, Rounding::same(3.0), Stroke::new(1.5_f32, Color32::from_rgb(180, 190, 205)));
     // Center glowing indicator stripe on fader cap
     painter.line_segment(
@@ -331,8 +331,8 @@ pub fn vertical_fader(
     );
 
     // 4. Multi-Segment LED Peak Meter Ladder
-    painter.rect_filled(meter_rect, Rounding::same(2.0), Color32::from_rgb(12, 14, 18));
-    painter.rect_stroke(meter_rect, Rounding::same(2.0), Stroke::new(1.0_f32, Color32::from_rgb(32, 38, 48)));
+    painter.rect_filled(meter_rect, Rounding::same(2.0), Theme::LCD_BG);
+    painter.rect_stroke(meter_rect, Rounding::same(2.0), Stroke::new(1.0_f32, Theme::CHANNEL_BG));
 
     let num_segments = 24;
     let segment_h = (meter_rect.height() - 4.0) / num_segments as f32;
@@ -347,11 +347,11 @@ pub fn vertical_fader(
         let lit_color = if s >= 22 {
             Color32::from_rgb(255, 40, 40) // Red clip
         } else if s >= 18 {
-            Color32::from_rgb(255, 140, 20) // Orange warning
+            Theme::LCD_ORANGE // Orange warning
         } else if s >= 12 {
-            Color32::from_rgb(255, 220, 30) // Yellow nominal
+            Theme::FL_YELLOW // Yellow nominal
         } else {
-            Color32::from_rgb(46, 204, 113) // Green safe
+            Theme::FL_GREEN // Green safe
         };
 
         let fill_color = if is_lit {
@@ -587,7 +587,7 @@ pub fn alchemy_transform_matrix(
 
         // Snapshot pad dot
         painter.circle_filled(p, 7.0, Color32::from_rgb(25, 45, 60));
-        painter.circle_stroke(p, 7.0, Stroke::new(1.5_f32, Color32::from_rgb(0, 200, 240)));
+        painter.circle_stroke(p, 7.0, Stroke::new(1.5_f32, Theme::FL_CYAN));
         painter.circle_filled(p, 3.0, Color32::from_rgb(0, 255, 220));
 
         // Label offset slightly outward
@@ -643,12 +643,12 @@ pub fn stereo_meter(ui: &mut Ui, left: f32, right: f32, size: Vec2) {
             egui::Align2::LEFT_CENTER,
             channel,
             egui::FontId::proportional(Theme::FONT_XS),
-            Color32::from_rgb(150, 160, 180),
+            Theme::TEXT_MUTED,
         );
 
         let unit = amp_to_unit(amp);
         let color = if amp >= 0.99 {
-            Color32::from_rgb(240, 70, 60) // klipp
+            Theme::FL_RED // klipp
         } else if unit >= db_to_unit(-3.0) {
             Color32::from_rgb(240, 190, 60) // nära taket
         } else {
@@ -709,7 +709,7 @@ pub fn register_eq(ui: &mut Ui, levels: &[f32], labels: &[&str], size: Vec2) {
         let level = level.clamp(0.0, 1.0);
         let h = (area.height() * level).max(1.0);
         let color = if level >= 0.95 {
-            Color32::from_rgb(235, 70, 60)
+            Theme::FL_RED
         } else if level >= 0.8 {
             Color32::from_rgb(240, 190, 60)
         } else {

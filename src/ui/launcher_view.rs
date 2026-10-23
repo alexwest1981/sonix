@@ -53,8 +53,8 @@ fn slot_color(state: SlotState, queued_stop: bool) -> egui::Color32 {
     match state {
         SlotState::Playing => egui::Color32::from_rgb(46, 160, 67),
         SlotState::Queued => egui::Color32::from_rgb(196, 160, 40),
-        SlotState::Stopped => egui::Color32::from_rgb(48, 54, 64),
-        SlotState::Empty => egui::Color32::from_rgb(28, 30, 36),
+        SlotState::Stopped => Theme::BORDER_DARK,
+        SlotState::Empty => Theme::HEADER_BG,
     }
 }
 

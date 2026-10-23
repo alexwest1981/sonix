@@ -2,6 +2,7 @@ use eframe::egui::Color32;
 
 use super::recorder::detect_pitch_hz;
 use super::filter::{FilterParams, StateVariableFilter};
+use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone)]
 pub struct PitchBlob {
@@ -680,7 +681,7 @@ pub fn analyze_blobs(
                 let color = if note % 2 == 0 {
                     Color32::from_rgb(0, 220, 255)
                 } else {
-                    Color32::from_rgb(255, 140, 0)
+                    Theme::LCD_ORANGE
                 };
                 blobs.push(PitchBlob {
                     start_step: step,

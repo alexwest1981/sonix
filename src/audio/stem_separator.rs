@@ -1,6 +1,7 @@
 //! Status: stabil (8.5a) — separatorn skriver stämmorna till disk och minns var de ligger
 //! Rör inte: 8.5-regeln: en väg som skapar ett klipp eller en fil får aldrig hitta på ljud — säg fel och avbryt
 use eframe::egui::Color32;
+use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum StemType {
@@ -23,9 +24,9 @@ impl StemType {
     pub fn color(&self) -> Color32 {
         match self {
             StemType::Vocals => Color32::from_rgb(255, 105, 180), // Pink
-            StemType::Drums => Color32::from_rgb(255, 140, 0),   // Orange
+            StemType::Drums => Theme::LCD_ORANGE,   // Orange
             StemType::Bass => Color32::from_rgb(0, 220, 255),    // Cyan
-            StemType::Instruments => Color32::from_rgb(46, 204, 113), // Green
+            StemType::Instruments => Theme::FL_GREEN, // Green
         }
     }
 }

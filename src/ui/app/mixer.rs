@@ -1049,7 +1049,7 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                 }
 
                 // Quick Switch Sound Button [🔄 Byt]
-                let byt_fill = if is_picker_open { Theme::FL_CYAN } else { Color32::from_rgb(32, 38, 48) };
+                let byt_fill = if is_picker_open { Theme::FL_CYAN } else { Theme::CHANNEL_BG };
                 let byt_text_color = if is_picker_open { Color32::BLACK } else { Theme::FL_CYAN };
                 let byt_btn = egui::Button::new(egui::RichText::new(crate::i18n::t("🔄 Byt")).size(Theme::FONT_S).color(byt_text_color))
                     .fill(byt_fill)
@@ -1156,7 +1156,7 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
 
                                  // Mini wave preview
                                 let (wf_rect, _) = ui.allocate_exact_size(Vec2::new(175.0, 18.0), egui::Sense::hover());
-                                ui.painter().rect_filled(wf_rect, Rounding::same(2.0), Color32::from_rgb(16, 18, 22));
+                                ui.painter().rect_filled(wf_rect, Rounding::same(2.0), Theme::BG_DARK);
                                 let mid_y = wf_rect.center().y;
                                 let num_pts = item.waveform.len().max(1);
                                 let dx = wf_rect.width() / num_pts as f32;
@@ -1217,8 +1217,8 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                         ui.vertical(|ui| {
                             ui.label(egui::RichText::new(crate::i18n::t("Waveform Chop & Slice Trim:")).strong().size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                             let (wf_rect, _) = ui.allocate_exact_size(Vec2::new(380.0, 65.0), egui::Sense::click_and_drag());
-                            ui.painter().rect_filled(wf_rect, Rounding::same(3.0), Color32::from_rgb(14, 16, 20));
-                            ui.painter().rect_stroke(wf_rect, Rounding::same(3.0), Stroke::new(1.0_f32, Color32::from_rgb(45, 52, 65)));
+                            ui.painter().rect_filled(wf_rect, Rounding::same(3.0), Theme::LCD_BG);
+                            ui.painter().rect_stroke(wf_rect, Rounding::same(3.0), Stroke::new(1.0_f32, Theme::BORDER_DARK));
 
                             let mid_y = wf_rect.center().y;
                             let num_pts = ch.waveform_preview.len().max(1);
@@ -2131,7 +2131,7 @@ pub(crate) fn render_remix_fx_view(&mut self, ui: &mut egui::Ui) {
                         } else {
                             crate::i18n::t("⬛ STEGGRIND AV")
                         };
-                        let fill = if self.gate_on { Theme::FL_GREEN } else { Color32::from_rgb(34, 38, 46) };
+                        let fill = if self.gate_on { Theme::FL_GREEN } else { Theme::CHANNEL_BG };
                         let mut changed = false;
                         if ui
                             .add(
@@ -2146,7 +2146,7 @@ pub(crate) fn render_remix_fx_view(&mut self, ui: &mut egui::Ui) {
                         }
                         for i in 0..16 {
                             let on = self.gate_gains[i] > 0.5;
-                            let cell = if on { Theme::FL_CYAN } else { Color32::from_rgb(30, 34, 42) };
+                            let cell = if on { Theme::FL_CYAN } else { Theme::PANEL_BG };
                             let text_col = if on { Color32::BLACK } else { Theme::TEXT_MUTED };
                             if ui
                                 .add(
@@ -2925,7 +2925,7 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                                     status_msg_update = Some(crate::tstatus!("⚡ Applicerade preset 'Gitarr / Presence' på {}", sel_t_name));
                                 }
 
-                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔄 Nollställ EQ")).size(Theme::FONT_XS).color(Color32::WHITE)).fill(Color32::from_rgb(45, 50, 60))).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔄 Nollställ EQ")).size(Theme::FONT_XS).color(Color32::WHITE)).fill(Theme::BORDER_DARK)).clicked() {
                                     track_mut.eq = TrackEq::default();
                                     track_dirty = true;
                                     status_msg_update = Some(crate::tstatus!("🔄 Nollställde EQ för {}", sel_t_name));
@@ -3275,7 +3275,7 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                 let (rect, _) = ui.allocate_exact_size(Vec2::new(130.0, 68.0), Sense::hover());
                 let painter = ui.painter();
                 painter.rect_filled(rect, Rounding::same(3.0), Theme::LCD_BG);
-                painter.rect_stroke(rect, Rounding::same(3.0), Stroke::new(1.0_f32, Color32::from_rgb(35, 42, 52)));
+                painter.rect_stroke(rect, Rounding::same(3.0), Stroke::new(1.0_f32, Theme::CHANNEL_BG));
 
                 let p0 = Pos2::new(rect.min.x + 4.0, rect.max.y - 4.0);
                 let p1 = Pos2::new(rect.min.x + 4.0 + (self.adsr.attack * 20.0).min(30.0), rect.min.y + 6.0);

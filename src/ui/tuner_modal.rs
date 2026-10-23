@@ -174,7 +174,7 @@ pub fn render_tuner_modal(
                 ui.horizontal(|ui| {
                     for (s_idx, (name, _, _)) in strings.iter().enumerate() {
                         let is_sel = state.selected_string_idx == s_idx;
-                        let bg = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(26, 30, 38) };
+                        let bg = if is_sel { Theme::FL_CYAN } else { Theme::PANEL_BG };
                         let fg = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
                         if ui.add(egui::Button::new(egui::RichText::new(*name).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                             state.selected_string_idx = s_idx;

@@ -66,7 +66,7 @@ impl Default for FxRackState {
                     name: "📊 VISUAL EQ",
                     category: "Clean Up",
                     enabled: true,
-                    color: Color32::from_rgb(0, 200, 240),
+                    color: Theme::FL_CYAN,
                     p1_name: "LOW",
                     p1_val: 0.50,
                     p2_name: "MID",
@@ -82,7 +82,7 @@ impl Default for FxRackState {
                     name: "🗜 DYNAMIC COMPRESSOR",
                     category: "Glue Mix",
                     enabled: true,
-                    color: Color32::from_rgb(255, 140, 0),
+                    color: Theme::LCD_ORANGE,
                     p1_name: "THRESH",
                     p1_val: 0.65,
                     p2_name: "RATIO",
@@ -1127,19 +1127,19 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                     let card_bg = if pedal.enabled {
                         Color32::from_rgb(22, 26, 35)
                     } else {
-                        Color32::from_rgb(15, 17, 22)
+                        Theme::BG_DARK
                     };
 
                     ui.painter().rect_filled(rect, Rounding::same(8.0), card_bg);
                     ui.painter().rect_stroke(
                         rect,
                         Rounding::same(8.0),
-                        Stroke::new(1.5_f32, if pedal.enabled { pedal.color } else { Color32::from_rgb(40, 46, 56) }),
+                        Stroke::new(1.5_f32, if pedal.enabled { pedal.color } else { Theme::BORDER_DARK }),
                     );
 
                     // Top Header Strip
                     let top_bar = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 26.0));
-                    ui.painter().rect_filled(top_bar, Rounding::same(7.0), if pedal.enabled { pedal.color } else { Color32::from_rgb(30, 36, 46) });
+                    ui.painter().rect_filled(top_bar, Rounding::same(7.0), if pedal.enabled { pedal.color } else { Theme::CHANNEL_BG });
 
                     ui.painter().text(
                         Pos2::new(rect.min.x + 8.0, rect.min.y + 13.0),

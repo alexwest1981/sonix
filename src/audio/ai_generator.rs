@@ -2,6 +2,7 @@ use eframe::egui::Color32;
 use std::sync::{Arc, Mutex};
 
 use super::ai_client::AiConfig;
+use crate::ui::theme::Theme;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -87,7 +88,7 @@ impl AiMusicAssistant {
                 bpm: 90.0,
                 channel_steps: [true, false, false, true, false, false, true, false, true, false, false, true, false, false, true, false],
                 notes: [50, 50, 50, 53, 53, 53, 57, 57, 60, 60, 60, 64, 64, 64, 60, 57],
-                color: Color32::from_rgb(255, 140, 0),
+                color: Theme::LCD_ORANGE,
             },
             AiGeneratedClip {
                 title: "💥 Drill & Trap 808 Sliding Bass".to_string(),
@@ -148,7 +149,7 @@ impl AiMusicAssistant {
             bpm,
             channel_steps: steps,
             notes,
-            color: Color32::from_rgb(46, 204, 113),
+            color: Theme::FL_GREEN,
         });
         if self.generated_history.len() > 12 {
             self.generated_history.truncate(12);

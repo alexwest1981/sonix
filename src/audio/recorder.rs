@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use super::vocal_harmonizer::RealtimeAutotune;
 use super::wav_writer::write_pcm_f32_to_wav;
+use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone)]
 pub struct AudioTake {
@@ -1190,8 +1191,8 @@ impl VocalStudioTrack {
 
         let count = self.takes.len() + 1;
         let color = match count % 4 {
-            0 => Color32::from_rgb(0, 200, 240),
-            1 => Color32::from_rgb(255, 140, 0),
+            0 => Theme::FL_CYAN,
+            1 => Theme::LCD_ORANGE,
             2 => Color32::from_rgb(180, 100, 255),
             _ => Color32::from_rgb(80, 240, 160),
         };
@@ -1528,8 +1529,8 @@ impl VocalStudioTrack {
             .collect();
         let new_wave = visual_peaks_from(&pcm);
         let color = match count % 4 {
-            0 => Color32::from_rgb(0, 200, 240),
-            1 => Color32::from_rgb(255, 140, 0),
+            0 => Theme::FL_CYAN,
+            1 => Theme::LCD_ORANGE,
             2 => Color32::from_rgb(180, 100, 255),
             _ => Color32::from_rgb(80, 240, 160),
         };
@@ -1690,7 +1691,7 @@ mod tests {
     fn test_vocal_studio_crop_and_slice() {
         let mut track = VocalStudioTrack::default();
         let pcm: Vec<f32> = (0..44100).map(|i| (i as f32 * 0.02).sin() * 0.5).collect();
-        track.load_sample_or_region_as_take("Test", pcm, 44100, Color32::from_rgb(0, 200, 240));
+        track.load_sample_or_region_as_take("Test", pcm, 44100, Theme::FL_CYAN);
         track.active_comp_take = 0;
 
         let orig_len = track.takes[0].pcm_samples.len();
@@ -1723,7 +1724,7 @@ mod tests {
                 &format!("Tagning {i}"),
                 vec![0.1; 44_100],
                 44_100,
-                Color32::from_rgb(0, 200, 240),
+                Theme::FL_CYAN,
             );
         }
         track

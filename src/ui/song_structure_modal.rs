@@ -22,8 +22,8 @@ impl SectionType {
             SectionType::Chorus => ("REFRÄNG", Color32::from_rgb(255, 60, 60)),
             SectionType::Bridge => ("STICK", Color32::from_rgb(255, 120, 40)),
             SectionType::Drop => ("DROP / CLIMAX", Color32::from_rgb(0, 240, 200)),
-            SectionType::Solo => ("SOLO", Color32::from_rgb(255, 215, 0)),
-            SectionType::Outro => ("OUTRO", Color32::from_rgb(46, 204, 113)),
+            SectionType::Solo => ("SOLO", Theme::FL_YELLOW),
+            SectionType::Outro => ("OUTRO", Theme::FL_GREEN),
         }
     }
 }
@@ -182,7 +182,7 @@ pub fn render_song_structure_modal(
                     ui.add_space(4.0);
 
                     let (ov_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::hover());
-                    ui.painter().rect_filled(ov_rect, Rounding::same(4.0), Color32::from_rgb(16, 18, 24));
+                    ui.painter().rect_filled(ov_rect, Rounding::same(4.0), Theme::BG_DARK);
 
                     let total_b = tot_bars.max(1) as f32;
                     let mut curr_x = ov_rect.min.x;
@@ -192,7 +192,7 @@ pub fn render_song_structure_modal(
                         let (_, col) = sec.section_type.name_and_color();
                         let sec_rect = Rect::from_min_size(Pos2::new(curr_x, ov_rect.min.y), Vec2::new(sec_w, ov_rect.height()));
                         ui.painter().rect_filled(sec_rect, Rounding::same(2.0), col);
-                        ui.painter().rect_stroke(sec_rect, Rounding::same(2.0), Stroke::new(1.0_f32, Color32::from_rgb(20, 24, 30)));
+                        ui.painter().rect_stroke(sec_rect, Rounding::same(2.0), Stroke::new(1.0_f32, Theme::BG_DARK));
 
                         if sec_w > 40.0 {
                             ui.painter().text(

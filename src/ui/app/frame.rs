@@ -435,21 +435,7 @@ impl SonixApp {
         // Check if user is typing into an input field or if a modal is open
         let is_loading_proj = self.project_load_progress.try_lock().map(|p| p.is_loading).unwrap_or(false);
         let is_importing_stems = self.stem_import_progress.try_lock().map(|p| p.is_importing).unwrap_or(false);
-        let modal_open = self.show_help_guide
-            || self.show_project_manager_modal
-            || self.show_suno_import_modal
-            || self.show_render_queue_modal
-            || self.show_stem_focus_modal
-            || self.show_tempo_modal
-            || self.show_controller_modal
-            || self.show_about_modal
-            || self.show_recovery_modal
-            || self.show_ai_settings_modal
-            || self.show_audio_settings_modal
-            || self.show_import_modal
-            || self.show_macros_modal
-            || is_loading_proj
-            || is_importing_stems;
+        let modal_open = self.any_modal_open() || is_loading_proj || is_importing_stems;
 
         let wants_keyboard = ctx.wants_keyboard_input();
         let piano_active = self.view_mode == ViewMode::PianoRoll && !modal_open && !wants_keyboard;
@@ -709,7 +695,7 @@ impl SonixApp {
         // 0. PERMANENT TOP DESKTOP MENU BAR (ARKIV, REDIGERA, VY, AI, INSTÄLLNINGAR, HJÄLP)
         // ====================================================================
         egui::TopBottomPanel::top("desktop_menu_bar")
-            .frame(egui::Frame::none().fill(Color32::from_rgb(16, 18, 24)).inner_margin(egui::Margin::symmetric(8.0, 3.0)))
+            .frame(egui::Frame::none().fill(Theme::BG_DARK).inner_margin(egui::Margin::symmetric(8.0, 3.0)))
             .show(ctx, |ui| {
                 egui::menu::bar(ui, |ui| {
                     // Arkiv
@@ -1098,7 +1084,7 @@ impl SonixApp {
                             self.toggle_playback();
                         }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOP ")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(Color32::from_rgb(45, 48, 56))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOP ")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(Theme::BORDER_DARK)).clicked() {
                         self.stop_playback();
                     }
 

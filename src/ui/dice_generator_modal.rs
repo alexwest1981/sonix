@@ -280,7 +280,7 @@ pub fn render_dice_generator_modal(
                     ];
                     for (cat, label) in cats {
                         let is_sel = state.category == cat;
-                        let bg = if is_sel { Theme::FL_ORANGE } else { Color32::from_rgb(26, 30, 38) };
+                        let bg = if is_sel { Theme::FL_ORANGE } else { Theme::PANEL_BG };
                         let fg = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
                         if ui.add(egui::Button::new(egui::RichText::new(label).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                             state.category = cat;
@@ -352,7 +352,7 @@ pub fn render_dice_generator_modal(
                     // Step visualization grid
                     let (canvas_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 90.0), Sense::hover());
                     ui.painter().rect_filled(canvas_rect, Rounding::same(4.0), Color32::from_rgb(16, 19, 26));
-                    ui.painter().rect_stroke(canvas_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Color32::from_rgb(36, 42, 54)));
+                    ui.painter().rect_stroke(canvas_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::CHANNEL_BG));
 
                     let step_w = canvas_rect.width() / 16.0;
 

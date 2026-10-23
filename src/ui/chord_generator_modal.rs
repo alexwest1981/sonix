@@ -254,7 +254,7 @@ pub fn render_chord_generator_modal(
                         ui.label(egui::RichText::new(crate::i18n::t("Grundton (Key):")).strong().color(Theme::FL_CYAN));
                         for (idx, &name) in NOTE_NAMES.iter().enumerate() {
                             let is_sel = state.root_note == idx as u8;
-                            let btn_col = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(32, 36, 44) };
+                            let btn_col = if is_sel { Theme::FL_CYAN } else { Theme::CHANNEL_BG };
                             let txt_col = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
                             if ui.add(egui::Button::new(egui::RichText::new(name).strong().size(Theme::FONT_S).color(txt_col)).fill(btn_col)).clicked() {
                                 state.root_note = idx as u8;
@@ -340,9 +340,9 @@ pub fn render_chord_generator_modal(
                             let bg_color = if resp.is_pointer_button_down_on() {
                                 Theme::FL_ORANGE
                             } else if is_hovered {
-                                Color32::from_rgb(45, 52, 68)
+                                Theme::BORDER_DARK
                             } else {
-                                Color32::from_rgb(26, 30, 38)
+                                Theme::PANEL_BG
                             };
 
                             ui.painter().rect_filled(rect, Rounding::same(6.0), bg_color);

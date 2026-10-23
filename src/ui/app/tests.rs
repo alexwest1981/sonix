@@ -9,6 +9,7 @@ use super::*;
 use super::midi::{apply_bar_to_pattern, drum_channel_for_key, midi_channel_for_track, notes_by_bar,
                   pattern_bar_notes, ARRANGEMENT_BARS, STEPS_PER_BAR};
 use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re-exporteras inte
+use crate::ui::theme::Theme;
 
     /// Minimal projektfil — fälten utanför `serde(default)` måste anges.
     fn minimal_project_json(name: &str) -> String {
@@ -1725,7 +1726,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         let mut vocal_track = crate::audio::recorder::VocalStudioTrack::default();
         vocal_track.takes.clear();
         let dummy_pcm = vec![0.5, -0.5, 0.8, -0.8, 0.3, -0.3];
-        let take_idx = vocal_track.load_sample_or_region_as_take("Lead Hook", dummy_pcm, 44100, Color32::from_rgb(0, 200, 240));
+        let take_idx = vocal_track.load_sample_or_region_as_take("Lead Hook", dummy_pcm, 44100, Theme::FL_CYAN);
 
         assert_eq!(take_idx, 0);
         assert_eq!(vocal_track.takes.len(), 1);
