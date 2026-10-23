@@ -1,6 +1,6 @@
 # 🗺️ Sonix Studio — Roadmap
 
-> **Sanningen om vad som är gjort och kvar.** Uppdaterad **2026-10-23** mot `master` (`65af62b`).
+> **Sanningen om vad som är gjort och kvar.** Uppdaterad **2026-10-23** mot `master`.
 > Siffrorna är räknade ur filerna — kommandot står vid varje tabell — inte gissade och inte
 > ärvda. Historik och bevis per punkt: [`tools.md`](tools.md) (P1–P27) och git.
 > Den tidigare 3 000-radiga roadmapen ligger kvar i git (`git show 65af62b:ROADMAP.md`); den
@@ -19,11 +19,11 @@ gränssnittet lovar.
 
 | Mått | Räknat | Så räknades det |
 | :--- | ---: | :--- |
-| **FL-pluggarna** (51 generatorer + 90 effekter) | **✅ 64 · ◐ 55 · ✗ 22** av 141 | `awk` på statuskolumnen i `FL-STUDIO-INVENTORY.md` rad 114–259 |
-| — andel | **45 %** helt · **84 %** helt eller delvis · **16 %** saknas | 64 / (64+55) / 22 av 141 |
+| **FL-pluggarna** (51 generatorer + 90 effekter) | **✅ 66 · ◐ 55 · ✗ 20** av 141 | `awk` på statuskolumnen i `FL-STUDIO-INVENTORY.md` §2 |
+| — andel | **47 %** helt · **86 %** helt eller delvis · **14 %** saknas | 66 / (66+55) / 20 av 141 |
 | **Ableton-enheterna** | 72: 13 instrument + 48 ljudeffekter + 11 MIDI-effekter | `ABLETON-INVENTORY.md` §2 |
 | **Ableton gap-matris** | 6 områden där vi ligger före · 4 delvis · 8 efter | 18 rader i §8, räknade på dom-kolumnen |
-| **Koden** | 114 filer · **107 247 rader** i `src/` · **876 `#[test]`** | `find` / `cat` / `grep -c` 2026-10-23 |
+| **Koden** | 117 filer · **109 355 rader** i `src/` · **911 `#[test]`** | `find` / `cat` / `grep -c` 2026-10-23 |
 
 Två räknefel i inventariernas egna rubriker är rättade samma dag: FL:s rubrik sa **◐ 56** när
 tabellen har 55, och Ableton sa **5 delvis** när matrisen har 4. Tabellerna var rätt, summeringen

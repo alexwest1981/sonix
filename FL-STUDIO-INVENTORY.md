@@ -95,11 +95,12 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 64** har en motsvarighet, **◐ 55** delvis, **✗ 22** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 66** har en motsvarighet, **◐ 55** delvis, **✗ 20** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
-stod som ✗ trots att §11 listade dem som byggda.*
+stod som ✗ trots att §11 listade dem som byggda. Två rader rättade 23 okt: Formula Controller
+och Transmitter var byggda men stod kvar som ✗.*
 
 Räknat **per plugin**, inte per värde: en animerad dansare (`Fruity Dance`) väger lika tungt som
 `Harmor` i den här räkningen. Vikten står i gap-matrisen i stället (avsnitt 8).
@@ -181,7 +182,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Peak Controller | 4 | ✅ | `ModSource::Env` — envelopföljare på masternivå, snabb upp/långsam ner |
 | Fruity Scratcher | 4 | ✗ | vinylscratch |
 | Control Surface | 3 | ◐ | hardware_control.rs (MCU) |
-| Fruity Formula Controller | 3 | ✗ | formelstyrd modulation |
+| Fruity Formula Controller | 3 | ✅ | `src/formula.rs` + `ModSource::Formula` — formel som modulationskälla (`11532ea`) |
 | Fruity NoteBook | 3 | ✅ | `PlaylistTrack::notes` — ett anteckningsfält per kanal i kanalinställningarna, `#[serde(default)]` så äldre projekt öppnas med tomma. Prov: `channel_notes_are_empty_in_old_files_and_survive_a_round_trip` |
 | EQUO | 2 | ◐ | EQ:n |
 | Effector | 2 | ✅ | `Effector` — XY-yta över fyra lägen (svep, upprepning, port, kross); X och Y styr respektive krets |
@@ -245,7 +246,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Pitch Shifter | 1 | ✅ | formantbevarande pitch (stretch/vocal_harmonizer) |
 | Razer Chroma | 1 | ✗ | RGB-synk |
 | Transient Processor | 1 | ✅ | transient-shapern (byggd i dag) |
-| Transmitter | 1 | ✗ | data → ljud (sonifiering) |
+| Transmitter | 1 | ✅ | data → ljud: händelser, förval och wav (`ade2c1a`) |
 | Transporter | 1 | ✗ | dito, äldre |
 | Tuner | 1 | ✅ | tuner_modal |
 | VFX Color Mapper | 1 | ✗ | not → färg/färg → parameter |
