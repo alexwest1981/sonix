@@ -493,6 +493,18 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         .unwrap_or(0);
                     self.status_message = format!("Satte {:.0} % på {} noter", p * 100.0, touched);
                 }
+                // **Nudge** (Ableton): skjut urvalet i tid, ett sextondelssteg i taget.
+                ui.horizontal(|ui| {
+                    for (label, steps) in [("-1/16", -1.0f32), ("+1/16", 1.0)] {
+                        if ui.button(egui::RichText::new(label).size(10.0)).clicked() {
+                            let mut moved = 0;
+                            if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
+                                moved = p.take.nudge(&self.note_filter, steps);
+                            }
+                            self.status_message = crate::tstatus!("→ flyttade {} noter", moved);
+                        }
+                    }
+                });
                 // **Join / Fit** (Ableton): städa dubbletter och drag ihop frasen.
                 if ui.button(egui::RichText::new(crate::i18n::t("⧉ Slå ihop dubbletter")).size(10.0))
                     .on_hover_text(crate::i18n::t("Två noter på samma position och ton blir en — den starkaste."))

@@ -320,6 +320,23 @@ impl Take {
         self.notes.len()
     }
 
+    /// **Skjut noterna i tid** (Abletons nudge): flyttar de noter som matchar `filter` ett antal
+    /// steg, och klämmer dem mot takten så att ingen hamnar utanför.
+    pub fn nudge(&mut self, filter: &NoteFilter, steps: f32) -> usize {
+        let mut touched = 0;
+        for n in &mut self.notes {
+            if !filter.matches(n) {
+                continue;
+            }
+            let moved = (n.pos + steps).clamp(0.0, STEPS_PER_BAR - 0.01);
+            if (moved - n.pos).abs() > 1e-6 {
+                n.pos = moved;
+                touched += 1;
+            }
+        }
+        touched
+    }
+
     /// **Spegla tonhöjderna** kring en pivot: en not som ligger `d` halvtoner över pivoten
     /// hamnar `d` under den. Kläms mot 0–127, så en spegling vid kanten tappar inte noten.
     ///
@@ -973,6 +990,20 @@ mod tests {
         let pos: Vec<f32> = t.notes.iter().map(|n| n.pos).collect();
         assert!((pos[0] - 4.0).abs() < 1e-4, "den första noten är ankaret");
         assert!((pos[1] - 8.0).abs() < 1e-4, "12 → 4 + (12−4)/2 = 8");
+    }
+
+    #[test]
+    fn nudging_moves_only_the_selection_and_stops_at_the_bar_edge() {
+        let mut t = Take::new();
+        t.push(0.0, 60, 0.8);
+        t.push(15.99, 62, 0.8);
+        assert_eq!(t.nudge(&NoteFilter::default(), 0.25), 1, "noten vid kanten kan inte flyttas framåt");
+        assert!((t.notes[0].pos - 0.25).abs() < 1e-4);
+        assert_eq!(t.notes[1].pos, 15.99);
+        // Bara ton 62 i urvalet: då flyttas den, och 60:an står kvar.
+        t.nudge(&NoteFilter { key: Some(62), ..NoteFilter::default() }, -1.0);
+        assert!((t.notes[0].pos - 0.25).abs() < 1e-4);
+        assert!((t.notes[1].pos - 14.99).abs() < 1e-4);
     }
 
 }
