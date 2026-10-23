@@ -67,6 +67,8 @@ pub enum Preset {
     SubDrone,
     Stab,
     AdditiveOrgan,
+    /// Morphine: två additiva operatorkällor och ett läge mitt emellan.
+    Morph,
     /// **Kepler**: Juno-106:s röst — sågtand, sub en oktav under och ett filter med envelop.
     Kepler,
     /// **Kepler Exo**: samma röst men pulsvåg och lite mer detune, som EX-variantens extra
@@ -75,7 +77,7 @@ pub enum Preset {
 }
 
 impl Preset {
-    pub const ALL: [Preset; 11] = [
+    pub const ALL: [Preset; 12] = [
         Preset::CleanPluck,
         Preset::WarmPad,
         Preset::AcidBass,
@@ -87,6 +89,7 @@ impl Preset {
         Preset::SubDrone,
         Preset::Stab,
         Preset::AdditiveOrgan,
+        Preset::Morph,
     ];
 
     /// Etiketten i gränssnittet. Kodens namn är engelska; det användaren ser är svenskt.
@@ -103,6 +106,7 @@ impl Preset {
             Preset::SubDrone => "Subdrön",
             Preset::Stab => "Stab",
             Preset::AdditiveOrgan => "Additiv orgel",
+            Preset::Morph => "Morph (morf)",
             Preset::Kepler => "Kepler (analog)",
             Preset::KeplerExo => "Kepler Exo",
         }
@@ -182,6 +186,7 @@ impl Preset {
                 AdsrParams { attack: 0.002, decay: 0.6, sustain: 0.6, release: 0.18 },
                 3200.0, 0.35, 0.55, 0.2, 2, 9.0, 0.0, 0.2,
             ),
+            Preset::Morph => crate::instruments::morphine(0.5),
             Preset::AdditiveOrgan => {
                 let mut organ = s(
                     Waveform::Additive,

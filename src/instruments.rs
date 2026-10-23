@@ -11,6 +11,50 @@ use crate::audio::AdsrParams;
 use crate::audio::synth::HARMONIC_COUNT;
 use crate::rng::Rng;
 
+/// **Morphine**: två additiva operatorkällor, och ett läge mellan dem.
+///
+/// Operatorkällorna är fasta spektra — en glasig (udda deltoner) och en rörledad (alla deltoner).
+/// Det som gör Morphin till Morphine är att läget är en ratt: ljudet är *mellan* två klanger, inte
+/// ett av tolv förval.
+pub const OPERATOR_GLASS: [f32; HARMONIC_COUNT] = [
+    1.0, 0.0, 0.55, 0.0, 0.32, 0.0, 0.20, 0.0, 0.12, 0.0, 0.08, 0.0, 0.05, 0.0, 0.03, 0.0,
+];
+pub const OPERATOR_REED: [f32; HARMONIC_COUNT] = [
+    1.0, 0.70, 0.50, 0.38, 0.30, 0.24, 0.19, 0.15, 0.12, 0.10, 0.08, 0.07, 0.06, 0.05, 0.04, 0.03,
+];
+
+/// Läget `t` mellan två spektra. 0 = `a` ordagrant, 1 = `b` ordagrant, utanför kläms det.
+pub fn morph_spectrum(
+    a: &[f32; HARMONIC_COUNT],
+    b: &[f32; HARMONIC_COUNT],
+    t: f32,
+) -> [f32; HARMONIC_COUNT] {
+    let t = t.clamp(0.0, 1.0);
+    let mut out = [0.0; HARMONIC_COUNT];
+    for i in 0..HARMONIC_COUNT {
+        out[i] = a[i] + (b[i] - a[i]) * t;
+    }
+    out
+}
+
+/// Ett Morphine-ljud på läget `morph` mellan de två operatorkällorna.
+pub fn morphine(morph: f32) -> PresetSettings {
+    let mut sound = PresetSettings {
+        waveform: Waveform::Additive,
+        adsr: AdsrParams { attack: 0.02, decay: 0.5, sustain: 0.75, release: 0.35 },
+        filter: FilterParams { cutoff: 9_000.0, resonance: 0.15, ..Default::default() },
+        filter_env_amount: 0.2,
+        sub: 0.15,
+        unison: 1,
+        detune: 0.0,
+        glide: 0.0,
+        drive: 0.0,
+        harmonics: morph_spectrum(&OPERATOR_GLASS, &OPERATOR_REED, morph),
+    };
+    sound.harmonics[0] = 1.0;
+    sound
+}
+
 /// **Autogun**: ett spelbart ljud ur ett frö.
 ///
 /// Slumpen är begränsad där den skulle kunna göra ljudet oanvändbart: attacken får aldrig bli så
@@ -133,4 +177,23 @@ mod tests {
         // Tom data: tyst, ingen panik.
         assert_eq!(beepmap_amplitudes(&[]), [0.0f32; HARMONIC_COUNT]);
     }
+    #[test]
+    fn a_morph_blend_is_exact_at_the_ends_and_linear_between_them() {
+        let (a, b) = (OPERATOR_GLASS, OPERATOR_REED);
+        assert_eq!(morph_spectrum(&a, &b, 0.0), a, "läge 0 ska vara operator A ordagrant");
+        assert_eq!(morph_spectrum(&a, &b, 1.0), b, "läge 1 ska vara operator B ordagrant");
+        assert_eq!(morph_spectrum(&a, &b, -3.0), a, "utanför intervallet kläms till A");
+        let mid = morph_spectrum(&a, &b, 0.5);
+        for i in 0..HARMONIC_COUNT {
+            assert!(
+                (mid[i] - (a[i] + b[i]) * 0.5).abs() < 1e-6,
+                "delton {i} ligger inte mitt emellan"
+            );
+        }
+        // Och förvalet använder samma väg — inte en egen kopia av spektret.
+        let preset = morphine(0.5);
+        assert_eq!(preset.waveform, Waveform::Additive);
+        assert_eq!(preset.harmonics, mid);
+    }
+
 }

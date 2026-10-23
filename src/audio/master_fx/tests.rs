@@ -1232,7 +1232,8 @@
     #[test]
     fn the_default_chain_is_transparent() {
         let sr = 48_000.0;
-        let params = MasterFxParams::default();
+        // Kedjan skapas med standardparametrarna; provet rör dem aldrig, så det som mäts är
+        // just standardläget.
         let mut chain = MasterFxChain::new(sr);
         let mut worst = 0.0f32;
         for n in 0..4_800 {

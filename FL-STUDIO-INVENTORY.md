@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 63** har en motsvarighet, **◐ 54** delvis, **✗ 25** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 63** har en motsvarighet, **◐ 55** delvis, **✗ 24** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -112,7 +112,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Plugin | Filer | Sonix | Kommentar |
 | :--- | ---: | :---: | :--- |
 | FL Studio Mobile | 344 | ✗ | mobil-appens rack; ingen motsvarighet |
-| Morphine | 199 | ✗ | additiv synth (4 operatorkällor + morf) |
+| Morphine | 199 | ◐ |  + : två additiva operatorkällor (glasig, rörledad) och ett läge 0–1 mellan dem, mätt att läget är exakt vid 0 och 1 och linjärt emellan. ✗ fyra operatorkällor, egna modulationskedjor och de 199 förvalen |
 | Harmor | 164 | ✗ | spektral/additiv, bildanalys, .fnv-envelopes |
 | Dashboard | 90 | ◐ | Patch-modulen ritar en egen graf, men ingen panel med rattar |
 | Toxic Biohazard | 78 | ◐ | tvåoperator-FM finns i synten sedan i dag, inte 6-op modell |
