@@ -245,7 +245,7 @@ warplägen där vi har två beteenden.
 | **Kompning** | take lanes i spellistan | MIDI-tagningar | *delvis* |
 | **Warp** | 6 lägen med granularitet/formanter | WSOLA + bandspelare + formant | *delvis* |
 | **Mikrotonalitet** | 152 stämningar, Scala/ASCL, tuning pool | ✅ `.ascl` läses; 12-TET är standard | *de* |
-| **MPE** | fullt (per-not pitch bend, MPE Control) | ✗ | *de* |
+| **MPE** | fullt (per-not pitch bend, MPE Control) | per-kanal-bend live, **inspelning + BEND-kurva i pianorullen** (0.9.22), samplenoggrant fördröjd | *delvis* |
 | **Skript/utbyggnad** | Max for Live + Extensions SDK + Python-API | patcher (intern graf), AI-kommandon | *de* |
 | **Kontrollerytor** | 149 | MCU + MIDI-learn | *de* |
 | **Lektioner** | 1 016 filer, interaktiva | nej | *de* |
@@ -256,7 +256,7 @@ warplägen där vi har två beteenden.
 | **Pluginformat** | VST3/VST2/AU | CLAP + VST3 + VST2 + sandlåda | *vi* |
 | **Analysfiler** | `.asd` bredvid varje sampling | egen cache | *vi* |
 
-**Räkning:** 8 områden där vi ligger efter, 4 där vi ligger delvis, 6 där vi ligger före.
+**Räkning:** 7 områden där vi ligger efter, 5 där vi ligger delvis, 6 där vi ligger före.
 
 ---
 
