@@ -1225,3 +1225,24 @@
         assert!(cut_lo < flat_lo * 0.5, "−12 dB ska sänka basen: {flat_lo:.4} → {cut_lo:.4}");
     }
 
+    /// **Allt av som standard betyder allt av.** Varje nytt steg i masterkedjan ska vara av i
+    /// `MasterFxParams::default()`, och då ska kedjan släppa igenom signalen **oförändrad** —
+    /// inte "nästan", för en kedja med ett steg som ligger på ändrar ljudet i varje gammalt
+    /// projekt utan att någon rört en ratt.
+    #[test]
+    fn the_default_chain_is_transparent() {
+        let sr = 48_000.0;
+        let params = MasterFxParams::default();
+        let mut chain = MasterFxChain::new(sr);
+        let mut worst = 0.0f32;
+        for n in 0..4_800 {
+            let t = n as f32 / sr;
+            let l = (2.0 * std::f32::consts::PI * 220.0 * t).sin() * 0.4;
+            let r = (2.0 * std::f32::consts::PI * 330.0 * t).sin() * 0.4;
+            let (out_l, out_r) = chain.process(l, r);
+            worst = worst.max((out_l - l).abs()).max((out_r - r).abs());
+        }
+        println!("största avvikelsen från ingången: {worst:.9}");
+        assert!(worst < 1e-9, "standardkedjan ska vara genomsläpplig, avvikelse {worst}");
+    }
+
