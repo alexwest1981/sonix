@@ -3286,6 +3286,7 @@ impl SonixApp {
     /// Alla dialoger, i den ordning de läggs ovanpå varandra.
     pub(crate) fn render_all_modals(&mut self, ctx: &egui::Context) {
         // 4. Modals & Dialogs
+        self.render_notes_modal(ctx);
         self.render_import_sample_modal(ctx);
         self.render_hardware_controller_modal(ctx);
         self.render_batch_export_modal(ctx);
@@ -3314,5 +3315,29 @@ impl SonixApp {
         self.render_stem_focus_modal(ctx);
         self.render_help_manual_modal(ctx);
         self.render_add_track_modal(ctx);
+    }
+}
+
+impl SonixApp {
+    /// **Anteckningar** (FL:s NoteBook): en ruta per projekt, sparad i projektfilen.
+    pub(crate) fn render_notes_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_notes_modal {
+            return;
+        }
+        let mut open = self.show_notes_modal;
+        egui::Window::new(crate::i18n::t("📓 Anteckningar"))
+            .open(&mut open)
+            .default_width(440.0)
+            .default_height(280.0)
+            .resizable(true)
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.project_notes)
+                        .desired_rows(12)
+                        .desired_width(f32::INFINITY)
+                        .hint_text(crate::i18n::t("Egna anteckningar om projektet — de följer med filen")),
+                );
+            });
+        self.show_notes_modal = open;
     }
 }

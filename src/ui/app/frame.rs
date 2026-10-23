@@ -929,6 +929,11 @@ impl SonixApp {
 
                     // Verktyg & Kreativa Generatorer
                     ui.menu_button(self.tr("🎛 Verktyg"), |ui| {
+                        if ui.button(self.tr("📓 Anteckningar…")).clicked() {
+                            self.show_notes_modal = true;
+                            ui.close_menu();
+                        }
+                        ui.separator();
                         if ui.button(self.tr("🎲 Melodi- & Beat-Tärning... (F12)")).clicked() {
                             self.show_dice_generator_modal = true;
                             ui.close_menu();

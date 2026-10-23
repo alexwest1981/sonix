@@ -208,6 +208,9 @@ pub struct SavedChannel {
 pub struct SonixProjectData {
     pub name: String,
     pub bpm: f32,
+    /// **Anteckningar** (FL:s NoteBook). Saknas i äldre projekt — då är de tomma.
+    #[serde(default)]
+    pub notes: String,
     /// Tempobyten (Fas 8.2). Saknas i äldre projekt — då gäller `bpm` som förut,
     /// och filen läses exakt som den skrevs.
     #[serde(default)]
@@ -702,6 +705,8 @@ pub struct PreloadedTrackData {
 pub struct LoadedProjectPayload {
     pub name: String,
     pub bpm: f32,
+    /// Anteckningarna som de stod när filen sparades (tomma i äldre projekt).
+    pub notes: String,
     /// Tempobyten (Fas 8.2). Saknas i äldre projekt — då gäller `bpm` som förut
     /// (fältet är `#[serde(default)]` i `SonixProjectData`, som är den som läses).
     pub tempo_points: Vec<crate::audio::tempo::TempoPoint>,
@@ -1309,6 +1314,7 @@ pub fn load_demo_project(&mut self) {
             p.completed_payload = Some(LoadedProjectPayload {
                 name: "Sonix Synthwave Demo".to_string(),
                 bpm: 126.0,
+                notes: String::new(),
                 follow_tempo: true,
                 swing: 0.15,
                 tempo_points: Vec::new(),
@@ -1377,6 +1383,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
     SonixProjectData {
         name: name.to_string(),
         bpm: self.bpm,
+        notes: self.project_notes.clone(),
         follow_tempo: self.follow_tempo,
         tempo_points: self.tempo_points.clone(),
         song_key_root: self.song_key_root,
@@ -1810,6 +1817,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
             p.completed_payload = Some(LoadedProjectPayload {
                 name: data.name,
                 bpm: data.bpm,
+                notes: data.notes,
                 follow_tempo: data.follow_tempo,
                 tempo_points: data.tempo_points,
                 song_key_root: 3,
@@ -1869,6 +1877,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
 
     self.project_name = payload.name;
     self.bpm = payload.bpm;
+    self.project_notes = payload.notes;
     self.follow_tempo = payload.follow_tempo;
     self.tempo_points = payload.tempo_points;
     self.song_key_root = payload.song_key_root;

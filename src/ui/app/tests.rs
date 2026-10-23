@@ -492,6 +492,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         step_velocities[3] = 0.25;
 
         let data = SonixProjectData {
+            notes: String::new(),
             name: "Testprojekt".to_string(),
             bpm: 133.0,
             follow_tempo: false,
@@ -1877,6 +1878,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
     #[test]
     fn test_plugin_slots_survive_project_json_roundtrip() {
         let data = SonixProjectData {
+            notes: String::new(),
             name: "Plugin Test".into(),
             bpm: 120.0,
             follow_tempo: true,

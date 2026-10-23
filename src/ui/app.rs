@@ -178,6 +178,10 @@ pub struct SonixApp {
     pub note_probability: f32,
     /// Spåret som väntar på en ny ljudkälla från filväljaren ("byta källa").
     pub pending_swap_source: Option<usize>,
+    /// Projektets anteckningar (FL:s NoteBook), sparas i projektfilen.
+    pub project_notes: String,
+    /// Om anteckningsfönstret är uppe.
+    pub show_notes_modal: bool,
     /// Skalan riff-generatorn använder.
     pub riff_scale: crate::riff::Scale,
     /// Grupper i spellistan.
@@ -798,6 +802,8 @@ impl SonixApp {
             note_filter_hits: None,
             note_probability: 1.0,
             pending_swap_source: None,
+            project_notes: String::new(),
+            show_notes_modal: false,
             riff_scale: crate::riff::Scale::Minor,
             track_groups: Vec::new(),
             view_mode: ViewMode::PlaylistArranger,
