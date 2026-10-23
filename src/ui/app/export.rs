@@ -589,6 +589,133 @@ pub(crate) fn bounce_track_to_new(&mut self, t_idx: usize) {
         return;
     }
 
+    let Some((new_idx, len_secs)) = self.bake_buffer_to_new_track(
+        &name,
+        &buffer,
+        self.playlist_tracks[t_idx].color,
+        &format!("Baka '{}'", name),
+    ) else {
+        return;
+    };
+    // Källan tystas — inte tas bort: det är den som gör bakningen jämförbar och ångringsbar.
+    self.playlist_tracks[t_idx].muted = true;
+    self.sync_track_audio_state(t_idx);
+    self.status_message = crate::tstatus!(
+        "🎧 Bakade '{}' till spår {}: {:.1} s ljud, källan tystad [Ångra: Ctrl+Z]",
+        name,
+        new_idx + 1,
+        len_secs
+    );
+}
+
+/// **Baka grupp till nytt spår** (Abletons `Bounce Group In Place`).
+///
+/// Gruppen renderas som den hörs: medlemmarna solas, allt annat faller bort i samma regel som
+/// live-solon. Ljudspåren styrs inte av soloflaggorna utan går genom timeline-motorn, så deras
+/// buffertar töms för de spår som inte är med.
+pub(crate) fn bounce_group_to_new(&mut self, group_idx: usize) {
+    let Some(group_name) = self.track_groups.get(group_idx).map(|g| g.name.clone()) else {
+        return;
+    };
+    let members: Vec<usize> = self
+        .playlist_tracks
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| t.group == Some(group_idx))
+        .map(|(i, _)| i)
+        .collect();
+    if members.is_empty() {
+        self.status_message = crate::tstatus!("📁 Gruppen '{}' är tom", group_name);
+        return;
+    }
+    for &i in &members {
+        if self.playlist_tracks[i].is_frozen() {
+            self.status_message =
+                crate::tstatus!("❄ '{}' i gruppen är fruset — tina det först", self.playlist_tracks[i].name);
+            return;
+        }
+        if self.plugin_slots.get(i).is_some_and(|s| s.is_some()) {
+            self.status_message = crate::tstatus!(
+                "❄ '{}' i gruppen har en plugin-insert som offline-renderingen inte kan återskapa",
+                self.playlist_tracks[i].name
+            );
+            return;
+        }
+    }
+
+    let sample_rate = self.engine.sample_rate;
+    let mut spec = self.build_render_spec(None, sample_rate);
+    Self::isolate_group(&mut spec, &members);
+    let buffer = match self.render_buffer(&spec, true) {
+        Ok(b) => b,
+        Err(e) => {
+            self.status_message = crate::tstatus!("❄ Kunde inte rendera gruppen: {}", e);
+            return;
+        }
+    };
+    if buffer.is_empty() || Self::peak_of(&buffer) <= 0.0 {
+        self.status_message =
+            crate::tstatus!("❄ Gruppen '{}' är tyst i den här låten", group_name);
+        return;
+    }
+
+    let color = self.playlist_tracks[members[0]].color;
+    let label = format!("Baka grupp '{}'", group_name);
+    let Some((new_idx, len_secs)) = self.bake_buffer_to_new_track(&group_name, &buffer, color, &label)
+    else {
+        return;
+    };
+    for &i in &members {
+        self.playlist_tracks[i].muted = true;
+        self.sync_track_audio_state(i);
+    }
+    self.status_message = crate::tstatus!(
+        "🎧 Bakade gruppen '{}' ({} spår) till spår {}: {:.1} s [Ångra: Ctrl+Z]",
+        group_name,
+        members.len(),
+        new_idx + 1,
+        len_secs
+    );
+}
+
+/// Gör om en spec till en grupprendering: bara `members` hörs.
+///
+/// Regeln är densamma som live-solon använder — `has_track_solo` fäller allt som inte är soloat —
+/// så ingen ny ljudväg behövs. Ljudspåren har egen grind (timeline-motorn), därför töms deras
+/// buffertar i stället.
+pub(crate) fn isolate_group(spec: &mut crate::audio::RenderSpec, members: &[usize]) {
+    let mask = Self::group_member_mask(spec.tracks.len(), members);
+    for (i, t) in spec.tracks.iter_mut().enumerate() {
+        t.solo = mask[i];
+    }
+    for (i, snap) in spec.timeline.iter_mut().enumerate() {
+        if !mask[i] {
+            snap.left = std::sync::Arc::new(Vec::new());
+            snap.right = std::sync::Arc::new(Vec::new());
+        }
+    }
+}
+
+/// Vilka spår som hörs i en grupprendering, ett per spårindex.
+///
+/// Ett index som inte finns i låten ignoreras — en grupp kan innehålla ett spår som tagits bort,
+/// och då ska renderingen inte panika.
+pub(crate) fn group_member_mask(count: usize, members: &[usize]) -> Vec<bool> {
+    (0..count).map(|i| members.contains(&i)).collect()
+}
+
+/// Skriver en renderad buffer som 32-bitars float, läser tillbaka filen och lägger den på ett
+/// nytt spår. **Filen är sanningen** — en trasig skrivning upptäcks här, inte vid nästa
+/// projektöppning. Returnerar `(nytt spårindex, längd i sekunder)`, eller `None` med
+/// statusmeddelandet satt.
+fn bake_buffer_to_new_track(
+    &mut self,
+    name: &str,
+    buffer: &[f32],
+    color: egui::Color32,
+    undo_label: &str,
+) -> Option<(usize, f32)> {
+    let sample_rate = self.engine.sample_rate;
     let path = crate::paths::paths()
         .project_assets_dir(&self.project_name)
         .join("Bounces")
@@ -620,18 +747,17 @@ pub(crate) fn bounce_track_to_new(&mut self, t_idx: usize) {
     ) {
         self.status_message =
             crate::tstatus!("❄ Kunde inte skriva den bakade filen: {}", e);
-        return;
+        return None;
     }
     // Läs tillbaka från filen: då är filen sanningen, och en trasig skrivning upptäcks nu.
     let Some((l, r, pcm_sr)) = load_sample_pcm_arcs(&path) else {
         self.status_message =
             crate::tstatus!("❄ Den bakade filen gick inte att läsa tillbaka: {}", path);
-        return;
+        return None;
     };
 
-    self.push_undo(&format!("Baka '{}'", name));
+    self.push_undo(undo_label);
     let len_secs = l.len() as f32 / pcm_sr as f32;
-    let color = self.playlist_tracks[t_idx].color;
     let mut baked = PlaylistTrack::new(
         crate::tstatus!("{} (bakat)", name),
         "🎧",
@@ -644,15 +770,7 @@ pub(crate) fn bounce_track_to_new(&mut self, t_idx: usize) {
     self.playlist_tracks.push(baked);
     let new_idx = self.playlist_tracks.len() - 1;
     self.sync_track_stem_to_engine(new_idx);
-    // Källan tystas — inte tas bort: det är den som gör bakningen jämförbar och ångringsbar.
-    self.playlist_tracks[t_idx].muted = true;
-    self.sync_track_audio_state(t_idx);
-    self.status_message = crate::tstatus!(
-        "🎧 Bakade '{}' till spår {}: {:.1} s ljud, källan tystad [Ångra: Ctrl+Z]",
-        name,
-        new_idx + 1,
-        len_secs
-    );
+    Some((new_idx, len_secs))
 }
 }
 

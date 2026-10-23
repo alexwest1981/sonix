@@ -2206,6 +2206,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     // inne i panelen lånas spåret.
     let mut freeze_request: Option<usize> = None;
     let mut bounce_request: Option<usize> = None;
+    let mut group_bounce_request: Option<usize> = None;
     let mut declick_request: Option<usize> = None;
     let mut swap_request: Option<usize> = None;
     let mut group_new_request: Option<usize> = None;
@@ -2323,6 +2324,15 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             .clicked()
                         {
                             bounce_request = Some(t_idx);
+                        }
+                        // Baka **hela gruppen** — bara när spåret faktiskt ligger i en grupp.
+                        if let Some(g) = track.group {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Baka gruppen till nytt spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 70, 45)))
+                                .on_hover_text(crate::i18n::t("Renderar gruppens spår tillsammans till ett nytt ljudspår och tystar dem. Ctrl+Z tar tillbaka hela bakningen."))
+                                .clicked()
+                            {
+                                group_bounce_request = Some(g);
+                            }
                         }
                         // **Klicka bort skarvar:** lagar hopp i det inspelade materialet.
                         // Bara spår med ljud kan ha klickar att laga.
@@ -2879,6 +2889,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     }
     if let Some(target) = bounce_request {
         self.bounce_track_to_new(target);
+    }
+    if let Some(group) = group_bounce_request {
+        self.bounce_group_to_new(group);
     }
     if let Some(target) = declick_request {
         self.declick_track(target);

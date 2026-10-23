@@ -3625,3 +3625,15 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(pieces[1].bpm_here, 160.0);
     }
 
+/// En grupprendering hör bara gruppens spår, och ett spår som tagits bort ur låten
+/// (index utanför antalet) får inte flytta masken.
+#[test]
+fn a_group_render_hears_only_the_groups_members() {
+    assert_eq!(SonixApp::group_member_mask(4, &[0, 2]), vec![true, false, true, false]);
+    assert_eq!(
+        SonixApp::group_member_mask(2, &[0, 9]),
+        vec![true, false],
+        "ett index utanför låten ska ignoreras, inte panika"
+    );
+    assert_eq!(SonixApp::group_member_mask(0, &[0]), Vec::<bool>::new());
+}
