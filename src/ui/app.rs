@@ -574,6 +574,8 @@ pub struct SonixApp {
     pub show_big_clock: bool,
     /// Färgkartan: noterna i rutnätet färgas efter tonhöjd (FL:s VFX Color Mapper).
     pub color_notes: bool,
+    /// Zoom i pianorullens rutnät (1,0 = standard). Ctrl + +/− ändrar, Ctrl+0 nollställer.
+    pub roll_zoom: f32,
     pub tuner_state: TunerState,
     pub show_dice_generator_modal: bool,
     pub dice_generator_state: DiceGeneratorState,
@@ -1098,6 +1100,7 @@ impl SonixApp {
             show_tuner_modal: false,
             show_big_clock: false,
             color_notes: false,
+            roll_zoom: 1.0,
             tuner_state: TunerState::default(),
             show_dice_generator_modal: false,
             dice_generator_state: DiceGeneratorState::default(),

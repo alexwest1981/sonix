@@ -70,6 +70,14 @@ impl ViewMode {
     }
 }
 
+/// Pianorullens zoom: 10 % per tryck, klämt mellan 0,6 och 2,0.
+pub const ZOOM_MIN: f32 = 0.6;
+pub const ZOOM_MAX: f32 = 2.0;
+
+pub fn zoom_step(current: f32, delta: f32) -> f32 {
+    (current + delta).clamp(ZOOM_MIN, ZOOM_MAX)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ArrangerTool {
     Select, // ⇱ Markör / Flytta / Trimma

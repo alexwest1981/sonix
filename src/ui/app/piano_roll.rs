@@ -1082,6 +1082,9 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
         let key_root = self.song_key_root;
         let key_scale = self.song_key_scale;
         let root_note_val = key_root % 12;
+        // Ctrl + +/− zoomar rutnätet; både radhöjd och cellbredd följer med, annars ser
+        // en förstorad rad ut som en trasig tabell.
+        let zoom = self.roll_zoom.clamp(0.6, 2.0);
 
         egui::ScrollArea::vertical().max_height(250.0).show(ui, |ui| {
             for note_offset in (0..semitones_count).rev() {
@@ -1105,7 +1108,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         Color32::from_rgb(220, 228, 240)
                     };
                     let key_text = if is_root || is_sharp || !note_in_scale { Color32::WHITE } else { Color32::BLACK };
-                    let (k_rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 16.0), Sense::hover());
+                    let (k_rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 16.0 * zoom), Sense::hover());
                     ui.painter().rect_filled(k_rect, Rounding::same(2.0), key_bg);
 
                     let label_str = if is_root {
@@ -1123,7 +1126,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
 
                     // 16 Grid Columns
                     for step in 0..16 {
-                        let (cell_rect, response) = ui.allocate_exact_size(Vec2::new(26.0, 16.0), Sense::click());
+                        let (cell_rect, response) = ui.allocate_exact_size(Vec2::new(26.0 * zoom, 16.0 * zoom), Sense::click());
                         let is_on = self.piano_roll_grid[note_offset][step];
                         let cell_key = base_midi + note_offset as u8;
                         let is_playhead = self.is_playing && self.current_step == step;
@@ -1223,7 +1226,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             ui.label(egui::RichText::new(crate::i18n::t("VELOCITY")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
             ui.allocate_exact_size(Vec2::new(10.0, 24.0), Sense::hover());
             for s in 0..16 {
-                let (v_rect, v_resp) = ui.allocate_exact_size(Vec2::new(26.0, 24.0), Sense::click_and_drag());
+                let (v_rect, v_resp) = ui.allocate_exact_size(Vec2::new(26.0 * zoom, 24.0 * zoom), Sense::click_and_drag());
                 if v_resp.dragged() {
                     let dy = v_resp.drag_delta().y;
                     self.step_velocities[s] = (self.step_velocities[s] - dy * 0.05).clamp(0.1, 1.0);

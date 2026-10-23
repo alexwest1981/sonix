@@ -2007,6 +2007,26 @@ use crate::ui::theme::Theme;
         assert_eq!(old.midi_map.apply(40, 80, 1), (40, 80, 1));
     }
 
+    /// Zoomen går i 10-procentssteg och stannar vid sina ändar.
+    #[test]
+    fn the_roll_zoom_steps_and_stops_at_its_ends() {
+        let zoom = super::state::zoom_step(1.0, 0.1);
+        assert!((zoom - 1.1).abs() < 1e-6);
+        assert!((super::state::zoom_step(1.1, -0.1) - 1.0).abs() < 1e-6);
+        // Uppåt stannar den på 2,0 hur många tryck som helst.
+        let mut z = 1.9;
+        for _ in 0..10 {
+            z = super::state::zoom_step(z, 0.1);
+        }
+        assert!((z - super::state::ZOOM_MAX).abs() < 1e-6);
+        // Och nedåt på 0,6.
+        let mut z = 0.7;
+        for _ in 0..10 {
+            z = super::state::zoom_step(z, -0.1);
+        }
+        assert!((z - super::state::ZOOM_MIN).abs() < 1e-6);
+    }
+
     /// Tab går genom alla ytor och vänder vid slutet; Shift+Tab går bakåt.
     #[test]
     fn tab_walks_every_view_and_wraps_around() {

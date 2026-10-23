@@ -465,6 +465,27 @@ impl SonixApp {
             };
         }
 
+        // **Zoom i pianorullen**: Ctrl + +/− i 10-procentssteg, Ctrl+0 tillbaka till 1,0.
+        if !modal_open
+            && !wants_keyboard
+            && ctx.input(|i| i.modifiers.ctrl || i.modifiers.command)
+        {
+            let (plus, minus, reset) = ctx.input(|i| {
+                (
+                    i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals),
+                    i.key_pressed(egui::Key::Minus),
+                    i.key_pressed(egui::Key::Num0),
+                )
+            });
+            if plus {
+                self.roll_zoom = super::state::zoom_step(self.roll_zoom, 0.1);
+            } else if minus {
+                self.roll_zoom = super::state::zoom_step(self.roll_zoom, -0.1);
+            } else if reset {
+                self.roll_zoom = 1.0;
+            }
+        }
+
         // Keyboard Shortcuts
         ctx.input(|i| {
             // Virtual Piano keys ONLY when Piano Roll is active on screen, no modal is open, and not typing text

@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Zooma pianorullens rutnät" => "Zoom the piano roll grid",
+        "Nollställ zoomningen" => "Reset the zoom",
         "Byt yta framåt / bakåt" => "Switch view forward / backward",
         "🎨 Färg" => "🎨 Color",
         "Färga noterna efter tonhöjd" => "Colour the notes by pitch",
@@ -2653,6 +2655,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Zooma pianorullens rutnät" => "Zoom pianorullens gitter",
+        "Nollställ zoomningen" => "Nulstil zoomningen",
         "Byt yta framåt / bakåt" => "Skift visning frem / tilbage",
         "🎨 Färg" => "🎨 Farve",
         "Färga noterna efter tonhöjd" => "Farve noterne efter tonehøjde",
@@ -4889,6 +4893,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Zooma pianorullens rutnät" => "Zoom pianorullens rutenett",
+        "Nollställ zoomningen" => "Tilbakestill zoomingen",
         "Byt yta framåt / bakåt" => "Bytt visning frem / tilbake",
         "🎨 Färg" => "🎨 Farge",
         "Färga noterna efter tonhöjd" => "Farge notene etter tonehøyde",
@@ -7125,6 +7131,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Zooma pianorullens rutnät" => "Piano-Roll-Raster zoomen",
+        "Nollställ zoomningen" => "Zoom zurücksetzen",
         "Byt yta framåt / bakåt" => "Ansicht vor / zurück wechseln",
         "🎨 Färg" => "🎨 Farbe",
         "Färga noterna efter tonhöjd" => "Noten nach Tonhöhe färben",
@@ -9361,6 +9369,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Zooma pianorullens rutnät" => "Ampliar la cuadrícula del piano roll",
+        "Nollställ zoomningen" => "Restablecer el zoom",
         "Byt yta framåt / bakåt" => "Cambiar de vista adelante / atrás",
         "🎨 Färg" => "🎨 Color",
         "Färga noterna efter tonhöjd" => "Colorear las notas por altura",
@@ -11597,6 +11607,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Zooma pianorullens rutnät" => "Zoomer la grille du piano roll",
+        "Nollställ zoomningen" => "Réinitialiser le zoom",
         "Byt yta framåt / bakåt" => "Changer de vue avant / arrière",
         "🎨 Färg" => "🎨 Couleur",
         "Färga noterna efter tonhöjd" => "Colorer les notes selon la hauteur",
