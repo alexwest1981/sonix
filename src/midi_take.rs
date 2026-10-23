@@ -283,6 +283,21 @@ impl Take {
     }
 
     /// Skalar anslaget (0,9 = 10 % svagare). Kläms till 0–1.
+    /// **Spegla tonhöjderna** kring en pivot: en not som ligger `d` halvtoner över pivoten
+    /// hamnar `d` under den. Kläms mot 0–127, så en spegling vid kanten tappar inte noten.
+    pub fn invert(&mut self, pivot: u8) -> usize {
+        let mut touched = 0;
+        for n in &mut self.notes {
+            let mirrored = 2 * pivot as i32 - n.key as i32;
+            let clamped = mirrored.clamp(0, 127) as u8;
+            if clamped != n.key {
+                n.key = clamped;
+                touched += 1;
+            }
+        }
+        touched
+    }
+
     pub fn scale_velocity(&mut self, factor: f32) -> usize {
         let mut changed = 0;
         for n in &mut self.notes {
@@ -870,6 +885,18 @@ mod tests {
         // Och den gamla vägen (utan slumptal) spelar allt, som förut.
         take.set_probability(&none, 1.0);
         assert_eq!(plan_for_step(&take, 0, 1000, &is_on).play.len(), 3);
+    }
+
+    #[test]
+    fn inverting_mirrors_the_notes_around_the_pivot_and_clamps_at_the_edges() {
+        let mut t = Take::new();
+        t.push(0.0, 60, 0.8);  // på pivoten
+        t.push(2.0, 67, 0.8);  // 7 över → 7 under
+        t.push(4.0, 53, 0.8);  // 7 under → 7 över
+        t.push(6.0, 2, 0.8);   // 58 under 60 → 118, alltså inte nere vid 0
+        assert_eq!(t.invert(60), 3, "noten på pivoten ska inte räknas som ändrad");
+        let keys: Vec<u8> = t.notes.iter().map(|n| n.key).collect();
+        assert_eq!(keys, vec![60, 53, 67, 118]);
     }
 
 }

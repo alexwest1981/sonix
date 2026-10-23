@@ -493,6 +493,18 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         .unwrap_or(0);
                     self.status_message = format!("Satte {:.0} % på {} noter", p * 100.0, touched);
                 }
+                // **Spegla** (FL: `Invert`): tonhöjderna vänds kring mitten av urvalets intervall,
+                // så en uppgång blir en nedgång med samma intervall.
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("↕ Spegla tonhöjder")).size(10.0)))
+                    .on_hover_text(crate::i18n::t("Speglar tagningens noter kring C4 (MIDI 60). En not sju halvtoner över hamnar sju under."))
+                    .clicked()
+                {
+                    let mut touched = 0;
+                    if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
+                        touched = p.take.invert(60);
+                    }
+                    self.status_message = crate::tstatus!("↕ Speglade {} noter", touched);
+                }
                 // **Capture MIDI** (Ableton): noterna du nyss spelade, utan att ha spelat in.
                 let captured = self.note_capture.len();
                 if ui.add_enabled(
