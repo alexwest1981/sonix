@@ -2617,6 +2617,64 @@ fn a_plucked_string_rings_at_the_note_pitch_and_decays() {
     assert!(head > tail * 1.5, "strängen ska klinga av: {head:.4} → {tail:.4}");
 }
 
+/// Renderar en plockad sträng och lämnar dess sampel.
+fn render_plucked(note: u8, freq: f32, body_amount: f32) -> Vec<f32> {
+    let adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    let flt = FilterParams { cutoff: 12_000.0, resonance: 0.0 };
+    let env = AdsrParams::default();
+    let mut v = Voice::new(48_000.0);
+    v.body_amount = body_amount;
+    v.trigger(note, freq, 1.0, 48_000.0);
+    let mut out = Vec::new();
+    for _ in 0..48_000 {
+        out.push(v.next_sample(
+            Waveform::Pluck,
+            &adsr,
+            &flt,
+            &env,
+            0.0,
+            &FmParams::default(),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            &HARMONICS_DEFAULT,
+        ));
+    }
+    out
+}
+
+/// **Dämpningen sitter per varv, inte per sampel.** En kort sträng gör fler varv per
+/// sekund; låg förlusten per sampel hade 1760 Hz dött direkt medan 110 Hz klingade
+/// vidare (0,545 mot 0,002 i det försök som reverterades). Här ska båda ha klingat av
+/// i samma storleksordning efter 0,9 s — samma absoluta tid, inte samma antal varv.
+#[test]
+fn plucked_strings_decay_in_absolute_time_not_per_loop() {
+    let tail_ratio = |out: &[f32]| {
+        let rms = |s: &[f32]| (s.iter().map(|x| x * x).sum::<f32>() / s.len() as f32).sqrt();
+        rms(&out[40_000..48_000]) / rms(&out[1_000..5_000])
+    };
+    let low = tail_ratio(&render_plucked(45, 110.0, 1.0));
+    let high = tail_ratio(&render_plucked(93, 1760.0, 1.0));
+    println!("kvar efter 0,9 s: 110 Hz {low:.4}, 1760 Hz {high:.4}");
+    assert!(low < 0.1 && high < 0.1, "båda ska ha klingat av: {low:.4} / {high:.4}");
+    let spread = low.max(high) / low.min(high).max(1e-6);
+    assert!(
+        spread < 10.0,
+        "efterklangen ska vara samma storleksordning, inte per varv: {low:.4} mot {high:.4} ({spread:.1}×)"
+    );
+}
+
+/// **Kroppen hörs.** Med `body_amount` 1,0 ligger en resonans på 196 Hz i efterledet;
+/// med 0,0 är strängen torr. Samma sträng, samma frö — bara kroppen skiljer.
+#[test]
+fn the_body_resonance_is_audible_and_can_be_switched_off() {
+    let wet = mag_at(&render_plucked(57, 220.0, 1.0), 196.0);
+    let dry = mag_at(&render_plucked(57, 220.0, 0.0), 196.0);
+    println!("kropp vid 196 Hz: på {wet:.5}, av {dry:.5} ({:.2}×)", wet / dry);
+    assert!(wet > dry * 1.3, "kroppen ska höras vid 196 Hz: {wet:.5} mot {dry:.5}");
+}
+
 /// **Ogun är inharmonisk.** Deltonerna ligger utanför heltalsmultiplarna: 2,76× ska höras
 /// medan 2× ska vara svag — det är skillnaden mot varje vanlig oscillator i synten.
 #[test]

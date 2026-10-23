@@ -4,6 +4,20 @@
 
 use super::*;
 
+/// Strängens lågpass i återkopplingen (Plucked!): 0,9 lämnar grundtonen nästan orörd
+/// ett varv men tar diskanten, som en sträng som tappar sina övertoner först.
+const PLUCK_LOWPASS: f32 = 0.9;
+/// Efterklangens längd i **sekunder**, samma för alla tonhöjder — förlusten räknas om
+/// per varv, så en kort sträng (som gör fler varv per sekund) inte dör i förtid.
+const PLUCK_T60: f32 = 2.5;
+/// Kroppens bidrag: 0,2 av strängen, men resonanserna ligger ~+6 dB i toppen (2,0).
+/// En kropp som bara är 0 dB vid moden hörs inte — det var felet förra gången.
+const BODY_MIX: f32 = 0.2 * 2.0;
+/// Kroppens två moder. Låga Q (10 är taket i `StateVariableFilter`) ger en bred
+/// resonans, som en gitarrkropp, och filtret är stabilt för alla Q.
+const BODY_LO: FilterParams = FilterParams { cutoff: 196.0, resonance: 10.0 };
+const BODY_HI: FilterParams = FilterParams { cutoff: 470.0, resonance: 10.0 };
+
 #[derive(Debug, Clone, Copy)]
 pub struct Voice {
     pub note: u8,
@@ -35,6 +49,15 @@ pub struct Voice {
     /// Sant när linjen fyllts för den här noten. Fylls vid första samplet, inte vid
     /// triggningen, så att en röst som aldrig spelar inte kostar något.
     pub pluck_started: bool,
+    /// Förlusten per **varv** i linjen (Plucked!), räknad ur varvets längd när noten
+    /// triggas — se `next_sample`.
+    pub pluck_gain: f32,
+    /// Kroppens två resonanser (Plucked!): egna filter med eget tillstånd, kopplade
+    /// **efter** strängen så att de aldrig ligger i återkopplingen.
+    pub body_lo: StateVariableFilter,
+    pub body_hi: StateVariableFilter,
+    /// Hur mycket av kroppen som mixas in. 0,0 = torr sträng; standard 1,0 = kropp på.
+    pub body_amount: f32,
     /// Key tracking: filtrets brytfrekvens förskjuts med notens avstånd från C4.
     /// 1,0 = ingen förskjutning (så beter sig gamla projekt).
     pub key_cutoff_ratio: f32,
@@ -274,6 +297,10 @@ impl Voice {
             pluck_buf: [0.0; 4096],
             pluck_pos: 0,
             pluck_started: false,
+            pluck_gain: 0.0,
+            body_lo: StateVariableFilter::new(sample_rate),
+            body_hi: StateVariableFilter::new(sample_rate),
+            body_amount: 1.0,
             note: 0,
             freq: 440.0,
             phase: 0.0,
@@ -318,6 +345,12 @@ impl Voice {
         self.velocity = velocity;
         self.phase_inc = (2.0 * PI * freq) / sample_rate;
         self.filter.reset();
+        // En ny plockning är en ny sträng: bruset fylls på nytt i linjen (annars
+        // återanvänds den förra notens utklingning när röstplatsen lånas ut igen),
+        // och kroppens tillstånd nollas så den inte bär med sig förra noten.
+        self.pluck_started = false;
+        self.body_lo.reset();
+        self.body_hi.reset();
         self.envelope.gate_on();
         self.filter_env.gate_on();
     }
@@ -406,17 +439,45 @@ impl Voice {
                         seed ^= seed << 5;
                         self.pluck_buf[i] = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
                     }
+                    // Noll medelvärde i det som ligger i linjen: en likströmsrest har
+                    // förstärkning 1 genom lågpasset och ligger kvar nästan för evigt —
+                    // den hörs som ett dunk under strängen i stället för som en sträng.
+                    let avg = self.pluck_buf[..len].iter().sum::<f32>() / len as f32;
+                    for x in self.pluck_buf[..len].iter_mut() {
+                        *x -= avg;
+                    }
                     self.pluck_pos = 0;
                     self.pluck_started = true;
+                    // **Dämpningen räknas per varv, inte per sampel.** Ett varv tar
+                    // `len/sr` sekunder, så för att alla toner ska tappa lika många dB
+                    // per sekund skalas förlusten med varvets längd: en kort sträng gör
+                    // fler varv per sekund och hade annars dött direkt (det var felet
+                    // förra gången, 110 Hz kvar men 1760 Hz borta).
+                    // Lågpasset tar också en bit av grundtonen varje varv (mest för korta
+                    // strängar, där grundtonen ligger högt i varvets spektrum). Den biten
+                    // kompenseras bort, så att det är övertonerna som tappas fortare och
+                    // inte tonhöjden. Kompensationen får aldrig ge loopförstärkning ≥ 1.
+                    let w = 2.0 * PI / len as f32;
+                    let d = 1.0 - PLUCK_LOWPASS;
+                    let h = PLUCK_LOWPASS / (1.0 - 2.0 * d * w.cos() + d * d).sqrt();
+                    let per_loop = 0.001_f32.powf(len as f32 / sr / PLUCK_T60);
+                    self.pluck_gain = (per_loop / h).min(0.9995);
                 }
                 let pos = self.pluck_pos;
                 let next = if pos + 1 >= len { 0 } else { pos + 1 };
                 let out = self.pluck_buf[pos];
-                // Lågpass i linjen: medelvärdet av två grannar dämpar diskanten först, som en
-                // sträng som tappar sina övertoner snabbast.
-                self.pluck_buf[pos] = 0.998 * 0.5 * (out + self.pluck_buf[next]);
+                // Lågpass + förlust **inuti** linjen: det är där en sträng tappar energi.
+                self.pluck_buf[pos] = (PLUCK_LOWPASS * out
+                    + (1.0 - PLUCK_LOWPASS) * self.pluck_buf[next])
+                    * self.pluck_gain;
                 self.pluck_pos = next;
-                out
+                // Kroppen är ett eget efterled utanför linjen: två resonanser som färgar
+                // det strängen redan lämnat ifrån sig och därför inte kan påverka dess
+                // återkoppling (ingen väg tillbaka in i `pluck_buf`).
+                out + self.body_amount
+                    * BODY_MIX
+                    * (self.body_lo.process_bandpass(out, &BODY_LO)
+                        + self.body_hi.process_bandpass(out, &BODY_HI))
             }
             Waveform::Inharmonic => {
                 // Metalliska deltoner: inga heltalsmultiplar, och nivåerna faller snabbt.
