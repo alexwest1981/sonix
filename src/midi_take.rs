@@ -407,6 +407,73 @@ impl Take {
         before - self.notes.len()
     }
 
+    /// **Legato över hela tagningen**: varje not dras ut till nästa nots start, så inga
+    /// glapp uppstår i frasen. Sista noten räcker till taktens slut. Noterna sorteras på
+    /// position, eftersom längden hör till paret (not, nästa not).
+    #[allow(dead_code)] // pianorullens meny kallar den inte än
+    pub fn legato(&mut self) -> usize {
+        self.notes.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+        let mut changed = 0;
+        for i in 0..self.notes.len() {
+            let next = self.notes.get(i + 1).map_or(STEPS_PER_BAR, |n| n.pos);
+            let len = (next - self.notes[i].pos).max(0.01);
+            if (self.notes[i].length_steps - len).abs() > 1e-6 {
+                self.notes[i].length_steps = len;
+                changed += 1;
+            }
+        }
+        changed
+    }
+
+    /// **Dela noter i bitar** (Abletons `Chop`): en not med känd längd delas i `pieces`
+    /// lika långa noter med samma ton och anslag. Okänd längd (0,0) hoppas över — det finns
+    /// inget att dela. Returnerar antalet noter som delades, inte antalet bitar.
+    #[allow(dead_code)] // likaså
+    pub fn chop(&mut self, filter: &NoteFilter, pieces: usize) -> usize {
+        let pieces = pieces.max(2);
+        let mut out = Vec::with_capacity(self.notes.len());
+        let mut split = 0;
+        for n in self.notes.drain(..) {
+            if !filter.matches(&n) || n.length_steps <= 0.0 {
+                out.push(n);
+                continue;
+            }
+            let len = n.length_steps / pieces as f32;
+            for k in 0..pieces {
+                out.push(TakeNote {
+                    pos: n.pos + len * k as f32,
+                    length_steps: len,
+                    ..n
+                });
+            }
+            split += 1;
+        }
+        self.notes = out;
+        split
+    }
+
+    /// **Slå ihop noter som hänger ihop**: samma ton där nästa not börjar inom den förras
+    /// slut (med 1 ms marginal för avrundning) blir en enda not — längden blir summan,
+    /// anslaget det starkaste och positionen den förstas. En lucka lämnas orörd.
+    #[allow(dead_code)] // likaså
+    pub fn join(&mut self) -> usize {
+        self.notes.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+        let mut kept: Vec<TakeNote> = Vec::with_capacity(self.notes.len());
+        let mut joined = 0;
+        for n in self.notes.drain(..) {
+            match kept.last_mut() {
+                Some(prev) if prev.key == n.key && n.pos <= prev.pos + prev.length_steps + 1e-3 => {
+                    prev.length_steps += n.length_steps;
+                    prev.velocity = prev.velocity.max(n.velocity);
+                    joined += 1;
+                }
+                _ => kept.push(n),
+            }
+        }
+        self.notes = kept;
+        joined
+    }
+
     /// **Tryck ihop eller dra ut frasen** (Abletons `Fit To Range`): alla positioner skalas kring
     /// den första noten, så en fras som ligger utspridd över hela takten kan samlas i en fjärdedel
     /// — eller spridas ut. Kläms mot taktens 16 steg.
@@ -1169,4 +1236,56 @@ mod tests {
         assert_eq!(t, once, "och ändrar inget");
     }
 
+    /// **Legato: noten räcker till nästa not.** Noter vid 0 och 4 ger längden 4,0, och den
+    /// sista räcker till taktens slut (16 − 4 = 12). Ett andra anrop har inget kvar att göra.
+    #[test]
+    fn legato_stretches_each_note_to_the_next() {
+        let mut t = Take::new();
+        t.push(0.0, 60, 0.8);
+        t.push(4.0, 62, 0.8);
+        assert_eq!(t.legato(), 2, "båda noterna fick ny längd");
+        assert_eq!(t.notes[0].length_steps, 4.0, "0 → 4 är fyra steg");
+        assert_eq!(t.notes[1].length_steps, 12.0, "fram till 16,0");
+        assert_eq!(t.legato(), 0, "längderna är redan rätt");
+    }
+
+    /// **Chop: fyra lika långa bitar** av en not med längd 4 vid 0 — längd 1,0 vid 0/1/2/3.
+    /// En not med okänd längd har inget att dela och lämnas orörd.
+    #[test]
+    fn chop_splits_a_note_into_equal_pieces() {
+        let mut t = Take::new();
+        t.push(0.0, 60, 0.8);
+        t.notes[0].length_steps = 4.0;
+        t.push(8.0, 62, 0.5); // okänd längd
+        assert_eq!(t.chop(&NoteFilter::default(), 4), 1, "en not delades");
+        assert_eq!(t.notes.len(), 5, "fyra bitar plus den orörda noten");
+        let pieces: Vec<(f32, f32)> =
+            t.notes.iter().take(4).map(|n| (n.pos, n.length_steps)).collect();
+        assert_eq!(
+            pieces,
+            vec![(0.0, 1.0), (1.0, 1.0), (2.0, 1.0), (3.0, 1.0)],
+            "fyra bitar om 1,0 steg"
+        );
+        assert_eq!(t.notes[4].length_steps, 0.0, "okänd längd delas inte");
+    }
+
+    /// **Join: hängande noter blir en** — längden summeras, det starkaste anslaget vinner och
+    /// den första positionen behålls. En lucka på 0,5 steg efter notens slut lämnas orörd.
+    #[test]
+    fn join_merges_touching_notes_but_leaves_a_gap() {
+        let mut t = Take::new();
+        t.push(0.0, 60, 0.4);
+        t.notes[0].length_steps = 4.0;
+        t.push(4.0, 60, 0.8); // börjar där den förra slutar
+        t.notes[1].length_steps = 2.0;
+        t.push(6.5, 60, 0.6); // 0,5 stegs lucka efter 6,0
+        t.notes[2].length_steps = 1.0;
+        assert_eq!(t.join(), 1, "bara paret som hänger ihop slås ihop");
+        assert_eq!(t.notes.len(), 2);
+        assert_eq!(t.notes[0].pos, 0.0, "den första positionen behålls");
+        assert_eq!(t.notes[0].length_steps, 6.0, "4 + 2");
+        assert_eq!(t.notes[0].velocity, 0.8, "det starkaste anslaget");
+        assert_eq!(t.notes[1].pos, 6.5, "luckan lämnas");
+        assert_eq!(t.notes[1].length_steps, 1.0);
+    }
 }
