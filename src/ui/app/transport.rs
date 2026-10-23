@@ -448,9 +448,6 @@ pub(crate) fn advance_sequencer(&mut self) {
                 }
             }
             self.current_step = self.song_step_in_bar;
-            // shortcut: ett flertaktsmönster spelas bara sin **första** takt i arrangemanget,
-            // eftersom ett block är en takt. Spela flertaktsmönster i pattern-läget tills
-            // blocken får längd (PATTERN-LENGTH.md, steg 3).
             self.trigger_song_step(self.song_bar, self.song_step_in_bar);
         }
 
@@ -612,13 +609,15 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
             continue;
         }
 
-        if let Some(pat_idx) = track.clips[bar]
+        if let Some((pat_idx, step_off)) = crate::ui::app::state::clip_at_bar(track, bar)
             && let Some(pat) = self.patterns.get(pat_idx) {
+            // Blocket kan börja tidigare än den här takten: då spelar vi dess senare del.
+            let sip = step_off + step_in_bar;
                 match track.kind {
                     TrackKind::Drums => {
                         for ch_idx in 0..=5 {
-                            if ch_idx < pat.channel_steps.len() && pat.channel_steps[ch_idx][step_in_bar] {
-                                let note = pat.channel_notes.get(ch_idx).map(|n| n[step_in_bar]).unwrap_or(36);
+                            if ch_idx < pat.channel_steps.len() && pat.channel_steps[ch_idx][sip] {
+                                let note = pat.channel_notes.get(ch_idx).map(|n| n[sip]).unwrap_or(36);
                                 let hold = self.step_duration(step_in_bar).as_secs_f32();
                                 let sample_cmd = self.channels.get(ch_idx)
                                     .and_then(|ch| channel_sample_trigger_command(ch, ch_idx, note, track.volume * vel, hold));
@@ -663,7 +662,7 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                             &mut || rng.next_f32(),
                         );
                         let grid_active = track.kind == TrackKind::SynthLead
-                            && ((0..24).any(|r| pat.piano_roll_grid[r][step_in_bar])
+                            && ((0..24).any(|r| pat.piano_roll_grid[r][sip])
                                 || !take_plan.play.is_empty());
                         if grid_active {
                             for (note, delay, take_vel) in &take_plan.play {
@@ -676,7 +675,7 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                                 });
                             }
                             for row in 0..24 {
-                                if pat.piano_roll_grid[row][step_in_bar] {
+                                if pat.piano_roll_grid[row][sip] {
                                     let note = 48 + row as u8;
                                     if take_plan.skip.contains(&note) {
                                         continue;
@@ -685,8 +684,8 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                                     let _ = self.engine.send_command(AudioCommand::NoteOn { note, freq, velocity: track.volume * vel, channel: 0 });
                                 }
                             }
-                        } else if pat.channel_steps.len() > ch_idx && pat.channel_steps[ch_idx][step_in_bar] {
-                            let note = pat.channel_notes[ch_idx][step_in_bar];
+                        } else if pat.channel_steps.len() > ch_idx && pat.channel_steps[ch_idx][sip] {
+                            let note = pat.channel_notes[ch_idx][sip];
                             let hold = self.step_duration(step_in_bar).as_secs_f32();
                             let sample_cmd = self.channels.get(ch_idx)
                                 .and_then(|ch| channel_sample_trigger_command(ch, ch_idx, note, track.volume * vel, hold));

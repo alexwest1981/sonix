@@ -26,9 +26,12 @@ pub(crate) fn pattern_bar_notes(
     channel: u8,
     bar_start_step: u32,
     velocities: &[u8; 16],
+    step_offset: usize,
 ) -> Vec<crate::audio::smf::MidiNote> {
     use crate::audio::smf::{MidiNote, TICKS_PER_STEP_16TH};
     let mut out: Vec<MidiNote> = Vec::new();
+    // Blocket kan börja före den här takten: läs patternets senare del, men skriv på
+    // taktens egen plats i filen.
     let place = |key: u8, step: usize, chan: u8, out: &mut Vec<MidiNote>| {
         out.push(MidiNote {
             start: (bar_start_step + step as u32) * TICKS_PER_STEP_16TH,
@@ -46,19 +49,21 @@ pub(crate) fn pattern_bar_notes(
                 };
                 let notes = pattern.channel_notes.get(ch);
                 for step in 0..16 {
-                    if steps[step] {
-                        let key = notes.map(|n| n[step]).unwrap_or(DRUM_CHANNEL_KEYS[ch]);
+                    let at = step_offset + step;
+                    if steps[at] {
+                        let key = notes.map(|n| n[at]).unwrap_or(DRUM_CHANNEL_KEYS[ch]);
                         place(key, step, 9, &mut out);
                     }
                 }
             }
         }
         TrackKind::SynthLead => {
-            let grid_active = (0..24).any(|r| (0..16).any(|s| pattern.piano_roll_grid[r][s]));
+            let grid_active =
+                (0..24).any(|r| (0..16).any(|s| pattern.piano_roll_grid[r][step_offset + s]));
             if grid_active {
                 for row in 0..24 {
                     for step in 0..16 {
-                        if pattern.piano_roll_grid[row][step] {
+                        if pattern.piano_roll_grid[row][step_offset + step] {
                             place(48 + row as u8, step, channel, &mut out);
                         }
                     }
@@ -68,8 +73,9 @@ pub(crate) fn pattern_bar_notes(
                 pattern.channel_notes.get(6),
             ) {
                 for step in 0..16 {
-                    if steps[step] {
-                        place(notes[step], step, channel, &mut out);
+                    let at = step_offset + step;
+                    if steps[at] {
+                        place(notes[at], step, channel, &mut out);
                     }
                 }
             }
@@ -80,8 +86,9 @@ pub(crate) fn pattern_bar_notes(
                 pattern.channel_notes.get(7),
             ) {
                 for step in 0..16 {
-                    if steps[step] {
-                        place(notes[step], step, channel, &mut out);
+                    let at = step_offset + step;
+                    if steps[at] {
+                        place(notes[at], step, channel, &mut out);
                     }
                 }
             }
@@ -229,7 +236,7 @@ fn collect_song_midi(&self) -> Vec<crate::audio::smf::MidiTrack> {
         let channel = midi_channel_for_track(t_idx);
         let mut notes = Vec::new();
         for bar in 0..32usize {
-            if let Some(pat_idx) = track.clips[bar]
+            if let Some((pat_idx, step_off)) = crate::ui::app::state::clip_at_bar(track, bar)
                 && let Some(pat) = self.patterns.get(pat_idx)
             {
                 notes.extend(pattern_bar_notes(
@@ -238,6 +245,7 @@ fn collect_song_midi(&self) -> Vec<crate::audio::smf::MidiTrack> {
                     channel,
                     (bar * 16) as u32,
                     &velocities,
+                    step_off,
                 ));
             }
         }
@@ -253,9 +261,9 @@ fn collect_song_midi(&self) -> Vec<crate::audio::smf::MidiTrack> {
             let velocities: [u8; 16] = std::array::from_fn(|i| {
                 (self.step_velocities[i] * 127.0).clamp(1.0, 127.0) as u8
             });
-            let mut notes = pattern_bar_notes(pat, TrackKind::Drums, 9, 0, &velocities);
-            notes.extend(pattern_bar_notes(pat, TrackKind::SynthLead, 0, 0, &velocities));
-            notes.extend(pattern_bar_notes(pat, TrackKind::Bassline, 1, 0, &velocities));
+            let mut notes = pattern_bar_notes(pat, TrackKind::Drums, 9, 0, &velocities, 0);
+            notes.extend(pattern_bar_notes(pat, TrackKind::SynthLead, 0, 0, &velocities, 0));
+            notes.extend(pattern_bar_notes(pat, TrackKind::Bassline, 1, 0, &velocities, 0));
             tracks.clear();
             tracks.push(crate::audio::smf::MidiTrack {
                 name: pat.name.clone(),
@@ -461,6 +469,7 @@ pub(crate) fn place_notes_into_patterns(
             && let Some(track) = self.playlist_tracks.get_mut(track_idx)
         {
             track.clips[bar] = Some(pat_idx);
+            track.clip_bars[bar] = 1;
         }
         report.bars_imported += 1;
     }
@@ -595,6 +604,7 @@ impl SonixApp {
         {
             let bar = self.song_bar.min(track.clips.len().saturating_sub(1));
             track.clips[bar] = Some(new_index);
+            track.clip_bars[bar] = 1;
         }
         self.status_message = crate::tstatus!("🎯 Fångade slingan i P{}", new_index + 1);
     }

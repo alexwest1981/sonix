@@ -177,6 +177,33 @@ pub fn pattern_steps(bars: usize) -> usize {
     bars.clamp(1, 4) * crate::audio::tempo::STEPS_PER_BAR
 }
 
+/// Blocket som spelar i takt `bar`: `(pattern, stegförskjutning i patternet)`.
+///
+/// Startpunkterna ligger i `clips` och längden i `clip_bars`. En takt som ligger inne i
+/// ett block är tom i `clips` — därför söks starten bakåt, högst tre takter (fyra takter
+/// är det längsta ett pattern får vara).
+pub fn clip_at_bar(track: &PlaylistTrack, bar: usize) -> Option<(usize, usize)> {
+    clip_at(&track.clips, &track.clip_bars, bar)
+}
+
+/// Samma uppslag mot råa arrayer, för exportens ögonblicksbild av ett spår.
+pub fn clip_at(
+    clips: &[Option<usize>; 32],
+    clip_bars: &[u8; 32],
+    bar: usize,
+) -> Option<(usize, usize)> {
+    let first = bar.saturating_sub(3);
+    for start in (first..=bar).rev() {
+        if let Some(pat) = clips.get(start).copied().flatten() {
+            let bars = (*clip_bars.get(start).unwrap_or(&1) as usize).clamp(1, 4);
+            if bar < start + bars {
+                return Some((pat, (bar - start) * crate::audio::tempo::STEPS_PER_BAR));
+            }
+        }
+    }
+    None
+}
+
 /// Nästa steg i pattern-läget, med omslag vid patternets längd (inte vid 16).
 pub fn next_pattern_step(step: usize, len: usize) -> usize {
     if len == 0 {
@@ -806,7 +833,12 @@ pub struct PlaylistTrack {
     #[allow(dead_code)]
     pub is_rec_armed: bool,
     pub regions: Vec<AudioRegion>,   // Continuous multi-track audio stems and slices
+    /// **Startpunkter**: `clips[bar] = Some(p)` betyder att pattern p *börjar* i takt bar.
+    /// Längden står i `clip_bars[bar]`; taken efter starten är tomma i listan och ritas
+    /// som en del av blocket. Ett block är alltså en post, inte en post per takt.
     pub clips: [Option<usize>; 32],  // Pattern triggers
+    /// Längden i takter för blocket som börjar på samma index som `clips`. 1 = en takt.
+    pub clip_bars: [u8; 32],
     #[allow(dead_code)]
     /// Vågformens flernivå-cache (Fas 8.3): `(nyckel, cache)`.
     ///
@@ -1202,6 +1234,7 @@ impl PlaylistTrack {
             is_rec_armed: false,
             regions: Vec::new(),
             clips: [None; 32],
+            clip_bars: [1; 32],
             waveform_cache: None,
             waveform_cache_pending: None,
             custom_clip_name: None,

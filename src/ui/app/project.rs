@@ -392,6 +392,10 @@ fn one_bar() -> usize {
     1
 }
 
+fn one_bar_array() -> [u8; 32] {
+    [1; 32]
+}
+
 /// En sparad rad blir en fast rad igen: korta rader (16 från ett äldre projekt) fylls ut
 /// med nollor, långa klipps. Filen ska läsas, inte fallera.
 fn row_bools(row: &[bool]) -> [bool; crate::ui::app::state::MAX_STEPS] {
@@ -619,6 +623,9 @@ pub struct SavedTrackData {
     pub muted: bool,
     pub solo: bool,
     pub clips: [Option<usize>; 32],
+    /// Blockens längd i takter. Saknas i äldre filer — då var varje block en takt.
+    #[serde(default = "one_bar_array")]
+    pub clip_bars: [u8; 32],
     pub regions: Vec<AudioRegion>,
     #[serde(default)]
     pub eq: TrackEq,
@@ -728,6 +735,7 @@ pub struct PreloadedTrackData {
     pub solo: bool,
     pub regions: Vec<AudioRegion>,
     pub clips: [Option<usize>; 32],
+    pub clip_bars: [u8; 32],
     pub eq: TrackEq,
     pub comp_threshold_db: f32,
     pub comp_ratio: f32,
@@ -1323,6 +1331,7 @@ pub fn load_demo_project(&mut self) {
         for (name, kind, _col) in track_defs {
             let clips = [None; 32];
             tracks.push(PreloadedTrackData {
+                clip_bars: [1; 32],
                 frozen: None,
                 name: name.to_string(),
                 notes: String::new(),
@@ -1413,6 +1422,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         muted: t.muted,
         solo: t.solo,
         clips: t.clips,
+        clip_bars: t.clip_bars,
         regions: t.regions.clone(),
         frozen: t.frozen.as_ref().map(|f| SavedFrozenTrack {
             path: f.path.clone(),
@@ -1835,6 +1845,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 solo: st.solo,
                 regions,
                 clips: st.clips,
+                clip_bars: st.clip_bars,
                 eq: st.eq,
                 comp_threshold_db: st.comp_threshold_db,
                 comp_ratio: st.comp_ratio,
@@ -1996,6 +2007,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         loaded_track.solo = st.solo;
         loaded_track.regions = st.regions;
         loaded_track.clips = st.clips;
+        loaded_track.clip_bars = st.clip_bars;
         if st.frozen.is_some() {
             // Ljudet kom in via stem_pcms ovan; här knyts läget till spåret.
             loaded_track.frozen = st.frozen.map(|f| FrozenTrack {

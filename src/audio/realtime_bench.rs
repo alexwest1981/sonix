@@ -203,9 +203,9 @@ pub fn reference_spec() -> RenderSpec {
             take: crate::midi_take::Take::new(),
         }],
         tracks: vec![
-            TrackSnap { role: TrackRole::Drums, clips, volume: 1.0, muted: false, solo: false },
-            TrackSnap { role: TrackRole::Synth, clips, volume: 1.0, muted: false, solo: false },
-            TrackSnap { role: TrackRole::Bass, clips, volume: 1.0, muted: false, solo: false },
+            TrackSnap { role: TrackRole::Drums, clips, clip_bars: [1; 32], volume: 1.0, muted: false, solo: false },
+            TrackSnap { role: TrackRole::Synth, clips, clip_bars: [1; 32], volume: 1.0, muted: false, solo: false },
+            TrackSnap { role: TrackRole::Bass, clips, clip_bars: [1; 32], volume: 1.0, muted: false, solo: false },
         ],
         timeline: Vec::new(),
         velocities: [0.85; crate::audio::tempo::MAX_STEPS],

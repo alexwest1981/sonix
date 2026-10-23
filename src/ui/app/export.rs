@@ -240,6 +240,7 @@ pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u
         TrackSnap {
             role,
             clips,
+            clip_bars: t.clip_bars,
             volume: t.volume,
             muted: t.muted,
             solo: t.solo,
@@ -373,8 +374,8 @@ fn frozen_digest(&self, t_idx: usize) -> u64 {
     if let Some(t) = self.playlist_tracks.get(t_idx) {
         let _ = write!(
             text,
-            "spår={:?}|{:.4},{:.4},{};",
-            t.clips, t.volume, t.pan, t.muted
+            "spår={:?}|{:?}|{:.4},{:.4},{};",
+            t.clips, t.clip_bars, t.volume, t.pan, t.muted
         );
         // Mönstren klippen pekar på. Andra spår kan peka på samma mönster —
         // då är de frusna på samma innehåll, vilket är riktigt.

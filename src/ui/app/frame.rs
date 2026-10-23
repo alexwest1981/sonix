@@ -881,6 +881,7 @@ impl SonixApp {
                             for t in &mut self.playlist_tracks {
                                 t.regions.clear();
                                 t.clips = [None; 32];
+                                t.clip_bars = [1; 32];
                             }
                             self.selected_audio_region = None;
                             self.status_message = self.tr("Rensade alla spår och tidslinjeklipp.").to_string();

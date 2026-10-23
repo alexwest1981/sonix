@@ -2140,8 +2140,13 @@ impl SonixApp {
                                 // Fallback pattern clips
                                 for bar_idx in 0..32 {
                                     if let Some(pat_idx) = self.playlist_tracks[t_idx].clips[bar_idx] {
+                                        // Ett block kan vara 1–4 takter: bredden är dess längd.
+                                        let span = (self.playlist_tracks[t_idx].clip_bars[bar_idx]
+                                            as usize)
+                                            .clamp(1, 4)
+                                            .min(32 - bar_idx);
                                         let c_min_x = lane_rect.min.x + bar_idx as f32 * bar_w;
-                                        let c_rect = Rect::from_min_size(Pos2::new(c_min_x + 1.0, lane_rect.min.y + 2.0), Vec2::new(bar_w - 2.0, row_h - 4.0));
+                                        let c_rect = Rect::from_min_size(Pos2::new(c_min_x + 1.0, lane_rect.min.y + 2.0), Vec2::new(bar_w * span as f32 - 2.0, row_h - 4.0));
                                         ui.painter().rect_filled(c_rect, Rounding::same(2.0), track_color);
                                         ui.painter().text(c_rect.center(), egui::Align2::CENTER_CENTER, format!("P{}", pat_idx + 1), egui::FontId::proportional(Theme::FONT_S), Color32::BLACK);
                                     }
@@ -2373,11 +2378,42 @@ impl SonixApp {
                         }
 
                         if let Some((c_bar, maybe_pat)) = clip_action {
-                            self.playlist_tracks[t_idx].clips[c_bar] = maybe_pat;
+                            // Blocket är så långt som patternet. Allt som låg i spannet tas
+                            // bort först, annars kunde ett gammalt block börja inuti det nya.
+                            let span = maybe_pat
+                                .and_then(|p| self.patterns.get(p))
+                                .map_or(1, |p| p.bars.clamp(1, 4))
+                                .min(32 - c_bar);
                             if maybe_pat.is_some() {
-                                self.status_message = crate::tstatus!("Placerade mönster {} vid takt {}", self.selected_pattern + 1, c_bar + 1);
+                                for b in c_bar..c_bar + span {
+                                    self.playlist_tracks[t_idx].clips[b] = None;
+                                    self.playlist_tracks[t_idx].clip_bars[b] = 1;
+                                }
+                                self.playlist_tracks[t_idx].clips[c_bar] = maybe_pat;
+                                self.playlist_tracks[t_idx].clip_bars[c_bar] = span as u8;
+                                self.status_message = crate::tstatus!(
+                                    "Placerade mönster {} vid takt {} ({} takt(er))",
+                                    self.selected_pattern + 1,
+                                    c_bar + 1,
+                                    span
+                                );
                             } else {
-                                self.status_message = crate::tstatus!("Raderade mönsterblock vid takt {}", c_bar + 1);
+                                // Raderar man inne i ett block försvinner hela blocket.
+                                let track = &self.playlist_tracks[t_idx];
+                                let start = (c_bar.saturating_sub(3)..=c_bar)
+                                    .rev()
+                                    .find(|&s| {
+                                        track.clips[s].is_some()
+                                            && c_bar
+                                                < s + (track.clip_bars[s] as usize).clamp(1, 4)
+                                    })
+                                    .unwrap_or(c_bar);
+                                self.playlist_tracks[t_idx].clips[start] = None;
+                                self.playlist_tracks[t_idx].clip_bars[start] = 1;
+                                self.status_message = crate::tstatus!(
+                                    "Raderade mönsterblock vid takt {}",
+                                    start + 1
+                                );
                             }
                         }
 

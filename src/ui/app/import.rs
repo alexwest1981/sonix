@@ -754,6 +754,7 @@ fn import_generated_audio_bytes(&mut self, bytes: &[u8], prompt: &str) -> Result
     let end_b = self.loop_end_bar.max(start_b + 4).min(32);
     for b in start_b..end_b {
         track.clips[b] = Some(self.selected_pattern);
+            track.clip_bars[b] = 1;
     }
 
     self.playlist_tracks.push(track);
@@ -811,6 +812,7 @@ pub fn generate_suno_local(&mut self) {
             track.custom_clip_name = Some(format!("Stem: {}", prompt));
             for b in self.loop_start_bar..self.loop_end_bar.min(32) {
                 track.clips[b] = Some(self.selected_pattern);
+            track.clip_bars[b] = 1;
             }
             self.playlist_tracks.push(track);
         }
@@ -841,6 +843,7 @@ pub fn generate_suno_local(&mut self) {
         let end_b = self.loop_end_bar.max(start_b + 4).min(32);
         for b in start_b..end_b {
             new_track.clips[b] = Some(self.selected_pattern);
+            new_track.clip_bars[b] = 1;
         }
 
         self.playlist_tracks.push(new_track);
@@ -1354,6 +1357,7 @@ pub fn apply_imported_stems(&mut self, res: StemImportResult) {
 
         for b in 0..32 {
             track.clips[b] = Some(idx);
+            track.clip_bars[b] = 1;
         }
 
         new_tracks.push(track);

@@ -67,26 +67,26 @@ use crate::ui::theme::Theme;
         pat.channel_notes[7][3] = 40;
 
         let vels = [100u8; 16];
-        let drums = pattern_bar_notes(&pat, TrackKind::Drums, 0, 0, &vels);
+        let drums = pattern_bar_notes(&pat, TrackKind::Drums, 0, 0, &vels, 0);
         assert_eq!(drums.len(), 3, "tre trumslag: {drums:?}");
         assert!(drums.iter().all(|n| n.channel == 9), "trummor ska ligga på kanal 9");
         assert!(drums.iter().any(|n| n.key == 36 && n.start == 0));
         assert!(drums.iter().any(|n| n.key == 36 && n.start == 8 * TICKS_PER_STEP_16TH));
         assert!(drums.iter().any(|n| n.key == 38 && n.start == 4 * TICKS_PER_STEP_16TH));
 
-        let synth = pattern_bar_notes(&pat, TrackKind::SynthLead, 3, 0, &vels);
+        let synth = pattern_bar_notes(&pat, TrackKind::SynthLead, 3, 0, &vels, 0);
         assert_eq!(synth.len(), 1);
         assert_eq!(synth[0].key, 60);
         assert_eq!(synth[0].channel, 3);
         assert_eq!(synth[0].start, 2 * TICKS_PER_STEP_16TH);
 
-        let bass = pattern_bar_notes(&pat, TrackKind::Bassline, 4, 0, &vels);
+        let bass = pattern_bar_notes(&pat, TrackKind::Bassline, 4, 0, &vels, 0);
         assert_eq!(bass.len(), 1);
         assert_eq!(bass[0].key, 40);
         assert_eq!(bass[0].start, 3 * TICKS_PER_STEP_16TH);
 
         // En takt längre fram flyttar noterna i tid.
-        let bar2 = pattern_bar_notes(&pat, TrackKind::Drums, 0, 16, &vels);
+        let bar2 = pattern_bar_notes(&pat, TrackKind::Drums, 0, 16, &vels, 0);
         assert!(bar2.iter().all(|n| n.start >= 16 * TICKS_PER_STEP_16TH));
     }
 
@@ -106,9 +106,9 @@ use crate::ui::theme::Theme;
         pat.channel_notes[7][9] = 43;
 
         let vels = [100u8; 16];
-        let mut notes = pattern_bar_notes(&pat, TrackKind::Drums, 9, 0, &vels);
-        notes.extend(pattern_bar_notes(&pat, TrackKind::SynthLead, 0, 0, &vels));
-        notes.extend(pattern_bar_notes(&pat, TrackKind::Bassline, 1, 0, &vels));
+        let mut notes = pattern_bar_notes(&pat, TrackKind::Drums, 9, 0, &vels, 0);
+        notes.extend(pattern_bar_notes(&pat, TrackKind::SynthLead, 0, 0, &vels, 0));
+        notes.extend(pattern_bar_notes(&pat, TrackKind::Bassline, 1, 0, &vels, 0));
         let exported = smf::write_midi(120.0, &[smf::MidiTrack {
             name: "Allt".to_string(),
             notes: notes.clone(),
@@ -1968,6 +1968,47 @@ use crate::ui::theme::Theme;
             "och inga utbussar var kopplade då: bussarna lästes inte alls, alltså låter \
              filen exakt som den gjorde"
         );
+    }
+
+    /// **Ett block täcker de takter det spänner över**, och takten efter det är tom.
+    #[test]
+    fn a_clip_covers_the_bars_it_spans() {
+        let mut track = super::state::PlaylistTrack::new(
+            "Spår".to_string(),
+            "🎹",
+            super::state::TrackKind::SynthLead,
+            eframe::egui::Color32::WHITE,
+        );
+        track.clips[4] = Some(2);
+        track.clip_bars[4] = 2;
+
+        assert_eq!(super::state::clip_at_bar(&track, 3), None, "före blocket");
+        assert_eq!(
+            super::state::clip_at_bar(&track, 4),
+            Some((2, 0)),
+            "blockets första takt"
+        );
+        assert_eq!(
+            super::state::clip_at_bar(&track, 5),
+            Some((2, 16)),
+            "andra takten spelar steg 16–31"
+        );
+        assert_eq!(super::state::clip_at_bar(&track, 6), None, "efter blocket");
+
+        // Längden följer med filen (fältet har `#[serde(default)]`, så en äldre fil
+        // utan det får ett-taktsblock i stället för att vägra öppnas).
+        #[derive(serde::Serialize, serde::Deserialize)]
+        struct Probe {
+            clips: [Option<usize>; 32],
+            clip_bars: [u8; 32],
+        }
+        let probe = Probe {
+            clips: track.clips,
+            clip_bars: track.clip_bars,
+        };
+        let json = serde_json::to_string(&probe).unwrap();
+        let back: Probe = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.clip_bars[4], 2);
     }
 
     /// **Patternlängden är 1–4 takter och följer med filen.** Längden är bara en siffra:

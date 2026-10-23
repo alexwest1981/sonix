@@ -1,7 +1,6 @@
 # Patternlängd — så ska flertaktsrutor samexistera med arrangemangsblocken
 
-*Skrivet 2026-10-23 inför arbetet med 16 → 64 steg. Läget i koden just nu: **steg 1 och 2 är
-gjorda**, steg 3 (block med längd) är kvar.*
+*Skrivet 2026-10-23 inför arbetet med 16 → 64 steg. **Alla tre stegen är gjorda** (0.9.19–0.9.21).*
 
 ## Nuläget
 
@@ -49,14 +48,20 @@ lista, så äldre filer med 16 värden läses oförändrat.
 Exporten räknar fortfarande hela projektet i takter om 16 steg, vilket är rätt så länge
 arrangemanget är entaktsblock.
 
-## Steg 3 — block med längd
+## Steg 3 — block med längd (klart, 0.9.21)
 
-`clips` byter form:
+Byggt utan att byta form på `clips`: arrayen bär **startpunkterna** och en parallell
+`clip_bars: [u8; 32]` bär längden. En takt inne i ett block är tom i `clips` och ritas som en del
+av blocket. Det gjorde att import, frysning och alla gamla `clips[i]`-skrivningar kunde vara kvar.
 
 ```rust
-struct Clip { pattern: usize, start_bar: u32, bars: u32 }
-// PlaylistTrack::clips: Vec<Clip>
+clips[start] = Some(pattern);   // blocket börjar här
+clip_bars[start] = 2;           // och är två takter
 ```
+
+Uppslagningen ligger i `state::clip_at(clips, clip_bars, bar)` → `(pattern, stegförskjutning)`,
+och används av uppspelningen, MIDI-exporten och offline-exporten. Alla tre spelar alltså
+patternets **senare** takter när blocket har börjat tidigare.
 
 - **Uppslag:** givet en takt `n` hittas det block vars `start_bar <= n < start_bar + bars`;
   steget som spelas är `(n - start_bar) * 16 + current_step`.
@@ -65,8 +70,8 @@ struct Clip { pattern: usize, start_bar: u32, bars: u32 }
   och sekvenseraren får `(pattern, offset_steg)`.
 - **UI:t** ritar blockets bredd som `bars` takter och låter högerkanten trimmas. Överlapp
   förbjuds när ett block släpps (samma regel som idag, men över `bars` i stället för en takt).
-- **Migrering:** en gammal `[Option<usize>; 32]` blir `Vec<Clip>` med `bars: 1` per post —
-  exakt dagens beteende. Prov ska läsa en riktig gammal projektfil.
+- **Migrering:** `clip_bars` har `#[serde(default = "one_bar_array")]`, så en gammal fil får
+  ett-taktsblock — exakt dagens beteende, utan migrering.
 - **Import** fortsätter skapa en pattern per takt (det är fortfarande rätt för importerade
   fraser); inget i importen behöver ändras i det här steget.
 

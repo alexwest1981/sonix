@@ -105,6 +105,7 @@ pub enum TrackRole {
 pub struct TrackSnap {
     pub role: TrackRole,
     pub clips: [Option<usize>; 32],
+    pub clip_bars: [u8; 32],
     pub volume: f32,
     pub muted: bool,
     pub solo: bool,
@@ -306,17 +307,23 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
         if track.role == TrackRole::Audio {
             continue; // handled by the timeline stem engine
         }
-        let Some(pat_idx) = track.clips[bar] else { continue };
+        let Some((pat_idx, step_off)) =
+            crate::ui::app::state::clip_at(&track.clips, &track.clip_bars, bar)
+        else {
+            continue;
+        };
         let Some(pat) = spec.patterns.get(pat_idx) else { continue };
+        // Ett flertaktsblock spelar sin senare del i takterna efter starten.
+        let pib = step_off + sib;
         let vel = spec.velocities[sib];
         match track.role {
             TrackRole::Drums => {
                 for ch_idx in 0..6 {
                     let Some(ch_steps) = pat.steps.get(ch_idx) else { continue };
-                    if !ch_steps[sib] {
+                    if !ch_steps[pib] {
                         continue;
                     }
-                    let note = pat.notes.get(ch_idx).map(|n| n[sib]).unwrap_or(36);
+                    let note = pat.notes.get(ch_idx).map(|n| n[pib]).unwrap_or(36);
                     if let Some(rack_ch) = spec.rack.get(ch_idx) {
                         let hold = crate::audio::command::step_hold_secs(spec.bpm, spec.swing, sib);
                         if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold) {
@@ -339,12 +346,12 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 let step_samples = (60.0 / spec.bpm.max(1.0) / 4.0 * spec.sample_rate as f32) as u32;
                 let plan = crate::midi_take::plan_for_step(
                     &pat.take,
-                    sib,
+                    pib,
                     step_samples,
                     &|key, slot| (48..72).contains(&key) && pat.piano_roll[(key - 48) as usize][slot],
                 );
                 if track.role == TrackRole::Synth
-                    && ((0..24).any(|r| pat.piano_roll[r][sib]) || !plan.play.is_empty())
+                    && ((0..24).any(|r| pat.piano_roll[r][pib]) || !plan.play.is_empty())
                 {
                     for (note, delay, take_vel) in &plan.play {
                         let freq = midi_to_freq(*note);
@@ -356,7 +363,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                         });
                     }
                     for row in 0..24 {
-                        if pat.piano_roll[row][sib] {
+                        if pat.piano_roll[row][pib] {
                             let note = 48 + row as u8;
                             if plan.skip.contains(&note) {
                                 continue;
@@ -369,10 +376,10 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 }
                 let ch_idx = if track.role == TrackRole::Synth { 6 } else { 7 };
                 let Some(ch_steps) = pat.steps.get(ch_idx) else { continue };
-                if !ch_steps[sib] {
+                if !ch_steps[pib] {
                     continue;
                 }
-                let note = pat.notes.get(ch_idx).map(|n| n[sib]).unwrap_or(60);
+                let note = pat.notes.get(ch_idx).map(|n| n[pib]).unwrap_or(60);
                 if let Some(rack_ch) = spec.rack.get(ch_idx) {
                     let hold = crate::audio::command::step_hold_secs(spec.bpm, spec.swing, sib);
                         if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold) {
@@ -1116,6 +1123,7 @@ mod tests {
             rack: Vec::new(),
             patterns,
             tracks: vec![TrackSnap {
+                clip_bars: [1; 32],
                 role: TrackRole::Synth,
                 clips: {
                     let mut c = [None; 32];
@@ -1137,6 +1145,30 @@ mod tests {
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
             vca_solo: [false; crate::audio::synth::NUM_VCAS],
         }
+    }
+
+    /// **Ett tvåtaktsblock spelar sin andra takt i takt 2.** Noten ligger bara på steg 20
+    /// (patternets takt 2), så takt 1 ska vara tyst och takt 2 ska spela den.
+    #[test]
+    fn the_second_bar_of_a_two_bar_clip_plays_the_patterns_second_bar() {
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        grid[0][20] = true;
+        let mut spec = synth_spec_with(grid, [false; crate::audio::tempo::MAX_STEPS], 60);
+        spec.num_bars = 2;
+        spec.tracks[0].clip_bars[0] = 2;
+
+        assert!(
+            triggers_for_step(&spec, 0, 4).is_empty(),
+            "takt 1: steg 4 är tomt i patternets första takt"
+        );
+        let bar2 = triggers_for_step(&spec, 1, 4);
+        assert!(
+            bar2.iter()
+                .any(|c| matches!(c, AudioCommand::NoteOn { note: 48, .. })),
+
+            "takt 2, steg 4 ska spela patternets steg 20 ({} kommandon)",
+            bar2.len()
+        );
     }
 
     /// (notnummer, fördröjning i samples) för de fördröjda noterna.
@@ -2291,6 +2323,7 @@ mod stem_wav_tests {
         let track = TrackSnap {
             role: TrackRole::Audio,
             clips: [None; 32],
+            clip_bars: [1; 32],
             volume: 1.0,
             muted: false,
             solo: false,
