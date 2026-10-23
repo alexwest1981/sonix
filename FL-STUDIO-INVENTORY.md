@@ -537,7 +537,7 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | Förmätning före inspelning | `Is precount enabled` · `Recording precount` | ✗ (metronom finns) |
 | Alternativ ångringsmodell | `Alternate undo mode` · `Enable undo for large samples` | ◐ (ångring finns, en modell) |
 | Analysera klang för åter syntes | `Analyze timbre...` · `Analyze single-cycle waveform...` (Harmor) | ✗ |
-| Riff-generator | `Riff machine...` · `Piano roll - riff machine` | ✗ |
+| Riff-generator | `Riff machine...` · `Piano roll - riff machine` | ◐ | `src/riff.rs` — fras ur fyra skalor, repeterbar med samma frö, inom rullens omfång. ✗ FL:s riff-maskin har flera faser (pattern, generera, verktyg) |
 | Ackordgenerator | `Generate chord progression...` · `Chord Progression Tool opened` | ◐ (`chord_generator_modal`, utan Markov) |
 
 Hela ordlistan — 28 657 korta etiketter (rattar, reglage, kolumnrubriker) — ligger i

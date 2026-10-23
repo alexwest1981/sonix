@@ -421,6 +421,30 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             {
                 self.extract_groove_from_track();
             }
+            // **Riff-generator** (FL): en fras ur en skala i stället för en tom ruta. Fröet
+            // kommer ur klockan, så varje tryck ger en ny fras — och frasen går att spela in
+            // över, vilket är hela poängen.
+            if ui
+                .add(
+                    egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Riff")).strong().size(10.5).color(Theme::TEXT_BRIGHT))
+                        .fill(take_btn),
+                )
+                .on_hover_text(crate::i18n::t("Fyller tagningen med en fras ur en mollskala. Tryck igen för en annan."))
+                .clicked()
+            {
+                self.generate_riff();
+            }
+            egui::ComboBox::from_id_salt("riff_scale")
+                .selected_text(crate::i18n::t(self.riff_scale.label()))
+                .width(84.0)
+                .show_ui(ui, |ui| {
+                    for scale in crate::riff::Scale::ALL {
+                        if ui.selectable_label(self.riff_scale == scale, crate::i18n::t(scale.label())).clicked() {
+                            self.riff_scale = scale;
+                        }
+                    }
+                });
+
             // **Urval enligt villkor** (Cubase): anslag under ett tak, en viss ton, inom ett
             // intervall. Räkna först, radera sedan — samma villkor, så det som raderas är det
             // som räknades.

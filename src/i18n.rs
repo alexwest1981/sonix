@@ -376,6 +376,13 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Dur" => "Major",
+        "Moll" => "Minor",
+        "Dorisk" => "Dorian",
+        "Pentatonisk" => "Pentatonic",
+        "🎲 Riff" => "🎲 Riff",
+        "Fyller tagningen med en fras ur en mollskala. Tryck igen för en annan." => "Fills the take with a phrase from a minor scale. Press again for another one.",
+        "🎲 {} noter i {} ({})" => "🎲 {} notes in {} ({})",
         "📁 Ny grupp" => "📁 New group",
         "Lägger spåret i en ny grupp som kan fällas ihop" => "Puts the track in a new group that can be collapsed",
         "📁 Fäll ihop gruppen" => "📁 Collapse the group",
@@ -1864,8 +1871,6 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🎵 {} halvtoner till {}" => "🎵 {} semitones to {}",
         // Skalnamnen (Fas 8.11): literalerna bor kvar i `scale.rs` som nycklar — engelskan
         // kommer härifrån, så en svensk sträng aldrig läcker ut i det engelska gränssnittet.
-        "Dur" => "Major",
-        "Moll" => "Minor",
         "Harmonisk moll" => "Harmonic minor",
         "Melodisk moll" => "Melodic minor",
         "Dorian" => "Dorian",
@@ -2244,7 +2249,6 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "DROP 1" => "DROP 1",
         "Decay:" => "Decay:",
         "Detekterar tonhöjden i den valda tagningen och ritar riktiga notblock" => "Detects the pitch of the selected take and draws real note blocks",
-        "Dorisk" => "Dorian",
         "Dra looppunkten. Den stannar en minsta loop från den andra punkten — en loop som försvann mitt i ett drag vore ingen interaktion." => "Drag the loop point. It stops one minimum loop from the other point; a loop that vanished mid-drag would not be an interaction.",
         "Dur-pentatonisk" => "Major pentatonic",
         "Eget Ljud" => "Own Sound",
@@ -2547,6 +2551,13 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Dur" => "Dur",
+        "Moll" => "Mol",
+        "Dorisk" => "Dorisk",
+        "Pentatonisk" => "Pentatonisk",
+        "🎲 Riff" => "🎲 Riff",
+        "Fyller tagningen med en fras ur en mollskala. Tryck igen för en annan." => "Fylder tagningen med en frase fra en molskala. Tryk igen for en anden.",
+        "🎲 {} noter i {} ({})" => "🎲 {} noder i {} ({})",
         "📁 Ny grupp" => "📁 Ny gruppe",
         "Lägger spåret i en ny grupp som kan fällas ihop" => "Lægger sporet i en ny gruppe, der kan foldes sammen",
         "📁 Fäll ihop gruppen" => "📁 Fold gruppen sammen",
@@ -3998,8 +4009,6 @@ fn tr_da(key: &str) -> Option<&'static str> {
         "Flytta hela mönstret till tonarten — det kortaste skiftet som sätter flest toner i skalan" => "Flyt hele mønsteret til tonarten — det korteste skift, der sætter flest toner i skalaen",
         "🎵 Mönstret står redan i tonarten" => "🎵 Mønsteret står allerede i tonarten",
         "🎵 {} halvtoner till {}" => "🎵 {} halvtoner til {}",
-        "Dur" => "Dur",
-        "Moll" => "Moll",
         "Harmonisk moll" => "Harmonisk moll",
         "Melodisk moll" => "Melodisk moll",
         "Dorian" => "Dorian",
@@ -4373,7 +4382,6 @@ fn tr_da(key: &str) -> Option<&'static str> {
         "DROP 1" => "DROP 1",
         "Decay:" => "Decay:",
         "Detekterar tonhöjden i den valda tagningen och ritar riktiga notblock" => "Detekterer tonhøjden i den valgte optagelse og tegner rigtige notblokke",
-        "Dorisk" => "Dorisk",
         "Dra looppunkten. Den stannar en minsta loop från den andra punkten — en loop som försvann mitt i ett drag vore ingen interaktion." => "Træk loop-punktet. Det stopper en minimumsløkke fra det andet punkt; en løkke der forsvandt midt under træk ville ikke være en interaktion.",
         "Dur-pentatonisk" => "Dur-pentatonisk",
         "Eget Ljud" => "Eget Ljud",
@@ -4676,6 +4684,13 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Dur" => "Dur",
+        "Moll" => "Moll",
+        "Dorisk" => "Dorisk",
+        "Pentatonisk" => "Pentatonisk",
+        "🎲 Riff" => "🎲 Riff",
+        "Fyller tagningen med en fras ur en mollskala. Tryck igen för en annan." => "Fyller tagningen med en frase fra en mollskala. Trykk igjen for en annen.",
+        "🎲 {} noter i {} ({})" => "🎲 {} noter i {} ({})",
         "📁 Ny grupp" => "📁 Ny gruppe",
         "Lägger spåret i en ny grupp som kan fällas ihop" => "Legger sporet i en ny gruppe som kan felles sammen",
         "📁 Fäll ihop gruppen" => "📁 Fell sammen gruppen",
@@ -6127,8 +6142,6 @@ fn tr_no(key: &str) -> Option<&'static str> {
         "Flytta hela mönstret till tonarten — det kortaste skiftet som sätter flest toner i skalan" => "Flytt hele mønsteret til tonarten — det korteste skiftet som setter flest toner i skalaen",
         "🎵 Mönstret står redan i tonarten" => "🎵 Mønsteret står allerede i tonarten",
         "🎵 {} halvtoner till {}" => "🎵 {} halvtoner til {}",
-        "Dur" => "Dur",
-        "Moll" => "Moll",
         "Harmonisk moll" => "Harmonisk moll",
         "Melodisk moll" => "Melodisk moll",
         "Dorian" => "Dorian",
@@ -6502,7 +6515,6 @@ fn tr_no(key: &str) -> Option<&'static str> {
         "DROP 1" => "DROP 1",
         "Decay:" => "Decay:",
         "Detekterar tonhöjden i den valda tagningen och ritar riktiga notblock" => "Oppdager tonen i den valgte opptaket og tegner sanne notblokker",
-        "Dorisk" => "Dorisk",
         "Dra looppunkten. Den stannar en minsta loop från den andra punkten — en loop som försvann mitt i ett drag vore ingen interaktion." => "Dra looppunktet. Den stopper en minste loop fra den andre punkten — en loop som forsvant midt i et drag ville ikke vært en interaksjon.",
         "Dur-pentatonisk" => "Dur pentatonisk",
         "Eget Ljud" => "Eget lyd",
@@ -6805,6 +6817,13 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Dur" => "Dur",
+        "Moll" => "Moll",
+        "Dorisk" => "Dorisch",
+        "Pentatonisk" => "Pentatonisch",
+        "🎲 Riff" => "🎲 Riff",
+        "Fyller tagningen med en fras ur en mollskala. Tryck igen för en annan." => "Füllt die Aufnahme mit einer Phrase aus einer Moll-Tonleiter. Nochmal drücken für eine andere.",
+        "🎲 {} noter i {} ({})" => "🎲 {} Noten in {} ({})",
         "📁 Ny grupp" => "📁 Neue Gruppe",
         "Lägger spåret i en ny grupp som kan fällas ihop" => "Legt die Spur in eine neue Gruppe, die sich einklappen lässt",
         "📁 Fäll ihop gruppen" => "📁 Gruppe einklappen",
@@ -8256,8 +8275,6 @@ fn tr_de(key: &str) -> Option<&'static str> {
         "Flytta hela mönstret till tonarten — det kortaste skiftet som sätter flest toner i skalan" => "Verschiebe das gesamte Muster in die Tonart — die kürzeste Verschiebung, die die meisten Noten in der Tonleiter platziert",
         "🎵 Mönstret står redan i tonarten" => "🎵 Das Muster ist bereits in der Tonart",
         "🎵 {} halvtoner till {}" => "🎵 {} Halbtöne nach {}",
-        "Dur" => "Major",
-        "Moll" => "Minor",
         "Harmonisk moll" => "Harmonisches Moll",
         "Melodisk moll" => "Melodisches Moll",
         "Dorian" => "Dorian",
@@ -8631,7 +8648,6 @@ fn tr_de(key: &str) -> Option<&'static str> {
         "DROP 1" => "DROP 1",
         "Decay:" => "Decay:",
         "Detekterar tonhöjden i den valda tagningen och ritar riktiga notblock" => "Ermittelt die Tonhöhe der gewählten Aufnahme und zeichnet echte Notenblöcke",
-        "Dorisk" => "Dorian",
         "Dra looppunkten. Den stannar en minsta loop från den andra punkten — en loop som försvann mitt i ett drag vore ingen interaktion." => "Ziehen Sie den Loop-Punkt. Er erstellt einen Loop vom anderen Punkt aus; ein Loop, der während des Ziehens verschwindet, wäre keine Interaktion.",
         "Dur-pentatonisk" => "Dur-Pentatonik",
         "Eget Ljud" => "Eigener Klang",
@@ -8934,6 +8950,13 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Dur" => "Mayor",
+        "Moll" => "Menor",
+        "Dorisk" => "Dórico",
+        "Pentatonisk" => "Pentatónica",
+        "🎲 Riff" => "🎲 Riff",
+        "Fyller tagningen med en fras ur en mollskala. Tryck igen för en annan." => "Llena la toma con una frase de una escala menor. Pulsa otra vez para otra.",
+        "🎲 {} noter i {} ({})" => "🎲 {} notas en {} ({})",
         "📁 Ny grupp" => "📁 Nuevo grupo",
         "Lägger spåret i en ny grupp som kan fällas ihop" => "Pone la pista en un grupo nuevo que se puede plegar",
         "📁 Fäll ihop gruppen" => "📁 Plegar el grupo",
@@ -10385,8 +10408,6 @@ fn tr_es(key: &str) -> Option<&'static str> {
         "Flytta hela mönstret till tonarten — det kortaste skiftet som sätter flest toner i skalan" => "Mueve todo el patrón a la tonalidad — el cambio más corto que coloca la mayor cantidad de notas en la escala",
         "🎵 Mönstret står redan i tonarten" => "🎵 El patrón ya está en la tonalidad",
         "🎵 {} halvtoner till {}" => "🎵 {} semitonos a {}",
-        "Dur" => "Mayor",
-        "Moll" => "Menor",
         "Harmonisk moll" => "Menor armónica",
         "Melodisk moll" => "Menor melódica",
         "Dorian" => "Dórico",
@@ -10760,7 +10781,6 @@ fn tr_es(key: &str) -> Option<&'static str> {
         "DROP 1" => "DROP 1",
         "Decay:" => "Decaimiento:",
         "Detekterar tonhöjden i den valda tagningen och ritar riktiga notblock" => "Detecta la altura del tono en la toma seleccionada y dibuja bloques de notas reales",
-        "Dorisk" => "Dórico",
         "Dra looppunkten. Den stannar en minsta loop från den andra punkten — en loop som försvann mitt i ett drag vore ingen interaktion." => "Arrastra el punto de bucle. Se detiene un mínimo de bucle desde el otro punto; un bucle que desapareciera a mitad del arrastre no sería una interacción.",
         "Dur-pentatonisk" => "Pentatónica mayor",
         "Eget Ljud" => "Sonido propio",
@@ -11063,6 +11083,13 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Dur" => "Majeur",
+        "Moll" => "Mineur",
+        "Dorisk" => "Dorien",
+        "Pentatonisk" => "Pentatonique",
+        "🎲 Riff" => "🎲 Riff",
+        "Fyller tagningen med en fras ur en mollskala. Tryck igen för en annan." => "Remplit la prise avec une phrase d'une gamme mineure. Appuyez encore pour une autre.",
+        "🎲 {} noter i {} ({})" => "🎲 {} notes en {} ({})",
         "📁 Ny grupp" => "📁 Nouveau groupe",
         "Lägger spåret i en ny grupp som kan fällas ihop" => "Place la piste dans un nouveau groupe repliable",
         "📁 Fäll ihop gruppen" => "📁 Replier le groupe",
@@ -12514,8 +12541,6 @@ fn tr_fr(key: &str) -> Option<&'static str> {
         "Flytta hela mönstret till tonarten — det kortaste skiftet som sätter flest toner i skalan" => "Déplacez tout le motif vers la tonalité — le déplacement le plus court qui place le plus de notes dans l'échelle",
         "🎵 Mönstret står redan i tonarten" => "🎵 Le motif est déjà dans la tonalité",
         "🎵 {} halvtoner till {}" => "🎵 {} demi-tons vers {}",
-        "Dur" => "Majeur",
-        "Moll" => "Mineur",
         "Harmonisk moll" => "Mineur harmonique",
         "Melodisk moll" => "Mineur mélodique",
         "Dorian" => "Dorien",
@@ -12889,7 +12914,6 @@ fn tr_fr(key: &str) -> Option<&'static str> {
         "DROP 1" => "CHUTE 1",
         "Decay:" => "Décroissance :",
         "Detekterar tonhöjden i den valda tagningen och ritar riktiga notblock" => "Détecte la hauteur du son de la prise sélectionnée et dessine de vrais blocs de notes",
-        "Dorisk" => "Dorien",
         "Dra looppunkten. Den stannar en minsta loop från den andra punkten — en loop som försvann mitt i ett drag vore ingen interaktion." => "Déplacez le point de boucle. Il s'arrête à une boucle minimale depuis l'autre point ; une boucle qui disparaissait au milieu du glissement ne serait pas une interaction.",
         "Dur-pentatonisk" => "Pentatonique majeure",
         "Eget Ljud" => "Son propre",

@@ -20,6 +20,7 @@ mod groove;
 mod i18n;
 mod midi_take;
 mod piano_script;
+mod riff;
 mod rng;
 mod paths;
 mod platform;

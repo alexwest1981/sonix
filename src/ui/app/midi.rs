@@ -543,3 +543,36 @@ impl SonixApp {
         self.status_message = crate::tstatus!("🎯 Fångade slingan i P{}", new_index + 1);
     }
 }
+
+impl SonixApp {
+    /// **Riff-generatorn i pianorullen.** Grundtonen ligger på C3 (48), alltså inom rullens
+    /// 24 rader — annars skapades noter som inte syns.
+    pub(crate) fn generate_riff(&mut self) {
+        let seed = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64)
+            .unwrap_or(1);
+        let params = crate::riff::RiffParams {
+            root: 48,
+            scale: self.riff_scale,
+            seed: seed.max(1),
+            ..crate::riff::RiffParams::default()
+        };
+        let take = crate::riff::generate(&params);
+        let count = take.notes.len();
+        let Some(pattern) = self.patterns.get_mut(self.selected_pattern) else {
+            return;
+        };
+        // Rutnätet markeras där tagningen har noter, så att rutan och tagningen säger samma sak.
+        pattern.piano_roll_grid = [[false; 16]; 24];
+        for note in &take.notes {
+            if (48..72).contains(&note.key) {
+                let slot = note.pos.floor().clamp(0.0, 15.0) as usize;
+                pattern.piano_roll_grid[(note.key - 48) as usize][slot] = true;
+            }
+        }
+        pattern.take = take;
+        self.status_message =
+            crate::tstatus!("🎲 {} noter i {} ({})", count, params.scale.label(), params.root);
+    }
+}
