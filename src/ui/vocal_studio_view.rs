@@ -694,6 +694,40 @@ pub fn render_vocal_studio_view(
                         ui.label(egui::RichText::new(crate::i18n::t("📁 SÅNGTAGNINGAR & COMPING LANES")).strong().size(12.0).color(Theme::FL_CYAN));
                         ui.separator();
                         ui.label(egui::RichText::new(format!("{} {} {}", crate::i18n::t("Totalt:"), vocal_track.takes.len(), crate::i18n::t("tagningar sparade i projektet"))).size(10.5).color(Theme::TEXT_MUTED));
+                        ui.separator();
+                        // **Lanes**: infoga en bana efter den valda, ta bort den valda, och
+                        // lägg hela den valda banan i kompen utan att gå via markeringen.
+                        if ui.button(egui::RichText::new(crate::i18n::t("➕ bana")).size(10.0))
+                            .on_hover_text(crate::i18n::t("Lägger en tom bana efter den valda"))
+                            .clicked()
+                        {
+                            let at = vocal_track.insert_lane(vocal_track.active_comp_take);
+                            *status_msg = crate::tstatus!("➕ Ny bana {} av {}", at + 1, vocal_track.takes.len());
+                        }
+                        if ui.add_enabled(vocal_track.takes.len() > 1, egui::Button::new(egui::RichText::new(crate::i18n::t("➖ bana")).size(10.0)))
+                            .on_hover_text(crate::i18n::t("Tar bort den valda banan"))
+                            .clicked()
+                        {
+                            let lane = vocal_track.active_comp_take;
+                            *status_msg = if vocal_track.delete_lane(lane) {
+                                crate::tstatus!("➖ Tog bort bana {}", lane + 1)
+                            } else {
+                                crate::i18n::t("Spåret måste ha minst en bana").to_string()
+                            };
+                        }
+                        if ui.button(egui::RichText::new(crate::i18n::t("→ komp")).size(10.0))
+                            .on_hover_text(crate::i18n::t("Lägger hela den valda banan i kompen"))
+                            .clicked()
+                        {
+                            let lane = vocal_track.active_comp_take;
+                            // shortcut: hela banan i 16-delssteg vid 120 BPM (samma antagande som COMP_STEP_SECS), räkna om när kompen ska följa projektets tempo
+                            let steps = vocal_track.takes.get(lane).map(|t| t.duration_secs * 8.0).unwrap_or(0.0);
+                            *status_msg = if vocal_track.copy_into_comp(lane, 0.0, steps) {
+                                crate::tstatus!("→ Kompen: la till hela bana {}", lane + 1)
+                            } else {
+                                crate::i18n::t("Banan har inget ljud att kompa").to_string()
+                            };
+                        }
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button(crate::i18n::t("➕ Skapa Testton (2s)")).on_hover_text(crate::i18n::t("Lägger till en hörbar referenston (220 Hz) som du kan redigera")).clicked() {

@@ -1227,8 +1227,6 @@ impl VocalStudioTrack {
 
     /// Lägger in en ny tom tagning efter `after` och flyttar kompens tagningindex
     /// ett steg så att de fortfarande pekar på samma ljud.
-    // Lane-knapparna i vyn kopplas in i nästa steg; tills dess bara testad.
-    #[allow(dead_code)]
     pub fn insert_lane(&mut self, after: usize) -> usize {
         let at = (after + 1).min(self.takes.len());
         self.takes.insert(
@@ -1266,7 +1264,6 @@ impl VocalStudioTrack {
 
     /// Tar bort en tagning med dess komp-partier. Vägrar när bara en är kvar —
     /// spåret ska alltid ha minst en lane.
-    #[allow(dead_code)]
     pub fn delete_lane(&mut self, lane: usize) -> bool {
         if self.takes.len() <= 1 || lane >= self.takes.len() {
             return false;
@@ -1291,11 +1288,9 @@ impl VocalStudioTrack {
     /// 16-delssteg till sekunder. Tempot finns inte i spåret, så stegen räknas
     /// vid 120 BPM.
     /// shortcut: fast 120 BPM, skicka in projektets tempo när kompen ska följa det.
-    #[allow(dead_code)]
     const COMP_STEP_SECS: f32 = 60.0 / 120.0 / 4.0;
 
     /// Lägger ett komp-parti från `lane` utan att gå via markeringen i vyn.
-    #[allow(dead_code)]
     pub fn copy_into_comp(&mut self, lane: usize, from_steps: f32, to_steps: f32) -> bool {
         let Some(take) = self.takes.get(lane) else {
             return false;

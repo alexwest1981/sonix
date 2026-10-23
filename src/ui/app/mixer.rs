@@ -40,6 +40,78 @@ pub fn classify_track_style(name: &str) -> (TrackKind, &'static str, Color32) {
 }
 
 impl SonixApp {
+/// Mixen fryst till siffror — det A/B-knapparna jämför: volym, pan och mute per
+/// spår i projektets ordning, plus masternivån.
+fn mix_snapshot(&self, name: &str) -> crate::ui::app::compare::MixSnapshot {
+    crate::ui::app::compare::MixSnapshot {
+        name: name.to_string(),
+        tracks: self.playlist_tracks.iter().map(|t| (t.volume, t.pan, t.muted)).collect(),
+        master: self.master_volume,
+    }
+}
+
+/// **Transmitter**: kanalens valda sampelfil blir hörbara händelser på ett nytt spår.
+fn add_transmitter_track(&mut self) {
+    let Some(path) = self.channels.get(self.selected_channel).and_then(|c| c.sample_path.clone()) else {
+        self.status_message =
+            crate::i18n::t("Välj en fil först — den valda kanalen har inget sampel").to_string();
+        return;
+    };
+    let bytes = match std::fs::read(&path) {
+        Ok(b) => b,
+        Err(e) => {
+            self.status_message = crate::tstatus!("⚠️ Kunde inte läsa '{}': {}", path, e);
+            return;
+        }
+    };
+    let sr = 44_100u32;
+    let pcm = crate::instruments::transmitter_wav(&bytes, sr);
+    if pcm.is_empty() {
+        self.status_message = crate::i18n::t("Filen gav inga händelser att spela").to_string();
+        return;
+    }
+    let bars = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+        .bars_for_secs_at(0.0, pcm.len() as f64 / sr as f64) as f32;
+    let peaks: Vec<f32> = pcm
+        .chunks((pcm.len() / 256).max(1))
+        .map(|c| c.iter().fold(0.0f32, |m, s| m.max(s.abs())))
+        .collect();
+    let name = std::path::Path::new(&path)
+        .file_stem()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| crate::i18n::t("Transmitter").to_string());
+    let arc = std::sync::Arc::new(pcm);
+    let mut track = PlaylistTrack::new(format!("📡 {}", name), "📡", TrackKind::CustomAudio, Theme::FL_CYAN);
+    track.custom_clip_name = Some(name.clone());
+    track.pcm_audio = Some((arc.clone(), arc, sr));
+    // Regionen är det som gör spåret hörbart: motorn spelar regioner, inte pcm-bufferten.
+    track.regions = vec![AudioRegion {
+        id: self.playlist_tracks.len() + 1,
+        name: name.clone(),
+        start_bar: 0.0,
+        length_bars: bars.max(0.25),
+        sample_offset_sec: 0.0,
+        source_path: Some(path),
+        waveform_peaks: peaks,
+        volume: 1.0,
+        fade_in_bars: 0.0,
+        fade_out_bars: 0.0,
+        muted: false,
+        is_reverse: false,
+        color: Theme::FL_CYAN,
+        loop_length_bars: 0.0,
+        // Filens tempo är okänt: ljudet rörs inte när projektets tempo ändras.
+        source_bpm: 0.0,
+        tape: false,
+    }];
+    self.playlist_tracks.push(track);
+    let idx = self.playlist_tracks.len() - 1;
+    self.sync_track_stem_to_engine(idx);
+    self.status_message = crate::tstatus!("📡 Transmitter: {} på nytt spår {}", name, idx + 1);
+}
+}
+
+impl SonixApp {
 /// Pulls the real output waveform samples produced since the last UI frame
 /// and keeps a sliding history for the oscilloscope display.
 pub(crate) fn update_scope_history(&mut self) {
@@ -908,6 +980,14 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
 
             if ui.button(egui::RichText::new(crate::i18n::t("➕ Importera Ljud")).color(Theme::FL_GREEN)).clicked() {
                 self.show_import_modal = true;
+            }
+
+            // **Transmitter**: kanalens valda sampelfil blir hörbara händelser på ett nytt spår.
+            if ui.button(crate::i18n::t("📡 Transmitter…"))
+                .on_hover_text(crate::i18n::t("Gör kanalens valda sampelfil till ett nytt spår med Transmitterns hörbara händelser"))
+                .clicked()
+            {
+                self.add_transmitter_track();
             }
 
             if ui.button(crate::i18n::t("⚡ Slumpa Beats")).clicked() {
@@ -2158,6 +2238,41 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                         }
                         let gain_db = if self.master_volume <= 0.001 { -60.0 } else { 20.0 * self.master_volume.log10() };
                         ui.label(egui::RichText::new(format!("{:.0}%\n{:+.1}dB", self.master_volume * 100.0, gain_db)).strong().size(8.5).color(Theme::FL_ORANGE));
+                        // **A/B** (Abletons Compare): A och B fångar mixen — volym, pan, mute
+                        // per spår plus masternivån — och ↔ växlar och lägger den valda sidan.
+                        ui.horizontal(|ui| {
+                            for side in [("A", false), ("B", true)] {
+                                if ui.small_button(crate::i18n::t(side.0))
+                                    .on_hover_text(crate::tstatus!("Fånga mixen som {}", crate::i18n::t(side.0)))
+                                    .clicked()
+                                {
+                                    let snap = self.mix_snapshot(side.0);
+                                    if side.1 { self.compare.capture_b(snap) } else { self.compare.capture_a(snap) }
+                                    self.status_message = crate::tstatus!("🎚 Mixen fångad som {}", side.0);
+                                }
+                            }
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("↔")).size(10.0)).selected(self.compare.active))
+                                .on_hover_text(crate::i18n::t("Växla mellan A och B"))
+                                .clicked()
+                            {
+                                match self.compare.switch().cloned() {
+                                    None => self.status_message = crate::i18n::t("Växlar först när både A och B är fångade").to_string(),
+                                    Some(snap) => {
+                                        for (idx, volume, pan, muted) in self.compare.apply_to(&snap) {
+                                            if let Some(t) = self.playlist_tracks.get_mut(idx) {
+                                                t.volume = volume;
+                                                t.pan = pan;
+                                                t.muted = muted;
+                                            }
+                                            self.sync_track_stem_to_engine(idx);
+                                        }
+                                        self.master_volume = snap.master;
+                                        let _ = self.engine.send_command(AudioCommand::SetMasterVolume(self.master_volume));
+                                        self.status_message = crate::tstatus!("↔ {} hörs", snap.name);
+                                    }
+                                }
+                            }
+                        });
                     });
                 });
 

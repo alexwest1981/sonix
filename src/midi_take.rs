@@ -105,8 +105,7 @@ pub enum Articulation {
     Accent,
 }
 
-// Formerna finns för pianorullens meny; den som kallar dem finns ännu inte i UI:t.
-#[allow(dead_code)]
+// Formerna finns för pianorullens meny.
 impl Articulation {
     pub const ALL: [Articulation; 4] = [
         Articulation::Normal,
@@ -237,7 +236,6 @@ impl Take {
 
     /// **Sätt artikulation på urvalet** — samma villkor som de andra redigeringarna, så det som
     /// ändras är det som räknades. Anslag och längd rörs inte förrän `apply_articulations`.
-    #[allow(dead_code)] // menyn som kallar den är inte inkopplad än
     pub fn set_articulation(&mut self, filter: &NoteFilter, art: Articulation) -> usize {
         let mut touched = 0;
         for n in self.notes.iter_mut() {
@@ -251,7 +249,6 @@ impl Take {
 
     /// **Forma noterna efter sin artikulation**, en gång. Redan applicerade noter hoppas över,
     /// så ett andra anrop inte dämpar staccaton till hälften en gång till.
-    #[allow(dead_code)] // likaså: anropas när menyn finns
     pub fn apply_articulations(&mut self) -> usize {
         let mut applied = 0;
         for n in self.notes.iter_mut() {

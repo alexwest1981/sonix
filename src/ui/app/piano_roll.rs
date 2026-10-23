@@ -574,6 +574,25 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     self.status_message = format!("Tog bort {} noter enligt villkoret", removed);
                 }
             });
+            // **Artikulation**: sätter formen på urvalet och formar noterna en gång —
+            // samma villkor som raderingen, så det som formas är det som räknades.
+            ui.horizontal(|ui| {
+                ui.label(egui::RichText::new(crate::i18n::t("Artikulation:")).size(10.0).color(Theme::TEXT_MUTED));
+                for art in crate::midi_take::Articulation::ALL {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(art.label())).size(10.0)))
+                        .on_hover_text(crate::i18n::t("Sätter artikulationen på urvalet och formar noterna en gång"))
+                        .clicked()
+                    {
+                        let mut applied = 0;
+                        if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
+                            p.take.set_articulation(&self.note_filter, art);
+                            applied = p.take.apply_articulations();
+                        }
+                        self.status_message =
+                            crate::tstatus!("🖋 {} noter formade ({})", applied, crate::i18n::t(art.label()));
+                    }
+                }
+            });
 
             if !self.groove_pool.is_empty() {
                 if ui
