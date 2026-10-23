@@ -376,6 +376,9 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kopiera mönstret — originalet rörs inte" => "Copy the pattern — the original is untouched",
+        "{} (kopia)" => "{} (copy)",
+        "⧉ '{}' kopierat till P{}" => "⧉ '{}' copied to P{}",
         "Zooma pianorullens rutnät" => "Zoom the piano roll grid",
         "Nollställ zoomningen" => "Reset the zoom",
         "Byt yta framåt / bakåt" => "Switch view forward / backward",
@@ -2655,6 +2658,9 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kopiera mönstret — originalet rörs inte" => "Kopiér mønsteret — originalen er urørt",
+        "{} (kopia)" => "{} (kopi)",
+        "⧉ '{}' kopierat till P{}" => "⧉ '{}' kopieret til P{}",
         "Zooma pianorullens rutnät" => "Zoom pianorullens gitter",
         "Nollställ zoomningen" => "Nulstil zoomningen",
         "Byt yta framåt / bakåt" => "Skift visning frem / tilbage",
@@ -4893,6 +4899,9 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kopiera mönstret — originalet rörs inte" => "Kopier mønsteret — originalen er urørt",
+        "{} (kopia)" => "{} (kopi)",
+        "⧉ '{}' kopierat till P{}" => "⧉ '{}' kopiert til P{}",
         "Zooma pianorullens rutnät" => "Zoom pianorullens rutenett",
         "Nollställ zoomningen" => "Tilbakestill zoomingen",
         "Byt yta framåt / bakåt" => "Bytt visning frem / tilbake",
@@ -7131,6 +7140,9 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kopiera mönstret — originalet rörs inte" => "Pattern kopieren — das Original bleibt unberührt",
+        "{} (kopia)" => "{} (Kopie)",
+        "⧉ '{}' kopierat till P{}" => "⧉ '{}' nach P{} kopiert",
         "Zooma pianorullens rutnät" => "Piano-Roll-Raster zoomen",
         "Nollställ zoomningen" => "Zoom zurücksetzen",
         "Byt yta framåt / bakåt" => "Ansicht vor / zurück wechseln",
@@ -9369,6 +9381,9 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kopiera mönstret — originalet rörs inte" => "Copiar el patrón — el original no se toca",
+        "{} (kopia)" => "{} (copia)",
+        "⧉ '{}' kopierat till P{}" => "⧉ '{}' copiado a P{}",
         "Zooma pianorullens rutnät" => "Ampliar la cuadrícula del piano roll",
         "Nollställ zoomningen" => "Restablecer el zoom",
         "Byt yta framåt / bakåt" => "Cambiar de vista adelante / atrás",
@@ -11607,6 +11622,9 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Kopiera mönstret — originalet rörs inte" => "Copier le motif — l'original reste intact",
+        "{} (kopia)" => "{} (copie)",
+        "⧉ '{}' kopierat till P{}" => "⧉ '{}' copié dans P{}",
         "Zooma pianorullens rutnät" => "Zoomer la grille du piano roll",
         "Nollställ zoomningen" => "Réinitialiser le zoom",
         "Byt yta framåt / bakåt" => "Changer de vue avant / arrière",

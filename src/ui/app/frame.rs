@@ -1218,6 +1218,14 @@ impl SonixApp {
                             {
                                 self.capture_pattern();
                             }
+                            // FL:s Clone pattern: en kopia att göra varianten i.
+                            if ui
+                                .add(egui::Button::new(egui::RichText::new("⧉").size(Theme::FONT_XS)).fill(Theme::PANEL_BG))
+                                .on_hover_text(crate::i18n::t("Kopiera mönstret — originalet rörs inte"))
+                                .clicked()
+                            {
+                                self.duplicate_selected_pattern();
+                            }
                         });
                     });
 

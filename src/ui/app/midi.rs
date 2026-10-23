@@ -597,6 +597,23 @@ impl SonixApp {
         }
         self.status_message = crate::tstatus!("🎯 Fångade slingan i P{}", new_index + 1);
     }
+
+    /// **Kopiera mönstret** (FL:s Clone pattern): en kopia läggs sist i listan och blir vald,
+    /// så att en variant kan göras utan att originalet rörs. Kopian hamnar **inte** i
+    /// arrangemanget — det är en ny slinga, inte en ny takt.
+    pub(crate) fn duplicate_selected_pattern(&mut self) {
+        let Some(source) = self.patterns.get(self.selected_pattern).cloned() else {
+            return;
+        };
+        let new_index = self.patterns.len();
+        let name = source.name.clone();
+        let mut copy = source;
+        copy.name = crate::tstatus!("{} (kopia)", copy.name);
+        self.patterns.push(copy);
+        self.select_pattern(new_index);
+        self.status_message =
+            crate::tstatus!("⧉ '{}' kopierat till P{}", name, new_index + 1);
+    }
 }
 
 impl SonixApp {
