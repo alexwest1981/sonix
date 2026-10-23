@@ -657,6 +657,84 @@ pub(crate) fn flatten_track(&mut self, t_idx: usize) -> bool {
     true
 }
 
+/// **Konsolidera spåret** (Abletons `Consolidate`): spåret renderas och **alla** dess regioner
+/// ersätts av en enda, som pekar på den renderade filen. Volym, pan, EQ, sends, automation och
+/// spårtyp lämnas orörda — det är samma spår, bara med ett klipp i stället för flera.
+pub(crate) fn consolidate_track(&mut self, t_idx: usize) -> bool {
+    let Some(track) = self.playlist_tracks.get(t_idx) else {
+        return false;
+    };
+    if track.is_frozen() {
+        self.status_message =
+            crate::i18n::t("❄ Spåret är fruset — tina det innan det konsolideras").to_string();
+        return false;
+    }
+    let (name, color) = (track.name.clone(), track.color);
+    let start_bar = track.regions.first().map(|r| r.start_bar).unwrap_or(0.0);
+    let has_audio = track.pcm_audio.is_some() || !track.regions.is_empty();
+    if !has_audio {
+        self.status_message = crate::tstatus!("❄ '{}' har inget ljud att konsolidera", name);
+        return false;
+    }
+    let sample_rate = self.engine.sample_rate;
+    let mut spec = self.build_render_spec(Some(t_idx), sample_rate);
+    if let Some(t) = spec.tracks.get_mut(t_idx) {
+        t.volume = 1.0;
+    }
+    let buffer = match self.render_buffer(&spec, true) {
+        Ok(b) => b,
+        Err(e) => {
+            self.status_message = crate::tstatus!("❄ Kunde inte rendera spåret: {}", e);
+            return false;
+        }
+    };
+    if buffer.is_empty() || Self::peak_of(&buffer) <= 0.0 {
+        self.status_message = crate::tstatus!("❄ '{}' är tyst — det finns inget att konsolidera", name);
+        return false;
+    }
+    let Some((left, right, pcm_sr)) = self.write_and_read_back(&name, &buffer) else {
+        return false;
+    };
+    let secs = left.len() as f32 / pcm_sr as f32;
+    let peaks: Vec<f32> = left
+        .chunks((left.len() / 256).max(1))
+        .map(|c| c.iter().fold(0.0f32, |m, x| m.max(x.abs())))
+        .collect();
+    // Takter = sekunder × takter per sekund (4 slag per takt).
+    let bars = (secs * (self.bpm.max(40.0) / 240.0)).max(0.25);
+    self.push_undo(&format!("Konsolidera '{}'", name));
+    let track = &mut self.playlist_tracks[t_idx];
+    track.pcm_audio = Some((left, right, pcm_sr));
+    track.waveform_cache = None;
+    track.waveform_cache_pending = None;
+    track.custom_clip_name = Some(name.clone());
+    track.regions = vec![AudioRegion {
+        id: t_idx + 1,
+        name: name.clone(),
+        start_bar,
+        length_bars: bars,
+        sample_offset_sec: 0.0,
+        source_path: None,
+        waveform_peaks: peaks,
+        volume: 1.0,
+        fade_in_bars: 0.0,
+        fade_out_bars: 0.0,
+        muted: false,
+        is_reverse: false,
+        color,
+        loop_length_bars: 0.0,
+        source_bpm: 0.0,
+        tape: false,
+    }];
+    self.sync_track_regions(t_idx);
+    self.status_message = crate::tstatus!(
+        "🧩 Konsoliderade '{}' till ett klipp: {:.1} s",
+        name,
+        secs
+    );
+    true
+}
+
 /// **Baka grupp till nytt spår** (Abletons `Bounce Group In Place`).
 ///
 /// Gruppen renderas som den hörs: medlemmarna solas, allt annat faller bort i samma regel som
@@ -757,20 +835,20 @@ pub(crate) fn group_member_mask(count: usize, members: &[usize]) -> Vec<bool> {
 /// nytt spår. **Filen är sanningen** — en trasig skrivning upptäcks här, inte vid nästa
 /// projektöppning. Returnerar `(nytt spårindex, längd i sekunder)`, eller `None` med
 /// statusmeddelandet satt.
-fn bake_buffer_to_new_track(
-    &mut self,
+/// Skriver bufferten som 32-bitars float och läser tillbaka filen. **Filen är sanningen** — en
+/// trasig skrivning upptäcks här, inte vid nästa projektöppning.
+fn write_and_read_back(
+    &self,
     name: &str,
     buffer: &[f32],
-    color: egui::Color32,
-    undo_label: &str,
-) -> Option<(usize, f32)> {
+) -> Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)> {
     let sample_rate = self.engine.sample_rate;
     let path = crate::paths::paths()
         .project_assets_dir(&self.project_name)
         .join("Bounces")
         .join(format!(
             "{}-{}.wav",
-            crate::autosave::slug(&name),
+            crate::autosave::slug(name),
             crate::autosave::now_stamp()
         ))
         .to_string_lossy()
@@ -789,22 +867,27 @@ fn bake_buffer_to_new_track(
     if let Err(e) = crate::audio::write_export_with(
         &path,
         crate::audio::ExportFormat::Wav32,
-        &buffer,
+        buffer,
         sample_rate,
         &meta,
         crate::audio::DitherSettings::default(),
     ) {
-        self.status_message =
-            crate::tstatus!("❄ Kunde inte skriva den bakade filen: {}", e);
+        eprintln!("kunde inte skriva den bakade filen: {e}");
         return None;
     }
-    // Läs tillbaka från filen: då är filen sanningen, och en trasig skrivning upptäcks nu.
-    let Some((l, r, pcm_sr)) = load_sample_pcm_arcs(&path) else {
-        self.status_message =
-            crate::tstatus!("❄ Den bakade filen gick inte att läsa tillbaka: {}", path);
+    load_sample_pcm_arcs(&path)
+}
+
+fn bake_buffer_to_new_track(
+    &mut self,
+    name: &str,
+    buffer: &[f32],
+    color: egui::Color32,
+    undo_label: &str,
+) -> Option<(usize, f32)> {
+    let Some((l, r, pcm_sr)) = self.write_and_read_back(name, buffer) else {
         return None;
     };
-
     self.push_undo(undo_label);
     let len_secs = l.len() as f32 / pcm_sr as f32;
     let mut baked = PlaylistTrack::new(

@@ -2241,6 +2241,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     let mut group_toggle_request: Option<usize> = None;
     let mut unfreeze_request: Option<usize> = None;
     let mut flatten_request: Option<usize> = None;
+    let mut consolidate_request: Option<usize> = None;
     let frozen_stale = self.frozen_is_stale(t_idx);
 
     // Samma karta som tidlinjen (Fas 8.2 steg 3): panelen visar tider, och en tid efter
@@ -2331,6 +2332,13 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             .clicked()
                         {
                             unfreeze_request = Some(t_idx);
+                        }
+                        // **Konsolidera**: spåret blir ett klipp i stället för flera.
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧩 Konsolidera spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 55, 75)))
+                            .on_hover_text(crate::i18n::t("Renderar spåret och ersätter alla dess klipp med ett enda. Volym, pan, EQ och sends är kvar."))
+                            .clicked()
+                        {
+                            consolidate_request = Some(t_idx);
                         }
                         // **Platta till**: den frysta bufferten blir en region, så spåret är
                         // ljud på riktigt och går att klippa i som vilket ljudspår som helst.
@@ -2926,6 +2934,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     }
     if let Some(target) = flatten_request {
         self.flatten_track(target);
+    }
+    if let Some(target) = consolidate_request {
+        self.consolidate_track(target);
     }
     if let Some(target) = bounce_request {
         self.bounce_track_to_new(target);
