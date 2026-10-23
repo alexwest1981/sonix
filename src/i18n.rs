@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spänning" => "Voltage",
+        "Fast läge — ingen rörelse, bara ett värde" => "A fixed setting — no movement, just a value",
         "Sannolikheten att noterna i urvalet spelas" => "The chance that the notes in the selection play",
         "Använd på urvalet" => "Apply to selection",
         "Satte {:.0} % på {} noter" => "Set {:.0} % on {} notes",
@@ -2536,6 +2538,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spänning" => "Spænding",
+        "Fast läge — ingen rörelse, bara ett värde" => "Fast niveau — ingen bevægelse, bare en værdi",
         "Sannolikheten att noterna i urvalet spelas" => "Chancen for at noderne i udvalget spiller",
         "Använd på urvalet" => "Anvend på udvalget",
         "Satte {:.0} % på {} noter" => "Satte {:.0} % på {} noder",
@@ -4654,6 +4658,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spänning" => "Spenning",
+        "Fast läge — ingen rörelse, bara ett värde" => "Fast nivå — ingen bevegelse, bare en verdi",
         "Sannolikheten att noterna i urvalet spelas" => "Sjansen for at notene i utvalget spiller",
         "Använd på urvalet" => "Bruk på utvalget",
         "Satte {:.0} % på {} noter" => "Satte {:.0} % på {} noter",
@@ -6772,6 +6778,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spänning" => "Spannung",
+        "Fast läge — ingen rörelse, bara ett värde" => "Fester Pegel — keine Bewegung, nur ein Wert",
         "Sannolikheten att noterna i urvalet spelas" => "Die Chance, dass die Noten der Auswahl spielen",
         "Använd på urvalet" => "Auf Auswahl anwenden",
         "Satte {:.0} % på {} noter" => "{:.0} % auf {} Noten gesetzt",
@@ -8890,6 +8898,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spänning" => "Voltaje",
+        "Fast läge — ingen rörelse, bara ett värde" => "Nivel fijo — sin movimiento, solo un valor",
         "Sannolikheten att noterna i urvalet spelas" => "La probabilidad de que las notas de la selección suenen",
         "Använd på urvalet" => "Aplicar a la selección",
         "Satte {:.0} % på {} noter" => "Puesto {:.0} % en {} notas",
@@ -11008,6 +11018,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Spänning" => "Tension",
+        "Fast läge — ingen rörelse, bara ett värde" => "Niveau fixe — aucun mouvement, juste une valeur",
         "Sannolikheten att noterna i urvalet spelas" => "La chance que les notes de la sélection jouent",
         "Använd på urvalet" => "Appliquer à la sélection",
         "Satte {:.0} % på {} noter" => "{:.0} % appliqué à {} notes",

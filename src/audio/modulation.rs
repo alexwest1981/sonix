@@ -60,6 +60,9 @@ pub enum ModSource {
     Velocity,
     /// Senaste notens tonhöjd, centrerad kring C4 — FL:s Keyboard Controller.
     Key,
+    /// Ett fast värde som sätts för hand — FL:s Voltage Controller, och det en X-Y-pad är
+    /// gjord av: två rattar som var och en styr något. Ingen rörelse, bara ett läge.
+    Voltage { value: f32 },
 }
 
 impl ModSource {
@@ -69,6 +72,7 @@ impl ModSource {
             ModSource::Env => "Envelop".to_string(),
             ModSource::Velocity => "Anslag".to_string(),
             ModSource::Key => "Tonhöjd".to_string(),
+            ModSource::Voltage { value } => format!("Spänning {:.0} %", value * 100.0),
         }
     }
 }
@@ -223,6 +227,7 @@ impl ModMatrix {
                         0.0
                     }
                 }
+                ModSource::Voltage { value } => value.clamp(-1.0, 1.0),
             };
             let scaled = value * slot.amount;
             match slot.target {
@@ -249,6 +254,35 @@ mod tests {
     use super::*;
 
     const SR: f32 = 48_000.0;
+
+    /// **Spänningen står still och gör precis det ratten säger** — den är ingen källa som rör
+    /// sig, och det är hela poängen: en X-Y-pad ska hålla sitt läge mellan två drag.
+    #[test]
+    fn a_voltage_source_holds_its_value() {
+        let mut m = ModMatrix {
+            slots: vec![ModSlot::new(
+                ModSource::Voltage { value: 0.5 },
+                ModTarget::Cutoff,
+                1.0,
+            )],
+            ..ModMatrix::default()
+        };
+        let first = m.tick(SR, 0.0);
+        for _ in 0..1_000 {
+            let again = m.tick(SR, 0.0);
+            assert_eq!(again.cutoff, first.cutoff, "spänningen ska stå still");
+        }
+        // 0,5 × fullskalan (4 oktaver) = 2 oktaver upp.
+        assert!((first.cutoff - 2.0).abs() < 1e-5, "cutoff: {}", first.cutoff);
+        // Negativt värde vänder riktningen.
+        m.set_slots(vec![ModSlot::new(
+            ModSource::Voltage { value: -0.25 },
+            ModTarget::Pitch,
+            1.0,
+        )]);
+        let down = m.tick(SR, 0.0);
+        assert!((down.pitch + 3.0).abs() < 1e-5, "pitch: {}", down.pitch);
+    }
 
     #[test]
     fn an_lfo_at_one_hertz_completes_a_cycle_in_one_second() {

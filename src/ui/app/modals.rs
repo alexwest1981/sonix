@@ -1846,7 +1846,25 @@ pub(crate) fn render_mod_matrix_view(&mut self, ctx: &egui::Context) {
                                 slot.source = ModSource::Key;
                                 changed = true;
                             }
+                            // Spänning: ett fast läge, som en ratt på en X-Y-pad.
+                            if ui.selectable_label(matches!(slot.source, ModSource::Voltage { .. }), crate::i18n::t("Spänning")).clicked() {
+                                slot.source = ModSource::Voltage { value: 0.5 };
+                                changed = true;
+                            }
                         });
+                    if let ModSource::Voltage { value } = &mut slot.source
+                        && ui
+                            .add(
+                                egui::DragValue::new(value)
+                                    .range(-1.0..=1.0)
+                                    .speed(0.01)
+                                    .custom_formatter(|v, _| format!("{:+.0} %", v * 100.0)),
+                            )
+                            .on_hover_text(crate::i18n::t("Fast läge — ingen rörelse, bara ett värde"))
+                            .changed()
+                    {
+                        changed = true;
+                    }
                     // LFO-parametrar bara när källan är en LFO.
                     if let ModSource::Lfo { rate_hz, shape } = &mut slot.source {
                         if ui

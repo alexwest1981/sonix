@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 53** har en motsvarighet, **◐ 47** delvis, **✗ 41** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 58** har en motsvarighet, **◐ 48** delvis, **✗ 35** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -125,7 +125,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Slicer 2 | 14 | ◐ | choppern hittar slag och dumpar till piano roll/step |
 | FL Slayer | 12 | ✗ | fysisk modellering av gitarr |
 | FPC | 11 | ◐ | drum.rs + steprad; ingen pad-bank med egna lager |
-| Fruity Envelope Controller | 10 | ✗ | modulationskälla (styr andra plugins) |
+| Fruity Envelope Controller | 10 | ◐ | LFO med fyra vågformer och envelopföljare finns; en ritbar flerpunktskurva gör det inte |
 | BassDrum | 9 | ◐ | kick i drum.rs |
 | BeepMap | 9 | ✗ | bild → ljud |
 | FLEX | 9 | ✗ | presetbaserad synth med eget bibliotek |
@@ -143,7 +143,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruit Kick | 2 | ◐ | kick i drum.rs |
 | Fruity DX10 | 2 | ✅ | 2-op FM (byggd i dag) |
 | Fruity Granulizer | 2 | ✅ | `Granular` — granulär motor som mastersteg, sex rattar (korn, täthet, position, spridning, hastighet, mix) |
-| Fruity Keyboard Controller | 2 | ✗ | tangent → modulationsvärde |
+| Fruity Keyboard Controller | 2 | ✅ | `ModSource::Velocity` och `ModSource::Key` — anslag och tonhöjd centrerad kring C4 |
 | Fruity Slicer | 2 | ◐ | choppern |
 | Fruity Video Player | 2 | ✅ | `audio::video` + videovy: referensfilm synkad till spelhuvudet, bildrutan hämtas med ffmpeg |
 | Harmless | 2 | ✗ | additiv/subtraktiv hybrid |
@@ -155,7 +155,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Drumaxx | 1 | ✗ | modellbaserad trummaskin (per pad) |
 | Drumpad | 1 | ◐ | steprad + drum.rs |
 | FL Studio Mobile Rack | 1 | ✗ | mobilens rack |
-| Fruity Voltage Controller | 1 | ✗ | modulationskälla |
+| Fruity Voltage Controller | 1 | ✅ | `ModSource::Voltage { value }` — fast läge, mätt att det står still |
 | Kepler | 1 | ✗ | analogmodellerad synth (CS-80-inspirerad) |
 | Kepler Exo | 1 | ✗ | variant av Kepler |
 | PoiZone | 1 | ◐ | subtraktiv synth |
@@ -178,7 +178,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Soundgoodizer | 5 | ◐ | saturator + kompressor |
 | Fruity Convolver | 4 | ✅ | convolvern (byggd i dag) |
 | Fruity HTML NoteBook | 4 | ✗ | HTML-anteckningar i projektet |
-| Fruity Peak Controller | 4 | ✗ | modulationskälla ur nivå |
+| Fruity Peak Controller | 4 | ✅ | `ModSource::Env` — envelopföljare på masternivå, snabb upp/långsam ner |
 | Fruity Scratcher | 4 | ✗ | vinylscratch |
 | Control Surface | 3 | ◐ | hardware_control.rs (MCU) |
 | Fruity Formula Controller | 3 | ✗ | formelstyrd modulation |
@@ -207,7 +207,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Vocoder | 2 | ✅ | `vocode` i sångstudion, läggs som egen tagning |
 | Fruity WaveShaper | 2 | ✅ | saturatorn |
 | Fruity Wrapper | 2 | ✅ | plugin-värden |
-| Fruity X-Y Controller | 2 | ✗ | modulationskälla (XY) |
+| Fruity X-Y Controller | 2 | ✅ | två spännings-slots på olika mål — en pad är två rattar |
 | Fruity dB Meter | 2 | ✅ | nivåmätarna |
 | Gross Beat | 2 | ◐ | steggrinden + RemixFX (volymkurvan finns i dag, tidskurvan inte) |
 | Newtone | 2 | ◐ | pitch/formant (vocal_harmonizer) |
@@ -236,7 +236,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Phase Inverter | 1 | ✅ | `StereoParams::apply` — polaritet per kanal, exakt invertering |
 | Fruity Phaser | 1 | ✅ | `Phaser` — 4 allpass, 200 Hz–2 kHz, stilla vid djup 0 |
 | Fruity Reeverb | 1 | ✅ | SimpleReverb |
-| Fruity X-Y-Z Controller | 1 | ✗ | modulationskälla (XYZ) |
+| Fruity X-Y-Z Controller | 1 | ✅ | tre spännings-slots; samma mekanik som X-Y |
 | Hyper Chorus | 1 | ◐ | `ModDelay` har **en** LFO; FL:s Hyper Chorus staplar flera röster |
 | Low Lifter | 1 | ✅ | `ShelvesParams` — nedre hyllan (RBJ), samma krets som tonkonturen |
 | Luxeverb | 1 | ◐ | convolver + algoritmiskt reverb |
