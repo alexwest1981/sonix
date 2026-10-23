@@ -1225,6 +1225,95 @@ impl VocalStudioTrack {
         Ok(self.active_comp_take)
     }
 
+    /// Lägger in en ny tom tagning efter `after` och flyttar kompens tagningindex
+    /// ett steg så att de fortfarande pekar på samma ljud.
+    // Lane-knapparna i vyn kopplas in i nästa steg; tills dess bara testad.
+    #[allow(dead_code)]
+    pub fn insert_lane(&mut self, after: usize) -> usize {
+        let at = (after + 1).min(self.takes.len());
+        self.takes.insert(
+            at,
+            AudioTake {
+                name: format!("{} {}", crate::i18n::t("Tagning"), at + 1),
+                pcm_samples: Vec::new(),
+                waveform_data: Vec::new(),
+                waveform_pairs: Vec::new(),
+                sample_rate: 44100,
+                duration_secs: 0.0,
+                is_selected: false,
+                color: Color32::from_rgb(60, 75, 95),
+                trim_start_norm: 0.0,
+                trim_end_norm: 1.0,
+                gain_linear: 1.0,
+                pitch_semitones: 0.0,
+                pitch_cents: 0.0,
+                time_stretch: 1.0,
+                is_reverse: false,
+                loop_audition: false,
+                is_playing: false,
+            },
+        );
+        for (take, _, _) in &mut self.comp_regions {
+            if *take > after {
+                *take += 1;
+            }
+        }
+        if self.active_comp_take > after {
+            self.active_comp_take += 1;
+        }
+        at
+    }
+
+    /// Tar bort en tagning med dess komp-partier. Vägrar när bara en är kvar —
+    /// spåret ska alltid ha minst en lane.
+    #[allow(dead_code)]
+    pub fn delete_lane(&mut self, lane: usize) -> bool {
+        if self.takes.len() <= 1 || lane >= self.takes.len() {
+            return false;
+        }
+        self.takes.remove(lane);
+        self.comp_regions.retain(|(take, _, _)| *take != lane);
+        for (take, _, _) in &mut self.comp_regions {
+            if *take > lane {
+                *take -= 1;
+            }
+        }
+        if self.active_comp_take >= lane {
+            self.active_comp_take = self
+                .active_comp_take
+                .saturating_sub(1)
+                .min(self.takes.len() - 1);
+            self.takes[self.active_comp_take].is_selected = true;
+        }
+        true
+    }
+
+    /// 16-delssteg till sekunder. Tempot finns inte i spåret, så stegen räknas
+    /// vid 120 BPM.
+    /// shortcut: fast 120 BPM, skicka in projektets tempo när kompen ska följa det.
+    #[allow(dead_code)]
+    const COMP_STEP_SECS: f32 = 60.0 / 120.0 / 4.0;
+
+    /// Lägger ett komp-parti från `lane` utan att gå via markeringen i vyn.
+    #[allow(dead_code)]
+    pub fn copy_into_comp(&mut self, lane: usize, from_steps: f32, to_steps: f32) -> bool {
+        let Some(take) = self.takes.get(lane) else {
+            return false;
+        };
+        let total = take.pcm_samples.len();
+        if total < 100 {
+            return false;
+        }
+        let secs = Self::COMP_STEP_SECS * take.sample_rate as f32;
+        let start = (from_steps.max(0.0) * secs) as usize;
+        let end = ((to_steps.max(0.0) * secs) as usize).min(total);
+        if end <= start {
+            return false;
+        }
+        self.comp_regions.push((lane, start, end));
+        true
+    }
+
     /// Markerar det valda partiet på den valda tagningen som en del av kompen.
     pub fn add_comp_region(&mut self) -> Result<String, String> {
         if self.takes.is_empty() || self.active_comp_take >= self.takes.len() {
@@ -1627,6 +1716,80 @@ mod tests {
         // Normalize
         let norm_res = track.normalize_selected_take();
         assert!(norm_res.is_ok());
+    }
+
+    // --- Take lanes: infoga, ta bort, kopiera in i kompen ------------------
+
+    /// Ett spår med `n` tagningar om en sekund vardera.
+    fn track_with_lanes(n: usize) -> VocalStudioTrack {
+        let mut track = VocalStudioTrack::default();
+        for i in 0..n {
+            track.load_sample_or_region_as_take(
+                &format!("Tagning {i}"),
+                vec![0.1; 44_100],
+                44_100,
+                Color32::from_rgb(0, 200, 240),
+            );
+        }
+        track
+    }
+
+    #[test]
+    fn inserting_a_lane_shifts_the_comp_to_the_same_audio() {
+        let mut track = track_with_lanes(3);
+        track.comp_regions = vec![(0, 0, 100), (2, 0, 100)];
+        track.active_comp_take = 2;
+
+        let at = track.insert_lane(0);
+
+        assert_eq!(at, 1, "den nya lanen ska ligga direkt efter den angivna");
+        assert_eq!(track.takes.len(), 4);
+        assert!(track.takes[1].pcm_samples.is_empty(), "lanen ska vara tom");
+        // Komp på tagning 2 ligger nu på index 3; tagning 0 är orörd.
+        assert_eq!(track.comp_regions, vec![(0, 0, 100), (3, 0, 100)]);
+        assert_eq!(track.active_comp_take, 3, "markeringen ska följa med");
+    }
+
+    #[test]
+    fn deleting_a_lane_drops_its_comp_parts_and_moves_the_rest_down() {
+        let mut track = track_with_lanes(3);
+        track.comp_regions = vec![(0, 0, 100), (1, 10, 200), (2, 20, 300)];
+        track.active_comp_take = 2;
+
+        assert!(track.delete_lane(1));
+
+        assert_eq!(track.takes.len(), 2);
+        // Partiet från lanen som togs bort är borta; det från tagning 2 har blivit 1.
+        assert_eq!(track.comp_regions, vec![(0, 0, 100), (1, 20, 300)]);
+        assert_eq!(track.active_comp_take, 1);
+    }
+
+    #[test]
+    fn the_last_lane_cannot_be_deleted() {
+        let mut track = track_with_lanes(1);
+        assert!(!track.delete_lane(0));
+        assert_eq!(track.takes.len(), 1);
+        // Utanför intervallet är ingen träff heller.
+        assert!(!track.delete_lane(7));
+    }
+
+    #[test]
+    fn copying_from_a_lane_gives_a_comp_part_with_the_right_bounds() {
+        let mut track = track_with_lanes(2);
+        assert!(track.copy_into_comp(1, 0.0, 4.0), "4 steg = 0,5 s vid 120 BPM");
+
+        assert_eq!(track.comp_regions.len(), 1);
+        let (lane, start, end) = track.comp_regions[0];
+        assert_eq!(lane, 1);
+        assert_eq!(start, 0);
+        assert_eq!(end, 22_050, "0,5 s à 44,1 kHz");
+
+        // Tom lane, baklänges och utanför intervallet ger inget parti.
+        assert!(!track.copy_into_comp(1, 4.0, 2.0));
+        assert!(!track.copy_into_comp(9, 0.0, 4.0));
+        let empty = track.insert_lane(1);
+        assert!(!track.copy_into_comp(empty, 0.0, 4.0));
+        assert_eq!(track.comp_regions.len(), 1);
     }
 
     // --- Högpass (80 Hz low-cut) och anti-rundgång -------------------------
