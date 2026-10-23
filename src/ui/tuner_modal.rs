@@ -129,9 +129,9 @@ pub fn render_tuner_modal(
             ui.vertical(|ui| {
                 // Header
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("STÄMAPPARAT & PITCH ANALYZER")).strong().size(14.0).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("STÄMAPPARAT & PITCH ANALYZER")).strong().size(Theme::FONT_L).color(Theme::FL_CYAN));
                     ui.separator();
-                    ui.label(egui::RichText::new(crate::i18n::t("Stäm gitarr, bas eller träna röstintonation i realtid")).size(10.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Stäm gitarr, bas eller träna röstintonation i realtid")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(4.0);
@@ -176,7 +176,7 @@ pub fn render_tuner_modal(
                         let is_sel = state.selected_string_idx == s_idx;
                         let bg = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(26, 30, 38) };
                         let fg = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
-                        if ui.add(egui::Button::new(egui::RichText::new(*name).strong().size(11.0).color(fg)).fill(bg)).clicked() {
+                        if ui.add(egui::Button::new(egui::RichText::new(*name).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                             state.selected_string_idx = s_idx;
                         }
                     }
@@ -229,7 +229,7 @@ pub fn render_tuner_modal(
                             Theme::FL_CYAN // Flat
                         };
 
-                        ui.label(egui::RichText::new(target_name).strong().size(36.0).color(note_color));
+                        ui.label(egui::RichText::new(target_name).strong().size(Theme::FONT_XL).color(note_color));
 
                         let status_text = if in_tune {
                             crate::i18n::t("✨ PERFEKT STÄMD (IN TUNE)")
@@ -238,9 +238,9 @@ pub fn render_tuner_modal(
                         } else {
                             crate::i18n::t("▼ FÖR LÅG (FLAT) - Spänn strängen")
                         };
-                        ui.label(egui::RichText::new(status_text).strong().size(12.0).color(note_color));
+                        ui.label(egui::RichText::new(status_text).strong().size(Theme::FONT_S).color(note_color));
 
-                        ui.label(egui::RichText::new(crate::tstatus!("Målfrekvens: {:.2} Hz  •  Offset: {:+.1} Cents", target_freq, cents)).size(11.0).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::tstatus!("Målfrekvens: {:.2} Hz  •  Offset: {:+.1} Cents", target_freq, cents)).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
                         // Live signal readout: detected frequency + input level
                         ui.horizontal(|ui| {
@@ -249,7 +249,7 @@ pub fn render_tuner_modal(
                                     Some(f) => crate::tstatus!("🎤 Live: {:.1} Hz", f),
                                     None => crate::i18n::t("🎤 Live: — (tyst)").to_string(),
                                 })
-                                .size(10.5)
+                                .size(Theme::FONT_S)
                                 .color(if live_hz.is_some() { Theme::FL_GREEN } else { Theme::TEXT_MUTED }),
                             );
                             ui.add(
@@ -302,7 +302,7 @@ pub fn render_tuner_modal(
 
                     // Quick simulated fine adjustment slider for manual check or testing
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Finjustering (Test):")).size(10.5).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("Finjustering (Test):")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                         ui.add(egui::Slider::new(&mut state.simulated_pitch_cents, -50.0..=50.0).text("Cents"));
                         if ui.button(crate::i18n::t("🎯 Nollställ")).clicked() {
                             state.simulated_pitch_cents = 0.0;

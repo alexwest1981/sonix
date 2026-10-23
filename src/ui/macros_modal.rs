@@ -272,7 +272,7 @@ pub fn render_macros_modal(
                 ui.label(
                     egui::RichText::new(crate::i18n::t("🔗 MAKRON"))
                         .strong()
-                        .size(14.0)
+                        .size(Theme::FONT_L)
                         .color(Theme::FL_ORANGE),
                 );
                 ui.separator();
@@ -280,7 +280,7 @@ pub fn render_macros_modal(
                     egui::RichText::new(crate::i18n::t(
                         "Samma behandling på många filer — trimma, normalisera, exportera",
                     ))
-                    .size(10.5)
+                    .size(Theme::FONT_S)
                     .color(Theme::TEXT_MUTED),
                 );
             });
@@ -293,7 +293,7 @@ pub fn render_macros_modal(
                     ui.label(egui::RichText::new(crate::i18n::t("Kedjor i mappen")).strong());
                     ui.label(
                         egui::RichText::new(chains_dir.display().to_string())
-                            .size(9.5)
+                            .size(Theme::FONT_XS)
                             .color(Theme::TEXT_MUTED),
                     );
                     ui.add_space(2.0);
@@ -333,7 +333,7 @@ pub fn render_macros_modal(
                                 // bara saknas — det är det svåraste felet att förstå annars.
                                 ui.label(
                                     egui::RichText::new(crate::tstatus!("⚠ {}: {}", name, e))
-                                        .size(9.5)
+                                        .size(Theme::FONT_XS)
                                         .color(Theme::FL_RED),
                                 );
                             }
@@ -372,7 +372,7 @@ pub fn render_macros_modal(
                                     MacroStep::Normalize { .. } => "📊",
                                     MacroStep::Export { .. } => "💾",
                                 };
-                                ui.label(egui::RichText::new(label).size(13.0));
+                                ui.label(egui::RichText::new(label).size(Theme::FONT_M));
                                 match step {
                                     MacroStep::TrimSilence {
                                         threshold_db,
@@ -487,7 +487,7 @@ pub fn render_macros_modal(
                                 egui::RichText::new(crate::i18n::t(
                                     "⚠ Kedjan har inget exportsteg — den skriver ingenting.",
                                 ))
-                                .size(10.0)
+                                .size(Theme::FONT_S)
                                 .color(Theme::FL_ORANGE),
                             );
                         }
@@ -535,14 +535,14 @@ pub fn render_macros_modal(
                     }
                     ui.label(
                         egui::RichText::new(crate::i18n::t("(tomt = macro-output bredvid filen)"))
-                            .size(9.5)
+                            .size(Theme::FONT_XS)
                             .color(Theme::TEXT_MUTED),
                     );
                 });
                 if !state.listing_note.is_empty() {
                     ui.label(
                         egui::RichText::new(state.listing_note.clone())
-                            .size(10.0)
+                            .size(Theme::FONT_S)
                             .color(Theme::TEXT_MUTED),
                     );
                 }
@@ -551,7 +551,7 @@ pub fn render_macros_modal(
                     egui::RichText::new(crate::i18n::t(
                         "Projektet renderas som vid export och körs genom kedjans steg.",
                     ))
-                    .size(10.0)
+                    .size(Theme::FONT_S)
                     .color(Theme::TEXT_MUTED),
                 );
             }
@@ -595,7 +595,7 @@ pub fn render_macros_modal(
                 ui.add_space(2.0);
                 ui.label(
                     egui::RichText::new(state.message.clone())
-                        .size(10.5)
+                        .size(Theme::FONT_S)
                         .color(Theme::FL_CYAN),
                 );
             }
@@ -606,7 +606,7 @@ pub fn render_macros_modal(
                     .max_height(150.0)
                     .show(ui, |ui| {
                         for line in &state.reports {
-                            ui.label(egui::RichText::new(line).size(9.5).monospace());
+                            ui.label(egui::RichText::new(line).size(Theme::FONT_XS).monospace());
                         }
                     });
             }

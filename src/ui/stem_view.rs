@@ -31,9 +31,9 @@ pub fn render_stem_separator_view(
     let _ = &status_msg;
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🧠 AI STEM SEPARATION STUDIO (DSP + Neural ONNX)")).strong().size(14.0).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🧠 AI STEM SEPARATION STUDIO (DSP + Neural ONNX)")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
             ui.separator();
-            ui.label(egui::RichText::new(crate::i18n::t("Isolera och extrahera sång, trummor, bas och instrument direkt ur färdiga mixar")).size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Isolera och extrahera sång, trummor, bas och instrument direkt ur färdiga mixar")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Exportera Stems till Song Arranger")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
@@ -47,8 +47,8 @@ pub fn render_stem_separator_view(
         // Project Info Bar
         ui.group(|ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("Källfil:")).size(11.0).color(Theme::TEXT_MUTED));
-                ui.label(egui::RichText::new(&project.track_title).strong().size(12.0).color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("Källfil:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(&project.track_title).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
                 ui.separator();
 
                 let tempo_txt = if project.bpm > 0.0 {
@@ -56,10 +56,10 @@ pub fn render_stem_separator_view(
                 } else {
                     crate::i18n::t("— BPM").to_string()
                 };
-                ui.label(egui::RichText::new(format!("{} {:.1}s  •  {} {}", crate::i18n::t("Längd:"), project.duration_seconds, crate::i18n::t("Tempo:"), tempo_txt)).size(11.0).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(format!("{} {:.1}s  •  {} {}", crate::i18n::t("Längd:"), project.duration_seconds, crate::i18n::t("Tempo:"), tempo_txt)).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 ui.separator();
 
-                ui.label(egui::RichText::new(format!("Modell: {}", project.model_name)).size(10.5).color(Theme::FL_YELLOW));
+                ui.label(egui::RichText::new(format!("Modell: {}", project.model_name)).size(Theme::FONT_S).color(Theme::FL_YELLOW));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.add_enabled(!project.is_separating, egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Välj fil & separera")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(140, 40, 180))).clicked() {
@@ -75,9 +75,9 @@ pub fn render_stem_separator_view(
         ui.group(|ui| {
             ui.horizontal(|ui| {
                 if crate::audio::neural_available() {
-                    ui.label(egui::RichText::new(format!("🧠 {} {}", crate::i18n::t("Neural modell:"), crate::audio::neural_model_status())).size(10.5).color(Theme::FL_GREEN));
+                    ui.label(egui::RichText::new(format!("🧠 {} {}", crate::i18n::t("Neural modell:"), crate::audio::neural_model_status())).size(Theme::FONT_S).color(Theme::FL_GREEN));
                 } else {
-                    ui.label(egui::RichText::new(format!("🧠 {} {} ({})", crate::i18n::t("Neural: ingen modell hittad — använder DSP. Lägg htdemucs.onnx i"), crate::audio::neural_model_status(), crate::i18n::t("bygg med --features neural"))).size(10.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(format!("🧠 {} {} ({})", crate::i18n::t("Neural: ingen modell hittad — använder DSP. Lägg htdemucs.onnx i"), crate::audio::neural_model_status(), crate::i18n::t("bygg med --features neural"))).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 }
             });
             ui.horizontal(|ui| {
@@ -98,7 +98,7 @@ pub fn render_stem_separator_view(
                         "Modell: {}",
                         model.label()
                     ))
-                    .size(10.0)
+                    .size(Theme::FONT_S)
                     .color(Theme::TEXT_MUTED),
                 );
             });
@@ -142,14 +142,14 @@ pub fn render_stem_separator_view(
                         );
                     }
                     if !message.is_empty() {
-                        ui.label(egui::RichText::new(message).size(10.0).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(message).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                     }
                 });
             }
             if project.is_separating {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("⏳ Separerar...")).strong().size(11.0).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("⏳ Separerar...")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
                     ui.add(egui::ProgressBar::new(project.progress.clamp(0.0, 1.0)).desired_width(260.0).text(format!("{:.0}%", project.progress * 100.0)));
                 });
             }
@@ -159,7 +159,7 @@ pub fn render_stem_separator_view(
 
         if project.stems.is_empty() {
             ui.group(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("Ingen mix separerad ännu. Klicka på \"Välj fil & separera\" och välj en WAV/MP3/FLAC-fil — Sonix delar upp den i fyra spelbara stämspår.")).size(11.5).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(crate::i18n::t("Ingen mix separerad ännu. Klicka på \"Välj fil & separera\" och välj en WAV/MP3/FLAC-fil — Sonix delar upp den i fyra spelbara stämspår.")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
             });
         }
 
@@ -172,16 +172,16 @@ pub fn render_stem_separator_view(
                     ui.group(|ui| {
                         ui.set_width(170.0);
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new(stem.stem_type.name()).strong().size(12.0).color(col));
+                            ui.label(egui::RichText::new(stem.stem_type.name()).strong().size(Theme::FONT_S).color(col));
                             ui.add_space(2.0);
 
                             ui.horizontal(|ui| {
                                 let m_col = if stem.muted { Color32::from_rgb(80, 20, 20) } else { Theme::FL_GREEN };
-                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("MUTE")).size(10.0)).fill(m_col)).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("MUTE")).size(Theme::FONT_S)).fill(m_col)).clicked() {
                                     stem.muted = !stem.muted;
                                 }
                                 let s_col = if stem.solo { Theme::FL_ORANGE } else { Color32::from_rgb(40, 35, 25) };
-                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("SOLO")).size(10.0)).fill(s_col)).clicked() {
+                                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("SOLO")).size(Theme::FONT_S)).fill(s_col)).clicked() {
                                     stem.solo = !stem.solo;
                                 }
                             });

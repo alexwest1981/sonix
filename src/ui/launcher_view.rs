@@ -144,7 +144,7 @@ pub fn render_launcher_window(
                         let queued_stop = slot.queued_stop;
                         let name = slot.content.name().map(|s| s.to_string());
                         let text = slot_label(state, queued_stop, name.as_deref());
-                        let mut button = egui::Button::new(egui::RichText::new(text).size(11.5))
+                        let mut button = egui::Button::new(egui::RichText::new(text).size(Theme::FONT_S))
                             .fill(slot_color(state, queued_stop))
                             .min_size(egui::vec2(150.0, 26.0));
                         if matches!(state, SlotState::Playing | SlotState::Queued) {
@@ -203,7 +203,7 @@ pub fn render_launcher_window(
                     } else {
                         crate::i18n::t("transporten står still")
                     })
-                    .size(10.5)
+                    .size(Theme::FONT_S)
                     .color(Theme::TEXT_MUTED),
                 );
             });
@@ -211,7 +211,7 @@ pub fn render_launcher_window(
                 egui::RichText::new(crate::i18n::t(
                     "Ett klick startar eller stoppar vid nästa kvantiseringspunkt — kön syns i färgen.",
                 ))
-                .size(10.5)
+                .size(Theme::FONT_S)
                 .color(Theme::TEXT_MUTED),
             );
         });

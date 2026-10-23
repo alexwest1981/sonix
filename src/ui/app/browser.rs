@@ -7,6 +7,7 @@
 //! Rör inte: \`merge_library\` är enda vägen till listan; bygg inte en andra.
 
 use super::*;
+use crate::ui::theme::Theme;
 
 /// Startar ljudbiblioteket (Fas 7.4).
 ///
@@ -369,9 +370,9 @@ impl SonixApp {
 pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("📁 SOUND BROWSER")).strong().size(13.0).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("📁 SOUND BROWSER")).strong().size(Theme::FONT_M).color(Theme::FL_ORANGE));
             if self.sample_drag_item.is_some() {
-                ui.label(egui::RichText::new(crate::i18n::t("✋ Drar sample...")).size(10.0).color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("✋ Drar sample...")).size(Theme::FONT_S).color(Theme::FL_CYAN));
             }
         });
         ui.add_space(2.0);
@@ -436,10 +437,10 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
 
                         card_ui.horizontal(|ui| {
                             ui.label(&item.icon);
-                            ui.label(egui::RichText::new(&item.name).strong().size(11.0).color(item.color));
+                            ui.label(egui::RichText::new(&item.name).strong().size(Theme::FONT_S).color(item.color));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let drag_btn = ui.add(
-                                    egui::Button::new(egui::RichText::new(crate::i18n::t("✋ Dra")).size(9.5).color(Color32::WHITE))
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t("✋ Dra")).size(Theme::FONT_XS).color(Color32::WHITE))
                                         .fill(Color32::from_rgb(45, 55, 75))
                                         .sense(Sense::click_and_drag())
                                 ).on_hover_text(crate::i18n::t("Klicka & håll ned för att dra till tidslinjen"));
@@ -451,7 +452,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                         });
 
                         card_ui.horizontal_wrapped(|ui| {
-                            if ui.button(egui::RichText::new(crate::i18n::t("▶")).size(9.5)).on_hover_text(crate::i18n::t("Provspela sample med äkta ljud")).clicked() {
+                            if ui.button(egui::RichText::new(crate::i18n::t("▶")).size(Theme::FONT_XS)).on_hover_text(crate::i18n::t("Provspela sample med äkta ljud")).clicked() {
                                 // Samma tre fall som `audition_library_sample`: ingen fil →
                                 // appens egen syntröst; fil som inte går att läsa → ett besked,
                                 // aldrig en syntetisk trumma i samplens ställe.
@@ -508,17 +509,17 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                                     }
                                 }
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Tidslinje")).size(9.5)).fill(Color32::from_rgb(30, 65, 90))).on_hover_text(crate::i18n::t("Skapa nytt spår på tidslinjen med denna sample")).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Tidslinje")).size(Theme::FONT_XS)).fill(Color32::from_rgb(30, 65, 90))).on_hover_text(crate::i18n::t("Skapa nytt spår på tidslinjen med denna sample")).clicked() {
                                 sample_to_add_timeline = Some(item.clone());
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Sångstudio")).size(9.5)).fill(Color32::from_rgb(50, 45, 80))).on_hover_text(crate::i18n::t("Öppna i Sångstudion för isolerad solo-provspelning & formning")).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Sångstudio")).size(Theme::FONT_XS)).fill(Color32::from_rgb(50, 45, 80))).on_hover_text(crate::i18n::t("Öppna i Sångstudion för isolerad solo-provspelning & formning")).clicked() {
                                 sample_to_vocal_studio = Some(item.clone());
                             }
-                            if ui.button(egui::RichText::new(crate::i18n::t("🎛 Kanal")).size(9.0)).on_hover_text(crate::i18n::t("Ladda till Channel Rack")).clicked() {
+                            if ui.button(egui::RichText::new(crate::i18n::t("🎛 Kanal")).size(Theme::FONT_XS)).on_hover_text(crate::i18n::t("Ladda till Channel Rack")).clicked() {
                                 let ch_idx = self.active_sample_picker_channel.unwrap_or(0);
                                 sample_to_channel = Some((ch_idx, item.clone()));
                             }
-                            if (item.category.starts_with("Egna") || item.category.starts_with("📂 My Samples")) && ui.button(egui::RichText::new(crate::i18n::t("🗑")).size(9.0)).on_hover_text(crate::i18n::t("Ta bort från bibliotek")).clicked() {
+                            if (item.category.starts_with("Egna") || item.category.starts_with("📂 My Samples")) && ui.button(egui::RichText::new(crate::i18n::t("🗑")).size(Theme::FONT_XS)).on_hover_text(crate::i18n::t("Ta bort från bibliotek")).clicked() {
                                 to_delete_sample_id = Some(item.id);
                             }
                         });
@@ -545,7 +546,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                     ("Kepler Exo (puls)", Preset::KeplerExo),
                 ];
                 if ui
-                    .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Autogun (slumpat ljud)")).size(10.0)).fill(Theme::PANEL_BG))
+                    .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Autogun (slumpat ljud)")).size(Theme::FONT_S)).fill(Theme::PANEL_BG))
                     .on_hover_text(crate::i18n::t("Slumpar fram ett komplett ljud ur syntens egna parametrar"))
                     .clicked()
                 {

@@ -922,9 +922,9 @@ pub fn render_fx_rack_modal(
                 // 1. TOP HEADER & NAVIGATION TABS
                 // ============================================================
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("🎛 SOUNDTRAP FX RACK")).strong().size(15.0).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎛 SOUNDTRAP FX RACK")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
                     ui.separator();
-                    ui.label(egui::RichText::new(crate::i18n::t("Modulär effektkedja  •  Visual Parametric EQ  •  Dynamisk kompressor  •  Vocal Doubler")).size(11.0).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Modulär effektkedja  •  Visual Parametric EQ  •  Dynamisk kompressor  •  Vocal Doubler")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let lib_btn = ui.selectable_label(state.active_tab == 2, crate::i18n::t("🗂 Effektbibliotek"));
@@ -945,7 +945,7 @@ pub fn render_fx_rack_modal(
                         ui.label(
                             egui::RichText::new(crate::i18n::t("🎧 CONTROL ROOM"))
                                 .strong()
-                                .size(11.0)
+                                .size(Theme::FONT_S)
                                 .color(Theme::FL_CYAN),
                         );
                         ui.separator();
@@ -1000,7 +1000,7 @@ pub fn render_fx_rack_modal(
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let enabled_count = state.pedals.iter().filter(|p| p.enabled).count();
-                            ui.label(egui::RichText::new(crate::tstatus!("{} aktiva effekter", enabled_count)).size(10.5).color(Theme::FL_GREEN));
+                            ui.label(egui::RichText::new(crate::tstatus!("{} aktiva effekter", enabled_count)).size(Theme::FONT_S).color(Theme::FL_GREEN));
                         });
                     });
                 });
@@ -1041,7 +1041,7 @@ pub fn render_fx_rack_modal(
                             .convolver_ir_name
                             .clone()
                             .unwrap_or_else(|| crate::i18n::t("ingen fil laddad").to_string());
-                        ui.label(egui::RichText::new(name).size(10.0).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(name).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                         if ui.button(crate::i18n::t("📥 Ladda .wav")).clicked() {
                             if let Some(msg) = state.load_convolver_ir(engine) {
                                 *status_msg = msg;
@@ -1065,7 +1065,7 @@ pub fn render_fx_rack_modal(
                     ui.horizontal_wrapped(|ui| {
                         ui.label(
                             egui::RichText::new(crate::i18n::t("🏛 Bank:"))
-                                .size(10.0)
+                                .size(Theme::FONT_S)
                                 .color(Theme::TEXT_MUTED),
                         );
                         for (i, recipe) in IR_BANK.iter().enumerate() {
@@ -1145,7 +1145,7 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                         Pos2::new(rect.min.x + 8.0, rect.min.y + 13.0),
                         egui::Align2::LEFT_CENTER,
                         pedal.name,
-                        egui::FontId::proportional(11.0),
+                        egui::FontId::proportional(Theme::FONT_S),
                         if pedal.enabled { Color32::BLACK } else { Theme::TEXT_MUTED },
                     );
 
@@ -1202,7 +1202,7 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                             let fill_w = gr_box.width() * gr_frac;
                             ui.painter().rect_filled(Rect::from_min_size(gr_box.min, Vec2::new(fill_w, gr_box.height())), Rounding::same(2.0), Theme::FL_ORANGE);
                             let gr_txt = if master_gr_db <= -0.05 { format!("GR {:.1} dB", master_gr_db) } else { "GR".to_string() };
-                            ui.painter().text(gr_box.center(), egui::Align2::CENTER_CENTER, gr_txt, egui::FontId::proportional(8.5), Color32::BLACK);
+                            ui.painter().text(gr_box.center(), egui::Align2::CENTER_CENTER, gr_txt, egui::FontId::proportional(Theme::FONT_XS), Color32::BLACK);
                         } else if pedal.id == "vocal_doubler" {
                             let (orb_box, _) = ui.allocate_exact_size(Vec2::new(card_w - 20.0, 45.0), Sense::hover());
                             ui.painter().rect_filled(orb_box, Rounding::same(4.0), Color32::from_rgb(12, 16, 24));
@@ -1233,7 +1233,7 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                         }
 
                         ui.add_space(4.0);
-                        ui.label(egui::RichText::new(pedal.category).size(9.0).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(pedal.category).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
                     });
                 }
 
@@ -1243,8 +1243,8 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                 let (add_rect, add_resp) = ui.allocate_exact_size(Vec2::new(add_w, add_h), Sense::click());
                 ui.painter().rect_filled(add_rect, Rounding::same(8.0), Color32::from_rgb(18, 22, 30));
                 ui.painter().rect_stroke(add_rect, Rounding::same(8.0), Stroke::new(1.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(45, 55, 75)).color));
-                ui.painter().text(add_rect.center() - Vec2::new(0.0, 15.0), egui::Align2::CENTER_CENTER, "➕", egui::FontId::proportional(26.0), Theme::FL_CYAN);
-                ui.painter().text(add_rect.center() + Vec2::new(0.0, 18.0), egui::Align2::CENTER_CENTER, crate::i18n::t("Lägg till från\nEffektbiblioteket"), egui::FontId::proportional(11.0), Theme::TEXT_BRIGHT);
+                ui.painter().text(add_rect.center() - Vec2::new(0.0, 15.0), egui::Align2::CENTER_CENTER, "➕", egui::FontId::proportional(Theme::FONT_XL), Theme::FL_CYAN);
+                ui.painter().text(add_rect.center() + Vec2::new(0.0, 18.0), egui::Align2::CENTER_CENTER, crate::i18n::t("Lägg till från\nEffektbiblioteket"), egui::FontId::proportional(Theme::FONT_S), Theme::TEXT_BRIGHT);
 
                 if add_resp.clicked() {
                     *active_tab = 2; // Switch to library
@@ -1259,9 +1259,9 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
 fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("📊 4-BANDS PARAMETRISK EQUALIZER")).strong().size(13.0).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("📊 4-BANDS PARAMETRISK EQUALIZER")).strong().size(Theme::FONT_M).color(Theme::FL_CYAN));
             ui.separator();
-            ui.label(egui::RichText::new(crate::i18n::t("Dra i noderna för att justera frekvens och förstärkning (dB)")).size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Dra i noderna för att justera frekvens och förstärkning (dB)")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
         });
 
         ui.add_space(4.0);
@@ -1282,7 +1282,7 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
             let y = mid_y - (db / 12.0) * (canvas_h * 0.42);
             let stroke_col = if db == 0.0 { Color32::from_rgb(50, 70, 95) } else { Color32::from_rgb(22, 30, 42) };
             painter.line_segment([Pos2::new(canvas_rect.min.x, y), Pos2::new(canvas_rect.max.x, y)], Stroke::new(1.0_f32, stroke_col));
-            painter.text(Pos2::new(canvas_rect.min.x + 6.0, y - 2.0), egui::Align2::LEFT_BOTTOM, format!("{:+1.0} dB", db), egui::FontId::proportional(8.5), Color32::from_rgb(80, 100, 125));
+            painter.text(Pos2::new(canvas_rect.min.x + 6.0, y - 2.0), egui::Align2::LEFT_BOTTOM, format!("{:+1.0} dB", db), egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(80, 100, 125));
         }
 
         // Draw frequency vertical grid lines (50Hz, 100Hz, 500Hz, 1kHz, 5kHz, 10kHz, 20kHz)
@@ -1298,7 +1298,7 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
             let x = freq_to_x(f);
             painter.line_segment([Pos2::new(x, canvas_rect.min.y), Pos2::new(x, canvas_rect.max.y)], Stroke::new(0.8_f32, Color32::from_rgb(20, 28, 40)));
             let label = if f >= 1000.0 { format!("{:.0}k", f / 1000.0) } else { format!("{:.0}", f) };
-            painter.text(Pos2::new(x, canvas_rect.max.y - 4.0), egui::Align2::CENTER_BOTTOM, label, egui::FontId::proportional(8.0), Color32::from_rgb(70, 85, 105));
+            painter.text(Pos2::new(x, canvas_rect.max.y - 4.0), egui::Align2::CENTER_BOTTOM, label, egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(70, 85, 105));
         }
 
         // Compute EQ curve points
@@ -1361,7 +1361,7 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
 
             painter.circle_filled(n_pos, if is_h { 9.0 } else { 7.0 }, node.color);
             painter.circle_stroke(n_pos, if is_h { 9.0 } else { 7.0 }, Stroke::new(1.5_f32, Color32::WHITE));
-            painter.text(n_pos + Vec2::new(0.0, -14.0), egui::Align2::CENTER_BOTTOM, format!("{:.0}Hz ({:+.1}dB)", node.freq_hz, node.gain_db), egui::FontId::proportional(9.0), Color32::WHITE);
+            painter.text(n_pos + Vec2::new(0.0, -14.0), egui::Align2::CENTER_BOTTOM, format!("{:.0}Hz ({:+.1}dB)", node.freq_hz, node.gain_db), egui::FontId::proportional(Theme::FONT_XS), Color32::WHITE);
         }
 
         ui.add_space(8.0);
@@ -1373,7 +1373,7 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut node.is_active, "");
-                            ui.label(egui::RichText::new(format!("{}. {}", idx + 1, node.name)).strong().size(11.0).color(node.color));
+                            ui.label(egui::RichText::new(format!("{}. {}", idx + 1, node.name)).strong().size(Theme::FONT_S).color(node.color));
                         });
                         ui.horizontal(|ui| {
                             rotary_knob(ui, &mut node.gain_db, -12.0, 12.0, "GAIN dB", node.color, 16.0);
@@ -1393,9 +1393,9 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
 fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_msg: &mut String) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🗂 EFFEKTBIBLIOTEK (EFFECTS LIBRARY)")).strong().size(13.0).color(Theme::FL_YELLOW));
+            ui.label(egui::RichText::new(crate::i18n::t("🗂 EFFEKTBIBLIOTEK (EFFECTS LIBRARY)")).strong().size(Theme::FONT_M).color(Theme::FL_YELLOW));
             ui.separator();
-            ui.label(egui::RichText::new(crate::i18n::t("Klicka på en effekt för att lägga till eller aktivera den i din aktiva kedja")).size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Klicka på en effekt för att lägga till eller aktivera den i din aktiva kedja")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
         });
 
         ui.add_space(4.0);
@@ -1428,7 +1428,7 @@ fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_ms
                 let chip_bg = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(28, 34, 46) };
                 let text_col = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
 
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(cat)).size(10.5).color(text_col)).fill(chip_bg)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(cat)).size(Theme::FONT_S).color(text_col)).fill(chip_bg)).clicked() {
                     state.selected_category = cat;
                 }
             }
@@ -1471,15 +1471,15 @@ fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_ms
 
                             card_ui.horizontal(|ui| {
                                 ui.vertical(|ui| {
-                                    ui.label(egui::RichText::new(pedal.name).strong().size(11.0).color(Theme::TEXT_BRIGHT));
-                                    ui.label(egui::RichText::new(crate::i18n::t(pedal.description)).size(9.5).color(Theme::TEXT_MUTED));
-                                    ui.label(egui::RichText::new(pedal.category).size(8.5).color(pedal.color));
+                                    ui.label(egui::RichText::new(pedal.name).strong().size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                                    ui.label(egui::RichText::new(crate::i18n::t(pedal.description)).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                                    ui.label(egui::RichText::new(pedal.category).size(Theme::FONT_XS).color(pedal.color));
                                 });
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     let btn_txt = if pedal.enabled { crate::i18n::t("✔ På") } else { crate::i18n::t("➕ Lägg till") };
                                     let btn_bg = if pedal.enabled { Theme::FL_GREEN } else { Color32::from_rgb(45, 60, 85) };
-                                    if ui.add(egui::Button::new(egui::RichText::new(btn_txt).size(10.0).color(Color32::WHITE)).fill(btn_bg)).clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(btn_txt).size(Theme::FONT_S).color(Color32::WHITE)).fill(btn_bg)).clicked() {
                                         pedal.enabled = !pedal.enabled;
                                         *status_msg = crate::tstatus!("🎛 Ändrade status för {}", pedal.name);
                                     }

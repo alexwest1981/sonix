@@ -8,6 +8,7 @@
 //! Rör inte: \`tempo_map\` är enda källan till takt↔tid; gå inte förbi den med egen matematik.
 
 use super::*;
+use crate::ui::theme::Theme;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct StretchPiece {
@@ -425,7 +426,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                 following,
                 known
             ))
-            .size(11.0)
+            .size(Theme::FONT_S)
             .color(if stuck == 0 { Theme::FL_GREEN } else { Theme::TEXT_BRIGHT }));
             if unknown > 0 {
                 // Tempot räknas ur klippens eget mått när det går (Fas 8.10): takter
@@ -459,7 +460,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                             "🧮 Räknat ur klippens takter och filernas längd: {:.1} BPM — det tempo klippen LADES UT i. Är ett klipp klippt i är talet för lågt; hörs musiken i ett annat tempo än projektet står i, sätt projektets tempo till musikens först.",
                             bpm
                         ))
-                        .size(9.5)
+                        .size(Theme::FONT_XS)
                         .color(Theme::TEXT_MUTED),
                     );
                 }
@@ -467,7 +468,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                     egui::RichText::new(crate::i18n::t(
                         "Klipp utan känt inspelningstempo (importerade i ett äldre projekt, eller från biblioteket) står still när tempot ändras — de sträcks aldrig i smyg.",
                     ))
-                    .size(9.5)
+                    .size(Theme::FONT_XS)
                     .color(Theme::TEXT_MUTED),
                 );
             }
@@ -502,7 +503,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                 // ingen säger något om ser ut som att ingenting händer.
                 ui.label(
                     egui::RichText::new(crate::tstatus!("⏳ Sträcker {} klipp …", pending))
-                        .size(9.5)
+                        .size(Theme::FONT_XS)
                         .color(Theme::TEXT_MUTED),
                 );
                 ui.add_space(6.0);
@@ -517,7 +518,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                     egui::RichText::new(crate::i18n::t(
                         "Högerklicka på taktlinjalen för att sätta ett byte.",
                     ))
-                    .size(9.5)
+                    .size(Theme::FONT_XS)
                     .color(Theme::TEXT_MUTED),
                 );
                 return;
@@ -552,7 +553,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                         } else {
                             ui.label(
                                 egui::RichText::new(crate::i18n::t("(start)"))
-                                    .size(9.5)
+                                    .size(Theme::FONT_XS)
                                     .color(Theme::TEXT_MUTED),
                             );
                         }
@@ -564,7 +565,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                 egui::RichText::new(crate::i18n::t(
                     "Högerklicka på taktlinjalen för att lägga till eller ta bort.",
                 ))
-                .size(9.5)
+                .size(Theme::FONT_XS)
                 .color(Theme::TEXT_MUTED),
             );
         });

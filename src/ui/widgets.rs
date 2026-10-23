@@ -137,7 +137,7 @@ fn rotary_knob_impl(
         text_pos,
         egui::Align2::CENTER_CENTER,
         label,
-        egui::FontId::proportional(10.0),
+        egui::FontId::proportional(Theme::FONT_S),
         Theme::TEXT_MUTED,
     );
 
@@ -310,7 +310,7 @@ pub fn vertical_fader(
             Pos2::new(fader_rect.min.x + 1.0, y),
             egui::Align2::LEFT_CENTER,
             m_txt,
-            egui::FontId::proportional(8.0),
+            egui::FontId::proportional(Theme::FONT_XS),
             m_col,
         );
     }
@@ -438,9 +438,9 @@ pub fn eq_curve_visualizer(
     painter.add(egui::Shape::line(curve_pts, Stroke::new(2.0_f32, Theme::FL_ORANGE)));
 
     // Frequency labels
-    painter.text(Pos2::new(rect.min.x + 8.0, rect.max.y - 10.0), egui::Align2::LEFT_CENTER, "LOW (100Hz)", egui::FontId::proportional(9.0), Theme::TEXT_MUTED);
-    painter.text(Pos2::new(rect.center().x, rect.max.y - 10.0), egui::Align2::CENTER_CENTER, "MID (1kHz)", egui::FontId::proportional(9.0), Theme::TEXT_MUTED);
-    painter.text(Pos2::new(rect.max.x - 8.0, rect.max.y - 10.0), egui::Align2::RIGHT_CENTER, "HIGH (10kHz)", egui::FontId::proportional(9.0), Theme::TEXT_MUTED);
+    painter.text(Pos2::new(rect.min.x + 8.0, rect.max.y - 10.0), egui::Align2::LEFT_CENTER, "LOW (100Hz)", egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
+    painter.text(Pos2::new(rect.center().x, rect.max.y - 10.0), egui::Align2::CENTER_CENTER, "MID (1kHz)", egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
+    painter.text(Pos2::new(rect.max.x - 8.0, rect.max.y - 10.0), egui::Align2::RIGHT_CENTER, "HIGH (10kHz)", egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
 
     changed
 }
@@ -521,10 +521,10 @@ pub fn drummer_xy_matrix(
     painter.circle_stroke(center, rect.height() * 0.42, Stroke::new(1.0_f32, Color32::from_rgb(26, 34, 46)));
 
     // 3. Axis Edge Labels (Loud, Soft, Simple, Complex)
-    painter.text(Pos2::new(center.x, rect.min.y + 12.0), egui::Align2::CENTER_CENTER, "LOUD", egui::FontId::proportional(11.0), Color32::from_rgb(220, 230, 245));
-    painter.text(Pos2::new(center.x, rect.max.y - 12.0), egui::Align2::CENTER_CENTER, "SOFT", egui::FontId::proportional(11.0), Color32::from_rgb(120, 135, 155));
-    painter.text(Pos2::new(rect.min.x + 32.0, center.y), egui::Align2::CENTER_CENTER, "SIMPLE", egui::FontId::proportional(11.0), Color32::from_rgb(120, 135, 155));
-    painter.text(Pos2::new(rect.max.x - 36.0, center.y), egui::Align2::CENTER_CENTER, "COMPLEX", egui::FontId::proportional(11.0), Color32::from_rgb(220, 230, 245));
+    painter.text(Pos2::new(center.x, rect.min.y + 12.0), egui::Align2::CENTER_CENTER, "LOUD", egui::FontId::proportional(Theme::FONT_S), Color32::from_rgb(220, 230, 245));
+    painter.text(Pos2::new(center.x, rect.max.y - 12.0), egui::Align2::CENTER_CENTER, "SOFT", egui::FontId::proportional(Theme::FONT_S), Color32::from_rgb(120, 135, 155));
+    painter.text(Pos2::new(rect.min.x + 32.0, center.y), egui::Align2::CENTER_CENTER, "SIMPLE", egui::FontId::proportional(Theme::FONT_S), Color32::from_rgb(120, 135, 155));
+    painter.text(Pos2::new(rect.max.x - 36.0, center.y), egui::Align2::CENTER_CENTER, "COMPLEX", egui::FontId::proportional(Theme::FONT_S), Color32::from_rgb(220, 230, 245));
 
     // 4. Draggable Glowing Yellow Puck
     let puck_x = rect.min.x + *complexity * rect.width();
@@ -592,7 +592,7 @@ pub fn alchemy_transform_matrix(
 
         // Label offset slightly outward
         let text_p = Pos2::new(center.x + angle.cos() * (pad_radius + 24.0), center.y + angle.sin() * (pad_radius + 16.0));
-        painter.text(text_p, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(9.0), Color32::from_rgb(180, 220, 240));
+        painter.text(text_p, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(180, 220, 240));
         painter.line_segment([center, p], Stroke::new(1.0_f32, Color32::from_rgb(24, 38, 50)));
     }
 
@@ -642,7 +642,7 @@ pub fn stereo_meter(ui: &mut Ui, left: f32, right: f32, size: Vec2) {
             Pos2::new(inner.min.x + 1.0, y + bar_h * 0.5),
             egui::Align2::LEFT_CENTER,
             channel,
-            egui::FontId::proportional(7.5),
+            egui::FontId::proportional(Theme::FONT_XS),
             Color32::from_rgb(150, 160, 180),
         );
 
@@ -725,7 +725,7 @@ pub fn register_eq(ui: &mut Ui, levels: &[f32], labels: &[&str], size: Vec2) {
                 Pos2::new(x + bar_w * 0.5, rect.max.y - 1.0),
                 egui::Align2::CENTER_BOTTOM,
                 *name,
-                egui::FontId::proportional(7.0),
+                egui::FontId::proportional(Theme::FONT_XS),
                 Color32::from_rgb(120, 132, 150),
             );
         }

@@ -7,6 +7,7 @@
 //! ruta efter än en uppspelning som hackar.
 
 use eframe::egui;
+use crate::ui::theme::Theme;
 
 /// Allt videovyn minns mellan bildrutor.
 #[derive(Default)]
@@ -89,7 +90,7 @@ pub fn render_video_view(
             ui.label(
                 egui::RichText::new(crate::i18n::t("🎬 VIDEO (referensbild)"))
                     .strong()
-                    .size(13.0)
+                    .size(Theme::FONT_M)
                     .color(crate::ui::theme::Theme::FL_CYAN),
             );
             ui.separator();
@@ -165,7 +166,7 @@ pub fn render_video_view(
         if is_playing && state.info.is_some() {
             ui.label(
                 egui::RichText::new(crate::i18n::t("Spår: bildrutan följer uppspelningen"))
-                    .size(10.0)
+                    .size(Theme::FONT_S)
                     .color(crate::ui::theme::Theme::TEXT_MUTED),
             );
         }

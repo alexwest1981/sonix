@@ -262,9 +262,9 @@ pub fn render_dice_generator_modal(
             ui.vertical(|ui| {
                 // Header
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("🎲 SPARK & GENERATOR")).strong().size(14.0).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎲 SPARK & GENERATOR")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
                     ui.separator();
-                    ui.label(egui::RichText::new(crate::i18n::t("Slumpa vilda melodier, unika grooves, trap-rolls och basgångar med 1 klick")).size(10.5).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Slumpa vilda melodier, unika grooves, trap-rolls och basgångar med 1 klick")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(4.0);
@@ -282,7 +282,7 @@ pub fn render_dice_generator_modal(
                         let is_sel = state.category == cat;
                         let bg = if is_sel { Theme::FL_ORANGE } else { Color32::from_rgb(26, 30, 38) };
                         let fg = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
-                        if ui.add(egui::Button::new(egui::RichText::new(label).strong().size(11.0).color(fg)).fill(bg)).clicked() {
+                        if ui.add(egui::Button::new(egui::RichText::new(label).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                             state.category = cat;
                             state.roll_dice();
                         }
@@ -369,7 +369,7 @@ pub fn render_dice_generator_modal(
                                 Pos2::new(sx + 3.0, canvas_rect.min.y + 10.0),
                                 egui::Align2::LEFT_CENTER,
                                 format!("{}", (s / 4) + 1),
-                                egui::FontId::proportional(9.0),
+                                egui::FontId::proportional(Theme::FONT_XS),
                                 Theme::TEXT_MUTED,
                             );
                         }
@@ -387,7 +387,7 @@ pub fn render_dice_generator_modal(
                                 Pos2::new(canvas_rect.min.x + 4.0, ly + lane_h * 0.5),
                                 egui::Align2::LEFT_CENTER,
                                 drum_names[d],
-                                egui::FontId::proportional(8.5),
+                                egui::FontId::proportional(Theme::FONT_XS),
                                 drum_colors[d],
                             );
 
@@ -415,7 +415,7 @@ pub fn render_dice_generator_modal(
                                 Pos2::new(note_rect.min.x + 3.0, note_rect.center().y),
                                 egui::Align2::LEFT_CENTER,
                                 n_name,
-                                egui::FontId::proportional(8.5),
+                                egui::FontId::proportional(Theme::FONT_XS),
                                 Color32::BLACK,
                             );
                         }

@@ -140,7 +140,7 @@ pub fn render_song_structure_modal(
             ui.vertical(|ui| {
                 // Header bar
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("📑 STRUKTUR- & ARRANGEMANGSBYGGARE")).strong().size(14.0).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("📑 STRUKTUR- & ARRANGEMANGSBYGGARE")).strong().size(Theme::FONT_L).color(Theme::FL_CYAN));
                     ui.separator();
                     ui.label(egui::RichText::new(format!("{} {} {} • {} {:02}:{:02} @ {:.1} BPM", crate::i18n::t("Totalt:"), tot_bars, crate::i18n::t("takter"), crate::i18n::t("Tid:"), mins, secs, bpm)).strong().color(Theme::FL_ORANGE));
                 });
@@ -199,7 +199,7 @@ pub fn render_song_structure_modal(
                                 sec_rect.center(),
                                 egui::Align2::CENTER_CENTER,
                                 &sec.name,
-                                egui::FontId::proportional(10.0),
+                                egui::FontId::proportional(Theme::FONT_S),
                                 Color32::BLACK,
                             );
                         }

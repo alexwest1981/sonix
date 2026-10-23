@@ -26,4 +26,10 @@ impl Theme {
     pub const TEXT_BRIGHT: Color32 = Color32::from_rgb(240, 244, 250);
     pub const TEXT_MUTED: Color32 = Color32::from_rgb(140, 150, 168);
     pub const BORDER_DARK: Color32 = Color32::from_rgb(45, 52, 65);
+    // Typografisk skala: fem steg. All text sätts härifrån — aldrig som en literal.
+    pub const FONT_XS: f32 = 9.0;
+    pub const FONT_S: f32 = 11.0;
+    pub const FONT_M: f32 = 13.0;
+    pub const FONT_L: f32 = 16.0;
+    pub const FONT_XL: f32 = 22.0;
 }

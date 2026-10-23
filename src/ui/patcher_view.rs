@@ -22,9 +22,9 @@ pub fn render_patcher_view(
     let mut actions = PatcherActions::default();
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🧩 MODULAR PATCHER & THE GRID (Bitwig & FL Patcher Style)")).strong().size(13.5).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("🧩 MODULAR PATCHER & THE GRID (Bitwig & FL Patcher Style)")).strong().size(Theme::FONT_M).color(Theme::FL_CYAN));
             ui.separator();
-            ui.label(egui::RichText::new(crate::i18n::t("Visuell modulär miljö: Koppla ihop ljudsignaler, syntmoduler, filter och LFO med virtuella kablar")).size(11.0).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Visuell modulär miljö: Koppla ihop ljudsignaler, syntmoduler, filter och LFO med virtuella kablar")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(crate::i18n::t("🔄 Återställ Standard-patch")).clicked() {
@@ -44,7 +44,7 @@ pub fn render_patcher_view(
 
         // Test keyboard: drives the patcher's MidiIn node with real notes.
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🎹 Testa patchen:")).strong().size(11.0).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🎹 Testa patchen:")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
             let notes: [u8; 15] = [48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72];
             let mut any_down = false;
             for (i, note) in notes.iter().enumerate() {
@@ -67,7 +67,7 @@ pub fn render_patcher_view(
 
         // Quick Node Creation Toolbar
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("➕ Lägg till modul:")).strong().size(11.0).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("➕ Lägg till modul:")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
             if ui.button(crate::i18n::t("+ 🔊 Oscillator")).clicked() {
                 graph.add_node(NodeType::Oscillator, Pos2::new(180.0, 60.0));
             }
@@ -95,7 +95,7 @@ pub fn render_patcher_view(
 
         if graph.has_cycle() {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("⚠ Återkoppling/cykel i patchen: en eller flera kablar bildar en slinga. Noderna körs ändå, men ordningen kan bli fel — ta bort en kabel i slingan.")).size(11.0).color(Theme::FL_YELLOW));
+                ui.label(egui::RichText::new(crate::i18n::t("⚠ Återkoppling/cykel i patchen: en eller flera kablar bildar en slinga. Noderna körs ändå, men ordningen kan bli fel — ta bort en kabel i slingan.")).size(Theme::FONT_S).color(Theme::FL_YELLOW));
             });
             ui.add_space(4.0);
         }
@@ -201,7 +201,7 @@ pub fn render_patcher_view(
 
             // Node Header
             painter.rect_filled(header_rect, Rounding { nw: 6.0, ne: 6.0, sw: 0.0, se: 0.0 }, color);
-            painter.text(header_rect.center(), egui::Align2::CENTER_CENTER, &title, egui::FontId::proportional(11.0), Color32::BLACK);
+            painter.text(header_rect.center(), egui::Align2::CENTER_CENTER, &title, egui::FontId::proportional(Theme::FONT_S), Color32::BLACK);
 
             // Input Pins (Left)
             for (p_idx, pin_name) in in_pins.iter().enumerate() {
@@ -213,7 +213,7 @@ pub fn render_patcher_view(
 
                 painter.circle_filled(pin_screen_pos, 5.0, pin_fill);
                 painter.circle_stroke(pin_screen_pos, 5.0, Stroke::new(1.5_f32, Theme::FL_CYAN));
-                painter.text(Pos2::new(pin_screen_pos.x + 9.0, pin_screen_pos.y), egui::Align2::LEFT_CENTER, *pin_name, egui::FontId::proportional(9.0), Color32::from_rgb(180, 200, 220));
+                painter.text(Pos2::new(pin_screen_pos.x + 9.0, pin_screen_pos.y), egui::Align2::LEFT_CENTER, *pin_name, egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(180, 200, 220));
 
                 // Check connect on release
                 if is_hovered && response.drag_stopped() {
@@ -234,7 +234,7 @@ pub fn render_patcher_view(
 
                 painter.circle_filled(pin_screen_pos, 5.0, pin_fill);
                 painter.circle_stroke(pin_screen_pos, 5.0, Stroke::new(1.5_f32, Theme::FL_ORANGE));
-                painter.text(Pos2::new(pin_screen_pos.x - 9.0, pin_screen_pos.y), egui::Align2::RIGHT_CENTER, *pin_name, egui::FontId::proportional(9.0), Color32::from_rgb(220, 210, 180));
+                painter.text(Pos2::new(pin_screen_pos.x - 9.0, pin_screen_pos.y), egui::Align2::RIGHT_CENTER, *pin_name, egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(220, 210, 180));
 
                 // Check click start drag
                 if is_hovered && response.drag_started() {

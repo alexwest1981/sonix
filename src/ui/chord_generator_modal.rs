@@ -241,9 +241,9 @@ pub fn render_chord_generator_modal(
             ui.vertical(|ui| {
                 // Header bar
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("MUSIKTEORI & HARMONIK")).strong().size(14.0).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("MUSIKTEORI & HARMONIK")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
                     ui.separator();
-                    ui.label(egui::RichText::new(crate::i18n::t("Klicka på ackordplattorna för att spela live • Skapa magiska ackordföljder")).size(11.0).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Klicka på ackordplattorna för att spela live • Skapa magiska ackordföljder")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 });
 
                 ui.add_space(4.0);
@@ -256,7 +256,7 @@ pub fn render_chord_generator_modal(
                             let is_sel = state.root_note == idx as u8;
                             let btn_col = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(32, 36, 44) };
                             let txt_col = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
-                            if ui.add(egui::Button::new(egui::RichText::new(name).strong().size(11.0).color(txt_col)).fill(btn_col)).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(name).strong().size(Theme::FONT_S).color(txt_col)).fill(btn_col)).clicked() {
                                 state.root_note = idx as u8;
                                 state.load_progression_preset(state.selected_progression_preset);
                             }
@@ -353,7 +353,7 @@ pub fn render_chord_generator_modal(
                                 rect.min + Vec2::new(8.0, 14.0),
                                 egui::Align2::LEFT_CENTER,
                                 &chord.roman,
-                                egui::FontId::proportional(12.0),
+                                egui::FontId::proportional(Theme::FONT_S),
                                 chord.color,
                             );
 
@@ -362,7 +362,7 @@ pub fn render_chord_generator_modal(
                                 rect.center() + Vec2::new(0.0, -2.0),
                                 egui::Align2::CENTER_CENTER,
                                 &chord.name,
-                                egui::FontId::proportional(15.0),
+                                egui::FontId::proportional(Theme::FONT_L),
                                 Color32::WHITE,
                             );
 
@@ -372,7 +372,7 @@ pub fn render_chord_generator_modal(
                                 rect.min + Vec2::new(8.0, pad_h - 12.0),
                                 egui::Align2::LEFT_CENTER,
                                 note_names_str,
-                                egui::FontId::proportional(9.5),
+                                egui::FontId::proportional(Theme::FONT_XS),
                                 Theme::TEXT_MUTED,
                             );
 
@@ -435,7 +435,7 @@ pub fn render_chord_generator_modal(
                                     Pos2::new(c_rect.min.x + 8.0, c_rect.min.y + 12.0),
                                     egui::Align2::LEFT_CENTER,
                                     format!("{} {}", crate::i18n::t("Takt"), c_idx + 1),
-                                    egui::FontId::proportional(9.5),
+                                    egui::FontId::proportional(Theme::FONT_XS),
                                     Theme::TEXT_MUTED,
                                 );
 
@@ -443,7 +443,7 @@ pub fn render_chord_generator_modal(
                                     Pos2::new(c_rect.min.x + 8.0, c_rect.min.y + 28.0),
                                     egui::Align2::LEFT_CENTER,
                                     &ch.name,
-                                    egui::FontId::proportional(13.0),
+                                    egui::FontId::proportional(Theme::FONT_M),
                                     Color32::WHITE,
                                 );
 

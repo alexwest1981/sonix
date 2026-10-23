@@ -8,6 +8,7 @@
 //! Rör inte: `notes_by_bar`/`pattern_bar_notes` är samma notbild som exporten skriver.
 
 use super::*;
+use crate::ui::theme::Theme;
 
 /// Standardnotnummer per trumkanal (kanal 0–5) — samma som trumspåret använder
 /// när en kanal saknar eget sample.
@@ -480,7 +481,7 @@ pub(crate) fn render_midi_import_modal(&mut self, ctx: &egui::Context) {
                 egui::RichText::new(crate::i18n::t(
                     "Noterna läggs i det valda patternet (första takten). Trummor går till trumkanalerna, toner till piano-rollen.",
                 ))
-                .size(11.5)
+                .size(Theme::FONT_S)
                 .color(Theme::TEXT_BRIGHT),
             );
             ui.add_space(6.0);
@@ -503,7 +504,7 @@ pub(crate) fn render_midi_import_modal(&mut self, ctx: &egui::Context) {
                 ui.add_space(4.0);
                 ui.label(
                     egui::RichText::new(crate::tstatus!("Målpattern: '{}'", target))
-                        .size(11.0)
+                        .size(Theme::FONT_S)
                         .color(Theme::FL_CYAN),
                 );
             }
