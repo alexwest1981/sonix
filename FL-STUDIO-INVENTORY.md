@@ -187,7 +187,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | EQUO | 2 | ◐ | EQ:n |
 | Effector | 2 | ✅ | `Effector` — XY-yta över fyra lägen (svep, upprepning, port, kross); X och Y styr respektive krets |
 | Frequency Splitter | 2 | ◐ | crossovern i multibandskompressorn |
-| Fruity Big Clock | 2 | ✗ | stor klocka |
+| Fruity Big Clock | 2 | ✅ | `ui::big_clock` + **⏱ Stor klocka** i menyn: takt.slag.steg i 72 px och spelad tid (`m:ss.mmm`) i 40 px, räknat ur `current_step` och tempot. Prov: steg 16 vid 120 BPM → `2.1.1` / `0:02.000` |
 | Fruity Delay 2 | 2 | ✅ | StereoDelay |
 | Fruity Delay Bank | 2 | ✅ | `DelayBank` — tre linjer med egen tid och nivå, återkoppling, stereospridning |
 | Fruity Fast Dist | 2 | ✅ | saturatorn |
@@ -247,7 +247,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Razer Chroma | 1 | ✗ | RGB-synk |
 | Transient Processor | 1 | ✅ | transient-shapern (byggd i dag) |
 | Transmitter | 1 | ✅ | data → ljud: händelser, förval och wav (`ade2c1a`) |
-| Transporter | 1 | ✗ | dito, äldre |
+| Transporter | 1 | ✅ | samma fönster som Big Clock — FL:s äldre variant visar samma två tal |
 | Tuner | 1 | ✅ | tuner_modal |
 | VFX Color Mapper | 1 | ✗ | not → färg/färg → parameter |
 | VFX Envelope | 1 | ✅ | `ModSource::Adsr` — attack/decay/sustain/release som modulationskälla, med `ModMatrix::note_off` kopplad till `AudioCommand::NoteOff`. Prov: 0,50 → 0,89 → 0,50 (sustain), och under 0,05 efter not-av |

@@ -945,6 +945,10 @@ impl SonixApp {
                             self.show_tuner_modal = true;
                             ui.close_menu();
                         }
+                        if ui.button(self.tr("⏱ Stor klocka...")).clicked() {
+                            self.show_big_clock = true;
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("📑 Låtstruktur & Formdelar...")).clicked() {
                             self.show_song_structure_modal = true;
                             ui.close_menu();

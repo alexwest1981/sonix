@@ -3453,6 +3453,7 @@ impl SonixApp {
             || self.show_mic_settings_modal
             || self.show_chord_generator_modal
             || self.show_tuner_modal
+            || self.show_big_clock
             || self.show_dice_generator_modal
             || self.show_fx_rack_modal
             || self.show_tempo_modal
@@ -3543,6 +3544,38 @@ impl SonixApp {
         }
     }
 
+    /// **Stor klocka** (FL:s Big Clock): takt.slag.steg och spelad tid i stor stil.
+    pub(crate) fn render_big_clock(&mut self, ctx: &egui::Context) {
+        if !self.show_big_clock {
+            return;
+        }
+        let mut open = self.show_big_clock;
+        let position = crate::ui::big_clock::bar_beat_step(self.current_step);
+        let time = crate::ui::big_clock::elapsed_time(self.current_step, self.bpm);
+        egui::Window::new(crate::i18n::t("⏱ Stor klocka"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_size(Vec2::new(420.0, 210.0))
+            .show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(position)
+                            .monospace()
+                            .size(72.0)
+                            .color(Theme::FL_GREEN),
+                    );
+                    ui.label(
+                        egui::RichText::new(time)
+                            .monospace()
+                            .size(40.0)
+                            .color(Theme::TEXT_BRIGHT),
+                    );
+                });
+            });
+        self.show_big_clock = open;
+    }
+
     /// Alla dialoger, i den ordning de läggs ovanpå varandra.
     pub(crate) fn render_all_modals(&mut self, ctx: &egui::Context) {
         // En dialog ska vara det enda som lyser: resten av ytan dämpas.
@@ -3572,6 +3605,7 @@ impl SonixApp {
         self.render_mic_settings_modal(ctx);
         self.render_chord_generator_modal_view(ctx);
         self.render_tuner_modal_view(ctx);
+        self.render_big_clock(ctx);
         self.render_dice_generator_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);

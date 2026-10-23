@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⏱ Stor klocka..." => "⏱ Big clock...",
+        "⏱ Stor klocka" => "⏱ Big clock",
         "Välj en annan mapp" => "Choose another folder",
         "Lyssna på mallen" => "Preview the groove",
         "▶ mall '{}' ({} noter)" => "▶ groove '{}' ({} notes)",
@@ -2648,6 +2650,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⏱ Stor klocka..." => "⏱ Stor ur...",
+        "⏱ Stor klocka" => "⏱ Stor ur",
         "Välj en annan mapp" => "Vælg en anden mappe",
         "Lyssna på mallen" => "Lyt til mallen",
         "▶ mall '{}' ({} noter)" => "▶ mall '{}' ({} noder)",
@@ -4879,6 +4883,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⏱ Stor klocka..." => "⏱ Stor klokke...",
+        "⏱ Stor klocka" => "⏱ Stor klokke",
         "Välj en annan mapp" => "Velg en annen mappe",
         "Lyssna på mallen" => "Lytt til malen",
         "▶ mall '{}' ({} noter)" => "▶ mal '{}' ({} noter)",
@@ -7110,6 +7116,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⏱ Stor klocka..." => "⏱ Große Uhr...",
+        "⏱ Stor klocka" => "⏱ Große Uhr",
         "Välj en annan mapp" => "Anderen Ordner wählen",
         "Lyssna på mallen" => "Groove anhören",
         "▶ mall '{}' ({} noter)" => "▶ Groove '{}' ({} Noten)",
@@ -9341,6 +9349,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⏱ Stor klocka..." => "⏱ Reloj grande...",
+        "⏱ Stor klocka" => "⏱ Reloj grande",
         "Välj en annan mapp" => "Elegir otra carpeta",
         "Lyssna på mallen" => "Escuchar el patrón",
         "▶ mall '{}' ({} noter)" => "▶ patrón '{}' ({} notas)",
@@ -11572,6 +11582,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⏱ Stor klocka..." => "⏱ Grande horloge...",
+        "⏱ Stor klocka" => "⏱ Grande horloge",
         "Välj en annan mapp" => "Choisir un autre dossier",
         "Lyssna på mallen" => "Écouter le groove",
         "▶ mall '{}' ({} noter)" => "▶ groove '{}' ({} notes)",
