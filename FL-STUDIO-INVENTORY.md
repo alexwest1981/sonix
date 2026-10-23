@@ -112,7 +112,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Plugin | Filer | Sonix | Kommentar |
 | :--- | ---: | :---: | :--- |
 | FL Studio Mobile | 344 | ✗ | mobil-appens rack; ingen motsvarighet |
-| Morphine | 199 | ◐ |  + : två additiva operatorkällor (glasig, rörledad) och ett läge 0–1 mellan dem, mätt att läget är exakt vid 0 och 1 och linjärt emellan. ✗ fyra operatorkällor, egna modulationskedjor och de 199 förvalen |
+| Morphine | 199 | ◐ | `instruments::morph_spectrum` + `Preset::Morph`: två additiva operatorkällor (glasig, rörledad) och ett läge 0–1 mellan dem — exakt vid 0 och 1, linjärt emellan (provat). ✗ fyra operatorkällor, egna modulationskedjor och de 199 förvalen |
 | Harmor | 164 | ✗ | spektral/additiv, bildanalys, .fnv-envelopes |
 | Dashboard | 90 | ◐ | Patch-modulen ritar en egen graf, men ingen panel med rattar |
 | Toxic Biohazard | 78 | ◐ | tvåoperator-FM finns i synten sedan i dag, inte 6-op modell |
