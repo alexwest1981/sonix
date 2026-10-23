@@ -4,6 +4,9 @@
 //!   en synth med 4 miljarder ljud och ingen ratt — det är samma sak som att slumpa ett förval.
 //! - **BeepMap**: gör deltonsnivåer av en bild. Här är "bilden" rådata: varje byte blir en
 //!   deltons styrka. Det gör funktionen mätbar utan en bildavkodare i beroendelistan.
+//! - **Transmitter**: data blir ljud — händelser ur bytepar, och samma data som ett spelbart ljud.
+
+#![allow(dead_code, reason = "transmittern anropas ännu bara från sina prov; kopplingen till UI:t kommer efter")]
 
 use crate::audio::command::{PresetSettings, Waveform};
 use crate::audio::filter::FilterParams;
@@ -122,6 +125,76 @@ pub fn beepmap_amplitudes(data: &[u8]) -> [f32; HARMONIC_COUNT] {
     levels
 }
 
+/// Transmitterns grundton när ingen annan anges (A3).
+pub const TRANSMITTER_BASE_HZ: f32 = 220.0;
+
+/// **Transmitter**: data blir ljud. Varje bytepar blir en händelse — tonhöjd ur den första byten
+/// (12 steg per oktav, så 12 bytar = en oktav) och längd ur den andra. Händelserna lämnas som en
+/// platt parlista `hz, sek, hz, sek, …` i stället för en egen struktur, så att en spelare som redan
+/// tar tal kan spela dem direkt. En udda sista byte blir ingen händelse.
+pub fn transmitter(data: &[u8], base_hz: f32) -> Vec<f32> {
+    data.chunks_exact(2)
+        .flat_map(|p| {
+            [
+                base_hz * 2.0f32.powf(p[0] as f32 / 12.0),
+                // 10 ms–510 ms: kortare hörs inte som en ton, längre gör datan olidlig.
+                0.01 + p[1] as f32 / 255.0 * 0.5,
+            ]
+        })
+        .collect()
+}
+
+/// **Transmitter som förval**: spektret är `beepmap` av samma data, och filtret följer datans
+/// medelvärde — starkare data öppnar filtret, som en mätare över materialet.
+pub fn transmitter_to_settings(data: &[u8]) -> PresetSettings {
+    let mean = if data.is_empty() {
+        0.0
+    } else {
+        data.iter().map(|b| *b as f32).sum::<f32>() / data.len() as f32
+    };
+    PresetSettings {
+        waveform: Waveform::Additive,
+        adsr: AdsrParams { attack: 0.005, decay: 0.2, sustain: 0.6, release: 0.3 },
+        // 200 Hz–12 kHz, samma spann som autogun: under 200 blir det tyst, över 12 kHz hörs inget.
+        filter: FilterParams { cutoff: 200.0 * 60.0f32.powf(mean / 255.0), resonance: 0.2 },
+        filter_env_amount: 0.3,
+        sub: 0.0,
+        unison: 1,
+        detune: 0.0,
+        glide: 0.0,
+        drive: 0.0,
+        harmonics: beepmap_amplitudes(data),
+    }
+}
+
+/// **Transmitter som fil**: händelserna renderade till mono, en sinus per händelse med 5 ms attack
+/// och 30 ms släpp så att bytena inte klickar. Händelsegränserna räknas i sampel ur den löpande
+/// tiden, så längden blir summan av längderna och inte en summa av avrundningar.
+pub fn transmitter_wav(data: &[u8], sample_rate: u32) -> Vec<f32> {
+    let events = transmitter(data, TRANSMITTER_BASE_HZ);
+    if sample_rate == 0 || events.is_empty() {
+        return Vec::new();
+    }
+    let sr = sample_rate as f32;
+    let (attack, release) = (0.005 * sr, 0.030 * sr);
+    let mut out = Vec::new();
+    let mut at = 0.0f32; // händelsens början i sekunder
+    for e in events.chunks_exact(2) {
+        let (hz, secs) = (e[0], e[1]);
+        let start = (at * sr).round() as usize;
+        let end = ((at + secs) * sr).round() as usize;
+        out.resize(end, 0.0);
+        let len = end - start;
+        for (i, s) in out[start..end].iter_mut().enumerate() {
+            // Kortare händelser än attack+släpp får en triangel i stället för att klippas.
+            let gain = (i as f32 / attack).min((len - i) as f32 / release).min(1.0);
+            *s = (i as f32 / sr * hz * std::f32::consts::TAU).sin() * gain;
+        }
+        at += secs;
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -196,4 +269,54 @@ mod tests {
         assert_eq!(preset.harmonics, mid);
     }
 
+    /// **En händelse per bytepar**, och tolv bytar är en oktav — byte 12 ligger exakt en oktan
+    /// över byte 0.
+    #[test]
+    fn transmitter_makes_one_event_per_byte_pair() {
+        let ev = transmitter(&[12, 200, 0, 10, 60, 5], 220.0);
+        assert_eq!(ev.len(), 6, "två tal per händelse, tre händelser");
+        assert_eq!(ev[0], 2.0 * ev[2], "byte 12 ska vara dubbla byte 0: {} vs {}", ev[0], ev[2]);
+        assert!((ev[2] - 220.0).abs() < 1e-3, "byte 0 ska vara grundtonen: {}", ev[2]);
+        // En udda sista byte blir ingen händelse.
+        assert_eq!(transmitter(&[12, 1, 3], 220.0).len(), 2);
+    }
+
+    /// **Förvalet lånar beepmap** i stället för att räkna spektret en gång till, och starkare data
+    /// öppnar filtret.
+    #[test]
+    fn transmitter_settings_take_their_spectrum_from_beepmap() {
+        let data = [0u8, 90, 200, 30];
+        let p = transmitter_to_settings(&data);
+        assert_eq!(p.waveform, Waveform::Additive);
+        assert_eq!(p.harmonics, beepmap_amplitudes(&data), "spektret ska komma ur beepmap");
+        let loud = transmitter_to_settings(&[200u8; 8]).filter.cutoff;
+        let quiet = transmitter_to_settings(&[10u8; 8]).filter.cutoff;
+        assert!(loud > quiet, "högre medelvärde ska öppna filtret: {loud} vs {quiet}");
+        assert!(quiet >= 200.0);
+    }
+
+    /// **Wav-längden är summan av händelselängderna**, och ljudet ligger inom ±1.
+    #[test]
+    fn transmitter_wav_length_matches_event_durations() {
+        let data: Vec<u8> = (0..40u8).collect();
+        let ev = transmitter(&data, TRANSMITTER_BASE_HZ);
+        let total: f32 = ev.iter().skip(1).step_by(2).sum();
+        let wav = transmitter_wav(&data, 44_100);
+        let expected = total * 44_100.0;
+        assert!((wav.len() as f32 - expected).abs() <= 1.0, "{} sampel, väntade {expected}", wav.len());
+        assert!(wav.iter().any(|s| s.abs() > 0.5), "filen ska innehålla ljud");
+        assert!(wav.iter().all(|s| s.abs() <= 1.0), "ingen sampel över noll");
+    }
+
+    /// **Tom data ger tom vektor** — ingen panik, ingen division med noll.
+    #[test]
+    fn transmitter_is_empty_without_data() {
+        assert!(transmitter(&[], 220.0).is_empty());
+        assert!(transmitter_wav(&[], 44_100).is_empty());
+        assert!(transmitter_wav(&[1, 2], 0).is_empty(), "noll samplerate ska inte panika");
+        let p = transmitter_to_settings(&[]);
+        assert_eq!(p.waveform, Waveform::Additive);
+        assert_eq!(p.harmonics, [0.0f32; HARMONIC_COUNT]);
+        assert!(p.filter.cutoff >= 200.0);
+    }
 }
