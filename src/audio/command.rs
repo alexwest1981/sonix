@@ -18,6 +18,9 @@ pub enum Waveform {
     /// **Plucked!**: Karplus-Strong — en brusmassa i en dämpad fördröjningslinje. Strängen
     /// stäms av fördröjningens längd, så tonhöjden kommer ur linjen och inte ur en vågform.
     Pluck,
+    /// **FL Slayer**: elgitarr — strängen exciteras av ett plektrum en bit in på den,
+    /// och signalen klipps mjukt som i ett rörsteg.
+    Guitar,
     /// **Sakura**: en **båge** över samma sträng. Linjen exciteras kontinuerligt av brus i
     /// stället för av en enda burst, så tonen bär så länge anslaget hålls.
     Bowed,
@@ -37,6 +40,7 @@ impl Waveform {
             Waveform::Additive => "Additiv (Additive)",
             Waveform::Pluck => "Sträng (Pluck)",
             Waveform::Bowed => "Båge (Bowed)",
+            Waveform::Guitar => "Gitarr (Slayer)",
             Waveform::Inharmonic => "Metall (Inharmonic)",
         }
     }

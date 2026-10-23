@@ -376,6 +376,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "Takter" => "Bars",
         "🎻 Båge" => "🎻 Bowed",
@@ -2674,6 +2675,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "Takter" => "Takter",
         "🎻 Båge" => "🎻 Bue",
@@ -4931,6 +4933,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "Takter" => "Takter",
         "🎻 Båge" => "🎻 Bue",
@@ -7188,6 +7191,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎸 Gitarr" => "🎸 Gitarre",
         "BEND" => "BEND",
         "Takter" => "Takte",
         "🎻 Båge" => "🎻 Bogen",
@@ -9445,6 +9449,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎸 Gitarr" => "🎸 Guitarra",
         "BEND" => "PITCH",
         "Takter" => "Compases",
         "🎻 Båge" => "🎻 Arco",
@@ -11702,6 +11707,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎸 Gitarr" => "🎸 Guitare",
         "BEND" => "BEND",
         "Takter" => "Mesures",
         "🎻 Båge" => "🎻 Archet",

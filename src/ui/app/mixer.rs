@@ -3084,6 +3084,7 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     (Waveform::Additive, crate::i18n::t("▥ Additiv")),
                     (Waveform::Pluck, crate::i18n::t("𝄞 Sträng")),
                     (Waveform::Bowed, crate::i18n::t("🎻 Båge")),
+                    (Waveform::Guitar, crate::i18n::t("🎸 Gitarr")),
                     (Waveform::Inharmonic, crate::i18n::t("⛭ Metall")),
                 ];
                 for (wf, name) in waveforms {

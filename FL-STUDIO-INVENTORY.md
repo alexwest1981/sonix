@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 57** delvis, **✗ 14** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 58** delvis, **✗ 13** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -124,7 +124,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Autogun | 26 | ✅ | `instruments::autogun(seed)` — ett spelbart ljud ur ett frö: attacken kläms så noten hörs, filtret så det släpper igenom. Knappen 🎲 i presetlistan |
 | Minisynth | 19 | ✅ | synten (4 vågformer, ADSR, SVF, FM) |
 | Fruity Slicer 2 | 14 | ◐ | choppern hittar slag och dumpar till piano roll/step |
-| FL Slayer | 12 | ✗ | fysisk modellering av gitarr |
+| FL Slayer | 12 | ◐ | **`Waveform::Guitar`**: strängen från Pluck med plektrumet **en bit in på strängen** — utsignalen läses av på två ställen och differensen släcker de övertoner som har en nod vid plektrumet — plus mjukt rörsteg (tanh). Mätt samma ton (220 Hz): nollgenomgångar 0,0676 → 0,1298 (ljusare), crestfaktor 8,14 → 7,04 (komprimerad), tonhöjd 220 Hz. Kvar: sex strängar med egen stämning, förval och pedaler |
 | FPC | 11 | ◐ | drum.rs + steprad; ingen pad-bank med egna lager |
 | Fruity Envelope Controller | 10 | ◐ | LFO med fyra vågformer och envelopföljare finns; en ritbar flerpunktskurva gör det inte |
 | BassDrum | 9 | ◐ | kick i drum.rs |

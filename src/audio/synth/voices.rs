@@ -10,6 +10,15 @@ const PLUCK_LOWPASS: f32 = 0.9;
 /// Efterklangens längd i **sekunder**, samma för alla tonhöjder — förlusten räknas om
 /// per varv, så en kort sträng (som gör fler varv per sekund) inte dör i förtid.
 const PLUCK_T60: f32 = 2.5;
+/// Elgitarrens sträng klingar längre än ett plockat piano.
+const GUITAR_T60: f32 = 3.2;
+/// Var på strängen plektrumet träffar, som andel av längden. 0,18 ger en ljus,
+/// "nära stallet"-karaktär; 0,5 hade gett en dov ton med släckt andra överton.
+const GUITAR_PICK: f32 = 0.18;
+/// Hur mycket den andra avläsningen släcker. 1,0 = fullständig släckning.
+const GUITAR_PICK_MIX: f32 = 0.85;
+/// Rörets arbetsområde: 1,0 = ren sträng, högre = mer klippning.
+const GUITAR_DRIVE: f32 = 3.0;
 /// Kroppens bidrag: 0,2 av strängen, men resonanserna ligger ~+6 dB i toppen (2,0).
 /// En kropp som bara är 0 dB vid moden hörs inte — det var felet förra gången.
 const BODY_MIX: f32 = 0.2 * 2.0;
@@ -491,6 +500,52 @@ impl Voice {
                     * (self.body_lo.process_bandpass(out, &BODY_LO)
                         + self.body_hi.process_bandpass(out, &BODY_HI))
             }
+            Waveform::Guitar => {
+                // **FL Slayer**: samma sträng som Pluck, men plektrumet sitter en bit in
+                // på strängen. Signalen läses av på två ställen och differensen släcker
+                // de övertoner som har en nod vid plektrumet — det är skillnaden mellan
+                // en sträng och en sågtand. Efter strängen sitter ett mjukt rörsteg.
+                let sr = self.string_rate();
+                let len = self.string_len();
+                if !self.pluck_started {
+                    let mut seed = 0x51ED_2701u32 ^ (self.note as u32) << 16 | 1;
+                    for i in 0..self.pluck_buf.len() {
+                        seed ^= seed << 13;
+                        seed ^= seed >> 17;
+                        seed ^= seed << 5;
+                        self.pluck_buf[i] = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                    }
+                    let avg = self.pluck_buf[..len].iter().sum::<f32>() / len as f32;
+                    // Högpassera bursten: plektrumets kant är ljusare än ett finger.
+                    let mut prev = 0.0;
+                    for x in self.pluck_buf[..len].iter_mut() {
+                        let n = *x - avg;
+                        *x = n - 0.85 * prev;
+                        prev = n;
+                    }
+                    self.pluck_pos = 0;
+                    self.pluck_started = true;
+                    self.pluck_gain = Self::string_gain_with(len, sr, GUITAR_T60);
+                }
+                let pos = self.pluck_pos;
+                let next = if pos + 1 >= len { 0 } else { pos + 1 };
+                let raw = self.pluck_buf[pos];
+                self.pluck_buf[pos] = (PLUCK_LOWPASS * raw
+                    + (1.0 - PLUCK_LOWPASS) * self.pluck_buf[next])
+                    * self.pluck_gain;
+                self.pluck_pos = next;
+
+                let tap = (pos + ((len as f32 * GUITAR_PICK) as usize).max(1)) % len;
+                let comb = raw - GUITAR_PICK_MIX * self.pluck_buf[tap];
+                // Mjuk klippning, normaliserad så att svaga noter inte blir rena och
+                // starka inte blir kvadratvågor.
+                let driven = (comb * GUITAR_DRIVE).tanh() / GUITAR_DRIVE.tanh();
+                driven
+                    + self.body_amount
+                        * BODY_MIX
+                        * (self.body_lo.process_bandpass(comb, &BODY_LO)
+                            + self.body_hi.process_bandpass(comb, &BODY_HI))
+            }
             Waveform::Bowed => {
                 // Samma linje som Pluck, men exciterad **hela tiden**: en båge tillför energi
                 // varje varv i stället för en burst vid anslaget. Bruset är litet — strängen
@@ -653,10 +708,15 @@ impl Voice {
     /// sekund skalas förlusten med varvets längd: en kort sträng gör fler varv per sekund
     /// och hade annars dött direkt. Kompensationen får aldrig ge loopförstärkning ≥ 1.
     fn string_gain(len: usize, sr: f32) -> f32 {
+        Self::string_gain_with(len, sr, PLUCK_T60)
+    }
+
+    /// Samma räkning med egen T60 — gitarren klingar längre än det plockade pianot.
+    fn string_gain_with(len: usize, sr: f32, t60: f32) -> f32 {
         let w = 2.0 * PI / len as f32;
         let d = 1.0 - PLUCK_LOWPASS;
         let h = PLUCK_LOWPASS / (1.0 - 2.0 * d * w.cos() + d * d).sqrt();
-        let per_loop = 0.001_f32.powf(len as f32 / sr / PLUCK_T60);
+        let per_loop = 0.001_f32.powf(len as f32 / sr / t60.max(0.05));
         (per_loop / h).min(0.9995)
     }
 }

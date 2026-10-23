@@ -2916,3 +2916,64 @@ fn a_note_played_while_the_wheel_is_up_starts_bent() {
         ch3.bend_ratio
     );
 }
+
+
+/// **FL Slayer låter som en gitarr, inte som en plockad sträng.** Mätt på samma ton
+/// (220 Hz): plektrumets två avläsningar och rörsteget gör signalen **ljusare** och mer
+/// komprimerad — nollgenomgångar 0,0676 → 0,1298, crestfaktor 8,14 → 7,04.
+#[test]
+fn the_guitar_is_brighter_and_more_compressed_than_a_plucked_string() {
+    let adsr = AdsrParams { attack: 0.002, decay: 10.0, sustain: 1.0, release: 0.2 };
+    let flt = FilterParams { cutoff: 18_000.0, resonance: 0.0 };
+    let env = AdsrParams::default();
+    let render = |wave: Waveform| {
+        let mut v = Voice::new(48_000.0);
+        v.trigger(57, 220.0, 1.0, 48_000.0);
+        let mut out = Vec::new();
+        for _ in 0..48_000 {
+            out.push(v.next_sample(
+                wave,
+                &adsr,
+                &flt,
+                &env,
+                0.0,
+                &FmParams::default(),
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                &HARMONICS_DEFAULT,
+            ));
+        }
+        out
+    };
+    let stats = |out: &[f32]| {
+        let rms = (out.iter().map(|x| x * x).sum::<f32>() / out.len() as f32).sqrt();
+        let zcr = out.windows(2).filter(|w| (w[0] < 0.0) != (w[1] < 0.0)).count() as f32
+            / out.len() as f32;
+        let peak = out.iter().fold(0.0f32, |a, b| a.max(b.abs()));
+        (zcr, peak / rms.max(1e-9))
+    };
+
+    let pluck = render(Waveform::Pluck);
+    let guitar = render(Waveform::Guitar);
+    let (zcr_pluck, crest_pluck) = stats(&pluck);
+    let (zcr_guitar, crest_guitar) = stats(&guitar);
+
+    println!(
+        "pluck zcr {zcr_pluck:.4} crest {crest_pluck:.2} | gitarr zcr {zcr_guitar:.4} crest {crest_guitar:.2}"
+    );
+    assert!(
+        zcr_guitar > zcr_pluck * 1.5,
+        "plektrumet ska göra tonen ljusare: {zcr_pluck:.4} -> {zcr_guitar:.4}"
+    );
+    assert!(
+        crest_guitar < crest_pluck * 0.95,
+        "röret ska komprimera topparna: {crest_pluck:.2} -> {crest_guitar:.2}"
+    );
+    let pitch = crate::audio::recorder::detect_pitch_hz(&guitar[4800..9600], 48_000.0)
+        .unwrap_or(0.0);
+    assert!((pitch - 220.0).abs() < 12.0, "strängen ska stämma: {pitch:.1} Hz");
+    let late = (guitar[38_400..].iter().map(|x| x * x).sum::<f32>() / 9600.0).sqrt();
+    assert!(late > 0.005, "gitarren ska klinga ut, inte dö direkt: {late:.4}");
+}
