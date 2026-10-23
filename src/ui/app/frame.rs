@@ -1168,6 +1168,15 @@ impl SonixApp {
                                     self.select_pattern(pat_idx);
                                 }
                             }
+                            // Fånga in det som spelas som en ny slinga (Abletons
+                            // Capture and Insert Scene). Källan blir kvar.
+                            if ui
+                                .add(egui::Button::new(egui::RichText::new("🎯").size(9.5)).fill(Theme::PANEL_BG))
+                                .on_hover_text(crate::i18n::t("Fånga in den valda slingan som en ny slinga"))
+                                .clicked()
+                            {
+                                self.capture_pattern();
+                            }
                         });
                     });
 

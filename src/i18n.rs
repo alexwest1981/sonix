@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Fånga in den valda slingan som en ny slinga" => "Capture the selected pattern as a new pattern",
+        "🎯 Fångade slingan i P{}" => "🎯 Captured the pattern into P{}",
         "Spänning" => "Voltage",
         "Fast läge — ingen rörelse, bara ett värde" => "A fixed setting — no movement, just a value",
         "Sannolikheten att noterna i urvalet spelas" => "The chance that the notes in the selection play",
@@ -2538,6 +2540,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Fånga in den valda slingan som en ny slinga" => "Fang det valgte mønster som et nyt mønster",
+        "🎯 Fångade slingan i P{}" => "🎯 Fanget mønstret i P{}",
         "Spänning" => "Spænding",
         "Fast läge — ingen rörelse, bara ett värde" => "Fast niveau — ingen bevægelse, bare en værdi",
         "Sannolikheten att noterna i urvalet spelas" => "Chancen for at noderne i udvalget spiller",
@@ -4658,6 +4662,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Fånga in den valda slingan som en ny slinga" => "Fang det valgte mønsteret som et nytt mønster",
+        "🎯 Fångade slingan i P{}" => "🎯 Fanget mønsteret i P{}",
         "Spänning" => "Spenning",
         "Fast läge — ingen rörelse, bara ett värde" => "Fast nivå — ingen bevegelse, bare en verdi",
         "Sannolikheten att noterna i urvalet spelas" => "Sjansen for at notene i utvalget spiller",
@@ -6778,6 +6784,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Fånga in den valda slingan som en ny slinga" => "Das gewählte Pattern als neues Pattern einfangen",
+        "🎯 Fångade slingan i P{}" => "🎯 Pattern in P{} eingefangen",
         "Spänning" => "Spannung",
         "Fast läge — ingen rörelse, bara ett värde" => "Fester Pegel — keine Bewegung, nur ein Wert",
         "Sannolikheten att noterna i urvalet spelas" => "Die Chance, dass die Noten der Auswahl spielen",
@@ -8898,6 +8906,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Fånga in den valda slingan som en ny slinga" => "Captura el patrón seleccionado como un patrón nuevo",
+        "🎯 Fångade slingan i P{}" => "🎯 Patrón capturado en P{}",
         "Spänning" => "Voltaje",
         "Fast läge — ingen rörelse, bara ett värde" => "Nivel fijo — sin movimiento, solo un valor",
         "Sannolikheten att noterna i urvalet spelas" => "La probabilidad de que las notas de la selección suenen",
@@ -11018,6 +11028,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Fånga in den valda slingan som en ny slinga" => "Capturer le motif sélectionné comme nouveau motif",
+        "🎯 Fångade slingan i P{}" => "🎯 Motif capturé dans P{}",
         "Spänning" => "Tension",
         "Fast läge — ingen rörelse, bara ett värde" => "Niveau fixe — aucun mouvement, juste une valeur",
         "Sannolikheten att noterna i urvalet spelas" => "La chance que les notes de la sélection jouent",

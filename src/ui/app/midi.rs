@@ -519,3 +519,27 @@ pub(crate) fn render_midi_import_modal(&mut self, ctx: &egui::Context) {
 }
 }
 
+impl SonixApp {
+    /// **Fånga in som ny slinga** (Abletons Capture and Insert Scene, i vår modell): kopiera
+    /// det som spelas nu till en ny slinga och byt till den. Källan står kvar orörd, så
+    /// jämförelsen mellan original och fångst är ett klick bort.
+    pub(crate) fn capture_pattern(&mut self) {
+        let Some(source) = self.patterns.get(self.selected_pattern).cloned() else {
+            return;
+        };
+        let new_index = self.patterns.len();
+        let mut captured = source;
+        captured.name = crate::tstatus!("{} (fångad)", captured.name);
+        self.patterns.push(captured);
+        self.select_pattern(new_index);
+        // I låtläget läggs fångsten också på det valda spåret vid spelhuvudet — annars vore
+        // den bara en kopia i listan, inte en scen.
+        if !self.pattern_mode
+            && let Some(track) = self.playlist_tracks.get_mut(self.selected_timeline_track)
+        {
+            let bar = self.song_bar.min(track.clips.len().saturating_sub(1));
+            track.clips[bar] = Some(new_index);
+        }
+        self.status_message = crate::tstatus!("🎯 Fångade slingan i P{}", new_index + 1);
+    }
+}
