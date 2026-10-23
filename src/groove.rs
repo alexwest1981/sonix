@@ -34,10 +34,12 @@ impl Groove {
 
 /// Ett bibliotek av groove-mallar, laddat från en katalog med `.agr`-filer.
 #[derive(Clone, Debug, Default)]
+#[allow(dead_code)] // kopplas in när groove-poolen får en panel; metoderna är provade
 pub struct GrooveLibrary {
     pub grooves: Vec<Groove>,
 }
 
+#[allow(dead_code)]
 impl GrooveLibrary {
     /// Läser alla `.agr` i `dir`, skiftlägesokänsligt på ändelsen. Filer som inte går att läsa
     /// hoppas över tyst: ett bibliotek ska inte fallera på en trasig mall. Filnamnet utan
