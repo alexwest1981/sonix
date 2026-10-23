@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🌊 Visualizer..." => "🌊 Visualizer...",
+        "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "No saved sounds yet",
         "Sparar reglagen som ett förval i din egen bank" => "Saves the controls as a preset in your own bank",
         "💾 Spara nuvarande ljud" => "💾 Save current sound",
@@ -2682,6 +2684,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🌊 Visualizer..." => "🌊 Visualizer...",
+        "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "Ingen gemte lyde endnu",
         "Sparar reglagen som ett förval i din egen bank" => "Gemmer indstillingerne som et preset i din egen bank",
         "💾 Spara nuvarande ljud" => "💾 Gem den aktuelle lyd",
@@ -4947,6 +4951,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🌊 Visualizer..." => "🌊 Visualizer...",
+        "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "Ingen lagrede lyder ennå",
         "Sparar reglagen som ett förval i din egen bank" => "Lagrer innstillingene som et forvalg i din egen bank",
         "💾 Spara nuvarande ljud" => "💾 Lagre gjeldende lyd",
@@ -7212,6 +7218,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🌊 Visualizer..." => "🌊 Visualizer...",
+        "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "Noch keine gespeicherten Klänge",
         "Sparar reglagen som ett förval i din egen bank" => "Speichert die Regler als Preset in deiner eigenen Bank",
         "💾 Spara nuvarande ljud" => "💾 Aktuellen Klang speichern",
@@ -9477,6 +9485,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🌊 Visualizer..." => "🌊 Visualizer...",
+        "🌊 Visualizer" => "🌊 Visualizer",
         "Inga sparade ljud än" => "Aún no hay sonidos guardados",
         "Sparar reglagen som ett förval i din egen bank" => "Guarda los controles como preset en tu propio banco",
         "💾 Spara nuvarande ljud" => "💾 Guardar el sonido actual",
@@ -11742,6 +11752,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🌊 Visualizer..." => "🌊 Visualiseur...",
+        "🌊 Visualizer" => "🌊 Visualiseur",
         "Inga sparade ljud än" => "Aucun son enregistré",
         "Sparar reglagen som ett förval i din egen bank" => "Enregistre les réglages comme preset dans ta banque",
         "💾 Spara nuvarande ljud" => "💾 Enregistrer le son actuel",

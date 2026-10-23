@@ -985,6 +985,10 @@ impl SonixApp {
                             self.show_big_clock = true;
                             ui.close_menu();
                         }
+                        if ui.button(self.tr("🌊 Visualizer...")).clicked() {
+                            self.show_visualizer = true;
+                            ui.close_menu();
+                        }
                         if ui.button(self.tr("📑 Låtstruktur & Formdelar...")).clicked() {
                             self.show_song_structure_modal = true;
                             ui.close_menu();

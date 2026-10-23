@@ -3579,6 +3579,86 @@ impl SonixApp {
         self.show_big_clock = open;
     }
 
+    /// **Visualizer** — vågformen överst, spektrumstaplar under, med toppmarkör.
+    /// Samma data som mixern ritar; ingen egen analys.
+    pub(crate) fn render_visualizer_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_visualizer {
+            return;
+        }
+        let mut open = self.show_visualizer;
+        egui::Window::new(crate::i18n::t("🌊 Visualizer"))
+            .open(&mut open)
+            .collapsible(false)
+            .default_size(Vec2::new(560.0, 300.0))
+            .show(ctx, |ui| {
+                let wave_h = 90.0;
+                let (wave_rect, _) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), wave_h),
+                    Sense::hover(),
+                );
+                let painter = ui.painter_at(wave_rect);
+                painter.rect_filled(wave_rect, Rounding::same(4.0), Color32::BLACK);
+                if self.scope_history.len() > 1 {
+                    let n = self.scope_history.len();
+                    let pts: Vec<Pos2> = self
+                        .scope_history
+                        .iter()
+                        .enumerate()
+                        .map(|(i, s)| {
+                            Pos2::new(
+                                wave_rect.min.x
+                                    + wave_rect.width() * i as f32 / (n - 1) as f32,
+                                wave_rect.center().y
+                                    - s.clamp(-1.0, 1.0) * wave_rect.height() * 0.45,
+                            )
+                        })
+                        .collect();
+                    painter.add(egui::Shape::line(pts, Stroke::new(1.5_f32, Theme::GREEN)));
+                }
+
+                ui.add_space(6.0);
+
+                let (bar_rect, _) = ui.allocate_exact_size(
+                    Vec2::new(ui.available_width(), 120.0),
+                    Sense::hover(),
+                );
+                let painter = ui.painter_at(bar_rect);
+                painter.rect_filled(bar_rect, Rounding::same(4.0), Color32::BLACK);
+                let bands = self.spectrum_levels.len().max(1);
+                let bw = bar_rect.width() / bands as f32;
+                if self.visualizer_peaks.len() != bands {
+                    self.visualizer_peaks = vec![0.0; bands];
+                }
+                crate::ui::visualizer::decay_peak(
+                    &mut self.visualizer_peaks,
+                    &self.spectrum_levels,
+                    0.004,
+                );
+                for (i, level) in self.spectrum_levels.iter().enumerate() {
+                    let x = bar_rect.min.x + i as f32 * bw;
+                    let h = crate::ui::visualizer::bar_height(*level, bar_rect.height());
+                    painter.rect_filled(
+                        Rect::from_min_size(
+                            Pos2::new(x + 1.0, bar_rect.max.y - h),
+                            Vec2::new((bw - 2.0).max(1.0), h),
+                        ),
+                        Rounding::same(1.0),
+                        Theme::CYAN,
+                    );
+                    let peak = crate::ui::visualizer::bar_height(
+                        self.visualizer_peaks[i],
+                        bar_rect.height(),
+                    );
+                    let py = bar_rect.max.y - peak;
+                    painter.line_segment(
+                        [Pos2::new(x + 1.0, py), Pos2::new(x + bw - 1.0, py)],
+                        Stroke::new(1.5_f32, Color32::WHITE),
+                    );
+                }
+            });
+        self.show_visualizer = open;
+    }
+
     /// Alla dialoger, i den ordning de läggs ovanpå varandra.
     pub(crate) fn render_all_modals(&mut self, ctx: &egui::Context) {
         // En dialog ska vara det enda som lyser: resten av ytan dämpas.
@@ -3609,6 +3689,7 @@ impl SonixApp {
         self.render_chord_generator_modal_view(ctx);
         self.render_tuner_modal_view(ctx);
         self.render_big_clock(ctx);
+        self.render_visualizer_modal(ctx);
         self.render_dice_generator_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);

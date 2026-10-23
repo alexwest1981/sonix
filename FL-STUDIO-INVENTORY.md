@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 62** delvis, **✗ 9** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 63** delvis, **✗ 8** saknas helt (enligt tabellen nedan — den är räknad, inte gissad).
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -168,7 +168,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 
 | Plugin | Filer | Sonix | Kommentar |
 | :--- | ---: | :---: | :--- |
-| ZGameEditor Visualizer | 1423 | ✗ | 1 423 filer visuella förinställningar; kräver GPU-scen |
+| ZGameEditor Visualizer | 1423 | ◐ | **ZGameEditor-lite**: `ui::visualizer` ritar vågformen ur `scope_history` och spektrumstaplar ur `spectrum_levels` — samma mätning som mixern använder, ingen andra FFT — med toppmarkör som faller lugnt. **🌊 Visualizer...** i menyn. Prov: markören lyfts till nivån och faller ett steg per bildruta, aldrig under nivån; tysta band får en synlig linje. Kvar: 1 423 GPU-förval, lager, text/3D-scener och videoexport |
 | Hardcore | 42 | ✅ | `Hardcore` — pedalkedja: komp → drive → wah → delay, byggd av masterkedjans egna kretsar; de 98 `.hdprg`-programmen är inte lästa |
 | Distructor | 37 | ✅ | `Distructor` — tre kurvor (mättnad, klippning, vikning) i serie eller parallellt, tonläge efter |
 | Fruity Love Philter | 23 | ◐ | SVF + filterenvelop, men ingen multi-filterbank |

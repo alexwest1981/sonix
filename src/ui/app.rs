@@ -574,6 +574,10 @@ pub struct SonixApp {
     pub show_tuner_modal: bool,
     /// Stor klocka (FL:s Big Clock).
     pub show_big_clock: bool,
+    /// **Visualizer** (ZGameEditor-lite): vågform + spektrum i ett eget fönster.
+    pub show_visualizer: bool,
+    /// Toppmarkörerna i visualizern, en per band.
+    pub visualizer_peaks: Vec<f32>,
     /// Färgkartan: noterna i rutnätet färgas efter tonhöjd (FL:s VFX Color Mapper).
     pub color_notes: bool,
     /// Zoom i pianorullens rutnät (1,0 = standard). Ctrl + +/− ändrar, Ctrl+0 nollställer.
@@ -1112,6 +1116,8 @@ impl SonixApp {
             chord_generator_state: ChordGeneratorState::default(),
             show_tuner_modal: false,
             show_big_clock: false,
+            show_visualizer: false,
+            visualizer_peaks: Vec::new(),
             color_notes: false,
             roll_zoom: 1.0,
             tuner_state: TunerState::default(),
