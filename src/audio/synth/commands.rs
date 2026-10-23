@@ -58,6 +58,8 @@ impl SynthEngine {
                     }
                 }
                 let idx = target_idx.unwrap_or(0);
+                // En ny not startar med den böjning som gäller på kanalen just nu.
+                let start_bend = self.channel_bend_ratio(channel);
                 // Key tracking: rösten får sin förskjutning en gång, vid anslaget.
                 let key_ratio = if self.filter_key_track > 0.0 {
                     2.0_f32.powf((note as f32 - 60.0) / 12.0 * self.filter_key_track.clamp(0.0, 1.0))
@@ -89,7 +91,7 @@ impl SynthEngine {
                     glide_coeff,
                 );
                 self.voices[idx].channel = channel;
-                self.voices[idx].bend_ratio = 1.0;
+                self.voices[idx].bend_ratio = start_bend;
                 self.last_note_freq = freq;
                 // Unison: samma not en gång till, stämd isär i cent och med förskjuten fas
                 // så att attacken inte bara blir dubbelt så stark.
@@ -119,7 +121,7 @@ impl SynthEngine {
                         // Förskjut fasen så att rösterna inte summerar i fas vid anslaget.
                         voice.phase = (step * 1.7) % std::f32::consts::TAU;
                         voice.channel = channel;
-                        voice.bend_ratio = 1.0;
+                        voice.bend_ratio = start_bend;
                         extra += 1;
                     }
                 }
@@ -171,12 +173,21 @@ impl SynthEngine {
             }
             AudioCommand::ChannelPitchBend { channel, semitones } => {
                 // Kanal 0 är MPE-mastern och böjer allt; en medlemskanal böjer bara de
-                // röster som spelades på den. Röster utan kanal (0) nås bara av mastern.
+                // röster som spelades på den. Böjningen sparas per kanal, så en not som
+                // slås an medan hjulet står uppe startar böjd (se `channel_bend_ratio`).
                 let ratio = 2.0_f32.powf(semitones / 12.0);
+                self.bend_ratio[channel.min(16) as usize] = ratio;
+                let master = self.bend_ratio[0];
                 for voice in &mut self.voices {
-                    if voice.is_active() && (channel == 0 || voice.channel == channel) {
-                        voice.bend_ratio = ratio;
+                    if !voice.is_active() || (channel != 0 && voice.channel != channel) {
+                        continue;
                     }
+                    voice.bend_ratio = master
+                        * if voice.channel == 0 {
+                            1.0
+                        } else {
+                            self.bend_ratio[voice.channel.min(16) as usize]
+                        };
                 }
             }
             AudioCommand::StrumChord { notes, velocity, start_samples, spread_samples, mode } => {
@@ -828,4 +839,17 @@ impl SynthEngine {
             .filter(|t| t.regions.iter().any(|r| r.source_audio.is_some()))
             .count() as u32;
     }
+}
+
+impl SynthEngine {
+/// Rösten startar med masterns böjning gånger kanalens egen. Kanal 0 **är** mastern,
+/// så den multipliceras inte med sig själv.
+fn channel_bend_ratio(&self, channel: u8) -> f32 {
+    let master = self.bend_ratio[0];
+    if channel == 0 {
+        master
+    } else {
+        master * self.bend_ratio[channel.min(16) as usize]
+    }
+}
 }

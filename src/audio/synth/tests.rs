@@ -2799,3 +2799,44 @@ fn a_master_bend_moves_every_voice() {
         );
     }
 }
+
+/// **En hållen pitch wheel gäller även nästa anslag.** Böjningen sparas per kanal, så en
+/// not som slås an medan hjulet står uppe startar böjd — annars tappas den vid varje ny not.
+#[test]
+fn a_note_played_while_the_wheel_is_up_starts_bent() {
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.handle_command(AudioCommand::ChannelPitchBend {
+        channel: 2,
+        semitones: 12.0,
+    });
+    engine.handle_command(AudioCommand::NoteOn {
+        note: 60,
+        freq: 261.63,
+        velocity: 1.0,
+        channel: 2,
+    });
+    // Mastern böjd ned en oktav: gäller alla kanaler.
+    engine.handle_command(AudioCommand::ChannelPitchBend {
+        channel: 0,
+        semitones: -12.0,
+    });
+    engine.handle_command(AudioCommand::NoteOn {
+        note: 67,
+        freq: 392.0,
+        velocity: 1.0,
+        channel: 3,
+    });
+
+    let ch2 = engine.voices.iter().find(|v| v.channel == 2).expect("kanal 2");
+    assert!(
+        (ch2.bend_ratio - 1.0).abs() < 1e-5,
+        "kanal 2: +12 och master −12 ska ta ut varandra, fick {}",
+        ch2.bend_ratio
+    );
+    let ch3 = engine.voices.iter().find(|v| v.channel == 3).expect("kanal 3");
+    assert!(
+        (ch3.bend_ratio - 0.5).abs() < 1e-5,
+        "kanal 3 ska bara ha masterns −12, fick {}",
+        ch3.bend_ratio
+    );
+}

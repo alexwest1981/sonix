@@ -225,6 +225,10 @@ pub struct SynthEngine {
     /// Fler röster ger bredd och rörelse; en röst är exakt som förut.
     pub unison_voices: u8,
     pub unison_detune_cents: f32,
+    /// Pitch bend per kanal, som multiplikator: index 0 är MPE-mastern, 1–16
+    /// medlemskanalerna. En ny not startar med den böjning som gäller just nu —
+    /// annars tappas en hållen pitch wheel vid nästa anslag.
+    pub bend_ratio: [f32; 17],
     /// Modulationens tonhöjd i semitoner och filtrets brytfrekvens i oktaver, räknade
     /// en gång per sampel och lästa av rösterna. Noll när matrisen är tom.
     pub mod_pitch: f32,
@@ -327,6 +331,7 @@ impl SynthEngine {
             last_note_freq: 0.0,
             unison_voices: 1,
             unison_detune_cents: 12.0,
+            bend_ratio: [1.0; 17],
             mod_pitch: 0.0,
             mod_cutoff: 0.0,
             voices: [Voice::new(sample_rate); MAX_VOICES],

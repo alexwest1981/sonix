@@ -413,7 +413,7 @@ impl SonixApp {
 ///
 /// Samma väg för MIDI-importen och score-loggen: taktbytet, rutnätets gränser och
 /// arrangemangsklossarna får inte bero på var noterna kom ifrån.
-fn place_notes_into_patterns(
+pub(crate) fn place_notes_into_patterns(
     &mut self,
     notes: &[crate::audio::smf::MidiNote],
     ppq: u16,

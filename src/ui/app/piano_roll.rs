@@ -468,7 +468,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     )
                     .fill(take_btn),
                 )
-                .on_hover_text(crate::i18n::t("Infoga en MIDI-fras från en mapp i det valda patternet"))
+                .on_hover_text(crate::i18n::t("Infoga en MIDI- eller .fsc-fras från en mapp i det valda patternet"))
                 .clicked()
             {
                 if self.phrases.is_empty() {

@@ -889,7 +889,9 @@ pub(crate) fn phrase_files(dir: &std::path::Path) -> Vec<(String, std::path::Pat
     for entry in entries.flatten() {
         let path = entry.path();
         let is_midi = path.extension().is_some_and(|e| {
-            e.eq_ignore_ascii_case("mid") || e.eq_ignore_ascii_case("midi")
+            e.eq_ignore_ascii_case("mid")
+                || e.eq_ignore_ascii_case("midi")
+                || e.eq_ignore_ascii_case("fsc")
         });
         if !is_midi {
             continue;
@@ -1118,7 +1120,7 @@ pub(crate) fn load_groove_library(&mut self) {
 /// densamma som importen använder — bara .mid/.midi, skiftlägesokänsligt.
 pub(crate) fn load_phrase_bank(&mut self) {
     let Some(dir) = rfd::FileDialog::new()
-        .set_title(crate::i18n::t("Välj mapp med .mid-fraser"))
+        .set_title(crate::i18n::t("Välj mapp med .mid- eller .fsc-fraser"))
         .pick_folder()
     else {
         return;
@@ -1129,19 +1131,44 @@ pub(crate) fn load_phrase_bank(&mut self) {
     self.phrase_folder = Some(dir);
     self.show_phrase_bank = true;
     self.status_message = if found == 0 {
-        crate::i18n::t("⚠ Inga .mid-fraser i mappen").to_string()
+        crate::i18n::t("⚠ Inga .mid- eller .fsc-fraser i mappen").to_string()
     } else {
         crate::tstatus!("🎼 {} fraser", found)
     };
 }
 
-/// Infogar en fras i det valda patternet — samma väg som MIDI-importen, så noter,
-/// taktbyte och arrangemangsklossar beter sig likadant.
+/// Infogar en fras i det valda patternet. En `.fsc` (FL:s egen frasbank) läses av
+/// `audio::fsc` och går samma väg som MIDI-noterna; allt annat läses som `.mid`.
 pub(crate) fn insert_phrase(&mut self, path: &std::path::Path) {
     let name = path
         .file_stem()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| path.display().to_string());
+    if path
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("fsc"))
+    {
+        match std::fs::read(path)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| crate::audio::fsc::parse_fsc(&bytes))
+        {
+            Ok(score) => {
+                let ppq = crate::audio::smf::PPQ;
+                let notes = crate::audio::fsc::to_midi_notes(&score, ppq);
+                let report = self.place_notes_into_patterns(&notes, ppq);
+                self.status_message = crate::tstatus!(
+                    "🎼 '{}' infogad ({} noter)",
+                    name,
+                    report.notes_placed
+                );
+            }
+            Err(e) => {
+                self.status_message =
+                    crate::tstatus!("⚠ Kunde inte läsa frasen '{}': {}", name, e);
+            }
+        }
+        return;
+    }
     let path = path.to_string_lossy().to_string();
     match self.import_midi_into_selected_pattern(&path) {
         Ok(report) => {
