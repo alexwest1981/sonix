@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 61** har en motsvarighet, **◐ 52** delvis, **✗ 28** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 61** har en motsvarighet, **◐ 53** delvis, **✗ 27** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -518,7 +518,7 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | Skala nivåer | `Scale levels...` | ◐ (`velocity_sensitivity` per kanal) |
 | Tidsförskjuta audio fritt | `Edit in time warper` | ✗ (`sätt takt 1 här` + WSOLA-sträckning finns) |
 | Klicka bort skarvar | `Declick in` · `Declick out all regions` · `Bypass declicker` | ✗ |
-| Automatiska övergångar | `Automatic crossfades` · `Create crossfade` · `Crossfade (bleeding)` | ✗ (fades per region, ingen korsning) |
+| Automatiska övergångar | `Automatic crossfades` · `Create crossfade` · `Crossfade (bleeding)` | ◐ `PlaylistTrack::create_crossfades` sätter ut-toning på det tidigare och in-toning på det senare klippet, lika långa som överlappet (halverat om överlappet är större än klippet), och knappen **✚ Korsa överlappande klipp** i fade-fönstret kör den. ✗ `Create crossfade` på ett urval, och `bleeding`-varianten utanför regionens kant |
 | Byta källa för ett klipp | `Pattern clip sources` · `Automation clip sources` · `Current clip source` | ✅ | `swap_track_source` — nytt ljud, samma volym, pan, EQ, sends, inserts, automation och placering; vågformscachen nollas så den byggs om |
 | Spågrupper i spellistan | `All playlist track groups` · `Export all playlist track groups` · `Collapse all grouped tracks` | ◐ | `TrackGroup` + `track_hidden`: en ihopfälld grupp ritar bara sitt första spår, provat. ✗ exportera grupper som egna filer, grupperna sparas inte i projektet |
 | Tagningar vid loopinspelning | `Group loop recorded takes` · `Ignore silent takes` · `Pickup (takeover mode)` | ◐ (MIDI-tagningar med kompning) |

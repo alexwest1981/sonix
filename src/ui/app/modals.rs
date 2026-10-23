@@ -2752,6 +2752,15 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             trigger_region_sync = true;
                         }
 
+                        // Korsningen lägger bara fade-värden där klipp överlappar — regeln
+                        // (och dess halvering vid stora överlapp) bor i `create_crossfades`.
+                        ui.add_space(6.0);
+                        if ui.button(crate::i18n::t("✚ Korsa överlappande klipp")).clicked()
+                            && track.create_crossfades() > 0
+                        {
+                            trigger_region_sync = true;
+                        }
+
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
                             ui.label(egui::RichText::new(crate::i18n::t("Tonhöjd (Pitch Shift):")).size(11.0).color(Theme::TEXT_MUTED));
