@@ -121,6 +121,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
         AudioCommand::ChannelPitchBend { .. } => "ChannelPitchBend",
+        AudioCommand::BendDelayed { .. } => "BendDelayed",
         AudioCommand::StrumChord { .. } => "StrumChord",
         AudioCommand::TriggerDrum(_) => "TriggerDrum",
         AudioCommand::SetWaveform(_) => "SetWaveform",
@@ -262,6 +263,8 @@ pub struct SynthEngine {
     pub sample_voice_cursor: usize,
     // Scheduled chord/strum notes (Chord Matrix audition)
     pub scheduled_notes: Vec<ScheduledNote>,
+    /// Inspelade bend, samplenoggranna (samma kö-mönster som `scheduled_notes`).
+    pub scheduled_bends: Vec<ScheduledBend>,
     // Modular Patcher DSP graph
     pub patcher: Option<PatchProcessor>,
     pub patcher_spec: Option<PatchSpec>,
@@ -349,6 +352,7 @@ impl SynthEngine {
             sample_voices: std::array::from_fn(|_| SampleVoice::new()),
             sample_voice_cursor: 0,
             scheduled_notes: Vec::new(),
+            scheduled_bends: Vec::new(),
             patcher: None,
             patcher_spec: None,
             patcher_enabled: false,

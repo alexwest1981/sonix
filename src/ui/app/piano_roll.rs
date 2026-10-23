@@ -1276,6 +1276,111 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 ui.painter().rect_filled(bar_rect, Rounding::same(1.0), Theme::FL_CYAN);
             }
         });
+
+        // Bend-fält (MPE): kurvan som hör till patternet. Dra en punkt för att ändra
+        // böjningen (och var i tiden den ligger), dubbelklicka för att lägga till,
+        // högerklicka för att ta bort. Inspelade bend hamnar här automatiskt.
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t("BEND"))
+                    .size(Theme::FONT_S)
+                    .color(Theme::TEXT_MUTED),
+            );
+            ui.allocate_exact_size(Vec2::new(10.0, 24.0), Sense::hover());
+            let cell_w = 26.0 * zoom;
+            let (rect, resp) = ui.allocate_exact_size(
+                Vec2::new(cell_w * steps as f32, 56.0 * zoom),
+                Sense::click_and_drag(),
+            );
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(rect, Rounding::same(2.0), Theme::PANEL_BG);
+            let mid = rect.center().y;
+            let half = rect.height() * 0.45;
+            for s in (0..=steps).step_by(4) {
+                let x = rect.min.x + s as f32 * cell_w;
+                painter.line_segment(
+                    [Pos2::new(x, rect.min.y), Pos2::new(x, rect.max.y)],
+                    Stroke::new(0.5_f32, Theme::BORDER_DARK),
+                );
+            }
+            painter.line_segment(
+                [Pos2::new(rect.min.x, mid), Pos2::new(rect.max.x, mid)],
+                Stroke::new(1.0_f32, Color32::from_rgb(60, 70, 90)),
+            );
+
+            let to_y = |semis: f32| mid - (semis.clamp(-48.0, 48.0) / 48.0) * half;
+            let from_y = |y: f32| ((mid - y) / half * 48.0).clamp(-48.0, 48.0);
+            let bend_color = |ch: u8| match ch {
+                0 => Color32::from_rgb(255, 255, 255),
+                1 => Theme::FL_CYAN,
+                2 => Color32::from_rgb(255, 170, 60),
+                3 => Color32::from_rgb(160, 120, 255),
+                _ => Color32::from_rgb(120, 220, 140),
+            };
+
+            let pat_idx = self.selected_pattern;
+            let mut bends = self
+                .patterns
+                .get(pat_idx)
+                .map(|p| p.bends.clone())
+                .unwrap_or_default();
+
+            for ch in 0..=16u8 {
+                let pts: Vec<Pos2> = bends
+                    .iter()
+                    .filter(|b| b.channel == ch)
+                    .map(|b| Pos2::new(rect.min.x + b.pos * cell_w, to_y(b.semitones)))
+                    .collect();
+                if pts.len() > 1 {
+                    painter.add(egui::Shape::line(
+                        pts.clone(),
+                        Stroke::new(1.2_f32, bend_color(ch)),
+                    ));
+                }
+                for p in &pts {
+                    painter.circle_filled(*p, 3.0, bend_color(ch));
+                }
+            }
+
+            if let Some(pointer) = resp.interact_pointer_pos() {
+                let nearest = bends
+                    .iter()
+                    .enumerate()
+                    .map(|(i, b)| {
+                        let dx = (rect.min.x + b.pos * cell_w - pointer.x).abs();
+                        (i, dx)
+                    })
+                    .filter(|(_, dx)| *dx < 10.0)
+                    .min_by(|a, b| a.1.total_cmp(&b.1))
+                    .map(|(i, _)| i);
+                if resp.double_clicked() {
+                    let pos = ((pointer.x - rect.min.x) / cell_w).clamp(0.0, 63.99);
+                    let channel = bends.first().map_or(1, |b| b.channel);
+                    crate::ui::app::state::push_bend(
+                        &mut bends,
+                        crate::ui::app::state::BendPoint {
+                            pos,
+                            channel,
+                            semitones: from_y(pointer.y),
+                        },
+                    );
+                } else if resp.secondary_clicked() {
+                    if let Some(i) = nearest {
+                        bends.remove(i);
+                    }
+                } else if resp.dragged()
+                    && let Some(i) = nearest
+                {
+                    bends[i].pos = ((pointer.x - rect.min.x) / cell_w).clamp(0.0, 63.99);
+                    bends[i].semitones = from_y(pointer.y);
+                    bends.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+                }
+                if let Some(pat) = self.patterns.get_mut(pat_idx) {
+                    pat.bends = bends;
+                }
+            }
+        });
     });
 }
 }

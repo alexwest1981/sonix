@@ -205,6 +205,14 @@ pub fn stop_playback(&mut self) {
     let _ = self.engine.send_command(AudioCommand::SetSongPlayback(false));
     let _ = self.engine.send_command(AudioCommand::SeekSongPosition(0.0));
     let _ = self.engine.send_command(AudioCommand::StopAll);
+    // Hjulet går tillbaka till mitten: en bend som stod mitt i en kurva ska inte färga
+    // nästa not när man trycker på stopp.
+    for channel in 0..=16u8 {
+        let _ = self.engine.send_command(AudioCommand::ChannelPitchBend {
+            channel,
+            semitones: 0.0,
+        });
+    }
     self.active_keys.clear();
     self.active_mouse_note = None;
 }
@@ -479,6 +487,20 @@ pub(crate) fn advance_sequencer(&mut self) {
 
 impl SonixApp {
 fn trigger_step(&mut self, step: usize) {
+    // Inspelade bend i det här steget, samplenoggrant fördröjda.
+    let due = self
+        .patterns
+        .get(self.selected_pattern)
+        .map(|p| crate::ui::app::state::bends_for_step(&p.bends, step, self.step_samples(step)))
+        .unwrap_or_default();
+    for (channel, semitones, delay_samples) in due {
+        let _ = self.engine.send_command(AudioCommand::BendDelayed {
+            channel,
+            semitones,
+            delay_samples,
+        });
+    }
+
     if self.metronome_enabled && step % 4 == 0 {
         if step == 0 {
             let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::MetronomeHigh));
@@ -584,6 +606,25 @@ impl SonixApp {
 fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
     if bar >= 32 || step_in_bar >= 16 {
         return;
+    }
+
+    // Bendkurvan hör till patternet, inte till spåret: skicka den **en** gång per steg,
+    // även om fyra spår spelar samma block.
+    if let Some((pat_idx, step_off)) = self
+        .playlist_tracks
+        .iter()
+        .find_map(|t| crate::ui::app::state::clip_at_bar(t, bar))
+        && let Some(pat) = self.patterns.get(pat_idx)
+    {
+        let at = step_off + step_in_bar;
+        let due = crate::ui::app::state::bends_for_step(&pat.bends, at, self.step_samples(at));
+        for (channel, semitones, delay_samples) in due {
+            let _ = self.engine.send_command(AudioCommand::BendDelayed {
+                channel,
+                semitones,
+                delay_samples,
+            });
+        }
     }
 
     if self.metronome_enabled && step_in_bar % 4 == 0 {
@@ -800,12 +841,28 @@ fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool, channel: u8) {
 }
 
 /// MPE: mastern (kanal 0) böjer allt, medlemskanalerna bara sina egna noter.
+///
+/// Spelar man in sparas böjningen som en punkt i patternets kurva, så den hörs igen vid
+/// uppspelning — och går att se och rätta i pianorullen.
 fn handle_midi_pitch_bend(&mut self, channel: u8, semitones: f32) {
     let engine_channel = if channel == 0 { 0 } else { channel + 1 };
     let _ = self.engine.send_command(AudioCommand::ChannelPitchBend {
         channel: engine_channel,
         semitones,
     });
+    if self.midi_record_armed && self.is_playing {
+        let pos = self.current_pattern_pos();
+        if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
+            crate::ui::app::state::push_bend(
+                &mut pat.bends,
+                crate::ui::app::state::BendPoint {
+                    pos,
+                    channel: engine_channel,
+                    semitones,
+                },
+            );
+        }
+    }
 }
 }
 
@@ -824,6 +881,16 @@ impl SonixApp {
 ///
 /// Stegfasen mäts mot sekvenserns stegklocka, som går i UI-tråden:
 /// upplösningen är därför en bildruta (≈16 ms vid 60 Hz), inte samplen.
+fn current_pattern_pos(&self) -> f32 {
+    let step_secs = self.step_duration(self.current_step).as_secs_f32();
+    let phase = if step_secs > 0.0 {
+        self.last_step_time.elapsed().as_secs_f32() / step_secs
+    } else {
+        0.0
+    };
+    (self.current_step as f32 + phase.clamp(0.0, 0.999)).clamp(0.0, 63.99)
+}
+
 fn current_take_pos(&self) -> f32 {
     let step_secs = self.step_duration(self.current_step).as_secs_f32();
     let phase = if step_secs > 0.0 {

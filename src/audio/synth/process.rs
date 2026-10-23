@@ -36,6 +36,21 @@ impl SynthEngine {
             }
         }
 
+        // 0b. Inspelade bend som blivit förfallna. Före rösterna, så en böjning som
+        // hör till samma sample som anslaget gäller från det samplet.
+        if !self.scheduled_bends.is_empty() {
+            let mut i = 0;
+            while i < self.scheduled_bends.len() {
+                if self.scheduled_bends[i].samples_until == 0 {
+                    let ev = self.scheduled_bends.swap_remove(i);
+                    self.apply_channel_bend(ev.channel, ev.semitones);
+                } else {
+                    self.scheduled_bends[i].samples_until -= 1;
+                    i += 1;
+                }
+            }
+        }
+
         let mut mixed = 0.0;
         let mut active_count = 0;
 

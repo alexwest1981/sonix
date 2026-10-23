@@ -42,6 +42,7 @@ use crate::ui::theme::Theme;
             name: "Testpattern".to_string(),
             color: Color32::WHITE,
             bars: 1,
+            bends: Vec::new(),
             channel_steps: vec![[false; crate::audio::tempo::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::audio::tempo::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -1970,6 +1971,33 @@ use crate::ui::theme::Theme;
         );
     }
 
+    /// **Bendkurvan:** en punkt hör till sitt steg, fördröjningen är resten, och en ny
+    /// punkt på samma steg och kanal ersätter den gamla i stället för att staplas.
+    #[test]
+    fn bend_points_land_in_their_step_and_replace_the_same_slot() {
+        use super::state::{BendPoint, bends_for_step, push_bend};
+
+        let mut bends = Vec::new();
+        push_bend(&mut bends, BendPoint { pos: 3.5, channel: 1, semitones: -2.0 });
+        push_bend(&mut bends, BendPoint { pos: 5.0, channel: 0, semitones: 1.0 });
+        assert_eq!(bends.len(), 2);
+        assert_eq!(bends[0].pos, 3.5, "kurvan sorteras");
+
+        // Samma steg, samma kanal: ersätt, inte lägg till.
+        push_bend(&mut bends, BendPoint { pos: 3.9, channel: 1, semitones: 4.0 });
+        assert_eq!(bends.len(), 2);
+        assert_eq!(bends[0].semitones, 4.0);
+
+        // Steg 3 får en punkt, med halva steget som fördröjning; steg 4 får inget.
+        let due = bends_for_step(&bends, 3, 10_000);
+        assert_eq!(due.len(), 1);
+        assert_eq!(due[0].0, 1);
+        assert_eq!(due[0].2, 9_000, "0,9 steg in i steget");
+        assert!(bends_for_step(&bends, 4, 10_000).is_empty());
+        // Masterpunkten ligger på ett helt steg.
+        assert_eq!(bends_for_step(&bends, 5, 10_000)[0].0, 0);
+    }
+
     /// **Ett block täcker de takter det spänner över**, och takten efter det är tom.
     #[test]
     fn a_clip_covers_the_bars_it_spans() {
@@ -2029,6 +2057,7 @@ use crate::ui::theme::Theme;
             name: "Två takter".to_string(),
             color: eframe::egui::Color32::WHITE,
             bars: 2,
+            bends: Vec::new(),
             channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
@@ -2056,6 +2085,7 @@ use crate::ui::theme::Theme;
             name: "Gammal".to_string(),
             color: [10, 20, 30, 255],
             bars: 1,
+            bends: Vec::new(),
             channel_steps: vec![vec![true; 16]],
             channel_notes: vec![vec![60; 16]],
             piano_roll_grid: vec![vec![false; 16]; 24],

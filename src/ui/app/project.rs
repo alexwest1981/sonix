@@ -122,6 +122,9 @@ pub struct SavedPattern {
     /// Saknas i filer från före flertaktsmönstren — de var en takt.
     #[serde(default = "one_bar")]
     pub bars: usize,
+    /// MPE-bendkurvan. Saknas i äldre filer — då finns inga böjningar.
+    #[serde(default)]
+    pub bends: Vec<super::state::BendPoint>,
     /// Raderna sparas som **listor**, inte som fasta arrayer: ett projekt från före
     /// 64-stegsrutnätet har 16 element per rad, och det ska läsas utan migrering.
     pub channel_steps: Vec<Vec<bool>>,
@@ -429,6 +432,7 @@ pub(crate) fn pattern_to_saved(p: &Pattern) -> SavedPattern {
         name: p.name.clone(),
         color: p.color.to_array(),
         bars: p.bars.clamp(1, 4),
+        bends: p.bends.clone(),
         channel_steps: p.channel_steps.iter().map(|r| r.to_vec()).collect(),
         channel_notes: p.channel_notes.iter().map(|r| r.to_vec()).collect(),
         piano_roll_grid: p.piano_roll_grid.iter().map(|r| r.to_vec()).collect(),
@@ -441,6 +445,7 @@ pub(crate) fn saved_to_pattern(s: &SavedPattern) -> Pattern {
         name: s.name.clone(),
         color: Color32::from_rgba_premultiplied(s.color[0], s.color[1], s.color[2], s.color[3]),
         bars: s.bars.clamp(1, 4),
+        bends: s.bends.clone(),
         channel_steps: s.channel_steps.iter().map(|r| row_bools(r)).collect(),
         channel_notes: s.channel_notes.iter().map(|r| row_notes(r)).collect(),
         piano_roll_grid: grid_rows(&s.piano_roll_grid),

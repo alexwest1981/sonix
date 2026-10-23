@@ -186,6 +186,7 @@ pub fn reference_spec() -> RenderSpec {
     clips[1] = Some(0);
 
     RenderSpec {
+        selected_pattern: 0,
         sample_rate: 44_100,
         bpm: 120.0,
         swing: 0.0,
@@ -193,6 +194,7 @@ pub fn reference_spec() -> RenderSpec {
         pattern_mode: false,
         rack,
         patterns: vec![PatternSnap {
+            bends: Vec::new(),
             steps: {
                 let mut s = vec![[false; crate::audio::tempo::MAX_STEPS]; 8];
                 s[7][..16].copy_from_slice(&bass_steps);

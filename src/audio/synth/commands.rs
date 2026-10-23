@@ -5,6 +5,26 @@
 use super::*;
 
 impl SynthEngine {
+    /// Lägg på en pitch bend på en kanal. Kanal 0 är MPE-mastern och böjer allt; en
+    /// medlemskanal böjer bara de röster som spelades på den. Böjningen sparas per kanal,
+    /// så en not som slås an medan hjulet står uppe startar böjd.
+    pub(super) fn apply_channel_bend(&mut self, channel: u8, semitones: f32) {
+        let ratio = 2.0_f32.powf(semitones / 12.0);
+        self.bend_ratio[channel.min(16) as usize] = ratio;
+        let master = self.bend_ratio[0];
+        for voice in &mut self.voices {
+            if !voice.is_active() || (channel != 0 && voice.channel != channel) {
+                continue;
+            }
+            voice.bend_ratio = master
+                * if voice.channel == 0 {
+                    1.0
+                } else {
+                    self.bend_ratio[voice.channel.min(16) as usize]
+                };
+        }
+    }
+
     pub fn handle_command(&mut self, cmd: AudioCommand) {
         let significant = matches!(
             &cmd,
@@ -172,22 +192,17 @@ impl SynthEngine {
                 }
             }
             AudioCommand::ChannelPitchBend { channel, semitones } => {
-                // Kanal 0 är MPE-mastern och böjer allt; en medlemskanal böjer bara de
-                // röster som spelades på den. Böjningen sparas per kanal, så en not som
-                // slås an medan hjulet står uppe startar böjd (se `channel_bend_ratio`).
-                let ratio = 2.0_f32.powf(semitones / 12.0);
-                self.bend_ratio[channel.min(16) as usize] = ratio;
-                let master = self.bend_ratio[0];
-                for voice in &mut self.voices {
-                    if !voice.is_active() || (channel != 0 && voice.channel != channel) {
-                        continue;
-                    }
-                    voice.bend_ratio = master
-                        * if voice.channel == 0 {
-                            1.0
-                        } else {
-                            self.bend_ratio[voice.channel.min(16) as usize]
-                        };
+                self.apply_channel_bend(channel, semitones);
+            }
+            AudioCommand::BendDelayed { channel, semitones, delay_samples } => {
+                self.scheduled_bends.push(ScheduledBend {
+                    samples_until: delay_samples,
+                    channel,
+                    semitones,
+                });
+                if self.scheduled_bends.len() > 256 {
+                    let overflow = self.scheduled_bends.len() - 256;
+                    self.scheduled_bends.drain(0..overflow);
                 }
             }
             AudioCommand::StrumChord { notes, velocity, start_samples, spread_samples, mode } => {

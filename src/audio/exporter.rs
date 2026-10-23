@@ -75,6 +75,8 @@ pub struct RackChannel {
 
 #[derive(Clone)]
 pub struct PatternSnap {
+    /// MPE-bend som hör till patternet; spelas även i offline-exporten.
+    pub bends: Vec<crate::ui::app::state::BendPoint>,
     /// Per Channel-Rack channel step grid.
     pub steps: Vec<[bool; crate::audio::tempo::MAX_STEPS]>,
     /// Per Channel-Rack channel note grid.
@@ -163,6 +165,8 @@ pub struct RenderSpec {
     pub bpm: f32,
     pub swing: f32,
     pub num_bars: usize,
+    /// Patternet som spelas i pattern-läget — dess bendkurva ska med i exporten.
+    pub selected_pattern: usize,
     pub pattern_mode: bool,
     pub rack: Vec<RackChannel>,
     pub patterns: Vec<PatternSnap>,
@@ -263,7 +267,30 @@ fn drum_cmd(ch_idx: usize) -> AudioCommand {
 /// mätningen kör samma trigger-väg som exporten.
 pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioCommand> {
     let mut cmds = Vec::new();
+    // Bendkurvan hör till patternet, inte till spåret: skickas **en** gång per steg.
+    let bend_cmd = |pat_idx: usize, at: usize| {
+        let Some(pat) = spec.patterns.get(pat_idx) else {
+            return Vec::new();
+        };
+        let base = spec.sample_rate as f32 * 60.0 / spec.bpm.max(20.0) / 4.0;
+        let f = if at % 2 == 1 {
+            1.0 + spec.swing * 0.35
+        } else {
+            1.0 - spec.swing * 0.35
+        };
+        let step_samples = (base * f).max(1.0) as u32;
+        crate::ui::app::state::bends_for_step(&pat.bends, at, step_samples)
+            .into_iter()
+            .map(|(channel, semitones, delay_samples)| AudioCommand::BendDelayed {
+                channel,
+                semitones,
+                delay_samples,
+            })
+            .collect()
+    };
+
     if spec.pattern_mode {
+        cmds.extend(bend_cmd(spec.selected_pattern, sib));
         let vel = spec.velocities[sib];
         for (idx, ch) in spec.rack.iter().enumerate() {
             if !ch.steps[sib] {
@@ -285,6 +312,14 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
             }
         }
         return cmds;
+    }
+
+    if let Some((pat_idx, step_off)) = spec
+        .tracks
+        .iter()
+        .find_map(|t| crate::ui::app::state::clip_at(&t.clips, &t.clip_bars, bar))
+    {
+        cmds.extend(bend_cmd(pat_idx, step_off + sib));
     }
 
     let has_track_solo = spec.tracks.iter().any(|t| t.solo);
@@ -1074,6 +1109,7 @@ mod tests {
             bpm: 120.0,
             swing: 0.0,
             num_bars: 2,
+            selected_pattern: 0,
             pattern_mode: true,
             rack,
             patterns: vec![],
@@ -1109,6 +1145,7 @@ mod tests {
         notes[6] = [channel6_note; crate::audio::tempo::MAX_STEPS];
         let mut patterns = Vec::new();
         patterns.push(PatternSnap {
+            bends: Vec::new(),
             steps,
             notes,
             piano_roll,
@@ -1119,6 +1156,7 @@ mod tests {
             bpm: 120.0,
             swing: 0.0,
             num_bars: 1,
+            selected_pattern: 0,
             pattern_mode: false,
             rack: Vec::new(),
             patterns,
@@ -1145,6 +1183,32 @@ mod tests {
             vca_muted: [false; crate::audio::synth::NUM_VCAS],
             vca_solo: [false; crate::audio::synth::NUM_VCAS],
         }
+    }
+
+    /// **Bendkurvan följer med in i exporten** — annars låter filen annorlunda än
+    /// uppspelningen. Punkten ligger mitt i steg 2 och ska bli en fördröjd bend.
+    #[test]
+    fn the_export_schedules_the_steps_bends() {
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        grid[0][2] = true;
+        let mut spec = synth_spec_with(grid, [false; crate::audio::tempo::MAX_STEPS], 60);
+        spec.patterns[0].bends = vec![crate::ui::app::state::BendPoint {
+            pos: 2.5,
+            channel: 1,
+            semitones: -3.0,
+        }];
+
+        let cmds = triggers_for_step(&spec, 0, 2);
+        let bend = cmds.iter().find_map(|c| match c {
+            AudioCommand::BendDelayed { channel, semitones, delay_samples } => {
+                Some((*channel, *semitones, *delay_samples))
+            }
+            _ => None,
+        });
+        let (channel, semitones, delay) = bend.expect("benden ska med i kommandona");
+        assert_eq!(channel, 1);
+        assert_eq!(semitones, -3.0);
+        assert!(delay > 0, "halva steget in, inte på steggränsen: {delay}");
     }
 
     /// **Ett tvåtaktsblock spelar sin andra takt i takt 2.** Noten ligger bara på steg 20
@@ -2333,6 +2397,7 @@ mod stem_wav_tests {
             bpm: 120.0,
             swing: 0.0,
             num_bars: 1,
+            selected_pattern: 0,
             pattern_mode: false,
             rack: Vec::new(),
             patterns: Vec::new(),

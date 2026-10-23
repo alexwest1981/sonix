@@ -376,6 +376,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "BEND" => "BEND",
         "Takter" => "Bars",
         "🎻 Båge" => "🎻 Bowed",
         "Tysta kanalen (M)" => "Mute the channel (M)",
@@ -2673,6 +2674,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "BEND" => "BEND",
         "Takter" => "Takter",
         "🎻 Båge" => "🎻 Bue",
         "Tysta kanalen (M)" => "Dæmp kanalen (M)",
@@ -4929,6 +4931,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "BEND" => "BEND",
         "Takter" => "Takter",
         "🎻 Båge" => "🎻 Bue",
         "Tysta kanalen (M)" => "Demp kanalen (M)",
@@ -7185,6 +7188,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "BEND" => "BEND",
         "Takter" => "Takte",
         "🎻 Båge" => "🎻 Bogen",
         "Tysta kanalen (M)" => "Kanal stummschalten (M)",
@@ -9441,6 +9445,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "BEND" => "PITCH",
         "Takter" => "Compases",
         "🎻 Båge" => "🎻 Arco",
         "Tysta kanalen (M)" => "Silenciar el canal (M)",
@@ -11697,6 +11702,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "BEND" => "BEND",
         "Takter" => "Mesures",
         "🎻 Båge" => "🎻 Archet",
         "Tysta kanalen (M)" => "Couper le canal (M)",

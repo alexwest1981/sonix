@@ -2789,6 +2789,44 @@ fn an_mpe_bend_reaches_only_the_voice_on_its_channel() {
     assert!((ch3.bend_ratio - 1.0).abs() < 1e-6);
 }
 
+/// **En fördröjd bend gäller först efter sin fördröjning** — det är det som gör att en
+/// inspelad kurva kan ligga inne i ett steg utan att kvantiseras till sextondelen.
+#[test]
+fn a_delayed_bend_lands_after_its_delay() {
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.handle_command(AudioCommand::NoteOn {
+        note: 69,
+        freq: 440.0,
+        velocity: 1.0,
+        channel: 1,
+    });
+    engine.handle_command(AudioCommand::BendDelayed {
+        channel: 1,
+        semitones: 12.0,
+        delay_samples: 100,
+    });
+
+    for _ in 0..50 {
+        engine.process_stereo();
+    }
+    let voice = engine.voices.iter().find(|v| v.is_active()).expect("rösten");
+    assert!(
+        (voice.bend_ratio - 1.0).abs() < 1e-6,
+        "före fördröjningen ska rösten vara oböjd, fick {}",
+        voice.bend_ratio
+    );
+
+    for _ in 0..60 {
+        engine.process_stereo();
+    }
+    let voice = engine.voices.iter().find(|v| v.is_active()).expect("rösten");
+    assert!(
+        (voice.bend_ratio - 2.0).abs() < 1e-5,
+        "efter 100 samples ska rösten en oktav upp, fick {}",
+        voice.bend_ratio
+    );
+}
+
 /// Samma tangent på två kanaler är två röster, och note-off på den ena tar bara den.
 #[test]
 fn the_same_note_on_two_channels_is_two_voices_and_note_off_takes_one() {

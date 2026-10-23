@@ -204,6 +204,42 @@ pub fn clip_at(
     None
 }
 
+/// Bendpunkterna som ska skickas i ett steg: `(kanal, halvtoner, fördröjning i samples)`.
+///
+/// Punkten hör till det steg dess `pos` ligger i, och fördröjningen är resten — så en
+/// böjning mitt i steget landar samplenoggrant i stället för på steggränsen.
+pub fn bends_for_step(bends: &[BendPoint], step: usize, step_samples: u32) -> Vec<(u8, f32, u32)> {
+    let mut out = Vec::new();
+    for b in bends {
+        if !b.pos.is_finite() || b.pos < 0.0 {
+            continue;
+        }
+        let at = b.pos.floor() as usize;
+        if at == step {
+            out.push((
+                b.channel,
+                b.semitones,
+                ((b.pos - at as f32) * step_samples as f32).max(0.0) as u32,
+            ));
+        }
+    }
+    out
+}
+
+/// Lägger en bendpunkt i kurvan. En ny punkt på samma steg och kanal **ersätter** den
+/// gamla, så ett hjul som rör sig inte fyller kurvan med hundra punkter per steg.
+pub fn push_bend(bends: &mut Vec<BendPoint>, point: BendPoint) {
+    let at = point.pos.floor();
+    if let Some(old) = bends.iter_mut().find(|b| {
+        b.channel == point.channel && (b.pos.floor() - at).abs() < f32::EPSILON
+    }) {
+        *old = point;
+    } else {
+        bends.push(point);
+        bends.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+    }
+}
+
 /// Nästa steg i pattern-läget, med omslag vid patternets längd (inte vid 16).
 pub fn next_pattern_step(step: usize, len: usize) -> usize {
     if len == 0 {
@@ -213,6 +249,15 @@ pub fn next_pattern_step(step: usize, len: usize) -> usize {
     }
 }
 
+/// En punkt i patternets bendkurva (MPE). `pos` är i **steg** i patternet, `channel` är
+/// motorns kanal (0 = master, 1–16 = medlemskanal) och `semitones` är böjningen där.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BendPoint {
+    pub pos: f32,
+    pub channel: u8,
+    pub semitones: f32,
+}
+
 #[derive(Clone, Debug)]
 pub struct Pattern {
     pub name: String,
@@ -220,6 +265,9 @@ pub struct Pattern {
     /// 1–4 takter. Rutnätet rymmer alltid 64 steg, så en längdändring kastar aldrig noter —
     /// stegen utanför längden ligger kvar och hörs igen om patternet blir längre.
     pub bars: usize,
+    /// MPE-bend som hör till patternet. Ligger i patternet (inte i tagningen), eftersom
+    /// det är patternet som spelas — både i pattern-läget och från ett arrangemangsblock.
+    pub bends: Vec<BendPoint>,
     pub channel_steps: Vec<[bool; MAX_STEPS]>,
     pub channel_notes: Vec<[u8; MAX_STEPS]>,
     pub piano_roll_grid: [[bool; MAX_STEPS]; 24],

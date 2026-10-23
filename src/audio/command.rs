@@ -304,6 +304,14 @@ pub enum AudioCommand {
         channel: u8,
         semitones: f32,
     },
+    /// Samma böjning, men **samplenoggrant fördröjd** — för inspelade bend som ligger
+    /// inne i ett steg. Motorns kö räknar ned per sampel, så kurvan blir slät i stället
+    /// för att kvantiseras till sextondelar.
+    BendDelayed {
+        channel: u8,
+        semitones: f32,
+        delay_samples: u32,
+    },
     /// En not som ska klinga en bit in i steget (Fas 6.4 steg 2), för tagningens
     /// mikro-tajming. Motorn har redan kön `scheduled_notes` (samma som
     /// `StrumChord` använder), så noten triggas samplenoggrant efter

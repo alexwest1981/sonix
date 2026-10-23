@@ -289,6 +289,13 @@ pub struct SampleVoice {
     pub filter_env: AdsrVoice,
 }
 
+/// En bend som väntar på sin sample (inspelade bendkurvor).
+pub struct ScheduledBend {
+    pub samples_until: u32,
+    pub channel: u8,
+    pub semitones: f32,
+}
+
 /// A note waiting to be triggered by the scheduler (chord strum/arpeggio).
 pub struct ScheduledNote {
     pub samples_until: u32,
