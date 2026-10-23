@@ -507,7 +507,7 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 
 | FL-operation | Bevis (ordagrant ur binären) | Sonix |
 | :--- | :--- | :--- |
-| Bounca spår till audio | `Consolidate this track` · `Consolidate track(s)` · `Select a folder to consolidate to` | ✗ (`freeze` renderar spåret men lämnar inget klipp) |
+| Bounca spår till audio | `Consolidate this track` · `Consolidate track(s)` · `Select a folder to consolidate to` | ✅ `bounce_track_to_new`: renderar spåret offline till 32-bitars float i projektets `Bounces/`, läser tillbaka filen och lägger den på ett **nytt** spår, medan källan tystas — så klippet finns kvar och går att flytta |
 | Spela in allt du spelar i en logg och dumpa den | `Auto dump score` · `Dump score log` · `Convert to score and dump to piano roll` · `Detecting score...` | ✗ (tagningar spelas in per tagning, inte som en logg) |
 | Dela klipp på taktdelar | `Chop in bars` · `Chop in 8th beats` · `Chop in 16th beats` · `Chop in 32nd beats` · `Chop chords` | ◐ (choppern delar vid slag, inte vid taktdel) |
 | Auto-slice med känslighet | `Auto-slice with dull/medium/sharp sensitivity` · `Accentuate beat-aligned slices` | ◐ (en känslighet i choppern) |
@@ -517,7 +517,7 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | Arpeggion som verktyg | `Arpeggiate...` | ◐ (arpeggio i synten + `SchedulesChord`) |
 | Skala nivåer | `Scale levels...` | ◐ (`velocity_sensitivity` per kanal) |
 | Tidsförskjuta audio fritt | `Edit in time warper` | ✗ (`sätt takt 1 här` + WSOLA-sträckning finns) |
-| Klicka bort skarvar | `Declick in` · `Declick out all regions` · `Bypass declicker` | ✗ |
+| Klicka bort skarvar | `Declick in` · `Declick out all regions` · `Bypass declicker` | ◐ `audio::repair::declick` lagar hopp större än 0,25 över 32 sampel, och knappen **🔧 Klicka bort skarvar** kör den på spåret. ✗ FL:s läge per region (bara in, bara ut) och en bypass |
 | Automatiska övergångar | `Automatic crossfades` · `Create crossfade` · `Crossfade (bleeding)` | ◐ `PlaylistTrack::create_crossfades` sätter ut-toning på det tidigare och in-toning på det senare klippet, lika långa som överlappet (halverat om överlappet är större än klippet), och knappen **✚ Korsa överlappande klipp** i fade-fönstret kör den. ✗ `Create crossfade` på ett urval, och `bleeding`-varianten utanför regionens kant |
 | Byta källa för ett klipp | `Pattern clip sources` · `Automation clip sources` · `Current clip source` | ✅ | `swap_track_source` — nytt ljud, samma volym, pan, EQ, sends, inserts, automation och placering; vågformscachen nollas så den byggs om |
 | Spågrupper i spellistan | `All playlist track groups` · `Export all playlist track groups` · `Collapse all grouped tracks` | ◐ | `TrackGroup` + `track_hidden`: en ihopfälld grupp ritar bara sitt första spår, provat. ✗ exportera grupper som egna filer, grupperna sparas inte i projektet |
