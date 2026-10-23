@@ -32,7 +32,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Krispig och fyllig mikrofonsignal med studiokompressor och equalizer.",
             icon: "🎙",
             kind: TrackKind::VocalAudio,
-            color: Color32::from_rgb(0, 230, 255),
+            color: Theme::CYAN,
             category: AddTrackCategory::Vocal,
             tag: "Mikrofon",
             is_rec_arm_default: true,
@@ -42,7 +42,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Tät, punchig röstinställning med de-esser och snabb gate.",
             icon: "🎤",
             kind: TrackKind::VocalAudio,
-            color: Color32::from_rgb(255, 110, 200),
+            color: Theme::TRACK_ROSE,
             category: AddTrackCategory::Vocal,
             tag: "Mikrofon",
             is_rec_arm_default: true,
@@ -52,7 +52,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Bred stereobild med doubler och mjuk plate-reverb.",
             icon: "👥",
             kind: TrackKind::VocalAudio,
-            color: Color32::from_rgb(180, 120, 255),
+            color: Theme::PURPLE,
             category: AddTrackCategory::Vocal,
             tag: "Kör & Harmoni",
             is_rec_arm_default: true,
@@ -62,7 +62,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Ren och brusfri röstinspelning optimerad för podcasts och voiceovers.",
             icon: "📻",
             kind: TrackKind::VocalAudio,
-            color: Color32::from_rgb(255, 180, 50),
+            color: Theme::AMBER,
             category: AddTrackCategory::Vocal,
             tag: "Tal / Broadcast",
             is_rec_arm_default: true,
@@ -74,7 +74,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Akustisk flygel med djup dynamik och resonant reverbklang.",
             icon: "🎹",
             kind: TrackKind::SynthLead,
-            color: Theme::FL_GREEN,
+            color: Theme::GREEN,
             category: AddTrackCategory::Keys,
             tag: "Akustiskt",
             is_rec_arm_default: false,
@@ -84,7 +84,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Varmt elpiano med mjuk tremolo och analog chorus.",
             icon: "✨",
             kind: TrackKind::SynthLead,
-            color: Color32::from_rgb(80, 210, 170),
+            color: Theme::TRACK_TEAL,
             category: AddTrackCategory::Keys,
             tag: "Vintage",
             is_rec_arm_default: false,
@@ -94,7 +94,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Svävande varma synth-mattor och drömlika atmosfärer.",
             icon: "🌌",
             kind: TrackKind::SynthLead,
-            color: Color32::from_rgb(140, 100, 255),
+            color: Theme::PURPLE,
             category: AddTrackCategory::Keys,
             tag: "Synth",
             is_rec_arm_default: false,
@@ -104,7 +104,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Snabb, krispig synth-pluck perfekt för melodier och arpeggion.",
             icon: "⚡",
             kind: TrackKind::SynthLead,
-            color: Theme::FL_YELLOW,
+            color: Theme::YELLOW,
             category: AddTrackCategory::Keys,
             tag: "Elektronisk",
             is_rec_arm_default: false,
@@ -116,7 +116,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Klar elgitarr med rörförstärkarsimulering och mjuk delay.",
             icon: "🎸",
             kind: TrackKind::SynthLead,
-            color: Color32::from_rgb(255, 90, 90),
+            color: Theme::RED,
             category: AddTrackCategory::BassGuitar,
             tag: "Gitarr",
             is_rec_arm_default: false,
@@ -126,7 +126,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Varm och fyllig fingerpicking-gitarr med studiorumsklang.",
             icon: "🪕",
             kind: TrackKind::SynthLead,
-            color: Color32::from_rgb(230, 160, 80),
+            color: Theme::AMBER,
             category: AddTrackCategory::BassGuitar,
             tag: "Akustiskt",
             is_rec_arm_default: false,
@@ -136,7 +136,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Djup, mättad sub-bas som pumpar och skakar subwoofern.",
             icon: "🔊",
             kind: TrackKind::Bassline,
-            color: Color32::from_rgb(255, 50, 120),
+            color: Theme::TRACK_ROSE,
             category: AddTrackCategory::BassGuitar,
             tag: "Sub Bass",
             is_rec_arm_default: false,
@@ -146,7 +146,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Klassisk resonant bas med glide och distorsion.",
             icon: "🎛",
             kind: TrackKind::Bassline,
-            color: Theme::LCD_ORANGE,
+            color: Theme::ORANGE,
             category: AddTrackCategory::BassGuitar,
             tag: "Acid",
             is_rec_arm_default: false,
@@ -158,7 +158,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Tunga kicks, snärtiga snares, hi-hat rolls och 808 claps.",
             icon: "🥁",
             kind: TrackKind::Drums,
-            color: Theme::FL_CYAN,
+            color: Theme::CYAN,
             category: AddTrackCategory::Drums,
             tag: "Trap / Hip-Hop",
             is_rec_arm_default: false,
@@ -168,7 +168,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Naturligt trumset med punchig bastrumma och dynamisk virvel.",
             icon: "🥢",
             kind: TrackKind::Drums,
-            color: Color32::from_rgb(100, 180, 255),
+            color: Theme::TRACK_BLUE,
             category: AddTrackCategory::Drums,
             tag: "Rock / Pop",
             is_rec_arm_default: false,
@@ -178,7 +178,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Knastriga samplingar, dämpade kicks och vintage vinylklang.",
             icon: "📻",
             kind: TrackKind::Drums,
-            color: Color32::from_rgb(200, 150, 100),
+            color: Theme::AMBER,
             category: AddTrackCategory::Drums,
             tag: "Lo-Fi",
             is_rec_arm_default: false,
@@ -188,7 +188,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Tung analog kick, öppna hi-hats och industriella claps.",
             icon: "⚡",
             kind: TrackKind::Drums,
-            color: Color32::from_rgb(255, 100, 40),
+            color: Theme::RED,
             category: AddTrackCategory::Drums,
             tag: "Techno / House",
             is_rec_arm_default: false,
@@ -200,7 +200,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Episka filmiska stråkar med full orkesterbredd.",
             icon: "🎻",
             kind: TrackKind::SynthLead,
-            color: Color32::from_rgb(220, 140, 255),
+            color: Theme::CABLE,
             category: AddTrackCategory::Orchestra,
             tag: "Cinematic",
             is_rec_arm_default: false,
@@ -210,7 +210,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Mäktiga trumpeter, tromboner och valthorn för drops och refränger.",
             icon: "🎺",
             kind: TrackKind::SynthLead,
-            color: Color32::from_rgb(255, 200, 60),
+            color: Theme::YELLOW,
             category: AddTrackCategory::Orchestra,
             tag: "Orkester",
             is_rec_arm_default: false,
@@ -222,7 +222,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Importera egna WAV-, MP3-, FLAC- eller AIFF-ljudspår direkt i tidslinjen.",
             icon: "📁",
             kind: TrackKind::CustomAudio,
-            color: Theme::FL_ORANGE,
+            color: Theme::ORANGE,
             category: AddTrackCategory::Import,
             tag: "WAV / MP3",
             is_rec_arm_default: false,
@@ -232,7 +232,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Separat ljudspår för Vocals, Drums, Bass eller Instrument från Suno AI.",
             icon: "📦",
             kind: TrackKind::CustomAudio,
-            color: Color32::from_rgb(160, 60, 240),
+            color: Theme::PURPLE,
             category: AddTrackCategory::Import,
             tag: "AI Stem",
             is_rec_arm_default: false,
@@ -271,7 +271,7 @@ pub fn render_add_track_modal(
 
             // Top Header and Search Bar
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("Välj instrument eller ljudkälla för ditt nya spår:")).strong().size(Theme::FONT_M).color(Theme::TEXT_BRIGHT));
+                ui.label(egui::RichText::new(crate::i18n::t("Välj instrument eller ljudkälla för ditt nya spår:")).strong().size(Theme::FONT_M).color(Theme::TEXT));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     ui.label(egui::RichText::new(crate::i18n::t("🔍 Sök:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                     ui.add_sized(Vec2::new(140.0, 20.0), egui::TextEdit::singleline(&mut state.search_filter).hint_text(crate::i18n::t("T.ex. flygel, 808...")));
@@ -294,8 +294,8 @@ pub fn render_add_track_modal(
 
                 for (cat_opt, cat_name) in categories {
                     let is_active = state.selected_category == cat_opt;
-                    let fill = if is_active { Theme::FL_ORANGE } else { Color32::from_rgb(26, 32, 42) };
-                    let fg = if is_active { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+                    let fill = if is_active { Theme::ORANGE } else { Theme::PANEL };
+                    let fg = if is_active { Color32::BLACK } else { Theme::TEXT };
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(cat_name)).strong().size(Theme::FONT_S).color(fg)).fill(fill)).clicked() {
                         state.selected_category = cat_opt;
                     }
@@ -332,7 +332,7 @@ pub fn render_add_track_modal(
                         let (card_rect, card_resp) = ui.allocate_exact_size(Vec2::new(330.0, 72.0), Sense::click());
                         let is_hover = card_resp.hovered();
 
-                        let bg = if is_hover { Color32::from_rgb(32, 40, 54) } else { Color32::from_rgb(20, 24, 32) };
+                        let bg = if is_hover { Theme::GRID } else { Theme::HEADER };
                         ui.painter().rect_filled(card_rect, Rounding::same(6.0), bg);
                         ui.painter().rect_stroke(card_rect, Rounding::same(6.0), Stroke::new(if is_hover { 1.5_f32 } else { 1.0_f32 }, tmpl.color));
 
@@ -353,7 +353,7 @@ pub fn render_add_track_modal(
                             egui::Align2::LEFT_CENTER,
                             crate::i18n::t(tmpl.title),
                             egui::FontId::proportional(Theme::FONT_S),
-                            Color32::WHITE,
+                            Theme::TEXT,
                         );
 
                         // Tag Pill on Right

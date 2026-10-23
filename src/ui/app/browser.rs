@@ -370,9 +370,9 @@ impl SonixApp {
 pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
     ui.vertical(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("📁 SOUND BROWSER")).strong().size(Theme::FONT_M).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("📁 SOUND BROWSER")).strong().size(Theme::FONT_M).color(Theme::ORANGE));
             if self.sample_drag_item.is_some() {
-                ui.label(egui::RichText::new(crate::i18n::t("✋ Drar sample...")).size(Theme::FONT_S).color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("✋ Drar sample...")).size(Theme::FONT_S).color(Theme::CYAN));
             }
         });
         ui.add_space(2.0);
@@ -402,18 +402,18 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
             // Render each category
             for (cat_name, items) in categories_map {
                 let (cat_icon, cat_color) = match cat_name.as_str() {
-                    "Trumloopar" | "Drum Loops" => ("🥁", Theme::FL_ORANGE),
-                    "Pads & Atmosfär" | "Pads & Atmosphere" => ("✨", Color32::from_rgb(100, 200, 255)),
-                    "Bas & 808" | "Bass & 808" => ("🎸", Color32::from_rgb(255, 80, 140)),
-                    "Keys & Melodier" | "Keys & Melodies" => ("🎹", Color32::from_rgb(255, 200, 100)),
-                    "FX & Övergångar" | "FX & Transitions" => ("🌪", Color32::from_rgb(140, 220, 255)),
-                    "Kicks" => ("💥", Theme::FL_ORANGE),
-                    "Snares" => ("🥁", Theme::FL_CYAN),
-                    "Claps" => ("👏", Theme::FL_CYAN),
-                    "Hi-Hats" => ("🧂", Theme::FL_YELLOW),
-                    "Percussion" => ("🪘", Color32::from_rgb(255, 140, 60)),
-                    "Egna Samples" | "Egna Importerade" | "📂 Egna Samples" | "📂 My Samples" => ("⭐", Theme::FL_GREEN),
-                    _ => ("🎵", Theme::FL_CYAN),
+                    "Trumloopar" | "Drum Loops" => ("🥁", Theme::ORANGE),
+                    "Pads & Atmosfär" | "Pads & Atmosphere" => ("✨", Theme::CYAN),
+                    "Bas & 808" | "Bass & 808" => ("🎸", Theme::TRACK_ROSE),
+                    "Keys & Melodier" | "Keys & Melodies" => ("🎹", Theme::AMBER),
+                    "FX & Övergångar" | "FX & Transitions" => ("🌪", Theme::CYAN),
+                    "Kicks" => ("💥", Theme::ORANGE),
+                    "Snares" => ("🥁", Theme::CYAN),
+                    "Claps" => ("👏", Theme::CYAN),
+                    "Hi-Hats" => ("🧂", Theme::YELLOW),
+                    "Percussion" => ("🪘", Theme::ORANGE),
+                    "Egna Samples" | "Egna Importerade" | "📂 Egna Samples" | "📂 My Samples" => ("⭐", Theme::GREEN),
+                    _ => ("🎵", Theme::CYAN),
                 };
 
                 ui.collapsing(egui::RichText::new(format!("{} {} ({})", cat_icon, cat_name.to_uppercase(), items.len())).strong().color(cat_color), |ui| {
@@ -427,9 +427,9 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                         }
 
                         let is_hovered = card_resp.hovered();
-                        let bg_col = if is_hovered { Color32::from_rgb(28, 34, 46) } else { Theme::PANEL_BG };
+                        let bg_col = if is_hovered { Theme::GRID } else { Theme::PANEL };
                         ui.painter().rect_filled(card_rect, Rounding::same(3.0), bg_col);
-                        ui.painter().rect_stroke(card_rect, Rounding::same(3.0), Stroke::new(1.0_f32, if is_hovered { item.color } else { Color32::from_rgb(32, 40, 52) }));
+                        ui.painter().rect_stroke(card_rect, Rounding::same(3.0), Stroke::new(1.0_f32, if is_hovered { item.color } else { Theme::GRID }));
 
                         // Card Content
                         let mut card_ui = ui.new_child(egui::UiBuilder::new().max_rect(card_rect).layout(egui::Layout::top_down(egui::Align::Min)));
@@ -440,8 +440,8 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                             ui.label(egui::RichText::new(&item.name).strong().size(Theme::FONT_S).color(item.color));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 let drag_btn = ui.add(
-                                    egui::Button::new(egui::RichText::new(crate::i18n::t("✋ Dra")).size(Theme::FONT_XS).color(Color32::WHITE))
-                                        .fill(Color32::from_rgb(45, 55, 75))
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t("✋ Dra")).size(Theme::FONT_XS).color(Theme::TEXT))
+                                        .fill(Theme::BORDER)
                                         .sense(Sense::click_and_drag())
                                 ).on_hover_text(crate::i18n::t("Klicka & håll ned för att dra till tidslinjen"));
                                 if drag_btn.drag_started() || (drag_btn.dragged() && self.sample_drag_item.is_none()) {
@@ -509,10 +509,10 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                                     }
                                 }
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Tidslinje")).size(Theme::FONT_XS)).fill(Color32::from_rgb(30, 65, 90))).on_hover_text(crate::i18n::t("Skapa nytt spår på tidslinjen med denna sample")).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Tidslinje")).size(Theme::FONT_XS)).fill(Theme::BORDER_SOFT)).on_hover_text(crate::i18n::t("Skapa nytt spår på tidslinjen med denna sample")).clicked() {
                                 sample_to_add_timeline = Some(item.clone());
                             }
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Sångstudio")).size(Theme::FONT_XS)).fill(Color32::from_rgb(50, 45, 80))).on_hover_text(crate::i18n::t("Öppna i Sångstudion för isolerad solo-provspelning & formning")).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Sångstudio")).size(Theme::FONT_XS)).fill(Theme::BORDER)).on_hover_text(crate::i18n::t("Öppna i Sångstudion för isolerad solo-provspelning & formning")).clicked() {
                                 sample_to_vocal_studio = Some(item.clone());
                             }
                             if ui.button(egui::RichText::new(crate::i18n::t("🎛 Kanal")).size(Theme::FONT_XS)).on_hover_text(crate::i18n::t("Ladda till Channel Rack")).clicked() {
@@ -546,7 +546,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                     ("Kepler Exo (puls)", Preset::KeplerExo),
                 ];
                 if ui
-                    .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Autogun (slumpat ljud)")).size(Theme::FONT_S)).fill(Theme::PANEL_BG))
+                    .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Autogun (slumpat ljud)")).size(Theme::FONT_S)).fill(Theme::PANEL))
                     .on_hover_text(crate::i18n::t("Slumpar fram ett komplett ljud ur syntens egna parametrar"))
                     .clicked()
                 {

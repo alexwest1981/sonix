@@ -23,10 +23,10 @@ impl StemType {
 
     pub fn color(&self) -> Color32 {
         match self {
-            StemType::Vocals => Color32::from_rgb(255, 105, 180), // Pink
-            StemType::Drums => Theme::LCD_ORANGE,   // Orange
-            StemType::Bass => Color32::from_rgb(0, 220, 255),    // Cyan
-            StemType::Instruments => Theme::FL_GREEN, // Green
+            StemType::Vocals => Theme::TRACK_ROSE, // Pink
+            StemType::Drums => Theme::ORANGE,   // Orange
+            StemType::Bass => Theme::CYAN,    // Cyan
+            StemType::Instruments => Theme::GREEN, // Green
         }
     }
 }

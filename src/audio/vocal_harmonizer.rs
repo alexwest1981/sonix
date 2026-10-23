@@ -679,9 +679,9 @@ pub fn analyze_blobs(
                 b.length_steps = (step + 1 - b.start_step).max(b.length_steps);
             } else {
                 let color = if note % 2 == 0 {
-                    Color32::from_rgb(0, 220, 255)
+                    Theme::CYAN
                 } else {
-                    Theme::LCD_ORANGE
+                    Theme::ORANGE
                 };
                 blobs.push(PitchBlob {
                     start_step: step,

@@ -31,12 +31,12 @@ pub fn render_stem_separator_view(
     let _ = &status_msg;
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🧠 AI STEM SEPARATION STUDIO (DSP + Neural ONNX)")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🧠 AI STEM SEPARATION STUDIO (DSP + Neural ONNX)")).strong().size(Theme::FONT_L).color(Theme::ORANGE));
             ui.separator();
             ui.label(egui::RichText::new(crate::i18n::t("Isolera och extrahera sång, trummor, bas och instrument direkt ur färdiga mixar")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Exportera Stems till Song Arranger")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Exportera Stems till Song Arranger")).strong().color(Color32::BLACK)).fill(Theme::GREEN)).clicked() {
                     actions.export_stems = true;
                 }
             });
@@ -48,7 +48,7 @@ pub fn render_stem_separator_view(
         ui.group(|ui| {
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new(crate::i18n::t("Källfil:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
-                ui.label(egui::RichText::new(&project.track_title).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(&project.track_title).strong().size(Theme::FONT_S).color(Theme::CYAN));
                 ui.separator();
 
                 let tempo_txt = if project.bpm > 0.0 {
@@ -59,10 +59,10 @@ pub fn render_stem_separator_view(
                 ui.label(egui::RichText::new(format!("{} {:.1}s  •  {} {}", crate::i18n::t("Längd:"), project.duration_seconds, crate::i18n::t("Tempo:"), tempo_txt)).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 ui.separator();
 
-                ui.label(egui::RichText::new(format!("Modell: {}", project.model_name)).size(Theme::FONT_S).color(Theme::FL_YELLOW));
+                ui.label(egui::RichText::new(format!("Modell: {}", project.model_name)).size(Theme::FONT_S).color(Theme::YELLOW));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add_enabled(!project.is_separating, egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Välj fil & separera")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(140, 40, 180))).clicked() {
+                    if ui.add_enabled(!project.is_separating, egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Välj fil & separera")).strong().color(Theme::TEXT)).fill(Theme::PURPLE)).clicked() {
                         actions.request_separation = true;
                     }
                 });
@@ -75,7 +75,7 @@ pub fn render_stem_separator_view(
         ui.group(|ui| {
             ui.horizontal(|ui| {
                 if crate::audio::neural_available() {
-                    ui.label(egui::RichText::new(format!("🧠 {} {}", crate::i18n::t("Neural modell:"), crate::audio::neural_model_status())).size(Theme::FONT_S).color(Theme::FL_GREEN));
+                    ui.label(egui::RichText::new(format!("🧠 {} {}", crate::i18n::t("Neural modell:"), crate::audio::neural_model_status())).size(Theme::FONT_S).color(Theme::GREEN));
                 } else {
                     ui.label(egui::RichText::new(format!("🧠 {} {} ({})", crate::i18n::t("Neural: ingen modell hittad — använder DSP. Lägg htdemucs.onnx i"), crate::audio::neural_model_status(), crate::i18n::t("bygg med --features neural"))).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 }
@@ -149,7 +149,7 @@ pub fn render_stem_separator_view(
             if project.is_separating {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("⏳ Separerar...")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("⏳ Separerar...")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
                     ui.add(egui::ProgressBar::new(project.progress.clamp(0.0, 1.0)).desired_width(260.0).text(format!("{:.0}%", project.progress * 100.0)));
                 });
             }
@@ -176,11 +176,11 @@ pub fn render_stem_separator_view(
                             ui.add_space(2.0);
 
                             ui.horizontal(|ui| {
-                                let m_col = if stem.muted { Color32::from_rgb(80, 20, 20) } else { Theme::FL_GREEN };
+                                let m_col = if stem.muted { Theme::PANEL_ALT } else { Theme::GREEN };
                                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("MUTE")).size(Theme::FONT_S)).fill(m_col)).clicked() {
                                     stem.muted = !stem.muted;
                                 }
-                                let s_col = if stem.solo { Theme::FL_ORANGE } else { Color32::from_rgb(40, 35, 25) };
+                                let s_col = if stem.solo { Theme::ORANGE } else { Theme::HEADER };
                                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("SOLO")).size(Theme::FONT_S)).fill(s_col)).clicked() {
                                     stem.solo = !stem.solo;
                                 }
@@ -188,8 +188,8 @@ pub fn render_stem_separator_view(
 
                             ui.horizontal(|ui| {
                                 rotary_knob_full(ui, &mut stem.volume, 0.0, 1.25, "VOL", col, 22.0);
-                                rotary_knob_full(ui, &mut stem.pan, -1.0, 1.0, "PAN", Color32::WHITE, 22.0);
-                                if rotary_knob_full(ui, &mut stem.time_stretch, 0.5, 2.0, "SPEED", Theme::FL_YELLOW, 22.0).1 {
+                                rotary_knob_full(ui, &mut stem.pan, -1.0, 1.0, "PAN", Theme::TEXT, 22.0);
+                                if rotary_knob_full(ui, &mut stem.time_stretch, 0.5, 2.0, "SPEED", Theme::YELLOW, 22.0).1 {
                                     actions.speed_changed = Some(stem_idx);
                                 }
                             });
@@ -202,8 +202,8 @@ pub fn render_stem_separator_view(
                     let painter = ui.painter();
 
                     // Track Background
-                    painter.rect_filled(wave_rect, Rounding::same(4.0), Color32::from_rgb(18, 22, 30));
-                    painter.rect_stroke(wave_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Color32::from_rgb(34, 44, 58)));
+                    painter.rect_filled(wave_rect, Rounding::same(4.0), Theme::BG);
+                    painter.rect_stroke(wave_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::GRID));
 
                     let mid_y = wave_rect.center().y;
                     let num_bars = stem.waveform_data.len();
@@ -225,7 +225,7 @@ pub fn render_stem_separator_view(
                                 Pos2::new(bx + col_w.max(0.7), (bot).max(top + 0.6)),
                             );
                             let fill = if stem.muted {
-                                Theme::CHANNEL_BG
+                                Theme::PANEL_ALT
                             } else {
                                 col
                             };
@@ -238,7 +238,7 @@ pub fn render_stem_separator_view(
                             let bx = wave_rect.min.x + 4.0 + idx as f32 * bar_w;
                             let h = amp * (wave_rect.height() * 0.42);
                             let bar_rect = Rect::from_min_max(Pos2::new(bx, mid_y - h), Pos2::new(bx + bar_w * 0.8, mid_y + h));
-                            let fill = if stem.muted { Theme::CHANNEL_BG } else { col };
+                            let fill = if stem.muted { Theme::PANEL_ALT } else { col };
                             painter.rect_filled(bar_rect, Rounding::same(1.0), fill);
                         }
                     }
@@ -247,7 +247,7 @@ pub fn render_stem_separator_view(
                     if is_playing {
                         let play_norm = (current_time / project.duration_seconds).fract();
                         let px = wave_rect.min.x + 4.0 + play_norm * (wave_rect.width() - 8.0);
-                        painter.line_segment([Pos2::new(px, wave_rect.min.y), Pos2::new(px, wave_rect.max.y)], Stroke::new(2.0_f32, Color32::WHITE));
+                        painter.line_segment([Pos2::new(px, wave_rect.min.y), Pos2::new(px, wave_rect.max.y)], Stroke::new(2.0_f32, Theme::TEXT));
                     }
                 });
             });

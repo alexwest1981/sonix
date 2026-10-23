@@ -105,14 +105,14 @@ impl ChordGeneratorState {
 
         let mut pads = Vec::new();
         let pad_colors = [
-            Theme::FL_CYAN,
-            Theme::FL_ORANGE,
-            Theme::FL_GREEN,
-            Theme::FL_PURPLE,
-            Theme::FL_YELLOW,
-            Color32::from_rgb(255, 100, 150),
-            Color32::from_rgb(100, 200, 255),
-            Color32::from_rgb(255, 180, 80),
+            Theme::CYAN,
+            Theme::ORANGE,
+            Theme::GREEN,
+            Theme::PURPLE,
+            Theme::YELLOW,
+            Theme::TRACK_ROSE,
+            Theme::CYAN,
+            Theme::AMBER,
         ];
 
         for (deg_idx, &interval) in intervals.iter().enumerate() {
@@ -241,7 +241,7 @@ pub fn render_chord_generator_modal(
             ui.vertical(|ui| {
                 // Header bar
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("MUSIKTEORI & HARMONIK")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("MUSIKTEORI & HARMONIK")).strong().size(Theme::FONT_L).color(Theme::ORANGE));
                     ui.separator();
                     ui.label(egui::RichText::new(crate::i18n::t("Klicka på ackordplattorna för att spela live • Skapa magiska ackordföljder")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 });
@@ -251,11 +251,11 @@ pub fn render_chord_generator_modal(
                 // Top Controls: Root Key, Scale, Octave, Voicing
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Grundton (Key):")).strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("Grundton (Key):")).strong().color(Theme::CYAN));
                         for (idx, &name) in NOTE_NAMES.iter().enumerate() {
                             let is_sel = state.root_note == idx as u8;
-                            let btn_col = if is_sel { Theme::FL_CYAN } else { Theme::CHANNEL_BG };
-                            let txt_col = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+                            let btn_col = if is_sel { Theme::CYAN } else { Theme::PANEL_ALT };
+                            let txt_col = if is_sel { Color32::BLACK } else { Theme::TEXT };
                             if ui.add(egui::Button::new(egui::RichText::new(name).strong().size(Theme::FONT_S).color(txt_col)).fill(btn_col)).clicked() {
                                 state.root_note = idx as u8;
                                 state.load_progression_preset(state.selected_progression_preset);
@@ -266,7 +266,7 @@ pub fn render_chord_generator_modal(
                     ui.add_space(4.0);
 
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Skala / Tonart:")).strong().color(Theme::FL_YELLOW));
+                        ui.label(egui::RichText::new(crate::i18n::t("Skala / Tonart:")).strong().color(Theme::YELLOW));
                         let scales = ScaleType::all();
                         let current_label = scales.iter().find(|(s, _)| *s == state.scale_type).map(|(_, l)| *l).unwrap_or("Moll");
 
@@ -314,7 +314,7 @@ pub fn render_chord_generator_modal(
                 // INTERACTIVE CHORD PADS MATRIX (The core fun!)
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("🎹 INTERAKTIVA ACKORDPLATTOR (Klicka för att spela & bygga)")).strong().color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(crate::i18n::t("🎹 INTERAKTIVA ACKORDPLATTOR (Klicka för att spela & bygga)")).strong().color(Theme::GREEN));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button(crate::i18n::t("🎲 Slumpa Skala")).on_hover_text(crate::i18n::t("Slumpa ny skala och grundton för inspiration")).clicked() {
                                 state.root_note = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() % 12) as u8;
@@ -338,11 +338,11 @@ pub fn render_chord_generator_modal(
                             let is_hovered = resp.hovered();
 
                             let bg_color = if resp.is_pointer_button_down_on() {
-                                Theme::FL_ORANGE
+                                Theme::ORANGE
                             } else if is_hovered {
-                                Theme::BORDER_DARK
+                                Theme::BORDER
                             } else {
-                                Theme::PANEL_BG
+                                Theme::PANEL
                             };
 
                             ui.painter().rect_filled(rect, Rounding::same(6.0), bg_color);
@@ -363,7 +363,7 @@ pub fn render_chord_generator_modal(
                                 egui::Align2::CENTER_CENTER,
                                 &chord.name,
                                 egui::FontId::proportional(Theme::FONT_L),
-                                Color32::WHITE,
+                                Theme::TEXT,
                             );
 
                             // Note list string
@@ -397,7 +397,7 @@ pub fn render_chord_generator_modal(
                 // CURRENT PROGRESSION TIMELINE & PRESETS
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("🎼 AKTIV ACKORDFÖLJD (PROGRESSION)")).strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("🎼 AKTIV ACKORDFÖLJD (PROGRESSION)")).strong().color(Theme::CYAN));
                         ui.separator();
 
                         let presets = ["Trap & Dark (i-iv-v-i)", "EDM Anthem (VI-IV-I-V)", "Cyberpunk (i-VI-III-VII)", "Neo-Soul (ii-V-I-vi)", "Blues Groove (i-iv-i-V)", "Cinematic (i-III-iv-v)"];
@@ -428,7 +428,7 @@ pub fn render_chord_generator_modal(
                             let card_h = 44.0;
                             for (c_idx, ch) in state.current_progression.iter().enumerate() {
                                 let (c_rect, c_resp) = ui.allocate_exact_size(Vec2::new(card_w, card_h), Sense::click());
-                                ui.painter().rect_filled(c_rect, Rounding::same(4.0), Color32::from_rgb(22, 26, 34));
+                                ui.painter().rect_filled(c_rect, Rounding::same(4.0), Theme::HEADER);
                                 ui.painter().rect_stroke(c_rect, Rounding::same(4.0), egui::Stroke::new(1.0_f32, ch.color));
 
                                 ui.painter().text(
@@ -444,7 +444,7 @@ pub fn render_chord_generator_modal(
                                     egui::Align2::LEFT_CENTER,
                                     &ch.name,
                                     egui::FontId::proportional(Theme::FONT_M),
-                                    Color32::WHITE,
+                                    Theme::TEXT,
                                 );
 
                                 if c_resp.clicked() {
@@ -452,7 +452,7 @@ pub fn render_chord_generator_modal(
                                 }
 
                                 if c_idx < state.current_progression.len() - 1 {
-                                    ui.label(egui::RichText::new(crate::i18n::t("➔")).strong().color(Theme::FL_ORANGE));
+                                    ui.label(egui::RichText::new(crate::i18n::t("➔")).strong().color(Theme::ORANGE));
                                 }
                             }
                         }
@@ -464,10 +464,10 @@ pub fn render_chord_generator_modal(
                 // Strum / Arpeggiator performance controls
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Strum-utbredning:")).strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("Strum-utbredning:")).strong().color(Theme::CYAN));
                         ui.add(egui::Slider::new(&mut state.strum_spread_ms, 0.0..=120.0).suffix(" ms").show_value(true));
                         ui.separator();
-                        ui.label(egui::RichText::new(crate::i18n::t("Arpeggio:")).strong().color(Theme::FL_YELLOW));
+                        ui.label(egui::RichText::new(crate::i18n::t("Arpeggio:")).strong().color(Theme::YELLOW));
                         let modes = ["Block", "Upp", "Ner", "Slump"];
                         egui::ComboBox::from_id_salt("chord_arp_mode")
                             .selected_text(*modes.get(state.arpeggiator_mode).unwrap_or(&"Block"))
@@ -486,12 +486,12 @@ pub fn render_chord_generator_modal(
 
                 // Bottom Action Buttons
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Infoga Ackord i Piano Roll & Spår")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN).min_size(Vec2::new(220.0, 32.0))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Infoga Ackord i Piano Roll & Spår")).strong().color(Color32::BLACK)).fill(Theme::GREEN).min_size(Vec2::new(220.0, 32.0))).clicked() {
                         trigger_insert = true;
                         close = true;
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("▶ Provspela Hela Sekvensen")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 90, 140)).min_size(Vec2::new(180.0, 32.0))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("▶ Provspela Hela Sekvensen")).strong().color(Theme::TEXT)).fill(Theme::BORDER_SOFT).min_size(Vec2::new(180.0, 32.0))).clicked() {
                         state.audition_progression(engine);
                         *status_msg = crate::i18n::t("▶ Provspelar ackordföljd...").to_string();
                     }

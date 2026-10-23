@@ -8,6 +8,7 @@
 //! Rör inte: `step_duration` och motorns position är samma klocka; lägg inte en tredje.
 
 use super::*;
+use crate::ui::theme::Theme;
 
 /// Hur många hela steg klockan har hunnit förbi sedan ankaret (Fas 8.13b).
 ///
@@ -36,7 +37,7 @@ impl SonixApp {
 /// and that all tracks have their categorized colors, icons, and region colors refreshed.
 pub fn ensure_mic_track_exists(&mut self) {
     if self.playlist_tracks.is_empty() {
-        let mut mic_track = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Color32::WHITE);
+        let mut mic_track = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Theme::TEXT);
         mic_track.volume = 1.0;
         mic_track.is_rec_armed = true;
         self.playlist_tracks.push(mic_track);
@@ -57,7 +58,7 @@ pub fn ensure_mic_track_exists(&mut self) {
         }
     } else {
         // Create dedicated Mic track at the end
-        let mut mic_track = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Color32::WHITE);
+        let mut mic_track = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Theme::TEXT);
         mic_track.volume = 1.0;
         mic_track.is_rec_armed = true;
         self.playlist_tracks.push(mic_track);
@@ -68,11 +69,11 @@ pub fn ensure_mic_track_exists(&mut self) {
     for (idx, track) in self.playlist_tracks.iter_mut().enumerate() {
         let is_mic = idx == last_idx && (track.name.to_lowercase().contains("mic") || track.name.to_lowercase().contains("mik") || track.name.to_lowercase().contains("voice"));
         if is_mic {
-            track.color = Color32::WHITE;
+            track.color = Theme::TEXT;
             track.icon = "🎤";
             track.kind = TrackKind::VocalAudio;
             for r in &mut track.regions {
-                r.color = Color32::WHITE;
+                r.color = Theme::TEXT;
             }
         } else {
             let (kind, icon, color) = classify_track_style(&track.name);

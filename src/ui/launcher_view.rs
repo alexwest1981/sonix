@@ -48,13 +48,13 @@ pub fn slots_from_sections(sections: &[SongSectionItem]) -> Vec<SlotContent> {
 /// Färgen en slot ritas i. Spelläge, kö och väntande stopp ska gå att se på håll.
 fn slot_color(state: SlotState, queued_stop: bool) -> egui::Color32 {
     if queued_stop {
-        return Theme::FL_ORANGE;
+        return Theme::ORANGE;
     }
     match state {
-        SlotState::Playing => egui::Color32::from_rgb(46, 160, 67),
-        SlotState::Queued => egui::Color32::from_rgb(196, 160, 40),
-        SlotState::Stopped => Theme::BORDER_DARK,
-        SlotState::Empty => Theme::HEADER_BG,
+        SlotState::Playing => Theme::GREEN,
+        SlotState::Queued => Theme::AMBER,
+        SlotState::Stopped => Theme::BORDER,
+        SlotState::Empty => Theme::HEADER,
     }
 }
 

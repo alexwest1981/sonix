@@ -91,7 +91,7 @@ pub fn render_video_view(
                 egui::RichText::new(crate::i18n::t("🎬 VIDEO (referensbild)"))
                     .strong()
                     .size(Theme::FONT_M)
-                    .color(crate::ui::theme::Theme::FL_CYAN),
+                    .color(crate::ui::theme::Theme::CYAN),
             );
             ui.separator();
             if ui.button(crate::i18n::t("🎬 Ladda video…")).clicked() {
@@ -161,7 +161,7 @@ pub fn render_video_view(
         }
 
         if let Some(err) = &state.last_error {
-            ui.label(egui::RichText::new(format!("❌ {err}")).color(crate::ui::theme::Theme::FL_RED));
+            ui.label(egui::RichText::new(format!("❌ {err}")).color(crate::ui::theme::Theme::RED));
         }
         if is_playing && state.info.is_some() {
             ui.label(

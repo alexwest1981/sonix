@@ -40,7 +40,7 @@ use crate::ui::theme::Theme;
     fn test_pattern() -> Pattern {
         Pattern {
             name: "Testpattern".to_string(),
-            color: Color32::WHITE,
+            color: Theme::TEXT,
             bars: 1,
             bends: Vec::new(),
             channel_steps: vec![[false; crate::audio::tempo::MAX_STEPS]; 8],
@@ -734,7 +734,7 @@ use crate::ui::theme::Theme;
             category: "Test".to_string(),
             icon: "🎵".to_string(),
             default_note: 60,
-            color: Color32::WHITE,
+            color: Theme::TEXT,
             waveform: Vec::new(),
             file_path: Some(path.to_string()),
         }
@@ -868,7 +868,7 @@ use crate::ui::theme::Theme;
             fade_out_bars: 0.0,
             muted: false,
             is_reverse: false,
-            color: Color32::WHITE,
+            color: Theme::TEXT,
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
@@ -1079,7 +1079,7 @@ use crate::ui::theme::Theme;
             "Testkanal".to_string(),
             "🎹",
             TrackKind::SynthLead,
-            Color32::WHITE,
+            Theme::TEXT,
         );
         let bus_volume = [1.0_f32; crate::audio::synth::NUM_BUSES];
         let bus_muted = [false; crate::audio::synth::NUM_BUSES];
@@ -1126,7 +1126,7 @@ use crate::ui::theme::Theme;
                 freq_hz: 120.0,
                 gain_db: 1.5,
                 q: 0.9,
-                color: Color32::WHITE,
+                color: Theme::TEXT,
                 is_active: true,
             }],
             compressor_release_ms: 120.0,
@@ -1368,7 +1368,7 @@ use crate::ui::theme::Theme;
             freq_hz: 111.0,
             gain_db: -3.0,
             q: 1.5,
-            color: Color32::WHITE,
+            color: Theme::TEXT,
             is_active: false,
         }];
         assert!(
@@ -1564,17 +1564,17 @@ use crate::ui::theme::Theme;
     #[test]
     fn test_classify_all_stem_names_distinct_colors() {
         let stems = [
-            ("0 Lead Vocals", "🎙", Color32::from_rgb(0, 225, 245)),
-            ("1 Backing Vocals", "🗣", Color32::from_rgb(225, 75, 235)),
-            ("2 Drums", "🥁", Color32::from_rgb(255, 140, 25)),
-            ("3 Bass", "🎸", Color32::from_rgb(45, 225, 105)),
-            ("4 Guitar", "🎸", Color32::from_rgb(255, 195, 30)),
-            ("5 Keyboard", "🎹", Color32::from_rgb(65, 155, 255)),
-            ("6 Percussion", "🪘", Color32::from_rgb(255, 105, 50)),
-            ("7 Strings", "🎻", Color32::from_rgb(40, 220, 185)),
-            ("8 Synth", "🎛", Color32::from_rgb(175, 95, 255)),
-            ("9 Other", "✨", Color32::from_rgb(255, 80, 150)),
-            (crate::i18n::t("🎤 Mic (Voice & Sång)"), "🎤", Color32::WHITE),
+            ("0 Lead Vocals", "🎙", Theme::TRACK_CYAN),
+            ("1 Backing Vocals", "🗣", Theme::TRACK_MAGENTA),
+            ("2 Drums", "🥁", Theme::TRACK_ORANGE),
+            ("3 Bass", "🎸", Theme::TRACK_GREEN),
+            ("4 Guitar", "🎸", Theme::TRACK_VIOLET),
+            ("5 Keyboard", "🎹", Theme::TRACK_BLUE),
+            ("6 Percussion", "🪘", Theme::TRACK_AMBER),
+            ("7 Strings", "🎻", Theme::TRACK_TEAL),
+            ("8 Synth", "🎛", Theme::TRACK_STEEL),
+            ("9 Other", "✨", Theme::TRACK_ROSE),
+            (crate::i18n::t("🎤 Mic (Voice & Sång)"), "🎤", Theme::TEXT),
         ];
 
         let mut seen_colors = std::collections::HashSet::new();
@@ -1612,14 +1612,14 @@ use crate::ui::theme::Theme;
             });
             assert!(mic_pos.is_none(), "Original file had no mic track");
 
-            let mut mic_track = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Color32::WHITE);
+            let mut mic_track = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Theme::TEXT);
             mic_track.volume = 1.0;
             mic_track.is_rec_armed = true;
             app_tracks_copy.push(mic_track);
 
             assert_eq!(app_tracks_copy.len(), 11, "Now has 11 tracks including Mic");
             assert_eq!(app_tracks_copy.last().unwrap().name, crate::i18n::t("🎤 Mic (Voice & Sång)"));
-            assert_eq!(app_tracks_copy.last().unwrap().color, Color32::WHITE);
+            assert_eq!(app_tracks_copy.last().unwrap().color, Theme::TEXT);
 
             // Re-classify colors
             for track in &mut app_tracks_copy {
@@ -1634,24 +1634,24 @@ use crate::ui::theme::Theme;
             }
 
             // Verify lead vocals is Cyan
-            assert_eq!(app_tracks_copy[0].color, Color32::from_rgb(0, 225, 245));
-            assert_eq!(app_tracks_copy[0].regions[0].color, Color32::from_rgb(0, 225, 245));
+            assert_eq!(app_tracks_copy[0].color, Theme::TRACK_CYAN);
+            assert_eq!(app_tracks_copy[0].regions[0].color, Theme::TRACK_CYAN);
 
             // Verify backing vocals is Magenta
-            assert_eq!(app_tracks_copy[1].color, Color32::from_rgb(225, 75, 235));
-            assert_eq!(app_tracks_copy[1].regions[0].color, Color32::from_rgb(225, 75, 235));
+            assert_eq!(app_tracks_copy[1].color, Theme::TRACK_MAGENTA);
+            assert_eq!(app_tracks_copy[1].regions[0].color, Theme::TRACK_MAGENTA);
 
             // Verify drums is Electric Orange
-            assert_eq!(app_tracks_copy[2].color, Color32::from_rgb(255, 140, 25));
-            assert_eq!(app_tracks_copy[2].regions[0].color, Color32::from_rgb(255, 140, 25));
+            assert_eq!(app_tracks_copy[2].color, Theme::TRACK_ORANGE);
+            assert_eq!(app_tracks_copy[2].regions[0].color, Theme::TRACK_ORANGE);
         }
     }
 
     #[test]
     fn test_sample_drag_and_drop_to_timeline_track() {
         let mut tracks = vec![
-            PlaylistTrack::new(crate::i18n::t("🥁 Trummor").to_string(), "🥁", TrackKind::Drums, Color32::from_rgb(255, 140, 25)),
-            PlaylistTrack::new(crate::i18n::t("🎸 Bas").to_string(), "🎸", TrackKind::Bassline, Color32::from_rgb(45, 225, 105)),
+            PlaylistTrack::new(crate::i18n::t("🥁 Trummor").to_string(), "🥁", TrackKind::Drums, Theme::ORANGE),
+            PlaylistTrack::new(crate::i18n::t("🎸 Bas").to_string(), "🎸", TrackKind::Bassline, Theme::GREEN),
         ];
 
         let sample_item = LibrarySampleItem {
@@ -1660,7 +1660,7 @@ use crate::ui::theme::Theme;
             category: "Kick".to_string(),
             icon: "🥁".to_string(),
             default_note: 36,
-            color: Color32::from_rgb(255, 80, 50),
+            color: Theme::RED,
             waveform: vec![0.8, 0.6, 0.4, 0.2, 0.05],
             file_path: None,
         };
@@ -1729,7 +1729,7 @@ use crate::ui::theme::Theme;
         let mut vocal_track = crate::audio::recorder::VocalStudioTrack::default();
         vocal_track.takes.clear();
         let dummy_pcm = vec![0.5, -0.5, 0.8, -0.8, 0.3, -0.3];
-        let take_idx = vocal_track.load_sample_or_region_as_take("Lead Hook", dummy_pcm, 44100, Theme::FL_CYAN);
+        let take_idx = vocal_track.load_sample_or_region_as_take("Lead Hook", dummy_pcm, 44100, Theme::CYAN);
 
         assert_eq!(take_idx, 0);
         assert_eq!(vocal_track.takes.len(), 1);
@@ -2005,7 +2005,7 @@ use crate::ui::theme::Theme;
             "Spår".to_string(),
             "🎹",
             super::state::TrackKind::SynthLead,
-            eframe::egui::Color32::WHITE,
+            Theme::TEXT,
         );
         track.clips[4] = Some(2);
         track.clip_bars[4] = 2;
@@ -2055,7 +2055,7 @@ use crate::ui::theme::Theme;
 
         let mut pattern = super::state::Pattern {
             name: "Två takter".to_string(),
-            color: eframe::egui::Color32::WHITE,
+            color: Theme::TEXT,
             bars: 2,
             bends: Vec::new(),
             channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
@@ -2682,7 +2682,7 @@ use crate::ui::theme::Theme;
             category: "Kicks".to_string(),
             icon: "🥁".to_string(),
             default_note: 36,
-            color: Color32::from_rgb(255, 80, 50),
+            color: Theme::RED,
             waveform: vec![0.9, 0.6, 0.3],
             file_path: path,
         };
@@ -2931,7 +2931,7 @@ use crate::ui::theme::Theme;
             fade_out_bars: 0.0,
             muted: false,
             is_reverse: false,
-            color: Color32::WHITE,
+            color: Theme::TEXT,
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
@@ -2988,7 +2988,7 @@ use crate::ui::theme::Theme;
             fade_out_bars: 0.0,
             muted: false,
             is_reverse: false,
-            color: Color32::WHITE,
+            color: Theme::TEXT,
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
@@ -3037,7 +3037,7 @@ use crate::ui::theme::Theme;
                 fade_out_bars: 0.0,
                 muted: false,
                 is_reverse: false,
-                color: Color32::WHITE,
+                color: Theme::TEXT,
                 loop_length_bars: 0.0,
                 source_bpm: 0.0,
                 tape: false,
@@ -3055,7 +3055,7 @@ use crate::ui::theme::Theme;
                 fade_out_bars: 0.0,
                 muted: false,
                 is_reverse: false,
-                color: Color32::WHITE,
+                color: Theme::TEXT,
                 loop_length_bars: 0.0,
                 source_bpm: 96.0,
                 tape: false,

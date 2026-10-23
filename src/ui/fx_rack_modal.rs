@@ -66,7 +66,7 @@ impl Default for FxRackState {
                     name: "📊 VISUAL EQ",
                     category: "Clean Up",
                     enabled: true,
-                    color: Theme::FL_CYAN,
+                    color: Theme::CYAN,
                     p1_name: "LOW",
                     p1_val: 0.50,
                     p2_name: "MID",
@@ -82,7 +82,7 @@ impl Default for FxRackState {
                     name: "🗜 DYNAMIC COMPRESSOR",
                     category: "Glue Mix",
                     enabled: true,
-                    color: Theme::LCD_ORANGE,
+                    color: Theme::ORANGE,
                     p1_name: "THRESH",
                     p1_val: 0.65,
                     p2_name: "RATIO",
@@ -98,7 +98,7 @@ impl Default for FxRackState {
                     name: "🪐 VOCAL DOUBLER",
                     category: "Vocals",
                     enabled: true,
-                    color: Color32::from_rgb(180, 100, 255),
+                    color: Theme::PURPLE,
                     p1_name: "STRENGTH",
                     p1_val: 0.70,
                     p2_name: "MOD",
@@ -114,7 +114,7 @@ impl Default for FxRackState {
                     name: "🌌 STUDIO REVERB",
                     category: "Echo & Delay",
                     enabled: true,
-                    color: Color32::from_rgb(60, 180, 255),
+                    color: Theme::TRACK_BLUE,
                     p1_name: "DECAY",
                     p1_val: 0.55,
                     p2_name: "LOW CUT",
@@ -130,7 +130,7 @@ impl Default for FxRackState {
                     name: "🎯 DE-ESSER",
                     category: "Clean Up",
                     enabled: true,
-                    color: Color32::from_rgb(120, 240, 100),
+                    color: Theme::GREEN,
                     p1_name: "THRESH",
                     p1_val: 0.45,
                     p2_name: "FREQ",
@@ -146,7 +146,7 @@ impl Default for FxRackState {
                     name: "🚪 NOISE GATE",
                     category: "Clean Up",
                     enabled: true,
-                    color: Color32::from_rgb(255, 80, 120),
+                    color: Theme::TRACK_ROSE,
                     p1_name: "THRESH",
                     p1_val: 0.25,
                     p2_name: "ATTACK",
@@ -162,7 +162,7 @@ impl Default for FxRackState {
                     name: "📶 MULTIBAND COMP (3 band)",
                     category: "Glue Mix",
                     enabled: false,
-                    color: Color32::from_rgb(120, 200, 255),
+                    color: Theme::CYAN,
                     p1_name: "LOW",
                     p1_val: 0.0,
                     p2_name: "MID",
@@ -178,7 +178,7 @@ impl Default for FxRackState {
                     name: "⚡ TRANSIENT SHAPER",
                     category: "Dynamics",
                     enabled: false,
-                    color: Color32::from_rgb(255, 200, 60),
+                    color: Theme::YELLOW,
                     p1_name: "ATTACK",
                     p1_val: 0.5,
                     p2_name: "SUSTAIN",
@@ -194,7 +194,7 @@ impl Default for FxRackState {
                     name: "🔥 SATURATOR",
                     category: "Sound Design",
                     enabled: false,
-                    color: Color32::from_rgb(255, 120, 60),
+                    color: Theme::ORANGE,
                     p1_name: "DRIVE",
                     p1_val: 0.0,
                     p2_name: "TONE",
@@ -210,7 +210,7 @@ impl Default for FxRackState {
                     name: "🌾 GRANULIZER",
                     category: "Sound Design",
                     enabled: false,
-                    color: Color32::from_rgb(200, 255, 120),
+                    color: Theme::GREEN,
                     p1_name: "KORN",
                     p1_val: 0.30,
                     p2_name: "TÄTHET",
@@ -226,7 +226,7 @@ impl Default for FxRackState {
                     name: "📡 FREKVENSSKIFTE",
                     category: "Sound Design",
                     enabled: false,
-                    color: Color32::from_rgb(255, 160, 220),
+                    color: Theme::TRACK_ROSE,
                     p1_name: "SKIFT",
                     p1_val: 0.50,
                     p2_name: "RIKTNING",
@@ -241,7 +241,7 @@ impl Default for FxRackState {
                     name: "🗜️ SQUEEZE",
                     category: "Distortion",
                     enabled: false,
-                    color: Color32::from_rgb(255, 210, 120),
+                    color: Theme::AMBER,
                     p1_name: "BITAR",
                     p1_val: 1.00,
                     p2_name: "NEDSAMPLING",
@@ -257,7 +257,7 @@ impl Default for FxRackState {
                     name: "📶 MULTIBAND DELAY",
                     category: "Delay",
                     enabled: false,
-                    color: Color32::from_rgb(140, 200, 255),
+                    color: Theme::CYAN,
                     p1_name: "LÅG",
                     p1_val: 0.10,
                     p2_name: "MID",
@@ -272,7 +272,7 @@ impl Default for FxRackState {
                     name: "🏦 DELAY BANK",
                     category: "Delay",
                     enabled: false,
-                    color: Color32::from_rgb(120, 220, 200),
+                    color: Theme::TRACK_TEAL,
                     p1_name: "TID 1",
                     p1_val: 0.08,
                     p2_name: "TID 2",
@@ -287,7 +287,7 @@ impl Default for FxRackState {
                     name: "💥 DISTRUCTOR",
                     category: "Distortion",
                     enabled: false,
-                    color: Color32::from_rgb(255, 120, 90),
+                    color: Theme::RED,
                     p1_name: "DRIVE 1",
                     p1_val: 0.35,
                     p2_name: "DRIVE 2",
@@ -302,7 +302,7 @@ impl Default for FxRackState {
                     name: "🎸 HARDCORE",
                     category: "Distortion",
                     enabled: false,
-                    color: Color32::from_rgb(230, 90, 140),
+                    color: Theme::TRACK_ROSE,
                     p1_name: "KOMP",
                     p1_val: 0.30,
                     p2_name: "DRIVE",
@@ -317,7 +317,7 @@ impl Default for FxRackState {
                     name: "📉 TONKONTUR",
                     category: "Filter",
                     enabled: false,
-                    color: Color32::from_rgb(150, 200, 120),
+                    color: Theme::GREEN,
                     p1_name: "BAS",
                     p1_val: 0.50,
                     p2_name: "DISKANT",
@@ -332,7 +332,7 @@ impl Default for FxRackState {
                     name: "↔ STEREO SHAPER",
                     category: "Utility",
                     enabled: false,
-                    color: Color32::from_rgb(120, 200, 220),
+                    color: Theme::CYAN,
                     p1_name: "BREDD",
                     p1_val: 0.50,
                     p2_name: "BALANS",
@@ -347,7 +347,7 @@ impl Default for FxRackState {
                     name: "🎛️ EFFECTOR",
                     category: "Performance",
                     enabled: false,
-                    color: Color32::from_rgb(180, 140, 255),
+                    color: Theme::CABLE,
                     p1_name: "X",
                     p1_val: 0.50,
                     p2_name: "Y",
@@ -362,7 +362,7 @@ impl Default for FxRackState {
                     name: "🌊 CHORUS",
                     category: "Sound Design",
                     enabled: false,
-                    color: Color32::from_rgb(90, 180, 255),
+                    color: Theme::TRACK_BLUE,
                     p1_name: "RATE",
                     p1_val: 0.25,
                     p2_name: "DEPTH",
@@ -378,7 +378,7 @@ impl Default for FxRackState {
                     name: "🌀 FLANGER",
                     category: "Sound Design",
                     enabled: false,
-                    color: Color32::from_rgb(120, 255, 210),
+                    color: Theme::TRACK_TEAL,
                     p1_name: "RATE",
                     p1_val: 0.12,
                     p2_name: "DEPTH",
@@ -394,7 +394,7 @@ impl Default for FxRackState {
                     name: "🌗 PHASER",
                     category: "Sound Design",
                     enabled: false,
-                    color: Color32::from_rgb(180, 140, 255),
+                    color: Theme::CABLE,
                     p1_name: "RATE",
                     p1_val: 0.30,
                     p2_name: "DEPTH",
@@ -410,7 +410,7 @@ impl Default for FxRackState {
                     name: "🎛 SVF FILTER (12 dB)",
                     category: "Sound Design",
                     enabled: false,
-                    color: Color32::from_rgb(240, 210, 40),
+                    color: Theme::YELLOW,
                     p1_name: "CUTOFF",
                     p1_val: 0.85,
                     p2_name: "RESON",
@@ -426,7 +426,7 @@ impl Default for FxRackState {
                     name: "🛡 MASTER LIMITER",
                     category: "Loudness",
                     enabled: true,
-                    color: Color32::from_rgb(255, 50, 50),
+                    color: Theme::RED,
                     p1_name: "CEILING",
                     p1_val: 0.95,
                     p2_name: "RELEASE",
@@ -443,10 +443,10 @@ impl Default for FxRackState {
             search_query: String::new(),
             selected_category: "Alla",
             eq_nodes: vec![
-                VisualEqNode { name: "Low (Bass)", freq_hz: 120.0, gain_db: 2.0, q: 0.7, color: Color32::from_rgb(255, 100, 100), is_active: true },
-                VisualEqNode { name: "Low-Mid", freq_hz: 450.0, gain_db: -1.5, q: 1.2, color: Color32::from_rgb(255, 180, 50), is_active: true },
-                VisualEqNode { name: "High-Mid", freq_hz: 2800.0, gain_db: 3.0, q: 1.0, color: Color32::from_rgb(80, 220, 120), is_active: true },
-                VisualEqNode { name: "High (Air)", freq_hz: 11000.0, gain_db: 1.5, q: 0.8, color: Color32::from_rgb(0, 200, 255), is_active: true },
+                VisualEqNode { name: "Low (Bass)", freq_hz: 120.0, gain_db: 2.0, q: 0.7, color: Theme::RED, is_active: true },
+                VisualEqNode { name: "Low-Mid", freq_hz: 450.0, gain_db: -1.5, q: 1.2, color: Theme::AMBER, is_active: true },
+                VisualEqNode { name: "High-Mid", freq_hz: 2800.0, gain_db: 3.0, q: 1.0, color: Theme::GREEN, is_active: true },
+                VisualEqNode { name: "High (Air)", freq_hz: 11000.0, gain_db: 1.5, q: 0.8, color: Theme::CYAN, is_active: true },
             ],
             compressor_release_ms: 120.0,
             convolver_mix: 0.35,
@@ -922,7 +922,7 @@ pub fn render_fx_rack_modal(
                 // 1. TOP HEADER & NAVIGATION TABS
                 // ============================================================
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("🎛 SOUNDTRAP FX RACK")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎛 SOUNDTRAP FX RACK")).strong().size(Theme::FONT_L).color(Theme::ORANGE));
                     ui.separator();
                     ui.label(egui::RichText::new(crate::i18n::t("Modulär effektkedja  •  Visual Parametric EQ  •  Dynamisk kompressor  •  Vocal Doubler")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
@@ -946,7 +946,7 @@ pub fn render_fx_rack_modal(
                             egui::RichText::new(crate::i18n::t("🎧 CONTROL ROOM"))
                                 .strong()
                                 .size(Theme::FONT_S)
-                                .color(Theme::FL_CYAN),
+                                .color(Theme::CYAN),
                         );
                         ui.separator();
                         ui.checkbox(&mut state.control_room.mono, crate::i18n::t("Mono"))
@@ -976,7 +976,7 @@ pub fn render_fx_rack_modal(
                 // Presets toolbar
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Kedjemallar (Presets):")).strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("Kedjemallar (Presets):")).strong().color(Theme::CYAN));
                         let presets = ["Warm Studio Vocal", "Punchy Modern Pop", "Lo-Fi Nostalgia & Warmth", "80s Gated Arena Reverb", "Clean Master"];
                         egui::ComboBox::from_id_salt("fx_master_preset_picker")
                             .selected_text(*presets.get(state.selected_preset).unwrap_or(&"Standard"))
@@ -1000,7 +1000,7 @@ pub fn render_fx_rack_modal(
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let enabled_count = state.pedals.iter().filter(|p| p.enabled).count();
-                            ui.label(egui::RichText::new(crate::tstatus!("{} aktiva effekter", enabled_count)).size(Theme::FONT_S).color(Theme::FL_GREEN));
+                            ui.label(egui::RichText::new(crate::tstatus!("{} aktiva effekter", enabled_count)).size(Theme::FONT_S).color(Theme::GREEN));
                         });
                     });
                 });
@@ -1035,7 +1035,7 @@ pub fn render_fx_rack_modal(
                         ui.label(
                             egui::RichText::new(crate::i18n::t("🌀 CONVOLVER (impulsrespons)"))
                                 .strong()
-                                .color(Theme::FL_CYAN),
+                                .color(Theme::CYAN),
                         );
                         let name = state
                             .convolver_ir_name
@@ -1084,7 +1084,7 @@ pub fn render_fx_rack_modal(
                 ui.horizontal(|ui| {
                     if ui.add(
                         egui::Button::new(egui::RichText::new(crate::i18n::t("✔ Tillämpa på Spår & Master")).strong().color(Color32::BLACK))
-                            .fill(Theme::FL_GREEN)
+                            .fill(Theme::GREEN)
                             .min_size(Vec2::new(220.0, 32.0)),
                     ).clicked() {
                         state.sync_to_engine(engine);
@@ -1125,21 +1125,21 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                     let (rect, _) = ui.allocate_exact_size(Vec2::new(card_w, card_h), Sense::hover());
 
                     let card_bg = if pedal.enabled {
-                        Color32::from_rgb(22, 26, 35)
+                        Theme::HEADER
                     } else {
-                        Theme::BG_DARK
+                        Theme::BG
                     };
 
                     ui.painter().rect_filled(rect, Rounding::same(8.0), card_bg);
                     ui.painter().rect_stroke(
                         rect,
                         Rounding::same(8.0),
-                        Stroke::new(1.5_f32, if pedal.enabled { pedal.color } else { Theme::BORDER_DARK }),
+                        Stroke::new(1.5_f32, if pedal.enabled { pedal.color } else { Theme::BORDER }),
                     );
 
                     // Top Header Strip
                     let top_bar = Rect::from_min_size(rect.min, Vec2::new(rect.width(), 26.0));
-                    ui.painter().rect_filled(top_bar, Rounding::same(7.0), if pedal.enabled { pedal.color } else { Theme::CHANNEL_BG });
+                    ui.painter().rect_filled(top_bar, Rounding::same(7.0), if pedal.enabled { pedal.color } else { Theme::PANEL_ALT });
 
                     ui.painter().text(
                         Pos2::new(rect.min.x + 8.0, rect.min.y + 13.0),
@@ -1154,7 +1154,7 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                     ui.painter().circle_filled(
                         led_pos,
                         4.5,
-                        if pedal.enabled { Theme::FL_GREEN } else { Color32::from_rgb(80, 20, 20) },
+                        if pedal.enabled { Theme::GREEN } else { Theme::PANEL_ALT },
                     );
 
                     // Card Content
@@ -1169,8 +1169,8 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                         // Special visuals per pedal type
                         if pedal.id == "visual_eq" {
                             let (eq_box, _) = ui.allocate_exact_size(Vec2::new(card_w - 20.0, 50.0), Sense::hover());
-                            ui.painter().rect_filled(eq_box, Rounding::same(4.0), Color32::from_rgb(12, 16, 24));
-                            ui.painter().rect_stroke(eq_box, Rounding::same(4.0), Stroke::new(1.0_f32, Color32::from_rgb(30, 42, 58)));
+                            ui.painter().rect_filled(eq_box, Rounding::same(4.0), Theme::BG_DEEP);
+                            ui.painter().rect_stroke(eq_box, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::GRID));
                             // Live mini curve derived from the real 4-band EQ nodes.
                             let mid = eq_box.center().y;
                             let span = eq_box.height() * 0.42;
@@ -1196,20 +1196,20 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                             }
                         } else if pedal.id == "dyn_comp" {
                             let (gr_box, _) = ui.allocate_exact_size(Vec2::new(card_w - 20.0, 14.0), Sense::hover());
-                            ui.painter().rect_filled(gr_box, Rounding::same(2.0), Color32::from_rgb(12, 16, 24));
+                            ui.painter().rect_filled(gr_box, Rounding::same(2.0), Theme::BG_DEEP);
                             // Real gain reduction reported by the audio thread (0..-20 dB).
                             let gr_frac = (master_gr_db.abs() / 20.0).clamp(0.0, 1.0);
                             let fill_w = gr_box.width() * gr_frac;
-                            ui.painter().rect_filled(Rect::from_min_size(gr_box.min, Vec2::new(fill_w, gr_box.height())), Rounding::same(2.0), Theme::FL_ORANGE);
+                            ui.painter().rect_filled(Rect::from_min_size(gr_box.min, Vec2::new(fill_w, gr_box.height())), Rounding::same(2.0), Theme::ORANGE);
                             let gr_txt = if master_gr_db <= -0.05 { format!("GR {:.1} dB", master_gr_db) } else { "GR".to_string() };
                             ui.painter().text(gr_box.center(), egui::Align2::CENTER_CENTER, gr_txt, egui::FontId::proportional(Theme::FONT_XS), Color32::BLACK);
                         } else if pedal.id == "vocal_doubler" {
                             let (orb_box, _) = ui.allocate_exact_size(Vec2::new(card_w - 20.0, 45.0), Sense::hover());
-                            ui.painter().rect_filled(orb_box, Rounding::same(4.0), Color32::from_rgb(12, 16, 24));
+                            ui.painter().rect_filled(orb_box, Rounding::same(4.0), Theme::BG_DEEP);
                             let c1 = Pos2::new(orb_box.center().x - 14.0, orb_box.center().y);
                             let c2 = Pos2::new(orb_box.center().x + 14.0, orb_box.center().y);
                             ui.painter().circle_stroke(c1, 16.0, Stroke::new(1.5_f32, pedal.color));
-                            ui.painter().circle_stroke(c2, 16.0, Stroke::new(1.5_f32, Color32::from_rgb(120, 180, 255)));
+                            ui.painter().circle_stroke(c2, 16.0, Stroke::new(1.5_f32, Theme::TRACK_BLUE));
                         }
 
                         ui.add_space(6.0);
@@ -1229,7 +1229,7 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                             for (name, val) in pedal.extra.iter_mut() {
                                 rotary_knob(ui, val, 0.0, 1.0, name, pedal.color, 18.0);
                             }
-                            rotary_knob(ui, &mut pedal.mix, 0.0, 1.0, "MIX", Color32::WHITE, 18.0);
+                            rotary_knob(ui, &mut pedal.mix, 0.0, 1.0, "MIX", Theme::TEXT, 18.0);
                         }
 
                         ui.add_space(4.0);
@@ -1241,10 +1241,10 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                 let add_w = 140.0;
                 let add_h = 360.0;
                 let (add_rect, add_resp) = ui.allocate_exact_size(Vec2::new(add_w, add_h), Sense::click());
-                ui.painter().rect_filled(add_rect, Rounding::same(8.0), Color32::from_rgb(18, 22, 30));
-                ui.painter().rect_stroke(add_rect, Rounding::same(8.0), Stroke::new(1.0_f32, Stroke::new(1.0_f32, Color32::from_rgb(45, 55, 75)).color));
-                ui.painter().text(add_rect.center() - Vec2::new(0.0, 15.0), egui::Align2::CENTER_CENTER, "➕", egui::FontId::proportional(Theme::FONT_XL), Theme::FL_CYAN);
-                ui.painter().text(add_rect.center() + Vec2::new(0.0, 18.0), egui::Align2::CENTER_CENTER, crate::i18n::t("Lägg till från\nEffektbiblioteket"), egui::FontId::proportional(Theme::FONT_S), Theme::TEXT_BRIGHT);
+                ui.painter().rect_filled(add_rect, Rounding::same(8.0), Theme::BG);
+                ui.painter().rect_stroke(add_rect, Rounding::same(8.0), Stroke::new(1.0_f32, Stroke::new(1.0_f32, Theme::BORDER).color));
+                ui.painter().text(add_rect.center() - Vec2::new(0.0, 15.0), egui::Align2::CENTER_CENTER, "➕", egui::FontId::proportional(Theme::FONT_XL), Theme::CYAN);
+                ui.painter().text(add_rect.center() + Vec2::new(0.0, 18.0), egui::Align2::CENTER_CENTER, crate::i18n::t("Lägg till från\nEffektbiblioteket"), egui::FontId::proportional(Theme::FONT_S), Theme::TEXT);
 
                 if add_resp.clicked() {
                     *active_tab = 2; // Switch to library
@@ -1259,7 +1259,7 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
 fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("📊 4-BANDS PARAMETRISK EQUALIZER")).strong().size(Theme::FONT_M).color(Theme::FL_CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("📊 4-BANDS PARAMETRISK EQUALIZER")).strong().size(Theme::FONT_M).color(Theme::CYAN));
             ui.separator();
             ui.label(egui::RichText::new(crate::i18n::t("Dra i noderna för att justera frekvens och förstärkning (dB)")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
         });
@@ -1272,17 +1272,17 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
         let painter = ui.painter();
 
         // Canvas Background & Grid
-        painter.rect_filled(canvas_rect, Rounding::same(6.0), Color32::from_rgb(12, 16, 24));
-        painter.rect_stroke(canvas_rect, Rounding::same(6.0), Stroke::new(1.0_f32, Color32::from_rgb(32, 44, 60)));
+        painter.rect_filled(canvas_rect, Rounding::same(6.0), Theme::BG_DEEP);
+        painter.rect_stroke(canvas_rect, Rounding::same(6.0), Stroke::new(1.0_f32, Theme::BORDER));
 
         let mid_y = canvas_rect.center().y;
 
         // Draw dB horizontal grid lines (+12, +6, 0, -6, -12)
         for db in [-12.0, -6.0, 0.0, 6.0, 12.0] {
             let y = mid_y - (db / 12.0) * (canvas_h * 0.42);
-            let stroke_col = if db == 0.0 { Color32::from_rgb(50, 70, 95) } else { Color32::from_rgb(22, 30, 42) };
+            let stroke_col = if db == 0.0 { Theme::BORDER_SOFT } else { Theme::PANEL };
             painter.line_segment([Pos2::new(canvas_rect.min.x, y), Pos2::new(canvas_rect.max.x, y)], Stroke::new(1.0_f32, stroke_col));
-            painter.text(Pos2::new(canvas_rect.min.x + 6.0, y - 2.0), egui::Align2::LEFT_BOTTOM, format!("{:+1.0} dB", db), egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(80, 100, 125));
+            painter.text(Pos2::new(canvas_rect.min.x + 6.0, y - 2.0), egui::Align2::LEFT_BOTTOM, format!("{:+1.0} dB", db), egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
         }
 
         // Draw frequency vertical grid lines (50Hz, 100Hz, 500Hz, 1kHz, 5kHz, 10kHz, 20kHz)
@@ -1296,9 +1296,9 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
 
         for &f in &freq_ticks {
             let x = freq_to_x(f);
-            painter.line_segment([Pos2::new(x, canvas_rect.min.y), Pos2::new(x, canvas_rect.max.y)], Stroke::new(0.8_f32, Color32::from_rgb(20, 28, 40)));
+            painter.line_segment([Pos2::new(x, canvas_rect.min.y), Pos2::new(x, canvas_rect.max.y)], Stroke::new(0.8_f32, Theme::PANEL));
             let label = if f >= 1000.0 { format!("{:.0}k", f / 1000.0) } else { format!("{:.0}", f) };
-            painter.text(Pos2::new(x, canvas_rect.max.y - 4.0), egui::Align2::CENTER_BOTTOM, label, egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(70, 85, 105));
+            painter.text(Pos2::new(x, canvas_rect.max.y - 4.0), egui::Align2::CENTER_BOTTOM, label, egui::FontId::proportional(Theme::FONT_XS), Theme::BORDER_SOFT);
         }
 
         // Compute EQ curve points
@@ -1323,7 +1323,7 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
 
         // Draw EQ curve polygon & stroke
         for i in 0..curve_pts.len().saturating_sub(1) {
-            painter.line_segment([curve_pts[i], curve_pts[i + 1]], Stroke::new(2.2_f32, Theme::FL_CYAN));
+            painter.line_segment([curve_pts[i], curve_pts[i + 1]], Stroke::new(2.2_f32, Theme::CYAN));
         }
 
         // Draw interactive nodes & handle dragging
@@ -1360,8 +1360,8 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
             let is_h = hovered_node == Some(idx);
 
             painter.circle_filled(n_pos, if is_h { 9.0 } else { 7.0 }, node.color);
-            painter.circle_stroke(n_pos, if is_h { 9.0 } else { 7.0 }, Stroke::new(1.5_f32, Color32::WHITE));
-            painter.text(n_pos + Vec2::new(0.0, -14.0), egui::Align2::CENTER_BOTTOM, format!("{:.0}Hz ({:+.1}dB)", node.freq_hz, node.gain_db), egui::FontId::proportional(Theme::FONT_XS), Color32::WHITE);
+            painter.circle_stroke(n_pos, if is_h { 9.0 } else { 7.0 }, Stroke::new(1.5_f32, Theme::TEXT));
+            painter.text(n_pos + Vec2::new(0.0, -14.0), egui::Align2::CENTER_BOTTOM, format!("{:.0}Hz ({:+.1}dB)", node.freq_hz, node.gain_db), egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT);
         }
 
         ui.add_space(8.0);
@@ -1393,7 +1393,7 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
 fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_msg: &mut String) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🗂 EFFEKTBIBLIOTEK (EFFECTS LIBRARY)")).strong().size(Theme::FONT_M).color(Theme::FL_YELLOW));
+            ui.label(egui::RichText::new(crate::i18n::t("🗂 EFFEKTBIBLIOTEK (EFFECTS LIBRARY)")).strong().size(Theme::FONT_M).color(Theme::YELLOW));
             ui.separator();
             ui.label(egui::RichText::new(crate::i18n::t("Klicka på en effekt för att lägga till eller aktivera den i din aktiva kedja")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
         });
@@ -1425,8 +1425,8 @@ fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_ms
 
             for &cat in &categories {
                 let is_sel = state.selected_category == cat;
-                let chip_bg = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(28, 34, 46) };
-                let text_col = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+                let chip_bg = if is_sel { Theme::CYAN } else { Theme::GRID };
+                let text_col = if is_sel { Color32::BLACK } else { Theme::TEXT };
 
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(cat)).size(Theme::FONT_S).color(text_col)).fill(chip_bg)).clicked() {
                     state.selected_category = cat;
@@ -1459,8 +1459,8 @@ fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_ms
                             let card_h = 75.0;
                             let (rect, _) = ui.allocate_exact_size(Vec2::new(card_w, card_h), Sense::hover());
 
-                            ui.painter().rect_filled(rect, Rounding::same(6.0), Color32::from_rgb(20, 24, 32));
-                            ui.painter().rect_stroke(rect, Rounding::same(6.0), Stroke::new(1.0_f32, Color32::from_rgb(38, 48, 65)));
+                            ui.painter().rect_filled(rect, Rounding::same(6.0), Theme::HEADER);
+                            ui.painter().rect_stroke(rect, Rounding::same(6.0), Stroke::new(1.0_f32, Theme::BORDER));
 
                             let left_stripe = Rect::from_min_size(rect.min, Vec2::new(4.0, rect.height()));
                             ui.painter().rect_filled(left_stripe, Rounding::same(2.0), pedal.color);
@@ -1471,15 +1471,15 @@ fn render_effects_library_drawer(ui: &mut Ui, state: &mut FxRackState, status_ms
 
                             card_ui.horizontal(|ui| {
                                 ui.vertical(|ui| {
-                                    ui.label(egui::RichText::new(pedal.name).strong().size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                                    ui.label(egui::RichText::new(pedal.name).strong().size(Theme::FONT_S).color(Theme::TEXT));
                                     ui.label(egui::RichText::new(crate::i18n::t(pedal.description)).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
                                     ui.label(egui::RichText::new(pedal.category).size(Theme::FONT_XS).color(pedal.color));
                                 });
 
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                     let btn_txt = if pedal.enabled { crate::i18n::t("✔ På") } else { crate::i18n::t("➕ Lägg till") };
-                                    let btn_bg = if pedal.enabled { Theme::FL_GREEN } else { Color32::from_rgb(45, 60, 85) };
-                                    if ui.add(egui::Button::new(egui::RichText::new(btn_txt).size(Theme::FONT_S).color(Color32::WHITE)).fill(btn_bg)).clicked() {
+                                    let btn_bg = if pedal.enabled { Theme::GREEN } else { Theme::BORDER_SOFT };
+                                    if ui.add(egui::Button::new(egui::RichText::new(btn_txt).size(Theme::FONT_S).color(Theme::TEXT)).fill(btn_bg)).clicked() {
                                         pedal.enabled = !pedal.enabled;
                                         *status_msg = crate::tstatus!("🎛 Ändrade status för {}", pedal.name);
                                     }

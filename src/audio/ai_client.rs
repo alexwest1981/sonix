@@ -382,7 +382,7 @@ impl AiClipJson {
             bpm: self.bpm.unwrap_or(120.0).clamp(40.0, 300.0),
             channel_steps: steps,
             notes,
-            color: Theme::FL_GREEN,
+            color: Theme::GREEN,
         })
     }
 }

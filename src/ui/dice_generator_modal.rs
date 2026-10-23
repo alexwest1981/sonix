@@ -261,7 +261,7 @@ pub fn render_dice_generator_modal(
             ui.vertical(|ui| {
                 // Header
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("🎲 SPARK & GENERATOR")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎲 SPARK & GENERATOR")).strong().size(Theme::FONT_L).color(Theme::ORANGE));
                     ui.separator();
                     ui.label(egui::RichText::new(crate::i18n::t("Slumpa vilda melodier, unika grooves, trap-rolls och basgångar med 1 klick")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 });
@@ -279,8 +279,8 @@ pub fn render_dice_generator_modal(
                     ];
                     for (cat, label) in cats {
                         let is_sel = state.category == cat;
-                        let bg = if is_sel { Theme::FL_ORANGE } else { Theme::PANEL_BG };
-                        let fg = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+                        let bg = if is_sel { Theme::ORANGE } else { Theme::PANEL };
+                        let fg = if is_sel { Color32::BLACK } else { Theme::TEXT };
                         if ui.add(egui::Button::new(egui::RichText::new(label).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                             state.category = cat;
                             state.roll_dice();
@@ -293,7 +293,7 @@ pub fn render_dice_generator_modal(
                 // Genre Presets & Style Tuning
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Genre / Stil:")).strong().color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("Genre / Stil:")).strong().color(Theme::CYAN));
                         let genres = ["Trap & 808", "Synthwave 80s", "Lo-Fi Hip Hop", "UK Drill", "Cyberpunk Industrial", "House 4x4"];
                         egui::ComboBox::from_id_salt("dice_genre_picker")
                             .selected_text(*genres.get(state.genre_preset).unwrap_or(&"Trap"))
@@ -337,9 +337,9 @@ pub fn render_dice_generator_modal(
                 // Visual Pattern Preview Canvas
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("📊 GENERERAT MÖNSTER (16 STEG)")).strong().color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(crate::i18n::t("📊 GENERERAT MÖNSTER (16 STEG)")).strong().color(Theme::GREEN));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 KASTA TÄRNINGEN IGEN")).strong().color(Color32::BLACK)).fill(Theme::FL_YELLOW)).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 KASTA TÄRNINGEN IGEN")).strong().color(Color32::BLACK)).fill(Theme::YELLOW)).clicked() {
                                 state.roll_dice();
                                 *status_msg = crate::i18n::t("🎲 Rullade ny slumpmässig idé!").to_string();
                             }
@@ -350,8 +350,8 @@ pub fn render_dice_generator_modal(
 
                     // Step visualization grid
                     let (canvas_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 90.0), Sense::hover());
-                    ui.painter().rect_filled(canvas_rect, Rounding::same(4.0), Color32::from_rgb(16, 19, 26));
-                    ui.painter().rect_stroke(canvas_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::CHANNEL_BG));
+                    ui.painter().rect_filled(canvas_rect, Rounding::same(4.0), Theme::BG);
+                    ui.painter().rect_stroke(canvas_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::PANEL_ALT));
 
                     let step_w = canvas_rect.width() / 16.0;
 
@@ -359,7 +359,7 @@ pub fn render_dice_generator_modal(
                     for s in 0..16 {
                         let sx = canvas_rect.min.x + s as f32 * step_w;
                         let is_beat = s % 4 == 0;
-                        let line_col = if is_beat { Color32::from_rgb(55, 65, 85) } else { Color32::from_rgb(26, 32, 42) };
+                        let line_col = if is_beat { Theme::BORDER_SOFT } else { Theme::PANEL };
                         ui.painter().line_segment([Pos2::new(sx, canvas_rect.min.y), Pos2::new(sx, canvas_rect.max.y)], Stroke::new(1.0_f32, line_col));
 
                         // Step number label
@@ -378,7 +378,7 @@ pub fn render_dice_generator_modal(
                         // Render 4 drum lanes: Kick, Snare, HiHat, Perc
                         let lane_h = (canvas_rect.height() - 16.0) / 4.0;
                         let drum_names = ["KICK", "SNARE", "HIHAT", "PERC"];
-                        let drum_colors = [Theme::FL_ORANGE, Theme::FL_CYAN, Theme::FL_YELLOW, Theme::FL_PURPLE];
+                        let drum_colors = [Theme::ORANGE, Theme::CYAN, Theme::YELLOW, Theme::PURPLE];
 
                         for d in 0..4 {
                             let ly = canvas_rect.min.y + 16.0 + d as f32 * lane_h;
@@ -407,7 +407,7 @@ pub fn render_dice_generator_modal(
                             let ny = canvas_rect.max.y - (n_norm * (canvas_rect.height() - 24.0)) - 14.0;
 
                             let note_rect = Rect::from_min_size(Pos2::new(bx + 2.0, ny), Vec2::new(n_len, 12.0));
-                            ui.painter().rect_filled(note_rect, Rounding::same(3.0), Theme::FL_CYAN);
+                            ui.painter().rect_filled(note_rect, Rounding::same(3.0), Theme::CYAN);
 
                             let n_name = format!("{}{}", NOTE_NAMES[(note.note % 12) as usize], (note.note / 12) - 1);
                             ui.painter().text(
@@ -425,7 +425,7 @@ pub fn render_dice_generator_modal(
 
                 // Action Buttons
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Klistra in Mönster i Spår")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN).min_size(Vec2::new(200.0, 32.0))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Klistra in Mönster i Spår")).strong().color(Color32::BLACK)).fill(Theme::GREEN).min_size(Vec2::new(200.0, 32.0))).clicked() {
                         trigger_insert = true;
                         close = true;
                     }
@@ -435,7 +435,7 @@ pub fn render_dice_generator_modal(
                     } else {
                         crate::i18n::t("▶ Provspela Mönster")
                     };
-                    if ui.add(egui::Button::new(egui::RichText::new(preview_label).strong().color(Color32::WHITE)).fill(if state.is_previewing { Color32::from_rgb(150, 50, 50) } else { Color32::from_rgb(45, 90, 140) }).min_size(Vec2::new(160.0, 32.0))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(preview_label).strong().color(Theme::TEXT)).fill(if state.is_previewing { Theme::RED } else { Theme::BORDER_SOFT }).min_size(Vec2::new(160.0, 32.0))).clicked() {
                         state.is_previewing = !state.is_previewing;
                         if state.is_previewing {
                             state.preview_start = Some(std::time::Instant::now());

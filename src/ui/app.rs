@@ -657,56 +657,56 @@ impl SonixApp {
         };
 
         let kick = ChannelStrip {
-            name: "808 Kick".to_string(), icon: "💥".to_string(), color: Theme::FL_ORANGE,
+            name: "808 Kick".to_string(), icon: "💥".to_string(), color: Theme::ORANGE,
             volume: 0.95, pan: 0.0, muted: false, solo: false, steps: [false; crate::ui::app::state::MAX_STEPS], notes: [36; crate::ui::app::state::MAX_STEPS],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.3, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), velocity_sensitivity: 1.0, velocity_curve: crate::audio::envelope::VelocityCurve::Linear, filter: crate::audio::filter::SamplerFilter::default(), zones: Vec::new(), is_reverse: false,
             waveform_preview: make_wave(20.0, 0.8),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let snare = ChannelStrip {
-            name: "909 Snare".to_string(), icon: "🥁".to_string(), color: Theme::FL_CYAN,
+            name: "909 Snare".to_string(), icon: "🥁".to_string(), color: Theme::CYAN,
             volume: 0.85, pan: 0.0, muted: false, solo: false, steps: [false; crate::ui::app::state::MAX_STEPS], notes: [38; crate::ui::app::state::MAX_STEPS],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), velocity_sensitivity: 1.0, velocity_curve: crate::audio::envelope::VelocityCurve::Linear, filter: crate::audio::filter::SamplerFilter::default(), zones: Vec::new(), is_reverse: false,
             waveform_preview: make_wave(45.0, 0.9),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let clap = ChannelStrip {
-            name: "Electro Clap".to_string(), icon: "👏".to_string(), color: Theme::FL_YELLOW,
+            name: "Electro Clap".to_string(), icon: "👏".to_string(), color: Theme::YELLOW,
             volume: 0.80, pan: -0.1, muted: false, solo: false, steps: [false; crate::ui::app::state::MAX_STEPS], notes: [39; crate::ui::app::state::MAX_STEPS],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), velocity_sensitivity: 1.0, velocity_curve: crate::audio::envelope::VelocityCurve::Linear, filter: crate::audio::filter::SamplerFilter::default(), zones: Vec::new(), is_reverse: false,
             waveform_preview: make_wave(35.0, 0.85),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let hat = ChannelStrip {
-            name: "Crisp Hat".to_string(), icon: "⚡".to_string(), color: Theme::FL_PURPLE,
+            name: "Crisp Hat".to_string(), icon: "⚡".to_string(), color: Theme::PURPLE,
             volume: 0.75, pan: 0.15, muted: false, solo: false, steps: [false; crate::ui::app::state::MAX_STEPS], notes: [42; crate::ui::app::state::MAX_STEPS],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.2, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), velocity_sensitivity: 1.0, velocity_curve: crate::audio::envelope::VelocityCurve::Linear, filter: crate::audio::filter::SamplerFilter::default(), zones: Vec::new(), is_reverse: false,
             waveform_preview: make_wave(70.0, 0.95),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let open_hat = ChannelStrip {
-            name: "Open Hat".to_string(), icon: "🌊".to_string(), color: Theme::FL_CYAN,
+            name: "Open Hat".to_string(), icon: "🌊".to_string(), color: Theme::CYAN,
             volume: 0.70, pan: -0.2, muted: false, solo: false, steps: [false; crate::ui::app::state::MAX_STEPS], notes: [46; crate::ui::app::state::MAX_STEPS],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.6, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), velocity_sensitivity: 1.0, velocity_curve: crate::audio::envelope::VelocityCurve::Linear, filter: crate::audio::filter::SamplerFilter::default(), zones: Vec::new(), is_reverse: false,
             waveform_preview: make_wave(50.0, 0.5),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let crash = ChannelStrip {
-            name: "Cyber Crash".to_string(), icon: "✨".to_string(), color: Color32::from_rgb(255, 180, 50),
+            name: "Cyber Crash".to_string(), icon: "✨".to_string(), color: Theme::AMBER,
             volume: 0.75, pan: 0.25, muted: false, solo: false, steps: [false; crate::ui::app::state::MAX_STEPS], notes: [49; crate::ui::app::state::MAX_STEPS],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.7, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), velocity_sensitivity: 1.0, velocity_curve: crate::audio::envelope::VelocityCurve::Linear, filter: crate::audio::filter::SamplerFilter::default(), zones: Vec::new(), is_reverse: false,
             waveform_preview: make_wave(30.0, 0.4),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let synth_lead = ChannelStrip {
-            name: "303 Lead".to_string(), icon: "🎹".to_string(), color: Theme::FL_GREEN,
+            name: "303 Lead".to_string(), icon: "🎹".to_string(), color: Theme::GREEN,
             volume: 0.85, pan: 0.0, muted: false, solo: false, steps: [false; crate::ui::app::state::MAX_STEPS], notes: [60; crate::ui::app::state::MAX_STEPS],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.5, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), velocity_sensitivity: 1.0, velocity_curve: crate::audio::envelope::VelocityCurve::Linear, filter: crate::audio::filter::SamplerFilter::default(), zones: Vec::new(), is_reverse: false,
             waveform_preview: make_wave(60.0, 0.3),
             slices: Vec::new(), sample_path: None, pcm_audio: None, sample_base_note: 60,
         };
         let sub_bass = ChannelStrip {
-            name: "Sub Bass".to_string(), icon: "🎸".to_string(), color: Color32::from_rgb(255, 80, 140),
+            name: "Sub Bass".to_string(), icon: "🎸".to_string(), color: Theme::TRACK_ROSE,
             volume: 0.90, pan: 0.0, muted: false, solo: false, steps: [false; crate::ui::app::state::MAX_STEPS], notes: [36; crate::ui::app::state::MAX_STEPS],
             pitch_semitones: 0, pitch_fine_cents: 0.0, sample_start: 0.0, sample_end: 1.0, attack_decay: 0.4, loop_mode: crate::audio::LoopMode::Off, sample_loop_start: 0.0, sample_loop_end: 1.0, ping_pong: false, amp_env: crate::audio::envelope::AdsrParams::identity(), velocity_sensitivity: 1.0, velocity_curve: crate::audio::envelope::VelocityCurve::Linear, filter: crate::audio::filter::SamplerFilter::default(), zones: Vec::new(), is_reverse: false,
             waveform_preview: make_wave(25.0, 0.6),
@@ -729,7 +729,7 @@ impl SonixApp {
 
         let pat1 = Pattern {
             name: "Pat 1: Beats & Groove".to_string(),
-            color: Theme::FL_ORANGE,
+            color: Theme::ORANGE,
             bars: 1,
             bends: Vec::new(),
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
@@ -740,7 +740,7 @@ impl SonixApp {
 
         let pat2 = Pattern {
             name: "Pat 2: Lead & Synthesizer".to_string(),
-            color: Theme::FL_CYAN,
+            color: Theme::CYAN,
             bars: 1,
             bends: Vec::new(),
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
@@ -751,7 +751,7 @@ impl SonixApp {
 
         let pat3 = Pattern {
             name: "Pat 3: Synth Arp".to_string(),
-            color: Theme::FL_GREEN,
+            color: Theme::GREEN,
             bars: 1,
             bends: Vec::new(),
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
@@ -762,7 +762,7 @@ impl SonixApp {
 
         let pat4 = Pattern {
             name: "Pat 4: Deep Bass".to_string(),
-            color: Color32::from_rgb(255, 80, 140),
+            color: Theme::TRACK_ROSE,
             bars: 1,
             bends: Vec::new(),
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
@@ -774,23 +774,23 @@ impl SonixApp {
         let patterns = vec![pat1, pat2, pat3, pat4];
 
         // 1. Drums & Beat Track
-        let mut t_drums = PlaylistTrack::new(crate::i18n::t("🥁 Trummor & Beat").to_string(), "🥁", TrackKind::Drums, Color32::from_rgb(255, 140, 25));
+        let mut t_drums = PlaylistTrack::new(crate::i18n::t("🥁 Trummor & Beat").to_string(), "🥁", TrackKind::Drums, Theme::ORANGE);
         t_drums.volume = 0.90;
 
         // 2. Synth & Melody Track
-        let mut t_synth = PlaylistTrack::new(crate::i18n::t("🎹 Synt & Ackord").to_string(), "🎹", TrackKind::SynthLead, Color32::from_rgb(65, 155, 255));
+        let mut t_synth = PlaylistTrack::new(crate::i18n::t("🎹 Synt & Ackord").to_string(), "🎹", TrackKind::SynthLead, Theme::TRACK_BLUE);
         t_synth.volume = 0.85;
 
         // 3. Bassline Track
-        let mut t_bass = PlaylistTrack::new(crate::i18n::t("🎸 Baslinje").to_string(), "🎸", TrackKind::Bassline, Color32::from_rgb(45, 225, 105));
+        let mut t_bass = PlaylistTrack::new(crate::i18n::t("🎸 Baslinje").to_string(), "🎸", TrackKind::Bassline, Theme::GREEN);
         t_bass.volume = 0.90;
 
         // 4. FX & Transitions
-        let mut t_fx = PlaylistTrack::new(crate::i18n::t("✨ FX & Ljudeffekter").to_string(), "✨", TrackKind::Fx, Color32::from_rgb(255, 80, 150));
+        let mut t_fx = PlaylistTrack::new(crate::i18n::t("✨ FX & Ljudeffekter").to_string(), "✨", TrackKind::Fx, Theme::TRACK_ROSE);
         t_fx.volume = 0.80;
 
         // 5. Mic Vocal Track (Armed and Ready for Recording - placed at the END)
-        let mut t_mic = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Color32::WHITE);
+        let mut t_mic = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Theme::TEXT);
         t_mic.volume = 1.0;
         t_mic.is_rec_armed = true;
 

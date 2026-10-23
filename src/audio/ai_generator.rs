@@ -79,7 +79,7 @@ impl AiMusicAssistant {
                 bpm: 128.0,
                 channel_steps: [true, false, true, true, false, true, true, false, true, false, true, true, false, true, true, true],
                 notes: [45, 45, 48, 52, 45, 45, 57, 45, 45, 45, 48, 52, 45, 45, 55, 57],
-                color: Color32::from_rgb(0, 220, 255),
+                color: Theme::CYAN,
             },
             AiGeneratedClip {
                 title: "🎷 Neo-Soul Warm Chord Melodies".to_string(),
@@ -88,7 +88,7 @@ impl AiMusicAssistant {
                 bpm: 90.0,
                 channel_steps: [true, false, false, true, false, false, true, false, true, false, false, true, false, false, true, false],
                 notes: [50, 50, 50, 53, 53, 53, 57, 57, 60, 60, 60, 64, 64, 64, 60, 57],
-                color: Theme::LCD_ORANGE,
+                color: Theme::ORANGE,
             },
             AiGeneratedClip {
                 title: "💥 Drill & Trap 808 Sliding Bass".to_string(),
@@ -97,7 +97,7 @@ impl AiMusicAssistant {
                 bpm: 140.0,
                 channel_steps: [true, false, false, false, true, false, true, false, false, true, false, false, true, false, false, true],
                 notes: [41, 41, 41, 41, 41, 41, 48, 48, 41, 41, 41, 41, 46, 46, 48, 41],
-                color: Color32::from_rgb(180, 100, 255),
+                color: Theme::PURPLE,
             },
         ];
     }
@@ -149,7 +149,7 @@ impl AiMusicAssistant {
             bpm,
             channel_steps: steps,
             notes,
-            color: Theme::FL_GREEN,
+            color: Theme::GREEN,
         });
         if self.generated_history.len() > 12 {
             self.generated_history.truncate(12);

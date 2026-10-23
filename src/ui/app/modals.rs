@@ -91,7 +91,7 @@ pub(crate) fn render_import_sample_modal(&mut self, ctx: &egui::Context) {
                 ui.label(crate::i18n::t("Ikon:"));
                 for &ic in icons.iter() {
                     let is_sel = self.custom_import_icon == ic;
-                    let fill = if is_sel { Theme::FL_GREEN } else { Theme::PANEL_BG };
+                    let fill = if is_sel { Theme::GREEN } else { Theme::PANEL };
                     if ui.add(egui::Button::new(ic).fill(fill)).clicked() {
                         self.custom_import_icon = ic.to_string();
                     }
@@ -123,13 +123,13 @@ pub(crate) fn render_import_sample_modal(&mut self, ctx: &egui::Context) {
             }).collect();
 
             let (wf_rect, _) = ui.allocate_exact_size(Vec2::new(380.0, 32.0), egui::Sense::hover());
-            ui.painter().rect_filled(wf_rect, Rounding::same(3.0), Theme::BG_DARK);
+            ui.painter().rect_filled(wf_rect, Rounding::same(3.0), Theme::BG);
             let mid_y = wf_rect.center().y;
             let dx = wf_rect.width() / 32.0;
             for (wi, &val) in preview_wave.iter().enumerate() {
                 let sx = wf_rect.min.x + wi as f32 * dx + dx * 0.5;
                 let h = (val.abs() * 13.0).max(1.0);
-                ui.painter().line_segment([Pos2::new(sx, mid_y - h), Pos2::new(sx, mid_y + h)], Stroke::new(1.5_f32, Theme::FL_GREEN));
+                ui.painter().line_segment([Pos2::new(sx, mid_y - h), Pos2::new(sx, mid_y + h)], Stroke::new(1.5_f32, Theme::GREEN));
             }
 
             ui.add_space(10.0);
@@ -143,13 +143,13 @@ pub(crate) fn render_import_sample_modal(&mut self, ctx: &egui::Context) {
                         velocity: 0.9, channel: 0 });
                 }
 
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara i Bibliotek")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara i Bibliotek")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::GREEN)).clicked() {
                     self.import_custom_sample(
                         self.custom_import_name_input.clone(),
                         self.custom_import_category.clone(),
                         self.custom_import_icon.clone(),
                         self.custom_import_note,
-                        Color32::from_rgb(255, 200, 80),
+                        Theme::AMBER,
                         self.custom_import_freq,
                         self.custom_import_decay,
                     );
@@ -187,10 +187,10 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
             // Section 1: Mackie MCU
             ui.group(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("🎚 MACKIE CONTROL UNIVERSAL (MCU)")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎚 MACKIE CONTROL UNIVERSAL (MCU)")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let (status_txt, status_col) = if self.mcu_input.is_some() {
-                            (crate::i18n::t("● ALSA SEQUENCER-PORT ÖPPEN"), Theme::FL_GREEN)
+                            (crate::i18n::t("● ALSA SEQUENCER-PORT ÖPPEN"), Theme::GREEN)
                         } else {
                             (crate::i18n::t("○ FRÅNKOPPLAD"), Theme::TEXT_MUTED)
                         };
@@ -201,7 +201,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
 
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Enhet:"));
-                    ui.label(egui::RichText::new(&self.mcu_device_name).strong().color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(&self.mcu_device_name).strong().color(Theme::CYAN));
                 });
 
                 ui.horizontal(|ui| {
@@ -223,7 +223,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                         }
                     }
                     if self.mcu_input.is_some() {
-                        ui.label(egui::RichText::new(format!("{} events", self.mcu_input.as_ref().map(|m| m.received()).unwrap_or(0))).size(Theme::FONT_S).color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(format!("{} events", self.mcu_input.as_ref().map(|m| m.received()).unwrap_or(0))).size(Theme::FONT_S).color(Theme::GREEN));
                     }
                 });
 
@@ -247,10 +247,10 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                         ui.vertical_centered(|ui| {
                             ui.label(egui::RichText::new(format!("CH{}", i + 1)).size(Theme::FONT_XS));
                             let (rect, _) = ui.allocate_exact_size(Vec2::new(12.0, 36.0), Sense::hover());
-                            ui.painter().rect_filled(rect, Rounding::same(2.0), Theme::BG_DARK);
+                            ui.painter().rect_filled(rect, Rounding::same(2.0), Theme::BG);
                             let h = (ch_vol * 34.0).clamp(0.0, 34.0);
                             let fill_rect = Rect::from_min_max(Pos2::new(rect.min.x + 1.0, rect.max.y - h), Pos2::new(rect.max.x - 1.0, rect.max.y - 1.0));
-                            ui.painter().rect_filled(fill_rect, Rounding::same(1.0), Theme::FL_ORANGE);
+                            ui.painter().rect_filled(fill_rect, Rounding::same(1.0), Theme::ORANGE);
                         });
                     }
                 });
@@ -258,8 +258,8 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     let learn_txt = if self.midi_learn_active { "🔴 MIDI LEARN: LYSSNAR..." } else { "🎯 Aktivera MIDI Learn" };
-                    let learn_bg = if self.midi_learn_active { Color32::RED } else { Theme::PANEL_BG };
-                    if ui.add(egui::Button::new(egui::RichText::new(learn_txt).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(learn_bg)).clicked() {
+                    let learn_bg = if self.midi_learn_active { Color32::RED } else { Theme::PANEL };
+                    if ui.add(egui::Button::new(egui::RichText::new(learn_txt).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(learn_bg)).clicked() {
                         self.midi_learn_active = !self.midi_learn_active;
                     }
                 });
@@ -270,10 +270,10 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
             // Section 1b: MIDI Keyboard (Piano Roll input) — Fas 5.3
             ui.group(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("🎹 MIDI-KLAVIATUR (Piano Roll)")).strong().size(Theme::FONT_S).color(Theme::FL_GREEN));
+                    ui.label(egui::RichText::new(crate::i18n::t("🎹 MIDI-KLAVIATUR (Piano Roll)")).strong().size(Theme::FONT_S).color(Theme::GREEN));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         let (status_txt, status_col) = if self.midi_keyboard_connected {
-                            (crate::i18n::t("● MIDI-IN-PORT ÖPPEN"), Theme::FL_GREEN)
+                            (crate::i18n::t("● MIDI-IN-PORT ÖPPEN"), Theme::GREEN)
                         } else {
                             (crate::i18n::t("○ FRÅNKOPPLAD"), Theme::TEXT_MUTED)
                         };
@@ -284,7 +284,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
 
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Enhet:"));
-                    ui.label(egui::RichText::new(&self.midi_device_name).strong().color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(&self.midi_device_name).strong().color(Theme::CYAN));
                 });
 
                 ui.horizontal(|ui| {
@@ -307,7 +307,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                         }
                     }
                     if self.midi_input.is_some() {
-                        ui.label(egui::RichText::new(crate::tstatus!("{} nothändelser", self.midi_note_count)).size(Theme::FONT_S).color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(crate::tstatus!("{} nothändelser", self.midi_note_count)).size(Theme::FONT_S).color(Theme::GREEN));
                     }
                 });
 
@@ -318,7 +318,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                     egui::RichText::new(crate::i18n::t("🎛 MIDI-KARTA (splitter)"))
                         .strong()
                         .size(Theme::FONT_S)
-                        .color(Theme::FL_GREEN),
+                        .color(Theme::GREEN),
                 )
                 .default_open(self.midi_map.enabled)
                 .show(ui, |ui| {
@@ -381,7 +381,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                 });
 
                 ui.separator();
-                ui.label(egui::RichText::new(crate::i18n::t("🎹 MIDI-UT (extern synt)")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                ui.label(egui::RichText::new(crate::i18n::t("🎹 MIDI-UT (extern synt)")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
                 // Utgången tas ut ur fältet medan den används: `blip` lånar den bara som
                 // `&`, men "koppla från" skriver fältet — och då kan båda inte låna `self`.
                 let mut midi_out = self.midi_out.take();
@@ -389,7 +389,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                 if let Some(out) = &midi_out {
                     let name = out.name().to_string();
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::tstatus!("● {}", name)).color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(crate::tstatus!("● {}", name)).color(Theme::GREEN));
                         if ui.button(crate::i18n::t("🎵 Testnot")).clicked() {
                             match out.blip(0, 60, 100) {
                                 Ok(()) => {
@@ -438,13 +438,13 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                 self.midi_out = midi_out;
 
                 ui.add_space(4.0);
-                let rec_bg = if self.midi_record_armed { Color32::from_rgb(180, 40, 40) } else { Theme::PANEL_BG };
+                let rec_bg = if self.midi_record_armed { Theme::RED } else { Theme::PANEL };
                 let rec_txt = if self.midi_record_armed {
                     crate::i18n::t("🔴 MIDI-REC: ARMED (spelar in i Piano Roll)")
                 } else {
                     crate::i18n::t("⏺ Armera MIDI-inspelning till Piano Roll")
                 };
-                if ui.add(egui::Button::new(egui::RichText::new(rec_txt).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(rec_bg)).on_hover_text(crate::i18n::t("När armerad skrivs hållna MIDI-klaviaturtoner in i det aktiva mönstrets rutnät under uppspelning.")).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(rec_txt).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(rec_bg)).on_hover_text(crate::i18n::t("När armerad skrivs hållna MIDI-klaviaturtoner in i det aktiva mönstrets rutnät under uppspelning.")).clicked() {
                     self.midi_record_armed = !self.midi_record_armed;
                 if self.midi_record_armed {
                     self.begin_new_take();
@@ -458,7 +458,7 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
             // Section 2: Open Sound Control (OSC)
             ui.group(|ui| {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("📡 OPEN SOUND CONTROL (OSC / UDP)")).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("📡 OPEN SOUND CONTROL (OSC / UDP)")).strong().size(Theme::FONT_S).color(Theme::CYAN));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         if self.osc_server.is_some() {
                             if ui.button(crate::i18n::t("⏹ Stoppa server")).clicked() {
@@ -494,14 +494,14 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
 
                 ui.add_space(2.0);
                 ui.horizontal(|ui| {
-                    let status_col = if self.osc_server.is_some() { Theme::FL_GREEN } else { Theme::TEXT_MUTED };
+                    let status_col = if self.osc_server.is_some() { Theme::GREEN } else { Theme::TEXT_MUTED };
                     let status_txt = match &self.osc_server {
                         Some(s) => format!("Lyssnar på UDP-port {} • mottagna OSC-paket: {}", s.bound_port, self.osc_rx_count),
                         None => format!("Mottagna OSC-paket: {}", self.osc_rx_count),
                     };
                     ui.label(egui::RichText::new(status_txt).size(Theme::FONT_S).color(status_col));
                     if let Some(err) = self.osc_server.as_ref().and_then(|s| s.last_error.lock().ok().and_then(|g| g.clone())) {
-                        ui.label(egui::RichText::new(crate::tstatus!("⚠ {}", err)).size(Theme::FONT_S).color(Theme::FL_YELLOW));
+                        ui.label(egui::RichText::new(crate::tstatus!("⚠ {}", err)).size(Theme::FONT_S).color(Theme::YELLOW));
                     }
                     if ui.button(crate::i18n::t("⚡ Skicka Test Ping (/sonix/ping)")).clicked() {
                         let addr = std::net::SocketAddr::from(([127, 0, 0, 1], self.osc_tx_port));
@@ -567,7 +567,7 @@ pub(crate) fn render_wav_question_modal(&mut self, ctx: &egui::Context) {
                         title
                     ))
                     .size(Theme::FONT_M)
-                    .color(Theme::TEXT_BRIGHT),
+                    .color(Theme::TEXT),
                 );
                 ui.label(
                     egui::RichText::new(crate::i18n::t(
@@ -598,7 +598,7 @@ pub(crate) fn render_wav_question_modal(&mut self, ctx: &egui::Context) {
                         "Du valde en mp3 — och wav-filen finns bredvid.",
                     ))
                     .size(Theme::FONT_M)
-                    .color(Theme::TEXT_BRIGHT),
+                    .color(Theme::TEXT),
                 );
                 ui.label(
                     egui::RichText::new(crate::tstatus!("mp3:  {}", chosen))
@@ -680,7 +680,7 @@ pub(crate) fn render_suno_stem_import_modal(&mut self, ctx: &egui::Context) {
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new(crate::i18n::t("🎵")).size(Theme::FONT_XL));
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Multi-Track Stämmor & Ljudspår (Stems)")).strong().size(Theme::FONT_M).color(Theme::FL_ORANGE));
+                        ui.label(egui::RichText::new(crate::i18n::t("Multi-Track Stämmor & Ljudspår (Stems)")).strong().size(Theme::FONT_M).color(Theme::ORANGE));
                         ui.label(egui::RichText::new(crate::i18n::t("Importera nedladdade ZIP-paket eller mappar med stämmor (Suno, FL Studio, Ableton, Logic m.fl.). Sonix läser ut äkta 48kHz WAV-vågformer, detekterar tempo (BPM) och mappar spåren i tidslinjen.")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                     });
                 });
@@ -690,7 +690,7 @@ pub(crate) fn render_suno_stem_import_modal(&mut self, ctx: &egui::Context) {
 
             // Quick Rescan Bar
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("UPPTÄCKTA STEMPAKET:")).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("UPPTÄCKTA STEMPAKET:")).strong().size(Theme::FONT_S).color(Theme::CYAN));
                 if ui.button(crate::i18n::t("🔄 Skanna ~/Music & ~/Downloads")).clicked() {
                     self.scan_for_suno_stems();
                 }
@@ -712,15 +712,15 @@ pub(crate) fn render_suno_stem_import_modal(&mut self, ctx: &egui::Context) {
                             ui.group(|ui| {
                                 ui.horizontal(|ui| {
                                     ui.vertical(|ui| {
-                                        ui.label(egui::RichText::new(format!("🎵 {}", title)).strong().size(Theme::FONT_S).color(Color32::WHITE));
+                                        ui.label(egui::RichText::new(format!("🎵 {}", title)).strong().size(Theme::FONT_S).color(Theme::TEXT));
                                         ui.horizontal(|ui| {
-                                            ui.label(egui::RichText::new(format!("Tempo: {:.1} BPM", bpm)).size(Theme::FONT_S).color(Theme::FL_GREEN));
-                                            ui.label(egui::RichText::new(badge).size(Theme::FONT_S).color(Theme::FL_CYAN));
+                                            ui.label(egui::RichText::new(format!("Tempo: {:.1} BPM", bpm)).size(Theme::FONT_S).color(Theme::GREEN));
+                                            ui.label(egui::RichText::new(badge).size(Theme::FONT_S).color(Theme::CYAN));
                                         });
                                     });
 
                                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Importera Alla Stämmor")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Importera Alla Stämmor")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::GREEN)).clicked() {
                                             zip_to_import = Some(zip_p.clone());
                                         }
                                     });
@@ -736,17 +736,17 @@ pub(crate) fn render_suno_stem_import_modal(&mut self, ctx: &egui::Context) {
 
             // Manual Path Input & File Browser
             ui.group(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("VÄLJ ZIP-FIL ELLER MAPP")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                ui.label(egui::RichText::new(crate::i18n::t("VÄLJ ZIP-FIL ELLER MAPP")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📁 Välj ZIP-fil från datorn...")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(Color32::from_rgb(60, 90, 150))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📁 Välj ZIP-fil från datorn...")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TRACK_BLUE)).clicked() {
                         self.spawn_async_file_picker("Stempaket", &["zip"], crate::i18n::t("Välj ZIP Stempaket"));
                     }
 
                     ui.separator();
                     ui.label(crate::i18n::t("eller ange sökväg:"));
                     ui.text_edit_singleline(&mut self.custom_stem_path_input);
-                    if ui.add(egui::Button::new(crate::i18n::t("Ladda")).fill(Color32::from_rgb(50, 60, 80))).clicked() {
+                    if ui.add(egui::Button::new(crate::i18n::t("Ladda")).fill(Theme::BORDER)).clicked() {
                         let path = self.custom_stem_path_input.trim().to_string();
                         if path.to_lowercase().ends_with(".zip") {
                             zip_to_import = Some(path);
@@ -758,7 +758,7 @@ pub(crate) fn render_suno_stem_import_modal(&mut self, ctx: &egui::Context) {
                 });
 
                 ui.add_space(3.0);
-                ui.label(egui::RichText::new(crate::i18n::t("💡 Tips: Du kan även dra & släppa (Drag & Drop) .zip-filer direkt in i fönstret!")).size(Theme::FONT_XS).color(Theme::FL_GREEN));
+                ui.label(egui::RichText::new(crate::i18n::t("💡 Tips: Du kan även dra & släppa (Drag & Drop) .zip-filer direkt in i fönstret!")).size(Theme::FONT_XS).color(Theme::GREEN));
             });
 
             ui.add_space(8.0);
@@ -778,7 +778,7 @@ pub(crate) fn render_suno_stem_import_modal(&mut self, ctx: &egui::Context) {
                         ("✨ 7 Other", "FX Send"),
                     ];
                     for (st, bus) in stems_info.iter() {
-                        ui.label(egui::RichText::new(format!("• {} ➔ [{}]  ", st, bus)).size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                        ui.label(egui::RichText::new(format!("• {} ➔ [{}]  ", st, bus)).size(Theme::FONT_S).color(Theme::TEXT));
                     }
                 });
             });
@@ -843,8 +843,8 @@ pub(crate) fn render_stem_import_progress_modal(&mut self, ctx: &egui::Context) 
                     ui.horizontal(|ui| {
                         ui.spinner();
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("Läser in och avkodar stämmor (Stems)")).strong().size(Theme::FONT_M).color(Theme::FL_ORANGE));
-                            ui.label(egui::RichText::new(&stage).size(Theme::FONT_S).color(Color32::WHITE));
+                            ui.label(egui::RichText::new(crate::i18n::t("Läser in och avkodar stämmor (Stems)")).strong().size(Theme::FONT_M).color(Theme::ORANGE));
+                            ui.label(egui::RichText::new(&stage).size(Theme::FONT_S).color(Theme::TEXT));
                         });
                     });
                 });
@@ -858,7 +858,7 @@ pub(crate) fn render_stem_import_progress_modal(&mut self, ctx: &egui::Context) 
                         ui.label(egui::RichText::new(crate::tstatus!("Spår {} av {}: {}", idx, total, file)).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new(format!("{:.0}%", ratio * 100.0)).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(format!("{:.0}%", ratio * 100.0)).strong().size(Theme::FONT_S).color(Theme::CYAN));
                     });
                 });
                 ui.add_space(4.0);
@@ -909,8 +909,8 @@ pub(crate) fn render_project_load_progress_modal(&mut self, ctx: &egui::Context)
                     ui.horizontal(|ui| {
                         ui.spinner();
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new(crate::tstatus!("Öppnar: {}", proj)).strong().size(Theme::FONT_M).color(Theme::FL_CYAN));
-                            ui.label(egui::RichText::new(&stage).size(Theme::FONT_S).color(Color32::WHITE));
+                            ui.label(egui::RichText::new(crate::tstatus!("Öppnar: {}", proj)).strong().size(Theme::FONT_M).color(Theme::CYAN));
+                            ui.label(egui::RichText::new(&stage).size(Theme::FONT_S).color(Theme::TEXT));
                         });
                     });
                 });
@@ -924,7 +924,7 @@ pub(crate) fn render_project_load_progress_modal(&mut self, ctx: &egui::Context)
                         ui.label(egui::RichText::new(crate::tstatus!("Läser spår {}/{}: {}", idx, total, track)).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new(format!("{:.0}%", ratio * 100.0)).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                        ui.label(egui::RichText::new(format!("{:.0}%", ratio * 100.0)).strong().size(Theme::FONT_S).color(Theme::ORANGE));
                     });
                 });
                 ui.add_space(4.0);
@@ -975,7 +975,7 @@ pub(crate) fn render_recovery_modal(&mut self, ctx: &egui::Context) {
                     "Sonix avslutades innan projektet sparades. Dessa automatiska kopior är nyare än filen på disk:",
                 ))
                 .size(Theme::FONT_S)
-                .color(Theme::TEXT_BRIGHT),
+                .color(Theme::TEXT),
             );
             ui.add_space(8.0);
 
@@ -988,7 +988,7 @@ pub(crate) fn render_recovery_modal(&mut self, ctx: &egui::Context) {
                             crate::autosave::relative_age(*stamp, now)
                         ))
                         .size(Theme::FONT_S)
-                        .color(Theme::FL_CYAN),
+                        .color(Theme::CYAN),
                     );
                     if ui
                         .add(
@@ -996,7 +996,7 @@ pub(crate) fn render_recovery_modal(&mut self, ctx: &egui::Context) {
                                 egui::RichText::new(crate::i18n::t("  Återställ  "))
                                     .size(Theme::FONT_S),
                             )
-                            .stroke(egui::Stroke::new(1.0_f32, Theme::FL_GREEN)),
+                            .stroke(egui::Stroke::new(1.0_f32, Theme::GREEN)),
                         )
                         .on_hover_text(path)
                         .clicked()
@@ -1060,18 +1060,18 @@ pub(crate) fn render_about_modal(&mut self, ctx: &egui::Context) {
                         ui.add(egui::Image::new(&tex).fit_to_exact_size(egui::Vec2::splat(96.0)));
                     }
                     None => {
-                        ui.label(egui::RichText::new(crate::i18n::t("SONIX")).size(Theme::FONT_XL).color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("SONIX")).size(Theme::FONT_XL).color(Theme::CYAN));
                     }
                 }
-                ui.heading(egui::RichText::new(crate::i18n::t("SONIX STUDIO")).strong().size(Theme::FONT_XL).color(Theme::FL_ORANGE));
-                ui.label(egui::RichText::new(crate::i18n::t("Professionell Digital Audio Workstation & AI Musikstudio för Linux")).size(Theme::FONT_S).color(Theme::FL_CYAN));
+                ui.heading(egui::RichText::new(crate::i18n::t("SONIX STUDIO")).strong().size(Theme::FONT_XL).color(Theme::ORANGE));
+                ui.label(egui::RichText::new(crate::i18n::t("Professionell Digital Audio Workstation & AI Musikstudio för Linux")).size(Theme::FONT_S).color(Theme::CYAN));
                 ui.label(egui::RichText::new(crate::tstatus!("Version {} (PipeWire / ALSA / JACK Audio Engine)", env!("CARGO_PKG_VERSION"))).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
                 ui.add_space(12.0);
                 ui.separator();
                 ui.add_space(8.0);
 
-                ui.label(egui::RichText::new(crate::i18n::t("🚀 Huvudfunktioner i Sonix Studio:")).strong().size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                ui.label(egui::RichText::new(crate::i18n::t("🚀 Huvudfunktioner i Sonix Studio:")).strong().size(Theme::FONT_S).color(Theme::TEXT));
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new(crate::i18n::t("• Realtids Multi-Track Audio Streaming & Mixmotor i Rust")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                 ui.label(egui::RichText::new(crate::i18n::t("• Fullt stöd för Suno AI Stems med linjär vågformsredigering")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
@@ -1080,7 +1080,7 @@ pub(crate) fn render_about_modal(&mut self, ctx: &egui::Context) {
                 ui.label(egui::RichText::new(crate::i18n::t("• 64-bit SIMD Audio DSP med Zero-Latency Process Thread")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
                 ui.add_space(16.0);
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("  Stäng  ")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::FL_ORANGE)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("  Stäng  ")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::ORANGE)).clicked() {
                     close = true;
                 }
                 ui.add_space(8.0);
@@ -1115,22 +1115,22 @@ pub(crate) fn render_project_manager_modal(&mut self, ctx: &egui::Context) {
         .default_size(Vec2::new(580.0, 440.0))
         .show(ctx, |ui| {
             ui.horizontal_wrapped(|ui| {
-                if ui.button(egui::RichText::new(crate::i18n::t("📄 Nytt tomt projekt")).strong().color(Theme::FL_CYAN)).clicked() {
+                if ui.button(egui::RichText::new(crate::i18n::t("📄 Nytt tomt projekt")).strong().color(Theme::CYAN)).clicked() {
                     create_new = true;
                     close = true;
                 }
-                if ui.button(egui::RichText::new(crate::i18n::t("⚡ Ladda Demo-projekt")).strong().color(Theme::FL_GREEN)).clicked() {
+                if ui.button(egui::RichText::new(crate::i18n::t("⚡ Ladda Demo-projekt")).strong().color(Theme::GREEN)).clicked() {
                     load_demo = true;
                     close = true;
                 }
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📂 Välj .sonix från datorn...")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(60, 90, 150))).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📂 Välj .sonix från datorn...")).strong().color(Theme::TEXT)).fill(Theme::TRACK_BLUE)).clicked() {
                     self.spawn_async_file_picker(
                         "Sonix-projekt",
                         &["sonix"],
                         crate::i18n::t("Välj Sonix Projektfil (.sonix)"),
                     );
                 }
-                if ui.button(egui::RichText::new(crate::i18n::t("🎼 Importera Suno ZIP...")).strong().color(Theme::FL_ORANGE)).clicked() {
+                if ui.button(egui::RichText::new(crate::i18n::t("🎼 Importera Suno ZIP...")).strong().color(Theme::ORANGE)).clicked() {
                     show_suno = true;
                     close = true;
                 }
@@ -1142,11 +1142,11 @@ pub(crate) fn render_project_manager_modal(&mut self, ctx: &egui::Context) {
 
             // Öppna från sökväg
             ui.group(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("📂 ÖPPNA PROJEKT FRÅN SÖKVÄG")).strong().color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("📂 ÖPPNA PROJEKT FRÅN SÖKVÄG")).strong().color(Theme::CYAN));
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Sökväg:"));
                     ui.text_edit_singleline(&mut self.custom_project_path_input);
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Öppna")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Öppna")).strong().color(Color32::BLACK)).fill(Theme::GREEN)).clicked() {
                         let p = self.custom_project_path_input.trim().to_string();
                         if !p.is_empty() {
                             load_file = Some(p);
@@ -1159,7 +1159,7 @@ pub(crate) fn render_project_manager_modal(&mut self, ctx: &egui::Context) {
 
             // Spara som
             ui.group(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("💾 SPARA PROJEKT")).strong().color(Theme::FL_ORANGE));
+                ui.label(egui::RichText::new(crate::i18n::t("💾 SPARA PROJEKT")).strong().color(Theme::ORANGE));
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Projektnamn:"));
                     ui.text_edit_singleline(&mut self.new_project_name_input);
@@ -1178,7 +1178,7 @@ pub(crate) fn render_project_manager_modal(&mut self, ctx: &egui::Context) {
                     projects_dir.display()
                 ))
                 .strong()
-                .color(Theme::FL_CYAN),
+                .color(Theme::CYAN),
             );
             let mut saved_files = Vec::new();
             if let Ok(entries) = std::fs::read_dir(&projects_dir) {
@@ -1200,9 +1200,9 @@ pub(crate) fn render_project_manager_modal(&mut self, ctx: &egui::Context) {
                     for (stem, full_path) in saved_files {
                         ui.group(|ui| {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(format!("🎵 {}", stem)).strong().color(Theme::TEXT_BRIGHT));
+                                ui.label(egui::RichText::new(format!("🎵 {}", stem)).strong().color(Theme::TEXT));
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Öppna Projekt")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Öppna Projekt")).strong().color(Color32::BLACK)).fill(Theme::GREEN)).clicked() {
                                         load_file = Some(full_path.clone());
                                     }
                                 });
@@ -1261,7 +1261,7 @@ pub(crate) fn render_ai_settings_modal(&mut self, ctx: &egui::Context) {
             ui.add_space(8.0);
 
             ui.group(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("💬 Textgenerering (AI Co-Producer)")).strong().color(Theme::FL_GREEN));
+                ui.label(egui::RichText::new(crate::i18n::t("💬 Textgenerering (AI Co-Producer)")).strong().color(Theme::GREEN));
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Provider:"));
                     egui::ComboBox::from_id_salt("legacy_ai_provider_combo")
@@ -1288,7 +1288,7 @@ pub(crate) fn render_ai_settings_modal(&mut self, ctx: &egui::Context) {
 
             ui.add_space(4.0);
             ui.group(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("🎧 AI-ljudgenerering (Stable Audio m.fl.)")).strong().color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("🎧 AI-ljudgenerering (Stable Audio m.fl.)")).strong().color(Theme::CYAN));
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Ljud-provider:"));
                     egui::ComboBox::from_id_salt("legacy_ai_audio_provider_combo")
@@ -1322,12 +1322,12 @@ pub(crate) fn render_ai_settings_modal(&mut self, ctx: &egui::Context) {
                     crate::i18n::t("Offline: använder lokal regelbaserad motor")
                 })
                 .size(Theme::FONT_S)
-                .color(if ready { Theme::FL_GREEN } else { Theme::TEXT_MUTED }),
+                .color(if ready { Theme::GREEN } else { Theme::TEXT_MUTED }),
             );
 
             ui.add_space(10.0);
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara inställningar")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara inställningar")).strong().color(Color32::BLACK)).fill(Theme::GREEN)).clicked() {
                     match self.ai_assistant.config.save() {
                         Ok(path) => self.status_message = crate::tstatus!("✔ Sparade AI-inställningar till {}", path.display()),
                         Err(e) => self.status_message = crate::tstatus!("⚠ Kunde inte spara AI-inställningar: {}", e),
@@ -1362,7 +1362,7 @@ pub(crate) fn render_audio_settings_modal(&mut self, ctx: &egui::Context) {
         .default_size(Vec2::new(500.0, 380.0))
         .show(ctx, |ui| {
             ui.group(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("Ljudmotor & Drivrutiner")).strong().color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("Ljudmotor & Drivrutiner")).strong().color(Theme::CYAN));
                 ui.label(crate::tstatus!("Värd: {} · Enhet: {}", self.engine.host_name, self.engine.device_name));
                 let buffer_txt = self.engine.buffer_frames
                     .map(|f| format!("{f} frames"))
@@ -1396,7 +1396,7 @@ pub(crate) fn render_audio_settings_modal(&mut self, ctx: &egui::Context) {
                 });
 
                 ui.add_space(6.0);
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Tillämpa på ljudströmmen")).strong().color(Color32::BLACK)).fill(Theme::FL_GREEN)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Tillämpa på ljudströmmen")).strong().color(Color32::BLACK)).fill(Theme::GREEN)).clicked() {
                     let rates = [44100_u32, 48000, 96000];
                     let buffers = [128_u32, 256, 512, 1024];
                     let requested_rate = rates[self.audio_sample_rate_idx.min(rates.len() - 1)];
@@ -1454,7 +1454,7 @@ pub(crate) fn render_audio_settings_modal(&mut self, ctx: &egui::Context) {
                 ui.label(
                     egui::RichText::new(crate::tstatus!("Utgångsbussar ({} kanaler på enheten)", channels))
                         .strong()
-                        .color(Theme::FL_CYAN),
+                        .color(Theme::CYAN),
                 );
                 ui.label(
                     egui::RichText::new(crate::i18n::t(
@@ -1522,7 +1522,7 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
                 // Group 1: Device Selection & Host Audio Stream
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Ljudenhet & Mikrofonkälla")).strong().size(Theme::FONT_M).color(Theme::FL_CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("Ljudenhet & Mikrofonkälla")).strong().size(Theme::FONT_M).color(Theme::CYAN));
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             if ui.button(crate::i18n::t("🔄 Uppdatera enheter")).on_hover_text(crate::i18n::t("Sök efter anslutna USB- och hårdvarumikrofoner")).clicked() {
                                 let devs = LiveMicrophoneCapture::list_devices();
@@ -1570,10 +1570,10 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
                         let mut apply = false;
                         ui.horizontal(|ui| {
                             apply = ui
-                                .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎸 Instrumentläge")).strong()).fill(Theme::FL_ORANGE))
+                                .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎸 Instrumentläge")).strong()).fill(Theme::ORANGE))
                                 .on_hover_text(crate::tstatus!("{} — {}", device, note))
                                 .clicked();
-                            ui.label(egui::RichText::new(crate::tstatus!("{} {} hittad", crate::i18n::t(kind.badge()), label)).size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                            ui.label(egui::RichText::new(crate::tstatus!("{} {} hittad", crate::i18n::t(kind.badge()), label)).size(Theme::FONT_S).color(Theme::ORANGE));
                         });
                         if apply {
                             let text = self.apply_instrument_plan(instrument);
@@ -1583,14 +1583,14 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
 
                     let active_dev = self.vocal_studio.mic_capture.as_ref().map(|m| m.device_name.as_str()).unwrap_or("Standard");
                     let sr = self.vocal_studio.mic_capture.as_ref().map(|m| m.sample_rate).unwrap_or(44100);
-                    ui.label(egui::RichText::new(crate::tstatus!("🟢 Aktiv ström: {} • {} Hz 32-bit Float", active_dev, sr)).size(Theme::FONT_S).color(Theme::FL_GREEN));
+                    ui.label(egui::RichText::new(crate::tstatus!("🟢 Aktiv ström: {} • {} Hz 32-bit Float", active_dev, sr)).size(Theme::FONT_S).color(Theme::GREEN));
                 });
 
                 ui.add_space(6.0);
 
                 // Group 2: Real-time VU & Level Meter with Gain
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Ingångsnivå & Förförstärkare (Gain & VU)")).strong().size(Theme::FONT_M).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("Ingångsnivå & Förförstärkare (Gain & VU)")).strong().size(Theme::FONT_M).color(Theme::ORANGE));
                     ui.add_space(4.0);
 
                     let vu = self.vocal_studio.mic_vu_level;
@@ -1602,31 +1602,31 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
 
                     ui.horizontal(|ui| {
                         let text_col = if vu > 0.85 {
-                            Color32::from_rgb(255, 60, 60)
+                            Theme::RED
                         } else if vu > 0.50 {
-                            Theme::FL_ORANGE
+                            Theme::ORANGE
                         } else {
-                            Theme::FL_GREEN
+                            Theme::GREEN
                         };
                         ui.label(egui::RichText::new(crate::tstatus!("Ingångssignal: {:.1} dB", vu_db)).monospace().strong().color(text_col));
 
                         if vu > 0.95 {
-                            ui.label(egui::RichText::new(crate::i18n::t("⚠ CLIP")).strong().color(Color32::from_rgb(255, 40, 40)));
+                            ui.label(egui::RichText::new(crate::i18n::t("⚠ CLIP")).strong().color(Theme::RED));
                         }
                     });
 
                     // Visual LED Bar Meter
                     let (m_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 16.0), Sense::hover());
-                    ui.painter().rect_filled(m_rect, Rounding::same(3.0), Color32::from_rgb(18, 22, 30));
-                    ui.painter().rect_stroke(m_rect, Rounding::same(3.0), Stroke::new(1.0_f32, Color32::from_rgb(40, 50, 68)));
+                    ui.painter().rect_filled(m_rect, Rounding::same(3.0), Theme::BG);
+                    ui.painter().rect_stroke(m_rect, Rounding::same(3.0), Stroke::new(1.0_f32, Theme::BORDER));
 
                     let fill_w = (m_rect.width() * vu.clamp(0.0, 1.0)).max(2.0);
                     let bar_color = if vu > 0.85 {
-                        Color32::from_rgb(255, 60, 60)
+                        Theme::RED
                     } else if vu > 0.50 {
-                        Theme::FL_ORANGE
+                        Theme::ORANGE
                     } else {
-                        Theme::FL_GREEN
+                        Theme::GREEN
                     };
                     ui.painter().rect_filled(Rect::from_min_size(m_rect.min, Vec2::new(fill_w, m_rect.height())), Rounding::same(3.0), bar_color);
 
@@ -1645,7 +1645,7 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
 
                 // Group 3: Noise Gate & Feedback Suppression
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Brusreducering & Anti-rundgång")).strong().size(Theme::FONT_M).color(Theme::FL_YELLOW));
+                    ui.label(egui::RichText::new(crate::i18n::t("Brusreducering & Anti-rundgång")).strong().size(Theme::FONT_M).color(Theme::YELLOW));
                     ui.add_space(4.0);
 
                     let mut gate = self.vocal_studio.mic_settings.noise_gate_thresh;
@@ -1657,7 +1657,7 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
                         if ui.add(egui::Slider::new(&mut gate, 0.000..=0.100).text(gate_str)).changed() {
                             self.vocal_studio.set_noise_gate(gate);
                         }
-                        let led_color = if gate_open { Theme::FL_GREEN } else { Color32::from_rgb(180, 40, 40) };
+                        let led_color = if gate_open { Theme::GREEN } else { Theme::RED };
                         let led_text = if gate_open { crate::i18n::t("🟢 ÖPPEN") } else { crate::i18n::t("🔴 STÄNGD") };
                         ui.label(egui::RichText::new(led_text).strong().color(led_color).size(Theme::FONT_S));
                     });
@@ -1679,7 +1679,7 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
 
                 // Group 4: Live DSP Effects (Reverb, De-Esser, Compressor, Direct Monitoring)
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Vokaleffekter i realtid (Live DSP)")).strong().size(Theme::FONT_M).color(Theme::FL_PURPLE));
+                    ui.label(egui::RichText::new(crate::i18n::t("Vokaleffekter i realtid (Live DSP)")).strong().size(Theme::FONT_M).color(Theme::PURPLE));
                     ui.add_space(4.0);
 
                     let rev_str = format!("Rumsklang: {:.0}%", self.vocal_studio.mic_settings.vocal_reverb * 100.0);
@@ -1708,8 +1708,8 @@ pub(crate) fn render_mic_settings_modal(&mut self, ctx: &egui::Context) {
 
                     let is_rec = self.vocal_studio.is_recording;
                     let btn_label = if is_rec { "⏹ Avsluta Provpratning" } else { "🎙 Provprata & Testa Inspelning" };
-                    let btn_col = if is_rec { Color32::from_rgb(220, 40, 40) } else { Theme::FL_GREEN };
-                    if ui.add(egui::Button::new(egui::RichText::new(btn_label).strong().color(Color32::WHITE)).fill(btn_col)).clicked() {
+                    let btn_col = if is_rec { Theme::RED } else { Theme::GREEN };
+                    if ui.add(egui::Button::new(egui::RichText::new(btn_label).strong().color(Theme::TEXT)).fill(btn_col)).clicked() {
                         if is_rec {
                             match self.vocal_studio.stop_recording() {
                                 Ok(_) => {
@@ -2083,7 +2083,7 @@ pub(crate) fn render_chord_track_view(&mut self, ctx: &egui::Context) {
             let mut remove: Option<usize> = None;
             for (i, chord) in self.song_chords.iter_mut().enumerate() {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("{}:{}", i + 1, chord.name())).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(format!("{}:{}", i + 1, chord.name())).strong().size(Theme::FONT_S).color(Theme::CYAN));
                     ui.label(crate::i18n::t("takt"));
                     let mut bar = chord.bar as u32 + 1;
                     if ui.add(egui::DragValue::new(&mut bar).range(1..=9999)).changed() {
@@ -2364,16 +2364,16 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                     ui.separator();
 
                     // SOLO / ISOLERA STÄMMA BUTTON (Prominent & Glowing)
-                    let solo_bg = if track.solo { Theme::FL_ORANGE } else { Color32::from_rgb(45, 40, 30) };
-                    let solo_fg = if track.solo { Color32::BLACK } else { Theme::FL_ORANGE };
+                    let solo_bg = if track.solo { Theme::ORANGE } else { Theme::HEADER };
+                    let solo_fg = if track.solo { Color32::BLACK } else { Theme::ORANGE };
                     if ui.add(egui::Button::new(egui::RichText::new(if track.solo { "🎧 ISOLERAD (SOLO ON)" } else { crate::i18n::t("🎧 ISOLERA STÄMMA") }).strong().color(solo_fg)).fill(solo_bg)).on_hover_text(crate::i18n::t("Isolera och lyssna enbart på denna stämma i realtid")).clicked() {
                         track.solo = !track.solo;
                         trigger_audio_sync = true;
                     }
 
                     // MUTE TOGGLE
-                    let mute_bg = if track.muted { Color32::from_rgb(180, 40, 40) } else { Theme::CHANNEL_BG };
-                    let mute_fg = if track.muted { Color32::WHITE } else { Theme::TEXT_MUTED };
+                    let mute_bg = if track.muted { Theme::RED } else { Theme::PANEL_ALT };
+                    let mute_fg = if track.muted { Theme::TEXT } else { Theme::TEXT_MUTED };
                     if ui.add(egui::Button::new(egui::RichText::new(if track.muted { "🔇 MUTAD" } else { "🔊 AKTIV" }).strong().color(mute_fg)).fill(mute_bg)).clicked() {
                         track.muted = !track.muted;
                         trigger_audio_sync = true;
@@ -2391,18 +2391,18 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             crate::i18n::t("🔥 Tina")
                         };
                         let bg = if frozen_stale {
-                            Color32::from_rgb(150, 100, 30)
+                            Theme::TRACK_AMBER
                         } else {
-                            Color32::from_rgb(40, 70, 90)
+                            Theme::BORDER_SOFT
                         };
-                        if ui.add(egui::Button::new(egui::RichText::new(label).strong().color(Color32::WHITE)).fill(bg))
+                        if ui.add(egui::Button::new(egui::RichText::new(label).strong().color(Theme::TEXT)).fill(bg))
                             .on_hover_text(crate::i18n::t("Spåret spelas som färdigt ljud. Tina upp det för att köra patterns igen — musiken är oförändrad."))
                             .clicked()
                         {
                             unfreeze_request = Some(t_idx);
                         }
                         // **Konsolidera**: spåret blir ett klipp i stället för flera.
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧩 Konsolidera spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 55, 75)))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧩 Konsolidera spår")).strong().color(Theme::TEXT)).fill(Theme::BORDER))
                             .on_hover_text(crate::i18n::t("Renderar spåret och ersätter alla dess klipp med ett enda. Volym, pan, EQ och sends är kvar."))
                             .clicked()
                         {
@@ -2410,21 +2410,21 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                         }
                         // **Platta till**: den frysta bufferten blir en region, så spåret är
                         // ljud på riktigt och går att klippa i som vilket ljudspår som helst.
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎵 Platta till")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 60, 45)))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎵 Platta till")).strong().color(Theme::TEXT)).fill(Theme::PANEL_ALT))
                             .on_hover_text(crate::i18n::t("Gör den frysta bufferten till en region på samma spår — sedan beter sig spåret som inspelat ljud."))
                             .clicked()
                         {
                             flatten_request = Some(t_idx);
                         }
                         if frozen_stale {
-                            ui.label(egui::RichText::new(crate::i18n::t("⚠ ändrat sedan frysningen")).size(Theme::FONT_S).color(Theme::FL_ORANGE))
+                            ui.label(egui::RichText::new(crate::i18n::t("⚠ ändrat sedan frysningen")).size(Theme::FONT_S).color(Theme::ORANGE))
                                 .on_hover_text(crate::i18n::t("Mönstret eller ljudet har ändrats efter frysningen, så ljudet är inte längre det du hör av patterns. Tina och frys igen."));
                         }
                     } else {
                         // Frysningen byter ut spårets uppspelning och gäller därför bara
                         // pattern-spår; bakningen lägger ljudet på ett nytt spår och gäller
                         // alla som inte redan är frusna.
-                        if track.can_freeze() && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("❄ Frys spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(35, 60, 80)))
+                        if track.can_freeze() && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("❄ Frys spår")).strong().color(Theme::TEXT)).fill(Theme::BORDER))
                             .on_hover_text(crate::i18n::t("Renderar spåret till ljud och spelar det i stället för patterns — sparar CPU i stora projekt. Patterns finns kvar, och Ctrl+Z tar tillbaka frysningen."))
                             .clicked()
                         {
@@ -2432,7 +2432,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                         }
                         // Baka till ett **nytt** spår: samma render, men källan ligger kvar
                         // (tystad) så att de två går att jämföra.
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Baka till nytt spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 70, 45)))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Baka till nytt spår")).strong().color(Theme::TEXT)).fill(Theme::PANEL_ALT))
                             .on_hover_text(crate::i18n::t("Renderar spåret till ett nytt ljudspår och tystar källan. Inget tas bort, och Ctrl+Z tar tillbaka hela bakningen."))
                             .clicked()
                         {
@@ -2440,7 +2440,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                         }
                         // Baka **hela gruppen** — bara när spåret faktiskt ligger i en grupp.
                         if let Some(g) = track.group {
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Baka gruppen till nytt spår")).strong().color(Color32::WHITE)).fill(Color32::from_rgb(45, 70, 45)))
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Baka gruppen till nytt spår")).strong().color(Theme::TEXT)).fill(Theme::PANEL_ALT))
                                 .on_hover_text(crate::i18n::t("Renderar gruppens spår tillsammans till ett nytt ljudspår och tystar dem. Ctrl+Z tar tillbaka hela bakningen."))
                                 .clicked()
                             {
@@ -2471,14 +2471,14 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                         }
                         // **Byt källa:** spåret behåller mix och inställningar, bara ljudet byts.
                         if track.pcm_audio.is_some()
-                            && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔄 Byt källa")).color(Color32::WHITE)).fill(Color32::from_rgb(50, 70, 60)))
+                            && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔄 Byt källa")).color(Theme::TEXT)).fill(Theme::BORDER))
                                 .on_hover_text(crate::i18n::t("Låter spåret få ett annat ljud men behålla volym, panorering, EQ, sends och automation."))
                                 .clicked()
                         {
                             swap_request = Some(t_idx);
                         }
                         if track.pcm_audio.is_some()
-                            && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Ta bort klick")).color(Color32::WHITE)).fill(Color32::from_rgb(60, 50, 80)))
+                            && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Ta bort klick")).color(Theme::TEXT)).fill(Theme::BORDER))
                                 .on_hover_text(crate::i18n::t("Hittar tvära hopp i spårets ljud och interpolerar över dem. Musiken runt omkring lämnas orörd."))
                                 .clicked()
                         {
@@ -2508,8 +2508,8 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                 ];
                 for (tab_idx, label) in tabs {
                     let is_sel = self.stem_focus_active_tab == tab_idx;
-                    let bg = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(25, 30, 40) };
-                    let fg = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+                    let bg = if is_sel { Theme::CYAN } else { Theme::PANEL };
+                    let fg = if is_sel { Color32::BLACK } else { Theme::TEXT };
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(label)).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                         self.stem_focus_active_tab = tab_idx;
                     }
@@ -2525,7 +2525,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                 0 => {
                     // TAB 1: VOLYM, PAN & DYNAMIK
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Nivåer & Stereobild för stämman")).strong().color(Theme::FL_ORANGE));
+                        ui.label(egui::RichText::new(crate::i18n::t("Nivåer & Stereobild för stämman")).strong().color(Theme::ORANGE));
                         ui.add_space(6.0);
 
                         ui.horizontal(|ui| {
@@ -2533,12 +2533,12 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             ui.group(|ui| {
                                 ui.set_width(340.0);
                                 ui.vertical(|ui| {
-                                    ui.label(egui::RichText::new(crate::i18n::t("🎚 Exakt Ljudvolym & Gain")).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                                    ui.label(egui::RichText::new(crate::i18n::t("🎚 Exakt Ljudvolym & Gain")).strong().size(Theme::FONT_S).color(Theme::CYAN));
                                     ui.add_space(4.0);
 
                                     let cur_vol = track.volume;
                                     let gain_db = if cur_vol <= 0.001 { -60.0 } else { 20.0 * cur_vol.log10() };
-                                    ui.label(egui::RichText::new(crate::tstatus!("Gain: {:+.2} dB  (Nivå: {:.1}%)", gain_db, cur_vol * 100.0)).strong().size(Theme::FONT_M).color(Theme::TEXT_BRIGHT));
+                                    ui.label(egui::RichText::new(crate::tstatus!("Gain: {:+.2} dB  (Nivå: {:.1}%)", gain_db, cur_vol * 100.0)).strong().size(Theme::FONT_M).color(Theme::TEXT));
 
                                     ui.add_space(4.0);
                                     let mut vol_slider = track.volume;
@@ -2598,7 +2598,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             ui.group(|ui| {
                                 ui.set_width(340.0);
                                 ui.vertical(|ui| {
-                                    ui.label(egui::RichText::new(crate::i18n::t("↔ Stereopanorering")).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                                    ui.label(egui::RichText::new(crate::i18n::t("↔ Stereopanorering")).strong().size(Theme::FONT_S).color(Theme::CYAN));
                                     let pan_text = if track.pan < -0.01 {
                                         crate::tstatus!("Vänster {:.0}%", track.pan.abs() * 100.0)
                                     } else if track.pan > 0.01 {
@@ -2606,7 +2606,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                                     } else {
                                         crate::i18n::t("Center (Mitt)").to_string()
                                     };
-                                    ui.label(egui::RichText::new(format!("Pan: {}", pan_text)).color(Theme::TEXT_BRIGHT));
+                                    ui.label(egui::RichText::new(format!("Pan: {}", pan_text)).color(Theme::TEXT));
 
                                     let mut pan_val = track.pan;
                                     if ui.add(egui::Slider::new(&mut pan_val, -1.0..=1.0).text("L / R")).changed() {
@@ -2623,7 +2623,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                                     });
 
                                     ui.add_space(8.0);
-                                    ui.label(egui::RichText::new(crate::i18n::t("🎛 Dynamik & Kompressor")).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                                    ui.label(egui::RichText::new(crate::i18n::t("🎛 Dynamik & Kompressor")).strong().size(Theme::FONT_S).color(Theme::CYAN));
                                     ui.add(egui::Slider::new(&mut track.comp_threshold_db, -30.0..=0.0).text("Threshold (dB)"));
                                     ui.add(egui::Slider::new(&mut track.comp_ratio, 1.0..=8.0).text("Ratio"));
                                 });
@@ -2636,7 +2636,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                     // TAB 2: 3-BANDS PARAMETRISK EQ MED GRAFISK KURVA
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("📈 3-Bands Parametrisk Stäm-EQ")).strong().color(Theme::FL_ORANGE));
+                            ui.label(egui::RichText::new(crate::i18n::t("📈 3-Bands Parametrisk Stäm-EQ")).strong().color(Theme::ORANGE));
                             ui.checkbox(&mut track.eq.enabled, "Aktivera EQ");
                         });
 
@@ -2645,18 +2645,18 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                         // Graphical EQ Curve Canvas
                         let (eq_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(10.0), 130.0), Sense::hover());
                         let p = ui.painter();
-                        p.rect_filled(eq_rect, Rounding::same(4.0), Color32::from_rgb(14, 18, 26));
-                        p.rect_stroke(eq_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Color32::from_rgb(32, 40, 56)));
+                        p.rect_filled(eq_rect, Rounding::same(4.0), Theme::BG_DEEP);
+                        p.rect_stroke(eq_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::GRID));
 
                         // Draw Grid Lines (100 Hz, 1 kHz, 10 kHz and 0 dB, +6 dB, -6 dB)
                         let mid_y = eq_rect.center().y;
-                        p.line_segment([Pos2::new(eq_rect.min.x, mid_y), Pos2::new(eq_rect.max.x, mid_y)], Stroke::new(1.0_f32, Color32::from_rgb(50, 60, 80)));
-                        p.line_segment([Pos2::new(eq_rect.min.x, mid_y - 30.0), Pos2::new(eq_rect.max.x, mid_y - 30.0)], Stroke::new(0.5_f32, Color32::from_rgb(35, 42, 56)));
-                        p.line_segment([Pos2::new(eq_rect.min.x, mid_y + 30.0), Pos2::new(eq_rect.max.x, mid_y + 30.0)], Stroke::new(0.5_f32, Color32::from_rgb(35, 42, 56)));
+                        p.line_segment([Pos2::new(eq_rect.min.x, mid_y), Pos2::new(eq_rect.max.x, mid_y)], Stroke::new(1.0_f32, Theme::BORDER));
+                        p.line_segment([Pos2::new(eq_rect.min.x, mid_y - 30.0), Pos2::new(eq_rect.max.x, mid_y - 30.0)], Stroke::new(0.5_f32, Theme::GRID));
+                        p.line_segment([Pos2::new(eq_rect.min.x, mid_y + 30.0), Pos2::new(eq_rect.max.x, mid_y + 30.0)], Stroke::new(0.5_f32, Theme::GRID));
 
-                        p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y - 30.0), egui::Align2::LEFT_CENTER, "+6 dB", egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(100, 110, 130));
+                        p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y - 30.0), egui::Align2::LEFT_CENTER, "+6 dB", egui::FontId::proportional(Theme::FONT_XS), Theme::TRACK_STEEL);
                         p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y), egui::Align2::LEFT_CENTER, "0 dB", egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
-                        p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y + 30.0), egui::Align2::LEFT_CENTER, "-6 dB", egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(100, 110, 130));
+                        p.text(Pos2::new(eq_rect.min.x + 6.0, mid_y + 30.0), egui::Align2::LEFT_CENTER, "-6 dB", egui::FontId::proportional(Theme::FONT_XS), Theme::TRACK_STEEL);
 
                         // Frequency Grid Markers
                         let freq_x = |f: f32| -> f32 {
@@ -2668,8 +2668,8 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
 
                         for &(freq, lbl) in &[(100.0, "100Hz"), (1000.0, "1kHz"), (10000.0, "10kHz")] {
                             let fx = freq_x(freq);
-                            p.line_segment([Pos2::new(fx, eq_rect.min.y), Pos2::new(fx, eq_rect.max.y)], Stroke::new(0.5_f32, Color32::from_rgb(30, 36, 50)));
-                            p.text(Pos2::new(fx, eq_rect.max.y - 8.0), egui::Align2::CENTER_CENTER, lbl, egui::FontId::proportional(Theme::FONT_XS), Color32::from_rgb(90, 100, 120));
+                            p.line_segment([Pos2::new(fx, eq_rect.min.y), Pos2::new(fx, eq_rect.max.y)], Stroke::new(0.5_f32, Theme::GRID));
+                            p.text(Pos2::new(fx, eq_rect.max.y - 8.0), egui::Align2::CENTER_CENTER, lbl, egui::FontId::proportional(Theme::FONT_XS), Theme::TRACK_STEEL);
                         }
 
                         // Plot Smooth EQ Curve
@@ -2697,7 +2697,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             }
 
                             for pair in curve_pts.windows(2) {
-                                p.line_segment([pair[0], pair[1]], Stroke::new(2.0_f32, Theme::FL_CYAN));
+                                p.line_segment([pair[0], pair[1]], Stroke::new(2.0_f32, Theme::CYAN));
                             }
 
                             // Draw Control Points for Low, Mid, High
@@ -2705,9 +2705,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             let mid_pt = Pos2::new(freq_x(track.eq.mid_freq), mid_y - track.eq.mid_gain_db * 5.0);
                             let high_pt = Pos2::new(freq_x(track.eq.high_freq), mid_y - track.eq.high_gain_db * 5.0);
 
-                            p.circle_filled(low_pt, 4.5, Theme::FL_ORANGE);
-                            p.circle_filled(mid_pt, 4.5, Theme::FL_GREEN);
-                            p.circle_filled(high_pt, 4.5, Color32::from_rgb(180, 110, 255));
+                            p.circle_filled(low_pt, 4.5, Theme::ORANGE);
+                            p.circle_filled(mid_pt, 4.5, Theme::GREEN);
+                            p.circle_filled(high_pt, 4.5, Theme::PURPLE);
                         }
 
                         ui.add_space(6.0);
@@ -2717,7 +2717,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             // Low Band
                             ui.group(|ui| {
                                 ui.set_width(220.0);
-                                ui.label(egui::RichText::new(crate::i18n::t("🔊 Bas (Low Shelf)")).strong().color(Theme::FL_ORANGE));
+                                ui.label(egui::RichText::new(crate::i18n::t("🔊 Bas (Low Shelf)")).strong().color(Theme::ORANGE));
                                 ui.add(egui::Slider::new(&mut track.eq.low_gain_db, -12.0..=12.0).text("Gain (dB)").suffix(" dB"));
                                 ui.add(egui::Slider::new(&mut track.eq.low_freq, 40.0..=400.0).text("Frekvens").suffix(" Hz"));
                                 ui.horizontal(|ui| {
@@ -2730,7 +2730,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             // Mid Band
                             ui.group(|ui| {
                                 ui.set_width(220.0);
-                                ui.label(egui::RichText::new(crate::i18n::t("🎙 Mellanregister (Mid Peak)")).strong().color(Theme::FL_GREEN));
+                                ui.label(egui::RichText::new(crate::i18n::t("🎙 Mellanregister (Mid Peak)")).strong().color(Theme::GREEN));
                                 ui.add(egui::Slider::new(&mut track.eq.mid_gain_db, -12.0..=12.0).text("Gain (dB)").suffix(" dB"));
                                 ui.add(egui::Slider::new(&mut track.eq.mid_freq, 200.0..=6000.0).text("Frekvens").suffix(" Hz"));
                                 ui.add(egui::Slider::new(&mut track.eq.mid_q, 0.5..=3.0).text("Q (Bredd)"));
@@ -2739,7 +2739,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             // High Band
                             ui.group(|ui| {
                                 ui.set_width(220.0);
-                                ui.label(egui::RichText::new(crate::i18n::t("✨ Diskant (High Shelf)")).strong().color(Color32::from_rgb(180, 110, 255)));
+                                ui.label(egui::RichText::new(crate::i18n::t("✨ Diskant (High Shelf)")).strong().color(Theme::PURPLE));
                                 ui.add(egui::Slider::new(&mut track.eq.high_gain_db, -12.0..=12.0).text("Gain (dB)").suffix(" dB"));
                                 ui.add(egui::Slider::new(&mut track.eq.high_freq, 3000.0..=16000.0).text("Frekvens").suffix(" Hz"));
                                 ui.horizontal(|ui| {
@@ -2787,7 +2787,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                 2 => {
                     // TAB 3: FADING & TIDSREDIGERING (0.01s Precision)
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("⏱ Fading & Fade-kurvor (Exakt hundradels precision)")).strong().color(Theme::FL_ORANGE));
+                        ui.label(egui::RichText::new(crate::i18n::t("⏱ Fading & Fade-kurvor (Exakt hundradels precision)")).strong().color(Theme::ORANGE));
                         ui.add_space(4.0);
 
                         // If there are regions on this track, allow editing the first / selected region or batch-apply
@@ -2805,9 +2805,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             // Fade In Box
                             ui.group(|ui| {
                                 ui.set_width(340.0);
-                                ui.label(egui::RichText::new(crate::i18n::t("📈 Fade In (In-toning)")).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                                ui.label(egui::RichText::new(crate::i18n::t("📈 Fade In (In-toning)")).strong().size(Theme::FONT_S).color(Theme::CYAN));
                                 let cs_in = (global_fade_in_sec * 100.0).round() as i32;
-                                ui.label(egui::RichText::new(crate::tstatus!("Längd: {:.2} sekunder  ({} hundradelar)", global_fade_in_sec, cs_in)).strong().color(Theme::TEXT_BRIGHT));
+                                ui.label(egui::RichText::new(crate::tstatus!("Längd: {:.2} sekunder  ({} hundradelar)", global_fade_in_sec, cs_in)).strong().color(Theme::TEXT));
 
                                 ui.add_space(4.0);
                                 if ui.add(egui::Slider::new(&mut global_fade_in_sec, 0.0..=5.0).text("Sekunder")).changed() {
@@ -2838,9 +2838,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             // Fade Out Box
                             ui.group(|ui| {
                                 ui.set_width(340.0);
-                                ui.label(egui::RichText::new(crate::i18n::t("📉 Fade Out (Ut-toning)")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                                ui.label(egui::RichText::new(crate::i18n::t("📉 Fade Out (Ut-toning)")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
                                 let cs_out = (global_fade_out_sec * 100.0).round() as i32;
-                                ui.label(egui::RichText::new(crate::tstatus!("Längd: {:.2} sekunder  ({} hundradelar)", global_fade_out_sec, cs_out)).strong().color(Theme::TEXT_BRIGHT));
+                                ui.label(egui::RichText::new(crate::tstatus!("Längd: {:.2} sekunder  ({} hundradelar)", global_fade_out_sec, cs_out)).strong().color(Theme::TEXT));
 
                                 ui.add_space(4.0);
                                 if ui.add(egui::Slider::new(&mut global_fade_out_sec, 0.0..=5.0).text("Sekunder")).changed() {
@@ -2914,14 +2914,14 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                 3 => {
                     // TAB 4: KLIPP & VÅGFORM
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new(format!("🎵 Klipp & Regioner i {}", track.name)).strong().color(Theme::FL_ORANGE));
+                        ui.label(egui::RichText::new(format!("🎵 Klipp & Regioner i {}", track.name)).strong().color(Theme::ORANGE));
                         ui.add_space(4.0);
 
                         // Waveform Overview
                         let (wave_rect, wave_resp) = ui.allocate_exact_size(Vec2::new(ui.available_width().max(10.0), 90.0), Sense::click_and_drag());
                         let p = ui.painter();
-                        p.rect_filled(wave_rect, Rounding::same(4.0), Color32::from_rgb(12, 15, 22));
-                        p.rect_stroke(wave_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Color32::from_rgb(32, 40, 56)));
+                        p.rect_filled(wave_rect, Rounding::same(4.0), Theme::BG_DEEP);
+                        p.rect_stroke(wave_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::GRID));
 
                         let mid_y = wave_rect.center().y;
 
@@ -2943,7 +2943,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                                 for (wi, &amp) in r.waveform_peaks.iter().enumerate() {
                                     let wx = r_rect.min.x + wi as f32 * w_step;
                                     let wh = amp * (r_rect.height() * 0.40);
-                                    p.line_segment([Pos2::new(wx, mid_y - wh), Pos2::new(wx, mid_y + wh)], Stroke::new(1.0_f32, Color32::WHITE));
+                                    p.line_segment([Pos2::new(wx, mid_y - wh), Pos2::new(wx, mid_y + wh)], Stroke::new(1.0_f32, Theme::TEXT));
                                 }
                             }
                         }
@@ -2963,7 +2963,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             let mut del_region_idx: Option<usize> = None;
                             for (ri, r) in track.regions.iter_mut().enumerate() {
                                 ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(format!("#{}: {}", ri + 1, r.name)).strong().color(Theme::TEXT_BRIGHT));
+                                    ui.label(egui::RichText::new(format!("#{}: {}", ri + 1, r.name)).strong().color(Theme::TEXT));
                                     ui.separator();
 
                                     let r_start_sec = secs_at(r.start_bar);
@@ -3078,11 +3078,11 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
         .show(ctx, |ui| {
             // Top Header with quick search and close
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("📖 SONIX STUDIO MASTER MANUAL")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
-                ui.label(egui::RichText::new(crate::i18n::t("• Komplett Referensguide & Handbok")).size(Theme::FONT_S).color(Theme::FL_CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("📖 SONIX STUDIO MASTER MANUAL")).strong().size(Theme::FONT_L).color(Theme::ORANGE));
+                ui.label(egui::RichText::new(crate::i18n::t("• Komplett Referensguide & Handbok")).size(Theme::FONT_S).color(Theme::CYAN));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✖ Stäng Manual")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::FL_ORANGE)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✖ Stäng Manual")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::ORANGE)).clicked() {
                         close = true;
                     }
                 });
@@ -3122,8 +3122,8 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
                         egui::ScrollArea::vertical().id_salt("manual_nav_scroll").show(ui, |ui| {
                             for (ch_idx, title) in chapters {
                                 let is_sel = self.help_manual_active_tab == ch_idx;
-                                let bg = if is_sel { Theme::FL_CYAN } else { Color32::from_rgb(22, 26, 34) };
-                                let fg = if is_sel { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+                                let bg = if is_sel { Theme::CYAN } else { Theme::HEADER };
+                                let fg = if is_sel { Color32::BLACK } else { Theme::TEXT };
 
                                 if ui.add_sized(Vec2::new(215.0, 26.0), egui::Button::new(egui::RichText::new(crate::i18n::t(title)).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                                     self.help_manual_active_tab = ch_idx;
@@ -3146,12 +3146,12 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
                             match self.help_manual_active_tab {
                                 0 => {
                                     // 1. SNABBSTART & ÖVERSIKT
-                                    ui.heading(egui::RichText::new(crate::i18n::t("🚀 1. Snabbstart & Översikt")).color(Theme::FL_ORANGE));
-                                    ui.label(egui::RichText::new(crate::i18n::t("Välkommen till Sonix Studio – en blixtsnabb Digital Audio Workstation skapad för Linux med äkta realtidsprestanda.")).size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("🚀 1. Snabbstart & Översikt")).color(Theme::ORANGE));
+                                    ui.label(egui::RichText::new(crate::i18n::t("Välkommen till Sonix Studio – en blixtsnabb Digital Audio Workstation skapad för Linux med äkta realtidsprestanda.")).size(Theme::FONT_S).color(Theme::TEXT));
                                     ui.add_space(8.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("🎯 Typiskt produktionsarbetsflöde:")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("🎯 Typiskt produktionsarbetsflöde:")).strong().color(Theme::CYAN));
                                         ui.add_space(4.0);
                                         ui.label(crate::i18n::t("1. Importera stämmor: Klicka på '📦 IMPORT STEMS' (Ctrl+I) för att läsa in ett ZIP-paket med sång, bas, trummor m.m."));
                                         ui.label(crate::i18n::t("2. Arrangera & Klipp: Använd saxverktyget (✂ Klipp) och zooma in djupt (Ctrl+Scroll) för att dela med 0.01s precision."));
@@ -3163,7 +3163,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(8.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("⚡ Systemarkitektur & Prestanda:")).strong().color(Theme::FL_GREEN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("⚡ Systemarkitektur & Prestanda:")).strong().color(Theme::GREEN));
                                         ui.label(crate::i18n::t("• 100% Rust Audio DSP – Inget hack, noll skräpsamling (Garbage Collection), noll latens."));
                                         ui.label(crate::i18n::t("• PipeWire & ALSA Native – Ansluter direkt till Linux moderna ljudserver."));
                                         ui.label(crate::i18n::t("• Asynkron bakgrundsavkodning – Gränssnittet fryser aldrig vid inläsning av tunga ljudfiler."));
@@ -3172,11 +3172,11 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 1 => {
                                     // 2. TANGENTBORD & KOMMANDON
-                                    ui.heading(egui::RichText::new(crate::i18n::t("⌨ 2. Tangentbord & Komplett Kortkommandoreferens")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("⌨ 2. Tangentbord & Komplett Kortkommandoreferens")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("NAVIGERING MELLAN VYER (Funktionstangenter):")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("NAVIGERING MELLAN VYER (Funktionstangenter):")).strong().color(Theme::CYAN));
                                         ui.separator();
                                         let f_keys = [
                                             ("F1", "Bruksanvisning / Manual & Hjälpcenter"),
@@ -3191,7 +3191,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
                                         ];
                                         for (k, desc) in f_keys {
                                             ui.horizontal(|ui| {
-                                                ui.label(egui::RichText::new(format!("[ {:<3} ]", k)).monospace().strong().color(Theme::FL_ORANGE));
+                                                ui.label(egui::RichText::new(format!("[ {:<3} ]", k)).monospace().strong().color(Theme::ORANGE));
                                                 ui.label(crate::i18n::t(desc));
                                             });
                                         }
@@ -3199,7 +3199,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("PROJEKT & REDIGERINGSKOMMANDON:")).strong().color(Theme::FL_GREEN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("PROJEKT & REDIGERINGSKOMMANDON:")).strong().color(Theme::GREEN));
                                         ui.separator();
                                         let shortcuts = [
                                             ("Mellanslag (Space)", "Starta / Pausa uppspelning"),
@@ -3217,7 +3217,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
                                         ];
                                         for (k, desc) in shortcuts {
                                             ui.horizontal(|ui| {
-                                                ui.label(egui::RichText::new(format!("{:<18}", k)).monospace().strong().color(Theme::FL_CYAN));
+                                                ui.label(egui::RichText::new(format!("{:<18}", k)).monospace().strong().color(Theme::CYAN));
                                                 ui.label(crate::i18n::t(desc));
                                             });
                                         }
@@ -3226,14 +3226,14 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 2 => {
                                     // 3. TIDSLINJE & 0.01s PRECISION
-                                    ui.heading(egui::RichText::new(crate::i18n::t("📊 3. Tidslinje, Snäpp & 0.01s Precision")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("📊 3. Tidslinje, Snäpp & 0.01s Precision")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
-                                    ui.label(egui::RichText::new(crate::i18n::t("Tidslinjen hanterar obegränsat med ljudspår och regioner med precision ned till 0.01 sekunder (hundradelar).")).size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                                    ui.label(egui::RichText::new(crate::i18n::t("Tidslinjen hanterar obegränsat med ljudspår och regioner med precision ned till 0.01 sekunder (hundradelar).")).size(Theme::FONT_S).color(Theme::TEXT));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("🔍 Dynamisk 4-Nivåers Tidslinjelinjal:")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("🔍 Dynamisk 4-Nivåers Tidslinjelinjal:")).strong().color(Theme::CYAN));
                                         ui.label(crate::i18n::t("1. Takter (Bars): Stora vertikala streck med taktnummer (1, 2, 3...) och tidskod (MM:SS.cs)."));
                                         ui.label(crate::i18n::t("2. Beats: Fjärdedelstikar (.2, .3, .4) som syns vid normal zoom."));
                                         ui.label(crate::i18n::t("3. 1/16-delssteg: Tunt rutnät för exakt rytmisk klippning och placering."));
@@ -3242,7 +3242,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("✂ Redigeringsverktyg & Snäpp:")).strong().color(Theme::FL_ORANGE));
+                                        ui.label(egui::RichText::new(crate::i18n::t("✂ Redigeringsverktyg & Snäpp:")).strong().color(Theme::ORANGE));
                                         ui.label(crate::i18n::t("• ⇱ Välj: Klicka på en region för att markera och se dess egenskaper i inspektorn."));
                                         ui.label(crate::i18n::t("• ✎ Rita: Klicka i tidslinjen för att rita ut mönster och aktiva klipp."));
                                         ui.label(crate::i18n::t("• ✂ Klipp (0.01s): Saxverktyg. Klicka var som helst på ett ljudspår för att klyva klippet i två."));
@@ -3254,7 +3254,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("🏃 Följ Tidslinje (Auto-Scroll):")).strong().color(Theme::FL_GREEN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("🏃 Följ Tidslinje (Auto-Scroll):")).strong().color(Theme::GREEN));
                                         ui.label(crate::i18n::t("• '🏃 Följ tidslinje: PÅ': Tidslinjen rullar automatiskt och håller spelhuvudet centrerat på skärmen."));
                                         ui.label(crate::i18n::t("• '⏸ Följ tidslinje: AV': Tidslinjen står stilla så att du kan redigera i lugn och ro medan låten spelar."));
                                     });
@@ -3262,14 +3262,14 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 3 => {
                                     // 4. MULTI-TRACK STÄMIMPORT
-                                    ui.heading(egui::RichText::new(crate::i18n::t("📦 4. Multi-Track Stämimport (Stems)")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("📦 4. Multi-Track Stämimport (Stems)")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
-                                    ui.label(egui::RichText::new(crate::i18n::t("Importera kompletta stämpaket (WAV, MP3, FLAC, OGG) från Suno AI, FL Studio, Ableton, Logic m.fl.")).size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                                    ui.label(egui::RichText::new(crate::i18n::t("Importera kompletta stämpaket (WAV, MP3, FLAC, OGG) från Suno AI, FL Studio, Ableton, Logic m.fl.")).size(Theme::FONT_S).color(Theme::TEXT));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("📥 Hur du importerar:")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("📥 Hur du importerar:")).strong().color(Theme::CYAN));
                                         ui.label(crate::i18n::t("1. Tryck '📦 IMPORT STEMS' i verktygsfältet eller tryck Ctrl+I."));
                                         ui.label(crate::i18n::t("2. Välj bland automatiskt upptäckta paket i ~/Music / ~/Downloads eller välj ZIP-fil/mapp manuellt."));
                                         ui.label(crate::i18n::t("3. Dra & Släpp (Drag & Drop): Dra en .zip-fil direkt in i Sonix-fönstret."));
@@ -3277,7 +3277,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("🎛 Automatisk Spåridentifiering & Routing:")).strong().color(Theme::FL_GREEN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("🎛 Automatisk Spåridentifiering & Routing:")).strong().color(Theme::GREEN));
                                         ui.label(crate::i18n::t("• Lead Vocals ➔ 🎙 Sångbuss med lila färgkod."));
                                         ui.label(crate::i18n::t("• Backing Vocals ➔ 🗣 Körbuss."));
                                         ui.label(crate::i18n::t("• Drums / Kick / Snare ➔ 🥁 Trumbuss med cyan färgkod."));
@@ -3291,20 +3291,20 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 4 => {
                                     // 5. STÄMEDITOR & 3-BANDS EQ
-                                    ui.heading(egui::RichText::new(crate::i18n::t("🔍 5. Dedikerad Stämeditor & Ljudfokus")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("🔍 5. Dedikerad Stämeditor & Ljudfokus")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
-                                    ui.label(egui::RichText::new(crate::i18n::t("Fokusera på en enda stämma med högprecisionskontroller, decibelnivåer, grafisk EQ och fading.")).size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                                    ui.label(egui::RichText::new(crate::i18n::t("Fokusera på en enda stämma med högprecisionskontroller, decibelnivåer, grafisk EQ och fading.")).size(Theme::FONT_S).color(Theme::TEXT));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("🎧 1. Isolera stämma (Solo On):")).strong().color(Theme::FL_ORANGE));
+                                        ui.label(egui::RichText::new(crate::i18n::t("🎧 1. Isolera stämma (Solo On):")).strong().color(Theme::ORANGE));
                                         ui.label(crate::i18n::t("Klicka på den stora knappen '🎧 ISOLERA STÄMMA (SOLO)' högst upp i editorn för att direkt tysta alla andra spår och lyssna enbart på den valda stämman."));
                                     });
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("🎚 2. Volym, Pan & Dynamik (Flik 1):")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("🎚 2. Volym, Pan & Dynamik (Flik 1):")).strong().color(Theme::CYAN));
                                         ui.label(crate::i18n::t("• Volymreglage med exakt dB-visning och '±0.1 dB' finjusteringsknappar."));
                                         ui.label(crate::i18n::t("• Stereopanorering med snabbcentrering ('Center')."));
                                         ui.label(crate::i18n::t("• Kompressor: Justerbar Threshold (-30 dB till 0 dB) och Ratio (1:1 till 8:1)."));
@@ -3314,7 +3314,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("📈 3. 3-Bands Grafisk Parametrisk EQ (Flik 2):")).strong().color(Theme::FL_GREEN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("📈 3. 3-Bands Grafisk Parametrisk EQ (Flik 2):")).strong().color(Theme::GREEN));
                                         ui.label(crate::i18n::t("• Interaktiv frekvenskurva i realtid (20 Hz – 20 kHz) med dB-skala."));
                                         ui.label(crate::i18n::t("• Low Shelf (Bas): Gain ±12 dB, brytfrekvens 40–400 Hz."));
                                         ui.label(crate::i18n::t("• Mid Peak (Mellanregister): Gain ±12 dB, frekvens 200 Hz – 6 kHz, Q-faktor 0.5–3.0."));
@@ -3324,7 +3324,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("⏱ 4. Fading & Envelope i hundradelar (Flik 3):")).strong().color(Color32::from_rgb(180, 110, 255)));
+                                        ui.label(egui::RichText::new(crate::i18n::t("⏱ 4. Fading & Envelope i hundradelar (Flik 3):")).strong().color(Theme::PURPLE));
                                         ui.label(crate::i18n::t("• Fade In och Fade Out med 0.01s precision."));
                                         ui.label(crate::i18n::t("• Stegknappar för '±0.01s' och '±0.10s'. Snabbval för 20ms, 50ms, 100ms, 500ms, 1.00s."));
                                         ui.label(crate::i18n::t("• Slå på alla: Sätter samma fading på alla klipp i just den stämman."));
@@ -3333,11 +3333,11 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 5 => {
                                     // 6. CHANNEL RACK & BEATS
-                                    ui.heading(egui::RichText::new(crate::i18n::t("🥁 6. Sonix Channel Rack & Stegsequencer (F4)")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("🥁 6. Sonix Channel Rack & Stegsequencer (F4)")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("16-Stegs Trummaskin & Mönster:")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("16-Stegs Trummaskin & Mönster:")).strong().color(Theme::CYAN));
                                         ui.label(crate::i18n::t("• 8 Klassiska trumkanaler: Kick, Snare, Clap, Closed Hat, Open Hat, Crash, 303 Bass och Lead."));
                                         ui.label(crate::i18n::t("• Mönster P1–P4: Skapa variationer för vers, refräng och stick."));
                                         ui.label(crate::i18n::t("• Swing: Skjutreglage för att ge trummorna ett naturligt sväng."));
@@ -3348,11 +3348,11 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 6 => {
                                     // 7. PIANO ROLL & SYNTH
-                                    ui.heading(egui::RichText::new(crate::i18n::t("🎹 7. Piano Roll & Analog Synthesizer (F5 / F7)")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("🎹 7. Piano Roll & Analog Synthesizer (F5 / F7)")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("Piano Roll (F5):")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("Piano Roll (F5):")).strong().color(Theme::CYAN));
                                         ui.label(crate::i18n::t("• Grafiskt 3-oktavigt notinmatningsfönster (C3 till B5)."));
                                         ui.label(crate::i18n::t("• Klicka på klaviaturet till vänster för att provlyssna toner i realtid."));
                                         ui.label(crate::i18n::t("• ⚡ Slumpa Melodi: Skapar harmoniska melodislingor automatiskt."));
@@ -3360,7 +3360,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("Analog Alchemy Synthesizer (F7):")).strong().color(Theme::FL_GREEN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("Analog Alchemy Synthesizer (F7):")).strong().color(Theme::GREEN));
                                         ui.label(crate::i18n::t("• 4 Vågformer: Sawtooth (sågtand), Square (fyrkant), Sine (sinus) och Noise (brus)."));
                                         ui.label(crate::i18n::t("• ADSR Envelope: Attack, Decay, Sustain och Release."));
                                         ui.label(crate::i18n::t("• Resonant SVF-filter (12 dB): Cutoff (20Hz–18kHz) och Resonans."));
@@ -3370,11 +3370,11 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 7 => {
                                     // 8. VOCAL STUDIO & PITCH
-                                    ui.heading(egui::RichText::new(crate::i18n::t("🎤 8. Vocal Studio, Melodyne & Harmonizer (F8)")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("🎤 8. Vocal Studio, Melodyne & Harmonizer (F8)")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("Funktioner i Vocal Studio:")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("Funktioner i Vocal Studio:")).strong().color(Theme::CYAN));
                                         ui.label(crate::i18n::t("• Melodyne ARA2 Editor: Interaktiva tonhöjds-blobs för att justera sångens toner och timing."));
                                         ui.label(crate::i18n::t("• 4-Voice Harmonizer: Skapar fylliga sångarrangemang med kör, oktavdubbling eller vocoder."));
                                         ui.label(crate::i18n::t("• Comping & Tagningar: Spela in flera sångtagningar och klipp ihop den bästa versionen."));
@@ -3384,11 +3384,11 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 8 => {
                                     // 9. MIXER & WAV-EXPORT
-                                    ui.heading(egui::RichText::new(crate::i18n::t("🎛 9. Mixer Console, Effekter & WAV-Export (F6 / Ctrl+E)")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("🎛 9. Mixer Console, Effekter & WAV-Export (F6 / Ctrl+E)")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("Mixerbord & Effektrack (F6):")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("Mixerbord & Effektrack (F6):")).strong().color(Theme::CYAN));
                                         ui.label(crate::i18n::t("• 8 Stereokanaler + Master Bus med analoga faders och VU peak meters."));
                                         ui.label(crate::i18n::t("• 3-Bands Parametrisk EQ per mixerkanal."));
                                         ui.label(crate::i18n::t("• Master Limiter & Maximizer för kommersiell ljudstyrka utan digital distorsion."));
@@ -3396,7 +3396,7 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("Export & Rendering (Ctrl+E):")).strong().color(Theme::FL_GREEN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("Export & Rendering (Ctrl+E):")).strong().color(Theme::GREEN));
                                         ui.label(crate::i18n::t("• Export Song: Renderar hela tidslinjen till en sammanslagen masterfil."));
                                         ui.label(crate::i18n::t("• Export Pattern: Exporterar det aktiva Channel Rack-mönstret."));
                                         ui.label(crate::i18n::t("• 📤 BATCH EXPORT: Exporterar alla aktiva stämmor som separata WAV-filer till ./exports/."));
@@ -3406,18 +3406,18 @@ pub(crate) fn render_help_manual_modal(&mut self, ctx: &egui::Context) {
 
                                 9 => {
                                     // 10. PIPEWIRE & WAYLAND SETUP
-                                    ui.heading(egui::RichText::new(crate::i18n::t("⚙ 10. Ljudmotor, PipeWire & Hyprland / Wayland")).color(Theme::FL_ORANGE));
+                                    ui.heading(egui::RichText::new(crate::i18n::t("⚙ 10. Ljudmotor, PipeWire & Hyprland / Wayland")).color(Theme::ORANGE));
                                     ui.add_space(6.0);
 
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("Ljudmotor (PipeWire / ALSA / JACK):")).strong().color(Theme::FL_CYAN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("Ljudmotor (PipeWire / ALSA / JACK):")).strong().color(Theme::CYAN));
                                         ui.label(crate::i18n::t("• Sonix kommunicerar direkt med Linux professionella ljudserver i realtid."));
                                         ui.label(crate::i18n::t("• Buffertstorlek: 128/256 samples för noll latens vid live-spelning, 512/1024 samples för tunga projekt."));
                                     });
 
                                     ui.add_space(6.0);
                                     ui.group(|ui| {
-                                        ui.label(egui::RichText::new(crate::i18n::t("Linux Wayland & Hyprland Säkerhet:")).strong().color(Theme::FL_GREEN));
+                                        ui.label(egui::RichText::new(crate::i18n::t("Linux Wayland & Hyprland Säkerhet:")).strong().color(Theme::GREEN));
                                         ui.label(crate::i18n::t("• Sonix är helt anpassat för Hyprland, GNOME Wayland och KDE."));
                                         ui.label(crate::i18n::t("• När fönstret täcks av ett annat fönster eller minimeras fortsätter ljudmotorn att spela utan avbrott samtidigt som GUI-uppritningen vilar för att förhindra krascher."));
                                         ui.label(crate::i18n::t("• Inbyggd Crash Logger sparar automatiskt eventuella problem till /tmp/sonix_crash.log."));
@@ -3566,13 +3566,13 @@ impl SonixApp {
                         egui::RichText::new(position)
                             .monospace()
                             .size(72.0)
-                            .color(Theme::FL_GREEN),
+                            .color(Theme::GREEN),
                     );
                     ui.label(
                         egui::RichText::new(time)
                             .monospace()
                             .size(40.0)
-                            .color(Theme::TEXT_BRIGHT),
+                            .color(Theme::TEXT),
                     );
                 });
             });

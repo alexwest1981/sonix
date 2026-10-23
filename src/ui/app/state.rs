@@ -8,6 +8,7 @@
 //! Rör inte: alla fält är `pub` (syskonmodulerna läser dem); döp inte om ett fält som står i en projektfil.
 
 use super::*;
+use crate::ui::theme::Theme;
 
 /// Not → frekvens. Går genom `audio::tuning`, som är den enda vägen: annars kan
 /// uppspelningen spela en stämning och exporten en annan.
@@ -553,7 +554,7 @@ pub fn shift_song_markers(markers: &mut [SongMarker], at_bar: f32, delta: i64) -
 }
 
 pub(crate) fn default_region_color() -> Color32 {
-    Color32::from_rgb(100, 180, 255)
+    Theme::TRACK_BLUE
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
@@ -1340,7 +1341,7 @@ mod crossfade_tests {
             "test".to_string(),
             "🎵",
             TrackKind::CustomAudio,
-            Color32::from_rgb(1, 2, 3),
+            Theme::BG_DEEP,
         );
         t.regions = regions;
         t
@@ -1406,7 +1407,7 @@ mod time_ops_tests {
             "t".to_string(),
             "🎵",
             TrackKind::CustomAudio,
-            Color32::from_rgb(1, 2, 3),
+            Theme::BG_DEEP,
         );
         t.regions = regions;
         t

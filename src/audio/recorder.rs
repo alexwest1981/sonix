@@ -1163,7 +1163,7 @@ impl VocalStudioTrack {
             waveform_data,
             sample_rate: mic_sr.max(8000),
             duration_secs: duration,
-            color: Color32::from_rgb(255, 180, 60),
+            color: Theme::AMBER,
         });
         Ok(self.custom_sounds.len() - 1)
     }
@@ -1191,10 +1191,10 @@ impl VocalStudioTrack {
 
         let count = self.takes.len() + 1;
         let color = match count % 4 {
-            0 => Theme::FL_CYAN,
-            1 => Theme::LCD_ORANGE,
-            2 => Color32::from_rgb(180, 100, 255),
-            _ => Color32::from_rgb(80, 240, 160),
+            0 => Theme::CYAN,
+            1 => Theme::ORANGE,
+            2 => Theme::PURPLE,
+            _ => Theme::GREEN,
         };
 
         let new_take = AudioTake {
@@ -1240,7 +1240,7 @@ impl VocalStudioTrack {
                 sample_rate: 44100,
                 duration_secs: 0.0,
                 is_selected: false,
-                color: Color32::from_rgb(60, 75, 95),
+                color: Theme::BORDER_SOFT,
                 trim_start_norm: 0.0,
                 trim_end_norm: 1.0,
                 gain_linear: 1.0,
@@ -1359,7 +1359,7 @@ impl VocalStudioTrack {
         let sr = self.takes[self.comp_regions[0].0].sample_rate;
         let name = format!("{} (Komp)", self.takes[self.comp_regions[0].0].name);
         let count = self.comp_regions.len();
-        self.add_take_from_pcm(name, merged, sr, Color32::from_rgb(255, 200, 80));
+        self.add_take_from_pcm(name, merged, sr, Theme::AMBER);
         Ok(crate::tstatus!(
             "🎚 Kompen byggd av {} partier — ligger som en egen tagning",
             count
@@ -1444,7 +1444,7 @@ impl VocalStudioTrack {
             sample_rate: sr,
             duration_secs: part2_samples.len() as f32 / sr as f32,
             is_selected: true,
-            color: Color32::from_rgb(255, 100, 180),
+            color: Theme::TRACK_ROSE,
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
@@ -1529,10 +1529,10 @@ impl VocalStudioTrack {
             .collect();
         let new_wave = visual_peaks_from(&pcm);
         let color = match count % 4 {
-            0 => Theme::FL_CYAN,
-            1 => Theme::LCD_ORANGE,
-            2 => Color32::from_rgb(180, 100, 255),
-            _ => Color32::from_rgb(80, 240, 160),
+            0 => Theme::CYAN,
+            1 => Theme::ORANGE,
+            2 => Theme::PURPLE,
+            _ => Theme::GREEN,
         };
         self.takes.push(AudioTake {
             name: if name.is_empty() { format!("{} {} ({})", crate::i18n::t("Tagning"), count, crate::i18n::t("Testton")) } else { name.to_string() },
@@ -1691,7 +1691,7 @@ mod tests {
     fn test_vocal_studio_crop_and_slice() {
         let mut track = VocalStudioTrack::default();
         let pcm: Vec<f32> = (0..44100).map(|i| (i as f32 * 0.02).sin() * 0.5).collect();
-        track.load_sample_or_region_as_take("Test", pcm, 44100, Theme::FL_CYAN);
+        track.load_sample_or_region_as_take("Test", pcm, 44100, Theme::CYAN);
         track.active_comp_take = 0;
 
         let orig_len = track.takes[0].pcm_samples.len();
@@ -1724,7 +1724,7 @@ mod tests {
                 &format!("Tagning {i}"),
                 vec![0.1; 44_100],
                 44_100,
-                Theme::FL_CYAN,
+                Theme::CYAN,
             );
         }
         track

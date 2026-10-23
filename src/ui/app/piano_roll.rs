@@ -165,7 +165,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
     ui.group(|ui| {
         // ROW 1: Pattern Selector, Root Key, Scale, Snap Toggle
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🎹 SONIX PIANO ROLL")).strong().size(Theme::FONT_M).color(Theme::FL_GREEN));
+            ui.label(egui::RichText::new(crate::i18n::t("🎹 SONIX PIANO ROLL")).strong().size(Theme::FONT_M).color(Theme::GREEN));
             ui.separator();
 
             ui.label(egui::RichText::new(crate::i18n::t("Mönster:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
@@ -173,8 +173,8 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             for pat_idx in 0..p_len {
                 let is_active = self.selected_pattern == pat_idx;
                 let p_color = self.patterns[pat_idx].color;
-                let fill = if is_active { p_color } else { Theme::PANEL_BG };
-                let text_color = if is_active { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+                let fill = if is_active { p_color } else { Theme::PANEL };
+                let text_color = if is_active { Color32::BLACK } else { Theme::TEXT };
                 let btn_text = format!("{} {}", pat_idx + 1, self.patterns[pat_idx].name);
                 if ui.add(egui::Button::new(egui::RichText::new(btn_text).strong().size(Theme::FONT_S).color(text_color)).fill(fill)).clicked() {
                     self.select_pattern(pat_idx);
@@ -211,8 +211,8 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     }
                 });
 
-            let snap_bg = if self.piano_roll_snap_to_scale { Theme::FL_CYAN } else { Theme::CHANNEL_BG };
-            let snap_fg = if self.piano_roll_snap_to_scale { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+            let snap_bg = if self.piano_roll_snap_to_scale { Theme::CYAN } else { Theme::PANEL_ALT };
+            let snap_fg = if self.piano_roll_snap_to_scale { Color32::BLACK } else { Theme::TEXT };
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔒 Skal-lås")).strong().size(Theme::FONT_S).color(snap_fg)).fill(snap_bg)).on_hover_text(crate::i18n::t("Lås tangenter till vald skala")).clicked() {
                 self.piano_roll_snap_to_scale = !self.piano_roll_snap_to_scale;
             }
@@ -259,7 +259,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     take_tightness
                 ))
                 .size(Theme::FONT_S)
-                .color(if take_notes == 0 { Theme::TEXT_MUTED } else { Theme::TEXT_BRIGHT }),
+                .color(if take_notes == 0 { Theme::TEXT_MUTED } else { Theme::TEXT }),
             );
             ui.label(egui::RichText::new(crate::i18n::t("Rutnät:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
             let cur_grid = crate::midi_take::TakeGrid::from_index(self.take_grid_idx);
@@ -281,8 +281,8 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             )
             .on_hover_text(crate::i18n::t("Hur hårt noterna dras mot rutnätet (0 % = oförändrat, 100 % = exakt på rutnätet)"));
 
-            let take_btn = Theme::CHANNEL_BG;
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Kvantisera")).strong().size(Theme::FONT_S).color(Theme::TEXT_BRIGHT)).fill(take_btn)).on_hover_text(crate::i18n::t("Dra tagningens noter till närmaste rutnätslinje, med projektets sväng")).clicked() {
+            let take_btn = Theme::PANEL_ALT;
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Kvantisera")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(take_btn)).on_hover_text(crate::i18n::t("Dra tagningens noter till närmaste rutnätslinje, med projektets sväng")).clicked() {
                 let grid = crate::midi_take::TakeGrid::from_index(self.take_grid_idx);
                 let strength = self.take_strength;
                 self.quantize_take(strength, grid);
@@ -294,7 +294,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     .fixed_decimals(2),
             )
             .on_hover_text(crate::i18n::t("Hur mycket mänsklig otajthet och dynamik som läggs på"));
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🌀 Humanisera")).strong().size(Theme::FONT_S).color(Theme::TEXT_BRIGHT)).fill(take_btn)).on_hover_text(crate::i18n::t("Lägg på mänsklig otajthet och dynamik (varierar mellan trycken)")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🌀 Humanisera")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(take_btn)).on_hover_text(crate::i18n::t("Lägg på mänsklig otajthet och dynamik (varierar mellan trycken)")).clicked() {
                 let amount = self.take_humanize;
                 self.humanize_take(amount);
             }
@@ -324,7 +324,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         egui::RichText::new(crate::i18n::t("🪕 Strumma ackord"))
                             .strong()
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_BRIGHT),
+                            .color(Theme::TEXT),
                     )
                     .fill(take_btn),
                 )
@@ -356,7 +356,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                             egui::RichText::new(crate::i18n::t("▶ Kör skript"))
                                 .strong()
                                 .size(Theme::FONT_S)
-                                .color(Theme::TEXT_BRIGHT),
+                                .color(Theme::TEXT),
                         )
                         .fill(take_btn),
                     )
@@ -394,7 +394,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         egui::RichText::new(groove_new)
                             .strong()
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_BRIGHT),
+                            .color(Theme::TEXT),
                     )
                     .fill(take_btn),
                 )
@@ -415,7 +415,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                             egui::RichText::new(crate::i18n::t("📚 Malmapp"))
                                 .strong()
                                 .size(Theme::FONT_S)
-                                .color(Theme::TEXT_BRIGHT),
+                                .color(Theme::TEXT),
                         )
                         .fill(take_btn),
                     )
@@ -471,7 +471,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         egui::RichText::new(crate::i18n::t("🎼 Frasbank"))
                             .strong()
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_BRIGHT),
+                            .color(Theme::TEXT),
                     )
                     .fill(take_btn),
                 )
@@ -490,7 +490,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         egui::RichText::new(crate::i18n::t("🎧 Extrahera ur spåret"))
                             .strong()
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_BRIGHT),
+                            .color(Theme::TEXT),
                     )
                     .fill(take_btn),
                 )
@@ -506,7 +506,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             // över, vilket är hela poängen.
             if ui
                 .add(
-                    egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Riff")).strong().size(Theme::FONT_S).color(Theme::TEXT_BRIGHT))
+                    egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Riff")).strong().size(Theme::FONT_S).color(Theme::TEXT))
                         .fill(take_btn),
                 )
                 .on_hover_text(crate::i18n::t("Fyller tagningen med en fras ur en mollskala. Tryck igen för en annan."))
@@ -558,7 +558,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     self.status_message = format!("Urvalet fångar {} noter", hits);
                 }
                 if let Some(hits) = self.note_filter_hits {
-                    ui.label(egui::RichText::new(format!("{hits}")).monospace().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(format!("{hits}")).monospace().size(Theme::FONT_S).color(Theme::CYAN));
                 }
                 // **Notsannolikhet** (Ableton): gäller urvalet, alltså samma villkor som
                 // raderingen — det som ändras är det som räknades.
@@ -621,7 +621,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 let captured = self.note_capture.len();
                 if ui.add_enabled(
                         !self.note_capture.is_empty(),
-                        egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ Fånga nyss spelade noter")).size(Theme::FONT_S).color(Theme::FL_ORANGE)),
+                        egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ Fånga nyss spelade noter")).size(Theme::FONT_S).color(Theme::ORANGE)),
                     )
                     .on_hover_text(crate::tstatus!(
                         "Lägger de {} noterna du spelat sedan den första i den valda tagningen, räknade till taktens steg.",
@@ -654,7 +654,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         egui::Button::new(
                             egui::RichText::new(crate::tstatus!("📜 Score-logg ({})", logged))
                                 .size(Theme::FONT_S)
-                                .color(Theme::FL_CYAN),
+                                .color(Theme::CYAN),
                         ),
                     )
                     .on_hover_text(crate::i18n::t(
@@ -669,7 +669,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         crate::tstatus!("📜 Score-loggen: {} noter in i patternet", placed)
                     };
                 }
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Ta bort valda")).size(Theme::FONT_S).color(Theme::FL_RED))).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("Ta bort valda")).size(Theme::FONT_S).color(Theme::RED))).clicked() {
                     let mut removed = 0;
                     if let Some(p) = self.patterns.get_mut(self.selected_pattern) {
                         removed = p.take.remove_matching(&self.note_filter);
@@ -705,7 +705,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                             egui::RichText::new(crate::i18n::t("▶ Använd poolen"))
                                 .strong()
                                 .size(Theme::FONT_S)
-                                .color(Theme::FL_GREEN),
+                                .color(Theme::GREEN),
                         )
                         .fill(take_btn),
                     )
@@ -726,7 +726,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                             preview = Some(i);
                         }
                         ui.checkbox(&mut entry.enabled, "");
-                        ui.label(egui::RichText::new(&entry.name).size(Theme::FONT_S).color(Theme::TEXT_BRIGHT));
+                        ui.label(egui::RichText::new(&entry.name).size(Theme::FONT_S).color(Theme::TEXT));
                         ui.add(
                             egui::Slider::new(&mut entry.amount, 0.0..=1.0)
                                 .show_value(false)
@@ -759,7 +759,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 if ui
                     .add(
                         egui::Button::new(
-                            egui::RichText::new(label).strong().size(Theme::FONT_S).color(Theme::TEXT_BRIGHT),
+                            egui::RichText::new(label).strong().size(Theme::FONT_S).color(Theme::TEXT),
                         )
                         .fill(take_btn),
                     )
@@ -776,7 +776,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 if ui
                     .add(
                         egui::Button::new(
-                            egui::RichText::new(label).strong().size(Theme::FONT_S).color(Theme::TEXT_BRIGHT),
+                            egui::RichText::new(label).strong().size(Theme::FONT_S).color(Theme::TEXT),
                         )
                         .fill(take_btn),
                     )
@@ -811,21 +811,21 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(crate::i18n::t("VERKTYG:")).strong().size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Humanize")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(Color32::from_rgb(180, 80, 20))).on_hover_text(crate::i18n::t("Variera anslagsdynamik (velocity) för levande sväng")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Humanize")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TRACK_ORANGE)).on_hover_text(crate::i18n::t("Variera anslagsdynamik (velocity) för levande sväng")).clicked() {
                 self.humanize_active_pattern();
             }
 
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Arpeggio")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(Color32::from_rgb(30, 110, 160))).on_hover_text(crate::i18n::t("Skapa automatiskt arpeggiomönster från vald skala")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Arpeggio")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TRACK_CYAN)).on_hover_text(crate::i18n::t("Skapa automatiskt arpeggiomönster från vald skala")).clicked() {
                 self.arpeggiate_pattern();
             }
 
             // **Färgkartan** (FL:s VFX Color Mapper): bara rutnätets färg, inget ljud.
             let color_bg = if self.color_notes {
-                Color32::from_rgb(110, 60, 150)
+                Theme::TRACK_MAGENTA
             } else {
-                Theme::BORDER_DARK
+                Theme::BORDER
             };
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎨 Färg")).strong().size(Theme::FONT_S).color(Color32::WHITE)).fill(color_bg)).on_hover_text(crate::i18n::t("Färga noterna efter tonhöjd")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎨 Färg")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(color_bg)).on_hover_text(crate::i18n::t("Färga noterna efter tonhöjd")).clicked() {
                 self.color_notes = !self.color_notes;
             }
 
@@ -855,11 +855,11 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 p.bars = bars_pick;
             }
 
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⬆ +Okt")).size(Theme::FONT_S)).fill(Theme::BORDER_DARK)).on_hover_text(crate::i18n::t("Transponera upp 1 oktav (+12 halvtoner)")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⬆ +Okt")).size(Theme::FONT_S)).fill(Theme::BORDER)).on_hover_text(crate::i18n::t("Transponera upp 1 oktav (+12 halvtoner)")).clicked() {
                 self.transpose_active_pattern(12);
             }
 
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⬇ -Okt")).size(Theme::FONT_S)).fill(Theme::BORDER_DARK)).on_hover_text(crate::i18n::t("Transponera ner 1 oktav (-12 halvtoner)")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⬇ -Okt")).size(Theme::FONT_S)).fill(Theme::BORDER)).on_hover_text(crate::i18n::t("Transponera ner 1 oktav (-12 halvtoner)")).clicked() {
                 self.transpose_active_pattern(-12);
             }
 
@@ -867,7 +867,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             // flest toner i projektets skala. Regeln räknar bara ut *skiftet*; själva
             // flytten går genom `transpose_active_pattern` — samma provade väg som
             // oktavknapparna, alltså en väg och inte två.
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎵 Till tonarten")).size(Theme::FONT_S)).fill(Theme::BORDER_DARK)).on_hover_text(crate::i18n::t("Flytta hela mönstret till tonarten — det kortaste skiftet som sätter flest toner i skalan")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎵 Till tonarten")).size(Theme::FONT_S)).fill(Theme::BORDER)).on_hover_text(crate::i18n::t("Flytta hela mönstret till tonarten — det kortaste skiftet som sätter flest toner i skalan")).clicked() {
                 let rows: Vec<usize> = (0..crate::audio::scale::PIANO_ROLL_ROWS)
                     .filter(|&o| self.piano_roll_grid[o].iter().any(|&b| b))
                     .collect();
@@ -890,22 +890,22 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 }
             }
 
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Backa")).size(Theme::FONT_S)).fill(Theme::BORDER_DARK)).on_hover_text(crate::i18n::t("Vänd tonföljden baklänges")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Backa")).size(Theme::FONT_S)).fill(Theme::BORDER)).on_hover_text(crate::i18n::t("Vänd tonföljden baklänges")).clicked() {
                 self.reverse_pattern();
             }
 
-            let poly_bg = if self.piano_roll_poly_mode { Theme::FL_ORANGE } else { Theme::CHANNEL_BG };
-            let poly_fg = if self.piano_roll_poly_mode { Color32::BLACK } else { Theme::TEXT_BRIGHT };
+            let poly_bg = if self.piano_roll_poly_mode { Theme::ORANGE } else { Theme::PANEL_ALT };
+            let poly_fg = if self.piano_roll_poly_mode { Color32::BLACK } else { Theme::TEXT };
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎹 Polyfoni")).strong().size(Theme::FONT_S).color(poly_fg)).fill(poly_bg)).on_hover_text(crate::i18n::t("Tillåt flera toner samtidigt i samma steg (ackordmålning)")).clicked() {
                 self.piano_roll_poly_mode = !self.piano_roll_poly_mode;
             }
 
             // Real MIDI keyboard input indicator + record arm (Fas 5.3)
-            let midi_col = if self.midi_keyboard_connected { Theme::FL_GREEN } else { Theme::TEXT_MUTED };
+            let midi_col = if self.midi_keyboard_connected { Theme::GREEN } else { Theme::TEXT_MUTED };
             ui.label(egui::RichText::new(if self.midi_keyboard_connected { "🎹 MIDI ●" } else { "🎹 MIDI ○" }).strong().size(Theme::FONT_S).color(midi_col))
                 .on_hover_text(if self.midi_keyboard_connected { crate::i18n::t("MIDI-klaviatur ansluten (ALSA Seq).") } else { crate::i18n::t("Ingen MIDI-klaviatur ansluten. Öppna Hårdvarukontroller för att koppla upp.") });
-            let mrec_bg = if self.midi_record_armed { Color32::from_rgb(180, 40, 40) } else { Theme::BORDER_DARK };
-            let mrec_fg = if self.midi_record_armed { Color32::WHITE } else { Theme::TEXT_BRIGHT };
+            let mrec_bg = if self.midi_record_armed { Theme::RED } else { Theme::BORDER };
+            let mrec_fg = if self.midi_record_armed { Theme::TEXT } else { Theme::TEXT };
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ MIDI-REC")).strong().size(Theme::FONT_S).color(mrec_fg)).fill(mrec_bg)).on_hover_text(crate::i18n::t("Spela in hållna MIDI-toner i rutnätet under uppspelning.")).clicked() {
                 self.midi_record_armed = !self.midi_record_armed;
                 if self.midi_record_armed {
@@ -913,7 +913,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 }
             }
 
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Töm")).size(Theme::FONT_S).color(Color32::from_rgb(255, 120, 120))).fill(Color32::from_rgb(50, 20, 25))).on_hover_text(crate::i18n::t("Rensa mönster")).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Töm")).size(Theme::FONT_S).color(Theme::RED)).fill(Theme::BG)).on_hover_text(crate::i18n::t("Rensa mönster")).clicked() {
                 self.piano_roll_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
                 self.piano_roll_sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
                 self.channels[6].steps = [false; crate::ui::app::state::MAX_STEPS];
@@ -935,7 +935,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
 
         // Urvalsraden: antal markerade celler och de operationer Cubases förval mest gör.
         let sel_count = count_selected(&self.piano_roll_sel);
-        let sel_row_bg = Theme::CHANNEL_BG;
+        let sel_row_bg = Theme::PANEL_ALT;
         ui.horizontal(|ui| {
             if sel_count == 0 {
                 ui.label(
@@ -948,7 +948,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     egui::RichText::new(crate::tstatus!("{} markerade", sel_count))
                         .size(Theme::FONT_S)
                         .strong()
-                        .color(Theme::FL_CYAN),
+                        .color(Theme::CYAN),
                 );
                 for (label, rows, hint) in [
                     ("▲", 1, "Transponera markerade en rad upp"),
@@ -957,7 +957,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     ("▼▼", -12, "Transponera markerade en oktav ned"),
                 ] {
                     if ui
-                        .add(egui::Button::new(egui::RichText::new(label).size(Theme::FONT_S).color(Theme::TEXT_BRIGHT)).fill(sel_row_bg))
+                        .add(egui::Button::new(egui::RichText::new(label).size(Theme::FONT_S).color(Theme::TEXT)).fill(sel_row_bg))
                         .on_hover_text(crate::i18n::t(hint))
                         .clicked()
                     {
@@ -974,9 +974,9 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         egui::Button::new(
                             egui::RichText::new(crate::i18n::t("🗑 Ta bort valda"))
                                 .size(Theme::FONT_S)
-                                .color(Color32::from_rgb(255, 120, 120)),
+                                .color(Theme::RED),
                         )
-                        .fill(Color32::from_rgb(50, 20, 25)),
+                        .fill(Theme::BG),
                     )
                     .on_hover_text(crate::i18n::t("Ta bort de markerade cellerna"))
                     .clicked()
@@ -1010,7 +1010,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         egui::RichText::new(crate::i18n::t("🎹 Följ ackordet"))
                             .strong()
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_BRIGHT),
+                            .color(Theme::TEXT),
                     )
                     .fill(sel_row_bg),
                 )
@@ -1096,7 +1096,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                         egui::RichText::new(crate::i18n::t("⚙ Använd regel"))
                             .strong()
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_BRIGHT),
+                            .color(Theme::TEXT),
                     )
                     .fill(sel_row_bg),
                 )
@@ -1137,15 +1137,15 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 ui.horizontal(|ui| {
                     // Piano Key label on left with Root and Scale Highlighting
                     let key_bg = if is_root {
-                        Color32::from_rgb(180, 110, 20) // Amber for root note
+                        Theme::TRACK_ORANGE // Amber for root note
                     } else if !note_in_scale {
-                        Theme::BG_DARK
+                        Theme::BG
                     } else if is_sharp {
-                        Color32::from_rgb(32, 42, 58)
+                        Theme::GRID
                     } else {
-                        Color32::from_rgb(220, 228, 240)
+                        Theme::TEXT
                     };
-                    let key_text = if is_root || is_sharp || !note_in_scale { Color32::WHITE } else { Color32::BLACK };
+                    let key_text = if is_root || is_sharp || !note_in_scale { Theme::TEXT } else { Color32::BLACK };
                     let (k_rect, _) = ui.allocate_exact_size(Vec2::new(52.0, 16.0 * zoom), Sense::hover());
                     ui.painter().rect_filled(k_rect, Rounding::same(2.0), key_bg);
 
@@ -1229,29 +1229,29 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                             if self.color_notes {
                                 crate::ui::note_color::pitch_color(cell_key)
                             } else {
-                                Theme::FL_GREEN
+                                Theme::GREEN
                             }
                         } else if is_root {
-                            Color32::from_rgb(36, 32, 22)
+                            Theme::BG
                         } else if !note_in_scale {
-                            Color32::from_rgb(14, 16, 22)
+                            Theme::BG_DEEP
                         } else if is_sharp {
-                            Theme::HEADER_BG
+                            Theme::HEADER
                         } else if is_beat_start {
-                            Theme::BORDER_DARK
+                            Theme::BORDER
                         } else {
-                            Theme::PANEL_BG
+                            Theme::PANEL
                         };
 
                         if is_playhead {
-                            bg = Color32::from_rgb(255, 230, 100);
+                            bg = Theme::YELLOW;
                         }
                         if self.piano_roll_sel[note_offset][step] {
-                            bg = Color32::from_rgb(90, 150, 255);
+                            bg = Theme::CABLE;
                         }
 
                         ui.painter().rect_filled(cell_rect, Rounding::same(1.5), bg);
-                        ui.painter().rect_stroke(cell_rect, Rounding::same(1.5), Stroke::new(0.5_f32, Theme::BORDER_DARK));
+                        ui.painter().rect_stroke(cell_rect, Rounding::same(1.5), Stroke::new(0.5_f32, Theme::BORDER));
                     }
                 });
             }
@@ -1272,8 +1272,8 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 let v = self.step_velocities[s];
                 let bar_h = v * v_rect.height();
                 let bar_rect = Rect::from_min_max(Pos2::new(v_rect.center().x - 2.5, v_rect.max.y - bar_h), Pos2::new(v_rect.center().x + 2.5, v_rect.max.y));
-                ui.painter().rect_filled(v_rect, Rounding::same(1.0), Color32::from_rgb(18, 22, 28));
-                ui.painter().rect_filled(bar_rect, Rounding::same(1.0), Theme::FL_CYAN);
+                ui.painter().rect_filled(v_rect, Rounding::same(1.0), Theme::BG);
+                ui.painter().rect_filled(bar_rect, Rounding::same(1.0), Theme::CYAN);
             }
         });
 
@@ -1561,12 +1561,12 @@ impl SonixApp {
 pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🥁 SONIX SESSION DRUMMER")).strong().size(Theme::FONT_L).color(Theme::FL_ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🥁 SONIX SESSION DRUMMER")).strong().size(Theme::FONT_L).color(Theme::ORANGE));
             ui.separator();
             ui.label(egui::RichText::new(crate::i18n::t("Intelligent trummis med 2D XY-radar för realtids-generering av trumspår")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Skriv till Mönster")).strong().color(Color32::BLACK)).fill(Theme::FL_YELLOW)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚡ Skriv till Mönster")).strong().color(Color32::BLACK)).fill(Theme::YELLOW)).clicked() {
                     self.apply_drummer_generation();
                 }
             });
@@ -1579,7 +1579,7 @@ pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
             ui.group(|ui| {
                 ui.set_width(220.0);
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("DRUMMERS (STILAR)")).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("DRUMMERS (STILAR)")).strong().size(Theme::FONT_S).color(Theme::CYAN));
                     let drummers = [
                         ("Kyle", "Pop Rock (Punchy)", "🎸"),
                         ("Logan", "Retro Synthwave", "🕹"),
@@ -1591,8 +1591,8 @@ pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
 
                     for (idx, (name, desc, ico)) in drummers.iter().enumerate() {
                         let is_sel = self.drummer_profile == idx;
-                        let bg = if is_sel { Color32::from_rgb(40, 55, 75) } else { Theme::PANEL_BG };
-                        let stroke = if is_sel { Stroke::new(1.0_f32, Theme::FL_CYAN) } else { Stroke::NONE };
+                        let bg = if is_sel { Theme::BORDER } else { Theme::PANEL };
+                        let stroke = if is_sel { Stroke::new(1.0_f32, Theme::CYAN) } else { Stroke::NONE };
 
                         egui::Frame::none().fill(bg).stroke(stroke).rounding(Rounding::same(4.0)).inner_margin(4.0).show(ui, |ui| {
                             if ui.selectable_label(is_sel, format!("{} {} - {}", ico, name, desc)).clicked() {
@@ -1603,7 +1603,7 @@ pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
                     }
 
                     ui.separator();
-                    ui.label(egui::RichText::new(crate::i18n::t("BEAT PRESETS")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("BEAT PRESETS")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
                     let presets = [
                         "Golden State (Standard 4/4)",
                         "Half-Pipe (Skate Punk)",
@@ -1636,7 +1636,7 @@ pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
             ui.group(|ui| {
                 ui.set_width(320.0);
                 ui.vertical_centered(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("XY PERFORMANCE RADAR")).strong().size(Theme::FONT_S).color(Theme::FL_YELLOW));
+                    ui.label(egui::RichText::new(crate::i18n::t("XY PERFORMANCE RADAR")).strong().size(Theme::FONT_S).color(Theme::YELLOW));
                     ui.label(egui::RichText::new(crate::i18n::t("Dra den gula pucken för att ändra dynamik & komplexitet i realtid")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
                     ui.add_space(4.0);
 
@@ -1645,7 +1645,7 @@ pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
                     }
 
                     ui.add_space(4.0);
-                    ui.label(egui::RichText::new(format!("{} {:.0}%  •  {} {:.0}%", crate::i18n::t("Komplexitet:"), self.drummer_complexity * 100.0, crate::i18n::t("Ljudstyrka:"), self.drummer_loudness * 100.0)).size(Theme::FONT_S).color(Theme::FL_YELLOW));
+                    ui.label(egui::RichText::new(format!("{} {:.0}%  •  {} {:.0}%", crate::i18n::t("Komplexitet:"), self.drummer_complexity * 100.0, crate::i18n::t("Ljudstyrka:"), self.drummer_loudness * 100.0)).size(Theme::FONT_S).color(Theme::YELLOW));
                 });
             });
 
@@ -1654,7 +1654,7 @@ pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
             // Right Column: Drum Kit Parts & Fine Controls
             ui.group(|ui| {
                 ui.vertical(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("TRUMSET & INSTRUMENT")).strong().size(Theme::FONT_S).color(Theme::FL_ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("TRUMSET & INSTRUMENT")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
                     ui.add_space(4.0);
 
                     if ui.checkbox(&mut self.drummer_percussion_on, "👏 Percussion & Handclaps").changed() {
@@ -1689,12 +1689,12 @@ pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
 
                     ui.add_space(8.0);
                     ui.separator();
-                    ui.label(egui::RichText::new(crate::i18n::t("FILLS & GROOVE")).strong().size(Theme::FONT_S).color(Theme::FL_CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("FILLS & GROOVE")).strong().size(Theme::FONT_S).color(Theme::CYAN));
 
                     ui.horizontal(|ui| {
                         let mut ch = false;
-                        ch |= rotary_knob(ui, &mut self.drummer_fills, 0.0, 1.0, "FILLS", Theme::FL_CYAN, 30.0);
-                        ch |= rotary_knob(ui, &mut self.swing, 0.0, 1.0, "SWING", Theme::FL_YELLOW, 30.0);
+                        ch |= rotary_knob(ui, &mut self.drummer_fills, 0.0, 1.0, "FILLS", Theme::CYAN, 30.0);
+                        ch |= rotary_knob(ui, &mut self.swing, 0.0, 1.0, "SWING", Theme::YELLOW, 30.0);
                         if ch {
                             self.apply_drummer_generation();
                         }
@@ -1702,7 +1702,7 @@ pub(crate) fn render_session_drummer(&mut self, ui: &mut egui::Ui) {
 
                     ui.add_space(12.0);
                     ui.group(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("💡 TIPS")).strong().size(Theme::FONT_S).color(Theme::FL_GREEN));
+                        ui.label(egui::RichText::new(crate::i18n::t("💡 TIPS")).strong().size(Theme::FONT_S).color(Theme::GREEN));
                         ui.label(egui::RichText::new(crate::i18n::t("Alla förändringar i Session Drummer speglas direkt i FL Channel Rack och tidslinjen!")).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
                     });
                 });
@@ -1716,7 +1716,7 @@ impl SonixApp {
 pub(crate) fn render_touch_piano_keyboard(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🎹 SONIX PIANO")).strong().size(Theme::FONT_M).color(Theme::TEXT_BRIGHT));
+            ui.label(egui::RichText::new(crate::i18n::t("🎹 SONIX PIANO")).strong().size(Theme::FONT_M).color(Theme::TEXT));
             ui.separator();
             ui.label(egui::RichText::new(crate::i18n::t("Spela med tangentbordet [A, S, D...] eller klicka med musen")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
         });
@@ -1755,20 +1755,20 @@ pub(crate) fn render_touch_piano_keyboard(&mut self, ui: &mut egui::Ui, ctx: &eg
 
             let is_active = self.active_keys.contains(&note);
             let bg_color = if is_active {
-                Theme::FL_CYAN
+                Theme::CYAN
             } else {
-                Theme::TEXT_BRIGHT
+                Theme::TEXT
             };
 
             ui.painter().rect_filled(key_rect, Rounding::same(3.0), bg_color);
-            ui.painter().rect_stroke(key_rect, Rounding::same(3.0), Stroke::new(1.0_f32, Color32::from_rgb(170, 178, 190)));
+            ui.painter().rect_stroke(key_rect, Rounding::same(3.0), Stroke::new(1.0_f32, Theme::TEXT_MUTED));
 
             ui.painter().text(
                 Pos2::new(key_rect.center().x, key_rect.max.y - 12.0),
                 egui::Align2::CENTER_CENTER,
                 format!("{}{}", note_name(note), (note / 12) as i8 - 1),
                 egui::FontId::proportional(Theme::FONT_S),
-                Theme::CHANNEL_BG,
+                Theme::PANEL_ALT,
             );
 
             if let Some(pos) = pointer_pos
@@ -1788,9 +1788,9 @@ pub(crate) fn render_touch_piano_keyboard(&mut self, ui: &mut egui::Ui, ctx: &eg
 
             let is_active = self.active_keys.contains(&note);
             let bg_color = if is_active {
-                Theme::FL_ORANGE
+                Theme::ORANGE
             } else {
-                Theme::PANEL_BG
+                Theme::PANEL
             };
 
             ui.painter().rect_filled(key_rect, Rounding::same(2.0), bg_color);

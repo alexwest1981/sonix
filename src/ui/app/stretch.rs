@@ -427,7 +427,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                 known
             ))
             .size(Theme::FONT_S)
-            .color(if stuck == 0 { Theme::FL_GREEN } else { Theme::TEXT_BRIGHT }));
+            .color(if stuck == 0 { Theme::GREEN } else { Theme::TEXT }));
             if unknown > 0 {
                 // Tempot räknas ur klippens eget mått när det går (Fas 8.10): takter
                 // och filens längd. Det syns i knappen, för det är den siffra som

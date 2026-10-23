@@ -26,12 +26,12 @@ impl PluginFormat {
 
     pub fn badge_color(&self) -> Color32 {
         match self {
-            PluginFormat::Clap => Color32::from_rgb(0, 220, 255),          // Cyan
-            PluginFormat::Vst3 => Theme::LCD_ORANGE,          // Orange
-            PluginFormat::Vst2 => Color32::from_rgb(220, 180, 50),         // Gold
-            PluginFormat::Lv2 => Theme::FL_GREEN,          // Green
-            PluginFormat::WineYabridge => Color32::from_rgb(180, 100, 255), // Purple Wine
-            PluginFormat::FlStudioNative => Color32::from_rgb(255, 100, 30),// FL Orange/Red
+            PluginFormat::Clap => Theme::CYAN,          // Cyan
+            PluginFormat::Vst3 => Theme::ORANGE,          // Orange
+            PluginFormat::Vst2 => Theme::AMBER,         // Gold
+            PluginFormat::Lv2 => Theme::GREEN,          // Green
+            PluginFormat::WineYabridge => Theme::PURPLE, // Purple Wine
+            PluginFormat::FlStudioNative => Theme::ORANGE,// FL Orange/Red
         }
     }
 }

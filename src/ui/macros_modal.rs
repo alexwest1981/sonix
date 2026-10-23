@@ -273,7 +273,7 @@ pub fn render_macros_modal(
                     egui::RichText::new(crate::i18n::t("🔗 MAKRON"))
                         .strong()
                         .size(Theme::FONT_L)
-                        .color(Theme::FL_ORANGE),
+                        .color(Theme::ORANGE),
                 );
                 ui.separator();
                 ui.label(
@@ -334,7 +334,7 @@ pub fn render_macros_modal(
                                 ui.label(
                                     egui::RichText::new(crate::tstatus!("⚠ {}: {}", name, e))
                                         .size(Theme::FONT_XS)
-                                        .color(Theme::FL_RED),
+                                        .color(Theme::RED),
                                 );
                             }
                         }
@@ -488,7 +488,7 @@ pub fn render_macros_modal(
                                     "⚠ Kedjan har inget exportsteg — den skriver ingenting.",
                                 ))
                                 .size(Theme::FONT_S)
-                                .color(Theme::FL_ORANGE),
+                                .color(Theme::ORANGE),
                             );
                         }
                         state.edit = Some(edited);
@@ -565,7 +565,7 @@ pub fn render_macros_modal(
                         .button(
                             egui::RichText::new(crate::i18n::t("▶ Kör kedjan"))
                                 .strong()
-                                .color(egui::Color32::WHITE),
+                                .color(Theme::TEXT),
                         )
                         .clicked()
                     {
@@ -596,7 +596,7 @@ pub fn render_macros_modal(
                 ui.label(
                     egui::RichText::new(state.message.clone())
                         .size(Theme::FONT_S)
-                        .color(Theme::FL_CYAN),
+                        .color(Theme::CYAN),
                 );
             }
 

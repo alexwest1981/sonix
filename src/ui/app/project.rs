@@ -10,6 +10,7 @@
 //! Döp aldrig om ett fält — lägg till det nya vid sidan av (`AutomationPointOnDisk` är mönstret).
 
 use super::*;
+use crate::ui::theme::Theme;
 
 /// En autosave som erbjuds vid start (Fas 6.1).
 #[derive(Clone)]
@@ -1160,12 +1161,12 @@ pub fn populate_demo_data(&mut self) {
 
     if self.playlist_tracks.is_empty() {
         self.playlist_tracks = vec![
-            PlaylistTrack::new("🎤 Lead Vocals (Suno AI)".to_string(), "🎤", TrackKind::VocalAudio, Color32::from_rgb(255, 100, 120)),
-            PlaylistTrack::new("🎧 Backing Choir".to_string(), "🎧", TrackKind::VocalAudio, Color32::from_rgb(220, 140, 255)),
-            PlaylistTrack::new("🥁 808 & Drums".to_string(), "🥁", TrackKind::Drums, Theme::FL_ORANGE),
-            PlaylistTrack::new("🎹 Nexus Synth Lead".to_string(), "🎹", TrackKind::SynthLead, Theme::FL_CYAN),
-            PlaylistTrack::new("🎸 Moog Sub Bass".to_string(), "🎸", TrackKind::Bassline, Theme::FL_GREEN),
-            PlaylistTrack::new("🌌 Space FX & Risers".to_string(), "🌌", TrackKind::Fx, Theme::FL_YELLOW),
+            PlaylistTrack::new("🎤 Lead Vocals (Suno AI)".to_string(), "🎤", TrackKind::VocalAudio, Theme::TRACK_ROSE),
+            PlaylistTrack::new("🎧 Backing Choir".to_string(), "🎧", TrackKind::VocalAudio, Theme::CABLE),
+            PlaylistTrack::new("🥁 808 & Drums".to_string(), "🥁", TrackKind::Drums, Theme::ORANGE),
+            PlaylistTrack::new("🎹 Nexus Synth Lead".to_string(), "🎹", TrackKind::SynthLead, Theme::CYAN),
+            PlaylistTrack::new("🎸 Moog Sub Bass".to_string(), "🎸", TrackKind::Bassline, Theme::GREEN),
+            PlaylistTrack::new("🌌 Space FX & Risers".to_string(), "🌌", TrackKind::Fx, Theme::YELLOW),
         ];
     }
 
@@ -1187,7 +1188,7 @@ pub fn populate_demo_data(&mut self) {
                 fade_out_bars: 0.2,
                 muted: false,
                 is_reverse: false,
-                color: Color32::from_rgb(255, 100, 120),
+                color: Theme::TRACK_ROSE,
                 loop_length_bars: 0.0,
             },
             AudioRegion {
@@ -1205,7 +1206,7 @@ pub fn populate_demo_data(&mut self) {
                 fade_out_bars: 0.2,
                 muted: false,
                 is_reverse: false,
-                color: Color32::from_rgb(255, 120, 140),
+                color: Theme::TRACK_ROSE,
                 loop_length_bars: 0.0,
             },
         ];
@@ -1229,7 +1230,7 @@ pub fn populate_demo_data(&mut self) {
                 fade_out_bars: 0.5,
                 muted: false,
                 is_reverse: false,
-                color: Color32::from_rgb(200, 130, 255),
+                color: Theme::CABLE,
                 loop_length_bars: 0.0,
             },
         ];
@@ -1324,13 +1325,13 @@ pub fn load_demo_project(&mut self) {
 
         let mut tracks = Vec::new();
         let track_defs = [
-            ("🥁 Trumsektion (Electro)", TrackKind::Drums, Color32::from_rgb(255, 140, 25)),
-            ("💥 Kick & Punch", TrackKind::Drums, Color32::from_rgb(255, 140, 25)),
-            ("👏 Clap & Percussion", TrackKind::Drums, Color32::from_rgb(255, 140, 25)),
-            ("🧂 Hi-Hats & Shakers", TrackKind::Drums, Color32::from_rgb(255, 140, 25)),
-            ("🎹 80s Poly Synth Lead", TrackKind::SynthLead, Color32::from_rgb(65, 155, 255)),
-            ("🎸 303 Resonant Sub Bass", TrackKind::Bassline, Color32::from_rgb(45, 225, 105)),
-            (crate::i18n::t("🎤 Mic (Voice & Sång)"), TrackKind::VocalAudio, Color32::WHITE),
+            ("🥁 Trumsektion (Electro)", TrackKind::Drums, Theme::ORANGE),
+            ("💥 Kick & Punch", TrackKind::Drums, Theme::ORANGE),
+            ("👏 Clap & Percussion", TrackKind::Drums, Theme::ORANGE),
+            ("🧂 Hi-Hats & Shakers", TrackKind::Drums, Theme::ORANGE),
+            ("🎹 80s Poly Synth Lead", TrackKind::SynthLead, Theme::TRACK_BLUE),
+            ("🎸 303 Resonant Sub Bass", TrackKind::Bassline, Theme::GREEN),
+            (crate::i18n::t("🎤 Mic (Voice & Sång)"), TrackKind::VocalAudio, Theme::TEXT),
         ];
 
         for (name, kind, _col) in track_defs {
