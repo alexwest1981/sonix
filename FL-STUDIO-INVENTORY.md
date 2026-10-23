@@ -150,7 +150,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Harmless | 2 | ◐ | additiv syntes (16 dragstänger) plus syntens filter- och envelopkedja — dess två halvor finns, dess egna förval gör det inte |
 | Plucked! | 2 | ✅ | `Waveform::Pluck` — Karplus-Strong: brus i en dämpad fördröjningslinje. Mätt: 220 Hz in ger 220,7 Hz ut, RMS 0,1588 → 0,0750 |
 | ReWired | 2 | ✗ | ReWire-värd |
-| Sakura | 2 | ✗ | fysisk modellering (strängar) |
+| Sakura | 2 | ◐ | **båge** över samma stränglinje som Plucked! (`Waveform::Bowed`): brus exciterar linjen varje varv, så tonen bär medan anslaget hålls, genom kroppens två resonanser. Mätt: 220 Hz in → 220,2 Hz ut, RMS 0,0485 → 0,0647 över 2 s. Kvar: bågtryck/stråkposition och artikulationer (pizzicato, harmonic) |
 | Sawer | 2 | ◐ | en oscillator; Sawer är supersaw med 7 röster |
 | Slicex | 2 | ◐ | choppern (slag → noter), ingen egen editor |
 | Drumaxx | 1 | ◐ | `audio::drum::DrumVoice` — tio syntetiserade röster (kagge, virvel, klapp, tre hi-hats, crash, två tommar, metronom) med tonhöjdsenvelop och brus, triggade per kanal i motorn (`[DrumVoice; MAX_DRUMS]`). ✗ egna modeller per pad och pad-redigering — rösterna är fasta |

@@ -3083,6 +3083,7 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     (Waveform::Triangle, crate::i18n::t("⋀ Triangel")),
                     (Waveform::Additive, crate::i18n::t("▥ Additiv")),
                     (Waveform::Pluck, crate::i18n::t("𝄞 Sträng")),
+                    (Waveform::Bowed, crate::i18n::t("🎻 Båge")),
                     (Waveform::Inharmonic, crate::i18n::t("⛭ Metall")),
                 ];
                 for (wf, name) in waveforms {

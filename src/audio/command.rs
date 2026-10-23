@@ -18,6 +18,9 @@ pub enum Waveform {
     /// **Plucked!**: Karplus-Strong — en brusmassa i en dämpad fördröjningslinje. Strängen
     /// stäms av fördröjningens längd, så tonhöjden kommer ur linjen och inte ur en vågform.
     Pluck,
+    /// **Sakura**: en **båge** över samma sträng. Linjen exciteras kontinuerligt av brus i
+    /// stället för av en enda burst, så tonen bär så länge anslaget hålls.
+    Bowed,
     /// **Ogun**: additivt men **inharmoniskt** — deltonerna ligger på 1, 2,76, 5,4 … som i en
     /// metallskål, inte på heltalsmultiplar som i en sträng.
     Inharmonic,
@@ -33,6 +36,7 @@ impl Waveform {
             Waveform::Triangle => "Triangel (Triangle)",
             Waveform::Additive => "Additiv (Additive)",
             Waveform::Pluck => "Sträng (Pluck)",
+            Waveform::Bowed => "Båge (Bowed)",
             Waveform::Inharmonic => "Metall (Inharmonic)",
         }
     }

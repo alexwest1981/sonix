@@ -2617,6 +2617,44 @@ fn a_plucked_string_rings_at_the_note_pitch_and_decays() {
     assert!(head > tail * 1.5, "strängen ska klinga av: {head:.4} → {tail:.4}");
 }
 
+/// **Sakura**: bågen exciterar strängen hela tiden, så tonen bär medan anslaget hålls —
+/// till skillnad från Pluck, som är en burst och klingar av.
+#[test]
+fn a_bowed_string_sustains_at_the_note_pitch() {
+    let adsr = AdsrParams { attack: 0.05, decay: 10.0, sustain: 1.0, release: 0.1 };
+    let flt = FilterParams { cutoff: 12_000.0, resonance: 0.0 };
+    let env = AdsrParams::default();
+    let mut v = Voice::new(48_000.0);
+    v.trigger(57, 220.0, 1.0, 48_000.0);
+    let mut out = Vec::new();
+    for _ in 0..96_000 {
+        out.push(v.next_sample(
+            Waveform::Bowed,
+            &adsr,
+            &flt,
+            &env,
+            0.0,
+            &FmParams::default(),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            &HARMONICS_DEFAULT,
+        ));
+    }
+    let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+    let early = rms(&out[10_000..30_000]);
+    let late = rms(&out[80_000..96_000]);
+    let f0 = crate::audio::recorder::detect_pitch_hz(&out[20_000..40_000], 48_000.0).unwrap_or(0.0);
+    println!("båge: f0 {f0:.1} Hz, RMS {early:.4} → {late:.4}");
+    assert!(late > 0.005, "bågen ska bära tonen: {late:.4}");
+    assert!(
+        late > early * 0.5,
+        "den ska inte dö ut som en plockad sträng: {early:.4} → {late:.4}"
+    );
+    assert!((f0 - 220.0).abs() < 15.0, "strängen ska stämma: {f0:.1} Hz");
+}
+
 /// Renderar en plockad sträng och lämnar dess sampel.
 fn render_plucked(note: u8, freq: f32, body_amount: f32) -> Vec<f32> {
     let adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };

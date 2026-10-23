@@ -52,6 +52,8 @@ pub struct Voice {
     /// Förlusten per **varv** i linjen (Plucked!), räknad ur varvets längd när noten
     /// triggas — se `next_sample`.
     pub pluck_gain: f32,
+    /// Fröet för bågens brus (Sakura). Per röst, så två stråkar inte får samma brus.
+    pub bow_seed: u32,
     /// Kroppens två resonanser (Plucked!): egna filter med eget tillstånd, kopplade
     /// **efter** strängen så att de aldrig ligger i återkopplingen.
     pub body_lo: StateVariableFilter,
@@ -303,6 +305,7 @@ impl Voice {
             pluck_pos: 0,
             pluck_started: false,
             pluck_gain: 0.0,
+            bow_seed: 0x2545_F491,
             body_lo: StateVariableFilter::new(sample_rate),
             body_hi: StateVariableFilter::new(sample_rate),
             body_amount: 1.0,
@@ -358,6 +361,8 @@ impl Voice {
         // återanvänds den förra notens utklingning när röstplatsen lånas ut igen),
         // och kroppens tillstånd nollas så den inte bär med sig förra noten.
         self.pluck_started = false;
+        // Ny not = nytt brus: bågen ska inte återanvända förra notens frö.
+        self.bow_seed = 0x2545_F491 ^ (self.note as u32) << 8;
         self.body_lo.reset();
         self.body_hi.reset();
         self.envelope.gate_on();
@@ -432,13 +437,8 @@ impl Voice {
                 }
             }
             Waveform::Pluck => {
-                // Fördröjningens längd i sampel: `phase_inc` är 2π·f/sr, alltså sr/f = 2π/inc.
-                let sr = if self.phase_inc.abs() > 1e-9 {
-                    2.0 * PI * self.freq / self.phase_inc
-                } else {
-                    48_000.0
-                };
-                let len = (sr / (self.freq * self.bend_ratio).max(20.0)).clamp(2.0, 4095.0) as usize;
+                let sr = self.string_rate();
+                let len = self.string_len();
                 if !self.pluck_started {
                     // Brus med fast frö per not: samma not låter likadant varje gång.
                     let mut seed = 0x9E37_79B9u32 ^ (self.note as u32) << 16 | 1;
@@ -466,11 +466,7 @@ impl Voice {
                     // strängar, där grundtonen ligger högt i varvets spektrum). Den biten
                     // kompenseras bort, så att det är övertonerna som tappas fortare och
                     // inte tonhöjden. Kompensationen får aldrig ge loopförstärkning ≥ 1.
-                    let w = 2.0 * PI / len as f32;
-                    let d = 1.0 - PLUCK_LOWPASS;
-                    let h = PLUCK_LOWPASS / (1.0 - 2.0 * d * w.cos() + d * d).sqrt();
-                    let per_loop = 0.001_f32.powf(len as f32 / sr / PLUCK_T60);
-                    self.pluck_gain = (per_loop / h).min(0.9995);
+                    self.pluck_gain = Self::string_gain(len, sr);
                 }
                 let pos = self.pluck_pos;
                 let next = if pos + 1 >= len { 0 } else { pos + 1 };
@@ -483,6 +479,40 @@ impl Voice {
                 // Kroppen är ett eget efterled utanför linjen: två resonanser som färgar
                 // det strängen redan lämnat ifrån sig och därför inte kan påverka dess
                 // återkoppling (ingen väg tillbaka in i `pluck_buf`).
+                out + self.body_amount
+                    * BODY_MIX
+                    * (self.body_lo.process_bandpass(out, &BODY_LO)
+                        + self.body_hi.process_bandpass(out, &BODY_HI))
+            }
+            Waveform::Bowed => {
+                // Samma linje som Pluck, men exciterad **hela tiden**: en båge tillför energi
+                // varje varv i stället för en burst vid anslaget. Bruset är litet — strängen
+                // väljer själv ut sin grundton, och för mycket brus hade dränkt den.
+                let sr = self.string_rate();
+                let len = self.string_len();
+                if !self.pluck_started {
+                    for x in self.pluck_buf[..len].iter_mut() {
+                        *x = 0.0;
+                    }
+                    self.pluck_pos = 0;
+                    self.pluck_started = true;
+                    self.pluck_gain = Self::string_gain(len, sr);
+                }
+                let pos = self.pluck_pos;
+                let next = if pos + 1 >= len { 0 } else { pos + 1 };
+                let out = self.pluck_buf[pos];
+                self.bow_seed = self
+                    .bow_seed
+                    .wrapping_mul(1_664_525)
+                    .wrapping_add(1_013_904_223);
+                let noise = (self.bow_seed >> 8) as f32 / 8_388_608.0 - 1.0;
+                // Bågens tryck följer anslaget: ett hårt anslag ger starkare ton.
+                let excitation = noise * 0.06 * self.velocity.max(0.05);
+                self.pluck_buf[pos] = (PLUCK_LOWPASS * out
+                    + (1.0 - PLUCK_LOWPASS) * self.pluck_buf[next])
+                    * self.pluck_gain
+                    + excitation;
+                self.pluck_pos = next;
                 out + self.body_amount
                     * BODY_MIX
                     * (self.body_lo.process_bandpass(out, &BODY_LO)
@@ -592,6 +622,35 @@ impl Voice {
         } else {
             filtered
         }
+    }
+}
+
+impl Voice {
+    /// Samplade frekvensen — används för strängens dämpning, inte för tonhöjden.
+    fn string_rate(&self) -> f32 {
+        if self.phase_inc.abs() > 1e-9 {
+            2.0 * PI * self.freq / self.phase_inc
+        } else {
+            48_000.0
+        }
+    }
+
+    /// Strängens längd i sampel: `sr / f`, klämd till fördröjningslinjens storlek.
+    fn string_len(&self) -> usize {
+        (self.string_rate() / (self.freq * self.bend_ratio).max(20.0)).clamp(2.0, 4095.0) as usize
+    }
+
+    /// Förlusten per **varv** i linjen, kompenserad för lågpassets dämpning av grundtonen.
+    ///
+    /// Ett varv tar `len/sr` sekunder, så för att alla toner ska tappa lika många dB per
+    /// sekund skalas förlusten med varvets längd: en kort sträng gör fler varv per sekund
+    /// och hade annars dött direkt. Kompensationen får aldrig ge loopförstärkning ≥ 1.
+    fn string_gain(len: usize, sr: f32) -> f32 {
+        let w = 2.0 * PI / len as f32;
+        let d = 1.0 - PLUCK_LOWPASS;
+        let h = PLUCK_LOWPASS / (1.0 - 2.0 * d * w.cos() + d * d).sqrt();
+        let per_loop = 0.001_f32.powf(len as f32 / sr / PLUCK_T60);
+        (per_loop / h).min(0.9995)
     }
 }
 
