@@ -1823,14 +1823,14 @@ pub(crate) fn render_dice_generator_modal_view(&mut self, ctx: &egui::Context) {
     if let Some(dice) = insert_dice {
         if dice.category == crate::ui::dice_generator_modal::DiceCategory::DrumBeat {
             for d in 0..4.min(num_chans) {
-                self.channels[d].steps = dice.generated_drum_grid[d];
+                self.channels[d].steps[..16].copy_from_slice(&dice.generated_drum_grid[d]);
                 if p_idx < self.patterns.len() && d < self.patterns[p_idx].channel_steps.len() {
-                    self.patterns[p_idx].channel_steps[d] = dice.generated_drum_grid[d];
+                    self.patterns[p_idx].channel_steps[d][..16].copy_from_slice(&dice.generated_drum_grid[d]);
                 }
             }
             self.status_message = crate::i18n::t("🎲 Klistrade in slumpat trumgroove på de 4 första trumspåren!").to_string();
         } else if p_idx < self.patterns.len() && c_idx < num_chans {
-            self.channels[c_idx].steps = [false; 16];
+            self.channels[c_idx].steps = [false; crate::ui::app::state::MAX_STEPS];
             for n in &dice.generated_notes {
                 if n.step < 16 {
                     self.channels[c_idx].steps[n.step] = true;

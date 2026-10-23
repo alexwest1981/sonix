@@ -128,8 +128,8 @@ pub struct ChannelStrip {
     pub pan: f32,
     pub muted: bool,
     pub solo: bool,
-    pub steps: [bool; 16],
-    pub notes: [u8; 16],
+    pub steps: [bool; MAX_STEPS],
+    pub notes: [u8; MAX_STEPS],
     pub pitch_semitones: i8, // -24 .. +24 st
     pub pitch_fine_cents: f32, // -100.0 .. +100.0 cents
     pub sample_start: f32, // 0.0 .. 1.0 (Chopping start)
@@ -170,13 +170,15 @@ pub struct ChannelStrip {
     pub sample_base_note: u8,
 }
 
+pub use crate::audio::tempo::MAX_STEPS;
+
 #[derive(Clone, Debug)]
 pub struct Pattern {
     pub name: String,
     pub color: Color32,
-    pub channel_steps: Vec<[bool; 16]>,
-    pub channel_notes: Vec<[u8; 16]>,
-    pub piano_roll_grid: [[bool; 16]; 24],
+    pub channel_steps: Vec<[bool; MAX_STEPS]>,
+    pub channel_notes: Vec<[u8; MAX_STEPS]>,
+    pub piano_roll_grid: [[bool; MAX_STEPS]; 24],
     /// Den inspelade tagningen med sin faktiska tajming (Fas 6.4). Rutnätet
     /// säger *vilka* steg som spelar, tagningen säger *när* inom steget — det är
     /// den som gör kvantisering och humanisering möjliga i efterhand.

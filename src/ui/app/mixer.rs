@@ -1001,7 +1001,7 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
             }
             if ui.button(crate::i18n::t("🗑 Rensa Steg")).clicked() {
                 for ch in &mut self.channels {
-                    ch.steps = [false; 16];
+                    ch.steps = [false; crate::ui::app::state::MAX_STEPS];
                 }
                 self.sync_active_pattern_from_ui();
             }

@@ -171,10 +171,10 @@ pub(crate) fn apply_bar_to_pattern(
     let step_ticks = (file_ppq as u32 / 4).max(1);
     let mut rep = MidiImportReport::default();
     while pattern.channel_steps.len() < 8 {
-        pattern.channel_steps.push([false; 16]);
+        pattern.channel_steps.push([false; crate::ui::app::state::MAX_STEPS]);
     }
     while pattern.channel_notes.len() < 8 {
-        pattern.channel_notes.push([60; 16]);
+        pattern.channel_notes.push([60; crate::ui::app::state::MAX_STEPS]);
     }
 
     for n in notes {
@@ -446,7 +446,7 @@ pub(crate) fn place_notes_into_patterns(
                 color,
                 channel_steps: Vec::new(),
                 channel_notes: Vec::new(),
-                piano_roll_grid: [[false; 16]; 24],
+                piano_roll_grid: [[false; crate::ui::app::state::MAX_STEPS]; 24],
                 take: crate::midi_take::Take::new(),
             });
             self.patterns.len() - 1
@@ -636,7 +636,7 @@ impl SonixApp {
             return;
         };
         // Rutnätet markeras där tagningen har noter, så att rutan och tagningen säger samma sak.
-        pattern.piano_roll_grid = [[false; 16]; 24];
+        pattern.piano_roll_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         for note in &take.notes {
             if (48..72).contains(&note.key) {
                 let slot = note.pos.floor().clamp(0.0, 15.0) as usize;

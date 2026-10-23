@@ -67,7 +67,7 @@ pub(crate) fn apply_current_rule(&mut self) {
     // Regeln kan ha tagit bort eller flyttat noter — kanalens steg måste följa med.
     if result.changed > 0 {
         self.resync_grid_channels();
-        self.piano_roll_sel = [[false; 16]; 24];
+        self.piano_roll_sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     }
 }
 
@@ -104,7 +104,7 @@ pub fn humanize_active_pattern(&mut self) {
 
 impl SonixApp {
 pub fn transpose_active_pattern(&mut self, semitones: i8) {
-    let mut new_grid = [[false; 16]; 24];
+    let mut new_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     for offset in 0..24 {
         for step in 0..16 {
             if self.piano_roll_grid[offset][step] {
@@ -133,7 +133,7 @@ impl SonixApp {
 pub fn arpeggiate_pattern(&mut self) {
     let base_scale = self.get_scale_notes();
     let scale_len = base_scale.len().max(1);
-    self.piano_roll_grid = [[false; 16]; 24];
+    self.piano_roll_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     for step in 0..16 {
         let note_in_scale = base_scale[step % scale_len];
         let octave = (step / 4) % 2;
@@ -888,9 +888,9 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             }
 
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🧹 Töm")).size(Theme::FONT_S).color(Color32::from_rgb(255, 120, 120))).fill(Color32::from_rgb(50, 20, 25))).on_hover_text(crate::i18n::t("Rensa mönster")).clicked() {
-                self.piano_roll_grid = [[false; 16]; 24];
-                self.piano_roll_sel = [[false; 16]; 24];
-                self.channels[6].steps = [false; 16];
+                self.piano_roll_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
+                self.piano_roll_sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
+                self.channels[6].steps = [false; crate::ui::app::state::MAX_STEPS];
                 self.sync_active_pattern_from_ui();
                 self.status_message = crate::i18n::t("🧹 Pianorullens mönster rensat!").to_string();
             }
@@ -956,12 +956,12 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     .clicked()
                 {
                     let removed = delete_cells(&mut self.piano_roll_grid, &self.piano_roll_sel);
-                    self.piano_roll_sel = [[false; 16]; 24];
+                    self.piano_roll_sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
                     self.status_message = crate::tstatus!("🗑 {} cell(er) borttagna", removed);
                     self.resync_grid_channels();
                 }
                 if ui.button(crate::i18n::t("✖ Avmarkera")).clicked() {
-                    self.piano_roll_sel = [[false; 16]; 24];
+                    self.piano_roll_sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
                 }
             }
         });
@@ -1254,12 +1254,12 @@ pub fn apply_drummer_generation(&mut self) {
     let hv = self.drummer_hihat_var;
     let fills = self.drummer_fills.clamp(0.0, 1.0);
 
-    let mut kick = [false; 16];
-    let mut snare = [false; 16];
-    let mut clap = [false; 16];
-    let mut hat_c = [false; 16];
-    let mut hat_o = [false; 16];
-    let mut crash = [false; 16];
+    let mut kick = [false; crate::ui::app::state::MAX_STEPS];
+    let mut snare = [false; crate::ui::app::state::MAX_STEPS];
+    let mut clap = [false; crate::ui::app::state::MAX_STEPS];
+    let mut hat_c = [false; crate::ui::app::state::MAX_STEPS];
+    let mut hat_o = [false; crate::ui::app::state::MAX_STEPS];
+    let mut crash = [false; crate::ui::app::state::MAX_STEPS];
 
     // 1. Kick Pattern (variation controlled by drummer_kick_snare_var)
     kick[0] = true;
@@ -1686,22 +1686,22 @@ pub(crate) fn render_touch_piano_keyboard(&mut self, ui: &mut egui::Ui, ctx: &eg
 // förutsättningen för de andra två, och rutnätet är vår enda yta där noter syns.
 
 /// Växlar markeringen på en cell. Returnerar antalet markerade celler.
-pub(crate) fn toggle_cell_selection(sel: &mut [[bool; 16]; 24], row: usize, step: usize) -> usize {
+pub(crate) fn toggle_cell_selection(sel: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24], row: usize, step: usize) -> usize {
     if row < 24 && step < 16 {
         sel[row][step] = !sel[row][step];
     }
     count_selected(sel)
 }
 
-pub(crate) fn count_selected(sel: &[[bool; 16]; 24]) -> usize {
+pub(crate) fn count_selected(sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24]) -> usize {
     sel.iter().map(|r| r.iter().filter(|c| **c).count()).sum()
 }
 
 /// Transponerar markerade celler `rows` rader. Celler som skulle hamna utanför
 /// rutnätet **stannar där de är** i stället för att tappas.
 pub(crate) fn transpose_cells(
-    grid: &mut [[bool; 16]; 24],
-    sel: &[[bool; 16]; 24],
+    grid: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24],
+    sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
     rows: i32,
 ) -> usize {
     let mut next = *grid;
@@ -1823,13 +1823,13 @@ pub struct RuleResult {
 /// Kör regeln. Finns ett urval gäller det, annars hela rutnätet — samma ordning som
 /// radera/transponera-knapparna, så regeln inte blir en tredje sorts sanning.
 pub fn apply_rule(
-    grid: &mut [[bool; 16]; 24],
-    sel: &[[bool; 16]; 24],
+    grid: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24],
+    sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
     velocities: &mut [f32; 16],
     rule: &Rule,
 ) -> RuleResult {
     let only_selection = count_selected(sel) > 0;
-    let mut matched = [[false; 16]; 24];
+    let mut matched = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     for row in 0..24 {
         for step in 0..16 {
             if !grid[row][step] || (only_selection && !sel[row][step]) {
@@ -1867,11 +1867,11 @@ pub fn apply_rule(
 /// Cubase väljer enligt ett villkor och låter sedan åtgärden gå på urvalet — vi har samma
 /// ordning: markera de svaga, sedan 🗑 eller transponera. Ingen egen raderingsväg.
 pub(crate) fn select_quiet(
-    grid: &[[bool; 16]; 24],
+    grid: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
     velocities: &[f32; 16],
     threshold: f32,
-) -> [[bool; 16]; 24] {
-    let mut sel = [[false; 16]; 24];
+) -> [[bool; crate::ui::app::state::MAX_STEPS]; 24] {
+    let mut sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     for step in 0..16 {
         if velocities[step] >= threshold {
             continue;
@@ -1889,8 +1889,8 @@ pub(crate) fn select_quiet(
 ///
 /// Noter som skulle hamna utanför rutnätet stannar, samma regel som transponeringen.
 pub fn snap_grid_to_chord(
-    grid: &mut [[bool; 16]; 24],
-    sel: &[[bool; 16]; 24],
+    grid: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24],
+    sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
     chord: &crate::ui::app::state::ChordEvent,
 ) -> usize {
     let only_selection = count_selected(sel) > 0;
@@ -1920,8 +1920,8 @@ pub fn snap_grid_to_chord(
 }
 
 /// Flyttar markeringen med noterna, så den pekar på samma noter efter en transponering.
-pub(crate) fn transpose_selection(sel: &[[bool; 16]; 24], rows: i32) -> [[bool; 16]; 24] {
-    let mut next = [[false; 16]; 24];
+pub(crate) fn transpose_selection(sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24], rows: i32) -> [[bool; crate::ui::app::state::MAX_STEPS]; 24] {
+    let mut next = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     for row in 0..24 {
         for step in 0..16 {
             if !sel[row][step] {
@@ -1941,7 +1941,7 @@ pub(crate) fn transpose_selection(sel: &[[bool; 16]; 24], rows: i32) -> [[bool; 
 }
 
 /// Tar bort markerade celler. Returnerar antalet borttagna.
-pub(crate) fn delete_cells(grid: &mut [[bool; 16]; 24], sel: &[[bool; 16]; 24]) -> usize {
+pub(crate) fn delete_cells(grid: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24], sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24]) -> usize {
     let mut removed = 0;
     for row in 0..24 {
         for step in 0..16 {
@@ -1960,8 +1960,8 @@ mod selection_tests {
 
     #[test]
     fn transpose_moves_selected_cells_and_keeps_the_ones_that_do_not_fit() {
-        let mut grid = [[false; 16]; 24];
-        let mut sel = [[false; 16]; 24];
+        let mut grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
+        let mut sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         grid[23][0] = true; // rad 23 är överst: kan inte flyttas upp
         grid[10][4] = true;
         grid[11][4] = true; // orörd, inte markerad
@@ -1985,7 +1985,7 @@ mod selection_tests {
 
     #[test]
     fn quiet_steps_are_selected_by_their_velocity() {
-        let mut grid = [[false; 16]; 24];
+        let mut grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         grid[5][0] = true; // starkt steg
         grid[6][1] = true; // svagt steg
         grid[7][1] = true;
@@ -2002,8 +2002,8 @@ mod selection_tests {
     #[test]
     fn chord_snap_moves_notes_to_the_nearest_chord_tone() {
         use crate::ui::app::state::{ChordEvent, ChordQuality};
-        let mut grid = [[false; 16]; 24];
-        let mut sel = [[false; 16]; 24];
+        let mut grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
+        let mut sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         // C3 = bas. Rad 0 = C, rad 4 = E, rad 5 = F.
         grid[0][0] = true; // C — ackordston, står still
         grid[5][1] = true; // F — en halvton över E
@@ -2021,8 +2021,8 @@ mod selection_tests {
 
     #[test]
     fn a_rule_matches_by_key_and_only_touches_the_selection() {
-        let mut grid = [[false; 16]; 24];
-        let mut sel = [[false; 16]; 24];
+        let mut grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
+        let mut sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         let mut vel = [0.8f32; 16];
         grid[12][0] = true; // C3 + 12
         grid[12][2] = true;
@@ -2044,8 +2044,8 @@ mod selection_tests {
 
     #[test]
     fn a_rule_can_set_the_velocity_of_matching_steps_and_transpose() {
-        let mut grid = [[false; 16]; 24];
-        let sel = [[false; 16]; 24];
+        let mut grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
+        let sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         let mut vel = [0.9f32; 16];
         vel[3] = 0.2;
         grid[10][3] = true;
@@ -2078,7 +2078,7 @@ mod selection_tests {
 
     #[test]
     fn selection_counts_and_toggles() {
-        let mut sel = [[false; 16]; 24];
+        let mut sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
         assert_eq!(count_selected(&sel), 0);
         assert_eq!(toggle_cell_selection(&mut sel, 5, 3), 1);
         assert!(sel[5][3]);

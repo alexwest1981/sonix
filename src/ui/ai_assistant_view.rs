@@ -233,16 +233,16 @@ pub fn render_ai_assistant_view(
                             // Apply to Bass (Channel 7)
                             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera på 🎸 Sub Bass")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::FL_ORANGE)).clicked()
                                 && channels.len() > 7 {
-                                    channels[7].steps = clip.channel_steps;
-                                    channels[7].notes = clip.notes;
+                                    channels[7].steps[..16].copy_from_slice(&clip.channel_steps);
+                                    channels[7].notes[..16].copy_from_slice(&clip.notes);
                                     *status_msg = crate::tstatus!("✔ Applicerade \"{}\" på Sub Bass (Kanal 8)!", clip.title);
                                 }
 
                             // Apply to Lead (Channel 6)
                             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera på 🎹 303 Lead")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::FL_CYAN)).clicked()
                                 && channels.len() > 6 {
-                                    channels[6].steps = clip.channel_steps;
-                                    channels[6].notes = clip.notes;
+                                    channels[6].steps[..16].copy_from_slice(&clip.channel_steps);
+                                    channels[6].notes[..16].copy_from_slice(&clip.notes);
                                     *status_msg = crate::tstatus!("✔ Applicerade \"{}\" på 303 Lead (Kanal 7)!", clip.title);
                                 }
 

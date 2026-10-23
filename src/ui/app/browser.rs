@@ -91,7 +91,7 @@ pub(crate) fn assign_library_sample_to_channel(ch: &mut ChannelStrip, item: &Lib
     ch.name = item.name.clone();
     ch.icon = item.icon.clone();
     ch.color = item.color;
-    ch.notes = [item.default_note; 16];
+    ch.notes = [item.default_note; crate::ui::app::state::MAX_STEPS];
     ch.waveform_preview = item.waveform.clone();
     ch.sample_start = 0.0;
     ch.sample_end = 1.0;

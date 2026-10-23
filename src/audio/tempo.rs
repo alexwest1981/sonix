@@ -20,6 +20,10 @@ use serde::{Deserialize, Serialize};
 /// Steg per takt: 16-delssteg i 4/4 — samma rutnät som appens pattern.
 pub const STEPS_PER_BAR: usize = 16;
 
+/// Fyra takter är det längsta ett pattern får bli: rutnätet rymmer 64 steg redan nu, så
+/// patternlängden kan slås på utan att sparformatet behöver göras om igen.
+pub const MAX_STEPS: usize = 64;
+
 /// Ett tempobyte: från och med `start_bar` gäller `bpm`.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct TempoPoint {

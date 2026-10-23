@@ -120,7 +120,7 @@ pub fn reference_spec() -> RenderSpec {
 
     let mut rack = Vec::new();
     for ch in 0..8 {
-        let mut steps = [false; 16];
+        let mut steps = [false; crate::audio::tempo::MAX_STEPS];
         match ch {
             0 => {
                 steps[0] = true;
@@ -164,12 +164,12 @@ pub fn reference_spec() -> RenderSpec {
             }),
             fallback_volume: 0.8,
             steps,
-            notes: [36; 16],
+            notes: [36; crate::audio::tempo::MAX_STEPS],
         });
     }
 
     // Ett ackord i piano-rollen (tre rader tända samtidigt) och en baston.
-    let mut piano_roll = [[false; 16]; 24];
+    let mut piano_roll = [[false; crate::audio::tempo::MAX_STEPS]; 24];
     for s in [0usize, 4, 8, 12] {
         piano_roll[12][s] = true;
         piano_roll[16][s] = true;
@@ -178,8 +178,8 @@ pub fn reference_spec() -> RenderSpec {
     let mut bass_steps = [false; 16];
     bass_steps[0] = true;
     bass_steps[8] = true;
-    let mut notes = vec![[60u8; 16]; 8];
-    notes[7] = [36; 16];
+    let mut notes = vec![[60u8; crate::audio::tempo::MAX_STEPS]; 8];
+    notes[7] = [36; crate::audio::tempo::MAX_STEPS];
 
     let mut clips = [None; 32];
     clips[0] = Some(0);
@@ -194,8 +194,8 @@ pub fn reference_spec() -> RenderSpec {
         rack,
         patterns: vec![PatternSnap {
             steps: {
-                let mut s = vec![[false; 16]; 8];
-                s[7] = bass_steps;
+                let mut s = vec![[false; crate::audio::tempo::MAX_STEPS]; 8];
+                s[7][..16].copy_from_slice(&bass_steps);
                 s
             },
             notes,

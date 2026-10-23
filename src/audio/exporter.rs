@@ -69,22 +69,22 @@ pub struct RackChannel {
     /// Fallback gain used for the built-in synth/bass voices when a channel
     /// has no loaded sample (mirrors `ChannelStrip.volume`).
     pub fallback_volume: f32,
-    pub steps: [bool; 16],
-    pub notes: [u8; 16],
+    pub steps: [bool; crate::audio::tempo::MAX_STEPS],
+    pub notes: [u8; crate::audio::tempo::MAX_STEPS],
 }
 
 #[derive(Clone)]
 pub struct PatternSnap {
     /// Per Channel-Rack channel step grid.
-    pub steps: Vec<[bool; 16]>,
+    pub steps: Vec<[bool; crate::audio::tempo::MAX_STEPS]>,
     /// Per Channel-Rack channel note grid.
-    pub notes: Vec<[u8; 16]>,
+    pub notes: Vec<[u8; crate::audio::tempo::MAX_STEPS]>,
     /// Piano-rollen, 24 rader × 16 steg (MIDI 48–71).
     ///
     /// Den behövs för att exporten ska spela samma noter som uppspelningen: den
     /// vanliga kanal 6-rutan bär bara **en** not per steg (den flattenade
     /// spegeln), så ett polyfont piano-roll-steg blev en enda not i filen.
-    pub piano_roll: [[bool; 16]; 24],
+    pub piano_roll: [[bool; crate::audio::tempo::MAX_STEPS]; 24],
     /// Den inspelade tagningen med sin mikro-tajming (Fas 6.4/6.5-uppföljning).
     ///
     /// Utan den renderade exporten noterna på rutnätet medan uppspelningen
@@ -988,8 +988,8 @@ mod tests {
             voice: Some(v),
             slices: Vec::new(),
             fallback_volume: 1.0,
-            steps: [false; 16],
-            notes: [36; 16],
+            steps: [false; crate::audio::tempo::MAX_STEPS],
+            notes: [36; crate::audio::tempo::MAX_STEPS],
         };
         // Noten 48 ligger i zonen: exporten ska spela **zonens** fil och grundton.
         match sample_trigger_command(&ch, 0, 48, 0.9, 0.0).expect("kommando") {
@@ -1051,7 +1051,7 @@ mod tests {
             } else {
                 None
             };
-            let mut steps = [false; 16];
+            let mut steps = [false; crate::audio::tempo::MAX_STEPS];
             steps[0] = true;
             steps[8] = true;
             rack.push(RackChannel {
@@ -1059,7 +1059,7 @@ mod tests {
                 slices: Vec::new(),
                 fallback_volume: 0.85,
                 steps,
-                notes: [36; 16],
+                notes: [36; crate::audio::tempo::MAX_STEPS],
             });
         }
         RenderSpec {
@@ -1085,21 +1085,21 @@ mod tests {
     }
 
     /// En spec med ett synthspår som spelar pattern 0 i takt 0.
-    fn synth_spec_with(piano_roll: [[bool; 16]; 24], channel6_steps: [bool; 16], channel6_note: u8) -> RenderSpec {
+    fn synth_spec_with(piano_roll: [[bool; crate::audio::tempo::MAX_STEPS]; 24], channel6_steps: [bool; crate::audio::tempo::MAX_STEPS], channel6_note: u8) -> RenderSpec {
         synth_spec_with_take(piano_roll, channel6_steps, channel6_note, crate::midi_take::Take::new())
     }
 
     fn synth_spec_with_take(
-        piano_roll: [[bool; 16]; 24],
-        channel6_steps: [bool; 16],
+        piano_roll: [[bool; crate::audio::tempo::MAX_STEPS]; 24],
+        channel6_steps: [bool; crate::audio::tempo::MAX_STEPS],
         channel6_note: u8,
         take: crate::midi_take::Take,
     ) -> RenderSpec {
         // Åtta kanalrader, som appens specc: index 6 är synthkanalen.
-        let mut steps = vec![[false; 16]; 8];
+        let mut steps = vec![[false; crate::audio::tempo::MAX_STEPS]; 8];
         steps[6] = channel6_steps;
-        let mut notes = vec![[60u8; 16]; 8];
-        notes[6] = [channel6_note; 16];
+        let mut notes = vec![[60u8; crate::audio::tempo::MAX_STEPS]; 8];
+        notes[6] = [channel6_note; crate::audio::tempo::MAX_STEPS];
         let mut patterns = Vec::new();
         patterns.push(PatternSnap {
             steps,
@@ -1163,11 +1163,11 @@ mod tests {
         // Ett ackord i piano-rollen (rad 0, 4 och 7 = MIDI 48, 52, 55) ska bli
         // tre noter i exporten — uppspelningen spelar alla rader, så filen måste
         // göra detsamma. Kanal 6-rutan bär bara en not per steg.
-        let mut grid = [[false; 16]; 24];
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
         grid[0][0] = true;
         grid[4][0] = true;
         grid[7][0] = true;
-        let mut ch_steps = [false; 16];
+        let mut ch_steps = [false; crate::audio::tempo::MAX_STEPS];
         ch_steps[0] = true;
         let spec = synth_spec_with(grid, ch_steps, 55);
 
@@ -1180,8 +1180,8 @@ mod tests {
     #[test]
     fn a_step_without_piano_roll_notes_still_uses_the_channel_grid() {
         // Är rutnätet tomt ska kanal 6-rutan spela som förut (en not).
-        let grid = [[false; 16]; 24];
-        let mut ch_steps = [false; 16];
+        let grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        let mut ch_steps = [false; crate::audio::tempo::MAX_STEPS];
         ch_steps[3] = true;
         let spec = synth_spec_with(grid, ch_steps, 62);
 
@@ -1194,9 +1194,9 @@ mod tests {
     fn the_piano_roll_wins_over_the_channel_grid_for_the_same_step() {
         // Precis som i uppspelningen: är rutnätet tänt på steget spelar det, och
         // kanalrutans not ska inte läggas ovanpå (annars blev det en dubbelnot).
-        let mut grid = [[false; 16]; 24];
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
         grid[12][5] = true; // MIDI 60
-        let mut ch_steps = [false; 16];
+        let mut ch_steps = [false; crate::audio::tempo::MAX_STEPS];
         ch_steps[5] = true;
         let spec = synth_spec_with(grid, ch_steps, 40);
 
@@ -1220,11 +1220,11 @@ mod tests {
     fn the_take_moves_a_note_off_the_grid_in_the_export() {
         // En not inspelad 0.25 steg sent ska exporteras med sin fördröjning, inte
         // på rutnätet — annars matchar filen inte det du hör.
-        let mut grid = [[false; 16]; 24];
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
         grid[12][2] = true; // MIDI 60 på steg 2
         let mut take = crate::midi_take::Take::new();
         take.push(2.25, 60, 0.8);
-        let spec = synth_spec_with_take(grid, [false; 16], 60, take);
+        let spec = synth_spec_with_take(grid, [false; crate::audio::tempo::MAX_STEPS], 60, take);
 
         // Steg 2: en fördröjning på en fjärdedels steg (0.25 × 5512 samples).
         let cmds = triggers_for_step(&spec, 0, 2);
@@ -1246,11 +1246,11 @@ mod tests {
         // hamnar på steg 3 (närmaste rutnätslinje) medan den klingar från steg 2.
         // Läses tagningen efter grinden tystnar noten helt — det var en riktig
         // bugg i 6.4 tills den här grinden flyttades.
-        let mut grid = [[false; 16]; 24];
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
         grid[12][3] = true; // rutan hamnade på steg 3
         let mut take = crate::midi_take::Take::new();
         take.push(2.7, 60, 0.8);
-        let spec = synth_spec_with_take(grid, [false; 16], 60, take);
+        let spec = synth_spec_with_take(grid, [false; crate::audio::tempo::MAX_STEPS], 60, take);
 
         // Steg 2 har ingen ruta tänd alls — ändå ska noten spelas därifrån.
         assert!(!(0..24).any(|r| spec.patterns[0].piano_roll[r][2]));
@@ -1265,10 +1265,10 @@ mod tests {
     #[test]
     fn a_take_note_whose_cell_was_cleared_is_not_exported() {
         // Rutnätet är fortfarande sanningen om vad som är på.
-        let grid = [[false; 16]; 24];
+        let grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
         let mut take = crate::midi_take::Take::new();
         take.push(2.25, 60, 0.8);
-        let spec = synth_spec_with_take(grid, [false; 16], 60, take);
+        let spec = synth_spec_with_take(grid, [false; crate::audio::tempo::MAX_STEPS], 60, take);
         assert!(triggers_for_step(&spec, 0, 2).is_empty());
     }
 
@@ -1276,11 +1276,11 @@ mod tests {
     fn every_note_of_a_polyphonic_step_is_audible_in_the_render() {
         // Kommandolistan räcker inte som bevis: tonerna ska höras i ljudet också.
         // Ackordet C-dur (MIDI 48, 52, 55 = 130.81, 164.81, 196.00 Hz).
-        let mut grid = [[false; 16]; 24];
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
         grid[0][0] = true;
         grid[4][0] = true;
         grid[7][0] = true;
-        let mut ch_steps = [false; 16];
+        let mut ch_steps = [false; crate::audio::tempo::MAX_STEPS];
         ch_steps[0] = true;
         let spec = synth_spec_with(grid, ch_steps, 60);
 
@@ -1352,7 +1352,7 @@ mod tests {
             let mut spec = render_smoke_spec();
             // Tyst kanalrack: bara de två tidslinjespåren ska höras.
             for ch in spec.rack.iter_mut() {
-                ch.steps = [false; 16];
+                ch.steps = [false; crate::audio::tempo::MAX_STEPS];
             }
             spec.pattern_mode = false;
             spec.bus_volume[3] = 0.5;
@@ -1455,7 +1455,7 @@ mod tests {
             let mut spec = render_smoke_spec();
             spec.pattern_mode = true;
             for ch in spec.rack.iter_mut() {
-                ch.steps = [false; 16];
+                ch.steps = [false; crate::audio::tempo::MAX_STEPS];
                 ch.voice = None;
             }
             // Ett kort ljud: 0,2 s vid 44,1 kHz.
@@ -1558,7 +1558,7 @@ mod tests {
         let mut spec = render_smoke_spec();
         spec.pattern_mode = true;
         for ch in spec.rack.iter_mut() {
-            ch.steps = [false; 16];
+            ch.steps = [false; crate::audio::tempo::MAX_STEPS];
             ch.voice = None;
         }
         let tone: Arc<Vec<f32>> = Arc::new(
@@ -1682,7 +1682,7 @@ mod tests {
         fn spec_with_track_send(send: bool) -> RenderSpec {
             let mut spec = render_smoke_spec();
             for ch in spec.rack.iter_mut() {
-                ch.steps = [false; 16];
+                ch.steps = [false; crate::audio::tempo::MAX_STEPS];
             }
             spec.pattern_mode = false;
             // Sändarens buss är tyst: bara senden kan bära dess ton vidare.
@@ -1797,7 +1797,7 @@ mod tests {
             let mut spec = render_smoke_spec();
             // Tyst kanalrack: bara de två tidslinjespåren ska höras.
             for ch in spec.rack.iter_mut() {
-                ch.steps = [false; 16];
+                ch.steps = [false; crate::audio::tempo::MAX_STEPS];
             }
             // Tidslinjespåren hörs bara när sången spelas (inte pattern-läget).
             spec.pattern_mode = false;

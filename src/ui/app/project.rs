@@ -119,9 +119,11 @@ pub struct SavedPattern {
     pub name: String,
     #[serde(default = "default_ui_color")]
     pub color: [u8; 4],
-    pub channel_steps: Vec<[bool; 16]>,
-    pub channel_notes: Vec<[u8; 16]>,
-    pub piano_roll_grid: [[bool; 16]; 24],
+    /// Raderna sparas som **listor**, inte som fasta arrayer: ett projekt från före
+    /// 64-stegsrutnätet har 16 element per rad, och det ska läsas utan migrering.
+    pub channel_steps: Vec<Vec<bool>>,
+    pub channel_notes: Vec<Vec<u8>>,
+    pub piano_roll_grid: Vec<Vec<bool>>,
     /// Tagningen med sin tajming (Fas 6.4). Tom i äldre projekt.
     #[serde(default)]
     pub take: crate::midi_take::Take,
@@ -144,8 +146,8 @@ pub struct SavedChannel {
     pub pan: f32,
     pub muted: bool,
     pub solo: bool,
-    pub steps: [bool; 16],
-    pub notes: [u8; 16],
+    pub steps: Vec<bool>,
+    pub notes: Vec<u8>,
     #[serde(default)]
     pub pitch_semitones: i8,
     #[serde(default)]
@@ -380,13 +382,41 @@ pub fn restore_saved_music(
     }
 }
 
+/// En sparad rad blir en fast rad igen: korta rader (16 från ett äldre projekt) fylls ut
+/// med nollor, långa klipps. Filen ska läsas, inte fallera.
+fn row_bools(row: &[bool]) -> [bool; crate::ui::app::state::MAX_STEPS] {
+    let mut out = [false; crate::ui::app::state::MAX_STEPS];
+    for (i, v) in row.iter().take(out.len()).enumerate() {
+        out[i] = *v;
+    }
+    out
+}
+
+fn row_notes(row: &[u8]) -> [u8; crate::ui::app::state::MAX_STEPS] {
+    let mut out = [0u8; crate::ui::app::state::MAX_STEPS];
+    for (i, v) in row.iter().take(out.len()).enumerate() {
+        out[i] = *v;
+    }
+    out
+}
+
+fn grid_rows(
+    rows: &[Vec<bool>],
+) -> [[bool; crate::ui::app::state::MAX_STEPS]; 24] {
+    let mut out = [[false; crate::ui::app::state::MAX_STEPS]; 24];
+    for (i, row) in rows.iter().take(24).enumerate() {
+        out[i] = row_bools(row);
+    }
+    out
+}
+
 pub(crate) fn pattern_to_saved(p: &Pattern) -> SavedPattern {
     SavedPattern {
         name: p.name.clone(),
         color: p.color.to_array(),
-        channel_steps: p.channel_steps.clone(),
-        channel_notes: p.channel_notes.clone(),
-        piano_roll_grid: p.piano_roll_grid,
+        channel_steps: p.channel_steps.iter().map(|r| r.to_vec()).collect(),
+        channel_notes: p.channel_notes.iter().map(|r| r.to_vec()).collect(),
+        piano_roll_grid: p.piano_roll_grid.iter().map(|r| r.to_vec()).collect(),
         take: p.take.clone(),
     }
 }
@@ -395,9 +425,9 @@ pub(crate) fn saved_to_pattern(s: &SavedPattern) -> Pattern {
     Pattern {
         name: s.name.clone(),
         color: Color32::from_rgba_premultiplied(s.color[0], s.color[1], s.color[2], s.color[3]),
-        channel_steps: s.channel_steps.clone(),
-        channel_notes: s.channel_notes.clone(),
-        piano_roll_grid: s.piano_roll_grid,
+        channel_steps: s.channel_steps.iter().map(|r| row_bools(r)).collect(),
+        channel_notes: s.channel_notes.iter().map(|r| row_notes(r)).collect(),
+        piano_roll_grid: grid_rows(&s.piano_roll_grid),
         take: s.take.clone(),
     }
 }
@@ -411,8 +441,8 @@ pub(crate) fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
         pan: c.pan,
         muted: c.muted,
         solo: c.solo,
-        steps: c.steps,
-        notes: c.notes,
+        steps: c.steps.to_vec(),
+        notes: c.notes.to_vec(),
         pitch_semitones: c.pitch_semitones,
         pitch_fine_cents: c.pitch_fine_cents,
         sample_start: c.sample_start,
@@ -462,8 +492,8 @@ pub(crate) fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
         pan: s.pan,
         muted: s.muted,
         solo: s.solo,
-        steps: s.steps,
-        notes: s.notes,
+        steps: row_bools(&s.steps),
+        notes: row_notes(&s.notes),
         pitch_semitones: s.pitch_semitones,
         pitch_fine_cents: s.pitch_fine_cents,
         sample_start: s.sample_start,
@@ -1072,12 +1102,12 @@ pub fn populate_demo_data(&mut self) {
 
     // Populate Channel rack steps
     if self.channels.len() >= 6 {
-        self.channels[0].steps = [true, false, false, false, true, false, false, false, true, false, false, false, true, false, false, false];
-        self.channels[1].steps = [false, false, false, false, true, false, false, false, false, false, false, false, true, false, false, false];
-        self.channels[2].steps = [true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false];
-        self.channels[3].steps = [false, false, true, false, false, false, true, false, false, false, true, false, false, false, true, false];
-        self.channels[4].steps = [true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, false];
-        self.channels[5].steps = [true, true, false, false, true, true, false, false, true, true, false, false, true, true, false, false];
+        self.channels[0].steps[..16].copy_from_slice(&[true, false, false, false, true, false, false, false, true, false, false, false, true, false, false, false]);
+        self.channels[1].steps[..16].copy_from_slice(&[false, false, false, false, true, false, false, false, false, false, false, false, true, false, false, false]);
+        self.channels[2].steps[..16].copy_from_slice(&[true, false, true, false, true, false, true, false, true, false, true, false, true, false, true, false]);
+        self.channels[3].steps[..16].copy_from_slice(&[false, false, true, false, false, false, true, false, false, false, true, false, false, false, true, false]);
+        self.channels[4].steps[..16].copy_from_slice(&[true, false, false, true, false, true, false, false, true, false, true, false, false, true, false, false]);
+        self.channels[5].steps[..16].copy_from_slice(&[true, true, false, false, true, true, false, false, true, true, false, false, true, true, false, false]);
     }
 
     // Populate Piano Roll Grid (24 notes x 16 steps)
@@ -1218,13 +1248,13 @@ pub fn new_empty_project(&mut self) {
         t.clips = [None; 32];
     }
     for p in &mut self.patterns {
-        p.channel_steps.fill([false; 16]);
-        p.piano_roll_grid = [[false; 16]; 24];
+        p.channel_steps.fill([false; crate::ui::app::state::MAX_STEPS]);
+        p.piano_roll_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     }
     for ch in &mut self.channels {
-        ch.steps = [false; 16];
+        ch.steps = [false; crate::ui::app::state::MAX_STEPS];
     }
-    self.piano_roll_grid = [[false; 16]; 24];
+    self.piano_roll_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
     self.selected_audio_region = None;
     self.project_name = crate::i18n::t("Namnlöst Projekt").to_string();
     self.project_file_path = None;

@@ -41,9 +41,9 @@ use crate::ui::theme::Theme;
         Pattern {
             name: "Testpattern".to_string(),
             color: Color32::WHITE,
-            channel_steps: vec![[false; 16]; 8],
-            channel_notes: vec![[60; 16]; 8],
-            piano_roll_grid: [[false; 16]; 24],
+            channel_steps: vec![[false; crate::audio::tempo::MAX_STEPS]; 8],
+            channel_notes: vec![[60; crate::audio::tempo::MAX_STEPS]; 8],
+            piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
             take: crate::midi_take::Take::default(),
         }
     }
@@ -211,8 +211,8 @@ use crate::ui::theme::Theme;
             pan: -0.25,
             muted: true,
             solo: true,
-            steps: [true; 16],
-            notes: [42; 16],
+            steps: [true; crate::audio::tempo::MAX_STEPS],
+            notes: [42; crate::audio::tempo::MAX_STEPS],
             pitch_semitones: -7,
             pitch_fine_cents: 12.5,
             sample_start: 0.125,
@@ -1969,6 +1969,34 @@ use crate::ui::theme::Theme;
         );
     }
 
+    /// **Sparformatet är framåtkompatibelt**: ett projekt från 16-stegsrutnätet läses in i
+    /// det bredare rutnätet (raderna fylls ut med nollor i stället för att filen fallerar),
+    /// och det som låg i stegen är kvar på samma plats.
+    #[test]
+    fn a_sixteen_step_pattern_is_padded_when_it_is_read() {
+        let saved = super::project::SavedPattern {
+            name: "Gammal".to_string(),
+            color: [10, 20, 30, 255],
+            channel_steps: vec![vec![true; 16]],
+            channel_notes: vec![vec![60; 16]],
+            piano_roll_grid: vec![vec![false; 16]; 24],
+            take: crate::midi_take::Take::new(),
+        };
+        let json = serde_json::to_string(&saved).unwrap();
+        let back: super::project::SavedPattern = serde_json::from_str(&json).unwrap();
+        let pattern = super::project::saved_to_pattern(&back);
+
+        assert_eq!(pattern.channel_steps[0].len(), super::state::MAX_STEPS);
+        assert_eq!(pattern.channel_notes[0].len(), super::state::MAX_STEPS);
+        assert_eq!(pattern.piano_roll_grid[0].len(), super::state::MAX_STEPS);
+        assert!(pattern.channel_steps[0][15], "steg 15 ska vara kvar");
+        assert!(
+            !pattern.channel_steps[0][16],
+            "steg 16 fanns inte i filen och ska vara tomt"
+        );
+        assert_eq!(pattern.channel_notes[0][0], 60);
+    }
+
     /// **MIDI-kartan följer med filen** — och ett projekt från före fältet får en avstängd
     /// karta, alltså exakt det ljud som gällde då (noterna går rakt igenom).
     #[test]
@@ -2620,7 +2648,7 @@ use crate::ui::theme::Theme;
         assert!(ch.waveform_preview.is_empty(), "ingen vågform utan ljud");
         assert_eq!(ch.sample_path.as_deref(), Some("/tmp/sonix-finns-inte-alls.mp3"));
         assert_eq!(ch.name, "Virvel", "inställningarna ska ändå med");
-        assert_eq!(ch.steps, [true; 16]);
+        assert_eq!(ch.steps[..16], [true; 16]);
     }
 
     /// Frågan om mp3:erna (Fas 8.5) behöver en siffra, och siffran ska räknas med
