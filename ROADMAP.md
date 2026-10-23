@@ -61,7 +61,7 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 
 | # | Vad | Storlek | Varför den ligger här |
 | :--: | :--- | :---: | :--- |
-| 1 | **Frasbank (`.fsc`/`.mid`) + Riff machine** — *◐ audition saknas* | *S* | **🎼 Frasbank** läser en mapp med `.mid`/`.midi` **och FL:s `.fsc`** (609 av 609 riktiga filer lästa i mätningen) och infogar vald fras i patternet. Riff-generatorn fanns. Kvar: höra frasen innan den infogas |
+| 1 | **Frasbank (`.fsc`/`.mid`) + Riff machine** — *◐ audition saknas* | *S* | **🎼 Frasbank** läser en mapp med `.mid`/`.midi` **och FL:s `.fsc`**, med **▶ lyssning** före infogning. Mätt mot FL:s egen bank: 609 av 609 filer läses, 5 456 noter; 120 poster med anslag 0 är pauser och infogas inte. Riff-generatorn fanns. Kvar: höra frasen innan den infogas |
 | 2 | **Groove-pool** — *✅ hörbar och mappbytbar* | *S* | En mapp läses en gång via `GrooveLibrary::load_from_dir`, mallarna väljs ur en lista och hamnar i poolen. **▶** spelar en demorytm (kick, virvel, hi-hat) med mallens förskjutning och mängd, så mallen hörs innan den läggs på. 📂 väljer en annan mapp och 🔄 läser om **samma** mapp utan att pianorullen stängs |
 | 3 | **Temafiler (JSON) med semantiska namn** | *M* | `Theme::` används på **909** ställen (räknat) — mekaniskt, men 909 rader |
 | 4 | **Fokus/Tab mellan ytorna, zoom-kommandon, ledtrådar** — *◐ ledtrådar kvar* | *S–M* | **Tab/Shift+Tab** går genom alla 13 ytor, och **Ctrl + +/−** zoomar pianorullens rutnät i 10-procentssteg (Ctrl+0 nollställer; klämt 0,6–2,0). Provat: ett varv återvänder, ingen yta dubbel, zoomen stannar vid sina ändar.  Abletons `Focus*` och `Zoom*` är adresserbara; 2 302 `sInfoText` mot våra 135 `on_hover_text` är den tydligaste hjälpklacken |

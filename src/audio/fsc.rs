@@ -113,9 +113,14 @@ pub fn parse_fsc(bytes: &[u8]) -> Result<FscScore, String> {
         .get(start..start + payload_len)
         .ok_or("posterna är kortare än den angivna längden")?;
 
-    // FL 3 och 4 skriver 20-byte-poster; äldre (8, 11, 20) skriver 24. Ordningen avgörs av
-    // versionen, och den andra storleken prövas om den första inte ger giltiga tider.
-    let order: [usize; 2] = if major >= 3 { [20, 24] } else { [24, 20] };
+    // FL 3 och 4 skriver 20-byte-poster; 8, 11 och 20 skriver 24. Ordningen måste följa
+    // versionen — annars läses en 24-byte-fil som 20-byte-poster och ger tider på två
+    // miljarder tick. Den andra storleken prövas bara som reserv.
+    let order: [usize; 2] = if major == 3 || major == 4 {
+        [20, 24]
+    } else {
+        [24, 20]
+    };
     let notes = order
         .into_iter()
         .find_map(|size| parse_records(payload, size))
@@ -133,12 +138,17 @@ pub fn parse_fsc(bytes: &[u8]) -> Result<FscScore, String> {
 ///
 /// En not utan längd (0) får ett sextondelssteg — FL:s score-poster kan bära 0, och en
 /// not som aldrig tar slut är värre än en som tar slut för tidigt.
+///
+/// Noter med anslag 0 hoppas över: i FL:s score är de **pauser** (arfraser skrivs med
+/// varannan post på 0), och en paus som infogas som en tyst not tar plats i rutnätet utan
+/// att låta.
 pub fn to_midi_notes(score: &FscScore, ppq: u16) -> Vec<crate::audio::smf::MidiNote> {
     let scale = ppq as f32 / score.timebase.max(1) as f32;
     let default_len = ((ppq as f32 / 4.0).round() as u32).max(1);
     score
         .notes
         .iter()
+        .filter(|n| n.velocity > 0)
         .map(|n| crate::audio::smf::MidiNote {
             start: (n.time as f32 * scale).round() as u32,
             length: if n.length == 0 {
@@ -166,8 +176,11 @@ fn parse_records(payload: &[u8], size: usize) -> Option<Vec<FscNote>> {
         let length = u32_at(rec, 8)?;
         let key = *rec.get(12)?;
         let velocity = *rec.get(size - 3)?;
-        // Tonhöjden går till B10 (131) i FL; allt över det är inte en notpost.
-        if time < last_time || key > 131 {
+        // Tonhöjden går till B10 (131) i FL; allt över det är inte en notpost. Tiden måste
+        // också vara rimlig: `Scores`-mappen innehåller **skaldefinitioner** (pentatonik,
+        // egyptiska skalor) som har samma behållare men andra poster — lästa som noter får
+        // de tider på två miljarder tick. En riktig fras är aldrig längre än ~2 600 takter.
+        if time < last_time || key > 131 || time > 1_000_000 {
             return None;
         }
         last_time = time;
@@ -186,7 +199,7 @@ mod tests {
     use super::*;
 
     /// Bygger en fil med samma rubrik som FL:s egna (FLhd/FLdt, version, varint-längd).
-    fn build(records: &[[u8; 20]], timebase: u16) -> Vec<u8> {
+    fn build_with(version: &str, timebase: u16, records: &[Vec<u8>]) -> Vec<u8> {
         let mut out = Vec::new();
         out.extend_from_slice(b"FLhd");
         out.extend_from_slice(&6u32.to_le_bytes());
@@ -196,16 +209,31 @@ mod tests {
         out.extend_from_slice(b"FLdt");
         let mut body = Vec::new();
         body.extend_from_slice(&[0xC7, 0x06]);
-        body.extend_from_slice(b"4.5.2\0");
+        body.extend_from_slice(version.as_bytes());
+        body.push(0);
         body.extend_from_slice(&[0x41, 0x00, 0x00, 0xE0]);
-        let bytes = (records.len() * 20) as u8;
-        body.push(bytes);
+        // LEB128, låg ordning först — som FL skriver den.
+        let mut len = records.len() * records.first().map_or(20, Vec::len);
+        loop {
+            let byte = (len & 0x7F) as u8;
+            len >>= 7;
+            if len == 0 {
+                body.push(byte);
+                break;
+            }
+            body.push(byte | 0x80);
+        }
         for r in records {
             body.extend_from_slice(r);
         }
         out.extend_from_slice(&(body.len() as u32).to_le_bytes());
         out.extend_from_slice(&body);
         out
+    }
+
+    fn build(records: &[[u8; 20]], timebase: u16) -> Vec<u8> {
+        let owned: Vec<Vec<u8>> = records.iter().map(|r| r.to_vec()).collect();
+        build_with("4.5.2", timebase, &owned)
     }
 
     fn record(time: u32, length: u32, key: u8, velocity: u8) -> [u8; 20] {
@@ -271,4 +299,47 @@ mod tests {
         assert_eq!(to_midi_notes(&zero, 480)[0].length, 120);
     }
 
+    fn record24(time: u32, length: u32, key: u8, velocity: u8) -> Vec<u8> {
+        let mut r = vec![0u8; 24];
+        r[0..4].copy_from_slice(&time.to_le_bytes());
+        r[8..12].copy_from_slice(&length.to_le_bytes());
+        r[12] = key;
+        r[13] = 120;
+        r[20] = 64; // pan, mitten
+        r[21] = velocity;
+        r[22] = 128;
+        r[23] = 128;
+        r
+    }
+
+    /// En fil från FL 11 har **24-byte-poster**, även när längden också går jämnt ut i 20.
+    /// Läses den som 20 får noterna tider på två miljarder tick — det var felet som gjorde
+    /// att skaldefinitionerna såg ut som trasiga fraser.
+    #[test]
+    fn a_file_from_fl_11_is_read_with_24_byte_records() {
+        let recs: Vec<Vec<u8>> = [60u8, 62, 64, 67, 69]
+            .iter()
+            .map(|key| record24(0, 384, *key, 100))
+            .collect();
+        let file = build_with("11.0.3", 96, &recs);
+        let score = parse_fsc(&file).expect("24-byte-poster ska läsas");
+        assert_eq!(score.notes.len(), 5);
+        assert_eq!(
+            score.notes.iter().map(|n| n.key).collect::<Vec<_>>(),
+            vec![60, 62, 64, 67, 69]
+        );
+        assert!(score.notes.iter().all(|n| n.time == 0));
+    }
+
+    /// Anslag 0 är en **paus** i FL:s score (arfraser skrivs med varannan post på 0). Den
+    /// finns kvar i scoren men infogas inte som en tyst not.
+    #[test]
+    fn a_note_with_zero_velocity_is_a_rest_and_is_not_inserted() {
+        let file = build(&[record(0, 24, 60, 100), record(24, 24, 72, 0)], 96);
+        let score = parse_fsc(&file).expect("filen ska gå att läsa");
+        assert_eq!(score.notes.len(), 2, "resten finns kvar i scoren");
+        let notes = to_midi_notes(&score, 480);
+        assert_eq!(notes.len(), 1, "men den infogas inte");
+        assert_eq!(notes[0].key, 60);
+    }
 }
