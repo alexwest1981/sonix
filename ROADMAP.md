@@ -54,7 +54,7 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 
 ---
 
-**Byggt efter roadmappens senaste revidering:** notlängder (`TakeNote.length_steps`), `Legato`/`Chop`/`Join`, artikulation per not, formelstyrning (`src/formula.rs`), Capture MIDI, strängrösten (dämpning i återkopplingen + kropp), Transmitter, A/B-jämförelse, take-lanes i kompen och i18n-revisionen.
+**Byggt efter roadmappens senaste revidering:** notlängder (`TakeNote.length_steps`), `Legato`/`Chop`/`Join`, artikulation per not, formelstyrning (`src/formula.rs`), Capture MIDI, strängrösten (dämpning i återkopplingen + kropp), Transmitter, A/B-jämförelse, take-lanes i kompen, i18n-revisionen, `Consolidate` (`82c611d`), `Flatten` (`b4a23ea`) och MusicXML-exporten (`485410d`).
 
 ## ⬜ Kvar
 
@@ -62,14 +62,11 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 
 | # | Vad | Storlek | Varför den ligger här |
 | :--: | :--- | :---: | :--- |
-| 1 | **`Consolidate` spår → klipp** | *S* | `freeze_track` renderar men lägger inget klipp; samma DSP med ett annat slut |
-| 2 | **`Flatten`** | *S* | frysningen finns, men inget kommando som gör den frysta bufferten till en region |
 | 1 | **Frasbank (`.fsc`/`.mid`) + Riff machine** | *M* | innehåll, inte kod: FL:s 2 111 fraser visar formen och pianorullen kan hämta dem |
 | 2 | **Score-loggen** (`Auto dump score`) | *M* | den enda FL-funktionen som ändrar hur man *arbetar*: spela in allt, dumpa det som blev bra |
 | 3 | **Groove-pool** | *M* | mallarna läses i dag, både XML och de 103 binära (`parse_agr_binary`), men en i taget |
 | 4 | **Temafiler (JSON) med semantiska namn** | *M* | `Theme::` används på **909** ställen (räknat) — mekaniskt, men 909 rader |
 | 5 | **Fokus/Tab mellan ytorna, zoom-kommandon, ledtrådar** | *S–M* | Abletons `Focus*` och `Zoom*` är adresserbara; 2 302 `sInfoText` mot våra 135 `on_hover_text` är den tydligaste hjälpklacken |
-| 6 | **MusicXML-export** | *M* | notation utan att bädda in LilyPond: skriv filen, låt LilyPond vara externt |
 
 ### Kräver ett nytt lager — inte en ratt
 
