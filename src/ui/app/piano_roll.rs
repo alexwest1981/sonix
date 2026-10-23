@@ -494,8 +494,15 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     self.status_message = format!("Satte {:.0} % på {} noter", p * 100.0, touched);
                 }
                 // **Capture MIDI** (Ableton): noterna du nyss spelade, utan att ha spelat in.
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ Fånga nyss spelade noter")).size(10.0).color(Theme::FL_ORANGE)))
-                    .on_hover_text(crate::i18n::t("Lägger noterna du spelat sedan den första i den valda tagningen, räknade till taktens steg."))
+                let captured = self.note_capture.len();
+                if ui.add_enabled(
+                        !self.note_capture.is_empty(),
+                        egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ Fånga nyss spelade noter")).size(10.0).color(Theme::FL_ORANGE)),
+                    )
+                    .on_hover_text(crate::tstatus!(
+                        "Lägger de {} noterna du spelat sedan den första i den valda tagningen, räknade till taktens steg.",
+                        captured
+                    ))
                     .clicked()
                 {
                     let bpm = self.bpm;
