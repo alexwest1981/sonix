@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 63** har en motsvarighet, **◐ 55** delvis, **✗ 24** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 63** har en motsvarighet, **◐ 56** delvis, **✗ 23** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -152,7 +152,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Sakura | 2 | ✗ | fysisk modellering (strängar) |
 | Sawer | 2 | ◐ | en oscillator; Sawer är supersaw med 7 röster |
 | Slicex | 2 | ◐ | choppern (slag → noter), ingen egen editor |
-| Drumaxx | 1 | ✗ | modellbaserad trummaskin (per pad) |
+| Drumaxx | 1 | ◐ | `audio::drum::DrumVoice` — tio syntetiserade röster (kagge, virvel, klapp, tre hi-hats, crash, två tommar, metronom) med tonhöjdsenvelop och brus, triggade per kanal i motorn (`[DrumVoice; MAX_DRUMS]`). ✗ egna modeller per pad och pad-redigering — rösterna är fasta |
 | Drumpad | 1 | ◐ | steprad + drum.rs |
 | FL Studio Mobile Rack | 1 | ✗ | mobilens rack |
 | Fruity Voltage Controller | 1 | ✅ | `ModSource::Voltage { value }` — fast läge, mätt att det står still |
