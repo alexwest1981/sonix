@@ -2581,3 +2581,70 @@ fn additive_synthesis_plays_only_the_drawn_harmonics() {
         "grundtonen ska vara borta: {fundamental:.4} mot {third:.4}"
     );
 }
+
+/// **Plucked! är en sträng, inte en vågform.** Tonhöjden kommer ur fördröjningslinjens längd,
+/// så provet mäter att 220 Hz in ger 220 Hz ut — och att strängen klingar av.
+#[test]
+fn a_plucked_string_rings_at_the_note_pitch_and_decays() {
+    let adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    let flt = FilterParams { cutoff: 12_000.0, resonance: 0.0 };
+    let env = AdsrParams::default();
+    let mut v = Voice::new(48_000.0);
+    v.trigger(57, 220.0, 1.0, 48_000.0);
+    let mut out = Vec::new();
+    for _ in 0..48_000 {
+        out.push(v.next_sample(
+            Waveform::Pluck,
+            &adsr,
+            &flt,
+            &env,
+            0.0,
+            &FmParams::default(),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            &HARMONICS_DEFAULT,
+        ));
+    }
+    let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+    let head = rms(&out[1_000..5_000]);
+    let tail = rms(&out[40_000..48_000]);
+    // Tonhöjd ur autokorrelation över det första halva sekunden.
+    let f0 = crate::audio::recorder::detect_pitch_hz(&out[2_000..22_000], 48_000.0).unwrap_or(0.0);
+    println!("sträng: f0 {f0:.1} Hz, RMS {head:.4} → {tail:.4}");
+    assert!((f0 - 220.0).abs() < 12.0, "strängen ska stämmas till noten: {f0:.1} Hz");
+    assert!(head > tail * 1.5, "strängen ska klinga av: {head:.4} → {tail:.4}");
+}
+
+/// **Ogun är inharmonisk.** Deltonerna ligger utanför heltalsmultiplarna: 2,76× ska höras
+/// medan 2× ska vara svag — det är skillnaden mot varje vanlig oscillator i synten.
+#[test]
+fn the_inharmonic_wave_puts_its_partials_off_the_harmonic_series() {
+    let adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    let flt = FilterParams { cutoff: 20_000.0, resonance: 0.0 };
+    let env = AdsrParams::default();
+    let mut v = Voice::new(48_000.0);
+    v.trigger(57, 220.0, 1.0, 48_000.0);
+    let mut out = Vec::new();
+    for _ in 0..24_000 {
+        out.push(v.next_sample(
+            Waveform::Inharmonic,
+            &adsr,
+            &flt,
+            &env,
+            0.0,
+            &FmParams::default(),
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            &HARMONICS_DEFAULT,
+        ));
+    }
+    let body = &out[6_000..];
+    let (fund, second, metal) = (mag_at(body, 220.0), mag_at(body, 440.0), mag_at(body, 607.2));
+    println!("ogun: 220 Hz {fund:.4}, 440 Hz {second:.4}, 607 Hz {metal:.4}");
+    assert!(fund > 0.05, "grundtonen ska höras: {fund:.4}");
+    assert!(metal > second * 2.0, "2,76× ska dominera över 2×: {metal:.4} mot {second:.4}");
+}

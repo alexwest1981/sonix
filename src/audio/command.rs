@@ -15,6 +15,12 @@ pub enum Waveform {
     Triangle,
     /// Additiv: summan av `HARMONIC_COUNT` sinusar med egna nivåer (orgeldrag).
     Additive,
+    /// **Plucked!**: Karplus-Strong — en brusmassa i en dämpad fördröjningslinje. Strängen
+    /// stäms av fördröjningens längd, så tonhöjden kommer ur linjen och inte ur en vågform.
+    Pluck,
+    /// **Ogun**: additivt men **inharmoniskt** — deltonerna ligger på 1, 2,76, 5,4 … som i en
+    /// metallskål, inte på heltalsmultiplar som i en sträng.
+    Inharmonic,
 }
 
 #[allow(dead_code)]
@@ -26,6 +32,8 @@ impl Waveform {
             Waveform::Square => "Fyrkant (Square)",
             Waveform::Triangle => "Triangel (Triangle)",
             Waveform::Additive => "Additiv (Additive)",
+            Waveform::Pluck => "Sträng (Pluck)",
+            Waveform::Inharmonic => "Metall (Inharmonic)",
         }
     }
 }

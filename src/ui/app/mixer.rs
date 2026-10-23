@@ -2963,6 +2963,8 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     (Waveform::Square, crate::i18n::t("⊓ Fyrkant")),
                     (Waveform::Triangle, crate::i18n::t("⋀ Triangel")),
                     (Waveform::Additive, crate::i18n::t("▥ Additiv")),
+                    (Waveform::Pluck, crate::i18n::t("𝄞 Sträng")),
+                    (Waveform::Inharmonic, crate::i18n::t("⛭ Metall")),
                 ];
                 for (wf, name) in waveforms {
                     let is_wf = self.waveform == wf;

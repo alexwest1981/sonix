@@ -376,6 +376,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "𝄞 Sträng" => "𝄞 Pluck",
+        "⛭ Metall" => "⛭ Metal",
         "📓 Anteckningar…" => "📓 Notes…",
         "📓 Anteckningar" => "📓 Notes",
         "Egna anteckningar om projektet — de följer med filen" => "Your own notes about the project — they travel with the file",
@@ -2554,6 +2556,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "𝄞 Sträng" => "𝄞 Streng",
+        "⛭ Metall" => "⛭ Metal",
         "📓 Anteckningar…" => "📓 Notater…",
         "📓 Anteckningar" => "📓 Notater",
         "Egna anteckningar om projektet — de följer med filen" => "Egne notater om projektet — de følger med filen",
@@ -4690,6 +4694,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "𝄞 Sträng" => "𝄞 Streng",
+        "⛭ Metall" => "⛭ Metall",
         "📓 Anteckningar…" => "📓 Notater…",
         "📓 Anteckningar" => "📓 Notater",
         "Egna anteckningar om projektet — de följer med filen" => "Egne notater om prosjektet — de følger med filen",
@@ -6826,6 +6832,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "𝄞 Sträng" => "𝄞 Saite",
+        "⛭ Metall" => "⛭ Metall",
         "📓 Anteckningar…" => "📓 Notizen…",
         "📓 Anteckningar" => "📓 Notizen",
         "Egna anteckningar om projektet — de följer med filen" => "Eigene Notizen zum Projekt — sie reisen mit der Datei",
@@ -8962,6 +8970,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "𝄞 Sträng" => "𝄞 Cuerda",
+        "⛭ Metall" => "⛭ Metal",
         "📓 Anteckningar…" => "📓 Notas…",
         "📓 Anteckningar" => "📓 Notas",
         "Egna anteckningar om projektet — de följer med filen" => "Notas propias sobre el proyecto — viajan con el archivo",
@@ -11098,6 +11108,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "𝄞 Sträng" => "𝄞 Corde",
+        "⛭ Metall" => "⛭ Métal",
         "📓 Anteckningar…" => "📓 Notes…",
         "📓 Anteckningar" => "📓 Notes",
         "Egna anteckningar om projektet — de följer med filen" => "Vos propres notes sur le projet — elles suivent le fichier",

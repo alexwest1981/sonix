@@ -27,6 +27,14 @@ pub struct Voice {
     /// Suboscillatorns fas (en oktav under noten), med egen ackumulator så att den inte
     /// hoppar när huvudoscillatorns fas slår om.
     pub sub_phase: f32,
+    /// Fas per delton för den inharmoniska vågformen (Ogun).
+    pub inh_phases: [f32; 6],
+    /// Karplus-Strong-linjen (Plucked!): bruset som blir en sträng.
+    pub pluck_buf: [f32; 4096],
+    pub pluck_pos: usize,
+    /// Sant när linjen fyllts för den här noten. Fylls vid första samplet, inte vid
+    /// triggningen, så att en röst som aldrig spelar inte kostar något.
+    pub pluck_started: bool,
     /// Key tracking: filtrets brytfrekvens förskjuts med notens avstånd från C4.
     /// 1,0 = ingen förskjutning (så beter sig gamla projekt).
     pub key_cutoff_ratio: f32,
@@ -262,6 +270,10 @@ pub struct ScheduledNote {
 impl Voice {
     pub fn new(sample_rate: f32) -> Self {
         Self {
+            inh_phases: [0.0; 6],
+            pluck_buf: [0.0; 4096],
+            pluck_pos: 0,
+            pluck_started: false,
             note: 0,
             freq: 440.0,
             phase: 0.0,
@@ -376,6 +388,57 @@ impl Voice {
                 } else {
                     -1.0
                 }
+            }
+            Waveform::Pluck => {
+                // Fördröjningens längd i sampel: `phase_inc` är 2π·f/sr, alltså sr/f = 2π/inc.
+                let sr = if self.phase_inc.abs() > 1e-9 {
+                    2.0 * PI * self.freq / self.phase_inc
+                } else {
+                    48_000.0
+                };
+                let len = (sr / self.freq.max(20.0)).clamp(2.0, 4095.0) as usize;
+                if !self.pluck_started {
+                    // Brus med fast frö per not: samma not låter likadant varje gång.
+                    let mut seed = 0x9E37_79B9u32 ^ (self.note as u32) << 16 | 1;
+                    for i in 0..self.pluck_buf.len() {
+                        seed ^= seed << 13;
+                        seed ^= seed >> 17;
+                        seed ^= seed << 5;
+                        self.pluck_buf[i] = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+                    }
+                    self.pluck_pos = 0;
+                    self.pluck_started = true;
+                }
+                let pos = self.pluck_pos;
+                let next = if pos + 1 >= len { 0 } else { pos + 1 };
+                let out = self.pluck_buf[pos];
+                // Lågpass i linjen: medelvärdet av två grannar dämpar diskanten först, som en
+                // sträng som tappar sina övertoner snabbast.
+                self.pluck_buf[pos] = 0.998 * 0.5 * (out + self.pluck_buf[next]);
+                self.pluck_pos = next;
+                out
+            }
+            Waveform::Inharmonic => {
+                // Metalliska deltoner: inga heltalsmultiplar, och nivåerna faller snabbt.
+                //
+                // **Varje delton har sin egen fas.** Att multiplicera den redan omslagna
+                // huvudfasen med 2,76 ger inte 2,76 gånger frekvensen: fasen hoppar vid
+                // omslaget, och då hamnar deltonen någon annanstans än på 607 Hz. Provet
+                // avslöjade det — 2× hördes starkt, 2,76× nästan inte alls.
+                const RATIOS: [f32; 6] = [1.0, 2.76, 5.40, 8.93, 13.34, 18.64];
+                let mut sum = 0.0;
+                let mut weight = 0.0;
+                for (i, ratio) in RATIOS.iter().enumerate() {
+                    let v = &mut self.inh_phases[i];
+                    *v += self.phase_inc * ratio;
+                    if *v >= two_pi {
+                        *v -= two_pi * (*v / two_pi).floor();
+                    }
+                    let level = 1.0 / (i as f32 + 1.0);
+                    sum += level * v.sin();
+                    weight += level;
+                }
+                sum / weight.max(0.001)
             }
             Waveform::Additive => {
                 // Summan av övertonerna, normaliserad så att nivån inte beror på hur

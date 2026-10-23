@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 58** har en motsvarighet, **◐ 48** delvis, **✗ 35** saknas helt.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 59** har en motsvarighet, **◐ 49** delvis, **✗ 33** saknas helt.
 
 *Statuskolumnen granskad mot `src/` 22 okt 2026, rad för rad: en ✅ bär namnet på
 mekanismen i kommentaren. Åtta rader var stale — chorus, phaser, granulizer och vocoder
@@ -129,7 +129,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | BassDrum | 9 | ◐ | kick i drum.rs |
 | BeepMap | 9 | ✗ | bild → ljud |
 | FLEX | 9 | ✗ | presetbaserad synth med eget bibliotek |
-| Ogun | 8 | ✗ | additiv (harmonisk serie) |
+| Ogun | 8 | ◐ | `Waveform::Inharmonic` — sex deltoner på 1 / 2,76 / 5,4 / 8,93 / 13,34 / 18,64. Mätt: 607 Hz 0,2027 mot 440 Hz 0,0018. ✗ egna modulations- och effektkedjor |
 | Fruity Dance | 5 | ✗ | animerad dansare (skämt) |
 | Wasp | 5 | ◐ | subtraktiv synth |
 | Fruity DrumSynth Live | 4 | ◐ | drum.rs (syntetiska trummor) |
@@ -147,7 +147,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Slicer | 2 | ◐ | choppern |
 | Fruity Video Player | 2 | ✅ | `audio::video` + videovy: referensfilm synkad till spelhuvudet, bildrutan hämtas med ffmpeg |
 | Harmless | 2 | ✗ | additiv/subtraktiv hybrid |
-| Plucked! | 2 | ✗ | Karplus-Strong |
+| Plucked! | 2 | ✅ | `Waveform::Pluck` — Karplus-Strong: brus i en dämpad fördröjningslinje. Mätt: 220 Hz in ger 220,7 Hz ut, RMS 0,1588 → 0,0750 |
 | ReWired | 2 | ✗ | ReWire-värd |
 | Sakura | 2 | ✗ | fysisk modellering (strängar) |
 | Sawer | 2 | ◐ | en oscillator; Sawer är supersaw med 7 röster |
