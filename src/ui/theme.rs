@@ -33,7 +33,7 @@ fn rgba([r, g, b, a]: [u8; 4]) -> Color32 {
 /// ```json
 /// { "orange": [255, 90, 0, 255], "bg": [10, 10, 12, 255] }
 /// ```
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Palette {
     /// `BG_DEEP`
@@ -253,24 +253,69 @@ impl Default for Palette {
 /// Paletten som ritas. Läses **en gång** från `~/.config/sonix/theme.json`; saknas filen
 /// skrivs standardpaletten dit så att den går att redigera, och en trasig fil ger standard
 /// (en temafil får aldrig hindra appen från att starta).
-pub fn palette() -> &'static Palette {
-    static PALETTE: std::sync::OnceLock<Palette> = std::sync::OnceLock::new();
-    PALETTE.get_or_init(|| {
-        let path = theme_path();
-        if !path.exists() {
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            if let Ok(json) = serde_json::to_string_pretty(&Palette::default()) {
-                let _ = std::fs::write(&path, compact_arrays(&json));
-            }
-            return Palette::default();
+/// **Temafilen läses om när den ändras** (0.9.79): `reload_if_changed` jämför filens
+/// mtime en gång per bildruta. Paletten är `Copy`, så anropen får en kopia i stället för ett
+/// lås — 29 färger är billigare att kopiera än att låna.
+static PALETTE: std::sync::RwLock<Option<Palette>> = std::sync::RwLock::new(None);
+static PALETTE_MTIME: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+fn mtime_stamp(path: &std::path::Path) -> u64 {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0)
+}
+
+fn load_palette() -> Palette {
+    let path = theme_path();
+    if !path.exists() {
+        if let Some(dir) = path.parent() {
+            let _ = std::fs::create_dir_all(dir);
         }
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|text| serde_json::from_str(&text).ok())
-            .unwrap_or_default()
-    })
+        if let Ok(json) = serde_json::to_string_pretty(&Palette::default()) {
+            let _ = std::fs::write(&path, compact_arrays(&json));
+        }
+        return Palette::default();
+    }
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// Läser om temafilen om den ändrats sedan förra anropet. Kostar en `metadata`-fråga per
+/// bildruta — inget mer, så länge filen står still.
+pub fn reload_if_changed() {
+    let path = theme_path();
+    let stamp = mtime_stamp(&path);
+    if stamp == PALETTE_MTIME.load(std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    PALETTE_MTIME.store(stamp, std::sync::atomic::Ordering::Relaxed);
+    let fresh = load_palette();
+    if let Ok(mut p) = PALETTE.write() {
+        *p = Some(fresh);
+    }
+}
+
+/// Prov som rör `SONIX_CONFIG_DIR` måste turas om: miljövariabeln är global, och två prov som
+/// byter den samtidigt ser varandras mappar.
+#[cfg(test)]
+pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub fn palette() -> Palette {
+    if let Ok(p) = PALETTE.read()
+        && let Some(pal) = *p
+    {
+        return pal;
+    }
+    let fresh = load_palette();
+    if let Ok(mut p) = PALETTE.write() {
+        *p = Some(fresh);
+    }
+    fresh
 }
 
 /// `serde_json` lägger varje tal i en array på egen rad; en färg blir fem rader. Filen finns
@@ -328,7 +373,8 @@ mod tests {
     /// Temat hamnar där `XDG_CONFIG_HOME` säger, inte alltid i `~/.config`.
     #[test]
     fn the_theme_path_follows_xdg_config_home() {
-        // Provet rör bara sökvägen; `palette()` läses en gång och cachar.
+        let _guard = super::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Provet rör bara sökvägen; paletten cachas i en `RwLock`.`
         let path = theme_path();
         assert!(path.ends_with("sonix/theme.json"));
     }
@@ -352,5 +398,49 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         let back: Palette = serde_json::from_str(&json).unwrap();
         assert_eq!(back, p);
+    }
+}
+
+#[cfg(test)]
+mod reload_tests {
+    use super::*;
+
+    /// **En ändrad temafil slår igenom utan omstart.** Provet pekar `SONIX_CONFIG_DIR` mot en
+    /// egen mapp, skriver en färg, läser om och jämför.
+    #[test]
+    fn editing_the_theme_file_changes_the_palette() {
+        let dir = std::env::temp_dir().join(format!("sonix-theme-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        // SAFETY: variabeln sätts och återställs inom provet. Andra prov som ritar med
+        // paletten kan se den här mappen under tiden — det ändrar bara färger, inte logik.
+        let _guard = super::ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = std::env::var_os("SONIX_CONFIG_DIR");
+        unsafe { std::env::set_var("SONIX_CONFIG_DIR", &dir) };
+        let path = theme_path();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+        let mut edited = Palette::default();
+        edited.orange = [1, 2, 3, 255];
+        std::fs::write(&path, serde_json::to_string(&edited).unwrap()).unwrap();
+        // mtime har nanosekundsupplösning, men ge filen en ny tidsstämpel ändå.
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&path, serde_json::to_string(&edited).unwrap()).unwrap();
+
+        reload_if_changed();
+        assert_eq!(palette().orange, [1, 2, 3, 255]);
+
+        let mut second = Palette::default();
+        second.orange = [9, 8, 7, 255];
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        std::fs::write(&path, serde_json::to_string(&second).unwrap()).unwrap();
+        reload_if_changed();
+        assert_eq!(palette().orange, [9, 8, 7, 255]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        match previous {
+            Some(v) => unsafe { std::env::set_var("SONIX_CONFIG_DIR", v) },
+            None => unsafe { std::env::remove_var("SONIX_CONFIG_DIR") },
+        }
     }
 }

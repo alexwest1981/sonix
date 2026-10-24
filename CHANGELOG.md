@@ -251,6 +251,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Theme edits apply without a restart.** The palette used to be read once into a `OnceLock`;
+  `reload_if_changed` now compares the file's mtime once per frame and reloads when it moves.
+  `Palette` is `Copy`, so `palette()` hands out a copy instead of a lock reference — the 2 476
+  call sites did not change. Cost when the file is untouched: one `metadata` call per frame.
+
 - **The tabs now follow what you do, not where things live:** SKAPA (rack, piano roll, vocal
   studio, Alchemy, drums, patcher, AI), ARRANGERA (timeline, video), MIXA (mixer, remix FX, stems,
   plugins) and VERKTYG (dice, chords, FX rack, tuner, song sections). The navigation starts on
