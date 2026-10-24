@@ -499,6 +499,7 @@ use crate::ui::theme::Theme;
 
         let data = SonixProjectData {
             notes: String::new(),
+            synth: None,
             name: "Testprojekt".to_string(),
             bpm: 133.0,
             follow_tempo: false,
@@ -1886,6 +1887,7 @@ use crate::ui::theme::Theme;
     fn test_plugin_slots_survive_project_json_roundtrip() {
         let data = SonixProjectData {
             notes: String::new(),
+            synth: None,
             name: "Plugin Test".into(),
             bpm: 120.0,
             follow_tempo: true,
@@ -2050,6 +2052,74 @@ use crate::ui::theme::Theme;
         pattern.comp_from(9.0, 0);
         let keys: Vec<u8> = pattern.comped_take().notes.iter().map(|n| n.key).collect();
         assert_eq!(keys, vec![60], "slutet tillbaka i lane 1: {keys:?}");
+    }
+
+    /// **En partial kan ha sin egen kontur.** Mallen gäller de andra, undantaget ligger ovanpå
+    /// och rör ingen annan partial — det är hela skillnaden mot att bara ha en gemensam form.
+    #[test]
+    fn one_partial_can_have_its_own_contour() {
+        let own = [0.0, 0.05, 0.0];
+        let envs = super::state::partial_envelopes_for(true, [0.01, 0.8, 0.5], 1.0, &[(4, own)]);
+        assert_eq!(envs[0], [0.01, 0.8, 0.5], "partial 1 följer mallen");
+        assert!((envs[3][1] - 0.2).abs() < 1e-6, "partial 4 får lutningen: {}", envs[3][1]);
+        assert_eq!(envs[4], own, "partial 5 har egen kontur");
+        assert!((envs[63][1] - 0.8 / 64.0).abs() < 1e-6);
+        // Avstängd envelop = neutral lista, undantagen spelar ingen roll.
+        let off =
+            super::state::partial_envelopes_for(false, [0.01, 0.8, 0.5], 1.0, &[(4, own)]);
+        assert_eq!(off[4], crate::audio::synth::PARTIAL_ENV_NEUTRAL[4]);
+    }
+
+    /// **Patchen överlever en sparning.** 64 dragstänger klarar inte serde som array (taket är
+    /// 32), så fältet sparas som lista — provet rundar genom JSON och kräver att den 64:e
+    /// stången, undantaget för en partial och formanten kommer tillbaka.
+    #[test]
+    fn the_synth_patch_survives_a_save_and_load() {
+        let mut harmonics = [0.0f32; crate::audio::synth::HARMONIC_COUNT];
+        harmonics[0] = 0.9;
+        harmonics[63] = 0.35;
+        let saved = super::project::SavedSynth {
+            waveform: crate::audio::command::Waveform::Additive,
+            adsr: AdsrParams::default(),
+            filter: FilterParams::default(),
+            filter_env: AdsrParams::default(),
+            filter_env_amount: 0.0,
+            fm: crate::audio::command::FmParams::default(),
+            sub_level: 0.4,
+            unison_voices: 3,
+            unison_detune_cents: 7.0,
+            glide_time: 0.2,
+            filter_drive: 0.1,
+            filter_key_track: 0.5,
+            harmonics,
+            partial_env: [0.01, 0.8, 0.2],
+            partial_env_tilt: 1.5,
+            partial_env_on: true,
+            partial_env_target: 5,
+            partial_env_overrides: vec![(4, [0.0, 0.05, 0.0])],
+            formant: crate::audio::synth::SpectralFormant {
+                center: 3.0,
+                width: 2.0,
+                amount: 0.6,
+            },
+            sweep: crate::audio::synth::SpectralSweep {
+                to: 9.0,
+                seconds: 1.0,
+            },
+        };
+        let json = serde_json::to_string(&saved).expect("patchen ska gå att spara");
+        assert!(
+            json.contains("\"harmonics\":[0.9,0.0") || json.contains("\"harmonics\":["),
+            "dragstängerna ska sparas som lista: {json}"
+        );
+        let back: super::project::SavedSynth =
+            serde_json::from_str(&json).expect("patchen ska gå att läsa");
+        assert_eq!(back.waveform, crate::audio::command::Waveform::Additive);
+        assert!((back.harmonics[63] - 0.35).abs() < 1e-6, "64:e stången");
+        assert_eq!(back.partial_env_overrides, vec![(4, [0.0, 0.05, 0.0])]);
+        assert!((back.formant.amount - 0.6).abs() < 1e-6);
+        assert!((back.sweep.to - 9.0).abs() < 1e-6);
+        assert_eq!(back.partial_env_target, 5);
     }
 
     /// **Bendkurvan:** en punkt hör till sitt steg, fördröjningen är resten, och en ny

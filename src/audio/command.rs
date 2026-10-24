@@ -66,7 +66,7 @@ pub struct PresetSettings {
     pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
 }
 
-mod harmonics_serde {
+pub(crate) mod harmonics_serde {
     use crate::audio::synth::HARMONIC_COUNT;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
@@ -249,7 +249,7 @@ use std::sync::{Arc, Mutex};
 /// bärvågens fas fram och tillbaka. `ratio` är modulatorns frekvens i förhållande till
 /// bärvågen (1 = samma ton, 2 = oktaven över), `index` är fasdjupet i radianer — 0 ger
 /// exakt den vanliga oscillatorn (provet `fm_at_zero_index_is_the_plain_oscillator`).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FmParams {
     pub ratio: f32,
     pub index: f32,

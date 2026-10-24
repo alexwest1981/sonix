@@ -174,6 +174,31 @@ pub struct ChannelStrip {
 pub use crate::audio::tempo::MAX_STEPS;
 
 /// Antal steg som spelas i ett pattern: en takt är 16, och ett pattern är 1–4 takter.
+/// Konturerna som skickas till motorn: mallen med lutning (partial k får `decay/(k+1)^lutning`,
+/// alltså dör höga partialer först), och undantagen ovanpå. `overrides` är (partial, kontur) med
+/// 0-baserat partialindex, så en enskild partial kan ha sin egen kurva utan att mallen tappas.
+pub fn partial_envelopes_for(
+    on: bool,
+    template: [f32; 3],
+    tilt: f32,
+    overrides: &[(usize, [f32; 3])],
+) -> [[f32; 3]; crate::audio::synth::HARMONIC_COUNT] {
+    let mut envs = crate::audio::synth::PARTIAL_ENV_NEUTRAL;
+    if on {
+        for (k, env) in envs.iter_mut().enumerate() {
+            env[0] = template[0];
+            env[1] = template[1] / (k as f32 + 1.0).powf(tilt);
+            env[2] = template[2];
+        }
+        for (k, env) in overrides {
+            if let Some(slot) = envs.get_mut(*k) {
+                *slot = *env;
+            }
+        }
+    }
+    envs
+}
+
 pub fn pattern_steps(bars: usize) -> usize {
     bars.clamp(1, 4) * crate::audio::tempo::STEPS_PER_BAR
 }

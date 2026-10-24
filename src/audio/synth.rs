@@ -226,7 +226,7 @@ pub fn partial_env_level(t: f32, env: PartialAdsr) -> f32 {
 /// partialindex, inte över Hz — därför flyttar den klangfärgen utan att röra tonhöjden.
 /// `center` är partialnummer (1 = grundtonen), `width` hur många partialer bandet spänner
 /// och `amount` hur mycket allt utanför bandet dämpas (0 = av, 1 = bara bandet kvar).
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpectralFormant {
     pub center: f32,
     pub width: f32,
@@ -262,7 +262,7 @@ impl SpectralFormant {
 /// nuvarande läge till `to` under `seconds` sekunder, räknat från anslaget. Per röst, så
 /// två toner som startar olika sent glider olika långt — därför kan tabellen inte användas
 /// medan svepet är på.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SpectralSweep {
     /// Partialnumret formanten glider till.
     pub to: f32,
@@ -389,7 +389,8 @@ impl AdditiveTable {
         samples
     }
 
-    /// Partialgränsen för ett band (klämd), för kontroll och prov.
+    /// Partialgränsen för ett band (klämd). Bara prov — appen läser gränsen via rösten.
+    #[cfg(test)]
     pub fn limit(&self, band: usize) -> usize {
         self.limits[band.min(ADDITIVE_BANDS - 1)]
     }

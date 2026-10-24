@@ -221,6 +221,126 @@ pub struct SavedChannel {
     pub sample_base_note: u8,
 }
 
+/// **Röstens patch** — det som annars bara lever i minnet medan appen är öppen. Utan den
+/// tappade ett sparat projekt dragstänger, partialkonturer, formant, tidsaxel, sub, unison,
+/// glide och FM: man hörde en annan klang efter omstart än före (0.9.41).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct SavedSynth {
+    pub waveform: crate::audio::command::Waveform,
+    pub adsr: AdsrParams,
+    pub filter: FilterParams,
+    pub filter_env: AdsrParams,
+    pub filter_env_amount: f32,
+    pub fm: crate::audio::command::FmParams,
+    pub sub_level: f32,
+    pub unison_voices: u8,
+    pub unison_detune_cents: f32,
+    pub glide_time: f32,
+    pub filter_drive: f32,
+    pub filter_key_track: f32,
+    /// Serde klarar inte `[f32; 64]` — sparas som lista (samma väg som i `PresetSettings`).
+    #[serde(with = "crate::audio::command::harmonics_serde")]
+    pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
+    pub partial_env: [f32; 3],
+    pub partial_env_tilt: f32,
+    pub partial_env_on: bool,
+    pub partial_env_target: usize,
+    pub partial_env_overrides: Vec<(usize, [f32; 3])>,
+    pub formant: crate::audio::synth::SpectralFormant,
+    pub sweep: crate::audio::synth::SpectralSweep,
+}
+
+impl SavedSynth {
+    pub(crate) fn from_app(app: &SonixApp) -> Self {
+        Self {
+            waveform: app.waveform,
+            adsr: app.adsr,
+            filter: app.filter,
+            filter_env: app.filter_env,
+            filter_env_amount: app.filter_env_amount,
+            fm: app.fm,
+            sub_level: app.sub_level,
+            unison_voices: app.unison_voices,
+            unison_detune_cents: app.unison_detune_cents,
+            glide_time: app.glide_time,
+            filter_drive: app.filter_drive,
+            filter_key_track: app.filter_key_track,
+            harmonics: app.harmonics,
+            partial_env: app.partial_env,
+            partial_env_tilt: app.partial_env_tilt,
+            partial_env_on: app.partial_env_on,
+            partial_env_target: app.partial_env_target,
+            partial_env_overrides: app.partial_env_overrides.clone(),
+            formant: app.formant,
+            sweep: app.sweep,
+        }
+    }
+
+    /// Lägger tillbaka patchen **och** säger till motorn. Utan kommandona hörs den sparade
+    /// klangen först nästa gång en ratt rörs.
+    pub(crate) fn apply(&self, app: &mut SonixApp) {
+        app.waveform = self.waveform;
+        app.adsr = self.adsr;
+        app.filter = self.filter;
+        app.filter_env = self.filter_env;
+        app.filter_env_amount = self.filter_env_amount;
+        app.fm = self.fm;
+        app.sub_level = self.sub_level;
+        app.unison_voices = self.unison_voices;
+        app.unison_detune_cents = self.unison_detune_cents;
+        app.glide_time = self.glide_time;
+        app.filter_drive = self.filter_drive;
+        app.filter_key_track = self.filter_key_track;
+        app.harmonics = self.harmonics;
+        app.partial_env = self.partial_env;
+        app.partial_env_tilt = self.partial_env_tilt;
+        app.partial_env_on = self.partial_env_on;
+        app.partial_env_target = self.partial_env_target;
+        app.partial_env_overrides = self.partial_env_overrides.clone();
+        app.formant = self.formant;
+        app.sweep = self.sweep;
+
+        use crate::audio::command::AudioCommand;
+        let envs = app.partial_envelopes();
+        let engine = &mut app.engine;
+        let _ = engine.send_command(AudioCommand::SetWaveform(self.waveform));
+        let _ = engine.send_command(AudioCommand::SetAdsr(self.adsr));
+        let _ = engine.send_command(AudioCommand::SetFilter(self.filter));
+        let _ = engine.send_command(AudioCommand::SetFilterEnv {
+            amount: self.filter_env_amount,
+            adsr: self.filter_env,
+        });
+        let _ = engine.send_command(AudioCommand::SetFm(self.fm));
+        let _ = engine.send_command(AudioCommand::SetSub {
+            level: self.sub_level,
+        });
+        let _ = engine.send_command(AudioCommand::SetUnison {
+            voices: self.unison_voices,
+            detune_cents: self.unison_detune_cents,
+        });
+        let _ = engine.send_command(AudioCommand::SetGlide {
+            seconds: self.glide_time,
+        });
+        let _ = engine.send_command(AudioCommand::SetFilterDrive {
+            drive: self.filter_drive,
+            key_track: self.filter_key_track,
+        });
+        let _ = engine.send_command(AudioCommand::SetHarmonics {
+            levels: self.harmonics,
+        });
+        let _ = engine.send_command(AudioCommand::SetPartialEnvelopes { envs });
+        let _ = engine.send_command(AudioCommand::SetSpectralFormant {
+            center: self.formant.center,
+            width: self.formant.width,
+            amount: self.formant.amount,
+        });
+        let _ = engine.send_command(AudioCommand::SetSpectralSweep {
+            to: self.sweep.to,
+            seconds: self.sweep.seconds,
+        });
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SonixProjectData {
     pub name: String,
@@ -246,6 +366,9 @@ pub struct SonixProjectData {
     #[serde(default)]
     pub song_key_scale: usize,
     pub swing: f32,
+    /// Röstens patch. Saknas i äldre filer — då gäller appens standardvärden som förut.
+    #[serde(default)]
+    pub synth: Option<SavedSynth>,
     pub master_volume: f32,
     pub master_pan: f32,
     pub tracks: Vec<SavedTrackData>,
@@ -798,6 +921,8 @@ pub struct LoadedProjectPayload {
     /// `default_follow_tempo()` = på, samma värde som en ny app har.
     pub follow_tempo: bool,
     pub swing: f32,
+    /// Röstens patch ur filen (`None` i äldre projekt).
+    pub synth: Option<SavedSynth>,
     pub master_volume: f32,
     pub master_pan: f32,
     pub tracks: Vec<PreloadedTrackData>,
@@ -1400,6 +1525,7 @@ pub fn load_demo_project(&mut self) {
                 notes: String::new(),
                 follow_tempo: true,
                 swing: 0.15,
+                synth: None,
                 tempo_points: Vec::new(),
                 song_key_root: 3,
                 song_key_scale: 0,
@@ -1475,6 +1601,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         song_key_root: self.song_key_root,
         song_key_scale: self.song_key_scale,
         swing: self.swing,
+        synth: Some(SavedSynth::from_app(self)),
         master_volume: self.master_volume,
         master_pan: self.master_pan,
         tracks: saved_tracks,
@@ -1912,6 +2039,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 song_key_root: data.song_key_root,
                 song_key_scale: data.song_key_scale,
                 swing: data.swing,
+                synth: data.synth,
                 master_volume: data.master_volume,
                 master_pan: data.master_pan,
                 tracks: preloaded_tracks,
@@ -1974,6 +2102,9 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
     self.song_key_root = payload.song_key_root;
     self.song_key_scale = payload.song_key_scale;
     self.swing = payload.swing;
+    if let Some(synth) = payload.synth.as_ref() {
+        synth.apply(self);
+    }
     self.master_volume = payload.master_volume;
     self.master_pan = payload.master_pan;
     self.bus_volume = bus_volume;

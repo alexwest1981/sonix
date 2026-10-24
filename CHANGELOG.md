@@ -7,8 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **One partial at a time.** In SPEKTRAL ENVELO, *Partial* selects 0 (the whole template, with
+  tilt) or a single partial; A/D/S then writes an override on top of the template. Proven by
+  `one_partial_can_have_its_own_contour`.
+
 ### Fixed
 
+- **Saving a project keeps the synth patch.** `SonixProjectData` had no voice at all: waveform,
+  ADSR, filter, FM, sub, unison, glide, filter drive/key tracking, drawbars, partial envelopes,
+  formant and time axis were lost on save, so a reopened project sounded like the default patch.
+  They now live in a `synth` block (`SavedSynth`, `#[serde(default)]` so older files open as
+  before) and are pushed to the engine on load. Proven by `the_synth_patch_survives_a_save_and_load`
+  (the 64th drawbar, a per-partial override and the formant survive JSON).
 - **High notes no longer alias.** The additive table was one unband-limited table for the
   whole keyboard, so a C7 with all 64 drawbars folded partial 20 down to 6.1 kHz. The table
   now holds one sum per distinct partial limit and the note picks its octave band; the voice

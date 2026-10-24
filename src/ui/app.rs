@@ -290,6 +290,10 @@ pub struct SonixApp {
     pub partial_env: [f32; 3],
     pub partial_env_tilt: f32,
     pub partial_env_on: bool,
+    /// 0 = reglagen gäller alla partialer, k = bara partial k (1–64).
+    pub partial_env_target: usize,
+    /// Egna konturer per partial, (0-baserat index, kontur). Mallen gäller de andra.
+    pub partial_env_overrides: Vec<(usize, [f32; 3])>,
     /// Steget som ✂-knappen i tagningfönstret kompar ifrån (0–15).
     pub comp_step: f32,
     /// Spektralt filter över partialindex: center (partialnummer), bredd och mängd.
@@ -959,6 +963,8 @@ impl SonixApp {
             partial_env: [0.002, 0.6, 0.0],
             partial_env_tilt: 1.0,
             partial_env_on: false,
+            partial_env_target: 0,
+            partial_env_overrides: Vec::new(),
             comp_step: 0.0,
             formant: crate::audio::synth::SpectralFormant::default(),
             sweep: crate::audio::synth::SpectralSweep::default(),

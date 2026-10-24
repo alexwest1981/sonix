@@ -3257,35 +3257,55 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                         ))
                         .changed();
                     if self.partial_env_on {
-                        env_changed |= ui
+                        ui.horizontal(|ui| {
+                            ui.label(crate::i18n::t("Partial:"));
+                            ui.add(
+                                egui::DragValue::new(&mut self.partial_env_target)
+                                    .range(0..=HARMONIC_COUNT)
+                                    .speed(1.0),
+                            )
+                            .on_hover_text(crate::i18n::t(
+                                "0 = reglagen gäller alla partialer, k = bara partial k",
+                            ));
+                        });
+                        let mut env = self.edited_partial_env();
+                        let mut shaped = false;
+                        shaped |= ui
                             .add(
-                                egui::Slider::new(&mut self.partial_env[0], 0.0..=2.0)
+                                egui::Slider::new(&mut env[0], 0.0..=2.0)
                                     .text(crate::i18n::t("Attack:"))
                                     .suffix(" s"),
                             )
                             .changed();
-                        env_changed |= ui
+                        shaped |= ui
                             .add(
-                                egui::Slider::new(&mut self.partial_env[1], 0.0..=5.0)
+                                egui::Slider::new(&mut env[1], 0.0..=5.0)
                                     .text(crate::i18n::t("Decay:"))
                                     .suffix(" s"),
                             )
                             .changed();
-                        env_changed |= ui
+                        shaped |= ui
                             .add(
-                                egui::Slider::new(&mut self.partial_env[2], 0.0..=1.0)
+                                egui::Slider::new(&mut env[2], 0.0..=1.0)
                                     .text(crate::i18n::t("Sustain:")),
                             )
                             .changed();
-                        env_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut self.partial_env_tilt, 0.0..=2.0)
-                                    .text(crate::i18n::t("Lutning:")),
-                            )
-                            .on_hover_text(crate::i18n::t(
-                                "0 = alla partialer dör lika fort, 1 = partial k dör k gånger snabbare",
-                            ))
-                            .changed();
+                        if shaped {
+                            self.store_partial_env(env);
+                            env_changed = true;
+                        }
+                        // Lutningen hör till mallen, inte till en enskild partial.
+                        if self.partial_env_target == 0 {
+                            env_changed |= ui
+                                .add(
+                                    egui::Slider::new(&mut self.partial_env_tilt, 0.0..=2.0)
+                                        .text(crate::i18n::t("Lutning:")),
+                                )
+                                .on_hover_text(crate::i18n::t(
+                                    "0 = alla partialer dör lika fort, 1 = partial k dör k gånger snabbare",
+                                ))
+                                .changed();
+                        }
                     }
                     if env_changed {
                         let _ = self.engine.send_command(AudioCommand::SetPartialEnvelopes {
@@ -3547,15 +3567,35 @@ fn rand_simple(seed: usize) -> f32 {
 impl SonixApp {
     /// Konturerna som skickas till motorn. Partial k får `decay / (k+1)^lutning`, alltså
     /// dör höga partialer först; avstängd blir listan neutral och rösten går tabellvägen.
+    /// Egna konturer ligger ovanpå mallen.
     pub(crate) fn partial_envelopes(&self) -> [[f32; 3]; HARMONIC_COUNT] {
-        let mut envs = crate::audio::synth::PARTIAL_ENV_NEUTRAL;
-        if self.partial_env_on {
-            for (k, env) in envs.iter_mut().enumerate() {
-                env[0] = self.partial_env[0];
-                env[1] = self.partial_env[1] / (k as f32 + 1.0).powf(self.partial_env_tilt);
-                env[2] = self.partial_env[2];
-            }
+        super::state::partial_envelopes_for(
+            self.partial_env_on,
+            self.partial_env,
+            self.partial_env_tilt,
+            &self.partial_env_overrides,
+        )
+    }
+
+    /// Konturen reglagen visar: mallen, eller partialens egen (eller den den får ur mallen).
+    fn edited_partial_env(&self) -> [f32; 3] {
+        let target = self.partial_env_target;
+        if target == 0 {
+            return self.partial_env;
         }
-        envs
+        let k = target - 1;
+        self.partial_envelopes()[k.min(HARMONIC_COUNT - 1)]
+    }
+
+    /// Sparar reglagens kontur på rätt ställe: mallen om ingen partial är vald, annars som
+    /// undantag för den partialen.
+    fn store_partial_env(&mut self, env: [f32; 3]) {
+        if self.partial_env_target == 0 {
+            self.partial_env = env;
+        } else {
+            let k = self.partial_env_target - 1;
+            self.partial_env_overrides.retain(|(index, _)| *index != k);
+            self.partial_env_overrides.push((k, env));
+        }
     }
 }
