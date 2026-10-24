@@ -296,6 +296,8 @@ pub struct SonixApp {
     pub partial_env_overrides: Vec<(usize, [f32; 3])>,
     /// Steget som ✂-knappen i tagningfönstret kompar ifrån (0–15).
     pub comp_step: f32,
+    /// 0 = kompningen gäller alla takter, k = bara takt k.
+    pub comp_bar: usize,
     /// Spektralt filter över partialindex: center (partialnummer), bredd och mängd.
     pub formant: crate::audio::synth::SpectralFormant,
     /// Tidsaxeln: klangformen glider från formantens läge till `to` under `seconds`.
@@ -968,6 +970,7 @@ impl SonixApp {
             partial_env_target: 0,
             partial_env_overrides: Vec::new(),
             comp_step: 0.0,
+            comp_bar: 0,
             formant: crate::audio::synth::SpectralFormant::default(),
             sweep: crate::audio::synth::SpectralSweep::default(),
             sub_level: 0.0,

@@ -701,7 +701,9 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                                 .map(|d| d.subsec_nanos() as u64 | 1)
                                 .unwrap_or(1),
                         );
-                        let take = pat.comped_take();
+                        // Kompningen kan gälla en viss takt i blocket: `sip / 16` är takten
+                        // inne i patternet, `step_in_bar` är alltid 0–15 (tagningen är en takt).
+                        let take = pat.comped_take_at(Some(sip / 16));
                         let take_plan = crate::midi_take::plan_for_step_rolled(
                             &take,
                             step_in_bar,

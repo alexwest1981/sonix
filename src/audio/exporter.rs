@@ -93,6 +93,9 @@ pub struct PatternSnap {
     /// spelade dem där de faktiskt spelades — alltså ännu en skillnad mellan
     /// filen och det du hör.
     pub take: crate::midi_take::Take,
+    /// Tagningen per takt i patternet: kompningen kan välja olika lane per takt. Tom lista
+    /// betyder att `take` gäller alla takter (äldre ögonblicksbilder och prov).
+    pub bar_takes: Vec<crate::midi_take::Take>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -420,9 +423,16 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 // anslag, och rutnätets rutor för dem hoppas över. Planen läses före
                 // grinden, annars tystnar en not som spelades sent i förra steget.
                 let step_samples = (60.0 / spec.bpm.max(1.0) / 4.0 * spec.sample_rate as f32) as u32;
+                // Tagningen är **en takt**: `pib` är steg i hela blocket (0–63), så både
+                // tagningens steg och kompningens takt måste räknas ur det. Förut skickades
+                // `pib` rakt in, och då spelade ingen tagning i en flertaktsblocks andra takt.
+                let take = pat
+                    .bar_takes
+                    .get(pib / crate::audio::tempo::STEPS_PER_BAR)
+                    .unwrap_or(&pat.take);
                 let plan = crate::midi_take::plan_for_step(
-                    &pat.take,
-                    pib,
+                    take,
+                    pib % crate::audio::tempo::STEPS_PER_BAR,
                     step_samples,
                     &|key, slot| (48..72).contains(&key) && pat.piano_roll[(key - 48) as usize][slot],
                 );
@@ -1211,6 +1221,7 @@ mod tests {
             notes,
             piano_roll,
             take,
+            bar_takes: Vec::new(),
         });
         RenderSpec {
             sample_rate: 44100,
@@ -1543,6 +1554,33 @@ mod tests {
         assert!(
             sub > control * 4.0,
             "suboscillatorn hörs inte i exporten: {sub} mot kontrollen {control}"
+        );
+    }
+
+    /// **Tagningen spelar också i blockets andra takt.** `pib` är steg i hela blocket
+    /// (0–63), men tagningen är en takt: förut skickades 16 rakt in i planen och då spelade
+    /// ingen tagning i takt 2 — bara rutnätet.
+    #[test]
+    fn a_take_note_plays_in_the_second_bar_of_a_block() {
+        let mut roll = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        roll[12][0] = true;  // MIDI 60 på taktens första steg
+        roll[12][16] = true; // och i blockets andra takt
+        let mut steps = [false; crate::audio::tempo::MAX_STEPS];
+        steps[0] = true;
+        steps[16] = true;
+        let mut take = crate::midi_take::Take::new();
+        take.push(0.0, 60, 0.9);
+        let mut spec = synth_spec_with_take(roll, steps, 60, take);
+        spec.num_bars = 2;
+        spec.tracks[0].clip_bars[0] = 2;
+
+        let has_note = |cmds: &[AudioCommand]| {
+            cmds.iter().any(|c| matches!(c, AudioCommand::NoteOnDelayed { note: 60, .. }))
+        };
+        assert!(has_note(&triggers_for_step(&spec, 0, 0)), "takt 1");
+        assert!(
+            has_note(&triggers_for_step(&spec, 1, 0)),
+            "tagningen ska höras i takt 2 också"
         );
     }
 

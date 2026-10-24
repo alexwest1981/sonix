@@ -3612,9 +3612,10 @@ impl SonixApp {
         let mut open = self.show_takes_modal;
         let mut pick: Option<usize> = None;
         let mut delete: Option<usize> = None;
-        let mut comp_at: Option<(f32, usize)> = None;
-        let mut remove_comp: Option<f32> = None;
+        let mut comp_at: Option<(usize, f32, usize)> = None;
+        let mut remove_comp: Option<(Option<usize>, f32)> = None;
         let mut comp_step = self.comp_step;
+        let mut comp_bar = self.comp_bar;
         egui::Window::new(crate::i18n::t("🧵 Tagningar"))
             .open(&mut open)
             .collapsible(false)
@@ -3646,6 +3647,11 @@ impl SonixApp {
                             .range(0.0..=15.0)
                             .speed(0.25),
                     );
+                    ui.label(crate::i18n::t("Takt:"));
+                    ui.add(egui::DragValue::new(&mut comp_bar).range(0..=4))
+                        .on_hover_text(crate::i18n::t(
+                            "0 = kompningen gäller alla takter, k = bara takt k",
+                        ));
                 });
                 for (i, notes) in lanes {
                     ui.horizontal(|ui| {
@@ -3663,7 +3669,7 @@ impl SonixApp {
                             ))
                             .clicked()
                         {
-                            comp_at = Some((comp_step, i));
+                                            comp_at = Some((comp_bar, comp_step, i));
                         }
                         if i > 0 && ui.button("🗑").clicked() {
                             delete = Some(i);
@@ -3683,13 +3689,20 @@ impl SonixApp {
                     );
                     for slice in &pat.comp {
                         ui.horizontal(|ui| {
-                            ui.label(crate::tstatus!(
-                                "steg {:.0} → lane {}",
-                                slice.from_step,
-                                slice.take + 1
+                            let scope = match slice.bar {
+                                Some(bar) => crate::tstatus!("takt {} · ", bar + 1),
+                                None => String::new(),
+                            };
+                            ui.label(format!(
+                                "{scope}{}",
+                                crate::tstatus!(
+                                    "steg {:.0} → lane {}",
+                                    slice.from_step,
+                                    slice.take + 1
+                                )
                             ));
                             if ui.button("🗑").clicked() {
-                                remove_comp = Some(slice.from_step);
+                                remove_comp = Some((slice.bar, slice.from_step));
                             }
                         });
                     }
@@ -3720,17 +3733,32 @@ impl SonixApp {
             self.status_message = crate::tstatus!("🗑 Tog bort lane {}", i + 1);
         }
         self.comp_step = comp_step;
-        if let Some((step, lane)) = comp_at
+        self.comp_bar = comp_bar;
+        if let Some((bar, step, lane)) = comp_at
             && let Some(pat) = self.patterns.get_mut(self.selected_pattern)
         {
-            pat.comp_from(step, lane);
-            self.status_message = crate::tstatus!("✂ Lane {} spelar från steg {:.0}", lane + 1, step);
+            let bar = if bar == 0 { None } else { Some(bar - 1) };
+            pat.comp_from_bar(bar, step, lane);
+            self.status_message = match bar {
+                Some(bar) => crate::tstatus!(
+                    "✂ Lane {} spelar från steg {:.0} i takt {}",
+                    lane + 1,
+                    step,
+                    bar + 1
+                ),
+                None => crate::tstatus!(
+                    "✂ Lane {} spelar från steg {:.0} i alla takter",
+                    lane + 1,
+                    step
+                ),
+            };
         }
-        if let Some(step) = remove_comp
+        if let Some((bar, step)) = remove_comp
             && let Some(pat) = self.patterns.get_mut(self.selected_pattern)
         {
-            pat.comp
-                .retain(|slice| (slice.from_step - step).abs() > 0.001);
+            pat.comp.retain(|slice| {
+                !((slice.from_step - step).abs() <= 0.001 && slice.bar == bar)
+            });
             self.status_message = crate::tstatus!("🗑 Tog bort komp vid steg {:.0}", step);
         }
         self.show_takes_modal = open;

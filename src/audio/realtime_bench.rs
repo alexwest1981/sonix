@@ -203,6 +203,7 @@ pub fn reference_spec() -> RenderSpec {
             notes,
             piano_roll,
             take: crate::midi_take::Take::new(),
+            bar_takes: Vec::new(),
         }],
         tracks: vec![
             TrackSnap { role: TrackRole::Drums, clips, clip_bars: [1; 32], volume: 1.0, muted: false, solo: false },

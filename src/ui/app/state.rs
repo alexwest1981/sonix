@@ -290,6 +290,10 @@ pub struct BendPoint {
 /// några gränser.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CompSlice {
+    /// `None` = kompningen gäller varje takt, `Some(bar)` = bara den takten (0-baserad).
+    /// Äldre filer har inget fält och läses som `None`, alltså precis som förut.
+    #[serde(default)]
+    pub bar: Option<usize>,
     pub from_step: f32,
     pub take: usize,
 }
@@ -320,34 +324,60 @@ impl Pattern {
             .collect()
     }
 
-    /// Låter `take` spela från `from_step` till nästa komp. Ett komp på samma steg ersätts.
-    pub fn comp_from(&mut self, from_step: f32, take: usize) {
+    /// Låter `take` spela från `from_step` till nästa komp. `None` = varje takt,
+    /// `Some(bar)` = bara den takten.
+    /// Samma sak, men bara för en takt (`Some(bar)`, 0-baserad). Ett komp på samma steg och
+    /// takt ersätts; ett komp för en takt vinner över ett globalt komp på samma steg.
+    pub fn comp_from_bar(&mut self, bar: Option<usize>, from_step: f32, take: usize) {
         let from_step = from_step.clamp(0.0, 15.99);
         let take = take.min(self.alt_takes.len());
-        self.comp
-            .retain(|slice| (slice.from_step - from_step).abs() > 0.001);
-        self.comp.push(CompSlice { from_step, take });
-        self.comp.sort_by(|a, b| a.from_step.total_cmp(&b.from_step));
+        self.comp.retain(|slice| {
+            let same_step = (slice.from_step - from_step).abs() <= 0.001;
+            !(same_step && slice.bar == bar)
+        });
+        self.comp.push(CompSlice {
+            bar,
+            from_step,
+            take,
+        });
+        self.comp.sort_by(|a, b| {
+            a.from_step
+                .total_cmp(&b.from_step)
+                .then(a.bar.is_some().cmp(&b.bar.is_some()))
+        });
     }
 
     /// Tagningen som spelas: den aktiva lane:n, eller — om patternet är kompat — noterna ur
     /// varje lane för de steg där den lane:n är vald. Ett komp som pekar utanför lanes
     /// faller tillbaka på den aktiva lane:n.
     pub fn comped_take(&self) -> crate::midi_take::Take {
+        self.comped_take_at(None)
+    }
+
+    /// Kompningen för en viss takt (`Some(bar)`) eller för alla (`None`). Ett komp som pekar
+    /// ut en takt vinner över ett globalt på samma steg; noter före första kompningen följer
+    /// den aktiva lane:n, som förut.
+    pub fn comped_take_at(&self, bar: Option<usize>) -> crate::midi_take::Take {
         if self.comp.is_empty() {
             return self.active_take().clone();
         }
         let lanes = self.take_lanes();
         let last_lane = lanes.len().saturating_sub(1);
+        let mut slices: Vec<(f32, bool, usize)> = self
+            .comp
+            .iter()
+            .filter(|slice| slice.bar.is_none() || slice.bar == bar)
+            .map(|slice| (slice.from_step, slice.bar.is_some(), slice.take))
+            .collect();
+        slices.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
         let mut notes = Vec::new();
         for (lane, take) in lanes.iter().enumerate() {
             for note in &take.notes {
-                let chosen = self
-                    .comp
+                let chosen = slices
                     .iter()
                     .rev()
-                    .find(|slice| slice.from_step <= note.pos)
-                    .map(|slice| slice.take.min(last_lane))
+                    .find(|(from_step, _, _)| *from_step <= note.pos)
+                    .map(|(_, _, take)| (*take).min(last_lane))
                     .unwrap_or(self.active_take.min(last_lane));
                 if chosen == lane {
                     notes.push(note.clone());

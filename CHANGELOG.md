@@ -23,8 +23,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tilt) or a single partial; A/D/S then writes an override on top of the template. Proven by
   `one_partial_can_have_its_own_contour`.
 
+### Added
+
+- **Comping per bar.** `CompSlice.bar` lets a comp apply to one bar (`None` keeps the old
+  "every bar" behaviour), picked with *Takt* in the takes window; a bar-specific comp wins over
+  a global one on the same step, and the export snapshot carries one take per bar.
+
 ### Fixed
 
+- **Takes now play in bars 2–4 of a multi-bar block in exported audio.** The exporter passed the
+  block's step index (0–63) to a take that is one bar long, so only the grid played there. The
+  take is now read with `pib % 16` and its comp bar from `pib / 16`; proven by
+  `a_take_note_plays_in_the_second_bar_of_a_block` (fails without the modulo).
 - **Saving a project keeps the FX rack.** The master rack (pedal chain, Visual EQ, compressor
   release, convolver) was not part of the project file, so a reopened song came back with the
   stock rack. Pedals are stored by id and values — names and colours come from the catalogue —

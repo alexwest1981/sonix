@@ -2042,21 +2042,57 @@ use crate::ui::theme::Theme;
         // Utan komp spelas den aktiva lane:n, som förut.
         assert_eq!(pattern.comped_take().notes.len(), 1, "bara lane 1 utan komp");
 
-        pattern.comp_from(8.0, 1);
+        pattern.comp_from_bar(None, 8.0, 1);
         let comped = pattern.comped_take();
         let keys: Vec<u8> = comped.notes.iter().map(|n| n.key).collect();
         assert_eq!(keys, vec![60, 67], "ena halvan ur varje lane: {keys:?}");
 
         // Ett komp mitt i ett annat delar det: från steg 4 tillbaka till lane 1 rör inte 8:an.
-        pattern.comp_from(4.0, 0);
+        pattern.comp_from_bar(None, 4.0, 0);
         let keys: Vec<u8> = pattern.comped_take().notes.iter().map(|n| n.key).collect();
         assert_eq!(keys, vec![60, 67], "dela vid 4 ska inte ändra 8:an: {keys:?}");
 
         // Komp från 9 med lane 1 tar tillbaka slutet — lane 1 har ingen not där, så
         // 8:ans not försvinner i stället för att flyttas (komp väljer lane, det flyttar inget).
-        pattern.comp_from(9.0, 0);
+        pattern.comp_from_bar(None, 9.0, 0);
         let keys: Vec<u8> = pattern.comped_take().notes.iter().map(|n| n.key).collect();
         assert_eq!(keys, vec![60], "slutet tillbaka i lane 1: {keys:?}");
+    }
+
+    /// **Komp per takt:** takt 1 ur lane 1, takt 2 ur lane 2 — och ett komp för en takt
+    /// vinner över ett globalt komp på samma steg.
+    #[test]
+    fn comping_can_pick_a_lane_per_bar() {
+        let mut pattern = super::state::Pattern {
+            name: "Takter".to_string(),
+            color: eframe::egui::Color32::WHITE,
+            bars: 2,
+            bends: Vec::new(),
+            alt_takes: Vec::new(),
+            active_take: 0,
+            comp: Vec::new(),
+            channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
+            channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
+            piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
+            take: crate::midi_take::Take::new(),
+        };
+        pattern.take.push(1.0, 60, 0.8);
+        let mut second = crate::midi_take::Take::new();
+        second.push(1.0, 67, 0.9);
+        pattern.alt_takes.push(second);
+
+        pattern.comp_from_bar(Some(1), 0.0, 1);
+        let bar0: Vec<u8> = pattern.comped_take_at(Some(0)).notes.iter().map(|n| n.key).collect();
+        let bar1: Vec<u8> = pattern.comped_take_at(Some(1)).notes.iter().map(|n| n.key).collect();
+        assert_eq!(bar0, vec![60], "takt 1 följer den aktiva lane:n");
+        assert_eq!(bar1, vec![67], "takt 2 tar lane 2");
+
+        // Ett globalt komp på samma steg får inte slå ut taktkompningen.
+        pattern.comp_from_bar(None, 0.0, 0);
+        let bar1: Vec<u8> = pattern.comped_take_at(Some(1)).notes.iter().map(|n| n.key).collect();
+        assert_eq!(bar1, vec![67], "taktkompningen vinner över det globala: {bar1:?}");
+        let bar0: Vec<u8> = pattern.comped_take_at(Some(0)).notes.iter().map(|n| n.key).collect();
+        assert_eq!(bar0, vec![60]);
     }
 
     /// **En partial kan ha sin egen kontur.** Mallen gäller de andra, undantaget ligger ovanpå
