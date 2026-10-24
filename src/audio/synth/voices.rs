@@ -541,6 +541,7 @@ impl Voice {
     /// **Monovägen:** summerar stereoparet. Med en 6-op-patch utan panorering är den identisk
     /// med förut, och alla prov som bryr sig om värdet men inte bredden går här.
     #[cfg(test)]
+    #[allow(clippy::too_many_arguments)]
     #[inline(always)]
     pub fn next_sample(
         &mut self,
@@ -572,6 +573,9 @@ impl Voice {
         (l + r) * 0.5
     }
 
+    // Rösten tar emot patchen som argument i stället för att äga en kopia; en struct hade
+    // byggts om per sampel. Samma skäl som för `SixOpVoice::matrix_sample`.
+    #[allow(clippy::too_many_arguments)]
     #[inline(always)]
     pub fn next_sample_stereo(
         &mut self,

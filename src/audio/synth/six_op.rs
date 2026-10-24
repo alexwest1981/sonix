@@ -319,6 +319,8 @@ impl SixOpVoice {
     /// Matrisen för **en** unisonstämma. Indexen är både källa och mål i samma array
     /// (`out[source]` när `out[target]` skrivs), så en iteratoromskrivning gör koden otydligare.
     #[allow(clippy::needless_range_loop, reason = "källa och mål indexerar samma array")]
+    // Argumenten är inparametrar i innerloopen; en struct hade kopierats per sampel.
+    #[allow(clippy::too_many_arguments)]
     #[inline]
     fn matrix_sample(
         &mut self,
