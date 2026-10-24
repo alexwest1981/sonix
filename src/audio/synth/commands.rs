@@ -204,6 +204,9 @@ impl SynthEngine {
                 for pan in &mut params.pan {
                     *pan = pan.clamp(-1.0, 1.0);
                 }
+                for slope in &mut params.filter_slope {
+                    *slope = (*slope).clamp(1, 2);
+                }
                 params.lfo2_rate = params.lfo2_rate.clamp(0.0, 40.0);
                 params.lfo2_depth = params.lfo2_depth.clamp(0.0, 1.0);
                 params.lfo2_target = params.lfo2_target.min(2);

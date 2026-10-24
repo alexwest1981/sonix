@@ -3553,6 +3553,21 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                             true
                                         };
                                 }
+                                // Branthet: 12 eller 24 dB/oktav. 24 dB är samma filter en
+                                // gång till, med eget tillstånd.
+                                for (slope, label) in [(1u8, "12"), (2, "24")] {
+                                    six_changed |= ui
+                                        .selectable_label(
+                                            self.six_op.filter_slope[target] == slope,
+                                            label,
+                                        )
+                                        .on_hover_text(crate::i18n::t("dB per oktav"))
+                                        .clicked()
+                                        && {
+                                            self.six_op.filter_slope[target] = slope;
+                                            true
+                                        };
+                                }
                             });
                             ui.separator();
                             // **LFO:** hastighet, djup och mål. Djup 0 = av, alltså påverkar

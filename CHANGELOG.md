@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — filter slope per operator (Sytrus)
+
+- `filter_slope: [u8; 6]`, 1 = 12 dB/octave (default, old patches unchanged) or 2 = 24 dB:
+  the same filter a second time with its own state (`filters2`).
+  Prov `a_steeper_filter_takes_more_above_the_cutoff`: one octave above the cutoff the 24 dB
+  filter passes less than half of what the 12 dB one does.
+- **12 / 24** buttons next to LP/BP/HP/NO in the 6-op panel.
+
 ### Changed — the synth bus is stereo, and operators can be panned
 
 - **Bug fixed:** the engine collapsed every sample voice to mono (`(s_l + s_r) * 0.5`) before

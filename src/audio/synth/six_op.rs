@@ -75,6 +75,10 @@ pub struct SixOpParams {
     /// patch utan panorering låter exakt som förut.
     #[serde(default = "no_pitch")]
     pub pan: [f32; SIX_OP_COUNT],
+    /// **Filterbranthet per operator:** 1 = 12 dB/oktav, 2 = 24 dB (två steg i serie).
+    /// Standard 1, så en patch från före fältet låter som den gjorde.
+    #[serde(default = "one_slope")]
+    pub filter_slope: [u8; SIX_OP_COUNT],
     /// **Andra LFO:n** — Sytrus har flera. Egen fas, eget mål, så tonhöjd och cutoff kan röra sig
     /// olika fort. Djup 0 = av.
     #[serde(default)]
@@ -87,6 +91,10 @@ pub struct SixOpParams {
 
 pub fn no_pitch() -> [f32; SIX_OP_COUNT] {
     [0.0; SIX_OP_COUNT]
+}
+
+pub fn one_slope() -> [u8; SIX_OP_COUNT] {
+    [1; SIX_OP_COUNT]
 }
 
 /// Lågpasset per operator. Egen struct i stället för `FilterParams`: matrisen sparas som
@@ -159,6 +167,7 @@ impl Default for SixOpParams {
             key_track: no_pitch(),
             env_curve: no_pitch(),
             pan: no_pitch(),
+            filter_slope: one_slope(),
             lfo2_rate: 0.0,
             lfo2_depth: 0.0,
             lfo2_target: 0,
@@ -190,6 +199,8 @@ pub struct SixOpVoice {
     last: [[f32; SIX_OP_COUNT]; MAX_UNISON],
     envs: [AdsrVoice; SIX_OP_COUNT],
     filters: [[StateVariableFilter; SIX_OP_COUNT]; MAX_UNISON],
+    /// Andra steget när brantheten är 24 dB — eget tillstånd, samma inställning.
+    filters2: [[StateVariableFilter; SIX_OP_COUNT]; MAX_UNISON],
     lfo_phase: f32,
     lfo2_phase: f32,
     sample_rate: f32,
@@ -202,6 +213,9 @@ impl SixOpVoice {
             last: [[0.0; SIX_OP_COUNT]; MAX_UNISON],
             envs: std::array::from_fn(|_| AdsrVoice::new(sample_rate)),
             filters: std::array::from_fn(|_| {
+                std::array::from_fn(|_| StateVariableFilter::new(sample_rate))
+            }),
+            filters2: std::array::from_fn(|_| {
                 std::array::from_fn(|_| StateVariableFilter::new(sample_rate))
             }),
             lfo_phase: 0.0,
@@ -393,6 +407,16 @@ impl SixOpVoice {
                     3 => state.process_notch(value, &p),
                     _ => state.process_lowpass(value, &p),
                 };
+                // 24 dB: samma filter en gång till, med eget tillstånd.
+                if params.filter_slope[target] >= 2 {
+                    let second = &mut self.filters2[u][target];
+                    value = match filter.mode {
+                        1 => second.process_bandpass(value, &p),
+                        2 => second.process_highpass(value, &p),
+                        3 => second.process_notch(value, &p),
+                        _ => second.process_lowpass(value, &p),
+                    };
+                }
             }
             out[target] = value;
         }
@@ -568,6 +592,27 @@ mod tests {
 
         assert!(fast > straight * 1.5, "snabb kurva ska ge mer tidigt: {fast:.4} mot {straight:.4}");
         assert!(slow < straight * 0.7, "mjuk kurva ska ge mindre tidigt: {slow:.4} mot {straight:.4}");
+    }
+
+    /// **Brantheten är 12 eller 24 dB.** Samma cutoff, en oktav över: 24 dB dämpar mer.
+    #[test]
+    fn a_steeper_filter_takes_more_above_the_cutoff() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.2 };
+        params.ratios[1] = 2.0;
+        params.matrix[1][0] = 3.0;
+        params.filters[0] = OpFilter { cutoff: 400.0, resonance: 0.7, mode: 0 };
+
+        let high = |p: &SixOpParams| mag_at(&render(p, 220.0, 9_600)[4_800..], 880.0);
+        let gentle = high(&params);
+        params.filter_slope[0] = 2;
+        let steep = high(&params);
+
+        assert!(gentle > 0.0);
+        assert!(
+            steep < gentle * 0.5,
+            "24 dB ska dämpa mer vid 880 Hz: {steep:.5} mot {gentle:.5}"
+        );
     }
 
     /// **Utan modulering är 6-op en sinus.** Matrisen noll och bara operator 1 hörd ger
