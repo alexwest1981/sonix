@@ -77,6 +77,8 @@ pub struct RackChannel {
 pub struct PatternSnap {
     /// MPE-bend som hör till patternet; spelas även i offline-exporten.
     pub bends: Vec<crate::ui::app::state::BendPoint>,
+    /// Pedalkurvan (CC64) — utan den tappar exporten allt trampande.
+    pub pedals: Vec<crate::ui::app::state::PedalPoint>,
     /// Per Channel-Rack channel step grid.
     pub steps: Vec<[bool; crate::audio::tempo::MAX_STEPS]>,
     /// Per Channel-Rack channel note grid.
@@ -327,14 +329,20 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
             1.0 - spec.swing * 0.35
         };
         let step_samples = (base * f).max(1.0) as u32;
-        crate::ui::app::state::bends_for_step(&pat.bends, at, step_samples)
-            .into_iter()
-            .map(|(channel, semitones, delay_samples)| AudioCommand::BendDelayed {
-                channel,
-                semitones,
-                delay_samples,
-            })
-            .collect()
+        let mut cmds: Vec<AudioCommand> =
+            crate::ui::app::state::bends_for_step(&pat.bends, at, step_samples)
+                .into_iter()
+                .map(|(channel, semitones, delay_samples)| AudioCommand::BendDelayed {
+                    channel,
+                    semitones,
+                    delay_samples,
+                })
+                .collect();
+        // Pedalen ligger på steggränsen — 16-delars noggrannhet, inte samplenogrann.
+        if let Some(down) = crate::ui::app::state::pedal_at_step(&pat.pedals, at) {
+            cmds.push(AudioCommand::SetSustainPedal(down));
+        }
+        cmds
     };
 
     if spec.pattern_mode {
@@ -1229,6 +1237,7 @@ mod tests {
         let mut patterns = Vec::new();
         patterns.push(PatternSnap {
             bends: Vec::new(),
+            pedals: Vec::new(),
             steps,
             notes,
             piano_roll,
@@ -1293,6 +1302,31 @@ mod tests {
         assert_eq!(channel, 1);
         assert_eq!(semitones, -3.0);
         assert!(delay > 0, "halva steget in, inte på steggränsen: {delay}");
+    }
+
+
+    /// **Pedalkurvan följer med till filen.** Utan den tappar exporten allt trampande, och
+    /// en pianotagning med pedal låter annorlunda än den gjorde i högtalarna.
+    #[test]
+    fn the_export_schedules_the_steps_pedal() {
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        grid[0][3] = true;
+        let mut spec = synth_spec_with(grid, [false; crate::audio::tempo::MAX_STEPS], 60);
+        spec.patterns[0].pedals = vec![
+            crate::ui::app::state::PedalPoint { pos: 0.0, down: true },
+            crate::ui::app::state::PedalPoint { pos: 3.0, down: false },
+        ];
+
+        let first = triggers_for_step(&spec, 0, 0);
+        assert!(
+            first.iter().any(|c| matches!(c, AudioCommand::SetSustainPedal(true))),
+            "pedalen ner ska med i steg 0"
+        );
+        let third = triggers_for_step(&spec, 0, 3);
+        assert!(
+            third.iter().any(|c| matches!(c, AudioCommand::SetSustainPedal(false))),
+            "pedalen upp ska med i steg 3"
+        );
     }
 
     /// **Ett tvåtaktsblock spelar sin andra takt i takt 2.** Noten ligger bara på steg 20

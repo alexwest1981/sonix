@@ -454,6 +454,7 @@ pub(crate) fn place_notes_into_patterns(
                 color,
                 bars: 1,
                 bends: Vec::new(),
+                pedals: Vec::new(),
                 alt_takes: Vec::new(),
                 active_take: 0,
                 comp: Vec::new(),

@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The pedal is recorded with the take.** CC64 while recording writes a point into the pattern,
+  and the curve is played back in pattern mode, from arrangement blocks, and in the export — the
+  file now has the pedal the take had. Points land on step boundaries (16th-note resolution), so
+  a half-step press snaps to the next step; positions between steps are kept in the curve but the
+  engine sets the pedal at the step.
+
 - **Pedal resonance.** With the sustain pedal down, the synth and the sampled instruments feed a
   bank of three tuned combs (A2, E3, A3), so a note leaves a ringing body behind it — what a piano
   does when the strings are free. Drums and stems never feed it, and with the pedal up nothing is

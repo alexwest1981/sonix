@@ -504,6 +504,15 @@ fn trigger_step(&mut self, step: usize) {
             delay_samples,
         });
     }
+    // Inspelad pedal i det här steget.
+    if let Some(down) = self
+        .patterns
+        .get(self.selected_pattern)
+        .and_then(|p| crate::ui::app::state::pedal_at_step(&p.pedals, step))
+    {
+        self.sustain_pedal = down;
+        let _ = self.engine.send_command(AudioCommand::SetSustainPedal(down));
+    }
 
     if self.metronome_enabled && step.is_multiple_of(4) {
         if step == 0 {
@@ -615,6 +624,7 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
 
     // Bendkurvan hör till patternet, inte till spåret: skicka den **en** gång per steg,
     // även om fyra spår spelar samma block.
+    let mut pedal_due: Option<bool> = None;
     if let Some((pat_idx, step_off)) = self
         .playlist_tracks
         .iter()
@@ -630,6 +640,11 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                 delay_samples,
             });
         }
+        pedal_due = crate::ui::app::state::pedal_at_step(&pat.pedals, at);
+    }
+    if let Some(down) = pedal_due {
+        self.sustain_pedal = down;
+        let _ = self.engine.send_command(AudioCommand::SetSustainPedal(down));
     }
 
     if self.metronome_enabled && step_in_bar.is_multiple_of(4) {
@@ -1640,6 +1655,16 @@ fn apply_control_event(&mut self, ev: ControlEvent) {
         ControlEvent::SustainPedal(down) => {
             self.sustain_pedal = down;
             let _ = self.engine.send_command(AudioCommand::SetSustainPedal(down));
+            // Inspelad pedal: en punkt i patternet, samma väg som benden.
+            if self.midi_record_armed && self.is_playing {
+                let pos = self.current_pattern_pos();
+                if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
+                    crate::ui::app::state::push_pedal(
+                        &mut pat.pedals,
+                        crate::ui::app::state::PedalPoint { pos, down },
+                    );
+                }
+            }
         }
     }
 }

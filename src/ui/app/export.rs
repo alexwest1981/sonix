@@ -222,6 +222,7 @@ pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u
     }).collect();
 
     let patterns = self.patterns.iter().map(|p| PatternSnap {
+        pedals: p.pedals.clone(),
         bends: p.bends.clone(),
         steps: p.channel_steps.clone(),
         notes: p.channel_notes.clone(),

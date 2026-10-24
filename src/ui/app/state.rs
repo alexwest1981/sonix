@@ -283,6 +283,31 @@ pub struct BendPoint {
     pub semitones: f32,
 }
 
+/// **En punkt i pedalkurvan** (CC64): `pos` är i steg i patternet, `down` är pedalläget.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct PedalPoint {
+    pub pos: f32,
+    pub down: bool,
+}
+
+/// Pedalläget som ska gälla i det här steget, om någon punkt ligger där.
+pub fn pedal_at_step(points: &[PedalPoint], step: usize) -> Option<bool> {
+    points
+        .iter()
+        .rev()
+        .find(|p| p.pos.is_finite() && p.pos >= 0.0 && p.pos.floor() as usize == step)
+        .map(|p| p.down)
+}
+
+/// Lägger en pedalpunkt. En ny punkt på samma steg **ersätter** den gamla, så ett trampande
+/// inte fyller kurvan med hundra punkter per steg.
+pub fn push_pedal(points: &mut Vec<PedalPoint>, point: PedalPoint) {
+    let at = point.pos.floor();
+    points.retain(|p| p.pos.floor() != at);
+    points.push(point);
+    points.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+}
+
 /// **Ett komp** (Ableton): från `from_step` till nästa komp spelas lane `take`
 /// (0 = lane 1). Täckningen är implicit — listan sorteras och varje komp gäller fram till
 /// nästa komps början, så att sätta ett komp mitt i ett annat delar det utan att räkna om
@@ -420,6 +445,9 @@ pub struct Pattern {
     /// MPE-bend som hör till patternet. Ligger i patternet (inte i tagningen), eftersom
     /// det är patternet som spelas — både i pattern-läget och från ett arrangemangsblock.
     pub bends: Vec<BendPoint>,
+    /// **Pedalkurvan** (CC64). Ligger i patternet av samma skäl som benden: det är patternet
+    /// som spelas, i pattern-läget och från ett arrangemangsblock.
+    pub pedals: Vec<PedalPoint>,
     /// **Tagningar** (Ableton take lanes): fler inspelningar av samma slinga. `take` är
     /// alltid lane 1; de här är lane 2 och framåt. `active_take` väljer vilken som spelas.
     pub alt_takes: Vec<crate::midi_take::Take>,

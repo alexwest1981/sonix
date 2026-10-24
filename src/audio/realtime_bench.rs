@@ -195,6 +195,7 @@ pub fn reference_spec() -> RenderSpec {
         rack,
         patterns: vec![PatternSnap {
             bends: Vec::new(),
+            pedals: Vec::new(),
             steps: {
                 let mut s = vec![[false; crate::audio::tempo::MAX_STEPS]; 8];
                 s[7][..16].copy_from_slice(&bass_steps);

@@ -42,6 +42,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             color: crate::ui::theme::palette().text(),
             bars: 1,
             bends: Vec::new(),
+            pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
             comp: Vec::new(),
@@ -1988,6 +1989,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             color: eframe::egui::Color32::WHITE,
             bars: 1,
             bends: Vec::new(),
+            pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
             comp: Vec::new(),
@@ -2024,6 +2026,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             color: eframe::egui::Color32::WHITE,
             bars: 1,
             bends: Vec::new(),
+            pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
             comp: Vec::new(),
@@ -2066,6 +2069,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             color: eframe::egui::Color32::WHITE,
             bars: 2,
             bends: Vec::new(),
+            pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
             comp: Vec::new(),
@@ -2106,6 +2110,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             color: eframe::egui::Color32::WHITE,
             bars: 2,
             bends: Vec::new(),
+            pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
             comp: Vec::new(),
@@ -2366,6 +2371,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             color: crate::ui::theme::palette().text(),
             bars: 2,
             bends: Vec::new(),
+            pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
             comp: Vec::new(),
@@ -2397,6 +2403,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             color: [10, 20, 30, 255],
             bars: 1,
             bends: Vec::new(),
+            pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
             comp: Vec::new(),
@@ -4247,4 +4254,15 @@ fn score_steps_become_ticks_at_a_sixteenth_per_step() {
     assert_eq!(notes[1].length, 120);
     assert_eq!(notes[1].key, 67);
     assert_eq!(notes[1].velocity, 64);
+}
+
+/// Ett trampande på samma steg ska **ersätta** punkten, inte fylla kurvan.
+#[test]
+fn a_pedal_point_on_the_same_step_replaces_the_old_one() {
+    let mut p = Vec::new();
+    super::state::push_pedal(&mut p, super::state::PedalPoint { pos: 4.0, down: true });
+    super::state::push_pedal(&mut p, super::state::PedalPoint { pos: 4.5, down: false });
+    assert_eq!(p.len(), 1);
+    assert_eq!(super::state::pedal_at_step(&p, 4), Some(false));
+    assert_eq!(super::state::pedal_at_step(&p, 5), None);
 }
