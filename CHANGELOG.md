@@ -157,6 +157,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Dead branches removed in the arranger, mixer and piano roll.** A dozen `if` expressions had
+  branches that returned the same colour (the REC button, the slicer highlight, the microphone
+  card and clip fills, the MIDI-REC label, the hi-hat generator), so the condition never had an
+  effect. Removing them changes no pixel; clippy's identical-block warnings drop from 12 to 2
+  (the two that remain are the deliberate white microphone lane).
+
 - **Stem pitch no longer changes timing** — the previous per-track pitch
   control was a varispeed resample that altered pitch *and* playback speed. It
   is replaced by a dedicated WSOLA + cepstral-envelope shifter whose latency is

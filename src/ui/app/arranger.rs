@@ -282,7 +282,8 @@ impl SonixApp {
                     }
 
                     let is_rec = self.is_recording_timeline || self.vocal_studio.is_recording;
-                    let rec_col = if is_rec { crate::ui::theme::palette().red() } else { crate::ui::theme::palette().red() };
+                    // Knappen är röd oavsett läge; etiketten (⏺/⏹) bär tillståndet.
+                    let rec_col = crate::ui::theme::palette().red();
                     let rec_label = if is_rec { "⏹ REC" } else { "⏺ REC" };
                     if ui.add(egui::Button::new(egui::RichText::new(rec_label).size(Theme::FONT_S).strong().color(crate::ui::theme::palette().text())).fill(rec_col)).clicked() {
                         self.toggle_timeline_recording();
@@ -487,7 +488,7 @@ impl SonixApp {
                     for (tool_val, tool_label) in tools {
                         let is_sel = std::mem::discriminant(&self.arranger_tool) == std::mem::discriminant(&tool_val);
                         let btn_bg = if is_sel {
-                            if matches!(tool_val, ArrangerTool::Slice) { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().orange() }
+                            crate::ui::theme::palette().orange()
                         } else {
                             crate::ui::theme::palette().panel_alt()
                         };
@@ -816,7 +817,7 @@ impl SonixApp {
                 // Left Track Header Card (Sonix Style)
                 let (h_rect, h_resp) = ui.allocate_exact_size(Vec2::new(header_w, track_row_h), Sense::click());
                 let card_bg = if is_mic_track {
-                    if is_sel_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().text() }
+                    crate::ui::theme::palette().text()
                 } else if is_sel_track {
                     crate::ui::theme::palette().panel()
                 } else {
@@ -1515,13 +1516,7 @@ impl SonixApp {
                                             region.color
                                         };
                                         let fill = if is_mic_track {
-                                            if region.muted {
-                                                crate::ui::theme::palette().text()
-                                            } else if is_region_selected {
-                                                crate::ui::theme::palette().text()
-                                            } else {
-                                                crate::ui::theme::palette().text()
-                                            }
+                                            crate::ui::theme::palette().text()
                                         } else if region.muted {
                                             crate::ui::theme::palette().header()
                                         } else if is_region_selected {
@@ -1544,13 +1539,7 @@ impl SonixApp {
                                         let header_h = 14.0_f32;
                                         let header_rect = Rect::from_min_max(r_rect.min, Pos2::new(r_rect.max.x, (r_rect.min.y + header_h).min(r_rect.max.y)));
                                         let header_bg = if is_mic_track {
-                                            if region.muted {
-                                                crate::ui::theme::palette().text()
-                                            } else if is_region_selected {
-                                                crate::ui::theme::palette().text()
-                                            } else {
-                                                crate::ui::theme::palette().text()
-                                            }
+                                            crate::ui::theme::palette().text()
                                         } else if region.muted {
                                             crate::ui::theme::palette().panel_alt()
                                         } else if is_region_selected {

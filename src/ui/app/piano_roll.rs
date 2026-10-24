@@ -934,7 +934,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             ui.label(egui::RichText::new(if self.midi_keyboard_connected { "🎹 MIDI ●" } else { "🎹 MIDI ○" }).strong().size(Theme::FONT_S).color(midi_col))
                 .on_hover_text(if self.midi_keyboard_connected { crate::i18n::t("MIDI-klaviatur ansluten (ALSA Seq).") } else { crate::i18n::t("Ingen MIDI-klaviatur ansluten. Öppna Hårdvarukontroller för att koppla upp.") });
             let mrec_bg = if self.midi_record_armed { crate::ui::theme::palette().red() } else { crate::ui::theme::palette().border() };
-            let mrec_fg = if self.midi_record_armed { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().text() };
+            let mrec_fg = crate::ui::theme::palette().text();
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⏺ MIDI-REC")).strong().size(Theme::FONT_S).color(mrec_fg)).fill(mrec_bg)).on_hover_text(crate::i18n::t("Spela in hållna MIDI-toner i rutnätet under uppspelning.")).clicked() {
                 self.midi_record_armed = !self.midi_record_armed;
                 if self.midi_record_armed {
@@ -1530,9 +1530,7 @@ pub fn apply_drummer_generation(&mut self) {
         }
         2 => {
             for step in 0..crate::audio::tempo::MAX_STEPS {
-                if step % 2 == 0 {
-                    hat_c[step] = true;
-                } else if comp > 0.4 {
+                if step % 2 == 0 || comp > 0.4 {
                     hat_c[step] = true;
                 }
             }

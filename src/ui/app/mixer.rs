@@ -2460,9 +2460,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                         crate::ui::theme::palette().grid()
                     };
 
-                    let card_bg = if is_selected {
-                        crate::ui::theme::palette().panel()
-                    } else if is_mic {
+                    let card_bg = if is_selected || is_mic {
                         crate::ui::theme::palette().panel()
                     } else {
                         crate::ui::theme::palette().panel_alt()
