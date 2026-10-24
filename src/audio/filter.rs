@@ -69,6 +69,20 @@ impl StateVariableFilter {
     pub fn process_bandpass(&mut self, input: f32, params: &FilterParams) -> f32 {
         self.step(input, params).0
     }
+
+    /// Högpass ur samma beräkning: insignalen minus bandet och lågpasset. Ingen extra
+    /// tillståndsvariabel, alltså samma kostnad som lågpasset.
+    #[inline(always)]
+    pub fn process_highpass(&mut self, input: f32, params: &FilterParams) -> f32 {
+        let (bp, lp) = self.step(input, params);
+        input - bp - lp
+    }
+
+    /// Notch (bandstopp): allt utom bandet.
+    #[inline(always)]
+    pub fn process_notch(&mut self, input: f32, params: &FilterParams) -> f32 {
+        input - self.step(input, params).0
+    }
 }
 
 /// **Samplerns filter** (Fas 8.4/7): ett lågpassfilter per röst med en **egen** ADSR som flyttar

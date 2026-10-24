@@ -177,6 +177,7 @@ impl SynthEngine {
                 for filter in &mut params.filters {
                     filter.cutoff = filter.cutoff.clamp(20.0, 20_000.0);
                     filter.resonance = filter.resonance.clamp(0.1, 10.0);
+                    filter.mode = filter.mode.min(3);
                 }
                 for row in &mut params.matrix {
                     for amount in row.iter_mut() {

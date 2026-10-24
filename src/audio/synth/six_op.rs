@@ -52,6 +52,10 @@ pub struct SixOpParams {
 pub struct OpFilter {
     pub cutoff: f32,
     pub resonance: f32,
+    /// Filtertyp: 0 = lågpass (standard, som före 0.9.70), 1 = bandpass, 2 = högpass,
+    /// 3 = notch. `#[serde(default)]` → 0, så gamla patchar filtrerar precis som förut.
+    #[serde(default)]
+    pub mode: u8,
 }
 
 impl OpFilter {
@@ -72,6 +76,7 @@ fn open_filters() -> [OpFilter; SIX_OP_COUNT] {
     [OpFilter {
         cutoff: 20_000.0,
         resonance: 0.7,
+        mode: 0,
     }; SIX_OP_COUNT]
 }
 
@@ -192,7 +197,13 @@ impl SixOpVoice {
             // övertoner med sig in i ljudet. Avstängt filter kostar ingenting.
             let filter = params.filters[target];
             if filter.cutoff < FILTER_OPEN_HZ {
-                value = self.filters[target].process_lowpass(value, &filter.params());
+                let p = filter.params();
+                value = match filter.mode {
+                    1 => self.filters[target].process_bandpass(value, &p),
+                    2 => self.filters[target].process_highpass(value, &p),
+                    3 => self.filters[target].process_notch(value, &p),
+                    _ => self.filters[target].process_lowpass(value, &p),
+                };
             }
             out[target] = value;
         }
@@ -399,5 +410,23 @@ mod tests {
             "ringmodulering ska ta bort bärvågen: {carrier_wet:.4} av {carrier_dry:.4}"
         );
         assert!(lower > 0.1 && upper > 0.1, "sidoband: {lower:.4} och {upper:.4}");
+    }
+
+    /// **Filtertypen per operator.** Samma beräkning, olika utgång: ett lågpass på 2 kHz släpper
+    /// igenom en 220 Hz-ton, ett högpass på samma cutoff tar bort den.
+    #[test]
+    fn the_operator_filter_can_be_a_highpass() {
+        let mut params = SixOpParams::default();
+        params.filters[0] = OpFilter {
+            cutoff: 2_000.0,
+            resonance: 0.7,
+            mode: 0,
+        };
+        let low = mag_at(&render(&params, 220.0, 4_800)[1_200..], 220.0);
+        params.filters[0].mode = 2;
+        let high = mag_at(&render(&params, 220.0, 4_800)[1_200..], 220.0);
+        println!("  220 Hz: lågpass {low:.4}, högpass {high:.4}");
+        assert!(low > 0.2, "lågpasset ska släppa igenom: {low:.4}");
+        assert!(high < 0.05, "högpasset ska ta bort grundtonen: {high:.4}");
     }
 }

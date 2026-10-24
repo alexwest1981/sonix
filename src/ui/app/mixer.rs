@@ -3416,6 +3416,19 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                     )
                                     .on_hover_text(crate::i18n::t("Resonans"))
                                     .changed();
+                                // Filtertyp per operator. LP är standard; de andra tre är
+                                // samma beräkning, bara en annan utgång ur filtret.
+                                for (mode, label) in
+                                    [(0u8, "LP"), (1, "BP"), (2, "HP"), (3, "NO")]
+                                {
+                                    six_changed |= ui
+                                        .selectable_label(filter.mode == mode, label)
+                                        .clicked()
+                                        && {
+                                            filter.mode = mode;
+                                            true
+                                        };
+                                }
                             });
                             ui.separator();
                             ui.label(

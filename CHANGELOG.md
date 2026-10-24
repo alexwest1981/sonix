@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Four filter types per operator in the 6-op synth.** LP, BP, HP and notch, all from the same
+  state-variable calculation (the highpass is input minus band and lowpass, the notch is input
+  minus band), so a filter costs what it did before. LP is the default, so patches saved earlier
+  filter exactly as they did. Measured on a 220 Hz tone with a 2 kHz cutoff: 0.9997 through the
+  lowpass, 0.0120 through the highpass.
+
 - **Ring modulation and additive mixing in the 6-op matrix.** The matrix was FM only; each cell
   now also has an RM row (the source multiplies the target's amplitude) and an ADD row (the
   source's sound is added to the target's). A FM/RM/ADD selector above the grid picks which row
