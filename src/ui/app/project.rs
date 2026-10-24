@@ -1383,7 +1383,6 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
 
 impl SonixApp {
 pub fn populate_demo_data(&mut self) {
-    self.waveform = crate::audio::command::Waveform::SixOp;
     self.project_name = "Cyberpunk Odyssey (Suno AI + Sonix Lead)".to_string();
     self.bpm = 124.0;
     self.swing = 0.15;

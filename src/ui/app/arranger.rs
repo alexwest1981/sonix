@@ -2157,7 +2157,10 @@ impl SonixApp {
                                             if lanes > 1 && row_h > 26.0 {
                                                 let band_h = (row_h - 4.0) / lanes as f32;
                                                 for b in 0..span {
-                                                    let chosen = pat.lane_for_bar(bar_idx + b);
+                                                    // Kompningen är nycklad på **takt inom patternet**,
+                                                    // inte på songtakt: `bar_idx` är songtakt, och ett
+                                                    // 1-taktsblock hade då visat en annan takts lane.
+                                                    let chosen = pat.lane_for_bar(b);
                                                     let x0 = c_rect.min.x + b as f32 * bar_w;
                                                     for lane in 0..lanes {
                                                         let y = c_rect.min.y + lane as f32 * band_h;

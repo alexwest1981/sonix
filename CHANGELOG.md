@@ -70,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The lane view read the song bar instead of the pattern bar.** A one-bar block showed whichever
+  comp happened to match the song's bar number, so a per-bar comp appeared on the wrong block
+  (or on none). It now uses the bar inside the pattern, which is what `lane_for_bar` is keyed on.
+  Found by rendering the arranger in screenshot mode with a two-take pattern.
 - **The 6-op editor gets a window of its own.** Twelve knobs and 36 matrix cells did not fit the
   oscillator column: the matrix rows were cut off below the panel. A **⚙ 6-op-matris…** button
   now opens an editor with the presets, one row per operator, the envelope and filter for the
