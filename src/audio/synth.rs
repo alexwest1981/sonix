@@ -117,6 +117,8 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetFilterDrive { .. } => "SetFilterDrive",
         AudioCommand::SetSub { .. } => "SetSub",
         AudioCommand::SetControlRoom(_) => "SetControlRoom",
+        AudioCommand::SetCueSend { .. } => "SetCueSend",
+        AudioCommand::SetCueListen(_) => "SetCueListen",
         AudioCommand::SetHarmonics { .. } => "SetHarmonics",
         AudioCommand::SetPartialEnvelopes { .. } => "SetPartialEnvelopes",
         AudioCommand::SetSpectralFormant { .. } => "SetSpectralFormant",
@@ -483,6 +485,8 @@ pub struct SynthEngine {
     pub drums: [DrumVoice; MAX_DRUMS],
     // Multi-track audio stem streaming
     pub stem_tracks: Vec<StemVoiceTrack>,
+    /// Vad monitorerna lyssnar på (`Main` = mixen). Exportmotorn får aldrig kommandot.
+    pub cue_listen: crate::audio::control_room::CueListen,
     pub has_stem_solo: bool,
     /// Hur många spår som **faktiskt** har en sträckt fil i sin regionlista (Fas 8.10c).
     ///
@@ -577,6 +581,7 @@ impl SynthEngine {
         Self {
             sample_rate,
             control_room: crate::audio::command::ControlRoomState::default(),
+            cue_listen: crate::audio::control_room::CueListen::Main,
             waveform,
             adsr,
             filter_params,

@@ -2357,6 +2357,38 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                             .on_hover_text(crate::i18n::t("Tysta monitorerna — spelet fortsätter"))
                             .clicked()
                             && { cr.mute = !cr.mute; true };
+                        // **Cue-lyssning:** vad monitorerna hör, aldrig vad som exporteras.
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(crate::i18n::t("LYSSNA"))
+                                    .size(Theme::FONT_XS)
+                                    .color(Theme::TEXT_MUTED),
+                            );
+                            for (target, label) in [
+                                (crate::audio::control_room::CueListen::Main, "MIX"),
+                                (crate::audio::control_room::CueListen::A, "A"),
+                                (crate::audio::control_room::CueListen::B, "B"),
+                            ] {
+                                let on = self.cue_listen == target;
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new(label).size(Theme::FONT_XS),
+                                        )
+                                        .selected(on),
+                                    )
+                                    .on_hover_text(crate::i18n::t(
+                                        "Cue hör bara spår med en send till bussen — exporten påverkas inte",
+                                    ))
+                                    .clicked()
+                                    && !on
+                                {
+                                    self.cue_listen = target;
+                                    let _ =
+                                        self.engine.send_command(AudioCommand::SetCueListen(target));
+                                }
+                            }
+                        });
                         if changed {
                             let _ = self.engine.send_command(AudioCommand::SetControlRoom(
                                 crate::audio::command::ControlRoomState {
@@ -3045,6 +3077,10 @@ Klicka för att öppna dedikerad EQ & detaljer", t_idx + 1, track_name)).clicked
                                     ui.label(egui::RichText::new(crate::i18n::t("SÄNDNING")).size(Theme::FONT_XS).color(Theme::PURPLE));
                                     track_dirty |= rotary_knob(ui, &mut track_mut.reverb_send, 0.0, 1.0, "REV", Theme::PURPLE, 17.0);
                                     track_dirty |= rotary_knob(ui, &mut track_mut.delay_send, 0.0, 1.0, "DLY", Theme::CYAN, 17.0);
+                                    ui.horizontal(|ui| {
+                                        track_dirty |= rotary_knob(ui, &mut track_mut.cue_a, 0.0, 1.0, "CUE A", Theme::ORANGE, 13.0);
+                                        track_dirty |= rotary_knob(ui, &mut track_mut.cue_b, 0.0, 1.0, "CUE B", Theme::ORANGE, 13.0);
+                                    });
                                 });
 
                                 ui.separator();

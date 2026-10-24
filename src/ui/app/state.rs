@@ -1018,6 +1018,9 @@ pub struct PlaylistTrack {
     pub comp_ratio: f32,
     pub reverb_send: f32,
     pub delay_send: f32,
+    /// Cue-send till monitorbuss A/B (0–1). Hörs bara när Control Room lyssnar på bussen.
+    pub cue_a: f32,
+    pub cue_b: f32,
     pub pitch_semitones: f32,
     /// Per-parameter automation curves for this track (Fas 5.4).
     pub automation: Vec<AutomationLane>,
@@ -1403,6 +1406,8 @@ impl PlaylistTrack {
             comp_ratio: 1.0,
             reverb_send: 0.0,
             delay_send: 0.0,
+            cue_a: 0.0,
+            cue_b: 0.0,
             pitch_semitones: 0.0,
             automation: Vec::new(),
             automation_last: [f32::NAN; AutomationParam::COUNT],

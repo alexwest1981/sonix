@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cue sends A/B.** Every track has CUE A/CUE B (post-fader), and the Control Room listens
+  to MIX, A or B — the cue carries only the tracks sent to it and never reaches an export
+  (a fresh engine always listens to Main). Measured: 400 Hz sent to A, 1 200 Hz not sent;
+  the mix carries both (0.272/0.269) and cue A carries 400 Hz at 0.277 with 1 200 Hz at
+  0.0018 (0.7 %, −43 dB). Sends are saved with the project.
 - **One partial at a time.** In SPEKTRAL ENVELO, *Partial* selects 0 (the whole template, with
   tilt) or a single partial; A/D/S then writes an override on top of the template. Proven by
   `one_partial_can_have_its_own_contour`.

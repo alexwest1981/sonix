@@ -182,6 +182,10 @@ pub struct StemVoiceTrack {
     pub reverb_send: f32,
     pub delay: StereoDelay,
     pub delay_send: f32,
+    /// **Cue-send A/B** (0–1): hur mycket av spåret som går till monitorbussarna. Hörs bara
+    /// när control room lyssnar på A eller B; exporten ser alltid mastern.
+    pub cue_a: f32,
+    pub cue_b: f32,
     /// Requested transposition in semitones (±12, cents resolution).
     pub pitch_semitones: f32,
     /// Real-time, formant-preserving pitch shifter for this stem.
@@ -888,6 +892,8 @@ impl StemVoiceTrack {
             reverb_send: 0.0,
             delay: StereoDelay::new(engine_sample_rate),
             delay_send: 0.0,
+            cue_a: 0.0,
+            cue_b: 0.0,
             pitch_semitones: 0.0,
             pitch_shifter: FormantPitchShifter::new(engine_sample_rate),
             pitch_active: false,

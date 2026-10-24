@@ -429,6 +429,15 @@ pub enum AudioCommand {
         track_index: usize,
         settings: TrackEqSettings,
     },
+    /// **Cue-send per spår** (0–1) till monitorbussarna A och B. Hörs bara när control room
+    /// lyssnar på den bussen — exportmotorn ser alltid mastern.
+    SetCueSend {
+        track_index: usize,
+        a: f32,
+        b: f32,
+    },
+    /// Vad monitorerna lyssnar på. Skickas aldrig till exportmotorn.
+    SetCueListen(crate::audio::control_room::CueListen),
     /// Per-track dynamics, aux sends and pitch for the selected channel strip.
     SetTrackMix {
         track_index: usize,

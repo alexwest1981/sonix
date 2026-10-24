@@ -279,6 +279,11 @@ pub fn sync_track_audio_state(&mut self, track_idx: usize) {
             track_index: track_idx,
             settings: t.eq.to_settings(),
         });
+        let _ = self.engine.send_command(AudioCommand::SetCueSend {
+            track_index: track_idx,
+            a: t.cue_a,
+            b: t.cue_b,
+        });
         let _ = self.engine.send_command(AudioCommand::SetTrackMix {
             track_index: track_idx,
             comp_threshold_db: t.comp_threshold_db,

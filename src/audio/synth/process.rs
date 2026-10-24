@@ -295,6 +295,13 @@ impl SynthEngine {
         // 7. Multi-Track Stem Audio Streaming (with Region Slicing & Fades)
         let mut stem_mix_l = 0.0;
         let mut stem_mix_r = 0.0;
+        // Cue-bussarna (monitor A/B): post-fader, precis som en send på en konsol. De
+        // summeras även när ingen lyssnar — kostnaden är två multiplikationer per spår och
+        // sample, och regeln blir en enda i stället för en som beror av lyssningsläget.
+        let mut cue_a_l = 0.0;
+        let mut cue_a_r = 0.0;
+        let mut cue_b_l = 0.0;
+        let mut cue_b_r = 0.0;
 
         if self.song_playing && !self.stem_tracks.is_empty() {
             // Copy the group state so the loop can borrow `stem_tracks` mutably
@@ -629,6 +636,15 @@ impl SynthEngine {
                 stem_mix_l += tl * group_gain;
                 stem_mix_r += tr * group_gain;
 
+                if track.cue_a > 0.0001 {
+                    cue_a_l += tl * track.cue_a;
+                    cue_a_r += tr * track.cue_a;
+                }
+                if track.cue_b > 0.0001 {
+                    cue_b_l += tl * track.cue_b;
+                    cue_b_r += tr * track.cue_b;
+                }
+
                 // Sends (Fas 8.13): en del av spårets signal går till en ANNAN buss
                 // också. Post-fader — signalen är densamma som går till spårets egen
                 // buss, alltså efter volym, EQ, kompressor och sidokedja.
@@ -780,7 +796,16 @@ impl SynthEngine {
         }
 
         // 9. Master bus FX chain (EQ, compressor, de-esser, doubler, gate, filter, limiter)
-        let (fx_l, fx_r) = self.master_fx.process(del_l + stem_mix_l, del_r + stem_mix_r);
+        let (master_l, master_r) = self.master_fx.process(del_l + stem_mix_l, del_r + stem_mix_r);
+
+        // **Cue-lyssning** byter ut masterns signal efter FX-kedjan (kedjan tickar ändå, så
+        // dess tillstånd inte stannar). Bara det som går till monitorerna byts — exportmotorn
+        // har alltid `Main` och ser därför aldrig en cue-buss.
+        let (fx_l, fx_r) = match self.cue_listen {
+            crate::audio::control_room::CueListen::Main => (master_l, master_r),
+            crate::audio::control_room::CueListen::A => (cue_a_l, cue_a_r),
+            crate::audio::control_room::CueListen::B => (cue_b_l, cue_b_r),
+        };
 
         // Modulationsmatrisen räknas per sampel, på masterns nivå före volymstegen.
         // Utan aktiva rader hoppas hela steget över — det är den vanliga vägen.

@@ -600,6 +600,8 @@ pub struct SonixApp {
     pub show_takes_modal: bool,
     /// **Control Room**: monitorläget (nivå, dim, mono, tyst).
     pub control_room: crate::audio::control_room::ControlRoom,
+    /// Vad monitorerna lyssnar på. Monitorläge — sparas inte i projektet.
+    pub cue_listen: crate::audio::control_room::CueListen,
     pub script_source: String,
     pub script_param: usize,
     /// Toppmarkörerna i visualizern, en per band.
@@ -1167,6 +1169,7 @@ impl SonixApp {
             show_dance: false,
             show_takes_modal: false,
             control_room: crate::audio::control_room::ControlRoom::default(),
+            cue_listen: crate::audio::control_room::CueListen::Main,
             script_source: crate::ui::app::script::DEFAULT_SOURCE.to_string(),
             script_param: 0,
             visualizer_peaks: Vec::new(),

@@ -4,6 +4,17 @@
 //! nivå, dim (−20 dB), mono och tyst. Exporten skapar en egen motor utan dessa kommandon, så
 //! en dimmad monitor kan aldrig smyga sig in i en renderad fil.
 
+/// **Vad monitorerna lyssnar på.** `Main` är mixen; `A` och `B` är cue-bussarna, som bara
+/// matas av spår med en cue-send och aldrig går till exporten — en färsk exportmotor har
+/// alltid `Main`, precis som med dim och mono.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CueListen {
+    #[default]
+    Main,
+    A,
+    B,
+}
+
 /// Monitorläget. `Default` är neutralt — det är vad exportmotorn alltid ser.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ControlRoom {

@@ -1102,7 +1102,85 @@ fn run_peak(synth: &mut SynthEngine, frames: usize) -> f32 {
     peak
 }
 
-/// En send till en buss med lägre nivå **hörs**: spåret går till sin egen buss
+/// **Cue A bär bara det som skickats dit.** Två spår med olika toner (400 Hz och 1 200 Hz),
+/// där bara det första har en cue-send till A. Lyssnar monitorerna på mixen hörs båda; på
+/// cue A hörs bara 400 Hz. Exportmotorn har alltid `Main`, så en cue kan aldrig hamna i en fil.
+#[test]
+fn cue_a_carries_only_the_track_that_was_sent_there() {
+    use crate::audio::control_room::CueListen;
+
+    fn engine(listen: CueListen) -> SynthEngine {
+        let mut synth = SynthEngine::new(48_000.0);
+        let tone = |f: f32| {
+            Arc::new(
+                (0..48_000)
+                    .map(|i| 0.5 * (std::f32::consts::TAU * f * i as f32 / 48_000.0).sin())
+                    .collect::<Vec<f32>>(),
+            )
+        };
+        for (idx, freq) in [(0usize, 400.0f32), (1, 1_200.0)] {
+            let left = tone(freq);
+            let right = left.clone();
+            synth.handle_command(AudioCommand::LoadStemTrack {
+                track_index: idx,
+                left,
+                right,
+                sample_rate: 48_000.0,
+                volume: 1.0,
+                pan: 0.0,
+                start_time_secs: 0.0,
+            });
+            synth.handle_command(AudioCommand::SetStemTrackRegions {
+                track_index: idx,
+                regions: vec![region_under_test(1.0, 0.0, 0.0, false, 1.0)],
+            });
+        }
+        // Bara 400 Hz-spåret går till cue A.
+        synth.handle_command(AudioCommand::SetCueSend {
+            track_index: 0,
+            a: 1.0,
+            b: 0.0,
+        });
+        synth.handle_command(AudioCommand::SetCueListen(listen));
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+        synth
+    }
+
+    fn levels(listen: CueListen) -> (f32, f32) {
+        let mut synth = engine(listen);
+        let mut buf = Vec::new();
+        for _ in 0..9_600 {
+            let (l, _) = synth.process_stereo();
+            buf.push(l);
+        }
+        let body = &buf[2_400..];
+        (mag_at(body, 400.0), mag_at(body, 1_200.0))
+    }
+
+    let (main_low, main_high) = levels(CueListen::Main);
+    assert!(
+        main_low > 0.01 && main_high > 0.01,
+        "mixen ska bära båda spåren: {main_low:.4} / {main_high:.4}"
+    );
+
+    let (cue_low, cue_high) = levels(CueListen::A);
+    assert!(cue_low > 0.01, "cue A ska bära spåret som skickats dit: {cue_low:.4}");
+    assert!(
+        cue_high < cue_low * 0.02,
+        "cue A ska inte bära spåret utan send: {cue_high:.4} mot {cue_low:.4}"
+    );
+
+    // Cue B har ingen send alls och ska vara tyst.
+    let (b_low, b_high) = levels(CueListen::B);
+    assert!(
+        b_low < 0.001 && b_high < 0.001,
+        "cue B ska vara tyst utan sends: {b_low:.4} / {b_high:.4}"
+    );
+    // Exporten ser alltid mastern: en färsk motor lyssnar på mixen.
+    assert_eq!(SynthEngine::new(48_000.0).cue_listen, CueListen::Main);
+}
+
+/// **En send till en buss med lägre nivå hörs**: spåret går till sin egen buss
 /// som förut, och en del går en parallell väg.
 ///
 /// Att skicka till en buss med samma nivå som spårets egen hörs däremot inte —

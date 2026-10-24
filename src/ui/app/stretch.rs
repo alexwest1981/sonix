@@ -1147,43 +1147,10 @@ pub fn sync_track_stem_to_engine(&mut self, track_idx: usize) {
             track_index: track_idx,
             regions: stem_regions,
         });
-        let _ = self.engine.send_command(AudioCommand::SetStemTrackState {
-            track_index: track_idx,
-            volume: t.volume,
-            pan: t.pan,
-            muted: t.muted,
-            solo: t.solo,
-        });
-        let _ = self.engine.send_command(AudioCommand::SetStemTrackRouting {
-            track_index: track_idx,
-            bus: t.bus,
-            vca: t.vca,
-        });
-        let _ = self.engine.send_command(AudioCommand::SetStemTrackSidechain {
-            track_index: track_idx,
-            from: t.sidechain_from,
-            amount_db: t.sidechain_amount_db,
-            threshold_db: t.sidechain_threshold_db,
-        });
-        // Sends (Fas 8.13): samma ställe som sidokedjan, av samma skäl —
-        // en omsynk efter ett spårbyte eller en ångring ska höras.
-        let _ = self.engine.send_command(AudioCommand::SetStemTrackSends {
-            track_index: track_idx,
-            sends: t.sends.clone(),
-        });
-        let _ = self.engine.send_command(AudioCommand::SetTrackEq {
-            track_index: track_idx,
-            settings: t.eq.to_settings(),
-        });
-        let _ = self.engine.send_command(AudioCommand::SetTrackMix {
-            track_index: track_idx,
-            comp_threshold_db: t.comp_threshold_db,
-            comp_ratio: t.comp_ratio,
-            reverb_send: t.reverb_send,
-            delay_send: t.delay_send,
-            pitch_semitones: t.pitch_semitones,
-        });
     }
+    // Resten är samma synk som efter en rattändring — en väg, inte två. Då följer cue-sends,
+    // EQ och sidokedja med automatiskt när ett nytt kommando läggs i `sync_track_audio_state`.
+    self.sync_track_audio_state(track_idx);
 }
 }
 

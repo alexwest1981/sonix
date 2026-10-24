@@ -886,6 +886,11 @@ pub struct SavedTrackData {
     pub reverb_send: f32,
     #[serde(default)]
     pub delay_send: f32,
+    /// Cue-sends till monitorbussarna (0 –1). Saknas i äldre filer — då är de av.
+    #[serde(default)]
+    pub cue_a: f32,
+    #[serde(default)]
+    pub cue_b: f32,
     #[serde(default)]
     pub automation: Vec<AutomationLaneOnDisk>,
     /// Sub-mix bus assignment (Fas 5.2). Defaults to bus 0 for old projects.
@@ -990,6 +995,8 @@ pub struct PreloadedTrackData {
     pub comp_ratio: f32,
     pub reverb_send: f32,
     pub delay_send: f32,
+    pub cue_a: f32,
+    pub cue_b: f32,
     pub automation: Vec<AutomationLaneOnDisk>,
     pub bus: usize,
     pub vca: Option<usize>,
@@ -1598,6 +1605,8 @@ pub fn load_demo_project(&mut self) {
                 comp_threshold_db: 0.0,
                 comp_ratio: 1.0,
                 reverb_send: 0.15,
+                cue_a: 0.0,
+                cue_b: 0.0,
                 delay_send: 0.10,
                 automation: Vec::new(),
                 bus: default_bus_for_kind(kind),
@@ -1689,6 +1698,8 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         comp_ratio: t.comp_ratio,
         reverb_send: t.reverb_send,
         delay_send: t.delay_send,
+        cue_a: t.cue_a,
+        cue_b: t.cue_b,
         // Punkterna skrivs i **takter** (Fas 8.2). Gamla projekt läses genom
         // `AutomationLaneOnDisk::to_live`, så en fil som redan är skriven behåller sitt
         // innehåll — men nya filer bär bara takter, och bara en gång.
@@ -2108,6 +2119,8 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 comp_ratio: st.comp_ratio,
                 reverb_send: st.reverb_send,
                 delay_send: st.delay_send,
+                cue_a: st.cue_a,
+                cue_b: st.cue_b,
                 automation: st.automation,
                 bus: st.bus,
                 vca: st.vca,
@@ -2294,6 +2307,8 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         loaded_track.comp_ratio = st.comp_ratio;
         loaded_track.reverb_send = st.reverb_send;
         loaded_track.delay_send = st.delay_send;
+        loaded_track.cue_a = st.cue_a;
+        loaded_track.cue_b = st.cue_b;
         // **Omräkningen sker här** (Fas 8.2), inte i `Deserialize`: en punkt skriven i
         // sekunder kan bara bli rätt takt med tempokartan, och kartan finns inte i filen.
         // Projektets eget tempo är laddat vid det här laget, så en gammal kurva hamnar på

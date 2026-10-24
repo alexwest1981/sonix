@@ -571,6 +571,13 @@ impl SynthEngine {
                 // som kommer en sample sent är samma fel som en send som kommer sent.
                 self.recompute_stem_order();
             }
+            AudioCommand::SetCueSend { track_index, a, b } => {
+                if let Some(track) = self.stem_tracks.get_mut(track_index) {
+                    track.cue_a = if a.is_finite() { a.clamp(0.0, 1.0) } else { 0.0 };
+                    track.cue_b = if b.is_finite() { b.clamp(0.0, 1.0) } else { 0.0 };
+                }
+            }
+            AudioCommand::SetCueListen(listen) => self.cue_listen = listen,
             AudioCommand::SetStemTrackSends { track_index, sends } => {
                 if let Some(track) = self.stem_tracks.get_mut(track_index) {
                     // Kläms här, en gång: målet till en buss som finns, nivån till
