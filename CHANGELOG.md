@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — rounder clips
 
+- Clip labels 10.5 → 13.5 px, the range Soundtrap uses on its regions; long names still fit inside
+  the clip and truncate at its edge.
+
 - Region corner rounding 4 → 8 px, matching the track headers and moving toward the 10–12 px
   Soundtrap uses on its regions.
 

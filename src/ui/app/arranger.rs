@@ -1624,7 +1624,8 @@ impl SonixApp {
                                             Pos2::new(r_rect.min.x + 5.0, r_rect.min.y + 7.0),
                                             egui::Align2::LEFT_CENTER,
                                             title_text,
-                                            egui::FontId::proportional(Theme::FONT_XS),
+                                            // Klippetiketten: Soundtrap har 13–15 px på sina regioner.
+                                            egui::FontId::proportional(13.5),
                                             header_text_col,
                                         );
 
