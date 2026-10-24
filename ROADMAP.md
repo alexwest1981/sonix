@@ -78,8 +78,8 @@ på en yta. Konkret, i den ordning det är värt att ta:
    duplicera, radera) i stället för att högerklick raderar, och **kanalerna i racket** har en
    meny (tysta, nollställ volym/pan) sedan 0.9.76, och kanalens VOL/PAN-rattar nollställs med
    dubbelklick (0.9.77). Kvar: övriga rattar i mixern, noter i pianorullen.
-5. **Inspelningsläget först.** En ny låt ska börja med en enda stor inspelningsknapp och ett spår
-   som redan är redo — Soundtraps bästa idé.
+5. **Inspelningsläget först.** *✅ 0.9.96:* Ctrl+N armar mikrofonspåret, väljer det, slår på
+   metronomen och landar i arrangemanget — REC är ett klick bort.
 
 ## 🎨 Tema: ljust/mörkt och en temamotor (tillagt 2026-10-24)
 

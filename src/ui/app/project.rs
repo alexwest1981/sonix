@@ -1571,7 +1571,16 @@ pub fn new_empty_project(&mut self) {
     self.project_name = crate::i18n::t("Namnlöst Projekt").to_string();
     self.project_file_path = None;
     self.ensure_mic_track_exists();
-    self.status_message = crate::i18n::t("✨ Skapade ett nytt tomt projekt!").to_string();
+    // **Inspelningsläget först** (GUI-planen, punkt 5): ett nytt projekt ska vara redo att spela in
+    // — mikrofonspåret armat, tidslinjen framme och metronomen på. Tidigare hamnade man i racket
+    // med allt avstängt och fick leta.
+    if let Some(last) = self.playlist_tracks.last_mut() {
+        last.is_rec_armed = true;
+    }
+    self.selected_timeline_track = self.playlist_tracks.len().saturating_sub(1);
+    self.metronome_enabled = true;
+    self.view_mode = super::ViewMode::PlaylistArranger;
+    self.status_message = crate::i18n::t("🎙 Nytt projekt: mikrofonspåret är armat — tryck REC.").to_string();
 }
 }
 

@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — a new project starts ready to record
+
+- `new_empty_project` (Ctrl+N) now arms the mic track, selects it, turns the metronome on and
+  lands in the arranger instead of an empty channel rack. The big REC is one click away, which was
+  the point of the Soundtrap comparison.
+
 ### Added — the assistant can change the synth
 
 - `set_channel_instrument` now runs: `find_preset` matches a name case-insensitively in both
