@@ -771,7 +771,10 @@ impl SonixApp {
             color: crate::ui::theme::palette().orange(),
             bars: 1,
             bends: Vec::new(),
-            pedals: Vec::new(),
+            pedals: vec![
+                state::PedalPoint { pos: 4.0, down: true },
+                state::PedalPoint { pos: 12.0, down: false },
+            ],
             alt_takes: Vec::new(),
             active_take: 0,
             comp: Vec::new(),

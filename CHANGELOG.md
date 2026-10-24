@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The pedal is visible in the piano roll.** A PEDAL strip under BEND draws the curve as a block
+  (down from a point to the next) and a click toggles the pedal at that step — so a curve that was
+  only audible can now be seen and edited. The demo project carries two points to show it.
+
 - **SoundFont loop points are read.** An imported `.sf2` instrument used to end as soon as its
   sample ended; the zone now carries the `shdr` loop and the engine loops it, in playback and in
   the export (same helper, `keymap::zone_loop_01`). A zone without loop points still follows the

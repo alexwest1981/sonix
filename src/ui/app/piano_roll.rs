@@ -1410,6 +1410,66 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 }
             }
         });
+
+        // **Pedal-fält (CC64):** klick sätter en punkt på det steget och togglar läget.
+        // Samma kurva som spelas upp och följer med till exporten, så det man ser är det man hör.
+        ui.add_space(2.0);
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t("PEDAL"))
+                    .size(Theme::FONT_S)
+                    .color(crate::ui::theme::palette().text_muted()),
+            );
+            ui.allocate_exact_size(Vec2::new(10.0, 12.0), Sense::hover());
+            let cell_w = 26.0 * zoom;
+            let (rect, resp) = ui.allocate_exact_size(
+                Vec2::new(cell_w * steps as f32, 16.0 * zoom),
+                Sense::click(),
+            );
+            let pat_idx = self.selected_pattern;
+            let mut pedals = self
+                .patterns
+                .get(pat_idx)
+                .map(|p| p.pedals.clone())
+                .unwrap_or_default();
+            let painter = ui.painter_at(rect);
+            painter.rect_filled(rect, Rounding::same(2.0), crate::ui::theme::palette().panel());
+            // Kurvan ritas som ett block: pedalen gäller från sin punkt till nästa.
+            let mut down = false;
+            for s in 0..steps {
+                if let Some(d) = crate::ui::app::state::pedal_at_step(&pedals, s) {
+                    down = d;
+                }
+                if down {
+                    let x = rect.min.x + s as f32 * cell_w;
+                    painter.rect_filled(
+                        Rect::from_min_max(
+                            Pos2::new(x + 1.0, rect.min.y + 2.0),
+                            Pos2::new(x + cell_w - 1.0, rect.max.y - 2.0),
+                        ),
+                        Rounding::same(1.0),
+                        crate::ui::theme::palette().orange(),
+                    );
+                }
+            }
+            if resp.clicked()
+                && let Some(pointer) = resp.interact_pointer_pos()
+            {
+                let step = (((pointer.x - rect.min.x) / cell_w).floor() as usize)
+                    .min(steps.saturating_sub(1));
+                let now = crate::ui::app::state::pedal_at_step(&pedals, step).unwrap_or(down);
+                crate::ui::app::state::push_pedal(
+                    &mut pedals,
+                    crate::ui::app::state::PedalPoint {
+                        pos: step as f32,
+                        down: !now,
+                    },
+                );
+                if let Some(pat) = self.patterns.get_mut(pat_idx) {
+                    pat.pedals = pedals;
+                }
+            }
+        });
     });
 }
 }
