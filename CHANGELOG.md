@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — filter envelope and a second LFO per operator (Sytrus)
+
+- `filter_env: [f32; 6]` (−4…+4 octaves): each operator's own ADSR opens its filter.
+  Prov `a_filter_envelope_opens_the_filter`: at 660 Hz the open filter passes **>4×** what the
+  closed one does, on an FM-brightened operator (a plain sine has no harmonics to filter).
+- **LFO 2** (`lfo2_rate/depth/target`, own phase): pitch and cutoff can move at different speeds.
+  Prov `a_second_lfo_can_move_the_filter_independently`.
+- Both have UI in the 6-op panel: **F-ENV** next to **PIT** for the selected operator, and an
+  **LFO 2** row under the first.
+- `paint_knob` extracted in `widgets.rs`, so the channel rack and the mixer draw their knobs with
+  the same code — the duplicate-control item from the GUI plan.
+
 ### Added — the API key is under Settings
 
 - **Inställningar → 🤖 AI & API-nyckel…** opens the same window as AI & Providers: provider, base

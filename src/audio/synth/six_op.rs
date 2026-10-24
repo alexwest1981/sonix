@@ -60,6 +60,17 @@ pub struct SixOpParams {
     /// rörelse med ett fält i stället för sex. `#[serde(default)]` → 0, så gamla patchar står still.
     #[serde(default = "no_pitch")]
     pub pitch_amount: [f32; SIX_OP_COUNT],
+    /// **Filterenvelop per operator** i oktaver (−4..4): opens cutoff följer operadens egen ADSR.
+    #[serde(default = "no_pitch")]
+    pub filter_env: [f32; SIX_OP_COUNT],
+    /// **Andra LFO:n** — Sytrus har flera. Egen fas, eget mål, så tonhöjd och cutoff kan röra sig
+    /// olika fort. Djup 0 = av.
+    #[serde(default)]
+    pub lfo2_rate: f32,
+    #[serde(default)]
+    pub lfo2_depth: f32,
+    #[serde(default)]
+    pub lfo2_target: u8,
 }
 
 pub fn no_pitch() -> [f32; SIX_OP_COUNT] {
@@ -132,6 +143,10 @@ impl Default for SixOpParams {
             envs: neutral_envs(),
             filters: open_filters(),
             pitch_amount: no_pitch(),
+            filter_env: no_pitch(),
+            lfo2_rate: 0.0,
+            lfo2_depth: 0.0,
+            lfo2_target: 0,
         }
     }
 }
@@ -161,6 +176,7 @@ pub struct SixOpVoice {
     envs: [AdsrVoice; SIX_OP_COUNT],
     filters: [[StateVariableFilter; SIX_OP_COUNT]; MAX_UNISON],
     lfo_phase: f32,
+    lfo2_phase: f32,
     sample_rate: f32,
 }
 
@@ -174,6 +190,7 @@ impl SixOpVoice {
                 std::array::from_fn(|_| StateVariableFilter::new(sample_rate))
             }),
             lfo_phase: 0.0,
+            lfo2_phase: 0.0,
             sample_rate,
         }
     }
@@ -208,6 +225,15 @@ impl SixOpVoice {
     pub fn next_sample(&mut self, params: &SixOpParams, inc: f32) -> f32 {
         // **LFO:** en fas per röst, som en analog synt. Djupet är 0 som standard, och då är
         // `lfo` 0 och ingen operator påverkas.
+        self.lfo2_phase += TAU * params.lfo2_rate.max(0.0) / self.sample_rate.max(1.0);
+        if self.lfo2_phase >= TAU {
+            self.lfo2_phase -= TAU;
+        }
+        let lfo2 = if params.lfo2_depth == 0.0 {
+            0.0
+        } else {
+            self.lfo2_phase.sin() * params.lfo2_depth
+        };
         self.lfo_phase += TAU * params.lfo_rate.max(0.0) / self.sample_rate.max(1.0);
         if self.lfo_phase >= TAU {
             self.lfo_phase -= TAU;
@@ -218,11 +244,14 @@ impl SixOpVoice {
             0.0
         };
         // Tonhöjd: ±6 % vid fullt djup, alltså ungefär ±1 halvton — en vibrato, inte en siren.
-        let pitch_scale = if params.lfo_target == 1 {
+        let mut pitch_scale = if params.lfo_target == 1 {
             1.0 + lfo * 0.06
         } else {
             1.0
         };
+        if params.lfo2_target == 1 {
+            pitch_scale *= 1.0 + lfo2 * 0.06;
+        }
 
         let mut env_now = [0.0f32; SIX_OP_COUNT];
         for (target, env) in self.envs.iter_mut().enumerate() {
@@ -239,7 +268,7 @@ impl SixOpVoice {
             } else {
                 0.0
             };
-            total += self.matrix_sample(params, inc * pitch_scale * (1.0 + detune), &env_now, lfo, u);
+            total += self.matrix_sample(params, inc * pitch_scale * (1.0 + detune), &env_now, lfo, lfo2, u);
         }
         total / (voices as f32).sqrt()
     }
@@ -254,6 +283,7 @@ impl SixOpVoice {
         inc: f32,
         env_now: &[f32; SIX_OP_COUNT],
         lfo: f32,
+        lfo2: f32,
         u: usize,
     ) -> f32 {
         let mut out = [0.0f32; SIX_OP_COUNT];
@@ -288,6 +318,15 @@ impl SixOpVoice {
             // Filtret sitter efter envelopen, före matrisen: en filtrerad modulator tar sina
             // övertoner med sig in i ljudet. Avstängt filter kostar ingenting.
             let mut filter = params.filters[target];
+            // Filterenvelopen: operadens egen ADSR öppnar filtret i oktaver.
+            if params.filter_env[target] != 0.0 {
+                filter.cutoff =
+                    (filter.cutoff * (2.0f32).powf(params.filter_env[target] * env_now[target]))
+                        .clamp(20.0, 20_000.0);
+            }
+            if params.lfo2_target == 2 && lfo2 != 0.0 {
+                filter.cutoff = (filter.cutoff * (2.0f32).powf(lfo2 * 2.0)).clamp(20.0, 20_000.0);
+            }
             if params.lfo_target == 2 && lfo != 0.0 {
                 // Cutoff i oktaver: ±2 oktaver vid fullt djup.
                 filter.cutoff = (filter.cutoff * (2.0f32).powf(lfo * 2.0)).clamp(20.0, 20_000.0);
@@ -368,6 +407,55 @@ mod tests {
         let body = &bent[2_400..];
         assert!(mag_at(body, 880.0) > 0.2, "en okt upp ska ge 880 Hz");
         assert!(mag_at(body, 440.0) < 0.05, "440 ska vara borta");
+    }
+
+    /// **Filterenvelopen öppnar filtret.** Samma lågpass, samma ton — bara envelopens djup skiljer.
+    #[test]
+    fn a_filter_envelope_opens_the_filter() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.2 };
+        // En sinus har inga övertoner att filtrera: modulation gör operator 1 rik på dem.
+        params.ratios[1] = 2.0;
+        params.matrix[1][0] = 3.0;
+        params.filters[0] = OpFilter { cutoff: 300.0, resonance: 0.7, mode: 0 };
+
+        let closed = render(&params, 220.0, 9_600);
+        let closed_high = mag_at(&closed[4_800..], 660.0);
+
+        params.filter_env[0] = 3.0;
+        let open = render(&params, 220.0, 9_600);
+        let open_high = mag_at(&open[4_800..], 660.0);
+
+        assert!(
+            open_high > closed_high * 4.0,
+            "öppet filter ska släppa igenom 1,1 kHz: {open_high:.4} mot {closed_high:.4}"
+        );
+    }
+
+    /// **Två LFO:er rör olika saker.** Den andra får eget djup och eget mål; med bara den första
+    /// på tonhöjd ska den andra på cutoff ändra spektrat.
+    #[test]
+    fn a_second_lfo_can_move_the_filter_independently() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.2 };
+        params.filters[0] = OpFilter { cutoff: 800.0, resonance: 1.0, mode: 0 };
+        params.lfo_rate = 5.0;
+        params.lfo_depth = 0.5;
+        params.lfo_target = 1;
+        let one = render(&params, 220.0, 9_600);
+
+        params.lfo2_rate = 7.0;
+        params.lfo2_depth = 1.0;
+        params.lfo2_target = 2;
+        let two = render(&params, 220.0, 9_600);
+
+        let diff: f32 = one
+            .iter()
+            .zip(two.iter())
+            .map(|(a, b)| (a - b).abs())
+            .sum::<f32>()
+            / one.len() as f32;
+        assert!(diff > 0.001, "den andra LFO:n ska höras: {diff:.5}");
     }
 
     /// **Utan modulering är 6-op en sinus.** Matrisen noll och bara operator 1 hörd ger

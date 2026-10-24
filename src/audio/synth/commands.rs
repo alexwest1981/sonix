@@ -192,6 +192,12 @@ impl SynthEngine {
                 for amount in &mut params.pitch_amount {
                     *amount = amount.clamp(-24.0, 24.0);
                 }
+                for amount in &mut params.filter_env {
+                    *amount = amount.clamp(-4.0, 4.0);
+                }
+                params.lfo2_rate = params.lfo2_rate.clamp(0.0, 40.0);
+                params.lfo2_depth = params.lfo2_depth.clamp(0.0, 1.0);
+                params.lfo2_target = params.lfo2_target.min(2);
                 // Ringmodulering 0–1 (1 = helt ringmodulerad) och additiv blandning −1–1.
                 for row in &mut params.ring {
                     for amount in row.iter_mut() {

@@ -59,6 +59,42 @@ pub fn pitch_knob(
     rotary_knob_impl(ui, value, min, max, label, color, size, 0.01, Some(0.0)).0
 }
 
+/// **En ratt, ett utseende.** Ritar bara skalet — den som äger interaktionen (ett egui-widget
+/// eller en egen dragyta i arrangöret) skickar in `norm` 0..1. Två kopior av den här geometrin
+/// gled isär förut: arrangöret ritade en stapel där mixern hade en ratt.
+pub fn paint_knob(painter: &egui::Painter, center: Pos2, radius: f32, norm: f32, color: Color32) {
+    let start_angle = 135.0_f32.to_radians();
+    let end_angle = 405.0_f32.to_radians();
+    let current_angle = start_angle + norm.clamp(0.0, 1.0) * (end_angle - start_angle);
+
+    painter.circle_filled(center, radius + 2.0, crate::ui::theme::palette().bg_deep());
+    painter.circle_filled(center, radius, crate::ui::theme::palette().panel_alt());
+    painter.circle_stroke(center, radius, Stroke::new(1.5_f32, crate::ui::theme::palette().border()));
+    painter.circle_filled(center, radius * 0.72, crate::ui::theme::palette().panel());
+
+    let arc_radius = radius * 0.88;
+    for i in 0..16 {
+        let a = start_angle + (i as f32 / 15.0) * (end_angle - start_angle);
+        let dot_pos = Pos2::new(center.x + a.cos() * arc_radius, center.y + a.sin() * arc_radius);
+        let dot_color = if a <= current_angle {
+            color
+        } else {
+            crate::ui::theme::palette().border()
+        };
+        painter.circle_filled(dot_pos, 1.2, dot_color);
+    }
+
+    let pointer_end = Pos2::new(
+        center.x + current_angle.cos() * (radius * 0.65),
+        center.y + current_angle.sin() * (radius * 0.65),
+    );
+    let pointer_start = Pos2::new(
+        center.x + current_angle.cos() * (radius * 0.2),
+        center.y + current_angle.sin() * (radius * 0.2),
+    );
+    painter.line_segment([pointer_start, pointer_end], Stroke::new(2.5_f32, color));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn rotary_knob_impl(
     ui: &mut Ui,
@@ -108,48 +144,11 @@ fn rotary_knob_impl(
     // Normalized value 0.0 .. 1.0
     let norm = ((*value - min) / (max - min)).clamp(0.0, 1.0);
 
-    // Angles: from -135 deg to +135 deg (270 deg total range)
-    let start_angle = 135.0_f32.to_radians();
-    let end_angle = 405.0_f32.to_radians();
-    let current_angle = start_angle + norm * (end_angle - start_angle);
-
-    let painter = ui.painter();
-
-    // 1. Knob outer shadow & body
-    painter.circle_filled(center, radius + 2.0, crate::ui::theme::palette().bg_deep());
-    painter.circle_filled(center, radius, crate::ui::theme::palette().panel_alt());
-    painter.circle_stroke(center, radius, Stroke::new(1.5_f32, crate::ui::theme::palette().border()));
-
-    // 2. Inner dial cap
-    painter.circle_filled(center, radius * 0.72, crate::ui::theme::palette().panel());
-
-    // 3. Indicator track arc (background)
-    let arc_radius = radius * 0.88;
-    for i in 0..16 {
-        let a = start_angle + (i as f32 / 15.0) * (end_angle - start_angle);
-        let dot_pos = Pos2::new(center.x + a.cos() * arc_radius, center.y + a.sin() * arc_radius);
-        let dot_color = if a <= current_angle {
-            color
-        } else {
-            crate::ui::theme::palette().border()
-        };
-        painter.circle_filled(dot_pos, 1.2, dot_color);
-    }
-
-    // 4. Indicator pointer line
-    let pointer_end = Pos2::new(
-        center.x + current_angle.cos() * (radius * 0.65),
-        center.y + current_angle.sin() * (radius * 0.65),
-    );
-    let pointer_start = Pos2::new(
-        center.x + current_angle.cos() * (radius * 0.2),
-        center.y + current_angle.sin() * (radius * 0.2),
-    );
-    painter.line_segment([pointer_start, pointer_end], Stroke::new(2.5_f32, color));
+    paint_knob(ui.painter(), center, radius, norm, color);
 
     // 5. Label below knob
     let text_pos = Pos2::new(rect.center().x, rect.max.y - 6.0);
-    painter.text(
+    ui.painter().text(
         text_pos,
         egui::Align2::CENTER_CENTER,
         label,

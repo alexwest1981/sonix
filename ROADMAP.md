@@ -72,7 +72,7 @@ på en yta. Konkret, i den ordning det är värt att ta:
 2. **Transporten dit ögat redan är.** *Delvis gjort i 0.9.80:* tempo och position (takt.slag.steg)
    sitter nu i arrangörens egen verktygsrad, bredvid taktart, metronom och pedal. Kvar: play/record
    där, om man vill gå hela vägen som Soundtrap.
-3. **Mindre krom.** *◐ 0.9.97:* AI-promptkapseln är borta ur arrangöret (flyttad till AI-vyn,
+3. **Mindre krom.** *✅ 0.9.97/0.9.100:* AI-promptkapseln är borta ur arrangöret (flyttad till AI-vyn,
    som redan hade en prompt). Kvar: samma kontroll två gånger (volym i rack och mixer) ska se
    likadan ut.
 4. **Högerklick överallt.** *Första steget taget i 0.9.75:* patternblock har en meny (öppna,

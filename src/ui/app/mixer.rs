@@ -3464,6 +3464,23 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                     ))
                                     .changed();
                             });
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(crate::i18n::t("F-ENV"))
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut self.six_op.filter_env[target], -4.0..=4.0)
+                                            .suffix(" oktaver")
+                                            .text(crate::i18n::t("cutoff")),
+                                    )
+                                    .on_hover_text(crate::i18n::t(
+                                        "Operadens envelop öppnar dess filter — 0 = orörd",
+                                    ))
+                                    .changed();
+                            });
                             let filter = &mut self.six_op.filters[target];
                             ui.horizontal(|ui| {
                                 six_changed |= ui
@@ -3541,6 +3558,40 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                         .clicked()
                                         && {
                                             self.six_op.lfo_target = if self.six_op.lfo_target
+                                                == target
+                                            {
+                                                0
+                                            } else {
+                                                target
+                                            };
+                                            true
+                                        };
+                                }
+                            });
+                            // **LFO 2** — egen hastighet och eget mål, så tonhöjd och cutoff kan
+                            // röra sig olika fort (Sytrus har flera).
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("LFO 2")
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut self.six_op.lfo2_rate, 0.05..=40.0)
+                                            .logarithmic(true)
+                                            .text("Hz"),
+                                    )
+                                    .changed();
+                                six_changed |= ui
+                                    .add(egui::Slider::new(&mut self.six_op.lfo2_depth, 0.0..=1.0))
+                                    .changed();
+                                for (target, label) in [(1u8, "PITCH"), (2, "CUT")] {
+                                    six_changed |= ui
+                                        .selectable_label(self.six_op.lfo2_target == target, label)
+                                        .clicked()
+                                        && {
+                                            self.six_op.lfo2_target = if self.six_op.lfo2_target
                                                 == target
                                             {
                                                 0
