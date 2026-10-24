@@ -184,6 +184,8 @@ impl SynthEngine {
                         *amount = amount.clamp(-32.0, 32.0);
                     }
                 }
+                params.unison = params.unison.clamp(1, 4);
+                params.detune = params.detune.clamp(0.0, 50.0);
                 params.lfo_rate = params.lfo_rate.clamp(0.0, 40.0);
                 params.lfo_depth = params.lfo_depth.clamp(0.0, 1.0);
                 params.lfo_target = params.lfo_target.min(2);

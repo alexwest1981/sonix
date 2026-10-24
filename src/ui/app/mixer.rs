@@ -3435,6 +3435,24 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                             // reglaget ingenting förrän man drar i det.
                             ui.horizontal(|ui| {
                                 ui.label(
+                                    egui::RichText::new("UNI")
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut self.six_op.unison)
+                                            .range(1..=4)
+                                            .speed(0.05),
+                                    )
+                                    .changed();
+                                six_changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut self.six_op.detune, 0.0..=50.0)
+                                            .text("cent"),
+                                    )
+                                    .changed();
+                                ui.label(
                                     egui::RichText::new("LFO")
                                         .size(Theme::FONT_XS)
                                         .color(crate::ui::theme::palette().text_muted()),

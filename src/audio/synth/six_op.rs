@@ -17,6 +17,8 @@ use crate::audio::filter::{FilterParams, StateVariableFilter};
 
 /// Antal operatorer. Sex är Sytrus egna tak, och matrisen är 6×6.
 pub const SIX_OP_COUNT: usize = 6;
+/// Fler stämmor än fyra kostar mer än de låter bättre: fyra räcker för en tjock klang.
+const MAX_UNISON: usize = 4;
 
 /// Matrisen och rattarna. `Default` är en ren sinus: operator 1 hörs, ingen modulerar.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -31,6 +33,10 @@ pub struct SixOpParams {
     /// 1 = helt ringmodulerad (bärvågen försvinner, sidobanden tar över).
     #[serde(default = "no_modulation")]
     pub ring: [[f32; SIX_OP_COUNT]; SIX_OP_COUNT],
+    /// **Unison** (0.9.72): antal stämmor 1–4 och deras spridning i **cent**.
+    /// `unison = 1` är standard och då räknas exakt som förut.
+    pub unison: u8,
+    pub detune: f32,
     /// **LFO** (0.9.71): hastighet i Hz och djup 0–1. `lfo_target`: 0 = av, 1 = tonhöjd,
     /// 2 = cutoff. Djupet är noll som standard, så en gammal patch står still.
     pub lfo_rate: f32,
@@ -109,6 +115,8 @@ impl Default for SixOpParams {
             matrix: [[0.0; SIX_OP_COUNT]; SIX_OP_COUNT],
             ring: no_modulation(),
             add: no_modulation(),
+            unison: 1,
+            detune: 12.0,
             lfo_rate: 5.0,
             lfo_depth: 0.0,
             lfo_target: 0,
@@ -136,10 +144,12 @@ impl SixOpParams {
 /// och för källor med högre index).
 #[derive(Clone, Copy, Debug)]
 pub struct SixOpVoice {
-    phases: [f32; SIX_OP_COUNT],
-    last: [f32; SIX_OP_COUNT],
+    /// En fasuppsättning per **unisonstämma** — stämma 0 är den vanliga, och med `unison = 1`
+    /// används bara den.
+    phases: [[f32; SIX_OP_COUNT]; MAX_UNISON],
+    last: [[f32; SIX_OP_COUNT]; MAX_UNISON],
     envs: [AdsrVoice; SIX_OP_COUNT],
-    filters: [StateVariableFilter; SIX_OP_COUNT],
+    filters: [[StateVariableFilter; SIX_OP_COUNT]; MAX_UNISON],
     lfo_phase: f32,
     sample_rate: f32,
 }
@@ -147,10 +157,12 @@ pub struct SixOpVoice {
 impl SixOpVoice {
     pub fn new(sample_rate: f32) -> Self {
         Self {
-            phases: [0.0; SIX_OP_COUNT],
-            last: [0.0; SIX_OP_COUNT],
+            phases: [[0.0; SIX_OP_COUNT]; MAX_UNISON],
+            last: [[0.0; SIX_OP_COUNT]; MAX_UNISON],
             envs: std::array::from_fn(|_| AdsrVoice::new(sample_rate)),
-            filters: std::array::from_fn(|_| StateVariableFilter::new(sample_rate)),
+            filters: std::array::from_fn(|_| {
+                std::array::from_fn(|_| StateVariableFilter::new(sample_rate))
+            }),
             lfo_phase: 0.0,
             sample_rate,
         }
@@ -159,13 +171,15 @@ impl SixOpVoice {
     /// Nytt anslag: faserna nollställs (annars ärver noten förra notens vågformsläge) och
     /// alla sex enveloper öppnar.
     pub fn reset(&mut self) {
-        self.phases = [0.0; SIX_OP_COUNT];
-        self.last = [0.0; SIX_OP_COUNT];
+        self.phases = [[0.0; SIX_OP_COUNT]; MAX_UNISON];
+        self.last = [[0.0; SIX_OP_COUNT]; MAX_UNISON];
         for env in &mut self.envs {
             env.gate_on();
         }
-        for filter in &mut self.filters {
-            filter.reset();
+        for voice_filters in &mut self.filters {
+            for filter in voice_filters {
+                filter.reset();
+            }
         }
     }
 
@@ -177,12 +191,11 @@ impl SixOpVoice {
 
     /// Ett sampel ur matrisen. `inc` är notens fasökning per sampel (2π·f/sr).
     ///
-    /// Indexen är **både** källa och mål i samma array (`out[source]` när `out[target]` skrivs),
-    /// så en iteratoromskrivning gör koden otydligare, inte kortare.
-    #[allow(clippy::needless_range_loop, reason = "källa och mål indexerar samma array")]
+    /// Med `unison > 1` räknas matrisen en gång per stämma med lite olika tonhöjd och fas, och
+    /// summorna delas med √n så att nivån står still. Enveloperna tickas **en** gång per sampel
+    /// och delas av stämmorna — annars skulle de sex enveloperna gå n gånger för fort.
     #[inline]
     pub fn next_sample(&mut self, params: &SixOpParams, inc: f32) -> f32 {
-        let mut out = [0.0f32; SIX_OP_COUNT];
         // **LFO:** en fas per röst, som en analog synt. Djupet är 0 som standard, och då är
         // `lfo` 0 och ingen operator påverkas.
         self.lfo_phase += TAU * params.lfo_rate.max(0.0) / self.sample_rate.max(1.0);
@@ -200,6 +213,40 @@ impl SixOpVoice {
         } else {
             1.0
         };
+
+        let mut env_now = [0.0f32; SIX_OP_COUNT];
+        for (target, env) in self.envs.iter_mut().enumerate() {
+            env_now[target] = env.next_sample(&params.envs[target]);
+        }
+
+        let voices = (params.unison.max(1) as usize).min(MAX_UNISON);
+        let mut total = 0.0;
+        for u in 0..voices {
+            // Stämman ligger `detune` cent från mitten, jämnt fördelade. Faktorn räknas per
+            // stämma — den får inte ärvas vidare, då blir sista stämman kraftigt förstämd.
+            let detune = if voices > 1 {
+                (u as f32 / (voices - 1) as f32 - 0.5) * params.detune * 0.01
+            } else {
+                0.0
+            };
+            total += self.matrix_sample(params, inc * pitch_scale * (1.0 + detune), &env_now, lfo, u);
+        }
+        total / (voices as f32).sqrt()
+    }
+
+    /// Matrisen för **en** unisonstämma. Indexen är både källa och mål i samma array
+    /// (`out[source]` när `out[target]` skrivs), så en iteratoromskrivning gör koden otydligare.
+    #[allow(clippy::needless_range_loop, reason = "källa och mål indexerar samma array")]
+    #[inline]
+    fn matrix_sample(
+        &mut self,
+        params: &SixOpParams,
+        inc: f32,
+        env_now: &[f32; SIX_OP_COUNT],
+        lfo: f32,
+        u: usize,
+    ) -> f32 {
+        let mut out = [0.0f32; SIX_OP_COUNT];
         for target in 0..SIX_OP_COUNT {
             let mut modulation = 0.0;
             for source in 0..SIX_OP_COUNT {
@@ -208,35 +255,34 @@ impl SixOpVoice {
                     let value = if source < target {
                         out[source]
                     } else {
-                        self.last[source]
+                        self.last[u][source]
                     };
                     modulation += amount * value;
                 }
             }
-            let mut phase = self.phases[target] + inc * params.ratios[target] * pitch_scale;
+            let mut phase = self.phases[u][target] + inc * params.ratios[target];
             if phase >= TAU || phase < 0.0 {
                 phase -= TAU * (phase / TAU).floor();
             }
-            self.phases[target] = phase;
+            self.phases[u][target] = phase;
             // Envelopen sitter **före** matrisen: den formar både det som hörs och det som
             // modulerar, precis som på en FM-synt.
-            let env = self.envs[target].next_sample(&params.envs[target]);
-            let mut value = (phase + modulation).sin() * env;
+            let mut value = (phase + modulation).sin() * env_now[target];
             // Filtret sitter efter envelopen, före matrisen: en filtrerad modulator tar sina
             // övertoner med sig in i ljudet. Avstängt filter kostar ingenting.
             let mut filter = params.filters[target];
             if params.lfo_target == 2 && lfo != 0.0 {
                 // Cutoff i oktaver: ±2 oktaver vid fullt djup.
-                filter.cutoff = (filter.cutoff * (2.0f32).powf(lfo * 2.0))
-                    .clamp(20.0, 20_000.0);
+                filter.cutoff = (filter.cutoff * (2.0f32).powf(lfo * 2.0)).clamp(20.0, 20_000.0);
             }
             if filter.cutoff < FILTER_OPEN_HZ {
                 let p = filter.params();
+                let state = &mut self.filters[u][target];
                 value = match filter.mode {
-                    1 => self.filters[target].process_bandpass(value, &p),
-                    2 => self.filters[target].process_highpass(value, &p),
-                    3 => self.filters[target].process_notch(value, &p),
-                    _ => self.filters[target].process_lowpass(value, &p),
+                    1 => state.process_bandpass(value, &p),
+                    2 => state.process_highpass(value, &p),
+                    3 => state.process_notch(value, &p),
+                    _ => state.process_lowpass(value, &p),
                 };
             }
             out[target] = value;
@@ -260,12 +306,11 @@ impl SixOpVoice {
                 }
             }
         }
-        self.last = out;
-        let mut sample = 0.0;
-        for (value, level) in out.iter().zip(params.levels.iter()) {
-            sample += value * level;
-        }
-        sample
+        self.last[u] = out;
+        out.iter()
+            .zip(params.levels.iter())
+            .map(|(value, level)| value * level)
+            .sum()
     }
 }
 
@@ -484,5 +529,26 @@ mod tests {
             "vibrato ska sprida energin: {carrier:.4} av {dry:.4}"
         );
         assert!(side > 0.02, "sidoband kring bärvågen: {side:.4}");
+    }
+
+    /// **Unison ändrar klangen men inte nivån.** Fyra stämmor med 20 cent spridning ska ge en
+    /// annan vågform än en stämma, men samma RMS — annars är det en volymratt, inte en kör.
+    #[test]
+    fn unison_thickens_the_sound_without_raising_the_level() {
+        let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+        let params = SixOpParams::default();
+        let mono = render(&params, 440.0, 9_600);
+        let mut wide = params;
+        wide.unison = 4;
+        wide.detune = 20.0;
+        let uni = render(&wide, 440.0, 9_600);
+        let diff: Vec<f32> = mono.iter().zip(&uni).map(|(a, b)| a - b).collect();
+        let (m, u, d) = (rms(&mono[1_200..]), rms(&uni[1_200..]), rms(&diff[1_200..]));
+        println!("  mono {m:.4}, unison {u:.4}, skillnad {d:.4}");
+        assert!(d > 0.05, "unison ska ändra vågformen: {d:.4}");
+        assert!(
+            (m - u).abs() < m * 0.3,
+            "nivån ska stå still: {u:.4} mot {m:.4}"
+        );
     }
 }

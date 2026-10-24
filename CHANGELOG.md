@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Unison in the 6-op synth.** 1–4 voices per note, spread by 0–50 cents, summed with 1/√n so the
+  level stays put. Each voice keeps its own phases, feedback history and filter state; the six
+  envelopes tick once per sample and are shared, or they would run n times too fast. Default is
+  one voice — every earlier patch renders exactly as before, which the existing tests confirm.
+  Measured: RMS 0.7071 mono against 0.7018 with four voices at 20 cents.
+
 - **An LFO in the 6-op synth.** Rate 0.05–40 Hz and depth 0–1, aimed at pitch (vibrato, about
   ±1 semitone at full depth) or cutoff (±2 octaves). Depth is 0 by default, so nothing moves until
   the slider does and older patches are untouched. Measured on a 440 Hz tone at 10 Hz: the carrier
