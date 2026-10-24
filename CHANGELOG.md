@@ -7,7 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
+### Changed — the interface stops looking like stock egui
+
+Everything below was egui's default values; Sonix had never set a style at all.
+
+- **Global form** (`theme::apply_style`): 8×5 px item spacing (was 8×3), 21 px row height
+  (was 18), 9×4 button padding (was 4×2), 4 px corner rounding on widgets and 8 px on windows,
+  panel/window fills taken from the palette, orange selection with black text.
+- **Type scale:** XS 9 → 10.5, S 11 → 12.5, M 13 → 14.5, L 16 → 18, XL 22 → 24, and the same
+  scale for egui's own `text_styles`, so widgets without an explicit size grow with the rest.
+  Checked in screenshots: no clipping in the arranger, rack, piano roll or synth panel. Mixer
+  channel names truncate with an ellipsis — they did before the change too.
 
 - **Tempo and position sit at the timeline now.** The arranger toolbar has an editable BPM field
   and the bar.beat.step position (`1.1.1`) next to the time signature, metronome and pedal — the

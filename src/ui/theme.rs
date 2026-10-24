@@ -7,11 +7,12 @@ pub struct Theme;
 
 #[allow(dead_code)]
 impl Theme {
-    pub const FONT_XS: f32 = 9.0;
-    pub const FONT_S: f32 = 11.0;
-    pub const FONT_M: f32 = 13.0;
-    pub const FONT_L: f32 = 16.0;
-    pub const FONT_XL: f32 = 22.0;
+    // **Större typografi** (GUI-planen, punkt 3): 9 px etiketter var FL-tätt, inte Ableton.
+    pub const FONT_XS: f32 = 10.5;
+    pub const FONT_S: f32 = 12.5;
+    pub const FONT_M: f32 = 14.5;
+    pub const FONT_L: f32 = 18.0;
+    pub const FONT_XL: f32 = 24.0;
 
     /// Samma färg med annan genomskinlighet — så att en ton inte behöver skrivas av för hand.
     pub fn alpha(c: Color32, a: u8) -> Color32 {
@@ -298,6 +299,50 @@ pub fn reload_if_changed() {
     if let Ok(mut p) = PALETTE.write() {
         *p = Some(fresh);
     }
+}
+
+/// **Global form** (GUI-planen, punkt 3): luftigare rader, rundare hörn, mjukare kanter och
+/// paletten i de få ytor egui äger själv. Utan det här ser appen ut som egui — vilket är
+/// precis vad den gjort: allt var standardvärden.
+pub fn apply_style(ctx: &eframe::egui::Context) {
+    let p = palette();
+    ctx.style_mut(|style| {
+        // Mer luft: 5 px mellan rader (standard 3) och 21 px radhöjd (standard 18).
+        style.spacing.item_spacing = eframe::egui::vec2(8.0, 5.0);
+        style.spacing.button_padding = eframe::egui::vec2(9.0, 4.0);
+        style.spacing.interact_size.y = 21.0;
+        style.spacing.menu_margin = eframe::egui::Margin::same(6.0);
+        // Rundare hörn och tunnare kanter — Abletons paneler har inga hårda ramar.
+        for w in [
+            &mut style.visuals.widgets.noninteractive,
+            &mut style.visuals.widgets.inactive,
+            &mut style.visuals.widgets.hovered,
+            &mut style.visuals.widgets.active,
+            &mut style.visuals.widgets.open,
+        ] {
+            w.rounding = eframe::egui::Rounding::same(4.0);
+            w.bg_stroke.width = w.bg_stroke.width.min(1.0);
+        }
+        style.visuals.window_rounding = eframe::egui::Rounding::same(8.0);
+        style.visuals.menu_rounding = eframe::egui::Rounding::same(6.0);
+        // Paletten i de ytor egui ritar själv.
+        style.visuals.panel_fill = p.panel();
+        style.visuals.window_fill = p.panel_alt();
+        style.visuals.extreme_bg_color = p.bg();
+        style.visuals.faint_bg_color = p.bg();
+        style.visuals.selection.bg_fill = p.orange();
+        style.visuals.selection.stroke.color = eframe::egui::Color32::BLACK;
+        // Samma skala för de widgetar som inte får en storlek uttryckligen.
+        use eframe::egui::{FontFamily, FontId, TextStyle};
+        style.text_styles = [
+            (TextStyle::Small, FontId::proportional(10.5)),
+            (TextStyle::Body, FontId::proportional(12.5)),
+            (TextStyle::Button, FontId::proportional(12.5)),
+            (TextStyle::Monospace, FontId::new(12.5, FontFamily::Monospace)),
+            (TextStyle::Heading, FontId::proportional(18.0)),
+        ]
+        .into();
+    });
 }
 
 /// Prov som rör `SONIX_CONFIG_DIR` måste turas om: miljövariabeln är global, och två prov som

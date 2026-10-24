@@ -1280,6 +1280,8 @@ impl eframe::App for SonixApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Temafilen läses om när den ändras — annars krävdes en omstart för att se en färg.
         crate::ui::theme::reload_if_changed();
+        // Global form: luft, hörn och palett i egui:s egna ytor.
+        crate::ui::theme::apply_style(ctx);
 
         self.poll_background_work(ctx);
 
