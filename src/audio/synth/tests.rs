@@ -3071,8 +3071,14 @@ fn measure_six_op_worst_case() {
     const VOICES: usize = 16;
     const SAMPLES: usize = 48_000;
 
-    // Tre lägen, så siffran säger vad de nya rattarna kostar — inte bara att det går.
-    for (label, slope, curve) in [("12 dB, ingen kurva", 1u8, false), ("24 dB, ingen kurva", 2, false), ("24 dB + filterkurva", 2, true)] {
+    // Fyra lägen: ett typiskt (unison 1, två operatorer) och tre tak-lägen, så siffran säger
+    // både vad de nya rattarna kostar och vad en vanlig patch landar på.
+    for (label, slope, curve, unison) in [
+        ("typisk patch (unison 1)", 1u8, false, 1u8),
+        ("12 dB, ingen kurva", 1, false, 4),
+        ("24 dB, ingen kurva", 2, false, 4),
+        ("24 dB + filterkurva", 2, true, 4),
+    ] {
         let mut engine = SynthEngine::new(48_000.0);
         engine.waveform = Waveform::SixOp;
         engine.handle_command(AudioCommand::SetSixOp { params: crate::audio::synth::SixOpParams {
@@ -3082,7 +3088,7 @@ fn measure_six_op_worst_case() {
                 mode: 0,
             }),
             filter_slope: [slope; 6],
-            unison: 4,
+            unison,
             detune: 12.0,
             curve_gain: if curve { [2.0, 2.0, 2.0, 2.0] } else { [1.0; 4] },
             ..crate::audio::synth::SixOpParams::default()
