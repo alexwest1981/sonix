@@ -10,8 +10,9 @@
 //! grundton) och `smpl` (själva ljudet).
 //!
 //! **Vad som inte läses, med flit:** presetlagrets egna zoner (bank/preset-val), `pmod`
-//! (LFO/EG-modulation), `pgen` utöver ovanstående operatorer, och samplets loop-punkter —
-//! [`SampleZone`] bär ingen loop; kanalens egen `loop_mode` gäller. Instrumentet används
+//! (LFO/EG-modulation) och `pgen` utöver ovanstående operatorer. Samplets **loop-punkter**
+//! läses (0.9.66) och följer med zonen; saknar sampeln dem gäller kanalens egen `loop_mode`.
+//! Instrumentet används
 //! alltså direkt, utan preset-förval. Det är samma avgränsning som ett "load instrument"
 //! i en sampler, inte en ofullständig preset-spelare.
 
@@ -120,6 +121,9 @@ pub fn parse(bytes: &[u8]) -> Result<SoundFont, String> {
         end: usize,
         rate: u32,
         root: u8,
+        /// `shdr`-loopens start/slut i *filens* frames. SF2 skriver ofta 0/0 när sampeln
+        /// inte loopar.
+        loop_frames: (usize, usize),
     }
     // shdr-post = 46 byte; sista posten är EOP.
     let sh_count = shdr.len() / 46;
@@ -134,6 +138,10 @@ pub fn parse(bytes: &[u8]) -> Result<SoundFont, String> {
             end: u32_at(shdr, o + 24) as usize,
             rate: u32_at(shdr, o + 36),
             root: shdr[o + 40],
+            loop_frames: (
+                u32_at(shdr, o + 28) as usize,
+                u32_at(shdr, o + 32) as usize,
+            ),
         });
     }
 
@@ -196,6 +204,13 @@ pub fn parse(bytes: &[u8]) -> Result<SoundFont, String> {
             zones.push(SampleZone {
                 sample_path: None,
                 pcm: Some((mono.clone(), mono, s.rate.max(1))),
+                // Loopen räknas om till zonens eget ljud (start..end), annars pekar den
+                // utanför när flera sampel delar `smpl`.
+                loop_frames: {
+                    let (ls, le) = s.loop_frames;
+                    (le > ls && ls >= start && le <= end)
+                        .then_some(((ls - start) as u32, (le - start) as u32))
+                },
                 root: root_override.unwrap_or(s.root),
                 key_low,
                 key_high,
@@ -341,6 +356,14 @@ mod tests {
         assert_eq!((inst.zones[0].key_low, inst.zones[0].key_high), (0, 59));
         assert_eq!((inst.zones[1].key_low, inst.zones[1].key_high), (60, 127));
         assert_eq!(inst.zones[0].root, 60);
+        // **Loopen följer med zonen** och är omräknad till zonens eget ljud: i testfilen
+        // täcker `shdr`-loopen hela samplet, alltså 0..längden.
+        let (loop_l, _, _) = inst.zones[0].pcm.as_ref().unwrap();
+        assert_eq!(
+            inst.zones[0].loop_frames,
+            Some((0, loop_l.len() as u32)),
+            "SF2-loopens punkter ska in i zonen"
+        );
         // Ljudet är filens ramar, inte nollor: 8 ramar per zon, värdet 0/32768 … 7/32768.
         let (l, r, rate) = inst.zones[0].pcm.as_ref().expect("zonen har ljud");
         assert_eq!(rate, &48_000);

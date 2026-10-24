@@ -242,6 +242,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                 key_high: 55,
                 vel_low: 0.6,
                 vel_high: 0.9,
+                loop_frames: None,
             }],
             // Ett filter med **egna** värden: ett tappat filterfält i sparandet ska synas här.
             filter: crate::audio::filter::SamplerFilter {
@@ -423,6 +424,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             key_high: 60,
             vel_low: 0.0,
             vel_high: 1.0,
+            loop_frames: None,
         }];
         let cmd = crate::ui::app::browser::channel_sample_trigger_command(&ch, 0, 48, 0.8, 0.0)
             .expect("kommandot ska byggas");

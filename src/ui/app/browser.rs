@@ -164,9 +164,14 @@ pub(crate) fn channel_sample_trigger_command(
     // flyttats, och då är kanalens eget sampel det ärliga svaret (samma regel som 8.5).
     let zon = crate::audio::keymap::zone_for_note(&ch.zones, note, velocity)
         .and_then(|i| ch.zones.get(i))
-        .and_then(|z| z.pcm.as_ref().filter(|(l, _, _)| !l.is_empty()).map(|p| (p, z.root)));
+        .and_then(|z| {
+            z.pcm
+                .as_ref()
+                .filter(|(l, _, _)| !l.is_empty())
+                .map(|p| (p, z.root, z.loop_frames))
+        });
     let (left, right, sample_rate, base_note, start01, end01) = match zon {
-        Some(((l, r, sr), root)) => (l.clone(), r.clone(), *sr, root, 0.0, 1.0),
+        Some(((l, r, sr), root, _)) => (l.clone(), r.clone(), *sr, root, 0.0, 1.0),
         None => {
             let (start01, end01) = crate::audio::onset::window_for_note(
                 &ch.slices,
@@ -178,6 +183,10 @@ pub(crate) fn channel_sample_trigger_command(
             (l.clone(), r.clone(), *sr, ch.sample_base_note, start01, end01)
         }
     };
+    let zon_loop = crate::audio::keymap::zone_loop_01(
+        zon.map(|(_, _, lf)| lf).flatten(),
+        left.len(),
+    );
     Some(AudioCommand::TriggerSampleVoice {
         left,
         right,
@@ -200,9 +209,11 @@ pub(crate) fn channel_sample_trigger_command(
         // riktningen, envelopen och notens längd — stegets egen längd, så att en
         // lopande not håller lika länge som steget varar.
         channel: channel as u32,
-        loop_mode: ch.loop_mode,
-        loop_start01: ch.sample_loop_start,
-        loop_end01: ch.sample_loop_end,
+        // **SF2-loopens punkter vinner** när zonen bär dem: det är så filen säger att
+        // instrumentet ska klinga. Utan dem gäller kanalens inställning som förut.
+        loop_mode: zon_loop.map_or(ch.loop_mode, |_| crate::audio::command::LoopMode::Forever),
+        loop_start01: zon_loop.map_or(ch.sample_loop_start, |(a, _)| a),
+        loop_end01: zon_loop.map_or(ch.sample_loop_end, |(_, b)| b),
         ping_pong: ch.ping_pong,
         amp_env: ch.amp_env,
         filter: ch.filter,

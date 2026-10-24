@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **SoundFont loop points are read.** An imported `.sf2` instrument used to end as soon as its
+  sample ended; the zone now carries the `shdr` loop and the engine loops it, in playback and in
+  the export (same helper, `keymap::zone_loop_01`). A zone without loop points still follows the
+  channel's loop setting, so old projects are unchanged. The import hint text said loops were
+  ignored — it now says they follow the zone.
+
 - **The pedal is recorded with the take.** CC64 while recording writes a point into the pattern,
   and the curve is played back in pattern mode, from arrangement blocks, and in the export — the
   file now has the pedal the take had. Points land on step boundaries (16th-note resolution), so

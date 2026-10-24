@@ -1738,7 +1738,7 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                             }
                             if ui
                                 .button(crate::i18n::t("📥 Importera SoundFont (.sf2)"))
-                                .on_hover_text(crate::i18n::t("Läser instrumentets zoner ur filen och lägger dem i keymappen (FL:s Soundfont Player). Preset- och modulationslagret läses inte, och samplets loop-punkter gäller inte — kanalens egen loop-inställning styr."))
+                                .on_hover_text(crate::i18n::t("Läser instrumentets zoner ur filen och lägger dem i keymappen (FL:s Soundfont Player). Preset- och modulationslagret läses inte, men samplets loop-punkter följer med zonen."))
                                 .clicked()
                                 && let Some(p) = rfd::FileDialog::new()
                                     .add_filter("SoundFont", &["sf2"])

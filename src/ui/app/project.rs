@@ -566,6 +566,9 @@ pub struct SavedZone {
     /// Hela registret som standard: en zon utan intervall ska höras, inte tystna.
     #[serde(default = "default_key_high")]
     pub key_high: u8,
+    /// SF2-loopens start/slut i zonens frames. Saknas i äldre filer — då loopar zonen inte.
+    #[serde(default)]
+    pub loop_frames: Option<(u32, u32)>,
     #[serde(default)]
     pub vel_low: f32,
     #[serde(default = "default_vel_high")]
@@ -740,6 +743,7 @@ pub(crate) fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
             .iter()
             .map(|z| SavedZone {
                 sample_path: z.sample_path.clone(),
+                loop_frames: z.loop_frames,
                 root: z.root,
                 key_low: z.key_low,
                 key_high: z.key_high,
@@ -810,6 +814,7 @@ pub(crate) fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
                 key_high: z.key_high,
                 vel_low: z.vel_low,
                 vel_high: z.vel_high,
+                loop_frames: z.loop_frames,
             })
             .collect(),
         loop_mode: s.loop_mode,

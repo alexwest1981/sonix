@@ -35,6 +35,10 @@ pub struct SampleZone {
     /// (0,0–1,0) — inte i MIDI:s 1–127, så det finns **ett** tal att jämföra med.
     pub vel_low: f32,
     pub vel_high: f32,
+    /// **Loop i sampelframes** (SF2:s `shdr`): (start, slut) inom zonens eget ljud. `None` =
+    /// ingen loop, alltså en-skottsbeteendet. Ligger på zonen och inte på kanalen, för två
+    /// zoner i samma lager har inte samma loop.
+    pub loop_frames: Option<(u32, u32)>,
 }
 
 impl SampleZone {
@@ -49,6 +53,7 @@ impl SampleZone {
             key_high: 127,
             vel_low: 0.0,
             vel_high: 1.0,
+            loop_frames: None,
         }
     }
 
@@ -78,6 +83,16 @@ impl SampleZone {
 /// *är* ordningen svaret, och den står i gränssnittet.
 ///
 /// `None` = ingen zon täcker noten, och då spelar kanalens **eget** sampel.
+/// **Zonens loop som andelar av ljudet** (0–1), för `TriggerSampleVoice`. `None` = zonen
+/// loopar inte, och då gäller kanalens inställning som förut.
+pub fn zone_loop_01(loop_frames: Option<(u32, u32)>, len: usize) -> Option<(f32, f32)> {
+    let (a, b) = loop_frames?;
+    if len == 0 || b <= a || b as usize > len {
+        return None;
+    }
+    Some((a as f32 / len as f32, b as f32 / len as f32))
+}
+
 pub fn zone_for_note(zones: &[SampleZone], note: u8, velocity: f32) -> Option<usize> {
     zones.iter().rposition(|z| z.covers(note, velocity))
 }
@@ -94,6 +109,16 @@ mod tests {
             vel_high: vels.1,
             ..SampleZone::full_range(root)
         }
+    }
+
+    #[test]
+    fn a_zone_loop_outside_the_sample_is_ignored() {
+        assert_eq!(zone_loop_01(Some((10, 90)), 100), Some((0.1, 0.9)));
+        // Slut utanför ljudet, bakvänt intervall och tomt ljud ger ingen loop.
+        assert_eq!(zone_loop_01(Some((10, 200)), 100), None);
+        assert_eq!(zone_loop_01(Some((50, 40)), 100), None);
+        assert_eq!(zone_loop_01(Some((0, 10)), 0), None);
+        assert_eq!(zone_loop_01(None, 100), None);
     }
 
     #[test]

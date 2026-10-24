@@ -264,15 +264,24 @@ fn sample_trigger_command(
     // hamna i en zon i filen och en annan i högtalarna.
     let zon = crate::audio::keymap::zone_for_note(&v.zones, note, velocity)
         .and_then(|i| v.zones.get(i))
-        .and_then(|z| z.pcm.as_ref().filter(|(l, _, _)| !l.is_empty()).map(|p| (p, z.root)));
+        .and_then(|z| {
+            z.pcm
+                .as_ref()
+                .filter(|(l, _, _)| !l.is_empty())
+                .map(|p| (p, z.root, z.loop_frames))
+        });
     let (left, right, sample_rate, base_note, start01, end01) = match zon {
-        Some(((l, r, sr), root)) => (l.clone(), r.clone(), *sr, root, 0.0, 1.0),
+        Some(((l, r, sr), root, _)) => (l.clone(), r.clone(), *sr, root, 0.0, 1.0),
         None => {
             let (start01, end01) =
                 crate::audio::onset::window_for_note(&ch.slices, v.base_note, note, (v.start, v.end));
             (v.left.clone(), v.right.clone(), v.sample_rate, v.base_note, start01, end01)
         }
     };
+    let zon_loop = crate::audio::keymap::zone_loop_01(
+        zon.map(|(_, _, lf)| lf).flatten(),
+        left.len(),
+    );
     Some(AudioCommand::TriggerSampleVoice {
         left,
         right,
@@ -289,9 +298,10 @@ fn sample_trigger_command(
         start01,
         end01,
         channel: channel as u32,
-        loop_mode: v.loop_mode,
-        loop_start01: v.loop_start,
-        loop_end01: v.loop_end,
+        // Samma regel som spelvägen: zonens SF2-loop vinner.
+        loop_mode: zon_loop.map_or(v.loop_mode, |_| LoopMode::Forever),
+        loop_start01: zon_loop.map_or(v.loop_start, |(a, _)| a),
+        loop_end01: zon_loop.map_or(v.loop_end, |(_, b)| b),
         ping_pong: v.ping_pong,
         amp_env: v.amp_env,
         filter: v.filter,
@@ -1115,6 +1125,7 @@ mod tests {
                 key_high: 55,
                 vel_low: 0.0,
                 vel_high: 1.0,
+                loop_frames: None,
             }],
         };
         let ch = RackChannel {
