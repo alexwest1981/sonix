@@ -879,7 +879,22 @@ fn stretch_key_for(r: &AudioRegion, bpm_here: f32) -> Option<String> {
     if path.is_empty() {
         return None; // ingen källa på disk: det finns inget att sträcka
     }
-    Some(crate::audio::stretch::cache_key(path, r.source_bpm, bpm_here))
+    Some(format!(
+        "{}{}",
+        crate::audio::stretch::cache_key(path, r.source_bpm, bpm_here),
+        Self::warp_key_suffix(r.warp_mode)
+    ))
+}
+
+/// Lägets del av nyckeln. `Complex` är standard och skrivs **inte** ut, så filer som cachades
+/// innan läget blev per klipp fortsätter att gälla. Läget hör till nyckeln — annars spelar ett
+/// byte av läge den gamla filen.
+pub(crate) fn warp_key_suffix(mode: crate::audio::warp::WarpMode) -> String {
+    if mode == crate::audio::warp::WarpMode::Complex {
+        String::new()
+    } else {
+        format!("-{}", mode.label().to_lowercase())
+    }
 }
 }
 
@@ -958,7 +973,7 @@ pub fn ensure_stretched(&mut self) {
     }
 
     // Vilka klipp behöver en sträckning, och vilka svar saknas?
-    let mut wanted: Vec<(String, String, f32, f32)> = Vec::new();
+    let mut wanted: Vec<(String, String, f32, f32, crate::audio::warp::WarpMode)> = Vec::new();
     for t in &self.playlist_tracks {
         for r in &t.regions {
             // **Ett stycke per tempovärde** (8.10 punkt 1): ett klipp som spänner över ett byte
@@ -982,14 +997,9 @@ pub fn ensure_stretched(&mut self) {
                 if decision.mode != crate::audio::stretch::FollowMode::Stretch {
                     continue;
                 }
-                let Some(mut key) = Self::stretch_key_for(r, bpm_here) else {
+                let Some(key) = Self::stretch_key_for(r, bpm_here) else {
                     continue;
                 };
-                // Läget hör till nyckeln: annars spelar ett byte av läge den gamla filen.
-                if self.warp_mode != crate::audio::warp::WarpMode::Complex {
-                    key.push('-');
-                    key.push_str(&self.warp_mode.label().to_lowercase());
-                }
                 if self.stretch_cache.knows(&key) {
                     continue;
                 }
@@ -998,6 +1008,7 @@ pub fn ensure_stretched(&mut self) {
                     r.source_path.clone().unwrap_or_default(),
                     r.source_bpm,
                     bpm_here,
+                    r.warp_mode,
                 ));
             }
         }
@@ -1007,9 +1018,9 @@ pub fn ensure_stretched(&mut self) {
     }
     let dir = crate::paths::paths().stretch_cache_dir();
     let count = wanted.len();
-    for (key, source_path, source_bpm, project_bpm) in wanted {
+    for (key, source_path, source_bpm, project_bpm, mode) in wanted {
         self.stretch_cache
-            .request(&dir, key, source_path, source_bpm, project_bpm, self.warp_mode);
+            .request(&dir, key, source_path, source_bpm, project_bpm, mode);
     }
     self.status_message = crate::tstatus!(
         "⏳ Sträcker {} klipp till {:.1} BPM — originalet spelar under tiden.",

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Warp mode per clip.** The mode used to be global for the project; each audio clip now has
+  its own (`AudioRegion.warp_mode`, right-click → 🎚 Warp-läge), and split halves inherit it.
+  The mode is part of the stretch cache key — otherwise switching modes would keep playing the
+  old file — while the default (`Complex`) is left out so cached files stay valid. Older
+  projects open with `Complex`, exactly as they sounded before.
 - **Cue sends A/B.** Every track has CUE A/CUE B (post-fader), and the Control Room listens
   to MIX, A or B — the cue carries only the tracks sent to it and never reaches an export
   (a fresh engine always listens to Main). Measured: 400 Hz sent to A, 1 200 Hz not sent;

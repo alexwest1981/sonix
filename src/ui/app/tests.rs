@@ -877,7 +877,8 @@ use crate::ui::theme::Theme;
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
-        };
+            warp_mode: Default::default(),
+};
         let stems: Vec<AudioRegion> = (0..12).map(|_| stem(163.0)).collect();
         let in_forty = crate::audio::tempo::TempoMap::single(40.0);
 
@@ -1688,7 +1689,8 @@ use crate::ui::theme::Theme;
             is_reverse: false,
             color: sample_item.color,
             loop_length_bars: 0.0,
-        };
+            warp_mode: Default::default(),
+};
         tracks[0].regions.push(region);
 
         assert_eq!(tracks[0].regions.len(), 1);
@@ -1720,7 +1722,8 @@ use crate::ui::theme::Theme;
             is_reverse: false,
             color: sample_item.color,
             loop_length_bars: 0.0,
-        };
+            warp_mode: Default::default(),
+};
         new_track.regions.push(new_reg);
         tracks.push(new_track);
 
@@ -2170,6 +2173,22 @@ use crate::ui::theme::Theme;
         assert!((back.formant.amount - 0.6).abs() < 1e-6);
         assert!((back.sweep.to - 9.0).abs() < 1e-6);
         assert_eq!(back.partial_env_target, 5);
+    }
+
+    /// **Warp-läget hör till sträckningens nyckel.** Standardläget `Complex` skrivs inte ut, så
+    /// filer som cachades innan läget blev per klipp fortsätter att gälla — men byter man läge
+    /// på ett klipp måste nyckeln ändras, annars spelas den gamla filen.
+    #[test]
+    fn the_warp_mode_is_part_of_the_stretch_key() {
+        use crate::audio::warp::WarpMode;
+        assert_eq!(SonixApp::warp_key_suffix(WarpMode::Complex), "");
+        assert_eq!(SonixApp::warp_key_suffix(WarpMode::Fast), "-fast");
+        assert_ne!(
+            SonixApp::warp_key_suffix(WarpMode::Tone),
+            SonixApp::warp_key_suffix(WarpMode::Smooth),
+            "två lägen får inte dela nyckel"
+        );
+        assert_eq!(WarpMode::default(), WarpMode::Complex, "äldre klipp låter som förut");
     }
 
     /// **Bendkurvan:** en punkt hör till sitt steg, fördröjningen är resten, och en ny
@@ -3142,7 +3161,8 @@ use crate::ui::theme::Theme;
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
-        };
+            warp_mode: Default::default(),
+};
 
         // 120 takter ur 240 sekunder = 120 BPM, och projektet står i 120: klippet
         // importerades i projektets tempo, alltså vet vi det.
@@ -3199,7 +3219,8 @@ use crate::ui::theme::Theme;
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
-        };
+            warp_mode: Default::default(),
+};
         let source = source_bpm_from_region(&region(bars, stored), file_secs, 120.0);
         assert!(
             (source - 120.0).abs() < 1e-4,
@@ -3248,7 +3269,8 @@ use crate::ui::theme::Theme;
                 loop_length_bars: 0.0,
                 source_bpm: 0.0,
                 tape: false,
-            },
+                warp_mode: Default::default(),
+},
             AudioRegion {
                 id: 2,
                 name: "B".to_string(),
@@ -3266,7 +3288,8 @@ use crate::ui::theme::Theme;
                 loop_length_bars: 0.0,
                 source_bpm: 96.0,
                 tape: false,
-            },
+                warp_mode: Default::default(),
+},
         ];
         // Utan fil att mäta mot: projektets tempo, som förut (faktorn 1,0 direkt).
         let (stamped, used) = stamp_source_tempo(regions.iter_mut(), None, 120.0);
@@ -3676,6 +3699,7 @@ use crate::ui::theme::Theme;
             loop_length_bars: 0.0,
             source_bpm: 0.0,
             tape: false,
+            warp_mode: Default::default(),
         }
     }
 

@@ -611,7 +611,8 @@ pub fn import_audio_file_as_track(&mut self, path: &str, tmpl: &TrackTemplate) {
         is_reverse: false,
         color: tmpl.color,
         loop_length_bars: 0.0,
-    }];
+        warp_mode: self.warp_mode,
+}];
 
     self.playlist_tracks.push(track);
     let idx = self.playlist_tracks.len() - 1;
@@ -1346,7 +1347,8 @@ pub fn apply_imported_stems(&mut self, res: StemImportResult) {
             // slut så snart tempot flyttades — Alex' 200 BPM skar av 103,71 s.
             source_bpm: if res.bpm > 0.0 { res.bpm } else { self.bpm },
             tape: false,
-        };
+            warp_mode: self.warp_mode,
+};
 
         let mut track = PlaylistTrack::new(format!("{} {}", icon, clean_name), icon, kind, color);
         track.volume = 0.9;

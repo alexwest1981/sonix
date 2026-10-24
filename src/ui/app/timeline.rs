@@ -340,7 +340,8 @@ pub fn split_selected_region_at_playhead(&mut self) {
                 is_reverse: orig.is_reverse,
                 color: orig.color,
                 loop_length_bars: 0.0,
-            };
+                warp_mode: orig.warp_mode,
+};
 
             let r_right = AudioRegion {
                 source_bpm: orig.source_bpm, // halvan ärver klippets källa
@@ -359,7 +360,8 @@ pub fn split_selected_region_at_playhead(&mut self) {
                 is_reverse: orig.is_reverse,
                 color: new_color,
                 loop_length_bars: 0.0,
-            };
+                warp_mode: orig.warp_mode,
+};
 
             self.push_undo(&format!("Klipp '{}' vid spelhuvud", clean_title));
             self.playlist_tracks[t_idx].regions.remove(r_idx);
@@ -534,7 +536,8 @@ pub fn add_sample_item_to_timeline(&mut self, item: &LibrarySampleItem) {
         is_reverse: false,
         color: item.color,
         loop_length_bars: reg_len_bars,
-    };
+        warp_mode: self.warp_mode,
+};
 
     track.regions.push(region);
 
@@ -604,7 +607,8 @@ pub fn add_sample_item_to_track_at_bar(&mut self, track_idx: usize, item: &Libra
         is_reverse: false,
         color: item.color,
         loop_length_bars: reg_len_bars,
-    };
+        warp_mode: self.warp_mode,
+};
 
     let target_track = &mut self.playlist_tracks[track_idx];
     if target_track.pcm_audio.is_none() {

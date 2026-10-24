@@ -129,7 +129,8 @@ pub fn toggle_timeline_recording(&mut self) {
                     is_reverse: false,
                     color: self.playlist_tracks[armed_idx].color,
                     loop_length_bars: 0.0,
-                };
+                    warp_mode: Default::default(),
+};
                 self.playlist_tracks[armed_idx].regions.push(region);
                 self.sync_track_stem_to_engine(armed_idx);
                 self.status_message = crate::tstatus!("✔ Spelade in '{}' direkt i spår {} ({}) vid takt {:.1} ({:.2}s)!", take.name, armed_idx + 1, self.playlist_tracks[armed_idx].name, start_bar + 1.0, take.duration_secs);

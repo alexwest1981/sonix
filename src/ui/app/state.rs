@@ -487,6 +487,11 @@ pub struct AudioRegion {
     /// som uppstår av misstag är värre än en effekt man får leta efter.
     #[serde(default)]
     pub tape: bool,
+    /// **Warp-läget för det här klippet** (0.9.44). Läget hör till sträckningens nyckel, så
+    /// två klipp med samma källa kan sträckas olika. Saknas i äldre filer — då gäller
+    /// `Complex`, samma läge som var projektets enda förut.
+    #[serde(default)]
+    pub warp_mode: crate::audio::warp::WarpMode,
 }
 
 /// Flyttar låtsektioner när tid infogas eller tas bort. `delta` är positiv vid infogning.
@@ -1445,6 +1450,7 @@ mod crossfade_tests {
             loop_length_bars: 0.0,
             source_bpm: 0.0,
             tape: false,
+            warp_mode: Default::default(),
         }
     }
 
@@ -1511,6 +1517,7 @@ mod time_ops_tests {
             loop_length_bars: 0.0,
             source_bpm: 0.0,
             tape: false,
+            warp_mode: Default::default(),
         }
     }
 

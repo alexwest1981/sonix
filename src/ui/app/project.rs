@@ -1444,7 +1444,8 @@ pub fn populate_demo_data(&mut self) {
                 is_reverse: false,
                 color: Theme::TRACK_ROSE,
                 loop_length_bars: 0.0,
-            },
+                warp_mode: Default::default(),
+},
             AudioRegion {
                 source_bpm: 0.0,
                 tape: false,
@@ -1462,7 +1463,8 @@ pub fn populate_demo_data(&mut self) {
                 is_reverse: false,
                 color: Theme::TRACK_ROSE,
                 loop_length_bars: 0.0,
-            },
+                warp_mode: Default::default(),
+},
         ];
     }
 
@@ -1486,7 +1488,8 @@ pub fn populate_demo_data(&mut self) {
                 is_reverse: false,
                 color: Theme::CABLE,
                 loop_length_bars: 0.0,
-            },
+                warp_mode: Default::default(),
+},
         ];
     }
 

@@ -104,7 +104,8 @@ fn add_transmitter_track(&mut self) {
         // Filens tempo är okänt: ljudet rörs inte när projektets tempo ändras.
         source_bpm: 0.0,
         tape: false,
-    }];
+        warp_mode: Default::default(),
+}];
     self.playlist_tracks.push(track);
     let idx = self.playlist_tracks.len() - 1;
     self.sync_track_stem_to_engine(idx);

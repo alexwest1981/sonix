@@ -299,7 +299,8 @@ pub fn render_vocal_studio_view(
                                             is_reverse: take.is_reverse,
                                             color: playlist_tracks[target_idx].color,
                                             loop_length_bars: 0.0,
-                                        };
+                                            warp_mode: Default::default(),
+};
                                         playlist_tracks[target_idx].regions.push(region);
                                         *status_msg = crate::tstatus!("✔ Infogade '{}' ({:.2}s) som ljudregion i Spår {} ({})!", take_name, duration, target_idx + 1, playlist_tracks[target_idx].name);
                                     }

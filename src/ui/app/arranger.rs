@@ -2284,6 +2284,22 @@ impl SonixApp {
                                         self.reverse_selected_region();
                                         ui.close_menu();
                                     }
+                                    ui.menu_button(crate::i18n::t("🎚 Warp-läge för klippet"), |ui| {
+                                        let current = self.playlist_tracks[t_idx].regions[sel_r].warp_mode;
+                                        for mode in crate::audio::warp::WarpMode::ALL {
+                                            if ui
+                                                .selectable_label(current == mode, crate::i18n::t(mode.label()))
+                                                .clicked()
+                                            {
+                                                self.playlist_tracks[t_idx].regions[sel_r].warp_mode = mode;
+                                                self.status_message = crate::tstatus!(
+                                                    "🎚 Klippets warp-läge: {}",
+                                                    mode.label()
+                                                );
+                                                ui.close_menu();
+                                            }
+                                        }
+                                    });
                                     if ui.button(if is_muted { crate::i18n::t("🔊 Avmuta region (M)") } else { crate::i18n::t("🔇 Muta region (M)") }).clicked() {
                                         self.toggle_mute_selected_region();
                                         ui.close_menu();
@@ -2489,7 +2505,8 @@ impl SonixApp {
                                         is_reverse: orig.is_reverse,
                                         color: orig.color,
                                         loop_length_bars: 0.0,
-                                    };
+                                        warp_mode: orig.warp_mode,
+};
 
                                     let r_right = AudioRegion {
                                         source_bpm: orig.source_bpm, // halvan ärver klippets källa
@@ -2508,7 +2525,8 @@ impl SonixApp {
                                         is_reverse: orig.is_reverse,
                                         color: new_color,
                                         loop_length_bars: 0.0,
-                                    };
+                                        warp_mode: orig.warp_mode,
+};
 
                                     self.push_undo(&format!("Klipp '{}' med saxverktyg", clean_title));
                                     self.playlist_tracks[t_idx].regions.remove(r_idx);

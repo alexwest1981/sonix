@@ -97,7 +97,8 @@ pub fn export_separated_stems(&mut self) {
             is_reverse: false,
             color: ch.stem_type.color(),
             loop_length_bars: 0.0,
-        };
+            warp_mode: Default::default(),
+};
         let mut track = PlaylistTrack::new(ch.stem_type.name().to_string(), "🎚", kinds[i], ch.stem_type.color());
         track.volume = ch.volume;
         track.pan = ch.pan;
@@ -668,7 +669,8 @@ pub(crate) fn flatten_track(&mut self, t_idx: usize) -> bool {
         loop_length_bars: 0.0,
         source_bpm: 0.0,
         tape: false,
-    }];
+        warp_mode: Default::default(),
+}];
     self.sync_track_regions(t_idx);
     self.status_message = crate::tstatus!("🎵 Plattade '{}' till en region: {:.1} s", name, secs);
     true
@@ -742,7 +744,8 @@ pub(crate) fn consolidate_track(&mut self, t_idx: usize) -> bool {
         loop_length_bars: 0.0,
         source_bpm: 0.0,
         tape: false,
-    }];
+        warp_mode: Default::default(),
+}];
     self.sync_track_regions(t_idx);
     self.status_message = crate::tstatus!(
         "🧩 Konsoliderade '{}' till ett klipp: {:.1} s",
