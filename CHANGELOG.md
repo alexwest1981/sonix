@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the 6-op panel is in the screenshot set
+
+- `ScreenshotTarget::SixOpPanel` → `31_syntes_6op.png`; the panel was never captured before, so
+  changes to it could not be reviewed. Verified: PIT, F-ENV and LFO 2 rows render without clipping.
+
 ### Added — filter envelope and a second LFO per operator (Sytrus)
 
 - `filter_env: [f32; 6]` (−4…+4 octaves): each operator's own ADSR opens its filter.

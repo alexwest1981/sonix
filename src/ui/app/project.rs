@@ -1200,6 +1200,8 @@ pub(crate) fn mixer_digest(
 #[derive(Clone, Debug)]
 pub enum ScreenshotTarget {
     View(ViewMode),
+    /// 6-op-panelen (Sytrus-läge): ratterna och de nya F-ENV/LFO 2-raderna.
+    SixOpPanel,
     VocalTakeLanes,
     VocalCustomSounds,
     AudioSettingsModal,
@@ -1281,6 +1283,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::HelpGuideModal, out_dir.join("28_dialog_hjalpguide_manual.png")),
         (ScreenshotTarget::AboutModal, out_dir.join("29_dialog_om_sonix.png")),
         (ScreenshotTarget::WavQuestionModal, out_dir.join("30_dialog_mp3_eller_wav.png")),
+        (ScreenshotTarget::SixOpPanel, out_dir.join("31_syntes_6op.png")),
     ];
 
     self.screenshot_queue = targets;
@@ -1310,6 +1313,11 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
     match target {
         ScreenshotTarget::View(vm) => {
             self.view_mode = vm;
+        }
+        ScreenshotTarget::SixOpPanel => {
+            self.view_mode = ViewMode::ChannelRack;
+            self.waveform = super::Waveform::SixOp;
+            self.show_six_op_window = true;
         }
         ScreenshotTarget::VocalTakeLanes => {
             self.view_mode = ViewMode::VocalStudio;
