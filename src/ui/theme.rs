@@ -361,6 +361,72 @@ fn merge_onto_base(value: serde_json::Value) -> Palette {
     serde_json::from_value(merged).unwrap_or(base)
 }
 
+/// Registret på GitHub: `index.json` listar teman med filnamn och sha256.
+pub const REGISTRY_URL: &str =
+    "https://raw.githubusercontent.com/alexwest1981/sonix-themes/master/index.json";
+
+#[derive(Clone, Debug, serde::Deserialize)]
+pub struct RemoteTheme {
+    pub name: String,
+    pub file: String,
+    pub sha256: String,
+}
+
+#[derive(serde::Deserialize)]
+struct Registry {
+    themes: Vec<RemoteTheme>,
+}
+
+/// Hämtar registret. Kort tidsgräns — en meny ska inte hänga på ett nät som inte svarar.
+pub fn fetch_registry() -> Result<Vec<RemoteTheme>, String> {
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(8))
+        .build();
+    let text = agent
+        .get(REGISTRY_URL)
+        .call()
+        .map_err(|e| e.to_string())?
+        .into_string()
+        .map_err(|e| e.to_string())?;
+    let registry: Registry = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    Ok(registry.themes)
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    let digest = ring::digest::digest(&ring::digest::SHA256, bytes);
+    digest.as_ref().iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Hämtar ett tema och **vägrar spara det om hashen inte stämmer**. Ett tema är data som ritas;
+/// en fil som inte är den registret pekar på ska aldrig hamna i temamappen.
+pub fn install_theme(theme: &RemoteTheme) -> Result<std::path::PathBuf, String> {
+    let base = REGISTRY_URL.rsplit_once('/').map(|(b, _)| b).unwrap_or(REGISTRY_URL);
+    let url = format!("{base}/{}", theme.file);
+    let agent = ureq::AgentBuilder::new()
+        .timeout(std::time::Duration::from_secs(15))
+        .build();
+    let bytes = agent
+        .get(&url)
+        .call()
+        .map_err(|e| e.to_string())?
+        .into_string()
+        .map_err(|e| e.to_string())?
+        .into_bytes();
+    let actual = sha256_hex(&bytes);
+    if actual != theme.sha256.to_lowercase() {
+        return Err(format!(
+            "hash stämmer inte för {}: fick {actual}, väntade {}",
+            theme.file, theme.sha256
+        ));
+    }
+    serde_json::from_slice::<serde_json::Value>(&bytes).map_err(|e| e.to_string())?;
+    let dir = themes_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let path = dir.join(&theme.file);
+    std::fs::write(&path, &bytes).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 /// `~/.config/sonix/themes/` — teman man sparar eller lägger dit själv.
 pub fn themes_dir() -> std::path::PathBuf {
     crate::paths::paths().config_dir().join("themes")
@@ -745,6 +811,40 @@ mod theme_file_tests {
 
         apply_saved_theme(&path).unwrap();
         assert_eq!(palette().orange, [9, 9, 9, 255]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        match previous {
+            Some(v) => unsafe { std::env::set_var("SONIX_CONFIG_DIR", v) },
+            None => unsafe { std::env::remove_var("SONIX_CONFIG_DIR") },
+        }
+    }
+}
+
+#[cfg(test)]
+mod registry_live_tests {
+    use super::*;
+
+    /// **Nätprov — körs bara för hand:** `cargo test -- --ignored downloader`. Hämtar registret,
+    /// installerar första temat i en egen mapp och läser tillbaka det.
+    #[test]
+    #[ignore]
+    fn downloads_a_theme_from_the_registry() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("sonix-registry-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let previous = std::env::var_os("SONIX_CONFIG_DIR");
+        // SAFETY: låst mot de andra temaproven.
+        unsafe { std::env::set_var("SONIX_CONFIG_DIR", &dir) };
+
+        let themes = fetch_registry().expect("registret ska svara");
+        assert!(!themes.is_empty(), "registret är tomt");
+        let path = install_theme(&themes[0]).expect("första temat ska installeras");
+        assert!(path.exists());
+        serde_json::from_str::<serde_json::Value>(&std::fs::read_to_string(&path).unwrap()).unwrap();
+
+        let bad = RemoteTheme { name: "fel".into(), file: themes[0].file.clone(), sha256: "00".into() };
+        assert!(install_theme(&bad).is_err(), "fel hash ska avvisas");
 
         let _ = std::fs::remove_dir_all(&dir);
         match previous {

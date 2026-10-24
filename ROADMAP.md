@@ -93,9 +93,10 @@ Utgångsläget finns redan: paletten är 29 semantiska nycklar i `~/.config/soni
    panel_alt i båda lägena.
 2. **Temamotor.** *✅ 0.9.90:* `~/.config/sonix/themes/*.json` läses som en lista, med namn, författare och
    förhandsvisning (de 8 viktigaste färgerna). Välj tema i menyn, radera, och **öppna mappen**.
-3. **Hämta fler teman.** Ett register på en URL (JSON med namn + fil-URL + sha256). Nedladdning
+3. **Hämta fler teman.** *✅ 0.9.91:* ett register på en URL (JSON med namn + fil-URL + sha256). Nedladdning
    verifierar hashen, skriver i `themes/` och visar felet i statusraden om den inte stämmer.
-   Ingen tyst installation: ett tema är data som ritas, inte kod som körs.
+   Ingen tyst installation: ett tema är data som ritas, inte kod som körs. Registret ligger på
+   `github.com/alexwest1981/sonix-themes` (Nord, Kol, Papper).
 4. **Dela eget tema.** *✅ 0.9.90:* **💾 Exportera tema…** skriver bara de nycklar som avviker från
    standardpaletten för sitt läge (plus `mode`), och provet `an_exported_theme_applies_again` visar
    att filen går att läsa tillbaka.

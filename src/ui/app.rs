@@ -601,6 +601,10 @@ pub struct SonixApp {
     pub sustain_pedal: bool,
     /// Vilken rad i 6-op-matrisen panelen redigerar: 0 = FM, 1 = RM, 2 = ADD.
     pub six_op_mode: u8,
+    /// Teman från registret (hämtas i bakgrunden) och den pågående hämtningen.
+    pub theme_registry: Vec<crate::ui::theme::RemoteTheme>,
+    pub theme_registry_pending:
+        Option<std::sync::Arc<std::sync::Mutex<Option<Result<Vec<crate::ui::theme::RemoteTheme>, String>>>>>,
     /// Senast valda vy per flik (SKAPA, ARRANGERA, MIXA, VERKTYG) — fliken är härledd ur
     /// `view_mode`, så det här är bara minnet för att ett flikklick ska gå tillbaka rätt.
     pub last_view: [ViewMode; 4],
@@ -1195,6 +1199,8 @@ impl SonixApp {
             cue_listen: crate::audio::control_room::CueListen::Main,
             sustain_pedal: false,
             six_op_mode: 0,
+            theme_registry: Vec::new(),
+            theme_registry_pending: None,
             last_view: [
                 ViewMode::ChannelRack,
                 ViewMode::PlaylistArranger,
@@ -1282,6 +1288,25 @@ impl eframe::App for SonixApp {
         crate::ui::theme::reload_if_changed();
         // Global form: luft, hörn och palett i egui:s egna ytor.
         crate::ui::theme::apply_style(ctx);
+
+        // Temaregistret hämtas i bakgrunden; här plockas svaret upp.
+        if let Some(slot) = self.theme_registry_pending.clone() {
+            let ready = slot.lock().ok().and_then(|mut g| g.take());
+            if let Some(result) = ready {
+                self.theme_registry_pending = None;
+                match result {
+                    Ok(themes) => {
+                        self.status_message =
+                            crate::tstatus!("🎨 {} teman i registret", themes.len());
+                        self.theme_registry = themes;
+                    }
+                    Err(e) => {
+                        self.status_message =
+                            crate::tstatus!("⚠ Kunde inte hämta temaregistret: {}", e);
+                    }
+                }
+            }
+        }
 
         self.poll_background_work(ctx);
 

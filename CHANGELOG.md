@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — downloadable themes from a GitHub registry
+
+- **`github.com/alexwest1981/sonix-themes`** holds `index.json` (name, file, sha256) and the theme
+  files. **Inställningar → 🎨 Tema → ⬇ Hämta teman…** fetches the index in a background thread —
+  the frame never waits on the network — and lists what the registry offers; a click downloads,
+  **verifies sha256** with `ring` and only then writes the file into `themes/`. A bad hash is
+  refused with the reason.
+- Three themes ship in the registry: **Nord** (cool dark), **Kol** (near-black dark) and **Papper**
+  (warm light).
+- Prov (ignored, network): `downloads_a_theme_from_the_registry` fetches the index, installs the
+  first theme into a temp config dir and asserts a wrong hash is rejected.
+
 ### Added — theme engine
 
 - **`~/.config/sonix/themes/*.json`** is a theme library: **Inställningar → 🎨 Tema** lists every

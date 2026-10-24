@@ -1,6 +1,6 @@
 [package]
 name = "sonix"
-version = "0.9.90"
+version = "0.9.91"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Native Linux DAW (Rust/egui) with timeline editing, synth, mixer, stem separation, plugin hosting and export."
@@ -25,6 +25,7 @@ crossterm = "0.28"
 colored = "3.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+ring = "0.17"  # sha256 för temaregistret; redan i låset via rustls
 image = { version = "0.25", default-features = false, features = ["png"] }
 flacenc = "0.5"
 ureq = "2"

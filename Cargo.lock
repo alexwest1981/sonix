@@ -4055,7 +4055,7 @@ dependencies = [
 
 [[package]]
 name = "sonix"
-version = "0.9.90"
+version = "0.9.91"
 dependencies = [
  "alsa",
  "colored",
@@ -4070,6 +4070,7 @@ dependencies = [
  "ort",
  "rfd",
  "rhai",
+ "ring",
  "rtrb",
  "rustfft",
  "serde",

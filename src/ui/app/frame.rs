@@ -1124,6 +1124,35 @@ impl SonixApp {
                                 }
                                 ui.close_menu();
                             }
+                            if ui.button(self.tr("⬇ Hämta teman...")).clicked() {
+                                // Nätet får aldrig blockera bildrutan: hämta i en tråd och plocka upp.
+                                let slot = std::sync::Arc::new(std::sync::Mutex::new(None));
+                                self.theme_registry_pending = Some(slot.clone());
+                                std::thread::spawn(move || {
+                                    let result = crate::ui::theme::fetch_registry();
+                                    if let Ok(mut guard) = slot.lock() {
+                                        *guard = Some(result);
+                                    }
+                                });
+                                ui.close_menu();
+                            }
+                            for remote in self.theme_registry.clone() {
+                                if ui.button(format!("⬇ {}", remote.name)).clicked() {
+                                    self.status_message = match crate::ui::theme::install_theme(&remote) {
+                                        Ok(p) => crate::tstatus!(
+                                            "🎨 Temat '{}' hämtat till {}",
+                                            remote.name,
+                                            p.display()
+                                        ),
+                                        Err(e) => crate::tstatus!(
+                                            "⚠ Kunde inte hämta '{}': {}",
+                                            remote.name,
+                                            e
+                                        ),
+                                    };
+                                    ui.close_menu();
+                                }
+                            }
                             if ui.button(self.tr("💾 Exportera tema...")).clicked() {
                                 let dir = crate::ui::theme::themes_dir();
                                 let _ = std::fs::create_dir_all(&dir);
