@@ -73,8 +73,9 @@ på en yta. Konkret, i den ordning det är värt att ta:
    egen rad högst upp. Tempot och taktarten ska sitta vid tidslinjens övre kant.
 3. **Mindre krom.** Färre ramar och rubriker, mer yta till innehållet; samma kontroll två gånger
    (t.ex. volym i både rack och mixer) ska se likadan ut.
-4. **Högerklick överallt.** Abletons styrka är att allt går att högerklicka på: klipp, spår, ratt.
-   Sonix har det på några ställen; det ska vara regeln, inte undantaget.
+4. **Högerklick överallt.** *Första steget taget i 0.9.75:* patternblock har en meny (öppna,
+   duplicera, radera) i stället för att högerklick raderar. Kvar: spår i racket, rattar i mixern,
+   noter i pianorullen.
 5. **Inspelningsläget först.** En ny låt ska börja med en enda stor inspelningsknapp och ett spår
    som redan är redo — Soundtraps bästa idé.
 

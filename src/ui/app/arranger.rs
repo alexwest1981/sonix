@@ -2198,8 +2198,14 @@ impl SonixApp {
                                     && let Some(mouse_pos) = lane_resp.hover_pos() {
                                         let clicked_bar = ((mouse_pos.x - lane_rect.min.x) / bar_w) as usize;
                                         if clicked_bar < 32 {
-                                            if lane_resp.secondary_clicked() || self.arranger_tool == ArrangerTool::Erase {
+                                            // **Högerklick öppnar en meny i stället för att radera.**
+                                            // Radering hör till Radera-verktyget; ett högerklick
+                                            // som tyst tar bort ett block är lätt att göra av misstag
+                                            // och svårt att ångra.
+                                            if self.arranger_tool == ArrangerTool::Erase {
                                                 clip_action = Some((clicked_bar, None));
+                                            } else if lane_resp.secondary_clicked() {
+                                                self.pattern_menu = Some((t_idx, clicked_bar));
                                             } else if self.arranger_tool == ArrangerTool::Paint {
                                                 clip_action = Some((clicked_bar, Some(self.selected_pattern)));
                                             }
@@ -2207,6 +2213,69 @@ impl SonixApp {
                                     }
                             }
                         }
+
+                        // **Klippmenyn för patternblock.** Posterna gäller blocket som
+                        // högerklickades (`pattern_menu`), inte det som råkade vara valt.
+                        lane_resp.context_menu(|ui| {
+                            let Some((menu_track, menu_bar)) = self.pattern_menu else {
+                                ui.close_menu();
+                                return;
+                            };
+                            let pat_idx = self
+                                .playlist_tracks
+                                .get(menu_track)
+                                .and_then(|t| t.clips.get(menu_bar).copied().flatten());
+                            let Some(pat_idx) = pat_idx else {
+                                ui.close_menu();
+                                return;
+                            };
+                            ui.set_min_width(220.0);
+                            ui.label(
+                                egui::RichText::new(format!("P{}", pat_idx + 1))
+                                    .strong()
+                                    .color(crate::ui::theme::palette().cyan()),
+                            );
+                            ui.separator();
+                            if ui
+                                .button(crate::i18n::t("🎹 Öppna i pianorullen"))
+                                .clicked()
+                            {
+                                self.selected_pattern = pat_idx;
+                                self.view_mode = ViewMode::PianoRoll;
+                                ui.close_menu();
+                            }
+                            if ui
+                                .button(crate::i18n::t("📄 Duplicera blocket"))
+                                .on_hover_text(crate::i18n::t(
+                                    "Lägger en kopia direkt efter blocket, om takten är ledig",
+                                ))
+                                .clicked()
+                            {
+                                let mut made = false;
+                                if let Some(track) = self.playlist_tracks.get_mut(menu_track)
+                                    && menu_bar + 1 < track.clips.len()
+                                    && track.clips[menu_bar + 1].is_none()
+                                {
+                                    track.clips[menu_bar + 1] = Some(pat_idx);
+                                    made = true;
+                                }
+                                self.status_message = if made {
+                                    crate::tstatus!("📄 P{} kopierat till takt {}", pat_idx + 1, menu_bar + 2)
+                                } else {
+                                    crate::i18n::t("📄 Nästa takt är upptagen").to_string()
+                                };
+                                ui.close_menu();
+                            }
+                            if ui.button(crate::i18n::t("🗑 Radera blocket")).clicked() {
+                                if let Some(track) = self.playlist_tracks.get_mut(menu_track)
+                                    && let Some(slot) = track.clips.get_mut(menu_bar)
+                                {
+                                    *slot = None;
+                                }
+                                self.pattern_menu = None;
+                                ui.close_menu();
+                            }
+                        });
 
                         // **Högerklick väljer klippet under pekaren** (Fas 8.15).
                         //

@@ -141,6 +141,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Right-clicking a pattern block no longer deletes it.** It opens a menu — open in the piano
+  roll, duplicate into the next bar if it is free, or delete. Deleting by right-click was one
+  misclick away from losing a block with no undo, and it is not how either Ableton or Soundtrap
+  behaves. The Erase tool still deletes on left click.
+
 - **The vocoder button in the vocal studio was unreadable when disabled.** Cyan fill with the
   default light label colour turns into grey-on-cyan as soon as there are no takes to vocode;
   it now uses black text like the other cyan buttons in the same view.
