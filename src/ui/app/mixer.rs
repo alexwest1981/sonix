@@ -3313,11 +3313,12 @@ use crate::audio::synth::HARMONIC_COUNT;
 impl SonixApp {
 pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
     ui.group(|ui| {
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(crate::i18n::t("🎛 SONIX HARDWARE SYNTHESIZER")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().cyan()));
             ui.separator();
 
-            // Presets
+            // Presets: **radbryts** — tolv knappar på rad gjorde hela panelen bredare än
+            // fönstret, och då klipptes högerkolumnen (filtret) av kanten.
             ui.label(egui::RichText::new(crate::i18n::t("Presets:")).color(crate::ui::theme::palette().text_muted()));
             for p in Preset::ALL {
                 let name = p.label();
@@ -3334,6 +3335,15 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
 
         ui.add_space(8.0);
 
+        // **Panelen får aldrig växa utanför fönstret.** På 1280×800 räckte inte höjden: racket
+        // åt 8 × 84 px och synten klipptes av nedtill. Nu rullar synten i stället, med sin höjd
+        // tagen ur det som faktiskt finns kvar.
+        let rack_height = (ui.available_height() - 46.0).max(150.0);
+        egui::ScrollArea::vertical()
+            .id_salt("synth_hardware_scroll")
+            .max_height(rack_height)
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
         // **Två kolumner, med högersidan staplad.** Oscillatorn är en hel kolumn hög; med fyra
         // kolumner blev den för smal och filterpanelen la sig över den. Nu får oscillatorn halva
         // bredden, och filter + ADSR + graf ligger i högerkolumnen ovanpå varandra — panelen blir
@@ -4150,7 +4160,19 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                         });
                     }
                 });
-                ui.label(egui::RichText::new(format!("Cutoff: {:.0} Hz | Q: {:.1} | Env: {:+.1} oct", self.filter.cutoff, self.filter.resonance, self.filter_env_amount)).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
+                // **Radbryts i stället för att trycka ut kolumnen.** Textslingan var bredare än
+                // halva panelen och klipptes av kanten på en 1280-skärm.
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(format!(
+                            "Cutoff {:.0} Hz · Q {:.1} · Env {:+.1} oct",
+                            self.filter.cutoff, self.filter.resonance, self.filter_env_amount
+                        ))
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().text_muted()),
+                    )
+                    .wrap(),
+                );
             });
 
             // **Högerkolumnen staplas:** filter överst, ADSR och graf under. Då blir panelen
@@ -4195,6 +4217,7 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
             });
         });
     });
+            });
 }
 }
 

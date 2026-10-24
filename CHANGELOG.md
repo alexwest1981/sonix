@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the synth panel on a small screen
+
+- **Uppmätt, inte gissat:** i 1280×800 klipptes syntpanelen av nedtill, eftersom racket (8 rader
+  à 84 px) åt hela höjden. Nu rullar racket och synten behåller sin andel av höjden.
+- Presetraden radbryts (tolv knappar på rad gjorde panelen bredare än fönstret), och
+  filtertexten radbryts i stället för att trycka ut kolumnen.
+- Verifierat i 1920×1200: ingen överlappning, inget klippt. I 1280×800 är höjden löst, men
+  **högerkanten på filterkolumnen klipps fortfarande** — se rapporten; det kräver en responsiv
+  enkolumnslayout, inte en radbrytning.
+
 ### Fixed — the oscillator and the filter no longer overlap
 
 - **Fyra kolumner var för många.** Oscillatorn är en hel kolumn hög, och vid normal fönsterbredd

@@ -91,7 +91,15 @@ impl SonixApp {
                     self.render_playlist_arranger(ui);
                 }
                 ViewMode::ChannelRack => {
-                    self.render_channel_rack(ui);
+                    // **Synten får alltid plats.** På en 800 px hög skärm åt racket hela höjden
+                    // och syntpanelen klipptes av nedtill. Nu rullar racket när det inte får
+                    // plats, och synten behåller sin andel.
+                    let synth_h = (ui.available_height() * 0.55).clamp(180.0, 420.0);
+                    let rack_h = (ui.available_height() - synth_h - 18.0).max(160.0);
+                    egui::ScrollArea::vertical()
+                        .id_salt("channel_rack_scroll")
+                        .max_height(rack_h)
+                        .show(ui, |ui| self.render_channel_rack(ui));
                     ui.add_space(10.0);
                     self.render_synth_hardware_rack(ui);
                 }
