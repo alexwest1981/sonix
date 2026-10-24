@@ -601,6 +601,8 @@ pub struct SonixApp {
     pub sustain_pedal: bool,
     /// Vilken rad i 6-op-matrisen panelen redigerar: 0 = FM, 1 = RM, 2 = ADD.
     pub six_op_mode: u8,
+    /// Vilken flik i navigeringen som visas: 0 = VY, 1 = STUDIOS, 2 = VERKTYG.
+    pub nav_group: u8,
     /// **Talkback:** micken till monitorerna i stället för in i mastern.
     pub talkback: bool,
     /// Enhetströmmen som talkback öppnade. `None` när talkback är av — strömmen stängs då,
@@ -1190,6 +1192,7 @@ impl SonixApp {
             cue_listen: crate::audio::control_room::CueListen::Main,
             sustain_pedal: false,
             six_op_mode: 0,
+            nav_group: 0,
             talkback: false,
             talkback_capture: None,
             vocoder_amount: 0.0,

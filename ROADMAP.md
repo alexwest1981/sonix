@@ -66,9 +66,9 @@ Namn, ikon, färg och ton ska stå för Sonix. (Alex: "det viktigaste sen".)
 Målet är inte en kopia av någon av dem, utan samma **arbetssätt**: mindre jakt i menyer, mer gjort
 på en yta. Konkret, i den ordning det är värt att ta:
 
-1. **En yta i taget.** Ableton har Arrangement och Session som två lägen med samma verktyg.
-   Sonix har 13 vyer i en rad; de ska grupperas i *Skapa* (kanalrack, pianorulle, klaviatur),
-   *Arrangera* (tidslinje, tagningar) och *Mixa* (mixer, FX, master) — flikar, inte en lång rad.
+1. **En yta i taget.** *Första steget taget i 0.9.73:* de 13 vyerna ligger bakom tre flikar
+   (VY / STUDIOS / VERKTYG) i stället för en rad som radbryts. Kvar: byta grupperingen från
+   *var det bor* till *vad man gör* — Skapa, Arrangera, Mixa.
 2. **Transporten dit ögat redan är.** Soundtrap lägger play/record/tempo där låten är, inte i en
    egen rad högst upp. Tempot och taktarten ska sitta vid tidslinjens övre kant.
 3. **Mindre krom.** Färre ramar och rubriker, mer yta till innehållet; samma kontroll två gånger

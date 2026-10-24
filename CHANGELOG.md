@@ -232,6 +232,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The view row is three tabs instead of thirteen buttons.** VY, STUDIOS and VERKTYG show only
+  their own views, so the second row went from a wrapped block of everything to six buttons and a
+  tab strip. Same buttons as before — nothing was moved, only hidden until its group is chosen.
+
 - **FL inventory: three descriptions corrected.** Sytrus and Toxic Biohazard said "2-op FM
   exists"; they now describe the 6-op matrix with per-operator envelopes and filters, and name
   what is still missing (Sytrus mixes FM, ring modulation *and* additive in one cell; we do FM

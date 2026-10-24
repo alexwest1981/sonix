@@ -1332,8 +1332,19 @@ impl SonixApp {
                 // ROW 2: Primary Workspaces & Advanced Studios Navigation Tabs (Responsive Wrapped)
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
-                    ui.label(egui::RichText::new(self.tr("VY:")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
+                    // **Flikar i stället för en lång rad** (GUI-planen, punkt 1): bara den valda
+                    // gruppens vyer visas. Samma knappar som förut, färre att leta bland.
+                    for (group, label) in [(0u8, "VY"), (1, "STUDIOS"), (2, "VERKTYG")] {
+                        if ui
+                            .selectable_label(self.nav_group == group, self.tr(label))
+                            .clicked()
+                        {
+                            self.nav_group = group;
+                        }
+                    }
+                    ui.separator();
 
+                    if self.nav_group == 0 {
                     let arr_btn = ui.selectable_label(self.view_mode == ViewMode::PlaylistArranger, self.tr("🎼 Tidslinje"));
                     if arr_btn.clicked() { self.view_mode = ViewMode::PlaylistArranger; }
 
@@ -1352,9 +1363,8 @@ impl SonixApp {
                     let ai_btn = ui.selectable_label(self.view_mode == ViewMode::AiMusicAssistant, self.tr("🤖 AI"));
                     if ai_btn.clicked() { self.view_mode = ViewMode::AiMusicAssistant; }
 
-                    ui.separator();
-                    ui.label(egui::RichText::new(self.tr("STUDIOS:")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
-
+                    }
+                    if self.nav_group == 1 {
                     let alc_btn = ui.selectable_label(self.view_mode == ViewMode::AlchemySynth, self.tr("✨ Alchemy"));
                     if alc_btn.clicked() { self.view_mode = ViewMode::AlchemySynth; }
 
@@ -1375,8 +1385,8 @@ impl SonixApp {
                     let rmx_btn = ui.selectable_label(self.view_mode == ViewMode::RemixFx, self.tr("🎛 Remix"));
                     if rmx_btn.clicked() { self.view_mode = ViewMode::RemixFx; }
 
-                    ui.separator();
-                    ui.label(egui::RichText::new(self.tr("VERKTYG:")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
+                    }
+                    if self.nav_group == 2 {
 
                     if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎲 Tärning")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().red())).on_hover_text(self.tr("Idé- & Slumptärning för Melodier & Beats (F12)")).clicked() {
                         self.show_dice_generator_modal = true;
@@ -1396,6 +1406,7 @@ impl SonixApp {
 
                     if ui.add(egui::Button::new(egui::RichText::new(self.tr("📑 Formdelar")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().amber())).on_hover_text(self.tr("Låtstruktur & Formdelar")).clicked() {
                         self.show_song_structure_modal = true;
+                    }
                     }
                 });
             });
