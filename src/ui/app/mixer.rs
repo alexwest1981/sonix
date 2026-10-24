@@ -3292,6 +3292,46 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                             envs: self.partial_envelopes(),
                         });
                     }
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("SPEKTRALT FILTER"))
+                            .size(Theme::FONT_S)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                    let mut formant_changed = false;
+                    formant_changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.formant.center, 1.0..=32.0)
+                                .text(crate::i18n::t("Formant:"))
+                                .fixed_decimals(1),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Vilken partial klangformen ligger på — 1 = grundtonen",
+                        ))
+                        .changed();
+                    formant_changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.formant.width, 0.5..=16.0)
+                                .text(crate::i18n::t("Bredd:"))
+                                .fixed_decimals(1),
+                        )
+                        .changed();
+                    formant_changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.formant.amount, 0.0..=1.0)
+                                .text(crate::i18n::t("Mängd:")),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "0 = filtret av, 1 = bara bandet kvar",
+                        ))
+                        .changed();
+                    if formant_changed {
+                        let _ = self.engine.send_command(AudioCommand::SetSpectralFormant {
+                            center: self.formant.center,
+                            width: self.formant.width,
+                            amount: self.formant.amount,
+                        });
+                    }
                 }
                 ui.separator();
                 ui.label(egui::RichText::new(crate::i18n::t("FM (DX10/Sytrus)")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));

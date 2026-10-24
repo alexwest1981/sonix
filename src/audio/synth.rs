@@ -119,6 +119,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetControlRoom(_) => "SetControlRoom",
         AudioCommand::SetHarmonics { .. } => "SetHarmonics",
         AudioCommand::SetPartialEnvelopes { .. } => "SetPartialEnvelopes",
+        AudioCommand::SetSpectralFormant { .. } => "SetSpectralFormant",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -218,6 +219,36 @@ pub fn partial_env_level(t: f32, env: PartialAdsr) -> f32 {
         return 1.0 - (1.0 - sustain) * k;
     }
     sustain
+}
+
+/// **Spektralt filter** (steg 3 i `ADDITIVE-SYNTH.md`): en klangform som ligger över
+/// partialindex, inte över Hz — därför flyttar den klangfärgen utan att röra tonhöjden.
+/// `center` är partialnummer (1 = grundtonen), `width` hur många partialer bandet spänner
+/// och `amount` hur mycket allt utanför bandet dämpas (0 = av, 1 = bara bandet kvar).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpectralFormant {
+    pub center: f32,
+    pub width: f32,
+    pub amount: f32,
+}
+
+impl Default for SpectralFormant {
+    fn default() -> Self {
+        Self { center: 1.0, width: 4.0, amount: 0.0 }
+    }
+}
+
+impl SpectralFormant {
+    /// Gain för partial `partial` (1 = grundtonen).
+    pub fn gain(&self, partial: usize) -> f32 {
+        let amount = self.amount.clamp(0.0, 1.0);
+        if amount <= 0.0 {
+            return 1.0;
+        }
+        let x = (partial as f32 - self.center) / self.width.max(0.25);
+        let band = (-0.5 * x * x).exp();
+        1.0 - amount * (1.0 - band)
+    }
 }
 
 /// Läser sinustabellen vid `cycle` varv (1,0 = ett varv), linjärt interpolerad.
@@ -337,6 +368,8 @@ pub struct SynthEngine {
     pub partial_envs: [PartialAdsr; HARMONIC_COUNT],
     /// Sant när minst en partial har en egen kontur; då går rösten den långsamma vägen.
     pub partial_envs_active: bool,
+    /// Spektralt filter över partialindex. `amount = 0` lämnar ljudet orört.
+    pub formant: SpectralFormant,
     /// Suboscillatorns nivå 0–1: en sinus en oktav under noten, efter filtret.
     pub sub_level: f32,
     /// Filterdrive 0–1: mjuk klippning efter röstens filter (0 = av, exakt som förut).
@@ -428,6 +461,27 @@ pub struct SynthEngine {
 }
 
 impl SynthEngine {
+    /// Dragstängerna med det spektrala filtret pålagt — det är den här formen tabellen
+    /// byggs av och som rösterna får. `formant.amount = 0` ger exakt `harmonics`.
+    pub fn shaped_harmonics(&self) -> [f32; HARMONIC_COUNT] {
+        let mut shaped = self.harmonics;
+        for (k, level) in shaped.iter_mut().enumerate() {
+            *level *= self.formant.gain(k + 1);
+        }
+        shaped
+    }
+
+    /// Bygger om tabellen och skickar den formade nivålistan till rösterna. Enda stället
+    /// som rör dragstänger, formant eller förval — då kan tabellen och rösterna inte glida isär.
+    pub fn rebuild_additive(&mut self) {
+        let shaped = self.shaped_harmonics();
+        self.additive.rebuild(&shaped);
+        for voice in &mut self.voices {
+            voice.harmonics = shaped;
+            voice.partial_control = 0;
+        }
+    }
+
     pub fn new(sample_rate: f32) -> Self {
         let s = Preset::CleanPluck.settings();
         let (waveform, adsr, filter_params) = (s.waveform, s.adsr, s.filter);
@@ -456,6 +510,7 @@ impl SynthEngine {
             additive: AdditiveTable::new(&HARMONICS_DEFAULT),
             partial_envs: PARTIAL_ENV_NEUTRAL,
             partial_envs_active: false,
+            formant: SpectralFormant::default(),
             sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,

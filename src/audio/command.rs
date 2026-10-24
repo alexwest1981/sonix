@@ -326,6 +326,13 @@ pub enum AudioCommand {
     SetPartialEnvelopes {
         envs: [[f32; 3]; crate::audio::synth::HARMONIC_COUNT],
     },
+    /// Spektralt filter över partialindex: center (partialnummer), bredd i partialer och
+    /// mängd 0–1. Flyttar klangfärgen men inte tonhöjden.
+    SetSpectralFormant {
+        center: f32,
+        width: f32,
+        amount: f32,
+    },
     /// Suboscillatorns nivå 0–1.
     SetSub {
         level: f32,

@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Spectral filter for the additive oscillator** — a Gaussian formant over partial index
+  rather than Hz, so it moves timbre without moving pitch. Measured: centroid 4.59 with the
+  formant on partial 2 and 8.69 on partial 9, while the fundamental reads 110.0 Hz in both.
+  Amount 0 leaves the sound untouched; the panel exposes formant, width and amount.
 - **Per-partial envelopes for the additive oscillator** — each of the 64 drawbars can have
   its own attack, decay and sustain, so a note's spectrum can darken as it rings. Measured:
   harmonic centroid falls from 4.3 to 1.03 over 500 ms when partial 8 decays in 0.25 s while

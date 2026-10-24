@@ -2031,6 +2031,46 @@ fn an_envelope_ends_the_voice_after_the_release() {
 }
 
 /// Amplituden hos en frekvens i en inspelad svit (en bin av en DFT).
+// Hann-fönster: en rektangulär fönster på 50 ms läcker från grundtonen in i
+// åttonde bin, och då mäter provet fönstret i stället för spektret.
+fn hann_mag(buf: &[f32], freq: f32) -> f32 {
+    let n = buf.len() as f32;
+    let w = 2.0 * std::f32::consts::PI * freq / 48_000.0;
+    let (mut re, mut im) = (0.0f32, 0.0f32);
+    for (i, v) in buf.iter().enumerate() {
+        let hann = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n).cos();
+        let ph = w * i as f32;
+        re += v * hann * ph.cos();
+        im += v * hann * ph.sin();
+    }
+    2.0 * (re * re + im * im).sqrt() / n
+}
+fn harmonic_centroid(buf: &[f32], f0: f32) -> f32 {
+    let mut weighted = 0.0;
+    let mut total = 0.0;
+    for k in 1..=HARMONIC_COUNT {
+        let m = hann_mag(buf, f0 * k as f32);
+        weighted += m * k as f32;
+        total += m;
+    }
+    if total <= 0.0 { 0.0 } else { weighted / total }
+}
+
+/// Grundtonen i Hz: scannar 60–200 Hz och tar toppen. Används där provet ska visa att
+/// tonhöjden står stilla medan klangfärgen flyttas.
+fn fundamental_hz(buf: &[f32]) -> f32 {
+    let mut best = (0.0f32, 0.0f32);
+    let mut f = 60.0;
+    while f <= 200.0 {
+        let m = hann_mag(buf, f);
+        if m > best.1 {
+            best = (f, m);
+        }
+        f += 0.5;
+    }
+    best.0
+}
+
 fn mag_at(x: &[f32], freq: f32) -> f32 {
     let sr = 48_000.0;
     let w = 2.0 * std::f32::consts::PI * freq / sr;
@@ -2643,31 +2683,6 @@ fn the_sixty_fourth_partial_is_heard() {
 /// och partial 8 (snabb decay till 0) utdragna — centroiden ska falla mot 1 när 8:an dör.
 #[test]
 fn per_partial_envelopes_darken_the_spectrum() {
-    // Hann-fönster: en rektangulär fönster på 50 ms läcker från grundtonen in i
-    // åttonde bin, och då mäter provet fönstret i stället för spektret.
-    fn mag(buf: &[f32], freq: f32) -> f32 {
-        let n = buf.len() as f32;
-        let w = 2.0 * std::f32::consts::PI * freq / 48_000.0;
-        let (mut re, mut im) = (0.0f32, 0.0f32);
-        for (i, v) in buf.iter().enumerate() {
-            let hann = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n).cos();
-            let ph = w * i as f32;
-            re += v * hann * ph.cos();
-            im += v * hann * ph.sin();
-        }
-        2.0 * (re * re + im * im).sqrt() / n
-    }
-    fn centroid(buf: &[f32], f0: f32) -> f32 {
-        let mut weighted = 0.0;
-        let mut total = 0.0;
-        for k in 1..=HARMONIC_COUNT {
-            let m = mag(buf, f0 * k as f32);
-            weighted += m * k as f32;
-            total += m;
-        }
-        if total <= 0.0 { 0.0 } else { weighted / total }
-    }
-
     let mut engine = SynthEngine::new(48_000.0);
     engine.waveform = Waveform::Additive;
     engine.filter_params.cutoff = 18_000.0;
@@ -2696,8 +2711,8 @@ fn per_partial_envelopes_darken_the_spectrum() {
         let (l, _) = engine.process_stereo();
         buf.push(l);
     }
-    let early = centroid(&buf[2_400..4_800], 110.0);
-    let late = centroid(&buf[19_200..21_600], 110.0);
+    let early = harmonic_centroid(&buf[2_400..4_800], 110.0);
+    let late = harmonic_centroid(&buf[19_200..21_600], 110.0);
     println!("centroid 50–100 ms: {early:.2}, 400–450 ms: {late:.2}");
     assert!(early > 2.5, "anslaget ska vara ljust: {early:.2}");
     assert!(late < 1.3, "bara grundtonen ska vara kvar: {late:.2}");
@@ -2711,6 +2726,67 @@ fn a_partial_envelope_ramps_and_falls_as_written() {
     assert!((partial_env_level(0.05, env) - 0.5).abs() < 1e-6, "halva attacken");
     assert!((partial_env_level(0.2, env) - 0.7).abs() < 1e-6, "halva decayen");
     assert!((partial_env_level(5.0, env) - 0.4).abs() < 1e-6, "sustain");
+}
+
+/// **Spektralt filter: klangfärgen flyttar, tonhöjden står stilla.** Formanten ligger över
+/// partialindex, så en förskjutning flyttar centroiden men grundtonen mäts fortfarande 110 Hz.
+#[test]
+fn a_spectral_formant_moves_the_centroid_but_not_the_pitch() {
+    fn render(center: f32) -> Vec<f32> {
+        let mut engine = SynthEngine::new(48_000.0);
+        engine.waveform = Waveform::Additive;
+        engine.filter_params.cutoff = 18_000.0;
+        engine.filter_env_amount = 0.0;
+        engine.reverb_params.mix = 0.0;
+        engine.delay_params.mix = 0.0;
+        engine.adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+        let mut levels = [0.0f32; HARMONIC_COUNT];
+        for level in levels.iter_mut().take(12) {
+            *level = 0.6;
+        }
+        engine.handle_command(AudioCommand::SetHarmonics { levels });
+        engine.handle_command(AudioCommand::SetSpectralFormant {
+            center,
+            width: 1.5,
+            amount: 0.8,
+        });
+        engine.handle_command(AudioCommand::NoteOn {
+            note: 45,
+            freq: 110.0,
+            velocity: 1.0,
+            channel: 0,
+        });
+        let mut buf = Vec::new();
+        for _ in 0..14_400 {
+            let (l, _) = engine.process_stereo();
+            buf.push(l);
+        }
+        buf
+    }
+
+    let low = render(2.0);
+    let high = render(9.0);
+    let c_low = harmonic_centroid(&low[4_800..], 110.0);
+    let c_high = harmonic_centroid(&high[4_800..], 110.0);
+    println!("centroid formant 2: {c_low:.2}, formant 9: {c_high:.2}");
+    assert!(c_high > c_low * 1.5, "formanten ska flytta klangen: {c_low:.2} -> {c_high:.2}");
+
+    let p_low = fundamental_hz(&low[4_800..]);
+    let p_high = fundamental_hz(&high[4_800..]);
+    println!("pitch formant 2: {p_low:.1} Hz, formant 9: {p_high:.1} Hz");
+    assert!((p_low - 110.0).abs() < 2.0, "tonhöjden ska stå stilla: {p_low:.1} Hz");
+    assert!((p_high - 110.0).abs() < 2.0, "tonhöjden ska stå stilla: {p_high:.1} Hz");
+}
+
+/// Formanten släpper igenom bandet och dämpar resten; `amount = 0` lämnar allt orört.
+#[test]
+fn the_spectral_formant_keeps_its_band_and_quietens_the_rest() {
+    let formant = SpectralFormant { center: 5.0, width: 1.0, amount: 0.9 };
+    assert!((formant.gain(5) - 1.0).abs() < 1e-3, "bandet ska vara orört");
+    assert!(formant.gain(1) < 0.15, "grundtonen utanför bandet: {}", formant.gain(1));
+    assert!(formant.gain(20) < 0.15, "hög partial utanför bandet: {}", formant.gain(20));
+    let off = SpectralFormant { amount: 0.0, ..formant };
+    assert_eq!(off.gain(1), 1.0, "avstängd formant ska inte röra något");
 }
 
 /// **Mätning, inte ett prov.** Körs för hand:

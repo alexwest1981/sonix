@@ -150,10 +150,15 @@ impl SynthEngine {
                 for (slot, level) in self.harmonics.iter_mut().zip(levels.iter()) {
                     *slot = level.clamp(0.0, 1.0);
                 }
-                self.additive.rebuild(&self.harmonics);
-                for voice in &mut self.voices {
-                    voice.harmonics = self.harmonics;
-                }
+                self.rebuild_additive();
+            }
+            AudioCommand::SetSpectralFormant { center, width, amount } => {
+                self.formant = SpectralFormant {
+                    center: center.clamp(1.0, HARMONIC_COUNT as f32),
+                    width: width.clamp(0.25, HARMONIC_COUNT as f32),
+                    amount: amount.clamp(0.0, 1.0),
+                };
+                self.rebuild_additive();
             }
             AudioCommand::SetPartialEnvelopes { envs } => {
                 for (slot, env) in self.partial_envs.iter_mut().zip(envs.iter()) {
@@ -373,9 +378,8 @@ impl SynthEngine {
                 self.glide_time = s.glide;
                 self.filter_drive = s.drive;
                 self.harmonics = s.harmonics;
-                self.additive.rebuild(&self.harmonics);
+                self.rebuild_additive();
                 for voice in &mut self.voices {
-                    voice.harmonics = self.harmonics;
                     voice.filter.reset();
                 }
             }
