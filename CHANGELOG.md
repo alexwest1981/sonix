@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the oscillator and the filter no longer overlap
+
+- **Fyra kolumner var för många.** Oscillatorn är en hel kolumn hög, och vid normal fönsterbredd
+  blev den för smal — filterpanelen la sig över den.
+- Nu **två kolumner**: oscillatorn till vänster, och högerkolumnen staplar filter → ADSR → graf.
+  Panelen blir aldrig högre än oscillatorn, så inget hamnar utanför fönstret.
+  Verifierat i bild: ingen överlappning, ingen klippning, grafen kvar.
+
 ### Fixed — the VERKTYG tab led back to the arranger
 
 - `nav_group_of` skickade allt som inte var arranger eller mixer till SKAPA, så **fliken Verktyg

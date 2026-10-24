@@ -3334,7 +3334,11 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
 
         ui.add_space(8.0);
 
-        ui.columns(4, |cols| {
+        // **Två kolumner, med högersidan staplad.** Oscillatorn är en hel kolumn hög; med fyra
+        // kolumner blev den för smal och filterpanelen la sig över den. Nu får oscillatorn halva
+        // bredden, och filter + ADSR + graf ligger i högerkolumnen ovanpå varandra — panelen blir
+        // aldrig högre än oscillatorn.
+        ui.columns(2, |cols| {
             // Column 1: Waveform & Octave
             cols[0].group(|ui| {
                 ui.label(egui::RichText::new(crate::i18n::t("OSCILLATOR")).strong());
@@ -4149,8 +4153,11 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                 ui.label(egui::RichText::new(format!("Cutoff: {:.0} Hz | Q: {:.1} | Env: {:+.1} oct", self.filter.cutoff, self.filter.resonance, self.filter_env_amount)).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
             });
 
+            // **Högerkolumnen staplas:** filter överst, ADSR och graf under. Då blir panelen
+            // aldrig högre än oscillatorn, och inget hamnar utanför fönstret.
+            cols[1].add_space(6.0);
             // Column 3: ADSR Rotary Envelopes
-            cols[2].group(|ui| {
+            cols[1].group(|ui| {
                 ui.label(egui::RichText::new(crate::i18n::t("ADSR ENVELOPE")).strong().color(crate::ui::theme::palette().purple()));
                 let mut adsr_changed = false;
                 ui.horizontal(|ui| {
@@ -4165,7 +4172,7 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
             });
 
             // Column 4: ADSR Visual Curve Display
-            cols[3].group(|ui| {
+            cols[1].group(|ui| {
                 ui.label(egui::RichText::new(crate::i18n::t("ENVELOPE GRAF")).strong().color(crate::ui::theme::palette().green()));
                 // Grafen var 130 px fast; i ett smalt fönster stack den ut ur sin kolumn och
                 // klipptes av kanten. Nu tar den platsen som finns, upp till 130.
