@@ -215,6 +215,9 @@ impl SynthEngine {
                         *point = point.clamp(0.0, 1.0);
                     }
                 }
+                for gain in &mut params.curve_gain {
+                    *gain = gain.clamp(0.0, 4.0);
+                }
                 params.lfo2_rate = params.lfo2_rate.clamp(0.0, 40.0);
                 params.lfo2_depth = params.lfo2_depth.clamp(0.0, 1.0);
                 params.lfo2_target = params.lfo2_target.min(2);

@@ -3553,6 +3553,30 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                         .changed();
                                 }
                             });
+                            // **Egen filterkurva:** fyra band, 1,0 = neutralt. Frekvensen står i
+                            // verktygstipset — fyra etiketter sprängde panelens bredd.
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(crate::i18n::t("FILTERKURVA"))
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                for band in 0..crate::audio::synth::six_op::CURVE_BANDS {
+                                    six_changed |= ui
+                                        .add_sized(
+                                            [58.0, 18.0],
+                                            egui::Slider::new(
+                                                &mut self.six_op.curve_gain[band],
+                                                0.0..=4.0,
+                                            ),
+                                        )
+                                        .on_hover_text(format!(
+                                            "{} Hz",
+                                            crate::audio::synth::six_op::CURVE_HZ[band]
+                                        ))
+                                        .changed();
+                                }
+                            });
                             let filter = &mut self.six_op.filters[target];
                             ui.horizontal(|ui| {
                                 six_changed |= ui

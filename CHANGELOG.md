@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — filter curve (Sytrus)
+
+- `curve_gain[4]` at 200 / 800 / 3 000 / 8 000 Hz: four band-passes added on top of the dry
+  voice signal, so the curve is drawn with four points. All 1,0 = neutral, and then no filters
+  run at all — a patch without a curve costs nothing and sounds exactly as before.
+- Applied to the **voice sum**, not per operator: four bands per operator per unison voice would
+  be 96 filters per sample; this is 8 per voice.
+  Prov `the_curve_boosts_its_band`: the 800 Hz band at 4,0 raises 800 Hz more than 1,5× relative
+  to the fundamental.
+- **FILTERKURVA** row above LP/BP/HP/NO; the frequency sits in the tooltip because four labels
+  burst the panel width.
+
 ### Added — free time curve per operator (Sytrus)
 
 - `shape[[f32; 8]; 6]` + `shape_secs[6]`: eight levels spread over a chosen time, linearly

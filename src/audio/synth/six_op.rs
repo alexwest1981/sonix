@@ -86,6 +86,10 @@ pub struct SixOpParams {
     pub shape: [[f32; SHAPE_POINTS]; SIX_OP_COUNT],
     #[serde(default = "no_pitch")]
     pub shape_secs: [f32; SIX_OP_COUNT],
+    /// **Egen filterkurva:** fyra bandnivåer (0..4) vid `CURVE_HZ`. Alla 1,0 = neutral, och då
+    /// körs inga filter alls — en patch utan kurva kostar ingenting.
+    #[serde(default = "flat_curve")]
+    pub curve_gain: [f32; CURVE_BANDS],
     /// **Andra LFO:n** — Sytrus har flera. Egen fas, eget mål, så tonhöjd och cutoff kan röra sig
     /// olika fort. Djup 0 = av.
     #[serde(default)]
@@ -104,12 +108,44 @@ pub fn one_slope() -> [u8; SIX_OP_COUNT] {
     [1; SIX_OP_COUNT]
 }
 
+/// **Filterkurvan:** fyra band med fasta mittfrekvenser. En ritslad respons i
+/// partialplanet vore en spektral modell; det här är fyra bandpass som läggs ovanpå
+/// torrsignalen, alltså en kurva man kan rita med fyra punkter — inte en godtycklig kurva.
+pub const CURVE_BANDS: usize = 4;
+pub const CURVE_HZ: [f32; CURVE_BANDS] = [200.0, 800.0, 3_000.0, 8_000.0];
+
+pub fn flat_curve() -> [f32; CURVE_BANDS] {
+    [1.0; CURVE_BANDS]
+}
+
 /// Antal punkter i den fria tidskurvan. Fler gör panelen oläslig och kurvan mäter ändå bara
 /// åtta stycken — den är ett envelop, inte en vågform.
 pub const SHAPE_POINTS: usize = 8;
 
 pub fn zero_shape() -> [[f32; SHAPE_POINTS]; SIX_OP_COUNT] {
     [[0.0; SHAPE_POINTS]; SIX_OP_COUNT]
+}
+
+/// Lägger banden ovanpå torrsignalen. Neutral kurva (alla 1,0) hoppas över av anroparen, så
+/// en patch utan kurva varken kostar filter eller låter annorlunda.
+fn apply_curve(
+    filters: &mut [StateVariableFilter; CURVE_BANDS],
+    params: &SixOpParams,
+    input: f32,
+) -> f32 {
+    let mut out = input;
+    for (band, state) in filters.iter_mut().enumerate() {
+        let gain = params.curve_gain[band];
+        if (gain - 1.0).abs() <= 0.001 {
+            continue;
+        }
+        let p = crate::audio::filter::FilterParams {
+            cutoff: CURVE_HZ[band],
+            resonance: 3.0,
+        };
+        out += (gain - 1.0) * state.process_bandpass(input, &p);
+    }
+    out
 }
 
 /// Läser kurvan vid `t` (0..1 av hela längden). Efter slutet håller sista punkten, så en
@@ -195,6 +231,7 @@ impl Default for SixOpParams {
             filter_slope: one_slope(),
             shape: zero_shape(),
             shape_secs: no_pitch(),
+            curve_gain: flat_curve(),
             lfo2_rate: 0.0,
             lfo2_depth: 0.0,
             lfo2_target: 0,
@@ -232,6 +269,9 @@ pub struct SixOpVoice {
     lfo2_phase: f32,
     /// Sekunder sedan anslaget, per operator — driver den fria tidskurvan.
     shape_time: [f32; SIX_OP_COUNT],
+    /// Filterkurvans fyra band, ett tillstånd per kanal.
+    curve_l: [StateVariableFilter; CURVE_BANDS],
+    curve_r: [StateVariableFilter; CURVE_BANDS],
     sample_rate: f32,
 }
 
@@ -250,6 +290,8 @@ impl SixOpVoice {
             lfo_phase: 0.0,
             lfo2_phase: 0.0,
             shape_time: [0.0; SIX_OP_COUNT],
+            curve_l: std::array::from_fn(|_| StateVariableFilter::new(sample_rate)),
+            curve_r: std::array::from_fn(|_| StateVariableFilter::new(sample_rate)),
             sample_rate,
         }
     }
@@ -364,7 +406,12 @@ impl SixOpVoice {
             total_r += r;
         }
         let norm = (voices as f32).sqrt();
-        (total_l / norm, total_r / norm)
+        let (mut left, mut right) = (total_l / norm, total_r / norm);
+        if params.curve_gain.iter().any(|g| (*g - 1.0).abs() > 0.001) {
+            left = apply_curve(&mut self.curve_l, params, left);
+            right = apply_curve(&mut self.curve_r, params, right);
+        }
+        (left, right)
     }
 
     /// Matrisen för **en** unisonstämma. Indexen är både källa och mål i samma array
@@ -667,6 +714,24 @@ mod tests {
         };
         assert!(rms(0, 480) > 0.05, "anslaget ska höras: {:.4}", rms(0, 480));
         assert!(rms(9_600, 14_400) < 0.001, "efter kurvan ska det vara tyst: {:.5}", rms(9_600, 14_400));
+    }
+
+    /// **Filterkurvan lyfter ett band.** Med 800 Hz-bandet på 4,0 ska 800 Hz växa jämfört med
+    /// grundtonen — en ritslad respons, inte en ratt.
+    #[test]
+    fn the_curve_boosts_its_band() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.2 };
+        params.ratios[1] = 4.0;
+        params.matrix[1][0] = 2.0;
+        let mid = |p: &SixOpParams| {
+            let out = render(p, 200.0, 9_600);
+            mag_at(&out[4_800..], 800.0) / mag_at(&out[4_800..], 200.0).max(1e-6)
+        };
+        let flat = mid(&params);
+        params.curve_gain[1] = 4.0;
+        let boosted = mid(&params);
+        assert!(boosted > flat * 1.5, "800 Hz ska lyftas: {boosted:.4} mot {flat:.4}");
     }
 
     /// **Utan modulering är 6-op en sinus.** Matrisen noll och bara operator 1 hörd ger
