@@ -605,6 +605,35 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     }
                     self.status_message = crate::i18n::t("⇥ frasen hopdragen till halva längden").to_string();
                 }
+                // **Skript** (Rhai): ändra tagningen med kod i stället för med musen. Filerna
+                // listas ur `~/.config/sonix/scripts`; en fil någon annanstans går via väljaren.
+                ui.menu_button(
+                    egui::RichText::new(crate::i18n::t("📜 Skript")).size(Theme::FONT_S),
+                    |ui| {
+                        let files = crate::audio::script::scripts();
+                        if files.is_empty() {
+                            ui.label(crate::i18n::t("Inga skript i ~/.config/sonix/scripts"));
+                        }
+                        for path in &files {
+                            let name = path
+                                .file_stem()
+                                .map(|s| s.to_string_lossy().to_string())
+                                .unwrap_or_default();
+                            if ui.button(name).clicked() {
+                                self.run_piano_roll_script(path);
+                                ui.close_menu();
+                            }
+                        }
+                        ui.separator();
+                        if ui.button(crate::i18n::t("Öppna fil…")).clicked()
+                            && let Some(path) =
+                                rfd::FileDialog::new().add_filter("Rhai", &["rhai"]).pick_file()
+                        {
+                            self.run_piano_roll_script(&path);
+                            ui.close_menu();
+                        }
+                    },
+                );
                 // **Spegla** (FL: `Invert`): tonhöjderna vänds kring mitten av urvalets intervall,
                 // så en uppgång blir en nedgång med samma intervall.
                 if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("↕ Spegla tonhöjder")).size(Theme::FONT_S)))
@@ -2223,5 +2252,37 @@ mod selection_tests {
         assert!(sel[5][3]);
         assert_eq!(toggle_cell_selection(&mut sel, 5, 3), 0, "samma cell växlar av");
         assert_eq!(toggle_cell_selection(&mut sel, 99, 99), 0, "utanför rutnätet gör inget");
+    }
+}
+
+impl SonixApp {
+    /// Kör ett pianorullsskript mot den **aktiva tagningen** i valt pattern och rapporterar
+    /// resultatet i statusraden. Skriptet rör bara tagningen; kompningen och rutnätet lämnas.
+    fn run_piano_roll_script(&mut self, path: &std::path::Path) {
+        let name = path
+            .file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let source = match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(e) => {
+                self.status_message = crate::tstatus!("⚠ Kunde inte läsa skriptet: {}", e);
+                return;
+            }
+        };
+        let Some(pattern) = self.patterns.get_mut(self.selected_pattern) else {
+            self.status_message = crate::i18n::t("⚠ Inget pattern valt").to_string();
+            return;
+        };
+        match crate::audio::script::run(&source, &mut pattern.take) {
+            Ok(log) => {
+                self.status_message = if log.is_empty() {
+                    crate::tstatus!("📜 {} körd", name)
+                } else {
+                    crate::tstatus!("📜 {}: {}", name, log.join(" · "))
+                };
+            }
+            Err(e) => self.status_message = crate::tstatus!("⚠ Skriptfel i {}: {}", name, e),
+        }
     }
 }

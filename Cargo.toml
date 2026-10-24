@@ -1,6 +1,6 @@
 [package]
 name = "sonix"
-version = "0.9.52"
+version = "0.9.53"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Native Linux DAW (Rust/egui) with timeline editing, synth, mixer, stem separation, plugin hosting and export."
@@ -53,6 +53,7 @@ midir = "0.11"
 # stämma på några minuter är den storleksordningar för långsam, och spektral
 # analys utan FFT är i praktiken alltid `rustfft` (samma val som aubio/librosa).
 rustfft = "6.4.1"
+rhai = { version = "1.27.0", default-features = false, features = ["std"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 alsa = "0.9"
 

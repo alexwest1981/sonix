@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Piano-roll scripts (Rhai).** A 📜 Skript menu in the piano roll runs `.rhai` files from
+  `~/.config/sonix/scripts` against the active take: `count()`, `pitch/velocity/start(i)`,
+  `set_pitch/set_velocity/set_start`, `transpose`, `scale_velocity`, and `print` which lands in
+  the status bar. The script works on a **copy**, so a failure halfway leaves the take untouched;
+  pitches are clamped to 0–127 and a runaway loop hits `max_operations` instead of freezing the
+  UI. An example script is written to the folder the first time it is opened.
 - **Theme files.** The palette is now a `Palette` with 29 semantic names (`bg`, `panel`,
   `orange`, `track_teal`, …) read from `~/.config/sonix/theme.json`. The file is written with
   the default palette on first run so it can be edited, only the keys you name are changed, and
