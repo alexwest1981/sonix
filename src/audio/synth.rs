@@ -21,10 +21,12 @@ use super::plugin_host_live::{PdcDelay, PluginInsert};
 use super::vocal_harmonizer::{FormantPitchShifter, Wsola};
 
 mod commands;
+pub(crate) mod six_op;
 mod process;
 mod voices;
 
 use voices::*;
+pub(crate) use six_op::{SixOpParams, SIX_OP_COUNT};
 
 /// Felsökningsloggning till `~/.local/state/sonix/logs/audio_debug.log`.
 /// Påslagen när `SONIX_AUDIO_DEBUG` är satt, eller när markörfilen
@@ -123,6 +125,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetPartialEnvelopes { .. } => "SetPartialEnvelopes",
         AudioCommand::SetSpectralFormant { .. } => "SetSpectralFormant",
         AudioCommand::SetSpectralSweep { .. } => "SetSpectralSweep",
+        AudioCommand::SetSixOp { .. } => "SetSixOp",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -454,6 +457,9 @@ pub struct SynthEngine {
     pub partial_envs: [PartialAdsr; HARMONIC_COUNT],
     /// Sant när minst en partial har en egen kontur; då går rösten den långsamma vägen.
     pub partial_envs_active: bool,
+    /// **Sytrus 6-op:** matrisen som `Waveform::SixOp` spelar. Kopieras till rösterna när
+    /// den ändras, så rösterna inte behöver läsa delat tillstånd per sampel.
+    pub six_op: SixOpParams,
     /// Spektralt filter över partialindex. `amount = 0` lämnar ljudet orört.
     pub formant: SpectralFormant,
     /// Tidsaxel: klangformen glider från `formant.center` till `sweep.to` under noten.
@@ -604,6 +610,7 @@ impl SynthEngine {
             additive: AdditiveTable::new(&HARMONICS_DEFAULT, sample_rate),
             partial_envs: PARTIAL_ENV_NEUTRAL,
             partial_envs_active: false,
+            six_op: SixOpParams::default(),
             formant: SpectralFormant::default(),
             sweep: SpectralSweep::default(),
             sub_level: 0.0,

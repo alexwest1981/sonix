@@ -159,6 +159,7 @@ pub struct TrackAudioSnap {
 pub struct SynthVoiceState {
     pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
     pub partial_envs: [crate::audio::synth::PartialAdsr; crate::audio::synth::HARMONIC_COUNT],
+    pub six_op: crate::audio::synth::SixOpParams,
     pub formant: crate::audio::synth::SpectralFormant,
     pub sweep: crate::audio::synth::SpectralSweep,
     pub sub: f32,
@@ -175,6 +176,7 @@ impl Default for SynthVoiceState {
         Self {
             harmonics: crate::audio::synth::HARMONICS_DEFAULT,
             partial_envs: crate::audio::synth::PARTIAL_ENV_NEUTRAL,
+            six_op: crate::audio::synth::SixOpParams::default(),
             formant: crate::audio::synth::SpectralFormant::default(),
             sweep: crate::audio::synth::SpectralSweep::default(),
             sub: 0.0,
@@ -615,6 +617,10 @@ pub fn build_offline_engine(spec: &RenderSpec, fx: &FxState) -> SynthEngine {
     engine.filter_key_track = fx.synth.filter_key_track.clamp(0.0, 1.0);
     engine.fm = fx.synth.fm;
     engine.handle_command(AudioCommand::SetHarmonics { levels: fx.synth.harmonics });
+    // 6-op-patchen är ett block: utan det här exporteras `Waveform::SixOp` som en ren sinus.
+    engine.handle_command(AudioCommand::SetSixOp {
+        params: fx.synth.six_op,
+    });
     engine.handle_command(AudioCommand::SetPartialEnvelopes { envs: fx.synth.partial_envs });
     engine.handle_command(AudioCommand::SetSpectralFormant {
         center: fx.synth.formant.center,
@@ -1522,6 +1528,49 @@ mod tests {
 
     /// **Suboscillatorn och unison följer med i exporten.** Sub ger energi en oktav under
     /// noten; utan `synth` i `FxState` föll båda bort i filen men hördes live.
+    /// **6-op-patchen hörs i exporten — och matrisen är det som hörs.** Samma ton två
+    /// gånger: en ren sinus (standard) och en kedja där operator 6 moduleras av 1–5. Utan
+    /// `SetSixOp` i `build_offline_engine` blir båda en sinus, och då faller provet.
+    #[test]
+    fn the_six_op_matrix_is_audible_in_an_offline_render() {
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        grid[0][0] = true; // MIDI 48 = C3, 130,81 Hz
+        let mut ch_steps = [false; crate::audio::tempo::MAX_STEPS];
+        ch_steps[0] = true;
+        let spec = synth_spec_with(grid, ch_steps, 60);
+
+        let render_with = |six_op: crate::audio::synth::SixOpParams| {
+            let mut synth = SynthVoiceState::default();
+            synth.six_op = six_op;
+            let fx = FxState {
+                waveform: super::super::command::Waveform::SixOp,
+                adsr: AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 },
+                filter: FilterParams { cutoff: 18_000.0, resonance: 0.0 },
+                delay: DelayParams::default(),
+                reverb: ReverbParams::default(),
+                drive: 1.0,
+                master_volume: 1.0,
+                master_fx: MasterFxParams::default(),
+                synth,
+            };
+            let mut engine = build_offline_engine(&spec, &fx);
+            let buf = render_project_offline(&mut engine, &spec);
+            buf.iter().step_by(2).copied().collect::<Vec<f32>>()
+        };
+
+        let sine = render_with(crate::audio::synth::SixOpParams::default());
+        let chain = render_with(crate::audio::synth::SixOpParams::chain(2.0));
+        let sr = spec.sample_rate as f32;
+        let third_sine = tone_energy(&sine, 130.81 * 3.0, sr);
+        let third_chain = tone_energy(&chain, 130.81 * 3.0, sr);
+        let rms = (chain.iter().map(|x| x * x).sum::<f32>() / chain.len() as f32).sqrt();
+        assert!(rms > 0.01, "6-op hörs inte alls: rms {rms:.4}");
+        assert!(
+            third_chain > third_sine * 5.0 + 0.001,
+            "matrisen ska lägga övertoner: ren sinus {third_sine:.5}, kedja {third_chain:.5}"
+        );
+    }
+
     #[test]
     fn the_sub_oscillator_is_audible_in_an_offline_render() {
         let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];

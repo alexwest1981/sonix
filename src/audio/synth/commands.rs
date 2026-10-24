@@ -160,6 +160,26 @@ impl SynthEngine {
                 };
                 self.rebuild_additive();
             }
+            AudioCommand::SetSixOp { params } => {
+                let mut params = params;
+                for ratio in &mut params.ratios {
+                    *ratio = ratio.clamp(0.0, 32.0);
+                }
+                for level in &mut params.levels {
+                    *level = level.clamp(0.0, 1.0);
+                }
+                for row in &mut params.matrix {
+                    for amount in row.iter_mut() {
+                        *amount = amount.clamp(-32.0, 32.0);
+                    }
+                }
+                self.six_op = params;
+                // Rösterna bär sina egna kopior (som dragstängerna): en ändring ska höras
+                // på noter som redan klingar, utan att delat tillstånd läses per sampel.
+                for voice in self.voices.iter_mut() {
+                    voice.six_op = params;
+                }
+            }
             AudioCommand::SetSpectralSweep { to, seconds } => {
                 self.sweep = SpectralSweep {
                     to: to.clamp(1.0, HARMONIC_COUNT as f32),

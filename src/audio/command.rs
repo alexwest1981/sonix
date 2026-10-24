@@ -24,6 +24,9 @@ pub enum Waveform {
     /// **Sakura**: en **båge** över samma sträng. Linjen exciteras kontinuerligt av brus i
     /// stället för av en enda burst, så tonen bär så länge anslaget hålls.
     Bowed,
+    /// **Sytrus**: sex operatorer i en 6×6-matris (`six_op`). Varje operator är en sinus med
+    /// eget förhållande, och alla kan modulera alla — även sig själva.
+    SixOp,
     /// **Ogun**: additivt men **inharmoniskt** — deltonerna ligger på 1, 2,76, 5,4 … som i en
     /// metallskål, inte på heltalsmultiplar som i en sträng.
     Inharmonic,
@@ -41,6 +44,7 @@ impl Waveform {
             Waveform::Pluck => "Sträng (Pluck)",
             Waveform::Bowed => "Båge (Bowed)",
             Waveform::Guitar => "Gitarr (Slayer)",
+            Waveform::SixOp => "6-op (Sytrus)",
             Waveform::Inharmonic => "Metall (Inharmonic)",
         }
     }
@@ -332,6 +336,11 @@ pub enum AudioCommand {
         center: f32,
         width: f32,
         amount: f32,
+    },
+    /// **Sytrus 6-op:** hela matrisen och rattarna på en gång. Den skickas som ett block
+    /// (inte 48 enskilda kommandon), så en patchbyte är atomär för alla röster.
+    SetSixOp {
+        params: crate::audio::synth::SixOpParams,
     },
     /// Tidsaxeln: klangformen glider från formantens läge till `to` under `seconds`.
     SetSpectralSweep {

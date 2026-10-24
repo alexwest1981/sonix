@@ -3210,6 +3210,7 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     (Waveform::Pluck, crate::i18n::t("𝄞 Sträng")),
                     (Waveform::Bowed, crate::i18n::t("🎻 Båge")),
                     (Waveform::Guitar, crate::i18n::t("🎸 Gitarr")),
+                    (Waveform::SixOp, crate::i18n::t("✱ 6-op")),
                     (Waveform::Inharmonic, crate::i18n::t("⛭ Metall")),
                 ];
                 for (wf, name) in waveforms {
@@ -3217,6 +3218,110 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     if ui.selectable_label(is_wf, name).clicked() {
                         self.waveform = wf;
                         let _ = self.engine.send_command(AudioCommand::SetWaveform(wf));
+                    }
+                }
+                if self.waveform == Waveform::SixOp {
+                    ui.separator();
+                    let mut six_changed = false;
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("6-OP (SYTRUS)"))
+                            .size(Theme::FONT_S)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                    // Tre utgångslägen: en ren sinus, den klassiska FM-stacken och en
+                    // självmodulerande sågtand. De är startpunkter, inte förval som låser.
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button(crate::i18n::t("∿ Sinus"))
+                            .on_hover_text(crate::i18n::t("Nollställ matrisen"))
+                            .clicked()
+                        {
+                            self.six_op = crate::audio::synth::SixOpParams::default();
+                            six_changed = true;
+                        }
+                        if ui
+                            .button(crate::i18n::t("⛓ Kedja"))
+                            .on_hover_text(crate::i18n::t("Operator 1→2→3→4→5→6; bara den sista hörs"))
+                            .clicked()
+                        {
+                            self.six_op = crate::audio::synth::SixOpParams::chain(1.2);
+                            six_changed = true;
+                        }
+                        if ui
+                            .button(crate::i18n::t("↺ Sågtand"))
+                            .on_hover_text(crate::i18n::t("Operator 1 återkopplar till sig själv"))
+                            .clicked()
+                        {
+                            let mut params = crate::audio::synth::SixOpParams::default();
+                            params.matrix[0][0] = 1.5;
+                            self.six_op = params;
+                            six_changed = true;
+                        }
+                    });
+                    // Förhållande och nivå per operator.
+                    ui.horizontal(|ui| {
+                        for i in 0..crate::audio::synth::SIX_OP_COUNT {
+                            ui.vertical(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("OP{}", i + 1))
+                                        .size(Theme::FONT_XS),
+                                );
+                                six_changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut self.six_op.ratios[i])
+                                            .range(0.0..=32.0)
+                                            .speed(0.01)
+                                            .max_decimals(2),
+                                    )
+                                    .on_hover_text(crate::i18n::t("Frekvensförhållande"))
+                                    .changed();
+                                six_changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut self.six_op.levels[i])
+                                            .range(0.0..=1.0)
+                                            .speed(0.01)
+                                            .max_decimals(2),
+                                    )
+                                    .on_hover_text(crate::i18n::t(
+                                        "Utgångsnivå — 0 hörs inte men kan modulera",
+                                    ))
+                                    .changed();
+                            });
+                        }
+                    });
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("MATRIS (källa → mål)"))
+                            .size(Theme::FONT_XS)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                    for source in 0..crate::audio::synth::SIX_OP_COUNT {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{}", source + 1)).size(Theme::FONT_XS),
+                            );
+                            for target in 0..crate::audio::synth::SIX_OP_COUNT {
+                                six_changed |= ui
+                                    .add(
+                                        egui::DragValue::new(
+                                            &mut self.six_op.matrix[source][target],
+                                        )
+                                        .range(-16.0..=16.0)
+                                        .speed(0.05)
+                                        .max_decimals(2),
+                                    )
+                                    .on_hover_text(crate::tstatus!(
+                                        "OP{} → OP{}",
+                                        source + 1,
+                                        target + 1
+                                    ))
+                                    .changed();
+                            }
+                        });
+                    }
+                    if six_changed {
+                        let _ = self.engine.send_command(AudioCommand::SetSixOp {
+                            params: self.six_op,
+                        });
                     }
                 }
                 if self.waveform == Waveform::Additive {

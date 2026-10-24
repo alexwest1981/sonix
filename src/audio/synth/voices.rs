@@ -2,6 +2,7 @@
 //! Status: stabil — rösterna och spåren; en ny rösttyp hör hit och får eget prov.
 //! Rör inte: `slice_edge_gain` — `fade_frames = 0` ska ge exakt den gamla vägen (1,0 överallt), inte nästan; det är den som skiljer ett klick från ett klipp.
 
+use super::six_op::{SixOpParams, SixOpVoice};
 use super::*;
 
 /// Strängens lågpass i återkopplingen (Plucked!): 0,9 lämnar grundtonen nästan orörd
@@ -52,6 +53,10 @@ pub struct Voice {
     pub sub_phase: f32,
     /// Fas per delton för den inharmoniska vågformen (Ogun).
     pub inh_phases: [f32; 6],
+    /// **Sytrus 6-op:** sex faser och matrisen som rösten spelar. Parametrarna kopieras hit
+    /// när de ändras (som dragstängerna), så en röst byter patch mitt i en ton utan klick.
+    pub six: SixOpVoice,
+    pub six_op: SixOpParams,
     /// Karplus-Strong-linjen (Plucked!): bruset som blir en sträng.
     pub pluck_buf: [f32; 4096],
     pub pluck_pos: usize,
@@ -350,6 +355,8 @@ impl Voice {
     pub fn new(sample_rate: f32) -> Self {
         Self {
             inh_phases: [0.0; 6],
+            six: SixOpVoice::new(),
+            six_op: SixOpParams::default(),
             pluck_buf: [0.0; 4096],
             pluck_pos: 0,
             pluck_started: false,
@@ -446,6 +453,7 @@ impl Voice {
         self.velocity = 0.0;
         self.phase = 0.0;
         self.mod_phase = 0.0;
+        self.six.reset();
     }
 
     #[inline(always)]
@@ -552,6 +560,9 @@ impl Voice {
         }
 
         let raw_sample = match waveform {
+            // 6-op har egna faser per operator; röstens `phase` används inte, och
+            // modulationen räknas i matrisen (se `six_op`).
+            Waveform::SixOp => self.six.next_sample(&self.six_op, self.phase_inc * self.bend_ratio),
             Waveform::Sine => phase.sin(),
             Waveform::Saw => (phase / PI) - 1.0,
             Waveform::Square => {

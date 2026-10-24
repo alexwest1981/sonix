@@ -285,6 +285,8 @@ pub struct SonixApp {
     pub step_velocities: [f32; crate::audio::tempo::MAX_STEPS],
     /// Nivåerna för den additiva oscillatorns övertoner.
     pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
+    /// **Sytrus 6-op:** matrisen som UI:t redigerar. Skickas som ett block till motorn.
+    pub six_op: crate::audio::synth::SixOpParams,
     /// Spektral envelop: attack, decay och sustain för den additiva oscillatorn, och hur
     /// mycket snabbare höga partialer dör (lutningen). Av = dragstängerna är statiska.
     pub partial_env: [f32; 3],
@@ -964,6 +966,7 @@ impl SonixApp {
             step_velocities: [0.85; crate::audio::tempo::MAX_STEPS],
             piano_roll_quiet_threshold: 0.3,
             harmonics: crate::audio::synth::HARMONICS_DEFAULT,
+            six_op: crate::audio::synth::SixOpParams::default(),
             partial_env: [0.002, 0.6, 0.0],
             partial_env_tilt: 1.0,
             partial_env_on: false,

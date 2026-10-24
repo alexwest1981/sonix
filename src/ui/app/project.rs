@@ -351,6 +351,10 @@ pub struct SavedSynth {
     pub partial_env_overrides: Vec<(usize, [f32; 3])>,
     pub formant: crate::audio::synth::SpectralFormant,
     pub sweep: crate::audio::synth::SpectralSweep,
+    /// **Sytrus 6-op.** `#[serde(default)]` så projekt sparade före 0.9.47 öppnas med en ren
+    /// sinus i stället för att vägra öppna.
+    #[serde(default)]
+    pub six_op: crate::audio::synth::SixOpParams,
 }
 
 impl SavedSynth {
@@ -375,6 +379,7 @@ impl SavedSynth {
             partial_env_target: app.partial_env_target,
             partial_env_overrides: app.partial_env_overrides.clone(),
             formant: app.formant,
+            six_op: app.six_op,
             sweep: app.sweep,
         }
     }
@@ -432,6 +437,9 @@ impl SavedSynth {
             levels: self.harmonics,
         });
         let _ = engine.send_command(AudioCommand::SetPartialEnvelopes { envs });
+        let _ = engine.send_command(AudioCommand::SetSixOp {
+            params: self.six_op,
+        });
         let _ = engine.send_command(AudioCommand::SetSpectralFormant {
             center: self.formant.center,
             width: self.formant.width,

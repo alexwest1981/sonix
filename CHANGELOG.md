@@ -25,6 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **6-op (Sytrus).** Six sine operators in a 6×6 phase-modulation matrix, each with its own
+  frequency ratio and output level, reachable as the `Waveform::SixOp` oscillator. Sources with
+  a lower index are read from the current sample and the rest from the previous one, which makes
+  self-feedback (a saw out of a sine) possible. Three starting points in the panel: sine, chain
+  and feedback saw; ratio, level and all 36 matrix cells are editable, and the whole patch travels
+  as one command and is saved with the project and used by the exporter.
 - **Lane view in the playlist.** A pattern block with more than one take now shows a thin row
   per lane, with the lane that plays in each bar lit (`Pattern::lane_for_bar`: the lane at the
   bar's first step, bar-specific comp before a global one). Read-only — the comp is still

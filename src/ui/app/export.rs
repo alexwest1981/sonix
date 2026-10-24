@@ -352,6 +352,7 @@ fn export_fx_state(&self, dry: bool) -> crate::audio::FxState {
             harmonics: self.harmonics,
             partial_envs: self.partial_envelopes(),
             formant: self.formant,
+            six_op: self.six_op,
             sweep: self.sweep,
             sub: self.sub_level,
             unison: self.unison_voices,

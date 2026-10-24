@@ -120,3 +120,25 @@ Det är en **annan** uppgift än partialerna: sex operatorer med egna envelopppe
 kopplingsmatris (varje operator kan modulera varje). Byggs efter steg 1–2, för då finns
 envelopperna som behövs. Kopplingsmatrisen är 6×6 nivåer plus per-operatorns vågform —
 det är den delen som gör Sytrus till Sytrus.
+
+## 6-op (Sytrus): matrisen
+
+`audio::synth::six_op` är sex sinusoperatorer i en **6×6-matris** (`matrix[källa][mål]`), plus
+förhållande och utgångsnivå per operator. `Waveform::SixOp` spelar den; `AudioCommand::SetSixOp`
+byter hela patchen i **ett** kommando (48 enskilda hade kunnat ge halva patchar).
+
+**Ordningen är regeln:** en källa med lägre index räknas först och läses direkt ur samplet; en
+källa med samma eller högre index läses från **föregående** sampel. Det ger egen återkoppling
+(sågtand ur en sinus) utan att bli implicit, och gör framåtriktade kopplingar möjliga.
+
+**Mätt** (48 kHz, 9 600 sampel, 440 Hz):
+
+| Prov | Mätning |
+| :--- | :--- |
+| `without_modulation_six_op_is_a_sine` | andra övertonen < 1 % av grundtonen |
+| `modulation_puts_sidebands_where_fm_says` | modulering 0,5 × f₀ med index 2,0 ger sidoband på 220 och 660 Hz, båda > 20 % av bärvågen |
+| `feedback_uses_the_previous_sample` | egen återkoppling (1,5) ger 2:a och 3:e övertonen |
+| `the_six_op_matrix_is_audible_in_an_offline_render` | ren sinus 0,0078 mot kedja 0,0078 → **fälldes** genom att ta bort `SetSixOp` ur exporten; med den på plats ger kedjan övertoner |
+
+**Kvar:** egen ADSR per operator, eget filter per operator och fler än de tre utgångslägena
+(sinus/kedja/sågtand).

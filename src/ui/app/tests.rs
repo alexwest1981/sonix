@@ -2235,6 +2235,11 @@ use crate::ui::theme::Theme;
                 to: 9.0,
                 seconds: 1.0,
             },
+            six_op: {
+                let mut params = crate::audio::synth::SixOpParams::chain(2.5);
+                params.ratios[5] = 3.5;
+                params
+            },
         };
         let json = serde_json::to_string(&saved).expect("patchen ska gå att spara");
         assert!(
@@ -2249,6 +2254,10 @@ use crate::ui::theme::Theme;
         assert!((back.formant.amount - 0.6).abs() < 1e-6);
         assert!((back.sweep.to - 9.0).abs() < 1e-6);
         assert_eq!(back.partial_env_target, 5);
+        // 6-op-matrisen är 36 tal + 12 rattar: utan den i filen blir en 6-op-patch en sinus.
+        assert!((back.six_op.ratios[5] - 3.5).abs() < 1e-6, "förhållandet");
+        assert!((back.six_op.matrix[0][1] - 2.5).abs() < 1e-6, "matrisen");
+        assert_eq!(back.six_op.levels[5], 1.0, "bara sista operatorn hörs i kedjan");
     }
 
     /// **Warp-läget hör till sträckningens nyckel.** Standardläget `Complex` skrivs inte ut, så
