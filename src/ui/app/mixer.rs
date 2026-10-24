@@ -1067,8 +1067,9 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                 }
 
                 // VOL & PAN Knobs
-                rotary_knob(ui, &mut ch.volume, 0.0, 1.0, "VOL", ch.color, 24.0);
-                rotary_knob(ui, &mut ch.pan, -1.0, 1.0, "PAN", crate::ui::theme::palette().text_muted(), 24.0);
+                // Ratten vet sitt eget standardläge: dubbelklick ger tillbaka 80 % och mitten.
+                crate::ui::widgets::rotary_knob_reset(ui, &mut ch.volume, 0.0, 1.0, "VOL", ch.color, 24.0, 0.8);
+                crate::ui::widgets::rotary_knob_reset(ui, &mut ch.pan, -1.0, 1.0, "PAN", crate::ui::theme::palette().text_muted(), 24.0, 0.0);
 
                 // Channel Select Button
                 let btn_fill = if is_selected { crate::ui::theme::palette().panel() } else { crate::ui::theme::palette().panel_alt() };

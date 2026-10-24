@@ -29,6 +29,22 @@ pub fn rotary_knob_full(
     rotary_knob_impl(ui, value, min, max, label, color, size, 0.0, None)
 }
 
+/// Som [`rotary_knob`], men **dubbelklick nollställer** till `reset` — rattens eget
+/// standardvärde, inte en gissning. Används där standarden är känd (kanalens volym och pan).
+#[allow(clippy::too_many_arguments)]
+pub fn rotary_knob_reset(
+    ui: &mut Ui,
+    value: &mut f32,
+    min: f32,
+    max: f32,
+    label: &str,
+    color: Color32,
+    size: f32,
+    reset: f32,
+) -> bool {
+    rotary_knob_impl(ui, value, min, max, label, color, size, 0.0, Some(reset)).0
+}
+
 /// A superprecise pitch knob: values snap to `step` (1 cent), holding Shift
 /// gives fine control, and double-clicking resets to 0.
 pub fn pitch_knob(

@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Double-click a channel's VOL or PAN knob to reset it.** The knob already knew how to snap back
+  when it was given a default — `rotary_knob` just never passed one. `rotary_knob_reset` takes the
+  reset value explicitly, so the mixer resets to 80 % and centre instead of guessing from the
+  range. Other knobs are untouched until their defaults are decided.
+
 - **Right-click a channel in the rack.** Mute/unmute or reset volume and pan (80 %, centred), with
   the channel name in the status line. The action is applied after the row loop, so it does not
   fight the channel borrow mid-draw.
