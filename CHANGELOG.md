@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — track headers follow the Soundtrap blueprint
+
+- Corner rounding on the track-header cards 3 → 8 px and the track name 11 → 13.5 px (14 on the
+  mic track), from measurements taken on Soundtrap's own studio image — see
+  `docs/SOUNDTRAP-BLUEPRINT.md`. Clip height and row height are unchanged: raising them means
+  moving the header's control rows, which is its own change.
+
 ### Changed — language and guide moved into the menus
 
 - The language picker and the guide button were two loose controls at the end of the transport

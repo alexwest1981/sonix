@@ -865,8 +865,9 @@ impl SonixApp {
                 } else {
                     crate::ui::theme::palette().panel_alt()
                 };
-                ui.painter().rect_filled(h_rect, Rounding::same(3.0), card_bg);
-                ui.painter().rect_stroke(h_rect, Rounding::same(3.0), Stroke::new(if is_sel_track { 1.5_f32 } else { 1.0_f32 }, card_stroke));
+                // Soundtrap-kortet har mjuka hörn (~10 px i deras studio); 8 ryms i Sonix radhöjd.
+                ui.painter().rect_filled(h_rect, Rounding::same(8.0), card_bg);
+                ui.painter().rect_stroke(h_rect, Rounding::same(8.0), Stroke::new(if is_sel_track { 1.5_f32 } else { 1.0_f32 }, card_stroke));
 
                 // Left Accent Bar
                 let accent_color = if is_mic_track { crate::ui::theme::palette().cyan() } else { track_color };
@@ -892,7 +893,7 @@ impl SonixApp {
                     Pos2::new(h_rect.min.x + 10.0, h_rect.min.y + if is_mic_track { 16.0 } else { 12.0 }),
                     egui::Align2::LEFT_CENTER,
                     display_name,
-                    egui::FontId::proportional(if is_mic_track { 11.5 } else { 11.0 }),
+                    egui::FontId::proportional(if is_mic_track { 14.0 } else { 13.5 }),
                     title_col,
                 );
 
