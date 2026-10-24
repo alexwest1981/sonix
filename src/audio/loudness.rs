@@ -84,7 +84,7 @@ fn sinc(x: f32) -> f32 {
 fn high_shelf_coeffs(sample_rate: u32) -> Biquad {
     let g = 3.999_843_9_f32;
     let q = 0.707_175_24_f32;
-    let fc = 1681.974_5_f32;
+    let fc = 1681.9745_f32;
     let k = (PI * fc / sample_rate as f32).tan();
     let vh = 10.0_f32.powf(g / 20.0);
     let vb = vh.powf(0.499_666_77_f32);

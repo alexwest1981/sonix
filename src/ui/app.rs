@@ -126,6 +126,10 @@ mod tests;
 /// stycke sin egen faktor, sin egen längd och sin egen start i källan.
 ///
 // Anropas av `ensure_stretched`: en sträckning per tempovärde i klippets spann (8.10 punkt 1).
+/// Ett resultat som en bakgrundstråd lämnar till UI-tråden: `None` = inget väntar,
+/// `Some(Ok)` = klart, `Some(Err)` = felmeddelandet som ska synas.
+pub type SharedResult<T> = std::sync::Arc<std::sync::Mutex<Option<Result<T, String>>>>;
+
 pub struct SonixApp {
     pub engine: AudioEngine,
     /// Monitor ring currently registered with the audio engine (re-sent after
@@ -609,12 +613,12 @@ pub struct SonixApp {
     pub ai_service_results: crate::ai_service::Results,
     pub ai_service_port: u16,
     /// AI-samtalet: väntande svar och en plan som väntar på bekräftelse.
-    pub ai_chat_pending: Option<std::sync::Arc<std::sync::Mutex<Option<Result<String, String>>>>>,
+    pub ai_chat_pending: Option<SharedResult<String>>,
     pub ai_pending_plan: Option<Vec<crate::audio::ai_tools::PlannedSection>>,
     /// Teman från registret (hämtas i bakgrunden) och den pågående hämtningen.
     pub theme_registry: Vec<crate::ui::theme::RemoteTheme>,
     pub theme_registry_pending:
-        Option<std::sync::Arc<std::sync::Mutex<Option<Result<Vec<crate::ui::theme::RemoteTheme>, String>>>>>,
+        Option<SharedResult<Vec<crate::ui::theme::RemoteTheme>>>,
     /// Senast valda vy per flik (SKAPA, ARRANGERA, MIXA, VERKTYG) — fliken är härledd ur
     /// `view_mode`, så det här är bara minnet för att ett flikklick ska gå tillbaka rätt.
     pub last_view: [ViewMode; 4],

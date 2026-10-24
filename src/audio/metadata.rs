@@ -365,9 +365,7 @@ fn id3_frames<'a>(tag: &'a [u8], notes: &mut Vec<String>) -> Option<Vec<Frame<'a
             u32::from_be_bytes([tag[pos + 4], tag[pos + 5], tag[pos + 6], tag[pos + 7]]) as usize
         };
         let body_start = pos + 10;
-        let Some(body_end) = body_start.checked_add(fsz) else {
-            return None;
-        };
+        let body_end = body_start.checked_add(fsz)?;
         if fsz == 0 || body_end > end {
             notes.push("en ramstorlek pekar utanför taggen — filen lämnas i fred".to_string());
             return None;

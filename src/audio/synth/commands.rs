@@ -303,7 +303,7 @@ impl SynthEngine {
                         } else if sv.release.is_some() {
                             // **Släppljud:** dämparens ljud tar över rösten. Utan släppljud
                             // gör not-av ingenting på en en-skottsröst — som förut.
-                            sv.to_release();
+                            sv.into_release();
                         }
                     }
                 }
@@ -336,7 +336,7 @@ impl SynthEngine {
                         if sv.sustained {
                             sv.sustained = false;
                             // Släppljudet ersätter rampen när det finns: det *är* dämpningen.
-                            if !sv.to_release() {
+                            if !sv.into_release() {
                                 sv.damper = ramp;
                             }
                         }

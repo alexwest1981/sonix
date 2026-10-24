@@ -470,8 +470,8 @@ impl SonixApp {
 
         // Release any stuck notes if piano was switched away or keyboard input was captured
         if !piano_active && !self.active_keys.is_empty() {
-            let keys_to_release: Vec<u8> = self.active_keys.iter().copied().collect();
-            for note in keys_to_release {
+            let keys_into_release: Vec<u8> = self.active_keys.iter().copied().collect();
+            for note in keys_into_release {
                 self.release_note(note);
             }
         }

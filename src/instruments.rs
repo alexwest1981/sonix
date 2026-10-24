@@ -64,7 +64,7 @@ pub fn morphine(morph: f32) -> PresetSettings {
     let mut sound = PresetSettings {
         waveform: Waveform::Additive,
         adsr: AdsrParams { attack: 0.02, decay: 0.5, sustain: 0.75, release: 0.35 },
-        filter: FilterParams { cutoff: 9_000.0, resonance: 0.15, ..Default::default() },
+        filter: FilterParams { cutoff: 9_000.0, resonance: 0.15 },
         filter_env_amount: 0.2,
         sub: 0.15,
         unison: 1,

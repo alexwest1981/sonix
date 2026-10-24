@@ -917,11 +917,10 @@ fn render_one(job: &RenderJob) -> RenderDone {
     let path = cache_path(&job.dir, &job.key);
     let path_str = path.to_string_lossy().to_string();
     if path.exists() {
-        match crate::audio::load_wav_pcm(&path_str) {
-            Ok((l, r, sr)) => return ok(l, r, sr),
-            // En trasig fil i cachen ska inte göra klippet ospelbart: den räknas om.
-            // (Filen skrivs atomiskt, så det här är sista utvägen, inte första.)
-            Err(_) => {}
+        // En trasig fil i cachen ska inte göra klippet ospelbart: den räknas om.
+        // (Filen skrivs atomiskt, så det här är sista utvägen, inte första.)
+        if let Ok((l, r, sr)) = crate::audio::load_wav_pcm(&path_str) {
+            return ok(l, r, sr);
         }
     }
 

@@ -10,6 +10,7 @@
 //! - FLAC (24-bit lossless) encoded in-process with `flacenc` and tagged with
 //!   a VORBIS_COMMENT metadata block (no AI/provider data ever added).
 //! - MP3/OGG/AAC via `ffmpeg` when installed (hybrid mode).
+//!
 //! Status: stabil — offline-rendering och export
 //! Rör inte: exporten måste ge **samma ljud som högtalarna**; samma väg som uppspelningen, inte en parallell
 

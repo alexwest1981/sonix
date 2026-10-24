@@ -1414,7 +1414,7 @@ impl PlaylistTrack {
         if span <= 0.0 {
             return 0;
         }
-        let mut next_id = self.regions.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+        let next_id = self.regions.iter().map(|r| r.id).max().unwrap_or(0) + 1;
         let mut copies: Vec<AudioRegion> = self
             .regions
             .iter()
@@ -1427,10 +1427,9 @@ impl PlaylistTrack {
             return 0;
         }
         let n = copies.len();
-        for c in &mut copies {
+        for (offset, c) in copies.iter_mut().enumerate() {
             c.start_bar += span;
-            c.id = next_id;
-            next_id += 1;
+            c.id = next_id + offset;
         }
         for r in &mut self.regions {
             if r.start_bar >= end_bar - 1e-4 {

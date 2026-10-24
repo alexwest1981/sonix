@@ -46,7 +46,7 @@ pub(crate) fn collect_recovery_candidates_in(paths: &crate::paths::Paths) -> Vec
             out.push(RecoveryCandidate { entry, name });
         }
     }
-    out.sort_by(|a, b| b.entry.stamp.cmp(&a.entry.stamp));
+    out.sort_by_key(|c| std::cmp::Reverse(c.entry.stamp));
     out.truncate(5);
     out
 }

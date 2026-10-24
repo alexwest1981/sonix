@@ -651,7 +651,7 @@ pub fn trigger_remote_audio_generation(&mut self) -> bool {
     let prompt = self.suno_prompt_input.clone();
     let bars = (self.loop_end_bar.max(self.loop_start_bar + 4) - self.loop_start_bar).clamp(1, 32);
     let duration_secs = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0)).secs_for_bars_at(0.0, bars as f64) as f32;
-    let slot: std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, String>>>> =
+    let slot: super::SharedResult<Vec<u8>> =
         std::sync::Arc::new(std::sync::Mutex::new(None));
     self.ai_audio_pending = Some((slot.clone(), prompt.clone()));
     self.suno_is_generating = true;

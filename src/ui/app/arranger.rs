@@ -782,9 +782,8 @@ impl SonixApp {
                 let (h_rect, h_resp) = ui.allocate_exact_size(Vec2::new(header_w, track_row_h), Sense::click());
                 // Mikrofonspåret var helvitt på mörk botten — det stack i ögonen (Alex 2026-10-24).
                 // Nu samma yta som de andra spåren, med cyan som enda markering.
-                let card_bg = if is_mic_track {
-                    crate::ui::theme::palette().panel()
-                } else if is_sel_track {
+                // Micken och det valda spåret delar yta — två grenar med samma färg var samma sak.
+                let card_bg = if is_mic_track || is_sel_track {
                     crate::ui::theme::palette().panel()
                 } else {
                     crate::ui::theme::palette().bg()

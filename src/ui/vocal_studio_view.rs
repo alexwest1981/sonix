@@ -12,7 +12,7 @@ pub fn render_vocal_studio_view(
     is_playing: bool,
     current_step: usize,
     bpm: f32,
-    playlist_tracks: &mut Vec<PlaylistTrack>,
+    playlist_tracks: &mut [PlaylistTrack],
     status_msg: &mut String,
     show_mic_settings: &mut bool,
     engine: &mut crate::audio::AudioEngine,

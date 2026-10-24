@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance — a typical patch measured too
+
+- The measurement now prints four cases. **Typical patch (unison 1): 5,7× realtid.** The ceiling
+  cases are unchanged (2,1× / 1,9× / 1,5×).
+
+### Cleanup — clippy 37 → 25
+
+- Real fixes, not silences: `?` instead of `let…else`+return, `if let` instead of a one-arm
+  `match`, `sort_by_key`, `&mut [T]` instead of `&mut Vec<T>`, a counter loop, a merged
+  identical `if` branch, and `SharedResult<T>` as one alias for the three
+  `Arc<Mutex<Option<Result<…, String>>>>` fields.
+- `to_release` → `into_release` (the method takes `&mut self` and consumes the voice's state).
+- Kvar är 25, nästan alla `too_many_arguments` och `needless_range_loop` i render- och DSP-loopar
+  där en struct per sampel eller per bildruta vore dyrare än argumentlistan.
+
 ### Performance — dead operators cost nothing (measured)
 
 - **Mätt först:** worst case (16 röster, 6 operatorer, 4 unisonstämmor, filter på alla) gick i
