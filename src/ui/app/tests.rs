@@ -2059,6 +2059,46 @@ use crate::ui::theme::Theme;
         assert_eq!(keys, vec![60], "slutet tillbaka i lane 1: {keys:?}");
     }
 
+    /// **Lane-vyn markerar rätt lane per takt.** Lanen vid taktens första steg visas: ett
+    /// taktkomp vinner över ett globalt, och utan komp gäller den aktiva lane:n.
+    #[test]
+    fn the_lane_view_reports_the_lane_that_plays_each_bar() {
+        let mut pattern = super::state::Pattern {
+            name: "Lane-vy".to_string(),
+            color: eframe::egui::Color32::WHITE,
+            bars: 2,
+            bends: Vec::new(),
+            alt_takes: Vec::new(),
+            active_take: 0,
+            comp: Vec::new(),
+            channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
+            channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
+            piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
+            take: crate::midi_take::Take::new(),
+        };
+        pattern.alt_takes.push(crate::midi_take::Take::new());
+        assert_eq!(pattern.lane_for_bar(0), 0, "utan komp: den aktiva lanen");
+
+        pattern.comp_from_bar(Some(1), 0.0, 1);
+        assert_eq!(pattern.lane_for_bar(0), 0);
+        assert_eq!(pattern.lane_for_bar(1), 1, "takt 2");
+
+        // Globalt komp gäller båda takterna, men taktkompningen vinner i sin takt.
+        pattern.comp_from_bar(None, 0.0, 1);
+        assert_eq!(pattern.lane_for_bar(0), 1);
+        pattern.comp_from_bar(Some(0), 0.0, 0);
+        assert_eq!(pattern.lane_for_bar(0), 0, "taktkompningen vinner");
+        assert_eq!(pattern.lane_for_bar(1), 1, "grannen påverkas inte");
+
+        // Ett komp mitt i takten syns inte i vyn (lanen vid steg 0 gäller).
+        pattern.comp_from_bar(Some(1), 8.0, 0);
+        assert_eq!(pattern.lane_for_bar(1), 1);
+
+        // Ett komp som pekar utanför lanes kläms.
+        pattern.comp_from_bar(Some(1), 0.0, 9);
+        assert_eq!(pattern.lane_for_bar(1), 1, "klämd till sista lanen");
+    }
+
     /// **Komp per takt:** takt 1 ur lane 1, takt 2 ur lane 2 — och ett komp för en takt
     /// vinner över ett globalt komp på samma steg.
     #[test]

@@ -2148,6 +2148,33 @@ impl SonixApp {
                                         let c_min_x = lane_rect.min.x + bar_idx as f32 * bar_w;
                                         let c_rect = Rect::from_min_size(Pos2::new(c_min_x + 1.0, lane_rect.min.y + 2.0), Vec2::new(bar_w * span as f32 - 2.0, row_h - 4.0));
                                         ui.painter().rect_filled(c_rect, Rounding::same(2.0), track_color);
+                                        // **Lane-vyn** (0.9.46): varje tagning är en tunn rad i
+                                        // blocket, och den lane som spelas i respektive takt är
+                                        // ljus. Bara när patternet har fler än en tagning — annars
+                                        // finns inget att välja mellan.
+                                        if let Some(pat) = self.patterns.get(pat_idx) {
+                                            let lanes = pat.take_lanes().len();
+                                            if lanes > 1 && row_h > 26.0 {
+                                                let band_h = (row_h - 4.0) / lanes as f32;
+                                                for b in 0..span {
+                                                    let chosen = pat.lane_for_bar(bar_idx + b);
+                                                    let x0 = c_rect.min.x + b as f32 * bar_w;
+                                                    for lane in 0..lanes {
+                                                        let y = c_rect.min.y + lane as f32 * band_h;
+                                                        let band = Rect::from_min_size(
+                                                            Pos2::new(x0 + 1.0, y + 1.0),
+                                                            Vec2::new(bar_w - 2.0, (band_h - 1.0).max(1.0)),
+                                                        );
+                                                        let tint = if lane == chosen {
+                                                            Color32::from_rgba_unmultiplied(255, 255, 255, 170)
+                                                        } else {
+                                                            Color32::from_rgba_unmultiplied(0, 0, 0, 70)
+                                                        };
+                                                        ui.painter().rect_filled(band, Rounding::same(1.0), tint);
+                                                    }
+                                                }
+                                            }
+                                        }
                                         ui.painter().text(c_rect.center(), egui::Align2::CENTER_CENTER, format!("P{}", pat_idx + 1), egui::FontId::proportional(Theme::FONT_S), Color32::BLACK);
                                     }
                                 }

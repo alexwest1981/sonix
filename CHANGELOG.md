@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Lane view in the playlist.** A pattern block with more than one take now shows a thin row
+  per lane, with the lane that plays in each bar lit (`Pattern::lane_for_bar`: the lane at the
+  bar's first step, bar-specific comp before a global one). Read-only — the comp is still
+  chosen in the takes window.
 - **Comping per bar.** `CompSlice.bar` lets a comp apply to one bar (`None` keeps the old
   "every bar" behaviour), picked with *Takt* in the takes window; a bar-specific comp wins over
   a global one on the same step, and the export snapshot carries one take per bar.

@@ -354,6 +354,28 @@ impl Pattern {
         self.comped_take_at(None)
     }
 
+    /// Vilken lane som spelar i en takt — det lane-vyn i spellistan markerar. Regeln är
+    /// **lanen vid taktens första steg**: ett taktkomp vinner över ett globalt, och utan komp
+    /// gäller den aktiva lane:n. Ett komp mitt i takten syns därför inte i lane-vyn (det hörs).
+    pub fn lane_for_bar(&self, bar: usize) -> usize {
+        let mut chosen = self.active_take;
+        let mut best_specific = false;
+        for slice in &self.comp {
+            if slice.from_step > 0.001 {
+                continue;
+            }
+            if slice.bar.is_some() && slice.bar != Some(bar) {
+                continue;
+            }
+            let specific = slice.bar.is_some();
+            if !best_specific || specific {
+                best_specific = specific;
+                chosen = slice.take;
+            }
+        }
+        chosen.min(self.alt_takes.len())
+    }
+
     /// Kompningen för en viss takt (`Some(bar)`) eller för alla (`None`). Ett komp som pekar
     /// ut en takt vinner över ett globalt på samma steg; noter före första kompningen följer
     /// den aktiva lane:n, som förut.
