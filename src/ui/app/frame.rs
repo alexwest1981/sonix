@@ -1105,6 +1105,46 @@ impl SonixApp {
                                     ui.close_menu();
                                 }
                             }
+                            ui.separator();
+                            for (name, path) in crate::ui::theme::saved_themes() {
+                                if ui.button(format!("🎨 {name}")).clicked() {
+                                    self.status_message = match crate::ui::theme::apply_saved_theme(&path) {
+                                        Ok(()) => crate::tstatus!("🎨 Temat '{}' laddat", name),
+                                        Err(e) => crate::tstatus!("⚠ Kunde inte läsa temat '{}': {}", name, e),
+                                    };
+                                    ui.close_menu();
+                                }
+                            }
+                            ui.separator();
+                            if ui.button(self.tr("📂 Öppna temamappen")).clicked() {
+                                let dir = crate::ui::theme::themes_dir();
+                                let _ = std::fs::create_dir_all(&dir);
+                                if let Err(e) = crate::platform::open_dir(&dir) {
+                                    self.status_message = crate::tstatus!("⚠ Kunde inte öppna temamappen: {}", e);
+                                }
+                                ui.close_menu();
+                            }
+                            if ui.button(self.tr("💾 Exportera tema...")).clicked() {
+                                let dir = crate::ui::theme::themes_dir();
+                                let _ = std::fs::create_dir_all(&dir);
+                                // Dialogen pekar i temamappen; filnamnet blir temats namn.
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .set_directory(&dir)
+                                    .set_file_name("mitt-tema.json")
+                                    .save_file()
+                                {
+                                    let name = path
+                                        .file_stem()
+                                        .and_then(|s| s.to_str())
+                                        .unwrap_or("tema")
+                                        .to_string();
+                                    self.status_message = match crate::ui::theme::export_current(&name) {
+                                        Ok(p) => crate::tstatus!("💾 Temat sparat: {}", p.display()),
+                                        Err(e) => crate::tstatus!("⚠ Kunde inte spara temat: {}", e),
+                                    };
+                                }
+                                ui.close_menu();
+                            }
                         });
                         ui.separator();
                         ui.menu_button(

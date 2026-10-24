@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — theme engine
+
+- **`~/.config/sonix/themes/*.json`** is a theme library: **Inställningar → 🎨 Tema** lists every
+  file there and a click applies it. **📂 Öppna temamappen** opens the folder in the file manager,
+  **💾 Exportera tema…** writes the current palette with **only the keys that differ** from its
+  mode's defaults (plus `mode`), so a theme is a small file you can read.
+- Prov `an_exported_theme_applies_again`: a theme with one changed colour exports as one key,
+  applies back, and the palette takes it — the defaults are not written out.
+
 ### Added — light and dark mode
 
 - `Palette` carries a `mode` (`dark`/`light`). `theme.json` may say `{"mode": "light"}` and any

@@ -361,6 +361,63 @@ fn merge_onto_base(value: serde_json::Value) -> Palette {
     serde_json::from_value(merged).unwrap_or(base)
 }
 
+/// `~/.config/sonix/themes/` — teman man sparar eller lägger dit själv.
+pub fn themes_dir() -> std::path::PathBuf {
+    crate::paths::paths().config_dir().join("themes")
+}
+
+/// Sparade teman, sorterade på namn. Läskedjan stannar vid filnamnet: ett tema är data.
+pub fn saved_themes() -> Vec<(String, std::path::PathBuf)> {
+    let mut out = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(themes_dir()) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str())
+            {
+                out.push((stem.to_string(), path));
+            }
+        }
+    }
+    out.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    out
+}
+
+/// Lägger ett sparat tema i `theme.json` och läser om paletten.
+pub fn apply_saved_theme(path: &std::path::Path) -> Result<(), String> {
+    let text = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+    serde_json::from_str::<serde_json::Value>(&text).map_err(|e| e.to_string())?;
+    let target = theme_path();
+    if let Some(dir) = target.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    std::fs::write(&target, compact_arrays(&text)).map_err(|e| e.to_string())?;
+    reload_if_changed();
+    Ok(())
+}
+
+/// Skriver den **nuvarande** paletten som ett tema med bara de nycklar som avviker från
+/// standardpaletten för sitt läge, så filen är liten och går att läsa.
+pub fn export_current(name: &str) -> Result<std::path::PathBuf, String> {
+    let now = palette();
+    let base = if now.is_light() { Palette::light() } else { Palette::default() };
+    let mut value = serde_json::to_value(now).map_err(|e| e.to_string())?;
+    let base_value = serde_json::to_value(base).map_err(|e| e.to_string())?;
+    if let (Some(obj), Some(base_obj)) = (value.as_object_mut(), base_value.as_object()) {
+        obj.retain(|key, val| key == "mode" || base_obj.get(key) != Some(val));
+    }
+    let dir = themes_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let safe: String = name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '-' })
+        .collect();
+    let path = dir.join(format!("{}.json", if safe.is_empty() { "tema" } else { &safe }));
+    let text = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+    std::fs::write(&path, compact_arrays(&text)).map_err(|e| e.to_string())?;
+    Ok(path)
+}
+
 /// Byter läge och skriver det i temafilen **utan att röra användarens egna färger**; sedan läses
 /// paletten om direkt, så växlingen syns i samma bildruta.
 pub fn set_mode(mode: ThemeMode) {
@@ -652,5 +709,47 @@ mod contrast_tests {
         let custom = merge_onto_base(serde_json::json!({"mode": "light", "panel": [1, 2, 3, 255]}));
         assert_eq!(custom.panel, [1, 2, 3, 255]);
         assert_eq!(custom.text, Palette::light().text);
+    }
+}
+
+#[cfg(test)]
+mod theme_file_tests {
+    use super::*;
+
+    /// **Ett sparat tema går att läsa tillbaka.** Exporterar en avvikande färg, lägger filen i
+    /// `theme.json` och ser att paletten tar den — och att bara avvikelsen skrevs.
+    #[test]
+    fn an_exported_theme_applies_again() {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = std::env::temp_dir().join(format!("sonix-themeexport-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let previous = std::env::var_os("SONIX_CONFIG_DIR");
+        // SAFETY: låst mot de andra temaproven, se ENV_LOCK.
+        unsafe { std::env::set_var("SONIX_CONFIG_DIR", &dir) };
+
+        let mut edited = Palette::default();
+        edited.orange = [9, 9, 9, 255];
+        let text = serde_json::to_string(&edited).unwrap();
+        std::fs::write(theme_path(), compact_arrays(&text)).unwrap();
+        reload_if_changed();
+
+        let path = export_current("prov-tema").unwrap();
+        let exported: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(exported["orange"], serde_json::json!([9, 9, 9, 255]));
+        assert!(
+            exported.get("panel").is_none(),
+            "bara avvikelser ska skrivas: {exported}"
+        );
+
+        apply_saved_theme(&path).unwrap();
+        assert_eq!(palette().orange, [9, 9, 9, 255]);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        match previous {
+            Some(v) => unsafe { std::env::set_var("SONIX_CONFIG_DIR", v) },
+            None => unsafe { std::env::remove_var("SONIX_CONFIG_DIR") },
+        }
     }
 }
