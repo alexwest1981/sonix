@@ -3431,6 +3431,43 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                 }
                             });
                             ui.separator();
+                            // **LFO:** hastighet, djup och mål. Djup 0 = av, alltså påverkar
+                            // reglaget ingenting förrän man drar i det.
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("LFO")
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut self.six_op.lfo_rate, 0.05..=40.0)
+                                            .logarithmic(true)
+                                            .text("Hz"),
+                                    )
+                                    .changed();
+                                six_changed |= ui
+                                    .add(egui::Slider::new(&mut self.six_op.lfo_depth, 0.0..=1.0))
+                                    .changed();
+                                for (target, label) in [(1u8, "PITCH"), (2, "CUT")] {
+                                    six_changed |= ui
+                                        .selectable_label(
+                                            self.six_op.lfo_target == target,
+                                            label,
+                                        )
+                                        .clicked()
+                                        && {
+                                            self.six_op.lfo_target = if self.six_op.lfo_target
+                                                == target
+                                            {
+                                                0
+                                            } else {
+                                                target
+                                            };
+                                            true
+                                        };
+                                }
+                            });
                             ui.label(
                                 egui::RichText::new(crate::i18n::t("MATRIS (källa → mål)"))
                                     .size(Theme::FONT_XS)

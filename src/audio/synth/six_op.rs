@@ -31,6 +31,11 @@ pub struct SixOpParams {
     /// 1 = helt ringmodulerad (bärvågen försvinner, sidobanden tar över).
     #[serde(default = "no_modulation")]
     pub ring: [[f32; SIX_OP_COUNT]; SIX_OP_COUNT],
+    /// **LFO** (0.9.71): hastighet i Hz och djup 0–1. `lfo_target`: 0 = av, 1 = tonhöjd,
+    /// 2 = cutoff. Djupet är noll som standard, så en gammal patch står still.
+    pub lfo_rate: f32,
+    pub lfo_depth: f32,
+    pub lfo_target: u8,
     /// **Additiv blandning** per cell: källans ljud läggs till målets utgång. Det är den tredje
     /// raden i Sytrus matris — utan den går bara FM att bygga.
     #[serde(default = "no_modulation")]
@@ -104,6 +109,9 @@ impl Default for SixOpParams {
             matrix: [[0.0; SIX_OP_COUNT]; SIX_OP_COUNT],
             ring: no_modulation(),
             add: no_modulation(),
+            lfo_rate: 5.0,
+            lfo_depth: 0.0,
+            lfo_target: 0,
             envs: neutral_envs(),
             filters: open_filters(),
         }
@@ -132,6 +140,8 @@ pub struct SixOpVoice {
     last: [f32; SIX_OP_COUNT],
     envs: [AdsrVoice; SIX_OP_COUNT],
     filters: [StateVariableFilter; SIX_OP_COUNT],
+    lfo_phase: f32,
+    sample_rate: f32,
 }
 
 impl SixOpVoice {
@@ -141,6 +151,8 @@ impl SixOpVoice {
             last: [0.0; SIX_OP_COUNT],
             envs: std::array::from_fn(|_| AdsrVoice::new(sample_rate)),
             filters: std::array::from_fn(|_| StateVariableFilter::new(sample_rate)),
+            lfo_phase: 0.0,
+            sample_rate,
         }
     }
 
@@ -171,6 +183,23 @@ impl SixOpVoice {
     #[inline]
     pub fn next_sample(&mut self, params: &SixOpParams, inc: f32) -> f32 {
         let mut out = [0.0f32; SIX_OP_COUNT];
+        // **LFO:** en fas per röst, som en analog synt. Djupet är 0 som standard, och då är
+        // `lfo` 0 och ingen operator påverkas.
+        self.lfo_phase += TAU * params.lfo_rate.max(0.0) / self.sample_rate.max(1.0);
+        if self.lfo_phase >= TAU {
+            self.lfo_phase -= TAU;
+        }
+        let lfo = if params.lfo_depth > 0.0 && params.lfo_target != 0 {
+            self.lfo_phase.sin() * params.lfo_depth
+        } else {
+            0.0
+        };
+        // Tonhöjd: ±6 % vid fullt djup, alltså ungefär ±1 halvton — en vibrato, inte en siren.
+        let pitch_scale = if params.lfo_target == 1 {
+            1.0 + lfo * 0.06
+        } else {
+            1.0
+        };
         for target in 0..SIX_OP_COUNT {
             let mut modulation = 0.0;
             for source in 0..SIX_OP_COUNT {
@@ -184,7 +213,7 @@ impl SixOpVoice {
                     modulation += amount * value;
                 }
             }
-            let mut phase = self.phases[target] + inc * params.ratios[target];
+            let mut phase = self.phases[target] + inc * params.ratios[target] * pitch_scale;
             if phase >= TAU || phase < 0.0 {
                 phase -= TAU * (phase / TAU).floor();
             }
@@ -195,7 +224,12 @@ impl SixOpVoice {
             let mut value = (phase + modulation).sin() * env;
             // Filtret sitter efter envelopen, före matrisen: en filtrerad modulator tar sina
             // övertoner med sig in i ljudet. Avstängt filter kostar ingenting.
-            let filter = params.filters[target];
+            let mut filter = params.filters[target];
+            if params.lfo_target == 2 && lfo != 0.0 {
+                // Cutoff i oktaver: ±2 oktaver vid fullt djup.
+                filter.cutoff = (filter.cutoff * (2.0f32).powf(lfo * 2.0))
+                    .clamp(20.0, 20_000.0);
+            }
             if filter.cutoff < FILTER_OPEN_HZ {
                 let p = filter.params();
                 value = match filter.mode {
@@ -428,5 +462,27 @@ mod tests {
         println!("  220 Hz: lågpass {low:.4}, högpass {high:.4}");
         assert!(low > 0.2, "lågpasset ska släppa igenom: {low:.4}");
         assert!(high < 0.05, "högpasset ska ta bort grundtonen: {high:.4}");
+    }
+
+    /// **LFO på tonhöjden** gör vibrato: bärvågen tappar energi och sidoband dyker upp kring den.
+    /// Djup 0 ska ge exakt den torra tonen — annars påverkar reglaget ljudet även avstängt.
+    #[test]
+    fn the_lfo_bends_the_pitch_only_when_the_depth_is_up() {
+        let mut params = SixOpParams::default();
+        let dry = mag_at(&render(&params, 440.0, 9_600)[1_200..], 440.0);
+        params.lfo_depth = 1.0;
+        params.lfo_target = 1;
+        params.lfo_rate = 10.0;
+        let wet_out = render(&params, 440.0, 9_600);
+        let body = &wet_out[1_200..];
+        let carrier = mag_at(body, 440.0);
+        let side = mag_at(body, 440.0 * 1.03);
+        println!("  bärvåg torr {dry:.4} med LFO {carrier:.4}; sidoband {side:.4}");
+        assert!(dry > 0.5, "torrt: {dry:.4}");
+        assert!(
+            carrier < dry * 0.5,
+            "vibrato ska sprida energin: {carrier:.4} av {dry:.4}"
+        );
+        assert!(side > 0.02, "sidoband kring bärvågen: {side:.4}");
     }
 }

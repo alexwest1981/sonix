@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **An LFO in the 6-op synth.** Rate 0.05–40 Hz and depth 0–1, aimed at pitch (vibrato, about
+  ±1 semitone at full depth) or cutoff (±2 octaves). Depth is 0 by default, so nothing moves until
+  the slider does and older patches are untouched. Measured on a 440 Hz tone at 10 Hz: the carrier
+  drops 1.0000 → 0.1543 and a sideband appears at 0.1949.
+
 - **Four filter types per operator in the 6-op synth.** LP, BP, HP and notch, all from the same
   state-variable calculation (the highpass is input minus band and lowpass, the notch is input
   minus band), so a filter costs what it did before. LP is the default, so patches saved earlier

@@ -184,6 +184,9 @@ impl SynthEngine {
                         *amount = amount.clamp(-32.0, 32.0);
                     }
                 }
+                params.lfo_rate = params.lfo_rate.clamp(0.0, 40.0);
+                params.lfo_depth = params.lfo_depth.clamp(0.0, 1.0);
+                params.lfo_target = params.lfo_target.min(2);
                 // Ringmodulering 0–1 (1 = helt ringmodulerad) och additiv blandning −1–1.
                 for row in &mut params.ring {
                     for amount in row.iter_mut() {
