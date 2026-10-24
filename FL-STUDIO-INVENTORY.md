@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 70** har en motsvarighet, **◐ 65** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 71** har en motsvarighet, **◐ 64** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -121,7 +121,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Toxic Biohazard | 78 | ◐ | **6-op FM-matris** (0.9.47) med egen envelop och lågpass per operator (0.9.48–49). Kvar för Toxic: ringmodulering/adderande blandning i matrisen, fler filtertyper och unison |
 | GMS | 52 | ◐ | egen subtraktiv synth |
 | Wave Traveller | 50 | ◐ | **`AudioCommand::PlayScratch`**: urklippet spelas fram och tillbaka (ping-pong) i vald handhastighet och ett bestämt antal halva pass, så rösten tystnar i stället för att loopa. Prov: efter klippets slut går riktningen bakåt och rösten är tyst när passen är slut. Kvar: LFO/envelope som styr **positionen** löpande (Wave Travellers egen modulering), vinylbrus och flera lager |
-| FL Keys | 47 | ◐ | samplern + SF2-läsaren kan ladda piano, keymappen har anslags- och registerzoner, och **sustainpedal (CC64)** finns sedan 0.9.62 — via MIDI och 🎹 PEDAL i verktygsraden. Sedan 0.9.63 håller pedalen även **samplade** noter och dämpar dem på 40 ms. **Pedalresonans** finns sedan 0.9.64 (tre stämda kammar, matade av synt och samplingar). **Pedalen spelas in och följer med till filen** sedan 0.9.65 (16-delars noggrannhet), och **SF2-looparna läses** sedan 0.9.66. **Släppljud per kanal** finns sedan 0.9.68. FL Keys-raden är därmed klar på funktionsnivå |
+| FL Keys | 47 | ✅ | samplern + SF2-läsaren kan ladda piano, keymappen har anslags- och registerzoner, och **sustainpedal (CC64)** finns sedan 0.9.62 — via MIDI och 🎹 PEDAL i verktygsraden. Sedan 0.9.63 håller pedalen även **samplade** noter och dämpar dem på 40 ms. **Pedalresonans** finns sedan 0.9.64 (tre stämda kammar, matade av synt och samplingar). **Pedalen spelas in och följer med till filen** sedan 0.9.65 (16-delars noggrannhet), och **SF2-looparna läses** sedan 0.9.66. **Släppljud per kanal** finns sedan 0.9.68. Raden är därför ✅ på funktionsnivå — ett piano går att spela med pedal, anslag och dämpare |
 | Sytrus | 40 | ◐ | **6 operatorer + 6×6-matris** (0.9.47), envelop och lågpass per operator (0.9.48–49), tre utgångslägen. Kvar: Sytrus matris blandar FM, ringmodulering **och** additivt i samma cell — vi gör bara FM — samt dess filtertyper, LFO:er och unison |
 | Autogun | 26 | ✅ | `instruments::autogun(seed)` — ett spelbart ljud ur ett frö: attacken kläms så noten hörs, filtret så det släpper igenom. Knappen 🎲 i presetlistan |
 | Minisynth | 19 | ✅ | synten (4 vågformer, ADSR, SVF, FM) |
