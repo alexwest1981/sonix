@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — one reverb again (CPU), and an idle-engine test
+
+- Den andra reverb-instansen (från 0.9.104) **dubblade reverbkostnaden per sampel**. Nu körs ett
+  mono-reverb på summan och bara den **våta** delen läggs på båda kanalerna; torrsignalen behåller
+  sin stereobredd, och för en monokälla är resultatet exakt det gamla.
+- Prov `an_idle_engine_is_silent`: en motor utan noter ger **< 1e-6** i 48 000 sampel. Brus vid
+  uppspelning kommer alltså inte från en tyst motor — det måste mätas på en spelande.
+
 ### Fixed — the synth panel on a small screen
 
 - **Uppmätt, inte gissat:** i 1280×800 klipptes syntpanelen av nedtill, eftersom racket (8 rader

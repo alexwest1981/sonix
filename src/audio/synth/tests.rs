@@ -1719,6 +1719,7 @@ fn trigger_sampler_velocity(
 #[test]
 fn an_operator_pan_reaches_the_master() {
     let mut synth = SynthEngine::new(48_000.0);
+    synth.reverb_params.mix = 0.0;
     synth.handle_command(AudioCommand::SetWaveform(crate::audio::synth::Waveform::SixOp));
     synth.handle_command(AudioCommand::SetSixOp {
         params: crate::audio::synth::SixOpParams {
@@ -1746,11 +1747,27 @@ fn an_operator_pan_reaches_the_master() {
     );
 }
 
+/// **Tystnad ska vara tyst.** En motor utan noter får inte läcka brus — det var rapporterat
+/// som brus vid uppspelning, och den enklaste mätningen är att räkna på en tom motor.
+#[test]
+fn an_idle_engine_is_silent() {
+    let mut engine = SynthEngine::new(48_000.0);
+    let mut peak = 0.0f32;
+    for _ in 0..48_000 {
+        let (l, r) = engine.process_stereo();
+        peak = peak.max(l.abs()).max(r.abs());
+    }
+    assert!(peak < 1e-6, "tom motor ska vara tyst, fick {peak:.6}");
+}
+
 /// **En stereosampling behåller sina kanaler.** Vänster är en ramp, höger är tyst — förut
 /// summerades de till mono, så höger fick samma ljud som vänster och bredden försvann.
 #[test]
 fn a_stereo_sample_keeps_its_channels() {
     let mut synth = SynthEngine::new(48_000.0);
+    // Provet gäller samplingsvägen: reverben lägger en monovåt på båda kanalerna och skulle
+    // annars dölja skillnaden vi mäter.
+    synth.reverb_params.mix = 0.0;
     let n = 4_000usize;
     let ramp: Vec<f32> = (0..n).map(|i| i as f32 / n as f32 * 0.5).collect();
     synth.handle_command(AudioCommand::TriggerSampleVoice {

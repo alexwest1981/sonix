@@ -293,8 +293,17 @@ impl SynthEngine {
         let combined_r = mixed_r + drum_mix + sample_mix_r;
 
         // 5. Reverb FX
-        let rev_l = self.reverb.process(combined_l, &self.reverb_params);
-        let rev_r = self.reverb_r.process(combined_r, &self.reverb_params);
+        // **Ett reverb, inte två.** Den andra instansen dubblade reverbkostnaden per sampel —
+        // på en tung sång tog den hörbar marginal. Nu körs ett mono-reverb på summan och
+        // läggs tillbaka som skillnaden: stereobredden i torrsignalen är kvar, och för en
+        // monokälla blir resultatet exakt det gamla.
+        let mid = (combined_l + combined_r) * 0.5;
+        let mix = self.reverb_params.mix.clamp(0.0, 1.0);
+        let processed = self.reverb.process(mid, &self.reverb_params);
+        // Bara den våta delen läggs på båda kanalerna; torrsignalen behåller sin bredd.
+        let wet = processed - mid * (1.0 - mix);
+        let rev_l = combined_l * (1.0 - mix) + wet;
+        let rev_r = combined_r * (1.0 - mix) + wet;
 
         // 6. Stereo Ping-Pong Delay FX
         let (del_l, del_r) = self.delay.process(rev_l, rev_r, &self.delay_params);

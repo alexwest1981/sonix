@@ -444,9 +444,6 @@ pub struct SynthEngine {
     pub reverb: SimpleReverb,
     /// Vart talkbacken går: 0 = monitorerna (MIX), 1 = cue A, 2 = cue B.
     pub talkback_cue: u8,
-    /// Höger kanals reverb — samma inställning, eget tillstånd, så en stereokälla får varsin
-    /// svans i stället för en gemensam monosumma.
-    pub reverb_r: SimpleReverb,
     pub drive: f32,
     pub master_fx: MasterFxChain,
     /// FM-inställningen för syntens röster (DX10/Sytrus-vägen).
@@ -620,7 +617,6 @@ impl SynthEngine {
             delay: StereoDelay::new(sample_rate),
             reverb_params: ReverbParams::default(),
             reverb: SimpleReverb::new(sample_rate),
-            reverb_r: SimpleReverb::new(sample_rate),
             talkback_cue: 0,
             drive: 1.0,
             master_fx: MasterFxChain::new(sample_rate),
