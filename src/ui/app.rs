@@ -601,8 +601,9 @@ pub struct SonixApp {
     pub sustain_pedal: bool,
     /// Vilken rad i 6-op-matrisen panelen redigerar: 0 = FM, 1 = RM, 2 = ADD.
     pub six_op_mode: u8,
-    /// Vilken flik i navigeringen som visas: 0 = VY, 1 = STUDIOS, 2 = VERKTYG.
-    pub nav_group: u8,
+    /// Senast valda vy per flik (SKAPA, ARRANGERA, MIXA, VERKTYG) — fliken är härledd ur
+    /// `view_mode`, så det här är bara minnet för att ett flikklick ska gå tillbaka rätt.
+    pub last_view: [ViewMode; 4],
     /// Högerklickat patternblock i spellistan: (spår, takt). Styr klippmenyn.
     pub pattern_menu: Option<(usize, usize)>,
     /// **Talkback:** micken till monitorerna i stället för in i mastern.
@@ -1194,7 +1195,12 @@ impl SonixApp {
             cue_listen: crate::audio::control_room::CueListen::Main,
             sustain_pedal: false,
             six_op_mode: 0,
-            nav_group: 1,
+            last_view: [
+                ViewMode::ChannelRack,
+                ViewMode::PlaylistArranger,
+                ViewMode::EffectsMixer,
+                ViewMode::PlaylistArranger,
+            ],
             pattern_menu: None,
             talkback: false,
             talkback_capture: None,

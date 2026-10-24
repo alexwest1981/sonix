@@ -150,6 +150,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The tab follows the view now.** The tab group was stored, so a shortcut or menu could take you
+  to a view whose tab was not the highlighted one. It is derived from `view_mode`
+  (`nav_group_of`) instead, and each tab remembers the last view you used in it, so clicking a tab
+  goes back where you were rather than to the group's first view.
+
 - **Right-clicking a pattern block no longer deletes it.** It opens a menu — open in the piano
   roll, duplicate into the next bar if it is free, or delete. Deleting by right-click was one
   misclick away from losing a block with no undo, and it is not how either Ableton or Soundtrap

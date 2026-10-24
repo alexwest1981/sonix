@@ -4270,3 +4270,30 @@ fn a_pedal_point_on_the_same_step_replaces_the_old_one() {
     assert_eq!(super::state::pedal_at_step(&p, 4), Some(false));
     assert_eq!(super::state::pedal_at_step(&p, 5), None);
 }
+
+/// **Varje vy hör till exakt en flikgrupp** — fliken härleds ur vyn, så en vy som saknar
+/// grupp skulle hamna under SKAPA utan att någon märkte det.
+#[test]
+fn every_view_belongs_to_a_tab_group() {
+    use super::frame::nav_group_of;
+    use super::ViewMode;
+    let mut counts = [0usize; 4];
+    for view in [
+        ViewMode::ChannelRack,
+        ViewMode::PianoRoll,
+        ViewMode::PlaylistArranger,
+        ViewMode::SessionDrummer,
+        ViewMode::AlchemySynth,
+        ViewMode::RemixFx,
+        ViewMode::VocalStudio,
+        ViewMode::AiMusicAssistant,
+        ViewMode::ModularPatcher,
+        ViewMode::StemSeparator,
+        ViewMode::Video,
+        ViewMode::PluginManager,
+        ViewMode::EffectsMixer,
+    ] {
+        counts[nav_group_of(view) as usize] += 1;
+    }
+    assert_eq!(counts, [7, 2, 4, 0], "skapa/arrangera/mixa/verktyg: {counts:?}");
+}
