@@ -126,6 +126,16 @@ pub fn zero_shape() -> [[f32; SHAPE_POINTS]; SIX_OP_COUNT] {
     [[0.0; SHAPE_POINTS]; SIX_OP_COUNT]
 }
 
+/// Sant när operatorn används som källa i FM-, ring- eller add-matrisen, alltså när den måste
+/// räknas även om dess egen nivå är 0.
+fn op_is_used(params: &SixOpParams, op: usize) -> bool {
+    (0..SIX_OP_COUNT).any(|target| {
+        params.matrix[op][target] != 0.0
+            || params.ring[op][target] != 0.0
+            || params.add[op][target] != 0.0
+    }) || params.pan[op] != 0.0
+}
+
 /// Lägger banden ovanpå torrsignalen. Neutral kurva (alla 1,0) hoppas över av anroparen, så
 /// en patch utan kurva varken kostar filter eller låter annorlunda.
 fn apply_curve(
@@ -434,6 +444,13 @@ impl SixOpVoice {
         let mut out_l = 0.0f32;
         let mut out_r = 0.0f32;
         for target in 0..SIX_OP_COUNT {
+            // **Döda operatorer kostar ingenting.** En operator som varken hörs (nivå 0) eller
+            // används som källa i matrisen behöver ingen fas, inget filter och ingen envelop —
+            // standardpatchen har fem sådana, och de stod för merparten av röstens kostnad.
+            if params.levels[target] == 0.0 && !op_is_used(params, target) {
+                out[target] = 0.0;
+                continue;
+            }
             let mut modulation = 0.0;
             for source in 0..SIX_OP_COUNT {
                 let amount = params.matrix[source][target];

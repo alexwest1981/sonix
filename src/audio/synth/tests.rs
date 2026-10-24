@@ -3060,6 +3060,56 @@ fn the_sweep_reaches_its_target_and_then_stays() {
     assert!(!SpectralSweep { to: 9.0, seconds: 0.0 }.active(1.0));
 }
 
+/// **Mätning av 6-op:s värsta fall.** Körs för hand:
+/// `cargo test --release --bin sonix -- --ignored measure_six_op_worst_case --nocapture`
+/// 16 röster, alla sex operatorer med filter (24 dB) och fyra unisonstämmor, plus filterkurvan
+/// — det läge som kostar mest per sampel.
+#[test]
+#[ignore = "mätning: körs för hand med --ignored --nocapture"]
+fn measure_six_op_worst_case() {
+    use std::time::Instant;
+    const VOICES: usize = 16;
+    const SAMPLES: usize = 48_000;
+
+    // Tre lägen, så siffran säger vad de nya rattarna kostar — inte bara att det går.
+    for (label, slope, curve) in [("12 dB, ingen kurva", 1u8, false), ("24 dB, ingen kurva", 2, false), ("24 dB + filterkurva", 2, true)] {
+        let mut engine = SynthEngine::new(48_000.0);
+        engine.waveform = Waveform::SixOp;
+        engine.handle_command(AudioCommand::SetSixOp { params: crate::audio::synth::SixOpParams {
+            filters: std::array::from_fn(|_| crate::audio::synth::six_op::OpFilter {
+                cutoff: 2_000.0,
+                resonance: 2.0,
+                mode: 0,
+            }),
+            filter_slope: [slope; 6],
+            unison: 4,
+            detune: 12.0,
+            curve_gain: if curve { [2.0, 2.0, 2.0, 2.0] } else { [1.0; 4] },
+            ..crate::audio::synth::SixOpParams::default()
+        } });
+        for i in 0..VOICES {
+            engine.handle_command(AudioCommand::NoteOn {
+                note: 45 + i as u8,
+                freq: 110.0 * 2.0f32.powf(i as f32 / 12.0),
+                velocity: 0.5,
+                channel: 0,
+            });
+        }
+
+        let start = Instant::now();
+        let mut peak = 0.0f32;
+        for _ in 0..SAMPLES {
+            let (l, _) = engine.process_stereo();
+            peak = peak.max(l.abs());
+        }
+        let secs = start.elapsed().as_secs_f32();
+        println!(
+            "6-op, 16 röster, 6 operatorer, 4 stämmor, {label}: {secs:.4} s per sekund ljud ({:.1}× realtid), topp {peak:.3}",
+            1.0 / secs
+        );
+    }
+}
+
 /// **Mätning, inte ett prov.** Körs för hand:
 /// `cargo test --release --bin sonix -- --ignored measure_additive_table --nocapture`
 /// 16 röster à 64 partialer, en sekund ljud; jämför tabellen mot en `sin()` per partial.

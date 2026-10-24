@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Performance — dead operators cost nothing (measured)
+
+- **Mätt först:** worst case (16 röster, 6 operatorer, 4 unisonstämmor, filter på alla) gick i
+  **0,9× realtid** med 24 dB — alltså långsammare än ljudet. Med kurvan på: 0,8×.
+- **Åtgärd:** en operator vars nivå är 0 och som inte används som källa i FM-/ring-/add-matrisen
+  räknas inte alls (ingen fas, inget filter, ingen envelop). Standardpatchen har fem sådana.
+- **Efter:** **1,9× realtid** (24 dB), **1,5×** med filterkurva, **2,1×** vid 12 dB — ungefär en
+  fördubbling. Mätningen ligger kvar som `measure_six_op_worst_case` (ignorerad, körs för hand).
+- Kvar: 16 röster × 4 stämmor × 6 aktiva operatorer är fortfarande det dyraste läget; en
+  realistisk patch (unison 1) ligger på flera gånger realtid.
+
 ### Added — filter curve (Sytrus)
 
 - `curve_gain[4]` at 200 / 800 / 3 000 / 8 000 Hz: four band-passes added on top of the dry
