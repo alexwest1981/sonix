@@ -77,13 +77,19 @@ pub struct Voice {
     pub channel: u8,
     /// Pitch bend som multiplikator på fasökningen (1,0 = ingen böjning).
     pub bend_ratio: f32,
-    /// Dragstängernas nivåer, kopierade hit när de ändras. Bara den långsamma additiva
-    /// vägen läser dem.
+    /// Dragstängernas nivåer, kopierade hit när de ändras. **Oformade** — det spektrala
+    /// filtret läggs på i `update_partial_levels`, så tidsaxeln kan flytta det.
     pub harmonics: [f32; HARMONIC_COUNT],
     /// Per-partial A/D/S, kopierad hit av `SetPartialEnvelopes`.
     pub partial_envs: [PartialAdsr; HARMONIC_COUNT],
     /// Sant när partialenveloperna ska användas i stället för den delade tabellen.
     pub partial_envs_active: bool,
+    /// Klangformen och dess tidsaxel, kopierade hit av motorn.
+    pub formant: SpectralFormant,
+    pub sweep: SpectralSweep,
+    /// 1 / max(summan av de formade nivåerna, 1) — samma normalisering som tabellen, så
+    /// volymen inte hoppar när formanten flyttas.
+    pub level_gain: f32,
     /// Nivån per partial just nu, räknad om var `PARTIAL_ENV_BLOCK`:e sampel.
     pub partial_levels: [f32; HARMONIC_COUNT],
     /// Sampel sedan anslaget: tidsbasen för partialenveloperna.
@@ -364,6 +370,9 @@ impl Voice {
             harmonics: HARMONICS_DEFAULT,
             partial_envs: PARTIAL_ENV_NEUTRAL,
             partial_envs_active: false,
+            formant: SpectralFormant::default(),
+            sweep: SpectralSweep::default(),
+            level_gain: 1.0,
             partial_levels: [0.0; HARMONIC_COUNT],
             partial_age: 0,
             partial_control: 0,
@@ -459,14 +468,10 @@ impl Voice {
 
     fn update_partial_levels(&mut self) {
         let t = self.partial_age as f32 / self.sample_rate.max(1.0);
-        let weight: f32 = self.harmonics.iter().filter(|h| **h > 0.0).sum();
-        let gain = if weight > 0.0 {
-            1.0 / weight.max(1.0)
-        } else {
-            0.0
-        };
+        let center = self.sweep.center_at(t, self.formant.center);
         for (k, level) in self.partial_levels.iter_mut().enumerate() {
-            *level = self.harmonics[k] * partial_env_level(t, self.partial_envs[k]) * gain;
+            let shaped = self.harmonics[k] * self.formant.gain_at(k + 1, center);
+            *level = shaped * partial_env_level(t, self.partial_envs[k]) * self.level_gain;
         }
     }
 
@@ -670,8 +675,11 @@ impl Voice {
                 sum / weight.max(0.001)
             }
             Waveform::Additive => {
-                if self.partial_envs_active {
-                    // Varje partial har sin egen kontur; då räcker inte den delade tabellen.
+                if self.partial_envs_active
+                    || (self.formant.amount > 0.0 && self.sweep.active(self.formant.center))
+                {
+                    // Konturerna eller tidsaxeln gör spektret tidsberoende; då räcker inte
+                    // den delade tabellen.
                     self.partial_sum(phase)
                 } else {
                     // Summan av partialerna ligger färdig i tabellen, normaliserad i `rebuild`.

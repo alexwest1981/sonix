@@ -333,6 +333,11 @@ pub enum AudioCommand {
         width: f32,
         amount: f32,
     },
+    /// Tidsaxeln: klangformen glider från formantens läge till `to` under `seconds`.
+    SetSpectralSweep {
+        to: f32,
+        seconds: f32,
+    },
     /// Suboscillatorns nivå 0–1.
     SetSub {
         level: f32,

@@ -1,7 +1,7 @@
 # Additiv och spektral syntes i full längd
 
-**Status: steg 1–3 byggda (tabelloscillator med 64 partialer, egen kontur per partial,
-spektralt filter); steg 4 kvar.** Den här filen finns för att nästa pass ska börja i rätt ände i stället för
+**Status: steg 1–4 byggda (tabelloscillator med 64 partialer, egen kontur per partial,
+spektralt filter och tidsaxel); kvar är Sytrus 6-op och redigering per partial i UI:t.** Den här filen finns för att nästa pass ska börja i rätt ände i stället för
 att uppfinna omfattningen.
 
 ## Det som finns i dag
@@ -22,6 +22,11 @@ att uppfinna omfattningen.
   formas i `shaped_harmonics` innan tabellen byggs, så både den snabba och den långsamma vägen
   ser samma spektrum. **Mätt:** formant på partial 2 → centroid **4,59**, på partial 9 →
   **8,69**; grundtonen mäts till **110,0 Hz** i båda fallen. `amount = 0` lämnar ljudet bit-identiskt.
+- **Tidsaxel** (`SpectralSweep { to, seconds }`): klangformen glider linjärt från formantens
+  läge till `to` under `seconds`, räknat från anslaget och **per röst** — två toner som startar
+  olika sent glider olika långt. **Mätt:** två kurvor som startar på partial 1 ger samma centroid
+  vid anslaget (**4,61** mot **4,63**) men olika vid 0,5 s (**6,42** mot **4,59**). Det är en
+  svepande formant, inte Harmors godtyckliga bild/'tidskurva' — den kurvan är kvar.
 - `Waveform::Inharmonic` — partialerna stäms om, men nivåerna är fortfarande statiska.
 - `Waveform::Bowed`/`Guitar`/`Pluck` — strängmodell, inte additiv.
 - `audio::spectral_image` — en PNG blir **64 statiska partialnivåer** (Harmors bildväg).
@@ -53,7 +58,7 @@ Fyra saker, och de är oberoende nog att byggas i ordning:
 | 1 | 64 partialer, tabellbaserad oscillator — **✅** | **Mätt 2026-10-24:** 16 röster à 64 partialer, 1 s ljud i release: tabellen **241× realtid**, hela rösten **30× realtid**. En `sin()` per partial i samma mätning: 3,4×. Prov: tabellen matchar den direkta summan (97 faser, < 2e-3) och den 64:e partialen hörs (7 040 Hz ur 110 Hz). |
 | 2 | Envelopp per partial — **✅** | **Mätt 2026-10-24:** `per_partial_envelopes_darken_the_spectrum` — partial 1 med full sustain, partial 8 med 0,25 s decay till 0: centroid **4,30 → 1,03** mellan 50–100 ms och 400–450 ms (Hann-fönster; FX avstängda, annars mäter provet delayens 300 ms-eko). Konturen är linjär attack → linjär decay → sustain; UI:t sätter `decay / (k+1)^lutning` så höga partialer dör först, och kommandot tar exakta värden per partial. |
 | 3 | Spektralt filter — **✅** | **Mätt 2026-10-24:** `a_spectral_formant_moves_the_centroid_but_not_the_pitch` — formant på partial 2 ger centroid **4,59**, på partial 9 **8,69**, och `fundamental_hz` säger **110,0 Hz** i båda fallen. Formen är Gaussisk över partialindex (center, bredd i partialer, mängd 0–1); UI:t har tre reglage, kommandot `SetSpectralFormant`. |
-| 4 | Tidsaxel | Samma not med kurva A och kurva B ska ge olika centroid vid 0,5 s men samma vid 0 s |
+| 4 | Tidsaxel — **✅** | **Mätt 2026-10-24:** `the_time_axis_moves_the_spectrum_after_the_attack` — kurva A (formant 1 → 9 på 1 s) och kurva B (1 → 2) ger centroid **4,61 / 4,63** vid anslaget och **6,42 / 4,59** vid 0,5 s. Per röst (tiden räknas från anslaget), så polyfoni inte delar svepfas. Formen är en linjär formantglidning; en godtycklig kurva/bild över tid är nästa steg om det behövs. |
 
 ## Mätt först: behövs tabellen?
 

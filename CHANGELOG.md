@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Time axis for the additive oscillator** — the spectral formant glides from its current
+  partial to a target partial over a set time, per voice, so notes that start later sweep from
+  the beginning. Measured: two curves starting on partial 1 give the same harmonic centroid at
+  note-on (4.61 / 4.63) and different centroids at 0.5 s (6.42 / 4.59). This is a linear
+  formant glide, not an arbitrary curve over time.
 - **Spectral filter for the additive oscillator** — a Gaussian formant over partial index
   rather than Hz, so it moves timbre without moving pitch. Measured: centroid 4.59 with the
   formant on partial 2 and 8.69 on partial 9, while the fundamental reads 110.0 Hz in both.
@@ -34,6 +39,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   effect, channel processor and instrument (FX Rack pedals, per-track strip,
   master bus utilities, Vocal Studio, synth/drum/patcher, plugin host), what
   each one does and its controls, linked from both READMEs.
+
+### Fixed
+
+- **Exports now include the additive patch.** `render_buffer` sent only the oscillator
+  waveform and filter to the offline engine, so a drawn additive sound exported as a plain
+  sine. Drawbars, per-partial envelopes, formant and time axis are now applied as commands
+  after the offline engine is built; a render test confirms the drawn partial reaches the
+  exported audio.
 
 ### Changed
 

@@ -350,6 +350,21 @@ impl SonixApp {
 /// Render one spec to an interleaved float buffer.
 pub(crate) fn render_buffer(&self, spec: &crate::audio::RenderSpec, dry: bool) -> Result<Vec<f32>, String> {
     let mut engine = crate::audio::build_offline_engine(spec, &self.export_fx_state(dry));
+    // Den additiva rösten bor inte i `FxState`: dragstänger, partialkonturer, formant och
+    // tidsaxel skickas som kommandon, annars exporteras en ren sinus i stället för patchen.
+    engine.handle_command(AudioCommand::SetHarmonics { levels: self.harmonics });
+    engine.handle_command(AudioCommand::SetPartialEnvelopes {
+        envs: self.partial_envelopes(),
+    });
+    engine.handle_command(AudioCommand::SetSpectralFormant {
+        center: self.formant.center,
+        width: self.formant.width,
+        amount: self.formant.amount,
+    });
+    engine.handle_command(AudioCommand::SetSpectralSweep {
+        to: self.sweep.to,
+        seconds: self.sweep.seconds,
+    });
     Ok(crate::audio::render_project_offline(&mut engine, spec))
 }
 }

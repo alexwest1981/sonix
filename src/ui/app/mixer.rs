@@ -3332,6 +3332,36 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                             amount: self.formant.amount,
                         });
                     }
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("TIDSAXEL"))
+                            .size(Theme::FONT_S)
+                            .color(Theme::TEXT_MUTED),
+                    );
+                    let mut sweep_changed = false;
+                    sweep_changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.sweep.to, 1.0..=32.0)
+                                .text(crate::i18n::t("Till:"))
+                                .fixed_decimals(1),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Klangformen glider från Formant till det här partialnumret under noten",
+                        ))
+                        .changed();
+                    sweep_changed |= ui
+                        .add(
+                            egui::Slider::new(&mut self.sweep.seconds, 0.0..=10.0)
+                                .text(crate::i18n::t("Tid:"))
+                                .suffix(" s"),
+                        )
+                        .on_hover_text(crate::i18n::t("Sekunder från anslaget — 0 = av"))
+                        .changed();
+                    if sweep_changed {
+                        let _ = self.engine.send_command(AudioCommand::SetSpectralSweep {
+                            to: self.sweep.to,
+                            seconds: self.sweep.seconds,
+                        });
+                    }
                 }
                 ui.separator();
                 ui.label(egui::RichText::new(crate::i18n::t("FM (DX10/Sytrus)")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));

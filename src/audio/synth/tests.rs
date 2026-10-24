@@ -2789,6 +2789,79 @@ fn the_spectral_formant_keeps_its_band_and_quietens_the_rest() {
     assert_eq!(off.gain(1), 1.0, "avstängd formant ska inte röra något");
 }
 
+/// **Tidsaxeln: spektret glider under noten.** Två kurvor som startar på samma formant ska ge
+/// samma centroid vid anslaget men olika vid 0,5 s — det är skillnaden mellan en envelop och
+/// en tidsaxel.
+#[test]
+fn the_time_axis_moves_the_spectrum_after_the_attack() {
+    fn render(to: f32) -> Vec<f32> {
+        let mut engine = SynthEngine::new(48_000.0);
+        engine.waveform = Waveform::Additive;
+        engine.filter_params.cutoff = 18_000.0;
+        engine.filter_env_amount = 0.0;
+        engine.reverb_params.mix = 0.0;
+        engine.delay_params.mix = 0.0;
+        engine.adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+        let mut levels = [0.0f32; HARMONIC_COUNT];
+        for level in levels.iter_mut().take(12) {
+            *level = 0.6;
+        }
+        engine.handle_command(AudioCommand::SetHarmonics { levels });
+        engine.handle_command(AudioCommand::SetSpectralFormant {
+            center: 1.0,
+            width: 1.5,
+            amount: 0.8,
+        });
+        engine.handle_command(AudioCommand::SetSpectralSweep { to, seconds: 1.0 });
+        engine.handle_command(AudioCommand::NoteOn {
+            note: 45,
+            freq: 110.0,
+            velocity: 1.0,
+            channel: 0,
+        });
+        let mut buf = Vec::new();
+        for _ in 0..26_400 {
+            let (l, _) = engine.process_stereo();
+            buf.push(l);
+        }
+        buf
+    }
+
+    let rising = render(9.0);
+    let shallow = render(2.0);
+    let start_a = harmonic_centroid(&rising[0..2_400], 110.0);
+    let start_b = harmonic_centroid(&shallow[0..2_400], 110.0);
+    let late_a = harmonic_centroid(&rising[24_000..26_400], 110.0);
+    let late_b = harmonic_centroid(&shallow[24_000..26_400], 110.0);
+    println!(
+        "centroid vid anslag: {start_a:.2} / {start_b:.2}; vid 0,5 s: {late_a:.2} / {late_b:.2}"
+    );
+    assert!(
+        (start_a - start_b).abs() < 0.25,
+        "kurvorna ska starta lika: {start_a:.2} mot {start_b:.2}"
+    );
+    assert!(
+        (late_a - late_b).abs() > 1.5,
+        "efter 0,5 s ska de skilja: {late_a:.2} mot {late_b:.2}"
+    );
+    assert!(
+        late_a > start_a + 1.0,
+        "den stigande kurvan ska ljusna: {start_a:.2} -> {late_a:.2}"
+    );
+}
+
+/// Svepets läge: linjärt från start till mål, klämt efter tiden; avstängt utan tid.
+#[test]
+fn the_sweep_reaches_its_target_and_then_stays() {
+    let sweep = SpectralSweep { to: 9.0, seconds: 2.0 };
+    assert!((sweep.center_at(0.0, 1.0) - 1.0).abs() < 1e-6);
+    assert!((sweep.center_at(1.0, 1.0) - 5.0).abs() < 1e-6);
+    assert!((sweep.center_at(9.0, 1.0) - 9.0).abs() < 1e-6);
+    assert!(sweep.active(1.0));
+    assert!(!SpectralSweep::default().active(1.0), "utan tid är svepet av");
+    assert!(!SpectralSweep { to: 9.0, seconds: 0.0 }.active(1.0));
+}
+
 /// **Mätning, inte ett prov.** Körs för hand:
 /// `cargo test --release --bin sonix -- --ignored measure_additive_table --nocapture`
 /// 16 röster à 64 partialer, en sekund ljud; jämför tabellen mot en `sin()` per partial.

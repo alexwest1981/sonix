@@ -160,6 +160,13 @@ impl SynthEngine {
                 };
                 self.rebuild_additive();
             }
+            AudioCommand::SetSpectralSweep { to, seconds } => {
+                self.sweep = SpectralSweep {
+                    to: to.clamp(1.0, HARMONIC_COUNT as f32),
+                    seconds: seconds.clamp(0.0, 60.0),
+                };
+                self.rebuild_additive();
+            }
             AudioCommand::SetPartialEnvelopes { envs } => {
                 for (slot, env) in self.partial_envs.iter_mut().zip(envs.iter()) {
                     *slot = [

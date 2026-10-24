@@ -120,6 +120,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetHarmonics { .. } => "SetHarmonics",
         AudioCommand::SetPartialEnvelopes { .. } => "SetPartialEnvelopes",
         AudioCommand::SetSpectralFormant { .. } => "SetSpectralFormant",
+        AudioCommand::SetSpectralSweep { .. } => "SetSpectralSweep",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -241,13 +242,53 @@ impl Default for SpectralFormant {
 impl SpectralFormant {
     /// Gain för partial `partial` (1 = grundtonen).
     pub fn gain(&self, partial: usize) -> f32 {
+        self.gain_at(partial, self.center)
+    }
+
+    /// Samma kurva men med klangformen på `center` — används av tidsaxeln, som flyttar
+    /// formanten under notens gång.
+    pub fn gain_at(&self, partial: usize, center: f32) -> f32 {
         let amount = self.amount.clamp(0.0, 1.0);
         if amount <= 0.0 {
             return 1.0;
         }
-        let x = (partial as f32 - self.center) / self.width.max(0.25);
+        let x = (partial as f32 - center) / self.width.max(0.25);
         let band = (-0.5 * x * x).exp();
         1.0 - amount * (1.0 - band)
+    }
+}
+
+/// **Tidsaxeln** (steg 4 i `ADDITIVE-SYNTH.md`): klangformen glider från formantens
+/// nuvarande läge till `to` under `seconds` sekunder, räknat från anslaget. Per röst, så
+/// två toner som startar olika sent glider olika långt — därför kan tabellen inte användas
+/// medan svepet är på.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SpectralSweep {
+    /// Partialnumret formanten glider till.
+    pub to: f32,
+    /// Tiden svepet tar. 0 = av.
+    pub seconds: f32,
+}
+
+impl Default for SpectralSweep {
+    fn default() -> Self {
+        Self { to: 1.0, seconds: 0.0 }
+    }
+}
+
+impl SpectralSweep {
+    /// Klangformens läge `t` sekunder efter anslaget.
+    pub fn center_at(&self, t: f32, from: f32) -> f32 {
+        if self.seconds <= 0.0 {
+            return from;
+        }
+        let k = (t / self.seconds).clamp(0.0, 1.0);
+        from + (self.to - from) * k
+    }
+
+    /// Sant när svepet faktiskt flyttar något: en tid större än noll och ett annat mål.
+    pub fn active(&self, from: f32) -> bool {
+        self.seconds > 0.0 && (self.to - from).abs() > 0.01
     }
 }
 
@@ -370,6 +411,8 @@ pub struct SynthEngine {
     pub partial_envs_active: bool,
     /// Spektralt filter över partialindex. `amount = 0` lämnar ljudet orört.
     pub formant: SpectralFormant,
+    /// Tidsaxel: klangformen glider från `formant.center` till `sweep.to` under noten.
+    pub sweep: SpectralSweep,
     /// Suboscillatorns nivå 0–1: en sinus en oktav under noten, efter filtret.
     pub sub_level: f32,
     /// Filterdrive 0–1: mjuk klippning efter röstens filter (0 = av, exakt som förut).
@@ -476,8 +519,17 @@ impl SynthEngine {
     pub fn rebuild_additive(&mut self) {
         let shaped = self.shaped_harmonics();
         self.additive.rebuild(&shaped);
+        let weight: f32 = shaped.iter().filter(|level| **level > 0.0).sum();
+        let level_gain = if weight > 0.0 {
+            1.0 / weight.max(1.0)
+        } else {
+            0.0
+        };
         for voice in &mut self.voices {
-            voice.harmonics = shaped;
+            voice.harmonics = self.harmonics;
+            voice.formant = self.formant;
+            voice.sweep = self.sweep;
+            voice.level_gain = level_gain;
             voice.partial_control = 0;
         }
     }
@@ -511,6 +563,7 @@ impl SynthEngine {
             partial_envs: PARTIAL_ENV_NEUTRAL,
             partial_envs_active: false,
             formant: SpectralFormant::default(),
+            sweep: SpectralSweep::default(),
             sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,

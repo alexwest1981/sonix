@@ -292,6 +292,8 @@ pub struct SonixApp {
     pub partial_env_on: bool,
     /// Spektralt filter över partialindex: center (partialnummer), bredd och mängd.
     pub formant: crate::audio::synth::SpectralFormant,
+    /// Tidsaxeln: klangformen glider från formantens läge till `to` under `seconds`.
+    pub sweep: crate::audio::synth::SpectralSweep,
     /// Suboscillatorns nivå, 0–1.
     pub sub_level: f32,
     /// Filtrets drivning och key tracking, 0–1.
@@ -952,6 +954,7 @@ impl SonixApp {
             partial_env_tilt: 1.0,
             partial_env_on: false,
             formant: crate::audio::synth::SpectralFormant::default(),
+            sweep: crate::audio::synth::SpectralSweep::default(),
             sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,

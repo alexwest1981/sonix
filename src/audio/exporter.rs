@@ -1410,6 +1410,43 @@ mod tests {
         }
     }
 
+    /// **Den additiva patchen följer med in i offline-renderingen.** `render_buffer` skickar
+    /// dragstänger, kontur, formant och tidsaxel som kommandon efter `build_offline_engine`;
+    /// det här visar att den vägen ger den utdragna partialen i det renderade ljudet.
+    #[test]
+    fn the_additive_patch_is_audible_in_an_offline_render() {
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        grid[0][0] = true; // MIDI 48 = C3, 130,81 Hz
+        let mut ch_steps = [false; crate::audio::tempo::MAX_STEPS];
+        ch_steps[0] = true;
+        let spec = synth_spec_with(grid, ch_steps, 60);
+        let fx = FxState {
+            waveform: super::super::command::Waveform::Additive,
+            adsr: AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 },
+            filter: FilterParams { cutoff: 18_000.0, resonance: 0.0 },
+            delay: DelayParams::default(),
+            reverb: ReverbParams::default(),
+            drive: 1.0,
+            master_volume: 1.0,
+            master_fx: MasterFxParams::default(),
+        };
+        let mut engine = build_offline_engine(&spec, &fx);
+        let mut levels = [0.0f32; crate::audio::synth::HARMONIC_COUNT];
+        levels[2] = 1.0; // bara tredje partialen
+        engine.handle_command(AudioCommand::SetHarmonics { levels });
+
+        let buf = render_project_offline(&mut engine, &spec);
+        let sr = spec.sample_rate as f32;
+        let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
+        let third = tone_energy(&left, 130.81 * 3.0, sr);
+        let fundamental = tone_energy(&left, 130.81, sr);
+        assert!(third > 0.01, "tredje partialen hörs inte i exporten: {third}");
+        assert!(
+            third > fundamental * 10.0,
+            "grundtonen ska vara borta: {fundamental} mot {third}"
+        );
+    }
+
     #[test]
     fn offline_render_produces_audio() {
         let spec = render_smoke_spec();
