@@ -157,6 +157,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The envelope graph shrinks instead of overflowing.** It was a fixed 130 px, which pushed it
+  out of its column in a narrow window; it now takes the width that is available, up to 130.
+
 - **Dead branches removed in the arranger, mixer and piano roll.** A dozen `if` expressions had
   branches that returned the same colour (the REC button, the slicer highlight, the microphone
   card and clip fills, the MIDI-REC label, the hi-hat generator), so the condition never had an

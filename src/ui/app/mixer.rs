@@ -3787,7 +3787,10 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
             // Column 4: ADSR Visual Curve Display
             cols[3].group(|ui| {
                 ui.label(egui::RichText::new(crate::i18n::t("ENVELOPE GRAF")).strong().color(crate::ui::theme::palette().green()));
-                let (rect, _) = ui.allocate_exact_size(Vec2::new(130.0, 68.0), Sense::hover());
+                // Grafen var 130 px fast; i ett smalt fönster stack den ut ur sin kolumn och
+                // klipptes av kanten. Nu tar den platsen som finns, upp till 130.
+                let graph_w = ui.available_width().clamp(60.0, 130.0);
+                let (rect, _) = ui.allocate_exact_size(Vec2::new(graph_w, 68.0), Sense::hover());
                 let painter = ui.painter();
                 painter.rect_filled(rect, Rounding::same(3.0), crate::ui::theme::palette().bg_deep());
                 painter.rect_stroke(rect, Rounding::same(3.0), Stroke::new(1.0_f32, crate::ui::theme::palette().panel_alt()));
