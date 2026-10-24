@@ -118,6 +118,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetSub { .. } => "SetSub",
         AudioCommand::SetControlRoom(_) => "SetControlRoom",
         AudioCommand::SetHarmonics { .. } => "SetHarmonics",
+        AudioCommand::SetPartialEnvelopes { .. } => "SetPartialEnvelopes",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -188,7 +189,49 @@ pub const HARMONICS_DEFAULT: [f32; HARMONIC_COUNT] = {
 
 /// Längden på den additiva tabellen. 4 096 punkter ger den 64:e partialen 64 sampel per
 /// period; interpolationsfelet ligger då kring en tusendel, långt under hörbarhet.
+/// Måste vara en tvåpotens — `sine_at_cycle` maskar indexet i stället för att räkna modulo.
 pub const ADDITIVE_TABLE_LEN: usize = 4096;
+
+/// En partials amplitudkontur: `[attack s, decay s, sustain 0–1]`.
+pub type PartialAdsr = [f32; 3];
+
+/// Konturen som betyder "ingen egen envelop": ingen attack, ingen decay, full sustain.
+/// Så länge alla partialer står här går rösten den snabba tabellvägen.
+pub const PARTIAL_ENV_NEUTRAL: [PartialAdsr; HARMONIC_COUNT] = [[0.0, 0.0, 1.0]; HARMONIC_COUNT];
+
+/// Sant när ingen partial har en egen kontur, alltså när tabellen räcker.
+pub fn partial_envs_are_neutral(envs: &[PartialAdsr; HARMONIC_COUNT]) -> bool {
+    envs.iter().all(|env| env[0] <= 0.0 && env[1] <= 0.0 && env[2] >= 1.0)
+}
+
+/// Nivån ur en partials kontur vid tiden `t` (sekunder): linjär attack, linjär decay mot
+/// sustain. Release ligger på röstens egen envelop och rör inte den här kurvan.
+pub fn partial_env_level(t: f32, env: PartialAdsr) -> f32 {
+    let attack = env[0].max(0.0);
+    let decay = env[1].max(0.0);
+    let sustain = env[2].clamp(0.0, 1.0);
+    if attack > 0.0 && t < attack {
+        return (t / attack).clamp(0.0, 1.0);
+    }
+    if decay > 0.0 {
+        let k = ((t - attack) / decay).clamp(0.0, 1.0);
+        return 1.0 - (1.0 - sustain) * k;
+    }
+    sustain
+}
+
+/// Läser sinustabellen vid `cycle` varv (1,0 = ett varv), linjärt interpolerad.
+/// Används av den långsamma additiva vägen, där varje partial har sin egen fas.
+#[inline(always)]
+pub fn sine_at_cycle(cycle: f32) -> f32 {
+    let wrapped = cycle - cycle.floor();
+    let x = wrapped * ADDITIVE_TABLE_LEN as f32;
+    let i = (x as usize).min(ADDITIVE_TABLE_LEN - 1);
+    let frac = x - i as f32;
+    let s = sine_table();
+    let next = (i + 1) & (ADDITIVE_TABLE_LEN - 1);
+    s[i] + (s[next] - s[i]) * frac
+}
 
 /// Summan av alla partialer i en tabell, byggd när dragstängerna ändras och delad av alla
 /// röster. En tabelläsning per sampel i stället för en `sin()` per partial gör att 64
@@ -290,6 +333,10 @@ pub struct SynthEngine {
     pub harmonics: [f32; HARMONIC_COUNT],
     /// Tabellen som rösterna läser: summan av `harmonics`, omräknad när de ändras.
     pub additive: AdditiveTable,
+    /// Per-partial A/D/S för den additiva oscillatorn. Neutral = bara `harmonics` gäller.
+    pub partial_envs: [PartialAdsr; HARMONIC_COUNT],
+    /// Sant när minst en partial har en egen kontur; då går rösten den långsamma vägen.
+    pub partial_envs_active: bool,
     /// Suboscillatorns nivå 0–1: en sinus en oktav under noten, efter filtret.
     pub sub_level: f32,
     /// Filterdrive 0–1: mjuk klippning efter röstens filter (0 = av, exakt som förut).
@@ -407,6 +454,8 @@ impl SynthEngine {
             modulation: crate::audio::modulation::ModMatrix::default(),
             harmonics: HARMONICS_DEFAULT,
             additive: AdditiveTable::new(&HARMONICS_DEFAULT),
+            partial_envs: PARTIAL_ENV_NEUTRAL,
+            partial_envs_active: false,
             sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,

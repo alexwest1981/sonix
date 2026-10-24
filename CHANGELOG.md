@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-partial envelopes for the additive oscillator** — each of the 64 drawbars can have
+  its own attack, decay and sustain, so a note's spectrum can darken as it rings. Measured:
+  harmonic centroid falls from 4.3 to 1.03 over 500 ms when partial 8 decays in 0.25 s while
+  partial 1 sustains. Levels update every 32 samples; the worst case (16 voices × 64 drawn
+  partials with individual contours) runs at 2.0× real time, against 240× without contours.
+  The panel exposes a spectral envelope switch with attack, decay, sustain and a tilt that
+  makes partial k decay k× faster; the command takes exact per-partial values.
 - **64-partial additive synthesis** — the additive oscillator now has 64 drawbars instead of
   16, rendered from one shared table per harmonic setting. Measured in release with 16 voices:
   the oscillator runs at 241× real time and the full voice with filter and envelope at 30×,

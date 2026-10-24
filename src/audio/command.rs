@@ -321,6 +321,11 @@ pub enum AudioCommand {
     SetHarmonics {
         levels: [f32; crate::audio::synth::HARMONIC_COUNT],
     },
+    /// Per-partial A/D/S för den additiva oscillatorn: `[attack s, decay s, sustain 0–1]`
+    /// per partial. Neutral (`[0, 0, 1]`) ger den statiska tabellvägen.
+    SetPartialEnvelopes {
+        envs: [[f32; 3]; crate::audio::synth::HARMONIC_COUNT],
+    },
     /// Suboscillatorns nivå 0–1.
     SetSub {
         level: f32,

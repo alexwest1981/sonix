@@ -2639,6 +2639,80 @@ fn the_sixty_fourth_partial_is_heard() {
     );
 }
 
+/// **Envelopp per partial: spektrum blir mörkare med tiden.** Bara partial 1 (full sustain)
+/// och partial 8 (snabb decay till 0) utdragna — centroiden ska falla mot 1 när 8:an dör.
+#[test]
+fn per_partial_envelopes_darken_the_spectrum() {
+    // Hann-fönster: en rektangulär fönster på 50 ms läcker från grundtonen in i
+    // åttonde bin, och då mäter provet fönstret i stället för spektret.
+    fn mag(buf: &[f32], freq: f32) -> f32 {
+        let n = buf.len() as f32;
+        let w = 2.0 * std::f32::consts::PI * freq / 48_000.0;
+        let (mut re, mut im) = (0.0f32, 0.0f32);
+        for (i, v) in buf.iter().enumerate() {
+            let hann = 0.5 - 0.5 * (2.0 * std::f32::consts::PI * i as f32 / n).cos();
+            let ph = w * i as f32;
+            re += v * hann * ph.cos();
+            im += v * hann * ph.sin();
+        }
+        2.0 * (re * re + im * im).sqrt() / n
+    }
+    fn centroid(buf: &[f32], f0: f32) -> f32 {
+        let mut weighted = 0.0;
+        let mut total = 0.0;
+        for k in 1..=HARMONIC_COUNT {
+            let m = mag(buf, f0 * k as f32);
+            weighted += m * k as f32;
+            total += m;
+        }
+        if total <= 0.0 { 0.0 } else { weighted / total }
+    }
+
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.waveform = Waveform::Additive;
+    engine.filter_params.cutoff = 18_000.0;
+    engine.filter_env_amount = 0.0;
+    // Utan detta mäter provet FX-svansen: delayens 300 ms-eko och reverbet bär 8:ans
+    // energi långt efter decayen.
+    engine.reverb_params.mix = 0.0;
+    engine.delay_params.mix = 0.0;
+    engine.adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    let mut levels = [0.0f32; HARMONIC_COUNT];
+    levels[0] = 1.0;
+    levels[7] = 1.0;
+    engine.handle_command(AudioCommand::SetHarmonics { levels });
+    let mut envs = PARTIAL_ENV_NEUTRAL;
+    envs[7] = [0.001, 0.25, 0.0];
+    engine.handle_command(AudioCommand::SetPartialEnvelopes { envs });
+    assert!(engine.partial_envs_active);
+    engine.handle_command(AudioCommand::NoteOn {
+        note: 45,
+        freq: 110.0,
+        velocity: 1.0,
+        channel: 0,
+    });
+    let mut buf = Vec::new();
+    for _ in 0..24_000 {
+        let (l, _) = engine.process_stereo();
+        buf.push(l);
+    }
+    let early = centroid(&buf[2_400..4_800], 110.0);
+    let late = centroid(&buf[19_200..21_600], 110.0);
+    println!("centroid 50–100 ms: {early:.2}, 400–450 ms: {late:.2}");
+    assert!(early > 2.5, "anslaget ska vara ljust: {early:.2}");
+    assert!(late < 1.3, "bara grundtonen ska vara kvar: {late:.2}");
+    assert!(early > late * 2.0, "spektret ska mörkna: {early:.2} -> {late:.2}");
+}
+
+/// Konturens form: linjär attack, linjär decay mot sustain, sedan stilla.
+#[test]
+fn a_partial_envelope_ramps_and_falls_as_written() {
+    let env = [0.1, 0.2, 0.4];
+    assert!((partial_env_level(0.05, env) - 0.5).abs() < 1e-6, "halva attacken");
+    assert!((partial_env_level(0.2, env) - 0.7).abs() < 1e-6, "halva decayen");
+    assert!((partial_env_level(5.0, env) - 0.4).abs() < 1e-6, "sustain");
+}
+
 /// **Mätning, inte ett prov.** Körs för hand:
 /// `cargo test --release --bin sonix -- --ignored measure_additive_table --nocapture`
 /// 16 röster à 64 partialer, en sekund ljud; jämför tabellen mot en `sin()` per partial.
@@ -2716,6 +2790,34 @@ fn measure_additive_table_against_a_sine_per_partial() {
         1.0 / table_time,
         direct / table_time,
         1.0 / engine_time,
+    );
+
+    // Den långsamma vägen: varje partial har sin egen kontur, så summan räknas per sampel.
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.waveform = Waveform::Additive;
+    engine.filter_params.cutoff = 18_000.0;
+    engine.filter_env_amount = 0.0;
+    engine.adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    engine.handle_command(AudioCommand::SetHarmonics { levels });
+    let envs = [[0.002, 0.4, 0.2]; HARMONIC_COUNT];
+    engine.handle_command(AudioCommand::SetPartialEnvelopes { envs });
+    for i in 0..VOICES {
+        engine.handle_command(AudioCommand::NoteOn {
+            note: 45 + i as u8,
+            freq: 110.0 * 2.0f32.powf(i as f32 / 12.0),
+            velocity: 0.5,
+            channel: 0,
+        });
+    }
+    let start = Instant::now();
+    for _ in 0..SAMPLES {
+        let (l, _) = engine.process_stereo();
+        peak = peak.max(l.abs());
+    }
+    let env_time = start.elapsed().as_secs_f32();
+    println!(
+        "samma 64 partialer med egen kontur per partial: {env_time:.4} s ({:.0}× realtid), topp {peak:.3}",
+        1.0 / env_time
     );
     assert!(table_time < direct, "tabellen ska slå en sin() per partial");
 }

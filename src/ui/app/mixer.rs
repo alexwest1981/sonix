@@ -3246,6 +3246,52 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                             }
                         }
                     }
+                    ui.separator();
+                    let mut env_changed = ui
+                        .checkbox(
+                            &mut self.partial_env_on,
+                            crate::i18n::t("✦ Spektral envelop"),
+                        )
+                        .on_hover_text(crate::i18n::t(
+                            "Låt varje partial ha sin egen attack och decay — höga partialer dör först",
+                        ))
+                        .changed();
+                    if self.partial_env_on {
+                        env_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.partial_env[0], 0.0..=2.0)
+                                    .text(crate::i18n::t("Attack:"))
+                                    .suffix(" s"),
+                            )
+                            .changed();
+                        env_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.partial_env[1], 0.0..=5.0)
+                                    .text(crate::i18n::t("Decay:"))
+                                    .suffix(" s"),
+                            )
+                            .changed();
+                        env_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.partial_env[2], 0.0..=1.0)
+                                    .text(crate::i18n::t("Sustain:")),
+                            )
+                            .changed();
+                        env_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut self.partial_env_tilt, 0.0..=2.0)
+                                    .text(crate::i18n::t("Lutning:")),
+                            )
+                            .on_hover_text(crate::i18n::t(
+                                "0 = alla partialer dör lika fort, 1 = partial k dör k gånger snabbare",
+                            ))
+                            .changed();
+                    }
+                    if env_changed {
+                        let _ = self.engine.send_command(AudioCommand::SetPartialEnvelopes {
+                            envs: self.partial_envelopes(),
+                        });
+                    }
                 }
                 ui.separator();
                 ui.label(egui::RichText::new(crate::i18n::t("FM (DX10/Sytrus)")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
@@ -3427,3 +3473,19 @@ fn rand_simple(seed: usize) -> f32 {
     x as f32 / 32767.0
 }
 
+
+impl SonixApp {
+    /// Konturerna som skickas till motorn. Partial k får `decay / (k+1)^lutning`, alltså
+    /// dör höga partialer först; avstängd blir listan neutral och rösten går tabellvägen.
+    pub(crate) fn partial_envelopes(&self) -> [[f32; 3]; HARMONIC_COUNT] {
+        let mut envs = crate::audio::synth::PARTIAL_ENV_NEUTRAL;
+        if self.partial_env_on {
+            for (k, env) in envs.iter_mut().enumerate() {
+                env[0] = self.partial_env[0];
+                env[1] = self.partial_env[1] / (k as f32 + 1.0).powf(self.partial_env_tilt);
+                env[2] = self.partial_env[2];
+            }
+        }
+        envs
+    }
+}

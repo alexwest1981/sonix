@@ -1,15 +1,22 @@
 # Additiv och spektral syntes i full längd
 
-**Status: steg 1 byggt (tabelloscillator med 64 partialer); steg 2–4 kvar.** Den här filen finns
-för att nästa pass ska börja i rätt ände i stället för att uppfinna omfattningen.
+**Status: steg 1–2 byggda (tabelloscillator med 64 partialer, egen kontur per partial);
+steg 3–4 kvar.** Den här filen finns för att nästa pass ska börja i rätt ände i stället för
+att uppfinna omfattningen.
 
 ## Det som finns i dag
 
 - `AdditiveTable` — en delad tabell med summan av **64 partialer**, en tabelläsning per sampel.
   **Mätt** (release, i7-8700K, 16 röster, 1 s ljud): oscillatorn **241× realtid**, hela rösten
   med filter och envelop **30× realtid**; en `sin()` per partial i samma mätning gav 3,4×.
-  Tabellen byggs om när dragstängerna ändras (0,25 ms) och bandbegränsas inte — en hög not kan
+  Tabellen byggs om när dragstängerna ändras (0,2 ms) och bandbegränsas inte — en hög not kan
   vika partialer ovanför Nyquist.
+- **Egen kontur per partial** (`partial_envs: [[attack, decay, sustain]; 64]`): varje partial
+  kan ha sin egen attack, decay och sustain, så spektret kan mörkna med tiden. Nivåerna räknas
+  om var 32:a sampel och rösten summerar partialerna per sampel (tabellen kan inte användas när
+  konturerna skiljer sig). **Mätt:** centroid **4,3 → 1,03** över 500 ms när partial 1 står kvar
+  och partial 8 dör på 0,25 s. Kostnaden i värsta fallet — 16 röster à 64 utdragna partialer med
+  egen kontur — är **2,0× realtid**; utan kontur går samma patch i 240×.
 - `Waveform::Inharmonic` — partialerna stäms om, men nivåerna är fortfarande statiska.
 - `Waveform::Bowed`/`Guitar`/`Pluck` — strängmodell, inte additiv.
 - `audio::spectral_image` — en PNG blir **64 statiska partialnivåer** (Harmors bildväg).
@@ -39,7 +46,7 @@ Fyra saker, och de är oberoende nog att byggas i ordning:
 | Steg | Vad | Mått som avgör om det är klart |
 |---|---|---|
 | 1 | 64 partialer, tabellbaserad oscillator — **✅** | **Mätt 2026-10-24:** 16 röster à 64 partialer, 1 s ljud i release: tabellen **241× realtid**, hela rösten **30× realtid**. En `sin()` per partial i samma mätning: 3,4×. Prov: tabellen matchar den direkta summan (97 faser, < 2e-3) och den 64:e partialen hörs (7 040 Hz ur 110 Hz). |
-| 2 | Envelopp per partial | Ett anslag med bara partial 1 långsam och partial 8 snabb ska ge **avtagande spektrum** — mätt som centroid som faller över 500 ms |
+| 2 | Envelopp per partial — **✅** | **Mätt 2026-10-24:** `per_partial_envelopes_darken_the_spectrum` — partial 1 med full sustain, partial 8 med 0,25 s decay till 0: centroid **4,30 → 1,03** mellan 50–100 ms och 400–450 ms (Hann-fönster; FX avstängda, annars mäter provet delayens 300 ms-eko). Konturen är linjär attack → linjär decay → sustain; UI:t sätter `decay / (k+1)^lutning` så höga partialer dör först, och kommandot tar exakta värden per partial. |
 | 3 | Spektralt filter | En formantförskjutning flyttar centroid men **inte** grundtonen (mätt i Hz) |
 | 4 | Tidsaxel | Samma not med kurva A och kurva B ska ge olika centroid vid 0,5 s men samma vid 0 s |
 

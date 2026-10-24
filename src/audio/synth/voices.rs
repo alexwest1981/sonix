@@ -77,7 +77,25 @@ pub struct Voice {
     pub channel: u8,
     /// Pitch bend som multiplikator på fasökningen (1,0 = ingen böjning).
     pub bend_ratio: f32,
+    /// Dragstängernas nivåer, kopierade hit när de ändras. Bara den långsamma additiva
+    /// vägen läser dem.
+    pub harmonics: [f32; HARMONIC_COUNT],
+    /// Per-partial A/D/S, kopierad hit av `SetPartialEnvelopes`.
+    pub partial_envs: [PartialAdsr; HARMONIC_COUNT],
+    /// Sant när partialenveloperna ska användas i stället för den delade tabellen.
+    pub partial_envs_active: bool,
+    /// Nivån per partial just nu, räknad om var `PARTIAL_ENV_BLOCK`:e sampel.
+    pub partial_levels: [f32; HARMONIC_COUNT],
+    /// Sampel sedan anslaget: tidsbasen för partialenveloperna.
+    pub partial_age: u32,
+    pub partial_control: u8,
+    /// Rösten behöver samplingsfrekvensen för att räkna partialenveloperna i sekunder.
+    pub sample_rate: f32,
 }
+
+/// Hur ofta (i sampel) partialnivåerna räknas om. 32 sampel = 0,67 ms vid 48 kHz —
+/// tätt nog att en attack på 5 ms blir en ramp, glest nog att kurvan blir billig.
+const PARTIAL_ENV_BLOCK: u8 = 32;
 
 /// Sidokedje-duckare (Fas 8.3).
 ///
@@ -343,6 +361,13 @@ impl Voice {
             sub_phase: 0.0,
             channel: 0,
             bend_ratio: 1.0,
+            harmonics: HARMONICS_DEFAULT,
+            partial_envs: PARTIAL_ENV_NEUTRAL,
+            partial_envs_active: false,
+            partial_levels: [0.0; HARMONIC_COUNT],
+            partial_age: 0,
+            partial_control: 0,
+            sample_rate,
         }
     }
 
@@ -384,6 +409,9 @@ impl Voice {
         self.bow_seed = 0x2545_F491 ^ (self.note as u32) << 8;
         self.body_lo.reset();
         self.body_hi.reset();
+        // Nytt anslag = konturen börjar om från noll och räknas fram vid första samplet.
+        self.partial_age = 0;
+        self.partial_control = 0;
         self.envelope.gate_on();
         self.filter_env.gate_on();
     }
@@ -404,6 +432,42 @@ impl Voice {
     #[inline(always)]
     pub fn is_active(&self) -> bool {
         self.envelope.is_active()
+    }
+
+    /// Den långsamma additiva vägen: varje partial har sin egen kontur, så summan kan inte
+    /// ligga i en delad tabell. Nivåerna räknas om var `PARTIAL_ENV_BLOCK`:e sampel; mellan
+    /// dem kostar en hörd partial en tabelläsning och en multiplikation.
+    #[inline(always)]
+    fn partial_sum(&mut self, phase: f32) -> f32 {
+        self.partial_age = self.partial_age.saturating_add(1);
+        if self.partial_control == 0 {
+            self.update_partial_levels();
+            self.partial_control = PARTIAL_ENV_BLOCK - 1;
+        } else {
+            self.partial_control -= 1;
+        }
+        let cycle = phase / std::f32::consts::TAU;
+        let mut sum = 0.0;
+        for (k, level) in self.partial_levels.iter().enumerate() {
+            // En partial som redan klingat ut (sustain 0) kostar inget efter decayen.
+            if *level > 1e-5 {
+                sum += *level * sine_at_cycle(cycle * (k as f32 + 1.0));
+            }
+        }
+        sum
+    }
+
+    fn update_partial_levels(&mut self) {
+        let t = self.partial_age as f32 / self.sample_rate.max(1.0);
+        let weight: f32 = self.harmonics.iter().filter(|h| **h > 0.0).sum();
+        let gain = if weight > 0.0 {
+            1.0 / weight.max(1.0)
+        } else {
+            0.0
+        };
+        for (k, level) in self.partial_levels.iter_mut().enumerate() {
+            *level = self.harmonics[k] * partial_env_level(t, self.partial_envs[k]) * gain;
+        }
     }
 
     #[inline(always)]
@@ -606,8 +670,13 @@ impl Voice {
                 sum / weight.max(0.001)
             }
             Waveform::Additive => {
-                // Summan av partialerna ligger färdig i tabellen, normaliserad i `rebuild`.
-                additive.at_phase(phase)
+                if self.partial_envs_active {
+                    // Varje partial har sin egen kontur; då räcker inte den delade tabellen.
+                    self.partial_sum(phase)
+                } else {
+                    // Summan av partialerna ligger färdig i tabellen, normaliserad i `rebuild`.
+                    additive.at_phase(phase)
+                }
             }
             Waveform::Triangle => {
                 let normalized = phase / two_pi;

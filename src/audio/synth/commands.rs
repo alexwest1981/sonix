@@ -151,6 +151,25 @@ impl SynthEngine {
                     *slot = level.clamp(0.0, 1.0);
                 }
                 self.additive.rebuild(&self.harmonics);
+                for voice in &mut self.voices {
+                    voice.harmonics = self.harmonics;
+                }
+            }
+            AudioCommand::SetPartialEnvelopes { envs } => {
+                for (slot, env) in self.partial_envs.iter_mut().zip(envs.iter()) {
+                    *slot = [
+                        env[0].max(0.0),
+                        env[1].max(0.0),
+                        env[2].clamp(0.0, 1.0),
+                    ];
+                }
+                self.partial_envs_active = !partial_envs_are_neutral(&self.partial_envs);
+                for voice in &mut self.voices {
+                    voice.partial_envs = self.partial_envs;
+                    voice.partial_envs_active = self.partial_envs_active;
+                    // Konturen gäller från nu: nästa sampel räknar om nivåerna.
+                    voice.partial_control = 0;
+                }
             }
             AudioCommand::SetSub { level } => {
                 self.sub_level = level.clamp(0.0, 1.0);
@@ -356,6 +375,7 @@ impl SynthEngine {
                 self.harmonics = s.harmonics;
                 self.additive.rebuild(&self.harmonics);
                 for voice in &mut self.voices {
+                    voice.harmonics = self.harmonics;
                     voice.filter.reset();
                 }
             }
