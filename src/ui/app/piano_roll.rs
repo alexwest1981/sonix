@@ -1354,6 +1354,14 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                 .get(pat_idx)
                 .map(|p| p.bends.clone())
                 .unwrap_or_default();
+            let mut note_bends = self
+                .patterns
+                .get(pat_idx)
+                .map(|p| p.note_bends.clone())
+                .unwrap_or_default();
+            // **En markerad rad = en ton.** Är exakt en ton markerad i rutnätet skriver
+            // BEND-raden bend per ton i stället för per kanal — då kan två noter böjas olika.
+            let note_target = note_bend_target(&self.piano_roll_sel);
 
             for ch in 0..=16u8 {
                 let pts: Vec<Pos2> = bends
@@ -1371,8 +1379,38 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     painter.circle_filled(*p, 3.0, bend_color(ch));
                 }
             }
+            // Notbenden ritas i gult, så de syns som en egen kurva.
+            if let Some(key) = note_target {
+                let pts: Vec<Pos2> = note_bends
+                    .iter()
+                    .filter(|b| b.key == key)
+                    .map(|b| Pos2::new(rect.min.x + b.pos * cell_w, to_y(b.semitones)))
+                    .collect();
+                if pts.len() > 1 {
+                    painter.add(egui::Shape::line(
+                        pts.clone(),
+                        Stroke::new(1.2_f32, crate::ui::theme::palette().amber()),
+                    ));
+                }
+                for p in &pts {
+                    painter.circle_filled(*p, 3.0, crate::ui::theme::palette().amber());
+                }
+            }
 
             if let Some(pointer) = resp.interact_pointer_pos() {
+                // Närmaste punkt i den kurva som är aktiv: notbenden om en ton är markerad.
+                let near_note = if note_target.is_some() {
+                    note_bends
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, b)| Some(b.key) == note_target)
+                        .map(|(i, b)| (i, (rect.min.x + b.pos * cell_w - pointer.x).abs()))
+                        .filter(|(_, dx)| *dx < 10.0)
+                        .min_by(|a, b| a.1.total_cmp(&b.1))
+                        .map(|(i, _)| i)
+                } else {
+                    None
+                };
                 let nearest = bends
                     .iter()
                     .enumerate()
@@ -1383,30 +1421,47 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                     .filter(|(_, dx)| *dx < 10.0)
                     .min_by(|a, b| a.1.total_cmp(&b.1))
                     .map(|(i, _)| i);
+
                 if resp.double_clicked() {
                     let pos = ((pointer.x - rect.min.x) / cell_w).clamp(0.0, 63.99);
-                    let channel = bends.first().map_or(1, |b| b.channel);
-                    crate::ui::app::state::push_bend(
-                        &mut bends,
-                        crate::ui::app::state::BendPoint {
+                    if let Some(key) = note_target {
+                        note_bends.push(crate::ui::app::state::NoteBendPoint {
                             pos,
-                            channel,
+                            key,
                             semitones: from_y(pointer.y),
-                        },
-                    );
+                        });
+                        note_bends.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+                    } else {
+                        let channel = bends.first().map_or(1, |b| b.channel);
+                        crate::ui::app::state::push_bend(
+                            &mut bends,
+                            crate::ui::app::state::BendPoint {
+                                pos,
+                                channel,
+                                semitones: from_y(pointer.y),
+                            },
+                        );
+                    }
                 } else if resp.secondary_clicked() {
-                    if let Some(i) = nearest {
+                    if let Some(i) = near_note {
+                        note_bends.remove(i);
+                    } else if let Some(i) = nearest {
                         bends.remove(i);
                     }
-                } else if resp.dragged()
-                    && let Some(i) = nearest
-                {
-                    bends[i].pos = ((pointer.x - rect.min.x) / cell_w).clamp(0.0, 63.99);
-                    bends[i].semitones = from_y(pointer.y);
-                    bends.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+                } else if resp.dragged() {
+                    if let Some(i) = near_note {
+                        note_bends[i].pos = ((pointer.x - rect.min.x) / cell_w).clamp(0.0, 63.99);
+                        note_bends[i].semitones = from_y(pointer.y);
+                        note_bends.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+                    } else if let Some(i) = nearest {
+                        bends[i].pos = ((pointer.x - rect.min.x) / cell_w).clamp(0.0, 63.99);
+                        bends[i].semitones = from_y(pointer.y);
+                        bends.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+                    }
                 }
                 if let Some(pat) = self.patterns.get_mut(pat_idx) {
                     pat.bends = bends;
+                    pat.note_bends = note_bends;
                 }
             }
         });
@@ -1912,6 +1967,20 @@ pub(crate) fn render_touch_piano_keyboard(&mut self, ui: &mut egui::Ui, ctx: &eg
 // förutsättningen för de andra två, och rutnätet är vår enda yta där noter syns.
 
 /// Växlar markeringen på en cell. Returnerar antalet markerade celler.
+/// **Bend per ton när exakt en ton är markerad.** Raden i rutnätet är en MIDI-not
+/// (48 + rad); markeras flera rader finns ingen entydig ton, och då gäller kanalbenden.
+pub(crate) fn note_bend_target(
+    sel: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
+) -> Option<u8> {
+    let rows: Vec<usize> = (0..24)
+        .filter(|r| sel[*r].iter().any(|on| *on))
+        .collect();
+    match rows.as_slice() {
+        [row] => Some(48 + *row as u8),
+        _ => None,
+    }
+}
+
 pub(crate) fn toggle_cell_selection(sel: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24], row: usize, step: usize) -> usize {
     if row < 24 && step < 16 {
         sel[row][step] = !sel[row][step];
@@ -2183,6 +2252,18 @@ pub(crate) fn delete_cells(grid: &mut [[bool; crate::ui::app::state::MAX_STEPS];
 #[cfg(test)]
 mod selection_tests {
     use super::*;
+
+    /// **En markerad rad pekar ut en ton; flera rader gör det inte.** BEND-raden byter till
+    /// bend per ton bara när tonen är entydig.
+    #[test]
+    fn a_single_selected_row_names_the_note_to_bend() {
+        let mut sel = [[false; crate::ui::app::state::MAX_STEPS]; 24];
+        assert_eq!(note_bend_target(&sel), None, "ingen markering = kanalbend");
+        sel[12][3] = true;
+        assert_eq!(note_bend_target(&sel), Some(60), "rad 12 är MIDI 60");
+        sel[14][5] = true;
+        assert_eq!(note_bend_target(&sel), None, "två toner = ingen entydig ton");
+    }
 
     #[test]
     fn transpose_moves_selected_cells_and_keeps_the_ones_that_do_not_fit() {

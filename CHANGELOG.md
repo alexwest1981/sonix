@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — note bends have an editor
+
+- **BEND-raden i pianorullen skriver bend per ton när exakt en ton är markerad** (en rad i
+  rutnätet = MIDI 48 + rad). Markeras flera rader finns ingen entydig ton, och då gäller
+  kanalbenden som förut. Notbenden ritas i gult, kanalbenden i kanalfärg.
+  Dubbelklick lägger en punkt, högerklick tar bort närmaste, drag flyttar den — samma grepp som
+  kanalbenden, så ingen ny vana behövs.
+- Prov `a_single_selected_row_names_the_note_to_bend`: ingen markering → kanalbend, rad 12 → MIDI
+  60, två rader → kanalbend igen.
+
 ### Added — MIDI in scripts, and two inventory rows promoted
 
 - Skript-API:t kan nu läsa och skriva MIDI: `load_midi(path)` fyller tagningen från en `.mid`
