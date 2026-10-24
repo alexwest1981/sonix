@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — denormals flushed in the audio thread
+
+- När ett filter eller en reverbssvans klingar ut hamnar tillstånden i **denormala** tal. De låter
+  som ett svagt fräsande och kostar många gånger mer CPU än normala tal. Ljudtråden slår nu på
+  **FTZ+DAZ** (`stmxcsr`/`ldmxcsr`) en gång per callback — på x86_64, där vi kör.
+- Det är den klassiska orsaken till "brus som bara hörs när något spelar", och den syns aldrig i
+  ett prov: en tyst motor är exakt noll, medan en utklingande svans är 1e-38.
+
 ### Changed — one reverb again (CPU), and an idle-engine test
 
 - Den andra reverb-instansen (från 0.9.104) **dubblade reverbkostnaden per sampel**. Nu körs ett

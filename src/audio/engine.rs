@@ -498,6 +498,18 @@ impl AudioEngine {
         device.build_output_stream(
             config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+                // **Flusha denormala tal i ljudtråden.** När ett filter eller en reverbssvans
+                // klingar ut hamnar tillstånden i denormala värden — de låter som ett svagt
+                // fräsande och kostar många gånger mer CPU än normala tal. FTZ+DAZ stänger av
+                // dem helt. Sätts en gång per tråd, gäller hela callbacken.
+                #[cfg(target_arch = "x86_64")]
+                unsafe {
+                    const FTZ_DAZ: u32 = 0x8040;
+                    let mut csr: u32 = 0;
+                    core::arch::asm!("stmxcsr [{}]", in(reg) &mut csr, options(nostack));
+                    csr |= FTZ_DAZ;
+                    core::arch::asm!("ldmxcsr [{}]", in(reg) &csr, options(nostack, readonly));
+                }
                 let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     // 1. Process all pending commands from UI/Main thread without blocking
                     while let Ok(cmd) = command_rx.pop() {
