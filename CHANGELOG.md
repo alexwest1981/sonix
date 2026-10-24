@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — taller track rows
+
+- Track row 46 → 64 px and the header's control block pushed down 8 px (30 on the mic track), so
+  the name keeps the top line and the controls get their own line under it — the shape Soundtrap's
+  headers have. Clips in the timeline grow with the row; no other view is touched.
+
 ### Changed — track headers follow the Soundtrap blueprint
 
 - Corner rounding on the track-header cards 3 → 8 px and the track name 11 → 13.5 px (14 on the

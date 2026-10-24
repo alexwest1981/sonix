@@ -118,7 +118,9 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
 
         let header_w = 210.0;
         let bar_w = (60.0 * self.suno_zoom_level).clamp(16.0, 1500.0);
-        let row_h = 46.0;
+        // Soundtrap-klippen är ~120 px höga; 64 px rad ger klipp på ~56 px utan att
+        // spårhuvudets kontroller behöver flyttas om (de skjuts ned med `ctrl_y_offset`).
+        let row_h = 64.0;
         let ruler_h = 32.0;
         // **Tidsaxeln går genom tempokartan** (Fas 8.2 steg 3). X är fortfarande takter
         // (`bar_w` per takt); varje gång en *sekund* behövs frågas kartan i stället för att
@@ -897,7 +899,7 @@ impl SonixApp {
                     title_col,
                 );
 
-                let ctrl_y_offset = if is_mic_track { 22.0 } else { 0.0 };
+                let ctrl_y_offset = if is_mic_track { 30.0 } else { 8.0 };
 
                 // Live Input Meter for Mic/Vocal tracks or armed tracks
                 let is_armed = self.playlist_tracks[t_idx].is_rec_armed;
