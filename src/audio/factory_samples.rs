@@ -15,6 +15,9 @@ pub struct GeneratedSample {
 }
 
 impl GeneratedSample {
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
     pub fn new_stereo(
         name: impl Into<String>,
         category: impl Into<String>,

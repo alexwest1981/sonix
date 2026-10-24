@@ -502,6 +502,9 @@ pub(crate) fn automation_target_label(&self, target: AutomationTarget) -> String
 /// värde till fel pedal) och nollningen av kurvcachen (`last_sent`), som är det som gör att en
 /// ångrad plugin-kurva hörs igen. `apply_non_track_sound` är den tunna hylsan runt den som också
 /// skickar till motorn.
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn write_non_track_sound(
     s: &NonTrackSound,
     plugin_automation: &mut Vec<PluginAutomationLane>,

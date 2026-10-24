@@ -209,10 +209,10 @@ fn oversample_fir() -> [f32; TAPS] {
     let mut h = [0.0f32; TAPS];
     let m = (TAPS - 1) as f32;
     let two_fc = 0.5 / OVERSAMPLE as f32;
-    for n in 0..TAPS {
+    for (n, slot) in h.iter_mut().enumerate() {
         let x = n as f32 - m / 2.0;
         let w = 0.42 - 0.5 * (2.0 * PI * n as f32 / m).cos() + 0.08 * (4.0 * PI * n as f32 / m).cos();
-        h[n] = 2.0 * two_fc * sinc(2.0 * two_fc * x) * w;
+        *slot = 2.0 * two_fc * sinc(2.0 * two_fc * x) * w;
     }
     for p in 0..OVERSAMPLE {
         let sum: f32 = (0..TAPS_PER_PHASE).map(|t| h[p + OVERSAMPLE * t]).sum();

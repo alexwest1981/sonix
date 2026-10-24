@@ -914,9 +914,7 @@ fn bake_buffer_to_new_track(
     color: egui::Color32,
     undo_label: &str,
 ) -> Option<(usize, f32)> {
-    let Some((l, r, pcm_sr)) = self.write_and_read_back(name, buffer) else {
-        return None;
-    };
+    let (l, r, pcm_sr) = self.write_and_read_back(name, buffer)?;
     self.push_undo(undo_label);
     let len_secs = l.len() as f32 / pcm_sr as f32;
     let mut baked = PlaylistTrack::new(

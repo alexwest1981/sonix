@@ -116,14 +116,14 @@ pub fn synthesize_ir(recipe: &IrRecipe, sample_rate: f32) -> Vec<f32> {
     let mut ir = vec![0.0f32; len];
     let mut lp = 0.0f32;
 
-    for n in predelay..len {
+    for (n, slot) in ir.iter_mut().enumerate().skip(predelay) {
         let t = (n - predelay) as f32 / sr;
         let env = (-t / tau).exp();
         // Mörkare mot slutet: damping styr hur mycket brytfrekvensen faller.
         let progress = (n as f32 / len as f32).clamp(0.0, 1.0);
         let k = (1.0 - recipe.damping.clamp(0.0, 1.0) * progress).clamp(0.05, 1.0) * 0.6;
         lp += k * (noise() - lp);
-        ir[n] = lp * env;
+        *slot = lp * env;
     }
 
     // Tidiga reflektioner: få, tydliga studsar som ger riktning åt rummet.

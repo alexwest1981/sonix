@@ -316,6 +316,9 @@ impl Default for ControlRoomState {
     }
 }
 
+// Kommandona går genom en ringbuffert i ljudtråden; att boxa de stora payloadarna skulle
+// lägga en allokering på realtidsvägen. Storleksskillnaden är priset för det.
+#[allow(clippy::large_enum_variant)]
 pub enum AudioCommand {
     /// Sätt monitorläget (nivå, dim, mono, tyst). Påverkar bara det som hörs.
     SetControlRoom(ControlRoomState),

@@ -512,10 +512,7 @@ pub struct SonixApp {
     pub suno_generation_progress: f32,
     pub suno_zoom_level: f32,
     /// Background AI audio-API request: (result slot, prompt).
-    pub ai_audio_pending: Option<(
-        std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, String>>>>,
-        String,
-    )>,
+    pub ai_audio_pending: Option<AiAudioPending>,
     pub timeline_snap_mode: TimeSnapMode,
     pub timeline_auto_scroll: bool,
     pub selected_timeline_track: usize,
@@ -699,6 +696,12 @@ pub struct SonixApp {
     pub screenshot_state: ScreenshotState,
     pub screenshot_mode_active: bool,
 }
+
+/// En AI-ljudbeställning: delat resultat plus texten som ska visas när den är klar.
+pub type AiAudioPending = (
+    std::sync::Arc<std::sync::Mutex<Option<Result<Vec<u8>, String>>>>,
+    String,
+);
 
 impl SonixApp {
     pub fn tr(&self, key: &'static str) -> &'static str {

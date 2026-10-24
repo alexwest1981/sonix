@@ -5,6 +5,9 @@ use crate::ui::app::{AudioRegion, PlaylistTrack};
 use crate::ui::theme::Theme;
 use crate::ui::widgets::rotary_knob;
 
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
 pub fn render_vocal_studio_view(
     ui: &mut Ui,
     vocal_track: &mut VocalStudioTrack,

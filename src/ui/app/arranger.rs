@@ -120,7 +120,9 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
         let bar_w = (60.0 * self.suno_zoom_level).clamp(16.0, 1500.0);
         // Soundtrap-klippen är ~120 px höga; 64 px rad ger klipp på ~56 px utan att
         // spårhuvudets kontroller behöver flyttas om (de skjuts ned med `ctrl_y_offset`).
-        let row_h = 84.0;
+        // **120 px klipphöjd** enligt Soundtrap-blueprinten: klippet fyller nästan hela raden,
+        // och spårhuvudet har plats för den runda ikonen.
+        let row_h = 120.0;
         let ruler_h = 32.0;
         // **Tidsaxeln går genom tempokartan** (Fas 8.2 steg 3). X är fortfarande takter
         // (`bar_w` per takt); varje gång en *sekund* behövs frågas kartan i stället för att
@@ -804,13 +806,24 @@ impl SonixApp {
                 let color_bar = Rect::from_min_size(h_rect.min, Vec2::new(4.0, h_rect.height()));
                 ui.painter().rect_filled(color_bar, Rounding::same(1.5), accent_color);
 
+                // **Rund spårikon, 44 px** (blueprinten). Emojin satt tidigare i namnet; här får
+                // den en egen cirkel i spårfärgen, så raderna läses på samma ställe.
+                let icon_c = Pos2::new(h_rect.min.x + 30.0, h_rect.min.y + 26.0);
+                ui.painter().circle_filled(icon_c, 22.0, Color32::from_rgba_unmultiplied(accent_color.r(), accent_color.g(), accent_color.b(), 55));
+                ui.painter().circle_stroke(icon_c, 22.0, Stroke::new(1.2_f32, accent_color));
+                ui.painter().text(
+                    icon_c,
+                    egui::Align2::CENTER_CENTER,
+                    icon,
+                    egui::FontId::proportional(20.0),
+                    accent_color,
+                );
+
                 // Track Number & Name
                 let display_name = if is_mic_track {
                     format!("{} 🎤 MIKROFON (Huvudinspelning)", t_idx + 1)
-                } else if track_name.starts_with(icon) {
-                    format!("{} {}", t_idx + 1, track_name)
                 } else {
-                    format!("{} {} {}", t_idx + 1, icon, track_name)
+                    format!("{} {}", t_idx + 1, track_name)
                 };
                 let title_col = if is_mic_track {
                     crate::ui::theme::palette().bg()
@@ -820,7 +833,7 @@ impl SonixApp {
                     track_color
                 };
                 ui.painter().text(
-                    Pos2::new(h_rect.min.x + 10.0, h_rect.min.y + 12.0),
+                    Pos2::new(h_rect.min.x + 60.0, h_rect.min.y + 20.0),
                     egui::Align2::LEFT_CENTER,
                     display_name,
                     egui::FontId::proportional(if is_mic_track { 14.0 } else { 13.5 }),
@@ -1034,6 +1047,9 @@ impl SonixApp {
     /// De fyra tidsfrågorna kommer in som referenser: de definieras i anroparen (en ägare per
     /// fråga), och kroppen här är flyttad ordagrant — därför står `secs_at(bar)` kvar som det
     /// gjorde, inte `g.secs_at(bar)`.
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
     pub(crate) fn draw_timeline_lanes(
         &mut self,
         ui: &mut egui::Ui,
@@ -1380,6 +1396,19 @@ impl SonixApp {
 
                         // Full Timeline Track Lane (Scalable width with total_bars)
                         let (lane_rect, lane_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, track_row_h), Sense::click_and_drag());
+                        // **Automatiseringsfilen syns i spårfärgen** längst ner i raden: samma
+                        // remsa som kurvan ritas i, så man ser vilket spår den hör till.
+                        if self.show_automation {
+                            let strip = Rect::from_min_max(
+                                Pos2::new(lane_rect.min.x, lane_rect.max.y - 16.0),
+                                lane_rect.max,
+                            );
+                            ui.painter().rect_filled(
+                                strip,
+                                Rounding::ZERO,
+                                Color32::from_rgba_unmultiplied(track_color.r(), track_color.g(), track_color.b(), 38),
+                            );
+                        }
 
                         // Draw Background Bar Grid Lines
                         for bar_i in 0..total_bars {

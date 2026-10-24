@@ -32,6 +32,9 @@ pub struct PluginViewActions {
     pub set_extra_out_target: Option<(usize, usize, Option<usize>)>,
 }
 
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
 pub fn render_plugins_view(
     ui: &mut Ui,
     manager: &mut PluginManager,
@@ -186,6 +189,9 @@ pub fn render_plugins_view(
 
 /// Lists the plugins currently instantiated per stem track, with open/close GUI
 /// and remove buttons. Empty when no plugin is loaded anywhere.
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
 fn render_active_inserts(
     ui: &mut Ui,
     active_plugins: &[Option<String>],

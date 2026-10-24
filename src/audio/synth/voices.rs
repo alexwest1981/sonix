@@ -1045,7 +1045,7 @@ impl SampleVoice {
 
     /// Byter rösten till **släppljudet**: huvudsamplingen tystnar och dämparens ljud tar vid i
     /// samma röst. `false` = inget släppljud finns, och då gör anroparen som förut.
-    pub fn into_release(&mut self) -> bool {
+    pub fn begin_release(&mut self) -> bool {
         let Some((pcm, rate)) = self.release.take() else {
             return false;
         };

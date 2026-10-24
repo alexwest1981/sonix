@@ -1101,6 +1101,9 @@ pub struct LoadedProjectPayload {
 /// att jämföra hela projektet, och av testet som bevisar att varje mixat fält
 /// faktiskt ingår. Ändrar du vad motorn tar emot ska du ändra här också —
 /// testet `mixer_digest_covers_every_mixed_field` räknar upp fälten.
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn mixer_digest(
     tracks: &[PlaylistTrack],
     bus_volume: &[f32],

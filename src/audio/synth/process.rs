@@ -137,9 +137,9 @@ impl SynthEngine {
             // för den tar slut själv.
             if !sv.released && sv.hold_frames.is_some_and(|h| sv.frames_done >= h) {
                 sv.released = true;
-                // **Släppljud** vid notens slut. `into_release` nollställer `hold_frames`, så
+                // **Släppljud** vid notens slut. `begin_release` nollställer `hold_frames`, så
                 // kontrollen kan inte trigga igen på samma röst.
-                sv.into_release();
+                sv.begin_release();
             }
             if sv.released && sv.env_on {
                 sv.amp_env.gate_off();

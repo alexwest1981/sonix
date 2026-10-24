@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — Soundtrap-måtten på plats, och clippy på noll (0.9.120)
+
+- **120 px radhöjd** (var 84): klippet fyller nästan hela raden, som i blueprinten.
+- **Rund spårikon, 44 px**, i spårfärgen — emojin låg tidigare inbakat i namnet.
+- **Automatiseringsfilen syns i spårfärgen** längst ner i varje rad när automation är på.
+- **clippy 24 → 0.** Riktiga fixar där de var billiga (åtta `needless_range_loop` → iteratorer,
+  `let…else` → `?`, `into_release` → `begin_release` eftersom den tar `&mut self`, tre typalias,
+  boxat `PushError`). `too_many_arguments` och `large_enum_variant` har `#[allow]` med skälet
+  utskrivet: parametrarna är motorns hela tillstånd, och att boxa kommandona lägger en allokering
+  på realtidsvägen.
+
 ### Added — a sample header API for scripts (0.9.119)
 
 - `wav_reader::wav_info(path)` läser **bara** chunk-tabellen: `fmt ` och `data`-längden. Ingen

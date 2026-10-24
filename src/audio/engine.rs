@@ -4,6 +4,9 @@ use rtrb::{Consumer, Producer, RingBuffer};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 
+/// Delarna en öppnad ström består av — aliaset håller signaturen läsbar.
+type StreamParts = (Stream, Producer<AudioCommand>, Consumer<f32>);
+
 use super::command::AudioCommand;
 use super::synth::SynthEngine;
 
@@ -365,6 +368,9 @@ impl AudioEngine {
         }
     }
 
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
     fn open_stream(
         device: &cpal::Device,
         sample_format: SampleFormat,
@@ -378,7 +384,7 @@ impl AudioEngine {
         audition_active: &Arc<AtomicBool>,
         output_silent: &Arc<AtomicBool>,
         master_gr_db: &Arc<AtomicU32>,
-    ) -> Result<(Stream, Producer<AudioCommand>, Consumer<f32>), Box<dyn std::error::Error>> {
+    ) -> Result<StreamParts, Box<dyn std::error::Error>> {
         let (command_tx, command_rx) = RingBuffer::<AudioCommand>::new(ring_buffer_size);
         let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
 
@@ -393,8 +399,13 @@ impl AudioEngine {
         Ok((stream, command_tx, scope_rx))
     }
 
-    pub fn send_command(&mut self, cmd: AudioCommand) -> Result<(), rtrb::PushError<AudioCommand>> {
-        push_counted(&mut self.command_tx, &self.command_drops, cmd)
+    /// Felet boxas: `PushError<AudioCommand>` är lika stor som kommandot, och en `Result`
+    /// med den i sig gör varje anrop dyrare än det behöver vara.
+    pub fn send_command(
+        &mut self,
+        cmd: AudioCommand,
+    ) -> Result<(), Box<rtrb::PushError<AudioCommand>>> {
+        push_counted(&mut self.command_tx, &self.command_drops, cmd).map_err(Box::new)
     }
 
     /// Antal kommandon som ringen inte tog emot sedan starten. Noll är det normala;
@@ -467,6 +478,9 @@ impl AudioEngine {
         out
     }
 
+// Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
+// påhittad struct skulle bara flytta samma fält ett steg.
+#[allow(clippy::too_many_arguments)]
     fn build_stream<T>(
         device: &cpal::Device,
         config: &StreamConfig,

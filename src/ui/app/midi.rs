@@ -43,7 +43,7 @@ pub(crate) fn pattern_bar_notes(
     };
     match kind {
         TrackKind::Drums => {
-            for ch in 0..DRUM_CHANNEL_KEYS.len() {
+            for (ch, &default_key) in DRUM_CHANNEL_KEYS.iter().enumerate() {
                 let Some(steps) = pattern.channel_steps.get(ch) else {
                     continue;
                 };
@@ -51,7 +51,7 @@ pub(crate) fn pattern_bar_notes(
                 for step in 0..16 {
                     let at = step_offset + step;
                     if steps[at] {
-                        let key = notes.map(|n| n[at]).unwrap_or(DRUM_CHANNEL_KEYS[ch]);
+                        let key = notes.map(|n| n[at]).unwrap_or(default_key);
                         place(key, step, 9, &mut out);
                     }
                 }

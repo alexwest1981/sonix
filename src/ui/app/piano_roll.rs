@@ -105,9 +105,9 @@ pub fn humanize_active_pattern(&mut self) {
 impl SonixApp {
 pub fn transpose_active_pattern(&mut self, semitones: i8) {
     let mut new_grid = [[false; crate::ui::app::state::MAX_STEPS]; 24];
-    for offset in 0..24 {
-        for step in 0..crate::audio::tempo::MAX_STEPS {
-            if self.piano_roll_grid[offset][step] {
+    for (offset, row) in self.piano_roll_grid.iter().enumerate() {
+        for (step, on) in row.iter().enumerate() {
+            if *on {
                 let target = offset as i8 + semitones;
                 if (0..24).contains(&target) {
                     new_grid[target as usize][step] = true;
@@ -1656,16 +1656,14 @@ pub fn apply_drummer_generation(&mut self) {
             }
         }
         2 => {
-            for step in 0..crate::audio::tempo::MAX_STEPS {
+            for (step, slot) in hat_c.iter_mut().enumerate() {
                 if step % 2 == 0 || comp > 0.4 {
-                    hat_c[step] = true;
+                    *slot = true;
                 }
             }
         }
         _ => {
-            for step in 0..crate::audio::tempo::MAX_STEPS {
-                hat_c[step] = true;
-            }
+            hat_c.fill(true);
             if comp > 0.5 {
                 hat_o[14] = true;
             }

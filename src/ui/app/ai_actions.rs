@@ -177,8 +177,8 @@ impl SonixApp {
         for (i, (layer, note)) in [(&kick, 36u8), (&snare, 38), (&hat, 42)].into_iter().enumerate() {
             let ch = &mut self.channels[i];
             ch.steps = *layer;
-            for step in 0..ai_tools::STEPS {
-                if layer[step] {
+            for (step, on) in layer.iter().enumerate() {
+                if *on {
                     ch.notes[step] = note;
                 }
             }

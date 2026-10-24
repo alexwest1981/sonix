@@ -105,6 +105,9 @@ pub struct ClipGeometry {
     pub source_bpm: f32,
 }
 
+/// Klippen som ska klippas: takt, kanal och hur starten justeras.
+pub type TrimPlan = Vec<(usize, usize, ClipStartAlign)>;
+
 /// Hur nära två klipp måste börja för att räknas som samma stämgrupp (Fas 8.15b).
 ///
 /// En hundradels takt är det finaste rutnätet (`TimeSnapMode::FreeHundredth`). Klipp som
@@ -134,7 +137,7 @@ pub fn plan_group_shift_by_head_secs(
     anchor_bar: f32,
     head_secs: f64,
     tempo: &crate::audio::tempo::TempoMap,
-) -> Result<Vec<(usize, usize, ClipStartAlign)>, (usize, usize)> {
+) -> Result<TrimPlan, (usize, usize)> {
     let mut plan = Vec::new();
     if head_secs <= 0.0 {
         return Ok(plan);

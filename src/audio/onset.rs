@@ -421,6 +421,9 @@ fn flux_series(samples: &[f32]) -> Vec<f32> {
 
     let mut flux = vec![0.0_f32; frames];
     let mut prev: Vec<f32> = vec![0.0; bins];
+    // Ramindex används både för att läsa `samples` och för att skriva `flux` efter FFT:n;
+    // att låna flux mutabelt över hela varvet blockerar den läsningen.
+    #[allow(clippy::needless_range_loop)]
     for f in 0..frames {
         let start = f * HOP;
         for i in 0..WINDOW {
