@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the mic track is an ordinary track now
+
+- **Same height as the rest.** The mic track was drawn at double height with a white card and a
+  white lane — a bright block in the middle of a dark arrangement. It now uses the normal row
+  height, the normal panel background and the normal grid; only its cyan accent marks it.
+- **Glare lowered on selection.** Selected regions filled at alpha 190 with a white 2 px outline
+  and a white waveform; now 150, a cyan 1.6 px outline and a darker tint of the track colour in
+  the waveform. Selection is still unmistakable, and nothing in the arrangement reads as a light
+  panel any more.
+
 ### Changed — rounder clips
 
 - Clip labels 10.5 → 13.5 px, the range Soundtrap uses on its regions; long names still fit inside

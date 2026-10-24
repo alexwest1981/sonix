@@ -120,7 +120,7 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
         let bar_w = (60.0 * self.suno_zoom_level).clamp(16.0, 1500.0);
         // Soundtrap-klippen är ~120 px höga; 64 px rad ger klipp på ~56 px utan att
         // spårhuvudets kontroller behöver flyttas om (de skjuts ned med `ctrl_y_offset`).
-        let row_h = 64.0;
+        let row_h = 84.0;
         let ruler_h = 32.0;
         // **Tidsaxeln går genom tempokartan** (Fas 8.2 steg 3). X är fortfarande takter
         // (`bar_w` per takt); varje gång en *sekund* behövs frågas kartan i stället för att
@@ -849,19 +849,23 @@ impl SonixApp {
                     || track_name.to_lowercase().contains("mikrofon")
                     || track_name.to_lowercase().contains("microphone")
                     || (t_idx == self.playlist_tracks.len() - 1 && track_name.to_lowercase().contains("mik"));
-                let track_row_h = if is_mic_track { row_h * 2.0 } else { row_h };
+                // Mikrofonspåret har samma höjd som de andra (Alex 2026-10-24) — den dubbla
+                // höjden gav en tom vit yta som inte visade något inspelningen behövde.
+                let track_row_h = row_h;
 
                 // Left Track Header Card (Sonix Style)
                 let (h_rect, h_resp) = ui.allocate_exact_size(Vec2::new(header_w, track_row_h), Sense::click());
+                // Mikrofonspåret var helvitt på mörk botten — det stack i ögonen (Alex 2026-10-24).
+                // Nu samma yta som de andra spåren, med cyan som enda markering.
                 let card_bg = if is_mic_track {
-                    crate::ui::theme::palette().text()
+                    crate::ui::theme::palette().panel()
                 } else if is_sel_track {
                     crate::ui::theme::palette().panel()
                 } else {
                     crate::ui::theme::palette().bg()
                 };
                 let card_stroke = if is_mic_track {
-                    if is_sel_track { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().text() }
+                    if is_sel_track { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().panel_alt() }
                 } else if is_sel_track {
                     track_color
                 } else {
@@ -892,22 +896,22 @@ impl SonixApp {
                     track_color
                 };
                 ui.painter().text(
-                    Pos2::new(h_rect.min.x + 10.0, h_rect.min.y + if is_mic_track { 16.0 } else { 12.0 }),
+                    Pos2::new(h_rect.min.x + 10.0, h_rect.min.y + 12.0),
                     egui::Align2::LEFT_CENTER,
                     display_name,
                     egui::FontId::proportional(if is_mic_track { 14.0 } else { 13.5 }),
                     title_col,
                 );
 
-                let ctrl_y_offset = if is_mic_track { 30.0 } else { 8.0 };
+                let ctrl_y_offset = 16.0;
 
                 // Live Input Meter for Mic/Vocal tracks or armed tracks
                 let is_armed = self.playlist_tracks[t_idx].is_rec_armed;
                 if is_vocal_track || is_armed || is_mic_track {
                     let vu = self.vocal_studio.mic_vu_level;
-                    let vu_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 116.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(20.0, if is_mic_track { 28.0 } else { 18.0 }));
-                    ui.painter().rect_filled(vu_rect, Rounding::same(2.0), if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().header() });
-                    let vu_h = (vu * (if is_mic_track { 24.0 } else { 14.0 })).clamp(2.0, if is_mic_track { 24.0 } else { 14.0 });
+                    let vu_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 116.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(20.0, 18.0));
+                    ui.painter().rect_filled(vu_rect, Rounding::same(2.0), crate::ui::theme::palette().header());
+                    let vu_h = (vu * 14.0).clamp(2.0, 14.0);
                     let vu_fill = Rect::from_min_max(
                         Pos2::new(vu_rect.min.x + 4.0, vu_rect.max.y - 2.0 - vu_h),
                         Pos2::new(vu_rect.max.x - 4.0, vu_rect.max.y - 2.0)
@@ -918,14 +922,14 @@ impl SonixApp {
 
                 // Controls Row inside header (Vol Slider, Pan Slider, Mute, Solo, Record Arm R, Focus Editor 🔍)
                 let vol_rect = Rect::from_min_size(Pos2::new(h_rect.min.x + 8.0, h_rect.min.y + 26.0 + ctrl_y_offset), Vec2::new(38.0, 12.0));
-                ui.painter().rect_filled(vol_rect, Rounding::same(2.0), if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() });
+                ui.painter().rect_filled(vol_rect, Rounding::same(2.0), crate::ui::theme::palette().panel());
                 let vol_fill_w = vol_rect.width() * (track_vol / 1.25).clamp(0.0, 1.0);
                 ui.painter().rect_filled(Rect::from_min_size(vol_rect.min, Vec2::new(vol_fill_w, vol_rect.height())), Rounding::same(2.0), accent_color);
                 ui.painter().text(vol_rect.center(), egui::Align2::CENTER_CENTER, format!("{:.0}%", track_vol * 100.0), egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text());
 
                 // Pan Slider
                 let pan_rect = Rect::from_min_size(Pos2::new(h_rect.min.x + 50.0, h_rect.min.y + 26.0 + ctrl_y_offset), Vec2::new(36.0, 12.0));
-                ui.painter().rect_filled(pan_rect, Rounding::same(2.0), if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() });
+                ui.painter().rect_filled(pan_rect, Rounding::same(2.0), crate::ui::theme::palette().panel());
                 let track_pan = self.playlist_tracks[t_idx].pan;
                 let pan_norm = ((track_pan + 1.0) / 2.0).clamp(0.0, 1.0);
                 let center_x = pan_rect.center().x;
@@ -937,32 +941,32 @@ impl SonixApp {
                 };
                 ui.painter().rect_filled(pan_fill_rect, Rounding::same(1.0), crate::ui::theme::palette().cyan());
                 let pan_str = if track_pan.abs() < 0.05 { "C".to_string() } else if track_pan < 0.0 { format!("L{:.0}", track_pan.abs() * 50.0) } else { format!("R{:.0}", track_pan * 50.0) };
-                ui.painter().text(pan_rect.center(), egui::Align2::CENTER_CENTER, pan_str, egui::FontId::proportional(Theme::FONT_XS), if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
+                ui.painter().text(pan_rect.center(), egui::Align2::CENTER_CENTER, pan_str, egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text_muted());
 
                 // Mute icon (speaker)
                 let m_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 90.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(18.0, 18.0));
-                let m_bg = if track_muted { crate::ui::theme::palette().red() } else if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
+                let m_bg = if track_muted { crate::ui::theme::palette().red() } else { crate::ui::theme::palette().panel() };
                 ui.painter().rect_filled(m_rect, Rounding::same(2.0), m_bg);
-                ui.painter().text(m_rect.center(), egui::Align2::CENTER_CENTER, "🔊", egui::FontId::proportional(Theme::FONT_XS), if track_muted { crate::ui::theme::palette().text() } else if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
+                ui.painter().text(m_rect.center(), egui::Align2::CENTER_CENTER, "🔊", egui::FontId::proportional(Theme::FONT_XS), if track_muted { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().text_muted() });
 
                 // Solo (S)
                 let s_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 68.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(18.0, 18.0));
-                let s_bg = if track_solo { crate::ui::theme::palette().orange() } else if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
+                let s_bg = if track_solo { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel() };
                 ui.painter().rect_filled(s_rect, Rounding::same(2.0), s_bg);
-                ui.painter().text(s_rect.center(), egui::Align2::CENTER_CENTER, "S", egui::FontId::proportional(Theme::FONT_XS), if track_solo { Color32::BLACK } else if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
+                ui.painter().text(s_rect.center(), egui::Align2::CENTER_CENTER, "S", egui::FontId::proportional(Theme::FONT_XS), if track_solo { Color32::BLACK } else { crate::ui::theme::palette().text_muted() });
 
                 // Record Arm (R)
                 let r_arm_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 46.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(18.0, 18.0));
-                let r_arm_bg = if is_armed { crate::ui::theme::palette().red() } else if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
+                let r_arm_bg = if is_armed { crate::ui::theme::palette().red() } else { crate::ui::theme::palette().panel() };
                 ui.painter().rect_filled(r_arm_rect, Rounding::same(2.0), r_arm_bg);
-                ui.painter().text(r_arm_rect.center(), egui::Align2::CENTER_CENTER, "R", egui::FontId::proportional(Theme::FONT_XS), if is_armed { crate::ui::theme::palette().text() } else if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
+                ui.painter().text(r_arm_rect.center(), egui::Align2::CENTER_CENTER, "R", egui::FontId::proportional(Theme::FONT_XS), if is_armed { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().text_muted() });
 
                 // Stem Focus / Detail Editor button (🔍)
                 let f_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 24.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(18.0, 18.0));
                 let is_focused = self.show_stem_focus_modal && self.focused_stem_track == Some(t_idx);
-                let f_bg = if is_focused { crate::ui::theme::palette().cyan() } else if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
+                let f_bg = if is_focused { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().panel() };
                 ui.painter().rect_filled(f_rect, Rounding::same(2.0), f_bg);
-                ui.painter().text(f_rect.center(), egui::Align2::CENTER_CENTER, "🔍", egui::FontId::proportional(Theme::FONT_XS), if is_focused { Color32::BLACK } else if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
+                ui.painter().text(f_rect.center(), egui::Align2::CENTER_CENTER, "🔍", egui::FontId::proportional(Theme::FONT_XS), if is_focused { Color32::BLACK } else { crate::ui::theme::palette().text_muted() });
 
                 if h_resp.clicked() || h_resp.double_clicked() {
                     ui.memory_mut(|m| m.stop_text_input());
@@ -973,7 +977,7 @@ impl SonixApp {
                         self.status_message = crate::tstatus!("Markerade '{}' [Start: {} | Längd: {}]", reg.name, format_time_hundredths(tempo.secs_at_bar(reg.start_bar as f64) as f32), format_time_hundredths(tempo.secs_for_bars_at(reg.start_bar as f64, reg.length_bars as f64) as f32));
                     }
                     if let Some(mouse_pos) = h_resp.hover_pos() {
-                        let vu_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 116.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(20.0, if is_mic_track { 28.0 } else { 18.0 }));
+                        let vu_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 116.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(20.0, 18.0));
                         if (is_vocal_track || is_armed || is_mic_track) && vu_rect.contains(mouse_pos) {
                             self.show_mic_settings_modal = true;
                         } else if m_rect.contains(mouse_pos) {
@@ -1423,7 +1427,7 @@ impl SonixApp {
                             || track_name.to_lowercase().contains("mikrofon")
                             || track_name.to_lowercase().contains("microphone")
                             || (t_idx == self.playlist_tracks.len() - 1 && track_name.to_lowercase().contains("mik"));
-                        let track_row_h = if is_mic_track { row_h * 2.0 } else { row_h };
+                        let track_row_h = row_h;
 
                         // Full Timeline Track Lane (Scalable width with total_bars)
                         let (lane_rect, lane_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, track_row_h), Sense::click_and_drag());
@@ -1433,15 +1437,9 @@ impl SonixApp {
                             let b_min_x = lane_rect.min.x + bar_i as f32 * bar_w;
                             let b_rect = Rect::from_min_size(Pos2::new(b_min_x, lane_rect.min.y), Vec2::new(bar_w, track_row_h));
                             let is_active_bar = !self.pattern_mode && self.is_playing && self.song_bar == bar_i;
-                            let bg = if is_mic_track {
-                                if is_active_bar {
-                                    crate::ui::theme::palette().text()
-                                } else if (bar_i / 4) % 2 == 0 {
-                                    crate::ui::theme::palette().text()
-                                } else {
-                                    crate::ui::theme::palette().text()
-                                }
-                            } else if is_active_bar {
+                            // Mikrofonfilen målades helvit tidigare — en vit yta mitt i det mörka
+                            // arrangemanget. Nu samma rutnät som de andra spåren.
+                            let bg = if is_active_bar {
                                 crate::ui::theme::palette().grid()
                             } else if (bar_i / 4) % 2 == 0 {
                                 crate::ui::theme::palette().bg()
@@ -1449,12 +1447,12 @@ impl SonixApp {
                                 crate::ui::theme::palette().header()
                             };
                             ui.painter().rect_filled(b_rect, Rounding::ZERO, bg);
-                            let grid_stroke_col = if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel_alt() };
+                            let grid_stroke_col = crate::ui::theme::palette().panel_alt();
                             ui.painter().line_segment([Pos2::new(b_min_x, lane_rect.min.y), Pos2::new(b_min_x, lane_rect.max.y)], Stroke::new(0.5_f32, grid_stroke_col));
 
                             // Beat Sub-Grid Lines when zoomed in
                             if bar_w >= 70.0 {
-                                let beat_col = if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
+                                let beat_col = crate::ui::theme::palette().panel();
                                 for beat in 1..4 {
                                     let bx = b_min_x + beat as f32 * (bar_w / 4.0);
                                     ui.painter().line_segment([Pos2::new(bx, lane_rect.min.y), Pos2::new(bx, lane_rect.max.y)], Stroke::new(0.5_f32, beat_col));
@@ -1463,7 +1461,7 @@ impl SonixApp {
 
                             // 16th-note sub-grid lines when zoomed in
                             if bar_w >= 220.0 {
-                                let step_col = if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().header() };
+                                let step_col = crate::ui::theme::palette().header();
                                 for step in 1..16 {
                                     if step % 4 != 0 {
                                         let sx = b_min_x + step as f32 * (bar_w / 16.0);
@@ -1520,7 +1518,7 @@ impl SonixApp {
                         }
 
                         // Bottom line separator between tracks
-                        ui.painter().line_segment([Pos2::new(lane_rect.min.x, lane_rect.max.y), Pos2::new(lane_rect.max.x, lane_rect.max.y)], Stroke::new(0.5_f32, if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().grid() }));
+                        ui.painter().line_segment([Pos2::new(lane_rect.min.x, lane_rect.max.y), Pos2::new(lane_rect.max.x, lane_rect.max.y)], Stroke::new(0.5_f32, crate::ui::theme::palette().grid()));
 
                         // Render continuous Audio Regions on this track
                         let mut split_action: Option<(usize, f32)> = None;
@@ -1582,14 +1580,17 @@ impl SonixApp {
                                         } else if region.muted {
                                             crate::ui::theme::palette().panel_alt()
                                         } else if is_region_selected {
-                                            Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 190)
+                                            // Vald region ljusades till 190 och sken mot det mörka
+                                            // arrangemanget; 150 räcker för att markera valet.
+                                            Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 150)
                                         } else {
                                             Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 120)
                                         };
                                         ui.painter().rect_filled(header_rect, Rounding { nw: 4.0, ne: 4.0, sw: 0.0, se: 0.0 }, header_bg);
 
                                         let stroke_col = if is_region_selected {
-                                            if is_mic_track { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().text() }
+                                            // Vit 2 px ram skar i ögonen; cyan markerar valet utan att blända.
+                                            crate::ui::theme::palette().cyan()
                                         } else if region.muted {
                                             crate::ui::theme::palette().border_soft()
                                         } else if is_mic_track {
@@ -1597,7 +1598,7 @@ impl SonixApp {
                                         } else {
                                             col
                                         };
-                                        ui.painter().rect_stroke(r_rect, Rounding::same(8.0), Stroke::new(if is_region_selected { 2.0_f32 } else { 1.2_f32 }, stroke_col));
+                                        ui.painter().rect_stroke(r_rect, Rounding::same(8.0), Stroke::new(if is_region_selected { 1.6_f32 } else { 1.2_f32 }, stroke_col));
 
                                         // Region Header Banner & Exact Time readout (Start & Length down to hundredths!)
                                         let gain_db = if region.volume <= 0.001 { -60.0 } else { 20.0 * region.volume.log10() };
@@ -1660,7 +1661,13 @@ impl SonixApp {
                                         } else if region.muted {
                                             crate::ui::theme::palette().border_soft()
                                         } else if is_region_selected {
-                                            crate::ui::theme::palette().text()
+                                            // Vit vågform i valt klipp blev en ljus platta — en
+                                            // mörkare ton av spårets färg syns lika bra mot fyllningen.
+                                            Color32::from_rgb(
+                                                (col.r() as f32 * 0.55) as u8,
+                                                (col.g() as f32 * 0.55) as u8,
+                                                (col.b() as f32 * 0.55) as u8,
+                                            )
                                         } else {
                                             Color32::from_rgb(
                                                 ((col.r() as f32 * 0.85) + 38.0).min(255.0) as u8,
