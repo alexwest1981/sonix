@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Verified — a real VST3 processes audio (0.9.121)
+
+- `sonix --render-plugin <plugin> [ut.wav]` kör en 440 Hz-ton genom en riktig plugin utan GUI och
+  skriver resultatet. Det är kvittensen bryggan saknade: att filen laddar bevisar bara ABI:n.
+- **Mätt mot Surge XT Effects 1.3.4 (VST3, Linux):** laddar, `backend: VST3`, **2 855 parametrar**
+  (774 automatiserbara), och ljudet ändras — RMS 0,14142 → 0,13187, största skillnad 0,100 mot
+  torrt. Utfilen är en ren 440 Hz-ton (topp vid 439,5 Hz), alltså DSP och inte skräp.
+- Surge XT (instrument) laddar också: `ABCDEF019182FAEB566D624153675854`, 2 855 parametrar.
+- **Inte byggt:** VST3 rapporterar ingen portlayout (`portar: ingen uppgift från backend`), så
+  sidokedja och egna utbussar syns bara för CLAP. Det är nästa bit om multi-out ska fungera för VST3.
+
 ### Changed — Soundtrap-måtten på plats, och clippy på noll (0.9.120)
 
 - **120 px radhöjd** (var 84): klippet fyller nästan hela raden, som i blueprinten.

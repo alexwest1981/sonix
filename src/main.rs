@@ -236,6 +236,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(if failed == 0 { 0 } else { 1 });
     }
 
+    // `sonix --render-plugin <plugin> <ut.wav>`: kör en ton genom en **riktig** plugin utan
+    // GUI och skriver resultatet. Det är kvittensen för bryggan: att en fil laddar säger bara
+    // att ABI:n stämmer, att ljudet ändras säger att DSP:n faktiskt kör.
+    if let Some(pos) = std::env::args().position(|a| a == "--render-plugin") {
+        let path = match std::env::args().nth(pos + 1) {
+            Some(p) => p,
+            None => {
+                eprintln!("användning: sonix --render-plugin <plugin.vst3|.clap> [ut.wav]");
+                std::process::exit(2);
+            }
+        };
+        let out = std::env::args()
+            .nth(pos + 2)
+            .unwrap_or_else(|| "plugin_render.wav".to_string());
+        let frames = 48_000usize;
+        let block = 512usize;
+        let mut left = vec![0.0f32; frames];
+        let mut right = vec![0.0f32; frames];
+        for i in 0..frames {
+            let v = (i as f32 * 440.0 * std::f32::consts::TAU / 48_000.0).sin() * 0.2;
+            left[i] = v;
+            right[i] = v;
+        }
+        let dry: Vec<f32> = left.clone();
+        match audio::plugin_host_live::load_processor(&path, 48_000.0, block as u32) {
+            Ok(mut proc) => {
+                for start in (0..frames).step_by(block) {
+                    let end = (start + block).min(frames);
+                    proc.process_stereo(&mut left[start..end], &mut right[start..end]);
+                }
+                let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+                let diff: f32 = left
+                    .iter()
+                    .zip(dry.iter())
+                    .map(|(a, b)| (a - b).abs())
+                    .fold(0.0, f32::max);
+                let _ = audio::wav_writer::write_pcm_f32_to_wav(&out, &left, 48_000, 1);
+                println!("📦 {path}");
+                println!("  backend: {}", proc.backend());
+                println!("  RMS in:  {:.5}", rms(&dry));
+                println!("  RMS ut:  {:.5}", rms(&left));
+                println!("  största skillnad mot torrt: {diff:.5}");
+                println!("  skrev:   {out}");
+            }
+            Err(e) => {
+                eprintln!("⚠ {path}: {e}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+
     // `sonix --macro-example <fil>`: skriver en färdig startkedja. Kedjan är en fil man kan
     // rätta för hand, så kommandot behövs för att komma igång utan att kunna filformen.
     if let Some(pos) = std::env::args().position(|a| a == "--macro-example") {
