@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — bend per note (MPE) and talkback to a cue
+
+- **`NoteBendPoint { pos, key, semitones }`** in the pattern: the same curve as `bends`, but keyed
+  on the note number, so two notes on one channel can bend differently. `AudioCommand::NoteBend`
+  / `NoteBendDelayed` reach the engine, and both live playback (`trigger_step`) and the exported
+  file schedule them — the channel bend path is untouched.
+  Prov `a_note_bend_reaches_only_its_note_on_a_shared_channel` (note 67 up an octave, note 60
+  still at 1,0) and `the_export_schedules_the_steps_note_bend` (no channel bend is created).
+- **Talkback routing:** `SetTalkbackCue(0|1|2)` = MIX / cue A / cue B, three buttons next to
+  🎙 TALKBACK. With A selected the talk goes into the singer's cue and never into the main
+  bus — which means never into a recording. Prov `talkback_can_be_routed_to_a_cue`:
+  cue A 0,25 RMS, MIX below 0,01.
+
 ### Fixed — the take lanes were invisible in the demo
 
 - Lane-vyn (0.9.46) ritar varje tagning som ett band i patternblocket och låter ett klick välja

@@ -2487,6 +2487,26 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                             {
                                 toggle_talkback = Some(!self.talkback);
                             }
+                            // **Vart pratet går:** MIX = monitorerna, A/B = sångarens cue.
+                            for (route, label) in [(0u8, "MIX"), (1, "A"), (2, "B")] {
+                                if ui
+                                    .add(
+                                        egui::Button::new(
+                                            egui::RichText::new(label).size(Theme::FONT_XS),
+                                        )
+                                        .selected(self.talkback_cue == route),
+                                    )
+                                    .on_hover_text(crate::i18n::t(
+                                        "Talkback till monitorerna eller till en cue-buss",
+                                    ))
+                                    .clicked()
+                                {
+                                    self.talkback_cue = route;
+                                    let _ = self.engine.send_command(
+                                        crate::audio::AudioCommand::SetTalkbackCue(route),
+                                    );
+                                }
+                            }
                             ui.separator();
                             let mut vocoder = self.vocoder_amount;
                             if ui

@@ -8,6 +8,18 @@ impl SynthEngine {
     /// Lägg på en pitch bend på en kanal. Kanal 0 är MPE-mastern och böjer allt; en
     /// medlemskanal böjer bara de röster som spelades på den. Böjningen sparas per kanal,
     /// så en not som slås an medan hjulet står uppe startar böjd.
+    /// **Böjer bara den tonen.** Två röster på samma kanal kan därför böjas olika — det är
+    /// skillnaden mellan MPE per ton och en kanalbend.
+    pub(super) fn apply_note_bend(&mut self, key: u8, semitones: f32) {
+        let ratio = 2.0_f32.powf(semitones / 12.0);
+        let master = self.bend_ratio[0];
+        for voice in &mut self.voices {
+            if voice.is_active() && voice.note == key {
+                voice.bend_ratio = master * ratio;
+            }
+        }
+    }
+
     pub(super) fn apply_channel_bend(&mut self, channel: u8, semitones: f32) {
         let ratio = 2.0_f32.powf(semitones / 12.0);
         self.bend_ratio[channel.min(16) as usize] = ratio;
@@ -348,6 +360,23 @@ impl SynthEngine {
             }
             AudioCommand::ChannelPitchBend { channel, semitones } => {
                 self.apply_channel_bend(channel, semitones);
+            }
+            AudioCommand::NoteBend { key, semitones } => {
+                self.apply_note_bend(key, semitones);
+            }
+            AudioCommand::NoteBendDelayed { key, semitones, delay_samples } => {
+                self.scheduled_note_bends.push(ScheduledNoteBend {
+                    samples_until: delay_samples,
+                    key,
+                    semitones,
+                });
+                if self.scheduled_note_bends.len() > 256 {
+                    let overflow = self.scheduled_note_bends.len() - 256;
+                    self.scheduled_note_bends.drain(0..overflow);
+                }
+            }
+            AudioCommand::SetTalkbackCue(cue) => {
+                self.talkback_cue = cue.min(2);
             }
             AudioCommand::BendDelayed { channel, semitones, delay_samples } => {
                 self.scheduled_bends.push(ScheduledBend {

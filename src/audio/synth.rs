@@ -133,6 +133,9 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
         AudioCommand::ChannelPitchBend { .. } => "ChannelPitchBend",
+        AudioCommand::NoteBend { .. } => "NoteBend",
+        AudioCommand::NoteBendDelayed { .. } => "NoteBendDelayed",
+        AudioCommand::SetTalkbackCue(_) => "SetTalkbackCue",
         AudioCommand::BendDelayed { .. } => "BendDelayed",
         AudioCommand::StrumChord { .. } => "StrumChord",
         AudioCommand::TriggerDrum(_) => "TriggerDrum",
@@ -439,6 +442,8 @@ pub struct SynthEngine {
     pub delay: StereoDelay,
     pub reverb_params: ReverbParams,
     pub reverb: SimpleReverb,
+    /// Vart talkbacken går: 0 = monitorerna (MIX), 1 = cue A, 2 = cue B.
+    pub talkback_cue: u8,
     /// Höger kanals reverb — samma inställning, eget tillstånd, så en stereokälla får varsin
     /// svans i stället för en gemensam monosumma.
     pub reverb_r: SimpleReverb,
@@ -535,6 +540,8 @@ pub struct SynthEngine {
     pub scheduled_notes: Vec<ScheduledNote>,
     /// Inspelade bend, samplenoggranna (samma kö-mönster som `scheduled_notes`).
     pub scheduled_bends: Vec<ScheduledBend>,
+    /// Bend som väntar på sitt sample och bara gäller en ton.
+    pub scheduled_note_bends: Vec<ScheduledNoteBend>,
     // Modular Patcher DSP graph
     pub patcher: Option<PatchProcessor>,
     pub patcher_spec: Option<PatchSpec>,
@@ -614,6 +621,7 @@ impl SynthEngine {
             reverb_params: ReverbParams::default(),
             reverb: SimpleReverb::new(sample_rate),
             reverb_r: SimpleReverb::new(sample_rate),
+            talkback_cue: 0,
             drive: 1.0,
             master_fx: MasterFxChain::new(sample_rate),
             fm: FmParams::default(),
@@ -660,6 +668,7 @@ impl SynthEngine {
             sample_voice_cursor: 0,
             scheduled_notes: Vec::new(),
             scheduled_bends: Vec::new(),
+            scheduled_note_bends: Vec::new(),
             patcher: None,
             patcher_spec: None,
             patcher_enabled: false,

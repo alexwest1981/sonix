@@ -246,6 +246,30 @@ pub fn clip_at(
 ///
 /// Punkten hör till det steg dess `pos` ligger i, och fördröjningen är resten — så en
 /// böjning mitt i steget landar samplenoggrant i stället för på steggränsen.
+/// Bends som bara gäller en ton: `(key, semitones, delay_samples)`. Samma tidsregel som
+/// `bends_for_step`, men nycklad på notnummer i stället för kanal.
+pub fn note_bends_for_step(
+    bends: &[NoteBendPoint],
+    step: usize,
+    step_samples: u32,
+) -> Vec<(u8, f32, u32)> {
+    let mut out = Vec::new();
+    for b in bends {
+        if !b.pos.is_finite() || b.pos < 0.0 {
+            continue;
+        }
+        let at = b.pos.floor() as usize;
+        if at == step {
+            out.push((
+                b.key,
+                b.semitones,
+                ((b.pos - at as f32) * step_samples as f32).max(0.0) as u32,
+            ));
+        }
+    }
+    out
+}
+
 pub fn bends_for_step(bends: &[BendPoint], step: usize, step_samples: u32) -> Vec<(u8, f32, u32)> {
     let mut out = Vec::new();
     for b in bends {
@@ -293,6 +317,16 @@ pub fn next_pattern_step(step: usize, len: usize) -> usize {
 pub struct BendPoint {
     pub pos: f32,
     pub channel: u8,
+    pub semitones: f32,
+}
+
+/// **En bend som bara gäller en ton** (MPE per ton): `key` pekar ut rösten, inte kanalen.
+/// En kanalbend böjer allt som spelar på kanalen; den här böjer bara den noten, även om
+/// två noter delar kanal.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NoteBendPoint {
+    pub pos: f32,
+    pub key: u8,
     pub semitones: f32,
 }
 
@@ -458,6 +492,8 @@ pub struct Pattern {
     /// MPE-bend som hör till patternet. Ligger i patternet (inte i tagningen), eftersom
     /// det är patternet som spelas — både i pattern-läget och från ett arrangemangsblock.
     pub bends: Vec<BendPoint>,
+    /// **Bend per ton** (MPE): samma kurva som `bends`, men nycklad på notnummer.
+    pub note_bends: Vec<NoteBendPoint>,
     /// **Pedalkurvan** (CC64). Ligger i patternet av samma skäl som benden: det är patternet
     /// som spelas, i pattern-läget och från ett arrangemangsblock.
     pub pedals: Vec<PedalPoint>,

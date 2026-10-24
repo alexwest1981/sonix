@@ -51,6 +51,19 @@ impl SynthEngine {
             }
         }
 
+        if !self.scheduled_note_bends.is_empty() {
+            let mut i = 0;
+            while i < self.scheduled_note_bends.len() {
+                if self.scheduled_note_bends[i].samples_until == 0 {
+                    let ev = self.scheduled_note_bends.swap_remove(i);
+                    self.apply_note_bend(ev.key, ev.semitones);
+                } else {
+                    self.scheduled_note_bends[i].samples_until -= 1;
+                    i += 1;
+                }
+            }
+        }
+
         let mut mixed_l = 0.0;
         let mut mixed_r = 0.0;
         let mut active_count = 0;
@@ -853,8 +866,16 @@ impl SynthEngine {
         // har alltid `Main` och ser därför aldrig en cue-buss.
         let (fx_l, fx_r) = match self.cue_listen {
             crate::audio::control_room::CueListen::Main => (master_l, master_r),
-            crate::audio::control_room::CueListen::A => (cue_a_l, cue_a_r),
-            crate::audio::control_room::CueListen::B => (cue_b_l, cue_b_r),
+            // **Talkback till cue:** pratet läggs bara på den buss sångaren lyssnar på, så det
+            // hörs i hörlurarna men aldrig i mastern (och därmed aldrig i en inspelning).
+            crate::audio::control_room::CueListen::A => (
+                cue_a_l + if self.talkback_cue == 1 { talkback } else { 0.0 },
+                cue_a_r + if self.talkback_cue == 1 { talkback } else { 0.0 },
+            ),
+            crate::audio::control_room::CueListen::B => (
+                cue_b_l + if self.talkback_cue == 2 { talkback } else { 0.0 },
+                cue_b_r + if self.talkback_cue == 2 { talkback } else { 0.0 },
+            ),
         };
 
         // Modulationsmatrisen räknas per sampel, på masterns nivå före volymstegen.
@@ -911,7 +932,8 @@ impl SynthEngine {
         };
         // Talkback läggs på **efter** control room: DIM ska dämpa musiken, inte pratet, och
         // den som lyssnar på en cue-buss ska höra pratet över den bussen.
-        let (out_l, out_r) = (out_l + talkback, out_r + talkback);
+        let main_talkback = if self.talkback_cue == 0 { talkback } else { 0.0 };
+        let (out_l, out_r) = (out_l + main_talkback, out_r + main_talkback);
 
         self.dbg_frames += 1;
         if self.dbg_frames.is_multiple_of(48000) {

@@ -80,6 +80,8 @@ pub struct RackChannel {
 pub struct PatternSnap {
     /// MPE-bend som hör till patternet; spelas även i offline-exporten.
     pub bends: Vec<crate::ui::app::state::BendPoint>,
+    /// Bend per ton — samma kurva, nycklad på notnummer.
+    pub note_bends: Vec<crate::ui::app::state::NoteBendPoint>,
     /// Pedalkurvan (CC64) — utan den tappar exporten allt trampande.
     pub pedals: Vec<crate::ui::app::state::PedalPoint>,
     /// Per Channel-Rack channel step grid.
@@ -351,6 +353,15 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                     semitones,
                     delay_samples,
                 })
+                .chain(
+                    crate::ui::app::state::note_bends_for_step(&pat.note_bends, at, step_samples)
+                        .into_iter()
+                        .map(|(key, semitones, delay_samples)| AudioCommand::NoteBendDelayed {
+                            key,
+                            semitones,
+                            delay_samples,
+                        }),
+                )
                 .collect();
         // Pedalen ligger på steggränsen — 16-delars noggrannhet, inte samplenogrann.
         if let Some(down) = crate::ui::app::state::pedal_at_step(&pat.pedals, at) {
@@ -1254,6 +1265,7 @@ mod tests {
         let mut patterns = Vec::new();
         patterns.push(PatternSnap {
             bends: Vec::new(),
+            note_bends: Vec::new(),
             pedals: Vec::new(),
             steps,
             notes,
@@ -1321,6 +1333,38 @@ mod tests {
         assert!(delay > 0, "halva steget in, inte på steggränsen: {delay}");
     }
 
+
+    /// **Bend per ton följer med till filen.** En kurva på not 64 ska bara ge ett
+    /// `NoteBendDelayed` — inte en kanalbend som drar med grannnoten.
+    #[test]
+    fn the_export_schedules_the_steps_note_bend() {
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        grid[4][0] = true;
+        let mut spec = synth_spec_with(grid, [false; crate::audio::tempo::MAX_STEPS], 64);
+        spec.patterns[0].note_bends = vec![crate::ui::app::state::NoteBendPoint {
+            pos: 0.5,
+            key: 64,
+            semitones: 2.0,
+        }];
+
+        let cmds = triggers_for_step(&spec, 0, 0);
+        let bend = cmds.iter().find_map(|c| match c {
+            AudioCommand::NoteBendDelayed {
+                key,
+                semitones,
+                delay_samples,
+            } => Some((*key, *semitones, *delay_samples)),
+            _ => None,
+        });
+        let (key, semitones, delay) = bend.expect("notbenden ska med i kommandona");
+        assert_eq!(key, 64);
+        assert_eq!(semitones, 2.0);
+        assert!(delay > 0, "halva steget in, inte på steggränsen: {delay}");
+        assert!(
+            !cmds.iter().any(|c| matches!(c, AudioCommand::BendDelayed { .. })),
+            "ingen kanalbend ska skapas av en notbend"
+        );
+    }
 
     /// **Pedalkurvan följer med till filen.** Utan den tappar exporten allt trampande, och
     /// en pianotagning med pedal låter annorlunda än den gjorde i högtalarna.

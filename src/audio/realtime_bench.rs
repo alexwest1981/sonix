@@ -196,6 +196,7 @@ pub fn reference_spec() -> RenderSpec {
         rack,
         patterns: vec![PatternSnap {
             bends: Vec::new(),
+            note_bends: Vec::new(),
             pedals: Vec::new(),
             steps: {
                 let mut s = vec![[false; crate::audio::tempo::MAX_STEPS]; 8];

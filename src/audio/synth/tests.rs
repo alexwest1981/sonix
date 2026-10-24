@@ -3392,6 +3392,35 @@ fn the_inharmonic_wave_puts_its_partials_off_the_harmonic_series() {
 /// medlemskanal ska böja bara den kanalens noter. Utan `channel` i `NoteOn` faller
 /// provet på att båda rösterna får samma `bend_ratio`.
 #[test]
+fn a_note_bend_reaches_only_its_note_on_a_shared_channel() {
+    let mut engine = SynthEngine::new(48_000.0);
+    for (note, freq) in [(60u8, 261.63f32), (67, 392.0)] {
+        engine.handle_command(AudioCommand::NoteOn {
+            note,
+            freq,
+            velocity: 1.0,
+            channel: 2,
+        });
+    }
+
+    engine.handle_command(AudioCommand::NoteBend {
+        key: 67,
+        semitones: 12.0,
+    });
+
+    let active: Vec<&Voice> = engine.voices.iter().filter(|v| v.is_active()).collect();
+    assert_eq!(active.len(), 2, "båda noterna ska klinga");
+    let n60 = active.iter().find(|v| v.note == 60).expect("not 60");
+    let n67 = active.iter().find(|v| v.note == 67).expect("not 67");
+    assert_eq!(n60.bend_ratio, 1.0, "not 60 ska stå orörd");
+    assert!(
+        (n67.bend_ratio - 2.0).abs() < 1e-5,
+        "not 67 ska en oktav upp, fick {}",
+        n67.bend_ratio
+    );
+}
+
+#[test]
 fn an_mpe_bend_reaches_only_the_voice_on_its_channel() {
     let mut engine = SynthEngine::new(48_000.0);
     engine.handle_command(AudioCommand::NoteOn {
@@ -3732,6 +3761,33 @@ fn talkback_is_heard_through_a_dimmed_monitor() {
     );
 }
 
+
+/// **Talkback kan gå till en cue i stället för till monitorerna.** Med pratet på cue A hörs
+/// det i A-lyssningen och inte i MIX — alltså i sångarens lurar, aldrig i en inspelning.
+#[test]
+fn talkback_can_be_routed_to_a_cue() {
+    use crate::audio::control_room::CueListen;
+    fn render(route: u8, listen: CueListen) -> f32 {
+        let mut synth = SynthEngine::new(48_000.0);
+        let ring = Arc::new(Mutex::new(vec![0.25f32; 24_000]));
+        synth.handle_command(AudioCommand::SetMonitorRing {
+            ring: Arc::clone(&ring),
+        });
+        synth.handle_command(AudioCommand::SetTalkback(true));
+        synth.handle_command(AudioCommand::SetTalkbackCue(route));
+        synth.handle_command(AudioCommand::SetCueListen(listen));
+        let out = render_left(&mut synth, 4_800);
+        rms(&out[480..])
+    }
+
+    let on_cue = render(1, CueListen::A);
+    let on_main_with_cue_route = render(1, CueListen::Main);
+    assert!(on_cue > 0.1, "pratet ska höras i cue A: {on_cue:.4}");
+    assert!(
+        on_main_with_cue_route < 0.01,
+        "det ska inte läcka till MIX: {on_main_with_cue_route:.4}"
+    );
+}
 
 /// **Bärvågen hörs bara när modulatorn säger till.** Synten är bärvåg och en stam är
 /// modulator: med tyst modulator stängs bärvågen (amount 1,0), med en stam som spelar

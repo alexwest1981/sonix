@@ -504,6 +504,26 @@ fn trigger_step(&mut self, step: usize) {
             delay_samples,
         });
     }
+    // **Bend per ton** i det här steget — samma kurva som exporten spelar.
+    let note_due = self
+        .patterns
+        .get(self.selected_pattern)
+        .map(|p| {
+            crate::ui::app::state::note_bends_for_step(&p.note_bends, step, self.step_samples(step))
+        })
+        .unwrap_or_default();
+    for (key, semitones, delay_samples) in note_due {
+        // På steggränsen behövs ingen fördröjning — då gäller benden direkt.
+        let _ = self.engine.send_command(if delay_samples == 0 {
+            AudioCommand::NoteBend { key, semitones }
+        } else {
+            AudioCommand::NoteBendDelayed {
+                key,
+                semitones,
+                delay_samples,
+            }
+        });
+    }
     // Inspelad pedal i det här steget.
     if let Some(down) = self
         .patterns

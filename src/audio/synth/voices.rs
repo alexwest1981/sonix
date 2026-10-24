@@ -357,6 +357,13 @@ pub struct ScheduledBend {
     pub semitones: f32,
 }
 
+/// Som `ScheduledBend`, men nycklad på notnummer: bara den tonen böjs (MPE per ton).
+pub struct ScheduledNoteBend {
+    pub samples_until: u32,
+    pub key: u8,
+    pub semitones: f32,
+}
+
 /// A note waiting to be triggered by the scheduler (chord strum/arpeggio).
 pub struct ScheduledNote {
     pub samples_until: u32,

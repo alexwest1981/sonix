@@ -626,6 +626,8 @@ pub struct SonixApp {
     pub pattern_menu: Option<(usize, usize)>,
     /// **Talkback:** micken till monitorerna i stället för in i mastern.
     pub talkback: bool,
+    /// Vart talkbacken går: 0 = monitorerna (MIX), 1 = cue A, 2 = cue B.
+    pub talkback_cue: u8,
     /// Enhetströmmen som talkback öppnade. `None` när talkback är av — strömmen stängs då,
     /// så mikrofonen inte hålls öppen i onödan. Lånas aldrig: sångstudions egen inspelning
     /// används i stället om den redan är igång (två strömmar på samma enhet går inte).
@@ -796,6 +798,7 @@ impl SonixApp {
             color: crate::ui::theme::palette().orange(),
             bars: 1,
             bends: Vec::new(),
+            note_bends: Vec::new(),
             pedals: vec![
                 state::PedalPoint { pos: 4.0, down: true },
                 state::PedalPoint { pos: 12.0, down: false },
@@ -814,6 +817,7 @@ impl SonixApp {
             color: crate::ui::theme::palette().cyan(),
             bars: 1,
             bends: Vec::new(),
+            note_bends: Vec::new(),
             pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
@@ -829,6 +833,7 @@ impl SonixApp {
             color: crate::ui::theme::palette().green(),
             bars: 1,
             bends: Vec::new(),
+            note_bends: Vec::new(),
             pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
@@ -844,6 +849,7 @@ impl SonixApp {
             color: crate::ui::theme::palette().track_rose(),
             bars: 1,
             bends: Vec::new(),
+            note_bends: Vec::new(),
             pedals: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
@@ -1252,6 +1258,7 @@ impl SonixApp {
             ],
             pattern_menu: None,
             talkback: false,
+            talkback_cue: 0,
             talkback_capture: None,
             vocoder_amount: 0.0,
             script_source: crate::ui::app::script::DEFAULT_SOURCE.to_string(),
@@ -1451,6 +1458,10 @@ impl SonixApp {
         let _ = self
             .engine
             .send_command(crate::audio::AudioCommand::SetTalkback(on));
+        // Rutten skickas med varje gång: den kan ändras medan pratet är på.
+        let _ = self
+            .engine
+            .send_command(crate::audio::AudioCommand::SetTalkbackCue(self.talkback_cue));
         if !on {
             // Släpp enhetströmmen och ge motorn en tom ring, så en gammal buffert inte ligger
             // kvar och spelas upp nästa gång talkback slås på.

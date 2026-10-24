@@ -416,6 +416,19 @@ pub enum AudioCommand {
     /// Samma böjning, men **samplenoggrant fördröjd** — för inspelade bend som ligger
     /// inne i ett steg. Motorns kö räknar ned per sampel, så kurvan blir slät i stället
     /// för att kvantiseras till sextondelar.
+    /// **Talkback till en cue-buss** i stället för till monitorerna: 0 = monitor (MIX),
+    /// 1 = cue A, 2 = cue B. Sångaren hör pratet i sin egen lyssning.
+    SetTalkbackCue(u8),
+    /// **MPE per ton:** böjer bara röster med det notnumret, inte hela kanalen.
+    NoteBend {
+        key: u8,
+        semitones: f32,
+    },
+    NoteBendDelayed {
+        key: u8,
+        semitones: f32,
+        delay_samples: u32,
+    },
     BendDelayed {
         channel: u8,
         semitones: f32,
