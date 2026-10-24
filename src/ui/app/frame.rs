@@ -260,6 +260,9 @@ impl SonixApp {
                     if action.apply_plan {
                         self.apply_pending_plan();
                     }
+                    if action.generate_audio {
+                        self.trigger_suno_ai_generation();
+                    }
                 }
                 ViewMode::EffectsMixer => {
                     self.render_effects_mixer_rack(ui);

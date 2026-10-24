@@ -227,7 +227,6 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
 
         ui.add_space(6.0);
 
-        self.draw_arranger_ai_capsule(ui);
 
         self.draw_arranger_utility_bar(ui);
 
@@ -682,80 +681,6 @@ impl SonixApp {
         });
     }
 
-    /// Den flytande AI-capsulen i arrangören (prompt och generering).
-    pub(crate) fn draw_arranger_ai_capsule(&mut self, ui: &mut egui::Ui) {
-        // ================================================================
-        // 3. SUNO STUDIO FLOATING AI PROMPT & GENERATION CAPSULE (BETA)
-        // ================================================================
-        ui.vertical_centered(|ui| {
-            ui.group(|ui| {
-                ui.set_max_width(680.0);
-                ui.horizontal(|ui| {
-                    // Beta Tag
-                    ui.label(egui::RichText::new(crate::i18n::t("BETA")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().orange()));
-                    ui.separator();
-
-                    // Add Context (+)
-                    if ui.button(crate::i18n::t("➕")).on_hover_text(crate::i18n::t("Bifoga aktuellt spår/mix som AI-kontext")).clicked() {
-                        self.suno_context_clip = Some(format!("{} - Master Mix", self.project_name));
-                    }
-
-                    // Context Chip
-                    let mut clear_context = false;
-                    if let Some(ref ctx_clip) = self.suno_context_clip {
-                        let fill = crate::ui::theme::palette().track_violet();
-                        let clip_label = format!("🟣 {}", ctx_clip);
-                        ui.group(|ui| {
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(clip_label).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
-                                if ui.add(egui::Button::new(crate::i18n::t("✕")).small().fill(fill)).on_hover_text(crate::i18n::t("Rensa textrutan")).clicked() {
-                                    clear_context = true;
-                                }
-                            });
-                        });
-                    }
-                    if clear_context {
-                        self.suno_context_clip = None;
-                    }
-
-                    // Prompt Text Field
-                    let resp = ui.add(
-                        egui::TextEdit::singleline(&mut self.suno_prompt_input)
-                            .hint_text("Select a spot on the timeline and ask me to add a part...")
-                            .desired_width(320.0),
-                    );
-
-                    if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                        self.trigger_suno_ai_generation();
-                    }
-
-                    // Model Selector Pill (Local & Open Source AI Engines)
-                    egui::ComboBox::from_id_salt("suno_model_combo")
-                        .selected_text(&self.suno_model_version)
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut self.suno_model_version, "v5.5".to_string(), "v5.5");
-                            ui.selectable_value(&mut self.suno_model_version, "ACE-Step (Lokal Suno)".to_string(), "ACE-Step (Lokal Suno)");
-                            ui.selectable_value(&mut self.suno_model_version, "Stable Audio 3.0".to_string(), "Stable Audio 3.0");
-                            ui.selectable_value(&mut self.suno_model_version, "Meta MusicGen".to_string(), "MusicGen (Lokal)");
-                            ui.selectable_value(&mut self.suno_model_version, "Demucs UVR5".to_string(), "Demucs UVR5");
-                        });
-
-                    // Submit / Generate Button (↑)
-                    let gen_bg = if self.suno_is_generating { Color32::RED } else { crate::ui::theme::palette().green() };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⬆ ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(gen_bg)).on_hover_text(crate::i18n::t("Skicka prompten och generera")).clicked() {
-                        self.trigger_suno_ai_generation();
-                    }
-                });
-            });
-
-            ui.add_space(4.0);
-
-            // Center Action: "+ Add Track Effects" Button (Suno Studio Style)
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Add Track Effects")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border())).clicked() {
-                self.view_mode = ViewMode::EffectsMixer;
-            }
-        });
-    }
 
     /// Arrangörens nedre rad: snabbväxlaren, Sound Browser-knappen och guiden.
     pub(crate) fn draw_arranger_utility_bar(&mut self, ui: &mut egui::Ui) {

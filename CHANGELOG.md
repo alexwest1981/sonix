@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — less chrome in the arranger
+
+- The floating **BETA AI prompt capsule** is gone from the timeline; the AI view is where prompts
+  belong. Its one unique action, **🎧 Generera ljud** (Suno/TTS), moved into that view — removing
+  the capsule would otherwise have left the whole audio-generation path unreachable, which the
+  compiler pointed out as seven dead functions.
+
 ### Changed — a new project starts ready to record
 
 - `new_empty_project` (Ctrl+N) now arms the mic track, selects it, turns the metronome on and

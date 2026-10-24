@@ -751,9 +751,8 @@ pub fn chat_with_tools(config: &AiConfig, user_text: &str) -> Result<String, Str
         })
     };
 
-    let agent = ureq::AgentBuilder::new()
-        .timeout(Duration::from_secs(config.timeout_secs.clamp(5, 300)))
-        .build();
+    // Samma agent och samma felformatering som `generate_clips` — en väg för nätet, inte två.
+    let agent = build_agent(config);
     let mut req = agent.post(&url).set("Content-Type", "application/json");
     if is_anthropic {
         req = req
@@ -762,9 +761,7 @@ pub fn chat_with_tools(config: &AiConfig, user_text: &str) -> Result<String, Str
     } else if !config.api_key.trim().is_empty() {
         req = req.set("Authorization", &format!("Bearer {}", config.api_key));
     }
-    let text = req
-        .send_string(&body.to_string())
-        .map_err(|e| e.to_string())?
+    let text = send_request(req.send_string(&body.to_string()))?
         .into_string()
         .map_err(|e| e.to_string())?;
 
