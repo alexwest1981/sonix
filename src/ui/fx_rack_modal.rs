@@ -443,14 +443,14 @@ impl Default for FxRackState {
             search_query: String::new(),
             selected_category: "Alla",
             eq_nodes: vec![
-                VisualEqNode { name: "Low (Bass)", freq_hz: 120.0, gain_db: 2.0, q: 0.7, color: crate::ui::theme::palette().red(), is_active: true },
-                VisualEqNode { name: "Low-Mid", freq_hz: 450.0, gain_db: -1.5, q: 1.2, color: crate::ui::theme::palette().amber(), is_active: true },
-                VisualEqNode { name: "High-Mid", freq_hz: 2800.0, gain_db: 3.0, q: 1.0, color: crate::ui::theme::palette().green(), is_active: true },
-                VisualEqNode { name: "High (Air)", freq_hz: 11000.0, gain_db: 1.5, q: 0.8, color: crate::ui::theme::palette().cyan(), is_active: true },
-                // **Sju band** (0.9.123): samma mittfrekvenser som master-EQ:n räknar på.
-                VisualEqNode { name: "Band 5", freq_hz: 3500.0, gain_db: 0.0, q: 1.0, color: crate::ui::theme::palette().green(), is_active: false },
-                VisualEqNode { name: "Band 6", freq_hz: 8000.0, gain_db: 0.0, q: 1.0, color: crate::ui::theme::palette().amber(), is_active: false },
-                VisualEqNode { name: "Band 7", freq_hz: 12000.0, gain_db: 0.0, q: 1.0, color: crate::ui::theme::palette().cyan(), is_active: false },
+                // **Sju band**, samma mittfrekvenser som master-EQ:n räknar på (FL:s 7 Band EQ).
+                VisualEqNode { name: "Low", freq_hz: 60.0, gain_db: 2.0, q: 0.7, color: crate::ui::theme::palette().red(), is_active: true },
+                VisualEqNode { name: "Bass", freq_hz: 170.0, gain_db: -1.5, q: 1.0, color: crate::ui::theme::palette().amber(), is_active: true },
+                VisualEqNode { name: "Low-Mid", freq_hz: 350.0, gain_db: 0.0, q: 1.2, color: crate::ui::theme::palette().orange(), is_active: true },
+                VisualEqNode { name: "Mid", freq_hz: 1000.0, gain_db: 0.0, q: 1.0, color: crate::ui::theme::palette().green(), is_active: true },
+                VisualEqNode { name: "High-Mid", freq_hz: 3500.0, gain_db: 3.0, q: 1.0, color: crate::ui::theme::palette().cyan(), is_active: true },
+                VisualEqNode { name: "High", freq_hz: 8000.0, gain_db: 0.0, q: 0.9, color: crate::ui::theme::palette().purple(), is_active: true },
+                VisualEqNode { name: "Air", freq_hz: 12000.0, gain_db: 1.5, q: 0.8, color: crate::ui::theme::palette().track_teal(), is_active: true },
             ],
             compressor_release_ms: 120.0,
             convolver_mix: 0.35,
@@ -1221,9 +1221,8 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
                         ui.add_space(6.0);
 
                         if pedal.id == "visual_eq" {
-                            // Knobs drive the real 4-band EQ nodes (same state as
-                            // the Visual EQ tab).
-                            let short = ["LOW", "L-MID", "H-MID", "HIGH"];
+                            // **Sju rattar, sju band** — samma tillstånd som Visual EQ-fliken.
+                            let short = ["LOW", "BASS", "L-MID", "MID", "H-MID", "HIGH", "AIR"];
                             for (i, node) in eq_nodes.iter_mut().enumerate() {
                                 let label = short.get(i).copied().unwrap_or("BAND");
                                 rotary_knob(ui, &mut node.gain_db, -12.0, 12.0, label, node.color, 14.0);

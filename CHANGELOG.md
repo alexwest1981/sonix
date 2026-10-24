@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the EQ card showed eight bands (0.9.124)
+
+- Rattarna i Visual EQ-kortet ritades för **alla** noder men etiketterna var fyra, så de tre
+  sista blev "BAND". Nu sju etiketter (LOW/BASS/L-MID/MID/H-MID/HIGH/AIR) — verifierat i bild:
+  sju rattar, ingen "BAND" kvar.
+
 ### Added — 7-band EQ and Fruity Center (0.9.123)
 
 - **Masterns grafiska EQ har sju band**, på FL:s mittfrekvenser 60/170/350/1k/3,5k/8k/12k.
