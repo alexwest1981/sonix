@@ -1093,6 +1093,13 @@ impl SonixApp {
 
                     // Inställningar
                     ui.menu_button(self.tr("⚙ Inställningar"), |ui| {
+                        // **AI-nyckeln ska gå att hitta där man letar efter inställningar**, inte bara
+                        // under AI-menyn. Samma fönster, två vägar in.
+                        if ui.button(self.tr("🤖 AI & API-nyckel...")).clicked() {
+                            self.show_ai_settings_modal = true;
+                            ui.close_menu();
+                        }
+                        ui.separator();
                         if ui.button(self.tr("🎙 Mikrofoninställningar & Inmatningsenhet (Samson/USB)...")).clicked() {
                             self.show_mic_settings_modal = true;
                             ui.close_menu();

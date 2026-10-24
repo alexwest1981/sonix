@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the API key is under Settings
+
+- **Inställningar → 🤖 AI & API-nyckel…** opens the same window as AI & Providers: provider, base
+  URL, key (masked), model, timeout — saved to `~/.config/sonix/ai.json`. Two ways in, one modal.
+
 ### Added — pitch envelope per operator (Sytrus)
 
 - `SixOpParams.pitch_amount: [f32; 6]` (−24…+24 semitones, serde default 0) bends each operator's
