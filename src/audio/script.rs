@@ -122,17 +122,10 @@ pub fn run(source: &str, take: &mut Take) -> Result<Vec<String>, String> {
 /// **Skriptmappen.** `.rhai`-filer här listas i pianorullens meny; en fil som ligger någon
 /// annanstans går att köra via filväljaren.
 pub fn script_dir() -> std::path::PathBuf {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| {
-            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()))
-                .join(".config")
-        });
-    base.join("sonix").join("scripts")
+    // Sökvägar byggs bara i `paths.rs` — även de här (SONIX_CONFIG_DIR och XDG styr).
+    crate::paths::paths().config_dir().join("scripts")
 }
 
-/// Skripten i mappen, sorterade. En oläsbar mapp ger en tom lista, inte ett fel: menyn ska
-/// fungera även första gången.
 /// Ett exempelskript som skrivs första gången mappen används — menyn ska visa ytan, inte en
 /// tom ruta, och filen är samtidigt dokumentationen av vad ett skript får göra.
 const SAMPLE: &str = r#"// Rullande bas: transponera ned en oktav och mjuka upp anslagen.

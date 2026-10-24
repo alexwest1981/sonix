@@ -309,13 +309,8 @@ fn compact_arrays(json: &str) -> String {
 }
 
 pub fn theme_path() -> std::path::PathBuf {
-    let base = std::env::var("XDG_CONFIG_HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|_| {
-            std::path::PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| ".".into()))
-                .join(".config")
-        });
-    base.join("sonix").join("theme.json")
+    // Sökvägar byggs bara i `paths.rs` — även de här (SONIX_CONFIG_DIR och XDG styr).
+    crate::paths::paths().config_dir().join("theme.json")
 }
 
 #[cfg(test)]
