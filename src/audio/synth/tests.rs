@@ -1714,6 +1714,82 @@ fn trigger_sampler_velocity(
     synth
 }
 
+/// **Panorering per operator når ända ut i mastern.** Operadens pan sätts till vänster;
+/// då ska vänster kanal höras och höger vara tyst — genom röstens filter, envelop och FX.
+#[test]
+fn an_operator_pan_reaches_the_master() {
+    let mut synth = SynthEngine::new(48_000.0);
+    synth.handle_command(AudioCommand::SetWaveform(crate::audio::synth::Waveform::SixOp));
+    synth.handle_command(AudioCommand::SetSixOp {
+        params: crate::audio::synth::SixOpParams {
+            pan: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ..crate::audio::synth::SixOpParams::default()
+        },
+    });
+    synth.handle_command(AudioCommand::NoteOn {
+        note: 60,
+        freq: 261.63,
+        velocity: 1.0,
+        channel: 0,
+    });
+
+    let (mut peak_l, mut peak_r) = (0.0f32, 0.0f32);
+    for _ in 0..4_000 {
+        let (l, r) = synth.process_stereo();
+        peak_l = peak_l.max(l.abs());
+        peak_r = peak_r.max(r.abs());
+    }
+    assert!(peak_l > 0.05, "vänster ska höras: {peak_l:.4}");
+    assert!(
+        peak_r < peak_l * 0.02,
+        "höger ska vara tyst när operatorn ligger helt till vänster: {peak_r:.5} mot {peak_l:.4}"
+    );
+}
+
+/// **En stereosampling behåller sina kanaler.** Vänster är en ramp, höger är tyst — förut
+/// summerades de till mono, så höger fick samma ljud som vänster och bredden försvann.
+#[test]
+fn a_stereo_sample_keeps_its_channels() {
+    let mut synth = SynthEngine::new(48_000.0);
+    let n = 4_000usize;
+    let ramp: Vec<f32> = (0..n).map(|i| i as f32 / n as f32 * 0.5).collect();
+    synth.handle_command(AudioCommand::TriggerSampleVoice {
+        left: std::sync::Arc::new(ramp),
+        right: std::sync::Arc::new(vec![0.0; n]),
+        sample_rate: 48_000,
+        base_note: 60,
+        note: 60,
+        pitch_semitones: 0,
+        pitch_cents: 0.0,
+        velocity: 1.0,
+        velocity_sensitivity: 1.0,
+        velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
+        volume: 1.0,
+        reverse: false,
+        start01: 0.0,
+        end01: 1.0,
+        channel: 0,
+        loop_mode: LoopMode::Off,
+        loop_start01: 0.0,
+        loop_end01: 1.0,
+        ping_pong: false,
+        amp_env: AdsrParams::default(),
+        filter: SamplerFilter::default(),
+        hold_secs: 0.0,
+        release: None,
+    });
+
+    let (mut peak_l, mut peak_r) = (0.0f32, 0.0f32);
+    // Rampen växer från 0, så fönstret måste vara en bit in i samplingen för att höras.
+    for _ in 0..2_000 {
+        let (l, r) = synth.process_stereo();
+        peak_l = peak_l.max(l.abs());
+        peak_r = peak_r.max(r.abs());
+    }
+    assert!(peak_l > 0.05, "vänster ska höras: {peak_l:.4}");
+    assert!(peak_r < 0.001, "höger var tyst i samplingen: {peak_r:.6}");
+}
+
 /// Triggar en kanal med en **3 kHz-sin** (±0,5) — en ton mitt i registret, där ett lågpassfilter
 /// hörs som skillnaden mellan "släpper igenom" och "dämpar".
 ///

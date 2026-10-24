@@ -71,6 +71,10 @@ pub struct SixOpParams {
     /// negativ = mjuk start. Samma ADSR, olika form — Sytrus har tension per envelop.
     #[serde(default = "no_pitch")]
     pub env_curve: [f32; SIX_OP_COUNT],
+    /// **Panorering per operator** (−1..1, 0 = mitten). Linjär lag: mitten ger (1,1), så en
+    /// patch utan panorering låter exakt som förut.
+    #[serde(default = "no_pitch")]
+    pub pan: [f32; SIX_OP_COUNT],
     /// **Andra LFO:n** — Sytrus har flera. Egen fas, eget mål, så tonhöjd och cutoff kan röra sig
     /// olika fort. Djup 0 = av.
     #[serde(default)]
@@ -154,6 +158,7 @@ impl Default for SixOpParams {
             filter_env: no_pitch(),
             key_track: no_pitch(),
             env_curve: no_pitch(),
+            pan: no_pitch(),
             lfo2_rate: 0.0,
             lfo2_depth: 0.0,
             lfo2_target: 0,
@@ -232,7 +237,15 @@ impl SixOpVoice {
     /// summorna delas med √n så att nivån står still. Enveloperna tickas **en** gång per sampel
     /// och delas av stämmorna — annars skulle de sex enveloperna gå n gånger för fort.
     #[inline]
+    /// Monosummeringen av `next_sample_stereo` — alla prov och alla vägar som inte bryr sig om
+    /// bredd går här, och med pan 0 är den identisk med förut.
+    #[cfg(test)]
     pub fn next_sample(&mut self, params: &SixOpParams, inc: f32) -> f32 {
+        let (l, r) = self.next_sample_stereo(params, inc);
+        (l + r) * 0.5
+    }
+
+    pub fn next_sample_stereo(&mut self, params: &SixOpParams, inc: f32) -> (f32, f32) {
         // Klaviaturskalan mäts mot 440 Hz: hur många oktaver tonen ligger över/under.
         let key_octaves = (inc * self.sample_rate / TAU / 440.0).max(1e-6).log2();
         // **LFO:** en fas per röst, som en analog synt. Djupet är 0 som standard, och då är
@@ -277,7 +290,8 @@ impl SixOpVoice {
         }
 
         let voices = (params.unison.max(1) as usize).min(MAX_UNISON);
-        let mut total = 0.0;
+        let mut total_l = 0.0;
+        let mut total_r = 0.0;
         for u in 0..voices {
             // Stämman ligger `detune` cent från mitten, jämnt fördelade. Faktorn räknas per
             // stämma — den får inte ärvas vidare, då blir sista stämman kraftigt förstämd.
@@ -286,7 +300,7 @@ impl SixOpVoice {
             } else {
                 0.0
             };
-            total += self.matrix_sample(
+            let (l, r) = self.matrix_sample(
                 params,
                 inc * pitch_scale * (1.0 + detune),
                 &env_now,
@@ -295,8 +309,11 @@ impl SixOpVoice {
                 key_octaves,
                 u,
             );
+            total_l += l;
+            total_r += r;
         }
-        total / (voices as f32).sqrt()
+        let norm = (voices as f32).sqrt();
+        (total_l / norm, total_r / norm)
     }
 
     /// Matrisen för **en** unisonstämma. Indexen är både källa och mål i samma array
@@ -312,8 +329,10 @@ impl SixOpVoice {
         lfo2: f32,
         key_octaves: f32,
         u: usize,
-    ) -> f32 {
+    ) -> (f32, f32) {
         let mut out = [0.0f32; SIX_OP_COUNT];
+        let mut out_l = 0.0f32;
+        let mut out_r = 0.0f32;
         for target in 0..SIX_OP_COUNT {
             let mut modulation = 0.0;
             for source in 0..SIX_OP_COUNT {
@@ -394,11 +413,22 @@ impl SixOpVoice {
                 }
             }
         }
+        // **Nivå och panorering efter ring/add:** annars hade en additiv eller
+        // ringmodulerad operator hörts utan sitt bidrag. Panlagen är linjär, så mitten (0)
+        // ger (1,1) — samma nivå som en patch utan panorering alltid haft.
+        for target in 0..SIX_OP_COUNT {
+            let level = params.levels[target];
+            let pan = params.pan[target].clamp(-1.0, 1.0);
+            let (gl, gr) = if pan < 0.0 {
+                (1.0, 1.0 + pan)
+            } else {
+                (1.0 - pan, 1.0)
+            };
+            out_l += out[target] * level * gl;
+            out_r += out[target] * level * gr;
+        }
         self.last[u] = out;
-        out.iter()
-            .zip(params.levels.iter())
-            .map(|(value, level)| value * level)
-            .sum()
+        (out_l, out_r)
     }
 }
 

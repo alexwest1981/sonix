@@ -201,6 +201,9 @@ impl SynthEngine {
                 for curve in &mut params.env_curve {
                     *curve = curve.clamp(-2.0, 2.0);
                 }
+                for pan in &mut params.pan {
+                    *pan = pan.clamp(-1.0, 1.0);
+                }
                 params.lfo2_rate = params.lfo2_rate.clamp(0.0, 40.0);
                 params.lfo2_depth = params.lfo2_depth.clamp(0.0, 1.0);
                 params.lfo2_target = params.lfo2_target.min(2);
@@ -849,6 +852,7 @@ impl SynthEngine {
                     env: filter.env,
                 };
                 v.filter_state = crate::audio::filter::StateVariableFilter::new(self.sample_rate);
+                v.filter_state_r = crate::audio::filter::StateVariableFilter::new(self.sample_rate);
                 v.filter_env = AdsrVoice::new(self.sample_rate);
                 if filter.on {
                     v.filter_env.gate_on();

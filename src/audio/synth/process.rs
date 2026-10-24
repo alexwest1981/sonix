@@ -51,7 +51,8 @@ impl SynthEngine {
             }
         }
 
-        let mut mixed = 0.0;
+        let mut mixed_l = 0.0;
+        let mut mixed_r = 0.0;
         let mut active_count = 0;
 
         // Tonhöjd och filter läses från förra sampelns modulationsvärde: matrisen räknas i
@@ -63,7 +64,7 @@ impl SynthEngine {
         // 1. Synthesizer voices (each with its own envelope + filter state)
         for voice in &mut self.voices {
             if voice.is_active() {
-                mixed += voice.next_sample(
+                let (voice_l, voice_r) = voice.next_sample_stereo(
                     self.waveform,
                     &self.adsr,
                     &self.filter_params,
@@ -76,13 +77,18 @@ impl SynthEngine {
                     self.sub_level,
                     &self.additive,
                 );
+                mixed_l += voice_l;
+                mixed_r += voice_r;
                 active_count += 1;
             }
         }
 
         if active_count > 1 {
-            mixed *= 1.0 / (1.0 + 0.25 * (active_count as f32 - 1.0));
+            let norm = 1.0 / (1.0 + 0.25 * (active_count as f32 - 1.0));
+            mixed_l *= norm;
+            mixed_r *= norm;
         }
+        let mut mixed = (mixed_l + mixed_r) * 0.5;
 
         // 2. Drive / Saturation on Synth
         if self.drive > 1.05 {
@@ -102,7 +108,8 @@ impl SynthEngine {
         }
 
         // 5. WAV one-shot sample voices (Channel Rack real samples)
-        let mut sample_mix = 0.0;
+        let mut sample_mix_l = 0.0;
+        let mut sample_mix_r = 0.0;
         for sv in &mut self.sample_voices {
             if !sv.is_active() {
                 continue;
@@ -230,28 +237,32 @@ impl SynthEngine {
             // klangen, inte nivån. Envelopen måste läsas **per sample** — det är dess nivå som
             // flyttar cutoffen, så den kan inte räknas ut vid triggen. Är filtret av rörs
             // samplarna inte alls (provet om byte-identitet håller den regeln).
-            let mut mono = (s_l + s_r) * 0.5;
+            // Filtret ligger **per kanal**: samma inställning, eget tillstånd, så en stereosampling
+            // behåller sin bredd genom filtret i stället för att summeras först.
+            let mut left = s_l;
+            let mut right = s_r;
             if sv.filter.on {
                 let level = sv.filter_env.next_sample(&sv.filter.env);
-                let cutoff = crate::audio::filter::filter_cutoff_at(
-                    sv.filter.cutoff_hz,
-                    sv.filter.env_amount_octaves,
-                    level,
-                );
-                mono = sv.filter_state.process_lowpass(
-                    mono,
-                    &crate::audio::filter::FilterParams {
-                        cutoff,
-                        resonance: sv.filter.resonance,
-                    },
-                );
+                let filter_params = crate::audio::filter::FilterParams {
+                    cutoff: crate::audio::filter::filter_cutoff_at(
+                        sv.filter.cutoff_hz,
+                        sv.filter.env_amount_octaves,
+                        level,
+                    ),
+                    resonance: sv.filter.resonance,
+                };
+                left = sv.filter_state.process_lowpass(left, &filter_params);
+                right = sv.filter_state_r.process_lowpass(right, &filter_params);
             }
             // Amplitud-ADSR (Fas 8.4) — bara när den är vald. Identiteten rör ingenting,
             // alltså är en-skottsvägen oförändrad (se provet om byte-identitet).
             if sv.env_on {
                 g *= sv.amp_env.next_sample(&sv.env_params);
             }
-            sample_mix += mono * g;
+            // **Panoreringen bevaras:** vänster och höger går vidare var för sig. Förut
+            // summerades de till mono här, så en stereosampling (och kanalens pan) tappades.
+            sample_mix_l += left * g;
+            sample_mix_r += right * g;
             if sv.env_on && !sv.amp_env.is_active() {
                 sv.active = false;
                 continue;
@@ -265,13 +276,15 @@ impl SynthEngine {
             sv.frames_done += 1;
         }
 
-        let combined = synth_out + drum_mix + sample_mix;
+        let combined_l = mixed_l + drum_mix + sample_mix_l;
+        let combined_r = mixed_r + drum_mix + sample_mix_r;
 
         // 5. Reverb FX
-        let rev_out = self.reverb.process(combined, &self.reverb_params);
+        let rev_l = self.reverb.process(combined_l, &self.reverb_params);
+        let rev_r = self.reverb_r.process(combined_r, &self.reverb_params);
 
         // 6. Stereo Ping-Pong Delay FX
-        let (del_l, del_r) = self.delay.process(rev_out, rev_out, &self.delay_params);
+        let (del_l, del_r) = self.delay.process(rev_l, rev_r, &self.delay_params);
 
         // 6b. Plug-in delay compensation: find the largest insert latency so
         //     every bus can be aligned to it (Fas 4.2). Only relevant while the
@@ -824,7 +837,11 @@ impl SynthEngine {
         // **Pedalresonans:** matas av synten och samplingarna, inte av trummor och stämmor —
         // en sträng bankar inte på en bastrumma. Bara masterns väg, och bara med pedalen nere,
         // så ett projekt utan pedal låter exakt som förut.
-        let feed = if self.sustain_pedal { synth_out + sample_mix } else { 0.0 };
+        let feed = if self.sustain_pedal {
+            synth_out + (sample_mix_l + sample_mix_r) * 0.5
+        } else {
+            0.0
+        };
         let wet = self.pedal_res.process(feed);
         let (pre_l, pre_r) = (pre_l + wet, pre_r + wet);
 

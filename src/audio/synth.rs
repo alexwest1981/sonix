@@ -439,6 +439,9 @@ pub struct SynthEngine {
     pub delay: StereoDelay,
     pub reverb_params: ReverbParams,
     pub reverb: SimpleReverb,
+    /// Höger kanals reverb — samma inställning, eget tillstånd, så en stereokälla får varsin
+    /// svans i stället för en gemensam monosumma.
+    pub reverb_r: SimpleReverb,
     pub drive: f32,
     pub master_fx: MasterFxChain,
     /// FM-inställningen för syntens röster (DX10/Sytrus-vägen).
@@ -610,6 +613,7 @@ impl SynthEngine {
             delay: StereoDelay::new(sample_rate),
             reverb_params: ReverbParams::default(),
             reverb: SimpleReverb::new(sample_rate),
+            reverb_r: SimpleReverb::new(sample_rate),
             drive: 1.0,
             master_fx: MasterFxChain::new(sample_rate),
             fm: FmParams::default(),

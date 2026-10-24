@@ -39,6 +39,8 @@ pub struct Voice {
     /// Per-voice filter state so simultaneously sounding notes do not share a
     /// single filter (each note keeps its own resonant state).
     pub filter: StateVariableFilter,
+    /// Höger kanals filter — eget tillstånd, samma inställning (se `next_sample_stereo`).
+    pub filter_r: StateVariableFilter,
     /// Per-voice filter envelope; its level modulates the cutoff per note.
     pub filter_env: AdsrVoice,
     /// Modulatorns fas (FM). `index == 0` lämnar bärvågen orörd — då är röstens ljud
@@ -343,6 +345,8 @@ pub struct SampleVoice {
     /// därför byte-identiskt.
     pub filter: crate::audio::filter::SamplerFilter,
     pub filter_state: StateVariableFilter,
+    /// Höger kanals filtertillstånd — samma inställning som `filter_state`, eget tillstånd.
+    pub filter_state_r: StateVariableFilter,
     pub filter_env: AdsrVoice,
 }
 
@@ -383,6 +387,7 @@ impl Voice {
             velocity: 0.0,
             envelope: AdsrVoice::new(sample_rate),
             filter: StateVariableFilter::new(sample_rate),
+            filter_r: StateVariableFilter::new(sample_rate),
             filter_env: AdsrVoice::new(sample_rate),
             mod_phase: 0.0,
             target_inc: 0.0,
@@ -533,6 +538,9 @@ impl Voice {
         }
     }
 
+    /// **Monovägen:** summerar stereoparet. Med en 6-op-patch utan panorering är den identisk
+    /// med förut, och alla prov som bryr sig om värdet men inte bredden går här.
+    #[cfg(test)]
     #[inline(always)]
     pub fn next_sample(
         &mut self,
@@ -548,13 +556,44 @@ impl Voice {
         sub_level: f32,
         additive: &AdditiveTable,
     ) -> f32 {
+        let (l, r) = self.next_sample_stereo(
+            waveform,
+            adsr,
+            filter_params,
+            filter_env,
+            filter_env_amount,
+            fm,
+            mod_pitch,
+            mod_cutoff,
+            drive,
+            sub_level,
+            additive,
+        );
+        (l + r) * 0.5
+    }
+
+    #[inline(always)]
+    pub fn next_sample_stereo(
+        &mut self,
+        waveform: Waveform,
+        adsr: &AdsrParams,
+        filter_params: &FilterParams,
+        filter_env: &AdsrParams,
+        filter_env_amount: f32,
+        fm: &FmParams,
+        mod_pitch: f32,
+        mod_cutoff: f32,
+        drive: f32,
+        sub_level: f32,
+        additive: &AdditiveTable,
+    ) -> (f32, f32) {
         if !self.envelope.is_active() {
-            return 0.0;
+            return (0.0, 0.0);
         }
 
         let env_gain = self.envelope.next_sample(adsr);
         if env_gain <= 0.0 {
-            return 0.0;
+            return (0.0, 0.0);
         }
 
         // FM: modulatorn förskjuter bärvågens fas. Vid index 0 är förskjutningen noll och
@@ -572,10 +611,19 @@ impl Voice {
             }
         }
 
+        // **6-op kan vara stereobred** (panorering per operator). Paret fångas här och går
+        // genom röstens kedja per kanal; alla andra vågformer är mono och får (v, v).
+        let mut stereo_pair: Option<(f32, f32)> = None;
         let raw_sample = match waveform {
             // 6-op har egna faser per operator; röstens `phase` används inte, och
             // modulationen räknas i matrisen (se `six_op`).
-            Waveform::SixOp => self.six.next_sample(&self.six_op, self.phase_inc * self.bend_ratio),
+            Waveform::SixOp => {
+                let (l, r) = self
+                    .six
+                    .next_sample_stereo(&self.six_op, self.phase_inc * self.bend_ratio);
+                stereo_pair = Some((l, r));
+                (l + r) * 0.5
+            }
             Waveform::Sine => phase.sin(),
             Waveform::Saw => (phase / PI) - 1.0,
             Waveform::Square => {
@@ -791,17 +839,17 @@ impl Voice {
                 * 2.0_f32.powf(filter_env_amount * fenv + mod_cutoff.clamp(-4.0, 4.0)),
             resonance: filter_params.resonance,
         };
-        let filtered = self
-            .filter
-            .process_lowpass(raw_sample * self.velocity * env_gain, &effective);
+        let (mut left, mut right) = stereo_pair.unwrap_or((raw_sample, raw_sample));
+        let gain = self.velocity * env_gain;
+        left = self.filter.process_lowpass(left * gain, &effective);
+        right = self.filter_r.process_lowpass(right * gain, &effective);
         // Filterdrive: mjuk klippning i stället för en hård gräns, normaliserad så att en
         // fullskalig sinus behåller sin nivå. drive 0 är exakt den gamla vägen.
-        let filtered = if drive > 0.0 {
+        if drive > 0.0 {
             let g = 1.0 + drive.clamp(0.0, 1.0) * 7.0;
-            (filtered * g).tanh() / g.tanh()
-        } else {
-            filtered
-        };
+            left = (left * g).tanh() / g.tanh();
+            right = (right * g).tanh() / g.tanh();
+        }
         // Suboscillatorn läggs på **efter** filtret: en subbas som försvinner när filtret
         // stängs är inte en subbas.
         if sub_level > 0.0 {
@@ -809,10 +857,11 @@ impl Voice {
             if self.sub_phase >= 2.0 * PI {
                 self.sub_phase -= 2.0 * PI;
             }
-            filtered + self.sub_phase.sin() * sub_level.clamp(0.0, 1.0) * self.velocity * env_gain
-        } else {
-            filtered
+            let sub = self.sub_phase.sin() * sub_level.clamp(0.0, 1.0) * gain;
+            left += sub;
+            right += sub;
         }
+        (left, right)
     }
 }
 
@@ -978,6 +1027,7 @@ impl SampleVoice {
             velocity_gain: 1.0,
             filter: crate::audio::filter::SamplerFilter::default(),
             filter_state: StateVariableFilter::new(44_100.0),
+            filter_state_r: StateVariableFilter::new(44_100.0),
             filter_env: AdsrVoice::new(44_100.0),
         }
     }

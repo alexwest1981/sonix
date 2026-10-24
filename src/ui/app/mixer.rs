@@ -3510,6 +3510,19 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                     ))
                                     .changed();
                             });
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new("PAN")
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(egui::Slider::new(&mut self.six_op.pan[target], -1.0..=1.0))
+                                    .on_hover_text(crate::i18n::t(
+                                        "Operadens plats i stereobilden — 0 = mitten",
+                                    ))
+                                    .changed();
+                            });
                             let filter = &mut self.six_op.filters[target];
                             ui.horizontal(|ui| {
                                 six_changed |= ui

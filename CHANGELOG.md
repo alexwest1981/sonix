@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — the synth bus is stereo, and operators can be panned
+
+- **Bug fixed:** the engine collapsed every sample voice to mono (`(s_l + s_r) * 0.5`) before
+  the FX chain, so a stereo sample and a channel's pan were thrown away. Left and right now go
+  through their own filter state (`filter_state_r`) into separate buses.
+- The reverb runs as two instances (`reverb`, `reverb_r`) instead of one mono feed, so a stereo
+  source gets a stereo tail. For mono material both see the same input and the result is
+  unchanged — 979 tests say so.
+- `SixOpParams.pan: [f32; 6]` with a linear law (centre = 1,1, so old patches are untouched) and
+  `next_sample_stereo` through `SixOpVoice` → `Voice` (own `filter_r`) → master.
+  Prov `an_operator_pan_reaches_the_master` (left at −1 → right below 2 % of left) and
+  `a_stereo_sample_keeps_its_channels` (right stays silent when the sample's right is silent).
+- **PAN** slider per operator in the 6-op panel. Sytrus-raden är nu komplett sånär som på egna
+  filterkurvor och en fri tidskurva.
+
 ### Fixed — the channel rack rows are a table
 
 - The channel-name button grew with the name, so **Byt/Chop and the step grid started at a
