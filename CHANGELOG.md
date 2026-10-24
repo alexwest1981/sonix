@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Tempo and position sit at the timeline now.** The arranger toolbar has an editable BPM field
+  and the bar.beat.step position (`1.1.1`) next to the time signature, metronome and pedal — the
+  two numbers you look at while arranging, without lifting your eyes to the transport row. Same
+  `bpm` field, so the two views can never disagree.
+
 - **Double-click a channel's VOL or PAN knob to reset it.** The knob already knew how to snap back
   when it was given a default — `rotary_knob` just never passed one. `rotary_knob_reset` takes the
   reset value explicitly, so the mixer resets to 80 % and centre instead of guessing from the

@@ -69,8 +69,9 @@ på en yta. Konkret, i den ordning det är värt att ta:
 1. **En yta i taget.** *Första steget taget i 0.9.73:* de 13 vyerna ligger bakom tre flikar
    i stället för en rad som radbryts, och sedan **omgrupperade efter vad man gör**: SKAPA,
    ARRANGERA, MIXA, VERKTYG (0.9.74). Kvar: inget på den punkten.
-2. **Transporten dit ögat redan är.** Soundtrap lägger play/record/tempo där låten är, inte i en
-   egen rad högst upp. Tempot och taktarten ska sitta vid tidslinjens övre kant.
+2. **Transporten dit ögat redan är.** *Delvis gjort i 0.9.80:* tempo och position (takt.slag.steg)
+   sitter nu i arrangörens egen verktygsrad, bredvid taktart, metronom och pedal. Kvar: play/record
+   där, om man vill gå hela vägen som Soundtrap.
 3. **Mindre krom.** Färre ramar och rubriker, mer yta till innehållet; samma kontroll två gånger
    (t.ex. volym i både rack och mixer) ska se likadan ut.
 4. **Högerklick överallt.** *Första steget taget i 0.9.75:* patternblock har en meny (öppna,

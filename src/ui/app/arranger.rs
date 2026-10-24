@@ -441,6 +441,32 @@ impl SonixApp {
 
             ui.separator();
 
+            // **Tempot och positionen vid tidslinjen** (GUI-planen, punkt 2): samma `bpm` som
+            // uppe i transporten, men redigerbart där man arrangerar — och positionen bredvid,
+            // så man slipper flytta blicken till en annan rad för att se var man är.
+            ui.group(|ui| {
+                ui.set_height(26.0);
+                ui.horizontal(|ui| {
+                    ui.add(
+                        egui::DragValue::new(&mut self.bpm)
+                            .range(40.0..=240.0)
+                            .speed(0.2)
+                            .suffix(" BPM"),
+                    )
+                    .on_hover_text(crate::i18n::t("Projektets tempo"));
+                    ui.separator();
+                    ui.label(
+                        egui::RichText::new(crate::ui::big_clock::bar_beat_step(
+                            self.current_step,
+                        ))
+                        .monospace()
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().cyan()),
+                    )
+                    .on_hover_text(crate::i18n::t("Position: takt. slag. steg"));
+                });
+            });
+
             // Time Signature & Metronome
             ui.group(|ui| {
                 ui.set_height(26.0);
