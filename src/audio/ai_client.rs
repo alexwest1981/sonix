@@ -706,3 +706,96 @@ mod tests {
         assert!(text.ends_with("--BOUND--\r\n"));
     }
 }
+
+/// **Samtal med verktyg.** Skickar Sonix ordlista och verktygsschemat och returnerar modellens
+/// råa svar (JSON med `calls`, eller text). Samma leverantörer som `generate_clips`.
+pub fn chat_with_tools(config: &AiConfig, user_text: &str) -> Result<String, String> {
+    if config.provider == AiProvider::Offline {
+        return Err("AI-provider är satt till Offline".to_string());
+    }
+    if config.provider.requires_key() && config.api_key.trim().is_empty() {
+        return Err("Ingen API-nyckel angiven".to_string());
+    }
+    let is_anthropic = config.provider == AiProvider::Anthropic;
+    let url = if is_anthropic {
+        format!("{}/messages", config.resolved_base().trim_end_matches('/'))
+    } else {
+        format!("{}/chat/completions", config.resolved_base().trim_end_matches('/'))
+    };
+    let tools = crate::audio::ai_tools::tool_schema();
+    let body = if is_anthropic {
+        serde_json::json!({
+            "model": config.resolved_model(),
+            "max_tokens": config.max_tokens.max(1),
+            "system": crate::audio::ai_tools::SYSTEM_PROMPT,
+            "temperature": 0.4,
+            "messages": [{"role": "user", "content": user_text}],
+            "tools": tools.as_array().map(|a| a.as_slice()).unwrap_or(&[]).iter().map(|t| serde_json::json!({
+                "name": t["function"]["name"],
+                "description": t["function"]["description"],
+                "input_schema": t["function"]["parameters"],
+            })).collect::<Vec<_>>(),
+        })
+    } else {
+        serde_json::json!({
+            "model": config.resolved_model(),
+            "messages": [
+                {"role": "system", "content": crate::audio::ai_tools::SYSTEM_PROMPT},
+                {"role": "user", "content": user_text},
+            ],
+            "tools": tools,
+            "tool_choice": "auto",
+            "temperature": 0.4,
+            "max_tokens": config.max_tokens,
+            "stream": false,
+        })
+    };
+
+    let agent = ureq::AgentBuilder::new()
+        .timeout(Duration::from_secs(config.timeout_secs.clamp(5, 300)))
+        .build();
+    let mut req = agent.post(&url).set("Content-Type", "application/json");
+    if is_anthropic {
+        req = req
+            .set("x-api-key", &config.api_key)
+            .set("anthropic-version", "2023-06-01");
+    } else if !config.api_key.trim().is_empty() {
+        req = req.set("Authorization", &format!("Bearer {}", config.api_key));
+    }
+    let text = req
+        .send_string(&body.to_string())
+        .map_err(|e| e.to_string())?
+        .into_string()
+        .map_err(|e| e.to_string())?;
+
+    // Anthropic lägger verktygsanrop i ett innehållsblock; OpenAI i `tool_calls`.
+    let value: serde_json::Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+    if let Some(blocks) = value.get("content").and_then(|c| c.as_array()) {
+        let calls: Vec<serde_json::Value> = blocks
+            .iter()
+            .filter(|b| b.get("type").and_then(|t| t.as_str()) == Some("tool_use"))
+            .map(|b| serde_json::json!({"tool": b["name"], "args": b["input"]}))
+            .collect();
+        if !calls.is_empty() {
+            return Ok(serde_json::json!({"calls": calls}).to_string());
+        }
+        if let Some(text) = blocks.iter().find_map(|b| b.get("text").and_then(|t| t.as_str())) {
+            return Ok(text.to_string());
+        }
+    }
+    let message = value
+        .get("choices")
+        .and_then(|c| c.get(0))
+        .and_then(|c| c.get("message"));
+    if let Some(message) = message {
+        if let Some(calls) = message.get("tool_calls").and_then(|c| c.as_array()) {
+            if !calls.is_empty() {
+                return Ok(serde_json::json!({"tool_calls": calls}).to_string());
+            }
+        }
+        if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+            return Ok(content.to_string());
+        }
+    }
+    Err("svaret saknade både text och verktygsanrop".to_string())
+}

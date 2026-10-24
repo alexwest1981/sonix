@@ -1,5 +1,6 @@
 pub mod ai_client;
 pub mod ai_generator;
+pub mod ai_tools;
 pub mod command;
 pub mod script;
 pub mod control_room;

@@ -40,6 +40,8 @@ pub struct AiMusicAssistant {
     pub generated_history: Vec<AiGeneratedClip>,
     pub is_generating: bool,
     pub last_status: String,
+    /// Assistentens senaste svar (text eller kvitto på vad den gjorde).
+    pub last_reply: String,
     pub config: AiConfig,
     pub last_error: Option<String>,
     pub use_context: bool,
@@ -59,6 +61,7 @@ impl Default for AiMusicAssistant {
             last_status: crate::i18n::t("AI Music Assistant redo (regelbaserad generativ motor – musikteori, ingen extern modell)").to_string(),
             config: AiConfig::load(),
             last_error: None,
+            last_reply: String::new(),
             use_context: true,
             context: GenContext::default(),
             pending: None,

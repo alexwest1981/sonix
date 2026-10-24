@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the assistant gets instructions and hands
+
+- **`src/audio/ai_tools.rs`**: a system prompt that teaches the model Sonix's own vocabulary
+  (channel, pattern, section, track) plus six rules — propose sections before writing, never
+  overwrite without saying so, never touch the master — and a **tool schema** for `set_tempo`,
+  `set_key`, `write_drum_pattern`, `plan_sections`, `mute_track`, `set_channel_instrument`.
+  Responses in three shapes (`{"calls":…}`, a bare array, OpenAI `tool_calls`) parse to the same
+  call, and prose without calls is an error instead of a silent no-op.
+- **Drum patterns** are data (`DRUM_STYLES`: house, hiphop, rock), split into kick/snare/hat layers
+  and written to the first three channels with General MIDI notes (36/38/42). **Guard:**
+  `ensure_channels_free` refuses the whole write if any of the three channels already has steps —
+  no half-written groove.
+- **`src/audio/ai_client.rs: chat_with_tools`** sends prompt + schema to an OpenAI-compatible or
+  Anthropic endpoint and returns either text or tool calls.
+- **The AI view has 🤖 Kör assistenten**: the request runs in a background thread, the reply or the
+  receipt ("tempo 128 BPM · trumkomp 'house' i 2 takter") is shown under the prompt. A section
+  plan is parsed and stored for confirmation; it does not write anything yet.
+
 ### Added — downloadable themes from a GitHub registry
 
 - **`github.com/alexwest1981/sonix-themes`** holds `index.json` (name, file, sha256) and the theme

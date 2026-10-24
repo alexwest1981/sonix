@@ -247,7 +247,9 @@ impl SonixApp {
                 }
                 ViewMode::AiMusicAssistant => {
                     self.refresh_ai_context();
-                    render_ai_assistant_view(ui, &mut self.ai_assistant, &mut self.channels, &mut self.status_message);
+                    if render_ai_assistant_view(ui, &mut self.ai_assistant, &mut self.channels, &mut self.status_message) {
+                        self.ai_send_prompt();
+                    }
                 }
                 ViewMode::EffectsMixer => {
                     self.render_effects_mixer_rack(ui);

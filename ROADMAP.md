@@ -106,11 +106,12 @@ Utgångsläget finns redan: paletten är 29 semantiska nycklar i `~/.config/soni
 I dag genererar AI-assistenten klipp ur en prompt (`ai_generator::generate`) med genre, tonart och
 mål som val. Den **kan inte röra instrumenten**, och man kan inte diskutera arrangemanget med den.
 
-1. **Instruktionslager (systemprompt + verktygsschema).** En fast text som beskriver Sonix egna
+1. **Instruktionslager (systemprompt + verktygsschema).** *✅ 0.9.92:* En fast text som beskriver Sonix egna
    begrepp (kanal, pattern, sektion, spår, buss) och en lista verktyg som AI:n får anropa:
    `set_instrument`, `load_drum_kit`, `write_pattern`, `create_section`, `set_tempo`, `set_key`,
    `add_fx`, `mute_track`. Schemat är JSON, versionerat, och ligger i `src/audio/ai_tools.rs`.
-2. **Utföraren.** Varje verktygsanrop mappas till ett befintligt kommando (`AudioCommand` eller
+2. **Utföraren.** *◐ 0.9.92:* tempo, trumkomp och mute går igenom; instrumentbyte saknar
+   utförare. Varje verktygsanrop mappas till ett befintligt kommando (`AudioCommand` eller
    appens state) — ingen ny motor. Allt valideras (kanal finns, steg inom patternet, tonhöjd
    0–127), körs som **ett** ångringssteg, och ett anrop som inte validerar avvisas med orsak.
 3. **Samtal om sektioner.** AI:n får arrangemanget som kontext (spår, sektioner, takter, tempo,

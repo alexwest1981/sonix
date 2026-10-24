@@ -8,7 +8,8 @@ pub fn render_ai_assistant_view(
     ai_assistant: &mut AiMusicAssistant,
     channels: &mut [ChannelStrip],
     status_msg: &mut String,
-) {
+) -> bool {
+    let mut asked = false;
     if let Some(msg) = ai_assistant.poll_remote_generation() {
         *status_msg = msg;
     }
@@ -32,6 +33,11 @@ pub fn render_ai_assistant_view(
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✨ Generera AI-Musik")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().yellow())).clicked() {
                         ai_assistant.generate();
                         *status_msg = ai_assistant.last_status.clone();
+                    }
+                    // **Assistenten** går via verktygslagret (ai_tools): den kan sätta tempo, skriva
+                    // ett trumkomp och föreslå sektioner. Vyn äger inget av det — den flaggar bara.
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🤖 Kör assistenten")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().cyan())).clicked() {
+                        asked = true;
                     }
                     if ai_assistant.is_generating {
                         ui.spinner();
@@ -61,6 +67,14 @@ pub fn render_ai_assistant_view(
                 });
             });
         });
+
+        if !ai_assistant.last_reply.trim().is_empty() {
+            ui.label(
+                egui::RichText::new(&ai_assistant.last_reply)
+                    .size(Theme::FONT_S)
+                    .color(crate::ui::theme::palette().cyan()),
+            );
+        }
 
         ui.add_space(4.0);
 
@@ -256,4 +270,5 @@ pub fn render_ai_assistant_view(
             }
         });
     });
+    asked
 }
