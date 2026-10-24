@@ -3260,152 +3260,175 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                     }
                 }
                 if self.waveform == Waveform::SixOp {
+                    // Panelen är för hög och för bred för oscillatorkolumnen (36 matrisceller
+                    // + 12 rattar), så den öppnas i ett eget fönster. Inline blev både
+                    // matrisen och enveloperna avklippta.
                     ui.separator();
+                    if ui
+                        .button(crate::i18n::t("⚙ 6-op-matris…"))
+                        .on_hover_text(crate::i18n::t(
+                            "Operatorer, enveloper och 6×6-matrisen i ett eget fönster",
+                        ))
+                        .clicked()
+                    {
+                        self.show_six_op_window = true;
+                    }
+                    let mut open = self.show_six_op_window;
                     let mut six_changed = false;
-                    ui.label(
-                        egui::RichText::new(crate::i18n::t("6-OP (SYTRUS)"))
-                            .size(Theme::FONT_S)
-                            .color(crate::ui::theme::palette().text_muted()),
-                    );
-                    // Tre utgångslägen: en ren sinus, den klassiska FM-stacken och en
-                    // självmodulerande sågtand. De är startpunkter, inte förval som låser.
-                    ui.horizontal(|ui| {
-                        if ui
-                            .button(crate::i18n::t("∿ Sinus"))
-                            .on_hover_text(crate::i18n::t("Nollställ matrisen"))
-                            .clicked()
-                        {
-                            self.six_op = crate::audio::synth::SixOpParams::default();
-                            six_changed = true;
-                        }
-                        if ui
-                            .button(crate::i18n::t("⛓ Kedja"))
-                            .on_hover_text(crate::i18n::t("Operator 1→2→3→4→5→6; bara den sista hörs"))
-                            .clicked()
-                        {
-                            self.six_op = crate::audio::synth::SixOpParams::chain(1.2);
-                            six_changed = true;
-                        }
-                        if ui
-                            .button(crate::i18n::t("↺ Sågtand"))
-                            .on_hover_text(crate::i18n::t("Operator 1 återkopplar till sig själv"))
-                            .clicked()
-                        {
-                            let mut params = crate::audio::synth::SixOpParams::default();
-                            params.matrix[0][0] = 1.5;
-                            self.six_op = params;
-                            six_changed = true;
-                        }
-                    });
-                    // Förhållande och nivå per operator.
-                    ui.horizontal(|ui| {
-                        for i in 0..crate::audio::synth::SIX_OP_COUNT {
-                            ui.vertical(|ui| {
+                    egui::Window::new(crate::i18n::t("6-OP (SYTRUS)"))
+                        .open(&mut open)
+                        .resizable(true)
+                        .default_width(420.0)
+                        .show(ui.ctx(), |ui| {
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .button(crate::i18n::t("∿ Sinus"))
+                                    .on_hover_text(crate::i18n::t("Nollställ matrisen"))
+                                    .clicked()
+                                {
+                                    self.six_op = crate::audio::synth::SixOpParams::default();
+                                    six_changed = true;
+                                }
+                                if ui
+                                    .button(crate::i18n::t("⛓ Kedja"))
+                                    .on_hover_text(crate::i18n::t(
+                                        "Operator 1→2→3→4→5→6; bara den sista hörs",
+                                    ))
+                                    .clicked()
+                                {
+                                    self.six_op = crate::audio::synth::SixOpParams::chain(1.2);
+                                    six_changed = true;
+                                }
+                                if ui
+                                    .button(crate::i18n::t("↺ Sågtand"))
+                                    .on_hover_text(crate::i18n::t(
+                                        "Operator 1 återkopplar till sig själv",
+                                    ))
+                                    .clicked()
+                                {
+                                    let mut params = crate::audio::synth::SixOpParams::default();
+                                    params.matrix[0][0] = 1.5;
+                                    self.six_op = params;
+                                    six_changed = true;
+                                }
+                            });
+                            ui.separator();
+                            // Förhållande och nivå: en rad per operator, så ratten och dess
+                            // betydelse står på samma rad i stället för i två glesa rader.
+                            egui::Grid::new("six_op_ops").num_columns(3).show(ui, |ui| {
+                                for i in 0..crate::audio::synth::SIX_OP_COUNT {
+                                    ui.label(format!("OP{}", i + 1));
+                                    six_changed |= ui
+                                        .add(
+                                            egui::DragValue::new(&mut self.six_op.ratios[i])
+                                                .range(0.0..=32.0)
+                                                .speed(0.01)
+                                                .max_decimals(2),
+                                        )
+                                        .on_hover_text(crate::i18n::t("Frekvensförhållande"))
+                                        .changed();
+                                    six_changed |= ui
+                                        .add(
+                                            egui::DragValue::new(&mut self.six_op.levels[i])
+                                                .range(0.0..=1.0)
+                                                .speed(0.01)
+                                                .max_decimals(2),
+                                        )
+                                        .on_hover_text(crate::i18n::t(
+                                            "Utgångsnivå — 0 hörs inte men kan modulera",
+                                        ))
+                                        .changed();
+                                    ui.end_row();
+                                }
+                            });
+                            ui.separator();
+                            let mut target = self.six_env_target.min(crate::audio::synth::SIX_OP_COUNT - 1);
+                            ui.horizontal(|ui| {
                                 ui.label(
-                                    egui::RichText::new(format!("OP{}", i + 1))
+                                    egui::RichText::new(crate::i18n::t("ENVELOP"))
                                         .size(Theme::FONT_XS),
                                 );
+                                for i in 0..crate::audio::synth::SIX_OP_COUNT {
+                                    if ui
+                                        .selectable_label(target == i, format!("OP{}", i + 1))
+                                        .clicked()
+                                    {
+                                        target = i;
+                                    }
+                                }
+                            });
+                            self.six_env_target = target;
+                            let env = &mut self.six_op.envs[target];
+                            ui.horizontal(|ui| {
+                                for (label, value, range) in [
+                                    ("A", &mut env.attack, 0.0..=4.0),
+                                    ("D", &mut env.decay, 0.0..=4.0),
+                                    ("S", &mut env.sustain, 0.0..=1.0),
+                                    ("R", &mut env.release, 0.0..=4.0),
+                                ] {
+                                    six_changed |= ui
+                                        .add(egui::Slider::new(value, range).text(label))
+                                        .changed();
+                                }
+                            });
+                            let filter = &mut self.six_op.filters[target];
+                            ui.horizontal(|ui| {
                                 six_changed |= ui
                                     .add(
-                                        egui::DragValue::new(&mut self.six_op.ratios[i])
-                                            .range(0.0..=32.0)
-                                            .speed(0.01)
-                                            .max_decimals(2),
+                                        egui::Slider::new(&mut filter.cutoff, 20.0..=20_000.0)
+                                            .logarithmic(true)
+                                            .text("LP"),
                                     )
-                                    .on_hover_text(crate::i18n::t("Frekvensförhållande"))
+                                    .on_hover_text(crate::i18n::t("Lågpass (Hz), 20 000 = av"))
                                     .changed();
                                 six_changed |= ui
                                     .add(
-                                        egui::DragValue::new(&mut self.six_op.levels[i])
-                                            .range(0.0..=1.0)
-                                            .speed(0.01)
-                                            .max_decimals(2),
+                                        egui::Slider::new(&mut filter.resonance, 0.1..=10.0)
+                                            .text("Q"),
                                     )
-                                    .on_hover_text(crate::i18n::t(
-                                        "Utgångsnivå — 0 hörs inte men kan modulera",
-                                    ))
+                                    .on_hover_text(crate::i18n::t("Resonans"))
                                     .changed();
                             });
-                        }
-                    });
-                    // En envelop i taget: 24 sliders på en gång får inte plats i kolumnen.
-                    let mut target = self.six_env_target.min(crate::audio::synth::SIX_OP_COUNT - 1);
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            egui::RichText::new(crate::i18n::t("ENVELOP")).size(Theme::FONT_XS),
-                        );
-                        for i in 0..crate::audio::synth::SIX_OP_COUNT {
-                            if ui
-                                .selectable_label(target == i, format!("OP{}", i + 1))
-                                .clicked()
-                            {
-                                target = i;
-                            }
-                        }
-                    });
-                    self.six_env_target = target;
-                    let env = &mut self.six_op.envs[target];
-                    ui.horizontal(|ui| {
-                        for (label, value, range) in [
-                            ("A", &mut env.attack, 0.0..=4.0),
-                            ("D", &mut env.decay, 0.0..=4.0),
-                            ("S", &mut env.sustain, 0.0..=1.0),
-                            ("R", &mut env.release, 0.0..=4.0),
-                        ] {
-                            six_changed |= ui
-                                .add(
-                                    egui::Slider::new(value, range)
-                                        .text(label)
-                                        .show_value(false),
-                                )
-                                .changed();
-                        }
-                    });
-                    // Lågpasset sitter efter envelopen, före matrisen — samma OP-väljare.
-                    let filter = &mut self.six_op.filters[target];
-                    ui.horizontal(|ui| {
-                        six_changed |= ui
-                            .add(
-                                egui::Slider::new(&mut filter.cutoff, 20.0..=20_000.0)
-                                    .logarithmic(true)
-                                    .text("LP"),
-                            )
-                            .on_hover_text(crate::i18n::t("Lågpass (Hz), 20 000 = av"))
-                            .changed();
-                        six_changed |= ui
-                            .add(egui::Slider::new(&mut filter.resonance, 0.1..=10.0).text("Q"))
-                            .on_hover_text(crate::i18n::t("Resonans"))
-                            .changed();
-                    });
-                    ui.label(
-                        egui::RichText::new(crate::i18n::t("MATRIS (källa → mål)"))
-                            .size(Theme::FONT_XS)
-                            .color(crate::ui::theme::palette().text_muted()),
-                    );
-                    for source in 0..crate::audio::synth::SIX_OP_COUNT {
-                        ui.horizontal(|ui| {
+                            ui.separator();
                             ui.label(
-                                egui::RichText::new(format!("{}", source + 1)).size(Theme::FONT_XS),
+                                egui::RichText::new(crate::i18n::t("MATRIS (källa → mål)"))
+                                    .size(Theme::FONT_XS)
+                                    .color(crate::ui::theme::palette().text_muted()),
                             );
-                            for target in 0..crate::audio::synth::SIX_OP_COUNT {
-                                six_changed |= ui
-                                    .add(
-                                        egui::DragValue::new(
-                                            &mut self.six_op.matrix[source][target],
-                                        )
-                                        .range(-16.0..=16.0)
-                                        .speed(0.05)
-                                        .max_decimals(2),
-                                    )
-                                    .on_hover_text(crate::tstatus!(
-                                        "OP{} → OP{}",
-                                        source + 1,
-                                        target + 1
-                                    ))
-                                    .changed();
-                            }
+                            egui::Grid::new("six_op_matrix").num_columns(7).show(ui, |ui| {
+                                ui.label("");
+                                for target_col in 1..=crate::audio::synth::SIX_OP_COUNT {
+                                    ui.label(
+                                        egui::RichText::new(format!("→{target_col}"))
+                                            .size(Theme::FONT_XS),
+                                    );
+                                }
+                                ui.end_row();
+                                for source in 0..crate::audio::synth::SIX_OP_COUNT {
+                                    ui.label(format!("{}", source + 1));
+                                    for target_col in 0..crate::audio::synth::SIX_OP_COUNT {
+                                        six_changed |= ui
+                                            .add_sized(
+                                                [34.0, 16.0],
+                                                egui::DragValue::new(
+                                                    &mut self.six_op.matrix[source][target_col],
+                                                )
+                                                .range(-16.0..=16.0)
+                                                .speed(0.05)
+                                                .max_decimals(2),
+                                            )
+                                            .on_hover_text(crate::tstatus!(
+                                                "OP{} → OP{}",
+                                                source + 1,
+                                                target_col + 1
+                                            ))
+                                            .changed();
+                                    }
+                                    ui.end_row();
+                                }
+                            });
                         });
-                    }
+                    self.show_six_op_window = open;
                     if six_changed {
                         let _ = self.engine.send_command(AudioCommand::SetSixOp {
                             params: self.six_op,

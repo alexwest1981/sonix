@@ -288,6 +288,8 @@ pub struct SonixApp {
     pub six_op: crate::audio::synth::SixOpParams,
     /// Vilken operators envelop sliderserna redigerar (0–5).
     pub six_env_target: usize,
+    /// 6-op-panelen ligger i ett eget fönster (den får inte plats i oscillatorkolumnen).
+    pub show_six_op_window: bool,
     /// Spektral envelop: attack, decay och sustain för den additiva oscillatorn, och hur
     /// mycket snabbare höga partialer dör (lutningen). Av = dragstängerna är statiska.
     pub partial_env: [f32; 3],
@@ -977,6 +979,7 @@ impl SonixApp {
             harmonics: crate::audio::synth::HARMONICS_DEFAULT,
             six_op: crate::audio::synth::SixOpParams::default(),
             six_env_target: 0,
+            show_six_op_window: false,
             partial_env: [0.002, 0.6, 0.0],
             partial_env_tilt: 1.0,
             partial_env_on: false,

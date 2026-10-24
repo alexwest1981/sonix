@@ -1223,6 +1223,9 @@ pub(crate) const SCREENSHOT_WAIT_FRAMES: u32 = 180;
 impl SonixApp {
 pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
     self.screenshot_mode_active = true;
+    // Skärmbilderna är dokumentation: återställningsrutan ("Osparat arbete hittades") täcker
+    // mitten av varje bild om den ligger kvar, och den hör till användarens session, inte hit.
+    self.show_recovery_modal = false;
     self.screenshot_state = ScreenshotState::Idle;
     self.populate_demo_data();
     let _ = std::fs::create_dir_all(out_dir);
@@ -1380,6 +1383,7 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
 
 impl SonixApp {
 pub fn populate_demo_data(&mut self) {
+    self.waveform = crate::audio::command::Waveform::SixOp;
     self.project_name = "Cyberpunk Odyssey (Suno AI + Sonix Lead)".to_string();
     self.bpm = 124.0;
     self.swing = 0.15;

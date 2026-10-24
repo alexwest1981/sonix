@@ -70,6 +70,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The 6-op editor gets a window of its own.** Twelve knobs and 36 matrix cells did not fit the
+  oscillator column: the matrix rows were cut off below the panel. A **⚙ 6-op-matris…** button
+  now opens an editor with the presets, one row per operator, the envelope and filter for the
+  selected operator, and the whole 6×6 matrix with `→1…→6` headers — verified in a rendered
+  screenshot.
+- **Documentation screenshots no longer show the recovery dialog.** Screenshot mode keeps the
+  "unsaved work found" modal out of the way, so the captured images show the app and not a
+  restored autosave prompt.
 - **Talkback opens the microphone itself.** The button now starts an input stream when
   talkback is switched on and closes it when switched off, so talkback no longer needs a
   recording to be running. If the vocal studio is already capturing, its ring is reused instead
