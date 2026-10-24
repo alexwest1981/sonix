@@ -137,6 +137,21 @@ pub const DRUM_STYLES: [(&str, &str, &str, &str); 3] = [
     ("rock", "x.......x.x.....", "....x.......x...", "x.x.x.x.x.x.x.x."),
 ];
 
+/// Lägger en plan efter varandra från `start_bar` — ren funktion, så att starttakterna går att
+/// prova utan en app. Sektionerna rör inte varandra: nästa börjar där den förra slutar.
+pub fn sections_from_plan(
+    plan: &[PlannedSection],
+    start_bar: usize,
+) -> Vec<(String, usize, usize)> {
+    let mut bar = start_bar;
+    let mut out = Vec::new();
+    for section in plan {
+        out.push((section.name.clone(), bar, section.bars));
+        bar += section.bars;
+    }
+    out
+}
+
 /// **AI:n får inte skriva över ett komp användaren redan har.** Regeln är ren och provbar:
 /// alla tre kanalerna måste vara tomma, annars avvisas hela kommandot (inget halvskrivet komp).
 pub fn ensure_channels_free(busy: &[bool], names: &[String]) -> Result<(), String> {
@@ -206,6 +221,20 @@ mod tests {
         let (long, ..) = drum_layers("rock", 9).unwrap();
         let (four, ..) = drum_layers("rock", 4).unwrap();
         assert_eq!(long.iter().filter(|s| **s).count(), four.iter().filter(|s| **s).count());
+    }
+
+    /// Sektionerna läggs efter varandra utan glapp eller överlapp.
+    #[test]
+    fn sections_follow_each_other_from_the_start_bar() {
+        let plan = vec![
+            PlannedSection { name: "Intro".into(), bars: 4 },
+            PlannedSection { name: "Vers".into(), bars: 8 },
+            PlannedSection { name: "Refräng".into(), bars: 8 },
+        ];
+        let out = sections_from_plan(&plan, 0);
+        assert_eq!(out[0], ("Intro".to_string(), 0, 4));
+        assert_eq!(out[1], ("Vers".to_string(), 4, 8));
+        assert_eq!(out[2], ("Refräng".to_string(), 12, 8));
     }
 
     /// Överskrivningsskyddet: en enda upptagen kanal stoppar hela kommandot.

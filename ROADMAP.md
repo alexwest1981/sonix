@@ -118,7 +118,7 @@ mål som val. Den **kan inte röra instrumenten**, och man kan inte diskutera ar
    utförare. Varje verktygsanrop mappas till ett befintligt kommando (`AudioCommand` eller
    appens state) — ingen ny motor. Allt valideras (kanal finns, steg inom patternet, tonhöjd
    0–127), körs som **ett** ångringssteg, och ett anrop som inte validerar avvisas med orsak.
-3. **Samtal om sektioner.** AI:n får arrangemanget som kontext (spår, sektioner, takter, tempo,
+3. **Samtal om sektioner.** *✅ 0.9.94:* AI:n får arrangemanget som kontext (spår, sektioner, takter, tempo,
    tonart) och kan föreslå en sektionsplan (intro/vers/refräng/brygga) som **visas innan den
    skrivs**. Först vid bekräftelse skapas regioner/pattern. Prov: en föreslagen plan rör inget
    förrän den bekräftas.

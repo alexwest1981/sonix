@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — sections in the arrangement
+
+- `Section { name, start_bar, bars }` on the app, drawn in the timeline ruler as purple bands with
+  the name and a line down through the arrangement.
+- The assistant's `plan_sections` now has a **✅ Skapa sektionerna** button next to the prompt; it
+  appears only while a plan is pending and writes nothing until clicked.
+  `sections_from_plan` (pure) puts them back to back from bar 1 — prov: Intro 0/4, Vers 4/8,
+  Refräng 12/8.
+
 ### Added — a localhost API for the AI service
 
 - **`src/ai_service.rs`**: HTTP on `127.0.0.1:4827` (`SONIX_AI_API_PORT`, `0` = off) with

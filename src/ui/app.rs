@@ -260,6 +260,8 @@ pub struct SonixApp {
     /// arrangerarens "Dorian" blev piano rollens "Moll" och fyra av tolv grundtoner
     /// visade fel namn. Nu finns bara den här tonarten, och varje meny läser samma
     /// tabell. Fälten sparas i projektfilen (`#[serde(default)]`).
+    /// Sektioner i arrangemanget (AI:n föreslår, användaren bekräftar).
+    pub sections: Vec<crate::ui::app::state::Section>,
     pub song_key_root: u8,
     pub song_key_scale: usize,
     pub time_signature: (u8, u8),
@@ -982,6 +984,11 @@ impl SonixApp {
             pending_add_track_import: None,
             metronome_enabled: false,
             tap_tempo_times: Vec::new(),
+            sections: vec![
+                crate::ui::app::state::Section { name: "Intro".into(), start_bar: 0, bars: 4 },
+                crate::ui::app::state::Section { name: "Vers".into(), start_bar: 4, bars: 8 },
+                crate::ui::app::state::Section { name: "Refräng".into(), start_bar: 12, bars: 8 },
+            ],
             song_key_root: 3, // Eb
             song_key_scale: 0, // Dur
             time_signature: (4, 4),

@@ -119,6 +119,15 @@ pub struct LibrarySampleItem {
     pub file_path: Option<String>,
 }
 
+/// En namngiven del av arrangemanget (intro, vers, refräng …). Starttakt är nollbaserad, som
+/// `clips`-indexet; `bars` är antalet takter sektionen sträcker sig.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Section {
+    pub name: String,
+    pub start_bar: usize,
+    pub bars: usize,
+}
+
 #[derive(Clone)]
 pub struct ChannelStrip {
     pub name: String,

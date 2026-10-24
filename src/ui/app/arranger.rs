@@ -1225,6 +1225,31 @@ impl SonixApp {
                     }
                     ui.painter().rect_filled(ruler_rect, Rounding::ZERO, crate::ui::theme::palette().bg());
                     ui.painter().line_segment([Pos2::new(ruler_rect.min.x, ruler_rect.max.y), Pos2::new(ruler_rect.max.x, ruler_rect.max.y)], Stroke::new(1.0_f32, crate::ui::theme::palette().border()));
+                    // **Sektionerna** ritas som ett tunt band högst upp i linjalen, med namn vid
+                    // starttaken och ett streck ned genom arrangemanget.
+                    for section in &self.sections {
+                        let x = ruler_rect.min.x + section.start_bar as f32 * bar_w;
+                        if x > ruler_rect.max.x {
+                            continue;
+                        }
+                        let band = Rect::from_min_size(
+                            Pos2::new(x, ruler_rect.min.y),
+                            Vec2::new((section.bars as f32 * bar_w).max(2.0), 13.0),
+                        );
+                        ui.painter().rect_filled(band, Rounding::same(2.0), crate::ui::theme::palette().purple());
+                        ui.painter().text(
+                            Pos2::new(x + 5.0, band.center().y),
+                            egui::Align2::LEFT_CENTER,
+                            &section.name,
+                            egui::FontId::proportional(11.0),
+                            crate::ui::theme::readable_on(crate::ui::theme::palette().purple()),
+                        );
+                        ui.painter().line_segment(
+                            [Pos2::new(x, ruler_rect.min.y + 13.0), Pos2::new(x, ruler_rect.max.y)],
+                            Stroke::new(1.5_f32, crate::ui::theme::palette().purple()),
+                        );
+                    }
+
 
                     // Slingområdet ritas bara när slingan är på — en ljus yta som inte gör
                     // något är ett löfte om en loop som inte finns.

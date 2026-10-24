@@ -3,13 +3,21 @@ use crate::audio::ai_generator::AiMusicAssistant;
 use crate::ui::app::ChannelStrip;
 use crate::ui::theme::Theme;
 
+/// Vad vyn vill att appen ska göra. Vyn äger inget av det själv — den flaggar bara.
+#[derive(Default)]
+pub struct AiViewAction {
+    pub ask: bool,
+    pub apply_plan: bool,
+}
+
 pub fn render_ai_assistant_view(
     ui: &mut Ui,
     ai_assistant: &mut AiMusicAssistant,
     channels: &mut [ChannelStrip],
     status_msg: &mut String,
-) -> bool {
-    let mut asked = false;
+    plan_pending: bool,
+) -> AiViewAction {
+    let mut action = AiViewAction::default();
     if let Some(msg) = ai_assistant.poll_remote_generation() {
         *status_msg = msg;
     }
@@ -36,8 +44,11 @@ pub fn render_ai_assistant_view(
                     }
                     // **Assistenten** går via verktygslagret (ai_tools): den kan sätta tempo, skriva
                     // ett trumkomp och föreslå sektioner. Vyn äger inget av det — den flaggar bara.
+                    if plan_pending && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✅ Skapa sektionerna")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().green())).clicked() {
+                        action.apply_plan = true;
+                    }
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🤖 Kör assistenten")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().cyan())).clicked() {
-                        asked = true;
+                        action.ask = true;
                     }
                     if ai_assistant.is_generating {
                         ui.spinner();
@@ -270,5 +281,5 @@ pub fn render_ai_assistant_view(
             }
         });
     });
-    asked
+    action
 }

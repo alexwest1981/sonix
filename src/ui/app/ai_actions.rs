@@ -128,6 +128,19 @@ impl SonixApp {
         }
     }
 
+    /// **Bekräftar** en väntande sektionsplan: sektionerna läggs efter varandra från takt 1.
+    /// Inget skrivs förrän hit — planen är ett förslag, inte ett ingrepp.
+    pub fn apply_pending_plan(&mut self) -> String {
+        let Some(plan) = self.ai_pending_plan.take() else {
+            return "ingen plan att skapa".to_string();
+        };
+        for (name, start_bar, bars) in ai_tools::sections_from_plan(&plan, 0) {
+            self.sections.push(crate::ui::app::state::Section { name, start_bar, bars });
+        }
+        self.status_message = crate::tstatus!("🧭 {} sektioner skapade", self.sections.len());
+        self.status_message.clone()
+    }
+
     /// Skriver ett komp på de tre första kanalerna (kick, virvel, hi-hat). Kanalerna måste finnas
     /// och vara tomma just nu — AI:n får inte skriva över ett komp användaren redan har.
     fn ai_write_drum_pattern(&mut self, style: &str, bars: usize) -> Result<String, String> {
