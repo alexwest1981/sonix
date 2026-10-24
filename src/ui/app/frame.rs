@@ -1334,7 +1334,12 @@ impl SonixApp {
                     ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
                     // **Flikar i stället för en lång rad** (GUI-planen, punkt 1): bara den valda
                     // gruppens vyer visas. Samma knappar som förut, färre att leta bland.
-                    for (group, label) in [(0u8, "VY"), (1, "STUDIOS"), (2, "VERKTYG")] {
+                    // **Flikar efter vad man gör** (GUI-planen, punkt 1): Skapa, Arrangera,
+                    // Mixa, Verktyg. Bara den valda gruppens knappar ritas, och varje vy har
+                    // en hemvist — inte en rubrik.
+                    for (group, label) in
+                        [(0u8, "SKAPA"), (1, "ARRANGERA"), (2, "MIXA"), (3, "VERKTYG")]
+                    {
                         if ui
                             .selectable_label(self.nav_group == group, self.tr(label))
                             .clicked()
@@ -1344,69 +1349,47 @@ impl SonixApp {
                     }
                     ui.separator();
 
-                    if self.nav_group == 0 {
-                    let arr_btn = ui.selectable_label(self.view_mode == ViewMode::PlaylistArranger, self.tr("🎼 Tidslinje"));
-                    if arr_btn.clicked() { self.view_mode = ViewMode::PlaylistArranger; }
-
-                    let rack_btn = ui.selectable_label(self.view_mode == ViewMode::ChannelRack, self.tr("🥁 Rack"));
-                    if rack_btn.clicked() { self.view_mode = ViewMode::ChannelRack; }
-
-                    let roll_btn = ui.selectable_label(self.view_mode == ViewMode::PianoRoll, self.tr("🎹 Piano"));
-                    if roll_btn.clicked() { self.view_mode = ViewMode::PianoRoll; }
-
-                    let voc_btn = ui.selectable_label(self.view_mode == ViewMode::VocalStudio, self.tr("🎙 Sångstudio"));
-                    if voc_btn.clicked() { self.view_mode = ViewMode::VocalStudio; }
-
-                    let fx_btn = ui.selectable_label(self.view_mode == ViewMode::EffectsMixer, self.tr("🎚 Mixer"));
-                    if fx_btn.clicked() { self.view_mode = ViewMode::EffectsMixer; }
-
-                    let ai_btn = ui.selectable_label(self.view_mode == ViewMode::AiMusicAssistant, self.tr("🤖 AI"));
-                    if ai_btn.clicked() { self.view_mode = ViewMode::AiMusicAssistant; }
-
-                    }
-                    if self.nav_group == 1 {
-                    let alc_btn = ui.selectable_label(self.view_mode == ViewMode::AlchemySynth, self.tr("✨ Alchemy"));
-                    if alc_btn.clicked() { self.view_mode = ViewMode::AlchemySynth; }
-
-                    let drum_btn = ui.selectable_label(self.view_mode == ViewMode::SessionDrummer, self.tr("🥁 Trummor"));
-                    if drum_btn.clicked() { self.view_mode = ViewMode::SessionDrummer; }
-
-                    let patch_btn = ui.selectable_label(self.view_mode == ViewMode::ModularPatcher, self.tr("🧩 Patcher"));
-                    if patch_btn.clicked() { self.view_mode = ViewMode::ModularPatcher; }
-
-                    let stem_btn = ui.selectable_label(self.view_mode == ViewMode::StemSeparator, self.tr("🧠 Stems"));
-                    if stem_btn.clicked() { self.view_mode = ViewMode::StemSeparator; }
-                    let video_btn = ui.selectable_label(self.view_mode == ViewMode::Video, self.tr("🎬 Video"));
-                    if video_btn.clicked() { self.view_mode = ViewMode::Video; }
-
-                    let plug_btn = ui.selectable_label(self.view_mode == ViewMode::PluginManager, self.tr("🔌 Plugins"));
-                    if plug_btn.clicked() { self.view_mode = ViewMode::PluginManager; }
-
-                    let rmx_btn = ui.selectable_label(self.view_mode == ViewMode::RemixFx, self.tr("🎛 Remix"));
-                    if rmx_btn.clicked() { self.view_mode = ViewMode::RemixFx; }
-
-                    }
-                    if self.nav_group == 2 {
-
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎲 Tärning")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().red())).on_hover_text(self.tr("Idé- & Slumptärning för Melodier & Beats (F12)")).clicked() {
-                        self.show_dice_generator_modal = true;
+                    const VIEWS: [(u8, ViewMode, &str); 13] = [
+                        (0, ViewMode::ChannelRack, "🥁 Rack"),
+                        (0, ViewMode::PianoRoll, "🎹 Piano"),
+                        (0, ViewMode::VocalStudio, "🎙 Sångstudio"),
+                        (0, ViewMode::AlchemySynth, "✨ Alchemy"),
+                        (0, ViewMode::SessionDrummer, "🥁 Trummor"),
+                        (0, ViewMode::ModularPatcher, "🧩 Patcher"),
+                        (0, ViewMode::AiMusicAssistant, "🤖 AI"),
+                        (1, ViewMode::PlaylistArranger, "🎼 Tidslinje"),
+                        (1, ViewMode::Video, "🎬 Video"),
+                        (2, ViewMode::EffectsMixer, "🎚 Mixer"),
+                        (2, ViewMode::RemixFx, "🎛 Remix"),
+                        (2, ViewMode::StemSeparator, "🧠 Stems"),
+                        (2, ViewMode::PluginManager, "🔌 Plugins"),
+                    ];
+                    for (group, mode, label) in VIEWS {
+                        if self.nav_group == group
+                            && ui
+                                .selectable_label(self.view_mode == mode, self.tr(label))
+                                .clicked()
+                        {
+                            self.view_mode = mode;
+                        }
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎹 Ackord")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().text_muted())).on_hover_text(self.tr("Smart Ackord- & Skalgenerator (F11)")).clicked() {
-                        self.show_chord_generator_modal = true;
-                    }
-
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎛 FX-Rack")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().purple())).on_hover_text(self.tr("Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)")).clicked() {
-                        self.show_fx_rack_modal = true;
-                    }
-
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎯 Stämmare")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().green())).on_hover_text(self.tr("Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)")).clicked() {
-                        self.show_tuner_modal = true;
-                    }
-
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("📑 Formdelar")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().amber())).on_hover_text(self.tr("Låtstruktur & Formdelar")).clicked() {
-                        self.show_song_structure_modal = true;
-                    }
+                    if self.nav_group == 3 {
+                        if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎲 Tärning")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().red())).on_hover_text(self.tr("Idé- & Slumptärning för Melodier & Beats (F12)")).clicked() {
+                            self.show_dice_generator_modal = true;
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎹 Ackord")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().text_muted())).on_hover_text(self.tr("Smart Ackord- & Skalgenerator (F11)")).clicked() {
+                            self.show_chord_generator_modal = true;
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎛 FX-Rack")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().purple())).on_hover_text(self.tr("Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)")).clicked() {
+                            self.show_fx_rack_modal = true;
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎯 Stämmare")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().green())).on_hover_text(self.tr("Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)")).clicked() {
+                            self.show_tuner_modal = true;
+                        }
+                        if ui.add(egui::Button::new(egui::RichText::new(self.tr("📑 Formdelar")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().amber())).on_hover_text(self.tr("Låtstruktur & Formdelar")).clicked() {
+                            self.show_song_structure_modal = true;
+                        }
                     }
                 });
             });

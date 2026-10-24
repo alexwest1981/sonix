@@ -232,6 +232,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **The tabs now follow what you do, not where things live:** SKAPA (rack, piano roll, vocal
+  studio, Alchemy, drums, patcher, AI), ARRANGERA (timeline, video), MIXA (mixer, remix FX, stems,
+  plugins) and VERKTYG (dice, chords, FX rack, tuner, song sections). The navigation starts on
+  ARRANGERA because that is the view the app opens in. The button list is now one table
+  (`VIEWS`) instead of thirteen hand-written blocks, so a view cannot be left out of a group by
+  accident.
+
 - **The view row is three tabs instead of thirteen buttons.** VY, STUDIOS and VERKTYG show only
   their own views, so the second row went from a wrapped block of everything to six buttons and a
   tab strip. Same buttons as before — nothing was moved, only hidden until its group is chosen.

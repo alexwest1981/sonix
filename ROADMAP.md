@@ -67,8 +67,8 @@ Målet är inte en kopia av någon av dem, utan samma **arbetssätt**: mindre ja
 på en yta. Konkret, i den ordning det är värt att ta:
 
 1. **En yta i taget.** *Första steget taget i 0.9.73:* de 13 vyerna ligger bakom tre flikar
-   (VY / STUDIOS / VERKTYG) i stället för en rad som radbryts. Kvar: byta grupperingen från
-   *var det bor* till *vad man gör* — Skapa, Arrangera, Mixa.
+   i stället för en rad som radbryts, och sedan **omgrupperade efter vad man gör**: SKAPA,
+   ARRANGERA, MIXA, VERKTYG (0.9.74). Kvar: inget på den punkten.
 2. **Transporten dit ögat redan är.** Soundtrap lägger play/record/tempo där låten är, inte i en
    egen rad högst upp. Tempot och taktarten ska sitta vid tidslinjens övre kant.
 3. **Mindre krom.** Färre ramar och rubriker, mer yta till innehållet; samma kontroll två gånger

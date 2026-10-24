@@ -1192,7 +1192,7 @@ impl SonixApp {
             cue_listen: crate::audio::control_room::CueListen::Main,
             sustain_pedal: false,
             six_op_mode: 0,
-            nav_group: 0,
+            nav_group: 1,
             talkback: false,
             talkback_capture: None,
             vocoder_amount: 0.0,
