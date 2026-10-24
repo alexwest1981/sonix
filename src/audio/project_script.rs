@@ -106,6 +106,24 @@ pub fn run(source: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
         });
     }
 
+    // **Samplingshuvud, inte samplingsdata.** Skriptet får längd och format på en fil utan att
+    // någon lastar in den; en oläsbar fil ger 0 i stället för att avbryta skriptet.
+    engine.register_fn("sample_seconds", |path: &str| -> f64 {
+        crate::audio::wav_reader::wav_info(path)
+            .map(|i| i.seconds())
+            .unwrap_or(0.0)
+    });
+    engine.register_fn("sample_rate", |path: &str| -> i64 {
+        crate::audio::wav_reader::wav_info(path)
+            .map(|i| i.sample_rate as i64)
+            .unwrap_or(0)
+    });
+    engine.register_fn("sample_frames", |path: &str| -> i64 {
+        crate::audio::wav_reader::wav_info(path)
+            .map(|i| i.frames as i64)
+            .unwrap_or(0)
+    });
+
     let sink = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
     {
         let sink = std::rc::Rc::clone(&sink);
@@ -155,6 +173,28 @@ mod tests {
         let before = c.clone();
         assert!(run("set_bpm(90.0); nope();", &mut c).is_err());
         assert_eq!(c, before, "halvvägs arbete ska inte skrivas tillbaka");
+    }
+
+    #[test]
+    fn a_script_can_read_a_sample_header() {
+        let path = std::env::temp_dir().join("sonix_script_sample.wav");
+        let path = path.to_string_lossy().to_string();
+        let samples = vec![0.0f32; 24_000];
+        crate::audio::wav_writer::write_pcm_f32_to_wav(&path, &samples, 48_000, 1).unwrap();
+
+        let mut c = ctx();
+        let log = run(
+            &format!("print(sample_rate(\"{path}\")); print(sample_seconds(\"{path}\"));"),
+            &mut c,
+        )
+        .unwrap();
+        assert_eq!(log[0], "48000");
+        assert!(log[1].parse::<f64>().unwrap() - 0.5 < 1e-6, "{log:?}");
+        let _ = std::fs::remove_file(&path);
+
+        let mut c = ctx();
+        let log = run("print(sample_seconds(\"/finns/inte.wav\"));", &mut c).unwrap();
+        assert_eq!(log[0], "0.0", "oläsbar fil ger 0, inte ett avbrott");
     }
 
     #[test]

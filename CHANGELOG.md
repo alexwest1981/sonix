@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a sample header API for scripts (0.9.119)
+
+- `wav_reader::wav_info(path)` läser **bara** chunk-tabellen: `fmt ` och `data`-längden. Ingen
+  ljuddata läses, så en 200 MB-stem kostar några hundra byte att mäta.
+- Skripten får `sample_seconds(path)`, `sample_rate(path)` och `sample_frames(path)`; en oläsbar
+  fil ger **0** i stället för att avbryta skriptet. Prov: 1 s stereo vid 48 kHz mäts till
+  `frames = 48000`, `seconds = 1.0`.
+
+### Changed — the synth panel is responsive
+
+- Sektionerna är utbrutna till fyra funktioner (`synth_oscillator`, `synth_filter`, `synth_adsr`,
+  `synth_graph`), så layouten kan välja: två kolumner när de får plats, staplat när de inte gör det.
+- Bredden mäts ur **synligt** område (`clip_rect`), inte `available_width` — i ett scrollområde
+  ärvde panelen rackets bredd och trodde att den hade plats.
+- Verifierat 1920×1200: komplett panel. Vid 1280 räcker höjden inte för staplad layout (racket
+  och synten delar samma scrollområde) — utskrivet som `shortcut:` i koden.
+
 ### Fixed — denormals flushed in the audio thread
 
 - När ett filter eller en reverbssvans klingar ut hamnar tillstånden i **denormala** tal. De låter

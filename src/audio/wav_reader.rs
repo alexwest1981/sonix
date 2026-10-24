@@ -1,5 +1,75 @@
 use std::fs::File;
-use std::io::Read;
+use std::io::{Read, Seek, SeekFrom};
+
+/// Det en skriptmotor behöver veta om en sampling utan att läsa själva ljudet: bara
+/// chunk-tabellen i huvudet. `frames` är antalet sampelramar (per kanal).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct WavInfo {
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub bits: u16,
+    pub frames: u64,
+}
+
+impl WavInfo {
+    pub fn seconds(&self) -> f64 {
+        if self.sample_rate == 0 || self.channels == 0 {
+            return 0.0;
+        }
+        self.frames as f64 / self.sample_rate as f64
+    }
+}
+
+/// Läser **bara** huvudet på en RIFF/WAVE-fil: `fmt `-blocket och `data`-längden. Hela filen
+/// läses aldrig, så en 200 MB-stem kostar några hundra byte.
+pub fn wav_info(path: &str) -> Result<WavInfo, String> {
+    let mut file = File::open(path).map_err(|e| format!("{path}: {e}"))?;
+    let mut head = [0u8; 12];
+    file.read_exact(&mut head).map_err(|e| format!("{path}: {e}"))?;
+    if &head[0..4] != b"RIFF" || &head[8..12] != b"WAVE" {
+        return Err(format!("{path}: inte RIFF/WAVE"));
+    }
+
+    let mut sample_rate = 0u32;
+    let mut channels = 0u16;
+    let mut bits = 0u16;
+    let mut frames = 0u64;
+    let mut pos = 12u64;
+    loop {
+        let mut hdr = [0u8; 8];
+        if file.seek(SeekFrom::Start(pos)).is_err() || file.read_exact(&mut hdr).is_err() {
+            break;
+        }
+        let size = u32::from_le_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]) as u64;
+        let body = pos + 8;
+        if &hdr[0..4] == b"fmt " {
+            let mut fmt = [0u8; 16];
+            if file.read_exact(&mut fmt).is_ok() {
+                channels = u16::from_le_bytes([fmt[2], fmt[3]]);
+                sample_rate = u32::from_le_bytes([fmt[4], fmt[5], fmt[6], fmt[7]]);
+                bits = u16::from_le_bytes([fmt[14], fmt[15]]).max(8);
+            }
+        } else if &hdr[0..4] == b"data" {
+            // 0xFFFFFFFF = storleken står i `ds64` (RF64) — då räknas resten av filen.
+            let bytes = if size == u32::MAX as u64 {
+                file.metadata().map(|m| m.len().saturating_sub(body)).unwrap_or(0)
+            } else {
+                size
+            };
+            let block = channels.max(1) as u64 * (bits / 8).max(1) as u64;
+            frames = bytes / block;
+            break;
+        }
+        if size == u32::MAX as u64 {
+            break;
+        }
+        pos = body + size + (size & 1);
+    }
+    if sample_rate == 0 {
+        return Err(format!("{path}: inget fmt-block"));
+    }
+    Ok(WavInfo { sample_rate, channels, bits, frames })
+}
 
 /// Reads a standard 16-bit, 24-bit or 32-bit float RIFF/WAVE file and generates a normalized peak amplitude waveform envelope.
 #[allow(unused_variables, unused_assignments, dead_code)]
@@ -272,6 +342,25 @@ fn load_via_ffmpeg(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Huvudet räcker.** 1 sekund stereo vid 48 kHz ska gå att mäta utan att läsa ljudet.
+    #[test]
+    fn wav_info_reads_the_header_only() {
+        let path = std::env::temp_dir().join("sonix_wav_info_probe.wav");
+        let path = path.to_string_lossy().to_string();
+        let frames = 48_000usize;
+        let samples: Vec<f32> = (0..frames * 2).map(|i| (i % 7) as f32 * 0.01).collect();
+        crate::audio::wav_writer::write_pcm_f32_to_wav(&path, &samples, 48_000, 2).unwrap();
+
+        let info = wav_info(&path).unwrap();
+        assert_eq!(info.sample_rate, 48_000);
+        assert_eq!(info.channels, 2);
+        assert_eq!(info.frames, frames as u64);
+        assert!((info.seconds() - 1.0).abs() < 1e-3, "{}", info.seconds());
+        let _ = std::fs::remove_file(&path);
+
+        assert!(wav_info("/finns/inte.wav").is_err());
+    }
 
     #[test]
     fn test_read_real_wav_envelope() {
