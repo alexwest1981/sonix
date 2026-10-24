@@ -7,7 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed — the interface stops looking like stock egui
+### Changed — language and guide moved into the menus
+
+- The language picker and the guide button were two loose controls at the end of the transport
+  row. Language is now a submenu under **Inställningar** (`Språk (Svenska)`) and the guide button
+  is gone — **Hjälp → Snabbguide & Manual (F1)** already did the same thing.
 
 - **Transport is three large icon buttons.** ▶ ⏸ ⏹ at 48×30 with the word in the tooltip, in the
   Ableton manner, instead of three wide text buttons. Icon colour flips to black on a lit

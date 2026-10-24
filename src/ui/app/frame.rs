@@ -1090,6 +1090,19 @@ impl SonixApp {
                             self.show_controller_modal = true;
                             ui.close_menu();
                         }
+                        ui.separator();
+                        ui.menu_button(
+                            format!("🌐 {} ({})", self.tr("Språk"), self.language.native_name()),
+                            |ui| {
+                                for lang in crate::i18n::Language::shipped() {
+                                    if ui.selectable_label(self.language == lang, lang.native_name()).clicked() {
+                                        self.language = lang;
+                                        crate::i18n::set_current(lang);
+                                        ui.close_menu();
+                                    }
+                                }
+                            },
+                        );
                     });
 
                     // Hjälp
@@ -1319,27 +1332,6 @@ impl SonixApp {
                         self.show_controller_modal = true;
                     }
 
-                    ui.separator();
-
-                    let guide_col = if self.show_help_guide { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().text_muted() };
-                    if ui.button(egui::RichText::new(crate::i18n::t("💡 Guide")).color(guide_col)).clicked() {
-                        self.show_help_guide = !self.show_help_guide;
-                    }
-
-                    ui.separator();
-
-                    let lang_title = format!("🌐 {}", self.language.native_name());
-                    egui::menu::menu_button(ui, egui::RichText::new(lang_title).size(Theme::FONT_S).color(if self.language != crate::i18n::Language::En { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().text_muted() }), |ui| {
-                        ui.label(egui::RichText::new(self.tr("🌐 Språk")).strong().size(Theme::FONT_S));
-                        ui.separator();
-                        for lang in crate::i18n::Language::shipped() {
-                            if ui.selectable_label(self.language == lang, lang.native_name()).clicked() {
-                                self.language = lang;
-                                crate::i18n::set_current(lang);
-                                ui.close_menu();
-                            }
-                        }
-                    });
                 });
 
                 ui.add_space(2.0);
