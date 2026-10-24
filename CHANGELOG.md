@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Right-click a channel in the rack.** Mute/unmute or reset volume and pan (80 %, centred), with
+  the channel name in the status line. The action is applied after the row loop, so it does not
+  fight the channel borrow mid-draw.
+
 - **Unison in the 6-op synth.** 1–4 voices per note, spread by 0–50 cents, summed with 1/√n so the
   level stays put. Each voice keeps its own phases, feedback history and filter state; the six
   envelopes tick once per sample and are shared, or they would run n times too fast. Default is

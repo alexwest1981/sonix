@@ -1046,6 +1046,8 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
 
         let mut toggle_picker_for = None;
         let mut toggle_chopper_for = None;
+        // Högerklicksmenyn på en kanal: (kanal, 0 = mute av/på, 1 = nollställ volym/pan).
+        let mut channel_action: Option<(usize, u8)> = None;
 
         for ch_idx in 0..self.channels.len() {
             let is_selected = self.selected_channel == ch_idx;
@@ -1073,9 +1075,34 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                 let ch_btn = egui::Button::new(egui::RichText::new(format!("{} {}", ch.icon, ch.name)).strong().color(ch.color))
                     .fill(btn_fill)
                     .min_size(Vec2::new(110.0, 26.0));
-                if ui.add(ch_btn).clicked() {
+                let ch_resp = ui.add(ch_btn);
+                if ch_resp.clicked() {
                     self.selected_channel = ch_idx;
                 }
+                // **Högerklick på kanalen:** ett par åtgärder i stället för att leta i panelen.
+                ch_resp.context_menu(|ui| {
+                    ui.set_min_width(200.0);
+                    let muted = ch.muted;
+                    if ui
+                        .button(if muted {
+                            crate::i18n::t("🔊 Slå på kanalen")
+                        } else {
+                            crate::i18n::t("🔇 Tysta kanalen")
+                        })
+                        .clicked()
+                    {
+                        channel_action = Some((ch_idx, 0));
+                        ui.close_menu();
+                    }
+                    if ui
+                        .button(crate::i18n::t("🎚 Nollställ volym och pan"))
+                        .on_hover_text(crate::i18n::t("Volym 80 %, pan i mitten"))
+                        .clicked()
+                    {
+                        channel_action = Some((ch_idx, 1));
+                        ui.close_menu();
+                    }
+                });
 
                 // Quick Switch Sound Button [🔄 Byt]
                 let byt_fill = if is_picker_open { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().panel_alt() };
@@ -1127,6 +1154,25 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
         }
         if let Some(ch_idx) = toggle_chopper_for {
             self.active_chopper_channel = if self.active_chopper_channel == Some(ch_idx) { None } else { Some(ch_idx) };
+        }
+        if let Some((ch_idx, what)) = channel_action
+            && let Some(ch) = self.channels.get_mut(ch_idx)
+        {
+            self.status_message = match what {
+                0 => {
+                    ch.muted = !ch.muted;
+                    if ch.muted {
+                        crate::tstatus!("🔇 {} tystad", ch.name)
+                    } else {
+                        crate::tstatus!("🔊 {} på igen", ch.name)
+                    }
+                }
+                _ => {
+                    ch.volume = 0.8;
+                    ch.pan = 0.0;
+                    crate::tstatus!("🎚 {}: volym 80 %, pan i mitten", ch.name)
+                }
+            };
         }
 
         // Interactive Sound Library Picker Overlay
