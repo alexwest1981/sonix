@@ -3446,6 +3446,24 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                         .changed();
                                 }
                             });
+                            // Tonhöjdsenvelop: samma ADSR formar tonhöjden, i halvtoner.
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(crate::i18n::t("PIT"))
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(
+                                        egui::Slider::new(&mut self.six_op.pitch_amount[target], -24.0..=24.0)
+                                            .suffix(" st")
+                                            .text(crate::i18n::t("halvtoner")),
+                                    )
+                                    .on_hover_text(crate::i18n::t(
+                                        "Operadens tonhöjd följer dess envelop — 0 = still",
+                                    ))
+                                    .changed();
+                            });
                             let filter = &mut self.six_op.filters[target];
                             ui.horizontal(|ui| {
                                 six_changed |= ui

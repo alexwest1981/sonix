@@ -445,7 +445,7 @@ pub fn saved_themes() -> Vec<(String, std::path::PathBuf)> {
             }
         }
     }
-    out.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    out.sort_by_key(|a| a.0.to_lowercase());
     out
 }
 

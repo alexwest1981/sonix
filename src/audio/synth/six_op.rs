@@ -55,6 +55,15 @@ pub struct SixOpParams {
     /// avstängt (filtret rör inte samplet), så en patch som inte rört det låter som förut.
     #[serde(default = "open_filters")]
     pub filters: [OpFilter; SIX_OP_COUNT],
+    /// **Tonhöjdsenvelop per operator** i halvtoner (−24..24). Samma ADSR som amplituden formar
+    /// tonhöjden — Sytrus har egna kurvor per operator; att återanvända envelopen ger samma
+    /// rörelse med ett fält i stället för sex. `#[serde(default)]` → 0, så gamla patchar står still.
+    #[serde(default = "no_pitch")]
+    pub pitch_amount: [f32; SIX_OP_COUNT],
+}
+
+pub fn no_pitch() -> [f32; SIX_OP_COUNT] {
+    [0.0; SIX_OP_COUNT]
 }
 
 /// Lågpasset per operator. Egen struct i stället för `FilterParams`: matrisen sparas som
@@ -122,6 +131,7 @@ impl Default for SixOpParams {
             lfo_target: 0,
             envs: neutral_envs(),
             filters: open_filters(),
+            pitch_amount: no_pitch(),
         }
     }
 }
@@ -260,7 +270,14 @@ impl SixOpVoice {
                     modulation += amount * value;
                 }
             }
-            let mut phase = self.phases[u][target] + inc * params.ratios[target];
+            // Tonhöjdsenvelopen: samma värde som amplituden, skalat i halvtoner.
+            let pitch = params.pitch_amount[target];
+            let bend = if pitch == 0.0 {
+                1.0
+            } else {
+                (2.0f32).powf(pitch * env_now[target] / 12.0)
+            };
+            let mut phase = self.phases[u][target] + inc * params.ratios[target] * bend;
             if phase >= TAU || phase < 0.0 {
                 phase -= TAU * (phase / TAU).floor();
             }
@@ -334,6 +351,23 @@ mod tests {
             im += v * (w * i as f32).sin();
         }
         2.0 * (re * re + im * im).sqrt() / x.len() as f32
+    }
+
+    /// **Tonhöjdsenvelopen böjer operatorn.** +12 halvtoner med en envelop som håller 1,0 ska
+    /// flytta grundtonen en okt upp — mätt i spektrat, inte på känsla.
+    #[test]
+    fn a_pitch_envelope_moves_the_operator_an_octave() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.2 };
+        let flat = render(&params, 440.0, 9_600);
+        let body = &flat[2_400..];
+        assert!(mag_at(body, 440.0) > 0.2, "utan böjning ligger tonen på 440");
+
+        params.pitch_amount[0] = 12.0;
+        let bent = render(&params, 440.0, 9_600);
+        let body = &bent[2_400..];
+        assert!(mag_at(body, 880.0) > 0.2, "en okt upp ska ge 880 Hz");
+        assert!(mag_at(body, 440.0) < 0.05, "440 ska vara borta");
     }
 
     /// **Utan modulering är 6-op en sinus.** Matrisen noll och bara operator 1 hörd ger

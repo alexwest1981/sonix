@@ -56,10 +56,10 @@ pub(crate) fn overview_peaks_from(
 /// Utan PCM blir det ingen cache: en cache utan ljud är precis den sorts
 /// trovärdiga bild som 8.5 handlade om.
 pub(crate) fn imported_track_waveform(
-    pcm: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    pcm: Option<crate::audio::StereoPcm>,
     cache: Option<crate::audio::waveform::WaveformCache>,
 ) -> (
-    Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    Option<crate::audio::StereoPcm>,
     Option<(u64, crate::audio::waveform::WaveformCache)>,
 ) {
     match pcm {
@@ -85,7 +85,7 @@ pub(crate) fn waveform_preview_from_pcm(pcm: &[f32], points: usize) -> Vec<f32> 
 }
 
 /// Loads a WAV file once and returns Arc-wrapped stereo PCM for cheap cloning into audio commands.
-pub(crate) fn load_sample_pcm_arcs(path: &str) -> Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)> {
+pub(crate) fn load_sample_pcm_arcs(path: &str) -> Option<crate::audio::StereoPcm> {
     match crate::audio::load_wav_pcm(path) {
         Ok((l, r, sr)) => Some((std::sync::Arc::new(l), std::sync::Arc::new(r), sr)),
         // Samma tystnad som de sju andra ställena hade: en fil som inte går att

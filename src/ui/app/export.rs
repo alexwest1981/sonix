@@ -869,7 +869,7 @@ fn write_and_read_back(
     &self,
     name: &str,
     buffer: &[f32],
-) -> Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)> {
+) -> Option<crate::audio::StereoPcm> {
     let sample_rate = self.engine.sample_rate;
     let path = crate::paths::paths()
         .project_assets_dir(&self.project_name)

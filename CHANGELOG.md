@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — pitch envelope per operator (Sytrus)
+
+- `SixOpParams.pitch_amount: [f32; 6]` (−24…+24 semitones, serde default 0) bends each operator's
+  pitch with **its own ADSR** — the same envelope that shapes amplitude, which is what Sytrus does
+  with a separate curve; documented as the simplification it is.
+- A **PIT** slider sits with A/D/S/R for the selected operator. Old patches are untouched (0).
+- Prov `a_pitch_envelope_moves_the_operator_an_octave`: +12 moves the fundamental 440 → 880 and
+  leaves 440 below 0.05 of the peak — measured in the spectrum, not by ear.
+- Clippy 48 → 37 on the way (`StereoPcm` alias for the repeated three-tuple, `drum_layers` typed).
+
 ### Changed — less chrome in the arranger
 
 - The floating **BETA AI prompt capsule** is gone from the timeline; the AI view is where prompts

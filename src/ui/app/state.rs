@@ -179,7 +179,7 @@ pub struct ChannelStrip {
     pub release_path: Option<String>,
     pub release_pcm: Option<(std::sync::Arc<Vec<f32>>, u32)>,
     pub sample_path: Option<String>,
-    pub pcm_audio: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    pub pcm_audio: Option<crate::audio::StereoPcm>,
     pub sample_base_note: u8,
 }
 
@@ -1104,12 +1104,12 @@ pub struct PlaylistTrack {
     pub waveform_cache_pending: Option<u64>,
     #[allow(dead_code)]
     pub custom_clip_name: Option<String>,
-    pub pcm_audio: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    pub pcm_audio: Option<crate::audio::StereoPcm>,
     /// Fruset spår (Tier 2): färdigrenderat ljud + fingeravtrycket av källan.
     pub frozen: Option<FrozenTrack>,
     /// Det frusna ljudet inläst, så att en omladdning (ClearAllStemTracks +
     /// resync, som vid projektinläsning) kan skicka det igen.
-    pub frozen_pcm: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    pub frozen_pcm: Option<crate::audio::StereoPcm>,
     pub eq: TrackEq,
     pub comp_threshold_db: f32,
     pub comp_ratio: f32,

@@ -364,7 +364,7 @@ pub fn tstatus(key: &'static str, args: &[&dyn FmtArg]) -> String {
 #[macro_export]
 macro_rules! tstatus {
     ($key:expr $(, $arg:expr)* $(,)?) => {{
-        $crate::i18n::tstatus($key, &[ $( &($arg) as &dyn crate::i18n::FmtArg ),* ])
+        $crate::i18n::tstatus($key, &[ $( &($arg) as &dyn $crate::i18n::FmtArg ),* ])
     }};
 }
 
@@ -407,6 +407,9 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "PEDAL" => "PEDAL",
+        "Operadens tonhöjd följer dess envelop — 0 = still" => "The operator's pitch follows its envelope — 0 = still",
+        "halvtoner" => "semitones",
+        "PIT" => "PIT",
         "🎧 Generera ljud" => "🎧 Generate audio",
         "🎙 Nytt projekt: mikrofonspåret är armat — tryck REC." => "🎙 New project: the mic track is armed — press REC.",
         "✅ Skapa sektionerna" => "✅ Create the sections",
@@ -2829,6 +2832,9 @@ fn tr_da(key: &str) -> Option<&'static str> {
         "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "PEDAL" => "PEDAL",
+        "Operadens tonhöjd följer dess envelop — 0 = still" => "Operatorens tonehøjde følger dens envelop — 0 = stille",
+        "halvtoner" => "halvtoner",
+        "PIT" => "PIT",
         "🎧 Generera ljud" => "🎧 Generér lyd",
         "🎙 Nytt projekt: mikrofonspåret är armat — tryck REC." => "🎙 Nyt projekt: mikrofonsporet er armeret — tryk REC.",
         "✅ Skapa sektionerna" => "✅ Opret sektionerne",
@@ -5210,6 +5216,9 @@ fn tr_no(key: &str) -> Option<&'static str> {
         "🎸 Gitarr" => "🎸 Guitar",
         "BEND" => "BEND",
         "PEDAL" => "PEDAL",
+        "Operadens tonhöjd följer dess envelop — 0 = still" => "Operatorens tonehøyde følger envelopen — 0 = stille",
+        "halvtoner" => "halvtoner",
+        "PIT" => "PIT",
         "🎧 Generera ljud" => "🎧 Generer lyd",
         "🎙 Nytt projekt: mikrofonspåret är armat — tryck REC." => "🎙 Nytt prosjekt: mikrofonsporet er armert — trykk REC.",
         "✅ Skapa sektionerna" => "✅ Opprett seksjonene",
@@ -7591,6 +7600,9 @@ fn tr_de(key: &str) -> Option<&'static str> {
         "🎸 Gitarr" => "🎸 Gitarre",
         "BEND" => "BEND",
         "PEDAL" => "PEDAL",
+        "Operadens tonhöjd följer dess envelop — 0 = still" => "Die Tonhöhe des Operators folgt seiner Hüllkurve — 0 = still",
+        "halvtoner" => "Halbtonen",
+        "PIT" => "PIT",
         "🎧 Generera ljud" => "🎧 Audio erzeugen",
         "🎙 Nytt projekt: mikrofonspåret är armat — tryck REC." => "🎙 Neues Projekt: die Mikrospur ist scharf — REC drücken.",
         "✅ Skapa sektionerna" => "✅ Sektionen anlegen",
@@ -9972,6 +9984,9 @@ fn tr_es(key: &str) -> Option<&'static str> {
         "🎸 Gitarr" => "🎸 Guitarra",
         "BEND" => "PITCH",
         "PEDAL" => "PEDAL",
+        "Operadens tonhöjd följer dess envelop — 0 = still" => "La altura del operador sigue su envolvente — 0 = quieto",
+        "halvtoner" => "semitonos",
+        "PIT" => "PIT",
         "🎧 Generera ljud" => "🎧 Generar audio",
         "🎙 Nytt projekt: mikrofonspåret är armat — tryck REC." => "🎙 Proyecto nuevo: la pista de micrófono está armada — pulsa REC.",
         "✅ Skapa sektionerna" => "✅ Crear las secciones",
@@ -12353,6 +12368,9 @@ fn tr_fr(key: &str) -> Option<&'static str> {
         "🎸 Gitarr" => "🎸 Guitare",
         "BEND" => "BEND",
         "PEDAL" => "PÉDALE",
+        "Operadens tonhöjd följer dess envelop — 0 = still" => "La hauteur de l'opérateur suit son enveloppe — 0 = fixe",
+        "halvtoner" => "demi-tons",
+        "PIT" => "PIT",
         "🎧 Generera ljud" => "🎧 Générer de l'audio",
         "🎙 Nytt projekt: mikrofonspåret är armat — tryck REC." => "🎙 Nouveau projet : la piste micro est armée — appuyez sur REC.",
         "✅ Skapa sektionerna" => "✅ Créer les sections",

@@ -13,7 +13,6 @@
 //! Zonen bär **färdiglästa** kanaler (`Arc`), precis som kanalen gör: motorn kan inte läsa filer,
 //! och ljudet sparas aldrig i projektfilen (det ligger redan på disk).
 
-use std::sync::Arc;
 
 /// **En zon**: ett sampel som gäller ett tonhöjds- och ett anslagsintervall.
 /// `PartialEq` jämför även ljudet (`Arc<Vec<f32>>` jämförs till **innehåll**), vilket är vad
@@ -25,7 +24,7 @@ pub struct SampleZone {
     pub sample_path: Option<String>,
     /// Filens kanaler och samplingsfrekvens, färdiglästa. `None` = filen kunde inte läsas (8.5:s
     /// regel: säg det, hitta aldrig på ett ljud).
-    pub pcm: Option<(Arc<Vec<f32>>, Arc<Vec<f32>>, u32)>,
+    pub pcm: Option<crate::audio::StereoPcm>,
     /// Sampelns **grundton**: transponeringen räknas härifrån, så en zon kan spelas i sitt eget
     /// register utan att låta som en smurf.
     pub root: u8,

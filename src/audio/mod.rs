@@ -1,3 +1,7 @@
+/// Stereoljud: vänster, höger och samplingsfrekvens. Aliaset finns för att en tuple av tre
+/// element som upprepas i tio signaturer inte säger något om vad den är.
+pub type StereoPcm = (std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32);
+
 pub mod ai_client;
 pub mod ai_generator;
 pub mod ai_tools;

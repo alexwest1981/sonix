@@ -7,6 +7,9 @@
 
 use serde_json::{json, Value};
 
+/// Kick, virvel och hi-hat som tre stegrader.
+pub type DrumLayers = ([bool; STEPS], [bool; STEPS], [bool; STEPS]);
+
 /// Max antal steg i ett pattern (4 takter à 16 sextondelar).
 pub const STEPS: usize = 64;
 
@@ -163,7 +166,7 @@ pub fn ensure_channels_free(busy: &[bool], names: &[String]) -> Result<(), Strin
 }
 
 /// Kompets tre lager för sig — kick, virvel, hi-hat — så appen kan skriva dem på tre kanaler.
-pub fn drum_layers(style: &str, bars: usize) -> Result<([bool; STEPS], [bool; STEPS], [bool; STEPS]), String> {
+pub fn drum_layers(style: &str, bars: usize) -> Result<DrumLayers, String> {
     let (_, kick, snare, hat) = DRUM_STYLES
         .iter()
         .find(|(name, ..)| name.eq_ignore_ascii_case(style.trim()))

@@ -1035,12 +1035,12 @@ pub struct PreloadedTrackData {
     /// Sends (Fas 8.13), med i förinläsningen så att ett laddat projekt skickar
     /// sin signal till samma bussar som när det sparades.
     pub sends: Vec<crate::audio::StemSend>,
-    pub stem_pcms: Vec<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    pub stem_pcms: Vec<crate::audio::StereoPcm>,
     /// Det **frusna** spårets ljud, om filen gick att läsa vid inläsningen.
     /// Hålls åtskild från `stem_pcms`: `track_pcm` blir det *sista* som lades i
     /// stem_pcms, och ett fruset spår vars fil saknas får inte ärva spårets egna
     /// klippljud och kalla det för sin frysning.
-    pub frozen_pcm: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
+    pub frozen_pcm: Option<crate::audio::StereoPcm>,
 }
 
 #[derive(Clone)]

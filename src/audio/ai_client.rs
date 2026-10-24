@@ -785,11 +785,10 @@ pub fn chat_with_tools(config: &AiConfig, user_text: &str) -> Result<String, Str
         .and_then(|c| c.get(0))
         .and_then(|c| c.get("message"));
     if let Some(message) = message {
-        if let Some(calls) = message.get("tool_calls").and_then(|c| c.as_array()) {
-            if !calls.is_empty() {
+        if let Some(calls) = message.get("tool_calls").and_then(|c| c.as_array())
+            && !calls.is_empty() {
                 return Ok(serde_json::json!({"tool_calls": calls}).to_string());
             }
-        }
         if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
             return Ok(content.to_string());
         }

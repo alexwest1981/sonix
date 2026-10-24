@@ -184,7 +184,7 @@ pub(crate) fn channel_sample_trigger_command(
         }
     };
     let zon_loop = crate::audio::keymap::zone_loop_01(
-        zon.map(|(_, _, lf)| lf).flatten(),
+        zon.and_then(|(_, _, lf)| lf),
         left.len(),
     );
     Some(AudioCommand::TriggerSampleVoice {
