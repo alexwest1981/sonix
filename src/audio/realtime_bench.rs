@@ -142,6 +142,7 @@ pub fn reference_spec() -> RenderSpec {
         rack.push(RackChannel {
             slices: Vec::new(),
             voice: Some(VoiceSpec {
+                release: None,
                 velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
                 left: left.clone(),
                 right: right.clone(),

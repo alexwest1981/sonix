@@ -31,6 +31,8 @@ use super::synth::SynthEngine;
 
 #[derive(Clone)]
 pub struct VoiceSpec {
+    /// Släppljudet (mono + frekvens), om kanalen har ett.
+    pub release: Option<(Arc<Vec<f32>>, u32)>,
     pub left: Arc<Vec<f32>>,
     pub right: Arc<Vec<f32>>,
     pub sample_rate: u32,
@@ -306,6 +308,7 @@ fn sample_trigger_command(
         amp_env: v.amp_env,
         filter: v.filter,
         hold_secs,
+        release: v.release.clone(),
     })
 }
 
@@ -1099,6 +1102,7 @@ mod tests {
         let kanal_ljud = Arc::new(vec![9.0_f32; 8]);
         let zon_ljud = Arc::new(vec![0.25_f32; 8]);
         let v = VoiceSpec {
+            release: None,
             left: kanal_ljud.clone(),
             right: kanal_ljud.clone(),
             sample_rate: 44_100,
@@ -1172,6 +1176,7 @@ mod tests {
         for i in 0..8 {
             let voice = if i == 0 {
                 Some(VoiceSpec {
+                    release: None,
                     left: l.clone(),
                     right: r.clone(),
                     sample_rate: 44100,
@@ -1844,6 +1849,7 @@ mod tests {
                     .collect(),
             );
             spec.rack[0].voice = Some(VoiceSpec {
+                release: None,
                 left: tone.clone(),
                 right: tone,
                 sample_rate: 44_100,
@@ -1947,6 +1953,7 @@ mod tests {
                 .collect(),
         );
         spec.rack[0].voice = Some(VoiceSpec {
+            release: None,
             left: tone.clone(),
             right: tone.clone(),
             sample_rate: SR,

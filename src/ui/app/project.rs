@@ -155,6 +155,9 @@ pub struct SavedPattern {
 #[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct SavedChannel {
     pub name: String,
+    /// Släppljudets fil (FL Keys: dämparens ljud). Saknas i äldre filer.
+    #[serde(default)]
+    pub release_path: Option<String>,
     #[serde(default)]
     pub icon: String,
     #[serde(default = "default_ui_color")]
@@ -714,6 +717,7 @@ pub(crate) fn saved_to_pattern(s: &SavedPattern) -> Pattern {
 
 pub(crate) fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
     SavedChannel {
+        release_path: c.release_path.clone(),
         name: c.name.clone(),
         icon: c.icon.clone(),
         color: c.color.to_array(),
@@ -766,6 +770,12 @@ pub(crate) fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
         None => Vec::new(),
     };
     ChannelStrip {
+        release_path: s.release_path.clone(),
+        release_pcm: s.release_path.as_deref().and_then(|p| {
+            crate::audio::wav_reader::load_wav_pcm(p)
+                .ok()
+                .map(|(l, _, rate)| (std::sync::Arc::new(l), rate))
+        }),
         name: s.name.clone(),
         icon: s.icon.clone(),
         color: Color32::from_rgba_premultiplied(s.color[0], s.color[1], s.color[2], s.color[3]),

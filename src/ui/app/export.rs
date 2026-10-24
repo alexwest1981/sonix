@@ -187,6 +187,7 @@ pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u
 
     let rack = self.channels.iter().map(|ch| {
         let voice = ch.pcm_audio.as_ref().map(|(l, r, sr)| VoiceSpec {
+            release: ch.release_pcm.clone(),
             left: l.clone(),
             right: r.clone(),
             sample_rate: *sr,

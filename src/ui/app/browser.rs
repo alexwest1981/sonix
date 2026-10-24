@@ -218,6 +218,7 @@ pub(crate) fn channel_sample_trigger_command(
         amp_env: ch.amp_env,
         filter: ch.filter,
         hold_secs,
+        release: ch.release_pcm.clone(),
     })
 }
 

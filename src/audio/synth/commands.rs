@@ -246,14 +246,15 @@ impl SynthEngine {
                 self.modulation.note_off();
                 // Samplade röster: pedalen håller dem också. Utan pedal gör not-av ingenting
                 // på en en-skottsröst — det är det gamla beteendet och det står kvar.
-                if self.sustain_pedal {
-                    let ch = channel as u32;
-                    for sv in &mut self.sample_voices {
-                        if sv.is_active()
-                            && sv.note == note
-                            && (ch == 0 || sv.channel == ch)
-                        {
+                let ch = channel as u32;
+                for sv in &mut self.sample_voices {
+                    if sv.is_active() && sv.note == note && (ch == 0 || sv.channel == ch) {
+                        if self.sustain_pedal {
                             sv.sustained = true;
+                        } else if sv.release.is_some() {
+                            // **Släppljud:** dämparens ljud tar över rösten. Utan släppljud
+                            // gör not-av ingenting på en en-skottsröst — som förut.
+                            sv.to_release();
                         }
                     }
                 }
@@ -285,7 +286,10 @@ impl SynthEngine {
                     for sv in &mut self.sample_voices {
                         if sv.sustained {
                             sv.sustained = false;
-                            sv.damper = ramp;
+                            // Släppljudet ersätter rampen när det finns: det *är* dämpningen.
+                            if !sv.to_release() {
+                                sv.damper = ramp;
+                            }
                         }
                     }
                 }
@@ -757,6 +761,7 @@ impl SynthEngine {
                 amp_env,
                 filter,
                 hold_secs,
+                release,
             } => {
                 if left.is_empty() {
                     return;
@@ -790,6 +795,7 @@ impl SynthEngine {
                 // envelopen är avstängd när parametrarna är identiteten.
                 v.note = note;
                 v.channel = channel;
+                v.release = release;
                 v.loop_mode = loop_mode;
                 v.loop_span = loop_frames(v.left.len(), loop_start01, loop_end01);
                 v.ping_pong = ping_pong;

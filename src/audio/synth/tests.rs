@@ -1708,6 +1708,7 @@ fn trigger_sampler_velocity(
         amp_env,
         filter,
         hold_secs,
+        release: None,
     });
     let _ = synth.process_stereo();
     synth
@@ -1752,6 +1753,7 @@ fn trigger_sampler_filter(filter: SamplerFilter) -> SynthEngine {
         amp_env: AdsrParams::identity(),
         filter,
         hold_secs: 0.0,
+        release: None,
     });
     let _ = synth.process_stereo();
     synth
@@ -3755,7 +3757,8 @@ fn the_pedal_holds_a_sample_and_damps_it_when_it_lifts() {
         ping_pong: false,
         amp_env: crate::audio::envelope::AdsrParams::identity(),
         filter: SamplerFilter::default(),
-        hold_secs: 10.0,
+        hold_secs: 0.0,
+        release: None,
     });
 
     let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
@@ -3796,4 +3799,60 @@ fn the_pedal_holds_a_sample_and_damps_it_when_it_lifts() {
         level_after < level_held * 0.5,
         "pedalen upp ska dämpa: {level_after:.4} av {level_held:.4}"
     );
+}
+
+/// **Släppljudet spelar när tonen släpps** — och utan släppljud händer ingenting, som förut.
+///
+/// Huvudsamplingen är **tyst** i det här provet, så allt som hörs efter not-av är dämparens ljud.
+#[test]
+fn a_release_sample_plays_after_the_key_is_let_go() {
+    let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+    let run = |with_release: bool| {
+        let mut synth = SynthEngine::new(48_000.0);
+        let main = Arc::new(vec![0.0f32; 4_800]);
+        let rel = Arc::new(
+            (0..4_800)
+                .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 880.0 * i as f32 / 48_000.0).sin())
+                .collect::<Vec<f32>>(),
+        );
+        synth.handle_command(AudioCommand::TriggerSampleVoice {
+            left: main.clone(),
+            right: main,
+            sample_rate: 48_000,
+            base_note: 60,
+            note: 60,
+            pitch_semitones: 0,
+            pitch_cents: 0.0,
+            velocity: 1.0,
+            velocity_sensitivity: 1.0,
+            velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
+            volume: 1.0,
+            reverse: false,
+            start01: 0.0,
+            end01: 1.0,
+            channel: 0,
+            loop_mode: LoopMode::Off,
+            loop_start01: 0.0,
+            loop_end01: 1.0,
+            ping_pong: false,
+            amp_env: crate::audio::envelope::AdsrParams::identity(),
+            filter: SamplerFilter::default(),
+            hold_secs: 10.0,
+            release: with_release.then(|| (rel.clone(), 48_000)),
+        });
+        for _ in 0..4_800 {
+            synth.process_stereo();
+        }
+        synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
+        let mut after = Vec::new();
+        for _ in 0..4_800 {
+            after.push(synth.process_stereo().0);
+        }
+        println!("  släppljud {}: {:.4}", with_release, rms(&after[1_000..]));
+        rms(&after[1_000..])
+    };
+    let with = run(true);
+    let without = run(false);
+    assert!(with > 0.1, "släppljudet ska höras: {with:.4}");
+    assert!(without < 1e-4, "utan släppljud ska det vara tyst: {without:.6}");
 }

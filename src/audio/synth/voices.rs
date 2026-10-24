@@ -322,6 +322,8 @@ pub struct SampleVoice {
     pub note: u8,
     /// Hållen av sustainpedalen (CC64): tangenten är släppt men samplingen klingar.
     pub sustained: bool,
+    /// **Släppljudet** (mono + dess samplingsfrekvens): spelas när tonen släpps.
+    pub release: Option<(std::sync::Arc<Vec<f32>>, u32)>,
     /// Utramar kvar av pedaldämparen; räknas ned per frame i renderloopen.
     pub damper: u32,
     /// Amplitud-ADSR på rösten. `env_on` är falskt när parametrarna är **identiteten**
@@ -968,6 +970,7 @@ impl SampleVoice {
             hold_frames: None,
             note: 0,
             sustained: false,
+            release: None,
             damper: 0,
             amp_env: AdsrVoice::new(44_100.0),
             env_params: AdsrParams::identity(),
@@ -977,6 +980,36 @@ impl SampleVoice {
             filter_state: StateVariableFilter::new(44_100.0),
             filter_env: AdsrVoice::new(44_100.0),
         }
+    }
+
+    /// Byter rösten till **släppljudet**: huvudsamplingen tystnar och dämparens ljud tar vid i
+    /// samma röst. `false` = inget släppljud finns, och då gör anroparen som förut.
+    pub fn to_release(&mut self) -> bool {
+        let Some((pcm, rate)) = self.release.take() else {
+            return false;
+        };
+        if pcm.is_empty() {
+            return false;
+        }
+        let len = pcm.len() as f32;
+        // Släppljudet kan ha en annan frekvens än huvudsamplet: `step` är redan ut-ramar per
+        // källram för huvudet, så den skalas med kvoten. Utan det spelas dämparen i fel tempo.
+        if rate > 0 && self.src_sample_rate > 0.0 {
+            self.step *= rate as f32 / self.src_sample_rate;
+        }
+        self.src_sample_rate = rate as f32;
+        self.left = pcm.clone();
+        self.right = pcm;
+        self.pos = 0.0;
+        self.start_frame = 0.0;
+        self.end_frame = len;
+        self.frames_done = 0;
+        self.released = false;
+        self.hold_frames = None;
+        self.loop_span = None;
+        self.loop_mode = LoopMode::Off;
+        self.damper = 0;
+        true
     }
 
     #[inline(always)]

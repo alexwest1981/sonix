@@ -165,6 +165,10 @@ pub struct ChannelStrip {
     pub zones: Vec<crate::audio::keymap::SampleZone>,
     pub is_reverse: bool,
     pub waveform_preview: Vec<f32>,
+    /// **Släppljud** (FL Keys: dämparens ljud): sökväg för projektfilen och det färdiglästa
+    /// ljudet för motorn. `None` = inget släppljud, och då är röstens beteende som förut.
+    pub release_path: Option<String>,
+    pub release_pcm: Option<(std::sync::Arc<Vec<f32>>, u32)>,
     pub sample_path: Option<String>,
     pub pcm_audio: Option<(std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32)>,
     pub sample_base_note: u8,

@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Release samples.** A channel can carry a damper sound (`🎧 Släppljud…` in its sampler panel,
+  WAV). When the note ends — key release, step end, or pedal lift — the voice switches to that
+  sound instead of fading, which is what a piano does when the string is damped. Without one,
+  nothing changes. The path is saved with the project; the audio is read back on load.
+  *Shortcut:* one mono release sample per channel, played by the same voice, so a stereo damper
+  has to be summed. Unison or velocity-layered release samples would need a real zone model.
+  Measured: 0.1242 after the key release with a release sample, 0.0000 without.
+
 - **The pedal is visible in the piano roll.** A PEDAL strip under BEND draws the curve as a block
   (down from a point to the next) and a click toggles the pedal at that step — so a curve that was
   only audible can now be seen and edited. The demo project carries two points to show it.

@@ -623,6 +623,9 @@ pub enum AudioCommand {
         /// **Kanalen rösten tillhör** (Fas 8.4): not-av ska kunna gälla en kanal i taget,
         /// och en röst i poolen har ingen annan identitet.
         channel: u32,
+        /// **Släppljud** (mono + samplingsfrekvens): dämparens ljud, spelat när tonen släpps.
+        /// `None` = ingen — då beter sig rösten som förut.
+        release: Option<(Arc<Vec<f32>>, u32)>,
         /// Loopläge, loop-punkter (andelar av filen, som `start01`/`end01`) och riktning.
         loop_mode: LoopMode,
         loop_start01: f32,

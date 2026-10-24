@@ -209,6 +209,8 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
     /// bortglömt fält i sparandet syns direkt.
     fn test_channel() -> ChannelStrip {
         ChannelStrip {
+            release_path: None,
+            release_pcm: None,
             name: "Virvel".to_string(),
             icon: "🥁".to_string(),
             color: Color32::from_rgba_premultiplied(10, 20, 30, 255),

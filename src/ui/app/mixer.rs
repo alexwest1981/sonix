@@ -1777,6 +1777,43 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                     }
                                 }
                             }
+                            // **Släppljud** (FL Keys): dämparens ljud, spelas när tonen släpps.
+                            ui.horizontal(|ui| {
+                                let label = match &ch.release_path {
+                                    Some(p) => format!(
+                                        "🎧 {}",
+                                        std::path::Path::new(p)
+                                            .file_name()
+                                            .map(|n| n.to_string_lossy().to_string())
+                                            .unwrap_or_else(|| p.clone())
+                                    ),
+                                    None => crate::i18n::t("🎧 Släppljud…").to_string(),
+                                };
+                                if ui.button(egui::RichText::new(label).size(Theme::FONT_S))
+                                    .on_hover_text(crate::i18n::t("Ljudet som hörs när tonen släpps (dämparen), i stället för en rak nedtoning"))
+                                    .clicked()
+                                    && let Some(p) = rfd::FileDialog::new()
+                                        .add_filter("WAV", &["wav"])
+                                        .pick_file()
+                                {
+                                    match crate::audio::wav_reader::load_wav_pcm(&p.to_string_lossy()) {
+                                        Ok((l, _, rate)) => {
+                                            ch.release_path = Some(p.to_string_lossy().to_string());
+                                            ch.release_pcm = Some((std::sync::Arc::new(l), rate));
+                                        }
+                                        Err(e) => {
+                                            self.status_message = crate::tstatus!(
+                                                "⚠️ Kunde inte läsa släppljudet: {}",
+                                                e
+                                            );
+                                        }
+                                    }
+                                }
+                                if ch.release_path.is_some() && ui.small_button("✕").clicked() {
+                                    ch.release_path = None;
+                                    ch.release_pcm = None;
+                                }
+                            });
                             if ch.zones.is_empty() {
                                 ui.label(egui::RichText::new(crate::i18n::t("Inga zoner — kanalen spelar sitt eget sampel.")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                             }
