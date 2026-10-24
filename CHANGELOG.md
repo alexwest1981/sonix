@@ -70,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Talkback opens the microphone itself.** The button now starts an input stream when
+  talkback is switched on and closes it when switched off, so talkback no longer needs a
+  recording to be running. If the vocal studio is already capturing, its ring is reused instead
+  of opening a second stream on the same device; with no microphone the status bar says so.
 - **Takes now play in bars 2–4 of a multi-bar block in exported audio.** The exporter passed the
   block's step index (0–63) to a take that is one bar long, so only the grid played there. The
   take is now read with `pib % 16` and its comp bar from `pib / 16`; proven by

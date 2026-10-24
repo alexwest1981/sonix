@@ -609,6 +609,10 @@ pub struct SonixApp {
     pub cue_listen: crate::audio::control_room::CueListen,
     /// **Talkback:** micken till monitorerna i stället för in i mastern.
     pub talkback: bool,
+    /// Enhetströmmen som talkback öppnade. `None` när talkback är av — strömmen stängs då,
+    /// så mikrofonen inte hålls öppen i onödan. Lånas aldrig: sångstudions egen inspelning
+    /// används i stället om den redan är igång (två strömmar på samma enhet går inte).
+    pub talkback_capture: Option<crate::audio::recorder::LiveMicrophoneCapture>,
     /// **Bärvåg:** hur mycket vocoder som blandas in i mastern (0 = av).
     pub vocoder_amount: f32,
     pub script_source: String,
@@ -1183,6 +1187,7 @@ impl SonixApp {
             control_room: crate::audio::control_room::ControlRoom::default(),
             cue_listen: crate::audio::control_room::CueListen::Main,
             talkback: false,
+            talkback_capture: None,
             vocoder_amount: 0.0,
             script_source: crate::ui::app::script::DEFAULT_SOURCE.to_string(),
             script_param: 0,
@@ -1293,3 +1298,52 @@ impl SonixApp {
 
 }
 
+impl SonixApp {
+    /// **Talkback på/av.** Slår på micken till monitorerna och öppnar enhetströmmen om ingen
+    /// redan finns (sångstudions inspelning äger den i så fall), och stänger den igen när
+    /// talkback slås av. Utan mikrofon blir det ett besked i statusraden — aldrig en panik.
+    pub(crate) fn set_talkback(&mut self, on: bool) {
+        use std::sync::atomic::Ordering;
+        let mut fresh: Option<crate::audio::recorder::LiveMicrophoneCapture> = None;
+        let ring = if on {
+            match &self.vocal_studio.mic_capture {
+                Some(capture) => Some(std::sync::Arc::clone(&capture.monitor_ring)),
+                None => {
+                    let mut capture = crate::audio::recorder::LiveMicrophoneCapture::new();
+                    if capture.open_device_by_index(0) {
+                        capture.monitor_enabled.store(true, Ordering::Relaxed);
+                        let ring = std::sync::Arc::clone(&capture.monitor_ring);
+                        fresh = Some(capture);
+                        Some(ring)
+                    } else {
+                        self.status_message =
+                            crate::i18n::t("⚠ Ingen mikrofon att tala i").to_string();
+                        None
+                    }
+                }
+            }
+        } else {
+            None
+        };
+
+        if on && ring.is_none() {
+            return;
+        }
+        if let Some(ring) = ring {
+            self.talkback_capture = fresh;
+            let _ = self.engine.send_command(crate::audio::AudioCommand::SetMonitorRing { ring });
+        }
+        self.talkback = on;
+        let _ = self
+            .engine
+            .send_command(crate::audio::AudioCommand::SetTalkback(on));
+        if !on {
+            // Släpp enhetströmmen och ge motorn en tom ring, så en gammal buffert inte ligger
+            // kvar och spelas upp nästa gång talkback slås på.
+            self.talkback_capture = None;
+            let _ = self.engine.send_command(crate::audio::AudioCommand::SetMonitorRing {
+                ring: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            });
+        }
+    }
+}

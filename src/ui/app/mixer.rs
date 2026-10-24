@@ -2323,6 +2323,9 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
 
                 // **CONTROL ROOM** — det man lyssnar genom. Sitter efter masterns FX-kedja
                 // och rör aldrig exporten.
+                // Talkback öppnar en enhetström och rör `self` utanför `cr`-lånet, så knappen
+                // sätter bara en flagga som verkställs när panelen är färdigritad.
+                let mut toggle_talkback: Option<bool> = None;
                 ui.group(|ui| {
                     ui.set_width(96.0);
                     ui.vertical_centered(|ui| {
@@ -2402,9 +2405,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                                 ))
                                 .clicked()
                             {
-                                self.talkback = !self.talkback;
-                                let _ =
-                                    self.engine.send_command(AudioCommand::SetTalkback(self.talkback));
+                                toggle_talkback = Some(!self.talkback);
                             }
                             ui.separator();
                             let mut vocoder = self.vocoder_amount;
@@ -2437,6 +2438,9 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                         }
                     });
                 });
+                if let Some(on) = toggle_talkback {
+                    self.set_talkback(on);
+                }
 
                 // Channel Strips for each Playlist Track in the user's project
                 let num_tracks = self.playlist_tracks.len();
