@@ -17,7 +17,7 @@ impl SonixApp {
         if self.loop_end_bar > self.loop_start_bar + 1 {
             (self.loop_start_bar as f32, self.loop_end_bar as f32)
         } else {
-            let at = self.song_bar.max(0) as f32;
+            let at = self.song_bar as f32;
             (at, at + 1.0)
         }
     }
@@ -970,12 +970,11 @@ impl SonixApp {
                         track_duplicate_idx = Some(t_idx);
                         ui.close_menu();
                     }
-                    if self.copied_region.is_some() {
-                        if ui.button(crate::i18n::t("📋 Klistra in sample här (Ctrl+V)")).clicked() {
+                    if self.copied_region.is_some()
+                        && ui.button(crate::i18n::t("📋 Klistra in sample här (Ctrl+V)")).clicked() {
                             track_paste_idx = Some(t_idx);
                             ui.close_menu();
                         }
-                    }
                     if ui.button(crate::i18n::t("➕ Lägg till nytt spår...")).clicked() {
                         self.show_add_track_modal = true;
                         ui.close_menu();
@@ -1442,8 +1441,8 @@ impl SonixApp {
                                 .or_else(|| ui.ctx().pointer_interact_pos())
                                 .or_else(|| ui.input(|i| i.pointer.hover_pos()))
                                 .or_else(|| lane_resp.hover_pos());
-                            if let Some(mouse_pos) = pointer_opt {
-                                if lane_rect.contains(mouse_pos) {
+                            if let Some(mouse_pos) = pointer_opt
+                                && lane_rect.contains(mouse_pos) {
                                     // **Snäppet sker i takter** (Fas 8.2): ett
                                     // sextondelssteg är en *plats i takten*, inte ett antal
                                     // sekunder — och sekunder-per-takt är inte ett tal över
@@ -1480,7 +1479,6 @@ impl SonixApp {
                                         drop_sample_action = Some((t_idx, drag_item.clone(), drop_bar));
                                     }
                                 }
-                            }
                         }
 
                         // Bottom line separator between tracks
@@ -1864,7 +1862,7 @@ impl SonixApp {
                                                     // Strecket ligger på en *tid* i regionen; x räknas
                                                     // genom kartan, samma väg som allt annat här.
                                                     let div_bar = tempo.bar_at_secs((reg_start_sec + div_sec) as f64) as f32
-                                                        - region.start_bar as f32;
+                                                        - region.start_bar;
                                                     let div_x = rx_start + div_bar * bar_w;
                                                     if div_x > r_rect.min.x + 4.0 && div_x < r_rect.max.x - 4.0 {
                                                         ui.painter().line_segment(
@@ -1916,8 +1914,8 @@ impl SonixApp {
                                         // Hover Cursor Feedback for Select and Draw/Paint tools (FL Studio style)
                                         if matches!(self.arranger_tool, ArrangerTool::Select | ArrangerTool::Paint) {
                                             let pointer_opt = lane_resp.hover_pos().or_else(|| ui.ctx().pointer_latest_pos());
-                                            if let Some(mouse_pos) = pointer_opt {
-                                                if r_rect.contains(mouse_pos) {
+                                            if let Some(mouse_pos) = pointer_opt
+                                                && r_rect.contains(mouse_pos) {
                                                     if (mouse_pos.x - rx_start).abs() <= 16.0 || mouse_pos.x <= rx_start + 16.0 {
                                                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
                                                     } else if (mouse_pos.x - rx_end).abs() <= 16.0 || mouse_pos.x >= rx_end - 16.0 {
@@ -1926,7 +1924,6 @@ impl SonixApp {
                                                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grab);
                                                     }
                                                 }
-                                            }
                                         }
                                     }
                                 }
@@ -1991,8 +1988,8 @@ impl SonixApp {
                                 }
 
                                 // Process active dragging
-                                if let Some(ref drag) = self.region_drag_state {
-                                    if drag.track_idx == t_idx {
+                                if let Some(ref drag) = self.region_drag_state
+                                    && drag.track_idx == t_idx {
                                         let pointer_pos_opt = ui.ctx().pointer_latest_pos()
                                             .or_else(|| ui.ctx().pointer_interact_pos())
                                             .or_else(|| lane_resp.hover_pos());
@@ -2085,7 +2082,6 @@ impl SonixApp {
                                             }
                                         }
                                     }
-                                }
 
                                 let is_drag_released = lane_resp.drag_stopped() || ui.input(|i| i.pointer.any_released() || i.pointer.primary_released() || !i.pointer.primary_down());
                                 if is_drag_released && self.region_drag_state.is_some() {
@@ -2246,12 +2242,11 @@ impl SonixApp {
                                         self.copy_selected_region();
                                         ui.close_menu();
                                     }
-                                    if self.copied_region.is_some() {
-                                        if ui.button(crate::i18n::t("📋 Klistra in sample vid spelhuvud (Ctrl+V)")).clicked() {
+                                    if self.copied_region.is_some()
+                                        && ui.button(crate::i18n::t("📋 Klistra in sample vid spelhuvud (Ctrl+V)")).clicked() {
                                             self.paste_region();
                                             ui.close_menu();
                                         }
-                                    }
                                     if ui
                                         .button(crate::i18n::t("🔀 Skapa korsning"))
                                         .on_hover_text(crate::i18n::t(
@@ -2625,8 +2620,8 @@ impl SonixApp {
                             .or_else(|| ui.ctx().pointer_interact_pos())
                             .or_else(|| ui.input(|i| i.pointer.hover_pos()))
                             .or_else(|| add_lane_resp.hover_pos());
-                        if let Some(mouse_pos) = pointer_opt {
-                            if add_lane_rect.contains(mouse_pos) {
+                        if let Some(mouse_pos) = pointer_opt
+                            && add_lane_rect.contains(mouse_pos) {
                                 let raw_drop_bar = ((mouse_pos.x - add_lane_rect.min.x) / bar_w).max(0.0);
                                 let raw_drop_sec = secs_at(raw_drop_bar);
                                 let drop_sec = match self.timeline_snap_mode {
@@ -2663,7 +2658,6 @@ impl SonixApp {
                                     drop_sample_action = Some((self.playlist_tracks.len(), drag_item.clone(), drop_bar));
                                 }
                             }
-                        }
                     }
 
                     ui.add_space(4.0);
@@ -2918,13 +2912,12 @@ impl SonixApp {
                             }
 
                         // Paste (if clipboard has region)
-                        if has_copied {
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("📋 Klistra in ({}) (Ctrl+V)", copied_name)).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
+                        if has_copied
+                            && ui.add(egui::Button::new(egui::RichText::new(format!("📋 Klistra in ({}) (Ctrl+V)", copied_name)).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
                                 .on_hover_text(crate::i18n::t("Klistra in kopierat sample vid spelhuvudet på aktivt spår"))
                                 .clicked() {
                                     do_paste = true;
                                 }
-                        }
 
                         // Duplicate
                         if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Duplicera (Ctrl+D)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))

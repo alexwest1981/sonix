@@ -846,8 +846,8 @@ pub(crate) fn render_automation_lane(
 
     let curve = self.automation_curve(target, track_idx);
 
-    if let Some(curve) = curve {
-        if curve.enabled && !curve.points.is_empty() {
+    if let Some(curve) = curve
+        && curve.enabled && !curve.points.is_empty() {
             let first = &curve.points[0];
             let last = curve.points.last().unwrap();
             painter.line_segment(
@@ -884,10 +884,9 @@ pub(crate) fn render_automation_lane(
                 painter.circle_stroke(c, 5.5, Stroke::new(1.0_f32, Color32::BLACK));
             }
         }
-    }
 
-    if resp.clicked() {
-        if let Some(pos) = resp.interact_pointer_pos() {
+    if resp.clicked()
+        && let Some(pos) = resp.interact_pointer_pos() {
             // **Snäppet sker i takter** (Fas 8.2): ett sextondelssteg är en plats i
             // takten, inte ett antal sekunder, och sekunder-per-takt är inte ett tal över
             // ett tempobyte. Sekunden hämtas ur kartan **en gång efteråt**.
@@ -900,10 +899,9 @@ pub(crate) fn render_automation_lane(
                 self.status_message = crate::tstatus!("📈 Automation: la till punkt (takt {:.2}, {:.2})", bar, val);
             }
         }
-    }
 
-    if resp.drag_started() {
-        if let Some(pos) = resp.interact_pointer_pos() {
+    if resp.drag_started()
+        && let Some(pos) = resp.interact_pointer_pos() {
             // Träffytan läses ur kurvan som **ritades**, samma uppslag som ritningen — två
             // egna uppslag hade kunnat peka på var sin lane.
             let pts: Option<&[AutomationPoint]> =
@@ -924,9 +922,8 @@ pub(crate) fn render_automation_lane(
                 }
             }
         }
-    }
-    if resp.dragged() {
-        if let Some((t, mål, pi)) = self.automation_drag
+    if resp.dragged()
+        && let Some((t, mål, pi)) = self.automation_drag
             && t == track_idx
             && mål == target
             && let Some(pos) = resp.interact_pointer_pos()
@@ -945,21 +942,19 @@ pub(crate) fn render_automation_lane(
                 p.value = val;
             }
         }
-    }
     if resp.drag_stopped() {
-        if let Some((t, mål, _)) = self.automation_drag {
-            if t == track_idx
+        if let Some((t, mål, _)) = self.automation_drag
+            && t == track_idx
                 && mål == target
                 && let Some(points) = self.automation_points_mut(target, track_idx)
             {
                 sort_automation_points(points);
             }
-        }
         self.automation_drag = None;
     }
 
-    if resp.secondary_clicked() {
-        if let Some(pos) = resp.interact_pointer_pos() {
+    if resp.secondary_clicked()
+        && let Some(pos) = resp.interact_pointer_pos() {
             let pts: Option<&[AutomationPoint]> =
                 self.automation_curve(target, track_idx).map(|c| c.points);
             if let Some(pts) = pts {
@@ -973,17 +968,15 @@ pub(crate) fn render_automation_lane(
                         best = Some(pi);
                     }
                 }
-                if let Some(pi) = best {
-                    if let Some(points) = self.automation_points_mut(target, track_idx)
+                if let Some(pi) = best
+                    && let Some(points) = self.automation_points_mut(target, track_idx)
                         && pi < points.len()
                     {
                         points.remove(pi);
                         self.status_message = crate::tstatus!("📈 Automation: tog bort punkt");
                     }
-                }
             }
         }
-    }
 }
 }
 

@@ -592,19 +592,17 @@ impl SynthEngine {
                 // Varje kopplad port läses **varje** sample, också när målet är tystat: kön
                 // ligger i samma takt som ljudet, så en utebliven läsning vore att bussen
                 // sackade efter en sample för varje gång den inte behövdes.
-                if !track.extra_out_targets.is_empty() {
-                    if let Some(plugin) = &mut track.plugin {
+                if !track.extra_out_targets.is_empty()
+                    && let Some(plugin) = &mut track.plugin {
                         for (port, &target) in track.extra_out_targets.iter().enumerate() {
                             let (bl, br) = plugin.extra_output_sample(port);
-                            if let Some(to) = target {
-                                if let Some(slot) = plugin_bus_in.get_mut(to) {
+                            if let Some(to) = target
+                                && let Some(slot) = plugin_bus_in.get_mut(to) {
                                     slot[0] += bl;
                                     slot[1] += br;
                                 }
-                            }
                         }
                     }
-                }
 
 
                 // Sidokedjan duckar spårets **eget** ljud, efter dess kedja: det är
@@ -697,8 +695,8 @@ impl SynthEngine {
         }
 
         // 8. Isolated Audition Audio Playback (Vocal Studio & Sample Previews)
-        if let Some(ref mut aud) = self.audition {
-            if aud.is_playing && !aud.left.is_empty() {
+        if let Some(ref mut aud) = self.audition
+            && aud.is_playing && !aud.left.is_empty() {
                 let len = aud.left.len();
                 let sr_ratio = aud.sample_rate / self.sample_rate;
                 let pr = aud.pitch_ratio.max(0.05);
@@ -761,7 +759,6 @@ impl SynthEngine {
                     }
                 }
             }
-        }
 
         // 8b. Modular Patcher output (real DSP graph)
         if self.patcher_enabled
@@ -783,11 +780,10 @@ impl SynthEngine {
             if self.monitor_idx >= self.monitor_buf.len() {
                 self.monitor_buf.clear();
                 self.monitor_idx = 0;
-                if let Ok(mut r) = ring.lock() {
-                    if !r.is_empty() {
+                if let Ok(mut r) = ring.lock()
+                    && !r.is_empty() {
                         self.monitor_buf.append(&mut r);
                     }
-                }
             }
             if self.monitor_idx < self.monitor_buf.len() {
                 let m = self.monitor_buf[self.monitor_idx] * self.monitor_level;
@@ -880,7 +876,7 @@ impl SynthEngine {
         let (out_l, out_r) = (out_l + talkback, out_r + talkback);
 
         self.dbg_frames += 1;
-        if self.dbg_frames % 48000 == 0 {
+        if self.dbg_frames.is_multiple_of(48000) {
             let active_regions = self
                 .stem_tracks
                 .iter()

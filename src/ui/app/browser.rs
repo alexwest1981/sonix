@@ -564,7 +564,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                 let presets = self.flex_presets.clone();
                 for (i, preset) in presets.iter().enumerate() {
                     let name = preset.name.clone();
-                    let settings = preset.settings.clone();
+                    let settings = preset.settings;
                     if !self.browser_search.is_empty()
                         && !name.to_lowercase().contains(&self.browser_search.to_lowercase())
                     {
@@ -594,15 +594,14 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                         ui.label(name);
                     });
                 }
-                if let Some(i) = to_delete {
-                    if i < self.flex_presets.len() {
+                if let Some(i) = to_delete
+                    && i < self.flex_presets.len() {
                         let removed = self.flex_presets.remove(i);
                         if let Some(path) = crate::audio::flex::store_path() {
                             let _ = crate::audio::flex::save_all(&path, &self.flex_presets);
                         }
                         self.status_message = crate::tstatus!("🗑 Tog bort '{}'", removed.name);
                     }
-                }
             });
 
             // Synth Presets

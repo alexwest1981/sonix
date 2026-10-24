@@ -166,6 +166,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Clippy debt, first pass.** 154 → 47 warnings: mostly `collapsible_if`, `needless_return`,
+  `manual_clamp` and similar, applied with `cargo clippy --fix` and verified by the full suite and
+  a rendered screenshot. Two orphaned doc blocks that described functions living elsewhere
+  (`HighPassFilter`, `stretch_ratio_for`) were moved onto the items they document. The 47 that
+  remain are structural — complex types and functions with many arguments — and are left alone
+  rather than reformatted for a lint.
+
 - **The envelope graph shrinks instead of overflowing.** It was a fixed 130 px, which pushed it
   out of its column in a narrow window; it now takes the width that is available, up to 130.
 

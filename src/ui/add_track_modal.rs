@@ -311,11 +311,10 @@ pub fn render_add_track_modal(
                 let filter_lower = state.search_filter.to_lowercase();
 
                 let filtered: Vec<&TrackTemplate> = templates.iter().filter(|t| {
-                    if let Some(ref cat) = state.selected_category {
-                        if t.category != *cat {
+                    if let Some(ref cat) = state.selected_category
+                        && t.category != *cat {
                             return false;
                         }
-                    }
                     if !filter_lower.is_empty() {
                         let matches_title = t.title.to_lowercase().contains(&filter_lower);
                         let matches_desc = t.desc.to_lowercase().contains(&filter_lower);

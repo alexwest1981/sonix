@@ -233,14 +233,6 @@ fn build_input_stream(
 /// How many recent mono samples are kept for always-on pitch analysis.
 const ANALYSIS_MAX: usize = 16384;
 
-/// Andra ordningens högpass (RBJ-biquad, Butterworth-Q) för mikrofonvägen.
-///
-/// Implementerar det som `MicrophoneSettings::low_cut_80hz` utlovar: tar bort
-/// muller, bordsvibrationer och DC **innan** gaten och monitor-ringen. Utan den
-/// går rummets lägsta frekvenser rakt in i mastern — och eftersom ett rum har
-/// störst akustisk förstärkning vid låga frekvenser är det där en rundgång
-/// låser sig (hörs som en baston som får rummet att vibrera).
-
 /// Ett parti av en tagning som ska in i kompen, i **sampel**.
 pub struct CompPart<'a> {
     pub start: usize,
@@ -263,6 +255,14 @@ pub fn merge_comp(length: usize, parts: &[CompPart]) -> Vec<f32> {
     }
     out
 }
+
+/// Andra ordningens högpass (RBJ-biquad, Butterworth-Q) för mikrofonvägen.
+///
+/// Implementerar det som `MicrophoneSettings::low_cut_80hz` utlovar: tar bort
+/// muller, bordsvibrationer och DC **innan** gaten och monitor-ringen. Utan den
+/// går rummets lägsta frekvenser rakt in i mastern — och eftersom ett rum har
+/// störst akustisk förstärkning vid låga frekvenser är det där en rundgång
+/// låser sig (hörs som en baston som får rummet att vibrera).
 
 #[derive(Clone, Copy, Debug)]
 pub struct HighPassFilter {
@@ -560,11 +560,10 @@ fn process_mic_block<T: Copy>(
         }
         if let Some(b) = rec.as_mut() {
             b.push(mono.clamp(-1.0, 1.0));
-            if b.len() % 256 == 0 {
-                if let Some(p) = pk.as_mut() {
+            if b.len() % 256 == 0
+                && let Some(p) = pk.as_mut() {
                     p.push(block_max.clamp(0.04, 1.0));
                 }
-            }
         }
         an.push(mono.clamp(-1.0, 1.0));
         if let Some(m) = monitor.as_mut() {
@@ -576,12 +575,11 @@ fn process_mic_block<T: Copy>(
         let drop = an.len() - ANALYSIS_MAX;
         an.drain(0..drop);
     }
-    if let Some(m) = monitor.as_mut() {
-        if m.len() > 16384 {
+    if let Some(m) = monitor.as_mut()
+        && m.len() > 16384 {
             let drop = m.len() - 16384;
             m.drain(0..drop);
         }
-    }
     block_max
 }
 
@@ -909,32 +907,29 @@ impl Default for VocalStudioTrack {
 impl VocalStudioTrack {
     pub fn select_microphone(&mut self, device_index: usize) -> bool {
         self.mic_settings.selected_device_idx = device_index;
-        if let Some(ref mut mic) = self.mic_capture {
-            if mic.open_device_by_index(device_index) {
+        if let Some(ref mut mic) = self.mic_capture
+            && mic.open_device_by_index(device_index) {
                 self.input_channel = mic.device_name.clone();
                 return true;
             }
-        }
         false
     }
 
     pub fn set_input_gain(&mut self, gain: f32) {
         self.mic_settings.input_gain = gain;
         self.input_gain = gain;
-        if let Some(ref mic) = self.mic_capture {
-            if let Ok(mut g) = mic.input_gain.lock() {
+        if let Some(ref mic) = self.mic_capture
+            && let Ok(mut g) = mic.input_gain.lock() {
                 *g = gain;
             }
-        }
     }
 
     pub fn set_noise_gate(&mut self, threshold: f32) {
         self.mic_settings.noise_gate_thresh = threshold;
-        if let Some(ref mic) = self.mic_capture {
-            if let Ok(mut gate) = mic.noise_gate_thresh.lock() {
+        if let Some(ref mic) = self.mic_capture
+            && let Ok(mut gate) = mic.noise_gate_thresh.lock() {
                 *gate = threshold;
             }
-        }
     }
 
     /// Slår 80 Hz-högpasset på/av. Implementerar kryssrutan i Sångstudion, som

@@ -825,7 +825,7 @@ impl FxRackState {
             .zip(r.iter())
             .map(|(a, b)| (a + b) * 0.5)
             .collect();
-        let target = engine.sample_rate as u32;
+        let target = engine.sample_rate;
         if sr > 0 && target > 0 && sr != target {
             mono = resample_linear(&mono, sr, target);
         }
@@ -1042,11 +1042,10 @@ pub fn render_fx_rack_modal(
                             .clone()
                             .unwrap_or_else(|| crate::i18n::t("ingen fil laddad").to_string());
                         ui.label(egui::RichText::new(name).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
-                        if ui.button(crate::i18n::t("📥 Ladda .wav")).clicked() {
-                            if let Some(msg) = state.load_convolver_ir(engine) {
+                        if ui.button(crate::i18n::t("📥 Ladda .wav")).clicked()
+                            && let Some(msg) = state.load_convolver_ir(engine) {
                                 *status_msg = msg;
                             }
-                        }
                         if state.convolver_ir_name.is_some() && ui.button(crate::i18n::t("🗑 Rensa")).clicked() {
                             state.clear_convolver_ir(engine);
                             *status_msg = crate::i18n::t("🌀 Impulsresponsen är borttagen").to_string();
@@ -1339,9 +1338,9 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
             }
         }
 
-        if canvas_resp.dragged() {
-            if let Some(m_pos) = canvas_resp.hover_pos() {
-                if let Some(idx) = hovered_node {
+        if canvas_resp.dragged()
+            && let Some(m_pos) = canvas_resp.hover_pos()
+                && let Some(idx) = hovered_node {
                     let norm_x = ((m_pos.x - canvas_rect.min.x) / canvas_rect.width()).clamp(0.01, 0.99);
                     let target_freq = 10.0_f32.powf(20.0_f32.log10() + norm_x * (20000.0_f32.log10() - 20.0_f32.log10()));
                     let norm_y = (mid_y - m_pos.y) / (canvas_h * 0.42);
@@ -1350,8 +1349,6 @@ fn render_visual_parametric_eq(ui: &mut Ui, state: &mut FxRackState) {
                     state.eq_nodes[idx].freq_hz = target_freq;
                     state.eq_nodes[idx].gain_db = target_db;
                 }
-            }
-        }
 
         for (idx, node) in state.eq_nodes.iter().enumerate() {
             let node_x = freq_to_x(node.freq_hz);

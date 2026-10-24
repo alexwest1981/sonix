@@ -484,24 +484,22 @@ impl Wsola {
         let mut best_score = f32::NEG_INFINITY;
         let mut d = -search;
         while d <= search {
-            if let Some(s) = score(nominal + d) {
-                if s > best_score {
+            if let Some(s) = score(nominal + d)
+                && s > best_score {
                     best_score = s;
                     best = nominal + d;
                 }
-            }
             d += coarse;
         }
         let refine_lo = (best - coarse).max(-search);
         let refine_hi = (best + coarse).min(search);
         let mut d = refine_lo;
         while d <= refine_hi {
-            if let Some(s) = score(nominal + d) {
-                if s > best_score {
+            if let Some(s) = score(nominal + d)
+                && s > best_score {
                     best_score = s;
                     best = nominal + d;
                 }
-            }
             d += 1;
         }
         best.max(0) as usize
@@ -677,7 +675,7 @@ pub fn analyze_blobs(
             if let Some(b) = extend {
                 b.length_steps = (step + 1 - b.start_step).max(b.length_steps);
             } else {
-                let color = if note % 2 == 0 {
+                let color = if note.is_multiple_of(2) {
                     crate::ui::theme::palette().cyan()
                 } else {
                     crate::ui::theme::palette().orange()
@@ -851,24 +849,22 @@ impl StreamingPitchShifter {
         let mut best_score = f32::NEG_INFINITY;
         let mut d = -search;
         while d <= search {
-            if let Some(s) = score(nominal + d) {
-                if s > best_score {
+            if let Some(s) = score(nominal + d)
+                && s > best_score {
                     best_score = s;
                     best = nominal + d;
                 }
-            }
             d += coarse;
         }
         let lo = (best - coarse).max(-search);
         let hi = (best + coarse).min(search);
         let mut d = lo;
         while d <= hi {
-            if let Some(s) = score(nominal + d) {
-                if s > best_score {
+            if let Some(s) = score(nominal + d)
+                && s > best_score {
                     best_score = s;
                     best = nominal + d;
                 }
-            }
             d += 1;
         }
         best.max(0) as usize
@@ -1185,24 +1181,22 @@ impl FormantPitchShifter {
         let mut best_score = f32::NEG_INFINITY;
         let mut d = -search;
         while d <= search {
-            if let Some(s) = score(nominal + d) {
-                if s > best_score {
+            if let Some(s) = score(nominal + d)
+                && s > best_score {
                     best_score = s;
                     best = nominal + d;
                 }
-            }
             d += coarse;
         }
         let lo = (best - coarse).max(-search);
         let hi = (best + coarse).min(search);
         let mut d = lo;
         while d <= hi {
-            if let Some(s) = score(nominal + d) {
-                if s > best_score {
+            if let Some(s) = score(nominal + d)
+                && s > best_score {
                     best_score = s;
                     best = nominal + d;
                 }
-            }
             d += 1;
         }
         best.max(0) as usize
@@ -1411,14 +1405,13 @@ pub fn pitch_following_carrier(modulator: &[f32], sample_rate: f32) -> Vec<f32> 
         if frame > 0 && i % frame == 0 {
             let end = (i + frame).min(n);
             let start = end.saturating_sub(window);
-            if end.saturating_sub(start) >= 1_024 {
-                if let Some(hz) = detect_pitch_hz(&modulator[start..end], sample_rate) {
+            if end.saturating_sub(start) >= 1_024
+                && let Some(hz) = detect_pitch_hz(&modulator[start..end], sample_rate) {
                     // Bara röstläget: spårningen ska inte hoppa till brus eller falsettartefakter.
                     if (60.0..=1_000.0).contains(&hz) {
                         target = hz;
                     }
                 }
-            }
         }
         // Glid mot målet i stället för steg: ett hopp hörs som ett klick i vocodern.
         current += (target - current) * glide;

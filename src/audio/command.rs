@@ -812,17 +812,14 @@ pub struct StemRegionPlayback {
 /// Ping-pong är en **riktning**, inte ett fjärde läge: loopen vänder i sina ändar.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum LoopMode {
+    #[default]
     Off,
     UntilRelease,
     Forever,
 }
 
-impl Default for LoopMode {
-    fn default() -> Self {
-        LoopMode::Off
-    }
-}
 
 /// **Notens längd för ett steg i kanalracket** (Fas 8.4): en sextondel av takten, med
 /// swing — samma tal i uppspelningen och i offline-exporten, annars håller en lopande not
@@ -882,8 +879,8 @@ pub fn loop_frames(len: usize, loop_start01: f32, loop_end01: f32) -> Option<(f3
     // **Hela ramar.** En loop som ligger på 399,6 driver 0,4 ram per varv — och en sampler
     // loopar ett antal *ramar*, inte en bråkdel. `floor` är samma avrundning som triggern
     // använder för `start_f`/`end_f`, så spannet och spelområdet talar samma språk.
-    let start = (loop_start01.max(0.0).min(1.0) * last).floor();
-    let end = (loop_end01.max(0.0).min(1.0) * last).floor();
+    let start = (loop_start01.clamp(0.0, 1.0) * last).floor();
+    let end = (loop_end01.clamp(0.0, 1.0) * last).floor();
     if end - start < 1.0 {
         return None;
     }

@@ -31,6 +31,7 @@
 
 /// Ett sträckläge.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(Default)]
 pub enum WarpMode {
     /// Kortast korn: snabbast att rendera, men tappar mest topp och tonhöjd.
     Fast,
@@ -39,6 +40,7 @@ pub enum WarpMode {
     /// Längst korn: minst förhandsläckage — mjukast, men tappar topp.
     Smooth,
     /// 40 ms med brett sökfönster: bäst på både topp och ton. Standard.
+    #[default]
     Complex,
     /// Anslagen **kopieras orörda** och bara kropparna sträcks. Enda läget där attacken
     /// med säkerhet är källans egen (mätt: topp 0,900 = källan, varje attack ordagrann).
@@ -46,11 +48,6 @@ pub enum WarpMode {
     Transient,
 }
 
-impl Default for WarpMode {
-    fn default() -> Self {
-        WarpMode::Complex
-    }
-}
 
 impl WarpMode {
     pub const ALL: [WarpMode; 5] = [

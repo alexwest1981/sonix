@@ -395,8 +395,8 @@ pub fn eq_curve_visualizer(
     painter.line_segment([Pos2::new(rect.min.x + rect.width() * 0.66, rect.min.y), Pos2::new(rect.min.x + rect.width() * 0.66, rect.max.y)], grid_stroke);
 
     // Interactive Dragging on Node Zones
-    if response.dragged() {
-        if let Some(pos) = response.interact_pointer_pos() {
+    if response.dragged()
+        && let Some(pos) = response.interact_pointer_pos() {
             let rel_x = ((pos.x - rect.min.x) / rect.width()).clamp(0.0, 1.0);
             let rel_gain = (((mid_y - pos.y) / (rect.height() * 0.45)) * 12.0).clamp(-12.0, 12.0);
             if rel_x < 0.33 {
@@ -410,7 +410,6 @@ pub fn eq_curve_visualizer(
                 changed = true;
             }
         }
-    }
 
     // EQ Curve points
     let steps = 48;

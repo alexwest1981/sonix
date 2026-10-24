@@ -64,11 +64,8 @@ impl GeneratedSample {
 
     pub fn save_to_file(&self, dir: &Path) -> std::io::Result<String> {
         let safe_name = self.name
-            .replace('/', "_")
-            .replace(' ', "_")
-            .replace(':', "_")
-            .replace('(', "")
-            .replace(')', "");
+            .replace(['/', ' ', ':'], "_")
+            .replace(['(', ')'], "");
         let file_path = dir.join(format!("{}.wav", safe_name));
         let path_str = file_path.to_string_lossy().to_string();
 
@@ -252,7 +249,7 @@ pub fn generate_all_factory_samples() -> Vec<GeneratedSample> {
             }
 
             // Rolling Trap Hats (16ths with 32nd triplet rolls at bar ends)
-            let is_roll = (step_in_bar >= 12 && step_in_bar <= 15) && (step / 16 % 2 == 1);
+            let is_roll = (12..=15).contains(&step_in_bar) && (step / 16 % 2 == 1);
             let sub_divisions = if is_roll { 2 } else { 1 };
             for sub in 0..sub_divisions {
                 let sub_offset = (sub as f32 * (step_secs / sub_divisions as f32) * srf) as usize;
@@ -1284,16 +1281,15 @@ fn scan_dir_recursive(
             scan_dir_recursive(&p, results, progress, label);
         } else if p.is_file() {
             let ext = p.extension().and_then(|s| s.to_str()).unwrap_or("").to_lowercase();
-            if ext == "wav" {
-                if let Some(item) = classify_and_parse_wav_sample(&p) {
+            if ext == "wav"
+                && let Some(item) = classify_and_parse_wav_sample(&p) {
                     results.push(item);
                     // Förloppet rapporteras sällan: en kanal per 500 fil kostar
                     // ingenting, och statusraden behöver inte varje fil.
-                    if results.len() % 500 == 0 {
+                    if results.len().is_multiple_of(500) {
                         progress(results.len(), label);
                     }
                 }
-            }
         }
     }
 }
@@ -1353,7 +1349,7 @@ fn classify_and_parse_wav_sample(path: &Path) -> Option<ScannedSampleItem> {
 }
 
 fn format_clean_sample_name(stem: &str, lower_path: &str) -> String {
-    let s = stem.replace('_', " ").replace('-', " ");
+    let s = stem.replace(['_', '-'], " ");
 
     if lower_path.contains("tr-808") || lower_path.contains("tr808") {
         if s.starts_with("BD") { return format!("808 Bass Drum ({})", s); }

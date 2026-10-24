@@ -145,7 +145,7 @@ impl ChordGeneratorState {
                 _ => roman_numerals_min.get(deg_idx).unwrap_or(&"i").to_string(),
             };
 
-            let is_minor_deg = roman.chars().next().map_or(false, |c| c.is_lowercase());
+            let is_minor_deg = roman.chars().next().is_some_and(|c| c.is_lowercase());
             let chord_name = format!("{}{}{}", root_name, match self.chord_voicing {
                 0 => if is_minor_deg { "m" } else { "" },
                 1 => if is_minor_deg { "m7" } else { "maj7" },

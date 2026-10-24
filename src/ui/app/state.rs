@@ -401,7 +401,7 @@ impl Pattern {
                     .map(|(_, _, take)| (*take).min(last_lane))
                     .unwrap_or(self.active_take.min(last_lane));
                 if chosen == lane {
-                    notes.push(note.clone());
+                    notes.push(*note);
                 }
             }
         }

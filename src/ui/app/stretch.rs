@@ -34,7 +34,7 @@ pub fn stretch_pieces(
     tempo: &crate::audio::tempo::TempoMap,
 ) -> Vec<StretchPiece> {
     let from_bar = start_bar;
-    let to_bar = start_bar + length_bars.max(0.0) as f64;
+    let to_bar = start_bar + length_bars.max(0.0);
     if to_bar <= from_bar {
         return Vec::new();
     }
@@ -83,6 +83,17 @@ pub fn stretch_pieces(
     pieces
 }
 
+/// Enheten är [`stretch_ratio_for`]: `ratio` = **ut-sekunder per källsekund** — alltså
+/// `projektets tempo / källans tempo`, inte den inverterade kvoten. Det var den här kodbasens
+/// kända fälla redan i 8.10c ("302,49 s ut av 259,28 s = 1,1667"), och **första versionen av
+/// den här funktionen gick i den**: doc-raden påstod motsatsen och provet förväntade 0,8 där
+/// 1,25 var rätt. Att en källa i 120 spelas i ett projekt i 150 ger 150/120 = 1,25, och en
+/// ut-sekund gör då av med 1,25 källsekunder — filen spelas *kortare*, vilket är vad ett högre
+/// tempo betyder.
+///
+/// **Ett enda tempo ger exakt ett stycke** med samma faktor som i dag. Det är avsiktligt: för
+/// projekt utan tempobyten ska ingenting ändras, och då är den här vägen bit-identisk med den
+/// gamla.
 pub fn stretch_ratio_for(source_bpm: f32, project_bpm: f32) -> f32 {
     if source_bpm <= 0.0 || project_bpm <= 0.0 {
         return 1.0;
@@ -120,7 +131,7 @@ pub(crate) fn source_bpm_from_region(region: &AudioRegion, source_secs: f32, pro
     if source_secs <= 0.0 || project_bpm <= 0.0 || region.length_bars <= 0.0 {
         return region.source_bpm.max(0.0); // inget att mäta mot: behåll det vi vet
     }
-    let derived = region.length_bars as f32 * 240.0 / source_secs;
+    let derived = region.length_bars * 240.0 / source_secs;
     if region.source_bpm > 0.0 {
         return if ((derived - region.source_bpm) / region.source_bpm).abs() <= 0.01 {
             derived // samma tempo, olika tal: geometrin vinner (se docen)

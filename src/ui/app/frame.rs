@@ -297,8 +297,8 @@ impl SonixApp {
             }
         });
 
-        if let Some(img) = received_screenshot {
-            if let ScreenshotState::AwaitingCapture { dest, .. } = &self.screenshot_state {
+        if let Some(img) = received_screenshot
+            && let ScreenshotState::AwaitingCapture { dest, .. } = &self.screenshot_state {
                 let w = img.size[0] as u32;
                 let h = img.size[1] as u32;
                 let raw_bytes: Vec<u8> = img.pixels.iter().flat_map(|c| [c.r(), c.g(), c.b(), c.a()]).collect();
@@ -314,15 +314,13 @@ impl SonixApp {
                 }
                 self.screenshot_state = ScreenshotState::Idle;
             }
-        }
 
         // Check for async file dialog results
         let mut picked_file = None;
-        if let Ok(mut lock) = self.pending_file_dialog_result.try_lock() {
-            if let Some(path) = lock.take() {
+        if let Ok(mut lock) = self.pending_file_dialog_result.try_lock()
+            && let Some(path) = lock.take() {
                 picked_file = Some(path);
             }
-        }
         if let Some(path) = picked_file {
             let p_lower = path.to_lowercase();
             let import_tmpl = self.pending_add_track_import.take();

@@ -19,7 +19,9 @@ Keep the notes inside one octave suited to the requested instrument. Return vali
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum AiProvider {
+    #[default]
     Offline,
     OpenAi,
     Anthropic,
@@ -27,11 +29,6 @@ pub enum AiProvider {
     Ollama,
 }
 
-impl Default for AiProvider {
-    fn default() -> Self {
-        AiProvider::Offline
-    }
-}
 
 impl AiProvider {
     pub const ALL: [AiProvider; 5] = [
@@ -127,18 +124,15 @@ fn default_temperature() -> f32 {
 
 /// Backends that return rendered audio bytes (WAV/MP3/…) rather than note data.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Default)]
 pub enum AudioProvider {
+    #[default]
     Offline,
     #[serde(rename = "openai_tts")]
     OpenAiTts,
     Stability,
 }
 
-impl Default for AudioProvider {
-    fn default() -> Self {
-        AudioProvider::Offline
-    }
-}
 
 impl AudioProvider {
     pub const ALL: [AudioProvider; 3] = [
@@ -387,7 +381,7 @@ impl AiClipJson {
 }
 
 fn extract_json_slice(s: &str) -> Option<&str> {
-    let start = s.find(|c| c == '[' || c == '{')?;
+    let start = s.find(['[', '{'])?;
     let end = if s.as_bytes()[start] == b'[' {
         s.rfind(']')?
     } else {

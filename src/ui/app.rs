@@ -124,19 +124,7 @@ mod tests;
 /// Regeln delar klippets **ut-tid** vid varje tempobyte som ligger inuti spannet, och ger varje
 /// stycke sin egen faktor, sin egen längd och sin egen start i källan.
 ///
-/// Enheten är [`stretch_ratio_for`]: `ratio` = **ut-sekunder per källsekund** — alltså
-/// `projektets tempo / källans tempo`, inte den inverterade kvoten. Det var den här kodbasens
-/// kända fälla redan i 8.10c ("302,49 s ut av 259,28 s = 1,1667"), och **första versionen av
-/// den här funktionen gick i den**: doc-raden påstod motsatsen och provet förväntade 0,8 där
-/// 1,25 var rätt. Att en källa i 120 spelas i ett projekt i 150 ger 150/120 = 1,25, och en
-/// ut-sekund gör då av med 1,25 källsekunder — filen spelas *kortare*, vilket är vad ett högre
-/// tempo betyder.
-///
-/// **Ett enda tempo ger exakt ett stycke** med samma faktor som i dag. Det är avsiktligt: för
-/// projekt utan tempobyten ska ingenting ändras, och då är den här vägen bit-identisk med den
-/// gamla.
 // Anropas av `ensure_stretched`: en sträckning per tempovärde i klippets spann (8.10 punkt 1).
-
 pub struct SonixApp {
     pub engine: AudioEngine,
     /// Monitor ring currently registered with the audio engine (re-sent after

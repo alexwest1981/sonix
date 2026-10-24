@@ -85,7 +85,7 @@ pub fn parse_ascl(text: &str) -> Option<Tuning> {
         .iter()
         .position(|l| l.split_whitespace().count() == 1 && l.parse::<usize>().is_ok())?;
     let count: usize = lines[count_idx].parse().ok()?;
-    if count < 2 || count > 128 {
+    if !(2..=128).contains(&count) {
         return None;
     }
     let name = lines[..count_idx].join(" ");

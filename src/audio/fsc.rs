@@ -166,7 +166,7 @@ pub fn to_midi_notes(score: &FscScore, ppq: u16) -> Vec<crate::audio::smf::MidiN
 }
 
 fn parse_records(payload: &[u8], size: usize) -> Option<Vec<FscNote>> {
-    if payload.is_empty() || payload.len() % size != 0 {
+    if payload.is_empty() || !payload.len().is_multiple_of(size) {
         return None;
     }
     let mut notes = Vec::with_capacity(payload.len() / size);

@@ -387,11 +387,10 @@ impl SynthEngine {
             }
             AudioCommand::SetPatcherEnabled(enabled) => {
                 self.patcher_enabled = enabled;
-                if enabled && self.patcher.is_none() {
-                    if let Some(spec) = &self.patcher_spec {
+                if enabled && self.patcher.is_none()
+                    && let Some(spec) = &self.patcher_spec {
                         self.patcher = Some(PatchProcessor::new(spec, self.sample_rate));
                     }
-                }
             }
             AudioCommand::PatcherNoteOn { freq, velocity } => {
                 if let Some(p) = &mut self.patcher {
@@ -494,7 +493,7 @@ impl SynthEngine {
                     let (ct, cr, rs, ds, ps, pa) = (old.comp_threshold_db, old.comp_ratio, old.reverb_send, old.delay_send, old.pitch_semitones, old.pitch_active);
                     // Preserve a live plugin insert (and its PDC line) across reloads.
                     let plugin = old.plugin.take();
-                    let pdc = std::mem::replace(&mut old.pdc, PdcDelay::new());
+                    let pdc = std::mem::take(&mut old.pdc);
                     let mut new_track = track;
                     new_track.eq = eq;
                     new_track.eq_proc.set_settings(eq);
@@ -943,11 +942,10 @@ impl SynthEngine {
         let mut incoming: Vec<Vec<(usize, f32)>> = vec![Vec::new(); n];
         for (from, track) in self.stem_tracks.iter().enumerate() {
             for send in &track.sends {
-                if let Some(to) = send.target.as_track() {
-                    if to != from && to < n {
+                if let Some(to) = send.target.as_track()
+                    && to != from && to < n {
                         incoming[to].push((from, send.level));
                     }
-                }
             }
         }
         self.stem_incoming = incoming;

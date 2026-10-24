@@ -188,9 +188,7 @@ impl ModMatrix {
         self.last_velocity = velocity.clamp(0.0, 1.0);
         self.has_note = true;
         // Nya noter börjar om i attacken, oavsett var envelopen stod.
-        for stage in &mut self.adsr_stages {
-            *stage = 1;
-        }
+        self.adsr_stages.fill(1);
     }
 
     /// **Not-av.** Utan den här kan en ADSR aldrig släppa: `has_note` sattes men nollställdes

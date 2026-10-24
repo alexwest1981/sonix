@@ -610,11 +610,10 @@ pub fn add_sample_item_to_track_at_bar(&mut self, track_idx: usize, item: &Libra
 };
 
     let target_track = &mut self.playlist_tracks[track_idx];
-    if target_track.pcm_audio.is_none() {
-        if let Some((pcm_l, pcm_r, sr)) = pcm_opt {
+    if target_track.pcm_audio.is_none()
+        && let Some((pcm_l, pcm_r, sr)) = pcm_opt {
             target_track.pcm_audio = Some((pcm_l, pcm_r, sr));
         }
-    }
 
     target_track.regions.push(region);
     let new_reg_idx = target_track.regions.len() - 1;
@@ -946,8 +945,8 @@ pub fn paste_region(&mut self) {
 
 impl SonixApp {
 pub fn repeat_selected_region_loop(&mut self, factor: f32) {
-    if let Some((t_idx, r_idx)) = self.selected_audio_region {
-        if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+    if let Some((t_idx, r_idx)) = self.selected_audio_region
+        && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             self.push_undo("Repetera sample loop");
             let reg = &mut self.playlist_tracks[t_idx].regions[r_idx];
             if reg.loop_length_bars <= 0.001 {
@@ -961,14 +960,13 @@ pub fn repeat_selected_region_loop(&mut self, factor: f32) {
             self.sync_track_regions(t_idx);
             self.status_message = crate::tstatus!("🔁 Loopade sample '{}': {} repetitioner ({:.1} takter)!", name, num_reps, new_len);
         }
-    }
 }
 }
 
 impl SonixApp {
 pub fn duplicate_selected_region(&mut self) {
-    if let Some((t_idx, r_idx)) = self.selected_audio_region {
-        if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+    if let Some((t_idx, r_idx)) = self.selected_audio_region
+        && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             self.push_undo("Duplicera ljudregion");
             let mut dup = self.playlist_tracks[t_idx].regions[r_idx].clone();
             dup.start_bar += dup.length_bars;
@@ -980,14 +978,13 @@ pub fn duplicate_selected_region(&mut self) {
             self.selected_audio_region = Some((t_idx, new_idx));
             self.status_message = crate::i18n::t("📋 Duplicerade ljudregion till tidslinjen!").to_string();
         }
-    }
 }
 }
 
 impl SonixApp {
 pub fn delete_selected_region(&mut self) {
-    if let Some((t_idx, r_idx)) = self.selected_audio_region {
-        if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+    if let Some((t_idx, r_idx)) = self.selected_audio_region
+        && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             let name = self.playlist_tracks[t_idx].regions[r_idx].name.clone();
             self.push_undo(&format!("Radera '{}'", name));
             self.playlist_tracks[t_idx].regions.remove(r_idx);
@@ -995,21 +992,19 @@ pub fn delete_selected_region(&mut self) {
             self.selected_audio_region = None;
             self.status_message = crate::tstatus!("🗑 Raderade region '{}'. [Ångra: Ctrl+Z]", name);
         }
-    }
 }
 }
 
 impl SonixApp {
 pub fn toggle_mute_selected_region(&mut self) {
-    if let Some((t_idx, r_idx)) = self.selected_audio_region {
-        if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+    if let Some((t_idx, r_idx)) = self.selected_audio_region
+        && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             self.push_undo("Muta/Avmuta region");
             self.playlist_tracks[t_idx].regions[r_idx].muted = !self.playlist_tracks[t_idx].regions[r_idx].muted;
             let is_m = self.playlist_tracks[t_idx].regions[r_idx].muted;
             self.sync_track_regions(t_idx);
             self.status_message = if is_m { crate::i18n::t("🔇 Region mutad").to_string() } else { crate::i18n::t("🔊 Region aktiv").to_string() };
         }
-    }
 }
 }
 
@@ -1043,14 +1038,13 @@ pub fn toggle_region_tape(&mut self, t_idx: usize, r_idx: usize) {
 
 impl SonixApp {
 pub fn reverse_selected_region(&mut self) {
-    if let Some((t_idx, r_idx)) = self.selected_audio_region {
-        if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
+    if let Some((t_idx, r_idx)) = self.selected_audio_region
+        && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             self.push_undo(crate::i18n::t("Vänd region baklänges (Reverse)"));
             self.playlist_tracks[t_idx].regions[r_idx].is_reverse = !self.playlist_tracks[t_idx].regions[r_idx].is_reverse;
             self.sync_track_regions(t_idx);
             self.status_message = crate::i18n::t("🔄 Vände ljudregion baklänges (Reverse)!").to_string();
         }
-    }
 }
 }
 

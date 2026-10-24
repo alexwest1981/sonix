@@ -687,8 +687,8 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
                     .desired_width(340.0),
             );
 
-            if ui.button(crate::i18n::t("➕ Lägg till mapp")).clicked() {
-                if !manager.new_custom_path_input.trim().is_empty() {
+            if ui.button(crate::i18n::t("➕ Lägg till mapp")).clicked()
+                && !manager.new_custom_path_input.trim().is_empty() {
                     let path = manager.new_custom_path_input.trim().to_string();
                     let is_wine = path.contains(".wine") || path.contains("drive_c");
                     let is_fl = path.to_lowercase().contains("fl studio") || path.to_lowercase().contains("image-line");
@@ -696,7 +696,6 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
                     manager.new_custom_path_input.clear();
                     *status_msg = crate::i18n::t("✔ Lade till ny plugin-mapp. Klicka 'Skanna mappar nu' för att uppdatera.").to_string();
                 }
-            }
         });
     });
 }

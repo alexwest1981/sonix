@@ -109,7 +109,7 @@ pub fn transpose_active_pattern(&mut self, semitones: i8) {
         for step in 0..crate::audio::tempo::MAX_STEPS {
             if self.piano_roll_grid[offset][step] {
                 let target = offset as i8 + semitones;
-                if target >= 0 && target < 24 {
+                if (0..24).contains(&target) {
                     new_grid[target as usize][step] = true;
                 }
             }

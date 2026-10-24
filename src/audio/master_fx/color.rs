@@ -98,7 +98,7 @@ pub const IR_BANK: [IrRecipe; 6] = [
 /// samma respons, vilket är det som gör svansen mätbar i ett prov i stället för hörbar bara ibland.
 pub fn synthesize_ir(recipe: &IrRecipe, sample_rate: f32) -> Vec<f32> {
     let sr = sample_rate.max(1.0);
-    let len = ((recipe.seconds.max(0.05) * sr) as usize).min(CONV_MAX_LEN).max(64);
+    let len = ((recipe.seconds.max(0.05) * sr) as usize).clamp(64, CONV_MAX_LEN);
 
     let mut state: u32 = 0x1234_5678;
     let mut noise = || {

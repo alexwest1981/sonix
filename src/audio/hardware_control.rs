@@ -301,18 +301,16 @@ impl McuInput {
                         count_t.fetch_add(1, Ordering::Relaxed);
                         match ev.get_type() {
                             EventType::Noteon | EventType::Noteoff => {
-                                if let Some(n) = ev.get_data::<EvNote>() {
-                                    if let Some(ctrl) = mcu_note_to_event(n, ev.get_type() == EventType::Noteon) {
+                                if let Some(n) = ev.get_data::<EvNote>()
+                                    && let Some(ctrl) = mcu_note_to_event(n, ev.get_type() == EventType::Noteon) {
                                         let _ = tx.send(ctrl);
                                     }
-                                }
                             }
                             EventType::Controller | EventType::Pitchbend => {
-                                if let Some(c) = ev.get_data::<EvCtrl>() {
-                                    if let Some(ctrl) = mcu_cc_to_event(c, ev.get_type() == EventType::Pitchbend) {
+                                if let Some(c) = ev.get_data::<EvCtrl>()
+                                    && let Some(ctrl) = mcu_cc_to_event(c, ev.get_type() == EventType::Pitchbend) {
                                         let _ = tx.send(ctrl);
                                     }
-                                }
                             }
                             _ => {}
                         }

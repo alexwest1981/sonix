@@ -107,7 +107,7 @@ fn describe_cmd(cmd: &AudioCommand) -> String {
             format!("SetVcaState(vca={} vol={} muted={} solo={})", vca, volume, muted, solo)
         }
         AudioCommand::SeekSongPosition(s) => format!("SeekSongPosition({:.2}s)", s),
-        other => format!("{}", variant_name(other)),
+        other => variant_name(other).to_string(),
     }
 }
 

@@ -1780,8 +1780,8 @@ pub(crate) fn render_chord_generator_modal_view(&mut self, ctx: &egui::Context) 
     );
     self.status_message = status;
 
-    if let Some(chords) = insert_chords {
-        if p_idx < self.patterns.len() && c_idx < num_chans {
+    if let Some(chords) = insert_chords
+        && p_idx < self.patterns.len() && c_idx < num_chans {
             for (step_i, chord) in chords.iter().enumerate() {
                 let s_start = (step_i * 4) % 16;
                 self.channels[c_idx].steps[s_start] = true;
@@ -1804,7 +1804,6 @@ pub(crate) fn render_chord_generator_modal_view(&mut self, ctx: &egui::Context) 
             self.patterns[p_idx].piano_roll_grid = self.piano_roll_grid;
             self.status_message = crate::tstatus!("🎹 Infogade {} ackord (fulla voicings) i Mönster {} (Kanal: {})!", chords.len(), p_idx + 1, self.channels[c_idx].name);
         }
-    }
 }
 }
 
@@ -2463,14 +2462,13 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                             bounce_request = Some(t_idx);
                         }
                         // Baka **hela gruppen** — bara när spåret faktiskt ligger i en grupp.
-                        if let Some(g) = track.group {
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Baka gruppen till nytt spår")).strong().color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().panel_alt()))
+                        if let Some(g) = track.group
+                            && ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Baka gruppen till nytt spår")).strong().color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().panel_alt()))
                                 .on_hover_text(crate::i18n::t("Renderar gruppens spår tillsammans till ett nytt ljudspår och tystar dem. Ctrl+Z tar tillbaka hela bakningen."))
                                 .clicked()
                             {
                                 group_bounce_request = Some(g);
                             }
-                        }
                         // **Klicka bort skarvar:** lagar hopp i det inspelade materialet.
                         // Bara spår med ljud kan ha klickar att laga.
                         // **Spågrupp** (FL): lägg spåret i en grupp och fäll ihop den. Det

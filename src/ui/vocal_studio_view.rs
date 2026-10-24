@@ -270,8 +270,8 @@ pub fn render_vocal_studio_view(
                                 if ui.add(
                                     egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Infoga i Tidslinje (Arranger)")).strong().size(Theme::FONT_S).color(Color32::BLACK))
                                         .fill(crate::ui::theme::palette().green()),
-                                ).clicked() {
-                                    if !playlist_tracks.is_empty() {
+                                ).clicked()
+                                    && !playlist_tracks.is_empty() {
                                         let region_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as usize;
                                         let sec_per_bar = (60.0 / bpm.max(40.0)) * 4.0;
                                         let effective_len_sec = duration * take.time_stretch;
@@ -304,7 +304,6 @@ pub fn render_vocal_studio_view(
                                         playlist_tracks[target_idx].regions.push(region);
                                         *status_msg = crate::tstatus!("✔ Infogade '{}' ({:.2}s) som ljudregion i Spår {} ({})!", take_name, duration, target_idx + 1, playlist_tracks[target_idx].name);
                                     }
-                                }
 
                                 // EXPORT TO WAV BUTTON
                                 if ui.add(
@@ -868,8 +867,8 @@ pub fn render_vocal_studio_view(
 
                             // Klick på ett markerat band tar bort det partiet — det är så man
                             // ångrar en kompning utan att bygga om allt.
-                            if w_resp.clicked() {
-                                if let Some(pos) = w_resp.interact_pointer_pos() {
+                            if w_resp.clicked()
+                                && let Some(pos) = w_resp.interact_pointer_pos() {
                                     let frac = ((pos.x - w_rect.min.x - 3.0)
                                         / (w_rect.width() - 6.0).max(1.0))
                                         .clamp(0.0, 1.0);
@@ -885,7 +884,6 @@ pub fn render_vocal_studio_view(
                                         );
                                     }
                                 }
-                            }
 
                             // Badge label showing duration
                             painter.text(
@@ -1010,8 +1008,8 @@ pub fn render_vocal_studio_view(
                         }
 
                         // Click a note to select it; drag vertically to retune it.
-                        if m_resp.clicked() || m_resp.dragged() {
-                            if let Some(pos) = m_resp.interact_pointer_pos() {
+                        if (m_resp.clicked() || m_resp.dragged())
+                            && let Some(pos) = m_resp.interact_pointer_pos() {
                                 let step = ((pos.x - (m_rect.min.x + 5.0)) / step_width).floor();
                                 let mut hit: Option<usize> = None;
                                 for (i, b) in harmonizer.blobs.iter().enumerate() {
@@ -1021,15 +1019,13 @@ pub fn render_vocal_studio_view(
                                     }
                                 }
                                 harmonizer.selected_blob = hit;
-                                if let Some(i) = hit {
-                                    if m_resp.dragged() {
+                                if let Some(i) = hit
+                                    && m_resp.dragged() {
                                         let delta = -m_resp.drag_delta().y / (row_h * 0.75);
                                         let b = &mut harmonizer.blobs[i];
                                         b.pitch_offset = (b.pitch_offset + delta).clamp(-12.0, 12.0);
                                     }
-                                }
                             }
-                        }
 
                         if is_playing {
                             let px = m_rect.min.x + 5.0 + current_step as f32 * step_width;

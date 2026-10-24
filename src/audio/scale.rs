@@ -189,7 +189,7 @@ pub fn key_transpose(rows_used: &[usize], base_midi: u8, root: u8, scale: usize)
         let mut hits = 0_usize;
         for &row in rows_used {
             let midi = base_midi as i16 + row as i16 + shift as i16;
-            if midi < 0 || midi > 127 {
+            if !(0..=127).contains(&midi) {
                 continue;
             }
             if in_scale((midi % 12) as u8, root, scale) {

@@ -148,7 +148,7 @@ pub fn render_tuner_modal(
                             .width(260.0)
                             .show_ui(ui, |ui| {
                                 for (p, label) in presets {
-                                    if ui.selectable_label(state.preset == *p, crate::i18n::t(*label)).clicked() {
+                                    if ui.selectable_label(state.preset == *p, crate::i18n::t(label)).clicked() {
                                         state.preset = p.clone();
                                         state.selected_string_idx = 0;
                                     }

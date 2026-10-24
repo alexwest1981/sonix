@@ -152,7 +152,7 @@ pub const TRANSMITTER_BASE_HZ: f32 = 220.0;
 /// platt parlista `hz, sek, hz, sek, …` i stället för en egen struktur, så att en spelare som redan
 /// tar tal kan spela dem direkt. En udda sista byte blir ingen händelse.
 pub fn transmitter(data: &[u8], base_hz: f32) -> Vec<f32> {
-    data.chunks_exact(2)
+    data.as_chunks::<2>().0.iter()
         .flat_map(|p| {
             [
                 base_hz * 2.0f32.powf(p[0] as f32 / 12.0),
@@ -198,7 +198,7 @@ pub fn transmitter_wav(data: &[u8], sample_rate: u32) -> Vec<f32> {
     let (attack, release) = (0.005 * sr, 0.030 * sr);
     let mut out = Vec::new();
     let mut at = 0.0f32; // händelsens början i sekunder
-    for e in events.chunks_exact(2) {
+    for e in events.as_chunks::<2>().0 {
         let (hz, secs) = (e[0], e[1]);
         let start = (at * sr).round() as usize;
         let end = ((at + secs) * sr).round() as usize;

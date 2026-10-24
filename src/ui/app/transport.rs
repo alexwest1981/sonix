@@ -99,8 +99,8 @@ pub fn toggle_timeline_recording(&mut self) {
         if let Err(e) = &take_result {
             self.status_message = format!("❌ {}", e);
         }
-        if let Ok(take_idx) = take_result {
-            if let Some(take) = self.vocal_studio.takes.get(take_idx).cloned() {
+        if let Ok(take_idx) = take_result
+            && let Some(take) = self.vocal_studio.takes.get(take_idx).cloned() {
                 let armed_idx = self.playlist_tracks.iter().position(|t| t.is_rec_armed).unwrap_or(0);
                 let start_bar = self.timeline_rec_start_bar;
                 let length_bars =
@@ -134,7 +134,6 @@ pub fn toggle_timeline_recording(&mut self) {
                 self.sync_track_stem_to_engine(armed_idx);
                 self.status_message = crate::tstatus!("✔ Spelade in '{}' direkt i spår {} ({}) vid takt {:.1} ({:.2}s)!", take.name, armed_idx + 1, self.playlist_tracks[armed_idx].name, start_bar + 1.0, take.duration_secs);
             }
-        }
     } else {
         if !self.playlist_tracks.iter().any(|t| t.is_rec_armed) && !self.playlist_tracks.is_empty() {
             self.playlist_tracks[0].is_rec_armed = true;
@@ -377,8 +376,8 @@ pub(crate) fn advance_sequencer(&mut self) {
             // prövas en gång per takt — inte per steg — och bara när det finns en.
             if self.current_step == 0 {
                 self.follow_bars += 1.0;
-                if let Some(action) = self.follow {
-                    if action.due(self.follow_bars) {
+                if let Some(action) = self.follow
+                    && action.due(self.follow_bars) {
                         // Slumpen dras ur klockan, inte ur ett sparat frö: en follow action ska
                         // kunna gå olika vägar mellan två spelningar.
                         // Slumpen dras ur klockan, inte ur ett sparat frö: en follow action ska
@@ -406,7 +405,6 @@ pub(crate) fn advance_sequencer(&mut self) {
                             }
                         }
                     }
-                }
             }
             self.trigger_step(self.current_step);
         } else {
@@ -507,7 +505,7 @@ fn trigger_step(&mut self, step: usize) {
         });
     }
 
-    if self.metronome_enabled && step % 4 == 0 {
+    if self.metronome_enabled && step.is_multiple_of(4) {
         if step == 0 {
             let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::MetronomeHigh));
         } else {
@@ -634,7 +632,7 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
         }
     }
 
-    if self.metronome_enabled && step_in_bar % 4 == 0 {
+    if self.metronome_enabled && step_in_bar.is_multiple_of(4) {
         if step_in_bar == 0 {
             let _ = self.engine.send_command(AudioCommand::TriggerDrum(DrumType::MetronomeHigh));
         } else {
@@ -644,7 +642,7 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
     let has_track_solo = self.playlist_tracks.iter().any(|t| t.solo);
     let vel = self.step_velocities[step_in_bar];
 
-    for (_t_idx, track) in self.playlist_tracks.iter().enumerate() {
+    for track in self.playlist_tracks.iter() {
         let is_audible = if has_track_solo { track.solo } else { !track.muted };
         if !is_audible {
             continue;
@@ -996,7 +994,7 @@ pub(crate) fn phrase_files(dir: &std::path::Path) -> Vec<(String, std::path::Pat
             .unwrap_or_else(|| path.display().to_string());
         phrases.push((name, path));
     }
-    phrases.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    phrases.sort_by_key(|a| a.0.to_lowercase());
     phrases
 }
 

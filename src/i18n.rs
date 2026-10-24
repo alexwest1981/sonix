@@ -122,13 +122,11 @@ pub fn config_path() -> PathBuf {
 
 pub fn load_language() -> Language {
     let path = config_path();
-    if let Ok(text) = std::fs::read_to_string(&path) {
-        if let Ok(map) = serde_json::from_str::<serde_json::Value>(&text) {
-            if let Some(code) = map.get("language").and_then(|v| v.as_str()) {
+    if let Ok(text) = std::fs::read_to_string(&path)
+        && let Ok(map) = serde_json::from_str::<serde_json::Value>(&text)
+            && let Some(code) = map.get("language").and_then(|v| v.as_str()) {
                 return Language::from_code(code);
             }
-        }
-    }
     detect_from_env()
 }
 
@@ -219,11 +217,10 @@ impl Spec {
             match ch {
                 '+' => plus = true,
                 '.' => after_dot = true,
-                c if c.is_ascii_digit() => {
-                    if after_dot {
+                c if c.is_ascii_digit()
+                    && after_dot => {
                         digits.push(c);
                     }
-                }
                 _ => {}
             }
         }
@@ -245,7 +242,7 @@ impl FmtArg for str {
     }
 }
 
-impl<'a, T: FmtArg + ?Sized> FmtArg for &'a T {
+impl<T: FmtArg + ?Sized> FmtArg for &T {
     fn w(&self, spec: Spec) -> String {
         (*self).w(spec)
     }
@@ -367,7 +364,7 @@ pub fn tstatus(key: &'static str, args: &[&dyn FmtArg]) -> String {
 #[macro_export]
 macro_rules! tstatus {
     ($key:expr $(, $arg:expr)* $(,)?) => {{
-        crate::i18n::tstatus($key, &[ $( &($arg) as &dyn crate::i18n::FmtArg ),* ])
+        $crate::i18n::tstatus($key, &[ $( &($arg) as &dyn crate::i18n::FmtArg ),* ])
     }};
 }
 

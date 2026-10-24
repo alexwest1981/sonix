@@ -780,7 +780,7 @@ impl PluginManager {
             id: format!("disc_{}", self.plugins.len()),
             name: clean_name,
             vendor,
-            version: extract_version(&file_name),
+            version: extract_version(file_name),
             format,
             category,
             file_path: path_str,

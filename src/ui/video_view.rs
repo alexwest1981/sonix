@@ -94,8 +94,8 @@ pub fn render_video_view(
                     .color(crate::ui::theme::palette().cyan()),
             );
             ui.separator();
-            if ui.button(crate::i18n::t("🎬 Ladda video…")).clicked() {
-                if let Some(path) = rfd::FileDialog::new()
+            if ui.button(crate::i18n::t("🎬 Ladda video…")).clicked()
+                && let Some(path) = rfd::FileDialog::new()
                     .add_filter(
                         crate::i18n::t("Video"),
                         &["mp4", "mov", "mkv", "webm", "avi", "m4v"],
@@ -120,7 +120,6 @@ pub fn render_video_view(
                         ),
                     };
                 }
-            }
             ui.separator();
             ui.label(crate::i18n::t("Börjar på tidslinjen (s):"));
             ui.add(

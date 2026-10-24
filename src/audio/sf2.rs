@@ -111,7 +111,7 @@ pub fn parse(bytes: &[u8]) -> Result<SoundFont, String> {
         return Err("smpl är inte jämn 16-bitars data".to_string());
     }
     let pcm: Vec<f32> = smpl
-        .chunks_exact(2)
+        .as_chunks::<2>().0.iter()
         .map(|p| i16::from_le_bytes([p[0], p[1]]) as f32 / 32_768.0)
         .collect();
 

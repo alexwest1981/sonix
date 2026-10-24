@@ -287,14 +287,13 @@ pub fn plan_for(input: &ResolvedInput, engine_rate: u32) -> InputPlan {
         defaults,
         monitor_allowed: true,
     };
-    if let Some(fixed) = input.fixed_rate {
-        if fixed != engine_rate {
+    if let Some(fixed) = input.fixed_rate
+        && fixed != engine_rate {
             plan.set_rate = Some(fixed);
             // Om bytet inte går igenom står motorn kvar på en annan frekvens. Gränssnittet
             // stänger då av monitorn och säger varför; det beslutet tas efter `reconfigure`.
             plan.monitor_allowed = false;
         }
-    }
     plan
 }
 
