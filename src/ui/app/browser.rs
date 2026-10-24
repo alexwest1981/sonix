@@ -618,15 +618,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
 
             // Synth Presets
             ui.collapsing("🎹 SYNTH PRESETS", |ui| {
-                let synths = [
-                    ("Clean Pluck (80s Poly)", Preset::CleanPluck),
-                    ("Warm 80s Pad (Lush)", Preset::WarmPad),
-                    ("303 Acid Bass (Resonant)", Preset::AcidBass),
-                    ("8-Bit Chiptune (Retro)", Preset::ChiptuneLead),
-                    ("Cosmic Brass (Synthwave)", Preset::CosmicBrass),
-                    ("Kepler (analog)", Preset::Kepler),
-                    ("Kepler Exo (puls)", Preset::KeplerExo),
-                ];
+                let synths = crate::audio::command::SYNTH_PRESETS;
                 if ui
                     .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎲 Autogun (slumpat ljud)")).size(Theme::FONT_S)).fill(crate::ui::theme::palette().panel()))
                     .on_hover_text(crate::i18n::t("Slumpar fram ett komplett ljud ur syntens egna parametrar"))

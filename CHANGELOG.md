@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — the assistant can change the synth
+
+- `set_channel_instrument` now runs: `find_preset` matches a name case-insensitively in both
+  directions against `SYNTH_PRESETS` (one shared table — the browser and the assistant read the
+  same list), then applies it through the same path as the browser's **Ladda**.
+- An unknown name is refused with the list of what exists, rather than silently doing nothing.
+  Prov: `presets_are_found_by_partial_name` ("acid" → 303, "KEPLER EXO" → Kepler Exo, "theremin" → none).
+
 ### Added — sections in the arrangement
 
 - `Section { name, start_bar, bars }` on the app, drawn in the timeline ruler as purple bands with

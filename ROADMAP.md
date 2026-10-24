@@ -114,8 +114,7 @@ mål som val. Den **kan inte röra instrumenten**, och man kan inte diskutera ar
    begrepp (kanal, pattern, sektion, spår, buss) och en lista verktyg som AI:n får anropa:
    `set_instrument`, `load_drum_kit`, `write_pattern`, `create_section`, `set_tempo`, `set_key`,
    `add_fx`, `mute_track`. Schemat är JSON, versionerat, och ligger i `src/audio/ai_tools.rs`.
-2. **Utföraren.** *◐ 0.9.92:* tempo, trumkomp och mute går igenom; instrumentbyte saknar
-   utförare. Varje verktygsanrop mappas till ett befintligt kommando (`AudioCommand` eller
+2. **Utföraren.** *✅ 0.9.95:* tempo, trumkomp, mute och instrumentbyte går igenom. Varje verktygsanrop mappas till ett befintligt kommando (`AudioCommand` eller
    appens state) — ingen ny motor. Allt valideras (kanal finns, steg inom patternet, tonhöjd
    0–127), körs som **ett** ångringssteg, och ett anrop som inte validerar avvisas med orsak.
 3. **Samtal om sektioner.** *✅ 0.9.94:* AI:n får arrangemanget som kontext (spår, sektioner, takter, tempo,

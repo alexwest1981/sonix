@@ -123,9 +123,32 @@ impl SonixApp {
                 Err(e) => format!("plan: {e}"),
             },
             "set_key" => "tonart: inte byggt än".to_string(),
-            "set_channel_instrument" => "instrumentbyte: inte byggt än".to_string(),
+            "set_channel_instrument" => {
+                let wanted = call.args.get("instrument").and_then(|v| v.as_str()).unwrap_or("");
+                self.ai_set_instrument(wanted)
+            }
             other => format!("okänt verktyg '{other}'"),
         }
+    }
+
+    /// Byter syntljud. Namnet måste matcha ett av `SYNTH_PRESETS` (skiftlägesoberoende, delsträng
+    /// räcker) — AI:n får inte hitta på ett ljud som inte finns.
+    fn ai_set_instrument(&mut self, wanted: &str) -> String {
+        if wanted.trim().is_empty() {
+            return "instrument: inget namn angavs".to_string();
+        }
+        let Some((name, preset)) = crate::audio::command::find_preset(wanted) else {
+            let names = crate::audio::command::SYNTH_PRESETS
+                .iter()
+                .map(|(n, _)| *n)
+                .collect::<Vec<_>>()
+                .join(", ");
+            return format!("instrument: '{wanted}' finns inte (kända: {names})");
+        };
+        self.current_preset = preset;
+        self.apply_preset_settings(preset);
+        let _ = self.engine.send_command(crate::audio::command::AudioCommand::LoadPreset(preset));
+        format!("instrument: {name}")
     }
 
     /// **Bekräftar** en väntande sektionsplan: sektionerna läggs efter varandra från takt 1.

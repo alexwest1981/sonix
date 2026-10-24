@@ -115,6 +115,34 @@ pub enum Preset {
     KeplerExo,
 }
 
+/// **Ett ställe för namn och preset.** Webbläsaren visar listan, AI:n slår upp i den — två
+/// kopior hade glidit isär så fort ett ljud bytte namn.
+pub const SYNTH_PRESETS: [(&str, Preset); 7] = [
+    ("Clean Pluck (80s Poly)", Preset::CleanPluck),
+    ("Warm 80s Pad (Lush)", Preset::WarmPad),
+    ("303 Acid Bass (Resonant)", Preset::AcidBass),
+    ("8-Bit Chiptune (Retro)", Preset::ChiptuneLead),
+    ("Cosmic Brass (Synthwave)", Preset::CosmicBrass),
+    ("Kepler (analog)", Preset::Kepler),
+    ("Kepler Exo (puls)", Preset::KeplerExo),
+];
+
+/// Slår upp ett syntljud på namn (skiftlägesoberoende, delsträng åt båda hållen). Ren funktion:
+/// AI:n och ett test använder samma regel.
+pub fn find_preset(wanted: &str) -> Option<(&'static str, Preset)> {
+    let needle = wanted.trim().to_lowercase();
+    if needle.is_empty() {
+        return None;
+    }
+    SYNTH_PRESETS.iter().copied().find(|(name, _)| {
+        let name = name.to_lowercase();
+        name.contains(&needle) || needle.contains(&name)
+    })
+}
+
+
+
+
 impl Preset {
     pub const ALL: [Preset; 12] = [
         Preset::CleanPluck,
@@ -1054,5 +1082,20 @@ mod tests {
         // gäller — är paret en loop? — ställs till **motorn**, och den räknar i hela ramar.
         assert!(end > start, "start {start} mot slut {end}");
         assert!(loop_frames(len, start, end).is_some());
+    }
+}
+
+#[cfg(test)]
+mod preset_lookup_tests {
+    use super::*;
+
+    /// AI:n hittar ett ljud på delsträng, men hittar inte på ett som saknas.
+    #[test]
+    fn presets_are_found_by_partial_name() {
+        assert_eq!(find_preset("acid").map(|(n, _)| n), Some("303 Acid Bass (Resonant)"));
+        assert_eq!(find_preset("KEPLER EXO").map(|(n, _)| n), Some("Kepler Exo (puls)"));
+        assert_eq!(find_preset("303 acid bass (resonant)").map(|(n, _)| n), Some("303 Acid Bass (Resonant)"));
+        assert!(find_preset("theremin").is_none());
+        assert!(find_preset("   ").is_none());
     }
 }
