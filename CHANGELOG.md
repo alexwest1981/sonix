@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — 7-band EQ and Fruity Center (0.9.123)
+
+- **Masterns grafiska EQ har sju band**, på FL:s mittfrekvenser 60/170/350/1k/3,5k/8k/12k.
+  `eq_bands` var `[_; 4]` och räckte inte; nu sju coeffs, sju tillstånd och sju noder i
+  FX-racket. **Mätt:** band 4 (1 kHz) på +12 dB lyfter 1 kHz till mer än dubbla RMS medan
+  8 kHz ligger kvar på 0,0707 ± 0,02.
+- **Fruity Center** som `StereoParams.center`: −1 tar bort mitten, +1 tar bort sidorna.
+  Tilägget sitter på tredje extra-ratten i stereo-pedalen. Prov: mono blir tyst vid −1, en ren
+  sida överlever, och +1 ger lika kanaler.
+- `MasterFxParams` har ingen serde-derive, så arraybytet kan inte göra en gammal projektfil
+  oläsbar — det var därför bytet var ofarligt.
+
 ### Added — three of the playlist tools (0.9.122)
 
 - **Chop in bars** (`chop_region`): delar ett klipp i 1, ½ eller ¼ takt från klippmenyn. Delarna

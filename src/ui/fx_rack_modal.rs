@@ -447,6 +447,10 @@ impl Default for FxRackState {
                 VisualEqNode { name: "Low-Mid", freq_hz: 450.0, gain_db: -1.5, q: 1.2, color: crate::ui::theme::palette().amber(), is_active: true },
                 VisualEqNode { name: "High-Mid", freq_hz: 2800.0, gain_db: 3.0, q: 1.0, color: crate::ui::theme::palette().green(), is_active: true },
                 VisualEqNode { name: "High (Air)", freq_hz: 11000.0, gain_db: 1.5, q: 0.8, color: crate::ui::theme::palette().cyan(), is_active: true },
+                // **Sju band** (0.9.123): samma mittfrekvenser som master-EQ:n räknar på.
+                VisualEqNode { name: "Band 5", freq_hz: 3500.0, gain_db: 0.0, q: 1.0, color: crate::ui::theme::palette().green(), is_active: false },
+                VisualEqNode { name: "Band 6", freq_hz: 8000.0, gain_db: 0.0, q: 1.0, color: crate::ui::theme::palette().amber(), is_active: false },
+                VisualEqNode { name: "Band 7", freq_hz: 12000.0, gain_db: 0.0, q: 1.0, color: crate::ui::theme::palette().cyan(), is_active: false },
             ],
             compressor_release_ms: 120.0,
             convolver_mix: 0.35,
@@ -495,8 +499,8 @@ impl FxRackState {
     /// Translate the UI rack state into the DSP parameter struct sent to the engine.
     pub fn build_master_fx_params(&self) -> MasterFxParams {
         let eq_pedal_on = self.pedal("visual_eq").map(|p| p.enabled).unwrap_or(false);
-        let mut eq_bands = [MasterEqBand::flat(); 4];
-        for (i, node) in self.eq_nodes.iter().take(4).enumerate() {
+        let mut eq_bands = [MasterEqBand::flat(); 7];
+        for (i, node) in self.eq_nodes.iter().take(7).enumerate() {
             eq_bands[i] = MasterEqBand {
                 freq: node.freq_hz,
                 gain_db: node.gain_db,
@@ -704,6 +708,9 @@ impl FxRackState {
             balance: st_knob(|p| p.p2_val, 0.5) * 2.0 - 1.0,
             invert_l: st_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.0), 0.0) > 0.5,
             invert_r: st_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.0), 0.0) > 0.5,
+            // **Fruity Center** på tredje extra-ratten: 0,5 = neutralt, under = bort med
+            // mitten, över = bort med sidorna.
+            center: st_knob(|p| p.extra.get(2).map(|e| e.1).unwrap_or(0.5), 0.5) * 2.0 - 1.0,
             mix: st_knob(|p| p.mix, 1.0),
         };
 

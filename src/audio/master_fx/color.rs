@@ -1208,6 +1208,9 @@ pub struct StereoParams {
     pub balance: f32,
     pub invert_l: bool,
     pub invert_r: bool,
+    /// **Fruity Center:** −1 tar bort mitten (bara sidan kvar), +1 tar bort sidorna
+    /// (bara mitten kvar). 0 är neutralt.
+    pub center: f32,
     pub mix: f32,
 }
 
@@ -1218,6 +1221,7 @@ impl Default for StereoParams {
             balance: 0.0,
             invert_l: false,
             invert_r: false,
+            center: 0.0,
             mix: 1.0,
         }
     }
@@ -1227,8 +1231,9 @@ impl StereoParams {
     /// **Bredden verkar på sidan, inte på kanalerna**: mitt och sida skalas var för sig, så
     /// mitten står still när bredden ändras. Balansen är en ren viktning efteråt.
     pub fn apply(&self, l: f32, r: f32) -> (f32, f32) {
-        let mid = (l + r) * 0.5;
-        let side = (l - r) * 0.5 * self.width.clamp(0.0, 2.0);
+        let c = self.center.clamp(-1.0, 1.0);
+        let mid = (l + r) * 0.5 * (1.0 + c).max(0.0);
+        let side = (l - r) * 0.5 * self.width.clamp(0.0, 2.0) * (1.0 - c.max(0.0));
         let (mut l, mut r) = (mid + side, mid - side);
         if self.invert_l {
             l = -l;

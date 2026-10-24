@@ -134,7 +134,7 @@ impl Default for ControlRoomParams {
 /// återkoppling är fortfarande en delay.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct MasterFxParams {
-    pub eq_bands: [MasterEqBand; 4],
+    pub eq_bands: [MasterEqBand; 7],
     pub eq_enabled: bool,
     pub comp: CompressorParams,
     pub comp_enabled: bool,
@@ -187,7 +187,15 @@ pub struct MasterFxParams {
 impl Default for MasterFxParams {
     fn default() -> Self {
         Self {
-            eq_bands: [MasterEqBand::flat(); 4],
+            eq_bands: {
+                // **Sju band, FL:s 7 Band EQ**: fasta mittfrekvenser som täcker bas till luft.
+                let mut bands = [MasterEqBand::flat(); 7];
+                const FREQ: [f32; 7] = [60.0, 170.0, 350.0, 1000.0, 3500.0, 8000.0, 12000.0];
+                for (band, f) in bands.iter_mut().zip(FREQ) {
+                    band.freq = f;
+                }
+                bands
+            },
             eq_enabled: true,
             comp: CompressorParams::default(),
             comp_enabled: false,
@@ -241,9 +249,9 @@ impl Default for MasterFxParams {
 
 pub struct MasterFxChain {
     sample_rate: f32,
-    eq_coeffs: [BiquadCoeffs; 4],
-    eq_l: [BiquadState; 4],
-    eq_r: [BiquadState; 4],
+    eq_coeffs: [BiquadCoeffs; 7],
+    eq_l: [BiquadState; 7],
+    eq_r: [BiquadState; 7],
     eq_active: bool,
     comp: Compressor,
     doubler: Doubler,
@@ -274,9 +282,9 @@ impl MasterFxChain {
     pub fn new(sample_rate: f32) -> Self {
         let mut chain = Self {
             sample_rate,
-            eq_coeffs: [BiquadCoeffs::bypass(); 4],
-            eq_l: [BiquadState::default(); 4],
-            eq_r: [BiquadState::default(); 4],
+            eq_coeffs: [BiquadCoeffs::bypass(); 7],
+            eq_l: [BiquadState::default(); 7],
+            eq_r: [BiquadState::default(); 7],
             eq_active: false,
             comp: Compressor::new(sample_rate),
             doubler: Doubler::new(sample_rate),
@@ -358,7 +366,7 @@ impl MasterFxChain {
         }
 
         if self.eq_active {
-            for i in 0..4 {
+            for i in 0..self.eq_coeffs.len() {
                 l = self.eq_l[i].process(l, &self.eq_coeffs[i]);
                 r = self.eq_r[i].process(r, &self.eq_coeffs[i]);
             }

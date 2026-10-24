@@ -221,11 +221,11 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Emphasizer | 1 | ◐ | Samma som Emphasis: hyllan finns, övertonstillägget gör det inte |
 | FL Studio Mobile Rack FX | 1 | — | **ej tillämplig**: mobil-appens effekter (se FL Studio Mobile). |
 | Frequency Shifter | 1 | ✅ | `FrequencyShifter` — Hilbert 63 tapp, en sidofrekvens, ±2 000 Hz, stereoläge |
-| Fruity 7 Band EQ | 1 | ◐ | 4-band + per-spår EQ |
+| Fruity 7 Band EQ | 1 | ✅ 0.9.123: masterns grafiska EQ har sju band (60/170/350/1k/3,5k/8k/12k), prov att 1 kHz-bandet lyfter 1 kHz men inte 8 kHz |
 | Fruity Balance | 1 | ✅ | pan/volym |
 | Fruity Bass Boost | 1 | ◐ | EQ |
 | Fruity Blood Overdrive | 1 | ✅ | saturatorn |
-| Fruity Center | 1 | ◐ | mittkanalsextraktion finns i stämseparatorn, inte som effekt |
+| Fruity Center | 1 | ✅ 0.9.123: `StereoParams.center` (−1 mitten bort, +1 sidorna bort), prov på mono, sida och lika kanaler |
 | Fruity Chorus | 1 | ✅ | `ModDelay` — svep 12–20 ms, kvarts periods kanalskillnad, mix 0 bit-identisk |
 | Fruity Compressor | 1 | ✅ | Compressor |
 | Fruity Delay | 1 | ✅ | StereoDelay |

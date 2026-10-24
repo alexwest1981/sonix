@@ -1247,3 +1247,58 @@
         assert!(worst < 1e-9, "standardkedjan ska vara genomsläpplig, avvikelse {worst}");
     }
 
+/// **Sju band, oberoende av varandra.** Ett band på 1 kHz ska lyfta 1 kHz men inte 8 kHz —
+/// det är hela skillnaden mellan en grafisk EQ och en enda ratt.
+#[test]
+fn seven_eq_bands_boost_only_their_own_frequency() {
+    let mut chain = MasterFxChain::new(48_000.0);
+    let mut params = MasterFxParams::default();
+    params.eq_enabled = true;
+    // Band 4 är 1 kHz i standarduppsättningen, band 6 är 8 kHz.
+    params.eq_bands[3].active = true;
+    params.eq_bands[3].gain_db = 12.0;
+    chain.set_params(params);
+
+    let rms_at = |chain: &mut MasterFxChain, hz: f32| {
+        let mut acc = 0.0f64;
+        let n = 24_000usize;
+        for i in 0..n {
+            let x = (i as f32 * hz * std::f32::consts::TAU / 48_000.0).sin() * 0.1;
+            let (l, _) = chain.process(x, x);
+            if i > 4_000 {
+                acc += (l as f64) * (l as f64);
+            }
+        }
+        (acc / (n - 4_000) as f64).sqrt() as f32
+    };
+
+    let at_1k = rms_at(&mut chain, 1_000.0);
+    let at_8k = rms_at(&mut chain, 8_000.0);
+    assert!(
+        at_1k > 0.1 * 2.0,
+        "1 kHz ska lyftas av band 4 (+12 dB), fick {at_1k:.4}"
+    );
+    assert!(
+        (at_8k - 0.1 / std::f32::consts::SQRT_2).abs() < 0.02,
+        "8 kHz ska vara orörd, fick {at_8k:.4}"
+    );
+}
+
+/// **Fruity Center:** −1 tar bort mitten (en monokälla blir tyst), +1 tar bort sidorna
+/// (kanalerna blir lika).
+#[test]
+fn center_control_removes_mid_or_side() {
+    let mut p = StereoParams::default();
+    p.center = -1.0;
+    let (l, r) = p.apply(0.5, 0.5);
+    assert!(l.abs() < 1e-6 && r.abs() < 1e-6, "mitten ska bort, fick {l:.4}/{r:.4}");
+
+    // En ren sida (l = −r) ska överleva när mitten tas bort.
+    let (l, r) = p.apply(0.5, -0.5);
+    assert!((l - 0.5).abs() < 1e-6 && (r + 0.5).abs() < 1e-6, "sidan ska vara kvar");
+
+    p.center = 1.0;
+    let (l, r) = p.apply(0.5, 0.0);
+    assert!((l - r).abs() < 1e-6, "sidorna borta ska ge lika kanaler");
+    assert!(l.abs() > 0.2, "mitten ska vara kvar, fick {l:.4}");
+}
