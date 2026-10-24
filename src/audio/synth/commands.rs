@@ -183,6 +183,17 @@ impl SynthEngine {
                         *amount = amount.clamp(-32.0, 32.0);
                     }
                 }
+                // Ringmodulering 0–1 (1 = helt ringmodulerad) och additiv blandning −1–1.
+                for row in &mut params.ring {
+                    for amount in row.iter_mut() {
+                        *amount = amount.clamp(0.0, 1.0);
+                    }
+                }
+                for row in &mut params.add {
+                    for amount in row.iter_mut() {
+                        *amount = amount.clamp(-1.0, 1.0);
+                    }
+                }
                 self.six_op = params;
                 // Rösterna bär sina egna kopior (som dragstängerna): en ändring ska höras
                 // på noter som redan klingar, utan att delat tillstånd läses per sampel.

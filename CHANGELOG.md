@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Ring modulation and additive mixing in the 6-op matrix.** The matrix was FM only; each cell
+  now also has an RM row (the source multiplies the target's amplitude) and an ADD row (the
+  source's sound is added to the target's). A FM/RM/ADD selector above the grid picks which row
+  the same 36 boxes edit, and both new rows default to zero so old patches sound identical.
+  Measured: at RM 1.0 the carrier drops 1.0000 → 0.0000 and sidebands appear at 0.5/0.5; ADD 1.0
+  puts the source's fundamental at 1.0000 where it was 0.0000.
+
 - **Release samples.** A channel can carry a damper sound (`🎧 Släppljud…` in its sampler panel,
   WAV). When the note ends — key release, step end, or pedal lift — the voice switches to that
   sound instead of fading, which is what a piano does when the string is damped. Without one,

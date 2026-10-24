@@ -599,6 +599,8 @@ pub struct SonixApp {
     pub cue_listen: crate::audio::control_room::CueListen,
     /// Sustainpedalen (MIDI CC64) — sann så länge den hålls nere.
     pub sustain_pedal: bool,
+    /// Vilken rad i 6-op-matrisen panelen redigerar: 0 = FM, 1 = RM, 2 = ADD.
+    pub six_op_mode: u8,
     /// **Talkback:** micken till monitorerna i stället för in i mastern.
     pub talkback: bool,
     /// Enhetströmmen som talkback öppnade. `None` när talkback är av — strömmen stängs då,
@@ -1187,6 +1189,7 @@ impl SonixApp {
             control_room: crate::audio::control_room::ControlRoom::default(),
             cue_listen: crate::audio::control_room::CueListen::Main,
             sustain_pedal: false,
+            six_op_mode: 0,
             talkback: false,
             talkback_capture: None,
             vocoder_amount: 0.0,

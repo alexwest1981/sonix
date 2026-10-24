@@ -3423,6 +3423,25 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                     .size(Theme::FONT_XS)
                                     .color(crate::ui::theme::palette().text_muted()),
                             );
+                            // Sytrus matris har tre rader per cell (FM, RM, ADD). Samma rutnät
+                            // redigerar en rad i taget — 108 rutor får inte plats.
+                            ui.horizontal(|ui| {
+                                for (mode, label) in
+                                    [(0u8, "FM"), (1, "RM"), (2, "ADD")]
+                                {
+                                    if ui
+                                        .selectable_label(self.six_op_mode == mode, label)
+                                        .on_hover_text(crate::i18n::t(match mode {
+                                            0 => "Fasmodulering (FM)",
+                                            1 => "Ringmodulering: källan multiplicerar målets amplitud",
+                                            _ => "Additiv blandning: källans ljud läggs till målets",
+                                        }))
+                                        .clicked()
+                                    {
+                                        self.six_op_mode = mode;
+                                    }
+                                }
+                            });
                             egui::Grid::new("six_op_matrix").num_columns(7).show(ui, |ui| {
                                 ui.label("");
                                 for target_col in 1..=crate::audio::synth::SIX_OP_COUNT {
@@ -3435,15 +3454,31 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                 for source in 0..crate::audio::synth::SIX_OP_COUNT {
                                     ui.label(format!("{}", source + 1));
                                     for target_col in 0..crate::audio::synth::SIX_OP_COUNT {
+                                        // Samma ruta, men raden som redigeras väljs ovan.
+                                        let (value, range, speed) = match self.six_op_mode {
+                                            0 => (
+                                                &mut self.six_op.matrix[source][target_col],
+                                                -16.0..=16.0,
+                                                0.05,
+                                            ),
+                                            1 => (
+                                                &mut self.six_op.ring[source][target_col],
+                                                0.0..=1.0,
+                                                0.01,
+                                            ),
+                                            _ => (
+                                                &mut self.six_op.add[source][target_col],
+                                                -1.0..=1.0,
+                                                0.01,
+                                            ),
+                                        };
                                         six_changed |= ui
                                             .add_sized(
                                                 [34.0, 16.0],
-                                                egui::DragValue::new(
-                                                    &mut self.six_op.matrix[source][target_col],
-                                                )
-                                                .range(-16.0..=16.0)
-                                                .speed(0.05)
-                                                .max_decimals(2),
+                                                egui::DragValue::new(value)
+                                                    .range(range)
+                                                    .speed(speed)
+                                                    .max_decimals(2),
                                             )
                                             .on_hover_text(crate::tstatus!(
                                                 "OP{} → OP{}",

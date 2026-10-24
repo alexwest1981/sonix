@@ -27,6 +27,14 @@ pub struct SixOpParams {
     pub levels: [f32; SIX_OP_COUNT],
     /// `matrix[källa][mål]`: hur mycket källan fasmodulerar målet, i radianer.
     pub matrix: [[f32; SIX_OP_COUNT]; SIX_OP_COUNT],
+    /// **Ringmodulering** per cell: källan multiplicerar målets amplitud. 0 = orörd,
+    /// 1 = helt ringmodulerad (bärvågen försvinner, sidobanden tar över).
+    #[serde(default = "no_modulation")]
+    pub ring: [[f32; SIX_OP_COUNT]; SIX_OP_COUNT],
+    /// **Additiv blandning** per cell: källans ljud läggs till målets utgång. Det är den tredje
+    /// raden i Sytrus matris — utan den går bara FM att bygga.
+    #[serde(default = "no_modulation")]
+    pub add: [[f32; SIX_OP_COUNT]; SIX_OP_COUNT],
     /// Egen ADSR per operator — den ligger **före** matrisen, så en kort envelop på en
     /// modulator tar bort sidobanden igen (det är skillnaden mellan en klang och ett klick).
     /// `#[serde(default)]` gör att patchar sparade före 0.9.48 öppnas som förut.
@@ -53,6 +61,10 @@ impl OpFilter {
             resonance: self.resonance,
         }
     }
+}
+
+fn no_modulation() -> [[f32; SIX_OP_COUNT]; SIX_OP_COUNT] {
+    [[0.0; SIX_OP_COUNT]; SIX_OP_COUNT]
 }
 
 /// Öppet filter: över hörbarheten, alltså ingen filtrering.
@@ -85,6 +97,8 @@ impl Default for SixOpParams {
             ratios: [1.0; SIX_OP_COUNT],
             levels,
             matrix: [[0.0; SIX_OP_COUNT]; SIX_OP_COUNT],
+            ring: no_modulation(),
+            add: no_modulation(),
             envs: neutral_envs(),
             filters: open_filters(),
         }
@@ -177,6 +191,25 @@ impl SixOpVoice {
                 value = self.filters[target].process_lowpass(value, &filter.params());
             }
             out[target] = value;
+        }
+        // **Ringmodulering och additiv blandning** (0.9.69) räknas på en fryst kopia, så
+        // ordningen mellan cellerna inte spelar roll. Nollade celler kostar ingenting.
+        let frozen = out;
+        for target in 0..SIX_OP_COUNT {
+            for source in 0..SIX_OP_COUNT {
+                let ring = params.ring[source][target];
+                if ring != 0.0 {
+                    out[target] *= 1.0 - ring + ring * frozen[source];
+                }
+            }
+        }
+        for target in 0..SIX_OP_COUNT {
+            for source in 0..SIX_OP_COUNT {
+                let add = params.add[source][target];
+                if add != 0.0 {
+                    out[target] += add * frozen[source];
+                }
+            }
         }
         self.last = out;
         let mut sample = 0.0;
@@ -322,5 +355,45 @@ mod tests {
             second > fundamental * 0.1 && third > fundamental * 0.05,
             "återkopplingen ska ge övertoner: f {fundamental:.4}, 2f {second:.4}, 3f {third:.4}"
         );
+    }
+
+    /// **Additiv blandning:** källans ljud läggs till målets utgång. Operator 1 hörs, operator 2
+    /// ligger på 3× frekvensen — med `add[0][1] = 1` bär den också grundtonen, utan den inte.
+    #[test]
+    fn additive_mixing_feeds_one_operator_into_another() {
+        let mut params = SixOpParams::default();
+        params.levels = [0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+        params.ratios[1] = 3.0;
+        let without = mag_at(&render(&params, 440.0, 4_800)[1_200..], 440.0);
+        params.add[0][1] = 1.0;
+        let with = mag_at(&render(&params, 440.0, 4_800)[1_200..], 440.0);
+        println!("  grundton: utan add {without:.4}, med add {with:.4}");
+        assert!(without < 0.02, "utan add ska grundtonen vara borta: {without:.4}");
+        assert!(with > 0.2, "med add ska den höras: {with:.4}");
+    }
+
+    /// **Ringmodulering:** källan multiplicerar målets amplitud. Bärvåg 2×, modulator 1×:
+    /// bärvågen försvinner och sidobanden hamnar på 1× och 3×.
+    #[test]
+    fn ring_modulation_replaces_the_carrier_with_sidebands() {
+        let mut params = SixOpParams::default();
+        params.levels = [0.0, 1.0, 0.0, 0.0, 0.0, 0.0];
+        params.ratios[1] = 2.0;
+        let dry = render(&params, 440.0, 4_800);
+        let carrier_dry = mag_at(&dry[1_200..], 880.0);
+        params.ring[0][1] = 1.0;
+        let wet = render(&params, 440.0, 4_800);
+        let carrier_wet = mag_at(&wet[1_200..], 880.0);
+        let lower = mag_at(&wet[1_200..], 440.0);
+        let upper = mag_at(&wet[1_200..], 1_320.0);
+        println!(
+            "  bärvåg torr {carrier_dry:.4} våt {carrier_wet:.4}; sidoband {lower:.4} / {upper:.4}"
+        );
+        assert!(carrier_dry > 0.2, "bärvågen ska höras torrt: {carrier_dry:.4}");
+        assert!(
+            carrier_wet < carrier_dry * 0.1,
+            "ringmodulering ska ta bort bärvågen: {carrier_wet:.4} av {carrier_dry:.4}"
+        );
+        assert!(lower > 0.1 && upper > 0.1, "sidoband: {lower:.4} och {upper:.4}");
     }
 }
