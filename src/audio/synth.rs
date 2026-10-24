@@ -305,62 +305,104 @@ pub fn sine_at_cycle(cycle: f32) -> f32 {
     s[i] + (s[next] - s[i]) * frac
 }
 
+/// Antal oktavband i partialtabellen: ett per oktav i MIDI 0–127.
+pub const ADDITIVE_BANDS: usize = 11;
+/// Semitoner per band.
+const BAND_SEMITONES: usize = 12;
+
+/// Bandet en not hör till — noten bestämmer vilken tabell som läses.
+#[inline(always)]
+pub fn band_of(note: u8) -> usize {
+    (note as usize / BAND_SEMITONES).min(ADDITIVE_BANDS - 1)
+}
+
+/// Hur många partialer som får plats under Nyquist för bandets **lägsta** ton. Det är
+/// bandgränsen: ingen not i bandet kan få en partial som viker sig ner i hörbart område.
+pub fn partial_limit(band: usize, sample_rate: f32) -> usize {
+    let note = (band.min(ADDITIVE_BANDS - 1) * BAND_SEMITONES) as f32;
+    let f0 = 440.0 * 2f32.powf((note - 69.0) / 12.0);
+    ((sample_rate * 0.5 / f0).floor() as usize).clamp(1, HARMONIC_COUNT)
+}
+
 /// Summan av alla partialer i en tabell, byggd när dragstängerna ändras och delad av alla
 /// röster. En tabelläsning per sampel i stället för en `sin()` per partial gör att 64
 /// partialer kostar lika mycket som 1 — mätt, se `ADDITIVE-SYNTH.md`.
 ///
-/// shortcut: tabellen är gemensam och bandbegränsas inte, så en hög not kan vika partialer
-/// ovanför Nyquist; bygg en tabell per oktav om det hörs.
+/// **Bandbegränsad:** en tabell per partialgräns, och noten väljer band. Utan det viker en
+/// hög nots övre partialer ner ovanför Nyquist — 64 dragstänger på C7 gav hörbar energi vid
+/// 6 kHz som inte finns i klangen. Tabellen normaliseras inte; rösten lägger på
+/// `level_gain` för sitt eget band, så volymen inte beror på antalet utdragna stänger.
 pub struct AdditiveTable {
-    samples: Vec<f32>,
+    /// En tabell per distinkt partialgräns. Låga band har alla 64 och delar därför tabell.
+    tables: Vec<(usize, Vec<f32>)>,
+    /// Tabellindex per oktavband.
+    band_table: [usize; ADDITIVE_BANDS],
+    /// Partialgränsen per band — rösten läser samma tal för den långsamma vägen.
+    limits: [usize; ADDITIVE_BANDS],
 }
 
 impl AdditiveTable {
-    pub fn new(levels: &[f32; HARMONIC_COUNT]) -> Self {
+    pub fn new(levels: &[f32; HARMONIC_COUNT], sample_rate: f32) -> Self {
         let mut table = Self {
-            samples: vec![0.0; ADDITIVE_TABLE_LEN + 1],
+            tables: Vec::new(),
+            band_table: [0; ADDITIVE_BANDS],
+            limits: [0; ADDITIVE_BANDS],
         };
-        table.rebuild(levels);
+        table.rebuild(levels, sample_rate);
         table
     }
 
-    pub fn rebuild(&mut self, levels: &[f32; HARMONIC_COUNT]) {
-        // Samma normalisering som den direkta summan: volymen ska inte bero på hur många
-        // dragstänger som är utdragna.
-        let weight: f32 = levels.iter().filter(|level| **level > 0.0).sum();
-        let gain = if weight > 0.0 {
-            1.0 / weight.max(1.0)
-        } else {
-            0.0
-        };
+    pub fn rebuild(&mut self, levels: &[f32; HARMONIC_COUNT], sample_rate: f32) {
+        self.tables.clear();
+        for band in 0..ADDITIVE_BANDS {
+            let limit = partial_limit(band, sample_rate);
+            self.limits[band] = limit;
+            if self.tables.iter().any(|(existing, _)| *existing == limit) {
+                continue;
+            }
+            self.tables.push((limit, self.sum_partials(levels, limit)));
+        }
+        for band in 0..ADDITIVE_BANDS {
+            self.band_table[band] = self
+                .tables
+                .iter()
+                .position(|(limit, _)| *limit == self.limits[band])
+                .unwrap_or(0);
+        }
+    }
+
+    fn sum_partials(&self, levels: &[f32; HARMONIC_COUNT], limit: usize) -> Vec<f32> {
+        let mut samples = vec![0.0; ADDITIVE_TABLE_LEN + 1];
         // Tabellen byggs ur en delad sinustabell. Med `sin()` per punkt tog en rattdragning
         // 4 096 × 64 anrop per bildruta, vilket hördes som hack.
         let sine = sine_table();
-        for (j, sample) in self
-            .samples
-            .iter_mut()
-            .take(ADDITIVE_TABLE_LEN)
-            .enumerate()
-        {
+        for (j, sample) in samples.iter_mut().take(ADDITIVE_TABLE_LEN).enumerate() {
             let mut sum = 0.0;
-            for (i, level) in levels.iter().enumerate() {
+            for (i, level) in levels.iter().take(limit).enumerate() {
                 if *level > 0.0 {
                     sum += *level * sine[(j * (i + 1)) % ADDITIVE_TABLE_LEN];
                 }
             }
-            *sample = sum * gain;
+            *sample = sum;
         }
-        self.samples[ADDITIVE_TABLE_LEN] = self.samples[0];
+        samples[ADDITIVE_TABLE_LEN] = samples[0];
+        samples
+    }
+
+    /// Partialgränsen för ett band (klämd), för kontroll och prov.
+    pub fn limit(&self, band: usize) -> usize {
+        self.limits[band.min(ADDITIVE_BANDS - 1)]
     }
 
     /// Läser tabellen vid en fas i [0, 2π), linjärt interpolerad mellan punkterna.
     #[inline(always)]
-    pub fn at_phase(&self, phase: f32) -> f32 {
+    pub fn at_phase(&self, band: usize, phase: f32) -> f32 {
+        let samples = &self.tables[self.band_table[band.min(ADDITIVE_BANDS - 1)]].1;
         let x = (phase * (ADDITIVE_TABLE_LEN as f32 / std::f32::consts::TAU)).max(0.0);
         let i = (x as usize).min(ADDITIVE_TABLE_LEN - 1);
         let frac = x - i as f32;
-        let a = self.samples[i];
-        a + (self.samples[i + 1] - a) * frac
+        let a = samples[i];
+        a + (samples[i + 1] - a) * frac
     }
 }
 
@@ -518,18 +560,12 @@ impl SynthEngine {
     /// som rör dragstänger, formant eller förval — då kan tabellen och rösterna inte glida isär.
     pub fn rebuild_additive(&mut self) {
         let shaped = self.shaped_harmonics();
-        self.additive.rebuild(&shaped);
-        let weight: f32 = shaped.iter().filter(|level| **level > 0.0).sum();
-        let level_gain = if weight > 0.0 {
-            1.0 / weight.max(1.0)
-        } else {
-            0.0
-        };
+        self.additive.rebuild(&shaped, self.sample_rate);
         for voice in &mut self.voices {
             voice.harmonics = self.harmonics;
             voice.formant = self.formant;
             voice.sweep = self.sweep;
-            voice.level_gain = level_gain;
+            voice.refresh_band_gain();
             voice.partial_control = 0;
         }
     }
@@ -559,7 +595,7 @@ impl SynthEngine {
             master_volume: 0.8,
             modulation: crate::audio::modulation::ModMatrix::default(),
             harmonics: HARMONICS_DEFAULT,
-            additive: AdditiveTable::new(&HARMONICS_DEFAULT),
+            additive: AdditiveTable::new(&HARMONICS_DEFAULT, sample_rate),
             partial_envs: PARTIAL_ENV_NEUTRAL,
             partial_envs_active: false,
             formant: SpectralFormant::default(),

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **High notes no longer alias.** The additive table was one unband-limited table for the
+  whole keyboard, so a C7 with all 64 drawbars folded partial 20 down to 6.1 kHz. The table
+  now holds one sum per distinct partial limit and the note picks its octave band; the voice
+  normalizes over its own band, so a high note neither aliases nor drops 15 dB. Measured on
+  C7: alias/fundamental 0.51 → 0.0045 (−41 dB), fundamental ×6.
+
 ### Added
 
 - **Take-lane comping.** `Pattern.comp` picks which lane plays from a given step until the

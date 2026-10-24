@@ -6,6 +6,13 @@
 use super::*;
 use crate::audio::filter::SamplerFilter;
 
+/// Delad tabell för prov som bara behöver *någon* tabell (de flesta spelar Saw/Sine).
+/// Tabellen byggs i elva oktavband — att skapa den per sampel gjorde enstaka prov minuter långa.
+fn default_table() -> &'static AdditiveTable {
+    static TABLE: std::sync::OnceLock<AdditiveTable> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| AdditiveTable::new(&HARMONICS_DEFAULT, 48_000.0))
+}
+
 /// **Rampen vid kanten.** 0 vid kanten, 1 en ramp in, rakt däremellan — och samma regel
 /// används i båda ändarna av fönstret, så den behöver bara vara rätt en gång.
 #[test]
@@ -378,8 +385,8 @@ fn filter_env_zero_amount_is_transparent() {
     a.trigger(60, 261.63, 1.0, 48_000.0);
     b.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..500 {
-        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
-        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
+        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, default_table());
+        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, default_table());
         assert!(
             (sa - sb).abs() < 1e-6,
             "amount 0 must ignore the filter envelope shape"
@@ -398,8 +405,8 @@ fn filter_env_amount_changes_timbre() {
     wet.trigger(60, 261.63, 1.0, 48_000.0);
     let mut diff = 0.0_f32;
     for _ in 0..2000 {
-        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
-        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
+        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, default_table());
+        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, default_table());
         diff += (a - b).abs();
     }
     assert!(diff > 1.0, "filter envelope should alter the timbre, diff={diff}");
@@ -414,7 +421,7 @@ fn voices_have_independent_filter_envelopes() {
     let mut second = Voice::new(48_000.0);
     first.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..2000 {
-        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
+        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, default_table());
     }
     second.trigger(64, 329.63, 1.0, 48_000.0);
     let l1 = first.filter_env.current_level;
@@ -2095,8 +2102,8 @@ fn fm_at_zero_index_is_the_plain_oscillator() {
     b.trigger(57, 220.0, 1.0, 48_000.0);
     let fm = FmParams { ratio: 3.0, index: 0.0 };
     for i in 0..2_000 {
-        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
-        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
+        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, default_table());
+        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0, 0.0, default_table());
         assert_eq!(sa, sb, "index 0 ska ge exakt samma sample (frame {i})");
     }
 }
@@ -2114,7 +2121,7 @@ fn fm_puts_sidebands_where_the_plain_oscillator_has_none() {
         let fm = FmParams { ratio: 3.0, index };
         let mut out = Vec::with_capacity(9_600);
         for _ in 0..9_600 {
-            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT)));
+            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, default_table()));
         }
         out
     };
@@ -2419,7 +2426,7 @@ fn filter_drive_compresses_the_crest() {
                 0.0,
                 drive,
                 0.0,
-                &AdditiveTable::new(&HARMONICS_DEFAULT),
+                default_table(),
             ));
         }
         let tail = &buf[2_400..];
@@ -2485,7 +2492,7 @@ fn key_tracking_moves_the_cutoff_with_the_note() {
                 0.0,
                 0.0,
                 0.0,
-                &AdditiveTable::new(&HARMONICS_DEFAULT),
+                default_table(),
             );
             if i > 2_400 {
                 sum += (s as f64) * (s as f64);
@@ -2535,7 +2542,7 @@ fn the_sub_oscillator_adds_an_octave_below() {
                 0.0,
                 0.0,
                 sub,
-                &AdditiveTable::new(&HARMONICS_DEFAULT),
+                default_table(),
             ));
         }
         (mag_at(&out[2_400..], 110.0), mag_at(&out[2_400..], 220.0))
@@ -2629,17 +2636,18 @@ fn the_additive_table_matches_the_direct_sum() {
     levels[0] = 1.0;
     levels[5] = 0.5;
     levels[HARMONIC_COUNT - 1] = 0.25;
-    let table = AdditiveTable::new(&levels);
-    let weight = levels.iter().sum::<f32>().max(1.0);
+    let table = AdditiveTable::new(&levels, 48_000.0);
+    // Tabellen är onormaliserad; rösten lägger på bandets vikt. Band 0 har alla 64 partialer.
+    let gain = 1.0 / levels.iter().filter(|level| **level > 0.0).sum::<f32>().max(1.0);
     for j in 0..97 {
         let phase = std::f32::consts::TAU * j as f32 / 97.0;
-        let direct: f32 = levels
+        let mut direct: f32 = levels
             .iter()
             .enumerate()
             .map(|(i, level)| level * (phase * (i as f32 + 1.0)).sin())
-            .sum::<f32>()
-            / weight;
-        let got = table.at_phase(phase);
+            .sum::<f32>();
+        direct *= gain;
+        let got = table.at_phase(0, phase) * gain;
         assert!(
             (got - direct).abs() < 2e-3,
             "{phase}: tabell {got} mot direkt {direct}"
@@ -2676,6 +2684,40 @@ fn the_sixty_fourth_partial_is_heard() {
     assert!(
         top > fundamental * 20.0,
         "grundtonen ska vara borta: {fundamental:.4} mot {top:.4}"
+    );
+}
+
+/// **Bandbegränsningen:** en C7 med alla 64 dragstänger utdragna får bara sina elva första
+/// partialer. Partial 20 ligger på 41,9 kHz och viker ner till 6,1 kHz vid 48 kHz — före
+/// bandgränsen hördes den som en främmande ton mitt i klangen.
+#[test]
+fn a_high_note_is_band_limited() {
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.waveform = Waveform::Additive;
+    engine.filter_params.cutoff = 20_000.0;
+    engine.filter_params.resonance = 0.0;
+    engine.filter_env_amount = 0.0;
+    engine.adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    engine.handle_command(AudioCommand::SetHarmonics { levels: [1.0; HARMONIC_COUNT] });
+    let freq = 2_093.0; // C7
+    engine.handle_command(AudioCommand::NoteOn {
+        note: 96,
+        freq,
+        velocity: 1.0,
+        channel: 0,
+    });
+    let mut buf = Vec::new();
+    for _ in 0..9_600 {
+        let (l, _) = engine.process_stereo();
+        buf.push(l);
+    }
+    let body = &buf[2_400..];
+    let fundamental = mag_at(body, freq);
+    let alias = mag_at(body, 48_000.0 - 20.0 * freq); // 6 140 Hz
+    assert_eq!(engine.additive.limit(band_of(96)), 11, "C7-bandets gräns");
+    assert!(
+        alias < fundamental * 0.02,
+        "partial 20 viker ner till 6,1 kHz: {alias:.4} mot grundtonen {fundamental:.4}"
     );
 }
 
@@ -2892,20 +2934,20 @@ fn measure_additive_table_against_a_sine_per_partial() {
     }
     let direct = start.elapsed().as_secs_f32();
 
-    let mut rebuilt = AdditiveTable::new(&levels);
+    let mut rebuilt = AdditiveTable::new(&levels, 48_000.0);
     let rebuild = Instant::now();
     for _ in 0..100 {
-        rebuilt.rebuild(&levels);
+        rebuilt.rebuild(&levels, 48_000.0);
     }
     let rebuild_ms = rebuild.elapsed().as_secs_f32() * 1000.0 / 100.0;
 
-    let table = AdditiveTable::new(&levels);
+    let table = AdditiveTable::new(&levels, 48_000.0);
     let mut phases = [0.0f32; VOICES];
     let start = Instant::now();
     for _ in 0..SAMPLES {
         for phase in &mut phases {
             *phase = (*phase + phase_inc) % TAU;
-            acc += table.at_phase(black_box(*phase));
+            acc += table.at_phase(0, black_box(*phase));
         }
     }
     let table_time = start.elapsed().as_secs_f32();
@@ -2993,7 +3035,7 @@ fn a_plucked_string_rings_at_the_note_pitch_and_decays() {
             0.0,
             0.0,
             0.0,
-            &AdditiveTable::new(&HARMONICS_DEFAULT),
+            default_table(),
         ));
     }
     let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
@@ -3028,7 +3070,7 @@ fn a_bowed_string_sustains_at_the_note_pitch() {
             0.0,
             0.0,
             0.0,
-            &AdditiveTable::new(&HARMONICS_DEFAULT),
+            default_table(),
         ));
     }
     let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
@@ -3065,7 +3107,7 @@ fn render_plucked(note: u8, freq: f32, body_amount: f32) -> Vec<f32> {
             0.0,
             0.0,
             0.0,
-            &AdditiveTable::new(&HARMONICS_DEFAULT),
+            default_table(),
         ));
     }
     out
@@ -3124,7 +3166,7 @@ fn the_inharmonic_wave_puts_its_partials_off_the_harmonic_series() {
             0.0,
             0.0,
             0.0,
-            &AdditiveTable::new(&HARMONICS_DEFAULT),
+            default_table(),
         ));
     }
     let body = &out[6_000..];
@@ -3369,7 +3411,7 @@ fn the_guitar_is_brighter_and_more_compressed_than_a_plucked_string() {
                 0.0,
                 0.0,
                 0.0,
-                &AdditiveTable::new(&HARMONICS_DEFAULT),
+                default_table(),
             ));
         }
         out

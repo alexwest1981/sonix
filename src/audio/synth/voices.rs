@@ -90,6 +90,8 @@ pub struct Voice {
     /// 1 / max(summan av de formade nivåerna, 1) — samma normalisering som tabellen, så
     /// volymen inte hoppar när formanten flyttas.
     pub level_gain: f32,
+    /// Partialer som får plats under Nyquist för röstens oktavband.
+    pub partial_limit: usize,
     /// Nivån per partial just nu, räknad om var `PARTIAL_ENV_BLOCK`:e sampel.
     pub partial_levels: [f32; HARMONIC_COUNT],
     /// Sampel sedan anslaget: tidsbasen för partialenveloperna.
@@ -373,6 +375,7 @@ impl Voice {
             formant: SpectralFormant::default(),
             sweep: SpectralSweep::default(),
             level_gain: 1.0,
+            partial_limit: HARMONIC_COUNT,
             partial_levels: [0.0; HARMONIC_COUNT],
             partial_age: 0,
             partial_control: 0,
@@ -408,6 +411,9 @@ impl Voice {
         self.target_inc = (2.0 * PI * freq) / sample_rate.max(1.0);
         self.glide_coeff = 0.0;
         self.velocity = velocity;
+        self.partial_limit =
+            crate::audio::synth::partial_limit(crate::audio::synth::band_of(note), sample_rate);
+        self.refresh_band_gain();
         self.phase_inc = (2.0 * PI * freq) / sample_rate;
         self.filter.reset();
         // En ny plockning är en ny sträng: bruset fylls på nytt i linjen (annars
@@ -443,6 +449,28 @@ impl Voice {
         self.envelope.is_active()
     }
 
+    /// Oktavbandet rösten läser ur partialtabellen.
+    fn band(&self) -> usize {
+        crate::audio::synth::band_of(self.note)
+    }
+
+    /// Volymen normaliseras över de **formade** partialer som bandet spelar, inte alla 64:
+    /// annars tappar en hög not 15 dB när bandet bara har plats för fem partialer. Samma vikt
+    /// som tabellen byggs av, så tabellvägen och den långsamma vägen får samma volym.
+    pub fn refresh_band_gain(&mut self) {
+        let weight: f32 = self.harmonics[..self.partial_limit]
+            .iter()
+            .enumerate()
+            .map(|(k, level)| level * self.formant.gain_at(k + 1, self.formant.center))
+            .filter(|level| *level > 0.0)
+            .sum();
+        self.level_gain = if weight > 0.0 {
+            1.0 / weight.max(1.0)
+        } else {
+            0.0
+        };
+    }
+
     /// Den långsamma additiva vägen: varje partial har sin egen kontur, så summan kan inte
     /// ligga i en delad tabell. Nivåerna räknas om var `PARTIAL_ENV_BLOCK`:e sampel; mellan
     /// dem kostar en hörd partial en tabelläsning och en multiplikation.
@@ -457,7 +485,7 @@ impl Voice {
         }
         let cycle = phase / std::f32::consts::TAU;
         let mut sum = 0.0;
-        for (k, level) in self.partial_levels.iter().enumerate() {
+        for (k, level) in self.partial_levels.iter().take(self.partial_limit).enumerate() {
             // En partial som redan klingat ut (sustain 0) kostar inget efter decayen.
             if *level > 1e-5 {
                 sum += *level * sine_at_cycle(cycle * (k as f32 + 1.0));
@@ -470,8 +498,13 @@ impl Voice {
         let t = self.partial_age as f32 / self.sample_rate.max(1.0);
         let center = self.sweep.center_at(t, self.formant.center);
         for (k, level) in self.partial_levels.iter_mut().enumerate() {
-            let shaped = self.harmonics[k] * self.formant.gain_at(k + 1, center);
-            *level = shaped * partial_env_level(t, self.partial_envs[k]) * self.level_gain;
+            // Partialer över bandgränsen kan inte spelas — de skulle vika ner ovanför Nyquist.
+            *level = if k < self.partial_limit {
+                let shaped = self.harmonics[k] * self.formant.gain_at(k + 1, center);
+                shaped * partial_env_level(t, self.partial_envs[k]) * self.level_gain
+            } else {
+                0.0
+            };
         }
     }
 
@@ -682,8 +715,9 @@ impl Voice {
                     // den delade tabellen.
                     self.partial_sum(phase)
                 } else {
-                    // Summan av partialerna ligger färdig i tabellen, normaliserad i `rebuild`.
-                    additive.at_phase(phase)
+                    // Summan av partialerna ligger färdig i tabellen; volymen kommer från
+                    // röstens eget band, så en hög not inte tystnar när bandet kortas.
+                    additive.at_phase(self.band(), phase) * self.level_gain
                 }
             }
             Waveform::Triangle => {

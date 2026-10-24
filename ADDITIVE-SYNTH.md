@@ -82,6 +82,30 @@ tabell per partial — summan behöver bara en läsning) ger **241× realtid** f
 3,4×. Ombyggnaden tar 0,25 ms. Provet `the_additive_table_matches_the_direct_sum` vaktar att tabellen är samma summa,
 och `the_sixty_fourth_partial_is_heard` att taket inte längre ligger vid 16.
 
+## Steg 5: bandbegränsning (byggd 0.9.40)
+
+Tabellen var en enda summa för hela klaviaturen, så en hög not vek partialer över Nyquist. En
+partial vars frekvens passerar Nyquist hamnar på `sample_rate − f`, alltså *in* i det hörbara
+området: C7 (2 093 Hz) med alla 64 dragstänger lade partial 20 (41,9 kHz) på 6 140 Hz.
+
+- **En tabell per distinkt partialgräns**, inte per not. `partial_limit(band, sample_rate)` räknas
+  ur bandets **lägsta** ton (`band_of(note) = note/12`, elva oktavband), så ingen not i bandet kan
+  vika en partial ner i hörbart område. De sex låga banden har alla 64 partialer och delar därför
+  tabell; arbetet per omdragning är summan av de distinkta gränserna, inte 11 × 64.
+- **Normaliseringen flyttade till rösten** (`refresh_band_gain`): vikten räknas över bandets
+  **formade** partialer (dragstänger × formant i basläget), samma vikt tabellen byggs av. Då
+  tappar inte en hög not volym när bandet kortas, och tabellvägen och den långsamma vägen
+  (`partial_sum`, konturer/tidsaxel) får samma volymregel.
+
+**Mätt** (C7, MIDI 96, alla 64 dragstänger, 48 kHz, Hann-fönster): alias/grundton **0,511 före**,
+**0,0045 efter** (−41 dB). Grundtonen blev **6× starkare** (0,00749 → 0,04354) eftersom vikten nu
+räknas över bandets elva partialer i stället för alla 64. Provet `a_high_note_is_band_limited`
+fälldes med flit genom att stänga av gränsen — då föll det på aliasnivån, inte på gränstalet.
+
+**Provhygien som mätningen avslöjade:** elva band per tabellbygge gjorde prov som skapade en
+tabell per sampel minuter långa. De använder nu en delad `default_table()` (`OnceLock`) — hela
+sviten gick från 10+ minuter till under två.
+
 ## Vad som inte ska byggas
 
 - Ingen ny motor vid sidan av `SynthEngine`: partialerna hör till `Waveform::Additive`, och
