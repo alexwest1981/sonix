@@ -175,9 +175,9 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
 
 use std::sync::Arc;
 
-/// Antal övertoner i den additiva oscillatorn. Sexton räcker för dragstänger och
-/// orgelregister; fler hörs inte i en ackordmatta ändå.
-pub const HARMONIC_COUNT: usize = 16;
+/// Antal övertoner i den additiva oscillatorn. Sextiofyra partialer är Harmors bredd;
+/// de ritas i dragstångspanelen och räknas i en tabell (se `AdditiveTable`).
+pub const HARMONIC_COUNT: usize = 64;
 
 /// Standardläget för dragstängerna: bara grundtonen utdragen.
 pub const HARMONICS_DEFAULT: [f32; HARMONIC_COUNT] = {
@@ -185,6 +185,78 @@ pub const HARMONICS_DEFAULT: [f32; HARMONIC_COUNT] = {
     h[0] = 1.0;
     h
 };
+
+/// Längden på den additiva tabellen. 4 096 punkter ger den 64:e partialen 64 sampel per
+/// period; interpolationsfelet ligger då kring en tusendel, långt under hörbarhet.
+pub const ADDITIVE_TABLE_LEN: usize = 4096;
+
+/// Summan av alla partialer i en tabell, byggd när dragstängerna ändras och delad av alla
+/// röster. En tabelläsning per sampel i stället för en `sin()` per partial gör att 64
+/// partialer kostar lika mycket som 1 — mätt, se `ADDITIVE-SYNTH.md`.
+///
+/// shortcut: tabellen är gemensam och bandbegränsas inte, så en hög not kan vika partialer
+/// ovanför Nyquist; bygg en tabell per oktav om det hörs.
+pub struct AdditiveTable {
+    samples: Vec<f32>,
+}
+
+impl AdditiveTable {
+    pub fn new(levels: &[f32; HARMONIC_COUNT]) -> Self {
+        let mut table = Self {
+            samples: vec![0.0; ADDITIVE_TABLE_LEN + 1],
+        };
+        table.rebuild(levels);
+        table
+    }
+
+    pub fn rebuild(&mut self, levels: &[f32; HARMONIC_COUNT]) {
+        // Samma normalisering som den direkta summan: volymen ska inte bero på hur många
+        // dragstänger som är utdragna.
+        let weight: f32 = levels.iter().filter(|level| **level > 0.0).sum();
+        let gain = if weight > 0.0 {
+            1.0 / weight.max(1.0)
+        } else {
+            0.0
+        };
+        // Tabellen byggs ur en delad sinustabell. Med `sin()` per punkt tog en rattdragning
+        // 4 096 × 64 anrop per bildruta, vilket hördes som hack.
+        let sine = sine_table();
+        for (j, sample) in self
+            .samples
+            .iter_mut()
+            .take(ADDITIVE_TABLE_LEN)
+            .enumerate()
+        {
+            let mut sum = 0.0;
+            for (i, level) in levels.iter().enumerate() {
+                if *level > 0.0 {
+                    sum += *level * sine[(j * (i + 1)) % ADDITIVE_TABLE_LEN];
+                }
+            }
+            *sample = sum * gain;
+        }
+        self.samples[ADDITIVE_TABLE_LEN] = self.samples[0];
+    }
+
+    /// Läser tabellen vid en fas i [0, 2π), linjärt interpolerad mellan punkterna.
+    #[inline(always)]
+    pub fn at_phase(&self, phase: f32) -> f32 {
+        let x = (phase * (ADDITIVE_TABLE_LEN as f32 / std::f32::consts::TAU)).max(0.0);
+        let i = (x as usize).min(ADDITIVE_TABLE_LEN - 1);
+        let frac = x - i as f32;
+        let a = self.samples[i];
+        a + (self.samples[i + 1] - a) * frac
+    }
+}
+
+fn sine_table() -> &'static [f32; ADDITIVE_TABLE_LEN] {
+    static TABLE: std::sync::OnceLock<[f32; ADDITIVE_TABLE_LEN]> = std::sync::OnceLock::new();
+    TABLE.get_or_init(|| {
+        std::array::from_fn(|j| {
+            (std::f32::consts::TAU * j as f32 / ADDITIVE_TABLE_LEN as f32).sin()
+        })
+    })
+}
 
 pub struct SynthEngine {
     pub sample_rate: f32,
@@ -216,6 +288,8 @@ pub struct SynthEngine {
     /// läser dem; standard är bara grundtonen, så vågformen låter som en sinus tills
     /// användaren drar i dragstängerna.
     pub harmonics: [f32; HARMONIC_COUNT],
+    /// Tabellen som rösterna läser: summan av `harmonics`, omräknad när de ändras.
+    pub additive: AdditiveTable,
     /// Suboscillatorns nivå 0–1: en sinus en oktav under noten, efter filtret.
     pub sub_level: f32,
     /// Filterdrive 0–1: mjuk klippning efter röstens filter (0 = av, exakt som förut).
@@ -332,6 +406,7 @@ impl SynthEngine {
             master_volume: 0.8,
             modulation: crate::audio::modulation::ModMatrix::default(),
             harmonics: HARMONICS_DEFAULT,
+            additive: AdditiveTable::new(&HARMONICS_DEFAULT),
             sub_level: 0.0,
             filter_drive: 0.0,
             filter_key_track: 0.0,

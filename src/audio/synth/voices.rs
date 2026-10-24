@@ -419,7 +419,7 @@ impl Voice {
         mod_cutoff: f32,
         drive: f32,
         sub_level: f32,
-        harmonics: &[f32; HARMONIC_COUNT],
+        additive: &AdditiveTable,
     ) -> f32 {
         if !self.envelope.is_active() {
             return 0.0;
@@ -606,21 +606,8 @@ impl Voice {
                 sum / weight.max(0.001)
             }
             Waveform::Additive => {
-                // Summan av övertonerna, normaliserad så att nivån inte beror på hur
-                // många dragstänger som är utdragna.
-                let mut sum = 0.0;
-                let mut weight = 0.0;
-                for (i, level) in harmonics.iter().enumerate() {
-                    if *level > 0.0 {
-                        sum += level * (phase * (i as f32 + 1.0)).sin();
-                        weight += level;
-                    }
-                }
-                if weight > 0.0 {
-                    sum / weight.max(1.0)
-                } else {
-                    0.0
-                }
+                // Summan av partialerna ligger färdig i tabellen, normaliserad i `rebuild`.
+                additive.at_phase(phase)
             }
             Waveform::Triangle => {
                 let normalized = phase / two_pi;

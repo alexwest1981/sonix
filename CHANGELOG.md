@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **64-partial additive synthesis** — the additive oscillator now has 64 drawbars instead of
+  16, rendered from one shared table per harmonic setting. Measured in release with 16 voices:
+  the oscillator runs at 241× real time and the full voice with filter and envelope at 30×,
+  where a `sin()` per partial managed 3.4×. The table is rebuilt when a drawbar moves and is
+  not band-limited, so high notes can fold partials above Nyquist.
 - **Formant-preserving real-time pitch shift for stems** — the mixer's PITCH
   knob and the stem editor's "Tonhöjd" slider now transpose a stem ±12
   semitones in real time while keeping the formants in place, at 1-cent

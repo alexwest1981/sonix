@@ -19,12 +19,31 @@ use crate::rng::Rng;
 /// Operatorkällorna är fasta spektra — en glasig (udda deltoner) och en rörledad (alla deltoner).
 /// Det som gör Morphin till Morphine är att läget är en ratt: ljudet är *mellan* två klanger, inte
 /// ett av tolv förval.
-pub const OPERATOR_GLASS: [f32; HARMONIC_COUNT] = [
-    1.0, 0.0, 0.55, 0.0, 0.32, 0.0, 0.20, 0.0, 0.12, 0.0, 0.08, 0.0, 0.05, 0.0, 0.03, 0.0,
-];
-pub const OPERATOR_REED: [f32; HARMONIC_COUNT] = [
-    1.0, 0.70, 0.50, 0.38, 0.30, 0.24, 0.19, 0.15, 0.12, 0.10, 0.08, 0.07, 0.06, 0.05, 0.04, 0.03,
-];
+pub const OPERATOR_GLASS: [f32; HARMONIC_COUNT] = {
+    let mut h = [0.0f32; HARMONIC_COUNT];
+    h[0] = 1.0;
+    h[2] = 0.55;
+    h[4] = 0.32;
+    h[6] = 0.20;
+    h[8] = 0.12;
+    h[10] = 0.08;
+    h[12] = 0.05;
+    h[14] = 0.03;
+    h
+};
+pub const OPERATOR_REED: [f32; HARMONIC_COUNT] = {
+    let mut h = [0.0f32; HARMONIC_COUNT];
+    let levels = [
+        1.0, 0.70, 0.50, 0.38, 0.30, 0.24, 0.19, 0.15, 0.12, 0.10, 0.08, 0.07, 0.06, 0.05, 0.04,
+        0.03,
+    ];
+    let mut i = 0;
+    while i < levels.len() {
+        h[i] = levels[i];
+        i += 1;
+    }
+    h
+};
 
 /// Läget `t` mellan två spektra. 0 = `a` ordagrant, 1 = `b` ordagrant, utanför kläms det.
 pub fn morph_spectrum(

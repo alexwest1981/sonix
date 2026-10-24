@@ -60,7 +60,33 @@ pub struct PresetSettings {
     pub detune: f32,
     pub glide: f32,
     pub drive: f32,
+    /// `[f32; 64]` har ingen serde-impl (serde stannar på 32), så fältet sparas som en lista.
+    /// Äldre filer med 16 värden läses in och nollpaddas.
+    #[serde(with = "harmonics_serde")]
     pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
+}
+
+mod harmonics_serde {
+    use crate::audio::synth::HARMONIC_COUNT;
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+    pub fn serialize<S: Serializer>(
+        levels: &[f32; HARMONIC_COUNT],
+        ser: S,
+    ) -> Result<S::Ok, S::Error> {
+        levels.as_slice().serialize(ser)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(
+        de: D,
+    ) -> Result<[f32; HARMONIC_COUNT], D::Error> {
+        let stored = Vec::<f32>::deserialize(de)?;
+        let mut levels = [0.0; HARMONIC_COUNT];
+        for (slot, level) in levels.iter_mut().zip(stored) {
+            *slot = level;
+        }
+        Ok(levels)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

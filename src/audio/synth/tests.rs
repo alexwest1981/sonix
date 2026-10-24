@@ -378,8 +378,8 @@ fn filter_env_zero_amount_is_transparent() {
     a.trigger(60, 261.63, 1.0, 48_000.0);
     b.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..500 {
-        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
-        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
+        let sa = a.next_sample(Waveform::Saw, &adsr, &flt, &env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
+        let sb = b.next_sample(Waveform::Saw, &adsr, &flt, &other_env, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
         assert!(
             (sa - sb).abs() < 1e-6,
             "amount 0 must ignore the filter envelope shape"
@@ -398,8 +398,8 @@ fn filter_env_amount_changes_timbre() {
     wet.trigger(60, 261.63, 1.0, 48_000.0);
     let mut diff = 0.0_f32;
     for _ in 0..2000 {
-        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
-        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
+        let a = dry.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 0.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
+        let b = wet.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 4.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
         diff += (a - b).abs();
     }
     assert!(diff > 1.0, "filter envelope should alter the timbre, diff={diff}");
@@ -414,7 +414,7 @@ fn voices_have_independent_filter_envelopes() {
     let mut second = Voice::new(48_000.0);
     first.trigger(60, 261.63, 1.0, 48_000.0);
     for _ in 0..2000 {
-        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
+        first.next_sample(Waveform::Saw, &adsr, &flt, &fenv, 2.0, &crate::audio::command::FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
     }
     second.trigger(64, 329.63, 1.0, 48_000.0);
     let l1 = first.filter_env.current_level;
@@ -2055,8 +2055,8 @@ fn fm_at_zero_index_is_the_plain_oscillator() {
     b.trigger(57, 220.0, 1.0, 48_000.0);
     let fm = FmParams { ratio: 3.0, index: 0.0 };
     for i in 0..2_000 {
-        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
-        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT);
+        let sa = a.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
+        let sb = b.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &FmParams::default(), 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT));
         assert_eq!(sa, sb, "index 0 ska ge exakt samma sample (frame {i})");
     }
 }
@@ -2074,7 +2074,7 @@ fn fm_puts_sidebands_where_the_plain_oscillator_has_none() {
         let fm = FmParams { ratio: 3.0, index };
         let mut out = Vec::with_capacity(9_600);
         for _ in 0..9_600 {
-            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, &HARMONICS_DEFAULT));
+            out.push(v.next_sample(Waveform::Sine, &adsr, &flt, &env, 0.0, &fm, 0.0, 0.0, 0.0, 0.0, &AdditiveTable::new(&HARMONICS_DEFAULT)));
         }
         out
     };
@@ -2379,7 +2379,7 @@ fn filter_drive_compresses_the_crest() {
                 0.0,
                 drive,
                 0.0,
-                &HARMONICS_DEFAULT,
+                &AdditiveTable::new(&HARMONICS_DEFAULT),
             ));
         }
         let tail = &buf[2_400..];
@@ -2445,7 +2445,7 @@ fn key_tracking_moves_the_cutoff_with_the_note() {
                 0.0,
                 0.0,
                 0.0,
-                &HARMONICS_DEFAULT,
+                &AdditiveTable::new(&HARMONICS_DEFAULT),
             );
             if i > 2_400 {
                 sum += (s as f64) * (s as f64);
@@ -2495,7 +2495,7 @@ fn the_sub_oscillator_adds_an_octave_below() {
                 0.0,
                 0.0,
                 sub,
-                &HARMONICS_DEFAULT,
+                &AdditiveTable::new(&HARMONICS_DEFAULT),
             ));
         }
         (mag_at(&out[2_400..], 110.0), mag_at(&out[2_400..], 220.0))
@@ -2582,6 +2582,144 @@ fn additive_synthesis_plays_only_the_drawn_harmonics() {
     );
 }
 
+/// Tabellen ska vara samma summa som den direkta vägen — också för den 64:e partialen.
+#[test]
+fn the_additive_table_matches_the_direct_sum() {
+    let mut levels = [0.0f32; HARMONIC_COUNT];
+    levels[0] = 1.0;
+    levels[5] = 0.5;
+    levels[HARMONIC_COUNT - 1] = 0.25;
+    let table = AdditiveTable::new(&levels);
+    let weight = levels.iter().sum::<f32>().max(1.0);
+    for j in 0..97 {
+        let phase = std::f32::consts::TAU * j as f32 / 97.0;
+        let direct: f32 = levels
+            .iter()
+            .enumerate()
+            .map(|(i, level)| level * (phase * (i as f32 + 1.0)).sin())
+            .sum::<f32>()
+            / weight;
+        let got = table.at_phase(phase);
+        assert!(
+            (got - direct).abs() < 2e-3,
+            "{phase}: tabell {got} mot direkt {direct}"
+        );
+    }
+}
+
+/// **Den 64:e partialen hörs**: bara sista dragstången utdragen ger 7 040 Hz ur en 110 Hz-not,
+/// alltså inget tak vid 16 som förut.
+#[test]
+fn the_sixty_fourth_partial_is_heard() {
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.waveform = Waveform::Additive;
+    engine.filter_params.cutoff = 18_000.0;
+    engine.filter_env_amount = 0.0;
+    engine.adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    let mut levels = [0.0f32; HARMONIC_COUNT];
+    levels[HARMONIC_COUNT - 1] = 1.0;
+    engine.handle_command(AudioCommand::SetHarmonics { levels });
+    engine.handle_command(AudioCommand::NoteOn {
+        note: 45,
+        freq: 110.0,
+        velocity: 1.0,
+        channel: 0,
+    });
+    let mut buf = Vec::new();
+    for _ in 0..9_600 {
+        let (l, _) = engine.process_stereo();
+        buf.push(l);
+    }
+    let top = mag_at(&buf[2_400..], 110.0 * HARMONIC_COUNT as f32);
+    let fundamental = mag_at(&buf[2_400..], 110.0);
+    assert!(top > 0.2, "64:e partialen ska höras: {top:.4}");
+    assert!(
+        top > fundamental * 20.0,
+        "grundtonen ska vara borta: {fundamental:.4} mot {top:.4}"
+    );
+}
+
+/// **Mätning, inte ett prov.** Körs för hand:
+/// `cargo test --release --bin sonix -- --ignored measure_additive_table --nocapture`
+/// 16 röster à 64 partialer, en sekund ljud; jämför tabellen mot en `sin()` per partial.
+#[test]
+#[ignore = "mätning: körs för hand med --ignored --nocapture"]
+fn measure_additive_table_against_a_sine_per_partial() {
+    use std::hint::black_box;
+    use std::time::Instant;
+    const VOICES: usize = 16;
+    const SAMPLES: usize = 48_000;
+    const TAU: f32 = std::f32::consts::TAU;
+    let levels = [0.5f32; HARMONIC_COUNT];
+    let phase_inc = TAU * 440.0 / 48_000.0;
+
+    let mut acc = 0.0f32;
+    let mut phases = [0.0f32; VOICES];
+    let start = Instant::now();
+    for _ in 0..SAMPLES {
+        for phase in &mut phases {
+            *phase = (*phase + phase_inc) % TAU;
+            let p = black_box(*phase);
+            let mut sum = 0.0;
+            for (i, level) in levels.iter().enumerate() {
+                sum += level * (p * (i as f32 + 1.0)).sin();
+            }
+            acc += sum;
+        }
+    }
+    let direct = start.elapsed().as_secs_f32();
+
+    let mut rebuilt = AdditiveTable::new(&levels);
+    let rebuild = Instant::now();
+    for _ in 0..100 {
+        rebuilt.rebuild(&levels);
+    }
+    let rebuild_ms = rebuild.elapsed().as_secs_f32() * 1000.0 / 100.0;
+
+    let table = AdditiveTable::new(&levels);
+    let mut phases = [0.0f32; VOICES];
+    let start = Instant::now();
+    for _ in 0..SAMPLES {
+        for phase in &mut phases {
+            *phase = (*phase + phase_inc) % TAU;
+            acc += table.at_phase(black_box(*phase));
+        }
+    }
+    let table_time = start.elapsed().as_secs_f32();
+    black_box(acc);
+
+    // Hela rösten, med filter och envelop: det som faktiskt spelar i realtid.
+    let mut engine = SynthEngine::new(48_000.0);
+    engine.waveform = Waveform::Additive;
+    engine.filter_params.cutoff = 18_000.0;
+    engine.filter_env_amount = 0.0;
+    engine.adsr = AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 };
+    engine.handle_command(AudioCommand::SetHarmonics { levels });
+    for i in 0..VOICES {
+        engine.handle_command(AudioCommand::NoteOn {
+            note: 45 + i as u8,
+            freq: 110.0 * 2.0f32.powf(i as f32 / 12.0),
+            velocity: 0.5,
+            channel: 0,
+        });
+    }
+    let start = Instant::now();
+    let mut peak = 0.0f32;
+    for _ in 0..SAMPLES {
+        let (l, _) = engine.process_stereo();
+        peak = peak.max(l.abs());
+    }
+    let engine_time = start.elapsed().as_secs_f32();
+    println!(
+        "64 partialer, 16 röster, 1 s ljud: sin-summa {direct:.3} s ({:.1}× realtid), tabell {table_time:.4} s ({:.0}× realtid), {:.0}× snabbare; hel röst {engine_time:.4} s ({:.0}× realtid), topp {peak:.3}; ombyggnad {rebuild_ms:.2} ms",
+        1.0 / direct,
+        1.0 / table_time,
+        direct / table_time,
+        1.0 / engine_time,
+    );
+    assert!(table_time < direct, "tabellen ska slå en sin() per partial");
+}
+
 /// **Plucked! är en sträng, inte en vågform.** Tonhöjden kommer ur fördröjningslinjens längd,
 /// så provet mäter att 220 Hz in ger 220 Hz ut — och att strängen klingar av.
 #[test]
@@ -2604,7 +2742,7 @@ fn a_plucked_string_rings_at_the_note_pitch_and_decays() {
             0.0,
             0.0,
             0.0,
-            &HARMONICS_DEFAULT,
+            &AdditiveTable::new(&HARMONICS_DEFAULT),
         ));
     }
     let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
@@ -2639,7 +2777,7 @@ fn a_bowed_string_sustains_at_the_note_pitch() {
             0.0,
             0.0,
             0.0,
-            &HARMONICS_DEFAULT,
+            &AdditiveTable::new(&HARMONICS_DEFAULT),
         ));
     }
     let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
@@ -2676,7 +2814,7 @@ fn render_plucked(note: u8, freq: f32, body_amount: f32) -> Vec<f32> {
             0.0,
             0.0,
             0.0,
-            &HARMONICS_DEFAULT,
+            &AdditiveTable::new(&HARMONICS_DEFAULT),
         ));
     }
     out
@@ -2735,7 +2873,7 @@ fn the_inharmonic_wave_puts_its_partials_off_the_harmonic_series() {
             0.0,
             0.0,
             0.0,
-            &HARMONICS_DEFAULT,
+            &AdditiveTable::new(&HARMONICS_DEFAULT),
         ));
     }
     let body = &out[6_000..];
@@ -2980,7 +3118,7 @@ fn the_guitar_is_brighter_and_more_compressed_than_a_plucked_string() {
                 0.0,
                 0.0,
                 0.0,
-                &HARMONICS_DEFAULT,
+                &AdditiveTable::new(&HARMONICS_DEFAULT),
             ));
         }
         out
@@ -3014,44 +3152,44 @@ fn the_guitar_is_brighter_and_more_compressed_than_a_plucked_string() {
     assert!((pitch - 220.0).abs() < 12.0, "strängen ska stämma: {pitch:.1} Hz");
     let late = (guitar[38_400..].iter().map(|x| x * x).sum::<f32>() / 9600.0).sqrt();
     assert!(late > 0.005, "gitarren ska klinga ut, inte dö direkt: {late:.4}");
+}
 
-    /// **Control Room rör bara den motor som fick kommandot.** Samma not ger ljud i en
-    /// motor som inte vet om monitorläget, och tystnad i en som är tystad — det är
-    /// skillnaden mellan monitor och export.
-    #[test]
-    fn the_control_room_silences_only_the_engine_that_was_told() {
-        let mut live = SynthEngine::new(48_000.0);
-        let mut render_peak = |engine: &mut SynthEngine| {
-            engine.handle_command(AudioCommand::NoteOn {
-                note: 60,
-                freq: 261.63,
-                velocity: 1.0,
-                channel: 0,
-            });
-            let mut peak: f32 = 0.0;
-            for _ in 0..4_800 {
-                let (l, r) = engine.process_stereo();
-                peak = peak.max(l.abs()).max(r.abs());
-            }
-            peak
-        };
-        let loud = render_peak(&mut live);
-        assert!(loud > 0.01, "motorn ska låta först: {loud}");
+/// **Control Room rör bara den motor som fick kommandot.** Samma not ger ljud i en
+/// motor som inte vet om monitorläget, och tystnad i en som är tystad — det är
+/// skillnaden mellan monitor och export.
+#[test]
+fn the_control_room_silences_only_the_engine_that_was_told() {
+    let mut live = SynthEngine::new(48_000.0);
+    let render_peak = |engine: &mut SynthEngine| {
+        engine.handle_command(AudioCommand::NoteOn {
+            note: 60,
+            freq: 261.63,
+            velocity: 1.0,
+            channel: 0,
+        });
+        let mut peak: f32 = 0.0;
+        for _ in 0..4_800 {
+            let (l, r) = engine.process_stereo();
+            peak = peak.max(l.abs()).max(r.abs());
+        }
+        peak
+    };
+    let loud = render_peak(&mut live);
+    assert!(loud > 0.01, "motorn ska låta först: {loud}");
 
-        live.handle_command(AudioCommand::SetControlRoom(
-            crate::audio::command::ControlRoomState {
-                level: 1.0,
-                dim: false,
-                mono: false,
-                mute: true,
-            },
-        ));
-        let muted = render_peak(&mut live);
-        assert_eq!(muted, 0.0, "tyst monitor ska ge tystnad, fick {muted}");
+    live.handle_command(AudioCommand::SetControlRoom(
+        crate::audio::command::ControlRoomState {
+            level: 1.0,
+            dim: false,
+            mono: false,
+            mute: true,
+        },
+    ));
+    let muted = render_peak(&mut live);
+    assert_eq!(muted, 0.0, "tyst monitor ska ge tystnad, fick {muted}");
 
-        // En ny motor (den exporten bygger) har aldrig fått kommandot.
-        let mut export = SynthEngine::new(48_000.0);
-        let exported = render_peak(&mut export);
-        assert!(exported > 0.01, "exportmotorn ska vara opåverkad: {exported}");
-    }
+    // En ny motor (den exporten bygger) har aldrig fått kommandot.
+    let mut export = SynthEngine::new(48_000.0);
+    let exported = render_peak(&mut export);
+    assert!(exported > 0.01, "exportmotorn ska vara opåverkad: {exported}");
 }

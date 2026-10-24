@@ -10,10 +10,10 @@
 
 use crate::audio::synth::HARMONIC_COUNT;
 
-/// Läser en PNG ur minnet och lämnar nivåerna för övertonerna 1–16 (index 0 = grundton).
+/// Läser en PNG ur minnet och lämnar nivåerna för övertonerna 1–64 (index 0 = grundton).
 ///
 /// Raderna räknas **nedifrån och upp**: en ljus prick längst ned blir grundtonen, en ljus
-/// prick högst upp blir överton 16. Bilden behöver inte vara kvadratisk — raderna delas in i
+/// prick högst upp blir överton 64. Bilden behöver inte vara kvadratisk — raderna delas in i
 /// `HARMONIC_COUNT` band och varje band blir medelvärdet av sina rader.
 pub fn envelope_from_png(bytes: &[u8]) -> Result<[f32; HARMONIC_COUNT], String> {
     let img = image::load_from_memory_with_format(bytes, image::ImageFormat::Png)
@@ -82,7 +82,7 @@ mod tests {
     }
 
     /// **Bilden blir ett spektrum**: mörk bild = tyst, ljus nederkant = grundton,
-    /// ljus överkant = överton 16, och nivåerna normaliseras till 1,0.
+    /// ljus överkant = överton 64, och nivåerna normaliseras till 1,0.
     #[test]
     fn a_bright_bottom_row_becomes_the_fundamental() {
         let mut rows = vec![0u8; 64];
@@ -91,14 +91,14 @@ mod tests {
         }
         let env = envelope_from_png(&png_with_rows(&rows)).unwrap();
         assert!(env[0] > 0.9, "grundtonen ska dominera: {env:?}");
-        assert!(env[15] < 0.1, "toppen ska vara mörk: {env:?}");
+        assert!(env[HARMONIC_COUNT - 1] < 0.1, "toppen ska vara mörk: {env:?}");
 
         let mut rows = vec![0u8; 64];
         for r in rows.iter_mut().take(4) {
             *r = 255; // översta bandet
         }
         let env = envelope_from_png(&png_with_rows(&rows)).unwrap();
-        assert!(env[15] > 0.9, "överton 16 ska dominera: {env:?}");
+        assert!(env[HARMONIC_COUNT - 1] > 0.9, "översta övertonen ska dominera: {env:?}");
         assert!(env[0] < 0.1, "botten ska vara mörk: {env:?}");
 
         let dark = envelope_from_png(&png_with_rows(&[0u8; 64])).unwrap();

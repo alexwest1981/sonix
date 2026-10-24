@@ -3185,7 +3185,7 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                 if self.waveform == Waveform::Additive {
                     ui.separator();
                     ui.label(
-                        egui::RichText::new(crate::i18n::t("DRAGSTÄNGER (1–16)"))
+                        egui::RichText::new(crate::i18n::t("DRAGSTÄNGER (1–64)"))
                             .size(Theme::FONT_S)
                             .color(Theme::TEXT_MUTED),
                     );

@@ -149,7 +149,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Keyboard Controller | 2 | ✅ | `ModSource::Velocity` och `ModSource::Key` — anslag och tonhöjd centrerad kring C4 |
 | Fruity Slicer | 2 | ◐ | choppern |
 | Fruity Video Player | 2 | ✅ | `audio::video` + videovy: referensfilm synkad till spelhuvudet, bildrutan hämtas med ffmpeg |
-| Harmless | 2 | ◐ | additiv syntes (16 dragstänger) plus syntens filter- och envelopkedja — dess två halvor finns, dess egna förval gör det inte |
+| Harmless | 2 | ◐ | additiv syntes (64 dragstänger sedan 0.9.34, tabellbaserad) plus syntens filter- och envelopkedja — dess två halvor finns, dess egna förval gör det inte |
 | Plucked! | 2 | ✅ | `Waveform::Pluck` — Karplus-Strong: brus i en dämpad fördröjningslinje. Mätt: 220 Hz in ger 220,7 Hz ut, RMS 0,1588 → 0,0750 |
 | ReWired | 2 | — | **ej tillämplig**: ReWire lades ned 2020 (Propellerhead) och stöds inte av moderna DAW:er. Motsvarigheten i dag är `AudioCommand`-bryggan och VST3, som redan finns. |
 | Sakura | 2 | ◐ | **båge** över samma stränglinje som Plucked! (`Waveform::Bowed`): brus exciterar linjen varje varv, så tonen bär medan anslaget hålls, genom kroppens två resonanser. Mätt: 220 Hz in → 220,2 Hz ut, RMS 0,0485 → 0,0647 över 2 s. Kvar: bågtryck/stråkposition och artikulationer (pizzicato, harmonic) |

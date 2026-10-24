@@ -1,15 +1,18 @@
 # Additiv och spektral syntes i full längd
 
-**Status: plan.** Den här filen finns för att nästa pass ska börja i rätt ände i stället för
-att uppfinna omfattningen. Inget av det nedan är byggt utom det som står under *det som finns*.
+**Status: steg 1 byggt (tabelloscillator med 64 partialer); steg 2–4 kvar.** Den här filen finns
+för att nästa pass ska börja i rätt ände i stället för att uppfinna omfattningen.
 
 ## Det som finns i dag
 
-- `Waveform::Additive` med **16 övertoner** (`HARMONIC_COUNT`), statiska nivåer som sätts med
-  dragstänger. Ingen tid, ingen egen envelopp per partial.
+- `AdditiveTable` — en delad tabell med summan av **64 partialer**, en tabelläsning per sampel.
+  **Mätt** (release, i7-8700K, 16 röster, 1 s ljud): oscillatorn **241× realtid**, hela rösten
+  med filter och envelop **30× realtid**; en `sin()` per partial i samma mätning gav 3,4×.
+  Tabellen byggs om när dragstängerna ändras (0,25 ms) och bandbegränsas inte — en hög not kan
+  vika partialer ovanför Nyquist.
 - `Waveform::Inharmonic` — partialerna stäms om, men nivåerna är fortfarande statiska.
 - `Waveform::Bowed`/`Guitar`/`Pluck` — strängmodell, inte additiv.
-- `audio::spectral_image` — en PNG blir **16 statiska partialnivåer** (Harmors bildväg).
+- `audio::spectral_image` — en PNG blir **64 statiska partialnivåer** (Harmors bildväg).
 - `audio::flex` — presets, inte syntes.
 - Sytrus-vägen är **FM med 2 operatorer** (`FmParams`), inte 6.
 
@@ -35,7 +38,7 @@ Fyra saker, och de är oberoende nog att byggas i ordning:
 
 | Steg | Vad | Mått som avgör om det är klart |
 |---|---|---|
-| 1 | 64 partialer, tabellbaserad oscillator | `realtime_bench` utan tappade buffertar vid 64 partialer, 16 röster |
+| 1 | 64 partialer, tabellbaserad oscillator — **✅** | **Mätt 2026-10-24:** 16 röster à 64 partialer, 1 s ljud i release: tabellen **241× realtid**, hela rösten **30× realtid**. En `sin()` per partial i samma mätning: 3,4×. Prov: tabellen matchar den direkta summan (97 faser, < 2e-3) och den 64:e partialen hörs (7 040 Hz ur 110 Hz). |
 | 2 | Envelopp per partial | Ett anslag med bara partial 1 långsam och partial 8 snabb ska ge **avtagande spektrum** — mätt som centroid som faller över 500 ms |
 | 3 | Spektralt filter | En formantförskjutning flyttar centroid men **inte** grundtonen (mätt i Hz) |
 | 4 | Tidsaxel | Samma not med kurva A och kurva B ska ge olika centroid vid 0,5 s men samma vid 0 s |
@@ -55,6 +58,12 @@ Slutsatsen är att steg 1 **måste** vara tabellbaserat: 64 partialer med `sin()
 halva en kärna innan filter, enveloper och FX ens är räknade. En tabell per partial (delad
 mellan rösterna) byter ut 64 `sin()` mot 64 tabelläsningar, och en läsning är billigare än en
 transcendent funktion. Mät om efter bytet — samma tabell ska ge ≥ 10× vid 64 partialer.
+
+**Utfall (mätt 2026-10-24, release, i7-8700K):** en gemensam tabell med partialsumman (inte en
+tabell per partial — summan behöver bara en läsning) ger **241× realtid** för oscillatorn och
+**30× realtid** för hela rösten med filter och envelop. Samma mätning med `sin()` per partial:
+3,4×. Ombyggnaden tar 0,25 ms. Provet `the_additive_table_matches_the_direct_sum` vaktar att tabellen är samma summa,
+och `the_sixty_fourth_partial_is_heard` att taket inte längre ligger vid 16.
 
 ## Vad som inte ska byggas
 
