@@ -1141,19 +1141,21 @@ impl SonixApp {
                     ui.separator();
 
                     // Transport Buttons
+                    // **Transportknapparna är ikoner, inte ord** (0.9.82): Ableton har tre stora
+                    // knappar där Sonix hade tre ord. Verktygstipset bär texten.
                     let play_color = if self.is_playing { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().panel_alt() };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ▶ PLAY ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(play_color)).clicked()
+                    if ui.add(egui::Button::new(egui::RichText::new("▶").strong().size(Theme::FONT_L).color(if self.is_playing { egui::Color32::BLACK } else { crate::ui::theme::palette().text() })).fill(play_color).min_size(egui::vec2(48.0, 30.0))).on_hover_text(crate::i18n::t("Spela upp")).clicked()
                         && !self.is_playing {
                             self.toggle_playback();
                         }
 
                     let pause_color = if !self.is_playing { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel_alt() };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏸ PAUSE ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(pause_color)).clicked()
+                    if ui.add(egui::Button::new(egui::RichText::new("⏸").strong().size(Theme::FONT_L).color(if self.is_playing { crate::ui::theme::palette().text() } else { egui::Color32::BLACK })).fill(pause_color).min_size(egui::vec2(48.0, 30.0))).on_hover_text(crate::i18n::t("Pausa")).clicked()
                         && self.is_playing {
                             self.toggle_playback();
                         }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOP ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border())).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new("⏹").strong().size(Theme::FONT_L).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border()).min_size(egui::vec2(48.0, 30.0))).on_hover_text(crate::i18n::t("Stopp")).clicked() {
                         self.stop_playback();
                     }
 

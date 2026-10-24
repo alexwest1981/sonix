@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed — the interface stops looking like stock egui
 
+- **Transport is three large icon buttons.** ▶ ⏸ ⏹ at 48×30 with the word in the tooltip, in the
+  Ableton manner, instead of three wide text buttons. Icon colour flips to black on a lit
+  (green/orange) button so it never goes grey-on-bright.
+
 Everything below was egui's default values; Sonix had never set a style at all.
 
 - **Global form** (`theme::apply_style`): 8×5 px item spacing (was 8×3), 21 px row height
