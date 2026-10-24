@@ -575,6 +575,9 @@ pub enum AudioCommand {
     /// audio thread mixes it into the master bus scaled by
     /// [`AudioCommand::SetMonitorLevel`] (default 1.0, i.e. unity).
     /// Sent again after every reconfigure.
+    /// **Sustainpedal (MIDI CC64).** Nere: en släppt tangent klingar vidare tills pedalen går
+    /// upp. Upp: alla hållna toner släpps. Utan kommandot beter sig MIDI som förut.
+    SetSustainPedal(bool),
     /// **Bärvågsingång i masterns kedja.** `amount` 0–1 blandar in vocodern, där rackets
     /// synt är bärvågen och resten av mixen är modulator. 0 är exakt som förut.
     SetMasterVocoder {

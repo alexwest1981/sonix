@@ -99,6 +99,16 @@ pub fn control_events_from_midi(bytes: &[u8]) -> Vec<ControlEvent> {
             semitones: norm * range,
         }];
     }
+    if kind == 0xB0 {
+        // **CC64 = sustainpedal.** Tröskeln 64 är MIDI-standard: under är upp.
+        let (Some(&cc), Some(&value)) = (bytes.get(1), bytes.get(2)) else {
+            return Vec::new();
+        };
+        if cc == 64 {
+            return vec![ControlEvent::SustainPedal(value >= 64)];
+        }
+        return Vec::new();
+    }
     if kind != 0x80 && kind != 0x90 {
         return Vec::new();
     }

@@ -53,6 +53,8 @@ pub struct Voice {
     pub sub_phase: f32,
     /// Fas per delton för den inharmoniska vågformen (Ogun).
     pub inh_phases: [f32; 6],
+    /// Hållen av sustainpedalen: tangenten är släppt men tonen klingar tills pedalen går upp.
+    pub sustained: bool,
     /// **Sytrus 6-op:** sex faser och matrisen som rösten spelar. Parametrarna kopieras hit
     /// när de ändras (som dragstängerna), så en röst byter patch mitt i en ton utan klick.
     pub six: SixOpVoice,
@@ -355,6 +357,7 @@ impl Voice {
     pub fn new(sample_rate: f32) -> Self {
         Self {
             inh_phases: [0.0; 6],
+            sustained: false,
             six: SixOpVoice::new(sample_rate),
             six_op: SixOpParams::default(),
             pluck_buf: [0.0; 4096],
@@ -439,6 +442,7 @@ impl Voice {
         self.partial_age = 0;
         self.partial_control = 0;
         self.envelope.gate_on();
+        self.sustained = false;
         self.six.reset();
         self.filter_env.gate_on();
     }

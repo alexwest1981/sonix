@@ -3653,3 +3653,68 @@ fn the_vocoder_silences_the_carrier_when_the_modulator_is_silent() {
     assert!(with_modulator > 0.02, "med modulator ska den höras: {with_modulator:.4}");
 }
 
+/// **Sustainpedalen håller tonen efter att tangenten släppts.**
+///
+/// Två körningar med samma anslag: en med pedalen nere, en utan. Efter 200 ms ska
+/// pedalkörningen vara klart starkare — och när pedalen går upp ska den falla.
+/// Jämförelsen är relativ eftersom masterns FX-svans annars kan lura ett absolut mått.
+#[test]
+fn the_sustain_pedal_holds_a_note_after_the_key_is_released() {
+    let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+
+    let run = |pedal: bool| {
+        let mut engine = SynthEngine::new(48_000.0);
+        engine.filter_params.cutoff = 12_000.0;
+        engine.filter_env_amount = 0.0;
+        engine.adsr = crate::audio::envelope::AdsrParams {
+            attack: 0.002,
+            decay: 0.001,
+            sustain: 0.8,
+            release: 0.05,
+        };
+        if pedal {
+            engine.handle_command(AudioCommand::SetSustainPedal(true));
+        }
+        engine.handle_command(AudioCommand::NoteOn {
+            note: 60,
+            freq: 261.63,
+            velocity: 1.0,
+            channel: 0,
+        });
+        for _ in 0..4_800 {
+            engine.process_stereo();
+        }
+        engine.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
+
+        // 200 ms efter släppet.
+        let mut held = Vec::new();
+        for _ in 0..9_600 {
+            held.push(engine.process_stereo().0);
+        }
+        let held_level = rms(&held[7_200..]);
+
+        // Pedalen upp: releasen (50 ms) ska hinna göra sitt.
+        engine.handle_command(AudioCommand::SetSustainPedal(false));
+        let mut after = Vec::new();
+        for _ in 0..14_400 {
+            after.push(engine.process_stereo().0);
+        }
+        (held_level, rms(&after[12_000..]))
+    };
+
+    let (pedal_held, pedal_after) = run(true);
+    let (plain_held, _) = run(false);
+
+    println!(
+        "  pedal: hållen {:.4}, efter upp {:.4} | utan pedal: {:.4}",
+        pedal_held, pedal_after, plain_held
+    );
+    assert!(
+        pedal_held > plain_held * 3.0,
+        "pedalen ska hålla tonen: {pedal_held:.4} mot {plain_held:.4} utan pedal"
+    );
+    assert!(
+        pedal_after < pedal_held * 0.5,
+        "när pedalen går upp ska tonen falla: {pedal_after:.4} av {pedal_held:.4}"
+    );
+}

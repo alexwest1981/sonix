@@ -249,7 +249,24 @@ impl SynthEngine {
                         && voice.note == note
                         && (channel == 0 || voice.channel == channel)
                     {
-                        voice.release();
+                        // **Pedalen håller tonen.** släpps tangenten med pedalen nere markeras
+                        // rösten i stället, och släpps först när pedalen går upp.
+                        if self.sustain_pedal {
+                            voice.sustained = true;
+                        } else {
+                            voice.release();
+                        }
+                    }
+                }
+            }
+            AudioCommand::SetSustainPedal(down) => {
+                self.sustain_pedal = down;
+                if !down {
+                    for voice in &mut self.voices {
+                        if voice.sustained {
+                            voice.sustained = false;
+                            voice.release();
+                        }
                     }
                 }
             }

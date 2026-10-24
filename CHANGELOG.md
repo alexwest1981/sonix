@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Sustain pedal (MIDI CC64).** The pedal now reaches the engine: a key released while it is
+  down keeps sounding, and lifting the pedal releases everything it was holding. It arrives from a
+  keyboard as CC64 (>= 64 = down, the MIDI threshold) and from a 🎹 PEDAL button next to the
+  metronome, which also shows the state when hardware presses it. Measured: held 200 ms after the
+  key release, 0.2718 with the pedal against 0.0359 without.
+
 - **Click a lane in the playlist to comp that bar.** The lane strips inside a pattern block are now
   clickable (Select tool only — with Paint/Erase the click still belongs to the clip), and the
   clicked lane becomes the comp for that bar. Hovering a strip lightens it, so the target is
@@ -165,6 +171,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Render tests confirm the drawn partial and the sub oscillator reach the exported audio.
 
 ### Changed
+
+- **FL inventory: three descriptions corrected.** Sytrus and Toxic Biohazard said "2-op FM
+  exists"; they now describe the 6-op matrix with per-operator envelopes and filters, and name
+  what is still missing (Sytrus mixes FM, ring modulation *and* additive in one cell; we do FM
+  only). FL Keys mentions velocity layers and the new pedal. The ✅/◐ counts are unchanged — the
+  matrix is still FM-only, so calling them done would be a lie.
 
 - **Clippy debt, first pass.** 154 → 47 warnings: mostly `collapsible_if`, `needless_return`,
   `manual_clamp` and similar, applied with `cargo clippy --fix` and verified by the full suite and

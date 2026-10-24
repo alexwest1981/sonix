@@ -1637,6 +1637,10 @@ fn apply_control_event(&mut self, ev: ControlEvent) {
         ControlEvent::PitchBend { channel, semitones } => {
             self.handle_midi_pitch_bend(channel, semitones);
         }
+        ControlEvent::SustainPedal(down) => {
+            self.sustain_pedal = down;
+            let _ = self.engine.send_command(AudioCommand::SetSustainPedal(down));
+        }
     }
 }
 }

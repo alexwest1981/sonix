@@ -460,6 +460,15 @@ impl SonixApp {
                         self.metronome_enabled = !self.metronome_enabled;
                         self.status_message = if self.metronome_enabled { crate::i18n::t("🔔 Metronom aktiverad").to_string() } else { crate::i18n::t("🔕 Metronom avstängd").to_string() };
                     }
+
+                    // **Sustainpedal.** Samma kommando som MIDI CC64 skickar, så en pianist utan
+                    // pedal kan hålla toner med musen — och pedalläget syns när hårdvaran trycker.
+                    let pedal_bg = if self.sustain_pedal { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel_alt() };
+                    let pedal_fg = if self.sustain_pedal { Color32::BLACK } else { crate::ui::theme::palette().text_muted() };
+                    if ui.add(egui::Button::new(egui::RichText::new("🎹 PEDAL").strong().size(Theme::FONT_S).color(pedal_fg)).fill(pedal_bg)).on_hover_text(crate::i18n::t("Sustainpedal: håller toner efter att tangenten släppts (samma som MIDI CC64)")).clicked() {
+                        self.sustain_pedal = !self.sustain_pedal;
+                        let _ = self.engine.send_command(AudioCommand::SetSustainPedal(self.sustain_pedal));
+                    }
                 });
             });
         });

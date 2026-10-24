@@ -30,6 +30,8 @@ pub enum ControlEvent {
     /// Pitch bend, redan omräknad till halvtoner. Kanal 0 (mastern) böjer allt
     /// ±2 halvtoner; medlemskanalerna 1–15 böjer bara sina egna noter, ±48.
     PitchBend { channel: u8, semitones: f32 },
+    /// Sustainpedalen (CC64). `true` = nere.
+    SustainPedal(bool),
 }
 
 #[derive(Debug, Clone, PartialEq)]

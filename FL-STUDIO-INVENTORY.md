@@ -118,11 +118,11 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Morphine | 199 | ◐ | `instruments::morph_spectrum` + `Preset::Morph`: två additiva operatorkällor (glasig, rörledad) och ett läge 0–1 mellan dem — exakt vid 0 och 1, linjärt emellan (provat). ✗ fyra operatorkällor, egna modulationskedjor och de 199 förvalen |
 | Harmor | 164 | ◐ | **bild → spektrum**: `audio::spectral_image` läser en PNG, väger samman alla kolumner och gör bildens nederkant till grundtonen och överkanten till överton 16 (`HARMONIC_COUNT`), normaliserat till 1,0 — knappen **🖼 Från bild…** i dragstångspanelen fyller tabellen. Prov: ljus nederkant → grundtonen 1,0 / toppen 0,0, och tvärtom. Kvar: tidsaxeln (bilden som spelas upp över tid), `.fnv`-envelopes, fler än 16 partialer och blur/prism |
 | Dashboard | 90 | ◐ | Patch-modulen ritar en egen graf, men ingen panel med rattar |
-| Toxic Biohazard | 78 | ◐ | tvåoperator-FM finns i synten sedan i dag, inte 6-op modell |
+| Toxic Biohazard | 78 | ◐ | **6-op FM-matris** (0.9.47) med egen envelop och lågpass per operator (0.9.48–49). Kvar för Toxic: ringmodulering/adderande blandning i matrisen, fler filtertyper och unison |
 | GMS | 52 | ◐ | egen subtraktiv synth |
 | Wave Traveller | 50 | ◐ | **`AudioCommand::PlayScratch`**: urklippet spelas fram och tillbaka (ping-pong) i vald handhastighet och ett bestämt antal halva pass, så rösten tystnar i stället för att loopa. Prov: efter klippets slut går riktningen bakåt och rösten är tyst när passen är slut. Kvar: LFO/envelope som styr **positionen** löpande (Wave Travellers egen modulering), vinylbrus och flera lager |
-| FL Keys | 47 | ◐ | samplern + SF2-läsaren kan ladda piano |
-| Sytrus | 40 | ◐ | 2-op FM finns; Sytrus är 6 operatorer + filtermatris |
+| FL Keys | 47 | ◐ | samplern + SF2-läsaren kan ladda piano, keymappen har anslags- och registerzoner, och **sustainpedal (CC64)** finns sedan 0.9.62 — via MIDI och 🎹 PEDAL i verktygsraden. Kvar: pedalresonans (sympatiska strängar) och release-sampel |
+| Sytrus | 40 | ◐ | **6 operatorer + 6×6-matris** (0.9.47), envelop och lågpass per operator (0.9.48–49), tre utgångslägen. Kvar: Sytrus matris blandar FM, ringmodulering **och** additivt i samma cell — vi gör bara FM — samt dess filtertyper, LFO:er och unison |
 | Autogun | 26 | ✅ | `instruments::autogun(seed)` — ett spelbart ljud ur ett frö: attacken kläms så noten hörs, filtret så det släpper igenom. Knappen 🎲 i presetlistan |
 | Minisynth | 19 | ✅ | synten (4 vågformer, ADSR, SVF, FM) |
 | Fruity Slicer 2 | 14 | ◐ | choppern hittar slag och dumpar till piano roll/step |

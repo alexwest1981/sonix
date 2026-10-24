@@ -127,6 +127,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetSpectralSweep { .. } => "SetSpectralSweep",
         AudioCommand::SetSixOp { .. } => "SetSixOp",
         AudioCommand::SetTalkback(_) => "SetTalkback",
+        AudioCommand::SetSustainPedal(_) => "SetSustainPedal",
         AudioCommand::SetMasterVocoder { .. } => "SetMasterVocoder",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
@@ -466,6 +467,8 @@ pub struct SynthEngine {
     pub formant: SpectralFormant,
     /// Tidsaxel: klangformen glider från `formant.center` till `sweep.to` under noten.
     pub sweep: SpectralSweep,
+    /// Sustainpedalen (CC64). Nere håller den kvar toner efter att tangenten släppts.
+    pub sustain_pedal: bool,
     /// **Bärvågsingång:** vocoder i masterns kedja där rackets synt är bärvågen och resten av
     /// mixen är modulator. `amount = 0` kopplar förbi den helt.
     pub vocoder: crate::audio::master_fx::MasterVocoder,
@@ -644,6 +647,7 @@ impl SynthEngine {
             monitor_idx: 0,
             monitor_level: 1.0,
             talkback: false,
+            sustain_pedal: false,
             vocoder: crate::audio::master_fx::MasterVocoder::new(sample_rate),
             sample_voices: std::array::from_fn(|_| SampleVoice::new()),
             sample_voice_cursor: 0,
