@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — rounder clips
+
+- Region corner rounding 4 → 8 px, matching the track headers and moving toward the 10–12 px
+  Soundtrap uses on its regions.
+
 ### Changed — taller track rows
 
 - Track row 46 → 64 px and the header's control block pushed down 8 px (30 on the mic track), so

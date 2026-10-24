@@ -1571,7 +1571,8 @@ impl SonixApp {
                                             )
                                         };
 
-                                        ui.painter().rect_filled(r_rect, Rounding::same(4.0), fill);
+                                        // Klippens hörn följer spårhuvudena (8 px) — Soundtrap har 10–12 px på sina regioner.
+                                        ui.painter().rect_filled(r_rect, Rounding::same(8.0), fill);
 
                                         // Top Header Banner strip for Region
                                         let header_h = 14.0_f32;
@@ -1596,7 +1597,7 @@ impl SonixApp {
                                         } else {
                                             col
                                         };
-                                        ui.painter().rect_stroke(r_rect, Rounding::same(4.0), Stroke::new(if is_region_selected { 2.0_f32 } else { 1.2_f32 }, stroke_col));
+                                        ui.painter().rect_stroke(r_rect, Rounding::same(8.0), Stroke::new(if is_region_selected { 2.0_f32 } else { 1.2_f32 }, stroke_col));
 
                                         // Region Header Banner & Exact Time readout (Start & Length down to hundredths!)
                                         let gain_db = if region.volume <= 0.001 { -60.0 } else { 20.0 * region.volume.log10() };
