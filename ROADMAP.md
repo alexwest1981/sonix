@@ -61,6 +61,23 @@ ingen längd — och `feat/note-lengths` har noll commits ovanpå `master`. Allt
 mätstock för vad en DAW ska kunna — de ska inte ut i produktens yta, hemsidan eller manualen.
 Namn, ikon, färg och ton ska stå för Sonix. (Alex: "det viktigaste sen".)
 
+## GUI: mot Soundtrap och Ableton
+
+Målet är inte en kopia av någon av dem, utan samma **arbetssätt**: mindre jakt i menyer, mer gjort
+på en yta. Konkret, i den ordning det är värt att ta:
+
+1. **En yta i taget.** Ableton har Arrangement och Session som två lägen med samma verktyg.
+   Sonix har 13 vyer i en rad; de ska grupperas i *Skapa* (kanalrack, pianorulle, klaviatur),
+   *Arrangera* (tidslinje, tagningar) och *Mixa* (mixer, FX, master) — flikar, inte en lång rad.
+2. **Transporten dit ögat redan är.** Soundtrap lägger play/record/tempo där låten är, inte i en
+   egen rad högst upp. Tempot och taktarten ska sitta vid tidslinjens övre kant.
+3. **Mindre krom.** Färre ramar och rubriker, mer yta till innehållet; samma kontroll två gånger
+   (t.ex. volym i både rack och mixer) ska se likadan ut.
+4. **Högerklick överallt.** Abletons styrka är att allt går att högerklicka på: klipp, spår, ratt.
+   Sonix har det på några ställen; det ska vara regeln, inte undantaget.
+5. **Inspelningsläget först.** En ny låt ska börja med en enda stor inspelningsknapp och ett spår
+   som redan är redo — Soundtraps bästa idé.
+
 ## ⬜ Kvar
 
 ### Går att bygga vid datorn nu
