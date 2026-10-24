@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — MIDI in scripts, and two inventory rows promoted
+
+- Skript-API:t kan nu läsa och skriva MIDI: `load_midi(path)` fyller tagningen från en `.mid`
+  (steg = PPQ/4 ticks, noter utanför takten viks in med `rem_euclid`) och `save_midi(path, bpm)`
+  skriver den. Ingen ny parser — `smf` fanns; ytan är ny.
+  Prov `a_script_can_save_and_load_midi`: spara två noter, läs tillbaka dem på steg 0 och 4.
+- **Inventariet:** Sytrus och Toxic Biohazard flyttade från ◐ till ✅ — luckorna som stod i
+  deras rader (ringmodulering/additivt i matrisen, fyra filtertyper, LFO:er, unison) är byggda
+  sedan 0.9.69–0.9.107. Räknaren är nu **✅ 72 / ◐ 62** av 141.
+
 ### Added — bend per note (MPE) and talkback to a cue
 
 - **`NoteBendPoint { pos, key, semitones }`** in the pattern: the same curve as `bends`, but keyed

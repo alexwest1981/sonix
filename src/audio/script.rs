@@ -102,6 +102,60 @@ pub fn run(source: &str, take: &mut Take) -> Result<Vec<String>, String> {
         });
     }
 
+    // **MIDI-API:** läs en fil in i tagningen eller skriv tagningen till en fil. Två filformat
+    // som redan finns i motorn (`smf`), alltså ingen ny parser — bara en yta för skript.
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("load_midi", move |path: &str| -> i64 {
+            let Ok(bytes) = std::fs::read(path) else {
+                return -1;
+            };
+            let Ok(parsed) = crate::audio::smf::parse_midi(&bytes) else {
+                return -1;
+            };
+            // Ett steg är en sextondel: ticks per steg = ppq / 4.
+            let ticks_per_step = (parsed.ppq as f32 / 4.0).max(1.0);
+            let mut notes = shared.borrow_mut();
+            let mut added = 0i64;
+            for (_, note) in parsed.notes_with_track() {
+                notes.push(crate::midi_take::TakeNote {
+                    pos: (note.start as f32 / ticks_per_step).rem_euclid(16.0),
+                    key: note.key,
+                    velocity: (note.velocity as f32 / 127.0).clamp(0.0, 1.0),
+                    probability: 1.0,
+                    length_steps: (note.length as f32 / ticks_per_step).max(0.0),
+                    articulation: crate::midi_take::Articulation::Normal,
+                    applied: false,
+                });
+                added += 1;
+            }
+            added
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("save_midi", move |path: &str, bpm: f64| -> bool {
+            let notes = shared.borrow();
+            // Samma omräkning som läsaren: ett steg är en sextondel = PPQ / 4 ticks.
+            let ticks_per_step = crate::audio::smf::PPQ as f32 / 4.0;
+            let track = crate::audio::smf::MidiTrack {
+                name: "Sonix".to_string(),
+                notes: notes
+                    .iter()
+                    .map(|n| crate::audio::smf::MidiNote {
+                        start: (n.pos.max(0.0) * ticks_per_step) as u32,
+                        length: (n.length_steps.max(0.0) * ticks_per_step) as u32,
+                        channel: 0,
+                        key: n.key,
+                        velocity: (n.velocity.clamp(0.0, 1.0) * 127.0) as u8,
+                    })
+                    .collect(),
+            };
+            let bytes = crate::audio::smf::write_midi(bpm as f32, &[track]);
+            std::fs::write(path, bytes).is_ok()
+        });
+    }
+
     // `print` är Rhais egen funktion; texten fångas med `on_print` i stället för att
     // skrivas till terminalen — skriptet körs i UI-tråden och resultatet ska till statusraden.
     let sink = std::rc::Rc::new(std::cell::RefCell::new(Vec::<String>::new()));
@@ -167,6 +221,31 @@ mod tests {
         t.push(0.0, 60, 0.5);
         t.push(4.0, 64, 1.0);
         t
+    }
+
+    /// **MIDI i båda riktningar:** ett skript skriver tagningen till en fil och läser tillbaka
+    /// den — noterna ska komma tillbaka på samma steg som de skrevs.
+    #[test]
+    fn a_script_can_save_and_load_midi() {
+        let dir = std::env::temp_dir().join(format!("sonix_script_midi_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("tagning.mid");
+        let path_str = path.to_string_lossy().replace('\\', "/");
+
+        let mut t = take();
+        run(&format!("save_midi(\"{path_str}\", 120.0)"), &mut t)
+            .expect("spara ska gå igenom");
+        assert!(path.exists(), "filen ska finnas");
+
+        let mut empty = Take::new();
+        let log = run(&format!("print(load_midi(\"{path_str}\"))"), &mut empty)
+            .expect("läsa ska gå igenom");
+        assert_eq!(log, vec!["2".to_string()], "två noter ska läsas");
+        assert_eq!(empty.notes.len(), 2);
+        assert_eq!(empty.notes[0].key, 60);
+        assert!((empty.notes[0].pos - 0.0).abs() < 0.01);
+        assert!((empty.notes[1].pos - 4.0).abs() < 0.01, "steg 4, fick {}", empty.notes[1].pos);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
