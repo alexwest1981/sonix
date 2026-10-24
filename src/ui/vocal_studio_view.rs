@@ -1112,7 +1112,10 @@ pub fn render_vocal_studio_view(
                                 !vocal_track.takes.is_empty(),
                                 egui::Button::new(
                                     egui::RichText::new(crate::i18n::t("🤖 Vocoder (A2-bärvåg)"))
-                                        .size(Theme::FONT_S),
+                                        .size(Theme::FONT_S)
+                                        // Cyan knapp kräver mörk text, annars blir den
+                                        // oläsbar när den är avstängd (grå på cyan).
+                                        .color(egui::Color32::BLACK),
                                 )
                                 .fill(crate::ui::theme::palette().cyan()),
                             )

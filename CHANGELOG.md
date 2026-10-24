@@ -70,6 +70,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The vocoder button in the vocal studio was unreadable when disabled.** Cyan fill with the
+  default light label colour turns into grey-on-cyan as soon as there are no takes to vocode;
+  it now uses black text like the other cyan buttons in the same view.
+
 - **The lane view read the song bar instead of the pattern bar.** A one-bar block showed whichever
   comp happened to match the song's bar number, so a per-bar comp appeared on the wrong block
   (or on none). It now uses the bar inside the pattern, which is what `lane_for_bar` is keyed on.
