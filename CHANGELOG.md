@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-operator low-pass in 6-op.** Each operator has a low-pass (cutoff + resonance) after
+  its envelope and before the matrix, so a filtered modulator takes its overtones into the sound
+  instead of only changing its own level. `cutoff >= 19 kHz` means off and costs nothing, so
+  older patches are unchanged; edited with the same OP1…OP6 selector as the envelopes.
 - **Per-operator envelopes in 6-op.** Each of the six operators has its own ADSR, applied
   *before* the matrix: a modulator whose envelope closes takes its sidebands with it, which is
   the difference between a sound and a click. Defaults are neutral (level 1, no contour), so

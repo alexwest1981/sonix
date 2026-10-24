@@ -13,6 +13,7 @@
 use std::f32::consts::TAU;
 
 use crate::audio::envelope::{AdsrParams, AdsrVoice};
+use crate::audio::filter::{FilterParams, StateVariableFilter};
 
 /// Antal operatorer. Sex är Sytrus egna tak, och matrisen är 6×6.
 pub const SIX_OP_COUNT: usize = 6;
@@ -31,7 +32,40 @@ pub struct SixOpParams {
     /// `#[serde(default)]` gör att patchar sparade före 0.9.48 öppnas som förut.
     #[serde(default = "neutral_envs")]
     pub envs: [AdsrParams; SIX_OP_COUNT],
+    /// Lågpass per operator, **efter** envelopen och före matrisen. `cutoff >= 19 000` är
+    /// avstängt (filtret rör inte samplet), så en patch som inte rört det låter som förut.
+    #[serde(default = "open_filters")]
+    pub filters: [OpFilter; SIX_OP_COUNT],
 }
+
+/// Lågpasset per operator. Egen struct i stället för `FilterParams`: matrisen sparas som
+/// JSON, och sex `FilterParams` i en array kräver egen serde-väg — två fält klarar sig själva.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct OpFilter {
+    pub cutoff: f32,
+    pub resonance: f32,
+}
+
+impl OpFilter {
+    fn params(self) -> FilterParams {
+        FilterParams {
+            cutoff: self.cutoff,
+            resonance: self.resonance,
+        }
+    }
+}
+
+/// Öppet filter: över hörbarheten, alltså ingen filtrering.
+fn open_filters() -> [OpFilter; SIX_OP_COUNT] {
+    [OpFilter {
+        cutoff: 20_000.0,
+        resonance: 0.7,
+    }; SIX_OP_COUNT]
+}
+
+/// Under den här gränsen körs filtret; över den är det avstängt (billigare än att räkna
+/// ett filter som inte gör något).
+const FILTER_OPEN_HZ: f32 = 19_000.0;
 
 /// Nivå 1 utan kontur: envelopen ska inte ändra ljudet för en patch som inte rört den.
 fn neutral_envs() -> [AdsrParams; SIX_OP_COUNT] {
@@ -52,6 +86,7 @@ impl Default for SixOpParams {
             levels,
             matrix: [[0.0; SIX_OP_COUNT]; SIX_OP_COUNT],
             envs: neutral_envs(),
+            filters: open_filters(),
         }
     }
 }
@@ -77,6 +112,7 @@ pub struct SixOpVoice {
     phases: [f32; SIX_OP_COUNT],
     last: [f32; SIX_OP_COUNT],
     envs: [AdsrVoice; SIX_OP_COUNT],
+    filters: [StateVariableFilter; SIX_OP_COUNT],
 }
 
 impl SixOpVoice {
@@ -85,6 +121,7 @@ impl SixOpVoice {
             phases: [0.0; SIX_OP_COUNT],
             last: [0.0; SIX_OP_COUNT],
             envs: std::array::from_fn(|_| AdsrVoice::new(sample_rate)),
+            filters: std::array::from_fn(|_| StateVariableFilter::new(sample_rate)),
         }
     }
 
@@ -95,6 +132,9 @@ impl SixOpVoice {
         self.last = [0.0; SIX_OP_COUNT];
         for env in &mut self.envs {
             env.gate_on();
+        }
+        for filter in &mut self.filters {
+            filter.reset();
         }
     }
 
@@ -129,7 +169,14 @@ impl SixOpVoice {
             // Envelopen sitter **före** matrisen: den formar både det som hörs och det som
             // modulerar, precis som på en FM-synt.
             let env = self.envs[target].next_sample(&params.envs[target]);
-            out[target] = (phase + modulation).sin() * env;
+            let mut value = (phase + modulation).sin() * env;
+            // Filtret sitter efter envelopen, före matrisen: en filtrerad modulator tar sina
+            // övertoner med sig in i ljudet. Avstängt filter kostar ingenting.
+            let filter = params.filters[target];
+            if filter.cutoff < FILTER_OPEN_HZ {
+                value = self.filters[target].process_lowpass(value, &filter.params());
+            }
+            out[target] = value;
         }
         self.last = out;
         let mut sample = 0.0;
@@ -237,6 +284,27 @@ mod tests {
             sideband_late < sideband_early * 0.2,
             "när modulatorn tystnar försvinner sidobandet: {sideband_late:.5} mot {sideband_early:.4}"
         );
+    }
+
+    /// **Filtret per operator tar bort det som ligger ovanför brytfrekvensen.** Bärvåg 440 Hz
+    /// med sidoband på 220 och 660: ett lågpass på 500 Hz ska behålla 220 men dämpa 660.
+    #[test]
+    fn the_operator_filter_takes_the_high_side_band_away() {
+        let mut params = SixOpParams::default();
+        params.ratios[1] = 0.5;
+        params.levels[1] = 0.0;
+        params.matrix[1][0] = 2.0;
+        let open = render(&params, 440.0, 9_600);
+
+        params.filters[0].cutoff = 300.0;
+        let filtered = render(&params, 440.0, 9_600);
+
+        let low_open = mag_at(&open[2_400..], 220.0);
+        let low_filtered = mag_at(&filtered[2_400..], 220.0);
+        let high_open = mag_at(&open[2_400..], 660.0);
+        let high_filtered = mag_at(&filtered[2_400..], 660.0);
+        assert!(high_filtered < high_open * 0.3, "660 Hz ska dämpas: {high_filtered:.4} mot {high_open:.4}");
+        assert!(low_filtered > low_open * 0.6, "220 Hz ska vara kvar: {low_filtered:.4} mot {low_open:.4}");
     }
 
     /// **Egen återkoppling läser föregående sampel.** Utan det skulle operatorn modulera sig

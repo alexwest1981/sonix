@@ -174,6 +174,10 @@ impl SynthEngine {
                     env.sustain = env.sustain.clamp(0.0, 1.0);
                     env.release = env.release.clamp(0.0, 60.0);
                 }
+                for filter in &mut params.filters {
+                    filter.cutoff = filter.cutoff.clamp(20.0, 20_000.0);
+                    filter.resonance = filter.resonance.clamp(0.1, 10.0);
+                }
                 for row in &mut params.matrix {
                     for amount in row.iter_mut() {
                         *amount = amount.clamp(-32.0, 32.0);

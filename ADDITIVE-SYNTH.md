@@ -151,4 +151,17 @@ vid släpp.
 anslaget till under 20 % på 75 ms; samma envelop på en **modulator** tar sidobandet på 660 Hz
 från hörbart till under 20 % — alltså är det envelopen som styr sidobanden, inte bara volymen.
 
-**Kvar:** eget filter per operator och fler än de tre utgångslägena (sinus/kedja/sågtand).
+### Filter per operator
+
+`SixOpParams.filters: [OpFilter; 6]` (cutoff + resonans) sitter **efter** envelopen och **före**
+matrisen, så en filtrerad modulator tar sina övertoner med sig in i ljudet i stället för att bara
+ändra sin egen nivå. `cutoff >= 19 000` betyder av — filtret räknas då inte alls, och en patch
+som inte rört det låter som förut.
+
+**Mätt** (`the_operator_filter_takes_the_high_side_band_away`): bärvåg 440 Hz med sidoband på 220
+och 660; lågpass 300 Hz på bärvågen dämpar 660 Hz till under 30 % och lämnar 220 Hz över 60 %.
+
+`OpFilter` är en egen struct och inte `FilterParams`, eftersom sex `FilterParams` i en array inte
+gick genom serde-vägen — två fält klarar sig själva.
+
+**Kvar:** fler än de tre utgångslägena (sinus/kedja/sågtand).

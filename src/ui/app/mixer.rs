@@ -3322,6 +3322,22 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                 .changed();
                         }
                     });
+                    // Lågpasset sitter efter envelopen, före matrisen — samma OP-väljare.
+                    let filter = &mut self.six_op.filters[target];
+                    ui.horizontal(|ui| {
+                        six_changed |= ui
+                            .add(
+                                egui::Slider::new(&mut filter.cutoff, 20.0..=20_000.0)
+                                    .logarithmic(true)
+                                    .text("LP"),
+                            )
+                            .on_hover_text(crate::i18n::t("Lågpass (Hz), 20 000 = av"))
+                            .changed();
+                        six_changed |= ui
+                            .add(egui::Slider::new(&mut filter.resonance, 0.1..=10.0).text("Q"))
+                            .on_hover_text(crate::i18n::t("Resonans"))
+                            .changed();
+                    });
                     ui.label(
                         egui::RichText::new(crate::i18n::t("MATRIS (källa → mål)"))
                             .size(Theme::FONT_XS)
