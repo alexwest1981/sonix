@@ -26,16 +26,18 @@ pub enum AiProvider {
     OpenAi,
     Anthropic,
     OpenRouter,
+    DeepSeek,
     Ollama,
 }
 
 
 impl AiProvider {
-    pub const ALL: [AiProvider; 5] = [
+    pub const ALL: [AiProvider; 6] = [
         AiProvider::Offline,
         AiProvider::OpenAi,
         AiProvider::Anthropic,
         AiProvider::OpenRouter,
+        AiProvider::DeepSeek,
         AiProvider::Ollama,
     ];
 
@@ -45,6 +47,7 @@ impl AiProvider {
             AiProvider::OpenAi => "OpenAI",
             AiProvider::Anthropic => "Anthropic (Claude)",
             AiProvider::OpenRouter => "OpenRouter",
+            AiProvider::DeepSeek => "DeepSeek",
             AiProvider::Ollama => "Ollama (lokal)",
         }
     }
@@ -52,7 +55,7 @@ impl AiProvider {
     pub fn requires_key(self) -> bool {
         matches!(
             self,
-            AiProvider::OpenAi | AiProvider::Anthropic | AiProvider::OpenRouter
+            AiProvider::OpenAi | AiProvider::Anthropic | AiProvider::OpenRouter | AiProvider::DeepSeek
         )
     }
 
@@ -62,6 +65,7 @@ impl AiProvider {
             AiProvider::OpenAi => "https://api.openai.com/v1",
             AiProvider::Anthropic => "https://api.anthropic.com/v1",
             AiProvider::OpenRouter => "https://openrouter.ai/api/v1",
+            AiProvider::DeepSeek => "https://api.deepseek.com/v1",
             AiProvider::Ollama => "http://localhost:11434/v1",
         }
     }
@@ -72,6 +76,7 @@ impl AiProvider {
             AiProvider::OpenAi => "gpt-4o-mini",
             AiProvider::Anthropic => "claude-3-5-haiku-latest",
             AiProvider::OpenRouter => "openai/gpt-4o-mini",
+            AiProvider::DeepSeek => "deepseek-flash",
             AiProvider::Ollama => "llama3.1",
         }
     }
@@ -94,6 +99,7 @@ impl AiProvider {
                 "google/gemini-2.0-flash-001",
                 "meta-llama/llama-3.3-70b-instruct",
             ],
+            AiProvider::DeepSeek => &["deepseek-flash", "deepseek-v4-pro"],
             AiProvider::Ollama => &["llama3.1", "llama3.2", "qwen2.5", "mistral", "phi4"],
         }
     }
@@ -104,6 +110,7 @@ impl AiProvider {
             "openai" | "open-ai" => Some(AiProvider::OpenAi),
             "anthropic" | "claude" => Some(AiProvider::Anthropic),
             "openrouter" | "open-router" => Some(AiProvider::OpenRouter),
+            "deepseek" | "deep-seek" => Some(AiProvider::DeepSeek),
             "ollama" => Some(AiProvider::Ollama),
             _ => None,
         }
@@ -647,6 +654,8 @@ mod tests {
     #[test]
     fn provider_codes_and_models_are_consistent() {
         assert_eq!(AiProvider::from_code("claude"), Some(AiProvider::Anthropic));
+        assert_eq!(AiProvider::from_code("deepseek"), Some(AiProvider::DeepSeek));
+        assert!(AiProvider::DeepSeek.requires_key());
         for p in AiProvider::ALL {
             assert!(!p.label().is_empty());
             if p != AiProvider::Offline {
@@ -656,6 +665,17 @@ mod tests {
                 assert!(p.known_models().contains(&p.default_model()));
             }
         }
+    }
+
+    /// Live smoke against whatever provider ai.json points at. `--ignored` because CI has no
+    /// network: `cargo test --bin sonix live_ai -- --ignored`.
+    #[test]
+    #[ignore]
+    fn live_ai_generation_smoke() {
+        let cfg = AiConfig::load();
+        assert!(cfg.is_ready(), "AI-konfigurationen är inte komplett");
+        let clips = generate_clips(&cfg, "enkel house, 124 bpm, A minor").unwrap();
+        assert!(!clips.is_empty());
     }
 
     #[test]

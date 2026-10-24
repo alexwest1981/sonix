@@ -4302,5 +4302,17 @@ fn every_view_belongs_to_a_tab_group() {
     ] {
         counts[nav_group_of(view) as usize] += 1;
     }
-    assert_eq!(counts, [7, 2, 4, 0], "skapa/arrangera/mixa/verktyg: {counts:?}");
+    assert_eq!(counts, [6, 2, 2, 3], "skapa/arrangera/mixa/verktyg: {counts:?}");
+    assert!(
+        counts.iter().all(|n| *n > 0),
+        "varje flik måste ha minst en vy — annars hoppar klicket tillbaka: {counts:?}"
+    );
+
+    // **Fliken Verktyg pekar på en verktygsvy**, inte på arrangören: ett klick ska landa i
+    // gruppen det gäller, oavsett vad som råkar vara sparat.
+    for group in 0..4u8 {
+        let first = super::frame::first_view_of(group).expect("varje flik har en första vy");
+        assert_eq!(nav_group_of(first), group, "flik {group} pekar fel: {first:?}");
+    }
+    assert_eq!(super::frame::first_view_of(4), None, "det finns bara fyra flikar");
 }

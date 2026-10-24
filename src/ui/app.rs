@@ -596,6 +596,8 @@ pub struct SonixApp {
     pub show_visualizer: bool,
     /// **VFX Script (lite)**: formel som skrivs in i en automationsbana.
     pub show_script_modal: bool,
+    /// Skriptets yta: 0 = tagningen (pianorullen), 1 = projektet (tempo, kanaler, steg).
+    pub script_scope: u8,
     /// **Fruity Dance**: en figur som dansar i takt.
     pub show_dance: bool,
     /// **Take lanes** (Ableton-kompning): välj vilken tagning som spelas.
@@ -1218,6 +1220,7 @@ impl SonixApp {
             show_big_clock: false,
             show_visualizer: false,
             show_script_modal: false,
+            script_scope: 0,
             show_dance: false,
             show_takes_modal: false,
             control_room: crate::audio::control_room::ControlRoom::default(),
@@ -1254,7 +1257,7 @@ impl SonixApp {
                 ViewMode::ChannelRack,
                 ViewMode::PlaylistArranger,
                 ViewMode::EffectsMixer,
-                ViewMode::PlaylistArranger,
+                ViewMode::StemSeparator,
             ],
             pattern_menu: None,
             talkback: false,

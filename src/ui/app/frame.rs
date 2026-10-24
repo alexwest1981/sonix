@@ -19,12 +19,39 @@ use crate::ui::theme::Theme;
 pub(crate) fn nav_group_of(view: ViewMode) -> u8 {
     match view {
         ViewMode::PlaylistArranger | ViewMode::Video => 1,
-        ViewMode::EffectsMixer
-        | ViewMode::RemixFx
-        | ViewMode::StemSeparator
-        | ViewMode::PluginManager => 2,
+        ViewMode::EffectsMixer | ViewMode::RemixFx => 2,
+        // **VERKTYG har egna vyer.** Förut landade alla "övriga" i SKAPA, så fliken Verktyg
+        // hade ingen vy alls och ett klick på den hoppade tillbaka till Arrangera.
+        ViewMode::StemSeparator | ViewMode::PluginManager | ViewMode::ModularPatcher => 3,
         _ => 0,
     }
+}
+
+/// Alla vyer i den ordning flikarna listar dem.
+pub(crate) const VIEW_ORDER: [ViewMode; 13] = [
+    ViewMode::ChannelRack,
+    ViewMode::PianoRoll,
+    ViewMode::VocalStudio,
+    ViewMode::AlchemySynth,
+    ViewMode::SessionDrummer,
+    ViewMode::ModularPatcher,
+    ViewMode::AiMusicAssistant,
+    ViewMode::PlaylistArranger,
+    ViewMode::Video,
+    ViewMode::EffectsMixer,
+    ViewMode::RemixFx,
+    ViewMode::StemSeparator,
+    ViewMode::PluginManager,
+];
+
+/// Första vyn i en flik — målet när fliken inte minns något som hör dit.
+pub(crate) fn first_view_of(group: u8) -> Option<ViewMode> {
+    VIEW_ORDER.into_iter().find(|v| nav_group_of(*v) == group)
+}
+
+/// Sant när gruppen har minst en vy. Fliken får inte byta till en grupp som saknar mål.
+fn group_has_view(group: u8) -> bool {
+    first_view_of(group).is_some()
 }
 
 /// Namnet som panelen visar i sin rubrik.
@@ -1461,10 +1488,18 @@ impl SonixApp {
                             .selectable_label(active_group == group, self.tr(label))
                             .clicked()
                             && group != active_group
+                            && group_has_view(group)
                         {
                             // **Fliken minns senast valda vy i sin grupp** (0.9.78), så ett
                             // klick hit går tillbaka dit man var — inte till gruppens första.
-                            self.view_mode = self.last_view[group as usize];
+                            // Ett sparat mål som inte hör till fliken (t.ex. efter en
+                            // omgruppering) får inte skicka användaren någon annanstans.
+                            let remembered = self.last_view[group as usize];
+                            self.view_mode = if nav_group_of(remembered) == group {
+                                remembered
+                            } else {
+                                first_view_of(group).unwrap_or(remembered)
+                            };
                         }
                     }
                     ui.separator();
@@ -1475,14 +1510,14 @@ impl SonixApp {
                         (0, ViewMode::VocalStudio, "🎙 Sångstudio"),
                         (0, ViewMode::AlchemySynth, "✨ Alchemy"),
                         (0, ViewMode::SessionDrummer, "🥁 Trummor"),
-                        (0, ViewMode::ModularPatcher, "🧩 Patcher"),
+                        (3, ViewMode::ModularPatcher, "🧩 Patcher"),
                         (0, ViewMode::AiMusicAssistant, "🤖 AI"),
                         (1, ViewMode::PlaylistArranger, "🎼 Tidslinje"),
                         (1, ViewMode::Video, "🎬 Video"),
                         (2, ViewMode::EffectsMixer, "🎚 Mixer"),
                         (2, ViewMode::RemixFx, "🎛 Remix"),
-                        (2, ViewMode::StemSeparator, "🧠 Stems"),
-                        (2, ViewMode::PluginManager, "🔌 Plugins"),
+                        (3, ViewMode::StemSeparator, "🧠 Stems"),
+                        (3, ViewMode::PluginManager, "🔌 Plugins"),
                     ];
                     for (group, mode, label) in VIEWS {
                         if active_group == group

@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the VERKTYG tab led back to the arranger
+
+- `nav_group_of` skickade allt som inte var arranger eller mixer till SKAPA, så **fliken Verktyg
+  hade noll vyer**. Ett klick satte `view_mode = last_view[3]`, som var `PlaylistArranger` — alltså
+  tillbaka till arrangören, varje gång.
+- **Verktygsvyerna har nu en egen grupp:** Patcher, Stems och Plugins. `last_view[3]` startar på
+  Stems, och flikklicket kontrollerar att det sparade målet hör till fliken — annars tar den
+  flikens första vy. Verifierat i bild: VERKTYG aktiv med Patcher/Stems/Plugins och
+  Tärning/Ackord/FX-Rack.
+- Provet räknar nu `[6, 2, 2, 3]` och kräver att **varje** flik har minst en vy.
+
+### Added — project scripts (second execution surface)
+
+- `audio::project_script` med `Ctx { bpm, pattern_count, channels }`: `bpm()`, `set_bpm()`,
+  `steps()`, `channel_count()`, `channel_name()`, `step()`, `set_step()`, `clear_channel()`,
+  `pattern_count()`. Skriptet arbetar på en **kopia** som bara skrivs tillbaka om det gick
+  igenom, precis som tagning-skriptet.
+- Pianorullens skriptruta har en väljare **🎵 Tagning / 🎛 Projekt**; projektläget bygger `Ctx`
+  ur appens tempo och kanalsteg och lägger resultatet i statusraden.
+- Tre prov: tempo + steg, ett trasigt skript lämnar projektet orört, och steg utanför rutnätet
+  ignoreras.
+
 ### Added — note bends have an editor
 
 - **BEND-raden i pianorullen skriver bend per ton när exakt en ton är markerad** (en rad i
@@ -16,6 +38,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   kanalbenden, så ingen ny vana behövs.
 - Prov `a_single_selected_row_names_the_note_to_bend`: ingen markering → kanalbend, rad 12 → MIDI
   60, två rader → kanalbend igen.
+
+### Added — DeepSeek as a chat provider
+
+- **`AiProvider::DeepSeek`** (`https://api.deepseek.com/v1`, `deepseek-flash` som förval,
+  `deepseek-v4-pro` i listan). Talar OpenAI-formatet, så den går genom samma väg som OpenAI —
+  bara namnet, bas-URL:en, modellistan och `from_code("deepseek")` är nya. `providers`-listan i
+  båda inställningspanelerna byggs ur `AiProvider::ALL`, så valet dyker upp utan mer kod.
+- Prov `provider_codes_and_models_are_consistent` täcker koden; `live_ai_generation_smoke`
+  (`--ignored`, kräver nät och en ifylld `ai.json`) kör en riktig generering mot vald provider.
 
 ### Added — MIDI in scripts, and two inventory rows promoted
 

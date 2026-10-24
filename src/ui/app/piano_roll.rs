@@ -344,6 +344,18 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             )
             .id_salt("piano_roll_script")
             .show(ui, |ui| {
+                // **Ytan skriptet rör:** tagningen eller hela projektet. Samma ruta, olika
+                // sandlåda — tagningsskriptet ser noter, projektskriptet ser tempo och steg.
+                ui.horizontal(|ui| {
+                    for (scope, label) in [(0u8, "🎵 Tagning"), (1, "🎛 Projekt")] {
+                        if ui
+                            .selectable_label(self.script_scope == scope, label)
+                            .clicked()
+                        {
+                            self.script_scope = scope;
+                        }
+                    }
+                });
                 ui.add(
                     egui::TextEdit::multiline(&mut self.script_text)
                         .desired_rows(3)

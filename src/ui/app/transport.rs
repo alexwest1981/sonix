@@ -1507,6 +1507,10 @@ pub(crate) fn run_piano_script(&mut self) {
             crate::i18n::t("Skriv ett skript först — t.ex. 'transpose 12'").to_string();
         return;
     }
+    if self.script_scope == 1 {
+        self.run_project_script(&text);
+        return;
+    }
     self.push_undo("📜 Pianorullsskript");
     self.take_seed_counter = self.take_seed_counter.wrapping_add(1);
     let seed = self.take_seed_counter;
@@ -1525,6 +1529,44 @@ pub(crate) fn run_piano_script(&mut self) {
         }
         Err(err) => {
             // Ett trasigt skript ska inte lämna tagningen halvändrad utan att säga det.
+            self.status_message = crate::tstatus!("❌ {}", err);
+        }
+    }
+}
+
+/// **Projektskriptet:** kopian byggs ur appens tempo och kanalsteg, körs i sandlådan och
+/// skrivs tillbaka bara om skriptet gick igenom.
+pub(crate) fn run_project_script(&mut self, text: &str) {
+    use crate::audio::project_script::{Ctx, ScriptChannel, run};
+    let mut ctx = Ctx {
+        bpm: self.bpm,
+        pattern_count: self.patterns.len(),
+        channels: self
+            .channels
+            .iter()
+            .map(|c| ScriptChannel {
+                name: c.name.clone(),
+                steps: c.steps.to_vec(),
+            })
+            .collect(),
+    };
+    match run(text, &mut ctx) {
+        Ok(log) => {
+            self.push_undo("📜 Projektskript");
+            self.bpm = ctx.bpm;
+            for (channel, scripted) in self.channels.iter_mut().zip(ctx.channels.iter()) {
+                // Längden kan skilja i ett äldre projekt: bara det som får plats skrivs.
+                for (slot, value) in channel.steps.iter_mut().zip(scripted.steps.iter()) {
+                    *slot = *value;
+                }
+            }
+            self.status_message = if log.is_empty() {
+                crate::tstatus!("📜 Projektskriptet kördes")
+            } else {
+                crate::tstatus!("📜 {}", log.join(" · "))
+            };
+        }
+        Err(err) => {
             self.status_message = crate::tstatus!("❌ {}", err);
         }
     }
