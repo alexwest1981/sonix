@@ -4,6 +4,7 @@
 // Innerattributet måste stå först i filen, före alla moduler.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod ai_service;
 mod audio;
 mod autosave;
 

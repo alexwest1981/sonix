@@ -64,66 +64,68 @@ impl SonixApp {
 
         let mut done = Vec::new();
         for call in calls {
-            match call.tool.as_str() {
-                "set_tempo" => {
-                    let bpm = call.args.get("bpm").and_then(|v| v.as_f64());
-                    match bpm {
-                        Some(bpm) if (40.0..=240.0).contains(&bpm) => {
-                            self.bpm = bpm as f32;
-                            done.push(format!("tempo {bpm:.0} BPM"));
-                        }
-                        Some(bpm) => done.push(format!("tempo {bpm:.0} ligger utanför 40–240")),
-                        None => done.push("tempo saknade bpm".to_string()),
-                    }
-                }
-                "write_drum_pattern" => {
-                    let style = call
-                        .args
-                        .get("style")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .to_string();
-                    let bars = call.args.get("bars").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
-                    match self.ai_write_drum_pattern(&style, bars) {
-                        Ok(line) => done.push(line),
-                        Err(e) => done.push(format!("trumkomp: {e}")),
-                    }
-                }
-                "mute_track" => {
-                    let idx = call.args.get("track").and_then(|v| v.as_u64()).unwrap_or(999) as usize;
-                    let muted = call.args.get("muted").and_then(|v| v.as_bool()).unwrap_or(true);
-                    match self.playlist_tracks.get_mut(idx) {
-                        Some(track) => {
-                            track.muted = muted;
-                            done.push(format!(
-                                "spår {} {}",
-                                idx + 1,
-                                if muted { "tystat" } else { "påslaget" }
-                            ));
-                        }
-                        None => done.push(format!("spår {} finns inte", idx + 1)),
-                    }
-                }
-                "plan_sections" => match ai_tools::parse_section_plan(&call.args) {
-                    Ok(plan) => {
-                        let summary = plan
-                            .iter()
-                            .map(|s| format!("{} ({} takter)", s.name, s.bars))
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        self.ai_pending_plan = Some(plan);
-                        done.push(format!("plan att bekräfta: {summary}"));
-                    }
-                    Err(e) => done.push(format!("plan: {e}")),
-                },
-                "set_key" => done.push("tonart: inte byggt än".to_string()),
-                "set_channel_instrument" => done.push("instrumentbyte: inte byggt än".to_string()),
-                other => done.push(format!("okänt verktyg '{other}'")),
-            }
+            done.push(self.ai_execute_call(&call));
         }
         let line = format!("🤖 {}", done.join(" · "));
         self.ai_assistant.last_reply = line.clone();
         line
+    }
+
+    /// Utför **ett** verktygsanrop. Delas av assistentvyn och HTTP-tjänsten, så en regel bara
+    /// finns på ett ställe.
+    pub fn ai_execute_call(&mut self, call: &crate::audio::ai_tools::Call) -> String {
+        match call.tool.as_str() {
+            "set_tempo" => {
+                let bpm = call.args.get("bpm").and_then(|v| v.as_f64());
+                match bpm {
+                    Some(bpm) if (40.0..=240.0).contains(&bpm) => {
+                        self.bpm = bpm as f32;
+                        format!("tempo {bpm:.0} BPM")
+                    }
+                    Some(bpm) => format!("tempo {bpm:.0} ligger utanför 40–240"),
+                    None => "tempo saknade bpm".to_string(),
+                }
+            }
+            "write_drum_pattern" => {
+                let style = call
+                    .args
+                    .get("style")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                let bars = call.args.get("bars").and_then(|v| v.as_u64()).unwrap_or(1) as usize;
+                match self.ai_write_drum_pattern(&style, bars) {
+                    Ok(line) => line,
+                    Err(e) => format!("trumkomp: {e}"),
+                }
+            }
+            "mute_track" => {
+                let idx = call.args.get("track").and_then(|v| v.as_u64()).unwrap_or(999) as usize;
+                let muted = call.args.get("muted").and_then(|v| v.as_bool()).unwrap_or(true);
+                match self.playlist_tracks.get_mut(idx) {
+                    Some(track) => {
+                        track.muted = muted;
+                        format!("spår {} {}", idx + 1, if muted { "tystat" } else { "påslaget" })
+                    }
+                    None => format!("spår {} finns inte", idx + 1),
+                }
+            }
+            "plan_sections" => match ai_tools::parse_section_plan(&call.args) {
+                Ok(plan) => {
+                    let summary = plan
+                        .iter()
+                        .map(|s| format!("{} ({} takter)", s.name, s.bars))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    self.ai_pending_plan = Some(plan);
+                    format!("plan att bekräfta: {summary}")
+                }
+                Err(e) => format!("plan: {e}"),
+            },
+            "set_key" => "tonart: inte byggt än".to_string(),
+            "set_channel_instrument" => "instrumentbyte: inte byggt än".to_string(),
+            other => format!("okänt verktyg '{other}'"),
+        }
     }
 
     /// Skriver ett komp på de tre första kanalerna (kick, virvel, hi-hat). Kanalerna måste finnas

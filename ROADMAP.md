@@ -103,6 +103,10 @@ Utgångsläget finns redan: paletten är 29 semantiska nycklar i `~/.config/soni
 
 ## 🤖 AI som kan instrumenten (tillagt 2026-10-24)
 
+**API för plugin:** *✅ 0.9.93:* `src/ai_service.rs` exponerar assistentens yta på localhost —
+`/v1/tools`, `/v1/execute`, `/v1/last` — med bearer-token och samma validering som appen.
+Dokumentation i `docs/AI-API.md`.
+
 I dag genererar AI-assistenten klipp ur en prompt (`ai_generator::generate`) med genre, tonart och
 mål som val. Den **kan inte röra instrumenten**, och man kan inte diskutera arrangemanget med den.
 

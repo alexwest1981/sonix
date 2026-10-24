@@ -602,6 +602,10 @@ pub struct SonixApp {
     pub sustain_pedal: bool,
     /// Vilken rad i 6-op-matrisen panelen redigerar: 0 = FM, 1 = RM, 2 = ADD.
     pub six_op_mode: u8,
+    /// AI-tjänstens kö: anrop från `ai_service` som ska köras i UI-tråden.
+    pub ai_service_queue: crate::ai_service::Queue,
+    pub ai_service_results: crate::ai_service::Results,
+    pub ai_service_port: u16,
     /// AI-samtalet: väntande svar och en plan som väntar på bekräftelse.
     pub ai_chat_pending: Option<std::sync::Arc<std::sync::Mutex<Option<Result<String, String>>>>>,
     pub ai_pending_plan: Option<Vec<crate::audio::ai_tools::PlannedSection>>,
@@ -1203,6 +1207,28 @@ impl SonixApp {
             cue_listen: crate::audio::control_room::CueListen::Main,
             sustain_pedal: false,
             six_op_mode: 0,
+            ai_service_queue: {
+                let queue: crate::ai_service::Queue = Default::default();
+                let port = crate::ai_service::configured_port();
+                let started = if port == 0 {
+                    0
+                } else {
+                    match crate::ai_service::load_or_create_token() {
+                        Ok(token) => crate::ai_service::start(
+                            port,
+                            token,
+                            queue.clone(),
+                            AI_SERVICE_RESULTS.with(|r| r.clone()),
+                        )
+                        .unwrap_or(0),
+                        Err(_) => 0,
+                    }
+                };
+                AI_SERVICE_PORT.store(started, std::sync::atomic::Ordering::Relaxed);
+                queue
+            },
+            ai_service_results: AI_SERVICE_RESULTS.with(|r| r.clone()),
+            ai_service_port: 0,
             ai_chat_pending: None,
             ai_pending_plan: None,
             theme_registry: Vec::new(),
@@ -1288,6 +1314,14 @@ impl SonixApp {
 
 }
 
+/// Porten tjänsten faktiskt lyssnar på (0 = avstängd). Sätts när tjänsten startar, före `update`.
+static AI_SERVICE_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
+
+thread_local! {
+    /// Kvittolistan skapas en gång per tråd och delas med tjänsten.
+    static AI_SERVICE_RESULTS: crate::ai_service::Results = Default::default();
+}
+
 impl eframe::App for SonixApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Temafilen läses om när den ändras — annars krävdes en omstart för att se en färg.
@@ -1297,6 +1331,21 @@ impl eframe::App for SonixApp {
 
         // AI-svaret plockas upp och utförs.
         self.poll_ai_chat();
+
+        // Anrop från AI-tjänsten (plugin/skript) körs här, i den tråd som äger pattern och kanaler.
+        self.ai_service_port = AI_SERVICE_PORT.load(std::sync::atomic::Ordering::Relaxed);
+        let queued: Vec<_> = self
+            .ai_service_queue
+            .lock()
+            .map(|mut q| std::mem::take(&mut *q))
+            .unwrap_or_default();
+        for call in queued {
+            let line = self.ai_execute_call(&call);
+            if let Ok(mut r) = self.ai_service_results.lock() {
+                r.push(line.clone());
+            }
+            self.status_message = crate::tstatus!("🛰 {}", line);
+        }
 
         // Temaregistret hämtas i bakgrunden; här plockas svaret upp.
         if let Some(slot) = self.theme_registry_pending.clone() {

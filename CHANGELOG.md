@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — a localhost API for the AI service
+
+- **`src/ai_service.rs`**: HTTP on `127.0.0.1:4827` (`SONIX_AI_API_PORT`, `0` = off) with
+  `GET /v1/health`, `GET /v1/tools` (the same schema the model gets), `POST /v1/execute`
+  (validated `{"calls":[…]}`) and `GET /v1/last` (receipts, cleared on read).
+- **Three locks, none optional:** loopback only, `Authorization: Bearer` with a token written to
+  `~/.config/sonix/ai_service_token` (0600), and the same validation as the assistant uses.
+  Executed calls run on the UI thread, like everything else that touches patterns.
+- Prov: `the_service_requires_the_token_and_serves_the_schema` (401 without token, 200 with) and
+  `execute_queues_valid_calls_and_rejects_broken_json` (queue, 400 on bad JSON, receipts).
+- **Verified end to end:** `POST /v1/execute {"set_tempo":132}` → `GET /v1/last` →
+  `["tempo 132 BPM"]`, and a drum write → `["trumkomp 'house' i 2 takter"]`.
+- Docs: `docs/AI-API.md`.
+
 ### Added — the assistant gets instructions and hands
 
 - **`src/audio/ai_tools.rs`**: a system prompt that teaches the model Sonix's own vocabulary
