@@ -226,6 +226,7 @@ pub fn reference_spec() -> RenderSpec {
 /// Effektkedjan som mäts med: master-FX på, som i en färdig låt.
 pub fn reference_fx() -> FxState {
     FxState {
+        vocoder_amount: 0.0,
         waveform: super::command::Waveform::Saw,
         adsr: super::envelope::AdsrParams { attack: 0.01, decay: 0.2, sustain: 0.7, release: 0.2 },
         filter: super::filter::FilterParams::default(),

@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Carrier input in the master chain.** A 16-band vocoder sits before the master FX chain
+  with the rack's own synth as the carrier and the stems as the modulator, so a synth patch
+  speaks the rhythm of a drum loop. The modulator is taken from the stem mix, not the master —
+  the synth's own reverb tail otherwise opens the vocoder and it turns into a volume knob.
+  `amount` 0 bypasses it completely; it is saved with the project and used by the exporter.
 - **Talkback.** A 🎙 button in the control room routes the microphone to the monitors instead
   of into the master, and adds it *after* the control-room stage — so DIM lowers the music but
   not the voice, and someone listening to a cue bus hears it over that bus. Nothing reaches an

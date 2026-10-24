@@ -335,6 +335,7 @@ fn export_fx_state(&self, dry: bool) -> crate::audio::FxState {
         reverb.mix = 0.0;
     }
     crate::audio::FxState {
+        vocoder_amount: self.vocoder_amount,
         waveform: self.waveform,
         adsr: self.adsr,
         filter: self.filter,

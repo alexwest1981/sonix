@@ -803,8 +803,16 @@ impl SynthEngine {
             }
         }
 
+        // 8d. **Bärvågsingång:** synten blir bärvåg, **stammarna** modulator. Modulatorn tas
+        //     ur `stem_mix` och inte ur mastern, annars modulerar syntens egen reverb- och
+        //     delaysvans vocodern — då öppnar bärvågen sig själv och vocodern blir en volymratt.
+        let (pre_l, pre_r) = (del_l + stem_mix_l, del_r + stem_mix_r);
+        let (pre_l, pre_r) =
+            self.vocoder
+                .process(stem_mix_l, stem_mix_r, synth_out, pre_l, pre_r);
+
         // 9. Master bus FX chain (EQ, compressor, de-esser, doubler, gate, filter, limiter)
-        let (master_l, master_r) = self.master_fx.process(del_l + stem_mix_l, del_r + stem_mix_r);
+        let (master_l, master_r) = self.master_fx.process(pre_l, pre_r);
 
         // **Cue-lyssning** byter ut masterns signal efter FX-kedjan (kedjan tickar ändå, så
         // dess tillstånd inte stannar). Bara det som går till monitorerna byts — exportmotorn

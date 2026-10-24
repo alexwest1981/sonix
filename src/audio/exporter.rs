@@ -193,6 +193,8 @@ impl Default for SynthVoiceState {
 /// Master FX / synth settings snapshot.
 #[derive(Clone, Copy)]
 pub struct FxState {
+    /// **Bärvåg:** vocoderns mängd i masterns kedja (0 = av).
+    pub vocoder_amount: f32,
     pub waveform: super::command::Waveform,
     pub adsr: AdsrParams,
     pub filter: FilterParams,
@@ -618,6 +620,9 @@ pub fn build_offline_engine(spec: &RenderSpec, fx: &FxState) -> SynthEngine {
     engine.fm = fx.synth.fm;
     engine.handle_command(AudioCommand::SetHarmonics { levels: fx.synth.harmonics });
     // 6-op-patchen är ett block: utan det här exporteras `Waveform::SixOp` som en ren sinus.
+    engine.handle_command(AudioCommand::SetMasterVocoder {
+        amount: fx.vocoder_amount,
+    });
     engine.handle_command(AudioCommand::SetSixOp {
         params: fx.synth.six_op,
     });
@@ -1055,6 +1060,7 @@ mod tests {
 
     pub(super) fn fx_for_test() -> FxState {
         FxState {
+            vocoder_amount: 0.0,
             waveform: crate::audio::command::Waveform::Saw,
             adsr: Default::default(),
             filter: Default::default(),
@@ -1459,6 +1465,7 @@ mod tests {
         let spec = synth_spec_with(grid, ch_steps, 60);
 
         let fx = FxState {
+            vocoder_amount: 0.0,
             waveform: super::super::command::Waveform::Sine,
             adsr: AdsrParams { attack: 0.005, decay: 0.2, sustain: 0.8, release: 0.2 },
             filter: FilterParams::default(),
@@ -1500,6 +1507,7 @@ mod tests {
         ch_steps[0] = true;
         let spec = synth_spec_with(grid, ch_steps, 60);
         let mut fx = FxState {
+            vocoder_amount: 0.0,
             waveform: super::super::command::Waveform::Additive,
             adsr: AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 },
             filter: FilterParams { cutoff: 18_000.0, resonance: 0.0 },
@@ -1543,6 +1551,7 @@ mod tests {
             let mut synth = SynthVoiceState::default();
             synth.six_op = six_op;
             let fx = FxState {
+                vocoder_amount: 0.0,
                 waveform: super::super::command::Waveform::SixOp,
                 adsr: AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 },
                 filter: FilterParams { cutoff: 18_000.0, resonance: 0.0 },
@@ -1579,6 +1588,7 @@ mod tests {
         ch_steps[0] = true;
         let spec = synth_spec_with(grid, ch_steps, 60);
         let mut fx = FxState {
+            vocoder_amount: 0.0,
             waveform: super::super::command::Waveform::Sine,
             adsr: AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 },
             filter: FilterParams { cutoff: 18_000.0, resonance: 0.0 },
@@ -1637,6 +1647,7 @@ mod tests {
     fn offline_render_produces_audio() {
         let spec = render_smoke_spec();
         let fx = FxState {
+            vocoder_amount: 0.0,
             waveform: super::super::command::Waveform::Square,
             adsr: AdsrParams { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.1 },
             filter: FilterParams::default(),
@@ -1739,6 +1750,7 @@ mod tests {
         let energy_880 = |send: bool| -> f32 {
             let spec = spec_with_send(send);
             let fx = FxState {
+                vocoder_amount: 0.0,
                 waveform: super::super::command::Waveform::Square,
                 adsr: AdsrParams { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.1 },
                 filter: FilterParams::default(),
@@ -1816,6 +1828,7 @@ mod tests {
         let tail_energy = |loop_mode: LoopMode| -> f32 {
             let spec = spec_with_loop(loop_mode);
             let fx = FxState {
+                vocoder_amount: 0.0,
                 waveform: super::super::command::Waveform::Square,
                 adsr: AdsrParams::default(),
                 filter: FilterParams::default(),
@@ -1913,6 +1926,7 @@ mod tests {
         spec.rack[0].notes[0] = 36;
 
         let fx = FxState {
+            vocoder_amount: 0.0,
             waveform: super::super::command::Waveform::Square,
             adsr: AdsrParams::default(),
             filter: FilterParams::default(),
@@ -2078,6 +2092,7 @@ mod tests {
         let energy_880 = |send: bool| -> f32 {
             let spec = spec_with_track_send(send);
             let fx = FxState {
+                vocoder_amount: 0.0,
                 waveform: super::super::command::Waveform::Square,
                 adsr: AdsrParams {
                     attack: 0.005,
@@ -2179,6 +2194,7 @@ mod tests {
         let energy_880 = |sidechain: bool| -> f32 {
             let spec = spec_with_sidechain(sidechain);
             let fx = FxState {
+                vocoder_amount: 0.0,
                 waveform: super::super::command::Waveform::Square,
                 adsr: AdsrParams { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.1 },
                 filter: FilterParams::default(),

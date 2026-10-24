@@ -3598,3 +3598,58 @@ fn talkback_is_heard_through_a_dimmed_monitor() {
     );
 }
 
+
+/// **Bärvågen hörs bara när modulatorn säger till.** Synten är bärvåg och en stam är
+/// modulator: med tyst modulator stängs bärvågen (amount 1,0), med en stam som spelar
+/// öppnar den. Skillnaden mot en volymratt är att modulatorns **spektrum** styr, inte dess nivå.
+#[test]
+fn the_vocoder_silences_the_carrier_when_the_modulator_is_silent() {
+    fn engine(with_stem: bool) -> SynthEngine {
+        let mut synth = SynthEngine::new(48_000.0);
+        if with_stem {
+            let tone: Arc<Vec<f32>> = Arc::new(
+                (0..48_000)
+                    .map(|i| 0.5 * (std::f32::consts::TAU * 400.0 * i as f32 / 48_000.0).sin())
+                    .collect(),
+            );
+            synth.handle_command(AudioCommand::LoadStemTrack {
+                track_index: 0,
+                left: tone.clone(),
+                right: tone,
+                sample_rate: 48_000.0,
+                volume: 1.0,
+                pan: 0.0,
+                start_time_secs: 0.0,
+            });
+            synth.handle_command(AudioCommand::SetStemTrackRegions {
+                track_index: 0,
+                regions: vec![region_under_test(1.0, 0.0, 0.0, false, 1.0)],
+            });
+        }
+        synth.handle_command(AudioCommand::SetSongPlayback(true));
+        // Bärvågen måste ha energi i modulatorns band: en sinus på 880 Hz har inget vid
+        // 400 Hz, och då blir vocodern tyst hur mycket modulator det än finns.
+        synth.handle_command(AudioCommand::SetWaveform(
+            crate::audio::command::Waveform::Saw,
+        ));
+        synth.handle_command(AudioCommand::SetMasterVocoder { amount: 1.0 });
+        synth.handle_command(AudioCommand::NoteOn {
+            note: 45,
+            freq: 110.0,
+            velocity: 1.0,
+            channel: 0,
+        });
+        synth
+    }
+
+    let mut dry = engine(false);
+    let carrier_only = rms(&render_left(&mut dry, 9_600)[4_800..]);
+    let mut modulated = engine(true);
+    let with_modulator = rms(&render_left(&mut modulated, 9_600)[4_800..]);
+    assert!(
+        carrier_only < with_modulator * 0.5,
+        "utan modulator ska bärvågen stängas: {carrier_only:.4} mot {with_modulator:.4}"
+    );
+    assert!(with_modulator > 0.02, "med modulator ska den höras: {with_modulator:.4}");
+}
+

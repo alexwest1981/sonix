@@ -2406,6 +2406,24 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                                 let _ =
                                     self.engine.send_command(AudioCommand::SetTalkback(self.talkback));
                             }
+                            ui.separator();
+                            let mut vocoder = self.vocoder_amount;
+                            if ui
+                                .add(
+                                    egui::Slider::new(&mut vocoder, 0.0..=1.0)
+                                        .text(crate::i18n::t("BÄRVÅG"))
+                                        .show_value(false),
+                                )
+                                .on_hover_text(crate::i18n::t(
+                                    "Synten blir bärvåg och stammarna modulator — 0 = av",
+                                ))
+                                .changed()
+                            {
+                                self.vocoder_amount = vocoder;
+                                let _ = self.engine.send_command(
+                                    AudioCommand::SetMasterVocoder { amount: vocoder },
+                                );
+                            }
                         });
                         if changed {
                             let _ = self.engine.send_command(AudioCommand::SetControlRoom(

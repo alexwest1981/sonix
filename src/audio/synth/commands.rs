@@ -862,6 +862,9 @@ impl SynthEngine {
                 self.monitor_buf.clear();
                 self.monitor_idx = 0;
             }
+            AudioCommand::SetMasterVocoder { amount } => {
+                self.vocoder.set_amount(amount);
+            }
             AudioCommand::SetTalkback(on) => {
                 self.talkback = on;
             }

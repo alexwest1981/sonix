@@ -7,6 +7,7 @@
 use std::f32::consts::PI;
 use std::sync::Arc;
 
+use super::filter::{FilterParams, StateVariableFilter};
 use super::vocal_harmonizer::fft_radix2;
 
 // ---------------------------------------------------------------------------
@@ -504,6 +505,81 @@ impl MasterFxChain {
     }
 }
 
+
+/// **Bärvågsingång i masterns kedja**: en streaming-vocoder där bärvågen är rackets egen
+/// synt (`synth_out`) och modulatorn är resten av mixen. Banden ligger logaritmiskt mellan
+/// 100 Hz och 8 kHz, samma indelning som `vocal_harmonizer::vocode` — men den funktionen
+/// arbetar på hela buffertar, och mastern räknar ett sampel i taget.
+///
+/// Monofonisk med flit: bärvågen är en monosignal (syntens utström), och en vocoder som
+/// delar upp två kanaler gör dubbelt arbete för en bredd som ändå inte finns i källan.
+pub struct MasterVocoder {
+    amount: f32,
+    /// (modulatorfilter, bärvågsfilter, envelop, bandparametrar) per band.
+    bands: Vec<(StateVariableFilter, StateVariableFilter, f32, FilterParams)>,
+    attack: f32,
+    release: f32,
+}
+
+impl MasterVocoder {
+    pub const BANDS: usize = 16;
+
+    pub fn new(sample_rate: f32) -> Self {
+        let sample_rate = sample_rate.max(1.0);
+        let bands = (0..Self::BANDS)
+            .map(|band| {
+                let t = band as f32 / (Self::BANDS - 1) as f32;
+                let freq = 100.0 * (8_000.0f32 / 100.0).powf(t);
+                (
+                    StateVariableFilter::new(sample_rate),
+                    StateVariableFilter::new(sample_rate),
+                    0.0f32,
+                    FilterParams {
+                        cutoff: freq,
+                        resonance: 3.0,
+                    },
+                )
+            })
+            .collect();
+        Self {
+            amount: 0.0,
+            bands,
+            attack: 1.0 - (-1.0 / (0.005 * sample_rate)).exp(),
+            release: 1.0 - (-1.0 / (0.040 * sample_rate)).exp(),
+        }
+    }
+
+    pub fn set_amount(&mut self, amount: f32) {
+        self.amount = amount.clamp(0.0, 1.0);
+    }
+
+    /// Ett sampel: modulatorns bandnivåer styr bärvågens band. `amount` blandar torrt och
+    /// vått, så 0 är exakt som förut.
+    #[inline(always)]
+    pub fn process(&mut self, mod_l: f32, mod_r: f32, carrier: f32, dry_l: f32, dry_r: f32) -> (f32, f32) {
+        if self.amount <= 0.0 {
+            return (dry_l, dry_r);
+        }
+        let modulator = (mod_l + mod_r) * 0.5;
+        let mut wet = 0.0;
+        for (mod_filter, car_filter, env, params) in &mut self.bands {
+            let m = mod_filter.process_bandpass(modulator, params).abs();
+            let coeff = if m > *env { self.attack } else { self.release };
+            *env += (m - *env) * coeff;
+            wet += car_filter.process_bandpass(carrier, params) * *env;
+        }
+        wet *= 2.0 / (self.bands.len() as f32).sqrt();
+        let a = self.amount;
+        (dry_l * (1.0 - a) + wet * a, dry_r * (1.0 - a) + wet * a)
+    }
+}
+
+impl Default for MasterVocoder {
+    fn default() -> Self {
+        Self::new(48_000.0)
+    }
+}
+
 mod color;
 mod dynamics;
 mod eq;
@@ -516,3 +592,34 @@ pub use modulation::*;
 
 #[cfg(test)]
 mod tests;
+
+
+#[cfg(test)]
+mod vocoder_tests {
+    use super::MasterVocoder;
+
+    fn run(modulator_amp: f32) -> f32 {
+        let mut voc = MasterVocoder::new(48_000.0);
+        voc.set_amount(1.0);
+        let mut sum = 0.0;
+        for i in 0..9_600 {
+            let t = i as f32 / 48_000.0;
+            let carrier = (std::f32::consts::TAU * 880.0 * t).sin();
+            let modulator = modulator_amp * (std::f32::consts::TAU * 400.0 * t).sin();
+            let (l, _r) = voc.process(modulator, modulator, carrier, 0.0, 0.0);
+            if i > 4_800 {
+                sum += l * l;
+            }
+        }
+        (sum / 4_800.0).sqrt()
+    }
+
+    /// Bärvågen släpps igenom bara när modulatorn har energi.
+    #[test]
+    fn the_carrier_is_gated_by_the_modulator() {
+        let silent = run(0.0);
+        let loud = run(0.8);
+        assert!(loud > 0.02, "modulatorn ska släppa igenom bärvågen: {loud:.4}");
+        assert!(silent < loud * 0.05, "tyst modulator ska stänga: {silent:.6} mot {loud:.4}");
+    }
+}

@@ -575,6 +575,11 @@ pub enum AudioCommand {
     /// audio thread mixes it into the master bus scaled by
     /// [`AudioCommand::SetMonitorLevel`] (default 1.0, i.e. unity).
     /// Sent again after every reconfigure.
+    /// **Bärvågsingång i masterns kedja.** `amount` 0–1 blandar in vocodern, där rackets
+    /// synt är bärvågen och resten av mixen är modulator. 0 är exakt som förut.
+    SetMasterVocoder {
+        amount: f32,
+    },
     /// **Talkback:** micken till monitorerna i stället för in i mastern. Läggs på efter
     /// control room-steget, så den hörs även i DIM och i en cue-buss. Kräver att
     /// mikrofoninspelningen (som fyller ringen) är igång — annars är ringen tom.
