@@ -1553,6 +1553,37 @@ pub fn populate_demo_data(&mut self) {
     // Modular graph default connections
     self.modular_graph.load_default_preset();
 
+    // **Demon har flera tagningar per pattern**, så lane-vyn i spellistan syns och kan provas:
+    // varje extra lane är samma fras med några noter flyttade och ett annat anslag.
+    // Här, inte tidigare: patternen är tomma tills resten av demodatan är på plats.
+    for (pat_idx, pat) in self.patterns.iter_mut().take(3).enumerate() {
+        // Demons pianorulle är ett rutnät, inte tagningar — så `take` är tom. Fyll en kort
+        // fras här, annars finns inget att visa i lane-vyn.
+        if pat.take.notes.is_empty() {
+            pat.take.notes = (0..4)
+                .map(|i| crate::midi_take::TakeNote {
+                    pos: i as f32 * 2.0,
+                    key: 57 + (pat_idx as u8 * 3) + i as u8,
+                    velocity: 0.8,
+                    probability: 1.0,
+                    length_steps: 1.0,
+                    articulation: crate::midi_take::Articulation::Normal,
+                    applied: false,
+                })
+                .collect();
+        }
+        for (lane_no, shift) in [1usize, 2].into_iter().enumerate() {
+            let mut lane = pat.take.clone();
+            for (note_idx, note) in lane.notes.iter_mut().enumerate() {
+                if note_idx % 3 == lane_no {
+                    note.pos = (note.pos + shift as f32 * 0.25).min(15.75);
+                    note.velocity = (note.velocity * 0.85).clamp(0.1, 1.0);
+                }
+            }
+            pat.alt_takes.push(lane);
+        }
+    }
+
     // AI Assistant prompt
     self.ai_assistant.prompt_input = crate::i18n::t("Cyberpunk 80s synthwave lead med mörk rezonans i A-moll").to_string();
     self.ai_assistant.last_status = crate::i18n::t("✨ AI genererade 3 variationer av Synth Lead & Bassline").to_string();

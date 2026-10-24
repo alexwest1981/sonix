@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the take lanes were invisible in the demo
+
+- Lane-vyn (0.9.46) ritar varje tagning som ett band i patternblocket och låter ett klick välja
+  lane för den takten — men **demon hade bara en tagning**, så banden ritades aldrig och
+  funktionen gick inte att se eller prova. Demon har nu tre tagningar på de tre första
+  patternen, och banden syns (verifierat i bild: tre band, det spelade ljusast).
+- Demons pianorulle är ett rutnät, inte tagningar, så `take` var tom; frasen fylls därför med
+  fyra noter innan lanes skapas.
+
 ### Performance — a typical patch measured too
 
 - The measurement now prints four cases. **Typical patch (unison 1): 5,7× realtid.** The ceiling
