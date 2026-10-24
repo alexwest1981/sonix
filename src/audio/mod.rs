@@ -89,7 +89,7 @@ pub use envelope::AdsrParams;
 pub use exporter::{
     build_offline_engine, load_timeline_into_engine, render_project_offline, sanitize_filename,
     write_export, write_export_with, DitherSettings, ExportFormat, ExportMeta, FxState, PatternSnap, RackChannel, RenderSpec,
-    TrackAudioSnap, TrackRole, TrackSnap, VoiceSpec,
+    SynthVoiceState, TrackAudioSnap, TrackRole, TrackSnap, VoiceSpec,
 };
 #[allow(unused_imports)]
 pub use filter::FilterParams;

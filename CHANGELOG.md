@@ -42,11 +42,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Exports now include the additive patch.** `render_buffer` sent only the oscillator
-  waveform and filter to the offline engine, so a drawn additive sound exported as a plain
-  sine. Drawbars, per-partial envelopes, formant and time axis are now applied as commands
-  after the offline engine is built; a render test confirms the drawn partial reaches the
-  exported audio.
+- **Exports now include the whole synth patch.** `FxState` carried the oscillator waveform,
+  filter and FX but not the voice: drawbars, per-partial envelopes, formant, time axis, sub,
+  unison, glide, filter drive/key tracking and FM were silent in the file while audible live.
+  They now live in `SynthVoiceState` inside `FxState` and `build_offline_engine` applies them.
+  Render tests confirm the drawn partial and the sub oscillator reach the exported audio.
 
 ### Changed
 

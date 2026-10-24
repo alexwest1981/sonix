@@ -17,7 +17,7 @@ use std::io::Write;
 use std::process::Command;
 use std::sync::Arc;
 
-use super::command::{AudioCommand, LoopMode, StemRegionPlayback, StemSend};
+use super::command::{AudioCommand, FmParams, LoopMode, StemRegionPlayback, StemSend};
 use super::drum::DrumType;
 use super::effects::{DelayParams, ReverbParams};
 use super::envelope::AdsrParams;
@@ -146,6 +146,45 @@ pub struct TrackAudioSnap {
     pub sends: Vec<StemSend>,
 }
 
+/// Allt röstens ljud beror på som inte redan ligger i [`FxState`]: dragstänger,
+/// partialkonturer, formant och tidsaxel, sub, unison, glide och FM.
+///
+/// **Varför den finns:** exporten ska ge samma ljud som högtalarna. Låg inställningen bara i
+/// appen blev en renderad fil en annan patch — en utdragen additiv klang exporterades som en
+/// ren sinus, och sub/unison/glide/FM föll bort på samma sätt.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SynthVoiceState {
+    pub harmonics: [f32; crate::audio::synth::HARMONIC_COUNT],
+    pub partial_envs: [crate::audio::synth::PartialAdsr; crate::audio::synth::HARMONIC_COUNT],
+    pub formant: crate::audio::synth::SpectralFormant,
+    pub sweep: crate::audio::synth::SpectralSweep,
+    pub sub: f32,
+    pub unison: u8,
+    pub detune: f32,
+    pub glide: f32,
+    pub filter_drive: f32,
+    pub filter_key_track: f32,
+    pub fm: FmParams,
+}
+
+impl Default for SynthVoiceState {
+    fn default() -> Self {
+        Self {
+            harmonics: crate::audio::synth::HARMONICS_DEFAULT,
+            partial_envs: crate::audio::synth::PARTIAL_ENV_NEUTRAL,
+            formant: crate::audio::synth::SpectralFormant::default(),
+            sweep: crate::audio::synth::SpectralSweep::default(),
+            sub: 0.0,
+            unison: 1,
+            detune: 12.0,
+            glide: 0.0,
+            filter_drive: 0.0,
+            filter_key_track: 0.0,
+            fm: FmParams::default(),
+        }
+    }
+}
+
 /// Master FX / synth settings snapshot.
 #[derive(Clone, Copy)]
 pub struct FxState {
@@ -157,6 +196,8 @@ pub struct FxState {
     pub drive: f32,
     pub master_volume: f32,
     pub master_fx: MasterFxParams,
+    /// Röstens egen patch — utan den exporteras en annan klang än den man hör.
+    pub synth: SynthVoiceState,
 }
 
 #[derive(Clone)]
@@ -555,6 +596,25 @@ pub fn build_offline_engine(spec: &RenderSpec, fx: &FxState) -> SynthEngine {
     engine.drive = fx.drive.clamp(1.0, 10.0);
     engine.master_fx.set_params(fx.master_fx);
     engine.master_volume = fx.master_volume.clamp(0.0, 1.0);
+    // Röstens patch: utan den här raden exporteras en annan klang än den man hör.
+    engine.sub_level = fx.synth.sub.clamp(0.0, 1.0);
+    engine.unison_voices = fx.synth.unison.clamp(1, 8);
+    engine.unison_detune_cents = fx.synth.detune.clamp(0.0, 100.0);
+    engine.glide_time = fx.synth.glide.clamp(0.0, 5.0);
+    engine.filter_drive = fx.synth.filter_drive.clamp(0.0, 1.0);
+    engine.filter_key_track = fx.synth.filter_key_track.clamp(0.0, 1.0);
+    engine.fm = fx.synth.fm;
+    engine.handle_command(AudioCommand::SetHarmonics { levels: fx.synth.harmonics });
+    engine.handle_command(AudioCommand::SetPartialEnvelopes { envs: fx.synth.partial_envs });
+    engine.handle_command(AudioCommand::SetSpectralFormant {
+        center: fx.synth.formant.center,
+        width: fx.synth.formant.width,
+        amount: fx.synth.formant.amount,
+    });
+    engine.handle_command(AudioCommand::SetSpectralSweep {
+        to: fx.synth.sweep.to,
+        seconds: fx.synth.sweep.seconds,
+    });
     // Apply the project's sub-mix bus / VCA group state to the full mix. For a
     // single-stem export (`solo_track`), group gains/solos are left neutral so
     // only the explicitly isolated track is audible (Fas 5.2).
@@ -987,6 +1047,7 @@ mod tests {
             drive: 0.0,
             master_volume: 1.0,
             master_fx: Default::default(),
+            synth: Default::default(),
         }
     }
 
@@ -1389,7 +1450,8 @@ mod tests {
             drive: 1.0,
             master_volume: 1.0,
             master_fx: MasterFxParams::default(),
-        };
+                    synth: Default::default(),
+};
         let mut engine = build_offline_engine(&spec, &fx);
         let buf = render_project_offline(&mut engine, &spec);
         assert!(!buf.is_empty(), "renderingen gav inget ljud");
@@ -1420,7 +1482,7 @@ mod tests {
         let mut ch_steps = [false; crate::audio::tempo::MAX_STEPS];
         ch_steps[0] = true;
         let spec = synth_spec_with(grid, ch_steps, 60);
-        let fx = FxState {
+        let mut fx = FxState {
             waveform: super::super::command::Waveform::Additive,
             adsr: AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 },
             filter: FilterParams { cutoff: 18_000.0, resonance: 0.0 },
@@ -1429,11 +1491,11 @@ mod tests {
             drive: 1.0,
             master_volume: 1.0,
             master_fx: MasterFxParams::default(),
+            synth: Default::default(),
         };
+        fx.synth.harmonics = [0.0; crate::audio::synth::HARMONIC_COUNT];
+        fx.synth.harmonics[2] = 1.0; // bara tredje partialen
         let mut engine = build_offline_engine(&spec, &fx);
-        let mut levels = [0.0f32; crate::audio::synth::HARMONIC_COUNT];
-        levels[2] = 1.0; // bara tredje partialen
-        engine.handle_command(AudioCommand::SetHarmonics { levels });
 
         let buf = render_project_offline(&mut engine, &spec);
         let sr = spec.sample_rate as f32;
@@ -1444,6 +1506,43 @@ mod tests {
         assert!(
             third > fundamental * 10.0,
             "grundtonen ska vara borta: {fundamental} mot {third}"
+        );
+    }
+
+    /// **Suboscillatorn och unison följer med i exporten.** Sub ger energi en oktav under
+    /// noten; utan `synth` i `FxState` föll båda bort i filen men hördes live.
+    #[test]
+    fn the_sub_oscillator_is_audible_in_an_offline_render() {
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        grid[0][0] = true; // MIDI 48 = C3, 130,81 Hz
+        let mut ch_steps = [false; crate::audio::tempo::MAX_STEPS];
+        ch_steps[0] = true;
+        let spec = synth_spec_with(grid, ch_steps, 60);
+        let mut fx = FxState {
+            waveform: super::super::command::Waveform::Sine,
+            adsr: AdsrParams { attack: 0.001, decay: 10.0, sustain: 1.0, release: 0.1 },
+            filter: FilterParams { cutoff: 18_000.0, resonance: 0.0 },
+            delay: DelayParams::default(),
+            reverb: ReverbParams::default(),
+            drive: 1.0,
+            master_volume: 1.0,
+            master_fx: MasterFxParams::default(),
+            synth: Default::default(),
+        };
+        fx.synth.sub = 0.6;
+        fx.synth.unison = 3;
+        let mut engine = build_offline_engine(&spec, &fx);
+        assert_eq!(engine.unison_voices, 3, "unison följer med till motorn");
+        assert!((engine.sub_level - 0.6).abs() < 1e-6, "sub följer med");
+
+        let buf = render_project_offline(&mut engine, &spec);
+        let sr = spec.sample_rate as f32;
+        let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
+        let sub = tone_energy(&left, 130.81 / 2.0, sr);
+        let control = tone_energy(&left, 98.0, sr);
+        assert!(
+            sub > control * 4.0,
+            "suboscillatorn hörs inte i exporten: {sub} mot kontrollen {control}"
         );
     }
 
@@ -1459,7 +1558,8 @@ mod tests {
             drive: 1.0,
             master_volume: 0.9,
             master_fx: MasterFxParams::default(),
-        };
+                    synth: Default::default(),
+};
         let mut engine = build_offline_engine(&spec, &fx);
         let buf = render_project_offline(&mut engine, &spec);
         assert!(!buf.is_empty(), "rendering produced no output");
@@ -1560,7 +1660,8 @@ mod tests {
                 drive: 1.0,
                 master_volume: 0.9,
                 master_fx: MasterFxParams::default(),
-            };
+                            synth: Default::default(),
+};
             let mut engine = build_offline_engine(&spec, &fx);
             let buf = render_project_offline(&mut engine, &spec);
             let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
@@ -1644,7 +1745,8 @@ mod tests {
                 drive: 1.0,
                 master_volume: 0.9,
                 master_fx: MasterFxParams::default(),
-            };
+                            synth: Default::default(),
+};
             let mut engine = build_offline_engine(&spec, &fx);
             let buf = render_project_offline(&mut engine, &spec);
             let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
@@ -1732,7 +1834,8 @@ mod tests {
             drive: 1.0,
             master_volume: 1.0,
             master_fx: MasterFxParams::default(),
-        };
+                    synth: Default::default(),
+};
         let mut engine = build_offline_engine(&spec, &fx);
         let buf = render_project_offline(&mut engine, &spec);
         let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
@@ -1901,7 +2004,8 @@ mod tests {
                 drive: 1.0,
                 master_volume: 0.9,
                 master_fx: MasterFxParams::default(),
-            };
+                            synth: Default::default(),
+};
             let mut engine = build_offline_engine(&spec, &fx);
             let buf = render_project_offline(&mut engine, &spec);
             let left: Vec<f32> = buf.iter().step_by(2).copied().collect();
@@ -1996,7 +2100,8 @@ mod tests {
                 drive: 1.0,
                 master_volume: 0.9,
                 master_fx: MasterFxParams::default(),
-            };
+                            synth: Default::default(),
+};
             let mut engine = build_offline_engine(&spec, &fx);
             let buf = render_project_offline(&mut engine, &spec);
             let left: Vec<f32> = buf.iter().step_by(2).copied().collect();

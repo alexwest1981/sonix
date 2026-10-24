@@ -342,6 +342,20 @@ fn export_fx_state(&self, dry: bool) -> crate::audio::FxState {
         } else {
             self.fx_rack_state.build_master_fx_params()
         },
+        // Röstens patch. Utan den exporteras en annan klang än den man hör.
+        synth: crate::audio::SynthVoiceState {
+            harmonics: self.harmonics,
+            partial_envs: self.partial_envelopes(),
+            formant: self.formant,
+            sweep: self.sweep,
+            sub: self.sub_level,
+            unison: self.unison_voices,
+            detune: self.unison_detune_cents,
+            glide: self.glide_time,
+            filter_drive: self.filter_drive,
+            filter_key_track: self.filter_key_track,
+            fm: self.fm,
+        },
     }
 }
 }
@@ -350,21 +364,6 @@ impl SonixApp {
 /// Render one spec to an interleaved float buffer.
 pub(crate) fn render_buffer(&self, spec: &crate::audio::RenderSpec, dry: bool) -> Result<Vec<f32>, String> {
     let mut engine = crate::audio::build_offline_engine(spec, &self.export_fx_state(dry));
-    // Den additiva rösten bor inte i `FxState`: dragstänger, partialkonturer, formant och
-    // tidsaxel skickas som kommandon, annars exporteras en ren sinus i stället för patchen.
-    engine.handle_command(AudioCommand::SetHarmonics { levels: self.harmonics });
-    engine.handle_command(AudioCommand::SetPartialEnvelopes {
-        envs: self.partial_envelopes(),
-    });
-    engine.handle_command(AudioCommand::SetSpectralFormant {
-        center: self.formant.center,
-        width: self.formant.width,
-        amount: self.formant.amount,
-    });
-    engine.handle_command(AudioCommand::SetSpectralSweep {
-        to: self.sweep.to,
-        seconds: self.sweep.seconds,
-    });
     Ok(crate::audio::render_project_offline(&mut engine, spec))
 }
 }

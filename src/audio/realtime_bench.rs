@@ -233,6 +233,7 @@ pub fn reference_fx() -> FxState {
         drive: 1.0,
         master_volume: 0.9,
         master_fx: Default::default(),
+        synth: Default::default(),
     }
 }
 
