@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — free time curve per operator (Sytrus)
+
+- `shape[[f32; 8]; 6]` + `shape_secs[6]`: eight levels spread over a chosen time, linearly
+  between them; the last point holds. `shape_secs = 0` falls back to the ADSR, so old patches
+  are untouched. The curve feeds `env_now`, which means it drives level, PIT, F-ENV and CRV at
+  once — one curve, all destinations.
+  Prov `a_free_shape_replaces_the_adsr`: 1,0 → 0 over 0,25 s gives sound in the attack
+  (>0.05 RMS) and silence after a tenth of a second (<0.001).
+- **KURVA** row in the 6-op panel: seconds field plus eight vertical sliders.
+
 ### Added — filter slope per operator (Sytrus)
 
 - `filter_slope: [u8; 6]`, 1 = 12 dB/octave (default, old patches unchanged) or 2 = 24 dB:

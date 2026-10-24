@@ -207,6 +207,14 @@ impl SynthEngine {
                 for slope in &mut params.filter_slope {
                     *slope = (*slope).clamp(1, 2);
                 }
+                for secs in &mut params.shape_secs {
+                    *secs = secs.clamp(0.0, 10.0);
+                }
+                for points in &mut params.shape {
+                    for point in points {
+                        *point = point.clamp(0.0, 1.0);
+                    }
+                }
                 params.lfo2_rate = params.lfo2_rate.clamp(0.0, 40.0);
                 params.lfo2_depth = params.lfo2_depth.clamp(0.0, 1.0);
                 params.lfo2_target = params.lfo2_target.min(2);

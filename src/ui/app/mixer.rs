@@ -3523,6 +3523,36 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                     ))
                                     .changed();
                             });
+                            // **Fri tidskurva:** åtta punkter över valfri tid. 0 s = ADSR.
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(crate::i18n::t("KURVA"))
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(
+                                        egui::DragValue::new(&mut self.six_op.shape_secs[target])
+                                            .range(0.0..=10.0)
+                                            .speed(0.05)
+                                            .suffix(" s"),
+                                    )
+                                    .on_hover_text(crate::i18n::t(
+                                        "0 s = ADSR. Annars läses de åtta punkterna över den här tiden",
+                                    ))
+                                    .changed();
+                                for point in 0..crate::audio::synth::six_op::SHAPE_POINTS {
+                                    six_changed |= ui
+                                        .add(
+                                            egui::Slider::new(
+                                                &mut self.six_op.shape[target][point],
+                                                0.0..=1.0,
+                                            )
+                                            .vertical(),
+                                        )
+                                        .changed();
+                                }
+                            });
                             let filter = &mut self.six_op.filters[target];
                             ui.horizontal(|ui| {
                                 six_changed |= ui

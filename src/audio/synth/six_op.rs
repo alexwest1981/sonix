@@ -79,6 +79,13 @@ pub struct SixOpParams {
     /// Standard 1, så en patch från före fältet låter som den gjorde.
     #[serde(default = "one_slope")]
     pub filter_slope: [u8; SIX_OP_COUNT],
+    /// **Fri tidskurva per operator:** åtta nivåer jämnt fördelade över `shape_secs` sekunder,
+    /// linjärt emellan. Är `shape_secs` 0 används ADSR i stället, så en patch utan kurva är
+    /// orörd. Kurvan matar allt som `env_now` styr: nivå, PIT, F-ENV och CRV.
+    #[serde(default = "zero_shape")]
+    pub shape: [[f32; SHAPE_POINTS]; SIX_OP_COUNT],
+    #[serde(default = "no_pitch")]
+    pub shape_secs: [f32; SIX_OP_COUNT],
     /// **Andra LFO:n** — Sytrus har flera. Egen fas, eget mål, så tonhöjd och cutoff kan röra sig
     /// olika fort. Djup 0 = av.
     #[serde(default)]
@@ -95,6 +102,24 @@ pub fn no_pitch() -> [f32; SIX_OP_COUNT] {
 
 pub fn one_slope() -> [u8; SIX_OP_COUNT] {
     [1; SIX_OP_COUNT]
+}
+
+/// Antal punkter i den fria tidskurvan. Fler gör panelen oläslig och kurvan mäter ändå bara
+/// åtta stycken — den är ett envelop, inte en vågform.
+pub const SHAPE_POINTS: usize = 8;
+
+pub fn zero_shape() -> [[f32; SHAPE_POINTS]; SIX_OP_COUNT] {
+    [[0.0; SHAPE_POINTS]; SIX_OP_COUNT]
+}
+
+/// Läser kurvan vid `t` (0..1 av hela längden). Efter slutet håller sista punkten, så en
+/// kurva som slutar på 0,7 stannar där i stället för att hoppa.
+fn sample_shape(points: &[f32; SHAPE_POINTS], t: f32) -> f32 {
+    let x = (t.clamp(0.0, 1.0) * (SHAPE_POINTS - 1) as f32).min((SHAPE_POINTS - 1) as f32);
+    let i = x.floor() as usize;
+    let j = (i + 1).min(SHAPE_POINTS - 1);
+    let f = x - i as f32;
+    points[i] * (1.0 - f) + points[j] * f
 }
 
 /// Lågpasset per operator. Egen struct i stället för `FilterParams`: matrisen sparas som
@@ -168,6 +193,8 @@ impl Default for SixOpParams {
             env_curve: no_pitch(),
             pan: no_pitch(),
             filter_slope: one_slope(),
+            shape: zero_shape(),
+            shape_secs: no_pitch(),
             lfo2_rate: 0.0,
             lfo2_depth: 0.0,
             lfo2_target: 0,
@@ -203,6 +230,8 @@ pub struct SixOpVoice {
     filters2: [[StateVariableFilter; SIX_OP_COUNT]; MAX_UNISON],
     lfo_phase: f32,
     lfo2_phase: f32,
+    /// Sekunder sedan anslaget, per operator — driver den fria tidskurvan.
+    shape_time: [f32; SIX_OP_COUNT],
     sample_rate: f32,
 }
 
@@ -220,6 +249,7 @@ impl SixOpVoice {
             }),
             lfo_phase: 0.0,
             lfo2_phase: 0.0,
+            shape_time: [0.0; SIX_OP_COUNT],
             sample_rate,
         }
     }
@@ -227,6 +257,7 @@ impl SixOpVoice {
     /// Nytt anslag: faserna nollställs (annars ärver noten förra notens vågformsläge) och
     /// alla sex enveloper öppnar.
     pub fn reset(&mut self) {
+        self.shape_time = [0.0; SIX_OP_COUNT];
         self.phases = [[0.0; SIX_OP_COUNT]; MAX_UNISON];
         self.last = [[0.0; SIX_OP_COUNT]; MAX_UNISON];
         for env in &mut self.envs {
@@ -295,6 +326,12 @@ impl SixOpVoice {
         let mut env_now = [0.0f32; SIX_OP_COUNT];
         for (target, env) in self.envs.iter_mut().enumerate() {
             let value = env.next_sample(&params.envs[target]);
+            let secs = params.shape_secs[target];
+            if secs > 0.0 {
+                env_now[target] = sample_shape(&params.shape[target], self.shape_time[target] / secs);
+                self.shape_time[target] += 1.0 / self.sample_rate.max(1.0);
+                continue;
+            }
             let curve = params.env_curve[target];
             env_now[target] = if curve == 0.0 {
                 value
@@ -613,6 +650,23 @@ mod tests {
             steep < gentle * 0.5,
             "24 dB ska dämpa mer vid 880 Hz: {steep:.5} mot {gentle:.5}"
         );
+    }
+
+    /// **Den fria tidskurvan ersätter ADSR.** Åtta punkter över 0,25 s, första på 1 och resten
+    /// på 0: tonen ska höras i anslaget och vara tyst efter en dryg tiondel.
+    #[test]
+    fn a_free_shape_replaces_the_adsr() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.2 };
+        params.shape[0] = [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+        params.shape_secs[0] = 0.25;
+
+        let out = render(&params, 220.0, 19_200); // 400 ms
+        let rms = |from: usize, to: usize| {
+            (out[from..to].iter().map(|v| v * v).sum::<f32>() / (to - from) as f32).sqrt()
+        };
+        assert!(rms(0, 480) > 0.05, "anslaget ska höras: {:.4}", rms(0, 480));
+        assert!(rms(9_600, 14_400) < 0.001, "efter kurvan ska det vara tyst: {:.5}", rms(9_600, 14_400));
     }
 
     /// **Utan modulering är 6-op en sinus.** Matrisen noll och bara operator 1 hörd ger
