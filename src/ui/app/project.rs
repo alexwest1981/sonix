@@ -221,6 +221,109 @@ pub struct SavedChannel {
     pub sample_base_note: u8,
 }
 
+/// **FX-racket** (0.9.42): pedalkedjan, EQ:n och convolvern hörde inte till projektfilen, så en
+/// sparad låt kom tillbaka med standardracket. Pedalernas namn och färger är katalogens
+/// (statiska), så bara id och rattvärden sparas — ett id som en äldre fil har men katalogen
+/// tappat hoppas över i stället för att fälla hela kedjan.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct SavedPedal {
+    pub id: String,
+    pub enabled: bool,
+    pub p1: f32,
+    pub p2: f32,
+    pub p3: f32,
+    pub mix: f32,
+    #[serde(default)]
+    pub extra: Vec<f32>,
+}
+
+/// EQ-punktens läge. Namn och färg kommer från katalogen, bara siffrorna sparas.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct SavedEqNode {
+    pub freq: f32,
+    pub gain_db: f32,
+    pub q: f32,
+    pub active: bool,
+}
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize, Default, PartialEq)]
+pub struct SavedFxRack {
+    pub pedals: Vec<SavedPedal>,
+    pub eq_nodes: Vec<SavedEqNode>,
+    #[serde(default)]
+    pub compressor_release_ms: f32,
+    #[serde(default)]
+    pub convolver_mix: f32,
+    #[serde(default)]
+    pub convolver_gain_db: f32,
+    #[serde(default)]
+    pub convolver_ir_name: Option<String>,
+}
+
+impl SavedFxRack {
+    pub(crate) fn from_state(state: &crate::ui::fx_rack_modal::FxRackState) -> Self {
+        Self {
+            pedals: state
+                .pedals
+                .iter()
+                .map(|p| SavedPedal {
+                    id: p.id.to_string(),
+                    enabled: p.enabled,
+                    p1: p.p1_val,
+                    p2: p.p2_val,
+                    p3: p.p3_val,
+                    mix: p.mix,
+                    extra: p.extra.iter().map(|(_, value)| *value).collect(),
+                })
+                .collect(),
+            eq_nodes: state
+                .eq_nodes
+                .iter()
+                .map(|n| SavedEqNode {
+                    freq: n.freq_hz,
+                    gain_db: n.gain_db,
+                    q: n.q,
+                    active: n.is_active,
+                })
+                .collect(),
+            compressor_release_ms: state.compressor_release_ms,
+            convolver_mix: state.convolver_mix,
+            convolver_gain_db: state.convolver_gain_db,
+            convolver_ir_name: state.convolver_ir_name.clone(),
+        }
+    }
+
+    /// Lägger värdena på katalogens pedaler och EQ-punkter. Antalet får skilja — en fil från en
+    /// annan version ska fylla det som finns, inte tömma racket.
+    pub(crate) fn apply(&self, state: &mut crate::ui::fx_rack_modal::FxRackState) {
+        for saved in &self.pedals {
+            let Some(pedal) = state.pedals.iter_mut().find(|p| p.id == saved.id) else {
+                continue;
+            };
+            pedal.enabled = saved.enabled;
+            pedal.p1_val = saved.p1;
+            pedal.p2_val = saved.p2;
+            pedal.p3_val = saved.p3;
+            pedal.mix = saved.mix;
+            for (slot, value) in pedal.extra.iter_mut().zip(saved.extra.iter()) {
+                slot.1 = *value;
+            }
+        }
+        for (node, saved) in state.eq_nodes.iter_mut().zip(self.eq_nodes.iter()) {
+            node.freq_hz = saved.freq;
+            node.gain_db = saved.gain_db;
+            node.q = saved.q;
+            node.is_active = saved.active;
+        }
+        if self.compressor_release_ms > 0.0 {
+            state.compressor_release_ms = self.compressor_release_ms;
+        }
+        state.convolver_mix = self.convolver_mix;
+        state.convolver_gain_db = self.convolver_gain_db;
+        state.convolver_ir_name = self.convolver_ir_name.clone();
+    }
+}
+
 /// **Röstens patch** — det som annars bara lever i minnet medan appen är öppen. Utan den
 /// tappade ett sparat projekt dragstänger, partialkonturer, formant, tidsaxel, sub, unison,
 /// glide och FM: man hörde en annan klang efter omstart än före (0.9.41).
@@ -369,6 +472,9 @@ pub struct SonixProjectData {
     /// Röstens patch. Saknas i äldre filer — då gäller appens standardvärden som förut.
     #[serde(default)]
     pub synth: Option<SavedSynth>,
+    /// FX-racket. Saknas i äldre filer — då gäller standardracket som förut.
+    #[serde(default)]
+    pub fx_rack: Option<SavedFxRack>,
     pub master_volume: f32,
     pub master_pan: f32,
     pub tracks: Vec<SavedTrackData>,
@@ -923,6 +1029,8 @@ pub struct LoadedProjectPayload {
     pub swing: f32,
     /// Röstens patch ur filen (`None` i äldre projekt).
     pub synth: Option<SavedSynth>,
+    /// FX-racket ur filen (`None` i äldre projekt).
+    pub fx_rack: Option<SavedFxRack>,
     pub master_volume: f32,
     pub master_pan: f32,
     pub tracks: Vec<PreloadedTrackData>,
@@ -1526,6 +1634,7 @@ pub fn load_demo_project(&mut self) {
                 follow_tempo: true,
                 swing: 0.15,
                 synth: None,
+                fx_rack: None,
                 tempo_points: Vec::new(),
                 song_key_root: 3,
                 song_key_scale: 0,
@@ -1602,6 +1711,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         song_key_scale: self.song_key_scale,
         swing: self.swing,
         synth: Some(SavedSynth::from_app(self)),
+        fx_rack: Some(SavedFxRack::from_state(&self.fx_rack_state)),
         master_volume: self.master_volume,
         master_pan: self.master_pan,
         tracks: saved_tracks,
@@ -2040,6 +2150,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 song_key_scale: data.song_key_scale,
                 swing: data.swing,
                 synth: data.synth,
+                fx_rack: data.fx_rack,
                 master_volume: data.master_volume,
                 master_pan: data.master_pan,
                 tracks: preloaded_tracks,
@@ -2104,6 +2215,10 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
     self.swing = payload.swing;
     if let Some(synth) = payload.synth.as_ref() {
         synth.apply(self);
+    }
+    if let Some(rack) = payload.fx_rack.as_ref() {
+        rack.apply(&mut self.fx_rack_state);
+        self.fx_rack_state.sync_to_engine(&mut self.engine);
     }
     self.master_volume = payload.master_volume;
     self.master_pan = payload.master_pan;

@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Saving a project keeps the FX rack.** The master rack (pedal chain, Visual EQ, compressor
+  release, convolver) was not part of the project file, so a reopened song came back with the
+  stock rack. Pedals are stored by id and values — names and colours come from the catalogue —
+  and an id the catalogue no longer has is skipped instead of dropping the chain. EQ points and
+  the convolver are restored too, and the rack is pushed to the engine on load. Proven by
+  `the_fx_rack_survives_a_save_and_load`.
 - **Saving a project keeps the synth patch.** `SonixProjectData` had no voice at all: waveform,
   ADSR, filter, FM, sub, unison, glide, filter drive/key tracking, drawbars, partial envelopes,
   formant and time axis were lost on save, so a reopened project sounded like the default patch.

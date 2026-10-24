@@ -500,6 +500,7 @@ use crate::ui::theme::Theme;
         let data = SonixProjectData {
             notes: String::new(),
             synth: None,
+            fx_rack: None,
             name: "Testprojekt".to_string(),
             bpm: 133.0,
             follow_tempo: false,
@@ -1888,6 +1889,7 @@ use crate::ui::theme::Theme;
         let data = SonixProjectData {
             notes: String::new(),
             synth: None,
+            fx_rack: None,
             name: "Plugin Test".into(),
             bpm: 120.0,
             follow_tempo: true,
@@ -2068,6 +2070,54 @@ use crate::ui::theme::Theme;
         let off =
             super::state::partial_envelopes_for(false, [0.01, 0.8, 0.5], 1.0, &[(4, own)]);
         assert_eq!(off[4], crate::audio::synth::PARTIAL_ENV_NEUTRAL[4]);
+    }
+
+    /// **FX-racket överlever en sparning.** Rattvärden, EQ-punkter och convolvern ska komma
+    /// tillbaka; pedalernas namn och färger är katalogens, så bara id och värden sparas — och en
+    /// pedal som en äldre fil har men katalogen tappat får inte fälla resten av kedjan.
+    #[test]
+    fn the_fx_rack_survives_a_save_and_load() {
+        let mut state = crate::ui::fx_rack_modal::FxRackState::default();
+        let comp = state
+            .pedals
+            .iter_mut()
+            .find(|p| p.id == "dyn_comp")
+            .expect("kompressorn finns i katalogen");
+        comp.p1_val = 0.9;
+        comp.enabled = false;
+        state.eq_nodes[1].gain_db = 5.5;
+        state.convolver_mix = 0.7;
+
+        let saved = super::project::SavedFxRack::from_state(&state);
+        let json = serde_json::to_string(&saved).expect("racket ska gå att spara");
+        let back: super::project::SavedFxRack =
+            serde_json::from_str(&json).expect("racket ska gå att läsa");
+
+        let mut fresh = crate::ui::fx_rack_modal::FxRackState::default();
+        back.apply(&mut fresh);
+        let comp = fresh.pedals.iter().find(|p| p.id == "dyn_comp").unwrap();
+        assert_eq!(comp.p1_val, 0.9, "rattvärdet");
+        assert!(!comp.enabled, "avstängd pedal");
+        assert_eq!(fresh.eq_nodes[1].gain_db, 5.5, "EQ-punkten");
+        assert_eq!(fresh.convolver_mix, 0.7, "convolvern");
+
+        let mut older = back.clone();
+        older.pedals.push(super::project::SavedPedal {
+            id: "borttagen_effekt".to_string(),
+            enabled: true,
+            p1: 0.0,
+            p2: 0.0,
+            p3: 0.0,
+            mix: 1.0,
+            extra: Vec::new(),
+        });
+        let mut fresh_with_unknown = crate::ui::fx_rack_modal::FxRackState::default();
+        older.apply(&mut fresh_with_unknown);
+        assert_eq!(
+            fresh_with_unknown.pedals.len(),
+            fresh.pedals.len(),
+            "en okänd pedal ska hoppas över, inte tömma racket"
+        );
     }
 
     /// **Patchen överlever en sparning.** 64 dragstänger klarar inte serde som array (taket är
