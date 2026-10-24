@@ -3718,3 +3718,82 @@ fn the_sustain_pedal_holds_a_note_after_the_key_is_released() {
         "när pedalen går upp ska tonen falla: {pedal_after:.4} av {pedal_held:.4}"
     );
 }
+
+/// **Pedalen håller också en sampling** (FL Keys: ett pianosampel ska klinga ut när pedalen är
+/// nere, och dämpas när den går upp).
+///
+/// Utan pedal rör not-av inte en en-skottsröst — det är det gamla beteendet. Med pedalen nere
+/// ska nivån stå kvar 200 ms efter släppet, och efter pedal-upp falla inom 40 ms-rampen.
+#[test]
+fn the_pedal_holds_a_sample_and_damps_it_when_it_lifts() {
+    let mut synth = SynthEngine::new(48_000.0);
+    let n = 96_000usize;
+    let tone: Vec<f32> = (0..n)
+        .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 220.0 * i as f32 / 48_000.0).sin())
+        .collect();
+    let arc = Arc::new(tone);
+    synth.handle_command(AudioCommand::SetSustainPedal(true));
+    synth.handle_command(AudioCommand::TriggerSampleVoice {
+        left: arc.clone(),
+        right: arc,
+        sample_rate: 48_000,
+        base_note: 60,
+        note: 60,
+        pitch_semitones: 0,
+        pitch_cents: 0.0,
+        velocity: 1.0,
+        velocity_sensitivity: 1.0,
+        velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
+        volume: 1.0,
+        reverse: false,
+        start01: 0.0,
+        end01: 1.0,
+        channel: 0,
+        loop_mode: LoopMode::Off,
+        loop_start01: 0.0,
+        loop_end01: 1.0,
+        ping_pong: false,
+        amp_env: crate::audio::envelope::AdsrParams::identity(),
+        filter: SamplerFilter::default(),
+        hold_secs: 10.0,
+    });
+
+    let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+    let mut before = Vec::new();
+    for _ in 0..4_800 {
+        before.push(synth.process_stereo().0);
+    }
+    synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
+    let mut held = Vec::new();
+    for _ in 0..9_600 {
+        held.push(synth.process_stereo().0);
+    }
+    synth.handle_command(AudioCommand::SetSustainPedal(false));
+    let mut after = Vec::new();
+    for _ in 0..9_600 {
+        after.push(synth.process_stereo().0);
+    }
+
+    let level_before = rms(&before[2_400..]);
+    let level_held = rms(&held[7_200..]);
+    let level_after = rms(&after[7_200..]);
+    println!(
+        "  före {:.4}, hållen {:.4}, efter pedal-upp {:.4}",
+        level_before, level_held, level_after
+    );
+    assert!(
+        level_held > level_before * 0.8,
+        "samplingen ska klinga vidare med pedalen: {level_held:.4} av {level_before:.4}"
+    );
+    // Rösten ska vara **stoppad**, inte bara tystare: masterns FX-svans ligger kvar en stund
+    // och gör ett absolut mått på "tyst" fel.
+    assert_eq!(
+        synth.sample_voices.iter().filter(|v| v.is_active()).count(),
+        0,
+        "pedalen upp ska stoppa rösten"
+    );
+    assert!(
+        level_after < level_held * 0.5,
+        "pedalen upp ska dämpa: {level_after:.4} av {level_held:.4}"
+    );
+}

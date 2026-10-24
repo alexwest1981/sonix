@@ -197,6 +197,17 @@ impl SynthEngine {
             // fick förut — men nu skalas envelopen av den i stället för att volymen gör det,
             // och den går att stänga av per kanal.
             g *= sv.velocity_gain;
+            // **Pedaldämparen:** 40 ms ramp när pedalen går upp, så en hållen sampling
+            // tystnar som en dämpad sträng i stället för att klippas mitt i en period.
+            if sv.damper > 0 {
+                g *= sv.damper as f32 / (self.sample_rate * 0.04);
+                sv.damper -= 1;
+                // Rampen är slut: rösten ska **stanna**, annars går gainen tillbaka till 1,0
+                // när räknaren når noll och samplingen hörs igen efter dämpningen.
+                if sv.damper == 0 {
+                    sv.active = false;
+                }
+            }
             // **Kantdämpning vid båda ändarna** (Fas 8.7 steg 2). In: hur långt in vi är.
             // Ut: hur många ramar som återstår till fönstrets kant — räknat i *utramar*, så
             // det stämmer även när rösten spelas med annan tonhöjd eller baklänges. Utan den

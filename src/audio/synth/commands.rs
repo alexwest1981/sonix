@@ -244,6 +244,19 @@ impl SynthEngine {
             }
             AudioCommand::NoteOff { note, channel } => {
                 self.modulation.note_off();
+                // Samplade röster: pedalen håller dem också. Utan pedal gör not-av ingenting
+                // på en en-skottsröst — det är det gamla beteendet och det står kvar.
+                if self.sustain_pedal {
+                    let ch = channel as u32;
+                    for sv in &mut self.sample_voices {
+                        if sv.is_active()
+                            && sv.note == note
+                            && (ch == 0 || sv.channel == ch)
+                        {
+                            sv.sustained = true;
+                        }
+                    }
+                }
                 for voice in &mut self.voices {
                     if voice.is_active()
                         && voice.note == note
@@ -266,6 +279,13 @@ impl SynthEngine {
                         if voice.sustained {
                             voice.sustained = false;
                             voice.release();
+                        }
+                    }
+                    let ramp = (self.sample_rate * 0.04) as u32;
+                    for sv in &mut self.sample_voices {
+                        if sv.sustained {
+                            sv.sustained = false;
+                            sv.damper = ramp;
                         }
                     }
                 }
@@ -768,6 +788,7 @@ impl SynthEngine {
                 // bakvänt par är ingen loop — då spelar rösten som en en-skottsprovare),
                 // notens längd räknas i **utramar** (det `frames_done` räknar), och
                 // envelopen är avstängd när parametrarna är identiteten.
+                v.note = note;
                 v.channel = channel;
                 v.loop_mode = loop_mode;
                 v.loop_span = loop_frames(v.left.len(), loop_start01, loop_end01);

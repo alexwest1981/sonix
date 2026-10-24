@@ -318,6 +318,12 @@ pub struct SampleVoice {
     /// **Notens längd i utramar** (Fas 8.4). `None` = ingen not-av alls (dagens
     /// en-skottsbeteende).
     pub hold_frames: Option<u32>,
+    /// Noten rösten spelar — not-av och pedalen letar upp rösten med den.
+    pub note: u8,
+    /// Hållen av sustainpedalen (CC64): tangenten är släppt men samplingen klingar.
+    pub sustained: bool,
+    /// Utramar kvar av pedaldämparen; räknas ned per frame i renderloopen.
+    pub damper: u32,
     /// Amplitud-ADSR på rösten. `env_on` är falskt när parametrarna är **identiteten**
     /// (`AdsrParams::identity`), och då rörs envelopen inte alls — det är vad som gör ett
     /// projekt från före samplern byte-identiskt.
@@ -960,6 +966,9 @@ impl SampleVoice {
             scratch_passes: 0,
             released: false,
             hold_frames: None,
+            note: 0,
+            sustained: false,
+            damper: 0,
             amp_env: AdsrVoice::new(44_100.0),
             env_params: AdsrParams::identity(),
             env_on: false,

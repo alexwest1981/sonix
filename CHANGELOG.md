@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The pedal holds sampled notes too.** A sample struck while CC64 is down keeps sounding after
+  the key is released, and lifting the pedal damps it over 40 ms instead of cutting. Without the
+  pedal nothing changes — a one-shot still rings out as before. Measured: 0.0920 held 200 ms
+  after the key release, 0.0272 and no active voice after the pedal lift.
+
 - **Sustain pedal (MIDI CC64).** The pedal now reaches the engine: a key released while it is
   down keeps sounding, and lifting the pedal releases everything it was holding. It arrives from a
   keyboard as CC64 (>= 64 = down, the MIDI threshold) and from a 🎹 PEDAL button next to the
