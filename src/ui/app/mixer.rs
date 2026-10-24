@@ -1073,10 +1073,13 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
 
                 // Channel Select Button
                 let btn_fill = if is_selected { crate::ui::theme::palette().panel() } else { crate::ui::theme::palette().panel_alt() };
+                // **Namnfältet har fast bredd.** Förut växte knappen med namnet, så "Byt", "Chop" och
+                // stegrutorna hamnade olika långt ut i varje rad — racket såg osynkat ut. Nu är
+                // varje rad en tabellrad: samma kolumner oavsett namn, långa namn klipps med "…".
                 let ch_btn = egui::Button::new(egui::RichText::new(format!("{} {}", ch.icon, ch.name)).strong().color(ch.color))
                     .fill(btn_fill)
-                    .min_size(Vec2::new(110.0, 26.0));
-                let ch_resp = ui.add(ch_btn);
+                    .wrap_mode(egui::TextWrapMode::Truncate);
+                let ch_resp = ui.add_sized(Vec2::new(200.0, 26.0), ch_btn);
                 if ch_resp.clicked() {
                     self.selected_channel = ch_idx;
                 }
@@ -3478,6 +3481,19 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                     )
                                     .on_hover_text(crate::i18n::t(
                                         "Operadens envelop öppnar dess filter — 0 = orörd",
+                                    ))
+                                    .changed();
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(crate::i18n::t("KEY"))
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(egui::Slider::new(&mut self.six_op.key_track[target], 0.0..=1.0))
+                                    .on_hover_text(crate::i18n::t(
+                                        "Filtret följer tonhöjden — 1 = en oktav per oktav",
                                     ))
                                     .changed();
                             });

@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — the channel rack rows are a table
+
+- The channel-name button grew with the name, so **Byt/Chop and the step grid started at a
+  different x in every row** — the rack looked out of sync. The name field is now a fixed
+  200 px cell with `TextWrapMode::Truncate`; long names show "…" and every column lines up.
+
+### Added — key tracking per operator (Sytrus)
+
+- `key_track: [f32; 6]` (0…1) moves the operator's filter with the played pitch, so a high note
+  keeps the timbre of a low one. Prov `key_tracking_keeps_the_timbre_across_octaves`: the
+  brightness gap between 220 and 880 Hz drops by more than half at 1.0.
+- **KEY** slider next to F-ENV in the 6-op panel.
+
 ### Added — the 6-op panel is in the screenshot set
 
 - `ScreenshotTarget::SixOpPanel` → `31_syntes_6op.png`; the panel was never captured before, so

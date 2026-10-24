@@ -63,6 +63,10 @@ pub struct SixOpParams {
     /// **Filterenvelop per operator** i oktaver (−4..4): opens cutoff följer operadens egen ADSR.
     #[serde(default = "no_pitch")]
     pub filter_env: [f32; SIX_OP_COUNT],
+    /// **Klaviaturskala per operator** (0..1): 1,0 följer filtret med tonhöjden en oktav per
+    /// oktav, så höga toner behåller samma klangfärg som låga. 0 = filtret står still.
+    #[serde(default = "no_pitch")]
+    pub key_track: [f32; SIX_OP_COUNT],
     /// **Andra LFO:n** — Sytrus har flera. Egen fas, eget mål, så tonhöjd och cutoff kan röra sig
     /// olika fort. Djup 0 = av.
     #[serde(default)]
@@ -144,6 +148,7 @@ impl Default for SixOpParams {
             filters: open_filters(),
             pitch_amount: no_pitch(),
             filter_env: no_pitch(),
+            key_track: no_pitch(),
             lfo2_rate: 0.0,
             lfo2_depth: 0.0,
             lfo2_target: 0,
@@ -223,6 +228,8 @@ impl SixOpVoice {
     /// och delas av stämmorna — annars skulle de sex enveloperna gå n gånger för fort.
     #[inline]
     pub fn next_sample(&mut self, params: &SixOpParams, inc: f32) -> f32 {
+        // Klaviaturskalan mäts mot 440 Hz: hur många oktaver tonen ligger över/under.
+        let key_octaves = (inc * self.sample_rate / TAU / 440.0).max(1e-6).log2();
         // **LFO:** en fas per röst, som en analog synt. Djupet är 0 som standard, och då är
         // `lfo` 0 och ingen operator påverkas.
         self.lfo2_phase += TAU * params.lfo2_rate.max(0.0) / self.sample_rate.max(1.0);
@@ -268,7 +275,15 @@ impl SixOpVoice {
             } else {
                 0.0
             };
-            total += self.matrix_sample(params, inc * pitch_scale * (1.0 + detune), &env_now, lfo, lfo2, u);
+            total += self.matrix_sample(
+                params,
+                inc * pitch_scale * (1.0 + detune),
+                &env_now,
+                lfo,
+                lfo2,
+                key_octaves,
+                u,
+            );
         }
         total / (voices as f32).sqrt()
     }
@@ -284,6 +299,7 @@ impl SixOpVoice {
         env_now: &[f32; SIX_OP_COUNT],
         lfo: f32,
         lfo2: f32,
+        key_octaves: f32,
         u: usize,
     ) -> f32 {
         let mut out = [0.0f32; SIX_OP_COUNT];
@@ -318,6 +334,11 @@ impl SixOpVoice {
             // Filtret sitter efter envelopen, före matrisen: en filtrerad modulator tar sina
             // övertoner med sig in i ljudet. Avstängt filter kostar ingenting.
             let mut filter = params.filters[target];
+            if params.key_track[target] != 0.0 {
+                filter.cutoff = (filter.cutoff
+                    * (2.0f32).powf(params.key_track[target] * key_octaves))
+                    .clamp(20.0, 20_000.0);
+            }
             // Filterenvelopen: operadens egen ADSR öppnar filtret i oktaver.
             if params.filter_env[target] != 0.0 {
                 filter.cutoff =
@@ -456,6 +477,32 @@ mod tests {
             .sum::<f32>()
             / one.len() as f32;
         assert!(diff > 0.001, "den andra LFO:n ska höras: {diff:.5}");
+    }
+
+    /// **Klaviaturskalan håller klangen över oktavrena.** Utan den blir en ton en oktav upp
+    /// mycket starkare filtrerad; med `key_track = 1,0` följer filtret med.
+    #[test]
+    fn key_tracking_keeps_the_timbre_across_octaves() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams { attack: 0.0, decay: 0.0, sustain: 1.0, release: 0.2 };
+        params.ratios[1] = 2.0;
+        params.matrix[1][0] = 3.0;
+        params.filters[0] = OpFilter { cutoff: 400.0, resonance: 0.7, mode: 0 };
+
+        let brightness = |pitch: f32, p: &SixOpParams| {
+            let out = render(p, pitch, 9_600);
+            let body = &out[4_800..];
+            mag_at(body, pitch * 3.0) / mag_at(body, pitch).max(1e-6)
+        };
+
+        let fixed_gap = (brightness(220.0, &params) - brightness(880.0, &params)).abs();
+        params.key_track[0] = 1.0;
+        let tracked_gap = (brightness(220.0, &params) - brightness(880.0, &params)).abs();
+
+        assert!(
+            tracked_gap < fixed_gap * 0.5,
+            "klaviaturskalan ska minska skillnaden: {tracked_gap:.4} mot {fixed_gap:.4}"
+        );
     }
 
     /// **Utan modulering är 6-op en sinus.** Matrisen noll och bara operator 1 hörd ger

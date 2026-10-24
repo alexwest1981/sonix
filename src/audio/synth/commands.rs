@@ -195,6 +195,9 @@ impl SynthEngine {
                 for amount in &mut params.filter_env {
                     *amount = amount.clamp(-4.0, 4.0);
                 }
+                for amount in &mut params.key_track {
+                    *amount = amount.clamp(0.0, 1.0);
+                }
                 params.lfo2_rate = params.lfo2_rate.clamp(0.0, 40.0);
                 params.lfo2_depth = params.lfo2_depth.clamp(0.0, 1.0);
                 params.lfo2_target = params.lfo2_target.min(2);
