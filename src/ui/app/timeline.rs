@@ -8,7 +8,6 @@
 //! Rör inte: alla fält är \`pub\`; döp inte om ett fält som står i en projektfil.
 
 use super::*;
-use crate::ui::theme::Theme;
 
 /// Vad "sätt takt 1 här" gör med ett klipp (Fas 8.14).
 ///
@@ -316,11 +315,11 @@ pub fn split_selected_region_at_playhead(&mut self) {
 
             // Distinct alternating color for Part 2 so both slices stand out immediately
             let new_color = match orig.color {
-                c if c == Theme::CYAN => Theme::ORANGE,
-                c if c == Theme::ORANGE => Theme::GREEN,
-                c if c == Theme::GREEN => Theme::PURPLE,
-                c if c == Theme::PURPLE => Theme::TRACK_BLUE,
-                _ => Theme::CYAN,
+                c if c == crate::ui::theme::palette().cyan() => crate::ui::theme::palette().orange(),
+                c if c == crate::ui::theme::palette().orange() => crate::ui::theme::palette().green(),
+                c if c == crate::ui::theme::palette().green() => crate::ui::theme::palette().purple(),
+                c if c == crate::ui::theme::palette().purple() => crate::ui::theme::palette().track_blue(),
+                _ => crate::ui::theme::palette().cyan(),
             };
 
             let r_left = AudioRegion {

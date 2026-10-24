@@ -32,7 +32,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Krispig och fyllig mikrofonsignal med studiokompressor och equalizer.",
             icon: "🎙",
             kind: TrackKind::VocalAudio,
-            color: Theme::CYAN,
+            color: crate::ui::theme::palette().cyan(),
             category: AddTrackCategory::Vocal,
             tag: "Mikrofon",
             is_rec_arm_default: true,
@@ -42,7 +42,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Tät, punchig röstinställning med de-esser och snabb gate.",
             icon: "🎤",
             kind: TrackKind::VocalAudio,
-            color: Theme::TRACK_ROSE,
+            color: crate::ui::theme::palette().track_rose(),
             category: AddTrackCategory::Vocal,
             tag: "Mikrofon",
             is_rec_arm_default: true,
@@ -52,7 +52,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Bred stereobild med doubler och mjuk plate-reverb.",
             icon: "👥",
             kind: TrackKind::VocalAudio,
-            color: Theme::PURPLE,
+            color: crate::ui::theme::palette().purple(),
             category: AddTrackCategory::Vocal,
             tag: "Kör & Harmoni",
             is_rec_arm_default: true,
@@ -62,7 +62,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Ren och brusfri röstinspelning optimerad för podcasts och voiceovers.",
             icon: "📻",
             kind: TrackKind::VocalAudio,
-            color: Theme::AMBER,
+            color: crate::ui::theme::palette().amber(),
             category: AddTrackCategory::Vocal,
             tag: "Tal / Broadcast",
             is_rec_arm_default: true,
@@ -74,7 +74,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Akustisk flygel med djup dynamik och resonant reverbklang.",
             icon: "🎹",
             kind: TrackKind::SynthLead,
-            color: Theme::GREEN,
+            color: crate::ui::theme::palette().green(),
             category: AddTrackCategory::Keys,
             tag: "Akustiskt",
             is_rec_arm_default: false,
@@ -84,7 +84,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Varmt elpiano med mjuk tremolo och analog chorus.",
             icon: "✨",
             kind: TrackKind::SynthLead,
-            color: Theme::TRACK_TEAL,
+            color: crate::ui::theme::palette().track_teal(),
             category: AddTrackCategory::Keys,
             tag: "Vintage",
             is_rec_arm_default: false,
@@ -94,7 +94,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Svävande varma synth-mattor och drömlika atmosfärer.",
             icon: "🌌",
             kind: TrackKind::SynthLead,
-            color: Theme::PURPLE,
+            color: crate::ui::theme::palette().purple(),
             category: AddTrackCategory::Keys,
             tag: "Synth",
             is_rec_arm_default: false,
@@ -104,7 +104,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Snabb, krispig synth-pluck perfekt för melodier och arpeggion.",
             icon: "⚡",
             kind: TrackKind::SynthLead,
-            color: Theme::YELLOW,
+            color: crate::ui::theme::palette().yellow(),
             category: AddTrackCategory::Keys,
             tag: "Elektronisk",
             is_rec_arm_default: false,
@@ -116,7 +116,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Klar elgitarr med rörförstärkarsimulering och mjuk delay.",
             icon: "🎸",
             kind: TrackKind::SynthLead,
-            color: Theme::RED,
+            color: crate::ui::theme::palette().red(),
             category: AddTrackCategory::BassGuitar,
             tag: "Gitarr",
             is_rec_arm_default: false,
@@ -126,7 +126,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Varm och fyllig fingerpicking-gitarr med studiorumsklang.",
             icon: "🪕",
             kind: TrackKind::SynthLead,
-            color: Theme::AMBER,
+            color: crate::ui::theme::palette().amber(),
             category: AddTrackCategory::BassGuitar,
             tag: "Akustiskt",
             is_rec_arm_default: false,
@@ -136,7 +136,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Djup, mättad sub-bas som pumpar och skakar subwoofern.",
             icon: "🔊",
             kind: TrackKind::Bassline,
-            color: Theme::TRACK_ROSE,
+            color: crate::ui::theme::palette().track_rose(),
             category: AddTrackCategory::BassGuitar,
             tag: "Sub Bass",
             is_rec_arm_default: false,
@@ -146,7 +146,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Klassisk resonant bas med glide och distorsion.",
             icon: "🎛",
             kind: TrackKind::Bassline,
-            color: Theme::ORANGE,
+            color: crate::ui::theme::palette().orange(),
             category: AddTrackCategory::BassGuitar,
             tag: "Acid",
             is_rec_arm_default: false,
@@ -158,7 +158,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Tunga kicks, snärtiga snares, hi-hat rolls och 808 claps.",
             icon: "🥁",
             kind: TrackKind::Drums,
-            color: Theme::CYAN,
+            color: crate::ui::theme::palette().cyan(),
             category: AddTrackCategory::Drums,
             tag: "Trap / Hip-Hop",
             is_rec_arm_default: false,
@@ -168,7 +168,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Naturligt trumset med punchig bastrumma och dynamisk virvel.",
             icon: "🥢",
             kind: TrackKind::Drums,
-            color: Theme::TRACK_BLUE,
+            color: crate::ui::theme::palette().track_blue(),
             category: AddTrackCategory::Drums,
             tag: "Rock / Pop",
             is_rec_arm_default: false,
@@ -178,7 +178,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Knastriga samplingar, dämpade kicks och vintage vinylklang.",
             icon: "📻",
             kind: TrackKind::Drums,
-            color: Theme::AMBER,
+            color: crate::ui::theme::palette().amber(),
             category: AddTrackCategory::Drums,
             tag: "Lo-Fi",
             is_rec_arm_default: false,
@@ -188,7 +188,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Tung analog kick, öppna hi-hats och industriella claps.",
             icon: "⚡",
             kind: TrackKind::Drums,
-            color: Theme::RED,
+            color: crate::ui::theme::palette().red(),
             category: AddTrackCategory::Drums,
             tag: "Techno / House",
             is_rec_arm_default: false,
@@ -200,7 +200,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Episka filmiska stråkar med full orkesterbredd.",
             icon: "🎻",
             kind: TrackKind::SynthLead,
-            color: Theme::CABLE,
+            color: crate::ui::theme::palette().cable(),
             category: AddTrackCategory::Orchestra,
             tag: "Cinematic",
             is_rec_arm_default: false,
@@ -210,7 +210,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Mäktiga trumpeter, tromboner och valthorn för drops och refränger.",
             icon: "🎺",
             kind: TrackKind::SynthLead,
-            color: Theme::YELLOW,
+            color: crate::ui::theme::palette().yellow(),
             category: AddTrackCategory::Orchestra,
             tag: "Orkester",
             is_rec_arm_default: false,
@@ -222,7 +222,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Importera egna WAV-, MP3-, FLAC- eller AIFF-ljudspår direkt i tidslinjen.",
             icon: "📁",
             kind: TrackKind::CustomAudio,
-            color: Theme::ORANGE,
+            color: crate::ui::theme::palette().orange(),
             category: AddTrackCategory::Import,
             tag: "WAV / MP3",
             is_rec_arm_default: false,
@@ -232,7 +232,7 @@ pub fn get_track_templates() -> Vec<TrackTemplate> {
             desc: "Separat ljudspår för Vocals, Drums, Bass eller Instrument från Suno AI.",
             icon: "📦",
             kind: TrackKind::CustomAudio,
-            color: Theme::PURPLE,
+            color: crate::ui::theme::palette().purple(),
             category: AddTrackCategory::Import,
             tag: "AI Stem",
             is_rec_arm_default: false,
@@ -271,9 +271,9 @@ pub fn render_add_track_modal(
 
             // Top Header and Search Bar
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("Välj instrument eller ljudkälla för ditt nya spår:")).strong().size(Theme::FONT_M).color(Theme::TEXT));
+                ui.label(egui::RichText::new(crate::i18n::t("Välj instrument eller ljudkälla för ditt nya spår:")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().text()));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("🔍 Sök:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("🔍 Sök:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                     ui.add_sized(Vec2::new(140.0, 20.0), egui::TextEdit::singleline(&mut state.search_filter).hint_text(crate::i18n::t("T.ex. flygel, 808...")));
                 });
             });
@@ -294,8 +294,8 @@ pub fn render_add_track_modal(
 
                 for (cat_opt, cat_name) in categories {
                     let is_active = state.selected_category == cat_opt;
-                    let fill = if is_active { Theme::ORANGE } else { Theme::PANEL };
-                    let fg = if is_active { Color32::BLACK } else { Theme::TEXT };
+                    let fill = if is_active { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel() };
+                    let fg = if is_active { Color32::BLACK } else { crate::ui::theme::palette().text() };
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(cat_name)).strong().size(Theme::FONT_S).color(fg)).fill(fill)).clicked() {
                         state.selected_category = cat_opt;
                     }
@@ -332,7 +332,7 @@ pub fn render_add_track_modal(
                         let (card_rect, card_resp) = ui.allocate_exact_size(Vec2::new(330.0, 72.0), Sense::click());
                         let is_hover = card_resp.hovered();
 
-                        let bg = if is_hover { Theme::GRID } else { Theme::HEADER };
+                        let bg = if is_hover { crate::ui::theme::palette().grid() } else { crate::ui::theme::palette().header() };
                         ui.painter().rect_filled(card_rect, Rounding::same(6.0), bg);
                         ui.painter().rect_stroke(card_rect, Rounding::same(6.0), Stroke::new(if is_hover { 1.5_f32 } else { 1.0_f32 }, tmpl.color));
 
@@ -353,7 +353,7 @@ pub fn render_add_track_modal(
                             egui::Align2::LEFT_CENTER,
                             crate::i18n::t(tmpl.title),
                             egui::FontId::proportional(Theme::FONT_S),
-                            Theme::TEXT,
+                            crate::ui::theme::palette().text(),
                         );
 
                         // Tag Pill on Right
@@ -372,7 +372,7 @@ pub fn render_add_track_modal(
                             egui::Align2::LEFT_CENTER,
                             crate::i18n::t(tmpl.desc),
                             egui::FontId::proportional(Theme::FONT_S),
-                            Theme::TEXT_MUTED,
+                            crate::ui::theme::palette().text_muted(),
                         );
 
                         if card_resp.clicked() {
@@ -405,7 +405,7 @@ pub fn render_add_track_modal(
             ui.add_space(8.0);
             ui.separator();
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("💡 Tips: Du kan byta färg, ljud och effekter när som helst i spårhuvudet.")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(crate::i18n::t("💡 Tips: Du kan byta färg, ljud och effekter när som helst i spårhuvudet.")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.button(crate::i18n::t("Stäng")).clicked() {
                         close = true;

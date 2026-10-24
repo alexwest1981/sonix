@@ -9,7 +9,6 @@ use super::*;
 use super::midi::{apply_bar_to_pattern, drum_channel_for_key, midi_channel_for_track, notes_by_bar,
                   pattern_bar_notes, ARRANGEMENT_BARS, STEPS_PER_BAR};
 use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re-exporteras inte
-use crate::ui::theme::Theme;
 
     /// Minimal projektfil — fälten utanför `serde(default)` måste anges.
     fn minimal_project_json(name: &str) -> String {
@@ -40,7 +39,7 @@ use crate::ui::theme::Theme;
     fn test_pattern() -> Pattern {
         Pattern {
             name: "Testpattern".to_string(),
-            color: Theme::TEXT,
+            color: crate::ui::theme::palette().text(),
             bars: 1,
             bends: Vec::new(),
             alt_takes: Vec::new(),
@@ -320,7 +319,6 @@ use crate::ui::theme::Theme;
         assert!(r.pcm_audio.is_none());
         assert!(r.waveform_preview.is_empty());
     }
-
 
     /// **Ett fält som inte finns i filen får standarden** (Fas 8.4/7). En kanal som sparades
     /// innan anslagsratten fanns har inget `velocity_sensitivity`, och ska då få **1,0** — den
@@ -739,7 +737,7 @@ use crate::ui::theme::Theme;
             category: "Test".to_string(),
             icon: "🎵".to_string(),
             default_note: 60,
-            color: Theme::TEXT,
+            color: crate::ui::theme::palette().text(),
             waveform: Vec::new(),
             file_path: Some(path.to_string()),
         }
@@ -873,7 +871,7 @@ use crate::ui::theme::Theme;
             fade_out_bars: 0.0,
             muted: false,
             is_reverse: false,
-            color: Theme::TEXT,
+            color: crate::ui::theme::palette().text(),
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
@@ -1085,7 +1083,7 @@ use crate::ui::theme::Theme;
             "Testkanal".to_string(),
             "🎹",
             TrackKind::SynthLead,
-            Theme::TEXT,
+            crate::ui::theme::palette().text(),
         );
         let bus_volume = [1.0_f32; crate::audio::synth::NUM_BUSES];
         let bus_muted = [false; crate::audio::synth::NUM_BUSES];
@@ -1132,7 +1130,7 @@ use crate::ui::theme::Theme;
                 freq_hz: 120.0,
                 gain_db: 1.5,
                 q: 0.9,
-                color: Theme::TEXT,
+                color: crate::ui::theme::palette().text(),
                 is_active: true,
             }],
             compressor_release_ms: 120.0,
@@ -1374,7 +1372,7 @@ use crate::ui::theme::Theme;
             freq_hz: 111.0,
             gain_db: -3.0,
             q: 1.5,
-            color: Theme::TEXT,
+            color: crate::ui::theme::palette().text(),
             is_active: false,
         }];
         assert!(
@@ -1570,17 +1568,17 @@ use crate::ui::theme::Theme;
     #[test]
     fn test_classify_all_stem_names_distinct_colors() {
         let stems = [
-            ("0 Lead Vocals", "🎙", Theme::TRACK_CYAN),
-            ("1 Backing Vocals", "🗣", Theme::TRACK_MAGENTA),
-            ("2 Drums", "🥁", Theme::TRACK_ORANGE),
-            ("3 Bass", "🎸", Theme::TRACK_GREEN),
-            ("4 Guitar", "🎸", Theme::TRACK_VIOLET),
-            ("5 Keyboard", "🎹", Theme::TRACK_BLUE),
-            ("6 Percussion", "🪘", Theme::TRACK_AMBER),
-            ("7 Strings", "🎻", Theme::TRACK_TEAL),
-            ("8 Synth", "🎛", Theme::TRACK_STEEL),
-            ("9 Other", "✨", Theme::TRACK_ROSE),
-            (crate::i18n::t("🎤 Mic (Voice & Sång)"), "🎤", Theme::TEXT),
+            ("0 Lead Vocals", "🎙", crate::ui::theme::palette().track_cyan()),
+            ("1 Backing Vocals", "🗣", crate::ui::theme::palette().track_magenta()),
+            ("2 Drums", "🥁", crate::ui::theme::palette().track_orange()),
+            ("3 Bass", "🎸", crate::ui::theme::palette().track_green()),
+            ("4 Guitar", "🎸", crate::ui::theme::palette().track_violet()),
+            ("5 Keyboard", "🎹", crate::ui::theme::palette().track_blue()),
+            ("6 Percussion", "🪘", crate::ui::theme::palette().track_amber()),
+            ("7 Strings", "🎻", crate::ui::theme::palette().track_teal()),
+            ("8 Synth", "🎛", crate::ui::theme::palette().track_steel()),
+            ("9 Other", "✨", crate::ui::theme::palette().track_rose()),
+            (crate::i18n::t("🎤 Mic (Voice & Sång)"), "🎤", crate::ui::theme::palette().text()),
         ];
 
         let mut seen_colors = std::collections::HashSet::new();
@@ -1618,14 +1616,14 @@ use crate::ui::theme::Theme;
             });
             assert!(mic_pos.is_none(), "Original file had no mic track");
 
-            let mut mic_track = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, Theme::TEXT);
+            let mut mic_track = PlaylistTrack::new(crate::i18n::t("🎤 Mic (Voice & Sång)").to_string(), "🎤", TrackKind::VocalAudio, crate::ui::theme::palette().text());
             mic_track.volume = 1.0;
             mic_track.is_rec_armed = true;
             app_tracks_copy.push(mic_track);
 
             assert_eq!(app_tracks_copy.len(), 11, "Now has 11 tracks including Mic");
             assert_eq!(app_tracks_copy.last().unwrap().name, crate::i18n::t("🎤 Mic (Voice & Sång)"));
-            assert_eq!(app_tracks_copy.last().unwrap().color, Theme::TEXT);
+            assert_eq!(app_tracks_copy.last().unwrap().color, crate::ui::theme::palette().text());
 
             // Re-classify colors
             for track in &mut app_tracks_copy {
@@ -1640,24 +1638,24 @@ use crate::ui::theme::Theme;
             }
 
             // Verify lead vocals is Cyan
-            assert_eq!(app_tracks_copy[0].color, Theme::TRACK_CYAN);
-            assert_eq!(app_tracks_copy[0].regions[0].color, Theme::TRACK_CYAN);
+            assert_eq!(app_tracks_copy[0].color, crate::ui::theme::palette().track_cyan());
+            assert_eq!(app_tracks_copy[0].regions[0].color, crate::ui::theme::palette().track_cyan());
 
             // Verify backing vocals is Magenta
-            assert_eq!(app_tracks_copy[1].color, Theme::TRACK_MAGENTA);
-            assert_eq!(app_tracks_copy[1].regions[0].color, Theme::TRACK_MAGENTA);
+            assert_eq!(app_tracks_copy[1].color, crate::ui::theme::palette().track_magenta());
+            assert_eq!(app_tracks_copy[1].regions[0].color, crate::ui::theme::palette().track_magenta());
 
             // Verify drums is Electric Orange
-            assert_eq!(app_tracks_copy[2].color, Theme::TRACK_ORANGE);
-            assert_eq!(app_tracks_copy[2].regions[0].color, Theme::TRACK_ORANGE);
+            assert_eq!(app_tracks_copy[2].color, crate::ui::theme::palette().track_orange());
+            assert_eq!(app_tracks_copy[2].regions[0].color, crate::ui::theme::palette().track_orange());
         }
     }
 
     #[test]
     fn test_sample_drag_and_drop_to_timeline_track() {
         let mut tracks = vec![
-            PlaylistTrack::new(crate::i18n::t("🥁 Trummor").to_string(), "🥁", TrackKind::Drums, Theme::ORANGE),
-            PlaylistTrack::new(crate::i18n::t("🎸 Bas").to_string(), "🎸", TrackKind::Bassline, Theme::GREEN),
+            PlaylistTrack::new(crate::i18n::t("🥁 Trummor").to_string(), "🥁", TrackKind::Drums, crate::ui::theme::palette().orange()),
+            PlaylistTrack::new(crate::i18n::t("🎸 Bas").to_string(), "🎸", TrackKind::Bassline, crate::ui::theme::palette().green()),
         ];
 
         let sample_item = LibrarySampleItem {
@@ -1666,7 +1664,7 @@ use crate::ui::theme::Theme;
             category: "Kick".to_string(),
             icon: "🥁".to_string(),
             default_note: 36,
-            color: Theme::RED,
+            color: crate::ui::theme::palette().red(),
             waveform: vec![0.8, 0.6, 0.4, 0.2, 0.05],
             file_path: None,
         };
@@ -1737,7 +1735,7 @@ use crate::ui::theme::Theme;
         let mut vocal_track = crate::audio::recorder::VocalStudioTrack::default();
         vocal_track.takes.clear();
         let dummy_pcm = vec![0.5, -0.5, 0.8, -0.8, 0.3, -0.3];
-        let take_idx = vocal_track.load_sample_or_region_as_take("Lead Hook", dummy_pcm, 44100, Theme::CYAN);
+        let take_idx = vocal_track.load_sample_or_region_as_take("Lead Hook", dummy_pcm, 44100, crate::ui::theme::palette().cyan());
 
         assert_eq!(take_idx, 0);
         assert_eq!(vocal_track.takes.len(), 1);
@@ -2315,7 +2313,7 @@ use crate::ui::theme::Theme;
             "Spår".to_string(),
             "🎹",
             super::state::TrackKind::SynthLead,
-            Theme::TEXT,
+            crate::ui::theme::palette().text(),
         );
         track.clips[4] = Some(2);
         track.clip_bars[4] = 2;
@@ -2365,7 +2363,7 @@ use crate::ui::theme::Theme;
 
         let mut pattern = super::state::Pattern {
             name: "Två takter".to_string(),
-            color: Theme::TEXT,
+            color: crate::ui::theme::palette().text(),
             bars: 2,
             bends: Vec::new(),
             alt_takes: Vec::new(),
@@ -2998,7 +2996,7 @@ use crate::ui::theme::Theme;
             category: "Kicks".to_string(),
             icon: "🥁".to_string(),
             default_note: 36,
-            color: Theme::RED,
+            color: crate::ui::theme::palette().red(),
             waveform: vec![0.9, 0.6, 0.3],
             file_path: path,
         };
@@ -3247,7 +3245,7 @@ use crate::ui::theme::Theme;
             fade_out_bars: 0.0,
             muted: false,
             is_reverse: false,
-            color: Theme::TEXT,
+            color: crate::ui::theme::palette().text(),
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
@@ -3305,7 +3303,7 @@ use crate::ui::theme::Theme;
             fade_out_bars: 0.0,
             muted: false,
             is_reverse: false,
-            color: Theme::TEXT,
+            color: crate::ui::theme::palette().text(),
             loop_length_bars: 0.0,
             source_bpm,
             tape: false,
@@ -3355,7 +3353,7 @@ use crate::ui::theme::Theme;
                 fade_out_bars: 0.0,
                 muted: false,
                 is_reverse: false,
-                color: Theme::TEXT,
+                color: crate::ui::theme::palette().text(),
                 loop_length_bars: 0.0,
                 source_bpm: 0.0,
                 tape: false,
@@ -3374,7 +3372,7 @@ use crate::ui::theme::Theme;
                 fade_out_bars: 0.0,
                 muted: false,
                 is_reverse: false,
-                color: Theme::TEXT,
+                color: crate::ui::theme::palette().text(),
                 loop_length_bars: 0.0,
                 source_bpm: 96.0,
                 tape: false,

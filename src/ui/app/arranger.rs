@@ -162,7 +162,7 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
             // Vertical Divider Line between Left Frozen Column and Right Timeline ScrollArea
             ui.painter().line_segment(
                 [Pos2::new(ui.cursor().min.x, ui.cursor().min.y), Pos2::new(ui.cursor().min.x, ui.cursor().min.y + (num_tracks as f32 * 50.0).max(200.0))],
-                Stroke::new(1.0_f32, Theme::BORDER),
+                Stroke::new(1.0_f32, crate::ui::theme::palette().border()),
             );
 
             self.draw_timeline_lanes(
@@ -184,14 +184,14 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
             if let Some(pos) = pointer_opt {
                 let tooltip_rect = Rect::from_min_size(Pos2::new(pos.x + 16.0, pos.y + 12.0), Vec2::new(200.0, 26.0));
                 let painter = ui.ctx().layer_painter(egui::LayerId::new(egui::Order::Tooltip, egui::Id::new("sample_drag_tooltip")));
-                painter.rect_filled(tooltip_rect, Rounding::same(4.0), Theme::PANEL);
-                painter.rect_stroke(tooltip_rect, Rounding::same(4.0), Stroke::new(1.5_f32, Theme::CYAN));
+                painter.rect_filled(tooltip_rect, Rounding::same(4.0), crate::ui::theme::palette().panel());
+                painter.rect_stroke(tooltip_rect, Rounding::same(4.0), Stroke::new(1.5_f32, crate::ui::theme::palette().cyan()));
                 painter.text(
                     Pos2::new(tooltip_rect.min.x + 8.0, tooltip_rect.center().y),
                     egui::Align2::LEFT_CENTER,
                     format!("📦 Dra: {} ({})", drag_item.name, drag_item.category),
                     egui::FontId::proportional(Theme::FONT_S),
-                    Theme::TEXT,
+                    crate::ui::theme::palette().text(),
                 );
             }
         }
@@ -248,7 +248,7 @@ impl SonixApp {
             ui.group(|ui| {
                 ui.set_height(26.0);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("🎵 {}", self.project_name)).strong().size(Theme::FONT_S).color(Theme::TEXT));
+                    ui.label(egui::RichText::new(format!("🎵 {}", self.project_name)).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                     if ui.button(crate::i18n::t("•••")).on_hover_text(crate::i18n::t("Filhanterare & Projektinställningar")).clicked() {
                         self.show_project_manager_modal = true;
                     }
@@ -258,7 +258,7 @@ impl SonixApp {
             ui.separator();
 
             // Stems Importer Button
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📦 Stämmor (Stems)")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TRACK_MAGENTA)).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📦 Stämmor (Stems)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().track_magenta())).clicked() {
                 self.scan_for_suno_stems();
                 self.show_suno_import_modal = true;
             }
@@ -274,7 +274,7 @@ impl SonixApp {
                     let (m_rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 16.0), Sense::hover());
                     let h = (peak * 14.0).clamp(2.0, 14.0);
                     let bar_rect = Rect::from_min_max(Pos2::new(m_rect.min.x + 3.0, m_rect.max.y - h), Pos2::new(m_rect.max.x - 3.0, m_rect.max.y));
-                    ui.painter().rect_filled(bar_rect, Rounding::same(1.0), Theme::GREEN);
+                    ui.painter().rect_filled(bar_rect, Rounding::same(1.0), crate::ui::theme::palette().green());
 
                     // Transport Buttons
                     if ui.button(crate::i18n::t("⏮")).on_hover_text(crate::i18n::t("Gå till start (00:00.00)")).clicked() {
@@ -282,20 +282,20 @@ impl SonixApp {
                     }
 
                     let is_rec = self.is_recording_timeline || self.vocal_studio.is_recording;
-                    let rec_col = if is_rec { Theme::RED } else { Theme::RED };
+                    let rec_col = if is_rec { crate::ui::theme::palette().red() } else { crate::ui::theme::palette().red() };
                     let rec_label = if is_rec { "⏹ REC" } else { "⏺ REC" };
-                    if ui.add(egui::Button::new(egui::RichText::new(rec_label).size(Theme::FONT_S).strong().color(Theme::TEXT)).fill(rec_col)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(rec_label).size(Theme::FONT_S).strong().color(crate::ui::theme::palette().text())).fill(rec_col)).clicked() {
                         self.toggle_timeline_recording();
                     }
 
                     let play_txt = if self.is_playing { "⏸" } else { "▶" };
-                    let play_bg = if self.is_playing { Theme::GREEN } else { Theme::PANEL_ALT };
-                    if ui.add(egui::Button::new(egui::RichText::new(play_txt).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(play_bg)).clicked() {
+                    let play_bg = if self.is_playing { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().panel_alt() };
+                    if ui.add(egui::Button::new(egui::RichText::new(play_txt).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(play_bg)).clicked() {
                         self.toggle_playback();
                     }
 
-                    let loop_bg = if self.loop_enabled { Theme::GREEN } else { Theme::PANEL_ALT };
-                    let loop_fg = if self.loop_enabled { Color32::BLACK } else { Theme::CYAN };
+                    let loop_bg = if self.loop_enabled { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().panel_alt() };
+                    let loop_fg = if self.loop_enabled { Color32::BLACK } else { crate::ui::theme::palette().cyan() };
                     if ui
                         .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁")).size(Theme::FONT_S).strong().color(loop_fg)).fill(loop_bg))
                         .on_hover_text(crate::i18n::t("Slinga på/av för takt {}–{}"))
@@ -315,9 +315,9 @@ impl SonixApp {
                                 egui::RichText::new(crate::i18n::t("⏱ Tempo"))
                                     .size(Theme::FONT_S)
                                     .strong()
-                                    .color(Theme::TEXT),
+                                    .color(crate::ui::theme::palette().text()),
                             )
-                            .fill(Theme::BORDER),
+                            .fill(crate::ui::theme::palette().border()),
                         )
                         .on_hover_text(crate::i18n::t("Tempokarta — byten i låten"))
                         .clicked()
@@ -325,7 +325,7 @@ impl SonixApp {
                         self.show_tempo_modal = true;
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Mik")).size(Theme::FONT_S).strong().color(Theme::TEXT)).fill(Theme::BORDER_SOFT)).on_hover_text(crate::i18n::t("Mikrofoninställningar")).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Mik")).size(Theme::FONT_S).strong().color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft())).on_hover_text(crate::i18n::t("Mikrofoninställningar")).clicked() {
                         self.show_mic_settings_modal = true;
                     }
 
@@ -337,7 +337,7 @@ impl SonixApp {
                         self.tempo_map().bar_at_secs(self.song_time as f64) as f32;
                     let bar_text = format_bar_subdivisions(bar_float);
                     let full_time_str = format!("⏱ {}  {}", time_str, bar_text);
-                    ui.label(egui::RichText::new(full_time_str).monospace().strong().size(Theme::FONT_S).color(Theme::CYAN));
+                    ui.label(egui::RichText::new(full_time_str).monospace().strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                 });
             });
 
@@ -352,7 +352,7 @@ impl SonixApp {
                     ui.painter().rect_filled(
                         bpm_rect,
                         Rounding::same(2.0),
-                        Theme::PANEL,
+                        crate::ui::theme::palette().panel(),
                     );
                     // Skrivbart OCH dragbart — samma kontroll som tempodialogen
                     // använder. Att bara kunna dra tvingade fram skrubbande tills
@@ -387,7 +387,7 @@ impl SonixApp {
                     );
                     tempo_field.on_hover_text(tempo_hover);
 
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 TAP")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TRACK_ORANGE)).on_hover_text(crate::i18n::t("Klicka i takt för att sätta tempo (Tap Tempo)")).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 TAP")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().track_orange())).on_hover_text(crate::i18n::t("Klicka i takt för att sätta tempo (Tap Tempo)")).clicked() {
                         self.tap_tempo();
                     }
                 });
@@ -453,8 +453,8 @@ impl SonixApp {
                             if ui.selectable_label(self.time_signature == (6, 8), "6/8").clicked() { self.time_signature = (6, 8); }
                         });
 
-                    let metro_bg = if self.metronome_enabled { Theme::ORANGE } else { Theme::PANEL_ALT };
-                    let metro_fg = if self.metronome_enabled { Color32::BLACK } else { Theme::TEXT_MUTED };
+                    let metro_bg = if self.metronome_enabled { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel_alt() };
+                    let metro_fg = if self.metronome_enabled { Color32::BLACK } else { crate::ui::theme::palette().text_muted() };
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔔 Metronom")).strong().size(Theme::FONT_S).color(metro_fg)).fill(metro_bg)).on_hover_text(crate::i18n::t("Hörbar klick-metronom vid uppspelning")).clicked() {
                         self.metronome_enabled = !self.metronome_enabled;
                         self.status_message = if self.metronome_enabled { crate::i18n::t("🔔 Metronom aktiverad").to_string() } else { crate::i18n::t("🔕 Metronom avstängd").to_string() };
@@ -487,11 +487,11 @@ impl SonixApp {
                     for (tool_val, tool_label) in tools {
                         let is_sel = std::mem::discriminant(&self.arranger_tool) == std::mem::discriminant(&tool_val);
                         let btn_bg = if is_sel {
-                            if matches!(tool_val, ArrangerTool::Slice) { Theme::ORANGE } else { Theme::ORANGE }
+                            if matches!(tool_val, ArrangerTool::Slice) { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().orange() }
                         } else {
-                            Theme::PANEL_ALT
+                            crate::ui::theme::palette().panel_alt()
                         };
-                        let btn_fg = if is_sel { Color32::BLACK } else { Theme::TEXT };
+                        let btn_fg = if is_sel { Color32::BLACK } else { crate::ui::theme::palette().text() };
                         if ui.add(egui::Button::new(egui::RichText::new(tool_label).strong().size(Theme::FONT_S).color(btn_fg)).fill(btn_bg)).clicked() {
                             self.arranger_tool = tool_val;
                         }
@@ -500,7 +500,7 @@ impl SonixApp {
             });
 
             // Direct Quick-Cut Action Button (Always available!)
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✂ Klipp vid spelhuvud (Ctrl+B / S)")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::GREEN))
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✂ Klipp vid spelhuvud (Ctrl+B / S)")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().green()))
                 .on_hover_text(crate::i18n::t("Dela vald region exakt vid den nuvarande tidsmarkören (Genväg: Ctrl+B eller S)"))
                 .clicked() {
                     self.split_selected_region_at_playhead();
@@ -512,7 +512,7 @@ impl SonixApp {
             ui.group(|ui| {
                 ui.set_height(26.0);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Snäpp:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Snäpp:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                     let snaps = [
                         (TimeSnapMode::FreeHundredth, "⚡ 0.01s"),
                         (TimeSnapMode::Snap16th, "1/16"),
@@ -521,8 +521,8 @@ impl SonixApp {
                     ];
                     for (mode, label) in snaps {
                         let is_sel = self.timeline_snap_mode == mode;
-                        let bg = if is_sel { Theme::CYAN } else { Theme::PANEL };
-                        let fg = if is_sel { Color32::BLACK } else { Theme::TEXT };
+                        let bg = if is_sel { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().panel() };
+                        let fg = if is_sel { Color32::BLACK } else { crate::ui::theme::palette().text() };
                         if ui.add(egui::Button::new(egui::RichText::new(label).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                             self.timeline_snap_mode = mode;
                         }
@@ -534,8 +534,8 @@ impl SonixApp {
 
             // Follow Playhead Toggle
             let auto_label = if self.timeline_auto_scroll { crate::i18n::t("🏃 Följ: PÅ") } else { crate::i18n::t("⏸ Följ: AV") };
-            let auto_bg = if self.timeline_auto_scroll { Theme::GREEN } else { Theme::PANEL_ALT };
-            let auto_fg = if self.timeline_auto_scroll { Color32::BLACK } else { Theme::TEXT_MUTED };
+            let auto_bg = if self.timeline_auto_scroll { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().panel_alt() };
+            let auto_fg = if self.timeline_auto_scroll { Color32::BLACK } else { crate::ui::theme::palette().text_muted() };
             let auto_tip = if self.timeline_auto_scroll {
                 crate::i18n::t("Tidslinjen rullar automatiskt med spelhuvudet under uppspelning. Klicka för att stänga av.")
             } else {
@@ -554,8 +554,8 @@ impl SonixApp {
                 ui.horizontal(|ui| {
                     let auto_on = self.show_automation;
                     let auto_lbl = if auto_on { crate::i18n::t("📈 Automation: PÅ") } else { crate::i18n::t("📈 Automation: AV") };
-                    let auto_bg = if auto_on { Theme::CYAN } else { Theme::PANEL_ALT };
-                    let auto_fg = if auto_on { Color32::BLACK } else { Theme::TEXT_MUTED };
+                    let auto_bg = if auto_on { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().panel_alt() };
+                    let auto_fg = if auto_on { Color32::BLACK } else { crate::ui::theme::palette().text_muted() };
                     if ui.add(egui::Button::new(egui::RichText::new(auto_lbl).strong().size(Theme::FONT_S).color(auto_fg)).fill(auto_bg))
                         .on_hover_text(crate::i18n::t("Visa/redigera automationskurvor för valt spår. Vänsterklicka i kurvan för att lägga till punkter, dra för att flytta, högerklicka för att ta bort."))
                         .clicked()
@@ -567,8 +567,8 @@ impl SonixApp {
                         for p in AutomationParam::ALL {
                             let mål = AutomationTarget::Track(p);
                             let sel = self.automation_target == mål;
-                            let pbg = if sel { Theme::ORANGE } else { Theme::PANEL };
-                            let pfg = if sel { Color32::BLACK } else { Theme::TEXT };
+                            let pbg = if sel { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel() };
+                            let pfg = if sel { Color32::BLACK } else { crate::ui::theme::palette().text() };
                             if ui.add(egui::Button::new(egui::RichText::new(p.label()).strong().size(Theme::FONT_S).color(pfg)).fill(pbg)).clicked() {
                                 self.automation_target = mål;
                             }
@@ -638,7 +638,7 @@ impl SonixApp {
                     if ui.button(crate::i18n::t("🔍-")).on_hover_text(crate::i18n::t("Zooma ut (Ctrl+Skrolla)")).clicked() {
                         self.suno_zoom_level = (self.suno_zoom_level * 0.8).max(0.25);
                     }
-                    ui.label(egui::RichText::new(format!("{:.0}%", self.suno_zoom_level * 100.0)).monospace().size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(format!("{:.0}%", self.suno_zoom_level * 100.0)).monospace().size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                 });
             });
         });
@@ -654,7 +654,7 @@ impl SonixApp {
                 ui.set_max_width(680.0);
                 ui.horizontal(|ui| {
                     // Beta Tag
-                    ui.label(egui::RichText::new(crate::i18n::t("BETA")).strong().size(Theme::FONT_XS).color(Theme::ORANGE));
+                    ui.label(egui::RichText::new(crate::i18n::t("BETA")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().orange()));
                     ui.separator();
 
                     // Add Context (+)
@@ -665,11 +665,11 @@ impl SonixApp {
                     // Context Chip
                     let mut clear_context = false;
                     if let Some(ref ctx_clip) = self.suno_context_clip {
-                        let fill = Theme::TRACK_VIOLET;
+                        let fill = crate::ui::theme::palette().track_violet();
                         let clip_label = format!("🟣 {}", ctx_clip);
                         ui.group(|ui| {
                             ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new(clip_label).size(Theme::FONT_S).color(Theme::TEXT));
+                                ui.label(egui::RichText::new(clip_label).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                                 if ui.add(egui::Button::new(crate::i18n::t("✕")).small().fill(fill)).on_hover_text(crate::i18n::t("Rensa textrutan")).clicked() {
                                     clear_context = true;
                                 }
@@ -703,8 +703,8 @@ impl SonixApp {
                         });
 
                     // Submit / Generate Button (↑)
-                    let gen_bg = if self.suno_is_generating { Color32::RED } else { Theme::GREEN };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⬆ ")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(gen_bg)).on_hover_text(crate::i18n::t("Skicka prompten och generera")).clicked() {
+                    let gen_bg = if self.suno_is_generating { Color32::RED } else { crate::ui::theme::palette().green() };
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⬆ ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(gen_bg)).on_hover_text(crate::i18n::t("Skicka prompten och generera")).clicked() {
                         self.trigger_suno_ai_generation();
                     }
                 });
@@ -713,7 +713,7 @@ impl SonixApp {
             ui.add_space(4.0);
 
             // Center Action: "+ Add Track Effects" Button (Suno Studio Style)
-            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Add Track Effects")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER)).clicked() {
+            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Add Track Effects")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border())).clicked() {
                 self.view_mode = ViewMode::EffectsMixer;
             }
         });
@@ -781,13 +781,13 @@ impl SonixApp {
 
             // Corner Track Header Spacer
             let (corner_rect, _) = ui.allocate_exact_size(Vec2::new(header_w, ruler_h), Sense::hover());
-            ui.painter().rect_filled(corner_rect, Rounding::same(3.0), Theme::BG);
+            ui.painter().rect_filled(corner_rect, Rounding::same(3.0), crate::ui::theme::palette().bg());
             ui.painter().text(
                 Pos2::new(corner_rect.min.x + 10.0, corner_rect.center().y),
                 egui::Align2::LEFT_CENTER,
                 crate::i18n::t("SPÅR / INSTRUMENT"),
                 egui::FontId::proportional(Theme::FONT_S),
-                Theme::TEXT_MUTED,
+                crate::ui::theme::palette().text_muted(),
             );
 
             ui.add_space(2.0);
@@ -816,24 +816,24 @@ impl SonixApp {
                 // Left Track Header Card (Sonix Style)
                 let (h_rect, h_resp) = ui.allocate_exact_size(Vec2::new(header_w, track_row_h), Sense::click());
                 let card_bg = if is_mic_track {
-                    if is_sel_track { Theme::TEXT } else { Theme::TEXT }
+                    if is_sel_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().text() }
                 } else if is_sel_track {
-                    Theme::PANEL
+                    crate::ui::theme::palette().panel()
                 } else {
-                    Theme::BG
+                    crate::ui::theme::palette().bg()
                 };
                 let card_stroke = if is_mic_track {
-                    if is_sel_track { Theme::CYAN } else { Theme::TEXT }
+                    if is_sel_track { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().text() }
                 } else if is_sel_track {
                     track_color
                 } else {
-                    Theme::PANEL_ALT
+                    crate::ui::theme::palette().panel_alt()
                 };
                 ui.painter().rect_filled(h_rect, Rounding::same(3.0), card_bg);
                 ui.painter().rect_stroke(h_rect, Rounding::same(3.0), Stroke::new(if is_sel_track { 1.5_f32 } else { 1.0_f32 }, card_stroke));
 
                 // Left Accent Bar
-                let accent_color = if is_mic_track { Theme::CYAN } else { track_color };
+                let accent_color = if is_mic_track { crate::ui::theme::palette().cyan() } else { track_color };
                 let color_bar = Rect::from_min_size(h_rect.min, Vec2::new(4.0, h_rect.height()));
                 ui.painter().rect_filled(color_bar, Rounding::same(1.5), accent_color);
 
@@ -846,9 +846,9 @@ impl SonixApp {
                     format!("{} {} {}", t_idx + 1, icon, track_name)
                 };
                 let title_col = if is_mic_track {
-                    Theme::BG
+                    crate::ui::theme::palette().bg()
                 } else if is_sel_track {
-                    Theme::TEXT
+                    crate::ui::theme::palette().text()
                 } else {
                     track_color
                 };
@@ -867,26 +867,26 @@ impl SonixApp {
                 if is_vocal_track || is_armed || is_mic_track {
                     let vu = self.vocal_studio.mic_vu_level;
                     let vu_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 116.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(20.0, if is_mic_track { 28.0 } else { 18.0 }));
-                    ui.painter().rect_filled(vu_rect, Rounding::same(2.0), if is_mic_track { Theme::TEXT } else { Theme::HEADER });
+                    ui.painter().rect_filled(vu_rect, Rounding::same(2.0), if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().header() });
                     let vu_h = (vu * (if is_mic_track { 24.0 } else { 14.0 })).clamp(2.0, if is_mic_track { 24.0 } else { 14.0 });
                     let vu_fill = Rect::from_min_max(
                         Pos2::new(vu_rect.min.x + 4.0, vu_rect.max.y - 2.0 - vu_h),
                         Pos2::new(vu_rect.max.x - 4.0, vu_rect.max.y - 2.0)
                     );
-                    let vu_col = if vu > 0.85 { Theme::RED } else if vu > 0.5 { Theme::YELLOW } else { Theme::CYAN };
+                    let vu_col = if vu > 0.85 { crate::ui::theme::palette().red() } else if vu > 0.5 { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().cyan() };
                     ui.painter().rect_filled(vu_fill, Rounding::same(1.0), vu_col);
                 }
 
                 // Controls Row inside header (Vol Slider, Pan Slider, Mute, Solo, Record Arm R, Focus Editor 🔍)
                 let vol_rect = Rect::from_min_size(Pos2::new(h_rect.min.x + 8.0, h_rect.min.y + 26.0 + ctrl_y_offset), Vec2::new(38.0, 12.0));
-                ui.painter().rect_filled(vol_rect, Rounding::same(2.0), if is_mic_track { Theme::TEXT } else { Theme::PANEL });
+                ui.painter().rect_filled(vol_rect, Rounding::same(2.0), if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() });
                 let vol_fill_w = vol_rect.width() * (track_vol / 1.25).clamp(0.0, 1.0);
                 ui.painter().rect_filled(Rect::from_min_size(vol_rect.min, Vec2::new(vol_fill_w, vol_rect.height())), Rounding::same(2.0), accent_color);
-                ui.painter().text(vol_rect.center(), egui::Align2::CENTER_CENTER, format!("{:.0}%", track_vol * 100.0), egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT);
+                ui.painter().text(vol_rect.center(), egui::Align2::CENTER_CENTER, format!("{:.0}%", track_vol * 100.0), egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text());
 
                 // Pan Slider
                 let pan_rect = Rect::from_min_size(Pos2::new(h_rect.min.x + 50.0, h_rect.min.y + 26.0 + ctrl_y_offset), Vec2::new(36.0, 12.0));
-                ui.painter().rect_filled(pan_rect, Rounding::same(2.0), if is_mic_track { Theme::TEXT } else { Theme::PANEL });
+                ui.painter().rect_filled(pan_rect, Rounding::same(2.0), if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() });
                 let track_pan = self.playlist_tracks[t_idx].pan;
                 let pan_norm = ((track_pan + 1.0) / 2.0).clamp(0.0, 1.0);
                 let center_x = pan_rect.center().x;
@@ -896,34 +896,34 @@ impl SonixApp {
                 } else {
                     Rect::from_min_max(Pos2::new(thumb_x, pan_rect.min.y + 2.0), Pos2::new(center_x, pan_rect.max.y - 2.0))
                 };
-                ui.painter().rect_filled(pan_fill_rect, Rounding::same(1.0), Theme::CYAN);
+                ui.painter().rect_filled(pan_fill_rect, Rounding::same(1.0), crate::ui::theme::palette().cyan());
                 let pan_str = if track_pan.abs() < 0.05 { "C".to_string() } else if track_pan < 0.0 { format!("L{:.0}", track_pan.abs() * 50.0) } else { format!("R{:.0}", track_pan * 50.0) };
-                ui.painter().text(pan_rect.center(), egui::Align2::CENTER_CENTER, pan_str, egui::FontId::proportional(Theme::FONT_XS), if is_mic_track { Theme::BORDER } else { Theme::TEXT_MUTED });
+                ui.painter().text(pan_rect.center(), egui::Align2::CENTER_CENTER, pan_str, egui::FontId::proportional(Theme::FONT_XS), if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
 
                 // Mute icon (speaker)
                 let m_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 90.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(18.0, 18.0));
-                let m_bg = if track_muted { Theme::RED } else if is_mic_track { Theme::TEXT } else { Theme::PANEL };
+                let m_bg = if track_muted { crate::ui::theme::palette().red() } else if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
                 ui.painter().rect_filled(m_rect, Rounding::same(2.0), m_bg);
-                ui.painter().text(m_rect.center(), egui::Align2::CENTER_CENTER, "🔊", egui::FontId::proportional(Theme::FONT_XS), if track_muted { Theme::TEXT } else if is_mic_track { Theme::BORDER } else { Theme::TEXT_MUTED });
+                ui.painter().text(m_rect.center(), egui::Align2::CENTER_CENTER, "🔊", egui::FontId::proportional(Theme::FONT_XS), if track_muted { crate::ui::theme::palette().text() } else if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
 
                 // Solo (S)
                 let s_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 68.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(18.0, 18.0));
-                let s_bg = if track_solo { Theme::ORANGE } else if is_mic_track { Theme::TEXT } else { Theme::PANEL };
+                let s_bg = if track_solo { crate::ui::theme::palette().orange() } else if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
                 ui.painter().rect_filled(s_rect, Rounding::same(2.0), s_bg);
-                ui.painter().text(s_rect.center(), egui::Align2::CENTER_CENTER, "S", egui::FontId::proportional(Theme::FONT_XS), if track_solo { Color32::BLACK } else if is_mic_track { Theme::BORDER } else { Theme::TEXT_MUTED });
+                ui.painter().text(s_rect.center(), egui::Align2::CENTER_CENTER, "S", egui::FontId::proportional(Theme::FONT_XS), if track_solo { Color32::BLACK } else if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
 
                 // Record Arm (R)
                 let r_arm_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 46.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(18.0, 18.0));
-                let r_arm_bg = if is_armed { Theme::RED } else if is_mic_track { Theme::TEXT } else { Theme::PANEL };
+                let r_arm_bg = if is_armed { crate::ui::theme::palette().red() } else if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
                 ui.painter().rect_filled(r_arm_rect, Rounding::same(2.0), r_arm_bg);
-                ui.painter().text(r_arm_rect.center(), egui::Align2::CENTER_CENTER, "R", egui::FontId::proportional(Theme::FONT_XS), if is_armed { Theme::TEXT } else if is_mic_track { Theme::BORDER } else { Theme::TEXT_MUTED });
+                ui.painter().text(r_arm_rect.center(), egui::Align2::CENTER_CENTER, "R", egui::FontId::proportional(Theme::FONT_XS), if is_armed { crate::ui::theme::palette().text() } else if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
 
                 // Stem Focus / Detail Editor button (🔍)
                 let f_rect = Rect::from_min_size(Pos2::new(h_rect.max.x - 24.0, h_rect.min.y + 18.0 + ctrl_y_offset), Vec2::new(18.0, 18.0));
                 let is_focused = self.show_stem_focus_modal && self.focused_stem_track == Some(t_idx);
-                let f_bg = if is_focused { Theme::CYAN } else if is_mic_track { Theme::TEXT } else { Theme::PANEL };
+                let f_bg = if is_focused { crate::ui::theme::palette().cyan() } else if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
                 ui.painter().rect_filled(f_rect, Rounding::same(2.0), f_bg);
-                ui.painter().text(f_rect.center(), egui::Align2::CENTER_CENTER, "🔍", egui::FontId::proportional(Theme::FONT_XS), if is_focused { Color32::BLACK } else if is_mic_track { Theme::BORDER } else { Theme::TEXT_MUTED });
+                ui.painter().text(f_rect.center(), egui::Align2::CENTER_CENTER, "🔍", egui::FontId::proportional(Theme::FONT_XS), if is_focused { Color32::BLACK } else if is_mic_track { crate::ui::theme::palette().border() } else { crate::ui::theme::palette().text_muted() });
 
                 if h_resp.clicked() || h_resp.double_clicked() {
                     ui.memory_mut(|m| m.stop_text_input());
@@ -963,7 +963,7 @@ impl SonixApp {
 
                 h_resp.context_menu(|ui| {
                     ui.set_min_width(230.0);
-                    ui.label(egui::RichText::new(crate::tstatus!("Spår {}: {}", t_idx + 1, self.playlist_tracks[t_idx].name)).strong().color(Theme::CYAN));
+                    ui.label(egui::RichText::new(crate::tstatus!("Spår {}: {}", t_idx + 1, self.playlist_tracks[t_idx].name)).strong().color(crate::ui::theme::palette().cyan()));
                     ui.separator();
                     if ui.button(crate::i18n::t("📋 Duplicera spår (under detta spår)")).clicked() {
                         track_duplicate_idx = Some(t_idx);
@@ -987,7 +987,7 @@ impl SonixApp {
                     }
                     if !is_mic_track && self.playlist_tracks.len() > 1 {
                         ui.separator();
-                        if ui.button(egui::RichText::new(crate::i18n::t("🗑 Ta bort spår")).color(Theme::RED)).clicked() {
+                        if ui.button(egui::RichText::new(crate::i18n::t("🗑 Ta bort spår")).color(crate::ui::theme::palette().red())).clicked() {
                             track_delete_idx = Some(t_idx);
                             ui.close_menu();
                         }
@@ -1000,9 +1000,9 @@ impl SonixApp {
             // "+ Add Track" Action Row on Left
             let (add_rect, add_resp) = ui.allocate_exact_size(Vec2::new(header_w, 28.0), Sense::click());
             let is_h = add_resp.hovered();
-            ui.painter().rect_filled(add_rect, Rounding::same(4.0), if is_h { Theme::GRID } else { Theme::HEADER });
-            ui.painter().rect_stroke(add_rect, Rounding::same(4.0), Stroke::new(1.0_f32, if is_h { Theme::ORANGE } else { Theme::BORDER }));
-            ui.painter().text(add_rect.center(), egui::Align2::CENTER_CENTER, crate::i18n::t("➕ Lägg till spår"), egui::FontId::proportional(Theme::FONT_S), if is_h { Theme::ORANGE } else { Theme::TEXT });
+            ui.painter().rect_filled(add_rect, Rounding::same(4.0), if is_h { crate::ui::theme::palette().grid() } else { crate::ui::theme::palette().header() });
+            ui.painter().rect_stroke(add_rect, Rounding::same(4.0), Stroke::new(1.0_f32, if is_h { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().border() }));
+            ui.painter().text(add_rect.center(), egui::Align2::CENTER_CENTER, crate::i18n::t("➕ Lägg till spår"), egui::FontId::proportional(Theme::FONT_S), if is_h { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().text() });
             if add_resp.clicked() {
                 self.show_add_track_modal = true;
             }
@@ -1012,13 +1012,13 @@ impl SonixApp {
             // Master "Main" Header Card on Left
             let (m_header_rect, m_header_resp) = ui.allocate_exact_size(Vec2::new(header_w, row_h), Sense::click_and_drag());
             let is_master_muted = self.master_volume < 0.001;
-            let card_bg = Theme::BG;
+            let card_bg = crate::ui::theme::palette().bg();
             ui.painter().rect_filled(m_header_rect, Rounding::same(3.0), card_bg);
-            ui.painter().rect_stroke(m_header_rect, Rounding::same(3.0), Stroke::new(1.0_f32, Theme::ORANGE));
+            ui.painter().rect_stroke(m_header_rect, Rounding::same(3.0), Stroke::new(1.0_f32, crate::ui::theme::palette().orange()));
 
             // Left Accent Bar (Orange for Master)
             let color_bar = Rect::from_min_size(m_header_rect.min, Vec2::new(4.0, m_header_rect.height()));
-            ui.painter().rect_filled(color_bar, Rounding::same(1.5), Theme::ORANGE);
+            ui.painter().rect_filled(color_bar, Rounding::same(1.5), crate::ui::theme::palette().orange());
 
             // "Main" Track Label
             ui.painter().text(
@@ -1026,20 +1026,20 @@ impl SonixApp {
                 egui::Align2::LEFT_CENTER,
                 "🎛 Main Master",
                 egui::FontId::proportional(Theme::FONT_S),
-                Theme::ORANGE,
+                crate::ui::theme::palette().orange(),
             );
 
             // Controls Row: Master Volume Slider & Mute Speaker Icon
             let vol_rect = Rect::from_min_size(Pos2::new(m_header_rect.min.x + 10.0, m_header_rect.min.y + 26.0), Vec2::new(125.0, 12.0));
-            ui.painter().rect_filled(vol_rect, Rounding::same(2.0), Theme::PANEL);
+            ui.painter().rect_filled(vol_rect, Rounding::same(2.0), crate::ui::theme::palette().panel());
             let vol_fill_w = vol_rect.width() * (self.master_volume / 1.25).clamp(0.0, 1.0);
-            ui.painter().rect_filled(Rect::from_min_size(vol_rect.min, Vec2::new(vol_fill_w, vol_rect.height())), Rounding::same(2.0), Theme::ORANGE);
+            ui.painter().rect_filled(Rect::from_min_size(vol_rect.min, Vec2::new(vol_fill_w, vol_rect.height())), Rounding::same(2.0), crate::ui::theme::palette().orange());
 
             // Mute speaker button
             let m_rect = Rect::from_min_size(Pos2::new(m_header_rect.max.x - 26.0, m_header_rect.min.y + 18.0), Vec2::new(18.0, 18.0));
-            let m_bg = if is_master_muted { Theme::RED } else { Theme::PANEL };
+            let m_bg = if is_master_muted { crate::ui::theme::palette().red() } else { crate::ui::theme::palette().panel() };
             ui.painter().rect_filled(m_rect, Rounding::same(2.0), m_bg);
-            ui.painter().text(m_rect.center(), egui::Align2::CENTER_CENTER, "🔊", egui::FontId::proportional(Theme::FONT_XS), if is_master_muted { Theme::TEXT } else { Theme::TEXT_MUTED });
+            ui.painter().text(m_rect.center(), egui::Align2::CENTER_CENTER, "🔊", egui::FontId::proportional(Theme::FONT_XS), if is_master_muted { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().text_muted() });
 
             if (m_header_resp.clicked() || m_header_resp.dragged())
                 && let Some(mouse_pos) = m_header_resp.hover_pos() {
@@ -1137,7 +1137,7 @@ impl SonixApp {
                         ui.label(
                             egui::RichText::new(crate::tstatus!("⏱ Tid: takt {}–{}", t0 + 1.0, t1 + 1.0))
                                 .size(Theme::FONT_S)
-                                .color(Theme::TEXT_MUTED),
+                                .color(crate::ui::theme::palette().text_muted()),
                         );
                         if ui
                             .button(crate::i18n::t("⏱ Infoga tid"))
@@ -1181,8 +1181,8 @@ impl SonixApp {
                         let (t0, t1) = self.time_range_bars();
                         self.apply_time_op(op, t0, t1);
                     }
-                    ui.painter().rect_filled(ruler_rect, Rounding::ZERO, Theme::BG);
-                    ui.painter().line_segment([Pos2::new(ruler_rect.min.x, ruler_rect.max.y), Pos2::new(ruler_rect.max.x, ruler_rect.max.y)], Stroke::new(1.0_f32, Theme::BORDER));
+                    ui.painter().rect_filled(ruler_rect, Rounding::ZERO, crate::ui::theme::palette().bg());
+                    ui.painter().line_segment([Pos2::new(ruler_rect.min.x, ruler_rect.max.y), Pos2::new(ruler_rect.max.x, ruler_rect.max.y)], Stroke::new(1.0_f32, crate::ui::theme::palette().border()));
 
                     // Slingområdet ritas bara när slingan är på — en ljus yta som inte gör
                     // något är ett löfte om en loop som inte finns.
@@ -1190,7 +1190,7 @@ impl SonixApp {
                         let loop_start_x = ruler_rect.min.x + self.loop_start_bar as f32 * bar_w;
                         let loop_end_x = ruler_rect.min.x + self.loop_end_bar as f32 * bar_w;
                         let loop_rect = Rect::from_min_max(Pos2::new(loop_start_x, ruler_rect.min.y), Pos2::new(loop_end_x, ruler_rect.max.y));
-                        ui.painter().rect_filled(loop_rect, Rounding::ZERO, Theme::GRID);
+                        ui.painter().rect_filled(loop_rect, Rounding::ZERO, crate::ui::theme::palette().grid());
                     }
 
                     // Song section markers (created by the Song Structure arranger)
@@ -1225,7 +1225,7 @@ impl SonixApp {
                         // Major Bar Tick Line
                         ui.painter().line_segment(
                             [Pos2::new(bar_start_x, ruler_rect.min.y), Pos2::new(bar_start_x, ruler_rect.max.y)],
-                            Stroke::new(1.0_f32, Theme::BORDER_SOFT),
+                            Stroke::new(1.0_f32, crate::ui::theme::palette().border_soft()),
                         );
 
                         // Major Bar Number Label
@@ -1234,7 +1234,7 @@ impl SonixApp {
                             egui::Align2::LEFT_CENTER,
                             format!("{}", bar_idx + 1),
                             egui::FontId::proportional(Theme::FONT_S),
-                            Theme::CYAN,
+                            crate::ui::theme::palette().cyan(),
                         );
 
                         // Major Time Code (MM:SS.cs)
@@ -1243,7 +1243,7 @@ impl SonixApp {
                             egui::Align2::LEFT_CENTER,
                             format_time_hundredths(bar_time_sec),
                             egui::FontId::proportional(Theme::FONT_XS),
-                            Theme::TEXT_MUTED,
+                            crate::ui::theme::palette().text_muted(),
                         );
 
                         // Beat Ticks (Rendered when bar_w >= 70.0)
@@ -1252,7 +1252,7 @@ impl SonixApp {
                                 let bx = bar_start_x + beat as f32 * (bar_w / 4.0);
                                 ui.painter().line_segment(
                                     [Pos2::new(bx, ruler_rect.min.y + 14.0), Pos2::new(bx, ruler_rect.max.y)],
-                                    Stroke::new(0.8_f32, Theme::BORDER),
+                                    Stroke::new(0.8_f32, crate::ui::theme::palette().border()),
                                 );
                                 if bar_w >= 140.0 {
                                     ui.painter().text(
@@ -1260,7 +1260,7 @@ impl SonixApp {
                                         egui::Align2::LEFT_CENTER,
                                         format!(".{}", beat + 1),
                                         egui::FontId::proportional(Theme::FONT_XS),
-                                        Theme::TRACK_STEEL,
+                                        crate::ui::theme::palette().track_steel(),
                                     );
                                 }
                             }
@@ -1273,7 +1273,7 @@ impl SonixApp {
                                     let sx = bar_start_x + step as f32 * (bar_w / 16.0);
                                     ui.painter().line_segment(
                                         [Pos2::new(sx, ruler_rect.min.y + 22.0), Pos2::new(sx, ruler_rect.max.y)],
-                                        Stroke::new(0.5_f32, Theme::BORDER),
+                                        Stroke::new(0.5_f32, crate::ui::theme::palette().border()),
                                     );
                                 }
                             }
@@ -1290,7 +1290,7 @@ impl SonixApp {
                                 if tx < bar_start_x + bar_w - 2.0 {
                                     ui.painter().line_segment(
                                         [Pos2::new(tx, ruler_rect.min.y + 25.0), Pos2::new(tx, ruler_rect.max.y)],
-                                        Stroke::new(0.5_f32, Theme::BORDER_SOFT),
+                                        Stroke::new(0.5_f32, crate::ui::theme::palette().border_soft()),
                                     );
                                 }
                             }
@@ -1315,14 +1315,14 @@ impl SonixApp {
                                 Pos2::new(px, ruler_rect.min.y),
                                 Pos2::new(px, ruler_rect.max.y),
                             ],
-                            Stroke::new(2.0_f32, Theme::YELLOW),
+                            Stroke::new(2.0_f32, crate::ui::theme::palette().yellow()),
                         );
                         ui.painter().text(
                             Pos2::new(px - 3.0, ruler_rect.min.y + 6.0),
                             egui::Align2::RIGHT_CENTER,
                             format!("⏱{:.0}", point.bpm),
                             egui::FontId::proportional(Theme::FONT_XS),
-                            Theme::YELLOW,
+                            crate::ui::theme::palette().yellow(),
                         );
                     }
 
@@ -1397,26 +1397,26 @@ impl SonixApp {
                             let is_active_bar = !self.pattern_mode && self.is_playing && self.song_bar == bar_i;
                             let bg = if is_mic_track {
                                 if is_active_bar {
-                                    Theme::TEXT
+                                    crate::ui::theme::palette().text()
                                 } else if (bar_i / 4) % 2 == 0 {
-                                    Theme::TEXT
+                                    crate::ui::theme::palette().text()
                                 } else {
-                                    Theme::TEXT
+                                    crate::ui::theme::palette().text()
                                 }
                             } else if is_active_bar {
-                                Theme::GRID
+                                crate::ui::theme::palette().grid()
                             } else if (bar_i / 4) % 2 == 0 {
-                                Theme::BG
+                                crate::ui::theme::palette().bg()
                             } else {
-                                Theme::HEADER
+                                crate::ui::theme::palette().header()
                             };
                             ui.painter().rect_filled(b_rect, Rounding::ZERO, bg);
-                            let grid_stroke_col = if is_mic_track { Theme::TEXT } else { Theme::PANEL_ALT };
+                            let grid_stroke_col = if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel_alt() };
                             ui.painter().line_segment([Pos2::new(b_min_x, lane_rect.min.y), Pos2::new(b_min_x, lane_rect.max.y)], Stroke::new(0.5_f32, grid_stroke_col));
 
                             // Beat Sub-Grid Lines when zoomed in
                             if bar_w >= 70.0 {
-                                let beat_col = if is_mic_track { Theme::TEXT } else { Theme::PANEL };
+                                let beat_col = if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().panel() };
                                 for beat in 1..4 {
                                     let bx = b_min_x + beat as f32 * (bar_w / 4.0);
                                     ui.painter().line_segment([Pos2::new(bx, lane_rect.min.y), Pos2::new(bx, lane_rect.max.y)], Stroke::new(0.5_f32, beat_col));
@@ -1425,7 +1425,7 @@ impl SonixApp {
 
                             // 16th-note sub-grid lines when zoomed in
                             if bar_w >= 220.0 {
-                                let step_col = if is_mic_track { Theme::TEXT } else { Theme::HEADER };
+                                let step_col = if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().header() };
                                 for step in 1..16 {
                                     if step % 4 != 0 {
                                         let sx = b_min_x + step as f32 * (bar_w / 16.0);
@@ -1467,13 +1467,13 @@ impl SonixApp {
                                         Pos2::new(ghost_x_end, lane_rect.max.y - 2.0),
                                     );
                                     ui.painter().rect_filled(ghost_rect, Rounding::same(4.0), Color32::from_rgba_unmultiplied(255, 170, 0, 85));
-                                    ui.painter().rect_stroke(ghost_rect, Rounding::same(4.0), Stroke::new(1.8_f32, Theme::ORANGE));
+                                    ui.painter().rect_stroke(ghost_rect, Rounding::same(4.0), Stroke::new(1.8_f32, crate::ui::theme::palette().orange()));
                                     ui.painter().text(
                                         Pos2::new(ghost_rect.min.x + 6.0, ghost_rect.center().y),
                                         egui::Align2::LEFT_CENTER,
                                         crate::tstatus!("📥 Släpp här: {} (Takt {:.2})", drag_item.name, drop_bar + 1.0),
                                         egui::FontId::proportional(Theme::FONT_S),
-                                        Theme::TEXT,
+                                        crate::ui::theme::palette().text(),
                                     );
                                     if ui.input(|i| i.pointer.any_released() || i.pointer.primary_released()) {
                                         drop_sample_action = Some((t_idx, drag_item.clone(), drop_bar));
@@ -1483,7 +1483,7 @@ impl SonixApp {
                         }
 
                         // Bottom line separator between tracks
-                        ui.painter().line_segment([Pos2::new(lane_rect.min.x, lane_rect.max.y), Pos2::new(lane_rect.max.x, lane_rect.max.y)], Stroke::new(0.5_f32, if is_mic_track { Theme::TEXT } else { Theme::GRID }));
+                        ui.painter().line_segment([Pos2::new(lane_rect.min.x, lane_rect.max.y), Pos2::new(lane_rect.max.x, lane_rect.max.y)], Stroke::new(0.5_f32, if is_mic_track { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().grid() }));
 
                         // Render continuous Audio Regions on this track
                         let mut split_action: Option<(usize, f32)> = None;
@@ -1508,22 +1508,22 @@ impl SonixApp {
 
                                     if r_rect.width() > 1.0 {
                                         let col = if is_mic_track {
-                                            Theme::TEXT
-                                        } else if region.color == default_region_color() || region.color == Theme::TRACK_BLUE {
+                                            crate::ui::theme::palette().text()
+                                        } else if region.color == default_region_color() || region.color == crate::ui::theme::palette().track_blue() {
                                             track_color
                                         } else {
                                             region.color
                                         };
                                         let fill = if is_mic_track {
                                             if region.muted {
-                                                Theme::TEXT
+                                                crate::ui::theme::palette().text()
                                             } else if is_region_selected {
-                                                Theme::TEXT
+                                                crate::ui::theme::palette().text()
                                             } else {
-                                                Theme::TEXT
+                                                crate::ui::theme::palette().text()
                                             }
                                         } else if region.muted {
-                                            Theme::HEADER
+                                            crate::ui::theme::palette().header()
                                         } else if is_region_selected {
                                             Color32::from_rgb(
                                                 (col.r() as f32 * 0.45).min(255.0) as u8,
@@ -1545,14 +1545,14 @@ impl SonixApp {
                                         let header_rect = Rect::from_min_max(r_rect.min, Pos2::new(r_rect.max.x, (r_rect.min.y + header_h).min(r_rect.max.y)));
                                         let header_bg = if is_mic_track {
                                             if region.muted {
-                                                Theme::TEXT
+                                                crate::ui::theme::palette().text()
                                             } else if is_region_selected {
-                                                Theme::TEXT
+                                                crate::ui::theme::palette().text()
                                             } else {
-                                                Theme::TEXT
+                                                crate::ui::theme::palette().text()
                                             }
                                         } else if region.muted {
-                                            Theme::PANEL_ALT
+                                            crate::ui::theme::palette().panel_alt()
                                         } else if is_region_selected {
                                             Color32::from_rgba_unmultiplied(col.r(), col.g(), col.b(), 190)
                                         } else {
@@ -1561,11 +1561,11 @@ impl SonixApp {
                                         ui.painter().rect_filled(header_rect, Rounding { nw: 4.0, ne: 4.0, sw: 0.0, se: 0.0 }, header_bg);
 
                                         let stroke_col = if is_region_selected {
-                                            if is_mic_track { Theme::CYAN } else { Theme::TEXT }
+                                            if is_mic_track { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().text() }
                                         } else if region.muted {
-                                            Theme::BORDER_SOFT
+                                            crate::ui::theme::palette().border_soft()
                                         } else if is_mic_track {
-                                            Theme::TEXT_MUTED
+                                            crate::ui::theme::palette().text_muted()
                                         } else {
                                             col
                                         };
@@ -1585,11 +1585,11 @@ impl SonixApp {
                                         let title_text = format!("{}{rev_tag}{loop_tag} [⏱ {} | 📏 {} | {:+.1}dB]", region.name, r_start_str, r_len_str, gain_db);
 
                                         let header_text_col = if is_mic_track {
-                                            Theme::BG
+                                            crate::ui::theme::palette().bg()
                                         } else if region.muted {
-                                            Theme::TEXT_MUTED
+                                            crate::ui::theme::palette().text_muted()
                                         } else {
-                                            Theme::TEXT
+                                            crate::ui::theme::palette().text()
                                         };
 
                                         ui.painter().text(
@@ -1607,7 +1607,7 @@ impl SonixApp {
                                                 Pos2::new(r_rect.min.x, r_rect.max.y),
                                                 Pos2::new(r_rect.min.x + fi_w, r_rect.min.y),
                                             ];
-                                            ui.painter().line_segment(fi_pts, Stroke::new(1.2_f32, Theme::CYAN));
+                                            ui.painter().line_segment(fi_pts, Stroke::new(1.2_f32, crate::ui::theme::palette().cyan()));
                                         }
                                         if region.fade_out_bars > 0.01 {
                                             let fo_w = (region.fade_out_bars * bar_w).min(r_rect.width() * 0.5);
@@ -1615,23 +1615,23 @@ impl SonixApp {
                                                 Pos2::new(r_rect.max.x - fo_w, r_rect.min.y),
                                                 Pos2::new(r_rect.max.x, r_rect.max.y),
                                             ];
-                                            ui.painter().line_segment(fo_pts, Stroke::new(1.2_f32, Theme::ORANGE));
+                                            ui.painter().line_segment(fo_pts, Stroke::new(1.2_f32, crate::ui::theme::palette().orange()));
                                         }
 
                                         // Draw Continuous Soundtrap-Style Waveform Inside Region
                                         let mid_y = r_rect.center().y + 3.0;
                                         let wave_col = if is_mic_track {
                                             if region.muted {
-                                                Theme::TRACK_STEEL
+                                                crate::ui::theme::palette().track_steel()
                                             } else if is_region_selected {
-                                                Theme::BG_DEEP
+                                                crate::ui::theme::palette().bg_deep()
                                             } else {
-                                                Theme::BG // Jet Black Waveform!
+                                                crate::ui::theme::palette().bg() // Jet Black Waveform!
                                             }
                                         } else if region.muted {
-                                            Theme::BORDER_SOFT
+                                            crate::ui::theme::palette().border_soft()
                                         } else if is_region_selected {
-                                            Theme::TEXT
+                                            crate::ui::theme::palette().text()
                                         } else {
                                             Color32::from_rgb(
                                                 ((col.r() as f32 * 0.85) + 38.0).min(255.0) as u8,
@@ -1834,7 +1834,7 @@ impl SonixApp {
                                             // Draw subtle center baseline
                                             ui.painter().line_segment(
                                                 [Pos2::new(r_rect.min.x + 2.0, mid_y), Pos2::new(r_rect.max.x - 2.0, mid_y)],
-                                                Stroke::new(0.8_f32, if is_mic_track { Theme::BORDER_SOFT } else { Color32::from_rgba_unmultiplied(wave_col.r(), wave_col.g(), wave_col.b(), 60) })
+                                                Stroke::new(0.8_f32, if is_mic_track { crate::ui::theme::palette().border_soft() } else { Color32::from_rgba_unmultiplied(wave_col.r(), wave_col.g(), wave_col.b(), 60) })
                                             );
 
                                             // Draw vertical waveform bars across the entire region width
@@ -1878,14 +1878,14 @@ impl SonixApp {
                                                     if div_x > r_rect.min.x + 4.0 && div_x < r_rect.max.x - 4.0 {
                                                         ui.painter().line_segment(
                                                             [Pos2::new(div_x, r_rect.min.y), Pos2::new(div_x, r_rect.max.y)],
-                                                            Stroke::new(1.0_f32, Theme::CYAN),
+                                                            Stroke::new(1.0_f32, crate::ui::theme::palette().cyan()),
                                                         );
                                                         ui.painter().text(
                                                             Pos2::new(div_x + 3.0, r_rect.min.y + 7.0),
                                                             egui::Align2::LEFT_CENTER,
                                                             "🔁",
                                                             egui::FontId::proportional(Theme::FONT_XS),
-                                                            Theme::CYAN,
+                                                            crate::ui::theme::palette().cyan(),
                                                         );
                                                     }
                                                     div_sec += loop_sec;
@@ -1901,26 +1901,26 @@ impl SonixApp {
                                         // Left trim handle (Trim Start / Korta start från vänster kant)
                                         let left_h_rect = Rect::from_min_size(Pos2::new(r_rect.min.x, r_rect.min.y), Vec2::new(handle_w, r_rect.height()));
                                         let left_h_col = if is_region_selected {
-                                            Theme::CYAN
+                                            crate::ui::theme::palette().cyan()
                                         } else if is_lane_h {
-                                            Theme::TEXT
+                                            crate::ui::theme::palette().text()
                                         } else {
                                             Color32::from_rgba_unmultiplied(255, 255, 255, 120)
                                         };
                                         ui.painter().rect_filled(left_h_rect, Rounding { nw: 3.0, ne: 0.0, sw: 3.0, se: 0.0 }, left_h_col);
-                                        ui.painter().line_segment([Pos2::new(left_h_rect.min.x + 4.0, left_h_rect.min.y + 6.0), Pos2::new(left_h_rect.min.x + 4.0, left_h_rect.max.y - 6.0)], Stroke::new(1.2_f32, Theme::GRID));
+                                        ui.painter().line_segment([Pos2::new(left_h_rect.min.x + 4.0, left_h_rect.min.y + 6.0), Pos2::new(left_h_rect.min.x + 4.0, left_h_rect.max.y - 6.0)], Stroke::new(1.2_f32, crate::ui::theme::palette().grid()));
 
                                         // Right trim/loop handle (Trim End / Dra för att förlänga, korta eller loopa från höger kant)
                                         let right_h_rect = Rect::from_min_max(Pos2::new(r_rect.max.x - handle_w, r_rect.min.y), r_rect.max);
                                         let right_h_col = if is_region_selected {
-                                            Theme::ORANGE
+                                            crate::ui::theme::palette().orange()
                                         } else if is_lane_h {
-                                            Theme::AMBER
+                                            crate::ui::theme::palette().amber()
                                         } else {
                                             Color32::from_rgba_unmultiplied(255, 255, 255, 120)
                                         };
                                         ui.painter().rect_filled(right_h_rect, Rounding { nw: 0.0, ne: 3.0, sw: 0.0, se: 3.0 }, right_h_col);
-                                        ui.painter().line_segment([Pos2::new(right_h_rect.min.x + 4.0, right_h_rect.min.y + 6.0), Pos2::new(right_h_rect.min.x + 4.0, right_h_rect.max.y - 6.0)], Stroke::new(1.2_f32, Theme::PANEL_ALT));
+                                        ui.painter().line_segment([Pos2::new(right_h_rect.min.x + 4.0, right_h_rect.min.y + 6.0), Pos2::new(right_h_rect.min.x + 4.0, right_h_rect.max.y - 6.0)], Stroke::new(1.2_f32, crate::ui::theme::palette().panel_alt()));
 
                                         // Hover Cursor Feedback for Select and Draw/Paint tools (FL Studio style)
                                         if matches!(self.arranger_tool, ArrangerTool::Select | ArrangerTool::Paint) {
@@ -2229,7 +2229,7 @@ impl SonixApp {
                                     let is_muted = self.playlist_tracks[t_idx].regions[sel_r].muted;
                                     let is_rev = self.playlist_tracks[t_idx].regions[sel_r].is_reverse;
 
-                                    ui.label(egui::RichText::new(format!("🎵 {}", r_name)).strong().color(Theme::CYAN));
+                                    ui.label(egui::RichText::new(format!("🎵 {}", r_name)).strong().color(crate::ui::theme::palette().cyan()));
                                     ui.separator();
 
                                     if ui.button(crate::i18n::t("📋 Kopiera sample (Ctrl+C)")).clicked() {
@@ -2343,12 +2343,12 @@ impl SonixApp {
                                     ui.separator();
                                     ui.menu_button(crate::i18n::t("🎨 Ändra färg"), |ui| {
                                         let colors = [
-                                            ("Cyan", Theme::CYAN),
-                                            ("Orange", Theme::ORANGE),
-                                            ("Grön", Theme::GREEN),
-                                            ("Lila", Theme::PURPLE),
-                                            ("Blå", Theme::TRACK_BLUE),
-                                            ("Guld", Theme::YELLOW),
+                                            ("Cyan", crate::ui::theme::palette().cyan()),
+                                            ("Orange", crate::ui::theme::palette().orange()),
+                                            ("Grön", crate::ui::theme::palette().green()),
+                                            ("Lila", crate::ui::theme::palette().purple()),
+                                            ("Blå", crate::ui::theme::palette().track_blue()),
+                                            ("Guld", crate::ui::theme::palette().yellow()),
                                         ];
                                         for (c_name, c_val) in colors {
                                             if ui.button(crate::i18n::t(c_name)).clicked() {
@@ -2358,7 +2358,7 @@ impl SonixApp {
                                         }
                                     });
                                     ui.separator();
-                                    if ui.button(egui::RichText::new(crate::i18n::t("🗑 Radera region (Delete)")).color(Theme::RED)).clicked() {
+                                    if ui.button(egui::RichText::new(crate::i18n::t("🗑 Radera region (Delete)")).color(crate::ui::theme::palette().red())).clicked() {
                                         self.delete_selected_region();
                                         ui.close_menu();
                                     }
@@ -2398,7 +2398,7 @@ impl SonixApp {
                             let live_rect = Rect::from_min_max(Pos2::new(rx_start + 1.0, lane_rect.min.y + 2.0), Pos2::new(rx_end - 1.0, lane_rect.max.y - 2.0));
 
                             ui.painter().rect_filled(live_rect, Rounding::same(3.0), Color32::from_rgba_unmultiplied(220, 30, 30, 85));
-                            ui.painter().rect_stroke(live_rect, Rounding::same(3.0), Stroke::new(1.5_f32, Theme::RED));
+                            ui.painter().rect_stroke(live_rect, Rounding::same(3.0), Stroke::new(1.5_f32, crate::ui::theme::palette().red()));
 
                             let live_peaks = &self.vocal_studio.live_recording_peaks;
                             if !live_peaks.is_empty() && live_rect.width() > 6.0 {
@@ -2407,7 +2407,7 @@ impl SonixApp {
                                 for (pi, &p) in live_peaks.iter().enumerate() {
                                     let sx = live_rect.min.x + 2.0 + pi as f32 * step_x;
                                     let h = p * (live_rect.height() * 0.42);
-                                    ui.painter().line_segment([Pos2::new(sx, mid_y - h), Pos2::new(sx, mid_y + h)], Stroke::new(1.3_f32, Theme::TEXT));
+                                    ui.painter().line_segment([Pos2::new(sx, mid_y - h), Pos2::new(sx, mid_y + h)], Stroke::new(1.3_f32, crate::ui::theme::palette().text()));
                                 }
                             }
 
@@ -2416,7 +2416,7 @@ impl SonixApp {
                                 egui::Align2::LEFT_CENTER,
                                 format!("🔴 SPELAR IN... [⏱ {}]", format_time_hundredths(secs_len(live_s_bar, live_e_bar - live_s_bar))),
                                 egui::FontId::proportional(Theme::FONT_XS),
-                                Theme::TEXT,
+                                crate::ui::theme::palette().text(),
                             );
                         }
 
@@ -2508,11 +2508,11 @@ impl SonixApp {
                                         .to_string();
 
                                     let new_color = match orig.color {
-                                        c if c == Theme::CYAN => Theme::ORANGE,
-                                        c if c == Theme::ORANGE => Theme::GREEN,
-                                        c if c == Theme::GREEN => Theme::PURPLE,
-                                        c if c == Theme::PURPLE => Theme::TRACK_BLUE,
-                                        _ => Theme::CYAN,
+                                        c if c == crate::ui::theme::palette().cyan() => crate::ui::theme::palette().orange(),
+                                        c if c == crate::ui::theme::palette().orange() => crate::ui::theme::palette().green(),
+                                        c if c == crate::ui::theme::palette().green() => crate::ui::theme::palette().purple(),
+                                        c if c == crate::ui::theme::palette().purple() => crate::ui::theme::palette().track_blue(),
+                                        _ => crate::ui::theme::palette().cyan(),
                                     };
 
                                     let r_left = AudioRegion {
@@ -2594,7 +2594,7 @@ impl SonixApp {
 
                     // "+ Add Track" Blank Lane Placeholder on Right
                     let (add_lane_rect, add_lane_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, 28.0), Sense::click());
-                    ui.painter().rect_filled(add_lane_rect, Rounding::same(4.0), Theme::BG);
+                    ui.painter().rect_filled(add_lane_rect, Rounding::same(4.0), crate::ui::theme::palette().bg());
                     if add_lane_resp.clicked() {
                         self.show_add_track_modal = true;
                     }
@@ -2630,13 +2630,13 @@ impl SonixApp {
                                     Pos2::new(ghost_x_end, add_lane_rect.max.y - 2.0),
                                 );
                                 ui.painter().rect_filled(ghost_rect, Rounding::same(4.0), Color32::from_rgba_unmultiplied(0, 200, 255, 85));
-                                ui.painter().rect_stroke(ghost_rect, Rounding::same(4.0), Stroke::new(1.8_f32, Theme::CYAN));
+                                ui.painter().rect_stroke(ghost_rect, Rounding::same(4.0), Stroke::new(1.8_f32, crate::ui::theme::palette().cyan()));
                                 ui.painter().text(
                                     Pos2::new(ghost_rect.min.x + 6.0, ghost_rect.center().y),
                                     egui::Align2::LEFT_CENTER,
                                     crate::tstatus!("➕ Nytt spår: Släpp {} (Takt {:.2})", drag_item.name, drop_bar + 1.0),
                                     egui::FontId::proportional(Theme::FONT_S),
-                                    Theme::TEXT,
+                                    crate::ui::theme::palette().text(),
                                 );
                                 if ui.input(|i| i.pointer.any_released() || i.pointer.primary_released()) {
                                     drop_sample_action = Some((self.playlist_tracks.len(), drag_item.clone(), drop_bar));
@@ -2649,8 +2649,8 @@ impl SonixApp {
 
                     // Master "Main" Track Lane (Suno Studio Style Master Strip)
                     let (m_lane_rect, _) = ui.allocate_exact_size(Vec2::new(timeline_total_w, row_h), Sense::hover());
-                    ui.painter().rect_filled(m_lane_rect, Rounding::ZERO, Theme::BG_DEEP);
-                    ui.painter().line_segment([Pos2::new(m_lane_rect.min.x, m_lane_rect.max.y), Pos2::new(m_lane_rect.max.x, m_lane_rect.max.y)], Stroke::new(0.5_f32, Theme::GRID));
+                    ui.painter().rect_filled(m_lane_rect, Rounding::ZERO, crate::ui::theme::palette().bg_deep());
+                    ui.painter().line_segment([Pos2::new(m_lane_rect.min.x, m_lane_rect.max.y), Pos2::new(m_lane_rect.max.x, m_lane_rect.max.y)], Stroke::new(0.5_f32, crate::ui::theme::palette().grid()));
 
                     // Master peak meter visualization along the lane
                     let peak = self.engine.get_peak_level();
@@ -2663,7 +2663,7 @@ impl SonixApp {
                         egui::Align2::LEFT_CENTER,
                         crate::tstatus!("Stereo Master Utgång • Volym: {:.0}% • Peak: {:.2}", self.master_volume * 100.0, peak),
                         egui::FontId::proportional(Theme::FONT_S),
-                        Theme::TEXT_MUTED,
+                        crate::ui::theme::palette().text_muted(),
                     );
 
                     // ====================================================
@@ -2699,7 +2699,7 @@ impl SonixApp {
                         // Glowing line strictly bounded to track lanes
                         ui.painter().line_segment(
                             [Pos2::new(playhead_x, track_area_top), Pos2::new(playhead_x, track_area_bottom)],
-                            Stroke::new(1.8_f32, Theme::ORANGE),
+                            Stroke::new(1.8_f32, crate::ui::theme::palette().orange()),
                         );
 
                         // Triangle head badge on ruler
@@ -2708,7 +2708,7 @@ impl SonixApp {
                             Pos2::new(playhead_x + 5.0, track_area_top),
                             Pos2::new(playhead_x, track_area_top + 8.0),
                         ];
-                        ui.painter().add(egui::Shape::convex_polygon(tri.to_vec(), Theme::ORANGE, Stroke::NONE));
+                        ui.painter().add(egui::Shape::convex_polygon(tri.to_vec(), crate::ui::theme::palette().orange(), Stroke::NONE));
                     }
                 });
             });
@@ -2794,12 +2794,12 @@ impl SonixApp {
 
                     // Row 1: Title, Time offsets, Sliders (Responsive Wrapped)
                     ui.horizontal_wrapped(|ui| {
-                        ui.label(egui::RichText::new(format!("🎵 {}", r_name)).strong().color(Theme::CYAN));
+                        ui.label(egui::RichText::new(format!("🎵 {}", r_name)).strong().color(crate::ui::theme::palette().cyan()));
                         ui.separator();
 
                         // Start time readout with coarse/fine nudging
                         ui.label(crate::i18n::t("⏱ Start:"));
-                        ui.label(egui::RichText::new(format!("{:.2}t ({})", r.start_bar + 1.0, format_time_hundredths(r_start_sec))).monospace().strong().color(Theme::TEXT));
+                        ui.label(egui::RichText::new(format!("{:.2}t ({})", r.start_bar + 1.0, format_time_hundredths(r_start_sec))).monospace().strong().color(crate::ui::theme::palette().text()));
                         if ui.button(crate::i18n::t("-1t")).on_hover_text(crate::i18n::t("Flytta 1 takt bakåt")).clicked() {
                             r.start_bar = (r.start_bar - 1.0).max(0.0);
                         }
@@ -2817,7 +2817,7 @@ impl SonixApp {
 
                         // Duration readout with coarse/fine nudging
                         ui.label(crate::i18n::t("📏 Längd:"));
-                        ui.label(egui::RichText::new(format!("{:.2}t ({})", r.length_bars, format_time_hundredths(r_len_sec))).monospace().strong().color(Theme::TEXT));
+                        ui.label(egui::RichText::new(format!("{:.2}t ({})", r.length_bars, format_time_hundredths(r_len_sec))).monospace().strong().color(crate::ui::theme::palette().text()));
                         if ui.button(crate::i18n::t("-1t")).on_hover_text(crate::i18n::t("Korta 1 takt")).clicked() {
                             r.length_bars = (r.length_bars - 1.0).max(0.05);
                         }
@@ -2835,7 +2835,7 @@ impl SonixApp {
 
                         // Start-trim offset readout
                         ui.label(crate::i18n::t("✂ Start-trim:"));
-                        ui.label(egui::RichText::new(format!("{:.2}s", r.sample_offset_sec)).monospace().strong().color(Theme::CYAN));
+                        ui.label(egui::RichText::new(format!("{:.2}s", r.sample_offset_sec)).monospace().strong().color(crate::ui::theme::palette().cyan()));
                         if ui.button(crate::i18n::t("-0.1s")).on_hover_text(crate::i18n::t("Minska start-trim (visa mer av början)")).clicked() {
                             r.sample_offset_sec = (r.sample_offset_sec - 0.1).max(0.0);
                         }
@@ -2880,8 +2880,8 @@ impl SonixApp {
                         } else {
                             "✂ Dela vid spelhuvud (S / Ctrl+B)".to_string()
                         };
-                        let cut_bg = if can_cut { Theme::GREEN } else { Theme::PANEL_ALT };
-                        let cut_fg = if can_cut { Color32::BLACK } else { Theme::TEXT_MUTED };
+                        let cut_bg = if can_cut { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().panel_alt() };
+                        let cut_fg = if can_cut { Color32::BLACK } else { crate::ui::theme::palette().text_muted() };
 
                         if ui.add(egui::Button::new(egui::RichText::new(cut_label).strong().size(Theme::FONT_S).color(cut_fg)).fill(cut_bg))
                             .on_hover_text(crate::i18n::t("Klipp/dela regionen på exakt denna tidpunkt"))
@@ -2890,7 +2890,7 @@ impl SonixApp {
                             }
 
                         // Copy
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Kopiera (Ctrl+C)")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER_SOFT))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Kopiera (Ctrl+C)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
                             .on_hover_text(crate::i18n::t("Kopiera detta sample till urklipp"))
                             .clicked() {
                                 do_copy = true;
@@ -2898,7 +2898,7 @@ impl SonixApp {
 
                         // Paste (if clipboard has region)
                         if has_copied {
-                            if ui.add(egui::Button::new(egui::RichText::new(format!("📋 Klistra in ({}) (Ctrl+V)", copied_name)).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER_SOFT))
+                            if ui.add(egui::Button::new(egui::RichText::new(format!("📋 Klistra in ({}) (Ctrl+V)", copied_name)).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
                                 .on_hover_text(crate::i18n::t("Klistra in kopierat sample vid spelhuvudet på aktivt spår"))
                                 .clicked() {
                                     do_paste = true;
@@ -2906,19 +2906,19 @@ impl SonixApp {
                         }
 
                         // Duplicate
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Duplicera (Ctrl+D)")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER_SOFT))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Duplicera (Ctrl+D)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
                             .on_hover_text(crate::i18n::t("Duplicera samplen direkt efter den nuvarande"))
                             .clicked() {
                                 do_duplicate = true;
                             }
 
                         // Loop x2 / x4
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Loop x2 (Ctrl+L)")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER_SOFT))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Loop x2 (Ctrl+L)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
                             .on_hover_text(crate::i18n::t("Repetera och fördubbla loop-längden"))
                             .clicked() {
                                 do_loop_factor = Some(2.0);
                             }
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Loop x4")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER_SOFT))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔁 Loop x4")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
                             .on_hover_text(crate::i18n::t("Repetera samplen 4 gånger i följd"))
                             .clicked() {
                                 do_loop_factor = Some(4.0);
@@ -2926,8 +2926,8 @@ impl SonixApp {
 
                         // Reverse
                         let rev_label = if is_rev { crate::i18n::t("🔄 Normal (Framlänges)") } else { crate::i18n::t("🔄 Vänd baklänges (Reverse)") };
-                        let rev_bg = if is_rev { Theme::ORANGE } else { Theme::BORDER_SOFT };
-                        if ui.add(egui::Button::new(egui::RichText::new(rev_label).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(rev_bg))
+                        let rev_bg = if is_rev { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().border_soft() };
+                        if ui.add(egui::Button::new(egui::RichText::new(rev_label).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(rev_bg))
                             .on_hover_text(crate::i18n::t("Spela upp ljudregionen baklänges i realtid (Ctrl+K / R)"))
                             .clicked() {
                                 do_reverse = true;
@@ -2940,9 +2940,9 @@ impl SonixApp {
                         } else {
                             crate::i18n::t("🎚 Sträcks (bevarad tonhöjd)")
                         };
-                        let tape_bg = if is_tape { Theme::ORANGE } else { Theme::PANEL_ALT };
+                        let tape_bg = if is_tape { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel_alt() };
                         if ui
-                            .add(egui::Button::new(egui::RichText::new(tape_label).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(tape_bg))
+                            .add(egui::Button::new(egui::RichText::new(tape_label).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(tape_bg))
                             .on_hover_text(crate::i18n::t(
                                 "Standard: klippet sträcks med bevarad tonhöjd när tempot ändras (tonhöjden står still). Bandspelarläget låter tonhöjden följa med — det är en effekt, inte standarden.",
                             ))
@@ -2952,32 +2952,32 @@ impl SonixApp {
                         }
 
                         // Mute toggle
-                        let mute_bg = if r.muted { Theme::ORANGE } else { Theme::PANEL_ALT };
-                        if ui.add(egui::Button::new(egui::RichText::new(if r.muted { "🔇 Mutad" } else { "🔊 Aktiv" }).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(mute_bg)).clicked() {
+                        let mute_bg = if r.muted { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel_alt() };
+                        if ui.add(egui::Button::new(egui::RichText::new(if r.muted { "🔇 Mutad" } else { "🔊 Aktiv" }).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(mute_bg)).clicked() {
                             r.muted = !r.muted;
                         }
 
                         // Save to Sound Browser
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara i Sound Browser")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TRACK_TEAL))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Spara i Sound Browser")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().track_teal()))
                             .on_hover_text(crate::i18n::t("Spara denna ljudregion som sample i Sound Browser & på disk"))
                             .clicked() {
                                 do_save_sample = true;
                             }
 
                         // Open Stem Focus Editor
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔍 Öppna Stämeditor")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TRACK_ORANGE)).clicked() {
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔍 Öppna Stämeditor")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().track_orange())).clicked() {
                             do_open_focus = true;
                         }
 
                         // Open in Vocal Studio
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Öppna i Sångstudio")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER_SOFT))
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 Öppna i Sångstudio")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
                             .on_hover_text(crate::i18n::t("Ladda in detta sample/region i Sångstudion för isolerad provspelning, pitch, time stretch & effekter"))
                             .clicked() {
                                 do_open_vocal_studio = true;
                             }
 
                         // Delete
-                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🗑 Ta bort (Del)")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::RED)).clicked() {
+                        if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🗑 Ta bort (Del)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().red())).clicked() {
                             do_delete = true;
                         }
 

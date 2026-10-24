@@ -10,7 +10,6 @@
 //! Döp aldrig om ett fält — lägg till det nya vid sidan av (`AutomationPointOnDisk` är mönstret).
 
 use super::*;
-use crate::ui::theme::Theme;
 
 /// En autosave som erbjuds vid start (Fas 6.1).
 #[derive(Clone)]
@@ -1228,7 +1227,6 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
     self.populate_demo_data();
     let _ = std::fs::create_dir_all(out_dir);
 
-
     let targets = vec![
         (ScreenshotTarget::View(ViewMode::PlaylistArranger), out_dir.join("01_tidslinje_arranger.png")),
         (ScreenshotTarget::View(ViewMode::ChannelRack), out_dir.join("02_channel_rack.png")),
@@ -1423,12 +1421,12 @@ pub fn populate_demo_data(&mut self) {
 
     if self.playlist_tracks.is_empty() {
         self.playlist_tracks = vec![
-            PlaylistTrack::new("🎤 Lead Vocals (Suno AI)".to_string(), "🎤", TrackKind::VocalAudio, Theme::TRACK_ROSE),
-            PlaylistTrack::new("🎧 Backing Choir".to_string(), "🎧", TrackKind::VocalAudio, Theme::CABLE),
-            PlaylistTrack::new("🥁 808 & Drums".to_string(), "🥁", TrackKind::Drums, Theme::ORANGE),
-            PlaylistTrack::new("🎹 Nexus Synth Lead".to_string(), "🎹", TrackKind::SynthLead, Theme::CYAN),
-            PlaylistTrack::new("🎸 Moog Sub Bass".to_string(), "🎸", TrackKind::Bassline, Theme::GREEN),
-            PlaylistTrack::new("🌌 Space FX & Risers".to_string(), "🌌", TrackKind::Fx, Theme::YELLOW),
+            PlaylistTrack::new("🎤 Lead Vocals (Suno AI)".to_string(), "🎤", TrackKind::VocalAudio, crate::ui::theme::palette().track_rose()),
+            PlaylistTrack::new("🎧 Backing Choir".to_string(), "🎧", TrackKind::VocalAudio, crate::ui::theme::palette().cable()),
+            PlaylistTrack::new("🥁 808 & Drums".to_string(), "🥁", TrackKind::Drums, crate::ui::theme::palette().orange()),
+            PlaylistTrack::new("🎹 Nexus Synth Lead".to_string(), "🎹", TrackKind::SynthLead, crate::ui::theme::palette().cyan()),
+            PlaylistTrack::new("🎸 Moog Sub Bass".to_string(), "🎸", TrackKind::Bassline, crate::ui::theme::palette().green()),
+            PlaylistTrack::new("🌌 Space FX & Risers".to_string(), "🌌", TrackKind::Fx, crate::ui::theme::palette().yellow()),
         ];
     }
 
@@ -1450,7 +1448,7 @@ pub fn populate_demo_data(&mut self) {
                 fade_out_bars: 0.2,
                 muted: false,
                 is_reverse: false,
-                color: Theme::TRACK_ROSE,
+                color: crate::ui::theme::palette().track_rose(),
                 loop_length_bars: 0.0,
                 warp_mode: Default::default(),
 },
@@ -1469,7 +1467,7 @@ pub fn populate_demo_data(&mut self) {
                 fade_out_bars: 0.2,
                 muted: false,
                 is_reverse: false,
-                color: Theme::TRACK_ROSE,
+                color: crate::ui::theme::palette().track_rose(),
                 loop_length_bars: 0.0,
                 warp_mode: Default::default(),
 },
@@ -1494,7 +1492,7 @@ pub fn populate_demo_data(&mut self) {
                 fade_out_bars: 0.5,
                 muted: false,
                 is_reverse: false,
-                color: Theme::CABLE,
+                color: crate::ui::theme::palette().cable(),
                 loop_length_bars: 0.0,
                 warp_mode: Default::default(),
 },
@@ -1590,13 +1588,13 @@ pub fn load_demo_project(&mut self) {
 
         let mut tracks = Vec::new();
         let track_defs = [
-            ("🥁 Trumsektion (Electro)", TrackKind::Drums, Theme::ORANGE),
-            ("💥 Kick & Punch", TrackKind::Drums, Theme::ORANGE),
-            ("👏 Clap & Percussion", TrackKind::Drums, Theme::ORANGE),
-            ("🧂 Hi-Hats & Shakers", TrackKind::Drums, Theme::ORANGE),
-            ("🎹 80s Poly Synth Lead", TrackKind::SynthLead, Theme::TRACK_BLUE),
-            ("🎸 303 Resonant Sub Bass", TrackKind::Bassline, Theme::GREEN),
-            (crate::i18n::t("🎤 Mic (Voice & Sång)"), TrackKind::VocalAudio, Theme::TEXT),
+            ("🥁 Trumsektion (Electro)", TrackKind::Drums, crate::ui::theme::palette().orange()),
+            ("💥 Kick & Punch", TrackKind::Drums, crate::ui::theme::palette().orange()),
+            ("👏 Clap & Percussion", TrackKind::Drums, crate::ui::theme::palette().orange()),
+            ("🧂 Hi-Hats & Shakers", TrackKind::Drums, crate::ui::theme::palette().orange()),
+            ("🎹 80s Poly Synth Lead", TrackKind::SynthLead, crate::ui::theme::palette().track_blue()),
+            ("🎸 303 Resonant Sub Bass", TrackKind::Bassline, crate::ui::theme::palette().green()),
+            (crate::i18n::t("🎤 Mic (Voice & Sång)"), TrackKind::VocalAudio, crate::ui::theme::palette().text()),
         ];
 
         for (name, kind, _col) in track_defs {

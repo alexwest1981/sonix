@@ -129,9 +129,9 @@ pub fn render_tuner_modal(
             ui.vertical(|ui| {
                 // Header
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("STÄMAPPARAT & PITCH ANALYZER")).strong().size(Theme::FONT_L).color(Theme::CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("STÄMAPPARAT & PITCH ANALYZER")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().cyan()));
                     ui.separator();
-                    ui.label(egui::RichText::new(crate::i18n::t("Stäm gitarr, bas eller träna röstintonation i realtid")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Stäm gitarr, bas eller träna röstintonation i realtid")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                 });
 
                 ui.add_space(4.0);
@@ -139,7 +139,7 @@ pub fn render_tuner_modal(
                 // Instrument & Preset Selector
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Instrument:")).strong().color(Theme::ORANGE));
+                        ui.label(egui::RichText::new(crate::i18n::t("Instrument:")).strong().color(crate::ui::theme::palette().orange()));
                         let presets = TuningPreset::all();
                         let current_label = presets.iter().find(|(p, _)| *p == state.preset).map(|(_, l)| crate::i18n::t(l)).unwrap_or("Gitarr");
 
@@ -174,8 +174,8 @@ pub fn render_tuner_modal(
                 ui.horizontal(|ui| {
                     for (s_idx, (name, _, _)) in strings.iter().enumerate() {
                         let is_sel = state.selected_string_idx == s_idx;
-                        let bg = if is_sel { Theme::CYAN } else { Theme::PANEL };
-                        let fg = if is_sel { Color32::BLACK } else { Theme::TEXT };
+                        let bg = if is_sel { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().panel() };
+                        let fg = if is_sel { Color32::BLACK } else { crate::ui::theme::palette().text() };
                         if ui.add(egui::Button::new(egui::RichText::new(*name).strong().size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                             state.selected_string_idx = s_idx;
                         }
@@ -222,11 +222,11 @@ pub fn render_tuner_modal(
                     // Large Note display
                     ui.vertical_centered(|ui| {
                         let note_color = if in_tune {
-                            Theme::GREEN
+                            crate::ui::theme::palette().green()
                         } else if cents > 0.0 {
-                            Theme::ORANGE // Sharp
+                            crate::ui::theme::palette().orange() // Sharp
                         } else {
-                            Theme::CYAN // Flat
+                            crate::ui::theme::palette().cyan() // Flat
                         };
 
                         ui.label(egui::RichText::new(target_name).strong().size(Theme::FONT_XL).color(note_color));
@@ -240,7 +240,7 @@ pub fn render_tuner_modal(
                         };
                         ui.label(egui::RichText::new(status_text).strong().size(Theme::FONT_S).color(note_color));
 
-                        ui.label(egui::RichText::new(crate::tstatus!("Målfrekvens: {:.2} Hz  •  Offset: {:+.1} Cents", target_freq, cents)).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::tstatus!("Målfrekvens: {:.2} Hz  •  Offset: {:+.1} Cents", target_freq, cents)).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
 
                         // Live signal readout: detected frequency + input level
                         ui.horizontal(|ui| {
@@ -250,7 +250,7 @@ pub fn render_tuner_modal(
                                     None => crate::i18n::t("🎤 Live: — (tyst)").to_string(),
                                 })
                                 .size(Theme::FONT_S)
-                                .color(if live_hz.is_some() { Theme::GREEN } else { Theme::TEXT_MUTED }),
+                                .color(if live_hz.is_some() { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().text_muted() }),
                             );
                             ui.add(
                                 egui::ProgressBar::new(mic_vu_level.clamp(0.0, 1.0))
@@ -264,33 +264,33 @@ pub fn render_tuner_modal(
 
                     // Large Arc / Meter Needle Visualization
                     let (m_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 48.0), Sense::hover());
-                    ui.painter().rect_filled(m_rect, Rounding::same(6.0), Theme::BG_DEEP);
-                    ui.painter().rect_stroke(m_rect, Rounding::same(6.0), Stroke::new(1.0_f32, Theme::BORDER));
+                    ui.painter().rect_filled(m_rect, Rounding::same(6.0), crate::ui::theme::palette().bg_deep());
+                    ui.painter().rect_stroke(m_rect, Rounding::same(6.0), Stroke::new(1.0_f32, crate::ui::theme::palette().border()));
 
                     // Center 0 cent mark
                     let center_x = m_rect.center().x;
                     ui.painter().line_segment(
                         [Pos2::new(center_x, m_rect.min.y + 4.0), Pos2::new(center_x, m_rect.max.y - 4.0)],
-                        Stroke::new(2.5_f32, if in_tune { Theme::GREEN } else { Theme::TEXT_MUTED }),
+                        Stroke::new(2.5_f32, if in_tune { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().text_muted() }),
                     );
 
                     // In-tune safe zone box
                     let safe_zone_w = m_rect.width() * (6.0 / 100.0);
                     let safe_rect = Rect::from_center_size(Pos2::new(center_x, m_rect.center().y), Vec2::new(safe_zone_w, m_rect.height() - 8.0));
-                    ui.painter().rect_filled(safe_rect, Rounding::same(2.0), Theme::alpha(Theme::GREEN, 30));
+                    ui.painter().rect_filled(safe_rect, Rounding::same(2.0), Theme::alpha(crate::ui::theme::palette().green(), 30));
 
                     // Scale tick marks: -50, -25, 0, +25, +50
                     for tick in [-50, -35, -20, -10, 10, 20, 35, 50] {
                         let tx = center_x + (tick as f32 / 50.0) * (m_rect.width() * 0.45);
                         ui.painter().line_segment(
                             [Pos2::new(tx, m_rect.min.y + 8.0), Pos2::new(tx, m_rect.min.y + 20.0)],
-                            Stroke::new(1.0_f32, Theme::BORDER),
+                            Stroke::new(1.0_f32, crate::ui::theme::palette().border()),
                         );
                     }
 
                     // Needle pointer position
                     let needle_x = center_x + (cents / 50.0).clamp(-1.0, 1.0) * (m_rect.width() * 0.45);
-                    let needle_col = if in_tune { Theme::GREEN } else if cents > 0.0 { Theme::ORANGE } else { Theme::CYAN };
+                    let needle_col = if in_tune { crate::ui::theme::palette().green() } else if cents > 0.0 { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().cyan() };
 
                     ui.painter().line_segment(
                         [Pos2::new(needle_x, m_rect.min.y + 2.0), Pos2::new(needle_x, m_rect.max.y - 2.0)],
@@ -302,7 +302,7 @@ pub fn render_tuner_modal(
 
                     // Quick simulated fine adjustment slider for manual check or testing
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Finjustering (Test):")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("Finjustering (Test):")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                         ui.add(egui::Slider::new(&mut state.simulated_pitch_cents, -50.0..=50.0).text("Cents"));
                         if ui.button(crate::i18n::t("🎯 Nollställ")).clicked() {
                             state.simulated_pitch_cents = 0.0;
@@ -316,8 +316,8 @@ pub fn render_tuner_modal(
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         let btn_txt = if state.is_tone_playing { crate::i18n::t("⏹ Stoppa Referenston") } else { crate::i18n::t("🔊 Spela Referenston (Sinuston)") };
-                        let btn_col = if state.is_tone_playing { Theme::RED } else { Theme::GREEN };
-                        if ui.add(egui::Button::new(egui::RichText::new(btn_txt).strong().color(Theme::TEXT)).fill(btn_col).min_size(Vec2::new(200.0, 30.0))).clicked() {
+                        let btn_col = if state.is_tone_playing { crate::ui::theme::palette().red() } else { crate::ui::theme::palette().green() };
+                        if ui.add(egui::Button::new(egui::RichText::new(btn_txt).strong().color(crate::ui::theme::palette().text())).fill(btn_col).min_size(Vec2::new(200.0, 30.0))).clicked() {
                             state.is_tone_playing = !state.is_tone_playing;
                             if state.is_tone_playing {
                                 let _ = engine.send_command(AudioCommand::NoteOn { note: midi_note, freq: target_freq, velocity: 0.70, channel: 0 });

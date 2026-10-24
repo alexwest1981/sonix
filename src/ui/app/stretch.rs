@@ -427,7 +427,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                 known
             ))
             .size(Theme::FONT_S)
-            .color(if stuck == 0 { Theme::GREEN } else { Theme::TEXT }));
+            .color(if stuck == 0 { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().text() }));
             if unknown > 0 {
                 // Tempot räknas ur klippens eget mått när det går (Fas 8.10): takter
                 // och filens längd. Det syns i knappen, för det är den siffra som
@@ -461,7 +461,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                             bpm
                         ))
                         .size(Theme::FONT_XS)
-                        .color(Theme::TEXT_MUTED),
+                        .color(crate::ui::theme::palette().text_muted()),
                     );
                 }
                 ui.label(
@@ -469,7 +469,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                         "Klipp utan känt inspelningstempo (importerade i ett äldre projekt, eller från biblioteket) står still när tempot ändras — de sträcks aldrig i smyg.",
                     ))
                     .size(Theme::FONT_XS)
-                    .color(Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
                 );
             }
 
@@ -504,7 +504,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                 ui.label(
                     egui::RichText::new(crate::tstatus!("⏳ Sträcker {} klipp …", pending))
                         .size(Theme::FONT_XS)
-                        .color(Theme::TEXT_MUTED),
+                        .color(crate::ui::theme::palette().text_muted()),
                 );
                 ui.add_space(6.0);
             }
@@ -519,7 +519,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                         "Högerklicka på taktlinjalen för att sätta ett byte.",
                     ))
                     .size(Theme::FONT_XS)
-                    .color(Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
                 );
                 return;
             }
@@ -554,7 +554,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                             ui.label(
                                 egui::RichText::new(crate::i18n::t("(start)"))
                                     .size(Theme::FONT_XS)
-                                    .color(Theme::TEXT_MUTED),
+                                    .color(crate::ui::theme::palette().text_muted()),
                             );
                         }
                     });
@@ -566,7 +566,7 @@ pub(crate) fn render_tempo_modal(&mut self, ctx: &egui::Context) {
                     "Högerklicka på taktlinjalen för att lägga till eller ta bort.",
                 ))
                 .size(Theme::FONT_XS)
-                .color(Theme::TEXT_MUTED),
+                .color(crate::ui::theme::palette().text_muted()),
             );
         });
     self.show_tempo_modal = open;

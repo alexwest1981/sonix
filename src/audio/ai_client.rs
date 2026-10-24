@@ -5,7 +5,6 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 
 use super::ai_generator::AiGeneratedClip;
-use crate::ui::theme::Theme;
 
 const SYSTEM_PROMPT: &str = "You are Sonix, a music-pattern generator embedded in a DAW. \
 Respond with ONLY a JSON array (no markdown fences, no prose) containing 1 to 3 objects. \
@@ -382,7 +381,7 @@ impl AiClipJson {
             bpm: self.bpm.unwrap_or(120.0).clamp(40.0, 300.0),
             channel_steps: steps,
             notes,
-            color: Theme::GREEN,
+            color: crate::ui::theme::palette().green(),
         })
     }
 }

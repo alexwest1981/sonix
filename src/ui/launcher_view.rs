@@ -48,13 +48,13 @@ pub fn slots_from_sections(sections: &[SongSectionItem]) -> Vec<SlotContent> {
 /// Färgen en slot ritas i. Spelläge, kö och väntande stopp ska gå att se på håll.
 fn slot_color(state: SlotState, queued_stop: bool) -> egui::Color32 {
     if queued_stop {
-        return Theme::ORANGE;
+        return crate::ui::theme::palette().orange();
     }
     match state {
-        SlotState::Playing => Theme::GREEN,
-        SlotState::Queued => Theme::AMBER,
-        SlotState::Stopped => Theme::BORDER,
-        SlotState::Empty => Theme::HEADER,
+        SlotState::Playing => crate::ui::theme::palette().green(),
+        SlotState::Queued => crate::ui::theme::palette().amber(),
+        SlotState::Stopped => crate::ui::theme::palette().border(),
+        SlotState::Empty => crate::ui::theme::palette().header(),
     }
 }
 
@@ -204,7 +204,7 @@ pub fn render_launcher_window(
                         crate::i18n::t("transporten står still")
                     })
                     .size(Theme::FONT_S)
-                    .color(Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
                 );
             });
             ui.label(
@@ -212,7 +212,7 @@ pub fn render_launcher_window(
                     "Ett klick startar eller stoppar vid nästa kvantiseringspunkt — kön syns i färgen.",
                 ))
                 .size(Theme::FONT_S)
-                .color(Theme::TEXT_MUTED),
+                .color(crate::ui::theme::palette().text_muted()),
             );
         });
 }

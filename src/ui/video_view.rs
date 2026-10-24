@@ -91,7 +91,7 @@ pub fn render_video_view(
                 egui::RichText::new(crate::i18n::t("🎬 VIDEO (referensbild)"))
                     .strong()
                     .size(Theme::FONT_M)
-                    .color(crate::ui::theme::Theme::CYAN),
+                    .color(crate::ui::theme::palette().cyan()),
             );
             ui.separator();
             if ui.button(crate::i18n::t("🎬 Ladda video…")).clicked() {
@@ -149,25 +149,25 @@ pub fn render_video_view(
                 egui::RichText::new(crate::i18n::t(
                     "Ingen bild här: spåret är tomt före filmens början eller efter dess slut.",
                 ))
-                .color(crate::ui::theme::Theme::TEXT_MUTED),
+                .color(crate::ui::theme::palette().text_muted()),
             );
         } else {
             ui.label(
                 egui::RichText::new(crate::i18n::t(
                     "Ladda en film för att se den mot tidslinjen. Filmen påverkar inte ljudet.",
                 ))
-                .color(crate::ui::theme::Theme::TEXT_MUTED),
+                .color(crate::ui::theme::palette().text_muted()),
             );
         }
 
         if let Some(err) = &state.last_error {
-            ui.label(egui::RichText::new(format!("❌ {err}")).color(crate::ui::theme::Theme::RED));
+            ui.label(egui::RichText::new(format!("❌ {err}")).color(crate::ui::theme::palette().red()));
         }
         if is_playing && state.info.is_some() {
             ui.label(
                 egui::RichText::new(crate::i18n::t("Spår: bildrutan följer uppspelningen"))
                     .size(Theme::FONT_S)
-                    .color(crate::ui::theme::Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
             );
         }
     });

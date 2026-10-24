@@ -100,12 +100,12 @@ fn rotary_knob_impl(
     let painter = ui.painter();
 
     // 1. Knob outer shadow & body
-    painter.circle_filled(center, radius + 2.0, Theme::BG_DEEP);
-    painter.circle_filled(center, radius, Theme::PANEL_ALT);
-    painter.circle_stroke(center, radius, Stroke::new(1.5_f32, Theme::BORDER));
+    painter.circle_filled(center, radius + 2.0, crate::ui::theme::palette().bg_deep());
+    painter.circle_filled(center, radius, crate::ui::theme::palette().panel_alt());
+    painter.circle_stroke(center, radius, Stroke::new(1.5_f32, crate::ui::theme::palette().border()));
 
     // 2. Inner dial cap
-    painter.circle_filled(center, radius * 0.72, Theme::PANEL);
+    painter.circle_filled(center, radius * 0.72, crate::ui::theme::palette().panel());
 
     // 3. Indicator track arc (background)
     let arc_radius = radius * 0.88;
@@ -115,7 +115,7 @@ fn rotary_knob_impl(
         let dot_color = if a <= current_angle {
             color
         } else {
-            Theme::BORDER
+            crate::ui::theme::palette().border()
         };
         painter.circle_filled(dot_pos, 1.2, dot_color);
     }
@@ -138,7 +138,7 @@ fn rotary_knob_impl(
         egui::Align2::CENTER_CENTER,
         label,
         egui::FontId::proportional(Theme::FONT_S),
-        Theme::TEXT_MUTED,
+        crate::ui::theme::palette().text_muted(),
     );
 
     (changed, response.drag_stopped())
@@ -158,17 +158,17 @@ pub fn fl_step_button(
 
     // Base body color (FL Studio 4-beat color alternating grouping)
     let (base_bg, top_highlight) = if beat_group_a {
-        (Theme::BORDER, Theme::BORDER_SOFT)
+        (crate::ui::theme::palette().border(), crate::ui::theme::palette().border_soft())
     } else {
-        (Theme::PANEL_ALT, Theme::BORDER)
+        (crate::ui::theme::palette().panel_alt(), crate::ui::theme::palette().border())
     };
 
     let (bg_color, stroke_color) = if is_playhead {
-        (Theme::YELLOW, Theme::TEXT)
+        (crate::ui::theme::palette().yellow(), crate::ui::theme::palette().text())
     } else if active {
-        (accent_color, Theme::TEXT)
+        (accent_color, crate::ui::theme::palette().text())
     } else {
-        (base_bg, Theme::BG)
+        (base_bg, crate::ui::theme::palette().bg())
     };
 
     // 1. Button beveled body
@@ -186,10 +186,10 @@ pub fn fl_step_button(
     let led_radius = 3.5;
     if active {
         // Glowing halo
-        painter.circle_filled(led_center, led_radius + 2.5, Theme::alpha(Theme::TEXT, 120));
-        painter.circle_filled(led_center, led_radius, Theme::TEXT);
+        painter.circle_filled(led_center, led_radius + 2.5, Theme::alpha(crate::ui::theme::palette().text(), 120));
+        painter.circle_filled(led_center, led_radius, crate::ui::theme::palette().text());
     } else {
-        painter.circle_filled(led_center, 2.0, Theme::BG);
+        painter.circle_filled(led_center, 2.0, crate::ui::theme::palette().bg());
     }
 
     response
@@ -201,11 +201,11 @@ pub fn oscilloscope_display(ui: &mut Ui, samples: &[f32], peak: f32, size: Vec2)
     let painter = ui.painter();
 
     // Dark LCD monitor screen
-    painter.rect_filled(rect, Rounding::same(4.0), Theme::BG_DEEP);
-    painter.rect_stroke(rect, Rounding::same(4.0), Stroke::new(1.5_f32, Theme::GRID));
+    painter.rect_filled(rect, Rounding::same(4.0), crate::ui::theme::palette().bg_deep());
+    painter.rect_stroke(rect, Rounding::same(4.0), Stroke::new(1.5_f32, crate::ui::theme::palette().grid()));
 
     // Grid lines on LCD
-    let grid_color = Theme::HEADER;
+    let grid_color = crate::ui::theme::palette().header();
     let mid_y = rect.center().y;
     painter.line_segment([Pos2::new(rect.min.x, mid_y), Pos2::new(rect.max.x, mid_y)], Stroke::new(1.0_f32, grid_color));
 
@@ -219,8 +219,8 @@ pub fn oscilloscope_display(ui: &mut Ui, samples: &[f32], peak: f32, size: Vec2)
         let n = samples.len();
         let amp = (rect.height() * 0.44).max(2.0);
         let clipped = peak >= 0.99;
-        let line_color = if clipped { Theme::ORANGE } else { Theme::TRACK_TEAL };
-        let glow_color = if clipped { Theme::alpha(Theme::ORANGE, 60) } else { Theme::alpha(Theme::CYAN, 60) };
+        let line_color = if clipped { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().track_teal() };
+        let glow_color = if clipped { Theme::alpha(crate::ui::theme::palette().orange(), 60) } else { Theme::alpha(crate::ui::theme::palette().cyan(), 60) };
 
         // Cap the number of drawn points while keeping the full window shape.
         let max_points = 240usize;
@@ -286,26 +286,26 @@ pub fn vertical_fader(
     painter.rect_filled(
         Rect::from_min_max(Pos2::new(track_x - 3.0, track_top), Pos2::new(track_x + 3.0, track_bottom)),
         Rounding::same(2.0),
-        Theme::BG_DEEP,
+        crate::ui::theme::palette().bg_deep(),
     );
     painter.rect_stroke(
         Rect::from_min_max(Pos2::new(track_x - 3.0, track_top), Pos2::new(track_x + 3.0, track_bottom)),
         Rounding::same(2.0),
-        Stroke::new(1.0_f32, Theme::PANEL_ALT),
+        Stroke::new(1.0_f32, crate::ui::theme::palette().panel_alt()),
     );
 
     // 2. dB Scale Markings (-inf, -24, -12, -6, 0dB, +3dB)
     let marks = [
-        (1.0, "+3", Theme::RED),
-        (0.8, " 0", Theme::TEXT),
-        (0.6, "-6", Theme::TEXT_MUTED),
-        (0.4, "-12", Theme::TEXT_MUTED),
-        (0.2, "-24", Theme::TEXT_MUTED),
-        (0.0, "-∞", Theme::BORDER_SOFT),
+        (1.0, "+3", crate::ui::theme::palette().red()),
+        (0.8, " 0", crate::ui::theme::palette().text()),
+        (0.6, "-6", crate::ui::theme::palette().text_muted()),
+        (0.4, "-12", crate::ui::theme::palette().text_muted()),
+        (0.2, "-24", crate::ui::theme::palette().text_muted()),
+        (0.0, "-∞", crate::ui::theme::palette().border_soft()),
     ];
     for (m_norm, m_txt, m_col) in marks {
         let y = track_bottom - m_norm * (track_bottom - track_top);
-        painter.line_segment([Pos2::new(fader_rect.min.x + 2.0, y), Pos2::new(track_x - 5.0, y)], Stroke::new(1.0_f32, Theme::BORDER));
+        painter.line_segment([Pos2::new(fader_rect.min.x + 2.0, y), Pos2::new(track_x - 5.0, y)], Stroke::new(1.0_f32, crate::ui::theme::palette().border()));
         painter.text(
             Pos2::new(fader_rect.min.x + 1.0, y),
             egui::Align2::LEFT_CENTER,
@@ -322,8 +322,8 @@ pub fn vertical_fader(
     let thumb_rect = Rect::from_center_size(Pos2::new(track_x, thumb_y), Vec2::new(thumb_width, thumb_height));
 
     // Cap gradient & bevel
-    painter.rect_filled(thumb_rect, Rounding::same(3.0), Theme::BORDER);
-    painter.rect_stroke(thumb_rect, Rounding::same(3.0), Stroke::new(1.5_f32, Theme::TEXT_MUTED));
+    painter.rect_filled(thumb_rect, Rounding::same(3.0), crate::ui::theme::palette().border());
+    painter.rect_stroke(thumb_rect, Rounding::same(3.0), Stroke::new(1.5_f32, crate::ui::theme::palette().text_muted()));
     // Center glowing indicator stripe on fader cap
     painter.line_segment(
         [Pos2::new(thumb_rect.min.x + 4.0, thumb_y), Pos2::new(thumb_rect.max.x - 4.0, thumb_y)],
@@ -331,8 +331,8 @@ pub fn vertical_fader(
     );
 
     // 4. Multi-Segment LED Peak Meter Ladder
-    painter.rect_filled(meter_rect, Rounding::same(2.0), Theme::BG_DEEP);
-    painter.rect_stroke(meter_rect, Rounding::same(2.0), Stroke::new(1.0_f32, Theme::PANEL_ALT));
+    painter.rect_filled(meter_rect, Rounding::same(2.0), crate::ui::theme::palette().bg_deep());
+    painter.rect_stroke(meter_rect, Rounding::same(2.0), Stroke::new(1.0_f32, crate::ui::theme::palette().panel_alt()));
 
     let num_segments = 24;
     let segment_h = (meter_rect.height() - 4.0) / num_segments as f32;
@@ -345,13 +345,13 @@ pub fn vertical_fader(
         let seg_rect = Rect::from_min_size(Pos2::new(meter_rect.min.x + 1.5, y_top + 0.8), Vec2::new(meter_width - 3.0, segment_h - 1.2));
 
         let lit_color = if s >= 22 {
-            Theme::RED // Red clip
+            crate::ui::theme::palette().red() // Red clip
         } else if s >= 18 {
-            Theme::ORANGE // Orange warning
+            crate::ui::theme::palette().orange() // Orange warning
         } else if s >= 12 {
-            Theme::YELLOW // Yellow nominal
+            crate::ui::theme::palette().yellow() // Yellow nominal
         } else {
-            Theme::GREEN // Green safe
+            crate::ui::theme::palette().green() // Green safe
         };
 
         let fill_color = if is_lit {
@@ -383,14 +383,14 @@ pub fn eq_curve_visualizer(
     let painter = ui.painter();
 
     // Dark screen
-    painter.rect_filled(rect, Rounding::same(4.0), Theme::BG_DEEP);
-    painter.rect_stroke(rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::BORDER));
+    painter.rect_filled(rect, Rounding::same(4.0), crate::ui::theme::palette().bg_deep());
+    painter.rect_stroke(rect, Rounding::same(4.0), Stroke::new(1.0_f32, crate::ui::theme::palette().border()));
 
     let mid_y = rect.center().y;
 
     // Grid lines (dB & Freq)
-    let grid_stroke = Stroke::new(1.0_f32, Theme::PANEL);
-    painter.line_segment([Pos2::new(rect.min.x, mid_y), Pos2::new(rect.max.x, mid_y)], Stroke::new(1.0_f32, Theme::GRID));
+    let grid_stroke = Stroke::new(1.0_f32, crate::ui::theme::palette().panel());
+    painter.line_segment([Pos2::new(rect.min.x, mid_y), Pos2::new(rect.max.x, mid_y)], Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
     painter.line_segment([Pos2::new(rect.min.x + rect.width() * 0.33, rect.min.y), Pos2::new(rect.min.x + rect.width() * 0.33, rect.max.y)], grid_stroke);
     painter.line_segment([Pos2::new(rect.min.x + rect.width() * 0.66, rect.min.y), Pos2::new(rect.min.x + rect.width() * 0.66, rect.max.y)], grid_stroke);
 
@@ -434,13 +434,13 @@ pub fn eq_curve_visualizer(
     }
 
     // Glow and fill under curve
-    painter.add(egui::Shape::line(curve_pts.clone(), Stroke::new(4.0_f32, Theme::alpha(Theme::ORANGE, 80))));
-    painter.add(egui::Shape::line(curve_pts, Stroke::new(2.0_f32, Theme::ORANGE)));
+    painter.add(egui::Shape::line(curve_pts.clone(), Stroke::new(4.0_f32, Theme::alpha(crate::ui::theme::palette().orange(), 80))));
+    painter.add(egui::Shape::line(curve_pts, Stroke::new(2.0_f32, crate::ui::theme::palette().orange())));
 
     // Frequency labels
-    painter.text(Pos2::new(rect.min.x + 8.0, rect.max.y - 10.0), egui::Align2::LEFT_CENTER, "LOW (100Hz)", egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
-    painter.text(Pos2::new(rect.center().x, rect.max.y - 10.0), egui::Align2::CENTER_CENTER, "MID (1kHz)", egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
-    painter.text(Pos2::new(rect.max.x - 8.0, rect.max.y - 10.0), egui::Align2::RIGHT_CENTER, "HIGH (10kHz)", egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
+    painter.text(Pos2::new(rect.min.x + 8.0, rect.max.y - 10.0), egui::Align2::LEFT_CENTER, "LOW (100Hz)", egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text_muted());
+    painter.text(Pos2::new(rect.center().x, rect.max.y - 10.0), egui::Align2::CENTER_CENTER, "MID (1kHz)", egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text_muted());
+    painter.text(Pos2::new(rect.max.x - 8.0, rect.max.y - 10.0), egui::Align2::RIGHT_CENTER, "HIGH (10kHz)", egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text_muted());
 
     changed
 }
@@ -455,14 +455,14 @@ pub fn mini_track_eq_curve(
     accent_col: Color32,
     enabled: bool,
 ) {
-    painter.rect_filled(rect, Rounding::same(2.0), Theme::BG_DEEP);
-    painter.rect_stroke(rect, Rounding::same(2.0), Stroke::new(0.8_f32, Theme::GRID));
+    painter.rect_filled(rect, Rounding::same(2.0), crate::ui::theme::palette().bg_deep());
+    painter.rect_stroke(rect, Rounding::same(2.0), Stroke::new(0.8_f32, crate::ui::theme::palette().grid()));
 
     let mid_y = rect.center().y;
-    painter.line_segment([Pos2::new(rect.min.x, mid_y), Pos2::new(rect.max.x, mid_y)], Stroke::new(0.5_f32, Theme::GRID));
+    painter.line_segment([Pos2::new(rect.min.x, mid_y), Pos2::new(rect.max.x, mid_y)], Stroke::new(0.5_f32, crate::ui::theme::palette().grid()));
 
     if !enabled {
-        painter.line_segment([Pos2::new(rect.min.x + 2.0, mid_y), Pos2::new(rect.max.x - 2.0, mid_y)], Stroke::new(1.0_f32, Theme::BORDER_SOFT));
+        painter.line_segment([Pos2::new(rect.min.x + 2.0, mid_y), Pos2::new(rect.max.x - 2.0, mid_y)], Stroke::new(1.0_f32, crate::ui::theme::palette().border_soft()));
         return;
     }
 
@@ -509,22 +509,22 @@ pub fn drummer_xy_matrix(
         }
 
     // 1. Matrix Background (Dark brushed radar screen)
-    painter.rect_filled(rect, Rounding::same(6.0), Theme::BG);
-    painter.rect_stroke(rect, Rounding::same(6.0), Stroke::new(1.5_f32, Theme::BORDER));
+    painter.rect_filled(rect, Rounding::same(6.0), crate::ui::theme::palette().bg());
+    painter.rect_stroke(rect, Rounding::same(6.0), Stroke::new(1.5_f32, crate::ui::theme::palette().border()));
 
     // 2. Crosshairs & concentric rings
     let center = rect.center();
-    painter.line_segment([Pos2::new(rect.min.x, center.y), Pos2::new(rect.max.x, center.y)], Stroke::new(1.0_f32, Theme::GRID));
-    painter.line_segment([Pos2::new(center.x, rect.min.y), Pos2::new(center.x, rect.max.y)], Stroke::new(1.0_f32, Theme::GRID));
+    painter.line_segment([Pos2::new(rect.min.x, center.y), Pos2::new(rect.max.x, center.y)], Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
+    painter.line_segment([Pos2::new(center.x, rect.min.y), Pos2::new(center.x, rect.max.y)], Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
 
-    painter.circle_stroke(center, rect.height() * 0.22, Stroke::new(1.0_f32, Theme::GRID));
-    painter.circle_stroke(center, rect.height() * 0.42, Stroke::new(1.0_f32, Theme::GRID));
+    painter.circle_stroke(center, rect.height() * 0.22, Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
+    painter.circle_stroke(center, rect.height() * 0.42, Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
 
     // 3. Axis Edge Labels (Loud, Soft, Simple, Complex)
-    painter.text(Pos2::new(center.x, rect.min.y + 12.0), egui::Align2::CENTER_CENTER, "LOUD", egui::FontId::proportional(Theme::FONT_S), Theme::TEXT);
-    painter.text(Pos2::new(center.x, rect.max.y - 12.0), egui::Align2::CENTER_CENTER, "SOFT", egui::FontId::proportional(Theme::FONT_S), Theme::TEXT_MUTED);
-    painter.text(Pos2::new(rect.min.x + 32.0, center.y), egui::Align2::CENTER_CENTER, "SIMPLE", egui::FontId::proportional(Theme::FONT_S), Theme::TEXT_MUTED);
-    painter.text(Pos2::new(rect.max.x - 36.0, center.y), egui::Align2::CENTER_CENTER, "COMPLEX", egui::FontId::proportional(Theme::FONT_S), Theme::TEXT);
+    painter.text(Pos2::new(center.x, rect.min.y + 12.0), egui::Align2::CENTER_CENTER, "LOUD", egui::FontId::proportional(Theme::FONT_S), crate::ui::theme::palette().text());
+    painter.text(Pos2::new(center.x, rect.max.y - 12.0), egui::Align2::CENTER_CENTER, "SOFT", egui::FontId::proportional(Theme::FONT_S), crate::ui::theme::palette().text_muted());
+    painter.text(Pos2::new(rect.min.x + 32.0, center.y), egui::Align2::CENTER_CENTER, "SIMPLE", egui::FontId::proportional(Theme::FONT_S), crate::ui::theme::palette().text_muted());
+    painter.text(Pos2::new(rect.max.x - 36.0, center.y), egui::Align2::CENTER_CENTER, "COMPLEX", egui::FontId::proportional(Theme::FONT_S), crate::ui::theme::palette().text());
 
     // 4. Draggable Glowing Yellow Puck
     let puck_x = rect.min.x + *complexity * rect.width();
@@ -532,10 +532,10 @@ pub fn drummer_xy_matrix(
     let puck_pos = Pos2::new(puck_x, puck_y);
 
     // Glowing halo rings
-    painter.circle_filled(puck_pos, 16.0, Theme::alpha(Theme::YELLOW, 50));
-    painter.circle_filled(puck_pos, 10.0, Theme::alpha(Theme::YELLOW, 120));
-    painter.circle_filled(puck_pos, 6.0, Theme::YELLOW);
-    painter.circle_stroke(puck_pos, 6.0, Stroke::new(1.5_f32, Theme::TEXT));
+    painter.circle_filled(puck_pos, 16.0, Theme::alpha(crate::ui::theme::palette().yellow(), 50));
+    painter.circle_filled(puck_pos, 10.0, Theme::alpha(crate::ui::theme::palette().yellow(), 120));
+    painter.circle_filled(puck_pos, 6.0, crate::ui::theme::palette().yellow());
+    painter.circle_stroke(puck_pos, 6.0, Stroke::new(1.5_f32, crate::ui::theme::palette().text()));
 
     changed
 }
@@ -562,8 +562,8 @@ pub fn alchemy_transform_matrix(
         }
 
     // Pad Background
-    painter.rect_filled(rect, Rounding::same(6.0), Theme::BG_DEEP);
-    painter.rect_stroke(rect, Rounding::same(6.0), Stroke::new(1.5_f32, Theme::CYAN));
+    painter.rect_filled(rect, Rounding::same(6.0), crate::ui::theme::palette().bg_deep());
+    painter.rect_stroke(rect, Rounding::same(6.0), Stroke::new(1.5_f32, crate::ui::theme::palette().cyan()));
 
     let center = rect.center();
     let pad_radius = rect.height() * 0.36;
@@ -586,14 +586,14 @@ pub fn alchemy_transform_matrix(
         let p = Pos2::new(x, y);
 
         // Snapshot pad dot
-        painter.circle_filled(p, 7.0, Theme::GRID);
-        painter.circle_stroke(p, 7.0, Stroke::new(1.5_f32, Theme::CYAN));
-        painter.circle_filled(p, 3.0, Theme::TRACK_TEAL);
+        painter.circle_filled(p, 7.0, crate::ui::theme::palette().grid());
+        painter.circle_stroke(p, 7.0, Stroke::new(1.5_f32, crate::ui::theme::palette().cyan()));
+        painter.circle_filled(p, 3.0, crate::ui::theme::palette().track_teal());
 
         // Label offset slightly outward
         let text_p = Pos2::new(center.x + angle.cos() * (pad_radius + 24.0), center.y + angle.sin() * (pad_radius + 16.0));
-        painter.text(text_p, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT);
-        painter.line_segment([center, p], Stroke::new(1.0_f32, Theme::GRID));
+        painter.text(text_p, egui::Align2::CENTER_CENTER, label, egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text());
+        painter.line_segment([center, p], Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
     }
 
     // Draggable Cyan Cursor
@@ -601,10 +601,10 @@ pub fn alchemy_transform_matrix(
     let cursor_y = center.y + puck_pos_norm[1] * pad_radius;
     let cursor_pos = Pos2::new(cursor_x, cursor_y);
 
-    painter.circle_filled(cursor_pos, 18.0, Theme::alpha(Theme::CYAN, 40));
-    painter.circle_filled(cursor_pos, 10.0, Theme::alpha(Theme::CYAN, 120));
-    painter.circle_filled(cursor_pos, 6.0, Theme::TEXT);
-    painter.circle_stroke(cursor_pos, 6.0, Stroke::new(1.5_f32, Theme::TEXT));
+    painter.circle_filled(cursor_pos, 18.0, Theme::alpha(crate::ui::theme::palette().cyan(), 40));
+    painter.circle_filled(cursor_pos, 10.0, Theme::alpha(crate::ui::theme::palette().cyan(), 120));
+    painter.circle_filled(cursor_pos, 6.0, crate::ui::theme::palette().text());
+    painter.circle_stroke(cursor_pos, 6.0, Stroke::new(1.5_f32, crate::ui::theme::palette().text()));
 
     changed
 }
@@ -621,11 +621,11 @@ pub fn stereo_meter(ui: &mut Ui, left: f32, right: f32, size: Vec2) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter();
 
-    painter.rect_filled(rect, Rounding::same(3.0), Theme::BG_DEEP);
+    painter.rect_filled(rect, Rounding::same(3.0), crate::ui::theme::palette().bg_deep());
     painter.rect_stroke(
         rect,
         Rounding::same(3.0),
-        Stroke::new(1.0_f32, Theme::GRID),
+        Stroke::new(1.0_f32, crate::ui::theme::palette().grid()),
     );
 
     let inner = Rect::from_min_max(rect.min + Vec2::new(2.0, 2.0), rect.max - Vec2::new(2.0, 2.0));
@@ -637,22 +637,22 @@ pub fn stereo_meter(ui: &mut Ui, left: f32, right: f32, size: Vec2) {
             Pos2::new(inner.min.x + 8.0, y),
             Vec2::new((inner.width() - 8.0).max(4.0), bar_h),
         );
-        painter.rect_filled(bar, Rounding::same(1.5), Theme::BG);
+        painter.rect_filled(bar, Rounding::same(1.5), crate::ui::theme::palette().bg());
         painter.text(
             Pos2::new(inner.min.x + 1.0, y + bar_h * 0.5),
             egui::Align2::LEFT_CENTER,
             channel,
             egui::FontId::proportional(Theme::FONT_XS),
-            Theme::TEXT_MUTED,
+            crate::ui::theme::palette().text_muted(),
         );
 
         let unit = amp_to_unit(amp);
         let color = if amp >= 0.99 {
-            Theme::RED // klipp
+            crate::ui::theme::palette().red() // klipp
         } else if unit >= db_to_unit(-3.0) {
-            Theme::YELLOW // nära taket
+            crate::ui::theme::palette().yellow() // nära taket
         } else {
-            Theme::GREEN
+            crate::ui::theme::palette().green()
         };
         painter.rect_filled(
             Rect::from_min_size(bar.min, Vec2::new(bar.width() * unit, bar.height())),
@@ -664,7 +664,7 @@ pub fn stereo_meter(ui: &mut Ui, left: f32, right: f32, size: Vec2) {
         let x0 = bar.min.x + bar.width() * db_to_unit(0.0);
         painter.line_segment(
             [Pos2::new(x0, bar.min.y), Pos2::new(x0, bar.max.y)],
-            Stroke::new(1.0_f32, Theme::TEXT_MUTED),
+            Stroke::new(1.0_f32, crate::ui::theme::palette().text_muted()),
         );
     }
 }
@@ -679,11 +679,11 @@ pub fn register_eq(ui: &mut Ui, levels: &[f32], labels: &[&str], size: Vec2) {
     let (rect, _) = ui.allocate_exact_size(size, Sense::hover());
     let painter = ui.painter();
 
-    painter.rect_filled(rect, Rounding::same(3.0), Theme::BG_DEEP);
+    painter.rect_filled(rect, Rounding::same(3.0), crate::ui::theme::palette().bg_deep());
     painter.rect_stroke(
         rect,
         Rounding::same(3.0),
-        Stroke::new(1.0_f32, Theme::GRID),
+        Stroke::new(1.0_f32, crate::ui::theme::palette().grid()),
     );
     if levels.is_empty() {
         return;
@@ -704,16 +704,16 @@ pub fn register_eq(ui: &mut Ui, levels: &[f32], labels: &[&str], size: Vec2) {
         painter.rect_filled(
             Rect::from_min_size(Pos2::new(x, area.min.y), Vec2::new(bar_w, 1.5)),
             Rounding::same(0.5),
-            Theme::GRID,
+            crate::ui::theme::palette().grid(),
         );
         let level = level.clamp(0.0, 1.0);
         let h = (area.height() * level).max(1.0);
         let color = if level >= 0.95 {
-            Theme::RED
+            crate::ui::theme::palette().red()
         } else if level >= 0.8 {
-            Theme::YELLOW
+            crate::ui::theme::palette().yellow()
         } else {
-            Theme::GREEN
+            crate::ui::theme::palette().green()
         };
         painter.rect_filled(
             Rect::from_min_size(Pos2::new(x, area.max.y - h), Vec2::new(bar_w, h)),
@@ -726,7 +726,7 @@ pub fn register_eq(ui: &mut Ui, levels: &[f32], labels: &[&str], size: Vec2) {
                 egui::Align2::CENTER_BOTTOM,
                 *name,
                 egui::FontId::proportional(Theme::FONT_XS),
-                Theme::TEXT_MUTED,
+                crate::ui::theme::palette().text_muted(),
             );
         }
     }

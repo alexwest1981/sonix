@@ -1,6 +1,5 @@
 use eframe::egui::Color32;
 use std::path::{Path, PathBuf};
-use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PluginFormat {
@@ -26,12 +25,12 @@ impl PluginFormat {
 
     pub fn badge_color(&self) -> Color32 {
         match self {
-            PluginFormat::Clap => Theme::CYAN,          // Cyan
-            PluginFormat::Vst3 => Theme::ORANGE,          // Orange
-            PluginFormat::Vst2 => Theme::AMBER,         // Gold
-            PluginFormat::Lv2 => Theme::GREEN,          // Green
-            PluginFormat::WineYabridge => Theme::PURPLE, // Purple Wine
-            PluginFormat::FlStudioNative => Theme::ORANGE,// FL Orange/Red
+            PluginFormat::Clap => crate::ui::theme::palette().cyan(),          // Cyan
+            PluginFormat::Vst3 => crate::ui::theme::palette().orange(),          // Orange
+            PluginFormat::Vst2 => crate::ui::theme::palette().amber(),         // Gold
+            PluginFormat::Lv2 => crate::ui::theme::palette().green(),          // Green
+            PluginFormat::WineYabridge => crate::ui::theme::palette().purple(), // Purple Wine
+            PluginFormat::FlStudioNative => crate::ui::theme::palette().orange(),// FL Orange/Red
         }
     }
 }

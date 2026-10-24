@@ -2,7 +2,6 @@ use eframe::egui::Color32;
 use std::sync::{Arc, Mutex};
 
 use super::ai_client::AiConfig;
-use crate::ui::theme::Theme;
 
 #[allow(dead_code)]
 #[derive(Debug, Clone)]
@@ -79,7 +78,7 @@ impl AiMusicAssistant {
                 bpm: 128.0,
                 channel_steps: [true, false, true, true, false, true, true, false, true, false, true, true, false, true, true, true],
                 notes: [45, 45, 48, 52, 45, 45, 57, 45, 45, 45, 48, 52, 45, 45, 55, 57],
-                color: Theme::CYAN,
+                color: crate::ui::theme::palette().cyan(),
             },
             AiGeneratedClip {
                 title: "🎷 Neo-Soul Warm Chord Melodies".to_string(),
@@ -88,7 +87,7 @@ impl AiMusicAssistant {
                 bpm: 90.0,
                 channel_steps: [true, false, false, true, false, false, true, false, true, false, false, true, false, false, true, false],
                 notes: [50, 50, 50, 53, 53, 53, 57, 57, 60, 60, 60, 64, 64, 64, 60, 57],
-                color: Theme::ORANGE,
+                color: crate::ui::theme::palette().orange(),
             },
             AiGeneratedClip {
                 title: "💥 Drill & Trap 808 Sliding Bass".to_string(),
@@ -97,7 +96,7 @@ impl AiMusicAssistant {
                 bpm: 140.0,
                 channel_steps: [true, false, false, false, true, false, true, false, false, true, false, false, true, false, false, true],
                 notes: [41, 41, 41, 41, 41, 41, 48, 48, 41, 41, 41, 41, 46, 46, 48, 41],
-                color: Theme::PURPLE,
+                color: crate::ui::theme::palette().purple(),
             },
         ];
     }
@@ -149,7 +148,7 @@ impl AiMusicAssistant {
             bpm,
             channel_steps: steps,
             notes,
-            color: Theme::GREEN,
+            color: crate::ui::theme::palette().green(),
         });
         if self.generated_history.len() > 12 {
             self.generated_history.truncate(12);

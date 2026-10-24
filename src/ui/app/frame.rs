@@ -730,7 +730,7 @@ impl SonixApp {
         // 0. PERMANENT TOP DESKTOP MENU BAR (ARKIV, REDIGERA, VY, AI, INSTÄLLNINGAR, HJÄLP)
         // ====================================================================
         egui::TopBottomPanel::top("desktop_menu_bar")
-            .frame(egui::Frame::none().fill(Theme::BG).inner_margin(egui::Margin::symmetric(8.0, 3.0)))
+            .frame(egui::Frame::none().fill(crate::ui::theme::palette().bg()).inner_margin(egui::Margin::symmetric(8.0, 3.0)))
             .show(ctx, |ui| {
                 egui::menu::bar(ui, |ui| {
                     // Arkiv
@@ -1095,7 +1095,7 @@ impl SonixApp {
                     // Project indicator & quick status
                     ui.separator();
                     let p_label = format!("{} {}", self.tr("📁 Projekt:"), self.project_name);
-                    if ui.add(egui::Button::new(egui::RichText::new(p_label).size(Theme::FONT_S).color(Theme::ORANGE)).frame(false)).on_hover_text(self.tr("Klicka för att hantera projekt")).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(p_label).size(Theme::FONT_S).color(crate::ui::theme::palette().orange())).frame(false)).on_hover_text(self.tr("Klicka för att hantera projekt")).clicked() {
                         self.show_project_manager_modal = true;
                     }
                 });
@@ -1105,7 +1105,7 @@ impl SonixApp {
         // 1. TOP METALLIC TOOLBAR
         // ====================================================================
         egui::TopBottomPanel::top("fl_toolbar")
-            .frame(egui::Frame::none().fill(Theme::HEADER).inner_margin(6.0))
+            .frame(egui::Frame::none().fill(crate::ui::theme::palette().header()).inner_margin(6.0))
             .show(ctx, |ui| {
                 // ROW 1: Logo, Transport, Master Knobs, Clock, Export & Guide (Responsive Wrapped)
                 ui.horizontal_wrapped(|ui| {
@@ -1123,24 +1123,24 @@ impl SonixApp {
                     if let Some(tex) = &logo {
                         ui.add(egui::Image::new(tex).fit_to_exact_size(egui::Vec2::splat(18.0)));
                     }
-                    ui.label(egui::RichText::new(crate::i18n::t("SONIX")).strong().size(Theme::FONT_L).color(Theme::CYAN));
-                    ui.label(egui::RichText::new(crate::i18n::t("STUDIO")).strong().size(Theme::FONT_S).color(Theme::CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("SONIX")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().cyan()));
+                    ui.label(egui::RichText::new(crate::i18n::t("STUDIO")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                     ui.separator();
 
                     // Transport Buttons
-                    let play_color = if self.is_playing { Theme::GREEN } else { Theme::PANEL_ALT };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ▶ PLAY ")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(play_color)).clicked()
+                    let play_color = if self.is_playing { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().panel_alt() };
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ▶ PLAY ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(play_color)).clicked()
                         && !self.is_playing {
                             self.toggle_playback();
                         }
 
-                    let pause_color = if !self.is_playing { Theme::ORANGE } else { Theme::PANEL_ALT };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏸ PAUSE ")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(pause_color)).clicked()
+                    let pause_color = if !self.is_playing { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel_alt() };
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏸ PAUSE ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(pause_color)).clicked()
                         && self.is_playing {
                             self.toggle_playback();
                         }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOP ")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOP ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border())).clicked() {
                         self.stop_playback();
                     }
 
@@ -1149,15 +1149,15 @@ impl SonixApp {
                     // Digital LCD Display & Clock (Compact, monospace)
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("BPM")).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
-                            ui.add_sized(Vec2::new(38.0, 18.0), egui::Label::new(egui::RichText::new(format!("{:.1}", self.bpm)).monospace().strong().size(Theme::FONT_S).color(Theme::CYAN)));
+                            ui.label(egui::RichText::new(crate::i18n::t("BPM")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
+                            ui.add_sized(Vec2::new(38.0, 18.0), egui::Label::new(egui::RichText::new(format!("{:.1}", self.bpm)).monospace().strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan())));
                             if ui.button(crate::i18n::t("▲")).clicked() && self.bpm < 240.0 { self.bpm += 1.0; }
                             if ui.button(crate::i18n::t("▼")).clicked() && self.bpm > 40.0 { self.bpm -= 1.0; }
 
                             ui.separator();
 
                             let mode_text = if self.pattern_mode { "PAT" } else { "SONG" };
-                            let mode_color = if self.pattern_mode { Theme::ORANGE } else { Theme::CYAN };
+                            let mode_color = if self.pattern_mode { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().cyan() };
                             if ui.add_sized(Vec2::new(38.0, 18.0), egui::Button::new(egui::RichText::new(mode_text).strong().size(Theme::FONT_XS).color(Color32::BLACK)).fill(mode_color)).clicked() {
                                 self.pattern_mode = !self.pattern_mode;
                                 self.status_message = (if self.pattern_mode { self.tr("Läge ändrat till: PAT (Mönsterloop)") } else { self.tr("Läge ändrat till: SONG (Låtläge)") }).to_string();
@@ -1173,7 +1173,7 @@ impl SonixApp {
                                     Some(kind) => format!("FÖLJ: {}", self.tr(kind.label())),
                                     None => self.tr("FÖLJ: AV").to_string(),
                                 };
-                                let color = if current.is_some() { Theme::ORANGE } else { Theme::TEXT_MUTED };
+                                let color = if current.is_some() { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().text_muted() };
                                 if ui.add(egui::Button::new(egui::RichText::new(label).size(Theme::FONT_XS).color(color))).clicked() {
                                     use crate::follow::{FollowAction, FollowKind};
                                     self.follow = match current {
@@ -1200,11 +1200,11 @@ impl SonixApp {
                             let (txt, color) = if self.pattern_mode {
                                 let bar = (self.current_step / 4) + 1;
                                 let step_in_bar = (self.current_step % 4) + 1;
-                                (format!("⏱ {} [B{:02}:S{}]", time_str, bar, step_in_bar), Theme::ORANGE)
+                                (format!("⏱ {} [B{:02}:S{}]", time_str, bar, step_in_bar), crate::ui::theme::palette().orange())
                             } else {
                                 let bar = self.song_bar + 1;
                                 let step = (self.song_step_in_bar / 4) + 1;
-                                (format!("⏱ {} [T{:02}.{}]", time_str, bar, step), Theme::CYAN)
+                                (format!("⏱ {} [T{:02}.{}]", time_str, bar, step), crate::ui::theme::palette().cyan())
                             };
                             ui.label(egui::RichText::new(txt).monospace().strong().size(Theme::FONT_S).color(color));
                         });
@@ -1215,13 +1215,13 @@ impl SonixApp {
                     // Pattern Quick Selector
                     ui.group(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("PAT:")).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(crate::i18n::t("PAT:")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                             let p_len = self.patterns.len();
                             for pat_idx in 0..p_len {
                                 let is_active = self.selected_pattern == pat_idx;
                                 let p_color = self.patterns[pat_idx].color;
-                                let fill = if is_active { p_color } else { Theme::PANEL };
-                                let text_color = if is_active { Color32::BLACK } else { Theme::TEXT };
+                                let fill = if is_active { p_color } else { crate::ui::theme::palette().panel() };
+                                let text_color = if is_active { Color32::BLACK } else { crate::ui::theme::palette().text() };
                                 if ui.add(egui::Button::new(egui::RichText::new(format!("P{}", pat_idx + 1)).strong().size(Theme::FONT_XS).color(text_color)).fill(fill)).clicked() {
                                     self.select_pattern(pat_idx);
                                 }
@@ -1229,7 +1229,7 @@ impl SonixApp {
                             // Fånga in det som spelas som en ny slinga (Abletons
                             // Capture and Insert Scene). Källan blir kvar.
                             if ui
-                                .add(egui::Button::new(egui::RichText::new("🎯").size(Theme::FONT_XS)).fill(Theme::PANEL))
+                                .add(egui::Button::new(egui::RichText::new("🎯").size(Theme::FONT_XS)).fill(crate::ui::theme::palette().panel()))
                                 .on_hover_text(crate::i18n::t("Fånga in den valda slingan som en ny slinga"))
                                 .clicked()
                             {
@@ -1237,7 +1237,7 @@ impl SonixApp {
                             }
                             // FL:s Clone pattern: en kopia att göra varianten i.
                             if ui
-                                .add(egui::Button::new(egui::RichText::new("⧉").size(Theme::FONT_XS)).fill(Theme::PANEL))
+                                .add(egui::Button::new(egui::RichText::new("⧉").size(Theme::FONT_XS)).fill(crate::ui::theme::palette().panel()))
                                 .on_hover_text(crate::i18n::t("Kopiera mönstret — originalet rörs inte"))
                                 .clicked()
                             {
@@ -1249,7 +1249,7 @@ impl SonixApp {
                     ui.separator();
 
                     // Swing Knob
-                    rotary_knob(ui, &mut self.swing, 0.0, 1.0, "SWING", Theme::YELLOW, 20.0);
+                    rotary_knob(ui, &mut self.swing, 0.0, 1.0, "SWING", crate::ui::theme::palette().yellow(), 20.0);
 
                     ui.separator();
 
@@ -1274,39 +1274,39 @@ impl SonixApp {
                     ui.separator();
 
                     // Master Volume & Pan Knobs
-                    if rotary_knob(ui, &mut self.master_volume, 0.0, 1.0, "MASTER", Theme::ORANGE, 20.0) {
+                    if rotary_knob(ui, &mut self.master_volume, 0.0, 1.0, "MASTER", crate::ui::theme::palette().orange(), 20.0) {
                         let _ = self.engine.send_command(AudioCommand::SetMasterVolume(self.master_volume));
                     }
-                    rotary_knob(ui, &mut self.master_pan, -1.0, 1.0, "PAN", Theme::TEXT_MUTED, 20.0);
+                    rotary_knob(ui, &mut self.master_pan, -1.0, 1.0, "PAN", crate::ui::theme::palette().text_muted(), 20.0);
 
                     ui.separator();
 
                     // Export WAV Button
                     let export_label = if self.pattern_mode { "💾 EXPORT PAT" } else { "💾 EXPORT SONG" };
-                    if ui.add(egui::Button::new(egui::RichText::new(export_label).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TEXT_MUTED)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(export_label).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().text_muted())).clicked() {
                         self.export_wav();
                     }
 
                     // Batch Export & Render Queue Button
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📤 BATCH EXPORT")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::BORDER_SOFT)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📤 BATCH EXPORT")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft())).clicked() {
                         self.open_export_modal();
                     }
 
                     // Stems Importer Button
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📦 STEMS")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::PURPLE)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📦 STEMS")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().purple())).clicked() {
                         self.scan_for_suno_stems();
                         self.show_suno_import_modal = true;
                     }
 
                     // Hardware Controller MCU / OSC Button
-                    let mcu_col = if self.mcu_connected { Theme::CABLE } else { Theme::PANEL };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎛 MCU")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(mcu_col)).clicked() {
+                    let mcu_col = if self.mcu_connected { crate::ui::theme::palette().cable() } else { crate::ui::theme::palette().panel() };
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎛 MCU")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(mcu_col)).clicked() {
                         self.show_controller_modal = true;
                     }
 
                     ui.separator();
 
-                    let guide_col = if self.show_help_guide { Theme::YELLOW } else { Theme::TEXT_MUTED };
+                    let guide_col = if self.show_help_guide { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().text_muted() };
                     if ui.button(egui::RichText::new(crate::i18n::t("💡 Guide")).color(guide_col)).clicked() {
                         self.show_help_guide = !self.show_help_guide;
                     }
@@ -1314,7 +1314,7 @@ impl SonixApp {
                     ui.separator();
 
                     let lang_title = format!("🌐 {}", self.language.native_name());
-                    egui::menu::menu_button(ui, egui::RichText::new(lang_title).size(Theme::FONT_S).color(if self.language != crate::i18n::Language::En { Theme::YELLOW } else { Theme::TEXT_MUTED }), |ui| {
+                    egui::menu::menu_button(ui, egui::RichText::new(lang_title).size(Theme::FONT_S).color(if self.language != crate::i18n::Language::En { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().text_muted() }), |ui| {
                         ui.label(egui::RichText::new(self.tr("🌐 Språk")).strong().size(Theme::FONT_S));
                         ui.separator();
                         for lang in crate::i18n::Language::shipped() {
@@ -1334,7 +1334,7 @@ impl SonixApp {
                 // ROW 2: Primary Workspaces & Advanced Studios Navigation Tabs (Responsive Wrapped)
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
-                    ui.label(egui::RichText::new(self.tr("VY:")).strong().size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(self.tr("VY:")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
 
                     let arr_btn = ui.selectable_label(self.view_mode == ViewMode::PlaylistArranger, self.tr("🎼 Tidslinje"));
                     if arr_btn.clicked() { self.view_mode = ViewMode::PlaylistArranger; }
@@ -1355,7 +1355,7 @@ impl SonixApp {
                     if ai_btn.clicked() { self.view_mode = ViewMode::AiMusicAssistant; }
 
                     ui.separator();
-                    ui.label(egui::RichText::new(self.tr("STUDIOS:")).strong().size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(self.tr("STUDIOS:")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
 
                     let alc_btn = ui.selectable_label(self.view_mode == ViewMode::AlchemySynth, self.tr("✨ Alchemy"));
                     if alc_btn.clicked() { self.view_mode = ViewMode::AlchemySynth; }
@@ -1378,25 +1378,25 @@ impl SonixApp {
                     if rmx_btn.clicked() { self.view_mode = ViewMode::RemixFx; }
 
                     ui.separator();
-                    ui.label(egui::RichText::new(self.tr("VERKTYG:")).strong().size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(self.tr("VERKTYG:")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
 
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎲 Tärning")).strong().size(Theme::FONT_XS).color(Theme::TEXT)).fill(Theme::RED)).on_hover_text(self.tr("Idé- & Slumptärning för Melodier & Beats (F12)")).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎲 Tärning")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().red())).on_hover_text(self.tr("Idé- & Slumptärning för Melodier & Beats (F12)")).clicked() {
                         self.show_dice_generator_modal = true;
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎹 Ackord")).strong().size(Theme::FONT_XS).color(Theme::TEXT)).fill(Theme::TEXT_MUTED)).on_hover_text(self.tr("Smart Ackord- & Skalgenerator (F11)")).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎹 Ackord")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().text_muted())).on_hover_text(self.tr("Smart Ackord- & Skalgenerator (F11)")).clicked() {
                         self.show_chord_generator_modal = true;
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎛 FX-Rack")).strong().size(Theme::FONT_XS).color(Theme::TEXT)).fill(Theme::PURPLE)).on_hover_text(self.tr("Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)")).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎛 FX-Rack")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().purple())).on_hover_text(self.tr("Modulärt FX-Pedalbord & Stompbox Rack (Ctrl+R)")).clicked() {
                         self.show_fx_rack_modal = true;
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎯 Stämmare")).strong().size(Theme::FONT_XS).color(Theme::TEXT)).fill(Theme::GREEN)).on_hover_text(self.tr("Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)")).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("🎯 Stämmare")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().green())).on_hover_text(self.tr("Hårdvarustämapparat & Pitch Analyzer (Ctrl+T)")).clicked() {
                         self.show_tuner_modal = true;
                     }
 
-                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("📑 Formdelar")).strong().size(Theme::FONT_XS).color(Theme::TEXT)).fill(Theme::AMBER)).on_hover_text(self.tr("Låtstruktur & Formdelar")).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(self.tr("📑 Formdelar")).strong().size(Theme::FONT_XS).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().amber())).on_hover_text(self.tr("Låtstruktur & Formdelar")).clicked() {
                         self.show_song_structure_modal = true;
                     }
                 });
@@ -1404,24 +1404,24 @@ impl SonixApp {
 
         // Bottom Status Bar
         egui::TopBottomPanel::bottom("fl_status_bar")
-            .frame(egui::Frame::none().fill(Theme::PANEL).inner_margin(4.0))
+            .frame(egui::Frame::none().fill(crate::ui::theme::palette().panel()).inner_margin(4.0))
             .show(ctx, |ui| {
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(8.0, 2.0);
-                    ui.label(egui::RichText::new(&self.status_message).size(Theme::FONT_S).color(Theme::CYAN));
+                    ui.label(egui::RichText::new(&self.status_message).size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                     let drops = self.engine.command_drops();
                     if drops > 0 {
                         ui.label(
                             egui::RichText::new(format!("⚠ {} {}", drops, self.tr("tappade kommandon")))
                                 .size(Theme::FONT_S)
-                                .color(Theme::YELLOW),
+                                .color(crate::ui::theme::palette().yellow()),
                         )
                         .on_hover_text(self.tr(
                             "Ljudtråden hann inte ta emot kommandon. Spela om handlingen om gränssnittet och ljudet inte stämmer.",
                         ));
                     }
                     ui.separator();
-                    ui.label(egui::RichText::new(self.tr("PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(self.tr("PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                 });
             });
     }
@@ -1434,7 +1434,7 @@ impl SonixApp {
         // ====================================================================
         if self.show_browser {
             egui::SidePanel::left("fl_browser")
-                .frame(egui::Frame::none().fill(Theme::PANEL).inner_margin(8.0))
+                .frame(egui::Frame::none().fill(crate::ui::theme::palette().panel()).inner_margin(8.0))
                 .resizable(true)
                 .default_width(200.0)
                 .show(ctx, |ui| {
@@ -1446,7 +1446,7 @@ impl SonixApp {
         // 3. MAIN WORKSPACE (VIEW MODES)
         // ====================================================================
         egui::CentralPanel::default()
-            .frame(egui::Frame::none().fill(Theme::BG).inner_margin(12.0))
+            .frame(egui::Frame::none().fill(crate::ui::theme::palette().bg()).inner_margin(12.0))
             .show(ctx, |ui| {
                 // Paneler i stället för sidor (Abletons modell): i arrangemanget står ytan kvar
                 // och den valda vyn ritas bredvid i stället för att ersätta den.
@@ -1463,9 +1463,9 @@ impl SonixApp {
                         .min_width(320.0)
                         .frame(
                             egui::Frame::none()
-                                .fill(Theme::PANEL)
+                                .fill(crate::ui::theme::palette().panel())
                                 .inner_margin(8.0)
-                                .stroke(egui::Stroke::new(1.0_f32, Theme::CYAN)),
+                                .stroke(egui::Stroke::new(1.0_f32, crate::ui::theme::palette().cyan())),
                         )
                         .show_inside(ui, |ui| {
                             ui.horizontal(|ui| {
@@ -1473,7 +1473,7 @@ impl SonixApp {
                                     egui::RichText::new(view_name(panel))
                                         .strong()
                                         .size(Theme::FONT_S)
-                                        .color(Theme::CYAN),
+                                        .color(crate::ui::theme::palette().cyan()),
                                 );
                                 ui.with_layout(
                                     egui::Layout::right_to_left(egui::Align::Center),

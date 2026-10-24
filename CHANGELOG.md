@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Theme files.** The palette is now a `Palette` with 29 semantic names (`bg`, `panel`,
+  `orange`, `track_teal`, …) read from `~/.config/sonix/theme.json`. The file is written with
+  the default palette on first run so it can be edited, only the keys you name are changed, and
+  a broken file falls back to the defaults instead of stopping the app. Typography stays in code:
+  a theme file should not be able to make the text unreadable.
 - **Carrier input in the master chain.** A 16-band vocoder sits before the master FX chain
   with the rack's own synth as the carrier and the stems as the modulator, so a synth patch
   speaks the rhythm of a drum loop. The modulator is taken from the stem mix, not the master —

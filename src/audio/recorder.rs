@@ -6,7 +6,6 @@ use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use super::vocal_harmonizer::RealtimeAutotune;
 use super::wav_writer::write_pcm_f32_to_wav;
-use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone)]
 pub struct AudioTake {
@@ -1163,7 +1162,7 @@ impl VocalStudioTrack {
             waveform_data,
             sample_rate: mic_sr.max(8000),
             duration_secs: duration,
-            color: Theme::AMBER,
+            color: crate::ui::theme::palette().amber(),
         });
         Ok(self.custom_sounds.len() - 1)
     }
@@ -1191,10 +1190,10 @@ impl VocalStudioTrack {
 
         let count = self.takes.len() + 1;
         let color = match count % 4 {
-            0 => Theme::CYAN,
-            1 => Theme::ORANGE,
-            2 => Theme::PURPLE,
-            _ => Theme::GREEN,
+            0 => crate::ui::theme::palette().cyan(),
+            1 => crate::ui::theme::palette().orange(),
+            2 => crate::ui::theme::palette().purple(),
+            _ => crate::ui::theme::palette().green(),
         };
 
         let new_take = AudioTake {
@@ -1240,7 +1239,7 @@ impl VocalStudioTrack {
                 sample_rate: 44100,
                 duration_secs: 0.0,
                 is_selected: false,
-                color: Theme::BORDER_SOFT,
+                color: crate::ui::theme::palette().border_soft(),
                 trim_start_norm: 0.0,
                 trim_end_norm: 1.0,
                 gain_linear: 1.0,
@@ -1359,7 +1358,7 @@ impl VocalStudioTrack {
         let sr = self.takes[self.comp_regions[0].0].sample_rate;
         let name = format!("{} (Komp)", self.takes[self.comp_regions[0].0].name);
         let count = self.comp_regions.len();
-        self.add_take_from_pcm(name, merged, sr, Theme::AMBER);
+        self.add_take_from_pcm(name, merged, sr, crate::ui::theme::palette().amber());
         Ok(crate::tstatus!(
             "🎚 Kompen byggd av {} partier — ligger som en egen tagning",
             count
@@ -1444,7 +1443,7 @@ impl VocalStudioTrack {
             sample_rate: sr,
             duration_secs: part2_samples.len() as f32 / sr as f32,
             is_selected: true,
-            color: Theme::TRACK_ROSE,
+            color: crate::ui::theme::palette().track_rose(),
             trim_start_norm: 0.0,
             trim_end_norm: 1.0,
             gain_linear: 1.0,
@@ -1529,10 +1528,10 @@ impl VocalStudioTrack {
             .collect();
         let new_wave = visual_peaks_from(&pcm);
         let color = match count % 4 {
-            0 => Theme::CYAN,
-            1 => Theme::ORANGE,
-            2 => Theme::PURPLE,
-            _ => Theme::GREEN,
+            0 => crate::ui::theme::palette().cyan(),
+            1 => crate::ui::theme::palette().orange(),
+            2 => crate::ui::theme::palette().purple(),
+            _ => crate::ui::theme::palette().green(),
         };
         self.takes.push(AudioTake {
             name: if name.is_empty() { format!("{} {} ({})", crate::i18n::t("Tagning"), count, crate::i18n::t("Testton")) } else { name.to_string() },
@@ -1691,7 +1690,7 @@ mod tests {
     fn test_vocal_studio_crop_and_slice() {
         let mut track = VocalStudioTrack::default();
         let pcm: Vec<f32> = (0..44100).map(|i| (i as f32 * 0.02).sin() * 0.5).collect();
-        track.load_sample_or_region_as_take("Test", pcm, 44100, Theme::CYAN);
+        track.load_sample_or_region_as_take("Test", pcm, 44100, crate::ui::theme::palette().cyan());
         track.active_comp_take = 0;
 
         let orig_len = track.takes[0].pcm_samples.len();
@@ -1724,7 +1723,7 @@ mod tests {
                 &format!("Tagning {i}"),
                 vec![0.1; 44_100],
                 44_100,
-                Theme::CYAN,
+                crate::ui::theme::palette().cyan(),
             );
         }
         track

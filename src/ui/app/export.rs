@@ -984,12 +984,12 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
         .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
         .show(ctx, |ui| {
             ui.set_width(620.0);
-            ui.label(egui::RichText::new(self.tr("Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till.")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(self.tr("Rendera hela projektet offline (riktiga WAV-samples, tidslinje-audio & effekter) med ren metadata – ingen AI- eller leverantörsinformation läggs någonsin till.")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
             ui.add_space(8.0);
 
             // 1. Scope
             ui.group(|ui| {
-                ui.label(egui::RichText::new(self.tr("1. VAD SKALL EXPORTERAS")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
+                ui.label(egui::RichText::new(self.tr("1. VAD SKALL EXPORTERAS")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
                 ui.separator();
                 let scopes: [(&'static str, &'static str); 3] = [
                     (crate::i18n::t("Hel låt – Master Mix (Fullt Projekt)"), crate::i18n::t("Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter.")),
@@ -1000,7 +1000,7 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
                     if ui.selectable_label(self.render_scope_idx == i, format!("⦿ {}", self.tr(title))).clicked() {
                         self.render_scope_idx = i;
                     }
-                    ui.label(egui::RichText::new(format!("    {}", self.tr(desc))).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(format!("    {}", self.tr(desc))).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                 }
             });
 
@@ -1008,7 +1008,7 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
 
             // 2. Format & quality
             ui.group(|ui| {
-                ui.label(egui::RichText::new(self.tr("2. FORMAT & LJUDKVALITET")).strong().size(Theme::FONT_S).color(Theme::CYAN));
+                ui.label(egui::RichText::new(self.tr("2. FORMAT & LJUDKVALITET")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                 ui.separator();
 
                 ui.horizontal_wrapped(|ui| {
@@ -1054,7 +1054,7 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
 
             // 3. Filnamn & mapp
             ui.group(|ui| {
-                ui.label(egui::RichText::new(self.tr("3. FILNAMN & MAPPA")).strong().size(Theme::FONT_S).color(Theme::YELLOW));
+                ui.label(egui::RichText::new(self.tr("3. FILNAMN & MAPPA")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.label(self.tr("Låt-/filnamn:"));
@@ -1065,14 +1065,14 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
                     ui.add(egui::TextEdit::singleline(&mut self.export_folder).desired_width(400.0));
                 });
                 let fmt = Self::EXPORT_FORMATS[self.render_format_idx.min(Self::EXPORT_FORMATS.len() - 1)];
-                ui.label(egui::RichText::new(format!("{} {}_{:.0}bpm.{}", self.tr("Exempel:"), self.export_base_name, self.bpm, fmt.ext())).size(Theme::FONT_S).color(Theme::GREEN));
+                ui.label(egui::RichText::new(format!("{} {}_{:.0}bpm.{}", self.tr("Exempel:"), self.export_base_name, self.bpm, fmt.ext())).size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
             });
 
             ui.add_space(6.0);
 
             // 4. Ren metadata
             ui.group(|ui| {
-                ui.label(egui::RichText::new(self.tr("4. METADATA (endast Sonix – ingen AI-info)")).strong().size(Theme::FONT_S).color(Theme::PURPLE));
+                ui.label(egui::RichText::new(self.tr("4. METADATA (endast Sonix – ingen AI-info)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().purple()));
                 ui.separator();
                 let l_title = self.tr("Titel:");
                 let l_artist = self.tr("Artist:");
@@ -1099,14 +1099,14 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
                     ui.label(l_comment);
                     ui.add(egui::TextEdit::singleline(&mut meta.comment).desired_width(340.0));
                 });
-                ui.label(egui::RichText::new(self.tr("Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem.")).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(self.tr("Software-markören sätts alltid till Sonix Studio. Fält lämnas tomma om du vill utelämna dem.")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
             });
 
             ui.add_space(6.0);
 
             // 5. Export preset & loudness normalization (EBU R128)
             ui.group(|ui| {
-                ui.label(egui::RichText::new(self.tr("5. EXPORT-PRESET & LOUDNESS (EBU R128)")).strong().size(Theme::FONT_S).color(Theme::GREEN));
+                ui.label(egui::RichText::new(self.tr("5. EXPORT-PRESET & LOUDNESS (EBU R128)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
                 ui.separator();
 
                 let presets: [(&str, usize, usize, usize); 5] = [
@@ -1142,9 +1142,9 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
                 });
                 let active = crate::audio::LoudnessPreset::ALL[self.export_loudness_idx.min(crate::audio::LoudnessPreset::ALL.len() - 1)];
                 if active.enabled() {
-                    ui.label(egui::RichText::new(crate::tstatus!("Mäts med K-viktning och grindas (BS.1770), normaliseras till {} LUFS med tak på {} dBTP (äkta peak, 4× oversampling). Gäller master-mixen; stems lämnas orörda för extern mixning.", active.target_lufs(), active.ceiling_dbtp())).size(Theme::FONT_XS).color(Theme::GREEN));
+                    ui.label(egui::RichText::new(crate::tstatus!("Mäts med K-viktning och grindas (BS.1770), normaliseras till {} LUFS med tak på {} dBTP (äkta peak, 4× oversampling). Gäller master-mixen; stems lämnas orörda för extern mixning.", active.target_lufs(), active.ceiling_dbtp())).size(Theme::FONT_XS).color(crate::ui::theme::palette().green()));
                 } else {
-                    ui.label(egui::RichText::new(self.tr("Ingen normalisering – exporten sker med exakt den nivå du hör.")).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(self.tr("Ingen normalisering – exporten sker med exakt den nivå du hör.")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                 }
             });
 
@@ -1153,7 +1153,7 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
             ui.group(|ui| {
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new(self.tr("Status:")).strong());
-                    ui.label(egui::RichText::new(&self.render_queue_status).color(Theme::CYAN));
+                    ui.label(egui::RichText::new(&self.render_queue_status).color(crate::ui::theme::palette().cyan()));
                 });
                 if self.is_rendering {
                     ui.add(egui::ProgressBar::new(self.render_progress).show_percentage());
@@ -1163,7 +1163,7 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
             ui.add_space(10.0);
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(egui::RichText::new(self.tr("🚀 STARTA EXPORT")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::TEXT_MUTED)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(self.tr("🚀 STARTA EXPORT")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().text_muted())).clicked() {
                     self.execute_batch_export();
                 }
                 if ui.button(self.tr("Stäng")).clicked() {

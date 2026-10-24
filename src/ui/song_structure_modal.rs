@@ -16,14 +16,14 @@ pub enum SectionType {
 impl SectionType {
     pub fn name_and_color(&self) -> (&'static str, Color32) {
         match self {
-            SectionType::Intro => ("INTRO", Theme::YELLOW),
-            SectionType::Verse => ("VERS", Theme::TRACK_BLUE),
-            SectionType::PreChorus => ("BRYGGA", Theme::PURPLE),
-            SectionType::Chorus => ("REFRÄNG", Theme::RED),
-            SectionType::Bridge => ("STICK", Theme::ORANGE),
-            SectionType::Drop => ("DROP / CLIMAX", Theme::TRACK_TEAL),
-            SectionType::Solo => ("SOLO", Theme::YELLOW),
-            SectionType::Outro => ("OUTRO", Theme::GREEN),
+            SectionType::Intro => ("INTRO", crate::ui::theme::palette().yellow()),
+            SectionType::Verse => ("VERS", crate::ui::theme::palette().track_blue()),
+            SectionType::PreChorus => ("BRYGGA", crate::ui::theme::palette().purple()),
+            SectionType::Chorus => ("REFRÄNG", crate::ui::theme::palette().red()),
+            SectionType::Bridge => ("STICK", crate::ui::theme::palette().orange()),
+            SectionType::Drop => ("DROP / CLIMAX", crate::ui::theme::palette().track_teal()),
+            SectionType::Solo => ("SOLO", crate::ui::theme::palette().yellow()),
+            SectionType::Outro => ("OUTRO", crate::ui::theme::palette().green()),
         }
     }
 }
@@ -140,9 +140,9 @@ pub fn render_song_structure_modal(
             ui.vertical(|ui| {
                 // Header bar
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("📑 STRUKTUR- & ARRANGEMANGSBYGGARE")).strong().size(Theme::FONT_L).color(Theme::CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("📑 STRUKTUR- & ARRANGEMANGSBYGGARE")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().cyan()));
                     ui.separator();
-                    ui.label(egui::RichText::new(format!("{} {} {} • {} {:02}:{:02} @ {:.1} BPM", crate::i18n::t("Totalt:"), tot_bars, crate::i18n::t("takter"), crate::i18n::t("Tid:"), mins, secs, bpm)).strong().color(Theme::ORANGE));
+                    ui.label(egui::RichText::new(format!("{} {} {} • {} {:02}:{:02} @ {:.1} BPM", crate::i18n::t("Totalt:"), tot_bars, crate::i18n::t("takter"), crate::i18n::t("Tid:"), mins, secs, bpm)).strong().color(crate::ui::theme::palette().orange()));
                 });
 
                 ui.add_space(4.0);
@@ -150,7 +150,7 @@ pub fn render_song_structure_modal(
                 // Presets Bar
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Låtmall / Genre:")).strong().color(Theme::YELLOW));
+                        ui.label(egui::RichText::new(crate::i18n::t("Låtmall / Genre:")).strong().color(crate::ui::theme::palette().yellow()));
                         let presets = ["Pop Hit Radio (Standard)", "EDM Festival Anthem", "Hip-Hop & Trap", "Synthwave Extended"];
                         egui::ComboBox::from_id_salt("song_structure_preset_picker")
                             .selected_text(*presets.get(state.selected_preset).unwrap_or(&"Pop"))
@@ -178,11 +178,11 @@ pub fn render_song_structure_modal(
 
                 // VISUAL TIMELINE OVERVIEW STRIP
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Tidslinjeöversikt (Övergripande form)")).strong().color(Theme::TEXT));
+                    ui.label(egui::RichText::new(crate::i18n::t("Tidslinjeöversikt (Övergripande form)")).strong().color(crate::ui::theme::palette().text()));
                     ui.add_space(4.0);
 
                     let (ov_rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 32.0), Sense::hover());
-                    ui.painter().rect_filled(ov_rect, Rounding::same(4.0), Theme::BG);
+                    ui.painter().rect_filled(ov_rect, Rounding::same(4.0), crate::ui::theme::palette().bg());
 
                     let total_b = tot_bars.max(1) as f32;
                     let mut curr_x = ov_rect.min.x;
@@ -192,7 +192,7 @@ pub fn render_song_structure_modal(
                         let (_, col) = sec.section_type.name_and_color();
                         let sec_rect = Rect::from_min_size(Pos2::new(curr_x, ov_rect.min.y), Vec2::new(sec_w, ov_rect.height()));
                         ui.painter().rect_filled(sec_rect, Rounding::same(2.0), col);
-                        ui.painter().rect_stroke(sec_rect, Rounding::same(2.0), Stroke::new(1.0_f32, Theme::BG));
+                        ui.painter().rect_stroke(sec_rect, Rounding::same(2.0), Stroke::new(1.0_f32, crate::ui::theme::palette().bg()));
 
                         if sec_w > 40.0 {
                             ui.painter().text(
@@ -230,7 +230,7 @@ pub fn render_song_structure_modal(
                                     let (p_rect, _) = ui.allocate_exact_size(Vec2::new(14.0, 24.0), Sense::hover());
                                     ui.painter().rect_filled(p_rect, Rounding::same(3.0), col);
 
-                                    ui.label(egui::RichText::new(format!("Takt {:03} - {:03}", bar_offset + 1, bar_offset + sec.length_bars)).monospace().color(Theme::CYAN));
+                                    ui.label(egui::RichText::new(format!("Takt {:03} - {:03}", bar_offset + 1, bar_offset + sec.length_bars)).monospace().color(crate::ui::theme::palette().cyan()));
                                     bar_offset += sec.length_bars;
 
                                     ui.separator();
@@ -270,7 +270,7 @@ pub fn render_song_structure_modal(
 
                 // Action Bar
                 ui.horizontal(|ui| {
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera Formdelar på Tidslinjen")).strong().color(Color32::BLACK)).fill(Theme::GREEN).min_size(Vec2::new(240.0, 32.0))).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera Formdelar på Tidslinjen")).strong().color(Color32::BLACK)).fill(crate::ui::theme::palette().green()).min_size(Vec2::new(240.0, 32.0))).clicked() {
                         trigger_apply = true;
                         close = true;
                     }

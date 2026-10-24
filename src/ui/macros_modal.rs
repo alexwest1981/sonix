@@ -273,7 +273,7 @@ pub fn render_macros_modal(
                     egui::RichText::new(crate::i18n::t("🔗 MAKRON"))
                         .strong()
                         .size(Theme::FONT_L)
-                        .color(Theme::ORANGE),
+                        .color(crate::ui::theme::palette().orange()),
                 );
                 ui.separator();
                 ui.label(
@@ -281,7 +281,7 @@ pub fn render_macros_modal(
                         "Samma behandling på många filer — trimma, normalisera, exportera",
                     ))
                     .size(Theme::FONT_S)
-                    .color(Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
                 );
             });
             ui.add_space(4.0);
@@ -294,7 +294,7 @@ pub fn render_macros_modal(
                     ui.label(
                         egui::RichText::new(chains_dir.display().to_string())
                             .size(Theme::FONT_XS)
-                            .color(Theme::TEXT_MUTED),
+                            .color(crate::ui::theme::palette().text_muted()),
                     );
                     ui.add_space(2.0);
                     if ui.button(crate::i18n::t("🔄 Läs om")).clicked() {
@@ -334,7 +334,7 @@ pub fn render_macros_modal(
                                 ui.label(
                                     egui::RichText::new(crate::tstatus!("⚠ {}: {}", name, e))
                                         .size(Theme::FONT_XS)
-                                        .color(Theme::RED),
+                                        .color(crate::ui::theme::palette().red()),
                                 );
                             }
                         }
@@ -488,7 +488,7 @@ pub fn render_macros_modal(
                                     "⚠ Kedjan har inget exportsteg — den skriver ingenting.",
                                 ))
                                 .size(Theme::FONT_S)
-                                .color(Theme::ORANGE),
+                                .color(crate::ui::theme::palette().orange()),
                             );
                         }
                         state.edit = Some(edited);
@@ -536,14 +536,14 @@ pub fn render_macros_modal(
                     ui.label(
                         egui::RichText::new(crate::i18n::t("(tomt = macro-output bredvid filen)"))
                             .size(Theme::FONT_XS)
-                            .color(Theme::TEXT_MUTED),
+                            .color(crate::ui::theme::palette().text_muted()),
                     );
                 });
                 if !state.listing_note.is_empty() {
                     ui.label(
                         egui::RichText::new(state.listing_note.clone())
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_MUTED),
+                            .color(crate::ui::theme::palette().text_muted()),
                     );
                 }
             } else {
@@ -552,7 +552,7 @@ pub fn render_macros_modal(
                         "Projektet renderas som vid export och körs genom kedjans steg.",
                     ))
                     .size(Theme::FONT_S)
-                    .color(Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
                 );
             }
 
@@ -565,7 +565,7 @@ pub fn render_macros_modal(
                         .button(
                             egui::RichText::new(crate::i18n::t("▶ Kör kedjan"))
                                 .strong()
-                                .color(Theme::TEXT),
+                                .color(crate::ui::theme::palette().text()),
                         )
                         .clicked()
                     {
@@ -596,7 +596,7 @@ pub fn render_macros_modal(
                 ui.label(
                     egui::RichText::new(state.message.clone())
                         .size(Theme::FONT_S)
-                        .color(Theme::CYAN),
+                        .color(crate::ui::theme::palette().cyan()),
                 );
             }
 

@@ -1,7 +1,6 @@
 use std::collections::VecDeque;
 
 use eframe::egui::{Color32, Pos2};
-use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeType {
@@ -75,7 +74,7 @@ impl ModularGraph {
             title: "🎹 MIDI / Note IN".to_string(),
             node_type: NodeType::MidiIn,
             pos: Pos2::new(25.0, 25.0),
-            color: Theme::ORANGE,
+            color: crate::ui::theme::palette().orange(),
             inputs: vec![],
             outputs: vec!["Pitch", "Gate", "Velocity"],
             param1: 60.0,
@@ -89,7 +88,7 @@ impl ModularGraph {
             title: "🌀 LFO Modulator".to_string(),
             node_type: NodeType::Lfo,
             pos: Pos2::new(25.0, 195.0),
-            color: Theme::PURPLE,
+            color: crate::ui::theme::palette().purple(),
             inputs: vec!["Rate CV"],
             outputs: vec!["LFO Out"],
             param1: 2.5, // 2.5 Hz
@@ -103,7 +102,7 @@ impl ModularGraph {
             title: "🔊 Oscillator".to_string(),
             node_type: NodeType::Oscillator,
             pos: Pos2::new(215.0, 25.0),
-            color: Theme::CYAN,
+            color: crate::ui::theme::palette().cyan(),
             inputs: vec!["Pitch", "Sync", "PWM"],
             outputs: vec!["Audio Out"],
             param1: 1.0, // Saw
@@ -117,7 +116,7 @@ impl ModularGraph {
             title: "📈 ADSR Envelope".to_string(),
             node_type: NodeType::Envelope,
             pos: Pos2::new(215.0, 195.0),
-            color: Theme::YELLOW,
+            color: crate::ui::theme::palette().yellow(),
             inputs: vec!["Gate"],
             outputs: vec!["Env Out"],
             param1: 0.01, // Attack
@@ -131,7 +130,7 @@ impl ModularGraph {
             title: "🌊 SVF Filter (12 dB)".to_string(),
             node_type: NodeType::Filter,
             pos: Pos2::new(405.0, 25.0),
-            color: Theme::GREEN,
+            color: crate::ui::theme::palette().green(),
             inputs: vec!["Audio In", "Cutoff CV", "Res CV"],
             outputs: vec!["Lowpass", "Highpass", "Bandpass"],
             param1: 3200.0, // Cutoff
@@ -145,7 +144,7 @@ impl ModularGraph {
             title: "🔥 Tube-style Drive".to_string(),
             node_type: NodeType::Distortion,
             pos: Pos2::new(595.0, 25.0),
-            color: Theme::RED,
+            color: crate::ui::theme::palette().red(),
             inputs: vec!["Audio In", "Drive CV"],
             outputs: vec!["Wet Audio"],
             param1: 2.8,
@@ -159,7 +158,7 @@ impl ModularGraph {
             title: "✨ Space Reverb".to_string(),
             node_type: NodeType::Reverb,
             pos: Pos2::new(595.0, 195.0),
-            color: Theme::PURPLE,
+            color: crate::ui::theme::palette().purple(),
             inputs: vec!["Audio In", "Mix CV"],
             outputs: vec!["Wet Out L", "Wet Out R"],
             param1: 0.85, // Room Size
@@ -173,7 +172,7 @@ impl ModularGraph {
             title: "🎚 Master Audio OUT".to_string(),
             node_type: NodeType::AudioOut,
             pos: Pos2::new(795.0, 95.0),
-            color: Theme::ORANGE,
+            color: crate::ui::theme::palette().orange(),
             inputs: vec!["Left In", "Right In"],
             outputs: vec![],
             param1: 0.85, // Volume
@@ -185,33 +184,33 @@ impl ModularGraph {
 
         // Connect Default Patch Cables
         // MIDI Pitch -> OSC Pitch
-        self.cables.push(PatchCable { from_node: 1, from_pin: 0, to_node: 3, to_pin: 0, color: Theme::CYAN });
+        self.cables.push(PatchCable { from_node: 1, from_pin: 0, to_node: 3, to_pin: 0, color: crate::ui::theme::palette().cyan() });
         // MIDI Gate -> ADSR Gate
-        self.cables.push(PatchCable { from_node: 1, from_pin: 1, to_node: 4, to_pin: 0, color: Theme::YELLOW });
+        self.cables.push(PatchCable { from_node: 1, from_pin: 1, to_node: 4, to_pin: 0, color: crate::ui::theme::palette().yellow() });
         // OSC Audio -> Filter Audio In
-        self.cables.push(PatchCable { from_node: 3, from_pin: 0, to_node: 5, to_pin: 0, color: Theme::CYAN });
+        self.cables.push(PatchCable { from_node: 3, from_pin: 0, to_node: 5, to_pin: 0, color: crate::ui::theme::palette().cyan() });
         // LFO Out -> Filter Cutoff CV
-        self.cables.push(PatchCable { from_node: 2, from_pin: 0, to_node: 5, to_pin: 1, color: Theme::PURPLE });
+        self.cables.push(PatchCable { from_node: 2, from_pin: 0, to_node: 5, to_pin: 1, color: crate::ui::theme::palette().purple() });
         // Filter Lowpass -> Tube Distortion Audio In
-        self.cables.push(PatchCable { from_node: 5, from_pin: 0, to_node: 6, to_pin: 0, color: Theme::GREEN });
+        self.cables.push(PatchCable { from_node: 5, from_pin: 0, to_node: 6, to_pin: 0, color: crate::ui::theme::palette().green() });
         // Tube Audio -> Reverb Audio In
-        self.cables.push(PatchCable { from_node: 6, from_pin: 0, to_node: 7, to_pin: 0, color: Theme::RED });
+        self.cables.push(PatchCable { from_node: 6, from_pin: 0, to_node: 7, to_pin: 0, color: crate::ui::theme::palette().red() });
         // Reverb Out L/R -> Master In L/R
-        self.cables.push(PatchCable { from_node: 7, from_pin: 0, to_node: 8, to_pin: 0, color: Theme::CABLE });
-        self.cables.push(PatchCable { from_node: 7, from_pin: 1, to_node: 8, to_pin: 1, color: Theme::CABLE });
+        self.cables.push(PatchCable { from_node: 7, from_pin: 0, to_node: 8, to_pin: 0, color: crate::ui::theme::palette().cable() });
+        self.cables.push(PatchCable { from_node: 7, from_pin: 1, to_node: 8, to_pin: 1, color: crate::ui::theme::palette().cable() });
     }
 
     pub fn add_node(&mut self, node_type: NodeType, pos: Pos2) {
         let (title, color, in_pins, out_pins, p1, p2, p3) = match node_type {
-            NodeType::MidiIn => ("🎹 MIDI / Note IN", Theme::ORANGE, vec![], vec!["Pitch", "Gate", "Velocity"], 60.0, 1.0, 0.0),
-            NodeType::Oscillator => ("🔊 Oscillator", Theme::CYAN, vec!["Pitch", "Sync", "PWM"], vec!["Audio Out"], 1.0, 0.0, 0.5),
-            NodeType::Filter => ("🌊 SVF Filter (12 dB)", Theme::GREEN, vec!["Audio In", "Cutoff CV", "Res CV"], vec!["Lowpass", "Highpass", "Bandpass"], 3000.0, 2.5, 1.0),
-            NodeType::Envelope => ("📈 ADSR Envelope", Theme::YELLOW, vec!["Gate"], vec!["Env Out"], 0.01, 0.25, 0.60),
-            NodeType::Lfo => ("🌀 LFO Modulator", Theme::PURPLE, vec!["Rate CV"], vec!["LFO Out"], 2.0, 0.8, 0.0),
-            NodeType::Delay => ("🌊 Delay", Theme::TRACK_TEAL, vec!["Audio In", "Time CV"], vec!["Wet Out"], 320.0, 0.45, 0.3),
-            NodeType::Reverb => ("✨ Space Reverb", Theme::PURPLE, vec!["Audio In", "Mix CV"], vec!["Wet Out L", "Wet Out R"], 0.8, 0.35, 0.4),
-            NodeType::Distortion => ("🔥 Tube Saturation", Theme::RED, vec!["Audio In", "Drive CV"], vec!["Wet Audio"], 2.5, 0.8, 0.0),
-            NodeType::AudioOut => ("🎚 Master Audio OUT", Theme::ORANGE, vec!["Left In", "Right In"], vec![], 0.85, 0.0, 0.0),
+            NodeType::MidiIn => ("🎹 MIDI / Note IN", crate::ui::theme::palette().orange(), vec![], vec!["Pitch", "Gate", "Velocity"], 60.0, 1.0, 0.0),
+            NodeType::Oscillator => ("🔊 Oscillator", crate::ui::theme::palette().cyan(), vec!["Pitch", "Sync", "PWM"], vec!["Audio Out"], 1.0, 0.0, 0.5),
+            NodeType::Filter => ("🌊 SVF Filter (12 dB)", crate::ui::theme::palette().green(), vec!["Audio In", "Cutoff CV", "Res CV"], vec!["Lowpass", "Highpass", "Bandpass"], 3000.0, 2.5, 1.0),
+            NodeType::Envelope => ("📈 ADSR Envelope", crate::ui::theme::palette().yellow(), vec!["Gate"], vec!["Env Out"], 0.01, 0.25, 0.60),
+            NodeType::Lfo => ("🌀 LFO Modulator", crate::ui::theme::palette().purple(), vec!["Rate CV"], vec!["LFO Out"], 2.0, 0.8, 0.0),
+            NodeType::Delay => ("🌊 Delay", crate::ui::theme::palette().track_teal(), vec!["Audio In", "Time CV"], vec!["Wet Out"], 320.0, 0.45, 0.3),
+            NodeType::Reverb => ("✨ Space Reverb", crate::ui::theme::palette().purple(), vec!["Audio In", "Mix CV"], vec!["Wet Out L", "Wet Out R"], 0.8, 0.35, 0.4),
+            NodeType::Distortion => ("🔥 Tube Saturation", crate::ui::theme::palette().red(), vec!["Audio In", "Drive CV"], vec!["Wet Audio"], 2.5, 0.8, 0.0),
+            NodeType::AudioOut => ("🎚 Master Audio OUT", crate::ui::theme::palette().orange(), vec!["Left In", "Right In"], vec![], 0.85, 0.0, 0.0),
         };
 
         let node = PatcherNode {

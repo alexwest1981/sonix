@@ -2,7 +2,6 @@ use eframe::egui::Color32;
 
 use super::recorder::detect_pitch_hz;
 use super::filter::{FilterParams, StateVariableFilter};
-use crate::ui::theme::Theme;
 
 #[derive(Debug, Clone)]
 pub struct PitchBlob {
@@ -679,9 +678,9 @@ pub fn analyze_blobs(
                 b.length_steps = (step + 1 - b.start_step).max(b.length_steps);
             } else {
                 let color = if note % 2 == 0 {
-                    Theme::CYAN
+                    crate::ui::theme::palette().cyan()
                 } else {
-                    Theme::ORANGE
+                    crate::ui::theme::palette().orange()
                 };
                 blobs.push(PitchBlob {
                     start_step: step,
@@ -1395,7 +1394,6 @@ pub fn vocode(modulator: &[f32], carrier: &[f32], sample_rate: f32, bands: usize
     }
     out
 }
-
 
 /// Bärvåg som **följer** modulatorns tonhöjd: en sågtand vars frekvens spåras ur sången
 /// var 20:e millisekund och glider dit i stället för att hoppa. Utan den sjunger vocodern

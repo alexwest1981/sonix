@@ -8,7 +8,6 @@
 //! Rör inte: `load_audio_or_report` är den enda vägen in till PCM; gå inte förbi den.
 
 use super::*;
-use crate::ui::theme::Theme;
 
 /// Har sökvägen den ändelsen? (skiftlägesoberoende)
 fn has_extension(path: &std::path::Path, ext: &str) -> bool {
@@ -742,7 +741,7 @@ fn import_generated_audio_bytes(&mut self, bytes: &[u8], prompt: &str) -> Result
         format!("🎧 AI Audio: {title}"),
         "🎧",
         TrackKind::CustomAudio,
-        Theme::CYAN,
+        crate::ui::theme::palette().cyan(),
     );
     track.volume = 0.90;
     track.pcm_audio = Some((
@@ -792,10 +791,10 @@ pub fn generate_suno_local(&mut self) {
     if prompt_lower.contains("stem") || prompt_lower.contains("full") || prompt_lower.contains("hela låt") {
         // Multi-Stem Generation (Drums, Bass, Vocal, Synth)
         let stem_defs = [
-            ("🎙 AI Lead Vocal (ACE-Step)", TrackKind::VocalAudio, Theme::PURPLE, GenStyle::Vocal),
-            ("🥁 AI Drum Stems (Stable Audio)", TrackKind::Drums, Theme::CYAN, GenStyle::Drums),
-            ("🎸 AI Sub Bass (MusicGen)", TrackKind::Bassline, Theme::TRACK_ROSE, GenStyle::Bass),
-            ("✨ AI Synth Harmony (ACE-Step)", TrackKind::SynthLead, Theme::GREEN, GenStyle::Synth),
+            ("🎙 AI Lead Vocal (ACE-Step)", TrackKind::VocalAudio, crate::ui::theme::palette().purple(), GenStyle::Vocal),
+            ("🥁 AI Drum Stems (Stable Audio)", TrackKind::Drums, crate::ui::theme::palette().cyan(), GenStyle::Drums),
+            ("🎸 AI Sub Bass (MusicGen)", TrackKind::Bassline, crate::ui::theme::palette().track_rose(), GenStyle::Bass),
+            ("✨ AI Synth Harmony (ACE-Step)", TrackKind::SynthLead, crate::ui::theme::palette().green(), GenStyle::Synth),
         ];
 
         let first_new = self.playlist_tracks.len();
@@ -836,7 +835,7 @@ pub fn generate_suno_local(&mut self) {
 
         let (pcm_l, pcm_r) = crate::audio::ai_generator::render_generated_audio(style, bpm, bars, sr, prompt_seed);
 
-        let mut new_track = PlaylistTrack::new(track_name.to_string(), "✨", TrackKind::CustomAudio, Theme::PURPLE);
+        let mut new_track = PlaylistTrack::new(track_name.to_string(), "✨", TrackKind::CustomAudio, crate::ui::theme::palette().purple());
         new_track.volume = 0.90;
         new_track.pcm_audio = Some((std::sync::Arc::new(pcm_l), std::sync::Arc::new(pcm_r), sr));
         new_track.custom_clip_name = Some(format!("AI Clip: {}", prompt));
@@ -1164,7 +1163,6 @@ pub(crate) fn background_decode_stems(
             cleaned_tags.join(", ")
         ));
     }
-
 
     {
         if let Ok(mut p) = progress.lock() {

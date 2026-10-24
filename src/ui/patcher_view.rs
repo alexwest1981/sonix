@@ -22,9 +22,9 @@ pub fn render_patcher_view(
     let mut actions = PatcherActions::default();
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🧩 MODULAR PATCHER & THE GRID (Bitwig & FL Patcher Style)")).strong().size(Theme::FONT_M).color(Theme::CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("🧩 MODULAR PATCHER & THE GRID (Bitwig & FL Patcher Style)")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().cyan()));
             ui.separator();
-            ui.label(egui::RichText::new(crate::i18n::t("Visuell modulär miljö: Koppla ihop ljudsignaler, syntmoduler, filter och LFO med virtuella kablar")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Visuell modulär miljö: Koppla ihop ljudsignaler, syntmoduler, filter och LFO med virtuella kablar")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(crate::i18n::t("🔄 Återställ Standard-patch")).clicked() {
@@ -44,12 +44,12 @@ pub fn render_patcher_view(
 
         // Test keyboard: drives the patcher's MidiIn node with real notes.
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🎹 Testa patchen:")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🎹 Testa patchen:")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
             let notes: [u8; 15] = [48, 50, 52, 53, 55, 57, 59, 60, 62, 64, 65, 67, 69, 71, 72];
             let mut any_down = false;
             for (i, note) in notes.iter().enumerate() {
                 let black = matches!(note % 12, 1 | 3 | 6 | 8 | 10);
-                let fill = if black { Theme::PANEL } else { Theme::TEXT };
+                let fill = if black { crate::ui::theme::palette().panel() } else { crate::ui::theme::palette().text() };
                 let btn = egui::Button::new("").fill(fill).min_size(Vec2::new(26.0, 46.0));
                 let resp = ui.add(btn);
                 if resp.is_pointer_button_down_on() {
@@ -67,7 +67,7 @@ pub fn render_patcher_view(
 
         // Quick Node Creation Toolbar
         ui.horizontal_wrapped(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("➕ Lägg till modul:")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("➕ Lägg till modul:")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
             if ui.button(crate::i18n::t("+ 🔊 Oscillator")).clicked() {
                 graph.add_node(NodeType::Oscillator, Pos2::new(180.0, 60.0));
             }
@@ -95,7 +95,7 @@ pub fn render_patcher_view(
 
         if graph.has_cycle() {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("⚠ Återkoppling/cykel i patchen: en eller flera kablar bildar en slinga. Noderna körs ändå, men ordningen kan bli fel — ta bort en kabel i slingan.")).size(Theme::FONT_S).color(Theme::YELLOW));
+                ui.label(egui::RichText::new(crate::i18n::t("⚠ Återkoppling/cykel i patchen: en eller flera kablar bildar en slinga. Noderna körs ändå, men ordningen kan bli fel — ta bort en kabel i slingan.")).size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
             });
             ui.add_space(4.0);
         }
@@ -106,8 +106,8 @@ pub fn render_patcher_view(
         let painter = ui.painter();
 
         // Canvas Background Grid
-        painter.rect_filled(canvas_rect, Rounding::same(6.0), Theme::BG_DEEP);
-        painter.rect_stroke(canvas_rect, Rounding::same(6.0), Stroke::new(1.5_f32, Theme::GRID));
+        painter.rect_filled(canvas_rect, Rounding::same(6.0), crate::ui::theme::palette().bg_deep());
+        painter.rect_stroke(canvas_rect, Rounding::same(6.0), Stroke::new(1.5_f32, crate::ui::theme::palette().grid()));
 
         // Helper to convert canvas-local Pos2 to screen Pos2
         let to_screen = |local: Pos2| -> Pos2 {
@@ -118,7 +118,7 @@ pub fn render_patcher_view(
         let grid_step = 28.0;
         for gx in (canvas_rect.min.x as i32..canvas_rect.max.x as i32).step_by(grid_step as usize) {
             for gy in (canvas_rect.min.y as i32..canvas_rect.max.y as i32).step_by(grid_step as usize) {
-                painter.circle_filled(Pos2::new(gx as f32, gy as f32), 1.0, Theme::GRID);
+                painter.circle_filled(Pos2::new(gx as f32, gy as f32), 1.0, crate::ui::theme::palette().grid());
             }
         }
 
@@ -154,7 +154,7 @@ pub fn render_patcher_view(
                 // Animated glowing signal pulse traveling along cable
                 let pulse_t = (anim_phase * 0.5 + (cable.from_node * 3) as f32 * 0.2) % 1.0;
                 let pulse_pos = eval_bezier(from_pin_pos, cp1, cp2, to_pin_pos, pulse_t);
-                painter.circle_filled(pulse_pos, 3.5, Theme::TEXT);
+                painter.circle_filled(pulse_pos, 3.5, crate::ui::theme::palette().text());
             }
         }
 
@@ -172,7 +172,7 @@ pub fn render_patcher_view(
                         [from_pin_pos, cp1, cp2, ptr_pos],
                         false,
                         Color32::TRANSPARENT,
-                        Stroke::new(2.5_f32, Theme::YELLOW),
+                        Stroke::new(2.5_f32, crate::ui::theme::palette().yellow()),
                     );
                     painter.add(curve);
                 }
@@ -196,7 +196,7 @@ pub fn render_patcher_view(
             let header_rect = Rect::from_min_size(screen_pos, Vec2::new(node_width, 24.0));
 
             // Node Body
-            painter.rect_filled(node_rect, Rounding::same(6.0), Theme::PANEL);
+            painter.rect_filled(node_rect, Rounding::same(6.0), crate::ui::theme::palette().panel());
             painter.rect_stroke(node_rect, Rounding::same(6.0), Stroke::new(1.5_f32, color));
 
             // Node Header
@@ -209,11 +209,11 @@ pub fn render_patcher_view(
                 let pin_hover_rect = Rect::from_center_size(pin_screen_pos, Vec2::splat(14.0));
 
                 let is_hovered = response.hover_pos().map(|p| pin_hover_rect.contains(p)).unwrap_or(false);
-                let pin_fill = if is_hovered { Theme::YELLOW } else { Theme::BORDER };
+                let pin_fill = if is_hovered { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().border() };
 
                 painter.circle_filled(pin_screen_pos, 5.0, pin_fill);
-                painter.circle_stroke(pin_screen_pos, 5.0, Stroke::new(1.5_f32, Theme::CYAN));
-                painter.text(Pos2::new(pin_screen_pos.x + 9.0, pin_screen_pos.y), egui::Align2::LEFT_CENTER, *pin_name, egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT_MUTED);
+                painter.circle_stroke(pin_screen_pos, 5.0, Stroke::new(1.5_f32, crate::ui::theme::palette().cyan()));
+                painter.text(Pos2::new(pin_screen_pos.x + 9.0, pin_screen_pos.y), egui::Align2::LEFT_CENTER, *pin_name, egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text_muted());
 
                 // Check connect on release
                 if is_hovered && response.drag_stopped() {
@@ -230,11 +230,11 @@ pub fn render_patcher_view(
                 let pin_hover_rect = Rect::from_center_size(pin_screen_pos, Vec2::splat(14.0));
 
                 let is_hovered = response.hover_pos().map(|p| pin_hover_rect.contains(p)).unwrap_or(false);
-                let pin_fill = if is_hovered { Theme::YELLOW } else { Theme::BORDER };
+                let pin_fill = if is_hovered { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().border() };
 
                 painter.circle_filled(pin_screen_pos, 5.0, pin_fill);
-                painter.circle_stroke(pin_screen_pos, 5.0, Stroke::new(1.5_f32, Theme::ORANGE));
-                painter.text(Pos2::new(pin_screen_pos.x - 9.0, pin_screen_pos.y), egui::Align2::RIGHT_CENTER, *pin_name, egui::FontId::proportional(Theme::FONT_XS), Theme::TEXT);
+                painter.circle_stroke(pin_screen_pos, 5.0, Stroke::new(1.5_f32, crate::ui::theme::palette().orange()));
+                painter.text(Pos2::new(pin_screen_pos.x - 9.0, pin_screen_pos.y), egui::Align2::RIGHT_CENTER, *pin_name, egui::FontId::proportional(Theme::FONT_XS), crate::ui::theme::palette().text());
 
                 // Check click start drag
                 if is_hovered && response.drag_started() {

@@ -550,7 +550,7 @@ pub(crate) fn render_midi_import_modal(&mut self, ctx: &egui::Context) {
                     "Noterna läggs i det valda patternet (första takten). Trummor går till trumkanalerna, toner till piano-rollen.",
                 ))
                 .size(Theme::FONT_S)
-                .color(Theme::TEXT),
+                .color(crate::ui::theme::palette().text()),
             );
             ui.add_space(6.0);
             ui.horizontal(|ui| {
@@ -573,7 +573,7 @@ pub(crate) fn render_midi_import_modal(&mut self, ctx: &egui::Context) {
                 ui.label(
                     egui::RichText::new(crate::tstatus!("Målpattern: '{}'", target))
                         .size(Theme::FONT_S)
-                        .color(Theme::CYAN),
+                        .color(crate::ui::theme::palette().cyan()),
                 );
             }
         });

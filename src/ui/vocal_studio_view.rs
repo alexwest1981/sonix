@@ -29,17 +29,17 @@ pub fn render_vocal_studio_view(
         // 1. TOP HEADER & AUDIO ROUTING STATUS
         // ============================================================
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🎙 SONIX STUDIO RECORDER")).strong().size(Theme::FONT_L).color(Theme::ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("🎙 SONIX STUDIO RECORDER")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().orange()));
             ui.separator();
-            ui.label(egui::RichText::new(crate::i18n::t("Mikrofoninspelning i realtid  •  Live WAV Capture  •  Waveform Editor  •  Pitch Editor")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Mikrofoninspelning i realtid  •  Live WAV Capture  •  Waveform Editor  •  Pitch Editor")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚙ Mik-panel")).size(Theme::FONT_S).strong().color(Color32::BLACK)).fill(Theme::CYAN)).clicked() {
+                if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("⚙ Mik-panel")).size(Theme::FONT_S).strong().color(Color32::BLACK)).fill(crate::ui::theme::palette().cyan())).clicked() {
                     *show_mic_settings = true;
                 }
                 let dev_name = vocal_track.mic_capture.as_ref().map(|m| m.device_name.as_str()).unwrap_or("Standard Mikrofon");
                 let sr = vocal_track.mic_capture.as_ref().map(|m| m.sample_rate).unwrap_or(44100);
-                ui.label(egui::RichText::new(format!("🎛 {} | {} Hz", dev_name, sr)).size(Theme::FONT_S).color(Theme::CYAN));
+                ui.label(egui::RichText::new(format!("🎛 {} | {} Hz", dev_name, sr)).size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
             });
         });
 
@@ -65,7 +65,7 @@ pub fn render_vocal_studio_view(
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         // Channel & Arm status
-                        ui.label(egui::RichText::new(crate::i18n::t("🔴 INSPELNINGSDECK")).strong().size(Theme::FONT_S).color(Theme::CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("🔴 INSPELNINGSDECK")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                         ui.separator();
 
                         ui.checkbox(&mut vocal_track.is_armed, "🔴 Armera");
@@ -74,14 +74,14 @@ pub fn render_vocal_studio_view(
                                 "Spelar upp mikrofonen genom mastern (zero-latency). Använd hörlurar — med högtalare uppstår rundgång.",
                             ));
                         if vocal_track.monitoring_on {
-                            rotary_knob(ui, &mut vocal_track.monitor_level, 0.0, 1.0, "MONITOR", Theme::CYAN, 18.0);
+                            rotary_knob(ui, &mut vocal_track.monitor_level, 0.0, 1.0, "MONITOR", crate::ui::theme::palette().cyan(), 18.0);
                         }
                         ui.checkbox(&mut vocal_track.realtime_autotune, crate::i18n::t("🎙️ Realtids-Auto-Tune"))
                             .on_hover_text(crate::i18n::t("Korrigerar mikrofonen i realtid mot vald skala (styrka = AUTO-TUNE-ratten)"));
 
                         ui.separator();
-                        rotary_knob(ui, &mut vocal_track.input_gain, 0.0, 2.5, "GAIN", Theme::YELLOW, 18.0);
-                        rotary_knob(ui, &mut harmonizer.autotune_speed, 0.0, 1.0, "AUTO-TUNE", Theme::ORANGE, 18.0);
+                        rotary_knob(ui, &mut vocal_track.input_gain, 0.0, 2.5, "GAIN", crate::ui::theme::palette().yellow(), 18.0);
+                        rotary_knob(ui, &mut harmonizer.autotune_speed, 0.0, 1.0, "AUTO-TUNE", crate::ui::theme::palette().orange(), 18.0);
 
                         ui.separator();
 
@@ -92,19 +92,19 @@ pub fn render_vocal_studio_view(
                             } else {
                                 -48.0
                             };
-                            ui.label(egui::RichText::new(format!("MIC IN: {:.1} dB", vu_db)).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(format!("MIC IN: {:.1} dB", vu_db)).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
 
                             let (vu_rect, _) = ui.allocate_exact_size(Vec2::new(100.0, 14.0), Sense::hover());
-                            ui.painter().rect_filled(vu_rect, Rounding::same(2.0), Theme::BG_DEEP);
-                            ui.painter().rect_stroke(vu_rect, Rounding::same(2.0), Stroke::new(1.0_f32, Theme::GRID));
+                            ui.painter().rect_filled(vu_rect, Rounding::same(2.0), crate::ui::theme::palette().bg_deep());
+                            ui.painter().rect_stroke(vu_rect, Rounding::same(2.0), Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
 
                             let vu_fill_w = (vu_rect.width() * vocal_track.mic_vu_level.clamp(0.0, 1.0)).max(2.0);
                             let vu_col = if vocal_track.mic_vu_level > 0.90 {
-                                Theme::RED // Red clip
+                                crate::ui::theme::palette().red() // Red clip
                             } else if vocal_track.mic_vu_level > 0.70 {
-                                Theme::ORANGE // Yellow/Orange warm
+                                crate::ui::theme::palette().orange() // Yellow/Orange warm
                             } else {
-                                Theme::GREEN // Green safe
+                                crate::ui::theme::palette().green() // Green safe
                             };
                             ui.painter().rect_filled(Rect::from_min_size(vu_rect.min, Vec2::new(vu_fill_w, vu_rect.height())), Rounding::same(2.0), vu_col);
                         });
@@ -120,9 +120,9 @@ pub fn render_vocal_studio_view(
                             let current_bars = (vocal_track.recording_elapsed_secs / sec_per_bar) + 1.0;
 
                             let timer_color = if vocal_track.is_recording {
-                                if vocal_track.is_paused { Theme::YELLOW } else { Theme::RED }
+                                if vocal_track.is_paused { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().red() }
                             } else {
-                                Theme::TEXT_MUTED
+                                crate::ui::theme::palette().text_muted()
                             };
 
                             let state_icon = if vocal_track.is_recording {
@@ -142,8 +142,8 @@ pub fn render_vocal_studio_view(
                         // ==========================================
                         if !vocal_track.is_recording {
                             if ui.add(
-                                egui::Button::new(egui::RichText::new(crate::i18n::t(" 🔴 SPELA IN (REC) ")).strong().size(Theme::FONT_S).color(Theme::TEXT))
-                                    .fill(Theme::RED)
+                                egui::Button::new(egui::RichText::new(crate::i18n::t(" 🔴 SPELA IN (REC) ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()))
+                                    .fill(crate::ui::theme::palette().red())
                                     .min_size(Vec2::new(130.0, 32.0)),
                             ).clicked() {
                                 match vocal_track.start_recording() {
@@ -155,7 +155,7 @@ pub fn render_vocal_studio_view(
                             if vocal_track.is_paused {
                                 if ui.add(
                                     egui::Button::new(egui::RichText::new(crate::i18n::t(" ▶ ÅTERUPPTA ")).strong().size(Theme::FONT_S).color(Color32::BLACK))
-                                        .fill(Theme::YELLOW)
+                                        .fill(crate::ui::theme::palette().yellow())
                                         .min_size(Vec2::new(90.0, 32.0)),
                                 ).clicked() {
                                     vocal_track.resume_recording();
@@ -164,7 +164,7 @@ pub fn render_vocal_studio_view(
                             } else {
                                 if ui.add(
                                     egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏸ PAUSA ")).strong().size(Theme::FONT_S).color(Color32::BLACK))
-                                        .fill(Theme::YELLOW)
+                                        .fill(crate::ui::theme::palette().yellow())
                                         .min_size(Vec2::new(80.0, 32.0)),
                                 ).clicked() {
                                     vocal_track.pause_recording();
@@ -175,8 +175,8 @@ pub fn render_vocal_studio_view(
                             ui.add_space(4.0);
 
                             if ui.add(
-                                egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOPPA & SKAPA TAGNING ")).strong().size(Theme::FONT_S).color(Theme::TEXT))
-                                    .fill(Theme::GREEN)
+                                egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOPPA & SKAPA TAGNING ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()))
+                                    .fill(crate::ui::theme::palette().green())
                                     .min_size(Vec2::new(140.0, 32.0)),
                             ).clicked() {
                                 match vocal_track.stop_recording() {
@@ -197,11 +197,11 @@ pub fn render_vocal_studio_view(
                         let w_width = ui.available_width().max(200.0);
                         let (live_rect, _) = ui.allocate_exact_size(Vec2::new(w_width, 42.0), Sense::hover());
                         let painter = ui.painter();
-                        painter.rect_filled(live_rect, Rounding::same(4.0), Theme::BG_DEEP);
-                        painter.rect_stroke(live_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::RED));
+                        painter.rect_filled(live_rect, Rounding::same(4.0), crate::ui::theme::palette().bg_deep());
+                        painter.rect_stroke(live_rect, Rounding::same(4.0), Stroke::new(1.0_f32, crate::ui::theme::palette().red()));
 
                         let mid_y = live_rect.center().y;
-                        painter.line_segment([Pos2::new(live_rect.min.x, mid_y), Pos2::new(live_rect.max.x, mid_y)], Stroke::new(1.0_f32, Theme::BORDER));
+                        painter.line_segment([Pos2::new(live_rect.min.x, mid_y), Pos2::new(live_rect.max.x, mid_y)], Stroke::new(1.0_f32, crate::ui::theme::palette().border()));
 
                         let peaks = &vocal_track.live_recording_peaks;
                         if !peaks.is_empty() {
@@ -211,11 +211,11 @@ pub fn render_vocal_studio_view(
                                 if x > live_rect.max.x { break; }
                                 let h = p * (live_rect.height() * 0.45);
                                 let col = if vocal_track.is_paused {
-                                    Theme::YELLOW
+                                    crate::ui::theme::palette().yellow()
                                 } else if p > 0.85 {
-                                    Theme::RED
+                                    crate::ui::theme::palette().red()
                                 } else {
-                                    Theme::CYAN
+                                    crate::ui::theme::palette().cyan()
                                 };
                                 painter.line_segment([Pos2::new(x, mid_y - h), Pos2::new(x, mid_y + h)], Stroke::new(1.5_f32, col));
                             }
@@ -227,7 +227,7 @@ pub fn render_vocal_studio_view(
                             egui::Align2::LEFT_TOP,
                             status_text,
                             egui::FontId::proportional(Theme::FONT_S),
-                            if vocal_track.is_paused { Theme::YELLOW } else { Theme::RED },
+                            if vocal_track.is_paused { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().red() },
                         );
                     }
                 });
@@ -261,15 +261,15 @@ pub fn render_vocal_studio_view(
 
                         // Row 1: Header + Action Buttons
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("✂ LJUDVÅGSEDITOR & SAMPLE FORMARE")).strong().size(Theme::FONT_S).color(Theme::YELLOW));
+                            ui.label(egui::RichText::new(crate::i18n::t("✂ LJUDVÅGSEDITOR & SAMPLE FORMARE")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
                             ui.separator();
-                            ui.label(egui::RichText::new(format!("Aktiv: {} ({:.2}s, {} samples)", take_name, duration, sample_count)).size(Theme::FONT_S).color(Theme::TEXT));
+                            ui.label(egui::RichText::new(format!("Aktiv: {} ({:.2}s, {} samples)", take_name, duration, sample_count)).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
 
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                                 // INSERT INTO PLAYLIST BUTTON
                                 if ui.add(
                                     egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Infoga i Tidslinje (Arranger)")).strong().size(Theme::FONT_S).color(Color32::BLACK))
-                                        .fill(Theme::GREEN),
+                                        .fill(crate::ui::theme::palette().green()),
                                 ).clicked() {
                                     if !playlist_tracks.is_empty() {
                                         let region_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis() as usize;
@@ -308,16 +308,16 @@ pub fn render_vocal_studio_view(
 
                                 // EXPORT TO WAV BUTTON
                                 if ui.add(
-                                    egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Exportera WAV")).strong().size(Theme::FONT_S).color(Theme::TEXT))
-                                        .fill(Theme::TRACK_BLUE),
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t("💾 Exportera WAV")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()))
+                                        .fill(crate::ui::theme::palette().track_blue()),
                                 ).clicked() {
                                     do_export_wav = true;
                                 }
 
                                 // IMPORT AUDIO FILE BUTTON
                                 if ui.add(
-                                    egui::Button::new(egui::RichText::new(crate::i18n::t("📂 Importera Fil")).size(Theme::FONT_S).color(Theme::TEXT))
-                                        .fill(Theme::BORDER_SOFT),
+                                    egui::Button::new(egui::RichText::new(crate::i18n::t("📂 Importera Fil")).size(Theme::FONT_S).color(crate::ui::theme::palette().text()))
+                                        .fill(crate::ui::theme::palette().border_soft()),
                                 ).on_hover_text(crate::i18n::t("Ladda in extern WAV/Audio-fil som tagning")).clicked() {
                                     // Plattformens egen dialog (rfd). Anropet är
                                     // synkront, precis som zenity var — en modal
@@ -348,8 +348,8 @@ pub fn render_vocal_studio_view(
                         ui.horizontal(|ui| {
                             let is_auditioning = take.is_playing;
                             if ui.add(
-                                egui::Button::new(egui::RichText::new(if is_auditioning { "🔊 PROVSPELAR..." } else { "▶ Provspela (Solo)" }).strong().size(Theme::FONT_S).color(if is_auditioning { Color32::BLACK } else { Theme::TEXT }))
-                                    .fill(if is_auditioning { Theme::YELLOW } else { Theme::GREEN })
+                                egui::Button::new(egui::RichText::new(if is_auditioning { "🔊 PROVSPELAR..." } else { "▶ Provspela (Solo)" }).strong().size(Theme::FONT_S).color(if is_auditioning { Color32::BLACK } else { crate::ui::theme::palette().text() }))
+                                    .fill(if is_auditioning { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().green() })
                                     .min_size(Vec2::new(140.0, 24.0)),
                             ).on_hover_text(crate::i18n::t("Spela upp ENBART denna tagning/sample utan att starta låtens tidslinje")).clicked() {
                                 take.is_playing = true;
@@ -379,8 +379,8 @@ pub fn render_vocal_studio_view(
                             }
 
                             if ui.add(
-                                egui::Button::new(egui::RichText::new(crate::i18n::t("⏹ Stoppa")).strong().size(Theme::FONT_S).color(Theme::TEXT))
-                                    .fill(Theme::RED)
+                                egui::Button::new(egui::RichText::new(crate::i18n::t("⏹ Stoppa")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()))
+                                    .fill(crate::ui::theme::palette().red())
                                     .min_size(Vec2::new(70.0, 24.0)),
                             ).on_hover_text(crate::i18n::t("Stoppa provspelning")).clicked() {
                                 take.is_playing = false;
@@ -392,8 +392,8 @@ pub fn render_vocal_studio_view(
                             ui.separator();
 
                             // Reverse toggle
-                            let rev_bg = if take.is_reverse { Theme::ORANGE } else { Theme::BORDER };
-                            if ui.add(egui::Button::new(egui::RichText::new(if take.is_reverse { crate::i18n::t("🔄 Baklänges (PÅ)") } else { crate::i18n::t("🔄 Normal") }).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(rev_bg)).clicked() {
+                            let rev_bg = if take.is_reverse { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().border() };
+                            if ui.add(egui::Button::new(egui::RichText::new(if take.is_reverse { crate::i18n::t("🔄 Baklänges (PÅ)") } else { crate::i18n::t("🔄 Normal") }).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(rev_bg)).clicked() {
                                 take.is_reverse = !take.is_reverse;
                                 if take.is_playing {
                                     // Trigger re-play with reverse
@@ -433,9 +433,9 @@ pub fn render_vocal_studio_view(
                             ui.spacing_mut().item_spacing = Vec2::new(6.0, 4.0);
                             ui.horizontal_wrapped(|ui| {
                                 // 1. Volume
-                                ui.label(egui::RichText::new(crate::i18n::t("🎚 Volym:")).strong().size(Theme::FONT_S).color(Theme::CYAN));
+                                ui.label(egui::RichText::new(crate::i18n::t("🎚 Volym:")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                                 let vol_db = if take.gain_linear <= 0.001 { -60.0 } else { 20.0 * take.gain_linear.log10() };
-                                ui.label(egui::RichText::new(format!("{:.1}dB ({:.0}%)", vol_db, take.gain_linear * 100.0)).size(Theme::FONT_S).color(Theme::TEXT));
+                                ui.label(egui::RichText::new(format!("{:.1}dB ({:.0}%)", vol_db, take.gain_linear * 100.0)).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                                 if ui.add_sized(Vec2::new(100.0, 18.0), egui::Slider::new(&mut take.gain_linear, 0.0..=2.0).show_value(false)).changed() {
                                     let pitch_mul = ((take.pitch_semitones + take.pitch_cents / 100.0) / 12.0).exp2();
                                     let _ = engine.send_command(crate::audio::AudioCommand::SetAuditionParams {
@@ -448,8 +448,8 @@ pub fn render_vocal_studio_view(
                                 ui.separator();
 
                                 // 2. Time Dilation / Stretch (Hastighet / Tidssträckning)
-                                ui.label(egui::RichText::new(crate::i18n::t("⏳ Time Dilation (Stretch):")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
-                                ui.label(egui::RichText::new(format!("{:.2}x ({:.0}%)", take.time_stretch, take.time_stretch * 100.0)).size(Theme::FONT_S).color(Theme::TEXT));
+                                ui.label(egui::RichText::new(crate::i18n::t("⏳ Time Dilation (Stretch):")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
+                                ui.label(egui::RichText::new(format!("{:.2}x ({:.0}%)", take.time_stretch, take.time_stretch * 100.0)).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                                 if ui.add_sized(Vec2::new(110.0, 18.0), egui::Slider::new(&mut take.time_stretch, 0.25..=3.0).show_value(false)).on_hover_text(crate::i18n::t("Justera tidssträckning / uppspelningshastighet (0.25x = snabbare, 2.0x = långsammare)")).changed() {
                                     let pitch_mul = ((take.pitch_semitones + take.pitch_cents / 100.0) / 12.0).exp2();
                                     let _ = engine.send_command(crate::audio::AudioCommand::SetAuditionParams {
@@ -471,8 +471,8 @@ pub fn render_vocal_studio_view(
                                 ui.separator();
 
                                 // 3. Pitch Shift (Tonhöjd i halvtoner & cents)
-                                ui.label(egui::RichText::new(crate::i18n::t("🎵 Pitch:")).strong().size(Theme::FONT_S).color(Theme::GREEN));
-                                ui.label(egui::RichText::new(format!("{:+.0} st / {:+.0} ct", take.pitch_semitones, take.pitch_cents)).size(Theme::FONT_S).color(Theme::TEXT));
+                                ui.label(egui::RichText::new(crate::i18n::t("🎵 Pitch:")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
+                                ui.label(egui::RichText::new(format!("{:+.0} st / {:+.0} ct", take.pitch_semitones, take.pitch_cents)).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                                 if ui.add_sized(Vec2::new(100.0, 18.0), egui::Slider::new(&mut take.pitch_semitones, -24.0..=24.0).step_by(1.0).show_value(false)).on_hover_text(crate::i18n::t("Justera tonhöjd i halvtoner (-24 .. +24)")).changed() {
                                     let pitch_mul = ((take.pitch_semitones + take.pitch_cents / 100.0) / 12.0).exp2();
                                     let _ = engine.send_command(crate::audio::AudioCommand::SetAuditionParams {
@@ -509,11 +509,11 @@ pub fn render_vocal_studio_view(
                         let painter = ui.painter();
 
                         // Canvas background & grid
-                        painter.rect_filled(canvas_rect, Rounding::same(4.0), Theme::BG_DEEP);
-                        painter.rect_stroke(canvas_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::GRID));
+                        painter.rect_filled(canvas_rect, Rounding::same(4.0), crate::ui::theme::palette().bg_deep());
+                        painter.rect_stroke(canvas_rect, Rounding::same(4.0), Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
 
                         let mid_y = canvas_rect.center().y;
-                        painter.line_segment([Pos2::new(canvas_rect.min.x, mid_y), Pos2::new(canvas_rect.max.x, mid_y)], Stroke::new(1.0_f32, Theme::GRID));
+                        painter.line_segment([Pos2::new(canvas_rect.min.x, mid_y), Pos2::new(canvas_rect.max.x, mid_y)], Stroke::new(1.0_f32, crate::ui::theme::palette().grid()));
 
                         let crop_s = crop_start_norm.clamp(0.0, 0.99);
                         let crop_e = crop_end_norm.clamp(crop_s + 0.01, 1.0);
@@ -552,7 +552,7 @@ pub fn render_vocal_studio_view(
                                 let y_hi = mid_y - (hi * gain).clamp(-1.0, 1.0) * half;
                                 let y_lo = mid_y - (lo * gain).clamp(-1.0, 1.0) * half;
                                 let (top, bot) = (y_hi.min(y_lo), y_hi.max(y_lo));
-                                let col = if in_sel { take_color } else { Theme::BORDER_SOFT };
+                                let col = if in_sel { take_color } else { crate::ui::theme::palette().border_soft() };
                                 painter.rect_filled(
                                     Rect::from_min_max(
                                         Pos2::new(x, top),
@@ -570,7 +570,7 @@ pub fn render_vocal_studio_view(
                                 let in_sel = norm_pos >= crop_s && norm_pos <= crop_e;
 
                                 let h = (amp * take.gain_linear).clamp(0.0, 1.0) * (canvas_rect.height() * 0.44);
-                                let col = if in_sel { take_color } else { Theme::BORDER_SOFT };
+                                let col = if in_sel { take_color } else { crate::ui::theme::palette().border_soft() };
                                 painter.rect_filled(
                                     Rect::from_min_max(Pos2::new(x, mid_y - h), Pos2::new((x + step_x * 0.85).max(x + 1.0), mid_y + h)),
                                     Rounding::same(1.0),
@@ -580,57 +580,57 @@ pub fn render_vocal_studio_view(
                         }
 
                         // Left & Right boundary markers
-                        painter.line_segment([Pos2::new(sel_start_x, canvas_rect.min.y), Pos2::new(sel_start_x, canvas_rect.max.y)], Stroke::new(2.0_f32, Theme::YELLOW));
-                        painter.line_segment([Pos2::new(sel_end_x, canvas_rect.min.y), Pos2::new(sel_end_x, canvas_rect.max.y)], Stroke::new(2.0_f32, Theme::YELLOW));
+                        painter.line_segment([Pos2::new(sel_start_x, canvas_rect.min.y), Pos2::new(sel_start_x, canvas_rect.max.y)], Stroke::new(2.0_f32, crate::ui::theme::palette().yellow()));
+                        painter.line_segment([Pos2::new(sel_end_x, canvas_rect.min.y), Pos2::new(sel_end_x, canvas_rect.max.y)], Stroke::new(2.0_f32, crate::ui::theme::palette().yellow()));
 
                         // Start & End handle flags
-                        painter.rect_filled(Rect::from_min_size(Pos2::new(sel_start_x - 3.0, canvas_rect.min.y), Vec2::new(6.0, 12.0)), Rounding::same(2.0), Theme::YELLOW);
-                        painter.rect_filled(Rect::from_min_size(Pos2::new(sel_end_x - 3.0, canvas_rect.max.y - 12.0), Vec2::new(6.0, 12.0)), Rounding::same(2.0), Theme::YELLOW);
+                        painter.rect_filled(Rect::from_min_size(Pos2::new(sel_start_x - 3.0, canvas_rect.min.y), Vec2::new(6.0, 12.0)), Rounding::same(2.0), crate::ui::theme::palette().yellow());
+                        painter.rect_filled(Rect::from_min_size(Pos2::new(sel_end_x - 3.0, canvas_rect.max.y - 12.0), Vec2::new(6.0, 12.0)), Rounding::same(2.0), crate::ui::theme::palette().yellow());
 
                         ui.add_space(4.0);
 
                         // DUAL TRIM SLIDERS & EDIT ACTIONS
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("Start (In):")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(crate::i18n::t("Start (In):")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                             let s_val = crop_start_norm * duration;
-                            ui.label(egui::RichText::new(format!("{:.2}s", s_val)).strong().size(Theme::FONT_S).color(Theme::YELLOW));
+                            ui.label(egui::RichText::new(format!("{:.2}s", s_val)).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
                             ui.add_sized(Vec2::new(120.0, 18.0), egui::Slider::new(&mut crop_start_norm, 0.0..=0.98).show_value(false));
 
                             ui.separator();
 
-                            ui.label(egui::RichText::new(crate::i18n::t("Slut (Ut):")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(crate::i18n::t("Slut (Ut):")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                             let e_val = crop_end_norm * duration;
-                            ui.label(egui::RichText::new(format!("{:.2}s", e_val)).strong().size(Theme::FONT_S).color(Theme::YELLOW));
+                            ui.label(egui::RichText::new(format!("{:.2}s", e_val)).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
                             ui.add_sized(Vec2::new(120.0, 18.0), egui::Slider::new(&mut crop_end_norm, 0.02..=1.0).show_value(false));
 
                             ui.separator();
 
                             // CROP BUTTON
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✂ Beskär till Markering")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::YELLOW)).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✂ Beskär till Markering")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().yellow())).clicked() {
                                 do_crop = true;
                             }
 
                             // SLICE BUTTON
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✂ Dela Tagning")).size(Theme::FONT_S).color(Theme::TEXT))).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✂ Dela Tagning")).size(Theme::FONT_S).color(crate::ui::theme::palette().text()))).clicked() {
                                 do_slice = true;
                             }
 
                             ui.separator();
-                            ui.label(egui::RichText::new(crate::i18n::t("Kompfönster")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Lägg partiet i kompen")).size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::GREEN)).on_hover_text(crate::i18n::t("Markerar det valda intervallet på den valda tagningen som en del av kompen. Partierna läggs i ordning — senare vinner över tidigare där de överlappar.")).clicked() {
+                            ui.label(egui::RichText::new(crate::i18n::t("Kompfönster")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Lägg partiet i kompen")).size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().green())).on_hover_text(crate::i18n::t("Markerar det valda intervallet på den valda tagningen som en del av kompen. Partierna läggs i ordning — senare vinner över tidigare där de överlappar.")).clicked() {
                                 do_comp_add = true;
                             }
-                            if ui.add_enabled(!vocal_track.comp_regions.is_empty(), egui::Button::new(egui::RichText::new(crate::tstatus!("🎚 Bygg komp ({})", vocal_track.comp_regions.len())).size(Theme::FONT_S)).fill(Theme::CYAN)).clicked() {
+                            if ui.add_enabled(!vocal_track.comp_regions.is_empty(), egui::Button::new(egui::RichText::new(crate::tstatus!("🎚 Bygg komp ({})", vocal_track.comp_regions.len())).size(Theme::FONT_S)).fill(crate::ui::theme::palette().cyan())).clicked() {
                                 do_comp_build = true;
                             }
 
                             // NORMALIZE BUTTON
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎚 Normalisera")).size(Theme::FONT_S).color(Theme::TEXT))).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎚 Normalisera")).size(Theme::FONT_S).color(crate::ui::theme::palette().text()))).clicked() {
                                 do_normalize = true;
                             }
 
                             // DELETE BUTTON
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🗑 Ta bort")).size(Theme::FONT_S).color(Theme::RED))).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🗑 Ta bort")).size(Theme::FONT_S).color(crate::ui::theme::palette().red()))).clicked() {
                                 do_delete = true;
                             }
                         });
@@ -680,7 +680,7 @@ pub fn render_vocal_studio_view(
                             Err(err) => *status_msg = format!("❌ {}", err),
                         }
                     } else if let Some((f_name, l, sr)) = do_import_pcm {
-                        let new_idx = vocal_track.load_sample_or_region_as_take(&f_name, l, sr, Theme::CYAN);
+                        let new_idx = vocal_track.load_sample_or_region_as_take(&f_name, l, sr, crate::ui::theme::palette().cyan());
                         *status_msg = crate::tstatus!("✔ Importerade '{}' till Sångstudion (Tagning {})!", f_name, new_idx + 1);
                     }
 
@@ -692,9 +692,9 @@ pub fn render_vocal_studio_view(
                 // ============================================================
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("📁 SÅNGTAGNINGAR & COMPING LANES")).strong().size(Theme::FONT_S).color(Theme::CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("📁 SÅNGTAGNINGAR & COMPING LANES")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                         ui.separator();
-                        ui.label(egui::RichText::new(format!("{} {} {}", crate::i18n::t("Totalt:"), vocal_track.takes.len(), crate::i18n::t("tagningar sparade i projektet"))).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(format!("{} {} {}", crate::i18n::t("Totalt:"), vocal_track.takes.len(), crate::i18n::t("tagningar sparade i projektet"))).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                         ui.separator();
                         // **Lanes**: infoga en bana efter den valda, ta bort den valda, och
                         // lägg hela den valda banan i kompen utan att gå via markeringen.
@@ -749,12 +749,12 @@ pub fn render_vocal_studio_view(
                                 egui::RichText::new(crate::i18n::t("Komp"))
                                     .strong()
                                     .size(Theme::FONT_S)
-                                    .color(Theme::GREEN),
+                                    .color(crate::ui::theme::palette().green()),
                             );
                             let w_w = (ui.available_width() - 8.0).max(10.0);
                             let (rect, _) = ui.allocate_exact_size(Vec2::new(w_w, 22.0), Sense::hover());
                             let painter = ui.painter();
-                            painter.rect_filled(rect, Rounding::same(3.0), Theme::BG_DEEP);
+                            painter.rect_filled(rect, Rounding::same(3.0), crate::ui::theme::palette().bg_deep());
                             let length = vocal_track
                                 .comp_regions
                                 .iter()
@@ -767,7 +767,7 @@ pub fn render_vocal_studio_view(
                                     .takes
                                     .get(*r_take)
                                     .map(|t| t.color)
-                                    .unwrap_or(Theme::CYAN);
+                                    .unwrap_or(crate::ui::theme::palette().cyan());
                                 let x0 = rect.min.x + rect.width() * (*r_start as f32 / length as f32);
                                 let x1 = rect.min.x + rect.width() * (*r_end as f32 / length as f32);
                                 painter.rect_filled(
@@ -799,8 +799,8 @@ pub fn render_vocal_studio_view(
                         let wave_data = vocal_track.takes[t_idx].waveform_data.clone();
 
                         ui.horizontal(|ui| {
-                            let btn_bg = if is_active { take_color } else { Theme::PANEL };
-                            let btn_text_col = if is_active { Color32::BLACK } else { Theme::TEXT };
+                            let btn_bg = if is_active { take_color } else { crate::ui::theme::palette().panel() };
+                            let btn_text_col = if is_active { Color32::BLACK } else { crate::ui::theme::palette().text() };
 
                             if ui.add(
                                 egui::Button::new(egui::RichText::new(&take_name).strong().size(Theme::FONT_S).color(btn_text_col))
@@ -821,8 +821,8 @@ pub fn render_vocal_studio_view(
                             let (w_rect, w_resp) = ui.allocate_exact_size(Vec2::new(w_w, 30.0), Sense::click());
                             let painter = ui.painter();
 
-                            painter.rect_filled(w_rect, Rounding::same(3.0), Theme::BG);
-                            painter.rect_stroke(w_rect, Rounding::same(3.0), Stroke::new(1.0_f32, if is_active { take_color } else { Theme::GRID }));
+                            painter.rect_filled(w_rect, Rounding::same(3.0), crate::ui::theme::palette().bg());
+                            painter.rect_stroke(w_rect, Rounding::same(3.0), Stroke::new(1.0_f32, if is_active { take_color } else { crate::ui::theme::palette().grid() }));
 
                             let num_samples = wave_data.len();
                             if num_samples > 0 {
@@ -833,7 +833,7 @@ pub fn render_vocal_studio_view(
                                     let sx = w_rect.min.x + 3.0 + s_i as f32 * step_w;
                                     let h = amp * (w_rect.height() * 0.44);
                                     let bar_rect = Rect::from_min_max(Pos2::new(sx, mid_y - h), Pos2::new(sx + step_w * 0.85, mid_y + h));
-                                    painter.rect_filled(bar_rect, Rounding::same(1.0), if is_active { take_color } else { Theme::BORDER_SOFT });
+                                    painter.rect_filled(bar_rect, Rounding::same(1.0), if is_active { take_color } else { crate::ui::theme::palette().border_soft() });
                                 }
                             }
 
@@ -858,9 +858,9 @@ pub fn render_vocal_studio_view(
                                     band,
                                     Rounding::same(2.0),
                                     Color32::from_rgba_unmultiplied(
-                                        Theme::GREEN.r(),
-                                        Theme::GREEN.g(),
-                                        Theme::GREEN.b(),
+                                        crate::ui::theme::palette().green().r(),
+                                        crate::ui::theme::palette().green().g(),
+                                        crate::ui::theme::palette().green().b(),
                                         70,
                                     ),
                                 );
@@ -893,7 +893,7 @@ pub fn render_vocal_studio_view(
                                 egui::Align2::RIGHT_CENTER,
                                 format!("{:.1}s", take_duration),
                                 egui::FontId::proportional(Theme::FONT_S),
-                                if is_active { Theme::TEXT } else { Theme::TEXT_MUTED },
+                                if is_active { crate::ui::theme::palette().text() } else { crate::ui::theme::palette().text_muted() },
                             );
                         });
                         ui.add_space(2.0);
@@ -909,7 +909,7 @@ pub fn render_vocal_studio_view(
                 ui.columns(2, |cols| {
                     cols[0].group(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("🎼 PITCH EDITOR – TONKORRIGERING (NOTBLOCK)")).strong().size(Theme::FONT_S).color(Theme::YELLOW));
+                            ui.label(egui::RichText::new(crate::i18n::t("🎼 PITCH EDITOR – TONKORRIGERING (NOTBLOCK)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
                         });
                         ui.add_space(4.0);
 
@@ -924,7 +924,7 @@ pub fn render_vocal_studio_view(
                                 *status_msg = crate::tstatus!("🎯 Analyserade {} notblock ur tagningen", harmonizer.blobs.len());
                             }
 
-                            if ui.add_enabled(has_take, egui::Button::new(egui::RichText::new(crate::i18n::t("✨ Auto-Tune")).color(Color32::BLACK).size(Theme::FONT_S)).fill(Theme::ORANGE)).on_hover_text(crate::i18n::t("Korrigerar tonhöjden mot vald skala (styrka = AUTO-TUNE-ratten)")).clicked() {
+                            if ui.add_enabled(has_take, egui::Button::new(egui::RichText::new(crate::i18n::t("✨ Auto-Tune")).color(Color32::BLACK).size(Theme::FONT_S)).fill(crate::ui::theme::palette().orange())).on_hover_text(crate::i18n::t("Korrigerar tonhöjden mot vald skala (styrka = AUTO-TUNE-ratten)")).clicked() {
                                 let corrected = {
                                     let take = &vocal_track.takes[act_idx];
                                     harmonizer.apply_autotune(&take.pcm_samples, take.sample_rate as f32)
@@ -934,7 +934,7 @@ pub fn render_vocal_studio_view(
                             }
 
                             let has_edits = harmonizer.blobs.iter().any(|b| b.pitch_offset.abs() > 0.001);
-                            if ui.add_enabled(has_take && has_edits, egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Applicera notkorrigering")).color(Color32::BLACK).size(Theme::FONT_S)).fill(Theme::CYAN)).on_hover_text(crate::i18n::t("Pitch-shiftar tagningen per notblock enligt dina dragningar")).clicked() {
+                            if ui.add_enabled(has_take && has_edits, egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 Applicera notkorrigering")).color(Color32::BLACK).size(Theme::FONT_S)).fill(crate::ui::theme::palette().cyan())).on_hover_text(crate::i18n::t("Pitch-shiftar tagningen per notblock enligt dina dragningar")).clicked() {
                                 let corrected = {
                                     let take = &vocal_track.takes[act_idx];
                                     harmonizer.apply_blob_corrections(&take.pcm_samples, take.sample_rate as f32)
@@ -949,7 +949,7 @@ pub fn render_vocal_studio_view(
                                 harmonizer.selected_blob = None;
                             }
 
-                            ui.label(egui::RichText::new(crate::i18n::t("Skala:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(crate::i18n::t("Skala:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                             egui::ComboBox::from_id_salt("tuner_scale_combo")
                                 .selected_text(match harmonizer.target_scale {
                                     1 => crate::i18n::t("Dur"),
@@ -981,14 +981,14 @@ pub fn render_vocal_studio_view(
                         let m_w = ui.available_width().max(10.0);
                         let (m_rect, m_resp) = ui.allocate_exact_size(Vec2::new(m_w, 120.0), Sense::click_and_drag());
                         let painter = ui.painter();
-                        painter.rect_filled(m_rect, Rounding::same(4.0), Theme::BG_DEEP);
-                        painter.rect_stroke(m_rect, Rounding::same(4.0), Stroke::new(1.0_f32, Theme::BORDER));
+                        painter.rect_filled(m_rect, Rounding::same(4.0), crate::ui::theme::palette().bg_deep());
+                        painter.rect_stroke(m_rect, Rounding::same(4.0), Stroke::new(1.0_f32, crate::ui::theme::palette().border()));
 
                         let note_rows = 6;
                         let row_h = m_rect.height() / note_rows as f32;
                         for r in 0..note_rows {
                             let ry = m_rect.min.y + r as f32 * row_h;
-                            painter.line_segment([Pos2::new(m_rect.min.x, ry), Pos2::new(m_rect.max.x, ry)], Stroke::new(1.0_f32, Theme::PANEL));
+                            painter.line_segment([Pos2::new(m_rect.min.x, ry), Pos2::new(m_rect.max.x, ry)], Stroke::new(1.0_f32, crate::ui::theme::palette().panel()));
                         }
 
                         let total_steps = harmonizer.blob_steps.max(1);
@@ -1003,7 +1003,7 @@ pub fn render_vocal_studio_view(
                             let blob_rect = Rect::from_min_size(Pos2::new(bx, by), Vec2::new(bw, 18.0));
                             painter.rect_filled(blob_rect, Rounding::same(9.0), blob.color);
                             let selected = harmonizer.selected_blob == Some(i);
-                            painter.rect_stroke(blob_rect, Rounding::same(9.0), Stroke::new(if selected { 3.0_f32 } else { 1.5_f32 }, if selected { Theme::YELLOW } else { Theme::TEXT }));
+                            painter.rect_stroke(blob_rect, Rounding::same(9.0), Stroke::new(if selected { 3.0_f32 } else { 1.5_f32 }, if selected { crate::ui::theme::palette().yellow() } else { crate::ui::theme::palette().text() }));
                             if blob.pitch_offset.abs() > 0.001 {
                                 painter.text(blob_rect.center(), egui::Align2::CENTER_CENTER, format!("{:+}", blob.pitch_offset.round() as i32), egui::FontId::proportional(Theme::FONT_S), Color32::BLACK);
                             }
@@ -1033,14 +1033,14 @@ pub fn render_vocal_studio_view(
 
                         if is_playing {
                             let px = m_rect.min.x + 5.0 + current_step as f32 * step_width;
-                            painter.line_segment([Pos2::new(px, m_rect.min.y), Pos2::new(px, m_rect.max.y)], Stroke::new(2.0_f32, Theme::TEXT));
+                            painter.line_segment([Pos2::new(px, m_rect.min.y), Pos2::new(px, m_rect.max.y)], Stroke::new(2.0_f32, crate::ui::theme::palette().text()));
                         }
 
                         // Selected-note editor.
                         if let Some(i) = harmonizer.selected_blob {
                             if let Some(b) = harmonizer.blobs.get_mut(i) {
                                 ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new(crate::tstatus!("Not {} – MIDI {}", i + 1, b.midi_note)).size(Theme::FONT_S).color(Theme::TEXT));
+                                    ui.label(egui::RichText::new(crate::tstatus!("Not {} – MIDI {}", i + 1, b.midi_note)).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                                     ui.add(egui::Slider::new(&mut b.pitch_offset, -12.0..=12.0).text(crate::i18n::t("korrigering (st)")).step_by(0.5));
                                     if ui.button(crate::i18n::t("0")).clicked() {
                                         b.pitch_offset = 0.0;
@@ -1048,17 +1048,17 @@ pub fn render_vocal_studio_view(
                                 });
                             }
                         } else if !harmonizer.blobs.is_empty() {
-                            ui.label(egui::RichText::new(crate::i18n::t("Klicka på ett notblock och dra lodrätt för att justera tonhöjden.")).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(crate::i18n::t("Klicka på ett notblock och dra lodrätt för att justera tonhöjden.")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                         }
                     });
 
                     cols[1].group(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(crate::i18n::t("✨ 4-VOICE HARMONIZER (KÖR)")).strong().size(Theme::FONT_S).color(Theme::GREEN));
+                            ui.label(egui::RichText::new(crate::i18n::t("✨ 4-VOICE HARMONIZER (KÖR)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
                         });
                         ui.add_space(4.0);
 
-                        if ui.add_enabled(!vocal_track.takes.is_empty(), egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Skapa körstämmor som tagningar")).size(Theme::FONT_S)).fill(Theme::GREEN)).on_hover_text(crate::i18n::t("Pitch-shiftar vald tagning per aktiverad stämma och lägger till dem som egna tagningar")).clicked() {
+                        if ui.add_enabled(!vocal_track.takes.is_empty(), egui::Button::new(egui::RichText::new(crate::i18n::t("➕ Skapa körstämmor som tagningar")).size(Theme::FONT_S)).fill(crate::ui::theme::palette().green())).on_hover_text(crate::i18n::t("Pitch-shiftar vald tagning per aktiverad stämma och lägger till dem som egna tagningar")).clicked() {
                             let (pcm, sr) = {
                                 let take = &vocal_track.takes[act_idx];
                                 (take.pcm_samples.clone(), take.sample_rate)
@@ -1076,7 +1076,7 @@ pub fn render_vocal_studio_view(
                             ui.label(
                                 egui::RichText::new(crate::i18n::t("Bärvåg:"))
                                     .size(Theme::FONT_S)
-                                    .color(Theme::TEXT_MUTED),
+                                    .color(crate::ui::theme::palette().text_muted()),
                             );
                             let mut note = harmonizer.vocoder_note as i32;
                             if ui
@@ -1104,7 +1104,7 @@ pub fn render_vocal_studio_view(
                             ui.label(
                                 egui::RichText::new(format!("{name}{octave}  ({freq:.1} Hz)"))
                                     .size(Theme::FONT_S)
-                                    .color(Theme::CYAN),
+                                    .color(crate::ui::theme::palette().cyan()),
                             );
                         });
                         if ui
@@ -1114,7 +1114,7 @@ pub fn render_vocal_studio_view(
                                     egui::RichText::new(crate::i18n::t("🤖 Vocoder (A2-bärvåg)"))
                                         .size(Theme::FONT_S),
                                 )
-                                .fill(Theme::CYAN),
+                                .fill(crate::ui::theme::palette().cyan()),
                             )
                             .on_hover_text(crate::i18n::t(
                                 "Lägger sångens form på en sågtandsvåg: en robot som sjunger orden. Bärvågen är A2 med oktav och kvint.",
@@ -1147,7 +1147,7 @@ pub fn render_vocal_studio_view(
                                 format!("{take_name} (Vocoder)"),
                                 vocoded,
                                 sr,
-                                Theme::CYAN,
+                                crate::ui::theme::palette().cyan(),
                             );
                             *status_msg =
                                 crate::tstatus!("🤖 Vocoder: la till en tagning ur {}", take_name);
@@ -1158,8 +1158,8 @@ pub fn render_vocal_studio_view(
                             ui.horizontal(|ui| {
                                 ui.checkbox(&mut voice.enabled, voice.name);
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    rotary_knob(ui, &mut voice.volume, 0.0, 1.25, "VOL", Theme::GREEN, 18.0);
-                                    rotary_knob(ui, &mut voice.formant_shift, -12.0, 12.0, "FORMANT", Theme::PURPLE, 18.0);
+                                    rotary_knob(ui, &mut voice.volume, 0.0, 1.25, "VOL", crate::ui::theme::palette().green(), 18.0);
+                                    rotary_knob(ui, &mut voice.formant_shift, -12.0, 12.0, "FORMANT", crate::ui::theme::palette().purple(), 18.0);
                                 });
                             });
                             ui.add_space(2.0);
@@ -1174,21 +1174,21 @@ pub fn render_vocal_studio_view(
                 // ============================================================
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("🎤 SPELA IN EGET LJUD / SAMPLING")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
+                        ui.label(egui::RichText::new(crate::i18n::t("🎤 SPELA IN EGET LJUD / SAMPLING")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
                         ui.separator();
-                        ui.label(egui::RichText::new(crate::i18n::t("Spela in instrument, klappar, rösteffekter eller miljöljud direkt via mik")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("Spela in instrument, klappar, rösteffekter eller miljöljud direkt via mik")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                     });
 
                     ui.add_space(6.0);
 
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(crate::i18n::t("Namn på ljudet:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("Namn på ljudet:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                         ui.add(egui::TextEdit::singleline(&mut vocal_track.custom_sample_name_input).desired_width(180.0));
 
                         ui.separator();
 
                         if vocal_track.is_recording_custom {
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOPPA & SPARA KLIPP ")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::GREEN)).clicked() {
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" ⏹ STOPPA & SPARA KLIPP ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().green())).clicked() {
                                 match vocal_track.stop_custom_recording() {
                                     Ok(idx) => {
                                         let name = vocal_track.custom_sounds[idx].name.clone();
@@ -1197,8 +1197,8 @@ pub fn render_vocal_studio_view(
                                     Err(e) => *status_msg = format!("❌ {}", e),
                                 }
                             }
-                            ui.label(egui::RichText::new(format!("🔴 {:.1}s", vocal_track.custom_recording_elapsed_secs)).strong().size(Theme::FONT_S).color(Theme::RED));
-                        } else if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" 🔴 SPELA IN LJUDKLIPP ")).strong().size(Theme::FONT_S).color(Theme::TEXT)).fill(Theme::RED)).clicked() {
+                            ui.label(egui::RichText::new(format!("🔴 {:.1}s", vocal_track.custom_recording_elapsed_secs)).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().red()));
+                        } else if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(" 🔴 SPELA IN LJUDKLIPP ")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().red())).clicked() {
                             match vocal_track.start_custom_recording() {
                                 Ok(()) => *status_msg = crate::i18n::t("🔴 Spelar in eget ljud...").to_string(),
                                 Err(e) => *status_msg = format!("❌ {}", e),
@@ -1211,13 +1211,13 @@ pub fn render_vocal_studio_view(
 
                 // List of custom sound clips
                 ui.group(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("📁 MINA INSPELADE LJUD & SAMPLINGAR")).strong().size(Theme::FONT_S).color(Theme::CYAN));
+                    ui.label(egui::RichText::new(crate::i18n::t("📁 MINA INSPELADE LJUD & SAMPLINGAR")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                     ui.add_space(4.0);
 
                     for sound in &vocal_track.custom_sounds {
                         ui.horizontal(|ui| {
                             let (c_rect, _) = ui.allocate_exact_size(Vec2::new(160.0, 32.0), Sense::hover());
-                            ui.painter().rect_filled(c_rect, Rounding::same(3.0), Theme::PANEL);
+                            ui.painter().rect_filled(c_rect, Rounding::same(3.0), crate::ui::theme::palette().panel());
                             ui.painter().rect_stroke(c_rect, Rounding::same(3.0), Stroke::new(1.0_f32, sound.color));
                             ui.painter().text(
                                 Pos2::new(c_rect.min.x + 8.0, c_rect.min.y + 8.0),
@@ -1229,7 +1229,7 @@ pub fn render_vocal_studio_view(
 
                             // Waveform mini preview
                             let (w_rect, _) = ui.allocate_exact_size(Vec2::new(180.0, 32.0), Sense::hover());
-                            ui.painter().rect_filled(w_rect, Rounding::same(2.0), Theme::BG);
+                            ui.painter().rect_filled(w_rect, Rounding::same(2.0), crate::ui::theme::palette().bg());
                             let num_s = sound.waveform_data.len();
                             let sw = w_rect.width() / num_s as f32;
                             let my = w_rect.center().y;
@@ -1239,7 +1239,7 @@ pub fn render_vocal_studio_view(
                                 ui.painter().line_segment([Pos2::new(sx, my - h), Pos2::new(sx, my + h)], Stroke::new(1.0_f32, sound.color));
                             }
 
-                            ui.label(egui::RichText::new(format!("{:.1}s | {}", sound.duration_secs, sound.category)).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(format!("{:.1}s | {}", sound.duration_secs, sound.category)).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
 
                             if ui.button(crate::i18n::t("▶ Provlyssna")).clicked() {
                                 let pcm_arc = std::sync::Arc::new(sound.pcm_samples.clone());

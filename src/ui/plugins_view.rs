@@ -55,12 +55,12 @@ pub fn render_plugins_view(
         // 1. TOP HEADER & MAIN NAVIGATION TABS
         // ====================================================================
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🔌 PLUGIN & FL STUDIO BRIDGE MANAGER")).strong().size(Theme::FONT_L).color(Theme::CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("🔌 PLUGIN & FL STUDIO BRIDGE MANAGER")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().cyan()));
             ui.separator();
             ui.label(
                 egui::RichText::new(crate::i18n::t("Hantera och importera VST3, CLAP, FL Studio Native & Windows-plugins via Yabridge"))
                     .size(Theme::FONT_S)
-                    .color(Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
             );
 
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -91,28 +91,28 @@ pub fn render_plugins_view(
         ui.group(|ui| {
             ui.horizontal(|ui| {
                 // PipeWire Status
-                ui.label(egui::RichText::new(crate::i18n::t("🟢 PipeWire RT Ljudmotor:")).strong().size(Theme::FONT_S).color(Theme::GREEN));
-                ui.label(egui::RichText::new(crate::i18n::t("Aktiv (Sonix 512-sampels ringbuffert)")).size(Theme::FONT_S).color(Theme::TEXT));
+                ui.label(egui::RichText::new(crate::i18n::t("🟢 PipeWire RT Ljudmotor:")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
+                ui.label(egui::RichText::new(crate::i18n::t("Aktiv (Sonix 512-sampels ringbuffert)")).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                 ui.separator();
 
                 // Plugin execution model
-                ui.label(egui::RichText::new(crate::i18n::t("🛡 Plugin-körning:")).strong().size(Theme::FONT_S).color(Theme::YELLOW));
+                ui.label(egui::RichText::new(crate::i18n::t("🛡 Plugin-körning:")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
                 let host_available = crate::audio::plugin_host_live::is_available();
                 let (host_label, host_color) = if host_available {
-                    (crate::i18n::t("CLAP/VST2/VST3: host aktiv (laddar plugins)"), Theme::GREEN)
+                    (crate::i18n::t("CLAP/VST2/VST3: host aktiv (laddar plugins)"), crate::ui::theme::palette().green())
                 } else {
-                    (crate::i18n::t("Endast metadata-skanning (bygg med --features plugin-host för CLAP/VST2/VST3-host)"), Theme::TEXT_MUTED)
+                    (crate::i18n::t("Endast metadata-skanning (bygg med --features plugin-host för CLAP/VST2/VST3-host)"), crate::ui::theme::palette().text_muted())
                 };
                 ui.label(egui::RichText::new(host_label).size(Theme::FONT_S).color(host_color));
                 ui.separator();
 
                 // Wine / Yabridge Status
-                ui.label(egui::RichText::new(crate::i18n::t("🍷 Windows / FL-brygga:")).strong().size(Theme::FONT_S).color(Theme::PURPLE));
-                ui.label(egui::RichText::new(&manager.wine_version).size(Theme::FONT_S).color(Theme::TEXT));
+                ui.label(egui::RichText::new(crate::i18n::t("🍷 Windows / FL-brygga:")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().purple()));
+                ui.label(egui::RichText::new(&manager.wine_version).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new(&manager.last_scan_time).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
-                    ui.label(egui::RichText::new(crate::i18n::t("Senast skannad:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(&manager.last_scan_time).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
+                    ui.label(egui::RichText::new(crate::i18n::t("Senast skannad:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                 });
             });
         });
@@ -207,7 +207,7 @@ fn render_active_inserts(
             egui::RichText::new(crate::i18n::t("🎛 Aktiva plugin-inserts per spår"))
                 .strong()
                 .size(Theme::FONT_S)
-                .color(Theme::CYAN),
+                .color(crate::ui::theme::palette().cyan()),
         );
         for (idx, slot) in active_plugins.iter().enumerate() {
             let Some(name) = slot else {
@@ -219,14 +219,14 @@ fn render_active_inserts(
                     egui::RichText::new(crate::tstatus!("Spår {}", idx + 1))
                         .strong()
                         .size(Theme::FONT_S)
-                        .color(Theme::TEXT),
+                        .color(crate::ui::theme::palette().text()),
                 );
-                ui.label(egui::RichText::new(name).size(Theme::FONT_S).color(Theme::GREEN));
+                ui.label(egui::RichText::new(name).size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
                 if is_open {
                     ui.label(
                         egui::RichText::new(crate::i18n::t("🪟 GUI öppet"))
                             .size(Theme::FONT_XS)
-                            .color(Theme::YELLOW),
+                            .color(crate::ui::theme::palette().yellow()),
                     );
                 }
                 // **Manuellt latens-offset** (Fas 8.6). Ett reglage i millisekunder, för det
@@ -399,7 +399,7 @@ fn render_plugin_database_tab(
 
     // Category Filter Chips
     ui.horizontal_wrapped(|ui| {
-        ui.label(egui::RichText::new(crate::i18n::t("Kategori:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+        ui.label(egui::RichText::new(crate::i18n::t("Kategori:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
         let categories = [
             (None, "Alla kategorier"),
             (Some(PluginCategory::Synth), "🎹 Synthesizer"),
@@ -415,8 +415,8 @@ fn render_plugin_database_tab(
 
         for (cat_opt, label) in categories {
             let is_sel = manager.selected_category_filter == cat_opt;
-            let bg = if is_sel { Theme::CYAN } else { Theme::PANEL };
-            let fg = if is_sel { Color32::BLACK } else { Theme::TEXT };
+            let bg = if is_sel { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().panel() };
+            let fg = if is_sel { Color32::BLACK } else { crate::ui::theme::palette().text() };
             if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(label)).size(Theme::FONT_S).color(fg)).fill(bg)).clicked() {
                 manager.selected_category_filter = cat_opt;
             }
@@ -429,7 +429,7 @@ fn render_plugin_database_tab(
             ui.label(
                 egui::RichText::new(status)
                     .size(Theme::FONT_S)
-                    .color(Theme::GREEN),
+                    .color(crate::ui::theme::palette().green()),
             );
         });
     }
@@ -477,7 +477,7 @@ fn render_plugin_database_tab(
                 ui.horizontal(|ui| {
                     // 1. Format Badge
                     let (b_rect, _) = ui.allocate_exact_size(Vec2::new(130.0, 24.0), egui::Sense::hover());
-                    ui.painter().rect_filled(b_rect, Rounding::same(4.0), Theme::PANEL);
+                    ui.painter().rect_filled(b_rect, Rounding::same(4.0), crate::ui::theme::palette().panel());
                     ui.painter().rect_stroke(b_rect, Rounding::same(4.0), Stroke::new(1.2_f32, badge_color));
                     ui.painter().text(
                         b_rect.center(),
@@ -492,23 +492,23 @@ fn render_plugin_database_tab(
                     // 2. Plugin Info & Details
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(&plugin.name).strong().size(Theme::FONT_M).color(Theme::TEXT));
-                            ui.label(egui::RichText::new(&plugin.version).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(&plugin.name).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().text()));
+                            ui.label(egui::RichText::new(&plugin.version).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                             ui.label(
                                 egui::RichText::new(format!("{} {}", plugin.category.icon(), plugin.category.label()))
                                     .size(Theme::FONT_S)
-                                    .color(Theme::ORANGE),
+                                    .color(crate::ui::theme::palette().orange()),
                             );
                         });
 
                         ui.label(
                             egui::RichText::new(crate::tstatus!("Tillverkare: {}  •  Sökväg: {}", plugin.vendor, plugin.file_path))
                                 .size(Theme::FONT_S)
-                                .color(Theme::TEXT_MUTED),
+                                .color(crate::ui::theme::palette().text_muted()),
                         );
 
                         if !plugin.author_notes.is_empty() {
-                            ui.label(egui::RichText::new(&plugin.author_notes).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(&plugin.author_notes).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                         }
                     });
 
@@ -568,9 +568,9 @@ fn render_plugin_database_tab(
                         }
 
                         let (badge, color) = if plugin.verified {
-                            (crate::i18n::t("✔ Verifierad"), Theme::GREEN)
+                            (crate::i18n::t("✔ Verifierad"), crate::ui::theme::palette().green())
                         } else {
-                            (crate::i18n::t("⚠ Ej verifierad"), Theme::YELLOW)
+                            (crate::i18n::t("⚠ Ej verifierad"), crate::ui::theme::palette().yellow())
                         };
                         ui.label(egui::RichText::new(badge).strong().size(Theme::FONT_S).color(color));
 
@@ -582,14 +582,14 @@ fn render_plugin_database_tab(
                             } else {
                                 format!("{:.0} KB", kb)
                             };
-                            ui.label(egui::RichText::new(size_str).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(size_str).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                             if !plugin.verify_note.is_empty() {
-                                ui.label(egui::RichText::new(&plugin.verify_note).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                                ui.label(egui::RichText::new(&plugin.verify_note).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                             }
                         });
 
                         if plugin.verified {
-                            ui.label(egui::RichText::new(crate::i18n::t("✔ Verifierad binär")).size(Theme::FONT_XS).color(Theme::GREEN));
+                            ui.label(egui::RichText::new(crate::i18n::t("✔ Verifierad binär")).size(Theme::FONT_XS).color(crate::ui::theme::palette().green()));
                         }
                     });
                 });
@@ -600,7 +600,7 @@ fn render_plugin_database_tab(
         if visible_count == 0 {
             ui.add_space(20.0);
             ui.vertical_centered(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("Inga plugins matchade din sökning eller filter.")).color(Theme::TEXT_MUTED).size(Theme::FONT_M));
+                ui.label(egui::RichText::new(crate::i18n::t("Inga plugins matchade din sökning eller filter.")).color(crate::ui::theme::palette().text_muted()).size(Theme::FONT_M));
                 if ui.button(crate::i18n::t("Återställ filter")).clicked() {
                     manager.search_query.clear();
                     manager.selected_format_filter = None;
@@ -617,11 +617,11 @@ fn render_plugin_database_tab(
 // TAB 1: SCAN PATHS & FOLDERS MANAGER
 // ============================================================================
 fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
-    ui.label(egui::RichText::new(crate::i18n::t("📁 SÖKVÄGAR FÖR PLUGIN-SKANNING")).strong().size(Theme::FONT_M).color(Theme::YELLOW));
+    ui.label(egui::RichText::new(crate::i18n::t("📁 SÖKVÄGAR FÖR PLUGIN-SKANNING")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().yellow()));
     ui.label(
         egui::RichText::new(crate::i18n::t("Sonix genomsöker följande mappar efter Linux-native VST3/CLAP samt Windows/Wine & FL Studio VST-kataloger:"))
             .size(Theme::FONT_S)
-            .color(Theme::TEXT_MUTED),
+            .color(crate::ui::theme::palette().text_muted()),
     );
 
     ui.add_space(8.0);
@@ -640,13 +640,13 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
 
                     // Existence indicator
                     if exists_on_disk {
-                        ui.label(egui::RichText::new(crate::i18n::t("🟢 Finns")).size(Theme::FONT_S).color(Theme::GREEN));
+                        ui.label(egui::RichText::new(crate::i18n::t("🟢 Finns")).size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
                     } else {
-                        ui.label(egui::RichText::new(crate::i18n::t("⚪ Ej skapad")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(crate::i18n::t("⚪ Ej skapad")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                     }
 
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(&scan_path.path).strong().size(Theme::FONT_S).color(Theme::TEXT));
+                        ui.label(egui::RichText::new(&scan_path.path).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                         ui.label(
                             egui::RichText::new(format!(
                                 "{} • {}",
@@ -654,7 +654,7 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
                                 if scan_path.is_fl_path { crate::i18n::t("FL Studio Specifik") } else if scan_path.is_wine { crate::i18n::t("Wine/Windows") } else { crate::i18n::t("Native Linux") }
                             ))
                             .size(Theme::FONT_XS)
-                            .color(if scan_path.is_fl_path { Theme::ORANGE } else { Theme::TEXT_MUTED }),
+                            .color(if scan_path.is_fl_path { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().text_muted() }),
                         );
                     });
 
@@ -678,7 +678,7 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
 
     // Add new custom scan path section
     ui.group(|ui| {
-        ui.label(egui::RichText::new(crate::i18n::t("➕ Lägg till anpassad plugin-mapp (t.ex. extern hårddisk eller FL Studio-installation)")).strong().size(Theme::FONT_S).color(Theme::CYAN));
+        ui.label(egui::RichText::new(crate::i18n::t("➕ Lägg till anpassad plugin-mapp (t.ex. extern hårddisk eller FL Studio-installation)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
         ui.horizontal(|ui| {
             ui.label(crate::i18n::t("Mappsökväg:"));
             ui.add(
@@ -707,11 +707,11 @@ fn render_scan_paths_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &
 fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
     ui.horizontal(|ui| {
         ui.vertical(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("📥 MANUELL PLUGIN- OCH PRESET-IMPORT")).strong().size(Theme::FONT_M).color(Theme::CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("📥 MANUELL PLUGIN- OCH PRESET-IMPORT")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().cyan()));
             ui.label(
                 egui::RichText::new(crate::i18n::t("Importera fristående filer (.vst3, .clap, .dll, .so) eller FL Studio Preset-filer (.fst) direkt:"))
                     .size(Theme::FONT_S)
-                    .color(Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
             );
         });
     });
@@ -767,7 +767,7 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
 
                 if ui.add(
                     egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Importera Fil Nu")).strong().color(Color32::BLACK))
-                        .fill(Theme::GREEN)
+                        .fill(crate::ui::theme::palette().green())
                         .min_size(Vec2::new(140.0, 26.0)),
                 ).clicked() {
                     if !manager.manual_import_file_input.trim().is_empty() {
@@ -794,11 +794,11 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
     ui.add_space(10.0);
 
     // FL Studio .FST Presets Library
-    ui.label(egui::RichText::new(crate::i18n::t("📄 IMPORTERADE FL STUDIO PRESETS (.FST)")).strong().size(Theme::FONT_M).color(Theme::ORANGE));
+    ui.label(egui::RichText::new(crate::i18n::t("📄 IMPORTERADE FL STUDIO PRESETS (.FST)")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().orange()));
     ui.label(
         egui::RichText::new(crate::i18n::t("Katalogiserade .fst-filer (endast metadata – FL Studios stängda .fst-format kan inte avkodas, så preset-datan visas men kan inte tillämpas):"))
             .size(Theme::FONT_S)
-            .color(Theme::TEXT_MUTED),
+            .color(crate::ui::theme::palette().text_muted()),
     );
 
     ui.add_space(4.0);
@@ -810,18 +810,18 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
                     ui.label(egui::RichText::new(crate::i18n::t("📄")).size(Theme::FONT_L));
 
                     ui.vertical(|ui| {
-                        ui.label(egui::RichText::new(&preset.preset_name).strong().size(Theme::FONT_S).color(Theme::TEXT));
+                        ui.label(egui::RichText::new(&preset.preset_name).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                         ui.label(
                             egui::RichText::new(crate::tstatus!("Mål: {}  •  Typ: {}  •  {}", preset.target_plugin, preset.preset_type, preset.file_path))
                                 .size(Theme::FONT_XS)
-                                .color(Theme::TEXT_MUTED),
+                                .color(crate::ui::theme::palette().text_muted()),
                         );
                     });
 
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         ui.add_enabled(false, egui::Button::new(crate::i18n::t("⚡ Tillämpa Preset")))
                             .on_disabled_hover_text(crate::i18n::t("Kan inte tillämpas: .fst-presetdata kan inte avkodas. Plugins (CLAP/VST2/VST3) kan däremot laddas i plugin-panelen."));
-                        ui.label(egui::RichText::new(format!("{} KB", preset.filesize_bytes / 1024)).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(format!("{} KB", preset.filesize_bytes / 1024)).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                     });
                 });
             });
@@ -834,11 +834,11 @@ fn render_import_plugin_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg
 // TAB 3: FL STUDIO & YABRIDGE SETUP ASSISTANT
 // ============================================================================
 fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, status_msg: &mut String) {
-    ui.label(egui::RichText::new(crate::i18n::t("🍷 FL STUDIO & WINDOWS VST BRYGG-ASSISTENT")).strong().size(Theme::FONT_L).color(Theme::PURPLE));
+    ui.label(egui::RichText::new(crate::i18n::t("🍷 FL STUDIO & WINDOWS VST BRYGG-ASSISTENT")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().purple()));
     ui.label(
         egui::RichText::new(crate::i18n::t("Hur du kör Image-Line plugins (Sytrus, Harmor, Gross Beat, FL Studio VSTi) och Windows VSTs i Sonix på Linux"))
             .size(Theme::FONT_S)
-            .color(Theme::TEXT_MUTED),
+            .color(crate::ui::theme::palette().text_muted()),
     );
 
     ui.add_space(8.0);
@@ -846,13 +846,13 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
     egui::ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
         // Step 1: Image-Line FL Studio Plugins
         ui.group(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("1. Image-Line & FL Studio Inbyggda Plugins")).strong().size(Theme::FONT_M).color(Theme::ORANGE));
+            ui.label(egui::RichText::new(crate::i18n::t("1. Image-Line & FL Studio Inbyggda Plugins")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().orange()));
             ui.label(
                 egui::RichText::new(
                     crate::i18n::t("Image-Line har officiella VSTi/VST-versioner av Sytrus, Harmor, Gross Beat, Maximus, Vocodex och Edison.\n\
                      Dessa installeras i Windows/Wine-katalogen:\n\
                      ~/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST/")
-                ).size(Theme::FONT_S).color(Theme::TEXT)
+                ).size(Theme::FONT_S).color(crate::ui::theme::palette().text())
             );
         });
 
@@ -860,11 +860,11 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
 
         // Step 2: FL Studio as VSTi
         ui.group(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("2. Köra hela FL Studio som ett instrument inuti Sonix (FL Studio VSTi)")).strong().size(Theme::FONT_M).color(Theme::CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("2. Köra hela FL Studio som ett instrument inuti Sonix (FL Studio VSTi)")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().cyan()));
             ui.label(
                 egui::RichText::new(
                     crate::i18n::t("Vägen dit går via FL Studio VSTi (.dll) körd genom Wine + yabridge. Sonix kan ladda och köra VST2/VST3/CLAP-bryggor (med PDC, state och GUI-fönster). Det som ännu inte verifierats här är en riktig yabridge-brygga med Wine + display.")
-                ).size(Theme::FONT_S).color(Theme::TEXT)
+                ).size(Theme::FONT_S).color(crate::ui::theme::palette().text())
             );
         });
 
@@ -872,22 +872,22 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
 
         // Step 3: Yabridge CLI Sync
         ui.group(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("3. Synkronisera med Yabridge (Zero-Latency IPC)")).strong().size(Theme::FONT_M).color(Theme::GREEN));
+            ui.label(egui::RichText::new(crate::i18n::t("3. Synkronisera med Yabridge (Zero-Latency IPC)")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().green()));
             ui.label(
                 egui::RichText::new(
                     crate::i18n::t("För att generera Linux-native VST3/CLAP-broar för alla Windows-plugins, kör i din terminal:\n\
                      yabridgectl add \"$HOME/.wine/drive_c/Program Files/Common Files/VST3\"\n\
                      yabridgectl add \"$HOME/.wine/drive_c/Program Files/Image-Line/FL Studio/Plugins/VST\"\n\
                      yabridgectl sync")
-                ).size(Theme::FONT_S).color(Theme::TEXT)
+                ).size(Theme::FONT_S).color(crate::ui::theme::palette().text())
             );
 
             ui.add_space(4.0);
             ui.horizontal(|ui| {
                 if manager.yabridge_installed {
-                    ui.label(egui::RichText::new(crate::i18n::t("🟢 yabridgectl hittad i PATH")).size(Theme::FONT_S).color(Theme::GREEN));
+                    ui.label(egui::RichText::new(crate::i18n::t("🟢 yabridgectl hittad i PATH")).size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
                 } else {
-                    ui.label(egui::RichText::new(crate::i18n::t("⚪ yabridgectl hittades inte – installera yabridge för Windows-plugins")).size(Theme::FONT_S).color(Theme::YELLOW));
+                    ui.label(egui::RichText::new(crate::i18n::t("⚪ yabridgectl hittades inte – installera yabridge för Windows-plugins")).size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
                 }
                 if ui.button(crate::i18n::t("⚡ Kör yabridgectl sync nu")).clicked() {
                     match crate::audio::plugin_host::run_yabridge_sync() {
@@ -907,11 +907,11 @@ fn render_fl_yabridge_assistant_tab(ui: &mut Ui, manager: &mut PluginManager, st
 
         // Step 4: Process-Isolering (Crash Sandboxing)
         ui.group(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("4. Process-Isolering & Kraschskydd")).strong().size(Theme::FONT_M).color(Theme::YELLOW));
+            ui.label(egui::RichText::new(crate::i18n::t("4. Process-Isolering & Kraschskydd")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().yellow()));
             ui.label(
                 egui::RichText::new(
                     crate::i18n::t("Kraschskydd: plugins kan köras i en separat sandbox-process med minnesdelad ljudtransport. En kraschande plugin startas automatiskt om (max 3 gånger) utan att Sonix stängs – använd \"🧪 Sandbox-inspektera\" och \"🧪 Ladda in i sandbox\" i plugin-panelen.")
-                ).size(Theme::FONT_S).color(Theme::TEXT_MUTED)
+                ).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted())
             );
         });
     });
@@ -965,42 +965,42 @@ fn render_inspection_panel(
         };
 
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🔬 Inspekterad plugin")).strong().size(Theme::FONT_M).color(Theme::CYAN));
-            ui.label(egui::RichText::new(&snapshot.backend).size(Theme::FONT_S).color(Theme::GREEN));
+            ui.label(egui::RichText::new(crate::i18n::t("🔬 Inspekterad plugin")).strong().size(Theme::FONT_M).color(crate::ui::theme::palette().cyan()));
+            ui.label(egui::RichText::new(&snapshot.backend).size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if ui.button(crate::i18n::t("✕ Stäng")).clicked() {
                     close = true;
                 }
-                ui.label(egui::RichText::new(&snapshot.path).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(&snapshot.path).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
             });
         });
 
         if let Some(err) = &snapshot.error {
-            ui.label(egui::RichText::new(format!("⚠ {}", err)).size(Theme::FONT_S).color(Theme::ORANGE));
+            ui.label(egui::RichText::new(format!("⚠ {}", err)).size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
             return;
         }
 
         if let Some(info) = &snapshot.info {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(&info.name).strong().size(Theme::FONT_S).color(Theme::TEXT));
+                ui.label(egui::RichText::new(&info.name).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                 if !info.version.is_empty() {
-                    ui.label(egui::RichText::new(&info.version).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(&info.version).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                 }
                 if !info.vendor.is_empty() {
-                    ui.label(egui::RichText::new(format!("• {}", info.vendor)).size(Theme::FONT_S).color(Theme::ORANGE));
+                    ui.label(egui::RichText::new(format!("• {}", info.vendor)).size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
                 }
             });
             if !info.id.is_empty() {
-                ui.label(egui::RichText::new(format!("id: {}", info.id)).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(format!("id: {}", info.id)).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
             }
             if !info.description.is_empty() {
-                ui.label(egui::RichText::new(&info.description).size(Theme::FONT_S).color(Theme::TEXT));
+                ui.label(egui::RichText::new(&info.description).size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
             }
             if !info.features.is_empty() {
                 ui.label(
                     egui::RichText::new(crate::tstatus!("Egenskaper: {}", info.features.join(", ")))
                         .size(Theme::FONT_XS)
-                        .color(Theme::TEXT_MUTED),
+                        .color(crate::ui::theme::palette().text_muted()),
                 );
             }
         }
@@ -1012,7 +1012,7 @@ fn render_inspection_panel(
                 egui::RichText::new(crate::i18n::t("🖼 Plugin-GUI:"))
                     .strong()
                     .size(Theme::FONT_S)
-                    .color(Theme::CYAN),
+                    .color(crate::ui::theme::palette().cyan()),
             );
             match &snapshot.gui {
                 Some(gui) => {
@@ -1030,14 +1030,14 @@ fn render_inspection_panel(
                             resize
                         ))
                         .size(Theme::FONT_S)
-                        .color(Theme::TEXT),
+                        .color(crate::ui::theme::palette().text()),
                     );
                 }
                 None => {
                     ui.label(
                         egui::RichText::new(crate::i18n::t("stöds inte (ingen clap.gui)"))
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_MUTED),
+                            .color(crate::ui::theme::palette().text_muted()),
                     );
                 }
             }
@@ -1050,7 +1050,7 @@ fn render_inspection_panel(
                 egui::RichText::new(crate::i18n::t("🎛 Ladda in i stämspår:"))
                     .strong()
                     .size(Theme::FONT_S)
-                    .color(Theme::YELLOW),
+                    .color(crate::ui::theme::palette().yellow()),
             );
             if stem_track_count == 0 {
                 ui.label(
@@ -1058,7 +1058,7 @@ fn render_inspection_panel(
                         "Inga stämspår – separera eller importera ett spår först.",
                     ))
                     .size(Theme::FONT_S)
-                    .color(Theme::TEXT_MUTED),
+                    .color(crate::ui::theme::palette().text_muted()),
                 );
             } else {
                 let max_track = stem_track_count - 1;
@@ -1071,7 +1071,7 @@ fn render_inspection_panel(
                 ui.label(
                     egui::RichText::new(crate::tstatus!("spår {}", target + 1))
                         .size(Theme::FONT_S)
-                        .color(Theme::TEXT_MUTED),
+                        .color(crate::ui::theme::palette().text_muted()),
                 );
                 if ui
                     .button(crate::i18n::t("▶ Ladda in"))
@@ -1101,7 +1101,7 @@ fn render_inspection_panel(
             ui.label(
                 egui::RichText::new(crate::i18n::t("🎚 Native preset (sökväg):"))
                     .size(Theme::FONT_S)
-                    .color(Theme::YELLOW),
+                    .color(crate::ui::theme::palette().yellow()),
             );
             ui.add(
                 egui::TextEdit::singleline(&mut manager.plugin_preset_location)
@@ -1128,7 +1128,7 @@ fn render_inspection_panel(
                 "Laddar en ny instans av pluginen med preseten applicerad via clap.preset-load/2.",
             ))
             .size(Theme::FONT_XS)
-            .color(Theme::TEXT_MUTED),
+            .color(crate::ui::theme::palette().text_muted()),
         );
 
         ui.add_space(4.0);
@@ -1139,20 +1139,20 @@ fn render_inspection_panel(
             ))
             .strong()
             .size(Theme::FONT_S)
-            .color(Theme::YELLOW),
+            .color(crate::ui::theme::palette().yellow()),
         );
 
         if snapshot.parameters.is_empty() {
-            ui.label(egui::RichText::new(crate::i18n::t("Inga parametrar rapporterade.")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Inga parametrar rapporterade.")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
             return;
         }
 
         egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
             for p in &snapshot.parameters {
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(&p.name).strong().size(Theme::FONT_S).color(Theme::TEXT));
+                    ui.label(egui::RichText::new(&p.name).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
                     if !p.module.is_empty() {
-                        ui.label(egui::RichText::new(format!("[{}]", p.module)).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(format!("[{}]", p.module)).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                     }
                     ui.label(
                         egui::RichText::new(format!(
@@ -1162,14 +1162,14 @@ fn render_inspection_panel(
                             p.default_value
                         ))
                         .size(Theme::FONT_XS)
-                        .color(Theme::TEXT_MUTED),
+                        .color(crate::ui::theme::palette().text_muted()),
                     );
                     let flags = param_flags_label(p);
                     if !flags.is_empty() {
-                        ui.label(egui::RichText::new(flags).size(Theme::FONT_XS).color(Theme::CYAN));
+                        ui.label(egui::RichText::new(flags).size(Theme::FONT_XS).color(crate::ui::theme::palette().cyan()));
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        ui.label(egui::RichText::new(format!("#{}", p.id)).size(Theme::FONT_XS).color(Theme::TEXT_MUTED));
+                        ui.label(egui::RichText::new(format!("#{}", p.id)).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
                     });
                 });
             }

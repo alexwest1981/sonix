@@ -14,9 +14,9 @@ pub fn render_ai_assistant_view(
     }
     ui.group(|ui| {
         ui.horizontal(|ui| {
-            ui.label(egui::RichText::new(crate::i18n::t("🤖 AI MUSIC PROMPT ENGINE & ASSISTANT (Suno & Local AI)")).strong().size(Theme::FONT_L).color(Theme::CYAN));
+            ui.label(egui::RichText::new(crate::i18n::t("🤖 AI MUSIC PROMPT ENGINE & ASSISTANT (Suno & Local AI)")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().cyan()));
             ui.separator();
-            ui.label(egui::RichText::new(crate::i18n::t("Generera MIDI-slingor, basgångar, ackordföljder och trumspår direkt via naturligt språk")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+            ui.label(egui::RichText::new(crate::i18n::t("Generera MIDI-slingor, basgångar, ackordföljder och trumspår direkt via naturligt språk")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
         });
 
         ui.add_space(8.0);
@@ -24,18 +24,18 @@ pub fn render_ai_assistant_view(
         // Prompt Input & Generation Box
         ui.group(|ui| {
             ui.vertical(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("✍ SKRIV MUSIKPROMPT (SVENSKA ELLER ENGELSKA):")).strong().size(Theme::FONT_S).color(Theme::ORANGE));
+                ui.label(egui::RichText::new(crate::i18n::t("✍ SKRIV MUSIKPROMPT (SVENSKA ELLER ENGELSKA):")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
                 ui.add_space(4.0);
 
                 ui.horizontal(|ui| {
                     ui.text_edit_singleline(&mut ai_assistant.prompt_input);
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✨ Generera AI-Musik")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::YELLOW)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✨ Generera AI-Musik")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().yellow())).clicked() {
                         ai_assistant.generate();
                         *status_msg = ai_assistant.last_status.clone();
                     }
                     if ai_assistant.is_generating {
                         ui.spinner();
-                        ui.label(egui::RichText::new(crate::i18n::t("⏳ Genererar via AI-API...")).size(Theme::FONT_S).color(Theme::CYAN));
+                        ui.label(egui::RichText::new(crate::i18n::t("⏳ Genererar via AI-API...")).size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                     }
                 });
 
@@ -43,7 +43,7 @@ pub fn render_ai_assistant_view(
 
                 // Quick Prompt Inspiration Chips
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(egui::RichText::new(crate::i18n::t("Inspiration:")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                    ui.label(egui::RichText::new(crate::i18n::t("Inspiration:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                     let prompts = [
                         crate::i18n::t("80s Synthwave bassline i A-moll"),
                         crate::i18n::t("Neo-Soul varma 9th ackord"),
@@ -89,7 +89,7 @@ pub fn render_ai_assistant_view(
                     ui.label(
                         egui::RichText::new(format!("🎯 {}", bits.join(" · ")))
                             .size(Theme::FONT_S)
-                            .color(Theme::TEXT_MUTED),
+                            .color(crate::ui::theme::palette().text_muted()),
                     );
                 }
             }
@@ -149,7 +149,7 @@ pub fn render_ai_assistant_view(
                     ui.add(egui::TextEdit::singleline(&mut ai_assistant.config.api_key).password(true).desired_width(320.0));
                 });
                 ui.separator();
-                ui.label(egui::RichText::new(crate::i18n::t("🎧 AI-ljudgenerering (sparas i samma fil)")).strong().size(Theme::FONT_S).color(Theme::CYAN));
+                ui.label(egui::RichText::new(crate::i18n::t("🎧 AI-ljudgenerering (sparas i samma fil)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().cyan()));
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Ljud-provider:"));
                     egui::ComboBox::from_id_salt("ai_audio_provider_combo")
@@ -184,7 +184,7 @@ pub fn render_ai_assistant_view(
                         crate::i18n::t("Offline: använder lokal DSP")
                     })
                     .size(Theme::FONT_S)
-                    .color(if audio_ready { Theme::GREEN } else { Theme::TEXT_MUTED }),
+                    .color(if audio_ready { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().text_muted() }),
                 );
                 ui.horizontal(|ui| {
                     if ui.button(crate::i18n::t("💾 Spara AI-konfiguration")).clicked() {
@@ -201,11 +201,11 @@ pub fn render_ai_assistant_view(
                             crate::i18n::t("Offline: använder lokal regelbaserad motor")
                         })
                         .size(Theme::FONT_S)
-                        .color(if ready { Theme::GREEN } else { Theme::TEXT_MUTED }),
+                        .color(if ready { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().text_muted() }),
                     );
                 });
                 if let Some(err) = &ai_assistant.last_error {
-                    ui.label(egui::RichText::new(format!("⚠ {err}")).size(Theme::FONT_S).color(Theme::RED));
+                    ui.label(egui::RichText::new(format!("⚠ {err}")).size(Theme::FONT_S).color(crate::ui::theme::palette().red()));
                 }
             });
 
@@ -214,9 +214,9 @@ pub fn render_ai_assistant_view(
         // Generated AI Clips List
         ui.group(|ui| {
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new(crate::i18n::t("🎵 GENERERADE AI-KLIPP & PATTERNS")).strong().size(Theme::FONT_S).color(Theme::GREEN));
+                ui.label(egui::RichText::new(crate::i18n::t("🎵 GENERERADE AI-KLIPP & PATTERNS")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
                 ui.separator();
-                ui.label(egui::RichText::new(crate::i18n::t("Applicera direkt på synt, bas eller trumspår med ett klick")).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                ui.label(egui::RichText::new(crate::i18n::t("Applicera direkt på synt, bas eller trumspår med ett klick")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
             });
 
             ui.add_space(4.0);
@@ -225,13 +225,13 @@ pub fn render_ai_assistant_view(
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
-                            ui.label(egui::RichText::new(&clip.title).strong().size(Theme::FONT_S).color(Theme::TEXT));
-                            ui.label(egui::RichText::new(format!("{} {}  •  {} {}  •  BPM: {:.0}", crate::i18n::t("Genre:"), clip.genre, crate::i18n::t("Tonart:"), clip.key_signature, clip.bpm)).size(Theme::FONT_S).color(Theme::TEXT_MUTED));
+                            ui.label(egui::RichText::new(&clip.title).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text()));
+                            ui.label(egui::RichText::new(format!("{} {}  •  {} {}  •  BPM: {:.0}", crate::i18n::t("Genre:"), clip.genre, crate::i18n::t("Tonart:"), clip.key_signature, clip.bpm)).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                         });
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             // Apply to Bass (Channel 7)
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera på 🎸 Sub Bass")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::ORANGE)).clicked()
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera på 🎸 Sub Bass")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().orange())).clicked()
                                 && channels.len() > 7 {
                                     channels[7].steps[..16].copy_from_slice(&clip.channel_steps);
                                     channels[7].notes[..16].copy_from_slice(&clip.notes);
@@ -239,7 +239,7 @@ pub fn render_ai_assistant_view(
                                 }
 
                             // Apply to Lead (Channel 6)
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera på 🎹 303 Lead")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(Theme::CYAN)).clicked()
+                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera på 🎹 303 Lead")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().cyan())).clicked()
                                 && channels.len() > 6 {
                                     channels[6].steps[..16].copy_from_slice(&clip.channel_steps);
                                     channels[6].notes[..16].copy_from_slice(&clip.notes);
@@ -248,7 +248,7 @@ pub fn render_ai_assistant_view(
 
                             // Step count badge
                             let active_steps = clip.channel_steps.iter().filter(|&&s| s).count();
-                            ui.label(egui::RichText::new(format!("{} steg", active_steps)).size(Theme::FONT_S).color(Theme::YELLOW));
+                            ui.label(egui::RichText::new(format!("{} steg", active_steps)).size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
                         });
                     });
                 });
