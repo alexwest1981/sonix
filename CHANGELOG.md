@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   different x in every row** — the rack looked out of sync. The name field is now a fixed
   200 px cell with `TextWrapMode::Truncate`; long names show "…" and every column lines up.
 
+### Added — envelope curve per operator (Sytrus)
+
+- `env_curve: [f32; 6]` (−2…2, 0 = linear): same ADSR, different shape — Sytrus' envelope
+  tension. Applied to the value, so the times are untouched.
+  Prov `an_envelope_curve_changes_the_attack_shape`: at +2 the first 40 ms have >1.5× the RMS,
+  at −2 less than 0.7×.
+- **CRV** slider with KEY and F-ENV in the 6-op panel.
+
 ### Added — key tracking per operator (Sytrus)
 
 - `key_track: [f32; 6]` (0…1) moves the operator's filter with the played pitch, so a high note

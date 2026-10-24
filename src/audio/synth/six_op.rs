@@ -67,6 +67,10 @@ pub struct SixOpParams {
     /// oktav, så höga toner behåller samma klangfärg som låga. 0 = filtret står still.
     #[serde(default = "no_pitch")]
     pub key_track: [f32; SIX_OP_COUNT],
+    /// **Envelopkurva per operator** (−2..2): 0 = rak, positiv = snabb start och lång svans,
+    /// negativ = mjuk start. Samma ADSR, olika form — Sytrus har tension per envelop.
+    #[serde(default = "no_pitch")]
+    pub env_curve: [f32; SIX_OP_COUNT],
     /// **Andra LFO:n** — Sytrus har flera. Egen fas, eget mål, så tonhöjd och cutoff kan röra sig
     /// olika fort. Djup 0 = av.
     #[serde(default)]
@@ -149,6 +153,7 @@ impl Default for SixOpParams {
             pitch_amount: no_pitch(),
             filter_env: no_pitch(),
             key_track: no_pitch(),
+            env_curve: no_pitch(),
             lfo2_rate: 0.0,
             lfo2_depth: 0.0,
             lfo2_target: 0,
@@ -262,7 +267,13 @@ impl SixOpVoice {
 
         let mut env_now = [0.0f32; SIX_OP_COUNT];
         for (target, env) in self.envs.iter_mut().enumerate() {
-            env_now[target] = env.next_sample(&params.envs[target]);
+            let value = env.next_sample(&params.envs[target]);
+            let curve = params.env_curve[target];
+            env_now[target] = if curve == 0.0 {
+                value
+            } else {
+                value.clamp(0.0, 1.0).powf((2.0f32).powf(-curve))
+            };
         }
 
         let voices = (params.unison.max(1) as usize).min(MAX_UNISON);
@@ -503,6 +514,28 @@ mod tests {
             tracked_gap < fixed_gap * 0.5,
             "klaviaturskalan ska minska skillnaden: {tracked_gap:.4} mot {fixed_gap:.4}"
         );
+    }
+
+    /// **Envelopkurvan ändrar formen, inte tiden.** Samma attack: en positiv kurva är uppe fort,
+    /// en negativ smyger i gång. Mätt som RMS i de första 40 ms.
+    #[test]
+    fn an_envelope_curve_changes_the_attack_shape() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams { attack: 0.2, decay: 0.0, sustain: 1.0, release: 0.2 };
+        let early = |p: &SixOpParams| {
+            let out = render(p, 220.0, 4_800);
+            let n = 1_920; // 40 ms vid 48 kHz
+            (out[..n].iter().map(|v| v * v).sum::<f32>() / n as f32).sqrt()
+        };
+
+        let straight = early(&params);
+        params.env_curve[0] = 2.0;
+        let fast = early(&params);
+        params.env_curve[0] = -2.0;
+        let slow = early(&params);
+
+        assert!(fast > straight * 1.5, "snabb kurva ska ge mer tidigt: {fast:.4} mot {straight:.4}");
+        assert!(slow < straight * 0.7, "mjuk kurva ska ge mindre tidigt: {slow:.4} mot {straight:.4}");
     }
 
     /// **Utan modulering är 6-op en sinus.** Matrisen noll och bara operator 1 hörd ger

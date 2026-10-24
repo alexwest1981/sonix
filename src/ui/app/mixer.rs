@@ -3497,6 +3497,19 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                                     ))
                                     .changed();
                             });
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(crate::i18n::t("CRV"))
+                                        .size(Theme::FONT_XS)
+                                        .color(crate::ui::theme::palette().text_muted()),
+                                );
+                                six_changed |= ui
+                                    .add(egui::Slider::new(&mut self.six_op.env_curve[target], -2.0..=2.0))
+                                    .on_hover_text(crate::i18n::t(
+                                        "Envelopens form — plus = snabb start, minus = mjuk",
+                                    ))
+                                    .changed();
+                            });
                             let filter = &mut self.six_op.filters[target];
                             ui.horizontal(|ui| {
                                 six_changed |= ui
