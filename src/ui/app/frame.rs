@@ -1091,6 +1091,22 @@ impl SonixApp {
                             ui.close_menu();
                         }
                         ui.separator();
+                        let current_mode = crate::ui::theme::palette().mode;
+                        ui.menu_button(format!("🎨 {} ({})", self.tr("Tema"), self.tr(match current_mode {
+                            crate::ui::theme::ThemeMode::Light => "Ljust",
+                            crate::ui::theme::ThemeMode::Dark => "Mörkt",
+                        })), |ui| {
+                            for (mode, label) in [
+                                (crate::ui::theme::ThemeMode::Dark, "Mörkt"),
+                                (crate::ui::theme::ThemeMode::Light, "Ljust"),
+                            ] {
+                                if ui.selectable_label(current_mode == mode, self.tr(label)).clicked() {
+                                    crate::ui::theme::set_mode(mode);
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                        ui.separator();
                         ui.menu_button(
                             format!("🌐 {} ({})", self.tr("Språk"), self.language.native_name()),
                             |ui| {
@@ -1311,24 +1327,24 @@ impl SonixApp {
 
                     // Export WAV Button
                     let export_label = if self.pattern_mode { "💾 EXPORT PAT" } else { "💾 EXPORT SONG" };
-                    if ui.add(egui::Button::new(egui::RichText::new(export_label).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().text_muted())).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(export_label).strong().size(Theme::FONT_S).color(crate::ui::theme::readable_on(crate::ui::theme::palette().text_muted()))).fill(crate::ui::theme::palette().text_muted())).clicked() {
                         self.export_wav();
                     }
 
                     // Batch Export & Render Queue Button
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📤 BATCH EXPORT")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft())).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📤 BATCH EXPORT")).strong().size(Theme::FONT_S).color(crate::ui::theme::readable_on(crate::ui::theme::palette().border_soft()))).fill(crate::ui::theme::palette().border_soft())).clicked() {
                         self.open_export_modal();
                     }
 
                     // Stems Importer Button
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📦 STEMS")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().purple())).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📦 STEMS")).strong().size(Theme::FONT_S).color(crate::ui::theme::readable_on(crate::ui::theme::palette().purple()))).fill(crate::ui::theme::palette().purple())).clicked() {
                         self.scan_for_suno_stems();
                         self.show_suno_import_modal = true;
                     }
 
                     // Hardware Controller MCU / OSC Button
                     let mcu_col = if self.mcu_connected { crate::ui::theme::palette().cable() } else { crate::ui::theme::palette().panel() };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎛 MCU")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(mcu_col)).clicked() {
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎛 MCU")).strong().size(Theme::FONT_S).color(crate::ui::theme::readable_on(mcu_col))).fill(mcu_col)).clicked() {
                         self.show_controller_modal = true;
                     }
 

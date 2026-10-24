@@ -1613,12 +1613,12 @@ impl SonixApp {
                                         };
                                         let title_text = format!("{}{rev_tag}{loop_tag} [⏱ {} | 📏 {} | {:+.1}dB]", region.name, r_start_str, r_len_str, gain_db);
 
-                                        let header_text_col = if is_mic_track {
-                                            crate::ui::theme::palette().bg()
-                                        } else if region.muted {
+                                        // Etiketten byter sida efter klippets egen färg: i ljust läge
+                                        // blev mörk text på ett mättat klipp oläslig.
+                                        let header_text_col = if region.muted {
                                             crate::ui::theme::palette().text_muted()
                                         } else {
-                                            crate::ui::theme::palette().text()
+                                            crate::ui::theme::readable_on(col)
                                         };
 
                                         ui.painter().text(

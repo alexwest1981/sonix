@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — light and dark mode
+
+- `Palette` carries a `mode` (`dark`/`light`). `theme.json` may say `{"mode": "light"}` and any
+  colours it names override the light defaults; **Inställningar → 🎨 Tema** switches, writing only
+  the `mode` key so the user's own colours survive the switch.
+- **Contrast is measured, not assumed:** `light_mode_keeps_text_readable` computes WCAG ratios for
+  body text (≥ 4.5:1) and muted text (≥ 3:1) against panel, background and panel_alt in both modes.
+- **`readable_on(colour)`** picks black or white for clip labels and the export buttons, so a
+  saturated clip keeps a readable label in either mode.
+
 ### Changed — the mic track is an ordinary track now
 
 - **Same height as the rest.** The mic track was drawn at double height with a white card and a

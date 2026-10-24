@@ -86,10 +86,11 @@ på en yta. Konkret, i den ordning det är värt att ta:
 Utgångsläget finns redan: paletten är 29 semantiska nycklar i `~/.config/sonix/theme.json`,
 `palette()` är `Copy` och `reload_if_changed()` läser om filen mitt i körningen (0.9.79).
 
-1. **Ljust och mörkt läge.** `Palette` får en `mode` och två inbyggda standardpaletter (mörk som i
+1. **Ljust och mörkt läge.** *✅ 0.9.89:* `Palette` har `mode` och två inbyggda standardpaletter (mörk som i
    dag, ljus motsvarighet). Växlaren ligger i **Inställningar → Tema**, och `theme.json` kan ange
-   `"mode": "light"` plus överstyrningar. Prov: växling byter alla 29 nycklar och ingen text blir
-   oläsbar (kontrast ≥ 4,5:1 för text mot panel — mätt, inte tyckt).
+   `"mode": "light"` plus överstyrningar; växlaren sitter i Inställningar → 🎨 Tema. **Mätt:**
+   kontrastprovet kräver ≥ 4,5:1 för text och ≥ 3:1 för dämpad text mot panel, bakgrund och
+   panel_alt i båda lägena.
 2. **Temamotor.** `~/.config/sonix/themes/*.json` läses som en lista, med namn, författare och
    förhandsvisning (de 8 viktigaste färgerna). Välj tema i menyn, radera, och **öppna mappen**.
 3. **Hämta fler teman.** Ett register på en URL (JSON med namn + fil-URL + sha256). Nedladdning

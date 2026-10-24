@@ -31,12 +31,24 @@ fn rgba([r, g, b, a]: [u8; 4]) -> Color32 {
 /// Fälten är `[r, g, b, a]` och inte `Color32`, eftersom egui inte kan spara sin färgtyp som
 /// JSON. En temafil skriver bara de nycklar den vill ändra:
 ///
+/// Ljust eller mörkt. Sparas i temafilen som `"mode": "light"`, så en fil bara behöver
+/// ange de färger som avviker från standardpaletten för sitt läge.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ThemeMode {
+    #[default]
+    Dark,
+    Light,
+}
+
 /// ```json
 /// { "orange": [255, 90, 0, 255], "bg": [10, 10, 12, 255] }
 /// ```
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct Palette {
+    /// `MODE` — `"dark"` eller `"light"`; avgör vilken standardpalett filen bygger på.
+    pub mode: ThemeMode,
     /// `BG_DEEP`
     pub bg_deep: [u8; 4],
     /// `BG`
@@ -218,6 +230,7 @@ impl Palette {
 impl Default for Palette {
     fn default() -> Self {
         Self {
+            mode: ThemeMode::Dark,
             bg_deep: [12, 15, 20, 255],
             bg: [18, 20, 24, 255],
             header: [26, 30, 36, 255],
@@ -251,6 +264,49 @@ impl Default for Palette {
     }
 }
 
+impl Palette {
+    /// **Ljust läge.** Samma 29 nycklar, ljusa ytor och mörk text; accenter mörknade så att
+    /// vit text på dem och mörk text på vitt klarar 4,5:1 (`light_mode_keeps_text_readable`).
+    pub fn light() -> Self {
+        Self {
+            mode: ThemeMode::Light,
+            bg_deep: [232, 236, 242, 255],
+            bg: [246, 248, 251, 255],
+            header: [238, 241, 246, 255],
+            panel: [255, 255, 255, 255],
+            panel_alt: [242, 244, 248, 255],
+            grid: [226, 230, 237, 255],
+            border: [198, 204, 214, 255],
+            border_soft: [176, 184, 198, 255],
+            text: [28, 32, 40, 255],
+            text_muted: [92, 100, 114, 255],
+            orange: [205, 92, 0, 255],
+            green: [16, 124, 62, 255],
+            red: [186, 38, 30, 255],
+            cyan: [0, 116, 168, 255],
+            purple: [104, 44, 176, 255],
+            yellow: [146, 106, 0, 255],
+            track_cyan: [32, 108, 152, 255],
+            track_magenta: [134, 62, 158, 255],
+            track_orange: [178, 90, 24, 255],
+            track_green: [30, 122, 84, 255],
+            track_teal: [30, 116, 126, 255],
+            track_blue: [58, 96, 164, 255],
+            track_rose: [150, 62, 92, 255],
+            track_amber: [146, 112, 28, 255],
+            track_violet: [96, 78, 160, 255],
+            track_steel: [86, 96, 116, 255],
+            cable: [120, 100, 220, 255],
+            amber: [176, 112, 32, 255],
+            scrim: [0, 0, 0, 90],
+        }
+    }
+
+    pub fn is_light(&self) -> bool {
+        self.mode == ThemeMode::Light
+    }
+}
+
 /// Paletten som ritas. Läses **en gång** från `~/.config/sonix/theme.json`; saknas filen
 /// skrivs standardpaletten dit så att den går att redigera, och en trasig fil ger standard
 /// (en temafil får aldrig hindra appen från att starta).
@@ -280,10 +336,61 @@ fn load_palette() -> Palette {
         }
         return Palette::default();
     }
-    std::fs::read_to_string(&path)
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Palette::default();
+    };
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) else {
+        return Palette::default();
+    };
+    merge_onto_base(value)
+}
+
+/// Lägger filens nycklar ovanpå standardpaletten för sitt läge. Okända nycklar ignoreras, och en
+/// fil som bara säger `{"mode": "light"}` ger den ljusa paletten orörd.
+fn merge_onto_base(value: serde_json::Value) -> Palette {
+    let light = value.get("mode").and_then(|m| m.as_str()) == Some("light");
+    let base = if light { Palette::light() } else { Palette::default() };
+    let mut merged = serde_json::to_value(base).unwrap_or(serde_json::Value::Null);
+    if let (Some(target), Some(source)) = (merged.as_object_mut(), value.as_object()) {
+        for (key, val) in source {
+            if key != "mode" {
+                target.insert(key.clone(), val.clone());
+            }
+        }
+    }
+    serde_json::from_value(merged).unwrap_or(base)
+}
+
+/// Byter läge och skriver det i temafilen **utan att röra användarens egna färger**; sedan läses
+/// paletten om direkt, så växlingen syns i samma bildruta.
+pub fn set_mode(mode: ThemeMode) {
+    let path = theme_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let mut value = std::fs::read_to_string(&path)
         .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
+        .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok())
+        .unwrap_or_else(|| serde_json::to_value(Palette::default()).unwrap_or_default());
+    if let Some(obj) = value.as_object_mut() {
+        obj.insert(
+            "mode".to_string(),
+            serde_json::Value::String(
+                match mode {
+                    ThemeMode::Light => "light",
+                    ThemeMode::Dark => "dark",
+                }
+                .to_string(),
+            ),
+        );
+    }
+    if let Ok(text) = serde_json::to_string_pretty(&value) {
+        let _ = std::fs::write(&path, compact_arrays(&text));
+    }
+    if let Ok(mut p) = PALETTE.write() {
+        *p = Some(merge_onto_base(value));
+    }
+    PALETTE_MTIME.store(mtime_stamp(&path), std::sync::atomic::Ordering::Relaxed);
 }
 
 /// Läser om temafilen om den ändrats sedan förra anropet. Kostar en `metadata`-fråga per
@@ -349,6 +456,21 @@ pub fn apply_style(ctx: &eframe::egui::Context) {
 /// byter den samtidigt ser varandras mappar.
 #[cfg(test)]
 pub(crate) static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// Svart eller vitt — det som syns bäst på `bg`. Klipp och knappar behåller sin färg i båda
+/// lägena, så etiketten måste byta sida i stället för att följa paletten.
+pub fn readable_on(bg: eframe::egui::Color32) -> eframe::egui::Color32 {
+    let f = |v: u8| {
+        let v = v as f32 / 255.0;
+        if v <= 0.039_28 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+    };
+    let lum = 0.2126 * f(bg.r()) + 0.7152 * f(bg.g()) + 0.0722 * f(bg.b());
+    if lum > 0.45 {
+        eframe::egui::Color32::BLACK
+    } else {
+        eframe::egui::Color32::WHITE
+    }
+}
 
 pub fn palette() -> Palette {
     if let Ok(p) = PALETTE.read()
@@ -487,5 +609,48 @@ mod reload_tests {
             Some(v) => unsafe { std::env::set_var("SONIX_CONFIG_DIR", v) },
             None => unsafe { std::env::remove_var("SONIX_CONFIG_DIR") },
         }
+    }
+}
+
+#[cfg(test)]
+mod contrast_tests {
+    use super::*;
+
+    fn luminance(c: [u8; 4]) -> f32 {
+        let f = |v: u8| {
+            let v = v as f32 / 255.0;
+            if v <= 0.039_28 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        };
+        0.2126 * f(c[0]) + 0.7152 * f(c[1]) + 0.0722 * f(c[2])
+    }
+
+    fn ratio(a: [u8; 4], b: [u8; 4]) -> f32 {
+        let (x, y) = (luminance(a), luminance(b));
+        let (hi, lo) = if x > y { (x, y) } else { (y, x) };
+        (hi + 0.05) / (lo + 0.05)
+    }
+
+    /// **Texten ska gå att läsa i båda lägena** — 4,5:1 mot panel och bakgrund, mätt, inte tyckt.
+    #[test]
+    fn light_mode_keeps_text_readable() {
+        for palette in [Palette::default(), Palette::light()] {
+            for surface in [palette.panel, palette.bg, palette.panel_alt] {
+                let r = ratio(palette.text, surface);
+                assert!(r >= 4.5, "{:?}: text mot yta gav {r:.2}:1", palette.mode);
+                let muted = ratio(palette.text_muted, surface);
+                assert!(muted >= 3.0, "{:?}: dämpad text gav {muted:.2}:1", palette.mode);
+            }
+        }
+    }
+
+    /// En fil som bara säger `{"mode":"light"}` ger den ljusa paletten; en färg i filen vinner.
+    #[test]
+    fn a_file_can_switch_mode_and_override_one_colour() {
+        let light = merge_onto_base(serde_json::json!({"mode": "light"}));
+        assert_eq!(light.mode, ThemeMode::Light);
+        assert_eq!(light.panel, Palette::light().panel);
+        let custom = merge_onto_base(serde_json::json!({"mode": "light", "panel": [1, 2, 3, 255]}));
+        assert_eq!(custom.panel, [1, 2, 3, 255]);
+        assert_eq!(custom.text, Palette::light().text);
     }
 }
