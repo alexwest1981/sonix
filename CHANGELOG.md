@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Click a lane in the playlist to comp that bar.** The lane strips inside a pattern block are now
+  clickable (Select tool only — with Paint/Erase the click still belongs to the clip), and the
+  clicked lane becomes the comp for that bar. Hovering a strip lightens it, so the target is
+  visible before the click.
+
 - **Warp mode per clip.** The mode used to be global for the project; each audio clip now has
   its own (`AudioRegion.warp_mode`, right-click → 🎚 Warp-läge), and split halves inherit it.
   The mode is part of the stretch cache key — otherwise switching modes would keep playing the

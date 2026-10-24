@@ -1492,6 +1492,8 @@ impl SonixApp {
                         let mut mute_action: Option<usize> = None;
                         let mut select_action: Option<usize> = None;
                         let mut clip_action: Option<(usize, Option<usize>)> = None;
+                        // Klick i lane-vyn: (pattern, takt i patternet, lane).
+                        let mut comp_action: Option<(usize, usize, usize)> = None;
 
                         {
                             let (has_regions, regions_snapshot) = if t_idx < self.playlist_tracks.len() {
@@ -2157,8 +2159,24 @@ impl SonixApp {
                                                             Pos2::new(x0 + 1.0, y + 1.0),
                                                             Vec2::new(bar_w - 2.0, (band_h - 1.0).max(1.0)),
                                                         );
+                                                        // **Klick väljer lane för den takten.**
+                                                        // Bara med Välj-verktyget: med Rita/Radera
+                                                        // äger klicket blocket, och då ska en tejp
+                                                        // inte byta komp av misstag.
+                                                        let band_resp = ui.interact(
+                                                            band,
+                                                            ui.id().with(("comp_band", t_idx, bar_idx, b, lane)),
+                                                            Sense::click(),
+                                                        );
+                                                        if band_resp.clicked()
+                                                            && matches!(self.arranger_tool, ArrangerTool::Select)
+                                                        {
+                                                            comp_action = Some((pat_idx, b, lane));
+                                                        }
                                                         let tint = if lane == chosen {
                                                             Color32::from_rgba_unmultiplied(255, 255, 255, 170)
+                                                        } else if band_resp.hovered() {
+                                                            Color32::from_rgba_unmultiplied(255, 255, 255, 110)
                                                         } else {
                                                             Color32::from_rgba_unmultiplied(0, 0, 0, 70)
                                                         };
@@ -2409,6 +2427,17 @@ impl SonixApp {
                                 format!("🔴 SPELAR IN... [⏱ {}]", format_time_hundredths(secs_len(live_s_bar, live_e_bar - live_s_bar))),
                                 egui::FontId::proportional(Theme::FONT_XS),
                                 crate::ui::theme::palette().text(),
+                            );
+                        }
+
+                        if let Some((pat_idx, bar, lane)) = comp_action
+                            && let Some(pat) = self.patterns.get_mut(pat_idx)
+                        {
+                            pat.comp_from_bar(Some(bar), 0.0, lane);
+                            self.status_message = crate::tstatus!(
+                                "✂ Takt {} spelar lane {} (klick i spellistan)",
+                                bar + 1,
+                                lane + 1
                             );
                         }
 
