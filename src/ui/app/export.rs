@@ -225,7 +225,7 @@ pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u
         steps: p.channel_steps.clone(),
         notes: p.channel_notes.clone(),
         piano_roll: p.piano_roll_grid,
-        take: p.active_take().clone(),
+        take: p.comped_take(),
     }).collect();
 
     let tracks = self.playlist_tracks.iter().map(|t| {

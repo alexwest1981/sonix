@@ -290,6 +290,8 @@ pub struct SonixApp {
     pub partial_env: [f32; 3],
     pub partial_env_tilt: f32,
     pub partial_env_on: bool,
+    /// Steget som ✂-knappen i tagningfönstret kompar ifrån (0–15).
+    pub comp_step: f32,
     /// Spektralt filter över partialindex: center (partialnummer), bredd och mängd.
     pub formant: crate::audio::synth::SpectralFormant,
     /// Tidsaxeln: klangformen glider från formantens läge till `to` under `seconds`.
@@ -760,6 +762,7 @@ impl SonixApp {
             bends: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
+            comp: Vec::new(),
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::ui::app::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -773,6 +776,7 @@ impl SonixApp {
             bends: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
+            comp: Vec::new(),
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::ui::app::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -786,6 +790,7 @@ impl SonixApp {
             bends: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
+            comp: Vec::new(),
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::ui::app::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -799,6 +804,7 @@ impl SonixApp {
             bends: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
+            comp: Vec::new(),
             channel_steps: vec![[false; crate::ui::app::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::ui::app::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -953,6 +959,7 @@ impl SonixApp {
             partial_env: [0.002, 0.6, 0.0],
             partial_env_tilt: 1.0,
             partial_env_on: false,
+            comp_step: 0.0,
             formant: crate::audio::synth::SpectralFormant::default(),
             sweep: crate::audio::synth::SpectralSweep::default(),
             sub_level: 0.0,

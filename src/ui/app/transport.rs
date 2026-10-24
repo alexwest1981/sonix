@@ -568,8 +568,9 @@ fn trigger_step(&mut self, step: usize) {
                     .map(|d| d.subsec_nanos() as u64 | 1)
                     .unwrap_or(1),
             );
+            let take = pat.comped_take();
             crate::midi_take::plan_for_step_rolled(
-                pat.active_take(),
+                &take,
                 step,
                 self.step_samples(step),
                 &|key, slot| (48..72).contains(&key) && grid[(key - 48) as usize][slot],
@@ -694,8 +695,9 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                                 .map(|d| d.subsec_nanos() as u64 | 1)
                                 .unwrap_or(1),
                         );
+                        let take = pat.comped_take();
                         let take_plan = crate::midi_take::plan_for_step_rolled(
-                            pat.active_take(),
+                            &take,
                             step_in_bar,
                             self.step_samples(step_in_bar),
                             &|key, slot| {

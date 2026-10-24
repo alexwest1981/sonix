@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Take-lane comping.** `Pattern.comp` picks which lane plays from a given step until the
+  next comp, and `comped_take()` merges the notes; playback and export both use it. In the
+  takes window, set the step and click ✂ on a lane. Coverage is implicit, so a comp placed
+  inside another splits it without recomputing boundaries. Measured by
+  `comping_plays_each_lane_in_its_own_steps`. Comping is per bar, because takes are one bar
+  long.
 - **Time axis for the additive oscillator** — the spectral formant glides from its current
   partial to a target partial over a set time, per voice, so notes that start later sweep from
   the beginning. Measured: two curves starting on partial 1 give the same harmonic centroid at

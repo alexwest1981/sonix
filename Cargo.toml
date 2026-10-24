@@ -1,6 +1,6 @@
 [package]
 name = "sonix"
-version = "0.9.38"
+version = "0.9.39"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Native Linux DAW (Rust/egui) with timeline editing, synth, mixer, stem separation, plugin hosting and export."

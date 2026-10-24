@@ -259,6 +259,16 @@ pub struct BendPoint {
     pub semitones: f32,
 }
 
+/// **Ett komp** (Ableton): från `from_step` till nästa komp spelas lane `take`
+/// (0 = lane 1). Täckningen är implicit — listan sorteras och varje komp gäller fram till
+/// nästa komps början, så att sätta ett komp mitt i ett annat delar det utan att räkna om
+/// några gränser.
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CompSlice {
+    pub from_step: f32,
+    pub take: usize,
+}
+
 /// Tagningarna i ett pattern, som en lista: lane 1 först.
 impl Pattern {
     /// Tagningen som spelas och redigeras just nu.
@@ -284,6 +294,44 @@ impl Pattern {
             .chain(self.alt_takes.iter())
             .collect()
     }
+
+    /// Låter `take` spela från `from_step` till nästa komp. Ett komp på samma steg ersätts.
+    pub fn comp_from(&mut self, from_step: f32, take: usize) {
+        let from_step = from_step.clamp(0.0, 15.99);
+        let take = take.min(self.alt_takes.len());
+        self.comp
+            .retain(|slice| (slice.from_step - from_step).abs() > 0.001);
+        self.comp.push(CompSlice { from_step, take });
+        self.comp.sort_by(|a, b| a.from_step.total_cmp(&b.from_step));
+    }
+
+    /// Tagningen som spelas: den aktiva lane:n, eller — om patternet är kompat — noterna ur
+    /// varje lane för de steg där den lane:n är vald. Ett komp som pekar utanför lanes
+    /// faller tillbaka på den aktiva lane:n.
+    pub fn comped_take(&self) -> crate::midi_take::Take {
+        if self.comp.is_empty() {
+            return self.active_take().clone();
+        }
+        let lanes = self.take_lanes();
+        let last_lane = lanes.len().saturating_sub(1);
+        let mut notes = Vec::new();
+        for (lane, take) in lanes.iter().enumerate() {
+            for note in &take.notes {
+                let chosen = self
+                    .comp
+                    .iter()
+                    .rev()
+                    .find(|slice| slice.from_step <= note.pos)
+                    .map(|slice| slice.take.min(last_lane))
+                    .unwrap_or(self.active_take.min(last_lane));
+                if chosen == lane {
+                    notes.push(note.clone());
+                }
+            }
+        }
+        notes.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+        crate::midi_take::Take { notes }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -301,6 +349,8 @@ pub struct Pattern {
     pub alt_takes: Vec<crate::midi_take::Take>,
     /// 0 = `take`, 1.. = `alt_takes[n-1]`.
     pub active_take: usize,
+    /// **Kompning:** vilka steg som spelas ur vilken lane. Tom = bara `active_take`.
+    pub comp: Vec<CompSlice>,
     pub channel_steps: Vec<[bool; MAX_STEPS]>,
     pub channel_notes: Vec<[u8; MAX_STEPS]>,
     pub piano_roll_grid: [[bool; MAX_STEPS]; 24],

@@ -45,6 +45,7 @@ use crate::ui::theme::Theme;
             bends: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
+            comp: Vec::new(),
             channel_steps: vec![[false; crate::audio::tempo::MAX_STEPS]; 8],
             channel_notes: vec![[60; crate::audio::tempo::MAX_STEPS]; 8],
             piano_roll_grid: [[false; crate::audio::tempo::MAX_STEPS]; 24],
@@ -1984,6 +1985,7 @@ use crate::ui::theme::Theme;
             bends: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
+            comp: Vec::new(),
             channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
@@ -2006,6 +2008,48 @@ use crate::ui::theme::Theme;
         // En lane som pekar utanför listan faller tillbaka på lane 1.
         pattern.active_take = 9;
         assert_eq!(pattern.active_take().notes[0].key, 60);
+    }
+
+    /// **Kompning:** steg 0–7 ur lane 1, steg 8–15 ur lane 2. Ett nytt komp mitt i delar
+    /// det föregående utan att några gränser behöver räknas om.
+    #[test]
+    fn comping_plays_each_lane_in_its_own_steps() {
+        let mut pattern = super::state::Pattern {
+            name: "Komp".to_string(),
+            color: eframe::egui::Color32::WHITE,
+            bars: 1,
+            bends: Vec::new(),
+            alt_takes: Vec::new(),
+            active_take: 0,
+            comp: Vec::new(),
+            channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
+            channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
+            piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
+            take: crate::midi_take::Take::new(),
+        };
+        pattern.take.push(1.0, 60, 0.8);
+        let mut second = crate::midi_take::Take::new();
+        second.push(9.0, 67, 0.9);
+        pattern.alt_takes.push(second);
+
+        // Utan komp spelas den aktiva lane:n, som förut.
+        assert_eq!(pattern.comped_take().notes.len(), 1, "bara lane 1 utan komp");
+
+        pattern.comp_from(8.0, 1);
+        let comped = pattern.comped_take();
+        let keys: Vec<u8> = comped.notes.iter().map(|n| n.key).collect();
+        assert_eq!(keys, vec![60, 67], "ena halvan ur varje lane: {keys:?}");
+
+        // Ett komp mitt i ett annat delar det: från steg 4 tillbaka till lane 1 rör inte 8:an.
+        pattern.comp_from(4.0, 0);
+        let keys: Vec<u8> = pattern.comped_take().notes.iter().map(|n| n.key).collect();
+        assert_eq!(keys, vec![60, 67], "dela vid 4 ska inte ändra 8:an: {keys:?}");
+
+        // Komp från 9 med lane 1 tar tillbaka slutet — lane 1 har ingen not där, så
+        // 8:ans not försvinner i stället för att flyttas (komp väljer lane, det flyttar inget).
+        pattern.comp_from(9.0, 0);
+        let keys: Vec<u8> = pattern.comped_take().notes.iter().map(|n| n.key).collect();
+        assert_eq!(keys, vec![60], "slutet tillbaka i lane 1: {keys:?}");
     }
 
     /// **Bendkurvan:** en punkt hör till sitt steg, fördröjningen är resten, och en ny
@@ -2097,6 +2141,7 @@ use crate::ui::theme::Theme;
             bends: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
+            comp: Vec::new(),
             channel_steps: vec![[false; super::state::MAX_STEPS]; 8],
             channel_notes: vec![[60; super::state::MAX_STEPS]; 8],
             piano_roll_grid: [[false; super::state::MAX_STEPS]; 24],
@@ -2127,6 +2172,7 @@ use crate::ui::theme::Theme;
             bends: Vec::new(),
             alt_takes: Vec::new(),
             active_take: 0,
+            comp: Vec::new(),
             channel_steps: vec![vec![true; 16]],
             channel_notes: vec![vec![60; 16]],
             piano_roll_grid: vec![vec![false; 16]; 24],

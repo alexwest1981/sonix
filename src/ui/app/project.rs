@@ -131,6 +131,9 @@ pub struct SavedPattern {
     pub alt_takes: Vec<crate::midi_take::Take>,
     #[serde(default)]
     pub active_take: usize,
+    /// Kompningen. Saknas i äldre filer — då spelas bara den aktiva lane:n.
+    #[serde(default)]
+    pub comp: Vec<super::state::CompSlice>,
     /// Raderna sparas som **listor**, inte som fasta arrayer: ett projekt från före
     /// 64-stegsrutnätet har 16 element per rad, och det ska läsas utan migrering.
     pub channel_steps: Vec<Vec<bool>>,
@@ -441,6 +444,7 @@ pub(crate) fn pattern_to_saved(p: &Pattern) -> SavedPattern {
         bends: p.bends.clone(),
         alt_takes: p.alt_takes.clone(),
         active_take: p.active_take.min(p.alt_takes.len()),
+        comp: p.comp.clone(),
         channel_steps: p.channel_steps.iter().map(|r| r.to_vec()).collect(),
         channel_notes: p.channel_notes.iter().map(|r| r.to_vec()).collect(),
         piano_roll_grid: p.piano_roll_grid.iter().map(|r| r.to_vec()).collect(),
@@ -456,6 +460,7 @@ pub(crate) fn saved_to_pattern(s: &SavedPattern) -> Pattern {
         bends: s.bends.clone(),
         alt_takes: s.alt_takes.clone(),
         active_take: s.active_take.min(s.alt_takes.len()),
+        comp: s.comp.clone(),
         channel_steps: s.channel_steps.iter().map(|r| row_bools(r)).collect(),
         channel_notes: s.channel_notes.iter().map(|r| row_notes(r)).collect(),
         piano_roll_grid: grid_rows(&s.piano_roll_grid),
