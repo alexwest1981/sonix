@@ -81,6 +81,44 @@ på en yta. Konkret, i den ordning det är värt att ta:
 5. **Inspelningsläget först.** En ny låt ska börja med en enda stor inspelningsknapp och ett spår
    som redan är redo — Soundtraps bästa idé.
 
+## 🎨 Tema: ljust/mörkt och en temamotor (tillagt 2026-10-24)
+
+Utgångsläget finns redan: paletten är 29 semantiska nycklar i `~/.config/sonix/theme.json`,
+`palette()` är `Copy` och `reload_if_changed()` läser om filen mitt i körningen (0.9.79).
+
+1. **Ljust och mörkt läge.** `Palette` får en `mode` och två inbyggda standardpaletter (mörk som i
+   dag, ljus motsvarighet). Växlaren ligger i **Inställningar → Tema**, och `theme.json` kan ange
+   `"mode": "light"` plus överstyrningar. Prov: växling byter alla 29 nycklar och ingen text blir
+   oläsbar (kontrast ≥ 4,5:1 för text mot panel — mätt, inte tyckt).
+2. **Temamotor.** `~/.config/sonix/themes/*.json` läses som en lista, med namn, författare och
+   förhandsvisning (de 8 viktigaste färgerna). Välj tema i menyn, radera, och **öppna mappen**.
+3. **Hämta fler teman.** Ett register på en URL (JSON med namn + fil-URL + sha256). Nedladdning
+   verifierar hashen, skriver i `themes/` och visar felet i statusraden om den inte stämmer.
+   Ingen tyst installation: ett tema är data som ritas, inte kod som körs.
+4. **Dela eget tema.** "Exportera tema" skriver en fil med bara de nycklar som avviker från
+   standard, så ett tema är litet och går att läsa.
+
+## 🤖 AI som kan instrumenten (tillagt 2026-10-24)
+
+I dag genererar AI-assistenten klipp ur en prompt (`ai_generator::generate`) med genre, tonart och
+mål som val. Den **kan inte röra instrumenten**, och man kan inte diskutera arrangemanget med den.
+
+1. **Instruktionslager (systemprompt + verktygsschema).** En fast text som beskriver Sonix egna
+   begrepp (kanal, pattern, sektion, spår, buss) och en lista verktyg som AI:n får anropa:
+   `set_instrument`, `load_drum_kit`, `write_pattern`, `create_section`, `set_tempo`, `set_key`,
+   `add_fx`, `mute_track`. Schemat är JSON, versionerat, och ligger i `src/audio/ai_tools.rs`.
+2. **Utföraren.** Varje verktygsanrop mappas till ett befintligt kommando (`AudioCommand` eller
+   appens state) — ingen ny motor. Allt valideras (kanal finns, steg inom patternet, tonhöjd
+   0–127), körs som **ett** ångringssteg, och ett anrop som inte validerar avvisas med orsak.
+3. **Samtal om sektioner.** AI:n får arrangemanget som kontext (spår, sektioner, takter, tempo,
+   tonart) och kan föreslå en sektionsplan (intro/vers/refräng/brygga) som **visas innan den
+   skrivs**. Först vid bekräftelse skapas regioner/pattern. Prov: en föreslagen plan rör inget
+   förrän den bekräftas.
+4. **Trumkomp.** `load_drum_kit` + `write_pattern` med en kit-beskrivning (kick, virvel, hi-hat,
+   clap) så AI:n kan skriva ett komp mot kanalernas egna notnummer i stället för att gissa.
+5. **Gränser.** AI:n får aldrig skriva över befintliga klipp utan bekräftelse, aldrig röra
+   masterns volym, och aldrig anropa nätverket själv — verktygen går genom appen.
+
 ## ⬜ Kvar
 
 ### Går att bygga vid datorn nu
