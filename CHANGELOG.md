@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Per-operator envelopes in 6-op.** Each of the six operators has its own ADSR, applied
+  *before* the matrix: a modulator whose envelope closes takes its sidebands with it, which is
+  the difference between a sound and a click. Defaults are neutral (level 1, no contour), so
+  patches saved before this change sound exactly as before; the envelope is edited one operator
+  at a time in the panel.
 - **6-op (Sytrus).** Six sine operators in a 6×6 phase-modulation matrix, each with its own
   frequency ratio and output level, reachable as the `Waveform::SixOp` oscillator. Sources with
   a lower index are read from the current sample and the rest from the previous one, which makes

@@ -355,7 +355,7 @@ impl Voice {
     pub fn new(sample_rate: f32) -> Self {
         Self {
             inh_phases: [0.0; 6],
-            six: SixOpVoice::new(),
+            six: SixOpVoice::new(sample_rate),
             six_op: SixOpParams::default(),
             pluck_buf: [0.0; 4096],
             pluck_pos: 0,
@@ -439,11 +439,13 @@ impl Voice {
         self.partial_age = 0;
         self.partial_control = 0;
         self.envelope.gate_on();
+        self.six.reset();
         self.filter_env.gate_on();
     }
 
     pub fn release(&mut self) {
         self.envelope.gate_off();
+        self.six.gate_off();
         self.filter_env.gate_off();
     }
 
@@ -453,7 +455,6 @@ impl Voice {
         self.velocity = 0.0;
         self.phase = 0.0;
         self.mod_phase = 0.0;
-        self.six.reset();
     }
 
     #[inline(always)]

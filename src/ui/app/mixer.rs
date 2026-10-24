@@ -3289,6 +3289,39 @@ pub(crate) fn render_synth_hardware_rack(&mut self, ui: &mut egui::Ui) {
                             });
                         }
                     });
+                    // En envelop i taget: 24 sliders på en gång får inte plats i kolumnen.
+                    let mut target = self.six_env_target.min(crate::audio::synth::SIX_OP_COUNT - 1);
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            egui::RichText::new(crate::i18n::t("ENVELOP")).size(Theme::FONT_XS),
+                        );
+                        for i in 0..crate::audio::synth::SIX_OP_COUNT {
+                            if ui
+                                .selectable_label(target == i, format!("OP{}", i + 1))
+                                .clicked()
+                            {
+                                target = i;
+                            }
+                        }
+                    });
+                    self.six_env_target = target;
+                    let env = &mut self.six_op.envs[target];
+                    ui.horizontal(|ui| {
+                        for (label, value, range) in [
+                            ("A", &mut env.attack, 0.0..=4.0),
+                            ("D", &mut env.decay, 0.0..=4.0),
+                            ("S", &mut env.sustain, 0.0..=1.0),
+                            ("R", &mut env.release, 0.0..=4.0),
+                        ] {
+                            six_changed |= ui
+                                .add(
+                                    egui::Slider::new(value, range)
+                                        .text(label)
+                                        .show_value(false),
+                                )
+                                .changed();
+                        }
+                    });
                     ui.label(
                         egui::RichText::new(crate::i18n::t("MATRIS (källa → mål)"))
                             .size(Theme::FONT_XS)

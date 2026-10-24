@@ -12,6 +12,8 @@
 
 use std::f32::consts::TAU;
 
+use crate::audio::envelope::{AdsrParams, AdsrVoice};
+
 /// Antal operatorer. Sex är Sytrus egna tak, och matrisen är 6×6.
 pub const SIX_OP_COUNT: usize = 6;
 
@@ -24,6 +26,21 @@ pub struct SixOpParams {
     pub levels: [f32; SIX_OP_COUNT],
     /// `matrix[källa][mål]`: hur mycket källan fasmodulerar målet, i radianer.
     pub matrix: [[f32; SIX_OP_COUNT]; SIX_OP_COUNT],
+    /// Egen ADSR per operator — den ligger **före** matrisen, så en kort envelop på en
+    /// modulator tar bort sidobanden igen (det är skillnaden mellan en klang och ett klick).
+    /// `#[serde(default)]` gör att patchar sparade före 0.9.48 öppnas som förut.
+    #[serde(default = "neutral_envs")]
+    pub envs: [AdsrParams; SIX_OP_COUNT],
+}
+
+/// Nivå 1 utan kontur: envelopen ska inte ändra ljudet för en patch som inte rört den.
+fn neutral_envs() -> [AdsrParams; SIX_OP_COUNT] {
+    [AdsrParams {
+        attack: 0.0,
+        decay: 0.0,
+        sustain: 1.0,
+        release: 0.0,
+    }; SIX_OP_COUNT]
 }
 
 impl Default for SixOpParams {
@@ -34,6 +51,7 @@ impl Default for SixOpParams {
             ratios: [1.0; SIX_OP_COUNT],
             levels,
             matrix: [[0.0; SIX_OP_COUNT]; SIX_OP_COUNT],
+            envs: neutral_envs(),
         }
     }
 }
@@ -58,26 +76,32 @@ impl SixOpParams {
 pub struct SixOpVoice {
     phases: [f32; SIX_OP_COUNT],
     last: [f32; SIX_OP_COUNT],
-}
-
-impl Default for SixOpVoice {
-    fn default() -> Self {
-        Self {
-            phases: [0.0; SIX_OP_COUNT],
-            last: [0.0; SIX_OP_COUNT],
-        }
-    }
+    envs: [AdsrVoice; SIX_OP_COUNT],
 }
 
 impl SixOpVoice {
-    pub fn new() -> Self {
-        Self::default()
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            phases: [0.0; SIX_OP_COUNT],
+            last: [0.0; SIX_OP_COUNT],
+            envs: std::array::from_fn(|_| AdsrVoice::new(sample_rate)),
+        }
     }
 
-    /// Nollställer faserna vid anslaget — annars ärver en ny not förra notens vågformsläge.
+    /// Nytt anslag: faserna nollställs (annars ärver noten förra notens vågformsläge) och
+    /// alla sex enveloper öppnar.
     pub fn reset(&mut self) {
         self.phases = [0.0; SIX_OP_COUNT];
         self.last = [0.0; SIX_OP_COUNT];
+        for env in &mut self.envs {
+            env.gate_on();
+        }
+    }
+
+    pub fn gate_off(&mut self) {
+        for env in &mut self.envs {
+            env.gate_off();
+        }
     }
 
     /// Ett sampel ur matrisen. `inc` är notens fasökning per sampel (2π·f/sr).
@@ -102,7 +126,10 @@ impl SixOpVoice {
                 phase -= TAU * (phase / TAU).floor();
             }
             self.phases[target] = phase;
-            out[target] = (phase + modulation).sin();
+            // Envelopen sitter **före** matrisen: den formar både det som hörs och det som
+            // modulerar, precis som på en FM-synt.
+            let env = self.envs[target].next_sample(&params.envs[target]);
+            out[target] = (phase + modulation).sin() * env;
         }
         self.last = out;
         let mut sample = 0.0;
@@ -120,7 +147,8 @@ mod tests {
     fn render(params: &SixOpParams, freq: f32, samples: usize) -> Vec<f32> {
         let sample_rate = 48_000.0;
         let inc = TAU * freq / sample_rate;
-        let mut voice = SixOpVoice::new();
+        let mut voice = SixOpVoice::new(48_000.0);
+        voice.reset(); // som ett anslag: enveloperna öppnar
         (0..samples).map(|_| voice.next_sample(params, inc)).collect()
     }
 
@@ -167,6 +195,48 @@ mod tests {
         assert!(carrier > 0.05, "bärvågen: {carrier:.4}");
         assert!(low > carrier * 0.2, "nedre sidobandet: {low:.4} mot {carrier:.4}");
         assert!(high > carrier * 0.2, "övre sidobandet: {high:.4} mot {carrier:.4}");
+    }
+
+    /// **Egen envelop per operator.** En kort decay med sustain 0 på operator 1 ska tystna,
+    /// fast matrisen står still — och en modulator vars envelop stänger ska ta bort sidobanden
+    /// (det är skillnaden mellan en klang och ett klick).
+    #[test]
+    fn each_operator_has_its_own_envelope() {
+        let mut params = SixOpParams::default();
+        params.envs[0] = AdsrParams {
+            attack: 0.001,
+            decay: 0.05,
+            sustain: 0.0,
+            release: 0.01,
+        };
+        let out = render(&params, 440.0, 4_800); // 100 ms
+        let early = mag_at(&out[240..720], 440.0);
+        let late = mag_at(&out[3_600..4_320], 440.0);
+        assert!(early > 0.05, "anslaget hörs: {early:.4}");
+        assert!(
+            late < early * 0.2,
+            "decay till sustain 0 ska tystna: {late:.4} mot {early:.4}"
+        );
+
+        // Modulatorns envelop styr sidobanden: samma matris, men modulerande operator tystnar.
+        let mut with_mod = SixOpParams::default();
+        with_mod.ratios[1] = 0.5;
+        with_mod.levels[1] = 0.0;
+        with_mod.matrix[1][0] = 2.0;
+        with_mod.envs[1] = AdsrParams {
+            attack: 0.001,
+            decay: 0.05,
+            sustain: 0.0,
+            release: 0.01,
+        };
+        let out = render(&with_mod, 440.0, 4_800);
+        let sideband_early = mag_at(&out[240..720], 660.0);
+        let sideband_late = mag_at(&out[3_600..4_320], 660.0);
+        assert!(sideband_early > 0.005, "sidobandet finns vid anslaget: {sideband_early:.4}");
+        assert!(
+            sideband_late < sideband_early * 0.2,
+            "när modulatorn tystnar försvinner sidobandet: {sideband_late:.5} mot {sideband_early:.4}"
+        );
     }
 
     /// **Egen återkoppling läser föregående sampel.** Utan det skulle operatorn modulera sig

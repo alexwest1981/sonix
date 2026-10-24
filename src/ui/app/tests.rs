@@ -2238,6 +2238,8 @@ use crate::ui::theme::Theme;
             six_op: {
                 let mut params = crate::audio::synth::SixOpParams::chain(2.5);
                 params.ratios[5] = 3.5;
+                params.envs[4].decay = 0.3;
+                params.envs[4].sustain = 0.0;
                 params
             },
         };
@@ -2258,6 +2260,7 @@ use crate::ui::theme::Theme;
         assert!((back.six_op.ratios[5] - 3.5).abs() < 1e-6, "förhållandet");
         assert!((back.six_op.matrix[0][1] - 2.5).abs() < 1e-6, "matrisen");
         assert_eq!(back.six_op.levels[5], 1.0, "bara sista operatorn hörs i kedjan");
+        assert!((back.six_op.envs[4].decay - 0.3).abs() < 1e-6, "envelopen per operator");
     }
 
     /// **Warp-läget hör till sträckningens nyckel.** Standardläget `Complex` skrivs inte ut, så

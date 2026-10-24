@@ -140,5 +140,15 @@ källa med samma eller högre index läses från **föregående** sampel. Det ge
 | `feedback_uses_the_previous_sample` | egen återkoppling (1,5) ger 2:a och 3:e övertonen |
 | `the_six_op_matrix_is_audible_in_an_offline_render` | ren sinus 0,0078 mot kedja 0,0078 → **fälldes** genom att ta bort `SetSixOp` ur exporten; med den på plats ger kedjan övertoner |
 
-**Kvar:** egen ADSR per operator, eget filter per operator och fler än de tre utgångslägena
-(sinus/kedja/sågtand).
+### Envelop per operator
+
+`SixOpParams.envs: [AdsrParams; 6]` sitter **före** matrisen: den formar både det som hörs och
+det som modulerar. Standard är neutral (attack 0, sustain 1) — en patch som inte rört envelopen
+låter som före 0.9.48. `SixOpVoice` äger sex `AdsrVoice` som `gate_on` vid anslag och `gate_off`
+vid släpp.
+
+**Mätt** (`each_operator_has_its_own_envelope`): decay 50 ms med sustain 0 tar grundtonen från
+anslaget till under 20 % på 75 ms; samma envelop på en **modulator** tar sidobandet på 660 Hz
+från hörbart till under 20 % — alltså är det envelopen som styr sidobanden, inte bara volymen.
+
+**Kvar:** eget filter per operator och fler än de tre utgångslägena (sinus/kedja/sågtand).

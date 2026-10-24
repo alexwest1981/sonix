@@ -168,6 +168,12 @@ impl SynthEngine {
                 for level in &mut params.levels {
                     *level = level.clamp(0.0, 1.0);
                 }
+                for env in &mut params.envs {
+                    env.attack = env.attack.clamp(0.0, 60.0);
+                    env.decay = env.decay.clamp(0.0, 60.0);
+                    env.sustain = env.sustain.clamp(0.0, 1.0);
+                    env.release = env.release.clamp(0.0, 60.0);
+                }
                 for row in &mut params.matrix {
                     for amount in row.iter_mut() {
                         *amount = amount.clamp(-32.0, 32.0);
