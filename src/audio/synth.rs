@@ -126,6 +126,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetSpectralFormant { .. } => "SetSpectralFormant",
         AudioCommand::SetSpectralSweep { .. } => "SetSpectralSweep",
         AudioCommand::SetSixOp { .. } => "SetSixOp",
+        AudioCommand::SetTalkback(_) => "SetTalkback",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
@@ -464,6 +465,9 @@ pub struct SynthEngine {
     pub formant: SpectralFormant,
     /// Tidsaxel: klangformen glider från `formant.center` till `sweep.to` under noten.
     pub sweep: SpectralSweep,
+    /// **Talkback:** micken går till monitorerna i stället för in i mastern, och läggs på
+    /// **efter** control room-steget — alltså hörs den även i DIM och i en cue-buss.
+    pub talkback: bool,
     /// Suboscillatorns nivå 0–1: en sinus en oktav under noten, efter filtret.
     pub sub_level: f32,
     /// Filterdrive 0–1: mjuk klippning efter röstens filter (0 = av, exakt som förut).
@@ -635,6 +639,7 @@ impl SynthEngine {
             monitor_buf: Vec::new(),
             monitor_idx: 0,
             monitor_level: 1.0,
+            talkback: false,
             sample_voices: std::array::from_fn(|_| SampleVoice::new()),
             sample_voice_cursor: 0,
             scheduled_notes: Vec::new(),

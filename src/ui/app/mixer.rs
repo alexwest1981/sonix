@@ -2389,6 +2389,23 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                                         self.engine.send_command(AudioCommand::SetCueListen(target));
                                 }
                             }
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(crate::i18n::t("🎙 TALKBACK"))
+                                            .size(Theme::FONT_XS),
+                                    )
+                                    .selected(self.talkback),
+                                )
+                                .on_hover_text(crate::i18n::t(
+                                    "Micken till monitorerna i stället för in i mastern — hörs även i DIM",
+                                ))
+                                .clicked()
+                            {
+                                self.talkback = !self.talkback;
+                                let _ =
+                                    self.engine.send_command(AudioCommand::SetTalkback(self.talkback));
+                            }
                         });
                         if changed {
                             let _ = self.engine.send_command(AudioCommand::SetControlRoom(

@@ -3564,3 +3564,37 @@ fn the_control_room_silences_only_the_engine_that_was_told() {
     let exported = render_peak(&mut export);
     assert!(exported > 0.01, "exportmotorn ska vara opåverkad: {exported}");
 }
+
+/// **Talkback hörs genom en dimmad monitor — och går inte in i mastern.** Micken fyller
+/// monitorringen; med talkback av dämpas den av DIM som allt annat, med talkback på läggs
+/// den på efter control room-steget och hörs i full nivå.
+#[test]
+fn talkback_is_heard_through_a_dimmed_monitor() {
+    fn render(talkback: bool) -> f32 {
+        let mut synth = SynthEngine::new(48_000.0);
+        let ring = Arc::new(Mutex::new(vec![0.25f32; 24_000]));
+        synth.handle_command(AudioCommand::SetMonitorRing {
+            ring: Arc::clone(&ring),
+        });
+        synth.handle_command(AudioCommand::SetTalkback(talkback));
+        synth.handle_command(AudioCommand::SetControlRoom(
+            crate::audio::command::ControlRoomState {
+                level: 1.0,
+                dim: true,
+                mono: false,
+                mute: false,
+            },
+        ));
+        let out = render_left(&mut synth, 4_800);
+        rms(&out[480..])
+    }
+
+    let normal = render(false);
+    let talking = render(true);
+    assert!(talking > 0.1, "talkback ska höras: {talking:.4}");
+    assert!(
+        talking > normal * 5.0,
+        "DIM dämpar musiken men inte pratet: av {normal:.4}, på {talking:.4}"
+    );
+}
+

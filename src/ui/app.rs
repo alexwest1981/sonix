@@ -608,6 +608,8 @@ pub struct SonixApp {
     pub control_room: crate::audio::control_room::ControlRoom,
     /// Vad monitorerna lyssnar på. Monitorläge — sparas inte i projektet.
     pub cue_listen: crate::audio::control_room::CueListen,
+    /// **Talkback:** micken till monitorerna i stället för in i mastern.
+    pub talkback: bool,
     pub script_source: String,
     pub script_param: usize,
     /// Toppmarkörerna i visualizern, en per band.
@@ -1179,6 +1181,7 @@ impl SonixApp {
             show_takes_modal: false,
             control_room: crate::audio::control_room::ControlRoom::default(),
             cue_listen: crate::audio::control_room::CueListen::Main,
+            talkback: false,
             script_source: crate::ui::app::script::DEFAULT_SOURCE.to_string(),
             script_param: 0,
             visualizer_peaks: Vec::new(),

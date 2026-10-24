@@ -862,6 +862,9 @@ impl SynthEngine {
                 self.monitor_buf.clear();
                 self.monitor_idx = 0;
             }
+            AudioCommand::SetTalkback(on) => {
+                self.talkback = on;
+            }
             AudioCommand::SetMonitorLevel(level) => {
                 self.monitor_level = level.clamp(0.0, 1.0);
             }

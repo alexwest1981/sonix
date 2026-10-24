@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Talkback.** A 🎙 button in the control room routes the microphone to the monitors instead
+  of into the master, and adds it *after* the control-room stage — so DIM lowers the music but
+  not the voice, and someone listening to a cue bus hears it over that bus. Nothing reaches an
+  export. Needs the microphone capture (which fills the monitor ring) to be running.
 - **Per-operator low-pass in 6-op.** Each operator has a low-pass (cutoff + resonance) after
   its envelope and before the matrix, so a filtered modulator takes its overtones into the sound
   instead of only changing its own level. `cutoff >= 19 kHz` means off and costs nothing, so

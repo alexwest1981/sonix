@@ -772,6 +772,8 @@ impl SynthEngine {
             stem_mix_r += pr;
         }
 
+        let mut talkback = 0.0f32;
+
         // 8c. Zero-latency microphone direct monitoring (post auto-tune).
         //     Drains the ring once per buffer and plays the mono signal on both
         //     channels, routed through the master bus so the limiter catches
@@ -790,8 +792,14 @@ impl SynthEngine {
             if self.monitor_idx < self.monitor_buf.len() {
                 let m = self.monitor_buf[self.monitor_idx] * self.monitor_level;
                 self.monitor_idx += 1;
-                stem_mix_l += m;
-                stem_mix_r += m;
+                // **Talkback:** micken ska bara till monitorerna, aldrig in i mastern (och
+                // därmed aldrig i en inspelning). Den läggs på efter control room-steget.
+                if self.talkback {
+                    talkback = m;
+                } else {
+                    stem_mix_l += m;
+                    stem_mix_r += m;
+                }
             }
         }
 
@@ -859,6 +867,9 @@ impl SynthEngine {
             };
             cr.apply(out_l, out_r)
         };
+        // Talkback läggs på **efter** control room: DIM ska dämpa musiken, inte pratet, och
+        // den som lyssnar på en cue-buss ska höra pratet över den bussen.
+        let (out_l, out_r) = (out_l + talkback, out_r + talkback);
 
         self.dbg_frames += 1;
         if self.dbg_frames % 48000 == 0 {
