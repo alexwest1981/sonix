@@ -36,6 +36,7 @@ pub mod midi_output;
 #[allow(dead_code)]
 pub mod neural_separator;
 pub mod patcher;
+pub mod pedal_resonance;
 pub mod plugin_gui;
 pub mod plugin_host;
 #[cfg(feature = "plugin-host")]

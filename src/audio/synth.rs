@@ -469,6 +469,8 @@ pub struct SynthEngine {
     pub sweep: SpectralSweep,
     /// Sustainpedalen (CC64). Nere håller den kvar toner efter att tangenten släppts.
     pub sustain_pedal: bool,
+    /// Sympatiska strängar med pedalen nere (FL Keys).
+    pub pedal_res: crate::audio::pedal_resonance::PedalResonance,
     /// **Bärvågsingång:** vocoder i masterns kedja där rackets synt är bärvågen och resten av
     /// mixen är modulator. `amount = 0` kopplar förbi den helt.
     pub vocoder: crate::audio::master_fx::MasterVocoder,
@@ -648,6 +650,7 @@ impl SynthEngine {
             monitor_level: 1.0,
             talkback: false,
             sustain_pedal: false,
+            pedal_res: crate::audio::pedal_resonance::PedalResonance::new(sample_rate),
             vocoder: crate::audio::master_fx::MasterVocoder::new(sample_rate),
             sample_voices: std::array::from_fn(|_| SampleVoice::new()),
             sample_voice_cursor: 0,

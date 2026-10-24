@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Pedal resonance.** With the sustain pedal down, the synth and the sampled instruments feed a
+  bank of three tuned combs (A2, E3, A3), so a note leaves a ringing body behind it — what a piano
+  does when the strings are free. Drums and stems never feed it, and with the pedal up nothing is
+  fed at all, so a project without a pedal sounds exactly as before.
+  *Shortcut:* three fixed combs, not a model of the strings — it adds body and decay, not an exact
+  copy. Replace with modal synthesis if the difference has to be inaudible.
+
 - **The pedal holds sampled notes too.** A sample struck while CC64 is down keeps sounding after
   the key is released, and lifting the pedal damps it over 40 ms instead of cutting. Without the
   pedal nothing changes — a one-shot still rings out as before. Measured: 0.0920 held 200 ms

@@ -818,6 +818,13 @@ impl SynthEngine {
             self.vocoder
                 .process(stem_mix_l, stem_mix_r, synth_out, pre_l, pre_r);
 
+        // **Pedalresonans:** matas av synten och samplingarna, inte av trummor och stämmor —
+        // en sträng bankar inte på en bastrumma. Bara masterns väg, och bara med pedalen nere,
+        // så ett projekt utan pedal låter exakt som förut.
+        let feed = if self.sustain_pedal { synth_out + sample_mix } else { 0.0 };
+        let wet = self.pedal_res.process(feed);
+        let (pre_l, pre_r) = (pre_l + wet, pre_r + wet);
+
         // 9. Master bus FX chain (EQ, compressor, de-esser, doubler, gate, filter, limiter)
         let (master_l, master_r) = self.master_fx.process(pre_l, pre_r);
 
