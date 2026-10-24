@@ -159,6 +159,10 @@ impl SixOpVoice {
     }
 
     /// Ett sampel ur matrisen. `inc` är notens fasökning per sampel (2π·f/sr).
+    ///
+    /// Indexen är **både** källa och mål i samma array (`out[source]` när `out[target]` skrivs),
+    /// så en iteratoromskrivning gör koden otydligare, inte kortare.
+    #[allow(clippy::needless_range_loop, reason = "källa och mål indexerar samma array")]
     #[inline]
     pub fn next_sample(&mut self, params: &SixOpParams, inc: f32) -> f32 {
         let mut out = [0.0f32; SIX_OP_COUNT];
