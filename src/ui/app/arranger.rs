@@ -2878,6 +2878,9 @@ impl SonixApp {
             && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
                 let mut do_delete = false;
                 let mut do_split = false;
+                let mut chop_bars: Option<f32> = None;
+                let mut do_autoslice = false;
+                let mut scale_factor: Option<f32> = None;
                 let mut do_copy = false;
                 let mut do_paste = false;
                 let mut do_loop_factor: Option<f32> = None;
@@ -2998,6 +3001,62 @@ impl SonixApp {
                                 do_split = true;
                             }
 
+                        // **Chop in bars** — FL:s `Chop in bars` / `Chop in 8th beats`.
+                        for (label, chunk) in
+                            [("✂ 1 takt", 1.0f32), ("✂ ½ takt", 0.5), ("✂ ¼ takt", 0.25)]
+                        {
+                            if ui
+                                .add(egui::Button::new(
+                                    egui::RichText::new(label)
+                                        .strong()
+                                        .size(Theme::FONT_S)
+                                        .color(crate::ui::theme::palette().text()),
+                                )
+                                .fill(crate::ui::theme::palette().border_soft()))
+                                .on_hover_text(crate::i18n::t(
+                                    "Dela klippet i lika stora delar längs takten",
+                                ))
+                                .clicked()
+                            {
+                                chop_bars = Some(chunk);
+                            }
+                        }
+
+                        // **Auto-slice** — anslagen i klippets eget ljud blir delningar.
+                        if ui
+                            .add(egui::Button::new(
+                                egui::RichText::new("🎯 Auto-slice")
+                                    .strong()
+                                    .size(Theme::FONT_S)
+                                    .color(crate::ui::theme::palette().text()),
+                            )
+                            .fill(crate::ui::theme::palette().border_soft()))
+                            .on_hover_text(crate::i18n::t(
+                                "Dela klippet vid anslagen (transienterna) i ljudet",
+                            ))
+                            .clicked()
+                        {
+                            do_autoslice = true;
+                        }
+
+                        // **Scale levels** — nivån på klippet, i dB.
+                        for (label, factor) in
+                            [("🔉 −3 dB", 0.707_945_8f32), ("🔉 +3 dB", 1.412_537_5)]
+                        {
+                            if ui
+                                .add(egui::Button::new(
+                                    egui::RichText::new(label)
+                                        .strong()
+                                        .size(Theme::FONT_S)
+                                        .color(crate::ui::theme::palette().text()),
+                                )
+                                .fill(crate::ui::theme::palette().border_soft()))
+                                .clicked()
+                            {
+                                scale_factor = Some(factor);
+                            }
+                        }
+
                         // Copy
                         if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📋 Kopiera (Ctrl+C)")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border_soft()))
                             .on_hover_text(crate::i18n::t("Kopiera detta sample till urklipp"))
@@ -3116,6 +3175,12 @@ impl SonixApp {
                     self.delete_selected_region();
                 } else if do_duplicate {
                     self.duplicate_selected_region();
+                } else if let Some(bars) = chop_bars {
+                    self.chop_selected_region(bars);
+                } else if do_autoslice {
+                    self.autoslice_selected_region(1.5);
+                } else if let Some(factor) = scale_factor {
+                    self.scale_selected_region_level(factor);
                 } else if do_split {
                     self.split_selected_region_at_playhead();
                 } else {

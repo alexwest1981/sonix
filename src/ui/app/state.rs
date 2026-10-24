@@ -622,6 +622,32 @@ pub struct AudioRegion {
     pub warp_mode: crate::audio::warp::WarpMode,
 }
 
+impl AudioRegion {
+    /// **Delar klippet vid `at_bars`** (relativt klippets början) och returnerar den högra
+    /// delen. Vänster del behåller id:t; anroparen sätter nya id:n på delarna.
+    ///
+    /// `secs_per_bar` behövs för `sample_offset_sec`: positionerna räknas i takter men
+    /// ljudet i sekunder, så en delning måste flytta läsningen lika långt.
+    pub fn split_at(&mut self, at_bars: f32, secs_per_bar: f32) -> Option<AudioRegion> {
+        if at_bars <= 1e-4 || at_bars >= self.length_bars - 1e-4 {
+            return None;
+        }
+        let mut right = self.clone();
+        right.start_bar = self.start_bar + at_bars;
+        right.length_bars = self.length_bars - at_bars;
+        right.sample_offset_sec = self.sample_offset_sec + at_bars * secs_per_bar.max(0.0);
+        // Faderna hör till var sin ände: vänster behåller in, höger behåller ut.
+        right.fade_in_bars = 0.0;
+        right.fade_in_bars = right.fade_in_bars.min(right.length_bars);
+        right.fade_out_bars = right.fade_out_bars.min(right.length_bars);
+
+        self.length_bars = at_bars;
+        self.fade_out_bars = 0.0;
+        self.fade_in_bars = self.fade_in_bars.min(self.length_bars);
+        Some(right)
+    }
+}
+
 /// Flyttar låtsektioner när tid infogas eller tas bort. `delta` är positiv vid infogning.
 /// Ackordkvalitet. Intervallen är halvtoner från grundtonen.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -1512,6 +1538,97 @@ impl PlaylistTrack {
         made
     }
 
+    /// **Delar ett klipp på en taktgräns** och lägger den högra delen efter.
+    /// `chunk_bars` är delens längd; sista delen blir resten. Returnerar antalet delar.
+    pub fn chop_region(&mut self, index: usize, chunk_bars: f32, secs_per_bar: f32) -> usize {
+        if self.regions.get(index).is_none() || chunk_bars <= 0.001 {
+            return 0;
+        }
+        let mut parts = 0;
+        // Varje varv delar den **sista** biten, inte den första — annars stannar loopen efter
+        // en del, eftersom den första redan är kort nog.
+        while self.regions[index + parts].length_bars > chunk_bars + 1e-3 {
+            let Some(right) = self.regions[index + parts].split_at(chunk_bars, secs_per_bar)
+            else {
+                break;
+            };
+            self.regions.insert(index + 1 + parts, right);
+            parts += 1;
+        }
+        let len = self.regions.len();
+        self.reassign_region_ids(index..len);
+        parts + 1
+    }
+
+    /// **Auto-slice:** delar klippet vid givna punkter (i takter, relativa klippets start).
+    /// Punkter utanför klippet ignoreras, och dubbletter slås ihop.
+    pub fn slice_region_at(
+        &mut self,
+        index: usize,
+        points_bars: &[f32],
+        secs_per_bar: f32,
+    ) -> usize {
+        let Some(region) = self.regions.get(index).cloned() else {
+            return 0;
+        };
+        let mut cuts: Vec<f32> = points_bars
+            .iter()
+            .copied()
+            .filter(|p| *p > 1e-3 && *p < region.length_bars - 1e-3)
+            .collect();
+        cuts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        cuts.dedup_by(|a, b| (*a - *b).abs() < 1e-3);
+
+        let mut made = 0;
+        for cut in cuts {
+            // Varje snitt ligger i den **sista** delen, så punkterna behöver räknas om
+            // mot hur mycket som redan klippts bort.
+            let consumed: f32 = self.regions[index..index + made]
+                .iter()
+                .map(|r| r.length_bars)
+                .sum();
+            let at = cut - consumed;
+            if at <= 1e-3 {
+                continue;
+            }
+            let Some(right) = self.regions[index + made].split_at(at, secs_per_bar) else {
+                continue;
+            };
+            self.regions.insert(index + 1 + made, right);
+            made += 1;
+        }
+        let len = self.regions.len();
+        self.reassign_region_ids(index..len);
+        made + 1
+    }
+
+    /// Skalar nivån på ett klipp. Faktorn kläms så att volymen håller sig inom 0–2.
+    pub fn scale_region_volume(&mut self, index: usize, factor: f32) -> bool {
+        let Some(region) = self.regions.get_mut(index) else {
+            return false;
+        };
+        region.volume = (region.volume * factor).clamp(0.0, 2.0);
+        true
+    }
+
+    fn reassign_region_ids(&mut self, range: std::ops::Range<usize>) {
+        let mut next = self
+            .regions
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !range.contains(i))
+            .map(|(_, r)| r.id)
+            .max()
+            .unwrap_or(0)
+            + 1;
+        for i in range {
+            if let Some(region) = self.regions.get_mut(i) {
+                region.id = next;
+                next += 1;
+            }
+        }
+    }
+
     pub fn new(name: String, icon: &'static str, kind: TrackKind, color: Color32) -> Self {
         Self {
             name,
@@ -1551,6 +1668,101 @@ impl PlaylistTrack {
             sends: Vec::new(),
             notes: String::new(),
         }
+    }
+}
+
+#[cfg(test)]
+mod region_edit_tests {
+    use super::*;
+
+    fn track_with_region(len_bars: f32, offset_sec: f32) -> PlaylistTrack {
+        let mut t = PlaylistTrack::new(
+            "Test".into(),
+            "🎤",
+            TrackKind::VocalAudio,
+            Color32::WHITE,
+        );
+        t.regions.push(AudioRegion {
+            id: 7,
+            name: "Loop".into(),
+            start_bar: 4.0,
+            length_bars: len_bars,
+            sample_offset_sec: offset_sec,
+            source_path: None,
+            waveform_peaks: Vec::new(),
+            volume: 0.8,
+            fade_in_bars: 0.1,
+            fade_out_bars: 0.1,
+            muted: false,
+            is_reverse: false,
+            color: default_region_color(),
+            loop_length_bars: 0.0,
+            source_bpm: 0.0,
+            tape: false,
+            warp_mode: Default::default(),
+        });
+        t
+    }
+
+    /// **Chop in bars:** fyra takter i ettor ger fyra delar som ligger i följd, och varje
+    /// del läser ljudet en takt längre fram.
+    #[test]
+    fn chopping_in_bars_keeps_the_timeline_contiguous() {
+        let mut t = track_with_region(4.0, 0.0);
+        let parts = t.chop_region(0, 1.0, 2.0);
+        assert_eq!(parts, 4);
+        assert_eq!(t.regions.len(), 4);
+        for (i, r) in t.regions.iter().enumerate() {
+            assert!((r.start_bar - (4.0 + i as f32)).abs() < 1e-4, "del {i} börjar fel");
+            assert!((r.length_bars - 1.0).abs() < 1e-4);
+            assert!((r.sample_offset_sec - i as f32 * 2.0).abs() < 1e-3, "fel ljudoffset");
+        }
+        let mut ids: Vec<usize> = t.regions.iter().map(|r| r.id).collect();
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), 4, "alla delar ska ha eget id");
+    }
+
+    /// **Chop i 8-delar:** en takt i fjärdedelar ger fyra delar.
+    #[test]
+    fn chopping_in_eighths_uses_the_chunk_size() {
+        let mut t = track_with_region(1.0, 0.0);
+        assert_eq!(t.chop_region(0, 0.25, 2.0), 4);
+        assert!((t.regions[3].start_bar - 4.75).abs() < 1e-4);
+    }
+
+    /// **Auto-slice:** snitten hamnar där punkterna säger, och en punkt utanför ignoreras.
+    #[test]
+    fn slicing_at_onsets_splits_where_the_points_are() {
+        let mut t = track_with_region(4.0, 1.0);
+        let parts = t.slice_region_at(0, &[0.5, 2.0, 9.0, 1.0], 2.0);
+        assert_eq!(parts, 4);
+        let lens: Vec<f32> = t.regions.iter().map(|r| r.length_bars).collect();
+        assert!((lens[0] - 0.5).abs() < 1e-4, "{lens:?}");
+        assert!((lens[1] - 0.5).abs() < 1e-4, "{lens:?}");
+        assert!((lens[2] - 1.0).abs() < 1e-4, "{lens:?}");
+        assert!((lens[3] - 2.0).abs() < 1e-4, "{lens:?}");
+        assert!((t.regions[3].sample_offset_sec - (1.0 + 2.0 * 2.0)).abs() < 1e-3);
+    }
+
+    /// **Scale levels:** faktorn gäller bara valt klipp och volymen kläms till 0–2.
+    #[test]
+    fn scaling_levels_multiplies_and_clamps() {
+        let mut t = track_with_region(2.0, 0.0);
+        assert!(t.scale_region_volume(0, 0.5));
+        assert!((t.regions[0].volume - 0.4).abs() < 1e-5);
+        assert!(t.scale_region_volume(0, 100.0));
+        assert!((t.regions[0].volume - 2.0).abs() < 1e-5);
+        assert!(!t.scale_region_volume(9, 0.5));
+    }
+
+    /// Ett snitt utanför klippet eller på kanten gör ingenting.
+    #[test]
+    fn edges_do_not_produce_empty_parts() {
+        let mut t = track_with_region(2.0, 0.0);
+        assert!(t.regions[0].split_at(0.0, 2.0).is_none());
+        assert!(t.regions[0].split_at(2.0, 2.0).is_none());
+        assert_eq!(t.slice_region_at(0, &[0.0, 2.0], 2.0), 1);
     }
 }
 

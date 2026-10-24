@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — three of the playlist tools (0.9.122)
+
+- **Chop in bars** (`chop_region`): delar ett klipp i 1, ½ eller ¼ takt från klippmenyn. Delarna
+  ligger i följd, `sample_offset_sec` flyttas lika långt som delningen, och varje del får eget id.
+  Prov: fyra takter i ettor ger fyra delar med rätt start, längd och ljudoffset.
+- **Auto-slice med känslighet** (`autoslice_selected_region`): läser klippets PCM, hittar anslagen
+  med `audio::onset::detect_onsets` och delar där. Ingen gissning om takt — delningen hamnar där
+  ljudet faktiskt slår. Prov: fyra punkter varav en utanför ger fyra delar.
+- **Scale levels** (−3/+3 dB) på valt klipp, klämt till 0–2.
+- Fällor på vägen: `chop_region` delade alltid den **första** biten och stannade efter en del —
+  provet fångade det (2 delar i stället för 4).
+
 ### Verified — a real VST3 processes audio (0.9.121)
 
 - `sonix --render-plugin <plugin> [ut.wav]` kör en 440 Hz-ton genom en riktig plugin utan GUI och

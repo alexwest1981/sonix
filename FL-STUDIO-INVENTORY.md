@@ -512,13 +512,13 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | :--- | :--- | :--- |
 | Bounca spår till audio | `Consolidate this track` · `Consolidate track(s)` · `Select a folder to consolidate to` | ✅ `bounce_track_to_new`: renderar spåret offline till 32-bitars float i projektets `Bounces/`, läser tillbaka filen och lägger den på ett **nytt** spår, medan källan tystas — så klippet finns kvar och går att flytta |
 | Spela in allt du spelar i en logg och dumpa den | `Auto dump score` · `Dump score log` · `Convert to score and dump to piano roll` · `Detecting score...` | ✗ (tagningar spelas in per tagning, inte som en logg) |
-| Dela klipp på taktdelar | `Chop in bars` · `Chop in 8th beats` · `Chop in 16th beats` · `Chop in 32nd beats` · `Chop chords` | ◐ (choppern delar vid slag, inte vid taktdel) |
-| Auto-slice med känslighet | `Auto-slice with dull/medium/sharp sensitivity` · `Accentuate beat-aligned slices` | ◐ (en känslighet i choppern) |
+| Dela klipp på taktdelar | `Chop in bars` · `Chop in 8th beats` · `Chop in 16th beats` · `Chop in 32nd beats` · `Chop chords` | ✅ 0.9.122: `chop_region` delar klippet i 1/½/¼ takt från klippmenyn; prov på kontinuitet, ljudoffset och id:n |
+| Auto-slice med känslighet | `Auto-slice with dull/medium/sharp sensitivity` · `Accentuate beat-aligned slices` | ✅ 0.9.122: `autoslice_selected_region` läser klippets PCM, hittar anslagen med `detect_onsets` och delar där (känslighet 1,5; kräver inläst ljud) |
 | Extrahera groove | `Flatten (groove)` · `Keep the groove only` · `Load groove pattern...` · `Save groove pattern...` | ✅ (extraktion; `Flatten`/`Keep` är inte byggda) |
 | Strumma ackord | `Bypass strum` | ◐ (strum endast i Chord Matrix-avlyssningen) |
 | Artikulation per not | `Articulate...` | ✗ |
 | Arpeggion som verktyg | `Arpeggiate...` | ◐ (arpeggio i synten + `SchedulesChord`) |
-| Skala nivåer | `Scale levels...` | ◐ (`velocity_sensitivity` per kanal) |
+| Skala nivåer | `Scale levels...` | ✅ 0.9.122: `Scale levels` som −3/+3 dB på valt klipp (`scale_region_volume`, klämt 0–2) |
 | Tidsförskjuta audio fritt | `Edit in time warper` | ✗ (`sätt takt 1 här` + WSOLA-sträckning finns) |
 | Klicka bort skarvar | `Declick in` · `Declick out all regions` · `Bypass declicker` | ◐ `audio::repair::declick` lagar hopp större än 0,25 över 32 sampel, och knappen **🔧 Klicka bort skarvar** kör den på spåret. ✗ FL:s läge per region (bara in, bara ut) och en bypass |
 | Automatiska övergångar | `Automatic crossfades` · `Create crossfade` · `Crossfade (bleeding)` | ◐ `PlaylistTrack::create_crossfades` sätter ut-toning på det tidigare och in-toning på det senare klippet, lika långa som överlappet (halverat om överlappet är större än klippet), och knappen **✚ Korsa överlappande klipp** i fade-fönstret kör den. ✗ `Create crossfade` på ett urval, och `bleeding`-varianten utanför regionens kant |

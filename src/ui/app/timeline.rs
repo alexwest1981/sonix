@@ -244,6 +244,80 @@ pub fn find_region_at_playhead(&self) -> Option<(usize, usize)> {
 }
 
 impl SonixApp {
+/// Sekunder per takt vid projektets tempo — delningarna räknar i takter, ljudet i sekunder.
+fn secs_per_bar(&self) -> f32 {
+    crate::audio::tempo::TempoMap::single(self.bpm.max(40.0)).secs_for_bars_at(0.0, 1.0) as f32
+}
+
+/// **Chop in bars:** delar valt klipp i bitar av `chunk_bars` takter.
+pub fn chop_selected_region(&mut self, chunk_bars: f32) {
+    let Some((t_idx, r_idx)) = self.selected_audio_region else {
+        self.status_message = crate::tstatus!("Välj ett klipp först");
+        return;
+    };
+    if t_idx >= self.playlist_tracks.len() {
+        return;
+    }
+    let spb = self.secs_per_bar();
+    let parts = self.playlist_tracks[t_idx].chop_region(r_idx, chunk_bars, spb);
+    if parts > 1 {
+        self.status_message = crate::tstatus!("✂ Delade klippet i {} delar", parts);
+    } else {
+        self.status_message = crate::tstatus!("Klippet är kortare än en del — inget att dela");
+    }
+    self.sync_track_regions(t_idx);
+}
+
+/// **Auto-slice:** hittar anslagen i klippets ljud och delar där. `sensitivity` är
+/// tröskeln mot omgivningen — 1,5 är standard, lägre hittar svagare slag.
+pub fn autoslice_selected_region(&mut self, sensitivity: f32) {
+    let Some((t_idx, r_idx)) = self.selected_audio_region else {
+        self.status_message = crate::tstatus!("Välj ett klipp först");
+        return;
+    };
+    let Some(track) = self.playlist_tracks.get(t_idx) else {
+        return;
+    };
+    let Some((pcm, _right, sr)) = track.pcm_audio.clone() else {
+        self.status_message =
+            crate::tstatus!("Auto-slice kräver att klippets ljud är inläst");
+        return;
+    };
+    let Some(region) = track.regions.get(r_idx).cloned() else {
+        return;
+    };
+    let params = crate::audio::onset::OnsetParams {
+        sensitivity: sensitivity.clamp(1.05, 4.0),
+        ..Default::default()
+    };
+    let onsets = crate::audio::onset::detect_onsets(&pcm, sr as f32, &params);
+    let spb = self.secs_per_bar().max(1e-3);
+    let points: Vec<f32> = onsets
+        .iter()
+        .map(|s| *s as f32 / sr.max(1) as f32 / spb - region.sample_offset_sec / spb)
+        .filter(|p| *p > 1e-3 && *p < region.length_bars - 1e-3)
+        .collect();
+    let parts = self.playlist_tracks[t_idx].slice_region_at(r_idx, &points, spb);
+    self.status_message = if parts > 1 {
+        crate::tstatus!("🎯 Auto-slice hittade {} anslag", parts - 1)
+    } else {
+        crate::tstatus!("Inga anslag hittades — sänk känsligheten")
+    };
+    self.sync_track_regions(t_idx);
+}
+
+/// **Scale levels:** multiplicerar valt klipps nivå (FL:s `Scale levels…`).
+pub fn scale_selected_region_level(&mut self, factor: f32) {
+    let Some((t_idx, r_idx)) = self.selected_audio_region else {
+        return;
+    };
+    if self.playlist_tracks[t_idx].scale_region_volume(r_idx, factor) {
+        let db = 20.0 * factor.log10();
+        self.status_message = crate::tstatus!("🔉 Klippets nivå {:+.1} dB", db);
+        self.sync_track_regions(t_idx);
+    }
+}
+
 pub fn split_selected_region_at_playhead(&mut self) {
     let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
     let current_playhead_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
