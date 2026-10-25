@@ -269,6 +269,12 @@ pub struct MultibandParams {
     /// ofta en lägre tröskel än high för samma hörda kompression — det är hela poängen med
     /// Maximus, och en gemensam tröskel kan inte uttrycka det.
     pub offsets_db: [f32; 3],
+    /// **Master-bandet** (FL:s MASTER-knapp i Maximus): en kompressor över summan av de tre
+    /// banden, efter dem. Den limmar ihop det bandkompressionen delat upp — och den är ett eget
+    /// steg, inte en fjärde ratt på banden: 1,0 komprimerar även när alla band står på 0.
+    pub master_amount: f32,
+    /// Master-bandets tröskel som avvikelse i dB från `threshold_db` (som bandens).
+    pub master_offset_db: f32,
 }
 
 impl Default for MultibandParams {
@@ -282,6 +288,8 @@ impl Default for MultibandParams {
             release_ms: 120.0,
             amounts: [0.0; 3],
             offsets_db: [0.0; 3],
+            master_amount: 0.0,
+            master_offset_db: 0.0,
         }
     }
 }
@@ -337,6 +345,8 @@ pub struct MultibandCompressor {
     left: XoverChan,
     right: XoverChan,
     bands: [Compressor; 3],
+    /// Master-bandet: en kompressor över summan, efter de tre banden.
+    master: Compressor,
     params: MultibandParams,
 }
 
@@ -353,6 +363,7 @@ impl MultibandCompressor {
                 Compressor::new(sample_rate),
                 Compressor::new(sample_rate),
             ],
+            master: Compressor::new(sample_rate),
             params,
         }
     }
@@ -387,6 +398,21 @@ impl MultibandCompressor {
             let a = p.amounts[i].clamp(0.0, 1.0);
             out.0 += dl + a * (wl - dl);
             out.1 += dr + a * (wr - dr);
+        }
+
+        // Master-bandet sist: det hör summan, inte delarna.
+        let m = p.master_amount.clamp(0.0, 1.0);
+        if m > 0.0 {
+            let master_params = CompressorParams {
+                threshold_db: p.threshold_db + p.master_offset_db,
+                ratio: p.ratio.max(1.0),
+                attack_ms: p.attack_ms,
+                release_ms: p.release_ms,
+                makeup_db: 0.0,
+            };
+            let (ml, mr) = self.master.process(out.0, out.1, &master_params);
+            out.0 += m * (ml - out.0);
+            out.1 += m * (mr - out.1);
         }
         out
     }

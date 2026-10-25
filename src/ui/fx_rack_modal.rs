@@ -162,7 +162,7 @@ impl Default for FxRackState {
                 },
                 FxPedal {
                     id: "multiband",
-                    name: "📶 MULTIBAND COMP (3 band)",
+                    name: "📶 MULTIBAND COMP (3 band + master)",
                     category: "Glue Mix",
                     enabled: false,
                     color: crate::ui::theme::palette().cyan(),
@@ -180,6 +180,7 @@ impl Default for FxRackState {
                         ("TRÖSK L", 0.5),
                         ("TRÖSK M", 0.5),
                         ("TRÖSK H", 0.5),
+                        ("MASTER", 0.0),
                     ],
                 },
                 FxPedal {
@@ -640,6 +641,7 @@ impl FxRackState {
                 (mb_extra(3) - 0.5) * 40.0,
                 (mb_extra(4) - 0.5) * 40.0,
             ],
+            master_amount: mb_extra(5),
             ..MultibandParams::default()
         };
 
@@ -2140,6 +2142,10 @@ mod tests {
         assert!(p.offsets_db[2].abs() < 0.01, "high: {}", p.offsets_db[2]);
         assert!((p.threshold_db + 18.0).abs() < 0.01, "tröskel: {}", p.threshold_db);
         assert!((p.ratio - 3.97).abs() < 0.05, "ratio: {}", p.ratio);
+        // MASTER-rattens eget fält: banden står på 0, så bara master kan sänka summan.
+        assert!(p.master_amount.abs() < 1e-6, "master: {}", p.master_amount);
+        state.pedals[idx].extra[5].1 = 1.0;
+        assert!((state.build_master_fx_params().multiband.master_amount - 1.0).abs() < 1e-6);
     }
     /// **Time Curves rattar når sina egna fält** — FORM väljer kurva, TEMPO sätter takten.
     #[test]

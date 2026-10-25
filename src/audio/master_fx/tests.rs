@@ -288,6 +288,39 @@
         }
     }
 
+
+    /// **Master-bandet är ett eget steg.** FL:s Maximus har LOW/MID/HIGH plus MASTER, och master
+    /// hör summan: med alla band på 0 ska den ändå komprimera, annars är den bara en fjärde
+    /// bandratt med ett annat namn.
+    #[test]
+    fn the_master_band_compresses_the_sum_on_its_own() {
+        let sr = 48_000.0;
+        let level_with = |master: f32| {
+            let mut mb = MultibandCompressor::new(sr);
+            mb.set_params(MultibandParams {
+                amounts: [0.0, 0.0, 0.0],
+                threshold_db: -24.0,
+                ratio: 8.0,
+                master_amount: master,
+                ..MultibandParams::default()
+            });
+            let mut out = Vec::new();
+            for i in 0..48_000 {
+                let t = i as f32 / sr;
+                let x = 0.5 * (t * 200.0 * std::f32::consts::TAU).sin();
+                let (l, _) = mb.process(x, x);
+                out.push(l);
+            }
+            out[24_000..].iter().map(|v| v * v).sum::<f32>().sqrt()
+        };
+        let without = level_with(0.0);
+        let with = level_with(1.0);
+        assert!(
+            with < without * 0.75,
+            "master-bandet komprimerade inte summan: {without:.4} → {with:.4}"
+        );
+    }
+
     /// **Egen tröskel per band:** med samma globala tröskel ska low-bandet tryckas ner mer när
     /// dess egen tröskel sänks — det är skillnaden mellan en multibandskompressor och en
     /// kompressor med tre utgångar.

@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 87** har en motsvarighet, **◐ 48** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (**64 %** av de 135 som går att jämföra). Siffrorna räknas ur tabellerna, inte ur minnet.
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 88** har en motsvarighet, **◐ 47** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (**65 %** av de 135 som går att jämföra). Siffrorna räknas ur tabellerna, inte ur minnet.
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -176,7 +176,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Love Philter | 23 | ✅ | `LovePhilter` (0.9.125): tre filter i serie — lågpass under, bandpass i mitten, högpass över — kring en gemensam brytfrekvens, med SPREAD i oktaver och en envelopföljare som flyttar banken upp till fyra oktaver. Prov: 1 kHz passerar medan 8 kHz dämpas; envelopen öppnar banken och stänger sig i tystnad. De 43 förvalen är inte lästa |
 | Pitcher | 22 | ◐ | vocal_harmonizer med formantbevarande pitch |
 | Edison | 20 | ✅ | `ui::edison_modal` (0.9.127, spektrum 0.9.140): vågform med dragbart urval, sju operationer och **spektrum över urvalet** (48 logaritmiska band, 40 Hz–16 kHz, −60…0 dB). Redigerar en **kopia** och lägger resultatet som ett nytt spår — källfilen rörs aldrig. Kvar: loopverktyg och destruktiv redigering på plats |
-| Maximus | 15 | ◐ | multibandskompressorn är 3 band med **egen tröskel per band** och rattar för **TRÖSKEL** och **RATIO** (0.9.139) — provat: sänkt bandtröskel trycker ner sitt band, höjd släpper igenom mer, och 0,5 på ratten är standardvärdet. Kvar: fler band och ritbara kurvor |
+| Maximus | 15 | ✅ | multibandskompressorn är **tre band med egen tröskel per band** (0.9.138) och nu **master-bandet** (0.9.149): en kompressor över summan, efter banden — FL:s MASTER-knapp. Prov: med alla band på 0 sänker master summan till under 75 %. **Kvar:** ritbara volymkurvor per band och solo per band. *Rättelse: raden sa "5 band" — Maximus har LOW/MID/HIGH + MASTER, inte fem band.* |
 | Vocodex | 13 | ✅ | `vocode` (16 band, 100 Hz–8 kHz, bärvågen följer sången) och masterns vocoder har nu **bandredigeraren** (0.9.143): 16 nivåreglage, 0–2, i FX-racket under fliken 🎚 Vocoder, sparade i projektet. Prov: ett stängt band släpper igenom under 35 % av det öppna. Kvar: FL:s egen bandlayout och formantskifte per band |
 | Soundgoodizer | 5 | ◐ | saturator + kompressor |
 | Fruity Convolver | 4 | ✅ | convolvern (byggd i dag) |

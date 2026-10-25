@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — master-bandet i Maximus (0.9.149)
+
+- **Master-bandet:** en kompressor över summan av de tre banden, efter dem — FL:s MASTER-knapp.
+  Ett eget steg, inte en fjärde bandratt: med alla band på 0 sänker den ändå summan (prov
+  `the_master_band_compresses_the_sum_on_its_own`, under 75 % av nivån utan). Ratt: `MASTER` i
+  pedalen, mappad i `the_multiband_threshold_knobs_move_their_own_band`.
+- **Rättelse i inventariet:** raden sa "5 band". Maximus har LOW/MID/HIGH + MASTER — tre band och
+  ett masterband, vilket är vad vi nu har.
+
+### Undersökt — Vocodex formantskifte byggdes inte (0.9.149)
+
+- Ett formantskifte (±1 oktav, alla band flyttade) mättes på 16-bandsvocodern: med brus som både
+  modulator och bärvåg flyttade centroiden **4 421 → 4 374 Hz** (+1 %) vid en oktav upp och
+  **4 421 → 3 723 Hz** vid en oktav ner, medan en enskild ton knappt rörde sig alls. Banden är för
+  breda (Q 3) för att en förskjutning ska höras, och att smalna dem (Q 6) gav 39 % i stället för
+  10 % men bröt `the_vocoder_silences_the_carrier_when_the_modulator_is_silent`.
+- Slutsatsen står i inventariet: formantskifte kräver smalare band eller en FFT-vocoder. Ingen ratt
+  byggdes — en ratt som inte gör något är värre än ingen ratt.
+
 ### Fixed — klipp utan känt tempo kapades när tempot ändrades (0.9.148)
 
 - **Det var "bandspelaren som går sönder".** Ett klipp med `source_bpm == 0` kan inte sträckas, men
