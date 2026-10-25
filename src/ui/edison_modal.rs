@@ -34,6 +34,11 @@ pub struct EdisonState {
     peaks: Vec<f32>,
     drag_anchor: Option<usize>,
     pub message: Option<String>,
+    /// Spektrum över urvalet. `spectrum_key` är (start, slut, längd) det räknades för, så
+    /// bilden inte räknas om varje ruta men ändå följer varje redigering.
+    pub show_spectrum: bool,
+    spectrum: Vec<f32>,
+    spectrum_key: (usize, usize, usize),
 }
 
 impl EdisonState {
@@ -48,6 +53,9 @@ impl EdisonState {
             peaks: Vec::new(),
             drag_anchor: None,
             message: None,
+            show_spectrum: false,
+            spectrum: Vec::new(),
+            spectrum_key: (0, 0, 0),
         };
         state.reset();
         state
@@ -188,6 +196,22 @@ pub fn render_edison_modal(ctx: &egui::Context, st: &mut EdisonState) -> EdisonA
                 }
             });
 
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .selectable_label(st.show_spectrum, crate::i18n::t("📊 Spektrum över urvalet"))
+                    .on_hover_text(crate::i18n::t(
+                        "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras.",
+                    ))
+                    .clicked()
+                {
+                    st.show_spectrum = !st.show_spectrum;
+                }
+            });
+            if st.show_spectrum {
+                draw_spectrum(ui, st);
+            }
+
             if let Some(msg) = &st.message {
                 ui.add_space(4.0);
                 ui.label(egui::RichText::new(msg).size(Theme::FONT_S).color(palette().red()));
@@ -218,6 +242,48 @@ pub fn render_edison_modal(ctx: &egui::Context, st: &mut EdisonState) -> EdisonA
         st.reset();
     }
     action
+}
+
+
+fn draw_spectrum(ui: &mut Ui, st: &mut EdisonState) {
+    let (a, b) = st.selection.unwrap_or((0, st.len()));
+    let key = (a, b, st.work.0.len());
+    if st.spectrum_key != key {
+        if b > a && st.work.1.len() >= b {
+            let mono: Vec<f32> = (a..b).map(|i| 0.5 * (st.work.0[i] + st.work.1[i])).collect();
+            st.spectrum = crate::audio::edison::spectrum_db(&mono, st.sample_rate as f32, 48);
+        } else {
+            st.spectrum.clear();
+        }
+        st.spectrum_key = key;
+    }
+
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(ui.available_width(), 96.0), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, Rounding::same(4.0), palette().bg_deep());
+    painter.rect_stroke(rect, Rounding::same(4.0), Stroke::new(1.0_f32, palette().border()));
+    if st.spectrum.is_empty() {
+        return;
+    }
+    let n = st.spectrum.len() as f32;
+    let bw = rect.width() / n;
+    for (i, level) in st.spectrum.iter().enumerate() {
+        let h = (level * (rect.height() - 4.0)).max(0.5);
+        let x = rect.min.x + bw * i as f32;
+        let color = if *level > 0.75 {
+            palette().orange()
+        } else {
+            palette().cyan()
+        };
+        painter.rect_filled(
+            Rect::from_min_max(
+                Pos2::new(x + 1.0, rect.max.y - h),
+                Pos2::new(x + bw - 1.0, rect.max.y - 1.0),
+            ),
+            Rounding::ZERO,
+            color,
+        );
+    }
 }
 
 fn draw_waveform(ui: &mut Ui, st: &mut EdisonState) {

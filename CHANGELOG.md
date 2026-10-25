@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Spektrum i Edison (0.9.140)
+
+- **📊 Spektrum över urvalet** i Edison: 48 logaritmiskt fördelade band från 40 Hz till 16 kHz,
+  normaliserade över −60…0 dB och räknade ur en Hann-fönstrad FFT på upp till 8192 sampel kring
+  urvalets mitt. Logaritmisk axel därför att ett linjärt spektrum lägger tre fjärdedelar av bredden
+  över 8 kHz, där det sällan finns något att titta på.
+- Spektrumet cachas på `(start, slut, längd)`, så det följer varje redigering och urvalsändring utan
+  att räknas om varje bildruta.
+- Prov: en 1 kHz-ton hamnar inom 120 Hz från sin frekvens och syns tydligt, tystnad ger tomt spektrum,
+  och brus fyller minst 24 av 32 band.
+
 ### Added — Tröskel och ratio som rattar på multibandet (0.9.139)
 
 - **TRÖSKEL** (−40…+4 dB, 0,5 = −18 dB som förut) och **RATIO** (1…12, 0,27 = 4:1) sitter nu i pedalen

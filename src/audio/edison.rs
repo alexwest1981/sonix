@@ -130,4 +130,98 @@ mod tests {
         assert_eq!(trim_l, l[3..5].to_vec());
         assert_eq!(trim_r, r[3..5].to_vec());
     }
+
+    /// En ren ton ska hamna i den bin som ligger närmast dess frekvens — log-axeln är
+    /// annars bara en bild som ser trovärdig ut.
+    #[test]
+    fn the_spectrum_puts_a_tone_where_its_frequency_is() {
+        let sr = 48_000.0;
+        let n = 8192;
+        let tone: Vec<f32> = (0..n)
+            .map(|i| 0.5 * (std::f32::consts::TAU * 1_000.0 * i as f32 / sr).sin())
+            .collect();
+        let bins = 96;
+        let spec = spectrum_db(&tone, sr, bins);
+        let (loudest, level) = spec
+            .iter()
+            .enumerate()
+            .max_by(|a, b| a.1.partial_cmp(b.1).unwrap())
+            .map(|(i, v)| (i, *v))
+            .unwrap();
+        let (lo, hi) = (40.0_f32, 16_000.0_f32);
+        let centre = lo * (hi / lo).powf((loudest as f32 + 0.5) / bins as f32);
+        assert!(
+            (centre - 1_000.0).abs() < 120.0,
+            "toppen hamnade på {centre:.0} Hz (bin {loudest}, nivå {level:.2})"
+        );
+        assert!(level > 0.5, "en halvskalig ton ska synas tydligt: {level:.2}");
+    }
+
+    #[test]
+    fn silence_has_no_spectrum_and_noise_is_broad() {
+        let sr = 48_000.0;
+        let silence = vec![0.0f32; 8192];
+        assert!(spectrum_db(&silence, sr, 32).iter().all(|v| *v < 1e-6));
+
+        // Deterministiskt brus: varje band ska ha energi, ingen ska dominera helt.
+        let mut seed = 12345u32;
+        let noise: Vec<f32> = (0..8192)
+            .map(|_| {
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                (seed >> 9) as f32 / 4_194_304.0 - 1.0
+            })
+            .collect();
+        let spec = spectrum_db(&noise, sr, 32);
+        let above = spec.iter().filter(|v| **v > 0.3).count();
+        assert!(above >= 24, "brus ska fylla de flesta band: {above} av 32");
+    }
+}
+
+/// **Spektrum för urvalet** — `bins` logaritmiskt fördelade band från 40 Hz till 16 kHz,
+/// normaliserade till 0…1 över −60…0 dB. Logaritmisk axel därför att ett linjärt spektrum
+/// lägger tre fjärdedelar av bredden över 8 kHz, där det sällan finns något att titta på.
+///
+/// Fönstret är Hann och längden närmaste tvåpotens under 8192 sampel: en FFT på hela
+/// klippet hade gett 0,02 Hz per bin och en bild som inte går att läsa.
+pub fn spectrum_db(samples: &[f32], sample_rate: f32, bins: usize) -> Vec<f32> {
+    let bins = bins.clamp(4, 256);
+    let mut out = vec![0.0f32; bins];
+    if samples.len() < 64 || sample_rate <= 0.0 {
+        return out;
+    }
+    let n = {
+        let mut p = 1usize;
+        while p * 2 <= samples.len().min(8192) {
+            p *= 2;
+        }
+        p
+    };
+    if n < 64 {
+        return out;
+    }
+    let start = (samples.len() - n) / 2;
+    let mut re = vec![0.0f32; n];
+    let mut im = vec![0.0f32; n];
+    for (i, slot) in re.iter_mut().enumerate() {
+        let w = 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / n as f32).cos();
+        *slot = samples[start + i] * w;
+    }
+    crate::audio::vocal_harmonizer::fft_radix2(&mut re, &mut im, false);
+    // En fullskalig sinus i sin egen bin ger |X| ≈ n/4 med Hann-fönster.
+    let norm = (n as f32 / 4.0).max(1.0);
+    let hz_per_bin = sample_rate / n as f32;
+    let (lo, hi) = (40.0_f32, 16_000.0_f32);
+    for (i, slot) in out.iter_mut().enumerate() {
+        let f0 = lo * (hi / lo).powf(i as f32 / bins as f32);
+        let f1 = lo * (hi / lo).powf((i + 1) as f32 / bins as f32);
+        let b0 = (f0 / hz_per_bin).floor().max(1.0) as usize;
+        let b1 = (f1 / hz_per_bin).ceil().max(b0 as f32 + 1.0) as usize;
+        let mut peak = 0.0_f32;
+        for b in b0..b1.min(n / 2) {
+            peak = peak.max((re[b] * re[b] + im[b] * im[b]).sqrt() / norm);
+        }
+        let db = 20.0 * peak.max(1e-6).log10();
+        *slot = ((db + 60.0) / 60.0).clamp(0.0, 1.0);
+    }
+    out
 }

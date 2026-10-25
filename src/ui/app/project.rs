@@ -1534,6 +1534,9 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
                 sr,
                 1.0,
             ));
+            if let Some(e) = self.edison.as_mut() {
+                e.show_spectrum = true;
+            }
         }
         ScreenshotTarget::SongStructureModal => {
             self.view_mode = ViewMode::PlaylistArranger;
