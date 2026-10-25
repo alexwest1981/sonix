@@ -17,3 +17,7 @@ screenshots = [
 [linux.x86_64]
 asset = "sonix-{version}-x86_64-unknown-linux-gnu.tar.gz"
 exec = "sonix-{version}-x86_64-unknown-linux-gnu/sonix"
+
+[linux.aarch64]
+asset = "sonix-{version}-aarch64-unknown-linux-gnu.tar.gz"
+exec = "sonix-{version}-aarch64-unknown-linux-gnu/sonix"

@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.159] - 2026-10-25
+
+**aarch64-release.** Release-workflowen bygger nu båda arkitekturerna: x86_64 på `ubuntu-22.04`
+och aarch64 på `ubuntu-24.04-arm`, som två jobb som laddar upp var sin artefakt och en tredje som
+attesterar och publicerar dem tillsammans. Det var den sista varningen i OmaStore — utan en
+arm-tillgång ser appen "inte installerbar" ut för aarch64-användare.
+
+- `omastore.toml` deklarerar nu `linux.aarch64` med samma `{version}`-mönster.
+- ARM-binären kräver glibc ≥ 2.39 (Ubuntu 24.04); x86_64 ligger kvar på ≥ 2.35.
+- `.SRCINFO`/`PKGBUILD` deklarerar `alsa-lib` och `glibc`, så butiken kan kontrollera beroenden.
+
 ## [0.9.158] - 2026-10-25
 
 Första releasen sedan 0.9.0 — **579 commits**. Den fullständiga listan står i
@@ -74,6 +85,7 @@ audio engine; the remaining gaps are documented honestly in
   rationale, which now state the real reason (the closed format cannot be
   decoded).
 
-[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.158...HEAD
+[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.159...HEAD
+[0.9.159]: https://github.com/alexwest1981/sonix/compare/v0.9.158...v0.9.159
 [0.9.158]: https://github.com/alexwest1981/sonix/compare/v0.9.0...v0.9.158
 [0.9.0]: https://github.com/alexwest1981/sonix/releases/tag/v0.9.0

@@ -14,9 +14,19 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  release:
-    name: Build & publish Linux binary
-    runs-on: ubuntu-22.04
+  build:
+    name: Build ${{ matrix.arch }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            arch: x86_64
+          # ARM-builden körs på en arm-runner i stället för att korsas fram: alsa-sys
+          # behöver ett riktigt aarch64-sysroot, och cross-Images saknar libasound2-dev.
+          - runner: ubuntu-24.04-arm
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
@@ -31,6 +41,8 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.arch }}
 
       - name: Test
         run: cargo test --release --locked --features plugin-host
@@ -42,7 +54,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${GITHUB_REF_NAME#v}"
-          arch="$(uname -m)"
+          arch="${{ matrix.arch }}"
           name="sonix-${version}-${arch}-unknown-linux-gnu"
           mkdir -p "dist/${name}"
           cp target/release/sonix "dist/${name}/"
@@ -52,6 +64,27 @@ jobs:
           tar -C dist -czf "dist/${name}.tar.gz" "${name}"
           ( cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256" )
           ls -la dist
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download both builds
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
 
       - name: Extract release notes from CHANGELOG
         run: |
@@ -76,6 +109,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          ls -la dist
           if [ -s RELEASE_NOTES.md ]; then
             gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.sha256 \
               --title "Sonix Studio ${GITHUB_REF_NAME}" \

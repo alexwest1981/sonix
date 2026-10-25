@@ -17,7 +17,8 @@ Sonix är en inhemsk Linux-DAW skriven i **Rust** och **egui**. Du kör den geno
 > indexerar den från senaste stabila releasen. Öppna `omastore://alexwest1981/sonix`, eller hitta
 > den under kategorin Audio i butiken.
 >
-> Hämta senaste `sonix-<version>-x86_64-unknown-linux-gnu.tar.gz` från [Releases-sidan](https://github.com/alexwest1981/sonix/releases/latest), packa upp och kör `./sonix`. Arkivet innehåller binären, båda README-filerna, manualen, ändringsloggen och licenserna, samt en `.sha256`-checksumma. Den är byggd med `--features plugin-host` för x86-64 (glibc ≥ 2.35).
+> Hämta senaste `sonix-<version>-x86_64-unknown-linux-gnu.tar.gz` från [Releases-sidan](https://github.com/alexwest1981/sonix/releases/latest), packa upp och kör `./sonix`. Arkivet innehåller binären, båda README-filerna, manualen, ändringsloggen och licenserna, samt en `.sha256`-checksumma. Den är byggd med `--features plugin-host` för **x86-64** (glibc ≥ 2.35) och **aarch64**
+> (glibc ≥ 2.39); välj arkivet som passar maskinen.
 
 > ⚡ **Snabbaste sättet (guidad installerare):**
 > Ladda ner och kör `install.sh` – den bekräftar varje steg åt dig (beroenden, kompilering, binär + startmenypost) och kräver inga terminalkommandon utöver:
