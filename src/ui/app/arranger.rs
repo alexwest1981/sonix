@@ -467,6 +467,39 @@ impl SonixApp {
                         .color(crate::ui::theme::palette().cyan()),
                     )
                     .on_hover_text(crate::i18n::t("Position: takt. slag. steg"));
+                    ui.separator();
+                    // **Transporten där ögat redan är** (GUI-planen, punkt 2): spela och stoppa
+                    // bredvid tempot, inte bara femton centimeter upp. Samma anrop som de stora
+                    // knapparna, så läget kan inte glida isär.
+                    let play_bg = if self.is_playing {
+                        crate::ui::theme::palette().green()
+                    } else {
+                        crate::ui::theme::palette().panel_alt()
+                    };
+                    let play_fg = if self.is_playing { Color32::BLACK } else { crate::ui::theme::palette().text() };
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("▶").strong().size(Theme::FONT_S).color(play_fg))
+                                .fill(play_bg)
+                                .min_size(egui::vec2(24.0, 20.0)),
+                        )
+                        .on_hover_text(crate::i18n::t("Spela upp"))
+                        .clicked()
+                        && !self.is_playing
+                    {
+                        self.toggle_playback();
+                    }
+                    if ui
+                        .add(
+                            egui::Button::new(egui::RichText::new("⏹").size(Theme::FONT_S).color(crate::ui::theme::palette().text()))
+                                .fill(crate::ui::theme::palette().border())
+                                .min_size(egui::vec2(24.0, 20.0)),
+                        )
+                        .on_hover_text(crate::i18n::t("Stopp"))
+                        .clicked()
+                    {
+                        self.stop_playback();
+                    }
                 });
             });
 

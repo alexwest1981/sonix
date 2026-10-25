@@ -69,9 +69,10 @@ på en yta. Konkret, i den ordning det är värt att ta:
 1. **En yta i taget.** *Första steget taget i 0.9.73:* de 13 vyerna ligger bakom tre flikar
    i stället för en rad som radbryts, och sedan **omgrupperade efter vad man gör**: SKAPA,
    ARRANGERA, MIXA, VERKTYG (0.9.74). Kvar: inget på den punkten.
-2. **Transporten dit ögat redan är.** *Delvis gjort i 0.9.80:* tempo och position (takt.slag.steg)
-   sitter nu i arrangörens egen verktygsrad, bredvid taktart, metronom och pedal. Kvar: play/record
-   där, om man vill gå hela vägen som Soundtrap.
+2. **Transporten dit ögat redan är.** *✅ 0.9.80 + 0.9.136:* tempo, position (takt.slag.steg) och
+   **▶/⏹** sitter i arrangörens egen verktygsrad, bredvid taktart, metronom och pedal, och anropar
+   samma funktioner som den stora transporten. Kvar: **⏺** — den kräver ett armat spår, och en knapp
+   som ibland inte gör något är sämre än en som sitter en rad högre.
 3. **Mindre krom.** *✅ 0.9.97/0.9.100:* AI-promptkapseln är borta ur arrangöret (flyttad till AI-vyn,
    som redan hade en prompt). Kvar: samma kontroll två gånger (volym i rack och mixer) ska se
    likadan ut.

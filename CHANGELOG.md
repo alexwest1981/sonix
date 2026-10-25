@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Transporten i arrangörens rad (0.9.136)
+
+- **▶ och ⏹** sitter nu bredvid tempot och positionen i arrangörens verktygsrad, inte bara i den
+  stora transporten högst upp. Samma anrop som de stora knapparna (`toggle_playback` /
+  `stop_playback`), så de två kan inte visa olika läge.
+- Inspelning (`⏺`) är medvetet inte ditflyttad: den kräver ett armat spår, och en knapp som
+  ibland inte gör något är värre än en knapp som sitter en rad högre.
+
 ### Added — Ritbar kurva som modulationskälla (0.9.135)
 
 - **🕹 Modulationsmatris → Kurva:** sexton punkter som kan ritas med klick och drag, med egen takt
