@@ -1,6 +1,6 @@
 pkgbase = sonix-bin
 	pkgdesc = Digital audio workstation: arrangement, mixer, mastering chain and a modular patcher
-	pkgver = 0.9.158
+	pkgver = 0.9.159
 	pkgrel = 1
 	url = https://github.com/alexwest1981/sonix
 	arch = x86_64
@@ -10,7 +10,7 @@ pkgbase = sonix-bin
 	depends = glibc
 	provides = sonix
 	conflicts = sonix
-	source = https://github.com/alexwest1981/sonix/releases/download/v0.9.158/sonix-0.9.158-x86_64-unknown-linux-gnu.tar.gz
-	sha256sums = 812410e179a6918b47fbf6ffd36788c6abba0137321cd9066a4dda39d922ef6d
+	source = https://github.com/alexwest1981/sonix/releases/download/v0.9.159/sonix-0.9.158-x86_64-unknown-linux-gnu.tar.gz
+	sha256sums = 129d20c03dd63460314f15511b9caa60206885d4d88d060d352f09e779221073
 
 pkgname = sonix-bin
