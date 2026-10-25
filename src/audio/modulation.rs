@@ -50,6 +50,22 @@ impl LfoShape {
     }
 }
 
+/// Antalet punkter i en ritad kurva. Sexton räcker för att rita en form för hand och ryms
+/// i en `Copy`-slot utan allokering.
+pub const CURVE_POINTS: usize = 16;
+
+/// Värdet av en ritad kurva vid en fas 0–1, linjärt interpolerat. Sista punkten går tillbaka
+/// till den första, så kurvan är sluten och kan gå runt utan hopp.
+pub fn curve_at(points: &[f32; CURVE_POINTS], phase: f32) -> f32 {
+    let n = points.len();
+    let x = phase.rem_euclid(1.0) * n as f32;
+    let i = (x.floor() as usize).min(n - 1);
+    let frac = x - i as f32;
+    let a = points[i];
+    let b = points[(i + 1) % n];
+    (a + (b - a) * frac).clamp(-1.0, 1.0)
+}
+
 /// Vad en slot läser.
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ModSource {
@@ -67,6 +83,10 @@ pub enum ModSource {
     /// Ett fast värde som sätts för hand — FL:s Voltage Controller, och det en X-Y-pad är
     /// gjord av: två rattar som var och en styr något. Ingen rörelse, bara ett läge.
     Voltage { value: f32 },
+    /// **Ritbar kurva** — FL:s Envelope Controller: 16 punkter som går runt med `rate_hz`.
+    /// Fasta punkter i stället för en `Vec` eftersom en slot ska vara `Copy`: matrisen
+    /// skickas till ljudtråden per buffert, och en allokering där är otillåten.
+    Curve { rate_hz: f32, points: [f32; CURVE_POINTS] },
 }
 
 impl ModSource {
@@ -78,6 +98,7 @@ impl ModSource {
             ModSource::Key => "Tonhöjd".to_string(),
             ModSource::Adsr { .. } => "ADSR".to_string(),
             ModSource::Voltage { value } => format!("Spänning {:.0} %", value * 100.0),
+            ModSource::Curve { .. } => "Kurva".to_string(),
         }
     }
 }
@@ -233,6 +254,14 @@ impl ModMatrix {
                         self.random_seed = self.random_seed.wrapping_add(1);
                     }
                     shape.at(*phase, self.random_seed.wrapping_add(i as u32))
+                }
+                ModSource::Curve { rate_hz, points } => {
+                    let phase = &mut self.phases[i];
+                    *phase += rate_hz.abs().max(0.01) / sample_rate.max(1.0);
+                    if *phase >= 1.0 {
+                        *phase -= phase.floor();
+                    }
+                    curve_at(&points, *phase)
                 }
                 ModSource::Env => self.env.min(1.0),
                 ModSource::Velocity => {
@@ -474,4 +503,53 @@ mod tests {
         assert!(released < 0.05, "releasen ska ha gått mot noll: {released:.3}");
     }
 
+
+    #[test]
+    fn a_flat_curve_is_a_constant() {
+        let points = [0.4_f32; CURVE_POINTS];
+        for phase in [0.0, 0.13, 0.5, 0.99] {
+            assert!((curve_at(&points, phase) - 0.4).abs() < 1e-6, "fas {phase}");
+        }
+    }
+
+    #[test]
+    fn the_curve_interpolates_between_points_and_wraps() {
+        let mut points = [0.0_f32; CURVE_POINTS];
+        points[0] = 1.0;
+        // Halvvägs mellan punkt 0 och 1 är värdet 0,5.
+        let mid = curve_at(&points, 0.5 / CURVE_POINTS as f32);
+        assert!((mid - 0.5).abs() < 1e-5, "mitten blev {mid}");
+        // Precis före varvet slutar kurvan på väg mot punkt 0 igen, inte på noll.
+        let before_wrap = curve_at(&points, 1.0 - 0.5 / CURVE_POINTS as f32);
+        assert!((before_wrap - 0.5).abs() < 1e-5, "varvet slöt inte: {before_wrap}");
+        assert!((curve_at(&points, 0.0) - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_curve_slot_moves_with_its_own_rate() {
+        let mut points = [0.0_f32; CURVE_POINTS];
+        points[0] = 1.0;
+        let slot = ModSlot::new(
+            ModSource::Curve { rate_hz: 1.0, points },
+            ModTarget::Volume,
+            1.0,
+        );
+        let mut matrix = ModMatrix::default();
+        matrix.set_slots(vec![slot]);
+        // Vid 1 Hz och 8 sampel/s går ett varv på åtta sampel.
+        let mut seen_high = false;
+        let mut seen_low = false;
+        for _ in 0..8 {
+            let out = matrix.tick(8.0, 0.5);
+            // Volymmålet är en multiplikator kring 1,0: källan 1,0 ger +1, källan 0 ger 0.
+            // Volymen är en multiplikator kring 1,0: källan 1,0 ger 2,0 och källan 0 ger 1,0.
+            if out.volume > 1.9 {
+                seen_high = true;
+            }
+            if out.volume < 1.1 {
+                seen_low = true;
+            }
+        }
+        assert!(seen_high && seen_low, "kurvan svepte inte: high={seen_high} low={seen_low}");
+    }
 }

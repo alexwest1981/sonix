@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Ritbar kurva som modulationskälla (0.9.135)
+
+- **🕹 Modulationsmatris → Kurva:** sexton punkter som kan ritas med klick och drag, med egen takt
+  (`rate_hz`). Det är FL:s Envelope Controller som källa: kurvan går runt, är sluten i varvet och
+  interpoleras linjärt.
+- Punkterna ligger i en **fast array** i stället för en `Vec`, eftersom en slot ska vara `Copy` —
+  matrisen skickas till ljudtråden per buffert, och en allokering där är otillåten.
+- Prov: en platt kurva är konstant, halvvägs mellan två punkter blir värdet 0,5, varvet sluter
+  tillbaka till första punkten, och en slot sveper med sin egen takt (volymmålet går 2,0 → 1,0).
+
 ### Added — Goniometer i Visualizer (0.9.134)
 
 - **Visualizern** ritar nu också en **goniometer**: L/R-paret ur skopet som en roterad punkt, så mono

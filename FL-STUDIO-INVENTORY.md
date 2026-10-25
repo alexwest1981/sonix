@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 84** har en motsvarighet, **◐ 51** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 85** har en motsvarighet, **◐ 50** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -128,7 +128,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Slicer 2 | 14 | ◐ | choppern hittar slag och dumpar till piano roll/step |
 | FL Slayer | 12 | ◐ | **`Waveform::Guitar`**: strängen från Pluck med plektrumet **en bit in på strängen** — utsignalen läses av på två ställen och differensen släcker de övertoner som har en nod vid plektrumet — plus mjukt rörsteg (tanh). Mätt samma ton (220 Hz): nollgenomgångar 0,0676 → 0,1298 (ljusare), crestfaktor 8,14 → 7,04 (komprimerad), tonhöjd 220 Hz. Kvar: sex strängar med egen stämning, förval och pedaler |
 | FPC | 11 | ◐ | drum.rs + steprad; ingen pad-bank med egna lager |
-| Fruity Envelope Controller | 10 | ◐ | LFO med fyra vågformer och envelopföljare finns; en ritbar flerpunktskurva gör det inte |
+| Fruity Envelope Controller | 10 | ✅ | **Ritbar kurva** som modulationskälla (0.9.135): `ModSource::Curve { rate_hz, points: [f32; 16] }` — sexton punkter, linjärt interpolerade, slutna i varvet och `Copy` så matrisen kan skickas till ljudtråden utan allokering. Ritas med klick/drag i 🕹 Modulationsmatris. Prov: platt kurva är konstant, halvvägs mellan två punkter blir värdet 0,5, varvet sluter till första punkten och en slot sveper med egen takt |
 | BassDrum | 9 | ◐ | kick i drum.rs |
 | BeepMap | 9 | ✅ | `instruments::beepmap_amplitudes(bytes)` — byte → 16 deltonsnivåer, normaliserade. Verktyg → BeepMap |
 | FLEX | 9 | ◐ | **egen förvalsbank**: `audio::flex` sparar reglagen (vågform, ADSR, filter, sub, unison, detune, glide, drive, dragstänger) som namngivna ljud i `~/.local/share/sonix/flex_presets.json`, med ▶-lyssning, Ladda och 🗑 i bläddraren. Tempfil + rename, så en krasch inte lämnar en halv fil; en trasig fil ger tom bank i stället för att appen inte startar. Prov: rundtur bevarar alla parametrar. Kvar: FL:s eget bibliotek och FLEX-specifika vågformer |

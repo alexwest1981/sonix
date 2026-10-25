@@ -1238,6 +1238,8 @@ pub enum ScreenshotTarget {
     NewtimeModal,
     /// Visualizern med goniometern (0.9.134).
     Visualizer,
+    /// Modulationsmatrisen med en ritad kurva (0.9.135).
+    ModMatrix,
 }
 
 #[derive(Clone, Debug)]
@@ -1304,6 +1306,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::NewtoneModal, out_dir.join("33_newtone.png")),
         (ScreenshotTarget::NewtimeModal, out_dir.join("34_newtime.png")),
         (ScreenshotTarget::Visualizer, out_dir.join("35_visualizer.png")),
+        (ScreenshotTarget::ModMatrix, out_dir.join("36_mod_matrix.png")),
     ];
 
     self.screenshot_queue = targets;
@@ -1336,6 +1339,7 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
     self.newtime = None;
     self.pending_wav_question = None;
     self.show_visualizer = false;
+    self.show_mod_matrix = false;
 
     match target {
         ScreenshotTarget::View(vm) => {
@@ -1415,6 +1419,30 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
         ScreenshotTarget::FxRackModal => {
             self.view_mode = ViewMode::PlaylistArranger;
             self.show_fx_rack_modal = true;
+        }
+        ScreenshotTarget::ModMatrix => {
+            self.view_mode = ViewMode::PlaylistArranger;
+            // Två rader: en LFO och en ritad kurva, så båda källtyperna syns.
+            let mut points = [0.0_f32; crate::audio::modulation::CURVE_POINTS];
+            for (i, p) in points.iter_mut().enumerate() {
+                *p = -1.0 + 2.0 * i as f32 / (crate::audio::modulation::CURVE_POINTS - 1) as f32;
+            }
+            self.mod_slots = vec![
+                crate::audio::modulation::ModSlot::new(
+                    crate::audio::modulation::ModSource::Lfo {
+                        rate_hz: 0.8,
+                        shape: crate::audio::modulation::LfoShape::Sine,
+                    },
+                    crate::audio::modulation::ModTarget::Cutoff,
+                    0.5,
+                ),
+                crate::audio::modulation::ModSlot::new(
+                    crate::audio::modulation::ModSource::Curve { rate_hz: 0.5, points },
+                    crate::audio::modulation::ModTarget::Volume,
+                    -0.6,
+                ),
+            ];
+            self.show_mod_matrix = true;
         }
         ScreenshotTarget::Visualizer => {
             self.view_mode = ViewMode::PlaylistArranger;

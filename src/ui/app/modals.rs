@@ -1934,7 +1934,7 @@ pub(crate) fn render_fx_rack_modal_view(&mut self, ctx: &egui::Context) {
 impl SonixApp {
 /// Modulationsmatrisen: FL:s Envelope/Peak/Keyboard Controller i en tabell.
 pub(crate) fn render_mod_matrix_view(&mut self, ctx: &egui::Context) {
-    use crate::audio::modulation::{LfoShape, ModSlot, ModSource, ModTarget};
+    use crate::audio::modulation::{CURVE_POINTS, LfoShape, ModSlot, ModSource, ModTarget};
     if !self.show_mod_matrix {
         return;
     }
@@ -1993,6 +1993,15 @@ pub(crate) fn render_mod_matrix_view(&mut self, ctx: &egui::Context) {
                                 slot.source = ModSource::Adsr { attack: 0.01, decay: 0.2, sustain: 0.6, release: 0.3 };
                                 changed = true;
                             }
+                            // Ritbar kurva (Envelope Controller): sexton punkter som går runt.
+                            if ui.selectable_label(matches!(slot.source, ModSource::Curve { .. }), crate::i18n::t("Kurva")).clicked() {
+                                let mut points = [0.0_f32; CURVE_POINTS];
+                                for (i, p) in points.iter_mut().enumerate() {
+                                    *p = -1.0 + 2.0 * i as f32 / (CURVE_POINTS - 1) as f32;
+                                }
+                                slot.source = ModSource::Curve { rate_hz: 1.0, points };
+                                changed = true;
+                            }
                         });
                     if let ModSource::Voltage { value } = &mut slot.source
                         && ui
@@ -2028,6 +2037,35 @@ pub(crate) fn render_mod_matrix_view(&mut self, ctx: &egui::Context) {
                                 changed = true;
                             }
                         });
+                    }
+                    // Ritbar kurva: 16 punkter, klicka och dra i bilden.
+                    if let ModSource::Curve { rate_hz, points } = &mut slot.source {
+                        if ui
+                            .add(egui::DragValue::new(rate_hz).range(0.01..=30.0).speed(0.05).suffix(" Hz"))
+                            .changed()
+                        {
+                            changed = true;
+                        }
+                        let (rect, resp) = ui.allocate_exact_size(Vec2::new(170.0, 42.0), Sense::click_and_drag());
+                        let painter = ui.painter_at(rect);
+                        painter.rect_filled(rect, Rounding::same(3.0), crate::ui::theme::palette().bg_deep());
+                        for (i, v) in points.iter().enumerate() {
+                            let x = rect.min.x + rect.width() * (i as f32 + 0.5) / CURVE_POINTS as f32;
+                            let y = rect.center().y - v.clamp(-1.0, 1.0) * rect.height() * 0.45;
+                            painter.line_segment(
+                                [Pos2::new(x, rect.center().y), Pos2::new(x, y)],
+                                Stroke::new(2.0_f32, crate::ui::theme::palette().orange()),
+                            );
+                        }
+                        if (resp.clicked() || resp.dragged())
+                            && let Some(pos) = resp.interact_pointer_pos()
+                        {
+                            let rel = ((pos.x - rect.min.x) / rect.width()).clamp(0.0, 0.999);
+                            let idx = (rel * CURVE_POINTS as f32) as usize;
+                            let v = ((rect.center().y - pos.y) / (rect.height() * 0.5)).clamp(-1.0, 1.0);
+                            points[idx.min(CURVE_POINTS - 1)] = v;
+                            changed = true;
+                        }
                     }
                     // LFO-parametrar bara när källan är en LFO.
                     if let ModSource::Lfo { rate_hz, shape } = &mut slot.source {
