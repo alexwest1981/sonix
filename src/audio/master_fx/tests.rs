@@ -288,6 +288,41 @@
         }
     }
 
+    /// **Egen tröskel per band:** med samma globala tröskel ska low-bandet tryckas ner mer när
+    /// dess egen tröskel sänks — det är skillnaden mellan en multibandskompressor och en
+    /// kompressor med tre utgångar.
+    #[test]
+    fn a_band_can_have_its_own_threshold() {
+        let sr = 48_000.0;
+        let level_with = |offset_db: f32| {
+            let mut mb = MultibandCompressor::new(sr);
+            mb.set_params(MultibandParams {
+                amounts: [1.0, 0.0, 0.0],
+                threshold_db: -20.0,
+                ratio: 4.0,
+                offsets_db: [offset_db, 0.0, 0.0],
+                ..MultibandParams::default()
+            });
+            let mut out = Vec::new();
+            for i in 0..48_000 {
+                let t = i as f32 / sr;
+                let x = 0.5 * (t * 100.0 * std::f32::consts::TAU).sin();
+                let (l, _) = mb.process(x, x);
+                out.push(l);
+            }
+            tone_mag(&out[24_000..], 100.0, sr)
+        };
+        let plain = level_with(0.0);
+        let lower = level_with(-24.0);
+        assert!(
+            lower < plain * 0.8,
+            "bandet trycktes inte ner: {plain:.4} → {lower:.4}"
+        );
+        // Och en höjd tröskel ska göra motsatsen — mindre kompression, mer kvar.
+        let higher = level_with(12.0);
+        assert!(higher > plain * 1.05, "höjd tröskel gav inte mer nivå: {plain:.4} → {higher:.4}");
+    }
+
     #[test]
     fn a_loud_band_is_tamed_and_the_quiet_one_is_not() {
         // 100 Hz på 0,5 och 5 kHz på 0,02: bara basbandet ska sänkas.

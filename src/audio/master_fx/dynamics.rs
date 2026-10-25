@@ -265,6 +265,10 @@ pub struct MultibandParams {
     pub release_ms: f32,
     /// Hur hårt varje band komprimeras (0 = orört band, 1 = full kompression).
     pub amounts: [f32; 3],
+    /// **Egen tröskel per band**, som avvikelse i dB från `threshold_db`. Låg band behöver
+    /// ofta en lägre tröskel än high för samma hörda kompression — det är hela poängen med
+    /// Maximus, och en gemensam tröskel kan inte uttrycka det.
+    pub offsets_db: [f32; 3],
 }
 
 impl Default for MultibandParams {
@@ -277,6 +281,7 @@ impl Default for MultibandParams {
             attack_ms: 5.0,
             release_ms: 120.0,
             amounts: [0.0; 3],
+            offsets_db: [0.0; 3],
         }
     }
 }
@@ -368,16 +373,16 @@ impl MultibandCompressor {
         let dry = [(ll, rl), (lm, rm), (lh, rh)];
 
         let p = self.params;
-        let band_params = CompressorParams {
-            threshold_db: p.threshold_db,
-            ratio: p.ratio.max(1.0),
-            attack_ms: p.attack_ms,
-            release_ms: p.release_ms,
-            makeup_db: 0.0,
-        };
 
         let mut out = (0.0f32, 0.0f32);
         for (i, (dl, dr)) in dry.iter().enumerate() {
+            let band_params = CompressorParams {
+                threshold_db: p.threshold_db + p.offsets_db[i],
+                ratio: p.ratio.max(1.0),
+                attack_ms: p.attack_ms,
+                release_ms: p.release_ms,
+                makeup_db: 0.0,
+            };
             let (wl, wr) = self.bands[i].process(*dl, *dr, &band_params);
             let a = p.amounts[i].clamp(0.0, 1.0);
             out.0 += dl + a * (wl - dl);

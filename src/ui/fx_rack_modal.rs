@@ -170,8 +170,8 @@ impl Default for FxRackState {
                     p3_name: "HIGH",
                     p3_val: 0.0,
                     mix: 1.0,
-                    description: "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band.",
-                    extra: Vec::new(),
+                    description: "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma.",
+                    extra: vec![("TRÖSK L", 0.5), ("TRÖSK M", 0.5), ("TRÖSK H", 0.5)],
                 },
                 FxPedal {
                     id: "transient",
@@ -596,11 +596,20 @@ impl FxRackState {
         };
 
         let mb_p = self.pedal("multiband");
+        let mb_extra = |i: usize| {
+            mb_p.and_then(|p| p.extra.get(i)).map(|e| e.1.clamp(0.0, 1.0)).unwrap_or(0.5)
+        };
         let multiband = MultibandParams {
             amounts: [
                 mb_p.map(|p| p.p1_val).unwrap_or(0.0),
                 mb_p.map(|p| p.p2_val).unwrap_or(0.0),
                 mb_p.map(|p| p.p3_val).unwrap_or(0.0),
+            ],
+            // Ratten står på 0,5 = ingen avvikelse; ±1 på ratten är ±20 dB.
+            offsets_db: [
+                (mb_extra(0) - 0.5) * 40.0,
+                (mb_extra(1) - 0.5) * 40.0,
+                (mb_extra(2) - 0.5) * 40.0,
             ],
             ..MultibandParams::default()
         };
@@ -2005,5 +2014,20 @@ mod tests {
         assert!((p.depth - 1.0).abs() < 1e-4);
         assert!(p.width.abs() < 1e-4);
         assert!((p.mix - 0.75).abs() < 1e-4);
+    }
+
+    /// **Tröskelrattarna når var sitt band** — mitten (0,5) är ingen avvikelse.
+    #[test]
+    fn the_multiband_threshold_knobs_move_their_own_band() {
+        let mut state = FxRackState::default();
+        let idx = state.pedals.iter().position(|p| p.id == "multiband").expect("pedalen finns");
+        let pedal = &mut state.pedals[idx];
+        pedal.extra[0].1 = 0.0; // −20 dB
+        pedal.extra[1].1 = 1.0; // +20 dB
+        pedal.extra[2].1 = 0.5; // oförändrat
+        let p = state.build_master_fx_params().multiband;
+        assert!((p.offsets_db[0] + 20.0).abs() < 0.01, "low: {}", p.offsets_db[0]);
+        assert!((p.offsets_db[1] - 20.0).abs() < 0.01, "mid: {}", p.offsets_db[1]);
+        assert!(p.offsets_db[2].abs() < 0.01, "high: {}", p.offsets_db[2]);
     }
 }

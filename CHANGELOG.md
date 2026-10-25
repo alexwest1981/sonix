@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Egen tröskel per band i multibandskompressorn (0.9.138)
+
+- **TRÖSK L/M/H** i pedalen flyttar bandets egen tröskel ±20 dB mot den gemensamma. Det är hela
+  skillnaden mellan en multibandskompressor och tre kompressorer med samma inställning: low-bandet
+  behöver ofta en lägre tröskel än high för samma hörda kompression.
+- Prov: med samma globala tröskel trycker −24 dB på low-bandet ner det mer (mätt på 100 Hz-toppen),
+  och +12 dB släpper igenom mer. Rattarna sitter på 0,5 = ingen avvikelse, så en gammal inställning
+  låter som förut.
+
 ### Added — Morphine med fyra operatorkällor (0.9.137)
 
 - **Fyra material, en ratt:** `morph_spectrum4` lägger `OPERATOR_GLASS`, `OPERATOR_REED` och två nya

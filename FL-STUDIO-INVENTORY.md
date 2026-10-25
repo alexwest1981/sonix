@@ -176,7 +176,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Love Philter | 23 | ✅ | `LovePhilter` (0.9.125): tre filter i serie — lågpass under, bandpass i mitten, högpass över — kring en gemensam brytfrekvens, med SPREAD i oktaver och en envelopföljare som flyttar banken upp till fyra oktaver. Prov: 1 kHz passerar medan 8 kHz dämpas; envelopen öppnar banken och stänger sig i tystnad. De 43 förvalen är inte lästa |
 | Pitcher | 22 | ◐ | vocal_harmonizer med formantbevarande pitch |
 | Edison | 20 | ✅ | `ui::edison_modal` (0.9.127): vågform med dragbart urval och sju operationer (vänd, normalisera, tona in/ut, tysta, ta bort, behåll). Redigerar en **kopia** och lägger resultatet som ett nytt spår — källfilen rörs aldrig. Kvar: spektralvy, loopverktyg och destruktiv redigering på plats |
-| Maximus | 15 | ◐ | multibandskompressorn (byggd i dag) är 3 band; Maximus har fler + kurvor |
+| Maximus | 15 | ◐ | multibandskompressorn är 3 band, men varje band har nu **egen tröskel** (±20 dB, 0.9.138) — provat: sänkt tröskel trycker ner sitt band, höjd släpper igenom mer. Kvar: fler band och ritbara kurvor |
 | Vocodex | 13 | ◐ | `vocode` — 16 band, 100 Hz–8 kHz, bärvågen följer sången; ingen formantbandredigerare |
 | Soundgoodizer | 5 | ◐ | saturator + kompressor |
 | Fruity Convolver | 4 | ✅ | convolvern (byggd i dag) |

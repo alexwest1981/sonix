@@ -373,6 +373,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Three bands (250 Hz / 4 kHz, Linkwitz-Riley) with their own compression per band. LOW/MID/HIGH set how hard each band is compressed; TRÖSK L/M/H moves that band's own threshold ±20 dB around the shared one.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Four chorus voices with their own LFO rates: RATE is the sweep speed, DEPTH the depth, WIDTH the width (0 = mono compatible) and MIX dry/wet. Four voices drift apart, so the width doesn't pump in time with itself.",
         "⌗ Anpassa längd" => "⌗ Fit length",
         "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Stretches the clip to fill exactly that many bars, keeping the pitch",
@@ -2854,6 +2855,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Tre bands (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression pr. band. LOW/MID/HIGH er, hvor hårdt bandet komprimeres; TRÖSK L/M/H flytter bandets egen tærskel ±20 dB omkring den fælles.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Fire chorusstemmer med hver deres LFO-hastighed: RATE er sweepets fart, DEPTH dybden, WIDTH bredden (0 = monokompatibel) og MIX tørt/vådt. Fire stemmer glider fra hinanden, så bredden pumper ikke i takt med sig selv.",
         "⌗ Anpassa längd" => "⌗ Tilpas længde",
         "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Strækker klippet, så det fylder præcis så mange takter, med tonehøjden bevaret",
@@ -5294,6 +5296,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompresjon per band. LOW/MID/HIGH er hvor hardt bandet komprimeres; TRÖSK L/M/H flytter bandets egen terskel ±20 dB rundt den felles.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Fire chorusstemmer med hver sin LFO-hastighet: RATE er sveipets fart, DEPTH dybden, WIDTH bredden (0 = monokompatibel) og MIX tørt/vått. Fire stemmer glir fra hverandre, så bredden pumper ikke i takt med seg selv.",
         "⌗ Anpassa längd" => "⌗ Tilpass lengde",
         "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Strecker klippet slik at det fyller nøyaktig så mange takter, med tonehøyden bevart",
@@ -7734,6 +7737,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Drei Bänder (250 Hz / 4 kHz, Linkwitz-Riley) mit eigener Kompression pro Band. LOW/MID/HIGH bestimmen, wie stark das Band komprimiert wird; TRÖSK L/M/H verschiebt die eigene Schwelle des Bands um ±20 dB um die gemeinsame.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Vier Chorus-Stimmen mit eigenen LFO-Raten: RATE ist die Sweep-Geschwindigkeit, DEPTH die Tiefe, WIDTH die Breite (0 = monokompatibel) und MIX trocken/nass. Vier Stimmen driften auseinander, daher pumpt die Breite nicht im Takt mit sich selbst.",
         "⌗ Anpassa längd" => "⌗ Länge anpassen",
         "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Dehnt den Clip so, dass er genau so viele Takte füllt, mit erhaltener Tonhöhe",
@@ -10174,6 +10178,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Tres bandas (250 Hz / 4 kHz, Linkwitz-Riley) con compresión propia por banda. LOW/MID/HIGH indican cuánto se comprime cada banda; TRÖSK L/M/H mueve el umbral propio de esa banda ±20 dB respecto al común.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Cuatro voces de chorus con su propia velocidad de LFO: RATE es la velocidad del barrido, DEPTH la profundidad, WIDTH la anchura (0 = compatible con mono) y MIX seco/húmedo. Las cuatro voces se separan, así que la anchura no bombea al ritmo de sí misma.",
         "⌗ Anpassa längd" => "⌗ Ajustar longitud",
         "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Estira el clip para llenar exactamente esos compases, conservando el tono",
@@ -12614,6 +12619,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Trois bandes (250 Hz / 4 kHz, Linkwitz-Riley) avec leur propre compression par bande. LOW/MID/HIGH règlent la force de compression ; TRÖSK L/M/H déplace le seuil propre de la bande de ±20 dB autour du seuil commun.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Quatre voix de chorus avec leur propre vitesse de LFO : RATE est la vitesse du balayage, DEPTH la profondeur, WIDTH la largeur (0 = compatible mono) et MIX sec/humide. Les quatre voix dérivent, donc la largeur ne pompe pas en rythme avec elle-même.",
         "⌗ Anpassa längd" => "⌗ Ajuster la longueur",
         "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Étire le clip pour remplir exactement ce nombre de mesures, en conservant la hauteur",
