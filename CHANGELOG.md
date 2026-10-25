@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Emphasis (0.9.131)
+
+- **✨ EMPHASIS** i masterns kedja: en harmonisk exciter. Ett högpassat band (1–10 kHz) klipps
+  asymmetriskt, vilket ger **både jämna och udda** övertoner — en symmetrisk `tanh` hade bara
+  gett udda och låtit som en dist. Det som blandas in är skillnaden mellan den klippta och den
+  rena bandsignalen, så grundtonen blir kvar; det tillförda DC-blockeras så biasen inte stjäl
+  headroom i limitern.
+- Ligger före Luxeverb: övertonerna ska finnas **i** svansen, inte läggas ovanpå den.
+- Rattar: FREQ (1–10 kHz, logaritmiskt), DRIVE (1–10) och MIX. Prov: 200 Hz in ger 400 och
+  600 Hz med över 26 dB lyft mot torrt medan grundtonen står kvar, och MIX 0 lämnar signalen
+  orörd.
+- Inventariet: **Emphasis** och **Emphasizer** är därmed avklarade — samma motor.
+
 ### Added — Anpassa längd (0.9.130)
 
 - **Högerklicka ett ljudklipp → ⌗ Anpassa längd → 1/2/4/8 takter**: klippet sträcks så att det

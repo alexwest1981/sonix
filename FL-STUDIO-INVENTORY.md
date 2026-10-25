@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 80** har en motsvarighet, **◐ 55** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 82** har en motsvarighet, **◐ 53** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -217,8 +217,8 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Patcher | 2 | ✅ | patcher.rs |
 | Spreader | 2 | ◐ | doubler |
 | Wave Candy | 2 | ◐ | spektrum + mätare; ingen oscillator/vectorscope |
-| Emphasis | 1 | ◐ | Hylla finns (`ShelvesParams`), men FL:s Emphasis lägger till övertoner — det gör vår inte |
-| Emphasizer | 1 | ◐ | Samma som Emphasis: hyllan finns, övertonstillägget gör det inte |
+| Emphasis | 1 | ✅ | **✨ EMPHASIS** i masterns kedja (0.9.131): högpassat band (1–10 kHz) klipps asymmetriskt, så **både** jämna och udda övertoner föds, och bara det tillförda blandas in (DC-blockat). Prov: 200 Hz in ger 400 och 600 Hz med >26 dB över torrt, grundtonen kvar |
+| Emphasizer | 1 | ✅ | Samma motor som Emphasis (`audio::master_fx::exciter`): övertonstillägget finns nu, DRIVE och FREQ styr det |
 | FL Studio Mobile Rack FX | 1 | — | **ej tillämplig**: mobil-appens effekter (se FL Studio Mobile). |
 | Frequency Shifter | 1 | ✅ | `FrequencyShifter` — Hilbert 63 tapp, en sidofrekvens, ±2 000 Hz, stereoläge |
 | Fruity 7 Band EQ | 1 | ✅ 0.9.123: masterns grafiska EQ har sju band (60/170/350/1k/3,5k/8k/12k), prov att 1 kHz-bandet lyfter 1 kHz men inte 8 kHz |

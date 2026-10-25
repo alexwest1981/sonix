@@ -126,7 +126,7 @@ pub use master_fx::{
     DelayBank, DelayBankParams, Distructor, DistructorParams, Effector, EffectorParams, Hardcore,
     HardcoreParams, Granular, GranularParams, MultibandDelay, MultibandDelayParams,
     CompressorParams, ConvolverParams, DeEsserParams, DoublerParams, GateParams, LimiterParams, MasterEqBand,
-    MasterFilterParams, LovePhilterParams, LuxeverbParams, MasterFxChain, MasterFxParams, ModFxParams, MultibandParams, SaturatorParams,
+    MasterFilterParams, LovePhilterParams, LuxeverbParams, EmphasisParams, MasterFxChain, MasterFxParams, ModFxParams, MultibandParams, SaturatorParams,
     StereoEq, StereoParams, Shelves, ShelvesParams,
     IR_BANK, synthesize_ir,
     TrackEqSettings, TransientParams,

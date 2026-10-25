@@ -1,7 +1,7 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
-    ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, LovePhilterParams, LuxeverbParams, MasterEqBand, MasterFilterParams, MasterFxParams,
+    ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, LovePhilterParams, LuxeverbParams, EmphasisParams, MasterEqBand, MasterFilterParams, MasterFxParams,
     DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, ShelvesParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
@@ -454,6 +454,22 @@ impl Default for FxRackState {
                     extra: vec![("PREDELAY", 0.10), ("MOD", 0.35), ("WIDTH", 1.0)],
                 },
                 FxPedal {
+                    id: "emphasis",
+                    name: "✨ EMPHASIS",
+                    category: "Color",
+                    enabled: false,
+                    color: crate::ui::theme::palette().orange(),
+                    p1_name: "FREQ",
+                    p1_val: 0.57,
+                    p2_name: "DRIVE",
+                    p2_val: 0.25,
+                    p3_name: "—",
+                    p3_val: 0.0,
+                    mix: 0.40,
+                    description: "Harmonisk exciter: FREQ är var övertonerna föds (1–10 kHz), DRIVE hur hårt bandet klipps, MIX hur mycket som blandas in. Ger både jämna och udda övertoner, till skillnad från en symmetrisk dist.",
+                    extra: Vec::new(),
+                },
+                FxPedal {
                     id: "brickwall_limiter",
                     name: "🛡 MASTER LIMITER",
                     category: "Loudness",
@@ -637,6 +653,18 @@ impl FxRackState {
             width: lv_knob(|p| p.extra.get(2).map(|e| e.1).unwrap_or(1.0), 1.0),
             mix: lv_knob(|p| p.mix, 0.30),
             enabled: lv_p.map(|p| p.enabled).unwrap_or(false),
+        };
+
+        let ex_p = self.pedal("emphasis");
+        let ex_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            ex_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let emphasis = EmphasisParams {
+            // 1–10 kHz, logaritmiskt: mitten av ratten hörs som mitten av registret.
+            freq_hz: 1_000.0 * 10.0_f32.powf(ex_knob(|p| p.p1_val, 0.57)),
+            drive: 1.0 + ex_knob(|p| p.p2_val, 0.25) * 9.0,
+            mix: ex_knob(|p| p.mix, 0.40),
+            enabled: ex_p.map(|p| p.enabled).unwrap_or(false),
         };
 
         let lim_p = self.pedal("brickwall_limiter");
@@ -868,6 +896,7 @@ impl FxRackState {
             filter,
             philter: love_philter,
             luxeverb,
+            emphasis,
             limiter,
             limiter_enabled: lim_p.map(|p| p.enabled).unwrap_or(false),
         }
@@ -1896,5 +1925,32 @@ mod tests {
         assert!(p.modulation.abs() < 0.01);
         assert!(p.width.abs() < 0.01);
         assert!((p.mix - 0.5).abs() < 0.01);
+    }
+    /// **Emphasis-rattarna når sina egna fält** — FREQ (1–10 kHz log), DRIVE (1–10) och MIX.
+    #[test]
+    fn the_emphasis_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "emphasis")
+            .expect("emphasis-pedalen ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 0.0; // 1 kHz
+        pedal.p2_val = 0.0; // drive 1
+        pedal.mix = 1.0;
+
+        let p = state.build_master_fx_params().emphasis;
+        assert!(p.enabled, "pedalen ska slå på steget");
+        assert!((p.freq_hz - 1_000.0).abs() < 1.0, "freq: {}", p.freq_hz);
+        assert!((p.drive - 1.0).abs() < 0.01, "drive: {}", p.drive);
+        assert!((p.mix - 1.0).abs() < 0.01);
+
+        state.pedals[idx].p1_val = 1.0; // 10 kHz
+        state.pedals[idx].p2_val = 1.0; // drive 10
+        let p = state.build_master_fx_params().emphasis;
+        assert!((p.freq_hz - 10_000.0).abs() < 5.0, "freq: {}", p.freq_hz);
+        assert!((p.drive - 10.0).abs() < 0.01, "drive: {}", p.drive);
     }
 }

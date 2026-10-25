@@ -161,6 +161,7 @@ pub struct MasterFxParams {
     pub filter: MasterFilterParams,
     pub philter: LovePhilterParams,
     pub luxeverb: LuxeverbParams,
+    pub emphasis: EmphasisParams,
     pub limiter: LimiterParams,
     pub limiter_enabled: bool,
     pub granular: GranularParams,
@@ -224,6 +225,7 @@ impl Default for MasterFxParams {
             filter: MasterFilterParams::default(),
             philter: LovePhilterParams::default(),
             luxeverb: LuxeverbParams::default(),
+            emphasis: EmphasisParams::default(),
             granular: GranularParams::default(),
             granular_enabled: false,
             freq_shift: FreqShiftParams::default(),
@@ -280,6 +282,7 @@ pub struct MasterFxChain {
     filter: MasterFilter,
     philter: LovePhilter,
     luxeverb: Luxeverb,
+    emphasis: Emphasis,
     limiter: Limiter,
     params: MasterFxParams,
 }
@@ -315,6 +318,7 @@ impl MasterFxChain {
             filter: MasterFilter::new(sample_rate),
             philter: LovePhilter::new(sample_rate),
             luxeverb: Luxeverb::new(sample_rate),
+            emphasis: Emphasis::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
         };
@@ -508,6 +512,13 @@ impl MasterFxChain {
             r = nr;
         }
 
+        // Exciter före reverb: övertonerna ska finnas i svansen, inte läggas ovanpå den.
+        if p.emphasis.enabled {
+            let (nl, nr) = self.emphasis.process(l, r, &p.emphasis);
+            l = nl;
+            r = nr;
+        }
+
         // Sist före limitern: svansen ska in i limitern, inte tvärtom.
         if p.luxeverb.enabled {
             let (nl, nr) = self.luxeverb.process(l, r, &p.luxeverb);
@@ -613,12 +624,14 @@ impl Default for MasterVocoder {
 }
 
 mod color;
+mod exciter;
 mod dynamics;
 mod eq;
 mod modulation;
 mod space;
 
 pub use color::*;
+pub use exciter::*;
 pub use dynamics::*;
 pub use eq::*;
 pub use modulation::*;
