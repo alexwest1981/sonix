@@ -172,6 +172,7 @@ on the next start. Everything else still appears in the Sound Browser.
 
 ### 1. 🎼 Timeline & Multitrack Arranger — ✅ Real
 * **Direct Clip Edge Dragging (Paint & Select Tools):** Grab the right edge to extend and loop clips across bars, or drag left to shorten. Grab the left edge to trim/crop the start without destructive edits.
+* **Tempo from the audio:** an imported file's BPM is measured on import (onset autocorrelation, 60–200 BPM) and can be re-measured per clip from its right-click menu. A clip whose tempo is unknown keeps its **seconds** when the project tempo changes, so it is never cut mid-phrase.
 
 ### 2. 🥁 Sonix Channel Rack (16-Step Sequencer) — ✅ Real
 * **Channel Strips:** Kick, Snare, Closed/Open Hat, Synth Lead, Sub Bass and custom user channels.
@@ -181,6 +182,7 @@ on the next start. Everything else still appears in the Sound Browser.
 
 ### 4. 🎚 Mixer Console & Per-Track Effects — ✅ Real
 * **Channel Strips:** Faders, real peak VU meters, solo, mute, pan and stereo width.
+* **Master FX rack:** a chain of pedals — Love Philter, Luxeverb, Emphasis, Hyper Chorus, Maximus (three bands, each with its own threshold, plus the master band), a 16-band vocoder with a per-band editor, and **Time Curve**, which plays the master's own history back through a time curve.
 
 ### 5. 🎛 Analog Alchemy Synth — ✅ Real
 * 4 waveforms (sine, saw, square, triangle), ADSR, resonant filter, drive and an 8-snapshot morph vector pad.
@@ -314,9 +316,24 @@ Record acoustic instruments or custom samples directly from microphone and map t
 Full mixing console with individual channel strips, VU meters, per-track 3-band parametric EQ, and reverb/delay sends.
 ![Mixer](screenshots/06_effects_mixer.png)
 
+#### 7. ✂ Edison, Newtone & Newtime — the clip editors
+Edison edits the clip's audio (reverse, normalise, fade, silence, trim, spectrum); Newtone moves its notes in semitones; Newtime moves where the sound lands in time with the pitch kept. All three work on a copy and hand back a new track.
+![Edison](screenshots/32_edison.png)
+![Newtone](screenshots/33_newtone.png)
+![Newtime](screenshots/34_newtime.png)
+
+#### 8. 📈 Visualizer — oscilloscope, spectrum and goniometer
+The scope shows the waveform and the spectrum; the goniometer shows the stereo image (mono sits on the vertical line, an out-of-phase signal on the horizontal).
+![Visualizer](screenshots/35_visualizer.png)
+
+#### 9. 🎚 Vocoder and modulation matrix
+Sixteen bands from 100 Hz to 8 kHz, each with its own level — and a modulation matrix whose sources include a drawn 16-point curve.
+![Vocoder](screenshots/37_vocoder_bands.png)
+![Modulation matrix](screenshots/36_mod_matrix.png)
+
 ---
 
-> 🖼 **The remaining 23 views** — synthesizers, session drummer, modular patcher, remix FX, studio panels and every dialog — are in **[MANUAL.md](MANUAL.md)**.
+> 🖼 **The remaining 31 views** — synthesizers, session drummer, modular patcher, remix FX, studio panels and every dialog — are in **[MANUAL.md](MANUAL.md)**.
 
 ## 📜 License
 
