@@ -373,6 +373,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Three bands (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL and RATIO apply to all bands; TRÖSK L/M/H moves a band's own threshold ±20 dB, and LOW/MID/HIGH set how hard it is compressed.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Three bands (250 Hz / 4 kHz, Linkwitz-Riley) with their own compression per band. LOW/MID/HIGH set how hard each band is compressed; TRÖSK L/M/H moves that band's own threshold ±20 dB around the shared one.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Four chorus voices with their own LFO rates: RATE is the sweep speed, DEPTH the depth, WIDTH the width (0 = mono compatible) and MIX dry/wet. Four voices drift apart, so the width doesn't pump in time with itself.",
         "⌗ Anpassa längd" => "⌗ Fit length",
@@ -2855,6 +2856,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Tre bands (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL og RATIO gælder alle bands; TRÖSK L/M/H flytter bandets egen tærskel ±20 dB, og LOW/MID/HIGH hvor hårdt det komprimeres.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Tre bands (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression pr. band. LOW/MID/HIGH er, hvor hårdt bandet komprimeres; TRÖSK L/M/H flytter bandets egen tærskel ±20 dB omkring den fælles.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Fire chorusstemmer med hver deres LFO-hastighed: RATE er sweepets fart, DEPTH dybden, WIDTH bredden (0 = monokompatibel) og MIX tørt/vådt. Fire stemmer glider fra hinanden, så bredden pumper ikke i takt med sig selv.",
         "⌗ Anpassa längd" => "⌗ Tilpas længde",
@@ -5296,6 +5298,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL og RATIO gjelder alle band; TRÖSK L/M/H flytter bandets egen terskel ±20 dB, og LOW/MID/HIGH hvor hardt det komprimeres.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompresjon per band. LOW/MID/HIGH er hvor hardt bandet komprimeres; TRÖSK L/M/H flytter bandets egen terskel ±20 dB rundt den felles.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Fire chorusstemmer med hver sin LFO-hastighet: RATE er sveipets fart, DEPTH dybden, WIDTH bredden (0 = monokompatibel) og MIX tørt/vått. Fire stemmer glir fra hverandre, så bredden pumper ikke i takt med seg selv.",
         "⌗ Anpassa längd" => "⌗ Tilpass lengde",
@@ -7737,6 +7740,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Drei Bänder (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL und RATIO gelten für alle Bänder; TRÖSK L/M/H verschiebt die eigene Schwelle eines Bands um ±20 dB, LOW/MID/HIGH bestimmen die Stärke.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Drei Bänder (250 Hz / 4 kHz, Linkwitz-Riley) mit eigener Kompression pro Band. LOW/MID/HIGH bestimmen, wie stark das Band komprimiert wird; TRÖSK L/M/H verschiebt die eigene Schwelle des Bands um ±20 dB um die gemeinsame.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Vier Chorus-Stimmen mit eigenen LFO-Raten: RATE ist die Sweep-Geschwindigkeit, DEPTH die Tiefe, WIDTH die Breite (0 = monokompatibel) und MIX trocken/nass. Vier Stimmen driften auseinander, daher pumpt die Breite nicht im Takt mit sich selbst.",
         "⌗ Anpassa längd" => "⌗ Länge anpassen",
@@ -10178,6 +10182,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Tres bandas (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL y RATIO valen para todas; TRÖSK L/M/H mueve el umbral propio de una banda ±20 dB, y LOW/MID/HIGH cuánto se comprime.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Tres bandas (250 Hz / 4 kHz, Linkwitz-Riley) con compresión propia por banda. LOW/MID/HIGH indican cuánto se comprime cada banda; TRÖSK L/M/H mueve el umbral propio de esa banda ±20 dB respecto al común.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Cuatro voces de chorus con su propia velocidad de LFO: RATE es la velocidad del barrido, DEPTH la profundidad, WIDTH la anchura (0 = compatible con mono) y MIX seco/húmedo. Las cuatro voces se separan, así que la anchura no bombea al ritmo de sí misma.",
         "⌗ Anpassa längd" => "⌗ Ajustar longitud",
@@ -12619,6 +12624,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Trois bandes (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL et RATIO s'appliquent à toutes ; TRÖSK L/M/H déplace le seuil d'une bande de ±20 dB, LOW/MID/HIGH règlent la compression.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma." => "Trois bandes (250 Hz / 4 kHz, Linkwitz-Riley) avec leur propre compression par bande. LOW/MID/HIGH règlent la force de compression ; TRÖSK L/M/H déplace le seuil propre de la bande de ±20 dB autour du seuil commun.",
         "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv." => "Quatre voix de chorus avec leur propre vitesse de LFO : RATE est la vitesse du balayage, DEPTH la profondeur, WIDTH la largeur (0 = compatible mono) et MIX sec/humide. Les quatre voix dérivent, donc la largeur ne pompe pas en rythme avec elle-même.",
         "⌗ Anpassa längd" => "⌗ Ajuster la longueur",

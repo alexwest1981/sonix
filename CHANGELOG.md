@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Tröskel och ratio som rattar på multibandet (0.9.139)
+
+- **TRÖSKEL** (−40…+4 dB, 0,5 = −18 dB som förut) och **RATIO** (1…12, 0,27 = 4:1) sitter nu i pedalen
+  i stället för att vara fasta värden i koden. Utan dem gick det inte att flytta hela kompressorn,
+  bara banden emellan.
+- Prov: rattarna når sina fält, och bandens egna trösklar ligger kvar som avvikelser kring den
+  gemensamma.
+
 ### Added — Egen tröskel per band i multibandskompressorn (0.9.138)
 
 - **TRÖSK L/M/H** i pedalen flyttar bandets egen tröskel ±20 dB mot den gemensamma. Det är hela

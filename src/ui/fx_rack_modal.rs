@@ -170,8 +170,14 @@ impl Default for FxRackState {
                     p3_name: "HIGH",
                     p3_val: 0.0,
                     mix: 1.0,
-                    description: "Tre band (250 Hz / 4 kHz, Linkwitz-Riley) med egen kompression per band. LOW/MID/HIGH är hur hårt bandet komprimeras; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB mot den gemensamma.",
-                    extra: vec![("TRÖSK L", 0.5), ("TRÖSK M", 0.5), ("TRÖSK H", 0.5)],
+                    description: "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras.",
+                    extra: vec![
+                        ("TRÖSKEL", 0.5),
+                        ("RATIO", 0.27),
+                        ("TRÖSK L", 0.5),
+                        ("TRÖSK M", 0.5),
+                        ("TRÖSK H", 0.5),
+                    ],
                 },
                 FxPedal {
                     id: "transient",
@@ -605,11 +611,14 @@ impl FxRackState {
                 mb_p.map(|p| p.p2_val).unwrap_or(0.0),
                 mb_p.map(|p| p.p3_val).unwrap_or(0.0),
             ],
-            // Ratten står på 0,5 = ingen avvikelse; ±1 på ratten är ±20 dB.
+            // Den gemensamma tröskeln: ratten 0,5 = −18 dB, som är standardvärdet.
+            threshold_db: -40.0 + mb_extra(0) * 44.0,
+            ratio: 1.0 + mb_extra(1) * 11.0,
+            // Bandets egen avvikelse: ratten 0,5 = ingen, ±1 på ratten är ±20 dB.
             offsets_db: [
-                (mb_extra(0) - 0.5) * 40.0,
-                (mb_extra(1) - 0.5) * 40.0,
                 (mb_extra(2) - 0.5) * 40.0,
+                (mb_extra(3) - 0.5) * 40.0,
+                (mb_extra(4) - 0.5) * 40.0,
             ],
             ..MultibandParams::default()
         };
@@ -2022,12 +2031,16 @@ mod tests {
         let mut state = FxRackState::default();
         let idx = state.pedals.iter().position(|p| p.id == "multiband").expect("pedalen finns");
         let pedal = &mut state.pedals[idx];
-        pedal.extra[0].1 = 0.0; // −20 dB
-        pedal.extra[1].1 = 1.0; // +20 dB
-        pedal.extra[2].1 = 0.5; // oförändrat
+        pedal.extra[2].1 = 0.0; // low −20 dB
+        pedal.extra[3].1 = 1.0; // mid +20 dB
+        pedal.extra[4].1 = 0.5; // high oförändrat
+        pedal.extra[0].1 = 0.5; // tröskel −18 dB
+        pedal.extra[1].1 = 0.27; // ratio ≈ 4
         let p = state.build_master_fx_params().multiband;
         assert!((p.offsets_db[0] + 20.0).abs() < 0.01, "low: {}", p.offsets_db[0]);
         assert!((p.offsets_db[1] - 20.0).abs() < 0.01, "mid: {}", p.offsets_db[1]);
         assert!(p.offsets_db[2].abs() < 0.01, "high: {}", p.offsets_db[2]);
+        assert!((p.threshold_db + 18.0).abs() < 0.01, "tröskel: {}", p.threshold_db);
+        assert!((p.ratio - 3.97).abs() < 0.05, "ratio: {}", p.ratio);
     }
 }
