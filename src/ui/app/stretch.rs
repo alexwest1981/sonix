@@ -664,11 +664,43 @@ impl SonixApp {
 ///
 /// Klipp med okänt inspelningstempo (`source_bpm == 0`) får faktorn 1,0 och
 /// rörs inte — se [`stretch_ratio_for`].
+/// **Takter som håller kvar sekunderna** när tempot ändras.
+///
+/// Ett klipp utan känt inspelningstempo kan inte sträckas. Då får dess längd i takter följa med i
+/// stället: fyra takter i 120 BPM är åtta sekunder, och vid 125 är åtta sekunder 4,1667 takter.
+/// Utan det klipptes ljudet av mitt i frasen när tempot höjdes (och fick en tyst svans när det
+/// sänktes) — det låter som en trasig bandspelare, och det var precis vad det var.
+///
+/// Ren funktion, för att regeln ska gå att pröva utan fönster. `old_bpm <= 0` betyder "inget att
+/// räkna om ifrån" och ger längden orörd.
+pub fn bars_holding_seconds(length_bars: f32, old_bpm: f32, new_bpm: f32) -> f32 {
+    if old_bpm <= 0.0 || new_bpm <= 0.0 || !length_bars.is_finite() {
+        return length_bars;
+    }
+    length_bars * new_bpm / old_bpm
+}
+
 pub fn sync_tempo_follow(&mut self) {
     if (self.bpm - self.stems_synced_bpm).abs() <= 0.0005 {
         return;
     }
+    let old_bpm = self.stems_synced_bpm;
     self.stems_synced_bpm = self.bpm;
+    // **Okänt tempo: sekunderna står still, takterna flyttar sig** (se `bars_holding_seconds`).
+    // Klipp som *har* ett tempo sträcks i stället, och de rörs inte här.
+    if old_bpm > 0.0 && (old_bpm - self.bpm).abs() > 1e-4 {
+        for track in &mut self.playlist_tracks {
+            for r in &mut track.regions {
+                if r.source_bpm > 0.0 || r.tape {
+                    continue;
+                }
+                r.length_bars = Self::bars_holding_seconds(r.length_bars, old_bpm, self.bpm);
+                r.fade_in_bars = Self::bars_holding_seconds(r.fade_in_bars, old_bpm, self.bpm);
+                r.fade_out_bars = Self::bars_holding_seconds(r.fade_out_bars, old_bpm, self.bpm);
+                r.loop_length_bars = Self::bars_holding_seconds(r.loop_length_bars, old_bpm, self.bpm);
+            }
+        }
+    }
     // Säg vad som hände — eller inte hände (Fas 8.10). Utan den här raden är ett
     // klipp utan känt tempo en kontroll som ser död ut i stället för en förklaring.
     if let Some(note) = tempo_change_note(
@@ -1346,6 +1378,19 @@ mod fit_length_tests {
         let rate = stretch_ratio_for(bpm, 120.0);
         assert!((rate - MIN_STRETCH_RATIO).abs() < 1e-6, "fick rate {rate}");
         assert!(2.0 / rate < 100.0, "klippet kan inte bli 100 s");
+    }
+
+    /// **Sekunderna står still när takterna räknas om.** Fyra takter i 120 BPM är åtta sekunder;
+    /// vid 125 måste längden bli 4,1667 takter för att fortfarande vara åtta sekunder.
+    #[test]
+    fn unknown_tempo_bars_keep_their_seconds() {
+        let secs_at = |bars: f32, bpm: f32| bars * 4.0 * 60.0 / bpm;
+        let before = secs_at(4.0, 120.0);
+        let after_bars = SonixApp::bars_holding_seconds(4.0, 120.0, 125.0);
+        assert!((after_bars - 4.166_667).abs() < 1e-4, "fick {after_bars}");
+        assert!((secs_at(after_bars, 125.0) - before).abs() < 1e-4);
+        // Utan ett gammalt tempo finns inget att räkna om ifrån.
+        assert_eq!(SonixApp::bars_holding_seconds(4.0, 0.0, 125.0), 4.0);
     }
 
 }

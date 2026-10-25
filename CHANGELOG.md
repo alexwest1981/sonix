@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — klipp utan känt tempo kapades när tempot ändrades (0.9.148)
+
+- **Det var "bandspelaren som går sönder".** Ett klipp med `source_bpm == 0` kan inte sträckas, men
+  dess längd räknades ändå ur takter i det nya tempot: 120 → 125 kapade varje sådant klipp med 4 %
+  (Rock and Hard Place: **85,1 s** förlorade över 9 klipp, mitt i frasen och med en fade på klippet),
+  och 133 → 125 gav i stället **167,6 s tyst svans** (Vägen hit). Nu står sekunderna still och
+  takterna flyttar sig: `bars_holding_seconds` (4 takter i 120 = 8 s = 4,1667 takter i 125), prov
+  `unknown_tempo_bars_keep_their_seconds`.
+- **Inläst geometri räknas inte om.** `stems_synced_bpm` nollas när ett projekt läses och när
+  stämmor importeras, annars hade första bildrutan trott att tempot just ändrats och skalat om allt.
+- Klipp som *har* ett känt tempo rörs inte: de sträcks som förut.
+
 ### Fixed — README påstod att mixer, FX och automation inte går att ångra (0.9.147)
 
 - **Det var fel, och jag skrev det själv en timme tidigare.** `frame.rs` har haft mixer-undon sedan

@@ -1583,6 +1583,7 @@ impl SonixApp {
 pub fn populate_demo_data(&mut self) {
     self.project_name = "Cyberpunk Odyssey (Suno AI + Sonix Lead)".to_string();
     self.bpm = 124.0;
+    self.stems_synced_bpm = self.bpm;
     self.swing = 0.15;
     self.song_bar = 4;
     self.song_step_in_bar = 2;
@@ -2469,6 +2470,9 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
 
     self.project_name = payload.name;
     self.bpm = payload.bpm;
+    // Inläst geometri hör till filens tempo: utan det här skulle första bildrutan tro att
+    // tempot just ändrades och räkna om klippens taktlängder (se `sync_tempo_follow`).
+    self.stems_synced_bpm = self.bpm;
     self.project_notes = payload.notes;
     self.midi_map = payload.midi_map;
     self.follow_tempo = payload.follow_tempo;

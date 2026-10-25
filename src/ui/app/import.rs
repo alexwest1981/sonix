@@ -1383,6 +1383,7 @@ pub fn apply_imported_stems(&mut self, res: StemImportResult) {
     let total_tracks_len = self.playlist_tracks.len();
     self.project_name = res.project_title.clone();
     self.set_project_bpm(res.bpm);
+    self.stems_synced_bpm = self.bpm; // nyss inlagda klipp ska inte räknas om
     self.loop_start_bar = 0;
     self.loop_end_bar = (res.max_stem_bars.ceil() as usize).max(32);
     for t_idx in 0..self.playlist_tracks.len() {
