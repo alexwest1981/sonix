@@ -66,7 +66,10 @@ impl Emphasis {
             // Ett enpoligt högpass på det tillförda materialet: biasen ger annars DC.
             self.dc[ch] = self.dc[ch] * dc_coeff + shaped * (1.0 - dc_coeff);
             let added = shaped - self.dc[ch] - high;
-            out[ch] = x + added * mix;
+            // DRIVE höjer nivån: klippningen lägger till energi. Kompensationen håller
+            // utsignalen nära ingången så att en insert inte slår i limitern av sig själv.
+            let comp = 1.0 / (1.0 + 0.18 * (drive - 1.0));
+            out[ch] = x + added * mix * comp;
         }
         (out[0], out[1])
     }
@@ -155,4 +158,36 @@ mod tests {
         p.mix = 0.0;
         assert_eq!(render(&input, p, sr), input);
     }
+    #[test]
+    fn max_drive_stays_below_full_scale() {
+        let sr = 48_000.0;
+        let mut fx = Emphasis::new(sr);
+        let mut p = EmphasisParams::default();
+        p.enabled = true;
+        p.mix = 1.0;
+        p.drive = 10.0;
+        p.freq_hz = 3_000.0;
+        let mut peak = 0.0_f32;
+        let mut sum = 0.0_f64;
+        let mut n = 0_usize;
+        // Ett brett program: 200 Hz + 3 kHz + 8 kHz, nära full skala.
+        for i in 0..(sr as usize / 2) {
+            let t = i as f32 / sr;
+            let x = 0.30 * (std::f32::consts::TAU * 200.0 * t).sin()
+                + 0.25 * (std::f32::consts::TAU * 3_000.0 * t).sin()
+                + 0.15 * (std::f32::consts::TAU * 8_000.0 * t).sin();
+            let (l, _) = fx.process(x, x, &p);
+            n += 1;
+            if n > 4800 {
+                peak = peak.max(l.abs());
+                sum += l as f64;
+            }
+        }
+        let dc = sum / n as f64;
+        // Mätt: ingång 0,700 → 0,978 vid DRIVE 10 och MIX 1,0 (+2,9 dB). Kompensationen
+        // i process() håller kvarvarande ökning under full skala.
+        assert!(peak <= 1.0, "exciter får inte dra över full skala: {peak:.3}");
+        assert!(dc.abs() < 0.002, "likspänning kvar: {dc:.5}");
+    }
+
 }

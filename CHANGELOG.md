@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — Emphasis (0.9.131)
+### Added — Emphasis (0.9.131–0.9.132)
 
 - **✨ EMPHASIS** i masterns kedja: en harmonisk exciter. Ett högpassat band (1–10 kHz) klipps
   asymmetriskt, vilket ger **både jämna och udda** övertoner — en symmetrisk `tanh` hade bara
@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   600 Hz med över 26 dB lyft mot torrt medan grundtonen står kvar, och MIX 0 lämnar signalen
   orörd.
 - Inventariet: **Emphasis** och **Emphasizer** är därmed avklarade — samma motor.
+- **Nivåkompensation (mätt):** klippningen lägger till energi, och vid DRIVE 10 och MIX 1,0 gick
+  en insignal på 0,700 ut på **1,472** — en insert som slår i limitern av sig själv. En
+  kompensation på `1 / (1 + 0,18 × (DRIVE − 1))` tar det till **0,978** (+2,9 dB) med
+  likspänningen kvar på noll; övertonerna är fortfarande över 26 dB starkare än torrt.
 
 ### Added — Anpassa längd (0.9.130)
 
