@@ -19,6 +19,10 @@ Sonix is a native Linux DAW written in **Rust** and **egui**. You run it by buil
 > 📦 **Prebuilt binary (no Rust needed):**
 > Grab the latest `sonix-<version>-x86_64-unknown-linux-gnu.tar.gz` from the [Releases page](https://github.com/alexwest1981/sonix/releases/latest), unpack it and run `./sonix`. The archive ships the binary, both READMEs, the manual, the changelog and the licenses, plus a `.sha256` checksum. It is built with `--features plugin-host` for x86-64 (glibc ≥ 2.35).
 
+> 🛍 **OmaStore:** Sonix has an [`omastore.toml`](omastore.toml) in the repository root, so the
+> Omarchy store indexes it from the latest stable release. Open it with
+> `omastore://alexwest1981/sonix`, or find it in the store's Audio category.
+>
 > 🐧 **Flatpak:** Sonix is packaged in the [omapak](https://omapak.org/app/io.github.alexwest1981.sonix) catalog. That build repacks the same x86-64 release tarball, so it is the same binary with the app's config and library inside the sandbox (`~/.var/app/io.github.alexwest1981.sonix/`).
 
 > ⚡ **Fastest way (guided installer):**
