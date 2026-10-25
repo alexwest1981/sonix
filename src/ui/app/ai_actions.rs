@@ -22,7 +22,11 @@ impl SonixApp {
             self.status_message = crate::tstatus!("⚠ Skriv något först");
             return;
         }
+        self.ai_assistant.follow_ups = 0;
         let config = self.ai_assistant.config.clone();
+        // Kanalerna följer med prompten: modellen ska skriva mot kanalernas egna nummer och
+        // namn, inte gissa index.
+        let text = format!("{text}\n\n[{}]", self.ai_channel_context());
         let slot: Arc<Mutex<Option<Result<String, String>>>> = Arc::new(Mutex::new(None));
         self.ai_chat_pending = Some(slot.clone());
         std::thread::spawn(move || {
@@ -40,7 +44,20 @@ impl SonixApp {
         let ready = slot.lock().ok().and_then(|mut g| g.take())?;
         self.ai_chat_pending = None;
         let line = match ready {
-            Ok(text) => self.ai_apply_tool_calls(&text),
+            Ok(text) => {
+                // **Svarar den bara med tempo och kit frågar vi igen.** Mätt mot
+                // `deepseek-flash`: första svaret är set_tempo + set_key + load_drum_kit, och
+                // själva kompet kommer först när den får veta att de kördes. Utan den andra
+                // rundan stod assistenten still efter halva jobbet.
+                let wrote = ["write_pattern", "write_notes", "write_drum_pattern"]
+                    .iter()
+                    .any(|w| text.contains(w));
+                let receipt = self.ai_apply_tool_calls(&text);
+                if !wrote && self.ai_assistant.follow_ups < 2 && !text.trim().is_empty() {
+                    self.ai_send_follow_up();
+                }
+                receipt
+            }
             Err(e) => {
                 let line = format!("⚠ Assistenten svarade inte: {e}");
                 self.ai_assistant.last_error = Some(e);
@@ -49,6 +66,30 @@ impl SonixApp {
         };
         self.ai_assistant.last_status = line.clone();
         Some(line)
+    }
+
+    /// Runda två: talar om vad som redan kördes och ber om själva musiken. Samma tråd och
+    /// samma kvittoslott som första rundan — ingen ny väg genom nätet.
+    fn ai_send_follow_up(&mut self) {
+        if self.ai_chat_pending.is_some() {
+            return;
+        }
+        self.ai_assistant.follow_ups += 1;
+        let config = self.ai_assistant.config.clone();
+        let done = self.ai_assistant.last_status.clone();
+        let text = format!(
+            "Du körde: {done}.\nSkriv nu själva musiken: write_pattern med lanes för trummorna \
+             (och kanske perc) och write_notes för bas/synt. Svara bara med JSON-anrop.\n\n[{}]",
+            self.ai_channel_context()
+        );
+        let slot: Arc<Mutex<Option<Result<String, String>>>> = Arc::new(Mutex::new(None));
+        self.ai_chat_pending = Some(slot.clone());
+        std::thread::spawn(move || {
+            let result = crate::audio::ai_client::chat_with_tools(&config, &text);
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
     }
 
     /// Tolkar modellens svar: antingen text (då visas den) eller verktygsanrop (då utförs de).
@@ -122,6 +163,19 @@ impl SonixApp {
                 }
                 Err(e) => format!("plan: {e}"),
             },
+            "write_pattern" => match crate::audio::ai_tools::parse_lanes(&call.args) {
+                Ok(lanes) => {
+                    let done: Vec<String> = lanes.iter().map(|lane| self.ai_write_lane(lane)).collect();
+                    self.sync_active_pattern_from_ui();
+                    done.join(" · ")
+                }
+                Err(e) => format!("mönster: {e}"),
+            },
+            "write_notes" => self.ai_write_notes(&call.args),
+            "load_drum_kit" => {
+                let genre = call.args.get("genre").and_then(|v| v.as_str()).unwrap_or("");
+                self.ai_load_drum_kit(genre)
+            }
             "set_key" => "tonart: inte byggt än".to_string(),
             "set_channel_instrument" => {
                 let wanted = call.args.get("instrument").and_then(|v| v.as_str()).unwrap_or("");
@@ -149,6 +203,109 @@ impl SonixApp {
         self.apply_preset_settings(preset);
         let _ = self.engine.send_command(crate::audio::command::AudioCommand::LoadPreset(preset));
         format!("instrument: {name}")
+    }
+
+/// Skriver **en** stämma på en kanal. Kanalen måste finnas och vara tom: ett komp som redan
+    /// spelar skrivs aldrig över av ett verktygsanrop, det sägs tillbaka i statusraden.
+    fn ai_write_lane(&mut self, lane: &crate::audio::ai_tools::Lane) -> String {
+        let hits = lane.steps.iter().filter(|s| **s).count();
+        let Some(ch) = self.channels.get_mut(lane.channel) else {
+            return format!("kanal {} finns inte", lane.channel + 1);
+        };
+        if ch.steps.iter().any(|s| *s) {
+            return format!("kanal {} ({}) har redan steg — töm den först", lane.channel + 1, ch.name);
+        }
+        let name = ch.name.clone();
+        ch.steps = lane.steps;
+        if let Some(note) = lane.note {
+            for (i, on) in lane.steps.iter().enumerate() {
+                if *on {
+                    ch.notes[i] = note;
+                }
+            }
+        }
+        format!("{name}: {hits} slag")
+    }
+
+    /// Skriver melodi/bas på en kanal. Rutnätet har en not per steg (`steps`/`notes`), så
+    /// anslagets styrka och notens längd sätts på kanalen — därför tar vi bara steg och tonhöjd.
+    fn ai_write_notes(&mut self, args: &serde_json::Value) -> String {
+        let notes = match crate::audio::ai_tools::parse_notes(args) {
+            Ok(notes) => notes,
+            Err(e) => return format!("noter: {e}"),
+        };
+        let channel = args.get("channel").and_then(|v| v.as_u64()).unwrap_or(u64::MAX) as usize;
+        let Some(ch) = self.channels.get_mut(channel) else {
+            return format!("kanal {} finns inte", channel + 1);
+        };
+        if ch.steps.iter().any(|s| *s) {
+            return format!("kanal {} ({}) har redan steg — töm den först", channel + 1, ch.name);
+        }
+        let name = ch.name.clone();
+        for hit in &notes {
+            ch.steps[hit.step] = true;
+            ch.notes[hit.step] = hit.pitch;
+        }
+        self.sync_active_pattern_from_ui();
+        let tones: Vec<String> = notes.iter().map(|h| h.pitch.to_string()).collect();
+        format!("{name}: {} noter (steg {}: {})", notes.len(), notes[0].step, tones.join(","))
+    }
+
+    /// **Väljer ljud ur användarens eget bibliotek.** Varje trumkanal får det sample som bäst
+    /// matchar dess roll och den stil användaren bad om; en fil som inte går att läsa lämnas
+    /// kanalen orörd (samma regel som i kanalracket), och då provas ingen annan fil — den hade
+    /// gett ett annat ljud än det som står i statusraden.
+    fn ai_load_drum_kit(&mut self, genre: &str) -> String {
+        if self.sample_library.is_empty() {
+            return "kit: biblioteket är tomt (skanna en mapp först)".to_string();
+        }
+        let items: Vec<(String, String)> = self
+            .sample_library
+            .iter()
+            .map(|i| (i.name.clone(), i.category.clone()))
+            .collect();
+        let mut used: Vec<usize> = Vec::new();
+        let mut placed: Vec<String> = Vec::new();
+        for idx in 0..self.channels.len() {
+            let Some(role) = crate::audio::ai_tools::role_of(&self.channels[idx].name) else {
+                continue;
+            };
+            if !matches!(role, "kick" | "snare" | "clap" | "hat" | "openhat" | "crash" | "perc") {
+                continue;
+            }
+            let Some(pick) = crate::audio::ai_tools::pick_sample(role, genre, &items, &used) else {
+                continue;
+            };
+            let item = self.sample_library[pick].clone();
+            if super::browser::assign_library_sample_to_channel(&mut self.channels[idx], &item) {
+                used.push(pick);
+                placed.push(format!("{role}: {}", item.name));
+            }
+        }
+        if placed.is_empty() {
+            format!("kit: inga trumljud i biblioteket matchade '{genre}'")
+        } else {
+            format!("kit ({genre}): {}", placed.join(", "))
+        }
+    }
+
+    /// Kanalerna modellen får adressera. Utan listan gissar den index, och då hamnar ett komp på
+    /// fel kanal — den ska skriva mot kanalernas egna namn och nummer.
+    pub fn ai_channel_context(&self) -> String {
+        let list: Vec<String> = self
+            .channels
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                format!("{} {} {}", i, c.icon, c.name)
+            })
+            .collect();
+        format!(
+            "Aktuellt projekt: {} BPM, {} kanaler.\nKanaler: {}",
+            self.bpm,
+            self.channels.len(),
+            list.join(" | ")
+        )
     }
 
     /// **Bekräftar** en väntande sektionsplan: sektionerna läggs efter varandra från takt 1.

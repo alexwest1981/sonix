@@ -678,6 +678,52 @@ mod tests {
         assert!(!clips.is_empty());
     }
 
+    /// **Ett riktigt anrop** med en av DAW:ts egna prompts: frågar efter ett trapbeat med
+    /// kanallistan som appen skickar, och kräver att svaret går att läsa som verktygsanrop med
+    /// de nya mönsterverktygen. `--ignored`: det kostar ett anrop.
+    /// `cargo test --bin sonix live_trap -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_trap_prompt_asks_for_the_pattern_tools() {
+        let cfg = AiConfig::load();
+        assert!(cfg.is_ready(), "AI-konfigurationen är inte komplett");
+        let text = "Ge mig ett trapbeat på 140 BPM med 808-bas.\n\n[Aktuellt projekt: 124 BPM, 8 kanaler.\nKanaler: 0 💥 808 Kick | 1 🥁 909 Snare | 2 👏 Electro Clap | 3 ⚡ Crisp Hat | 4 🌊 Open Hat | 5 ✨ Cyber Crash | 6 🎹 303 Lead | 7 🎸 Sub Bass]";
+        let answer = chat_with_tools(&cfg, text).unwrap();
+        println!("--- modellens svar ---\n{answer}\n---");
+        let calls = crate::audio::ai_tools::parse_calls(&answer).expect("svaret ska gå att läsa");
+        // **Runda 2.** Modellen svarar med en sats verktyg och väntar på resultatet — appen
+        // skickar tillbaka vad som kördes och ber om själva kompet. Utan den rundan stannar
+        // assistenten efter tempo och kit.
+        let follow = format!(
+            "Du körde: {}.\nSkriv nu själva kompet: write_pattern med lanes för kanal 0 (kick), 1 (snare), 3 (hat) och write_notes med 808-bas på kanal 7.",
+            calls.iter().map(|c| c.tool.clone()).collect::<Vec<_>>().join(", ")
+        );
+        let answer2 = chat_with_tools(&cfg, &follow).unwrap();
+        println!("--- runda 2 ---\n{answer2}\n---");
+        let calls2 = crate::audio::ai_tools::parse_calls(&answer2).expect("runda 2 ska gå att läsa");
+        let names2: Vec<&str> = calls2.iter().map(|c| c.tool.as_str()).collect();
+        println!("verktyg runda 2: {names2:?}");
+        let calls = calls2;
+        let names: Vec<&str> = calls.iter().map(|c| c.tool.as_str()).collect();
+        println!("verktyg: {names:?}");
+        assert!(
+            names.iter().any(|n| matches!(*n, "write_pattern" | "write_notes" | "write_drum_pattern")),
+            "modellen skrev inget mönster: {names:?}"
+        );
+        // Det den skriver måste också gå genom valideringen — annars är verktyget en fälla.
+        for call in &calls {
+            if call.tool == "write_pattern" {
+                let lanes = crate::audio::ai_tools::parse_lanes(&call.args)
+                    .unwrap_or_else(|e| panic!("modellens lanes föll i valideringen: {e}\n{}", call.args));
+                assert!(!lanes.is_empty());
+            }
+            if call.tool == "write_notes" {
+                crate::audio::ai_tools::parse_notes(&call.args)
+                    .unwrap_or_else(|e| panic!("modellens noter föll i valideringen: {e}\n{}", call.args));
+            }
+        }
+    }
+
     #[test]
     fn strips_markdown_fences() {
         let content = "```json\n[{\"steps\":[true,false,false,false,true,false,false,false,true,false,false,false,true,false,false,false],\"notes\":[60,60,60,60,60,60,60,60,60,60,60,60,60,60,60,60]}]\n```";
@@ -743,11 +789,16 @@ pub fn chat_with_tools(config: &AiConfig, user_text: &str) -> Result<String, Str
         format!("{}/chat/completions", config.resolved_base().trim_end_matches('/'))
     };
     let tools = crate::audio::ai_tools::tool_schema();
+    // **Golv på budgeten.** En resonerande modell bränner token på sitt resonemang innan den
+    // svarar; med 1 024 kvar blev `content` tom och assistenten gjorde ingenting. 4 096 räcker
+    // för en sats verktygsanrop (mätt: `deepseek-flash` behövde 3 anrop för tempo, tonart
+    // och kit). Användarens eget värde gäller när det är högre.
+    let budget = config.max_tokens.max(4096);
     let body = if is_anthropic {
         serde_json::json!({
             "model": config.resolved_model(),
-            "max_tokens": config.max_tokens.max(1),
             "system": crate::audio::ai_tools::SYSTEM_PROMPT,
+            "max_tokens": budget,
             "temperature": 0.4,
             "messages": [{"role": "user", "content": user_text}],
             "tools": tools.as_array().map(|a| a.as_slice()).unwrap_or(&[]).iter().map(|t| serde_json::json!({
@@ -766,7 +817,7 @@ pub fn chat_with_tools(config: &AiConfig, user_text: &str) -> Result<String, Str
             "tools": tools,
             "tool_choice": "auto",
             "temperature": 0.4,
-            "max_tokens": config.max_tokens,
+            "max_tokens": budget,
             "stream": false,
         })
     };
@@ -809,9 +860,22 @@ pub fn chat_with_tools(config: &AiConfig, user_text: &str) -> Result<String, Str
             && !calls.is_empty() {
                 return Ok(serde_json::json!({"tool_calls": calls}).to_string());
             }
-        if let Some(content) = message.get("content").and_then(|c| c.as_str()) {
+        if let Some(content) = message.get("content").and_then(|c| c.as_str())
+            && !content.trim().is_empty()
+        {
             return Ok(content.to_string());
         }
+        // **Ett tomt svar är ett fel, inte ett tomt svar.** En modell som bränner hela
+        // `max_tokens` på sitt resonemang lämnar `content` tomt — förut blev det `Ok("")`, och
+        // assistenten svarade ingenting utan att säga varför. `finish_reason` säger vilket.
+        let reason = value
+            .pointer("/choices/0/finish_reason")
+            .and_then(|r| r.as_str())
+            .unwrap_or("okänd");
+        return Err(match reason {
+            "length" => "modellen fyllde max_tokens innan den svarade — höj gränsen i inställningarna".to_string(),
+            other => format!("modellen svarade tomt (finish_reason: {other})"),
+        });
     }
     Err("svaret saknade både text och verktygsanrop".to_string())
 }

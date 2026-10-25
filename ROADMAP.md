@@ -123,8 +123,20 @@ mål som val. Den **kan inte röra instrumenten**, och man kan inte diskutera ar
    tonart) och kan föreslå en sektionsplan (intro/vers/refräng/brygga) som **visas innan den
    skrivs**. Först vid bekräftelse skapas regioner/pattern. Prov: en föreslagen plan rör inget
    förrän den bekräftas.
-4. **Trumkomp.** `load_drum_kit` + `write_pattern` med en kit-beskrivning (kick, virvel, hi-hat,
-   clap) så AI:n kan skriva ett komp mot kanalernas egna notnummer i stället för att gissa.
+4. **Beat, bas och synt ur en prompt.** *✅ 0.9.141:* tre verktyg till — `write_pattern` (en
+   stämma per kanal, stegsträng 16–64 tecken, validerad), `write_notes` (melodi/bas, ackord =
+   flera noter på samma steg) och `load_drum_kit` (väljer samplingar ur **användarens eget
+   bibliotek** per roll och stil, via `pick_sample`/`role_of`). Kanalernas index och namn följer
+   med prompten, så AI:n skriver mot kanalerna i stället för att gissa.
+   **Mätt mot leverantören** (`live_trap_prompt_asks_for_the_pattern_tools`, `--ignored`):
+   "Ge mig ett trapbeat på 140 BPM med 808-bas" gav runda 1 `set_tempo` + `set_key` +
+   `load_drum_kit(trap)` och runda 2 `write_pattern` med kick/snare/hat-lanes plus `write_notes`
+   med 808-bas i F-moll — allt igenom valideringen. Två saker föll ut av mätningen: modellen
+   svarar i **två satser** (appen frågar igen, högst två följdrundor), och med `max_tokens` 1 024
+   brände den hela budgeten på sitt resonemang och svarade **tomt** — därför ett golv på 4 096 i
+   verktygsvägen, och ett tomt svar är nu ett fel som säger `finish_reason` i stället för `Ok("")`.
+   **Kvar:** rutnätet är sextondelar, så trap-triolrullar går inte att skriva (kräver 32-delar
+   eller triolrutnät i motorn); anslagets styrka och notens längd sätts per kanal, inte per steg.
 5. **Gränser.** AI:n får aldrig skriva över befintliga klipp utan bekräftelse, aldrig röra
    masterns volym, och aldrig anropa nätverket själv — verktygen går genom appen.
 

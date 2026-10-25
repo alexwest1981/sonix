@@ -46,6 +46,10 @@ pub struct AiMusicAssistant {
     pub last_error: Option<String>,
     pub use_context: bool,
     pub context: GenContext,
+    /// Hur många följdrundor som redan skickats för den här prompten. Modellen svarar med
+    /// tempo och kit först och själva kompet i nästa svar, så appen frågar igen — men bara
+    /// två gånger, annars kan en modell som aldrig skriver något hålla på i evighet.
+    pub follow_ups: u8,
     pending: Option<Arc<Mutex<Option<AiRequestResult>>>>,
 }
 
@@ -64,6 +68,7 @@ impl Default for AiMusicAssistant {
             last_reply: String::new(),
             use_context: true,
             context: GenContext::default(),
+            follow_ups: 0,
             pending: None,
         };
         asst.generate_preset_clips();

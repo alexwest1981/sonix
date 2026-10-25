@@ -29,10 +29,24 @@ Regler:
 1. Föreslå sektioner som en plan först. Skriv inget i arrangemanget förrän användaren säger ja.
 2. Skriv aldrig över ett klipp eller en kanal som redan har noter utan att säga det.
 3. Rör aldrig masterns volym.
-4. Verktyg du får använda: set_tempo, set_key, write_drum_pattern, plan_sections, mute_track,
-   set_channel_instrument. Inget annat.
+4. Verktyg du får använda: set_tempo, set_key, write_drum_pattern, write_pattern, write_notes,
+   load_drum_kit, plan_sections, mute_track, set_channel_instrument. Inget annat.
 5. Svara med JSON: {\"calls\": [{\"tool\": \"<namn>\", \"args\": {…}}]} och inget annat när du
    vill göra något. Vill du bara prata, svara med ren text.
+
+Skriva musik:
+- `write_pattern` skriver en stämma på en kanal: `steps` är en sträng med ett tecken per
+  sextondel, 16 för en takt, 32 för två, upp till 64. `x` = slag, `.` = vila. `note` är
+  MIDI-noten slaget spelar (36 = C1). Trummor går på trumkanalerna, bas och synth på sina.
+- `write_notes` skriver melodi/bas: `notes` är {step, pitch, len, vel} med step 0–63,
+  pitch 0–127, len 1–16 steg, vel 1–127. Ett ackord är flera noter på samma step.
+- `load_drum_kit` väljer samplingar ur användarens eget bibliotek för trumrollerna
+  (kick, snare, clap, hat, openhat, crash) och lägger dem på trumkanalerna. Kalla den
+  **före** write_pattern när användaren vill ha en stil (t.ex. trap) — då matchar ljuden.
+- Beskriv stilen i ord (trap, drill, boom bap, house) så blir ljudvalet rätt: en trap-kick
+  letar efter 808, en house-hat efter öppen hi-hat.
+- Kanalerna du får adressera står i användarens meddelande (index och namn). Skriv bara på
+  kanaler som finns; hitta inte på egna index.
 ";
 
 /// Verktygen modellen får anropa. `mode` styr vilka som kräver bekräftelse.
@@ -43,7 +57,10 @@ pub fn tool_schema() -> Value {
         {"type": "function", "function": {"name": "write_drum_pattern", "description": "Skriver ett trumkomp i ett pattern. Stilen är en av de kända i DRUM_STYLES.", "parameters": {"type": "object", "properties": {"pattern": {"type": "integer"}, "style": {"type": "string"}, "bars": {"type": "integer", "description": "1–4"}}, "required": ["pattern", "style"]}}},
         {"type": "function", "function": {"name": "plan_sections", "description": "Föreslår en sektionsplan. Skriver inget — användaren bekräftar först.", "parameters": {"type": "object", "properties": {"sections": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "bars": {"type": "integer"}}, "required": ["name", "bars"]}}}, "required": ["sections"]}}},
         {"type": "function", "function": {"name": "mute_track", "description": "Tystar eller slår på ett spår i arrangemanget.", "parameters": {"type": "object", "properties": {"track": {"type": "integer"}, "muted": {"type": "boolean"}}, "required": ["track", "muted"]}}},
-        {"type": "function", "function": {"name": "set_channel_instrument", "description": "Byter ljud på en kanal i racket.", "parameters": {"type": "object", "properties": {"channel": {"type": "integer"}, "instrument": {"type": "string"}}, "required": ["channel", "instrument"]}}}
+        {"type": "function", "function": {"name": "set_channel_instrument", "description": "Byter ljud på en kanal i racket.", "parameters": {"type": "object", "properties": {"channel": {"type": "integer"}, "instrument": {"type": "string"}}, "required": ["channel", "instrument"]}}},
+        {"type": "function", "function": {"name": "write_pattern", "description": "Skriver en stämma (trummor eller perc) på kanaler med ett eget stegmönster.", "parameters": {"type": "object", "properties": {"lanes": {"type": "array", "items": {"type": "object", "properties": {"channel": {"type": "integer"}, "steps": {"type": "string", "description": "16, 32, 48 eller 64 tecken: x = slag, . = vila"}, "note": {"type": "integer", "description": "MIDI-not 0–127, valfri"}}, "required": ["channel", "steps"]}}}, "required": ["lanes"]}}},
+        {"type": "function", "function": {"name": "write_notes", "description": "Skriver melodi, bas eller ackord på en kanal.", "parameters": {"type": "object", "properties": {"channel": {"type": "integer"}, "notes": {"type": "array", "items": {"type": "object", "properties": {"step": {"type": "integer", "description": "0–63"}, "pitch": {"type": "integer", "description": "MIDI 0–127"}, "len": {"type": "integer", "description": "1–16 steg"}, "vel": {"type": "integer", "description": "1–127"}}, "required": ["step", "pitch"]}}}, "required": ["channel", "notes"]}}},
+        {"type": "function", "function": {"name": "load_drum_kit", "description": "Väljer samplingar ur användarens bibliotek för trumrollerna och lägger dem på trumkanalerna.", "parameters": {"type": "object", "properties": {"genre": {"type": "string", "description": "stil, t.ex. trap, drill, house, boom bap"}}, "required": ["genre"]}}}
     ])
 }
 
@@ -134,10 +151,15 @@ pub fn parse_section_plan(args: &Value) -> Result<Vec<PlannedSection>, String> {
 }
 
 /// Stilar kompanter kan skrivas i. `(kick, virvel, hi-hat)` som steg i en takt (16 sextondelar).
-pub const DRUM_STYLES: [(&str, &str, &str, &str); 3] = [
+pub const DRUM_STYLES: [(&str, &str, &str, &str); 5] = [
     ("house", "x...x...x...x...", "....x.......x...", "..x...x...x...x."),
     ("hiphop", "x.....x...x.....", "....x.......x...", "x.x.x.x.x.x.x.x."),
     ("rock", "x.......x.x.....", "....x.......x...", "x.x.x.x.x.x.x.x."),
+    // Trap: 808-kick på ettan och trean, snaren på trean i varje halvtakt, och hi-haten i
+    // sextondelar med ett dubbelslag före taktbytet. Triolrullar går inte: rutnätet är
+    // sextondelar, så en treslagsserie ligger utanför vad ett steg kan säga.
+    ("trap", "x.......x.......", "....x.......x...", "xxxxxxxxxxxxxxxx"),
+    ("drill", "x.............x.", "....x.......x...", "x.xxx.x.x.xxx.x."),
 ];
 
 /// Lägger en plan efter varandra från `start_bar` — ren funktion, så att starttakterna går att
@@ -163,6 +185,177 @@ pub fn ensure_channels_free(busy: &[bool], names: &[String]) -> Result<(), Strin
         return Err(format!("kanalen '{name}' har redan steg — töm den först"));
     }
     Ok(())
+}
+
+/// En stämma ur ett `write_pattern`-anrop: vilken kanal, vilka steg, och vilken not slaget spelar.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Lane {
+    pub channel: usize,
+    pub steps: [bool; STEPS],
+    pub note: Option<u8>,
+}
+
+/// Läser en stegsträng: `x`/`X` är slag, allt annat är vila. Längden måste vara 16, 32, 48
+/// eller 64 — en sextondel per tecken, en takt per 16. Ett mönster som är 15 eller 20 tecken
+/// långt är ett räknfel hos modellen, inte ett kort komp, och ska sägas tillbaka till den.
+pub fn parse_steps(text: &str) -> Result<[bool; STEPS], String> {
+    let chars: Vec<char> = text.trim().chars().filter(|c| !c.is_whitespace()).collect();
+    if !matches!(chars.len(), 16 | 32 | 48 | 64) {
+        return Err(format!(
+            "steget är {} tecken långt — 16, 32, 48 eller 64 krävs (ett tecken per sextondel)",
+            chars.len()
+        ));
+    }
+    let mut steps = [false; STEPS];
+    for (i, c) in chars.iter().enumerate() {
+        steps[i] = matches!(c, 'x' | 'X' | 'o' | 'O');
+    }
+    Ok(steps)
+}
+
+/// Läser `lanes` ur ett `write_pattern`-anrop. En stämma per kanal, och **samma kanal två
+/// gånger avvisas**: det andra anropet hade tyst skrivit över det första.
+pub fn parse_lanes(args: &Value) -> Result<Vec<Lane>, String> {
+    let list = args
+        .get("lanes")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "'lanes' saknas".to_string())?;
+    if list.is_empty() {
+        return Err("inga stämmor angavs".to_string());
+    }
+    if list.len() > 8 {
+        return Err(format!("{} stämmor — högst 8 per anrop", list.len()));
+    }
+    let mut out: Vec<Lane> = Vec::new();
+    for item in list {
+        let channel = item.get("channel").and_then(|v| v.as_u64()).unwrap_or(u64::MAX) as usize;
+        if channel >= 64 {
+            return Err("kanalindex saknas eller är orimligt".to_string());
+        }
+        if out.iter().any(|l| l.channel == channel) {
+            return Err(format!("kanal {} finns två gånger i samma anrop", channel));
+        }
+        let text = item.get("steps").and_then(|v| v.as_str()).unwrap_or("");
+        let steps = parse_steps(text).map_err(|e| format!("kanal {channel}: {e}"))?;
+        let note = item
+            .get("note")
+            .and_then(|v| v.as_u64())
+            .map(|n| n.min(127) as u8);
+        out.push(Lane { channel, steps, note });
+    }
+    Ok(out)
+}
+
+/// En not ur ett `write_notes`-anrop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct NoteHit {
+    pub step: usize,
+    pub pitch: u8,
+    pub length: u8,
+    pub velocity: u8,
+}
+
+/// Läser melodi/bas. Två noter på samma steg **och samma tonhöjd** är en dubblering och
+/// avvisas; samma steg med olika tonhöjd är ett ackord och går igenom.
+pub fn parse_notes(args: &Value) -> Result<Vec<NoteHit>, String> {
+    let list = args
+        .get("notes")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| "'notes' saknas".to_string())?;
+    if list.is_empty() {
+        return Err("inga noter angavs".to_string());
+    }
+    if list.len() > 64 {
+        return Err(format!("{} noter — högst 64 per kanal", list.len()));
+    }
+    let mut out: Vec<NoteHit> = Vec::new();
+    for item in list {
+        let step = item.get("step").and_then(|v| v.as_i64()).unwrap_or(-1);
+        if !(0..STEPS as i64).contains(&step) {
+            return Err(format!("steget {step} ligger utanför 0–{}", STEPS - 1));
+        }
+        let pitch = item.get("pitch").and_then(|v| v.as_i64()).unwrap_or(-1);
+        if !(0..=127).contains(&pitch) {
+            return Err(format!("tonhöjden {pitch} ligger utanför 0–127"));
+        }
+        let length = item.get("len").and_then(|v| v.as_i64()).unwrap_or(1).clamp(1, 16) as u8;
+        let velocity = item.get("vel").and_then(|v| v.as_i64()).unwrap_or(100).clamp(1, 127) as u8;
+        let hit = NoteHit { step: step as usize, pitch: pitch as u8, length, velocity };
+        if out.iter().any(|h| h.step == hit.step && h.pitch == hit.pitch) {
+            return Err(format!("noten {} på steg {} finns två gånger", hit.pitch, hit.step));
+        }
+        out.push(hit);
+    }
+    out.sort_by_key(|h| h.step);
+    Ok(out)
+}
+
+/// Ord som känns igen i ett samplebiblioteks filnamn, per roll. Ett bibliotek är filnamn —
+/// `BD_808_Hard.wav`, `CHH_trap_02.wav` — så matchningen är text, inte metadata.
+const ROLE_WORDS: &[(&str, &[&str])] = &[
+    ("kick", &["kick", "bassdrum", "bass drum", "bd0", "bd_", "808"]),
+    ("snare", &["snare", "snr", "sd_"]),
+    ("clap", &["clap", "handclap", "cp_"]),
+    ("hat", &["closed hat", "chh", "hat closed", "hihat", "hi-hat", "hh_", "hat"]),
+    ("openhat", &["open hat", "ohh", "hat open", "ohat"]),
+    ("crash", &["crash", "cymbal", "ride"]),
+    ("perc", &["perc", "conga", "rim", "shaker", "tom", "cowbell"]),
+    ("bass", &["bass", "sub"]),
+    ("synth", &["lead", "pluck", "arp", "keys", "pad", "synth"]),
+];
+
+/// Vilken roll en **kanal** har, av dess namn: "808 Kick" → kick, "Open Hat" → openhat.
+/// Rollistan är ordnad så att det mest specifika ordet vinner: en kanal som heter "Open Hat"
+/// matchar både `hat` och `openhat`, och då ska den vara en öppen hi-hat.
+pub fn role_of(channel_name: &str) -> Option<&'static str> {
+    let hay = channel_name.to_lowercase();
+    let mut best: Option<(usize, &'static str)> = None;
+    for (role, words) in ROLE_WORDS {
+        if let Some(pos) = words.iter().position(|w| hay.contains(w)) {
+            if best.map_or(true, |(p, _)| pos < p) {
+                best = Some((pos, role));
+            }
+        }
+    }
+    best.map(|(_, role)| role)
+}
+
+/// Väljer det sample som bäst matchar en roll och en stil. Ren funktion: `items` är
+/// `(namn, kategori)` och returen är index, så valet går att prova utan ett bibliotek på disk.
+///
+/// Rollordet väger tyngst; stilen är en knuff, inte ett krav — en trap-kick letar efter 808 men
+/// en vanlig kick duger när biblioteket inte har någon 808. Redan använda index hoppas över, så
+/// kick och snare inte blir samma fil.
+pub fn pick_sample(
+    role: &str,
+    genre: &str,
+    items: &[(String, String)],
+    used: &[usize],
+) -> Option<usize> {
+    let role_words = ROLE_WORDS
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(role.trim()))?
+        .1;
+    let genre = genre.trim().to_lowercase();
+    let mut best: Option<(i32, usize)> = None;
+    for (i, (name, category)) in items.iter().enumerate() {
+        if used.contains(&i) {
+            continue;
+        }
+        let hay = format!("{} {}", name.to_lowercase(), category.to_lowercase());
+        let Some(role_score) = role_words.iter().position(|w| hay.contains(w)) else {
+            continue;
+        };
+        // Första ordet i listan är det mest specifika: 808 före kick.
+        let mut score = 10 - role_score as i32;
+        if !genre.is_empty() && hay.contains(&genre) {
+            score += 6;
+        }
+        if best.map_or(true, |(s, _)| score > s) {
+            best = Some((score, i));
+        }
+    }
+    best.map(|(_, i)| i)
 }
 
 /// Kompets tre lager för sig — kick, virvel, hi-hat — så appen kan skriva dem på tre kanaler.
@@ -265,6 +458,100 @@ mod tests {
         assert!(parse_section_plan(&json!({"sections": [{"name": "Vers", "bars": 99}]})).is_err());
     }
 
+/// En stegsträng är ett räknestycke: 16, 32, 48 eller 64 tecken, och allt annat avvisas.
+    #[test]
+    fn a_step_string_must_be_whole_bars() {
+        let steps = parse_steps("x...x...x...x...").unwrap();
+        assert!(steps[0] && steps[4] && steps[12]);
+        assert!(!steps[1]);
+        assert_eq!(steps.iter().filter(|s| **s).count(), 4);
+
+        // Två takter hamnar i takt 2, inte i takt 1.
+        let two = parse_steps(&"x...............".repeat(2)).unwrap();
+        assert!(two[16]);
+
+        for bad in ["x...", "", "x".repeat(15).as_str(), "x".repeat(20).as_str()] {
+            assert!(parse_steps(bad).is_err(), "längd {} borde avvisas", bad.len());
+        }
+        // Mellanslag räknas inte som steg, så en radbrytning i svaret fäller inget komp.
+        assert!(parse_steps("x... x... x... x...").is_ok());
+    }
+
+    /// Samma kanal två gånger i ett anrop hade tyst skrivit över den första stämman.
+    #[test]
+    fn lanes_refuse_the_same_channel_twice() {
+        let ok = parse_lanes(&json!({"lanes": [
+            {"channel": 0, "steps": "x...x...x...x...", "note": 36},
+            {"channel": 3, "steps": "x.x.x.x.x.x.x.x."}
+        ]}))
+        .unwrap();
+        assert_eq!(ok.len(), 2);
+        assert_eq!(ok[0].note, Some(36));
+        assert_eq!(ok[1].note, None);
+
+        assert!(parse_lanes(&json!({"lanes": []})).is_err());
+        assert!(parse_lanes(&json!({})).is_err());
+        assert!(parse_lanes(&json!({"lanes": [{"channel": 2, "steps": "x..."}]})).is_err());
+        assert!(parse_lanes(&json!({"lanes": [
+            {"channel": 1, "steps": "x...x...x...x..."},
+            {"channel": 1, "steps": "x...x...x...x..."}
+        ]}))
+        .is_err());
+        assert!(parse_lanes(&json!({"lanes": [{"steps": "x...x...x...x..."}]})).is_err());
+    }
+
+    /// Ackord går igenom (samma steg, olika toner); en dubblett av samma ton gör det inte.
+    #[test]
+    fn notes_allow_chords_but_not_double_hits() {
+        let chord = parse_notes(&json!({"notes": [
+            {"step": 0, "pitch": 36}, {"step": 0, "pitch": 43}, {"step": 8, "pitch": 48}
+        ]}))
+        .unwrap();
+        assert_eq!(chord.len(), 3);
+        assert_eq!(chord[0].step, 0);
+
+        assert!(parse_notes(&json!({"notes": [{"step": 0, "pitch": 36}, {"step": 0, "pitch": 36}]})).is_err());
+        assert!(parse_notes(&json!({"notes": [{"step": 64, "pitch": 36}]})).is_err());
+        assert!(parse_notes(&json!({"notes": [{"step": 0, "pitch": 200}]})).is_err());
+        assert!(parse_notes(&json!({"notes": []})).is_err());
+        // Längd och anslag kläms, inte avvisas: de är nyanser, inte räknfel.
+        let clamped = parse_notes(&json!({"notes": [{"step": 4, "pitch": 60, "len": 99, "vel": 0}]})).unwrap();
+        assert_eq!(clamped[0].length, 16);
+        assert_eq!(clamped[0].velocity, 1);
+    }
+
+    /// Ljudvalet: rollen väger tyngst, stilen knuffar, och en redan använd fil tas inte igen.
+    #[test]
+    fn sample_picking_prefers_the_role_then_the_genre() {
+        let items = vec![
+            ("BD_909_Kick".to_string(), "drums".to_string()),
+            ("BD_808_trap_Hard".to_string(), "808".to_string()),
+            ("CHH_trap_02".to_string(), "hats".to_string()),
+            ("Clap_909".to_string(), "drums".to_string()),
+        ];
+        // Trap-kicken ska bli 808:an, inte 909:an.
+        assert_eq!(pick_sample("kick", "trap", &items, &[]), Some(1));
+        assert_eq!(pick_sample("kick", "house", &items, &[]), Some(0));
+        // Upptagen fil hoppas över.
+        assert_eq!(pick_sample("kick", "trap", &items, &[1]), Some(0));
+        // Ingen hi-hat i listan efter att den använts → inget val, inte en kick.
+        assert_eq!(pick_sample("hat", "trap", &items, &[2]), None);
+        assert_eq!(pick_sample("trumpet", "", &items, &[]), None);
+    }
+
+    /// Kanalens roll läses ur namnet — annars vet `load_drum_kit` inte vad den ska leta efter.
+    #[test]
+    fn a_channel_role_comes_from_its_name() {
+        assert_eq!(role_of("808 Kick"), Some("kick"));
+        assert_eq!(role_of("909 Snare"), Some("snare"));
+        assert_eq!(role_of("Crisp Hat"), Some("hat"));
+        assert_eq!(role_of("Open Hat"), Some("openhat"));
+        assert_eq!(role_of("Electro Clap"), Some("clap"));
+        assert_eq!(role_of("Sub Bass"), Some("bass"));
+        assert_eq!(role_of("303 Lead"), Some("synth"));
+        assert_eq!(role_of("Mickey"), None);
+    }
+
     /// Schemat ska räknas upp exakt, så prompten och koden inte glider isär.
     #[test]
     fn the_schema_lists_every_tool_the_prompt_promises() {
@@ -283,7 +570,10 @@ mod tests {
                 "write_drum_pattern",
                 "plan_sections",
                 "mute_track",
-                "set_channel_instrument"
+                "set_channel_instrument",
+                "write_pattern",
+                "write_notes",
+                "load_drum_kit"
             ]
         );
         // Varje verktygsnamn ska också nämnas i prompten, annars vet modellen inte att det finns.
