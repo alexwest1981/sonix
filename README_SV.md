@@ -211,9 +211,9 @@ start. Allt annat syns ändå i ljudväljaren.
 * **Spårskapare:** 19 mallar i 6 kategorier.
 * **Hårdvaru-Strobetuner:** Riktig pitchdetektering, ±cents, 7 stämningspresets och en referenston.
 
-### 8. 🧩 Modulär Patcher — 🟡 Äkta DSP, ordningskänslig
+### 8. 🧩 Modulär Patcher — ✅ Äkta DSP
 * Visuellt nodnät med patchkablar: MidiIn, Oscillator (sinus/sågtand/fyrkant/triangel + sync/PWM), Filter (LP/HP/BP), ADSR, LFO, Delay, Reverb, Distortion, AudioOut.
-* 🟡 **Not:** Noderna utvärderas i skapandeordning (ingen topologisk sortering), så kablar måste följa signalordningen. Några nodetiketter lovar mer än DSP:n gör.
+* Noderna utvärderas i **topologisk ordning** (Kahn), så kablar får dras hur som helst; en cykel rapporteras i stället för att hänga (`topo_order`, hållet av `evaluation_order_is_independent_of_node_listing_order`). Filter­noden är ett 12 dB state-variabelt filter, och etiketten säger det.
 
 ### 9. 🤖 AI Musikassistent & Generering — ✅ Äkta (med ärliga gränser)
 * **Riktig HTTP-integration:** OpenAI, Anthropic, OpenRouter och lokal Ollama för text→mönster; ljudgenerering via OpenAI TTS och Stability Stable Audio. Projektkontext (tonart/BPM/val) injiceras i prompten.
@@ -273,7 +273,7 @@ Alla sökvägar byggs på **en** plats (`src/paths.rs`) och följer XDG. Kör `s
 - Startar Sonix och hittar en autosave som är **nyare än projektfilen på disk** visas en återställningsdialog. En återställd kopia *pensioneras* (döps om till `*.restored`) i stället för att raderas.
 - Projektmenyn har **🕘 Senaste projekt** (läser `recent.json`) och **📂 Visa projektmappen i filhanteraren**.
 
-Projektet använder en *endimensionell* ångra-historik för tidslinjen; undo för mixer/FX/automation är planerat i Fas 6.2 i [ROADMAP.md](ROADMAP.md).
+Projektet använder en *endimensionell* ångra-historik för tidslinjen och mönsterredigeringarna. **Mixer-, FX- och automationsändringar går inte att ångra än** — den luckan står inte i roadmapen.
 
 ---
 

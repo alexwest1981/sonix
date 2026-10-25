@@ -641,6 +641,41 @@ mod tests {
         assert!((est - 120.0).abs() < 5.0, "estimated {est} BPM");
     }
 
+    /// **Klick i känd takt mäts till sin egen takt.** Provet kom med tempomätningen vid import
+    /// (0.9.144) och ligger här därför att det är den här funktionen importen använder.
+    #[test]
+    fn a_click_track_is_measured_to_its_own_tempo() {
+        let sr = 44_100.0f32;
+        let click_track = |bpm: f32, secs: f32| {
+            let n = (sr * secs) as usize;
+            let mut out = vec![0.0_f32; n];
+            let period = (60.0 / bpm * sr) as usize;
+            let mut seed = 0x1234_5678_u32;
+            let mut at = 0;
+            while at < n {
+                for i in 0..(sr * 0.05) as usize {
+                    if at + i >= n {
+                        break;
+                    }
+                    seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                    let noise = (seed >> 9) as f32 / (1 << 23) as f32 - 1.0;
+                    let env = (-(i as f32) / (sr * 0.008)).exp();
+                    out[at + i] += 0.6 * noise * env;
+                }
+                at += period;
+            }
+            out
+        };
+        for bpm in [90.0_f32, 125.0, 140.0] {
+            let audio = click_track(bpm, 12.0);
+            let est = estimate_bpm(&audio, &audio, sr);
+            assert!((est - bpm).abs() <= 2.0, "mätte {est:.1} BPM, väntade {bpm:.0}");
+        }
+        let tone: Vec<f32> =
+            (0..44_100).map(|i| (std::f32::consts::TAU * 220.0 * i as f32 / sr).sin() * 0.3).collect();
+        assert_eq!(estimate_bpm(&tone, &tone, sr), 0.0, "en utdragen ton har ingen takt");
+    }
+
     /// Stämvyn ritade ett symmetriskt hölje ur en 512-punktsöversikt förut. Nu
     /// bär varje stämma exakta (min, max)-par ur sina egna samplar.
     ///

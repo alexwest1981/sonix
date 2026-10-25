@@ -582,7 +582,7 @@ pub fn import_audio_file_as_track(&mut self, path: &str, tmpl: &TrackTemplate) {
         .unwrap_or_else(|| crate::i18n::t("Importerat ljud").to_string());
 
     // Tempot mäts ur ljudet. Utan siffran står klippet still när projektets tempo ändras.
-    let detected_bpm = crate::audio::tempo_detect::detect_bpm(&l, sr as f32).unwrap_or(0.0);
+    let detected_bpm = crate::audio::stem_separator::estimate_bpm(&l, &r, sr as f32);
     let arc_l = std::sync::Arc::new(l);
     let arc_r = std::sync::Arc::new(r);
     let new_id = self.playlist_tracks.len() + 1;

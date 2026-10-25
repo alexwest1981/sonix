@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — README:s gula punkter genomgångna (0.9.146)
+
+- **Patchern var märkt 🟡 "ordningskänslig" fast den inte är det.** `patcher::topo_order` (Kahn)
+  har funnits och används vid rendering; provet `evaluation_order_is_independent_of_node_listing_order`
+  håller den. Både README och README_SV säger nu ✅, och sammanfattningstabellen har ingen kvarvarande
+  punkt för patchern.
+- **Ångra-kommentaren pekade på "Fas 6.2 i ROADMAP.md", en punkt som inte finns.** Båda språken säger
+  nu rakt ut att mixer-, FX- och automationsändringar inte går att ångra.
+- **Tempomätningen är den befintliga.** En `tempo_detect` skrevs först; mätt mot
+  `stem_separator::estimate_bpm` gav den inget bättre (90,0 → 89,6 · 125 → 125,0 · 140 → 139,5), så
+  den togs bort och importen och menyvalet använder den som redan fanns. Provet flyttade dit.
+
 ### Added — mät tempot i ett klipp som redan ligger på tidslinjen (0.9.145)
 
 - **🎵 Mät tempot i klippet** i klippmenyn: kör samma detektor som importen, men på det valda
@@ -17,9 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed — tempot: mätt vid import och ett enda ställe att skriva det (0.9.144)
 
-- **Importerad mp3 mäts nu.** `audio::tempo_detect::detect_bpm` räknar energi per bildruta →
-  onsets → autokorrelation över 60–190 BPM, med oktaffelkorrigering (125 slås fast, inte 250).
-  Prov: klick i 90, 125 och 140 BPM mäts inom 2 BPM; tystnad och en utdragen ton ger inget tempo.
+- **Importerad mp3 mäts nu.** Importen använder den mätare som redan fanns —
+  `stem_separator::estimate_bpm` (onsets → autokorrelation, 60–200 BPM) — i stället för att en andra
+  skrevs bredvid: en separat `tempo_detect` byggdes först och kastades när mätningen visade att den
+  befintliga gav samma svar (90,0 → 89,6 · 125 → 125,0 · 140 → 139,5). Provet ligger nu där
+  funktionen bor: klick i 90, 125 och 140 BPM inom 2 BPM, och en utdragen ton ger 0.
   Siffran hamnar i klippets `source_bpm`, så det kan följa projektets tempo — förut var den alltid 0
   och klippet stod still. Statusraden säger vad som mättes.
 - **Tempofälten skrev bara siffran, inte tempokartan.** Så länge projektet saknade en karta gick det

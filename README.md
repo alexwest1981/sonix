@@ -193,9 +193,9 @@ on the next start. Everything else still appears in the Sound Browser.
 ### 7. 🎛 Creative Generators — ✅ Real
 * **Smart Chord & Harmony Matrix:** 12 scales, Roman-numeral progressions, voicings, strum humanizer, arpeggiator → Piano Roll.
 
-### 8. 🧩 Modular Patcher — 🟡 Real DSP, order-sensitive
+### 8. 🧩 Modular Patcher — ✅ Real
 * Visual node grid with patch cables: MidiIn, Oscillator (sine/saw/square/triangle + sync/PWM), Filter (LP/HP/BP), ADSR Envelope, LFO, Delay, Reverb, Distortion, AudioOut.
-* 🟡 **Note:** Nodes are evaluated in creation order (no topological sort), so cables must follow signal order. A few node labels describe more than the DSP does.
+* Nodes are evaluated in **topological order** (Kahn's algorithm), so cables may be drawn in any order; a cycle is reported instead of hanging (`topo_order`, held by `evaluation_order_is_independent_of_node_listing_order`). The filter node is a 12 dB state-variable filter, and its label says so.
 
 ### 9. 🤖 AI Music Assistant & Generation — ✅ Real (with honest limits)
 * **Real HTTP integration:** OpenAI, Anthropic, OpenRouter and local Ollama for text→patterns; audio generation via OpenAI TTS and Stability Stable Audio. Project context (key/BPM/selection) is injected into prompts.
@@ -254,7 +254,7 @@ Every path is built in **one** place (`src/paths.rs`) and follows XDG. Run `soni
 - If Sonix starts and finds an autosave **newer than the project file on disk**, a recovery dialog is shown. A restored copy is *retired* (renamed to `*.restored`) rather than deleted.
 - The project menu has **🕘 Recent projects** (reads `recent.json`) and **📂 Show project folder in file manager**.
 
-Undo currently covers the timeline; undo for mixer/FX/automation is planned as item 6.2 in [ROADMAP.md](ROADMAP.md).
+Undo covers the timeline and the pattern edits. **Mixer, FX and automation changes are not undoable yet** — that gap is not on the roadmap's list.
 
 ---
 
@@ -271,7 +271,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | AI (LLM + audio APIs) | ✅ Real | Local fallback is rule-based, not a neural model |
 | Hardware MIDI / OSC | ✅ Real | — |
 | Export (WAV/FLAC in-app, MP3/OGG/AAC via ffmpeg) | ✅ Real | — |
-| Modular Patcher | ✅ Real | Topological sort + labels match the DSP |
+| Modular Patcher | ✅ Real | — |
 | Stem separation | ✅ Real | Optional neural HTDemucs via `--features neural` + user model; DSP fallback otherwise |
 | Vocal tuning | ✅ Real | Real-time autotune in the audio thread + direct monitoring; harmonies/formant preservation run offline |
 | Time-stretch | ✅ Real | WSOLA (pitch-preserving) in the Vocal Studio audition and the Stem Separator SPEED control |

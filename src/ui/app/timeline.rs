@@ -568,12 +568,12 @@ pub fn measure_selected_region_bpm(&mut self) {
         self.status_message = crate::i18n::t("Välj ett ljudklipp med ljud först").to_string();
         return;
     };
-    let Some((name, l, _r, sr, _start_bar)) = self.selected_region_audio() else {
+    let Some((name, l, r, sr, _start_bar)) = self.selected_region_audio() else {
         self.status_message = crate::i18n::t("Välj ett ljudklipp med ljud först").to_string();
         return;
     };
-    match crate::audio::tempo_detect::detect_bpm(&l, sr as f32) {
-        Some(bpm) => {
+    match crate::audio::stem_separator::estimate_bpm(&l, &r, sr as f32) {
+        bpm if bpm > 0.0 => {
             if let Some(region) = self
                 .playlist_tracks
                 .get_mut(t_idx)
@@ -585,7 +585,7 @@ pub fn measure_selected_region_bpm(&mut self) {
             self.status_message =
                 crate::tstatus!("🎵 '{}' går i {:.1} BPM — klippet följer nu tempot", name, bpm);
         }
-        None => {
+        _ => {
             self.status_message = crate::tstatus!(
                 "🎵 Hittade ingen takt i '{}' — klippet står still vid tempobyte",
                 name
