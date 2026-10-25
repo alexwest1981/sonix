@@ -275,6 +275,9 @@ pub struct MultibandParams {
     pub master_amount: f32,
     /// Master-bandets tröskel som avvikelse i dB från `threshold_db` (som bandens).
     pub master_offset_db: f32,
+    /// **Solo per band** (FL:s Solo-knapp). 0 = av, 1–3 = bara det bandet hörs. Att ställa in
+    /// ett band utan att höra det ensamt är att gissa; det är därför solo finns.
+    pub solo_band: u8,
 }
 
 impl Default for MultibandParams {
@@ -290,6 +293,7 @@ impl Default for MultibandParams {
             offsets_db: [0.0; 3],
             master_amount: 0.0,
             master_offset_db: 0.0,
+            solo_band: 0,
         }
     }
 }
@@ -384,6 +388,13 @@ impl MultibandCompressor {
         let dry = [(ll, rl), (lm, rm), (lh, rh)];
 
         let p = self.params;
+
+        // Solo: bara det valda bandet hörs, och det hörs torrt — kompressionen är det man
+        // vill bedöma, inte maskera.
+        if (1..=3).contains(&p.solo_band) {
+            let (dl, dr) = dry[(p.solo_band - 1) as usize];
+            return (dl, dr);
+        }
 
         let mut out = (0.0f32, 0.0f32);
         for (i, (dl, dr)) in dry.iter().enumerate() {

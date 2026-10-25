@@ -289,6 +289,29 @@
     }
 
 
+
+    /// **Solo isolerar bandet.** Med 100 Hz och 5 kHz in ska solo på low lämna basen kvar och
+    /// tysta diskanten — annars är det ingen solo, bara en ratt.
+    #[test]
+    fn solo_keeps_only_its_own_band() {
+        let sr = 48_000.0;
+        let (low, high) = {
+            let mut mb = MultibandCompressor::new(sr);
+            mb.set_params(MultibandParams { solo_band: 1, ..MultibandParams::default() });
+            let mut out = Vec::new();
+            for i in 0..48_000 {
+                let t = i as f32 / sr;
+                let x = 0.5 * (t * 100.0 * std::f32::consts::TAU).sin()
+                    + 0.3 * (t * 5_000.0 * std::f32::consts::TAU).sin();
+                let (l, _) = mb.process(x, x);
+                out.push(l);
+            }
+            (tone_mag(&out[24_000..], 100.0, sr), tone_mag(&out[24_000..], 5_000.0, sr))
+        };
+        assert!(low > 0.2, "basbandet försvann: {low:.4}");
+        assert!(high < low * 0.1, "diskanten läckte igenom solon: {high:.4} mot {low:.4}");
+    }
+
     /// **Master-bandet är ett eget steg.** FL:s Maximus har LOW/MID/HIGH plus MASTER, och master
     /// hör summan: med alla band på 0 ska den ändå komprimera, annars är den bara en fjärde
     /// bandratt med ett annat namn.

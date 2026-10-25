@@ -181,6 +181,7 @@ impl Default for FxRackState {
                         ("TRÖSK M", 0.5),
                         ("TRÖSK H", 0.5),
                         ("MASTER", 0.0),
+                        ("SOLO", 0.0),
                     ],
                 },
                 FxPedal {
@@ -642,6 +643,8 @@ impl FxRackState {
                 (mb_extra(4) - 0.5) * 40.0,
             ],
             master_amount: mb_extra(5),
+            // SOLO: 0 = av, 0,33 = low, 0,66 = mid, 1 = high.
+            solo_band: (mb_extra(6) * 3.0).round().clamp(0.0, 3.0) as u8,
             ..MultibandParams::default()
         };
 
@@ -2154,6 +2157,10 @@ mod tests {
         assert!(p.master_amount.abs() < 1e-6, "master: {}", p.master_amount);
         state.pedals[idx].extra[5].1 = 1.0;
         assert!((state.build_master_fx_params().multiband.master_amount - 1.0).abs() < 1e-6);
+        // SOLO: 0 = av, 1,0 = high-bandet.
+        assert_eq!(state.build_master_fx_params().multiband.solo_band, 0);
+        state.pedals[idx].extra[6].1 = 1.0;
+        assert_eq!(state.build_master_fx_params().multiband.solo_band, 3);
     }
     /// **Time Curves rattar når sina egna fält** — FORM väljer kurva, TEMPO sätter takten.
     #[test]

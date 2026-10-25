@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — solo per band i Maximus (0.9.154)
+
+- **SOLO-ratten:** 0 = av, 0,33 = low, 0,66 = mid, 1 = high. Det valda bandet hörs **torrt** — man
+  ställer in ett band genom att höra det ensamt, inte genom att gissa bland de andra.
+- Prov: `solo_keeps_only_its_own_band` matar 100 Hz + 5 kHz och kräver att basen är kvar (över 0,2)
+  medan diskanten faller under 10 % av den. Rattens eget fält hålls av den utökade
+  `the_multiband_threshold_knobs_move_their_own_band`.
+
 ### Changed — pedalkedjan går att upptäcka (0.9.153)
 
 - **Nio pedaler, fem synliga kort.** Fönstret var 880 px brett och kedjan skrollar horisontellt,
