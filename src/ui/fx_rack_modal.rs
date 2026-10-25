@@ -1,7 +1,7 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
-    ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, LovePhilterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
+    ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, LovePhilterParams, LuxeverbParams, MasterEqBand, MasterFilterParams, MasterFxParams,
     DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, ShelvesParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
@@ -438,6 +438,22 @@ impl Default for FxRackState {
                     extra: Vec::new(),
                 },
                 FxPedal {
+                    id: "luxeverb",
+                    name: "🌫 LUXEVERB",
+                    category: "Echo & Delay",
+                    enabled: false,
+                    color: crate::ui::theme::palette().track_blue(),
+                    p1_name: "DECAY",
+                    p1_val: 0.20,
+                    p2_name: "SIZE",
+                    p2_val: 0.40,
+                    p3_name: "DAMP",
+                    p3_val: 0.35,
+                    mix: 0.30,
+                    description: "Modulerat fyrlinjigt reverb: DECAY är RT60 i sekunder, SIZE rummets storlek, DAMP hur mörk svansen blir, PREDELAY, MOD hur mycket linjerna rör sig och WIDTH bredden.",
+                    extra: vec![("PREDELAY", 0.10), ("MOD", 0.35), ("WIDTH", 1.0)],
+                },
+                FxPedal {
                     id: "brickwall_limiter",
                     name: "🛡 MASTER LIMITER",
                     category: "Loudness",
@@ -606,6 +622,21 @@ impl FxRackState {
             env_octaves: lp_knob(|p| p.p3_val, 0.0) * 4.0,
             mix: lp_knob(|p| p.mix, 1.0),
             enabled: lp_p.map(|p| p.enabled).unwrap_or(false),
+        };
+
+        let lv_p = self.pedal("luxeverb");
+        let lv_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            lv_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let luxeverb = LuxeverbParams {
+            decay_s: 0.3 + lv_knob(|p| p.p1_val, 0.20) * 11.7,
+            size: 0.5 + lv_knob(|p| p.p2_val, 0.40) * 1.5,
+            damping: lv_knob(|p| p.p3_val, 0.35),
+            modulation: lv_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.35), 0.35),
+            predelay_ms: lv_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.10), 0.10) * 200.0,
+            width: lv_knob(|p| p.extra.get(2).map(|e| e.1).unwrap_or(1.0), 1.0),
+            mix: lv_knob(|p| p.mix, 0.30),
+            enabled: lv_p.map(|p| p.enabled).unwrap_or(false),
         };
 
         let lim_p = self.pedal("brickwall_limiter");
@@ -836,6 +867,7 @@ impl FxRackState {
             gate_enabled: gate_p.map(|p| p.enabled).unwrap_or(false),
             filter,
             philter: love_philter,
+            luxeverb,
             limiter,
             limiter_enabled: lim_p.map(|p| p.enabled).unwrap_or(false),
         }
@@ -1833,5 +1865,36 @@ mod tests {
         let params = state.build_master_fx_params();
         assert!(params.distructor_enabled, "distructorn ska vara på");
         assert!(!params.deesser_enabled, "de-essern ska vara av");
+    }
+
+    /// **Luxeverbs sju rattar når sina egna fält** — DECAY, SIZE, DAMP, PREDELAY, MOD,
+    /// WIDTH och MIX.
+    #[test]
+    fn the_luxeverb_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "luxeverb")
+            .expect("luxeverb-pedalen ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 0.0; // kortaste svansen
+        pedal.p2_val = 1.0; // största rummet
+        pedal.p3_val = 1.0; // mörkast
+        pedal.extra[0].1 = 1.0; // längsta predelay
+        pedal.extra[1].1 = 0.0; // ingen modulering
+        pedal.extra[2].1 = 0.0; // mono
+        pedal.mix = 0.5;
+
+        let p = state.build_master_fx_params().luxeverb;
+        assert!(p.enabled, "pedalen ska slå på steget");
+        assert!((p.decay_s - 0.3).abs() < 0.01, "decay: {}", p.decay_s);
+        assert!((p.size - 2.0).abs() < 0.01, "size: {}", p.size);
+        assert!((p.damping - 1.0).abs() < 0.01);
+        assert!((p.predelay_ms - 200.0).abs() < 0.1, "predelay: {}", p.predelay_ms);
+        assert!(p.modulation.abs() < 0.01);
+        assert!(p.width.abs() < 0.01);
+        assert!((p.mix - 0.5).abs() < 0.01);
     }
 }

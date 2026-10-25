@@ -160,6 +160,7 @@ pub struct MasterFxParams {
     pub gate_enabled: bool,
     pub filter: MasterFilterParams,
     pub philter: LovePhilterParams,
+    pub luxeverb: LuxeverbParams,
     pub limiter: LimiterParams,
     pub limiter_enabled: bool,
     pub granular: GranularParams,
@@ -222,6 +223,7 @@ impl Default for MasterFxParams {
             gate_enabled: false,
             filter: MasterFilterParams::default(),
             philter: LovePhilterParams::default(),
+            luxeverb: LuxeverbParams::default(),
             granular: GranularParams::default(),
             granular_enabled: false,
             freq_shift: FreqShiftParams::default(),
@@ -277,6 +279,7 @@ pub struct MasterFxChain {
     shelves: Shelves,
     filter: MasterFilter,
     philter: LovePhilter,
+    luxeverb: Luxeverb,
     limiter: Limiter,
     params: MasterFxParams,
 }
@@ -311,6 +314,7 @@ impl MasterFxChain {
             shelves: Shelves::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
             philter: LovePhilter::new(sample_rate),
+            luxeverb: Luxeverb::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
         };
@@ -504,6 +508,13 @@ impl MasterFxChain {
             r = nr;
         }
 
+        // Sist före limitern: svansen ska in i limitern, inte tvärtom.
+        if p.luxeverb.enabled {
+            let (nl, nr) = self.luxeverb.process(l, r, &p.luxeverb);
+            l = nl;
+            r = nr;
+        }
+
         if p.limiter_enabled {
             let (nl, nr) = self.limiter.process(l, r, &p.limiter);
             l = nl;
@@ -605,11 +616,13 @@ mod color;
 mod dynamics;
 mod eq;
 mod modulation;
+mod space;
 
 pub use color::*;
 pub use dynamics::*;
 pub use eq::*;
 pub use modulation::*;
+pub use space::*;
 
 #[cfg(test)]
 mod tests;

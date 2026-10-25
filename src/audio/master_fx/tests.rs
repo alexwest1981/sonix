@@ -1382,3 +1382,74 @@ fn love_philter_envelope_opens_the_bank() {
     }
     assert!(f.envelope() < 0.01, "envelopen ska stängas i tystnad, fick {:.4}", f.envelope());
 }
+
+/// Energin i Luxeverbs svans mellan två tidpunkter, mätt på ett enstaka anslag.
+#[cfg(test)]
+fn luxe_tail_energy(decay_s: f32, t0: f32, t1: f32) -> f32 {
+    let sr = 48_000.0;
+    let mut f = Luxeverb::new(sr);
+    let p = LuxeverbParams {
+        decay_s,
+        size: 1.0,
+        damping: 0.2,
+        modulation: 0.0,
+        predelay_ms: 0.0,
+        width: 1.0,
+        mix: 1.0,
+        enabled: true,
+    };
+    let mut sum = 0.0;
+    for i in 0..(t1 * sr) as usize {
+        let x = if i == 0 { 1.0 } else { 0.0 };
+        let (l, r) = f.process(x, x, &p);
+        let t = i as f32 / sr;
+        if t >= t0 {
+            sum += (l * l + r * r) * 0.5;
+        }
+    }
+    sum
+}
+
+/// **Luxeverb:** svansen finns och faller. Med RT60 = 1 s är energin vid 0,9 s mer än
+/// 20 dB under energin vid 0,1 s.
+#[test]
+fn luxeverb_tail_decays() {
+    let early = luxe_tail_energy(1.0, 0.05, 0.15);
+    let late = luxe_tail_energy(1.0, 0.85, 0.95);
+    assert!(early > 0.0, "svansen ska höras efter anslaget");
+    assert!(late < early * 0.1, "svansen ska falla: sen {late:.6} mot tidig {early:.6}");
+}
+
+/// **Luxeverb:** DECAY styr längden. En lång svans har långt mer energi kvar vid 0,5 s
+/// än en kort — annars är ratten bara en etikett.
+#[test]
+fn luxeverb_decay_controls_the_tail() {
+    let short = luxe_tail_energy(0.4, 0.45, 0.55);
+    let long = luxe_tail_energy(6.0, 0.45, 0.55);
+    assert!(long > short * 10.0, "lång svans {long:.6} mot kort {short:.6}");
+}
+
+/// **Luxeverb:** PREDELAY håller tyst innan svansen börjar — torrsignalen släpps inte
+/// igenom när MIX är 1.
+#[test]
+fn luxeverb_predelay_holds_the_start() {
+    let sr = 48_000.0;
+    let mut f = Luxeverb::new(sr);
+    let p = LuxeverbParams {
+        decay_s: 2.0,
+        size: 1.0,
+        damping: 0.3,
+        modulation: 0.0,
+        predelay_ms: 100.0,
+        width: 1.0,
+        mix: 1.0,
+        enabled: true,
+    };
+    let mut early = 0.0_f32;
+    for i in 0..(0.090 * sr) as usize {
+        let x = if i == 0 { 1.0 } else { 0.0 };
+        let (l, r) = f.process(x, x, &p);
+        early += l.abs() + r.abs();
+    }
+    assert_eq!(early, 0.0, "inget ljud före predelay: {early:.6}");
+}

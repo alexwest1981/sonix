@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Luxeverb (0.9.126)
+
+- `LuxeverbParams` + `Luxeverb` i masterns kedja, sist före limitern: ett **modulerat
+  fyrlinjigt feedback-delay-nät** (FDN) med Hadamard-mix, dämpning i återkopplingen och
+  linjär interpolerad läsning. Rattarna är DECAY (RT60 i sekunder), SIZE, DAMP, PREDELAY,
+  MOD (upp till ±2 ms), WIDTH och MIX. Pedalen heter **🌫 LUXEVERB**.
+- Skillnaden mot `SimpleReverb` är att svansen rör sig och att varje varv tappar diskant:
+  det är det som gör en stor sal mjuk i stället för metallisk. Nätet är energibevarande
+  (Hadamard × 0,5) och förstärkningen per varv räknas ur RT60 för varje linjes längd.
+- Prov: svansen faller (0,9 s > 20 dB under 0,1 s), DECAY styr längden (6 s mot 0,4 s vid
+  0,5 s), PREDELAY håller tyst innan svansen börjar, och mappningen har eget prov — sju
+  rattar, sju fält (som hittade en förväxling mellan PREDELAY och MOD).
+
 ### Added — Love Philter (0.9.125)
 
 - `LovePhilterParams` + `LovePhilter` i masterns kedja: tre filter i **serie** (lågpass,

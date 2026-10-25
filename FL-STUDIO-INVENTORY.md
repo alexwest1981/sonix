@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 76** har en motsvarighet, **◐ 59** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 77** har en motsvarighet, **◐ 58** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -242,7 +242,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity X-Y-Z Controller | 1 | ✅ | tre spännings-slots; samma mekanik som X-Y |
 | Hyper Chorus | 1 | ◐ | `ModDelay` har **en** LFO; FL:s Hyper Chorus staplar flera röster |
 | Low Lifter | 1 | ✅ | `ShelvesParams` — nedre hyllan (RBJ), samma krets som tonkonturen |
-| Luxeverb | 1 | ◐ | convolver + algoritmiskt reverb |
+| Luxeverb | 1 | ✅ | `Luxeverb` (0.9.126): modulerat fyrlinjigt FDN-reverb med dämpning i återkopplingen, RT60-styrd DECAY, PREDELAY och WIDTH. Prov: svansen faller, DECAY styr längden, PREDELAY håller tyst. Det gamla Schroeder-reverbet finns kvar som send |
 | Multiband Delay | 1 | ✅ | `MultibandDelay` — tre band, tre tider, samma delningsfilter som den flerbandiga kompressorn |
 | Newtime | 1 | ◐ | tempokarta + "sätt takt 1 här" (8.14) |
 | Pitch Shifter | 1 | ✅ | formantbevarande pitch (stretch/vocal_harmonizer) |
