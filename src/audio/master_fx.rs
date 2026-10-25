@@ -162,6 +162,7 @@ pub struct MasterFxParams {
     pub philter: LovePhilterParams,
     pub luxeverb: LuxeverbParams,
     pub emphasis: EmphasisParams,
+    pub hyper_chorus: HyperChorusParams,
     pub limiter: LimiterParams,
     pub limiter_enabled: bool,
     pub granular: GranularParams,
@@ -226,6 +227,7 @@ impl Default for MasterFxParams {
             philter: LovePhilterParams::default(),
             luxeverb: LuxeverbParams::default(),
             emphasis: EmphasisParams::default(),
+            hyper_chorus: HyperChorusParams::default(),
             granular: GranularParams::default(),
             granular_enabled: false,
             freq_shift: FreqShiftParams::default(),
@@ -283,6 +285,7 @@ pub struct MasterFxChain {
     philter: LovePhilter,
     luxeverb: Luxeverb,
     emphasis: Emphasis,
+    hyper_chorus: HyperChorus,
     limiter: Limiter,
     params: MasterFxParams,
 }
@@ -319,6 +322,7 @@ impl MasterFxChain {
             philter: LovePhilter::new(sample_rate),
             luxeverb: Luxeverb::new(sample_rate),
             emphasis: Emphasis::new(sample_rate),
+            hyper_chorus: HyperChorus::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
         };
@@ -472,6 +476,12 @@ impl MasterFxChain {
         // och limitern sist tar hand om toppen återkopplingen kan ge.
         if p.chorus_enabled {
             let (nl, nr) = self.chorus.process(l, r, &p.chorus);
+            l = nl;
+            r = nr;
+        }
+
+        if p.hyper_chorus.enabled {
+            let (nl, nr) = self.hyper_chorus.process(l, r, &p.hyper_chorus);
             l = nl;
             r = nr;
         }

@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 82** har en motsvarighet, **◐ 53** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 83** har en motsvarighet, **◐ 52** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -240,7 +240,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Phaser | 1 | ✅ | `Phaser` — 4 allpass, 200 Hz–2 kHz, stilla vid djup 0 |
 | Fruity Reeverb | 1 | ✅ | SimpleReverb |
 | Fruity X-Y-Z Controller | 1 | ✅ | tre spännings-slots; samma mekanik som X-Y |
-| Hyper Chorus | 1 | ◐ | `ModDelay` har **en** LFO; FL:s Hyper Chorus staplar flera röster |
+| Hyper Chorus | 1 | ✅ | **🌊 HYPER CHORUS** (0.9.133): fyra `ModDelay`-röster med egna basfördröjningar (9/13,5/19/26 ms) och LFO-faktorer (×1,0/1,13/0,87/1,27), panorera(de ut i sidorna och en WIDTH som kan göra utfallet monokompatibelt. Prov: mono in ger sidmaterial (bredd), WIDTH 0 ger L == R exakt, MIX 0 är ren genomgång, och toppen stannar under full skala |
 | Low Lifter | 1 | ✅ | `ShelvesParams` — nedre hyllan (RBJ), samma krets som tonkonturen |
 | Luxeverb | 1 | ✅ | `Luxeverb` (0.9.126): modulerat fyrlinjigt FDN-reverb med dämpning i återkopplingen, RT60-styrd DECAY, PREDELAY och WIDTH. Prov: svansen faller, DECAY styr längden, PREDELAY håller tyst. Det gamla Schroeder-reverbet finns kvar som send |
 | Multiband Delay | 1 | ✅ | `MultibandDelay` — tre band, tre tider, samma delningsfilter som den flerbandiga kompressorn |

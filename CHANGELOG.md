@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Hyper Chorus (0.9.133)
+
+- **🌊 HYPER CHORUS** i masterns kedja: fyra chorusröster med egna basfördröjningar (9/13,5/19/26 ms)
+  och egna LFO-faktorer (×1,0/1,13/0,87/1,27), panorera(de ut i sidorna. Fyra röster glider isär, så
+  bredden pumpar inte i takt med sig själv — det är hela skillnaden mot ett enröstat chorus.
+- **WIDTH** 0 gör utfallet monokompatibelt (L == R exakt), vilket provet mäter; MIX 0 är ren
+  genomgång, och de fyra rösterna skalas 0,35 så våten ligger kvar i samma nivå som torrt.
+- Prov: mono in ger sidmaterial, WIDTH 0 ger L == R, MIX 0 är identisk med ingången, och toppen
+  stannar under full skala.
+
 ### Added — Emphasis (0.9.131–0.9.132)
 
 - **✨ EMPHASIS** i masterns kedja: en harmonisk exciter. Ett högpassat band (1–10 kHz) klipps

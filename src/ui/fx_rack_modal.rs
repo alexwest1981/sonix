@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, LovePhilterParams, LuxeverbParams, EmphasisParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, ShelvesParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    DelayBankParams, DistructorParams, EffectorParams, HyperChorusParams, HardcoreParams, ModFxParams, ShelvesParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -470,6 +470,22 @@ impl Default for FxRackState {
                     extra: Vec::new(),
                 },
                 FxPedal {
+                    id: "hyper_chorus",
+                    name: "🌊 HYPER CHORUS",
+                    category: "Echo & Delay",
+                    enabled: false,
+                    color: crate::ui::theme::palette().cyan(),
+                    p1_name: "RATE",
+                    p1_val: 0.30,
+                    p2_name: "DEPTH",
+                    p2_val: 0.45,
+                    p3_name: "WIDTH",
+                    p3_val: 0.80,
+                    mix: 0.35,
+                    description: "Fyra chorusröster med egna LFO-hastigheter: RATE är svepets fart, DEPTH djupet, WIDTH bredden (0 = monokompatibelt) och MIX torrt/vått. Fyra röster glider isär, så bredden pumpar inte i takt med sig själv.",
+                    extra: Vec::new(),
+                },
+                FxPedal {
                     id: "brickwall_limiter",
                     name: "🛡 MASTER LIMITER",
                     category: "Loudness",
@@ -659,6 +675,18 @@ impl FxRackState {
         let ex_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
             ex_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
         };
+        let hc_p = self.pedal("hyper_chorus");
+        let hc_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            hc_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let hyper_chorus = HyperChorusParams {
+            rate: 0.05 + hc_knob(|p| p.p1_val, 0.30) * 1.95,
+            depth: hc_knob(|p| p.p2_val, 0.45),
+            width: hc_knob(|p| p.p3_val, 0.80),
+            mix: hc_knob(|p| p.mix, 0.35),
+            enabled: hc_p.map(|p| p.enabled).unwrap_or(false),
+        };
+
         let emphasis = EmphasisParams {
             // 1–10 kHz, logaritmiskt: mitten av ratten hörs som mitten av registret.
             freq_hz: 1_000.0 * 10.0_f32.powf(ex_knob(|p| p.p1_val, 0.57)),
@@ -897,6 +925,7 @@ impl FxRackState {
             philter: love_philter,
             luxeverb,
             emphasis,
+            hyper_chorus,
             limiter,
             limiter_enabled: lim_p.map(|p| p.enabled).unwrap_or(false),
         }
@@ -1952,5 +1981,29 @@ mod tests {
         let p = state.build_master_fx_params().emphasis;
         assert!((p.freq_hz - 10_000.0).abs() < 5.0, "freq: {}", p.freq_hz);
         assert!((p.drive - 10.0).abs() < 0.01, "drive: {}", p.drive);
+    }
+
+    /// **Hyper Chorus-rattarna når sina egna fält** — RATE, DEPTH, WIDTH och MIX.
+    #[test]
+    fn the_hyper_chorus_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "hyper_chorus")
+            .expect("hyper_chorus-pedalen ska finnas i racket");
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 0.0; // 0,05 Hz
+        pedal.p2_val = 1.0; // fullt djup
+        pedal.p3_val = 0.0; // monokompatibel
+        pedal.mix = 0.75;
+
+        let p = state.build_master_fx_params().hyper_chorus;
+        assert!(p.enabled, "pedalen ska slå på steget");
+        assert!((p.rate - 0.05).abs() < 1e-4, "rate: {}", p.rate);
+        assert!((p.depth - 1.0).abs() < 1e-4);
+        assert!(p.width.abs() < 1e-4);
+        assert!((p.mix - 0.75).abs() < 1e-4);
     }
 }

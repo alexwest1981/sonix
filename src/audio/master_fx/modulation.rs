@@ -501,3 +501,141 @@ impl DelayBank {
         (l + wet_l * mix, r + wet_r * mix)
     }
 }
+
+// ---------------------------------------------------------------------------
+// Hyper Chorus
+// ---------------------------------------------------------------------------
+
+/// **Hyper Chorus**: fyra chorusröster med egna, något olika LFO-hastigheter och
+/// fördröjningar, panorera(de ut i sidorna. Att stapla röster är hela skillnaden mot ett
+/// vanligt chorus: en röst ger en svepande kopia, fyra ger en bredd som inte pumpar i takt
+/// med sig själv, eftersom rösterna glider isär.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct HyperChorusParams {
+    /// LFO-hastighet i Hz för första rösten; de andra följer med små avvikelser.
+    pub rate: f32,
+    /// 0–1: svepets djup.
+    pub depth: f32,
+    /// 0–1: hur mycket av sid-signalen som behålls. 0 = monokompatibelt.
+    pub width: f32,
+    pub mix: f32,
+    pub enabled: bool,
+}
+
+impl Default for HyperChorusParams {
+    fn default() -> Self {
+        Self { rate: 0.35, depth: 0.45, width: 0.8, mix: 0.35, enabled: false }
+    }
+}
+
+/// Fyra röster: basfördröjning i ms och LFO-faktor mot grundhastigheten.
+const HYPER_BASE_MS: [f32; 4] = [9.0, 13.5, 19.0, 26.0];
+const HYPER_RATE_MUL: [f32; 4] = [1.0, 1.13, 0.87, 1.27];
+/// Varje rösts vikt mot vänster och höger kanal — bredden kommer från att de ligger olika.
+const HYPER_PAN: [(f32, f32); 4] = [(0.9, 0.35), (0.45, 0.85), (0.25, 0.75), (0.75, 0.45)];
+
+pub struct HyperChorus {
+    voices: [ModDelay; 4],
+}
+
+impl HyperChorus {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            voices: [
+                ModDelay::new(sample_rate, HYPER_BASE_MS[0], 3.5),
+                ModDelay::new(sample_rate, HYPER_BASE_MS[1], 3.0),
+                ModDelay::new(sample_rate, HYPER_BASE_MS[2], 2.5),
+                ModDelay::new(sample_rate, HYPER_BASE_MS[3], 2.0),
+            ],
+        }
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &HyperChorusParams) -> (f32, f32) {
+        let mix = p.mix.clamp(0.0, 1.0);
+        if !p.enabled || mix <= 0.001 {
+            return (l, r);
+        }
+        let rate = p.rate.clamp(0.02, 8.0);
+        let mut wl = 0.0_f32;
+        let mut wr = 0.0_f32;
+        for (i, voice) in self.voices.iter_mut().enumerate() {
+            let vp = ModFxParams {
+                rate: rate * HYPER_RATE_MUL[i],
+                depth: p.depth.clamp(0.0, 1.0),
+                mix: 1.0,
+                feedback: 0.0,
+            };
+            let (a, b) = voice.process(l, r, &vp);
+            wl += a * HYPER_PAN[i].0;
+            wr += b * HYPER_PAN[i].1;
+        }
+        // Fyra röster summerade: 0,35 håller våten kvar i samma nivå som torrt.
+        wl *= 0.35;
+        wr *= 0.35;
+        let mid = 0.5 * (wl + wr);
+        let side = 0.5 * (wl - wr) * p.width.clamp(0.0, 1.0);
+        let wet = (mid + side, mid - side);
+        (l * (1.0 - mix) + wet.0 * mix, r * (1.0 - mix) + wet.1 * mix)
+    }
+}
+
+#[cfg(test)]
+mod hyper_chorus_tests {
+    use super::*;
+
+    fn mono(secs: f32, freq: f32, sr: f32) -> Vec<f32> {
+        (0..(secs * sr) as usize)
+            .map(|i| 0.4 * (std::f32::consts::TAU * freq * i as f32 / sr).sin())
+            .collect()
+    }
+
+    #[test]
+    fn a_hundred_percent_mix_is_the_dry_signal() {
+        let sr = 48_000.0;
+        let input = mono(0.3, 220.0, sr);
+        let mut fx = HyperChorus::new(sr);
+        let mut p = HyperChorusParams::default();
+        p.enabled = true;
+        p.mix = 0.0;
+        for &x in &input {
+            assert_eq!(fx.process(x, x, &p), (x, x));
+        }
+    }
+
+    #[test]
+    fn stacked_voices_widen_a_mono_signal() {
+        let sr = 48_000.0;
+        let input = mono(1.0, 220.0, sr);
+        let mut fx = HyperChorus::new(sr);
+        let mut p = HyperChorusParams::default();
+        p.enabled = true;
+        p.mix = 1.0;
+        p.width = 1.0;
+        let mut side_energy = 0.0_f64;
+        let mut peak = 0.0_f32;
+        for &x in input.iter().skip(24_000) {
+            let (l, r) = fx.process(x, x, &p);
+            side_energy += ((l - r) * 0.5).abs() as f64;
+            peak = peak.max(l.abs()).max(r.abs());
+        }
+        let n = (input.len() - 24_000) as f64;
+        assert!(side_energy / n > 0.01, "inget sidmaterial — ingen bredd: {}", side_energy / n);
+        assert!(peak < 1.0, "fyra röster får inte dra över full skala: {peak:.3}");
+    }
+
+    #[test]
+    fn zero_width_is_mono_compatible() {
+        let sr = 48_000.0;
+        let input = mono(0.5, 220.0, sr);
+        let mut fx = HyperChorus::new(sr);
+        let mut p = HyperChorusParams::default();
+        p.enabled = true;
+        p.mix = 1.0;
+        p.width = 0.0;
+        for &x in input.iter().skip(12_000) {
+            let (l, r) = fx.process(x, x, &p);
+            assert!((l - r).abs() < 1e-6, "bredd 0 ska vara monokompatibel: {} vs {}", l, r);
+        }
+    }
+}
