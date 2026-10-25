@@ -2407,6 +2407,16 @@ fn strip_fader(
     changed
 }
 
+/// En rattkolumn med fast bredd. Ett naket `vertical_centered` tar hela den
+/// återstående raden, så tre kolumner blev bredare än rutan de stod i — och då
+/// växte hela panelen utanför fönstret.
+fn knob_column(ui: &mut egui::Ui, width: f32, body: impl FnOnce(&mut egui::Ui)) {
+    ui.scope(|ui| {
+        ui.set_width(width);
+        ui.vertical_centered(|ui| body(ui));
+    });
+}
+
 /// Skiljelinje mellan spåren, bussarna, VCA-grupperna och mastern i samma rad.
 fn strip_divider(ui: &mut egui::Ui) {
     let (rect, _) = ui.allocate_exact_size(Vec2::new(7.0, STRIP_H), Sense::hover());
@@ -2435,7 +2445,11 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
     // **En ram, en rad.** Sektionerna skiljs åt av en linje, inte av ännu en
     // panel: det var ramarna i ramarna som gjorde ytan rörig, och varje sektion
     // hade sin egen vänster- och högerkant.
-    ui.set_max_width(ui.clip_rect().width().max(320.0));
+    // **Bredden mäts mot den synliga kanten, inte mot `clip_rect().width()`.**
+    // Vyns Ui börjar innanför klipprutan (förälderns marginal), så clip-bredden
+    // gav panelen ~13 px mer än fönstret hade — och texten längst till höger
+    // klipptes av skärmkanten i stället för att sluta vid panelens ram.
+    ui.set_max_width((ui.clip_rect().right() - ui.cursor().min.x).max(320.0));
     ui.group(|ui| {
         ui.horizontal_wrapped(|ui| {
             ui.label(egui::RichText::new(crate::i18n::t("🎛 SONIX PRO MULTI-TRACK MIXER & DEDIKERAD EQ-STUDIO")).strong().size(Theme::FONT_M).color(pal.cyan()));
@@ -2865,7 +2879,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
 
             // **Två rader, inte en som radbryts huller om buller:** rad 1 är
             // kanalens identitet och EQ-av/på, rad 2 är routingen.
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(format!("🎛 DEDIKERAD PARAMETRISK EQ — {} {}", sel_t_icon, sel_t_name)).strong().size(Theme::FONT_M).color(sel_t_col));
                 ui.separator();
                 let mut eq_enabled = self.playlist_tracks[sel_idx].eq.enabled;
@@ -2875,9 +2889,10 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                     self.playlist_tracks[sel_idx].eq.enabled = eq_enabled;
                     track_dirty = true;
                 }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.label(egui::RichText::new(crate::tstatus!("Spår {} av {}", sel_idx + 1, self.playlist_tracks.len())).size(Theme::FONT_S).color(pal.text_muted()));
-                });
+                ui.separator();
+                // Räknaren står **efter** reglagen, inte högerställd: en högerställd
+                // etikett klipptes av panelkanten i smala fönster.
+                ui.label(egui::RichText::new(crate::tstatus!("Spår {} av {}", sel_idx + 1, self.playlist_tracks.len())).size(Theme::FONT_S).color(pal.text_muted()));
             });
 
             ui.add_space(4.0);
@@ -3089,37 +3104,46 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
             // ================================================================
             let mut status_msg_update: Option<String> = None;
             let track_mut = &mut self.playlist_tracks[sel_idx];
+            // `ui.set_width` sätter **innehållet**, och `ui.group` lägger sin egen
+            // ram runt det. Utan avdraget blev fyra rutor ~50 px bredare än raden
+            // och panelens högerkant hamnade utanför fönstret.
+            let block_pad = egui::Frame::group(ui.style()).inner_margin.sum().x;
             let row_w = ui.available_width();
             let block_gap = 8.0;
             let usable = (row_w - block_gap * 3.0).max(4.0 * 180.0);
-            let knobs_w = usable * 0.24;
-            let curve_w = usable * 0.32;
-            let presets_w = usable * 0.20;
-            let dyn_w = usable * 0.24;
+            let knobs_w = (usable * 0.24 - block_pad).max(160.0);
+            let curve_w = (usable * 0.32 - block_pad).max(220.0);
+            let presets_w = (usable * 0.20 - block_pad).max(150.0);
 
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(block_gap, 8.0);
+                // Radens vänsterkant: den sista rutan räknas mot den, inte mot
+                // `available_width` — den rapporterar hela den utökade raden.
+                let row_x0 = ui.cursor().min.x;
 
                 // Block A: 3-bands parametrisk EQ
                 ui.group(|ui| {
-                    ui.set_width(knobs_w);
-                    ui.vertical(|ui| {
+                    // **Fast ruta, inte `set_width` + `vertical`:** en grupp som bara får en
+// minsta bredd växer med innehållet, och då slutade rutorna på olika y.
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(knobs_w, 250.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
                         ui.label(egui::RichText::new(crate::i18n::t("📊 3-BANDS FREKVENSJUSTERING")).strong().size(Theme::FONT_S).color(pal.orange()));
                         ui.separator();
 
+                        let col_w = (knobs_w - 24.0) / 3.0;
                         ui.horizontal(|ui| {
                             // Low Band
-                            ui.vertical_centered(|ui| {
+                            knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("LOW SHELF")).size(Theme::FONT_XS).color(pal.orange()));
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.low_gain_db, -12.0, 12.0, "GAIN", pal.orange(), 20.0);
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.low_freq, 30.0, 400.0, "FREQ", pal.orange(), 16.0);
                                 ui.label(egui::RichText::new(format!("{:.0}Hz\n{:+.1}dB", track_mut.eq.low_freq, track_mut.eq.low_gain_db)).size(Theme::FONT_XS).color(pal.text_muted()));
                             });
 
-                            ui.separator();
-
                             // Mid Band
-                            ui.vertical_centered(|ui| {
+                            knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("MID BELL")).size(Theme::FONT_XS).color(pal.yellow()));
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.mid_gain_db, -12.0, 12.0, "GAIN", pal.yellow(), 20.0);
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.mid_freq, 200.0, 8000.0, "FREQ", pal.yellow(), 16.0);
@@ -3127,10 +3151,8 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                                 ui.label(egui::RichText::new(format!("{:.0}Hz\n{:+.1}dB", track_mut.eq.mid_freq, track_mut.eq.mid_gain_db)).size(Theme::FONT_XS).color(pal.text_muted()));
                             });
 
-                            ui.separator();
-
                             // High Band
-                            ui.vertical_centered(|ui| {
+                            knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("HIGH SHELF")).size(Theme::FONT_XS).color(pal.cyan()));
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.high_gain_db, -12.0, 12.0, "GAIN", pal.cyan(), 20.0);
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.high_freq, 2500.0, 16000.0, "FREQ", pal.cyan(), 16.0);
@@ -3142,8 +3164,12 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
 
                 // Block B: interaktiv frekvenskurva
                 ui.group(|ui| {
-                    ui.set_width(curve_w);
-                    ui.vertical(|ui| {
+                    // **Fast ruta, inte `set_width` + `vertical`:** en grupp som bara får en
+// minsta bredd växer med innehållet, och då slutade rutorna på olika y.
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(curve_w, 250.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
                         ui.label(egui::RichText::new(crate::i18n::t("📈 INTERAKTIV FREKVENSKURVA")).strong().size(Theme::FONT_S).color(pal.cyan()));
                         ui.separator();
                         track_dirty |= eq_curve_visualizer(
@@ -3158,8 +3184,12 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
 
                 // Block C: snabbpresets
                 ui.group(|ui| {
-                    ui.set_width(presets_w);
-                    ui.vertical(|ui| {
+                    // **Fast ruta, inte `set_width` + `vertical`:** en grupp som bara får en
+// minsta bredd växer med innehållet, och då slutade rutorna på olika y.
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(presets_w, 250.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
                         ui.label(egui::RichText::new(crate::i18n::t("⚡ SNABBPRESETS")).strong().size(Theme::FONT_S).color(pal.green()));
                         ui.separator();
 
@@ -3233,23 +3263,30 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                     });
                 });
 
+                // Block D tar bredden som är kvar i raden, så panelens högerkant
+                // blir densamma som rutornas — de fyra fasta andelarna summorna
+                // aldrig exakt när knappar och avdelare tar sina pixlar.
+                let dyn_w = (row_x0 + row_w - ui.cursor().min.x - block_pad).max(200.0);
                 // Block D: dynamik och effekt-sändning
                 ui.group(|ui| {
-                    ui.set_width(dyn_w);
-                    ui.vertical(|ui| {
+                    // **Fast ruta, inte `set_width` + `vertical`:** en grupp som bara får en
+// minsta bredd växer med innehållet, och då slutade rutorna på olika y.
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(dyn_w, 250.0),
+                        egui::Layout::top_down(egui::Align::Min),
+                        |ui| {
                         ui.label(egui::RichText::new(crate::i18n::t("🎚 DYNAMIK & EFFEKT-SÄNDNING")).strong().size(Theme::FONT_S).color(pal.purple()));
                         ui.separator();
 
+                        let col_w = (dyn_w - 24.0) / 3.0;
                         ui.horizontal(|ui| {
-                            ui.vertical_centered(|ui| {
+                            knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("KOMPRESSOR")).size(Theme::FONT_XS).color(pal.green()));
                                 track_dirty |= rotary_knob(ui, &mut track_mut.comp_threshold_db, -36.0, 0.0, "TRSH", pal.green(), 17.0);
                                 track_dirty |= rotary_knob(ui, &mut track_mut.comp_ratio, 1.0, 10.0, "RATIO", pal.green(), 17.0);
                             });
 
-                            ui.separator();
-
-                            ui.vertical_centered(|ui| {
+                            knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("SÄNDNING")).size(Theme::FONT_XS).color(pal.purple()));
                                 track_dirty |= rotary_knob(ui, &mut track_mut.reverb_send, 0.0, 1.0, "REV", pal.purple(), 17.0);
                                 track_dirty |= rotary_knob(ui, &mut track_mut.delay_send, 0.0, 1.0, "DLY", pal.cyan(), 17.0);
@@ -3259,9 +3296,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                                 });
                             });
 
-                            ui.separator();
-
-                            ui.vertical_centered(|ui| {
+                            knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("TONHÖJD")).size(Theme::FONT_XS).color(pal.yellow()));
                                 track_dirty |= pitch_knob(ui, &mut track_mut.pitch_semitones, -12.0, 12.0, "PITCH", pal.yellow(), 17.0);
                                 ui.label(egui::RichText::new(format!("{:+.2} st", track_mut.pitch_semitones)).size(Theme::FONT_XS).color(pal.text_muted()));
@@ -3286,13 +3321,18 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
         // MASTER-FX: tre lika breda rutor, samma kant som raden ovanför
         // ============================================================
         let fx_gap = 8.0;
-        let fx_w = ((ui.available_width() - fx_gap * 2.0) / 3.0).max(200.0);
+        let fx_pad = egui::Frame::group(ui.style()).inner_margin.sum().x;
+        let fx_w = ((ui.available_width() - fx_gap * 2.0) / 3.0 - fx_pad).max(200.0);
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing = Vec2::new(fx_gap, 6.0);
 
             ui.group(|ui| {
-                ui.set_width(fx_w);
-                ui.vertical(|ui| {
+                ui.allocate_ui_with_layout(
+                    Vec2::new(fx_w, 96.0),
+                    // Mittenställt: tre rattar i en 520 px ruta såg ut att ha hamnat
+                    // i vänsterkanten när allt annat i raden är centrerat.
+                    egui::Layout::top_down(egui::Align::Center),
+                    |ui| {
                     ui.label(egui::RichText::new(crate::i18n::t("🌊 MASTER STEREO DELAY")).strong().size(Theme::FONT_S).color(pal.cyan()));
                     ui.separator();
                     ui.horizontal(|ui| {
@@ -3306,8 +3346,12 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
             });
 
             ui.group(|ui| {
-                ui.set_width(fx_w);
-                ui.vertical(|ui| {
+                ui.allocate_ui_with_layout(
+                    Vec2::new(fx_w, 96.0),
+                    // Mittenställt: tre rattar i en 520 px ruta såg ut att ha hamnat
+                    // i vänsterkanten när allt annat i raden är centrerat.
+                    egui::Layout::top_down(egui::Align::Center),
+                    |ui| {
                     ui.label(egui::RichText::new(crate::i18n::t("✨ MASTER SPACE REVERB")).strong().size(Theme::FONT_S).color(pal.purple()));
                     ui.separator();
                     ui.horizontal(|ui| {
@@ -3321,8 +3365,12 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
             });
 
             ui.group(|ui| {
-                ui.set_width(fx_w);
-                ui.vertical(|ui| {
+                ui.allocate_ui_with_layout(
+                    Vec2::new(fx_w, 96.0),
+                    // Mittenställt: tre rattar i en 520 px ruta såg ut att ha hamnat
+                    // i vänsterkanten när allt annat i raden är centrerat.
+                    egui::Layout::top_down(egui::Align::Center),
+                    |ui| {
                     ui.label(egui::RichText::new(crate::i18n::t("🔥 MASTER ANALOG DRIVE & LIMITER")).strong().size(Theme::FONT_S).color(pal.yellow()));
                     ui.separator();
                     ui.horizontal(|ui| {
