@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 85** har en motsvarighet, **◐ 50** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 87** har en motsvarighet, **◐ 48** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (**64 %** av de 135 som går att jämföra). Siffrorna räknas ur tabellerna, inte ur minnet.
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -221,11 +221,11 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Emphasizer | 1 | ✅ | Samma motor som Emphasis (`audio::master_fx::exciter`): övertonstillägget finns nu, DRIVE och FREQ styr det |
 | FL Studio Mobile Rack FX | 1 | — | **ej tillämplig**: mobil-appens effekter (se FL Studio Mobile). |
 | Frequency Shifter | 1 | ✅ | `FrequencyShifter` — Hilbert 63 tapp, en sidofrekvens, ±2 000 Hz, stereoläge |
-| Fruity 7 Band EQ | 1 | ✅ 0.9.123: masterns grafiska EQ har sju band (60/170/350/1k/3,5k/8k/12k), prov att 1 kHz-bandet lyfter 1 kHz men inte 8 kHz |
+| Fruity 7 Band EQ | 1 | ✅ | 0.9.123: masterns grafiska EQ har sju band (60/170/350/1k/3,5k/8k/12k), prov att 1 kHz-bandet lyfter 1 kHz men inte 8 kHz |
 | Fruity Balance | 1 | ✅ | pan/volym |
 | Fruity Bass Boost | 1 | ◐ | EQ |
 | Fruity Blood Overdrive | 1 | ✅ | saturatorn |
-| Fruity Center | 1 | ✅ 0.9.123: `StereoParams.center` (−1 mitten bort, +1 sidorna bort), prov på mono, sida och lika kanaler |
+| Fruity Center | 1 | ✅ | 0.9.123: `StereoParams.center` (−1 mitten bort, +1 sidorna bort), prov på mono, sida och lika kanaler |
 | Fruity Chorus | 1 | ✅ | `ModDelay` — svep 12–20 ms, kvarts periods kanalskillnad, mix 0 bit-identisk |
 | Fruity Compressor | 1 | ✅ | Compressor |
 | Fruity Delay | 1 | ✅ | StereoDelay |
