@@ -61,6 +61,7 @@ const SHOTS = [
   { file: "35_visualizer.jpg", alt: "The visualizer", caption: "Visualizer: oscilloscope, spectrum and a goniometer for the stereo image." },
   { file: "36_mod_matrix.jpg", alt: "The modulation matrix", caption: "Modulation matrix with a drawn 16-point curve as a source." },
   { file: "37_vocoder_bands.jpg", alt: "The vocoder band editor", caption: "Vocoder: sixteen bands from 100 Hz to 8 kHz, each with its own level." },
+  { file: "38_band_curves.jpg", alt: "Maximus band curves", caption: "Maximus: a drawable volume curve per band, one bar long and in the song tempo." },
 ]
 
 export default function Page() {
@@ -216,7 +217,7 @@ tar xzf sonix-0.9.0-x86_64-unknown-linux-gnu.tar.gz
         <div className="section-intro">
           <div className="eyebrow">03 / Screenshots</div>
           <h2>This is how it looks.<br /><span>Unedited.</span></h2>
-          <p>The images come from the app itself. All 37 are in the <a href={`${REPO}/tree/master/screenshots`} target="_blank" rel="noreferrer">screenshots folder</a>.</p>
+          <p>The images come from the app itself. All 38 are in the <a href={`${REPO}/tree/master/screenshots`} target="_blank" rel="noreferrer">screenshots folder</a>.</p>
         </div>
         <div className="shot-grid">
           {SHOTS.map((shot, i) => (
@@ -248,7 +249,7 @@ tar xzf sonix-0.9.0-x86_64-unknown-linux-gnu.tar.gz
         <div className="numbers-row">
           <div><b>1063</b><span>automated tests</span></div>
           <div><b>0</b><span>warnings in all four builds</span></div>
-          <div><b>37</b><span>screenshots in the repo</span></div>
+          <div><b>38</b><span>screenshots in the repo</span></div>
           <div><b>7</b><span>interface languages</span></div>
           <div><b>618</b><span>commits</span></div>
         </div>

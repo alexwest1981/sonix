@@ -331,10 +331,11 @@ The scope shows the waveform and the spectrum; the goniometer shows the stereo i
 Sixteen bands from 100 Hz to 8 kHz, each with its own level — and a modulation matrix whose sources include a drawn 16-point curve.
 ![Vocoder](screenshots/37_vocoder_bands.png)
 ![Modulation matrix](screenshots/36_mod_matrix.png)
+![Maximus band curves](screenshots/38_band_curves.png)
 
 ---
 
-> 🖼 **The remaining 31 views** — synthesizers, session drummer, modular patcher, remix FX, studio panels and every dialog — are in **[MANUAL.md](MANUAL.md)**.
+> 🖼 **The remaining 32 views** — synthesizers, session drummer, modular patcher, remix FX, studio panels and every dialog — are in **[MANUAL.md](MANUAL.md)**.
 
 ## 📜 License
 
