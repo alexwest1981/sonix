@@ -4004,6 +4004,40 @@ fn synth_oscillator(app: &mut SonixApp, ui: &mut egui::Ui) {
                     }
                 }
             }
+            // **Harmor: klang → spektrum.** Samma 64 nivåer som bilden och rattarna fyller, men
+            // mätta ur den valda kanalens eget sampel — ingen ny motor, bara en annan källa.
+            if ui
+                .add(egui::Button::new(
+                    egui::RichText::new(crate::i18n::t("🔍 Analysera klang"))
+                        .size(Theme::FONT_S),
+                ))
+                .on_hover_text(crate::i18n::t(
+                    "Mät övertonerna i den valda kanalens sampel och fyll dragstängerna",
+                ))
+                .clicked()
+            {
+                let idx = app.selected_channel.min(app.channels.len().saturating_sub(1));
+                match app.channels.get(idx).and_then(|c| c.pcm_audio.as_ref()) {
+                    Some((left, _, rate)) => {
+                        let note = app.channels[idx].sample_base_note;
+                        let hz = 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0);
+                        let env = crate::audio::timbre::envelope_from_pcm(left, *rate as f32, hz);
+                        app.harmonics = env;
+                        let _ = app
+                            .engine
+                            .send_command(AudioCommand::SetHarmonics { levels: app.harmonics });
+                        app.status_message = crate::tstatus!(
+                            "🔍 Klang ur '{}' ({} Hz)",
+                            app.channels[idx].name,
+                            hz.round()
+                        );
+                    }
+                    None => {
+                        app.status_message =
+                            crate::tstatus!("⚠ Kanal {} har inget sampel att analysera", idx + 1)
+                    }
+                }
+            }
             ui.separator();
             let mut env_changed = ui
                 .checkbox(
