@@ -96,7 +96,9 @@ pub fn toggle_timeline_recording(&mut self) {
         return;
     }
     if self.is_recording_timeline {
-        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        // Tempokartan, inte ett enstaka tempo: en nedräkning över ett tempobyte ska räknas
+        // i det tempo som faktiskt spelas (jfr `tempo_map()` i stretch.rs).
+        let tempo = self.tempo_map();
         let take_result = self.vocal_studio.stop_recording();
         self.is_recording_timeline = false;
         self.is_playing = false;
@@ -145,7 +147,9 @@ pub fn toggle_timeline_recording(&mut self) {
             self.playlist_tracks[0].is_rec_armed = true;
         }
         let armed_idx = self.playlist_tracks.iter().position(|t| t.is_rec_armed).unwrap_or(0);
-        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        // Tempokartan, inte ett enstaka tempo: en nedräkning över ett tempobyte ska räknas
+        // i det tempo som faktiskt spelas (jfr `tempo_map()` i stretch.rs).
+        let tempo = self.tempo_map();
         self.timeline_rec_start_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
         // **Förmätning (FL: `Recording precount`).** Transportsnurran rullar från
         // inspelningspunkten och metronomen slås till även om den var av — en nedräkning utan
@@ -191,7 +195,9 @@ impl SonixApp {
             self.precount_restore_metro = false;
         }
         // Tagningen börjar på närmaste taktgräns, inte mitt i en takt.
-        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        // Tempokartan, inte ett enstaka tempo: en nedräkning över ett tempobyte ska räknas
+        // i det tempo som faktiskt spelas (jfr `tempo_map()` i stretch.rs).
+        let tempo = self.tempo_map();
         self.timeline_rec_start_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
         self.is_recording_timeline = true;
         if let Err(e) = self.vocal_studio.start_recording() {
@@ -238,7 +244,7 @@ pub fn toggle_playback(&mut self) {
         let song_secs = if self.pattern_mode {
             0.0
         } else {
-            crate::audio::tempo::TempoMap::single(self.bpm.max(40.0)).secs_at_bar(
+            self.tempo_map().secs_at_bar(
             self.song_bar as f64 + self.song_step_in_bar as f64 / 16.0,
         ) as f32
         };
@@ -292,7 +298,7 @@ pub fn seek_song_bar(&mut self, bar: usize) {
     self.song_bar = bar;
     self.song_step_in_bar = 0;
     self.song_time =
-        crate::audio::tempo::TempoMap::single(self.bpm.max(40.0)).secs_at_bar(bar as f64)
+        self.tempo_map().secs_at_bar(bar as f64)
             as f32;
     self.last_step_time = Instant::now();
     let _ = self.engine.send_command(AudioCommand::SeekSongPosition(self.song_time));
@@ -304,7 +310,7 @@ impl SonixApp {
 pub fn seek_song_time(&mut self, time_secs: f32) {
     let clamped = time_secs.max(0.0);
     self.song_time = clamped;
-    let bar_float = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+    let bar_float = self.tempo_map()
         .bar_at_secs(clamped as f64) as f32;
     self.song_bar = bar_float.floor() as usize;
     let rem_bar = (bar_float - self.song_bar as f32).max(0.0);
@@ -392,7 +398,7 @@ fn step_duration(&self, step: usize) -> std::time::Duration {
     // tempo är talet exakt detsamma som förut — det är bevisat i
     // `audio::tempo`-testerna — så klockan är oförändrad tills kartan får
     // fler punkter.
-    let map = crate::audio::tempo::TempoMap::single(self.bpm);
+    let map = self.tempo_map();
     let base_seconds = map.secs_per_step_at(self.song_bar as f64) as f32;
     let swing_factor = if step % 2 == 1 {
         1.0 + self.swing * 0.35
@@ -498,7 +504,7 @@ pub(crate) fn advance_sequencer(&mut self) {
                 };
                 if let Some(target) = chain_target {
                     self.song_bar = target;
-                    let seek = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+                    let seek = self.tempo_map()
                         .secs_at_bar(target as f64) as f32;
                     let _ = self.engine.send_command(AudioCommand::SeekSongPosition(seek));
                 } else {
@@ -515,7 +521,7 @@ pub(crate) fn advance_sequencer(&mut self) {
                             // Slingan ska gälla LJUDET också. Utan sökningen fortsätter
                             // motor-klockan framåt medan takträknaren hoppar tillbaka, och
                             // då går spelhuvud och ljud isär vid slingpunkten.
-                            let back_to = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0))
+                            let back_to = self.tempo_map()
                                 .secs_at_bar(target as f64) as f32;
                             let _ = self.engine.send_command(AudioCommand::SeekSongPosition(back_to));
                         }

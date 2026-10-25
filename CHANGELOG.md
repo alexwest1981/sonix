@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — nedräkning, sökning och slingan följer tempokartan (0.9.151)
+
+- **Sex ställen räknade takter med ett enstaka tempo** (`TempoMap::single(self.bpm)`) i stället för
+  med projektets karta: nedräkningen, stoppa-tagningen-vägen, `seek_song_bar`, steglängden, och de
+  två ställena som flyttar fram eller tillbaka spelhuvudet vid takt-/slingbyte. På ett projekt med
+  tempobyten blev nedräkningen fel antal sekunder och sökningen hamnade på fel plats; på ett projekt
+  med ett tempo är talen exakt desamma. Samma klass av fel som tempofälten hade: två källor till
+  samma sanning.
+- **Exporten är fortfarande ett tempo.** `RenderSpec` bär ett `bpm`, så en projektkarta med byten
+  gäller uppspelningen men inte filen. Det står nu som en egen rad i README:s "What's left" i
+  stället för att vara en tyst överraskning.
+
+### Changed — klanganalysen delar repots FFT (0.9.151)
+
+- `audio::timbre` hade en egen radix-2-FFT trots att `vocal_harmonizer::fft_radix2` finns och är
+  märkt "en FFT i repot, inte två". Den privata kopian är borta (**−51 rader**), och alla fyra proven
+  (ren ton, sågtand 1/k, tystnad, starkaste fönstret) är oförändrat gröna.
+
 ### Added — master-bandet i Maximus (0.9.149)
 
 - **Master-bandet:** en kompressor över summan av de tre banden, efter dem — FL:s MASTER-knapp.

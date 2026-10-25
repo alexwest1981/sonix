@@ -20,57 +20,6 @@ fn pow2_floor(v: usize) -> usize {
     n
 }
 
-/// Radix-2 FFT på plats. Samma räkning som spektrumanalysatorn använder — ingen ny väg för
-/// samma matematik.
-fn fft(re: &mut [f32], im: &mut [f32]) {
-    let n = re.len();
-    if n <= 1 {
-        return;
-    }
-    // Bitar omvänd ordning.
-    let mut j = 0usize;
-    for i in 1..n {
-        let mut bit = n >> 1;
-        while j & bit != 0 {
-            j ^= bit;
-            bit >>= 1;
-        }
-        j |= bit;
-        if i < j {
-            re.swap(i, j);
-            im.swap(i, j);
-        }
-    }
-    let mut len = 2;
-    while len <= n {
-        let ang = -std::f32::consts::TAU / len as f32;
-        let (wr, wi) = (ang.cos(), ang.sin());
-        let mut i = 0;
-        while i < n {
-            let (mut cr, mut ci) = (1.0f32, 0.0f32);
-            for k in 0..len / 2 {
-                let (ur, ui) = (re[i + k], im[i + k]);
-                let (vr, vi) = (
-                    re[i + k + len / 2] * cr - im[i + k + len / 2] * ci,
-                    re[i + k + len / 2] * ci + im[i + k + len / 2] * cr,
-                );
-                re[i + k] = ur + vr;
-                im[i + k] = ui + vi;
-                re[i + k + len / 2] = ur - vr;
-                im[i + k + len / 2] = ui - vi;
-                let ncr = cr * wr - ci * wi;
-                ci = cr * wi + ci * wr;
-                cr = ncr;
-            }
-            i += len;
-        }
-        len <<= 1;
-    }
-}
-
-/// Var i samplingen tonen är som tydligast: fönstret med högst RMS. Ett ensamt fönster i början
-/// träffar anslaget, som är brett och brusigt, och då blir analysen av en bastrumma vit brus i
-/// stället för en klang.
 fn loudest_window(pcm: &[f32], n: usize) -> usize {
     if pcm.len() <= n {
         return 0;
@@ -113,7 +62,8 @@ pub fn envelope_from_pcm(
         let w = 0.5 - 0.5 * (std::f32::consts::TAU * i as f32 / n as f32).cos();
         re[i] = sample * w;
     }
-    fft(&mut re, &mut im);
+    // **En FFT i repot**, inte två: `fft_radix2` delas med spektrumanalysatorn.
+    crate::audio::vocal_harmonizer::fft_radix2(&mut re, &mut im, false);
 
     let bins = n / 2;
     let hz_per_bin = sample_rate / n as f32;
