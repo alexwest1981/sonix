@@ -308,6 +308,7 @@ pub(crate) fn build_render_spec(&self, solo_track: Option<usize>, sample_rate: u
     crate::audio::RenderSpec {
         sample_rate,
         bpm: self.bpm,
+        tempo_points: self.tempo_points.clone(),
         swing: self.swing,
         num_bars: self.export_bars(),
         pattern_mode,

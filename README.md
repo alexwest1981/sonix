@@ -277,7 +277,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Stem separation | ✅ Real | Optional neural HTDemucs via `--features neural` + user model; DSP fallback otherwise |
 | Vocal tuning | ✅ Real | Real-time autotune in the audio thread + direct monitoring; harmonies/formant preservation run offline |
 | Time-stretch | ✅ Real | WSOLA (pitch-preserving) in the Vocal Studio audition and the Stem Separator SPEED control |
-| Tempo map (several tempo changes) | 🟡 Partial | Playback, seeking and the count-in follow the map; **export renders at the project tempo**, because `RenderSpec` carries one BPM |
+| Tempo map (several tempo changes) | ✅ Real | Playback, seeking, the count-in **and the export** follow the map (`RenderSpec.tempo_points`); steps, note lengths and bend delays are computed at the tempo of their own bar |
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
 | `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — FL Studio's closed `.fst` preset data cannot be decoded; CLAP/VST2/VST3 plugins can be loaded from the plugin panel instead |

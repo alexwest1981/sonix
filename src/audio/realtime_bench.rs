@@ -190,6 +190,8 @@ pub fn reference_spec() -> RenderSpec {
         selected_pattern: 0,
         sample_rate: 44_100,
         bpm: 120.0,
+
+        tempo_points: Vec::new(),
         swing: 0.0,
         num_bars: 2,
         pattern_mode: false,

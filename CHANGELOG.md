@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — exporten följer tempokartan (0.9.152)
+
+- **`RenderSpec` bär nu `tempo_points`.** Stegklockan räknar sin längd ur kartan
+  (`TempoMap::secs_per_step_at`), och `triggers_for_step` hämtar tempot **i sin egen takt** — notens
+  längd och bend-fördröjningen räknas alltså i det tempo som gäller där noten ligger. Förut blev en
+  låt med tempobyten rätt i högtalarna och fel i filen.
+- Prov: `export_follows_tempo_changes` renderar två takter i 120 BPM (fyra sekunder) och samma två
+  takter med ett byte till 240 i takt 2 (tre sekunder) och jämför filens längd.
+- README:s rad om tempokartan är nu ✅ i stället för 🟡.
+
 ### Fixed — nedräkning, sökning och slingan följer tempokartan (0.9.151)
 
 - **Sex ställen räknade takter med ett enstaka tempo** (`TempoMap::single(self.bpm)`) i stället för

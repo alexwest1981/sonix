@@ -218,6 +218,10 @@ pub struct FxState {
 pub struct RenderSpec {
     pub sample_rate: u32,
     pub bpm: f32,
+    /// **Tempokartan.** `bpm` är kartans första punkt och används när listan är tom; har projektet
+    /// byten räknas stegens längd ur kartan i stället (`secs_per_step_at`). Utan det här blev en
+    /// låt med tempobyten rätt i högtalarna och fel i filen.
+    pub tempo_points: Vec<crate::audio::tempo::TempoPoint>,
     pub swing: f32,
     pub num_bars: usize,
     /// Patternet som spelas i pattern-läget — dess bendkurva ska med i exporten.
@@ -332,13 +336,20 @@ fn drum_cmd(ch_idx: usize) -> AudioCommand {
 /// Noterna ett steg ger upphov till. Delas med realtidsmätningen (Fas 7.2), så att
 /// mätningen kör samma trigger-väg som exporten.
 pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioCommand> {
+    // Tempot **här**, inte projektets första punkt: en not som ligger i takt 2 ska hålla
+    // sin längd i det tempo som gäller där (annars blir filen fel efter ett tempobyte).
+    let bpm_here = if spec.tempo_points.is_empty() {
+        spec.bpm
+    } else {
+        crate::audio::tempo::TempoMap::from_points(spec.tempo_points.clone()).bpm_at(bar as f64)
+    };
     let mut cmds = Vec::new();
     // Bendkurvan hör till patternet, inte till spåret: skickas **en** gång per steg.
     let bend_cmd = |pat_idx: usize, at: usize| {
         let Some(pat) = spec.patterns.get(pat_idx) else {
             return Vec::new();
         };
-        let base = spec.sample_rate as f32 * 60.0 / spec.bpm.max(20.0) / 4.0;
+        let base = spec.sample_rate as f32 * 60.0 / bpm_here.max(20.0) / 4.0;
         let f = if at % 2 == 1 {
             1.0 + spec.swing * 0.35
         } else {
@@ -378,7 +389,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 continue;
             }
             let note = ch.notes[sib];
-            let hold = crate::audio::command::step_hold_secs(spec.bpm, spec.swing, sib);
+            let hold = crate::audio::command::step_hold_secs(bpm_here, spec.swing, sib);
             if let Some(cmd) = sample_trigger_command(ch, idx, note, vel, hold) {
                 cmds.push(cmd);
                 continue;
@@ -441,7 +452,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                     }
                     let note = pat.notes.get(ch_idx).map(|n| n[pib]).unwrap_or(36);
                     if let Some(rack_ch) = spec.rack.get(ch_idx) {
-                        let hold = crate::audio::command::step_hold_secs(spec.bpm, spec.swing, sib);
+                        let hold = crate::audio::command::step_hold_secs(bpm_here, spec.swing, sib);
                         if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold) {
                             cmds.push(cmd);
                             continue;
@@ -459,7 +470,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 // floor(pos) är detta steg spelas med sin fördröjning och sitt
                 // anslag, och rutnätets rutor för dem hoppas över. Planen läses före
                 // grinden, annars tystnar en not som spelades sent i förra steget.
-                let step_samples = (60.0 / spec.bpm.max(1.0) / 4.0 * spec.sample_rate as f32) as u32;
+                let step_samples = (60.0 / bpm_here.max(1.0) / 4.0 * spec.sample_rate as f32) as u32;
                 // Tagningen är **en takt**: `pib` är steg i hela blocket (0–63), så både
                 // tagningens steg och kompningens takt måste räknas ur det. Förut skickades
                 // `pib` rakt in, och då spelade ingen tagning i en flertaktsblocks andra takt.
@@ -504,7 +515,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 }
                 let note = pat.notes.get(ch_idx).map(|n| n[pib]).unwrap_or(60);
                 if let Some(rack_ch) = spec.rack.get(ch_idx) {
-                    let hold = crate::audio::command::step_hold_secs(spec.bpm, spec.swing, sib);
+                    let hold = crate::audio::command::step_hold_secs(bpm_here, spec.swing, sib);
                         if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold) {
                         cmds.push(cmd);
                         continue;
@@ -587,8 +598,14 @@ pub fn render_project_offline(engine: &mut SynthEngine, spec: &RenderSpec) -> Ve
     let total_steps = steps_per_bar * spec.num_bars;
 
     let mut out: Vec<f32> = Vec::with_capacity(total_steps * 128 + 1024);
-    let step_frames = |sib: usize| -> u64 {
-        let base = (rate as f64) * 60.0 / (spec.bpm.max(20.0) as f64) / 4.0;
+    // Kartan, inte det enskilda tempot: `bpm` är första punkten när listan är tom.
+    let tempo = if spec.tempo_points.is_empty() {
+        crate::audio::tempo::TempoMap::single(spec.bpm.max(20.0))
+    } else {
+        crate::audio::tempo::TempoMap::from_points(spec.tempo_points.clone())
+    };
+    let step_frames = |bar: usize, sib: usize| -> u64 {
+        let base = (rate as f64) * tempo.secs_per_step_at(bar as f64);
         let f = if sib % 2 == 1 {
             1.0 + (spec.swing * 0.35) as f64
         } else {
@@ -609,7 +626,7 @@ pub fn render_project_offline(engine: &mut SynthEngine, spec: &RenderSpec) -> Ve
         for cmd in triggers_for_step(spec, bar, sib) {
             engine.handle_command(cmd);
         }
-        let dur = step_frames(sib);
+        let dur = step_frames(bar, sib);
         engine.song_playing = song_playing;
         for _ in 0..dur {
             let (l, r) = engine.process_stereo();
@@ -1175,6 +1192,53 @@ mod tests {
         }
     }
 
+
+    /// **Exporten följer tempokartan.** Två takter i 120 BPM är fyra sekunder; med ett tempobyte
+    /// till 240 i takt 2 är den andra takten hälften så lång, alltså tre sekunder. Provet mäter
+    /// längden på den renderade filen, för det är den som blir fel om kartan ignoreras.
+    #[test]
+    fn export_follows_tempo_changes() {
+        let rate = 44_100u32;
+        let mut spec = render_smoke_spec();
+        spec.sample_rate = rate;
+        spec.num_bars = 2;
+        spec.tempo_points.clear();
+        spec.bpm = 120.0;
+        let fx = FxState {
+            waveform: crate::audio::Waveform::Sine,
+            adsr: Default::default(),
+            filter: Default::default(),
+            delay: Default::default(),
+            reverb: ReverbParams::default(),
+            drive: 1.0,
+            master_volume: 1.0,
+            master_fx: MasterFxParams::default(),
+            vocoder_amount: 0.0,
+            synth: Default::default(),
+        };
+        let flat = {
+            let mut engine = build_offline_engine(&spec, &fx);
+            render_project_offline(&mut engine, &spec).len()
+        };
+
+        spec.tempo_points = vec![
+            crate::audio::tempo::TempoPoint { start_bar: 0, bpm: 120.0 },
+            crate::audio::tempo::TempoPoint { start_bar: 1, bpm: 240.0 },
+        ];
+        let mapped = {
+            let mut engine = build_offline_engine(&spec, &fx);
+            render_project_offline(&mut engine, &spec).len()
+        };
+
+        // Fyra sekunder mot tre: en sekund kortare, i sampel (stereo → ×2).
+        let one_second = (rate as usize) * 2;
+        let diff = flat.saturating_sub(mapped);
+        assert!(
+            diff.abs_diff(one_second) < rate as usize / 4 * 2,
+            "tempoby tet ändrade inte längden som väntat: {flat} → {mapped}"
+        );
+    }
+
     fn render_smoke_spec() -> RenderSpec {
         let mut sine = Vec::with_capacity(4410);
         for i in 0..4410 {
@@ -1226,6 +1290,7 @@ mod tests {
         RenderSpec {
             sample_rate: 44100,
             bpm: 120.0,
+            tempo_points: Vec::new(),
             swing: 0.0,
             num_bars: 2,
             selected_pattern: 0,
@@ -1276,6 +1341,7 @@ mod tests {
         RenderSpec {
             sample_rate: 44100,
             bpm: 120.0,
+            tempo_points: Vec::new(),
             swing: 0.0,
             num_bars: 1,
             selected_pattern: 0,
@@ -2737,6 +2803,7 @@ mod stem_wav_tests {
         RenderSpec {
             sample_rate: sr,
             bpm: 120.0,
+            tempo_points: Vec::new(),
             swing: 0.0,
             num_bars: 1,
             selected_pattern: 0,
