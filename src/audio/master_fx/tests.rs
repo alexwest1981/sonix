@@ -1488,3 +1488,73 @@ fn luxeverb_predelay_holds_the_start() {
     }
     assert_eq!(early, 0.0, "inget ljud före predelay: {early:.6}");
 }
+    /// **Hela masterkedjan på en gång** — varje steg påslaget, en halv sekund ljud. Provet
+    /// finns för att ett pass ska kunna säga *hur snabb* kedjan är i stället för att gissa:
+    /// det skriver ut realtidsfaktorn, och i debug-bygget är den låg av skäl som inte har med
+    /// ljudet att göra, så tröskeln där är medvetet låg.
+    #[test]
+    fn the_whole_master_chain_runs_faster_than_realtime() {
+        let sr = 48_000.0_f32;
+        let mut chain = MasterFxChain::new(sr);
+        let mut p = MasterFxParams::default();
+        p.eq_enabled = true;
+        for band in p.eq_bands.iter_mut() {
+            band.active = true;
+            band.gain_db = 2.0;
+        }
+        p.comp_enabled = true;
+        p.doubler_enabled = true;
+        p.deesser_enabled = true;
+        p.transient_enabled = true;
+        p.sat_enabled = true;
+        p.chorus_enabled = true;
+        p.chorus.mix = 0.4;
+        p.flanger_enabled = true;
+        p.flanger.mix = 0.4;
+        p.phaser_enabled = true;
+        p.phaser.mix = 0.4;
+        p.multiband_enabled = true;
+        p.multiband.amounts = [1.0; 3];
+        p.convolver_enabled = true;
+        p.gate_enabled = true;
+        p.limiter_enabled = true;
+        p.granular_enabled = true;
+        p.freq_shift_enabled = true;
+        p.crush_enabled = true;
+        p.mb_delay_enabled = true;
+        p.delay_bank_enabled = true;
+        p.distructor_enabled = true;
+        p.hardcore_enabled = true;
+        p.effector_enabled = true;
+        p.stereo_enabled = true;
+        p.shelves_enabled = true;
+        p.philter.enabled = true;
+        p.philter.mix = 0.6;
+        p.luxeverb.enabled = true;
+        p.luxeverb.mix = 0.3;
+        p.emphasis.enabled = true;
+        p.emphasis.mix = 0.4;
+        p.hyper_chorus.enabled = true;
+        p.hyper_chorus.mix = 0.35;
+        chain.set_params(p);
+
+        let seconds = 0.5_f32;
+        let frames = (sr * seconds) as usize;
+        let start = std::time::Instant::now();
+        let mut acc = 0.0_f32;
+        for i in 0..frames {
+            let t = i as f32 / sr;
+            let x = 0.3 * (std::f32::consts::TAU * 220.0 * t).sin()
+                + 0.2 * (std::f32::consts::TAU * 3_000.0 * t).sin();
+            let (l, r) = chain.process(x, x);
+            acc += l.abs() + r.abs();
+        }
+        let elapsed = start.elapsed().as_secs_f32();
+        let realtime = seconds / elapsed.max(1e-6);
+        println!(
+            "masterkedjan: {realtime:.1}× realtid ({elapsed:.3} s för {seconds} s ljud), utsumma {acc:.2}"
+        );
+        assert!(acc > 0.0, "kedjan ska ge ljud ifrån sig");
+        assert!(realtime > 0.2, "kedjan är långsammare än 0,2× realtid: {realtime:.2}×");
+    }
+
