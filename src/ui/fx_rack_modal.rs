@@ -2164,4 +2164,51 @@ mod tests {
         assert!((p.bpm - 60.0).abs() < 0.01, "tempo: {}", p.bpm);
     }
 
+    /// **Hela vägen: pedal → parametrar → ljud.** Ratten och DSP:n hade var sin test; det här
+    /// prövar kopplingen mellan dem — att en påslagen Time Curve i racket faktiskt bromsar
+    /// masterns ljud, inte bara fyller i ett fält ingen läser.
+    #[test]
+    fn an_enabled_time_curve_in_the_rack_halves_the_pitch_of_the_master() {
+        let mut state = FxRackState::default();
+        let idx = state.pedals.iter().position(|p| p.id == "time_curve").expect("pedalen finns");
+        {
+            let pedal = &mut state.pedals[idx];
+            pedal.enabled = true;
+            pedal.p1_val = 1.0; // halv fart
+            pedal.p2_val = 0.5; // 120 BPM
+            pedal.mix = 1.0;
+        }
+        let params = state.build_master_fx_params();
+        let mut chain = crate::audio::MasterFxChain::new(48_000.0);
+        chain.set_params(params);
+        let sr = 48_000.0_f32;
+        let mut out = Vec::with_capacity(24_000);
+        for i in 0..24_000 {
+            let t = i as f32 / sr;
+            let x = 0.5 * (std::f32::consts::TAU * 220.0 * t).sin();
+            let (l, _) = chain.process(x, x);
+            out.push(l);
+        }
+        // Frekvensen i slutet av sekunden: kurvan behöver en stund på sig att bromsa in.
+        let tail = &out[12_000..];
+        let mut best = (0.0_f32, 0.0_f32);
+        for hz in 80..160_u32 {
+            let f = hz as f32;
+            let (mut re, mut im) = (0.0_f32, 0.0_f32);
+            for (i, v) in tail.iter().enumerate() {
+                let ph = std::f32::consts::TAU * f * i as f32 / sr;
+                re += v * ph.cos();
+                im -= v * ph.sin();
+            }
+            let mag = (re * re + im * im).sqrt();
+            if mag > best.1 {
+                best = (f, mag);
+            }
+        }
+        assert!(
+            (best.0 - 110.0).abs() < 12.0,
+            "masterkedjan spelade {:.0} Hz, väntade 110 (halv fart)", best.0
+        );
+    }
+
 }
