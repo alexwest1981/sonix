@@ -2706,8 +2706,8 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
 
                 // MASTER — bordets sista remsa, som på en konsol.
                 mixer_strip(ui, strip_w, crate::i18n::t("MASTER"), pal.orange(), false, false, |ui| {
-                    rotary_knob(ui, &mut self.master_pan, -1.0, 1.0, "PAN", pal.text(), 16.0);
-                    rotary_knob(ui, &mut self.stereo_width, 0.0, 2.0, "BREDD", pal.cyan(), 16.0);
+                    crate::ui::widgets::rotary_knob_reset(ui, &mut self.master_pan, -1.0, 1.0, "PAN", pal.text(), 16.0, 0.0);
+                    crate::ui::widgets::rotary_knob_reset(ui, &mut self.stereo_width, 0.0, 2.0, "BREDD", pal.cyan(), 16.0, 1.0);
                     // **A/B** (Abletons Compare): A och B fångar mixen — volym, pan, mute
                     // per spår plus masternivån — och ↔ växlar och lägger den valda sidan.
                     ui.horizontal(|ui| {
@@ -3137,7 +3137,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                             // Low Band
                             knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("LOW SHELF")).size(Theme::FONT_XS).color(pal.orange()));
-                                track_dirty |= rotary_knob(ui, &mut track_mut.eq.low_gain_db, -12.0, 12.0, "GAIN", pal.orange(), 20.0);
+                                track_dirty |= crate::ui::widgets::rotary_knob_reset(ui, &mut track_mut.eq.low_gain_db, -12.0, 12.0, "GAIN", pal.orange(), 20.0, 0.0);
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.low_freq, 30.0, 400.0, "FREQ", pal.orange(), 16.0);
                                 ui.label(egui::RichText::new(format!("{:.0}Hz\n{:+.1}dB", track_mut.eq.low_freq, track_mut.eq.low_gain_db)).size(Theme::FONT_XS).color(pal.text_muted()));
                             });
@@ -3145,16 +3145,16 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                             // Mid Band
                             knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("MID BELL")).size(Theme::FONT_XS).color(pal.yellow()));
-                                track_dirty |= rotary_knob(ui, &mut track_mut.eq.mid_gain_db, -12.0, 12.0, "GAIN", pal.yellow(), 20.0);
+                                track_dirty |= crate::ui::widgets::rotary_knob_reset(ui, &mut track_mut.eq.mid_gain_db, -12.0, 12.0, "GAIN", pal.yellow(), 20.0, 0.0);
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.mid_freq, 200.0, 8000.0, "FREQ", pal.yellow(), 16.0);
-                                track_dirty |= rotary_knob(ui, &mut track_mut.eq.mid_q, 0.4, 4.0, "Q", pal.yellow(), 16.0);
+                                track_dirty |= crate::ui::widgets::rotary_knob_reset(ui, &mut track_mut.eq.mid_q, 0.4, 4.0, "Q", pal.yellow(), 16.0, 1.0);
                                 ui.label(egui::RichText::new(format!("{:.0}Hz\n{:+.1}dB", track_mut.eq.mid_freq, track_mut.eq.mid_gain_db)).size(Theme::FONT_XS).color(pal.text_muted()));
                             });
 
                             // High Band
                             knob_column(ui, col_w, |ui| {
                                 ui.label(egui::RichText::new(crate::i18n::t("HIGH SHELF")).size(Theme::FONT_XS).color(pal.cyan()));
-                                track_dirty |= rotary_knob(ui, &mut track_mut.eq.high_gain_db, -12.0, 12.0, "GAIN", pal.cyan(), 20.0);
+                                track_dirty |= crate::ui::widgets::rotary_knob_reset(ui, &mut track_mut.eq.high_gain_db, -12.0, 12.0, "GAIN", pal.cyan(), 20.0, 0.0);
                                 track_dirty |= rotary_knob(ui, &mut track_mut.eq.high_freq, 2500.0, 16000.0, "FREQ", pal.cyan(), 16.0);
                                 ui.label(egui::RichText::new(format!("{:.0}Hz\n{:+.1}dB", track_mut.eq.high_freq, track_mut.eq.high_gain_db)).size(Theme::FONT_XS).color(pal.text_muted()));
                             });

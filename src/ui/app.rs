@@ -269,6 +269,12 @@ pub struct SonixApp {
     pub song_key_root: u8,
     pub song_key_scale: usize,
     pub time_signature: (u8, u8),
+    /// Förmätning före inspelning, i takter (0 = av). FL: `Recording precount`.
+    pub precount_bars: u8,
+    /// När förmätningen är klar, räknat i `song_time`. `None` = ingen pågår.
+    pub precount_until: Option<f32>,
+    /// Metronomen var avstängd när förmätningen började och ska slås tillbaka efter.
+    precount_restore_metro: bool,
     // Piano Roll & Scale Snapping
     pub piano_roll_grid: [[bool; crate::audio::tempo::MAX_STEPS]; 24],
     /// Markerade celler i rutnätet (samma form som rutnätet). Shift-klick växlar.
@@ -1015,6 +1021,9 @@ impl SonixApp {
             song_key_root: 3, // Eb
             song_key_scale: 0, // Dur
             time_signature: (4, 4),
+            precount_bars: 0,
+            precount_until: None,
+            precount_restore_metro: false,
             piano_roll_grid: initial_grid,
             piano_roll_sel: [[false; crate::ui::app::state::MAX_STEPS]; 24],
             piano_roll_snap_to_scale: false,

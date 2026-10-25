@@ -292,6 +292,43 @@ impl SonixApp {
                         self.toggle_timeline_recording();
                     }
 
+                    // **Förmätning.** Cyklar av → 1 → 2 → 4 takter. Ligger bredvid REC därför
+                    // att det är en inställning för just inspelningen, inte för projektet.
+                    let pre_bg = if self.precount_bars > 0 {
+                        crate::ui::theme::palette().orange()
+                    } else {
+                        crate::ui::theme::palette().panel_alt()
+                    };
+                    let pre_fg = if self.precount_bars > 0 {
+                        Color32::BLACK
+                    } else {
+                        crate::ui::theme::palette().text_muted()
+                    };
+                    if ui
+                        .add(egui::Button::new(
+                            egui::RichText::new(format!("⏱{}", self.precount_bars))
+                                .size(Theme::FONT_S)
+                                .strong()
+                                .color(pre_fg),
+                        ).fill(pre_bg))
+                        .on_hover_text(crate::i18n::t(
+                            "Antal takter metronom innan inspelningen börjar",
+                        ))
+                        .clicked()
+                    {
+                        self.precount_bars = match self.precount_bars {
+                            0 => 1,
+                            1 => 2,
+                            2 => 4,
+                            _ => 0,
+                        };
+                        self.status_message = if self.precount_bars == 0 {
+                            crate::tstatus!("⏱ Förmätning av")
+                        } else {
+                            crate::tstatus!("⏱ Förmätning: {} takt(er)", self.precount_bars)
+                        };
+                    }
+
                     let play_txt = if self.is_playing { "⏸" } else { "▶" };
                     let play_bg = if self.is_playing { crate::ui::theme::palette().green() } else { crate::ui::theme::palette().panel_alt() };
                     if ui.add(egui::Button::new(egui::RichText::new(play_txt).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(play_bg)).clicked() {

@@ -19,11 +19,11 @@ gränssnittet lovar.
 
 | Mått | Räknat | Så räknades det |
 | :--- | ---: | :--- |
-| **FL-pluggarna** (51 generatorer + 90 effekter) | **✅ 87 · ◐ 48 · ✗ 0** av 141 (6 ej tillämpliga) | `awk` på statuskolumnen i `FL-STUDIO-INVENTORY.md` §2 — och **namnen är kontrollerade mot installationen**: 51 + 90 mappar i `Plugins/Fruity`, noll skillnader mot inventariets 141 rader |
-| — andel | **64 %** helt · **100 %** helt eller delvis · **0 %** saknas | 87 / 135 / 0 av 135 tillämpliga (räknat med `scripts/inventory_counts.py`) |
+| **FL-pluggarna** (51 generatorer + 90 effekter) | **✅ 88 · ◐ 47 · ✗ 0** av 141 (6 ej tillämpliga) | `awk` på statuskolumnen i `FL-STUDIO-INVENTORY.md` §2 — och **namnen är kontrollerade mot installationen**: 51 + 90 mappar i `Plugins/Fruity`, noll skillnader mot inventariets 141 rader |
+| — andel | **65 %** helt · **100 %** helt eller delvis · **0 %** saknas | 88 / 135 / 0 av 135 tillämpliga (räknat med `scripts/inventory_counts.py`) |
 | **Ableton-enheterna** | 72: 13 instrument + 48 ljudeffekter + 11 MIDI-effekter | `ABLETON-INVENTORY.md` §2 |
 | **Ableton gap-matris** | 6 områden där vi ligger före · 4 delvis · 8 efter | 18 rader i §8, räknade på dom-kolumnen |
-| **Koden** | 119 filer · **110 858 rader** i `src/` · **931 `#[test]`** | `find` / `cat` / `grep -c` 2026-10-23 |
+| **Koden** | 144 filer · **129 921 rader** i `src/` · **1138 `#[test]`** | `find` / `cat` / `grep -c` 2026-10-25 |
 
 Ett räknefel i en inventarierubrik är rättat samma dag: Ableton sa **5 delvis** när matrisen har
 4 — matrisen var rätt, summeringen var det inte. FL:s rubrik stämmer nu med tabellen (70/64/7).
@@ -71,15 +71,22 @@ på en yta. Konkret, i den ordning det är värt att ta:
    ARRANGERA, MIXA, VERKTYG (0.9.74). Kvar: inget på den punkten.
 2. **Transporten dit ögat redan är.** *✅ 0.9.80 + 0.9.136:* tempo, position (takt.slag.steg) och
    **▶/⏹** sitter i arrangörens egen verktygsrad, bredvid taktart, metronom och pedal, och anropar
-   samma funktioner som den stora transporten. Kvar: **⏺** — den kräver ett armat spår, och en knapp
-   som ibland inte gör något är sämre än en som sitter en rad högre.
+   samma funktioner som den stora transporten. *✅ 0.9.150:* **⏺** sitter där också, med en
+   **⏱-knapp** bredvid (förmätning: av → 1 → 2 → 4 takter). Ett ospelat spår armas vid trycket, så
+   knappen gör alltid något — den invändningen föll.
 3. **Mindre krom.** *✅ 0.9.97/0.9.100:* AI-promptkapseln är borta ur arrangöret (flyttad till AI-vyn,
-   som redan hade en prompt). Kvar: samma kontroll två gånger (volym i rack och mixer) ska se
-   likadan ut.
+   som redan hade en prompt). *✅ Volym-ratt vs fader är **inte** en brist:* FL har ratt i Channel
+   Rack och fader i Mixer för samma värde, och det är samma `ch.volume` i båda — två vyer av en
+   kontroll är bordets språk, inte dubbelarbete. Det som var värt att laga var att mixerns rattar
+   saknade nollställning, och det är gjort (nästa punkt).
 4. **Högerklick överallt.** *Första steget taget i 0.9.75:* patternblock har en meny (öppna,
    duplicera, radera) i stället för att högerklick raderar, och **kanalerna i racket** har en
    meny (tysta, nollställ volym/pan) sedan 0.9.76, och kanalens VOL/PAN-rattar nollställs med
-   dubbelklick (0.9.77). Kvar: övriga rattar i mixern, noter i pianorullen.
+   dubbelklick (0.9.77). *✅ 0.9.150:* master **PAN** och **BREDD**, EQ:ns tre **GAIN** och mid **Q**
+   nollställs med dubbelklick — rattens eget standardvärde, inte en gissning (Q = 1,0, bredd = 1,0).
+   **Kvar:** frekvensrattarna (deras standard beror på bandet, så en gissning vore värre än ingen)
+   och noterna i pianorullen — den senare kräver en meny i den stora ritfunktionen och togs inte i
+   det här passet.
 5. **Inspelningsläget först.** *✅ 0.9.96:* Ctrl+N armar mikrofonspåret, väljer det, slår på
    metronomen och landar i arrangemanget — REC är ett klick bort.
 

@@ -89,6 +89,12 @@ pub fn ensure_mic_track_exists(&mut self) {
 
 impl SonixApp {
 pub fn toggle_timeline_recording(&mut self) {
+    // En förmätning som pågår avbryts av samma knapp — annars sitter man fast i nedräkningen.
+    if self.precount_until.take().is_some() {
+        self.stop_precount();
+        self.status_message = crate::tstatus!("⏹ Förmätningen avbröts");
+        return;
+    }
     if self.is_recording_timeline {
         let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
         let take_result = self.vocal_studio.stop_recording();
@@ -141,6 +147,24 @@ pub fn toggle_timeline_recording(&mut self) {
         let armed_idx = self.playlist_tracks.iter().position(|t| t.is_rec_armed).unwrap_or(0);
         let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
         self.timeline_rec_start_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
+        // **Förmätning (FL: `Recording precount`).** Transportsnurran rullar från
+        // inspelningspunkten och metronomen slås till även om den var av — en nedräkning utan
+        // klick är ingen nedräkning. Tagningen börjar först när takterna gått (`poll_precount`),
+        // då på närmaste taktgräns.
+        if self.precount_bars > 0 {
+            let bars = self.precount_bars as f64;
+            let secs = tempo.secs_for_bars_at(self.timeline_rec_start_bar as f64, bars) as f32;
+            self.precount_until = Some(self.song_time + secs);
+            self.precount_restore_metro = !self.metronome_enabled;
+            self.metronome_enabled = true;
+            self.is_playing = true;
+            let _ = self.engine.send_command(AudioCommand::SetSongPlayback(true));
+            self.status_message = crate::tstatus!(
+                "⏱ Räknar in {} takt(er) innan inspelningen börjar...",
+                self.precount_bars
+            );
+            return;
+        }
         self.is_recording_timeline = true;
         if let Err(e) = self.vocal_studio.start_recording() {
             self.status_message = format!("❌ {}", e);
@@ -152,6 +176,50 @@ pub fn toggle_timeline_recording(&mut self) {
         self.status_message = crate::tstatus!("🔴 Spelar in direkt i spår '{}' från takt {:.1}...", self.playlist_tracks[armed_idx].name, self.timeline_rec_start_bar + 1.0);
     }
 }
+}
+
+impl SonixApp {
+/// Förmätningen är klar: metronomen tillbaka till sitt eget läge och tagningen igång.
+    pub(crate) fn poll_precount(&mut self) {
+        let Some(until) = self.precount_until else { return };
+        if self.song_time < until {
+            return;
+        }
+        self.precount_until = None;
+        if self.precount_restore_metro {
+            self.metronome_enabled = false;
+            self.precount_restore_metro = false;
+        }
+        // Tagningen börjar på närmaste taktgräns, inte mitt i en takt.
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        self.timeline_rec_start_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
+        self.is_recording_timeline = true;
+        if let Err(e) = self.vocal_studio.start_recording() {
+            self.status_message = format!("❌ {}", e);
+            self.is_recording_timeline = false;
+            self.is_playing = false;
+            let _ = self.engine.send_command(AudioCommand::SetSongPlayback(false));
+            return;
+        }
+        let armed = self.playlist_tracks.iter().position(|t| t.is_rec_armed).unwrap_or(0);
+        let name = self.playlist_tracks.get(armed).map(|t| t.name.clone()).unwrap_or_default();
+        self.status_message = crate::tstatus!(
+            "🔴 Spelar in direkt i spår '{}' från takt {:.1}...",
+            name,
+            self.timeline_rec_start_bar + 1.0
+        );
+    }
+
+    /// Stoppar en pågående förmätning utan att spela in något.
+    fn stop_precount(&mut self) {
+        self.precount_until = None;
+        if self.precount_restore_metro {
+            self.metronome_enabled = false;
+            self.precount_restore_metro = false;
+        }
+        self.is_playing = false;
+        let _ = self.engine.send_command(AudioCommand::SetSongPlayback(false));
+    }
 }
 
 impl SonixApp {
@@ -347,6 +415,9 @@ pub fn get_max_project_bars(&self) -> usize {
 
 impl SonixApp {
 pub(crate) fn advance_sequencer(&mut self) {
+    // Förmätningen mäts mot spelhuvudet och prövas en gång per bildruta — före stegen, så
+    // tagningen börjar på taktgränsen och inte en sextondel in.
+    self.poll_precount();
     if !self.is_playing {
         return;
     }
