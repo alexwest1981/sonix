@@ -45,6 +45,64 @@ pub const OPERATOR_REED: [f32; HARMONIC_COUNT] = {
     h
 };
 
+/// Tredje operatorn: **klocka** — varannan delton, och de höga snabbare än de låga. Ett spektrum
+/// utan dynamik låter statiskt; skillnaden mot glaset ligger i att udda deltoner dominerar.
+pub const OPERATOR_BELL: [f32; HARMONIC_COUNT] = {
+    let mut h = [0.0f32; HARMONIC_COUNT];
+    h[0] = 1.0;
+    h[1] = 0.35;
+    h[3] = 0.45;
+    h[5] = 0.30;
+    h[7] = 0.22;
+    h[9] = 0.16;
+    h[11] = 0.10;
+    h[13] = 0.07;
+    h[15] = 0.04;
+    h
+};
+
+/// Fjärde operatorn: **röst** — två formanttoppar (partial 3 och 8) med svans uppåt, som en
+/// vokal. Den gör morfen hörbar som en rörelse mellan material, inte bara mellan ljusstyrkor.
+pub const OPERATOR_VOICE: [f32; HARMONIC_COUNT] = {
+    // Två formanttoppar kring delton 3 och 8, med svans uppåt: 0,12/√i + 0,55·e^(−(i−3)²/1,96)
+    // + 0,45·e^(−(i−8)²/4,84). `exp` får inte anropas i en konstant, så tabellen står här.
+    const TOP: [f32; 20] = [1.0, 0.1915, 0.4152, 0.6211, 0.4018, 0.1742, 0.1924, 0.3017, 0.3574, 0.2962, 0.1758, 0.0852, 0.0462, 0.0351, 0.0323, 0.031, 0.03, 0.0291, 0.0283, 0.0275];
+    let mut h = [0.0f32; HARMONIC_COUNT];
+    let mut i = 0;
+    while i < TOP.len() {
+        h[i] = TOP[i];
+        i += 1;
+    }
+    h
+};
+
+/// **Fyra operatorkällor** — FL:s Morphine har fyra, och morfen går genom dem i ordning.
+///
+/// `t` är 0…1 över **hela** raden: 0 = A, 1/3 = B, 2/3 = C, 1 = D, linjärt emellan. Att lägga
+/// de fyra på en enda ratt gör att ett sparat läge fortfarande betyder något — 0 och 1 är
+/// samma klanger som förut, och det är bara mitten som nu går genom fler material.
+pub fn morph_spectrum4(
+    a: &[f32; HARMONIC_COUNT],
+    b: &[f32; HARMONIC_COUNT],
+    c: &[f32; HARMONIC_COUNT],
+    d: &[f32; HARMONIC_COUNT],
+    t: f32,
+) -> [f32; HARMONIC_COUNT] {
+    let t = t.clamp(0.0, 1.0) * 3.0;
+    let (from, to, frac) = if t < 1.0 {
+        (a, b, t)
+    } else if t < 2.0 {
+        (b, c, t - 1.0)
+    } else {
+        (c, d, (t - 2.0).min(1.0))
+    };
+    let mut out = [0.0; HARMONIC_COUNT];
+    for i in 0..HARMONIC_COUNT {
+        out[i] = from[i] + (to[i] - from[i]) * frac;
+    }
+    out
+}
+
 /// Läget `t` mellan två spektra. 0 = `a` ordagrant, 1 = `b` ordagrant, utanför kläms det.
 pub fn morph_spectrum(
     a: &[f32; HARMONIC_COUNT],
@@ -71,7 +129,7 @@ pub fn morphine(morph: f32) -> PresetSettings {
         detune: 0.0,
         glide: 0.0,
         drive: 0.0,
-        harmonics: morph_spectrum(&OPERATOR_GLASS, &OPERATOR_REED, morph),
+        harmonics: morph_spectrum4(&OPERATOR_GLASS, &OPERATOR_REED, &OPERATOR_BELL, &OPERATOR_VOICE, morph),
     };
     sound.harmonics[0] = 1.0;
     sound
@@ -282,10 +340,13 @@ mod tests {
                 "delton {i} ligger inte mitt emellan"
             );
         }
-        // Och förvalet använder samma väg — inte en egen kopia av spektret.
+        // Och förvalet använder samma väg — inte en egen kopia av spektret. Sedan 0.9.137
+        // går morfen genom **fyra** källor, så halvvägs ligger förvalet mellan B och C.
         let preset = morphine(0.5);
         assert_eq!(preset.waveform, Waveform::Additive);
-        assert_eq!(preset.harmonics, mid);
+        let via_four = morph_spectrum4(&OPERATOR_GLASS, &OPERATOR_REED, &OPERATOR_BELL, &OPERATOR_VOICE, 0.5);
+        assert_eq!(preset.harmonics, via_four);
+        assert_ne!(preset.harmonics, mid, "fyra källor ska inte ge tvåkällans mitt");
     }
 
     /// **En händelse per bytepar**, och tolv bytar är en oktav — byte 12 ligger exakt en oktan
@@ -337,5 +398,41 @@ mod tests {
         assert_eq!(p.waveform, Waveform::Additive);
         assert_eq!(p.harmonics, [0.0f32; HARMONIC_COUNT]);
         assert!(p.filter.cutoff >= 200.0);
+    }
+
+    /// **Fyra källor, en ratt:** ändarna är operatör A och D ordagrant, och tredjedelarna
+    /// träffar B och C exakt — annars hade morfen glidit förbi ett material utan att stanna.
+    #[test]
+    fn a_four_source_morph_hits_every_operator_exactly() {
+        let a = OPERATOR_GLASS;
+        let b = OPERATOR_REED;
+        let c = OPERATOR_BELL;
+        let d = OPERATOR_VOICE;
+        assert_eq!(morph_spectrum4(&a, &b, &c, &d, 0.0), a, "läge 0 = A");
+        assert_eq!(morph_spectrum4(&a, &b, &c, &d, 1.0), d, "läge 1 = D");
+        let third = morph_spectrum4(&a, &b, &c, &d, 1.0 / 3.0);
+        for i in 0..HARMONIC_COUNT {
+            assert!((third[i] - b[i]).abs() < 1e-5, "delton {i} träffade inte B: {}", third[i]);
+        }
+        let two_thirds = morph_spectrum4(&a, &b, &c, &d, 2.0 / 3.0);
+        for i in 0..HARMONIC_COUNT {
+            assert!((two_thirds[i] - c[i]).abs() < 1e-5, "delton {i} träffade inte C");
+        }
+        // Halvvägs ligger morfen mellan B och C, aldrig utanför dem.
+        let mid = morph_spectrum4(&a, &b, &c, &d, 0.5);
+        for i in 0..HARMONIC_COUNT {
+            let lo = b[i].min(c[i]);
+            let hi = b[i].max(c[i]);
+            assert!(mid[i] >= lo - 1e-5 && mid[i] <= hi + 1e-5, "delton {i} utanför: {}", mid[i]);
+        }
+    }
+
+    #[test]
+    fn the_extra_operators_are_different_materials() {
+        assert_ne!(OPERATOR_BELL, OPERATOR_GLASS, "klockan får inte vara glaset");
+        assert_ne!(OPERATOR_VOICE, OPERATOR_REED, "rösten får inte vara röret");
+        // Rösten ska ha en formant: delton 3 och 8 starkare än sina grannar.
+        assert!(OPERATOR_VOICE[3] > OPERATOR_VOICE[2] && OPERATOR_VOICE[3] > OPERATOR_VOICE[4]);
+        assert!(OPERATOR_VOICE[8] > OPERATOR_VOICE[6] && OPERATOR_VOICE[8] > OPERATOR_VOICE[10]);
     }
 }

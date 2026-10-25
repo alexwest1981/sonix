@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Morphine med fyra operatorkällor (0.9.137)
+
+- **Fyra material, en ratt:** `morph_spectrum4` lägger `OPERATOR_GLASS`, `OPERATOR_REED` och två nya
+  — `OPERATOR_BELL` (udda deltoner, klocka) och `OPERATOR_VOICE` (två formanttoppar kring delton 3
+  och 8) — på en enda morf. 0 = glaset, 1 = rösten, och tredjedelarna träffar reed respektive klocka
+  **exakt**, vilket provet mäter.
+- Ändarna betyder samma sak som förut, så ett sparat läge på 0 eller 1 låter som det gjorde; det är
+  bara mitten som nu går genom fler material.
+- Formanttabellen står som siffror i stället för en formel: `exp` får inte anropas i en konstant.
+
 ### Added — Transporten i arrangörens rad (0.9.136)
 
 - **▶ och ⏹** sitter nu bredvid tempot och positionen i arrangörens verktygsrad, inte bara i den

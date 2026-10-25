@@ -115,7 +115,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Plugin | Filer | Sonix | Kommentar |
 | :--- | ---: | :---: | :--- |
 | FL Studio Mobile | 344 | — | **ej tillämplig**: mobilappen är en egen produkt för iOS/Android. En Linux-DAW kan inte vara den, och Sonix har inget att vinna på att imitera dess pekgränssnitt. |
-| Morphine | 199 | ◐ | `instruments::morph_spectrum` + `Preset::Morph`: två additiva operatorkällor (glasig, rörledad) och ett läge 0–1 mellan dem — exakt vid 0 och 1, linjärt emellan (provat). ✗ fyra operatorkällor, egna modulationskedjor och de 199 förvalen |
+| Morphine | 199 | ◐ | **fyra operatorkällor** (0.9.137): `OPERATOR_GLASS/REED/BELL/VOICE` och `morph_spectrum4` — en ratt går genom alla fyra, med B och C exakt på tredjedelarna (provat), och rösten bär två formanttoppar (delton 3 och 8). Kvar: egna modulationskedjor och de 199 förvalen |
 | Harmor | 164 | ◐ | **bild → spektrum**: `audio::spectral_image` läser en PNG, väger samman alla kolumner och gör bildens nederkant till grundtonen och överkanten till överton 16 (`HARMONIC_COUNT`), normaliserat till 1,0 — knappen **🖼 Från bild…** i dragstångspanelen fyller tabellen. Prov: ljus nederkant → grundtonen 1,0 / toppen 0,0, och tvärtom. Kvar: tidsaxeln (bilden som spelas upp över tid), `.fnv`-envelopes, fler än 16 partialer och blur/prism |
 | Dashboard | 90 | ◐ | Patch-modulen ritar en egen graf, men ingen panel med rattar |
 | Toxic Biohazard | 78 | ✅ | **6-op-matris** med FM, ringmodulering och additiv blandning (0.9.69/0.9.70), fyra filtertyper, 12/24 dB, envelop med fri tidskurva, två LFO:er, klaviaturskala, pan per operator och unison (0.9.98–0.9.107) |
