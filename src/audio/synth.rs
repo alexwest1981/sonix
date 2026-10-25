@@ -129,6 +129,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetTalkback(_) => "SetTalkback",
         AudioCommand::SetSustainPedal(_) => "SetSustainPedal",
         AudioCommand::SetMasterVocoder { .. } => "SetMasterVocoder",
+        AudioCommand::SetVocoderBands { .. } => "SetVocoderBands",
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",

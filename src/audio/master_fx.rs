@@ -579,6 +579,9 @@ impl MasterFxChain {
 /// delar upp två kanaler gör dubbelt arbete för en bredd som ändå inte finns i källan.
 pub struct MasterVocoder {
     amount: f32,
+    /// Nivå per band, 0…2. 1,0 = rakt igenom. Det är formantbandredigeraren: Vocodex låter
+    /// dig dra i banden, och utan den går det bara att välja hur mycket vocoder som helst.
+    band_gain: [f32; Self::BANDS],
     /// (modulatorfilter, bärvågsfilter, envelop, bandparametrar) per band.
     bands: Vec<(StateVariableFilter, StateVariableFilter, f32, FilterParams)>,
     attack: f32,
@@ -607,6 +610,7 @@ impl MasterVocoder {
             .collect();
         Self {
             amount: 0.0,
+            band_gain: [1.0; Self::BANDS],
             bands,
             attack: 1.0 - (-1.0 / (0.005 * sample_rate)).exp(),
             release: 1.0 - (-1.0 / (0.040 * sample_rate)).exp(),
@@ -615,6 +619,13 @@ impl MasterVocoder {
 
     pub fn set_amount(&mut self, amount: f32) {
         self.amount = amount.clamp(0.0, 1.0);
+    }
+
+    /// Nivå per band, 0…2.
+    pub fn set_band_gains(&mut self, gains: [f32; Self::BANDS]) {
+        for (slot, g) in self.band_gain.iter_mut().zip(gains) {
+            *slot = g.clamp(0.0, 2.0);
+        }
     }
 
     /// Ett sampel: modulatorns bandnivåer styr bärvågens band. `amount` blandar torrt och
@@ -626,11 +637,11 @@ impl MasterVocoder {
         }
         let modulator = (mod_l + mod_r) * 0.5;
         let mut wet = 0.0;
-        for (mod_filter, car_filter, env, params) in &mut self.bands {
+        for (i, (mod_filter, car_filter, env, params)) in self.bands.iter_mut().enumerate() {
             let m = mod_filter.process_bandpass(modulator, params).abs();
             let coeff = if m > *env { self.attack } else { self.release };
             *env += (m - *env) * coeff;
-            wet += car_filter.process_bandpass(carrier, params) * *env;
+            wet += car_filter.process_bandpass(carrier, params) * *env * self.band_gain[i];
         }
         wet *= 2.0 / (self.bands.len() as f32).sqrt();
         let a = self.amount;
@@ -692,4 +703,36 @@ mod vocoder_tests {
         assert!(loud > 0.02, "modulatorn ska släppa igenom bärvågen: {loud:.4}");
         assert!(silent < loud * 0.05, "tyst modulator ska stänga: {silent:.6} mot {loud:.4}");
     }
+    /// **Ett band kan stängas av.** Formantbandredigerarens hela poäng: en ton i bandets
+    /// mitt ska försvinna när bandet dras ner, medan grannbanden fortsätter.
+    #[test]
+    fn a_vocoder_band_can_be_muted() {
+        let sr = 48_000.0;
+        let level_with = |gain: f32, freq: f32| {
+            let mut voc = MasterVocoder::new(sr);
+            voc.set_amount(1.0);
+            let mut gains = [1.0_f32; MasterVocoder::BANDS];
+            // Bandet som rymmer `freq`: samma logaritmiska placering som vocodern bygger.
+            let t = (freq / 100.0).ln() / (8_000.0_f32 / 100.0).ln();
+            let band = (t * (MasterVocoder::BANDS - 1) as f32).round() as usize;
+            gains[band.min(MasterVocoder::BANDS - 1)] = gain;
+            voc.set_band_gains(gains);
+            let mut sum = 0.0;
+            for i in 0..9_600 {
+                let t = i as f32 / sr;
+                let carrier = (std::f32::consts::TAU * freq * t).sin();
+                let modulator = 0.8 * (std::f32::consts::TAU * freq * t).sin();
+                let (l, _) = voc.process(modulator, modulator, carrier, 0.0, 0.0);
+                if i > 4_800 {
+                    sum += l * l;
+                }
+            }
+            (sum / 4_800.0).sqrt()
+        };
+        let open = level_with(1.0, 800.0);
+        let muted = level_with(0.0, 800.0);
+        assert!(open > 0.01, "bandet ska släppa igenom: {open:.4}");
+        assert!(muted < open * 0.35, "stängt band läckte: {muted:.4} mot {open:.4}");
+    }
+
 }

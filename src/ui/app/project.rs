@@ -266,6 +266,9 @@ pub struct SavedFxRack {
     pub convolver_gain_db: f32,
     #[serde(default)]
     pub convolver_ir_name: Option<String>,
+    /// Vocoderns bandnivåer. Tom i äldre filer → alla band öppna.
+    #[serde(default)]
+    pub vocoder_bands: Vec<f32>,
 }
 
 impl SavedFxRack {
@@ -298,6 +301,7 @@ impl SavedFxRack {
             convolver_mix: state.convolver_mix,
             convolver_gain_db: state.convolver_gain_db,
             convolver_ir_name: state.convolver_ir_name.clone(),
+            vocoder_bands: state.vocoder_bands.to_vec(),
         }
     }
 
@@ -322,6 +326,9 @@ impl SavedFxRack {
             node.gain_db = saved.gain_db;
             node.q = saved.q;
             node.is_active = saved.active;
+        }
+        for (slot, saved) in state.vocoder_bands.iter_mut().zip(self.vocoder_bands.iter()) {
+            *slot = saved.clamp(0.0, 2.0);
         }
         if self.compressor_release_ms > 0.0 {
             state.compressor_release_ms = self.compressor_release_ms;
@@ -1224,6 +1231,8 @@ pub enum ScreenshotTarget {
     TunerModal,
     DiceGeneratorModal,
     FxRackModal,
+    /// Vocoderns band i FX-racket (0.9.143).
+    VocoderBands,
     SongStructureModal,
     AddTrackModal,
     HelpGuideModal,
@@ -1296,6 +1305,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::TunerModal, out_dir.join("23_dialog_strobe_tuner.png")),
         (ScreenshotTarget::DiceGeneratorModal, out_dir.join("24_dialog_tarning_generator.png")),
         (ScreenshotTarget::FxRackModal, out_dir.join("25_dialog_modular_fx_rack.png")),
+        (ScreenshotTarget::VocoderBands, out_dir.join("37_vocoder_bands.png")),
         (ScreenshotTarget::SongStructureModal, out_dir.join("26_dialog_latstruktur_arrangemang.png")),
         (ScreenshotTarget::AddTrackModal, out_dir.join("27_dialog_lagg_till_spar.png")),
         (ScreenshotTarget::HelpGuideModal, out_dir.join("28_dialog_hjalpguide_manual.png")),
@@ -1418,6 +1428,17 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
         }
         ScreenshotTarget::FxRackModal => {
             self.view_mode = ViewMode::PlaylistArranger;
+            self.show_fx_rack_modal = true;
+        }
+        ScreenshotTarget::VocoderBands => {
+            self.view_mode = ViewMode::PlaylistArranger;
+            // En formantkurva över banden, så bilden visar reglagen i arbete och inte 16 streck
+            // på samma höjd.
+            for (i, g) in self.fx_rack_state.vocoder_bands.iter_mut().enumerate() {
+                let x = i as f32 / 15.0;
+                *g = 0.6 + 1.2 * (x * std::f32::consts::TAU * 1.5).sin().abs();
+            }
+            self.fx_rack_state.active_tab = 3;
             self.show_fx_rack_modal = true;
         }
         ScreenshotTarget::ModMatrix => {

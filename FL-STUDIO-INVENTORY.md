@@ -177,7 +177,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Pitcher | 22 | ◐ | vocal_harmonizer med formantbevarande pitch |
 | Edison | 20 | ✅ | `ui::edison_modal` (0.9.127, spektrum 0.9.140): vågform med dragbart urval, sju operationer och **spektrum över urvalet** (48 logaritmiska band, 40 Hz–16 kHz, −60…0 dB). Redigerar en **kopia** och lägger resultatet som ett nytt spår — källfilen rörs aldrig. Kvar: loopverktyg och destruktiv redigering på plats |
 | Maximus | 15 | ◐ | multibandskompressorn är 3 band med **egen tröskel per band** och rattar för **TRÖSKEL** och **RATIO** (0.9.139) — provat: sänkt bandtröskel trycker ner sitt band, höjd släpper igenom mer, och 0,5 på ratten är standardvärdet. Kvar: fler band och ritbara kurvor |
-| Vocodex | 13 | ◐ | `vocode` — 16 band, 100 Hz–8 kHz, bärvågen följer sången; ingen formantbandredigerare |
+| Vocodex | 13 | ✅ | `vocode` (16 band, 100 Hz–8 kHz, bärvågen följer sången) och masterns vocoder har nu **bandredigeraren** (0.9.143): 16 nivåreglage, 0–2, i FX-racket under fliken 🎚 Vocoder, sparade i projektet. Prov: ett stängt band släpper igenom under 35 % av det öppna. Kvar: FL:s egen bandlayout och formantskifte per band |
 | Soundgoodizer | 5 | ◐ | saturator + kompressor |
 | Fruity Convolver | 4 | ✅ | convolvern (byggd i dag) |
 | Fruity HTML NoteBook | 4 | ◐ | textanteckningar per kanal finns; HTML-rendering i anteckningarna gör det inte |

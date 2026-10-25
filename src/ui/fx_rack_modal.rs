@@ -54,6 +54,9 @@ pub struct FxRackState {
     pub convolver_mix: f32,
     pub convolver_gain_db: f32,
     pub convolver_ir_name: Option<String>,
+    /// Nivå per band i masterns vocoder (16 band, 100 Hz–8 kHz), 0…2 där 1,0 är rakt igenom.
+    /// Det är formantbandredigeraren — Vocodex ratt, men för hela kedjans vocoder.
+    pub vocoder_bands: [f32; 16],
 }
 
 impl Default for FxRackState {
@@ -526,6 +529,7 @@ impl Default for FxRackState {
             ],
             selected_preset: 0,
             active_tab: 0,
+            vocoder_bands: [1.0; 16],
             search_query: String::new(),
             selected_category: "Alla",
             eq_nodes: vec![
@@ -1072,6 +1076,56 @@ impl FxRackState {
     }
 }
 
+
+/// **Vocoderns band** — 16 reglage, ett per band, 0…2. Returen säger om något ändrades, så
+/// kommandot bara skickas när det behövs.
+fn render_vocoder_bands(ui: &mut Ui, state: &mut FxRackState) -> bool {
+    let mut changed = false;
+    ui.label(
+        egui::RichText::new(crate::i18n::t(
+            "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz.",
+        ))
+        .size(Theme::FONT_S)
+        .color(crate::ui::theme::palette().text_muted()),
+    );
+    ui.add_space(6.0);
+    ui.horizontal(|ui| {
+        for (i, gain) in state.vocoder_bands.iter_mut().enumerate() {
+            ui.vertical(|ui| {
+                if ui
+                    .add(
+                        egui::Slider::new(gain, 0.0..=2.0)
+                            .vertical()
+                            .show_value(false)
+                            .text(format!("{i}")),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+                // Bandets ungefärliga mittfrekvens, så reglagen går att känna igen.
+                let t = i as f32 / 15.0;
+                let hz = 100.0 * (8_000.0f32 / 100.0).powf(t);
+                ui.label(
+                    egui::RichText::new(if hz >= 1_000.0 {
+                        format!("{:.0}k", hz / 1_000.0)
+                    } else {
+                        format!("{hz:.0}")
+                    })
+                    .size(Theme::FONT_XS)
+                    .color(crate::ui::theme::palette().text_muted()),
+                );
+            });
+        }
+    });
+    ui.add_space(4.0);
+    if ui.button(crate::i18n::t("↺ Nollställ banden")).clicked() {
+        state.vocoder_bands = [1.0; 16];
+        changed = true;
+    }
+    changed
+}
+
 pub fn render_fx_rack_modal(
     ctx: &egui::Context,
     open: &mut bool,
@@ -1105,9 +1159,11 @@ pub fn render_fx_rack_modal(
                 ui.horizontal(|ui| {
                     ui.label(egui::RichText::new(crate::i18n::t("🎛 SOUNDTRAP FX RACK")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().orange()));
                     ui.separator();
-                    ui.label(egui::RichText::new(crate::i18n::t("Modulär effektkedja  •  Visual Parametric EQ  •  Dynamisk kompressor  •  Vocal Doubler")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
-
+                    // Flikarna får hela raden: låg den dekorativa rubriken kvar tog fyra flikar
+                    // slut på bredden och ritades ovanpå varandra (sett i skärmdump 37).
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let voc_btn = ui.selectable_label(state.active_tab == 3, crate::i18n::t("🎚 Vocoder"));
+                        if voc_btn.clicked() { state.active_tab = 3; }
                         let lib_btn = ui.selectable_label(state.active_tab == 2, crate::i18n::t("🗂 Effektbibliotek"));
                         if lib_btn.clicked() { state.active_tab = 2; }
 
@@ -1203,6 +1259,15 @@ pub fn render_fx_rack_modal(
                     // TAB 2: CATEGORIZED EFFECTS LIBRARY DRAWER
                     2 => {
                         render_effects_library_drawer(ui, state, status_msg);
+                    }
+                    // TAB 3: VOCODERNS BAND
+                    3 => {
+                        let changed = render_vocoder_bands(ui, state);
+                        if changed {
+                            let _ = engine.send_command(crate::audio::AudioCommand::SetVocoderBands {
+                                gains: state.vocoder_bands,
+                            });
+                        }
                     }
                     _ => {}
                 }

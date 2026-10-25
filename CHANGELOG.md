@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Vocoderns bandredigerare (0.9.143)
+
+- **🎚 Vocoder** i FX-racket: 16 nivåreglage, ett per band (0–2 där 1,0 är rakt igenom), med
+  bandets mittfrekvens under varje. Det är Vocodex ratt: masterns vocoder kunde tidigare bara väljas
+  till eller från, inte formas.
+- Bandnivåerna ligger i `FxRackState` och sparas i projektfilen (`SavedFxRack.vocoder_bands`, tom i
+  äldre filer = alla band öppna). Kommandot `SetVocoderBands` skickas bara när något ändras.
+- Prov: ett stängt band släpper igenom under 35 % av det öppna, mätt på en bärvåg i bandets egen
+  frekvens.
+
 ### Added — Time Curve (0.9.142)
 
 - **⏱ TIME CURVE** i masterns kedja: Gross Beats tidskurva. Masterns egen historik skrivs i en

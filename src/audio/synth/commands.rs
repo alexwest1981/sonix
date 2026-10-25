@@ -987,6 +987,9 @@ impl SynthEngine {
             AudioCommand::SetMasterVocoder { amount } => {
                 self.vocoder.set_amount(amount);
             }
+            AudioCommand::SetVocoderBands { gains } => {
+                self.vocoder.set_band_gains(gains);
+            }
             AudioCommand::SetTalkback(on) => {
                 self.talkback = on;
             }

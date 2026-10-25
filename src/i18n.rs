@@ -373,6 +373,9 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎚 Vocoder" => "🎚 Vocoder",
+        "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Level per band in the master vocoder: 1.0 is straight through, 0 closes the band. The bands run from 100 Hz to 8 kHz.",
+        "↺ Nollställ banden" => "↺ Reset the bands",
         "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "Gross Beat's time curve: the master's own history is played back slower than real time. FORM picks flat, stutter, tape stop or half speed; TEMPO sets how fast the curve runs. The pitch follows — that is the effect.",
         "📊 Spektrum över urvalet" => "📊 Spectrum of the selection",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Shows which frequencies the selection contains, 40 Hz–16 kHz on a logarithmic axis. Recalculated when the selection or the audio changes.",
@@ -2859,6 +2862,9 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎚 Vocoder" => "🎚 Vocoder",
+        "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Niveau pr. band i masterens vocoder: 1,0 er lige igennem, 0 lukker bandet. Båndene går fra 100 Hz til 8 kHz.",
+        "↺ Nollställ banden" => "↺ Nulstil båndene",
         "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "Gross Beats tidskurve: masterens egen historik afspilles langsommere end realtid. FORM vælger lige, stutter, tape stop eller halv fart; TEMPO styrer, hvor hurtigt kurven løber. Tonehøjden følger med — det er effekten.",
         "📊 Spektrum över urvalet" => "📊 Spektrum over udvalget",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Viser hvilke frekvenser udvalget indeholder, 40 Hz–16 kHz på en logaritmisk akse. Genberegnes når udvalget eller lyden ændres.",
@@ -5304,6 +5310,9 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎚 Vocoder" => "🎚 Vocoder",
+        "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Nivå per band i masterens vocoder: 1,0 er rett gjennom, 0 stenger bandet. Båndene går fra 100 Hz til 8 kHz.",
+        "↺ Nollställ banden" => "↺ Tilbakestill båndene",
         "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "Gross Beats tidskurve: masterens egen historikk spilles av saktere enn realtid. FORM velger rett, stutter, tape stop eller halv fart; TEMPO styrer hvor fort kurven går rundt. Tonehøyden følger med — det er effekten.",
         "📊 Spektrum över urvalet" => "📊 Spektrum over utvalget",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Viser hvilke frekvenser utvalget inneholder, 40 Hz–16 kHz på en logaritmisk akse. Regnes ut på nytt når utvalget eller lyden endres.",
@@ -7749,6 +7758,9 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎚 Vocoder" => "🎚 Vocoder",
+        "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Pegel pro Band im Master-Vocoder: 1,0 ist direkt durch, 0 schließt das Band. Die Bänder reichen von 100 Hz bis 8 kHz.",
+        "↺ Nollställ banden" => "↺ Bänder zurücksetzen",
         "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "Die Zeitkurve von Gross Beat: die eigene Historie des Masters wird langsamer als Echtzeit abgespielt. FORM wählt gerade, Stutter, Tape-Stop oder halbe Geschwindigkeit; TEMPO bestimmt, wie schnell die Kurve läuft. Die Tonhöhe folgt — das ist der Effekt.",
         "📊 Spektrum över urvalet" => "📊 Spektrum der Auswahl",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Zeigt, welche Frequenzen die Auswahl enthält, 40 Hz–16 kHz auf einer logarithmischen Achse. Wird neu berechnet, wenn sich Auswahl oder Audio ändern.",
@@ -10194,6 +10206,9 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎚 Vocoder" => "🎚 Vocoder",
+        "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Nivel por banda en el vocoder del máster: 1,0 es paso directo, 0 cierra la banda. Las bandas van de 100 Hz a 8 kHz.",
+        "↺ Nollställ banden" => "↺ Restablecer las bandas",
         "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "La curva de tiempo de Gross Beat: la propia historia del máster se reproduce más lento que en tiempo real. FORM elige recta, stutter, tape stop o media velocidad; TEMPO fija la rapidez de la curva. El tono la sigue — ese es el efecto.",
         "📊 Spektrum över urvalet" => "📊 Espectro de la selección",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Muestra qué frecuencias contiene la selección, 40 Hz–16 kHz en un eje logarítmico. Se recalcula cuando cambian la selección o el audio.",
@@ -12639,6 +12654,9 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎚 Vocoder" => "🎚 Vocoder",
+        "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Niveau par bande dans le vocoder du master : 1,0 laisse passer, 0 ferme la bande. Les bandes vont de 100 Hz à 8 kHz.",
+        "↺ Nollställ banden" => "↺ Réinitialiser les bandes",
         "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "La courbe de temps de Gross Beat : l'historique du master est relu plus lentement qu'en temps réel. FORM choisit droite, stutter, tape stop ou demi-vitesse ; TEMPO règle la vitesse de la courbe. La hauteur suit — c'est l'effet.",
         "📊 Spektrum över urvalet" => "📊 Spectre de la sélection",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Montre les fréquences contenues dans la sélection, 40 Hz–16 kHz sur un axe logarithmique. Recalculé quand la sélection ou l'audio change.",

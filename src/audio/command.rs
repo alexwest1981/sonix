@@ -627,6 +627,10 @@ pub enum AudioCommand {
     SetMasterVocoder {
         amount: f32,
     },
+    /// Nivå per band i masterns vocoder — formantbandredigeraren. 1,0 = rakt igenom.
+    SetVocoderBands {
+        gains: [f32; 16],
+    },
     /// **Talkback:** micken till monitorerna i stället för in i mastern. Läggs på efter
     /// control room-steget, så den hörs även i DIM och i en cue-buss. Kräver att
     /// mikrofoninspelningen (som fyller ringen) är igång — annars är ringen tom.
