@@ -47,7 +47,7 @@ jobs:
           mkdir -p "dist/${name}"
           cp target/release/sonix "dist/${name}/"
           strip --strip-unneeded "dist/${name}/sonix" || true
-          cp README.md README_SV.md CHANGELOG.md MANUAL.md \
+          cp README.md README_SV.md CHANGELOG.md CHANGELOG-DETAIL.md MANUAL.md \
              LICENSE-MIT LICENSE-APACHE "dist/${name}/"
           tar -C dist -czf "dist/${name}.tar.gz" "${name}"
           ( cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256" )
