@@ -2410,6 +2410,10 @@ impl SonixApp {
                                         self.open_edison_for_selected_region();
                                         ui.close_menu();
                                     }
+                                    if ui.button(crate::i18n::t("🎼 Redigera tonhöjd (Newtone)")).on_hover_text(crate::i18n::t("Analyserar klippets toner och låter dig flytta dem i halvtoner. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig.")).clicked() {
+                                        self.open_newtone_for_selected_region();
+                                        ui.close_menu();
+                                    }
                                     if ui.button(if is_rev { crate::i18n::t("🔄 Återställ riktning (Normal)") } else { crate::i18n::t("🔄 Vänd baklänges (Reverse - Ctrl+K)") }).clicked() {
                                         self.reverse_selected_region();
                                         ui.close_menu();

@@ -669,8 +669,12 @@ pub fn analyze_blobs(
             let midi_f = freq_to_midi(f);
             let snapped = snap_midi_to_scale(midi_f, root, &mask);
             let note = snapped.round().clamp(0.0, 127.0) as u8;
+            // **Fönstret hoppar mer än en step.** 1024 sampel över en sekund blir 160/48000
+            // steg per sampel: ett hopp är ~1,7 steg, så en ton vars start+ längd slutar på
+            // 2 ska fortfarande fortsätta vid steg 3. Utan toleransen blev varje ton en rad
+            // ettstegsstaplar — 52 "toner" för två rena sinustoner (mätt).
             let extend = blobs.last_mut().filter(|b| {
-                b.midi_note == note && b.start_step + b.length_steps >= step
+                b.midi_note == note && step <= b.start_step + b.length_steps + 2
             });
             if let Some(b) = extend {
                 b.length_steps = (step + 1 - b.start_step).max(b.length_steps);
@@ -1795,6 +1799,23 @@ mod tests {
                 "bärvågen ska följa {target:.0} Hz: {measured:.0} Hz"
             );
         }
+    }
+
+    /// **En ton är en stapel, inte en rad av ettstegsklumpar.** Fönstret hoppar ~1,7 steg
+    /// per analysruta, så en ton vars längd slutar på 2 måste fortsätta vid steg 3. Utan
+    /// toleransen blev 1,5 sekunders ren 440 Hz till tiotals "toner" (mätt i Newtone).
+    #[test]
+    fn analyze_blobs_merges_frames_of_the_same_note() {
+        let sr = 48_000.0_f32;
+        let n = (sr * 1.5) as usize;
+        let pcm: Vec<f32> = (0..n)
+            .map(|i| (std::f32::consts::TAU * 440.0 * i as f32 / sr).sin() * 0.5)
+            .collect();
+        let blobs = analyze_blobs(&pcm, sr, 160, 0, 0);
+        assert!(!blobs.is_empty(), "analysen ska hitta tonen");
+        assert!(blobs.len() <= 3, "en ton blev {} staplar", blobs.len());
+        assert_eq!(blobs[0].midi_note, 69, "440 Hz är A4");
+        assert!(blobs[0].length_steps >= 100, "längd {}", blobs[0].length_steps);
     }
 
 }

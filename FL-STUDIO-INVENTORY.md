@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 78** har en motsvarighet, **◐ 57** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 79** har en motsvarighet, **◐ 56** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -213,7 +213,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity X-Y Controller | 2 | ✅ | två spännings-slots på olika mål — en pad är två rattar |
 | Fruity dB Meter | 2 | ✅ | nivåmätarna |
 | Gross Beat | 2 | ◐ | steggrinden + RemixFX (volymkurvan finns i dag, tidskurvan inte) |
-| Newtone | 2 | ◐ | pitch/formant (vocal_harmonizer) |
+| Newtone | 2 | ✅ | `ui::newtone_modal` (0.9.128): kromatisk analys till toner, klick för att välja och ±1 halvton per ton (eller hela frasen), formantbevarande omskrivning via `pitch_shift_variable`. Prov: 220 Hz + 2 halvton = 247 Hz. Arbetar på en kopia → nytt spår. Kvar: dra toner fritt i tid, vibratoverktyg |
 | Patcher | 2 | ✅ | patcher.rs |
 | Spreader | 2 | ◐ | doubler |
 | Wave Candy | 2 | ◐ | spektrum + mätare; ingen oscillator/vectorscope |

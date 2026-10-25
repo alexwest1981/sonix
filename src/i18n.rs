@@ -373,6 +373,16 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Välj ett ljudklipp med ljud först" => "Select an audio clip with sound first",
+        "Redigerat klipp" => "Edited clip",
+        "🎼 Redigera tonhöjd (Newtone)" => "🎼 Edit pitch (Newtone)",
+        "Analyserar klippets toner och låter dig flytta dem i halvtoner. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Analyses the clip's notes and lets you move them in semitones. Works on a copy — a new track is created when you press Create track, and the source clip is never touched.",
+        "Inga toner hittades i klippet" => "No notes were found in the clip",
+        "🎼 NEWTONE — klippets toner" => "🎼 NEWTONE — the clip's notes",
+        "Klicka en ton för att välja den — annars gäller knapparna hela frasen" => "Click a note to select it — otherwise the buttons apply to the whole phrase",
+        "−1 halvton" => "−1 semitone",
+        "+1 halvton" => "+1 semitone",
+        "↺ Nollställ toner" => "↺ Reset notes",
         "Välj ett ljudklipp först" => "Select an audio clip first",
         "Klippet har inget ljud att redigera" => "The clip has no audio to edit",
         "Klippet är för kort att redigera" => "The clip is too short to edit",
@@ -2832,6 +2842,16 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Välj ett ljudklipp med ljud först" => "Vælg et lydklip med lyd først",
+        "Redigerat klipp" => "Redigeret klip",
+        "🎼 Redigera tonhöjd (Newtone)" => "🎼 Rediger tonhøjde (Newtone)",
+        "Analyserar klippets toner och låter dig flytta dem i halvtoner. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Analyserer klippets toner og lader dig flytte dem i halvtoner. Arbejder på en kopi — et nyt spor oprettes, når du trykker Opret spor, og kildeklippet røres aldrig.",
+        "Inga toner hittades i klippet" => "Der blev ikke fundet nogen toner i klippet",
+        "🎼 NEWTONE — klippets toner" => "🎼 NEWTONE — klippets toner",
+        "Klicka en ton för att välja den — annars gäller knapparna hela frasen" => "Klik på en tone for at vælge den — ellers gælder knapperne hele frasen",
+        "−1 halvton" => "−1 halvtone",
+        "+1 halvton" => "+1 halvtone",
+        "↺ Nollställ toner" => "↺ Nulstil toner",
         "Välj ett ljudklipp först" => "Vælg et lydklip først",
         "Klippet har inget ljud att redigera" => "Klippet har ingen lyd at redigere",
         "Klippet är för kort att redigera" => "Klippet er for kort til at redigere",
@@ -5250,6 +5270,16 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Välj ett ljudklipp med ljud först" => "Velg et lydklipp med lyd først",
+        "Redigerat klipp" => "Redigert klipp",
+        "🎼 Redigera tonhöjd (Newtone)" => "🎼 Rediger tonehøyde (Newtone)",
+        "Analyserar klippets toner och låter dig flytta dem i halvtoner. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Analyserer klippets toner og lar deg flytte dem i halvtoner. Arbeider på en kopi — et nytt spor opprettes når du trykker Opprett spor, og kildeklippet røres aldri.",
+        "Inga toner hittades i klippet" => "Fant ingen toner i klippet",
+        "🎼 NEWTONE — klippets toner" => "🎼 NEWTONE — klippets toner",
+        "Klicka en ton för att välja den — annars gäller knapparna hela frasen" => "Klikk på en tone for å velge den — ellers gjelder knappene hele frasen",
+        "−1 halvton" => "−1 halvtone",
+        "+1 halvton" => "+1 halvtone",
+        "↺ Nollställ toner" => "↺ Tilbakestill toner",
         "Välj ett ljudklipp först" => "Velg et lydklipp først",
         "Klippet har inget ljud att redigera" => "Klippet har ingen lyd å redigere",
         "Klippet är för kort att redigera" => "Klippet er for kort til å redigere",
@@ -7668,6 +7698,16 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Välj ett ljudklipp med ljud först" => "Wähle zuerst einen Audioclip mit Ton",
+        "Redigerat klipp" => "Bearbeiteter Clip",
+        "🎼 Redigera tonhöjd (Newtone)" => "🎼 Tonhöhe bearbeiten (Newtone)",
+        "Analyserar klippets toner och låter dig flytta dem i halvtoner. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Analysiert die Noten des Clips und lässt dich sie in Halbtönen verschieben. Arbeitet auf einer Kopie — ein neuer Track entsteht beim Klick auf Track erstellen, der Quellclip bleibt unberührt.",
+        "Inga toner hittades i klippet" => "Im Clip wurden keine Noten gefunden",
+        "🎼 NEWTONE — klippets toner" => "🎼 NEWTONE — die Noten des Clips",
+        "Klicka en ton för att välja den — annars gäller knapparna hela frasen" => "Klicke eine Note an, um sie zu wählen — sonst gelten die Knöpfe für die ganze Phrase",
+        "−1 halvton" => "−1 Halbton",
+        "+1 halvton" => "+1 Halbton",
+        "↺ Nollställ toner" => "↺ Noten zurücksetzen",
         "Välj ett ljudklipp först" => "Wähle zuerst einen Audioclip",
         "Klippet har inget ljud att redigera" => "Der Clip enthält kein Audio zum Bearbeiten",
         "Klippet är för kort att redigera" => "Der Clip ist zu kurz zum Bearbeiten",
@@ -10086,6 +10126,16 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Välj ett ljudklipp med ljud först" => "Selecciona primero un clip de audio con sonido",
+        "Redigerat klipp" => "Clip editado",
+        "🎼 Redigera tonhöjd (Newtone)" => "🎼 Editar tono (Newtone)",
+        "Analyserar klippets toner och låter dig flytta dem i halvtoner. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Analiza las notas del clip y te permite moverlas en semitonos. Trabaja sobre una copia: se crea una pista nueva al pulsar Crear pista y el clip original nunca se toca.",
+        "Inga toner hittades i klippet" => "No se encontraron notas en el clip",
+        "🎼 NEWTONE — klippets toner" => "🎼 NEWTONE — las notas del clip",
+        "Klicka en ton för att välja den — annars gäller knapparna hela frasen" => "Haz clic en una nota para seleccionarla; si no, los botones se aplican a toda la frase",
+        "−1 halvton" => "−1 semitono",
+        "+1 halvton" => "+1 semitono",
+        "↺ Nollställ toner" => "↺ Restablecer notas",
         "Välj ett ljudklipp först" => "Selecciona primero un clip de audio",
         "Klippet har inget ljud att redigera" => "El clip no tiene audio que editar",
         "Klippet är för kort att redigera" => "El clip es demasiado corto para editarlo",
@@ -12504,6 +12554,16 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Välj ett ljudklipp med ljud först" => "Sélectionnez d'abord un clip audio avec du son",
+        "Redigerat klipp" => "Clip édité",
+        "🎼 Redigera tonhöjd (Newtone)" => "🎼 Éditer la hauteur (Newtone)",
+        "Analyserar klippets toner och låter dig flytta dem i halvtoner. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Analyse les notes du clip et vous permet de les déplacer en demi-tons. Travaille sur une copie — une nouvelle piste est créée quand vous cliquez sur Créer une piste, et le clip source n'est jamais modifié.",
+        "Inga toner hittades i klippet" => "Aucune note trouvée dans le clip",
+        "🎼 NEWTONE — klippets toner" => "🎼 NEWTONE — les notes du clip",
+        "Klicka en ton för att välja den — annars gäller knapparna hela frasen" => "Cliquez sur une note pour la sélectionner — sinon les boutons s'appliquent à toute la phrase",
+        "−1 halvton" => "−1 demi-ton",
+        "+1 halvton" => "+1 demi-ton",
+        "↺ Nollställ toner" => "↺ Réinitialiser les notes",
         "Välj ett ljudklipp först" => "Sélectionnez d'abord un clip audio",
         "Klippet har inget ljud att redigera" => "Le clip n'a pas d'audio à éditer",
         "Klippet är för kort att redigera" => "Le clip est trop court pour être édité",

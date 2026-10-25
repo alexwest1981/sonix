@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Newtone (0.9.128)
+
+- **Klippets tonhöjdseditor**: högerklicka ett ljudklipp → *🎼 Redigera tonhöjd (Newtone)*.
+  Klippet analyseras till toner (blobbar) som ritas som staplar på ett tonhöjdsrutnät; ett
+  klick väljer en ton och **−1/+1 halvton** flyttar den (utan vald ton: hela frasen).
+  *Nollställ toner* tar tillbaka alla förskjutningar.
+- Analysen är **kromatisk**, inte skalbunden: editorn visar tonen som den sjöngs. Att snappa
+  till en skala redan i analysen gjorde en C# i A-moll till C eller D beroende på centen, och
+  då flyttade ±1 halvton från fel ton.
+- Precis som Edison arbetar rutan på en **kopia**: *Skapa spår av redigeringen* skriver ett
+  nytt wav i projektets mapp och lägger det som ett nytt spår. Källklippet rörs aldrig.
+- Prov: +2 halvton på 220 Hz ger **247 Hz** i den renderade kopian (mätt med
+  `detect_pitch_hz`), vald ton flyttas utan att grannarna rörs, och tonnamnen följer
+  pianorullen (60 = C4).
+
+### Fixed — tonerna delades i ettstegsklumpar
+
+- `analyze_blobs` förlängde bara en ton när nästa analysruta låg **direkt** efter den, men
+  fönstret hoppar ~1,7 steg per ruta. Varje ton blev därför en rad ettstegsstaplar: 1,5 s ren
+  440 Hz gav tiotals "toner" i stället för en. Toleransen är nu två steg, med prov. Det här
+  rättar också blob-vyn i Vocal Studio, som använder samma analys.
+
 ### Added — Edison (0.9.127)
 
 - **Klippets ljudeditor**: högerklicka ett ljudklipp → *✂ Redigera i Edison (kopia)*.

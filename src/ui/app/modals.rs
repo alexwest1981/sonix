@@ -1823,6 +1823,21 @@ pub(crate) fn render_tuner_modal_view(&mut self, ctx: &egui::Context) {
 }
 
 impl SonixApp {
+    /// **Newtone**: ritar tonhöjdseditorn och tar emot dess beslut. Analysen gjordes när
+    /// rutan öppnades; ingenting skrivs förrän *Skapa spår* trycks.
+    pub(crate) fn render_newtone_modal_view(&mut self, ctx: &egui::Context) {
+        let Some(state) = self.newtone.as_mut() else {
+            return;
+        };
+        match crate::ui::newtone_modal::render_newtone_modal(ctx, state) {
+            crate::ui::newtone_modal::NewtoneAction::None => {}
+            crate::ui::newtone_modal::NewtoneAction::Close => self.newtone = None,
+            crate::ui::newtone_modal::NewtoneAction::Create => self.newtone_create_track(),
+        }
+    }
+}
+
+impl SonixApp {
     /// **Edison**: ritar klippets ljudeditor och tar emot dess beslut. Ingen fil skrivs
     /// förrän *Skapa spår* trycks — rutan är en kopia hela vägen.
     pub(crate) fn render_edison_modal_view(&mut self, ctx: &egui::Context) {
@@ -3496,6 +3511,7 @@ impl SonixApp {
             || self.show_big_clock
             || self.show_dice_generator_modal
             || self.edison.is_some()
+            || self.newtone.is_some()
             || self.show_fx_rack_modal
             || self.show_tempo_modal
             || self.show_song_structure_modal
@@ -4050,6 +4066,7 @@ impl SonixApp {
         self.render_takes_modal(ctx);
         self.render_dice_generator_modal_view(ctx);
         self.render_edison_modal_view(ctx);
+        self.render_newtone_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);
         self.render_song_structure_modal_view(ctx);

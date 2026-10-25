@@ -1232,6 +1232,8 @@ pub enum ScreenshotTarget {
     WavQuestionModal,
     /// Edison: klippets ljudeditor (0.9.127).
     EdisonModal,
+    /// Newtone: klippets tonhöjdseditor (0.9.128).
+    NewtoneModal,
 }
 
 #[derive(Clone, Debug)]
@@ -1295,6 +1297,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::WavQuestionModal, out_dir.join("30_dialog_mp3_eller_wav.png")),
         (ScreenshotTarget::SixOpPanel, out_dir.join("31_syntes_6op.png")),
         (ScreenshotTarget::EdisonModal, out_dir.join("32_edison.png")),
+        (ScreenshotTarget::NewtoneModal, out_dir.join("33_newtone.png")),
     ];
 
     self.screenshot_queue = targets;
@@ -1320,6 +1323,11 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
     self.show_fx_rack_modal = false;
     self.show_song_structure_modal = false;
     self.show_add_track_modal = false;
+    // Redigerarna och mp3-frågan kom efter listan: utan dem ligger föregående skärmdumps
+    // dialog kvar ovanpå nästa bild.
+    self.edison = None;
+    self.newtone = None;
+    self.pending_wav_question = None;
 
     match target {
         ScreenshotTarget::View(vm) => {
@@ -1399,6 +1407,33 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
         ScreenshotTarget::FxRackModal => {
             self.view_mode = ViewMode::PlaylistArranger;
             self.show_fx_rack_modal = true;
+        }
+        ScreenshotTarget::NewtoneModal => {
+            self.view_mode = ViewMode::PlaylistArranger;
+            // Två toner med tystnad emellan: analysen ska hitta två staplar, inte en.
+            let sr = 48_000_u32;
+            let n = sr as usize * 2;
+            let tone = |t: f32, f: f32| (std::f32::consts::TAU * f * t).sin() * 0.5;
+            let left: Vec<f32> = (0..n)
+                .map(|i| {
+                    let t = i as f32 / sr as f32;
+                    if t < 0.7 {
+                        tone(t, 220.0)
+                    } else if t < 1.4 {
+                        tone(t, 277.18)
+                    } else {
+                        0.0
+                    }
+                })
+                .collect();
+            let right = left.clone();
+            self.newtone = Some(crate::ui::newtone_modal::NewtoneState::new(
+                "Demo (Suno AI)".to_string(),
+                left,
+                right,
+                sr,
+                1.0,
+            ));
         }
         ScreenshotTarget::EdisonModal => {
             self.view_mode = ViewMode::PlaylistArranger;

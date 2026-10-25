@@ -647,6 +647,8 @@ pub struct SonixApp {
     pub show_fx_rack_modal: bool,
     /// Edison: klippets ljudeditor. `None` = rutan är stängd.
     pub edison: Option<crate::ui::edison_modal::EdisonState>,
+    /// Newtone: klippets tonhöjdseditor. `None` = rutan är stängd.
+    pub newtone: Option<crate::ui::newtone_modal::NewtoneState>,
     pub fx_rack_state: FxRackState,
     pub show_song_structure_modal: bool,
     /// Scenrutnätet på skärmen (Sprint 1, punkt 5): modellen, kvantiseringen och rutan.
@@ -1279,6 +1281,7 @@ impl SonixApp {
             dice_generator_state: DiceGeneratorState::default(),
             show_fx_rack_modal: false,
             edison: None,
+            newtone: None,
             fx_rack_state: FxRackState::default(),
             show_song_structure_modal: false,
             launcher: crate::audio::launcher::Launcher::new(1, 4, 4),
