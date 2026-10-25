@@ -1230,6 +1230,8 @@ pub enum ScreenshotTarget {
     AboutModal,
     /// Frågan om mp3 eller wav (Fas 8.5).
     WavQuestionModal,
+    /// Edison: klippets ljudeditor (0.9.127).
+    EdisonModal,
 }
 
 #[derive(Clone, Debug)]
@@ -1292,6 +1294,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::AboutModal, out_dir.join("29_dialog_om_sonix.png")),
         (ScreenshotTarget::WavQuestionModal, out_dir.join("30_dialog_mp3_eller_wav.png")),
         (ScreenshotTarget::SixOpPanel, out_dir.join("31_syntes_6op.png")),
+        (ScreenshotTarget::EdisonModal, out_dir.join("32_edison.png")),
     ];
 
     self.screenshot_queue = targets;
@@ -1396,6 +1399,26 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
         ScreenshotTarget::FxRackModal => {
             self.view_mode = ViewMode::PlaylistArranger;
             self.show_fx_rack_modal = true;
+        }
+        ScreenshotTarget::EdisonModal => {
+            self.view_mode = ViewMode::PlaylistArranger;
+            // Skärmdumpen behöver riktigt ljud: en kort syntetisk ton med svans duger
+            // som demo, och gör att vågformen i bilden är editorerns egen.
+            let sr = 48_000_u32;
+            let n = sr as usize * 2;
+            let shape = |i: usize| {
+                let t = i as f32 / n as f32;
+                (i as f32 * 0.05).sin() * 0.6 * (t * std::f32::consts::PI).sin()
+            };
+            let left: Vec<f32> = (0..n).map(shape).collect();
+            let right: Vec<f32> = left.iter().map(|v| -v * 0.8).collect();
+            self.edison = Some(crate::ui::edison_modal::EdisonState::new(
+                "Demo (Suno AI)".to_string(),
+                left,
+                right,
+                sr,
+                1.0,
+            ));
         }
         ScreenshotTarget::SongStructureModal => {
             self.view_mode = ViewMode::PlaylistArranger;

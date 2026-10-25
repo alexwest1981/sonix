@@ -6,6 +6,7 @@ pub mod dance;
 pub mod visualizer;
 pub mod chord_generator_modal;
 pub mod dice_generator_modal;
+pub mod edison_modal;
 pub mod fx_rack_modal;
 pub mod macros_modal;
 pub mod note_color;

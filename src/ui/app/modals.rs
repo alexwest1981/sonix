@@ -1823,6 +1823,21 @@ pub(crate) fn render_tuner_modal_view(&mut self, ctx: &egui::Context) {
 }
 
 impl SonixApp {
+    /// **Edison**: ritar klippets ljudeditor och tar emot dess beslut. Ingen fil skrivs
+    /// förrän *Skapa spår* trycks — rutan är en kopia hela vägen.
+    pub(crate) fn render_edison_modal_view(&mut self, ctx: &egui::Context) {
+        let Some(state) = self.edison.as_mut() else {
+            return;
+        };
+        match crate::ui::edison_modal::render_edison_modal(ctx, state) {
+            crate::ui::edison_modal::EdisonAction::None => {}
+            crate::ui::edison_modal::EdisonAction::Close => self.edison = None,
+            crate::ui::edison_modal::EdisonAction::Create => self.edison_create_track(),
+        }
+    }
+}
+
+impl SonixApp {
 pub(crate) fn render_dice_generator_modal_view(&mut self, ctx: &egui::Context) {
     let p_idx = self.selected_pattern;
     let c_idx = self.selected_channel;
@@ -3480,6 +3495,7 @@ impl SonixApp {
             || self.show_tuner_modal
             || self.show_big_clock
             || self.show_dice_generator_modal
+            || self.edison.is_some()
             || self.show_fx_rack_modal
             || self.show_tempo_modal
             || self.show_song_structure_modal
@@ -4033,6 +4049,7 @@ impl SonixApp {
         self.render_dance_modal(ctx);
         self.render_takes_modal(ctx);
         self.render_dice_generator_modal_view(ctx);
+        self.render_edison_modal_view(ctx);
         self.render_fx_rack_modal_view(ctx);
         self.render_tempo_modal(ctx);
         self.render_song_structure_modal_view(ctx);

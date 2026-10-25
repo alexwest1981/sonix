@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Edison (0.9.127)
+
+- **Klippets ljudeditor**: högerklicka ett ljudklipp → *✂ Redigera i Edison (kopia)*.
+  Vågformen ritas ur klippets eget ljud, och ett drag i den väljer ett urval.
+- Sju operationer på urvalet: **Vänd**, **Normalisera (−1 dB)**, **Tona in**, **Tona ut**,
+  **Tysta**, **Ta bort urvalet** och **Behåll bara urvalet**, plus *Återställ*.
+- **Originalet kan inte förstöras:** redigeringen sker på en kopia i minnet, och först
+  *Skapa spår av redigeringen* skriver ett nytt wav i projektets mapp och lägger det som ett
+  nytt spår — med region som pekar på filen, så det finns kvar efter omstart. Källfilen och
+  källklippet rörs aldrig.
+- Operationerna är rena funktioner i `audio::edison` med fyra prov: vänd två gånger ger
+  originalet, normalisering når sin topp och lämnar tystnad tyst, toning går 0 → 1, och
+  klipp/behåll tar exakt urvalet.
+
 ### Added — Luxeverb (0.9.126)
 
 - `LuxeverbParams` + `Luxeverb` i masterns kedja, sist före limitern: ett **modulerat

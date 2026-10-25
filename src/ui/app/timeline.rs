@@ -455,6 +455,144 @@ pub fn split_selected_region_at_playhead(&mut self) {
 }
 
 impl SonixApp {
+/// **Edison:** kopierar in det valda klippets källjud i editorn.
+///
+/// Ingen fil skrivs och ingenting i projektet ändras här — rutan arbetar på en kopia,
+/// och först *Skapa spår* lägger ett nytt spår bredvid. Källklippet kan alltså inte
+/// förstöras av en redigering som blev fel.
+pub fn open_edison_for_selected_region(&mut self) {
+    let Some((t_idx, r_idx)) = self.selected_audio_region else {
+        self.status_message = crate::i18n::t("Välj ett ljudklipp först").to_string();
+        return;
+    };
+    let Some(track) = self.playlist_tracks.get(t_idx) else { return };
+    let Some(region) = track.regions.get(r_idx) else { return };
+    let region = region.clone();
+
+    // Klippets längd på tidslinjen och hur mycket källfilen är sträckt (Fas 8.10).
+    let len_secs = self
+        .tempo_map()
+        .secs_for_bars_at(region.start_bar as f64, region.length_bars as f64) as f32;
+    let rate = stretch_ratio_for(
+        region.source_bpm,
+        self.tempo_map().bpm_at(region.start_bar as f64),
+    );
+
+    let audio = if let Some((l, r, sr)) = self.playlist_tracks[t_idx].pcm_audio.clone() {
+        Some((l, r, sr))
+    } else if let Some(path) = region.source_path.clone() {
+        load_audio_or_report(&path).map(|(l, r, sr)| {
+            (
+                std::sync::Arc::new(l),
+                std::sync::Arc::new(r),
+                sr,
+            )
+        })
+    } else {
+        None
+    };
+    let Some((l, r, sr)) = audio else {
+        self.status_message = crate::i18n::t("Klippet har inget ljud att redigera").to_string();
+        return;
+    };
+
+    let start = ((region.sample_offset_sec.max(0.0) * sr as f32) as usize).min(l.len());
+    let count = region_source_span_samples(len_secs, rate, sr)
+        .min(l.len().saturating_sub(start))
+        .min(r.len().saturating_sub(start));
+    if count < 2 {
+        self.status_message = crate::i18n::t("Klippet är för kort att redigera").to_string();
+        return;
+    }
+
+    self.edison = Some(crate::ui::edison_modal::EdisonState::new(
+        region.name.clone(),
+        l[start..start + count].to_vec(),
+        r[start..start + count].to_vec(),
+        sr,
+        region.start_bar,
+    ));
+}
+
+/// Skapar ett **nytt spår** av det Edison redigerat: filen skrivs i projektets mapp,
+/// regionen pekar på den (så den finns kvar efter omstart) och motorn får ljudet direkt.
+/// Källklippet och dess fil rörs inte.
+pub fn edison_create_track(&mut self) {
+    let Some(state) = self.edison.take() else { return };
+    let frames = state.work.0.len().min(state.work.1.len());
+    if frames < 2 {
+        self.status_message = crate::i18n::t("Redigeringen är tom").to_string();
+        return;
+    }
+    let sr = state.sample_rate.max(1);
+    let dir = crate::paths::paths().project_assets_dir(&self.project_name);
+    let _ = std::fs::create_dir_all(&dir);
+    let path = dir.join(format!(
+        "{}_edison_{}.wav",
+        crate::autosave::slug(&state.title),
+        crate::autosave::now_stamp()
+    ));
+    let path_str = path.to_string_lossy().to_string();
+    if let Err(e) = crate::audio::write_stem_wav(
+        &path_str,
+        &state.work.0[..frames],
+        &state.work.1[..frames],
+        sr,
+    ) {
+        self.status_message = crate::tstatus!("⚠️ Edison kunde inte skriva filen: {}", e);
+        self.edison = Some(state);
+        return;
+    }
+
+    self.push_undo(crate::i18n::t("Edison: redigerat klipp"));
+    let name = format!("{} (Edison)", state.title);
+    let secs = frames as f32 / sr as f32;
+    let bars = self
+        .tempo_map()
+        .bars_for_secs_at(state.start_bar as f64, secs as f64) as f32;
+    let next_id = self
+        .playlist_tracks
+        .iter()
+        .flat_map(|t| t.regions.iter())
+        .map(|r| r.id)
+        .max()
+        .unwrap_or(0)
+        + 1;
+    let color = crate::ui::theme::palette().purple();
+    let mut track = PlaylistTrack::new(name.clone(), "✂", TrackKind::CustomAudio, color);
+    track.pcm_audio = Some((
+        std::sync::Arc::new(state.work.0),
+        std::sync::Arc::new(state.work.1),
+        sr,
+    ));
+    track.regions = vec![AudioRegion {
+        id: next_id,
+        name: name.clone(),
+        start_bar: state.start_bar,
+        length_bars: bars.max(0.25),
+        sample_offset_sec: 0.0,
+        source_path: Some(path_str),
+        waveform_peaks: Vec::new(),
+        volume: 1.0,
+        fade_in_bars: 0.0,
+        fade_out_bars: 0.0,
+        muted: false,
+        is_reverse: false,
+        color,
+        loop_length_bars: 0.0,
+        // Redigeringen är rå ljuddata: okänt tempo betyder att tempot inte sträcker den.
+        source_bpm: 0.0,
+        tape: false,
+        warp_mode: Default::default(),
+    }];
+    self.playlist_tracks.push(track);
+    let idx = self.playlist_tracks.len() - 1;
+    self.sync_track_stem_to_engine(idx);
+    self.sync_track_regions(idx);
+    self.selected_timeline_track = idx;
+    self.status_message = crate::tstatus!("✂ '{}' skapad ur redigeringen ({:.1} s)", name, secs);
+}
+
 pub fn save_region_to_sound_browser(&mut self, track_idx: usize, region_idx: usize) {
     if track_idx >= self.playlist_tracks.len() || region_idx >= self.playlist_tracks[track_idx].regions.len() {
         return;

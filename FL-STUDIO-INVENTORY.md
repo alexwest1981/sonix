@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 77** har en motsvarighet, **◐ 58** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 78** har en motsvarighet, **◐ 57** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -175,7 +175,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Distructor | 37 | ✅ | `Distructor` — tre kurvor (mättnad, klippning, vikning) i serie eller parallellt, tonläge efter |
 | Fruity Love Philter | 23 | ✅ | `LovePhilter` (0.9.125): tre filter i serie — lågpass under, bandpass i mitten, högpass över — kring en gemensam brytfrekvens, med SPREAD i oktaver och en envelopföljare som flyttar banken upp till fyra oktaver. Prov: 1 kHz passerar medan 8 kHz dämpas; envelopen öppnar banken och stänger sig i tystnad. De 43 förvalen är inte lästa |
 | Pitcher | 22 | ◐ | vocal_harmonizer med formantbevarande pitch |
-| Edison | 20 | ◐ | recordern; ingen vågformseditor med verktyg |
+| Edison | 20 | ✅ | `ui::edison_modal` (0.9.127): vågform med dragbart urval och sju operationer (vänd, normalisera, tona in/ut, tysta, ta bort, behåll). Redigerar en **kopia** och lägger resultatet som ett nytt spår — källfilen rörs aldrig. Kvar: spektralvy, loopverktyg och destruktiv redigering på plats |
 | Maximus | 15 | ◐ | multibandskompressorn (byggd i dag) är 3 band; Maximus har fler + kurvor |
 | Vocodex | 13 | ◐ | `vocode` — 16 band, 100 Hz–8 kHz, bärvågen följer sången; ingen formantbandredigerare |
 | Soundgoodizer | 5 | ◐ | saturator + kompressor |

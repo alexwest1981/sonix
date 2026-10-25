@@ -2406,6 +2406,10 @@ impl SonixApp {
                                         self.save_region_to_sound_browser(sel_t, sel_r);
                                         ui.close_menu();
                                     }
+                                    if ui.button(crate::i18n::t("✂ Redigera i Edison (kopia)")).on_hover_text(crate::i18n::t("Välj ett urval i vågformen och vänd, normalisera, tona, tysta eller beskär. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig.")).clicked() {
+                                        self.open_edison_for_selected_region();
+                                        ui.close_menu();
+                                    }
                                     if ui.button(if is_rev { crate::i18n::t("🔄 Återställ riktning (Normal)") } else { crate::i18n::t("🔄 Vänd baklänges (Reverse - Ctrl+K)") }).clicked() {
                                         self.reverse_selected_region();
                                         ui.close_menu();

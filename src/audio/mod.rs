@@ -11,6 +11,7 @@ pub mod script;
 pub mod control_room;
 pub mod dither;
 pub mod drum;
+pub mod edison;
 pub mod effects;
 pub mod engine;
 pub mod envelope;
@@ -96,7 +97,7 @@ pub use envelope::AdsrParams;
 #[allow(unused_imports)]
 pub use exporter::{
     build_offline_engine, load_timeline_into_engine, render_project_offline, sanitize_filename,
-    write_export, write_export_with, DitherSettings, ExportFormat, ExportMeta, FxState, PatternSnap, RackChannel, RenderSpec,
+    write_export, write_export_with, write_stem_wav, DitherSettings, ExportFormat, ExportMeta, FxState, PatternSnap, RackChannel, RenderSpec,
     SynthVoiceState, TrackAudioSnap, TrackRole, TrackSnap, VoiceSpec,
 };
 #[allow(unused_imports)]
