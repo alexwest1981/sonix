@@ -206,4 +206,27 @@ mod tests {
     }
 
 
+    /// **Ände-till-ände:** rendera en tidsredigerad kopia, skriv den som wav och läs tillbaka
+    /// den. Det är vägen *Skapa spår* tar, och den hade aldrig körts i ett prov.
+    #[test]
+    fn the_rendered_copy_survives_a_round_trip_through_a_wav_file() {
+        let sr = 48_000.0_f32;
+        let l = sine(2.0, 220.0, sr);
+        let mut warp = Warp::new(2.0);
+        warp.end_out_sec = 1.0;
+        let (out_l, out_r) = render(&l, &l, sr, &warp);
+        let path = std::env::temp_dir().join("sonix_newtime_round_trip.wav");
+        let path_str = path.to_string_lossy().to_string();
+        crate::audio::write_stem_wav(&path_str, &out_l, &out_r, sr as u32)
+            .expect("wav-filen ska gå att skriva");
+        let (rl, rr, rsr) = crate::audio::wav_reader::load_wav_pcm(&path_str)
+            .expect("den skrivna filen ska gå att läsa");
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(rsr, sr as u32);
+        let secs = rl.len() as f32 / rsr as f32;
+        assert!((secs - 1.0).abs() < 0.02, "längden blev {secs:.3} s");
+        assert_eq!(rl.len(), rr.len(), "kanalerna ska vara lika långa");
+    }
+
 }
