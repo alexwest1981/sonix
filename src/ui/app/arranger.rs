@@ -382,13 +382,17 @@ impl SonixApp {
                             with_tempo
                         )
                     };
+                    let mut bpm_edit = self.bpm;
                     let tempo_field = ui.put(
                         bpm_rect.shrink2(Vec2::new(4.0, 2.0)),
-                        egui::DragValue::new(&mut self.bpm)
+                        egui::DragValue::new(&mut bpm_edit)
                             .speed(0.5)
                             .range(40.0..=280.0)
                             .suffix(" BPM"),
                     );
+                    if tempo_field.changed() {
+                        self.set_project_bpm(bpm_edit);
+                    }
                     tempo_field.on_hover_text(tempo_hover);
 
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎯 TAP")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().track_orange())).on_hover_text(crate::i18n::t("Klicka i takt för att sätta tempo (Tap Tempo)")).clicked() {
@@ -450,13 +454,17 @@ impl SonixApp {
             ui.group(|ui| {
                 ui.set_height(26.0);
                 ui.horizontal(|ui| {
-                    ui.add(
-                        egui::DragValue::new(&mut self.bpm)
+                    let mut bpm_edit = self.bpm;
+                    let bpm_resp = ui.add(
+                        egui::DragValue::new(&mut bpm_edit)
                             .range(40.0..=240.0)
                             .speed(0.2)
                             .suffix(" BPM"),
-                    )
-                    .on_hover_text(crate::i18n::t("Projektets tempo"));
+                    );
+                    if bpm_resp.changed() {
+                        self.set_project_bpm(bpm_edit);
+                    }
+                    bpm_resp.on_hover_text(crate::i18n::t("Projektets tempo"));
                     ui.separator();
                     ui.label(
                         egui::RichText::new(crate::ui::big_clock::bar_beat_step(

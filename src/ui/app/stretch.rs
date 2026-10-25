@@ -398,6 +398,18 @@ impl SonixApp {
 /// avbild av sanningen, inte en andra sanning: `tempo_map()` läser kartan.
 /// Skälet att spegla är att resten av appen visar `bpm`, och en siffra som
 /// visar något annat än det som hörs är en lögn.
+/// **Projektets tempo: ett ställe som rör både siffran och kartan.**
+///
+/// Tempofälten skrev `bpm` direkt. Så länge projektet saknade en tempokarta gick det bra
+/// (`tempo_map()` faller tillbaka på `bpm`), men så fort kartan fanns fortsatte tiden på
+/// kartans gamla tempo medan rutan visade det nya: rutan sa 125, listan och ljudet sa 120.
+/// Skrivningen går därför genom kartan, punkt 0 — samma funktion som tempobytena använder.
+pub(crate) fn set_project_bpm(&mut self, bpm: f32) {
+    let bpm = bpm.clamp(40.0, 280.0);
+    crate::audio::tempo::set_tempo_point(&mut self.tempo_points, 0, bpm);
+    self.bpm = bpm;
+}
+
 pub(crate) fn set_tempo_point(&mut self, bar: u32, bpm: f32) {
     crate::audio::tempo::set_tempo_point(&mut self.tempo_points, bar, bpm);
     self.bpm = self.tempo_map().bpm_at(0.0);
@@ -1260,7 +1272,7 @@ pub fn tap_tempo(&mut self) {
         let avg_interval = total_time / n as f32;
         if avg_interval > 0.15 && avg_interval < 2.5 {
             let calculated_bpm = (60.0 / avg_interval).clamp(40.0, 260.0);
-            self.bpm = (calculated_bpm * 10.0).round() / 10.0;
+            self.set_project_bpm((calculated_bpm * 10.0).round() / 10.0);
             self.status_message = crate::tstatus!("🎯 Tap Tempo: {:.1} BPM ({} tryck)", self.bpm, self.tap_tempo_times.len());
         }
     }

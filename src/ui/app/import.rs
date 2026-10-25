@@ -581,6 +581,8 @@ pub fn import_audio_file_as_track(&mut self, path: &str, tmpl: &TrackTemplate) {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| crate::i18n::t("Importerat ljud").to_string());
 
+    // Tempot mäts ur ljudet. Utan siffran står klippet still när projektets tempo ändras.
+    let detected_bpm = crate::audio::tempo_detect::detect_bpm(&l, sr as f32).unwrap_or(0.0);
     let arc_l = std::sync::Arc::new(l);
     let arc_r = std::sync::Arc::new(r);
     let new_id = self.playlist_tracks.len() + 1;
@@ -594,7 +596,8 @@ pub fn import_audio_file_as_track(&mut self, path: &str, tmpl: &TrackTemplate) {
     track.pcm_audio = Some((arc_l, arc_r, sr));
     track.custom_clip_name = Some(clean_name.clone());
     track.regions = vec![AudioRegion {
-        source_bpm: 0.0, // filens tempo är okänt → rör inte ljudet (8.10)
+        // Mätt tempo om det gick; 0 = okänt, och då rörs ljudet inte (8.10).
+        source_bpm: detected_bpm,
         tape: false,
         id: new_id,
         name: clean_name.clone(),
@@ -616,13 +619,24 @@ pub fn import_audio_file_as_track(&mut self, path: &str, tmpl: &TrackTemplate) {
     self.playlist_tracks.push(track);
     let idx = self.playlist_tracks.len() - 1;
     self.sync_track_stem_to_engine(idx);
-    self.status_message = crate::tstatus!(
-        "📁 Importerade '{}' som spår {} ({:.1}s, {} Hz)",
-        clean_name,
-        idx + 1,
-        duration_secs,
-        sr
-    );
+    self.status_message = if detected_bpm > 0.0 {
+        crate::tstatus!(
+            "📁 Importerade '{}' som spår {} ({:.1}s, {} Hz, {:.0} BPM)",
+            clean_name,
+            idx + 1,
+            duration_secs,
+            sr,
+            detected_bpm
+        )
+    } else {
+        crate::tstatus!(
+            "📁 Importerade '{}' som spår {} ({:.1}s, {} Hz) — inget tempo hittat",
+            clean_name,
+            idx + 1,
+            duration_secs,
+            sr
+        )
+    };
 }
 }
 
@@ -1368,7 +1382,7 @@ pub fn apply_imported_stems(&mut self, res: StemImportResult) {
     self.ensure_mic_track_exists();
     let total_tracks_len = self.playlist_tracks.len();
     self.project_name = res.project_title.clone();
-    self.bpm = res.bpm;
+    self.set_project_bpm(res.bpm);
     self.loop_start_bar = 0;
     self.loop_end_bar = (res.max_stem_bars.ceil() as usize).max(32);
     for t_idx in 0..self.playlist_tracks.len() {

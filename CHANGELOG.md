@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — tempot: mätt vid import och ett enda ställe att skriva det (0.9.144)
+
+- **Importerad mp3 mäts nu.** `audio::tempo_detect::detect_bpm` räknar energi per bildruta →
+  onsets → autokorrelation över 60–190 BPM, med oktaffelkorrigering (125 slås fast, inte 250).
+  Prov: klick i 90, 125 och 140 BPM mäts inom 2 BPM; tystnad och en utdragen ton ger inget tempo.
+  Siffran hamnar i klippets `source_bpm`, så det kan följa projektets tempo — förut var den alltid 0
+  och klippet stod still. Statusraden säger vad som mättes.
+- **Tempofälten skrev bara siffran, inte tempokartan.** Så länge projektet saknade en karta gick det
+  bra (`tempo_map()` faller tillbaka på `bpm`), men med en karta fortsatte tiden på kartans gamla
+  tempo medan rutan visade det nya — rutan sa 125, listan och ljudet sa 120. Alla fem ställen
+  (två fält i arrangören, tap tempo, groove-förval, stämimport) går nu genom `set_project_bpm`, som
+  skriver punkt 0 i kartan och siffran tillsammans.
+
 ### Added — Vocoderns bandredigerare (0.9.143)
 
 - **🎚 Vocoder** i FX-racket: 16 nivåreglage, ett per band (0–2 där 1,0 är rakt igenom), med

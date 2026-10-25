@@ -668,7 +668,7 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                     }
                     ui.horizontal(|ui| {
                         if ui.button(crate::i18n::t("⚡ Sätt BPM")).clicked() {
-                            self.bpm = bpm;
+                            self.set_project_bpm(bpm);
                             self.swing = swing;
                             self.status_message = crate::tstatus!("Satte tempo till {} BPM med {:.0}% swing", bpm, swing * 100.0);
                         }
