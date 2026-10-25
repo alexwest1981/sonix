@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — fabriksljud i FLEX (0.9.158)
+
+- **Åtta ljud som följer med appen**, ovanför användarens egen bank i bläddraren: init, bas, pad,
+  pluck, lead, stråke (Sakura), gitarr (Slayer) och klocka (Ogun). ▶ lyssnar, **Ladda** lägger dem
+  i reglagen. De ligger i koden och inte i `flex_presets.json` — annars hade de gått att radera och
+  kommit tillbaka vid nästa start.
+- Prov: `the_factory_presets_are_distinct` kräver att inget par delar vågform, filter och attack —
+  åtta förval som låter likadant är åtta rader skräp.
+
 ### Added — ritbara volymkurvor per band i Maximus (0.9.157)
 
 - **Fliken 📈 Kurvor** i FX-racket: tre ytor (LOW/MID/HIGH), 16 punkter över en takt, dra för att

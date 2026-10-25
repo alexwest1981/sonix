@@ -564,6 +564,43 @@ pub(crate) fn render_browser_sidebar(&mut self, ui: &mut egui::Ui) {
                 {
                     self.save_flex_preset();
                 }
+                // Fabriken: ljuden som följer med appen, ovanför användarens egen bank.
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("Fabrik"))
+                        .size(Theme::FONT_XS)
+                        .color(crate::ui::theme::palette().text_muted()),
+                );
+                for preset in crate::audio::flex::factory_presets() {
+                    if !self.browser_search.is_empty()
+                        && !preset.name.to_lowercase().contains(&self.browser_search.to_lowercase())
+                    {
+                        continue;
+                    }
+                    let settings = preset.settings;
+                    ui.horizontal(|ui| {
+                        if ui
+                            .button(crate::i18n::t("▶"))
+                            .on_hover_text(crate::i18n::t("Lyssna på preset med en testton"))
+                            .clicked()
+                        {
+                            self.apply_flex_settings(settings);
+                            let _ = self.engine.send_command(AudioCommand::NoteOn {
+                                note: 60,
+                                freq: 261.63,
+                                velocity: 0.85,
+                                channel: 0,
+                            });
+                        }
+                        if ui.button(crate::i18n::t("Ladda")).clicked() {
+                            self.apply_flex_settings(settings);
+                        }
+                        ui.label(
+                            egui::RichText::new(&preset.name)
+                                .size(Theme::FONT_XS)
+                                .color(crate::ui::theme::palette().text()),
+                        );
+                    });
+                }
                 if self.flex_presets.is_empty() {
                     ui.label(
                         egui::RichText::new(crate::i18n::t("Inga sparade ljud än"))
