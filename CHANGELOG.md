@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — ritbara volymkurvor per band i Maximus (0.9.157)
+
+- **Fliken 📈 Kurvor** i FX-racket: tre ytor (LOW/MID/HIGH), 16 punkter över en takt, dra för att
+  rita. Kurvan är sluten, så en pump går runt utan hopp, och den går i **låtens tempo** (samma
+  `project_bpm` som tidskurvan). Sparas i projektet (`SavedFxRack.multiband_curves`, 48 tal; äldre
+  filer får raka kurvor).
+- DSP: `MultibandParams.curves` + `curve_bpm`, fas i takter, och bandets kurva läggs på efter
+  kompressionen. Prov: `a_band_curve_opens_over_the_bar` (0 i första halvan, 1 i andra → 20× mer
+  energi sent) och `the_band_curves_reach_the_params_at_the_song_tempo`.
+- Skärmdump `38_band_curves.png`.
+
 ### Fixed — exporten får låtens tempo, inte 120 (0.9.156)
 
 - **`master_fx_params_at(bpm)`:** `project_bpm` speglades bara i `frame.rs`, så en batch-export som

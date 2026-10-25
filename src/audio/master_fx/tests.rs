@@ -290,6 +290,35 @@
 
 
 
+
+    /// **Bandets kurva hörs i tiden.** En kurva som är 0 i första halvan av takten och 1 i andra
+    /// ska tysta basbandet i början — annars är kurvan bara en bild.
+    #[test]
+    fn a_band_curve_opens_over_the_bar() {
+        let sr = 48_000.0;
+        let bpm = 120.0_f32;
+        let mut mb = MultibandCompressor::new(sr);
+        let mut curves = [[1.0_f32; 16]; 3];
+        for (i, v) in curves[0].iter_mut().enumerate() {
+            *v = if i < 8 { 0.0 } else { 1.0 };
+        }
+        mb.set_params(MultibandParams { curves, curve_bpm: bpm, ..MultibandParams::default() });
+
+        // En takt i 120 BPM = 2 s = 96 000 sampel; mät första och andra halvan.
+        let mut early = 0.0f32;
+        let mut late = 0.0f32;
+        let mut out = Vec::new();
+        for i in 0..96_000 {
+            let t = i as f32 / sr;
+            let x = 0.5 * (t * 100.0 * std::f32::consts::TAU).sin();
+            let (l, _) = mb.process(x, x);
+            out.push(l);
+        }
+        for v in &out[4_000..44_000] { early += v * v; }
+        for v in &out[52_000..92_000] { late += v * v; }
+        assert!(late > early * 20.0, "kurvan öppnade inte: tidig {early:.1} sen {late:.1}");
+    }
+
     /// **Solo isolerar bandet.** Med 100 Hz och 5 kHz in ska solo på low lämna basen kvar och
     /// tysta diskanten — annars är det ingen solo, bara en ratt.
     #[test]

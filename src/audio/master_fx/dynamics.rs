@@ -278,6 +278,11 @@ pub struct MultibandParams {
     /// **Solo per band** (FL:s Solo-knapp). 0 = av, 1–3 = bara det bandet hörs. Att ställa in
     /// ett band utan att höra det ensamt är att gissa; det är därför solo finns.
     pub solo_band: u8,
+    /// **Volymkurva per band** (FL: ritbara kurvor): 16 punkter 0–1 över en takt. Kurvan är
+    /// sluten, så en pump som går runt hoppar inte. 1,0 överallt = rakt igenom.
+    pub curves: [[f32; 16]; 3],
+    /// Tempot kurvorna går i — projektets, speglat från appen.
+    pub curve_bpm: f32,
 }
 
 impl Default for MultibandParams {
@@ -294,6 +299,8 @@ impl Default for MultibandParams {
             master_amount: 0.0,
             master_offset_db: 0.0,
             solo_band: 0,
+            curves: [[1.0; 16]; 3],
+            curve_bpm: 120.0,
         }
     }
 }
@@ -351,6 +358,8 @@ pub struct MultibandCompressor {
     bands: [Compressor; 3],
     /// Master-bandet: en kompressor över summan, efter de tre banden.
     master: Compressor,
+    /// Kurvornas fas i takter (0–1). Går runt en gång per takt.
+    phase: f32,
     params: MultibandParams,
 }
 
@@ -368,6 +377,7 @@ impl MultibandCompressor {
                 Compressor::new(sample_rate),
             ],
             master: Compressor::new(sample_rate),
+            phase: 0.0,
             params,
         }
     }
@@ -388,6 +398,9 @@ impl MultibandCompressor {
         let dry = [(ll, rl), (lm, rm), (lh, rh)];
 
         let p = self.params;
+        let phase = self.phase;
+        // En takt per varv: 240/bpm sekunder per takt, alltså bpm/240 takter per sekund.
+        self.phase = (self.phase + p.curve_bpm.max(20.0) / 240.0 / self.sample_rate).fract();
 
         // Solo: bara det valda bandet hörs, och det hörs torrt — kompressionen är det man
         // vill bedöma, inte maskera.
@@ -407,8 +420,10 @@ impl MultibandCompressor {
             };
             let (wl, wr) = self.bands[i].process(*dl, *dr, &band_params);
             let a = p.amounts[i].clamp(0.0, 1.0);
-            out.0 += dl + a * (wl - dl);
-            out.1 += dr + a * (wr - dr);
+            // Bandets egen volymkurva, efter kompressionen: det är så en pump läggs på.
+            let v = crate::audio::modulation::curve_at(&p.curves[i], phase).clamp(0.0, 1.0);
+            out.0 += (dl + a * (wl - dl)) * v;
+            out.1 += (dr + a * (wr - dr)) * v;
         }
 
         // Master-bandet sist: det hör summan, inte delarna.

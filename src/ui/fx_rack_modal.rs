@@ -61,6 +61,8 @@ pub struct FxRackState {
     /// Nivå per band i masterns vocoder (16 band, 100 Hz–8 kHz), 0…2 där 1,0 är rakt igenom.
     /// Det är formantbandredigeraren — Vocodex ratt, men för hela kedjans vocoder.
     pub vocoder_bands: [f32; 16],
+    /// **Maximus volymkurvor**, en per band, 16 punkter 0–1 över en takt.
+    pub multiband_curves: [[f32; 16]; 3],
 }
 
 impl Default for FxRackState {
@@ -537,6 +539,7 @@ impl Default for FxRackState {
             selected_preset: 0,
             active_tab: 0,
             vocoder_bands: [1.0; 16],
+            multiband_curves: [[1.0; 16]; 3],
             search_query: String::new(),
             selected_category: "Alla",
             eq_nodes: vec![
@@ -659,6 +662,8 @@ impl FxRackState {
             master_amount: mb_extra(5),
             // SOLO: 0 = av, 0,33 = low, 0,66 = mid, 1 = high.
             solo_band: (mb_extra(6) * 3.0).round().clamp(0.0, 3.0) as u8,
+            curves: self.multiband_curves,
+            curve_bpm: self.project_bpm,
             ..MultibandParams::default()
         };
 
@@ -1147,6 +1152,76 @@ fn render_vocoder_bands(ui: &mut Ui, state: &mut FxRackState) -> bool {
     changed
 }
 
+
+/// **Maximus volymkurvor** — tre band, sexton punkter var, en takt långa. Dra i ytan för att
+/// rita; kurvan är sluten så en pump kan gå runt utan hopp. Returen säger om något ändrades.
+fn render_band_curves(ui: &mut Ui, state: &mut FxRackState) -> bool {
+    let mut changed = false;
+    ui.label(
+        egui::RichText::new(crate::i18n::t(
+            "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom.",
+        ))
+        .size(Theme::FONT_S)
+        .color(crate::ui::theme::palette().text_muted()),
+    );
+    ui.add_space(6.0);
+    let names = ["LOW", "MID", "HIGH"];
+    for (band, curve) in state.multiband_curves.iter_mut().enumerate() {
+        ui.label(
+            egui::RichText::new(names[band])
+                .size(Theme::FONT_S)
+                .color(crate::ui::theme::palette().text()),
+        );
+        let (rect, resp) = ui.allocate_exact_size(
+            Vec2::new(ui.available_width().max(240.0), 64.0),
+            egui::Sense::click_and_drag(),
+        );
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, Rounding::same(4.0), crate::ui::theme::palette().bg());
+        // Mittenlinjen (0,5) som riktmärke.
+        painter.line_segment(
+            [
+                egui::pos2(rect.left(), rect.center().y),
+                egui::pos2(rect.right(), rect.center().y),
+            ],
+            Stroke::new(1.0_f32, crate::ui::theme::palette().border()),
+        );
+        let point_at = |i: usize, v: f32| {
+            egui::pos2(
+                rect.left() + rect.width() * i as f32 / 16.0,
+                rect.bottom() - rect.height() * v.clamp(0.0, 1.0),
+            )
+        };
+        let mut prev = point_at(0, curve[0]);
+        for i in 1..=16 {
+            let p = point_at(i, curve[i % 16]);
+            painter.line_segment(
+                [prev, p],
+                Stroke::new(2.0_f32, crate::ui::theme::palette().orange()),
+            );
+            prev = p;
+        }
+        if (resp.dragged() || resp.clicked())
+            && let Some(pos) = resp.interact_pointer_pos()
+        {
+                let idx = (((pos.x - rect.left()) / rect.width()) * 16.0).floor() as isize;
+                if (0..16).contains(&idx) {
+                    let v = ((rect.bottom() - pos.y) / rect.height()).clamp(0.0, 1.0);
+                if (curve[idx as usize] - v).abs() > 1e-4 {
+                    curve[idx as usize] = v;
+                    changed = true;
+                }
+            }
+        }
+    }
+    ui.add_space(4.0);
+    if ui.button(crate::i18n::t("↺ Nollställ kurvorna")).clicked() {
+        state.multiband_curves = [[1.0; 16]; 3];
+        changed = true;
+    }
+    changed
+}
+
 pub fn render_fx_rack_modal(
     ctx: &egui::Context,
     open: &mut bool,
@@ -1183,6 +1258,8 @@ pub fn render_fx_rack_modal(
                     // Flikarna får hela raden: låg den dekorativa rubriken kvar tog fyra flikar
                     // slut på bredden och ritades ovanpå varandra (sett i skärmdump 37).
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        let curve_btn = ui.selectable_label(state.active_tab == 4, crate::i18n::t("📈 Kurvor"));
+                        if curve_btn.clicked() { state.active_tab = 4; }
                         let voc_btn = ui.selectable_label(state.active_tab == 3, crate::i18n::t("🎚 Vocoder"));
                         if voc_btn.clicked() { state.active_tab = 3; }
                         let lib_btn = ui.selectable_label(state.active_tab == 2, crate::i18n::t("🗂 Effektbibliotek"));
@@ -1285,6 +1362,10 @@ pub fn render_fx_rack_modal(
                     // TAB 2: CATEGORIZED EFFECTS LIBRARY DRAWER
                     2 => {
                         render_effects_library_drawer(ui, state, status_msg);
+                    }
+                    // TAB 4: MAXIMUS VOLYMKURVOR
+                    4 => {
+                        render_band_curves(ui, state);
                     }
                     // TAB 3: VOCODERNS BAND
                     3 => {
@@ -2261,6 +2342,19 @@ mod tests {
         assert!((state.master_fx_params_at(133.0).time_curve.bpm - 133.0).abs() < 0.01);
         // Anropet får inte smitta rackets eget läge.
         assert!((state.project_bpm - 120.0).abs() < 1e-6);
+    }
+
+    /// **Kurvorna når parametrarna, i låtens tempo.** Editorn ritar i `FxRackState`; det här är
+    /// länken till DSP:n — utan den är kurvan bara en bild.
+    #[test]
+    fn the_band_curves_reach_the_params_at_the_song_tempo() {
+        let mut state = FxRackState::default();
+        state.multiband_curves[0][3] = 0.25;
+        state.multiband_curves[2][15] = 0.0;
+        let p = state.master_fx_params_at(133.0).multiband;
+        assert!((p.curves[0][3] - 0.25).abs() < 1e-6, "low[3] = {}", p.curves[0][3]);
+        assert!(p.curves[2][15].abs() < 1e-6, "high[15] = {}", p.curves[2][15]);
+        assert!((p.curve_bpm - 133.0).abs() < 0.01, "tempo: {}", p.curve_bpm);
     }
 
 }

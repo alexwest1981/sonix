@@ -269,6 +269,9 @@ pub struct SavedFxRack {
     /// Vocoderns bandnivåer. Tom i äldre filer → alla band öppna.
     #[serde(default)]
     pub vocoder_bands: Vec<f32>,
+    /// Maximus tre volymkurvor, plattade (3 × 16). Tom i äldre filer → alla raka.
+    #[serde(default)]
+    pub multiband_curves: Vec<f32>,
 }
 
 impl SavedFxRack {
@@ -302,6 +305,7 @@ impl SavedFxRack {
             convolver_gain_db: state.convolver_gain_db,
             convolver_ir_name: state.convolver_ir_name.clone(),
             vocoder_bands: state.vocoder_bands.to_vec(),
+            multiband_curves: state.multiband_curves.iter().flatten().copied().collect(),
         }
     }
 
@@ -329,6 +333,14 @@ impl SavedFxRack {
         }
         for (slot, saved) in state.vocoder_bands.iter_mut().zip(self.vocoder_bands.iter()) {
             *slot = saved.clamp(0.0, 2.0);
+        }
+        if self.multiband_curves.len() == 48 {
+            for band in 0..3 {
+                for point in 0..16 {
+                    state.multiband_curves[band][point] =
+                        self.multiband_curves[band * 16 + point].clamp(0.0, 1.0);
+                }
+            }
         }
         if self.compressor_release_ms > 0.0 {
             state.compressor_release_ms = self.compressor_release_ms;
@@ -1233,6 +1245,8 @@ pub enum ScreenshotTarget {
     FxRackModal,
     /// Vocoderns band i FX-racket (0.9.143).
     VocoderBands,
+    /// Maximus volymkurvor (0.9.157).
+    BandCurves,
     SongStructureModal,
     AddTrackModal,
     HelpGuideModal,
@@ -1306,6 +1320,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::DiceGeneratorModal, out_dir.join("24_dialog_tarning_generator.png")),
         (ScreenshotTarget::FxRackModal, out_dir.join("25_dialog_modular_fx_rack.png")),
         (ScreenshotTarget::VocoderBands, out_dir.join("37_vocoder_bands.png")),
+        (ScreenshotTarget::BandCurves, out_dir.join("38_band_curves.png")),
         (ScreenshotTarget::SongStructureModal, out_dir.join("26_dialog_latstruktur_arrangemang.png")),
         (ScreenshotTarget::AddTrackModal, out_dir.join("27_dialog_lagg_till_spar.png")),
         (ScreenshotTarget::HelpGuideModal, out_dir.join("28_dialog_hjalpguide_manual.png")),
@@ -1436,6 +1451,18 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
                 }
             }
             self.fx_rack_state.active_tab = 0;
+            self.show_fx_rack_modal = true;
+        }
+        ScreenshotTarget::BandCurves => {
+            self.view_mode = ViewMode::PlaylistArranger;
+            // En pump på low och en duck på high, så bilden visar kurvor i arbete.
+            for i in 0..16 {
+                self.fx_rack_state.multiband_curves[0][i] =
+                    if i % 4 == 0 { 0.15 } else { 1.0 };
+                self.fx_rack_state.multiband_curves[2][i] =
+                    1.0 - 0.7 * (i as f32 / 15.0);
+            }
+            self.fx_rack_state.active_tab = 4;
             self.show_fx_rack_modal = true;
         }
         ScreenshotTarget::VocoderBands => {

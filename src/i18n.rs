@@ -373,6 +373,9 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📈 Kurvor" => "📈 Curves",
+        "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Volume curve per band over one bar. Drag in the area to draw; 1.0 at the top is straight through.",
+        "↺ Nollställ kurvorna" => "↺ Reset the curves",
         "· scrolla i kedjan →" => "· scroll the chain →",
         "🎵 Mät tempot i klippet" => "🎵 Measure the clip's tempo",
         "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Reads the beat from the audio and sets the clip's recording tempo so it follows the project tempo. Needed for clips imported before tempo was measured automatically.",
@@ -2868,6 +2871,9 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📈 Kurvor" => "📈 Kurver",
+        "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Volumenkurve pr. band over en takt. Træk i fladen for at tegne; 1,0 øverst er lige igennem.",
+        "↺ Nollställ kurvorna" => "↺ Nulstil kurverne",
         "· scrolla i kedjan →" => "· rul i kæden →",
         "🎵 Mät tempot i klippet" => "🎵 Mål klippets tempo",
         "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Læser takten ud af lyden og sætter klippets indspilningstempo, så det følger projektets tempo. Kræves for klip importeret før tempoet blev målt automatisk.",
@@ -5322,6 +5328,9 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📈 Kurvor" => "📈 Kurver",
+        "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Volumkurve per band over én takt. Dra i flaten for å tegne; 1,0 øverst er rett gjennom.",
+        "↺ Nollställ kurvorna" => "↺ Tilbakestill kurvene",
         "· scrolla i kedjan →" => "· rull i kjeden →",
         "🎵 Mät tempot i klippet" => "🎵 Mål tempoet i klippet",
         "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Leser takten ut av lyden og setter klippets innspillingstempo, slik at det følger prosjektets tempo. Kreves for klipp importert før tempoet ble målt automatisk.",
@@ -7776,6 +7785,9 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📈 Kurvor" => "📈 Kurven",
+        "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Lautstärkekurve pro Band über einen Takt. Im Feld ziehen zum Zeichnen; 1,0 oben ist direkt durch.",
+        "↺ Nollställ kurvorna" => "↺ Kurven zurücksetzen",
         "· scrolla i kedjan →" => "· in der Kette scrollen →",
         "🎵 Mät tempot i klippet" => "🎵 Tempo des Clips messen",
         "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Liest den Takt aus dem Audio und setzt das Aufnahmetempo des Clips, damit er dem Projekttempo folgt. Nötig für Clips, die vor der automatischen Messung importiert wurden.",
@@ -10230,6 +10242,9 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📈 Kurvor" => "📈 Curvas",
+        "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Curva de volumen por banda a lo largo de un compás. Arrastra en el área para dibujar; 1,0 arriba es paso directo.",
+        "↺ Nollställ kurvorna" => "↺ Restablecer las curvas",
         "· scrolla i kedjan →" => "· desplaza la cadena →",
         "🎵 Mät tempot i klippet" => "🎵 Medir el tempo del clip",
         "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Lee el pulso del audio y fija el tempo de grabación del clip para que siga el tempo del proyecto. Necesario para clips importados antes de que el tempo se midiera automáticamente.",
@@ -12684,6 +12699,9 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "📈 Kurvor" => "📈 Courbes",
+        "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Courbe de volume par bande sur une mesure. Faites glisser pour dessiner ; 1,0 en haut laisse passer.",
+        "↺ Nollställ kurvorna" => "↺ Réinitialiser les courbes",
         "· scrolla i kedjan →" => "· faites défiler la chaîne →",
         "🎵 Mät tempot i klippet" => "🎵 Mesurer le tempo du clip",
         "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Lit le tempo dans l'audio et fixe le tempo d'enregistrement du clip pour qu'il suive le tempo du projet. Nécessaire pour les clips importés avant la mesure automatique.",
