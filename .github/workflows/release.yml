@@ -7,6 +7,8 @@ on:
 
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 env:
   CARGO_TERM_COLOR: always
@@ -63,6 +65,11 @@ jobs:
           if [ ! -s RELEASE_NOTES.md ]; then
             echo "No CHANGELOG entry for ${version}; will fall back to generated notes."
           fi
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-path: dist/*.tar.gz
 
       - name: Publish GitHub Release
         env:

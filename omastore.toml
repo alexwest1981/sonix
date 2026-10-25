@@ -1,0 +1,19 @@
+kind = "app"
+name = "Sonix Studio"
+summary = "A digital audio workstation for Linux: arrangement, piano roll, mixer, mastering chain and a modular patcher."
+categories = ["AudioVideo", "Audio", "Music", "Sequencer"]
+icon = "assets/sonix.png"
+screenshots = [
+    "screenshots/01_tidslinje_arranger.png",
+    "screenshots/03_piano_roll.png",
+    "screenshots/06_effects_mixer.png",
+    "screenshots/10_modular_patcher.png",
+    "screenshots/25_dialog_modular_fx_rack.png",
+    "screenshots/32_edison.png",
+    "screenshots/35_visualizer.png",
+    "screenshots/38_band_curves.png",
+]
+
+[linux.x86_64]
+asset = "sonix-{version}-x86_64-unknown-linux-gnu.tar.gz"
+exec = "sonix-{version}-x86_64-unknown-linux-gnu/sonix"

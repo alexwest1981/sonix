@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.158] - 2026-10-25
+
 ### Added — fabriksljud i FLEX (0.9.158)
 
 - **Åtta ljud som följer med appen**, ovanför användarens egen bank i bläddraren: init, bas, pad,
@@ -1163,5 +1165,6 @@ audio engine; the remaining gaps are documented honestly in
   rationale, which now state the real reason (the closed format cannot be
   decoded).
 
-[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.158...HEAD
+[0.9.158]: https://github.com/alexwest1981/sonix/compare/v0.9.0...v0.9.158
 [0.9.0]: https://github.com/alexwest1981/sonix/releases/tag/v0.9.0
