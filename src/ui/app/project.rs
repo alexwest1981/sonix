@@ -1234,6 +1234,8 @@ pub enum ScreenshotTarget {
     EdisonModal,
     /// Newtone: klippets tonhöjdseditor (0.9.128).
     NewtoneModal,
+    /// Newtime: klippets tidseditor (0.9.129).
+    NewtimeModal,
 }
 
 #[derive(Clone, Debug)]
@@ -1298,6 +1300,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::SixOpPanel, out_dir.join("31_syntes_6op.png")),
         (ScreenshotTarget::EdisonModal, out_dir.join("32_edison.png")),
         (ScreenshotTarget::NewtoneModal, out_dir.join("33_newtone.png")),
+        (ScreenshotTarget::NewtimeModal, out_dir.join("34_newtime.png")),
     ];
 
     self.screenshot_queue = targets;
@@ -1327,6 +1330,7 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
     // dialog kvar ovanpå nästa bild.
     self.edison = None;
     self.newtone = None;
+    self.newtime = None;
     self.pending_wav_question = None;
 
     match target {
@@ -1407,6 +1411,30 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
         ScreenshotTarget::FxRackModal => {
             self.view_mode = ViewMode::PlaylistArranger;
             self.show_fx_rack_modal = true;
+        }
+        ScreenshotTarget::NewtimeModal => {
+            self.view_mode = ViewMode::PlaylistArranger;
+            // Ett klipp med en markör och ett förlängt slut: bilden ska visa att vågformen
+            // ritas i den nya tiden, inte i källans.
+            let sr = 48_000_u32;
+            let n = sr as usize * 2;
+            let shape = |i: usize| {
+                let t = i as f32 / n as f32;
+                (i as f32 * 0.05).sin() * 0.6 * (t * std::f32::consts::PI).sin()
+            };
+            let left: Vec<f32> = (0..n).map(shape).collect();
+            let right = left.clone();
+            let mut st = crate::ui::newtime_modal::NewtimeState::new(
+                "Demo (Suno AI)".to_string(),
+                left,
+                right,
+                sr,
+                1.0,
+            );
+            st.warp.markers.push(crate::audio::newtime::WarpMarker { source_sec: 0.8, out_sec: 1.2 });
+            st.warp.end_out_sec = 2.4;
+            st.selected = Some(0);
+            self.newtime = Some(st);
         }
         ScreenshotTarget::NewtoneModal => {
             self.view_mode = ViewMode::PlaylistArranger;

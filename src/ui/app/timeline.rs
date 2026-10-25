@@ -601,6 +601,26 @@ pub fn add_edited_audio_track(
     true
 }
 
+/// **Newtime:** öppnar tidseditorn för det valda klippet.
+pub fn open_newtime_for_selected_region(&mut self) {
+    let Some((name, l, r, sr, start_bar)) = self.selected_region_audio() else {
+        self.status_message = crate::i18n::t("Välj ett ljudklipp med ljud först").to_string();
+        return;
+    };
+    self.newtime = Some(crate::ui::newtime_modal::NewtimeState::new(name, l, r, sr, start_bar));
+}
+
+/// Newtime: sträcker om ljudet med bevarad tonhöjd och lägger det som ett nytt spår.
+pub fn newtime_create_track(&mut self) {
+    let Some(state) = self.newtime.take() else { return };
+    if (state.ratio() - 1.0).abs() < 1e-3 && state.warp.markers.is_empty() {
+        self.status_message = crate::i18n::t("Tiden är oförändrad — inget att skapa").to_string();
+        return;
+    }
+    let (l, r) = state.render();
+    self.add_edited_audio_track(&state.title, l, r, state.sample_rate, state.start_bar);
+}
+
 /// Edison: skapar spåret av det redigerade ljudet.
 pub fn edison_create_track(&mut self) {
     let Some(state) = self.edison.take() else { return };

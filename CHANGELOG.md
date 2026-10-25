@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Newtime (0.9.129)
+
+- **Klippets tidseditor**: högerklicka ett ljudklipp → *⏱ Redigera tid (Newtime)*. Vågformen
+  ritas **i den nya tiden**: ett klick lägger en markör, ett drag flyttar den, och högerkanten
+  är filens nya slut. Varje segment mellan två markörer sträcks om med WSOLA, som bevarar
+  tonhöjden.
+- Modellen är en rad ankare `(källa, uttid)` i `audio::newtime`. Markörer som dras förbi
+  varandra kläms i stället för att vända tiden, och ett segment med oförändrat tempo kopieras
+  rakt av — WSOLA på ett 1:1-segment hade bara lagt fasbrus.
+- Som Edison och Newtone arbetar rutan på en **kopia**: *Skapa spår av redigeringen* skriver ett
+  nytt wav och lägger det som ett nytt spår. Källklippet rörs aldrig.
+- Prov: utan markörer blir renderingen bitidentisk med källan, flyttat slut ändrar längden med
+  tonhöjden kvar i samma register, en mittmarkör sträcker bara sitt eget segment, korsade
+  markörer kläms, och klick/drag i rutan landar på rätt tid.
+
 ### Added — Newtone (0.9.128)
 
 - **Klippets tonhöjdseditor**: högerklicka ett ljudklipp → *🎼 Redigera tonhöjd (Newtone)*.

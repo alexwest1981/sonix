@@ -373,6 +373,14 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tiden är oförändrad — inget att skapa" => "The timing is unchanged — nothing to create",
+        "⏱ Redigera tid (Newtime)" => "⏱ Edit time (Newtime)",
+        "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Moves where in time the audio lands while keeping the pitch: click for markers, drag them and the right edge. Works on a copy — a new track is created when you press Create track, and the source clip is never touched.",
+        "⏱ NEWTIME — klippets tid" => "⏱ NEWTIME — the clip's time",
+        "Klicka i vågformen för att lägga en markör, dra den för att flytta ljudet, dra högerkanten för att ändra slutet" => "Click in the waveform to add a marker, drag it to move the audio, drag the right edge to change the end",
+        "🗑 Ta bort markör" => "🗑 Remove marker",
+        "↺ Nollställ tid" => "↺ Reset time",
+        "Sträcker om ljudet med bevarad tonhöjd och lägger det som ett nytt spår. Källklippet och dess fil rörs inte." => "Time-stretches the audio with the pitch preserved and adds it as a new track. The source clip and its file are not touched.",
         "Välj ett ljudklipp med ljud först" => "Select an audio clip with sound first",
         "Redigerat klipp" => "Edited clip",
         "🎼 Redigera tonhöjd (Newtone)" => "🎼 Edit pitch (Newtone)",
@@ -2842,6 +2850,14 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tiden är oförändrad — inget att skapa" => "Tiden er uændret — intet at oprette",
+        "⏱ Redigera tid (Newtime)" => "⏱ Rediger tid (Newtime)",
+        "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Flytter hvor i tiden lyden lander med tonehøjden bevaret: klik for markører, træk dem og højre kant. Arbejder på en kopi — et nyt spor oprettes, når du trykker Opret spor, og kildeklippet røres aldrig.",
+        "⏱ NEWTIME — klippets tid" => "⏱ NEWTIME — klippets tid",
+        "Klicka i vågformen för att lägga en markör, dra den för att flytta ljudet, dra högerkanten för att ändra slutet" => "Klik i bølgeformen for at tilføje en markør, træk den for at flytte lyden, træk højre kant for at ændre slutningen",
+        "🗑 Ta bort markör" => "🗑 Fjern markør",
+        "↺ Nollställ tid" => "↺ Nulstil tid",
+        "Sträcker om ljudet med bevarad tonhöjd och lägger det som ett nytt spår. Källklippet och dess fil rörs inte." => "Strækker lyden med bevaret tonehøjde og lægger den som et nyt spor. Kildeklippet og dets fil røres ikke.",
         "Välj ett ljudklipp med ljud först" => "Vælg et lydklip med lyd først",
         "Redigerat klipp" => "Redigeret klip",
         "🎼 Redigera tonhöjd (Newtone)" => "🎼 Rediger tonhøjde (Newtone)",
@@ -5270,6 +5286,14 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tiden är oförändrad — inget att skapa" => "Tiden er uendret — ingenting å opprette",
+        "⏱ Redigera tid (Newtime)" => "⏱ Rediger tid (Newtime)",
+        "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Flytter hvor i tiden lyden lander med tonehøyden bevart: klikk for markører, dra dem og høyre kant. Arbeider på en kopi — et nytt spor opprettes når du trykker Opprett spor, og kildeklippet røres aldri.",
+        "⏱ NEWTIME — klippets tid" => "⏱ NEWTIME — klippets tid",
+        "Klicka i vågformen för att lägga en markör, dra den för att flytta ljudet, dra högerkanten för att ändra slutet" => "Klikk i bølgeformen for å legge til en markør, dra den for å flytte lyden, dra høyre kant for å endre slutten",
+        "🗑 Ta bort markör" => "🗑 Fjern markør",
+        "↺ Nollställ tid" => "↺ Tilbakestill tid",
+        "Sträcker om ljudet med bevarad tonhöjd och lägger det som ett nytt spår. Källklippet och dess fil rörs inte." => "Strecker lyden med bevart tonehøyde og legger den som et nytt spor. Kildeklippet og filen røres ikke.",
         "Välj ett ljudklipp med ljud först" => "Velg et lydklipp med lyd først",
         "Redigerat klipp" => "Redigert klipp",
         "🎼 Redigera tonhöjd (Newtone)" => "🎼 Rediger tonehøyde (Newtone)",
@@ -7698,6 +7722,14 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tiden är oförändrad — inget att skapa" => "Die Zeit ist unverändert — nichts zu erstellen",
+        "⏱ Redigera tid (Newtime)" => "⏱ Zeit bearbeiten (Newtime)",
+        "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Verschiebt, wo im Zeitverlauf das Audio landet, mit erhaltener Tonhöhe: Klicken für Marker, Marker und rechte Kante ziehen. Arbeitet auf einer Kopie — ein neuer Track entsteht beim Klick auf Track erstellen, der Quellclip bleibt unberührt.",
+        "⏱ NEWTIME — klippets tid" => "⏱ NEWTIME — die Zeit des Clips",
+        "Klicka i vågformen för att lägga en markör, dra den för att flytta ljudet, dra högerkanten för att ändra slutet" => "Klicke in die Wellenform, um einen Marker zu setzen, ziehe ihn, um das Audio zu verschieben, und die rechte Kante, um das Ende zu ändern",
+        "🗑 Ta bort markör" => "🗑 Marker entfernen",
+        "↺ Nollställ tid" => "↺ Zeit zurücksetzen",
+        "Sträcker om ljudet med bevarad tonhöjd och lägger det som ett nytt spår. Källklippet och dess fil rörs inte." => "Dehnt das Audio mit erhaltener Tonhöhe und legt es als neuen Track an. Quellclip und Datei bleiben unberührt.",
         "Välj ett ljudklipp med ljud först" => "Wähle zuerst einen Audioclip mit Ton",
         "Redigerat klipp" => "Bearbeiteter Clip",
         "🎼 Redigera tonhöjd (Newtone)" => "🎼 Tonhöhe bearbeiten (Newtone)",
@@ -10126,6 +10158,14 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tiden är oförändrad — inget att skapa" => "El tiempo no cambia — nada que crear",
+        "⏱ Redigera tid (Newtime)" => "⏱ Editar tiempo (Newtime)",
+        "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Mueve dónde cae el audio en el tiempo manteniendo el tono: haz clic para crear marcadores, arrástralos y arrastra el borde derecho. Trabaja sobre una copia: se crea una pista nueva al pulsar Crear pista y el clip original nunca se toca.",
+        "⏱ NEWTIME — klippets tid" => "⏱ NEWTIME — el tiempo del clip",
+        "Klicka i vågformen för att lägga en markör, dra den för att flytta ljudet, dra högerkanten för att ändra slutet" => "Haz clic en la forma de onda para añadir un marcador, arrástralo para mover el audio y arrastra el borde derecho para cambiar el final",
+        "🗑 Ta bort markör" => "🗑 Quitar marcador",
+        "↺ Nollställ tid" => "↺ Restablecer tiempo",
+        "Sträcker om ljudet med bevarad tonhöjd och lägger det som ett nytt spår. Källklippet och dess fil rörs inte." => "Estira el audio conservando el tono y lo añade como pista nueva. El clip original y su archivo no se tocan.",
         "Välj ett ljudklipp med ljud först" => "Selecciona primero un clip de audio con sonido",
         "Redigerat klipp" => "Clip editado",
         "🎼 Redigera tonhöjd (Newtone)" => "🎼 Editar tono (Newtone)",
@@ -12554,6 +12594,14 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Tiden är oförändrad — inget att skapa" => "Le timing est inchangé — rien à créer",
+        "⏱ Redigera tid (Newtime)" => "⏱ Éditer le temps (Newtime)",
+        "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Déplace où l'audio arrive dans le temps en conservant la hauteur : cliquez pour des marqueurs, faites-les glisser ainsi que le bord droit. Travaille sur une copie — une nouvelle piste est créée quand vous cliquez sur Créer une piste, et le clip source n'est jamais modifié.",
+        "⏱ NEWTIME — klippets tid" => "⏱ NEWTIME — le temps du clip",
+        "Klicka i vågformen för att lägga en markör, dra den för att flytta ljudet, dra högerkanten för att ändra slutet" => "Cliquez dans la forme d'onde pour ajouter un marqueur, faites-le glisser pour déplacer l'audio, et faites glisser le bord droit pour changer la fin",
+        "🗑 Ta bort markör" => "🗑 Supprimer le marqueur",
+        "↺ Nollställ tid" => "↺ Réinitialiser le temps",
+        "Sträcker om ljudet med bevarad tonhöjd och lägger det som ett nytt spår. Källklippet och dess fil rörs inte." => "Étire l'audio en conservant la hauteur et l'ajoute comme nouvelle piste. Le clip source et son fichier ne sont pas touchés.",
         "Välj ett ljudklipp med ljud först" => "Sélectionnez d'abord un clip audio avec du son",
         "Redigerat klipp" => "Clip édité",
         "🎼 Redigera tonhöjd (Newtone)" => "🎼 Éditer la hauteur (Newtone)",

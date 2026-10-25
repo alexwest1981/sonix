@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 79** har en motsvarighet, **◐ 56** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 80** har en motsvarighet, **◐ 55** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -244,7 +244,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Low Lifter | 1 | ✅ | `ShelvesParams` — nedre hyllan (RBJ), samma krets som tonkonturen |
 | Luxeverb | 1 | ✅ | `Luxeverb` (0.9.126): modulerat fyrlinjigt FDN-reverb med dämpning i återkopplingen, RT60-styrd DECAY, PREDELAY och WIDTH. Prov: svansen faller, DECAY styr längden, PREDELAY håller tyst. Det gamla Schroeder-reverbet finns kvar som send |
 | Multiband Delay | 1 | ✅ | `MultibandDelay` — tre band, tre tider, samma delningsfilter som den flerbandiga kompressorn |
-| Newtime | 1 | ◐ | tempokarta + "sätt takt 1 här" (8.14) |
+| Newtime | 1 | ✅ | `ui::newtime_modal` + `audio::newtime` (0.9.129): tidsankare (källa → uttid) med dragbara markörer, WSOLA-sträckning per segment och rendering till ett nytt spår. Prov: oförändrad tid = bitidentisk, flyttat slut ändrar längden med tonhöjden kvar, korsade markörer kläms. Kvar: markörer direkt på tidslinjen i stället för i en kopia |
 | Pitch Shifter | 1 | ✅ | formantbevarande pitch (stretch/vocal_harmonizer) |
 | Razer Chroma | 1 | — | **ej tillämplig**: Razer Chromas SDK är Windows-bundet och datorn har Corsair K60 (styrs via `corsair-rgb-lighting`). Att måla någon annans tangentbord är inte en DAW-funktion. |
 | Transient Processor | 1 | ✅ | transient-shapern (byggd i dag) |

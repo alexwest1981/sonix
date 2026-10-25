@@ -2414,6 +2414,10 @@ impl SonixApp {
                                         self.open_newtone_for_selected_region();
                                         ui.close_menu();
                                     }
+                                    if ui.button(crate::i18n::t("⏱ Redigera tid (Newtime)")).on_hover_text(crate::i18n::t("Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig.")).clicked() {
+                                        self.open_newtime_for_selected_region();
+                                        ui.close_menu();
+                                    }
                                     if ui.button(if is_rev { crate::i18n::t("🔄 Återställ riktning (Normal)") } else { crate::i18n::t("🔄 Vänd baklänges (Reverse - Ctrl+K)") }).clicked() {
                                         self.reverse_selected_region();
                                         ui.close_menu();

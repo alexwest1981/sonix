@@ -42,6 +42,7 @@ pub mod midi_output;
 // tests; in the default (non-neural) build several are intentionally unused.
 #[allow(dead_code)]
 pub mod neural_separator;
+pub mod newtime;
 pub mod patcher;
 pub mod pedal_resonance;
 pub mod plugin_gui;

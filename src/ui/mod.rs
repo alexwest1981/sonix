@@ -7,6 +7,7 @@ pub mod visualizer;
 pub mod chord_generator_modal;
 pub mod dice_generator_modal;
 pub mod edison_modal;
+pub mod newtime_modal;
 pub mod newtone_modal;
 pub mod fx_rack_modal;
 pub mod macros_modal;
