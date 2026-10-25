@@ -1428,6 +1428,14 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
         }
         ScreenshotTarget::FxRackModal => {
             self.view_mode = ViewMode::PlaylistArranger;
+            // Två av de nya pedalerna påslagna, annars visar bilden bara standardkedjan och
+            // läsaren kan inte se att de finns.
+            for pedal in &mut self.fx_rack_state.pedals {
+                if matches!(pedal.id, "multiband" | "time_curve") {
+                    pedal.enabled = true;
+                }
+            }
+            self.fx_rack_state.active_tab = 0;
             self.show_fx_rack_modal = true;
         }
         ScreenshotTarget::VocoderBands => {

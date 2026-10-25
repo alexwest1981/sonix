@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — pedalkedjan går att upptäcka (0.9.153)
+
+- **Nio pedaler, fem synliga kort.** Fönstret var 880 px brett och kedjan skrollar horisontellt,
+  men skrollbarheten syntes inte och inget sade att det fanns mer — i skärmdump 25 stod det
+  "9 aktiva effekter" ovanför fem kort. Nu är fönstret 1180 px, skrollbarheten är alltid synlig och
+  raden säger **· scrolla i kedjan →** när fler än fem är påslagna. Mätt i ny skärmdump: sju kort
+  synliga, multibandspedalen med.
+- **Skärmdumpen visar de nya pedalerna.** 25-målet slår på MULTIBAND COMP och TIME CURVE, annars
+  visade bilden bara standardkedjan och läsaren kunde inte se att de finns.
+
 ### Fixed — exporten följer tempokartan (0.9.152)
 
 - **`RenderSpec` bär nu `tempo_points`.** Stegklockan räknar sin längd ur kartan

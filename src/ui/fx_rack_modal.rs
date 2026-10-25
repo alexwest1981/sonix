@@ -1152,7 +1152,7 @@ pub fn render_fx_rack_modal(
         .collapsible(false)
         .resizable(true)
         .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
-        .default_size(Vec2::new(880.0, 620.0))
+        .default_size(Vec2::new(1180.0, 680.0))
         .show(ctx, |ui| {
             ui.vertical(|ui| {
                 // ============================================================
@@ -1240,6 +1240,11 @@ pub fn render_fx_rack_modal(
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let enabled_count = state.pedals.iter().filter(|p| p.enabled).count();
                             ui.label(egui::RichText::new(crate::tstatus!("{} aktiva effekter", enabled_count)).size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
+                            // Kedjan är horisontell och rymmer inte nio pedaler i fönstret — säg det,
+                            // i stället för att låta resten se ut som att den inte finns.
+                            if enabled_count > 5 {
+                                ui.label(egui::RichText::new(crate::i18n::t("· scrolla i kedjan →")).size(Theme::FONT_XS).color(crate::ui::theme::palette().text_muted()));
+                            }
                         });
                     });
                 });
@@ -1362,6 +1367,9 @@ fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db
 
     egui::ScrollArea::horizontal()
         .max_height(400.0)
+        // Nio pedaler får inte plats i fönstret, och en osynlig skrollbar gör att resten ser ut
+        // att inte finnas (sett i skärmdump 25: fem kort synliga, nio aktiva).
+        .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
         .show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing = Vec2::new(10.0, 0.0);
