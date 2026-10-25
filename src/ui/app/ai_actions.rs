@@ -120,7 +120,7 @@ impl SonixApp {
                 let bpm = call.args.get("bpm").and_then(|v| v.as_f64());
                 match bpm {
                     Some(bpm) if (40.0..=240.0).contains(&bpm) => {
-                        self.bpm = bpm as f32;
+                        self.set_project_bpm(bpm as f32);
                         format!("tempo {bpm:.0} BPM")
                     }
                     Some(bpm) => format!("tempo {bpm:.0} ligger utanför 40–240"),

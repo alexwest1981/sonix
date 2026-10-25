@@ -1553,7 +1553,7 @@ pub(crate) fn run_project_script(&mut self, text: &str) {
     match run(text, &mut ctx) {
         Ok(log) => {
             self.push_undo("📜 Projektskript");
-            self.bpm = ctx.bpm;
+            self.set_project_bpm(ctx.bpm);
             for (channel, scripted) in self.channels.iter_mut().zip(ctx.channels.iter()) {
                 // Längden kan skilja i ett äldre projekt: bara det som får plats skrivs.
                 for (slot, value) in channel.steps.iter_mut().zip(scripted.steps.iter()) {
