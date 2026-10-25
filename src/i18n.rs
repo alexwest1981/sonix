@@ -373,6 +373,8 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎵 Mät tempot i klippet" => "🎵 Measure the clip's tempo",
+        "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Reads the beat from the audio and sets the clip's recording tempo so it follows the project tempo. Needed for clips imported before tempo was measured automatically.",
         "🎚 Vocoder" => "🎚 Vocoder",
         "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Level per band in the master vocoder: 1.0 is straight through, 0 closes the band. The bands run from 100 Hz to 8 kHz.",
         "↺ Nollställ banden" => "↺ Reset the bands",
@@ -2862,6 +2864,8 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎵 Mät tempot i klippet" => "🎵 Mål klippets tempo",
+        "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Læser takten ud af lyden og sætter klippets indspilningstempo, så det følger projektets tempo. Kræves for klip importeret før tempoet blev målt automatisk.",
         "🎚 Vocoder" => "🎚 Vocoder",
         "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Niveau pr. band i masterens vocoder: 1,0 er lige igennem, 0 lukker bandet. Båndene går fra 100 Hz til 8 kHz.",
         "↺ Nollställ banden" => "↺ Nulstil båndene",
@@ -5310,6 +5314,8 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎵 Mät tempot i klippet" => "🎵 Mål tempoet i klippet",
+        "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Leser takten ut av lyden og setter klippets innspillingstempo, slik at det følger prosjektets tempo. Kreves for klipp importert før tempoet ble målt automatisk.",
         "🎚 Vocoder" => "🎚 Vocoder",
         "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Nivå per band i masterens vocoder: 1,0 er rett gjennom, 0 stenger bandet. Båndene går fra 100 Hz til 8 kHz.",
         "↺ Nollställ banden" => "↺ Tilbakestill båndene",
@@ -7758,6 +7764,8 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎵 Mät tempot i klippet" => "🎵 Tempo des Clips messen",
+        "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Liest den Takt aus dem Audio und setzt das Aufnahmetempo des Clips, damit er dem Projekttempo folgt. Nötig für Clips, die vor der automatischen Messung importiert wurden.",
         "🎚 Vocoder" => "🎚 Vocoder",
         "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Pegel pro Band im Master-Vocoder: 1,0 ist direkt durch, 0 schließt das Band. Die Bänder reichen von 100 Hz bis 8 kHz.",
         "↺ Nollställ banden" => "↺ Bänder zurücksetzen",
@@ -10206,6 +10214,8 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎵 Mät tempot i klippet" => "🎵 Medir el tempo del clip",
+        "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Lee el pulso del audio y fija el tempo de grabación del clip para que siga el tempo del proyecto. Necesario para clips importados antes de que el tempo se midiera automáticamente.",
         "🎚 Vocoder" => "🎚 Vocoder",
         "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Nivel por banda en el vocoder del máster: 1,0 es paso directo, 0 cierra la banda. Las bandas van de 100 Hz a 8 kHz.",
         "↺ Nollställ banden" => "↺ Restablecer las bandas",
@@ -12654,6 +12664,8 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎵 Mät tempot i klippet" => "🎵 Mesurer le tempo du clip",
+        "Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt." => "Lit le tempo dans l'audio et fixe le tempo d'enregistrement du clip pour qu'il suive le tempo du projet. Nécessaire pour les clips importés avant la mesure automatique.",
         "🎚 Vocoder" => "🎚 Vocoder",
         "Nivå per band i masterns vocoder: 1,0 är rakt igenom, 0 stänger bandet. Banden går från 100 Hz till 8 kHz." => "Niveau par bande dans le vocoder du master : 1,0 laisse passer, 0 ferme la bande. Les bandes vont de 100 Hz à 8 kHz.",
         "↺ Nollställ banden" => "↺ Réinitialiser les bandes",

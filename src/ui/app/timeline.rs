@@ -558,6 +558,42 @@ pub fn open_edison_for_selected_region(&mut self) {
     self.edison = Some(crate::ui::edison_modal::EdisonState::new(name, l, r, sr, start_bar));
 }
 
+/// **Mät tempot i ett klipp som redan ligger på tidslinjen.**
+///
+/// Importvägen mäter numera själv, men klipp som kom in före dess har `source_bpm = 0` och står
+/// still när projektets tempo ändras. Den här mäter om dem på plats — det är samma detektor, men
+/// användaren bestämmer när den ska köras, och svaret syns i statusraden i stället för att gissas.
+pub fn measure_selected_region_bpm(&mut self) {
+    let Some((t_idx, r_idx)) = self.selected_audio_region else {
+        self.status_message = crate::i18n::t("Välj ett ljudklipp med ljud först").to_string();
+        return;
+    };
+    let Some((name, l, _r, sr, _start_bar)) = self.selected_region_audio() else {
+        self.status_message = crate::i18n::t("Välj ett ljudklipp med ljud först").to_string();
+        return;
+    };
+    match crate::audio::tempo_detect::detect_bpm(&l, sr as f32) {
+        Some(bpm) => {
+            if let Some(region) = self
+                .playlist_tracks
+                .get_mut(t_idx)
+                .and_then(|t| t.regions.get_mut(r_idx))
+            {
+                region.source_bpm = bpm;
+            }
+            self.sync_track_regions(t_idx);
+            self.status_message =
+                crate::tstatus!("🎵 '{}' går i {:.1} BPM — klippet följer nu tempot", name, bpm);
+        }
+        None => {
+            self.status_message = crate::tstatus!(
+                "🎵 Hittade ingen takt i '{}' — klippet står still vid tempobyte",
+                name
+            );
+        }
+    }
+}
+
 /// **Newtone:** analyserar det valda klippets toner och öppnar tonhöjdseditorn.
 pub fn open_newtone_for_selected_region(&mut self) {
     let Some((name, l, r, sr, start_bar)) = self.selected_region_audio() else {

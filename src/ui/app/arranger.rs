@@ -2447,6 +2447,10 @@ impl SonixApp {
                                         self.save_region_to_sound_browser(sel_t, sel_r);
                                         ui.close_menu();
                                     }
+                                    if ui.button(crate::i18n::t("🎵 Mät tempot i klippet")).on_hover_text(crate::i18n::t("Läser takten ur ljudet och sätter klippets inspelningstempo, så att det följer projektets tempo. Krävs för klipp som importerades innan tempot mättes automatiskt.")).clicked() {
+                                        self.measure_selected_region_bpm();
+                                        ui.close_menu();
+                                    }
                                     if ui.button(crate::i18n::t("✂ Redigera i Edison (kopia)")).on_hover_text(crate::i18n::t("Välj ett urval i vågformen och vänd, normalisera, tona, tysta eller beskär. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig.")).clicked() {
                                         self.open_edison_for_selected_region();
                                         ui.close_menu();

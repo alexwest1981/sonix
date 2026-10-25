@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — mät tempot i ett klipp som redan ligger på tidslinjen (0.9.145)
+
+- **🎵 Mät tempot i klippet** i klippmenyn: kör samma detektor som importen, men på det valda
+  klippet, och sätter dess `source_bpm` så att det följer projektets tempo. Behövs för allt som
+  importerades innan mätningen fanns — de har `0` och står still vid tempobyte.
+- Statusraden säger antingen `'namn' går i 125,0 BPM — klippet följer nu tempot` eller att ingen
+  takt hittades, i stället för att tiga.
+
 ### Fixed — tempot: mätt vid import och ett enda ställe att skriva det (0.9.144)
 
 - **Importerad mp3 mäts nu.** `audio::tempo_detect::detect_bpm` räknar energi per bildruta →
