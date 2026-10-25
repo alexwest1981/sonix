@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Time Curve (0.9.142)
+
+- **⏱ TIME CURVE** i masterns kedja: Gross Beats tidskurva. Masterns egen historik skrivs i en
+  tvåsekundersbuffert och läses tillbaka enligt sexton punkter i stället för i realtid. FORM väljer
+  **rak, stutter, tape stop eller halv fart**, TEMPO styr hur snabbt kurvan går runt, och tonhöjden
+  följer med — det är hela effekten, till skillnad från Newtime som sträcker utan att ändra tonhöjd.
+- **Bara bromsa, inte skynda.** Läsningen kan aldrig gå förbi skrivhuvudet, så 2× går inte i en
+  insert: det kräver en egen inspelningsbuffert, som Gross Beats egen inspelning. Att låtsas om 2×
+  hade gett ett prov som mätte något annat än det lät som.
+- Prov: halv fart gör 220 Hz till 110 Hz, rak kurva är genomgång med samma nivå, och en fryst kurva
+  håller ljudet stilla (peak ≈ rms).
+- Ligger före reverbet: det som bromsas ska in i svansen, inte tvärtom.
+
 ### Added — Spektrum i Edison (0.9.140)
 
 - **📊 Spektrum över urvalet** i Edison: 48 logaritmiskt fördelade band från 40 Hz till 16 kHz,

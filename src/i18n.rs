@@ -373,6 +373,7 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "Gross Beat's time curve: the master's own history is played back slower than real time. FORM picks flat, stutter, tape stop or half speed; TEMPO sets how fast the curve runs. The pitch follows — that is the effect.",
         "📊 Spektrum över urvalet" => "📊 Spectrum of the selection",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Shows which frequencies the selection contains, 40 Hz–16 kHz on a logarithmic axis. Recalculated when the selection or the audio changes.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Three bands (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL and RATIO apply to all bands; TRÖSK L/M/H moves a band's own threshold ±20 dB, and LOW/MID/HIGH set how hard it is compressed.",
@@ -2858,6 +2859,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "Gross Beats tidskurve: masterens egen historik afspilles langsommere end realtid. FORM vælger lige, stutter, tape stop eller halv fart; TEMPO styrer, hvor hurtigt kurven løber. Tonehøjden følger med — det er effekten.",
         "📊 Spektrum över urvalet" => "📊 Spektrum over udvalget",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Viser hvilke frekvenser udvalget indeholder, 40 Hz–16 kHz på en logaritmisk akse. Genberegnes når udvalget eller lyden ændres.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Tre bands (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL og RATIO gælder alle bands; TRÖSK L/M/H flytter bandets egen tærskel ±20 dB, og LOW/MID/HIGH hvor hårdt det komprimeres.",
@@ -5302,6 +5304,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "Gross Beats tidskurve: masterens egen historikk spilles av saktere enn realtid. FORM velger rett, stutter, tape stop eller halv fart; TEMPO styrer hvor fort kurven går rundt. Tonehøyden følger med — det er effekten.",
         "📊 Spektrum över urvalet" => "📊 Spektrum over utvalget",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Viser hvilke frekvenser utvalget inneholder, 40 Hz–16 kHz på en logaritmisk akse. Regnes ut på nytt når utvalget eller lyden endres.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL og RATIO gjelder alle band; TRÖSK L/M/H flytter bandets egen terskel ±20 dB, og LOW/MID/HIGH hvor hardt det komprimeres.",
@@ -7746,6 +7749,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "Die Zeitkurve von Gross Beat: die eigene Historie des Masters wird langsamer als Echtzeit abgespielt. FORM wählt gerade, Stutter, Tape-Stop oder halbe Geschwindigkeit; TEMPO bestimmt, wie schnell die Kurve läuft. Die Tonhöhe folgt — das ist der Effekt.",
         "📊 Spektrum över urvalet" => "📊 Spektrum der Auswahl",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Zeigt, welche Frequenzen die Auswahl enthält, 40 Hz–16 kHz auf einer logarithmischen Achse. Wird neu berechnet, wenn sich Auswahl oder Audio ändern.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Drei Bänder (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL und RATIO gelten für alle Bänder; TRÖSK L/M/H verschiebt die eigene Schwelle eines Bands um ±20 dB, LOW/MID/HIGH bestimmen die Stärke.",
@@ -10190,6 +10194,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "La curva de tiempo de Gross Beat: la propia historia del máster se reproduce más lento que en tiempo real. FORM elige recta, stutter, tape stop o media velocidad; TEMPO fija la rapidez de la curva. El tono la sigue — ese es el efecto.",
         "📊 Spektrum över urvalet" => "📊 Espectro de la selección",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Muestra qué frecuencias contiene la selección, 40 Hz–16 kHz en un eje logarítmico. Se recalcula cuando cambian la selección o el audio.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Tres bandas (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL y RATIO valen para todas; TRÖSK L/M/H mueve el umbral propio de una banda ±20 dB, y LOW/MID/HIGH cuánto se comprime.",
@@ -12634,6 +12639,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten." => "La courbe de temps de Gross Beat : l'historique du master est relu plus lentement qu'en temps réel. FORM choisit droite, stutter, tape stop ou demi-vitesse ; TEMPO règle la vitesse de la courbe. La hauteur suit — c'est l'effet.",
         "📊 Spektrum över urvalet" => "📊 Spectre de la sélection",
         "Visar vilka frekvenser urvalet innehåller, 40 Hz–16 kHz på en logaritmisk axel. Räknas om när urvalet eller ljudet ändras." => "Montre les fréquences contenues dans la sélection, 40 Hz–16 kHz sur un axe logarithmique. Recalculé quand la sélection ou l'audio change.",
         "Tre band (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL och RATIO gäller alla band; TRÖSK L/M/H flyttar bandets egen tröskel ±20 dB, och LOW/MID/HIGH hur hårt bandet komprimeras." => "Trois bandes (250 Hz / 4 kHz, Linkwitz-Riley). TRÖSKEL et RATIO s'appliquent à toutes ; TRÖSK L/M/H déplace le seuil d'une bande de ±20 dB, LOW/MID/HIGH règlent la compression.",

@@ -212,7 +212,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Fruity Wrapper | 2 | ✅ | plugin-värden |
 | Fruity X-Y Controller | 2 | ✅ | två spännings-slots på olika mål — en pad är två rattar |
 | Fruity dB Meter | 2 | ✅ | nivåmätarna |
-| Gross Beat | 2 | ◐ | steggrinden + RemixFX (volymkurvan finns i dag, tidskurvan inte) |
+| Gross Beat | 2 | ✅ | steggrinden (volymkurvan), RemixFX och **⏱ TIME CURVE** (0.9.142): masterns egen historik läses tillbaka enligt en 16-punkters tidskurva — stutter, tape stop och halv fart, med tonhöjden följande. Prov: halv fart ger 110 Hz ur 220, rak kurva är genomgång, fryst kurva håller ljudet stilla. Bara bromsa, inte skynda: 2× kräver en egen inspelningsbuffert. Kvar: ritbara kurvor och 2×-läget |
 | Newtone | 2 | ✅ | `ui::newtone_modal` (0.9.128): kromatisk analys till toner, klick för att välja och ±1 halvton per ton (eller hela frasen), formantbevarande omskrivning via `pitch_shift_variable`. Prov: 220 Hz + 2 halvton = 247 Hz. Arbetar på en kopia → nytt spår. Kvar: dra toner fritt i tid, vibratoverktyg |
 | Patcher | 2 | ✅ | patcher.rs |
 | Spreader | 2 | ◐ | doubler |

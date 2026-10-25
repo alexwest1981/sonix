@@ -163,6 +163,7 @@ pub struct MasterFxParams {
     pub luxeverb: LuxeverbParams,
     pub emphasis: EmphasisParams,
     pub hyper_chorus: HyperChorusParams,
+    pub time_curve: TimeCurveParams,
     pub limiter: LimiterParams,
     pub limiter_enabled: bool,
     pub granular: GranularParams,
@@ -228,6 +229,7 @@ impl Default for MasterFxParams {
             luxeverb: LuxeverbParams::default(),
             emphasis: EmphasisParams::default(),
             hyper_chorus: HyperChorusParams::default(),
+            time_curve: TimeCurveParams::default(),
             granular: GranularParams::default(),
             granular_enabled: false,
             freq_shift: FreqShiftParams::default(),
@@ -286,6 +288,7 @@ pub struct MasterFxChain {
     luxeverb: Luxeverb,
     emphasis: Emphasis,
     hyper_chorus: HyperChorus,
+    time_curve: TimeCurve,
     limiter: Limiter,
     params: MasterFxParams,
 }
@@ -323,6 +326,7 @@ impl MasterFxChain {
             luxeverb: Luxeverb::new(sample_rate),
             emphasis: Emphasis::new(sample_rate),
             hyper_chorus: HyperChorus::new(sample_rate),
+            time_curve: TimeCurve::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
         };
@@ -522,6 +526,13 @@ impl MasterFxChain {
             r = nr;
         }
 
+        // Tidskurvan ligger före reverbet: det som bromsas ska in i svansen, inte tvärtom.
+        if p.time_curve.enabled {
+            let (nl, nr) = self.time_curve.process(l, r, &p.time_curve);
+            l = nl;
+            r = nr;
+        }
+
         // Exciter före reverb: övertonerna ska finnas i svansen, inte läggas ovanpå den.
         if p.emphasis.enabled {
             let (nl, nr) = self.emphasis.process(l, r, &p.emphasis);
@@ -639,6 +650,7 @@ mod dynamics;
 mod eq;
 mod modulation;
 mod space;
+mod time;
 
 pub use color::*;
 pub use exciter::*;
@@ -646,6 +658,7 @@ pub use dynamics::*;
 pub use eq::*;
 pub use modulation::*;
 pub use space::*;
+pub use time::*;
 
 #[cfg(test)]
 mod tests;

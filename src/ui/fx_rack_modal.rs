@@ -2,7 +2,7 @@ use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2}
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
     ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, LovePhilterParams, LuxeverbParams, EmphasisParams, MasterEqBand, MasterFilterParams, MasterFxParams,
-    DelayBankParams, DistructorParams, EffectorParams, HyperChorusParams, HardcoreParams, ModFxParams, ShelvesParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
+    DelayBankParams, DistructorParams, EffectorParams, HyperChorusParams, TimeCurveParams, TimeShape, HardcoreParams, ModFxParams, ShelvesParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
 use crate::ui::theme::Theme;
@@ -492,6 +492,22 @@ impl Default for FxRackState {
                     extra: Vec::new(),
                 },
                 FxPedal {
+                    id: "time_curve",
+                    name: "⏱ TIME CURVE",
+                    category: "Performance",
+                    enabled: false,
+                    color: crate::ui::theme::palette().purple(),
+                    p1_name: "FORM",
+                    p1_val: 0.33,
+                    p2_name: "TEMPO",
+                    p2_val: 0.5,
+                    p3_name: "—",
+                    p3_val: 0.0,
+                    mix: 1.0,
+                    description: "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten.",
+                    extra: Vec::new(),
+                },
+                FxPedal {
                     id: "brickwall_limiter",
                     name: "🛡 MASTER LIMITER",
                     category: "Loudness",
@@ -703,6 +719,22 @@ impl FxRackState {
             width: hc_knob(|p| p.p3_val, 0.80),
             mix: hc_knob(|p| p.mix, 0.35),
             enabled: hc_p.map(|p| p.enabled).unwrap_or(false),
+        };
+
+        let tc_p = self.pedal("time_curve");
+        let tc_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            tc_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let shapes = TimeShape::ALL;
+        let tc_shape = shapes
+            .get((tc_knob(|p| p.p1_val, 0.33) * (shapes.len() - 1) as f32).round() as usize)
+            .copied()
+            .unwrap_or(TimeShape::Stutter);
+        let time_curve = TimeCurveParams {
+            curve: tc_shape.curve(),
+            bpm: 60.0 + tc_knob(|p| p.p2_val, 0.5) * 120.0,
+            mix: tc_knob(|p| p.mix, 1.0),
+            enabled: tc_p.map(|p| p.enabled).unwrap_or(false),
         };
 
         let emphasis = EmphasisParams {
@@ -944,6 +976,7 @@ impl FxRackState {
             luxeverb,
             emphasis,
             hyper_chorus,
+            time_curve,
             limiter,
             limiter_enabled: lim_p.map(|p| p.enabled).unwrap_or(false),
         }
@@ -2043,4 +2076,27 @@ mod tests {
         assert!((p.threshold_db + 18.0).abs() < 0.01, "tröskel: {}", p.threshold_db);
         assert!((p.ratio - 3.97).abs() < 0.05, "ratio: {}", p.ratio);
     }
+    /// **Time Curves rattar når sina egna fält** — FORM väljer kurva, TEMPO sätter takten.
+    #[test]
+    fn the_time_curve_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state.pedals.iter().position(|p| p.id == "time_curve").expect("pedalen finns");
+        {
+            let pedal = &mut state.pedals[idx];
+            pedal.enabled = true;
+            pedal.p1_val = 1.0; // sista formen: halv fart
+            pedal.p2_val = 1.0; // 180 BPM
+        }
+        let p = state.build_master_fx_params().time_curve;
+        assert!(p.enabled);
+        assert_eq!(p.curve, TimeShape::Half.curve(), "formen hamnade inte på halv fart");
+        assert!((p.bpm - 180.0).abs() < 0.01, "tempo: {}", p.bpm);
+
+        state.pedals[idx].p1_val = 0.0; // rak
+        state.pedals[idx].p2_val = 0.0; // 60 BPM
+        let p = state.build_master_fx_params().time_curve;
+        assert_eq!(p.curve, TimeShape::Flat.curve());
+        assert!((p.bpm - 60.0).abs() < 0.01, "tempo: {}", p.bpm);
+    }
+
 }
