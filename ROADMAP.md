@@ -19,8 +19,8 @@ gränssnittet lovar.
 
 | Mått | Räknat | Så räknades det |
 | :--- | ---: | :--- |
-| **FL-pluggarna** (51 generatorer + 90 effekter) | **✅ 83 · ◐ 52 · ✗ 0** av 141 (6 ej tillämpliga) | `awk` på statuskolumnen i `FL-STUDIO-INVENTORY.md` §2 — och **namnen är kontrollerade mot installationen**: 51 + 90 mappar i `Plugins/Fruity`, noll skillnader mot inventariets 141 rader |
-| — andel | **61 %** helt · **100 %** helt eller delvis · **0 %** saknas | 83 / 135 / 0 av 135 tillämpliga |
+| **FL-pluggarna** (51 generatorer + 90 effekter) | **✅ 84 · ◐ 51 · ✗ 0** av 141 (6 ej tillämpliga) | `awk` på statuskolumnen i `FL-STUDIO-INVENTORY.md` §2 — och **namnen är kontrollerade mot installationen**: 51 + 90 mappar i `Plugins/Fruity`, noll skillnader mot inventariets 141 rader |
+| — andel | **62 %** helt · **100 %** helt eller delvis · **0 %** saknas | 84 / 135 / 0 av 135 tillämpliga |
 | **Ableton-enheterna** | 72: 13 instrument + 48 ljudeffekter + 11 MIDI-effekter | `ABLETON-INVENTORY.md` §2 |
 | **Ableton gap-matris** | 6 områden där vi ligger före · 4 delvis · 8 efter | 18 rader i §8, räknade på dom-kolumnen |
 | **Koden** | 119 filer · **110 858 rader** i `src/` · **931 `#[test]`** | `find` / `cat` / `grep -c` 2026-10-23 |

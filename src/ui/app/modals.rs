@@ -3976,7 +3976,7 @@ impl SonixApp {
         egui::Window::new(crate::i18n::t("🌊 Visualizer"))
             .open(&mut open)
             .collapsible(false)
-            .default_size(Vec2::new(560.0, 300.0))
+            .default_size(Vec2::new(560.0, 460.0))
             .show(ctx, |ui| {
                 let wave_h = 90.0;
                 let (wave_rect, _) = ui.allocate_exact_size(
@@ -4001,6 +4001,48 @@ impl SonixApp {
                         })
                         .collect();
                     painter.add(egui::Shape::line(pts, Stroke::new(1.5_f32, crate::ui::theme::palette().green())));
+                }
+
+                ui.add_space(6.0);
+
+                // Goniometern: mitten och sidan ur skopet, ritade som L/R-par.
+                let g_size = 132.0;
+                let (g_rect, _) = ui.allocate_exact_size(Vec2::new(g_size, g_size), Sense::hover());
+                let painter = ui.painter_at(g_rect);
+                painter.rect_filled(g_rect, Rounding::same(4.0), Color32::BLACK);
+                let c = g_rect.center();
+                let rad = g_size * 0.45;
+                let faint = crate::ui::theme::palette().border();
+                painter.line_segment(
+                    [Pos2::new(c.x, c.y - rad), Pos2::new(c.x, c.y + rad)],
+                    Stroke::new(1.0_f32, faint),
+                );
+                painter.line_segment(
+                    [Pos2::new(c.x - rad, c.y), Pos2::new(c.x + rad, c.y)],
+                    Stroke::new(1.0_f32, faint),
+                );
+                let pairs = self.scope_history.len().min(self.scope_side.len());
+                if pairs > 1 {
+                    // Strecket ritas som en väg genom punkterna: en sinus blir en diagonal
+                    // ellips, mono en lodrät linje och ur fas en vågrät. En punktsvärm på
+                    // 600 cirklar per bildruta syntes knappt och kostade mer än den visade.
+                    let step = (pairs / 900).max(1);
+                    let path: Vec<Pos2> = (0..pairs)
+                        .step_by(step)
+                        .map(|i| {
+                            let mid = self.scope_history[i];
+                            let side = self.scope_side[i];
+                            let (x, y) = crate::ui::visualizer::goniometer_xy(mid + side, mid - side);
+                            Pos2::new(
+                                c.x + x.clamp(-1.0, 1.0) * rad,
+                                c.y - y.clamp(-1.0, 1.0) * rad,
+                            )
+                        })
+                        .collect();
+                    painter.add(egui::Shape::line(
+                        path,
+                        Stroke::new(1.2_f32, crate::ui::theme::palette().green()),
+                    ));
                 }
 
                 ui.add_space(6.0);

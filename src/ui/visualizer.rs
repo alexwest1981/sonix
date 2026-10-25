@@ -18,6 +18,14 @@ pub fn bar_height(level: f32, height: f32) -> f32 {
     (level.clamp(0.0, 1.0) * height).max(1.0)
 }
 
+
+/// **Goniometer**: en punkt per sampel, roterad 45°. Mono hamnar på den lodräta linjen
+/// (L == R), helt ur fas på den vågräta — det är hela läsbarheten i bilden.
+pub fn goniometer_xy(left: f32, right: f32) -> (f32, f32) {
+    let k = std::f32::consts::FRAC_1_SQRT_2;
+    ((left - right) * k, (left + right) * k)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -45,5 +53,19 @@ mod tests {
         assert_eq!(bar_height(0.0, 100.0), 1.0);
         assert_eq!(bar_height(0.5, 100.0), 50.0);
         assert_eq!(bar_height(3.0, 100.0), 100.0, "över 1 kläms");
+    }
+
+    #[test]
+    fn a_mono_signal_sits_on_the_vertical_line() {
+        let (x, y) = super::goniometer_xy(0.5, 0.5);
+        assert!(x.abs() < 1e-6, "mono ska ha x = 0: {x}");
+        assert!(y > 0.0);
+    }
+
+    #[test]
+    fn a_fully_out_of_phase_signal_sits_on_the_horizontal_line() {
+        let (x, y) = super::goniometer_xy(0.5, -0.5);
+        assert!(y.abs() < 1e-6, "ur fas ska ha y = 0: {y}");
+        assert!(x > 0.0);
     }
 }

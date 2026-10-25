@@ -420,6 +420,8 @@ pub struct SonixApp {
     pub active_keys: HashSet<u8>,
     pub anim_phase: f32,
     pub scope_history: Vec<f32>,
+    /// Sid-signalen (L−R)/2, parallell med `scope_history`: goniometern behöver båda.
+    pub scope_side: Vec<f32>,
     /// Registrets bandnivåer (0..1) ur `audio::spectrum` (Fas 8.13). Egen cache så
     /// att mätaren kan FALLA när ljudet tar slut i stället för att stå kvar och se
     /// levande ut.
@@ -1108,6 +1110,7 @@ impl SonixApp {
             active_keys: HashSet::new(),
             anim_phase: 0.0,
             scope_history: Vec::new(),
+            scope_side: Vec::new(),
             spectrum_levels: vec![0.0; crate::audio::spectrum::REGISTERS.len()],
             language,
             // Sub-Mixing, VCA Groups & PDC (Fas 5.2)

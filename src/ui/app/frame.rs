@@ -422,7 +422,11 @@ impl SonixApp {
         self.advance_sequencer();
         self.apply_automation();
         self.anim_phase += 0.08;
-        self.update_scope_history();
+        // Skärmdumparna lägger in eget skop innehåll; en riktig uppdatering hade fyllt
+        // historiken med tystnad och suddat bilden.
+        if !self.screenshot_mode_active {
+            self.update_scope_history();
+        }
         self.vocal_studio.update_live_stream();
 
         // Autosave (Fas 6.1): kontrollera med jämna mellanrum om projektet

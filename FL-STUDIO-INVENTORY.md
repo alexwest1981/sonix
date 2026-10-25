@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 83** har en motsvarighet, **◐ 52** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 84** har en motsvarighet, **◐ 51** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -216,7 +216,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | Newtone | 2 | ✅ | `ui::newtone_modal` (0.9.128): kromatisk analys till toner, klick för att välja och ±1 halvton per ton (eller hela frasen), formantbevarande omskrivning via `pitch_shift_variable`. Prov: 220 Hz + 2 halvton = 247 Hz. Arbetar på en kopia → nytt spår. Kvar: dra toner fritt i tid, vibratoverktyg |
 | Patcher | 2 | ✅ | patcher.rs |
 | Spreader | 2 | ◐ | doubler |
-| Wave Candy | 2 | ◐ | spektrum + mätare; ingen oscillator/vectorscope |
+| Wave Candy | 2 | ✅ | **🌊 Visualizer** (0.9.134): vågform, spektrumstaplar med toppmarkör och en **goniometer** — skopet bär nu `(mid, side)` per sampel, så L/R ritas som en roterad punkt; mono blir lodrät, ur fas vågrät. Prov: mono ger x = 0, ur fas y = 0, och paret håller ihop även när ringen lämnar ett udda tal |
 | Emphasis | 1 | ✅ | **✨ EMPHASIS** i masterns kedja (0.9.131): högpassat band (1–10 kHz) klipps asymmetriskt, så **både** jämna och udda övertoner föds, och bara det tillförda blandas in (DC-blockat). Prov: 200 Hz in ger 400 och 600 Hz med >26 dB över torrt, grundtonen kvar |
 | Emphasizer | 1 | ✅ | Samma motor som Emphasis (`audio::master_fx::exciter`): övertonstillägget finns nu, DRIVE och FREQ styr det |
 | FL Studio Mobile Rack FX | 1 | — | **ej tillämplig**: mobil-appens effekter (se FL Studio Mobile). |

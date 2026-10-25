@@ -65,6 +65,8 @@ pub struct AudioEngine {
     /// inte gavs — så ett autonomt pass inte spelar trummor i rummet (2026-09-15).
     output_silent: Arc<AtomicBool>,
     scope_rx: Consumer<f32>,
+    /// Udda antal float i ringen mellan två bildrutor: spara resten så paret inte hamnar fel.
+    scope_pending: Vec<f32>,
     pub sample_rate: u32,
     pub channels: u16,
     pub buffer_frames: Option<u32>,
@@ -290,6 +292,7 @@ impl AudioEngine {
             master_gr_db,
             output_silent,
             scope_rx,
+            scope_pending: Vec::new(),
             sample_rate,
             channels,
             buffer_frames,
@@ -469,12 +472,18 @@ impl AudioEngine {
         f32::from_bits(self.master_gr_db.load(Ordering::Relaxed))
     }
 
-    /// Pops every waveform sample produced since the last UI frame.
-    pub fn drain_scope_samples(&mut self) -> Vec<f32> {
-        let mut out = Vec::new();
+    /// Pops every (mid, side) pair produced since the last UI frame.
+    ///
+    /// Paret hör ihop: mitten driver oscilloskopet och spektrumet, sidan goniometern.
+    /// Ett udda antal kvarlämnade tal sparas till nästa bildruta i stället för att
+    /// kastas — annars hade varje tappat tal förskjutit alla följande par.
+    pub fn drain_scope_samples(&mut self) -> Vec<(f32, f32)> {
         while let Ok(s) = self.scope_rx.pop() {
-            out.push(s);
+            self.scope_pending.push(s);
         }
+        let (pairs, rem) = self.scope_pending.as_chunks::<2>();
+        let out: Vec<(f32, f32)> = pairs.iter().map(|p| (p[0], p[1])).collect();
+        self.scope_pending = rem.to_vec();
         out
     }
 
@@ -552,10 +561,11 @@ impl AudioEngine {
                         if sample_r.abs() > max_r {
                             max_r = sample_r.abs();
                         }
-                        // Feed the real output waveform to the scope (mono mix).
-                        // If the ring is full the oldest samples are dropped,
-                        // which only makes the scope skip a beat.
+                        // Oscilloskopet får mitten och goniometern sidan: två tal per
+                        // sampel. Ringen är FIFO, så paret håller ihop.
+                        // Om ringen är full tappas de äldsta — skopet hoppar ett slag.
                         let _ = scope_tx.push((sample_l + sample_r) * 0.5);
+                        let _ = scope_tx.push((sample_l - sample_r) * 0.5);
                         let (out_l, out_r) = output_sample(sample_l, sample_r, silent);
                         // Mixen skrivs på varje buss kanalpar. Kanaler utan buss nollas:
                         // på en enhet med fler kanaler läcker annars föregående bufferts

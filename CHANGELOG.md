@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Goniometer i Visualizer (0.9.134)
+
+- **Visualizern** ritar nu också en **goniometer**: L/R-paret ur skopet som en roterad punkt, så mono
+  blir en lodrät linje, ur fas en vågrät och en bred stereomix en diagonal ellips. Skopet bär därför
+  `(mid, side)` per sampel i stället för bara mitten; oscilloskopet och spektrumet använder mitten
+  precis som förut.
+- Ett udda antal kvarlämnade tal i ringen sparas till nästa bildruta i stället för att kastas —
+  annars hade varje tappat tal förskjutit alla följande par och punkten hamnat fel.
+- Prov: mono ger x = 0, helt ur fas ger y = 0.
+- **Rättat i skärmdumpsharnesset:** `tick_frame` uppdaterade skopet även under inspelning av bilder,
+  så den syntetiska vågformen och goniometern spolades bort och bilden visade tystnad. Uppdateringen
+  är avstängd i det läget.
+
 ### Added — Hyper Chorus (0.9.133)
 
 - **🌊 HYPER CHORUS** i masterns kedja: fyra chorusröster med egna basfördröjningar (9/13,5/19/26 ms)

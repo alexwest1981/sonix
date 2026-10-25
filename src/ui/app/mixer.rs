@@ -120,10 +120,14 @@ pub(crate) fn update_scope_history(&mut self) {
     let new = self.engine.drain_scope_samples();
     let had_new = !new.is_empty();
     if had_new {
-        self.scope_history.extend(new);
+        for (mid, side) in new {
+            self.scope_history.push(mid);
+            self.scope_side.push(side);
+        }
         if self.scope_history.len() > Self::SCOPE_HISTORY_MAX {
             let excess = self.scope_history.len() - Self::SCOPE_HISTORY_MAX;
             self.scope_history.drain(0..excess);
+            self.scope_side.drain(0..excess);
         }
     }
     self.update_spectrum_levels(had_new);

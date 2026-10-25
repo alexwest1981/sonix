@@ -1236,6 +1236,8 @@ pub enum ScreenshotTarget {
     NewtoneModal,
     /// Newtime: klippets tidseditor (0.9.129).
     NewtimeModal,
+    /// Visualizern med goniometern (0.9.134).
+    Visualizer,
 }
 
 #[derive(Clone, Debug)]
@@ -1301,6 +1303,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::EdisonModal, out_dir.join("32_edison.png")),
         (ScreenshotTarget::NewtoneModal, out_dir.join("33_newtone.png")),
         (ScreenshotTarget::NewtimeModal, out_dir.join("34_newtime.png")),
+        (ScreenshotTarget::Visualizer, out_dir.join("35_visualizer.png")),
     ];
 
     self.screenshot_queue = targets;
@@ -1332,6 +1335,7 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
     self.newtone = None;
     self.newtime = None;
     self.pending_wav_question = None;
+    self.show_visualizer = false;
 
     match target {
         ScreenshotTarget::View(vm) => {
@@ -1411,6 +1415,26 @@ pub fn apply_screenshot_target(&mut self, target: ScreenshotTarget) {
         ScreenshotTarget::FxRackModal => {
             self.view_mode = ViewMode::PlaylistArranger;
             self.show_fx_rack_modal = true;
+        }
+        ScreenshotTarget::Visualizer => {
+            self.view_mode = ViewMode::PlaylistArranger;
+            // Syntetiskt skop: en bred stereosignal, så goniometern får något att rita.
+            let sr = 48_000.0_f32;
+            let n = 4_096;
+            self.scope_history.clear();
+            self.scope_side.clear();
+            for i in 0..n {
+                let t = i as f32 / sr;
+                let l = 0.35 * (std::f32::consts::TAU * 220.0 * t).sin()
+                    + 0.15 * (std::f32::consts::TAU * 660.0 * t).sin();
+                let r = 0.35 * (std::f32::consts::TAU * 220.0 * t + 0.6).sin()
+                    + 0.12 * (std::f32::consts::TAU * 440.0 * t).sin();
+                self.scope_history.push((l + r) * 0.5);
+                self.scope_side.push((l - r) * 0.5);
+            }
+            self.spectrum_levels = crate::audio::spectrum::band_levels(&self.scope_history, sr);
+            self.visualizer_peaks = vec![0.0; self.spectrum_levels.len()];
+            self.show_visualizer = true;
         }
         ScreenshotTarget::NewtimeModal => {
             self.view_mode = ViewMode::PlaylistArranger;
