@@ -15,16 +15,18 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 MARKS = ("✅", "◐", "✗", "—")
 
 
-def counts(text: str) -> dict[str, int]:
+def counts(text: str, section: str) -> dict[str, int]:
     tally = dict.fromkeys(MARKS, 0)
-    in_plugins = False
+    inside = False
     for line in text.splitlines():
-        # Bara "## "-rubriken byter avsnitt; "### Generatorer"/"### Effekter" ligger inuti.
+        # Bara "## "-rubriken byter avsnitt; underrubriker ligger inuti.
         if line.startswith("## "):
-            in_plugins = "pluggarna" in line
+            inside = section in line
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
-        if in_plugins and line.startswith("|") and len(cells) >= 3 and cells[2] in tally:
-            tally[cells[2]] += 1
+        # Statusen är cellens första tecken: många rader har noten i samma cell.
+        mark = cells[2][:1] if len(cells) >= 3 else ""
+        if inside and line.startswith("|") and mark in tally:
+            tally[mark] += 1
     return tally
 
 
@@ -34,13 +36,17 @@ def main() -> int:
     wrote = 0
     for path in files:
         text = path.read_text()
-        t = counts(text)
+        t = counts(text, "pluggarna")
         comparable = t["✅"] + t["◐"] + t["✗"]
         if not comparable:
             print(f"{path.name}: ingen plugin-tabell")
             continue
         pct = round(100 * t["✅"] / comparable)
         print(f"{path.name}: ✅ {t['✅']} · ◐ {t['◐']} · ✗ {t['✗']} · — {t['—']}  ({pct} % av {comparable})")
+        # Kommandoytan har ingen statusrad, men den driver lika lätt — visa den varje gång.
+        cmd = counts(text, "Kommandoytan")
+        if sum(cmd.values()):
+            print(f"  kommandoytan: ✅ {cmd['✅']} · ◐ {cmd['◐']} · ✗ {cmd['✗']}")
         if not write:
             continue
         new = (
