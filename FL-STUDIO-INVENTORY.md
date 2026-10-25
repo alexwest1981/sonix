@@ -519,7 +519,7 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | Artikulation per not | `Articulate...` | ✗ |
 | Arpeggion som verktyg | `Arpeggiate...` | ◐ (arpeggio i synten + `SchedulesChord`) |
 | Skala nivåer | `Scale levels...` | ✅ 0.9.122: `Scale levels` som −3/+3 dB på valt klipp (`scale_region_volume`, klämt 0–2) |
-| Tidsförskjuta audio fritt | `Edit in time warper` | ✗ (`sätt takt 1 här` + WSOLA-sträckning finns) |
+| Tidsförskjuta audio fritt | `Edit in time warper` | ✅ 0.9.129: Newtime — ankare (källa, uttid) med WSOLA mellan, markörerna flyttas fritt; `open_newtime_for_selected_region` |
 | Klicka bort skarvar | `Declick in` · `Declick out all regions` · `Bypass declicker` | ◐ `audio::repair::declick` lagar hopp större än 0,25 över 32 sampel, och knappen **🔧 Klicka bort skarvar** kör den på spåret. ✗ FL:s läge per region (bara in, bara ut) och en bypass |
 | Automatiska övergångar | `Automatic crossfades` · `Create crossfade` · `Crossfade (bleeding)` | ◐ `PlaylistTrack::create_crossfades` sätter ut-toning på det tidigare och in-toning på det senare klippet, lika långa som överlappet (halverat om överlappet är större än klippet), och knappen **✚ Korsa överlappande klipp** i fade-fönstret kör den. ✗ `Create crossfade` på ett urval, och `bleeding`-varianten utanför regionens kant |
 | Byta källa för ett klipp | `Pattern clip sources` · `Automation clip sources` · `Current clip source` | ✅ | `swap_track_source` — nytt ljud, samma volym, pan, EQ, sends, inserts, automation och placering; vågformscachen nollas så den byggs om |
@@ -533,7 +533,7 @@ och citera det, men inte hur den är implementerad. Raderna nedan är hämtade o
 | Stänga av oanvända plugins automatiskt | `Smart disable` · `Switch smart disable for all plugins` | ✗ (vi har sandlåda och frysning i stället) |
 | Räkna underrun | `Underruns 0` | ✅ (`realtime_bench`) |
 | Gör om allt till en patch | `Patcherize all` · `Patcherizing will lose automation links` | ✗ (patcher finns, ingen massomvandling) |
-| Redigera vidare i Edison | `Open in Edison` · `Edison Declipper` | ✗ |
+| Redigera vidare i Edison | `Open in Edison` · `Edison Declipper` | ◐ 0.9.127: `open_edison_for_selected_region` — högerklick på klippet → *Redigera i Edison*, arbetar på kopia → nytt spår. Declipper saknas (finns bara `repair::declick`) |
 | Slumpa alla parametrar | `Randomize all parameters` · `Randomize bands` | ◐ (tärning i pianorullen, inte per plugin) |
 | NDI ut | `Enable NDI output` · `Add NDI` | ✗ |
 | Molnbackup av projekt | `Back up to FL Cloud storage` · `Download project backup` | ✗ (lokala versioner i `autosave.rs`) |
