@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Anpassa längd (0.9.130)
+
+- **Högerklicka ett ljudklipp → ⌗ Anpassa längd → 1/2/4/8 takter**: klippet sträcks så att det
+  fyller exakt så många takter, med tonhöjden kvar. Samma motor som tempoföljningen, men målet
+  är takter i stället för ett tempo.
+- Tempot räknas ur klippets **spann** (`current_secs × current_rate`), inte ur önskemålet: den
+  som ligger utanför sträckningens gränser (0,25–4,0×) kläms, och längden räknas om ur det
+  **uppnåeliga** resultatet — annars hade klippet slutat i tystnad.
+- Prov: dubbla tiden på 120 BPM ger 240 BPM och fyra sekunder ur två, och ett omöjligt mål
+  kläms till 0,25× utan att klippet påstår mer än ljudet räcker.
+
 ### Added — Newtime (0.9.129)
 
 - **Klippets tidseditor**: högerklicka ett ljudklipp → *⏱ Redigera tid (Newtime)*. Vågformen

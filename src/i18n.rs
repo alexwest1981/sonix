@@ -373,6 +373,9 @@ macro_rules! tstatus {
 // ====================================================================
 fn tr_en(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⌗ Anpassa längd" => "⌗ Fit length",
+        "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Stretches the clip to fill exactly that many bars, keeping the pitch",
+        "Anpassa klippets längd" => "Fit clip length",
         "Tiden är oförändrad — inget att skapa" => "The timing is unchanged — nothing to create",
         "⏱ Redigera tid (Newtime)" => "⏱ Edit time (Newtime)",
         "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Moves where in time the audio lands while keeping the pitch: click for markers, drag them and the right edge. Works on a copy — a new track is created when you press Create track, and the source clip is never touched.",
@@ -2850,6 +2853,9 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⌗ Anpassa längd" => "⌗ Tilpas længde",
+        "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Strækker klippet, så det fylder præcis så mange takter, med tonehøjden bevaret",
+        "Anpassa klippets längd" => "Tilpas klippets længde",
         "Tiden är oförändrad — inget att skapa" => "Tiden er uændret — intet at oprette",
         "⏱ Redigera tid (Newtime)" => "⏱ Rediger tid (Newtime)",
         "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Flytter hvor i tiden lyden lander med tonehøjden bevaret: klik for markører, træk dem og højre kant. Arbejder på en kopi — et nyt spor oprettes, når du trykker Opret spor, og kildeklippet røres aldrig.",
@@ -5286,6 +5292,9 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⌗ Anpassa längd" => "⌗ Tilpass lengde",
+        "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Strecker klippet slik at det fyller nøyaktig så mange takter, med tonehøyden bevart",
+        "Anpassa klippets längd" => "Tilpass klippets lengde",
         "Tiden är oförändrad — inget att skapa" => "Tiden er uendret — ingenting å opprette",
         "⏱ Redigera tid (Newtime)" => "⏱ Rediger tid (Newtime)",
         "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Flytter hvor i tiden lyden lander med tonehøyden bevart: klikk for markører, dra dem og høyre kant. Arbeider på en kopi — et nytt spor opprettes når du trykker Opprett spor, og kildeklippet røres aldri.",
@@ -7722,6 +7731,9 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⌗ Anpassa längd" => "⌗ Länge anpassen",
+        "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Dehnt den Clip so, dass er genau so viele Takte füllt, mit erhaltener Tonhöhe",
+        "Anpassa klippets längd" => "Clip-Länge anpassen",
         "Tiden är oförändrad — inget att skapa" => "Die Zeit ist unverändert — nichts zu erstellen",
         "⏱ Redigera tid (Newtime)" => "⏱ Zeit bearbeiten (Newtime)",
         "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Verschiebt, wo im Zeitverlauf das Audio landet, mit erhaltener Tonhöhe: Klicken für Marker, Marker und rechte Kante ziehen. Arbeitet auf einer Kopie — ein neuer Track entsteht beim Klick auf Track erstellen, der Quellclip bleibt unberührt.",
@@ -10158,6 +10170,9 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⌗ Anpassa längd" => "⌗ Ajustar longitud",
+        "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Estira el clip para llenar exactamente esos compases, conservando el tono",
+        "Anpassa klippets längd" => "Ajustar longitud del clip",
         "Tiden är oförändrad — inget att skapa" => "El tiempo no cambia — nada que crear",
         "⏱ Redigera tid (Newtime)" => "⏱ Editar tiempo (Newtime)",
         "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Mueve dónde cae el audio en el tiempo manteniendo el tono: haz clic para crear marcadores, arrástralos y arrastra el borde derecho. Trabaja sobre una copia: se crea una pista nueva al pulsar Crear pista y el clip original nunca se toca.",
@@ -12594,6 +12609,9 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "⌗ Anpassa längd" => "⌗ Ajuster la longueur",
+        "Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar" => "Étire le clip pour remplir exactement ce nombre de mesures, en conservant la hauteur",
+        "Anpassa klippets längd" => "Ajuster la longueur du clip",
         "Tiden är oförändrad — inget att skapa" => "Le timing est inchangé — rien à créer",
         "⏱ Redigera tid (Newtime)" => "⏱ Éditer le temps (Newtime)",
         "Flyttar var i tiden ljudet landar med tonhöjden kvar: klicka för markörer, dra dem och högerkanten. Arbetar på en kopia — ett nytt spår skapas när du trycker Skapa spår, och källklippet rörs aldrig." => "Déplace où l'audio arrive dans le temps en conservant la hauteur : cliquez pour des marqueurs, faites-les glisser ainsi que le bord droit. Travaille sur une copie — une nouvelle piste est créée quand vous cliquez sur Créer une piste, et le clip source n'est jamais modifié.",

@@ -459,6 +459,49 @@ pub fn split_selected_region_at_playhead(&mut self) {
 }
 
 impl SonixApp {
+/// **Anpassa klippets längd** — sätt det tempo klippet ska spelas i så att det fyller
+/// exakt `bars` takter. Tonhöjden bevaras (samma sträckning som tempoföljningen).
+///
+/// Längden räknas om ur det **uppnåeliga** resultatet, inte ur önskemålet: ligger målet
+/// utanför sträckningens gränser blir klippet så långt ljudet räcker, i stället för att
+/// sluta i tystnad.
+pub fn fit_selected_region_to_bars(&mut self, bars: f32) {
+    let Some((t_idx, r_idx)) = self.selected_audio_region else {
+        self.status_message = crate::i18n::t("Välj ett ljudklipp först").to_string();
+        return;
+    };
+    let Some(region) = self.playlist_tracks.get(t_idx).and_then(|t| t.regions.get(r_idx)) else {
+        return;
+    };
+    if bars <= 0.0 {
+        return;
+    }
+    let tempo = self.tempo_map();
+    let bpm_here = tempo.bpm_at(region.start_bar as f64);
+    let current_secs = tempo.secs_for_bars_at(region.start_bar as f64, region.length_bars as f64) as f32;
+    let current_rate = stretch_ratio_for(region.source_bpm, bpm_here);
+    let target_secs = tempo.secs_for_bars_at(region.start_bar as f64, bars as f64) as f32;
+    let new_bpm = source_bpm_for_target_secs(bpm_here, current_secs, current_rate, target_secs);
+    let new_rate = stretch_ratio_for(new_bpm, bpm_here);
+    let audible = (current_secs * current_rate / new_rate).max(0.01);
+    let new_bars = tempo.bars_for_secs_at(region.start_bar as f64, audible as f64) as f32;
+    let name = region.name.clone();
+
+    self.push_undo(crate::i18n::t("Anpassa klippets längd"));
+    if let Some(region) = self.playlist_tracks.get_mut(t_idx).and_then(|t| t.regions.get_mut(r_idx)) {
+        region.source_bpm = new_bpm;
+        region.length_bars = new_bars.max(0.05);
+    }
+    self.sync_track_regions(t_idx);
+    self.status_message = crate::tstatus!(
+        "⌗ '{}' anpassat till {:.2} takter (källa {:.0} BPM, {:.2}×)",
+        name,
+        new_bars,
+        new_bpm,
+        new_rate
+    );
+}
+
 /// Läser det valda klippets källjud till en egen stereobuffert — samma väg för Edison och
 /// Newtone. `None` betyder att klippet saknar ljud eller är för kort att arbeta med.
 fn selected_region_audio(&self) -> Option<RegionAudio> {

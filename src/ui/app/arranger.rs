@@ -2418,6 +2418,19 @@ impl SonixApp {
                                         self.open_newtime_for_selected_region();
                                         ui.close_menu();
                                     }
+                                    ui.menu_button(crate::i18n::t("⌗ Anpassa längd"), |ui| {
+                                        for bars in [1.0_f32, 2.0, 4.0, 8.0] {
+                                            let label = if bars == 1.0 {
+                                                crate::i18n::t("1 takt").to_string()
+                                            } else {
+                                                format!("{bars:.0} {}", crate::i18n::t("takter"))
+                                            };
+                                            if ui.button(label).on_hover_text(crate::i18n::t("Sträcker klippet så att det fyller exakt så många takter, med tonhöjden kvar")).clicked() {
+                                                self.fit_selected_region_to_bars(bars);
+                                                ui.close_menu();
+                                            }
+                                        }
+                                    });
                                     if ui.button(if is_rev { crate::i18n::t("🔄 Återställ riktning (Normal)") } else { crate::i18n::t("🔄 Vänd baklänges (Reverse - Ctrl+K)") }).clicked() {
                                         self.reverse_selected_region();
                                         ui.close_menu();

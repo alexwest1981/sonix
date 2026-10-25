@@ -101,6 +101,30 @@ pub fn stretch_ratio_for(source_bpm: f32, project_bpm: f32) -> f32 {
     (project_bpm / source_bpm).clamp(MIN_STRETCH_RATIO, MAX_STRETCH_RATIO)
 }
 
+
+/// **Klippets inspelningstempo för en ny längd.** Sätter det tempo som får klippet att
+/// fylla `target_secs` på tidslinjen.
+///
+/// Klippets ljud är `source_span = current_secs * current_rate` sekunder långt (det som
+/// faktiskt finns i filen) och hörs i `source_span / new_rate` sekunder. Sätter vi det
+/// lika med målet får vi `new_rate = source_span / target`, och eftersom
+/// `rate = bpm_here / source_bpm` blir `source_bpm = bpm_here / new_rate`.
+///
+/// Faktorn kläms till samma gränser som uppspelningen använder. Den som sätter
+/// `length_bars` måste därför räkna om längden ur resultatet — annars blir klippet längre
+/// än ljudet och slutar i tystnad.
+pub(crate) fn source_bpm_for_target_secs(
+    bpm_here: f32,
+    current_secs: f32,
+    current_rate: f32,
+    target_secs: f32,
+) -> f32 {
+    let span = (current_secs * current_rate).max(0.01);
+    let target = target_secs.max(0.01);
+    let rate = (span / target).clamp(MIN_STRETCH_RATIO, MAX_STRETCH_RATIO);
+    (bpm_here / rate).clamp(20.0, 999.0)
+}
+
 /// Ett klipps inspelningstempo, ur det som går att **mäta** (Fas 8.10).
 ///
 /// Projekt som sparades innan fältet fanns har inget inspelningstempo (0,0 =
@@ -1286,4 +1310,30 @@ mod declick_tests {
         // En längre fade som användaren själv ställt in rörs inte.
         assert_eq!(declick(0.25), 0.25);
     }
+}
+
+#[cfg(test)]
+mod fit_length_tests {
+    use super::*;
+
+    /// **Anpassa längd:** dubbla tiden halverar farten — 120 BPM blir 240, och klippet
+    /// hörs i fyra sekunder i stället för två.
+    #[test]
+    fn source_tempo_for_a_longer_clip_halves_the_rate() {
+        let bpm = source_bpm_for_target_secs(120.0, 2.0, 1.0, 4.0);
+        assert!((bpm - 240.0).abs() < 0.01, "fick {bpm}");
+        let rate = stretch_ratio_for(bpm, 120.0);
+        assert!((2.0 / rate - 4.0).abs() < 0.01, "längden blev {}", 2.0 / rate);
+    }
+
+    /// Ett mål som ligger utanför vad sträckningen klarar kläms — då får klippet inte
+    /// heller påstå att det är så långt.
+    #[test]
+    fn an_impossible_target_is_clamped() {
+        let bpm = source_bpm_for_target_secs(120.0, 2.0, 1.0, 100.0);
+        let rate = stretch_ratio_for(bpm, 120.0);
+        assert!((rate - MIN_STRETCH_RATIO).abs() < 1e-6, "fick rate {rate}");
+        assert!(2.0 / rate < 100.0, "klippet kan inte bli 100 s");
+    }
+
 }
