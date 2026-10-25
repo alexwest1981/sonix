@@ -254,7 +254,7 @@ Every path is built in **one** place (`src/paths.rs`) and follows XDG. Run `soni
 - If Sonix starts and finds an autosave **newer than the project file on disk**, a recovery dialog is shown. A restored copy is *retired* (renamed to `*.restored`) rather than deleted.
 - The project menu has **🕘 Recent projects** (reads `recent.json`) and **📂 Show project folder in file manager**.
 
-Undo covers the timeline and the pattern edits. **Mixer, FX and automation changes are not undoable yet** — that gap is not on the roadmap's list.
+Undo covers the timeline, the pattern edits, **the mixer, the master FX rack and plugin automation**. A fader drag becomes **one** entry, not sixty: the mixer's settled state is kept and pushed the first time something moves during a gesture (`frame.rs`, "Mixer-undon").
 
 ---
 

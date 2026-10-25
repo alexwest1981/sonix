@@ -273,7 +273,7 @@ Alla sökvägar byggs på **en** plats (`src/paths.rs`) och följer XDG. Kör `s
 - Startar Sonix och hittar en autosave som är **nyare än projektfilen på disk** visas en återställningsdialog. En återställd kopia *pensioneras* (döps om till `*.restored`) i stället för att raderas.
 - Projektmenyn har **🕘 Senaste projekt** (läser `recent.json`) och **📂 Visa projektmappen i filhanteraren**.
 
-Projektet använder en *endimensionell* ångra-historik för tidslinjen och mönsterredigeringarna. **Mixer-, FX- och automationsändringar går inte att ångra än** — den luckan står inte i roadmapen.
+Projektet använder en *endimensionell* ångra-historik som täcker tidslinjen, mönsterredigeringarna, **mixern, masterns FX-rack och plugin-automationen**. Ett reglage­drag blir **en** post, inte sextio: mixerns viloläge hålls och läggs på historiken första gången något rör sig under en gest (`frame.rs`, "Mixer-undon").
 
 ---
 

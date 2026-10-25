@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — README påstod att mixer, FX och automation inte går att ångra (0.9.147)
+
+- **Det var fel, och jag skrev det själv en timme tidigare.** `frame.rs` har haft mixer-undon sedan
+  Fas 6.2: mixerns viloläge hålls i `mixer_settled_snapshot`, och `mixer_state_digest` (som räknar in
+  spår, bussar, VCA, masterns drive/volym, delay, reverb, **pedalerna**, EQ-noderna och
+  plugin-kurvorna) avgör när en ändring ska läggas på historiken — ett drag blir en post, inte sextio.
+  Båda språken säger nu det, med filreferens.
+- Lärdomen står i klartext: påståenden om vad som saknas ska grep:as fram, inte skrivas ur minnet.
+
 ### Changed — README:s gula punkter genomgångna (0.9.146)
 
 - **Patchern var märkt 🟡 "ordningskänslig" fast den inte är det.** `patcher::topo_order` (Kahn)
