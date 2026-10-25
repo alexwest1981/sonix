@@ -1,7 +1,7 @@
 use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 use crate::audio::{
     AudioCommand, AudioEngine, BitCrushParams, CompressorParams, DeEsserParams, DoublerParams, GateParams,
-    ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
+    ControlRoomParams, ConvolverParams, FreqShiftParams, GranularParams, LimiterParams, LovePhilterParams, MasterEqBand, MasterFilterParams, MasterFxParams,
     DelayBankParams, DistructorParams, EffectorParams, HardcoreParams, ModFxParams, ShelvesParams, StereoParams, MultibandDelayParams, MultibandParams, ReverbParams, SaturatorParams, TransientParams,
     IR_BANK, synthesize_ir,
 };
@@ -406,6 +406,22 @@ impl Default for FxRackState {
                     extra: Vec::new(),
                 },
                 FxPedal {
+                    id: "love_philter",
+                    name: "💘 LOVE PHILTER",
+                    category: "Filter",
+                    enabled: false,
+                    color: crate::ui::theme::palette().track_rose(),
+                    p1_name: "CUTOFF",
+                    p1_val: 0.55,
+                    p2_name: "RESON",
+                    p2_val: 0.40,
+                    p3_name: "ENV",
+                    p3_val: 0.0,
+                    mix: 1.0,
+                    description: "Tre band (lågpass/bandpass/högpass) kring CUTOFF. SPREAD är avståndet mellan banden i oktaver, ENV hur långt ett anslag öppnar banken, ATTACK/RELEASE är envelopens tid.",
+                    extra: vec![("SPREAD", 0.45), ("ATTACK", 0.10), ("RELEASE", 0.45)],
+                },
+                FxPedal {
                     id: "analog_filter",
                     name: "🎛 SVF FILTER (12 dB)",
                     category: "Sound Design",
@@ -576,6 +592,22 @@ impl FxRackState {
             enabled: filt_p.map(|p| p.enabled).unwrap_or(false),
         };
 
+        let lp_p = self.pedal("love_philter");
+        let lp_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            lp_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        };
+        let love_philter = LovePhilterParams {
+            // 30 Hz–8 kHz, logaritmiskt: mitten av ratten hörs som mitten av registret.
+            cutoff: 30.0 * (8000.0_f32 / 30.0).powf(lp_knob(|p| p.p1_val, 0.55)),
+            spread: lp_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.45), 0.45) * 4.0,
+            resonance: 0.2 + lp_knob(|p| p.p2_val, 0.40) * 7.8,
+            attack_ms: 0.5 + lp_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.10), 0.10) * 199.5,
+            release_ms: 5.0 + lp_knob(|p| p.extra.get(2).map(|e| e.1).unwrap_or(0.45), 0.45) * 995.0,
+            env_octaves: lp_knob(|p| p.p3_val, 0.0) * 4.0,
+            mix: lp_knob(|p| p.mix, 1.0),
+            enabled: lp_p.map(|p| p.enabled).unwrap_or(false),
+        };
+
         let lim_p = self.pedal("brickwall_limiter");
         let limiter = LimiterParams {
             ceiling: lim_p.map(|p| p.p1_val).unwrap_or(0.95).clamp(0.1, 1.0),
@@ -657,19 +689,19 @@ impl FxRackState {
             mix: db_knob(|p| p.mix, 0.3),
         };
 
-        let ds_p = self.pedal("distructor");
-        let ds_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
-            ds_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
+        let dist_p = self.pedal("distructor");
+        let dist_knob = |pick: fn(&FxPedal) -> f32, fallback: f32| {
+            dist_p.map(|p| pick(p).clamp(0.0, 1.0)).unwrap_or(fallback)
         };
         let distructor = DistructorParams {
             drive: [
-                ds_knob(|p| p.p1_val, 0.35),
-                ds_knob(|p| p.p2_val, 0.35),
-                ds_knob(|p| p.p3_val, 0.35),
+                dist_knob(|p| p.p1_val, 0.35),
+                dist_knob(|p| p.p2_val, 0.35),
+                dist_knob(|p| p.p3_val, 0.35),
             ],
-            parallel: ds_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.0), 0.0),
-            tone_hz: 300.0 * (10.0f32).powf(ds_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.7), 0.7) * 1.8),
-            mix: ds_knob(|p| p.mix, 0.5),
+            parallel: dist_knob(|p| p.extra.first().map(|e| e.1).unwrap_or(0.0), 0.0),
+            tone_hz: 300.0 * (10.0f32).powf(dist_knob(|p| p.extra.get(1).map(|e| e.1).unwrap_or(0.7), 0.7) * 1.8),
+            mix: dist_knob(|p| p.mix, 0.5),
         };
 
         let hc_p = self.pedal("hardcore");
@@ -765,7 +797,7 @@ impl FxRackState {
             delay_bank,
             delay_bank_enabled: db_p.map(|p| p.enabled).unwrap_or(false),
             distructor,
-            distructor_enabled: ds_p.map(|p| p.enabled).unwrap_or(false),
+            distructor_enabled: dist_p.map(|p| p.enabled).unwrap_or(false),
             hardcore,
             hardcore_enabled: hc_p.map(|p| p.enabled).unwrap_or(false),
             effector,
@@ -803,6 +835,7 @@ impl FxRackState {
             gate,
             gate_enabled: gate_p.map(|p| p.enabled).unwrap_or(false),
             filter,
+            philter: love_philter,
             limiter,
             limiter_enabled: lim_p.map(|p| p.enabled).unwrap_or(false),
         }
@@ -1750,4 +1783,55 @@ mod tests {
         assert_eq!(params.effector.mode, 3, "läget ska bli det högsta");
     }
 
+    /// **Love Philters sex rattar når sina egna fält** — CUTOFF, RESON, ENV, SPREAD,
+    /// ATTACK och RELEASE. Rattar som byter plats låter fel utan att bygget klagar.
+    #[test]
+    fn the_love_philter_knobs_map_to_their_own_params() {
+        let mut state = FxRackState::default();
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "love_philter")
+            .expect("love philter-pedalen ska finnas i racket");
+        assert!(!state.build_master_fx_params().philter.enabled, "avstängd som standard");
+
+        let pedal = &mut state.pedals[idx];
+        pedal.enabled = true;
+        pedal.p1_val = 1.0; // högsta CUTOFF
+        pedal.p2_val = 1.0; // högsta RESON
+        pedal.p3_val = 0.5; // ENV halva vägen = 2 oktaver
+        pedal.extra[0].1 = 0.0; // banden på varandra
+        pedal.extra[1].1 = 0.0; // snabbaste attack
+        pedal.extra[2].1 = 0.0; // kortaste release
+        pedal.mix = 1.0;
+
+        let p = state.build_master_fx_params().philter;
+        assert!(p.enabled, "pedalen ska slå på steget");
+        assert!((p.cutoff - 8000.0).abs() < 1.0, "cutoff: {}", p.cutoff);
+        assert!((p.resonance - 8.0).abs() < 0.1, "resonans: {}", p.resonance);
+        assert!((p.env_octaves - 2.0).abs() < 0.01, "env: {}", p.env_octaves);
+        assert!(p.spread.abs() < 0.01, "spread: {}", p.spread);
+        assert!(p.attack_ms < 1.0 && p.release_ms < 6.0, "tider: {} / {}", p.attack_ms, p.release_ms);
+        assert!((p.mix - 1.0).abs() < 0.01);
+    }
+
+    /// **Distructor-pedalen slår på distorsionen, inte på de-essern.** De två delade
+    /// variabelnamn i mappningen, så distructorns flagga hamnade på båda stegen.
+    #[test]
+    fn the_distructor_pedal_does_not_turn_on_the_de_esser() {
+        let mut state = FxRackState::default();
+        for pedal in &mut state.pedals {
+            pedal.enabled = false;
+        }
+        let idx = state
+            .pedals
+            .iter()
+            .position(|p| p.id == "distructor")
+            .expect("distructor-pedalen ska finnas i racket");
+        state.pedals[idx].enabled = true;
+
+        let params = state.build_master_fx_params();
+        assert!(params.distructor_enabled, "distructorn ska vara på");
+        assert!(!params.deesser_enabled, "de-essern ska vara av");
+    }
 }

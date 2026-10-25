@@ -427,6 +427,117 @@ impl MasterFilter {
 }
 
 // ---------------------------------------------------------------------------
+// Love Philter (FL: Fruity Love Philter)
+// ---------------------------------------------------------------------------
+
+/// **Fruity Love Philter**: tre filter i **serie** kring en gemensam brytfrekvens —
+/// lågpass under, bandpass i mitten, högpass över — med en envelopföljare som flyttar
+/// hela banken. `spread` är avståndet mellan banden i oktaver, `env_octaves` hur långt
+/// ett anslag lyfter banken. Det är banken och svepningen som är effekten; en enda
+/// SVF hade varit `analog_filter`. Serie och inte parallellt: tre parallella band på
+/// samma brytfrekvens summerar tillbaka till ingången och blir då en genomsläppning.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct LovePhilterParams {
+    pub cutoff: f32,      // Hz, bankens mitt
+    pub spread: f32,      // oktaver mellan banden (0 = alla på samma)
+    pub resonance: f32,   // Q
+    pub attack_ms: f32,
+    pub release_ms: f32,
+    pub env_octaves: f32, // 0 = ingen svepning
+    pub mix: f32,
+    pub enabled: bool,
+}
+
+impl Default for LovePhilterParams {
+    fn default() -> Self {
+        Self {
+            cutoff: 1000.0,
+            spread: 1.5,
+            resonance: 0.9,
+            attack_ms: 10.0,
+            release_ms: 120.0,
+            env_octaves: 0.0,
+            mix: 1.0,
+            enabled: false,
+        }
+    }
+}
+
+pub struct LovePhilter {
+    sample_rate: f32,
+    /// `[kanal][band]`: 0 = lågpass, 1 = bandpass, 2 = högpass. Eget tillstånd per kanal,
+    /// annars hade vänster och höger filtrerat varandras sampel.
+    bands: [[StateVariableFilter; 3]; 2],
+    envelope: f32,
+    attack_coeff: f32,
+    release_coeff: f32,
+}
+
+fn envelope_coeff(ms: f32, sample_rate: f32) -> f32 {
+    let n = (ms * 0.001 * sample_rate).max(1.0);
+    1.0 - (-1.0 / n).exp()
+}
+
+impl LovePhilter {
+    pub fn new(sample_rate: f32) -> Self {
+        Self {
+            sample_rate,
+            bands: [[StateVariableFilter::new(sample_rate); 3]; 2],
+            envelope: 0.0,
+            attack_coeff: 1.0,
+            release_coeff: 1.0,
+        }
+    }
+
+    pub fn set_params(&mut self, p: &LovePhilterParams) {
+        self.attack_coeff = envelope_coeff(p.attack_ms, self.sample_rate);
+        self.release_coeff = envelope_coeff(p.release_ms, self.sample_rate);
+    }
+
+    /// Envelopens öppning 0–1. Läses av provet, inte av gränssnittet.
+    #[cfg(test)]
+    pub fn envelope(&self) -> f32 {
+        self.envelope
+    }
+
+    #[inline(always)]
+    pub fn process(&mut self, l: f32, r: f32, p: &LovePhilterParams) -> (f32, f32) {
+        if !p.enabled {
+            return (l, r);
+        }
+        let peak = l.abs().max(r.abs()).min(4.0);
+        let coeff = if peak > self.envelope { self.attack_coeff } else { self.release_coeff };
+        self.envelope += (peak - self.envelope) * coeff;
+        // Roten gör att ett svagt anslag ändå öppnar: amplitud 0,25 ger halva vägen.
+        let open = self.envelope.sqrt().min(1.0) * p.env_octaves.max(0.0);
+        let spread = p.spread.clamp(0.0, 4.0);
+        let q = p.resonance.clamp(0.2, 8.0);
+        let mix = p.mix.clamp(0.0, 1.0);
+        let mut wet = [0.0_f32; 2];
+        for (ch, x) in [l, r].into_iter().enumerate() {
+            let mut y = x;
+            for band in 0..3 {
+                let oct = match band {
+                    0 => -spread,
+                    1 => 0.0,
+                    _ => spread,
+                };
+                let cutoff = (p.cutoff * 2.0_f32.powf(oct + open))
+                    .clamp(20.0, self.sample_rate * 0.45);
+                let fp = FilterParams { cutoff, resonance: q };
+                y = match band {
+                    0 => self.bands[ch][band].process_lowpass(y, &fp),
+                    1 => self.bands[ch][band].process_bandpass(y, &fp),
+                    _ => self.bands[ch][band].process_highpass(y, &fp),
+                };
+            }
+            wet[ch] = y;
+        }
+        (l * (1.0 - mix) + wet[0] * mix, r * (1.0 - mix) + wet[1] * mix)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Granulizer
 // ---------------------------------------------------------------------------
 

@@ -159,6 +159,7 @@ pub struct MasterFxParams {
     pub gate: GateParams,
     pub gate_enabled: bool,
     pub filter: MasterFilterParams,
+    pub philter: LovePhilterParams,
     pub limiter: LimiterParams,
     pub limiter_enabled: bool,
     pub granular: GranularParams,
@@ -220,6 +221,7 @@ impl Default for MasterFxParams {
             gate: GateParams::default(),
             gate_enabled: false,
             filter: MasterFilterParams::default(),
+            philter: LovePhilterParams::default(),
             granular: GranularParams::default(),
             granular_enabled: false,
             freq_shift: FreqShiftParams::default(),
@@ -274,6 +276,7 @@ pub struct MasterFxChain {
     effector: Effector,
     shelves: Shelves,
     filter: MasterFilter,
+    philter: LovePhilter,
     limiter: Limiter,
     params: MasterFxParams,
 }
@@ -307,6 +310,7 @@ impl MasterFxChain {
             effector: Effector::new(sample_rate),
             shelves: Shelves::new(sample_rate),
             filter: MasterFilter::new(sample_rate),
+            philter: LovePhilter::new(sample_rate),
             limiter: Limiter::new(sample_rate),
             params: MasterFxParams::default(),
         };
@@ -327,6 +331,7 @@ impl MasterFxChain {
         }
         self.eq_active = params.eq_enabled && any;
         self.multiband.set_params(params.multiband);
+        self.philter.set_params(&params.philter);
     }
 
     /// Laddar (eller rensar) convolverns impulsrespons. Responsen är för stor för att
@@ -386,6 +391,14 @@ impl MasterFxChain {
 
         if p.filter.enabled {
             let (nl, nr) = self.filter.process(l, r, &p.filter);
+            l = nl;
+            r = nr;
+        }
+
+        // Love Philter ligger efter det fasta SVF-filtret: banken är en färgning, inte en
+        // korrigering, och ska kunna svepa utan att det analoga filtret rör sig.
+        if p.philter.enabled {
+            let (nl, nr) = self.philter.process(l, r, &p.philter);
             l = nl;
             r = nr;
         }

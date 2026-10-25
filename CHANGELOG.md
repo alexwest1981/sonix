@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Love Philter (0.9.125)
+
+- `LovePhilterParams` + `LovePhilter` i masterns kedja: tre filter i **serie** (lågpass,
+  bandpass, högpass) kring en gemensam brytfrekvens. `SPREAD` är avståndet mellan banden i
+  oktaver och `ENV` är en envelopföljare som flyttar hela banken upp till fyra oktaver;
+  `ATTACK`/`RELEASE` är dess tider. Pedalen heter **💘 LOVE PHILTER** i FX-racket.
+- Serie och inte parallellt: tre parallella band på samma brytfrekvens summerar tillbaka till
+  ingången och blir en genomsläppning — mätt i det första försöket, innan provet fanns.
+- Prov: 1 kHz passerar banken medan 8 kHz ligger utanför; envelopen öppnar banken (mätt RMS)
+  och stänger sig i tystnad. Mappningen har eget prov: sex rattar, sex fält.
+
+### Fixed — distructorn slog på de-essern
+
+- `ds_p` bands de två pedalerna i `build_master_fx_params`, så distructorns flagga hamnade på
+  båda stegen och de-esserns egen pedal gjorde ingenting. Nu `dist_p`, med prov att bara
+  distructorn slås på.
 ### Fixed — the EQ card showed eight bands (0.9.124)
 
 - Rattarna i Visual EQ-kortet ritades för **alla** noder men etiketterna var fyra, så de tre

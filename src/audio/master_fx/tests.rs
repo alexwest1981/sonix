@@ -1302,3 +1302,83 @@ fn center_control_removes_mid_or_side() {
     assert!((l - r).abs() < 1e-6, "sidorna borta ska ge lika kanaler");
     assert!(l.abs() > 0.2, "mitten ska vara kvar, fick {l:.4}");
 }
+
+/// **Love Philter:** banken är ett filter, inte en genomsläppning. Med banden en oktav
+/// isär (lågpass 500, bandpass 1 000, högpass 2 000) passerar 1 kHz medan 8 kHz hamnar
+/// utanför och dämpas.
+#[test]
+fn love_philter_bands_pass_their_range() {
+    let sr = 48_000.0;
+    let rms = |freq: f32| {
+        let mut f = LovePhilter::new(sr);
+        let p = LovePhilterParams {
+            cutoff: 1000.0,
+            spread: 1.0,
+            resonance: 4.0,
+            attack_ms: 1.0,
+            release_ms: 50.0,
+            env_octaves: 0.0,
+            mix: 1.0,
+            enabled: true,
+        };
+        f.set_params(&p);
+        let mut sum = 0.0;
+        for i in 0..19_200 {
+            let x = 0.5 * (std::f32::consts::TAU * freq * i as f32 / sr).sin();
+            let (l, _) = f.process(x, x, &p);
+            if i > 9_600 {
+                sum += l * l;
+            }
+        }
+        (sum / 9_600.0).sqrt()
+    };
+    let inside = rms(1000.0);
+    let outside = rms(8000.0);
+    assert!(inside > 0.02, "1 kHz ska passera banken, fick {inside:.4}");
+    assert!(
+        outside < inside * 0.33,
+        "8 kHz ska ligga utanför banken: {outside:.4} mot {inside:.4}"
+    );
+}
+
+/// **Love Philter:** envelopen flyttar banken. Samma 2 kHz-ton på samma CUTOFF hörs när
+/// ENV öppnar och tystnar när den är stängd — och följaren stänger sig i tystnad.
+#[test]
+fn love_philter_envelope_opens_the_bank() {
+    let sr = 48_000.0;
+    let mut f = LovePhilter::new(sr);
+    let base = LovePhilterParams {
+        cutoff: 200.0,
+        spread: 1.0,
+        resonance: 2.0,
+        attack_ms: 1.0,
+        release_ms: 60.0,
+        env_octaves: 0.0,
+        mix: 1.0,
+        enabled: true,
+    };
+    let rms = |f: &mut LovePhilter, p: &LovePhilterParams| {
+        let mut sum = 0.0;
+        for i in 0..19_200 {
+            let x = 0.5 * (std::f32::consts::TAU * 2000.0 * i as f32 / sr).sin();
+            let (l, _) = f.process(x, x, p);
+            if i > 9_600 {
+                sum += l * l;
+            }
+        }
+        (sum / 9_600.0).sqrt()
+    };
+    let closed = rms(&mut f, &base);
+    let open_params = LovePhilterParams { env_octaves: 4.0, ..base };
+    f.set_params(&open_params);
+    let open = rms(&mut f, &open_params);
+    assert!(
+        open > closed * 2.0,
+        "envelopen ska öppna banken: öppen {open:.4} mot stängd {closed:.4}"
+    );
+    assert!(f.envelope() > 0.3, "envelopen ska vara öppen efter tonen, fick {:.3}", f.envelope());
+    for _ in 0..48_000 {
+        f.process(0.0, 0.0, &open_params);
+    }
+    assert!(f.envelope() < 0.01, "envelopen ska stängas i tystnad, fick {:.4}", f.envelope());
+}

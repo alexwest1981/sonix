@@ -95,7 +95,7 @@ Trädet på tre nivåer, med antal filer per nod:
 
 ## 2. De 141 pluggarna
 
-**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 72** har en motsvarighet, **◐ 62** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
+**51 generatorer** och **90 effekter**. Status mot Sonix i dag: **✅ 76** har en motsvarighet, **◐ 59** delvis, **✗ 0** saknas, **— 6** ej tillämpliga (enligt tabellen nedan — den är räknad, inte gissad).
 
 
 **Statusnycklarna:** ✅ = motsvarighet som gör jobbet · ◐ = halva · ✗ = saknas · **—** = ej tillämplig i en Linux-DAW (mobilapp, dött protokoll, Windows-bunden hårdvara). De sex som är — räknas inte som luckor; de står kvar i tabellen med skälet skrivet, så inget försvinner tyst.
@@ -173,7 +173,7 @@ konstverk, data) — alltså ett mått på hur mycket innehåll som följer med 
 | ZGameEditor Visualizer | 1423 | ◐ | **ZGameEditor-lite**: `ui::visualizer` ritar vågformen ur `scope_history` och spektrumstaplar ur `spectrum_levels` — samma mätning som mixern använder, ingen andra FFT — med toppmarkör som faller lugnt. **🌊 Visualizer...** i menyn. Prov: markören lyfts till nivån och faller ett steg per bildruta, aldrig under nivån; tysta band får en synlig linje. Kvar: 1 423 GPU-förval, lager, text/3D-scener och videoexport |
 | Hardcore | 42 | ✅ | `Hardcore` — pedalkedja: komp → drive → wah → delay, byggd av masterkedjans egna kretsar; de 98 `.hdprg`-programmen är inte lästa |
 | Distructor | 37 | ✅ | `Distructor` — tre kurvor (mättnad, klippning, vikning) i serie eller parallellt, tonläge efter |
-| Fruity Love Philter | 23 | ◐ | SVF + filterenvelop, men ingen multi-filterbank |
+| Fruity Love Philter | 23 | ✅ | `LovePhilter` (0.9.125): tre filter i serie — lågpass under, bandpass i mitten, högpass över — kring en gemensam brytfrekvens, med SPREAD i oktaver och en envelopföljare som flyttar banken upp till fyra oktaver. Prov: 1 kHz passerar medan 8 kHz dämpas; envelopen öppnar banken och stänger sig i tystnad. De 43 förvalen är inte lästa |
 | Pitcher | 22 | ◐ | vocal_harmonizer med formantbevarande pitch |
 | Edison | 20 | ◐ | recordern; ingen vågformseditor med verktyg |
 | Maximus | 15 | ◐ | multibandskompressorn (byggd i dag) är 3 band; Maximus har fler + kurvor |
