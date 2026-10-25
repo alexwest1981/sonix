@@ -2691,7 +2691,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                 strip_divider(ui);
 
                 // MASTER — bordets sista remsa, som på en konsol.
-                mixer_strip(ui, strip_w, &crate::i18n::t("MASTER"), pal.orange(), false, false, |ui| {
+                mixer_strip(ui, strip_w, crate::i18n::t("MASTER"), pal.orange(), false, false, |ui| {
                     rotary_knob(ui, &mut self.master_pan, -1.0, 1.0, "PAN", pal.text(), 16.0);
                     rotary_knob(ui, &mut self.stereo_width, 0.0, 2.0, "BREDD", pal.cyan(), 16.0);
                     // **A/B** (Abletons Compare): A och B fångar mixen — volym, pan, mute
@@ -2741,7 +2741,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
 
                 // KONTROLLRUM — det man lyssnar genom. Sitter efter masterns
                 // FX-kedja och rör aldrig exporten.
-                mixer_strip(ui, strip_w, &crate::i18n::t("CONTROL ROOM"), pal.cyan(), false, false, |ui| {
+                mixer_strip(ui, strip_w, crate::i18n::t("CONTROL ROOM"), pal.cyan(), false, false, |ui| {
                     let cr_state = self.control_room;
                     let mut changed = false;
                     ui.horizontal(|ui| {
@@ -2782,7 +2782,7 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                     });
                     if ui
                         .add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎙 TALKBACK")).size(Theme::FONT_XS)).selected(self.talkback))
-                        .on_hover_text(crate::i18n::t("Micken till monitorerna i stället in i mastern — hörs även i DIM"))
+                        .on_hover_text(crate::i18n::t("Micken till monitorerna i stället för in i mastern — hörs även i DIM"))
                         .clicked()
                     {
                         toggle_talkback = Some(!self.talkback);
