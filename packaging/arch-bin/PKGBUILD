@@ -1,0 +1,21 @@
+# Maintainer: Alex Westrom <alex@alibit.se>
+# Paketerar den förbyggda release-binären — samma bytes som GitHub-releasen.
+# shortcut: pkgver och sha256sums är pinnade till senaste taggen; uppdatera båda vid varje release.
+pkgname=sonix-bin
+pkgver=0.9.158
+pkgrel=1
+pkgdesc="Digital audio workstation: arrangement, mixer, mastering chain and a modular patcher"
+arch=('x86_64')
+url="https://github.com/alexwest1981/sonix"
+license=('MIT' 'Apache')
+depends=('alsa-lib' 'glibc')
+provides=('sonix')
+conflicts=('sonix')
+source=("sonix-${pkgver}-x86_64-unknown-linux-gnu.tar.gz::https://github.com/alexwest1981/sonix/releases/download/v${pkgver}/sonix-${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
+sha256sums=('812410e179a6918b47fbf6ffd36788c6abba0137321cd9066a4dda39d922ef6d')
+
+package() {
+  install -Dm755 "${srcdir}/sonix-${pkgver}-x86_64-unknown-linux-gnu/sonix" "${pkgdir}/usr/bin/sonix"
+  install -Dm644 "${srcdir}/sonix-${pkgver}-x86_64-unknown-linux-gnu/README.md" "${pkgdir}/usr/share/doc/sonix/README.md"
+  install -Dm644 "${srcdir}/sonix-${pkgver}-x86_64-unknown-linux-gnu/CHANGELOG.md" "${pkgdir}/usr/share/doc/sonix/CHANGELOG.md"
+}
