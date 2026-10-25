@@ -41,6 +41,10 @@ pub struct FxPedal {
 #[derive(Clone, Debug)]
 pub struct FxRackState {
     pub pedals: Vec<FxPedal>,
+    /// **Projektets tempo**, speglat hit varje bildruta (`self.fx_rack_state.project_bpm = self.bpm`).
+    /// Tidskurvan är synkron till låten, inte till en egen ratt — en performance-effekt som går i
+    /// 120 när låten går i 133 är fel hur rätt den än är inställd.
+    pub project_bpm: f32,
     pub selected_preset: usize,
     pub active_tab: usize, // 0 = FX Rack, 1 = Visual EQ, 2 = Effects Library
     pub search_query: String,
@@ -504,12 +508,12 @@ impl Default for FxRackState {
                     color: crate::ui::theme::palette().purple(),
                     p1_name: "FORM",
                     p1_val: 0.33,
-                    p2_name: "TEMPO",
-                    p2_val: 0.5,
+                    p2_name: "TAKTER",
+                    p2_val: 0.33,
                     p3_name: "—",
                     p3_val: 0.0,
                     mix: 1.0,
-                    description: "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TEMPO styr hur snabbt kurvan går runt. Tonhöjden följer med — det är effekten.",
+                    description: "Gross Beats tidskurva: masterns egen historik spelas tillbaka långsammare än i realtid. FORM väljer rak, stutter, tape stop eller halv fart; TAKTER säger hur många takter kurvan spänner över och följer projektets tempo. Tonhöjden följer med — det är effekten.",
                     extra: Vec::new(),
                 },
                 FxPedal {
@@ -529,6 +533,7 @@ impl Default for FxRackState {
                     extra: Vec::new(),
                 },
             ],
+            project_bpm: 120.0,
             selected_preset: 0,
             active_tab: 0,
             vocoder_bands: [1.0; 16],
@@ -739,9 +744,11 @@ impl FxRackState {
             .get((tc_knob(|p| p.p1_val, 0.33) * (shapes.len() - 1) as f32).round() as usize)
             .copied()
             .unwrap_or(TimeShape::Stutter);
+        // Kurvan är synkron till låten: TAKTER (1–4) delar projektets tempo, så en takt är en takt.
+        let bars = 1.0 + (tc_knob(|p| p.p2_val, 0.33) * 3.0).round();
         let time_curve = TimeCurveParams {
             curve: tc_shape.curve(),
-            bpm: 60.0 + tc_knob(|p| p.p2_val, 0.5) * 120.0,
+            bpm: (self.project_bpm.max(20.0) / bars).clamp(20.0, 260.0),
             mix: tc_knob(|p| p.mix, 1.0),
             enabled: tc_p.map(|p| p.enabled).unwrap_or(false),
         };
@@ -2171,18 +2178,19 @@ mod tests {
             let pedal = &mut state.pedals[idx];
             pedal.enabled = true;
             pedal.p1_val = 1.0; // sista formen: halv fart
-            pedal.p2_val = 1.0; // 180 BPM
+            pedal.p2_val = 1.0; // fyra takter
         }
         let p = state.build_master_fx_params().time_curve;
         assert!(p.enabled);
         assert_eq!(p.curve, TimeShape::Half.curve(), "formen hamnade inte på halv fart");
-        assert!((p.bpm - 180.0).abs() < 0.01, "tempo: {}", p.bpm);
+        // Fyra takter i projektets 120 BPM = en kurva per 30 BPM.
+        assert!((p.bpm - 30.0).abs() < 0.01, "tempo: {}", p.bpm);
 
         state.pedals[idx].p1_val = 0.0; // rak
-        state.pedals[idx].p2_val = 0.0; // 60 BPM
+        state.pedals[idx].p2_val = 0.0; // en takt
         let p = state.build_master_fx_params().time_curve;
         assert_eq!(p.curve, TimeShape::Flat.curve());
-        assert!((p.bpm - 60.0).abs() < 0.01, "tempo: {}", p.bpm);
+        assert!((p.bpm - 120.0).abs() < 0.01, "tempo: {}", p.bpm);
     }
 
     /// **Hela vägen: pedal → parametrar → ljud.** Ratten och DSP:n hade var sin test; det här

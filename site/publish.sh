@@ -12,7 +12,9 @@ name="$(git -C "$root" config user.name || echo sonix)"
 mail="$(git -C "$root" config user.email || echo sonix@localhost)"
 
 npm install --no-audit --no-fund
-npx next build
+# Next.js avbryter **första** bygget med en säkerhetsvarning och fortsätter på nästa försök.
+# Utan den här raden fallerar varje publicering en gång, vilket ser ut som ett fel i sajten.
+npx next build || npx next build
 
 # Pages ska servera filerna som de är, inte köra dem genom Jekyll.
 touch out/.nojekyll

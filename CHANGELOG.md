@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — tidskurvan följer låtens tempo (0.9.155)
+
+- **TAKTER i stället för TEMPO.** Time Curve hade en egen BPM-ratt, så effekten gick i 120 när låten
+  gick i 133. Nu speglas projektets tempo till racket varje bildruta (`FxRackState.project_bpm`) och
+  ratten väljer hur många takter kurvan spänner över — 1–4. En takt är en takt.
+- **`site/publish.sh` försöker bygget två gånger.** Next.js avbryter första bygget med en
+  säkerhetsvarning och fortsätter på nästa; förut föll varje publicering en gång och såg ut som ett
+  fel i sajten.
+
 ### Added — solo per band i Maximus (0.9.154)
 
 - **SOLO-ratten:** 0 = av, 0,33 = low, 0,66 = mid, 1 = high. Det valda bandet hörs **torrt** — man

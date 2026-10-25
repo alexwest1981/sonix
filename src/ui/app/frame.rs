@@ -472,6 +472,9 @@ impl SonixApp {
         }
         self.mixer_pointer_was_down = mixer_pointer_down;
         self.mixer_control_event = false;
+        // Tempot speglas till racket varje bildruta: tidskurvan (och allt annat som ska följa
+        // låten) läser det därifrån, inte från en egen ratt.
+        self.fx_rack_state.project_bpm = self.bpm;
         self.sync_mic_monitoring();
     }
 
