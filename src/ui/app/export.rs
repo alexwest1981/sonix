@@ -350,7 +350,7 @@ fn export_fx_state(&self, dry: bool) -> crate::audio::FxState {
         master_fx: if dry {
             crate::audio::MasterFxParams::default()
         } else {
-            self.fx_rack_state.build_master_fx_params()
+            self.fx_rack_state.master_fx_params_at(self.bpm)
         },
         // Röstens patch. Utan den exporteras en annan klang än den man hör.
         synth: crate::audio::SynthVoiceState {

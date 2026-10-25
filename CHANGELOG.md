@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — exporten får låtens tempo, inte 120 (0.9.156)
+
+- **`master_fx_params_at(bpm)`:** `project_bpm` speglades bara i `frame.rs`, så en batch-export som
+  startade direkt efter inläsning byggde masterns kedja med standardtempot — tidskurvan gick i 120
+  även om låten stod i 133. Exportvägen frågar nu med låtens tempo, utan att röra rackets eget läge.
+- Prov: `the_export_path_reads_the_songs_tempo` kräver 120 respektive 133 i parametrarna och att
+  `project_bpm` står kvar på 120 efter anropet.
+
 ### Changed — tidskurvan följer låtens tempo (0.9.155)
 
 - **TAKTER i stället för TEMPO.** Time Curve hade en egen BPM-ratt, så effekten gick i 120 när låten

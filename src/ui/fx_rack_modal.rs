@@ -594,6 +594,15 @@ impl FxRackState {
     }
 
     /// Translate the UI rack state into the DSP parameter struct sent to the engine.
+    /// Parametrar med ett **angivet** tempo, för vägar som inte har ritat en bildruta först
+    /// (export, batch): `project_bpm` speglas annars bara i `frame.rs`, och en export som startar
+    /// direkt efter inläsning skulle få 120 i stället för låtens tempo.
+    pub fn master_fx_params_at(&self, bpm: f32) -> MasterFxParams {
+        let mut state = self.clone();
+        state.project_bpm = bpm;
+        state.build_master_fx_params()
+    }
+
     pub fn build_master_fx_params(&self) -> MasterFxParams {
         let eq_pedal_on = self.pedal("visual_eq").map(|p| p.enabled).unwrap_or(false);
         let mut eq_bands = [MasterEqBand::flat(); 7];
@@ -2238,6 +2247,20 @@ mod tests {
             (best.0 - 110.0).abs() < 12.0,
             "masterkedjan spelade {:.0} Hz, väntade 110 (halv fart)", best.0
         );
+    }
+
+    /// **Exportvägen får låtens tempo, inte 120.** `project_bpm` speglas annars bara i bildrutan;
+    /// en batch-export som startar direkt efter inläsning hade fått standardtempot.
+    #[test]
+    fn the_export_path_reads_the_songs_tempo() {
+        let mut state = FxRackState::default();
+        let idx = state.pedals.iter().position(|p| p.id == "time_curve").expect("pedalen finns");
+        state.pedals[idx].enabled = true;
+        state.pedals[idx].p2_val = 0.0; // en takt
+        assert!((state.master_fx_params_at(120.0).time_curve.bpm - 120.0).abs() < 0.01);
+        assert!((state.master_fx_params_at(133.0).time_curve.bpm - 133.0).abs() < 0.01);
+        // Anropet får inte smitta rackets eget läge.
+        assert!((state.project_bpm - 120.0).abs() < 1e-6);
     }
 
 }
