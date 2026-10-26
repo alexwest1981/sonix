@@ -267,8 +267,11 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          # **Versionen är pinnad, inte "latest":** `releases/latest/download/<fil>` kräver att
+          # filnamnet är exakt detsamma i varje release, och nfpm döper sina filer med
+          # versionsnummer — mätt: länken gav 404 och hela paketjobbet föll.
           curl -fsSL -o /tmp/nfpm.deb \
-            https://github.com/goreleaser/nfpm/releases/latest/download/nfpm_amd64.deb
+            https://github.com/goreleaser/nfpm/releases/download/v2.48.0/nfpm_2.48.0_amd64.deb
           ( cd /tmp && ar x nfpm.deb && tar -xf data.tar.gz )
           NPFM=/tmp/usr/bin/nfpm
           V="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
