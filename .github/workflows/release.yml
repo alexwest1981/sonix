@@ -42,11 +42,13 @@ jobs:
 
       - name: Install system dependencies
         run: |
-          # **cmake krävs av `signalsmith-stretch`** (C++-källor med eget byggskript).
-          # Utan det faller releasebygget på en custom build command — mätt 2026-10-26, och
-          # det syntes först i releaseflödet eftersom det bygger testerna först.
+          # **sakerna som faktiskt krävs, mätta i tur och ordning:** glibc-golvet kommer från
+          # imagen, `signalsmith-stretch` bygger C++ via bindgen och behöver därför **libclang**
+          # (clang) utöver gcc-c++ — utan den faller bygget med "Unable to find libclang".
+          # `set -e` finns för att ett misslyckat dnf ska synas, inte tigas ihjäl.
+          set -euo pipefail
           dnf install -y --setopt=install_weak_deps=False \
-            gcc gcc-c++ make cmake pkgconf-pkg-config alsa-lib-devel alsa-lib \
+            gcc gcc-c++ make cmake clang clang-libs pkgconf-pkg-config alsa-lib-devel alsa-lib \
             binutils tar gzip curl which
 
       - name: Install Rust toolchain
