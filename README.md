@@ -39,7 +39,7 @@ release is published (`.github/workflows/ci.yml`, job `distributioner`).
 ### What you need
 
 - **x86-64 with glibc ≥ 2.28** — Debian 10+, Ubuntu 20.04+, RHEL/Rocky/Alma 8+, Fedora, Arch,
-  openSUSE Leap 15+. The aarch64 build targets glibc ≥ 2.39. The floor is not a guess: the release
+  openSUSE Leap 15+. The aarch64 build is held to the same 2.28 floor. The floor is not a guess: the release
   build runs in a glibc 2.28 container and the pipeline **fails** if any symbol asks for newer
   (`packaging/check-glibc-floor.sh`).
 - **An audio server.** PipeWire, PulseAudio or bare ALSA — all three reach Sonix through ALSA,

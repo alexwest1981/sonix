@@ -33,7 +33,7 @@ releasen publiceras.
 ### Vad som krävs
 
 - **x86-64 med glibc ≥ 2.28** — Debian 10+, Ubuntu 20.04+, RHEL/Rocky/Alma 8+, Fedora, Arch,
-  openSUSE Leap 15+. aarch64-bygget kräver glibc ≥ 2.39. Golvet är mätt: releasebygget körs i en
+  openSUSE Leap 15+. aarch64-bygget hålls till samma 2,28-golv. Golvet är mätt: releasebygget körs i en
   glibc 2.28-container och flödet **stannar** om någon symbol begär nyare
   (`packaging/check-glibc-floor.sh`).
 - **En ljudserver.** PipeWire, PulseAudio eller ren ALSA — alla tre når Sonix genom ALSA, som är
