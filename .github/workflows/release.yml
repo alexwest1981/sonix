@@ -173,12 +173,22 @@ jobs:
         run: |
           set -euo pipefail
           ls -la dist
-          if [ -s RELEASE_NOTES.md ]; then
-            gh release create "${GITHUB_REF_NAME}" dist/* \
+          # **Bara filer, aldrig kataloger:** `dist/*` tar med AppDir-mappen och
+          # tarball-mapparna, och då faller hela publiceringen på "read ...: is a directory"
+          # *efter* att alla paket byggts.
+          files=(dist/*.tar.gz dist/*.deb dist/*.rpm dist/*.AppImage dist/SHA256SUMS)
+          present=()
+          for f in "${files[@]}"; do [ -f "$f" ] && present+=("$f"); done
+          # **Idempotent:** en tidigare körning kan ha hunnit skapa releasen innan en
+          # tillgångsmall föll. Då laddas filerna upp i stället för att releasen skapas om.
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release upload "${GITHUB_REF_NAME}" "${present[@]}" --clobber
+          elif [ -s RELEASE_NOTES.md ]; then
+            gh release create "${GITHUB_REF_NAME}" "${present[@]}" \
               --title "Sonix Studio ${GITHUB_REF_NAME}" \
               --notes-file RELEASE_NOTES.md
           else
-            gh release create "${GITHUB_REF_NAME}" dist/* \
+            gh release create "${GITHUB_REF_NAME}" "${present[@]}" \
               --title "Sonix Studio ${GITHUB_REF_NAME}" \
               --generate-notes
           fi
