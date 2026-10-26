@@ -97,24 +97,30 @@ jobs:
             mkdir -p "dist/${name}"
             cp "bins/bin-${arch}/sonix" "dist/${name}/sonix"
             chmod +x "dist/${name}/sonix"
-            strip --strip-unneeded "dist/${name}/sonix" || true
+            # x86-strip kan inte läsa en aarch64-binär; den biten är kosmetisk.
+            strip --strip-unneeded "dist/${name}/sonix" 2>/dev/null || true
             cp README.md README_SV.md CHANGELOG.md CHANGELOG-DETAIL.md MANUAL.md \
                LICENSE-MIT LICENSE-APACHE "dist/${name}/"
             tar -C dist -czf "dist/${name}.tar.gz" "${name}"
             bash packaging/check-glibc-floor.sh "dist/${name}/sonix" 2.28
+
+            # **nfpm läser sina sökvägar relativt repot**, så binären måste ligga på den plats
+            # nfpm.yaml pekar ut precis när paketet byggs. Arkitekturnamnen skiljer sig mellan
+            # formaten (amd64/arm64 för deb, x86_64/aarch64 för rpm).
+            mkdir -p target/release
+            cp "bins/bin-${arch}/sonix" target/release/sonix
+            case "$arch" in
+              x86_64) deb_arch=amd64; rpm_arch=x86_64 ;;
+              aarch64) deb_arch=arm64; rpm_arch=aarch64 ;;
+            esac
+            VERSION="$version" ARCH="$deb_arch" "$NPFM" package -f packaging/nfpm.yaml -p deb \
+              -t "$PWD/dist/sonix_${version}_${deb_arch}.deb"
+            VERSION="$version" ARCH="$rpm_arch" "$NPFM" package -f packaging/nfpm.yaml -p rpm \
+              -t "$PWD/dist/sonix-${version}-1.${rpm_arch}.rpm"
           done
 
-          # Samma binär, två paketformat. Arkitekturnamnen skiljer sig mellan dem.
-          VERSION="$version" ARCH=amd64 "$NPFM" package -f packaging/nfpm.yaml -p deb \
-            -t "$PWD/dist/sonix_${version}_amd64.deb"
-          VERSION="$version" ARCH=x86_64 "$NPFM" package -f packaging/nfpm.yaml -p rpm \
-            -t "$PWD/dist/sonix-${version}-1.x86_64.rpm"
-          VERSION="$version" ARCH=arm64 "$NPFM" package -f packaging/nfpm.yaml -p deb \
-            -t "$PWD/dist/sonix_${version}_arm64.deb"
-          VERSION="$version" ARCH=aarch64 "$NPFM" package -f packaging/nfpm.yaml -p rpm \
-            -t "$PWD/dist/sonix-${version}-1.aarch64.rpm"
-
-          # AppImage för x86_64 (verktygen finns bara där).
+          # AppImage för x86_64 (verktygen finns bara där); dess skript läser target/release/sonix.
+          cp bins/bin-x86_64/sonix target/release/sonix
           ARCH=x86_64 bash packaging/build-appimage.sh
           ( cd dist && sha256sum -- *.tar.gz *.deb *.rpm *.AppImage > SHA256SUMS )
           ls -la dist
