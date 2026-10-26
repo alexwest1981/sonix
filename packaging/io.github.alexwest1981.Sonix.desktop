@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Sonix Studio
+GenericName=Digital Audio Workstation
+Comment=Native Linux DAW with channel rack, piano roll, mixer and an AI assistant
+Exec=sonix %F
+Icon=io.github.alexwest1981.Sonix
+Terminal=false
+Categories=AudioVideo;Audio;Music;
+Keywords=DAW;audio;music;sequencer;mixer;midi;vst;
+StartupWMClass=sonix
+MimeType=application/x-sonix-project;

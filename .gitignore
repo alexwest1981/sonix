@@ -13,3 +13,7 @@ NEXT-SESSION.md
 
 # Python-cachar från verktygen i tools/ (module_split.py importeras av skript)
 __pycache__/
+
+# Paketerade artefakter (deb/rpm/AppImage) och hämtade AppImage-verktyg
+/dist/
+/.appimage-tools/

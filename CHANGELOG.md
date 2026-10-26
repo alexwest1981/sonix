@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.160] - 2026-10-26
+
+**Fungerar på alla distributioner.** Tills i dag fanns binären bara som ett tarball byggt på en
+Ubuntu-runner: glibc ≥ 2.35 för x86-64 och ≥ 2.39 för aarch64, vilket stänger ute Debian 11,
+Ubuntu 20.04 och hela RHEL 8-serien — och en binär byggd på Arch begärde till och med GLIBC_2.44
+och startade inte ens på Ubuntu 24.04. Nu byggs releasen i en **glibc 2.28**-container för båda
+arkitekturerna, och flödet **stannar** om någon symbol begär nyare.
+
+- **`packaging/check-glibc-floor.sh`** — grinden. Läser binärens GLIBC-symbolversioner och faller
+  över golvet. Körs både i CI och i releaseflödet.
+- **`packaging/verify-in-docker.sh`** — beviset. Installerar paketet i en riktig distribution och
+  startar appen med Xvfb; ett nytt CI-jobb kör den på Debian 12, Ubuntu 22.04, Ubuntu 24.04,
+  Fedora 41 och Rocky 9.
+- **Fyra former av samma binär:** `.deb` (Debian, Ubuntu, Mint, Pop!…), `.rpm` (Fedora, RHEL,
+  Rocky, Alma, openSUSE), **AppImage** (ingen installation alls) och tarballen som förut.
+  `SHA256SUMS` ligger bredvid och alla filer attesteras med byggbevis.
+- **`packaging/nfpm.yaml`** — paketberoendet deklareras per paketformat (`libasound2` för deb,
+  `alsa-lib` för rpm) och `ffmpeg` som rekommendation, eftersom WAV/FLAC fungerar utan.
+- **`packaging/io.github.alexwest1981.Sonix.{desktop,metainfo.xml}`** — desktoppost, ikon och
+  AppStream-metadata som `appstreamcli validate` godkänner, så appen syns i programmenyer och
+  mjukvaru-butiker med namn, ikon och skärmdumpar.
+- README (båda språken) svarar nu på frågan en ny användare har: *vilken rad ska jag köra?* — en
+  tabell per distribution, vad varje form installerar, och hur den tas bort.
+
 ## [0.9.159] - 2026-10-25
 
 **aarch64-release.** Release-workflowen bygger nu båda arkitekturerna: x86_64 på `ubuntu-22.04`

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.alexwest1981.Sonix</id>
+  <name>Sonix Studio</name>
+  <summary>Native Linux digital audio workstation</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT OR Apache-2.0</project_license>
+  <description>
+    <p>
+      Sonix Studio is a native Linux DAW written in Rust: a channel rack with drums and
+      synths, a piano roll, a multichannel effects mixer, a vocal studio with live
+      recording, a modular patcher, VST3/CLAP plugin hosting and an AI assistant that can
+      write a beat from a sentence.
+    </p>
+    <p>It runs on ALSA (PipeWire through its ALSA layer) and needs no daemon of its own.</p>
+  </description>
+  <launchable type="desktop-id">io.github.alexwest1981.Sonix.desktop</launchable>
+  <url type="homepage">https://alexwest1981.github.io/sonix/</url>
+  <url type="bugtracker">https://github.com/alexwest1981/sonix/issues</url>
+  <url type="vcs-browser">https://github.com/alexwest1981/sonix</url>
+  <developer id="io.github.alexwest1981">
+    <name>Alexander West</name>
+  </developer>
+  <content_rating type="oars-1.1"/>
+  <releases>
+    <release version="0.9.150" date="2026-10-25">
+      <description><p>Timbre analysis, recording precount, mixer knob resets.</p></description>
+    </release>
+  </releases>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://alexwest1981.github.io/sonix/shots/01_tidslinje_arranger.jpg</image>
+      <caption>Arrangement with the pattern timeline</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://alexwest1981.github.io/sonix/shots/06_effects_mixer.jpg</image>
+      <caption>The effects mixer</caption>
+    </screenshot>
+  </screenshots>
+  <categories>
+    <category>AudioVideo</category>
+    <category>Audio</category>
+  </categories>
+</component>

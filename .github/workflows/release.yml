@@ -20,21 +20,31 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - runner: ubuntu-22.04
+          # **glibc-golvet sätts av bygg-Imagen, inte av runnern.** Ubuntu-runners ger
+          # glibc 2.35 (22.04) respektive 2.39 (24.04), så en binär därifrån startar inte på
+          # Debian 11 eller RHEL 8. manylinux_2_28 har glibc 2.28 och samma arkitektur native —
+          # ingen korsning, som alsa-sys inte klarar.
+          - runner: ubuntu-latest
             arch: x86_64
-          # ARM-builden körs på en arm-runner i stället för att korsas fram: alsa-sys
-          # behöver ett riktigt aarch64-sysroot, och cross-Images saknar libasound2-dev.
+            deb_arch: amd64
+            rpm_arch: x86_64
+            container: quay.io/pypa/manylinux_2_28_x86_64
           - runner: ubuntu-24.04-arm
             arch: aarch64
+            deb_arch: arm64
+            rpm_arch: aarch64
+            container: quay.io/pypa/manylinux_2_28_aarch64
+
     runs-on: ${{ matrix.runner }}
+    container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Install system dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential pkg-config libasound2-dev
+          dnf install -y --setopt=install_weak_deps=False \
+            gcc gcc-c++ make pkgconf-pkg-config alsa-lib-devel alsa-lib \
+            binutils tar gzip curl which
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -50,6 +60,12 @@ jobs:
       - name: Build
         run: cargo build --release --locked --features plugin-host
 
+      # Grinden: en binär som begär nyare glibc än bygg-Imagen får aldrig bli en release.
+      - name: Check the glibc floor
+        run: bash packaging/check-glibc-floor.sh target/release/sonix 2.28
+
+      # Fyra former av samma binär. Ett tarball räcker inte: folk installerar med
+      # `apt`/`dnf`, och den som inte vill installera något alls vill ha en AppImage.
       - name: Package
         run: |
           set -euo pipefail
@@ -62,7 +78,29 @@ jobs:
           cp README.md README_SV.md CHANGELOG.md CHANGELOG-DETAIL.md MANUAL.md \
              LICENSE-MIT LICENSE-APACHE "dist/${name}/"
           tar -C dist -czf "dist/${name}.tar.gz" "${name}"
-          ( cd dist && sha256sum "${name}.tar.gz" > "${name}.tar.gz.sha256" )
+
+          # nfpm finns bara som .deb; plocka ut binären med ar (finns i binutils).
+          if [ ! -x /tmp/nfpm ]; then
+            curl -fsSL -o /tmp/nfpm.deb \
+              https://github.com/goreleaser/nfpm/releases/latest/download/nfpm_amd64.deb || true
+            ( cd /tmp && ar x nfpm.deb && tar -xf data.tar.gz && cp usr/bin/nfpm /tmp/nfpm ) || true
+          fi
+          if [ -x /tmp/nfpm ]; then
+            VERSION="$version" ARCH="${{ matrix.deb_arch }}" /tmp/nfpm package \
+              -f packaging/nfpm.yaml -p deb -t "$PWD/dist/sonix_${version}_${{ matrix.deb_arch }}.deb"
+            VERSION="$version" ARCH="${{ matrix.rpm_arch }}" /tmp/nfpm package \
+              -f packaging/nfpm.yaml -p rpm -t "$PWD/dist/sonix-${version}-1.${{ matrix.rpm_arch }}.rpm"
+          else
+            echo "nfpm kunde inte hämtas — hoppar över deb/rpm för $arch" >&2
+          fi
+
+          # AppImage bara där verktygen finns för arkitekturen.
+          if [ "$arch" = "x86_64" ] && curl -fsSL -o /dev/null -I \
+              https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage; then
+            ARCH="$arch" bash packaging/build-appimage.sh || echo "AppImage-bygget gick inte igenom" >&2
+          fi
+
+          ( cd dist && sha256sum -- * > SHA256SUMS )
           ls -la dist
 
       - name: Upload package
@@ -75,9 +113,17 @@ jobs:
   publish:
     name: Publish release
     needs: build
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_28_x86_64
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install gh
+        run: |
+          dnf install -y tar gzip
+          curl -fsSL -o /tmp/gh.tgz \
+            "https://github.com/cli/cli/releases/latest/download/gh_$(curl -fsSL https://api.github.com/repos/cli/cli/releases/latest | sed -n 's/.*"tag_name": "v\([^"]*\)".*/\1/p' | head -1)_linux_amd64.tar.gz"
+          tar -xzf /tmp/gh.tgz -C /tmp && cp /tmp/gh_*/bin/gh /usr/local/bin/gh
 
       - name: Download both builds
         uses: actions/download-artifact@v4
@@ -102,7 +148,11 @@ jobs:
       - name: Attest build provenance
         uses: actions/attest-build-provenance@v1
         with:
-          subject-path: dist/*.tar.gz
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.deb
+            dist/*.rpm
+            dist/*.AppImage
 
       - name: Publish GitHub Release
         env:
@@ -110,12 +160,15 @@ jobs:
         run: |
           set -euo pipefail
           ls -la dist
+          assets=(dist/*.tar.gz dist/*.deb dist/*.rpm dist/*.AppImage dist/SHA256SUMS)
+          present=()
+          for a in "${assets[@]}"; do [ -e "$a" ] && present+=("$a"); done
           if [ -s RELEASE_NOTES.md ]; then
-            gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.sha256 \
+            gh release create "${GITHUB_REF_NAME}" "${present[@]}" \
               --title "Sonix Studio ${GITHUB_REF_NAME}" \
               --notes-file RELEASE_NOTES.md
           else
-            gh release create "${GITHUB_REF_NAME}" dist/*.tar.gz dist/*.sha256 \
+            gh release create "${GITHUB_REF_NAME}" "${present[@]}" \
               --title "Sonix Studio ${GITHUB_REF_NAME}" \
               --generate-notes
           fi

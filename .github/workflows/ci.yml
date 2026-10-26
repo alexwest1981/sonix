@@ -210,3 +210,99 @@ jobs:
           name: sonix-windows
           path: target/release/sonix.exe
           if-no-files-found: error
+
+  # **Portabilitetsgrinden.** Binären byggs i en miljö med glibc 2.28 och grinden faller om
+  # någon symbol kräver nyare. Mätt 2026-10-25: en binär byggd på Arch begärde GLIBC_2.44 och
+  # startade därför inte ens på Ubuntu 24.04 (2.39) — en release som "fungerar på min maskin".
+  glibc-golv:
+    name: glibc 2.28 + paket (deb/rpm/AppImage)
+    runs-on: ubuntu-latest
+    container: quay.io/pypa/manylinux_2_28_x86_64
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verktyg (ALSA-huvuden + rust)
+        timeout-minutes: 12
+        run: |
+          dnf install -y alsa-lib-devel pkgconf-pkg-config
+          curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain stable
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Cacha cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: glibc228
+
+      - name: Bygg
+        env:
+          CARGO_TARGET_DIR: /tmp/target
+        run: cargo build --release --locked --features plugin-host
+
+      - name: Grind — glibc-golvet
+        run: bash packaging/check-glibc-floor.sh /tmp/target/release/sonix 2.28
+
+      - name: Ladda upp binären
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonix-glibc228
+          path: /tmp/target/release/sonix
+          if-no-files-found: error
+
+  # Paketen byggs på en vanlig runner: nfpm och appimagetool är vanliga program, och
+  # binären kommer färdig från grinden ovan.
+  paket:
+    name: deb + rpm + AppImage
+    needs: glibc-golv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hämta binären
+        uses: actions/download-artifact@v4
+        with:
+          name: sonix-glibc228
+          path: target/release
+
+      - name: Bygg paketen
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          curl -fsSL -o /tmp/nfpm.deb \
+            https://github.com/goreleaser/nfpm/releases/latest/download/nfpm_amd64.deb
+          ( cd /tmp && ar x nfpm.deb && tar -xf data.tar.gz )
+          NPFM=/tmp/usr/bin/nfpm
+          V="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
+          VERSION="$V" ARCH=amd64 "$NPFM" package -f packaging/nfpm.yaml -p deb \
+            -t "$PWD/dist/sonix_${V}_amd64.deb"
+          VERSION="$V" ARCH=x86_64 "$NPFM" package -f packaging/nfpm.yaml -p rpm \
+            -t "$PWD/dist/sonix-${V}-1.x86_64.rpm"
+          bash packaging/build-appimage.sh
+
+      - name: Ladda upp paketen
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonix-paket
+          path: dist/*
+          if-no-files-found: error
+
+  # **Beviset.** Installerar paketet i fyra riktiga distributioner och startar appen med Xvfb.
+  # En grön grind säger att binären *får* köras där; den här säger att den *gör* det.
+  distributioner:
+    name: Startar på ${{ matrix.image }}
+    needs: paket
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ["debian:12", "ubuntu:22.04", "ubuntu:24.04", "fedora:41", "rockylinux:9"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hämta paketen
+        uses: actions/download-artifact@v4
+        with:
+          name: sonix-paket
+          path: dist
+
+      - name: Installera och starta
+        run: bash packaging/verify-in-docker.sh "${{ matrix.image }}"

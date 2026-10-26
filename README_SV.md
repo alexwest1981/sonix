@@ -8,106 +8,53 @@ Ett modernt, blixtsnabbt grafiskt musikproduktionsprogram skapat i **Rust** och 
 
 > 🌐 **Webbplats:** **[alexwest1981.github.io/sonix](https://alexwest1981.github.io/sonix/)** — funktioner, nedladdning, skärmbilder och de kända gränserna. Källan ligger i [`site/`](site/), publiceras med `bash site/publish.sh`.
 
-## 🚀 Installation (Linux / Omarchy)
+## 🚀 Installation (valfri Linuxdistribution)
 
-Sonix är en inhemsk Linux-DAW skriven i **Rust** och **egui**. Du kör den genom att kompilera från källkod med Cargo. Det inbyggda läget som tar de 29 skärmdumparna används bara av underhållarna (se notisen under galleriet nedan) och är **inte** en del av att installera eller köra programmet.
+Sonix är en egen binär som bara länkar glibc och `libasound.so.2` — inget toolkit, inget
+X11/Wayland-paket och ingen egen runtime. Välj raden som passar din maskin:
 
-> 📦 **Färdig binär (kräver ingen Rust):**
-> 🛍 **OmaStore:** Sonix har en [`omastore.toml`](omastore.toml) i repots rot, så Omarchys butik
-> indexerar den från senaste stabila releasen. Öppna `omastore://alexwest1981/sonix`, eller hitta
-> den under kategorin Audio i butiken.
->
-> Hämta senaste `sonix-<version>-x86_64-unknown-linux-gnu.tar.gz` från [Releases-sidan](https://github.com/alexwest1981/sonix/releases/latest), packa upp och kör `./sonix`. Arkivet innehåller binären, båda README-filerna, manualen, ändringsloggen och licenserna, samt en `.sha256`-checksumma. Den är byggd med `--features plugin-host` för **x86-64** (glibc ≥ 2.35) och **aarch64**
-> (glibc ≥ 2.39); välj arkivet som passar maskinen.
+| Distribution | Ett kommando |
+| :--- | :--- |
+| **Vilken som helst**, utan rot och utan installation | `chmod +x Sonix-*.AppImage && ./Sonix-*.AppImage` |
+| Debian · Ubuntu · Mint · Pop! · Zorin · Kali | `sudo apt install ./sonix_<version>_amd64.deb` |
+| Fedora · RHEL · Rocky · Alma · openSUSE | `sudo dnf install ./sonix-<version>-1.x86_64.rpm` |
+| Arch · Omarchy · Manjaro · EndeavourOS | `yay -S sonix-bin` (AUR), eller AppImage |
+| Flatpak, sandlåda | `flatpak install omapak io.github.alexwest1981.sonix` |
+| Allt annat | `.tar.gz` från [Releases](https://github.com/alexwest1981/sonix/releases/latest), eller [bygg från källkod](#bygg-från-källkod) |
 
-> ⚡ **Snabbaste sättet (guidad installerare):**
-> Ladda ner och kör `install.sh` – den bekräftar varje steg åt dig (beroenden, kompilering, binär + startmenypost) och kräver inga terminalkommandon utöver:
-> ```bash
-> bash <(curl -fsSL https://raw.githubusercontent.com/alexwest1981/sonix/master/install.sh)
-> ```
-> Har du redan en klon kör du bara `bash install.sh` inifrån mappen. Efter en kodändring kan du uppdatera binär + startmenypost med `bash install.sh --refresh`.
+Hämta artefakten från [senaste releasen](https://github.com/alexwest1981/sonix/releases/latest);
+varje fil har en `.sha256` bredvid sig. Alla former byggs från samma commit, och `.deb`-paketet
+installeras och startas på Debian 12, Ubuntu 22.04, Ubuntu 24.04, Fedora 41 och Rocky 9 innan
+releasen publiceras.
 
-### Förutsättningar
+> 🛍 **OmaStore:** repot har en [`omastore.toml`](omastore.toml), så Omarchys butik indexerar
+> Sonix från senaste stabila releasen — `omastore://alexwest1981/sonix`, eller kategorin Audio.
 
-- 64-bitars Linux med en ljudserver i gång — **PipeWire** (rekommenderas), **JACK** eller **ALSA**.
-- **Rust** (stable, edition 2024) plus en C-kompilator.
-- Ett körtidsverktyg som används av en viss funktion: `unzip` (Suno ZIP-import). Valfritt. Fildialogerna kommer sedan Fas 7.1 från skrivbordets egen portal (`xdg-desktop-portal`, installerad med de flesta skrivbordsmiljöer) — `zenity` behövs inte längre.
-- Valfritt, för Windows-VST: **yabridge** + **Wine**.
+### Vad som krävs
 
-Installera förutsättningarna:
+- **x86-64 med glibc ≥ 2.28** — Debian 10+, Ubuntu 20.04+, RHEL/Rocky/Alma 8+, Fedora, Arch,
+  openSUSE Leap 15+. aarch64-bygget kräver glibc ≥ 2.39. Golvet är mätt: releasebygget körs i en
+  glibc 2.28-container och flödet **stannar** om någon symbol begär nyare
+  (`packaging/check-glibc-floor.sh`).
+- **En ljudserver.** PipeWire, PulseAudio eller ren ALSA — alla tre når Sonix genom ALSA, som är
+  det enda biblioteket binären länkar.
+- **Valfritt: ffmpeg** för MP3-, OGG- och AAC-export. WAV och FLAC fungerar alltid, och dialogrutan
+  säger till när ffmpeg är det som saknas.
+- **Valfritt:** `unzip` för Suno-ZIP, **yabridge + Wine** för Windows-VST.
 
-**Omarchy / Arch Linux:**
+### Vad varje form installerar, och hur du tar bort den
 
-```bash
-sudo pacman -S --needed base-devel alsa-lib unzip rustup
-rustup default stable
-```
+| Form | Installerar | Ta bort |
+| :--- | :--- | :--- |
+| `.deb` / `.rpm` | `/usr/bin/sonix`; desktoppost, ikon och AppStream-metadata under `/usr/share` | `sudo apt remove sonix` / `sudo dnf remove sonix` |
+| AppImage | inget utanför din konfigmapp | radera filen |
+| Flatpak | sandlåda; appdata i `~/.var/app/io.github.alexwest1981.sonix/` | `flatpak uninstall io.github.alexwest1981.sonix` |
+| tarball | där du packade upp den | radera mappen |
 
-**Debian / Ubuntu:**
+Projekt, bibliotek och inställningar ligger i `~/.config/sonix/` i alla former utom Flatpak.
+**Dina projektfiler (`*.sonix`, läsbar JSON) rörs aldrig av en avinstallation.**
 
-```bash
-sudo apt install build-essential libasound2-dev unzip curl
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-**Fedora:**
-
-```bash
-sudo dnf install gcc-c++ alsa-lib-devel unzip curl
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-### 1. Klona och kompilera
-
-```bash
-git clone https://github.com/alexwest1981/sonix.git
-cd sonix
-cargo build --release
-./target/release/sonix
-```
-
-Under utveckling kan du hoppa över det manuella byggsteget och använda `cargo run --release` i stället.
-
-### 2. Installera binären (valfritt men rekommenderat)
-
-Installerar `sonix` i `~/.cargo/bin` så att du kan starta programmet var som helst ifrån eller från en applikationsmeny:
-
-```bash
-cargo install --path .
-sonix
-```
-
-### 3. Menypost i applikationsmenyn (Omarchy / Linux desktop)
-
-Skapa efter `cargo install` en startare (justera sökvägarna om din klon ligger på annan plats):
-
-```bash
-mkdir -p ~/.local/share/applications
-cat > ~/.local/share/applications/sonix.desktop <<EOF
-[Desktop Entry]
-Name=Sonix Studio
-Comment=Native Linux DAW
-Exec=$HOME/.cargo/bin/sonix
-Icon=$HOME/Projects/sonix/assets/sonix.png
-Terminal=false
-Type=Application
-Categories=Audio;AudioVideo;Music;
-StartupWMClass=sonix-daw
-EOF
-```
-
-Logga sedan ut/in en gång, eller uppdatera menyn direkt med:
-
-```bash
-update-desktop-database ~/.local/share/applications
-```
-
-### Felsökning
-
-- **Inget ljud / ingen ljudenhet:** kontrollera att PipeWire (eller JACK/ALSA) är i gång och att din mikrofon/audiointerface är anslutet. Öppna ljudinställningarna i programmet med **Ctrl + P** för att välja enhet och buffertstorlek.
-- **Fönstret startar inte:** du behöver en fungerande Wayland- eller X11-session med Mesa/OpenGL-drivrutiner.
-
----
+## Bygg från källkod
 
 ## 🎧 Samplingar, stämmor och din egen musik
 

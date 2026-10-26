@@ -12,60 +12,77 @@ A modern, lightning-fast graphical Digital Audio Workstation (DAW) built with **
 
 ---
 
-## 🚀 Installation (Linux / Omarchy)
+## 🚀 Install (any Linux distribution)
 
-Sonix is a native Linux DAW written in **Rust** and **egui**. You run it by building from source with Cargo. The built-in mode that captures the 29 screenshots is only used by maintainers (see the note under the gallery below) and is **not** part of installing or running the app.
+Sonix is a native Linux DAW in Rust/egui. The binary links exactly two things — glibc and
+`libasound.so.2` — so it runs on any distribution with a modern-enough glibc, without a toolkit
+package, an X11/Wayland library or a runtime of its own. Pick the line that matches your system:
 
-> 📦 **Prebuilt binary (no Rust needed):**
-> Grab the latest `sonix-<version>-x86_64-unknown-linux-gnu.tar.gz` from the [Releases page](https://github.com/alexwest1981/sonix/releases/latest), unpack it and run `./sonix`. The archive ships the binary, both READMEs, the manual, the changelog and the licenses, plus a `.sha256` checksum. It is built with `--features plugin-host` for **x86-64** (glibc ≥ 2.35) and **aarch64**
-> (glibc ≥ 2.39); pick the archive that matches your machine.
+| Distribution | One line |
+| :--- | :--- |
+| **Any distro**, no root, nothing installed | `chmod +x Sonix-*.AppImage && ./Sonix-*.AppImage` |
+| Debian · Ubuntu · Mint · Pop! · Zorin · Kali | `sudo apt install ./sonix_<version>_amd64.deb` |
+| Fedora · RHEL · Rocky · Alma · openSUSE | `sudo dnf install ./sonix-<version>-1.x86_64.rpm` |
+| Arch · Omarchy · Manjaro · EndeavourOS | `yay -S sonix-bin` (AUR), or the AppImage |
+| Flatpak, sandboxed | `flatpak install omapak io.github.alexwest1981.sonix` |
+| Anything else | the `.tar.gz` from [Releases](https://github.com/alexwest1981/sonix/releases/latest), or [build from source](#build-from-source) |
 
-> 🛍 **OmaStore:** Sonix has an [`omastore.toml`](omastore.toml) in the repository root, so the
-> Omarchy store indexes it from the latest stable release. Open it with
-> `omastore://alexwest1981/sonix`, or find it in the store's Audio category.
->
-> 🐧 **Flatpak:** Sonix is packaged in the [omapak](https://omapak.org/app/io.github.alexwest1981.sonix) catalog. That build repacks the same x86-64 release tarball, so it is the same binary with the app's config and library inside the sandbox (`~/.var/app/io.github.alexwest1981.sonix/`).
+Grab the artefact from the [latest release](https://github.com/alexwest1981/sonix/releases/latest);
+each one ships a `.sha256` next to it. All forms are built from the same commit and the `.deb` is
+installed and started on Debian 12, Ubuntu 22.04, Ubuntu 24.04, Fedora 41 and Rocky 9 before the
+release is published (`.github/workflows/ci.yml`, job `distributioner`).
 
-> ⚡ **Fastest way (guided installer):**
-> Download and run `install.sh` – it confirms every step for you (dependencies, compilation, binary + start-menu entry) with no other terminal commands needed:
-> ```bash
-> bash <(curl -fsSL https://raw.githubusercontent.com/alexwest1981/sonix/master/install.sh)
-> ```
-> If you already have a clone, just run `bash install.sh` from inside the folder. After a code change you can refresh the binary + start-menu entry with `bash install.sh --refresh`.
->
-> The installer asks which interface language you want (English, Svenska, Dansk, Norsk, Deutsch, Español, Français). You can always switch languages live from the **🌐 menu** in the app's top toolbar — the choice is remembered between sessions.
+> 🛍 **OmaStore:** the repository carries an [`omastore.toml`](omastore.toml), so the Omarchy store
+> indexes Sonix from the latest stable release — `omastore://alexwest1981/sonix`, or its Audio
+> category.
 
-### Prerequisites
+### What you need
 
-- 64-bit Linux with a running audio server — **PipeWire** (recommended), **JACK** or **ALSA**.
-- **Rust** (stable, edition 2024) plus a C toolchain.
-- One runtime helper used by a specific feature: `unzip` (Suno ZIP import). Optional. File dialogs have come from the desktop's own portal since Fas 7.1 (`xdg-desktop-portal`, installed with most desktop environments) — `zenity` is no longer needed.
-- Optional, for Windows VSTs: **yabridge** + **Wine**.
+- **x86-64 with glibc ≥ 2.28** — Debian 10+, Ubuntu 20.04+, RHEL/Rocky/Alma 8+, Fedora, Arch,
+  openSUSE Leap 15+. The aarch64 build targets glibc ≥ 2.39. The floor is not a guess: the release
+  build runs in a glibc 2.28 container and the pipeline **fails** if any symbol asks for newer
+  (`packaging/check-glibc-floor.sh`).
+- **An audio server.** PipeWire, PulseAudio or bare ALSA — all three reach Sonix through ALSA,
+  which is the one library it links.
+- **Optional: ffmpeg** for MP3, OGG and AAC export (`apt install ffmpeg`, `dnf install ffmpeg`,
+  `pacman -S ffmpeg`). WAV and FLAC export always work, and the dialog tells you when ffmpeg is
+  the missing piece.
+- **Optional:** `unzip` for Suno ZIP import, and **yabridge + Wine** for Windows VST plugins.
 
-Install the prerequisites:
+### What each form installs, and how to remove it
 
-**Omarchy / Arch Linux:**
+| Form | Installs | Remove |
+| :--- | :--- | :--- |
+| `.deb` / `.rpm` | `/usr/bin/sonix`; desktop entry, icon and AppStream metadata under `/usr/share` | `sudo apt remove sonix` / `sudo dnf remove sonix` |
+| AppImage | nothing outside your config folder | delete the file |
+| Flatpak | sandboxed; app data in `~/.var/app/io.github.alexwest1981.sonix/` | `flatpak uninstall io.github.alexwest1981.sonix` |
+| tarball | wherever you unpacked it | delete the folder |
+
+Your projects, library and settings live in `~/.config/sonix/` in every form except Flatpak;
+deleting that folder removes Sonix's own state. **Your project files (`*.sonix`, plain JSON) are
+never touched by an uninstall** — they stay wherever you saved them.
+
+## Build from source
+
+You need Rust (stable, edition 2024) and the ALSA headers:
 
 ```bash
-sudo pacman -S --needed base-devel alsa-lib unzip rustup
-rustup default stable
+# Arch / Omarchy
+sudo pacman -S --needed base-devel alsa-lib rustup
+# Debian / Ubuntu
+sudo apt install build-essential libasound2-dev curl
+# Fedora
+sudo dnf install gcc-c++ alsa-lib-devel curl
 ```
 
-**Debian / Ubuntu:**
+Then:
 
 ```bash
-sudo apt install build-essential libasound2-dev unzip curl
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+git clone https://github.com/alexwest1981/sonix.git
+cd sonix
+cargo build --release        # or: bash install.sh  (guided, adds a menu entry)
+./target/release/sonix
 ```
-
-**Fedora:**
-
-```bash
-sudo dnf install gcc-c++ alsa-lib-devel unzip curl
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-```
-
-### 1. Clone and build
 
 ```bash
 git clone https://github.com/alexwest1981/sonix.git

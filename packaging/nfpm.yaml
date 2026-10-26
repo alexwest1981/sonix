@@ -1,0 +1,40 @@
+# .deb och .rpm ur samma binär. Körs av .github/workflows/release.yml.
+#   VERSION=0.9.150 ARCH=amd64 nfpm package -f packaging/nfpm.yaml -p deb
+name: sonix
+arch: ${ARCH}
+platform: linux
+version: ${VERSION}
+section: sound
+priority: optional
+maintainer: Alexander West <alexwest1981@users.noreply.github.com>
+vendor: Sonix Studio
+homepage: https://alexwest1981.github.io/sonix/
+license: MIT OR Apache-2.0
+description: |
+  Native Linux DAW with a channel rack, piano roll, effects mixer, vocal
+  studio, VST3/CLAP hosting and an AI assistant that can write a beat from a
+  sentence. Runs on ALSA (PipeWire through its ALSA layer).
+depends:
+  - libasound2
+recommends:
+  - ffmpeg
+overrides:
+  rpm:
+    # Samma bibliotek heter olika i rpm-världen; annars vägrar installationen.
+    depends:
+      - alsa-lib
+contents:
+  - src: target/release/sonix
+    dst: /usr/bin/sonix
+  - src: packaging/io.github.alexwest1981.Sonix.desktop
+    dst: /usr/share/applications/io.github.alexwest1981.Sonix.desktop
+  - src: assets/sonix.png
+    dst: /usr/share/icons/hicolor/512x512/apps/io.github.alexwest1981.Sonix.png
+  - src: packaging/io.github.alexwest1981.Sonix.metainfo.xml
+    dst: /usr/share/metainfo/io.github.alexwest1981.Sonix.metainfo.xml
+  - src: README.md
+    dst: /usr/share/doc/sonix/README.md
+  - src: LICENSE-MIT
+    dst: /usr/share/doc/sonix/LICENSE-MIT
+  - src: LICENSE-APACHE
+    dst: /usr/share/doc/sonix/LICENSE-APACHE
