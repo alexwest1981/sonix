@@ -99,6 +99,11 @@ jobs:
             exit 1
           fi
 
+      # **Flerspråkigheten är en grind, inte en ambition:** appen finns på sju språk, alltså ska
+      # README, .desktop och metainfo göra det också. Steget faller när ett språk saknas någonstans.
+      - name: Docs and desktop languages match the UI
+        run: bash packaging/check-docs-languages.sh
+
       - name: Test
         run: |
           FEATURES="${{ matrix.features }}"

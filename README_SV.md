@@ -1,6 +1,6 @@
 # 🍊 SONIX STUDIO - Professionell Linux DAW
 
-> **Språk / Languages:** [🇸🇪 Svenska](README_SV.md) | [🇬🇧 English](README.md)
+> **Languages:** [🇬🇧 English](README.md) · [🇸🇪 Svenska](README_SV.md) · [🇩🇰 Dansk](README_DA.md) · [🇳🇴 Norsk](README_NB.md) · [🇩🇪 Deutsch](README_DE.md) · [🇪🇸 Español](README_ES.md) · [🇫🇷 Français](README_FR.md)
 
 Ett modernt, blixtsnabbt grafiskt musikproduktionsprogram skapat i **Rust** och **egui** med FL Studio-inspirerad direkt redigering i tidslinjen, magnetisk loop-snäppning, skanning & katalogisering av FL Studio/VST3/CLAP-plugins, Soundtrap-inspirerade kreativa paneler, integrerad modulär synthesizer, 16-stegs Channel Rack, Piano Roll, Sångstudio med mikrofoninspelning i realtid, multikanals mixerbord och touch-instrument för Linux. Ljudet går genom systemets realtidsbackend via **cpal/ALSA** (PipeWire fungerar via sitt ALSA-lager). Se **[Funktioner & implementationsstatus](#-funktioner--implementationsstatus)** för exakt vad som är äkta idag och vad som återstår. Fullständig utvecklingsplan: **[ROADMAP.md](ROADMAP.md)**.
 

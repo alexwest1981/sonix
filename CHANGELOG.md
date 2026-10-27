@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.162] - 2026-10-26
+
+**Sju språk, inte bara i appen.** Gränssnittet har kunnat sju språk sedan tidigare, men repot och
+skrivbordsposten var engelska — och GitHub visar bara EN README, så en spansk eller tysk besökare
+möttes av ett språk hen kanske inte läser.
+
+- **`README_DA/NB/DE/ES/FR.md`** — korta README-filer på danska, norska, tyska, spanska och
+  franska: vad det är, skärmdump, installationstabell, licens, och en länk till den engelska
+  README:n för hela funktionslistan. Korta med flit: en full översättning av 400 rader ruttnar
+  mellan releaserna, det här håller.
+- **Språkrad i varje README** som länkar till alla sju, så ingen fil är en återvändsgränd.
+- **Skrivbordsposten är översatt** (`Comment[sv/da/nb/de/es/fr]`, `GenericName[...]`,
+  `Keywords[...]`) — appens namn och beskrivning syns nu på användarens språk i menyer och
+  programstartare på alla distribuerade paket. `desktop-file-validate` godkänner den.
+- **AppStream-metainfo** har `summary xml:lang` för samma sex språk, så mjukvaru-butiker visar en
+  lokaliserad sammanfattning. `appstreamcli validate` godkänner den.
+- **`packaging/check-docs-languages.sh`** är grinden: den faller när en README saknas, när
+  språkraden inte länkar till alla, eller när .desktop/metainfo saknar ett språk. Körd i CI, och
+  provad genom att ta bort en fil (den föll, som den ska).
+- Release-tarballen tar med alla README-filer.
+
+Manualen och CONTRIBUTING är kvar på engelska — det är sagt rakt ut i stället för halvöversatt.
+
+
 ## [0.9.161] - 2026-10-26
 
 **Licensen är nu GPL-3.0-only.** Projektet var dubbellicensierat MIT OR Apache-2.0, vilket är

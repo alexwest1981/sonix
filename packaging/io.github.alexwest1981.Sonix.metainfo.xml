@@ -3,6 +3,12 @@
   <id>io.github.alexwest1981.Sonix</id>
   <name>Sonix Studio</name>
   <summary>Native Linux digital audio workstation</summary>
+  <summary xml:lang="sv">Inbyggd digital audioarbetsstation för Linux</summary>
+  <summary xml:lang="da">Indbygget digital audio-arbejdsstation til Linux</summary>
+  <summary xml:lang="nb">Innebygd digital lydarbeidsstasjon for Linux</summary>
+  <summary xml:lang="de">Nativer digitaler Audio-Workstation für Linux</summary>
+  <summary xml:lang="es">Estación de audio digital nativa para Linux</summary>
+  <summary xml:lang="fr">Station audionumérique native pour Linux</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-only</project_license>
   <description>
