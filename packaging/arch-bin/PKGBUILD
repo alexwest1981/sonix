@@ -2,17 +2,17 @@
 # Paketerar den förbyggda release-binären — samma bytes som GitHub-releasen.
 # shortcut: pkgver och sha256sums är pinnade till senaste taggen; uppdatera båda vid varje release.
 pkgname=sonix-bin
-pkgver=0.9.162
+pkgver=0.9.167
 pkgrel=1
 pkgdesc="Digital audio workstation: arrangement, mixer, mastering chain and a modular patcher"
 arch=('x86_64')
 url="https://github.com/alexwest1981/sonix"
-license=('MIT' 'Apache')
+license=('GPL-3.0-only')
 depends=('alsa-lib' 'glibc')
 provides=('sonix')
 conflicts=('sonix')
 source=("sonix-${pkgver}-x86_64-unknown-linux-gnu.tar.gz::https://github.com/alexwest1981/sonix/releases/download/v${pkgver}/sonix-${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
-sha256sums=('83786870752f7ae34847898f281ad012062f96347a5b30139d1173cde7d2214d')
+sha256sums=('a610d46288a906572b20d48cf7dc5bdba34a81a45cfc005c1e4a7b1146bb75f0')
 
 package() {
   install -Dm755 "${srcdir}/sonix-${pkgver}-x86_64-unknown-linux-gnu/sonix" "${pkgdir}/usr/bin/sonix"
