@@ -2512,6 +2512,16 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
 
     self.project_name = payload.name;
     self.bpm = payload.bpm;
+    // **Kartan är det som hörs, fältet är dess avbild.** Står fältet i 120 medan
+    // kartans första punkt står i 125 spelar tiden 125 medan rutan visar 120 — och
+    // varje tempoläsning nedströms får olika svar (mätt i Alex' A box of you
+    // 2026-10-27: `bpm = 120`, `tempo_points[0].bpm = 125`). Fältet rättas här, en
+    // gång, i stället för att varje läsare ska behöva veta ordningen.
+    if let Some(first) = self.tempo_points.first()
+        && (first.bpm - self.bpm).abs() > 0.01
+    {
+        self.bpm = first.bpm;
+    }
     // Inläst geometri hör till filens tempo: utan det här skulle första bildrutan tro att
     // tempot just ändrades och räkna om klippens taktlängder (se `sync_tempo_follow`).
     self.stems_synced_bpm = self.bpm;
@@ -2647,6 +2657,11 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         self.sync_track_regions(t_idx);
     }
 
+    // Klippens källtempo kan stå fel i en gammal fil (120 där paketet säger 125), och
+    // då sträcker motorn ljudet 4,2 % — svajigt och knaggligt. Rätta det innan något
+    // hinner spela på de gamla taken.
+    self.heal_stem_source_tempo();
+
     // Ensure Mic track is always at the end & all track colors are properly classified
     self.ensure_mic_track_exists();
 
@@ -2780,5 +2795,142 @@ mod template_tests {
         let dir = std::env::temp_dir().join("sonix_templates_saknas_xyz");
         let _ = std::fs::remove_dir_all(&dir);
         assert!(SonixApp::list_templates(&dir).is_empty());
+    }
+}
+
+impl SonixApp {
+    /// **Läker klippens källtempo vid inläsning.**
+    ///
+    /// Ett klipp som säger "jag är byggd i 120" i ett 125-projekt blir sträckt 4,2 % av
+    /// motorn — det låter svajigt och knaggligt, och det var precis vad Alex hörde
+    /// 2026-10-27. Tempot finns i **paketets** namn (Suno: `… Stems (125BPM).zip`), så
+    /// stämmer klippet inte med sitt paket vinner paketet: källtempot skrivs om och
+    /// taktlängden räknas om så att **sekunderna står still**
+    /// (`bars_holding_seconds`) — ljudet rörs inte, bara rutnätets tolkning av det.
+    ///
+    /// Ett okänt paket lämnar klippet i fred: en lagning som gissar är värre än felet.
+    fn heal_stem_source_tempo(&mut self) {
+        let mut healed = 0usize;
+        let mut per_dir: std::collections::HashMap<std::path::PathBuf, Option<f32>> =
+            Default::default();
+        for t_idx in 0..self.playlist_tracks.len() {
+            let mut changed = false;
+            for region in self.playlist_tracks[t_idx].regions.iter_mut() {
+                let Some(path) = region.source_path.as_deref() else {
+                    continue;
+                };
+                let Some(dir) = std::path::Path::new(path).parent() else {
+                    continue;
+                };
+                let dir = dir.to_path_buf();
+                // Åtta stämmor ligger i samma mapp: en läsning per mapp, inte per klipp.
+                let package = *per_dir
+                    .entry(dir.clone())
+                    .or_insert_with(|| crate::ui::app::import::bpm_for_stem_folder(&dir));
+                let Some(bpm) = source_tempo_needs_healing(region.source_bpm, package) else {
+                    continue;
+                };
+                let old = region.source_bpm;
+                region.source_bpm = bpm;
+                if old > 0.0 {
+                    region.length_bars = Self::bars_holding_seconds(region.length_bars, old, bpm);
+                    region.fade_in_bars = Self::bars_holding_seconds(region.fade_in_bars, old, bpm);
+                    region.fade_out_bars =
+                        Self::bars_holding_seconds(region.fade_out_bars, old, bpm);
+                    region.loop_length_bars =
+                        Self::bars_holding_seconds(region.loop_length_bars, old, bpm);
+                }
+                changed = true;
+            }
+            if changed {
+                self.sync_track_regions(t_idx);
+                healed += 1;
+            }
+        }
+        if healed > 0 {
+            self.status_message = crate::tstatus!(
+                "🔧 {} stämspår hade fel källtempo i filen — rättat till paketets",
+                healed
+            );
+        }
+    }
+}
+
+/// **Ska klippets källtempo lagas?** Ren funktion med eget prov.
+///
+/// `Some(bpm)` = skriv om källtempot till paketets. `None` = rör det inte: antingen
+/// stämmer det, eller så finns inget paket att stämma av mot (och då är en gissning
+/// värre än felet — 120-gissningen är hela orsaken till svajet, se
+/// `references/tempo-and-stretch.md`).
+pub fn source_tempo_needs_healing(region_bpm: f32, package_bpm: Option<f32>) -> Option<f32> {
+    let package = package_bpm?;
+    if package < 40.0 {
+        return None;
+    }
+    if (region_bpm - package).abs() <= 0.01 {
+        return None;
+    }
+    Some(package)
+}
+
+#[cfg(test)]
+mod source_tempo_tests {
+    use super::*;
+
+    /// **Paketet vinner över klippets påstående, men bara när det finns.** Provet
+    /// håller båda sidorna: 120 → 125 lagas, ett okänt paket lämnar klippet i fred.
+    #[test]
+    fn a_clip_that_disagrees_with_its_package_is_healed() {
+        assert_eq!(source_tempo_needs_healing(120.0, Some(125.0)), Some(125.0));
+        assert_eq!(source_tempo_needs_healing(125.0, Some(125.0)), None);
+        assert_eq!(source_tempo_needs_healing(125.0, None), None, "ingen gissning");
+        assert_eq!(source_tempo_needs_healing(0.0, Some(140.0)), Some(140.0));
+        assert_eq!(
+            source_tempo_needs_healing(140.0, Some(10.0)),
+            None,
+            "ett tempo under 40 är ingen takt"
+        );
+    }
+}
+
+#[cfg(test)]
+mod autosave_heal_tests {
+    use super::*;
+
+    /// Opt-in mot en riktig autosave:
+    /// `SONIX_AUTOSAVE=~/.local/state/sonix/autosave/<fil> cargo test a_real_autosave -- --nocapture`
+    ///
+    /// Svarar på frågan som hördes som svaj: hur många klipp står i fel källtempo, och
+    /// vad blir taktlängden när paketets tempo vinner?
+    #[test]
+    fn a_real_autosave_reports_which_clips_need_healing() {
+        let Ok(path) = std::env::var("SONIX_AUTOSAVE") else {
+            return;
+        };
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            return;
+        };
+        let data: serde_json::Value = serde_json::from_str(&raw).expect("json");
+        let mut healed = 0;
+        let mut total = 0;
+        for track in data["tracks"].as_array().cloned().unwrap_or_default() {
+            for r in track["regions"].as_array().cloned().unwrap_or_default() {
+                total += 1;
+                let src = r["source_path"].as_str().unwrap_or("");
+                let region_bpm = r["source_bpm"].as_f64().unwrap_or(0.0) as f32;
+                let bars = r["length_bars"].as_f64().unwrap_or(0.0) as f32;
+                let dir = std::path::Path::new(src).parent();
+                let package = dir.and_then(crate::ui::app::import::bpm_for_stem_folder);
+                if let Some(bpm) = source_tempo_needs_healing(region_bpm, package) {
+                    healed += 1;
+                    println!(
+                        "{:<24} {region_bpm} -> {bpm}  bars {bars:.2} -> {:.2}",
+                        r["name"].as_str().unwrap_or("?"),
+                        SonixApp::bars_holding_seconds(bars, region_bpm, bpm)
+                    );
+                }
+            }
+        }
+        println!("{healed} av {total} klipp behöver lagas");
     }
 }
