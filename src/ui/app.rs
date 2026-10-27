@@ -75,6 +75,7 @@ mod plugins;
 
 mod input_autoconfig;
 mod audio_watchdog;
+mod perf_probe;
 mod midi;
 
 // Inte kopplad till mixern än — tas bort när panelen anropar den.
@@ -152,6 +153,11 @@ pub struct SonixApp {
     pub audio_rebuild_failures: u32,
     /// Hur länge den nuvarande strömmen har levt (nollställs när hjärtslaget stannar).
     pub audio_recovered_secs: f32,
+    /// Fasmätaren: bildrutans delar i millisekunder, töms varje bildruta.
+    pub perf_marks: Vec<(&'static str, f32)>,
+    /// De senaste bildrutornas totaltid, för medianen i `frame_spikes.log`.
+    pub perf_frames: std::collections::VecDeque<f32>,
+    pub perf_last_write: std::time::Instant,
     pub stem_import_progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
     pub project_load_progress: std::sync::Arc<std::sync::Mutex<ProjectLoadProgress>>,
     // Transport & Clock
@@ -951,6 +957,9 @@ impl SonixApp {
             audio_rebuild_cooldown: 0.0,
             audio_rebuild_failures: 0,
             audio_recovered_secs: 0.0,
+            perf_marks: Vec::new(),
+            perf_frames: std::collections::VecDeque::new(),
+            perf_last_write: std::time::Instant::now(),
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),
             is_playing: false,
@@ -1390,10 +1399,18 @@ thread_local! {
 
 impl eframe::App for SonixApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Fasmätaren (perf_probe.rs): tiderna hamnar i logs/frame_spikes.log när en
+        // bildruta går över budgeten, så en långsam session går att läsa i efterhand.
+        let frame_start = std::time::Instant::now();
+        self.perf_marks.clear();
+        let mut mark = std::time::Instant::now();
+
         // Temafilen läses om när den ändras — annars krävdes en omstart för att se en färg.
         crate::ui::theme::reload_if_changed();
         // Global form: luft, hörn och palett i egui:s egna ytor.
         crate::ui::theme::apply_style(ctx);
+        self.perf_mark("tema", mark);
+        mark = std::time::Instant::now();
 
         // Ljudet först: en ström som dött ska byggas om innan resten av bildrutan
         // skickar kommandon till en tråd som inte lyssnar.
@@ -1437,23 +1454,37 @@ impl eframe::App for SonixApp {
         }
 
         self.poll_background_work(ctx);
+        self.perf_mark("poll", mark);
+        mark = std::time::Instant::now();
 
         self.advance_phrase_preview();
 
         self.tick_frame(ctx);
+        self.perf_mark("tick", mark);
+        mark = std::time::Instant::now();
 
         self.handle_input(ctx);
 
         self.handle_dropped_files(ctx);
+        self.perf_mark("input", mark);
+        mark = std::time::Instant::now();
 
         self.draw_chrome(ctx);
+        self.perf_mark("krom", mark);
+        mark = std::time::Instant::now();
 
         self.draw_workspace(ctx);
+        self.perf_mark("arbetsyta", mark);
+        mark = std::time::Instant::now();
 
         self.render_all_modals(ctx);
+        self.perf_mark("modaler", mark);
+        mark = std::time::Instant::now();
 
         self.screenshot_tick(ctx);
+        self.perf_mark("skarmdump", mark);
 
+        self.perf_frame_end(frame_start);
     }
 }
 

@@ -1595,6 +1595,7 @@ impl SonixApp {
         // ====================================================================
         // 2. LEFT SIDEBAR BROWSER (FL STUDIO & APPLE LOOPS LIBRARY)
         // ====================================================================
+        let mark = std::time::Instant::now();
         if self.show_browser {
             egui::SidePanel::left("fl_browser")
                 .frame(egui::Frame::none().fill(crate::ui::theme::palette().panel()).inner_margin(8.0))
@@ -1604,10 +1605,12 @@ impl SonixApp {
                     self.render_browser_sidebar(ui);
                 });
         }
+        self.perf_mark("browser", mark);
 
         // ====================================================================
         // 3. MAIN WORKSPACE (VIEW MODES)
         // ====================================================================
+        let central_start = std::time::Instant::now();
         egui::CentralPanel::default()
             .frame(egui::Frame::none().fill(crate::ui::theme::palette().bg()).inner_margin(12.0))
             .show(ctx, |ui| {
@@ -1667,6 +1670,7 @@ impl SonixApp {
                     self.render_view(self.view_mode, ui, ctx);
                 });
             });
+        self.perf_mark("central", central_start);
     }
 
     /// Skärmdumpsloopen (`--capture-screenshots`): väntar på en ruta, och **avbryter med
