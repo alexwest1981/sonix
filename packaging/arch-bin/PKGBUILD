@@ -12,7 +12,7 @@ depends=('alsa-lib' 'glibc')
 provides=('sonix')
 conflicts=('sonix')
 source=("sonix-${pkgver}-x86_64-unknown-linux-gnu.tar.gz::https://github.com/alexwest1981/sonix/releases/download/v${pkgver}/sonix-${pkgver}-x86_64-unknown-linux-gnu.tar.gz")
-sha256sums=('d0296d58ed34c14f749bfcf1f03d4618c79d15a6b53f74570f6aa81849bd10c1')
+sha256sums=('74e25ac1685ce7c59328a813134595e17d8d5a78e89b13d620712ccc715a9a77')
 
 package() {
   install -Dm755 "${srcdir}/sonix-${pkgver}-x86_64-unknown-linux-gnu/sonix" "${pkgdir}/usr/bin/sonix"
