@@ -234,9 +234,11 @@ pub fn parse_steps(text: &str) -> Result<[bool; STEPS], String> {
 /// sexdelsmönster. Här mäts det i stället — ett slag utanför den begärda upplösningen avvisas.
 pub fn grid_of(subdivision: &str) -> Option<usize> {
     match subdivision.trim().replace(' ', "").to_ascii_lowercase().as_str() {
-        "1/16" | "16" | "sextondel" | "sixteenth" | "16th" => Some(1),
-        "1/8" | "8" | "åttondel" | "attonde" | "eighth" | "8th" => Some(2),
-        "1/4" | "4" | "fjärdedel" | "fjärdel" | "quarter" | "4th" => Some(4),
+        "1/16" | "16" | "sextondel" | "sextondelar" | "sixteenth" | "16th" => Some(1),
+        "1/8" | "8" | "åttondel" | "åttondelar" | "attonde" | "eighth" | "8th" => Some(2),
+        "1/4" | "4" | "fjärdedel" | "fjärdedelar" | "fjärdel" | "fjärdelar" | "quarter" | "4th" => {
+            Some(4)
+        }
         "1/2" | "2" | "halv" | "half" => Some(8),
         "1/1" | "1" | "hel" | "whole" => Some(16),
         _ => None,
@@ -578,13 +580,6 @@ mod tests {
         assert!(parse_lanes(&json!({"lanes": [{"steps": "x...x...x...x..."}]})).is_err());
     }
 
-    /// Ackord går igenom (samma steg, olika toner); en dubblett av samma ton gör det inte.
-    #[test]
-    /// Ett bråktal i `step` ska säga vad som gäller — inte falla igenom som "steget -1".
-    #[test]
-    /// "Säger jag 1/8 ska det vara 1/8." Ett mönster som ligger på sextondelar får inte gå
-    /// igenom som åttondelar — det är hela poängen med kontrollen.
-    #[test]
     /// Ett `write_pattern` som säger 1/8 men skriver sextondelar ska avvisas — det är felet
     /// som gör att funktionen känns påtvingad i stället för att leverera det man bad om.
     #[test]
@@ -600,6 +595,9 @@ mod tests {
         assert!(parse_lanes(&nonsense).unwrap_err().contains("okänd upplösning"));
     }
 
+    /// "Säger jag 1/8 ska det vara 1/8." Ett mönster som ligger på sextondelar får inte gå
+    /// igenom som åttondelar — det är hela poängen med kontrollen.
+    #[test]
     fn the_requested_subdivision_is_enforced_not_hoped_for() {
         assert_eq!(grid_of("1/8"), Some(2));
         assert_eq!(grid_of("1/16"), Some(1));
@@ -623,6 +621,8 @@ mod tests {
         assert!(off_grid_hits(&sixteenths, 1).is_empty(), "allt ligger på 1/16");
     }
 
+    /// Ett bråktal i `step` ska säga vad som gäller — inte falla igenom som "steget -1".
+    #[test]
     fn a_fractional_step_says_the_grid_is_sixteenths() {
         let args = serde_json::json!({"notes": [{"step": 1.5, "pitch": 60}]});
         let err = parse_notes(&args).unwrap_err();
@@ -633,6 +633,8 @@ mod tests {
         assert_eq!(parse_notes(&args).unwrap()[0].step, 2);
     }
 
+    /// Ackord går igenom (samma steg, olika toner); en dubblett av samma ton gör det inte.
+    #[test]
     fn notes_allow_chords_but_not_double_hits() {
         let chord = parse_notes(&json!({"notes": [
             {"step": 0, "pitch": 36}, {"step": 0, "pitch": 43}, {"step": 8, "pitch": 48}

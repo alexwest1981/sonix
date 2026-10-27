@@ -549,6 +549,10 @@ pub struct SonixApp {
     // Selected Audio Region Inspector & Drag-to-Edit State
     pub selected_audio_region: Option<(usize, usize)>,
     pub region_drag_state: Option<RegionDragState>,
+    /// Klippan som dras: (spår, index i spårets `pattern_clips`, greppets avstånd i takter).
+    /// Avståndet behövs för att klippan ska följa pekaren från den punkt man grep den, inte
+    /// hoppa så att dess vänsterkant hamnar under musen.
+    pub pattern_clip_drag: Option<(usize, usize, f32)>,
     pub copied_region: Option<AudioRegion>,
     pub sample_drag_item: Option<LibrarySampleItem>,
     pub undo_stack: Vec<TimelineUndoSnapshot>,
@@ -1214,6 +1218,7 @@ impl SonixApp {
             // Selected Audio Region Inspector & Drag-to-Edit State
             selected_audio_region: None,
             region_drag_state: None,
+            pattern_clip_drag: None,
             copied_region: None,
             sample_drag_item: None,
             undo_stack: Vec::new(),

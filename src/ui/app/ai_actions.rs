@@ -227,28 +227,88 @@ impl SonixApp {
         format!("{name}: {hits} slag")
     }
 
-    /// Skriver melodi/bas på en kanal. Rutnätet har en not per steg (`steps`/`notes`), så
-    /// anslagets styrka och notens längd sätts på kanalen — därför tar vi bara steg och tonhöjd.
+    /// Skriver melodi/bas på en kanal — som **en klippa på tidslinjen**, inte i rutnätet.
+    ///
+    /// Klippan bär sina egna noter (position, anslag och längd), så den går att dra utan att
+    /// noterna rör sig och att spara som `.mid`. Rutnätet hade en not per steg och varken
+    /// anslag eller notlängd — därför fastnade AI:ns melodi i mönstret.
     fn ai_write_notes(&mut self, args: &serde_json::Value) -> String {
         let notes = match crate::audio::ai_tools::parse_notes(args) {
             Ok(notes) => notes,
             Err(e) => return format!("noter: {e}"),
         };
         let channel = args.get("channel").and_then(|v| v.as_u64()).unwrap_or(u64::MAX) as usize;
-        let Some(ch) = self.channels.get_mut(channel) else {
+        let Some(ch) = self.channels.get(channel) else {
             return format!("kanal {} finns inte", channel + 1);
         };
-        if ch.steps.iter().any(|s| *s) {
-            return format!("kanal {} ({}) har redan steg — töm den först", channel + 1, ch.name);
-        }
         let name = ch.name.clone();
-        for hit in &notes {
-            ch.steps[hit.step] = true;
-            ch.notes[hit.step] = hit.pitch;
+        if ch.steps.iter().any(|s| *s) {
+            return format!("kanal {} ({}) har redan steg — töm den först", channel + 1, name);
         }
-        self.sync_active_pattern_from_ui();
-        let tones: Vec<String> = notes.iter().map(|h| h.pitch.to_string()).collect();
-        format!("{name}: {} noter (steg {}: {})", notes.len(), notes[0].step, tones.join(","))
+        let pattern = self.selected_pattern;
+        let Some(last_track) = self.playlist_tracks.len().checked_sub(1) else {
+            return "noter: det finns inget spår att lägga klippan på".to_string();
+        };
+        let track_idx = self.selected_timeline_track.min(last_track);
+        if self.playlist_tracks[track_idx]
+            .pattern_clips
+            .iter()
+            .any(|c| c.pattern == pattern && c.lane == channel && !c.notes.is_empty())
+        {
+            return format!(
+                "kanal {} ({}) har redan en klippa med noter — ta bort den först",
+                channel + 1,
+                name
+            );
+        }
+        // Längden täcker noterna **och** patternet: en klippa på en takt klipper av noter
+        // AI:n skrev på steg 20, och en kortare än patternet spelar inte dess sista takter.
+        let span_bars = notes.iter().map(|h| h.step / 16 + 1).max().unwrap_or(1);
+        let bars = span_bars
+            .max(self.patterns.get(pattern).map_or(1, |p| p.bars))
+            .clamp(1, 4);
+        let id = self
+            .playlist_tracks
+            .iter()
+            .flat_map(|t| t.pattern_clips.iter().map(|c| c.id))
+            .max()
+            .unwrap_or(0)
+            + 1;
+        let clip_notes = notes
+            .iter()
+            .map(|h| crate::midi_take::TakeNote {
+                // Klippans noter räknas i steg från klippans start — patternet kan vara fyra takter.
+                pos: h.step as f32,
+                key: h.pitch,
+                velocity: h.velocity as f32 / 127.0,
+                probability: 1.0,
+                length_steps: h.length as f32,
+                articulation: crate::midi_take::Articulation::Normal,
+                applied: false,
+            })
+            .collect();
+        let start_bar = self.song_bar as f32;
+        // shortcut: den offline-renderade exporten spelar klippor först i steg 5 (då med
+        // `render_project_offline`); tills dess hörs en AI-melodi i appen men inte i en
+        // exporterad mix. Rutnätet skrevs med flit inte — se `docs/AI-CLIPS.md`.
+        self.playlist_tracks[track_idx]
+            .pattern_clips
+            .push(crate::ui::app::state::PatternClip {
+                id,
+                pattern,
+                lane: channel,
+                start_bar,
+                length_bars: bars as f32,
+                name: name.clone(),
+                notes: clip_notes,
+            });
+        crate::tstatus!(
+            "📎 '{}': {} noter i en klippa på takt {} ({} takter)",
+            name,
+            notes.len(),
+            start_bar + 1.0,
+            bars
+        )
     }
 
     /// **Väljer ljud ur användarens eget bibliotek.** Varje trumkanal får det sample som bäst

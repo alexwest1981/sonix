@@ -754,6 +754,65 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
     let has_track_solo = self.playlist_tracks.iter().any(|t| t.solo);
     let vel = self.step_velocities[step_in_bar];
 
+    // **Patternklipp** (AI-klipporna): en klippa spelar sin egen `lane`, oavsett spårets sort —
+    // det är kanalen den skrevs på som bestämmer ljudet, och kanalens sampel läses här och nu,
+    // så att byta ljud behåller noter, anslag och längder. Klippans noter ligger i klippan, så
+    // en förflyttning rör bara `start_bar`.
+    let hold = self.step_duration(step_in_bar).as_secs_f32();
+    for track in self.playlist_tracks.iter() {
+        let is_audible = if has_track_solo { track.solo } else { !track.muted };
+        if !is_audible || track.is_frozen() {
+            continue;
+        }
+        for clip in track.pattern_clips.iter() {
+            let Some(local) = clip.step_at(bar, step_in_bar) else {
+                continue;
+            };
+            if clip.notes.is_empty() {
+                // En trumklippa: klippans lane spelar mönstrets rutnät, som loopar sin längd.
+                let Some(pat) = self.patterns.get(clip.pattern) else {
+                    continue;
+                };
+                let grid = (pat.bars.clamp(1, 4) * crate::audio::tempo::STEPS_PER_BAR)
+                    .min(crate::audio::tempo::MAX_STEPS)
+                    .max(1);
+                let at = local % grid;
+                if !pat.channel_steps.get(clip.lane).is_some_and(|s| s[at]) {
+                    continue;
+                }
+                let note = pat.channel_notes.get(clip.lane).map(|n| n[at]).unwrap_or(36);
+                let cmd = self.channels.get(clip.lane).and_then(|ch| {
+                    channel_sample_trigger_command(ch, clip.lane, note, track.volume * vel, hold)
+                });
+                if let Some(cmd) = cmd {
+                    let _ = self.engine.send_command(cmd);
+                }
+                continue;
+            }
+            for n in clip.notes.iter().filter(|n| n.pos as usize == local) {
+                let note_vel = track.volume * vel * n.velocity;
+                let note_hold = hold * n.length_steps.max(1.0);
+                let cmd = self.channels.get(clip.lane).and_then(|ch| {
+                    channel_sample_trigger_command(ch, clip.lane, n.key, note_vel, note_hold)
+                });
+                match cmd {
+                    Some(cmd) => {
+                        let _ = self.engine.send_command(cmd);
+                    }
+                    None => {
+                        let freq = midi_to_freq(n.key);
+                        let _ = self.engine.send_command(AudioCommand::NoteOn {
+                            note: n.key,
+                            freq,
+                            velocity: note_vel,
+                            channel: 0,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
     for track in self.playlist_tracks.iter() {
         let is_audible = if has_track_solo { track.solo } else { !track.muted };
         if !is_audible {

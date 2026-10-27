@@ -926,6 +926,9 @@ pub struct SavedTrackData {
     /// Blockens längd i takter. Saknas i äldre filer — då var varje block en takt.
     #[serde(default = "one_bar_array")]
     pub clip_bars: [u8; 32],
+    /// **Klipporna** (AI-klipporna, med egna noter). Saknas i äldre filer — då finns inga.
+    #[serde(default)]
+    pub pattern_clips: Vec<crate::ui::app::state::PatternClip>,
     pub regions: Vec<AudioRegion>,
     #[serde(default)]
     pub eq: TrackEq,
@@ -1041,6 +1044,7 @@ pub struct PreloadedTrackData {
     pub regions: Vec<AudioRegion>,
     pub clips: [Option<usize>; 32],
     pub clip_bars: [u8; 32],
+    pub pattern_clips: Vec<crate::ui::app::state::PatternClip>,
     pub eq: TrackEq,
     pub comp_threshold_db: f32,
     pub comp_ratio: f32,
@@ -1887,6 +1891,7 @@ pub fn load_demo_project(&mut self) {
                 solo: false,
                 regions: Vec::new(),
                 clips,
+                pattern_clips: Vec::new(),
                 eq: TrackEq::default(),
                 comp_threshold_db: 0.0,
                 comp_ratio: 1.0,
@@ -1973,6 +1978,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         solo: t.solo,
         clips: t.clips,
         clip_bars: t.clip_bars,
+        pattern_clips: t.pattern_clips.clone(),
         regions: t.regions.clone(),
         frozen: t.frozen.as_ref().map(|f| SavedFrozenTrack {
             path: f.path.clone(),
@@ -2400,6 +2406,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 regions,
                 clips: st.clips,
                 clip_bars: st.clip_bars,
+                pattern_clips: st.pattern_clips,
                 eq: st.eq,
                 comp_threshold_db: st.comp_threshold_db,
                 comp_ratio: st.comp_ratio,
@@ -2576,6 +2583,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         loaded_track.regions = st.regions;
         loaded_track.clips = st.clips;
         loaded_track.clip_bars = st.clip_bars;
+        loaded_track.pattern_clips = st.pattern_clips;
         if st.frozen.is_some() {
             // Ljudet kom in via stem_pcms ovan; här knyts läget till spåret.
             loaded_track.frozen = st.frozen.map(|f| FrozenTrack {

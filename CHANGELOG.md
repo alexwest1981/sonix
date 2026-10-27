@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.165] - 2026-10-27
+
+**AI:ns melodi blir ett objekt på tidslinjen.** Den skrev in i mönstrets rutnät, och där fanns
+inget att greppa — ingen klippa att flytta, inget att spara. Nu skriver `write_notes` en
+**klippa** (`PatternClip`) med egna noter: position, anslag och notlängd.
+
+- **`PatternClip`** på spåret (`pattern_clips`): start och längd i `f32` takter som en
+  ljudregion, `lane` mot kanalracket, och noterna i klippan. Sparas i projektfilen
+  (`#[serde(default)]`, så gamla projekt öppnas som förut).
+- **AI:n skriver noter, inte steg.** `write_notes` skapar klippan vid spelhuvudet på valt spår i
+  stället för att tända rutor i rutnätet — notlängd och anslag följer med, vilket rutnätet inte
+  kunde bära. Trummor ligger kvar i rutnätet; en klippa utan noter spelar mönstrets rutnät.
+- **Klippan ritas och dras** i arrangemanget med snäpp och ångra. Flytten skriver bara
+  `start_bar`, så noterna kan inte ändras av en förflyttning (prov i `state::clip_tests`).
+- **Uppspelning:** en klippa spelar sin kanal, läser kanalens sampel vid varje slag (bytt ljud
+  behåller noterna) och loopar sin egen längd.
+- **Fyra döda AI-prov körs igen.** Tre prov i `ai_tools` hade förlorat sina `#[test]`-attribut i
+  en tidigare commit och räknades aldrig — de ligger nu på rätt funktion, och `grid_of` känner
+  igen de svenska pluralformerna ("åttondelar") som provet kräver.
+
+Kvar till nästa pass: knappen som lägger klippan vid spelhuvudet, Sample-export (WAV + `.mid`),
+och triolernas `pos`-schemaläggning — se `docs/AI-CLIPS.md`.
+
+
 ## [0.9.162] - 2026-10-26
 
 **Sju språk, inte bara i appen.** Gränssnittet har kunnat sju språk sedan tidigare, men repot och

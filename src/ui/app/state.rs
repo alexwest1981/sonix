@@ -1134,6 +1134,40 @@ pub(crate) fn snap_bar(mode: TimeSnapMode, bar: f32) -> f32 {
     }
 }
 
+/// **En klippa i arrangemanget** (AI-klipporna): ett objekt på tidslinjen med egna noter.
+///
+/// Skillnaden mot ett patternblock (`clips`/`clip_bars`) är att klippan bär sin egen notlista:
+/// att flytta den rör bara `start_bar`, och att byta kanalens ljud rör inte noterna. Ett
+/// patternblock pekar på rutnätet, alltså på något som delas med varje annat block.
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct PatternClip {
+    pub id: usize,
+    /// Mönstret klippan hör till. En klippa **utan** noter spelar dess rutnät på `lane`.
+    pub pattern: usize,
+    /// Kanalen i racket som klippan spelar — det är den som bestämmer ljudet.
+    pub lane: usize,
+    pub start_bar: f32,
+    pub length_bars: f32,
+    pub name: String,
+    /// Noterna, med `pos` i steg **från klippans start** (0–64) — inte från taktens början som
+    /// i en inspelad tagning, för en klippa kan vara flera takter.
+    #[serde(default)]
+    pub notes: Vec<crate::midi_take::TakeNote>,
+}
+
+impl PatternClip {
+    /// Steget inuti klippan för en songtakt och ett steg; `None` utanför klippan.
+    ///
+    /// Räknat i absoluta sextondelar, så en klippa som börjar mitt i en takt spelar från
+    /// taktens andra hälft i stället för att runda ner till taktens början.
+    pub fn step_at(&self, song_bar: usize, step: usize) -> Option<usize> {
+        const SPB: f32 = crate::audio::tempo::STEPS_PER_BAR as f32;
+        let rel = song_bar as f32 * SPB + step as f32 - self.start_bar * SPB;
+        let len = (self.length_bars * SPB).round().max(1.0);
+        (rel >= -0.001 && rel < len).then(|| rel.max(0.0) as usize)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PlaylistTrack {
     pub name: String,
@@ -1154,6 +1188,9 @@ pub struct PlaylistTrack {
     pub clips: [Option<usize>; 32],  // Pattern triggers
     /// Längden i takter för blocket som börjar på samma index som `clips`. 1 = en takt.
     pub clip_bars: [u8; 32],
+    /// **Klipporna** (AI-klipporna): egna objekt på tidslinjen med egna noter. Start och längd
+    /// är `f32` takter som en ljudregion, så de går att dra och längdändra fritt.
+    pub pattern_clips: Vec<PatternClip>,
     #[allow(dead_code)]
     /// Vågformens flernivå-cache (Fas 8.3): `(nyckel, cache)`.
     ///
@@ -1643,6 +1680,7 @@ impl PlaylistTrack {
             regions: Vec::new(),
             clips: [None; 32],
             clip_bars: [1; 32],
+            pattern_clips: Vec::new(),
             waveform_cache: None,
             waveform_cache_pending: None,
             custom_clip_name: None,
@@ -2083,5 +2121,60 @@ mod track_group_tests {
         // Ett gruppindex som inte finns får inte gömma något.
         let broken = vec![track(Some(7))];
         assert!(!track_hidden(&broken, &closed, 0));
+    }
+}
+
+#[cfg(test)]
+mod clip_tests {
+    use super::*;
+
+    fn clip(start_bar: f32, length_bars: f32) -> PatternClip {
+        PatternClip {
+            id: 3,
+            pattern: 0,
+            lane: 6,
+            start_bar,
+            length_bars,
+            name: "bas".to_string(),
+            notes: Vec::new(),
+        }
+    }
+
+    /// Klippan spelar bara sina egna takter, och **flytten rör inte noterna** — det är hela
+    /// skillnaden mot ett patternblock, som pekar på rutnätet.
+    #[test]
+    fn a_clip_plays_its_own_bars_and_keeps_its_notes_when_moved() {
+        let mut c = clip(0.0, 2.0);
+        c.notes.push(crate::midi_take::TakeNote {
+            pos: 17.0,
+            key: 40,
+            velocity: 0.7,
+            probability: 1.0,
+            length_steps: 3.0,
+            articulation: crate::midi_take::Articulation::Normal,
+            applied: false,
+        });
+        let notes_before = c.notes.clone();
+
+        assert_eq!(c.step_at(0, 0), Some(0));
+        assert_eq!(c.step_at(1, 1), Some(17));
+        assert_eq!(c.step_at(2, 0), None, "klippan är slut efter två takter");
+
+        c.start_bar = 8.0;
+        assert_eq!(c.step_at(8, 0), Some(0));
+        assert_eq!(c.step_at(9, 1), Some(17));
+        assert_eq!(c.step_at(7, 15), None, "inget före klippans start");
+        assert_eq!(c.notes, notes_before, "flytten rör inte noterna");
+    }
+
+    /// En klippa som börjar mitt i en takt spelar från taktens andra hälft — inte från dess
+    /// början, som en avrundning till hela takter hade gett.
+    #[test]
+    fn a_clip_that_starts_mid_bar_plays_from_there() {
+        let c = clip(8.5, 1.0);
+        assert_eq!(c.step_at(8, 7), None);
+        assert_eq!(c.step_at(8, 8), Some(0));
+        assert_eq!(c.step_at(9, 7), Some(15));
+        assert_eq!(c.step_at(9, 8), None);
     }
 }

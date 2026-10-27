@@ -3,6 +3,18 @@
 Skrivet efter en mätning i koden 2026-10-26. Syftet är att nästa pass ska börja här i
 stället för att mäta om samma saker.
 
+**Läget 2026-10-27: steg 1–3 är byggda** (0.9.165). Det som återstår är steg 4–6 — knappen som
+lägger klippan vid spelhuvudet, Sample-exporten, och triolernas `pos`-schemaläggning. Tre saker
+som nästa pass annars mäter om:
+
+- Fältet heter **`pattern_clips`**, inte `clips`: `PlaylistTrack::clips` är redan patternblocken.
+- **Klippan bär sina egna noter** (`notes: Vec<TakeNote>`, `pos` i steg från klippans start). Att
+  lägga dem i `Pattern::take` gick inte: en tagning är **en takt**, och ett pattern är upp till
+  fyra. Det gör också att en förflyttning inte kan röra noterna, och att steg 5 får noterna direkt.
+- Uppspelningen ligger i `trigger_song_step` (en klippa spelar sin `lane` oavsett spårets sort),
+  och **exporten spelar den inte än** — det är steg 5:s jobb, se `shortcut:`-raden i
+  `ai_write_notes`.
+
 ## Utgångsläget, mätt
 
 | Vad | Var | Sanning |
@@ -30,14 +42,14 @@ En prompt ska ge en **klippa** som
 
 ## Stegen
 
-1. **`PatternClip` som objekt.** Ny typ i `ui/app/state.rs`:
+1. **`PatternClip` som objekt.** ✅ Ny typ i `ui/app/state.rs`:
    `struct PatternClip { id, pattern: usize, lane: usize, start_bar: f32, length_bars: f32, name: String }`,
    lagd i `playlist_tracks[].clips: Vec<PatternClip>` (nytt fält, `#[serde(default)]` så gamla
    projekt öppnas).
-2. **AI skriver noter, inte steg.** `ai_write_notes` → bygger `TakeNote` (pos ur `step * 0.25`
+2. **AI skriver noter, inte steg.** ✅ `ai_write_notes` → bygger `TakeNote` (pos ur `step * 0.25`
    takter, `velocity`/`length_steps` ur `vel`/`len`) i stället för `steps`/`notes`. Trummor får
    vara kvar i rutnätet — de är rutnät av naturen — men klippan pekar på mönstret.
-3. **Klippan ritas och dras** i arrangemanget med samma mönster som `AudioRegion`: grepp,
+3. **Klippan ritas och dras** ✅ i arrangemanget med samma mönster som `AudioRegion`: grepp,
    `start_bar` uppdateras, längd i takter. Flytt får inte röra noterna.
 4. **Lägg till i låten:** knapp i AI-vyn → klippa vid spelhuvudet.
 5. **Spara som Sample:** rendera klippans kanal offline (`exporter::render_project_offline`

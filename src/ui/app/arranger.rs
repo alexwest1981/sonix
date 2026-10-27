@@ -2308,6 +2308,86 @@ impl SonixApp {
                             }
                         }
 
+                        // **Patternklipp** (AI-klipporna): ritas ovanpå spåret och dras med musen.
+                        // Flytten skriver bara `start_bar` — noterna ligger i klippan, inte i
+                        // rutnätet, så en förflyttning kan inte ändra dem.
+                        let clip_snapshot: Vec<crate::ui::app::state::PatternClip> = self
+                            .playlist_tracks
+                            .get(t_idx)
+                            .map(|t| t.pattern_clips.clone())
+                            .unwrap_or_default();
+                        for (ci, clip) in clip_snapshot.iter().enumerate() {
+                            let x0 = lane_rect.min.x + clip.start_bar * bar_w;
+                            let x1 = (x0 + clip.length_bars * bar_w).min(lane_rect.max.x);
+                            if x1 - x0 < 2.0 {
+                                continue;
+                            }
+                            let c_rect = Rect::from_min_max(
+                                Pos2::new(x0 + 1.0, lane_rect.min.y + 2.0),
+                                Pos2::new(x1 - 1.0, lane_rect.max.y - 2.0),
+                            );
+                            let is_dragged = matches!(
+                                self.pattern_clip_drag,
+                                Some((dt, di, _)) if dt == t_idx && di == ci
+                            );
+                            let c_col = if is_dragged {
+                                crate::ui::theme::palette().orange()
+                            } else {
+                                track_color
+                            };
+                            ui.painter().rect_filled(c_rect, Rounding::same(3.0), c_col);
+                            ui.painter().rect_stroke(
+                                c_rect,
+                                Rounding::same(3.0),
+                                Stroke::new(1.0_f32, Color32::BLACK),
+                            );
+                            if c_rect.width() > 40.0 {
+                                ui.painter().text(
+                                    Pos2::new(c_rect.min.x + 5.0, c_rect.center().y),
+                                    egui::Align2::LEFT_CENTER,
+                                    &clip.name,
+                                    egui::FontId::proportional(Theme::FONT_S),
+                                    Color32::BLACK,
+                                );
+                            }
+                            let resp = ui.interact(
+                                c_rect,
+                                ui.id().with(("pattern_clip", t_idx, clip.id)),
+                                Sense::click_and_drag(),
+                            );
+                            if resp.drag_started()
+                                && self.region_drag_state.is_none()
+                                && let Some(p) = ui.ctx().pointer_interact_pos()
+                            {
+                                self.push_undo(crate::i18n::t("Flytta klippa"));
+                                self.pattern_clip_drag = Some((
+                                    t_idx,
+                                    ci,
+                                    (p.x - lane_rect.min.x) / bar_w - clip.start_bar,
+                                ));
+                                self.selected_timeline_track = t_idx;
+                            }
+                            if is_dragged
+                                && let Some((_, _, grab)) = self.pattern_clip_drag
+                                && let Some(p) = ui.ctx().pointer_latest_pos()
+                            {
+                                let raw = ((p.x - lane_rect.min.x) / bar_w - grab).max(0.0);
+                                let start = snap_bar(self.timeline_snap_mode, raw);
+                                if let Some(c) = self.playlist_tracks[t_idx].pattern_clips.get_mut(ci)
+                                {
+                                    c.start_bar = start;
+                                }
+                            }
+                            if resp.drag_stopped() {
+                                self.pattern_clip_drag = None;
+                            }
+                        }
+                        // Ett släpp utanför klippan ska också avsluta dragningen — annars
+                        // fastnar greppet och nästa dragning börjar mitt i en förflyttning.
+                        if ui.input(|i| i.pointer.any_released()) {
+                            self.pattern_clip_drag = None;
+                        }
+
                         // **Klippmenyn för patternblock.** Posterna gäller blocket som
                         // högerklickades (`pattern_menu`), inte det som råkade vara valt.
                         lane_resp.context_menu(|ui| {
