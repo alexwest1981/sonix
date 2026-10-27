@@ -64,6 +64,13 @@ pub struct AudioEngine {
     /// ingenting skrivs till enheten. Sätts bara av `selftest.rs` när `--audible`
     /// inte gavs — så ett autonomt pass inte spelar trummor i rummet (2026-09-15).
     output_silent: Arc<AtomicBool>,
+    /// Antal gånger ljudcallbacken har kört sedan strömmen öppnades — ljudtrådens
+    /// hjärtslag. Står det stilla kallas callbacken inte längre, och då är appen tyst
+    /// utan att något annat syns (2026-10-27: en POLLERR-ström såg levande ut i
+    /// `pactl` men spelade ingenting).
+    heartbeat: Arc<AtomicU32>,
+    /// Fel som `err_fn` har rapporterat. Läses bara för att kunna dämpa skrivandet.
+    error_count: Arc<AtomicU32>,
     scope_rx: Consumer<f32>,
     /// Udda antal float i ringen mellan två bildrutor: spara resten så paret inte hamnar fel.
     scope_pending: Vec<f32>,
@@ -228,6 +235,8 @@ impl AudioEngine {
         let audition_active = Arc::new(AtomicBool::new(false));
         let master_gr_db = Arc::new(AtomicU32::new(0));
         let output_silent = Arc::new(AtomicBool::new(false));
+        let heartbeat = Arc::new(AtomicU32::new(0));
+        let error_count = Arc::new(AtomicU32::new(0));
 
         let mut config = default_stream_config.clone();
         apply_preferences(&device, &mut config, sample_format, preferred_sample_rate, preferred_buffer_frames);
@@ -247,6 +256,8 @@ impl AudioEngine {
             &audition_active,
             &output_silent,
             &master_gr_db,
+            &heartbeat,
+            &error_count,
         ) {
             Ok(v) => v,
             Err(_) if preferences_changed => {
@@ -264,6 +275,8 @@ impl AudioEngine {
                     &audition_active,
                     &output_silent,
                     &master_gr_db,
+                    &heartbeat,
+                    &error_count,
                 )?
             }
             Err(e) => return Err(e),
@@ -291,6 +304,8 @@ impl AudioEngine {
             audition_active,
             master_gr_db,
             output_silent,
+            heartbeat,
+            error_count,
             scope_rx,
             scope_pending: Vec::new(),
             sample_rate,
@@ -330,6 +345,8 @@ impl AudioEngine {
             &self.audition_active,
             &self.output_silent,
             &self.master_gr_db,
+            &self.heartbeat,
+            &self.error_count,
         ) {
             Ok(v) => Ok((v, config.clone())),
             Err(_) if preferences_changed => {
@@ -346,6 +363,8 @@ impl AudioEngine {
                     &self.audition_active,
                     &self.output_silent,
                     &self.master_gr_db,
+                    &self.heartbeat,
+                    &self.error_count,
                 ) {
                     Ok(v) => Ok((v, fallback)),
                     Err(e) => Err(e.to_string()),
@@ -371,6 +390,18 @@ impl AudioEngine {
         }
     }
 
+    /// Ljudtrådens hjärtslag: antal buffertar callbacken har renderat sedan strömmen
+    /// öppnades. UI:t läser det en gång i sekunden — se `audio_stream_frozen`.
+    pub fn heartbeat(&self) -> u32 {
+        self.heartbeat.load(Ordering::Relaxed)
+    }
+
+    /// Antal fel strömmen har rapporterat sedan start. Bara för statusraden: en ström
+    /// som fällt men återhämtat sig ska synas, inte tigas ihjäl.
+    pub fn error_count(&self) -> u32 {
+        self.error_count.load(Ordering::Relaxed)
+    }
+
 // Lång signatur med flit: parametrarna är motorns/ritningens hela tillstånd, och en
 // påhittad struct skulle bara flytta samma fält ett steg.
 #[allow(clippy::too_many_arguments)]
@@ -387,14 +418,16 @@ impl AudioEngine {
         audition_active: &Arc<AtomicBool>,
         output_silent: &Arc<AtomicBool>,
         master_gr_db: &Arc<AtomicU32>,
+        heartbeat: &Arc<AtomicU32>,
+        error_count: &Arc<AtomicU32>,
     ) -> Result<StreamParts, Box<dyn std::error::Error>> {
         let (command_tx, command_rx) = RingBuffer::<AudioCommand>::new(ring_buffer_size);
         let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
 
         let stream = match sample_format {
-            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), scope_tx)?,
-            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), scope_tx)?,
+            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count), scope_tx)?,
+            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count), scope_tx)?,
+            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count), scope_tx)?,
             _ => return Err(crate::i18n::t("Ljudformatet stöds inte").into()),
         };
 
@@ -502,6 +535,8 @@ impl AudioEngine {
         audition_active: Arc<AtomicBool>,
         output_silent: Arc<AtomicBool>,
         master_gr_db: Arc<AtomicU32>,
+        heartbeat: Arc<AtomicU32>,
+        error_count: Arc<AtomicU32>,
         mut scope_tx: Producer<f32>,
     ) -> Result<Stream, cpal::BuildStreamError>
     where
@@ -513,14 +548,27 @@ impl AudioEngine {
         let bus_out = bus_pairs(&AudioSettings::load().output_buses, channels);
         let mut synth = SynthEngine::new(sample_rate);
 
-        let err_fn = |err| {
-            eprintln!("[Sonix Audio Error] {}", err);
-            append_audio_log(&format!("[{}] [Audio Error] {}\n", std::process::id(), err));
+        let error_count_cb = Arc::clone(&error_count);
+        let err_fn = move |err| {
+            // En ström som gått i POLLERR rapporterar samma fel tiotusentals gånger i
+            // sekunden: 2026-10-27 skrev det 1,5 GB logg och brände en kärna, vilket
+            // gjorde den redan tysta appen långsammare. Dämpningen bor i
+            // `should_log_stream_error` så den går att pröva.
+            // shortcut: räknaren nollställs aldrig per ström, byt till tidsstämpling om
+            // loggen behöver visa när felen kom.
+            let n = error_count.fetch_add(1, Ordering::Relaxed);
+            if should_log_stream_error(n) {
+                eprintln!("[Sonix Audio Error] {err}");
+                append_audio_log(&format!("[{}] [Audio Error] {}\n", std::process::id(), err));
+            }
         };
 
         device.build_output_stream(
             config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
+                // Hjärtslaget: räknas per buffert. UI:t jämför det över en sekund —
+                // står det stilla kallas den här stängseln aldrig mer.
+                heartbeat.fetch_add(1, Ordering::Relaxed);
                 // **Flusha denormala tal i ljudtråden.** När ett filter eller en reverbssvans
                 // klingar ut hamnar tillstånden i denormala värden — de låter som ett svagt
                 // fräsande och kostar många gånger mer CPU än normala tal. FTZ+DAZ stänger av
@@ -618,8 +666,13 @@ impl AudioEngine {
                     } else {
                         "okänd panik".to_string()
                     };
-                    eprintln!("[Sonix] AUDIO-KRASCH i ljudtråd: {}", msg);
-                    append_audio_log(&format!("[{}] {}\n", std::process::id(), msg));
+                    // Samma dämpning som `err_fn`: en callback som panikar varje buffert
+                    // skriver annars 750 rader i sekunden.
+                    let n = error_count_cb.fetch_add(1, Ordering::Relaxed);
+                    if should_log_stream_error(n) {
+                        eprintln!("[Sonix] AUDIO-KRASCH i ljudtråd: {}", msg);
+                        append_audio_log(&format!("[{}] {}\n", std::process::id(), msg));
+                    }
                 }
             },
             err_fn,
@@ -667,8 +720,68 @@ pub fn output_sample(l: f32, r: f32, silent: bool) -> (f32, f32) {
     if silent { (0.0, 0.0) } else { (l, r) }
 }
 
+/// Så länge hjärtslaget får stå stilla innan strömmen anses död. En buffert på 128
+/// frames ger 375 slag i sekunden, så en sekund är hundratals missade buffertar — inte
+/// en tillfällig fördröjning.
+pub const AUDIO_FROZEN_LIMIT_SECS: f32 = 1.0;
+
+/// Minsta tid mellan två omstarter. Utan den skulle en enhet som vägrar starta
+/// byggas om varje bildruta.
+pub const AUDIO_REBUILD_COOLDOWN_SECS: f32 = 2.0;
+
+/// **Ska ljudströmmen byggas om?** Ren funktion med eget prov.
+///
+/// Skälet den finns: cpal 0.15 återhämtar sig inte från en ALSA-ström som svarat
+/// POLLERR — `alsa::poll()` fortsätter svara fel och callbacken kallas aldrig mer,
+/// medan `pactl` fortfarande listar en ström som "RUNNING". Utan den här regeln är
+/// appen tyst för alltid och säger ingenting (mätt 2026-10-27: 40 000 fel/s, 1,5 GB
+/// logg, noll ljud).
+pub fn audio_stream_frozen(frozen_secs: f32, cooldown_secs: f32) -> bool {
+    frozen_secs >= AUDIO_FROZEN_LIMIT_SECS && cooldown_secs <= 0.0
+}
+
+/// **Ska det här strömfelet skrivas till loggen?** Ren funktion med eget prov.
+///
+/// En ALSA-ström som svarat POLLERR rapporterar samma fel tiotusentals gånger i
+/// sekunden (mätt 2026-10-27: 40 000/s, 1,5 GB logg på en kvart). Tre rader räcker som
+/// bevis; sedan en rad per 20 000 fel, så ett långt pass fortfarande går att räkna.
+pub fn should_log_stream_error(n: u32) -> bool {
+    n < 3 || n.is_multiple_of(20_000)
+}
+
 #[cfg(test)]
 mod tests {
+    /// **Loggdämpningen ska rädda disken utan att kasta beviset.** Mätt läge: en död
+    /// ström skrev 40 000 rader i sekunden. Provet håller båda sidor: de tre första
+    /// raderna kommer alltid, sedan bara var 20 000:e — aldrig tyst.
+    #[test]
+    fn a_dead_stream_is_logged_a_few_times_then_every_twenty_thousandth() {
+        use super::*;
+        assert!(should_log_stream_error(0));
+        assert!(should_log_stream_error(1));
+        assert!(should_log_stream_error(2));
+        assert!(!should_log_stream_error(3), "rad 4 och framåt är samma fel igen");
+        assert!(!should_log_stream_error(19_999));
+        assert!(should_log_stream_error(20_000), "ett långt pass ska gå att räkna");
+        assert!(!should_log_stream_error(20_001));
+    }
+
+    /// **En död ström ska byggas om — men inte en som bara väntar.** Provet håller tre
+    /// fall: stillastående kortare än gränsen, stillastående förbi gränsen, och förbi
+    /// gränsen men inne i cooldownen (då ska inget hända, annars snurrar omstarterna).
+    #[test]
+    fn a_frozen_stream_is_rebuilt_but_not_inside_the_cooldown() {
+        use super::*;
+        assert!(!audio_stream_frozen(0.2, 0.0), "en buffert som väntar är inte död");
+        assert!(!audio_stream_frozen(AUDIO_FROZEN_LIMIT_SECS - 0.01, 0.0));
+        assert!(audio_stream_frozen(AUDIO_FROZEN_LIMIT_SECS, 0.0));
+        assert!(audio_stream_frozen(5.0, 0.0));
+        assert!(
+            !audio_stream_frozen(5.0, AUDIO_REBUILD_COOLDOWN_SECS),
+            "cooldownen ska hålla en trasig enhet från att byggas om varje bildruta"
+        );
+    }
+
     /// **Standarden är låg latens.** Provet faller om någon tar bort 48 kHz eller 128 frames
     /// från `AudioSettings::default` — de två talen är hela punkten 2 i SPRINT.md.
     #[test]

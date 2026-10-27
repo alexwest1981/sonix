@@ -74,6 +74,7 @@ mod transport;
 mod plugins;
 
 mod input_autoconfig;
+mod audio_watchdog;
 mod midi;
 
 // Inte kopplad till mixern än — tas bort när panelen anropar den.
@@ -141,6 +142,12 @@ pub struct SonixApp {
     pub rate_mismatch_reported: bool,
     /// Senast skickade monitor-nivå (så kommandon inte spammas varje frame).
     pub monitor_level_sent: Option<f32>,
+    /// Ljudströmmen kan dö utan att något syns utifrån — cpal 0.15 återhämtar sig inte
+    /// från en ALSA-ström som svarat POLLERR. Hjärtslaget och hur länge det stått stilla
+    /// är hela vakthunden (`audio_watchdog`).
+    pub audio_heartbeat_seen: u32,
+    pub audio_frozen_secs: f32,
+    pub audio_rebuild_cooldown: f32,
     pub stem_import_progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
     pub project_load_progress: std::sync::Arc<std::sync::Mutex<ProjectLoadProgress>>,
     // Transport & Clock
@@ -935,6 +942,9 @@ impl SonixApp {
             input_autodetect_done: false,
             rate_mismatch_reported: false,
             monitor_level_sent: None,
+            audio_heartbeat_seen: 0,
+            audio_frozen_secs: 0.0,
+            audio_rebuild_cooldown: 0.0,
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),
             is_playing: false,
@@ -1378,6 +1388,10 @@ impl eframe::App for SonixApp {
         crate::ui::theme::reload_if_changed();
         // Global form: luft, hörn och palett i egui:s egna ytor.
         crate::ui::theme::apply_style(ctx);
+
+        // Ljudet först: en ström som dött ska byggas om innan resten av bildrutan
+        // skickar kommandon till en tråd som inte lyssnar.
+        self.audio_watchdog(ctx);
 
         // AI-svaret plockas upp och utförs.
         self.poll_ai_chat();
