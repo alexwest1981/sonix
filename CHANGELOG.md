@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.167] - 2026-10-27
+
+**En död ljudström byggs om i stället för att tiga.** cpal 0.15 återhämtar sig inte från en
+ALSA-ström som svarat `POLLERR`: `alsa::poll()` fortsätter svara fel, callbacken kallas aldrig
+mer — men strömmen ser fortfarande `RUNNING` ut i `pactl`. Mätt: 40 000 fel/s, 1,5 GB logg, en
+kärna bränd och noll ljud när play trycktes.
+
+- **Hjärtslag per buffert** i ljudcallbacken. Står det stilla en sekund byggs strömmen om med
+  samma `reconfigure` + `resync_engine_after_reconfigure` som ljudmodalen, och spelar vidare
+  från samma position om transporten rullade. Cooldown 2 s så en enhet som vägrar starta inte
+  byggs om varje bildruta.
+- **Felloggen dämpad:** tre rader och sedan var 20 000:e fel, både i `err_fn` och i
+  panikvägen — en död ström ska synas, inte äta disken.
+- **Felräknaren hör till strömmen** som dog: `reconfigure` nollställer den, och vakthunden
+  läser den innan omstarten, så statusraden säger den döda strömmens fel och inte appens total.
+
+**AI:n lovar inte längre mer än rutnätet kan skriva.** `write_pattern` skriver en not per steg
+utan anslag och längd; modellen kunde ändå be om trioler och legato som appen tyst kastade bort.
+
+- Prompten säger vad som gäller (sextondelsrutnät, en not per steg, heltal), och `parse_notes`
+  avvisar bråktal med ett begripligt fel i stället för "steget -1 ligger utanför".
+- Varje stämma bär en `subdivision` (1/16 … 1/1); anropet avvisas om slagen ligger utanför den,
+  med raden som visar vilka steg som bryter.
+- `2.0` läses som 2 — JSON-bråktal föll tidigare igenom som fel.
+
 ## [0.9.165] - 2026-10-27
 
 **AI:ns melodi blir ett objekt på tidslinjen.** Den skrev in i mönstrets rutnät, och där fanns
@@ -177,7 +202,8 @@ audio engine; the remaining gaps are documented honestly in
   rationale, which now state the real reason (the closed format cannot be
   decoded).
 
-[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.159...HEAD
+[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.167...HEAD
+[0.9.167]: https://github.com/alexwest1981/sonix/compare/v0.9.165...v0.9.167
 [0.9.159]: https://github.com/alexwest1981/sonix/compare/v0.9.158...v0.9.159
 [0.9.158]: https://github.com/alexwest1981/sonix/compare/v0.9.0...v0.9.158
 [0.9.0]: https://github.com/alexwest1981/sonix/releases/tag/v0.9.0
