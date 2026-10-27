@@ -47,6 +47,15 @@ Skriva musik:
   letar efter 808, en house-hat efter öppen hi-hat.
 - Kanalerna du får adressera står i användarens meddelande (index och namn). Skriv bara på
   kanaler som finns; hitta inte på egna index.
+
+Gränser du måste känna till — säg dem till användaren i stället för att låtsas:
+- Rutnätet är **sextondelar**. Det finns ingen triolupplösning, så en trap-hi-hat med
+  triolrullar går inte att skriva. Skriv raka sextondelar och säg att rullarna saknas.
+- `write_pattern` ger **en not per steg och kanal**, utan anslag och utan notlängd. Vill du ha
+  dynamik eller längre toner får det bli `write_notes` — men den skriver också i samma
+  16-stegsrutnät, så legato över taktgräns går inte.
+- Max 64 steg (fyra takter) per anrop, högst 64 noter per kanal och anrop.
+- Ett `step` är ett **heltal**. `1.5` avvisas; avrunda själv och säg vad du gjorde.
 ";
 
 /// Verktygen modellen får anropa. `mode` styr vilka som kräver bekräftelse.
@@ -270,7 +279,24 @@ pub fn parse_notes(args: &Value) -> Result<Vec<NoteHit>, String> {
     }
     let mut out: Vec<NoteHit> = Vec::new();
     for item in list {
-        let step = item.get("step").and_then(|v| v.as_i64()).unwrap_or(-1);
+        // **Ett bråktal är ett räkfel, inte en triol.** Rutnätet är sextondelar, så `1.5` kan
+        // inte sparas — och tidigare föll det igenom som "steget -1 ligger utanför" och lät som
+        // ett internt fel. Nu står det vad som gäller.
+        let step = match item.get("step") {
+            Some(v) if v.is_f64() && v.as_f64().is_some_and(|f| f.fract() != 0.0) => {
+                return Err(format!(
+                    "steget {} är inte ett heltal — rutnätet är sextondelar, avrunda till ett steg",
+                    item.get("step").and_then(|v| v.as_f64()).unwrap_or(0.0)
+                ));
+            }
+            // `2.0` är ett heltal skrivet som JSON-bråktal — `as_i64()` ger None för det, så
+            // talet måste läsas som f64 först. Annars blir ett korrekt `2.0` till "steget -1".
+            Some(v) => v
+                .as_i64()
+                .or_else(|| v.as_f64().map(|f| f.round() as i64))
+                .unwrap_or(-1),
+            None => -1,
+        };
         if !(0..STEPS as i64).contains(&step) {
             return Err(format!("steget {step} ligger utanför 0–{}", STEPS - 1));
         }
@@ -502,6 +528,18 @@ mod tests {
 
     /// Ackord går igenom (samma steg, olika toner); en dubblett av samma ton gör det inte.
     #[test]
+    /// Ett bråktal i `step` ska säga vad som gäller — inte falla igenom som "steget -1".
+    #[test]
+    fn a_fractional_step_says_the_grid_is_sixteenths() {
+        let args = serde_json::json!({"notes": [{"step": 1.5, "pitch": 60}]});
+        let err = parse_notes(&args).unwrap_err();
+        assert!(err.contains("inte ett heltal"), "{err}");
+        assert!(err.contains("sextondelar"), "{err}");
+        // Heltal som JSON-bråktal (2.0) är fortfarande ett heltal.
+        let args = serde_json::json!({"notes": [{"step": 2.0, "pitch": 60}]});
+        assert_eq!(parse_notes(&args).unwrap()[0].step, 2);
+    }
+
     fn notes_allow_chords_but_not_double_hits() {
         let chord = parse_notes(&json!({"notes": [
             {"step": 0, "pitch": 36}, {"step": 0, "pitch": 43}, {"step": 8, "pitch": 48}
