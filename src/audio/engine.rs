@@ -378,6 +378,9 @@ impl AudioEngine {
                 self._stream = Some(stream);
                 self.command_tx = command_tx;
                 self.scope_rx = scope_rx;
+                // Felräknaren hör till strömmen som dog, inte till appen: statusraden
+                // säger " efter N fel" om den som föll, och loggdämpningen börjar om.
+                self.error_count.store(0, Ordering::Relaxed);
                 self.sample_rate = used.sample_rate.0;
                 self.channels = used.channels;
                 self.buffer_frames = match used.buffer_size {
@@ -553,9 +556,8 @@ impl AudioEngine {
             // En ström som gått i POLLERR rapporterar samma fel tiotusentals gånger i
             // sekunden: 2026-10-27 skrev det 1,5 GB logg och brände en kärna, vilket
             // gjorde den redan tysta appen långsammare. Dämpningen bor i
-            // `should_log_stream_error` så den går att pröva.
-            // shortcut: räknaren nollställs aldrig per ström, byt till tidsstämpling om
-            // loggen behöver visa när felen kom.
+            // `should_log_stream_error` så den går att pröva, och räknaren börjar om
+            // när `reconfigure` ger en ny ström.
             let n = error_count.fetch_add(1, Ordering::Relaxed);
             if should_log_stream_error(n) {
                 eprintln!("[Sonix Audio Error] {err}");

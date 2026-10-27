@@ -36,6 +36,9 @@ impl SonixApp {
         let rate = Some(self.engine.sample_rate);
         let buffer = self.engine.buffer_frames;
         let was_playing = self.is_playing;
+        // Före omstarten: reconfigure nollställer räknaren, och det är den döda
+        // strömmens fel som ska stå i beskedet.
+        let failed_errors = self.engine.error_count();
         match self.engine.reconfigure(rate, buffer) {
             Ok(()) => {
                 // Samma efterarbete som ljudmodalen: den nya strömmen har en ny synth,
@@ -56,7 +59,7 @@ impl SonixApp {
                 };
                 self.status_message = crate::tstatus!(
                     "⚠ ljudströmmen hade dött efter {} fel — startad om ({} Hz, {})",
-                    self.engine.error_count(),
+                    failed_errors,
                     self.engine.sample_rate,
                     buf
                 );
