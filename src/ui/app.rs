@@ -148,6 +148,10 @@ pub struct SonixApp {
     pub audio_heartbeat_seen: u32,
     pub audio_frozen_secs: f32,
     pub audio_rebuild_cooldown: f32,
+    /// Dödsfall i rad sedan en ström senast överlevde — trappan i `rebuild_step` läser den.
+    pub audio_rebuild_failures: u32,
+    /// Hur länge den nuvarande strömmen har levt (nollställs när hjärtslaget stannar).
+    pub audio_recovered_secs: f32,
     pub stem_import_progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
     pub project_load_progress: std::sync::Arc<std::sync::Mutex<ProjectLoadProgress>>,
     // Transport & Clock
@@ -945,6 +949,8 @@ impl SonixApp {
             audio_heartbeat_seen: 0,
             audio_frozen_secs: 0.0,
             audio_rebuild_cooldown: 0.0,
+            audio_rebuild_failures: 0,
+            audio_recovered_secs: 0.0,
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),
             is_playing: false,

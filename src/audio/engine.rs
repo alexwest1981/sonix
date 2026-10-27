@@ -150,27 +150,32 @@ pub struct AudioSettings {
     pub output_buses: Vec<OutputBus>,
 }
 
-/// **Låg latens är standarden, inte ett val** (Sprint 1, punkt 2).
+/// **En buffert som överlever lasten är viktigare än en liten.** Mätt 2026-10-27 med
+/// samma cpal-ström som appen använder, med en callback som ibland tar 20 ms
+/// (schemaläggaren i en lastad desktop — exakt vad som händer när stämmor läses in):
 ///
-/// PipeWires graf kör 48 kHz. En ström öppnad i 44,1 kHz lägger den adaptiva resamplern i
-/// live-vägen, och `BufferSize::Default` mot pipewire-alsa kan ge en ring på många sekunder
-/// (cpal #1029) — så båda talen här är åtgärder, inte smak.
+/// | Fixed | 20 ms-störningar var 8:e buffert | utfall |
+/// |---|---|---|
+/// | 128 | ja | **död**: 374 669 fel, callbacken slutar kallas |
+/// | 256 | ja | **död**: 3,8 M fel, noll callbackar |
+/// | 512 | ja | hela: 0 fel |
+/// | 1024 | ja (var 4:e) | hela: 0 fel |
 ///
-/// **Mätt 2026-09-16**, release-binären, självtestet, tre körningar per läge:
-/// före ändringen 44 100 Hz + enhetens buffert (107 % av realtid — den stora bufferten ger
-/// slack i mätfönstret, men resamplern sitter i vägen). Efter: 48 000 Hz + 128 frames gav
-/// **100 % i fem av fem körningar**, omväxlande med 256 frames som gav exakt samma 100 %.
-/// Den enda avvikelsen var 84 % på den allra första körningen efter bygget (kallstart).
-/// 64 frames mäter också 100 %, men där finns ingen marginal kvar och `rtkit` saknas på
-/// maskinen (se SPRINT.md), så 128 står kvar som standard — den som vill kan välja i modalen.
+/// 128 frames ger 64-framesperioder (1,33 ms) hos pipewire-alsa, och en enda
+/// försenad callback räcker för att strömmen ska fastna i POLLERR för alltid —
+/// därför small den i ett riktigt projekt men aldrig i självtestet, som bara
+/// renderar en trumma. 512 frames (10,7 ms) är knäet: det sväljer störningen och
+/// är fortfarande spelbart för sång. Den som vill ha mindre väljer 128 i ljudmodalen
+/// och får då vakthunden (`rebuild_step`) att höja bufferten om strömmen dör.
 ///
-/// Klarar enheten inte 48 kHz eller 128 frames behåller `apply_preferences` enhetens eget
-/// svar — appen spelar hellre än vägrar, men den påstår inte att den fick som den ville.
+/// Klarar enheten inte 48 kHz eller 512 frames behåller `apply_preferences` enhetens
+/// eget svar — appen spelar hellre än vägrar, men den påstår inte att den fick som
+/// den ville.
 impl Default for AudioSettings {
     fn default() -> Self {
         Self {
             sample_rate: Some(48_000),
-            buffer_frames: Some(128),
+            buffer_frames: Some(512),
             output_buses: default_buses(),
         }
     }
@@ -751,6 +756,44 @@ pub fn should_log_stream_error(n: u32) -> bool {
     n < 3 || n.is_multiple_of(20_000)
 }
 
+/// Buffertstegen som ljudmodalen erbjuder. Vakthunden klättrar den **uppåt** när en
+/// omstart inte håller: en ström som dör om och om igen behöver mer luft, inte en
+/// till likadan ström.
+pub const BUFFER_LADDER: [u32; 4] = [128, 256, 512, 1024];
+
+/// Vad vakthunden ska göra med bufferten vid en omstart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Rebuild {
+    /// Samma inställning: första dödsfallet kan vara en engångsförsening.
+    Same,
+    /// En pinne upp i stegen.
+    Bigger(u32),
+    /// Redan högst upp och strömmen dör ändå — sluta bygga om och säg det.
+    GiveUp,
+}
+
+/// **Omstartens trappa.** Ren funktion med eget prov.
+///
+/// `failures` är antal dödsfall i rad *sedan en ström senast överlevde*. Första
+/// försöket upprepar inställningen (en enstaka försening är inget skäl att höja
+/// latensen för resten av passet); därefter klättrar den ett steg, och högst upp
+/// ger den upp i stället för att snurra — mätt 2026-10-27: 128 och 256 frames dog
+/// av 20 ms-förseningar medan 512 och 1024 stod emot.
+pub fn rebuild_step(current: Option<u32>, failures: u32) -> Rebuild {
+    if failures == 0 {
+        return Rebuild::Same;
+    }
+    let Some(current) = current else {
+        // Enheten svarade med sin egen buffert och vi vet inte hur stor den är:
+        // hoppa till standarden, som är den nivå som mätts stå emot lasten.
+        return Rebuild::Bigger(512);
+    };
+    match BUFFER_LADDER.iter().find(|&&b| b > current) {
+        Some(&next) => Rebuild::Bigger(next),
+        None => Rebuild::GiveUp,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     /// **Loggdämpningen ska rädda disken utan att kasta beviset.** Mätt läge: en död
@@ -784,13 +827,30 @@ mod tests {
         );
     }
 
-    /// **Standarden är låg latens.** Provet faller om någon tar bort 48 kHz eller 128 frames
-    /// från `AudioSettings::default` — de två talen är hela punkten 2 i SPRINT.md.
+    /// **Trappan: upprepa en gång, höj sedan, ge upp högst upp.** Provet håller hela
+    /// beteendet — det är den som avgör om en död ström blir en omstart eller en
+    /// oändlig klickloop.
     #[test]
-    fn the_default_audio_settings_ask_for_the_low_latency_path() {
+    fn the_rebuild_ladder_repeats_once_then_climbs_and_gives_up_at_the_top() {
+        use super::*;
+        assert_eq!(rebuild_step(Some(512), 0), Rebuild::Same, "första dödsfallet är en gissning");
+        assert_eq!(rebuild_step(Some(512), 1), Rebuild::Bigger(1024));
+        assert_eq!(rebuild_step(Some(1024), 1), Rebuild::GiveUp);
+        assert_eq!(rebuild_step(Some(128), 1), Rebuild::Bigger(256));
+        assert_eq!(rebuild_step(Some(256), 1), Rebuild::Bigger(512));
+        // Enhetens eget svar (`None`) är okänt: upprepa en gång, höj sedan till 512.
+        assert_eq!(rebuild_step(None, 0), Rebuild::Same);
+        assert_eq!(rebuild_step(None, 1), Rebuild::Bigger(512));
+    }
+
+    /// **Standarden ska överleva en lastad maskin.** Provet faller om någon sätter
+    /// tillbaka 128 frames som standard: mätt 2026-10-27 dog 128 och 256 av 20 ms
+    /// förseningar medan 512 stod emot (tabellen i `AudioSettings`).
+    #[test]
+    fn the_default_audio_settings_survive_a_loaded_machine() {
         let d = AudioSettings::default();
         assert_eq!(d.sample_rate, Some(48_000), "PipeWires graf kör 48 kHz");
-        assert_eq!(d.buffer_frames, Some(128), "128 frames är nivån utan RT-prioritet");
+        assert_eq!(d.buffer_frames, Some(512), "512 frames är knäet som stod emot");
         // En sparad fil med tomma fält betyder "enhetens svar", inte "appen gissar".
         let from_file: AudioSettings = serde_json::from_str("{}").unwrap();
         assert_eq!(from_file.sample_rate, None);
