@@ -38,6 +38,10 @@ Skriva musik:
 - `write_pattern` skriver en stämma på en kanal: `steps` är en sträng med ett tecken per
   sextondel, 16 för en takt, 32 för två, upp till 64. `x` = slag, `.` = vila. `note` är
   MIDI-noten slaget spelar (36 = C1). Trummor går på trumkanalerna, bas och synth på sina.
+  **Säger användaren en upplösning ska den hållas exakt:** `subdivision` sätts till
+  `1/16`, `1/8`, `1/4`, `1/2` eller `1/1`, och då måste varje slag ligga på den
+  upplösningen — 1/8 är varannan sextondel (`x...x...`), 1/4 var fjärde (`x.......`).
+  Anropet avvisas om slagen ligger utanför; räkna om i stället för att skicka igen.
 - `write_notes` skriver melodi/bas: `notes` är {step, pitch, len, vel} med step 0–63,
   pitch 0–127, len 1–16 steg, vel 1–127. Ett ackord är flera noter på samma step.
 - `load_drum_kit` väljer samplingar ur användarens eget bibliotek för trumrollerna
@@ -67,7 +71,7 @@ pub fn tool_schema() -> Value {
         {"type": "function", "function": {"name": "plan_sections", "description": "Föreslår en sektionsplan. Skriver inget — användaren bekräftar först.", "parameters": {"type": "object", "properties": {"sections": {"type": "array", "items": {"type": "object", "properties": {"name": {"type": "string"}, "bars": {"type": "integer"}}, "required": ["name", "bars"]}}}, "required": ["sections"]}}},
         {"type": "function", "function": {"name": "mute_track", "description": "Tystar eller slår på ett spår i arrangemanget.", "parameters": {"type": "object", "properties": {"track": {"type": "integer"}, "muted": {"type": "boolean"}}, "required": ["track", "muted"]}}},
         {"type": "function", "function": {"name": "set_channel_instrument", "description": "Byter ljud på en kanal i racket.", "parameters": {"type": "object", "properties": {"channel": {"type": "integer"}, "instrument": {"type": "string"}}, "required": ["channel", "instrument"]}}},
-        {"type": "function", "function": {"name": "write_pattern", "description": "Skriver en stämma (trummor eller perc) på kanaler med ett eget stegmönster.", "parameters": {"type": "object", "properties": {"lanes": {"type": "array", "items": {"type": "object", "properties": {"channel": {"type": "integer"}, "steps": {"type": "string", "description": "16, 32, 48 eller 64 tecken: x = slag, . = vila"}, "note": {"type": "integer", "description": "MIDI-not 0–127, valfri"}}, "required": ["channel", "steps"]}}}, "required": ["lanes"]}}},
+        {"type": "function", "function": {"name": "write_pattern", "description": "Skriver en stämma (trummor eller perc) på kanaler med ett eget stegmönster.", "parameters": {"type": "object", "properties": {"lanes": {"type": "array", "items": {"type": "object", "properties": {"channel": {"type": "integer"}, "steps": {"type": "string", "description": "16, 32, 48 eller 64 tecken: x = slag, . = vila"}, "subdivision": {"type": "string", "description": "den upplösning användaren bad om: 1/16, 1/8, 1/4, 1/2 eller 1/1 — slagen måste ligga på den"}, "note": {"type": "integer", "description": "MIDI-not 0–127, valfri"}}, "required": ["channel", "steps"]}}}, "required": ["lanes"]}}},
         {"type": "function", "function": {"name": "write_notes", "description": "Skriver melodi, bas eller ackord på en kanal.", "parameters": {"type": "object", "properties": {"channel": {"type": "integer"}, "notes": {"type": "array", "items": {"type": "object", "properties": {"step": {"type": "integer", "description": "0–63"}, "pitch": {"type": "integer", "description": "MIDI 0–127"}, "len": {"type": "integer", "description": "1–16 steg"}, "vel": {"type": "integer", "description": "1–127"}}, "required": ["step", "pitch"]}}}, "required": ["channel", "notes"]}}},
         {"type": "function", "function": {"name": "load_drum_kit", "description": "Väljer samplingar ur användarens bibliotek för trumrollerna och lägger dem på trumkanalerna.", "parameters": {"type": "object", "properties": {"genre": {"type": "string", "description": "stil, t.ex. trap, drill, house, boom bap"}}, "required": ["genre"]}}}
     ])
@@ -222,6 +226,37 @@ pub fn parse_steps(text: &str) -> Result<[bool; STEPS], String> {
     Ok(steps)
 }
 
+/// **Upplösningen som text, i sextondelar per slag.** `1/16` = var sextondel, `1/8` = varannan,
+/// `1/4` = var fjärde, `1/2` = var åttonde. `None` = okänd text.
+///
+/// Den finns för att "säger jag 1/8 ska det vara 1/8" ska vara en **kontroll** och inte en
+/// förhoppning: modellen kan skriva sextondelar, få ett godkänt schema och ändå leverera ett
+/// sexdelsmönster. Här mäts det i stället — ett slag utanför den begärda upplösningen avvisas.
+pub fn grid_of(subdivision: &str) -> Option<usize> {
+    match subdivision.trim().replace(' ', "").to_ascii_lowercase().as_str() {
+        "1/16" | "16" | "sextondel" | "sixteenth" | "16th" => Some(1),
+        "1/8" | "8" | "åttondel" | "attonde" | "eighth" | "8th" => Some(2),
+        "1/4" | "4" | "fjärdedel" | "fjärdel" | "quarter" | "4th" => Some(4),
+        "1/2" | "2" | "halv" | "half" => Some(8),
+        "1/1" | "1" | "hel" | "whole" => Some(16),
+        _ => None,
+    }
+}
+
+/// Slagen som ligger **utanför** den begärda upplösningen, som stegindex. Tom lista = mönstret
+/// håller sig till upplösningen.
+pub fn off_grid_hits(steps: &[bool; STEPS], every: usize) -> Vec<usize> {
+    if every <= 1 {
+        return Vec::new();
+    }
+    steps
+        .iter()
+        .enumerate()
+        .filter(|(i, on)| **on && i % every != 0)
+        .map(|(i, _)| i)
+        .collect()
+}
+
 /// Läser `lanes` ur ett `write_pattern`-anrop. En stämma per kanal, och **samma kanal två
 /// gånger avvisas**: det andra anropet hade tyst skrivit över det första.
 pub fn parse_lanes(args: &Value) -> Result<Vec<Lane>, String> {
@@ -246,6 +281,23 @@ pub fn parse_lanes(args: &Value) -> Result<Vec<Lane>, String> {
         }
         let text = item.get("steps").and_then(|v| v.as_str()).unwrap_or("");
         let steps = parse_steps(text).map_err(|e| format!("kanal {channel}: {e}"))?;
+        // **Upplösningen kontrolleras, inte bara efterfrågas.** Modellen får säga vilken
+        // upplösning användaren bad om; då mäts mönstret mot den. Utan det kan "ge mig 1/8"
+        // levereras som sextondelar med ett godkänt schema.
+        if let Some(sub) = item.get("subdivision").and_then(|v| v.as_str()) {
+            let every = grid_of(sub).ok_or_else(|| {
+                format!("kanal {channel}: okänd upplösning '{sub}' — använd 1/16, 1/8, 1/4, 1/2 eller 1/1")
+            })?;
+            let off = off_grid_hits(&steps, every);
+            if !off.is_empty() {
+                return Err(format!(
+                    "kanal {channel}: {} slag ligger utanför upplösningen {sub} (steg {}) — lägg slagen på var {}:e sextondel",
+                    off.len(),
+                    off.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(", "),
+                    every
+                ));
+            }
+        }
         let note = item
             .get("note")
             .and_then(|v| v.as_u64())
@@ -530,6 +582,47 @@ mod tests {
     #[test]
     /// Ett bråktal i `step` ska säga vad som gäller — inte falla igenom som "steget -1".
     #[test]
+    /// "Säger jag 1/8 ska det vara 1/8." Ett mönster som ligger på sextondelar får inte gå
+    /// igenom som åttondelar — det är hela poängen med kontrollen.
+    #[test]
+    /// Ett `write_pattern` som säger 1/8 men skriver sextondelar ska avvisas — det är felet
+    /// som gör att funktionen känns påtvingad i stället för att leverera det man bad om.
+    #[test]
+    fn a_lane_that_breaks_its_own_subdivision_is_rejected() {
+        let ok = serde_json::json!({"lanes": [{"channel": 0, "steps": "x.x.x.x.x.x.x.x.", "subdivision": "1/8"}]});
+        assert!(parse_lanes(&ok).is_ok());
+
+        let bad = serde_json::json!({"lanes": [{"channel": 0, "steps": "xxxxxxxxxxxxxxxx", "subdivision": "1/8"}]});
+        let err = parse_lanes(&bad).unwrap_err();
+        assert!(err.contains("utanför upplösningen 1/8"), "{err}");
+
+        let nonsense = serde_json::json!({"lanes": [{"channel": 0, "steps": "x.x.x.x.x.x.x.x.", "subdivision": "1/5"}]});
+        assert!(parse_lanes(&nonsense).unwrap_err().contains("okänd upplösning"));
+    }
+
+    fn the_requested_subdivision_is_enforced_not_hoped_for() {
+        assert_eq!(grid_of("1/8"), Some(2));
+        assert_eq!(grid_of("1/16"), Some(1));
+        assert_eq!(grid_of("1/4"), Some(4));
+        assert_eq!(grid_of("åttondelar"), Some(2));
+        assert_eq!(grid_of("semiquaver"), None);
+
+        // 1/8 = varannan sextondel.
+        let eighths = parse_steps("x.x.x.x.x.x.x.x.").unwrap();
+        assert!(off_grid_hits(&eighths, 2).is_empty(), "åttondelar ska ligga på jämna steg");
+        assert_eq!(off_grid_hits(&eighths, 4).len(), 4, "åttondelar är inte fjärdedelar");
+
+        // 1/4 = var fjärde.
+        let quarters = parse_steps("x...x...x...x...").unwrap();
+        assert!(off_grid_hits(&quarters, 4).is_empty());
+        assert!(off_grid_hits(&quarters, 2).is_empty(), "1/4 ligger också på 1/8");
+
+        // Alla sextondelar bryter mot 1/8 — åtta slag ligger på udda steg.
+        let sixteenths = parse_steps("xxxxxxxxxxxxxxxx").unwrap();
+        assert_eq!(off_grid_hits(&sixteenths, 2).len(), 8);
+        assert!(off_grid_hits(&sixteenths, 1).is_empty(), "allt ligger på 1/16");
+    }
+
     fn a_fractional_step_says_the_grid_is_sixteenths() {
         let args = serde_json::json!({"notes": [{"step": 1.5, "pitch": 60}]});
         let err = parse_notes(&args).unwrap_err();
