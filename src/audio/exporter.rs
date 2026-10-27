@@ -1025,6 +1025,46 @@ fn write_flac(
     file.write_all(sink.as_slice()).map_err(|e| e.to_string())
 }
 
+/// Installationsraden för att få `ffmpeg` — anpassad efter **användarens** distribution.
+///
+/// Raden var hårdkodad till Arch (`sudo pacman -S ffmpeg`), alltså fel instruktion för varje
+/// Debian-, Fedora- och Rocky-användare. Texten är en instruktion, inte kosmetika. Ren funktion
+/// över `/etc/os-release`-texten, så mappningen kan prövas utan att röra filsystemet.
+pub fn install_hint(os_release: &str) -> &'static str {
+    let field = |name: &str| {
+        os_release.lines().find_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            (k.trim() == name).then(|| v.trim().trim_matches('"').to_ascii_lowercase())
+        })
+    };
+    let id = field("ID").unwrap_or_default();
+    let mut family: Vec<String> = field("ID_LIKE")
+        .map(|l| l.split_whitespace().map(str::to_string).collect())
+        .unwrap_or_default();
+    // `ID_LIKE` är var de härledda distributionerna berättar vad de bygger på (Pop!_OS → ubuntu,
+    // Rocky → rhel), så familjen läses ur båda fälten.
+    family.push(id);
+    let is = |word: &str| family.iter().any(|f| f == word);
+    if is("debian") || is("ubuntu") {
+        "sudo apt install ffmpeg"
+    } else if is("fedora") || is("rhel") || is("centos") || is("rocky") {
+        "sudo dnf install ffmpeg"
+    } else if is("arch") || is("omarchy") || is("manjaro") {
+        "sudo pacman -S ffmpeg"
+    } else {
+        "install ffmpeg with your package manager"
+    }
+}
+
+/// Innehållet i `/etc/os-release`; tom text på en maskin som inte har filen (Windows).
+fn os_release_text() -> String {
+    std::fs::read_to_string("/etc/os-release").unwrap_or_default()
+}
+
+fn install_hint_here() -> &'static str {
+    install_hint(&os_release_text())
+}
+
 fn ffmpeg_available() -> bool {
     Command::new("ffmpeg")
         .arg("-version")
@@ -1043,8 +1083,9 @@ fn write_with_ffmpeg(
     meta: &ExportMeta,
 ) -> Result<(), String> {
     if !ffmpeg_available() {
-        return Err(crate::tstatus!("ffmpeg är inte installerat – kan inte koda {}. Installera ffmpeg (t.ex. 'sudo pacman -S ffmpeg') och försök igen. WAV/FLAC fungerar alltid utan ffmpeg.",
-            format.label()
+        return Err(crate::tstatus!("ffmpeg är inte installerat – kan inte koda {}. Installera det med: {} — WAV/FLAC fungerar alltid utan ffmpeg.",
+            format.label(),
+            install_hint_here()
         ));
     }
 
@@ -2701,6 +2742,41 @@ pub fn write_stem_wav(
         &meta,
         DitherSettings::default(),
     )
+}
+
+#[cfg(test)]
+mod install_hint_tests {
+    use super::install_hint;
+
+    /// **Riktiga `/etc/os-release`-utdrag**, för det är de filerna raden läses ur. Den hårdkodade
+    /// Arch-raden var rätt för en maskin och fel för alla andra.
+    #[test]
+    fn the_hint_names_the_users_own_package_manager() {
+        assert_eq!(install_hint("ID=debian\n"), "sudo apt install ffmpeg");
+        assert_eq!(install_hint("ID=ubuntu\nID_LIKE=debian\n"), "sudo apt install ffmpeg");
+        assert_eq!(
+            install_hint("ID=linuxmint\nID_LIKE=\"ubuntu debian\"\n"),
+            "sudo apt install ffmpeg",
+            "en härledd distribution följer sin familj"
+        );
+        assert_eq!(install_hint("ID=fedora\n"), "sudo dnf install ffmpeg");
+        assert_eq!(
+            install_hint("ID=\"rocky\"\nID_LIKE=\"rhel centos fedora\"\n"),
+            "sudo dnf install ffmpeg"
+        );
+        assert_eq!(install_hint("ID=arch\n"), "sudo pacman -S ffmpeg");
+        assert_eq!(install_hint("ID=omarchy\nID_LIKE=arch\n"), "sudo pacman -S ffmpeg");
+    }
+
+    /// Okänd familj — och Windows, som inte har filen alls — får en neutral rad i stället för en
+    /// gissning. En påhittad `sudo dnf` för openSUSE vore samma fel som `pacman` var för Debian.
+    #[test]
+    fn an_unknown_distribution_gets_a_neutral_hint() {
+        let neutral = "install ffmpeg with your package manager";
+        assert_eq!(install_hint(""), neutral);
+        assert_eq!(install_hint("ID=opensuse-leap\nID_LIKE=\"suse opensuse\"\n"), neutral);
+        assert_eq!(install_hint("PRETTY_NAME=\"Något eget\"\n"), neutral);
+    }
 }
 
 #[cfg(test)]
