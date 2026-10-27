@@ -84,9 +84,9 @@ på en yta. Konkret, i den ordning det är värt att ta:
    meny (tysta, nollställ volym/pan) sedan 0.9.76, och kanalens VOL/PAN-rattar nollställs med
    dubbelklick (0.9.77). *✅ 0.9.150:* master **PAN** och **BREDD**, EQ:ns tre **GAIN** och mid **Q**
    nollställs med dubbelklick — rattens eget standardvärde, inte en gissning (Q = 1,0, bredd = 1,0).
-   **Kvar:** frekvensrattarna (deras standard beror på bandet, så en gissning vore värre än ingen)
-   och noterna i pianorullen — den senare kräver en meny i den stora ritfunktionen och togs inte i
-   det här passet.
+   *✅ 2026-10-27:* **noterna i pianorullen** har en meny (radera, duplicera ett steg senare, anslag
+   ±) — rutnätet hade redan en `Response` per ruta, så den krävde ingen egen träffyta.
+   **Kvar:** frekvensrattarna (deras standard beror på bandet, så en gissning vore värre än ingen).
 5. **Inspelningsläget först.** *✅ 0.9.96:* Ctrl+N armar mikrofonspåret, väljer det, slår på
    metronomen och landar i arrangemanget — REC är ett klick bort.
 

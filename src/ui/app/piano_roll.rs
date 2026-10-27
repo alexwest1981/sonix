@@ -1266,6 +1266,51 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
                             self.sync_active_pattern_from_ui();
                         }
 
+                        // **Högerklick på en not** — sista punkten i roadmapens "högerklick
+                        // överallt" i pianorullen. Både raderingen och dupliceringen går samma
+                        // väg som vänsterklicket (rutnätet, kanalens stegspegel och
+                        // `sync_active_pattern_from_ui`), så patternet och exporten ser samma
+                        // noter — ingen åtgärd skriver i tagningen direkt.
+                        if is_on {
+                            response.context_menu(|ui| {
+                                if ui.button(crate::i18n::t("🗑 Radera noten")).clicked() {
+                                    if clear_cell(&mut self.piano_roll_grid, note_offset, step) {
+                                        self.channels[6].steps[step] =
+                                            step_has_note(&self.piano_roll_grid, step);
+                                        self.sync_active_pattern_from_ui();
+                                    }
+                                    ui.close_menu();
+                                }
+                                let target =
+                                    duplicate_target(&self.piano_roll_grid, note_offset, step, steps);
+                                if ui
+                                    .add_enabled(
+                                        target.is_some(),
+                                        egui::Button::new(crate::i18n::t("⧉ Duplicera noten")),
+                                    )
+                                    .clicked()
+                                    && let Some(next) = target
+                                {
+                                    self.piano_roll_grid[note_offset][next] = true;
+                                    self.channels[6].steps[next] = true;
+                                    self.sync_active_pattern_from_ui();
+                                    ui.close_menu();
+                                }
+                                // Anslaget hör till **steget** (samma värde som velocity-fältet),
+                                // inte till noten — därför ingen egen velocity per not här.
+                                if ui.button(crate::i18n::t("Anslag +")).clicked() {
+                                    self.step_velocities[step] =
+                                        nudge_velocity(self.step_velocities[step], 0.1);
+                                    ui.close_menu();
+                                }
+                                if ui.button(crate::i18n::t("Anslag −")).clicked() {
+                                    self.step_velocities[step] =
+                                        nudge_velocity(self.step_velocities[step], -0.1);
+                                    ui.close_menu();
+                                }
+                            });
+                        }
+
                         let mut bg = if is_on {
                             if self.color_notes {
                                 crate::ui::note_color::pitch_color(cell_key)
@@ -2257,6 +2302,82 @@ pub(crate) fn delete_cells(grid: &mut [[bool; crate::ui::app::state::MAX_STEPS];
         }
     }
     removed
+}
+
+/// Tar bort **en** ruta — noten under pekaren. Returnerar `true` om rutan var tänd, så anroparen
+/// vet om något ändrades (en tom ruta ska inte kvitteras som en radering).
+pub(crate) fn clear_cell(
+    grid: &mut [[bool; crate::ui::app::state::MAX_STEPS]; 24],
+    row: usize,
+    step: usize,
+) -> bool {
+    let was_on = grid[row][step];
+    grid[row][step] = false;
+    was_on
+}
+
+/// Finns det någon not kvar på steget? Kanalens stegspegel (`channels[6].steps`) är summan av
+/// raderna på steget, så den måste räknas om efter varje ändring — annars tystnar en kanal som
+/// fortfarande har noter, eller spelar en som inte har det.
+pub(crate) fn step_has_note(
+    grid: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
+    step: usize,
+) -> bool {
+    (0..24).any(|row| grid[row][step])
+}
+
+/// Steget en duplicerad not hamnar på: **ett steg senare**, och bara när rutan är fri och steget
+/// finns. `None` = det går inte, och då ska knappen vara avstängd i stället för att tyst göra
+/// ingenting (eller skriva över noten som redan ligger där).
+pub(crate) fn duplicate_target(
+    grid: &[[bool; crate::ui::app::state::MAX_STEPS]; 24],
+    row: usize,
+    step: usize,
+    steps: usize,
+) -> Option<usize> {
+    let next = step + 1;
+    (next < steps && !grid[row][next]).then_some(next)
+}
+
+/// Ett snäpp på anslaget, med **samma gränser som velocity-fältets drag** (0,1–1,0).
+pub(crate) fn nudge_velocity(velocity: f32, delta: f32) -> f32 {
+    (velocity + delta).clamp(0.1, 1.0)
+}
+
+#[cfg(test)]
+mod note_menu_tests {
+    use super::*;
+
+    /// **Högerklicksmenyns tre åtgärder**, prövade på rutnätet: radera en not, duplicera den ett
+    /// steg senare (bara när rutan är fri), och snäppa stegets anslag inom samma gränser som
+    /// velocity-fältet har.
+    #[test]
+    fn the_note_menu_edits_exactly_one_note() {
+        const ROWS: usize = 24;
+        let mut grid = [[false; crate::ui::app::state::MAX_STEPS]; ROWS];
+        grid[3][4] = true;
+        grid[3][5] = true; // upptagen målruta för dupliceringen
+
+        assert!(clear_cell(&mut grid, 3, 4), "noten var tänd och togs bort");
+        assert!(!grid[3][4], "bara den rutan rördes");
+        assert!(grid[3][5], "grannnoten står kvar");
+        assert!(!clear_cell(&mut grid, 3, 4), "en tom ruta ändrar ingenting");
+
+        assert!(step_has_note(&grid, 5));
+        assert!(!step_has_note(&grid, 4), "stegspegeln släcks när sista noten på steget går");
+
+        // Duplicera: ett steg senare, aldrig över en not, aldrig förbi sista steget.
+        assert_eq!(duplicate_target(&grid, 3, 5, 16), Some(6));
+        assert_eq!(duplicate_target(&grid, 3, 4, 16), None, "målrutan är upptagen");
+        grid[3][5] = false;
+        assert_eq!(duplicate_target(&grid, 3, 14, 16), Some(15));
+        assert_eq!(duplicate_target(&grid, 3, 15, 16), None, "det finns inget steg 16");
+
+        // Anslaget: ett snäpp, klämt till velocity-fältets egna gränser.
+        assert!((nudge_velocity(0.5, 0.1) - 0.6).abs() < 1e-6);
+        assert!((nudge_velocity(0.95, 0.1) - 1.0).abs() < 1e-6, "taket är 1,0");
+        assert!((nudge_velocity(0.15, -0.1) - 0.1).abs() < 1e-6, "golvet är 0,1");
+    }
 }
 
 #[cfg(test)]
