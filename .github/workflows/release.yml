@@ -100,7 +100,7 @@ jobs:
             # x86-strip kan inte läsa en aarch64-binär; den biten är kosmetisk.
             strip --strip-unneeded "dist/${name}/sonix" 2>/dev/null || true
             cp README.md README_SV.md CHANGELOG.md CHANGELOG-DETAIL.md MANUAL.md \
-               LICENSE-MIT LICENSE-APACHE "dist/${name}/"
+               LICENSE CONTRIBUTING.md "dist/${name}/"
             tar -C dist -czf "dist/${name}.tar.gz" "${name}"
             bash packaging/check-glibc-floor.sh "dist/${name}/sonix" 2.28
 

@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.161] - 2026-10-26
+
+**Licensen är nu GPL-3.0-only.** Projektet var dubbellicensierat MIT OR Apache-2.0, vilket är
+exakt motsatsen till vad som efterfrågades: båda licenserna tillåter vem som helst att ta koden,
+stänga den och sälja den under ett annat namn. GPL-3.0 behåller det som var poängen — bidrag är
+välkomna och ingen kan ta programmet och sälja en inlåst version.
+
+- `LICENSE` är GPL-3.0-only, ordagrant ur SPDX (`GPL-3.0-only.txt`), med copyrightraden i README.
+  `LICENSE-MIT` och `LICENSE-APACHE` är borta.
+- **`CONTRIBUTING.md`** är ny: hur man bidrar, `git commit -s` (DCO) som enda pappersexercis,
+  kodkonventionerna, och varför en tredjepartsplugin inte ärver programmets licens (CLAP/VST3 laddas
+  som separata binärer vid körning).
+- README (båda språken) förklarar licensen med vanliga ord: använd/byg/ändra/dela fritt, dela källkod
+  när du delar en ändrad Sonix, inga CLA:er, plugins oberoende, och att **namnet** inte följer med
+  koden — en fork bär eget namn och ikon. Samt att versioner till och med 0.9.160 behåller sina
+  villkor, eftersom en licens inte är retroaktiv.
+- `Cargo.toml`, `nfpm.yaml` (deb/rpm-licensfältet), AppStream-metainfo och release-tarballen pekar
+  på den nya licensen; paketen skeppar `LICENSE` + `CONTRIBUTING.md` i stället för de två gamla
+  filerna.
+
 ## [0.9.160] - 2026-10-26
 
 **Fungerar på alla distributioner.** Tills i dag fanns binären bara som ett tarball byggt på en

@@ -361,12 +361,25 @@ Sixteen bands from 100 Hz to 8 kHz, each with its own level — and a modulation
 
 ## 📜 License
 
-Sonix Studio is dual-licensed under either of
+**Sonix Studio is licensed under the GNU General Public License, version 3 only** — the full text is
+in [LICENSE](LICENSE). Copyright (C) 2026 Alexander West.
 
-- MIT License ([LICENSE-MIT](LICENSE-MIT))
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+What that means, in plain words:
 
-at your option. Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in this project by you, as defined in the Apache-2.0 license, shall be dual-licensed as above, without any additional terms or conditions.
+- **Use it, build it, change it, share it.** For yourself, for a band, for a studio, for money.
+- **If you share a changed Sonix, you publish the source** under the same licence. A closed fork is
+  not allowed — nobody can take this program, lock it, and sell the locked version.
+- **There is no CLA.** Your contribution stays yours and is distributed under the same licence as
+  the rest of the program; signing off a commit (`git commit -s`) is all the paperwork there is. See
+  [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Plugins are not affected.** CLAP/VST3/VST2 modules are loaded as separate binaries at runtime,
+  so a plugin you write is your own work, under whatever licence you choose.
+- **The name is not the code.** A fork is welcome, but it carries its own name and icon: "Sonix
+  Studio" and its logo identify this build, not a derivative.
+
+Versions up to and including **0.9.160** were released under MIT OR Apache-2.0. A licence is not
+retroactive, so a copy obtained under those terms stays under them — everything from 0.9.161 is
+GPL-3.0-only.
 
 
 

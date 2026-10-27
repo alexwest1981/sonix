@@ -442,12 +442,24 @@ Information om versionsnummer, ljudmotor, arkitektur och licens.
 
 ## 📜 Licens
 
-Sonix Studio är dubbellicensierat under endera av
+**Sonix Studio är licensierat under GNU General Public License, version 3** — hela texten ligger i
+[LICENSE](LICENSE). Copyright (C) 2026 Alexander West.
 
-- MIT-licensen ([LICENSE-MIT](LICENSE-MIT))
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+Vad det betyder, med vanliga ord:
 
-efter ditt val. Om du inte uttryckligen anger något annat är varje bidrag som avsiktligt skickas in för att inkluderas i detta projekt, enligt definitionen i Apache-2.0-licensen, dubbellicensierat enligt ovan, utan ytterligare villkor.
+- **Använd det, bygg det, ändra det, dela det.** För dig själv, för ett band, för en studio, för pengar.
+- **Delar du en ändrad Sonix måste källkoden följa med**, under samma licens. En stängd fork är inte
+  tillåten — ingen kan ta programmet, låsa in det och sälja den inlåsta versionen.
+- **Ingen CLA.** Ditt bidrag förblir ditt och distribueras under samma licens som resten av
+  programmet; att signera commiten (`git commit -s`) är hela pappersexercisen. Se
+  [CONTRIBUTING.md](CONTRIBUTING.md).
+- **Plugins påverkas inte.** CLAP/VST3/VST2-moduler laddas som separata binärer vid körning, så en
+  plugin du skriver är ditt eget verk och får vilken licens du vill.
+- **Namnet är inte koden.** En fork är välkommen, men den bär sitt eget namn och sin egen ikon:
+  "Sonix Studio" och logotypen pekar ut den här versionen, inte en avläggare.
+
+Versioner till och med **0.9.160** gavs ut under MIT OR Apache-2.0. En licens är inte retroaktiv, så
+en kopia som hämtats under de villkoren behåller dem — allt från 0.9.161 är GPL-3.0-only.
 
 
 

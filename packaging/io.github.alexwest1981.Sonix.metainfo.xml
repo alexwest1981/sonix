@@ -4,7 +4,7 @@
   <name>Sonix Studio</name>
   <summary>Native Linux digital audio workstation</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT OR Apache-2.0</project_license>
+  <project_license>GPL-3.0-only</project_license>
   <description>
     <p>
       Sonix Studio is a native Linux DAW written in Rust: a channel rack with drums and
