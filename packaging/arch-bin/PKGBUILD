@@ -2,7 +2,7 @@
 # Paketerar den förbyggda release-binären — samma bytes som GitHub-releasen.
 # shortcut: pkgver och sha256sums är pinnade till senaste taggen; uppdatera båda vid varje release.
 pkgname=sonix-bin
-pkgver=0.9.160
+pkgver=0.9.161
 pkgrel=1
 pkgdesc="Digital audio workstation: arrangement, mixer, mastering chain and a modular patcher"
 arch=('x86_64')
