@@ -68,6 +68,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // `sonix --version`: en rad om vilken build som körs, **före** fönstret och ljudenheten.
+    // About-dialogen visar samma nummer, men först efter att GUI:t startat — den som fyller i en
+    // felrapport vill ha raden först.
+    if std::env::args().any(|a| a == "--version" || a == "-V") {
+        println!("Sonix Studio {}", env!("CARGO_PKG_VERSION"));
+        return Ok(());
+    }
+
     // Filkartan skrivs ut före ljudmotorn så att kommandot fungerar utan ljudkort.
     if std::env::args().any(|a| a == "--paths") {
         print_paths();
