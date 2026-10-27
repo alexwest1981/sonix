@@ -280,6 +280,10 @@ pub struct DecodedStemTrack {
 pub struct StemImportResult {
     pub project_title: String,
     pub bpm: f32,
+    /// Stämmornas **eget** tempo, om paketet bar ett. `None` = okänt, och då ska
+    /// klippet inte sträckas (`source_bpm = 0`) — att gissa 120 sträckte ljudet 4,2 %
+    /// och lät illa (mätt 2026-10-27).
+    pub source_bpm: Option<f32>,
     pub max_stem_bars: f32,
     pub tracks: Vec<DecodedStemTrack>,
 }
@@ -931,6 +935,92 @@ pub fn scan_for_suno_stems(&mut self) {
 }
 }
 
+/// **Tempot i ett paketnamn.** `… Stems (125.00000000000001BPM).zip` → `Some(125.0)`.
+///
+/// `None` betyder att namnet inte bär något tempo, och det får **aldrig** bli 120:
+/// 120 var en påhittad källa, och ett påhittat källtempo får motorn att sträcka
+/// stämmorna — det låter illa på riktigt (mätt 2026-10-27: en mappimport skrev
+/// `source_bpm = 120` på 125 BPM-stämmor i ett 125-projekt, och allt sträcktes 4,2 %).
+///
+/// Parenteser utan tal hoppas över: `The claws (Djent) Stems (118BPM).zip` bär sitt
+/// tempo i den *andra* parentesen.
+pub fn bpm_from_package_name(name: &str) -> Option<f32> {
+    for (open, _) in name.match_indices('(') {
+        let Some(close) = name[open..].find(')') else { continue };
+        let inner = &name[open + 1..open + close];
+        let digits = inner
+            .trim()
+            .trim_end_matches("BPM")
+            .trim_end_matches("bpm")
+            .trim();
+        if let Ok(bpm) = digits.parse::<f32>() {
+            if (40.0..=400.0).contains(&bpm) {
+                return Some(bpm);
+            }
+        }
+    }
+    None
+}
+
+/// Namn som går att jämföra: gemener, bara bokstäver och siffror.
+fn package_key(name: &str) -> String {
+    name.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+/// **Stämmornas eget tempo för en mapp.** Suno lägger BPM i *arkivets* namn, aldrig i
+/// mappnamnet (`A Box of You … (125BPM).zip` packas upp till `A_Box_of_You_…`), så en
+/// mappimport måste leta bland grannarkiven: mappen själv, syskon i samma förälder och
+/// förälderns förälder (där nedladdningarna ofta ligger).
+///
+/// Träffen kräver att arkivets namn *börjar* med mappens, så ett annat zip i samma
+/// mapp inte kan låna ut sitt tempo. Bland flera träffar vinner den mest exakta.
+pub fn bpm_for_stem_folder(folder: &std::path::Path) -> Option<f32> {
+    let folder_key = package_key(&folder.file_name()?.to_string_lossy());
+    if folder_key.is_empty() {
+        return None;
+    }
+    let mut dirs = vec![folder.to_path_buf()];
+    if let Some(parent) = folder.parent() {
+        dirs.push(parent.to_path_buf());
+        if let Some(grand) = parent.parent() {
+            dirs.push(grand.to_path_buf());
+        }
+    }
+    // Nedladdningarna ligger sällan bredvid stämmorna: `imported_stems` skapas i
+    // arbetskatalogen medan arkiven ligger i musikmappen eller ~/Downloads.
+    let paths = crate::paths::paths();
+    dirs.push(paths.music_dir());
+    dirs.push(paths.music_dir().join("Sonix"));
+    dirs.push(paths.downloads_dir());
+
+    let mut best: Option<(usize, f32)> = None;
+    for dir in dirs {
+        let Ok(entries) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+                continue;
+            };
+            if !name.to_lowercase().ends_with(".zip") {
+                continue;
+            }
+            let key = package_key(name);
+            let Some(bpm) = bpm_from_package_name(name) else {
+                continue;
+            };
+            if key.starts_with(&folder_key) && best.map(|(len, _)| key.len() < len).unwrap_or(true) {
+                best = Some((key.len(), bpm));
+            }
+        }
+    }
+    best.map(|(_, bpm)| bpm)
+}
+
 impl SonixApp {
 pub fn parse_suno_zip_info(zip_path: &str) -> (String, f32) {
     let filename = std::path::Path::new(zip_path)
@@ -938,17 +1028,11 @@ pub fn parse_suno_zip_info(zip_path: &str) -> (String, f32) {
         .and_then(|n| n.to_str())
         .unwrap_or("Stems Project");
 
-    // Parse BPM: e.g. "Stems (125.00000000000001BPM)" -> 125.0
-    let bpm = if let Some(start_bpm) = filename.find('(') {
-        if let Some(end_bpm) = filename[start_bpm..].find("BPM") {
-            let bpm_str = &filename[start_bpm + 1..start_bpm + end_bpm];
-            bpm_str.parse::<f32>().unwrap_or(120.0)
-        } else {
-            120.0
-        }
-    } else {
-        120.0
-    };
+    // BPM ur namnet. **Saknas det blir svaret 0, aldrig 120:** 120 var en påhittad
+    // källa, och ett påhittat tempo får motorn att sträcka ljudet (mätt 2026-10-27).
+    // En mappimport löser tempot i `start_suno_folder_import`, som letar i arkiven
+    // bredvid mappen — Suno lägger BPM i arkivets namn, aldrig i mappens.
+    let bpm = bpm_from_package_name(filename).unwrap_or(0.0);
 
     // Parse Title: extract part before "Stems" or "("
     let title = if let Some(pos) = filename.find("Stems") {
@@ -1020,6 +1104,11 @@ pub fn start_suno_zip_import_choice(&mut self, zip_path: &str, keep_mp3: bool) {
 
     self.status_message = crate::tstatus!("⏳ Startade inläsning av '{}' i bakgrunden...", title);
 
+    // Arkivnamnet bär tempot när Suno skrev det; annars är stämmornas tempo **okänt**,
+    // och då räknas takterna i projektets tempo (`source_bpm = 0`, inget sträcks).
+    let package_bpm = if bpm >= 40.0 { Some(bpm) } else { None };
+    let geometry_bpm = package_bpm.unwrap_or(self.bpm.max(40.0));
+
     std::thread::spawn(move || {
         let _ = std::fs::create_dir_all(&dest_dir);
         match std::process::Command::new("unzip")
@@ -1041,7 +1130,7 @@ pub fn start_suno_zip_import_choice(&mut self, zip_path: &str, keep_mp3: bool) {
             }
         }
 
-        Self::background_decode_stems(&dest_dir, &title, bpm, keep_mp3, progress);
+        Self::background_decode_stems(&dest_dir, &title, geometry_bpm, package_bpm, keep_mp3, progress);
     });
 }
 }
@@ -1085,6 +1174,17 @@ pub fn start_suno_folder_import(
     let folder = folder_path.to_string();
     let title = project_title.to_string();
 
+    // **Mappens tempo finns i arkivet, inte i mappen** (mätt 2026-10-27): Suno lägger
+    // BPM i zip-namnet, och `A_Box_of_You_…` bär det inte. Utan träff är tempot
+    // **okänt** — då räknas takterna i projektets tempo (`source_bpm = 0`), för en
+    // påhittad källa sträcker ljudet och det hörs.
+    let package_bpm = if bpm >= 40.0 {
+        Some(bpm)
+    } else {
+        bpm_for_stem_folder(std::path::Path::new(&folder_path))
+    };
+    let geometry_bpm = package_bpm.unwrap_or(self.bpm.max(40.0));
+
     {
         if let Ok(mut p) = progress.lock() {
             p.is_importing = true;
@@ -1101,7 +1201,7 @@ pub fn start_suno_folder_import(
     self.status_message = crate::tstatus!("⏳ Startade inläsning av stämmor för '{}' i bakgrunden...", project_title);
 
     std::thread::spawn(move || {
-        Self::background_decode_stems(&folder, &title, bpm, keep_mp3, progress);
+        Self::background_decode_stems(&folder, &title, geometry_bpm, package_bpm, keep_mp3, progress);
     });
 }
 }
@@ -1111,6 +1211,7 @@ pub(crate) fn background_decode_stems(
     folder_path: &str,
     project_title: &str,
     bpm: f32,
+    source_bpm: Option<f32>,
     keep_mp3: bool,
     progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
 ) {
@@ -1281,6 +1382,7 @@ pub(crate) fn background_decode_stems(
         p.completed_payload = Some(StemImportResult {
             project_title: project_title.to_string(),
             bpm,
+            source_bpm,
             max_stem_bars,
             tracks: decoded_tracks,
         });
@@ -1351,13 +1453,13 @@ pub fn apply_imported_stems(&mut self, res: StemImportResult) {
             // Klippet spelades in i Sunos tempo (Fas 8.10). Ändras tempot sedan
             // följer ljudet med i stället för att hamna ur takt.
             //
-            // **Saknar Suno ett BPM** (arkivnamnet "Rock and Hard Place Stems.zip"
-            // bär inget tal, och taggarna bär inget heller) är projektets tempo det
-            // rätta: takterna räknades just ur filens längd i *det* tempot
-            // (`bars_for_secs_at` ovan), så filen täcker klippet exakt. Att lämna 0
-            // där gjorde att klippen varken följde tempot eller räckte till låtens
-            // slut så snart tempot flyttades — Alex' 200 BPM skar av 103,71 s.
-            source_bpm: if res.bpm > 0.0 { res.bpm } else { self.bpm },
+            // Klippet spelades in i **stämmornas** tempo (Fas 8.10) — inte i projektets.
+            // Är tempot okänt (`None`) skrivs 0, och då rör motorn inte ljudet: takterna
+            // räknades ur filens längd i projektets tempo, så filen täcker klippet exakt
+            // ändå. **Att skriva projektets tempo som källtempo var felet** (mätt
+            // 2026-10-27): en mappimport antog 120 på 125 BPM-stämmor, och motorn
+            // sträckte allt 4,2 % — det lät vasst och svajigt.
+            source_bpm: res.source_bpm.unwrap_or(0.0),
             tape: false,
             warp_mode: self.warp_mode,
 };
@@ -1434,5 +1536,77 @@ impl SonixApp {
                 .unwrap_or_default(),
             secs
         );
+    }
+}
+
+#[cfg(test)]
+mod package_tempo_tests {
+    use super::*;
+
+    /// **Tempot ska komma ur paketet, aldrig ur en standard.** Provet håller båda
+    /// sidorna: talet hittas även när en parentes utan tal står först, och ett paket
+    /// utan tempo får `None` — 120 får inte hittas på (mätt 2026-10-27: en påhittad
+    /// 120-källa sträckte 125 BPM-stämmor 4,2 % och det lät illa).
+    #[test]
+    fn the_tempo_comes_out_of_the_package_name_and_never_out_of_a_default() {
+        assert_eq!(
+            bpm_from_package_name(
+                "A Box of You - Irish Folk Version (metal) Stems (125.00000000000001BPM).zip"
+            ),
+            Some(125.0)
+        );
+        assert_eq!(
+            bpm_from_package_name("Under Vintergatan Stems (163BPM).zip"),
+            Some(163.0)
+        );
+        assert_eq!(
+            bpm_from_package_name("The claws (Djent) Stems (118BPM).zip"),
+            Some(118.0),
+            "tempot står i den andra parentesen"
+        );
+        assert_eq!(bpm_from_package_name("Broken Stems.zip"), None);
+        assert_eq!(
+            bpm_from_package_name("A_Box_of_You_-_Irish_Folk_Version__metal_"),
+            None,
+            "ett mappnamn bär aldrig Sunos tempo"
+        );
+    }
+
+    /// **En mapp lånar tempot av arkivet bredvid.** Det är hela skillnaden mellan en
+    /// mappimport som låter rätt och en som sträcker ljudet.
+    #[test]
+    fn a_stem_folder_borrows_the_tempo_from_the_archive_beside_it() {
+        let dir = std::env::temp_dir().join(format!("sonix-stemtempo-{}", std::process::id()));
+        let folder = dir.join("A_Box_of_You_-_Irish_Folk_Version__metal_");
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            dir.join("A Box of You - Irish Folk Version (metal) Stems (125BPM).zip"),
+            b"x",
+        )
+        .unwrap();
+        std::fs::write(dir.join("Broken Stems.zip"), b"x").unwrap();
+        assert_eq!(
+            bpm_for_stem_folder(&folder),
+            Some(125.0),
+            "arkivet bredvid bär tempot som mappnamnet saknar"
+        );
+
+        // En mapp utan matchande arkiv får inget tempo alls — inte 120.
+        let other = dir.join("Namnlös");
+        std::fs::create_dir_all(&other).unwrap();
+        assert_eq!(bpm_for_stem_folder(&other), None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// Opt-in mot en riktig mapp på den här maskinen:
+    /// `SONIX_STEM_DIR=~/imported_stems/<mapp> cargo test a_real_stem_folder -- --nocapture`
+    #[test]
+    fn a_real_stem_folder_reports_the_package_tempo() {
+        let Ok(dir) = std::env::var("SONIX_STEM_DIR") else {
+            return;
+        };
+        let found = bpm_for_stem_folder(std::path::Path::new(&dir));
+        println!("mapp {dir} -> {found:?}");
+        assert!(found.is_some(), "inget tempo hittades för {dir}");
     }
 }

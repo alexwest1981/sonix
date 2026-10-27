@@ -3743,6 +3743,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             &root.to_string_lossy(),
             "Cachetest",
             120.0,
+            Some(120.0),
             false,
             progress.clone(),
         );
