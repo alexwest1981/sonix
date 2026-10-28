@@ -322,7 +322,62 @@ pub fn scale_selected_region_level(&mut self, factor: f32) {
     }
 }
 
+pub fn split_selection_at_playhead(&mut self) {
+    // **Flera markerade: dela var och en som spelhuvudet står inom.** En region som
+    // inte når spelhuvudet lämnas orörd — annars skulle S kapa slumpmässiga kanter.
+    if self.selected_regions.len() > 1 {
+        let tempo = self.tempo_map();
+        let bar = tempo.bar_at_secs(self.song_time as f64) as f32;
+        let targets: Vec<(usize, usize)> = self
+            .selected_regions
+            .iter()
+            .copied()
+            .filter(|(t, r)| {
+                self.playlist_tracks
+                    .get(*t)
+                    .and_then(|tr| tr.regions.get(*r))
+                    .is_some_and(|reg| bar > reg.start_bar + 0.01 && bar < reg.start_bar + reg.length_bars - 0.01)
+            })
+            .collect();
+        if targets.is_empty() {
+            self.status_message = "✂️ Spelhuvudet står inte inom någon markerad region".to_string();
+            return;
+        }
+        self.push_undo("Dela regioner vid spelhuvudet");
+        let mut made = 0;
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        for (t, r) in targets {
+            let Some(reg) = self.playlist_tracks.get(t).and_then(|tr| tr.regions.get(r)).cloned() else {
+                continue;
+            };
+            let end = reg.start_bar + reg.length_bars;
+            let Some(right) = trimmed_region_copy(&reg, bar, end, &tempo, self.next_region_id()) else {
+                continue;
+            };
+            let left = trimmed_region_copy(&reg, reg.start_bar, bar, &tempo, reg.id);
+            if let Some(region) = self.playlist_tracks.get_mut(t).and_then(|tr| tr.regions.get_mut(r)) {
+                match left {
+                    Some(left) => *region = left,
+                    None => region.length_bars = bar - reg.start_bar,
+                }
+            }
+            self.playlist_tracks[t].regions.push(right);
+            touched.insert(t);
+            made += 1;
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        self.status_message = crate::tstatus!("✂️ Delade {} regioner vid spelhuvudet", made);
+        return;
+    }
+}
+
 pub fn split_selected_region_at_playhead(&mut self) {
+    if self.selected_regions.len() > 1 {
+        self.split_selection_at_playhead();
+        return;
+    }
     let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
     let current_playhead_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
     let cur_cut_sec = (self.song_time * 100.0).round() / 100.0;
@@ -1869,6 +1924,26 @@ pub fn paste_region(&mut self) {
 
 impl SonixApp {
 pub fn repeat_selected_region_loop(&mut self, factor: f32) {
+    if self.selected_regions.len() > 1 {
+        let targets: Vec<(usize, usize)> = self.selected_regions.iter().copied().collect();
+        self.push_undo("Repetera sample loop");
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        for (t, r) in targets {
+            if let Some(reg) = self.playlist_tracks.get_mut(t).and_then(|tr| tr.regions.get_mut(r)) {
+                if reg.loop_length_bars <= 0.001 {
+                    reg.loop_length_bars = reg.length_bars;
+                }
+                let base = reg.loop_length_bars;
+                reg.length_bars = (reg.length_bars * factor).max(base);
+                touched.insert(t);
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        self.status_message = crate::tstatus!("🔁 Loopade {} regioner", self.selected_regions.len());
+        return;
+    }
     if let Some((t_idx, r_idx)) = self.selected_audio_region
         && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             self.push_undo("Repetera sample loop");
@@ -2048,6 +2123,24 @@ pub fn toggle_region_tape(&mut self, t_idx: usize, r_idx: usize) {
 
 impl SonixApp {
 pub fn reverse_selected_region(&mut self) {
+    if self.selected_regions.len() > 1 {
+        let targets: Vec<(usize, usize)> = self.selected_regions.iter().copied().collect();
+        self.push_undo(crate::i18n::t("Vänd region baklänges (Reverse)"));
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        let mut flipped = 0;
+        for (t, r) in targets {
+            if let Some(reg) = self.playlist_tracks.get_mut(t).and_then(|tr| tr.regions.get_mut(r)) {
+                reg.is_reverse = !reg.is_reverse;
+                touched.insert(t);
+                flipped += 1;
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        self.status_message = crate::tstatus!("🔄 Vände {} regioner baklänges", flipped);
+        return;
+    }
     if let Some((t_idx, r_idx)) = self.selected_audio_region
         && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             self.push_undo(crate::i18n::t("Vänd region baklänges (Reverse)"));

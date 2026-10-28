@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.194] - 2026-10-28
+
+**S, R och L arbetar också på hela markeringen.**
+
+- `S`/`B`/`C` delar varje markerad region som spelhuvudet står inom; regioner som inte
+  når spelhuvudet lämnas orörda i stället för att kapas på måfå.
+- `R` vänder hela markeringen, `L` loopar hela markeringen.
+- Delningen använder samma beskurna kopia som razor-dupliceringen, så sampling-offset och
+  vågform följer med på båda halvorna.
+
 ## [0.9.193] - 2026-10-28
 
 **Delete, M och Ctrl+D arbetar på hela markeringen.** De tre vanligaste kommandona tog
