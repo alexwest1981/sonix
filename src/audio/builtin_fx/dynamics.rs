@@ -347,6 +347,27 @@ mod tests {
         assert!((level - expected).abs() < expected * 0.35, "nivå {level:.3}, väntat {expected:.3}");
     }
 
+    /// Mätning, inte ett krav: hur många gånger realtid klarar en instans i releasebygget?
+    /// `cargo test --release --bin sonix spectral_comp_speed -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn spectral_comp_speed() {
+        let sr = 48_000.0;
+        let seconds = 10;
+        let input = tone(sr, 1_000.0, 0.3, sr as usize * seconds);
+        let mut c = SpectralComp::new(sr);
+        let start = std::time::Instant::now();
+        let out = run(&mut c, &input);
+        let elapsed = start.elapsed().as_secs_f32();
+        println!(
+            "spectralcomp: {:.1}x realtid ({} s ljud på {:.2} s), ut-RMS {:.3}",
+            seconds as f32 / elapsed,
+            seconds,
+            elapsed,
+            rms(&out)
+        );
+    }
+
     /// Inflatorn ska minska toppfaktorn: mer tryck, toppen kvar under 1.
     #[test]
     fn the_inflator_lowers_the_crest_factor() {
