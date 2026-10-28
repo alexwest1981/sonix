@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.173] - 2026-10-27
+
+**Tutti — och fixarna som kom av att använda appen.** Projektet kan lämnas till det delade
+projektformatet och tas tillbaka igen. Vägen dit lagade det som mötte oss: ljudströmmen, tempot i
+gamla filer, melodin som satt fast i rutnätet, och en MIDI-slinga som spelade av sig själv.
+
+**Nyheter**
+
+- **Tutti ut och in** (0.9.172/0.9.173): `sonix --export-tutti` skriver en tutti-folder som
+  `tutti check` godkänner, och `sonix --import-tutti` gör en tutti-folder till ett `.sonix`-projekt.
+  Rundtur export → import → export ger ett identiskt dokument; Sonix egna fält (warp, EQ,
+  kompressor, swing, tonart) bärs i `se.alexwest1981.sonix` så en runda genom ett annat program
+  inte tappar dem. `.sonix` är kvar som appens eget format.
+- **AI:ns melodi blir en klippa på tidslinjen.** `write_notes` skapar en `PatternClip` med egna
+  noter (position, anslag, notlängd) i stället för att tända rutor i mönstret. Klippan ritas och
+  dras som en ljudregion, och en flytt rör bara startpositionen.
+- **Högerklick på en not i pianorullen** (den sista punkten i "högerklick överallt"): radera,
+  duplicera ett steg senare, anslag ±.
+- **`sonix --version` / `-V`** skriver `Sonix Studio <version>` utan att öppna fönster eller
+  ljudenhet — en rad att klistra in i en felrapport.
+- **Flikar i toppraden**: grupperna (Skapa/Arrangera/Mixa/Verktyg) och vyerna är mappa-flikar med
+  accentlinje på den valda, inte knappar.
+
+**Fixar**
+
+- **Midi Through är en slinga, inte ett instrument.** MIDI-in kopplade upp sig mot varje in-port,
+  även ALSA:s loopback — och `--selftest` skickade sin testnot dit. En pågående Sonix hörde då sin
+  egen testnot och spelade den. Slingor hoppas nu över, och testnoten går till en riktig utgång.
+- **512 frames som standard** (0.9.168): 128 dog på en lastad maskin; en död ljudström byggs nu om
+  i stället för att tiga, och felräknaren hör till strömmen som dog.
+- **Stämmornas tempo kommer ur arkivet, aldrig ur 120** (0.9.169), och en gammal fil med 120 i
+  klippen lagas vid inläsning (0.9.171).
+- **Exporten säger rätt installationskommando**: ffmpeg-raden läses ur `/etc/os-release` (apt, dnf
+  eller pacman) i stället för att alltid föreslå `pacman`.
+- **Textrutan äger tangenterna.** Ett mellanslag i ett projektnamn startade uppspelningen; nu tiger
+  transport- och arrangergenvägarna medan en textruta har fokus. En not som startats med musen i
+  pianorullen släpps också när fliken lämnas i stället för att ligga kvar och spela.
+- **Fasmätaren skriver vad bildrutan gjorde** när den sprack (0.9.170).
+
+
 ## [0.9.167] - 2026-10-27
 
 **En död ljudström byggs om i stället för att tiga.** cpal 0.15 återhämtar sig inte från en
@@ -202,7 +242,8 @@ audio engine; the remaining gaps are documented honestly in
   rationale, which now state the real reason (the closed format cannot be
   decoded).
 
-[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.167...HEAD
+[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.173...HEAD
+[0.9.173]: https://github.com/alexwest1981/sonix/compare/v0.9.167...v0.9.173
 [0.9.167]: https://github.com/alexwest1981/sonix/compare/v0.9.165...v0.9.167
 [0.9.159]: https://github.com/alexwest1981/sonix/compare/v0.9.158...v0.9.159
 [0.9.158]: https://github.com/alexwest1981/sonix/compare/v0.9.0...v0.9.158
