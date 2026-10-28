@@ -655,6 +655,18 @@ impl SonixApp {
                     {
                         self.ripple_mode = self.ripple_mode.next();
                     }
+                    // Tidsmarkeringen och dess kommandon, där man står — annars är razor
+                    // en hemlighet som bara den som läst koden hittar.
+                    if let Some((a, b)) = self.time_selection {
+                        ui.separator();
+                        ui.label(
+                            egui::RichText::new(format!("✂️ {:.2}–{:.2}", a.min(b) + 1.0, a.max(b) + 1.0))
+                                .strong()
+                                .size(Theme::FONT_S)
+                                .color(crate::ui::theme::palette().cyan()),
+                        )
+                        .on_hover_text("Tidsmarkering: Ctrl+Shift+X tar bort · Ctrl+Alt+D duplicerar · Esc rensar");
+                    }
                 });
             });
 

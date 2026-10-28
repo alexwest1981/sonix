@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.195] - 2026-10-28
+
+**Tidsmarkeringen syns i verktygsraden**, med sina kommandon i verktygstipset — annars är
+razor en hemlighet för den som läst koden. `docs/REAPER-WORKFLOW-GAPS.md` har fått en
+snabbkommandoöversikt för hela flödet.
+
 ## [0.9.194] - 2026-10-28
 
 **S, R och L arbetar också på hela markeringen.**

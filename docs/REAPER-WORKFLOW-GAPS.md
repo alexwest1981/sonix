@@ -26,6 +26,18 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
 | Ångra-historik | fönster med namngivna steg | `push_undo` med namn, ingen lista | ◐ |
 | Musmodifierare | fritt mappbara | hårdkodade | ✗ |
 
+## Snabbkommandon för flödet
+
+- `Ctrl+klick` växlar, `Shift+klick` tar spannet, `Ctrl+A` alla spår.
+- `Ctrl+G` grupperar (regioner om några är markerade, annars spår), `Ctrl+Shift+G` löser upp.
+- `Ctrl+C` / `Ctrl+V` kopierar och klistrar klungan; `Ctrl+Shift+V` på ursprunglig plats.
+- `Alt+drag` kopierar i stället för att flytta.
+- `Delete` tar bort markeringen, `M` mutar, `Ctrl+D` duplicerar, `S` delar vid spelhuvudet,
+  `R` vänder, `L` loopar.
+- `Shift+drag` i regeln markerar tid; drag i tom yta rammarkerar över spår.
+- `Ctrl+Shift+X` razor-borttagning, `Ctrl+Alt+D` razor-duplicering, `Esc` rensar markeringen.
+- `Ctrl+Alt+Z` ångra-historiken.
+
 ## Vad 0.9.187 lade till
 
 - `selected_tracks` och `selected_regions` som mängder, med den primära posten kvar i
