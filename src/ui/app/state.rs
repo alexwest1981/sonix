@@ -107,6 +107,8 @@ pub struct RegionDragState {
     /// Övriga markerade regioner (spår, index, starttakt) vid dragningens början.
     /// De följer den dragna regionen med samma förskjutning.
     pub multi_initial: Vec<(usize, usize, f32)>,
+    /// Spåret pekaren står över under dragningen — dit flyttas regionerna vid släpp.
+    pub target_track: Option<usize>,
 }
 
 #[derive(Clone)]

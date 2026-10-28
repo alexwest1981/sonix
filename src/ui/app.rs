@@ -572,6 +572,9 @@ pub struct SonixApp {
     /// Pågående rammarkering: (spår från, spår till, starttakt, sluttakt). Släppet
     /// markerar regionerna som överlappar intervallet och lämnar det som tidsmarkering.
     pub marquee: Option<(usize, usize, f32, f32)>,
+    /// Varje spårbanas y-intervall den här bildrutan, så en dragning kan avgöra vilket
+    /// spår pekaren står över (regioner kan flyttas mellan spår).
+    pub lane_bounds: Vec<(f32, f32)>,
     /// Tidsmarkering i takter (RAZOR-området).
     pub time_selection: Option<(f32, f32)>,
     /// Ankaret när man drar en tidsmarkering i regeln.
@@ -1271,6 +1274,7 @@ impl SonixApp {
             show_undo_history_modal: false,
             ripple_mode: crate::ui::app::state::RippleMode::Off,
             marquee: None,
+            lane_bounds: Vec::new(),
             time_selection: None,
             time_sel_anchor: None,
             show_automation: false,

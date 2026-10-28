@@ -1531,6 +1531,10 @@ impl SonixApp {
 
                         // Full Timeline Track Lane (Scalable width with total_bars)
                         let (lane_rect, lane_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, track_row_h), Sense::click_and_drag());
+                        if self.lane_bounds.len() <= t_idx {
+                            self.lane_bounds.resize(t_idx + 1, (0.0, 0.0));
+                        }
+                        self.lane_bounds[t_idx] = (lane_rect.min.y, lane_rect.max.y);
                         // **Automatiseringsfilen syns i spårfärgen** längst ner i raden: samma
                         // remsa som kurvan ritas i, så man ser vilket spår den hör till.
                         if self.show_automation {
@@ -2219,6 +2223,7 @@ impl SonixApp {
                                             initial_loop_length_bars: init_loop_bars,
                                             drag_start_mouse_x: mouse_pos.x,
                                             multi_initial,
+                                            target_track: Some(t_idx),
                                         });
                                     }
                                 }
@@ -2403,6 +2408,18 @@ impl SonixApp {
                                         }
                                     }
 
+                                // Spåret pekaren står över: dit flyttas regionerna vid släpp.
+                                let hover_track = ui.ctx().pointer_latest_pos().and_then(|p| {
+                                    self.lane_bounds
+                                        .iter()
+                                        .position(|(a, b)| p.y >= *a && p.y <= *b)
+                                });
+                                if let Some(t) = hover_track
+                                    && let Some(drag) = self.region_drag_state.as_mut()
+                                {
+                                    drag.target_track = Some(t);
+                                }
+
                                 let is_drag_released = lane_resp.drag_stopped() || ui.input(|i| i.pointer.any_released() || i.pointer.primary_released() || !i.pointer.primary_down());
                                 if is_drag_released && self.region_drag_state.is_some() {
                                     // Alla spår som var med i dragningen ska synkas, inte bara det
@@ -2414,10 +2431,26 @@ impl SonixApp {
                                         for (t, _, _) in &drag.multi_initial {
                                             touched.insert(*t);
                                         }
+                                        let target = drag.target_track.unwrap_or(drag.track_idx);
+                                        let mut moved_to_track = 0;
+                                        if drag.mode == RegionDragMode::Move && target != drag.track_idx {
+                                            moved_to_track = self.move_drag_to_track(&drag, target);
+                                            if moved_to_track > 0 {
+                                                touched.insert(target);
+                                            }
+                                        }
                                         for t in touched {
                                             self.sync_track_regions(t);
                                         }
-                                        self.status_message = crate::i18n::t("✅ Ändring sparad på tidslinjen!").to_string();
+                                        self.status_message = if moved_to_track > 0 {
+                                            crate::tstatus!(
+                                                "↔ Flyttade {} region(er) till spår {}",
+                                                moved_to_track,
+                                                target + 1
+                                            )
+                                        } else {
+                                            crate::i18n::t("✅ Ändring sparad på tidslinjen!").to_string()
+                                        };
                                     }
                                 }
 

@@ -1579,6 +1579,52 @@ impl SonixApp {
         moved
     }
 
+    /// Flyttar en pågående dragnings regioner till `target`, med samma spåravstånd som
+    /// klungan hade. Tas bort bakifrån så indexen håller, och läggs tillbaka i sitt
+    /// ursprungliga spår om målet hamnar utanför projektet.
+    pub(crate) fn move_drag_to_track(
+        &mut self,
+        drag: &crate::ui::app::state::RegionDragState,
+        target: usize,
+    ) -> usize {
+        let mut refs: Vec<(usize, usize)> = vec![(drag.track_idx, drag.region_idx)];
+        refs.extend(drag.multi_initial.iter().map(|(t, r, _)| (*t, *r)));
+        refs.sort_by(|a, b| b.cmp(a));
+        let base = drag.track_idx as isize;
+        let mut lifted: Vec<(isize, AudioRegion)> = Vec::new();
+        for (t, r) in refs {
+            if let Some(track) = self.playlist_tracks.get_mut(t)
+                && r < track.regions.len()
+            {
+                lifted.push((t as isize - base, track.regions.remove(r)));
+            }
+        }
+        let mut moved = 0;
+        let mut new_selection: std::collections::BTreeSet<(usize, usize)> =
+            std::collections::BTreeSet::new();
+        for (offset, reg) in lifted {
+            let dest = target as isize + offset;
+            let slot = if dest >= 0 && (dest as usize) < self.playlist_tracks.len() {
+                Some(dest as usize)
+            } else {
+                let back = base + offset;
+                (back >= 0 && (back as usize) < self.playlist_tracks.len()).then_some(back as usize)
+            };
+            if let Some(t) = slot {
+                self.playlist_tracks[t].regions.push(reg);
+                let idx = self.playlist_tracks[t].regions.len() - 1;
+                new_selection.insert((t, idx));
+                moved += 1;
+            }
+        }
+        if !new_selection.is_empty() {
+            self.selected_audio_region = new_selection.iter().next().copied();
+            self.selected_regions = new_selection;
+            self.selected_timeline_track = target.min(self.playlist_tracks.len().saturating_sub(1));
+        }
+        moved
+    }
+
     /// **Razor: duplicera området** — kopierar det som ligger i tidsmarkeringen och lägger
     /// kopian direkt efter, med plats gjord så inget hamnar ovanpå något annat.
     pub fn razor_duplicate_area(&mut self) -> usize {

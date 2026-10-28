@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.196] - 2026-10-28
+
+**Dra regioner mellan spår.** Dragningen följer spåret pekaren står över och flyttar
+regionerna dit vid släpp — hela klungan behåller sitt inbördes spåravstånd, och en del som
+skulle hamna utanför projektet läggs tillbaka i sitt eget spår i stället för att försvinna.
+Bara Move-läget byter spår; trimning rör bara kanterna.
+
 ## [0.9.195] - 2026-10-28
 
 **Tidsmarkeringen syns i verktygsraden**, med sina kommandon i verktygstipset — annars är
