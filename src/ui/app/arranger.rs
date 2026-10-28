@@ -885,7 +885,42 @@ impl SonixApp {
                 let track_row_h = row_h;
 
                 // Left Track Header Card (Sonix Style)
-                let (h_rect, h_resp) = ui.allocate_exact_size(Vec2::new(header_w, track_row_h), Sense::click());
+                let (h_rect, h_resp) = ui.allocate_exact_size(Vec2::new(header_w, track_row_h), Sense::click_and_drag());
+                // **Dra rubriken för att flytta spåret** (REAPER). Ett klick utan rörelse
+                // går fortfarande till markeringen; en dragning flyttar vid släpp.
+                if h_resp.drag_started() {
+                    self.track_drag = Some((t_idx, None));
+                }
+                if let Some((from, _)) = self.track_drag {
+                    if h_resp.dragged()
+                        && let Some(p) = ui.ctx().pointer_latest_pos()
+                        && let Some(over) = self.lane_bounds.iter().position(|(a, b)| p.y >= *a && p.y <= *b)
+                    {
+                        self.track_drag = Some((from, Some(over)));
+                    }
+                    if let Some((from, target)) = self.track_drag {
+                        if let Some(t) = target {
+                            let y = self
+                                .lane_bounds
+                                .get(t)
+                                .map(|(a, _)| *a)
+                                .unwrap_or(h_rect.min.y);
+                            ui.painter().line_segment(
+                                [Pos2::new(h_rect.min.x, y), Pos2::new(h_rect.max.x, y)],
+                                Stroke::new(2.5_f32, crate::ui::theme::palette().orange()),
+                            );
+                        }
+                        if ui.input(|i| !i.pointer.primary_down()) {
+                            self.track_drag = None;
+                            if let Some(t) = target
+                                && t != from
+                            {
+                                self.move_track(from, t);
+                            }
+                        }
+                    }
+                }
+
                 // Mikrofonspåret var helvitt på mörk botten — det stack i ögonen (Alex 2026-10-24).
                 // Nu samma yta som de andra spåren, med cyan som enda markering.
                 // Micken och det valda spåret delar yta — två grenar med samma färg var samma sak.

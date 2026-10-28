@@ -1584,11 +1584,16 @@ impl SonixApp {
     pub fn move_selected_track(&mut self, delta: isize) -> bool {
         let from = self.selected_timeline_track;
         let to = from as isize + delta;
-        if from >= self.playlist_tracks.len() || to < 0 || to as usize >= self.playlist_tracks.len() {
+        if to < 0 {
             return false;
         }
-        let to = to as usize;
-        if to == from {
+        self.move_track(from, to as usize)
+    }
+
+    /// Flyttar spåret på `from` till platsen `to`. Motorn synkas om och markeringen
+    /// följer med; en flytt till samma plats är inget kommando.
+    pub fn move_track(&mut self, from: usize, to: usize) -> bool {
+        if from >= self.playlist_tracks.len() || to >= self.playlist_tracks.len() || from == to {
             return false;
         }
         let name = self.playlist_tracks[from].name.clone();

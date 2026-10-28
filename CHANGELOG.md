@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.198] - 2026-10-28
+
+**Spårordning med musen.** Dra i spårrubriken och en orange infogningslinje visar var spåret
+hamnar; släpp flyttar det dit. Ett klick utan rörelse markerar fortfarande som förut, och
+`move_selected_track` är nu ett tunt lager över `move_track(from, to)` så meny, tangentbord
+och drag använder samma regel.
+
 ## [0.9.197] - 2026-10-28
 
 **Spår kan flyttas i listan.** `Ctrl+Shift+↑/↓` eller menyvalet i spårrubriken; motorn

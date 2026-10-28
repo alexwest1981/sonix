@@ -19,7 +19,7 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
 | Duplicera | Ctrl+D, Alt+drag | Ctrl+D (region eller spår) | ◐ ingen Alt+drag-kopia |
 | Flytta flera regioner samtidigt | alla markerade följer med | `RegionDragState::multi_initial`, samma förskjutning | ✅ 0.9.188 |
 | Flytta regioner mellan spår | dra upp/ner över en annan bana | dragningen följer pekarens spår och flyttar vid släpp, med klungans spåravstånd | ✅ 0.9.196 |
-| Flytta spår i listan | dra rubriken, `Track: Move track up/down` | `Ctrl+Shift+↑/↓` och menyval i spårrubriken | ✅ 0.9.197 (ingen dragflytt) |
+| Flytta spår i listan | dra rubriken, `Track: Move track up/down` | dra rubriken (infogningslinje), `Ctrl+Shift+↑/↓` och menyval | ✅ 0.9.198 |
 | Gruppera spår | mappar (folder) med djup och routing | `TrackGroup` + buss/VCA per spår: en grupp kan skickas till en gemensam buss i mixern | ✅ routing finns, men sätts per spår (ingen automatisk folder-nivå) |
 | Gruppera objekt | Ctrl+G, gruppmatris | `item_groups` per region-id, klick/drag tar hela gruppen, Alt+drag kopierar | ✅ 0.9.189 (ingen matris) |
 | Ripple-redigering | av/spår/alla | `RippleMode` av/spår/alla: borttagning stänger gapet, inklistring skjuter undan | ✅ 0.9.190 |

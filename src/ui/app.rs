@@ -575,6 +575,8 @@ pub struct SonixApp {
     /// Varje spårbanas y-intervall den här bildrutan, så en dragning kan avgöra vilket
     /// spår pekaren står över (regioner kan flyttas mellan spår).
     pub lane_bounds: Vec<(f32, f32)>,
+    /// Pågående spårdragning i rubriken: (spåret man håller, spåret pekaren står över).
+    pub track_drag: Option<(usize, Option<usize>)>,
     /// Tidsmarkering i takter (RAZOR-området).
     pub time_selection: Option<(f32, f32)>,
     /// Ankaret när man drar en tidsmarkering i regeln.
@@ -1275,6 +1277,7 @@ impl SonixApp {
             ripple_mode: crate::ui::app::state::RippleMode::Off,
             marquee: None,
             lane_bounds: Vec::new(),
+            track_drag: None,
             time_selection: None,
             time_sel_anchor: None,
             show_automation: false,
