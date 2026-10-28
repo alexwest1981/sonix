@@ -1404,7 +1404,7 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                 ui.painter().rect_filled(
                                     loop_rect,
                                     Rounding::ZERO,
-                                    Color32::from_rgba_unmultiplied(90, 170, 255, 30),
+                                    crate::ui::theme::Theme::alpha(crate::ui::theme::palette().cyan(), 30),
                                 );
                                 for (pi, is_start) in [(0usize, true), (1usize, false)] {
                                     let (px, value, other) = if is_start {
@@ -2197,7 +2197,7 @@ pub(crate) fn render_remix_fx_view(&mut self, ui: &mut egui::Ui) {
 
                     let puck_x = rect.min.x + self.remix_xy[0] * rect.width();
                     let puck_y = rect.max.y - self.remix_xy[1] * rect.height();
-                    painter.circle_filled(Pos2::new(puck_x, puck_y), 12.0, Color32::from_rgba_unmultiplied(46, 204, 113, 100));
+                    painter.circle_filled(Pos2::new(puck_x, puck_y), 12.0, crate::ui::theme::Theme::alpha(crate::ui::theme::palette().green(), 100));
                     painter.circle_filled(Pos2::new(puck_x, puck_y), 6.0, crate::ui::theme::palette().green());
 
                     ui.label(egui::RichText::new(format!("Cutoff: {:.0} Hz  •  Res: {:.1}", self.filter.cutoff, self.filter.resonance)).size(Theme::FONT_S).color(crate::ui::theme::palette().green()));

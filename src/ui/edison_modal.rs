@@ -309,7 +309,7 @@ fn draw_waveform(ui: &mut Ui, st: &mut EdisonState) {
         painter.rect_filled(
             Rect::from_min_max(Pos2::new(x0, rect.min.y), Pos2::new(x1, rect.max.y)),
             Rounding::ZERO,
-            Color32::from_rgba_unmultiplied(255, 165, 0, 36),
+            crate::ui::theme::Theme::alpha(crate::ui::theme::palette().amber(), 36),
         );
     }
 

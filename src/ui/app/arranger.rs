@@ -1688,7 +1688,7 @@ impl SonixApp {
                                         Pos2::new(ghost_x_start, lane_rect.min.y + 2.0),
                                         Pos2::new(ghost_x_end, lane_rect.max.y - 2.0),
                                     );
-                                    ui.painter().rect_filled(ghost_rect, Rounding::same(4.0), Color32::from_rgba_unmultiplied(255, 170, 0, 85));
+                                    ui.painter().rect_filled(ghost_rect, Rounding::same(4.0), crate::ui::theme::Theme::alpha(crate::ui::theme::palette().orange(), 85));
                                     ui.painter().rect_stroke(ghost_rect, Rounding::same(4.0), Stroke::new(1.8_f32, crate::ui::theme::palette().orange()));
                                     ui.painter().text(
                                         Pos2::new(ghost_rect.min.x + 6.0, ghost_rect.center().y),
@@ -2128,7 +2128,7 @@ impl SonixApp {
                                         } else if is_lane_h {
                                             crate::ui::theme::palette().text()
                                         } else {
-                                            Color32::from_rgba_unmultiplied(255, 255, 255, 120)
+                                            crate::ui::theme::Theme::alpha(crate::ui::theme::palette().text(), 120)
                                         };
                                         ui.painter().rect_filled(left_h_rect, Rounding { nw: 3.0, ne: 0.0, sw: 3.0, se: 0.0 }, left_h_col);
                                         ui.painter().line_segment([Pos2::new(left_h_rect.min.x + 4.0, left_h_rect.min.y + 6.0), Pos2::new(left_h_rect.min.x + 4.0, left_h_rect.max.y - 6.0)], Stroke::new(1.2_f32, crate::ui::theme::palette().grid()));
@@ -2140,7 +2140,7 @@ impl SonixApp {
                                         } else if is_lane_h {
                                             crate::ui::theme::palette().amber()
                                         } else {
-                                            Color32::from_rgba_unmultiplied(255, 255, 255, 120)
+                                            crate::ui::theme::Theme::alpha(crate::ui::theme::palette().text(), 120)
                                         };
                                         ui.painter().rect_filled(right_h_rect, Rounding { nw: 0.0, ne: 3.0, sw: 0.0, se: 3.0 }, right_h_col);
                                         ui.painter().line_segment([Pos2::new(right_h_rect.min.x + 4.0, right_h_rect.min.y + 6.0), Pos2::new(right_h_rect.min.x + 4.0, right_h_rect.max.y - 6.0)], Stroke::new(1.2_f32, crate::ui::theme::palette().panel_alt()));
@@ -2601,11 +2601,11 @@ impl SonixApp {
                                                             comp_action = Some((pat_idx, b, lane));
                                                         }
                                                         let tint = if lane == chosen {
-                                                            Color32::from_rgba_unmultiplied(255, 255, 255, 170)
+                                                            crate::ui::theme::Theme::alpha(crate::ui::theme::palette().text(), 170)
                                                         } else if band_resp.hovered() {
-                                                            Color32::from_rgba_unmultiplied(255, 255, 255, 110)
+                                                            crate::ui::theme::Theme::alpha(crate::ui::theme::palette().text(), 110)
                                                         } else {
-                                                            Color32::from_rgba_unmultiplied(0, 0, 0, 70)
+                                                            crate::ui::theme::Theme::alpha(crate::ui::theme::palette().bg_deep(), 70)
                                                         };
                                                         ui.painter().rect_filled(band, Rounding::same(1.0), tint);
                                                     }
@@ -3011,7 +3011,7 @@ impl SonixApp {
                             let rx_end = lane_rect.min.x + live_e_bar * bar_w;
                             let live_rect = Rect::from_min_max(Pos2::new(rx_start + 1.0, lane_rect.min.y + 2.0), Pos2::new(rx_end - 1.0, lane_rect.max.y - 2.0));
 
-                            ui.painter().rect_filled(live_rect, Rounding::same(3.0), Color32::from_rgba_unmultiplied(220, 30, 30, 85));
+                            ui.painter().rect_filled(live_rect, Rounding::same(3.0), crate::ui::theme::Theme::alpha(crate::ui::theme::palette().red(), 85));
                             ui.painter().rect_stroke(live_rect, Rounding::same(3.0), Stroke::new(1.5_f32, crate::ui::theme::palette().red()));
 
                             let live_peaks = &self.vocal_studio.live_recording_peaks;
@@ -3258,7 +3258,7 @@ impl SonixApp {
                                     Pos2::new(ghost_x_start, add_lane_rect.min.y + 2.0),
                                     Pos2::new(ghost_x_end, add_lane_rect.max.y - 2.0),
                                 );
-                                ui.painter().rect_filled(ghost_rect, Rounding::same(4.0), Color32::from_rgba_unmultiplied(0, 200, 255, 85));
+                                ui.painter().rect_filled(ghost_rect, Rounding::same(4.0), crate::ui::theme::Theme::alpha(crate::ui::theme::palette().cyan(), 85));
                                 ui.painter().rect_stroke(ghost_rect, Rounding::same(4.0), Stroke::new(1.8_f32, crate::ui::theme::palette().cyan()));
                                 ui.painter().text(
                                     Pos2::new(ghost_rect.min.x + 6.0, ghost_rect.center().y),
@@ -3284,7 +3284,7 @@ impl SonixApp {
                     let peak = self.engine.get_peak_level();
                     let meter_w = (peak * 350.0).min(timeline_total_w);
                     let meter_rect = Rect::from_min_size(Pos2::new(m_lane_rect.min.x, m_lane_rect.min.y + 12.0), Vec2::new(meter_w, row_h - 24.0));
-                    ui.painter().rect_filled(meter_rect, Rounding::same(2.0), Color32::from_rgba_unmultiplied(255, 140, 0, 45));
+                    ui.painter().rect_filled(meter_rect, Rounding::same(2.0), crate::ui::theme::Theme::alpha(crate::ui::theme::palette().orange(), 45));
 
                     ui.painter().text(
                         Pos2::new(m_lane_rect.min.x + 12.0, m_lane_rect.center().y),
