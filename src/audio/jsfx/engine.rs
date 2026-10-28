@@ -223,8 +223,11 @@ impl Jsfx {
                 }
                 break;
             }
-            left[i] = self.spl[0].clamp(-8.0, 8.0) as f32;
-            right[i] = self.spl[1].clamp(-8.0, 8.0) as f32;
+            // **Ingen konstgjord gräns här.** En JSFX får skriva vilken nivå som helst — det är
+            // värden (och DAC:en) som avgör vad som klipper, inte tolken. Bara NaN/Inf stoppas,
+            // för de förgiftar hela kedjan.
+            left[i] = finite_or_zero(self.spl[0]);
+            right[i] = finite_or_zero(self.spl[1]);
         }
         Ok(std::mem::take(&mut self.midi_out))
     }
@@ -1027,6 +1030,14 @@ impl Jsfx {
             self.mem[start + 2 * i] = (value.re * norm) as f64;
             self.mem[start + 2 * i + 1] = (value.im * norm) as f64;
         }
+    }
+}
+
+fn finite_or_zero(value: f64) -> f32 {
+    if value.is_finite() {
+        value as f32
+    } else {
+        0.0
     }
 }
 

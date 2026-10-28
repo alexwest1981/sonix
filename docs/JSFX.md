@@ -35,7 +35,7 @@ ljudfiler som **inte skeppas med REAPER**:
 
 | Instrument | Låter direkt? | Varför |
 |---|---|---|
-| `TolerableTines` | ja | ren syntes, inga externa filer |
+| `TolerableTines` | låter, men fel nivå | ren syntes; utgången mäter ~1947 RMS (skulle vara < 1) — skalningen i dess `fragment`/`memcpy`-väg är inte utredd |
 | `MajorGeneralMIDI` | svagt (topp 0,0026) | EAS-syntes, men nivåerna styrs av fil-/bankladdning |
 | `DrNine` | nej | laddar `DrNine/DrNine*.flac` via `file_open` — filerna följer inte med REAPER |
 | `JamSynth` | nej | samma sak: `file_open` |
@@ -45,6 +45,14 @@ ljudfiler som **inte skeppas med REAPER**:
 
 **Det är samma beteende som i REAPER**: utan samplingarna är DrNine tyst där också. Att `file_open`
 svarar "ingen fil" är alltså rätt svar, inte en gissning.
+
+Nivåerna mäts utan konstgjord gräns: `Jsfx` skriver igenom det filen skriver och stoppar bara
+NaN/Inf. Vad som klipper är värden och DAC, inte tolken — en limiter efter en het synt ska se
+samma nivå som i REAPER.
+
+```
+TolerableTines.jsfx: 4 slider, not 60, topp 44100.0000 vid prov 125, rms 1947.4839, 44100 prov på 357 ms
+```
 
 ## Fil-API:t är stubbat
 

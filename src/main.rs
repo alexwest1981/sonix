@@ -123,17 +123,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
         ];
         let mut peak = 0.0f32;
+        let mut peak_at = 0usize;
+        let mut energy = 0.0f64;
         for chunk in 0..frames.div_ceil(512) {
             let start = chunk * 512;
             let end = (start + 512).min(frames);
             let midi: &[audio::jsfx::MidiEvent] = if chunk == 0 { &events } else { &[] };
             audio::jsfx::process(&mut vm, &mut left[start..end], &mut right[start..end], midi)
                 .map_err(|e| e.to_string())?;
-            peak = left[start..end].iter().fold(peak, |a, v| a.max(v.abs()));
+            for (i, v) in left[start..end].iter().enumerate() {
+                energy += (*v as f64) * (*v as f64);
+                if v.abs() > peak {
+                    peak = v.abs();
+                    peak_at = start + i;
+                }
+            }
         }
         let elapsed = started.elapsed().as_millis();
+        let rms = (energy / frames as f64).sqrt();
         println!(
-            "{}: {} slider, not {note}, topp {peak:.4}, {} prov på {} ms{}",
+            "{}: {} slider, not {note}, topp {peak:.4} vid prov {peak_at}, rms {rms:.4}, {} prov på {} ms{}",
             std::path::Path::new(&path)
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
