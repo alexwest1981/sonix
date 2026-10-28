@@ -3167,6 +3167,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     {
         group.collapsed = !group.collapsed;
     }
+    if let Some(collapsed) = group_collapse_all_request {
+        crate::ui::app::state::set_all_groups_collapsed(&mut self.track_groups, collapsed);
+    }
     if let Some(target) = swap_request {
         // Filväljaren går i egen tråd; svaret tas emot i `frame.rs` och kopplas till spåret.
         self.pending_swap_source = Some(target);
