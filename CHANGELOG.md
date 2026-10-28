@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.201] - 2026-10-28
+
+**Spårdragningen startar bara i namnytan.** Mute-, VU- och detaljknapparna sitter till höger
+i rubriken; ett drag som började på dem flyttade spåret i stället för att göra det man pekade
+på. Nu krävs att trycket ligger i rubrikens vänstra del.
+
+Verifierat i fönster: appen startades på en egen Xvfb-skärm och drevs med syntetiska
+mushändelser (XTEST) — spårdragningen flyttade "Trummor & Beat" från plats 1 till 3, och
+klick + Ctrl+klick gav två cyanmarkerade spår med rätt primär. Ångra tog tillbaka både
+klippen och spårflytten.
+
 ## [0.9.200] - 2026-10-28
 
 **Nudga med piltangenterna.** `←`/`→` flyttar hela markeringen ett snäppsteg, `Shift` en

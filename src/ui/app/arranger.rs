@@ -888,7 +888,13 @@ impl SonixApp {
                 let (h_rect, h_resp) = ui.allocate_exact_size(Vec2::new(header_w, track_row_h), Sense::click_and_drag());
                 // **Dra rubriken för att flytta spåret** (REAPER). Ett klick utan rörelse
                 // går fortfarande till markeringen; en dragning flyttar vid släpp.
-                if h_resp.drag_started() {
+                // Bara namnytan får starta en spårdragning: knapparna till höger
+                // (mute, VU, detalj) ska kännas som knappar, inte som handtag.
+                if h_resp.drag_started()
+                    && ui
+                        .input(|i| i.pointer.press_origin())
+                        .is_some_and(|p| p.x < h_rect.max.x - 130.0)
+                {
                     self.track_drag = Some((t_idx, None));
                 }
                 if let Some((from, _)) = self.track_drag {
