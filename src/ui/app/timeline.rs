@@ -1350,6 +1350,16 @@ impl SonixApp {
     /// inbördes avstånd i tid och spår; delar utan plats hoppas över.
     fn paste_cluster(&mut self, clip: &crate::ui::app::state::RegionClipboard, base_track: usize, paste_bar: f32) {
         self.push_undo("Klistra in regionklunga");
+        // **Ripple vid inklistring:** gör plats först, klistra sedan — annars flyttas det
+        // nyss inklistrade med när de efterföljande skjuts undan.
+        let cluster_len = clip
+            .items
+            .iter()
+            .map(|(_, r)| (r.start_bar - clip.anchor_bar) + r.length_bars)
+            .fold(0.0f32, f32::max);
+        if cluster_len > 1e-4 {
+            self.ripple_shift(base_track, paste_bar - 1e-4, cluster_len);
+        }
         let mut affected: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
         let mut pasted = 0;
         let mut first: Option<(usize, usize)> = None;
@@ -1390,6 +1400,34 @@ impl SonixApp {
             pasted,
             paste_bar + 1.0
         );
+    }
+
+    /// **Ripple**: skjuter det som ligger vid eller efter `at_bar` med `delta` takter —
+    /// negativt stänger ett gap, positivt gör plats för en inklistring. Returnerar antalet
+    /// regioner som flyttades, och synkar de spår som ändrades.
+    pub fn ripple_shift(&mut self, track_idx: usize, at_bar: f32, delta_bars: f32) -> usize {
+        if self.ripple_mode == crate::ui::app::state::RippleMode::Off || delta_bars.abs() < 1e-6 {
+            return 0;
+        }
+        let all_tracks = self.ripple_mode == crate::ui::app::state::RippleMode::All;
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        let mut moved = 0;
+        for (t, track) in self.playlist_tracks.iter_mut().enumerate() {
+            if !all_tracks && t != track_idx {
+                continue;
+            }
+            for reg in track.regions.iter_mut() {
+                if reg.start_bar >= at_bar - 1e-4 {
+                    reg.start_bar = (reg.start_bar + delta_bars).max(0.0);
+                    moved += 1;
+                    touched.insert(t);
+                }
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        moved
     }
 
     /// **Klistra in på ursprunglig plats** (REAPER: `Paste to original position`).
@@ -1462,6 +1500,102 @@ impl SonixApp {
             self.item_groups.remove(&id);
         }
         before
+    }
+
+    /// **Razor: ta bort tidsområdet** (REAPER). Regioner som ligger helt i området tas bort,
+    /// de som bara sticker in kapas, och en region som spänner över hela området delas i två.
+    /// Arbetar på de markerade spåren (annars det primära).
+    pub fn razor_delete_area(&mut self) -> usize {
+        let Some((a, b)) = self.time_selection else {
+            return 0;
+        };
+        let (from, to) = if a <= b { (a, b) } else { (b, a) };
+        if to - from < 0.01 || self.playlist_tracks.is_empty() {
+            return 0;
+        }
+        let tempo = self.tempo_map();
+        let tracks: Vec<usize> = if self.selected_tracks.is_empty() {
+            vec![self.selected_timeline_track.min(self.playlist_tracks.len() - 1)]
+        } else {
+            self.selected_tracks
+                .iter()
+                .copied()
+                .filter(|t| *t < self.playlist_tracks.len())
+                .collect()
+        };
+        self.push_undo("Razor: ta bort område");
+        let mut removed = 0;
+        for t in tracks {
+            let mut i = 0;
+            while i < self.playlist_tracks[t].regions.len() {
+                let reg = self.playlist_tracks[t].regions[i].clone();
+                let start = reg.start_bar;
+                let end = start + reg.length_bars;
+                if end <= from + 1e-4 || start >= to - 1e-4 {
+                    i += 1;
+                    continue;
+                }
+                if start >= from - 1e-4 && end <= to + 1e-4 {
+                    self.playlist_tracks[t].regions.remove(i);
+                    removed += 1;
+                    continue;
+                }
+                if start < from && end > to {
+                    // Dela i två: vänster [start, from] och höger [to, end].
+                    let right_offset_sec =
+                        tempo.secs_for_bars_at(start as f64, (to - start) as f64) as f32;
+                    let cut = ((to - start) / reg.length_bars).clamp(0.0, 1.0);
+                    let peak_cut = ((cut * reg.waveform_peaks.len() as f32) as usize)
+                        .clamp(1, reg.waveform_peaks.len().saturating_sub(1).max(1));
+                    let mut right = reg.clone();
+                    right.id = self.next_region_id();
+                    right.start_bar = to;
+                    right.length_bars = end - to;
+                    right.sample_offset_sec = reg.sample_offset_sec + right_offset_sec;
+                    right.waveform_peaks = reg.waveform_peaks[peak_cut.min(reg.waveform_peaks.len())..].to_vec();
+                    right.fade_in_bars = 0.0;
+                    right.fade_out_bars = reg.fade_out_bars.min(right.length_bars * 0.5);
+                    let left = &mut self.playlist_tracks[t].regions[i];
+                    left.length_bars = from - start;
+                    left.fade_out_bars = 0.0;
+                    left.waveform_peaks.truncate(peak_cut);
+                    self.playlist_tracks[t].regions.insert(i + 1, right);
+                    i += 2;
+                    continue;
+                }
+                if start < from {
+                    // Kapa högerkanten vid områdets början.
+                    let new_len = from - start;
+                    let keep = ((new_len / reg.length_bars) * reg.waveform_peaks.len() as f32) as usize;
+                    let region = &mut self.playlist_tracks[t].regions[i];
+                    region.length_bars = new_len;
+                    region.fade_out_bars = reg.fade_out_bars.min(new_len * 0.5);
+                    region.waveform_peaks.truncate(keep.max(1));
+                } else {
+                    // Kapa vänsterkanten vid områdets slut.
+                    let shift_sec =
+                        tempo.secs_for_bars_at(start as f64, (to - start) as f64) as f32;
+                    let drop = ((to - start) / reg.length_bars).clamp(0.0, 1.0);
+                    let keep_from = ((drop * reg.waveform_peaks.len() as f32) as usize)
+                        .min(reg.waveform_peaks.len());
+                    let region = &mut self.playlist_tracks[t].regions[i];
+                    region.start_bar = to;
+                    region.length_bars = end - to;
+                    region.sample_offset_sec = reg.sample_offset_sec + shift_sec;
+                    region.waveform_peaks = reg.waveform_peaks[keep_from..].to_vec();
+                    region.fade_in_bars = 0.0;
+                }
+                i += 1;
+            }
+            self.sync_track_regions(t);
+        }
+        self.status_message = crate::tstatus!(
+            "✂️ Razor: tog bort takt {:.2}–{:.2} ({} regioner)",
+            from + 1.0,
+            to + 1.0,
+            removed
+        );
+        removed
     }
 
     /// **Ångra till ett visst steg** (REAPER: undo history). Steg 0 är botten.

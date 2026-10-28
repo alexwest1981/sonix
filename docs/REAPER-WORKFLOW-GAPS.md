@@ -11,18 +11,18 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
 | Markera alla spår | Ctrl+A | Ctrl+A, bara när inget textfält äger tangenten | ✅ 0.9.187 |
 | Se vad som är markerat | radmarkering i TCP | primärt spår i spårfärg, övriga i cyan ram | ✅ 0.9.187 |
 | Markera en region | klick | `click_region` | ✅ |
-| Markera flera regioner | Ctrl/Shift+klick, rammarkering (högerdrag) | Ctrl/Shift+klick, spann inom samma spår | ◐ ingen rammarkering |
+| Markera flera regioner | Ctrl/Shift+klick, rammarkering (högerdrag) | Ctrl/Shift+klick, spann inom samma spår, rammarkering genom att dra i tom yta | ✅ 0.9.190 (ramen gäller ett spår) |
 | Kopiera regioner | Ctrl+C | Ctrl+C, klunga med spår- och taktavstånd | ✅ 0.9.187 |
 | Kopiera hela spår | Ctrl+C på spårmarkering | Ctrl+C utan regionmarkering | ✅ 0.9.187 |
 | Klistra in | Ctrl+V vid spelhuvudet | Ctrl+V, klungan behåller sin form | ✅ 0.9.187 |
 | Klistra in på ursprunglig position | `Paste to original position` | — | ✗ |
 | Duplicera | Ctrl+D, Alt+drag | Ctrl+D (region eller spår) | ◐ ingen Alt+drag-kopia |
 | Flytta flera regioner samtidigt | alla markerade följer med | `RegionDragState::multi_initial`, samma förskjutning | ✅ 0.9.188 |
-| Gruppera spår | mappar (folder) med djup och routing | `TrackGroup`, Fäll ihop/upp, Ctrl+G | ◐ grupp utan routing |
-| Gruppera objekt | Ctrl+G, gruppmatris | — | ✗ |
-| Ripple-redigering | av/spår/alla | — | ✗ |
-| Razor edits | dela/duplicera över markerat område | — | ✗ |
-| Tidsmarkering | drag i regeln, loop-punkter | loop_start/loop_end i takter | ◐ ingen tidsmarkering |
+| Gruppera spår | mappar (folder) med djup och routing | `TrackGroup`, Fäll ihop/upp, Ctrl+G; VCA ger gruppvolym | ◐ ingen mapp-routing |
+| Gruppera objekt | Ctrl+G, gruppmatris | `item_groups` per region-id, klick/drag tar hela gruppen, Alt+drag kopierar | ✅ 0.9.189 (ingen matris) |
+| Ripple-redigering | av/spår/alla | `RippleMode` av/spår/alla: borttagning stänger gapet, inklistring skjuter undan | ✅ 0.9.190 |
+| Razor edits | dela/duplicera över markerat område | `Ctrl+Shift+X` tar bort tidsmarkeringen: klipper, delar och tar bort | ◐ bara borttagning |
+| Tidsmarkering | drag i regeln, loop-punkter | `time_selection` sätts av rammarkeringen, Escape rensar | ◐ inte från regeln |
 | Ångra-historik | fönster med namngivna steg | `push_undo` med namn, ingen lista | ◐ |
 | Musmodifierare | fritt mappbara | hårdkodade | ✗ |
 
@@ -38,10 +38,10 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
   och delar som skulle hamna utanför projektet hoppas över i stället för att skapa spår.
 - Ctrl+G grupperar markerade spår, Shift+Ctrl+G löser upp.
 
-## Nästa steg, i den ordning de låser upp mest
+## Nästa steg
 
-1. **Rammarkering** i spårbanan (högerdrag) — kräver att `Sense::drag` skiljs från
-   regiondragningen, som redan äger vänsterdrag.
-2. **Objektgrupper** (`Ctrl+G` på regioner, `group_id` + gemensam förskjutning) — bygger på
-   samma förskjutningslogik som multi-flytten.
-3. **Mappar med routing** — en grupp som också äger volym/mute för sina medlemmar.
+1. **Ramarkering över flera spår** — i dag gäller ramen spåret man drar i.
+2. **Razor: duplicera** området, inte bara ta bort.
+3. **Mappar med routing** — VCA ger gruppvolym, men en mapp som barnspåren routas genom
+   finns inte; det kräver en nivå i buss-grafen.
+4. **Fria musmodifierare** — snabbkommandona är hårdkodade i `frame.rs`.

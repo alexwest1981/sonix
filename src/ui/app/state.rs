@@ -524,6 +524,34 @@ pub struct TrackGroup {
     pub collapsed: bool,
 }
 
+/// **Ripple-redigering** (REAPER): när något tas bort eller klistras in följer det som
+/// ligger efter med, antingen på samma spår eller på alla spår.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RippleMode {
+    #[default]
+    Off,
+    Track,
+    All,
+}
+
+impl RippleMode {
+    pub fn label(self) -> &'static str {
+        match self {
+            RippleMode::Off => "Ripple: av",
+            RippleMode::Track => "Ripple: spår",
+            RippleMode::All => "Ripple: alla",
+        }
+    }
+
+    pub fn next(self) -> Self {
+        match self {
+            RippleMode::Off => RippleMode::Track,
+            RippleMode::Track => RippleMode::All,
+            RippleMode::All => RippleMode::Off,
+        }
+    }
+}
+
 /// **Flera kopierade regioner.** `items` bär spåravståndet från det första markerade
 /// spåret, `anchor_bar` den tidigaste starttakt som varje `start_bar` mäts mot — så
 /// klistras klungor in med sitt inbördes avstånd i både tid och spår.
@@ -560,6 +588,18 @@ pub fn expand_with_groups(
         }
     }
     next
+}
+
+/// Regioner i ett spår vars tid överlappar [from, to] — grunden för rammarkering.
+pub fn regions_in_bar_range(track: &PlaylistTrack, from: f32, to: f32) -> Vec<usize> {
+    let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
+    track
+        .regions
+        .iter()
+        .enumerate()
+        .filter(|(_, r)| r.start_bar < hi && (r.start_bar + r.length_bars) > lo)
+        .map(|(i, _)| i)
+        .collect()
 }
 
 /// Bygger en klunga ur de markerade regionerna: spåravstånd från det första spåret och
@@ -1998,6 +2038,28 @@ mod crossfade_tests {
         );
         t.regions = regions;
         t
+    }
+
+    /// Ramarkeringens urval: bara regioner som faktiskt överlappar intervallet, och
+    /// omvänd riktning (man drar åt vänster) ska ge samma svar.
+    #[test]
+    fn a_bar_range_finds_the_regions_it_touches() {
+        let t = track_with(vec![
+            region(1, 0.0, 2.0),
+            region(2, 4.0, 2.0),
+            region(3, 8.0, 2.0),
+        ]);
+        assert_eq!(regions_in_bar_range(&t, 1.5, 4.5), vec![0, 1]);
+        assert_eq!(regions_in_bar_range(&t, 4.5, 1.5), vec![0, 1]);
+        assert!(regions_in_bar_range(&t, 20.0, 21.0).is_empty());
+    }
+
+    /// Ripple-knappen cyklar av → spår → alla och tillbaka.
+    #[test]
+    fn the_ripple_switch_cycles() {
+        assert_eq!(RippleMode::Off.next(), RippleMode::Track);
+        assert_eq!(RippleMode::Track.next(), RippleMode::All);
+        assert_eq!(RippleMode::All.next(), RippleMode::Off);
     }
 
     /// **En grupperad region drar med sig hela gruppen** — även en medlem på ett annat spår,

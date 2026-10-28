@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.190] - 2026-10-28
+
+**Ramarkering, ripple-redigering och razor.** De tre sätten att arbeta på ett *område* i
+stället för på en region i taget.
+
+- **Ramarkering**: drag som börjar i tom yta markerar regionerna man drar över, ritar en
+  cyan ram och lämnar intervallet som tidsmarkering. Gäller spåret man drar i.
+- **Ripple** (knapp i verktygsraden, av → spår → alla): borttagning stänger gapet och
+  inklistring skjuter undan det som ligger efter, på samma spår eller alla.
+- **Razor** (`Ctrl+Shift+X`): tar bort tidsmarkeringen — regioner helt innanför tas bort,
+  de som sticker in kapas, och en region som spänner över hela området delas i två med
+  korrekt sampling-offset och beskuren vågformsbild. `Escape` rensar markeringen.
+- Prov: intervallurvalet tar bara regioner som överlappar (och klarar omvänd dragning),
+  och ripple-knappen cyklar av → spår → alla.
+
 ## [0.9.189] - 2026-10-28
 
 **Objektgrupper, Alt+drag-kopia, klistra på ursprunglig plats och ångra-historik.**

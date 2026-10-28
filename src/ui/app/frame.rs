@@ -713,6 +713,18 @@ impl SonixApp {
                         };
                     }
                 }
+                // Ctrl+Shift+X: razor — ta bort tidsmarkeringen (REAPER).
+                if i.key_pressed(egui::Key::X) && i.modifiers.shift {
+                    let n = self.razor_delete_area();
+                    if n == 0 && self.time_selection.is_none() {
+                        self.status_message =
+                            "✂️ Ingen tidsmarkering — dra i tom yta på tidslinjen först".to_string();
+                    }
+                }
+                // Escape rensar tidsmarkeringen.
+                if i.key_pressed(egui::Key::Escape) && !wants_keyboard {
+                    self.time_selection = None;
+                }
                 // Ctrl+Alt+Z: ångra-historiken (REAPER).
                 if i.modifiers.alt && i.key_pressed(egui::Key::Z) {
                     self.show_undo_history_modal = true;
@@ -727,7 +739,7 @@ impl SonixApp {
                         self.playlist_tracks.len()
                     );
                 }
-                if i.key_pressed(egui::Key::B) || i.key_pressed(egui::Key::X) {
+                if i.key_pressed(egui::Key::B) || (i.key_pressed(egui::Key::X) && !i.modifiers.shift) {
                     self.split_selected_region_at_playhead();
                 }
                 if i.key_pressed(egui::Key::D) {

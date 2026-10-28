@@ -567,6 +567,13 @@ pub struct SonixApp {
     pub item_groups: std::collections::HashMap<usize, u32>,
     pub next_item_group_id: u32,
     pub show_undo_history_modal: bool,
+    /// Ripple-läge: stänger gapet vid borttagning och skjuter undan vid inklistring.
+    pub ripple_mode: crate::ui::app::state::RippleMode,
+    /// Pågående rammarkering: (spår, starttakt, sluttakt). Släppet markerar regionerna
+    /// som överlappar intervallet och lämnar intervallet som tidsmarkering.
+    pub marquee: Option<(usize, f32, f32)>,
+    /// Tidsmarkering i takter (RAZOR-området).
+    pub time_selection: Option<(f32, f32)>,
     // Automation curves (Fas 5.4)
     pub show_automation: bool,
     /// Texturen för logotypen (samma bild som fönsterikonen). Laddas första gången den ritas.
@@ -1260,6 +1267,9 @@ impl SonixApp {
             item_groups: std::collections::HashMap::new(),
             next_item_group_id: 1,
             show_undo_history_modal: false,
+            ripple_mode: crate::ui::app::state::RippleMode::Off,
+            marquee: None,
+            time_selection: None,
             show_automation: false,
             logo_texture: None,
             automation_target: AutomationTarget::Track(AutomationParam::Volume),
