@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.183] - 2026-10-28
+
+**Export av spågrupper som egna filer.** Det sista av FL-kommandoytan som handlade om export:
+gruppbakningen fanns, men ingen väg att få ut varje grupp som en fil.
+
+- Fjärde valet i exportens omfång: **Spågrupper – en fil per grupp**. Varje grupp får en fil
+  med bara sina spår hörda, via samma `isolate_group` som gruppbakningen använder — gruppens
+  spår solas och övriga spårs tidslinjeljud töms, så filen bär gruppen och inget annat.
+- Tomma grupper hoppas över, och en grupp vars namn blir tomt i filnamnet får `GruppN`.
+- Gruppfilerna går genom samma bakgrundstråd som resten av exporten.
+
 ## [0.9.182] - 2026-10-28
 
 **Exporten renderar i bakgrunden.** FL:s `Background rendering` var det sista i kommandoytan

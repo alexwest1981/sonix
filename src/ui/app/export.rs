@@ -993,10 +993,11 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
             ui.group(|ui| {
                 ui.label(egui::RichText::new(self.tr("1. VAD SKALL EXPORTERAS")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
                 ui.separator();
-                let scopes: [(&'static str, &'static str); 3] = [
+                let scopes: [(&'static str, &'static str); 4] = [
                     (crate::i18n::t("Hel låt – Master Mix (Fullt Projekt)"), crate::i18n::t("Renderar hela låten/arrangemanget med alla Channel Rack-samples, tidslinje-audio (stems/mic) och master-effekter.")),
                     (crate::i18n::t("Individuella spår – Torra (Stems Dry)"), crate::i18n::t("Exporterar varje tidslinjespår för sig utan reverb/delay för extern mixning.")),
                     (crate::i18n::t("Individuella spår – Med FX (Stems Wet)"), crate::i18n::t("Exporterar varje tidslinjespår för sig med alla effekter och modulation.")),
+                    ("Spågrupper – en fil per grupp", "Exporterar varje spågrupp för sig, med bara gruppens spår hörda. Tomma grupper hoppas över."),
                 ];
                 for (i, (title, desc)) in scopes.iter().enumerate() {
                     if ui.selectable_label(self.render_scope_idx == i, format!("⦿ {}", self.tr(title))).clicked() {
@@ -1218,6 +1219,7 @@ pub fn execute_batch_export(&mut self) {
 
     let dry = self.render_scope_idx == 1;
     let stem_mode = self.render_scope_idx == 1 || self.render_scope_idx == 2;
+    let group_mode = self.render_scope_idx == 3;
 
     if let Err(e) = std::fs::create_dir_all(&folder) {
         self.render_queue_status = crate::tstatus!("✘ Kan inte skapa mapp: {}", e);
@@ -1244,6 +1246,33 @@ pub fn execute_batch_export(&mut self) {
                 path: format!("{}/{}.{}", folder, file_stem, fmt.ext()),
                 spec: self.build_render_spec(Some(t_idx), sample_rate),
                 meta: stem_meta,
+                normalize: false,
+            });
+        }
+    } else if group_mode {
+        // **En fil per spågrupp.** Samma isolering som gruppbakningen använder: gruppens spår
+        // solas och övriga spårs tidslinjeljud töms, så filen bär gruppen och inget annat.
+        for (g_idx, group) in self.track_groups.iter().enumerate() {
+            let members: Vec<usize> = self
+                .playlist_tracks
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| t.group == Some(g_idx))
+                .map(|(i, _)| i)
+                .collect();
+            if members.is_empty() {
+                continue;
+            }
+            let mut spec = self.build_render_spec(None, sample_rate);
+            Self::isolate_group(&mut spec, &members);
+            let safe = crate::audio::sanitize_filename(&group.name);
+            let label = if safe.is_empty() { format!("Grupp{}", g_idx + 1) } else { safe };
+            let mut group_meta = meta.clone();
+            group_meta.title = format!("{} ({})", base, group.name);
+            files.push(RenderFile {
+                path: format!("{}/{}_{}.{}", folder, base, label, fmt.ext()),
+                spec,
+                meta: group_meta,
                 normalize: false,
             });
         }
