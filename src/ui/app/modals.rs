@@ -2414,6 +2414,8 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     let mut swap_request: Option<usize> = None;
     let mut group_new_request: Option<usize> = None;
     let mut group_toggle_request: Option<usize> = None;
+    // `Some(true)` = fäll ihop alla, `Some(false)` = fäll upp alla.
+    let mut group_collapse_all_request: Option<bool> = None;
     let mut unfreeze_request: Option<usize> = None;
     let mut flatten_request: Option<usize> = None;
     let mut consolidate_request: Option<usize> = None;
@@ -2422,6 +2424,8 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     // Samma karta som tidlinjen (Fas 8.2 steg 3): panelen visar tider, och en tid efter
     // ett tempobyte är bara rätt om den kommer från kartan.
     let tempo = self.tempo_map();
+    // Spelhuvudets takt, för korsningen som bara gäller skarven man står på.
+    let playhead_bar = tempo.bar_at_secs(self.song_time as f64) as f32;
 
     // **De fyra frågorna `sec_per_bar` svarade på — men med fel svar efter ett
     // tempobyte** (Fas 8.2 steg 3). En *plats* i tiden, en *längd*, en *omvändning*
@@ -2574,6 +2578,17 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                                     group_toggle_request = Some(g);
                                 }
                             }
+                        }
+                        // **Alla grupper på en gång** (FL: `Collapse all grouped tracks`).
+                        if !self.track_groups.is_empty() {
+                            ui.horizontal(|ui| {
+                                if ui.small_button("📁 Fäll ihop alla").clicked() {
+                                    group_collapse_all_request = Some(true);
+                                }
+                                if ui.small_button("📁 Fäll upp alla").clicked() {
+                                    group_collapse_all_request = Some(false);
+                                }
+                            });
                         }
                         // **Byt källa:** spåret behåller mix och inställningar, bara ljudet byts.
                         if track.pcm_audio.is_some()
@@ -3004,6 +3019,14 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                         ui.add_space(6.0);
                         if ui.button(crate::i18n::t("✚ Korsa överlappande klipp")).clicked()
                             && track.create_crossfades() > 0
+                        {
+                            trigger_region_sync = true;
+                        }
+                        if ui
+                            .button("✚ Korsa vid spelhuvudet")
+                            .on_hover_text("Korsar bara skarven som ligger närmast spelhuvudet, inte hela spåret")
+                            .clicked()
+                            && track.create_crossfade_at(playhead_bar) > 0
                         {
                             trigger_region_sync = true;
                         }

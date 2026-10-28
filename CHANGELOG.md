@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.186] - 2026-10-28
+
+**Korsning vid spelhuvudet och alla grupper på en gång.** De två sista raderna i FL-kommandoytan
+som gick att bygga utan ett nytt urvalslager.
+
+- **✚ Korsa vid spelhuvudet**: bara skarven närmast spelhuvudet korsas, inte hela spåret.
+  `create_crossfade_at(bar)` väljer det överlappande paret vars skarv ligger närmast och
+  använder samma regel som `create_crossfades` (halva regionen som tak). Prov: med två skarvar
+  rörs bara den vid spelhuvudet, och utan överlapp händer ingenting.
+- **📁 Fäll ihop/upp alla**: `set_all_groups_collapsed` fäller alla grupper och räknar bara dem
+  som faktiskt ändrades, så statusraden inte säger "3" när två redan stod rätt.
+- Inventariet uppdaterat: `Create crossfade`-raden och gruppraden stämmer nu med koden.
+
 ## [0.9.185] - 2026-10-28
 
 **Spågrupperna sparas i projektet.** De fanns bara i minnet: en grupp och dess ihopfällda

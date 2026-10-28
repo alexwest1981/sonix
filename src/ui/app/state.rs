@@ -521,6 +521,19 @@ pub struct TrackGroup {
     pub collapsed: bool,
 }
 
+/// **Fäll ihop eller upp alla grupper** (FL: `Collapse all grouped tracks`). Ren funktion så
+/// regeln går att pröva utan ett fönster; returnerar antalet grupper som faktiskt ändrades.
+pub fn set_all_groups_collapsed(groups: &mut [TrackGroup], collapsed: bool) -> usize {
+    let mut changed = 0;
+    for g in groups.iter_mut() {
+        if g.collapsed != collapsed {
+            g.collapsed = collapsed;
+            changed += 1;
+        }
+    }
+    changed
+}
+
 /// Är spåret dolt därför att dess grupp är ihopfälld? Det **första** spåret i gruppen syns
 /// alltid, så att gruppen har en rad att klicka på.
 pub fn track_hidden(tracks: &[PlaylistTrack], groups: &[TrackGroup], idx: usize) -> bool {
@@ -1546,6 +1559,33 @@ impl PlaylistTrack {
     /// att tona på. Motsvarar FL:s `Automatic crossfades` / `Create crossfade`.
     /// Returnerar antalet korsningar som skapades.
     pub fn create_crossfades(&mut self) -> usize {
+        let mut made = 0;
+        for (a, b) in self.overlapping_pairs() {
+            if self.crossfade_pair(a, b) {
+                made += 1;
+            }
+        }
+        made
+    }
+
+    /// **Korsning vid spelhuvudet** (FL: `Create crossfade`): den skarv som ligger närmast
+    /// `bar` får korsningen — inte hela spåret. Returnerar 1 när en korsning skapades.
+    pub fn create_crossfade_at(&mut self, bar: f32) -> usize {
+        let mut best: Option<(usize, usize, f32)> = None;
+        for (a, b) in self.overlapping_pairs() {
+            let distance = (self.regions[b].start_bar - bar).abs();
+            if best.is_none_or(|(_, _, d)| distance < d) {
+                best = Some((a, b, distance));
+            }
+        }
+        match best {
+            Some((a, b, _)) if self.crossfade_pair(a, b) => 1,
+            _ => 0,
+        }
+    }
+
+    /// Regionparen som överlappar, i tidsordning — den enda definitionen av "en skarv".
+    fn overlapping_pairs(&self) -> Vec<(usize, usize)> {
         let mut order: Vec<usize> = (0..self.regions.len()).collect();
         order.sort_by(|a, b| {
             self.regions[*a]
@@ -1553,26 +1593,29 @@ impl PlaylistTrack {
                 .partial_cmp(&self.regions[*b].start_bar)
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
-        let mut made = 0;
-        for pair in order.windows(2) {
-            let (a, b) = (pair[0], pair[1]);
-            let end_a = self.regions[a].start_bar + self.regions[a].length_bars;
-            let start_b = self.regions[b].start_bar;
-            let overlap = end_a - start_b;
-            if overlap <= 0.001 {
-                continue;
-            }
-            let fade = overlap
-                .min(self.regions[a].length_bars * 0.5)
-                .min(self.regions[b].length_bars * 0.5);
-            if fade <= 0.001 {
-                continue;
-            }
-            self.regions[a].fade_out_bars = fade;
-            self.regions[b].fade_in_bars = fade;
-            made += 1;
+        order
+            .windows(2)
+            .filter(|pair| {
+                let end_a = self.regions[pair[0]].start_bar + self.regions[pair[0]].length_bars;
+                end_a - self.regions[pair[1]].start_bar > 0.001
+            })
+            .map(|pair| (pair[0], pair[1]))
+            .collect()
+    }
+
+    /// Lägger in- och ut-toning över överlappet, högst halva respektive region.
+    fn crossfade_pair(&mut self, a: usize, b: usize) -> bool {
+        let end_a = self.regions[a].start_bar + self.regions[a].length_bars;
+        let overlap = end_a - self.regions[b].start_bar;
+        let fade = overlap
+            .min(self.regions[a].length_bars * 0.5)
+            .min(self.regions[b].length_bars * 0.5);
+        if fade <= 0.001 {
+            return false;
         }
-        made
+        self.regions[a].fade_out_bars = fade;
+        self.regions[b].fade_in_bars = fade;
+        true
     }
 
     /// **Delar ett klipp på en taktgräns** och lägger den högra delen efter.
@@ -1841,6 +1884,30 @@ mod crossfade_tests {
         t
     }
 
+    /// **Bara skarven vid spelhuvudet.** Två skarvar, spelhuvudet vid den första: den
+    /// andra ska stå orörd, annars är kommandot samma sak som "korsa allt".
+    #[test]
+    fn a_crossfade_at_the_playhead_touches_only_the_nearest_seam() {
+        let mut t = track_with(vec![
+            region(1, 0.0, 4.2),  // slutar 4,2
+            region(2, 4.0, 4.2),  // skarv vid 4,0 (överlapp 0,2)
+            region(3, 8.0, 4.2),  // skarv vid 8,0 (överlapp 0,2)
+        ]);
+        assert_eq!(t.create_crossfade_at(4.1), 1);
+        assert!(t.regions[0].fade_out_bars > 0.0, "skarven vid 4,0");
+        assert!(t.regions[1].fade_in_bars > 0.0);
+        assert_eq!(t.regions[1].fade_out_bars, 0.0, "skarven vid 8,0 rörs inte");
+        assert_eq!(t.regions[2].fade_in_bars, 0.0);
+    }
+
+    /// Utan överlapp finns ingen skarv att korsa — kommandot ska säga noll, inte gissa.
+    #[test]
+    fn a_crossfade_at_the_playhead_needs_an_overlap() {
+        let mut t = track_with(vec![region(1, 0.0, 4.0), region(2, 4.0, 4.0)]);
+        assert_eq!(t.create_crossfade_at(4.0), 0);
+        assert_eq!(t.regions[0].fade_out_bars, 0.0);
+    }
+
     #[test]
     fn a_crossfade_is_as_long_as_the_overlap() {
         // 0–4 och 3–7 överlappar en takt: den tidigare tonar ut, den senare in.
@@ -2104,6 +2171,21 @@ mod track_group_tests {
 
     /// **En ihopfälld grupp visar sitt första spår och gömmer resten** — och det första syns
     /// även när gruppen är ihopfälld, annars gick den aldrig att fälla upp igen.
+    /// Alla grupper på en gång: bara de som faktiskt ändras räknas, så statusraden kan säga
+    /// sanningen även när hälften redan stod rätt.
+    #[test]
+    fn all_groups_can_be_collapsed_and_expanded_at_once() {
+        let mut groups = vec![
+            TrackGroup { name: "A".to_string(), collapsed: false },
+            TrackGroup { name: "B".to_string(), collapsed: true },
+            TrackGroup { name: "C".to_string(), collapsed: false },
+        ];
+        assert_eq!(set_all_groups_collapsed(&mut groups, true), 2);
+        assert!(groups.iter().all(|g| g.collapsed));
+        assert_eq!(set_all_groups_collapsed(&mut groups, false), 3);
+        assert!(groups.iter().all(|g| !g.collapsed));
+    }
+
     #[test]
     fn a_collapsed_group_hides_all_but_its_first_track() {
         let tracks = vec![track(Some(0)), track(Some(0)), track(None), track(Some(0))];
