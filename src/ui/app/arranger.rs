@@ -1099,6 +1099,17 @@ impl SonixApp {
                         self.move_selected_track(1);
                         ui.close_menu();
                     }
+                    ui.separator();
+                    if ui.button(crate::i18n::t("🔀 Skicka till ledig buss")).clicked() {
+                        if self.send_selected_tracks_to_free_bus().is_none() {
+                            self.status_message = "🔀 Alla bussar används redan".to_string();
+                        }
+                        ui.close_menu();
+                    }
+                    if ui.button(crate::i18n::t("⏏ Tillbaka till standardbussen")).clicked() {
+                        self.send_selected_tracks_to_default_bus();
+                        ui.close_menu();
+                    }
                     if self.copied_region.is_some()
                         && ui.button(crate::i18n::t("📋 Klistra in sample här (Ctrl+V)")).clicked() {
                             track_paste_idx = Some(t_idx);

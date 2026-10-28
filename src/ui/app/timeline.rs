@@ -1579,6 +1579,55 @@ impl SonixApp {
         moved
     }
 
+    /// **Skickar de markerade spåren till en ledig buss** — samma sak som att routa in dem
+    /// i en mapp: de får en gemensam fader i mixern. Buss 3 är standardvägen och räknas
+    /// därför inte som ledig. `None` när alla bussar redan används.
+    pub fn send_selected_tracks_to_free_bus(&mut self) -> Option<usize> {
+        let used: std::collections::BTreeSet<usize> = self
+            .playlist_tracks
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !self.selected_tracks.contains(i))
+            .map(|(_, t)| t.bus.min(crate::audio::synth::NUM_BUSES - 1))
+            .collect();
+        let free = (0..crate::audio::synth::NUM_BUSES - 1).find(|b| !used.contains(b))?;
+        self.push_undo("Skicka spår till buss");
+        let mut touched = 0;
+        for t in self.selected_tracks.clone() {
+            if let Some(track) = self.playlist_tracks.get_mut(t) {
+                track.bus = free;
+                touched += 1;
+            }
+        }
+        for t in self.selected_tracks.clone() {
+            self.sync_track_audio_state(t);
+        }
+        self.status_message = crate::tstatus!(
+            "🔀 Skickade {} spår till bussen '{}'",
+            touched,
+            crate::i18n::t(crate::audio::synth::BUS_NAMES[free])
+        );
+        Some(free)
+    }
+
+    /// Tillbaka till standardbussen (den sista), för de markerade spåren.
+    pub fn send_selected_tracks_to_default_bus(&mut self) -> usize {
+        let default_bus = crate::audio::synth::NUM_BUSES - 1;
+        self.push_undo("Skicka spår till standardbuss");
+        let mut touched = 0;
+        for t in self.selected_tracks.clone() {
+            if let Some(track) = self.playlist_tracks.get_mut(t) {
+                track.bus = default_bus;
+                touched += 1;
+            }
+        }
+        for t in self.selected_tracks.clone() {
+            self.sync_track_audio_state(t);
+        }
+        self.status_message = crate::tstatus!("⏏ Skickade {} spår tillbaka till standardbussen", touched);
+        touched
+    }
+
     /// **Flyttar det primära spåret upp eller ner** i listan och synkar om motorn.
     /// Markeringen följer med, så nästa kommando träffar samma spår som före flytten.
     pub fn move_selected_track(&mut self, delta: isize) -> bool {

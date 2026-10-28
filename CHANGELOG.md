@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.199] - 2026-10-28
+
+**Mapp-routing i ett svep.** `Ctrl+Alt+B` skickar de markerade spåren till den första lediga
+bussen, så de får en gemensam fader i mixern; `Ctrl+Alt+Shift+B` tar dem tillbaka till
+standardbussen. Valet finns också i spårrubrikens meny. Buss 3 (standardvägen) räknas aldrig
+som ledig, och när alla bussar används säger statusraden det i stället för att gissa.
+Bussvalet sparas i projektet som förut.
+
 ## [0.9.198] - 2026-10-28
 
 **Spårordning med musen.** Dra i spårrubriken och en orange infogningslinje visar var spåret

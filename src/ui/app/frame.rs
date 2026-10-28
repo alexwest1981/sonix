@@ -725,6 +725,14 @@ impl SonixApp {
                 if i.key_pressed(egui::Key::Escape) && !wants_keyboard && !modal_open {
                     self.time_selection = None;
                 }
+                // Ctrl+Alt+B: skicka markerade spår till en ledig buss (mapp-routing).
+                if i.key_pressed(egui::Key::B) && i.modifiers.alt {
+                    if i.modifiers.shift {
+                        self.send_selected_tracks_to_default_bus();
+                    } else if self.send_selected_tracks_to_free_bus().is_none() {
+                        self.status_message = "🔀 Alla bussar används redan".to_string();
+                    }
+                }
                 // Ctrl+Shift+↑/↓: flytta spåret i listan.
                 if i.modifiers.shift && i.key_pressed(egui::Key::ArrowUp) {
                     self.move_selected_track(-1);
