@@ -1302,6 +1302,47 @@ impl SonixApp {
     ///
     /// Arbetar på en kopia och byter först när något faktiskt lagats — ett spår utan klickar ska
     /// inte få ny identitet på sin buffer (och därmed ingen omritad vågform) för ingenting.
+    /// **Öppnar spektral målning** för ett spår: analyserar ljudet och visar spektrogrammet.
+    pub(crate) fn open_spectral_editor(&mut self, t_idx: usize) {
+        let Some(track) = self.playlist_tracks.get(t_idx) else {
+            return;
+        };
+        let Some((l, r, sr)) = track.pcm_audio.clone() else {
+            self.status_message = "Spåret har inget ljud att måla på".to_string();
+            return;
+        };
+        let name = track.name.clone();
+        self.spectral_editor = Some(crate::ui::spectral_editor::SpectralEditor::new(t_idx, name, &l, &r, sr as f32));
+    }
+
+    /// Gör målningen till ljud: masken appliceras på spårets buffer, sedan synkas stammarna.
+    /// Ingen målning = ingen ny buffer — ett spår ska inte få ny identitet för ingenting.
+    pub(crate) fn apply_spectral_paint(&mut self) {
+        let Some(editor) = self.spectral_editor.take() else {
+            return;
+        };
+        let painted = editor.mask.painted_cells();
+        if painted == 0 {
+            self.spectral_editor = Some(editor);
+            self.status_message = "Inget målat — verkställer inget".to_string();
+            return;
+        }
+        let Some(track) = self.playlist_tracks.get_mut(editor.track) else {
+            return;
+        };
+        let Some((l, r, sr)) = track.pcm_audio.clone() else {
+            return;
+        };
+        let (left, right) = editor.mask.apply(&l, &r);
+        track.pcm_audio = Some((
+            std::sync::Arc::new(left),
+            std::sync::Arc::new(right),
+            sr,
+        ));
+        self.sync_all_stems_to_engine();
+        self.status_message = crate::tstatus!("🎨 Målade {} rutor i spåret", painted);
+    }
+
     pub(crate) fn declick_track(&mut self, t_idx: usize) {
         let Some(track) = self.playlist_tracks.get_mut(t_idx) else {
             return;

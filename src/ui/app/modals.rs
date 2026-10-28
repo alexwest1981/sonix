@@ -2410,6 +2410,7 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     let mut bounce_request: Option<usize> = None;
     let mut group_bounce_request: Option<usize> = None;
     let mut declick_request: Option<usize> = None;
+    let mut spectral_request: Option<usize> = None;
     let mut swap_request: Option<usize> = None;
     let mut group_new_request: Option<usize> = None;
     let mut group_toggle_request: Option<usize> = None;
@@ -2588,6 +2589,13 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
                                 .clicked()
                         {
                             declick_request = Some(t_idx);
+                        }
+                        if track.pcm_audio.is_some()
+                            && ui.add(egui::Button::new(egui::RichText::new("🎨 Spektral målning").color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().border()))
+                                .on_hover_text("Måla dämpning direkt på spårets spektrogram — för att plocka bort ett ljud utan att röra resten.")
+                                .clicked()
+                        {
+                            spectral_request = Some(t_idx);
                         }
                     }
 
@@ -3119,6 +3127,9 @@ pub(crate) fn render_stem_focus_modal(&mut self, ctx: &egui::Context) {
     }
     if let Some(target) = declick_request {
         self.declick_track(target);
+    }
+    if let Some(target) = spectral_request {
+        self.open_spectral_editor(target);
     }
     if let Some(t_idx) = group_new_request {
         let name = crate::tstatus!("Grupp {}", self.track_groups.len() + 1);

@@ -422,6 +422,9 @@ pub struct SonixApp {
     pub plugin_handles: Vec<Option<crate::audio::plugin_host_live::PluginHandle>>,
     /// Open plugin-GUI windows, one slot per stem track.
     pub plugin_gui_sessions: Vec<Option<crate::audio::plugin_gui::GuiSession>>,
+    /// **Spektral målning** för ett spår, när verktyget är öppet. Masken lever här tills
+    /// användaren trycker Verkställ — stängs fönstret kastas målningen.
+    pub spectral_editor: Option<crate::ui::spectral_editor::SpectralEditor>,
     /// Effekter utan egen GUI (Sonix inbyggda) ritas som en egui-ruta i stället: en rad per
     /// parameter, ett fönster per spår.
     pub plugin_param_windows: Vec<bool>,
@@ -1140,6 +1143,7 @@ impl SonixApp {
             plugin_slots: Vec::new(),
             plugin_handles: Vec::new(),
             plugin_gui_sessions: Vec::new(),
+            spectral_editor: None,
             plugin_param_windows: Vec::new(),
             retired_plugin_handles: Vec::new(),
             #[cfg(feature = "plugin-host")]

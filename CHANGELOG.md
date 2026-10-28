@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.180] - 2026-10-28
+
+**Spektral målning: dämpa ett ljud genom att måla på dess spektrogram.** Verktyget ligger i
+spårets verktygsrad och är den interaktion som REAPERs `spectro_filter_paint` är — utan att en
+rad är lånad.
+
+- `audio::spectral_edit`: STFT 1024/256 med Hann, spektrogram i dBFS, mask per (bildruta, bin)
+  och `apply` som gör masken till ljud igen. Vyn är högst 1024 × 256 rutor även för långt
+  ljud, och raderna är vända så hög frekvens ligger överst.
+- `Mask::apply` lägger en framruta på N sampel: utan den är de första ~768 samplen för svaga,
+  eftersom överlapp-adderingen bara är exakt där alla fyra fönstren bidrar.
+- `ui::spectral_editor`: spektrogram som textur, målning som RGBA-lager, pensel (1–12 rutor)
+  och dämpning 0…−60 dB. `Verkställ` byter spårets buffer och synkar stammarna — bara om något
+  målats.
+- **Mätt:** tom mask rekonstruerar insignalen (< 1e-3), 1 kHz-målning dämpar 1 kHz ≥30 dB och
+  lämnar 4 kHz inom 1,5 dB, och fönstret ritas i en headless egui-bildruta.
+
 ## [0.9.179] - 2026-10-28
 
 **Elva egna effekter, byggda här.** `src/audio/builtin_fx/` är ett register i stället för nio

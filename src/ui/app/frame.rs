@@ -349,6 +349,13 @@ impl SonixApp {
         // Keep embedded plugin editors responsive (Fas 4.4b).
         self.poll_plugin_guis();
         self.render_plugin_param_windows(ctx);
+        if let Some(editor) = self.spectral_editor.as_mut() {
+            match crate::ui::spectral_editor::render_spectral_editor(ctx, editor) {
+                crate::ui::spectral_editor::SpectralAction::Apply => self.apply_spectral_paint(),
+                crate::ui::spectral_editor::SpectralAction::Close => self.spectral_editor = None,
+                crate::ui::spectral_editor::SpectralAction::None => {}
+            }
+        }
         // Supervise the out-of-process sandbox worker (Fas 4.5a).
         #[cfg(feature = "plugin-host")]
         self.poll_plugin_sandbox();

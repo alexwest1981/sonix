@@ -16,6 +16,7 @@ pub mod patcher_view;
 pub mod plugins_view;
 pub mod launcher_view;
 pub mod song_structure_modal;
+pub mod spectral_editor;
 pub mod stem_view;
 pub mod theme;
 pub mod tuner_modal;
