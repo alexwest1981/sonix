@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.191] - 2026-10-28
+
+**Tidsmarkering från regeln.** Shift+drag i regeln markerar tid i stället för att flytta
+spelhuvudet, och området syns som ett cyan band i regeln. Samma markering som rammarkeringen
+lämnar, så `Ctrl+Shift+X` (razor) arbetar på båda.
+
 ## [0.9.190] - 2026-10-28
 
 **Ramarkering, ripple-redigering och razor.** De tre sätten att arbeta på ett *område* i

@@ -574,6 +574,8 @@ pub struct SonixApp {
     pub marquee: Option<(usize, f32, f32)>,
     /// Tidsmarkering i takter (RAZOR-området).
     pub time_selection: Option<(f32, f32)>,
+    /// Ankaret när man drar en tidsmarkering i regeln.
+    pub time_sel_anchor: Option<f32>,
     // Automation curves (Fas 5.4)
     pub show_automation: bool,
     /// Texturen för logotypen (samma bild som fönsterikonen). Laddas första gången den ritas.
@@ -1270,6 +1272,7 @@ impl SonixApp {
             ripple_mode: crate::ui::app::state::RippleMode::Off,
             marquee: None,
             time_selection: None,
+            time_sel_anchor: None,
             show_automation: false,
             logo_texture: None,
             automation_target: AutomationTarget::Track(AutomationParam::Volume),

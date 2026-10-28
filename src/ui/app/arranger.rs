@@ -1433,33 +1433,61 @@ impl SonixApp {
                         ui.memory_mut(|m| m.stop_text_input());
                         if let Some(mouse_pos) = ruler_resp.hover_pos() {
                             let click_bar = (mouse_pos.x - ruler_rect.min.x) / bar_w;
-                            // Snäppningen sker i TAKTER, inte i sekunder: ett
-                            // 16-delssteg är en plats i takten, och över ett
-                            // tempobyte finns inget enda "sekunder per takt" att
-                            // räkna steg med. Sekunderna kommer ur kartan på ett
-                            // ställe, efteråt.
-                            let tempo = self.tempo_map();
-                            let target_sec = match self.timeline_snap_mode {
-                                TimeSnapMode::FreeHundredth => {
-                                    // Hundradelar är en TID, inte en plats:
-                                    // där är sekunden själv enheten.
-                                    let raw_sec = tempo.secs_at_bar(click_bar as f64) as f32;
-                                    (raw_sec * 100.0).round() / 100.0
+                            // **Shift+drag i regeln = tidsmarkering** (REAPER), i stället
+                            // för att flytta spelhuvudet.
+                            let shift_time_sel = ui.input(|i| i.modifiers.shift);
+                            if shift_time_sel {
+                                let bar = (click_bar * 4.0).round() / 4.0;
+                                let anchor = *self.time_sel_anchor.get_or_insert(bar);
+                                self.time_selection = Some((anchor.min(bar), anchor.max(bar)));
+                                if ui.input(|i| !i.pointer.primary_down()) {
+                                    self.time_sel_anchor = None;
                                 }
-                                TimeSnapMode::Snap16th => {
-                                    let bar = (click_bar * 16.0).round() / 16.0;
-                                    tempo.secs_at_bar(bar as f64) as f32
-                                }
-                                TimeSnapMode::SnapBeat => {
-                                    let bar = (click_bar * 4.0).round() / 4.0;
-                                    tempo.secs_at_bar(bar as f64) as f32
-                                }
-                                TimeSnapMode::SnapBar => {
-                                    tempo.secs_at_bar(click_bar.round() as f64) as f32
-                                }
-                            };
-                            scrub_target_sec = Some(target_sec.max(0.0));
-                            self.pattern_mode = false;
+                            } else {
+                                // Snäppningen sker i TAKTER, inte i sekunder: ett
+                                // 16-delssteg är en plats i takten, och över ett
+                                // tempobyte finns inget enda "sekunder per takt" att
+                                // räkna steg med. Sekunderna kommer ur kartan på ett
+                                // ställe, efteråt.
+                                let tempo = self.tempo_map();
+                                let target_sec = match self.timeline_snap_mode {
+                                    TimeSnapMode::FreeHundredth => {
+                                        // Hundradelar är en TID, inte en plats:
+                                        // där är sekunden själv enheten.
+                                        let raw_sec = tempo.secs_at_bar(click_bar as f64) as f32;
+                                        (raw_sec * 100.0).round() / 100.0
+                                    }
+                                    TimeSnapMode::Snap16th => {
+                                        let bar = (click_bar * 16.0).round() / 16.0;
+                                        tempo.secs_at_bar(bar as f64) as f32
+                                    }
+                                    TimeSnapMode::SnapBeat => {
+                                        let bar = (click_bar * 4.0).round() / 4.0;
+                                        tempo.secs_at_bar(bar as f64) as f32
+                                    }
+                                    TimeSnapMode::SnapBar => {
+                                        tempo.secs_at_bar(click_bar.round() as f64) as f32
+                                    }
+                                };
+                                scrub_target_sec = Some(target_sec.max(0.0));
+                                self.pattern_mode = false;
+                            }
+                        }
+                    }
+
+                    // Tidsmarkeringen syns i regeln (RAZOR-området).
+                    if let Some((a, b)) = self.time_selection {
+                        let x0 = ruler_rect.min.x + a.min(b) * bar_w;
+                        let x1 = ruler_rect.min.x + a.max(b) * bar_w;
+                        if (x1 - x0) > 1.0 {
+                            ui.painter().rect_filled(
+                                Rect::from_min_max(
+                                    Pos2::new(x0, ruler_rect.min.y + 2.0),
+                                    Pos2::new(x1, ruler_rect.max.y - 2.0),
+                                ),
+                                Rounding::same(2.0),
+                                crate::ui::theme::palette().cyan().gamma_multiply(0.45),
+                            );
                         }
                     }
 

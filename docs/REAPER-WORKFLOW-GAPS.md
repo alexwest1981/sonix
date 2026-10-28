@@ -22,7 +22,7 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
 | Gruppera objekt | Ctrl+G, gruppmatris | `item_groups` per region-id, klick/drag tar hela gruppen, Alt+drag kopierar | ✅ 0.9.189 (ingen matris) |
 | Ripple-redigering | av/spår/alla | `RippleMode` av/spår/alla: borttagning stänger gapet, inklistring skjuter undan | ✅ 0.9.190 |
 | Razor edits | dela/duplicera över markerat område | `Ctrl+Shift+X` tar bort tidsmarkeringen: klipper, delar och tar bort | ◐ bara borttagning |
-| Tidsmarkering | drag i regeln, loop-punkter | `time_selection` sätts av rammarkeringen, Escape rensar | ◐ inte från regeln |
+| Tidsmarkering | drag i regeln, loop-punkter | Shift+drag i regeln eller rammarkeringen; Escape rensar | ✅ 0.9.191 |
 | Ångra-historik | fönster med namngivna steg | `push_undo` med namn, ingen lista | ◐ |
 | Musmodifierare | fritt mappbara | hårdkodade | ✗ |
 
