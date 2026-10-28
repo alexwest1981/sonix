@@ -307,15 +307,23 @@ pub fn run(audible: bool) -> Result<(), String> {
         for port in &out_ports {
             println!("  port:       {port}");
         }
-        match crate::audio::midi_output::MidiOut::open(0) {
-            Ok(out) => match out.blip(0, 60, 100) {
+        // **Spela inte in i en slinga.** Första porten är på Linux `Midi Through`, som ekar
+        // noten rakt tillbaka in i en pågående Sonix — appen spelade då upp sin egen testnot.
+        let target = out_ports.iter().position(|p| !crate::audio::midi_input::is_loopback_port(p));
+        match target.map(crate::audio::midi_output::MidiOut::open) {
+            Some(Ok(out)) => match out.blip(0, 60, 100) {
                 Ok(()) => checks.push(Check::Pass(format!(
                     "MIDI-ut skickade en testnot till '{}' (att mottagaren hörde den är inte mätt)",
                     out.name()
                 ))),
                 Err(e) => checks.push(Check::Fail(format!("MIDI-ut kunde inte skicka: {e}"))),
             },
-            Err(e) => checks.push(Check::Fail(format!("MIDI-ut: {e}"))),
+            Some(Err(e)) => checks.push(Check::Fail(format!("MIDI-ut: {e}"))),
+            // Bara slingor: ingen riktig mottagare finns, och det sägs rakt ut i stället för att
+            // kvittera en not som ingen kunde höra.
+            None => checks.push(Check::Note(
+                "MIDI-ut: bara slingportar (Midi Through) — ingen testnot skickad".to_string(),
+            )),
         }
     }
 

@@ -125,6 +125,18 @@ pub fn control_events_from_midi(bytes: &[u8]) -> Vec<ControlEvent> {
     }]
 }
 
+/// Är porten en **slinga** i stället för ett instrument?
+///
+/// ALSA:s `Midi Through` ekar allt som skrivs till den rakt ut ur samma port igen. Appens egen
+/// `--selftest` skickar sin testnot till **första** ut-porten, och på Linux är det Midi Through —
+/// alltså hörde en pågående Sonix sin egen testnot och spelade den som ett ljud ur tomma luften.
+/// Mätt 2026-10-27: `aplaymidi -p 14:0` kom ut ur `14:0` igen, och `14:0` var kopplad till appens
+/// in-port (`aconnect -l`). En andra Sonix-instans (`Sonix Keys`) är samma sorts slinga.
+pub fn is_loopback_port(name: &str) -> bool {
+    let n = name.to_ascii_lowercase();
+    n.contains("midi through") || n.contains("sonix keys")
+}
+
 impl MidiKeyboardInput {
     /// Öppnar alla MIDI-in-portar som hittas och kopplar var och en till en egen anslutning.
     /// Varje anslutning får sin egen `MidiInput`, eftersom `connect` tar över instansen.
@@ -146,6 +158,11 @@ impl MidiKeyboardInput {
                 continue;
             };
             let name = input.port_name(&port).unwrap_or_else(|_| "?".to_string());
+            // En slinga är inget instrument: att lyssna på den gör att appen spelar upp noter
+            // som ingen spelade (se `is_loopback_port`).
+            if is_loopback_port(&name) {
+                continue;
+            }
             let count_t = event_count.clone();
             let tx_t = tx.clone();
             match input.connect(
@@ -276,6 +293,18 @@ mod midir_parser_tests {
             panic!("inte en pitch bend")
         };
         assert!(semitones < -47.9, "{semitones}");
+    }
+
+    /// **En slinga är inget instrument.** `Midi Through` ekar tillbaka allt som skrivs till den,
+    /// och appens `--selftest` skickar sin testnot till första ut-porten — utan spärren spelade
+    /// en pågående Sonix upp en not som ingen spelade (mätt 2026-10-27).
+    #[test]
+    fn loopback_ports_are_not_keyboards() {
+        assert!(is_loopback_port("Midi Through Port-0"));
+        assert!(is_loopback_port("14:Midi Through:Midi Through Port-0"));
+        assert!(is_loopback_port("Sonix Keys:sonix-keys"), "en andra instans är samma slinga");
+        assert!(!is_loopback_port("Arturia KeyStep 37"));
+        assert!(!is_loopback_port("Roland Digital Piano"));
     }
 
     #[test]
