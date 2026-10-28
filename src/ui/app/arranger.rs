@@ -2077,6 +2077,25 @@ impl SonixApp {
                                         } else {
                                             RegionDragMode::Move
                                         };
+                                        // Markeringen uppdateras först: klungan som ska följa med
+                                        // måste vara den som gäller efter klicket, inte före.
+                                        if !self.selected_regions.contains(&(t_idx, r_i)) {
+                                            let (shift, toggle) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
+                                            self.click_region(t_idx, r_i, shift, toggle);
+                                        } else {
+                                            self.selected_audio_region = Some((t_idx, r_i));
+                                        }
+                                        let multi_initial: Vec<(usize, usize, f32)> = self
+                                            .selected_regions
+                                            .iter()
+                                            .filter(|(t, r)| !(*t == t_idx && *r == r_i))
+                                            .filter_map(|(t, r)| {
+                                                self.playlist_tracks
+                                                    .get(*t)
+                                                    .and_then(|tr| tr.regions.get(*r))
+                                                    .map(|reg| (*t, *r, reg.start_bar))
+                                            })
+                                            .collect();
                                         self.push_undo(match mode {
                                             RegionDragMode::TrimStart => crate::i18n::t("Trimma start (Vänster)"),
                                             RegionDragMode::TrimEnd => crate::i18n::t("Justera längd / loop (Höger)"),
@@ -2091,15 +2110,8 @@ impl SonixApp {
                                             initial_sample_offset_sec: r.sample_offset_sec,
                                             initial_loop_length_bars: init_loop_bars,
                                             drag_start_mouse_x: mouse_pos.x,
+                                            multi_initial,
                                         });
-                                        // Dra i en markerad region flyttar hela markeringen; dra i en
-                                        // omarkerad region börjar markeringen om på den.
-                                        if !self.selected_regions.contains(&(t_idx, r_i)) {
-                                            let (shift, toggle) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
-                                            self.click_region(t_idx, r_i, shift, toggle);
-                                        } else {
-                                            self.selected_audio_region = Some((t_idx, r_i));
-                                        }
                                     }
                                 }
 
@@ -2120,7 +2132,6 @@ impl SonixApp {
                                             };
 
                                             if drag.region_idx < self.playlist_tracks[t_idx].regions.len() {
-                                                let reg = &mut self.playlist_tracks[t_idx].regions[drag.region_idx];
                                                 match drag.mode {
                                                     RegionDragMode::Move => {
                                                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::Grabbing);
@@ -2130,10 +2141,24 @@ impl SonixApp {
                                                         } else {
                                                             ((raw_start / grid_step_bars).round() * grid_step_bars).max(0.0)
                                                         };
-                                                        reg.start_bar = new_start;
-                                                        self.status_message = crate::tstatus!("↔ Flyttar '{}' till takt {:.2} (⏱ {})", reg.name, new_start + 1.0, format_time_hundredths(secs_at(new_start)));
+                                                        let delta = new_start - drag.initial_start_bar;
+                                                        let mut moved_name = String::new();
+                                                        if let Some(reg) = self.playlist_tracks.get_mut(t_idx).and_then(|t| t.regions.get_mut(drag.region_idx)) {
+                                                            reg.start_bar = new_start;
+                                                            moved_name = reg.name.clone();
+                                                        }
+                                                        // **Hela markeringen följer med.** Samma förskjutning,
+                                                        // räknad från varje regions start vid dragningens början —
+                                                        // inte kumulativt per bildruta.
+                                                        for (t, r, start_bar) in &drag.multi_initial {
+                                                            if let Some(other) = self.playlist_tracks.get_mut(*t).and_then(|tr| tr.regions.get_mut(*r)) {
+                                                                other.start_bar = (start_bar + delta).max(0.0);
+                                                            }
+                                                        }
+                                                        self.status_message = crate::tstatus!("↔ Flyttar '{}' till takt {:.2} (⏱ {})", moved_name, new_start + 1.0, format_time_hundredths(secs_at(new_start)));
                                                     }
                                                     RegionDragMode::TrimStart => {
+                                                        let reg = &mut self.playlist_tracks[t_idx].regions[drag.region_idx];
                                                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
                                                         let right_edge = drag.initial_start_bar + drag.initial_length_bars;
                                                         let max_expand_sec = drag.initial_sample_offset_sec;
@@ -2160,6 +2185,7 @@ impl SonixApp {
                                                         self.status_message = crate::tstatus!("◀ Trimmar start på '{}': Start takt {:.2} | Bortklippt start: +{:.2}s | Längd: {:.2} takter", reg.name, new_start + 1.0, new_offset, new_len);
                                                     }
                                                     RegionDragMode::TrimEnd => {
+                                                        let reg = &mut self.playlist_tracks[t_idx].regions[drag.region_idx];
                                                         ui.output_mut(|o| o.cursor_icon = egui::CursorIcon::ResizeHorizontal);
                                                         let base_loop_len = if drag.initial_loop_length_bars > 0.001 { drag.initial_loop_length_bars } else { drag.initial_length_bars };
                                                         let raw_len = (drag.initial_length_bars + raw_delta_bars).max(0.05);
@@ -2201,12 +2227,20 @@ impl SonixApp {
 
                                 let is_drag_released = lane_resp.drag_stopped() || ui.input(|i| i.pointer.any_released() || i.pointer.primary_released() || !i.pointer.primary_down());
                                 if is_drag_released && self.region_drag_state.is_some() {
-                                    if let Some(ref drag) = self.region_drag_state {
-                                        let t_idx_synced = drag.track_idx;
-                                        self.sync_track_regions(t_idx_synced);
+                                    // Alla spår som var med i dragningen ska synkas, inte bara det
+                                    // man höll i — annars spelar grannspåren gammalt ljud.
+                                    if let Some(drag) = self.region_drag_state.take() {
+                                        let mut touched: std::collections::BTreeSet<usize> =
+                                            std::collections::BTreeSet::new();
+                                        touched.insert(drag.track_idx);
+                                        for (t, _, _) in &drag.multi_initial {
+                                            touched.insert(*t);
+                                        }
+                                        for t in touched {
+                                            self.sync_track_regions(t);
+                                        }
                                         self.status_message = crate::i18n::t("✅ Ändring sparad på tidslinjen!").to_string();
                                     }
-                                    self.region_drag_state = None;
                                 }
 
                                 // Tool Click Interactions

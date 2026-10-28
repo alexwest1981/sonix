@@ -17,7 +17,7 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
 | Klistra in | Ctrl+V vid spelhuvudet | Ctrl+V, klungan behåller sin form | ✅ 0.9.187 |
 | Klistra in på ursprunglig position | `Paste to original position` | — | ✗ |
 | Duplicera | Ctrl+D, Alt+drag | Ctrl+D (region eller spår) | ◐ ingen Alt+drag-kopia |
-| Flytta flera regioner samtidigt | alla markerade följer med | bara den man drar | ✗ nästa steg |
+| Flytta flera regioner samtidigt | alla markerade följer med | `RegionDragState::multi_initial`, samma förskjutning | ✅ 0.9.188 |
 | Gruppera spår | mappar (folder) med djup och routing | `TrackGroup`, Fäll ihop/upp, Ctrl+G | ◐ grupp utan routing |
 | Gruppera objekt | Ctrl+G, gruppmatris | — | ✗ |
 | Ripple-redigering | av/spår/alla | — | ✗ |
@@ -40,10 +40,8 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
 
 ## Nästa steg, i den ordning de låser upp mest
 
-1. **Flytta hela markeringen** — `RegionDragState` får startpositioner för de andra
-   markerade regionerna, och Move-grenen lägger samma förskjutning på dem.
-2. **Rammarkering** i spårbanan (högerdrag) — kräver att `Sense::drag` skiljs från
+1. **Rammarkering** i spårbanan (högerdrag) — kräver att `Sense::drag` skiljs från
    regiondragningen, som redan äger vänsterdrag.
-3. **Objektgrupper** (`Ctrl+G` på regioner, `group_id` + gemensam förskjutning) — bygger på
-   samma förskjutningslogik som punkt 1.
-4. **Mappar med routing** — en grupp som också äger volym/mute för sina medlemmar.
+2. **Objektgrupper** (`Ctrl+G` på regioner, `group_id` + gemensam förskjutning) — bygger på
+   samma förskjutningslogik som multi-flytten.
+3. **Mappar med routing** — en grupp som också äger volym/mute för sina medlemmar.

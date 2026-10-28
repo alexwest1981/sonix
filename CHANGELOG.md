@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.188] - 2026-10-28
+
+**Hela markeringen flyttar med.** Multi-markeringen från 0.9.187 hade en halv sanning:
+man kunde markera fem regioner men bara den man drog i rörde sig.
+
+- `RegionDragState::multi_initial` fångar de övriga markerade regionernas starttakter när
+  dragningen börjar, och Move-grenen lägger samma förskjutning på dem — räknad från
+  starten, inte kumulativt per bildruta.
+- Markeringen uppdateras före `push_undo`, så klungan som följer med är den som gäller
+  efter klicket.
+- Vid släpp synkas alla spår som var med i dragningen, inte bara det man höll i.
+- `docs/REAPER-WORKFLOW-GAPS.md` uppdaterad: multi-flytten är ✅, kvar är rammarkering,
+  objektgrupper och mappar med routing.
+
 ## [0.9.187] - 2026-10-28
 
 **Markera flera spår och regioner — och kopiera dem tillsammans.** Flödet saknade

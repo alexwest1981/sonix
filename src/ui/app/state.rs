@@ -104,6 +104,9 @@ pub struct RegionDragState {
     pub initial_sample_offset_sec: f32,
     pub initial_loop_length_bars: f32,
     pub drag_start_mouse_x: f32,
+    /// Övriga markerade regioner (spår, index, starttakt) vid dragningens början.
+    /// De följer den dragna regionen med samma förskjutning.
+    pub multi_initial: Vec<(usize, usize, f32)>,
 }
 
 #[derive(Clone)]
