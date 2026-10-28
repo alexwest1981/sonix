@@ -47,5 +47,9 @@ latens, så PDC:n kompenserar den som vilken plugin som helst.
 Parametrarna *är* gränssnittet: namn, intervall och standardvärde räcker för rattarna, och
 `set(index, value)` säger vilken ratt som vrids. Ingen UI-kod per effekt.
 
+Effekten har ingen egen GUI, så **GUI-knappen öppnar en Rattar-ruta** med en slider per
+parameter. Den läser värdet ur instansen och skriver tillbaka till samma handtag som ljudtråden
+läser — inget lås på ljudtråden, bara en atomär per parameter.
+
 Prov: `cargo test --bin sonix builtin_fx` — varje effekt laddas, tar alla sina parametrar och
 lämnar ändligt ljud; de akustiska egenskaperna prövas i samma svit.

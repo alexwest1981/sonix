@@ -28,6 +28,10 @@ automatable parametrar, utan fil och utan `--features plugin-host`.
 - **Inflator**: udda ordningens vågformning; toppfaktorn sjunker och toppen stannar under 1.
 - **Justera**: sampelnoggrann fördröjning och polaritet per kanal — fasjustering av två
   mikrofoner på samma källa. 1 ms vid 48 kHz hamnar på sampel 48.
+- **Rattar-rutan**: en inbyggd effekt har ingen egen GUI, så GUI-knappen öppnar en egui-ruta
+  med en slider per parameter (värdet läses ur instansen, skrivs till samma handtag som
+  ljudtråden läser). `PluginCore::parameter_value` svarar `None` när en backend inte kan, och då
+  ritas ingen ratt.
 - **Formatsfilter** i plugin-listan har en **Sonix**-flik, och de inbyggda ligger i listan även
   när cachen laddas — de finns inte som fil och kan därför aldrig hittas av en diskskanning.
 - `docs/BUILTIN-FX.md`: vad de gör, vad som är mätt, och hur en ny läggs till (tre steg).
