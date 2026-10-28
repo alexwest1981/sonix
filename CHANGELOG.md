@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.200] - 2026-10-28
+
+**Nudga med piltangenterna.** `←`/`→` flyttar hela markeringen ett snäppsteg, `Shift` en
+hel takt. Steget följer snäppläget — 0,01 s räknas om via taktens längd, 1/16, beat och takt
+är redan i takter (`nudge_step_bars`, eget prov). Ett ångra-steg per nudge, och pianorullen
+behåller sina egna pilar.
+
 ## [0.9.199] - 2026-10-28
 
 **Mapp-routing i ett svep.** `Ctrl+Alt+B` skickar de markerade spåren till den första lediga

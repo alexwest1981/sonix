@@ -592,6 +592,17 @@ pub fn expand_with_groups(
     next
 }
 
+/// Steget som piltangenterna nudgar med, i takter. Snäppläget bestämmer steget:
+/// 0,01 s räknas om via taktens längd, 1/16, beat och takt är redan i takter.
+pub fn nudge_step_bars(mode: TimeSnapMode, sec_per_bar: f32) -> f32 {
+    match mode {
+        TimeSnapMode::FreeHundredth => (0.01 / sec_per_bar.max(0.001)).max(0.001),
+        TimeSnapMode::Snap16th => 0.0625,
+        TimeSnapMode::SnapBeat => 0.25,
+        TimeSnapMode::SnapBar => 1.0,
+    }
+}
+
 /// Var ett spårs index hamnar när spåret på `from` flyttas till `to`. Markeringen ska
 /// följa med genom flytten, annars pekar nästa kommando på fel spår.
 pub fn remap_track_index(i: usize, from: usize, to: usize) -> usize {
@@ -2054,6 +2065,16 @@ mod crossfade_tests {
         );
         t.regions = regions;
         t
+    }
+
+    /// Piltangenternas steg följer snäppläget — 0,01 s är en tid och måste räknas om.
+    #[test]
+    fn the_nudge_step_follows_the_snap_mode() {
+        assert!((nudge_step_bars(TimeSnapMode::Snap16th, 2.0) - 0.0625).abs() < 1e-6);
+        assert!((nudge_step_bars(TimeSnapMode::SnapBeat, 2.0) - 0.25).abs() < 1e-6);
+        assert!((nudge_step_bars(TimeSnapMode::SnapBar, 2.0) - 1.0).abs() < 1e-6);
+        // 120 bpm = 2 s per takt: 0,01 s = 0,005 takter.
+        assert!((nudge_step_bars(TimeSnapMode::FreeHundredth, 2.0) - 0.005).abs() < 1e-4);
     }
 
     /// Flytten av ett spår flyttar markeringen med — annars pekar nästa kommando fel.

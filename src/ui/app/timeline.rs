@@ -1579,6 +1579,42 @@ impl SonixApp {
         moved
     }
 
+    /// **Nudga markeringen** med piltangenterna: ett snäppsteg, eller en hel takt med
+    /// Shift. Samma markering som Delete arbetar på, och ett enda ångra-steg.
+    pub fn nudge_selected_regions(&mut self, direction: f32, whole_bar: bool) -> usize {
+        let targets: Vec<(usize, usize)> = if self.selected_regions.is_empty() {
+            self.selected_audio_region.into_iter().collect()
+        } else {
+            self.selected_regions.iter().copied().collect()
+        };
+        if targets.is_empty() {
+            return 0;
+        }
+        let tempo = self.tempo_map();
+        let sec_per_bar = tempo.secs_for_bars_at(0.0, 1.0) as f32;
+        let step = if whole_bar {
+            1.0
+        } else {
+            crate::ui::app::state::nudge_step_bars(self.timeline_snap_mode, sec_per_bar)
+        };
+        let delta = step * direction;
+        self.push_undo("Nudga regioner");
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        let mut moved = 0;
+        for (t, r) in targets {
+            if let Some(reg) = self.playlist_tracks.get_mut(t).and_then(|tr| tr.regions.get_mut(r)) {
+                reg.start_bar = (reg.start_bar + delta).max(0.0);
+                touched.insert(t);
+                moved += 1;
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        self.status_message = crate::tstatus!("↔ Nudgade {} region(er) {:.3} takter", moved, delta);
+        moved
+    }
+
     /// **Skickar de markerade spåren till en ledig buss** — samma sak som att routa in dem
     /// i en mapp: de får en gemensam fader i mixern. Buss 3 är standardvägen och räknas
     /// därför inte som ledig. `None` när alla bussar redan används.

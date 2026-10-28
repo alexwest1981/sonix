@@ -807,6 +807,17 @@ impl SonixApp {
                     self.delete_selected_region();
                 }
 
+                // Piltangenter nudgar markeringen; Shift tar en hel takt. Pianorullen
+                // äger sina egna pilar, så där rör vi inte dem.
+                if !piano_active {
+                    if i.key_pressed(egui::Key::ArrowLeft) {
+                        self.nudge_selected_regions(-1.0, i.modifiers.shift);
+                    }
+                    if i.key_pressed(egui::Key::ArrowRight) {
+                        self.nudge_selected_regions(1.0, i.modifiers.shift);
+                    }
+                }
+
                 // Single key shortcuts when piano keys aren't intercepting (or in Arranger view)
                 if !piano_active && !i.modifiers.alt {
                     if i.key_pressed(egui::Key::S) || i.key_pressed(egui::Key::B) || i.key_pressed(egui::Key::C) {
