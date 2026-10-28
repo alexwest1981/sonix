@@ -9,6 +9,8 @@ pub enum PluginFormat {
     Lv2,
     WineYabridge,
     FlStudioNative,
+    /// REAPERs JSFX: text, tolkas av `audio::jsfx` i stället för att laddas som en bunden plugin.
+    Jsfx,
 }
 
 impl PluginFormat {
@@ -20,6 +22,7 @@ impl PluginFormat {
             PluginFormat::Lv2 => "LV2 (Linux Audio)",
             PluginFormat::WineYabridge => "Windows VST3 (Yabridge/Wine)",
             PluginFormat::FlStudioNative => "FL Studio VSTi / Image-Line",
+            PluginFormat::Jsfx => "JSFX (REAPER)",
         }
     }
 
@@ -31,6 +34,7 @@ impl PluginFormat {
             PluginFormat::Lv2 => crate::ui::theme::palette().green(),          // Green
             PluginFormat::WineYabridge => crate::ui::theme::palette().purple(), // Purple Wine
             PluginFormat::FlStudioNative => crate::ui::theme::palette().orange(),// FL Orange/Red
+            PluginFormat::Jsfx => crate::ui::theme::palette().purple(),
         }
     }
 }
@@ -242,6 +246,15 @@ impl PluginManager {
                 path: "/usr/lib/vst3".to_string(),
                 enabled: true,
                 description: crate::i18n::t("Linux System-VST3").to_string(),
+                is_wine: false,
+                is_fl_path: false,
+            },
+            // **JSFX bor hos oss**, inte i systemet: `~/.config/sonix/jsfx` är mappen `sonix
+            // --jsfx-list` läser utan argument, och den ska synas i listan utan att pekas ut.
+            ScanPath {
+                path: crate::audio::jsfx::user_dir().display().to_string(),
+                enabled: true,
+                description: "JSFX".to_string(),
                 is_wine: false,
                 is_fl_path: false,
             },
@@ -691,7 +704,7 @@ impl PluginManager {
                 }
             } else if path.is_file() {
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                if ["so", "dll", "vst3", "clap", "fst"].contains(&ext.to_lowercase().as_str()) {
+                if ["so", "dll", "vst3", "clap", "fst", "jsfx"].contains(&ext.to_lowercase().as_str()) {
                     self.register_discovered_file(&path, &file_name, is_wine);
                     *count += 1;
                 }
@@ -737,6 +750,8 @@ impl PluginManager {
             } else {
                 (PluginFormat::WineYabridge, "Windows VST (Yabridge)".to_string())
             }
+        } else if lower.ends_with(".jsfx") {
+            (PluginFormat::Jsfx, "JSFX (REAPER)".to_string())
         } else if lower.ends_with(".clap") {
             (PluginFormat::Clap, "CLAP Native".to_string())
         } else if lower.ends_with(".vst3") {
@@ -753,6 +768,7 @@ impl PluginManager {
             .trim_end_matches(".dll")
             .trim_end_matches(".so")
             .trim_end_matches(".lv2")
+            .trim_end_matches(".jsfx")
             .replace('_', " ");
 
         let category = if lower.contains("synth") || lower.contains("generator") || lower.contains("vital") || lower.contains("diva") || lower.contains("sytrus") || lower.contains("harmor") || lower.contains("serum") {
@@ -844,6 +860,7 @@ impl PluginManager {
             .trim_end_matches(".dll")
             .trim_end_matches(".so")
             .trim_end_matches(".lv2")
+            .trim_end_matches(".jsfx")
             .replace('_', " ");
 
         let (verified, verify_note) = verify_plugin_artifact(&expanded);
@@ -1115,6 +1132,8 @@ mod tests {
         std::fs::write(&clap, [0x7f, b'E', b'L', b'F', 0, 0, 0, 0]).unwrap();
         let vst3 = dir.join("RoomReverb.vst3");
         std::fs::write(&vst3, b"not really a plugin").unwrap();
+        let jsfx = dir.join("Half.jsfx");
+        std::fs::write(&jsfx, "desc:Half\nslider1:0.5<0,1,0.01>Gain\n@sample\nspl0 = spl0 * slider1;\n").unwrap();
 
         let mut mgr = isolated_manager(&dir);
         mgr.scan_disk();
@@ -1123,6 +1142,9 @@ mod tests {
         assert_eq!(found_clap.format, PluginFormat::Clap);
         assert_eq!(found_clap.category, PluginCategory::Synth);
         assert!(found_clap.verified, "ELF magic should verify");
+
+        let found_jsfx = mgr.plugins.iter().find(|p| p.name == "Half").expect("jsfx discovered");
+        assert_eq!(found_jsfx.format, PluginFormat::Jsfx);
 
         let found_vst3 = mgr.plugins.iter().find(|p| p.name == "RoomReverb").expect("vst3 discovered");
         assert_eq!(found_vst3.format, PluginFormat::Vst3);

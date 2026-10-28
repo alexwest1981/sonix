@@ -87,6 +87,24 @@ EEL2 är litet men har fler hörn än man tror. De här finns för att REAPER:s 
 Enskilda variabler och arrayer delar ett `f64`-minne, som i REAPER: `slider1..64` bor på plats
 0–63, så en fil som skriver `slider1 = 5` beter sig som originalet.
 
+## I effektkedjan
+
+En `.jsfx`-fil laddas där en CLAP/VST-plugin hade laddats: `plugin_host_live::load_processor` känner
+igen ändelsen och ger en `PluginProcessor` (backend `"JSFX"`). Filens sliders blir parametrar med
+filens eget intervall, `set_parameter` kör `@slider` som en riktig vridning, och `reset` kör om
+`@init` — samma som att ta bort och lägga tillbaka effekten.
+
+Mappen `~/.config/sonix/jsfx` ligger i plugin-sökningen och `.jsfx` klassas som formatet *JSFX
+(REAPER)*, inte som en VST2 som inte går att ladda. Vill du se REAPERs egen låda i listan, lägg
+till dess `InstallData/Effects` som sökväg — eller kopiera hit den:
+
+```bash
+cp -r /sökväg/REAPER/InstallData/Effects ~/.config/sonix/jsfx
+```
+
+`shortcut: instrument tar ingen MIDI genom PluginProcessor (traitet har ingen notingång), så
+JSFX-instrument låter i `--jsfx-note` men är tysta i kedjan tills MIDI-vägen finns.`
+
 ## Köra dem
 
 ```bash

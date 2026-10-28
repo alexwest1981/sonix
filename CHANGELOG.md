@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.177] - 2026-10-28
+
+**JSFX går att lägga i effektkedjan.** En `.jsfx`-fil laddas nu där en CLAP/VST-plugin laddas:
+`load_processor` känner igen ändelsen och ger en `PluginProcessor` (backend `"JSFX"`), med filens
+sliders som parametrar (`set_parameter` kör `@slider`, `reset` kör om `@init`). Det fungerar i
+standardbygget — JSFX är egen Rust-kod och kräver inte `--features plugin-host`.
+
+- `PluginFormat::Jsfx` i plugin-listan: `.jsfx` klassas som *JSFX (REAPER)* i stället för som en
+  VST2 som inte går att ladda.
+- `~/.config/sonix/jsfx` ligger i sökningen, och `.jsfx` hittas av skanningen.
+- `Jsfx::compile` kör `@slider` en gång vid laddning, som REAPER — utan det var en effekt tyst fram
+  till första vridningen.
+- `Jsfx::reset` nollställer minnet (sliderna behålls) och kör `@init` igen.
+- `shortcut`: instrument tar ingen MIDI genom `PluginProcessor` (traitet har ingen notingång), så
+  JSFX-instrument låter i `--jsfx-note` men är tysta i kedjan än.
+
 ## [0.9.176] - 2026-10-28
 
 **REAPERs 256 JSFX-effekter och instrument kör i Sonix.** `src/audio/jsfx/` är en EEL2-motor

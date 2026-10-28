@@ -148,6 +148,10 @@ pub fn is_available() -> bool {
 /// Loads a CLAP plugin at `path` and returns a snapshot of its descriptor and
 /// parameters. Never panics: any failure is reported in `error`.
 pub fn inspect(path: &str) -> PluginInspection {
+    // JSFX är egen Rust-kod och kräver inget `plugin-host`-bygge.
+    if crate::audio::jsfx::processor::is_jsfx_path(path) {
+        return crate::audio::jsfx::processor::inspect(path);
+    }
     #[cfg(feature = "plugin-host")]
     {
         if crate::audio::plugin_vst3::is_vst3_path(path) {
@@ -423,6 +427,10 @@ pub fn load_processor(
     sample_rate: f32,
     max_frames: u32,
 ) -> Result<Box<dyn PluginProcessor>, String> {
+    // **JSFX går före feature-grenen**: en `.jsfx`-fil laddas även i standardbygget.
+    if crate::audio::jsfx::processor::is_jsfx_path(path) {
+        return crate::audio::jsfx::processor::load(path, sample_rate);
+    }
     #[cfg(feature = "plugin-host")]
     {
         if crate::audio::plugin_vst3::is_vst3_path(path) {

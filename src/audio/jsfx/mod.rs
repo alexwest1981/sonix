@@ -11,6 +11,7 @@
 
 pub mod engine;
 pub mod parser;
+pub mod processor;
 
 pub use engine::{Jsfx, MidiEvent, RunError};
 pub use parser::SliderDef;

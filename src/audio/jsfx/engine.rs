@@ -150,7 +150,27 @@ impl Jsfx {
         }
         let init = vm.program.init.clone();
         vm.run_section("init", &init).map_err(|e| e.to_string())?;
+        // REAPER kör `@slider` en gång när effekten laddas, så att koefficienter byggs av
+        // sliderns startvärde. Utan det är en effekt tyst fram till första vridningen.
+        let slider = vm.program.slider.clone();
+        vm.run_section("slider", &slider)
+            .map_err(|e| e.to_string())?;
         Ok(vm)
+    }
+
+    /// Startar om effekten: minnet nollställs (sliderna behålls) och `@init` körs igen, som när
+    /// en plugin tas bort och läggs tillbaka.
+    pub fn reset(&mut self) -> Result<(), RunError> {
+        for cell in self.mem.iter_mut().skip(64) {
+            *cell = 0.0;
+        }
+        self.last_slot = None;
+        self.stubs.clear();
+        self.errors.clear();
+        self.failed = false;
+        self.spl = [0.0; 2];
+        let init = self.program.init.clone();
+        self.run_section("init", &init)
     }
 
     /// Sant när effekten kastat fel. Värden ska då koppla bort den i stället för att köra den.
