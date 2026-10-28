@@ -1236,12 +1236,197 @@ pub fn delete_track(&mut self, track_idx: usize) {
 }
 
 impl SonixApp {
+    /// Vanligt klick på ett spår: bara det.
+    pub fn select_only_track(&mut self, idx: usize) {
+        self.selected_timeline_track = idx;
+        self.selected_tracks.clear();
+        self.selected_tracks.insert(idx);
+        self.selected_regions.clear();
+        self.selected_audio_region = None;
+    }
+
+    /// Klick på ett spår med Ctrl (växla) eller Shift (spann).
+    pub fn click_track(&mut self, idx: usize, shift: bool, toggle: bool) {
+        self.selected_tracks = crate::ui::app::state::clicked_selection(
+            &self.selected_tracks,
+            self.selected_timeline_track,
+            idx,
+            shift,
+            toggle,
+        );
+        // Den primära posten ska alltid vara markerad; växlar man bort den blir
+        // markeringens första spår primärt i stället.
+        self.selected_timeline_track = if self.selected_tracks.contains(&idx) {
+            idx
+        } else {
+            *self.selected_tracks.iter().next().unwrap_or(&idx)
+        };
+        self.selected_regions.clear();
+        self.selected_audio_region = None;
+    }
+
+    /// Klick på en region: regionen och dess spår. Ctrl växlar, Shift tar spannet på
+    /// samma spår — ett spann över spårgränser är svårt att förutse med musen.
+    pub fn click_region(&mut self, t: usize, r: usize, shift: bool, toggle: bool) {
+        self.selected_timeline_track = t;
+        self.selected_tracks.insert(t);
+        if toggle {
+            if !self.selected_regions.insert((t, r)) {
+                self.selected_regions.remove(&(t, r));
+            }
+            if self.selected_regions.is_empty() {
+                self.selected_regions.insert((t, r));
+            }
+        } else if shift {
+            match self.selected_audio_region.filter(|(pt, _)| *pt == t) {
+                Some((_, pr)) => {
+                    let (lo, hi) = if pr <= r { (pr, r) } else { (r, pr) };
+                    self.selected_regions.clear();
+                    for i in lo..=hi {
+                        self.selected_regions.insert((t, i));
+                    }
+                }
+                None => {
+                    self.selected_regions.clear();
+                    self.selected_regions.insert((t, r));
+                }
+            }
+        } else {
+            self.selected_tracks.clear();
+            self.selected_tracks.insert(t);
+            self.selected_regions.clear();
+            self.selected_regions.insert((t, r));
+        }
+        self.selected_audio_region = Some((t, r));
+    }
+
+    /// Håller markeringen inom projektet: borttagna spår och regioner försvinner, och den
+    /// primära posten finns alltid med. Körs en gång per bildruta i stället för att jaga
+    /// varje plats som kan ändra listorna.
+    pub fn prune_selection(&mut self) {
+        let track_count = self.playlist_tracks.len();
+        if track_count == 0 {
+            self.selected_tracks.clear();
+            self.selected_regions.clear();
+            self.selected_audio_region = None;
+            return;
+        }
+        if self.selected_timeline_track >= track_count {
+            self.selected_timeline_track = track_count - 1;
+        }
+        self.selected_tracks.retain(|t| *t < track_count);
+        self.selected_tracks.insert(self.selected_timeline_track);
+        let tracks = &self.playlist_tracks;
+        self.selected_regions
+            .retain(|(t, r)| tracks.get(*t).is_some_and(|tr| *r < tr.regions.len()));
+        if let Some((t, r)) = self.selected_audio_region
+            && tracks.get(t).is_none_or(|tr| r >= tr.regions.len())
+        {
+            self.selected_audio_region = None;
+        }
+    }
+
+    /// **Gruppera de markerade spåren** i en ny grupp (FL:s spellistegrupper).
+    /// Returnerar antalet spår som fick gruppen.
+    pub fn group_selected_tracks(&mut self) -> usize {
+        let members: Vec<usize> = self
+            .selected_tracks
+            .iter()
+            .copied()
+            .filter(|t| *t < self.playlist_tracks.len())
+            .collect();
+        if members.len() < 2 {
+            return 0;
+        }
+        self.push_undo("Gruppera spår");
+        let group_idx = self.track_groups.len();
+        self.track_groups.push(crate::ui::app::state::TrackGroup {
+            name: format!("Grupp {}", group_idx + 1),
+            collapsed: false,
+        });
+        let mut count = 0;
+        for t in members {
+            if let Some(track) = self.playlist_tracks.get_mut(t) {
+                track.group = Some(group_idx);
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Tar bort grupptillhörigheten för de markerade spåren.
+    pub fn ungroup_selected_tracks(&mut self) -> usize {
+        let members: Vec<usize> = self
+            .selected_tracks
+            .iter()
+            .copied()
+            .filter(|t| *t < self.playlist_tracks.len())
+            .collect();
+        if members.is_empty() {
+            return 0;
+        }
+        self.push_undo("Ta bort grupp");
+        let mut count = 0;
+        for t in members {
+            if let Some(track) = self.playlist_tracks.get_mut(t)
+                && track.group.is_some()
+            {
+                track.group = None;
+                count += 1;
+            }
+        }
+        count
+    }
+}
+
+impl SonixApp {
 pub fn copy_selected_region(&mut self) {
+    // **Flera regioner → en klunga.** Spåravstånd och taktavstånd bevaras, så en
+    // klistrad klunga hamnar rätt även om den sträcker sig över flera spår.
+    if self.selected_regions.len() > 1 {
+        let Some(clip) = crate::ui::app::state::build_region_clipboard(
+            &self.playlist_tracks,
+            &self.selected_regions,
+        ) else {
+            return;
+        };
+        let count = clip.items.len();
+        self.region_clipboard = Some(clip);
+        self.copied_region = None;
+        self.track_clipboard.clear();
+        self.status_message = crate::tstatus!(
+            "📋 Kopierade {} regioner över {} spår! [Klistra in: Ctrl+V]",
+            count,
+            self.selected_regions.iter().map(|(t, _)| *t).collect::<std::collections::BTreeSet<_>>().len()
+        );
+        return;
+    }
+
+    // **Inga regioner men flera spår → spåren i sig.**
+    if self.selected_regions.is_empty() && self.selected_tracks.len() > 1 {
+        let mut copied: Vec<crate::ui::app::state::PlaylistTrack> = Vec::new();
+        for t in self.selected_tracks.iter() {
+            if let Some(track) = self.playlist_tracks.get(*t) {
+                copied.push(track.clone());
+            }
+        }
+        let count = copied.len();
+        self.track_clipboard = copied;
+        self.copied_region = None;
+        self.region_clipboard = None;
+        self.status_message = crate::tstatus!("📋 Kopierade {} spår! [Klistra in: Ctrl+V]", count);
+        return;
+    }
+
     if let Some((t_idx, r_idx)) = self.selected_audio_region {
         if t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             let reg = self.playlist_tracks[t_idx].regions[r_idx].clone();
             let name = reg.name.clone();
             self.copied_region = Some(reg);
+            self.region_clipboard = None;
+            self.track_clipboard.clear();
+            self.selected_regions.clear();
+            self.selected_regions.insert((t_idx, r_idx));
             self.status_message = crate::tstatus!("📋 Kopierade sample '{}' till urklipp! [Klistra in: Ctrl+V]", name);
         }
     } else {
@@ -1252,6 +1437,87 @@ pub fn copy_selected_region(&mut self) {
 
 impl SonixApp {
 pub fn paste_region(&mut self) {
+    // **Klunga först:** regioner som kopierats tillsammans klistras in tillsammans.
+    if let Some(clip) = self.region_clipboard.clone() {
+        if self.playlist_tracks.is_empty() || clip.items.is_empty() {
+            return;
+        }
+        let base_track = self.selected_timeline_track.min(self.playlist_tracks.len() - 1);
+        let tempo = crate::audio::tempo::TempoMap::single(self.bpm.max(40.0));
+        let paste_bar = (tempo.bar_at_secs(self.song_time as f64) as f32).max(0.0);
+        self.push_undo("Klistra in regionklunga");
+
+        let mut affected: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        let mut pasted = 0;
+        let mut first: Option<(usize, usize)> = None;
+        for (item_idx, target, start_bar) in crate::ui::app::state::plan_region_paste(
+            &clip,
+            base_track,
+            paste_bar,
+            self.playlist_tracks.len(),
+        ) {
+            let mut new_r = clip.items[item_idx].1.clone();
+            new_r.id = self.next_region_id();
+            new_r.start_bar = start_bar;
+            new_r.name = format!("{} (Kopia)", new_r.name.replace(" (Kopia)", ""));
+            self.playlist_tracks[target].regions.push(new_r);
+            let idx = self.playlist_tracks[target].regions.len() - 1;
+            first.get_or_insert((target, idx));
+            affected.insert(target);
+            pasted += 1;
+        }
+        for t in affected {
+            self.sync_track_regions(t);
+        }
+        if let Some(pos) = first {
+            self.selected_regions.clear();
+            self.selected_regions.insert(pos);
+            self.selected_audio_region = Some(pos);
+            self.selected_timeline_track = pos.0;
+            self.selected_tracks.clear();
+            self.selected_tracks.insert(pos.0);
+        }
+        self.status_message = crate::tstatus!(
+            "📋 Klistrade in {} regioner vid takt {:.2}! [Ångra: Ctrl+Z]",
+            pasted,
+            paste_bar + 1.0
+        );
+        return;
+    }
+
+    // **Spår:** kopierade spår läggs in efter det sista markerade.
+    if !self.track_clipboard.is_empty() {
+        let insert_at = self
+            .selected_tracks
+            .iter()
+            .next_back()
+            .map(|i| i + 1)
+            .unwrap_or(self.playlist_tracks.len())
+            .min(self.playlist_tracks.len());
+        self.push_undo("Klistra in spår");
+        let clips = self.track_clipboard.clone();
+        let count = clips.len();
+        for (k, src) in clips.iter().enumerate() {
+            let mut copy = src.clone();
+            copy.name = format!("{} (Kopia)", src.name.replace(" (Kopia)", ""));
+            for r in copy.regions.iter_mut() {
+                r.id = self.next_region_id();
+            }
+            self.playlist_tracks.insert(insert_at + k, copy);
+        }
+        let _ = self.engine.send_command(AudioCommand::ClearAllStemTracks);
+        for i in 0..self.playlist_tracks.len() {
+            self.sync_track_stem_to_engine(i);
+            self.sync_track_audio_state(i);
+            self.sync_track_regions(i);
+        }
+        let last = (insert_at + count).min(self.playlist_tracks.len().saturating_sub(1));
+        self.select_only_track(last);
+        self.selected_audio_region = None;
+        self.status_message = crate::tstatus!("📋 Klistrade in {} spår! [Ångra: Ctrl+Z]", count);
+        return;
+    }
+
     if let Some(ref copied) = self.copied_region.clone() {
         if self.playlist_tracks.is_empty() {
             return;

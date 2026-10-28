@@ -521,6 +521,86 @@ pub struct TrackGroup {
     pub collapsed: bool,
 }
 
+/// **Flera kopierade regioner.** `items` bär spåravståndet från det första markerade
+/// spåret, `anchor_bar` den tidigaste starttakt som varje `start_bar` mäts mot — så
+/// klistras klungor in med sitt inbördes avstånd i både tid och spår.
+#[derive(Clone, Debug, Default)]
+pub struct RegionClipboard {
+    pub items: Vec<(usize, AudioRegion)>,
+    pub anchor_bar: f32,
+}
+
+/// Bygger en klunga ur de markerade regionerna: spåravstånd från det första spåret och
+/// den tidigaste starttakten som ankare. `None` när inget av urvalet finns kvar.
+pub fn build_region_clipboard(
+    tracks: &[PlaylistTrack],
+    selected: &std::collections::BTreeSet<(usize, usize)>,
+) -> Option<RegionClipboard> {
+    let min_track = selected.iter().map(|(t, _)| *t).min()?;
+    let mut items: Vec<(usize, AudioRegion)> = Vec::new();
+    for (t, r) in selected.iter() {
+        if let Some(reg) = tracks.get(*t).and_then(|tr| tr.regions.get(*r)) {
+            items.push((*t - min_track, reg.clone()));
+        }
+    }
+    if items.is_empty() {
+        return None;
+    }
+    let anchor_bar = items.iter().map(|(_, r)| r.start_bar).fold(f32::INFINITY, f32::min);
+    Some(RegionClipboard { items, anchor_bar })
+}
+
+/// Var klungan hamnar: (index i `clip.items`, spår, starttakt). Delar som skulle hamna
+/// utanför projektets spår hoppas över — att skapa spår i smyg är värre än att tappa en del.
+pub fn plan_region_paste(
+    clip: &RegionClipboard,
+    base_track: usize,
+    paste_bar: f32,
+    track_count: usize,
+) -> Vec<(usize, usize, f32)> {
+    clip.items
+        .iter()
+        .enumerate()
+        .filter_map(|(i, (offset, reg))| {
+            let target = base_track + offset;
+            (target < track_count).then(|| (i, target, paste_bar + (reg.start_bar - clip.anchor_bar)))
+        })
+        .collect()
+}
+
+/// Markeringsläget efter ett klick på ett spår eller en region.
+///
+/// `toggle` (Ctrl/Cmd) växlar posten, `shift` tar spannet från den primära posten,
+/// annars blir det bara den klickade. Markeringen får aldrig bli tom: då tystnar
+/// kommandona utan att någon förstår varför.
+pub fn clicked_selection(
+    current: &std::collections::BTreeSet<usize>,
+    primary: usize,
+    clicked: usize,
+    shift: bool,
+    toggle: bool,
+) -> std::collections::BTreeSet<usize> {
+    if toggle {
+        let mut next = current.clone();
+        if !next.insert(clicked) {
+            next.remove(&clicked);
+        }
+        if next.is_empty() {
+            next.insert(clicked);
+        }
+        return next;
+    }
+    if shift {
+        let (lo, hi) = if primary <= clicked {
+            (primary, clicked)
+        } else {
+            (clicked, primary)
+        };
+        return (lo..=hi).collect();
+    }
+    std::iter::once(clicked).collect()
+}
+
 /// **Fäll ihop eller upp alla grupper** (FL: `Collapse all grouped tracks`). Ren funktion så
 /// regeln går att pröva utan ett fönster; returnerar antalet grupper som faktiskt ändrades.
 pub fn set_all_groups_collapsed(groups: &mut [TrackGroup], collapsed: bool) -> usize {
@@ -1884,6 +1964,28 @@ mod crossfade_tests {
         t
     }
 
+    /// **Klungan behåller både spår- och taktavstånd.** Det är hela poängen med att
+    /// kopiera flera regioner: den inbördes formen ska överleva klistret.
+    #[test]
+    fn a_cluster_keeps_track_and_time_offsets() {
+        use std::collections::BTreeSet;
+        let tracks = vec![
+            track_with(vec![region(1, 4.0, 2.0)]),
+            track_with(vec![region(2, 5.5, 1.0)]),
+        ];
+        let selected: BTreeSet<(usize, usize)> = [(1, 0), (0, 0)].into_iter().collect();
+        let clip = build_region_clipboard(&tracks, &selected).expect("klunga");
+        assert!((clip.anchor_bar - 4.0).abs() < 1e-4);
+
+        let plan = plan_region_paste(&clip, 0, 10.0, 2);
+        assert_eq!(plan.len(), 2);
+        assert!(plan.iter().any(|(_, t, s)| *t == 0 && (*s - 10.0).abs() < 1e-3));
+        assert!(plan.iter().any(|(_, t, s)| *t == 1 && (*s - 11.5).abs() < 1e-3));
+
+        // Finns inte spåret hoppas delen över i stället för att ett nytt spår skapas.
+        assert_eq!(plan_region_paste(&clip, 0, 10.0, 1).len(), 1);
+    }
+
     /// **Bara skarven vid spelhuvudet.** Två skarvar, spelhuvudet vid den första: den
     /// andra ska stå orörd, annars är kommandot samma sak som "korsa allt".
     #[test]
@@ -2171,6 +2273,29 @@ mod track_group_tests {
 
     /// **En ihopfälld grupp visar sitt första spår och gömmer resten** — och det första syns
     /// även när gruppen är ihopfälld, annars gick den aldrig att fälla upp igen.
+    /// **Skift tar spannet, Ctrl växlar, vanligt klick börjar om.** Reglerna är hela
+    /// flödet när man markerar flera spår; därför prövas de utan fönster.
+    #[test]
+    fn clicks_build_a_multi_selection() {
+        use std::collections::BTreeSet;
+        let start: BTreeSet<usize> = [1].into_iter().collect();
+
+        // Vanligt klick: bara den klickade.
+        assert_eq!(clicked_selection(&start, 1, 4, false, false), [4].into_iter().collect::<BTreeSet<_>>());
+
+        // Skift: spannet från primär till klickad, åt båda hållen.
+        assert_eq!(clicked_selection(&start, 1, 3, true, false), [1, 2, 3].into_iter().collect::<BTreeSet<_>>());
+        assert_eq!(clicked_selection(&[5].into_iter().collect(), 5, 2, true, false), [2, 3, 4, 5].into_iter().collect::<BTreeSet<_>>());
+
+        // Ctrl växlar in och ut.
+        let two = clicked_selection(&start, 1, 4, false, true);
+        assert_eq!(two, [1, 4].into_iter().collect::<BTreeSet<_>>());
+        assert_eq!(clicked_selection(&two, 4, 1, false, true), [4].into_iter().collect::<BTreeSet<_>>());
+
+        // Sista posten kan inte växlas bort — markeringen får aldrig bli tom.
+        assert_eq!(clicked_selection(&[2].into_iter().collect(), 2, 2, false, true), [2].into_iter().collect::<BTreeSet<_>>());
+    }
+
     /// Alla grupper på en gång: bara de som faktiskt ändras räknas, så statusraden kan säga
     /// sanningen även när hälften redan stod rätt.
     #[test]

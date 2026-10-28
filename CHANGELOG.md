@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.187] - 2026-10-28
+
+**Markera flera spår och regioner — och kopiera dem tillsammans.** Flödet saknade
+grunden: allt utgick från ett spår och en region, så Ctrl+C kopierade alltid en enda sak.
+
+- `selected_tracks` och `selected_regions` som mängder. Den primära posten ligger kvar i
+  `selected_timeline_track` / `selected_audio_region`, så de 47 ställen som redan läser
+  dem fortsätter att fungera.
+- Klick: Ctrl/Cmd växlar, Shift tar spannet, vanligt klick börjar om. Markeringen kan
+  aldrig bli tom — `clicked_selection` är provad för alla fyra fallen.
+- Ctrl+C kopierar alla markerade regioner som en klunga med spår- och taktavstånd; Ctrl+V
+  klistrar in den vid spelhuvudet på det primära spåret. Utan regionmarkering kopieras
+  hela spår, som klistras in efter det sista markerade.
+- Ctrl+A markerar alla spår (när inget textfält äger tangenten). Ctrl+G grupperar de
+  markerade spåren, Ctrl+Shift+G löser upp.
+- `prune_selection` en gång per bildruta: borttagna spår och regioner städas ur
+  markeringen i stället för att bli spöken.
+- Spårhuvudet visar hela markeringen: primärt spår i sin färg, övriga i cyan ram.
+- Nytt: `docs/REAPER-WORKFLOW-GAPS.md` — hela flödet mot REAPER, med vad som är kvar.
+
 ## [0.9.186] - 2026-10-28
 
 **Korsning vid spelhuvudet och alla grupper på en gång.** De två sista raderna i FL-kommandoytan

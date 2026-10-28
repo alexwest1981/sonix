@@ -674,6 +674,35 @@ impl SonixApp {
                 if i.key_pressed(egui::Key::V) {
                     self.paste_region();
                 }
+                // **Ctrl+G grupperar markerade spår** (REAPER: Ctrl+G grupperar objekt;
+                // våra spårgrupper är samma idé på spårnivå). Shift+G löser upp.
+                if i.key_pressed(egui::Key::G) {
+                    if i.modifiers.shift {
+                        let n = self.ungroup_selected_tracks();
+                        self.status_message = if n > 0 {
+                            crate::tstatus!("📁 Tog bort gruppen från {} spår", n)
+                        } else {
+                            "📁 Inga markerade spår hade någon grupp".to_string()
+                        };
+                    } else {
+                        let n = self.group_selected_tracks();
+                        self.status_message = if n > 0 {
+                            crate::tstatus!("📁 Grupperade {} spår", n)
+                        } else {
+                            "📁 Markera minst två spår för att gruppera".to_string()
+                        };
+                    }
+                }
+                // Ctrl+A markerar alla spår när inget textfält äger tangenten.
+                if i.key_pressed(egui::Key::A) && !wants_keyboard {
+                    self.selected_tracks = (0..self.playlist_tracks.len()).collect();
+                    self.selected_regions.clear();
+                    self.selected_audio_region = None;
+                    self.status_message = crate::tstatus!(
+                        "📁 Markerade alla {} spår",
+                        self.playlist_tracks.len()
+                    );
+                }
                 if i.key_pressed(egui::Key::B) || i.key_pressed(egui::Key::X) {
                     self.split_selected_region_at_playhead();
                 }

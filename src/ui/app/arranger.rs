@@ -843,6 +843,9 @@ impl SonixApp {
                     continue;
                 }
                 let is_sel_track = self.selected_timeline_track == t_idx;
+                // Flera markerade spår: den primära har sin färg, de övriga en tunn cyan ram
+                // så man ser vad ett kommando kommer att träffa.
+                let is_in_selection = self.selected_tracks.contains(&t_idx);
                 let track_color = self.playlist_tracks[t_idx].color;
                 let track_muted = self.playlist_tracks[t_idx].muted;
                 let track_solo = self.playlist_tracks[t_idx].solo;
@@ -872,12 +875,14 @@ impl SonixApp {
                     if is_sel_track { crate::ui::theme::palette().cyan() } else { crate::ui::theme::palette().panel_alt() }
                 } else if is_sel_track {
                     track_color
+                } else if is_in_selection {
+                    crate::ui::theme::palette().cyan()
                 } else {
                     crate::ui::theme::palette().panel_alt()
                 };
                 // Soundtrap-kortet har mjuka hörn (~10 px i deras studio); 8 ryms i Sonix radhöjd.
                 ui.painter().rect_filled(h_rect, Rounding::same(8.0), card_bg);
-                ui.painter().rect_stroke(h_rect, Rounding::same(8.0), Stroke::new(if is_sel_track { 1.5_f32 } else { 1.0_f32 }, card_stroke));
+                ui.painter().rect_stroke(h_rect, Rounding::same(8.0), Stroke::new(if is_sel_track || is_in_selection { 1.5_f32 } else { 1.0_f32 }, card_stroke));
 
                 // Left Accent Bar
                 let accent_color = if is_mic_track { crate::ui::theme::palette().cyan() } else { track_color };
@@ -985,7 +990,8 @@ impl SonixApp {
 
                 if h_resp.clicked() || h_resp.double_clicked() {
                     ui.memory_mut(|m| m.stop_text_input());
-                    self.selected_timeline_track = t_idx;
+                    let (shift, toggle) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
+                    self.click_track(t_idx, shift, toggle);
                     if !self.playlist_tracks[t_idx].regions.is_empty() {
                         self.selected_audio_region = Some((t_idx, 0));
                         let reg = &self.playlist_tracks[t_idx].regions[0];
@@ -1594,7 +1600,8 @@ impl SonixApp {
 
                             if has_regions {
                                 for (r_i, region) in regions_snapshot.iter().enumerate() {
-                                    let is_region_selected = self.selected_audio_region == Some((t_idx, r_i));
+                                    let is_region_selected = self.selected_regions.contains(&(t_idx, r_i))
+                                        || self.selected_audio_region == Some((t_idx, r_i));
                                     let rx_start = lane_rect.min.x + region.start_bar * bar_w;
                                     let rx_end = rx_start + region.length_bars * bar_w;
                                     let r_rect = Rect::from_min_max(Pos2::new(rx_start + 1.5, lane_rect.min.y + 2.0), Pos2::new(rx_end - 1.5, lane_rect.max.y - 2.0));
@@ -2085,8 +2092,14 @@ impl SonixApp {
                                             initial_loop_length_bars: init_loop_bars,
                                             drag_start_mouse_x: mouse_pos.x,
                                         });
-                                        self.selected_audio_region = Some((t_idx, r_i));
-                                        self.selected_timeline_track = t_idx;
+                                        // Dra i en markerad region flyttar hela markeringen; dra i en
+                                        // omarkerad region börjar markeringen om på den.
+                                        if !self.selected_regions.contains(&(t_idx, r_i)) {
+                                            let (shift, toggle) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
+                                            self.click_region(t_idx, r_i, shift, toggle);
+                                        } else {
+                                            self.selected_audio_region = Some((t_idx, r_i));
+                                        }
                                     }
                                 }
 
@@ -2199,7 +2212,8 @@ impl SonixApp {
                                 // Tool Click Interactions
                                 if lane_resp.clicked() && self.region_drag_state.is_none() {
                                     ui.memory_mut(|m| m.stop_text_input());
-                                    self.selected_timeline_track = t_idx;
+                                    let (shift, toggle) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
+                                    self.click_track(t_idx, shift, toggle);
                                     if let Some(mouse_pos) = lane_resp.hover_pos() {
                                         let click_bar = (mouse_pos.x - lane_rect.min.x) / bar_w;
                                         for (r_i, r) in regions_snapshot.iter().enumerate() {
@@ -2758,8 +2772,8 @@ impl SonixApp {
                         }
 
                         if let Some(s_idx) = select_action {
-                            self.selected_audio_region = Some((t_idx, s_idx));
-                            self.selected_timeline_track = t_idx;
+                            let (shift, toggle) = ui.input(|i| (i.modifiers.shift, i.modifiers.command));
+                            self.click_region(t_idx, s_idx, shift, toggle);
                             if s_idx < self.playlist_tracks[t_idx].regions.len() {
                                 let reg = &self.playlist_tracks[t_idx].regions[s_idx];
                                 self.status_message = crate::tstatus!("Markerade '{}' [Start: {} | Längd: {}]", reg.name, format_time_hundredths(tempo.secs_at_bar(reg.start_bar as f64) as f32), format_time_hundredths(tempo.secs_for_bars_at(reg.start_bar as f64, reg.length_bars as f64) as f32));

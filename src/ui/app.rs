@@ -554,6 +554,14 @@ pub struct SonixApp {
     pub timeline_snap_mode: TimeSnapMode,
     pub timeline_auto_scroll: bool,
     pub selected_timeline_track: usize,
+    /// Alla markerade spår; `selected_timeline_track` är den primära (panelen visar den).
+    pub selected_tracks: std::collections::BTreeSet<usize>,
+    /// Alla markerade ljudregioner; `selected_audio_region` är den primära.
+    pub selected_regions: std::collections::BTreeSet<(usize, usize)>,
+    /// Flera regioner att klistra in. En ensam region går fortfarande via `copied_region`.
+    pub region_clipboard: Option<crate::ui::app::state::RegionClipboard>,
+    /// Hela spår att klistra in (Ctrl+C utan regionmarkering).
+    pub track_clipboard: Vec<crate::ui::app::state::PlaylistTrack>,
     // Automation curves (Fas 5.4)
     pub show_automation: bool,
     /// Texturen för logotypen (samma bild som fönsterikonen). Laddas första gången den ritas.
@@ -1240,6 +1248,10 @@ impl SonixApp {
             timeline_snap_mode: TimeSnapMode::Snap16th,
             timeline_auto_scroll: true,
             selected_timeline_track: 0,
+            selected_tracks: [0].into_iter().collect(),
+            selected_regions: std::collections::BTreeSet::new(),
+            region_clipboard: None,
+            track_clipboard: Vec::new(),
             show_automation: false,
             logo_texture: None,
             automation_target: AutomationTarget::Track(AutomationParam::Volume),
@@ -1432,6 +1444,10 @@ impl eframe::App for SonixApp {
         // Ljudet först: en ström som dött ska byggas om innan resten av bildrutan
         // skickar kommandon till en tråd som inte lyssnar.
         self.audio_watchdog(ctx);
+
+        // Markeringen hålls inom projektet: spår som tagits bort får inte ligga kvar
+        // som spöken i mängderna.
+        self.prune_selection();
 
         // AI-svaret plockas upp och utförs.
         self.poll_ai_chat();
