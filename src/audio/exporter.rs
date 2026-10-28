@@ -1145,6 +1145,73 @@ fn write_with_ffmpeg(
     Ok(())
 }
 
+
+// ---------------------------------------------------------------------------
+// Batch-export: samma renderingsväg som playhead, men utan UI-tråden
+// ---------------------------------------------------------------------------
+
+/// En fil som ska renderas: allt arbetstråden behöver, ingenting som pekar tillbaka på appen.
+pub struct ExportFile {
+    pub path: String,
+    pub spec: RenderSpec,
+    pub meta: ExportMeta,
+    /// Normalisera till loudness-preseten (bara master-mixen; stems lämnas orörda).
+    pub normalize: bool,
+}
+
+/// Vad en batch-export blev: filerna, första felet (om något) och normaliseringsraden.
+pub struct ExportOutcome {
+    pub written: Vec<String>,
+    pub error: Option<String>,
+    pub normalize_note: Option<String>,
+    pub folder: String,
+}
+
+/// Renderar och skriver `files` på anroparens tråd. Samma `build_offline_engine` +
+/// `render_project_offline` som uppspelningen använder; en tom stämma hoppas över och en
+/// misslyckad skrivning avbryter resten, så en halv export inte ser ut som en hel.
+pub fn render_files(
+    files: Vec<ExportFile>,
+    fx: &FxState,
+    fmt: ExportFormat,
+    sample_rate: u32,
+    dither: DitherSettings,
+    loudness: crate::audio::LoudnessPreset,
+    folder: String,
+    progress: &std::sync::atomic::AtomicUsize,
+) -> ExportOutcome {
+    use std::sync::atomic::Ordering;
+    let mut out = ExportOutcome { written: Vec::new(), error: None, normalize_note: None, folder };
+    for file in files {
+        let mut engine = build_offline_engine(&file.spec, fx);
+        let mut buf = render_project_offline(&mut engine, &file.spec);
+        let peak = buf.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
+        if !file.normalize && peak < 1.0e-6 {
+            progress.fetch_add(1, Ordering::Relaxed);
+            continue; // tomt spår – hoppa över
+        }
+        if file.normalize
+            && let Some(measured) = crate::audio::normalize_to_preset(&mut buf, sample_rate, loudness)
+        {
+            out.normalize_note = Some(crate::tstatus!(
+                "🔊 Normaliserad till {} LUFS (mätt {} LUFS, tak {} dBTP)",
+                loudness.target_lufs(),
+                (measured * 10.0).round() / 10.0,
+                loudness.ceiling_dbtp()
+            ));
+        }
+        match write_export_with(&file.path, fmt, &buf, sample_rate, &file.meta, dither) {
+            Ok(_) => out.written.push(file.path),
+            Err(e) => {
+                out.error = Some(e);
+                break;
+            }
+        }
+        progress.fetch_add(1, Ordering::Relaxed);
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1162,6 +1229,55 @@ mod tests {
             master_fx: Default::default(),
             synth: Default::default(),
         }
+    }
+
+    /// **Batch-arbetaren skriver en riktig fil.** Refaktorn som flyttade exporten till en
+    /// tråd får inte bara kompilera: en icke-tom mix ska ge en WAV som går att läsa tillbaka.
+    #[test]
+    fn the_batch_worker_writes_a_readable_file() {
+        let mut grid = [[false; crate::audio::tempo::MAX_STEPS]; 24];
+        grid[0][0] = true;
+        let spec = synth_spec_with(grid, [false; crate::audio::tempo::MAX_STEPS], 60);
+        let dir = std::env::temp_dir().join(format!("sonix-export-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("temp-mapp");
+        let path = dir.join("batch.wav").to_string_lossy().to_string();
+        let _ = std::fs::remove_file(&path);
+
+        let progress = std::sync::atomic::AtomicUsize::new(0);
+        let out = render_files(
+            vec![ExportFile {
+                path: path.clone(),
+                spec,
+                meta: ExportMeta::default(),
+                normalize: false,
+            }],
+            &fx_for_test(),
+            ExportFormat::Wav16,
+            44_100,
+            DitherSettings::default(),
+            crate::audio::LoudnessPreset::Off,
+            dir.to_string_lossy().to_string(),
+            &progress,
+        );
+        assert!(out.error.is_none(), "fel: {:?}", out.error);
+        assert_eq!(out.written, vec![path.clone()]);
+        assert_eq!(progress.load(std::sync::atomic::Ordering::Relaxed), 1);
+        let bytes = std::fs::metadata(&path).expect("filen ska finnas").len();
+        assert!(bytes > 10_000, "bara {bytes} byte");
+        std::fs::remove_file(&path).ok();
+
+        // En tom fil-lista är ett giltigt jobb, inte en panik.
+        let empty = render_files(
+            Vec::new(),
+            &fx_for_test(),
+            ExportFormat::Wav16,
+            44_100,
+            DitherSettings::default(),
+            crate::audio::LoudnessPreset::Off,
+            dir.to_string_lossy().to_string(),
+            &progress,
+        );
+        assert!(empty.written.is_empty() && empty.error.is_none());
     }
 
     /// **Exportdörren väljer zon med samma funktion som spelvägen** (Fas 8.4/7). Påståendet

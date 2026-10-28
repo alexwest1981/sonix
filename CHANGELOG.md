@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.184] - 2026-10-28
+
+**Exportarbetaren flyttad till `audio::exporter` — och prövad med en riktig fil.** Trådvägen
+från 0.9.182 var bara kompilerad; nu finns `render_files` där renderingskoden hör hemma, med
+`ExportFile`/`ExportOutcome`, och ett prov som renderar en takt, skriver en WAV och läser
+storleken tillbaka. Samma kod som UI-tråden använder — alltså är det den vägen som prövas.
+
+- Ett tomt jobb är ett giltigt jobb: inga filer, inget fel, ingen panik.
+- Framstegen räknas i samma atomär som `poll_render_job` läser, så tråden och UI:t delar en
+  sanning i stället för två.
+
 ## [0.9.183] - 2026-10-28
 
 **Export av spågrupper som egna filer.** Det sista av FL-kommandoytan som handlade om export:

@@ -1232,7 +1232,7 @@ pub fn execute_batch_export(&mut self) {
 
     // **Specarna byggs här, renderingen sker i en tråd.** Specen är ren data; efter den här
     // loopen rör exporten ingenting som UI-tråden äger, och då behöver den inte blockera den.
-    let mut files: Vec<RenderFile> = Vec::new();
+    let mut files: Vec<crate::audio::exporter::ExportFile> = Vec::new();
     if stem_mode {
         let track_count = self.playlist_tracks.len();
         for t_idx in 0..track_count {
@@ -1242,7 +1242,7 @@ pub fn execute_batch_export(&mut self) {
             if stem_meta.title.trim().is_empty() || stem_meta.title == base {
                 stem_meta.title = format!("{} ({})", base, track_name);
             }
-            files.push(RenderFile {
+            files.push(crate::audio::exporter::ExportFile {
                 path: format!("{}/{}.{}", folder, file_stem, fmt.ext()),
                 spec: self.build_render_spec(Some(t_idx), sample_rate),
                 meta: stem_meta,
@@ -1269,7 +1269,7 @@ pub fn execute_batch_export(&mut self) {
             let label = if safe.is_empty() { format!("Grupp{}", g_idx + 1) } else { safe };
             let mut group_meta = meta.clone();
             group_meta.title = format!("{} ({})", base, group.name);
-            files.push(RenderFile {
+            files.push(crate::audio::exporter::ExportFile {
                 path: format!("{}/{}_{}.{}", folder, base, label, fmt.ext()),
                 spec,
                 meta: group_meta,
@@ -1277,7 +1277,7 @@ pub fn execute_batch_export(&mut self) {
             });
         }
     } else {
-        files.push(RenderFile {
+        files.push(crate::audio::exporter::ExportFile {
             path: format!("{}/{}_{:.0}bpm.{}", folder, base, self.bpm, fmt.ext()),
             spec: self.build_render_spec(None, sample_rate),
             meta: meta.clone(),
@@ -1291,7 +1291,16 @@ pub fn execute_batch_export(&mut self) {
     let dither = self.export_dither_settings();
     let worker_progress = progress.clone();
     let handle = std::thread::spawn(move || {
-        render_files(files, fx, fmt, sample_rate, dither, loudness, folder, worker_progress)
+        crate::audio::exporter::render_files(
+            files,
+            &fx,
+            fmt,
+            sample_rate,
+            dither,
+            loudness,
+            folder,
+            worker_progress.as_ref(),
+        )
     });
 
     self.render_job = Some(RenderJob { handle, progress, total });
@@ -1318,7 +1327,7 @@ pub(crate) fn poll_render_job(&mut self) {
         return;
     }
     let job = self.render_job.take().expect("just kontrollerad");
-    let outcome = job.handle.join().unwrap_or(RenderOutcome {
+    let outcome = job.handle.join().unwrap_or(crate::audio::exporter::ExportOutcome {
         written: Vec::new(),
         error: Some("renderingstråden avslutades oväntat".to_string()),
         normalize_note: None,
@@ -1346,69 +1355,8 @@ pub(crate) fn poll_render_job(&mut self) {
 }
 }
 
-/// En fil som ska renderas: allt tråden behöver, och ingenting som pekar tillbaka på appen.
-struct RenderFile {
-    path: String,
-    spec: crate::audio::exporter::RenderSpec,
-    meta: crate::audio::exporter::ExportMeta,
-    /// Normalisera till loudness-preset (bara master-mixen; stems lämnas orörda).
-    normalize: bool,
-}
-
-struct RenderOutcome {
-    written: Vec<String>,
-    error: Option<String>,
-    normalize_note: Option<String>,
-    folder: String,
-}
-
-/// Själva renderingen. Samma väg som förut (`build_offline_engine` + `render_project_offline`),
-/// men utan `&self`: en tom stämma hoppas över, och en misslyckad skrivning avbryter resten så
-/// halva exporten inte ser ut som en hel.
-fn render_files(
-    files: Vec<RenderFile>,
-    fx: crate::audio::exporter::FxState,
-    fmt: crate::audio::exporter::ExportFormat,
-    sample_rate: u32,
-    dither: crate::audio::DitherSettings,
-    loudness: crate::audio::LoudnessPreset,
-    folder: String,
-    progress: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-) -> RenderOutcome {
-    use std::sync::atomic::Ordering;
-    let mut out = RenderOutcome { written: Vec::new(), error: None, normalize_note: None, folder };
-    for file in files {
-        let mut engine = crate::audio::build_offline_engine(&file.spec, &fx);
-        let mut buf = crate::audio::render_project_offline(&mut engine, &file.spec);
-        let peak = buf.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
-        if !file.normalize && peak < 1.0e-6 {
-            progress.fetch_add(1, Ordering::Relaxed);
-            continue; // tomt spår – hoppa över
-        }
-        if file.normalize
-            && let Some(measured) = crate::audio::normalize_to_preset(&mut buf, sample_rate, loudness)
-        {
-            out.normalize_note = Some(crate::tstatus!(
-                "🔊 Normaliserad till {} LUFS (mätt {} LUFS, tak {} dBTP)",
-                loudness.target_lufs(),
-                (measured * 10.0).round() / 10.0,
-                loudness.ceiling_dbtp()
-            ));
-        }
-        match crate::audio::write_export_with(&file.path, fmt, &buf, sample_rate, &file.meta, dither) {
-            Ok(_) => out.written.push(file.path),
-            Err(e) => {
-                out.error = Some(e);
-                break;
-            }
-        }
-        progress.fetch_add(1, Ordering::Relaxed);
-    }
-    out
-}
-
 pub(crate) struct RenderJob {
-    handle: std::thread::JoinHandle<RenderOutcome>,
+    handle: std::thread::JoinHandle<crate::audio::exporter::ExportOutcome>,
     progress: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     total: usize,
 }
