@@ -399,6 +399,9 @@ fn render_plugin_database_tab(
         if ui.selectable_label(manager.selected_format_filter == Some(PluginFormat::Lv2), "LV2").clicked() {
             manager.selected_format_filter = Some(PluginFormat::Lv2);
         }
+        if ui.selectable_label(manager.selected_format_filter == Some(PluginFormat::Jsfx), "JSFX").clicked() {
+            manager.selected_format_filter = Some(PluginFormat::Jsfx);
+        }
     });
 
     ui.add_space(4.0);
