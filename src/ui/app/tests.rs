@@ -502,6 +502,10 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         step_velocities[3] = 0.25;
 
         let data = SonixProjectData {
+            track_groups: vec![crate::ui::app::state::TrackGroup {
+                name: "Trummor".to_string(),
+                collapsed: true,
+            }],
             notes: String::new(),
             synth: None,
             fx_rack: None,
@@ -552,6 +556,9 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(back.step_velocities.unwrap()[3], 0.25, "stegvolymen tillbaka");
         assert_eq!(back.selected_pattern, 0);
         assert!(!back.follow_tempo, "switchen ska med i filen, inte bara i minnet");
+        assert_eq!(back.track_groups.len(), 1, "spågruppen ska med i filen");
+        assert_eq!(back.track_groups[0].name, "Trummor");
+        assert!(back.track_groups[0].collapsed, "ihopfällt läge ska med");
     }
 
     #[test]
@@ -1894,6 +1901,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
     #[test]
     fn test_plugin_slots_survive_project_json_roundtrip() {
         let data = SonixProjectData {
+            track_groups: Vec::new(),
             notes: String::new(),
             synth: None,
             fx_rack: None,

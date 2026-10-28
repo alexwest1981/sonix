@@ -513,6 +513,10 @@ pub struct SonixProjectData {
     pub master_volume: f32,
     pub master_pan: f32,
     pub tracks: Vec<SavedTrackData>,
+    /// **Spågrupperna** (FL: playlist track groups). Ordningen är gruppindex — spårens
+    /// `group` pekar hit. Saknas i äldre projekt, och då finns inga grupper.
+    #[serde(default)]
+    pub track_groups: Vec<crate::ui::app::state::TrackGroup>,
     /// Per-engine-stem-track plugin inserts. Index-aligned with the engine's
     /// stem tracks; `None` means "no plugin on this track".
     #[serde(default)]
@@ -914,6 +918,9 @@ pub struct PluginSlot {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SavedTrackData {
     pub name: String,
+    /// Spårets grupp, eller `None`. Saknas i äldre filer — då är spåret ogrupperat.
+    #[serde(default)]
+    pub group: Option<usize>,
     /// Kanalens anteckningar. `#[serde(default)]` så att en fil som sparades innan fältet
     /// fanns öppnas med tomma anteckningar i stället för att vägra.
     #[serde(default)]
@@ -1036,6 +1043,8 @@ pub fn frozen_audio_in_render(track: &PlaylistTrack, pattern_mode: bool) -> bool
 pub struct PreloadedTrackData {
     pub frozen: Option<SavedFrozenTrack>,
     pub name: String,
+    /// Spårets grupp, eller `None`.
+    pub group: Option<usize>,
     pub notes: String,
     pub volume: f32,
     pub pan: f32,
@@ -1096,6 +1105,8 @@ pub struct LoadedProjectPayload {
     pub master_volume: f32,
     pub master_pan: f32,
     pub tracks: Vec<PreloadedTrackData>,
+    /// Spågrupperna, om filen hade några.
+    pub track_groups: Vec<crate::ui::app::state::TrackGroup>,
     pub plugin_slots: Vec<Option<SavedPluginData>>,
     pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
     pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
@@ -1884,6 +1895,7 @@ pub fn load_demo_project(&mut self) {
                 clip_bars: [1; 32],
                 frozen: None,
                 name: name.to_string(),
+                group: None,
                 notes: String::new(),
                 volume: 0.90,
                 pan: 0.0,
@@ -1928,6 +1940,7 @@ pub fn load_demo_project(&mut self) {
             p.progress_ratio = 1.0;
             p.stage = crate::i18n::t("Färdig! Laddar Synthwave Demo...").to_string();
             p.completed_payload = Some(LoadedProjectPayload {
+                track_groups: Vec::new(),
                 name: "Sonix Synthwave Demo".to_string(),
                 bpm: 126.0,
                 notes: String::new(),
@@ -1971,6 +1984,7 @@ impl SonixApp {
 pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
     let saved_tracks: Vec<SavedTrackData> = self.playlist_tracks.iter().map(|t| SavedTrackData {
         name: t.name.clone(),
+        group: t.group,
         notes: t.notes.clone(),
         volume: t.volume,
         pan: t.pan,
@@ -2018,6 +2032,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         master_volume: self.master_volume,
         master_pan: self.master_pan,
         tracks: saved_tracks,
+        track_groups: self.track_groups.clone(),
         bus_volume: self.bus_volume,
         bus_muted: self.bus_muted,
         bus_automation: self.bus_automation.clone(),
@@ -2404,6 +2419,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
             preloaded_tracks.push(PreloadedTrackData {
                 frozen: st.frozen,
                 name: st.name,
+                group: st.group,
                 notes: st.notes,
                 volume: st.volume,
                 pan: st.pan,
@@ -2461,6 +2477,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
             p.progress_ratio = 1.0;
             p.stage = crate::i18n::t("Färdigställer tidslinje och ljudmotor...").to_string();
             p.completed_payload = Some(LoadedProjectPayload {
+                track_groups: data.track_groups,
                 name: data.name,
                 bpm: data.bpm,
                 notes: data.notes,
@@ -2525,6 +2542,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
     let channels = payload.channels;
 
     self.project_name = payload.name;
+    self.track_groups = payload.track_groups;
     self.bpm = payload.bpm;
     // **Kartan är det som hörs, fältet är dess avbild.** Står fältet i 120 medan
     // kartans första punkt står i 125 spelar tiden 125 medan rutan visar 120 — och
@@ -2599,6 +2617,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
 
         let (kind, icon, color) = classify_track_style(&st.name);
         let mut loaded_track = PlaylistTrack::new(st.name, icon, kind, color);
+        loaded_track.group = st.group;
         loaded_track.notes = st.notes;
         loaded_track.volume = st.volume;
         loaded_track.pan = st.pan;

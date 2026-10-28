@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.185] - 2026-10-28
+
+**Spågrupperna sparas i projektet.** De fanns bara i minnet: en grupp och dess ihopfällda
+läge försvann vid varje sparning, och ingen fil kunde säga vilket spår som hörde till vilken
+grupp. Inventariet hade det som ✗ — nu är det stängt.
+
+- `SonixProjectData.track_groups` och `SavedTrackData.group`, båda `#[serde(default)]` så en
+  fil från före fältet öppnas som ogrupperad i stället för att vägra.
+- Laddningen sätter tillbaka både grupplistan och varje spårs grupp, och gruppens
+  ihopfällda läge följer med.
+- Prov: en grupp med `collapsed` överlever JSON-rundturen, och projektfilen bär den.
+
 ## [0.9.184] - 2026-10-28
 
 **Exportarbetaren flyttad till `audio::exporter` — och prövad med en riktig fil.** Trådvägen

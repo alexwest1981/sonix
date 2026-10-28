@@ -515,7 +515,7 @@ pub struct Pattern {
 
 /// En grupp spår i spellistan (FL). Spåren i en grupp kan fällas ihop, och då syns bara det
 /// första — annars gick gruppen inte att fälla upp igen utan att leta i menyer.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TrackGroup {
     pub name: String,
     pub collapsed: bool,
