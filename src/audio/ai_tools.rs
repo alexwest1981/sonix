@@ -30,7 +30,8 @@ Regler:
 2. Skriv aldrig över ett klipp eller en kanal som redan har noter utan att säga det.
 3. Rör aldrig masterns volym.
 4. Verktyg du får använda: set_tempo, set_key, write_drum_pattern, write_pattern, write_notes,
-   load_drum_kit, plan_sections, mute_track, set_channel_instrument. Inget annat.
+   load_drum_kit, plan_sections, mute_track, set_channel_instrument, analyze_mix, groove_report,
+   chop_channel, rename_track, write_script, master_to_target. Inget annat.
 5. Svara med JSON: {\"calls\": [{\"tool\": \"<namn>\", \"args\": {…}}]} och inget annat när du
    vill göra något. Vill du bara prata, svara med ren text.
 
@@ -51,6 +52,15 @@ Skriva musik:
   letar efter 808, en house-hat efter öppen hi-hat.
 - Kanalerna du får adressera står i användarens meddelande (index och namn). Skriv bara på
   kanaler som finns; hitta inte på egna index.
+
+Mäta i stället för att gissa:
+- `analyze_mix` ger LUFS och topp per spår (första 32 takterna) plus sektionerna. Föreslå nivåer
+  ur de siffrorna — aldrig ur hur det ’brukar’ ligga.
+- `groove_report` säger hur långt ett spår ligger från sextondelsrutnätet. Under 10 ms är tajt,
+  över 25 ms hörs.
+- `master_to_target` sätter loudness-målet och **mäter** resultatet; säg både före och efter.
+- `chop_channel` skriver slicar; `write_script` kör Rhai mot en kopia och rullar tillbaka vid fel.
+  Föreslå ett skript först, kör det när användaren sagt ja.
 
 Gränser du måste känna till — säg dem till användaren i stället för att låtsas:
 - Rutnätet är **sextondelar**. Det finns ingen triolupplösning, så en trap-hi-hat med
@@ -73,7 +83,13 @@ pub fn tool_schema() -> Value {
         {"type": "function", "function": {"name": "set_channel_instrument", "description": "Byter ljud på en kanal i racket.", "parameters": {"type": "object", "properties": {"channel": {"type": "integer"}, "instrument": {"type": "string"}}, "required": ["channel", "instrument"]}}},
         {"type": "function", "function": {"name": "write_pattern", "description": "Skriver en stämma (trummor eller perc) på kanaler med ett eget stegmönster.", "parameters": {"type": "object", "properties": {"lanes": {"type": "array", "items": {"type": "object", "properties": {"channel": {"type": "integer"}, "steps": {"type": "string", "description": "16, 32, 48 eller 64 tecken: x = slag, . = vila"}, "subdivision": {"type": "string", "description": "den upplösning användaren bad om: 1/16, 1/8, 1/4, 1/2 eller 1/1 — slagen måste ligga på den"}, "note": {"type": "integer", "description": "MIDI-not 0–127, valfri"}}, "required": ["channel", "steps"]}}}, "required": ["lanes"]}}},
         {"type": "function", "function": {"name": "write_notes", "description": "Skriver melodi, bas eller ackord på en kanal.", "parameters": {"type": "object", "properties": {"channel": {"type": "integer"}, "notes": {"type": "array", "items": {"type": "object", "properties": {"step": {"type": "integer", "description": "0–63"}, "pitch": {"type": "integer", "description": "MIDI 0–127"}, "len": {"type": "integer", "description": "1–16 steg"}, "vel": {"type": "integer", "description": "1–127"}}, "required": ["step", "pitch"]}}}, "required": ["channel", "notes"]}}},
-        {"type": "function", "function": {"name": "load_drum_kit", "description": "Väljer samplingar ur användarens bibliotek för trumrollerna och lägger dem på trumkanalerna.", "parameters": {"type": "object", "properties": {"genre": {"type": "string", "description": "stil, t.ex. trap, drill, house, boom bap"}}, "required": ["genre"]}}}
+        {"type": "function", "function": {"name": "load_drum_kit", "description": "Väljer samplingar ur användarens bibliotek för trumrollerna och lägger dem på trumkanalerna.", "parameters": {"type": "object", "properties": {"genre": {"type": "string", "description": "stil, t.ex. trap, drill, house, boom bap"}}, "required": ["genre"]}}},
+        {"type": "function", "function": {"name": "analyze_mix", "description": "Mäter mixen: LUFS och topp per spår (första 32 takterna) plus sektionerna. Skriver inget.", "parameters": {"type": "object", "properties": {}}}},
+        {"type": "function", "function": {"name": "groove_report", "description": "Mäter hur långt ett spårs slag ligger från sextondelsrutnätet, i millisekunder. Skriver inget.", "parameters": {"type": "object", "properties": {"track": {"type": "integer", "description": "spårindex från 0"}}, "required": ["track"]}}},
+        {"type": "function", "function": {"name": "chop_channel", "description": "Delar kanalens ljud vid sina slag och lägger en slice per sextondel i ett tomt mönster.", "parameters": {"type": "object", "properties": {"channel": {"type": "integer"}, "spectral": {"type": "boolean", "description": "sant = spektral detektor, starkare på melodiöst material och sång"}}, "required": ["channel"]}}},
+        {"type": "function", "function": {"name": "rename_track", "description": "Byter namn på ett spår i arrangemanget.", "parameters": {"type": "object", "properties": {"track": {"type": "integer", "description": "spårindex från 0"}, "name": {"type": "string", "description": "högst 40 tecken"}}, "required": ["track", "name"]}}},
+        {"type": "function", "function": {"name": "write_script", "description": "Kör ett Rhai-skript mot den valda tagningen. Skriptet kör mot en kopia, så ett fel lämnar tagningen orörd.", "parameters": {"type": "object", "properties": {"source": {"type": "string", "description": "Rhai-kod, högst 4000 tecken"}}, "required": ["source"]}}},
+        {"type": "function", "function": {"name": "master_to_target", "description": "Sätter loudness-målet (närmaste preset), renderar och rapporterar uppmätt LUFS och topp före och efter.", "parameters": {"type": "object", "properties": {"lufs": {"type": "number", "description": "mål i LUFS, t.ex. -14"}}, "required": ["lufs"]}}}
     ])
 }
 
@@ -458,6 +474,56 @@ pub fn drum_layers(style: &str, bars: usize) -> Result<DrumLayers, String> {
     Ok(layers)
 }
 
+/// **Närmaste loudness-preset.** `Off` hoppas över: den betyder "ingen normalisering", inte en
+/// nivå — ett mål på −20 LUFS ska inte sluta med att normaliseringen stängs av.
+pub fn nearest_loudness_index(target_lufs: f32) -> usize {
+    crate::audio::LoudnessPreset::ALL
+        .iter()
+        .enumerate()
+        .filter(|(_, preset)| preset.enabled())
+        .min_by(|a, b| {
+            (a.1.target_lufs() - target_lufs)
+                .abs()
+                .partial_cmp(&(b.1.target_lufs() - target_lufs).abs())
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|(i, _)| i)
+        .unwrap_or(0)
+}
+
+/// **Ligger slagen på rutnätet?** Avvikelsen mellan ett uppmätt slag och närmaste sextondel, i
+/// millisekunder: `(median, max, antal)`. Halva steget är den största avvikelse som kan mätas —
+/// längre bort hör slaget till grannsteget. `None` när inga slag hittades.
+pub fn groove_drift_ms(onsets: &[usize], sample_rate: u32, step_secs: f32) -> Option<(f32, f32, usize)> {
+    if onsets.is_empty() || sample_rate == 0 || step_secs <= 0.0 {
+        return None;
+    }
+    let half_step_ms = step_secs * 500.0;
+    let mut devs: Vec<f32> = onsets
+        .iter()
+        .map(|&frame| {
+            let steps = frame as f32 / sample_rate as f32 / step_secs;
+            ((steps - steps.round()).abs() * step_secs * 1000.0).min(half_step_ms)
+        })
+        .collect();
+    devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    Some((devs[devs.len() / 2], *devs.last().unwrap_or(&0.0), devs.len()))
+}
+
+/// **Skriptgrinden.** Ett tomt skript gör inget och ett enormt är ett tecken på att modellen
+/// spårat ur; båda avvisas innan något körs. Sandlådan (kopia + `max_operations`) sköter resten.
+pub fn script_is_allowed(source: &str) -> Result<(), String> {
+    let trimmed = source.trim();
+    if trimmed.is_empty() {
+        return Err("skriptet är tomt".to_string());
+    }
+    let len = trimmed.chars().count();
+    if len > 4000 {
+        return Err(format!("skriptet är för långt ({len} tecken, max 4000)"));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -706,12 +772,69 @@ mod tests {
                 "set_channel_instrument",
                 "write_pattern",
                 "write_notes",
-                "load_drum_kit"
+                "load_drum_kit",
+                // Mätverktygen: modellen får läsa appens siffror i stället för att gissa.
+                "analyze_mix",
+                "groove_report",
+                "chop_channel",
+                "rename_track",
+                "write_script",
+                "master_to_target"
             ]
         );
         // Varje verktygsnamn ska också nämnas i prompten, annars vet modellen inte att det finns.
         for name in &names {
             assert!(SYSTEM_PROMPT.contains(name), "prompten nämner inte {name}");
         }
+    }
+}
+
+/// Måtten som AI:n får läsa: preset-valet, rutnätsavvikelsen och skriptgrinden. Rena funktioner —
+/// inget nät, ingen GUI, inget ljud.
+#[cfg(test)]
+mod measure_tests {
+    use super::{groove_drift_ms, nearest_loudness_index, script_is_allowed, STEPS};
+
+    #[test]
+    fn the_nearest_loudness_preset_skips_off_and_lands_on_the_closest() {
+        // ALL = [Off, Streaming −14, AppleMusic −16, Broadcast −23, Loud −9]
+        assert_eq!(nearest_loudness_index(-14.0), 1);
+        assert_eq!(nearest_loudness_index(-16.0), 2);
+        assert_eq!(nearest_loudness_index(-23.0), 3);
+        assert_eq!(nearest_loudness_index(-9.0), 4);
+        // −20 ligger 3 dB från broadcast och 4 dB från Apple Music.
+        assert_eq!(nearest_loudness_index(-20.0), 3);
+        // Ett orimligt mål får aldrig bli "avstängd".
+        assert_ne!(nearest_loudness_index(-60.0), 0);
+    }
+
+    #[test]
+    fn groove_drift_is_measured_against_the_nearest_sixteenth() {
+        let sr = 48_000u32;
+        let step_secs = 0.125; // 120 BPM, sextondelar
+        let on_grid: Vec<usize> = (0..8).map(|i| i * 6_000).collect();
+        let (median, max, count) = groove_drift_ms(&on_grid, sr, step_secs).unwrap();
+        assert_eq!(count, 8);
+        assert!(median < 0.5 && max < 0.5, "på rutnätet ska avvikelsen vara noll");
+
+        // Ett slag 480 frames (10 ms) sent.
+        let mut late = on_grid.clone();
+        late[3] += 480;
+        let (median, max, _) = groove_drift_ms(&late, sr, step_secs).unwrap();
+        assert!(max > 9.0 && max < 11.0, "10 ms sent ska mätas som ~10 ms, fick {max}");
+        assert!(median < 1.0, "ett sent slag av åtta flyttar inte medianen");
+
+        // Tomt underlag är "vet inte", inte noll.
+        assert!(groove_drift_ms(&[], sr, step_secs).is_none());
+        assert!(groove_drift_ms(&on_grid, sr, 0.0).is_none());
+        assert!(STEPS >= 64);
+    }
+
+    #[test]
+    fn a_script_must_be_neither_empty_nor_endless() {
+        assert!(script_is_allowed("note.set_velocity(0, 100);").is_ok());
+        assert!(script_is_allowed("   ").is_err());
+        assert!(script_is_allowed(&"x".repeat(4001)).is_err());
+        assert!(script_is_allowed(&"x".repeat(4000)).is_ok());
     }
 }

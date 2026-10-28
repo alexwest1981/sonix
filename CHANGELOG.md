@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.174] - 2026-10-28
+
+**AI:n får mäta.** Sex nya verktyg. Assistenten kan inte höra — så den läser appens egna mätvärden
+och föreslår utifrån dem i stället för att gissa.
+
+- **`analyze_mix`** mäter LUFS och topp per spår (spår för spår genom samma offline-render som
+  exporten använder, `solo_track`) plus sektionerna. Ett nivåförslag kommer nu ur siffror.
+- **`groove_report`** mäter spårets slag mot sextondelsrutnätet: median och värsta avvikelse i ms.
+- **`master_to_target`** sätter närmaste loudness-preset, renderar, normaliserar på samma väg som
+  exporten och rapporterar uppmätt LUFS före och efter samt topp.
+- **`chop_channel`** slår upp kanalens ljud vid sina transients (samma detektor som mixerpanelen)
+  och lägger en slice per sextondel i ett **tomt** mönster — ett komp som spelar rörs inte.
+- **`rename_track`** döper spår, t.ex. stämmorna efter en separation.
+- **`write_script`** kör Rhai mot den valda tagningen — mot en **kopia**, så ett fel halvvägs
+  lämnar tagningen orörd.
+
+Dessutom: kontexten till modellen innehåller nu spåren (pattern/ljud/klippa/tystad) och sektionerna,
+inte bara kanalerna. `docs/AI-API.md` har hela verktygstabellen — den påstod felaktigt att
+`set_channel_instrument` saknade utförare, och att `set_key` var byggt.
+
+
 ## [0.9.173] - 2026-10-27
 
 **Tutti — och fixarna som kom av att använda appen.** Projektet kan lämnas till det delade
@@ -242,7 +263,8 @@ audio engine; the remaining gaps are documented honestly in
   rationale, which now state the real reason (the closed format cannot be
   decoded).
 
-[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.173...HEAD
+[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.174...HEAD
+[0.9.174]: https://github.com/alexwest1981/sonix/compare/v0.9.173...v0.9.174
 [0.9.173]: https://github.com/alexwest1981/sonix/compare/v0.9.167...v0.9.173
 [0.9.167]: https://github.com/alexwest1981/sonix/compare/v0.9.165...v0.9.167
 [0.9.159]: https://github.com/alexwest1981/sonix/compare/v0.9.158...v0.9.159

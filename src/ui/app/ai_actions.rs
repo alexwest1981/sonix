@@ -176,6 +176,29 @@ impl SonixApp {
                 let genre = call.args.get("genre").and_then(|v| v.as_str()).unwrap_or("");
                 self.ai_load_drum_kit(genre)
             }
+            "analyze_mix" => self.ai_analyze_mix(),
+            "groove_report" => {
+                let track = call.args.get("track").and_then(|v| v.as_u64()).unwrap_or(u64::MAX) as usize;
+                self.ai_groove_report(track)
+            }
+            "chop_channel" => {
+                let channel = call.args.get("channel").and_then(|v| v.as_u64()).unwrap_or(u64::MAX) as usize;
+                let spectral = call.args.get("spectral").and_then(|v| v.as_bool()).unwrap_or(false);
+                self.ai_chop_channel(channel, spectral)
+            }
+            "rename_track" => {
+                let track = call.args.get("track").and_then(|v| v.as_u64()).unwrap_or(u64::MAX) as usize;
+                let name = call.args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+                self.ai_rename_track(track, name)
+            }
+            "write_script" => {
+                let source = call.args.get("source").and_then(|v| v.as_str()).unwrap_or("");
+                self.ai_write_script(source)
+            }
+            "master_to_target" => {
+                let lufs = call.args.get("lufs").and_then(|v| v.as_f64()).unwrap_or(f64::NAN);
+                self.ai_master_to_target(lufs as f32)
+            }
             "set_key" => "tonart: inte byggt än".to_string(),
             "set_channel_instrument" => {
                 let wanted = call.args.get("instrument").and_then(|v| v.as_str()).unwrap_or("");
@@ -360,11 +383,235 @@ impl SonixApp {
                 format!("{} {} {}", i, c.icon, c.name)
             })
             .collect();
+        // **Spåren och sektionerna också.** Utan dem gissar modellen vad som redan finns i
+        // arrangemanget — och då skriver den över eller föreslår något som står där.
+        let tracks: Vec<String> = self
+            .playlist_tracks
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let mut parts = vec![format!("{i} {}", t.name)];
+                if t.muted {
+                    parts.push("tystad".to_string());
+                }
+                if t.clips.iter().any(|c| c.is_some()) {
+                    parts.push("pattern".to_string());
+                }
+                if !t.regions.is_empty() {
+                    parts.push("ljud".to_string());
+                }
+                if t.pattern_clips.iter().any(|c| !c.notes.is_empty()) {
+                    parts.push("klippa".to_string());
+                }
+                parts.join(" ")
+            })
+            .collect();
+        let sections = if self.sections.is_empty() {
+            "inga".to_string()
+        } else {
+            self.sections
+                .iter()
+                .map(|s| format!("{} takt {}–{}", s.name, s.start_bar + 1, s.start_bar + s.bars))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
         format!(
-            "Aktuellt projekt: {} BPM, {} kanaler.\nKanaler: {}",
+            "Aktuellt projekt: {} BPM, {} kanaler, {} spår.\nKanaler: {}\nSpår: {}\nSektioner: {}",
             self.bpm,
             self.channels.len(),
-            list.join(" | ")
+            self.playlist_tracks.len(),
+            list.join(" | "),
+            if tracks.is_empty() { "inga".to_string() } else { tracks.join(" | ") },
+            sections
+        )
+    }
+
+    // =================================================================
+    // Mätverktygen (AI:n får läsa siffror, inte gissa)
+    // =================================================================
+
+    /// Hur många takter mätningarna spelar upp. En hel låt per spår är för långsamt att vänta
+    /// på i en samtalsrunda; 32 takter räcker för att höra vem som ligger var.
+    /// shortcut: bara början av låten mäts — mät hela när en nivå skiljer sig mellan vers och refräng.
+    const AI_MEASURE_BARS: usize = 32;
+
+    /// Renderar ett spår för sig (eller hela mixen) och returnerar det uppmätta.
+    fn ai_render_track(&self, track: usize) -> Result<Vec<f32>, String> {
+        let mut spec = self.build_render_spec(Some(track), 48_000);
+        spec.num_bars = spec.num_bars.clamp(1, Self::AI_MEASURE_BARS);
+        spec.tail_secs = 0.0;
+        self.render_buffer(&spec, false)
+    }
+
+    fn ai_render_mix(&self) -> Result<Vec<f32>, String> {
+        let spec = self.build_render_spec(None, 48_000);
+        self.render_buffer(&spec, false)
+    }
+
+    /// **Mixgranskningen.** LUFS och topp per spår, ur `audio::loudness`, plus sektionerna.
+    /// Modellen får siffrorna som text — den får inte hitta på dem.
+    fn ai_analyze_mix(&mut self) -> String {
+        let count = self.playlist_tracks.len().min(16);
+        if count == 0 {
+            return "mätning: inga spår i arrangemanget".to_string();
+        }
+        let mut lines = Vec::new();
+        for i in 0..count {
+            let name = self.playlist_tracks[i].name.clone();
+            match self.ai_render_track(i) {
+                Ok(buf) if buf.iter().any(|s| s.abs() > 1.0e-4) => {
+                    let lufs = crate::audio::loudness::integrated_lufs(&buf, 48_000);
+                    let peak = crate::audio::loudness::true_peak_db(&buf);
+                    lines.push(format!("{i} {name}: {lufs:.1} LUFS, topp {peak:.1} dB"));
+                }
+                Ok(_) => lines.push(format!("{i} {name}: tyst")),
+                Err(e) => lines.push(format!("{i} {name}: kunde inte mätas ({e})")),
+            }
+        }
+        let sections = if self.sections.is_empty() {
+            "inga sektioner".to_string()
+        } else {
+            self.sections
+                .iter()
+                .map(|s| format!("{} takt {}–{}", s.name, s.start_bar + 1, s.start_bar + s.bars))
+                .collect::<Vec<_>>()
+                .join(", ")
+        };
+        format!(
+            "mätt {} spår (första {} takterna). {} Sektioner: {}",
+            count,
+            Self::AI_MEASURE_BARS,
+            lines.join(" | "),
+            sections
+        )
+    }
+
+    /// **Ligger spåret på rutnätet?** Slagen hittas i den renderade spårmixen, avvikelsen räknas
+    /// mot sextondelar. Skriver inget — det här är ett mått, inte ett ingrepp.
+    fn ai_groove_report(&mut self, track: usize) -> String {
+        let Some(t) = self.playlist_tracks.get(track) else {
+            return format!("spår {} finns inte", track + 1);
+        };
+        let name = t.name.clone();
+        let buf = match self.ai_render_track(track) {
+            Ok(b) => b,
+            Err(e) => return format!("mätning: {e}"),
+        };
+        // Vänsterkanalen räcker: slagen sitter på samma ställe i båda.
+        let mono: Vec<f32> = buf.chunks(2).map(|f| f[0]).collect();
+        let onsets = crate::audio::onset::detect_onsets(
+            &mono,
+            48_000.0,
+            &crate::audio::onset::OnsetParams::default(),
+        );
+        let step_secs = 60.0 / self.bpm.max(20.0) / 4.0;
+        match crate::audio::ai_tools::groove_drift_ms(&onsets, 48_000, step_secs) {
+            Some((median, max, hits)) => format!(
+                "spår {} ({name}): {hits} slag, median {median:.1} ms från rutnätet, värst {max:.1} ms",
+                track + 1
+            ),
+            None => format!("spår {} ({name}): inga slag hittades", track + 1),
+        }
+    }
+
+    /// **Chop.** Slagen letas i kanalens eget ljud (samma detektor som mixerpanelens knappar) och
+    /// en slice per sextondel läggs i ett **tomt** mönster — ett komp som redan spelar rörs inte.
+    fn ai_chop_channel(&mut self, channel: usize, spectral: bool) -> String {
+        let Some(ch) = self.channels.get_mut(channel) else {
+            return format!("kanal {} finns inte", channel + 1);
+        };
+        let name = ch.name.clone();
+        if ch.steps.iter().any(|s| *s) {
+            return format!("kanal {} ({name}) har redan steg — töm den först", channel + 1);
+        }
+        let Some((left, _right, sr)) = ch.pcm_audio.as_ref() else {
+            return format!("kanal {} ({name}): kanalens ljud går inte att läsa — inga slag kan hittas", channel + 1);
+        };
+        let Some((slices, _count)) = crate::audio::onset::detect_slice_map(
+            left,
+            *sr as f32,
+            spectral,
+            &crate::audio::onset::OnsetParams::default(),
+        ) else {
+            return format!("kanal {} ({name}): inga slag hittades", channel + 1);
+        };
+        ch.sample_start = slices[0].0;
+        ch.sample_end = slices[0].1;
+        ch.slices = slices.clone();
+        // En slice per sextondel, högst en takt: 64 slicar i rad är inte ett komp.
+        let placed = slices.len().min(16);
+        ch.steps.fill(false);
+        for step in ch.steps.iter_mut().take(placed) {
+            *step = true;
+        }
+        format!(
+            "kanal {} ({name}): {} slicar hittade, {placed} i mönstret",
+            channel + 1,
+            slices.len()
+        )
+    }
+
+    /// Byler namn på ett spår. Tomt namn avvisas — ett namnlöst spår går inte att prata om.
+    fn ai_rename_track(&mut self, track: usize, name: &str) -> String {
+        let clean: String = name.trim().chars().take(40).collect();
+        if clean.is_empty() {
+            return "namn: inget namn angavs".to_string();
+        }
+        let Some(t) = self.playlist_tracks.get_mut(track) else {
+            return format!("spår {} finns inte", track + 1);
+        };
+        let old = std::mem::replace(&mut t.name, clean.clone());
+        format!("spår {}: {old} → {clean}", track + 1)
+    }
+
+    /// **Rhai från modellen.** Skriptet kör mot en **kopia** av den valda tagningen — samma regel
+    /// som skriptrutan i pianorullen — så ett fel halvvägs lämnar tagningen orörd.
+    fn ai_write_script(&mut self, source: &str) -> String {
+        if let Err(e) = crate::audio::ai_tools::script_is_allowed(source) {
+            return format!("skript: {e}");
+        }
+        let pattern = self.selected_pattern;
+        let Some(pat) = self.patterns.get_mut(pattern) else {
+            return "skript: ingen tagning vald".to_string();
+        };
+        let mut copy = pat.take.clone();
+        match crate::audio::script::run(source, &mut copy) {
+            Ok(lines) => {
+                let notes = copy.notes.len();
+                pat.take = copy;
+                if lines.is_empty() {
+                    format!("skript: {notes} noter efter körning")
+                } else {
+                    format!("skript: {notes} noter efter körning · {}", lines.join(" · "))
+                }
+            }
+            Err(e) => format!("skript: {e} (tagningen orörd)"),
+        }
+    }
+
+    /// **Mastering mot ett mått.** Närmaste loudness-preset sätts, mixen renderas en gång och
+    /// normaliseras på samma väg som exporten (`normalize_to_preset`), och både före och efter
+    /// rapporteras uppmätt. Modellen får inte påstå en nivå den inte kan mäta.
+    fn ai_master_to_target(&mut self, target_lufs: f32) -> String {
+        if !(-30.0..=0.0).contains(&target_lufs) {
+            return format!("master: {target_lufs:.1} LUFS är inget rimligt mål (−30 till 0)");
+        }
+        let idx = crate::audio::ai_tools::nearest_loudness_index(target_lufs);
+        let preset = crate::audio::LoudnessPreset::ALL[idx];
+        let buf = match self.ai_render_mix() {
+            Ok(b) => b,
+            Err(e) => return format!("master: kunde inte rendera ({e})"),
+        };
+        let before = crate::audio::loudness::integrated_lufs(&buf, 48_000);
+        let mut normalized = buf;
+        crate::audio::normalize_to_preset(&mut normalized, 48_000, preset);
+        let after = crate::audio::loudness::integrated_lufs(&normalized, 48_000);
+        let peak = crate::audio::loudness::true_peak_db(&normalized);
+        self.export_loudness_idx = idx;
+        format!(
+            "master: mål {target_lufs:.1} LUFS → {} ({}). Uppmätt {before:.1} LUFS före, {after:.1} LUFS efter, topp {peak:.1} dB",
+            preset.label(),
+            preset.target_lufs()
         )
     }
 

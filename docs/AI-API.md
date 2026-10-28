@@ -78,13 +78,34 @@ Ett avvisat anrop syns också här, med orsaken — t.ex. `"trumkomp: kanalen 'K
 | `write_drum_pattern` | `style` (`house`/`hiphop`/`rock`), `bars` 1–4 | Skriver kick/virvel/hi-hat på kanal 1–3, GM-noter 36/38/42. **Vägrar** om någon av kanalerna redan har steg |
 | `mute_track` | `track`, `muted` | Tystar/slår på ett spår i arrangemanget |
 | `plan_sections` | `sections: [{name, bars}]` | Tolkar och validerar en sektionsplan; skriver inget än |
-| `set_key`, `set_channel_instrument` | — | I schemat men **saknar utförare**; svaret säger det |
+| `set_key` | — | Inte byggt än; svaret säger det |
+| `set_channel_instrument` | `channel`, `instrument` | Byter syntljud mot en av `SYNTH_PRESETS` — namnet måste finnas, AI:n får inte hitta på ett ljud |
+| `write_notes` | `channel`, `notes: [{step, pitch, len, vel}]` | Skapar en **klippa på tidslinjen** med egna noter (se `AI-CLIPS.md`), inte rutor i rutnätet |
+| `write_pattern` | `lanes: [{channel, steps, subdivision, note}]` | Skriver en stämma per kanal; **vägrar** om kanalen har steg, och om slagen inte ligger på den upplösning som efterfrågades |
+| `load_drum_kit` | `genre` | Väljer samplingar ur biblioteket för trumrollerna och lägger dem på trumkanalerna |
+| `analyze_mix` | — | **Mäter**: LUFS och topp per spår (första 32 takterna, spår för spår via offline-render) plus sektionerna. Skriver inget |
+| `groove_report` | `track` | **Mäter**: spårets slag mot sextondelsrutnätet — median och värsta avvikelse i ms. Skriver inget |
+| `master_to_target` | `lufs` | Sätter närmaste loudness-preset, renderar och normaliserar som exporten gör, och rapporterar uppmätt LUFS före/efter samt topp |
+| `chop_channel` | `channel`, `spectral` | Slår upp kanalens ljud vid sina transients (`onset::detect_slice_map`), skriver slicarna och en slice per sextondel i ett **tomt** mönster |
+| `rename_track` | `track`, `name` | Byter namn på ett spår (högst 40 tecken) |
+| `write_script` | `source` | Kör Rhai mot den **valda tagningen** — mot en kopia, så ett fel lämnar tagningen orörd (`audio::script`) |
+
+### Mät eller gissa
+
+De sex sista verktygen finns därför att modellen inte kan höra. Siffrorna kommer från appen:
+`audio::loudness` (LUFS, true peak), `audio::onset` (slag) och `render_project_offline` (samma
+rendering som exporten använder, ett spår i taget via `solo_track`). Modellen får läsa mätvärdena
+och föreslå — den får aldrig påstå en nivå den inte kan mäta.
+
+Mätningarna spelar de **första 32 takterna**; en nivå som skiljer sig mellan vers och refräng syns
+inte i dem (`shortcut` i `ai_actions.rs`).
 
 ## Vad som inte finns (och varför)
 
 - **Ingen promptrutt.** Modellanropet går via appens AI-inställningar; att exponera det över HTTP
   vore att låta ett skript bränna API-kvoten utan att användaren ser det. Bygg hellre ett anrop i
   appen och skicka `execute` efteråt.
-- **Ingen läsning av projektet.** Tjänsten kan bara göra det verktygen kan. Ett plugin som vill
-  läsa arrangemanget får vänta på en läsrutt — den behöver först en strypt API-nyckel per plugin.
+- **Ingen läsrutt för projektet.** Tjänsten kan bara göra det verktygen kan. `analyze_mix` och
+  `groove_report` ger *mätvärden* (nivåer, slag), inte arrangemanget som data — en riktig läsrutt
+  behöver först en strypt API-nyckel per plugin.
 - **Ingen fjärråtkomst.** Ingen bind-adress, ingen tunnel, ingen CORS. Öppna inte porten.
