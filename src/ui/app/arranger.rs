@@ -1106,6 +1106,15 @@ impl SonixApp {
                         ui.close_menu();
                     }
                     ui.separator();
+                    if ui.button(crate::i18n::t("🔲 Markera alla regioner på spåret")).clicked() {
+                        self.select_all_regions(&[t_idx]);
+                        ui.close_menu();
+                    }
+                    if ui.button(crate::i18n::t("🔲 Markera alla regioner")).clicked() {
+                        self.select_all_regions(&[]);
+                        ui.close_menu();
+                    }
+                    ui.separator();
                     if ui.button(crate::i18n::t("🔀 Skicka till ledig buss")).clicked() {
                         if self.send_selected_tracks_to_free_bus().is_none() {
                             self.status_message = "🔀 Alla bussar används redan".to_string();

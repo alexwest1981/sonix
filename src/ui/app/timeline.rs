@@ -1579,6 +1579,31 @@ impl SonixApp {
         moved
     }
 
+    /// **Markerar alla regioner** på de givna spåren (tom lista = alla spår). Returnerar
+    /// antalet markerade, så statusraden kan visa det.
+    pub fn select_all_regions(&mut self, tracks: &[usize]) -> usize {
+        let targets: Vec<usize> = if tracks.is_empty() {
+            (0..self.playlist_tracks.len()).collect()
+        } else {
+            tracks.to_vec()
+        };
+        self.selected_regions.clear();
+        for t in targets.iter().copied() {
+            if let Some(track) = self.playlist_tracks.get(t) {
+                for r in 0..track.regions.len() {
+                    self.selected_regions.insert((t, r));
+                }
+            }
+        }
+        self.selected_audio_region = self.selected_regions.iter().next().copied();
+        if let Some((t, _)) = self.selected_audio_region {
+            self.selected_timeline_track = t;
+        }
+        let count = self.selected_regions.len();
+        self.status_message = crate::tstatus!("🔲 Markerade {} regioner", count);
+        count
+    }
+
     /// **Nudga markeringen** med piltangenterna: ett snäppsteg, eller en hel takt med
     /// Shift. Samma markering som Delete arbetar på, och ett enda ångra-steg.
     pub fn nudge_selected_regions(&mut self, direction: f32, whole_bar: bool) -> usize {

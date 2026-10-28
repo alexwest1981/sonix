@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.202] - 2026-10-28
+
+**Markera alla regioner** i spårrubrikens meny: på spåret eller i hela projektet. Samma
+markering som klick och ram ger, så Delete, Ctrl+C, razor och nudge arbetar på den direkt.
+Nya i18n-nycklar i alla sex tabellerna.
+
 ## [0.9.201] - 2026-10-28
 
 **Spårdragningen startar bara i namnytan.** Mute-, VU- och detaljknapparna sitter till höger
