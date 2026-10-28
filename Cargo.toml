@@ -1,16 +1,21 @@
 [package]
 name = "sonix"
-version = "0.9.206"
+version = "0.9.207"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Native Linux DAW (Rust/egui) with timeline editing, synth, mixer, stem separation, plugin hosting and export."
 repository = "https://github.com/alexwest1981/sonix"
 
 [features]
-default = []
-# Opt-in neural stem separation (HTDemucs via ONNX Runtime). Off by default so
-# the normal build stays dependency-free and offline; enable with
-# `cargo build --features neural`.
+# **Neural separation is on by default.** It was opt-in, and the result was a
+# model picker that silently fell back to the DSP separator on every build that
+# did not pass the feature — the user chose a model and got something else.
+# A build that must stay dependency-free (or cannot download ONNX Runtime)
+# turns it off: `cargo build --no-default-features --features plugin-host`.
+default = ["neural"]
+# ONNX Runtime is fetched as a prebuilt binary at build time (~100 MB, cached
+# in ~/.cache/ort.pyke.io); runtimes newer than glibc 2.28 are required, which
+# is why the release job builds with `--no-default-features`.
 neural = ["dep:ort"]
 # Opt-in CLAP plugin host (dlopen via libloading) with an out-of-process
 # sandbox (shared-memory audio over memfd). Off by default so the normal build

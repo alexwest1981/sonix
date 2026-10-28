@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.207] - 2026-10-28
+
+**Neural separation är på som standard.** Att den var opt-in (`--features neural`) gjorde att en
+vanlig `cargo build --release` gav en binär där modellväljaren tyst föll tillbaka på DSP — man valde
+en modell i listan och fick något annat, med "ingen neural modell hittades" som förklaring trots att
+filerna låg där. Nu är `neural` en standardfeature:
+
+- `cargo build --release` → alla fem modellerna fungerar.
+- `cargo build --release --no-default-features --features plugin-host` → beroendefritt bygge utan
+  ONNX Runtime (säger "Byggd utan neural-stöd", inte "ingen modell hittades").
+- Release-jobbet bygger med `--no-default-features` eftersom ORTs färdiga bibliotek kräver glibc
+  2.32/2.38 och vårt golv är 2.28.
+
 ## [0.9.206] - 2026-10-28
 
 **Teman går att skriva för hand, och listan över nycklar finns.** Motorn fanns (JSON-fil per tema,

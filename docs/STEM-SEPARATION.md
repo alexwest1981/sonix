@@ -106,9 +106,11 @@ summan modellens egen återskapning.
 | `mel_roformer` | 2 (sång + rest) | 20,8 s | bäst på sång, 12,1 dB |
 | `bs_roformer_sw6` | 6 | 30,7 s | bäst på gitarr/piano (9,1 / 7,8 dB) |
 
-Mätningen är gjord med `--features neural`; utan featuren faller allt tillbaka på den inbyggda
-DSP-separationen och **säger det** ("Byggd utan neural-stöd"), i stället för att påstå att modellen
-saknas.
+`neural` är **på som standard** sedan 0.9.207: förut var det opt-in, och resultatet var en
+modellväljare som tyst föll tillbaka på DSP i varje bygge som inte angav featuren — man valde en
+modell och fick något annat. Ett bygge som måste vara beroendefritt stänger av den:
+`cargo build --no-default-features --features plugin-host`, och då **säger** separationen det
+("Byggd utan neural-stöd") i stället för att påstå att modellen saknas.
 
 ## Köra en modell utan fönster
 
@@ -130,10 +132,11 @@ rust-lld: error: undefined symbol: __libc_single_threaded
 rust-lld: error: undefined symbol: __isoc23_strtol
 ```
 
-Därför bygger release-jobben **utan** `neural`, och en binär som kan separera byggs lokalt:
+Därför bygger release-jobben **utan** `neural` (`--no-default-features`), och en binär som kan
+separera byggs lokalt med standardkommandot:
 
 ```bash
-cargo build --release --features neural
+cargo build --release
 ```
 
 Binären säger vilket den är: `--separate` skriver `neural: true` eller `neural: false` med orsaken
