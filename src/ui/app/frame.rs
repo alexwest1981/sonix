@@ -722,7 +722,7 @@ impl SonixApp {
                     }
                 }
                 // Escape rensar tidsmarkeringen.
-                if i.key_pressed(egui::Key::Escape) && !wants_keyboard {
+                if i.key_pressed(egui::Key::Escape) && !wants_keyboard && !modal_open {
                     self.time_selection = None;
                 }
                 // Ctrl+Alt+Z: ångra-historiken (REAPER).
