@@ -145,7 +145,7 @@ impl SonixApp {
                     );
                 }
                 ViewMode::StemSeparator => {
-                    let actions = render_stem_separator_view(ui, &mut self.stem_project, self.song_time, self.is_playing, &mut self.status_message, &self.model_download, &mut self.stem_six);
+                    let actions = render_stem_separator_view(ui, &mut self.stem_project, self.song_time, self.is_playing, &mut self.status_message, &self.model_download, &mut self.stem_model);
                     if actions.request_separation {
                         self.pending_stem_separation = true;
                         self.spawn_async_file_picker(

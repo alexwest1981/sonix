@@ -19,14 +19,14 @@ pub fn render_stem_separator_view(
     is_playing: bool,
     status_msg: &mut String,
     model_download: &std::sync::Arc<std::sync::Mutex<(bool, f32, String)>>,
-    stem_six: &mut bool,
+    stem_model: &mut usize,
 ) -> StemViewActions {
-    // Fyra stämmor är standard; sex lägger till gitarr och piano och kräver 6s-modellen.
-    let model = if *stem_six {
-        crate::audio::neural_separator::StemModel::Six
-    } else {
-        crate::audio::neural_separator::StemModel::Four
-    };
+    // **Vald modell ur katalogen.** Alla exporter vi hittat står i `neural_separator::MODELS`;
+    // valet är ett index, inte en bool, eftersom katalogen växer när fler modeller dyker upp.
+    let catalog = crate::audio::neural_separator::models();
+    let chosen = (*stem_model).min(catalog.len().saturating_sub(1));
+    *stem_model = chosen;
+    let model = &catalog[chosen];
     let mut actions = StemViewActions::default();
     let _ = &status_msg;
     ui.group(|ui| {
@@ -81,27 +81,41 @@ pub fn render_stem_separator_view(
                 }
             });
             ui.horizontal(|ui| {
-                if ui
-                    .checkbox(stem_six, crate::i18n::t("6 stämmor (gitarr + piano)"))
-                    .on_hover_text(crate::i18n::t(
-                        "Sex stämmor kräver 6s-modellen (136 MB). Fyra stämmor hittar nästan alltid gitarr och piano i 'instrument' i stället.",
-                    ))
-                    .changed()
-                {
-                    // Ett modelldownload för det andra valet kan inte återanvändas.
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("Modell:"))
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().text_muted()),
+                );
+                let before = chosen;
+                egui::ComboBox::from_id_salt("stem_model_pick")
+                    .selected_text(model.label)
+                    .show_ui(ui, |ui| {
+                        for (i, spec) in catalog.iter().enumerate() {
+                            let mark = if crate::audio::neural_separator::is_downloaded(spec) {
+                                "✓"
+                            } else {
+                                "·"
+                            };
+                            ui.selectable_value(
+                                stem_model,
+                                i,
+                                format!("{mark} {}", spec.label),
+                            )
+                            .on_hover_text(spec.note);
+                        }
+                    });
+                if *stem_model != before {
+                    // En pågående hämtning hör till den förra modellen.
                     if let Ok(mut g) = model_download.lock() {
                         *g = (false, 0.0, String::new());
                     }
                 }
-                ui.label(
-                    egui::RichText::new(crate::tstatus!(
-                        "Modell: {}",
-                        model.label()
-                    ))
+            });
+            ui.label(
+                egui::RichText::new(model.note)
                     .size(Theme::FONT_S)
                     .color(crate::ui::theme::palette().text_muted()),
-                );
-            });
+            );
             // Modellen skeppas inte med: den som vill köra neural separering hämtar den.
             if crate::audio::neural_separator::find_model_for(model).is_none() {
                 let state = model_download.lock().map(|g| g.clone()).unwrap_or((false, 0.0, String::new()));
@@ -110,9 +124,7 @@ pub fn render_stem_separator_view(
                     if !running
                         && ui
                             .button(crate::i18n::t("⬇ Ladda ner modell från repot"))
-                            .on_hover_text(crate::i18n::t(
-                                "Hämtar HTDemucs (158 MB, MIT) till modellmappen. Modellen ligger inte i installationen.",
-                            ))
+                            .on_hover_text(model.note)
                             .clicked()
                     {
                         let slot = model_download.clone();

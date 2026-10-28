@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.175] - 2026-10-28
+
+**Fem separationsmodeller att välja mellan.** Katalogen `neural_separator::MODELS` ersätter den
+gamla 4/6-boolen: varje modell bär sina stämmor, sin nedladdnings-URL, sin licensnot, sin
+storlek — och sitt **format**, för nu finns två.
+
+- **Två sorters export.** Demucs-familjen tar vågform. RoFormer-familjen och SCNet är exporterade
+  *mellan* sin STFT och iSTFT, så appen gör fönstringen själv (`audio::stft`, ny modul med
+  STFT/iSTFT, Hann eller inget fönster, skalning per export). Rundturen `istft(stft(x))` är provad.
+- **Katalogen:** `htdemucs` (4), `htdemucs_6s` (6), `bs_roformer_sw6` (6 — den enda öppna export
+  där gitarr och piano faktiskt separeras: 9,1 / 7,8 dB mot 3,1 / 1,6), `mel_roformer`
+  (sång 12,1 dB) och `scnet` (4 stämmor, 13 MB).
+- **Stemmor-vyn** har en lista i stället för en kryssruta: modell, not om kvalitet/licens, `✓` när
+  den är hämtad, och hämtning per modell med storlekskontroll (13 MB-modellen krävde förut 100 MB
+  för att godkännas).
+- **Sångmodeller ger sång + rest**: resten räknas som `mix − sång`, så en sångmodell lämnar aldrig
+  tystnad efter sig.
+- **Namnen läses ur sessionen** (`spec_real`/`spec_imag`/`mix_spec` var inte samma i alla exporter),
+  och ett formfel rapporterar modellens egna in-/utdata i stället för bara "Invalid rank".
+
+Uppmätt med `SONIX_NEURAL_SMOKE=<id>` på 4 s syntetisk mix (CPU): `htdemucs` 0,997 · `htdemucs_6s`
+0,998 · `scnet` 0,863 · `bs_roformer_sw6` 0,929 · `mel_roformer` 1,000 av källans RMS — alla
+kör genom vår inferens. `docs/STEM-SEPARATION.md` har tabellerna, kontrakten och gränserna.
+
+
 ## [0.9.174] - 2026-10-28
 
 **AI:n får mäta.** Sex nya verktyg. Assistenten kan inte höra — så den läser appens egna mätvärden
@@ -263,7 +288,8 @@ audio engine; the remaining gaps are documented honestly in
   rationale, which now state the real reason (the closed format cannot be
   decoded).
 
-[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.174...HEAD
+[Unreleased]: https://github.com/alexwest1981/sonix/compare/v0.9.175...HEAD
+[0.9.175]: https://github.com/alexwest1981/sonix/compare/v0.9.174...v0.9.175
 [0.9.174]: https://github.com/alexwest1981/sonix/compare/v0.9.173...v0.9.174
 [0.9.173]: https://github.com/alexwest1981/sonix/compare/v0.9.167...v0.9.173
 [0.9.167]: https://github.com/alexwest1981/sonix/compare/v0.9.165...v0.9.167

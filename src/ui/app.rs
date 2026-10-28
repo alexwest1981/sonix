@@ -507,7 +507,8 @@ pub struct SonixApp {
     /// Videospåret: referensfilm synkad till tidslinjen.
     pub video: crate::ui::video_view::VideoState,
     /// Sex stämmor i stället för fyra (kräver 6s-modellen).
-    pub stem_six: bool,
+    /// Vald modell i `neural_separator::MODELS` (index, inte en bool: katalogen växer).
+    pub stem_model: usize,
     pub script_text: String,
     pub take_strum: f32,
     /// Nedstrum: högsta tonen först.
@@ -1191,7 +1192,7 @@ impl SonixApp {
             take_strength: 1.0,
             take_humanize: 0.5,
             video: crate::ui::video_view::VideoState::default(),
-            stem_six: false,
+            stem_model: 0,
             script_text: String::new(),
             take_strum: 0.08,
             take_strum_down: false,
