@@ -95,3 +95,26 @@ summan modellens egen återskapning.
   smoke-provet är grönt.
 - **Sångmodellerna ger två stämmor**, inte fyra. Resten är ett pålägg (`mix − sång`), inte en
   separat separation — gitarr och piano ligger kvar där.
+
+## Mätt på en 4 s stereomix (i7-8700K, CPU, en kärna)
+
+| Modell | Stämmor | Tid | Vad den är bäst på |
+|---|---|---|---|
+| `scnet` | 4 | 3,1 s | snabbast; 13 MB |
+| `htdemucs` | 4 | 12,2 s | standard, MUSDB18-HQ 9,0 dB |
+| `htdemucs_6s` | 6 | 12,2 s | gitarr/piano svaga (3,1 / 1,6 dB) |
+| `mel_roformer` | 2 (sång + rest) | 20,8 s | bäst på sång, 12,1 dB |
+| `bs_roformer_sw6` | 6 | 30,7 s | bäst på gitarr/piano (9,1 / 7,8 dB) |
+
+Mätningen är gjord med `--features neural`; utan featuren faller allt tillbaka på den inbyggda
+DSP-separationen och **säger det** ("Byggd utan neural-stöd"), i stället för att påstå att modellen
+saknas.
+
+## Köra en modell utan fönster
+
+```bash
+sonix --separate låt.wav ut-mapp [modell-id]
+```
+
+Skriver en wav per stämma och rapporten visar modellfilens sökväg, tiden, `neural: true/false` och
+rms per stämma. Frågan "fungerar modellen?" ska gå att svara på utan att titta på ett fönster.

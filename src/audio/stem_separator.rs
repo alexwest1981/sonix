@@ -328,9 +328,14 @@ pub fn run_separation_with(
             }
         }
     } else {
-        fallback_reason = Some(crate::i18n::t(
-            "Ingen neural modell hittades — använder inbyggd DSP-separation",
-        )
+        // **Två olika orsaker ska inte låta lika.** En build utan `neural` kan inte köra någon
+        // modell, hur många filer användaren än hämtar — och då är "ingen modell hittades" en
+        // felaktig förklaring till varför det är tyst.
+        fallback_reason = Some(if cfg!(feature = "neural") {
+            crate::i18n::t("Ingen neural modell hittades — använder inbyggd DSP-separation")
+        } else {
+            crate::i18n::t("Byggd utan neural-stöd — använder inbyggd DSP-separation")
+        }
         .to_string());
         None
     };

@@ -162,6 +162,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // `sonix --separate <in.wav> <ut-mapp> [modell-id]`: kör stämsepareringen över en fil och
+    // skriver varje stämma som wav. Utan det går en modell bara att pröva i fönstret, och frågan
+    // "fungerar den här modellen?" ska gå att svara på utan att titta.
+    if let Some(pos) = std::env::args().position(|a| a == "--separate") {
+        let args: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if args.len() < 2 {
+            eprintln!("användning: sonix --separate <in.wav> <ut-mapp> [modell-id]");
+            std::process::exit(2);
+        }
+        let (input, out_dir) = (&args[0], &args[1]);
+        let model = match args.get(2) {
+            Some(id) => audio::neural_separator::MODELS
+                .iter()
+                .find(|m| m.id == id.as_str())
+                .ok_or_else(|| {
+                    let ids: Vec<&str> = audio::neural_separator::MODELS.iter().map(|m| m.id).collect();
+                    format!("okänd modell '{id}'; välj bland {}", ids.join(", "))
+                })?,
+            None => audio::neural_separator::default_model(),
+        };
+        let (left, right, sample_rate) = audio::wav_reader::load_audio_pcm(input)?;
+        println!(
+            "{} ({}), {:.1} s, {} Hz — modell {}",
+            input,
+            audio::neural_separator::find_model_for(model)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|| "modellfil saknas".to_string()),
+            left.len() as f32 / sample_rate as f32,
+            sample_rate,
+            model.id
+        );
+        let started = std::time::Instant::now();
+        let result = audio::stem_separator::run_separation_with(
+            model,
+            &left,
+            &right,
+            sample_rate,
+            &|_| {},
+        );
+        std::fs::create_dir_all(out_dir).map_err(|e| format!("{out_dir}: {e}"))?;
+        for (index, stem) in result.stems.iter().enumerate() {
+            let name = model.sources.get(index).copied().unwrap_or("stem");
+            let mut interleaved = Vec::with_capacity(stem.left.len() * 2);
+            for (l, r) in stem.left.iter().zip(stem.right.iter()) {
+                interleaved.push(*l);
+                interleaved.push(*r);
+            }
+            let path = std::path::Path::new(out_dir).join(format!("{index}-{name}.wav"));
+            audio::wav_writer::write_pcm_f32_to_wav(
+                &path.display().to_string(),
+                &interleaved,
+                sample_rate,
+                2,
+            )
+            .map_err(|e| e.to_string())?;
+            // Energin per stämma är svaret på "hände något?": en tyst stämma är en tom fil.
+            let rms = (stem.left.iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>()
+                / stem.left.len().max(1) as f64)
+                .sqrt();
+            println!("  {}: rms {rms:.4} → {}", path.display(), stem.left.len());
+        }
+        println!(
+            "{} stämmor på {} ms; neural: {}{}",
+            result.stems.len(),
+            started.elapsed().as_millis(),
+            result.used_neural,
+            match &result.fallback_reason {
+                Some(reason) => format!("  (föll tillbaka: {reason})"),
+                None => String::new(),
+            }
+        );
+        return Ok(());
+    }
+
     // `sonix --jsfx-dump <fil.jsfx> [sektion]`: sektionernas påståenden med nummer. Till för att
     // hitta det påstående ett felmeddelande pekar på.
     if let Some(pos) = std::env::args().position(|a| a == "--jsfx-dump") {

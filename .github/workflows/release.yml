@@ -54,10 +54,10 @@ jobs:
           key: release-${{ matrix.arch }}
 
       - name: Test
-        run: cargo test --release --locked --features plugin-host
+        run: cargo test --release --locked --features plugin-host,neural
 
       - name: Build
-        run: cargo build --release --locked --features plugin-host
+        run: cargo build --release --locked --features plugin-host,neural
 
       - name: Check the glibc floor
         run: bash packaging/check-glibc-floor.sh target/release/sonix 2.28

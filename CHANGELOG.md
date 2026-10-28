@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.203] - 2026-10-28
+
+**Släppta byggen kan köra stämsepareringen.** Release-workflowen byggde bara med
+`--features plugin-host`, så katalogens fem ONNX-modeller syntes i listan men kunde aldrig köras —
+och felet förklarades med "Ingen neural modell hittades", som om filerna saknades. Nu byggs släppta
+binärer med `--features plugin-host,neural`.
+
+- **`sonix --separate <in.wav> <ut-mapp> [modell-id]`**: kör en modell över en fil, skriver en wav
+  per stämma och rapporterar modellfilens sökväg, tid, `neural: true/false` och rms per stämma.
+- **Ärlig orsak till fallback**: en build utan `neural` säger "Byggd utan neural-stöd" i stället för
+  att påstå att modellen saknas (7 språk).
+- Mätt på 4 s stereomix: `scnet` 3,1 s, `htdemucs` 12,2 s, `htdemucs_6s` 12,2 s, `mel_roformer`
+  20,8 s, `bs_roformer_sw6` 30,7 s — alla med `neural: true`.
+
 ## [0.9.202] - 2026-10-28
 
 **Markera alla regioner** i spårrubrikens meny: på spåret eller i hela projektet. Samma
