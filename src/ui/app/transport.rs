@@ -1738,6 +1738,63 @@ pub(crate) fn strum_take(&mut self, spread_steps: f32, down: bool) {
 }
 
 impl SonixApp {
+/// **Arpeggio på tagningen**: ackord blir en följd. Riktningen är samma ratt som strumningen
+/// använder (Ner = högsta tonen först), så det finns en riktning att lära sig, inte två.
+pub(crate) fn arpeggiate_take(&mut self, rate_steps: f32, down: bool) {
+    self.push_undo("🎹 Arpeggio av tagningen");
+    let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+        return;
+    };
+    if pat.active_take().is_empty() {
+        self.status_message = "⚠ Ingen tagning att arpeggiera — spela in först".to_string();
+        return;
+    }
+    let groups = pat.take.arpeggiate(rate_steps, !down, 1);
+    self.status_message = if groups == 0 {
+        "Inget ackord hittades: arpeggiot behöver minst två noter på samma slag".to_string()
+    } else {
+        crate::tstatus!("🎹 Arpeggierade {} ackord med {:.3} steg mellan tonerna", groups, rate_steps)
+    };
+}
+
+/// **Rullning**: noterna upprepas inom sin egen längd — en stutter som stannar där frasen gör.
+pub(crate) fn roll_take(&mut self, copies: usize) {
+    self.push_undo("🔁 Rullning av tagningen");
+    let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+        return;
+    };
+    if pat.active_take().is_empty() {
+        self.status_message = "⚠ Ingen tagning att rulla — spela in först".to_string();
+        return;
+    }
+    let rolled = pat.take.roll(copies);
+    self.status_message = if rolled == 0 {
+        "Ingen not har känd längd — rullningen behöver längder".to_string()
+    } else {
+        crate::tstatus!("🔁 Rullade {} noter till {} delar", rolled, copies)
+    };
+}
+
+/// **Choke**: en not som klingar när nästa börjar kapas. Basslines och mono Leads blir rena.
+pub(crate) fn choke_take(&mut self) {
+    self.push_undo("🔗 Choke av tagningen");
+    let Some(pat) = self.patterns.get_mut(self.selected_pattern) else {
+        return;
+    };
+    if pat.active_take().is_empty() {
+        self.status_message = "⚠ Ingen tagning att choka — spela in först".to_string();
+        return;
+    }
+    let cut = pat.take.choke();
+    self.status_message = if cut == 0 {
+        "Inga noter låg över nästa nots start".to_string()
+    } else {
+        crate::tstatus!("🔗 Kapade {} noter vid nästa nots start", cut)
+    };
+}
+}
+
+impl SonixApp {
 /// Längden på det spelande patternet i steg: 1–4 takter × 16.
 fn pattern_len(&self) -> usize {
     crate::ui::app::state::pattern_steps(

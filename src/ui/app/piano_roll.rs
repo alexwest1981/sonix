@@ -339,6 +339,66 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             }
 
             ui.separator();
+            ui.label(
+                egui::RichText::new("Arpeggio")
+                    .size(Theme::FONT_S)
+                    .color(crate::ui::theme::palette().text_muted()),
+            );
+            ui.add(
+                egui::Slider::new(&mut self.take_arp, 0.0625..=4.0)
+                    .show_value(false)
+                    .fixed_decimals(3),
+            )
+            .on_hover_text("Steglängd för arpeggiot: 0,25 = sextondel, 1,0 = fjärdedel");
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new("🎹 Arpeggio")
+                            .strong()
+                            .size(Theme::FONT_S)
+                            .color(crate::ui::theme::palette().text()),
+                    )
+                    .fill(take_btn),
+                )
+                .on_hover_text("Gör ackord till en följd: tonerna cyklas i samma riktning som strumningen")
+                .clicked()
+            {
+                let rate = self.take_arp;
+                let down = self.take_strum_down;
+                self.arpeggiate_take(rate, down);
+            }
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new("🔁 Rulla ×4")
+                            .strong()
+                            .size(Theme::FONT_S)
+                            .color(crate::ui::theme::palette().text()),
+                    )
+                    .fill(take_btn),
+                )
+                .on_hover_text("Upprepa varje not fyra gånger inom dess egen längd")
+                .clicked()
+            {
+                self.roll_take(4);
+            }
+            if ui
+                .add(
+                    egui::Button::new(
+                        egui::RichText::new("🔗 Choke")
+                            .strong()
+                            .size(Theme::FONT_S)
+                            .color(crate::ui::theme::palette().text()),
+                    )
+                    .fill(take_btn),
+                )
+                .on_hover_text("Kapa en not som klingar när nästa börjar — mono, som en bassline")
+                .clicked()
+            {
+                self.choke_take();
+            }
+
+            ui.separator();
             egui::CollapsingHeader::new(
                 egui::RichText::new(crate::i18n::t("📜 Skript")).size(Theme::FONT_S),
             )

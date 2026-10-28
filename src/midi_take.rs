@@ -580,6 +580,113 @@ impl Take {
         moved
     }
 
+    /// **Arpeggio**: noter som börjar på samma ställe blir en följd i stället för ett
+    /// ackord. Tonerna cyklas i tonhöjdsordning (`up` = lägst först), `octaves` låter följden
+    /// gå uppåt i oktaver, och varje steg får `rate_steps` längd. Ackordets egna noter tas
+    /// bort — det som hörs är följden, inte båda.
+    pub fn arpeggiate(&mut self, rate_steps: f32, up: bool, octaves: u8) -> usize {
+        let rate = rate_steps.clamp(0.0625, 4.0);
+        let mut groups: std::collections::BTreeMap<i64, Vec<usize>> = std::collections::BTreeMap::new();
+        for (i, n) in self.notes.iter().enumerate() {
+            groups.entry((n.pos * 100.0).round() as i64).or_default().push(i);
+        }
+        let mut out: Vec<TakeNote> = Vec::with_capacity(self.notes.len());
+        let mut take_out: Vec<bool> = vec![false; self.notes.len()];
+        let mut arpeggiated = 0;
+        for (_, mut idxs) in groups {
+            if idxs.len() < 2 {
+                continue;
+            }
+            idxs.sort_by(|a, b| self.notes[*a].key.cmp(&self.notes[*b].key));
+            if !up {
+                idxs.reverse();
+            }
+            let pitches: Vec<(u8, f32)> = idxs.iter().map(|i| (self.notes[*i].key, self.notes[*i].velocity)).collect();
+            let start = self.notes[idxs[0]].pos;
+            let end = idxs
+                .iter()
+                .map(|i| self.notes[*i].pos + self.notes[*i].length_steps.max(rate))
+                .fold(start + rate, f32::max);
+            let mut step = 0usize;
+            let mut pos = start;
+            while pos < end && step < 64 {
+                let idx = step % pitches.len();
+                let octave = if octaves > 1 { (step / pitches.len()) as u8 % octaves } else { 0 };
+                let key = pitches[idx].0.saturating_add(12 * octave).min(127);
+                out.push(TakeNote {
+                    pos: pos.clamp(0.0, STEPS_PER_BAR - 0.01),
+                    key,
+                    velocity: pitches[idx].1,
+                    probability: 1.0,
+                    length_steps: (rate * 0.9).min(rate),
+                    articulation: Articulation::Normal,
+                    applied: false,
+                });
+                pos += rate;
+                step += 1;
+            }
+            for i in &idxs {
+                take_out[*i] = true;
+            }
+            arpeggiated += 1;
+        }
+        // Noterna utanför ackorden behålls orörda; ordningen blir arpeggion först.
+        let kept: Vec<TakeNote> = self
+            .notes
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !take_out[*i])
+            .map(|(_, n)| n.clone())
+            .collect();
+        out.extend(kept);
+        out.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+        self.notes = out;
+        arpeggiated
+    }
+
+    /// **Rulla**: en not med känd längd upprepas `copies` gånger inom sin egen längd —
+    /// en stutter som stannar där noten slutade. Okänd längd hoppas över.
+    pub fn roll(&mut self, copies: usize) -> usize {
+        let copies = copies.clamp(2, 16);
+        let mut out = Vec::with_capacity(self.notes.len());
+        let mut rolled = 0;
+        for n in self.notes.drain(..) {
+            if n.length_steps <= 0.0 {
+                out.push(n);
+                continue;
+            }
+            let len = n.length_steps / copies as f32;
+            for k in 0..copies {
+                out.push(TakeNote {
+                    pos: n.pos + len * k as f32,
+                    length_steps: len * 0.9,
+                    ..n
+                });
+            }
+            rolled += 1;
+        }
+        out.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+        self.notes = out;
+        rolled
+    }
+
+    /// **Choke (mono)**: en not som klingar när nästa börjar kapas vid nästas start — inga
+    /// toner ligger kvar och grumlar den nya. Noter med okänd längd rörs inte: att korta en
+    /// not vars slut vi inte känner är att gissa.
+    pub fn choke(&mut self) -> usize {
+        self.notes.sort_by(|a, b| a.pos.total_cmp(&b.pos));
+        let mut cut = 0;
+        for i in 0..self.notes.len().saturating_sub(1) {
+            let next_pos = self.notes[i + 1].pos;
+            let end = self.notes[i].pos + self.notes[i].length_steps;
+            if self.notes[i].length_steps > 0.0 && end > next_pos + 0.001 {
+                self.notes[i].length_steps = (next_pos - self.notes[i].pos).max(0.01);
+                cut += 1;
+            }
+        }
+        cut
+    }
+
     /// Stegen som ska trigga noten, och hur långt in i steget den ska klinga.
     ///
     /// Noten spelas från steget *före* sin rutnätslinje när den ligger tidigt
@@ -1284,5 +1391,82 @@ mod tests {
         assert_eq!(t.notes[0].velocity, 0.8, "det starkaste anslaget");
         assert_eq!(t.notes[1].pos, 6.5, "luckan lämnas");
         assert_eq!(t.notes[1].length_steps, 1.0);
+    }
+
+    /// Ett ackord blir en följd: samma position, cykliska toner, och ackordet tas bort.
+    #[test]
+    fn arpeggio_turns_a_chord_into_a_sequence() {
+        let mut t = Take::new();
+        for key in [60u8, 64, 67] {
+            t.push(0.0, key, 0.8);
+            if let Some(n) = t.notes.last_mut() {
+                n.length_steps = 4.0;
+            }
+        }
+        let groups = t.arpeggiate(0.25, true, 1);
+        assert_eq!(groups, 1);
+        assert_eq!(t.notes.len(), 16, "4 steg / 0,25");
+        assert_eq!(t.notes.iter().map(|n| n.key).take(4).collect::<Vec<_>>(), vec![60, 64, 67, 60]);
+        assert!((t.notes[1].pos - 0.25).abs() < 1e-6);
+        assert!((t.notes[0].length_steps - 0.225).abs() < 1e-6);
+    }
+
+    /// Med oktaver går följden uppåt: fjärde noten är första tonen en oktav upp.
+    #[test]
+    fn arpeggio_can_climb_octaves() {
+        let mut t = Take::new();
+        for key in [60u8, 64, 67] {
+            t.push(0.0, key, 0.8);
+            if let Some(n) = t.notes.last_mut() {
+                n.length_steps = 4.0;
+            }
+        }
+        t.arpeggiate(0.25, true, 2);
+        // Första varvet i grundoktaven, sedan samma ackord en oktav upp.
+        assert_eq!(t.notes[3].key, 72);
+        assert_eq!(t.notes[4].key, 76);
+        assert_eq!(t.notes[6].key, 60, "tredje varvet börjar om");
+    }
+
+    /// Nedåt vänder ordningen: högsta tonen först.
+    #[test]
+    fn arpeggio_down_starts_on_the_highest_note() {
+        let mut t = Take::new();
+        for key in [60u8, 64, 67] {
+            t.push(0.0, key, 0.8);
+            if let Some(n) = t.notes.last_mut() {
+                n.length_steps = 2.0;
+            }
+        }
+        t.arpeggiate(0.5, false, 1);
+        assert_eq!(t.notes[0].key, 67);
+    }
+
+    /// Rullning stannar inom notens längd.
+    #[test]
+    fn roll_repeats_within_the_notes_own_length() {
+        let mut t = Take::new();
+        t.push(0.0, 60, 0.8);
+        t.notes[0].length_steps = 4.0;
+        let rolled = t.roll(4);
+        assert_eq!(rolled, 1);
+        assert_eq!(t.notes.len(), 4);
+        assert!((t.notes[3].pos - 3.0).abs() < 1e-6);
+        assert!(t.notes.iter().all(|n| (n.length_steps - 0.9).abs() < 1e-6));
+    }
+
+    /// Choke kapar den not som klingar när nästa börjar — och rör inte okända längder.
+    #[test]
+    fn choke_cuts_the_note_that_is_still_ringing() {
+        let mut t = Take::new();
+        t.push(0.0, 40, 0.8);
+        t.notes[0].length_steps = 2.0;
+        t.push(1.0, 45, 0.8);
+        t.notes[1].length_steps = 2.0;
+        t.push(8.0, 50, 0.8); // okänd längd
+        let cut = t.choke();
+        assert_eq!(cut, 1);
+        assert!((t.notes[0].length_steps - 1.0).abs() < 1e-6);
+        assert_eq!(t.notes[2].length_steps, 0.0, "okänd längd rörs inte");
     }
 }

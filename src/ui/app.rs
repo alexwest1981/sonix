@@ -517,6 +517,8 @@ pub struct SonixApp {
     pub stem_model: usize,
     pub script_text: String,
     pub take_strum: f32,
+    /// Arpeggiots steglängd i steg (0,0625 = 1/64, 4 = en fjärdedel).
+    pub take_arp: f32,
     /// Nedstrum: högsta tonen först.
     pub take_strum_down: bool,
     pub midi_held_notes: std::collections::HashSet<u8>,
@@ -1203,6 +1205,7 @@ impl SonixApp {
             stem_model: 0,
             script_text: String::new(),
             take_strum: 0.08,
+            take_arp: 0.25,
             take_strum_down: false,
             midi_held_notes: std::collections::HashSet::new(),
             control_tx,

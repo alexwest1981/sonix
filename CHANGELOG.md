@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.181] - 2026-10-28
+
+**Tre MIDI-verktyg på tagningen: arpeggio, rullning och choke.** De bor där Sonix faktiskt har
+notlängder — i tagningen — i stället för i en effekt som saknar MIDI-ingång.
+
+- **🎹 Arpeggio**: noter på samma slag blir en följd. Tonerna cyklas i tonhöjdsordning, `octaves`
+  låter följden klättra, och varje steg får vald längd. Riktningen är samma ratt som
+  strumningen (Ner = högsta först) — en riktning att lära sig, inte två.
+- **🔁 Rulla ×4**: varje not med känd längd upprepas fyra gånger inom sin egen längd, en
+  stutter som stannar där frasen slutar. Okänd längd hoppas över.
+- **🔗 Choke**: en not som klingar när nästa börjar kapas vid nästas start. Basslines och mono
+  leads blir rena, och noter med okänd längd rörs inte — att korta en not vars slut vi inte
+  känner är att gissa.
+- **Mätt:** ett treklang på 4 steg med 0,25-steg blir 16 noter (60, 64, 67, 60 …), oktaver
+  klättrar 60→72→76, rullning ger 4 noter på 0/1/2/3 med 0,9 längd, och choke kapar 2,0 → 1,0
+  medan okänd längd står kvar. 1162 prov gröna.
+
 ## [0.9.180] - 2026-10-28
 
 **Spektral målning: dämpa ett ljud genom att måla på dess spektrogram.** Verktyget ligger i
