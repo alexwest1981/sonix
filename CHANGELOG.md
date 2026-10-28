@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.197] - 2026-10-28
+
+**Spår kan flyttas i listan.** `Ctrl+Shift+↑/↓` eller menyvalet i spårrubriken; motorn
+synkas om efter flytten och markeringen följer med, så nästa kommando träffar samma spår
+som före. Regeln för indexflytten är en egen funktion med prov (flytt åt båda hållen).
+
 ## [0.9.196] - 2026-10-28
 
 **Dra regioner mellan spår.** Dragningen följer spåret pekaren står över och flyttar

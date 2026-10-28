@@ -1056,6 +1056,14 @@ impl SonixApp {
                         track_duplicate_idx = Some(t_idx);
                         ui.close_menu();
                     }
+                    if ui.button(crate::i18n::t("⬆ Flytta spår upp")).clicked() {
+                        self.move_selected_track(-1);
+                        ui.close_menu();
+                    }
+                    if ui.button(crate::i18n::t("⬇ Flytta spår ner")).clicked() {
+                        self.move_selected_track(1);
+                        ui.close_menu();
+                    }
                     if self.copied_region.is_some()
                         && ui.button(crate::i18n::t("📋 Klistra in sample här (Ctrl+V)")).clicked() {
                             track_paste_idx = Some(t_idx);

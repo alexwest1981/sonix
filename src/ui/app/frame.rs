@@ -725,6 +725,13 @@ impl SonixApp {
                 if i.key_pressed(egui::Key::Escape) && !wants_keyboard && !modal_open {
                     self.time_selection = None;
                 }
+                // Ctrl+Shift+↑/↓: flytta spåret i listan.
+                if i.modifiers.shift && i.key_pressed(egui::Key::ArrowUp) {
+                    self.move_selected_track(-1);
+                }
+                if i.modifiers.shift && i.key_pressed(egui::Key::ArrowDown) {
+                    self.move_selected_track(1);
+                }
                 // Ctrl+Alt+Z: ångra-historiken (REAPER).
                 if i.modifiers.alt && i.key_pressed(egui::Key::Z) {
                     self.show_undo_history_modal = true;

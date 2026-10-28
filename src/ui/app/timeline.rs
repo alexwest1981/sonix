@@ -1579,6 +1579,44 @@ impl SonixApp {
         moved
     }
 
+    /// **Flyttar det primära spåret upp eller ner** i listan och synkar om motorn.
+    /// Markeringen följer med, så nästa kommando träffar samma spår som före flytten.
+    pub fn move_selected_track(&mut self, delta: isize) -> bool {
+        let from = self.selected_timeline_track;
+        let to = from as isize + delta;
+        if from >= self.playlist_tracks.len() || to < 0 || to as usize >= self.playlist_tracks.len() {
+            return false;
+        }
+        let to = to as usize;
+        if to == from {
+            return false;
+        }
+        let name = self.playlist_tracks[from].name.clone();
+        self.push_undo("Flytta spår");
+        let track = self.playlist_tracks.remove(from);
+        self.playlist_tracks.insert(to, track);
+
+        // Markeringen flyttar med: index som låg mellan de två platserna skjuts ett steg.
+        self.selected_tracks = self
+            .selected_tracks
+            .iter()
+            .copied()
+            .map(|i| crate::ui::app::state::remap_track_index(i, from, to))
+            .collect();
+        self.selected_timeline_track = to;
+        self.selected_regions.clear();
+        self.selected_audio_region = None;
+
+        let _ = self.engine.send_command(AudioCommand::ClearAllStemTracks);
+        for i in 0..self.playlist_tracks.len() {
+            self.sync_track_stem_to_engine(i);
+            self.sync_track_audio_state(i);
+            self.sync_track_regions(i);
+        }
+        self.status_message = crate::tstatus!("↕ Flyttade '{}' till plats {}", name, to + 1);
+        true
+    }
+
     /// Flyttar en pågående dragnings regioner till `target`, med samma spåravstånd som
     /// klungan hade. Tas bort bakifrån så indexen håller, och läggs tillbaka i sitt
     /// ursprungliga spår om målet hamnar utanför projektet.

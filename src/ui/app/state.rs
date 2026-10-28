@@ -592,6 +592,20 @@ pub fn expand_with_groups(
     next
 }
 
+/// Var ett spårs index hamnar när spåret på `from` flyttas till `to`. Markeringen ska
+/// följa med genom flytten, annars pekar nästa kommando på fel spår.
+pub fn remap_track_index(i: usize, from: usize, to: usize) -> usize {
+    if i == from {
+        to
+    } else if from < to && i > from && i <= to {
+        i - 1
+    } else if to < from && i >= to && i < from {
+        i + 1
+    } else {
+        i
+    }
+}
+
 /// Regioner i ett spår vars tid överlappar [from, to] — grunden för rammarkering.
 pub fn regions_in_bar_range(track: &PlaylistTrack, from: f32, to: f32) -> Vec<usize> {
     let (lo, hi) = if from <= to { (from, to) } else { (to, from) };
@@ -2040,6 +2054,20 @@ mod crossfade_tests {
         );
         t.regions = regions;
         t
+    }
+
+    /// Flytten av ett spår flyttar markeringen med — annars pekar nästa kommando fel.
+    #[test]
+    fn track_indices_follow_a_move() {
+        // Spår 1 flyttas ner till 3: 2→1, 3→2, 1→3.
+        assert_eq!(remap_track_index(1, 1, 3), 3);
+        assert_eq!(remap_track_index(2, 1, 3), 1);
+        assert_eq!(remap_track_index(3, 1, 3), 2);
+        assert_eq!(remap_track_index(5, 1, 3), 5);
+        // Och uppåt: 3→1 ger 1→2, 2→3, 3→1.
+        assert_eq!(remap_track_index(3, 3, 1), 1);
+        assert_eq!(remap_track_index(1, 3, 1), 2);
+        assert_eq!(remap_track_index(2, 3, 1), 3);
     }
 
     /// Ramarkeringens urval: bara regioner som faktiskt överlappar intervallet, och
