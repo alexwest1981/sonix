@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.182] - 2026-10-28
+
+**Exporten renderar i bakgrunden.** FL:s `Background rendering` var det sista i kommandoytan
+som handlade om arbetsflöde i stället för om en effekt: förut frös fönstret medan filerna
+skrevs, nu kan man jobba vidare och statusraden säger till när det är klart.
+
+- Specarna byggs på UI-tråden (de är ren data), sedan tar en tråd över: `render_files` kör
+  samma `build_offline_engine` + `render_project_offline` som förut, hoppar över tomma stammar,
+  normaliserar mastern och skriver filerna.
+- `RenderJob` bär tråden, en atomär räknare och antalet filer; `poll_render_job` räknar om
+  förloppet varje bildruta och hämtar resultatet när tråden är klar. Panik i tråden blir
+  "avslutades oväntat" i statusraden i stället för en evig progressbar.
+- Startknappen är avstängd medan en export kör, så två exporter inte kan skriva samma fil.
+- Beskeden vid klart/fel är desamma som den blockerande exporten gav, inklusive
+  normaliseringsraden (LUFS, mätt nivå, tak).
+
 ## [0.9.181] - 2026-10-28
 
 **Tre MIDI-verktyg på tagningen: arpeggio, rullning och choke.** De bor där Sonix faktiskt har

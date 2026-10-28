@@ -347,6 +347,7 @@ impl SonixApp {
         // redan vet vilket tempo klippen ska följa.
         self.ensure_stretched();
         // Keep embedded plugin editors responsive (Fas 4.4b).
+        self.poll_render_job();
         self.poll_plugin_guis();
         self.render_plugin_param_windows(ctx);
         if let Some(editor) = self.spectral_editor.as_mut() {

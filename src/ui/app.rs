@@ -532,6 +532,8 @@ pub struct SonixApp {
     #[allow(dead_code)]
     pub render_bit_depth_idx: usize,
     pub is_rendering: bool,
+    /// Bakgrundsexporten: tråden, räknaren och antalet filer. `None` = ingen export pågår.
+    pub render_job: Option<export::RenderJob>,
     pub render_progress: f32,
     pub render_queue_status: String,
     // Export destination & clean metadata (only Sonix tags, never AI info)
@@ -1217,6 +1219,7 @@ impl SonixApp {
             render_sample_rate_idx: 0,
             render_bit_depth_idx: 0,
             is_rendering: false,
+            render_job: None,
             render_progress: 0.0,
             render_queue_status: crate::i18n::t("Klar för rendering").to_string(),
             export_folder: {

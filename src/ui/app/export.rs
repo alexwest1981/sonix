@@ -1165,7 +1165,11 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
             ui.add_space(10.0);
 
             ui.horizontal(|ui| {
-                if ui.add(egui::Button::new(egui::RichText::new(self.tr("🚀 STARTA EXPORT")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().text_muted())).clicked() {
+                let start = ui.add_enabled(
+                    !self.is_rendering,
+                    egui::Button::new(egui::RichText::new(self.tr("🚀 STARTA EXPORT")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().text())).fill(crate::ui::theme::palette().text_muted()),
+                );
+                if start.clicked() {
                     self.execute_batch_export();
                 }
                 if ui.button(self.tr("Stäng")).clicked() {
@@ -1182,9 +1186,11 @@ pub(crate) fn render_batch_export_modal(&mut self, ctx: &egui::Context) {
 
 impl SonixApp {
 pub fn execute_batch_export(&mut self) {
+    if self.render_job.is_some() {
+        self.render_queue_status = "⏳ En export pågår redan".to_string();
+        return;
+    }
     self.sync_active_pattern_from_ui();
-    self.is_rendering = true;
-    self.render_progress = 0.0;
 
     let fmt_idx = self.render_format_idx.min(Self::EXPORT_FORMATS.len() - 1);
     let fmt = Self::EXPORT_FORMATS[fmt_idx];
@@ -1213,95 +1219,172 @@ pub fn execute_batch_export(&mut self) {
     let dry = self.render_scope_idx == 1;
     let stem_mode = self.render_scope_idx == 1 || self.render_scope_idx == 2;
 
-    std::fs::create_dir_all(&folder).map_err(|e| {
-        self.is_rendering = false;
+    if let Err(e) = std::fs::create_dir_all(&folder) {
         self.render_queue_status = crate::tstatus!("✘ Kan inte skapa mapp: {}", e);
         self.status_message = crate::tstatus!("✘ Exportfel: {}", e);
-    }).ok();
+        return;
+    }
 
-    let mut written_files: Vec<String> = Vec::new();
-    let mut last_error: Option<String> = None;
-    let mut normalize_note: Option<String> = None;
     let loudness = crate::audio::LoudnessPreset::ALL
         [self.export_loudness_idx.min(crate::audio::LoudnessPreset::ALL.len() - 1)];
 
+    // **Specarna byggs här, renderingen sker i en tråd.** Specen är ren data; efter den här
+    // loopen rör exporten ingenting som UI-tråden äger, och då behöver den inte blockera den.
+    let mut files: Vec<RenderFile> = Vec::new();
     if stem_mode {
         let track_count = self.playlist_tracks.len();
         for t_idx in 0..track_count {
             let track_name = self.playlist_tracks[t_idx].name.replace([' ', '/', '\\'], "_");
-            let spec = self.build_render_spec(Some(t_idx), sample_rate);
-            let buf = match self.render_buffer(&spec, dry) {
-                Ok(b) => b,
-                Err(e) => { last_error = Some(e); break; }
-            };
-            if Self::peak_of(&buf) < 1.0e-6 {
-                continue; // tomt spår – hoppa över
-            }
             let file_stem = format!("{}_Trk{:02}_{}", base, t_idx + 1, track_name);
-            let path = format!("{}/{}.{}", folder, file_stem, fmt.ext());
             let mut stem_meta = meta.clone();
             if stem_meta.title.trim().is_empty() || stem_meta.title == base {
                 stem_meta.title = format!("{} ({})", base, track_name);
             }
-            let dither = self.export_dither_settings();
-            match crate::audio::write_export_with(&path, fmt, &buf, sample_rate, &stem_meta, dither) {
-                Ok(_) => written_files.push(path),
-                Err(e) => { last_error = Some(e); break; }
-            }
+            files.push(RenderFile {
+                path: format!("{}/{}.{}", folder, file_stem, fmt.ext()),
+                spec: self.build_render_spec(Some(t_idx), sample_rate),
+                meta: stem_meta,
+                normalize: false,
+            });
         }
     } else {
-        let spec = self.build_render_spec(None, sample_rate);
-        let mut buf = match self.render_buffer(&spec, false) {
-            Ok(b) => b,
-            Err(e) => { last_error = Some(e); Vec::new() }
-        };
-        if last_error.is_none() {
-            if let Some(measured) =
-                crate::audio::normalize_to_preset(&mut buf, sample_rate, loudness)
-            {
-                normalize_note = Some(crate::tstatus!(
-                    "🔊 Normaliserad till {} LUFS (mätt {} LUFS, tak {} dBTP)",
-                    loudness.target_lufs(),
-                    (measured * 10.0).round() / 10.0,
-                    loudness.ceiling_dbtp()
-                ));
-            }
-            let path = format!("{}/{}_{:.0}bpm.{}", folder, base, self.bpm, fmt.ext());
-            let dither = self.export_dither_settings();
-            match crate::audio::write_export_with(&path, fmt, &buf, sample_rate, &meta, dither) {
-                Ok(_) => written_files.push(path),
-                Err(e) => last_error = Some(e),
-            }
-        }
+        files.push(RenderFile {
+            path: format!("{}/{}_{:.0}bpm.{}", folder, base, self.bpm, fmt.ext()),
+            spec: self.build_render_spec(None, sample_rate),
+            meta: meta.clone(),
+            normalize: true,
+        });
     }
 
-    self.is_rendering = false;
-    self.render_progress = 1.0;
-    match last_error {
-        Some(e) => {
-            self.render_queue_status = crate::tstatus!("✘ Exporten avbröts: {}", e);
-            self.status_message = crate::tstatus!("✘ Exportfel: {}", e);
-        }
-        None if written_files.is_empty() => {
-            self.render_queue_status = crate::i18n::t("⚠ Inga ljudfiler skapades (alla spår var tomma?).").to_string();
-            self.status_message = crate::i18n::t("⚠ Inga ljud skapades.").to_string();
-        }
-        None => {
-            self.render_queue_status = crate::tstatus!("✅ {} fil(er) exporterade till {}", written_files.len(), folder);
-            if let Some(note) = &normalize_note {
-                self.render_queue_status = crate::tstatus!("✅ {} fil(er) → {} · {}", written_files.len(), folder, note);
-            }
-            self.status_message = crate::tstatus!("✔ Klar! Exporterade {} fil(er) utan AI-metadata → {}", written_files.len(), folder);
-        }
-    }
+    let total = files.len();
+    let progress = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let fx = self.export_fx_state(dry);
+    let dither = self.export_dither_settings();
+    let worker_progress = progress.clone();
+    let handle = std::thread::spawn(move || {
+        render_files(files, fx, fmt, sample_rate, dither, loudness, folder, worker_progress)
+    });
+
+    self.render_job = Some(RenderJob { handle, progress, total });
+    self.is_rendering = true;
+    self.render_progress = 0.0;
+    self.render_queue_status = crate::tstatus!(
+        "⏳ Renderar {} fil(er) i bakgrunden — du kan jobba vidare",
+        total
+    );
 }
 }
 
 impl SonixApp {
-    /// **Klicka bort skarvar** på ett spår: lagar tvära hopp i det inspelade ljudet.
-    ///
-    /// Arbetar på en kopia och byter först när något faktiskt lagats — ett spår utan klickar ska
-    /// inte få ny identitet på sin buffer (och därmed ingen omritad vågform) för ingenting.
+/// **Exporter i bakgrunden** (FL: `Background rendering`). Tråden äger inget som UI:t ritar;
+/// den får färdiga specar, skriver filerna och räknar upp en atomär. När den är klar hämtas
+/// resultatet här och statusraden får samma besked som den blockerande exporten gav.
+pub(crate) fn poll_render_job(&mut self) {
+    let Some(job) = self.render_job.as_ref() else {
+        return;
+    };
+    if !job.handle.is_finished() {
+        let done = job.progress.load(std::sync::atomic::Ordering::Relaxed);
+        self.render_progress = (done as f32 / job.total.max(1) as f32).clamp(0.0, 0.99);
+        return;
+    }
+    let job = self.render_job.take().expect("just kontrollerad");
+    let outcome = job.handle.join().unwrap_or(RenderOutcome {
+        written: Vec::new(),
+        error: Some("renderingstråden avslutades oväntat".to_string()),
+        normalize_note: None,
+        folder: String::new(),
+    });
+    self.is_rendering = false;
+    self.render_progress = 1.0;
+    match outcome.error {
+        Some(e) => {
+            self.render_queue_status = crate::tstatus!("✘ Exporten avbröts: {}", e);
+            self.status_message = crate::tstatus!("✘ Exportfel: {}", e);
+        }
+        None if outcome.written.is_empty() => {
+            self.render_queue_status = crate::i18n::t("⚠ Inga ljudfiler skapades (alla spår var tomma?).").to_string();
+            self.status_message = crate::i18n::t("⚠ Inga ljud skapades.").to_string();
+        }
+        None => {
+            self.render_queue_status = crate::tstatus!("✅ {} fil(er) exporterade till {}", outcome.written.len(), outcome.folder);
+            if let Some(note) = &outcome.normalize_note {
+                self.render_queue_status = crate::tstatus!("✅ {} fil(er) → {} · {}", outcome.written.len(), outcome.folder, note);
+            }
+            self.status_message = crate::tstatus!("✔ Klar! Exporterade {} fil(er) utan AI-metadata → {}", outcome.written.len(), outcome.folder);
+        }
+    }
+}
+}
+
+/// En fil som ska renderas: allt tråden behöver, och ingenting som pekar tillbaka på appen.
+struct RenderFile {
+    path: String,
+    spec: crate::audio::exporter::RenderSpec,
+    meta: crate::audio::exporter::ExportMeta,
+    /// Normalisera till loudness-preset (bara master-mixen; stems lämnas orörda).
+    normalize: bool,
+}
+
+struct RenderOutcome {
+    written: Vec<String>,
+    error: Option<String>,
+    normalize_note: Option<String>,
+    folder: String,
+}
+
+/// Själva renderingen. Samma väg som förut (`build_offline_engine` + `render_project_offline`),
+/// men utan `&self`: en tom stämma hoppas över, och en misslyckad skrivning avbryter resten så
+/// halva exporten inte ser ut som en hel.
+fn render_files(
+    files: Vec<RenderFile>,
+    fx: crate::audio::exporter::FxState,
+    fmt: crate::audio::exporter::ExportFormat,
+    sample_rate: u32,
+    dither: crate::audio::DitherSettings,
+    loudness: crate::audio::LoudnessPreset,
+    folder: String,
+    progress: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+) -> RenderOutcome {
+    use std::sync::atomic::Ordering;
+    let mut out = RenderOutcome { written: Vec::new(), error: None, normalize_note: None, folder };
+    for file in files {
+        let mut engine = crate::audio::build_offline_engine(&file.spec, &fx);
+        let mut buf = crate::audio::render_project_offline(&mut engine, &file.spec);
+        let peak = buf.iter().fold(0.0f32, |m, &s| m.max(s.abs()));
+        if !file.normalize && peak < 1.0e-6 {
+            progress.fetch_add(1, Ordering::Relaxed);
+            continue; // tomt spår – hoppa över
+        }
+        if file.normalize
+            && let Some(measured) = crate::audio::normalize_to_preset(&mut buf, sample_rate, loudness)
+        {
+            out.normalize_note = Some(crate::tstatus!(
+                "🔊 Normaliserad till {} LUFS (mätt {} LUFS, tak {} dBTP)",
+                loudness.target_lufs(),
+                (measured * 10.0).round() / 10.0,
+                loudness.ceiling_dbtp()
+            ));
+        }
+        match crate::audio::write_export_with(&file.path, fmt, &buf, sample_rate, &file.meta, dither) {
+            Ok(_) => out.written.push(file.path),
+            Err(e) => {
+                out.error = Some(e);
+                break;
+            }
+        }
+        progress.fetch_add(1, Ordering::Relaxed);
+    }
+    out
+}
+
+pub(crate) struct RenderJob {
+    handle: std::thread::JoinHandle<RenderOutcome>,
+    progress: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    total: usize,
+}
+
+impl SonixApp {
     /// **Öppnar spektral målning** för ett spår: analyserar ljudet och visar spektrogrammet.
     pub(crate) fn open_spectral_editor(&mut self, t_idx: usize) {
         let Some(track) = self.playlist_tracks.get(t_idx) else {
@@ -1343,6 +1426,10 @@ impl SonixApp {
         self.status_message = crate::tstatus!("🎨 Målade {} rutor i spåret", painted);
     }
 
+    /// **Klicka bort skarvar** på ett spår: lagar tvära hopp i det inspelade ljudet.
+    ///
+    /// Arbetar på en kopia och byter först när något faktiskt lagats — ett spår utan klickar ska
+    /// inte få ny identitet på sin buffer (och därmed ingen omritad vågform) för ingenting.
     pub(crate) fn declick_track(&mut self, t_idx: usize) {
         let Some(track) = self.playlist_tracks.get_mut(t_idx) else {
             return;
