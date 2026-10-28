@@ -517,6 +517,9 @@ pub struct SonixProjectData {
     /// `group` pekar hit. Saknas i äldre projekt, och då finns inga grupper.
     #[serde(default)]
     pub track_groups: Vec<crate::ui::app::state::TrackGroup>,
+    /// Objektgrupper (region-id → grupp-id). Saknas i äldre filer — då är inga objekt grupperade.
+    #[serde(default)]
+    pub item_groups: Vec<(usize, u32)>,
     /// Per-engine-stem-track plugin inserts. Index-aligned with the engine's
     /// stem tracks; `None` means "no plugin on this track".
     #[serde(default)]
@@ -1107,6 +1110,8 @@ pub struct LoadedProjectPayload {
     pub tracks: Vec<PreloadedTrackData>,
     /// Spågrupperna, om filen hade några.
     pub track_groups: Vec<crate::ui::app::state::TrackGroup>,
+    /// Objektgrupperna, om filen hade några.
+    pub item_groups: Vec<(usize, u32)>,
     pub plugin_slots: Vec<Option<SavedPluginData>>,
     pub bus_volume: [f32; crate::audio::synth::NUM_BUSES],
     pub bus_muted: [bool; crate::audio::synth::NUM_BUSES],
@@ -1941,6 +1946,7 @@ pub fn load_demo_project(&mut self) {
             p.stage = crate::i18n::t("Färdig! Laddar Synthwave Demo...").to_string();
             p.completed_payload = Some(LoadedProjectPayload {
                 track_groups: Vec::new(),
+                item_groups: Vec::new(),
                 name: "Sonix Synthwave Demo".to_string(),
                 bpm: 126.0,
                 notes: String::new(),
@@ -2033,6 +2039,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         master_pan: self.master_pan,
         tracks: saved_tracks,
         track_groups: self.track_groups.clone(),
+        item_groups: self.item_groups.iter().map(|(k, v)| (*k, *v)).collect(),
         bus_volume: self.bus_volume,
         bus_muted: self.bus_muted,
         bus_automation: self.bus_automation.clone(),
@@ -2478,6 +2485,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
             p.stage = crate::i18n::t("Färdigställer tidslinje och ljudmotor...").to_string();
             p.completed_payload = Some(LoadedProjectPayload {
                 track_groups: data.track_groups,
+                item_groups: data.item_groups,
                 name: data.name,
                 bpm: data.bpm,
                 notes: data.notes,
@@ -2543,6 +2551,8 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
 
     self.project_name = payload.name;
     self.track_groups = payload.track_groups;
+    self.item_groups = payload.item_groups.into_iter().collect();
+    self.next_item_group_id = self.item_groups.values().copied().max().unwrap_or(0) + 1;
     self.bpm = payload.bpm;
     // **Kartan är det som hörs, fältet är dess avbild.** Står fältet i 120 medan
     // kartans första punkt står i 125 spelar tiden 125 medan rutan visar 120 — och

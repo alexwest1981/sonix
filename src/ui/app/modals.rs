@@ -3610,6 +3610,7 @@ impl SonixApp {
             || self.show_help_guide
             || self.show_add_track_modal
             || self.show_render_queue_modal
+            || self.show_undo_history_modal
     }
 
     /// **Frasbanken** (FL): en mapp med `.mid`-fraser, listade. Ett klick infogar frasen i det
@@ -4163,6 +4164,50 @@ impl SonixApp {
         self.show_visualizer = open;
     }
 
+    /// **Ångra-historiken** (REAPER: Ctrl+Alt+Z). Stegen listas nyast överst; ett klick
+    /// ångrar allt ovanför, så man hoppar tillbaka i stället för att trycka Ctrl+Z tio gånger.
+    pub(crate) fn render_undo_history_modal(&mut self, ctx: &egui::Context) {
+        if !self.show_undo_history_modal {
+            return;
+        }
+        let rows: Vec<String> = self
+            .undo_stack
+            .iter()
+            .map(|s| s.description.clone())
+            .collect();
+        let mut jump: Option<usize> = None;
+        let mut open = self.show_undo_history_modal;
+        egui::Window::new("↶ Ångra-historik")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(true)
+            .default_size(Vec2::new(440.0, 340.0))
+            .show(ctx, |ui| {
+                ui.label(
+                    egui::RichText::new("Nyast överst. Ett klick ångrar allt ovanför steget.")
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().text_muted()),
+                );
+                ui.separator();
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    if rows.is_empty() {
+                        ui.label("Ingenting att ångra.");
+                    }
+                    for (i, label) in rows.iter().enumerate().rev() {
+                        let text = format!("{}. {}", i + 1, label);
+                        if ui.selectable_label(false, text).clicked() {
+                            jump = Some(i);
+                        }
+                    }
+                });
+            });
+        self.show_undo_history_modal = open;
+        if let Some(i) = jump {
+            self.undo_to(i);
+            self.status_message = crate::tstatus!("↶ Hoppade tillbaka till steg {}", i + 1);
+        }
+    }
+
     /// Alla dialoger, i den ordning de läggs ovanpå varandra.
     pub(crate) fn render_all_modals(&mut self, ctx: &egui::Context) {
         // En dialog ska vara det enda som lyser: resten av ytan dämpas.
@@ -4186,6 +4231,7 @@ impl SonixApp {
         self.render_midi_import_modal(ctx);
         self.render_phrase_bank_modal(ctx);
         self.render_recovery_modal(ctx);
+        self.render_undo_history_modal(ctx);
         self.render_project_manager_modal(ctx);
         self.render_ai_settings_modal(ctx);
         self.render_audio_settings_modal(ctx);

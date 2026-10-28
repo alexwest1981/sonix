@@ -562,6 +562,11 @@ pub struct SonixApp {
     pub region_clipboard: Option<crate::ui::app::state::RegionClipboard>,
     /// Hela spår att klistra in (Ctrl+C utan regionmarkering).
     pub track_clipboard: Vec<crate::ui::app::state::PlaylistTrack>,
+    /// **Objektgrupper** (REAPER: item groups): region-id → grupp-id. Id:na är globalt
+    /// unika, så gruppen kan sträcka sig över spår utan att peka på index.
+    pub item_groups: std::collections::HashMap<usize, u32>,
+    pub next_item_group_id: u32,
+    pub show_undo_history_modal: bool,
     // Automation curves (Fas 5.4)
     pub show_automation: bool,
     /// Texturen för logotypen (samma bild som fönsterikonen). Laddas första gången den ritas.
@@ -1252,6 +1257,9 @@ impl SonixApp {
             selected_regions: std::collections::BTreeSet::new(),
             region_clipboard: None,
             track_clipboard: Vec::new(),
+            item_groups: std::collections::HashMap::new(),
+            next_item_group_id: 1,
+            show_undo_history_modal: false,
             show_automation: false,
             logo_texture: None,
             automation_target: AutomationTarget::Track(AutomationParam::Volume),

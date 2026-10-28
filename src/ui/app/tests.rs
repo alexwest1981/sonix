@@ -506,6 +506,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                 name: "Trummor".to_string(),
                 collapsed: true,
             }],
+            item_groups: Vec::new(),
             notes: String::new(),
             synth: None,
             fx_rack: None,
@@ -1902,6 +1903,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
     fn test_plugin_slots_survive_project_json_roundtrip() {
         let data = SonixProjectData {
             track_groups: Vec::new(),
+            item_groups: Vec::new(),
             notes: String::new(),
             synth: None,
             fx_rack: None,

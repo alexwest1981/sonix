@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.189] - 2026-10-28
+
+**Objektgrupper, Alt+drag-kopia, klistra på ursprunglig plats och ångra-historik.**
+Resten av kopiera/gruppera-flödet, det som REAPER gör utan att man tänker på det.
+
+- **Objektgrupper** (`Ctrl+G` på regioner, `Ctrl+Shift+G` löser upp): region-id → grupp-id i
+  `item_groups`, så en grupp kan sträcka sig över spår. Ett klick på en grupperad region
+  markerar hela gruppen, och en dragning flyttar hela gruppen. Grupperna sparas i projektet.
+- **Alt+drag kopierar** i stället för att flytta: klonen får nya id:n, ärver grupptillhörighet
+  och blir den man drar i.
+- **Ctrl+Shift+V klistrar på ursprunglig plats** — klungan kommer tillbaka där den kopierades,
+  inte vid spelhuvudet.
+- **Ctrl+Alt+Z öppnar ångra-historiken**: stegen listas nyast överst och ett klick hoppar
+  tillbaka dit (`undo_to`), i stället för tio Ctrl+Z.
+- Prov: markeringen expanderar till hela objektgruppen och lämnar ogrupperade regioner i fred.
+
 ## [0.9.188] - 2026-10-28
 
 **Hela markeringen flyttar med.** Multi-markeringen från 0.9.187 hade en halv sanning:

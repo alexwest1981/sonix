@@ -531,6 +531,35 @@ pub struct TrackGroup {
 pub struct RegionClipboard {
     pub items: Vec<(usize, AudioRegion)>,
     pub anchor_bar: f32,
+    /// Spåret klungan kopierades från (minsta spårindex), så den kan klistras tillbaka
+    /// på sin ursprungliga plats.
+    pub origin_track: usize,
+}
+
+/// Utökar en markering med alla regioner som hör till samma objektgrupp som något i
+/// markeringen. Klickar man en grupperad region markerar man hela gruppen (REAPER).
+pub fn expand_with_groups(
+    tracks: &[PlaylistTrack],
+    groups: &std::collections::HashMap<usize, u32>,
+    set: &std::collections::BTreeSet<(usize, usize)>,
+) -> std::collections::BTreeSet<(usize, usize)> {
+    let mut next = set.clone();
+    let gids: std::collections::BTreeSet<u32> = set
+        .iter()
+        .filter_map(|(t, r)| tracks.get(*t).and_then(|tr| tr.regions.get(*r)))
+        .filter_map(|reg| groups.get(&reg.id).copied())
+        .collect();
+    if gids.is_empty() {
+        return next;
+    }
+    for (t, track) in tracks.iter().enumerate() {
+        for (r, reg) in track.regions.iter().enumerate() {
+            if groups.get(&reg.id).is_some_and(|g| gids.contains(g)) {
+                next.insert((t, r));
+            }
+        }
+    }
+    next
 }
 
 /// Bygger en klunga ur de markerade regionerna: spåravstånd från det första spåret och
@@ -550,7 +579,11 @@ pub fn build_region_clipboard(
         return None;
     }
     let anchor_bar = items.iter().map(|(_, r)| r.start_bar).fold(f32::INFINITY, f32::min);
-    Some(RegionClipboard { items, anchor_bar })
+    Some(RegionClipboard {
+        items,
+        anchor_bar,
+        origin_track: min_track,
+    })
 }
 
 /// Var klungan hamnar: (index i `clip.items`, spår, starttakt). Delar som skulle hamna
@@ -1965,6 +1998,23 @@ mod crossfade_tests {
         );
         t.regions = regions;
         t
+    }
+
+    /// **En grupperad region drar med sig hela gruppen** — även en medlem på ett annat spår,
+    /// och aldrig en region som inte är grupperad.
+    #[test]
+    fn selection_expands_to_whole_item_groups() {
+        use std::collections::BTreeSet;
+        let tracks = vec![
+            track_with(vec![region(1, 0.0, 2.0), region(2, 4.0, 2.0)]),
+            track_with(vec![region(3, 0.0, 2.0)]),
+        ];
+        let groups = std::collections::HashMap::from([(1usize, 7u32), (3usize, 7u32)]);
+        let clicked: BTreeSet<(usize, usize)> = [(0, 0)].into_iter().collect();
+        let expanded = expand_with_groups(&tracks, &groups, &clicked);
+        assert_eq!(expanded.len(), 2);
+        assert!(expanded.contains(&(1, 0)));
+        assert!(!expanded.contains(&(0, 1)), "ogrupperad region ska inte följa med");
     }
 
     /// **Klungan behåller både spår- och taktavstånd.** Det är hela poängen med att

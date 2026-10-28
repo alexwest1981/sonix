@@ -658,7 +658,7 @@ impl SonixApp {
             // Global Command / Ctrl shortcuts (ALWAYS active)
             let is_cmd = i.modifiers.ctrl || i.modifiers.command;
             if is_cmd {
-                if i.key_pressed(egui::Key::Z) {
+                if i.key_pressed(egui::Key::Z) && !i.modifiers.alt {
                     if i.modifiers.shift {
                         self.redo();
                     } else {
@@ -672,26 +672,50 @@ impl SonixApp {
                     self.copy_selected_region();
                 }
                 if i.key_pressed(egui::Key::V) {
-                    self.paste_region();
+                    if i.modifiers.shift {
+                        self.paste_cluster_at_origin();
+                    } else {
+                        self.paste_region();
+                    }
                 }
-                // **Ctrl+G grupperar markerade spår** (REAPER: Ctrl+G grupperar objekt;
-                // våra spårgrupper är samma idé på spårnivå). Shift+G löser upp.
+                // **Ctrl+G grupperar det som är markerat** — regioner om några är
+                // markerade (REAPER), annars spår. Shift+G löser upp.
                 if i.key_pressed(egui::Key::G) {
                     if i.modifiers.shift {
-                        let n = self.ungroup_selected_tracks();
-                        self.status_message = if n > 0 {
-                            crate::tstatus!("📁 Tog bort gruppen från {} spår", n)
+                        if !self.selected_regions.is_empty() {
+                            let n = self.ungroup_selected_regions();
+                            self.status_message = if n > 0 {
+                                crate::tstatus!("📁 Tog bort objektgruppen från {} regioner", n)
+                            } else {
+                                "📁 Regionerna hade ingen grupp".to_string()
+                            };
                         } else {
-                            "📁 Inga markerade spår hade någon grupp".to_string()
+                            let n = self.ungroup_selected_tracks();
+                            self.status_message = if n > 0 {
+                                crate::tstatus!("📁 Tog bort gruppen från {} spår", n)
+                            } else {
+                                "📁 Inga markerade spår hade någon grupp".to_string()
+                            };
+                        }
+                    } else if self.selected_regions.len() > 1 {
+                        let n = self.group_selected_regions();
+                        self.status_message = if n > 0 {
+                            crate::tstatus!("📁 Grupperade {} regioner", n)
+                        } else {
+                            "📁 Markera minst två regioner för att gruppera".to_string()
                         };
                     } else {
                         let n = self.group_selected_tracks();
                         self.status_message = if n > 0 {
                             crate::tstatus!("📁 Grupperade {} spår", n)
                         } else {
-                            "📁 Markera minst två spår för att gruppera".to_string()
+                            "📁 Markera minst två spår, eller två regioner, för att gruppera".to_string()
                         };
                     }
+                }
+                // Ctrl+Alt+Z: ångra-historiken (REAPER).
+                if i.modifiers.alt && i.key_pressed(egui::Key::Z) {
+                    self.show_undo_history_modal = true;
                 }
                 // Ctrl+A markerar alla spår när inget textfält äger tangenten.
                 if i.key_pressed(egui::Key::A) && !wants_keyboard {

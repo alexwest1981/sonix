@@ -2085,25 +2085,82 @@ impl SonixApp {
                                         } else {
                                             self.selected_audio_region = Some((t_idx, r_i));
                                         }
-                                        let multi_initial: Vec<(usize, usize, f32)> = self
-                                            .selected_regions
-                                            .iter()
-                                            .filter(|(t, r)| !(*t == t_idx && *r == r_i))
-                                            .filter_map(|(t, r)| {
-                                                self.playlist_tracks
-                                                    .get(*t)
-                                                    .and_then(|tr| tr.regions.get(*r))
-                                                    .map(|reg| (*t, *r, reg.start_bar))
-                                            })
-                                            .collect();
-                                        self.push_undo(match mode {
-                                            RegionDragMode::TrimStart => crate::i18n::t("Trimma start (Vänster)"),
-                                            RegionDragMode::TrimEnd => crate::i18n::t("Justera längd / loop (Höger)"),
-                                            RegionDragMode::Move => crate::i18n::t("Flytta region"),
+                                        // **Objektgruppen hör ihop med markeringen**: drar man en
+                                        // grupperad region följer hela gruppen med.
+                                        let mut moving = self.selected_regions.clone();
+                                        if let Some(src) = self.playlist_tracks.get(t_idx).and_then(|t| t.regions.get(r_i)) {
+                                            for member in self.group_members_of(src.id) {
+                                                moving.insert(member);
+                                            }
+                                        }
+                                        self.selected_regions = moving.clone();
+
+                                        // **Alt+drag kopierar** i stället för att flytta (REAPER).
+                                        let alt_copy = ui.input(|i| i.modifiers.alt) && mode == RegionDragMode::Move;
+                                        self.push_undo(if alt_copy {
+                                            "Kopiera regioner"
+                                        } else {
+                                            match mode {
+                                                RegionDragMode::TrimStart => crate::i18n::t("Trimma start (Vänster)"),
+                                                RegionDragMode::TrimEnd => crate::i18n::t("Justera längd / loop (Höger)"),
+                                                RegionDragMode::Move => crate::i18n::t("Flytta region"),
+                                            }
                                         });
+
+                                        let mut drag_track = t_idx;
+                                        let mut drag_region = r_i;
+                                        let mut multi_initial: Vec<(usize, usize, f32)> = Vec::new();
+                                        if alt_copy {
+                                            let mut clones: Vec<(usize, usize)> = Vec::new();
+                                            for (t, rr) in moving.iter() {
+                                                let Some(src) = self
+                                                    .playlist_tracks
+                                                    .get(*t)
+                                                    .and_then(|tr| tr.regions.get(*rr))
+                                                    .cloned()
+                                                else {
+                                                    continue;
+                                                };
+                                                let mut clone = src.clone();
+                                                clone.id = self.next_region_id();
+                                                if let Some(gid) = self.item_groups.get(&src.id).copied() {
+                                                    self.item_groups.insert(clone.id, gid);
+                                                }
+                                                self.playlist_tracks[*t].regions.push(clone);
+                                                let idx = self.playlist_tracks[*t].regions.len() - 1;
+                                                if *t == t_idx && *rr == r_i {
+                                                    drag_track = *t;
+                                                    drag_region = idx;
+                                                }
+                                                clones.push((*t, idx));
+                                            }
+                                            self.selected_regions = clones.iter().copied().collect();
+                                            for (t, idx) in clones.iter() {
+                                                if !(*t == drag_track && *idx == drag_region)
+                                                    && let Some(reg) = self
+                                                        .playlist_tracks
+                                                        .get(*t)
+                                                        .and_then(|tr| tr.regions.get(*idx))
+                                                {
+                                                    multi_initial.push((*t, *idx, reg.start_bar));
+                                                }
+                                            }
+                                        } else {
+                                            for (t, rr) in moving.iter() {
+                                                if !(*t == t_idx && *rr == r_i)
+                                                    && let Some(reg) = self
+                                                        .playlist_tracks
+                                                        .get(*t)
+                                                        .and_then(|tr| tr.regions.get(*rr))
+                                                {
+                                                    multi_initial.push((*t, *rr, reg.start_bar));
+                                                }
+                                            }
+                                        }
+
                                         self.region_drag_state = Some(RegionDragState {
-                                            track_idx: t_idx,
-                                            region_idx: r_i,
+                                            track_idx: drag_track,
+                                            region_idx: drag_region,
                                             mode,
                                             initial_start_bar: r.start_bar,
                                             initial_length_bars: r.length_bars,
