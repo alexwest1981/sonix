@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Teman når hela ritytan.** Elva overlegg och markeringar låg hårdkodade som vita/svarta
+alpha-färger och namngivna accenter (loopregion, puck-glow, trimhandtag, kompband, live-region,
+mätare, Edison-panel). De går nu via paletten med samma alfa, så ett ljust tema inte får
+vitt-på-vitt. Kvar utanför paletten: två **beräknade** färger (`patcher_view.rs:269`,
+`vocal_studio_view.rs:1068`) som räknar fram en nyans ur ett index — de är gradienter, inte teman.
+
 ## [0.9.207] - 2026-10-28
 
 **Neural separation är på som standard.** Att den var opt-in (`--features neural`) gjorde att en
