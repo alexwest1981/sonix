@@ -94,6 +94,193 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         selftest::run(selftest::audible_from_args(&args))?;
         return Ok(());
     }
+    // `sonix --jsfx-note <fil.jsfx> [not]`: spelar en ton genom ett JSFX-instrument och mäter
+    // toppen. Frågan en port måste svara på är inte "tolkar vi filen?" utan "låter den?".
+    if let Some(pos) = std::env::args().position(|a| a == "--jsfx-note") {
+        let Some(path) = std::env::args().nth(pos + 1) else {
+            eprintln!("användning: sonix --jsfx-note <fil.jsfx> [not]");
+            std::process::exit(2);
+        };
+        let note: u8 = std::env::args()
+            .nth(pos + 2)
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(60);
+        let mut vm = audio::jsfx::load(std::path::Path::new(&path), 44_100.0)?;
+        for def in vm.slider_defs().to_vec() {
+            let _ = vm.set_slider(def.index, def.default);
+        }
+        let seconds = 1.0;
+        let frames = (44_100.0 * seconds) as usize;
+        let mut left = vec![0.0f32; frames];
+        let mut right = vec![0.0f32; frames];
+        let started = std::time::Instant::now();
+        let events = [
+            audio::jsfx::MidiEvent {
+                offset: 0,
+                status: 0x90,
+                data1: note,
+                data2: 100,
+            },
+        ];
+        let mut peak = 0.0f32;
+        for chunk in 0..frames.div_ceil(512) {
+            let start = chunk * 512;
+            let end = (start + 512).min(frames);
+            let midi: &[audio::jsfx::MidiEvent] = if chunk == 0 { &events } else { &[] };
+            audio::jsfx::process(&mut vm, &mut left[start..end], &mut right[start..end], midi)
+                .map_err(|e| e.to_string())?;
+            peak = left[start..end].iter().fold(peak, |a, v| a.max(v.abs()));
+        }
+        let elapsed = started.elapsed().as_millis();
+        println!(
+            "{}: {} slider, not {note}, topp {peak:.4}, {} prov på {} ms{}",
+            std::path::Path::new(&path)
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            vm.slider_defs().len(),
+            frames,
+            elapsed,
+            if vm.has_failed() {
+                let first = vm.errors.first().map(|e| e.to_string()).unwrap_or_default();
+                format!("  [fel: {first}]")
+            } else if vm.stubs.is_empty() {
+                String::new()
+            } else {
+                format!("  [stubbar: {}]", vm.stubs.iter().cloned().collect::<Vec<_>>().join(", "))
+            }
+        );
+        return Ok(());
+    }
+
+    // `sonix --jsfx-dump <fil.jsfx> [sektion]`: sektionernas påståenden med nummer. Till för att
+    // hitta det påstående ett felmeddelande pekar på.
+    if let Some(pos) = std::env::args().position(|a| a == "--jsfx-dump") {
+        let Some(path) = std::env::args().nth(pos + 1) else {
+            eprintln!("användning: sonix --jsfx-dump <fil.jsfx> [init|slider|block|sample]");
+            std::process::exit(2);
+        };
+        let bytes = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
+        let source = String::from_utf8_lossy(&bytes);
+        let program = audio::jsfx::parser::parse(&source).map_err(|e| e.to_string())?;
+        let section = std::env::args().nth(pos + 2).unwrap_or_else(|| "init".to_string());
+        let stmts = match section.as_str() {
+            "init" => &program.init,
+            "slider" => &program.slider,
+            "block" => &program.block,
+            "sample" => &program.sample,
+            other => {
+                eprintln!("okänd sektion '{other}'");
+                std::process::exit(2);
+            }
+        };
+        for (index, stmt) in stmts.iter().enumerate() {
+            println!("{}: {:?}", index + 1, stmt);
+        }
+        return Ok(());
+    }
+
+    // `sonix --jsfx-list <mapp>`: vad som finns i ett JSFX-bibliotek och hur mycket av det vi
+    // tolkar. Samma fråga som `--selftest` ställer om ljudet, men för effektbiblioteket.
+    if let Some(pos) = std::env::args().position(|a| a == "--jsfx-list") {
+        // Utan mapp läses biblioteket i användarens egen mapp.
+        let dir = std::env::args()
+            .nth(pos + 1)
+            .unwrap_or_else(|| audio::jsfx::user_dir().display().to_string());
+        let entries = audio::jsfx::list(std::path::Path::new(&dir));
+        if entries.is_empty() {
+            println!("inga JSFX-filer i {dir}");
+            return Ok(());
+        }
+        let mut ok = 0usize;
+        for entry in &entries {
+            match audio::jsfx::load(&entry.path, 44_100.0) {
+                Ok(vm) => {
+                    ok += 1;
+                    let desc = if entry.desc.is_empty() { vm.desc() } else { &entry.desc };
+                    println!(
+                        "✓ {:4} slider  {}{}",
+                        entry.sliders.len(),
+                        if desc.is_empty() { "(ingen desc)" } else { desc },
+                        entry
+                            .licence
+                            .as_ref()
+                            .map(|l| format!("  [{}]", l.chars().take(40).collect::<String>()))
+                            .unwrap_or_default()
+                    );
+                }
+                Err(e) => println!("✗ {}\n    {e}", entry.path.display()),
+            }
+        }
+        println!(
+            "\n{ok}/{} filer tolkas i {dir}",
+            entries.len()
+        );
+        return Ok(());
+    }
+
+    // `sonix --jsfx-run <fil.jsfx> <in.wav> <ut.wav> [slider=värde ...]`: kör en JSFX-effekt över
+    // en fil. Det här är beviset att en tolkad effekt gör samma sak som en inbyggd: in och ut är
+    // ljudfiler, och resultatet går att mäta.
+    if let Some(pos) = std::env::args().position(|a| a == "--jsfx-run") {
+        let args: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if args.len() < 3 {
+            eprintln!("användning: sonix --jsfx-run <fil.jsfx> <in.wav> <ut.wav> [slider=värde ...]");
+            std::process::exit(2);
+        }
+        let (effect, input, output) = (&args[0], &args[1], &args[2]);
+        let (mut left, mut right, sample_rate) = audio::wav_reader::load_audio_pcm(input)?;
+        let mut vm = audio::jsfx::load(std::path::Path::new(effect), sample_rate as f64)?;
+        // Sliderar kan sättas från kommandoraden; de som inte nämns behåller filens standard.
+        for (index, def) in vm.slider_defs().to_vec().iter().enumerate() {
+            let _ = vm.set_slider(def.index, def.default);
+            let _ = index;
+        }
+        for arg in &args[3..] {
+            if let Some((key, value)) = arg.split_once('=') {
+                if let (Ok(index), Ok(value)) = (key.trim().parse::<usize>(), value.trim().parse::<f64>()) {
+                    vm.set_slider(index, value).map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        // Block om 512 prov, som en ljudmotor.
+        let mut energy_in = 0.0f64;
+        let mut energy_out = 0.0f64;
+        for chunk in 0..left.len().div_ceil(512) {
+            let start = chunk * 512;
+            let end = (start + 512).min(left.len());
+            energy_in += left[start..end].iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>();
+            audio::jsfx::process(
+                &mut vm,
+                &mut left[start..end],
+                &mut right[start..end],
+                &[],
+            )
+            .map_err(|e| e.to_string())?;
+            energy_out += left[start..end].iter().map(|v| (*v as f64) * (*v as f64)).sum::<f64>();
+        }
+        if let Some(error) = vm.errors.first() {
+            eprintln!("effekten kastade fel: {error}");
+        }
+        // Interleaved stereo, som skrivaren vill ha.
+        let mut interleaved = Vec::with_capacity(left.len() * 2);
+        for (l, r) in left.iter().zip(right.iter()) {
+            interleaved.push(*l);
+            interleaved.push(*r);
+        }
+        audio::wav_writer::write_pcm_f32_to_wav(output, &interleaved, sample_rate, 2)
+            .map_err(|e| e.to_string())?;
+        let ratio = if energy_in > 0.0 { (energy_out / energy_in).sqrt() } else { 0.0 };
+        println!(
+            "{} → {}: {} prov, energiförhållande ut/in {:.3}",
+            effect,
+            output,
+            left.len(),
+            ratio
+        );
+        return Ok(());
+    }
+
     // `sonix --clean-tags <fil...>`: visar vad filerna bär och tar bort
     // AI-/Sunohärkomsten — inte musiken. Titel, artist, låttext och omslag lämnas
     // (Alex 2026-09-13: den första versionen tog hela taggen, och det var för

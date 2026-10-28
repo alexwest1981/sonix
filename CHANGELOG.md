@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.176] - 2026-10-28
+
+**REAPERs 256 JSFX-effekter och instrument kör i Sonix.** `src/audio/jsfx/` är en EEL2-motor
+(lexer, parser, virtuell maskin) som tolkar filerna som de är i stället för att porta dem en och
+en — samma val som gjorde att en `PatternClip` räckte för alla stämmor. Alla 256 filer i REAPER
+7.83:s `InstallData/Effects` tolkas och kör sin `@init`; de fyra referenseffekterna mäter
+1,5–9× realtid per instans.
+
+- **Språket**: `^` är potens (xor skrivs `xor`/`~`), `x[]` = `x[x]`, `?:`-grenar får vara block
+  och `:` får saknas, `while ( kropp; villkor )`, `loop (i = 0; n, kropp)`, `<? ?>`-generatorblock,
+  `/* */`, `import`, punktade namnrymder (`this.x` → `rmsa.x`), `$pi`/`$x90`/`$'F'`.
+- **Motorn**: `slider1..64` på plats 0–63 som i REAPER, eget `f64`-minne, egna funktioner med
+  lokala namn, MIDI in/ut, `fft`/`fft_real`/`ifft_real` via `rustfft`, 50 M steg per påstående
+  som skydd mot `while(1)`. En effekt som kastar fel **tystnar hela blocket** i stället för att
+  elda 2 M steg per prov.
+- **Ärligt om stubbarna**: `file_open`/`file_riff`/`file_mem` m.fl. svarar "ingen fil" och bokförs
+  i `Jsfx::stubs`, så en effekt som tystnar går att skilja från en som inte kunde läsas. `@gfx`
+  och `@serialize` hoppas över (UI:t är REAPERs, tillståndet är projektets).
+- **Instrumenten**: `TolerableTines` låter direkt; `DrNine`, `JamSynth` och `SynthyMcSynthface`
+  laddar samplingar som inte skeppas med REAPER (de är tysta där också); `ChamberOrgan` importerar
+  sin stopptabell och tolkas, men stannar på MIDI-filtret.
+- **CLI**: `--jsfx-list <mapp>`, `--jsfx-run <fil> <in.wav> <ut.wav> [slider=värde]`,
+  `--jsfx-note <fil> [not]`, `--jsfx-dump <fil> [sektion]`.
+- **Prov**: `SONIX_JSFX_DIR=… cargo test --bin sonix corpus_tests` kräver alla 256 filer och att
+  minst fyra instrument ger ljud från en nedtryckt tangent.
+- **Docs**: `docs/JSFX.md` med mätningarna, språkets hörn och vad som är stubbat.
+
 ## [0.9.175] - 2026-10-28
 
 **Fem separationsmodeller att välja mellan.** Katalogen `neural_separator::MODELS` ersätter den

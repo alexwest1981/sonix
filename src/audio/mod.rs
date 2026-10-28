@@ -31,6 +31,7 @@ pub mod master_fx;
 pub mod metadata;
 pub mod phrase_preview;
 pub mod asd;
+pub mod jsfx;
 pub mod stft;
 pub mod tuning;
 pub mod video;
