@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.179] - 2026-10-28
+
+**Nio egna effekter, byggda här.** `src/audio/builtin_fx/` är ett register i stället för nio
+nya fält i mastern: en `EffectDef` bär id, namn, kategori och sina parametrar, och effekten
+laddas på samma väg som en plugin (`builtin:<id>`) — alltså i varje kanals kedja, med
+automatable parametrar, utan fil och utan `--features plugin-host`.
+
+- **Filter 72**: Butterworth låg-/högpass med 24, 48 eller 72 dB per oktav. Mätt: 24 dB ger
+  −49 dB två oktaver över gränsen, 72 dB minst 30 dB brantare.
+- **Tilt**, **Stege 24** (fyrpolig ladder med mättnad) och **Fasrotation** (allpass, 180° vid
+  gränsfrekvensen).
+- **Bass Manager**: mono under vald frekvens med LR4-delning, hylla och fas. Motfas bas
+  försvinner; diskanten rörs inte; delningen är nivåneutral med mono av.
+- **Ringmodulator** och **Pitch** (±12 semitoner, två korsande läspunkter; 0 semitoner är
+  bitidentisk passthrough).
+- **Spektral kompressor**: STFT 1024/256, frekvensberoende tröskel (center + lutning), nedåt-
+  och uppåtkoppling med mjuk knee, attack/release per bin, mix. 768 sampel latens som PDC:n
+  kompenserar. Ratio 1 rekonstruerar insignalen.
+- **Inflator**: udda ordningens vågformning; toppfaktorn sjunker och toppen stannar under 1.
+- **Formatsfilter** i plugin-listan har en **Sonix**-flik, och de inbyggda ligger i listan även
+  när cachen laddas — de finns inte som fil och kan därför aldrig hittas av en diskskanning.
+- `docs/BUILTIN-FX.md`: vad de gör, vad som är mätt, och hur en ny läggs till (tre steg).
+
 ## [0.9.178] - 2026-10-28
 
 **JSFX kan läsa ljudfiler, och tabeller skrivs som de ska.** `file_open`/`file_riff`/`file_avail`/

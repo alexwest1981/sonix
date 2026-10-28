@@ -3,6 +3,7 @@
 pub type StereoPcm = (std::sync::Arc<Vec<f32>>, std::sync::Arc<Vec<f32>>, u32);
 
 pub mod ai_client;
+pub mod builtin_fx;
 pub mod ai_generator;
 pub mod ai_tools;
 pub mod command;

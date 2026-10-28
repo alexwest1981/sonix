@@ -4055,7 +4055,7 @@ dependencies = [
 
 [[package]]
 name = "sonix"
-version = "0.9.178"
+version = "0.9.179"
 dependencies = [
  "alsa",
  "colored",

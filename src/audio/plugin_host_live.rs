@@ -148,6 +148,10 @@ pub fn is_available() -> bool {
 /// Loads a CLAP plugin at `path` and returns a snapshot of its descriptor and
 /// parameters. Never panics: any failure is reported in `error`.
 pub fn inspect(path: &str) -> PluginInspection {
+    // Sonix egna effekter svarar ur registret — ingen fil att läsa.
+    if crate::audio::builtin_fx::is_builtin_path(path) {
+        return crate::audio::builtin_fx::inspect(path);
+    }
     // JSFX är egen Rust-kod och kräver inget `plugin-host`-bygge.
     if crate::audio::jsfx::processor::is_jsfx_path(path) {
         return crate::audio::jsfx::processor::inspect(path);
@@ -427,6 +431,10 @@ pub fn load_processor(
     sample_rate: f32,
     max_frames: u32,
 ) -> Result<Box<dyn PluginProcessor>, String> {
+    // Sonix egna effekter är Rust i den här binären — ingen fil, ingen sandlåda, ingen grind.
+    if crate::audio::builtin_fx::is_builtin_path(path) {
+        return crate::audio::builtin_fx::load(path, sample_rate);
+    }
     // **JSFX går före feature-grenen**: en `.jsfx`-fil laddas även i standardbygget.
     if crate::audio::jsfx::processor::is_jsfx_path(path) {
         return crate::audio::jsfx::processor::load(path, sample_rate);
@@ -3429,4 +3437,27 @@ mod tests {
         assert!(insert.extra_l[0].is_empty(), "efter ett block ska kön vara tömd");
     }
 
+}
+
+#[cfg(test)]
+mod builtin_routing_tests {
+    use super::*;
+
+    /// En inbyggd effekt går genom samma laddare som en plugin — det är hela poängen med
+    /// `builtin:` (ingen fil, ingen sandlåda, men samma kedja och samma parametrar).
+    #[test]
+    fn a_builtin_loads_and_processes_through_the_plugin_loader() {
+        let mut p = load_processor("builtin:tilt", 48_000.0, 128).expect("inbyggd effekt");
+        assert_eq!(p.backend(), "Sonix");
+        assert!(!p.parameters().is_empty());
+        let mut l = vec![0.25f32; 300];
+        let mut r = vec![-0.25f32; 300];
+        p.process_stereo(&mut l, &mut r);
+        assert!(l.iter().chain(r.iter()).all(|v| v.is_finite()));
+
+        let inspected = inspect("builtin:tilt");
+        assert!(inspected.error.is_none());
+        assert_eq!(inspected.info.expect("info").name, "Tilt");
+        assert_eq!(inspected.parameters.len(), 2);
+    }
 }

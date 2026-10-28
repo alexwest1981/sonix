@@ -402,6 +402,9 @@ fn render_plugin_database_tab(
         if ui.selectable_label(manager.selected_format_filter == Some(PluginFormat::Jsfx), "JSFX").clicked() {
             manager.selected_format_filter = Some(PluginFormat::Jsfx);
         }
+        if ui.selectable_label(manager.selected_format_filter == Some(PluginFormat::Builtin), "Sonix").clicked() {
+            manager.selected_format_filter = Some(PluginFormat::Builtin);
+        }
     });
 
     ui.add_space(4.0);

@@ -11,6 +11,8 @@ pub enum PluginFormat {
     FlStudioNative,
     /// REAPERs JSFX: text, tolkas av `audio::jsfx` i stället för att laddas som en bunden plugin.
     Jsfx,
+    /// **Sonix egna effekter**: Rust i binären, ingen fil på disk.
+    Builtin,
 }
 
 impl PluginFormat {
@@ -23,6 +25,7 @@ impl PluginFormat {
             PluginFormat::WineYabridge => "Windows VST3 (Yabridge/Wine)",
             PluginFormat::FlStudioNative => "FL Studio VSTi / Image-Line",
             PluginFormat::Jsfx => "JSFX (REAPER)",
+            PluginFormat::Builtin => "Sonix (inbyggd)",
         }
     }
 
@@ -35,6 +38,7 @@ impl PluginFormat {
             PluginFormat::WineYabridge => crate::ui::theme::palette().purple(), // Purple Wine
             PluginFormat::FlStudioNative => crate::ui::theme::palette().orange(),// FL Orange/Red
             PluginFormat::Jsfx => crate::ui::theme::palette().purple(),
+            PluginFormat::Builtin => crate::ui::theme::palette().green(),
         }
     }
 }
@@ -323,7 +327,7 @@ impl PluginManager {
             },
         ];
 
-        PluginManager {
+        let mut manager = PluginManager {
             plugins: Vec::new(),
             presets: Vec::new(),
             scan_paths: default_scan_paths,
@@ -343,6 +347,30 @@ impl PluginManager {
             manual_import_file_input: String::new(),
             manual_import_vendor_input: String::new(),
             manual_import_category_idx: 0,
+        };
+        manager.ensure_builtins();
+        manager
+    }
+
+    /// **Sonix egna effekter ligger alltid i listan.** De finns inte som fil, så en
+    /// diskskanning kan aldrig hitta dem; registret läggs in efter varje väg som sätter
+    /// `plugins` (cache, skanning, ny manager) i stället för att hoppas på en av dem.
+    pub fn ensure_builtins(&mut self) {
+        self.plugins.retain(|p| !p.id.starts_with("builtin_"));
+        for def in crate::audio::builtin_fx::defs() {
+            self.plugins.push(PluginDescriptor {
+                id: format!("builtin_{}", def.id),
+                name: def.name.to_string(),
+                vendor: "Sonix".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                format: PluginFormat::Builtin,
+                category: def.category,
+                file_path: format!("{}{}", crate::audio::builtin_fx::PREFIX, def.id),
+                file_size_bytes: 0,
+                verified: true,
+                verify_note: "Inbyggd i Sonix".to_string(),
+                author_notes: def.description.to_string(),
+            });
         }
     }
 }
@@ -629,6 +657,7 @@ impl PluginManager {
         }
         self.plugins = db.plugins;
         self.presets = db.presets;
+        self.ensure_builtins();
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_secs())
@@ -960,9 +989,15 @@ mod tests {
         assert_eq!(db.version, PLUGIN_DB_VERSION);
         let mut läst = PluginManager::default();
         läst.apply_db(db);
-        assert_eq!(läst.plugins.len(), skriven.plugins.len());
-        assert_eq!(läst.plugins.len(), 1);
-        let p = &läst.plugins[0];
+        // De inbyggda effekterna läggs till på varje väg; det som kom från filen är en.
+        let från_disk: Vec<_> = läst
+            .plugins
+            .iter()
+            .filter(|p| p.format != PluginFormat::Builtin)
+            .collect();
+        assert_eq!(från_disk.len(), 1);
+        assert_eq!(läst.plugins.len(), skriven.plugins.len() + crate::audio::builtin_fx::defs().len());
+        let p = från_disk[0];
         assert_eq!(p.name, "SuperSynth");
         assert_eq!(p.version, "1.2.3");
         assert_eq!(p.format, PluginFormat::Clap);
@@ -1040,8 +1075,10 @@ mod tests {
             StartupSource::Scan(Some("trasig fil".to_string())),
             "en trasig fil ska ge en skanning **med** skälet"
         );
-        // Och en manager byggd utan skanning har tomma listor — det är den vägen `Cached` tar.
-        assert!(PluginManager::without_scan().plugins.is_empty());
+        // Och en manager byggd utan skanning har bara de inbyggda effekterna — det är den
+        // vägen `Cached` tar, och de finns inte som fil att skanna.
+        let utan_skanning = PluginManager::without_scan();
+        assert!(utan_skanning.plugins.iter().all(|p| p.format == PluginFormat::Builtin));
     }
 
     /// Åldern visas i ord — ren funktion, så gränssnittet inte kan säga "nyss" om en vecka.
@@ -1053,6 +1090,20 @@ mod tests {
         assert!(age_text(120).contains("2 minuter"));
         assert!(age_text(7_200).contains("2 timmar"));
         assert!(age_text(172_800).contains("2 dygn"));
+    }
+
+    /// De inbyggda effekterna finns i listan utan att en enda fil skannas.
+    #[test]
+    fn the_builtin_effects_are_listed_without_a_disk_scan() {
+        let mgr = PluginManager::without_scan();
+        let builtins: Vec<_> = mgr
+            .plugins
+            .iter()
+            .filter(|p| p.format == PluginFormat::Builtin)
+            .collect();
+        assert_eq!(builtins.len(), crate::audio::builtin_fx::defs().len());
+        assert!(builtins.iter().all(|p| p.file_path.starts_with("builtin:")));
+        assert!(builtins.iter().all(|p| p.name != "Sytrus"));
     }
 
     #[test]
