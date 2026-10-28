@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.9.179] - 2026-10-28
 
-**Tio egna effekter, byggda här.** `src/audio/builtin_fx/` är ett register i stället för nio
+**Elva egna effekter, byggda här.** `src/audio/builtin_fx/` är ett register i stället för nio
 nya fält i mastern: en `EffectDef` bär id, namn, kategori och sina parametrar, och effekten
 laddas på samma väg som en plugin (`builtin:<id>`) — alltså i varje kanals kedja, med
 automatable parametrar, utan fil och utan `--features plugin-host`.
@@ -32,6 +32,10 @@ automatable parametrar, utan fil och utan `--features plugin-host`.
   med en slider per parameter (värdet läses ur instansen, skrivs till samma handtag som
   ljudtråden läser). `PluginCore::parameter_value` svarar `None` när en backend inte kan, och då
   ritas ingen ratt.
+- **Kurva**: waveshaper med åtta punkter — rak kurva är passthrough, fallande inverterar,
+  mättande sänker toppfaktorn. Punkterna är parametrar, så den ritas i Rattar-rutan.
+- **Gain reduction-scope**: masterns kompression över tid (~8 s) i FX-racket, 0 dB överst och
+  −24 dB nederst. Mätningen kommer ur `master_gain_reduction_db`, historiken är ringformad.
 - **Formatsfilter** i plugin-listan har en **Sonix**-flik, och de inbyggda ligger i listan även
   när cachen laddas — de finns inte som fil och kan därför aldrig hittas av en diskskanning.
 - `docs/BUILTIN-FX.md`: vad de gör, vad som är mätt, och hur en ny läggs till (tre steg).

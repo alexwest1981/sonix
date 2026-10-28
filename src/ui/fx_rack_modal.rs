@@ -63,6 +63,31 @@ pub struct FxRackState {
     pub vocoder_bands: [f32; 16],
     /// **Maximus volymkurvor**, en per band, 16 punkter 0–1 över en takt.
     pub multiband_curves: [[f32; 16]; 3],
+    /// Masterns kompression över tid, ett värde per bildruta. Scopet visar den — en siffra
+    /// säger hur mycket, kurvan säger när.
+    pub gr_history: std::collections::VecDeque<f32>,
+}
+
+/// Hur många bildrutor GR-scopet minns (~8 s vid 60 fps).
+pub const GR_HISTORY: usize = 480;
+/// Scopets botten: allt under −24 dB ritas vid kanten.
+pub const GR_FLOOR_DB: f32 = -24.0;
+
+impl FxRackState {
+    /// Lägger en mätpunkt i scopet. Värdet kläms till 0…−60 dB, och historiken är ringformad —
+    /// en obegränsad vektor växer tills appen inte orkar rita.
+    pub fn push_gain_reduction(&mut self, db: f32) {
+        let db = db.clamp(-60.0, 0.0);
+        self.gr_history.push_back(db);
+        while self.gr_history.len() > GR_HISTORY {
+            self.gr_history.pop_front();
+        }
+    }
+
+    /// Var i scope-rutan ett värde hamnar: 0 dB överst, `GR_FLOOR_DB` nederst.
+    pub fn gr_position(db: f32) -> f32 {
+        (db / GR_FLOOR_DB).clamp(0.0, 1.0)
+    }
 }
 
 impl Default for FxRackState {
@@ -540,6 +565,7 @@ impl Default for FxRackState {
             active_tab: 0,
             vocoder_bands: [1.0; 16],
             multiband_curves: [[1.0; 16]; 3],
+            gr_history: std::collections::VecDeque::with_capacity(GR_HISTORY),
             search_query: String::new(),
             selected_category: "Alla",
             eq_nodes: vec![
@@ -1238,6 +1264,8 @@ pub fn render_fx_rack_modal(
 
     // Real compressor gain reduction reported by the audio thread.
     let master_gr_db = engine.master_gain_reduction_db();
+    // **Scopet matas varje bildruta** — historiken är det som skiljer "hur mycket" från "när".
+    state.push_gain_reduction(master_gr_db);
 
     let mut close = false;
 
@@ -1272,6 +1300,8 @@ pub fn render_fx_rack_modal(
                         if rack_btn.clicked() { state.active_tab = 0; }
                     });
                 });
+
+                render_gain_reduction_scope(ui, &state.gr_history, master_gr_db);
 
                 // Control Room ligger överst därför att den gäller **allt** som lämnar
                 // mastern — den är lyssning, inte effekt.
@@ -1461,6 +1491,61 @@ pub fn render_fx_rack_modal(
 // ============================================================================
 // MODULAR PEDAL CHAIN RENDERER
 // ============================================================================
+/// **Gain reduction över tid.** 0 dB är överst, −24 dB nederst; kurvan är de senaste ~8
+/// sekunderna. En siffra säger hur mycket kompressorn tar just nu — kurvan säger om den pumpar.
+fn render_gain_reduction_scope(ui: &mut Ui, history: &std::collections::VecDeque<f32>, current_db: f32) {
+    let palette = crate::ui::theme::palette();
+    ui.horizontal(|ui| {
+        ui.label(
+            egui::RichText::new("GAIN REDUCTION")
+                .strong()
+                .size(Theme::FONT_XS)
+                .color(palette.text_muted()),
+        );
+        ui.label(
+            egui::RichText::new(format!("{current_db:.1} dB"))
+                .monospace()
+                .size(Theme::FONT_XS)
+                .color(palette.orange()),
+        );
+    });
+    let width = ui.available_width().max(120.0);
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 64.0), Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 4.0, palette.panel());
+    for db in [0.0f32, -6.0, -12.0, -24.0] {
+        let y = rect.top() + FxRackState::gr_position(db) * rect.height();
+        painter.line_segment(
+            [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
+            Stroke::new(1.0, palette.bg()),
+        );
+        painter.text(
+            Pos2::new(rect.left() + 3.0, y),
+            egui::Align2::LEFT_TOP,
+            format!("{db:.0}"),
+            egui::FontId::monospace(9.0),
+            palette.text_muted(),
+        );
+    }
+    if history.len() >= 2 {
+        let step = rect.width() / (GR_HISTORY - 1) as f32;
+        // Historiken är högerställd: det senaste värdet ligger vid högerkanten.
+        let start = rect.right() - (history.len() - 1) as f32 * step;
+        let points: Vec<Pos2> = history
+            .iter()
+            .enumerate()
+            .map(|(i, db)| {
+                Pos2::new(
+                    start + i as f32 * step,
+                    rect.top() + FxRackState::gr_position(*db) * rect.height(),
+                )
+            })
+            .collect();
+        painter.add(egui::Shape::line(points, Stroke::new(1.5, palette.orange())));
+    }
+    ui.add_space(4.0);
+}
+
 fn render_modular_pedal_chain(ui: &mut Ui, state: &mut FxRackState, master_gr_db: f32) {
     // Split the borrow so the Visual EQ pedal can read/write the real EQ nodes.
     let FxRackState { pedals, eq_nodes, active_tab, .. } = state;
@@ -2357,4 +2442,38 @@ mod tests {
         assert!((p.curve_bpm - 133.0).abs() < 0.01, "tempo: {}", p.curve_bpm);
     }
 
+}
+
+#[cfg(test)]
+mod gr_scope_tests {
+    use super::{FxRackState, GR_FLOOR_DB, GR_HISTORY};
+
+    /// Historiken är ringformad: den minns `GR_HISTORY` punkter och kastar de äldsta.
+    #[test]
+    fn the_scope_keeps_a_bounded_history() {
+        let mut state = FxRackState::default();
+        for i in 0..(GR_HISTORY + 50) {
+            state.push_gain_reduction(-((i % 20) as f32));
+        }
+        assert_eq!(state.gr_history.len(), GR_HISTORY);
+        let last = *state.gr_history.back().unwrap();
+        assert_eq!(last, -(((GR_HISTORY + 49) % 20) as f32));
+    }
+
+    /// Ett värde utanför skalan kläms, så en trasig mätning inte ritar utanför rutan.
+    #[test]
+    fn the_scope_clamps_impossible_values() {
+        let mut state = FxRackState::default();
+        state.push_gain_reduction(12.0);
+        state.push_gain_reduction(-400.0);
+        assert_eq!(state.gr_history[0], 0.0);
+        assert_eq!(state.gr_history[1], -60.0);
+    }
+
+    #[test]
+    fn zero_db_is_the_top_and_the_floor_is_the_bottom() {
+        assert_eq!(FxRackState::gr_position(0.0), 0.0);
+        assert_eq!(FxRackState::gr_position(GR_FLOOR_DB), 1.0);
+        assert_eq!(FxRackState::gr_position(-100.0), 1.0);
+    }
 }

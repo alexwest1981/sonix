@@ -9,6 +9,7 @@
 //! vilken ratt som vrids.
 
 mod biquad;
+mod curve;
 mod dynamics;
 mod filters;
 mod lowend;
@@ -85,6 +86,7 @@ pub fn defs() -> Vec<&'static EffectDef> {
         &modulation::PITCH,
         &dynamics::SPECTRAL_COMP,
         &dynamics::INFLATOR,
+        &curve::CURVE,
     ]
 }
 
