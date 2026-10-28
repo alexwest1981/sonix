@@ -186,7 +186,7 @@ pub fn load(path: &Path, sample_rate: f64) -> Result<Jsfx, String> {
     let mut expanded = String::with_capacity(source.len() * 2);
     expanded.push_str(&header);
     expanded.push_str(&expand_imports(&body, base, 0));
-    Jsfx::compile(&expanded, sample_rate)
+    Jsfx::compile_in(&expanded, base.to_path_buf(), sample_rate)
         .map_err(|e| format!("{}: {e}", path.display()))
 }
 

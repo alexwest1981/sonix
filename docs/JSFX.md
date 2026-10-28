@@ -43,6 +43,8 @@ ljudfiler som **inte skeppas med REAPER**:
 | `ChamberOrgan` | nej | importerar sin stopptabell (fungerar) men stannar på MIDI-filtret |
 | `LordOfTheRinks` | nej | bygger wavetabeller i 5 s, hör sen — inte utredd |
 
+DrNine och de andra laddar `.flac`, som vi inte avkodar — där syns `[stubbar: file_open]` kvar.
+
 **Det är samma beteende som i REAPER**: utan samplingarna är DrNine tyst där också. Att `file_open`
 svarar "ingen fil" är alltså rätt svar, inte en gissning.
 
@@ -54,10 +56,14 @@ samma nivå som i REAPER.
 TolerableTines.jsfx: 4 slider, not 60, topp 44100.0000 vid prov 125, rms 1947.4839, 44100 prov på 357 ms
 ```
 
-## Fil-API:t är stubbat
+## Fil-API:t
 
-`file_open`, `file_riff`, `file_mem`, `file_avail`, `file_text`, `file_var` och `file_close`
-svarar `-1`/`0` och **bokförs i `Jsfx::stubs`**. Det syns i `--jsfx-note`:
+`file_open`/`file_riff`/`file_avail`/`file_mem`/`file_close` läser **WAV**: filen söks bredvid
+`.jsfx`-filen (som i REAPER), sedan i `~/.config/sonix/jsfx`, annars som angiven sökväg. Kanaler och
+samplingsfrekvens rapporteras, proverna kopieras in i JSFX-minnet.
+
+FLAC avkodas inte (ingen avkodare i bygget), och `file_text`/`file_var`/`fread`/`fwrite` svarar
+fortfarande "inget" och **bokförs i `Jsfx::stubs`**. Det syns i `--jsfx-note`:
 
 ```
 DrNine.jsfx: 113 slider, not 60, topp 0.0000 …  [stubbar: file_open]

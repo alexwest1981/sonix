@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.178] - 2026-10-28
+
+**JSFX kan läsa ljudfiler, och tabeller skrivs som de ska.** `file_open`/`file_riff`/`file_avail`/
+`file_mem`/`file_close` är inte längre stubbar: en WAV som ligger bredvid `.jsfx`-filen (eller i
+`~/.config/sonix/jsfx`) öppnas, kanaler och frekvens rapporteras, och proverna kopieras in i
+JSFX-minnet. `mem_set_values(dest, v1, v2, …)` skriver verkligen tabellen — den var en tom stubbe,
+och REAPERs filer använder den för att bygga sina tabeller.
+
+- `Jsfx::compile_in(source, mapp, srate)`: filens mapp är känd redan när `@init` körs, vilket är när
+  en sampler öppnar sina ljudfiler.
+- `@slider` körs vid laddning (som REAPER) — och därför finns nu `set_midi_note_name`,
+  `slider_show`/`slider_hide`/`slider_name` m.fl. som ärliga no-ops: de ändrar bara hur REAPER visar
+  saker, men koden ska inte falla på att de anropas.
+- Bara WAV avkodas; FLAC (DrNine m.fl.) svarar fortfarande "ingen fil" och bokförs i `stubs`.
+
 ## [0.9.177] - 2026-10-28
 
 **JSFX går att lägga i effektkedjan.** En `.jsfx`-fil laddas nu där en CLAP/VST-plugin laddas:

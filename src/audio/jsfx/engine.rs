@@ -69,6 +69,10 @@ pub struct Jsfx {
     funcs: HashMap<String, FnDef>,
     /// Namnrymden vi kör i: `rmsa.rms.init(...)` gör `this.x` till `rmsa.x`.
     namespace: Option<String>,
+    /// Öppnade filer: prover, kanaler, frekvens och läsposition.
+    files: HashMap<i32, OpenFile>,
+    /// Mappen filen kom från — `file_open("ljud.wav")` letar där, som i REAPER.
+    source_dir: Option<std::path::PathBuf>,
     /// `instance(...)`-namnen för funktionen som kör just nu.
     current_instances: Vec<String>,
     /// Senast slagna upp variabelnamn → plats.
@@ -94,6 +98,24 @@ pub struct Jsfx {
 impl Jsfx {
     /// Tolkar och förbereder en fil. `@init` körs direkt, som i REAPER.
     pub fn compile(source: &str, sample_rate: f64) -> Result<Self, String> {
+        Self::build(source, None, sample_rate)
+    }
+
+    /// Som [`Self::compile`], men filens egen mapp är känd redan när `@init` körs — det är då
+    /// samplers öppnar sina ljudfiler.
+    pub fn compile_in(
+        source: &str,
+        source_dir: std::path::PathBuf,
+        sample_rate: f64,
+    ) -> Result<Self, String> {
+        Self::build(source, Some(source_dir), sample_rate)
+    }
+
+    fn build(
+        source: &str,
+        source_dir: Option<std::path::PathBuf>,
+        sample_rate: f64,
+    ) -> Result<Self, String> {
         let program = super::parser::parse(source)?;
         let mut vm = Self {
             program,
@@ -103,6 +125,8 @@ impl Jsfx {
             str_slots: HashMap::new(),
             funcs: HashMap::new(),
             namespace: None,
+            files: HashMap::new(),
+            source_dir,
             current_instances: Vec::new(),
             last_slot: None,
             sample_rate,
@@ -171,6 +195,40 @@ impl Jsfx {
         self.spl = [0.0; 2];
         let init = self.program.init.clone();
         self.run_section("init", &init)
+    }
+
+    /// `file_open`: relativt källfilens mapp (som i REAPER), annars användarens JSFX-mapp,
+    /// annars sökvägen som den står. Bara WAV avkodas — FLAC hade krävt en egen avkodare.
+    fn open_file(&mut self, name: &str) -> Option<i32> {
+        let mut candidates = Vec::new();
+        let given = std::path::Path::new(name);
+        if given.is_absolute() {
+            candidates.push(given.to_path_buf());
+        } else {
+            if let Some(dir) = &self.source_dir {
+                candidates.push(dir.join(name));
+            }
+            candidates.push(super::user_dir().join(name));
+        }
+        let path = candidates.into_iter().find(|p| p.is_file())?;
+        let (left, right, rate) = crate::audio::wav_reader::load_audio_pcm(&path.display().to_string()).ok()?;
+        let channels = if right.iter().any(|r| *r != 0.0) { 2 } else { 1 };
+        let samples = if channels == 2 {
+            left.iter().zip(right.iter()).flat_map(|(l, r)| [*l, *r]).collect()
+        } else {
+            left
+        };
+        let handle = self.files.len() as i32 + 1;
+        self.files.insert(
+            handle,
+            OpenFile {
+                samples,
+                channels,
+                rate: rate as f64,
+                cursor: 0,
+            },
+        );
+        Some(handle)
     }
 
     /// Sant när effekten kastat fel. Värden ska då koppla bort den i stället för att köra den.
@@ -781,7 +839,19 @@ impl Jsfx {
                 self.mem[dest..dest + count].copy_from_slice(&copy);
                 0.0
             }
-            "mem_set_values" => 0.0,
+            "mem_set_values" => {
+                // `mem_set_values(dest, v1, v2, ...)` — tabeller skrivs så i REAPERs filer.
+                let base = eval!(&args[0]);
+                let start = self.address(base, 0.0);
+                for (i, arg) in args[1..].iter().enumerate() {
+                    let value = self.eval(arg)?;
+                    let addr = start + i;
+                    if addr < self.mem.len() {
+                        self.mem[addr] = value;
+                    }
+                }
+                0.0
+            }
             "alloc" => {
                 // Enkel bump-allokator: minnet är ett enda block och vi lämnar tillbaka en offset
                 // långt över variablerna.
@@ -794,7 +864,15 @@ impl Jsfx {
                 start as f64
             }
             "freembuf" => 0.0,
-            "sliderchange" | "slider_automate" | "slider_next_chg" => 0.0,
+            // Slider- och MIDI-namn-API:t ändrar bara hur REAPER *visar* saker; det finns ingen
+            // display att ändra, men koden ska inte falla på att den anropas.
+            "sliderchange" | "slider_automate" | "slider_next_chg" | "slider_show" | "slider_hide"
+            | "slider_name" | "slider_get" | "set_midi_note_name" | "set_midi_cc_name" => {
+                for arg in args {
+                    self.eval(arg)?;
+                }
+                0.0
+            }
             "time_precise" => 0.0,
             "printf" => 0.0,
             "sprintf" => {
@@ -890,14 +968,60 @@ impl Jsfx {
             // gissas. Fil-API:t är det viktigaste: en sampler som inte hittar sina samplingar
             // ska tystna, inte krascha.
             "file_open" | "fopen" => {
-                for arg in args {
-                    self.eval(arg)?;
+                let name = self.string_at(&args[0]);
+                match self.open_file(&name) {
+                    Some(handle) => handle as f64,
+                    None => {
+                        self.stubs.insert("file_open".to_string());
+                        -1.0
+                    }
                 }
-                self.stubs.insert(name.to_string());
-                -1.0
             }
-            "file_close" | "fclose" | "file_riff" | "file_mem" | "file_var" | "file_text"
-            | "file_avail" | "fread" | "fwrite" | "fseek" | "ftell" => {
+            "file_close" | "fclose" => {
+                let handle = eval!(&args[0]) as i32;
+                self.files.remove(&handle);
+                0.0
+            }
+            "file_riff" => {
+                // `file_riff(handle, nch, srate)` — skriver kanaler och samplingsfrekvens.
+                let handle = eval!(&args[0]) as i32;
+                if let Some(file) = self.files.get(&handle) {
+                    let nch = file.channels;
+                    let rate = file.rate;
+                    let _ = self.write(&args[1], nch as f64);
+                    let _ = self.write(&args[2], rate);
+                    1.0
+                } else {
+                    0.0
+                }
+            }
+            "file_avail" => {
+                let handle = eval!(&args[0]) as i32;
+                self.files
+                    .get(&handle)
+                    .map(|f| f.samples.len() as f64)
+                    .unwrap_or(0.0)
+            }
+            "file_mem" => {
+                // `file_mem(handle, dest, len)` — kopierar prover till minnet, från markören.
+                let handle = eval!(&args[0]) as i32;
+                let dest = eval!(&args[1]);
+                let count = eval!(&args[2]).max(0.0) as usize;
+                let start = self.address(dest, 0.0);
+                let Some(file) = self.files.get_mut(&handle) else {
+                    return Ok(0.0);
+                };
+                let take = count.min(file.samples.len().saturating_sub(file.cursor));
+                let copy = file.samples[file.cursor..file.cursor + take].to_vec();
+                file.cursor += take;
+                for (i, value) in copy.iter().enumerate() {
+                    if start + i < self.mem.len() {
+                        self.mem[start + i] = *value as f64;
+                    }
+                }
+                take as f64
+            }
+            "file_var" | "file_text" | "fread" | "fwrite" | "fseek" | "ftell" => {
                 for arg in args {
                     self.eval(arg)?;
                 }
@@ -1053,6 +1177,14 @@ impl Jsfx {
     }
 }
 
+/// En öppnad fil i JSFX-minnet. Bara det `file_riff`/`file_avail`/`file_mem` behöver.
+struct OpenFile {
+    samples: Vec<f32>,
+    channels: usize,
+    rate: f64,
+    cursor: usize,
+}
+
 fn finite_or_zero(value: f64) -> f32 {
     if value.is_finite() {
         value as f32
@@ -1178,6 +1310,36 @@ mod engine_tests {
         vm.process(&mut left, &mut right, &[]).unwrap();
         assert!(!vm.errors.is_empty(), "oändliga loopar ska ge ett fel");
         assert_eq!(left[0], 0.0, "effekten tystnar i stället för att hänga");
+    }
+
+    #[test]
+    fn mem_set_values_writes_a_table() {
+        let out = run("@sample\nmem_set_values(4096, 0.25, 0.5);\nspl0 = mem[4097];\n", 2);
+        assert!(out.iter().all(|v| (v - 0.5).abs() < 1e-9), "{out:?}");
+    }
+
+    #[test]
+    fn an_opened_wav_hands_out_its_samples() {
+        // En riktig wav i en temporär mapp: `file_open` letar i källfilens mapp, som i REAPER.
+        let dir = std::env::temp_dir().join(format!("sonix-jsfx-file-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let wav = dir.join("t.wav");
+        crate::audio::wav_writer::write_pcm_f32_to_wav(
+            &wav.display().to_string(),
+            &[0.25, 0.25, 0.5, 0.5, -0.25, -0.25, 0.0, 0.0],
+            44_100,
+            2,
+        )
+        .unwrap();
+
+        let src = "@init\nh = file_open(\"t.wav\");\nn = 0;\nh >= 0 ? ( nch = 0; sr = 0; file_riff(h, nch, sr); n = file_mem(h, 4096, 8); );\n@sample\nspl0 = n;\n";
+        let mut vm = Jsfx::compile_in(src, dir.clone(), 44_100.0).unwrap();
+        let mut left = vec![0.0f32; 2];
+        let mut right = vec![0.0f32; 2];
+        vm.process(&mut left, &mut right, &[]).unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        // Åtta prover lästes ur filen (stereo, fyra ramar) — inte noll, som en stubbad file_open ger.
+        assert!((left[0] - 8.0).abs() < 1e-6, "file_mem läste {}", left[0]);
     }
 
     #[test]
