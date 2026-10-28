@@ -155,6 +155,30 @@ mod tests {
         assert!((high - 0.5 / 2.0_f32.sqrt()).abs() < 0.02, "diskant: {high:.4}");
     }
 
+    /// 1 ms vid 48 kHz är 48 sampel — impulsen ska hamna där, och polariteten vända den.
+    #[test]
+    fn the_aligner_delays_by_whole_samples() {
+        let sr = 48_000.0;
+        let mut a = Align::new(sr);
+        a.set(0, 1.0);
+        let mut l = vec![0.0f32; 200];
+        let mut r = vec![0.0f32; 200];
+        l[0] = 1.0;
+        a.process(&mut l, &mut r);
+        let peak = l.iter().enumerate().max_by(|x, y| x.1.abs().partial_cmp(&y.1.abs()).unwrap()).unwrap();
+        assert_eq!(peak.0, 48, "toppen låg på {}", peak.0);
+        assert!((peak.1 - 1.0).abs() < 1.0e-6);
+
+        let mut a = Align::new(sr);
+        a.set(0, 1.0);
+        a.set(2, 1.0);
+        let mut l = vec![0.0f32; 200];
+        let mut r = vec![0.0f32; 200];
+        l[0] = 1.0;
+        a.process(&mut l, &mut r);
+        assert!((l[48] + 1.0).abs() < 1.0e-6, "polariteten vände inte: {}", l[48]);
+    }
+
     /// Med mono och hylla av ska delningen vara nivåneutral — LR-summan är allpass, inte
     /// sample-identisk, men den får inte ändra styrkan.
     #[test]
@@ -167,5 +191,78 @@ mod tests {
         bm.process(&mut l, &mut r);
         let ratio = rms(&l[4_800..]) / rms(&input[4_800..]);
         assert!((ratio - 1.0).abs() < 0.01, "nivåförhållande {ratio:.4}");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Justering: fas och sampelnoggrann fördröjning
+// ---------------------------------------------------------------------------
+
+pub static ALIGN: EffectDef = EffectDef {
+    id: "align",
+    name: "Justera",
+    category: PluginCategory::Equalizer,
+    description: "Sampelnoggrann fördröjning och polaritet per kanal — för två mikrofoner på samma källa",
+    params: &[
+        ParamDef::knob("Vänster ms", 0.0, 50.0, 0.0),
+        ParamDef::knob("Höger ms", 0.0, 50.0, 0.0),
+        ParamDef::step("Polaritet vänster (0/1)", 0.0, 1.0, 0.0),
+        ParamDef::step("Polaritet höger (0/1)", 0.0, 1.0, 0.0),
+    ],
+    make: |sr| Box::new(Align::new(sr)),
+};
+
+struct Align {
+    sr: f32,
+    ms: [f32; 2],
+    invert: [bool; 2],
+    buf: [Vec<f32>; 2],
+    write: usize,
+}
+
+impl Align {
+    fn new(sr: f32) -> Self {
+        let cap = (0.05 * sr) as usize + 4;
+        Self { sr, ms: [0.0; 2], invert: [false; 2], buf: [vec![0.0; cap], vec![0.0; cap]], write: 0 }
+    }
+}
+
+impl Dsp for Align {
+    fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
+        for ch in 0..2 {
+            let buf = &mut self.buf[ch];
+            let src = if ch == 0 { &mut *left } else { &mut *right };
+            let delay = (self.ms[ch] * 0.001 * self.sr).min((buf.len() - 2) as f32);
+            let sign = if self.invert[ch] { -1.0 } else { 1.0 };
+            for x in src.iter_mut() {
+                buf[self.write] = *x;
+                let mut idx = self.write as f32 + buf.len() as f32 - delay;
+                while idx >= buf.len() as f32 {
+                    idx -= buf.len() as f32;
+                }
+                let i0 = idx.floor() as usize;
+                let i1 = (i0 + 1) % buf.len();
+                let frac = idx - idx.floor();
+                *x = (buf[i0] * (1.0 - frac) + buf[i1] * frac) * sign;
+                self.write = (self.write + 1) % buf.len();
+            }
+        }
+    }
+
+    fn set(&mut self, index: usize, value: f64) {
+        match index {
+            0 => self.ms[0] = value as f32,
+            1 => self.ms[1] = value as f32,
+            2 => self.invert[0] = value >= 0.5,
+            3 => self.invert[1] = value >= 0.5,
+            _ => {}
+        }
+    }
+
+    fn reset(&mut self) {
+        for b in &mut self.buf {
+            b.iter_mut().for_each(|v| *v = 0.0);
+        }
+        self.write = 0;
     }
 }

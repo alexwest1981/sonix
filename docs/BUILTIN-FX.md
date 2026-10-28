@@ -1,11 +1,11 @@
 # Sonix egna effekter (`builtin:`)
 
-Nio effekter som är **vår kod**, inte någon annans fil. De ligger i `src/audio/builtin_fx/`,
+Tio effekter som är **vår kod**, inte någon annans fil. De ligger i `src/audio/builtin_fx/`,
 registreras i en tabell och laddas på samma väg som en plugin:
 
 ```
 builtin:filter72 · builtin:tilt · builtin:moog · builtin:phaserotate · builtin:bassmanager
-builtin:ringmod · builtin:pitch · builtin:spectralcomp · builtin:inflator
+builtin:ringmod · builtin:pitch · builtin:spectralcomp · builtin:inflator · builtin:align
 ```
 
 De syns i plugin-listan som formatet **Sonix (inbyggd)**, med kategori, och dyker upp i varje
@@ -33,6 +33,7 @@ GPL-3.0-only.
 | `pitch` | Realtid ±12 semitoner, två korsande läspunkter | +12 ger 880 Hz ur 440 Hz; 0 semitoner är bitidentisk passthrough |
 | `spectralcomp` | STFT-kompression, frekvensberoende tröskel, nedåt/uppåt | ratio 1 rekonstruerar insignalen; 19,5 dB över tröskeln ned 14,6 dB vid ratio 4 |
 | `inflator` | Udda ordningens vågformning | toppfaktorn sjunker, toppen stannar under 1 |
+| `align` | Sampelnoggrann fördröjning + polaritet per kanal | 1 ms vid 48 kHz = sampel 48; polariteten vänder tecknet |
 
 `spectralcomp` arbetar i 1024-samplers fönster med 75 % överlapp och rapporterar **768 sampel**
 latens, så PDC:n kompenserar den som vilken plugin som helst.

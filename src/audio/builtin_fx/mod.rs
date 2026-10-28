@@ -77,6 +77,7 @@ pub fn defs() -> Vec<&'static EffectDef> {
         &filters::MOOG,
         &filters::PHASE_ROTATE,
         &lowend::BASS_MANAGER,
+        &lowend::ALIGN,
         &modulation::RING_MOD,
         &modulation::PITCH,
         &dynamics::SPECTRAL_COMP,
