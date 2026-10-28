@@ -259,8 +259,8 @@ fn tracks_len(doc: &Value) -> usize {
 /// Sonix' egna spårfält som formatet inte har: de följer med utan att tolkas.
 fn sonix_track_extension(track: &super::project::SavedTrackData) -> Value {
     json!({
-        "eq": {"low_gain_db": track.eq.low_gain_db, "mid_gain_db": track.eq.mid_gain_db,
-               "high_gain_db": track.eq.high_gain_db},
+        // Hela EQ:n, inte bara gainarna: frekvenser och Q är också inställningar.
+        "eq": serde_json::to_value(&track.eq).unwrap_or(Value::Null),
         "comp_threshold_db": track.comp_threshold_db,
         "comp_ratio": track.comp_ratio,
         "reverb_send": track.reverb_send,

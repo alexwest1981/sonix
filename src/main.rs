@@ -178,6 +178,46 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // `sonix --import-tutti <mapp|.tutti> [ut.sonix]`: läser en tutti-folder och skriver en
+    // `.sonix`-fil som appen öppnar som vanligt. Motsatsen till `--export-tutti`; `.sonix`
+    // är kvar som det egna formatet.
+    if let Some(pos) = std::env::args().position(|a| a == "--import-tutti") {
+        let args: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if args.is_empty() {
+            eprintln!("användning: sonix --import-tutti <tutti-mapp|fil.tutti> [ut.sonix]");
+            std::process::exit(2);
+        }
+        let src = std::path::Path::new(&args[0]);
+        let out = match args.get(1) {
+            Some(path) => std::path::PathBuf::from(path),
+            None => {
+                let name = src
+                    .file_stem()
+                    .and_then(|s| s.to_str())
+                    .unwrap_or("Importerat");
+                paths::paths().project_file(name)
+            }
+        };
+        match ui::app::tutti_import::import_tutti(src, &out) {
+            Ok(r) => {
+                println!(
+                    "sonix: {} spår, {} klipp → {}",
+                    r.tracks,
+                    r.clips,
+                    r.out_file.display()
+                );
+                for w in &r.warnings {
+                    println!("  ⚠ {w}");
+                }
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("tutti-import misslyckades: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // `sonix --detect-bpm <fil...>`: uppskattar tempot ur en ljudfil. Verktyget finns
     // för att analysen ska kunna MÄTAS mot riktiga stämmor innan den får styra ett
     // projekt — ett gissat tempo ställer hela låten fel.
