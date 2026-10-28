@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.193] - 2026-10-28
+
+**Delete, M och Ctrl+D arbetar på hela markeringen.** De tre vanligaste kommandona tog
+fortfarande bara den primära regionen — markeringen syntes men hördes inte.
+
+- `Delete` tar bort alla markerade regioner (bakifrån, så indexen håller) och stänger
+  gapen enligt ripple-läget.
+- `M` mutar hela markeringen i samma riktning som den primära.
+- `Ctrl+D` duplicerar varje markerad region direkt efter sig.
+
 ## [0.9.192] - 2026-10-28
 
 **Ramarkering över flera spår och razor-duplicera.**

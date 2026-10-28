@@ -18,7 +18,7 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
 | Klistra in på ursprunglig position | `Paste to original position` | — | ✗ |
 | Duplicera | Ctrl+D, Alt+drag | Ctrl+D (region eller spår) | ◐ ingen Alt+drag-kopia |
 | Flytta flera regioner samtidigt | alla markerade följer med | `RegionDragState::multi_initial`, samma förskjutning | ✅ 0.9.188 |
-| Gruppera spår | mappar (folder) med djup och routing | `TrackGroup`, Fäll ihop/upp, Ctrl+G; VCA ger gruppvolym | ◐ ingen mapp-routing |
+| Gruppera spår | mappar (folder) med djup och routing | `TrackGroup` + buss/VCA per spår: en grupp kan skickas till en gemensam buss i mixern | ✅ routing finns, men sätts per spår (ingen automatisk folder-nivå) |
 | Gruppera objekt | Ctrl+G, gruppmatris | `item_groups` per region-id, klick/drag tar hela gruppen, Alt+drag kopierar | ✅ 0.9.189 (ingen matris) |
 | Ripple-redigering | av/spår/alla | `RippleMode` av/spår/alla: borttagning stänger gapet, inklistring skjuter undan | ✅ 0.9.190 |
 | Razor edits | dela/duplicera över markerat område | `Ctrl+Shift+X` tar bort, `Ctrl+Alt+D` duplicerar området med plats gjord | ✅ 0.9.192 |
@@ -40,6 +40,7 @@ det som står ✅ finns och har ett prov, ◐ finns delvis, ✗ finns inte.
 
 ## Nästa steg
 
-1. **Mappar med routing** — VCA ger gruppvolym, men en mapp som barnspåren routas genom
-   finns inte; det kräver en nivå i buss-grafen.
-2. **Fria musmodifierare** — snabbkommandona är hårdkodade i `frame.rs`.
+1. **Fria musmodifierare** — snabbkommandona är hårdkodade i `frame.rs`; att göra dem
+   konfigurerbara är ett eget gränssnitt.
+2. **Automatisk folder-nivå** — när man grupperar kan medlemmarna skickas till en ledig
+   buss i ett svep i stället för per spår.

@@ -1889,6 +1889,34 @@ pub fn repeat_selected_region_loop(&mut self, factor: f32) {
 
 impl SonixApp {
 pub fn duplicate_selected_region(&mut self) {
+    // **Hela markeringen**: varje region får en kopia direkt efter sig.
+    if self.selected_regions.len() > 1 {
+        let targets: Vec<(usize, usize)> = self.selected_regions.iter().copied().collect();
+        self.push_undo("Duplicera ljudregioner");
+        let mut made = 0;
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        for (t, r) in targets {
+            let Some(source) = self.playlist_tracks.get(t).and_then(|tr| tr.regions.get(r)) else {
+                continue;
+            };
+            let mut dup = source.clone();
+            dup.start_bar += dup.length_bars;
+            dup.name = format!("{} (Kopia)", dup.name.replace(" (Kopia)", ""));
+            dup.id = self.next_region_id();
+            if let Some(track) = self.playlist_tracks.get_mut(t) {
+                track.regions.push(dup);
+                touched.insert(t);
+                made += 1;
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        self.selected_regions.clear();
+        self.selected_audio_region = None;
+        self.status_message = crate::tstatus!("📋 Duplicerade {} regioner", made);
+        return;
+    }
     if let Some((t_idx, r_idx)) = self.selected_audio_region
         && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             self.push_undo("Duplicera ljudregion");
@@ -1907,12 +1935,43 @@ pub fn duplicate_selected_region(&mut self) {
 
 impl SonixApp {
 pub fn delete_selected_region(&mut self) {
+    // **Hela markeringen**, inte bara den primära: Delete ska ta det man ser markerat.
+    if self.selected_regions.len() > 1 {
+        let mut targets: Vec<(usize, usize)> = self.selected_regions.iter().copied().collect();
+        targets.sort_by(|a, b| b.cmp(a)); // bakifrån, så indexen håller
+        self.push_undo(&format!("Radera {} regioner", targets.len()));
+        let mut removed = 0;
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        for (t, r) in targets {
+            if let Some(track) = self.playlist_tracks.get_mut(t)
+                && r < track.regions.len()
+            {
+                let start = track.regions[r].start_bar;
+                let len = track.regions[r].length_bars;
+                track.regions.remove(r);
+                removed += 1;
+                touched.insert(t);
+                self.ripple_shift(t, start + len - 1e-4, -len);
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        self.selected_regions.clear();
+        self.selected_audio_region = None;
+        self.status_message = crate::tstatus!("🗑 Raderade {} regioner. [Ångra: Ctrl+Z]", removed);
+        return;
+    }
     if let Some((t_idx, r_idx)) = self.selected_audio_region
         && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             let name = self.playlist_tracks[t_idx].regions[r_idx].name.clone();
+            let start = self.playlist_tracks[t_idx].regions[r_idx].start_bar;
+            let len = self.playlist_tracks[t_idx].regions[r_idx].length_bars;
             self.push_undo(&format!("Radera '{}'", name));
             self.playlist_tracks[t_idx].regions.remove(r_idx);
             self.sync_track_regions(t_idx);
+            self.ripple_shift(t_idx, start + len - 1e-4, -len);
+            self.selected_regions.clear();
             self.selected_audio_region = None;
             self.status_message = crate::tstatus!("🗑 Raderade region '{}'. [Ångra: Ctrl+Z]", name);
         }
@@ -1921,6 +1980,33 @@ pub fn delete_selected_region(&mut self) {
 
 impl SonixApp {
 pub fn toggle_mute_selected_region(&mut self) {
+    // **Hela markeringen** mutas tillsammans; riktningen tas från den primära.
+    if self.selected_regions.len() > 1 {
+        let primary_muted = self
+            .selected_audio_region
+            .and_then(|(t, r)| self.playlist_tracks.get(t).and_then(|tr| tr.regions.get(r)))
+            .map(|reg| reg.muted)
+            .unwrap_or(false);
+        let target = !primary_muted;
+        let targets: Vec<(usize, usize)> = self.selected_regions.iter().copied().collect();
+        self.push_undo("Muta/Avmuta regioner");
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        for (t, r) in targets {
+            if let Some(reg) = self.playlist_tracks.get_mut(t).and_then(|tr| tr.regions.get_mut(r)) {
+                reg.muted = target;
+                touched.insert(t);
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        self.status_message = if target {
+            "🔇 Regioner mutade".to_string()
+        } else {
+            "🔊 Regioner aktiva".to_string()
+        };
+        return;
+    }
     if let Some((t_idx, r_idx)) = self.selected_audio_region
         && t_idx < self.playlist_tracks.len() && r_idx < self.playlist_tracks[t_idx].regions.len() {
             self.push_undo("Muta/Avmuta region");
