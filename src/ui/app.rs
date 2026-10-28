@@ -76,6 +76,7 @@ mod plugins;
 mod input_autoconfig;
 mod audio_watchdog;
 mod perf_probe;
+pub mod tutti_export;
 mod midi;
 
 // Inte kopplad till mixern än — tas bort när panelen anropar den.

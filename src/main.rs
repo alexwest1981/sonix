@@ -146,6 +146,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(0);
     }
 
+    // `sonix --export-tutti <projekt.sonix|autosave> <utmapp>`: skriver en kopia av
+    // projektet i det delade formatet tutti. `.sonix` är kvar som källan — det här är
+    // vägen ut till andra program, inte ett formatbyte. Se skillens
+    // `references/tutti-format.md` (mätt: `tutti check` säger 0 fel).
+    if let Some(pos) = std::env::args().position(|a| a == "--export-tutti") {
+        let args: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if args.len() < 2 {
+            eprintln!("användning: sonix --export-tutti <projekt.sonix> <utmapp>");
+            std::process::exit(2);
+        }
+        match ui::app::tutti_export::export_project_file(
+            std::path::Path::new(&args[0]),
+            std::path::Path::new(&args[1]),
+        ) {
+            Ok(r) => {
+                println!(
+                    "tutti: {} spår, {} klipp, {} ljudfiler ({} MB) → {}",
+                    r.tracks,
+                    r.clips,
+                    r.audio_files,
+                    r.bytes / 1_048_576,
+                    r.folder.display()
+                );
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("tutti-export misslyckades: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // `sonix --detect-bpm <fil...>`: uppskattar tempot ur en ljudfil. Verktyget finns
     // för att analysen ska kunna MÄTAS mot riktiga stämmor innan den får styra ett
     // projekt — ett gissat tempo ställer hela låten fel.

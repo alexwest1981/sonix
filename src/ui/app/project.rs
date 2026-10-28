@@ -2309,6 +2309,12 @@ pub fn load_project_file(&mut self, path_str: &str) {
             }
         };
 
+        // Tempot lagas på payloaden **innan** spåren byggs: en gammal fil kan säga 120 i
+        // fältet och 125 i paketet, och då ska varken geometrin eller klippens källtempo
+        // hinna bli fel först (se `heal_project_tempo`).
+        let mut data = data;
+        let healed = heal_project_tempo(&mut data);
+
         let total_tracks = data.tracks.len();
         // Ett tempobyte gör takt-till-sekunder beroende av hela kartan, och då är
         // mätningen av ett klipps inspelningstempo (nedan) inte ett mått på
@@ -2426,6 +2432,14 @@ pub fn load_project_file(&mut self, path_str: &str) {
             });
 
             std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        // Tempolagningen sägs högt: ett projekt som öppnas i 125 i stället för filens 120
+        // ska man se, inte upptäcka.
+        if let Some(heal_message) = healed.summary()
+            && let Ok(mut p) = progress.lock()
+        {
+            p.error_message = Some(heal_message);
         }
 
         if !frozen_problems.is_empty()
@@ -2657,11 +2671,6 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         self.sync_track_regions(t_idx);
     }
 
-    // Klippens källtempo kan stå fel i en gammal fil (120 där paketet säger 125), och
-    // då sträcker motorn ljudet 4,2 % — svajigt och knaggligt. Rätta det innan något
-    // hinner spela på de gamla taken.
-    self.heal_stem_source_tempo();
-
     // Ensure Mic track is always at the end & all track colors are properly classified
     self.ensure_mic_track_exists();
 
@@ -2798,62 +2807,171 @@ mod template_tests {
     }
 }
 
-impl SonixApp {
-    /// **Läker klippens källtempo vid inläsning.**
-    ///
-    /// Ett klipp som säger "jag är byggd i 120" i ett 125-projekt blir sträckt 4,2 % av
-    /// motorn — det låter svajigt och knaggligt, och det var precis vad Alex hörde
-    /// 2026-10-27. Tempot finns i **paketets** namn (Suno: `… Stems (125BPM).zip`), så
-    /// stämmer klippet inte med sitt paket vinner paketet: källtempot skrivs om och
-    /// taktlängden räknas om så att **sekunderna står still**
-    /// (`bars_holding_seconds`) — ljudet rörs inte, bara rutnätets tolkning av det.
-    ///
-    /// Ett okänt paket lämnar klippet i fred: en lagning som gissar är värre än felet.
-    fn heal_stem_source_tempo(&mut self) {
-        let mut healed = 0usize;
-        let mut per_dir: std::collections::HashMap<std::path::PathBuf, Option<f32>> =
-            Default::default();
-        for t_idx in 0..self.playlist_tracks.len() {
-            let mut changed = false;
-            for region in self.playlist_tracks[t_idx].regions.iter_mut() {
-                let Some(path) = region.source_path.as_deref() else {
-                    continue;
-                };
-                let Some(dir) = std::path::Path::new(path).parent() else {
-                    continue;
-                };
-                let dir = dir.to_path_buf();
-                // Åtta stämmor ligger i samma mapp: en läsning per mapp, inte per klipp.
-                let package = *per_dir
-                    .entry(dir.clone())
-                    .or_insert_with(|| crate::ui::app::import::bpm_for_stem_folder(&dir));
-                let Some(bpm) = source_tempo_needs_healing(region.source_bpm, package) else {
-                    continue;
-                };
-                let old = region.source_bpm;
-                region.source_bpm = bpm;
-                if old > 0.0 {
-                    region.length_bars = Self::bars_holding_seconds(region.length_bars, old, bpm);
-                    region.fade_in_bars = Self::bars_holding_seconds(region.fade_in_bars, old, bpm);
-                    region.fade_out_bars =
-                        Self::bars_holding_seconds(region.fade_out_bars, old, bpm);
-                    region.loop_length_bars =
-                        Self::bars_holding_seconds(region.loop_length_bars, old, bpm);
-                }
-                changed = true;
-            }
-            if changed {
-                self.sync_track_regions(t_idx);
-                healed += 1;
-            }
-        }
-        if healed > 0 {
-            self.status_message = crate::tstatus!(
-                "🔧 {} stämspår hade fel källtempo i filen — rättat till paketets",
-                healed
-            );
+/// **Lagar ett inläst projekts tempo mot stämmornas paket.**
+///
+/// Ren funktion över payloaden, så att **både inläsningen och tutti-exporten** lagar
+/// samma sak på samma sätt — annars kunde en gammal fil se rätt ut i appen och fel ut i
+/// exporten.
+///
+/// Tre regler, i den ordningen:
+///
+/// 1. **Kartan vinner över fältet.** Står `bpm` i 120 medan kartans första punkt står i
+///    125 spelar tiden 125 medan rutan visar 120, och varje läsning nedströms får olika
+///    svar (mätt i Alex' A box of you 2026-10-27).
+/// 2. **Paketet vinner över klippets påstående.** Ett klipp som säger "jag är byggd i
+///    120" i ett 125-projekt blir sträckt 4,2 % av motorn — det hördes som svaj och som
+///    ett klangbyte mitt i låten när den sträckta filen tog över. Tempot finns i paketets
+///    namn (`… Stems (125BPM).zip`); taktlängden räknas om så att **sekunderna står
+///    still**, för ljudet ska inte röras — bara rutnätets tolkning av det.
+/// 3. **Saknas tempokarta och alla stämmor säger samma tempo blir det projektets tempo.**
+///    Det är hela poängen med att öppna "i det som stämmorna säger": en låt byggd i 125
+///    ska inte öppnas i 120 bara för att filens fält råkar säga det. Finns en karta är
+///    tempot ett val någon gjort, och då rör vi det inte.
+///
+/// Klippens **starttakter** rörs inte: en takt är en musikalisk position, inte en tid.
+pub fn heal_project_tempo(data: &mut SonixProjectData) -> TempoHeal {
+    let mut report = TempoHeal::default();
+    let field_bpm = data.bpm.max(1.0);
+
+    // En läsning per mapp, inte per klipp: åtta stämmor ligger tillsammans.
+    let mut per_dir: std::collections::HashMap<std::path::PathBuf, Option<f32>> = Default::default();
+    let mut package_of: Vec<Option<f32>> = Vec::new();
+    for track in data.tracks.iter() {
+        for region in track.regions.iter() {
+            let package = region
+                .source_path
+                .as_deref()
+                .map(std::path::Path::new)
+                .and_then(|p| p.parent())
+                .map(|dir| {
+                    *per_dir
+                        .entry(dir.to_path_buf())
+                        .or_insert_with(|| crate::ui::app::import::bpm_for_stem_folder(dir))
+                })
+                .flatten()
+                .filter(|bpm| *bpm >= 40.0);
+            package_of.push(package);
         }
     }
+
+    // **Vilket tempo ska projektet ha?** Kartan först (den är det som hörs), sedan
+    // stämmorna — men bara när ingen tempoförändring gjorts än: har något klipp ett
+    // annat källtempo än projektet är tempot ett val, och då rör vi det inte.
+    let nothing_stretched = data
+        .tracks
+        .iter()
+        .flat_map(|t| t.regions.iter())
+        .all(|r| r.source_bpm <= 0.0 || (r.source_bpm - field_bpm).abs() <= 0.01);
+    let map_bpms: Vec<f32> = data.tempo_points.iter().map(|p| p.bpm).collect();
+    let packages: Vec<f32> = package_of.iter().flatten().copied().collect();
+    let decision = project_tempo_from_evidence(field_bpm, &map_bpms, nothing_stretched, &packages);
+    let (target_bpm, from) = decision.unwrap_or((field_bpm, ""));
+    if (target_bpm - field_bpm).abs() > 0.01 {
+        // Sekunderna står still: taktlängderna följer med tempot, annars skulle varje
+        // klipp plötsligt täcka en annan mängd ljud.
+        data.bpm = target_bpm;
+        let factor_from = field_bpm;
+        for track in data.tracks.iter_mut() {
+            for region in track.regions.iter_mut() {
+                region.length_bars = scale_bars(region.length_bars, factor_from, target_bpm);
+                region.fade_in_bars = scale_bars(region.fade_in_bars, factor_from, target_bpm);
+                region.fade_out_bars = scale_bars(region.fade_out_bars, factor_from, target_bpm);
+                region.loop_length_bars =
+                    scale_bars(region.loop_length_bars, factor_from, target_bpm);
+            }
+        }
+        report.project_bpm = Some(target_bpm);
+        report.source = from.to_string();
+    }
+
+    // **Klippens källtempo.** Taktlängderna räknades om ovan; här skrivs bara vad
+    // materialet är byggt i. Det är den uppgiften motorn sträcker efter.
+    let mut i = 0usize;
+    for track in data.tracks.iter_mut() {
+        for region in track.regions.iter_mut() {
+            let package = package_of.get(i).copied().flatten();
+            i += 1;
+            if let Some(bpm) = source_tempo_needs_healing(region.source_bpm, package) {
+                region.source_bpm = bpm;
+                report.clips += 1;
+            }
+        }
+    }
+
+    report
+}
+
+/// **Vilket tempo ska projektet ha?** Ren funktion, så att regeln kan prövas utan en
+/// hel projektfil — och så att inläsning och export svarar likadant.
+///
+/// `map` är tempokartans punkter, `nothing_stretched` säger att inget klipp har ett annat
+/// källtempo än projektet (alltså: ingen har ändrat tempot än), `packages` är de tempot
+/// stämmornas paket anger.
+///
+/// Kartan vinner när den har en enda punkt (en punkt är ett beslut; flera punkter är
+/// tempoarbete som inte går att skala med ett tal). Annars får stämmorna bestämma — men
+/// bara när ingen tempoförändring gjorts: har någon dragit i tempot är det ett val.
+pub fn project_tempo_from_evidence(
+    field_bpm: f32,
+    map: &[f32],
+    nothing_stretched: bool,
+    packages: &[f32],
+) -> Option<(f32, &'static str)> {
+    if map.len() == 1 && (map[0] - field_bpm).abs() > 0.01 {
+        return Some((map[0], "karta"));
+    }
+    if !map.is_empty() || !nothing_stretched {
+        return None;
+    }
+    let mut unique: Vec<f32> = packages
+        .iter()
+        .copied()
+        .filter(|b| *b >= 40.0)
+        .collect();
+    unique.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    unique.dedup_by(|a, b| (*a - *b).abs() <= 0.01);
+    if unique.len() == 1 && (unique[0] - field_bpm).abs() > 0.01 {
+        return Some((unique[0], "stämmor"));
+    }
+    None
+}
+
+/// Vad lagningen gjorde, så att anroparen kan säga det högt i stället för att tiga.
+#[derive(Default, Debug)]
+pub struct TempoHeal {
+    pub clips: usize,
+    pub project_bpm: Option<f32>,
+    /// Var tempot kom ifrån ("karta" eller "stämmor") — står i beskedet till användaren.
+    pub source: String,
+}
+
+impl TempoHeal {
+    pub fn changed(&self) -> bool {
+        self.clips > 0 || self.project_bpm.is_some()
+    }
+
+    pub fn summary(&self) -> Option<String> {
+        if !self.changed() {
+            return None;
+        }
+        let mut parts = Vec::new();
+        if let Some(bpm) = self.project_bpm {
+            parts.push(format!("projektet öppnat i {bpm:.2} BPM ({})", self.source));
+        }
+        if self.clips > 0 {
+            parts.push(format!("{} klipp rättade till paketets tempo", self.clips));
+        }
+        Some(format!("🔧 {}", parts.join(", ")))
+    }
+}
+
+/// Taktlängd som behåller sekunderna när tempot byts: `bars_holding_seconds` utan att
+/// gå omvägen över `SonixApp`.
+fn scale_bars(bars: f32, old_bpm: f32, new_bpm: f32) -> f32 {
+    if old_bpm <= 0.0 || new_bpm <= 0.0 || !bars.is_finite() {
+        return bars;
+    }
+    bars * new_bpm / old_bpm
 }
 
 /// **Ska klippets källtempo lagas?** Ren funktion med eget prov.
@@ -2932,5 +3050,45 @@ mod autosave_heal_tests {
             }
         }
         println!("{healed} av {total} klipp behöver lagas");
+    }
+}
+
+#[cfg(test)]
+mod project_tempo_evidence_tests {
+    use super::*;
+
+    /// **Regeln som öppnade "A box of you" i fel tempo.** Provet håller alla fyra svaren:
+    /// stämmorna får bestämma när ingen karta finns och ingen rört tempot; kartan vinner
+    /// när den har en punkt; och ingen av dem får röra ett tempo någon valt.
+    #[test]
+    fn the_project_takes_the_tempo_the_stems_declare() {
+        // 120 i fältet, inga klipp sträckta, alla stämmor i paket som säger 125.
+        assert_eq!(
+            project_tempo_from_evidence(120.0, &[], true, &[125.0, 125.0, 125.0]),
+            Some((125.0, "stämmor"))
+        );
+        // En tempokarta med en punkt är ett beslut: den vinner över fältet.
+        assert_eq!(
+            project_tempo_from_evidence(120.0, &[125.0], true, &[125.0]),
+            Some((125.0, "karta"))
+        );
+        // Tempot är redan rätt: inget att göra (annars skrev vi om en frisk fil).
+        assert_eq!(
+            project_tempo_from_evidence(125.0, &[], true, &[125.0]),
+            None
+        );
+        // Någon har dragit i tempot (ett klipp har annat källtempo): rör det inte.
+        assert_eq!(
+            project_tempo_from_evidence(100.0, &[], false, &[125.0]),
+            None,
+            "ett valt tempo är ett val"
+        );
+        // Stämmorna säger olika tempo: ingen majoritet att lita på.
+        assert_eq!(
+            project_tempo_from_evidence(120.0, &[], true, &[125.0, 133.0]),
+            None
+        );
+        // Ingen karta och inga paket: inget bevis alls.
+        assert_eq!(project_tempo_from_evidence(120.0, &[], true, &[]), None);
     }
 }
