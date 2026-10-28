@@ -520,6 +520,12 @@ impl SonixApp {
         if !piano_active && !self.midi_held_notes.is_empty() {
             self.midi_held_notes.clear();
         }
+        // **Pianots musnot släpps också** (Alex 2026-10-27): lämnade man pianorullen med musen
+        // nere låg noten kvar och spelade vidare — `active_keys` och MIDI-hold rensades, men
+        // noten som startades med pekaren glömdes. Den har ingen egen tangent att släppa med.
+        if !piano_active && let Some(note) = self.active_mouse_note.take() {
+            self.release_note(note);
+        }
 
         // **Tab byter yta** (Shift+Tab bakåt). Görs före tangentbordsblocket nedan, så att
         // ytan är bytt när pianots tangenter läses av i samma bildruta.
@@ -693,8 +699,10 @@ impl SonixApp {
                 }
             }
 
-            // Transport & Arranger shortcuts
-            if !is_cmd {
+            // Transport & Arranger shortcuts. **Ingen av dem går medan en textruta har fokus**
+            // (Alex 2026-10-27: ett mellanslag i ett projektnamn startade uppspelningen) —
+            // `wants_keyboard` är samma grind som pianots tangenter och Tab redan använder.
+            if !is_cmd && !wants_keyboard {
                 if i.key_pressed(egui::Key::Space) {
                     self.toggle_playback();
                 }
@@ -1496,28 +1504,38 @@ impl SonixApp {
                     // Mixa, Verktyg. Bara den valda gruppens knappar ritas, och varje vy har
                     // en hemvist — inte en rubrik.
                     let active_group = nav_group_of(self.view_mode);
-                    for (group, label) in
-                        [(0u8, "SKAPA"), (1, "ARRANGERA"), (2, "MIXA"), (3, "VERKTYG")]
+                    // **Flikar, inte knappar** (Alex 2026-10-27): grupperna ser ut som flikar, och
+                    // den valda sitter ihop med raden under i stället för att flyta som en knapp.
+                    let group_labels: Vec<&str> = [
+                        self.tr("SKAPA"),
+                        self.tr("ARRANGERA"),
+                        self.tr("MIXA"),
+                        self.tr("VERKTYG"),
+                    ]
+                    .into_iter()
+                    .collect();
+                    if let Some(group) = super::super::widgets::tabs(
+                        ui,
+                        &group_labels,
+                        active_group as usize,
+                        Theme::FONT_M,
+                    )
+                    .map(|g| g as u8)
+                        && group != active_group
+                        && group_has_view(group)
                     {
-                        if ui
-                            .selectable_label(active_group == group, self.tr(label))
-                            .clicked()
-                            && group != active_group
-                            && group_has_view(group)
-                        {
-                            // **Fliken minns senast valda vy i sin grupp** (0.9.78), så ett
-                            // klick hit går tillbaka dit man var — inte till gruppens första.
-                            // Ett sparat mål som inte hör till fliken (t.ex. efter en
-                            // omgruppering) får inte skicka användaren någon annanstans.
-                            let remembered = self.last_view[group as usize];
-                            self.view_mode = if nav_group_of(remembered) == group {
-                                remembered
-                            } else {
-                                first_view_of(group).unwrap_or(remembered)
-                            };
-                        }
+                        // **Fliken minns senast valda vy i sin grupp** (0.9.78), så ett klick hit
+                        // går tillbaka dit man var — inte till gruppens första. Ett sparat mål
+                        // som inte hör till fliken (t.ex. efter en omgruppering) får inte skicka
+                        // användaren någon annanstans.
+                        let remembered = self.last_view[group as usize];
+                        self.view_mode = if nav_group_of(remembered) == group {
+                            remembered
+                        } else {
+                            first_view_of(group).unwrap_or(remembered)
+                        };
                     }
-                    ui.separator();
+                    ui.add_space(10.0);
 
                     const VIEWS: [(u8, ViewMode, &str); 13] = [
                         (0, ViewMode::ChannelRack, "🥁 Rack"),
@@ -1534,15 +1552,24 @@ impl SonixApp {
                         (3, ViewMode::StemSeparator, "🧠 Stems"),
                         (3, ViewMode::PluginManager, "🔌 Plugins"),
                     ];
-                    for (group, mode, label) in VIEWS {
-                        if active_group == group
-                            && ui
-                                .selectable_label(self.view_mode == mode, self.tr(label))
-                                .clicked()
-                        {
-                            self.view_mode = mode;
-                            self.last_view[group as usize] = mode;
-                        }
+                    // Samma flikar i andra nivån: bara den valda gruppens ytor, och den valda
+                    // ytan är den flik som ligger i ytan under.
+                    let group_views: Vec<(ViewMode, &str)> = VIEWS
+                        .iter()
+                        .filter(|(g, _, _)| *g == active_group)
+                        .map(|(_, mode, label)| (*mode, self.tr(label)))
+                        .collect();
+                    let active_view = group_views
+                        .iter()
+                        .position(|(mode, _)| *mode == self.view_mode)
+                        .unwrap_or(0);
+                    let view_labels: Vec<&str> = group_views.iter().map(|(_, l)| *l).collect();
+                    if let Some(pick) =
+                        super::super::widgets::tabs(ui, &view_labels, active_view, Theme::FONT_S)
+                        && let Some((mode, _)) = group_views.get(pick)
+                    {
+                        self.view_mode = *mode;
+                        self.last_view[active_group as usize] = *mode;
                     }
 
                     if active_group == 3 {
