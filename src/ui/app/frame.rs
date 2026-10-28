@@ -743,7 +743,14 @@ impl SonixApp {
                     self.split_selected_region_at_playhead();
                 }
                 if i.key_pressed(egui::Key::D) {
-                    if i.modifiers.shift || self.selected_audio_region.is_none() {
+                    if i.modifiers.alt {
+                        // Razor: duplicera tidsmarkeringen.
+                        let n = self.razor_duplicate_area();
+                        if n == 0 {
+                            self.status_message =
+                                "✂️ Ingen tidsmarkering att duplicera".to_string();
+                        }
+                    } else if i.modifiers.shift || self.selected_audio_region.is_none() {
                         self.duplicate_track(self.selected_timeline_track);
                     } else {
                         self.duplicate_selected_region();

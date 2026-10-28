@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.192] - 2026-10-28
+
+**Ramarkering över flera spår och razor-duplicera.**
+
+- Ramen går nu över så många spår man drar: spåret under pekaren blir ramens andra kant,
+  och släppet markerar alla regioner som överlappar intervallet i alla spår däremellan.
+- `Ctrl+Alt+D` duplicerar tidsmarkeringen: klipper ut området, gör plats genom att skjuta
+  allt efter det och lägger kopian direkt efter — sampling-offset och vågform följer med.
+- Prov: en beskuren kopia täcker exakt området, och en region utanför kopieras inte.
+
 ## [0.9.191] - 2026-10-28
 
 **Tidsmarkering från regeln.** Shift+drag i regeln markerar tid i stället för att flytta

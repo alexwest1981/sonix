@@ -2212,53 +2212,68 @@ impl SonixApp {
                                 }
 
                                 // **Ramarkering**: ett drag som börjar i tom yta markerar de
-                                // regioner man drar över, och lämnar intervallet som tidsmarkering.
+                                // regioner man drar över — över så många spår man drar.
                                 if self.arranger_tool == ArrangerTool::Select && self.region_drag_state.is_none() {
                                     if let Some(press) = ui.input(|i| i.pointer.press_origin())
                                         && lane_rect.contains(press)
                                         && region_under_x(&regions_snapshot, press.x, lane_rect.min.x, bar_w).is_none()
+                                        && lane_resp.drag_started()
                                     {
                                         let press_bar = ((press.x - lane_rect.min.x) / bar_w).max(0.0);
-                                        if lane_resp.drag_started() {
-                                            self.marquee = Some((t_idx, press_bar, press_bar));
-                                        }
+                                        self.marquee = Some((t_idx, t_idx, press_bar, press_bar));
                                     }
                                 }
-                                if let Some((mt, start_bar, _)) = self.marquee
-                                    && mt == t_idx
-                                {
-                                    if let Some(pos) = lane_resp.hover_pos() {
-                                        let end_bar = ((pos.x - lane_rect.min.x) / bar_w).max(0.0);
-                                        self.marquee = Some((mt, start_bar, end_bar));
-                                    }
-                                    if let Some((_, a, b)) = self.marquee {
-                                        let x0 = lane_rect.min.x + a.min(b) * bar_w;
-                                        let x1 = lane_rect.min.x + a.max(b) * bar_w;
-                                        if (x1 - x0) > 1.0 {
-                                            let rect = Rect::from_min_max(
-                                                Pos2::new(x0, lane_rect.min.y),
-                                                Pos2::new(x1, lane_rect.max.y),
-                                            );
-                                            ui.painter().rect_filled(rect, Rounding::same(2.0), crate::ui::theme::palette().cyan().gamma_multiply(0.16));
-                                            ui.painter().rect_stroke(rect, Rounding::same(2.0), Stroke::new(1.0_f32, crate::ui::theme::palette().cyan()));
+                                if let Some((track_from, mut track_to, bar_from, mut bar_to)) = self.marquee {
+                                    // Spåret under pekaren blir ramens andra kant, i vilken
+                                    // lane som helst — därför uppdateras den här varje varv.
+                                    if let Some(pos) = ui.ctx().pointer_latest_pos() {
+                                        if lane_rect.contains(pos) {
+                                            track_to = t_idx;
+                                        }
+                                        if t_idx == track_from {
+                                            bar_to = ((pos.x - lane_rect.min.x) / bar_w).max(0.0);
                                         }
                                     }
-                                    if ui.input(|i| !i.pointer.primary_down())
-                                        && let Some((_, a, b)) = self.marquee.take()
+                                    self.marquee = Some((track_from, track_to, bar_from, bar_to));
+
+                                    let (x0, x1) = (
+                                        lane_rect.min.x + bar_from.min(bar_to) * bar_w,
+                                        lane_rect.min.x + bar_from.max(bar_to) * bar_w,
+                                    );
+                                    if t_idx >= track_from.min(track_to)
+                                        && t_idx <= track_from.max(track_to)
+                                        && (x1 - x0) > 1.0
+                                    {
+                                        let rect = Rect::from_min_max(
+                                            Pos2::new(x0, lane_rect.min.y),
+                                            Pos2::new(x1, lane_rect.max.y),
+                                        );
+                                        ui.painter().rect_filled(rect, Rounding::same(2.0), crate::ui::theme::palette().cyan().gamma_multiply(0.16));
+                                        ui.painter().rect_stroke(rect, Rounding::same(2.0), Stroke::new(1.0_f32, crate::ui::theme::palette().cyan()));
+                                    }
+
+                                    if t_idx == track_from && ui.input(|i| !i.pointer.primary_down())
+                                        && let Some((tf, tt, a, b)) = self.marquee.take()
                                     {
                                         let (from, to) = (a.min(b), a.max(b));
-                                        if (to - from).abs() > 0.01
-                                            && let Some(track) = self.playlist_tracks.get(t_idx)
-                                        {
-                                            let hits = crate::ui::app::state::regions_in_bar_range(track, from, to);
-                                            self.selected_regions = hits.iter().map(|r| (t_idx, *r)).collect();
-                                            self.selected_tracks = [t_idx].into_iter().collect();
-                                            self.selected_timeline_track = t_idx;
-                                            self.selected_audio_region = hits.first().map(|r| (t_idx, *r));
+                                        if (to - from).abs() > 0.01 {
+                                            let mut hits: Vec<(usize, usize)> = Vec::new();
+                                            for t in tf.min(tt)..=tf.max(tt) {
+                                                if let Some(track) = self.playlist_tracks.get(t) {
+                                                    for r in crate::ui::app::state::regions_in_bar_range(track, from, to) {
+                                                        hits.push((t, r));
+                                                    }
+                                                }
+                                            }
+                                            self.selected_regions = hits.iter().copied().collect();
+                                            self.selected_tracks = (tf.min(tt)..=tf.max(tt)).collect();
+                                            self.selected_timeline_track = tf;
+                                            self.selected_audio_region = hits.first().copied();
                                             self.time_selection = Some((from, to));
                                             self.status_message = crate::tstatus!(
-                                                "🔲 Markerade {} regioner i takt {:.2}–{:.2}",
+                                                "🔲 Markerade {} regioner över {} spår, takt {:.2}–{:.2}",
                                                 hits.len(),
+                                                self.selected_tracks.len(),
                                                 from + 1.0,
                                                 to + 1.0
                                             );

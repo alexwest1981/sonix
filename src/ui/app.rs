@@ -569,9 +569,9 @@ pub struct SonixApp {
     pub show_undo_history_modal: bool,
     /// Ripple-läge: stänger gapet vid borttagning och skjuter undan vid inklistring.
     pub ripple_mode: crate::ui::app::state::RippleMode,
-    /// Pågående rammarkering: (spår, starttakt, sluttakt). Släppet markerar regionerna
-    /// som överlappar intervallet och lämnar intervallet som tidsmarkering.
-    pub marquee: Option<(usize, f32, f32)>,
+    /// Pågående rammarkering: (spår från, spår till, starttakt, sluttakt). Släppet
+    /// markerar regionerna som överlappar intervallet och lämnar det som tidsmarkering.
+    pub marquee: Option<(usize, usize, f32, f32)>,
     /// Tidsmarkering i takter (RAZOR-området).
     pub time_selection: Option<(f32, f32)>,
     /// Ankaret när man drar en tidsmarkering i regeln.

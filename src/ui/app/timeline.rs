@@ -1502,6 +1502,86 @@ impl SonixApp {
         before
     }
 
+    /// Skjuter allt från `at_bar` med `delta` takter, utan hänsyn till ripple-läget.
+    /// Används när ett kommando självt måste göra plats (razor-duplicera).
+    fn shift_from(&mut self, tracks: &[usize], at_bar: f32, delta: f32) -> usize {
+        let mut touched: std::collections::BTreeSet<usize> = std::collections::BTreeSet::new();
+        let mut moved = 0;
+        for t in tracks.iter().copied() {
+            if let Some(track) = self.playlist_tracks.get_mut(t) {
+                for reg in track.regions.iter_mut() {
+                    if reg.start_bar >= at_bar - 1e-4 {
+                        reg.start_bar = (reg.start_bar + delta).max(0.0);
+                        moved += 1;
+                        touched.insert(t);
+                    }
+                }
+            }
+        }
+        for t in touched {
+            self.sync_track_regions(t);
+        }
+        moved
+    }
+
+    /// **Razor: duplicera området** — kopierar det som ligger i tidsmarkeringen och lägger
+    /// kopian direkt efter, med plats gjord så inget hamnar ovanpå något annat.
+    pub fn razor_duplicate_area(&mut self) -> usize {
+        let Some((a, b)) = self.time_selection else {
+            return 0;
+        };
+        let (from, to) = if a <= b { (a, b) } else { (b, a) };
+        let len = to - from;
+        if len < 0.01 || self.playlist_tracks.is_empty() {
+            return 0;
+        }
+        let tracks: Vec<usize> = if self.selected_tracks.is_empty() {
+            vec![self.selected_timeline_track.min(self.playlist_tracks.len() - 1)]
+        } else {
+            self.selected_tracks
+                .iter()
+                .copied()
+                .filter(|t| *t < self.playlist_tracks.len())
+                .collect()
+        };
+        self.push_undo("Razor: duplicera område");
+        let tempo = self.tempo_map();
+        let sources: Vec<(usize, AudioRegion)> = tracks
+            .iter()
+            .flat_map(|t| {
+                self.playlist_tracks
+                    .get(*t)
+                    .map(|tr| {
+                        crate::ui::app::state::regions_in_bar_range(tr, from, to)
+                            .into_iter()
+                            .map(|r| (*t, tr.regions[r].clone()))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            })
+            .collect();
+        self.shift_from(&tracks, to - 1e-4, len);
+        let mut made = 0;
+        for (t, src) in sources {
+            if let Some(mut copy) = trimmed_region_copy(&src, from, to, &tempo, self.next_region_id()) {
+                copy.start_bar += len;
+                copy.name = format!("{} (Kopia)", copy.name.replace(" (Kopia)", ""));
+                self.playlist_tracks[t].regions.push(copy);
+                made += 1;
+            }
+        }
+        for t in tracks {
+            self.sync_track_regions(t);
+        }
+        self.status_message = crate::tstatus!(
+            "✂️ Razor: duplicerade takt {:.2}–{:.2} ({} regioner)",
+            from + 1.0,
+            to + 1.0,
+            made
+        );
+        made
+    }
+
     /// **Razor: ta bort tidsområdet** (REAPER). Regioner som ligger helt i området tas bort,
     /// de som bara sticker in kapas, och en region som spänner över hela området delas i två.
     /// Arbetar på de markerade spåren (annars det primära).
@@ -2141,3 +2221,89 @@ pub fn align_clip_to_first_beat(&mut self) {
 }
 }
 
+
+/// Kopia av `reg` beskuren till [from, to], med sampling-offset och vågform som följer
+/// med kapningen. `None` när inget av regionen ligger i intervallet.
+fn trimmed_region_copy(
+    reg: &AudioRegion,
+    from: f32,
+    to: f32,
+    tempo: &crate::audio::tempo::TempoMap,
+    new_id: usize,
+) -> Option<AudioRegion> {
+    let start = reg.start_bar.max(from);
+    let end = (reg.start_bar + reg.length_bars).min(to);
+    if end - start < 0.01 {
+        return None;
+    }
+    let mut copy = reg.clone();
+    copy.id = new_id;
+    copy.start_bar = start;
+    copy.length_bars = end - start;
+    if start > reg.start_bar {
+        copy.sample_offset_sec = reg.sample_offset_sec
+            + tempo.secs_for_bars_at(reg.start_bar as f64, (start - reg.start_bar) as f64) as f32;
+    }
+    let total = reg.length_bars.max(1e-6);
+    let peaks = reg.waveform_peaks.len();
+    if peaks > 1 {
+        let p0 = (((start - reg.start_bar) / total) * peaks as f32) as usize;
+        let p1 = (((end - reg.start_bar) / total) * peaks as f32) as usize;
+        let p0 = p0.min(peaks - 1);
+        let p1 = p1.min(peaks).max(p0 + 1);
+        copy.waveform_peaks = reg.waveform_peaks[p0..p1].to_vec();
+    }
+    copy.fade_in_bars = 0.0;
+    copy.fade_out_bars = 0.0;
+    Some(copy)
+}
+
+#[cfg(test)]
+mod razor_tests {
+    use super::*;
+    use crate::ui::app::state::AudioRegion;
+
+    fn region(start: f32, len: f32) -> AudioRegion {
+        AudioRegion {
+            id: 1,
+            name: "r".to_string(),
+            start_bar: start,
+            length_bars: len,
+            sample_offset_sec: 0.0,
+            source_path: None,
+            waveform_peaks: vec![0.0; 100],
+            volume: 1.0,
+            fade_in_bars: 0.0,
+            fade_out_bars: 0.0,
+            muted: false,
+            is_reverse: false,
+            color: egui::Color32::WHITE,
+            loop_length_bars: 0.0,
+            source_bpm: 0.0,
+            tape: false,
+            warp_mode: Default::default(),
+        }
+    }
+
+    /// **Kopian innehåller bara området.** Börjar regionen före `from` ska kopian börja på
+    /// `from` med förskjuten källa; slutar den efter `to` ska den klippas där.
+    #[test]
+    fn a_trimmed_copy_covers_exactly_the_area() {
+        let tempo = crate::audio::tempo::TempoMap::single(120.0);
+        let copy = trimmed_region_copy(&region(4.0, 4.0), 5.0, 7.0, &tempo, 99).expect("kopia");
+        assert_eq!(copy.id, 99);
+        assert!((copy.start_bar - 5.0).abs() < 1e-4);
+        assert!((copy.length_bars - 2.0).abs() < 1e-4);
+        assert!(copy.sample_offset_sec > 0.0, "källan ska flyttas fram");
+        assert!(copy.waveform_peaks.len() < 100, "vågformen ska kapas");
+        assert!(copy.waveform_peaks.len() > 10);
+    }
+
+    /// Utanför området finns inget att kopiera.
+    #[test]
+    fn a_region_outside_the_area_is_not_copied() {
+        let tempo = crate::audio::tempo::TempoMap::single(120.0);
+        assert!(trimmed_region_copy(&region(0.0, 2.0), 5.0, 7.0, &tempo, 1).is_none());
+        assert!(trimmed_region_copy(&region(8.0, 2.0), 5.0, 7.0, &tempo, 1).is_none());
+    }
+}
