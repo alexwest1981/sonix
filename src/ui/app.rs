@@ -422,6 +422,9 @@ pub struct SonixApp {
     pub plugin_handles: Vec<Option<crate::audio::plugin_host_live::PluginHandle>>,
     /// Open plugin-GUI windows, one slot per stem track.
     pub plugin_gui_sessions: Vec<Option<crate::audio::plugin_gui::GuiSession>>,
+    /// Effekter utan egen GUI (Sonix inbyggda) ritas som en egui-ruta i stället: en rad per
+    /// parameter, ett fönster per spår.
+    pub plugin_param_windows: Vec<bool>,
     /// Handles for replaced/removed plugins. Kept until shutdown so the final
     /// `ClapCore` drop happens on the main thread, not the audio thread.
     pub retired_plugin_handles: Vec<crate::audio::plugin_host_live::PluginHandle>,
@@ -1137,6 +1140,7 @@ impl SonixApp {
             plugin_slots: Vec::new(),
             plugin_handles: Vec::new(),
             plugin_gui_sessions: Vec::new(),
+            plugin_param_windows: Vec::new(),
             retired_plugin_handles: Vec::new(),
             #[cfg(feature = "plugin-host")]
             plugin_sandbox: None,

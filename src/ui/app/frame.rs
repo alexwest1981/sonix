@@ -348,6 +348,7 @@ impl SonixApp {
         self.ensure_stretched();
         // Keep embedded plugin editors responsive (Fas 4.4b).
         self.poll_plugin_guis();
+        self.render_plugin_param_windows(ctx);
         // Supervise the out-of-process sandbox worker (Fas 4.5a).
         #[cfg(feature = "plugin-host")]
         self.poll_plugin_sandbox();

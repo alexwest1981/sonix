@@ -340,6 +340,13 @@ pub trait PluginCore: Send + Sync {
     fn save_state(&self) -> Vec<u8>;
     fn load_state(&self, data: &[u8]) -> bool;
     fn set_parameter(&self, id: u32, value: f64) -> bool;
+    /// **Aktuellt värde**, när backenden kan svara. En CLAP-plugin läser sitt eget värde på
+    /// ljudtråden; en inbyggd effekt äger sina rattar och svarar härifrån. `None` = vet inte,
+    /// och då ritas ingen ratt — i stället för en ratt som visar fel läge.
+    fn parameter_value(&self, id: u32) -> Option<f64> {
+        let _ = id;
+        None
+    }
     fn reset(&self);
     fn preset_load(&self, location: &str) -> bool;
     fn gui_is_api_supported(&self, api: &str, is_floating: bool) -> bool;
@@ -375,6 +382,10 @@ impl PluginHandle {
     }
     pub fn latency_frames(&self) -> u32 {
         self.0.latency_frames()
+    }
+    /// Aktuellt parametervärde, när instansen kan svara (inbyggda effekter äger sina rattar).
+    pub fn parameter_value(&self, id: u32) -> Option<f64> {
+        self.0.parameter_value(id)
     }
     /// Antal egna utbussar hos instansen (Fas 8.6) — det tal vyn ritar en koppling per.
     pub fn extra_output_ports(&self) -> usize {

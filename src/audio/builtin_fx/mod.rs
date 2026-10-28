@@ -14,10 +14,13 @@ mod filters;
 mod lowend;
 mod modulation;
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+
 use crate::audio::plugin_host::PluginCategory;
 use crate::audio::plugin_host_live::{
-    PluginInfo, PluginInspection, PluginParameter, PluginProcessor, PARAM_IS_AUTOMATABLE,
-    PARAM_IS_STEPPED,
+    PluginCore, PluginHandle, PluginInfo, PluginInspection, PluginParameter, PluginProcessor,
+    PARAM_IS_AUTOMATABLE, PARAM_IS_STEPPED,
 };
 
 /// Prefixet som skiljer en inbyggd effekt från en fil på disk.
@@ -145,21 +148,129 @@ pub fn load(path: &str, sample_rate: f32) -> Result<Box<dyn PluginProcessor>, St
     let mut values = Vec::with_capacity(def.params.len());
     for (i, p) in def.params.iter().enumerate() {
         dsp.set(i, p.default);
-        values.push(p.default);
+        values.push(Arc::new(AtomicU64::new(p.default.to_bits())));
     }
+    let parameters = parameters(def);
+    let latency = dsp.latency();
+    let core = Arc::new(BuiltinCore {
+        info: info(def),
+        parameters: parameters.clone(),
+        values: values.clone(),
+        latency,
+    });
     Ok(Box::new(BuiltinProcessor {
         info: info(def),
-        parameters: parameters(def),
+        parameters,
         dsp,
         values,
+        applied: vec![f64::NAN; def.params.len()],
+        core,
     }))
+}
+
+/// Handtaget som gränssnittet rattar: samma värden som processorn läser, utan lås på
+/// ljudtråden. Varje parameter är en `AtomicU64` med f64-bitar — en ratt skriver, nästa block
+/// läser och ser att något ändrats.
+struct BuiltinCore {
+    info: PluginInfo,
+    parameters: Vec<PluginParameter>,
+    values: Vec<Arc<AtomicU64>>,
+    latency: u32,
+}
+
+impl PluginCore for BuiltinCore {
+    fn info(&self) -> &PluginInfo {
+        &self.info
+    }
+
+    fn parameters(&self) -> &[PluginParameter] {
+        &self.parameters
+    }
+
+    fn latency_frames(&self) -> u32 {
+        self.latency
+    }
+
+    fn save_state(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.values.len() * 8);
+        for v in &self.values {
+            out.extend_from_slice(&f64::from_bits(v.load(Ordering::Relaxed)).to_le_bytes());
+        }
+        out
+    }
+
+    fn load_state(&self, data: &[u8]) -> bool {
+        if data.len() != self.values.len() * 8 {
+            return false;
+        }
+        for (i, v) in self.values.iter().enumerate() {
+            let bytes: [u8; 8] = data[i * 8..i * 8 + 8].try_into().unwrap_or([0; 8]);
+            v.store(f64::from_le_bytes(bytes).to_bits(), Ordering::Relaxed);
+        }
+        true
+    }
+
+    fn set_parameter(&self, id: u32, value: f64) -> bool {
+        let Some(p) = self.parameters.get(id as usize) else {
+            return false;
+        };
+        let v = value.clamp(p.min_value, p.max_value);
+        self.values[id as usize].store(v.to_bits(), Ordering::Relaxed);
+        true
+    }
+
+    fn parameter_value(&self, id: u32) -> Option<f64> {
+        let v = self.values.get(id as usize)?;
+        Some(f64::from_bits(v.load(Ordering::Relaxed)))
+    }
+
+    fn reset(&self) {}
+
+    fn preset_load(&self, _location: &str) -> bool {
+        false
+    }
+
+    fn gui_is_api_supported(&self, _api: &str, _is_floating: bool) -> bool {
+        false
+    }
+    fn gui_preferred_api(&self) -> Option<(String, bool)> {
+        None
+    }
+    fn gui_get_size(&self) -> Option<(u32, u32)> {
+        None
+    }
+    fn gui_can_resize(&self) -> bool {
+        false
+    }
+    fn gui_is_created(&self) -> bool {
+        false
+    }
+    fn gui_create(&self, _api: &str, _is_floating: bool) -> bool {
+        false
+    }
+    fn gui_set_parent(&self, _x11_window: u64) -> bool {
+        false
+    }
+    fn gui_set_size(&self, _width: u32, _height: u32) -> bool {
+        false
+    }
+    fn gui_show(&self) -> bool {
+        false
+    }
+    fn gui_hide(&self) -> bool {
+        false
+    }
+    fn gui_destroy(&self) {}
 }
 
 struct BuiltinProcessor {
     info: PluginInfo,
     parameters: Vec<PluginParameter>,
     dsp: Box<dyn Dsp>,
-    values: Vec<f64>,
+    values: Vec<Arc<AtomicU64>>,
+    /// Senast applicerade värdet per parameter, så blocket bara rör det som ändrats.
+    applied: Vec<f64>,
+    core: Arc<BuiltinCore>,
 }
 
 impl PluginProcessor for BuiltinProcessor {
@@ -180,6 +291,13 @@ impl PluginProcessor for BuiltinProcessor {
     }
 
     fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        for (i, v) in self.values.iter().enumerate() {
+            let value = f64::from_bits(v.load(Ordering::Relaxed));
+            if value.to_bits() != self.applied[i].to_bits() {
+                self.dsp.set(i, value);
+                self.applied[i] = value;
+            }
+        }
         self.dsp.process(left, right);
     }
 
@@ -188,17 +306,24 @@ impl PluginProcessor for BuiltinProcessor {
             return false;
         };
         let v = value.clamp(p.min_value, p.max_value);
-        self.values[id as usize] = v;
+        self.values[id as usize].store(v.to_bits(), Ordering::Relaxed);
         self.dsp.set(id as usize, v);
+        self.applied[id as usize] = v;
         true
     }
 
     fn reset(&mut self) {
         self.dsp.reset();
-        // Parametrarna ligger kvar i `self.values`; DSP:n behåller dem via `set`-anropen.
-        for (i, v) in self.values.clone().into_iter().enumerate() {
-            self.dsp.set(i, v);
+        // Ratten äger värdet: nollställningen tar tillståndet, inte inställningarna.
+        for (i, v) in self.values.iter().enumerate() {
+            let value = f64::from_bits(v.load(Ordering::Relaxed));
+            self.dsp.set(i, value);
+            self.applied[i] = value;
         }
+    }
+
+    fn core_handle(&self) -> Option<PluginHandle> {
+        Some(PluginHandle::new(self.core.clone()))
     }
 }
 
@@ -226,6 +351,26 @@ mod tests {
             assert!(l.iter().chain(r.iter()).all(|v| v.is_finite()), "{}: NaN", def.id);
             p.reset();
         }
+    }
+
+    /// Gränssnittet rattar genom handtaget; parametrarna ska synas där och tillståndet gå att
+    /// spara. Utan handtag hade effekten laddats utan rattar.
+    #[test]
+    fn the_core_handle_exposes_the_same_parameters() {
+        let p = load("builtin:tilt", 48_000.0).expect("tilt");
+        let core = p.core_handle().expect("inbyggd effekt ska ha ett handtag");
+        assert_eq!(core.parameters().len(), 2);
+        assert_eq!(core.info().name, "Tilt");
+        assert!(core.set_parameter(1, 6.0));
+        assert_eq!(core.parameter_value(1), Some(6.0));
+        assert_eq!(core.parameter_value(99), None);
+        assert!(!core.set_parameter(99, 0.0));
+        // Ingen egen GUI: gränssnittet ska rita våra rattar, inte öppna ett tomt X11-fönster.
+        assert!(!core.gui_is_api_supported("x11", false));
+        let state = core.save_state();
+        assert_eq!(state.len(), 16);
+        assert!(core.load_state(&state));
+        assert!(!core.load_state(&[0u8; 3]), "fel längd ska avvisas");
     }
 
     #[test]

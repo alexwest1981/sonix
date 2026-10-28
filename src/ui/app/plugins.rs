@@ -331,6 +331,16 @@ pub fn open_plugin_gui(&mut self, track_index: usize) {
         return;
     };
     let name = handle.info().name.clone();
+    // En effekt utan egen GUI (Sonix inbyggda) får våra rattar i stället för ett tomt
+    // X11-fönster: samma handtag, samma instans som processar ljudet.
+    if !handle.gui_is_api_supported("x11", false) {
+        if self.plugin_param_windows.len() <= track_index {
+            self.plugin_param_windows.resize(track_index + 1, false);
+        }
+        self.plugin_param_windows[track_index] = true;
+        self.status_message = crate::tstatus!("🎛 Rattar för '{}'", name);
+        return;
+    }
     let title = format!("{} – Sonix", name);
     match crate::audio::plugin_gui::GuiSession::open(handle, &title) {
         Ok(session) => {
@@ -356,11 +366,68 @@ pub fn open_plugin_gui(&mut self, track_index: usize) {
 impl SonixApp {
 /// Closes the plugin editor for `track_index`, if open.
 pub fn close_plugin_gui(&mut self, track_index: usize) {
+    if let Some(window) = self.plugin_param_windows.get_mut(track_index) {
+        *window = false;
+    }
     if let Some(slot) = self.plugin_gui_sessions.get_mut(track_index)
         && slot.is_some()
     {
         *slot = None;
         self.status_message = crate::i18n::t("🪟 Stängde plugin-GUI").to_string();
+    }
+}
+
+/// **Rattarna för en effekt utan egen GUI.** Varje parameter blir en slider mellan sina egna
+/// gränser; värdet läses ur instansen (inte ur en kopia) och skrivs tillbaka till samma
+/// handtag som ljudtråden läser. En parameter som inte kan läsas ritas inte alls.
+pub fn render_plugin_param_windows(&mut self, ctx: &egui::Context) {
+    if self.plugin_param_windows.len() < self.plugin_handles.len() {
+        self.plugin_param_windows.resize(self.plugin_handles.len(), false);
+    }
+    for track in 0..self.plugin_param_windows.len() {
+        if !self.plugin_param_windows[track] {
+            continue;
+        }
+        let Some(handle) = self.plugin_handles.get(track).and_then(|h| h.clone()) else {
+            self.plugin_param_windows[track] = false;
+            continue;
+        };
+        let params = handle.parameters().to_vec();
+        let mut open = true;
+        egui::Window::new(format!("{} – Rattar", handle.info().name))
+            .id(egui::Id::new(("plugin_params", track)))
+            .open(&mut open)
+            .default_width(300.0)
+            .show(ctx, |ui| {
+                if params.is_empty() {
+                    ui.label("Den här effekten har inga parametrar.");
+                }
+                for p in &params {
+                    let Some(mut value) = handle.parameter_value(p.id) else {
+                        continue;
+                    };
+                    ui.horizontal(|ui| {
+                        ui.label(&p.name);
+                        let step = if p.is_stepped() {
+                            1.0
+                        } else {
+                            ((p.max_value - p.min_value) / 1000.0).max(1.0e-6)
+                        };
+                        if ui
+                            .add(
+                                egui::Slider::new(&mut value, p.min_value..=p.max_value)
+                                    .step_by(step),
+                            )
+                            .changed()
+                        {
+                            handle.set_parameter(p.id, value);
+                        }
+                    });
+                }
+            });
+        if !open {
+            self.plugin_param_windows[track] = false;
+        }
     }
 }
 }
