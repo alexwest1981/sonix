@@ -1517,7 +1517,7 @@ fn render_gain_reduction_scope(ui: &mut Ui, history: &std::collections::VecDeque
         let y = rect.top() + FxRackState::gr_position(db) * rect.height();
         painter.line_segment(
             [Pos2::new(rect.left(), y), Pos2::new(rect.right(), y)],
-            Stroke::new(1.0, palette.bg()),
+            Stroke::new(1.0_f32, palette.bg()),
         );
         painter.text(
             Pos2::new(rect.left() + 3.0, y),
@@ -1541,7 +1541,7 @@ fn render_gain_reduction_scope(ui: &mut Ui, history: &std::collections::VecDeque
                 )
             })
             .collect();
-        painter.add(egui::Shape::line(points, Stroke::new(1.5, palette.orange())));
+        painter.add(egui::Shape::line(points, Stroke::new(1.5_f32, palette.orange())));
     }
     ui.add_space(4.0);
 }
