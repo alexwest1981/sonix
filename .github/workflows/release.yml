@@ -40,13 +40,13 @@ jobs:
           # glibc-golvet kommer från imagen. Utöver det: gcc-c++ för C++-källorna och
           # **libclang** för bindgen (`signalsmith-stretch` genererar bindningar) — utan
           # libclang stannar bygget på "Unable to find libclang".
-          # **openssl-devel** krävs av `ort-sys` när den hämtar ONNX Runtime under bygget
-          # (dess nedladdare går via native-tls). Utan den stannar neural-bygget på
-          # "Could not find directory of OpenSSL installation".
+          # **Ingen `neural` i den här jobben.** ORTs färdiga binärer är byggda mot nyare glibc
+          # (`__libc_single_threaded`, `__isoc23_strtol`), och manylinux_2_28 har 2.28 — länkningen
+          # faller på "undefined symbol". Se docs/STEM-SEPARATION.md; neural byggs lokalt.
           set -euo pipefail
           dnf install -y --setopt=install_weak_deps=False \
             gcc gcc-c++ make cmake clang clang-libs pkgconf-pkg-config alsa-lib-devel alsa-lib \
-            openssl-devel openssl-libs binutils tar gzip curl which
+            binutils tar gzip curl which
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -57,10 +57,10 @@ jobs:
           key: release-${{ matrix.arch }}
 
       - name: Test
-        run: cargo test --release --locked --features plugin-host,neural
+        run: cargo test --release --locked --features plugin-host
 
       - name: Build
-        run: cargo build --release --locked --features plugin-host,neural
+        run: cargo build --release --locked --features plugin-host
 
       - name: Check the glibc floor
         run: bash packaging/check-glibc-floor.sh target/release/sonix 2.28

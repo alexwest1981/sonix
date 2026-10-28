@@ -118,3 +118,24 @@ sonix --separate låt.wav ut-mapp [modell-id]
 
 Skriver en wav per stämma och rapporten visar modellfilens sökväg, tiden, `neural: true/false` och
 rms per stämma. Frågan "fungerar modellen?" ska gå att svara på utan att titta på ett fönster.
+
+## Varför släppta binärer inte kan separera
+
+ONNX Runtimes färdiga bibliotek (som `ort` hämtar under bygget) är byggda mot nyare glibc: de
+refererar `__libc_single_threaded` (2.32) och `__isoc23_strtol`/`__strtoull`/`__strtoll` (2.38).
+Sonix släpps med glibc-golv 2.28 (manylinux_2_28), och länkningen faller där:
+
+```
+rust-lld: error: undefined symbol: __libc_single_threaded
+rust-lld: error: undefined symbol: __isoc23_strtol
+```
+
+Därför bygger release-jobben **utan** `neural`, och en binär som kan separera byggs lokalt:
+
+```bash
+cargo build --release --features neural
+```
+
+Binären säger vilket den är: `--separate` skriver `neural: true` eller `neural: false` med orsaken
+("Byggd utan neural-stöd"). Vägen runt väggen, om släppen ska kunna separera, är `ort`s
+`load-dynamic`: `dlopen` av `libonnxruntime.so` vid körning i stället för länkning vid bygge.
