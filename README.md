@@ -186,6 +186,21 @@ file whose name contains one of these words:
 Name files accordingly (`909 kick.wav`, `snare_tight.wav`) and they land in the right channel
 on the next start. Everything else still appears in the Sound Browser.
 
+## 🎨 Themes
+
+A theme is **one JSON file of colours**. Write only what you change — everything else is the
+default palette — and either drop it in `~/.config/sonix/themes/` or save it from the theme menu
+in the app (which writes just the keys that differ from the default).
+
+```bash
+sonix --theme-palette > my-theme.json   # every key, with defaults, as hex
+```
+
+Colours take hex (`#rrggbb`, `#rrggbbaa`) or `[r, g, b, a]` arrays; `"mode": "light"` builds on
+the light palette instead of the dark one. Themes can be shared through the registry
+([sonix-themes](https://github.com/alexwest1981/sonix-themes)) — a theme is only installed when its
+sha256 matches the index. Format, every key and what it controls: **[docs/THEMES.md](docs/THEMES.md)**.
+
 ## 🎨 Features & Implementation Status
 
 **Legend:** ✅ Real & wired · 🟡 Partial / approximation · 🔜 Not yet implemented

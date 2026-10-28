@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.206] - 2026-10-28
+
+**Teman går att skriva för hand, och listan över nycklar finns.** Motorn fanns (JSON-fil per tema,
+registret på GitHub med sha256, spara/installera/välja i menyn) men ingenting berättade vilka
+nycklar som finns — den enda listan en temaskapare har var `theme.rs`. Nu:
+
+- **`sonix --theme-palette [light]`** skriver hela paletten som JSON med hex-färger.
+- **Hex i temafiler**: `"bg": "#101418"` läses som `[16,20,24,255]`, så en fil som skrivs för hand
+  inte behöver räkna byte. Arrayer fungerar som förut, och gamla teman är orörda.
+- **`docs/THEMES.md`**: formatet, alla 29 nycklar med vad de styr, vad ett tema bör klara av
+  kontrast, hur hashen räknas och hur ett tema skickas till registret.
+- Ett prov läser `docs/THEMES.md` och kräver att **varje nyckel i `Palette` står där** — en ny färg
+  utan dokumentation faller i CI.
+
 ## [0.9.205] - 2026-10-28
 
 **Släppta byggen kan köra stämsepareringen.** Release-workflowen byggde bara med

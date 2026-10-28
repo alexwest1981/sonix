@@ -354,11 +354,35 @@ fn merge_onto_base(value: serde_json::Value) -> Palette {
     if let (Some(target), Some(source)) = (merged.as_object_mut(), value.as_object()) {
         for (key, val) in source {
             if key != "mode" {
-                target.insert(key.clone(), val.clone());
+                target.insert(key.clone(), hex_or_value(val));
             }
         }
     }
     serde_json::from_value(merged).unwrap_or(base)
+}
+
+/// **En färg får skrivas som `"#rrggbb"` eller `"#rrggbbaa"`.** Temafilen sparas som
+/// `[r,g,b,a]`-arrayer, men en fil som skrivs för hand ska inte behöva räkna byte: hex läses och
+/// blir en array. Allt annat lämnas orört, så gamla teman beter sig som förut.
+fn hex_or_value(value: &serde_json::Value) -> serde_json::Value {
+    let Some(text) = value.as_str() else {
+        return value.clone();
+    };
+    let Some(hex) = text.strip_prefix('#') else {
+        return value.clone();
+    };
+    let byte = |start: usize| {
+        hex.get(start..start + 2)
+            .and_then(|pair| u8::from_str_radix(pair, 16).ok())
+    };
+    match (byte(0), byte(2), byte(4)) {
+        (Some(r), Some(g), Some(b)) => {
+            let a = byte(6).unwrap_or(255);
+            serde_json::json!([r, g, b, a])
+        }
+        // En trasig hex ska inte tyst bli svart: då hade felet synts som ett konstigt tema.
+        _ => value.clone(),
+    }
 }
 
 /// Registret på GitHub: `index.json` listar teman med filnamn och sha256.
@@ -651,6 +675,38 @@ pub fn theme_path() -> std::path::PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Hex läses som en färg.** En temafil skriven för hand ska inte behöva räkna byte.
+    #[test]
+    fn a_hex_colour_is_read_as_a_colour() {
+        let palette = merge_onto_base(serde_json::json!({
+            "bg": "#102030",
+            "text": "#aabbccdd"
+        }));
+        assert_eq!(palette.bg, [0x10, 0x20, 0x30, 255], "hex utan alfa blir ogenomskinlig");
+        assert_eq!(palette.text, [0xaa, 0xbb, 0xcc, 0xdd]);
+    }
+
+    /// **Dokumentationen ska räkna upp varje nyckel.** Lägger någon en färg i `Palette` utan att
+    /// skriva den i `docs/THEMES.md` faller det här provet — annars är listan för temaskapare
+    /// tyst ofullständig, och det är den enda listan de har.
+    #[test]
+    fn every_palette_key_is_documented() {
+        let docs = include_str!("../../docs/THEMES.md");
+        let value = serde_json::to_value(Palette::default()).expect("paletten serialiseras");
+        let object = value.as_object().expect("paletten är ett objekt");
+        let mut missing = Vec::new();
+        for key in object.keys() {
+            if !docs.contains(&format!("`{key}`")) {
+                missing.push(key.clone());
+            }
+        }
+        assert!(
+            missing.is_empty(),
+            "docs/THEMES.md saknar: {}",
+            missing.join(", ")
+        );
+    }
 
     /// En temafil behöver bara skriva det den ändrar; resten är standard.
     #[test]

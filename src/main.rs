@@ -162,6 +162,41 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Ok(());
     }
 
+    // `sonix --theme-palette [dark|light]`: skriver paletten som JSON med hex-färger. Det är
+    // listan en temaskapare behöver — och svaret på "vilka nycklar finns?" utan att läsa koden.
+    if std::env::args().any(|a| a == "--theme-palette") {
+        let light = std::env::args().any(|a| a == "light");
+        let palette = if light {
+            crate::ui::theme::Palette::light()
+        } else {
+            crate::ui::theme::Palette::default()
+        };
+        let mut value = serde_json::to_value(&palette).map_err(|e| e.to_string())?;
+        // Arrayer blir hex här: samma fil ska kunna sparas och läsas tillbaka för hand.
+        if let Some(object) = value.as_object_mut() {
+            for (key, entry) in object.iter_mut() {
+                if key == "mode" {
+                    continue;
+                }
+                if let Some(bytes) = entry.as_array() {
+                    let channel = |i: usize| bytes.get(i).and_then(|v| v.as_u64()).unwrap_or(0) as u8;
+                    *entry = serde_json::Value::String(format!(
+                        "#{:02x}{:02x}{:02x}{:02x}",
+                        channel(0),
+                        channel(1),
+                        channel(2),
+                        channel(3)
+                    ));
+                }
+            }
+        }
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?
+        );
+        return Ok(());
+    }
+
     // `sonix --separate <in.wav> <ut-mapp> [modell-id]`: kör stämsepareringen över en fil och
     // skriver varje stämma som wav. Utan det går en modell bara att pröva i fönstret, och frågan
     // "fungerar den här modellen?" ska gå att svara på utan att titta.
