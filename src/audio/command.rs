@@ -697,6 +697,11 @@ pub enum AudioCommand {
         velocity: f32,
     },
     PatcherNoteOff,
+    /// Ett JSFX-instrument som **källa** i stället för syntens röster (`None` = tillbaka till
+    /// rösterna). Det är den enda vägen noter och en JSFX möts: synten äger noterna.
+    SetInstrument {
+        path: Option<String>,
+    },
 }
 
 /// En send: en del av spårets signal till en annan buss (Fas 8.13).

@@ -4061,3 +4061,32 @@ fn a_release_sample_plays_after_the_key_is_let_go() {
     assert!(with > 0.1, "släppljudet ska höras: {with:.4}");
     assert!(without < 1e-4, "utan släppljud ska det vara tyst: {without:.6}");
 }
+
+/// Ett JSFX-instrument som källa: tyst utan not, hörs efter `NoteOn`, tystnar på `NoteOff` — och
+/// syntens egna röster hörs inte alls medan instrumentet är satt.
+#[test]
+fn a_jsfx_instrument_can_be_the_synth_source() {
+    let path = std::env::temp_dir().join(format!("sonix-src-{}.jsfx", std::process::id()));
+    std::fs::write(
+        &path,
+        "@init\ng = 0;\n@sample\nwhile (midirecv(offset, m1, m2, m3)) (\n  st = m1 & 240;\n  st == 144 ? g = 0.5;\n  st == 128 ? g = 0;\n);\nspl0 = g; spl1 = g;\n",
+    )
+    .expect("skriv jsfx");
+
+    let mut synth = SynthEngine::new(44_100.0);
+    synth.handle_command(AudioCommand::SetInstrument { path: Some(path.display().to_string()) });
+    // Ett block är 512 frames: noten gäller från nästa block, så mät över två.
+    let peak = |s: &mut SynthEngine| {
+        (0..1024).map(|_| s.process_stereo().0.abs()).fold(0.0f32, f32::max)
+    };
+    assert_eq!(peak(&mut synth), 0.0, "tyst utan not");
+
+    synth.handle_command(AudioCommand::NoteOn { note: 60, freq: 261.6, velocity: 1.0, channel: 0 });
+    assert!(peak(&mut synth) > 0.4, "noten ska höras");
+
+    synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
+    assert_eq!(peak(&mut synth), 0.0, "tyst efter not av");
+
+    synth.handle_command(AudioCommand::SetInstrument { path: None });
+    let _ = std::fs::remove_file(path);
+}

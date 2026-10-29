@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.211] - 2026-10-29
+
+**Ett JSFX-instrument kan vara syntens källa.** `AudioCommand::SetInstrument { path }` sätter en JSFX
+som spelar i stället för syntens röster — det är den enda plats där noter och en JSFX finns
+samtidigt, så keyboard, MIDI-in och klip spelar den utan att någon av de 60 notavsändarna rörs.
+Blocket renderas på begäran (512 frames) och läses en frame i taget; noter gäller från nästa block,
+som i REAPER.
+
+I pluginlistan får en JSFX-rad knappen **🎹 JSFX** som kopplar in den som instrument. Prov:
+`a_jsfx_instrument_can_be_the_synth_source` — tyst utan not, hörs efter `NoteOn`, tystnar på
+`NoteOff`.
+
+*Känd gräns*: instrumentet är rå källa — syntens filter, ADSR och effekter hoppas över.
+
 ## [0.9.210] - 2026-10-29
 
 **Noter kan nå ett JSFX-instrument i kedjan.** `PluginProcessor` har fått `accepts_notes`/`note_on`/

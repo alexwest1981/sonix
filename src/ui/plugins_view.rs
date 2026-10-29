@@ -4,6 +4,8 @@ use crate::ui::theme::Theme;
 
 #[derive(Default)]
 pub struct PluginViewActions {
+    /// **JSFX som instrument**: sätt den som syntens källa i stället för rösterna.
+    pub instrument: Option<String>,
     /// `(plugin path, stem track index)` to instantiate a CLAP processor into.
     pub load_into_track: Option<(String, usize)>,
     /// `(plugin path, stem track index)` to instantiate inside an out-of-process
@@ -1092,6 +1094,14 @@ fn render_inspection_panel(
                     .clicked()
                 {
                     actions.load_into_track = Some((snapshot.path.clone(), target));
+                }
+                // Bara JSFX kan vara källa: `SetInstrument` laddar via JSFX-läsaren.
+                if snapshot.backend == "JSFX"
+                    && ui.button("🎹 JSFX").on_hover_text(
+                        "Spelar JSFX:en med keyboard, MIDI och klip i stället för syntens röster.",
+                    ).clicked()
+                {
+                    actions.instrument = Some(snapshot.path.clone());
                 }
                 if ui
                     .button(crate::i18n::t("🧪 Ladda in i sandbox"))

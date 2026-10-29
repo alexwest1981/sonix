@@ -185,6 +185,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetPluginLatencyOffset { .. } => "SetPluginLatencyOffset",
         AudioCommand::SetPluginSmartDisable { .. } => "SetPluginSmartDisable",
         AudioCommand::SetPluginExtraOutputs { .. } => "SetPluginExtraOutputs",
+        AudioCommand::SetInstrument { .. } => "SetInstrument",
     }
 }
 
@@ -430,6 +431,12 @@ fn sine_table() -> &'static [f32; ADDITIVE_TABLE_LEN] {
 
 pub struct SynthEngine {
     pub sample_rate: f32,
+    /// **Ett JSFX-instrument som källa.** När det är satt renderas det i stället för rösterna — det är
+    /// den enda plats där noter och en JSFX finns samtidigt. `None` = syntens eget ljud.
+    pub instrument: Option<Box<dyn crate::audio::plugin_host_live::PluginProcessor>>,
+    pub instrument_left: Vec<f32>,
+    pub instrument_right: Vec<f32>,
+    pub instrument_pos: usize,
     /// **Control Room**: monitorläget. Neutralt tills den levande utgången säger annat —
     /// exportmotorn sätter det aldrig, så en dimmad monitor hamnar inte i en renderad fil.
     pub control_room: crate::audio::command::ControlRoomState,
@@ -607,6 +614,10 @@ impl SynthEngine {
         let (waveform, adsr, filter_params) = (s.waveform, s.adsr, s.filter);
         Self {
             sample_rate,
+            instrument: None,
+            instrument_left: vec![0.0; 512],
+            instrument_right: vec![0.0; 512],
+            instrument_pos: 512,
             control_room: crate::audio::command::ControlRoomState::default(),
             cue_listen: crate::audio::control_room::CueListen::Main,
             waveform,

@@ -69,6 +69,10 @@ impl SynthEngine {
             AudioCommand::NoteOn { note, freq, velocity, channel } => {
                 // Keyboard/Voltage Controller-källorna läser senaste noten.
                 self.modulation.note_on(note, velocity);
+                // Ett JSFX-instrument får noten som MIDI; rösterna nedan rör den inte.
+                if let Some(inst) = &mut self.instrument {
+                    inst.note_on(note, (velocity * 127.0).clamp(1.0, 127.0) as u8);
+                }
                 let mut target_idx = None;
                 for (i, voice) in self.voices.iter().enumerate() {
                     // En not från MIDI får bara återanvända en röst på samma kanal; annars
@@ -305,6 +309,9 @@ impl SynthEngine {
             }
             AudioCommand::NoteOff { note, channel } => {
                 self.modulation.note_off();
+                if let Some(inst) = &mut self.instrument {
+                    inst.note_off(note);
+                }
                 // Samplade röster: pedalen håller dem också. Utan pedal gör not-av ingenting
                 // på en en-skottsröst — det är det gamla beteendet och det står kvar.
                 let ch = channel as u32;
@@ -515,6 +522,20 @@ impl SynthEngine {
                 if let Some(p) = &mut self.patcher {
                     p.note_on(freq, velocity);
                 }
+            }
+            AudioCommand::SetInstrument { path } => {
+                self.instrument = match path.as_deref() {
+                    Some(p) => match crate::audio::jsfx::processor::load(p, self.sample_rate) {
+                        Ok(proc) => Some(proc),
+                        Err(err) => {
+                            self.dbg_state("ENGINE", &format!("instrument: {err}"));
+                            None
+                        }
+                    },
+                    None => None,
+                };
+                // Bufferten är tom så första blocket fylls direkt.
+                self.instrument_pos = self.instrument_left.len();
             }
             AudioCommand::PatcherNoteOff => {
                 if let Some(p) = &mut self.patcher {

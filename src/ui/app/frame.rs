@@ -229,6 +229,11 @@ impl SonixApp {
                         &extra_out_targets,
                         self.engine.sample_rate as f32,
                     );
+                    if let Some(path) = &actions.instrument {
+                        let _ = self
+                            .engine
+                            .send_command(AudioCommand::SetInstrument { path: Some(path.clone()) });
+                    }
                     if let Some((path, track)) = actions.load_into_track {
                         self.load_plugin_into_track(&path, track);
                     }

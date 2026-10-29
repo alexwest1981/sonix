@@ -6,6 +6,23 @@ use super::*;
 
 impl SynthEngine {
     pub fn process_stereo(&mut self) -> (f32, f32) {
+        // Ett JSFX-instrument som källa: blocket renderas på begäran och läses en frame i taget.
+        // shortc: syntens filter/ADSR/effekter hoppas över — instrumentet är rå källa, säg det i UI.
+        if let Some(inst) = &mut self.instrument {
+            if self.instrument_pos >= self.instrument_left.len() {
+                self.instrument_left.iter_mut().for_each(|s| *s = 0.0);
+                self.instrument_right.iter_mut().for_each(|s| *s = 0.0);
+                inst.process_stereo(&mut self.instrument_left, &mut self.instrument_right);
+                self.instrument_pos = 0;
+            }
+            let (l, r) = (
+                self.instrument_left[self.instrument_pos],
+                self.instrument_right[self.instrument_pos],
+            );
+            self.instrument_pos += 1;
+            return (l, r);
+        }
+
         // 0. Fire any due scheduled chord/strum notes.
         if !self.scheduled_notes.is_empty() {
             let mut i = 0;
