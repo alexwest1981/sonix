@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Exporten blir hela låten, inte 32 takter.** Längden kom från `loop_end_bar` klippt till 4–32
+takter, så en låt med långa stämmor blev en minut i 128 bpm och resten tyst. Nu används samma mått
+som tidslinjen ritas med (`get_max_project_bars`), och ett prov håller fast att ljud förbi takt 32
+renderas.
+
 **Metronomen sitter i den globala raden**, bredvid ▶/⏸/⏹, inte bara i arrangörens verktygsrad — en
 påslagen klick gick inte att stänga av från de andra sidorna. Ett reglage, samma `metronome_enabled`.
 

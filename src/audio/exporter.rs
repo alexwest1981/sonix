@@ -3028,7 +3028,7 @@ mod stem_wav_tests {
         spec.timeline[0].regions[0].start_time_secs = at_secs;
         let frames = spec.timeline[0].left.len();
 
-        let mut engine = build_offline_engine(&spec, &fx_for_test());
+        let mut engine = build_offline_engine(&spec, &super::tests::fx_for_test());
         let total = render_project_offline(&mut engine, &spec);
 
         let secs = total.len() as f32 / 2.0 / spec.sample_rate as f32;
