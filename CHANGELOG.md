@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.212] - 2026-10-29
+
+**Flikar som flikar, nivåer som syns.** Kategorierna (Skapa / Arrangera / Mixa / Verktyg) och deras
+underverktyg låg i samma wrapped-rad, så man inte kunde se vilken nivå man var på. Nu: transport,
+kategorier och underverktyg på tre rader, och fliklisten ritar en riktig list — bakgrund över hela
+bredden, baslinje, flikar med rak underkant som vilar på den, och den valda fliken öppnar baslinjen
+och bär accentlinjen. Provet mäter geometrin (listen > 200 px, alla flikars underkant på baslinjen).
+MCU flyttad från transporten till statusraden — den är hårdvara, inte ett verktyg.
+
+**`--ai-features`**: spektralt tak, energi över taket, brusgolv (p10), RMS-spridning och sann crest.
+Fyra siffror om varför en detektor säger "AI", utan omdöme. `docs/AI-FEATURES.md`.
+
+**UI-förslaget (Vercel/v0)**: färgerna är tagna i `daw-bold`-temat, kostnaden för resten är räknad
+i `docs/UI-PROPOSAL.md`.
+
 **`--ai-features` mäter det en detektor tittar på.** Spektralt tak, energi över taket, brusgolv
 (p10), korttids-RMS-spridning och sann crest — fyra siffror, inget omdöme. Se `docs/AI-FEATURES.md`.
 
