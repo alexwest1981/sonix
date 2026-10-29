@@ -3016,6 +3016,30 @@ mod stem_wav_tests {
         }
     }
 
+    /// **Ljudet förbi takt 32 hörs i renderingen.** Spec-bygget klippte längden till
+    /// `loop_end_bar.clamp(4, 32)`, så en lång låt exporterades som en minut; det här provet
+    /// håller den andra halvan fast: `num_bars` styr längden, och en stämma som ligger förbi
+    /// takt 32 spelar fortfarande. 120 bpm ⇒ en takt = 2 s.
+    #[test]
+    fn timeline_audio_past_bar_thirty_two_is_rendered() {
+        let mut spec = tone_spec(None);
+        spec.num_bars = 34;
+        let at_secs = 33.0 * 2.0; // takt 33, långt förbi den gamla gränsen
+        spec.timeline[0].regions[0].start_time_secs = at_secs;
+        let frames = spec.timeline[0].left.len();
+
+        let mut engine = build_offline_engine(&spec, &fx_for_test());
+        let total = render_project_offline(&mut engine, &spec);
+
+        let secs = total.len() as f32 / 2.0 / spec.sample_rate as f32;
+        assert!((secs - 68.0).abs() < 0.05, "34 takter i 120 bpm = 68 s, fick {secs}");
+        let start = (at_secs * spec.sample_rate as f32) as usize * 2;
+        let peak = total[start..(start + frames * 2).min(total.len())]
+            .iter()
+            .fold(0.0f32, |m, s| m.max(s.abs()));
+        assert!(peak > 0.1, "stämman i takt 33 ska höras, topp {peak}");
+    }
+
 
     /// **Bakningen vilar på att `solo_track` verkligen isolerar spåret.**
     ///

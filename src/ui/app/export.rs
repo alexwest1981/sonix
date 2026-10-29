@@ -151,7 +151,10 @@ pub fn open_export_modal(&mut self) {
 
 impl SonixApp {
 fn export_bars(&self) -> usize {
-    self.loop_end_bar.clamp(4, 32)
+    // **Hela projektet, inte slingans slut klippt till 32 takter.** Måttet är detsamma som
+    // tidslinjen ritas med (`get_max_project_bars`): en låt med långa stämmor exporterades
+    // annars som 32 takter — en minut i 128 bpm — medan resten tystnade.
+    self.get_max_project_bars()
 }
 }
 

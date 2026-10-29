@@ -44,7 +44,18 @@ red/bg 5,1. Allt över AA (4,5), alltså läsbart utan att mockupen ljusas upp.
 | Master-spår inramat i orange | mixern/arrangören | litet |
 | Rundade klipp med `⌘ 00:01.94`-metadata | klippritningen | medel |
 
-Ordningen jag skulle ta dem i: **flikrad → spårhuvud/höjd → klipp-metadata → rundning svep sist**.
+## Taget: flikraden
+
+Flikraden (`src/ui/widgets.rs::tabs`) följer nu förslaget: den valda fliken är **fylld med
+`orange`** och bär mörk text (`bg_deep`), 5 px rundade överkanter, och accentlinjen är borta —
+fyllningen gör fliken till en flik. Provet `the_tab_strip_paints_one_tab_per_label_and_marks_the_active_one`
+räknar shapes i en huvudlös egui-ruta och kräver **exakt en** orange fylld flik och **noll**
+accentlinjer, så ändringen är mätt och inte bara påstådd.
+
+Spårhuvudets vänsterkant är redan förslagets 4 px färgstapel (`color_bar` i `arranger.rs`) — den
+delen behövde ingen ändring.
+
+Ordningen jag skulle ta resten i: **spårhuvudets höjd → klipp-metadata → rundning svep sist**.
 Rundningen sist därför att den rör flest filer och minst betydelse per rad; flikraden och
 spårhuvudet är det man ser först.
 

@@ -773,28 +773,23 @@ pub fn tabs(ui: &mut Ui, labels: &[&str], active: usize, font: f32) -> Option<us
                 Pos2::new(rect.min.x, top),
                 Pos2::new(rect.max.x, rect.max.y),
             );
-            let rounding = Rounding { nw: 6.0, ne: 6.0, sw: 0.0, se: 0.0 };
+            let rounding = Rounding { nw: 5.0, ne: 5.0, sw: 0.0, se: 0.0 };
+            // Den valda fliken är **fylld med accenten** och bär mörk text — som flikraden i
+            // UI-förslaget. Accentlinjen behövs inte längre: fyllningen gör fliken till en flik.
             let fill = if is_active {
-                pal.bg()
+                pal.orange()
             } else if resp.hovered() {
                 pal.panel_alt()
             } else {
                 pal.header()
             };
             ui.painter().rect_filled(tab, rounding, fill);
-            if is_active {
-                // Accentlinjen är det som gör fliken till en flik och inte till en yta.
-                ui.painter().line_segment(
-                    [tab.left_top() + Vec2::new(3.0, 0.0), tab.right_top() - Vec2::new(3.0, 0.0)],
-                    Stroke::new(2.0_f32, pal.orange()),
-                );
-            }
             ui.painter().text(
                 tab.center(),
                 egui::Align2::CENTER_CENTER,
                 label,
                 egui::FontId::proportional(font),
-                if is_active { pal.text() } else { pal.text_muted() },
+                if is_active { pal.bg_deep() } else { pal.text_muted() },
             );
             if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
                 clicked = Some(i);
@@ -810,7 +805,7 @@ mod tab_tests {
     use eframe::egui;
 
     /// **Flikradens kontrakt, mätt i det som faktiskt ritas**: en fylld flik och en text per
-    /// etikett, och **en** accentlinje — den valda flikens. Utan pekare klickas ingen.
+    /// etikett, och **en** flik fylld med accentfärgen — den valda. Utan pekare klickas ingen.
     ///
     /// Provet kör en bildruta i en huvudlös `egui` och läser shapes, så det kräver varken fönster
     /// eller ljudenhet.
@@ -827,6 +822,8 @@ mod tab_tests {
         assert_eq!(hit, None, "utan pekare klickas ingen flik");
 
         let (mut rects, mut texts, mut accent) = (0, 0, 0);
+        let mut accent_filled = 0;
+        let orange = crate::ui::theme::palette().orange();
         for clipped in &output.shapes {
             match &clipped.shape {
                 // Panelens egen bakgrund är en rektangel utan rundning; flikarna har rundade
@@ -834,6 +831,9 @@ mod tab_tests {
                 egui::Shape::Rect(r) => {
                     if r.fill != egui::Color32::TRANSPARENT && r.rounding.nw > 0.0 {
                         rects += 1;
+                        if r.fill == orange {
+                            accent_filled += 1;
+                        }
                     }
                 }
                 egui::Shape::Text(_) => texts += 1,
@@ -843,6 +843,7 @@ mod tab_tests {
         }
         assert_eq!(rects, labels.len(), "en fylld flik per etikett");
         assert_eq!(texts, labels.len(), "en text per flik");
-        assert_eq!(accent, 1, "bara den valda fliken bär accentlinjen");
+        assert_eq!(accent, 0, "fyllningen ersätter accentlinjen");
+        assert_eq!(accent_filled, 1, "bara den valda fliken är fylld med accentfärgen");
     }
 }
