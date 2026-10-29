@@ -1152,6 +1152,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Korta 1 takt" => "Shorten 1 bar",
         "Källfil:" => "Source file:",
         "Ladda" => "Load",
+        "🎹 JSFX som instrument" => "🎹 JSFX as instrument",
         "Ladda in detta sample/region i Sångstudion för isolerad provspelning, pitch, time stretch & effekter" => "Load this sample/region into Vocal Studio for isolated preview, pitch, time stretch & effects",
         "Ladda in extern WAV/Audio-fil som tagning" => "Load an external WAV/audio file as a take",
         "Ladda till Channel Rack" => "Load into Channel Rack",
@@ -2886,6 +2887,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎹 JSFX som instrument" => "🎹 JSFX som instrument",
         "Fabrik" => "Fabrik",
         "📈 Kurvor" => "📈 Kurver",
         "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Volumenkurve pr. band over en takt. Træk i fladen for at tegne; 1,0 øverst er lige igennem.",
@@ -5358,6 +5360,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎹 JSFX som instrument" => "🎹 JSFX som instrument",
         "Fabrik" => "Fabrikk",
         "📈 Kurvor" => "📈 Kurver",
         "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Volumkurve per band over én takt. Dra i flaten for å tegne; 1,0 øverst er rett gjennom.",
@@ -7830,6 +7833,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎹 JSFX som instrument" => "🎹 JSFX als Instrument",
         "Fabrik" => "Werkseitig",
         "📈 Kurvor" => "📈 Kurven",
         "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Lautstärkekurve pro Band über einen Takt. Im Feld ziehen zum Zeichnen; 1,0 oben ist direkt durch.",
@@ -10302,6 +10306,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎹 JSFX som instrument" => "🎹 JSFX como instrumento",
         "Fabrik" => "Fábrica",
         "📈 Kurvor" => "📈 Curvas",
         "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Curva de volumen por banda a lo largo de un compás. Arrastra en el área para dibujar; 1,0 arriba es paso directo.",
@@ -12774,6 +12779,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "🎹 JSFX som instrument" => "🎹 JSFX comme instrument",
         "Fabrik" => "Usine",
         "📈 Kurvor" => "📈 Courbes",
         "Volymkurva per band över en takt. Dra i ytan för att rita; 1,0 högst upp är rakt igenom." => "Courbe de volume par bande sur une mesure. Faites glisser pour dessiner ; 1,0 en haut laisse passer.",
