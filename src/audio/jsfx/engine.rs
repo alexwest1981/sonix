@@ -24,9 +24,15 @@ const MAX_STEPS: usize = 500_000_000;
 /// Samma gräns per ljudprov: en effekt som behöver mer än så per prov är trasig, inte långsam.
 const MAX_STEPS_PER_SAMPLE: usize = 2_000_000;
 
-/// Storlek på det delade minnet vid start (8 M `f64` = 64 MB), och hur mycket det får växa.
+/// Storlek på det delade minnet vid start, och hur mycket det får växa.
 const MEM_START: usize = 1 << 20;
-const MEM_MAX: usize = 8 << 20;
+const MEM_MAX: usize = 16 << 20;
+
+/// **Variablerna bor ovanför tabellerna.** EEL2 låter en fil använda låga adresser som tabeller
+/// (`acnt = 0; ph = 4096; mt = 6144;` i REAPERs egna instrument), och då får variablerna inte ligga
+/// där: `acnt[i] = 0` skrev annars över variabler, och ett instrument kunde spela 2 048 röster
+/// samtidigt. Tabellerna håller sig under 2 MiB i REAPER-lådan; variablerna börjar där.
+const VAR_BASE: usize = 1 << 21;
 
 /// Ett fel under körning. Sektionen och raden räcker för att hitta filen det gäller.
 #[derive(Debug, Clone)]
@@ -353,10 +359,10 @@ impl Jsfx {
             self.last_slot = Some((name.to_string(), *slot));
             return *slot;
         }
-        let slot = self.slots.len() + 64; // 0..63 är sliderna
+        let slot = VAR_BASE + self.slots.len();
         self.slots.insert(name.to_string(), slot);
         self.last_slot = Some((name.to_string(), slot));
-        self.ensure_mem(slot);
+        self.ensure_mem(slot + 1);
         slot
     }
 
@@ -1101,7 +1107,8 @@ impl Jsfx {
 
     fn heap_top(&mut self) -> usize {
         let slot = self.slot("__heap");
-        self.mem[slot].max(4096.0) as usize
+        // `alloc` får inte dela adresser med filens egna tabeller (de ligger under VAR_BASE).
+        self.mem[slot].max((VAR_BASE + (1 << 16)) as f64) as usize
     }
 
     fn set_heap_top(&mut self, value: usize) {

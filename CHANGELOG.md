@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.209] - 2026-10-29
+
+**Variablerna flyttade ovanför tabellerna — ett instrument spelade 2 048 röster.** EEL2 delar ett
+enda minne mellan variabler och tabeller, och REAPERs egna instrument lägger tabeller på låga
+adresser (`acnt = 0; aamp = 2048; ph = 4096; mt = 6144;`). Våra variabler låg på plats 64 och framåt,
+så `acnt[i] = 0` skrev över dem — och i `TolerableTines` blev följden att alla 2 048 platser i
+notmatrisen såg satta ut: **2 048 samtidiga röster, 1 947 RMS**. Variablerna bor nu från 2 MiB, och
+`alloc` delar ut ovanför dem.
+
+Uppmätt före/efter på samma ton (not 60): topp 44 100 → **0,060**, rms 1 947 → **0,024**. Alla 256
+JSFX-filer tolkas fortfarande.
+
 ## [0.9.208] - 2026-10-28
 
 **Ett släpp som kan separera.** Release-jobbet byggde utan `neural` (ORT går inte att länka mot

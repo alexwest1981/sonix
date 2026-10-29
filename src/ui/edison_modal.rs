@@ -4,7 +4,7 @@
 //! spår** när man trycker *Skapa spår*. Det gör ett misstag billigt — det finns ingen väg
 //! från den här rutan som skriver över källfilen.
 
-use eframe::egui::{self, Color32, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
+use eframe::egui::{self, Pos2, Rect, Rounding, Sense, Stroke, Ui, Vec2};
 
 use crate::audio::edison as ops;
 use crate::ui::theme::{palette, Theme};
