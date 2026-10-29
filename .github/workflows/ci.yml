@@ -75,9 +75,9 @@ jobs:
         run: |
           FEATURES="${{ matrix.features }}"
           if [ -n "$FEATURES" ]; then
-            cargo build --release --locked --features "$FEATURES" 2>&1 | tee /tmp/build.log
+            cargo build --release --locked --no-default-features --features "$FEATURES" 2>&1 | tee /tmp/build.log
           else
-            cargo build --release --locked 2>&1 | tee /tmp/build.log
+            cargo build --release --locked --no-default-features 2>&1 | tee /tmp/build.log
           fi
           # Remsa ANSI-koder och leta efter **ordet** `warning`, inte efter en rad som
           # börjar med det. Mätt 2026-09-15: plugin-host-benet skrev en riktig varning
@@ -108,9 +108,9 @@ jobs:
         run: |
           FEATURES="${{ matrix.features }}"
           if [ -n "$FEATURES" ]; then
-            cargo test --release --locked --features "$FEATURES"
+            cargo test --release --locked --no-default-features --features "$FEATURES"
           else
-            cargo test --release --locked
+            cargo test --release --locked --no-default-features
           fi
 
       # Fas 7.2: siffrorna ska synas i loggen, inte bara finnas som tröskel.
@@ -122,9 +122,9 @@ jobs:
         run: |
           FEATURES="${{ matrix.features }}"
           if [ -n "$FEATURES" ]; then
-            cargo test --release --locked --features "$FEATURES" audio::realtime_bench -- --nocapture
+            cargo test --release --locked --no-default-features --features "$FEATURES" audio::realtime_bench -- --nocapture
           else
-            cargo test --release --locked audio::realtime_bench -- --nocapture
+            cargo test --release --locked --no-default-features audio::realtime_bench -- --nocapture
           fi
 
   neural:
@@ -202,7 +202,7 @@ jobs:
       # (utskrivet i ROADMAP.md, Fas 7.1).
       - name: cargo build (Windows, länkar en .exe)
         run: |
-          cargo build --locked --release
+          cargo build --locked --release --no-default-features
           Get-Item target/release/sonix.exe | Select-Object Name,Length
         shell: pwsh
 
@@ -241,7 +241,7 @@ jobs:
       - name: Bygg
         env:
           CARGO_TARGET_DIR: /tmp/target
-        run: cargo build --release --locked --features plugin-host
+        run: cargo build --release --locked --no-default-features --features plugin-host
 
       - name: Grind — glibc-golvet
         run: bash packaging/check-glibc-floor.sh /tmp/target/release/sonix 2.28
