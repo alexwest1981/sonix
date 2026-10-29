@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.208] - 2026-10-28
+
+**Ett släpp som kan separera.** Release-jobbet byggde utan `neural` (ORT går inte att länka mot
+glibc 2.28), så varje nedladdad binär var DSP-only. Nu byggs **två** släpp av samma commit:
+
+- `sonix-<ver>-<ark>-unknown-linux-gnu.tar.gz` (manylinux, glibc 2.28) — som förut, DSP-separation.
+- `sonix-<ver>-x86_64-neural.tar.gz` (ubuntu-24.04) — `neural` är standard, alla fem modellerna
+  fungerar, högre glibc-krav. Jobbet vägrar publicera om binären inte innehåller ONNX Runtime.
+
+
 **Teman når hela ritytan.** Elva overlegg och markeringar låg hårdkodade som vita/svarta
 alpha-färger och namngivna accenter (loopregion, puck-glow, trimhandtag, kompband, live-region,
 mätare, Edison-panel). De går nu via paletten med samma alfa, så ett ljust tema inte får

@@ -72,9 +72,65 @@ jobs:
           path: target/release/sonix
           if-no-files-found: error
 
+
+  # **Ett andra släpp: samma app, men med neural separation.** ORTs färdiga bibliotek kräver
+  # nyare glibc än 2.28-golvet som manylinux-jobben håller, så det kan inte länkas där. I stället
+  # byggs en nativ binär på ubuntu-24.04 där `neural` är standard — den heter `-neural` i filnamnet
+  # och har ett högre glibc-krav. Den vanliga tarballen är oförändrad och DSP-separerar.
+  build-neural:
+    name: Build x86_64 (neural)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake clang libclang-dev pkg-config \
+            libasound2-dev libssl-dev libxkbcommon-dev libwayland-dev \
+            libx11-dev libxcursor-dev libxrandr-dev libxi-dev libgl1-mesa-dev
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: release-neural
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Verify that the build can separate
+        run: |
+          set -euo pipefail
+          ls -la ~/.local/share/sonix/models 2>/dev/null || true
+          # Fragan ar inte "bygger den?" utan "finns motorn i binaren?".
+          strings target/release/sonix | grep -qi onnxruntime
+          target/release/sonix --version
+
+      - name: Tarball
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          name="sonix-${version}-x86_64-neural"
+          mkdir -p "dist/${name}"
+          cp target/release/sonix "dist/${name}/sonix"
+          cp README.md CHANGELOG.md MANUAL.md LICENSE "dist/${name}/"
+          tar -C dist -czf "dist/${name}.tar.gz" "${name}"
+
+      - name: Upload neural tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-neural
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
   package:
     name: Package (deb, rpm, AppImage, tarball)
-    needs: build
+    needs: [build, build-neural]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -84,6 +140,12 @@ jobs:
         with:
           pattern: bin-*
           path: bins
+
+      - name: Download the neural tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-neural
+          path: dist
 
       - name: Package
         run: |
