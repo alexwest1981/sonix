@@ -1604,12 +1604,6 @@ impl SonixApp {
                         self.show_suno_import_modal = true;
                     }
 
-                    // Hardware Controller MCU / OSC Button
-                    let mcu_col = if self.mcu_connected { crate::ui::theme::palette().cable() } else { crate::ui::theme::palette().panel() };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎛 MCU")).strong().size(Theme::FONT_S).color(crate::ui::theme::readable_on(mcu_col))).fill(mcu_col)).clicked() {
-                        self.show_controller_modal = true;
-                    }
-
                 });
 
                 ui.add_space(2.0);
@@ -1656,6 +1650,14 @@ impl SonixApp {
                             first_view_of(group).unwrap_or(remembered)
                         };
                     }
+                });
+                ui.add_space(2.0);
+
+                // ROW 3: **underverktygen för den valda kategorin** — egna flikar under
+                // kategorira­den, så det syns vilken nivå man är på (Alex 2026-10-29).
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
+                    let active_group = nav_group_of(self.view_mode);
                     ui.add_space(10.0);
 
                     const VIEWS: [(u8, ViewMode, &str); 13] = [
@@ -1730,6 +1732,13 @@ impl SonixApp {
                         .on_hover_text(self.tr(
                             "Ljudtråden hann inte ta emot kommandon. Spela om handlingen om gränssnittet och ljudet inte stämmer.",
                         ));
+                    }
+                    ui.separator();
+                    // **MCU hör till statusraden**: det är en ansluten hårdvara, som PipeWire — inte
+                    // ett verktyg i transporten. Den lyser när enheten är ansluten.
+                    let mcu_col = if self.mcu_connected { crate::ui::theme::palette().cable() } else { crate::ui::theme::palette().panel_alt() };
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎛 MCU")).size(Theme::FONT_XS).color(crate::ui::theme::readable_on(mcu_col))).fill(mcu_col)).on_hover_text(self.tr("Hårdvarukontroller — Mackie Control / OSC")).clicked() {
+                        self.show_controller_modal = true;
                     }
                     ui.separator();
                     ui.label(egui::RichText::new(self.tr("PipeWire / ALSA 44.1kHz • 16-Stämmor Polyfoni • Sonix Studio Pro DAW")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
