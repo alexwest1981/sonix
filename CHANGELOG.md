@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Metronomen sitter i den globala raden**, bredvid ▶/⏸/⏹, inte bara i arrangörens verktygsrad — en
+påslagen klick gick inte att stänga av från de andra sidorna. Ett reglage, samma `metronome_enabled`.
+
 Gränsen för JSFX-instrumentet står nu i knappens hover: det är en rå källa, syntens filter/ADSR/
 effekter används inte.
 
