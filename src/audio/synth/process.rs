@@ -20,7 +20,10 @@ impl SynthEngine {
                 self.instrument_right[self.instrument_pos],
             );
             self.instrument_pos += 1;
-            return (l, r);
+            // Nivån ska följa syntens master, annars hoppar volymen när instrumentet kopplas in.
+            // shortc: slutet av process_stereo (master-FX, gate) körs inte för instrumentet.
+            let gain = self.master_volume.clamp(0.0, 4.0);
+            return ((l * gain).tanh(), (r * gain).tanh());
         }
 
         // 0. Fire any due scheduled chord/strum notes.

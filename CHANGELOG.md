@@ -13,6 +13,11 @@ påslagen klick gick inte att stänga av från de andra sidorna. Ett reglage, sa
 Gränsen för JSFX-instrumentet står nu i knappens hover: det är en rå källa, syntens filter/ADSR/
 effekter används inte.
 
+**Instrumentet ligger på syntens masternivå.** Det gick tidigare rakt ut oanpå `master_volume`, så
+volymen hoppade när man kopplade in en JSFX. Nu går det genom samma gain och `tanh` som rösterna.
+Kvar utanför: master-FX-svansen (gate, DJ-FX) — den ligger efter rösternas slut och nås inte från
+instrumentgrenen.
+
 ## [0.9.211] - 2026-10-29
 
 **Ett JSFX-instrument kan vara syntens källa.** `AudioCommand::SetInstrument { path }` sätter en JSFX

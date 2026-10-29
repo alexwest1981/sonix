@@ -4082,9 +4082,12 @@ fn a_jsfx_instrument_can_be_the_synth_source() {
     assert_eq!(peak(&mut synth), 0.0, "tyst utan not");
 
     synth.handle_command(AudioCommand::NoteOn { note: 60, freq: 261.6, velocity: 1.0, channel: 0 });
-    assert!(peak(&mut synth) > 0.4, "noten ska höras");
+    // Instrumentet ligger på syntens masternivå: hörs, men inte på rå 0,5 (gain + tanh).
+    let level = peak(&mut synth);
+    assert!((0.2..0.5).contains(&level), "noten ska höras på masternivå, fick {level}");
 
     synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
+    let _ = peak(&mut synth); // blocket som redan renderats med noten klingar ut först
     assert_eq!(peak(&mut synth), 0.0, "tyst efter not av");
 
     synth.handle_command(AudioCommand::SetInstrument { path: None });
