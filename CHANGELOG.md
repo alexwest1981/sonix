@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Gränsen för JSFX-instrumentet står nu i knappens hover: det är en rå källa, syntens filter/ADSR/
+effekter används inte.
+
 ## [0.9.211] - 2026-10-29
 
 **Ett JSFX-instrument kan vara syntens källa.** `AudioCommand::SetInstrument { path }` sätter en JSFX

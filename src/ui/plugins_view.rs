@@ -1098,7 +1098,8 @@ fn render_inspection_panel(
                 // Bara JSFX kan vara källa: `SetInstrument` laddar via JSFX-läsaren.
                 if snapshot.backend == "JSFX"
                     && ui.button(crate::i18n::t("🎹 JSFX som instrument")).on_hover_text(
-                        "Spelar JSFX:en med keyboard, MIDI och klip i stället för syntens röster.",
+                        "Spelar JSFX:en med keyboard, MIDI och klip i stället för syntens röster.\n\
+                         Instrumentet är rå källa: syntens filter, ADSR och effekter används inte.",
                     ).clicked()
                 {
                     actions.instrument = Some(snapshot.path.clone());

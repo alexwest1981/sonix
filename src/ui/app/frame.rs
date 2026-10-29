@@ -1441,6 +1441,15 @@ impl SonixApp {
                         self.stop_playback();
                     }
 
+                    // **Metronomen sitter i den globala raden**, inte bara i arrangören: en
+                    // påslagen klick gick inte att stänga av från de andra sidorna.
+                    let metro_bg = if self.metronome_enabled { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel_alt() };
+                    let metro_fg = if self.metronome_enabled { egui::Color32::BLACK } else { crate::ui::theme::palette().text_muted() };
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔔 Metronom")).strong().size(Theme::FONT_S).color(metro_fg)).fill(metro_bg).min_size(egui::vec2(48.0, 30.0))).on_hover_text(crate::i18n::t("Hörbar klick-metronom vid uppspelning")).clicked() {
+                        self.metronome_enabled = !self.metronome_enabled;
+                        self.status_message = if self.metronome_enabled { crate::i18n::t("🔔 Metronom aktiverad").to_string() } else { crate::i18n::t("🔕 Metronom avstängd").to_string() };
+                    }
+
                     ui.separator();
 
                     // Digital LCD Display & Clock (Compact, monospace)

@@ -548,7 +548,7 @@ impl SonixApp {
                 });
             });
 
-            // Time Signature & Metronome
+            // Time Signature
             ui.group(|ui| {
                 ui.set_height(26.0);
                 ui.horizontal(|ui| {
@@ -560,13 +560,6 @@ impl SonixApp {
                             if ui.selectable_label(self.time_signature == (3, 4), "3/4").clicked() { self.time_signature = (3, 4); }
                             if ui.selectable_label(self.time_signature == (6, 8), "6/8").clicked() { self.time_signature = (6, 8); }
                         });
-
-                    let metro_bg = if self.metronome_enabled { crate::ui::theme::palette().orange() } else { crate::ui::theme::palette().panel_alt() };
-                    let metro_fg = if self.metronome_enabled { Color32::BLACK } else { crate::ui::theme::palette().text_muted() };
-                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🔔 Metronom")).strong().size(Theme::FONT_S).color(metro_fg)).fill(metro_bg)).on_hover_text(crate::i18n::t("Hörbar klick-metronom vid uppspelning")).clicked() {
-                        self.metronome_enabled = !self.metronome_enabled;
-                        self.status_message = if self.metronome_enabled { crate::i18n::t("🔔 Metronom aktiverad").to_string() } else { crate::i18n::t("🔕 Metronom avstängd").to_string() };
-                    }
 
                     // **Sustainpedal.** Samma kommando som MIDI CC64 skickar, så en pianist utan
                     // pedal kan hålla toner med musen — och pedalläget syns när hårdvaran trycker.
