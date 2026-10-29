@@ -1651,9 +1651,8 @@ impl SonixApp {
                         };
                     }
                 });
-                // **Tydlig gräns mellan nivåerna**: en linje över hela bredden, så kategorira­den
-                // och underverktygen inte läses som en enda röra (Alex 2026-10-29).
-                ui.separator();
+                // Raden under har nu sin egen baslinje (fliklisten), så här behövs ingen extra
+                // linje — två linjer tätt under varandra såg ut som en dubbelram.
 
                 // ROW 3: **underverktygen för den valda kategorin** — egna flikar under
                 // kategorira­den, så det syns vilken nivå man är på (Alex 2026-10-29).

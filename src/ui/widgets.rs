@@ -754,48 +754,78 @@ pub fn register_eq(ui: &mut Ui, levels: &[f32], labels: &[&str], size: Vec2) {
 /// valda ska sitta ihop med innehållet under, vilket en knapp inte kan uttrycka.
 pub fn tabs(ui: &mut Ui, labels: &[&str], active: usize, font: f32) -> Option<usize> {
     let pal = crate::ui::theme::palette();
+    let font_id = egui::FontId::proportional(font);
+    let row_h = (font * 2.0).max(20.0);
+    let pad = 14.0;
+    let gap = 2.0;
+
+    // Bredderna kommer ur texten, inte ur en gissning: texten + luft på båda sidor.
+    let widths: Vec<f32> = labels
+        .iter()
+        .map(|label| {
+            ui.painter()
+                .layout_no_wrap((*label).to_string(), font_id.clone(), pal.text())
+                .size()
+                .x
+                + pad * 2.0
+        })
+        .collect();
+    let content: f32 = widths.iter().sum::<f32>() + gap * labels.len().saturating_sub(1) as f32;
+    // Raden går hela vägen ut: flikarna sitter **i** en list, de flyter inte ovanför den.
+    let strip_w = ui.available_width().max(content);
+    let (strip, resp) = ui.allocate_exact_size(Vec2::new(strip_w, row_h), Sense::click());
+    let painter = ui.painter();
+    painter.rect_filled(strip, Rounding::ZERO, pal.header());
+    // Baslinjen är ytan under flikarna; den valda fliken öppnar den.
+    let base_y = strip.max.y - 1.0;
+    painter.hline(strip.x_range(), base_y, Stroke::new(1.0_f32, pal.border()));
+
+    let hover_pos = ui.ctx().pointer_hover_pos();
     let mut clicked = None;
-    ui.horizontal_wrapped(|ui| {
-        ui.spacing_mut().item_spacing = Vec2::new(2.0, 2.0);
-        let row_h = (font * 1.9).max(18.0);
-        for (i, label) in labels.iter().enumerate() {
-            let is_active = i == active;
-            // Bredden kommer ur texten, inte ur en gissning: texten + luft på båda sidor.
-            let galley = ui.painter().layout_no_wrap(
-                (*label).to_string(),
-                egui::FontId::proportional(font),
-                pal.text(),
+    let mut x = strip.min.x;
+    for (i, label) in labels.iter().enumerate() {
+        let is_active = i == active;
+        let r = egui::Rect::from_min_max(
+            egui::Pos2::new(x, strip.min.y + 3.0),
+            egui::Pos2::new(x + widths[i], strip.max.y),
+        );
+        let hovered = hover_pos.is_some_and(|p| r.contains(p));
+        let fill = if is_active {
+            pal.panel()
+        } else if hovered {
+            pal.panel_alt()
+        } else {
+            pal.header()
+        };
+        // Rundade överkanter, rak underkant mot baslinjen — det är vad som gör det till en flik.
+        painter.rect_filled(r, Rounding { nw: 6.0, ne: 6.0, sw: 0.0, se: 0.0 }, fill);
+        painter.rect_stroke(
+            r,
+            Rounding { nw: 6.0, ne: 6.0, sw: 0.0, se: 0.0 },
+            Stroke::new(1.0_f32, if is_active { pal.border() } else { pal.border_soft() }),
+        );
+        if is_active {
+            // Accentlinjen i överkant + baslinjen suddad under fliken: då hänger den ihop med
+            // ytan under i stället för att ligga lös i raden.
+            painter.line_segment(
+                [r.left_top() + Vec2::new(1.0, 0.0), r.right_top() - Vec2::new(1.0, 0.0)],
+                Stroke::new(2.0_f32, pal.orange()),
             );
-            let width = galley.size().x + 18.0;
-            let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, row_h), Sense::click());
-            // Alla flikar har samma höjd. Den gamla 3 px-förskjutningen på de ovalda gjorde att
-            // de såg ut att sväva ovanför raden i stället för att ligga i den.
-            let tab = rect;
-            let rounding = Rounding { nw: 5.0, ne: 5.0, sw: 0.0, se: 0.0 };
-            // Den valda fliken är **fylld med accenten** och bär mörk text — som flikraden i
-            // UI-förslaget. Accentlinjen behövs inte längre: fyllningen gör fliken till en flik.
-            // Ovald flik är **ingen yta alls** — bara text. Bara den valda bär färg, och då syns
-            // det direkt vilken nivå man är på.
-            let fill = if is_active {
-                pal.orange()
-            } else if resp.hovered() {
-                pal.panel_alt()
-            } else {
-                Color32::TRANSPARENT
-            };
-            ui.painter().rect_filled(tab, rounding, fill);
-            ui.painter().text(
-                tab.center(),
-                egui::Align2::CENTER_CENTER,
-                label,
-                egui::FontId::proportional(font),
-                if is_active { pal.bg_deep() } else { pal.text_muted() },
-            );
-            if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
-                clicked = Some(i);
-            }
+            painter.hline(r.x_range().shrink(1.0), base_y, Stroke::new(1.5_f32, pal.panel()));
         }
-    });
+        painter.text(
+            r.center(),
+            egui::Align2::CENTER_CENTER,
+            label,
+            font_id.clone(),
+            if is_active || hovered { pal.text() } else { pal.text_muted() },
+        );
+        if hovered && resp.clicked() {
+            clicked = Some(i);
+        }
+        x += widths[i] + gap;
+    }
+    let _ = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
     clicked
 }
 
@@ -822,7 +852,6 @@ mod tab_tests {
         assert_eq!(hit, None, "utan pekare klickas ingen flik");
 
         let (mut rects, mut texts, mut accent) = (0, 0, 0);
-        let mut accent_filled = 0;
         let orange = crate::ui::theme::palette().orange();
         for clipped in &output.shapes {
             match &clipped.shape {
@@ -831,19 +860,42 @@ mod tab_tests {
                 egui::Shape::Rect(r) => {
                     if r.fill != egui::Color32::TRANSPARENT && r.rounding.nw > 0.0 {
                         rects += 1;
-                        if r.fill == orange {
-                            accent_filled += 1;
-                        }
                     }
                 }
                 egui::Shape::Text(_) => texts += 1,
-                egui::Shape::LineSegment { .. } => accent += 1,
+                egui::Shape::LineSegment { stroke, .. } if stroke.color == eframe::epaint::ColorMode::Solid(orange) => accent += 1,
+                egui::Shape::LineSegment { .. } => {}
                 _ => {}
             }
         }
-        assert_eq!(rects, 1, "bara den valda fliken har en yta — de ovalda är text");
+        assert_eq!(rects, labels.len(), "varje flik är en yta i raden");
+        // Flikarna hänger i raden: raden går hela bredden och flikens underkant är radens.
+        let strip = output
+            .shapes
+            .iter()
+            .find_map(|c| match &c.shape {
+                egui::Shape::Rect(r)
+                    if r.fill != egui::Color32::TRANSPARENT
+                        && r.rounding.nw == 0.0
+                        && r.rect.width() > 200.0
+                        && r.rect.height() < 60.0 =>
+                {
+                    Some(r.rect)
+                }
+                _ => None,
+            })
+            .expect("raden bakom flikarna ska ritas");
+        assert!(strip.width() > 200.0, "raden går över ytan, fick {}", strip.width());
+        let sitting = output.shapes.iter().filter(|c| match &c.shape {
+            egui::Shape::Rect(r) => {
+                r.fill != egui::Color32::TRANSPARENT
+                    && r.rounding.nw > 0.0
+                    && (r.rect.max.y - strip.max.y).abs() < 0.01
+            }
+            _ => false,
+        }).count();
+        assert_eq!(sitting, labels.len(), "varje flik vilar på radens baslinje");
         assert_eq!(texts, labels.len(), "en text per flik");
-        assert_eq!(accent, 0, "fyllningen ersätter accentlinjen");
-        assert_eq!(accent_filled, 1, "bara den valda fliken är fylld med accentfärgen");
+        assert_eq!(accent, 1, "bara den valda fliken bär accentlinjen");
     }
 }
