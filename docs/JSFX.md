@@ -161,3 +161,22 @@ Två vägar, och den andra är den som passar motorn:
 
 Tills dess: instrument låter i `--jsfx-note` (och i REAPER), men är tysta som insert. Att lägga dem
 där är inte trasigt — det är overksamt, och det sägs inte i gränssnittet än.
+
+### Vad arkitekturen säger (mätt)
+
+- Synten är **global**: `voices` i `synth`, ingen spårägare. `AudioCommand::NoteOn { note, freq,
+  velocity, channel }` har ingen kanal för spår, och det finns **60** avsändare.
+- Ett spår har **en** plugin (`track.plugin`), körd per spår i `synth/process.rs`. Det är en
+  ljudinsert, inte ett instrument — den har ingen notkälla.
+- `PluginProcessor` kan nu ta noter (`accepts_notes`/`note_on`/`note_off`, 0.9.210), och
+  `JsfxProcessor` skickar in dem i nästa block.
+
+Alltså finns ingen plats där en not **och** en spårkedja möts. Två vägar, med sina storlekar:
+
+1. **Instrumentet blir syntens källa.** `AudioCommand::SetInstrument(path)` + ett fält i synten som
+   renderar JSFX:en i stället för rösterna. Noterna finns redan där; ingen av de 60 avsändarna rörs.
+   Kräver att syntens renderingsväg får en gren (röstbank eller JSFX), och att PDC/panorering
+   behandlar den som en röst. **Rekommenderas** — det är där noterna är.
+2. **Spårägare i noten.** `track` i `NoteOn` (60 ställen) + en kö per spår som `process.rs` tömmer
+   in i `track.plugin`. Rätt om ett spår ska kunna ha ett eget instrument, men då ska syntens röster
+   också bli per spår — annars spelar två spår samma röstbank.
