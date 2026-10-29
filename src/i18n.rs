@@ -1152,6 +1152,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
         "Korta 1 takt" => "Shorten 1 bar",
         "Källfil:" => "Source file:",
         "Ladda" => "Load",
+        "Hårdvarukontroller — Mackie Control / OSC" => "Hardware controller — Mackie Control / OSC",
         "🎹 JSFX som instrument" => "🎹 JSFX as instrument",
         "Ladda in detta sample/region i Sångstudion för isolerad provspelning, pitch, time stretch & effekter" => "Load this sample/region into Vocal Studio for isolated preview, pitch, time stretch & effects",
         "Ladda in extern WAV/Audio-fil som tagning" => "Load an external WAV/audio file as a take",
@@ -2887,6 +2888,7 @@ fn tr_en(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_da(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Hårdvarukontroller — Mackie Control / OSC" => "Hardwarecontroller — Mackie Control / OSC",
         "🎹 JSFX som instrument" => "🎹 JSFX som instrument",
         "Fabrik" => "Fabrik",
         "📈 Kurvor" => "📈 Kurver",
@@ -5360,6 +5362,7 @@ fn tr_da(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_no(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Hårdvarukontroller — Mackie Control / OSC" => "Maskinvarekontroller — Mackie Control / OSC",
         "🎹 JSFX som instrument" => "🎹 JSFX som instrument",
         "Fabrik" => "Fabrikk",
         "📈 Kurvor" => "📈 Kurver",
@@ -7833,6 +7836,7 @@ fn tr_no(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_de(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Hårdvarukontroller — Mackie Control / OSC" => "Hardware-Controller — Mackie Control / OSC",
         "🎹 JSFX som instrument" => "🎹 JSFX als Instrument",
         "Fabrik" => "Werkseitig",
         "📈 Kurvor" => "📈 Kurven",
@@ -10306,6 +10310,7 @@ fn tr_de(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_es(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Hårdvarukontroller — Mackie Control / OSC" => "Controlador de hardware — Mackie Control / OSC",
         "🎹 JSFX som instrument" => "🎹 JSFX como instrumento",
         "Fabrik" => "Fábrica",
         "📈 Kurvor" => "📈 Curvas",
@@ -12779,6 +12784,7 @@ fn tr_es(key: &str) -> Option<&'static str> {
 // ====================================================================
 fn tr_fr(key: &str) -> Option<&'static str> {
     Some(match key {
+        "Hårdvarukontroller — Mackie Control / OSC" => "Contrôleur matériel — Mackie Control / OSC",
         "🎹 JSFX som instrument" => "🎹 JSFX comme instrument",
         "Fabrik" => "Usine",
         "📈 Kurvor" => "📈 Courbes",
