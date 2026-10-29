@@ -768,20 +768,20 @@ pub fn tabs(ui: &mut Ui, labels: &[&str], active: usize, font: f32) -> Option<us
             );
             let width = galley.size().x + 18.0;
             let (rect, resp) = ui.allocate_exact_size(Vec2::new(width, row_h), Sense::click());
-            let top = if is_active { rect.min.y } else { rect.min.y + 3.0 };
-            let tab = Rect::from_min_max(
-                Pos2::new(rect.min.x, top),
-                Pos2::new(rect.max.x, rect.max.y),
-            );
+            // Alla flikar har samma höjd. Den gamla 3 px-förskjutningen på de ovalda gjorde att
+            // de såg ut att sväva ovanför raden i stället för att ligga i den.
+            let tab = rect;
             let rounding = Rounding { nw: 5.0, ne: 5.0, sw: 0.0, se: 0.0 };
             // Den valda fliken är **fylld med accenten** och bär mörk text — som flikraden i
             // UI-förslaget. Accentlinjen behövs inte längre: fyllningen gör fliken till en flik.
+            // Ovald flik är **ingen yta alls** — bara text. Bara den valda bär färg, och då syns
+            // det direkt vilken nivå man är på.
             let fill = if is_active {
                 pal.orange()
             } else if resp.hovered() {
                 pal.panel_alt()
             } else {
-                pal.header()
+                Color32::TRANSPARENT
             };
             ui.painter().rect_filled(tab, rounding, fill);
             ui.painter().text(
@@ -804,8 +804,8 @@ mod tab_tests {
     use super::tabs;
     use eframe::egui;
 
-    /// **Flikradens kontrakt, mätt i det som faktiskt ritas**: en fylld flik och en text per
-    /// etikett, och **en** flik fylld med accentfärgen — den valda. Utan pekare klickas ingen.
+    /// **Flikradens kontrakt, mätt i det som faktiskt ritas**: en text per etikett, **en** fylld
+    /// yta — den valdas, i accentfärgen — och ingen accentlinje. Utan pekare klickas ingen.
     ///
     /// Provet kör en bildruta i en huvudlös `egui` och läser shapes, så det kräver varken fönster
     /// eller ljudenhet.
@@ -841,7 +841,7 @@ mod tab_tests {
                 _ => {}
             }
         }
-        assert_eq!(rects, labels.len(), "en fylld flik per etikett");
+        assert_eq!(rects, 1, "bara den valda fliken har en yta — de ovalda är text");
         assert_eq!(texts, labels.len(), "en text per flik");
         assert_eq!(accent, 0, "fyllningen ersätter accentlinjen");
         assert_eq!(accent_filled, 1, "bara den valda fliken är fylld med accentfärgen");

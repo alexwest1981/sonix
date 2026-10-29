@@ -1651,14 +1651,16 @@ impl SonixApp {
                         };
                     }
                 });
-                ui.add_space(2.0);
+                // **Tydlig gräns mellan nivåerna**: en linje över hela bredden, så kategorira­den
+                // och underverktygen inte läses som en enda röra (Alex 2026-10-29).
+                ui.separator();
 
                 // ROW 3: **underverktygen för den valda kategorin** — egna flikar under
                 // kategorira­den, så det syns vilken nivå man är på (Alex 2026-10-29).
                 ui.horizontal_wrapped(|ui| {
                     ui.spacing_mut().item_spacing = Vec2::new(3.0, 3.0);
                     let active_group = nav_group_of(self.view_mode);
-                    ui.add_space(10.0);
+                    ui.add_space(16.0);
 
                     const VIEWS: [(u8, ViewMode, &str); 13] = [
                         (0, ViewMode::ChannelRack, "🥁 Rack"),

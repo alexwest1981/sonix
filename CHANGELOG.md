@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**`--ai-features` mäter det en detektor tittar på.** Spektralt tak, energi över taket, brusgolv
+(p10), korttids-RMS-spridning och sann crest — fyra siffror, inget omdöme. Se `docs/AI-FEATURES.md`.
+
+**Flikraderna syns som två nivåer.** Ovalda flikar har ingen yta längre (bara den valda bär färg),
+och en avdelare med indrag skiljer kategorira­den från underverktygen — förut flöt de ihop och
+flikarna såg ut att sväva.
+
 **Exporten blir hela låten, inte 32 takter.** Längden kom från `loop_end_bar` klippt till 4–32
 takter, så en låt med långa stämmor blev en minut i 128 bpm och resten tyst. Nu används samma mått
 som tidslinjen ritas med (`get_max_project_bars`), och ett prov håller fast att ljud förbi takt 32

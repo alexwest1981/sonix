@@ -94,6 +94,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         selftest::run(selftest::audible_from_args(&args))?;
         return Ok(());
     }
+    // `sonix --ai-features <fil.wav>`: mäter de tre särdrag som gör att en fil ser AI-gjord ut i
+    // en detektor — spektralt tak, brusgolv och dynamik. Inget omdöme, bara siffror.
+    if let Some(pos) = std::env::args().position(|a| a == "--ai-features") {
+        let Some(path) = std::env::args().nth(pos + 1) else {
+            eprintln!("användning: sonix --ai-features <fil.wav>");
+            std::process::exit(2);
+        };
+        match crate::audio::wav_reader::load_wav_pcm(&path) {
+            Ok((l, r, sr)) => {
+                let f = crate::audio::ai_features::analyse(&l, &r, sr);
+                println!("{path}");
+                for line in f.lines() {
+                    println!("  {line}");
+                }
+            }
+            Err(err) => {
+                eprintln!("kunde inte läsa {path}: {err}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
     // `sonix --jsfx-note <fil.jsfx> [not]`: spelar en ton genom ett JSFX-instrument och mäter
     // toppen. Frågan en port måste svara på är inte "tolkar vi filen?" utan "låter den?".
     if let Some(pos) = std::env::args().position(|a| a == "--jsfx-note") {
