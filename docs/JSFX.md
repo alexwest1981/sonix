@@ -141,3 +141,23 @@ SONIX_JSFX_DIR=/sökväg/till/REAPER/InstallData/Effects cargo test --bin sonix 
 
 De två proven kräver **alla 256 filer** respektive att minst fyra instrument ger ljud från en
 nedtryckt tangent. Filerna skeppas inte med Sonix (de är REAPERs), därför är proven opt-in.
+
+## Instrument i kedjan: vad som fattas
+
+En JSFX-**effekt** fungerar i effektkedjan (`PluginProcessor`, backend `JSFX`). Ett JSFX-**instrument**
+gör det inte: `process_stereo` får bara ljud, aldrig noter, och motorn har ingen MIDI-ström mellan
+block — noterna kommer från Sonix egen synt (`synth/commands.rs`), inte från en händelselista som
+en insert kan läsa.
+
+Två vägar, och den andra är den som passar motorn:
+
+1. `PluginProcessor::note_on/note_off` med tomma standardmetoder, och en kö i `JsfxProcessor` som
+   skickas in i `Jsfx::process` vid nästa block. **Räcker inte ensamt**: inget anropar metoderna,
+   eftersom motorn inte har något ställe där en insert får noter.
+2. Låt motorn hålla en **nothändelselista per block** (samma som synten redan får) och skicka den
+   till processorer som `accepts_notes()` säger ja om. Det kräver att speltidsberäkningen som
+   synten gör (`synth/commands.rs`) lyfts ut så både synten och inserts läser samma lista — annars
+   får instrumentet noter på andra samples än synten, och då svänger det fel.
+
+Tills dess: instrument låter i `--jsfx-note` (och i REAPER), men är tysta som insert. Att lägga dem
+där är inte trasigt — det är overksamt, och det sägs inte i gränssnittet än.
