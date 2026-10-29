@@ -235,6 +235,16 @@ pub trait PluginProcessor: Send {
     fn take_extra_output(&mut self, _index: usize, _left: &mut [f32], _right: &mut [f32]) -> bool {
         false
     }
+    /// **Tar den noter?** Ett instrument säger ja, en effekt nej. Bara den som säger ja får
+    /// `note_on`/`note_off`.
+    fn accepts_notes(&self) -> bool {
+        false
+    }
+    /// En not till ett instrument. Anropas bara när [`accepts_notes`](Self::accepts_notes) är sann,
+    /// och noten klingar från nästa `process_stereo` — inte mitt i ett block.
+    fn note_on(&mut self, _note: u8, _velocity: u8) {}
+    fn note_off(&mut self, _note: u8) {}
+
     /// Processes `left`/`right` in place. Both slices must be the same length
     /// and must not exceed the maximum frame count the processor was created
     /// with.

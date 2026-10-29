@@ -275,6 +275,8 @@ impl Jsfx {
     ) -> Result<Vec<MidiEvent>, RunError> {
         self.samplesblock = left.len();
         self.midi_in = midi.to_vec();
+        // Läskurvans nollställs per block: annars pekar den förbi en tom kö nästa block.
+        self.midi_cursor = 0;
         self.midi_out.clear();
         self.midi_cursor = 0;
         let block = self.program.block.clone();
@@ -928,13 +930,15 @@ impl Jsfx {
             "midirecv" => {
                 let offset = eval!(&args[0]);
                 // Varje händelse lämnas ut en gång, annars snurrar `while (midirecv(...))` för evigt.
-                let event = self.midi_in[self.midi_cursor..]
-                    .iter()
-                    .find(|e| e.offset as f64 >= offset)
-                    .copied();
+                // Kurvan klampas: en tom kö får inte ge `[1..]` på en tom slice.
+                let from = self.midi_cursor.min(self.midi_in.len());
+                let found = self.midi_in[from..].iter().position(|e| e.offset as f64 >= offset);
+                let event = found.map(|i| {
+                    self.midi_cursor = from + i + 1;
+                    self.midi_in[from + i]
+                });
                 match event {
                     Some(e) => {
-                        self.midi_cursor += 1;
                         let packed = (e.data1 as f64) + (e.data2 as f64) * 256.0;
                         if let Some(slot) = args.get(1) {
                             let _ = self.write(slot, e.status as f64);

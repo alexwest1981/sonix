@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.210] - 2026-10-29
+
+**Noter kan nå ett JSFX-instrument i kedjan.** `PluginProcessor` har fått `accepts_notes`/`note_on`/
+`note_off` (tomma standardmetoder, så CLAP och VST är orörda), och `JsfxProcessor` köar noterna och
+skickar in dem i motorn i nästa block — noten klingar från blockets början, aldrig mitt i.
+
+Provet är ett instrument som bara låter när det får en not (`midirecv`): tyst → not → hörs →
+not av → tyst. Det avslöjade ett riktigt motorfel: MIDI-läskurvan nollställdes inte per block, så
+`midirecv` läste förbi en tom kö och **panikade** i andra blocket efter noter. Kurvan klampas nu och
+hoppar till träffen i stället för ett steg.
+
 ## [0.9.209] - 2026-10-29
 
 **Variablerna flyttade ovanför tabellerna — ett instrument spelade 2 048 röster.** EEL2 delar ett

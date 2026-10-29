@@ -7,7 +7,7 @@
 
 use std::path::Path;
 
-use super::Jsfx;
+use super::{Jsfx, MidiEvent};
 use crate::audio::plugin_host_live::{
     PluginInfo, PluginInspection, PluginParameter, PluginProcessor, PARAM_IS_STEPPED,
 };
@@ -52,6 +52,7 @@ pub fn load(path: &str, sample_rate: f32) -> Result<Box<dyn PluginProcessor>, St
     let info = info_for(path, vm.desc());
     Ok(Box::new(JsfxProcessor {
         vm,
+        pending: Vec::new(),
         info,
         parameters,
     }))
@@ -105,6 +106,8 @@ fn parameters_for(sliders: &[super::SliderDef]) -> Vec<PluginParameter> {
 
 struct JsfxProcessor {
     vm: Jsfx,
+    /// Noter som kommit sedan förra blocket. Töms i `process_stereo`.
+    pending: Vec<MidiEvent>,
     info: PluginInfo,
     parameters: Vec<PluginParameter>,
 }
@@ -128,8 +131,25 @@ impl PluginProcessor for JsfxProcessor {
     }
 
     fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        // Noterna som kom sedan förra blocket ligger först i kön; motorn tar dem på offset 0.
+        let notes = std::mem::take(&mut self.pending);
         // Felet ligger kvar i `vm.errors` och effekten har tystnat — kedjan ska inte stanna.
-        let _ = self.vm.process(left, right, &[]);
+        let _ = self.vm.process(left, right, &notes);
+    }
+
+    /// Ett JSFX är instrument när filen vill ha noter. Vi vet inte det förrän det körts, och en
+    /// MIDI-effekt vill också ha noter — så svaret är ja, och en effekt som inte lyssnar på
+    /// `midirecv` struntar i dem.
+    fn accepts_notes(&self) -> bool {
+        true
+    }
+
+    fn note_on(&mut self, note: u8, velocity: u8) {
+        self.pending.push(MidiEvent { offset: 0, status: 0x90, data1: note, data2: velocity });
+    }
+
+    fn note_off(&mut self, note: u8) {
+        self.pending.push(MidiEvent { offset: 0, status: 0x80, data1: note, data2: 0 });
     }
 
     fn set_parameter(&mut self, id: u32, value: f64) -> bool {
@@ -189,6 +209,33 @@ mod tests {
     fn a_broken_jsfx_is_an_error_not_a_panic() {
         let path = temp_jsfx("broken", "@sample\nspl0 = ((( ;\n");
         assert!(load(path.to_str().unwrap(), 44_100.0).is_err());
+        let _ = std::fs::remove_file(path);
+    }
+
+    /// Ett instrument i kedjan ska låta först när det får en not — och tystna när noten släpps.
+    /// Provet går genom `PluginProcessor`, som är den väg kedjan använder.
+    #[test]
+    fn a_jsfx_instrument_plays_only_when_it_gets_a_note() {
+        let path = temp_jsfx(
+            "note-gate",
+            "@init\ng = 0;\n@sample\nwhile (midirecv(offset, m1, m2, m3)) (\n  st = m1 & 240;\n  st == 144 ? g = 0.5;\n  st == 128 ? g = 0;\n);\nspl0 = g; spl1 = g;\n",
+        );
+        let mut proc = load(path.to_str().unwrap(), 44_100.0).expect("instrument");
+        assert!(proc.accepts_notes(), "ett JSFX ska kunna ta noter");
+
+        let (mut l, mut r) = ([0.0f32; 256], [0.0f32; 256]);
+        proc.process_stereo(&mut l, &mut r);
+        assert!(l.iter().all(|s| *s == 0.0), "tyst utan not");
+
+        proc.note_on(60, 100);
+        let (mut l, mut r) = ([0.0f32; 256], [0.0f32; 256]);
+        proc.process_stereo(&mut l, &mut r);
+        assert!(l[0] > 0.4, "noten ska höras i nästa block, fick {}", l[0]);
+
+        proc.note_off(60);
+        let (mut l, mut r) = ([0.0f32; 256], [0.0f32; 256]);
+        proc.process_stereo(&mut l, &mut r);
+        assert!(l.iter().all(|s| *s == 0.0), "tyst efter not av");
         let _ = std::fs::remove_file(path);
     }
 }
