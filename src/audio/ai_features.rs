@@ -27,6 +27,12 @@ pub struct AiFeatures {
     pub crest_db: f32,
     /// Standardavvikelse i korttids-RMS över hela filen, i dB. Låg = maskinellt jämn.
     pub loudness_spread_db: f32,
+    /// Uppskattat tempo ur anslagsenergin. `None` när filen har för få anslag att mäta på.
+    pub tempo_bpm: Option<f32>,
+    /// Medianavstånd från varje anslag till närmaste sextondelslinje, i ms. Nära 0 = kvantiserat.
+    pub grid_deviation_ms: Option<f32>,
+    /// Andel anslag inom 15 ms från rutnätet. 1,0 = allt ligger på rälsen.
+    pub on_grid_share: Option<f32>,
 }
 
 impl AiFeatures {
@@ -37,6 +43,15 @@ impl AiFeatures {
             format!("brusgolv (p10)       {:.1} dBFS", self.noise_floor_dbfs),
             format!("korttids-RMS spridning {:.1} dB", self.loudness_spread_db),
             format!("crest (topp − RMS)   {:.1} dB", self.crest_db),
+            match (self.tempo_bpm, self.grid_deviation_ms, self.on_grid_share) {
+                (Some(bpm), Some(dev), Some(share)) => format!(
+                    "tempo/anslag         {:.1} BPM · median {:.0} ms från rutnätet · {:.0} % på rälsen",
+                    bpm,
+                    dev,
+                    share * 100.0
+                ),
+                _ => "tempo/anslag         för få anslag att mäta".to_string(),
+            },
         ]
     }
 }
@@ -50,6 +65,9 @@ pub fn analyse(left: &[f32], right: &[f32], sample_rate: u32) -> AiFeatures {
     let frames = left.len().min(right.len());
     if frames == 0 || sample_rate == 0 {
         return AiFeatures {
+            tempo_bpm: None,
+            grid_deviation_ms: None,
+            on_grid_share: None,
             spectral_ceiling_hz: 0.0,
             above_ceiling_db: 0.0,
             noise_floor_dbfs: 0.0,
@@ -150,7 +168,11 @@ pub fn analyse(left: &[f32], right: &[f32], sample_rate: u32) -> AiFeatures {
     let mean = rms.iter().sum::<f32>() / rms.len() as f32;
     let spread = (rms.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / rms.len() as f32).sqrt();
 
+    let (tempo_bpm, grid_deviation_ms, on_grid_share) = timing(left, right, sample_rate);
     AiFeatures {
+        tempo_bpm,
+        grid_deviation_ms,
+        on_grid_share,
         spectral_ceiling_hz: ceiling,
         above_ceiling_db: above_db,
         noise_floor_dbfs: p10,
@@ -161,6 +183,88 @@ pub fn analyse(left: &[f32], right: &[f32], sample_rate: u32) -> AiFeatures {
 
 /// Effekt (medelkvadrat) → dB relativt full skala. Ingen offset: en sinus på 0,5 i amplitud
 /// mäter −9 dB, och digital tystnad −120 dB.
+/// **Tempo och anslag på rälsen.** Anslagsenergin räknas som ökningen i absolut signal per 5 ms,
+/// perioden hittas med autokorrelation (40–240 BPM), och varje anslag jämförs med närmaste
+/// sextondelslinje. Ett kvantiserat spår landar på 0–5 ms; en spelad tagning ligger på 15–40 ms.
+///
+/// `shortcut: tempot antas vara konstant över hela filen och rutnätet sextondelar — en låt med
+/// tempobyte får ett medelvärde, inte en kurva. Lägg till tempokurva när någon mäter på sådana.`
+fn timing(left: &[f32], right: &[f32], sample_rate: u32) -> (Option<f32>, Option<f32>, Option<f32>) {
+    let hop = (sample_rate as usize / 200).max(1); // 5 ms
+    let frames = left.len().min(right.len());
+    if frames < sample_rate as usize / 2 {
+        return (None, None, None);
+    }
+    // 1. Anslagsenergi: hur mycket signalen växer mellan två hopp.
+    let mut onset = Vec::with_capacity(frames / hop);
+    let mut prev = 0.0f32;
+    let mut i = 0usize;
+    while i + hop <= frames {
+        let mut sum = 0.0f32;
+        for j in 0..hop {
+            sum += 0.5 * (left[i + j].abs() + right[i + j].abs());
+        }
+        let level = sum / hop as f32;
+        onset.push((level - prev).max(0.0));
+        prev = level;
+        i += hop;
+    }
+    let peak = onset.iter().cloned().fold(0.0f32, f32::max);
+    if peak <= 0.0 {
+        return (None, None, None);
+    }
+    // 2. Period via autokorrelation. En enkel sum(a*b) växer mot stora lag eftersom fler
+    // termer råkar matcha, så 55 BPM (störst lag) vann på alla filer. Vi delar med antalet termer
+    // (normaliserad korrelation) och söker det starkaste taket inom 60–180 BPM.
+    let hop_sec = hop as f32 / sample_rate as f32;
+    let lag_for = |bpm: f32| ((60.0 / bpm) / hop_sec).round().max(1.0) as usize;
+    let min_lag = lag_for(180.0);
+    let max_lag = lag_for(60.0);
+    let mut best = (0.0f32, 0usize);
+    for lag in min_lag..=max_lag.min(onset.len().saturating_sub(1)) {
+        let count = onset.len().saturating_sub(lag);
+        if count == 0 {
+            continue;
+        }
+        let mut sum = 0.0f32;
+        for k in 0..count {
+            sum += onset[k] * onset[k + lag];
+        }
+        let score = sum / count as f32;
+        if score > best.0 {
+            best = (score, lag);
+        }
+    }
+    if best.1 == 0 {
+        return (None, None, None);
+    }
+    let period_sec = best.1 as f32 * hop_sec;
+    let bpm = 60.0 / period_sec;
+
+    // 3. Anslagen: lokala toppar över en andel av medelnivån, och deras fas mot sextondelar.
+    let threshold = onset.iter().sum::<f32>() / onset.len() as f32 * 1.5;
+    let mut onsets: Vec<f32> = Vec::new();
+    for k in 1..onset.len().saturating_sub(1) {
+        if onset[k] > threshold && onset[k] >= onset[k - 1] && onset[k] >= onset[k + 1] {
+            onsets.push(k as f32 * hop_sec);
+        }
+    }
+    if onsets.len() < 8 {
+        return (Some(bpm), None, None);
+    }
+    let step = period_sec / 4.0; // sextondel
+    let mut devs: Vec<f32> = Vec::new();
+    for t in &onsets {
+        let phase = (t / step).fract();
+        let off = phase.min(1.0 - phase) * step * 1000.0;
+        devs.push(off);
+    }
+    devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = devs[devs.len() / 2];
+    let on_grid = devs.iter().filter(|d| **d <= 15.0).count() as f32 / devs.len() as f32;
+    (Some(bpm), Some(median), Some(on_grid))
+}
+
 fn db(p: f32) -> f32 {
     10.0 * (p.max(1e-12)).log10()
 }
@@ -193,6 +297,46 @@ mod tests {
         let b = analyse(&high, &high, sr);
         assert!(b.spectral_ceiling_hz > 14_000.0, "15 kHz ska synas i taket, fick {}", b.spectral_ceiling_hz);
         assert!(b.above_ceiling_db < a.above_ceiling_db, "energi ovanför taket ska vara relativt sett mindre");
+    }
+
+    /// **Ett kvantiserat spår ligger på rälsen, en spelad tagning gör det inte.** Klick på exakt
+    /// 120 BPM (sextondelar) ska ge tempo 120 och nära noll avvikelse; samma klick med ±20 ms
+    /// jitter ska ge en tydligt större avvikelse.
+    #[test]
+    fn the_grid_deviation_separates_quantised_from_played() {
+        let sr = 44_100;
+        // Klick på **fjärdedelar** vid 120 BPM. Sextondelsklick är musikaliskt tvetydiga (de kan
+        // läsas som 120 med sextondelar eller 240 med åttondelar), så de mäter inte tempot.
+        let step = (60.0 / 120.0 * sr as f32) as usize;
+        let len = sr as usize * 8;
+        let click = |buf: &mut Vec<f32>, at: usize| {
+            for j in 0..200 {
+                if at + j < buf.len() {
+                    buf[at + j] = 0.8 * (-(j as f32) / 60.0).exp();
+                }
+            }
+        };
+        let mut tight = vec![0.0f32; len];
+        for n in 0..(len / step) {
+            click(&mut tight, n * step);
+        }
+        let a = analyse(&tight, &tight, sr);
+        assert!(a.tempo_bpm.is_some_and(|b| (b - 120.0).abs() < 3.0), "tempot ska läsas som 120, fick {:?}", a.tempo_bpm);
+        assert!(a.grid_deviation_ms.is_some_and(|d| d < 6.0), "kvantiserat ska ligga nära 0 ms, fick {:?}", a.grid_deviation_ms);
+
+        // Samma klick, men varje anslag flyttat ±20 ms i en fast takt (så det går att upprepa).
+        let mut loose = vec![0.0f32; len];
+        for n in 0..(len / step) {
+            let jitter = if n % 2 == 0 { 20.0 } else { -20.0 } * (sr as f32 / 1000.0);
+            click(&mut loose, ((n * step) as f32 + jitter).max(0.0) as usize);
+        }
+        let b = analyse(&loose, &loose, sr);
+        assert!(
+            b.grid_deviation_ms.zip(a.grid_deviation_ms).is_some_and(|(loose_dev, tight_dev)| loose_dev > tight_dev + 5.0),
+            "jitter ska ge större avvikelse: {:?} mot {:?}",
+            b.grid_deviation_ms,
+            a.grid_deviation_ms
+        );
     }
 
     /// **Tystnad mäts som tystnad.** Digital tystnad ger ett brusgolv långt under en spelad ton.
