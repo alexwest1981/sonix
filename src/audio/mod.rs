@@ -12,6 +12,7 @@ pub mod project_script;
 pub mod resample;
 pub mod script;
 pub mod control_room;
+pub mod ddp;
 pub mod dither;
 pub mod drum;
 pub mod edison;
