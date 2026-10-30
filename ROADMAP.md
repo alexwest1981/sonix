@@ -156,9 +156,9 @@ står i tabellen direkt nedanför; hårdvaran (Windows-porten, en riktig yabridg
 
 | # | Vad | Storlek | Varför det står här |
 | :--: | :--- | :---: | :--- |
-| 1 | **Instrumentets svans i synten** | *S–M* | Ett JSFX-instrument som källa (`SetInstrument`) går genom `master_volume` + `tanh` men **inte** genom slutsteget (gate, DJ-FX) — grenen returnerar före `process_stereo`s svans. Kräver att svansen lyfts ut till en delad metod. Syntens filter/ADSR hoppas också över, vilket står i knappens hover. |
+| 1 | **Instrumentets svans i synten** — *✅* | *S–M* | Slutsteget ligger nu i `finish_master`, delat av rösterna och instrumentet: modulation, volym, pan, `tanh`, gate/remix, tape stop, control room och talkback. Instrumentet passerar dessutom masterns FX-kedja. **Kvar:** syntens egna filter/ADSR hoppas fortfarande över (instrumentet är en rå källa), och det står i knappens hover. |
 | 2 | **`neural` i de vanliga paketen** | *M* | ORTs färdiga bibliotek kräver glibc ≥ 2.32 och vårt golv är 2.28, så neural separation skeppas som en egen `-neural`-tarball på ubuntu-24.04. Vägen runt är `ort`s `load-dynamic` (dlopen) + att binären hittar/levererar `libonnxruntime.so`. |
-| 3 | **`daw-bold` i temaregistret** | *S* | Temat ligger bara i `~/.config/sonix/themes/`. Registret är `sonix-themes` med `index.json` + sha256 per fil. |
+| 3 | **`daw-bold` i temaregistret** — *✅* | *S* | `sonix-themes` `dc4dc81`: `daw-bold.json` + rad i `index.json`. Kontrollerat mot GitHub raw att sha256 i registret är filens — appens installationsgrind godkänner den. |
 | 4 | **UI-förslagets lay-out** | *S–M per rad* | Kvar av Vercel-förslaget: spårhuvud 228 px/123 px rad, klipp-metadata, Inter, och **197** `Rounding::same` + 22 spacing-ställen. Färgerna är tagna. Se `docs/UI-PROPOSAL.md`. |
 | 5 | **Timingmått i `--ai-features`** | *M* | Spektralt tak, brusgolv, RMS-spridning och crest finns; timing kräver tempospårning, och en felaktig takt ger ett svar som ser lika säkert ut som ett riktigt. |
 
