@@ -1,0 +1,10 @@
+@prefix lv2:  <http://lv2plug.in/ns/lv2core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+<http://sonix.test/lv2/amp>
+    a lv2:Plugin , lv2:AmplifierPlugin ;
+    lv2:binary <lv2_amp.so> ;
+    rdfs:seeAlso <amp.ttl> .
+
+<lv2_amp.so>
+    a lv2:Binary .

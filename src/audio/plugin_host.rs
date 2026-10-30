@@ -43,15 +43,17 @@ impl PluginFormat {
     }
 }
 
-/// **Är filen en LV2-bunt?** (2026-09-15)
+/// **Is the path an LV2 bundle?**
 ///
-/// Sonix har ingen LV2-värd. Utan den här frågan skickades bunten till CLAP-laddaren och svaret
-/// blev `undefined symbol: clap_entry` — ett svar som beskriver **vår** laddare, inte användarens
-/// fil. Regeln bor här och inte i kommandoraden så att den går att pröva utan plugin och utan
-/// fönster, och så att appen och kommandoraden ger samma svar.
+/// LV2 is not CLAP and not VST, so the answer decides which host gets the file:
+/// `plugin_host_live::load_processor` routes every `true` to [`crate::audio::lv2`].
+/// Before that host existed the same question was asked to *refuse* the bundle,
+/// because the CLAP loader's answer was `undefined symbol: clap_entry` — which
+/// describes our loader, not the user's file.
 ///
-/// Både själva bunten (`…/Surge XT.lv2`) och en fil inuti den (`…/Surge XT.lv2/libSurge XT.so`)
-/// räknas: en användare pekar på vilket som helst av dem.
+/// Both the bundle itself (`…/Surge XT.lv2`) and a file inside it
+/// (`…/Surge XT.lv2/libSurge XT.so`, `…/manifest.ttl`) count: a user points at
+/// any of them.
 pub fn is_lv2_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
     lower.ends_with(".lv2")
@@ -78,37 +80,37 @@ mod lv2_probe_tests {
         assert!(!is_lv2_path("/home/alex/.vst3/Surge XT Effects.vst3"));
     }
 
-    /// **Ingen påslagen skanningsväg lovar LV2** (2026-09-15). Det är hela poängen med att
-    /// stänga av raden: en påslagen väg som hittar filer vi inte kan ladda är ett löfte koden
-    /// inte håller. Provet läser **listan**, inte texten — en omskriven beskrivning hade sett
-    /// bra ut medan vägen fortfarande skannade.
+    /// **An LV2 path is routed, not refused.** This test used to assert the
+    /// opposite — that no enabled scan path promised LV2 — because there was no
+    /// LV2 host to promise. With `audio::lv2` in place the row is on and the
+    /// path reaches a loader instead of a refusal.
     #[test]
-    fn no_enabled_scan_path_promises_lv2() {
+    fn lv2_is_offered_and_not_refused() {
         let manager = crate::audio::plugin_host::PluginManager::default();
-        let enabled: Vec<&str> = manager
-            .scan_paths
-            .iter()
-            .filter(|p| p.enabled)
-            .map(|p| p.path.as_str())
-            .collect();
-        assert!(
-            !enabled
-                .iter()
-                .any(|p| p.to_ascii_lowercase().contains("lv2")),
-            "en påslagen skanningsväg lovar LV2: {enabled:?}"
-        );
-        // Raden ska stå **kvar**, avstängd och med orsaken: den som undrar var sina LV2-plugins
-        // är ska få svaret i gränssnittet i stället för att leta i en logg.
         let lv2 = manager
             .scan_paths
             .iter()
-            .find(|p| p.path.contains("lv2"))
-            .expect("LV2-raden ska stå kvar, avstängd");
-        assert!(!lv2.enabled, "LV2-raden ska vara avstängd");
-        assert!(
-            !lv2.description.is_empty(),
-            "och orsaken ska stå i beskrivningen"
-        );
+            .find(|p| p.path.contains("/lv2"))
+            .expect("the LV2 scan path must exist");
+        assert!(lv2.enabled, "the LV2 scan path is enabled now");
+        assert!(!lv2.description.is_empty());
+        assert!(super::is_lv2_path("/usr/lib/lv2/Surge XT.lv2"));
+    }
+
+    /// The route itself: an `.lv2` path that does not exist must fail in the LV2
+    /// host, not in the CLAP loader (`undefined symbol: clap_entry`).
+    #[cfg(feature = "plugin-host")]
+    #[test]
+    fn lv2_paths_reach_the_lv2_host() {
+        let err = crate::audio::plugin_host_live::load_processor(
+            "/nonexistent/Surge XT.lv2",
+            48_000.0,
+            128,
+        )
+        .err()
+        .expect("a missing bundle must fail");
+        assert!(err.to_ascii_lowercase().contains("lv2"), "{err}");
+        assert!(!err.contains("clap_entry"), "{err}");
     }
 }
 
@@ -276,16 +278,16 @@ impl PluginManager {
                 is_wine: false,
                 is_fl_path: false,
             },
-            // **LV2: avstängd, och det står varför** (2026-09-15). Sonix har ingen LV2-värd —
-            // bunten skickas till CLAP-laddaren och svarar `undefined symbol: clap_entry`. Att
-            // låta raden vara på och beskrivas som ett stöd var ett löfte koden inte höll: filen
-            // dök upp i listan och gick inte att ladda. Raden står kvar, avstängd och med
-            // orsaken utskriven, i stället för att tyst försvinna — den som undrar var sina
-            // LV2-plugins är får svaret här.
+            // **LV2: enabled now that there is a host** (see `audio::lv2`).
+            // The row was switched off while Sonix had no LV2 backend, because an
+            // enabled path that finds files we cannot load is a promise the code
+            // does not keep: the bundle went to the CLAP loader and answered
+            // `undefined symbol: clap_entry`. `load_processor` now routes `.lv2`
+            // paths to the LV2 host, so the row tells the truth again.
             ScanPath {
                 path: "/usr/lib/lv2".to_string(),
-                enabled: false,
-                description: crate::i18n::t("Linux LV2 (ingen LV2-värd i Sonix än)").to_string(),
+                enabled: true,
+                description: "Linux LV2".to_string(),
                 is_wine: false,
                 is_fl_path: false,
             },
@@ -726,6 +728,12 @@ impl PluginManager {
             if path.is_dir() {
                 // If it ends with .vst3, .lv2, or .clap, treat the directory itself as a plugin bundle
                 if file_name.ends_with(".vst3") || file_name.ends_with(".lv2") || file_name.ends_with(".clap") {
+                    // `/usr/lib/lv2` is mostly *spec* bundles (`atom.lv2` …): Turtle
+                    // only, no binary. They are not plugins, so they must not fill
+                    // the list with rows that cannot be loaded.
+                    if file_name.ends_with(".lv2") && !walk_find_so(&path, 0) {
+                        continue;
+                    }
                     self.register_discovered_file(&path, &file_name, is_wine);
                     *count += 1;
                 } else {
