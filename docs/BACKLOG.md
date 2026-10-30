@@ -32,7 +32,7 @@ posten kommer från.
 | 9 | **JACK-backend** — cpal 0.15 har ingen JACK-väg; kräver `jack`-craten och en omskrivning av trådmodellen | REAPER | **M** |
 | 10 | ◐ **Kontrollerytor**: MCU + **BCF2000** + **FaderPort** klara (rena parsers, testade byte för byte). Kvar: BabyHUI, OSC-yta, LED/display tillbaka till enheten | båda | **M** |
 | 11 | ✅ **VST3/VST2 genom sandboxen** (VST2 ej testad — ingen VST2-binär finns här) | REAPER | **M** |
-| 12 | ◐ **Opus klart** i processen (0,000 dB mot ffmpeg). Kvar: WavPack, AIFF | REAPER | **S–M** |
+| 12 | ◐ **Opus klart** i processen (0,000 dB mot ffmpeg); **AIFF** pågår. **WavPack blockerad**: ingen `libwavpack` på maskinen och ingen ren Rust-dekoder — den vägen går via `ffmpeg` tills vidare | REAPER | **S–M** |
 
 ## 3. Stort (L) — inte en ratt
 
