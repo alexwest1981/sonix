@@ -16,7 +16,7 @@ use super::vocal_harmonizer::fft_radix2;
 
 #[derive(Clone, Copy, Default)]
 
-struct BiquadCoeffs {
+pub(crate) struct BiquadCoeffs {
     b0: f32,
     b1: f32,
     b2: f32,
@@ -660,6 +660,7 @@ mod exciter;
 mod dynamics;
 mod eq;
 mod modulation;
+mod roar;
 mod space;
 mod time;
 
@@ -668,6 +669,7 @@ pub use exciter::*;
 pub use dynamics::*;
 pub use eq::*;
 pub use modulation::*;
+pub use roar::*;
 pub use space::*;
 pub use time::*;
 

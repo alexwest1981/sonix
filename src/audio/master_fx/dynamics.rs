@@ -220,7 +220,7 @@ impl TransientShaper {
 // ---------------------------------------------------------------------------
 
 /// RBJ-lågpass (2:a ordningen). Två i rad = Linkwitz-Riley 4:e ordningen.
-fn lowpass_coeffs(sr: f32, freq: f32, q: f32) -> BiquadCoeffs {
+pub(crate) fn lowpass_coeffs(sr: f32, freq: f32, q: f32) -> BiquadCoeffs {
     let w0 = 2.0 * PI * freq.clamp(20.0, sr * 0.45) / sr;
     let cos_w0 = w0.cos();
     let alpha = w0.sin() / (2.0 * q.max(0.05));
@@ -235,7 +235,7 @@ fn lowpass_coeffs(sr: f32, freq: f32, q: f32) -> BiquadCoeffs {
 }
 
 /// RBJ-högpass (2:a ordningen) — syster till [`lowpass_coeffs`].
-fn highpass_coeffs(sr: f32, freq: f32, q: f32) -> BiquadCoeffs {
+pub(crate) fn highpass_coeffs(sr: f32, freq: f32, q: f32) -> BiquadCoeffs {
     let w0 = 2.0 * PI * freq.clamp(20.0, sr * 0.45) / sr;
     let cos_w0 = w0.cos();
     let alpha = w0.sin() / (2.0 * q.max(0.05));
