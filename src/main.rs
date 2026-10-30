@@ -549,6 +549,73 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // `sonix --export-ddp <fil.wav> <utmapp> [titel:start_sampel[:isrc] ...]`: writes a
+    // Red Book DDP 2.00 image from one 44.1 kHz stereo WAV. `--export-cue` writes the
+    // same program as CUE/BIN instead. Neither burns anything — the image is data.
+    if let Some(pos) = std::env::args().position(|a| a == "--export-ddp" || a == "--export-cue") {
+        let cue = std::env::args().nth(pos).as_deref() == Some("--export-cue");
+        let flag = if cue { "--export-cue" } else { "--export-ddp" };
+        let args: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if args.len() < 2 {
+            eprintln!("usage: sonix {flag} <file.wav> <out-dir> [title:start_sample[:isrc] ...]");
+            std::process::exit(2);
+        }
+        let mut tracks: Vec<audio::ddp::TrackSpec> = Vec::new();
+        for spec in &args[2..] {
+            let mut parts = spec.splitn(3, ':');
+            let (Some(title), Some(start)) = (parts.next(), parts.next()) else {
+                eprintln!("{flag}: \"{spec}\" is not title:start_sample[:isrc]");
+                std::process::exit(2);
+            };
+            let Ok(start_sample) = start.parse::<u64>() else {
+                eprintln!("{flag}: \"{start}\" in \"{spec}\" is not a sample count");
+                std::process::exit(2);
+            };
+            tracks.push(audio::ddp::TrackSpec {
+                title: title.to_string(),
+                start_sample,
+                isrc: parts.next().map(str::to_string),
+            });
+        }
+        if tracks.is_empty() {
+            let stem = std::path::Path::new(&args[0])
+                .file_stem()
+                .map(|s| s.to_string_lossy().into_owned())
+                .unwrap_or_default();
+            tracks.push(audio::ddp::TrackSpec {
+                title: stem,
+                start_sample: 0,
+                isrc: None,
+            });
+        }
+        let meta = audio::exporter::ExportMeta::default();
+        let written = if cue {
+            audio::ddp::export_cue_bin(&args[0], &args[1], &tracks, &meta)
+        } else {
+            audio::ddp::export_ddp(&args[0], &args[1], &tracks, &meta)
+        };
+        match written {
+            Ok(r) => {
+                println!(
+                    "{}: {} track(s), {} sectors ({} frames) → {}",
+                    if cue { "CUE/BIN" } else { "DDP" },
+                    r.tracks,
+                    r.sectors,
+                    r.frames,
+                    args[1]
+                );
+                for f in &r.files {
+                    println!("  {f}");
+                }
+                std::process::exit(0);
+            }
+            Err(e) => {
+                eprintln!("{flag} failed: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // `sonix --detect-bpm <fil...>`: uppskattar tempot ur en ljudfil. Verktyget finns
     // för att analysen ska kunna MÄTAS mot riktiga stämmor innan den får styra ett
     // projekt — ett gissat tempo ställer hela låten fel.
