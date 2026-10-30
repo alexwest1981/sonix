@@ -178,6 +178,25 @@ baslinje, vald flik öppnar den) · kategorier/underverktyg på egna rader · MC
 | 3 | **Temafiler (JSON) med semantiska namn** — *✅* | *M* | Paletten är en `Palette` med **29 semantiska nycklar** (`bg`, `panel`, `orange`, `track_teal` …) i `~/.config/sonix/theme.json`; filen skrivs med standardpaletten första gången, så den går att redigera, och bara de nycklar man anger ändras. **2476** `Theme::`-anrop bytta till `palette().x()` (mekaniskt, men typkontrollerat). Typografin ligger kvar som konstanter: en temafil ska inte kunna göra texten oläsbar. Prov: bara angivna nycklar ändras, paletten går runt JSON, och den kompakterade filen är fortfarande giltig JSON |
 | 4 | **Fokus/Tab mellan ytorna, zoom-kommandon, ledtrådar** — *✅* | *S–M* | **Tab/Shift+Tab** går genom alla 13 ytor, **Ctrl + +/−** zoomar pianorullens rutnät (Ctrl+0 nollställer), och de **kryptiska** knapparna har ledtråd: M/S på kanal, buss och grupp, chop-delarna, zonens papperskorg, mallens ✖, ▶ i webbläsaren, ✕/⬆ i promptrutan. Provat: ett varv återvänder, ingen yta dubbel, zoomen stannar vid sina ändar.  Abletons `Focus*` och `Zoom*` är adresserbara; 2 302 `sInfoText` mot våra 135 `on_hover_text` är den tydligaste hjälpklacken |
 
+### Vad REAPER-binären har som vi inte har (2026-10-30)
+
+Mätt i `docs/REAPER-BINARY-MAP.md` — varje rad har symbol- eller strängbevis ur `reaper` och
+`Plugins/*.so`. **REAPER har ingen egen synth**: deras instrument *är* JSFX-filerna, och dem kör vi
+redan via vår EEL2-motor. Det som fattas är lagret runtomkring.
+
+| # | Vad | Storlek | Varför |
+| :--: | :--- | :---: | :--- |
+| 1 | **Rubber Band** (formantbevarande stretch) | *S* | `rubberband.so` i REAPER; vi har bara egen WSOLA. Länka lib + exponera lägena. |
+| 2 | **Kodekar i processen** (FLAC, MP3, Opus, WavPack, Vorbis) | *M* | Vi går via extern `ffmpeg`-binär; saknas den kan inget komprimerat importeras. Rena Rust-libs (symphonia/claxon/lewton). |
+| 3 | **LV2-hosting** | *M* | `PluginFormat::Lv2` finns bara för att avvisa; REAPER har egen skanner (151 `lv2`-träffar). Litet API, UI/state är det som kostar. |
+| 4 | **Lua bredvid Rhai** | *S* (Lua) / *L* (API) | REAPER: Lua 5.4.6 + 732 `RPR_`-funktioner. Språket är billigt, API-ytan är dyr. |
+| 5 | **DDP-export** (CUE/BIN, CD-TEXT/ISRC) | *S–M* | `reaper_ddp.so`; ren filskrivning, bränning kräver `cdrecord`. |
+| 6 | **JACK-backend** | *M* | `audioStreamer_JACK`; vi har cpal/ALSA. |
+| 7 | **Omsampling i r8brain-klass** | *◐* | Vi har nu fönstrat sinc (`audio::resample`, −75,6 dB rundtur); kvar är polyfas-tabell om CPU blir ett problem. |
+| 8 | **Videomotor** (avkoda + koda + FX) | *L* | `reaper_video.so`; vi har bara `probe()` + en bildruta. |
+| 9 | **élastique Pro** | *L* (licens) | `elastique3.so`; kommersiell licens, inte kod. |
+| 10 | **HTTP-server/webbgränssnitt**, **ReaRoute**, **.ins-definitioner**, **Python-skript** | *S–M var* | Mindre, men mätta i kartan. |
+
 ### Kräver ett nytt lager — inte en ratt
 
 | # | Vad | Storlek | Lagret som måste byggas först |
