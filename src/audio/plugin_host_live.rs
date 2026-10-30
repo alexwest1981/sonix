@@ -158,6 +158,9 @@ pub fn inspect(path: &str) -> PluginInspection {
     }
     #[cfg(feature = "plugin-host")]
     {
+        if crate::audio::plugin_host::is_lv2_path(path) {
+            return crate::audio::lv2::inspect(path);
+        }
         if crate::audio::plugin_vst3::is_vst3_path(path) {
             return crate::audio::plugin_vst3::inspect(path);
         }
@@ -462,6 +465,11 @@ pub fn load_processor(
     }
     #[cfg(feature = "plugin-host")]
     {
+        // LV2 bundles are directories whose manifest names the binary; the CLAP
+        // loader cannot open one, so they get their own host.
+        if crate::audio::plugin_host::is_lv2_path(path) {
+            return crate::audio::lv2::load_processor(path, sample_rate, max_frames);
+        }
         if crate::audio::plugin_vst3::is_vst3_path(path) {
             return crate::audio::plugin_vst3::load_processor(path, sample_rate, max_frames);
         }

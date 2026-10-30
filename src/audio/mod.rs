@@ -66,6 +66,10 @@ pub mod plugin_vst3;
 // Minimal in-process VST2 host (Fas 4.6c). Feature-gated like the CLAP/VST3 ABIs.
 #[cfg(feature = "plugin-host")]
 pub mod plugin_vst2;
+// Minimal in-process LV2 host (dlopen + `lv2_descriptor`). Feature-gated like the
+// CLAP/VST2/VST3 ABIs.
+#[cfg(feature = "plugin-host")]
+pub mod lv2;
 // The live CLAP host's ABI code is feature-gated; the shared data types and
 // `inspect()` are always compiled so the UI can show an honest status.
 #[allow(dead_code)]
