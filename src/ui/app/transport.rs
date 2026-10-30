@@ -1896,6 +1896,62 @@ pub(crate) fn poll_hardware_control(&mut self) {
     } else {
         self.midi_keyboard_connected = false;
     }
+    self.send_surface_feedback();
+}
+
+/// Tells the connected surface what the mixer shows. Runs once per frame, but an
+/// unchanged mixer sends nothing — otherwise a fader would get a message per repaint.
+fn send_surface_feedback(&mut self) {
+    // MCU keeps its ALSA path; a byte surface is only fed once it is connected.
+    if self.surface_input.is_none() || self.midi_out.is_none() {
+        return;
+    }
+    let feedback = self.surface_feedback_now();
+    if self.surface_feedback_sent.as_ref() == Some(&feedback) {
+        return;
+    }
+    let bytes = crate::audio::control_surfaces::encode_feedback(self.surface_kind, &feedback);
+    let sent = match &self.midi_out {
+        Some(out) => Some(out.send(&bytes)),
+        None => None,
+    };
+    // Stored even on error, so a dead port retries on the next change instead of
+    // shouting once per frame.
+    self.surface_feedback_sent = Some(feedback);
+    if let Some(Err(e)) = sent {
+        self.status_message = crate::tstatus!("⚠ Kontrollyta: {}", e);
+    }
+}
+
+/// The mixer state a surface displays, in the 7-bit numbers its parser hands back.
+fn surface_feedback_now(&self) -> SurfaceFeedback {
+    let mut f = SurfaceFeedback {
+        playing: self.is_playing,
+        recording: self.is_recording_timeline,
+        ..SurfaceFeedback::default()
+    };
+    for (i, track) in self.playlist_tracks.iter().take(8).enumerate() {
+        f.volume[i] = (track.volume.clamp(0.0, 1.25) / 1.25 * 127.0).round() as u8;
+        f.mute[i] = track.muted;
+        f.solo[i] = track.solo;
+    }
+    f.line1 = format!(
+        "{} {} {:>5.1} BPM",
+        if f.playing { "PLAY" } else { "STOP" },
+        if f.recording { "REC" } else { "---" },
+        self.bpm
+    );
+    if let Some(track) = self.playlist_tracks.first() {
+        f.line2 = format!("{} {}", track.name, f.volume[0]);
+    }
+    // FaderPort's 7-segment display: the bar number, three digits.
+    let bar = self.current_step / 16 + 1;
+    f.position = vec![
+        (bar / 100 % 10) as u8,
+        (bar / 10 % 10) as u8,
+        (bar % 10) as u8,
+    ];
+    f
 }
 }
 
