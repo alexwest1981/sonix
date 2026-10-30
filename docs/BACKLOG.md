@@ -10,7 +10,7 @@ posten kommer från.
 | :--: | :--- | :--- | :---: | :--- |
 | 1 | ✅ **Cytomic-filtren**: Sallen-Key MS2/MD/SD, StateV OSR, Ladder PRD med drive i återkopplingen | Ableton | **M** | Frekvensgång per typ (3 dB-punkt, resonanstopp), THD vid drive |
 | 2 | ✅ **Multibandssaturator (`Roar`)**: 3 stag, 12 shaper-lägen, 8 filtertyper, feedback | Ableton | **M** | Övertoner per shaper (THD per läge), bandläckage |
-| 3 | **MIDI-effekter som egen kedja** (skala, ackord, arpeggio, notlängd, pitch, delay, random, velocity) | Ableton | **M** | Notantal in/ut per effekt, timing i samples |
+| 3 | ◐ **MIDI-effekter** — skala/transponering/anslag/kanal (zonkartan), arpeggio, strum, **ackord** klara. Kvar: notlängd, notdelay, random | Ableton | **S** | Notantal in/ut per effekt, timing i samples |
 | 4 | ✅ **DDP-export** (CUE/BIN, CD-TEXT, ISRC) | REAPER | **S–M** | Filstruktur mot spec, red book-ordning |
 | 5 | **Lua bredvid Rhai** | REAPER | **S** | Ett skript i vardera språket ger samma noter |
 

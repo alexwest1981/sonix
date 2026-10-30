@@ -56,9 +56,27 @@ impl Default for MapZone {
     }
 }
 
+/// **Ackordlägen** — halvtoner ovanför den spelade tonen (grundtonen spelas alltid själv).
+///
+/// Läget multiplicerar en tangenttryckning till flera noter. Släppet räknar fram samma
+/// intervall ur samma not, så ingen tabell över hållna noter behövs: `apply` är deterministisk.
+pub const CHORD_MODES: [(&str, &[i8]); 8] = [
+    ("Av", &[]),
+    ("Oktav", &[12]),
+    ("Kvint", &[7]),
+    ("Power", &[7, 12]),
+    ("Dur", &[4, 7]),
+    ("Moll", &[3, 7]),
+    ("Septima", &[3, 7, 10]),
+    ("Sus4", &[5, 7]),
+];
+
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct KeyMap {
     pub enabled: bool,
+    /// Index i `CHORD_MODES`. `#[serde(default)]` så att äldre projekt öppnas som förut.
+    #[serde(default)]
+    pub chord: u8,
     pub zones: [MapZone; ZONES],
 }
 
@@ -66,6 +84,7 @@ impl Default for KeyMap {
     fn default() -> Self {
         Self {
             enabled: false,
+            chord: 0,
             zones: [MapZone::default(); ZONES],
         }
     }
@@ -101,6 +120,25 @@ impl KeyMap {
             return (transposed, scaled, zone.channel.unwrap_or(channel));
         }
         (note, velocity, channel)
+    }
+}
+
+impl KeyMap {
+    /// Noterna en tangent ska spela: grundtonen (efter kartan) plus ackordets intervall.
+    /// Kartan måste vara påslagen — annars spelar en tangent en not, som förut.
+    pub fn chord_notes(&self, note: u8) -> Vec<u8> {
+        let mut notes = vec![note];
+        if !self.enabled {
+            return notes;
+        }
+        let intervals = CHORD_MODES[(self.chord as usize).min(CHORD_MODES.len() - 1)].1;
+        for &semi in intervals {
+            let n = note as i16 + semi as i16;
+            if (0..=127).contains(&n) {
+                notes.push(n as u8);
+            }
+        }
+        notes
     }
 }
 
@@ -259,5 +297,23 @@ mod tests {
             60,
             "en grundton utanför 0–11 tolkas mod 12"
         );
+    }
+
+    #[test]
+    fn a_chord_mode_turns_one_key_into_several_notes() {
+        let mut map = KeyMap::default();
+        // Avstängd karta = en tangent, en not (som förut).
+        assert_eq!(map.chord_notes(60), vec![60]);
+        map.enabled = true;
+        // Moll: grundton, liten ters, kvint.
+        map.chord = 5;
+        assert_eq!(map.chord_notes(60), vec![60, 63, 67]);
+        // Samma not igen vid släpp — `chord_notes` är deterministisk, ingen tabell behövs.
+        assert_eq!(map.chord_notes(60), vec![60, 63, 67]);
+        // Översta tangenten får inga barn som hamnar utanför 0..127.
+        assert_eq!(map.chord_notes(127), vec![127]);
+        // Ett trasigt index ska inte panika.
+        map.chord = 200;
+        assert_eq!(map.chord_notes(60), vec![60, 65, 67]);
     }
 }

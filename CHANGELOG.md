@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.218] - 2026-10-30
+
+**Ackordläge på MIDI-ingången.** Tangentbordet kan spela ackord: åtta lägen (oktav, kvint, power,
+dur, moll, septima, sus4) ovanpå zonkartan, som redan har transponering, skalstämning och
+anslagskurva — alltså resten av Abletons MIDI-effekter, som visade sig redan finnas.
+
+Släppet räknar fram samma intervall ur samma not, så ingen tabell över hållna noter behövs
+(`KeyMap::chord_notes` är deterministisk). Mätt i prov: moll från C4 ger `60 63 67`, samma vid
+släpp, yttertangenten 127 ger bara sig själv, trasigt lägesindex ger dur i stället för panik.
+1 200 prov gröna.
+
 ## [0.9.217] - 2026-10-30
 
 Tre poster ur backloggen, alla med sin mätning.

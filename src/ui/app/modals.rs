@@ -323,6 +323,30 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                 .default_open(self.midi_map.enabled)
                 .show(ui, |ui| {
                     ui.checkbox(&mut self.midi_map.enabled, crate::i18n::t("Aktivera zoner"));
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::t("Ackord"));
+                        let current =
+                            crate::audio::key_mapper::CHORD_MODES[(self.midi_map.chord as usize)
+                                .min(crate::audio::key_mapper::CHORD_MODES.len() - 1)]
+                            .0;
+                        egui::ComboBox::from_id_salt("midi_chord")
+                            .selected_text(crate::i18n::t(current))
+                            .show_ui(ui, |ui| {
+                                for (idx, (name, _)) in
+                                    crate::audio::key_mapper::CHORD_MODES.iter().enumerate()
+                                {
+                                    if ui
+                                        .selectable_label(
+                                            self.midi_map.chord as usize == idx,
+                                            crate::i18n::t(name),
+                                        )
+                                        .clicked()
+                                    {
+                                        self.midi_map.chord = idx as u8;
+                                    }
+                                }
+                            });
+                    });
                     for (i, zone) in self.midi_map.zones.iter_mut().enumerate() {
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut zone.active, crate::tstatus!("Zon {}", i + 1));
