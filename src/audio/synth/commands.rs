@@ -510,6 +510,12 @@ impl SynthEngine {
                             self.sample_rate,
                         )),
                     ),
+                    // The struck modal resonator: its own pseudo-path, same command.
+                    Some(crate::audio::builtin_fx::modal_fx::MODAL_SOURCE_PATH) => Some(
+                        Box::new(crate::audio::builtin_fx::modal_fx::ModalSource::new(
+                            self.sample_rate,
+                        )),
+                    ),
                     Some(p) => match crate::audio::jsfx::processor::load(p, self.sample_rate) {
                         Ok(proc) => Some(proc),
                         Err(err) => {

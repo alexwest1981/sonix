@@ -141,6 +141,17 @@ pub fn render_plugins_view(
                     crate::audio::builtin_fx::wavetable_fx::WAVETABLE_SOURCE_PATH.to_string(),
                 );
             }
+            if ui
+                .button(crate::i18n::t("🔨 Modal som källa"))
+                .on_hover_text(crate::i18n::t(
+                    "Slår an en modal resonator med klubba (stapel/membran) med keyboard, MIDI och klipp i stället för syntens röster.",
+                ))
+                .clicked()
+            {
+                actions.instrument = Some(
+                    crate::audio::builtin_fx::modal_fx::MODAL_SOURCE_PATH.to_string(),
+                );
+            }
         });
         render_active_inserts(
             ui,

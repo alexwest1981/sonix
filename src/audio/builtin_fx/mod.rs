@@ -45,6 +45,7 @@ impl ParamDef {
 }
 
 mod hybrid_reverb_fx;
+pub mod modal_fx;
 mod roar_fx;
 pub mod wavetable_fx;
 
