@@ -5,6 +5,75 @@
 use super::*;
 
 impl SynthEngine {
+    /// **Slutsteget på mastern**, delat av rösterna och ett JSFX-instrument som källa:
+    /// modulationsmatris, volym, equal-power-pan, `tanh`, DJ-FX (gate, remix), tape stop,
+    /// control room och talkback. Samma kod för båda vägarna, annars glider de ifrån varandra.
+    fn finish_master(&mut self, fx_l: f32, fx_r: f32, talkback: f32) -> (f32, f32) {
+        // Modulationsmatrisen räknas per sampel, på masterns nivå före volymstegen.
+        // Utan aktiva rader hoppas hela steget över — det är den vanliga vägen.
+        let modulation = if self.modulation.is_empty() {
+            crate::audio::modulation::ModOut {
+                volume: 1.0,
+                pan: 0.0,
+                pitch: 0.0,
+                cutoff: 0.0,
+            }
+        } else {
+            let level = fx_l.abs().max(fx_r.abs());
+            self.modulation.tick(self.sample_rate, level)
+        };
+        self.mod_pitch = modulation.pitch;
+        self.mod_cutoff = modulation.cutoff;
+        let gain = (self.master_volume * modulation.volume).clamp(0.0, 4.0);
+        // Equal-power-pan: en panorering som bara sänker ena sidan tappar 3 dB i mitten.
+        let (pan_l, pan_r) = if modulation.pan.abs() < 0.001 {
+            (1.0, 1.0)
+        } else {
+            let angle = (modulation.pan.clamp(-1.0, 1.0) + 1.0) * 0.25 * std::f32::consts::PI;
+            (angle.cos() * std::f32::consts::SQRT_2, angle.sin() * std::f32::consts::SQRT_2)
+        };
+        let out_l = (fx_l * gain * pan_l).tanh();
+        let out_r = (fx_r * gain * pan_r).tanh();
+
+        // DJ performance FX on the final master bus.
+        let (out_l, out_r) = if self.gate_pattern.enabled {
+            self.step_gate.process(out_l, out_r, &self.gate_pattern)
+        } else {
+            (out_l, out_r)
+        };
+
+        let (out_l, out_r) = if self.remix_fx.is_active() {
+            self.remix_fx.process(out_l, out_r)
+        } else {
+            (out_l, out_r)
+        };
+        let (out_l, out_r) = self.tape_stop.process(out_l, out_r);
+
+        // **Control Room** sitter efter masterns FX-kedja: det man hör kan dimmas eller
+        // lyssnas i mono utan att det man exporterar ändras (exportmotorn får aldrig
+        // kommandot, så dess `control_room` är neutral).
+        let (out_l, out_r) = {
+            let cr = crate::audio::control_room::ControlRoom {
+                level: self.control_room.level,
+                dim: self.control_room.dim,
+                mono: self.control_room.mono,
+                mute: self.control_room.mute,
+            };
+            cr.apply(out_l, out_r)
+        };
+        // Talkback läggs på **efter** control room: DIM ska dämpa musiken, inte pratet, och
+        // den som lyssnar på en cue-buss ska höra pratet över den bussen.
+        let main_talkback = if self.talkback_cue == 0 { talkback } else { 0.0 };
+        let (out_l, out_r) = (out_l + main_talkback, out_r + main_talkback);
+
+        (out_l, out_r)
+    }
+
+    /// Räknar en frame och loggar hjärtat var 48 000:e — båda vägarna gör det.
+    fn count_frame(&mut self) {
+        self.dbg_frames += 1;
+    }
+
     pub fn process_stereo(&mut self) -> (f32, f32) {
         // Ett JSFX-instrument som källa: blocket renderas på begäran och läses en frame i taget.
         // shortc: syntens filter/ADSR/effekter hoppas över — instrumentet är rå källa, säg det i UI.
@@ -20,10 +89,13 @@ impl SynthEngine {
                 self.instrument_right[self.instrument_pos],
             );
             self.instrument_pos += 1;
-            // Nivån ska följa syntens master, annars hoppar volymen när instrumentet kopplas in.
-            // shortc: slutet av process_stereo (master-FX, gate) körs inte för instrumentet.
-            let gain = self.master_volume.clamp(0.0, 4.0);
-            return ((l * gain).tanh(), (r * gain).tanh());
+            // Instrumentet är en **källa**, inte en genväg förbi mastern: det går genom samma
+            // FX-kedja och samma slutsteg som rösterna, annars låter det olika beroende på vad
+            // som är kopplat. Talkback hör inte hit — den läggs på mikrofonsignalen.
+            let (ml, mr) = self.master_fx.process(l, r);
+            let (out_l, out_r) = self.finish_master(ml, mr, 0.0);
+            self.count_frame();
+            return (out_l, out_r);
         }
 
         // 0. Fire any due scheduled chord/strum notes.
@@ -907,62 +979,7 @@ impl SynthEngine {
             ),
         };
 
-        // Modulationsmatrisen räknas per sampel, på masterns nivå före volymstegen.
-        // Utan aktiva rader hoppas hela steget över — det är den vanliga vägen.
-        let modulation = if self.modulation.is_empty() {
-            crate::audio::modulation::ModOut {
-                volume: 1.0,
-                pan: 0.0,
-                pitch: 0.0,
-                cutoff: 0.0,
-            }
-        } else {
-            let level = fx_l.abs().max(fx_r.abs());
-            self.modulation.tick(self.sample_rate, level)
-        };
-        self.mod_pitch = modulation.pitch;
-        self.mod_cutoff = modulation.cutoff;
-        let gain = (self.master_volume * modulation.volume).clamp(0.0, 4.0);
-        // Equal-power-pan: en panorering som bara sänker ena sidan tappar 3 dB i mitten.
-        let (pan_l, pan_r) = if modulation.pan.abs() < 0.001 {
-            (1.0, 1.0)
-        } else {
-            let angle = (modulation.pan.clamp(-1.0, 1.0) + 1.0) * 0.25 * std::f32::consts::PI;
-            (angle.cos() * std::f32::consts::SQRT_2, angle.sin() * std::f32::consts::SQRT_2)
-        };
-        let out_l = (fx_l * gain * pan_l).tanh();
-        let out_r = (fx_r * gain * pan_r).tanh();
-
-        // DJ performance FX on the final master bus.
-        let (out_l, out_r) = if self.gate_pattern.enabled {
-            self.step_gate.process(out_l, out_r, &self.gate_pattern)
-        } else {
-            (out_l, out_r)
-        };
-
-        let (out_l, out_r) = if self.remix_fx.is_active() {
-            self.remix_fx.process(out_l, out_r)
-        } else {
-            (out_l, out_r)
-        };
-        let (out_l, out_r) = self.tape_stop.process(out_l, out_r);
-
-        // **Control Room** sitter efter masterns FX-kedja: det man hör kan dimmas eller
-        // lyssnas i mono utan att det man exporterar ändras (exportmotorn får aldrig
-        // kommandot, så dess `control_room` är neutral).
-        let (out_l, out_r) = {
-            let cr = crate::audio::control_room::ControlRoom {
-                level: self.control_room.level,
-                dim: self.control_room.dim,
-                mono: self.control_room.mono,
-                mute: self.control_room.mute,
-            };
-            cr.apply(out_l, out_r)
-        };
-        // Talkback läggs på **efter** control room: DIM ska dämpa musiken, inte pratet, och
-        // den som lyssnar på en cue-buss ska höra pratet över den bussen.
-        let main_talkback = if self.talkback_cue == 0 { talkback } else { 0.0 };
-        let (out_l, out_r) = (out_l + main_talkback, out_r + main_talkback);
+        let (out_l, out_r) = self.finish_master(fx_l, fx_r, talkback);
 
         self.dbg_frames += 1;
         if self.dbg_frames.is_multiple_of(48000) {

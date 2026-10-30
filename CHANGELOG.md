@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+**Ett JSFX-instrument går genom hela mastern.** Det returnerade tidigare direkt efter volym och
+`tanh`, så gate, remix-FX, tape stop, control room och talkback hoppades över — instrumentet lät
+annorlunda än rösterna beroende på vad som var kopplat. Slutsteget ligger nu i `finish_master`,
+delat av båda vägarna, och instrumentet passerar dessutom masterns FX-kedja (EQ, kompressor,
+de-esser, limiter) som rösterna gör.
+
 ## [0.9.212] - 2026-10-29
 
 **Flikar som flikar, nivåer som syns.** Kategorierna (Skapa / Arrangera / Mixa / Verktyg) och deras
