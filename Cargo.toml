@@ -21,6 +21,11 @@ neural = ["dep:ort"]
 # sandbox (shared-memory audio over memfd). Off by default so the normal build
 # stays dependency-free; enable with `cargo build --features plugin-host`.
 plugin-host = ["dep:libc"]
+# Opt-in JACK backend (pro-audio routing, e.g. qjackctl/PipeWire-JACK). Off by
+# default so the normal build never links or dlopens `libjack`: the cpal → ALSA
+# → PipeWire path stays the one every user gets. Enable with
+# `cargo build --features jack`.
+jack = ["dep:jack"]
 
 [dependencies]
 cpal = "0.15"
@@ -50,6 +55,15 @@ ort = { version = "2.0.0-rc.13", optional = true, default-features = false, feat
 # platform loader — no C headers, no link-time dependency.
 libloading = "0.8"
 libc = { version = "0.2", optional = true }
+# JACK (`--features jack`): pro-audio routing and sample-accurate sync. Needs the
+# C library and headers at build time, which is exactly why it is optional — the
+# default build must stay free of libjack.
+#
+# `default-features = false` slår av cratets `dynamic_loading`: med den dlopen:ar
+# `libjack.so` vid körning i stället för att länka, och då syns ingen JACK-beroende
+# i `ldd` alls. Länkning är det som ska synas — ett bygge med `jack` får kräva
+# biblioteket, och ett utan får inte nämna det.
+jack = { version = "0.11", optional = true, default-features = false }
 
 # ALSA är Linux-only: MIDI-klaviatur och MCU tar emot noter via ALSA-sequencern
 # (Fas 7.1). Beroendet ligger därför bara på Linux, så att kratet kan byggas och

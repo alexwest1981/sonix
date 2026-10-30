@@ -41,6 +41,13 @@ fn push_counted<T>(
 #[allow(dead_code)]
 pub struct AudioEngine {
     _stream: Option<Stream>,
+    /// **The JACK client when that backend was chosen** (`--features jack`). It is
+    /// held only to stay alive: dropping it deactivates the client and stops the
+    /// process callback, the same way dropping `_stream` stops a cpal stream.
+    #[cfg(feature = "jack")]
+    _jack: Option<super::jack_backend::JackHandle>,
+    /// Kept even on the JACK path: `reconfigure` rebuilds through cpal, and the
+    /// device is what it rebuilds on.
     device: cpal::Device,
     sample_format: SampleFormat,
     command_capacity: usize,
@@ -243,6 +250,73 @@ impl AudioEngine {
         let heartbeat = Arc::new(AtomicU32::new(0));
         let error_count = Arc::new(AtomicU32::new(0));
 
+        // **Backend choice.** JACK only when the user asks for it (`SONIX_AUDIO=jack`)
+        // or when a build with the `jack` feature finds a server answering; a failed
+        // attempt is not fatal, because cpal is opened right below and that is what
+        // the user hears. The default build has none of this code at all.
+        #[cfg(feature = "jack")]
+        {
+            let choice = std::env::var("SONIX_AUDIO").unwrap_or_default();
+            let asked = choice.eq_ignore_ascii_case("jack");
+            if asked || choice.is_empty() {
+                let opened = super::jack_backend::open(
+                    ring_buffer_size,
+                    Arc::clone(&peak_level),
+                    Arc::clone(&peak_l),
+                    Arc::clone(&peak_r),
+                    Arc::clone(&song_pos_secs),
+                    Arc::clone(&stretched_tracks),
+                    Arc::clone(&audition_active),
+                    Arc::clone(&output_silent),
+                    Arc::clone(&master_gr_db),
+                    Arc::clone(&heartbeat),
+                    Arc::clone(&error_count),
+                );
+                match opened {
+                    Ok((handle, command_tx, scope_rx)) => {
+                        eprintln!(
+                            "[sonix] audio backend: JACK ({} Hz, {}-frame cycles)",
+                            handle.sample_rate, handle.buffer_frames
+                        );
+                        let sample_rate = handle.sample_rate;
+                        let buffer_frames = handle.buffer_frames;
+                        return Ok(Self {
+                            _stream: None,
+                            _jack: Some(handle),
+                            device,
+                            sample_format,
+                            command_capacity: ring_buffer_size,
+                            command_tx,
+                            command_drops: Arc::new(AtomicU32::new(0)),
+                            peak_level,
+                            peak_l,
+                            peak_r,
+                            song_pos_secs,
+                            stretched_tracks,
+                            audition_active,
+                            master_gr_db,
+                            output_silent,
+                            heartbeat,
+                            error_count,
+                            scope_rx,
+                            scope_pending: Vec::new(),
+                            sample_rate,
+                            channels: 2,
+                            buffer_frames: Some(buffer_frames),
+                            device_name: "sonix:out_l+out_r".to_string(),
+                            host_name: "JACK".to_string(),
+                        });
+                    }
+                    // Only an explicit request gets an explanation; on a feature
+                    // build without a server, silently using cpal is the answer.
+                    Err(e) if asked => eprintln!(
+                        "[sonix] audio backend: JACK failed to open ({e}); falling back to cpal"
+                    ),
+                    Err(_) => {}
+                }
+            }
+        }
+
         let mut config = default_stream_config.clone();
         apply_preferences(&device, &mut config, sample_format, preferred_sample_rate, preferred_buffer_frames);
         let preferences_changed = config.sample_rate != default_stream_config.sample_rate
@@ -294,8 +368,14 @@ impl AudioEngine {
             cpal::BufferSize::Default => None,
         };
 
+        eprintln!(
+            "[sonix] audio backend: cpal (host: {host_name}, device: {device_name}, {sample_rate} Hz)"
+        );
+
         Ok(Self {
             _stream: Some(stream),
+            #[cfg(feature = "jack")]
+            _jack: None,
             device,
             sample_format,
             command_capacity: ring_buffer_size,
@@ -337,6 +417,12 @@ impl AudioEngine {
 
         // Drop the old stream before opening a new one on the same device.
         self._stream = None;
+        // A live JACK client would keep playing beside the new cpal stream; the
+        // reconfiguration is a cpal one, so the JACK backend goes away with it.
+        #[cfg(feature = "jack")]
+        {
+            self._jack = None;
+        }
 
         let opened = match Self::open_stream(
             &self.device,
@@ -429,13 +515,10 @@ impl AudioEngine {
         heartbeat: &Arc<AtomicU32>,
         error_count: &Arc<AtomicU32>,
     ) -> Result<StreamParts, Box<dyn std::error::Error>> {
-        let (command_tx, command_rx) = RingBuffer::<AudioCommand>::new(ring_buffer_size);
-        let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
-
-        let stream = match sample_format {
-            SampleFormat::F32 => Self::build_stream::<f32>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count), scope_tx)?,
-            SampleFormat::I16 => Self::build_stream::<i16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count), scope_tx)?,
-            SampleFormat::U16 => Self::build_stream::<u16>(device, config, command_rx, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count), scope_tx)?,
+        let (stream, command_tx, scope_rx) = match sample_format {
+            SampleFormat::F32 => Self::build_stream::<f32>(device, config, ring_buffer_size, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count))?,
+            SampleFormat::I16 => Self::build_stream::<i16>(device, config, ring_buffer_size, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count))?,
+            SampleFormat::U16 => Self::build_stream::<u16>(device, config, ring_buffer_size, Arc::clone(peak_level), Arc::clone(peak_l), Arc::clone(peak_r), Arc::clone(song_pos_secs), Arc::clone(stretched_tracks), Arc::clone(audition_active), Arc::clone(output_silent), Arc::clone(master_gr_db), Arc::clone(heartbeat), Arc::clone(error_count))?,
             _ => return Err(crate::i18n::t("Ljudformatet stöds inte").into()),
         };
 
@@ -534,7 +617,7 @@ impl AudioEngine {
     fn build_stream<T>(
         device: &cpal::Device,
         config: &StreamConfig,
-        mut command_rx: Consumer<AudioCommand>,
+        ring_buffer_size: usize,
         peak_level: Arc<AtomicU32>,
         peak_l: Arc<AtomicU32>,
         peak_r: Arc<AtomicU32>,
@@ -545,16 +628,26 @@ impl AudioEngine {
         master_gr_db: Arc<AtomicU32>,
         heartbeat: Arc<AtomicU32>,
         error_count: Arc<AtomicU32>,
-        mut scope_tx: Producer<f32>,
-    ) -> Result<Stream, cpal::BuildStreamError>
+    ) -> Result<StreamParts, cpal::BuildStreamError>
     where
         T: cpal::Sample + cpal::FromSample<f32> + cpal::SizedSample,
     {
-        let sample_rate = config.sample_rate.0 as f32;
         let channels = config.channels as usize;
         // Bussarna läses en gång per strömstart — inte per buffert, och aldrig i ljudtråden.
         let bus_out = bus_pairs(&AudioSettings::load().output_buses, channels);
-        let mut synth = SynthEngine::new(sample_rate);
+        let (mut renderer, command_tx, scope_rx) = Renderer::new(
+            config.sample_rate.0 as f32,
+            ring_buffer_size,
+            peak_level,
+            peak_l,
+            peak_r,
+            song_pos_secs,
+            stretched_tracks,
+            audition_active,
+            output_silent,
+            master_gr_db,
+            heartbeat,
+        );
 
         let error_count_cb = Arc::clone(&error_count);
         let err_fn = move |err| {
@@ -570,58 +663,16 @@ impl AudioEngine {
             }
         };
 
-        device.build_output_stream(
+        let stream = device.build_output_stream(
             config,
             move |data: &mut [T], _: &cpal::OutputCallbackInfo| {
-                // Hjärtslaget: räknas per buffert. UI:t jämför det över en sekund —
-                // står det stilla kallas den här stängseln aldrig mer.
-                heartbeat.fetch_add(1, Ordering::Relaxed);
-                // **Flusha denormala tal i ljudtråden.** När ett filter eller en reverbssvans
-                // klingar ut hamnar tillstånden i denormala värden — de låter som ett svagt
-                // fräsande och kostar många gånger mer CPU än normala tal. FTZ+DAZ stänger av
-                // dem helt. Sätts en gång per tråd, gäller hela callbacken.
-                #[cfg(target_arch = "x86_64")]
-                unsafe {
-                    const FTZ_DAZ: u32 = 0x8040;
-                    let mut csr: u32 = 0;
-                    core::arch::asm!("stmxcsr [{}]", in(reg) &mut csr, options(nostack));
-                    csr |= FTZ_DAZ;
-                    core::arch::asm!("ldmxcsr [{}]", in(reg) &csr, options(nostack, readonly));
-                }
+                flush_denormals();
+                let frames = data.len() / channels;
                 let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    // 1. Process all pending commands from UI/Main thread without blocking
-                    while let Ok(cmd) = command_rx.pop() {
-                        synth.handle_command(cmd);
-                    }
-
-                    // 2. Render samples for this buffer block
-                    // Tyst läge: läses en gång per buffert. Bytet slår igenom vid nästa
-                    // buffert, och det räcker för ett självtest.
-                    let silent = output_silent.load(Ordering::Relaxed);
-                    let mut max_peak: f32 = 0.0;
-                    let mut max_l: f32 = 0.0;
-                    let mut max_r: f32 = 0.0;
-
-                    for frame in data.chunks_mut(channels) {
-                        let (sample_l, sample_r) = synth.process_stereo();
-                        let peak_s = sample_l.abs().max(sample_r.abs());
-                        if peak_s > max_peak {
-                            max_peak = peak_s;
-                        }
-                        // Kanalerna var för sig: max(L,R) kan inte visa att en sida
-                        // är tyst, och det är den frågan mätaren ska svara på.
-                        if sample_l.abs() > max_l {
-                            max_l = sample_l.abs();
-                        }
-                        if sample_r.abs() > max_r {
-                            max_r = sample_r.abs();
-                        }
-                        // Oscilloskopet får mitten och goniometern sidan: två tal per
-                        // sampel. Ringen är FIFO, så paret håller ihop.
-                        // Om ringen är full tappas de äldsta — skopet hoppar ett slag.
-                        let _ = scope_tx.push((sample_l + sample_r) * 0.5);
-                        let _ = scope_tx.push((sample_l - sample_r) * 0.5);
-                        let (out_l, out_r) = output_sample(sample_l, sample_r, silent);
+                    renderer.render(frames, |i, out_l, out_r| {
+                        let Some(frame) = data.get_mut(i * channels..(i + 1) * channels) else {
+                            return;
+                        };
                         // Mixen skrivs på varje buss kanalpar. Kanaler utan buss nollas:
                         // på en enhet med fler kanaler läcker annars föregående bufferts
                         // ljud igenom.
@@ -636,55 +687,174 @@ impl AudioEngine {
                         } else if !frame.is_empty() {
                             frame[0] = cpal::Sample::from_sample((out_l + out_r) * 0.5);
                         }
-                    }
-
-                    // 3. Atomically store peak level for UI visualization
-                    peak_level.store(max_peak.to_bits(), Ordering::Relaxed);
-                    peak_l.store(max_l.to_bits(), Ordering::Relaxed);
-                    peak_r.store(max_r.to_bits(), Ordering::Relaxed);
-                    // Låtens position ur ljudtrådens egen klocka. Spelhuvudet i UI:t
-                    // läser den här siffran i stället för att räkna egna steg — två
-                    // klockor för samma sak går isär, och gjorde det (8.13b).
-                    stretched_tracks.store(
-                        synth.stretched_region_tracks,
-                        Ordering::Relaxed,
-                    );
-                    song_pos_secs.store(
-                        (synth.song_time_samples as f32 / synth.sample_rate).to_bits(),
-                        Ordering::Relaxed,
-                    );
-
-                    // 4. Mirror the real audition state so the UI can clear its
-                    //    "playing" indicator once playback ends naturally.
-                    audition_active.store(
-                        synth.audition.as_ref().map(|a| a.is_playing).unwrap_or(false),
-                        Ordering::Relaxed,
-                    );
-
-                    // 5. Mirror real compressor gain reduction for the FX rack meter.
-                    master_gr_db.store(synth.master_fx.gain_reduction_db().to_bits(), Ordering::Relaxed);
+                    });
                 }));
 
                 if let Err(panic) = res {
-                    let msg = if let Some(s) = panic.downcast_ref::<&str>() {
-                        (*s).to_string()
-                    } else if let Some(s) = panic.downcast_ref::<String>() {
-                        s.clone()
-                    } else {
-                        "okänd panik".to_string()
-                    };
-                    // Samma dämpning som `err_fn`: en callback som panikar varje buffert
-                    // skriver annars 750 rader i sekunden.
-                    let n = error_count_cb.fetch_add(1, Ordering::Relaxed);
-                    if should_log_stream_error(n) {
-                        eprintln!("[Sonix] AUDIO-KRASCH i ljudtråd: {}", msg);
-                        append_audio_log(&format!("[{}] {}\n", std::process::id(), msg));
-                    }
+                    report_callback_panic(&error_count_cb, &panic);
                 }
             },
             err_fn,
             None,
-        )
+        )?;
+        Ok((stream, command_tx, scope_rx))
+    }
+}
+
+/// **Flusha denormala tal i ljudtråden.** När ett filter eller en reverbssvans
+/// klingar ut hamnar tillstånden i denormala värden — de låter som ett svagt
+/// fräsande och kostar många gånger mer CPU än normala tal. FTZ+DAZ stänger av
+/// dem helt. Sätts en gång per tråd, gäller hela callbacken.
+pub(crate) fn flush_denormals() {
+    #[cfg(target_arch = "x86_64")]
+    unsafe {
+        const FTZ_DAZ: u32 = 0x8040;
+        let mut csr: u32 = 0;
+        core::arch::asm!("stmxcsr [{}]", in(reg) &mut csr, options(nostack));
+        csr |= FTZ_DAZ;
+        core::arch::asm!("ldmxcsr [{}]", in(reg) &csr, options(nostack, readonly));
+    }
+}
+
+/// Samma dämpning som `err_fn`: en callback som panikar varje buffert
+/// skriver annars 750 rader i sekunden.
+pub(crate) fn report_callback_panic(error_count: &AtomicU32, panic: &(dyn std::any::Any + Send)) {
+    let msg = if let Some(s) = panic.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = panic.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "okänd panik".to_string()
+    };
+    let n = error_count.fetch_add(1, Ordering::Relaxed);
+    if should_log_stream_error(n) {
+        eprintln!("[Sonix] AUDIO-KRASCH i ljudtråd: {}", msg);
+        append_audio_log(&format!("[{}] {}\n", std::process::id(), msg));
+    }
+}
+
+/// **Den enda renderingsvägen.** CPAL-callbacken och JACK:s process-callback ger
+/// båda en blocklängd och tar två tal per frame tillbaka; allt annat — kommandon,
+/// mätare, skopringen, låtklockan — bor här, så de två backends inte kan glida isär.
+///
+/// JACK ger en ny blocklängd varje cykel, så `frames` får aldrig antas konstant.
+pub(crate) struct Renderer {
+    synth: SynthEngine,
+    command_rx: Consumer<AudioCommand>,
+    scope_tx: Producer<f32>,
+    peak_level: Arc<AtomicU32>,
+    peak_l: Arc<AtomicU32>,
+    peak_r: Arc<AtomicU32>,
+    song_pos_secs: Arc<AtomicU32>,
+    stretched_tracks: Arc<AtomicU32>,
+    audition_active: Arc<AtomicBool>,
+    output_silent: Arc<AtomicBool>,
+    master_gr_db: Arc<AtomicU32>,
+    heartbeat: Arc<AtomicU32>,
+}
+
+impl Renderer {
+    /// Bygger renderaren och de två halvorna av ringarna som motorn behåller.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new(
+        sample_rate: f32,
+        ring_buffer_size: usize,
+        peak_level: Arc<AtomicU32>,
+        peak_l: Arc<AtomicU32>,
+        peak_r: Arc<AtomicU32>,
+        song_pos_secs: Arc<AtomicU32>,
+        stretched_tracks: Arc<AtomicU32>,
+        audition_active: Arc<AtomicBool>,
+        output_silent: Arc<AtomicBool>,
+        master_gr_db: Arc<AtomicU32>,
+        heartbeat: Arc<AtomicU32>,
+    ) -> (Self, Producer<AudioCommand>, Consumer<f32>) {
+        let (command_tx, command_rx) = RingBuffer::<AudioCommand>::new(ring_buffer_size);
+        let (scope_tx, scope_rx) = RingBuffer::<f32>::new(65536);
+        let renderer = Self {
+            synth: SynthEngine::new(sample_rate),
+            command_rx,
+            scope_tx,
+            peak_level,
+            peak_l,
+            peak_r,
+            song_pos_secs,
+            stretched_tracks,
+            audition_active,
+            output_silent,
+            master_gr_db,
+            heartbeat,
+        };
+        (renderer, command_tx, scope_rx)
+    }
+
+    /// En buffert. `sink` får `(frame, vänster, höger)` och skriver talen i sin
+    /// backends form: interleaved kanaler hos cpal, två portar hos JACK.
+    pub(crate) fn render(&mut self, frames: usize, mut sink: impl FnMut(usize, f32, f32)) {
+        // Hjärtslaget: räknas per buffert. UI:t jämför det över en sekund —
+        // står det stilla kallas den här stängseln aldrig mer.
+        self.heartbeat.fetch_add(1, Ordering::Relaxed);
+
+        // 1. Process all pending commands from UI/Main thread without blocking
+        while let Ok(cmd) = self.command_rx.pop() {
+            self.synth.handle_command(cmd);
+        }
+
+        // 2. Render samples for this buffer block
+        // Tyst läge: läses en gång per buffert. Bytet slår igenom vid nästa
+        // buffert, och det räcker för ett självtest.
+        let silent = self.output_silent.load(Ordering::Relaxed);
+        let mut max_peak: f32 = 0.0;
+        let mut max_l: f32 = 0.0;
+        let mut max_r: f32 = 0.0;
+
+        for i in 0..frames {
+            let (sample_l, sample_r) = self.synth.process_stereo();
+            let peak_s = sample_l.abs().max(sample_r.abs());
+            if peak_s > max_peak {
+                max_peak = peak_s;
+            }
+            // Kanalerna var för sig: max(L,R) kan inte visa att en sida
+            // är tyst, och det är den frågan mätaren ska svara på.
+            if sample_l.abs() > max_l {
+                max_l = sample_l.abs();
+            }
+            if sample_r.abs() > max_r {
+                max_r = sample_r.abs();
+            }
+            // Oscilloskopet får mitten och goniometern sidan: två tal per
+            // sampel. Ringen är FIFO, så paret håller ihop.
+            // Om ringen är full tappas de äldsta — skopet hoppar ett slag.
+            let _ = self.scope_tx.push((sample_l + sample_r) * 0.5);
+            let _ = self.scope_tx.push((sample_l - sample_r) * 0.5);
+            let (out_l, out_r) = output_sample(sample_l, sample_r, silent);
+            sink(i, out_l, out_r);
+        }
+
+        // 3. Atomically store peak level for UI visualization
+        self.peak_level.store(max_peak.to_bits(), Ordering::Relaxed);
+        self.peak_l.store(max_l.to_bits(), Ordering::Relaxed);
+        self.peak_r.store(max_r.to_bits(), Ordering::Relaxed);
+        // Låtens position ur ljudtrådens egen klocka. Spelhuvudet i UI:t
+        // läser den här siffran i stället för att räkna egna steg — två
+        // klockor för samma sak går isär, och gjorde det (8.13b).
+        self.stretched_tracks
+            .store(self.synth.stretched_region_tracks, Ordering::Relaxed);
+        self.song_pos_secs.store(
+            (self.synth.song_time_samples as f32 / self.synth.sample_rate).to_bits(),
+            Ordering::Relaxed,
+        );
+
+        // 4. Mirror the real audition state so the UI can clear its
+        //    "playing" indicator once playback ends naturally.
+        self.audition_active.store(
+            self.synth.audition.as_ref().map(|a| a.is_playing).unwrap_or(false),
+            Ordering::Relaxed,
+        );
+
+        // 5. Mirror real compressor gain reduction for the FX rack meter.
+        self.master_gr_db
+            .store(self.synth.master_fx.gain_reduction_db().to_bits(), Ordering::Relaxed);
     }
 }
 

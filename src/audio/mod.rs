@@ -23,6 +23,9 @@ pub mod drum;
 pub mod edison;
 pub mod effects;
 pub mod engine;
+// JACK är opt-in (`--features jack`): standardbygget ska inte länka libjack alls.
+#[cfg(feature = "jack")]
+pub mod jack_backend;
 pub mod envelope;
 pub mod exporter;
 pub mod factory_samples;
