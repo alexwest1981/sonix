@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.219] - 2026-10-30
+
+**LV2-hostning.** `.lv2`-sökvägar avvisades förut; nu skannas bundles, listas och bearbetas
+(`audio::lv2`). Egen host på `libloading` + `LV2_Descriptor` i stället för `livi`: lilv kräver
+`lilv-0`/`serd-0` via pkg-config både vid bygge och körning, och CI/paketet har dem inte.
+
+Mätt mot ett egenkompilerat testplugin (maskinen har bara LV2-spec-bundles, inga riktiga plugins):
+enhetsgain **1,000000**, `gain=0,5` ger **0,500000**, efter `reset()` 1,000000 igen.
+
+**MIDI-effekterna klara:** notlängd, eko och slumpat anslag på zonkartan. Mätt: 250 ms vid
+48 kHz → exakt 12 000 sampel (44,1 kHz → 11 025, 333 ms → 14 685); tre pass med 100 ms eko ger
+två extra triggers på 4 800 och 9 600 sampel med gain 0,6 och 0,36; slump 0,5 över 200 anslag på
+velocity 64 sprider sig över hela 1..127.
+
+1 206 prov (standard) och 1 263 (plugin-host) gröna.
+
 ## [0.9.218] - 2026-10-30
 
 **Ackordläge på MIDI-ingången.** Tangentbordet kan spela ackord: åtta lägen (oktav, kvint, power,

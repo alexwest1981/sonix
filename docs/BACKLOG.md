@@ -10,7 +10,7 @@ posten kommer från.
 | :--: | :--- | :--- | :---: | :--- |
 | 1 | ✅ **Cytomic-filtren**: Sallen-Key MS2/MD/SD, StateV OSR, Ladder PRD med drive i återkopplingen | Ableton | **M** | Frekvensgång per typ (3 dB-punkt, resonanstopp), THD vid drive |
 | 2 | ✅ **Multibandssaturator (`Roar`)**: 3 stag, 12 shaper-lägen, 8 filtertyper, feedback | Ableton | **M** | Övertoner per shaper (THD per läge), bandläckage |
-| 3 | ◐ **MIDI-effekter** — skala/transponering/anslag/kanal (zonkartan), arpeggio, strum, **ackord** klara. Kvar: notlängd, notdelay, random | Ableton | **S** | Notantal in/ut per effekt, timing i samples |
+| 3 | ✅ **MIDI-effekter** — skala, transponering, anslag, kanal, ackord, notlängd, eko, slump, arpeggio, strum | Ableton | **M** | 250 ms → 12 000 sampel; eko 2 400/4 800; slump 1..127 |
 | 4 | ✅ **DDP-export** (CUE/BIN, CD-TEXT, ISRC) | REAPER | **S–M** | Filstruktur mot spec, red book-ordning |
 | 5 | **Lua bredvid Rhai** | REAPER | **S** | Ett skript i vardera språket ger samma noter |
 
@@ -26,7 +26,7 @@ posten kommer från.
 
 | # | Post | Källa | Storlek |
 | :--: | :--- | :--- | :---: |
-| 6 | **LV2-hosting** (skanner + host, `livi` eller egen dlopen) | REAPER | **M** |
+| 6 | ✅ **LV2-hosting** (egen `libloading`-host; `livi` krävde lilv vid bygge) | REAPER | **M** |
 | 7 | **Rubber Band** (formantbevarande stretch) | REAPER | **M** (S att länka, M att hosta lägena) |
 | 8 | **Hybrid Reverb** (diffusionsnät + konvolution) | Ableton | **M** |
 | 9 | **JACK-backend** | REAPER | **M** |
