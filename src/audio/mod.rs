@@ -96,6 +96,7 @@ pub mod wav_reader;
 pub mod wav_writer;
 pub mod scale;
 pub mod waveform;
+pub mod wavetable;
 
 #[allow(unused_imports)]
 pub use command::{
