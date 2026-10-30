@@ -116,7 +116,9 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
             self.suno_zoom_level = (self.suno_zoom_level * zoom_mult).clamp(0.25, 20.0);
         }
 
-        let header_w = 210.0;
+        // 228 px enligt UI-förslaget (Vercel/v0): spårnamn + kontroller får plats utan att
+        // knapparna trycks ihop, och det är samma bredd som mockupens spårhuvud.
+        let header_w = 228.0;
         let bar_w = (60.0 * self.suno_zoom_level).clamp(16.0, 1500.0);
         // Soundtrap-klippen är ~120 px höga; 64 px rad ger klipp på ~56 px utan att
         // spårhuvudets kontroller behöver flyttas om (de skjuts ned med `ctrl_y_offset`).

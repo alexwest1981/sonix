@@ -39,7 +39,7 @@ red/bg 5,1. Allt över AA (4,5), alltså läsbart utan att mockupen ljusas upp.
 | Rundade hörn 3–10 px | 197 `Rounding::same(...)` i `src/ui/` + `apply_style` | ~200 ställen |
 | Inter som typsnitt | 6 ställen (`FontDefinitions`) | litet, men kräver att Inter buntas |
 | 38 px flikrad, orange aktiv flik | `src/ui/app/frame.rs`, flikwidgeten | litet |
-| 123 px spårhöjd, 228 px spårhuvud | arrangörens radlayout | medel |
+| 123 px spårhöjd, 228 px spårhuvud | arrangörens radlayout | **klart**: raden var redan 120 px, huvudet är nu 228 px |
 | 282 px ljudwebbläsare, `browser-pill` | `browser.rs` | medel |
 | Master-spår inramat i orange | mixern/arrangören | litet |
 | Rundade klipp med `⌘ 00:01.94`-metadata | klippritningen | medel |
