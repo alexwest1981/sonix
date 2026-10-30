@@ -14,6 +14,9 @@ use crate::ui::theme::Theme;
 pub struct VideoState {
     pub path: Option<String>,
     pub info: Option<crate::audio::video::VideoInfo>,
+    /// The frame source: it keeps the last frames decoded, so scrubbing over the same
+    /// neighbourhood does not start ffmpeg again for every step.
+    source: Option<crate::audio::video_engine::VideoSource>,
     /// Var filmen börjar på tidslinjen, i sekunder.
     pub offset_secs: f64,
     texture: Option<egui::TextureHandle>,
@@ -25,10 +28,11 @@ pub struct VideoState {
 impl VideoState {
     /// Laddar en fil och läser dess mått. Fel hamnar i `last_error` i stället för att panika.
     pub fn load(&mut self, path: &str) {
-        match crate::audio::video::probe(path) {
-            Ok(info) => {
+        match crate::audio::video_engine::VideoSource::open(path) {
+            Ok(source) => {
                 self.path = Some(path.to_string());
-                self.info = Some(info);
+                self.info = Some(source.info);
+                self.source = Some(source);
                 self.texture = None;
                 self.shown_frame = None;
                 self.last_error = None;
@@ -37,6 +41,7 @@ impl VideoState {
                 self.last_error = Some(err);
                 self.path = None;
                 self.info = None;
+                self.source = None;
             }
         }
     }
@@ -44,7 +49,7 @@ impl VideoState {
     /// Hämtar rutan för tidslinjepositionen om det behövs. `now` är en monoton klocka i
     /// sekunder (används för att begränsa hur ofta ffmpeg startas).
     fn refresh(&mut self, ctx: &egui::Context, position_secs: f64, now: f64) {
-        let (Some(path), Some(info)) = (self.path.clone(), self.info) else {
+        let Some(info) = self.info else {
             return;
         };
         let Some(index) = crate::audio::video::frame_index(position_secs, &info, self.offset_secs)
@@ -57,11 +62,14 @@ impl VideoState {
         if self.shown_frame == Some(index) || now - self.last_update < 0.1 {
             return;
         }
-        match crate::audio::video::frame_rgb(&path, index as f64 / info.fps, &info) {
-            Ok(rgb) => {
+        let Some(source) = self.source.as_mut() else {
+            return;
+        };
+        match source.frame_at(index as f64 / info.fps) {
+            Ok(frame) => {
                 let image = egui::ColorImage::from_rgb(
-                    [info.width as usize, info.height as usize],
-                    &rgb,
+                    [frame.width as usize, frame.height as usize],
+                    &frame.rgb,
                 );
                 self.texture =
                     Some(ctx.load_texture("sonix_video", image, egui::TextureOptions::LINEAR));

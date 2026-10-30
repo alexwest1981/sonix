@@ -45,6 +45,7 @@ pub mod spectral_edit;
 pub mod stft;
 pub mod tuning;
 pub mod video;
+pub mod video_engine;
 pub mod warp;
 pub mod modulation;
 pub mod input_profile;
