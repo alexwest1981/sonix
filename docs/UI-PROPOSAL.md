@@ -55,7 +55,21 @@ accentlinjer, så ändringen är mätt och inte bara påstådd.
 Spårhuvudets vänsterkant är redan förslagets 4 px färgstapel (`color_bar` i `arranger.rs`) — den
 delen behövde ingen ändring.
 
-Ordningen jag skulle ta resten i: **spårhuvudets höjd → klipp-metadata → rundning svep sist**.
+## Vad som visade sig redan vara gjort
+
+Tre av posterna i tabellen ovan var byggda innan förslaget kom:
+
+| Förslagets del | Sanningen i koden |
+|---|---|
+| 123 px spårhöjd | `row_h = 120.0` — samma sak i praktiken |
+| 228 px spårhuvud | var 210, **nu 228** |
+| Klipp-metadata (`⌘ start ✎ längd [-0.4 dB]`) | ritas redan: `[⏱ start | 📏 längd | ±x.x dB]` i klippets titelrad |
+| Rundade hörn 3–10 px | `apply_style` sätter redan **4 px** på alla widgetar, 8 px på fönster och 6 px på menyer; de 197 uttalade `Rounding::same(...)` är undantag från den standarden, inte frånvaro av rundning |
+
+Kvar är **Inter som typsnitt**, och det är ett beslut för Alex: fonten måste ligga som binär i
+repot för att följa med bygget, och konventionen här är att inte committa binärer. Antingen buntas
+`Inter-Regular.ttf` (OFL, ~300 kB) med licensfilen, eller så stannar vi på egui:s inbyggda
+typsnitt — då är förslaget i praktiken genomfört.
 Rundningen sist därför att den rör flest filer och minst betydelse per rad; flikraden och
 spårhuvudet är det man ser först.
 
