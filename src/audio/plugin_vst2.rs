@@ -361,7 +361,7 @@ pub fn is_vst2_path(path: &str) -> bool {
     Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
-        .map(|e| e.eq_ignore_ascii_case("so"))
+        .map(|e| matches!(e.to_ascii_lowercase().as_str(), "so" | "vst" | "dll"))
         .unwrap_or(false)
 }
 
@@ -762,6 +762,8 @@ mod tests {
     fn detects_vst2_extension_case_insensitively() {
         assert!(is_vst2_path("/tmp/Plugin.so"));
         assert!(is_vst2_path("/tmp/Plugin.SO"));
+        assert!(is_vst2_path("/tmp/Plugin.dll"));
+        assert!(is_vst2_path("/tmp/Plugin.vst"));
         assert!(!is_vst2_path("/tmp/Plugin.clap"));
         assert!(!is_vst2_path("/tmp/Plugin.vst3"));
     }
