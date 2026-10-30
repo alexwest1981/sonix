@@ -9,6 +9,7 @@ pub mod ai_generator;
 pub mod ai_tools;
 pub mod command;
 pub mod project_script;
+pub mod lua_script;
 // Bara den neurala separatorn omsamplar (modellerna går i 48 kHz). Utan `neural` finns ingen
 // anropare, och då ska modulen inte heller byggas — annars är den tre döda varningar.
 #[cfg(feature = "neural")]
