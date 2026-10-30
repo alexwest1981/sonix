@@ -149,8 +149,25 @@ mål som val. Den **kan inte röra instrumenten**, och man kan inte diskutera ar
 
 ## ⬜ Kvar
 
-**Inget öppet just nu:** varje rad nedan är ✅. Det som återstår är hårdvara — Windows-porten och en
-riktig yabridge-kvittens — och det står sist i avsnittet.
+**Roadmappens egna rader är ✅.** Det som är öppet är det som kom ut av 0.9.207–0.9.212-passet och
+står i tabellen direkt nedanför; hårdvaran (Windows-porten, en riktig yabridge-kvittens) står sist.
+
+### Öppet efter 0.9.212-passet (2026-10-29)
+
+| # | Vad | Storlek | Varför det står här |
+| :--: | :--- | :---: | :--- |
+| 1 | **Instrumentets svans i synten** | *S–M* | Ett JSFX-instrument som källa (`SetInstrument`) går genom `master_volume` + `tanh` men **inte** genom slutsteget (gate, DJ-FX) — grenen returnerar före `process_stereo`s svans. Kräver att svansen lyfts ut till en delad metod. Syntens filter/ADSR hoppas också över, vilket står i knappens hover. |
+| 2 | **`neural` i de vanliga paketen** | *M* | ORTs färdiga bibliotek kräver glibc ≥ 2.32 och vårt golv är 2.28, så neural separation skeppas som en egen `-neural`-tarball på ubuntu-24.04. Vägen runt är `ort`s `load-dynamic` (dlopen) + att binären hittar/levererar `libonnxruntime.so`. |
+| 3 | **`daw-bold` i temaregistret** | *S* | Temat ligger bara i `~/.config/sonix/themes/`. Registret är `sonix-themes` med `index.json` + sha256 per fil. |
+| 4 | **UI-förslagets lay-out** | *S–M per rad* | Kvar av Vercel-förslaget: spårhuvud 228 px/123 px rad, klipp-metadata, Inter, och **197** `Rounding::same` + 22 spacing-ställen. Färgerna är tagna. Se `docs/UI-PROPOSAL.md`. |
+| 5 | **Timingmått i `--ai-features`** | *M* | Spektralt tak, brusgolv, RMS-spridning och crest finns; timing kräver tempospårning, och en felaktig takt ger ett svar som ser lika säkert ut som ett riktigt. |
+
+**Klart i samma pass** (bevis i `CHANGELOG.md` och proven): `neural` som standardfeature + verifierad
+`-neural`-tarball per release · `TolerableTines` 1 947 → 0,024 RMS (variablerna flyttade ovanför
+tabellerna — 2 048 röster blev 1) · noter till en JSFX i kedjan (`accepts_notes`/`note_on`/`note_off`,
+plus MIDI-läskurvan som panikade i andra blocket) · flikraden ritar en riktig fliklist (list,
+baslinje, vald flik öppnar den) · kategorier/underverktyg på egna rader · MCU till statusraden ·
+`--ai-features` · `docs/AI-FEATURES.md`, `docs/UI-PROPOSAL.md`, `docs/THEMES.md`.
 
 ### Går att bygga vid datorn nu
 
