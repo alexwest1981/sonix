@@ -98,7 +98,9 @@ export-wildcards, en "Hidden FX"-mapp i FX-bläddraren, `GainReduction_dB`-läsn
 - **JSFX-koden är läst till struktur och parametrar, inte portad.** Innan en port: läs hela filen,
   behåll attributionshuvudet, och jämför mot originalet (flera är porter av x42/LGPL och nih-plug/GPL).
 - **Tre tidssträckningsmotorer** (`elastique3.so` 1,7 MB, `rubberband.so`, `soundtouch.so`) är
-  separata bibliotek med egna licenser; elastique är proprietary och får inte återanvändas. Sonix
-  använder redan `signalsmith-stretch`.
+  separata bibliotek med egna licenser; elastique är proprietary och får inte återanvändas.
+  Sonix sträcker med egen WSOLA som standard och har sedan 0.9.220 **Rubber Band** som eget
+  warp-läge (dlopen mot `librubberband.so` när den finns, annars återfall till WSOLA);
+  `signalsmith-stretch` ligger kvar som dev-beroende för jämförelseprovet, inte i produktion.
 - **80 586 rader är inte 80 586 rader värde.** Flera filer är varianter av samma sak (37 st i
   `sstillwell`, 36 i `loser`); tabellen ovan är urvalet, inte inventariet.

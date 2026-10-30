@@ -246,7 +246,7 @@ sha256 matches the index. Format, every key and what it controls: **[docs/THEMES
 
 ### 11. 🔌 Plugin Manager — 🟡 Catalogue + opt-in CLAP/VST3/VST2 host
 * Real recursive scanning of VST3/CLAP/LV2/VST2/`.fst` folders, ELF/PE binary verification, Wine & yabridge detection, and a one-click `yabridgectl sync`.
-* 🔜 **Note:** **VST3 and VST2** modules can now be loaded, inspected and **played** (opt-in `--features plugin-host`), just like CLAP. **LV2** is still catalogue-only. Plugin GUIs need a real X display (cannot be shown headless). See **[PLUGINS.md](PLUGINS.md#6-third-party-plugin-host)** for the full plugin support status.
+* 🔜 **Note:** **VST3 and VST2** modules can now be loaded, inspected and **played** (opt-in `--features plugin-host`), just like CLAP. **LV2** now loads, inspects and processes audio through our own dlopen host (bundles that require the `buf-size` or URID features are refused). Plugin GUIs need a real X display (cannot be shown headless). See **[PLUGINS.md](PLUGINS.md#6-third-party-plugin-host)** for the full plugin support status.
 
 ### 12. 💿 Export & Project I/O — ✅ Real
 * Offline render of the full project (real samples, timeline audio, FX) to **WAV** (16/24-bit & 32-bit float) and **FLAC** (in-app encoders); **MP3/OGG/AAC** via `ffmpeg` when installed.
@@ -318,7 +318,7 @@ A candid status of the remaining gaps. The audio engine, timeline, mixer, genera
 | Audio Settings | ✅ Real | Live stream rebuild + persisted; shows real host/device/stream |
 | Legacy "AI Settings" modal | ✅ Real | Now edits the same `AiConfig` and saves to disk |
 | `.fst` "Apply Preset" button | ✅ Honest | Disabled with a tooltip — FL Studio's closed `.fst` preset data cannot be decoded; CLAP/VST2/VST3 plugins can be loaded from the plugin panel instead |
-| Plugin hosting (VST3/CLAP/LV2/VST2) | 🟡 Partial | CLAP, **VST3 and VST2** load + parameter inspection + per-track audio processing with PDC + state save-load + CLAP GUI in its own X11 window + separate-process sandbox with crash restart **and shared-memory audio transport** (opt-in `--features plugin-host`); LV2, MIDI instrument routing & a real Wine/yabridge bridge still missing |
+| Plugin hosting (VST3/CLAP/LV2/VST2) | 🟡 Partial | CLAP, **VST3 and VST2** load + parameter inspection + per-track audio processing with PDC + state save-load + CLAP GUI in its own X11 window + separate-process sandbox with crash restart **and shared-memory audio transport** (opt-in `--features plugin-host`); LV2 presets/state/GUI, MIDI instrument routing & a real Wine/yabridge bridge still missing |
 
 **Overall:** roughly **90–95 %** of the features advertised in the UI are genuinely implemented and wired to the audio engine; the honest exceptions are the rows marked 🟡 above.
 
