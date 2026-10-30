@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.220] - 2026-10-30
+
+**Rubber Band som warp-läge.** Nytt läge `Rubber Band` i klippets warp-meny: R3-motorn lånas in
+med `dlopen` när `librubberband.so` finns, annars faller läget tillbaka på `Complex` (WSOLA) — ett
+projekt som valt läget öppnas alltså och låter som förut på en maskin utan biblioteket.
+
+Mätt (egen körning): 1,5× på 4 410 sampel → **6 615 framer**, dominant frekvens **440,0 Hz** efter
+sträckningen (tonhöjden står kvar), +1 oktav ger **880,0 Hz**, formantbevarande skiljer **0,603** vid
+pitch 2,0 men är bit-identiskt vid pitch 1,0 (inget att bevara utan tonhöjdsändring).
+
+**Hybrid Reverb** (`Hybrid Reverb` i effektlistan): 4 allpass-diffusorer → 8-linjers FDN med
+Hadamard-mix och dämpning i loopen, plus konvolutionshalva med 250 ms syntetisk IR. Mätt: RT60
+0,80 → **0,81 s**, 1,50 → **1,51**, 3,00 → **3,01**; densitet **62,1 %** (algoritmisk) och **56,1 %**
+(konvolution) av samplen över −40 dBFS i första 100 ms; peak 3,099 vid 0,9 in och 12 s decay; mix 0
+är bit-identisk med torrt, mix 1 korrelerar **−0,002** med insignalen.
+
+1 218 prov gröna, 0 varningar.
+
 ## [0.9.219] - 2026-10-30
 
 **LV2-hostning.** `.lv2`-sökvägar avvisades förut; nu skannas bundles, listas och bearbetas

@@ -54,6 +54,7 @@ impl PluginFormat {
 /// Both the bundle itself (`…/Surge XT.lv2`) and a file inside it
 /// (`…/Surge XT.lv2/libSurge XT.so`, `…/manifest.ttl`) count: a user points at
 /// any of them.
+#[cfg(any(feature = "plugin-host", test))]
 pub fn is_lv2_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
     lower.ends_with(".lv2")

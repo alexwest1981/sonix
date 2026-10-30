@@ -353,7 +353,6 @@ pub fn stretch_stereo(
 /// # Returns
 /// The stereo pair, or `None` if Rubber Band is not installed (the reason is in
 /// [`crate::audio::rubber_band::stretch`]'s error) — the caller then keeps WSOLA.
-#[allow(dead_code)] // the default path is WSOLA; callers opt in
 pub fn try_rubber_band(
     left: &[f32],
     right: &[f32],
@@ -389,6 +388,15 @@ pub fn stretch_stereo_mode(
 ) -> (Vec<f32>, Vec<f32>) {
     if (ratio - 1.0).abs() < 1e-6 {
         return (left.to_vec(), right.to_vec());
+    }
+    // Rubber Band-läget: formantbevarande när biblioteket finns, annars Complex (WSOLA).
+    if mode == crate::audio::warp::WarpMode::RubberBand {
+        if let Some(out) = try_rubber_band(left, right, ratio, sample_rate, true) {
+            return out;
+        }
+        let (frame, hop, search) = crate::audio::warp::WarpMode::Complex.wsola_params(sample_rate);
+        let mut wsola = super::vocal_harmonizer::Wsola::with_hann(frame, hop, search);
+        return stretch_stereo_with(left, right, ratio, sample_rate, &mut wsola);
     }
     if mode == crate::audio::warp::WarpMode::Transient {
         // Anslagen kopieras orörda och bara kropparna sträcks: transienterna kan då inte
@@ -2369,4 +2377,35 @@ fn the_stretch_cache_prunes_the_oldest_files_and_keeps_the_new_one() {
     assert_eq!(removed, 1);
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+    /// **Rubber Band-läget i sträckkedjan**: samma längd som Complex, alltså rätt riktning på
+    /// ratiot — och utan biblioteket faller det tillbaka i stället för att panika.
+    #[test]
+    fn the_rubber_band_mode_stretches_to_the_same_length() {
+        let sr = 44_100.0f32;
+        let n = 4_410;
+        let l: Vec<f32> = (0..n)
+            .map(|i| 0.5 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / sr).sin())
+            .collect();
+        let r = l.clone();
+        let (out_l, out_r) = crate::audio::stretch::stretch_stereo_mode(
+            &l,
+            &r,
+            1.5,
+            sr,
+            crate::audio::warp::WarpMode::RubberBand,
+        );
+        let expected = (n as f32 * 1.5).round() as i64;
+        assert!(
+            (out_l.len() as i64 - expected).abs() <= 2,
+            "längden ska vara {expected}, fick {}",
+            out_l.len()
+        );
+        assert_eq!(out_l.len(), out_r.len());
+        println!(
+            "rubber band-läget: {} framer för 1,5x (rubber band tillgängligt: {})",
+            out_l.len(),
+            crate::audio::rubber_band::is_available()
+        );
+    }
 }

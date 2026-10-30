@@ -46,16 +46,21 @@ pub enum WarpMode {
     /// med säkerhet är källans egen (mätt: topp 0,900 = källan, varje attack ordagrann).
     /// Kornparametrarna nedan gäller **kropparna** mellan anslagen, inte attacken.
     Transient,
+    /// **Rubber Band** (R3-motorn via dlopen): formantbevarande, tonhöjdspreserverande sträckning.
+    /// Läget kräver `librubberband.so`; saknas den faller det tillbaka på `Complex` (samma korn),
+    /// så ett projekt som valt läget öppnas och låter som förut på en maskin utan biblioteket.
+    RubberBand,
 }
 
 
 impl WarpMode {
-    pub const ALL: [WarpMode; 5] = [
+    pub const ALL: [WarpMode; 6] = [
         WarpMode::Fast,
         WarpMode::Tone,
         WarpMode::Smooth,
         WarpMode::Complex,
         WarpMode::Transient,
+        WarpMode::RubberBand,
     ];
 
     pub fn label(self) -> &'static str {
@@ -65,6 +70,7 @@ impl WarpMode {
             WarpMode::Smooth => "Smooth",
             WarpMode::Complex => "Complex",
             WarpMode::Transient => "Transient",
+            WarpMode::RubberBand => "Rubber Band",
         }
     }
 
@@ -76,6 +82,8 @@ impl WarpMode {
             WarpMode::Smooth => 120.0,
             WarpMode::Complex => 40.0,
             WarpMode::Transient => 40.0,
+            // Används bara när Rubber Band saknas (återfallet är Complex).
+            WarpMode::RubberBand => 40.0,
         }
     }
 
@@ -87,6 +95,7 @@ impl WarpMode {
             WarpMode::Smooth => 8.0,
             WarpMode::Complex => 10.0,
             WarpMode::Transient => 10.0,
+            WarpMode::RubberBand => 10.0,
         }
     }
 

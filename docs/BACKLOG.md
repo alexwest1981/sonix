@@ -27,8 +27,8 @@ posten kommer från.
 | # | Post | Källa | Storlek |
 | :--: | :--- | :--- | :---: |
 | 6 | ✅ **LV2-hosting** (egen `libloading`-host; `livi` krävde lilv vid bygge) | REAPER | **M** |
-| 7 | **Rubber Band** (formantbevarande stretch) | REAPER | **M** (S att länka, M att hosta lägena) |
-| 8 | **Hybrid Reverb** (diffusionsnät + konvolution) | Ableton | **M** |
+| 7 | ✅ **Rubber Band** som warp-läge (dlopen, återfall till WSOLA) | REAPER | **M** | 1,5× → 6 615 framer, 440 → 440 Hz, +1 oktav → 880 Hz |
+| 8 | ✅ **Hybrid Reverb** (FDN + konvolution) | Ableton | **M** | RT60 0,81/1,51/3,01 s mot 0,80/1,50/3,00 · densitet 62 % |
 | 9 | **JACK-backend** | REAPER | **M** |
 | 10 | **Kontrollerytor utöver MCU** (BCF2000, BabyHUI, FaderPort, OSC-yta) | båda | **M** |
 | 11 | **Bit-bridge för VST2/VST3** (sandbox routar bara CLAP idag) | REAPER | **M** |
