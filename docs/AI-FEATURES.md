@@ -14,10 +14,16 @@ taket i toppen, tystnaden mellan fraserna, och hur platt dynamiken är.
 | `brusgolv (p10)` | 10:e percentilen av RMS över 100 ms — rummet mellan fraserna | −45 dBFS eller lägre = verklig tystnad; −25 dBFS = ingen tystnad alls |
 | `korttids-RMS spridning` | Standardavvikelse i 100 ms-RMS | 3 dB = jämnt mos; 8–15 dB = dynamisk låt |
 | `crest (topp − RMS)` | Samplad topp mot hela filens RMS | 8–10 dB = brickwall; 14–20 dB = dynamisk |
+| `tempo/anslag` | Rutnätets tempo, medianavstånd till närmaste sextondel, andel anslag inom 12 % av steget | 0–10 ms och > 80 % = kvantiserat; 20–50 ms och ~25 % = spelat |
 
-**Timing är medvetet inte med.** Det kräver tempospårning, och en felaktig takt ger ett felaktigt
-svar som ser lika säkert ut som ett riktigt. Måttet läggs till när BPM kan läsas ur filen med samma
-säkerhet som användarens eget tempo.
+**Tempot kan anges**: `sonix --ai-features låt.wav 90`. Det är den enda vägen till ett svar som går
+att lita på, för en uppskattning kan hamna fel — mätt: samma fil lästes som 174 BPM när den gick i
+90. Utan angivet tempo söks rutnätet fram (60–180 BPM, det tempo där flest anslag ligger inom 12 %
+av steget) och raden märks `(uppskattat — kan vara fel)`.
+
+**Mätt på tre egna filer** (90 BPM angivet): median **41 ms** från rutnätet, **24 %** av anslagen på
+rälsen. Uppskattat tempo utan angivelse: 62,5 · 93,8 · 93,8 BPM — det ligger nära men är inte exakt,
+och därför märks raden.
 
 ## Vad siffrorna betyder i praktiken
 

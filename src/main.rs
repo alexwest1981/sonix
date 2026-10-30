@@ -98,12 +98,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // en detektor — spektralt tak, brusgolv och dynamik. Inget omdöme, bara siffror.
     if let Some(pos) = std::env::args().position(|a| a == "--ai-features") {
         let Some(path) = std::env::args().nth(pos + 1) else {
-            eprintln!("användning: sonix --ai-features <fil.wav>");
+            eprintln!("användning: sonix --ai-features <fil.wav> [bpm]");
             std::process::exit(2);
         };
+        // Ett **angivet** tempo (`--ai-features fil.wav 120`) är den enda vägen till ett svar om
+        // anslagen som går att lita på; utan det uppskattas tempot och raden märks som osäker.
+        let bpm: Option<f32> = std::env::args().nth(pos + 2).and_then(|v| v.parse().ok());
         match crate::audio::wav_reader::load_wav_pcm(&path) {
             Ok((l, r, sr)) => {
-                let f = crate::audio::ai_features::analyse(&l, &r, sr);
+                let f = crate::audio::ai_features::analyse(&l, &r, sr, bpm);
                 println!("{path}");
                 for line in f.lines() {
                     println!("  {line}");

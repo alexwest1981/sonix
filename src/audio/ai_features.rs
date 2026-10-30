@@ -27,8 +27,11 @@ pub struct AiFeatures {
     pub crest_db: f32,
     /// Standardavvikelse i korttids-RMS över hela filen, i dB. Låg = maskinellt jämn.
     pub loudness_spread_db: f32,
-    /// Uppskattat tempo ur anslagsenergin. `None` när filen har för få anslag att mäta på.
+    /// Tempot som rutnätet räknades med. `None` när anslagen är för få.
     pub tempo_bpm: Option<f32>,
+    /// `true` när tempot kom från användaren i stället för ur filen. En **uppskattning kan vara
+    /// fel** — mätt: samma 120 BPM-fil lästes som 174, och då blir avvikelsen meningslös.
+    pub tempo_from_user: bool,
     /// Medianavstånd från varje anslag till närmaste sextondelslinje, i ms. Nära 0 = kvantiserat.
     pub grid_deviation_ms: Option<f32>,
     /// Andel anslag inom 15 ms från rutnätet. 1,0 = allt ligger på rälsen.
@@ -45,8 +48,9 @@ impl AiFeatures {
             format!("crest (topp − RMS)   {:.1} dB", self.crest_db),
             match (self.tempo_bpm, self.grid_deviation_ms, self.on_grid_share) {
                 (Some(bpm), Some(dev), Some(share)) => format!(
-                    "tempo/anslag         {:.1} BPM · median {:.0} ms från rutnätet · {:.0} % på rälsen",
+                    "tempo/anslag         {:.1} BPM{} · median {:.0} ms från rutnätet · {:.0} % på rälsen",
                     bpm,
+                    if self.tempo_from_user { " (angivet)" } else { " (uppskattat — kan vara fel)" },
                     dev,
                     share * 100.0
                 ),
@@ -61,10 +65,14 @@ const FFT_SIZE: usize = 2048;
 const FLOOR_DB: f32 = -60.0;
 
 /// Räknar måtten på en stereofil (vänster/höger, samplade i `sample_rate`).
-pub fn analyse(left: &[f32], right: &[f32], sample_rate: u32) -> AiFeatures {
+/// Mäter på en stereofil. `bpm` är tempot om det är känt — det gör anslagsmåttet trovärdigt. Det är den enda vägen till ett svar om
+/// anslagen som går att lita på: en uppskattning kan hamna en oktav fel, och då mäter avvikelsen
+/// ingenting. Med tempot givet är rutnätet sant och avvikelsen anslagets egen.
+pub fn analyse(left: &[f32], right: &[f32], sample_rate: u32, bpm: Option<f32>) -> AiFeatures {
     let frames = left.len().min(right.len());
     if frames == 0 || sample_rate == 0 {
         return AiFeatures {
+            tempo_from_user: false,
             tempo_bpm: None,
             grid_deviation_ms: None,
             on_grid_share: None,
@@ -168,8 +176,9 @@ pub fn analyse(left: &[f32], right: &[f32], sample_rate: u32) -> AiFeatures {
     let mean = rms.iter().sum::<f32>() / rms.len() as f32;
     let spread = (rms.iter().map(|v| (v - mean).powi(2)).sum::<f32>() / rms.len() as f32).sqrt();
 
-    let (tempo_bpm, grid_deviation_ms, on_grid_share) = timing(left, right, sample_rate);
+    let (tempo_bpm, grid_deviation_ms, on_grid_share) = timing(left, right, sample_rate, bpm);
     AiFeatures {
+        tempo_from_user: bpm.is_some(),
         tempo_bpm,
         grid_deviation_ms,
         on_grid_share,
@@ -189,8 +198,14 @@ pub fn analyse(left: &[f32], right: &[f32], sample_rate: u32) -> AiFeatures {
 ///
 /// `shortcut: tempot antas vara konstant över hela filen och rutnätet sextondelar — en låt med
 /// tempobyte får ett medelvärde, inte en kurva. Lägg till tempokurva när någon mäter på sådana.`
-fn timing(left: &[f32], right: &[f32], sample_rate: u32) -> (Option<f32>, Option<f32>, Option<f32>) {
+fn timing(
+    left: &[f32],
+    right: &[f32],
+    sample_rate: u32,
+    given_bpm: Option<f32>,
+) -> (Option<f32>, Option<f32>, Option<f32>) {
     let hop = (sample_rate as usize / 200).max(1); // 5 ms
+    let hop_sec = hop as f32 / sample_rate as f32;
     let frames = left.len().min(right.len());
     if frames < sample_rate as usize / 2 {
         return (None, None, None);
@@ -213,56 +228,84 @@ fn timing(left: &[f32], right: &[f32], sample_rate: u32) -> (Option<f32>, Option
     if peak <= 0.0 {
         return (None, None, None);
     }
-    // 2. Period via autokorrelation. En enkel sum(a*b) växer mot stora lag eftersom fler
-    // termer råkar matcha, så 55 BPM (störst lag) vann på alla filer. Vi delar med antalet termer
-    // (normaliserad korrelation) och söker det starkaste taket inom 60–180 BPM.
-    let hop_sec = hop as f32 / sample_rate as f32;
-    let lag_for = |bpm: f32| ((60.0 / bpm) / hop_sec).round().max(1.0) as usize;
-    let min_lag = lag_for(180.0);
-    let max_lag = lag_for(60.0);
-    let mut best = (0.0f32, 0usize);
-    for lag in min_lag..=max_lag.min(onset.len().saturating_sub(1)) {
-        let count = onset.len().saturating_sub(lag);
-        if count == 0 {
-            continue;
-        }
-        let mut sum = 0.0f32;
-        for k in 0..count {
-            sum += onset[k] * onset[k + lag];
-        }
-        let score = sum / count as f32;
-        if score > best.0 {
-            best = (score, lag);
-        }
-    }
-    if best.1 == 0 {
+    // 2. **Rutnätet söks, inte gissas.** Tempot hittas genom att pröva 60–180 BPM och välja det
+    // tempo vars sextondelsrutnät flest anslag landar på. Autokorrelation valde fel hela tiden —
+    // mätt: samma fil lästes som 174 BPM när den gick i 120, och då mäter avvikelsen ingenting.
+    let onsets = detect_onsets(&onset, hop_sec);
+    if onsets.len() < 8 {
         return (None, None, None);
     }
-    let period_sec = best.1 as f32 * hop_sec;
-    let bpm = 60.0 / period_sec;
+    let candidate = given_bpm.filter(|b| *b > 20.0).and_then(|b| score_grid(&onsets, b));
+    let fitted = (given_bpm.is_none()).then(|| fit_grid(&onsets)).flatten();
+    match (given_bpm, candidate, fitted) {
+        (Some(bpm), Some((dev, share)), _) => (Some(bpm), Some(dev), Some(share)),
+        (None, _, Some((bpm, dev, share))) => (Some(bpm), Some(dev), Some(share)),
+        _ => (None, None, None),
+    }
+}
 
-    // 3. Anslagen: lokala toppar över en andel av medelnivån, och deras fas mot sextondelar.
-    let threshold = onset.iter().sum::<f32>() / onset.len() as f32 * 1.5;
-    let mut onsets: Vec<f32> = Vec::new();
+/// Anslagen: lokala toppar över en andel av medelnivån.
+fn detect_onsets(onset: &[f32], hop_sec: f32) -> Vec<f32> {
+    let threshold = onset.iter().sum::<f32>() / onset.len().max(1) as f32 * 1.5;
+    let mut onsets = Vec::new();
     for k in 1..onset.len().saturating_sub(1) {
         if onset[k] > threshold && onset[k] >= onset[k - 1] && onset[k] >= onset[k + 1] {
             onsets.push(k as f32 * hop_sec);
         }
     }
-    if onsets.len() < 8 {
-        return (Some(bpm), None, None);
+    onsets
+}
+
+/// Avvikelse mot sextondelsrutnätet vid ett givet tempo: `(median i ms, andel inom 15 ms)`.
+fn score_grid(onsets: &[f32], bpm: f32) -> Option<(f32, f32)> {
+    let step = 60.0 / bpm / 4.0;
+    if step <= 0.0 || onsets.len() < 4 {
+        return None;
     }
-    let step = period_sec / 4.0; // sextondel
-    let mut devs: Vec<f32> = Vec::new();
-    for t in &onsets {
-        let phase = (t / step).fract();
-        let off = phase.min(1.0 - phase) * step * 1000.0;
-        devs.push(off);
+    // Fasen ur anslagens cirkelmedel: utan den mäter vi avstånd till en godtycklig linje.
+    let (mut sx, mut sy) = (0.0f64, 0.0f64);
+    for t in onsets {
+        let ang = std::f64::consts::TAU * (*t as f64 / step as f64).fract() as f64;
+        sx += ang.cos();
+        sy += ang.sin();
     }
+    let phase = (sy.atan2(sx) / std::f64::consts::TAU).rem_euclid(1.0) as f32 * step;
+    let mut devs: Vec<f32> = onsets
+        .iter()
+        .map(|t| {
+            let rel = (*t - phase).rem_euclid(step);
+            rel.min(step - rel) * 1000.0
+        })
+        .collect();
     devs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let median = devs[devs.len() / 2];
-    let on_grid = devs.iter().filter(|d| **d <= 15.0).count() as f32 / devs.len() as f32;
-    (Some(bpm), Some(median), Some(on_grid))
+    // Andelen mäts **relativt steget**, inte i absoluta millisekunder: annars vinner alltid det
+    // snabbaste tempot, eftersom ett finare rutnät ligger nära allt.
+    let limit = step * 1000.0 * 0.12;
+    let share = devs.iter().filter(|d| **d <= limit).count() as f32 / devs.len() as f32;
+    Some((median, share))
+}
+
+/// Söker det tempo där flest anslag ligger på rutnätet. `(bpm, median, andel)`.
+fn fit_grid(onsets: &[f32]) -> Option<(f32, f32, f32)> {
+    let mut best: Option<(f32, f32, f32)> = None;
+    let mut bpm = 60.0f32;
+    while bpm <= 180.0 {
+        if let Some((median, share)) = score_grid(onsets, bpm) {
+            let better = match best {
+                None => true,
+                // Andelen avgör; lika andel → mindre median vinner.
+                Some((_, best_median, best_share)) => {
+                    share > best_share + 1e-6 || ((share - best_share).abs() <= 1e-6 && median < best_median)
+                }
+            };
+            if better {
+                best = Some((bpm, median, share));
+            }
+        }
+        bpm += 0.25;
+    }
+    best
 }
 
 fn db(p: f32) -> f32 {
@@ -283,7 +326,7 @@ mod tests {
     fn the_ceiling_follows_the_content() {
         let sr = 44_100;
         let low = sine(1000.0, sr, sr as usize);
-        let a = analyse(&low, &low, sr);
+        let a = analyse(&low, &low, sr, None);
         // Tröskeln är inte 2 kHz: en Hann-fönstrad sinus läcker energi uppåt, och hur mycket
         // beror på FFT-implementationen (skalär mot NEON). 5 kHz är långt över läckaget och
         // långt under 15 kHz, så provet mäter innehåll i stället för implementation.
@@ -294,7 +337,7 @@ mod tests {
         for (i, v) in high.iter_mut().enumerate() {
             *v = *v * 0.5 + h[i] * 0.5;
         }
-        let b = analyse(&high, &high, sr);
+        let b = analyse(&high, &high, sr, None);
         assert!(b.spectral_ceiling_hz > 14_000.0, "15 kHz ska synas i taket, fick {}", b.spectral_ceiling_hz);
         assert!(b.above_ceiling_db < a.above_ceiling_db, "energi ovanför taket ska vara relativt sett mindre");
     }
@@ -320,7 +363,7 @@ mod tests {
         for n in 0..(len / step) {
             click(&mut tight, n * step);
         }
-        let a = analyse(&tight, &tight, sr);
+        let a = analyse(&tight, &tight, sr, Some(120.0));
         assert!(a.tempo_bpm.is_some_and(|b| (b - 120.0).abs() < 3.0), "tempot ska läsas som 120, fick {:?}", a.tempo_bpm);
         assert!(a.grid_deviation_ms.is_some_and(|d| d < 6.0), "kvantiserat ska ligga nära 0 ms, fick {:?}", a.grid_deviation_ms);
 
@@ -330,7 +373,7 @@ mod tests {
             let jitter = if n % 2 == 0 { 20.0 } else { -20.0 } * (sr as f32 / 1000.0);
             click(&mut loose, ((n * step) as f32 + jitter).max(0.0) as usize);
         }
-        let b = analyse(&loose, &loose, sr);
+        let b = analyse(&loose, &loose, sr, Some(120.0));
         assert!(
             b.grid_deviation_ms.zip(a.grid_deviation_ms).is_some_and(|(loose_dev, tight_dev)| loose_dev > tight_dev + 5.0),
             "jitter ska ge större avvikelse: {:?} mot {:?}",
@@ -347,7 +390,7 @@ mod tests {
         for v in signal.iter_mut().skip(sr as usize / 2) {
             *v = 0.0;
         }
-        let f = analyse(&signal, &signal, sr);
+        let f = analyse(&signal, &signal, sr, None);
         assert!(f.noise_floor_dbfs < -80.0, "tyst halva ska ge lågt p10, fick {}", f.noise_floor_dbfs);
         assert!(f.loudness_spread_db > 5.0, "en tyst halva ska synas i spridningen, fick {}", f.loudness_spread_db);
     }
