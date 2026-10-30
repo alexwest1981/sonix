@@ -4155,4 +4155,22 @@ fn a_jsfx_instrument_can_be_the_synth_source() {
 
     synth.handle_command(AudioCommand::SetInstrument { path: None });
     let _ = std::fs::remove_file(path);
+
+/// **Wavetablen som syntkälla**: samma väg som ett JSFX-instrument, men inbyggd och utan fil.
+#[test]
+fn the_wavetable_can_be_the_synth_source() {
+    let mut synth = SynthEngine::new(44_100.0);
+    synth.handle_command(AudioCommand::SetInstrument {
+        path: Some(crate::audio::builtin_fx::wavetable_fx::WAVETABLE_SOURCE_PATH.to_string()),
+    });
+    let peak = |s: &mut SynthEngine| {
+        (0..1024).map(|_| s.process_stereo().0.abs()).fold(0.0f32, f32::max)
+    };
+    synth.handle_command(AudioCommand::NoteOn { note: 60, freq: 261.6, velocity: 1.0, channel: 0 });
+    let level = peak(&mut synth);
+    assert!(level > 0.05, "noten ska höras genom mastern, fick {level}");
+    println!("wavetable-källa: topp {level:.3} vid C4");
+    synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
+    let _ = peak(&mut synth);
+}
 }

@@ -1,24 +1,6 @@
 //! **Wavetable oscillator:** 2048-sample frames, one band-limited mip per octave, morphing
 //! between frames, and up to seven detuned copies.
 //!
-//! ## File format (`Wavetable::from_text`)
-//!
-//! ASCII, one table per file, tokens separated by whitespace:
-//!
-//! ```text
-//! SONIXWT 1
-//! frames 3
-//! len 2048
-//! <2048 floats>          frame 0
-//! <2048 floats>          frame 1
-//! <2048 floats>          frame 2
-//! ```
-//!
-//! `SONIXWT` is the magic, `1` the version. `len` must be `FRAME_LEN` and `frames` 1..=`MAX_FRAMES`.
-//! The parser is strict: a missing or extra sample is an error, so a truncated file cannot
-//! silently become a shorter table — a short frame would play the wrong pitch instead of not
-//! at all.
-//!
 //! ## Mipmaps
 //!
 //! Level `m` keeps harmonics up to `mip_limit(m)` = 1023 >> m, i.e. one halving per level, and
@@ -140,69 +122,6 @@ impl Wavetable {
     /// Builds a table from one harmonic amplitude list per frame.
     pub fn from_harmonics(frames: &[Vec<f32>]) -> Self {
         Self::with_mips(frames.iter().map(|a| Self::frame_from_harmonics(a)).collect())
-    }
-
-    /// Parses the file format documented at the top of this module. Strict: anything that does
-    /// not match is an error.
-    pub fn from_text(text: &str) -> Result<Self, String> {
-        let mut tokens = text.split_whitespace();
-        let mut next = |what: &str| tokens.next().ok_or_else(|| format!("wavetable: missing {what}"));
-        if next("header")? != "SONIXWT" {
-            return Err("wavetable: missing SONIXWT header".to_string());
-        }
-        let version: u32 = next("version")?.parse().map_err(|_| "wavetable: bad version")?;
-        if version != 1 {
-            return Err(format!("wavetable: unsupported version {version}"));
-        }
-        if next("frames header")? != "frames" {
-            return Err("wavetable: expected 'frames'".to_string());
-        }
-        let frames: usize =
-            next("frame count")?.parse().map_err(|_| "wavetable: bad frame count")?;
-        if next("len header")? != "len" {
-            return Err("wavetable: expected 'len'".to_string());
-        }
-        let len: usize = next("frame length")?.parse().map_err(|_| "wavetable: bad length")?;
-        if len != FRAME_LEN {
-            return Err(format!("wavetable: length {len}, expected {FRAME_LEN}"));
-        }
-        if frames == 0 || frames > MAX_FRAMES {
-            return Err(format!("wavetable: {frames} frames, expected 1..={MAX_FRAMES}"));
-        }
-        let mut raw = Vec::with_capacity(frames);
-        for f in 0..frames {
-            let mut frame = Vec::with_capacity(FRAME_LEN);
-            for i in 0..FRAME_LEN {
-                let s: f32 = next(&format!("sample {i} of frame {f}"))?
-                    .parse()
-                    .map_err(|_| format!("wavetable: bad sample {i} of frame {f}"))?;
-                if !s.is_finite() {
-                    return Err(format!("wavetable: sample {i} of frame {f} is not finite"));
-                }
-                frame.push(s);
-            }
-            raw.push(frame);
-        }
-        if tokens.next().is_some() {
-            return Err("wavetable: trailing samples".to_string());
-        }
-        Ok(Self::with_mips(raw))
-    }
-
-    /// Writes the untouched frame (mip 0) in the format `from_text` reads.
-    pub fn to_text(&self) -> String {
-        let mut out = format!("SONIXWT 1\nframes {}\nlen {}\n", self.frames.len(), FRAME_LEN);
-        for frame in &self.frames {
-            for (i, s) in frame[0].iter().enumerate() {
-                out.push_str(&format!("{s:.6}"));
-                out.push(if i % 16 == 15 { '\n' } else { ' ' });
-            }
-        }
-        out
-    }
-
-    pub fn frames(&self) -> usize {
-        self.frames.len()
     }
 
     /// Reads the table at a position (0..1) and a phase in [0, 1). The morph is linear between
@@ -391,23 +310,6 @@ impl WavetableOsc {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn wavetable_text_format_round_trips() {
-        let table = builtin(2);
-        let text = table.to_text();
-        let loaded = Wavetable::from_text(&text).expect("round trip");
-        assert_eq!(loaded.frames(), table.frames());
-        for i in 0..FRAME_LEN {
-            let diff = (loaded.frames[0][0][i] - table.frames[0][0][i]).abs();
-            assert!(diff < 1e-5, "sample {i} differs by {diff}");
-        }
-        // A truncated file must be an error, not a shorter table.
-        let short = format!("SONIXWT 1\nframes 1\nlen {FRAME_LEN}\n{}", "0 ".repeat(10));
-        assert!(Wavetable::from_text(&short).is_err());
-        // An extra sample must be an error too.
-        assert!(Wavetable::from_text(&format!("{text} 0.5")).is_err());
-    }
 
     #[test]
     fn mip_levels_halve_the_harmonic_limit() {

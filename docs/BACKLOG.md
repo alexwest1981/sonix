@@ -38,7 +38,7 @@ posten kommer från.
 
 | # | Post | Källa | Storlek | Varför |
 | :--: | :--- | :--- | :---: | :--- |
-| 13 | **Wavetable-motor** (tabellposition, 7 unisonlägen, 4 effektlägen, två filter med Morph) | Ableton | **L** | Egen motor + tabellformat; Abletons values finns i presets, kurvorna inte |
+| 13 | ✅ **Wavetable-motor** (mipmaps, morph, 7 unisonstämmor, filter) — källa via `SetInstrument` | Ableton | **L** | 14 kHz alias −110,5 dB mot −26,0 naivt · morph 0 → 0,3245 · 7 toppar |
 | 14 | **Fysisk modellering** (modal resonator + mallet, Collision/Tension) | Ableton | **L** | Egen motor |
 | 15 | **Lua-API-paritet** (732 `RPR_`-funktioner) | REAPER | **L** | Språket är S, API-ytan är L |
 | 16 | **Python / Live Object Model** | Ableton | **L** | Deras moat: 60 moduler, 2 260 `.pyc` |

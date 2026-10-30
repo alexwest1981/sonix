@@ -40,6 +40,11 @@ pub struct WavetableFx {
 
 impl WavetableFx {
     pub fn new(sample_rate: f32) -> Self {
+        // Alla tre inbyggda tabeller byggs här, inte vid första ratten på ljudtråden: mip-bygget
+        // är 11 FFT:er per ram, och en lasttopp mitt i en buffer är värre än 30 ms vid start.
+        for index in 0..crate::audio::wavetable::TABLE_NAMES.len() {
+            let _ = crate::audio::wavetable::builtin(index);
+        }
         let params = FilterParams { cutoff: 20_000.0, resonance: 0.7 };
         Self {
             osc: WavetableOsc::new(sample_rate),
@@ -270,5 +275,116 @@ mod tests {
         assert!(finite, "NaN or inf in the render");
         assert!(peak < 2.0, "peak {peak} is not below 2.0");
         assert!(mean.abs() < 1e-4, "DC {mean} is not negligible");
+    }
+}
+
+/// Pseudo-sökvägen som sätter wavetablen som syntkälla (`AudioCommand::SetInstrument`).
+pub const WAVETABLE_SOURCE_PATH: &str = "builtin:wavetable";
+
+/// **Wavetable som syntkälla.** Samma plats som JSFX-instrumentet: synten renderar en källa i
+/// stället för rösterna, och allt efter (master, effekter, pan) går genom `finish_master`.
+/// `process_stereo` filtrerar bara ingången — ljudet kommer från `note_on` + oscillatorn.
+pub struct WavetableSource {
+    fx: WavetableFx,
+    info: crate::audio::plugin_host_live::PluginInfo,
+    params: Vec<crate::audio::plugin_host_live::PluginParameter>,
+    /// Noten som hålls och dess frekvens; `gate` styr oscillatorns ramp.
+    held: Option<(u8, f32)>,
+}
+
+impl WavetableSource {
+    pub fn new(sample_rate: f32) -> Self {
+        let names = [
+            ("Tabell", 0.0, 2.0, 0.0),
+            ("Position", 0.0, 1.0, 0.0),
+            ("Stämmor", 1.0, 7.0, 1.0),
+            ("Spridning", 0.0, 1.0, 0.0),
+            ("Cutoff", 20.0, 20_000.0, 20_000.0),
+            ("Resonans", 0.0, 1.0, 0.7),
+        ];
+        let params = names
+            .iter()
+            .enumerate()
+            .map(|(i, (name, lo, hi, default))| crate::audio::plugin_host_live::PluginParameter {
+                id: i as u32,
+                name: name.to_string(),
+                module: String::new(),
+                min_value: *lo,
+                max_value: *hi,
+                default_value: *default,
+                flags: 0,
+            })
+            .collect();
+        Self {
+            fx: WavetableFx::new(sample_rate),
+            info: crate::audio::plugin_host_live::PluginInfo {
+                id: "builtin:wavetable".to_string(),
+                name: "Wavetable".to_string(),
+                vendor: "Sonix".to_string(),
+                version: env!("CARGO_PKG_VERSION").to_string(),
+                description: "Bandbegränsad wavetable med tabellmorph och unison".to_string(),
+                features: vec!["instrument".to_string()],
+            },
+            params,
+            held: None,
+        }
+    }
+}
+
+impl crate::audio::plugin_host_live::PluginProcessor for WavetableSource {
+    fn backend(&self) -> &'static str {
+        "wavetable"
+    }
+
+    fn info(&self) -> &crate::audio::plugin_host_live::PluginInfo {
+        &self.info
+    }
+
+    fn parameters(&self) -> &[crate::audio::plugin_host_live::PluginParameter] {
+        &self.params
+    }
+
+    fn latency_frames(&self) -> u32 {
+        0
+    }
+
+    fn accepts_notes(&self) -> bool {
+        true
+    }
+
+    fn note_on(&mut self, note: u8, _velocity: u8) {
+        self.held = Some((note, 440.0 * 2f32.powf((note as f32 - 69.0) / 12.0)));
+    }
+
+    fn note_off(&mut self, note: u8) {
+        if matches!(self.held, Some((n, _)) if n == note) {
+            self.held = None;
+        }
+    }
+
+    fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
+        match self.held {
+            Some((_, freq)) => {
+                let n = left.len().min(right.len());
+                let (l, r) = left.split_at_mut(n);
+                self.fx.render_note(freq, true, l, &mut r[..n]);
+            }
+            None => {
+                // Ingen not: släpp oscillatorn (rampen tonar ut) i ett block, sedan tyst.
+                let n = left.len().min(right.len());
+                let (l, r) = left.split_at_mut(n);
+                self.fx.render_note(0.0, false, l, &mut r[..n]);
+            }
+        }
+    }
+
+    fn set_parameter(&mut self, id: u32, value: f64) -> bool {
+        crate::audio::builtin_fx::Dsp::set(&mut self.fx, id as usize, value);
+        true
+    }
+
+    fn reset(&mut self) {
+        crate::audio::builtin_fx::Dsp::reset(&mut self.fx);
+        self.held = None;
     }
 }

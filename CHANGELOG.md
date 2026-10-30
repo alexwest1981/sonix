@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.221] - 2026-10-30
+
+**Wavetable-motor.** `audio::wavetable`: 2 048-samplers ramar, bandbegränsade mipmaps per oktav
+(FFT-trunkerade, inte medelvärden), tabellmorph mellan ramar, upp till 7 unisonstämmor med
+`cents = spridning · 25 · (2i/(n−1) − 1)`. Tre tabeller genereras i kod — inga binärfiler i repot.
+
+Nås som **källa** genom samma `SetInstrument` som ett JSFX-instrument (knappen *🧬 Wavetable som
+källa*), så den spelas från keyboard, MIDI och klipp och går genom mastern som allt annat.
+
+Mätt: aliasgolv på 14 kHz **−110,5 dB** mot **−26,0 dB** för en naiv enkel-mip; morph höjer
+H2..H8-andelen 0,0000 → 0,3245; 7 stämmor ger **7** toppar inom ±2 % av 1 kHz (1 stämma ger 1);
+10 s vid 220 Hz toppar 1,366 utan NaN.
+
+1 223 prov gröna, 0 varningar.
+
 ## [0.9.220] - 2026-10-30
 
 **Rubber Band som warp-läge.** Nytt läge `Rubber Band` i klippets warp-meny: R3-motorn lånas in

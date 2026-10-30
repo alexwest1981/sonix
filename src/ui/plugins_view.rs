@@ -128,6 +128,20 @@ pub fn render_plugins_view(
         // 3. ACTIVE PER-TRACK INSERTS (Fas 4.2 / 4.3)
         // ====================================================================
         let mut actions = PluginViewActions::default();
+        // Inbyggd källa: wavetablen går genom samma `SetInstrument` som ett JSFX-instrument.
+        ui.horizontal(|ui| {
+            if ui
+                .button(crate::i18n::t("🧬 Wavetable som källa"))
+                .on_hover_text(crate::i18n::t(
+                    "Spelar den inbyggda wavetablen med keyboard, MIDI och klipp i stället för syntens röster.",
+                ))
+                .clicked()
+            {
+                actions.instrument = Some(
+                    crate::audio::builtin_fx::wavetable_fx::WAVETABLE_SOURCE_PATH.to_string(),
+                );
+            }
+        });
         render_active_inserts(
             ui,
             active_plugins,

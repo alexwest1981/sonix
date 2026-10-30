@@ -46,7 +46,7 @@ impl ParamDef {
 
 mod hybrid_reverb_fx;
 mod roar_fx;
-mod wavetable_fx;
+pub mod wavetable_fx;
 
 pub struct EffectDef {
     pub id: &'static str,

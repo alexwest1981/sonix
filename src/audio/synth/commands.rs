@@ -503,6 +503,13 @@ impl SynthEngine {
             }
             AudioCommand::SetInstrument { path } => {
                 self.instrument = match path.as_deref() {
+                    // Den inbyggda wavetablen går genom samma källa som ett JSFX-instrument: en
+                    // pseudo-sökväg, så kommandot och UI-knappen är desamma.
+                    Some(crate::audio::builtin_fx::wavetable_fx::WAVETABLE_SOURCE_PATH) => Some(
+                        Box::new(crate::audio::builtin_fx::wavetable_fx::WavetableSource::new(
+                            self.sample_rate,
+                        )),
+                    ),
                     Some(p) => match crate::audio::jsfx::processor::load(p, self.sample_rate) {
                         Ok(proc) => Some(proc),
                         Err(err) => {
