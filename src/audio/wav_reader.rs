@@ -292,21 +292,44 @@ pub fn load_wav_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
 }
 
 /// Loads decoded stereo PCM [-1.0, 1.0] from any supported audio file.
-/// WAV is decoded natively; compressed formats (MP3, FLAC, OGG, M4A, AIFF…)
-/// are decoded through the external `ffmpeg` binary (f32le, stereo, 44.1 kHz).
+/// WAV and Ogg-Opus are decoded natively; the rest (MP3, FLAC, M4A, AIFF, WavPack…) goes
+/// through symphonia, and whatever it cannot read falls back to the external `ffmpeg`
+/// binary (f32le, stereo, 44.1 kHz).
 pub fn load_audio_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
     let lower = path.to_lowercase();
     if lower.ends_with(".wav") || lower.ends_with(".wave") {
         return load_wav_pcm(path);
     }
-    // **Avkoda i processen först.** `ffmpeg` var enda vägen förut, och då kunde inget komprimerat
-    // importeras på en maskin utan den binären. Symphonia (ren Rust) täcker FLAC, MP3, Vorbis/WAV
-    // och MP4/AAC; ffmpeg finns kvar som reserv för det som återstår (Opus, WavPack, AIFF).
+    // Decode in-process first: symphonia covers FLAC, MP3, Vorbis/WAV and MP4/AAC, Opus
+    // through libopus when it is installed; ffmpeg remains the last resort.
     match load_via_symphonia(path) {
         Ok(pcm) => Ok(pcm),
         Err(err) => {
-            eprintln!("sonix: symphonia kunde inte läsa {path}: {err} — provar ffmpeg");
+            eprintln!("sonix: symphonia could not read {path}: {err} — trying Opus");
+            if let Some(pcm) = load_via_opus(path) {
+                return Ok(pcm);
+            }
+            eprintln!("sonix: falling back to ffmpeg for {path}");
             load_via_ffmpeg(path)
+        }
+    }
+}
+
+/// Opus through `libopus`, only for the containers it lives in and only when it is installed.
+/// `None` means "not our case, try the next decoder"; a real failure is printed with its reason.
+fn load_via_opus(path: &str) -> Option<(Vec<f32>, Vec<f32>, u32)> {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_lowercase();
+    if !matches!(ext.as_str(), "opus" | "ogg" | "oga") || !super::opus::is_available() {
+        return None;
+    }
+    match super::opus::decode_file(path) {
+        Ok(pcm) => Some(pcm),
+        Err(err) => {
+            eprintln!("sonix: opus could not read {path}: {err} — trying ffmpeg");
+            None
         }
     }
 }
