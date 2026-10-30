@@ -6,8 +6,10 @@
 //! runtime condition, not a build dependency. Every decode is bounded in time and size,
 //! because a stuck child process must never stall the UI thread.
 
+use std::collections::VecDeque;
 use std::io::Read;
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -24,6 +26,11 @@ pub struct Frame {
     // Not read yet: the UI indexes frames itself, and the field belongs to the frame contract.
     #[allow(dead_code)]
     pub pts_secs: f64,
+    /// When the frame became available to the player. Playback latency is measured from
+    /// here, and a frame that is old is a frame the transport has already passed.
+    // Read by the playback tests only: the UI shows the newest frame it is given.
+    #[allow(dead_code)]
+    pub produced_at: Instant,
 }
 
 /// Small enough that a scrub over ten frames holds the whole neighbourhood, large enough
@@ -106,7 +113,143 @@ impl VideoSource {
             height: self.info.height,
             rgb: out.stdout[..size].to_vec(),
             pts_secs,
+            produced_at: Instant::now(),
         })
+    }
+}
+
+/// Ring depth: a quarter of a second at 25 fps. Enough to ride out a scheduler hiccup,
+/// small enough that the picture never runs visibly behind the transport.
+const RING_FRAMES: usize = 6;
+
+/// Playback of one clip: a single ffmpeg writing rawvideo for as long as the transport
+/// rolls, so the cost is one process per clip instead of one per frame.
+///
+/// Frames are paced here, not by ffmpeg's `-re`: readrate reads half a second ahead, and a
+/// preview that leads the audio is as wrong as one that lags it.
+pub struct Playback {
+    path: String,
+    info: VideoInfo,
+    /// Oldest first. The reader drops the oldest when the ring is full and `latest` takes
+    /// the newest, so a slow consumer skips frames instead of falling behind.
+    ring: Arc<Mutex<VecDeque<Frame>>>,
+    child: Option<Child>,
+    reader: Option<thread::JoinHandle<()>>,
+}
+
+impl Playback {
+    pub fn new(path: &str, info: VideoInfo) -> Self {
+        Self {
+            path: path.to_string(),
+            info,
+            ring: Arc::new(Mutex::new(VecDeque::with_capacity(RING_FRAMES))),
+            child: None,
+            reader: None,
+        }
+    }
+
+    /// Starts a decoder that plays from `time_secs` onwards; a running one is stopped first.
+    pub fn start(&mut self, time_secs: f64) -> Result<(), String> {
+        self.stop();
+        let time_secs = time_secs.max(0.0);
+        let size = self.info.width as usize * self.info.height as usize * 3;
+        let mut child = Command::new("ffmpeg")
+            .args([
+                "-v",
+                "error",
+                "-ss",
+                &format!("{time_secs:.3}"),
+                "-i",
+                &self.path,
+                "-vf",
+                &format!(
+                    "fps={},scale={}:{}",
+                    self.info.fps, self.info.width, self.info.height
+                ),
+                "-f",
+                "rawvideo",
+                "-pix_fmt",
+                "rgb24",
+                "-",
+            ])
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            // shortcut: a clip that stops decoding mid-way leaves the last picture with no
+            // message; the one-shot path reports the reason on the next scrub.
+            .stderr(Stdio::null())
+            .spawn()
+            .map_err(|err| format!("could not start ffmpeg: {err}"))?;
+        let mut pipe = child.stdout.take().expect("stdout is piped");
+        let ring = Arc::clone(&self.ring);
+        let (width, height, fps) = (self.info.width, self.info.height, self.info.fps);
+        let step = 1.0 / fps;
+        self.reader = Some(thread::spawn(move || {
+            let mut buf = vec![0u8; size];
+            let mut index = 0u64;
+            let started = Instant::now();
+            while pipe.read_exact(&mut buf).is_ok() {
+                // Absolute deadlines, so a late frame is followed by an on-time one instead
+                // of the whole clip drifting.
+                let due = started + Duration::from_secs_f64(step * index as f64);
+                let now = Instant::now();
+                if due > now {
+                    thread::sleep(due - now);
+                }
+                let frame = Frame {
+                    width,
+                    height,
+                    rgb: buf.clone(),
+                    pts_secs: time_secs + index as f64 * step,
+                    produced_at: Instant::now(),
+                };
+                let mut ring = ring.lock().unwrap_or_else(|err| err.into_inner());
+                if ring.len() == RING_FRAMES {
+                    ring.pop_front();
+                }
+                ring.push_back(frame);
+                index += 1;
+            }
+        }));
+        self.child = Some(child);
+        Ok(())
+    }
+
+    /// The newest frame that has not been shown yet. Never waits for the decoder: a UI that
+    /// asks faster than the clip runs gets `None` and keeps the picture it has.
+    pub fn latest(&mut self) -> Option<Frame> {
+        self.ring.lock().unwrap_or_else(|err| err.into_inner()).pop_back()
+    }
+
+    /// Restarts the decoder at `time_secs`; a rawvideo pipe cannot be moved any other way.
+    pub fn seek(&mut self, time_secs: f64) -> Result<(), String> {
+        self.start(time_secs)
+    }
+
+    /// Kills the decoder and waits for it, so no child outlives the playhead.
+    pub fn stop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        // The reader can still deliver what the pipe already held, so wait for it before
+        // clearing: afterwards `latest` has nothing to return.
+        if let Some(reader) = self.reader.take() {
+            let _ = reader.join();
+        }
+        self.ring.lock().unwrap_or_else(|err| err.into_inner()).clear();
+    }
+
+    /// Process id of the decoder. Used by the tests that check it is really gone; the UI has
+    /// no use for it.
+    #[cfg(test)]
+    pub fn pid(&self) -> Option<u32> {
+        self.child.as_ref().map(Child::id)
+    }
+}
+
+impl Drop for Playback {
+    fn drop(&mut self) {
+        self.stop();
     }
 }
 
@@ -214,6 +357,53 @@ mod tests {
         assert_eq!(a.len(), b.len());
         let sum: u64 = a.iter().zip(b).map(|(x, y)| x.abs_diff(*y) as u64).sum();
         sum as f64 / a.len() as f64
+    }
+
+    /// The next frame a running playback hands out, or `None` if none arrives in time.
+    fn next_frame(play: &mut Playback, wait: Duration) -> Option<Frame> {
+        let deadline = Instant::now() + wait;
+        while Instant::now() < deadline {
+            if let Some(frame) = play.latest() {
+                return Some(frame);
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+        None
+    }
+
+    /// Whether `/proc/<pid>` is still there. A killed and reaped child leaves no directory;
+    /// a leaked one keeps it, zombie or not.
+    fn proc_exists(pid: u32) -> bool {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+
+    /// Every ffmpeg or sonix process whose parent is this test binary.
+    // Not asserted on: the whole test binary shares one parent, so parallel tests see each
+    // other's decoders. It is printed as evidence of what was looked at.
+    fn decoder_children() -> Vec<(u32, String)> {
+        let me = std::process::id();
+        let mut found = Vec::new();
+        let Ok(entries) = std::fs::read_dir("/proc") else { return found };
+        for entry in entries.flatten() {
+            let Ok(pid) = entry.file_name().to_string_lossy().parse::<u32>() else {
+                continue;
+            };
+            let Ok(status) = std::fs::read_to_string(format!("/proc/{pid}/status")) else {
+                continue;
+            };
+            let field = |key: &str| {
+                status
+                    .lines()
+                    .find_map(|line| line.strip_prefix(key))
+                    .map(|value| value.trim().to_string())
+            };
+            let name = field("Name:").unwrap_or_default();
+            let parent = field("PPid:").and_then(|value| value.parse::<u32>().ok());
+            if parent == Some(me) && (name.contains("ffmpeg") || name.contains("sonix")) {
+                found.push((pid, name));
+            }
+        }
+        found
     }
 
     #[test]
@@ -343,5 +533,156 @@ mod tests {
             assert_eq!((frame.width as usize, frame.height as usize), (320, 240));
         }
         println!("20 random seeks: min {min:.3} ms, max {max:.3} ms");
+    }
+
+    /// (a) A live decoder feeds faster than the clip runs: two seconds of wall time must
+    /// deliver at least a second of film at 25 fps.
+    #[test]
+    fn playback_delivers_frames_faster_than_the_clip_runs() {
+        let Some(fx) = fixture("playrate") else { return };
+        let info = probe(&fx.path).expect("probe");
+        let mut play = Playback::new(&fx.path, info);
+        play.start(0.0).expect("start");
+
+        let window = Duration::from_secs(2);
+        let started = Instant::now();
+        let mut count = 0usize;
+        while started.elapsed() < window {
+            if play.latest().is_some() {
+                count += 1;
+            } else {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+        let elapsed = started.elapsed().as_secs_f64();
+        let fps = count as f64 / elapsed;
+        println!(
+            "{count} frames in {elapsed:.2} s of wall time, {fps:.1} fps (the clip is 25.0 fps)"
+        );
+        play.stop();
+        assert!(
+            count >= 25,
+            "{count} frames in {elapsed:.2} s cannot follow a 25 fps clip"
+        );
+        // One frame per second of slack: the pacer aims at exactly 25.0, and a window that
+        // ends a millisecond late must not read as a failure.
+        assert!(fps >= 24.0, "only {fps:.1} frames per second arrived");
+    }
+
+    /// (b) A frame is shown while it is still current: thirty consecutive frames must each
+    /// be under 100 ms old when `latest` returns them.
+    #[test]
+    fn a_shown_frame_is_less_than_100_ms_old() {
+        let Some(fx) = fixture("latency") else { return };
+        let info = probe(&fx.path).expect("probe");
+        let mut play = Playback::new(&fx.path, info);
+        play.start(0.0).expect("start");
+
+        let mut ages: Vec<f64> = Vec::with_capacity(30);
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while ages.len() < 30 && Instant::now() < deadline {
+            match play.latest() {
+                Some(frame) => ages.push(frame.produced_at.elapsed().as_secs_f64() * 1e3),
+                None => thread::sleep(Duration::from_millis(1)),
+            }
+        }
+        play.stop();
+        assert_eq!(ages.len(), 30, "only {} frames arrived", ages.len());
+        ages.sort_by(f64::total_cmp);
+        println!(
+            "latency over 30 frames: min {:.2} ms, median {:.2} ms, max {:.2} ms",
+            ages[0],
+            ages[15],
+            ages[29]
+        );
+        assert!(
+            ages[29] < 100.0,
+            "worst latency was {:.2} ms, the UI would show a late picture",
+            ages[29]
+        );
+    }
+
+    /// (c) Asking for the current frame never waits for the decoder, however often the UI
+    /// asks: a thousand calls while a child is writing must stay far below one frame's cost.
+    #[test]
+    fn latest_never_waits_for_the_decoder() {
+        let Some(fx) = fixture("nonblocking") else { return };
+        let info = probe(&fx.path).expect("probe");
+        let mut play = Playback::new(&fx.path, info);
+        play.start(0.0).expect("start");
+        // Let the child get going: the point is contention, not a cold pipe.
+        assert!(next_frame(&mut play, Duration::from_secs(2)).is_some(), "no first frame");
+
+        let started = Instant::now();
+        for _ in 0..1000 {
+            let _ = play.latest();
+        }
+        let total = started.elapsed();
+        play.stop();
+        println!("1000 latest() calls took {:.3} ms", total.as_secs_f64() * 1e3);
+        assert!(
+            total < Duration::from_millis(50),
+            "1000 calls took {total:?}, the UI would stall"
+        );
+    }
+
+    /// (d) A seek moves the picture, and the decoder keeps running after it.
+    #[test]
+    fn a_seek_changes_the_picture_and_playback_continues() {
+        let Some(fx) = fixture("playseek") else { return };
+        let info = probe(&fx.path).expect("probe");
+        let mut play = Playback::new(&fx.path, info);
+        play.start(0.0).expect("start");
+        let before = next_frame(&mut play, Duration::from_secs(2)).expect("a frame before the seek");
+
+        play.seek(2.5).expect("seek");
+        let after = next_frame(&mut play, Duration::from_secs(2)).expect("a frame after the seek");
+        let diff = mean_abs_diff(&before.rgb, &after.rgb);
+        println!("mean abs difference across the seek: {diff:.2} levels");
+        assert!(
+            diff > 5.0,
+            "the picture barely moved across the seek: {diff:.2} levels"
+        );
+
+        let mut more = 0usize;
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while more < 10 && Instant::now() < deadline {
+            if play.latest().is_some() {
+                more += 1;
+            } else {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
+        play.stop();
+        println!("{more} frames after the seek");
+        assert!(more >= 10, "playback stopped after the seek: {more} frames");
+    }
+
+    /// (e) Stopping kills the decoder: no child survives, and the player hands out nothing
+    /// instead of panicking.
+    #[test]
+    fn stop_kills_the_decoder_and_leaves_no_frame_behind() {
+        let Some(fx) = fixture("playkill") else { return };
+        let info = probe(&fx.path).expect("probe");
+        let mut play = Playback::new(&fx.path, info);
+        play.start(0.0).expect("start");
+        let pid = play.pid().expect("a running decoder");
+        assert!(proc_exists(pid), "/proc/{pid} should exist while playing");
+        assert!(next_frame(&mut play, Duration::from_secs(2)).is_some(), "no first frame");
+
+        play.stop();
+        let alive = proc_exists(pid);
+        let siblings = decoder_children();
+        println!(
+            "pid {pid}: /proc/{pid} exists after stop: {alive}; ffmpeg/sonix children of {}: {siblings:?}",
+            std::process::id()
+        );
+        assert!(!alive, "decoder {pid} survived stop()");
+        assert!(
+            !siblings.iter().any(|(other, _)| *other == pid),
+            "decoder {pid} is still a child: {siblings:?}"
+        );
+        assert!(play.latest().is_none(), "a stopped playback must yield no frame");
+        assert!(play.latest().is_none(), "and no panic on asking again");
     }
 }
