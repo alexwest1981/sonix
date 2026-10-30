@@ -989,7 +989,7 @@ fn vorbis_comment_bytes(meta: &ExportMeta) -> Vec<u8> {
     out
 }
 
-fn write_flac(
+pub(crate) fn write_flac(
     path: &str,
     samples: &[f32],
     sample_rate: u32,

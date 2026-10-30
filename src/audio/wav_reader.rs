@@ -299,7 +299,84 @@ pub fn load_audio_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
     if lower.ends_with(".wav") || lower.ends_with(".wave") {
         return load_wav_pcm(path);
     }
-    load_via_ffmpeg(path)
+    // **Avkoda i processen först.** `ffmpeg` var enda vägen förut, och då kunde inget komprimerat
+    // importeras på en maskin utan den binären. Symphonia (ren Rust) täcker FLAC, MP3, Vorbis/WAV
+    // och MP4/AAC; ffmpeg finns kvar som reserv för det som återstår (Opus, WavPack, AIFF).
+    match load_via_symphonia(path) {
+        Ok(pcm) => Ok(pcm),
+        Err(err) => {
+            eprintln!("sonix: symphonia kunde inte läsa {path}: {err} — provar ffmpeg");
+            load_via_ffmpeg(path)
+        }
+    }
+}
+
+/// Dekoder i processen (symphonia). Returnerar stereo vid filens egen samplingsfrekvens.
+fn load_via_symphonia(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
+    use symphonia::core::audio::SampleBuffer;
+    use symphonia::core::codecs::DecoderOptions;
+    use symphonia::core::formats::FormatOptions;
+    use symphonia::core::io::MediaSourceStream;
+    use symphonia::core::meta::MetadataOptions;
+    use symphonia::core::probe::Hint;
+
+    let file = std::fs::File::open(path).map_err(|e| format!("kunde inte öppna {path}: {e}"))?;
+    let mss = MediaSourceStream::new(Box::new(file), Default::default());
+    let mut hint = Hint::new();
+    if let Some(ext) = std::path::Path::new(path).extension().and_then(|e| e.to_str()) {
+        hint.with_extension(ext);
+    }
+    let probed = symphonia::default::get_probe()
+        .format(
+            &hint,
+            mss,
+            &FormatOptions::default(),
+            &MetadataOptions::default(),
+        )
+        .map_err(|e| format!("okänt format: {e}"))?;
+    let mut format = probed.format;
+    let track = format
+        .tracks()
+        .iter()
+        .find(|t| t.codec_params.sample_rate.is_some())
+        .ok_or("ingen ljudström i filen")?;
+    let track_id = track.id;
+    let mut decoder = symphonia::default::get_codecs()
+        .make(&track.codec_params, &DecoderOptions::default())
+        .map_err(|e| format!("ingen dekoder: {e}"))?;
+    let mut sample_rate = track.codec_params.sample_rate.unwrap_or(44_100);
+    let mut left: Vec<f32> = Vec::new();
+    let mut right: Vec<f32> = Vec::new();
+    loop {
+        let packet = match format.next_packet() {
+            Ok(p) => p,
+            Err(_) => break,
+        };
+        if packet.track_id() != track_id {
+            continue;
+        }
+        let decoded = match decoder.decode(&packet) {
+            Ok(d) => d,
+            // En trasig frame i slutet ska inte kasta bort resten av filen.
+            Err(symphonia::core::errors::Error::DecodeError(_)) => continue,
+            Err(e) => return Err(format!("avkodningsfel: {e}")),
+        };
+        let spec = *decoded.spec();
+        sample_rate = spec.rate;
+        let mut buf = SampleBuffer::<f32>::new(decoded.capacity() as u64, spec);
+        buf.copy_interleaved_ref(decoded);
+        let channels = spec.channels.count().max(1);
+        for frame in buf.samples().chunks(channels) {
+            let l = frame[0];
+            let r = if channels > 1 { frame[1] } else { frame[0] };
+            left.push(l);
+            right.push(r);
+        }
+    }
+    if left.is_empty() {
+        return Err("inga sampel".to_string());
+    }
+    Ok((left, right, sample_rate))
 }
 
 fn load_via_ffmpeg(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
@@ -514,4 +591,30 @@ mod tests {
         }
     }
 
+
+    /// **En FLAC läses utan `ffmpeg`.** Filen skrivs med vår egen encoder och läses genom
+    /// `load_audio_pcm`, som ska välja symphonia — inte det externa programmet.
+    #[test]
+    fn a_flac_is_decoded_in_process() {
+        let sr = 44_100u32;
+        let n = sr as usize / 2;
+        let tone: Vec<f32> = (0..n)
+            .map(|i| 0.4 * (2.0 * std::f32::consts::PI * 440.0 * i as f32 / sr as f32).sin())
+            .collect();
+        let path = std::env::temp_dir().join(format!("sonix-flac-probe-{}.flac", std::process::id()));
+        let p = path.to_str().unwrap().to_string();
+        // `write_flac` tar **interleaved** stereo, så tonen läggs i båda kanalerna.
+        let interleaved: Vec<f32> = tone.iter().flat_map(|v| [*v, *v]).collect();
+        super::super::exporter::write_flac(&p, &interleaved, sr, 24, &Default::default())
+            .expect("skriv flac");
+
+        let (l, r, rate) = load_audio_pcm(&p).expect("läs flac");
+        assert_eq!(rate, sr, "samplingsfrekvensen ska följa med");
+        assert!((l.len() as i64 - n as i64).abs() <= 64, "längden ska stämma, fick {}", l.len());
+        assert_eq!(l.len(), r.len(), "stereo ska ha lika många sampel");
+        let rms = (l.iter().map(|v| (v * v) as f64).sum::<f64>() / l.len() as f64).sqrt();
+        let expected = (0.4f64 * 0.4 / 2.0).sqrt();
+        assert!((rms - expected).abs() < 0.02, "nivån ska bevaras: {rms:.4} mot {expected:.4}");
+        let _ = std::fs::remove_file(&path);
+    }
 }

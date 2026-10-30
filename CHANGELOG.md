@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.216] - 2026-10-30
+
+**Komprimerat ljud avkodas i processen.** Import gick förut alltid via det externa `ffmpeg`-programmet
+för allt som inte var WAV — saknades binären kunde inget komprimerat öppnas alls. Nu läser
+**symphonia** (ren Rust) FLAC, MP3, Vorbis, WAV och MP4/AAC direkt i processen, med `ffmpeg` kvar som
+reserv för det som återstår (Opus, WavPack, AIFF).
+
+Prov: en FLAC skrivs med vår egen encoder och läses genom `load_audio_pcm` — nivå och
+samplingsfrekvens bevaras, utan att `ffmpeg` är inblandat. 1 187 prov gröna.
+
 ## [0.9.215] - 2026-10-30
 
 **Omsampling med fönstrat sinc i stället för linjär interpolation.** Linjär interpolation är ett
