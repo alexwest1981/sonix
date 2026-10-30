@@ -292,16 +292,16 @@ pub fn load_wav_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
 }
 
 /// Loads decoded stereo PCM [-1.0, 1.0] from any supported audio file.
-/// WAV and Ogg-Opus are decoded natively; the rest (MP3, FLAC, M4A, AIFF, WavPack…) goes
-/// through symphonia, and whatever it cannot read falls back to the external `ffmpeg`
-/// binary (f32le, stereo, 44.1 kHz).
+/// WAV, Ogg-Opus and AIFF/AIFC are decoded natively; FLAC, MP3, Vorbis and M4A go through
+/// symphonia, and whatever it cannot read falls back to the external `ffmpeg` binary
+/// (f32le, stereo, 44.1 kHz).
 pub fn load_audio_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
     let lower = path.to_lowercase();
     if lower.ends_with(".wav") || lower.ends_with(".wave") {
         return load_wav_pcm(path);
     }
     // Decode in-process first: symphonia covers FLAC, MP3, Vorbis/WAV and MP4/AAC, Opus
-    // through libopus when it is installed; ffmpeg remains the last resort.
+    // through libopus when it is installed, AIFF/AIFC by hand; ffmpeg remains the last resort.
     match load_via_symphonia(path) {
         Ok(pcm) => Ok(pcm),
         Err(err) => {
@@ -309,8 +309,30 @@ pub fn load_audio_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
             if let Some(pcm) = load_via_opus(path) {
                 return Ok(pcm);
             }
+            if let Some(pcm) = load_via_aiff(path) {
+                return Ok(pcm);
+            }
             eprintln!("sonix: falling back to ffmpeg for {path}");
             load_via_ffmpeg(path)
+        }
+    }
+}
+
+/// AIFF/AIFC through the in-process reader — symphonia has no IFF reader in this build.
+/// `None` means "not our case, try the next decoder"; a real failure is printed with its reason.
+fn load_via_aiff(path: &str) -> Option<(Vec<f32>, Vec<f32>, u32)> {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_lowercase();
+    if !matches!(ext.as_str(), "aiff" | "aif" | "aifc") {
+        return None;
+    }
+    match super::aiff::decode_file(path) {
+        Ok(pcm) => Some(pcm),
+        Err(err) => {
+            eprintln!("sonix: AIFF reader could not read {path}: {err} — trying ffmpeg");
+            None
         }
     }
 }
