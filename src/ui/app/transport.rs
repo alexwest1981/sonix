@@ -1006,14 +1006,18 @@ fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool, channel: u8) {
                 );
             }
             if self.midi_record_armed && self.is_playing {
-                self.record_midi_note_at_step(mapped_note);
                 // Tagningen (Fas 6.4): noten skrivs till rutnätet *och* sparas
                 // med sin faktiska tid, så att den går att kvantisera eller
                 // humanisera i efterhand. Rutnätet ensamt kastade tiden.
+                // Ackordet spelas in som de noter det lät som, inte som grundtonen.
                 let pos = self.current_take_pos();
-                if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
-                    pat.active_take_mut()
-                        .push(pos, mapped_note, mapped_velocity as f32 / 127.0);
+                let held = self.midi_map.chord_notes(mapped_note);
+                for chord_note in held.iter().copied() {
+                    self.record_midi_note_at_step(chord_note);
+                    if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
+                        pat.active_take_mut()
+                            .push(pos, chord_note, mapped_velocity as f32 / 127.0);
+                    }
                 }
             }
         }
