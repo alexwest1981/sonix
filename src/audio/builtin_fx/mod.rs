@@ -79,6 +79,7 @@ pub fn defs() -> Vec<&'static EffectDef> {
         &filters::FILTER72,
         &filters::TILT,
         &filters::MOOG,
+        &filters::CYTOMIC,
         &filters::PHASE_ROTATE,
         &lowend::BASS_MANAGER,
         &lowend::ALIGN,
