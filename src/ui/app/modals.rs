@@ -227,6 +227,35 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                     }
                 });
 
+                // BCF2000 / FaderPort: raw MIDI bytes through the pure parser, sent on the
+                // same control channel the MCU thread writes to.
+                ui.horizontal(|ui| {
+                    ui.label(crate::i18n::t("Kontrollyta:"));
+                    for kind in [SurfaceKind::Mcu, SurfaceKind::Bcf2000, SurfaceKind::FaderPort] {
+                        if ui.selectable_label(self.surface_kind == kind, kind.label()).clicked() {
+                            self.surface_kind = kind;
+                            self.surface_input = None;
+                            if kind != SurfaceKind::Mcu {
+                                match SurfaceInput::connect(kind, self.control_tx.clone()) {
+                                    Ok(s) => {
+                                        self.surface_input = Some(s);
+                                        self.status_message = crate::tstatus!(
+                                            "✔ {} ansluten — fadrar och transport styr mixern.",
+                                            kind.label()
+                                        );
+                                    }
+                                    Err(e) => {
+                                        self.status_message = crate::tstatus!("⚠ {}", e);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if let Some(s) = &self.surface_input {
+                        ui.label(egui::RichText::new(crate::tstatus!("{} händelser", s.received())).size(Theme::FONT_S).color(crate::ui::theme::palette().green()));
+                    }
+                });
+
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Fader Bank:"));
                     let banks = [crate::i18n::t("Bank 1 (Spår 1–8)"), crate::i18n::t("Bank 2 (Spår 9–16)"), crate::i18n::t("Bank 3 (Bussar & VCA)")];
