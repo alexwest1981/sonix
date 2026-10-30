@@ -12,7 +12,7 @@ posten kommer från.
 | 2 | ✅ **Multibandssaturator (`Roar`)**: 3 stag, 12 shaper-lägen, 8 filtertyper, feedback | Ableton | **M** | Övertoner per shaper (THD per läge), bandläckage |
 | 3 | ✅ **MIDI-effekter** — skala, transponering, anslag, kanal, ackord, notlängd, eko, slump, arpeggio, strum | Ableton | **M** | 250 ms → 12 000 sampel; eko 2 400/4 800; slump 1..127 |
 | 4 | ✅ **DDP-export** (CUE/BIN, CD-TEXT, ISRC) | REAPER | **S–M** | Filstruktur mot spec, red book-ordning |
-| 5 | **Lua bredvid Rhai** | REAPER | **S** | Ett skript i vardera språket ger samma noter |
+| 5 | ✅ **Lua 5.4 bredvid Rhai** (vendored mlua, samma tolv funktioner, 5M-instruktionsbudget) | REAPER | **S** | Samma skript ger identisk `Ctx`; oändlig loop stoppas på 21 ms |
 
 ## 1b. Mätt 2026-10-30 (klara)
 
@@ -29,7 +29,7 @@ posten kommer från.
 | 6 | ✅ **LV2-hosting** (egen `libloading`-host; `livi` krävde lilv vid bygge) | REAPER | **M** |
 | 7 | ✅ **Rubber Band** som warp-läge (dlopen, återfall till WSOLA) | REAPER | **M** | 1,5× → 6 615 framer, 440 → 440 Hz, +1 oktav → 880 Hz |
 | 8 | ✅ **Hybrid Reverb** (FDN + konvolution) | Ableton | **M** | RT60 0,81/1,51/3,01 s mot 0,80/1,50/3,00 · densitet 62 % |
-| 9 | **JACK-backend** — cpal 0.15 har ingen JACK-väg; kräver `jack`-craten och en omskrivning av trådmodellen | REAPER | **M** |
+| 9 | ✅ **JACK-backend** (`--features jack`, `SONIX_AUDIO=jack`) — 48 128 frames/47 cykler, RMS 0,354 | REAPER | **M** |
 | 10 | ◐ **Kontrollerytor**: MCU + **BCF2000** + **FaderPort** klara (rena parsers, testade byte för byte). Kvar: BabyHUI, OSC-yta, LED/display tillbaka till enheten | båda | **M** |
 | 11 | ✅ **VST3/VST2 genom sandboxen** (VST2 ej testad — ingen VST2-binär finns här) | REAPER | **M** |
 | 12 | ◐ **Opus klart** i processen (0,000 dB mot ffmpeg); **AIFF** pågår. **WavPack blockerad**: ingen `libwavpack` på maskinen och ingen ren Rust-dekoder — den vägen går via `ffmpeg` tills vidare | REAPER | **S–M** |
@@ -43,7 +43,7 @@ posten kommer från.
 | 15 | **Lua-API-paritet** (732 `RPR_`-funktioner) | REAPER | **L** | Språket är S, API-ytan är L |
 | 16 | **Python / Live Object Model** | Ableton | **L** | Deras moat: 60 moduler, 2 260 `.pyc` |
 | 17 | **Max for Live-ekosystem** | Ableton | **L** | Vi har en graf, inte ett ekosystem |
-| 18 | ◐ **Videomotor**: `frame_at` med cache + scrub klart. Kvar: realtidsuppspelning (60–100 ms per bild räcker inte till 25 fps), kodning, FX-kedja | REAPER | **L** |
+| 18 | ◐ **Videomotor**: `frame_at` + cache + **realtidsuppspelning 25,0 fps** klart. Kvar: kodning, FX-kedja | REAPER | **L** |
 | 19 | **Video-processor-DSL** (`//@param`, `//@gmem`) | REAPER | **L** | Kräver realtidsuppspelning först |
 | 20 | **élastique Pro** | båda | **L** | Kommersiell licens, inte kod |
 | 21 | **Disassemblera Abletons DSP per enhet** | Ableton | **L per enhet** | Enda vägen till exakta kurvor; klassnamnen (382 `O*Processor`) pekar ut dem |

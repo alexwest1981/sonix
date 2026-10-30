@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.225] - 2026-10-30
+
+**JACK-backend** bakom `--features jack`. DSP:n bröts ut ur cpal-callbacken till en `Renderer` som
+båda backends kallar — ingen duplicerad kedja — och blocklängden får variera per cykel.
+Standardbygget rör inte libjack alls (`ldd | grep -c jack` = **0**); med featuren syns
+`libjack.so.0`. Väljs med `SONIX_AUDIO=jack`, annars cpal, och en rad i loggen säger vilket.
+Mätt mot PipeWire:s JACK-server: **48 128 frames i 47 cykler** vid 48 kHz, **RMS 0,354**.
+
+**Realtidsvideo.** `Playback` håller **en** ffmpeg-process med rawvideo-rör och en 6-bilders ring på
+en egen tråd; `latest()` blockerar aldrig. Mätt på 25 fps-klippet: **50 bilder på 2,00 s = 25,0 fps**,
+latens **median 0,43 ms** (max 1,03), 1 000 `latest()`-anrop på **0,018 ms**, sök 2,5 s ger
+**20,83 nivåers** bildskillnad och spelet fortsätter, `stop()` tar död på barnet (`/proc/<pid>` borta).
+
+1 268 prov gröna (standard), 0 varningar.
+
 ## [0.9.224] - 2026-10-30
 
 **AIFF/AIFC avkodas i processen** (`audio::aiff`, ren Rust): COMM med 80-bitars extended
