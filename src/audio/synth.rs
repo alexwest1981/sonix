@@ -133,6 +133,7 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::NoteOn { .. } => "NoteOn",
         AudioCommand::NoteOnDelayed { .. } => "NoteOnDelayed",
         AudioCommand::NoteOff { .. } => "NoteOff",
+        AudioCommand::NoteOffDelayed { .. } => "NoteOffDelayed",
         AudioCommand::ChannelPitchBend { .. } => "ChannelPitchBend",
         AudioCommand::NoteBend { .. } => "NoteBend",
         AudioCommand::NoteBendDelayed { .. } => "NoteBendDelayed",
@@ -547,6 +548,9 @@ pub struct SynthEngine {
     pub scheduled_bends: Vec<ScheduledBend>,
     /// Bend som väntar på sitt sample och bara gäller en ton.
     pub scheduled_note_bends: Vec<ScheduledNoteBend>,
+    /// Note-offs waiting for their sample: `(samples_until, note, channel)`. The live note
+    /// length — same per-sample queue as `scheduled_notes`.
+    pub scheduled_note_offs: Vec<(u32, u8, u8)>,
     // Modular Patcher DSP graph
     pub patcher: Option<PatchProcessor>,
     pub patcher_spec: Option<PatchSpec>,
@@ -677,6 +681,7 @@ impl SynthEngine {
             scheduled_notes: Vec::new(),
             scheduled_bends: Vec::new(),
             scheduled_note_bends: Vec::new(),
+            scheduled_note_offs: Vec::new(),
             patcher: None,
             patcher_spec: None,
             patcher_enabled: false,

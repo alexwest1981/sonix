@@ -337,6 +337,69 @@ fn a_zero_delay_note_fires_immediately() {
 }
 
 #[test]
+fn a_scheduled_note_off_releases_the_note_after_its_length() {
+    use crate::audio::envelope::EnvelopeStage;
+    let mut synth = SynthEngine::new(48_000.0);
+    synth.handle_command(AudioCommand::NoteOn {
+        note: 60,
+        freq: 261.63,
+        velocity: 0.8,
+        channel: 1,
+    });
+    synth.handle_command(AudioCommand::NoteOffDelayed {
+        note: 60,
+        channel: 1,
+        delay_samples: 100,
+    });
+    assert_eq!(synth.scheduled_note_offs.len(), 1, "släppet ska vänta i kön");
+
+    for _ in 0..100 {
+        synth.process_stereo();
+    }
+    assert_ne!(
+        synth.voices[0].envelope.stage,
+        EnvelopeStage::Release,
+        "längden ska hålla noten kvar"
+    );
+
+    for _ in 0..2 {
+        synth.process_stereo();
+    }
+    assert_eq!(synth.voices[0].envelope.stage, EnvelopeStage::Release);
+    assert!(synth.scheduled_note_offs.is_empty());
+}
+
+#[test]
+fn a_key_up_before_the_length_drops_the_scheduled_release() {
+    use crate::audio::envelope::EnvelopeStage;
+    let mut synth = SynthEngine::new(48_000.0);
+    synth.handle_command(AudioCommand::NoteOn {
+        note: 60,
+        freq: 261.63,
+        velocity: 0.8,
+        channel: 1,
+    });
+    synth.handle_command(AudioCommand::NoteOffDelayed {
+        note: 60,
+        channel: 1,
+        delay_samples: 4_800,
+    });
+    synth.process_stereo();
+    // Tangenten släpps långt före längden: släppet vinner, och det schemalagda tas bort —
+    // annars hade noten fått två släpp och en omtriggad ton dött i förtid.
+    synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 1 });
+    assert_eq!(synth.voices[0].envelope.stage, EnvelopeStage::Release);
+    assert!(
+        synth.scheduled_note_offs.is_empty(),
+        "släppet ska ha tagit bort det schemalagda släppet"
+    );
+    for _ in 0..5_000 {
+        synth.process_stereo();
+    }
+    assert!(synth.scheduled_note_offs.is_empty());
+}
+
+#[test]
 fn strum_chord_schedules_notes_over_time() {
     let mut synth = SynthEngine::new(48_000.0);
     synth.handle_command(AudioCommand::StrumChord {
