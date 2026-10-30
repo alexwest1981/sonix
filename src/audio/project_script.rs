@@ -30,6 +30,22 @@ impl Ctx {
 /// Kör ett projektskript. `Ok` är det skriptet skrev med `print`, `Err` är felet som ska visas
 /// (rad och kolumn kommer från Rhai).
 pub fn run(source: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
+    run_named(source, "", ctx)
+}
+
+/// **Ett vägval för båda språken.** Första raden `--!lua`, eller ett namn som slutar på `.lua`,
+/// går till den inbyggda Lua 5.4; allt annat behåller Rhai. Anropare bryr sig inte om vilket.
+pub fn run_named(source: &str, name: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
+    let wants_lua =
+        name.ends_with(".lua") || source.lines().next().is_some_and(|line| line.trim() == "--!lua");
+    if wants_lua {
+        crate::audio::lua_script::run(source, ctx)
+    } else {
+        run_rhai(source, ctx)
+    }
+}
+
+fn run_rhai(source: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
     let mut engine = rhai::Engine::new();
     engine.set_max_operations(2_000_000);
 
@@ -202,5 +218,21 @@ mod tests {
         let mut c = ctx();
         run("set_step(0, 999, true); set_step(99, 0, true);", &mut c).unwrap();
         assert!(c.channels[0].steps.iter().all(|s| !*s));
+    }
+
+    #[test]
+    fn a_lua_header_picks_the_lua_engine() {
+        let mut c = ctx();
+        let log = run("--!lua\nset_bpm(150)\nprint(bpm())", &mut c).unwrap();
+        assert_eq!(c.bpm, 150.0);
+        assert_eq!(log, vec!["150".to_string()], "Rhai would have failed on that syntax");
+
+        let mut by_name = ctx();
+        run_named("set_bpm(150)", "drums.lua", &mut by_name).unwrap();
+        assert_eq!(by_name.bpm, 150.0);
+
+        let mut plain = ctx();
+        run_named("set_bpm(150.0)", "drums.rhai", &mut plain).unwrap();
+        assert_eq!(plain.bpm, 150.0);
     }
 }
