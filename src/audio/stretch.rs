@@ -343,6 +343,38 @@ pub fn stretch_stereo(
     stretch_stereo_mode(left, right, ratio, sample_rate, crate::audio::warp::WarpMode::Complex)
 }
 
+/// Rubber Band instead of WSOLA — **opt-in**, `None` when the library or the render fails.
+///
+/// WSOLA stays the default engine: every file in the stretch cache was rendered with it (see
+/// [`STRETCH_ENGINE_VERSION`]), so switching the production path is a decision, not a side
+/// effect. This is the door for that decision — same arguments as [`stretch_stereo_mode`],
+/// same `ratio` direction (out/in).
+///
+/// # Returns
+/// The stereo pair, or `None` if Rubber Band is not installed (the reason is in
+/// [`crate::audio::rubber_band::stretch`]'s error) — the caller then keeps WSOLA.
+#[allow(dead_code)] // the default path is WSOLA; callers opt in
+pub fn try_rubber_band(
+    left: &[f32],
+    right: &[f32],
+    ratio: f32,
+    sample_rate: f32,
+    formant: bool,
+) -> Option<(Vec<f32>, Vec<f32>)> {
+    if !super::rubber_band::is_available() {
+        return None; // not installed: the caller keeps WSOLA
+    }
+    super::rubber_band::stretch(
+        left,
+        right,
+        sample_rate.round() as u32,
+        ratio as f64,
+        1.0,
+        formant,
+    )
+    .ok()
+}
+
 /// Sträcker med ett valt warp-läge.
 ///
 /// Läget ändrar **kornets längd och sökvidden**, inget annat: kort korn följer transienter,

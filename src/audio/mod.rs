@@ -85,6 +85,8 @@ pub mod smf;
 pub mod tempo;
 pub mod stem_separator;
 pub mod stretch;
+// Optional Rubber Band backend (dlopen) — WSOLA in `stretch` stays the default.
+pub mod rubber_band;
 pub mod spectral_image;
 pub mod timbre;
 pub mod spectrum;
