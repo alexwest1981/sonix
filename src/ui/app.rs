@@ -20,6 +20,7 @@ use crate::audio::{
 };
 use crate::audio::ai_generator::{AiMusicAssistant, GenStyle};
 use crate::audio::hardware_control::{control_channel, ControlEvent, McuInput, OscServer};
+use crate::audio::control_surfaces::{SurfaceInput, SurfaceKind};
 use crate::audio::MidiKeyboardInput;
 use crate::audio::patcher::{ModularGraph, PatchSpec};
 use crate::audio::plugin_host::PluginManager;
@@ -478,6 +479,9 @@ pub struct SonixApp {
     pub osc_rx_count: usize,
     pub midi_learn_active: bool,
     pub mcu_input: Option<McuInput>,
+    /// BCF2000 / FaderPort over raw bytes; MCU keeps the ALSA path above.
+    pub surface_input: Option<SurfaceInput>,
+    pub surface_kind: SurfaceKind,
     pub osc_server: Option<OscServer>,
     // Real MIDI keyboard input (Fas 5.3)
     pub midi_input: Option<MidiKeyboardInput>,
@@ -1212,6 +1216,8 @@ impl SonixApp {
             osc_rx_count: 0,
             midi_learn_active: false,
             mcu_input: None,
+            surface_input: None,
+            surface_kind: SurfaceKind::Mcu,
             osc_server: None,
             midi_input: None,
             midi_map: crate::audio::key_mapper::KeyMap::default(),

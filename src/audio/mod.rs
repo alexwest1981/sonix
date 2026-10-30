@@ -15,6 +15,7 @@ pub mod project_script;
 pub mod resample;
 pub mod script;
 pub mod control_room;
+pub mod control_surfaces;
 pub mod ddp;
 pub mod dither;
 pub mod drum;
@@ -123,6 +124,10 @@ pub use exporter::{
 };
 #[allow(unused_imports)]
 pub use filter::FilterParams;
+#[allow(unused_imports)]
+pub use control_surfaces::{
+    SurfaceAction, SurfaceInput, SurfaceKind, SurfaceParser, TransportCommand,
+};
 #[allow(unused_imports)]
 pub use hardware_control::{
     control_channel, osc_to_event, parse_osc_message, ControlEvent, McuInput, OscArg, OscServer,
