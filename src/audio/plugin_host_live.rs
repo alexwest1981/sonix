@@ -161,7 +161,9 @@ pub fn inspect(path: &str) -> PluginInspection {
         if crate::audio::plugin_host::is_lv2_path(path) {
             return crate::audio::lv2::inspect(path);
         }
-        if crate::audio::plugin_vst3::is_vst3_path(path) {
+        if crate::audio::plugin_vst3::is_vst3_path(path)
+            || crate::audio::plugin_vst3::is_vst3_module(path)
+        {
             return crate::audio::plugin_vst3::inspect(path);
         }
         if crate::audio::plugin_vst2::is_vst2_path(path) {
@@ -205,8 +207,10 @@ pub const DEFAULT_BLOCK_FRAMES: usize = 128;
 /// implements it in `imp`. Future VST3/LV2 backends will implement the same.
 #[allow(dead_code)]
 pub trait PluginProcessor: Send {
-    /// Human-readable backend name, e.g. `"CLAP"`.
-    fn backend(&self) -> &'static str;
+    /// Human-readable backend name, e.g. `"CLAP"`. Borrowed rather than
+    /// `&'static str` so a sandboxed instance can report the name the worker
+    /// process sent back over the control plane.
+    fn backend(&self) -> &str;
     fn info(&self) -> &PluginInfo;
     fn parameters(&self) -> &[PluginParameter];
     /// Frames of latency the plugin *itself* introduces (not counting the
@@ -470,7 +474,9 @@ pub fn load_processor(
         if crate::audio::plugin_host::is_lv2_path(path) {
             return crate::audio::lv2::load_processor(path, sample_rate, max_frames);
         }
-        if crate::audio::plugin_vst3::is_vst3_path(path) {
+        if crate::audio::plugin_vst3::is_vst3_path(path)
+            || crate::audio::plugin_vst3::is_vst3_module(path)
+        {
             return crate::audio::plugin_vst3::load_processor(path, sample_rate, max_frames);
         }
         if crate::audio::plugin_vst2::is_vst2_path(path) {
@@ -622,7 +628,7 @@ impl PluginInsert {
         (l, r)
     }
 
-    pub fn backend(&self) -> &'static str {
+    pub fn backend(&self) -> &str {
         self.processor.backend()
     }
 

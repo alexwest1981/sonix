@@ -1101,6 +1101,16 @@ pub fn is_vst3_path(path: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// True for a shared object *inside* a `.vst3` bundle, e.g.
+/// `Foo.vst3/Contents/x86_64-linux/Foo.so` — a VST3 module, not a VST2 one.
+pub fn is_vst3_module(path: &str) -> bool {
+    Path::new(path).ancestors().any(|p| {
+        p.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.eq_ignore_ascii_case("vst3"))
+            .unwrap_or(false)
+    }) && !is_vst3_path(path)
+}
 /// Turns a `.vst3` file or bundle directory into the shared object to load.
 fn resolve_vst3_binary(path: &str) -> Result<PathBuf, String> {
     let p = PathBuf::from(path);

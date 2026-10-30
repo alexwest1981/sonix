@@ -63,6 +63,10 @@ pub struct SandboxInfo {
     pub vendor: String,
     pub version: String,
     pub description: String,
+    /// The worker's [`crate::audio::plugin_host_live::PluginProcessor::backend`]
+    /// name (`"CLAP"`, `"VST3"`, `"VST2"`, `"LV2"`), so the host does not have
+    /// to guess it from the file extension.
+    pub backend: String,
 }
 
 /// Plain, serialisable copy of
@@ -138,13 +142,17 @@ pub fn read_frame<R: Read>(reader: &mut R) -> io::Result<Option<Vec<u8>>> {
 // Worker
 // ============================================================================
 
-fn info_to_dto(info: &crate::audio::plugin_host_live::PluginInfo) -> SandboxInfo {
+fn info_to_dto(
+    processor: &dyn crate::audio::plugin_host_live::PluginProcessor,
+) -> SandboxInfo {
+    let info = processor.info();
     SandboxInfo {
         id: info.id.clone(),
         name: info.name.clone(),
         vendor: info.vendor.clone(),
         version: info.version.clone(),
         description: info.description.clone(),
+        backend: processor.backend().to_string(),
     }
 }
 
@@ -195,7 +203,7 @@ fn handle_request(
     match request {
         SandboxRequest::Ping => SandboxResponse::Pong,
         SandboxRequest::Info => SandboxResponse::Info {
-            info: info_to_dto(processor.info()),
+            info: info_to_dto(processor),
         },
         SandboxRequest::Parameters => SandboxResponse::Parameters {
             parameters: processor.parameters().iter().map(param_to_dto).collect(),
@@ -248,10 +256,10 @@ pub fn serve<R: Read, W: Write>(
     let mut processor =
         match crate::audio::plugin_host_live::load_processor(plugin_path, sample_rate, block_frames)
         {
-            Ok(processor) => Some(processor),
+            Ok(processor) => Ok(processor),
             Err(err) => {
-                respond(writer, &SandboxResponse::Error { message: err })?;
-                None
+                respond(writer, &SandboxResponse::Error { message: err.clone() })?;
+                Err(err)
             }
         };
 
@@ -276,9 +284,9 @@ pub fn serve<R: Read, W: Write>(
             break;
         }
         let response = match processor.as_mut() {
-            Some(processor) => handle_request(&mut **processor, request),
-            None => SandboxResponse::Error {
-                message: "pluginen kunde inte laddas i sandboxen".to_string(),
+            Ok(processor) => handle_request(&mut **processor, request),
+            Err(reason) => SandboxResponse::Error {
+                message: format!("the plugin could not be loaded in the sandbox: {reason}"),
             },
         };
         respond(writer, &response)?;
@@ -328,6 +336,9 @@ pub struct SandboxProcessor {
     parameters: Vec<crate::audio::plugin_host_live::PluginParameter>,
     plugin_latency: u32,
     block_frames: usize,
+    /// Backend name the worker reported, e.g. `"VST3"`; suffixed with
+    /// `" (sandbox)"` in [`Self::backend`].
+    backend: String,
 }
 
 impl SandboxProcessor {
@@ -336,6 +347,7 @@ impl SandboxProcessor {
         info: crate::audio::plugin_host_live::PluginInfo,
         parameters: Vec<crate::audio::plugin_host_live::PluginParameter>,
         plugin_latency: u32,
+        backend: String,
     ) -> Self {
         let block_frames = bridge.block_frames();
         Self {
@@ -344,13 +356,16 @@ impl SandboxProcessor {
             parameters,
             plugin_latency,
             block_frames,
+            backend,
         }
     }
 }
 
 impl crate::audio::plugin_host_live::PluginProcessor for SandboxProcessor {
-    fn backend(&self) -> &'static str {
-        "clap (sandbox)"
+    fn backend(&self) -> &str {
+        // Whatever the worker loaded — CLAP, VST3, VST2 or LV2 — never a
+        // hardcoded one.
+        &self.backend
     }
 
     fn info(&self) -> &crate::audio::plugin_host_live::PluginInfo {
@@ -388,6 +403,118 @@ impl crate::audio::plugin_host_live::PluginProcessor for SandboxProcessor {
 }
 
 // ============================================================================
+// Opening a plugin out of process
+// ============================================================================
+
+/// A plugin opened out of process, or in process after a failed sandbox.
+pub struct SandboxedPlugin {
+    pub processor: Box<dyn crate::audio::plugin_host_live::PluginProcessor>,
+    /// The worker that owns the plugin. `None` when the in-process fallback ran.
+    pub host: Option<SandboxHost>,
+    /// Why the sandbox was abandoned, if it was.
+    pub sandbox_error: Option<String>,
+}
+
+/// Loads `plugin_path` in a worker process and returns it ready to process,
+/// together with the worker that must stay alive for as long as it does.
+///
+/// Any format `plugin_host_live::load_processor` knows (`CLAP`, `VST3`, VST2,
+/// LV2) goes through the same path; the worker does the format routing. If the
+/// worker cannot load the plugin, this falls back to the in-process host and
+/// puts the reason in [`SandboxedPlugin::sandbox_error`] and on stderr, so a
+/// load failure is never silence.
+pub fn open(
+    plugin_path: &str,
+    sample_rate: f32,
+    block_frames: u32,
+) -> Result<SandboxedPlugin, String> {
+    let exe = std::env::current_exe()
+        .map_err(|e| format!("no binary to re-execute as the sandbox worker: {e}"))?;
+    open_with_exe(&exe, plugin_path, sample_rate, block_frames)
+}
+
+/// [`open`] with an explicit worker binary (see [`SandboxHost::new_audio_with_exe`]).
+pub fn open_with_exe(
+    exe: &std::path::Path,
+    plugin_path: &str,
+    sample_rate: f32,
+    block_frames: u32,
+) -> Result<SandboxedPlugin, String> {
+    let sandbox_error = match open_out_of_process(exe, plugin_path, sample_rate, block_frames) {
+        Ok(plugin) => return Ok(plugin),
+        Err(reason) => reason,
+    };
+    eprintln!(
+        "plugin sandbox: '{plugin_path}' failed out of process ({sandbox_error}); \
+         falling back to the in-process host"
+    );
+    let processor =
+        crate::audio::plugin_host_live::load_processor(plugin_path, sample_rate, block_frames)
+            .map_err(|err| {
+                format!(
+                    "sandbox failed for '{plugin_path}' ({sandbox_error}); \
+                     the in-process host failed too: {err}"
+                )
+            })?;
+    Ok(SandboxedPlugin {
+        processor,
+        host: None,
+        sandbox_error: Some(sandbox_error),
+    })
+}
+
+fn open_out_of_process(
+    exe: &std::path::Path,
+    plugin_path: &str,
+    sample_rate: f32,
+    block_frames: u32,
+) -> Result<SandboxedPlugin, String> {
+    let bridge = crate::audio::sandbox_audio::AudioBridge::create(
+        block_frames as usize,
+        crate::audio::sandbox_audio::DEFAULT_SLOTS,
+    )
+    .map_err(|e| format!("shared-memory audio region: {e}"))?;
+    // Dropping `host` on any early return shuts the worker down.
+    let mut host = SandboxHost::new_audio_with_exe(
+        exe,
+        plugin_path,
+        sample_rate,
+        block_frames,
+        bridge.raw_fd(),
+    )
+    .map_err(|e| e.to_string())?;
+    host.spawn().map_err(|e| e.to_string())?;
+    let info = match host.request(&SandboxRequest::Info).map_err(|e| e.to_string())? {
+        SandboxResponse::Info { info } => info,
+        SandboxResponse::Error { message } => return Err(message),
+        other => return Err(format!("unexpected response: {other:?}")),
+    };
+    let parameters = match host
+        .request(&SandboxRequest::Parameters)
+        .map_err(|e| e.to_string())?
+    {
+        SandboxResponse::Parameters { parameters } => {
+            parameters.iter().map(param_from_dto).collect()
+        }
+        _ => Vec::new(),
+    };
+    let latency = match host
+        .request(&SandboxRequest::Latency)
+        .map_err(|e| e.to_string())?
+    {
+        SandboxResponse::Latency { frames } => frames,
+        _ => 0,
+    };
+    let backend = format!("{} (sandbox)", info.backend);
+    let processor = SandboxProcessor::new(bridge, info_from_dto(&info), parameters, latency, backend);
+    Ok(SandboxedPlugin {
+        processor: Box::new(processor),
+        host: Some(host),
+        sandbox_error: None,
+    })
+}
+
+// ============================================================================
 // Sandbox worker with audio (worker side)
 // ============================================================================
 
@@ -401,14 +528,13 @@ pub fn serve_audio_from_args(args: &[String]) -> Result<(), String> {
     })?;
     let bridge = crate::audio::sandbox_audio::AudioBridge::attach(fd)
         .map_err(|e| e.to_string())?;
-    let processor = match crate::audio::plugin_host_live::load_processor(
+    // The loader's message is kept: it is the reason the supervisor quotes when
+    // it falls back to the in-process host.
+    let processor = crate::audio::plugin_host_live::load_processor(
         &args[0],
         sample_rate,
         block_frames,
-    ) {
-        Ok(processor) => Some(processor),
-        Err(_) => None,
-    };
+    );
 
     let (request_tx, request_rx) = std::sync::mpsc::channel();
     let control = std::thread::spawn(move || {
@@ -423,7 +549,10 @@ pub fn serve_audio_from_args(args: &[String]) -> Result<(), String> {
 /// the shared-memory ring. Returns on shutdown or when the control thread goes
 /// away.
 pub fn run_audio_worker(
-    mut processor: Option<Box<dyn crate::audio::plugin_host_live::PluginProcessor>>,
+    mut processor: Result<
+        Box<dyn crate::audio::plugin_host_live::PluginProcessor>,
+        String,
+    >,
     bridge: &crate::audio::sandbox_audio::AudioBridge,
     control_rx: std::sync::mpsc::Receiver<(SandboxRequest, std::sync::mpsc::Sender<SandboxResponse>)>,
 ) {
@@ -435,9 +564,11 @@ pub fn run_audio_worker(
                 Ok((request, reply)) => {
                     let is_shutdown = request == SandboxRequest::Shutdown;
                     let response = match processor.as_mut() {
-                        Some(processor) => handle_request(&mut **processor, request),
-                        None => SandboxResponse::Error {
-                            message: "pluginen kunde inte laddas i sandboxen".to_string(),
+                        Ok(processor) => handle_request(&mut **processor, request),
+                        Err(reason) => SandboxResponse::Error {
+                            message: format!(
+                                "the plugin could not be loaded in the sandbox: {reason}"
+                            ),
                         },
                     };
                     let _ = reply.send(response);
@@ -454,8 +585,8 @@ pub fn run_audio_worker(
             return;
         }
         let processed = match processor.as_mut() {
-            Some(processor) => bridge.process_one(&mut **processor),
-            None => false,
+            Ok(processor) => bridge.process_one(&mut **processor),
+            Err(_) => false,
         };
         if processed {
             bridge.worker_heartbeat();
@@ -531,27 +662,36 @@ pub struct SandboxHost {
 impl SandboxHost {
     /// Builds a supervisor that re-executes the current binary in worker mode.
     pub fn new(plugin_path: &str, sample_rate: f32, block_frames: u32) -> io::Result<Self> {
-        Self::with_audio_fd(plugin_path, sample_rate, block_frames, None)
+        let exe = std::env::current_exe()?;
+        Self::with_audio_fd(exe, plugin_path, sample_rate, block_frames, None)
     }
 
-    /// Builds a supervisor whose worker also attaches the shared-memory audio
-    /// region identified by `audio_fd` (Fas 4.5b).
-    pub fn new_audio(
+    /// [`Self::new_audio_with_exe`] with an explicit worker binary. Tests use
+    /// it because the test harness binary never runs the app's `main`, so
+    /// `current_exe` cannot act as the worker.
+    pub fn new_audio_with_exe(
+        exe: &std::path::Path,
         plugin_path: &str,
         sample_rate: f32,
         block_frames: u32,
         audio_fd: std::os::fd::RawFd,
     ) -> io::Result<Self> {
-        Self::with_audio_fd(plugin_path, sample_rate, block_frames, Some(audio_fd))
+        Self::with_audio_fd(
+            exe.to_path_buf(),
+            plugin_path,
+            sample_rate,
+            block_frames,
+            Some(audio_fd),
+        )
     }
 
     fn with_audio_fd(
+        exe: std::path::PathBuf,
         plugin_path: &str,
         sample_rate: f32,
         block_frames: u32,
         audio_fd: Option<std::os::fd::RawFd>,
     ) -> io::Result<Self> {
-        let exe = std::env::current_exe()?;
         let plugin = plugin_path.to_string();
         let launcher = Box::new(move || {
             let mut cmd = Command::new(&exe);
@@ -894,7 +1034,8 @@ mod tests {
         let block = 16usize;
         let bridge =
             crate::audio::sandbox_audio::AudioBridge::create(block, 4).unwrap();
-        let processor = SandboxProcessor::new(bridge, GainProcessor::new(1.0).info, Vec::new(), 7);
+        let processor =
+            SandboxProcessor::new(bridge, GainProcessor::new(1.0).info, Vec::new(), 7, "test".to_string());
         assert_eq!(processor.latency_frames(), block as u32 + 7);
     }
 
@@ -907,7 +1048,7 @@ mod tests {
         let handle = std::thread::spawn(move || {
             let processor: Box<dyn crate::audio::plugin_host_live::PluginProcessor> =
                 Box::new(GainProcessor::new(2.0));
-            run_audio_worker(Some(processor), &worker, request_rx);
+            run_audio_worker(Ok(processor), &worker, request_rx);
         });
 
         // Wait for the worker to attach (and reset the ring) before streaming.
@@ -940,5 +1081,154 @@ mod tests {
             .send((SandboxRequest::Shutdown, reply_tx))
             .unwrap();
         handle.join().unwrap();
+    }
+}
+
+/// VST3/VST2 out of process: the worker does the format routing, so a `.vst3`
+/// bundle must come back with its own backend name, its parameters and audio.
+#[cfg(all(test, feature = "plugin-host"))]
+mod formats_through_the_sandbox {
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use std::time::{Duration, Instant};
+
+    /// A real, installed VST3 to test against.
+    const SURGE_VST3: &str = "/home/alex/.vst3/Surge XT Effects.vst3";
+
+    /// The app binary re-executed as the worker. The test harness binary cannot
+    /// be the worker because libtest consumes the `WORKER_FLAG` argument.
+    fn worker_exe() -> Option<PathBuf> {
+        let target = std::env::current_exe().ok()?.ancestors().nth(3)?.to_path_buf();
+        ["release", "debug"]
+            .iter()
+            .map(|profile| target.join(profile).join("sonix"))
+            .find(|path| path.is_file())
+    }
+
+    /// Runs `f` on a thread so a worker that never answers fails the test
+    /// instead of blocking the harness forever.
+    fn bounded<T: Send + 'static>(
+        f: impl FnOnce() -> T + Send + 'static,
+    ) -> (T, Duration) {
+        let (tx, rx) = std::sync::mpsc::channel();
+        let started = Instant::now();
+        std::thread::spawn(move || {
+            let _ = tx.send(f());
+        });
+        let value = rx
+            .recv_timeout(Duration::from_secs(20))
+            .expect("the sandbox worker never answered");
+        (value, started.elapsed())
+    }
+
+    #[test]
+    fn surge_vst3_is_processed_out_of_process() {
+        if !Path::new(SURGE_VST3).exists() {
+            println!("skip: {SURGE_VST3} is not installed on this machine");
+            return;
+        }
+        let Some(exe) = worker_exe() else {
+            println!("skip: no sonix binary next to the test executable; run `cargo build --release --bin sonix`");
+            return;
+        };
+
+        const SAMPLE_RATE: f32 = 48_000.0;
+        // 4 800 frames in 48 whole blocks; must stay ≤ the max the processor
+        // was opened with below.
+        const BLOCK: usize = 100;
+        const FRAMES: usize = 4_800;
+
+        let (opened, elapsed) = bounded(move || {
+            open_with_exe(&exe, SURGE_VST3, SAMPLE_RATE, BLOCK as u32)
+        });
+        let mut plugin = match opened {
+            Ok(plugin) => plugin,
+            Err(err) => panic!("the sandbox rejected the VST3: {err}"),
+        };
+        assert_eq!(plugin.sandbox_error, None, "fell back to the in-process host");
+        assert!(plugin.host.is_some(), "no worker process kept alive");
+        let backend = plugin.processor.backend().to_string();
+        println!("sandbox open took {elapsed:?}; backend: {backend}");
+        assert!(!backend.is_empty(), "the worker reported no backend name");
+        assert!(
+            backend.to_ascii_lowercase().contains("vst3"),
+            "the worker reported '{backend}', not VST3"
+        );
+        assert!(
+            !plugin.processor.parameters().is_empty(),
+            "the worker exposed no parameter list"
+        );
+
+        let mut out_l: Vec<f32> = Vec::with_capacity(FRAMES);
+        let mut out_r: Vec<f32> = Vec::with_capacity(FRAMES);
+        for block in 0..FRAMES / BLOCK {
+            let mut left = vec![0.0f32; BLOCK];
+            let mut right = vec![0.0f32; BLOCK];
+            for i in 0..BLOCK {
+                let t = (block * BLOCK + i) as f32 / SAMPLE_RATE;
+                left[i] = 0.5 * (std::f32::consts::TAU * 440.0 * t).sin();
+                right[i] = left[i];
+            }
+            // The first block primes the ring; a block that came back empty is
+            // retried with the same input instead of counted as silence.
+            let mut landed = false;
+            for _ in 0..200 {
+                let mut l = left.clone();
+                let mut r = right.clone();
+                plugin.processor.process_stereo(&mut l, &mut r);
+                if l.iter().any(|s| *s != 0.0) {
+                    left = l;
+                    right = r;
+                    landed = true;
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            assert!(landed, "block {block} never came back from the worker");
+            out_l.extend_from_slice(&left);
+            out_r.extend_from_slice(&right);
+        }
+
+        assert_eq!(out_l.len(), FRAMES, "the round trip lost frames");
+        assert_eq!(out_r.len(), FRAMES, "the round trip lost frames");
+        assert!(
+            out_l.iter().chain(out_r.iter()).all(|s| s.is_finite()),
+            "the output contains NaN or infinity"
+        );
+        let peak = out_l
+            .iter()
+            .chain(out_r.iter())
+            .fold(0.0f32, |peak, s| peak.max(s.abs()));
+        let rms = (out_l
+            .iter()
+            .chain(out_r.iter())
+            .map(|s| (*s as f64) * (*s as f64))
+            .sum::<f64>()
+            / (FRAMES * 2) as f64)
+            .sqrt();
+        println!(
+            "backend: {backend}\nparameters: {}\npeak: {peak:.6}\nrms: {rms:.6}",
+            plugin.processor.parameters().len()
+        );
+        assert!(peak > 0.0, "the sandboxed VST3 produced silence");
+    }
+
+    #[test]
+    fn a_garbage_vst3_falls_back_with_the_reason() {
+        let Some(exe) = worker_exe() else {
+            println!("skip: no sonix binary next to the test executable; run `cargo build --release --bin sonix`");
+            return;
+        };
+        let (result, elapsed) = bounded(move || {
+            open_with_exe(&exe, "/tmp/nope.vst3", 48_000.0, 128)
+        });
+        let err = match result {
+            Err(err) => err,
+            Ok(_) => panic!("a garbage path must not produce a processor"),
+        };
+        println!("fallback after {elapsed:?}: {err}");
+        assert!(elapsed < Duration::from_secs(5), "the fallback took {elapsed:?}");
+        assert!(err.contains("sandbox failed for '/tmp/nope.vst3'"), "{err}");
+        assert!(err.contains("/tmp/nope.vst3"), "{err}");
     }
 }
