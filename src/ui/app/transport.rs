@@ -997,13 +997,45 @@ fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool, channel: u8) {
     let is_on = on && velocity > 0;
     if is_on {
         if self.midi_held_notes.insert(note) {
+            // **Slumpat anslag** per hit, efter kartan så att zonens skalning bestämmer
+            // mitten. Fröet kommer ur klockan: samma tangent ska kunna slå olika två gånger.
+            let mut rng = crate::rng::Rng::new(
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.subsec_nanos() as u64 | 1)
+                    .unwrap_or(1),
+            );
+            let mapped_velocity = self.midi_map.randomize_velocity(mapped_velocity, &mut rng);
             // Ackordet: grundtonen först, sedan intervallet ur `CHORD_MODES`.
-            for chord_note in self.midi_map.chord_notes(mapped_note) {
+            let chord = self.midi_map.chord_notes(mapped_note);
+            for chord_note in chord.iter().copied() {
                 self.play_note_velocity_on_channel(
                     chord_note,
                     mapped_velocity as f32 / 127.0,
                     mapped_channel,
                 );
+            }
+            // **Notlängd och eko** går genom motorns egen kö: släppet samplenoggrant (en
+            // UI-bildruta är ~16 ms) och ekot som en fördröjd not-on.
+            let sr = self.engine.sample_rate as f32;
+            if let Some(length_samples) = self.midi_map.length_release_samples(sr) {
+                for chord_note in chord.iter().copied() {
+                    let _ = self.engine.send_command(AudioCommand::NoteOffDelayed {
+                        note: chord_note,
+                        channel: mapped_channel,
+                        delay_samples: length_samples,
+                    });
+                }
+            }
+            for (delay_samples, gain) in self.midi_map.echo_offsets(sr) {
+                for chord_note in chord.iter().copied() {
+                    let _ = self.engine.send_command(AudioCommand::NoteOnDelayed {
+                        note: chord_note,
+                        freq: midi_to_freq(chord_note),
+                        velocity: (mapped_velocity as f32 / 127.0 * gain).clamp(0.05, 1.0),
+                        delay_samples,
+                    });
+                }
             }
             if self.midi_record_armed && self.is_playing {
                 // Tagningen (Fas 6.4): noten skrivs till rutnätet *och* sparas
@@ -1011,8 +1043,7 @@ fn handle_midi_note(&mut self, note: u8, velocity: u8, on: bool, channel: u8) {
                 // humanisera i efterhand. Rutnätet ensamt kastade tiden.
                 // Ackordet spelas in som de noter det lät som, inte som grundtonen.
                 let pos = self.current_take_pos();
-                let held = self.midi_map.chord_notes(mapped_note);
-                for chord_note in held.iter().copied() {
+                for chord_note in chord.iter().copied() {
                     self.record_midi_note_at_step(chord_note);
                     if let Some(pat) = self.patterns.get_mut(self.selected_pattern) {
                         pat.active_take_mut()

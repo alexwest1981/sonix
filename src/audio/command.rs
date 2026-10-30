@@ -447,6 +447,14 @@ pub enum AudioCommand {
         velocity: f32,
         delay_samples: u32,
     },
+    /// Releases a note after `delay_samples` — the live note length. Same sample-accurate
+    /// scheduler as `NoteOnDelayed`; a real note-off before that point cancels it, so the
+    /// note is released once.
+    NoteOffDelayed {
+        note: u8,
+        channel: u8,
+        delay_samples: u32,
+    },
     /// Schedules a chord/arpeggio: each note in `notes` is triggered after
     /// `spread_samples * i` samples. `mode`: 0 = Block, 1 = Up, 2 = Down,
     /// 3 = Random. Used by the Chord Matrix audition/strum.

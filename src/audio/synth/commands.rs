@@ -308,37 +308,15 @@ impl SynthEngine {
                 }
             }
             AudioCommand::NoteOff { note, channel } => {
-                self.modulation.note_off();
-                if let Some(inst) = &mut self.instrument {
-                    inst.note_off(note);
-                }
-                // Samplade röster: pedalen håller dem också. Utan pedal gör not-av ingenting
-                // på en en-skottsröst — det är det gamla beteendet och det står kvar.
-                let ch = channel as u32;
-                for sv in &mut self.sample_voices {
-                    if sv.is_active() && sv.note == note && (ch == 0 || sv.channel == ch) {
-                        if self.sustain_pedal {
-                            sv.sustained = true;
-                        } else if sv.release.is_some() {
-                            // **Släppljud:** dämparens ljud tar över rösten. Utan släppljud
-                            // gör not-av ingenting på en en-skottsröst — som förut.
-                            sv.begin_release();
-                        }
-                    }
-                }
-                for voice in &mut self.voices {
-                    if voice.is_active()
-                        && voice.note == note
-                        && (channel == 0 || voice.channel == channel)
-                    {
-                        // **Pedalen håller tonen.** släpps tangenten med pedalen nere markeras
-                        // rösten i stället, och släpps först när pedalen går upp.
-                        if self.sustain_pedal {
-                            voice.sustained = true;
-                        } else {
-                            voice.release();
-                        }
-                    }
+                self.release_note(note, channel);
+            }
+            AudioCommand::NoteOffDelayed { note, channel, delay_samples } => {
+                // Live note length: the release is due `delay_samples` after the note-on, so
+                // a key let go in the meantime can still cancel it.
+                self.scheduled_note_offs.push((delay_samples, note, channel));
+                if self.scheduled_note_offs.len() > 256 {
+                    let overflow = self.scheduled_note_offs.len() - 256;
+                    self.scheduled_note_offs.drain(0..overflow);
                 }
             }
             AudioCommand::SetSustainPedal(down) => {
@@ -1113,6 +1091,45 @@ impl SynthEngine {
 }
 
 impl SynthEngine {
+/// Releases `note` — the one place a note-off is applied, whether it came from a key-up,
+/// a delayed length or the end of a scheduled one.
+pub(crate) fn release_note(&mut self, note: u8, channel: u8) {
+    // A key-up before the length has run out wins: the release it just sent is the only
+    // one, so drop any pending scheduled release for the same note.
+    // shortcut: keyed by note number only, so a retrigger inside the length window drops
+    // its sibling's release too; upgrade to (note, generation) if that ever matters.
+    self.scheduled_note_offs.retain(|e| e.1 != note);
+    self.modulation.note_off();
+    if let Some(inst) = &mut self.instrument {
+        inst.note_off(note);
+    }
+    // Samplade röster: pedalen håller dem också. Utan pedal gör not-av ingenting
+    // på en en-skottsröst — det är det gamla beteendet och det står kvar.
+    let ch = channel as u32;
+    for sv in &mut self.sample_voices {
+        if sv.is_active() && sv.note == note && (ch == 0 || sv.channel == ch) {
+            if self.sustain_pedal {
+                sv.sustained = true;
+            } else if sv.release.is_some() {
+                // **Släppljud:** dämparens ljud tar över rösten. Utan släppljud
+                // gör not-av ingenting på en en-skottsröst — som förut.
+                sv.begin_release();
+            }
+        }
+    }
+    for voice in &mut self.voices {
+        if voice.is_active() && voice.note == note && (channel == 0 || voice.channel == channel) {
+            // **Pedalen håller tonen.** släpps tangenten med pedalen nere markeras
+            // rösten i stället, och släpps först när pedalen går upp.
+            if self.sustain_pedal {
+                voice.sustained = true;
+            } else {
+                voice.release();
+            }
+        }
+    }
+}
+
 /// Rösten startar med masterns böjning gånger kanalens egen. Kanal 0 **är** mastern,
 /// så den multipliceras inte med sig själv.
 fn channel_bend_ratio(&self, channel: u8) -> f32 {

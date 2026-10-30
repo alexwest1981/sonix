@@ -347,6 +347,36 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                                 }
                             });
                     });
+                    // Notlängd, eko och slumpat anslag — samma transformblock som zonerna.
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::t("Notlängd"));
+                        ui.add(
+                            egui::DragValue::new(&mut self.midi_map.length_ms)
+                                .range(0..=4000)
+                                .speed(1.0)
+                                .suffix(" ms"),
+                        );
+                        ui.label(crate::i18n::t("Eko"));
+                        ui.add(
+                            egui::DragValue::new(&mut self.midi_map.delay_ms)
+                                .range(0..=1000)
+                                .speed(1.0)
+                                .suffix(" ms"),
+                        );
+                        ui.label("×");
+                        ui.add(
+                            egui::DragValue::new(&mut self.midi_map.echo_repeats)
+                                .range(0..=crate::audio::key_mapper::MAX_ECHO_REPEATS)
+                                .speed(0.1),
+                        );
+                        ui.label(crate::i18n::t("Slump"));
+                        ui.add(
+                            egui::DragValue::new(&mut self.midi_map.random_velocity)
+                                .range(0.0..=1.0)
+                                .speed(0.01)
+                                .fixed_decimals(2),
+                        );
+                    });
                     for (i, zone) in self.midi_map.zones.iter_mut().enumerate() {
                         ui.horizontal(|ui| {
                             ui.checkbox(&mut zone.active, crate::tstatus!("Zon {}", i + 1));

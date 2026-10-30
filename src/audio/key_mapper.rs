@@ -78,6 +78,22 @@ pub struct KeyMap {
     #[serde(default)]
     pub chord: u8,
     pub zones: [MapZone; ZONES],
+    /// **Note length**: the engine releases the note this many milliseconds after the
+    /// note-on even if the key is still held. 0 = off. A key-up before that point sends
+    /// its own note-off and the engine drops the pending one.
+    #[serde(default)]
+    pub length_ms: u32,
+    /// **Echo**: the note is heard again this many milliseconds after the note-on. 0 = off.
+    #[serde(default)]
+    pub delay_ms: u32,
+    /// How many times the note is heard with echo on: 2 = one echo, 3 = two. 0 or 1 = the
+    /// note alone. The echo count is `echo_repeats - 1`, see [`KeyMap::echo_offsets`].
+    #[serde(default)]
+    pub echo_repeats: u8,
+    /// **Random velocity** per hit, as a fraction of the full 0–127 range: 0 = off,
+    /// 0.5 = ±63. Only the velocity is randomised — the pitch stays the key's.
+    #[serde(default)]
+    pub random_velocity: f32,
 }
 
 impl Default for KeyMap {
@@ -86,6 +102,10 @@ impl Default for KeyMap {
             enabled: false,
             chord: 0,
             zones: [MapZone::default(); ZONES],
+            length_ms: 0,
+            delay_ms: 0,
+            echo_repeats: 0,
+            random_velocity: 0.0,
         }
     }
 }
@@ -141,6 +161,54 @@ impl KeyMap {
         notes
     }
 }
+
+/// **Milliseconds to samples**, rounded to the nearest sample. Integer math so the offset
+/// is exactly `ms * sr / 1000` and a test can compare it with `==`.
+fn ms_to_samples(ms: u32, sample_rate: f32) -> u32 {
+    let sr = sample_rate.round().max(1.0) as u64;
+    ((ms as u64 * sr + 500) / 1000) as u32
+}
+
+/// Anslaget en repetition dämpas med: 0,6 per steg, alltså 0,6 / 0,36 / 0,216.
+const ECHO_GAIN_PER_REPEAT: f32 = 0.6;
+
+impl KeyMap {
+    /// Samples from the note-on to the automatic release, or `None` when the length is off.
+    pub fn length_release_samples(&self, sample_rate: f32) -> Option<u32> {
+        if !self.enabled || self.length_ms == 0 {
+            return None;
+        }
+        Some(ms_to_samples(self.length_ms, sample_rate)).filter(|&n| n > 0)
+    }
+
+    /// The echoes: `(samples after the note-on, gain)`. The note itself is not in here, so
+    /// `echo_repeats` = N gives N-1 entries at `k * delay_ms`, each one
+    /// `ECHO_GAIN_PER_REPEAT` quieter than the one before.
+    pub fn echo_offsets(&self, sample_rate: f32) -> Vec<(u32, f32)> {
+        if !self.enabled || self.delay_ms == 0 || self.echo_repeats < 2 {
+            return Vec::new();
+        }
+        let per = ms_to_samples(self.delay_ms, sample_rate);
+        (1..self.echo_repeats.min(MAX_ECHO_REPEATS as u8) as u32)
+            .map(|k| (per.saturating_mul(k), ECHO_GAIN_PER_REPEAT.powi(k as i32)))
+            .collect()
+    }
+
+    /// Per hit: the velocity wanders by ±`random_velocity * 127` around `velocity`, clamped
+    /// to 1–127 (a 0 would be a note-off). The rng is the caller's so a test can seed it.
+    pub fn randomize_velocity(&self, velocity: u8, rng: &mut crate::rng::Rng) -> u8 {
+        if !self.enabled || self.random_velocity <= 0.0 {
+            return velocity;
+        }
+        let spread = self.random_velocity.clamp(0.0, 1.0) * 127.0;
+        (velocity as f32 + rng.next_sym() * spread)
+            .round()
+            .clamp(1.0, 127.0) as u8
+    }
+}
+
+/// Fler slag än så är ett eko som aldrig tar slut.
+pub const MAX_ECHO_REPEATS: u8 = 3;
 
 /// Närmaste ton i skalan, högst sex halvtoner bort (det är alltid närmast någon av de
 /// tolv tonklasserna). Hittar ingen (trasigt skalindex) lämnas tonen orörd.
@@ -315,5 +383,109 @@ mod tests {
         // Ett trasigt index ska inte panika.
         map.chord = 200;
         assert_eq!(map.chord_notes(60), vec![60, 65, 67]);
+    }
+
+    /// **Notlängd:** släppet ligger exakt `length_ms * sr / 1000` samples efter anslaget.
+    #[test]
+    fn the_length_release_lands_exactly_on_the_millisecond_sample() {
+        let mut map = map_with(MapZone::default());
+        map.length_ms = 250;
+        assert_eq!(map.length_release_samples(48_000.0), Some(12_000));
+        assert_eq!(map.length_release_samples(44_100.0), Some(11_025));
+        map.length_ms = 333;
+        assert_eq!(map.length_release_samples(44_100.0), Some(14_685));
+        // 0 = av, och en karta som är avstängd rör inte noten.
+        map.length_ms = 0;
+        assert_eq!(map.length_release_samples(48_000.0), None);
+        map.length_ms = 250;
+        map.enabled = false;
+        assert_eq!(map.length_release_samples(48_000.0), None);
+    }
+
+    /// **Eko:** `echo_repeats` = N gånger noten hörs ger N-1 eko, på `k * delay_ms` samples,
+    /// varje steg 0,6 gånger så starkt som föregående (0,6 / 0,36 / 0,216).
+    #[test]
+    fn echoes_land_on_every_delay_step_and_get_quieter() {
+        let mut map = map_with(MapZone::default());
+        map.delay_ms = 100;
+        map.echo_repeats = 3;
+        let echoes = map.echo_offsets(48_000.0);
+        assert_eq!(echoes.len(), 2);
+        assert_eq!(echoes[0].0, 4_800);
+        assert_eq!(echoes[1].0, 9_600);
+        assert!((echoes[0].1 - 0.6).abs() < 1e-6, "{}", echoes[0].1);
+        assert!((echoes[1].1 - 0.36).abs() < 1e-6, "{}", echoes[1].1);
+
+        // Ett eko på 44,1 kHz ligger på samma millisekund, inte samma sampletal.
+        map.delay_ms = 50;
+        assert_eq!(map.echo_offsets(44_100.0)[0].0, 2_205);
+
+        // Inget eko utan fördröjning, utan upprepningar eller med kartan av.
+        map.delay_ms = 0;
+        assert!(map.echo_offsets(48_000.0).is_empty());
+        map.delay_ms = 100;
+        map.echo_repeats = 1;
+        assert!(map.echo_offsets(48_000.0).is_empty());
+        map.echo_repeats = 2;
+        assert_eq!(map.echo_offsets(48_000.0).len(), 1);
+        map.enabled = false;
+        assert!(map.echo_offsets(48_000.0).is_empty());
+    }
+
+    /// **Slumpat anslag:** ±`random_velocity` kring det inkommande anslaget, alltid 1–127.
+    #[test]
+    fn random_velocity_spreads_within_the_band_and_never_leaves_1_127() {
+        let mut map = map_with(MapZone::default());
+        map.random_velocity = 0.5;
+        let mut rng = crate::rng::Rng::new(0x5EED_1234);
+        let (mut lo, mut hi) = (127u8, 1u8);
+        for _ in 0..200 {
+            let v = map.randomize_velocity(64, &mut rng);
+            assert!((1..=127).contains(&v), "utanför 1–127: {v}");
+            // ±0,5 * 127 = ±63,5 kring 64 — bandet rymmer hela spannet, så kanten är 1/127.
+            lo = lo.min(v);
+            hi = hi.max(v);
+        }
+        println!("random_velocity 0.5, 200 hits: min {lo}, max {hi}");
+        assert!(hi > lo, "ingen spridning alls: {lo}..{hi}");
+
+        // Smalare band: varje träff stannar inom ±0,2 * 127 kring 60.
+        map.random_velocity = 0.2;
+        let (mut lo, mut hi) = (127u8, 1u8);
+        for _ in 0..200 {
+            let v = map.randomize_velocity(60, &mut rng);
+            assert!((v as f32 - 60.0).abs() <= 0.2 * 127.0 + 0.5, "utanför bandet: {v}");
+            assert!((1..=127).contains(&v));
+            lo = lo.min(v);
+            hi = hi.max(v);
+        }
+        println!("random_velocity 0.2, 200 hits: min {lo}, max {hi}");
+
+        // Av = anslaget orört, och en avstängd karta slumpar inte alls.
+        map.random_velocity = 0.0;
+        assert_eq!(map.randomize_velocity(64, &mut rng), 64);
+        map.random_velocity = 1.0;
+        map.enabled = false;
+        assert_eq!(map.randomize_velocity(64, &mut rng), 64);
+    }
+
+    /// Gamla projekt har inte de nya fälten — de ska öppnas som förut, med transformerna av.
+    #[test]
+    fn an_old_project_loads_with_the_new_transforms_off() {
+        // En zon som den skrevs innan `curve`/`snap_scale`/transformationerna fanns.
+        let zone = serde_json::json!({
+            "active": false, "low": 0, "high": 127, "transpose": 0,
+            "channel": null, "velocity_scale": 1.0
+        });
+        let old = serde_json::json!({"enabled": true, "chord": 0, "zones": vec![zone; ZONES]});
+        let map: KeyMap = serde_json::from_value(old)
+            .expect("ett projekt utan de nya fälten ska gå att läsa");
+        assert!(map.enabled);
+        assert_eq!(map.length_ms, 0);
+        assert_eq!(map.delay_ms, 0);
+        assert_eq!(map.echo_repeats, 0);
+        assert_eq!(map.random_velocity, 0.0);
+        assert_eq!(map.length_release_samples(48_000.0), None);
+        assert!(map.echo_offsets(48_000.0).is_empty());
     }
 }

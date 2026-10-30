@@ -128,6 +128,21 @@ impl SynthEngine {
             }
         }
 
+        // 0a. Note-offs whose length has run out (live note length). Same queue discipline
+        // as the scheduled notes: fire on the sample, then decrement the rest.
+        if !self.scheduled_note_offs.is_empty() {
+            let mut i = 0;
+            while i < self.scheduled_note_offs.len() {
+                if self.scheduled_note_offs[i].0 == 0 {
+                    let (_, note, channel) = self.scheduled_note_offs.swap_remove(i);
+                    self.release_note(note, channel);
+                } else {
+                    self.scheduled_note_offs[i].0 -= 1;
+                    i += 1;
+                }
+            }
+        }
+
         // 0b. Inspelade bend som blivit förfallna. Före rösterna, så en böjning som
         // hör till samma sample som anslaget gäller från det samplet.
         if !self.scheduled_bends.is_empty() {
