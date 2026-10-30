@@ -9,6 +9,7 @@ pub mod ai_generator;
 pub mod ai_tools;
 pub mod command;
 pub mod project_script;
+pub mod resample;
 pub mod script;
 pub mod control_room;
 pub mod dither;

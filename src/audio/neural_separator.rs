@@ -603,7 +603,9 @@ mod backend {
             )
         })?;
 
-        let (l, r) = resample_linear(left, right, sample_rate, MODEL_SAMPLE_RATE);
+        // Modellerna arbetar i 48 kHz: två omsamplingar per separation, så det ska vara sinc
+        // och inte linjär interpolation (mätt i `audio::resample`-provet).
+        let (l, r) = crate::audio::resample::resample_sinc(left, right, sample_rate, MODEL_SAMPLE_RATE);
         let n = l.len().min(r.len());
         if n == 0 {
             return Err("Ljudet är tomt".to_string());

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.215] - 2026-10-30
+
+**Omsampling med fönstrat sinc i stället för linjär interpolation.** Linjär interpolation är ett
+tvåpunkters lågpass: den dämpar diskanten olika mycket beroende på var i intervallet sampeln hamnar
+och läcker vikningsdistorsion nedåt. Stämsepareringen drabbades värst — modellerna arbetar i 48 kHz
+medan filen ofta är 44,1 kHz, alltså **två** omsamplingar per separation.
+
+**Mätt** (6 kHz-ton, 44,1 → 48 → 44,1 kHz, felet mot originalet): **−75,6 dB** med sinc mot
+**−27,8 dB** med linjär — 48 dB bättre. Provet kräver att sinc ligger på minst halva felet.
+Separationen tar fortfarande 3,4 s på fem sekunder (omsamplingen är en bråkdel av tiden; 32 taggar
+per sampel körs en gång per fil, inte i realtid).
+
+Modulen är `src/audio/resample.rs`; `resample_linear` finns kvar för de ställen där interpoleringen
+är en detalj (fx-racket), och de två jämförs i provet så skillnaden är mätt och inte påstådd.
+
 ## [0.9.213] - 2026-10-29
 
 **ONNX Runtime laddas vid körning — neural separation i alla paket.** Ett länkat ORT kräver glibc
