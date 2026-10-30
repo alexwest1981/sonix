@@ -128,7 +128,8 @@ pub use exporter::{
 pub use filter::FilterParams;
 #[allow(unused_imports)]
 pub use control_surfaces::{
-    SurfaceAction, SurfaceInput, SurfaceKind, SurfaceParser, TransportCommand,
+    encode_feedback, SurfaceAction, SurfaceFeedback, SurfaceInput, SurfaceKind, SurfaceParser,
+    TransportCommand,
 };
 #[allow(unused_imports)]
 pub use hardware_control::{

@@ -1,13 +1,16 @@
-//! BCF2000 and FaderPort (classic) control surfaces as **pure** byte-stream parsers.
+//! BCF2000, FaderPort (classic) and BabyHUI as **pure** byte-stream codecs.
 //!
-//! Both speak ordinary MIDI: CCs and notes for the controls, sysex for the BCF2000's
-//! LCD. [`SurfaceParser::feed`] is handed whatever bytes the port produced and returns
-//! actions — no engine, no channel, no ALSA — so a whole session can be replayed from a
+//! All three speak ordinary MIDI: CCs and notes for the controls, sysex for the
+//! BCF2000's LCD. [`SurfaceParser::feed`] is handed whatever bytes the port produced and
+//! returns actions, and [`encode_feedback`] turns mixer state into the bytes the device
+//! expects — no engine, no channel, no ALSA — so a whole session can be replayed from a
 //! byte stream in a test, which is the only way to check it here (no hardware).
 //!
 //! MCU is *not* parsed here. It is read from ALSA sequencer events in `hardware_control`
 //! (`mcu_cc_to_event` / `mcu_note_to_event`) and keeps that path unchanged; a second copy
-//! of the same table in byte form would only let the two drift apart.
+//! of the same table in byte form would only let the two drift apart. Its feedback is
+//! written here in Mackie's sysex/pitch-bend form, and the parser deliberately decodes
+//! none of it.
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::Sender;
@@ -22,6 +25,7 @@ pub enum SurfaceKind {
     Mcu,
     Bcf2000,
     FaderPort,
+    BabyHui,
 }
 
 impl SurfaceKind {
@@ -30,6 +34,7 @@ impl SurfaceKind {
             SurfaceKind::Mcu => "Mackie MCU",
             SurfaceKind::Bcf2000 => "Behringer BCF2000",
             SurfaceKind::FaderPort => "PreSonus FaderPort",
+            SurfaceKind::BabyHui => "Mackie BabyHUI",
         }
     }
 
@@ -39,9 +44,14 @@ impl SurfaceKind {
             SurfaceKind::Mcu => "mcu",
             SurfaceKind::Bcf2000 => "bcf",
             SurfaceKind::FaderPort => "faderport",
+            SurfaceKind::BabyHui => "hui",
         }
     }
 }
+
+/// The MIDI channel every surface here listens on (channel 1 = status `0xB0`/`0x90`).
+const CH: u8 = 0;
+const CC: u8 = 0xB0 | CH;
 
 /// One FaderPort (classic) transport button. The order is the CC order, 16..=23.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +79,6 @@ const TRANSPORT: [TransportCommand; 8] = [
 
 impl TransportCommand {
     /// The CC number the button sends (and, mirrored, its LED).
-    #[allow(dead_code, reason = "only the LED feedback encoders read it so far")]
     pub fn cc(self) -> u8 {
         16 + self as u8
     }
@@ -220,6 +229,18 @@ impl SurfaceParser {
                 // on the bench.
                 _ => None,
             },
+            // BabyHUI: faders on CC 0..7, the eight buttons on CC 32..39. A CC value
+            // above zero is the press half; zero is the release, same as a note-off.
+            SurfaceKind::BabyHui => match status & 0xF0 {
+                0xB0 if d1 < 8 => Some(SurfaceAction::FaderMoved {
+                    index: d1 as usize,
+                    value: d2,
+                }),
+                0xB0 if (32..=39).contains(&d1) && d2 > 0 => {
+                    Some(SurfaceAction::ButtonPressed { id: d1 })
+                }
+                _ => None,
+            },
         }
     }
 
@@ -246,15 +267,13 @@ impl SurfaceParser {
 }
 
 /// FaderPort (classic) LED feedback: the button's own CC echoed back, 0x7F = lit.
-#[allow(dead_code, reason = "no route from Sonix back to a surface's MIDI out yet; measured by the tests")]
 pub fn faderport_led(command: TransportCommand, on: bool) -> [u8; 3] {
-    [0xB0, command.cc(), if on { 0x7F } else { 0x00 }]
+    [CC, command.cc(), if on { 0x7F } else { 0x00 }]
 }
 
 /// FaderPort (classic) 7-segment position display: one digit per CC from `base`,
 /// value = segment mask (a..g in bits 0..6) with bit 7 as the decimal point.
 /// shortcut: `base` is assumed to be 0x30; check it against a unit before shipping.
-#[allow(dead_code, reason = "no route from Sonix back to a surface's MIDI out yet; measured by the tests")]
 pub fn faderport_segments(digits: &[u8], base: u8, decimal: bool) -> Vec<u8> {
     const SEGMENTS: [u8; 10] = [
         0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F,
@@ -266,9 +285,100 @@ pub fn faderport_segments(digits: &[u8], base: u8, decimal: bool) -> Vec<u8> {
         if decimal && i == last && last > 0 {
             mask |= 0x80;
         }
-        out.extend_from_slice(&[0xB0, base.wrapping_add(i as u8), mask]);
+        out.extend_from_slice(&[CC, base.wrapping_add(i as u8), mask]);
     }
     out
+}
+
+/// Mixer state as the surfaces display it, in the raw 7-bit numbers their parsers hand
+/// back — so encoding and decoding a value is the same byte.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SurfaceFeedback {
+    /// Per-channel fader position, 0..=127 (channel 0 is the first strip).
+    pub volume: [u8; 8],
+    pub mute: [bool; 8],
+    pub solo: [bool; 8],
+    pub playing: bool,
+    pub recording: bool,
+    /// Two display lines, e.g. "PLAY REC 120.0 BPM" / "Kick  100".
+    pub line1: String,
+    pub line2: String,
+    /// FaderPort position display afterwards: one digit per segment, empty = leave it.
+    pub position: Vec<u8>,
+    pub position_decimal: bool,
+}
+
+/// The BCF2000's LCD line separator: the same 0x0A `sysex_action` turns back into `\n`.
+const LCD_LINE_SEP: u8 = 0x0A;
+/// Characters that fit one LCD line; a longer line is cut rather than wrapped.
+const LCD_LINE: usize = 20;
+/// BCF2000 LED ring for fader `i`. shortcut: the MCU-style ring bank a BCF listens to in
+/// its Mackie preset; move it to 16..23 if a unit on the bench disagrees.
+const BCF_RING_BASE: u8 = 48;
+/// BabyHUI's eight buttons, also their LEDs (a CC echo, like the FaderPort ones).
+const BABY_HUI_BUTTON_BASE: u8 = 32;
+
+/// The bytes a surface needs to show `feedback`: display, motor faders and LEDs.
+///
+/// A disconnected surface never sees these, so an empty `SurfaceFeedback` (all zeros,
+/// empty lines) is the "nothing to show" form — still a well-formed stream, never empty
+/// because the device needs at least the clearing message.
+pub fn encode_feedback(kind: SurfaceKind, feedback: &SurfaceFeedback) -> Vec<u8> {
+    let f = feedback;
+    let mut out = Vec::new();
+    match kind {
+        // Mackie's own form: display sysex, then 14-bit pitch bend per motor fader.
+        SurfaceKind::Mcu => {
+            out.extend_from_slice(&[0xF0, 0x00, 0x00, 0x66, 0x14]);
+            push_line(&mut out, &f.line1);
+            out.push(LCD_LINE_SEP);
+            push_line(&mut out, &f.line2);
+            out.push(0xF7);
+            for (i, &v) in f.volume.iter().enumerate() {
+                // u32 first: 127 * 16383 does not fit in u16.
+                let bend = (v as u32 * 16383 / 127) as u16;
+                // MCU motor fader i answers on pitch bend channel i.
+                out.extend_from_slice(&[0xE0 | i as u8, (bend & 0x7F) as u8, (bend >> 7) as u8]);
+            }
+        }
+        SurfaceKind::Bcf2000 => {
+            // Behringer sysex display, then faders 0..7 and their LED rings.
+            out.extend_from_slice(&[0xF0, 0x00, 0x20, 0x32, 0x00]);
+            push_line(&mut out, &f.line1);
+            out.push(LCD_LINE_SEP);
+            push_line(&mut out, &f.line2);
+            out.push(0xF7);
+            for (i, &v) in f.volume.iter().enumerate() {
+                out.extend_from_slice(&[CC, i as u8, v]);
+                let ring = if f.mute[i] { 0 } else { v };
+                out.extend_from_slice(&[CC, BCF_RING_BASE + i as u8, ring]);
+            }
+        }
+        SurfaceKind::FaderPort => {
+            // One fader, three transport LEDs, then the 7-segment position.
+            out.extend_from_slice(&[CC, 0, f.volume[0]]);
+            out.extend_from_slice(&faderport_led(TransportCommand::Stop, !f.playing));
+            out.extend_from_slice(&faderport_led(TransportCommand::Play, f.playing));
+            out.extend_from_slice(&faderport_led(TransportCommand::Record, f.recording));
+            out.extend_from_slice(&faderport_segments(&f.position, 0x30, f.position_decimal));
+        }
+        SurfaceKind::BabyHui => {
+            // faders 0..7, then the V-Pot LEDs on the button CCs.
+            for (i, &v) in f.volume.iter().enumerate() {
+                out.extend_from_slice(&[CC, i as u8, v]);
+            }
+            for i in 0..8 {
+                let lit = f.mute[i] || f.solo[i];
+                out.extend_from_slice(&[CC, BABY_HUI_BUTTON_BASE + i as u8, if lit { 0x7F } else { 0x00 }]);
+            }
+        }
+    }
+    out
+}
+
+/// One printable LCD line, cut to the display width.
+fn push_line(out: &mut Vec<u8>, line: &str) {
+    out.extend(line.bytes().filter(|b| (0x20..=0x7E).contains(b)).take(LCD_LINE));
 }
 
 /// Opens the matching MIDI port and sends what its parser makes of the bytes on `tx` —
@@ -553,8 +663,12 @@ mod tests {
         assert!(parser.feed(&[]).is_empty());
         println!("unknown messages -> no actions");
 
-        // 1000 random bytes in random chunk sizes, for both parsers.
-        for kind in [SurfaceKind::Bcf2000, SurfaceKind::FaderPort] {
+        // 1000 random bytes in random chunk sizes, for every byte-driven parser.
+        for kind in [
+            SurfaceKind::Bcf2000,
+            SurfaceKind::FaderPort,
+            SurfaceKind::BabyHui,
+        ] {
             let mut parser = SurfaceParser::new(kind);
             let mut rng = XorShift(0x2545_F491_4F6C_DD1D);
             let mut fed = 0usize;
@@ -567,6 +681,246 @@ mod tests {
                 fed += chunk;
             }
             println!("{kind:?}: 1000 random bytes -> {actions} actions, no panic");
+        }
+    }
+
+    const KINDS: [SurfaceKind; 4] = [
+        SurfaceKind::Mcu,
+        SurfaceKind::Bcf2000,
+        SurfaceKind::FaderPort,
+        SurfaceKind::BabyHui,
+    ];
+
+    fn hex(bytes: &[u8]) -> String {
+        bytes
+            .iter()
+            .map(|b| format!("{b:02X}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// Mixer state with every field distinct, so a swapped index cannot pass unnoticed.
+    fn sample_feedback() -> SurfaceFeedback {
+        let mut f = SurfaceFeedback {
+            playing: true,
+            recording: true,
+            line1: "PLAY REC 120.0 BPM".to_string(),
+            line2: "TRACK 3 100".to_string(),
+            position: vec![1, 2, 5],
+            ..SurfaceFeedback::default()
+        };
+        for i in 0..8 {
+            f.volume[i] = 10 + i as u8 * 8;
+            f.mute[i] = i % 3 == 0;
+            f.solo[i] = i == 5;
+        }
+        f
+    }
+
+    /// Requirement (a): what goes out comes back in through the surface's own parser.
+    #[test]
+    fn feedback_round_trips_through_its_own_parser() {
+        let f = sample_feedback();
+        for kind in KINDS {
+            let bytes = encode_feedback(kind, &f);
+            let actions = SurfaceParser::new(kind).feed(&bytes);
+            println!("{kind:?} feedback ({} bytes): {}", bytes.len(), hex(&bytes));
+            println!("  given   -> {:?}", f);
+            println!("  decoded -> {actions:?}");
+
+            match kind {
+                // MCU is decoded as ALSA sequencer events, never as bytes; the byte
+                // form above is what the mixer sends it, and nothing reads it back.
+                SurfaceKind::Mcu => {
+                    assert!(actions.is_empty(), "MCU bytes must not decode as surface actions");
+                    // The motor faders are 14-bit: decode the pitch bend pair back to a
+                    // volume and it must be the one that went out (this caught a u16
+                    // overflow in the first version).
+                    for (i, &v) in f.volume.iter().enumerate() {
+                        let at = bytes
+                            .windows(3)
+                            .position(|w| w[0] == 0xE0 | i as u8)
+                            .expect("every motor fader is sent");
+                        let raw = (bytes[at + 1] as u32) | (bytes[at + 2] as u32) << 7;
+                        assert_eq!(raw * 127 / 16383, v as u32, "fader {i}");
+                    }
+                    println!("  motor faders: 14-bit pitch bend on channels 0..7");
+                }
+                SurfaceKind::FaderPort => {
+                    // One fader plus the three transport LEDs, which come back as the
+                    // button CCs they mirror.
+                    assert_eq!(
+                        actions,
+                        vec![
+                            SurfaceAction::FaderMoved { index: 0, value: f.volume[0] },
+                            SurfaceAction::TransportCommand(TransportCommand::Stop),
+                            SurfaceAction::TransportCommand(TransportCommand::Play),
+                            SurfaceAction::TransportCommand(TransportCommand::Record),
+                        ]
+                    );
+                    // The LED value itself carries the transport state.
+                    let led = |cc: u8| {
+                        let i = bytes
+                            .windows(3)
+                            .position(|w| w[0] == CC && w[1] == cc)
+                            .expect("every transport LED is sent");
+                        bytes[i + 2]
+                    };
+                    assert_eq!(led(17), if f.playing { 0x7F } else { 0x00 });
+                    assert_eq!(led(18), if f.recording { 0x7F } else { 0x00 });
+                    println!("  play LED 0x{:02X}, record LED 0x{:02X}", led(17), led(18));
+                }
+                SurfaceKind::Bcf2000 | SurfaceKind::BabyHui => {
+                    let faders: Vec<_> = actions
+                        .iter()
+                        .filter_map(|a| match a {
+                            SurfaceAction::FaderMoved { index, value } => Some((*index, *value)),
+                            _ => None,
+                        })
+                        .collect();
+                    assert_eq!(faders, (0..8).map(|i| (i, f.volume[i])).collect::<Vec<_>>());
+                }
+            }
+        }
+    }
+
+    /// Requirement (b): the BCF2000 LCD message, byte for byte.
+    #[test]
+    fn bcf_display_carries_both_lines_in_behringer_sysex() {
+        let f = sample_feedback();
+        let bytes = encode_feedback(SurfaceKind::Bcf2000, &f);
+        let end = bytes.iter().position(|&b| b == 0xF7).expect("sysex ends");
+        let sysex = &bytes[..=end];
+        println!("BCF2000 sysex: {}", hex(sysex));
+
+        assert_eq!(&sysex[..4], &[0xF0, 0x00, 0x20, 0x32]);
+        assert_eq!(*sysex.last().unwrap(), 0xF7);
+        // The payload is line1, the 0x0A separator, line2 — and nothing else.
+        let mut expected = Vec::new();
+        expected.extend_from_slice(&[0xF0, 0x00, 0x20, 0x32, 0x00]);
+        expected.extend_from_slice(f.line1.as_bytes());
+        expected.push(0x0A);
+        expected.extend_from_slice(f.line2.as_bytes());
+        expected.push(0xF7);
+        assert_eq!(sysex, &expected[..]);
+        assert_eq!(
+            SurfaceParser::new(SurfaceKind::Bcf2000).feed(sysex),
+            vec![SurfaceAction::DisplayText {
+                text: format!("{}\n{}", f.line1, f.line2)
+            }]
+        );
+    }
+
+    /// Requirement (c): the position display digits, through the encoder this time.
+    #[test]
+    fn faderport_position_segments_are_the_documented_masks() {
+        let mut f = sample_feedback();
+        f.position = vec![1, 2, 5];
+        let bytes = encode_feedback(SurfaceKind::FaderPort, &f);
+        let tail = &bytes[bytes.len() - 9..];
+        println!("FaderPort segments 1 2 5 -> {}", hex(tail));
+        assert_eq!(tail, [0xB0, 0x30, 0x06, 0xB0, 0x31, 0x5B, 0xB0, 0x32, 0x6D]);
+
+        f.position = vec![4, 0];
+        f.position_decimal = true;
+        let bytes = encode_feedback(SurfaceKind::FaderPort, &f);
+        let tail = &bytes[bytes.len() - 6..];
+        println!("FaderPort segments 4.0 -> {}", hex(tail));
+        assert_eq!(tail, [0xB0, 0x30, 0x66, 0xB0, 0x31, 0xBF]);
+    }
+
+    /// Requirement (d): BabyHUI's two CC blocks, one message at a time.
+    #[test]
+    fn babyhui_maps_faders_on_cc_0_to_7_and_buttons_on_cc_32_to_39() {
+        for cc in 0..8u8 {
+            let actions = SurfaceParser::new(SurfaceKind::BabyHui).feed(&[0xB0, cc, 64]);
+            println!("BabyHUI CC {cc} = 64 -> {actions:?}");
+            assert_eq!(
+                actions,
+                vec![SurfaceAction::FaderMoved {
+                    index: cc as usize,
+                    value: 64
+                }]
+            );
+        }
+        for cc in 32..40u8 {
+            let actions = SurfaceParser::new(SurfaceKind::BabyHui).feed(&[0xB0, cc, 0x7F]);
+            println!("BabyHUI CC {cc} = 0x7F -> {actions:?}");
+            assert_eq!(actions, vec![SurfaceAction::ButtonPressed { id: cc }]);
+            // Release.
+            assert!(SurfaceParser::new(SurfaceKind::BabyHui)
+                .feed(&[0xB0, cc, 0x00])
+                .is_empty());
+        }
+        // The V-Pot LEDs sit on the button CCs, so the encoder echoes them there.
+        let f = sample_feedback();
+        let bytes = encode_feedback(SurfaceKind::BabyHui, &f);
+        let leds = &bytes[24..];
+        println!("BabyHUI V-Pot LEDs -> {}", hex(leds));
+        for i in 0..8 {
+            let lit = f.mute[i] || f.solo[i];
+            assert_eq!(
+                leds[i * 3],
+                CC,
+                "LED {i} is a CC on the button's own number"
+            );
+            assert_eq!(leds[i * 3 + 1], 32 + i as u8);
+            assert_eq!(leds[i * 3 + 2], if lit { 0x7F } else { 0x00 }, "LED {i}");
+        }
+        // CC 8 and CC 40 are not on this surface.
+        assert!(SurfaceParser::new(SurfaceKind::BabyHui)
+            .feed(&[0xB0, 8, 64])
+            .is_empty());
+        assert!(SurfaceParser::new(SurfaceKind::BabyHui)
+            .feed(&[0xB0, 40, 64])
+            .is_empty());
+    }
+
+    /// Requirement (e): no feedback panics, and a wrong parser never invents a press,
+    /// a transport command or a display line. Only CC 0..7 overlap — the three CC
+    /// surfaces genuinely share those numbers, and are told apart by their port.
+    #[test]
+    fn empty_feedback_is_well_formed_and_wrong_parsers_see_no_semantics() {
+        let empty = SurfaceFeedback::default();
+        for kind in KINDS {
+            let bytes = encode_feedback(kind, &empty);
+            println!("{kind:?} empty feedback ({} bytes): {}", bytes.len(), hex(&bytes));
+            assert!(!bytes.is_empty(), "a surface still gets its clearing message");
+            assert!(!SurfaceParser::new(kind).feed(&bytes)
+                .iter()
+                .any(|a| matches!(a, SurfaceAction::DisplayText { .. })));
+        }
+        // The BCF sysex is well formed even with no text at all.
+        let bcf_empty = encode_feedback(SurfaceKind::Bcf2000, &empty);
+        let end = bcf_empty.iter().position(|&b| b == 0xF7).expect("sysex ends");
+        assert_eq!(&bcf_empty[..4], &[0xF0, 0x00, 0x20, 0x32]);
+        assert_eq!(end, 6, "header, the separator and F7, then the CCs");
+
+        let f = sample_feedback();
+        for from in KINDS {
+            let bytes = encode_feedback(from, &f);
+            for to in KINDS.into_iter().filter(|k| *k != from) {
+                let actions = SurfaceParser::new(to).feed(&bytes);
+                println!("{from:?} feedback -> {to:?} parser: {actions:?}");
+                assert!(
+                    actions
+                        .iter()
+                        .all(|a| matches!(a, SurfaceAction::FaderMoved { .. })),
+                    "{from:?} bytes gave {to:?} a button/transport/display"
+                );
+                // The shared fader CCs, and nothing beyond them.
+                let faders = actions.len();
+                let expected = match (from, to) {
+                    (SurfaceKind::Bcf2000, SurfaceKind::FaderPort) => 1,
+                    (SurfaceKind::FaderPort, SurfaceKind::Bcf2000) => 1,
+                    (SurfaceKind::FaderPort, SurfaceKind::BabyHui) => 1,
+                    (SurfaceKind::Bcf2000, SurfaceKind::BabyHui) => 8,
+                    (SurfaceKind::BabyHui, SurfaceKind::Bcf2000) => 8,
+                    (SurfaceKind::BabyHui, SurfaceKind::FaderPort) => 1,
+                    _ => 0,
+                };
+                assert_eq!(faders, expected, "{from:?} -> {to:?}");
+            }
         }
     }
 }

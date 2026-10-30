@@ -231,10 +231,16 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                 // same control channel the MCU thread writes to.
                 ui.horizontal(|ui| {
                     ui.label(crate::i18n::t("Kontrollyta:"));
-                    for kind in [SurfaceKind::Mcu, SurfaceKind::Bcf2000, SurfaceKind::FaderPort] {
+                    for kind in [
+                        SurfaceKind::Mcu,
+                        SurfaceKind::Bcf2000,
+                        SurfaceKind::FaderPort,
+                        SurfaceKind::BabyHui,
+                    ] {
                         if ui.selectable_label(self.surface_kind == kind, kind.label()).clicked() {
                             self.surface_kind = kind;
                             self.surface_input = None;
+                            self.surface_feedback_sent = None;
                             if kind != SurfaceKind::Mcu {
                                 match SurfaceInput::connect(kind, self.control_tx.clone()) {
                                     Ok(s) => {

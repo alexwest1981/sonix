@@ -53,7 +53,9 @@ impl MidiOut {
         &self.name
     }
 
-    fn send(&self, bytes: &[u8]) -> Result<(), String> {
+    /// Raw bytes — sysex, CCs, whatever a receiver expects. Control-surface feedback
+    /// goes through here too, so there is still exactly one MIDI-out path.
+    pub fn send(&self, bytes: &[u8]) -> Result<(), String> {
         let mut conn = self
             .conn
             .lock()
