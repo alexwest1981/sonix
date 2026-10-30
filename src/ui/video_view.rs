@@ -1,12 +1,13 @@
 //! **Videospår** i gränssnittet: en referensfilm synkad till tidslinjen, så musik kan
 //! skrivas mot bild. Filmen ligger inte i mixen och går inte genom mastern.
 //!
-//! Bildrutan hämtas med `ffmpeg` bara när **rutan byts**, och högst tio gånger i sekunden:
-//! ett processanrop per bildruta hade kostat mer än uppspelningen. Under en transport som
-//! rör sig snabbt visas därför den senast hämtade rutan tills nästa hinner fram — hellre en
-//! ruta efter än en uppspelning som hackar.
+//! While the transport rolls the picture comes from `Playback` — one ffmpeg writing a
+//! continuous stream, read at the clip's own frame rate. Paused scrubbing still decodes one
+//! frame per step with `frame_at`, at most ten times a second, because a scrub that moves
+//! faster than ffmpeg can seek is better served by the frame that is already there.
 
 use eframe::egui;
+use crate::audio::video_engine::Playback;
 use crate::ui::theme::Theme;
 
 /// Allt videovyn minns mellan bildrutor.
@@ -17,6 +18,12 @@ pub struct VideoState {
     /// The frame source: it keeps the last frames decoded, so scrubbing over the same
     /// neighbourhood does not start ffmpeg again for every step.
     source: Option<crate::audio::video_engine::VideoSource>,
+    /// The running decoder, only while the transport plays. Dropping it stops the child.
+    playback: Option<Playback>,
+    /// Where playback started in the file and when, so a jump of the transport can be told
+    /// apart from normal running.
+    play_from: f64,
+    play_started: f64,
     /// Var filmen börjar på tidslinjen, i sekunder.
     pub offset_secs: f64,
     texture: Option<egui::TextureHandle>,
@@ -33,6 +40,7 @@ impl VideoState {
                 self.path = Some(path.to_string());
                 self.info = Some(source.info);
                 self.source = Some(source);
+                self.playback = None;
                 self.texture = None;
                 self.shown_frame = None;
                 self.last_error = None;
@@ -48,17 +56,53 @@ impl VideoState {
 
     /// Hämtar rutan för tidslinjepositionen om det behövs. `now` är en monoton klocka i
     /// sekunder (används för att begränsa hur ofta ffmpeg startas).
-    fn refresh(&mut self, ctx: &egui::Context, position_secs: f64, now: f64) {
+    fn refresh(&mut self, ctx: &egui::Context, position_secs: f64, is_playing: bool, now: f64) {
         let Some(info) = self.info else {
             return;
         };
         let Some(index) = crate::audio::video::frame_index(position_secs, &info, self.offset_secs)
         else {
             // Före filmens början eller efter slutet: tomt spår, inte fryst bild.
+            self.playback = None;
             self.texture = None;
             self.shown_frame = None;
             return;
         };
+
+        if is_playing {
+            let local = index as f64 / info.fps;
+            if self.playback.is_none() {
+                let Some(path) = self.path.clone() else {
+                    return;
+                };
+                let mut play = Playback::new(&path, info);
+                if let Err(err) = play.start(local) {
+                    self.last_error = Some(err);
+                    return;
+                }
+                self.playback = Some(play);
+                self.play_from = local;
+                self.play_started = now;
+            }
+            // A jump of more than a quarter second is a scrub during playback, not drift.
+            if (local - (self.play_from + now - self.play_started)).abs() > 0.25 {
+                if let Some(play) = self.playback.as_mut()
+                    && let Err(err) = play.seek(local)
+                {
+                    self.last_error = Some(err);
+                    return;
+                }
+                self.play_from = local;
+                self.play_started = now;
+            }
+            if let Some(frame) = self.playback.as_mut().and_then(|play| play.latest()) {
+                self.show(ctx, &frame, index, now);
+            }
+            return;
+        }
+
+        // Paused: the one-shot path decodes the scrubbed frame and reports what it finds.
+        self.playback = None;
         if self.shown_frame == Some(index) || now - self.last_update < 0.1 {
             return;
         }
@@ -66,22 +110,31 @@ impl VideoState {
             return;
         };
         match source.frame_at(index as f64 / info.fps) {
-            Ok(frame) => {
-                let image = egui::ColorImage::from_rgb(
-                    [frame.width as usize, frame.height as usize],
-                    &frame.rgb,
-                );
-                self.texture =
-                    Some(ctx.load_texture("sonix_video", image, egui::TextureOptions::LINEAR));
-                self.shown_frame = Some(index);
-                self.last_update = now;
-                self.last_error = None;
-            }
+            Ok(frame) => self.show(ctx, &frame, index, now),
             Err(err) => {
                 self.last_error = Some(err);
                 self.last_update = now;
             }
         }
+    }
+
+    /// Puts a frame on screen. The texture is reused: at 25 fps a new one per frame would
+    /// throw a quarter of a megabyte of GPU memory after every picture.
+    fn show(&mut self, ctx: &egui::Context, frame: &crate::audio::video_engine::Frame, index: u64, now: f64) {
+        let image = egui::ColorImage::from_rgb(
+            [frame.width as usize, frame.height as usize],
+            &frame.rgb,
+        );
+        match &mut self.texture {
+            Some(texture) => texture.set(image, egui::TextureOptions::LINEAR),
+            None => {
+                self.texture =
+                    Some(ctx.load_texture("sonix_video", image, egui::TextureOptions::LINEAR))
+            }
+        }
+        self.shown_frame = Some(index);
+        self.last_update = now;
+        self.last_error = None;
     }
 }
 
@@ -143,7 +196,7 @@ pub fn render_video_view(
 
         ui.add_space(4.0);
 
-        state.refresh(ui.ctx(), song_time, ui.input(|i| i.time));
+        state.refresh(ui.ctx(), song_time, is_playing, ui.input(|i| i.time));
 
         if let Some(texture) = &state.texture {
             let available = ui.available_size();
