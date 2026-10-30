@@ -656,18 +656,20 @@ impl Default for MasterVocoder {
 }
 
 mod color;
-mod exciter;
 mod dynamics;
 mod eq;
+mod exciter;
+mod hybrid_reverb;
 mod modulation;
 mod roar;
 mod space;
 mod time;
 
 pub use color::*;
-pub use exciter::*;
 pub use dynamics::*;
 pub use eq::*;
+pub use exciter::*;
+pub use hybrid_reverb::*;
 pub use modulation::*;
 pub use roar::*;
 pub use space::*;
