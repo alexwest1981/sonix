@@ -8,11 +8,19 @@ posten kommer från.
 
 | # | Post | Källa | Storlek | Vad som ska mätas |
 | :--: | :--- | :--- | :---: | :--- |
-| 1 | **Cytomic-filtren**: Sallen-Key MS2/MD/SD, StateV OSR, Ladder PRD med drive i återkopplingen | Ableton | **M** | Frekvensgång per typ (3 dB-punkt, resonanstopp), THD vid drive |
-| 2 | **Roar-klassad multibandssaturator**: 3 stag, 12 shaper-lägen, 8 filtertyper, feedback | Ableton | **M** | Övertoner per shaper (THD per läge), bandläckage |
+| 1 | ✅ **Cytomic-filtren**: Sallen-Key MS2/MD/SD, StateV OSR, Ladder PRD med drive i återkopplingen | Ableton | **M** | Frekvensgång per typ (3 dB-punkt, resonanstopp), THD vid drive |
+| 2 | ✅ **Multibandssaturator (`Roar`)**: 3 stag, 12 shaper-lägen, 8 filtertyper, feedback | Ableton | **M** | Övertoner per shaper (THD per läge), bandläckage |
 | 3 | **MIDI-effekter som egen kedja** (skala, ackord, arpeggio, notlängd, pitch, delay, random, velocity) | Ableton | **M** | Notantal in/ut per effekt, timing i samples |
-| 4 | **DDP-export** (CUE/BIN, CD-TEXT, ISRC) | REAPER | **S–M** | Filstruktur mot spec, red book-ordning |
+| 4 | ✅ **DDP-export** (CUE/BIN, CD-TEXT, ISRC) | REAPER | **S–M** | Filstruktur mot spec, red book-ordning |
 | 5 | **Lua bredvid Rhai** | REAPER | **S** | Ett skript i vardera språket ger samma noter |
+
+## 1b. Mätt 2026-10-30 (klara)
+
+| Post | Mätning |
+| :--- | :--- |
+| Cytomic-filtren | SK −12,5 dB/okt · SVF −12,3 · ladder −24,0 · topp +26,2 dB · självsvängning 0,75 rms · THD 0,02 → **5,27 %** med drive |
+| Multibandssaturator | bandsumma **0,122 dB** · THD 5,2/9,7/31,6/92,1 % per kurva · grind < −240 dBFS · tak exakt 1,0 |
+| DDP-export | 5 s → 375 sektorer / 882 000 byte · `DDP 2.00`-magic · ISRC i PQDESCR |
 
 ## 2. Sedan (M, kräver ett lager)
 
