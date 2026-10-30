@@ -30,9 +30,9 @@ posten kommer från.
 | 7 | ✅ **Rubber Band** som warp-läge (dlopen, återfall till WSOLA) | REAPER | **M** | 1,5× → 6 615 framer, 440 → 440 Hz, +1 oktav → 880 Hz |
 | 8 | ✅ **Hybrid Reverb** (FDN + konvolution) | Ableton | **M** | RT60 0,81/1,51/3,01 s mot 0,80/1,50/3,00 · densitet 62 % |
 | 9 | **JACK-backend** — cpal 0.15 har ingen JACK-väg; kräver `jack`-craten och en omskrivning av trådmodellen | REAPER | **M** |
-| 10 | **Kontrollerytor utöver MCU** (BCF2000, BabyHUI, FaderPort, OSC-yta) | båda | **M** |
+| 10 | ◐ **Kontrollerytor**: MCU + **BCF2000** + **FaderPort** klara (rena parsers, testade byte för byte). Kvar: BabyHUI, OSC-yta, LED/display tillbaka till enheten | båda | **M** |
 | 11 | ✅ **VST3/VST2 genom sandboxen** (VST2 ej testad — ingen VST2-binär finns här) | REAPER | **M** |
-| 12 | **Opus och WavPack i processen** (symphonia täcker dem inte) | REAPER | **S–M** |
+| 12 | ◐ **Opus klart** i processen (0,000 dB mot ffmpeg). Kvar: WavPack, AIFF | REAPER | **S–M** |
 
 ## 3. Stort (L) — inte en ratt
 

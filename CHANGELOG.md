@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.223] - 2026-10-30
+
+**Opus avkodas i processen.** `audio::opus` läser Ogg-sidorna själv (OpusHead, pre-skip, granule)
+och anropar `libopus` via `dlopen` — `ffmpeg` behövs inte längre för `.opus`/`.ogg`/`.oga`.
+Korsvisat mot ffmpeg på samma fil: **96 000 frames, 2,0000 s, 440,0 Hz, RMS 0,088384 — skillnad
+0,000 dB**. Stereo: RMS 0,062477 i båda kanalerna. Skräpfil ger `Err("expected an Ogg page at byte
+0, found [74, 68, 69, 73]")`.
+
+**Två kontrollerytor till**: Behringer **BCF2000** (reglage på CC 0–7, knappar på note on, LC-display
+via sysex) och **PreSonus FaderPort** (reglage på CC 0, transport på CC 16–23 → Stop/Play/Record/
+Rewind/FF/Loop/Punch/User). Båda är **rena parsers** (`feed(&[u8]) -> Vec<SurfaceAction>`) som
+skickar in i samma `ControlEvent`-kö som MCU:n redan använder — inget andra väg in i appen.
+Testat byte för byte: fragmenterad sysex mitt i meddelandet ger exakt en `DisplayText` när sista
+byten kommer, 4 KiB skräp ger inga handlingar, och nästa CC parsa ändå.
+
+1 243 prov gröna, 0 varningar.
+
 ## [0.9.222] - 2026-10-30
 
 **Fysisk modellering som källa** (`Modal`): upp till 64 modala resonatorer, olinjäritet
