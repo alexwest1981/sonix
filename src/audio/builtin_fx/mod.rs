@@ -44,6 +44,8 @@ impl ParamDef {
     }
 }
 
+mod roar_fx;
+
 pub struct EffectDef {
     pub id: &'static str,
     pub name: &'static str,
@@ -76,6 +78,7 @@ pub fn id_of(path: &str) -> &str {
 /// Alla inbyggda effekter. Ordningen är den de visas i.
 pub fn defs() -> Vec<&'static EffectDef> {
     vec![
+        &roar_fx::ROAR_FX,
         &filters::FILTER72,
         &filters::TILT,
         &filters::MOOG,

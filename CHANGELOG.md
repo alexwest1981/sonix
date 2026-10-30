@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.217] - 2026-10-30
+
+Tre poster ur backloggen, alla med sin mätning.
+
+**Cytomic-filtren** (`audio::filter_topologies`): Sallen-Key MS2 med LP/BP/HP och drive i
+resonansåterkopplingen, SVF med 2× oversampling, ladder med poldiffusion. Nås som effekten
+`Cytomic-filter` i pluginlistan. Mätt: SK −12,5 dB/okt, SVF −12,3, ladder −24,0; resonanstopp
++26,2 dB vid res 0,9; självsvängning håller 0,75 rms utan insignal; THD vid 200 Hz går från
+0,02 % till **5,27 %** när drivet slås på (ladder 0,05 → 4,00 %).
+
+**Multibandssaturator** (`audio::master_fx::roar`, effekt `Roar`): tre band (LR2, 200 Hz/2 kHz),
+sex kurvor, aterkoppling med grind, 1–3 steg, tak vid 1,0. Mätt: bandsumman avviker högst
+**0,122 dB**; THD per kurva 5,2 % (tanh), 9,7 % (vik), 31,6 % (klipp), 92,1 % (wrap); grinden
+håller tystnad under −240 dBFS med aterkoppling 0,95. Kurvorna är våra egna — Abletons är inte
+läsbara ur binären.
+
+**DDP-export** (`audio::ddp`, `--export-ddp`, `--export-cue`): DDPID/DDPMap/PQDESCR/CDTEXT +
+AUDIO.DAT i 2352-byte sektorer, ISRC valideras, icke-44,1 kHz avvisas. Mätt: 5 s → 375 sektorer,
+882 000 byte, `DDP 2.00`-magic, ISRC i PQDESCR.
+
+1 199 prov gröna, 0 varningar.
+
 ## [0.9.216] - 2026-10-30
 
 **Komprimerat ljud avkodas i processen.** Import gick förut alltid via det externa `ffmpeg`-programmet

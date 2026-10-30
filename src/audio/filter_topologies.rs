@@ -44,6 +44,8 @@ pub enum FilterMode {
 }
 
 impl FilterMode {
+    /// Etikett för UI:t. Anropas ännu inte — `CYTOMIC`-parametern är en sifferstege.
+    #[allow(dead_code)]
     pub fn name(self) -> &'static str {
         match self {
             Self::LowPass => "lågpass",
@@ -67,6 +69,8 @@ pub enum FilterTopology {
 impl FilterTopology {
     pub const ALL: [Self; 3] = [Self::SallenKeyMs, Self::StateVariableOs, Self::LadderPd];
 
+    /// Etikett för UI:t. Anropas ännu inte — `CYTOMIC`-parametern är en sifferstege.
+    #[allow(dead_code)]
     pub fn name(self) -> &'static str {
         match self {
             Self::SallenKeyMs => "Sallen-Key MS2",
