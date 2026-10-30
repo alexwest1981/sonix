@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.213] - 2026-10-29
+
+**ONNX Runtime laddas vid körning — neural separation i alla paket.** Ett länkat ORT kräver glibc
+≥ 2.32, så manylinux-paketet (golv 2.28) kunde aldrig bära separationen. Nu öppnas
+`libonnxruntime.so` med `dlopen`: binären startar utan den, manylinux-bygget har `neural` på, och
+den som vill separera lägger filen i `~/.local/share/sonix/models/`, bredvid binären eller sätter
+`ORT_DYLIB_PATH`. Saknas den blir beskedet en sökväg i stället för en panik.
+
+**Versionen måste vara 1.23.x.** Mätt: 1.22.0 laddar och separerar (`neural: true`) men kraschar vid
+avslut med "double free or corruption"; 1.23.0 går rent, samma fil och samma modell. `-neural`-tarballen
+bär nu `libonnxruntime.so` bredvid binären så den fungerar direkt.
+
 **Ett JSFX-instrument går genom hela mastern.** Det returnerade tidigare direkt efter volym och
 `tanh`, så gate, remix-FX, tape stop, control room och talkback hoppades över — instrumentet lät
 annorlunda än rösterna beroende på vad som var kopplat. Slutsteget ligger nu i `finish_master`,

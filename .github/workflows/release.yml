@@ -57,10 +57,12 @@ jobs:
           key: release-${{ matrix.arch }}
 
       - name: Test
-        run: cargo test --release --locked --no-default-features --features plugin-host
+        # `neural` är på: ORT laddas med dlopen vid körning, så inget länkas mot glibc 2.28-golvet.
+        # Utan `libonnxruntime.so` på maskinen faller separationen tillbaka på DSP med ett besked.
+        run: cargo test --release --locked --features plugin-host
 
       - name: Build
-        run: cargo build --release --locked --no-default-features --features plugin-host
+        run: cargo build --release --locked --features plugin-host
 
       - name: Check the glibc floor
         run: bash packaging/check-glibc-floor.sh target/release/sonix 2.28
@@ -80,6 +82,10 @@ jobs:
   build-neural:
     name: Build x86_64 (neural)
     runs-on: ubuntu-24.04
+    env:
+      # `ort` rc.13 bygger mot den här API-nivån; en äldre .so kraschar vid avslut (mätt: 1.22 gav
+      # "double free or corruption", 1.23 gick rent). Höjs när ort höjs.
+      ORT_VERSION: "1.23.0"
     steps:
       - uses: actions/checkout@v4
 
@@ -111,6 +117,13 @@ jobs:
           strings target/release/sonix | grep -qi onnxruntime
           target/release/sonix --version
 
+      - name: Hämta ONNX Runtime (samma version som ort-API:t kräver)
+        run: |
+          set -euo pipefail
+          curl -sSL "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-${ORT_VERSION}.tgz" \
+            | tar xz -C /tmp
+          cp "/tmp/onnxruntime-linux-x64-${ORT_VERSION}/lib/libonnxruntime.so.${ORT_VERSION}" /tmp/libonnxruntime.so
+
       - name: Tarball
         run: |
           set -euo pipefail
@@ -118,6 +131,7 @@ jobs:
           name="sonix-${version}-x86_64-neural"
           mkdir -p "dist/${name}"
           cp target/release/sonix "dist/${name}/sonix"
+          cp /tmp/libonnxruntime.so "dist/${name}/libonnxruntime.so"
           cp README.md CHANGELOG.md MANUAL.md LICENSE "dist/${name}/"
           tar -C dist -czf "dist/${name}.tar.gz" "${name}"
 

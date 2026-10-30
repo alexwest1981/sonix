@@ -205,6 +205,37 @@ pub const MODEL_URL: &str =
     "https://huggingface.co/StemSplitio/htdemucs-onnx/resolve/main/htdemucs_fp16weights.onnx";
 
 /// Katalogen som lista (för UI:t).
+/// **ONNX Runtime laddas vid körning, inte vid bygge.** Ett länkat ORT kräver glibc ≥ 2.32, så
+/// manylinux-paketet (golv 2.28) kunde aldrig bära separationen. Nu letas `libonnxruntime.so` upp
+/// här i stället — binären startar och spelar utan den, och den som vill separera lägger filen på
+/// ett av ställena nedan. Hittas ingen blir det ett besked med sökvägarna, inte en panik.
+#[cfg(feature = "neural")]
+fn ensure_runtime() -> Result<(), String> {
+    if std::env::var("ORT_DYLIB_PATH").is_ok_and(|v| !v.is_empty()) {
+        return Ok(());
+    }
+    let mut candidates: Vec<PathBuf> = Vec::new();
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+        candidates.push(dir.join("libonnxruntime.so"));
+    }
+    for dir in model_dirs() {
+        candidates.push(dir.join("libonnxruntime.so"));
+    }
+    match candidates.iter().find(|p| p.exists()) {
+        Some(found) => {
+            // `ort` läser variabeln första gången den behöver runtime, så den räcker att sätta här.
+            // SAFETY: ingen annan tråd läser eller skriver miljön vid det här laget — anropet sker
+            // i ljud-/exporttråden innan första sessionen skapas.
+            unsafe { std::env::set_var("ORT_DYLIB_PATH", found) };
+            Ok(())
+        }
+        None => Err(crate::tstatus!(
+            "Neural separation behöver ONNX Runtime: lägg libonnxruntime.so i {} (eller bredvid binären, eller sätt ORT_DYLIB_PATH).",
+            model_dirs().first().map(|d| d.display().to_string()).unwrap_or_default()
+        )),
+    }
+}
+
 pub fn models() -> &'static [ModelSpec] {
     MODELS
 }
@@ -578,6 +609,8 @@ mod backend {
             return Err("Ljudet är tomt".to_string());
         }
 
+        #[cfg(feature = "neural")]
+        ensure_runtime()?;
         let mut session = Session::builder()
             .map_err(|e| format!("Kunde inte skapa ONNX-session: {e}"))?
             .commit_from_file(&path)

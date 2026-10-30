@@ -1,6 +1,6 @@
 [package]
 name = "sonix"
-version = "0.9.212"
+version = "0.9.213"
 edition = "2024"
 license = "GPL-3.0-only"
 description = "Native Linux DAW (Rust/egui) with timeline editing, synth, mixer, stem separation, plugin hosting and export."
@@ -39,7 +39,12 @@ ureq = "2"
 # på Linux. Ersätter `zenity` (Fas 7.1) — standardfeatures använder portalen, inte
 # GTK3, så inga GTK-dev-huvuden behövs för att bygga.
 rfd = "0.15"
-ort = { version = "2.0.0-rc.13", optional = true }
+# **laddas vid körning, inte vid bygge.** Skillnaden är hela poängen: ett länkat ORT kräver
+# glibc ≥ 2.32, så manylinux-paketet (golv 2.28) kunde aldrig bära neural separation. Med
+# `load-dynamic` öppnas `libonnxruntime.so` med dlopen i stället — binären startar utan den, och
+# den som vill separera lägger filen i `~/.local/share/sonix/models/` eller sätter
+# `ORT_DYLIB_PATH`. Funktionen säger ifrån med filnamnet om den saknas i stället för att panika.
+ort = { version = "2.0.0-rc.13", optional = true, default-features = false, features = ["load-dynamic"] }
 libloading = { version = "0.8", optional = true }
 libc = { version = "0.2", optional = true }
 

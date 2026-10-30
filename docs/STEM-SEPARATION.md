@@ -106,6 +106,13 @@ summan modellens egen återskapning.
 | `mel_roformer` | 2 (sång + rest) | 20,8 s | bäst på sång, 12,1 dB |
 | `bs_roformer_sw6` | 6 | 30,7 s | bäst på gitarr/piano (9,1 / 7,8 dB) |
 
+**ONNX Runtime laddas vid körning** (0.9.213): `libonnxruntime.so` öppnas med `dlopen` i stället för
+att länkas, så binären startar utan den och samma paket kan köra på en maskin med äldre glibc.
+Filen letas upp i den här ordningen: `ORT_DYLIB_PATH`, bredvid binären, `~/.local/share/sonix/models/`.
+Versionen måste vara **1.23.x** — 1.22 laddar men kraschar vid avslut ("double free or corruption"),
+mätt på samma fil och samma modell. Saknas filen faller separationen tillbaka på DSP och säger var
+den ska ligga.
+
 `neural` är **på som standard** sedan 0.9.207: förut var det opt-in, och resultatet var en
 modellväljare som tyst föll tillbaka på DSP i varje bygge som inte angav featuren — man valde en
 modell och fick något annat. Ett bygge som måste vara beroendefritt stänger av den:
