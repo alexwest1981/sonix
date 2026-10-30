@@ -187,12 +187,12 @@ redan via vår EEL2-motor. Det som fattas är lagret runtomkring.
 | # | Vad | Storlek | Varför |
 | :--: | :--- | :---: | :--- |
 | 1 | **Rubber Band** (formantbevarande stretch) | *S* | `rubberband.so` i REAPER; vi har bara egen WSOLA. Länka lib + exponera lägena. |
-| 2 | **Kodekar i processen** (FLAC, MP3, Opus, WavPack, Vorbis) | *M* | Vi går via extern `ffmpeg`-binär; saknas den kan inget komprimerat importeras. Rena Rust-libs (symphonia/claxon/lewton). |
+| 2 | **Kodekar i processen** — *✅ (Opus/WavPack kvar)* | *M* | 0.9.216: symphonia läser FLAC, MP3, Vorbis, WAV och MP4/AAC i processen; `ffmpeg` är reserv för Opus, WavPack och AIFF. Prov: egen FLAC skrivs och läses genom `load_audio_pcm` utan ffmpeg. |
 | 3 | **LV2-hosting** | *M* | `PluginFormat::Lv2` finns bara för att avvisa; REAPER har egen skanner (151 `lv2`-träffar). Litet API, UI/state är det som kostar. |
 | 4 | **Lua bredvid Rhai** | *S* (Lua) / *L* (API) | REAPER: Lua 5.4.6 + 732 `RPR_`-funktioner. Språket är billigt, API-ytan är dyr. |
 | 5 | **DDP-export** (CUE/BIN, CD-TEXT/ISRC) | *S–M* | `reaper_ddp.so`; ren filskrivning, bränning kräver `cdrecord`. |
 | 6 | **JACK-backend** | *M* | `audioStreamer_JACK`; vi har cpal/ALSA. |
-| 7 | **Omsampling i r8brain-klass** | *◐* | Vi har nu fönstrat sinc (`audio::resample`, −75,6 dB rundtur); kvar är polyfas-tabell om CPU blir ett problem. |
+| 7 | **Omsampling i r8brain-klass** — *✅* | *M* | `audio::resample` (Blackman, 32 taggar) sedan 0.9.215: rundtur 44,1→48→44,1 kHz ger **−75,6 dB** fel mot −27,8 dB för linjär interpolation. Polyfas-tabell är en optimering, inte en kvalitetsfråga. |
 | 8 | **Videomotor** (avkoda + koda + FX) | *L* | `reaper_video.so`; vi har bara `probe()` + en bildruta. |
 | 9 | **élastique Pro** | *L* (licens) | `elastique3.so`; kommersiell licens, inte kod. |
 | 10 | **HTTP-server/webbgränssnitt**, **ReaRoute**, **.ins-definitioner**, **Python-skript** | *S–M var* | Mindre, men mätta i kartan. |
