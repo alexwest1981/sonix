@@ -75,43 +75,6 @@ pub fn frame_index(position_secs: f64, info: &VideoInfo, offset_secs: f64) -> Op
     Some(index.min(last))
 }
 
-/// Hämtar **en** bildruta som RGB24 (tre byte per pixel, radvis uppifrån och ner).
-pub fn frame_rgb(path: &str, time_secs: f64, info: &VideoInfo) -> Result<Vec<u8>, String> {
-    let size = info.width as usize * info.height as usize * 3;
-    let output = Command::new("ffmpeg")
-        .args([
-            "-v",
-            "error",
-            "-ss",
-            &format!("{:.3}", time_secs.max(0.0)),
-            "-i",
-            path,
-            "-frames:v",
-            "1",
-            "-f",
-            "rawvideo",
-            "-pix_fmt",
-            "rgb24",
-            "-",
-        ])
-        .output()
-        .map_err(|err| format!("kunde inte starta ffmpeg: {err}"))?;
-    if !output.status.success() {
-        return Err(format!(
-            "ffmpeg kunde inte läsa bildrutan: {}",
-            String::from_utf8_lossy(&output.stderr).trim()
-        ));
-    }
-    if output.stdout.len() < size {
-        return Err(format!(
-            "bildrutan är {} byte, väntade {}",
-            output.stdout.len(),
-            size
-        ));
-    }
-    Ok(output.stdout[..size].to_vec())
-}
-
 /// Läser ett tal efter en nyckel i ffprobes JSON. Minimal tolkning: ffprobe skriver ett
 /// objekt per ström, och vi behöver bara de fyra fälten — ingen JSON-dependency för det.
 fn json_number(text: &str, key: &str) -> Option<f64> {
@@ -250,8 +213,10 @@ mod tests {
             }
             (r / n, g / n, b / n)
         };
-        let first = frame_rgb(&path_str, 0.5, &info).expect("ruta vid 0,5 s");
-        let second = frame_rgb(&path_str, 1.5, &info).expect("ruta vid 1,5 s");
+        let mut source =
+            crate::audio::video_engine::VideoSource::open(&path_str).expect("öppna filmen");
+        let first = source.frame_at(0.5).expect("ruta vid 0,5 s").rgb;
+        let second = source.frame_at(1.5).expect("ruta vid 1,5 s").rgb;
         let (r1, g1, _) = mean(&first);
         let (r2, g2, _) = mean(&second);
         println!("0,5 s: röd {r1:.0} grön {g1:.0} | 1,5 s: röd {r2:.0} grön {g2:.0}");
