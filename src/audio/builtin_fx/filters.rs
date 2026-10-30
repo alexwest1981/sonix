@@ -3,6 +3,7 @@
 use std::f32::consts::PI;
 
 use super::biquad::{Biquad, Butterworth, Kind};
+use crate::audio::filter_topologies::{FilterDsp, FilterMode, FilterTopology};
 use crate::audio::plugin_host::PluginCategory;
 
 use super::{Dsp, EffectDef, ParamDef};
@@ -226,6 +227,87 @@ impl Dsp for Moog {
 
     fn reset(&mut self) {
         self.state = [[0.0; 4]; 2];
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cytomic-topologier (Sallen-Key, SVF 2x, ladder med poldiffusion)
+// ---------------------------------------------------------------------------
+
+pub static CYTOMIC: EffectDef = EffectDef {
+    id: "cytomic",
+    name: "Cytomic-filter",
+    category: PluginCategory::Equalizer,
+    description: "Sallen-Key 12 dB, SVF med 2x oversampling och ladder med poldiffusion — drive i resonansåterkopplingen",
+    params: &[
+        ParamDef::step("Topologi (0=Sallen-Key, 1=SVF, 2=ladder)", 0.0, 2.0, 0.0),
+        ParamDef::step("Typ (0=låg, 1=band, 2=hög, 3=notch; ladder har bara låg)", 0.0, 3.0, 0.0),
+        ParamDef::knob("Cutoff", 20.0, 20_000.0, 1_000.0),
+        ParamDef::knob("Resonans", 0.0, 1.0, 0.3),
+        ParamDef::knob("Drive", 0.0, 1.0, 0.0),
+    ],
+    make: |sr| Box::new(Cytomic::new(sr)),
+};
+
+struct Cytomic {
+    sr: f32,
+    topo: FilterTopology,
+    mode: FilterMode,
+    cutoff: f32,
+    res: f32,
+    drive: f32,
+    dsp: Box<dyn FilterDsp>,
+}
+
+impl Cytomic {
+    fn new(sr: f32) -> Self {
+        let topo = FilterTopology::SallenKeyMs;
+        let mut c = Self {
+            sr,
+            topo,
+            mode: FilterMode::LowPass,
+            cutoff: 1_000.0,
+            res: 0.3,
+            drive: 0.0,
+            dsp: topo.make(sr),
+        };
+        c.apply();
+        c
+    }
+
+    fn apply(&mut self) {
+        self.dsp.set_mode(self.mode);
+        self.dsp.set(self.cutoff, self.res, self.drive);
+    }
+}
+
+impl Dsp for Cytomic {
+    fn process(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.dsp.process_stereo(left, right);
+    }
+
+    fn set(&mut self, index: usize, value: f64) {
+        match index {
+            0 => {
+                let topo = FilterTopology::ALL[(value as usize).min(2)];
+                if topo != self.topo {
+                    self.topo = topo;
+                    // Ny topologi = nytt tillstånd, som att byta krets i en burk.
+                    self.dsp = topo.make(self.sr);
+                }
+            }
+            1 => self.mode = [FilterMode::LowPass, FilterMode::BandPass, FilterMode::HighPass, FilterMode::Notch]
+                [(value as usize).min(3)],
+            2 => self.cutoff = value as f32,
+            3 => self.res = value as f32,
+            4 => self.drive = value as f32,
+            _ => {}
+        }
+        self.apply();
+    }
+
+    fn reset(&mut self) {
+        self.dsp.reset();
     }
 }
 
