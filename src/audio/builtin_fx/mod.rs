@@ -44,6 +44,7 @@ impl ParamDef {
     }
 }
 
+mod hybrid_reverb_fx;
 mod roar_fx;
 
 pub struct EffectDef {
@@ -79,6 +80,7 @@ pub fn id_of(path: &str) -> &str {
 pub fn defs() -> Vec<&'static EffectDef> {
     vec![
         &roar_fx::ROAR_FX,
+        &hybrid_reverb_fx::HYBRID_REVERB_FX,
         &filters::FILTER72,
         &filters::TILT,
         &filters::MOOG,
