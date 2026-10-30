@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.222] - 2026-10-30
+
+**Fysisk modellering som källa** (`Modal`): upp till 64 modala resonatorer, olinjäritet
+`f_n = f0·n·√(1+B·n²)`, materialkurva för avklingning och en klubba vars hårdhet styr pulsens
+längd (1–20 ms). Mätt: starkaste partial vid 220 Hz-stöt **220,0 Hz**; partial 8 flyttas
+**1760 → 3607 Hz** med B = 0,05 (+104,9 %); T60 1,00 s mätt **1,000 s**, material 1,0 ger partial 8
+**0,533 s**; hård klubba bär **0,143 %** över 2 kHz mot **0,001 %** för mjuk; fem stötar toppar 0,277.
+
+**VST3 och VST2 genom sandboxen.** Rutten fanns bara för CLAP, och `.so` inuti ett `.vst3`-paket
+tolkades som VST2. Nu rapporterar barnet sin backend, och ett misslyckande faller tillbaka
+in-process med orsaken i loggen i stället för tystnad. Mätt mot Surge XT Effects VST3:
+backend **`VST3 (sandbox)`**, 4 800 frames, **topp 0,437446 / RMS 0,181184**; skräpsökväg faller
+tillbaka på **12,3 ms**.
+
+**Rättat: wavetablen kunde krascha ljudtråden.** `WavetableSource::process_stereo` skar båda
+kanalerna ur den vänstra bufferten (`split_at_mut`), så varje block med 512 frames gav
+`range end index 512 out of range for slice of length 0`. Felet gick igenom därför att provet jag
+lade till hamnade **inuti** en annan testfunktion och därför aldrig kördes. Pro vet flyttat ut,
+kör nu, och mäter **topp 0,213** vid C4.
+
+1 231 prov (standard) och 1 308 (plugin-host) gröna.
+
 ## [0.9.221] - 2026-10-30
 
 **Wavetable-motor.** `audio::wavetable`: 2 048-samplers ramar, bandbegränsade mipmaps per oktav

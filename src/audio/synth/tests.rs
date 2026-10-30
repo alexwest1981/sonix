@@ -4155,6 +4155,7 @@ fn a_jsfx_instrument_can_be_the_synth_source() {
 
     synth.handle_command(AudioCommand::SetInstrument { path: None });
     let _ = std::fs::remove_file(path);
+}
 
 /// **Wavetablen som syntkälla**: samma väg som ett JSFX-instrument, men inbyggd och utan fil.
 #[test]
@@ -4172,5 +4173,4 @@ fn the_wavetable_can_be_the_synth_source() {
     println!("wavetable-källa: topp {level:.3} vid C4");
     synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
     let _ = peak(&mut synth);
-}
 }

@@ -364,17 +364,9 @@ impl crate::audio::plugin_host_live::PluginProcessor for WavetableSource {
 
     fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
         match self.held {
-            Some((_, freq)) => {
-                let n = left.len().min(right.len());
-                let (l, r) = left.split_at_mut(n);
-                self.fx.render_note(freq, true, l, &mut r[..n]);
-            }
-            None => {
-                // Ingen not: släpp oscillatorn (rampen tonar ut) i ett block, sedan tyst.
-                let n = left.len().min(right.len());
-                let (l, r) = left.split_at_mut(n);
-                self.fx.render_note(0.0, false, l, &mut r[..n]);
-            }
+            Some((_, freq)) => self.fx.render_note(freq, true, left, right),
+            // Ingen not: släpp oscillatorn (rampen tonar ut) i ett block, sedan tyst.
+            None => self.fx.render_note(0.0, false, left, right),
         }
     }
 
