@@ -66,10 +66,15 @@ Tre av posterna i tabellen ovan var byggda innan förslaget kom:
 | Klipp-metadata (`⌘ start ✎ längd [-0.4 dB]`) | ritas redan: `[⏱ start | 📏 längd | ±x.x dB]` i klippets titelrad |
 | Rundade hörn 3–10 px | `apply_style` sätter redan **4 px** på alla widgetar, 8 px på fönster och 6 px på menyer; de 197 uttalade `Rounding::same(...)` är undantag från den standarden, inte frånvaro av rundning |
 
-Kvar är **Inter som typsnitt**, och det är ett beslut för Alex: fonten måste ligga som binär i
-repot för att följa med bygget, och konventionen här är att inte committa binärer. Antingen buntas
-`Inter-Regular.ttf` (OFL, ~300 kB) med licensfilen, eller så stannar vi på egui:s inbyggda
-typsnitt — då är förslaget i praktiken genomfört.
+## Beslut: inget Inter (2026-10-30)
+
+**Vi buntar inte Inter.** Typsnittet hade krävt en `Inter-Regular.ttf` (OFL) plus licensfil som
+binär i repot — en licens att hålla reda på, för en skillnad som bara syns i textmetriken. Vi kör
+vidare på de typsnitt som redan följer med: `Ubuntu-Light` för proportionell text och `Hack` för
+monospace, båda inbyggda i `epaint`. Ingenting att licensiera, ingenting att uppdatera.
+
+Med det beslutet är **hela förslaget genomfört**: färgerna (temat `daw-bold`), flikraden, 228 px
+spårhuvud, 120 px rad, klipp-metadata (fanns), 4 px rundning (fanns). Kvar finns inget.
 Rundningen sist därför att den rör flest filer och minst betydelse per rad; flikraden och
 spårhuvudet är det man ser först.
 
