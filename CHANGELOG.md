@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.224] - 2026-10-30
+
+**AIFF/AIFC avkodas i processen** (`audio::aiff`, ren Rust): COMM med 80-bitars extended
+samplingsfrekvens för hand, SSND, 8/16/24/32 bitar samt AIFC `NONE`, `sowt`, `fl32`. Mätt:
+44 100 Hz och **88 200 frames** för en 2 s-fil, dominant **440,0 Hz**; 24-bit mot 16-bit skiljer
+**0,000 dB** i RMS; `fl32` når **0,999756** utan klipp; 80-bitarsläsaren ger 44 100/48 000/96 000
+exakt. Trasig SSND: `chunk 'SSND' claims 88208 bytes but only 44081 remain in the file`.
+
+**Kontrollerytorna svarar nu tillbaka.** `encode_feedback` skriver de byteströmmar ytorna förväntar
+sig — BCF2000-display via sysex + ring-LED:er, FaderPort LED/segment, BabyHUI-reglage — och skickas
+ut på den MIDI-port användaren öppnat, dedupat mot senaste tillståndet. **BabyHUI** tillagd i både
+parser och encoder. Round trip mätt för alla fyra ytorna: BCF ger tillbaka
+`DisplayText{"PLAY REC 120.0 BPM\nTRACK 3 100"}` + 8 reglage.
+
+**Videomotor** (`audio::video_engine`): `frame_at(t)` dekoderar en bild på begäran med 8-bilders
+LRU-cache. Mätt på en 3 s 320×240 25 fps-klipp: **230 400 byte** per bild, cacheträff
+**0,086 ms mot 64,660 ms** (754×), baklängessök 2,5 → 0,5 → 2,5 ger **0,00 nivåers** skillnad,
+20 slumpvisa sök ger 20/20 hela bilder (60–100 ms per dekodering).
+
+1 258 prov gröna, 0 varningar.
+
 ## [0.9.223] - 2026-10-30
 
 **Opus avkodas i processen.** `audio::opus` läser Ogg-sidorna själv (OpusHead, pre-skip, granule)

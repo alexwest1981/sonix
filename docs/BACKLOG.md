@@ -43,8 +43,8 @@ posten kommer från.
 | 15 | **Lua-API-paritet** (732 `RPR_`-funktioner) | REAPER | **L** | Språket är S, API-ytan är L |
 | 16 | **Python / Live Object Model** | Ableton | **L** | Deras moat: 60 moduler, 2 260 `.pyc` |
 | 17 | **Max for Live-ekosystem** | Ableton | **L** | Vi har en graf, inte ett ekosystem |
-| 18 | **Videomotor** (avkoda + koda + FX-kedja) | REAPER | **L** | `reaper_video.so` 2,04 MB; vi har en bildruta |
-| 19 | **Video-processor-DSL** (`//@param`, `//@gmem`) | REAPER | **L** | Kräver videomotorn |
+| 18 | ◐ **Videomotor**: `frame_at` med cache + scrub klart. Kvar: realtidsuppspelning (60–100 ms per bild räcker inte till 25 fps), kodning, FX-kedja | REAPER | **L** |
+| 19 | **Video-processor-DSL** (`//@param`, `//@gmem`) | REAPER | **L** | Kräver realtidsuppspelning först |
 | 20 | **élastique Pro** | båda | **L** | Kommersiell licens, inte kod |
 | 21 | **Disassemblera Abletons DSP per enhet** | Ableton | **L per enhet** | Enda vägen till exakta kurvor; klassnamnen (382 `O*Processor`) pekar ut dem |
 
