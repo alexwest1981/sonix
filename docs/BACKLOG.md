@@ -1,0 +1,51 @@
+# Backlogg — allt som återstår, i ordning
+
+Källa: `docs/REAPER-BINARY-MAP.md` och `docs/ABLETON-BINARY-MAP.md`. Storlek: **S** ≈ dagar,
+**M** ≈ veckor, **L** ≈ månader. Ordningen är vald efter nytta per arbetsdag, inte efter vilken DAW
+posten kommer från.
+
+## 1. Görs nu (S–M, byggstenarna finns, hörs direkt)
+
+| # | Post | Källa | Storlek | Vad som ska mätas |
+| :--: | :--- | :--- | :---: | :--- |
+| 1 | **Cytomic-filtren**: Sallen-Key MS2/MD/SD, StateV OSR, Ladder PRD med drive i återkopplingen | Ableton | **M** | Frekvensgång per typ (3 dB-punkt, resonanstopp), THD vid drive |
+| 2 | **Roar-klassad multibandssaturator**: 3 stag, 12 shaper-lägen, 8 filtertyper, feedback | Ableton | **M** | Övertoner per shaper (THD per läge), bandläckage |
+| 3 | **MIDI-effekter som egen kedja** (skala, ackord, arpeggio, notlängd, pitch, delay, random, velocity) | Ableton | **M** | Notantal in/ut per effekt, timing i samples |
+| 4 | **DDP-export** (CUE/BIN, CD-TEXT, ISRC) | REAPER | **S–M** | Filstruktur mot spec, red book-ordning |
+| 5 | **Lua bredvid Rhai** | REAPER | **S** | Ett skript i vardera språket ger samma noter |
+
+## 2. Sedan (M, kräver ett lager)
+
+| # | Post | Källa | Storlek |
+| :--: | :--- | :--- | :---: |
+| 6 | **LV2-hosting** (skanner + host, `livi` eller egen dlopen) | REAPER | **M** |
+| 7 | **Rubber Band** (formantbevarande stretch) | REAPER | **M** (S att länka, M att hosta lägena) |
+| 8 | **Hybrid Reverb** (diffusionsnät + konvolution) | Ableton | **M** |
+| 9 | **JACK-backend** | REAPER | **M** |
+| 10 | **Kontrollerytor utöver MCU** (BCF2000, BabyHUI, FaderPort, OSC-yta) | båda | **M** |
+| 11 | **Bit-bridge för VST2/VST3** (sandbox routar bara CLAP idag) | REAPER | **M** |
+| 12 | **Opus och WavPack i processen** (symphonia täcker dem inte) | REAPER | **S–M** |
+
+## 3. Stort (L) — inte en ratt
+
+| # | Post | Källa | Storlek | Varför |
+| :--: | :--- | :--- | :---: | :--- |
+| 13 | **Wavetable-motor** (tabellposition, 7 unisonlägen, 4 effektlägen, två filter med Morph) | Ableton | **L** | Egen motor + tabellformat; Abletons values finns i presets, kurvorna inte |
+| 14 | **Fysisk modellering** (modal resonator + mallet, Collision/Tension) | Ableton | **L** | Egen motor |
+| 15 | **Lua-API-paritet** (732 `RPR_`-funktioner) | REAPER | **L** | Språket är S, API-ytan är L |
+| 16 | **Python / Live Object Model** | Ableton | **L** | Deras moat: 60 moduler, 2 260 `.pyc` |
+| 17 | **Max for Live-ekosystem** | Ableton | **L** | Vi har en graf, inte ett ekosystem |
+| 18 | **Videomotor** (avkoda + koda + FX-kedja) | REAPER | **L** | `reaper_video.so` 2,04 MB; vi har en bildruta |
+| 19 | **Video-processor-DSL** (`//@param`, `//@gmem`) | REAPER | **L** | Kräver videomotorn |
+| 20 | **élastique Pro** | båda | **L** | Kommersiell licens, inte kod |
+| 21 | **Disassemblera Abletons DSP per enhet** | Ableton | **L per enhet** | Enda vägen till exakta kurvor; klassnamnen (382 `O*Processor`) pekar ut dem |
+
+## Stängt 2026-10-30
+
+Omsampling i r8brain-klass (`audio::resample`, −75,6 dB) · kodekar i processen (symphonia) ·
+anslagsmått i `--ai-features` · neural separation i alla paket (dlopen) · JSFX-instrument som källa ·
+flikraden · `daw-bold`-temat i registret · TolerableTines-minnesfelet.
+
+## Utanför listan
+
+Hårdvara: Windows-porten (ingen laptop) och en riktig yabridge-kvittens. De väntar på maskin.

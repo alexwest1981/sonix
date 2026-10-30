@@ -149,6 +149,10 @@ mål som val. Den **kan inte röra instrumenten**, och man kan inte diskutera ar
 
 ## ⬜ Kvar
 
+**Hela backloggen står i `docs/BACKLOG.md`** — 21 poster i ordning efter nytta per arbetsdag, med
+källa (REAPER/Ableton), storlek och **vad som ska mätas** för varje. Roadmapen nedan är historiken;
+backloggen är kön.
+
 **Roadmappens egna rader är ✅.** Det som är öppet är det som kom ut av 0.9.207–0.9.212-passet och
 står i tabellen direkt nedanför; hårdvaran (Windows-porten, en riktig yabridge-kvittens) står sist.
 
