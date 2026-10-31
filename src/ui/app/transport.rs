@@ -264,6 +264,30 @@ pub fn toggle_playback(&mut self) {
 }
 
 impl SonixApp {
+    /// `--web`: the HTTP thread only queues `SetSongPlayback`; it runs here, on the UI
+    /// thread, through the same transport calls the buttons use — a bare ring push would
+    /// make sound the UI still shows as stopped. The snapshot is published each frame so
+    /// `/status` never lies.
+    pub fn poll_web_control(&mut self) {
+        let Some(web) = &self.web else { return };
+        let queued: Vec<AudioCommand> =
+            std::iter::from_fn(|| web.commands.try_recv().ok()).collect();
+        if let Ok(mut state) = web.state.lock() {
+            state.bpm = self.bpm;
+            state.playing = self.is_playing;
+            state.position = self.song_time;
+        }
+        for cmd in queued {
+            match cmd {
+                AudioCommand::SetSongPlayback(true) if !self.is_playing => self.toggle_playback(),
+                AudioCommand::SetSongPlayback(false) => self.stop_playback(),
+                _ => {}
+            }
+        }
+    }
+}
+
+impl SonixApp {
 pub fn stop_playback(&mut self) {
     if self.is_recording_timeline {
         self.toggle_timeline_recording();

@@ -21,6 +21,8 @@ pub mod resample;
 pub mod script;
 pub mod control_room;
 pub mod control_surfaces;
+/// `--web [port]`: the local HTTP control surface. Loopback only, no dependencies.
+pub mod web_control;
 pub mod ddp;
 pub mod dither;
 pub mod drum;
