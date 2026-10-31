@@ -1056,6 +1056,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("  • Buffer size:       {} frames", frames);
     }
     println!("  • Channels:    Stereo");
+
+    // `sonix --web [port]`: a loopback HTTP control surface (default 8787). It starts
+    // before the window so the printed token is the first thing in the log.
+    let web_port: Option<u16> = {
+        let args: Vec<String> = std::env::args().collect();
+        args.iter().position(|a| a == "--web").map(|pos| {
+            args.get(pos + 1).and_then(|p| p.parse().ok()).unwrap_or(8787)
+        })
+    };
+    let web = match web_port {
+        Some(port) => match audio::web_control::WebServer::start(port) {
+            Ok(server) => {
+                println!("🌐 Web control: {}", server.url());
+                println!("   token: {} (every request must carry it)", server.token);
+                Some(server)
+            }
+            Err(e) => {
+                eprintln!("⚠ Web control could not bind 127.0.0.1:{port}: {e}");
+                None
+            }
+        },
+        None => None,
+    };
+
     println!("🚀 Starting graphical interface (GUI)...");
 
     let args: Vec<String> = std::env::args().collect();
@@ -1102,6 +1126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         options,
         Box::new(move |_cc| {
             let mut app = SonixApp::new(engine);
+            app.web = web;
             // Fas 6.0: berätta en gång om något flyttades eller läses från en
             // äldre plats — annars undrar användaren var filerna tog vägen.
             if !path_notes.is_empty() {

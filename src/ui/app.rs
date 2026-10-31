@@ -163,6 +163,9 @@ pub struct SonixApp {
     pub perf_last_write: std::time::Instant,
     pub stem_import_progress: std::sync::Arc<std::sync::Mutex<StemImportProgress>>,
     pub project_load_progress: std::sync::Arc<std::sync::Mutex<ProjectLoadProgress>>,
+    /// `--web [port]`: the HTTP control surface. `None` unless the flag was given; the
+    /// server is dropped (thread stopped) with the app.
+    pub web: Option<crate::audio::web_control::WebServer>,
     // Transport & Clock
     pub is_playing: bool,
     /// Tempobyten (Fas 8.2). Tomt = projektet har ett enda tempo (`bpm`).
@@ -1018,6 +1021,7 @@ impl SonixApp {
             perf_last_write: std::time::Instant::now(),
             stem_import_progress: std::sync::Arc::new(std::sync::Mutex::new(StemImportProgress::default())),
             project_load_progress: std::sync::Arc::new(std::sync::Mutex::new(ProjectLoadProgress::default())),
+            web: None,
             is_playing: false,
             bpm: 120.0,
             tempo_points: Vec::new(),
@@ -1496,6 +1500,9 @@ impl eframe::App for SonixApp {
         // Ljudet först: en ström som dött ska byggas om innan resten av bildrutan
         // skickar kommandon till en tråd som inte lyssnar.
         self.audio_watchdog(ctx);
+
+        // `--web`: transport changed from the phone, and a fresh snapshot for `/status`.
+        self.poll_web_control();
 
         // Markeringen hålls inom projektet: spår som tagits bort får inte ligga kvar
         // som spöken i mängderna.
