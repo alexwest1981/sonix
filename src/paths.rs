@@ -431,6 +431,11 @@ impl Paths {
         self.config_dir().join("suno_tokens.json")
     }
 
+    /// Downloads from Suno: one subfolder per generated song. Audio is data, not config.
+    pub fn suno_dir(&self) -> PathBuf {
+        self.data_dir().join("suno")
+    }
+
     /// ONNX-modeller m.m. Stora filer → data, inte konfiguration.
     pub fn models_dir(&self) -> PathBuf {
         self.data_dir().join("models")

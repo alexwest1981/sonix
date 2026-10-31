@@ -14,6 +14,9 @@ pub mod ai_tools;
 pub mod mcp_client;
 #[allow(dead_code)]
 pub mod suno_auth;
+// The session layer that turns a prompt into downloaded stems. Nothing calls it yet either.
+#[allow(dead_code)]
+pub mod suno;
 pub mod command;
 pub mod project_script;
 pub mod lua_script;
