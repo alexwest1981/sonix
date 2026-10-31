@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.234] - 2026-10-31
+
+**Suno-panelen följer Sunos eget skapandeflöde.** Vänster: **Lyrics** (tomt = instrumental),
+**Styles** med klickbara deskriptorer och bilagorna Audio/Voice/Inspo (avstängda med skälet i
+tipset tills beta-ytan har verktygen). Höger: **More options** med Weirdness, Style influence och
+Variety som procent-sliders, Vocal gender, Duration och Model som rullgardiner, Max mode och
+Personalize som kryssrutor, Song title och Save to. **Varje kontroll är knuten till den schemaplats
+som beskriver den** (`ui::app::suno_form::slots`), och en kontroll servern inte beskriver ritas inte
+alls — panelen listar i stället "servern erbjuder inte: …". Mätt: ett schema med Sunos tio kontroller
+ger tolv träffar (`lyrics`, `styles`, `title`, `weirdness`, `style_influence`, `variety`,
+`vocal_gender`, `duration`, `max_mode`, `personalize`, `workspace`, `model`), och ett tomt schema ger
+`SunoSlots::default()` — inga påhittade platser.
+
 ## [0.9.233] - 2026-10-31
 
 **Suno-panelen ritar sitt formulär ur serverns schema** (`ui::app::suno_form`): `enum` blir

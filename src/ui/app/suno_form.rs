@@ -103,6 +103,53 @@ pub fn text_field_mut<'a>(
     None
 }
 
+
+/// **Var i formuläret Sunos egna arbetsflöde sitter.** Sunos skapa-vy har Lyrics, Styles,
+/// Weirdness, Style Influence, Variety, Vocal Gender, Duration, Max Mode, Personalize och
+/// Song Title. Vi vet inte vad beta-ytan kallar dem, så varje plats letas upp på nyckelord i
+/// fältnamnet — och en plats som inte finns blir `None`, vilket panelen visar som "servern erbjuder
+/// inte det här" i stället för en ratt som inte gör något.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct SunoSlots {
+    pub lyrics: Option<usize>,
+    pub styles: Option<usize>,
+    pub title: Option<usize>,
+    pub weirdness: Option<usize>,
+    pub style_influence: Option<usize>,
+    pub variety: Option<usize>,
+    pub vocal_gender: Option<usize>,
+    pub duration: Option<usize>,
+    pub max_mode: Option<usize>,
+    pub personalize: Option<usize>,
+    pub workspace: Option<usize>,
+    pub model: Option<usize>,
+}
+
+fn find(fields: &[(String, SunoField)], needles: &[&str]) -> Option<usize> {
+    fields.iter().position(|(name, _)| {
+        let name = name.to_lowercase();
+        needles.iter().any(|n| name.contains(n))
+    })
+}
+
+/// Platserna, i den ordning Suno visar dem.
+pub fn slots(fields: &[(String, SunoField)]) -> SunoSlots {
+    SunoSlots {
+        lyrics: find(fields, &["lyric", "text"]),
+        styles: find(fields, &["style", "tag", "genre"]),
+        title: find(fields, &["title", "name"]),
+        weirdness: find(fields, &["weird"]),
+        style_influence: find(fields, &["style_influence", "style_strength", "influence"]),
+        variety: find(fields, &["variety"]),
+        vocal_gender: find(fields, &["vocal", "gender", "voice_type"]),
+        duration: find(fields, &["duration", "length"]),
+        max_mode: find(fields, &["max_mode", "max"]),
+        personalize: find(fields, &["personalize", "personal"]),
+        workspace: find(fields, &["workspace", "save_to", "folder"]),
+        model: find(fields, &["model", "version"]),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -170,5 +217,51 @@ mod tests {
         println!("fält: {fields:?}");
         assert!(fields.is_empty());
         assert_eq!(args_from_form(&fields), json!({}));
+    }
+
+    /// Sunos egna tio kontroller hittar sina platser i ett schema som beskriver dem.
+    #[test]
+    fn the_workflow_finds_its_slots() {
+        let schema = json!({
+            "type": "object",
+            "properties": {
+                "prompt": { "type": "string" },
+                "lyrics": { "type": "string" },
+                "style": { "type": "string" },
+                "song_title": { "type": "string" },
+                "weirdness": { "type": "number" },
+                "style_influence": { "type": "number" },
+                "variety": { "type": "number" },
+                "vocal_gender": { "type": "string", "enum": ["female", "male"] },
+                "duration": { "type": "string", "enum": ["auto", "custom"] },
+                "max_mode": { "type": "boolean" },
+                "personalize": { "type": "boolean" },
+                "save_to": { "type": "string" },
+                "model": { "type": "string" }
+            }
+        });
+        let fields = fields_from_schema(&schema);
+        let found = slots(&fields);
+        println!("platser: {found:?}");
+        for (label, slot) in [
+            ("lyrics", found.lyrics),
+            ("styles", found.styles),
+            ("title", found.title),
+            ("weirdness", found.weirdness),
+            ("style_influence", found.style_influence),
+            ("variety", found.variety),
+            ("vocal_gender", found.vocal_gender),
+            ("duration", found.duration),
+            ("max_mode", found.max_mode),
+            ("personalize", found.personalize),
+            ("workspace", found.workspace),
+            ("model", found.model),
+        ] {
+            assert!(slot.is_some(), "{label} hittades inte");
+        }
+        // Ett schema utan kontrollerna ger tomma platser, inte påhittade.
+        let bare = slots(&fields_from_schema(&json!({ "type": "object" })));
+        assert_eq!(bare, SunoSlots::default());
+        println!("utan schema: {bare:?}");
     }
 }

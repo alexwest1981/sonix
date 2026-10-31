@@ -1580,53 +1580,148 @@ pub(crate) fn render_suno_modal(&mut self, ctx: &egui::Context) {
                         .color(crate::ui::theme::palette().yellow()),
                 );
             }
+            // **Suno-arbetsflödet, inte en rå schemaformulär.** Vänster: det man skriver (lyrics,
+            // styles, bilagor). Höger: det man rattar (weirdness, style influence, variety,
+            // vocal gender, duration, max mode, personalize, titel, spara i). Varje kontroll är
+            // knuten till den schemaplats som beskriver den; saknar servern en kontroll står det
+            // så i stället för att ratten ser ut att fungera.
             if !self.suno_form.is_empty() {
-                ui.add_space(4.0);
-                ui.label(
-                    egui::RichText::new(crate::i18n::t("☀ Options from the server's schema:"))
-                        .strong()
-                        .size(Theme::FONT_S),
-                );
-                for (name, field) in self.suno_form.iter_mut() {
-                    match field {
-                        crate::ui::app::suno_form::SunoField::Text { value, multiline } => {
-                            if *multiline {
-                                ui.label(name.as_str());
-                                ui.add(
-                                    egui::TextEdit::multiline(value)
-                                        .desired_rows(2)
-                                        .desired_width(500.0),
-                                );
-                            } else {
-                                ui.horizontal(|ui| {
-                                    ui.label(name.as_str());
-                                    ui.add(
-                                        egui::TextEdit::singleline(value).desired_width(320.0),
-                                    );
-                                });
-                            }
-                        }
-                        crate::ui::app::suno_form::SunoField::Bool(on) => {
-                            ui.checkbox(on, name.as_str());
-                        }
-                        crate::ui::app::suno_form::SunoField::Number { value, min, max } => {
-                            ui.horizontal(|ui| {
-                                ui.label(name.as_str());
-                                ui.add(egui::Slider::new(value, *min..=*max).fixed_decimals(2));
-                            });
-                        }
-                        crate::ui::app::suno_form::SunoField::Choice { options, selected } => {
-                            let current = options.get(*selected).cloned().unwrap_or_default();
-                            egui::ComboBox::from_label(name.as_str())
-                                .selected_text(current)
-                                .show_ui(ui, |ui| {
-                                    for (index, option) in options.iter().enumerate() {
-                                        ui.selectable_value(selected, index, option);
+                let slots = crate::ui::app::suno_form::slots(&self.suno_form);
+                let width = ui.available_width();
+                ui.horizontal_top(|ui| {
+                    ui.allocate_ui(Vec2::new(width * 0.56 - 8.0, 0.0), |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(crate::i18n::t("✍ Write the song"))
+                                    .strong()
+                                    .size(Theme::FONT_S)
+                                    .color(crate::ui::theme::palette().orange()),
+                            );
+                            // Lyrics: tomt betyder instrumental — samma regel som hos Suno.
+                            suno_slot_text(
+                                ui,
+                                &mut self.suno_form,
+                                slots.lyrics,
+                                crate::i18n::t("Lyrics"),
+                                crate::i18n::t("Leave empty for instrumental"),
+                                true,
+                            );
+                            suno_slot_text(
+                                ui,
+                                &mut self.suno_form,
+                                slots.styles,
+                                crate::i18n::t("Styles"),
+                                crate::i18n::t("pagan metal, irish harp, indie rap…"),
+                                false,
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                for chip in [
+                                    "pagan metal",
+                                    "irish harp",
+                                    "tremolo picking",
+                                    "melodic guitars",
+                                    "80s synthwave",
+                                    "neo-soul",
+                                ] {
+                                    if ui.small_button(chip).clicked()
+                                        && let Some(index) = slots.styles
+                                        && let Some((
+                                            _,
+                                            crate::ui::app::suno_form::SunoField::Text { value, .. },
+                                        )) = self.suno_form.get_mut(index)
+                                    {
+                                        if !value.trim().is_empty() {
+                                            value.push_str(", ");
+                                        }
+                                        value.push_str(chip);
                                     }
-                                });
-                        }
-                    }
-                }
+                                }
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                // Bilagor finns i Sunos vy men kräver verktyg i beta-ytan; vi
+                                // visar dem avstängda med skälet i verktygstipset.
+                                for (label, hint) in [
+                                    ("🎵 Audio", "kräver ett uppladdningsverktyg i beta-ytan"),
+                                    ("🎤 Voice", "kräver ett röstverktyg i beta-ytan"),
+                                    ("💡 Inspo", "kräver ett Inspo-verktyg i beta-ytan"),
+                                ] {
+                                    ui.add_enabled(false, egui::Button::new(label))
+                                        .on_disabled_hover_text(hint);
+                                }
+                            });
+                        });
+                    });
+                    ui.separator();
+                    ui.allocate_ui(Vec2::new(width * 0.42 - 8.0, 0.0), |ui| {
+                        ui.vertical(|ui| {
+                            ui.label(
+                                egui::RichText::new(crate::i18n::t("⚙ More options"))
+                                    .strong()
+                                    .size(Theme::FONT_S)
+                                    .color(crate::ui::theme::palette().cyan()),
+                            );
+                            for (slot, label) in [
+                                (slots.weirdness, crate::i18n::t("Weirdness")),
+                                (slots.style_influence, crate::i18n::t("Style influence")),
+                                (slots.variety, crate::i18n::t("Variety")),
+                            ] {
+                                suno_slot_number(ui, &mut self.suno_form, slot, label);
+                            }
+                            for (slot, label) in [
+                                (slots.vocal_gender, crate::i18n::t("Vocal gender")),
+                                (slots.duration, crate::i18n::t("Duration")),
+                                (slots.model, crate::i18n::t("Model")),
+                            ] {
+                                suno_slot_choice(ui, &mut self.suno_form, slot, label);
+                            }
+                            for (slot, label) in [
+                                (slots.max_mode, crate::i18n::t("Max mode")),
+                                (slots.personalize, crate::i18n::t("Personalize")),
+                            ] {
+                                suno_slot_bool(ui, &mut self.suno_form, slot, label);
+                            }
+                            suno_slot_text(
+                                ui,
+                                &mut self.suno_form,
+                                slots.title,
+                                crate::i18n::t("Song title"),
+                                crate::i18n::t("(optional)"),
+                                false,
+                            );
+                            suno_slot_text(
+                                ui,
+                                &mut self.suno_form,
+                                slots.workspace,
+                                crate::i18n::t("Save to"),
+                                crate::i18n::t("My Workspace"),
+                                false,
+                            );
+                            let missing: Vec<&str> = [
+                                (slots.weirdness.is_none(), "weirdness"),
+                                (slots.style_influence.is_none(), "style influence"),
+                                (slots.variety.is_none(), "variety"),
+                                (slots.vocal_gender.is_none(), "vocal gender"),
+                                (slots.duration.is_none(), "duration"),
+                                (slots.max_mode.is_none(), "max mode"),
+                                (slots.personalize.is_none(), "personalize"),
+                            ]
+                            .iter()
+                            .filter(|(absent, _)| *absent)
+                            .map(|(_, name)| *name)
+                            .collect();
+                            if !missing.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(crate::tstatus!(
+                                        "Servern erbjuder inte: {}",
+                                        missing.join(", ")
+                                    ))
+                                    .size(Theme::FONT_XS)
+                                    .color(crate::ui::theme::palette().text_muted()),
+                                );
+                            }
+                        });
+                    });
+                });
             }
             ui.add_space(4.0);
             if ui
@@ -4735,3 +4830,96 @@ impl SonixApp {
         self.show_notes_modal = open;
     }
 }
+
+/// **En kontroll per schemaplats.** `None` betyder att servern inte beskriver kontrollen; då
+/// ritas ingen widget alls — en slider som inte gör något är värre än ingen slider. Anroparen
+/// listar de saknade längst ned i panelen.
+fn suno_slot_text(
+    ui: &mut egui::Ui,
+    form: &mut [(String, crate::ui::app::suno_form::SunoField)],
+    slot: Option<usize>,
+    label: &str,
+    hint: &str,
+    multiline: bool,
+) {
+    let Some((name, crate::ui::app::suno_form::SunoField::Text { value, .. })) =
+        slot.and_then(|i| form.get_mut(i))
+    else {
+        return;
+    };
+    ui.label(egui::RichText::new(label).size(Theme::FONT_S));
+    if multiline {
+        ui.add(
+            egui::TextEdit::multiline(value)
+                .desired_rows(4)
+                .desired_width(f32::INFINITY)
+                .hint_text(hint),
+        );
+    } else {
+        ui.add(
+            egui::TextEdit::singleline(value)
+                .desired_width(f32::INFINITY)
+                .hint_text(hint),
+        );
+    }
+    ui.add_space(4.0);
+    let _ = name;
+}
+
+fn suno_slot_number(
+    ui: &mut egui::Ui,
+    form: &mut [(String, crate::ui::app::suno_form::SunoField)],
+    slot: Option<usize>,
+    label: &str,
+) {
+    let Some((_, crate::ui::app::suno_form::SunoField::Number { value, min, max })) =
+        slot.and_then(|i| form.get_mut(i))
+    else {
+        return;
+    };
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(label).size(Theme::FONT_S));
+        ui.add(egui::Slider::new(value, *min..=*max).fixed_decimals(0).custom_formatter(|v, _| {
+            format!("{:.0} %", v * 100.0)
+        }));
+    });
+}
+
+fn suno_slot_choice(
+    ui: &mut egui::Ui,
+    form: &mut [(String, crate::ui::app::suno_form::SunoField)],
+    slot: Option<usize>,
+    label: &str,
+) {
+    let Some((_, crate::ui::app::suno_form::SunoField::Choice { options, selected })) =
+        slot.and_then(|i| form.get_mut(i))
+    else {
+        return;
+    };
+    let current = options.get(*selected).cloned().unwrap_or_default();
+    ui.horizontal(|ui| {
+        ui.label(egui::RichText::new(label).size(Theme::FONT_S));
+        egui::ComboBox::from_id_salt(format!("suno_slot_{label}"))
+            .selected_text(current)
+            .show_ui(ui, |ui| {
+                for (index, option) in options.iter().enumerate() {
+                    ui.selectable_value(selected, index, option);
+                }
+            });
+    });
+}
+
+fn suno_slot_bool(
+    ui: &mut egui::Ui,
+    form: &mut [(String, crate::ui::app::suno_form::SunoField)],
+    slot: Option<usize>,
+    label: &str,
+) {
+    let Some((_, crate::ui::app::suno_form::SunoField::Bool(on))) =
+        slot.and_then(|i| form.get_mut(i))
+    else {
+        return;
+    };
+    ui.checkbox(on, label);
+}
+
