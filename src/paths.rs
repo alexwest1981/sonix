@@ -425,6 +425,12 @@ impl Paths {
         self.config_dir().join("ai.json")
     }
 
+    /// Suno's OAuth tokens (`suno_tokens.json`, chmod 0600) — a bearer token for the user's
+    /// account, so it lives with the other secrets and never in the project or the library.
+    pub fn suno_tokens_file(&self) -> PathBuf {
+        self.config_dir().join("suno_tokens.json")
+    }
+
     /// ONNX-modeller m.m. Stora filer → data, inte konfiguration.
     pub fn models_dir(&self) -> PathBuf {
         self.data_dir().join("models")

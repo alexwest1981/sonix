@@ -7,6 +7,13 @@ pub mod builtin_fx;
 pub mod ai_features;
 pub mod ai_generator;
 pub mod ai_tools;
+// The MCP client and the Suno sign-in exist, but nothing calls them yet: the UI that browses
+// the library lands separately. Without this the whole surface is dead code to the compiler,
+// and CI treats one warning as a failed build.
+#[allow(dead_code)]
+pub mod mcp_client;
+#[allow(dead_code)]
+pub mod suno_auth;
 pub mod command;
 pub mod project_script;
 pub mod lua_script;
