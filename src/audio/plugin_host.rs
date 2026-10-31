@@ -291,6 +291,10 @@ pub fn yabridge_scan_paths() -> Vec<ScanPath> {
         for rel in [
             "drive_c/Program Files/Common Files/VST3",
             "drive_c/Program Files/Common Files/VST",
+            // Native Instruments lägger sina VST2:or här i stället (mätt i en ni-wine-prefix), och
+            // VST3:n i Common Files först när en produkt installerats.
+            "drive_c/Program Files/Native Instruments/VSTPlugins 64 bit",
+            "drive_c/Program Files/Native Instruments/VSTPlugins 32 bit",
         ] {
             let dir = format!("{prefix}/{rel}");
             if expand_tilde(&dir).is_dir() {
