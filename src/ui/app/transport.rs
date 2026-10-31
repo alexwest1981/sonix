@@ -628,7 +628,7 @@ fn trigger_step(&mut self, step: usize) {
         if ch.steps[step] && is_audible {
             let note = ch.notes[step];
             let hold = self.step_duration(step).as_secs_f32();
-            if let Some(cmd) = channel_sample_trigger_command(ch, idx, note, vel, hold) {
+            if let Some(cmd) = channel_sample_trigger_command(ch, idx, note, vel, hold, &mut self.round_robin) {
                 let _ = self.engine.send_command(cmd);
                 continue;
             }
@@ -782,7 +782,14 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                 }
                 let note = pat.channel_notes.get(clip.lane).map(|n| n[at]).unwrap_or(36);
                 let cmd = self.channels.get(clip.lane).and_then(|ch| {
-                    channel_sample_trigger_command(ch, clip.lane, note, track.volume * vel, hold)
+                    channel_sample_trigger_command(
+                        ch,
+                        clip.lane,
+                        note,
+                        track.volume * vel,
+                        hold,
+                        &mut self.round_robin,
+                    )
                 });
                 if let Some(cmd) = cmd {
                     let _ = self.engine.send_command(cmd);
@@ -793,7 +800,14 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                 let note_vel = track.volume * vel * n.velocity;
                 let note_hold = hold * n.length_steps.max(1.0);
                 let cmd = self.channels.get(clip.lane).and_then(|ch| {
-                    channel_sample_trigger_command(ch, clip.lane, n.key, note_vel, note_hold)
+                    channel_sample_trigger_command(
+                        ch,
+                        clip.lane,
+                        n.key,
+                        note_vel,
+                        note_hold,
+                        &mut self.round_robin,
+                    )
                 });
                 match cmd {
                     Some(cmd) => {
@@ -837,7 +851,16 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                                 let note = pat.channel_notes.get(ch_idx).map(|n| n[sip]).unwrap_or(36);
                                 let hold = self.step_duration(step_in_bar).as_secs_f32();
                                 let sample_cmd = self.channels.get(ch_idx)
-                                    .and_then(|ch| channel_sample_trigger_command(ch, ch_idx, note, track.volume * vel, hold));
+                                    .and_then(|ch| {
+                                        channel_sample_trigger_command(
+                                            ch,
+                                            ch_idx,
+                                            note,
+                                            track.volume * vel,
+                                            hold,
+                                            &mut self.round_robin,
+                                        )
+                                    });
                                 if let Some(cmd) = sample_cmd {
                                     let _ = self.engine.send_command(cmd);
                                 } else {
@@ -908,7 +931,16 @@ fn trigger_song_step(&mut self, bar: usize, step_in_bar: usize) {
                             let note = pat.channel_notes[ch_idx][sip];
                             let hold = self.step_duration(step_in_bar).as_secs_f32();
                             let sample_cmd = self.channels.get(ch_idx)
-                                .and_then(|ch| channel_sample_trigger_command(ch, ch_idx, note, track.volume * vel, hold));
+                                .and_then(|ch| {
+                                        channel_sample_trigger_command(
+                                            ch,
+                                            ch_idx,
+                                            note,
+                                            track.volume * vel,
+                                            hold,
+                                            &mut self.round_robin,
+                                        )
+                                    });
                             if let Some(cmd) = sample_cmd {
                                 let _ = self.engine.send_command(cmd);
                             } else {

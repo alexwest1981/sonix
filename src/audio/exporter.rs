@@ -264,6 +264,7 @@ fn sample_trigger_command(
     note: u8,
     velocity: f32,
     hold_secs: f32,
+    rr: &mut crate::audio::keymap::RoundRobin,
 ) -> Option<AudioCommand> {
     let v = ch.voice.as_ref()?;
     if v.left.is_empty() {
@@ -271,7 +272,10 @@ fn sample_trigger_command(
     }
     // **Samma val som spelvägen** (Fas 8.4/7) — bokstavligen samma funktion, så en not kan inte
     // hamna i en zon i filen och en annan i högtalarna.
-    let zon = crate::audio::keymap::zone_for_note(&v.zones, note, velocity)
+    // Round-robin (`seq_position`) cycles here too, with the render's own counter, so the file
+    // hears the same alternation as the speakers.
+    let zon = rr
+        .pick(&v.zones, channel, note, velocity)
         .and_then(|i| v.zones.get(i))
         .and_then(|z| {
             z.pcm
@@ -336,6 +340,19 @@ fn drum_cmd(ch_idx: usize) -> AudioCommand {
 /// Noterna ett steg ger upphov till. Delas med realtidsmätningen (Fas 7.2), så att
 /// mätningen kör samma trigger-väg som exporten.
 pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioCommand> {
+    // shortcut: one call, one fresh cycle — fine for tests and the benchmark, which do not
+    // play a sequence; the render loop below passes its own counter so round-robin cycles.
+    triggers_for_step_with(spec, bar, sib, &mut crate::audio::keymap::RoundRobin::default())
+}
+
+/// `triggers_for_step` with the caller's round-robin state, so `seq_position` zones take turns
+/// across the whole song.
+pub(crate) fn triggers_for_step_with(
+    spec: &RenderSpec,
+    bar: usize,
+    sib: usize,
+    rr: &mut crate::audio::keymap::RoundRobin,
+) -> Vec<AudioCommand> {
     // Tempot **här**, inte projektets första punkt: en not som ligger i takt 2 ska hålla
     // sin längd i det tempo som gäller där (annars blir filen fel efter ett tempobyte).
     let bpm_here = if spec.tempo_points.is_empty() {
@@ -390,7 +407,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
             }
             let note = ch.notes[sib];
             let hold = crate::audio::command::step_hold_secs(bpm_here, spec.swing, sib);
-            if let Some(cmd) = sample_trigger_command(ch, idx, note, vel, hold) {
+            if let Some(cmd) = sample_trigger_command(ch, idx, note, vel, hold, rr) {
                 cmds.push(cmd);
                 continue;
             }
@@ -453,7 +470,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                     let note = pat.notes.get(ch_idx).map(|n| n[pib]).unwrap_or(36);
                     if let Some(rack_ch) = spec.rack.get(ch_idx) {
                         let hold = crate::audio::command::step_hold_secs(bpm_here, spec.swing, sib);
-                        if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold) {
+                        if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold, rr) {
                             cmds.push(cmd);
                             continue;
                         }
@@ -516,7 +533,7 @@ pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Ve
                 let note = pat.notes.get(ch_idx).map(|n| n[pib]).unwrap_or(60);
                 if let Some(rack_ch) = spec.rack.get(ch_idx) {
                     let hold = crate::audio::command::step_hold_secs(bpm_here, spec.swing, sib);
-                        if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold) {
+                        if let Some(cmd) = sample_trigger_command(rack_ch, ch_idx, note, track.volume * vel, hold, rr) {
                         cmds.push(cmd);
                         continue;
                     }
@@ -620,10 +637,11 @@ pub fn render_project_offline(engine: &mut SynthEngine, spec: &RenderSpec) -> Ve
         song_playing = true;
     }
 
+    let mut rr = crate::audio::keymap::RoundRobin::default();
     for gs in 0..total_steps {
         let bar = gs / 16;
         let sib = gs % 16;
-        for cmd in triggers_for_step(spec, bar, sib) {
+        for cmd in triggers_for_step_with(spec, bar, sib, &mut rr) {
             engine.handle_command(cmd);
         }
         let dur = step_frames(bar, sib);
@@ -1285,6 +1303,7 @@ mod tests {
     /// något om den vägen faktiskt **anropar** väljaren — det är det här provet.
     #[test]
     fn the_export_uses_the_same_zone_choice_as_playback() {
+        let mut rr = crate::audio::keymap::RoundRobin::default();
         let kanal_ljud = Arc::new(vec![9.0_f32; 8]);
         let zon_ljud = Arc::new(vec![0.25_f32; 8]);
         let v = VoiceSpec {
@@ -1316,6 +1335,7 @@ mod tests {
                 vel_low: 0.0,
                 vel_high: 1.0,
                 loop_frames: None,
+                seq: None,
             }],
         };
         let ch = RackChannel {
@@ -1326,7 +1346,7 @@ mod tests {
             notes: [36; crate::audio::tempo::MAX_STEPS],
         };
         // Noten 48 ligger i zonen: exporten ska spela **zonens** fil och grundton.
-        match sample_trigger_command(&ch, 0, 48, 0.9, 0.0).expect("kommando") {
+        match sample_trigger_command(&ch, 0, 48, 0.9, 0.0, &mut rr).expect("kommando") {
             AudioCommand::TriggerSampleVoice {
                 left,
                 sample_rate,
@@ -1340,7 +1360,7 @@ mod tests {
             _ => panic!("fel kommando (inte TriggerSampleVoice)"),
         }
         // Och noten 60 **utanför** zonen: kanalens eget ljud, precis som i högtalarna.
-        match sample_trigger_command(&ch, 0, 60, 0.9, 0.0).expect("kommando") {
+        match sample_trigger_command(&ch, 0, 60, 0.9, 0.0, &mut rr).expect("kommando") {
             AudioCommand::TriggerSampleVoice { left, base_note, .. } => {
                 assert_eq!(left.as_ref(), &vec![9.0_f32; 8], "kanalens ljud utanför zonen");
                 assert_eq!(base_note, 60);

@@ -38,6 +38,9 @@ pub struct SampleZone {
     /// ingen loop, alltså en-skottsbeteendet. Ligger på zonen och inte på kanalen, för två
     /// zoner i samma lager har inte samma loop.
     pub loop_frames: Option<(u32, u32)>,
+    /// **SFZ round-robin** (`seq_position`, `seq_length`). `None` = a plain zone that answers
+    /// every note-on, which is what SF2 and a sequencer-free SFZ give.
+    pub seq: Option<(u8, u8)>,
 }
 
 impl SampleZone {
@@ -53,6 +56,7 @@ impl SampleZone {
             vel_low: 0.0,
             vel_high: 1.0,
             loop_frames: None,
+            seq: None,
         }
     }
 
@@ -94,6 +98,46 @@ pub fn zone_loop_01(loop_frames: Option<(u32, u32)>, len: usize) -> Option<(f32,
 
 pub fn zone_for_note(zones: &[SampleZone], note: u8, velocity: f32) -> Option<usize> {
     zones.iter().rposition(|z| z.covers(note, velocity))
+}
+
+/// **Round-robin state**: where each `(channel, key)` is in its cycle (SFZ `seq_*`).
+///
+/// The state lives with whoever triggers note-ons (the live transport and the offline render),
+/// never in the zone list, so importing the same instrument twice does not share a counter.
+#[derive(Debug, Clone, Default)]
+pub struct RoundRobin(std::collections::HashMap<(usize, u8), u32>);
+
+impl RoundRobin {
+    /// The zone this note-on plays. Zones that carry `seq` take turns by `seq_position`; a key
+    /// with no `seq` zone at all is answered by [`zone_for_note`], exactly as before.
+    ///
+    /// The counter is per `(channel, key)`, so two keys each cycle on their own.
+    pub fn pick(
+        &mut self,
+        zones: &[SampleZone],
+        channel: usize,
+        note: u8,
+        velocity: f32,
+    ) -> Option<usize> {
+        let len = zones
+            .iter()
+            .filter(|z| z.covers(note, velocity))
+            .filter_map(|z| z.seq.map(|(_, len)| len as u32))
+            .max();
+        let Some(len) = len.filter(|len| *len > 0) else {
+            return zone_for_note(zones, note, velocity);
+        };
+        let next = self.0.entry((channel, note)).or_insert(1);
+        let want = *next;
+        *next = want % len + 1;
+        zones
+            .iter()
+            .position(|z| {
+                z.covers(note, velocity) && z.seq.is_some_and(|(pos, _)| pos as u32 == want)
+            })
+            // A sparse group (positions missing) still plays something: the old rule decides.
+            .or_else(|| zone_for_note(zones, note, velocity))
+    }
 }
 
 #[cfg(test)]

@@ -246,6 +246,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                 vel_low: 0.6,
                 vel_high: 0.9,
                 loop_frames: None,
+                seq: None,
             }],
             // Ett filter med **egna** värden: ett tappat filterfält i sparandet ska synas här.
             filter: crate::audio::filter::SamplerFilter {
@@ -384,7 +385,14 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         // slicar tas bort. Annars hade fönstret blivit slice 1/8 (0,125), vilket är rätt svar på
         // en annan fråga.
         ch.slices.clear();
-        let cmd = crate::ui::app::browser::channel_sample_trigger_command(&ch, 0, 60, 1.0, 0.5)
+        let cmd = crate::ui::app::browser::channel_sample_trigger_command(
+            &ch,
+            0,
+            60,
+            1.0,
+            0.5,
+            &mut crate::audio::keymap::RoundRobin::default(),
+        )
             .expect("kommandot ska byggas");
         match cmd {
             AudioCommand::TriggerSampleVoice {
@@ -428,8 +436,16 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             vel_low: 0.0,
             vel_high: 1.0,
             loop_frames: None,
+            seq: None,
         }];
-        let cmd = crate::ui::app::browser::channel_sample_trigger_command(&ch, 0, 48, 0.8, 0.0)
+        let cmd = crate::ui::app::browser::channel_sample_trigger_command(
+            &ch,
+            0,
+            48,
+            0.8,
+            0.0,
+            &mut crate::audio::keymap::RoundRobin::default(),
+        )
             .expect("kommandot ska byggas");
         match cmd {
             AudioCommand::TriggerSampleVoice {
@@ -447,6 +463,41 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             }
             _ => panic!("fel kommando: inte TriggerSampleVoice (AudioCommand har ingen Debug)"),
         }
+    }
+
+    /// **Round-robin through the trigger path** (SFZ `seq_position`): the two zones take turns,
+    /// so the sound that reaches the voice alternates, not just the index the picker returned.
+    #[test]
+    fn successive_note_ons_play_alternating_round_robin_zones() {
+        let mut ch = test_channel();
+        ch.zones.clear();
+        let zone = |pcm: f32, seq: (u8, u8)| crate::audio::keymap::SampleZone {
+            pcm: Some((
+                std::sync::Arc::new(vec![pcm; 8]),
+                std::sync::Arc::new(vec![pcm; 8]),
+                44_100,
+            )),
+            key_low: 60,
+            key_high: 60,
+            seq: Some(seq),
+            ..crate::audio::keymap::SampleZone::full_range(60)
+        };
+        ch.zones = vec![zone(0.25, (1, 2)), zone(0.75, (2, 2))];
+
+        let mut rr = crate::audio::keymap::RoundRobin::default();
+        let mut picked = Vec::new();
+        for _ in 1..=4 {
+            let cmd = crate::ui::app::browser::channel_sample_trigger_command(
+                &ch, 0, 60, 0.8, 0.0, &mut rr,
+            )
+            .expect("the command is built");
+            match cmd {
+                AudioCommand::TriggerSampleVoice { left, .. } => picked.push(left[0]),
+                _ => panic!("not TriggerSampleVoice"),
+            }
+        }
+        println!("zone loudness per note-on: {picked:?}");
+        assert_eq!(picked, vec![0.25, 0.75, 0.25, 0.75]);
     }
 
     /// **En not utanför zonerna går tillbaka till kanalens eget sampel** — det är därför en
@@ -471,7 +522,14 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             key_high: 50,
             ..crate::audio::keymap::SampleZone::full_range(48)
         }];
-        let cmd = crate::ui::app::browser::channel_sample_trigger_command(&ch, 0, 60, 0.8, 0.0)
+        let cmd = crate::ui::app::browser::channel_sample_trigger_command(
+            &ch,
+            0,
+            60,
+            0.8,
+            0.0,
+            &mut crate::audio::keymap::RoundRobin::default(),
+        )
             .expect("kommandot ska byggas");
         match cmd {
             AudioCommand::TriggerSampleVoice { left, base_note, .. } => {

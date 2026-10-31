@@ -605,6 +605,10 @@ pub struct SavedZone {
     pub vel_low: f32,
     #[serde(default = "default_vel_high")]
     pub vel_high: f32,
+    /// SFZ round-robin `(seq_position, seq_length)`. Missing in files written before it was
+    /// stored — then the zone is plain and answers every note-on, as it did then.
+    #[serde(default)]
+    pub seq: Option<(u8, u8)>,
 }
 
 fn default_key_high() -> u8 {
@@ -784,6 +788,7 @@ pub(crate) fn channel_to_saved(c: &ChannelStrip) -> SavedChannel {
                 key_high: z.key_high,
                 vel_low: z.vel_low,
                 vel_high: z.vel_high,
+                seq: z.seq,
             })
             .collect(),
         is_reverse: c.is_reverse,
@@ -856,6 +861,7 @@ pub(crate) fn saved_to_channel(s: &SavedChannel) -> ChannelStrip {
                 vel_low: z.vel_low,
                 vel_high: z.vel_high,
                 loop_frames: z.loop_frames,
+                seq: z.seq,
             })
             .collect(),
         loop_mode: s.loop_mode,

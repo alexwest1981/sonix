@@ -154,6 +154,7 @@ pub(crate) fn channel_sample_trigger_command(
     note: u8,
     velocity: f32,
     hold_secs: f32,
+    rr: &mut crate::audio::keymap::RoundRobin,
 ) -> Option<AudioCommand> {
     // **Multi-samples** (Fas 8.4/7): en keymap med zoner väljer sampel och grundton för noten
     // och anslaget. **Utan zoner** — eller när ingen zon täcker noten — är vägen exakt som förut:
@@ -162,7 +163,11 @@ pub(crate) fn channel_sample_trigger_command(
     //
     // En zon utan läsbart ljud hoppas över här i stället för att tysta noten: filen kan ha
     // flyttats, och då är kanalens eget sampel det ärliga svaret (samma regel som 8.5).
-    let zon = crate::audio::keymap::zone_for_note(&ch.zones, note, velocity)
+    //
+    // `rr` bär rundgången: `seq_position`-zoner turas om per kanal och tangent (SFZ), och en
+    // keymap utan `seq` svarar precis som förut (`keymap::zone_for_note`).
+    let zon = rr
+        .pick(&ch.zones, channel, note, velocity)
         .and_then(|i| ch.zones.get(i))
         .and_then(|z| {
             z.pcm
