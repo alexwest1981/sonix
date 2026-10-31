@@ -10,7 +10,7 @@
 //! grundton) och `smpl` (själva ljudet).
 //!
 //! **Vad som inte läses, med flit:** presetlagrets egna zoner (bank/preset-val), `pmod`
-//! (LFO/EG-modulation) och `pgen` utöver ovanstående operatorer. Samplets **loop-punkter**
+//! (LFO/EG-modulation) och `pgen` utöver operator 41 (presetets instrument, för presetmenyn). Samplets **loop-punkter**
 //! läses (0.9.66) och följer med zonen; saknar sampeln dem gäller kanalens egen `loop_mode`.
 //! Instrumentet används
 //! alltså direkt, utan preset-förval. Det är samma avgränsning som ett "load instrument"
@@ -28,10 +28,14 @@ pub struct SoundFontInstrument {
     pub zones: Vec<SampleZone>,
 }
 
-/// Hela filen: presetnamnen (för en meny) och instrumenten.
+/// Hela filen: presetnamnen (för en meny), vilket instrument varje preset pekar på, och
+/// instrumenten.
 #[derive(Debug, Clone, Default)]
 pub struct SoundFont {
     pub presets: Vec<String>,
+    /// `presets[i]` → index i `instruments`, from the preset's own `pgen` operator 41
+    /// (`instrument`). `None` when the preset names no instrument we could read.
+    pub preset_instruments: Vec<Option<usize>>,
     pub instruments: Vec<SoundFontInstrument>,
 }
 
@@ -105,7 +109,7 @@ pub fn parse(bytes: &[u8]) -> Result<SoundFont, String> {
     let igen = find_chunk(pdta, b"igen").ok_or("pdta saknar igen")?;
     let shdr = find_chunk(pdta, b"shdr").ok_or("pdta saknar shdr")?;
 
-    let _ = pbag; // preset-zoner läses inte (se modulhuvudet) men chunkens närvaro krävs av formatet.
+    let _ = pbag; // preset-zonernas generatorer läses inte utom operator 41 nedan.
 
     // --- Ljudet: 16-bitars mono i `smpl`, indexerat i *ramar* av shdr.
     if smpl.len() % 2 != 0 {
@@ -145,11 +149,38 @@ pub fn parse(bytes: &[u8]) -> Result<SoundFont, String> {
         });
     }
 
-    // --- Presetnamnen (bara för en meny).
+    // --- Presetnamnen (för en meny).
     let mut presets = Vec::new();
     let ph_count = phdr.len() / 38;
     for i in 0..ph_count.saturating_sub(1) {
         presets.push(name_at(phdr, i * 38));
+    }
+
+    // --- Preset → instrument, so a preset picker imports the chosen preset and not just the
+    // first instrument in the file. The link only exists in the preset zone's generator 41;
+    // the first zone that names an instrument wins (a layered preset names one per zone).
+    let pgen = find_chunk(pdta, b"pgen").unwrap_or(&[]);
+    let mut preset_instruments = Vec::with_capacity(ph_count.saturating_sub(1));
+    for i in 0..ph_count.saturating_sub(1) {
+        let o = i * 38;
+        let bag_first = u16_at(phdr, o + 24) as usize;
+        let bag_last = u16_at(phdr, o + 38 + 24) as usize; // next record's bag index
+        let mut instrument = None;
+        for bag in bag_first..bag_last.min(pbag.len() / 4) {
+            // The range ends at the *next* bag's generator index.
+            if bag * 4 + 6 > pbag.len() {
+                break;
+            }
+            let gen_first = u16_at(pbag, bag * 4) as usize;
+            let gen_last = u16_at(pbag, bag * 4 + 4) as usize;
+            if let Some(g) =
+                (gen_first..gen_last.min(pgen.len() / 4)).find(|&g| u16_at(pgen, g * 4) == 41)
+            {
+                instrument = Some(u16_at(pgen, g * 4 + 2) as usize);
+                break;
+            }
+        }
+        preset_instruments.push(instrument);
     }
 
     // --- Instrumenten: bag-intervallen ligger i `inst`, generatorerna i `igen`.
@@ -221,15 +252,19 @@ pub fn parse(bytes: &[u8]) -> Result<SoundFont, String> {
         instruments.push(SoundFontInstrument { name, zones });
     }
 
-    Ok(SoundFont { presets, instruments })
+    Ok(SoundFont {
+        presets,
+        preset_instruments,
+        instruments,
+    })
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
 
     /// Bygger en minimal men giltig `.sf2` i minnet: två zoner, två sampel.
-    fn tiny_sf2() -> Vec<u8> {
+    pub(crate) fn tiny_sf2() -> Vec<u8> {
         fn chunk(id: &[u8; 4], data: &[u8]) -> Vec<u8> {
             let mut v = Vec::new();
             v.extend_from_slice(id);
@@ -306,18 +341,26 @@ mod tests {
         phdr.extend_from_slice(&0u32.to_le_bytes());
         phdr.extend_from_slice(&name20("EOP"));
         phdr.resize(phdr.len() + 18, 0);
+        // The EOP's bag index ends the preset's zone range: bag 1, so the preset owns bag 0.
+        let eop_bag = phdr.len() - 18 + 4;
+        phdr[eop_bag..eop_bag + 2].copy_from_slice(&1u16.to_le_bytes());
 
+        // pbag: the preset's one zone spans generator 0..1, EOP at 1.
         let mut pbag = Vec::new();
-        pbag.extend_from_slice(&0u16.to_le_bytes());
-        pbag.extend_from_slice(&0u16.to_le_bytes());
-        pbag.extend_from_slice(&0u16.to_le_bytes());
-        pbag.extend_from_slice(&0u16.to_le_bytes());
+        for gen_ndx in [0u16, 1, 1] {
+            pbag.extend_from_slice(&gen_ndx.to_le_bytes());
+            pbag.extend_from_slice(&0u16.to_le_bytes());
+        }
 
         let mut pdta = Vec::new();
         pdta.extend_from_slice(&chunk(b"phdr", &phdr));
         pdta.extend_from_slice(&chunk(b"pbag", &pbag));
         pdta.extend_from_slice(&chunk(b"pmod", &[0u8; 10]));
-        pdta.extend_from_slice(&chunk(b"pgen", &[0u8; 4]));
+        // pgen: operator 41 (`instrument`) → instrument 0, the link a preset picker follows.
+        let mut pgen = Vec::new();
+        pgen.extend_from_slice(&41u16.to_le_bytes());
+        pgen.extend_from_slice(&0u16.to_le_bytes());
+        pdta.extend_from_slice(&chunk(b"pgen", &pgen));
         pdta.extend_from_slice(&chunk(b"inst", &inst));
         pdta.extend_from_slice(&chunk(b"ibag", &ibag));
         pdta.extend_from_slice(&chunk(b"imod", &[0u8; 10]));

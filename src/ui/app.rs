@@ -258,6 +258,8 @@ pub struct SonixApp {
     pub sample_library: Vec<LibrarySampleItem>,
     pub active_sample_picker_channel: Option<usize>,
     pub active_chopper_channel: Option<usize>,
+    /// A chosen `.sf2` file waiting for the preset choice (the channel rack shows the combo).
+    pub sf2_pick: Option<crate::ui::app::mixer::Sf2Pick>,
     pub selected_lib_category: usize,
     pub custom_import_name_input: String,
     pub custom_import_category: String,
@@ -1071,6 +1073,7 @@ impl SonixApp {
             sample_library,
             active_sample_picker_channel: None,
             active_chopper_channel: None,
+            sf2_pick: None,
             selected_lib_category: 0,
             custom_import_name_input: crate::i18n::t("Mitt Nya Ljud").to_string(),
             custom_import_category: "Egna Importerade".to_string(),

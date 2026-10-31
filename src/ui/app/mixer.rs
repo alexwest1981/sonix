@@ -10,6 +10,15 @@
 use super::*;
 use crate::ui::theme::Theme;
 
+/// A chosen `.sf2` waiting for the preset choice. `selected == 0` keeps the old behaviour:
+/// all zones of the first instrument that has any.
+pub struct Sf2Pick {
+    pub channel: usize,
+    pub path: String,
+    pub selected: usize,
+    pub sf: crate::audio::sf2::SoundFont,
+}
+
 /// Automatically classify stem and project tracks by name to assign distinct category color, icon, and track kind.
 pub fn classify_track_style(name: &str) -> (TrackKind, &'static str, Color32) {
     let n = name.to_lowercase();
@@ -1055,6 +1064,8 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
         let mut toggle_chopper_for = None;
         // Högerklicksmenyn på en kanal: (kanal, 0 = mute av/på, 1 = nollställ volym/pan).
         let mut channel_action: Option<(usize, u8)> = None;
+        // A picked .sf2 is parked until its preset is chosen, then imported below the rack.
+        let mut sf2_open: Option<Sf2Pick> = None;
 
         for ch_idx in 0..self.channels.len() {
             let is_selected = self.selected_channel == ch_idx;
@@ -1801,30 +1812,20 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                     .add_filter("SoundFont", &["sf2"])
                                     .pick_file()
                             {
+                                // Nothing is imported here: the preset is picked in the
+                                // panel below, so the file's presets are not ignored.
                                 let read = std::fs::read(&p)
                                     .map_err(|e| e.to_string())
                                     .and_then(|b| crate::audio::sf2::parse(&b));
                                 match read {
-                                    Ok(sf) => match sf.instruments.iter().find(|i| !i.zones.is_empty()) {
-                                        Some(inst) => {
-                                            let count = inst.zones.len();
-                                            let name = inst.name.clone();
-                                            ch.zones.extend(inst.zones.iter().cloned());
-                                            self.status_message = crate::tstatus!(
-                                                "🎹 '{}': {} zoner in i keymappen (av {} instrument, {} presets i filen)",
-                                                name,
-                                                count,
-                                                sf.instruments.len(),
-                                                sf.presets.len()
-                                            );
-                                        }
-                                        None => {
-                                            self.status_message = crate::tstatus!(
-                                                "⚠️ '{}' har inga zoner med ljud",
-                                                p.display()
-                                            );
-                                        }
-                                    },
+                                    Ok(sf) => {
+                                        sf2_open = Some(Sf2Pick {
+                                            channel: chop_ch,
+                                            path: p.display().to_string(),
+                                            selected: 0,
+                                            sf,
+                                        });
+                                    }
                                     Err(e) => {
                                         self.status_message = crate::tstatus!(
                                             "⚠️ Kunde inte läsa '{}': {}",
@@ -2049,6 +2050,88 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                     });
                 });
             }
+
+        if sf2_open.is_some() {
+            self.sf2_pick = sf2_open.take();
+        }
+        // **SF2 preset picker**: the file's presets are a choice, not noise. Option 0 is the
+        // old behaviour (all zones of the first instrument), so nothing that worked stops.
+        if let Some(mut pick) = self.sf2_pick.take() {
+            ui.add_space(6.0);
+            let mut import = false;
+            let mut cancel = false;
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    ui.label(
+                        egui::RichText::new(format!("🎹 {}", pick.path))
+                            .size(Theme::FONT_S)
+                            .color(crate::ui::theme::palette().text_muted()),
+                    );
+                    egui::ComboBox::from_id_salt("sf2-preset")
+                        .selected_text(match pick.selected {
+                            0 => "(alla zoner i första instrumentet)".to_string(),
+                            i => pick.sf.presets.get(i - 1).cloned().unwrap_or_default(),
+                        })
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut pick.selected,
+                                0,
+                                "(alla zoner i första instrumentet)",
+                            );
+                            for (i, name) in pick.sf.presets.iter().enumerate() {
+                                ui.selectable_value(&mut pick.selected, i + 1, name.as_str());
+                            }
+                        });
+                    import = ui
+                        .button(crate::i18n::t("📥 Importera"))
+                        .on_hover_text(crate::i18n::t(
+                            "Lägger det valda presetets zoner i kanalens keymap.",
+                        ))
+                        .clicked();
+                    cancel = ui.small_button("✕").clicked();
+                });
+            });
+            if import {
+                let inst = if pick.selected == 0 {
+                    pick.sf.instruments.iter().find(|i| !i.zones.is_empty())
+                } else {
+                    pick.sf
+                        .preset_instruments
+                        .get(pick.selected - 1)
+                        .copied()
+                        .flatten()
+                        .and_then(|i| pick.sf.instruments.get(i))
+                        .filter(|i| !i.zones.is_empty())
+                };
+                match inst {
+                    Some(i) => {
+                        let (name, count) = (i.name.clone(), i.zones.len());
+                        let zones = i.zones.clone();
+                        if let Some(ch) = self.channels.get_mut(pick.channel) {
+                            ch.zones.extend(zones);
+                        }
+                        self.status_message = crate::tstatus!(
+                            "🎹 '{}': {} zoner in i keymappen ({} presets i filen)",
+                            name,
+                            count,
+                            pick.sf.presets.len()
+                        );
+                    }
+                    None => {
+                        self.status_message = crate::tstatus!(
+                            "⚠️ Preset '{}' har inga zoner med ljud",
+                            pick.sf
+                                .presets
+                                .get(pick.selected.saturating_sub(1))
+                                .cloned()
+                                .unwrap_or_default()
+                        );
+                    }
+                }
+            } else if !cancel {
+                self.sf2_pick = Some(pick);
+            }
+        }
 
         self.sync_active_pattern_from_ui();
     });
