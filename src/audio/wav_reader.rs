@@ -301,12 +301,16 @@ pub fn load_audio_pcm(path: &str) -> Result<(Vec<f32>, Vec<f32>, u32), String> {
         return load_wav_pcm(path);
     }
     // Decode in-process first: symphonia covers FLAC, MP3, Vorbis/WAV and MP4/AAC, Opus
-    // through libopus when it is installed, AIFF/AIFC by hand; ffmpeg remains the last resort.
+    // through libopus when it is installed, WavPack through libwavpack, AIFF/AIFC by hand;
+    // ffmpeg remains the last resort.
     match load_via_symphonia(path) {
         Ok(pcm) => Ok(pcm),
         Err(err) => {
             eprintln!("sonix: symphonia could not read {path}: {err} — trying Opus");
             if let Some(pcm) = load_via_opus(path) {
+                return Ok(pcm);
+            }
+            if let Some(pcm) = load_via_wavpack(path) {
                 return Ok(pcm);
             }
             if let Some(pcm) = load_via_aiff(path) {
@@ -351,6 +355,25 @@ fn load_via_opus(path: &str) -> Option<(Vec<f32>, Vec<f32>, u32)> {
         Ok(pcm) => Some(pcm),
         Err(err) => {
             eprintln!("sonix: opus could not read {path}: {err} — trying ffmpeg");
+            None
+        }
+    }
+}
+
+/// WavPack through `libwavpack`, only for `.wv` and only when it is installed.
+/// `None` means "not our case, try the next decoder"; a real failure is printed with its reason.
+fn load_via_wavpack(path: &str) -> Option<(Vec<f32>, Vec<f32>, u32)> {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())?
+        .to_lowercase();
+    if ext != "wv" || !super::wavpack::is_available() {
+        return None;
+    }
+    match super::wavpack::decode_file(path) {
+        Ok(pcm) => Some(pcm),
+        Err(err) => {
+            eprintln!("sonix: wavpack could not read {path}: {err} — trying ffmpeg");
             None
         }
     }

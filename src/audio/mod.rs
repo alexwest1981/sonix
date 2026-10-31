@@ -98,6 +98,7 @@ pub mod stretch;
 // Optional Rubber Band backend (dlopen) — WSOLA in `stretch` stays the default.
 pub mod rubber_band;
 pub mod opus;
+pub mod wavpack;
 pub mod aiff;
 pub mod modal;
 pub mod spectral_image;
