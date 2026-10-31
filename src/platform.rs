@@ -25,6 +25,23 @@ pub fn file_manager_command(os: &str, dir: &Path) -> (String, Vec<String>) {
     }
 }
 
+/// Kommandot som öppnar en **adress** (inloggningssidan) i webbläsaren. Skilt från
+/// filhanteraren eftersom `explorer` tar mappar men inte URL:er — Windows behöver `start`.
+pub fn url_command(os: &str, url: &str) -> (String, Vec<String>) {
+    match os {
+        "windows" => ("cmd".to_string(), vec!["/c".to_string(), "start".to_string(), String::new(), url.to_string()]),
+        "macos" => ("open".to_string(), vec![url.to_string()]),
+        _ => ("xdg-open".to_string(), vec![url.to_string()]),
+    }
+}
+
+/// Öppnar `url` i användarens webbläsare. `Err` betyder att **starten** misslyckades, och då
+/// visar anroparen adressen i stället — en inloggning utan adress är en återvändsgränd.
+pub fn open_url(url: &str) -> std::io::Result<()> {
+    let (program, args) = url_command(std::env::consts::OS, url);
+    Command::new(program).args(args).spawn().map(|_| ())
+}
+
 /// Visar `dir` i filhanteraren. `Err` bär felet från **starten** — om programmet finns och
 /// gick att köra. Vad det sedan gör med mappen är upp till skrivbordet.
 pub fn open_dir(dir: &Path) -> std::io::Result<()> {
@@ -58,5 +75,22 @@ mod tests {
         let (_, args_spaced) = file_manager_command("linux", &spaced);
         assert_eq!(args_spaced, vec!["/home/alex/Mina Filer/Sonix".to_string()]);
         assert_eq!(args, vec!["/home/alex/Music/Sonix".to_string()]);
+    }
+
+    /// URL:er går till webbläsaren, inte till filhanteraren — och Windows behöver `start`.
+    #[test]
+    fn the_url_command_uses_a_browser() {
+        let (program, args) = url_command("linux", "https://example.test/x");
+        println!("linux: {program} {args:?}");
+        assert_eq!(program, "xdg-open");
+        assert_eq!(args, vec!["https://example.test/x".to_string()]);
+
+        let (program, args) = url_command("windows", "https://example.test/x");
+        println!("windows: {program} {args:?}");
+        assert_eq!(program, "cmd");
+        assert!(args.iter().any(|a| a == "start"));
+
+        let (program, _) = url_command("macos", "https://example.test/x");
+        assert_eq!(program, "open");
     }
 }

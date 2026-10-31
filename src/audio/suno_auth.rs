@@ -186,9 +186,29 @@ impl SunoOAuth {
         self.login_blocking_with(port, &Pkce::new()?)
     }
 
+    /// As [`Self::login_blocking`], but the sign-in URL is also handed to `url_slot` so the UI
+    /// can show it. The browser is opened automatically; if that fails the address is the only
+    /// way in, and a window that says "go to the browser" without showing it is a dead end.
+    pub fn login_blocking_slot(
+        &self,
+        port: u16,
+        url_slot: Option<&std::sync::Arc<std::sync::Mutex<Option<String>>>>,
+    ) -> Result<Tokens, String> {
+        self.login_with(port, &Pkce::new()?, url_slot)
+    }
+
     /// As [`Self::login_blocking`], with the PKCE values supplied — the tests need to know the
     /// `state` they echo back.
     pub fn login_blocking_with(&self, port: u16, pkce: &Pkce) -> Result<Tokens, String> {
+        self.login_with(port, pkce, None)
+    }
+
+    fn login_with(
+        &self,
+        port: u16,
+        pkce: &Pkce,
+        url_slot: Option<&std::sync::Arc<std::sync::Mutex<Option<String>>>>,
+    ) -> Result<Tokens, String> {
         let client_id = self
             .client_id
             .clone()
@@ -199,10 +219,34 @@ impl SunoOAuth {
             .map_err(|e| format!("cannot listen on 127.0.0.1:{port}: {e}"))?;
         let url = self.authorize_url(&client_id, &redirect_uri, pkce);
         println!("Open this URL to sign in to Suno: {url}");
+        if let Some(slot) = url_slot
+            && let Ok(mut guard) = slot.lock()
+        {
+            *guard = Some(url.clone());
+        }
+        // Webbläsaren öppnas åt användaren; en GUI-app har ingen stdout att läsa adressen ur.
+        if crate::platform::open_url(&url).is_err() {
+            println!("kunde inte öppna webbläsaren — adressen står i panelen");
+        }
 
-        let (mut stream, _) = listener
-            .accept()
-            .map_err(|e| format!("waiting for the sign-in redirect: {e}"))?;
+        // Inloggningen får ta tid, men inte hur lång tid som helst: annars står panelen och
+        // väntar i evighet på en flik användaren stängde.
+        listener
+            .set_nonblocking(true)
+            .map_err(|e| format!("listener could not be made non-blocking: {e}"))?;
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(300);
+        let mut stream = loop {
+            match listener.accept() {
+                Ok((stream, _)) => break stream,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if std::time::Instant::now() >= deadline {
+                        return Err("no sign-in within five minutes — press Connect again".to_string());
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+                }
+                Err(e) => return Err(format!("waiting for the sign-in redirect: {e}")),
+            }
+        };
         let mut buf = [0u8; 4096];
         let read = stream
             .read(&mut buf)

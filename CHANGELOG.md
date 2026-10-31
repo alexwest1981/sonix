@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.232] - 2026-10-31
+
+**Inloggningen öppnar webbläsaren — och visar adressen.** `login_blocking` skrev bara adressen till
+stdout, som en GUI-app inte har, så panelen sade "gå till webbläsaren" utan att ge någon väg dit. Nu
+öppnas adressen med plattformens eget kommando (`xdg-open`/`open`/`cmd start`, prövat i
+`the_url_command_uses_a_browser`), adressen **visas i panelen** med en knapp för att öppna den igen,
+och väntan ger upp efter **fem minuter** med ett tydligt besked i stället för att hänga för evigt.
+
 ## [0.9.231] - 2026-10-31
 
 **Suno via MCP — panel, inloggning och stämmor.** `audio::mcp_client` (JSON-RPC över Streamable

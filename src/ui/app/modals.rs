@@ -1493,6 +1493,33 @@ pub(crate) fn render_suno_modal(&mut self, ctx: &egui::Context) {
                     ui.spinner();
                 }
             });
+            // **Adressen syns här**, inte bara i terminalen: en GUI-app har ingen stdout, och
+            // webbläsaren kan ha öppnats i en session användaren inte ser.
+            let url = self
+                .suno_login_url
+                .lock()
+                .ok()
+                .and_then(|guard| guard.clone())
+                .unwrap_or_default();
+            if pending && !url.is_empty() {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("Open this address if the browser did not open:"))
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().text_muted()),
+                );
+                let mut shown = url.clone();
+                ui.add(
+                    egui::TextEdit::singleline(&mut shown)
+                        .desired_width(500.0)
+                        .font(egui::TextStyle::Monospace),
+                );
+                if ui.button(crate::i18n::t("🌐 Open in the browser again")).clicked() {
+                    if crate::platform::open_url(&url).is_err() {
+                        self.suno_status = crate::i18n::t("⚠ Could not open the browser.").to_string();
+                    }
+                }
+            }
             if !self.suno_status.trim().is_empty() {
                 ui.label(
                     egui::RichText::new(&self.suno_status)

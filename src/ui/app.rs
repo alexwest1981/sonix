@@ -580,6 +580,9 @@ pub struct SonixApp {
     pub suno_last: Option<crate::audio::suno::GeneratedSong>,
     /// The connect/generate thread in flight; one at a time, so one slot.
     pub suno_pending: Option<SharedResult<SunoTask>>,
+    /// Adressen som inloggningen väntar på. Webbläsaren öppnas automatiskt, men går det inte
+    /// är det här den enda vägen in — därför visas den i panelen.
+    pub suno_login_url: std::sync::Arc<std::sync::Mutex<Option<String>>>,
     pub suno_model_version: String,
     pub suno_context_clip: Option<String>,
     pub suno_is_generating: bool,
@@ -1307,6 +1310,7 @@ impl SonixApp {
             suno_lyrics_input: String::new(),
             show_suno_modal: false,
             suno_status: String::new(),
+            suno_login_url: std::sync::Arc::new(std::sync::Mutex::new(None)),
             suno_tools: Vec::new(),
             suno_last: None,
             suno_pending: None,

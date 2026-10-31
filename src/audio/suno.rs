@@ -45,8 +45,16 @@ impl SunoSession {
     /// Saved tokens if they are still valid, a refresh if they are not, a browser sign-in if
     /// there are none. Then MCP `initialize` + `tools/list`.
     pub fn connect() -> Result<SunoSession, String> {
+        Self::connect_with_slot(None)
+    }
+
+    /// As [`Self::connect`], but the sign-in URL is handed to `url_slot` so the panel can show
+    /// it: the browser is opened automatically, and when that fails the address is the way in.
+    pub fn connect_with_slot(
+        url_slot: Option<std::sync::Arc<std::sync::Mutex<Option<String>>>>,
+    ) -> Result<SunoSession, String> {
         let oauth = SunoOAuth::new();
-        connect_at(&oauth.mcp, &oauth.token_file)
+        connect_at(&oauth.mcp, &oauth.token_file, url_slot)
     }
 
     pub fn tools(&self) -> &[McpTool] {
@@ -148,7 +156,11 @@ impl SunoSession {
 
 /// The body of [`SunoSession::connect`], with the endpoint and token file supplied so the mock
 /// can drive it.
-fn connect_at(endpoint: &str, token_file: &Path) -> Result<SunoSession, String> {
+fn connect_at(
+    endpoint: &str,
+    token_file: &Path,
+    url_slot: Option<std::sync::Arc<std::sync::Mutex<Option<String>>>>,
+) -> Result<SunoSession, String> {
     let mut oauth = SunoOAuth::new();
     oauth.mcp = endpoint.to_string();
     oauth.token_file = token_file.to_path_buf();
@@ -161,19 +173,22 @@ fn connect_at(endpoint: &str, token_file: &Path) -> Result<SunoSession, String> 
                 Some(Ok(fresh)) => fresh,
                 Some(Err(e)) => {
                     println!("suno: refresh failed ({e}); signing in again");
-                    sign_in(&mut oauth)?
+                    sign_in(&mut oauth, url_slot.clone())?
                 }
-                None => sign_in(&mut oauth)?,
+                None => sign_in(&mut oauth, url_slot.clone())?,
             }
         }
-        None => sign_in(&mut oauth)?,
+        None => sign_in(&mut oauth, url_slot.clone())?,
     };
     open(endpoint, &tokens.access_token).map_err(|e| e.to_string())
 }
 
 /// Dynamic registration + the browser, then the tokens are saved by `login_blocking`. The client
 /// id is kept beside them: a refresh must come from the client the token was issued to.
-fn sign_in(oauth: &mut SunoOAuth) -> Result<Tokens, String> {
+fn sign_in(
+    oauth: &mut SunoOAuth,
+    url_slot: Option<std::sync::Arc<std::sync::Mutex<Option<String>>>>,
+) -> Result<Tokens, String> {
     let redirect = SunoOAuth::redirect_uri(SIGN_IN_PORT);
     let id = oauth.register_client(&redirect)?;
     let id_file = client_id_file(&oauth.token_file);
@@ -183,7 +198,7 @@ fn sign_in(oauth: &mut SunoOAuth) -> Result<Tokens, String> {
         std::fs::create_dir_all(dir).map_err(|e| format!("creating {}: {e}", dir.display()))?;
     }
     std::fs::write(&id_file, &id).map_err(|e| format!("writing {}: {e}", id_file.display()))?;
-    oauth.login_blocking(SIGN_IN_PORT)
+    oauth.login_blocking_slot(SIGN_IN_PORT, url_slot.as_ref())
 }
 
 fn client_id_file(token_file: &Path) -> PathBuf {
@@ -547,7 +562,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, tools.clone())),
         ]);
-        let session = connect_at(&mock.url, &fresh_tokens("pick")).expect("connect");
+        let session = connect_at(&mock.url, &fresh_tokens("pick"), None).expect("connect");
 
         println!("endpoint: {}", session.endpoint());
         println!("{} tools exposed", session.tools().len());
@@ -594,7 +609,7 @@ mod tests {
             ),
         ]);
         let dir = tmp_dir("stems");
-        let mut session = connect_at(&mock.url, &fresh_tokens("stems")).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("stems"), None).expect("connect");
         let song = session
             .generate_into("dark synthwave", Some("80s"), None, &dir)
             .expect("generate");
@@ -638,7 +653,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, tools)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("unknown")).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("unknown"), None).expect("connect");
         let err = session
             .generate_into("anything", None, None, &tmp_dir("unknown"))
             .expect_err("no generator exists");
@@ -703,7 +718,7 @@ mod tests {
             ),
         ]);
         let dir = tmp_dir("poll");
-        let mut session = connect_at(&mock.url, &fresh_tokens("poll")).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("poll"), None).expect("connect");
         let song = session
             .generate_into("slow burn", None, None, &dir)
             .expect("generate");

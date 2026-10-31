@@ -675,8 +675,9 @@ impl SonixApp {
             "☀ Connecting — finish the sign-in in the browser, then come back here.",
         )
         .to_string();
+        let slot_url = self.suno_login_url.clone();
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect().map(|session| {
+            let result = crate::audio::suno::SunoSession::connect_with_slot(Some(slot_url)).map(|session| {
                 SunoTask::Connected(session.tools().iter().map(|t| t.name.clone()).collect())
             });
             if let Ok(mut guard) = slot.lock() {
