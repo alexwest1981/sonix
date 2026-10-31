@@ -256,6 +256,13 @@ pub trait PluginProcessor: Send {
     /// and must not exceed the maximum frame count the processor was created
     /// with.
     fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]);
+    /// One block for an **offline** render. The default is a plain
+    /// `process_stereo`; a sandbox overrides it to wait for the worker, because
+    /// the realtime path drops a late block and an offline render must not
+    /// leave a hole in the file.
+    fn render_block(&mut self, left: &mut [f32], right: &mut [f32]) {
+        self.process_stereo(left, right);
+    }
     /// Applies a parameter value. Returns false when the id is unknown.
     fn set_parameter(&mut self, id: u32, value: f64) -> bool;
     /// Clears internal state (delay lines, voices, …).

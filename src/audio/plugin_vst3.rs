@@ -271,6 +271,34 @@ struct ProcessData {
     process_context: *mut c_void,
 }
 
+/// `ProcessContext` (`ivstprocesscontext.h`): a synth drives its LFOs and
+/// arpeggiators from the host's transport. Sending `null` here is legal, but a
+/// plugin that renders only while the transport plays never starts.
+#[repr(C)]
+struct ProcessContext {
+    state: u32,
+    _pad: u32,
+    sample_rate: f64,
+    project_time_samples: i64,
+    system_time: i64,
+    continuous_time_samples: i64,
+    project_time_music: f64,
+    bar_position_music: f64,
+    cycle_start_music: f64,
+    cycle_end_music: f64,
+    tempo: f64,
+    time_sig_numerator: i32,
+    time_sig_denominator: i32,
+    chord: i32,
+    smpte_offset_subframes: i32,
+    frame_rate: i32,
+    samples_to_next_clock: i32,
+}
+
+const K_PLAYING: u32 = 1 << 1;
+const K_TEMPO_VALID: u32 = 1 << 10;
+const K_TIME_SIG_VALID: u32 = 1 << 13;
+
 #[repr(C)]
 struct AudioProcessorVtbl {
     query_interface:
@@ -891,6 +919,138 @@ static PARAMETER_CHANGES_VTBL: ParameterChangesVtbl = ParameterChangesVtbl {
     add_parameter_data: Some(pchanges_add),
 };
 
+// ------------------------------------------------------ events (notes)
+//
+// A VST3 instrument gets notes only through `ProcessData::inputEvents`, an
+// `IEventList` the host owns. Without one a synth loads, reports its latency
+// and renders silence — which is exactly what a bridged Windows synth did here
+// until this list existed. Notes are pushed from the caller's thread and read
+// by the plugin inside `process`, then cleared, since an event belongs to one
+// block.
+
+/// The note events this host can send, by `EventTypes` value.
+const K_NOTE_ON_EVENT: i32 = 0;
+const K_NOTE_OFF_EVENT: i32 = 1;
+
+/// `NoteOnEvent` from `ieventlist.h`.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct NoteOnEvent {
+    channel: i16,
+    pitch: i16,
+    tuning: f32,
+    velocity: f32,
+    length: i32,
+    note_id: i32,
+}
+
+/// `NoteOffEvent` from `ieventlist.h`. Its fields sit at different offsets than
+/// a note-on's, which is why the union below is a real union.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct NoteOffEvent {
+    channel: i16,
+    pitch: i16,
+    velocity: f32,
+    note_id: i32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy)]
+union EventBody {
+    note_on: NoteOnEvent,
+    note_off: NoteOffEvent,
+}
+
+/// One VST3 `Event`, in the layout of the current SDK
+/// (`busIndex, sampleOffset, ppqPosition, flags, type`, then the union).
+///
+/// Every field is load-bearing: the union is 8-aligned (a `ChordEvent` holds a
+/// pointer), and `type` is 16 bits at byte 18, not 32 bits at byte 8 — an event
+/// written to the older shape is read as a different type and the note never
+/// reaches the synth.
+#[repr(C)]
+#[derive(Clone, Copy)]
+struct Event {
+    bus_index: i32,
+    sample_offset: i32,
+    ppq_position: f64,
+    flags: u16,
+    kind: u16,
+    _align: [u8; 4],
+    body: EventBody,
+    _tail: [u8; 4],
+}
+
+#[repr(C)]
+struct EventListVtbl {
+    query_interface:
+        Option<unsafe extern "C" fn(*mut c_void, *const c_char, *mut *mut c_void) -> i32>,
+    add_ref: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    release: Option<unsafe extern "C" fn(*mut c_void) -> u32>,
+    get_event_count: Option<unsafe extern "C" fn(*mut c_void) -> i32>,
+    get_event: Option<unsafe extern "C" fn(*mut c_void, i32, *mut Event) -> i32>,
+    add_event: Option<unsafe extern "C" fn(*mut c_void, *mut Event) -> i32>,
+}
+
+#[repr(C)]
+struct EventList {
+    vtbl: *const EventListVtbl,
+    events: Vec<Event>,
+}
+
+unsafe extern "C" fn events_query(
+    this: *mut c_void,
+    _iid: *const c_char,
+    obj: *mut *mut c_void,
+) -> i32 {
+    if !obj.is_null() {
+        unsafe { *obj = this };
+    }
+    K_RESULT_OK
+}
+
+unsafe extern "C" fn events_add_ref(_self: *mut c_void) -> u32 {
+    1
+}
+
+unsafe extern "C" fn events_release(_self: *mut c_void) -> u32 {
+    1
+}
+
+unsafe extern "C" fn events_count(this: *mut c_void) -> i32 {
+    unsafe { (*(this as *const EventList)).events.len() as i32 }
+}
+
+unsafe extern "C" fn events_get(this: *mut c_void, index: i32, event: *mut Event) -> i32 {
+    let list = unsafe { &*(this as *const EventList) };
+    match list.events.get(index.max(0) as usize) {
+        Some(found) if !event.is_null() => {
+            unsafe { *event = *found };
+            K_RESULT_OK
+        }
+        _ => K_RESULT_FALSE,
+    }
+}
+
+unsafe extern "C" fn events_add(this: *mut c_void, event: *mut Event) -> i32 {
+    if event.is_null() {
+        return K_RESULT_FALSE;
+    }
+    let list = unsafe { &mut *(this as *mut EventList) };
+    list.events.push(unsafe { *event });
+    K_RESULT_OK
+}
+
+static EVENT_LIST_VTBL: EventListVtbl = EventListVtbl {
+    query_interface: Some(events_query),
+    add_ref: Some(events_add_ref),
+    release: Some(events_release),
+    get_event_count: Some(events_count),
+    get_event: Some(events_get),
+    add_event: Some(events_add),
+};
+
 // ---------------------------------------------------------------- helpers
 
 /// Reads the vtable pointer stored at the start of a COM-style object.
@@ -1477,7 +1637,19 @@ fn open(path: &str) -> Result<VstInstance, String> {
         vendor,
         version,
         description: fixed_cstr(&class_info.category),
-        features: Vec::new(),
+        // The subcategories are the only authority on whether this is an
+        // instrument ("Instrument|Synth") or an effect ("Fx"). The bus layout
+        // cannot tell: a synth may expose a sidechain input.
+        features: info2
+            .as_ref()
+            .map(|i| {
+                fixed_cstr(&i.sub_categories)
+                    .split('|')
+                    .filter(|s| !s.is_empty())
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
     };
 
     Ok(VstInstance {
@@ -1511,6 +1683,14 @@ pub struct VstProcessor {
     out_l: Vec<f32>,
     out_r: Vec<f32>,
     changes: ParameterChanges,
+    events: EventList,
+    out_events: EventList,
+    context: ProcessContext,
+    /// A synth: it takes notes and may render without any audio input.
+    instrument: bool,
+    /// The plugin has an audio input bus. Separate from `instrument`, because a
+    /// synth can expose a sidechain input while an effect never takes notes.
+    input_bus: bool,
 }
 
 // The audio thread owns the processor; the raw COM pointers are only used
@@ -1588,7 +1768,6 @@ impl PluginProcessor for VstProcessor {
         }
         self.in_l[..frames].copy_from_slice(&left[..frames]);
         self.in_r[..frames].copy_from_slice(&right[..frames]);
-
         let mut in_channels: [*mut f32; 2] = [self.in_l.as_mut_ptr(), self.in_r.as_mut_ptr()];
         let mut out_channels: [*mut f32; 2] = [self.out_l.as_mut_ptr(), self.out_r.as_mut_ptr()];
         let mut input_bus = AudioBusBuffers {
@@ -1601,19 +1780,31 @@ impl PluginProcessor for VstProcessor {
             silence_flags: 0,
             channel_buffers32: out_channels.as_mut_ptr(),
         };
+        // The transport the plugin sees. A fixed 120 BPM is enough for a
+        // render: the tempo is *valid*, not guessed, and time advances.
+        self.context.project_time_samples += frames as i64;
+        self.context.continuous_time_samples = self.context.project_time_samples;
+        self.context.project_time_music =
+            self.context.project_time_samples as f64 / self.sample_rate * 2.0;
         let mut data = ProcessData {
             process_mode: K_REALTIME,
             symbolic_sample_size: K_SAMPLE32,
             num_samples: frames as i32,
-            num_inputs: 1,
+            // Only a bus the plugin owns may be declared; pointing at one it
+            // does not have makes the Windows side abort.
+            num_inputs: if self.input_bus { 1 } else { 0 },
             num_outputs: 1,
-            inputs: &mut input_bus,
+            inputs: if self.input_bus {
+                &mut input_bus
+            } else {
+                std::ptr::null_mut()
+            },
             outputs: &mut output_bus,
             input_parameter_changes: &mut self.changes as *mut ParameterChanges as *mut c_void,
             output_parameter_changes: std::ptr::null_mut(),
-            input_events: std::ptr::null_mut(),
-            output_events: std::ptr::null_mut(),
-            process_context: std::ptr::null_mut(),
+            input_events: &mut self.events as *mut EventList as *mut c_void,
+            output_events: &mut self.out_events as *mut EventList as *mut c_void,
+            process_context: &mut self.context as *mut ProcessContext as *mut c_void,
         };
         if let Some(process) = unsafe { vtable::<AudioProcessorVtbl>(self.audio_processor) }.process
         {
@@ -1622,6 +1813,52 @@ impl PluginProcessor for VstProcessor {
         left[..frames].copy_from_slice(&self.out_l[..frames]);
         right[..frames].copy_from_slice(&self.out_r[..frames]);
         self.clear_changes();
+        // An event belongs to the block it was queued for.
+        self.events.events.clear();
+        self.out_events.events.clear();
+    }
+    fn accepts_notes(&self) -> bool {
+        self.instrument
+    }
+    fn note_on(&mut self, note: u8, velocity: u8) {
+        self.events.events.push(Event {
+            bus_index: 0,
+            sample_offset: 0,
+            ppq_position: self.context.project_time_music,
+            flags: 0,
+            kind: K_NOTE_ON_EVENT as u16,
+            _align: [0; 4],
+            body: EventBody {
+                note_on: NoteOnEvent {
+                    channel: 0,
+                    pitch: note as i16,
+                    tuning: 0.0,
+                    velocity: velocity as f32 / 127.0,
+                    length: -1,
+                    note_id: -1,
+                },
+            },
+            _tail: [0; 4],
+        });
+    }
+    fn note_off(&mut self, note: u8) {
+        self.events.events.push(Event {
+            bus_index: 0,
+            sample_offset: 0,
+            ppq_position: self.context.project_time_music,
+            flags: 0,
+            kind: K_NOTE_OFF_EVENT as u16,
+            _align: [0; 4],
+            body: EventBody {
+                note_off: NoteOffEvent {
+                    channel: 0,
+                    pitch: note as i16,
+                    velocity: 0.0,
+                    note_id: -1,
+                },
+            },
+            _tail: [0; 4],
+        });
     }
     fn set_parameter(&mut self, id: u32, value: f64) -> bool {
         if !self.instance.params.iter().any(|p| p.id == id) {
@@ -1736,26 +1973,40 @@ pub fn load_processor(
         }
     };
 
-    unsafe {
+    // kAudio = 0, kInput = 0. Activating an input bus the plugin does not have
+    // is what made a bridged Windows synth abort inside the plugin.
+    let input_bus = unsafe {
+        let count = vtable::<ComponentVtbl>(component)
+            .get_bus_count
+            .map_or(0, |count| count(component, 0, 0))
+            > 0;
         if let Some(activate_bus) = vtable::<ComponentVtbl>(component).activate_bus {
-            activate_bus(component, 0, 0, 0, 1);
+            if count {
+                activate_bus(component, 0, 0, 0, 1);
+            }
             activate_bus(component, 0, 1, 0, 1);
+            // kEvent = 1: the note input bus. A host that leaves it inactive
+            // is free to send events, but an instrument may ignore them.
+            activate_bus(component, 1, 0, 0, 1);
         }
-    }
+        count
+    };
 
     // **Bussarna ska förhandlas innan processorn konfigureras.** VST3 kräver att värden
     // föreslår en högtalarlayout; gör den inte det får en del plugin (Steinbergs egna
     // exempel inräknade) ett tillstånd där `setProcessing` vägrar. Stereoin/ut är vad
-    // Sonix spelar, så det är vad som föreslås.
+    // Sonix spelar, så det är vad som föreslås. Ett instrument har ingen ingång, och
+    // `numIns` måste säga 0 då — annars läser plugin en busslista den inte äger.
     unsafe {
         if let Some(set_arr) = vtable::<AudioProcessorVtbl>(audio_processor).set_bus_arrangements {
             const K_STEREO: u64 = 3; // kSpeakerL | kSpeakerR
             let mut ins = [K_STEREO];
             let mut outs = [K_STEREO];
+            let num_ins = if input_bus { 1 } else { 0 };
             set_arr(
                 audio_processor,
                 ins.as_mut_ptr(),
-                1,
+                num_ins,
                 outs.as_mut_ptr(),
                 1,
             );
@@ -1835,6 +2086,11 @@ pub fn load_processor(
             .unwrap_or(0)
     };
 
+    let instrument = instance
+        .info
+        .features
+        .iter()
+        .any(|f| f.eq_ignore_ascii_case("instrument"));
     Ok(Box::new(VstProcessor {
         instance,
         component,
@@ -1853,6 +2109,35 @@ pub fn load_processor(
             vtbl: &PARAMETER_CHANGES_VTBL,
             queues: Vec::new(),
         },
+        events: EventList {
+            vtbl: &EVENT_LIST_VTBL,
+            events: Vec::new(),
+        },
+        out_events: EventList {
+            vtbl: &EVENT_LIST_VTBL,
+            events: Vec::new(),
+        },
+        context: ProcessContext {
+            state: K_PLAYING | K_TEMPO_VALID | K_TIME_SIG_VALID,
+            _pad: 0,
+            sample_rate,
+            project_time_samples: 0,
+            system_time: 0,
+            continuous_time_samples: 0,
+            project_time_music: 0.0,
+            bar_position_music: 0.0,
+            cycle_start_music: 0.0,
+            cycle_end_music: 0.0,
+            tempo: 120.0,
+            time_sig_numerator: 4,
+            time_sig_denominator: 4,
+            chord: 0,
+            smpte_offset_subframes: 0,
+            frame_rate: 0,
+            samples_to_next_clock: 0,
+        },
+        instrument,
+        input_bus,
     }))
 }
 

@@ -51,6 +51,134 @@ fn print_paths() {
     println!("  SONIX_DATA_DIR, SONIX_STATE_DIR, SONIX_CACHE_DIR (annars följs XDG).");
 }
 
+/// One note into a plugin, wherever it lives. A sandboxed plugin belongs to the
+/// worker process, so its notes go over the control plane; in process they go
+/// straight to the instance. Returns false when the plugin is not an instrument.
+fn plugin_note(
+    processor: &mut dyn audio::plugin_host_live::PluginProcessor,
+    host: &mut Option<audio::plugin_sandbox::SandboxHost>,
+    on: bool,
+    note: u8,
+    velocity: u8,
+) -> bool {
+    use audio::plugin_sandbox::{SandboxRequest, SandboxResponse};
+    if let Some(host) = host {
+        return matches!(
+            host.request(&SandboxRequest::Note { on, note, velocity }),
+            Ok(SandboxResponse::Ok)
+        );
+    }
+    if !processor.accepts_notes() {
+        return false;
+    }
+    if on {
+        processor.note_on(note, velocity);
+    } else {
+        processor.note_off(note);
+    }
+    true
+}
+
+/// `sonix --render-plugin <plugin> <seconds> <out.wav> [--sandbox]`: one note
+/// through a real plugin, rendered offline and written as a stereo WAV.
+///
+/// The numbers are the point: a plugin that loads only proves the ABI, a
+/// non-zero RMS proves its DSP ran. `--sandbox` renders the same note through
+/// `plugin_sandbox`, i.e. in the worker process.
+fn render_plugin(path: &str, seconds: f32, out: &str, sandbox: bool, sine: bool) -> Result<(), String> {
+    use audio::plugin_host_live::PluginProcessor;
+    use audio::plugin_sandbox::SandboxHost;
+
+    const RATE: u32 = 48_000;
+    const BLOCK: usize = 512;
+    const NOTE: u8 = 60;
+    const VELOCITY: u8 = 102; // ≈ 0.8 in 0..127
+    const TONE_HZ: f32 = 440.0;
+    const TONE_PEAK: f32 = 0.2;
+
+    let frames = (seconds * RATE as f32).round() as usize;
+    let mut left = vec![0.0f32; frames];
+    let mut right = vec![0.0f32; frames];
+
+    let (mut processor, mut host): (Box<dyn PluginProcessor>, Option<SandboxHost>) = if sandbox {
+        let opened = audio::plugin_sandbox::open(path, RATE as f32, BLOCK as u32)?;
+        (opened.processor, opened.host)
+    } else {
+        (
+            audio::plugin_host_live::load_processor(path, RATE as f32, BLOCK as u32)?,
+            None,
+        )
+    };
+
+    // An effect is driven by audio, not by notes: `--sine` is what the old
+    // `--render-plugin` always sent, kept because it is the only way to hear a
+    // plugin that has no instrument in it.
+    if sine {
+        for i in 0..frames {
+            let v = (i as f32 * TONE_HZ * std::f32::consts::TAU / RATE as f32).sin() * TONE_PEAK;
+            left[i] = v;
+            right[i] = v;
+        }
+    }
+
+    let notes = plugin_note(&mut *processor, &mut host, true, NOTE, VELOCITY);
+    let mut released = false;
+    for start in (0..frames).step_by(BLOCK) {
+        let end = (start + BLOCK).min(frames);
+        // Note off in the last quarter, so the release is in the render too.
+        if !released && start * 4 >= frames * 3 {
+            plugin_note(&mut *processor, &mut host, false, NOTE, 0);
+            released = true;
+        }
+        processor.render_block(&mut left[start..end], &mut right[start..end]);
+    }
+
+    let rms = ((left.iter().chain(right.iter()))
+        .map(|s| (*s as f64) * (*s as f64))
+        .sum::<f64>()
+        / (2 * frames) as f64)
+        .sqrt();
+    let peak = left
+        .iter()
+        .chain(right.iter())
+        .fold(0.0f32, |max, s| max.max(s.abs()));
+    let interleaved: Vec<f32> = left
+        .iter()
+        .zip(right.iter())
+        .flat_map(|(l, r)| [*l, *r])
+        .collect();
+    audio::wav_writer::write_pcm_f32_to_wav(out, &interleaved, RATE, 2)
+        .map_err(|e| e.to_string())?;
+
+    let backend = processor.backend();
+    println!("📦 {path}");
+    println!("  backend:    {backend}");
+    println!(
+        "  sandbox:    {}",
+        if backend.contains("sandbox") { "yes" } else { "no" }
+    );
+    println!("  latency:    {} frames (reported)", processor.latency_frames());
+    println!(
+        "  notes:      {}",
+        if notes {
+            "note-on 60 vel 102"
+        } else {
+            "none — the plugin is not an instrument"
+        }
+    );
+    if sine {
+        println!("  input:      440 Hz sine at {TONE_PEAK}");
+    }
+    println!(
+        "  frames:     {frames} ({:.2} s @ {RATE} Hz)",
+        frames as f32 / RATE as f32
+    );
+    println!("  RMS:        {rms:.6}");
+    println!("  peak:       {peak:.6}");
+    println!("  wrote:      {out}");
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Out-of-process plugin sandbox worker (Fas 4.5a): re-executed self with a
     // flag. This must run before any banner output so stdout stays a clean
@@ -734,54 +862,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(if failed == 0 { 0 } else { 1 });
     }
 
-    // `sonix --render-plugin <plugin> <ut.wav>`: kör en ton genom en **riktig** plugin utan
-    // GUI och skriver resultatet. Det är kvittensen för bryggan: att en fil laddar säger bara
-    // att ABI:n stämmer, att ljudet ändras säger att DSP:n faktiskt kör.
+    // `sonix --render-plugin <plugin> <sekunder> <ut.wav> [--sandbox]`: skickar en not
+    // genom en **riktig** plugin utan GUI och skriver det den spelar. En fil som laddar
+    // säger bara att ABI:n stämmer — att det kommer ljud säger att DSP:n faktiskt kör.
+    // `--sandbox` kör samma render i arbetsprocessen i stället för här.
     if let Some(pos) = std::env::args().position(|a| a == "--render-plugin") {
-        let path = match std::env::args().nth(pos + 1) {
-            Some(p) => p,
-            None => {
-                eprintln!("användning: sonix --render-plugin <plugin.vst3|.clap> [ut.wav]");
-                std::process::exit(2);
-            }
+        let rest: Vec<String> = std::env::args().skip(pos + 1).collect();
+        let sandbox = rest.iter().any(|a| a == "--sandbox");
+        let sine = rest.iter().any(|a| a == "--sine");
+        let args: Vec<&String> = rest
+            .iter()
+            .filter(|a| *a != "--sandbox" && *a != "--sine")
+            .collect();
+        let seconds = args
+            .get(1)
+            .and_then(|s| s.parse::<f32>().ok())
+            .filter(|s| *s > 0.0);
+        let (Some(path), Some(seconds), Some(out)) = (args.first(), seconds, args.get(2)) else {
+            eprintln!(
+                "usage: sonix --render-plugin <plugin> <seconds> <out.wav> [--sandbox] [--sine]"
+            );
+            std::process::exit(2);
         };
-        let out = std::env::args()
-            .nth(pos + 2)
-            .unwrap_or_else(|| "plugin_render.wav".to_string());
-        let frames = 48_000usize;
-        let block = 512usize;
-        let mut left = vec![0.0f32; frames];
-        let mut right = vec![0.0f32; frames];
-        for i in 0..frames {
-            let v = (i as f32 * 440.0 * std::f32::consts::TAU / 48_000.0).sin() * 0.2;
-            left[i] = v;
-            right[i] = v;
-        }
-        let dry: Vec<f32> = left.clone();
-        match audio::plugin_host_live::load_processor(&path, 48_000.0, block as u32) {
-            Ok(mut proc) => {
-                for start in (0..frames).step_by(block) {
-                    let end = (start + block).min(frames);
-                    proc.process_stereo(&mut left[start..end], &mut right[start..end]);
-                }
-                let rms = |v: &[f32]| (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
-                let diff: f32 = left
-                    .iter()
-                    .zip(dry.iter())
-                    .map(|(a, b)| (a - b).abs())
-                    .fold(0.0, f32::max);
-                let _ = audio::wav_writer::write_pcm_f32_to_wav(&out, &left, 48_000, 1);
-                println!("📦 {path}");
-                println!("  backend: {}", proc.backend());
-                println!("  RMS in:  {:.5}", rms(&dry));
-                println!("  RMS ut:  {:.5}", rms(&left));
-                println!("  största skillnad mot torrt: {diff:.5}");
-                println!("  skrev:   {out}");
-            }
-            Err(e) => {
-                eprintln!("⚠ {path}: {e}");
-                std::process::exit(1);
-            }
+        if let Err(e) = render_plugin(path, seconds, out, sandbox, sine) {
+            eprintln!("⚠ {path}: {e}");
+            std::process::exit(1);
         }
         std::process::exit(0);
     }
@@ -1019,4 +1124,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(Box::new(app))
         }),
     ).map_err(|e| format!("Could not start the window: {}", e).into())
+}
+
+#[cfg(test)]
+mod render_plugin_tests {
+    use super::render_plugin;
+
+    /// One note through the bridged Massive X, in process — the measurement the
+    /// command exists for. Skips with a printed message where the plugin is not
+    /// installed: the suite must not depend on a user's plugin folder.
+    #[test]
+    fn massive_x_renders_a_note_in_process() {
+        let home = std::env::var("HOME").unwrap_or_default();
+        let plugin = format!("{home}/.vst3/yabridge/Massive XL.vst3");
+        if !std::path::Path::new(&plugin).exists() {
+            println!("skipped: {plugin} is not installed");
+            return;
+        }
+        let out = std::env::temp_dir().join("sonix_render_plugin_test.wav");
+        let out = out.to_str().expect("a UTF-8 temp path");
+        render_plugin(&plugin, 0.5, out, false, false).expect("the render must not fail");
+        let written = std::fs::metadata(out).expect("the WAV must exist").len();
+        assert!(written > 44, "expected a WAV header and audio, got {written} bytes");
+        std::fs::remove_file(out).ok();
+    }
 }
