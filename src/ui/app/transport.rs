@@ -1713,7 +1713,7 @@ pub(crate) fn run_piano_script(&mut self) {
 /// **Projektskriptet:** kopian byggs ur appens tempo och kanalsteg, körs i sandlådan och
 /// skrivs tillbaka bara om skriptet gick igenom.
 pub(crate) fn run_project_script(&mut self, text: &str) {
-    use crate::audio::project_script::{Ctx, ScriptChannel, run};
+    use crate::audio::project_script::{Ctx, ScriptChannel, ScriptClip, run};
     let mut ctx = Ctx {
         bpm: self.bpm,
         pattern_count: self.patterns.len(),
@@ -1723,17 +1723,44 @@ pub(crate) fn run_project_script(&mut self, text: &str) {
             .map(|c| ScriptChannel {
                 name: c.name.clone(),
                 steps: c.steps.to_vec(),
+                volume: c.volume,
+                mute: c.muted,
             })
+            .collect(),
+        // One clip per channel: its step grid is the track's first clip.
+        clips: self
+            .channels
+            .iter()
+            .enumerate()
+            .map(|(track, c)| ScriptClip::from_grid(track, &c.steps, &c.notes))
             .collect(),
     };
     match run(text, &mut ctx) {
         Ok(log) => {
             self.push_undo("📜 Projektskript");
             self.set_project_bpm(ctx.bpm);
-            for (channel, scripted) in self.channels.iter_mut().zip(ctx.channels.iter()) {
+            for (index, (channel, scripted)) in
+                self.channels.iter_mut().zip(ctx.channels.iter()).enumerate()
+            {
                 // Längden kan skilja i ett äldre projekt: bara det som får plats skrivs.
                 for (slot, value) in channel.steps.iter_mut().zip(scripted.steps.iter()) {
                     *slot = *value;
+                }
+                channel.name = scripted.name.clone();
+                channel.volume = scripted.volume;
+                channel.muted = scripted.mute;
+                // Notes go back into the grid of the track's first clip — but only if the script
+                // changed that clip, so a script that only walks the step grid keeps its steps.
+                if let Some(grid) = ctx.edited_grid(index) {
+                    for (step, cell) in grid.iter().enumerate() {
+                        match cell {
+                            Some(note) => {
+                                channel.steps[step] = true;
+                                channel.notes[step] = *note;
+                            }
+                            None => channel.steps[step] = false,
+                        }
+                    }
                 }
             }
             self.status_message = if log.is_empty() {

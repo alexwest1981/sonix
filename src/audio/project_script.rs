@@ -2,13 +2,84 @@
 //! stället för en tagning — tempo, kanaler och deras steg. Skriptet får en **kopia** av det det
 //! rör, precis som tagning-skriptet: går det inte igenom skrivs ingenting tillbaka.
 //!
+//! # The project API (identical in Rhai and Lua)
+//!
+//! Indices are zero-based. `track` indexes a channel; a track's clips come from the project, and
+//! a track's first clip is its step grid. Anything outside range is a script **error** — never a
+//! panic and never a silent no-op.
+//!
+//! | function | meaning |
+//! |---|---|
+//! | `bpm()` / `set_bpm(v)` | project tempo, clamped to 20–999 |
+//! | `pattern_count()` | number of patterns |
+//! | `steps()` | steps in the longest channel |
+//! | `track_count()` | number of tracks |
+//! | `track_name(i)` / `set_track_name(i, s)` | track name |
+//! | `track_volume(i)` / `set_track_volume(i, v)` | 0.0–1.0, clamped |
+//! | `track_mute(i)` / `set_track_mute(i, on)` | mute flag |
+//! | `clip_count(track)` | clips on a track |
+//! | `clip_len(track, clip)` / `set_clip_len(track, clip, steps)` | clip length, 1–64 steps |
+//! | `note_count(track, clip)` | notes in a clip |
+//! | `note_at(track, clip, idx)` | `{step, note, velocity}` |
+//! | `add_note(track, clip, step, note, velocity)` | inserts, kept sorted by `step` |
+//! | `clear_notes(track, clip)` | removes the clip's notes |
+//! | `log(s)` / `print(s)` | the log sink |
+//! | `sample_seconds(p)` / `sample_rate(p)` / `sample_frames(p)` | WAV header only; 0 if unreadable |
+//!
+//! The older channel surface — `channel_count`, `channel_name`, `step`, `set_step`,
+//! `clear_channel` — still works unchanged and stays lenient with bad indices.
+//!
 //! Status: stabil — egen körningsyta, egna prov.
 
-/// Kanalen som skriptet ser den: namn och de 64 stegen.
+/// One note in a clip: position in steps, MIDI note number and velocity 0.0–1.0.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScriptNote {
+    pub step: usize,
+    pub note: u8,
+    pub velocity: f32,
+}
+
+/// One clip on one track. The app keeps a step grid per channel, so the caller builds a track's
+/// clip 0 from that grid; `len_steps` is how much of it the clip covers.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ScriptClip {
+    pub track: usize,
+    pub len_steps: usize,
+    pub notes: Vec<ScriptNote>,
+    /// Set once the script changed this clip's notes. Only then does the clip, rather than the
+    /// channel's own steps, decide what the grid holds after the run.
+    pub edited: bool,
+}
+
+impl ScriptClip {
+    /// The app's step grid as the track's first clip. Steps are 0-based; a step that is off is
+    /// simply not a note.
+    pub fn from_grid(track: usize, steps: &[bool], notes: &[u8]) -> Self {
+        let notes = steps
+            .iter()
+            .zip(notes.iter())
+            .enumerate()
+            .filter(|(_, (on, _))| **on)
+            .map(|(step, (_, note))| ScriptNote { step, note: *note, velocity: 1.0 })
+            .collect();
+        Self { track, len_steps: steps.len(), notes, edited: false }
+    }
+}
+
+/// Kanalen som skriptet ser den: namn, volym, mute och de 64 stegen.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ScriptChannel {
     pub name: String,
     pub steps: Vec<bool>,
+    pub volume: f32,
+    pub mute: bool,
+}
+
+impl ScriptChannel {
+    #[cfg(test)]
+    pub fn new(name: &str, steps: Vec<bool>) -> Self {
+        Self { name: name.to_string(), steps, volume: 1.0, mute: false }
+    }
 }
 
 /// Projektets yta. Bara det här får ett skript röra — ingen motor, inga filer, inga nätanrop.
@@ -17,13 +88,191 @@ pub struct Ctx {
     pub bpm: f32,
     pub pattern_count: usize,
     pub channels: Vec<ScriptChannel>,
+    /// Clips, flat and grouped by `track`. The n-th clip of a track is `clip` index n.
+    pub clips: Vec<ScriptClip>,
 }
+
+/// Clip length the surface accepts: the step grid is 64 steps wide.
+const MAX_CLIP_STEPS: i64 = 64;
 
 impl Ctx {
     /// Steglängden som skriptet arbetar mot. Alla kanaler har samma antal steg i appen, men
     /// kopian kan vara kortare i ett äldre projekt — den längsta vinner.
     pub fn steps(&self) -> usize {
         self.channels.iter().map(|c| c.steps.len()).max().unwrap_or(0)
+    }
+
+    // ---- indices ------------------------------------------------------------------------
+
+    fn track_index(&self, track: i64) -> Result<usize, String> {
+        usize::try_from(track)
+            .ok()
+            .filter(|i| *i < self.channels.len())
+            .ok_or_else(|| format!("track {track} is outside 0..{}", self.channels.len()))
+    }
+
+    /// Position in `clips` of the `clip`-th clip on `track`.
+    fn clip_index(&self, track: i64, clip: i64) -> Result<usize, String> {
+        let track_index = self.track_index(track)?;
+        let count = self.clips.iter().filter(|c| c.track == track_index).count();
+        let nth = usize::try_from(clip)
+            .ok()
+            .filter(|i| *i < count)
+            .ok_or_else(|| format!("clip {clip} on track {track_index} is outside 0..{count}"))?;
+        self.clips
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.track == track_index)
+            .nth(nth)
+            .map(|(at, _)| at)
+            .ok_or_else(|| format!("clip {clip} on track {track_index} is outside 0..{count}"))
+    }
+
+    // ---- tracks -------------------------------------------------------------------------
+
+    pub fn track_count(&self) -> i64 {
+        self.channels.len() as i64
+    }
+
+    pub fn track_name(&self, track: i64) -> Result<String, String> {
+        let at = self.track_index(track)?;
+        Ok(self.channels[at].name.clone())
+    }
+
+    pub fn set_track_name(&mut self, track: i64, name: &str) -> Result<(), String> {
+        let at = self.track_index(track)?;
+        self.channels[at].name = name.to_string();
+        Ok(())
+    }
+
+    pub fn track_volume(&self, track: i64) -> Result<f64, String> {
+        let at = self.track_index(track)?;
+        Ok(self.channels[at].volume as f64)
+    }
+
+    pub fn set_track_volume(&mut self, track: i64, value: f64) -> Result<(), String> {
+        let at = self.track_index(track)?;
+        // Same range as the mixer's volume knob.
+        self.channels[at].volume = (value as f32).clamp(0.0, 1.0);
+        Ok(())
+    }
+
+    pub fn track_mute(&self, track: i64) -> Result<bool, String> {
+        let at = self.track_index(track)?;
+        Ok(self.channels[at].mute)
+    }
+
+    pub fn set_track_mute(&mut self, track: i64, on: bool) -> Result<(), String> {
+        let at = self.track_index(track)?;
+        self.channels[at].mute = on;
+        Ok(())
+    }
+
+    // ---- clips and notes ----------------------------------------------------------------
+
+    pub fn clip_count(&self, track: i64) -> Result<i64, String> {
+        let track_index = self.track_index(track)?;
+        Ok(self.clips.iter().filter(|c| c.track == track_index).count() as i64)
+    }
+
+    pub fn clip_len(&self, track: i64, clip: i64) -> Result<i64, String> {
+        let at = self.clip_index(track, clip)?;
+        Ok(self.clips[at].len_steps as i64)
+    }
+
+    pub fn set_clip_len(&mut self, track: i64, clip: i64, steps: i64) -> Result<(), String> {
+        let at = self.clip_index(track, clip)?;
+        let len_steps = steps.clamp(1, MAX_CLIP_STEPS) as usize;
+        self.clips[at].len_steps = len_steps;
+        self.clips[at].edited = true;
+        // A shorter clip cannot hold notes past its end.
+        self.clips[at].notes.retain(|n| n.step < len_steps);
+        self.sync_grid(track, at);
+        Ok(())
+    }
+
+    pub fn note_count(&self, track: i64, clip: i64) -> Result<i64, String> {
+        let at = self.clip_index(track, clip)?;
+        Ok(self.clips[at].notes.len() as i64)
+    }
+
+    pub fn note_at(&self, track: i64, clip: i64, index: i64) -> Result<ScriptNote, String> {
+        let at = self.clip_index(track, clip)?;
+        let notes = &self.clips[at].notes;
+        usize::try_from(index)
+            .ok()
+            .and_then(|i| notes.get(i))
+            .cloned()
+            .ok_or_else(|| format!("note {index} is outside 0..{}", notes.len()))
+    }
+
+    pub fn add_note(
+        &mut self,
+        track: i64,
+        clip: i64,
+        step: i64,
+        note: i64,
+        velocity: f64,
+    ) -> Result<(), String> {
+        let at = self.clip_index(track, clip)?;
+        let len = self.clips[at].len_steps;
+        let step_index = usize::try_from(step)
+            .ok()
+            .filter(|s| *s < len)
+            .ok_or_else(|| format!("step {step} is outside clip {clip} on track {track} (0..{len})"))?;
+        let note_number = u8::try_from(note)
+            .map_err(|_| format!("note {note} is not a MIDI note (0..127)"))?;
+        let velocity = (velocity as f32).clamp(0.0, 1.0);
+        let clip_ref = &mut self.clips[at];
+        let position = clip_ref.notes.partition_point(|n| n.step <= step_index);
+        clip_ref.notes.insert(position, ScriptNote { step: step_index, note: note_number, velocity });
+        clip_ref.edited = true;
+        self.sync_grid(track, at);
+        Ok(())
+    }
+
+    pub fn clear_notes(&mut self, track: i64, clip: i64) -> Result<(), String> {
+        let at = self.clip_index(track, clip)?;
+        self.clips[at].notes.clear();
+        self.clips[at].edited = true;
+        self.sync_grid(track, at);
+        Ok(())
+    }
+
+    /// What the track's step grid must hold after the run: `None` for a step that is off, else
+    /// the MIDI note. `None` for the whole track means the script never touched its notes, so
+    /// the channel's own steps stay as the script left them.
+    pub fn edited_grid(&self, track: usize) -> Option<Vec<Option<u8>>> {
+        let clip = self
+            .clips
+            .iter()
+            .find(|c| c.track == track)
+            .filter(|c| c.edited)?;
+        Some(
+            (0..self.channels.get(track)?.steps.len())
+                .map(|step| {
+                    clip.notes
+                        .iter()
+                        .find(|n| n.step == step)
+                        .filter(|_| step < clip.len_steps)
+                        .map(|n| n.note)
+                })
+                .collect(),
+        )
+    }
+
+    /// Keeps a track's step grid and its first clip saying the same thing: a clip edit shows up
+    /// in the grid too, so a script can mix both surfaces without one silently winning.
+    fn sync_grid(&mut self, track: i64, at: usize) {
+        let Ok(track) = usize::try_from(track) else { return };
+        if self.clips.iter().position(|c| c.track == track) != Some(at) {
+            return;
+        }
+        let clip = &self.clips[at];
+        let Some(channel) = self.channels.get_mut(track) else { return };
+        for (step, slot) in channel.steps.iter_mut().enumerate() {
+            *slot = step < clip.len_steps && clip.notes.iter().any(|n| n.step == step);
+        }
     }
 }
 
@@ -43,6 +292,13 @@ pub fn run_named(source: &str, name: &str, ctx: &mut Ctx) -> Result<Vec<String>,
     } else {
         run_rhai(source, ctx)
     }
+}
+
+/// A refused index reaches the script as a runtime error with the host's own message.
+fn api<T>(result: Result<T, String>) -> Result<T, Box<rhai::EvalAltResult>> {
+    result.map_err(|e| {
+        Box::new(rhai::EvalAltResult::ErrorRuntime(e.into(), rhai::Position::NONE))
+    })
 }
 
 fn run_rhai(source: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
@@ -122,6 +378,97 @@ fn run_rhai(source: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
         });
     }
 
+    // The project surface. Same names, same meanings as the Lua edition.
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("track_count", move || shared.borrow().track_count());
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("track_name", move |track: i64| {
+            api(shared.borrow().track_name(track))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("set_track_name", move |track: i64, name: &str| {
+            api(shared.borrow_mut().set_track_name(track, name))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("track_volume", move |track: i64| {
+            api(shared.borrow().track_volume(track))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("set_track_volume", move |track: i64, value: f64| {
+            api(shared.borrow_mut().set_track_volume(track, value))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("track_mute", move |track: i64| {
+            api(shared.borrow().track_mute(track))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("set_track_mute", move |track: i64, on: bool| {
+            api(shared.borrow_mut().set_track_mute(track, on))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("clip_count", move |track: i64| api(shared.borrow().clip_count(track)));
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("clip_len", move |track: i64, clip: i64| {
+            api(shared.borrow().clip_len(track, clip))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("set_clip_len", move |track: i64, clip: i64, steps: i64| {
+            api(shared.borrow_mut().set_clip_len(track, clip, steps))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("note_count", move |track: i64, clip: i64| {
+            api(shared.borrow().note_count(track, clip))
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("note_at", move |track: i64, clip: i64, index: i64| {
+            api(shared.borrow().note_at(track, clip, index)).map(|n| {
+                let mut map = rhai::Map::new();
+                map.insert("step".into(), rhai::Dynamic::from_int(n.step as i64));
+                map.insert("note".into(), rhai::Dynamic::from_int(n.note as i64));
+                map.insert("velocity".into(), rhai::Dynamic::from_float(n.velocity as f64));
+                map
+            })
+        });
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn(
+            "add_note",
+            move |track: i64, clip: i64, step: i64, note: i64, velocity: f64| {
+                api(shared.borrow_mut().add_note(track, clip, step, note, velocity))
+            },
+        );
+    }
+    {
+        let shared = std::rc::Rc::clone(&shared);
+        engine.register_fn("clear_notes", move |track: i64, clip: i64| {
+            api(shared.borrow_mut().clear_notes(track, clip))
+        });
+    }
+
     // **Samplingshuvud, inte samplingsdata.** Skriptet får längd och format på en fil utan att
     // någon lastar in den; en oläsbar fil ger 0 i stället för att avbryta skriptet.
     engine.register_fn("sample_seconds", |path: &str| -> f64 {
@@ -145,6 +492,18 @@ fn run_rhai(source: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
         let sink = std::rc::Rc::clone(&sink);
         engine.on_print(move |text| sink.borrow_mut().push(text.to_string()));
     }
+    {
+        // `log` is the same sink as `print`. One registration per type: Rhai's standard package
+        // owns a `log(f64)` of its own (the natural logarithm), and a wildcard parameter would
+        // lose to it, so each type is spelled out.
+        macro_rules! log_fn {
+            ($($ty:ty),* $(,)?) => {$(
+                let logger = std::rc::Rc::clone(&sink);
+                engine.register_fn("log", move |value: $ty| logger.borrow_mut().push(value.to_string()));
+            )*};
+        }
+        log_fn!(f64, i64, bool, rhai::ImmutableString);
+    }
     if let Err(e) = engine.run(source) {
         return Err(format!("{e}"));
     }
@@ -164,8 +523,12 @@ mod tests {
             bpm: 124.0,
             pattern_count: 3,
             channels: vec![
-                ScriptChannel { name: "Kick".into(), steps: vec![false; 16] },
-                ScriptChannel { name: "Snare".into(), steps: vec![false; 16] },
+                ScriptChannel::new("Kick", vec![false; 16]),
+                ScriptChannel::new("Snare", vec![false; 16]),
+            ],
+            clips: vec![
+                ScriptClip::from_grid(0, &[false; 16], &[60; 16]),
+                ScriptClip::from_grid(1, &[false; 16], &[60; 16]),
             ],
         }
     }
@@ -234,5 +597,63 @@ mod tests {
         let mut plain = ctx();
         run_named("set_bpm(150.0)", "drums.rhai", &mut plain).unwrap();
         assert_eq!(plain.bpm, 150.0);
+    }
+
+    /// (d) The older twelve-function surface still works after the project API landed.
+    #[test]
+    fn the_old_surface_still_works() {
+        let mut c = ctx();
+        let log = run(
+            "set_bpm(140.0); set_step(0, 0, true); clear_channel(1); \
+             print(bpm()); print(pattern_count()); print(steps()); print(channel_count()); \
+             print(channel_name(0)); print(step(0, 0)); print(sample_frames(\"/finns/inte.wav\"));",
+            &mut c,
+        )
+        .unwrap();
+        assert_eq!(log, vec!["140.0", "3", "16", "2", "Kick", "true", "0"]);
+        assert!(c.channels[0].steps[0]);
+    }
+
+    #[test]
+    fn clips_report_their_notes_and_length() {
+        let mut c = ctx();
+        run(
+            "set_clip_len(0, 0, 8); add_note(0, 0, 4, 60, 0.5); add_note(0, 0, 0, 36, 1.0);",
+            &mut c,
+        )
+        .unwrap();
+        assert_eq!(c.clips[0].len_steps, 8);
+        assert_eq!(c.clips[0].notes.len(), 2);
+        assert_eq!(c.clips[0].notes[0].step, 0, "notes stay sorted by step");
+        assert!(c.channels[0].steps[0] && c.channels[0].steps[4], "the grid follows the clip");
+
+        run("clear_notes(0, 0);", &mut c).unwrap();
+        assert!(c.clips[0].notes.is_empty());
+        assert!(c.channels[0].steps.iter().all(|s| !*s));
+    }
+
+    /// What the app writes back: a clip the script edited decides the grid, an untouched clip
+    /// leaves the channel's own steps alone.
+    #[test]
+    fn only_an_edited_clip_overrides_the_step_grid() {
+        let mut steps_only = ctx();
+        run("set_step(0, 3, true);", &mut steps_only).unwrap();
+        assert_eq!(steps_only.edited_grid(0), None, "steps alone stay the grid's business");
+
+        let mut notes = ctx();
+        run("add_note(0, 0, 3, 48, 0.9);", &mut notes).unwrap();
+        let grid = notes.edited_grid(0).expect("an added note is an edit");
+        assert_eq!(grid[3], Some(48));
+        assert_eq!(grid[2], None);
+        assert_eq!(grid.len(), 16);
+
+        let mut shortened = ctx();
+        run("add_note(0, 0, 12, 48, 0.9); set_clip_len(0, 0, 8);", &mut shortened).unwrap();
+        let grid = shortened.edited_grid(0).unwrap();
+        assert_eq!(grid[12], None, "a note past the clip's end is not written back");
+
+        let mut cleared = ctx();
+        run("add_note(0, 0, 3, 48, 0.9); clear_notes(0, 0);", &mut cleared).unwrap();
+        assert!(cleared.edited_grid(0).unwrap().iter().all(Option::is_none));
     }
 }
