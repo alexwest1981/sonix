@@ -49,6 +49,7 @@ use super::widgets::{
 // inte göra sina fält publika för att en syskonmodul ska kunna läsa dem.
 pub mod script;
 pub mod state;
+pub mod suno_form;
 pub use state::*;
 
 mod project;
@@ -138,8 +139,19 @@ pub type SharedResult<T> = std::sync::Arc<std::sync::Mutex<Option<Result<T, Stri
 /// What the Suno panel's one background slot can return: the tool list after sign-in, or a
 /// generated song. Connect and create never run at the same time, so they share the slot.
 pub enum SunoTask {
-    Connected(Vec<String>),
+    /// Everything the panel needs to draw itself: the server's tool names, the generation tool's
+    /// own schema, and the voices it exposes (empty when it has none, with a hint saying why).
+    Connected {
+        tools: Vec<String>,
+        tool_name: Option<String>,
+        schema: Option<serde_json::Value>,
+        voices: Vec<(String, String)>,
+        voice_hint: Option<String>,
+        voice_param: Option<String>,
+    },
     Generated(crate::audio::suno::GeneratedSong),
+    /// The user's own library, as the server listed it.
+    Library(Vec<crate::audio::suno::SunoSong>),
 }
 
 pub struct SonixApp {
@@ -570,8 +582,6 @@ pub struct SonixApp {
     pub export_preset_idx: usize,
     // Suno AI Prompt Bar & Studio Timeline View
     pub suno_prompt_input: String,
-    pub suno_style_input: String,
-    pub suno_lyrics_input: String,
     /// The Suno panel. `suno_tools` is what the server's own `tools/list` returned, so a beta
     /// surface that differs from our guesses is visible in the UI instead of hidden.
     pub show_suno_modal: bool,
@@ -583,6 +593,16 @@ pub struct SonixApp {
     /// Adressen som inloggningen väntar på. Webbläsaren öppnas automatiskt, men går det inte
     /// är det här den enda vägen in — därför visas den i panelen.
     pub suno_login_url: std::sync::Arc<std::sync::Mutex<Option<String>>>,
+    /// Formuläret, ritat ur generation-verktygets schema.
+    pub suno_form: Vec<(String, crate::ui::app::suno_form::SunoField)>,
+    pub suno_tool_name: Option<String>,
+    pub suno_voices: Vec<(String, String)>,
+    pub suno_voice_choice: usize,
+    pub suno_voice_hint: Option<String>,
+    pub suno_voice_param: Option<String>,
+    /// The user's Suno library: browse what already exists and pull any of it in.
+    pub suno_library: Vec<crate::audio::suno::SunoSong>,
+    pub suno_library_query: String,
     pub suno_model_version: String,
     pub suno_context_clip: Option<String>,
     pub suno_is_generating: bool,
@@ -1306,11 +1326,17 @@ impl SonixApp {
             export_preset_idx: 0,
             // Suno AI Prompt Bar & Studio Timeline View
             suno_prompt_input: crate::i18n::t("Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll").to_string(),
-            suno_style_input: String::new(),
-            suno_lyrics_input: String::new(),
             show_suno_modal: false,
             suno_status: String::new(),
             suno_login_url: std::sync::Arc::new(std::sync::Mutex::new(None)),
+            suno_form: Vec::new(),
+            suno_tool_name: None,
+            suno_voices: Vec::new(),
+            suno_voice_choice: 0,
+            suno_voice_hint: None,
+            suno_voice_param: None,
+            suno_library: Vec::new(),
+            suno_library_query: String::new(),
             suno_tools: Vec::new(),
             suno_last: None,
             suno_pending: None,

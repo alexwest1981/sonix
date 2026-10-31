@@ -677,9 +677,36 @@ impl SonixApp {
         .to_string();
         let slot_url = self.suno_login_url.clone();
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect_with_slot(Some(slot_url)).map(|session| {
-                SunoTask::Connected(session.tools().iter().map(|t| t.name.clone()).collect())
-            });
+            let result = crate::audio::suno::SunoSession::connect_with_slot(Some(slot_url)).and_then(
+                |mut session| {
+                    let tools: Vec<String> =
+                        session.tools().iter().map(|t| t.name.clone()).collect();
+                    let tool_name = session.generation_tool().map(|t| t.name.clone());
+                    let schema = session.generation_schema();
+                    let voice_param = session.voice_param();
+                    // Voices are best-effort: a server without one is a normal beta surface, not
+                    // an error, and the hint says what is missing.
+                    let voices = match session.voices() {
+                        Ok(list) => list
+                            .into_iter()
+                            .map(|v| (v.id, v.name))
+                            .collect::<Vec<_>>(),
+                        Err(e) => {
+                            println!("suno: voices unavailable ({e})");
+                            Vec::new()
+                        }
+                    };
+                    let voice_hint = session.voices_hint();
+                    Ok(SunoTask::Connected {
+                        tools,
+                        tool_name,
+                        schema,
+                        voices,
+                        voice_hint,
+                        voice_param,
+                    })
+                },
+            );
             if let Ok(mut guard) = slot.lock() {
                 *guard = Some(result);
             }
@@ -697,18 +724,82 @@ impl SonixApp {
             self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
             return;
         }
-        // shortcut: create connects again from the saved tokens instead of holding a session,
+        // Formuläret är det som skickas: panelen har ritat det ur verktygets schema, så varje
+        // fält bär serverns eget namn.
+        let mut fields = self.suno_form.clone();
+        if let Some(slot) = crate::ui::app::suno_form::text_field_mut(
+            &mut fields,
+            &["prompt", "description", "idea"],
+        ) {
+            *slot = prompt.clone();
+        }
+        if !self.suno_voices.is_empty()
+            && let Some(param) = self.suno_voice_param.clone()
+            && let Some((voice_id, _)) = self.suno_voices.get(self.suno_voice_choice)
+            && let Some((_, field)) = fields.iter_mut().find(|(name, _)| *name == param)
+        {
+            *field = crate::ui::app::suno_form::SunoField::Text {
+                value: voice_id.clone(),
+                multiline: false,
+            };
+        }
+        let mut args = crate::ui::app::suno_form::args_from_form(&fields);
+        if args.get("prompt").is_none() && args.get("description").is_none() {
+            if let Some(object) = args.as_object_mut() {
+                object.insert("prompt".to_string(), serde_json::json!(prompt));
+            }
+        }
+        // `shortcut:` create connects again from the saved tokens instead of holding a session,
         // upgrade if the handshake ever costs real time.
-        let style = Some(self.suno_style_input.trim().to_string()).filter(|s| !s.is_empty());
-        let lyrics = Some(self.suno_lyrics_input.trim().to_string()).filter(|s| !s.is_empty());
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
         self.suno_pending = Some(slot.clone());
-        self.suno_status = crate::i18n::t("⏳ Suno is creating the song…").to_string();
+        self.suno_status = crate::tstatus!("⏳ Suno is creating: {args}");
         std::thread::spawn(move || {
             let result = crate::audio::suno::SunoSession::connect()
-                .and_then(|mut session| {
-                    session.generate(&prompt, style.as_deref(), lyrics.as_deref())
-                })
+                .and_then(|mut session| session.generate_with(args))
+                .map(SunoTask::Generated);
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Lists the user's own Suno library on a background thread.
+    pub fn suno_load_library(&mut self) {
+        if self.suno_pending.is_some() {
+            self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
+            return;
+        }
+        let query = self.suno_library_query.trim().to_string();
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_status = crate::i18n::t("⏳ Reading your Suno library…").to_string();
+        std::thread::spawn(move || {
+            let filter = Some(query.as_str()).filter(|q| !q.is_empty());
+            let result = crate::audio::suno::SunoSession::connect()
+                .and_then(|mut session| session.library(filter, 50))
+                .map(SunoTask::Library);
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Pulls one song from the library into the project (stems first) on a background thread.
+    pub fn suno_import_song(&mut self, index: usize) {
+        if self.suno_pending.is_some() {
+            self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
+            return;
+        }
+        let Some(song) = self.suno_library.get(index).cloned() else {
+            return;
+        };
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_status = crate::tstatus!("⏳ Downloading \"{}\"…", song.title);
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect()
+                .and_then(|mut session| session.download_song(&song))
                 .map(SunoTask::Generated);
             if let Ok(mut guard) = slot.lock() {
                 *guard = Some(result);
@@ -727,14 +818,39 @@ impl SonixApp {
         };
         self.suno_pending = None;
         match result {
-            Ok(SunoTask::Connected(tools)) => {
+            Ok(SunoTask::Connected {
+                tools,
+                tool_name,
+                schema,
+                voices,
+                voice_hint,
+                voice_param,
+            }) => {
                 self.suno_tools = tools;
-                self.suno_status = crate::i18n::t(
-                    "✔ Signed in. The tools the server exposes are listed below.",
-                )
-                .to_string();
+                self.suno_tool_name = tool_name;
+                self.suno_form = schema
+                    .as_ref()
+                    .map(crate::ui::app::suno_form::fields_from_schema)
+                    .unwrap_or_default();
+                self.suno_voices = voices;
+                self.suno_voice_hint = voice_hint;
+                self.suno_voice_param = voice_param;
+                self.suno_voice_choice = 0;
+                let field_count = self.suno_form.len();
+                self.suno_status = crate::tstatus!(
+                    "✔ Signed in — {} fields from the server's own schema, {} voices.",
+                    field_count,
+                    self.suno_voices.len()
+                );
+                if let Some(hint) = self.suno_voice_hint.clone() {
+                    println!("{hint}");
+                }
             }
             Ok(SunoTask::Generated(song)) => self.install_suno_song(song),
+            Ok(SunoTask::Library(songs)) => {
+                self.suno_status = crate::tstatus!("☀ {} songs in the library.", songs.len());
+                self.suno_library = songs;
+            }
             Err(error) => self.suno_status = error,
         }
     }

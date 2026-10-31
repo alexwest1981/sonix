@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.233] - 2026-10-31
+
+**Suno-panelen ritar sitt formulär ur serverns schema** (`ui::app::suno_form`): `enum` blir
+rullgardin, tal blir slider, bool blir kryssruta, sträng blir textfält — så vocal gender, duration,
+max mode, personalize, weirdness, style influence, variety och titel dyker upp för att **verktyget
+beskriver dem**, inte för att vi skrev in Sunos namn. Ett nytt fält i beta-ytan syns automatiskt.
+**Mätt** på ett referensschema: 9 fält med rätt sort (`vocal_gender` → `["female","male"]`,
+`weirdness` → 0,5, `max_mode` → kryssruta, `prompt` → flerradig), och formuläret blir exakt
+`{"prompt":"dark synthwave","vocal_gender":"male","weirdness":0.7,"max_mode":true}` — **orörda
+textfält skickas inte** (tom titel tvingar inte servern till `""`).
+
+**Voices och bibliotek.** `voices()` hittar ett voice/persona-verktyg med samma poängsättning
+(persona 5, voice 5, singer 3, artist 3) och listan blir en rullgardin; saknas verktyget visas en
+förklaring i stället för en tom rullgardin. `library()` listar hela Suno-biblioteket (sökning,
+paginering) och **📥 Import** hämtar en låt — stämmor först — in i projektet. Allt går via
+`generate_with(args)` / `download_song`, alltså samma nedladdning och samma import som förut.
+
 ## [0.9.232] - 2026-10-31
 
 **Inloggningen öppnar webbläsaren — och visar adressen.** `login_blocking` skrev bara adressen till

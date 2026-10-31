@@ -1542,26 +1542,92 @@ pub(crate) fn render_suno_modal(&mut self, ctx: &egui::Context) {
             }
 
             ui.separator();
+            // **Fälten kommer ur serverns eget schema.** Sunos panel har vocal gender, duration,
+            // max mode, personalize, weirdness, style influence, variety och titel; vi skriver
+            // inte in dem här, vi ritar det verktyget beskriver — då fungerar även de som inte
+            // fanns när det här skrevs.
             ui.horizontal(|ui| {
                 ui.label(crate::i18n::t("Prompt:"));
                 ui.add(
                     egui::TextEdit::singleline(&mut self.suno_prompt_input).desired_width(420.0),
                 );
             });
-            ui.horizontal(|ui| {
-                ui.label(crate::i18n::t("Style:"));
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.suno_style_input)
-                        .desired_width(420.0)
-                        .hint_text(crate::i18n::t("(optional)")),
+            if let Some(tool) = self.suno_tool_name.clone() {
+                ui.label(
+                    egui::RichText::new(format!("☀ {}", tool))
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().text_muted()),
                 );
-            });
-            ui.label(crate::i18n::t("Lyrics (optional):"));
-            ui.add(
-                egui::TextEdit::multiline(&mut self.suno_lyrics_input)
-                    .desired_rows(3)
-                    .desired_width(500.0),
-            );
+            }
+            // Voices: rullgardin när servern har några, annars en förklaring till varför den är tom.
+            if !self.suno_voices.is_empty() {
+                let current = self
+                    .suno_voices
+                    .get(self.suno_voice_choice)
+                    .map(|(_, name)| name.clone())
+                    .unwrap_or_default();
+                egui::ComboBox::from_label(crate::i18n::t("Voice"))
+                    .selected_text(current)
+                    .show_ui(ui, |ui| {
+                        for (index, (_, name)) in self.suno_voices.iter().enumerate() {
+                            ui.selectable_value(&mut self.suno_voice_choice, index, name);
+                        }
+                    });
+            } else if let Some(hint) = self.suno_voice_hint.clone() {
+                ui.label(
+                    egui::RichText::new(hint)
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().yellow()),
+                );
+            }
+            if !self.suno_form.is_empty() {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("☀ Options from the server's schema:"))
+                        .strong()
+                        .size(Theme::FONT_S),
+                );
+                for (name, field) in self.suno_form.iter_mut() {
+                    match field {
+                        crate::ui::app::suno_form::SunoField::Text { value, multiline } => {
+                            if *multiline {
+                                ui.label(name.as_str());
+                                ui.add(
+                                    egui::TextEdit::multiline(value)
+                                        .desired_rows(2)
+                                        .desired_width(500.0),
+                                );
+                            } else {
+                                ui.horizontal(|ui| {
+                                    ui.label(name.as_str());
+                                    ui.add(
+                                        egui::TextEdit::singleline(value).desired_width(320.0),
+                                    );
+                                });
+                            }
+                        }
+                        crate::ui::app::suno_form::SunoField::Bool(on) => {
+                            ui.checkbox(on, name.as_str());
+                        }
+                        crate::ui::app::suno_form::SunoField::Number { value, min, max } => {
+                            ui.horizontal(|ui| {
+                                ui.label(name.as_str());
+                                ui.add(egui::Slider::new(value, *min..=*max).fixed_decimals(2));
+                            });
+                        }
+                        crate::ui::app::suno_form::SunoField::Choice { options, selected } => {
+                            let current = options.get(*selected).cloned().unwrap_or_default();
+                            egui::ComboBox::from_label(name.as_str())
+                                .selected_text(current)
+                                .show_ui(ui, |ui| {
+                                    for (index, option) in options.iter().enumerate() {
+                                        ui.selectable_value(selected, index, option);
+                                    }
+                                });
+                        }
+                    }
+                }
+            }
             ui.add_space(4.0);
             if ui
                 .add_enabled(
@@ -1571,6 +1637,56 @@ pub(crate) fn render_suno_modal(&mut self, ctx: &egui::Context) {
                 .clicked()
             {
                 self.suno_create();
+            }
+
+            // **Biblioteket**: det som redan finns på Suno ska gå att jobba med här, inte bara
+            // det som skapas nu. Listan kommer från serverns egen listning.
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::t("Library:"));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.suno_library_query)
+                        .desired_width(260.0)
+                        .hint_text(crate::i18n::t("(optional) search")),
+                );
+                if ui
+                    .add_enabled(!pending, egui::Button::new(crate::i18n::t("📚 Load library")))
+                    .clicked()
+                {
+                    self.suno_load_library();
+                }
+            });
+            if !self.suno_library.is_empty() {
+                let count = self.suno_library.len();
+                let mut import: Option<usize> = None;
+                egui::ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
+                    for (index, song) in self.suno_library.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            let stems = if song.stem_urls.is_empty() { "" } else { " 🎚" };
+                            ui.label(
+                                egui::RichText::new(format!("{}{stems}", song.title))
+                                    .size(Theme::FONT_S),
+                            );
+                            if ui
+                                .add_enabled(
+                                    !pending,
+                                    egui::Button::new(crate::i18n::t("📥 Import")),
+                                )
+                                .clicked()
+                            {
+                                import = Some(index);
+                            }
+                        });
+                    }
+                });
+                if let Some(index) = import {
+                    self.suno_import_song(index);
+                }
+                ui.label(
+                    egui::RichText::new(format!("{count}"))
+                        .size(Theme::FONT_XS)
+                        .color(crate::ui::theme::palette().text_muted()),
+                );
             }
 
             if let Some(song) = &self.suno_last {
