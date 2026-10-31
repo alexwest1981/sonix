@@ -27,7 +27,7 @@ log("noter: " .. note_count(0, 0))
 ```
 
 ```python
---!python
+# --!python
 set_bpm(140)
 set_track_name(0, "Kick")
 add_note(0, 0, 0, 36, 1.0)

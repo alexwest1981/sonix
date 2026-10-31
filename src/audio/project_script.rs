@@ -288,10 +288,17 @@ pub fn run(source: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
 /// feature is an error, never a silent Rhai run of the wrong language.
 pub fn run_named(source: &str, name: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
     let first = source.lines().next().unwrap_or("").trim();
+    // **Rubriken är ett val, inte kod.** `--!lua` är en giltig kommentar i Lua men inte i Python
+    // (`--` betyder något annat där) och inte i Rhai alls, så raden tas bort innan motorn ser den.
+    let body = if matches!(first, "--!lua" | "--!python" | "--!rhai") {
+        source.split_once('\n').map(|(_, rest)| rest).unwrap_or("")
+    } else {
+        source
+    };
     if name.ends_with(".py") || first == "--!python" {
         #[cfg(feature = "python")]
         {
-            return crate::audio::python_script::run(source, ctx);
+            return crate::audio::python_script::run(body, ctx);
         }
         #[cfg(not(feature = "python"))]
         {
@@ -303,9 +310,9 @@ pub fn run_named(source: &str, name: &str, ctx: &mut Ctx) -> Result<Vec<String>,
     }
     let wants_lua = name.ends_with(".lua") || first == "--!lua";
     if wants_lua {
-        crate::audio::lua_script::run(source, ctx)
+        crate::audio::lua_script::run(body, ctx)
     } else {
-        run_rhai(source, ctx)
+        run_rhai(body, ctx)
     }
 }
 
@@ -699,5 +706,25 @@ mod tests {
         let mut cleared = ctx();
         run("add_note(0, 0, 3, 48, 0.9); clear_notes(0, 0);", &mut cleared).unwrap();
         assert!(cleared.edited_grid(0).unwrap().iter().all(Option::is_none));
+    }
+
+    /// **Rubrikraden körs inte som kod.** `--!python` är ingen giltig Python-kommentar, så raden
+    /// måste bort innan motorn ser den — annars fälls varje skript som använder rubriken.
+    #[test]
+    fn the_language_header_is_not_executed() {
+        let mut ctx = ctx();
+        ctx.bpm = 120.0;
+        let source = "--!lua\nset_bpm(150)\nlog(\"ok\")";
+        run_named(source, "inline", &mut ctx).expect("lua with header");
+        assert_eq!(ctx.bpm, 150.0, "rubriken ska inte hindra skriptet");
+
+        #[cfg(feature = "python")]
+        {
+            let mut py = ctx();
+            py.bpm = 120.0;
+            run_named("--!python\nset_bpm(160)\nlog('ok')", "inline", &mut py)
+                .expect("python with header");
+            assert_eq!(py.bpm, 160.0);
+        }
     }
 }

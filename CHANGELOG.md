@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.227] - 2026-10-31
+
+**Python 3 som tredje skriptspråk** (`--features python`, opt-in): samma 28 funktioner som Rhai och
+Lua, samma `Ctx`, och `print` går till skriptloggen. Standardbygget länkar fortfarande ingen
+libpython (`ldd | grep -c python` = **0**); med featuren syns `libpython3.14.so.1.0`.
+
+Mätt: samma sångskript i Python och Lua ger **identisk `Ctx`**; `SyntaxError at line 2: expected ':'`
+och `ZeroDivisionError at line 2: division by zero` bär typ och rad; `while True: pass` stoppas efter
+**1,02 s** med `project script exceeded its 1 s budget`. Alla funktioner anropade en gång ger 19
+loggrader utan fel.
+
+**Rättat: rubrikraden kördes som kod.** `--!python` är ingen giltig Python-kommentar, så varje
+skript med rubriken hade fallit — raden tas nu bort innan motorn ser den, och ett prov håller fast
+det (`the_language_header_is_not_executed`).
+
+1 285 prov gröna (standard), 0 varningar.
+
 ## [0.9.226] - 2026-10-31
 
 **WavPack avkodas i processen** (`audio::wavpack`, dlopen mot `libwavpack`). Mätt: 44 100 Hz,
