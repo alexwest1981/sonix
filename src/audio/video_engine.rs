@@ -253,14 +253,15 @@ impl Drop for Playback {
     }
 }
 
-struct Bounded {
-    ok: bool,
-    stdout: Vec<u8>,
-    stderr: String,
+pub(super) struct Bounded {
+    pub(super) ok: bool,
+    pub(super) stdout: Vec<u8>,
+    pub(super) stderr: String,
 }
 
 /// Runs ffmpeg with its output capped at `cap` bytes and kills it after `DECODE_TIMEOUT`.
-fn run_bounded(mut cmd: Command, cap: usize) -> Result<Bounded, String> {
+/// Shared with the exporter, which decodes stills the same way.
+pub(super) fn run_bounded(mut cmd: Command, cap: usize) -> Result<Bounded, String> {
     let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

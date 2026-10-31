@@ -50,6 +50,7 @@ pub mod stft;
 pub mod tuning;
 pub mod video;
 pub mod video_engine;
+pub mod video_export;
 pub mod warp;
 pub mod modulation;
 pub mod input_profile;
