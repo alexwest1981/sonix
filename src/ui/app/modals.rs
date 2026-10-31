@@ -550,6 +550,114 @@ pub(crate) fn render_hardware_controller_modal(&mut self, ctx: &egui::Context) {
                 }
                 self.midi_out = midi_out;
 
+                // **Patch names from a `.ins`** (Cakewalk instrument definition): one button,
+                // one file dialog. Without it the program change below can only say a number.
+                ui.horizontal(|ui| {
+                    if ui
+                        .button(crate::i18n::t("🎛 Load .ins…"))
+                        .on_hover_text(crate::i18n::t(
+                            "Instrument definition: gives the external synth's programs their names.",
+                        ))
+                        .clicked()
+                        && let Some(path) =
+                            rfd::FileDialog::new().add_filter(".ins", &["ins"]).pick_file()
+                    {
+                        match crate::audio::ins::load(&path.to_string_lossy()) {
+                            Ok(ins) => {
+                                let patches: usize =
+                                    ins.banks.iter().map(|b| b.patches.len()).sum();
+                                let named = crate::audio::ins::program_name(
+                                    &ins,
+                                    self.midi_bank,
+                                    self.midi_program,
+                                )
+                                .map(|n| format!(" — {n}"))
+                                .unwrap_or_default();
+                                self.status_message = crate::tstatus!(
+                                    "✔ {}: {} banks, {} patches{}",
+                                    ins.name,
+                                    ins.banks.len(),
+                                    patches,
+                                    named
+                                );
+                                self.ins = Some(ins);
+                            }
+                            Err(e) => {
+                                self.status_message =
+                                    crate::tstatus!("⚠ Could not read .ins: {}", e)
+                            }
+                        }
+                    }
+                    if let Some(ins) = &self.ins {
+                        ui.label(
+                            egui::RichText::new(&ins.name)
+                                .size(Theme::FONT_S)
+                                .color(crate::ui::theme::palette().cyan()),
+                        );
+                    }
+                });
+                if self.ins.is_some() {
+                    let mut patch_changed = false;
+                    ui.horizontal(|ui| {
+                        ui.label(crate::i18n::t("Bank"));
+                        patch_changed |= ui
+                            .add(egui::DragValue::new(&mut self.midi_bank).range(0..=15))
+                            .changed();
+                        ui.label(crate::i18n::t("Program"));
+                        patch_changed |= ui
+                            .add(egui::DragValue::new(&mut self.midi_program).range(0..=127))
+                            .changed();
+                        let name = self
+                            .ins
+                            .as_ref()
+                            .and_then(|i| {
+                                crate::audio::ins::program_name(
+                                    i,
+                                    self.midi_bank,
+                                    self.midi_program,
+                                )
+                            })
+                            .map(str::to_string)
+                            .unwrap_or_else(|| "?".to_string());
+                        ui.label(
+                            egui::RichText::new(name)
+                                .size(Theme::FONT_S)
+                                .color(crate::ui::theme::palette().text()),
+                        );
+                    });
+                    if patch_changed {
+                        // shortcut: the bank is a name lookup only, no bank-select CC0/CC32 is
+                        // sent — add it when a synth's own bank numbers are known.
+                        let sent = self
+                            .midi_out
+                            .as_ref()
+                            .map(|out| out.program_change(0, self.midi_program));
+                        let name = self
+                            .ins
+                            .as_ref()
+                            .and_then(|i| {
+                                crate::audio::ins::program_name(
+                                    i,
+                                    self.midi_bank,
+                                    self.midi_program,
+                                )
+                            })
+                            .map(str::to_string)
+                            .unwrap_or_else(|| "?".to_string());
+                        self.status_message = match sent {
+                            Some(Err(e)) => {
+                                crate::tstatus!("⚠ Program change failed: {}", e)
+                            }
+                            _ => crate::tstatus!(
+                                "🎹 Bank {} / program {}: {}",
+                                self.midi_bank,
+                                self.midi_program,
+                                name
+                            ),
+                        };
+                    }
+                }
+
                 ui.add_space(4.0);
                 let rec_bg = if self.midi_record_armed { crate::ui::theme::palette().red() } else { crate::ui::theme::palette().panel() };
                 let rec_txt = if self.midi_record_armed {

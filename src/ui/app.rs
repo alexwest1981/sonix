@@ -495,6 +495,11 @@ pub struct SonixApp {
     pub phrase_preview: Option<crate::audio::phrase_preview::PhrasePreview>,
     /// **MIDI ut** (Sprint 1, punkt 4): en öppen utgång, om någon är vald.
     pub midi_out: Option<crate::audio::midi_output::MidiOut>,
+    /// The loaded `.ins` definition, if any — it gives the external synth's programs names.
+    pub ins: Option<crate::audio::ins::InsInstrument>,
+    /// Patch sent to the external synth: bank number in the `.ins` (0 = first) and program.
+    pub midi_bank: u8,
+    pub midi_program: u8,
     pub midi_auto_connect_attempted: bool,
     pub midi_keyboard_connected: bool,
     pub midi_device_name: String,
@@ -1229,6 +1234,9 @@ impl SonixApp {
             midi_map: crate::audio::key_mapper::KeyMap::default(),
             phrase_preview: None,
             midi_out: None,
+            ins: None,
+            midi_bank: 0,
+            midi_program: 0,
             midi_auto_connect_attempted: false,
             midi_keyboard_connected: false,
             midi_device_name: crate::i18n::t("Inte ansluten").to_string(),

@@ -71,6 +71,12 @@ impl MidiOut {
         self.send(&[0x80 | (channel & 0x0F), note & 0x7F, velocity & 0x7F])
     }
 
+    /// Program change — what picks a patch on the receiving synth. Its name comes from the
+    /// loaded `.ins` (`crate::audio::ins`), so the status line can say which patch was sent.
+    pub fn program_change(&self, channel: u8, program: u8) -> Result<(), String> {
+        self.send(&[0xC0 | (channel & 0x0F), program & 0x7F])
+    }
+
     /// Skickar en not på och av — används av `--selftest` och av "testnot"-knappen.
     pub fn blip(&self, channel: u8, note: u8, velocity: u8) -> Result<(), String> {
         self.note_on(channel, note, velocity)?;

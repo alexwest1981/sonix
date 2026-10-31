@@ -58,6 +58,7 @@ pub mod video_export;
 pub mod warp;
 pub mod modulation;
 pub mod input_profile;
+pub mod ins;
 pub mod instrument_library;
 pub mod midi_input;
 pub mod midi_output;
