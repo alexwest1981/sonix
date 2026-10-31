@@ -81,6 +81,22 @@ impl SunoSession {
         &self.client.endpoint
     }
 
+    /// The tool [`Self::generate`] would call, so the UI can read its options.
+    pub fn generation_tool(&self) -> Option<McpTool> {
+        pick_generation(&self.tools).ok().cloned()
+    }
+
+    /// That tool's own `input_schema` — the form the panel draws. Never `Null`: a server that
+    /// declares no schema answers with an empty `properties` object, which is the same form.
+    pub fn generation_schema(&self) -> Option<Value> {
+        let schema = self.generation_tool()?.input_schema;
+        Some(if schema.is_object() {
+            schema
+        } else {
+            json!({ "type": "object", "properties": {} })
+        })
+    }
+
     pub fn generate(
         &mut self,
         prompt: &str,
@@ -100,7 +116,20 @@ impl SunoSession {
     ) -> Result<GeneratedSong, String> {
         let tool = pick_generation(&self.tools)?.clone();
         let args = build_args(&tool, prompt, style, lyrics);
+        self.generate_with_into(args, base)
+    }
+
+    /// Sends exactly `args` to the generation tool and saves what comes back, the same way
+    /// [`Self::generate`] does. Which keys exist is the tool's schema's business, not ours.
+    pub fn generate_with(&mut self, args: Value) -> Result<GeneratedSong, String> {
+        self.generate_with_into(args, &crate::paths::paths().suno_dir())
+    }
+
+    fn generate_with_into(&mut self, args: Value, base: &Path) -> Result<GeneratedSong, String> {
+        let tool = pick_generation(&self.tools)?.clone();
         println!("suno: tools/call {} {args}", tool.name);
+        // The prompt (or whatever the caller put in its place) is the title's last resort.
+        let fallback = find_string(&args, &["prompt", "description", "style"]);
         let mut result = self
             .client
             .call_tool(&tool.name, args)
@@ -146,7 +175,9 @@ impl SunoSession {
         }
 
         let title = find_string(&payload, &["title", "song_title"])
-            .unwrap_or_else(|| prompt.chars().take(60).collect());
+            .or(fallback)
+            .map(|s| s.chars().take(60).collect::<String>())
+            .unwrap_or_default();
         save_song(&urls, &title, has_stems(&payload), result, base)
     }
 
@@ -233,6 +264,58 @@ impl SunoSession {
             base,
         )
     }
+
+    /// The voices/personas the account owns, for the panel's picker. A server without such a
+    /// tool is not an error — it is an empty list and [`Self::voices_hint`] saying why.
+    pub fn voices(&mut self) -> Result<Vec<SunoVoice>, String> {
+        let Some(tool) = voice_tool(&self.tools).cloned() else {
+            println!("{}", self.voices_hint().unwrap_or_default());
+            return Ok(Vec::new());
+        };
+        println!("suno: voices via {} {}", tool.name, json!({}));
+        let result = self
+            .client
+            .call_tool(&tool.name, json!({}))
+            .map_err(|e| e.to_string())?;
+        let payload = expand(&result);
+        let voices = voices_from(&payload);
+        if voices.is_empty() {
+            let shown: String = payload.to_string().chars().take(300).collect();
+            println!("suno: unparsed voice reply: {shown}");
+        }
+        println!("suno: {} voice(s) via {}", voices.len(), tool.name);
+        Ok(voices)
+    }
+
+    /// Why [`Self::voices`] came back empty, when the server exposes no voice tool at all.
+    pub fn voices_hint(&self) -> Option<String> {
+        if voice_tool(&self.tools).is_some() {
+            return None;
+        }
+        let names: Vec<&str> = self.tools.iter().map(|t| t.name.as_str()).collect();
+        Some(format!(
+            "suno: this server exposes no voice/persona tool (it has: {}); \
+             the picker needs one whose name or description mentions voice, persona, singer or \
+             artist, e.g. a `list_voices` tool",
+            names.join(", ")
+        ))
+    }
+
+    /// The generation schema's argument that takes a voice/persona id, so the UI knows where the
+    /// chosen voice goes.
+    pub fn voice_param(&self) -> Option<String> {
+        let schema = self.generation_schema()?;
+        voice_prop(&schema)
+    }
+}
+
+/// One voice or persona. Same shape rule as [`SunoSong`]: the beta's field names are guesses,
+/// `raw` is the truth.
+#[derive(Debug, Clone)]
+pub struct SunoVoice {
+    pub id: String,
+    pub name: String,
+    pub raw: Value,
 }
 
 /// The body of [`SunoSession::connect`], with the endpoint and token file supplied so the mock
@@ -394,6 +477,18 @@ fn pick_generation(tools: &[McpTool]) -> Result<&McpTool, String> {
 
 fn pick_library(tools: &[McpTool]) -> Result<&McpTool, String> {
     pick(tools, &LIB_WORDS, &LIB_PROPS, &NOT_LIB, "song-library")
+}
+
+/// Name words that mean "the account's voices/personas", with the weight each carries.
+const VOICE_WORDS: [(&str, i32); 4] = [("persona", 5), ("voice", 5), ("singer", 3), ("artist", 3)];
+/// Verbs that make or remove a song. Such a tool is not the voices list, even when its
+/// description mentions an artist or a vocal.
+const NOT_VOICE: [&str; 3] = ["generate", "create", "delete"];
+
+/// The voice/persona lister, if the server has one. Its absence is not an error here: the caller
+/// reports it as an empty list plus [`SunoSession::voices_hint`].
+fn voice_tool(tools: &[McpTool]) -> Option<&McpTool> {
+    pick(tools, &VOICE_WORDS, &[], &NOT_VOICE, "voice/persona").ok()
 }
 
 /// Query and limit go into whatever argument names the listing tool declares.
@@ -565,18 +660,23 @@ const URL_KEYS: [&str; 4] = ["audio_url", "url", "stream_url", "download_url"];
 /// The items of a listing: a bare array (handled by [`songs_from`]), or the array under one of
 /// [`LIST_KEYS`] — also when that key sits deeper, as in an MCP `content` wrapper.
 fn list_items(v: &Value) -> Option<&Vec<Value>> {
+    array_under(v, &LIST_KEYS)
+}
+
+/// The array under one of `keys`, at this level or deeper.
+fn array_under<'a>(v: &'a Value, keys: &[&str]) -> Option<&'a Vec<Value>> {
     match v {
         Value::Object(o) => {
             for (k, val) in o {
-                if LIST_KEYS.contains(&k.to_lowercase().as_str())
+                if keys.contains(&k.to_lowercase().as_str())
                     && let Some(a) = val.as_array()
                 {
                     return Some(a);
                 }
             }
-            o.values().find_map(list_items)
+            o.values().find_map(|val| array_under(val, keys))
         }
-        Value::Array(a) => a.iter().find_map(list_items),
+        Value::Array(a) => a.iter().find_map(|v| array_under(v, keys)),
         _ => None,
     }
 }
@@ -761,6 +861,62 @@ fn cursor_prop(tool: &McpTool) -> Option<String> {
     ]
     .iter()
     .find_map(|k| prop_named(&tool.input_schema, k))
+}
+
+// ---------------------------------------------------------------- reading a voice reply
+
+/// Keys a voice listing is expected to put its voices under, when it is not a bare array.
+const VOICE_KEYS: [&str; 4] = ["voices", "personas", "items", "results"];
+
+fn voices_from(v: &Value) -> Vec<SunoVoice> {
+    let items = match v {
+        Value::Array(a) => Some(a),
+        _ => array_under(v, &VOICE_KEYS),
+    };
+    items
+        .map(|items| items.iter().filter_map(parse_voice).collect())
+        .unwrap_or_default()
+}
+
+/// One voice. An id is what the picker needs, so an item without one is not a voice; the name
+/// falls back to the id so a row is never blank.
+fn parse_voice(v: &Value) -> Option<SunoVoice> {
+    if let Some(s) = v.as_str().filter(|s| !s.trim().is_empty()) {
+        let id = s.trim().to_string();
+        return Some(SunoVoice {
+            name: id.clone(),
+            id,
+            raw: v.clone(),
+        });
+    }
+    let o = v.as_object()?;
+    let id = text_at(o, &["id", "voice_id", "persona_id"])?;
+    let name = text_at(o, &["name", "title", "display_name"]).unwrap_or_else(|| id.clone());
+    Some(SunoVoice {
+        id,
+        name,
+        raw: v.clone(),
+    })
+}
+
+/// The generation schema argument that carries a voice/persona id, by its name or description.
+fn voice_prop(schema: &Value) -> Option<String> {
+    schema
+        .get("properties")?
+        .as_object()?
+        .iter()
+        .find_map(|(key, prop)| {
+            let described = prop
+                .get("description")
+                .and_then(Value::as_str)
+                .unwrap_or_default()
+                .to_lowercase();
+            let named = key.to_lowercase();
+            [named.as_str(), described.as_str()]
+                .iter()
+                .any(|s| s.contains("voice") || s.contains("persona"))
+                .then(|| key.clone())
+        })
 }
 
 fn walk(v: &Value, f: &mut impl FnMut(&str)) {
@@ -1421,5 +1577,237 @@ mod tests {
         assert!(saved.files[0].parent().unwrap().ends_with("neon-drive"));
         assert_eq!(audio.count(), 2);
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ------------------------------------------------------------ the options a UI draws
+
+    /// A generator tool carrying the options Suno's own "More options" panel offers.
+    fn option_tool() -> Value {
+        tool(
+            "generate_song",
+            "Create a new song from a prompt",
+            json!({
+                "prompt": { "type": "string" },
+                "vocal_gender": { "type": "string", "enum": ["female", "male"] },
+                "duration": { "type": "string", "enum": ["auto", "custom"] },
+                "weirdness": { "type": "number" },
+                "max_mode": { "type": "boolean" },
+                "title": { "type": "string" }
+            }),
+        )
+    }
+
+    /// (a) Every option the server declares is reachable from `generation_schema()`.
+    #[test]
+    fn the_generation_schema_exposes_every_option_the_server_declares() {
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, vec![option_tool()])),
+        ]);
+        let session = connect_at(&mock.url, &fresh_tokens("schema"), None).expect("connect");
+
+        let chosen = session.generation_tool().expect("a generator");
+        println!("generation tool: {}", chosen.name);
+        let schema = session.generation_schema().expect("a schema");
+        let props = schema["properties"].as_object().expect("properties");
+        println!("{} properties:", props.len());
+        for (name, prop) in props {
+            let ty = prop["type"].as_str().unwrap_or("?");
+            let enums: Vec<&str> = prop["enum"]
+                .as_array()
+                .map(|a| a.iter().filter_map(Value::as_str).collect())
+                .unwrap_or_default();
+            println!("  {name:<14} type {ty:<7} enum {enums:?}");
+        }
+        for key in ["vocal_gender", "duration", "weirdness", "max_mode", "title"] {
+            assert!(props.contains_key(key), "schema has no {key}: {schema}");
+        }
+        assert_eq!(props["vocal_gender"]["enum"], json!(["female", "male"]));
+        assert_eq!(props["duration"]["enum"], json!(["auto", "custom"]));
+        assert_eq!(props["weirdness"]["type"], "number");
+        assert_eq!(props["max_mode"]["type"], "boolean");
+        println!("schema: {schema}");
+    }
+
+    /// A tool that declares no schema still answers with a form (empty `properties`).
+    #[test]
+    fn a_tool_without_a_schema_still_yields_an_empty_form() {
+        let bare =
+            json!({ "name": "generate_song", "description": "Create a new song from a prompt" });
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, vec![bare])),
+        ]);
+        let session = connect_at(&mock.url, &fresh_tokens("no-schema"), None).expect("connect");
+        let schema = session.generation_schema().expect("a schema");
+        println!("schema: {schema}");
+        assert_eq!(schema["properties"], json!({}));
+    }
+
+    /// (b) `generate_with` sends the JSON it was handed, untouched, and saves what comes back.
+    #[test]
+    fn generate_with_sends_exactly_the_given_args() {
+        let audio = Mock::new(vec![Reply::json("RIFF-female")]);
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, vec![option_tool()])),
+            Reply::json(call_reply(
+                3,
+                &json!({
+                    "title": "Hand Built",
+                    "audio_url": format!("{}/hand-built.wav", audio.url)
+                }),
+            )),
+        ]);
+        let dir = tmp_dir("given");
+        let mut session = connect_at(&mock.url, &fresh_tokens("given"), None).expect("connect");
+        let args = json!({ "prompt": "x", "vocal_gender": "female", "weirdness": 0.7 });
+        let song = session
+            .generate_with_into(args.clone(), &dir)
+            .expect("generate");
+
+        let request = mock
+            .requests()
+            .into_iter()
+            .find(|r| r.contains("\"method\":\"tools/call\""))
+            .expect("a tools/call request");
+        let body = request
+            .split_once("\r\n\r\n")
+            .map(|(_, body)| body)
+            .unwrap_or(&request);
+        let call: Value = serde_json::from_str(body.trim()).expect("a JSON-RPC body");
+        println!("tools/call body: {body}");
+        println!("arguments: {}", call["params"]["arguments"]);
+        assert_eq!(call["params"]["name"], "generate_song");
+        assert_eq!(call["params"]["arguments"], args);
+
+        println!("title: {}", song.title);
+        for path in &song.files {
+            let bytes = std::fs::metadata(path).expect("file").len();
+            println!("file: {} ({bytes} bytes)", path.display());
+            assert!(bytes > 0, "{} is empty", path.display());
+        }
+        assert_eq!(song.files.len(), 1);
+        assert_eq!(song.title, "Hand Built");
+        assert_eq!(audio.count(), 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// (c) A `voices` reply: both entries come out with id and name, called with no arguments.
+    #[test]
+    fn voices_are_read_from_a_voices_reply() {
+        let tools = vec![
+            option_tool(),
+            tool(
+                "list_voices",
+                "List the user's voices and personas",
+                json!({}),
+            ),
+        ];
+        let reply = json!({ "voices": [
+            { "voice_id": "v1", "name": "Smoky" },
+            { "persona_id": "p2", "title": "Bright" }
+        ] });
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+            Reply::json(call_reply(3, &reply)),
+        ]);
+        let mut session = connect_at(&mock.url, &fresh_tokens("voices"), None).expect("connect");
+        let voices = session.voices().expect("voices");
+
+        for voice in &voices {
+            println!(
+                "voice: id {} name {} raw {}",
+                voice.id, voice.name, voice.raw
+            );
+        }
+        assert_eq!(voices.len(), 2);
+        assert_eq!(
+            (voices[0].id.as_str(), voices[0].name.as_str()),
+            ("v1", "Smoky")
+        );
+        assert_eq!(
+            (voices[1].id.as_str(), voices[1].name.as_str()),
+            ("p2", "Bright")
+        );
+        assert!(session.voices_hint().is_none());
+        let request = mock
+            .requests()
+            .into_iter()
+            .find(|r| r.contains("list_voices"))
+            .expect("a voice call");
+        println!(
+            "voice call sent empty arguments: {}",
+            request.contains("\"arguments\":{}")
+        );
+        assert!(request.contains("\"arguments\":{}"));
+    }
+
+    /// (d) No voice tool: an empty list and a hint naming what the server would need.
+    #[test]
+    fn a_server_without_a_voice_tool_says_what_is_needed() {
+        let tools = vec![
+            option_tool(),
+            tool(
+                "library_search",
+                "Search your Suno library",
+                json!({ "query": { "type": "string" } }),
+            ),
+            tool(
+                "song_status",
+                "Check generation status",
+                json!({ "id": { "type": "string" } }),
+            ),
+        ];
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+        ]);
+        let mut session = connect_at(&mock.url, &fresh_tokens("no-voice"), None).expect("connect");
+
+        let voices = session
+            .voices()
+            .expect("an absent voice tool is not an error");
+        let hint = session.voices_hint().expect("a hint");
+        println!("voices: {voices:?}");
+        println!("hint: {hint}");
+        assert!(voices.is_empty());
+        assert!(hint.contains("list_voices"), "hint names no tool: {hint}");
+        assert!(hint.contains("generate_song"), "hint lists nothing: {hint}");
+        assert_eq!(mock.count(), 3, "a tool was called without a voice tool");
+    }
+
+    /// (e) The schema argument that takes a voice/persona id is found, by name or description.
+    #[test]
+    fn the_voice_parameter_is_read_from_the_schema() {
+        let tools = vec![tool(
+            "generate_song",
+            "Create a new song",
+            json!({
+                "prompt": { "type": "string" },
+                "persona_id": { "type": "string", "description": "the persona to sing" },
+                "duration": { "type": "string", "enum": ["auto", "custom"] }
+            }),
+        )];
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+        ]);
+        let session = connect_at(&mock.url, &fresh_tokens("voice-param"), None).expect("connect");
+
+        let param = session.voice_param().expect("a voice parameter");
+        println!("voice param: {param}");
+        assert_eq!(param, "persona_id");
+        // A schema with neither a voice-ish key nor description has nowhere to put the id.
+        let plain = json!({ "properties": { "duration": { "type": "string" } } });
+        println!("voice param for a plain schema: {:?}", voice_prop(&plain));
+        assert_eq!(voice_prop(&plain), None);
     }
 }
