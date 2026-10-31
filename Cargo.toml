@@ -26,6 +26,10 @@ plugin-host = ["dep:libc"]
 # → PipeWire path stays the one every user gets. Enable with
 # `cargo build --features jack`.
 jack = ["dep:jack"]
+# Opt-in embedded Python for project scripts (`--features python`). Off by default, so the
+# normal build never links libpython: `ldd target/release/sonix | grep python` stays empty.
+# Enable with `cargo build --features python`.
+python = ["dep:pyo3"]
 
 [dependencies]
 cpal = "0.15"
@@ -64,6 +68,10 @@ libc = { version = "0.2", optional = true }
 # i `ldd` alls. Länkning är det som ska synas — ett bygge med `jack` får kräva
 # biblioteket, och ett utan får inte nämna det.
 jack = { version = "0.11", optional = true, default-features = false }
+# Embedded CPython for `--features python` (project scripts in Python). `auto-initialize`
+# brings the interpreter up on first use. 0.25 is the first release that takes Rust 2024 and
+# Python 3.14 without warnings or forward-compat switches.
+pyo3 = { version = "0.25", features = ["auto-initialize"], optional = true }
 
 # ALSA är Linux-only: MIDI-klaviatur och MCU tar emot noter via ALSA-sequencern
 # (Fas 7.1). Beroendet ligger därför bara på Linux, så att kratet kan byggas och

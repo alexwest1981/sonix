@@ -2,7 +2,7 @@
 //! stället för en tagning — tempo, kanaler och deras steg. Skriptet får en **kopia** av det det
 //! rör, precis som tagning-skriptet: går det inte igenom skrivs ingenting tillbaka.
 //!
-//! # The project API (identical in Rhai and Lua)
+//! # The project API (identical in Rhai, Lua and Python)
 //!
 //! Indices are zero-based. `track` indexes a channel; a track's clips come from the project, and
 //! a track's first clip is its step grid. Anything outside range is a script **error** — never a
@@ -282,11 +282,26 @@ pub fn run(source: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
     run_named(source, "", ctx)
 }
 
-/// **Ett vägval för båda språken.** Första raden `--!lua`, eller ett namn som slutar på `.lua`,
-/// går till den inbyggda Lua 5.4; allt annat behåller Rhai. Anropare bryr sig inte om vilket.
+/// **One choice for all three languages.** First line `--!lua` or a `.lua` name goes to the
+/// embedded Lua 5.4, `--!python` or a `.py` name to the embedded CPython, everything else keeps
+/// Rhai. Callers do not care which one runs. A `.py` script in a build without the `python`
+/// feature is an error, never a silent Rhai run of the wrong language.
 pub fn run_named(source: &str, name: &str, ctx: &mut Ctx) -> Result<Vec<String>, String> {
-    let wants_lua =
-        name.ends_with(".lua") || source.lines().next().is_some_and(|line| line.trim() == "--!lua");
+    let first = source.lines().next().unwrap_or("").trim();
+    if name.ends_with(".py") || first == "--!python" {
+        #[cfg(feature = "python")]
+        {
+            return crate::audio::python_script::run(source, ctx);
+        }
+        #[cfg(not(feature = "python"))]
+        {
+            return Err(
+                "Python scripting was not built into this binary (build with `--features python`)"
+                    .to_string(),
+            );
+        }
+    }
+    let wants_lua = name.ends_with(".lua") || first == "--!lua";
     if wants_lua {
         crate::audio::lua_script::run(source, ctx)
     } else {
@@ -597,6 +612,35 @@ mod tests {
         let mut plain = ctx();
         run_named("set_bpm(150.0)", "drums.rhai", &mut plain).unwrap();
         assert_eq!(plain.bpm, 150.0);
+    }
+
+    /// A `.py` script in a build without the `python` feature is refused — never quietly run
+    /// as Rhai, which would execute a different language than the file says.
+    #[cfg(not(feature = "python"))]
+    #[test]
+    fn a_python_script_without_the_feature_is_refused() {
+        let mut c = ctx();
+        let before = c.clone();
+        for (source, name) in [("set_bpm(140.0)\n", "drums.py"), ("--!python\nprint(1)\n", "")] {
+            let err = run_named(source, name, &mut c).unwrap_err();
+            println!("{name:?} -> {err}");
+            assert!(err.contains("not built"), "{err}");
+            assert_eq!(c, before, "a refused script writes nothing back");
+        }
+    }
+
+    /// With the feature compiled in, the same header and suffix pick the Python engine.
+    #[cfg(feature = "python")]
+    #[test]
+    fn a_python_header_picks_the_python_engine() {
+        let mut by_header = ctx();
+        let log = run_named("--!python\nset_bpm(155.0)\nprint(bpm())\n", "", &mut by_header).unwrap();
+        assert_eq!(by_header.bpm, 155.0);
+        assert_eq!(log, vec!["155.0".to_string()], "Rhai would have failed on that syntax");
+
+        let mut by_name = ctx();
+        run_named("set_bpm(155.0)", "song.py", &mut by_name).unwrap();
+        assert_eq!(by_name.bpm, 155.0);
     }
 
     /// (d) The older twelve-function surface still works after the project API landed.
