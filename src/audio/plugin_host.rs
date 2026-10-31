@@ -222,6 +222,91 @@ pub struct PluginManager {
 /// Expanderar ett inledande `~/` mot hemkatalogen. All sökvägslogik bor i
 /// [`crate::paths`] (Fas 6.0); denna wrapper finns för att plugin-koden ska
 /// slippa importera modulen överallt.
+/// **yabridgectl:s egen config** är sanningen om var de bryggade pluginsen ligger — inte våra
+/// gissningar. Returnerar `plugin_dirs` (Windows-mapparna) och `vst2_location` om den inte är
+/// `centralized` (då synkas allt till `~/.vst3` / `~/.vst`).
+///
+/// Ren funktion så att tolkningen kan prövas utan en installer: TOML:en har en fast, liten form
+/// (`plugin_dirs = [...]`, `vst2_location = '...'`), och att dra in en TOML-parser för två fält
+/// vore mer kod än det här.
+pub fn yabridge_config_paths(config: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut in_dirs = false;
+    for line in config.lines() {
+        let line = line.trim();
+        if line.starts_with("plugin_dirs") {
+            in_dirs = true;
+        }
+        if in_dirs {
+            // Alla strängar på raden (även flerradiga listor).
+            let mut rest = line;
+            while let Some(start) = rest.find(['\'', '"']) {
+                let quote = rest.as_bytes()[start] as char;
+                let after = &rest[start + 1..];
+                if let Some(end) = after.find(quote) {
+                    let value = after[..end].trim();
+                    if value.starts_with('/') || value.starts_with('~') {
+                        out.push(value.to_string());
+                    }
+                    rest = &after[end + 1..];
+                } else {
+                    break;
+                }
+            }
+            if line.contains(']') {
+                in_dirs = false;
+            }
+        }
+    }
+    out
+}
+
+/// Läser `~/.config/yabridgectl/config.toml` (om den finns) och ger sökvägarna som *standard*.
+pub fn yabridge_scan_paths() -> Vec<ScanPath> {
+    let config_path = expand_tilde("~/.config/yabridgectl/config.toml");
+    let text = std::fs::read_to_string(&config_path).unwrap_or_default();
+    let mut paths: Vec<ScanPath> = Vec::new();
+    for dir in yabridge_config_paths(&text) {
+        paths.push(ScanPath {
+            path: dir.clone(),
+            enabled: true,
+            description: crate::i18n::t("Yabridge (enligt yabridgectl-config)").to_string(),
+            is_wine: true,
+            is_fl_path: false,
+        });
+    }
+    // yabridgectl synkar hit som standard; mapparna finns även utan config.
+    for target in ["~/.vst3", "~/.vst"] {
+        paths.push(ScanPath {
+            path: target.to_string(),
+            enabled: true,
+            description: crate::i18n::t("Yabridge-mål (synkade .so)").to_string(),
+            is_wine: true,
+            is_fl_path: false,
+        });
+    }
+    // ni-wine (selimbucher/native-instruments) har en egen prefix: Native Access 2 och Kontakt 8
+    // installeras dit, och det är därifrån deras VST3:or kommer.
+    for prefix in ["~/.wine-ni", "~/.wine"] {
+        for rel in [
+            "drive_c/Program Files/Common Files/VST3",
+            "drive_c/Program Files/Common Files/VST",
+        ] {
+            let dir = format!("{prefix}/{rel}");
+            if expand_tilde(&dir).is_dir() {
+                paths.push(ScanPath {
+                    path: dir,
+                    enabled: true,
+                    description: crate::i18n::t("Windows VST3/VST2 i Wine-prefix (Native Instruments m.fl.)").to_string(),
+                    is_wine: true,
+                    is_fl_path: false,
+                });
+            }
+        }
+    }
+    paths
+}
+
 fn expand_tilde(path: &str) -> PathBuf {
     crate::paths::expand_tilde(path)
 }
@@ -241,7 +326,7 @@ impl Default for PluginManager {
 impl PluginManager {
     /// Standardläget **utan** diskskanning: sökvägarna och tomma listor.
     pub fn without_scan() -> Self {
-        let default_scan_paths = vec![
+        let mut default_scan_paths = vec![
             ScanPath {
                 path: "~/.vst3".to_string(),
                 enabled: true,
@@ -329,6 +414,14 @@ impl PluginManager {
                 is_fl_path: true,
             },
         ];
+
+        // **Yabridge och Wine-prefix efter våra egna standardvägar**, utan dubbletter: en sökväg
+        // som redan står i listan (t.ex. `~/.vst3`) ska inte skannas två gånger.
+        for extra in yabridge_scan_paths() {
+            if !default_scan_paths.iter().any(|p| p.path == extra.path) {
+                default_scan_paths.push(extra);
+            }
+        }
 
         let mut manager = PluginManager {
             plugins: Vec::new(),
@@ -1230,5 +1323,19 @@ mod tests {
 
         std::fs::remove_dir_all(&dir).unwrap();
     }
-}
 
+    /// **yabridgectl:s config läses som den är**, inklusive flerradiga listor — det är den enda
+    /// källan till var de bryggade Windows-pluginsen faktiskt ligger.
+    #[test]
+    fn the_yabridge_config_yields_its_plugin_dirs() {
+        let config = "plugin_dirs = [\n    '/home/alex/.wine/drive_c/Program Files/Common Files/VST3',\n    '/home/alex/.wine-ni/drive_c/Program Files/Common Files/VST3',\n]\nvst2_location = 'centralized'\n";
+        let paths = yabridge_config_paths(config);
+        println!("yabridge-config gav {} sökvägar: {:?}", paths.len(), paths);
+        assert_eq!(paths.len(), 2, "två mappar i listan");
+        assert!(paths[1].contains(".wine-ni"), "ni-wine-prefixet ska med");
+
+        // Tom eller trasig config ger inga påhittade sökvägar.
+        assert!(yabridge_config_paths("").is_empty());
+        assert!(yabridge_config_paths("noise = 1\n").is_empty());
+    }
+}
