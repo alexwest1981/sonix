@@ -54,6 +54,7 @@ fn print_paths() {
 /// One note into a plugin, wherever it lives. A sandboxed plugin belongs to the
 /// worker process, so its notes go over the control plane; in process they go
 /// straight to the instance. Returns false when the plugin is not an instrument.
+#[cfg(feature = "plugin-host")]
 fn plugin_note(
     processor: &mut dyn audio::plugin_host_live::PluginProcessor,
     host: &mut Option<audio::plugin_sandbox::SandboxHost>,
@@ -85,6 +86,7 @@ fn plugin_note(
 /// The numbers are the point: a plugin that loads only proves the ABI, a
 /// non-zero RMS proves its DSP ran. `--sandbox` renders the same note through
 /// `plugin_sandbox`, i.e. in the worker process.
+#[cfg(feature = "plugin-host")]
 fn render_plugin(path: &str, seconds: f32, out: &str, sandbox: bool, sine: bool) -> Result<(), String> {
     use audio::plugin_host_live::PluginProcessor;
     use audio::plugin_sandbox::SandboxHost;
@@ -866,6 +868,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // genom en **riktig** plugin utan GUI och skriver det den spelar. En fil som laddar
     // säger bara att ABI:n stämmer — att det kommer ljud säger att DSP:n faktiskt kör.
     // `--sandbox` kör samma render i arbetsprocessen i stället för här.
+    // Utan `plugin-host` finns ingen VST3-motor i binären; säg det i stället för att tiga.
+    #[cfg(not(feature = "plugin-host"))]
+    if std::env::args().any(|a| a == "--render-plugin") {
+        eprintln!("⚠ --render-plugin kräver en build med --features plugin-host");
+        std::process::exit(1);
+    }
+    #[cfg(feature = "plugin-host")]
     if let Some(pos) = std::env::args().position(|a| a == "--render-plugin") {
         let rest: Vec<String> = std::env::args().skip(pos + 1).collect();
         let sandbox = rest.iter().any(|a| a == "--sandbox");
@@ -1151,7 +1160,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ).map_err(|e| format!("Could not start the window: {}", e).into())
 }
 
-#[cfg(test)]
+#[cfg(all(test, feature = "plugin-host"))]
 mod render_plugin_tests {
     use super::render_plugin;
 

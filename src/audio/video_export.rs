@@ -610,7 +610,7 @@ mod tests {
         let black = fx.dir.join("black.mp4").to_string_lossy().to_string();
         // De andra video-proven kodar samtidigt; under den lasten kan en kodning falla. Ett försök
         // till, med felet utskrivet, skiljer last från verkligt fel.
-        let mut once = |run: &mut dyn FnMut() -> Result<u64, String>, what: &str| {
+        let once = |run: &mut dyn FnMut() -> Result<u64, String>, what: &str| {
             if let Err(first) = run() {
                 println!("{what}: första försöket föll ({first}), gör ett till");
                 run().unwrap_or_else(|e| panic!("{what}: {e}"));
