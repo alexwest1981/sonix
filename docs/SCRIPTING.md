@@ -1,8 +1,12 @@
 # Skript i Sonix
 
-Två språk, **samma funktioner**: Rhai (standard) och Lua 5.4. Ett skript som fungerar i det ena
-fungerar i det andra — samma namn, samma betydelse, samma fel. Välj Lua genom att låta **första
+Tre språk, **samma funktioner**: Rhai (standard), Lua 5.4 och Python 3 (opt-in). Ett skript som
+fungerar i det ena fungerar i det andra — samma namn, samma betydelse, samma fel. Välj Lua genom att låta **första
 raden** vara `--!lua`, eller genom att spara filen som `.lua`.
+
+Ett tredje språk finns som opt-in: **Python 3**, i ett bygge med `--features python`. Det väljs på
+samma sätt — första raden `--!python` eller filnamn som slutar på `.py` — och har exakt samma
+funktioner. Är funktionen inte inbyggd säger Sonix ifrån i stället för att köra skriptet som Rhai.
 
 ```
 # projekt.rhai
@@ -20,6 +24,14 @@ set_bpm(140)
 set_track_name(0, "Kick")
 add_note(0, 0, 0, 36, 1.0)
 log("noter: " .. note_count(0, 0))
+```
+
+```python
+--!python
+set_bpm(140)
+set_track_name(0, "Kick")
+add_note(0, 0, 0, 36, 1.0)
+log(f"noter: {note_count(0, 0)}")
 ```
 
 ## Funktionerna
@@ -81,3 +93,8 @@ Det gör att ett skript som bara läser aldrig kan tömma en kanal av misstag.
   `script stopped after 5000000 instructions` (mätt: 21 ms). Rhai har motsvarande skydd.
 - **Stdlib i Lua är begränsat** till `coroutine`, `table`, `string`, `utf8`, `math` — ingen `io`,
   `os`, `package` eller `debug`, så ett skript kan inte läsa filer eller starta processer.
+- **Python är opt-in** (`--features python`): standardbygget länkar ingen libpython alls
+  (`ldd target/release/sonix | grep -c python` = 0). Ett Python-skript får **1 sekunds budget** —
+  `while True: pass` avbryts med `KeyboardInterrupt ... exceeded its 1 s budget` (mätt: 1,02 s).
+- **Python har kvar sina inbyggda funktioner**, så till skillnad från Lua kan ett Python-skript
+  importera `os`. Kör bara skript du litar på.
