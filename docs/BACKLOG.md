@@ -40,7 +40,7 @@ posten kommer från.
 | :--: | :--- | :--- | :---: | :--- |
 | 13 | ✅ **Wavetable-motor** (mipmaps, morph, 7 unisonstämmor, filter) — källa via `SetInstrument` | Ableton | **L** | 14 kHz alias −110,5 dB mot −26,0 naivt · morph 0 → 0,3245 · 7 toppar |
 | 14 | ✅ **Fysisk modellering** (`Modal`: 64 resonatorer + klubba) | Ableton | **L** | 220 Hz → 220,0 · B=0,05 flyttar partial 8 +104,9 % · T60 1,000 s |
-| 15 | ◐ **Skript-API**: 24 funktioner i båda språken (tracks, klipp, noter, transport). REAPER har 732 `RPR_*` — ytan är L, språket var S | REAPER | **L** |
+| 15 | ◐ **Skript-API**: 28 funktioner i Rhai, Lua och Python (opt-in). REAPER har 732 `RPR_*` — ytan är L | REAPER | **L** |
 | 16 | ◐ **Python** finns som opt-in skriptspråk (28 funktioner). Kvar: Abletons **Live Object Model** — 60 moduler, 2 260 `.pyc` | Ableton | **L** |
 | 17 | **Max for Live-ekosystem** | Ableton | **L** | Vi har en graf, inte ett ekosystem |
 | 18 | ◐ **Videomotor**: `frame_at` + cache + **realtidsuppspelning 25,0 fps** klart. Kvar: kodning, FX-kedja | REAPER | **L** |
@@ -57,3 +57,14 @@ flikraden · `daw-bold`-temat i registret · TolerableTines-minnesfelet.
 ## Utanför listan
 
 Hårdvara: Windows-porten (ingen laptop) och en riktig yabridge-kvittens. De väntar på maskin.
+
+## Instrument — vägen till ett bibliotek
+
+| Väg | Vad man får | Status |
+| :--- | :--- | :--- |
+| **Inbyggt** | wavetable, modal, syntens röster | klart |
+| **JSFX** | REAPER:s instrument (EEL2) | klart |
+| **SF2 / SFZ** | gratisbibliotek: Sonatina, VSCO2, Salamander | klart (SFZ round-robin ej cyklad) |
+| **Yabridge + ni-wine** | Native Instruments: Kontakt 8, Massive X, Reaktor | scan + docs klara; installationen kräver `yay -S ni-wine` (Alex) |
+| **LV2 / VST3 / CLAP** | Linux-plugins | klart |
+

@@ -1863,6 +1863,94 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                     }
                                 }
                             }
+                            // **Instrumentbiblioteket** (`~/.local/share/sonix/instruments/`):
+                            // ett ställe för allt spelbart — inbyggt, JSFX, SF2 och SFZ.
+                            // Plugins listas men laddas från plugin-fliken: de kräver en
+                            // instans per spår, vilket `ch` inte kan göra härifrån.
+                            ui.collapsing(crate::i18n::t("📚 Instrumentbibliotek"), |ui| {
+                                let entries = crate::audio::instrument_library::scan();
+                                for entry in entries {
+                                    use crate::audio::instrument_library::InstrumentKind;
+                                    let label = format!("{} ({})", entry.name, entry.format);
+                                    let resp = ui.button(label).on_hover_text(&entry.path);
+                                    if !resp.clicked() {
+                                        continue;
+                                    }
+                                    match entry.kind {
+                                        InstrumentKind::Builtin | InstrumentKind::JsFx => {
+                                            let _ = self.engine.send_command(
+                                                crate::audio::command::AudioCommand::SetInstrument {
+                                                    path: Some(entry.path.clone()),
+                                                },
+                                            );
+                                            self.status_message =
+                                                crate::tstatus!("🎹 Källa: {}", entry.name);
+                                        }
+                                        InstrumentKind::Sfz => match crate::audio::sfz::load(&entry.path) {
+                                            Ok(inst) => {
+                                                let count = inst.zones.len();
+                                                ch.zones.extend(inst.zones);
+                                                self.status_message = crate::tstatus!(
+                                                    "🎹 '{}': {} zoner in i keymappen",
+                                                    inst.name,
+                                                    count
+                                                );
+                                            }
+                                            Err(e) => {
+                                                self.status_message =
+                                                    crate::tstatus!("⚠️ {}: {}", entry.name, e);
+                                            }
+                                        },
+                                        InstrumentKind::SoundFont => {
+                                            let parsed = std::fs::read(&entry.path)
+                                                .map_err(|e| e.to_string())
+                                                .and_then(|bytes| crate::audio::sf2::parse(&bytes));
+                                            match parsed {
+                                                Ok(sf) => {
+                                                    // Presetvalet sker i SF2-knappens panel; här
+                                                    // importeras första instrumentet, som förut.
+                                                    match sf.instruments.iter().find(|i| !i.zones.is_empty()) {
+                                                        Some(inst) => {
+                                                            let count = inst.zones.len();
+                                                            let name = inst.name.clone();
+                                                            ch.zones.extend(inst.zones.iter().cloned());
+                                                            self.status_message = crate::tstatus!(
+                                                                "🎹 '{}': {} zoner in i keymappen ({} presets i filen — välj i SF2-knappen)",
+                                                                name,
+                                                                count,
+                                                                sf.presets.len()
+                                                            );
+                                                        }
+                                                        None => {
+                                                            self.status_message = crate::tstatus!(
+                                                                "⚠️ '{}' har inga zoner med ljud",
+                                                                entry.name
+                                                            );
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    self.status_message =
+                                                        crate::tstatus!("⚠️ {}: {}", entry.name, e);
+                                                }
+                                            }
+                                        }
+                                        InstrumentKind::Plugin => {
+                                            self.status_message = crate::tstatus!(
+                                                "🔌 '{}' laddas i plugin-fliken (kräver ett spår)",
+                                                entry.name
+                                            );
+                                        }
+                                    }
+                                }
+                                ui.label(
+                                    egui::RichText::new(
+                                        crate::audio::instrument_library::default_dir().display().to_string(),
+                                    )
+                                    .size(Theme::FONT_XS)
+                                    .color(crate::ui::theme::palette().text_muted()),
+                                );
+                            });
                             // **Släppljud** (FL Keys): dämparens ljud, spelas när tonen släpps.
                             ui.horizontal(|ui| {
                                 let label = match &ch.release_path {

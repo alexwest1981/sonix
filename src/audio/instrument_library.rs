@@ -62,6 +62,13 @@ pub fn scan() -> Vec<LibraryEntry> {
     scan_with_plugins(&[])
 }
 
+/// Preset-namnen ur en `.sf2` (test-hjälp: appen visar dem ur `SoundFont` direkt).
+#[cfg(test)]
+pub fn sf2_presets(path: &str) -> Result<Vec<String>, String> {
+    let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+    Ok(crate::audio::sf2::parse(&bytes)?.presets)
+}
+
 /// Scans the default folder plus a caller-supplied plugin list.
 #[allow(dead_code)] // no caller until the library view exists.
 pub fn scan_with_plugins(plugins: &[PluginDescriptor]) -> Vec<LibraryEntry> {
@@ -146,11 +153,6 @@ fn collect_files(dir: &Path, out: &mut Vec<LibraryEntry>, depth: usize) {
     }
 }
 
-/// The preset names `sf2::parse` already collects, by path.
-pub fn sf2_presets(path: &str) -> Result<Vec<String>, String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("{path}: {e}"))?;
-    Ok(crate::audio::sf2::parse(&bytes)?.presets)
-}
 
 #[cfg(test)]
 mod tests {

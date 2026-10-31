@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.228] - 2026-10-31
+
+**SFZ-import** (`audio::sfz`): region/group/global, notnamn eller siffror, relativa samplevägar,
+loop-punkter, round-robin-zoner. Zonerna blir `SampleZone`s — samma som SF2-vägen — så
+uppspelningen är oförändrad. Mätt: 3 regioner ger 3 zoner med rätt tangentintervall, grundtoner och
+loop-punkter (`low.wav 36..59 root 60 loop (20,120)`, `mid.wav 60..71 root 64`, `high.wav 72..96`);
+`c4→60`, `f#3→54`, `a#2→46`, `60→60`; ett saknat sampel fäller bara sin egen region.
+
+**Instrumentbibliotek** (`audio::instrument_library` + panel i kanalracken): `~/.local/share/sonix/instruments/`
+skannas efter `.sf2`, `.sfz` och JSFX, plus de två inbyggda källorna (`builtin:wavetable`,
+`builtin:modal`). Ett klick sätter källan eller lägger zonerna i kanalens keymap; plugins listas men
+laddas från plugin-fliken (de kräver en instans per spår).
+
+**yabridgectl:s config läses** (`e8dc136`): sökvägarna till bryggade Windows-plugins är inte längre
+gissningar, och `~/.wine-ni` — där `ni-wine` installerar Native Access och Kontakt — skannas.
+Mätt: två `plugin_dirs` ger exakt två sökvägar, tom config ger inga. `docs/YABRIDGE.md` beskriver
+hela vägen från `yay -S ni-wine` till ett spelande plugin.
+
+1 296 prov gröna, 0 varningar.
+
 ## [0.9.227] - 2026-10-31
 
 **Python 3 som tredje skriptspråk** (`--features python`, opt-in): samma 28 funktioner som Rhai och
