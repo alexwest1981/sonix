@@ -247,6 +247,7 @@ pub fn parse(bytes: &[u8]) -> Result<SoundFont, String> {
                 key_high,
                 vel_low,
                 vel_high,
+                seq: None,
             });
         }
         instruments.push(SoundFontInstrument { name, zones });

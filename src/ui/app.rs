@@ -173,6 +173,9 @@ pub struct SonixApp {
     pub bpm: f32,
     pub swing: f32,
     pub current_step: usize,
+    /// **Round-robin** (SFZ `seq_*`): which `seq_position` each channel/key plays next. Lives
+    /// here because this is what triggers note-ons, and it must survive between steps.
+    pub round_robin: crate::audio::keymap::RoundRobin,
     /// **Capture MIDI**: det som spelades nyss, med tid sedan första noten.
     pub note_capture: crate::note_capture::NoteCapture,
     /// **Score-loggen** (FL:s Auto dump score): allt spelat sedan förra dumpen, utan att
@@ -1015,6 +1018,7 @@ impl SonixApp {
             tempo_points: Vec::new(),
             swing: 0.0,
             current_step: 0,
+            round_robin: crate::audio::keymap::RoundRobin::default(),
             note_capture: crate::note_capture::NoteCapture::default(),
             score_log: crate::note_capture::NoteCapture::with_limit(2048),
             score_clock: None,

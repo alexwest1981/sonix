@@ -7,14 +7,13 @@
 //!
 //! **Read:** `sample`, `key`, `lokey`, `hikey`, `pitch_keycenter`, `lovel`, `hivel`,
 //! `loop_start`, `loop_end`, `loop_mode`, `offset`, `end`, `tune` (folded into the root, see
-//! below), `volume`, `pan`, `seq_length`/`seq_position` (order kept as written).
+//! below), `volume`, `pan`, `seq_length`/`seq_position` (kept on the zone as `seq`, so
+//! [`crate::audio::keymap::RoundRobin`] can cycle them).
 //!
 //! **Ignored, with intent:** `<master>` and `<control>` (the latter carries `default_path`,
 //! which would change sample resolution — not read), and every opcode not listed above,
 //! including `ampeg_attack`/`ampeg_release`: `SampleZone` has no envelope, so they map to 0 and
-//! the voice's own envelope applies. Round-robin needs per-note voice state the sampler does not
-//! have, so `seq_*` regions are kept side by side in file order and the last matching zone wins
-//! (the keymap rule) — importing both is right, selecting between them is not supported yet.
+//! the voice's own envelope applies.
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -196,6 +195,15 @@ fn parse(dir: &Path, text: &str) -> (Vec<SampleZone>, Vec<String>) {
         let key_low = get("lokey").and_then(note_number).or(key).unwrap_or(0);
         let key_high = get("hikey").and_then(note_number).or(key).unwrap_or(127);
 
+        // Round-robin: `seq_position` counts from 1 within a group of `seq_length` regions.
+        // Without both, the region is a plain zone that answers every note-on.
+        let seq = match (n("seq_position"), n("seq_length")) {
+            (Some(pos), Some(len)) if pos >= 1.0 && len >= 1.0 => {
+                Some((pos.min(255.0) as u8, len.min(255.0) as u8))
+            }
+            _ => None,
+        };
+
         zones.push(SampleZone {
             sample_path: Some(file),
             pcm: Some((Arc::new(l), Arc::new(r), rate)),
@@ -205,6 +213,7 @@ fn parse(dir: &Path, text: &str) -> (Vec<SampleZone>, Vec<String>) {
             vel_low: n("lovel").unwrap_or(0.0).clamp(0.0, 127.0) / 127.0,
             vel_high: n("hivel").unwrap_or(127.0).clamp(0.0, 127.0) / 127.0,
             loop_frames,
+            seq,
         });
     }
     (zones, failures)
@@ -280,6 +289,125 @@ mod tests {
         let p = d.join(name);
         std::fs::write(&p, text).unwrap();
         p.to_string_lossy().to_string()
+    }
+
+    /// A 16-bit mono WAV holding `hz` for 0.1 s (4410 frames at 44,1 kHz), so a measured
+    /// frequency is exact: 22 cycles at 220 Hz, 99 at 990 Hz.
+    fn tone(path: &Path, hz: f32) {
+        let rate = 44_100f32;
+        let frames = 4410usize;
+        let data = frames as u32 * 2;
+        let mut v = Vec::new();
+        v.extend_from_slice(b"RIFF");
+        v.extend_from_slice(&(36 + data).to_le_bytes());
+        v.extend_from_slice(b"WAVEfmt ");
+        v.extend_from_slice(&16u32.to_le_bytes());
+        v.extend_from_slice(&1u16.to_le_bytes());
+        v.extend_from_slice(&1u16.to_le_bytes());
+        v.extend_from_slice(&44_100u32.to_le_bytes());
+        v.extend_from_slice(&88_200u32.to_le_bytes());
+        v.extend_from_slice(&2u16.to_le_bytes());
+        v.extend_from_slice(&16u16.to_le_bytes());
+        v.extend_from_slice(b"data");
+        v.extend_from_slice(&data.to_le_bytes());
+        for i in 0..frames {
+            let t = i as f32 / rate;
+            let s = (0.5 * (std::f32::consts::TAU * hz * t).sin() * 32_767.0) as i16;
+            v.extend_from_slice(&s.to_le_bytes());
+        }
+        std::fs::write(path, v).unwrap();
+    }
+
+    /// The zone's pitch, from its upward zero crossings — proof that the pick is the sample and
+    /// not just the index.
+    fn measured_hz(z: &SampleZone) -> f32 {
+        let (l, _, rate) = z.pcm.as_ref().expect("zone has audio");
+        let up = l.windows(2).filter(|w| w[0] <= 0.0 && w[1] > 0.0).count();
+        up as f32 * *rate as f32 / l.len() as f32
+    }
+
+    /// Six note-ons on c4 with `seq_position` 1 and 2 alternate between the two samples.
+    #[test]
+    fn round_robin_alternates_on_successive_note_ons() {
+        use crate::audio::keymap::RoundRobin;
+        let d = dir("rr-cycle");
+        tone(&d.join("a220.wav"), 220.0);
+        tone(&d.join("b990.wav"), 990.0);
+        let p = write_sfz(
+            &d,
+            "rr-cycle.sfz",
+            "<region>\nsample=a220.wav\nkey=c4\nseq_length=2 seq_position=1\n\n<region>\nsample=b990.wav\nkey=c4\nseq_length=2 seq_position=2\n",
+        );
+        let inst = load(&p).expect("round robin should load");
+        assert_eq!(inst.zones[0].seq, Some((1, 2)));
+        assert_eq!(inst.zones[1].seq, Some((2, 2)));
+
+        let mut rr = RoundRobin::default();
+        let mut picks = Vec::new();
+        for note_on in 1..=6 {
+            let z = &inst.zones[rr.pick(&inst.zones, 0, 60, 0.8).expect("a zone covers c4")];
+            let hz = measured_hz(z).round();
+            let name = Path::new(z.sample_path.as_deref().unwrap())
+                .file_name()
+                .unwrap()
+                .to_string_lossy()
+                .to_string();
+            println!("note-on {note_on} on c4 -> {name} ({hz:.0} Hz)");
+            picks.push(hz as u32);
+        }
+        assert_eq!(picks, vec![220, 990, 220, 990, 220, 990]);
+    }
+
+    /// A zone without `seq` data is not round-robin: the same zone answers every note-on.
+    #[test]
+    fn a_plain_zone_plays_every_note_on() {
+        use crate::audio::keymap::RoundRobin;
+        let d = dir("rr-plain");
+        tone(&d.join("only.wav"), 220.0);
+        let p = write_sfz(
+            &d,
+            "plain.sfz",
+            "<region>\nsample=only.wav\nkey=c4\n",
+        );
+        let inst = load(&p).expect("plain zone should load");
+        assert_eq!(inst.zones[0].seq, None);
+
+        let mut rr = RoundRobin::default();
+        let mut picks = Vec::new();
+        for note_on in 1..=3 {
+            let z = &inst.zones[rr.pick(&inst.zones, 0, 60, 0.8).expect("the zone covers c4")];
+            let hz = measured_hz(z).round() as u32;
+            println!("note-on {note_on} on c4 -> {hz} Hz");
+            picks.push(hz);
+        }
+        assert_eq!(picks, vec![220, 220, 220]);
+    }
+
+    /// Round-robin counts per key: c4 cycling does not move e4 off its first position.
+    #[test]
+    fn two_keys_do_not_share_the_round_robin_counter() {
+        use crate::audio::keymap::RoundRobin;
+        let d = dir("rr-keys");
+        tone(&d.join("c4a.wav"), 220.0);
+        tone(&d.join("c4b.wav"), 990.0);
+        tone(&d.join("e4a.wav"), 330.0);
+        tone(&d.join("e4b.wav"), 660.0);
+        let p = write_sfz(
+            &d,
+            "keys.sfz",
+            "<region>\nsample=c4a.wav\nkey=c4\nseq_length=2 seq_position=1\n\n<region>\nsample=c4b.wav\nkey=c4\nseq_length=2 seq_position=2\n\n<region>\nsample=e4a.wav\nkey=e4\nseq_length=2 seq_position=1\n\n<region>\nsample=e4b.wav\nkey=e4\nseq_length=2 seq_position=2\n",
+        );
+        let inst = load(&p).expect("two round-robin keys should load");
+        let mut rr = RoundRobin::default();
+        let mut picks = Vec::new();
+        for (note_on, note) in [60u8, 60, 64, 64, 60, 64].into_iter().enumerate() {
+            let z = &inst.zones[rr.pick(&inst.zones, 0, note, 0.8).expect("a zone covers it")];
+            let hz = measured_hz(z).round() as u32;
+            println!("note-on {} on {note} -> {hz} Hz", note_on + 1);
+            picks.push(hz);
+        }
+        // c4: 220, 990, 220 — e4: 330, 660, 330. Each key has its own position.
+        assert_eq!(picks, vec![220, 990, 330, 660, 220, 330]);
     }
 
     #[test]
