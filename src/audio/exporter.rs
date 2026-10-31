@@ -324,18 +324,7 @@ fn sample_trigger_command(
 }
 
 
-/// Build the trigger commands for one 16th-note step, mirroring the live UI
-/// (`trigger_step` in pattern mode, `trigger_song_step` in song mode).
-/// Noterna ett steg ger upphov till. Delas med realtidsmätningen (Fas 7.2), så att
-/// mätningen kör samma trigger-väg som exporten.
-#[cfg(test)]
-pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioCommand> {
-    // shortcut: one call, one fresh cycle — fine for tests and the benchmark, which do not
-    // play a sequence; the render loop below passes its own counter so round-robin cycles.
-    triggers_for_step_with(spec, bar, sib, &mut crate::audio::keymap::RoundRobin::default())
-}
-
-
+/// The drum command for a Channel Racket row, so a channel without a sample still plays.
 fn drum_cmd(ch_idx: usize) -> AudioCommand {
     match ch_idx {
         0 => AudioCommand::TriggerDrum(DrumType::Kick),
@@ -347,9 +336,13 @@ fn drum_cmd(ch_idx: usize) -> AudioCommand {
         _ => AudioCommand::TriggerDrum(DrumType::Kick),
     }
 }
-/// `triggers_for_step` with the caller's round-robin state, so `seq_position` zones take turns
-/// across the whole song.
-pub(crate) fn triggers_for_step_with(
+
+/// Build the trigger commands for one 16th-note step, mirroring the live UI
+/// (`trigger_step` in pattern mode, `trigger_song_step` in song mode).
+/// Noterna ett steg ger upphov till. Delas med realtidsmätningen (Fas 7.2), så att
+/// mätningen kör samma trigger-väg som exporten. `rr` is the caller's round-robin state,
+/// so `seq_position` zones take turns across the whole song — one entry point, one counter.
+pub(crate) fn triggers_for_step(
     spec: &RenderSpec,
     bar: usize,
     sib: usize,
@@ -643,7 +636,7 @@ pub fn render_project_offline(engine: &mut SynthEngine, spec: &RenderSpec) -> Ve
     for gs in 0..total_steps {
         let bar = gs / 16;
         let sib = gs % 16;
-        for cmd in triggers_for_step_with(spec, bar, sib, &mut rr) {
+        for cmd in triggers_for_step(spec, bar, sib, &mut rr) {
             engine.handle_command(cmd);
         }
         let dur = step_frames(bar, sib);
@@ -1565,7 +1558,7 @@ mod tests {
             semitones: -3.0,
         }];
 
-        let cmds = triggers_for_step(&spec, 0, 2);
+        let cmds = triggers_for_step(&spec, 0, 2, &mut crate::audio::keymap::RoundRobin::default());
         let bend = cmds.iter().find_map(|c| match c {
             AudioCommand::BendDelayed { channel, semitones, delay_samples } => {
                 Some((*channel, *semitones, *delay_samples))
@@ -1592,7 +1585,7 @@ mod tests {
             semitones: 2.0,
         }];
 
-        let cmds = triggers_for_step(&spec, 0, 0);
+        let cmds = triggers_for_step(&spec, 0, 0, &mut crate::audio::keymap::RoundRobin::default());
         let bend = cmds.iter().find_map(|c| match c {
             AudioCommand::NoteBendDelayed {
                 key,
@@ -1623,12 +1616,12 @@ mod tests {
             crate::ui::app::state::PedalPoint { pos: 3.0, down: false },
         ];
 
-        let first = triggers_for_step(&spec, 0, 0);
+        let first = triggers_for_step(&spec, 0, 0, &mut crate::audio::keymap::RoundRobin::default());
         assert!(
             first.iter().any(|c| matches!(c, AudioCommand::SetSustainPedal(true))),
             "pedalen ner ska med i steg 0"
         );
-        let third = triggers_for_step(&spec, 0, 3);
+        let third = triggers_for_step(&spec, 0, 3, &mut crate::audio::keymap::RoundRobin::default());
         assert!(
             third.iter().any(|c| matches!(c, AudioCommand::SetSustainPedal(false))),
             "pedalen upp ska med i steg 3"
@@ -1646,10 +1639,10 @@ mod tests {
         spec.tracks[0].clip_bars[0] = 2;
 
         assert!(
-            triggers_for_step(&spec, 0, 4).is_empty(),
+            triggers_for_step(&spec, 0, 4, &mut crate::audio::keymap::RoundRobin::default()).is_empty(),
             "takt 1: steg 4 är tomt i patternets första takt"
         );
-        let bar2 = triggers_for_step(&spec, 1, 4);
+        let bar2 = triggers_for_step(&spec, 1, 4, &mut crate::audio::keymap::RoundRobin::default());
         assert!(
             bar2.iter()
                 .any(|c| matches!(c, AudioCommand::NoteOn { note: 48, .. })),
@@ -1691,7 +1684,7 @@ mod tests {
         ch_steps[0] = true;
         let spec = synth_spec_with(grid, ch_steps, 55);
 
-        let cmds = triggers_for_step(&spec, 0, 0);
+        let cmds = triggers_for_step(&spec, 0, 0, &mut crate::audio::keymap::RoundRobin::default());
         let mut keys = note_keys(&cmds);
         keys.sort();
         assert_eq!(keys, vec![48, 52, 55], "hela ackordet ska med i exporten");
@@ -1705,9 +1698,9 @@ mod tests {
         ch_steps[3] = true;
         let spec = synth_spec_with(grid, ch_steps, 62);
 
-        let cmds = triggers_for_step(&spec, 0, 3);
+        let cmds = triggers_for_step(&spec, 0, 3, &mut crate::audio::keymap::RoundRobin::default());
         assert_eq!(note_keys(&cmds), vec![62]);
-        assert!(note_keys(&triggers_for_step(&spec, 0, 0)).is_empty());
+        assert!(note_keys(&triggers_for_step(&spec, 0, 0, &mut crate::audio::keymap::RoundRobin::default())).is_empty());
     }
 
     #[test]
@@ -1720,7 +1713,7 @@ mod tests {
         ch_steps[5] = true;
         let spec = synth_spec_with(grid, ch_steps, 40);
 
-        let cmds = triggers_for_step(&spec, 0, 5);
+        let cmds = triggers_for_step(&spec, 0, 5, &mut crate::audio::keymap::RoundRobin::default());
         assert_eq!(note_keys(&cmds), vec![60], "bara rutnätets not på det steget");
     }
 
@@ -1747,7 +1740,7 @@ mod tests {
         let spec = synth_spec_with_take(grid, [false; crate::audio::tempo::MAX_STEPS], 60, take);
 
         // Steg 2: en fördröjning på en fjärdedels steg (0.25 × 5512 samples).
-        let cmds = triggers_for_step(&spec, 0, 2);
+        let cmds = triggers_for_step(&spec, 0, 2, &mut crate::audio::keymap::RoundRobin::default());
         let delayed = delayed_notes(&cmds);
         assert_eq!(delayed.len(), 1, "en fördröjd not: {delayed:?}");
         let (note, delay) = delayed[0];
@@ -1757,7 +1750,7 @@ mod tests {
         assert!(note_keys(&cmds).is_empty(), "ingen odelajad not också");
 
         // Steg 3 ska vara tyst (noten hör till steg 2).
-        assert!(triggers_for_step(&spec, 0, 3).is_empty());
+        assert!(triggers_for_step(&spec, 0, 3, &mut crate::audio::keymap::RoundRobin::default()).is_empty());
     }
 
     #[test]
@@ -1774,12 +1767,12 @@ mod tests {
 
         // Steg 2 har ingen ruta tänd alls — ändå ska noten spelas därifrån.
         assert!(!(0..24).any(|r| spec.patterns[0].piano_roll[r][2]));
-        let delayed = delayed_notes(&triggers_for_step(&spec, 0, 2));
+        let delayed = delayed_notes(&triggers_for_step(&spec, 0, 2, &mut crate::audio::keymap::RoundRobin::default()));
         assert_eq!(delayed.len(), 1, "noten ska klinga från steg 2: {delayed:?}");
         assert!((delayed[0].1 as i64 - 3858).abs() <= 2, "fördröjningen var {}", delayed[0].1);
 
         // Och steg 3 ska inte spela den igen.
-        assert!(triggers_for_step(&spec, 0, 3).is_empty(), "ingen dubbelnot på rutan");
+        assert!(triggers_for_step(&spec, 0, 3, &mut crate::audio::keymap::RoundRobin::default()).is_empty(), "ingen dubbelnot på rutan");
     }
 
     #[test]
@@ -1789,7 +1782,7 @@ mod tests {
         let mut take = crate::midi_take::Take::new();
         take.push(2.25, 60, 0.8);
         let spec = synth_spec_with_take(grid, [false; crate::audio::tempo::MAX_STEPS], 60, take);
-        assert!(triggers_for_step(&spec, 0, 2).is_empty());
+        assert!(triggers_for_step(&spec, 0, 2, &mut crate::audio::keymap::RoundRobin::default()).is_empty());
     }
 
     #[test]
@@ -1976,9 +1969,9 @@ mod tests {
         let has_note = |cmds: &[AudioCommand]| {
             cmds.iter().any(|c| matches!(c, AudioCommand::NoteOnDelayed { note: 60, .. }))
         };
-        assert!(has_note(&triggers_for_step(&spec, 0, 0)), "takt 1");
+        assert!(has_note(&triggers_for_step(&spec, 0, 0, &mut crate::audio::keymap::RoundRobin::default())), "takt 1");
         assert!(
-            has_note(&triggers_for_step(&spec, 1, 0)),
+            has_note(&triggers_for_step(&spec, 1, 0, &mut crate::audio::keymap::RoundRobin::default())),
             "tagningen ska höras i takt 2 också"
         );
     }

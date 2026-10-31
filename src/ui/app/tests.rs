@@ -500,6 +500,187 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
         assert_eq!(picked, vec![0.25, 0.75, 0.25, 0.75]);
     }
 
+    /// A zone that takes its turn in an SFZ `seq_position` group of `len`. The loudness in the
+    /// sample tells which zone played, so a test can print the cycle instead of an index.
+    fn seq_zone(level: f32, pos: u8, len: u8) -> crate::audio::keymap::SampleZone {
+        crate::audio::keymap::SampleZone {
+            pcm: Some((
+                std::sync::Arc::new(vec![level; 8]),
+                std::sync::Arc::new(vec![level; 8]),
+                44_100,
+            )),
+            key_low: 60,
+            key_high: 60,
+            seq: Some((pos, len)),
+            ..crate::audio::keymap::SampleZone::full_range(60)
+        }
+    }
+
+    /// **The cycle survives a save** (SFZ `seq_position`). Three note-ons move the counter off
+    /// the first step, and a project saved mid-cycle reopens on the sample that would have come
+    /// next — read back through the project's own JSON, not through a copy of its shape.
+    #[test]
+    fn a_project_saved_mid_cycle_reopens_on_the_next_sample() {
+        use crate::audio::keymap::RoundRobin;
+        let zones: Vec<_> = (1..=4).map(|p| seq_zone(p as f32 / 10.0, p, 4)).collect();
+        let mut rr = RoundRobin::default();
+        let mut played = Vec::new();
+        for _ in 0..3 {
+            let i = rr.pick(&zones, 0, 60, 0.8).expect("a zone covers the note");
+            played.push(zones[i].pcm.as_ref().unwrap().0[0]);
+        }
+        println!(
+            "picked before saving: {played:?}; saved counter: {:?}",
+            rr.entries()
+        );
+        assert_eq!(
+            rr.entries(),
+            vec![((0usize, 60u8), 4u32)],
+            "three note-ons leave the counter on the fourth sample, not the first"
+        );
+
+        // The file as `project_data` writes it, read back the way `load_project_file` does.
+        let saved = serde_json::json!({
+            "name": "Mid-cycle",
+            "bpm": 120.0,
+            "swing": 0.0,
+            "master_volume": 1.0,
+            "master_pan": 0.0,
+            "tracks": [],
+            "round_robin": rr.entries(),
+        });
+        let next_before = zones[rr.pick(&zones, 0, 60, 0.8).unwrap()]
+            .pcm
+            .as_ref()
+            .unwrap()
+            .0[0];
+        let back: SonixProjectData = serde_json::from_value(saved).expect("the file loads");
+        let mut reloaded = RoundRobin::from_entries(&back.round_robin);
+        let next_after = zones[reloaded.pick(&zones, 0, 60, 0.8).unwrap()]
+            .pcm
+            .as_ref()
+            .unwrap()
+            .0[0];
+        println!("next sample before saving: {next_before}; after reloading: {next_after}");
+        assert_eq!(next_after, next_before, "the reopened project plays the same sample");
+        assert_eq!(next_after, 0.4, "the fourth sample of the cycle, not the first");
+    }
+
+    /// **An old project file still starts on the first sample.** The field is missing there, so
+    /// the list is empty — exactly the old behaviour, with no migration and no warning.
+    #[test]
+    fn an_old_project_file_without_a_round_robin_starts_on_the_first_sample() {
+        use crate::audio::keymap::RoundRobin;
+        let old = r#"{
+            "name": "Gammalt",
+            "bpm": 120.0,
+            "swing": 0.0,
+            "master_volume": 1.0,
+            "master_pan": 0.0,
+            "tracks": []
+        }"#;
+        let data: SonixProjectData = serde_json::from_str(old).expect("old file loads");
+        assert!(data.round_robin.is_empty());
+        let zones: Vec<_> = (1..=4).map(|p| seq_zone(p as f32 / 10.0, p, 4)).collect();
+        let mut rr = RoundRobin::from_entries(&data.round_robin);
+        let first = zones[rr.pick(&zones, 0, 60, 0.8).unwrap()]
+            .pcm
+            .as_ref()
+            .unwrap()
+            .0[0];
+        println!("first sample from an old file: {first}");
+        assert_eq!(first, 0.1, "position 1, exactly as before the field existed");
+    }
+
+    /// **One counter type, one rule.** The export path and the live path are handed the same
+    /// `RoundRobin` and must cycle 1-2-3 the same way over six note-ons.
+    #[test]
+    fn the_export_and_the_live_path_cycle_one_round_robin() {
+        use crate::audio::keymap::RoundRobin;
+        let zones: Vec<_> = (1..=3).map(|p| seq_zone(p as f32 / 10.0, p, 3)).collect();
+
+        let mut ch = test_channel();
+        ch.zones = zones.clone();
+        let mut live_rr = RoundRobin::default();
+        let mut live = Vec::new();
+        for _ in 0..6 {
+            match crate::ui::app::browser::channel_sample_trigger_command(
+                &ch, 0, 60, 0.8, 0.0, &mut live_rr,
+            )
+            .expect("the live command is built")
+            {
+                AudioCommand::TriggerSampleVoice { left, .. } => live.push(left[0]),
+                _ => panic!("not TriggerSampleVoice"),
+            }
+        }
+
+        let voice = crate::audio::exporter::VoiceSpec {
+            release: None,
+            left: std::sync::Arc::new(vec![0.0; 8]),
+            right: std::sync::Arc::new(vec![0.0; 8]),
+            sample_rate: 44_100,
+            base_note: 60,
+            semitones: 0,
+            cents: 0.0,
+            volume: 1.0,
+            reverse: false,
+            start: 0.0,
+            end: 1.0,
+            loop_mode: crate::audio::LoopMode::Off,
+            loop_start: 0.0,
+            loop_end: 1.0,
+            ping_pong: false,
+            amp_env: crate::audio::envelope::AdsrParams::identity(),
+            velocity_sensitivity: 1.0,
+            velocity_curve: crate::audio::envelope::VelocityCurve::Linear,
+            filter: crate::audio::filter::SamplerFilter::default(),
+            zones: zones.clone(),
+        };
+        let mut steps = [false; crate::audio::tempo::MAX_STEPS];
+        steps[0] = true;
+        let spec = crate::audio::exporter::RenderSpec {
+            sample_rate: 44_100,
+            bpm: 120.0,
+            tempo_points: Vec::new(),
+            swing: 0.0,
+            num_bars: 1,
+            selected_pattern: 0,
+            pattern_mode: true,
+            rack: vec![crate::audio::exporter::RackChannel {
+                voice: Some(voice),
+                slices: Vec::new(),
+                fallback_volume: 1.0,
+                steps,
+                notes: [60; crate::audio::tempo::MAX_STEPS],
+            }],
+            patterns: Vec::new(),
+            tracks: Vec::new(),
+            timeline: Vec::new(),
+            velocities: [1.0; crate::audio::tempo::MAX_STEPS],
+            solo_track: None,
+            tail_secs: 0.0,
+            bus_volume: [1.0; crate::audio::synth::NUM_BUSES],
+            bus_muted: [false; crate::audio::synth::NUM_BUSES],
+            bus_solo: [false; crate::audio::synth::NUM_BUSES],
+            vca_volume: default_vca_volume(),
+            vca_muted: [false; crate::audio::synth::NUM_VCAS],
+            vca_solo: [false; crate::audio::synth::NUM_VCAS],
+        };
+        let mut export_rr = RoundRobin::default();
+        let mut exported = Vec::new();
+        for _ in 0..6 {
+            for cmd in crate::audio::exporter::triggers_for_step(&spec, 0, 0, &mut export_rr) {
+                if let AudioCommand::TriggerSampleVoice { left, .. } = cmd {
+                    exported.push(left[0]);
+                }
+            }
+        }
+        println!("live picks:   {live:?}");
+        println!("export picks: {exported:?}");
+        assert_eq!(live, vec![0.1, 0.2, 0.3, 0.1, 0.2, 0.3]);
+        assert_eq!(exported, live, "same counter, same rule in both paths");
+    }
+
     /// **En not utanför zonerna går tillbaka till kanalens eget sampel** — det är därför en
     /// ofullständig keymap inte tystar det register den inte täcker.
     #[test]
@@ -592,6 +773,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             step_velocities: Some(step_velocities.to_vec()),
             channels: vec![channel_to_saved(&ch)],
             midi_map: Default::default(),
+            round_robin: Vec::new(),
         };
 
         let json = serde_json::to_string(&data).unwrap();
@@ -2004,6 +2186,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
             step_velocities: None,
             channels: Vec::new(),
             midi_map: Default::default(),
+            round_robin: Vec::new(),
         };
         let json = serde_json::to_string(&data).unwrap();
         let back: SonixProjectData = serde_json::from_str(&json).unwrap();
