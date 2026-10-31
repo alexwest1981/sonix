@@ -11,6 +11,8 @@ pub struct AiViewAction {
     /// Generera **ljud** (Suno/TTS) — flyttad hit från arrangörens kapsel, som togs bort
     /// tillsammans med den överflödiga kromen.
     pub generate_audio: bool,
+    /// Open the Suno panel (sign in, prompt, create — stems land on their own channels).
+    pub open_suno: bool,
 }
 
 pub fn render_ai_assistant_view(
@@ -55,6 +57,9 @@ pub fn render_ai_assistant_view(
                     }
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("🎧 Generera ljud")).strong().size(Theme::FONT_S)).fill(crate::ui::theme::palette().purple())).clicked() {
                         action.generate_audio = true;
+                    }
+                    if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("☀ Suno: sign in & create stems")).strong().size(Theme::FONT_S)).fill(crate::ui::theme::palette().orange())).clicked() {
+                        action.open_suno = true;
                     }
                     if ai_assistant.is_generating {
                         ui.spinner();

@@ -551,7 +551,9 @@ impl SonixApp {
 /// Loads a real audio file from disk and adds it as a new timeline track
 /// with a playable region (used by the "Add Track → Import" templates).
 pub fn import_audio_file_as_track(&mut self, path: &str, tmpl: &TrackTemplate) {
-    let (l, r, sr) = match crate::audio::load_wav_pcm(path) {
+    // Any format the reader handles, not just WAV: the import template promises MP3/FLAC too,
+    // and a Suno answer can arrive as either.
+    let (l, r, sr) = match crate::audio::load_audio_pcm(path) {
         Ok(v) => v,
         Err(e) => {
             self.status_message = crate::tstatus!("⚠️ Kunde inte läsa '{}': {}", path, e);
@@ -1047,6 +1049,34 @@ pub fn parse_suno_zip_info(zip_path: &str) -> (String, f32) {
 }
 }
 
+/// What a Suno result is, decided from its file list alone — the UI never guesses.
+#[derive(Debug, PartialEq, Eq)]
+pub enum SunoArrival {
+    /// Exactly one audio file: import it as a single clip.
+    One(std::path::PathBuf),
+    /// Several audio files, sorted by file name: one channel per file.
+    Stems(Vec<std::path::PathBuf>),
+    /// A stem bundle: hand it to the existing ZIP import.
+    Zip(std::path::PathBuf),
+}
+
+pub fn classify_suno_files(files: &[std::path::PathBuf]) -> SunoArrival {
+    let mut audio: Vec<std::path::PathBuf> = files
+        .iter()
+        .filter(|p| ["wav", "mp3", "flac"].iter().any(|ext| has_extension(p, ext)))
+        .cloned()
+        .collect();
+    audio.sort_by_key(|p| p.file_name().map(|n| n.to_os_string()));
+    // A .zip next to audio is still a bundle: its contents are what the user wants.
+    if let Some(zip) = files.iter().find(|p| has_extension(p, "zip")) {
+        return SunoArrival::Zip(zip.clone());
+    }
+    match audio.len() {
+        1 => SunoArrival::One(audio.remove(0)),
+        _ => SunoArrival::Stems(audio),
+    }
+}
+
 impl SonixApp {
 pub fn import_suno_zip(&mut self, zip_path: &str) {
     self.start_suno_zip_import(zip_path);
@@ -1534,6 +1564,48 @@ impl SonixApp {
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default(),
             secs
+        );
+    }
+}
+
+#[cfg(test)]
+mod suno_arrival_tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    /// One file is a clip, several are stems in file-name order, a .zip is a bundle.
+    #[test]
+    fn suno_files_are_classified_by_count_and_extension() {
+        let one = vec![PathBuf::from("/tmp/suno/song/song.mp3")];
+        let stems = vec![
+            PathBuf::from("/tmp/suno/song/03-bass.wav"),
+            PathBuf::from("/tmp/suno/song/01-vocals.wav"),
+            PathBuf::from("/tmp/suno/song/02-drums.flac"),
+        ];
+        let zip = vec![
+            PathBuf::from("/tmp/suno/song/stems.zip"),
+            PathBuf::from("/tmp/suno/song/cover.png"),
+        ];
+
+        let one = classify_suno_files(&one);
+        let stems = classify_suno_files(&stems);
+        let zip = classify_suno_files(&zip);
+        println!("one: {one:?}");
+        println!("stems: {stems:?}");
+        println!("zip: {zip:?}");
+
+        assert_eq!(one, SunoArrival::One(PathBuf::from("/tmp/suno/song/song.mp3")));
+        assert_eq!(
+            stems,
+            SunoArrival::Stems(vec![
+                PathBuf::from("/tmp/suno/song/01-vocals.wav"),
+                PathBuf::from("/tmp/suno/song/02-drums.flac"),
+                PathBuf::from("/tmp/suno/song/03-bass.wav"),
+            ])
+        );
+        assert_eq!(
+            zip,
+            SunoArrival::Zip(PathBuf::from("/tmp/suno/song/stems.zip"))
         );
     }
 }

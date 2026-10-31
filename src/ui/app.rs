@@ -135,6 +135,13 @@ mod tests;
 /// `Some(Ok)` = klart, `Some(Err)` = felmeddelandet som ska synas.
 pub type SharedResult<T> = std::sync::Arc<std::sync::Mutex<Option<Result<T, String>>>>;
 
+/// What the Suno panel's one background slot can return: the tool list after sign-in, or a
+/// generated song. Connect and create never run at the same time, so they share the slot.
+pub enum SunoTask {
+    Connected(Vec<String>),
+    Generated(crate::audio::suno::GeneratedSong),
+}
+
 pub struct SonixApp {
     pub engine: AudioEngine,
     /// Monitor ring currently registered with the audio engine (re-sent after
@@ -563,6 +570,16 @@ pub struct SonixApp {
     pub export_preset_idx: usize,
     // Suno AI Prompt Bar & Studio Timeline View
     pub suno_prompt_input: String,
+    pub suno_style_input: String,
+    pub suno_lyrics_input: String,
+    /// The Suno panel. `suno_tools` is what the server's own `tools/list` returned, so a beta
+    /// surface that differs from our guesses is visible in the UI instead of hidden.
+    pub show_suno_modal: bool,
+    pub suno_status: String,
+    pub suno_tools: Vec<String>,
+    pub suno_last: Option<crate::audio::suno::GeneratedSong>,
+    /// The connect/generate thread in flight; one at a time, so one slot.
+    pub suno_pending: Option<SharedResult<SunoTask>>,
     pub suno_model_version: String,
     pub suno_context_clip: Option<String>,
     pub suno_is_generating: bool,
@@ -1286,6 +1303,13 @@ impl SonixApp {
             export_preset_idx: 0,
             // Suno AI Prompt Bar & Studio Timeline View
             suno_prompt_input: crate::i18n::t("Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll").to_string(),
+            suno_style_input: String::new(),
+            suno_lyrics_input: String::new(),
+            show_suno_modal: false,
+            suno_status: String::new(),
+            suno_tools: Vec::new(),
+            suno_last: None,
+            suno_pending: None,
             suno_model_version: "Sonix AI v5.5 (Music & Stems)".to_string(),
             suno_context_clip: None,
             suno_is_generating: false,

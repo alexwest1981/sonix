@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::audio::ai_tools;
 
-use super::SonixApp;
+use super::{SharedResult, SonixApp, SunoTask};
 
 impl SonixApp {
     /// Skickar användarens text till modellen i bakgrunden. `None` = ingen förfrågan pågår.
@@ -659,5 +659,121 @@ fn first_line(text: &str) -> String {
         .chars()
         .take(160)
         .collect()
+}
+
+impl SonixApp {
+    /// Signs in on a background thread: `connect()` opens the browser and blocks until the
+    /// redirect arrives, which would freeze the UI thread.
+    pub fn suno_connect(&mut self) {
+        if self.suno_pending.is_some() {
+            self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
+            return;
+        }
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_status = crate::i18n::t(
+            "☀ Connecting — finish the sign-in in the browser, then come back here.",
+        )
+        .to_string();
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect().map(|session| {
+                SunoTask::Connected(session.tools().iter().map(|t| t.name.clone()).collect())
+            });
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Creates a song on a background thread and puts the result on the timeline.
+    pub fn suno_create(&mut self) {
+        let prompt = self.suno_prompt_input.trim().to_string();
+        if prompt.is_empty() {
+            self.suno_status = crate::i18n::t("⚠ Write a prompt first.").to_string();
+            return;
+        }
+        if self.suno_pending.is_some() {
+            self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
+            return;
+        }
+        // shortcut: create connects again from the saved tokens instead of holding a session,
+        // upgrade if the handshake ever costs real time.
+        let style = Some(self.suno_style_input.trim().to_string()).filter(|s| !s.is_empty());
+        let lyrics = Some(self.suno_lyrics_input.trim().to_string()).filter(|s| !s.is_empty());
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_status = crate::i18n::t("⏳ Suno is creating the song…").to_string();
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect()
+                .and_then(|mut session| {
+                    session.generate(&prompt, style.as_deref(), lyrics.as_deref())
+                })
+                .map(SunoTask::Generated);
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Polls the one slot; called every frame.
+    pub fn poll_suno(&mut self) {
+        let Some(slot) = self.suno_pending.clone() else {
+            return;
+        };
+        let taken = slot.lock().ok().and_then(|mut guard| guard.take());
+        let Some(result) = taken else {
+            return;
+        };
+        self.suno_pending = None;
+        match result {
+            Ok(SunoTask::Connected(tools)) => {
+                self.suno_tools = tools;
+                self.suno_status = crate::i18n::t(
+                    "✔ Signed in. The tools the server exposes are listed below.",
+                )
+                .to_string();
+            }
+            Ok(SunoTask::Generated(song)) => self.install_suno_song(song),
+            Err(error) => self.suno_status = error,
+        }
+    }
+
+    /// One file is one clip, several are one channel per file, a `.zip` is the existing
+    /// stem-bundle import.
+    fn install_suno_song(&mut self, song: crate::audio::suno::GeneratedSong) {
+        use crate::ui::app::import::{SunoArrival, classify_suno_files};
+        match classify_suno_files(&song.files) {
+            SunoArrival::One(path) => {
+                let tmpl = crate::ui::add_track_modal::get_track_templates()
+                    .into_iter()
+                    .find(|t| t.category == crate::ui::add_track_modal::AddTrackCategory::Import)
+                    .expect("the add-track modal ships an import template");
+                self.import_audio_file_as_track(&path.to_string_lossy(), &tmpl);
+                self.suno_status =
+                    crate::i18n::t("✔ One file — imported as one clip.").to_string();
+            }
+            SunoArrival::Stems(files) => match files.first().and_then(|p| p.parent()) {
+                // One folder per song, so the folder is exactly these files; the stem importer
+                // lists and numbers them in file-name order.
+                Some(dir) => {
+                    self.import_suno_stems_from_folder(&dir.to_string_lossy(), &song.title, 0.0);
+                    self.suno_status = crate::tstatus!(
+                        "✔ {} files — imported as stems, one channel per file.",
+                        files.len()
+                    );
+                }
+                None => {
+                    self.suno_status =
+                        crate::i18n::t("⚠ Suno returned no files.").to_string();
+                }
+            },
+            SunoArrival::Zip(path) => {
+                self.import_suno_zip(&path.to_string_lossy());
+                self.suno_status =
+                    crate::i18n::t("✔ The ZIP went to the stem import.").to_string();
+            }
+        }
+        self.suno_last = Some(song);
+    }
 }
 
