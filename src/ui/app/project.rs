@@ -563,6 +563,12 @@ pub struct SonixProjectData {
     /// då är den avstängd och noterna går rakt igenom, precis som förut.
     #[serde(default)]
     pub midi_map: crate::audio::key_mapper::KeyMap,
+    /// **Round-robin position** (SFZ `seq_position`): where each `(channel, key)` stands in its
+    /// cycle, so a project saved mid-cycle reopens on the next sample instead of the first one.
+    /// Missing in an older file means an empty list — every cycle then starts at position 1,
+    /// exactly as before.
+    #[serde(default)]
+    pub round_robin: Vec<((usize, u8), u32)>,
 }
 
 /// Standardgrundton för ett projekt som sparades innan tonarten fanns (Fas 8.11):
@@ -1161,6 +1167,8 @@ pub struct LoadedProjectPayload {
     pub channels: Vec<SavedChannel>,
     /// MIDI-kartan som den stod när filen sparades.
     pub midi_map: crate::audio::key_mapper::KeyMap,
+    /// Round-robin position per `(channel, key)` as it stood when the file was saved.
+    pub round_robin: Vec<((usize, u8), u32)>,
     pub file_path: String,
 }
 
@@ -2005,6 +2013,7 @@ pub fn load_demo_project(&mut self) {
                 step_velocities: None,
                 channels: Vec::new(),
                 midi_map: Default::default(),
+                round_robin: Vec::new(),
                 file_path: "demo".to_string(),
             });
         }
@@ -2084,6 +2093,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         step_velocities: Some(self.step_velocities.to_vec()),
         channels: self.channels.iter().map(channel_to_saved).collect(),
         midi_map: self.midi_map.clone(),
+        round_robin: self.round_robin.entries(),
         plugin_slots: self
             .plugin_slots
             .iter()
@@ -2553,6 +2563,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 step_velocities: data.step_velocities,
                 channels: data.channels,
                 midi_map: data.midi_map,
+                round_robin: data.round_robin,
                 file_path: path,
             });
         }
@@ -2604,6 +2615,9 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
     self.stems_synced_bpm = self.bpm;
     self.project_notes = payload.notes;
     self.midi_map = payload.midi_map;
+    // The cycle picks up where the file left it, per `(channel, key)`. An empty list (an old
+    // file) leaves every counter unset, so the next note-on starts at the first sample.
+    self.round_robin = crate::audio::keymap::RoundRobin::from_entries(&payload.round_robin);
     self.follow_tempo = payload.follow_tempo;
     self.tempo_points = payload.tempo_points;
     self.song_key_root = payload.song_key_root;

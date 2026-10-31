@@ -310,6 +310,7 @@ pub fn measure(spec: &RenderSpec, frames: usize, blocks: usize, fx: &FxState) ->
     let mut engine = build_offline_engine(spec, fx);
     let step_frames = (60.0 / spec.bpm.max(1.0) / 4.0 * spec.sample_rate as f32).round() as u64;
     let mut out = vec![0.0f32; frames * 2];
+    let mut rr = crate::audio::keymap::RoundRobin::default();
     let mut durations = Vec::with_capacity(blocks);
     let mut pos: u64 = 0;
     for _ in 0..blocks {
@@ -319,7 +320,7 @@ pub fn measure(spec: &RenderSpec, frames: usize, blocks: usize, fx: &FxState) ->
         for s in first..=last {
             let sib = (s % 16) as usize;
             let bar = ((s / 16) as usize) % spec.num_bars.max(1);
-            for cmd in triggers_for_step(spec, bar, sib) {
+            for cmd in triggers_for_step(spec, bar, sib, &mut rr) {
                 engine.handle_command(cmd);
             }
         }

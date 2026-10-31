@@ -108,6 +108,20 @@ pub fn zone_for_note(zones: &[SampleZone], note: u8, velocity: f32) -> Option<us
 pub struct RoundRobin(std::collections::HashMap<(usize, u8), u32>);
 
 impl RoundRobin {
+    /// The counter per `(channel, note)`, as the project file stores it. Sorted, so two runs
+    /// write the same JSON.
+    pub fn entries(&self) -> Vec<((usize, u8), u32)> {
+        let mut out: Vec<_> = self.0.iter().map(|(k, v)| (*k, *v)).collect();
+        out.sort_unstable();
+        out
+    }
+
+    /// Rebuilds the state from the project file. An empty list (a file from before the counter
+    /// was saved) gives exactly the old behaviour: every cycle starts at position 1.
+    pub fn from_entries(entries: &[((usize, u8), u32)]) -> Self {
+        Self(entries.iter().copied().collect())
+    }
+
     /// The zone this note-on plays. Zones that carry `seq` take turns by `seq_position`; a key
     /// with no `seq` zone at all is answered by [`zone_for_note`], exactly as before.
     ///
