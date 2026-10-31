@@ -9,9 +9,11 @@
 //! so `--features plugin-host` would stop building on a clean machine.
 //!
 //! Scope: discover bundles (walk for `*.ttl`, read `lv2:binary` + URI + name +
-//! author), instantiate a stereo effect and run audio through it. No presets,
-//! no state, no MIDI, no GUIs, no `buf-size`/URID features: a plugin that
-//! requires any of those is refused at load with its own name in the error.
+//! author), instantiate a stereo effect, run audio through it, and carry its
+//! patch through `state:interface` (the numeric keys are passed through — no
+//! URID map is offered). No presets, no MIDI, no GUIs, no `buf-size`/URID
+//! features: a plugin that requires any of those is refused at load with its own
+//! name in the error.
 //!
 //! Port metadata comes from the bundle's Turtle, because LV2 has no runtime
 //! introspection API — the host has to read `lv2:index`/`lv2:AudioPort`/… .
@@ -53,6 +55,102 @@ pub struct Lv2Descriptor {
 pub struct Lv2Feature {
     uri: *const c_char,
     data: *mut c_void,
+}
+
+/// `state:interface` — the extension that carries a plugin's patch.
+const STATE_INTERFACE_URI: &[u8] = b"http://lv2plug.in/ns/ext/state#interface\0";
+
+/// `LV2_State_Store_Function` from `state.h`. Returns an `LV2_State_Status`
+/// where 0 is success; the host only distinguishes success from failure.
+type Lv2StateStore = unsafe extern "C" fn(
+    state: *mut c_void,
+    key: u32,
+    value: *const c_void,
+    size: u32,
+    type_: u32,
+    flags: u32,
+) -> u32;
+
+/// `LV2_State_Retrieve_Function` from `state.h`.
+type Lv2StateRetrieve = unsafe extern "C" fn(
+    state: *mut c_void,
+    key: u32,
+    size: *mut usize,
+    type_: *mut u32,
+    flags: *mut u32,
+) -> *const c_void;
+
+/// `LV2_State_Interface` from `state.h`, in declaration order.
+#[repr(C)]
+struct Lv2StateInterface {
+    save: Option<
+        unsafe extern "C" fn(
+            handle: *mut c_void,
+            store: Lv2StateStore,
+            state: *mut c_void,
+            flags: u32,
+            features: *const *const Lv2Feature,
+        ) -> u32,
+    >,
+    restore: Option<
+        unsafe extern "C" fn(
+            handle: *mut c_void,
+            retrieve: Lv2StateRetrieve,
+            state: *mut c_void,
+            flags: u32,
+            features: *const *const Lv2Feature,
+        ) -> u32,
+    >,
+}
+
+/// `LV2_State_Store_Function`: appends one key/value pair to the host's list.
+unsafe extern "C" fn store_into_list(
+    state: *mut c_void,
+    key: u32,
+    value: *const c_void,
+    size: u32,
+    _type: u32,
+    _flags: u32,
+) -> u32 {
+    if state.is_null() || (value.is_null() && size > 0) {
+        return 1; // LV2_STATE_ERR_UNKNOWN
+    }
+    let out = unsafe { &mut *state.cast::<Vec<(u32, Vec<u8>)>>() };
+    let bytes = unsafe { std::slice::from_raw_parts(value.cast::<u8>(), size as usize) };
+    out.push((key, bytes.to_vec()));
+    0
+}
+
+/// `LV2_State_Retrieve_Function`: hands the plugin a pointer into the saved
+/// list. The bytes are only valid until `restore` returns.
+unsafe extern "C" fn retrieve_from_list(
+    state: *mut c_void,
+    key: u32,
+    size: *mut usize,
+    type_: *mut u32,
+    flags: *mut u32,
+) -> *const c_void {
+    if state.is_null() {
+        return std::ptr::null();
+    }
+    let list = unsafe { &*state.cast::<&[(u32, Vec<u8>)]>() };
+    let Some((_, value)) = list.iter().find(|(k, _)| *k == key) else {
+        return std::ptr::null();
+    };
+    unsafe {
+        if !size.is_null() {
+            *size = value.len();
+        }
+        // The stored `type`/`flags` are not kept either: without a URID map
+        // there is no type URID to replay.
+        if !type_.is_null() {
+            *type_ = 0;
+        }
+        if !flags.is_null() {
+            *flags = 0;
+        }
+    }
+    value.as_ptr().cast()
 }
 
 /// One plugin found in a bundle.
@@ -235,6 +333,8 @@ pub struct Lv2Instance {
     /// Kept alive for as long as the instance borrows code from it.
     _lib: Library,
     descriptor: *const Lv2Descriptor,
+    /// `state:interface`, or null when the plugin has none.
+    state: *const Lv2StateInterface,
     handle: *mut c_void,
     uri: String,
     block: usize,
@@ -359,6 +459,7 @@ impl Lv2Instance {
         let mut instance = Lv2Instance {
             _lib: lib,
             descriptor,
+            state: std::ptr::null(),
             handle: std::ptr::null_mut(),
             uri: uri.to_string(),
             block,
@@ -380,6 +481,10 @@ impl Lv2Instance {
             return Err(format!("LV2 plugin {uri} could not be instantiated"));
         }
         instance.handle = handle;
+        instance.state = unsafe { (*descriptor).extension_data }
+            .map(|ext| unsafe { ext(STATE_INTERFACE_URI.as_ptr().cast()) })
+            .unwrap_or(std::ptr::null())
+            .cast();
 
         let connect = unsafe { (*descriptor).connect_port }
             .ok_or_else(|| format!("LV2 plugin {uri} has no connect_port callback"))?;
@@ -429,6 +534,59 @@ impl Lv2Instance {
         let value = value.clamp(port.min, port.max);
         self.controls[index as usize] = value;
         true
+    }
+
+    /// Collects the plugin's state through `state:interface`.
+    ///
+    /// Keys are `LV2_URID`s, but this host has no URID map, so the numeric keys
+    /// pass through unchanged and only mean something to the same plugin.
+    ///
+    /// shortcut: the per-value `type` and `flags` are dropped and no `state:map`
+    /// feature is offered, so a plugin that needs either saves nothing here;
+    /// upgrade when hosting plugins that keep non-POD state.
+    pub fn save_state(&mut self) -> Vec<(u32, Vec<u8>)> {
+        if self.state.is_null() {
+            return Vec::new();
+        }
+        let Some(save) = (unsafe { &*self.state }).save else {
+            return Vec::new();
+        };
+        let mut out: Vec<(u32, Vec<u8>)> = Vec::new();
+        let features: [*const Lv2Feature; 1] = [std::ptr::null()];
+        let status = unsafe {
+            save(
+                self.handle,
+                store_into_list,
+                (&mut out as *mut Vec<(u32, Vec<u8>)>).cast(),
+                0,
+                features.as_ptr(),
+            )
+        };
+        if status != 0 {
+            out.clear();
+        }
+        out
+    }
+
+    /// Feeds a saved list back through `state:interface`. A plugin without the
+    /// interface ignores the call instead of failing, and so does an empty list.
+    pub fn restore_state(&mut self, state: &[(u32, Vec<u8>)]) {
+        if self.state.is_null() {
+            return;
+        }
+        let Some(restore) = (unsafe { &*self.state }).restore else {
+            return;
+        };
+        let features: [*const Lv2Feature; 1] = [std::ptr::null()];
+        unsafe {
+            restore(
+                self.handle,
+                retrieve_from_list,
+                (&state as *const &[(u32, Vec<u8>)]).cast_mut().cast(),
+                0,
+                features.as_ptr(),
+            );
+        }
     }
 
     /// Deactivates and reactivates the plugin, which is LV2's reset idiom.
@@ -510,6 +668,13 @@ impl PluginProcessor for Lv2Processor {
     }
     fn reset(&mut self) {
         self.instance.reset();
+    }
+    fn lv2_state(&mut self) -> Vec<(u32, Vec<u8>)> {
+        self.instance.save_state()
+    }
+    fn set_lv2_state(&mut self, state: &[(u32, Vec<u8>)]) -> bool {
+        self.instance.restore_state(state);
+        true
     }
 }
 
@@ -778,5 +943,101 @@ mod tests {
         assert_eq!(processor.backend(), "LV2");
         assert_eq!(processor.info().name, "Sonix Test Amp");
         assert_eq!(processor.parameters().len(), 1);
+    }
+
+    /// (a) `state:interface`: 0.5 → save → 1.0 → restore → 0.5 again.
+    #[test]
+    fn state_interface_restores_the_saved_gain() {
+        let Some(bundle) = fixture() else {
+            println!("SKIPPED state_interface_restores_the_saved_gain: no C compiler");
+            return;
+        };
+        let mut instance = Lv2Instance::new(bundle, "http://sonix.test/lv2/amp", 48_000.0, 256)
+            .expect("instantiate fixture");
+        assert!(instance.set_param(0, 0.5));
+        let saved = instance.save_state();
+        println!("saved pairs: {saved:?}");
+        assert_eq!(saved.len(), 1, "the fixture saves exactly one value");
+        assert!(instance.set_param(0, 1.0));
+        let before = instance.controls[0];
+        instance.restore_state(&saved);
+        let after = instance.controls[0];
+        println!("gain before restore = {before:.3}, after restore = {after:.3}");
+
+        let input = sine(0.5, 256, 48_000.0, 440.0);
+        let (mut left, mut right) = (input.clone(), input.clone());
+        instance.process(&mut left, &mut right);
+        let gain = measured_gain(&input, &left);
+        println!("measured gain after restore = {gain:.6} (expected 0.5)");
+        assert!((after - 0.5).abs() < f32::EPSILON, "restored control {after}");
+        assert!((gain - 0.5).abs() < 0.005, "measured gain {gain}");
+    }
+
+    /// (b) A plugin without `state:interface` saves nothing and ignores a
+    /// restore — the same audio path, no error.
+    #[test]
+    fn plugin_without_state_interface_saves_nothing_and_ignores_restore() {
+        let Some(bundle) = fixture() else {
+            println!("SKIPPED plugin_without_state_interface_saves_nothing_and_ignores_restore: no C compiler");
+            return;
+        };
+        let mut instance = Lv2Instance::new(
+            bundle,
+            "http://sonix.test/lv2/stateless",
+            48_000.0,
+            256,
+        )
+        .expect("instantiate stateless fixture");
+        let saved = instance.save_state();
+        println!("stateless save_state = {saved:?} (expected [])");
+        assert!(saved.is_empty(), "no interface must save nothing");
+        instance.restore_state(&[(1, 0.5f32.to_ne_bytes().to_vec())]);
+        println!("stateless restore_state returned (no error)");
+
+        assert!(instance.set_param(0, 0.5));
+        let input = sine(0.5, 256, 48_000.0, 440.0);
+        let (mut left, mut right) = (input.clone(), input.clone());
+        instance.process(&mut left, &mut right);
+        let gain = measured_gain(&input, &left);
+        println!("stateless measured gain = {gain:.6} (expected 0.5, untouched)");
+        assert!((gain - 0.5).abs() < 0.005, "measured gain {gain}");
+    }
+
+    /// (c) The pairs survive the project file: same bytes after a serde round
+    /// trip, and they still drive the plugin back to 0.5.
+    #[test]
+    fn lv2_state_survives_the_project_file() {
+        let Some(bundle) = fixture() else {
+            println!("SKIPPED lv2_state_survives_the_project_file: no C compiler");
+            return;
+        };
+        let mut instance = Lv2Instance::new(bundle, "http://sonix.test/lv2/amp", 48_000.0, 256)
+            .expect("instantiate fixture");
+        assert!(instance.set_param(0, 0.5));
+        let saved = instance.save_state();
+
+        let slot = crate::ui::app::SavedPluginData {
+            path: bundle.to_string_lossy().to_string(),
+            name: "Sonix Test Amp".to_string(),
+            state: Vec::new(),
+            sandboxed: false,
+            latency_offset_frames: 0,
+            smart_disable: false,
+            extra_out_targets: Vec::new(),
+            lv2_state: saved.clone(),
+        };
+        let json = serde_json::to_string(&slot).expect("serialise the slot");
+        let back: crate::ui::app::SavedPluginData =
+            serde_json::from_str(&json).expect("deserialise the slot");
+
+        println!("lv2_state before: {:?}", saved);
+        println!("lv2_state after:  {:?}", back.lv2_state);
+        assert_eq!(saved, back.lv2_state, "the pairs must round-trip unchanged");
+
+        assert!(instance.set_param(0, 1.0));
+        instance.restore_state(&back.lv2_state);
+        let gain = instance.controls[0];
+        println!("gain from the reloaded project = {gain:.3} (expected 0.5)");
+        assert!((gain - 0.5).abs() < f32::EPSILON, "restored control {gain}");
     }
 }

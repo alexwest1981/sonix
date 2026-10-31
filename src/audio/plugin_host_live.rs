@@ -270,6 +270,16 @@ pub trait PluginProcessor: Send {
         let _ = data;
         false
     }
+    /// LV2 state as numeric key/value pairs (`LV2_State_Interface` has no single
+    /// blob). Empty for every backend without that interface.
+    fn lv2_state(&mut self) -> Vec<(u32, Vec<u8>)> {
+        Vec::new()
+    }
+    /// Restores pairs from [`Self::lv2_state`]. Returns false when unsupported.
+    fn set_lv2_state(&mut self, state: &[(u32, Vec<u8>)]) -> bool {
+        let _ = state;
+        false
+    }
     /// Loads one of the plugin's own presets from `location` via
     /// `clap.preset-load/2`. Returns false when unsupported.
     fn preset_load(&mut self, location: &str) -> bool {
@@ -652,6 +662,16 @@ impl PluginInsert {
     /// Restores plugin state (main-thread only, per the CLAP contract).
     pub fn load_state(&mut self, data: &[u8]) -> bool {
         self.processor.load_state(data)
+    }
+
+    /// LV2 state as numeric key/value pairs (main-thread only).
+    pub fn lv2_state(&mut self) -> Vec<(u32, Vec<u8>)> {
+        self.processor.lv2_state()
+    }
+
+    /// Restores LV2 state pairs (main-thread only).
+    pub fn set_lv2_state(&mut self, state: &[(u32, Vec<u8>)]) -> bool {
+        self.processor.set_lv2_state(state)
     }
 
     /// Loads a native preset from a location (main-thread only).

@@ -901,6 +901,12 @@ pub struct SavedPluginData {
     /// lästes inte alls).
     #[serde(default)]
     pub extra_out_targets: Vec<Option<usize>>,
+    /// **LV2 state as numeric key/value pairs.** LV2 has no self-describing state
+    /// blob, so the pairs from `LV2_State_Interface` are kept as they came.
+    /// `#[serde(default)]`: a file from before this field has no pairs, exactly
+    /// as it played then.
+    #[serde(default)]
+    pub lv2_state: Vec<(u32, Vec<u8>)>,
 }
 
 /// In-memory mirror of [`SavedPluginData`] kept on [`SonixApp`].
@@ -916,6 +922,8 @@ pub struct PluginSlot {
     pub smart_disable: bool,
     /// Pluginens egna utbussar → spår (Fas 8.6). Tom = inga kopplingar.
     pub extra_out_targets: Vec<Option<usize>>,
+    /// LV2 state as numeric key/value pairs; empty for every other backend.
+    pub lv2_state: Vec<(u32, Vec<u8>)>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -2065,6 +2073,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
                     latency_offset_frames: s.latency_offset_frames,
                     smart_disable: s.smart_disable,
                     extra_out_targets: s.extra_out_targets.clone(),
+                    lv2_state: s.lv2_state.clone(),
                 })
             })
             .collect(),
@@ -2728,6 +2737,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
                 latency_offset_frames: s.latency_offset_frames,
                 smart_disable: s.smart_disable,
                 extra_out_targets: s.extra_out_targets.clone(),
+                lv2_state: s.lv2_state.clone(),
             })
         })
         .collect();

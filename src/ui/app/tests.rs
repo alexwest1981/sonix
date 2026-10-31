@@ -1930,6 +1930,7 @@ use super::transport::steps_elapsed;   // stegklockan (Fas 8.13b) — modulen re
                     // och den första okopplad, för att formen `Option` per buss ska prövas
                     // och inte bara en lista av tal.
                     extra_out_targets: vec![None, Some(2)],
+                    lv2_state: Vec::new(),
                 }),
             ],
             bus_volume: default_bus_volume(),
