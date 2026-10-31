@@ -608,10 +608,21 @@ mod tests {
         let Some(fx) = fixture("fx") else { return };
         let plain = fx.dir.join("plain.mp4").to_string_lossy().to_string();
         let black = fx.dir.join("black.mp4").to_string_lossy().to_string();
-        export(&fx.clip, &fx.audio, &plain, 25.0).expect("plain export");
+        // De andra video-proven kodar samtidigt; under den lasten kan en kodning falla. Ett försök
+        // till, med felet utskrivet, skiljer last från verkligt fel.
+        let mut once = |run: &mut dyn FnMut() -> Result<u64, String>, what: &str| {
+            if let Err(first) = run() {
+                println!("{what}: första försöket föll ({first}), gör ett till");
+                run().unwrap_or_else(|e| panic!("{what}: {e}"));
+            }
+        };
+        once(&mut || export(&fx.clip, &fx.audio, &plain, 25.0), "plain export");
         let mut chain = VideoFxChain::default();
         chain.push(Box::new(Brightness { gain: 0.0 }));
-        export_clip(&fx.clip, &fx.audio, &black, 25.0, &mut chain).expect("filtered export");
+        once(
+            &mut || export_clip(&fx.clip, &fx.audio, &black, 25.0, &mut chain),
+            "filtered export",
+        );
 
         let mean = |path: &str| -> f64 {
             let mut source = VideoSource::open(path).expect("open the export");

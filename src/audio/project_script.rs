@@ -712,11 +712,13 @@ mod tests {
     /// måste bort innan motorn ser den — annars fälls varje skript som använder rubriken.
     #[test]
     fn the_language_header_is_not_executed() {
-        let mut ctx = ctx();
-        ctx.bpm = 120.0;
+        // Lokalen får inte heta `ctx`: då skuggar den hjälpfunktionen och `ctx()` nedan blir ett
+        // anrop på en struct.
+        let mut lua_ctx = ctx();
+        lua_ctx.bpm = 120.0;
         let source = "--!lua\nset_bpm(150)\nlog(\"ok\")";
-        run_named(source, "inline", &mut ctx).expect("lua with header");
-        assert_eq!(ctx.bpm, 150.0, "rubriken ska inte hindra skriptet");
+        run_named(source, "inline", &mut lua_ctx).expect("lua with header");
+        assert_eq!(lua_ctx.bpm, 150.0, "rubriken ska inte hindra skriptet");
 
         #[cfg(feature = "python")]
         {

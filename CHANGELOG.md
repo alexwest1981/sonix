@@ -22,6 +22,10 @@ Provet `a_module_that_only_hands_out_a_factory_after_module_entry_still_loads` k
 `tests/fixtures/mock_vst3.c`, som **vägrar lämna ut någon fabrik** förrän entry-anropet skett.
 Bevisat med ctypes: utan `ModuleEntry` → `NULL`, efter → giltig pekare.
 
+**Rättat på vägen:** `--features python` kompilerade inte — lokalen `ctx` i
+`the_language_header_is_not_executed` skuggade hjälpfunktionen `ctx()`. Och video-FX-provet gör ett
+försök till när en kodning faller under last (de andra video-proven kodar samtidigt).
+
 ## [0.9.229] - 2026-10-31
 
 **SFZ round-robin cyklas** (0.9.229): `SampleZone.seq` bär `seq_position`/`seq_length`, och
