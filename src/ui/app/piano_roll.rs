@@ -601,7 +601,10 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             // intervall. Räkna först, radera sedan — samma villkor, så det som raderas är det
             // som räknades.
             ui.separator();
-            ui.horizontal(|ui| {
+            // **Radbrytande, inte klippande**: raden är bredare än editorn när sound browsern är
+            // öppen, och då hamnade Skript-menyn utanför kanten. `horizontal_wrapped` flyttar ned
+            // det som inte får plats i stället för att gömma det.
+            ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(crate::i18n::t("Urval:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                 let mut max_vel = self.note_filter.max_velocity.unwrap_or(1.0);
                 if ui
@@ -781,7 +784,7 @@ pub(crate) fn render_piano_roll_editor(&mut self, ui: &mut egui::Ui) {
             });
             // **Artikulation**: sätter formen på urvalet och formar noterna en gång —
             // samma villkor som raderingen, så det som formas är det som räknades.
-            ui.horizontal(|ui| {
+            ui.horizontal_wrapped(|ui| {
                 ui.label(egui::RichText::new(crate::i18n::t("Artikulation:")).size(Theme::FONT_S).color(crate::ui::theme::palette().text_muted()));
                 for art in crate::midi_take::Articulation::ALL {
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t(art.label())).size(Theme::FONT_S)))
