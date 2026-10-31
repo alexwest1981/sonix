@@ -930,6 +930,23 @@ pub struct PluginSlot {
     pub extra_out_targets: Vec<Option<usize>>,
     /// LV2 state as numeric key/value pairs; empty for every other backend.
     pub lv2_state: Vec<(u32, Vec<u8>)>,
+    /// Re-reads [`Self::lv2_state`] from the live instance, so a save written
+    /// after a parameter edit carries the edit instead of the load-time values.
+    /// `None` when no instance is reachable (or the plugin keeps no state).
+    pub lv2_state_handle: Option<crate::audio::plugin_host_live::Lv2StateHandle>,
+}
+
+impl PluginSlot {
+    /// **The pairs as they are now** — what a project save writes. The live
+    /// instance answers; a slot without a reachable one (sandboxed, not yet
+    /// re-instantiated) keeps the pairs it was loaded with instead of losing
+    /// them.
+    pub(crate) fn current_lv2_state(&self) -> Vec<(u32, Vec<u8>)> {
+        self.lv2_state_handle
+            .as_ref()
+            .map(|handle| handle.save_state())
+            .unwrap_or_else(|| self.lv2_state.clone())
+    }
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -2079,7 +2096,10 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
                     latency_offset_frames: s.latency_offset_frames,
                     smart_disable: s.smart_disable,
                     extra_out_targets: s.extra_out_targets.clone(),
-                    lv2_state: s.lv2_state.clone(),
+                    // Re-read from the live instance: a save taken after a
+                    // parameter edit must carry the edit, not the load-time
+                    // pairs.
+                    lv2_state: s.current_lv2_state(),
                 })
             })
             .collect(),
@@ -2744,6 +2764,8 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
                 smart_disable: s.smart_disable,
                 extra_out_targets: s.extra_out_targets.clone(),
                 lv2_state: s.lv2_state.clone(),
+                // Filled in when the instance is re-created below.
+                lv2_state_handle: None,
             })
         })
         .collect();

@@ -203,6 +203,25 @@ pub fn inspect(path: &str) -> PluginInspection {
 /// is identical and only the plugin-reported latency differs.
 pub const DEFAULT_BLOCK_FRAMES: usize = 128;
 
+/// Re-reads a live plugin's LV2 state from the main thread.
+///
+/// The instance that owns the state is processing on the audio thread, so the
+/// handle captures however that backend makes the call safe (the LV2 host shares
+/// it behind a mutex). Cloning the handle shares the same instance.
+#[derive(Clone)]
+pub struct Lv2StateHandle(Arc<dyn Fn() -> Vec<(u32, Vec<u8>)> + Send + Sync>);
+
+#[allow(dead_code)]
+impl Lv2StateHandle {
+    pub fn new(save: impl Fn() -> Vec<(u32, Vec<u8>)> + Send + Sync + 'static) -> Self {
+        Self(Arc::new(save))
+    }
+    /// The pairs as they are right now.
+    pub fn save_state(&self) -> Vec<(u32, Vec<u8>)> {
+        (self.0)()
+    }
+}
+
 /// A live, *processing* plugin instance. Backend-agnostic; the CLAP backend
 /// implements it in `imp`. Future VST3/LV2 backends will implement the same.
 #[allow(dead_code)]
@@ -274,6 +293,13 @@ pub trait PluginProcessor: Send {
     /// blob). Empty for every backend without that interface.
     fn lv2_state(&mut self) -> Vec<(u32, Vec<u8>)> {
         Vec::new()
+    }
+    /// A main-thread handle that re-reads [`Self::lv2_state`]. A project save
+    /// runs on the main thread and must see the edits made since load, so the
+    /// pairs cannot be taken once and kept. `None` when there is nothing to
+    /// re-read.
+    fn lv2_state_handle(&self) -> Option<Lv2StateHandle> {
+        None
     }
     /// Restores pairs from [`Self::lv2_state`]. Returns false when unsupported.
     fn set_lv2_state(&mut self, state: &[(u32, Vec<u8>)]) -> bool {
@@ -667,6 +693,12 @@ impl PluginInsert {
     /// LV2 state as numeric key/value pairs (main-thread only).
     pub fn lv2_state(&mut self) -> Vec<(u32, Vec<u8>)> {
         self.processor.lv2_state()
+    }
+
+    /// Main-thread handle for re-reading the pairs at project-save time; `None`
+    /// when the plugin keeps no state or the backend cannot share it.
+    pub fn lv2_state_handle(&self) -> Option<Lv2StateHandle> {
+        self.processor.lv2_state_handle()
     }
 
     /// Restores LV2 state pairs (main-thread only).

@@ -10,26 +10,30 @@
 //!
 //! Scope: discover bundles (walk for `*.ttl`, read `lv2:binary` + URI + name +
 //! author), instantiate a stereo effect, run audio through it, and carry its
-//! patch through `state:interface` (the numeric keys are passed through — no
-//! URID map is offered). No presets, no MIDI, no GUIs, no `buf-size`/URID
-//! features: a plugin that requires any of those is refused at load with its own
-//! name in the error.
+//! patch through `state:interface`. The host owns a `urid:map`/`urid:unmap` pair
+//! and offers it to a plugin whose bundle asks for it, so a state key is a real
+//! URID and a plugin that needs the map can save at all. No presets, no MIDI, no
+//! GUIs, no `buf-size`: a plugin that requires those is refused at load with its
+//! own name in the error.
 //!
 //! Port metadata comes from the bundle's Turtle, because LV2 has no runtime
 //! introspection API — the host has to read `lv2:index`/`lv2:AudioPort`/… .
 //!
-//! shortcut: no LV2 features are passed to `instantiate` (no `buf-size`, no
-//! URID map), so synths and plugins with `lv2:requiredFeature` cannot load;
+//! shortcut: `urid:map`/`urid:unmap` are the only features offered (no
+//! `buf-size`), so synths and plugins requiring anything else cannot load;
 //! upgrade when hosting instruments.
 
 #![allow(dead_code)]
 
 use crate::audio::plugin_host_live::{
-    PARAM_IS_AUTOMATABLE, PluginInfo, PluginInspection, PluginParameter, PluginProcessor,
+    Lv2StateHandle, PARAM_IS_AUTOMATABLE, PluginInfo, PluginInspection, PluginParameter,
+    PluginProcessor,
 };
 use libloading::Library;
-use std::ffi::{CStr, c_char, c_void};
+use std::collections::HashMap;
+use std::ffi::{CStr, CString, c_char, c_void};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 /// `LV2_Descriptor` from `lv2.h`, in declaration order.
 #[repr(C)]
@@ -52,6 +56,7 @@ pub struct Lv2Descriptor {
 
 /// `LV2_Feature` from `lv2.h`.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct Lv2Feature {
     uri: *const c_char,
     data: *mut c_void,
@@ -59,6 +64,136 @@ pub struct Lv2Feature {
 
 /// `state:interface` — the extension that carries a plugin's patch.
 const STATE_INTERFACE_URI: &[u8] = b"http://lv2plug.in/ns/ext/state#interface\0";
+/// `urid:map` — the host's URI → number registry.
+const URID_MAP_URI: &[u8] = b"http://lv2plug.in/ns/ext/urid#map\0";
+/// `urid:unmap` — the same registry, read backwards.
+const URID_UNMAP_URI: &[u8] = b"http://lv2plug.in/ns/ext/urid#unmap\0";
+
+/// `LV2_URID_Map` from `urid.h`.
+#[repr(C)]
+struct Lv2UridMap {
+    handle: *mut c_void,
+    map: unsafe extern "C" fn(handle: *mut c_void, uri: *const c_char) -> u32,
+}
+
+/// `LV2_URID_Unmap` from `urid.h`.
+#[repr(C)]
+struct Lv2UridUnmap {
+    handle: *mut c_void,
+    unmap: unsafe extern "C" fn(handle: *mut c_void, urid: u32) -> *const c_char,
+}
+
+/// The host's URI ⇄ number registry.
+///
+/// One registry for the whole process, like every LV2 host: a state key the
+/// plugin mints when it saves must still be that number when another instance of
+/// it restores, which a per-instance map would not guarantee.
+#[derive(Default)]
+struct UridRegistry {
+    ids: HashMap<String, u32>,
+    /// `id - 1` → URI: the buffers `unmap` hands out. Growing the vector moves
+    /// the handles, never the strings they point at.
+    uris: Vec<CString>,
+}
+
+impl UridRegistry {
+    /// The id for `uri`, minting the next one the first time it is seen. Id 0 is
+    /// never handed out — LV2 reads it as "unknown".
+    fn intern(&mut self, uri: &str) -> u32 {
+        if let Some(id) = self.ids.get(uri) {
+            return *id;
+        }
+        let id = self.uris.len() as u32 + 1;
+        self.uris.push(CString::new(uri).unwrap_or_default());
+        self.ids.insert(uri.to_string(), id);
+        id
+    }
+
+    fn uri(&self, id: u32) -> Option<&CStr> {
+        self.uris.get(id.checked_sub(1)? as usize).map(CString::as_c_str)
+    }
+}
+
+static URIDS: Mutex<Option<UridRegistry>> = Mutex::new(None);
+
+/// The registry, ready to use. A poisoned lock only means an earlier call
+/// panicked while holding it; the table itself is still consistent.
+fn urids() -> std::sync::MutexGuard<'static, Option<UridRegistry>> {
+    URIDS.lock().unwrap_or_else(|poison| poison.into_inner())
+}
+
+/// `LV2_URID_Map`: interns `uri` in the host registry.
+unsafe extern "C" fn urid_map(_handle: *mut c_void, uri: *const c_char) -> u32 {
+    if uri.is_null() {
+        return 0;
+    }
+    let uri = unsafe { CStr::from_ptr(uri) }.to_string_lossy().into_owned();
+    let mut registry = urids();
+    registry
+        .get_or_insert_with(UridRegistry::default)
+        .intern(&uri)
+}
+
+/// `LV2_URID_Unmap`: the URI `id` was minted from, or null when unknown. The
+/// string outlives the guard — the registry owns it.
+unsafe extern "C" fn urid_unmap(_handle: *mut c_void, id: u32) -> *const c_char {
+    let registry = urids();
+    registry
+        .as_ref()
+        .and_then(|r| r.uri(id))
+        .map_or(std::ptr::null(), |uri| uri.as_ptr())
+}
+
+/// The features one instance offers: `urid:map`/`urid:unmap` when the bundle
+/// asks for the map, then the null terminator.
+///
+/// Boxed, and pointing into itself, because a plugin keeps the array and its
+/// `data` pointers for its whole lifetime — a `Lv2Instance` that moved would
+/// leave them dangling. The ABI takes an array of *pointers* to features, which
+/// is why `entries` and `list` are separate.
+struct OfferedFeatures {
+    map: Lv2UridMap,
+    unmap: Lv2UridUnmap,
+    entries: [Lv2Feature; 2],
+    list: [*const Lv2Feature; 3],
+}
+
+impl OfferedFeatures {
+    fn new(with_urid: bool) -> Box<Self> {
+        let null = Lv2Feature {
+            uri: std::ptr::null(),
+            data: std::ptr::null_mut(),
+        };
+        let mut offer = Box::new(Self {
+            map: Lv2UridMap {
+                handle: std::ptr::null_mut(),
+                map: urid_map,
+            },
+            unmap: Lv2UridUnmap {
+                handle: std::ptr::null_mut(),
+                unmap: urid_unmap,
+            },
+            entries: [null; 2],
+            list: [std::ptr::null(); 3],
+        });
+        if with_urid {
+            let this = std::ptr::addr_of_mut!(*offer).cast::<c_void>();
+            offer.map.handle = this;
+            offer.unmap.handle = this;
+            offer.entries[0] = Lv2Feature {
+                uri: URID_MAP_URI.as_ptr().cast(),
+                data: std::ptr::addr_of_mut!(offer.map).cast(),
+            };
+            offer.entries[1] = Lv2Feature {
+                uri: URID_UNMAP_URI.as_ptr().cast(),
+                data: std::ptr::addr_of_mut!(offer.unmap).cast(),
+            };
+            offer.list[0] = std::ptr::addr_of!(offer.entries[0]);
+            offer.list[1] = std::ptr::addr_of!(offer.entries[1]);
+        }
+        offer
+    }
+}
 
 /// `LV2_State_Store_Function` from `state.h`. Returns an `LV2_State_Status`
 /// where 0 is success; the host only distinguishes success from failure.
@@ -141,8 +276,8 @@ unsafe extern "C" fn retrieve_from_list(
         if !size.is_null() {
             *size = value.len();
         }
-        // The stored `type`/`flags` are not kept either: without a URID map
-        // there is no type URID to replay.
+        // The stored `type`/`flags` are not kept across a save: a pair is bytes
+        // only, so there is nothing to replay here.
         if !type_.is_null() {
             *type_ = 0;
         }
@@ -335,6 +470,9 @@ pub struct Lv2Instance {
     descriptor: *const Lv2Descriptor,
     /// `state:interface`, or null when the plugin has none.
     state: *const Lv2StateInterface,
+    /// What `instantiate`, `save` and `restore` are offered. Boxed: the pointers
+    /// outlive every call.
+    offer: Box<OfferedFeatures>,
     handle: *mut c_void,
     uri: String,
     block: usize,
@@ -456,10 +594,19 @@ impl Lv2Instance {
         control_ports.sort_by_key(|p| p.index);
 
         let block = block_size.max(1);
+        // The feature array is built before `instantiate` and kept for the
+        // instance's life; a plugin that declares `urid:map` gets it, one that
+        // does not asks for nothing and stays unaffected.
+        let wants_urid = statements
+            .iter()
+            .filter(|(s, _)| s == uri)
+            .any(|(_, c)| c.contains("urid#map"));
+        let offer = OfferedFeatures::new(wants_urid);
         let mut instance = Lv2Instance {
             _lib: lib,
             descriptor,
             state: std::ptr::null(),
+            offer,
             handle: std::ptr::null_mut(),
             uri: uri.to_string(),
             block,
@@ -473,10 +620,9 @@ impl Lv2Instance {
             out_r: vec![0.0; block],
         };
 
-        let features: [*const Lv2Feature; 1] = [std::ptr::null()];
         let instantiate = unsafe { (*descriptor).instantiate }
             .ok_or_else(|| format!("LV2 plugin {uri} has no instantiate callback"))?;
-        let handle = unsafe { instantiate(descriptor, sample_rate, features.as_ptr()) };
+        let handle = unsafe { instantiate(descriptor, sample_rate, instance.offer.list.as_ptr()) };
         if handle.is_null() {
             return Err(format!("LV2 plugin {uri} could not be instantiated"));
         }
@@ -538,12 +684,13 @@ impl Lv2Instance {
 
     /// Collects the plugin's state through `state:interface`.
     ///
-    /// Keys are `LV2_URID`s, but this host has no URID map, so the numeric keys
-    /// pass through unchanged and only mean something to the same plugin.
+    /// Keys are `LV2_URID`s minted by the host's `urid:map`, which is offered to
+    /// the plugin both here and at `instantiate`, so the ids a save produces are
+    /// the ids a later restore of the same plugin asks for.
     ///
-    /// shortcut: the per-value `type` and `flags` are dropped and no `state:map`
-    /// feature is offered, so a plugin that needs either saves nothing here;
-    /// upgrade when hosting plugins that keep non-POD state.
+    /// shortcut: the per-value `type` and `flags` are dropped, so a plugin that
+    /// keeps non-POD state (files, paths) loses that part; upgrade when hosting
+    /// plugins that save sample data or paths.
     pub fn save_state(&mut self) -> Vec<(u32, Vec<u8>)> {
         if self.state.is_null() {
             return Vec::new();
@@ -552,14 +699,13 @@ impl Lv2Instance {
             return Vec::new();
         };
         let mut out: Vec<(u32, Vec<u8>)> = Vec::new();
-        let features: [*const Lv2Feature; 1] = [std::ptr::null()];
         let status = unsafe {
             save(
                 self.handle,
                 store_into_list,
                 (&mut out as *mut Vec<(u32, Vec<u8>)>).cast(),
                 0,
-                features.as_ptr(),
+                self.offer.list.as_ptr(),
             )
         };
         if status != 0 {
@@ -577,14 +723,13 @@ impl Lv2Instance {
         let Some(restore) = (unsafe { &*self.state }).restore else {
             return;
         };
-        let features: [*const Lv2Feature; 1] = [std::ptr::null()];
         unsafe {
             restore(
                 self.handle,
                 retrieve_from_list,
                 (&state as *const &[(u32, Vec<u8>)]).cast_mut().cast(),
                 0,
-                features.as_ptr(),
+                self.offer.list.as_ptr(),
             );
         }
     }
@@ -641,9 +786,20 @@ impl Drop for Lv2Instance {
 
 /// An LV2 plugin wrapped for the engine's backend-agnostic insert path.
 pub struct Lv2Processor {
-    instance: Lv2Instance,
+    /// Shared with the main thread so a project save can re-read the state: LV2
+    /// forbids `state:save` while `run()` executes, so the mutex is the sync
+    /// point. Locking it costs one uncontended lock per block otherwise.
+    instance: Arc<Mutex<Lv2Instance>>,
     info: PluginInfo,
     params: Vec<PluginParameter>,
+}
+
+impl Lv2Processor {
+    /// A poisoned lock only means an earlier state call panicked; the plugin
+    /// itself is still usable, so the guard is taken either way.
+    fn lock(&self) -> std::sync::MutexGuard<'_, Lv2Instance> {
+        self.instance.lock().unwrap_or_else(|poison| poison.into_inner())
+    }
 }
 
 impl PluginProcessor for Lv2Processor {
@@ -661,20 +817,33 @@ impl PluginProcessor for Lv2Processor {
         0
     }
     fn process_stereo(&mut self, left: &mut [f32], right: &mut [f32]) {
-        self.instance.process(left, right);
+        self.lock().process(left, right);
     }
     fn set_parameter(&mut self, id: u32, value: f64) -> bool {
-        self.instance.set_param(id, value as f32)
+        self.lock().set_param(id, value as f32)
     }
     fn reset(&mut self) {
-        self.instance.reset();
+        self.lock().reset();
     }
     fn lv2_state(&mut self) -> Vec<(u32, Vec<u8>)> {
-        self.instance.save_state()
+        self.lock().save_state()
     }
     fn set_lv2_state(&mut self, state: &[(u32, Vec<u8>)]) -> bool {
-        self.instance.restore_state(state);
+        self.lock().restore_state(state);
         true
+    }
+    fn lv2_state_handle(&self) -> Option<Lv2StateHandle> {
+        // Nothing to re-read when the plugin has no state interface.
+        if self.lock().state.is_null() {
+            return None;
+        }
+        let instance = Arc::clone(&self.instance);
+        Some(Lv2StateHandle::new(move || {
+            instance
+                .lock()
+                .map(|mut i| i.save_state())
+                .unwrap_or_else(|poison| poison.into_inner().save_state())
+        }))
     }
 }
 
@@ -724,7 +893,7 @@ pub fn load_processor(
     };
     let params = instance.parameters();
     Ok(Box::new(Lv2Processor {
-        instance,
+        instance: Arc::new(Mutex::new(instance)),
         info,
         params,
     }))
@@ -945,7 +1114,7 @@ mod tests {
         assert_eq!(processor.parameters().len(), 1);
     }
 
-    /// (a) `state:interface`: 0.5 → save → 1.0 → restore → 0.5 again.
+    /// `state:interface`: 0.5 → save → 1.0 → restore → 0.5 again.
     #[test]
     fn state_interface_restores_the_saved_gain() {
         let Some(bundle) = fixture() else {
@@ -973,8 +1142,8 @@ mod tests {
         assert!((gain - 0.5).abs() < 0.005, "measured gain {gain}");
     }
 
-    /// (b) A plugin without `state:interface` saves nothing and ignores a
-    /// restore — the same audio path, no error.
+    /// A plugin without `state:interface` saves nothing and ignores a restore —
+    /// the same audio path, no error.
     #[test]
     fn plugin_without_state_interface_saves_nothing_and_ignores_restore() {
         let Some(bundle) = fixture() else {
@@ -1003,8 +1172,8 @@ mod tests {
         assert!((gain - 0.5).abs() < 0.005, "measured gain {gain}");
     }
 
-    /// (c) The pairs survive the project file: same bytes after a serde round
-    /// trip, and they still drive the plugin back to 0.5.
+    /// The pairs survive the project file: same bytes after a serde round trip,
+    /// and they still drive the plugin back to 0.5.
     #[test]
     fn lv2_state_survives_the_project_file() {
         let Some(bundle) = fixture() else {
@@ -1039,5 +1208,128 @@ mod tests {
         let gain = instance.controls[0];
         println!("gain from the reloaded project = {gain:.3} (expected 0.5)");
         assert!((gain - 0.5).abs() < f32::EPSILON, "restored control {gain}");
+    }
+
+    /// The id the host mints for `uri`, for comparing against what a plugin sees.
+    fn host_urid(uri: &str) -> u32 {
+        let mut registry = urids();
+        registry
+            .get_or_insert_with(UridRegistry::default)
+            .intern(uri)
+    }
+
+    const AMP_URI: &str = "http://sonix.test/lv2/amp";
+    const GAIN_URI: &str = "http://sonix.test/lv2/amp#gain";
+
+    /// URID (a): two URIs get two ids, and the same URI always gets the same id.
+    #[test]
+    fn urid_map_gives_two_uris_two_ids_and_repeats() {
+        let gain = c"http://sonix.test/lv2/amp#gain";
+        let other = c"http://sonix.test/lv2/amp#other";
+        let a = unsafe { urid_map(std::ptr::null_mut(), gain.as_ptr()) };
+        let b = unsafe { urid_map(std::ptr::null_mut(), other.as_ptr()) };
+        let again = unsafe { urid_map(std::ptr::null_mut(), gain.as_ptr()) };
+        println!("urid map: gain -> {a}, other -> {b}, gain again -> {again}");
+        assert_ne!(a, b, "two different URIs must not share an id");
+        assert_eq!(a, again, "the same URI must map to the same id");
+        assert!(a != 0 && b != 0, "0 means unknown in LV2");
+    }
+
+    /// URID (b): `unmap` hands back the URI that was mapped, and null for an id
+    /// nobody minted.
+    #[test]
+    fn urid_unmap_returns_the_mapped_uri() {
+        let uri = c"http://sonix.test/lv2/amp#unmap-check";
+        let id = unsafe { urid_map(std::ptr::null_mut(), uri.as_ptr()) };
+        let back = unsafe { urid_unmap(std::ptr::null_mut(), id) };
+        assert!(!back.is_null(), "a minted id must unmap");
+        let back = unsafe { CStr::from_ptr(back) }.to_string_lossy().into_owned();
+        println!("urid unmap: {id} -> {back}");
+        assert_eq!(back, uri.to_str().expect("ascii"));
+        let unknown = unsafe { urid_unmap(std::ptr::null_mut(), u32::MAX) };
+        println!("urid unmap of u32::MAX -> null = {}", unknown.is_null());
+        assert!(unknown.is_null(), "an unmapped id must not invent a URI");
+    }
+
+    /// URID (c): the amp requires `urid:map` (it returns no instance without it,
+    /// so a successful instantiate already proves the host offered it) and keys
+    /// its saved gain with the id the host mints for its gain URI.
+    #[test]
+    fn state_keys_come_from_the_host_urid_map() {
+        let Some(bundle) = fixture() else {
+            println!("SKIPPED state_keys_come_from_the_host_urid_map: no C compiler");
+            return;
+        };
+        let mut instance = Lv2Instance::new(bundle, AMP_URI, 48_000.0, 256)
+            .expect("the amp refuses to instantiate without urid:map");
+        assert!(instance.set_param(0, 0.5));
+        let saved = instance.save_state();
+        println!("saved pairs through the map: {saved:?}");
+
+        let gain_key = host_urid(GAIN_URI);
+        let key_uri = unsafe { urid_unmap(std::ptr::null_mut(), gain_key) };
+        let key_uri = unsafe { CStr::from_ptr(key_uri) }.to_string_lossy().into_owned();
+        println!("host URID for {GAIN_URI} = {gain_key} (unmaps to {key_uri})");
+
+        assert_eq!(saved.len(), 1, "the fixture saves exactly one value");
+        assert_eq!(
+            saved[0].0, gain_key,
+            "the key must be the URID the host mapped, not a bare number"
+        );
+        assert_eq!(key_uri, GAIN_URI);
+
+        assert!(instance.set_param(0, 1.0));
+        instance.restore_state(&saved);
+        let gain = instance.controls[0];
+        println!("gain after restore = {gain:.3} (expected 0.5)");
+        assert!((gain - 0.5).abs() < f32::EPSILON, "restored control {gain}");
+    }
+
+    /// URID (d): the pairs a project save writes after an edit differ from the
+    /// ones taken at load, and the edited value is what a reloaded instance
+    /// plays.
+    #[test]
+    fn state_handle_reads_the_edited_value_not_the_loaded_one() {
+        let Some(bundle) = fixture() else {
+            println!("SKIPPED state_handle_reads_the_edited_value_not_the_loaded_one: no C compiler");
+            return;
+        };
+        let path = bundle.to_string_lossy().to_string();
+        let mut processor = crate::audio::plugin_host_live::load_processor(&path, 48_000.0, 256)
+            .expect("load the fixture processor");
+        // The slot as it is recorded when the plugin is loaded — the same fields
+        // `record_plugin_slot` fills in.
+        let slot = crate::ui::app::PluginSlot {
+            path: path.clone(),
+            name: processor.info().name.clone(),
+            state: Vec::new(),
+            sandboxed: false,
+            latency_offset_frames: 0,
+            smart_disable: false,
+            extra_out_targets: Vec::new(),
+            lv2_state: processor.lv2_state(),
+            lv2_state_handle: processor.lv2_state_handle(),
+        };
+        let at_load = slot.current_lv2_state();
+        println!("project save at load:     {at_load:?}");
+
+        assert!(processor.set_parameter(0, 0.35));
+        let after_edit = slot.current_lv2_state();
+        println!("project save after edit:  {after_edit:?}");
+        assert_ne!(
+            at_load, after_edit,
+            "the save-time pairs must follow the edit"
+        );
+
+        // A second instance is what a reopened project plays.
+        let mut reloaded = crate::audio::plugin_host_live::load_processor(&path, 48_000.0, 256)
+            .expect("reload the fixture processor");
+        assert!(reloaded.set_lv2_state(&after_edit));
+        let input = sine(0.5, 256, 48_000.0, 440.0);
+        let (mut left, mut right) = (input.clone(), input.clone());
+        reloaded.process_stereo(&mut left, &mut right);
+        let gain = measured_gain(&input, &left);
+        println!("gain after reload = {gain:.6} (expected 0.35)");
+        assert!((gain - 0.35).abs() < 0.005, "measured gain {gain}");
     }
 }

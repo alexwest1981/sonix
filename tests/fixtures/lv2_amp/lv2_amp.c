@@ -2,9 +2,14 @@
  *
  * Exports `lv2_descriptor` with two URIs over the same five ports (two audio
  * inputs 0-1, two audio outputs 2-3, one control input 4):
- *   http://sonix.test/lv2/amp       — has `state:interface`, saves the gain
+ *   http://sonix.test/lv2/amp       — requires `urid:map`, has `state:interface`
  *   http://sonix.test/lv2/stateless — same audio path, no state interface
- * so one build covers both "state is carried" and "no interface" cases.
+ * so one build covers both "state is carried through the host's URID map" and
+ * "no interface" cases.
+ *
+ * The amp refuses to instantiate without the `urid:map` feature, and its state
+ * key is the URID the host mints for GAIN_URI — a plugin that must map its own
+ * keys is exactly what the host's URID map is for.
  * Built by the test with `cc -shared -fPIC`.
  */
 #include <stdint.h>
@@ -21,9 +26,22 @@ typedef int32_t LV2_State_Status;
 #define LV2_STATE_IS_POD (1 << 0)
 #define LV2_STATE_IS_PORTABLE (1 << 2)
 
-/* No URID map is offered to this plugin, so the key is a bare number. */
-#define KEY_GAIN 1u
 #define STATE_URI "http://lv2plug.in/ns/ext/state#interface"
+#define URID_MAP_URI "http://lv2plug.in/ns/ext/urid#map"
+#define PROBE_URI "http://sonix.test/lv2/amp#probe"
+#define GAIN_URI "http://sonix.test/lv2/amp#gain"
+
+typedef uint32_t (*LV2_URID_Map_Function)(void *handle, const char *uri);
+
+typedef struct {
+    void *handle;
+    LV2_URID_Map_Function map;
+} LV2_URID_Map;
+
+struct _LV2_Feature {
+    char const *URI;
+    void *data;
+};
 
 typedef LV2_State_Status (*LV2_State_Store_Function)(
     LV2_State_Handle handle, uint32_t key, const void *value, uint32_t size,
@@ -57,15 +75,63 @@ struct _LV2_Descriptor {
 
 typedef struct {
     float *in_l, *in_r, *out_l, *out_r, *gain;
+    /* The host's map, copied at instantiate, plus the id it gave PROBE_URI. */
+    LV2_URID_Map map;
+    uint32_t probe;
 } SonixAmp;
 
-static LV2_Handle instantiate(LV2_Descriptor const *descriptor,
-                              double sample_rate,
-                              LV2_Feature const *const *features) {
+/* The `urid:map` feature out of a feature array, or NULL when absent. */
+static const LV2_URID_Map *find_urid_map(LV2_Feature const *const *features) {
+    for (uint32_t i = 0; features && features[i]; ++i) {
+        if (strcmp(features[i]->URI, URID_MAP_URI) == 0) {
+            return features[i]->data;
+        }
+    }
+    return 0;
+}
+
+/* The state key: the host's URID for GAIN_URI, read through the array at hand
+ * (save and restore carry their own), falling back to the one from instantiate. */
+static int gain_key(SonixAmp *amp, LV2_Feature const *const *features,
+                    uint32_t *key) {
+    const LV2_URID_Map *map = find_urid_map(features);
+    if (!map) {
+        map = &amp->map;
+    }
+    if (!map->map) {
+        return 0;
+    }
+    *key = map->map(map->handle, GAIN_URI);
+    return *key != 0;
+}
+
+static LV2_Handle instantiate_plain(LV2_Descriptor const *descriptor,
+                                   double sample_rate,
+                                   LV2_Feature const *const *features) {
     (void)descriptor;
     (void)sample_rate;
     (void)features;
+    return calloc(1, sizeof(SonixAmp));
+}
+
+/* Refuses to run without `urid:map`: the bundle lists it as a required feature,
+ * so a host that does not offer it must not get an instance. */
+static LV2_Handle instantiate_mapped(LV2_Descriptor const *descriptor,
+                                     double sample_rate,
+                                     LV2_Feature const *const *features) {
+    (void)descriptor;
+    (void)sample_rate;
+    const LV2_URID_Map *map = find_urid_map(features);
+    if (!map || !map->map) {
+        return 0;
+    }
     SonixAmp *amp = calloc(1, sizeof(SonixAmp));
+    if (!amp) {
+        return 0;
+    }
+    amp->map = *map;
+    /* Mapped once here so the state key is not simply the first id minted. */
+    amp->probe = map->map(map->handle, PROBE_URI);
     return amp;
 }
 
@@ -95,16 +161,20 @@ static void run(LV2_Handle instance, uint32_t sample_count) {
 
 static void cleanup(LV2_Handle instance) { free(instance); }
 
-/* Saves exactly one value: the gain, as raw float bytes. */
+/* Saves exactly one value: the gain, as raw float bytes, keyed by the URID the
+ * host maps for GAIN_URI. */
 static LV2_State_Status state_save(LV2_Handle instance,
                                    LV2_State_Store_Function store,
                                    LV2_State_Handle handle, uint32_t flags,
                                    LV2_Feature const *const *features) {
     (void)flags;
-    (void)features;
     SonixAmp *amp = instance;
+    uint32_t key = 0;
+    if (!gain_key(amp, features, &key)) {
+        return 1; /* LV2_STATE_ERR_UNKNOWN */
+    }
     float gain = amp->gain ? *amp->gain : 1.0f;
-    return store(handle, KEY_GAIN, &gain, sizeof(gain), 0,
+    return store(handle, key, &gain, sizeof(gain), 0,
                  LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
 }
 
@@ -114,16 +184,19 @@ static LV2_State_Status state_restore(LV2_Handle instance,
                                       LV2_State_Handle handle, uint32_t flags,
                                       LV2_Feature const *const *features) {
     (void)flags;
-    (void)features;
     SonixAmp *amp = instance;
+    uint32_t key = 0;
+    if (!gain_key(amp, features, &key)) {
+        return 1;
+    }
     size_t size = 0;
     uint32_t type = 0, value_flags = 0;
-    const void *value = retrieve(handle, KEY_GAIN, &size, &type, &value_flags);
+    const void *value = retrieve(handle, key, &size, &type, &value_flags);
     if (value && size == sizeof(float) && amp->gain) {
         memcpy(amp->gain, value, sizeof(float));
         return LV2_STATE_SUCCESS;
     }
-    return 1; /* LV2_STATE_ERR_UNKNOWN */
+    return 1;
 }
 
 static const LV2_State_Interface amp_state = {state_save, state_restore};
@@ -138,10 +211,10 @@ static void *no_extension_data(char const *uri) {
 }
 
 static const LV2_Descriptor descriptors[] = {
-    {"http://sonix.test/lv2/amp", instantiate, connect_port, activate, run,
-     deactivate, cleanup, amp_extension_data},
-    {"http://sonix.test/lv2/stateless", instantiate, connect_port, activate,
-     run, deactivate, cleanup, no_extension_data},
+    {"http://sonix.test/lv2/amp", instantiate_mapped, connect_port, activate,
+     run, deactivate, cleanup, amp_extension_data},
+    {"http://sonix.test/lv2/stateless", instantiate_plain, connect_port,
+     activate, run, deactivate, cleanup, no_extension_data},
 };
 
 LV2_Descriptor const *lv2_descriptor(uint32_t index) {
