@@ -559,7 +559,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             std::process::exit(2);
         }
         let fps = args.get(3).and_then(|f| f.parse::<f64>().ok()).unwrap_or(25.0);
-        match audio::video_export::export_clip(&args[0], &args[1], &args[2], fps) {
+        match audio::video_export::export_clip(
+            &args[0],
+            &args[1],
+            &args[2],
+            fps,
+            &mut audio::video_fx::VideoFxChain::default(),
+        ) {
             Ok(frames) => {
                 println!("exported {frames} frames at {fps} fps to {}", args[2]);
                 std::process::exit(0);

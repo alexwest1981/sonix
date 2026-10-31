@@ -13,6 +13,7 @@ use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use super::video_engine::{run_bounded, Frame, VideoSource};
+use super::video_fx::VideoFxChain;
 
 /// x264 has to finish the file once stdin closes; a slow machine still needs room for it.
 const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
@@ -186,11 +187,18 @@ impl Drop for VideoEncoder {
     }
 }
 
-/// Decodes `source` at `fps` and muxes it with `audio` into `out`. Returns the frames written.
+/// Decodes `source` at `fps`, filters every frame through `fx` and muxes the result with
+/// `audio` into `out`. Returns the frames written.
 ///
 /// The length comes from the audio; a still image, or a clip shorter than the mix, plays its
 /// last frame for the rest.
-pub fn export_clip(source: &str, audio: &str, out: &str, fps: f64) -> Result<u64, String> {
+pub fn export_clip(
+    source: &str,
+    audio: &str,
+    out: &str,
+    fps: f64,
+    fx: &mut VideoFxChain,
+) -> Result<u64, String> {
     if !(fps.is_finite() && fps > 0.0) {
         return Err(format!("frame rate {fps} is not usable"));
     }
@@ -221,16 +229,30 @@ pub fn export_clip(source: &str, audio: &str, out: &str, fps: f64) -> Result<u64
     };
     let mut encoder = VideoEncoder::new(width, height, fps, audio, out)?;
     for index in 0..frames {
-        let rgb = match (&mut video, &still) {
-            (Some(clip), _) => clip.frame_at(index as f64 / fps)?.rgb,
-            (_, Some(frame)) => frame.rgb.clone(),
-            _ => return Err(format!("{source} has no picture")),
-        };
-        encoder.push_frame(&rgb)?;
+        let frame = prepared_frame(&mut video, still.as_ref(), index, fps, fx)?;
+        encoder.push_frame(&frame.rgb)?;
     }
     let path = encoder.finish()?;
     println!("exported {} frames to {}", frames, path.display());
     Ok(frames)
+}
+
+/// One frame on its way to the encoder: decoded, then filtered by `fx` — the same call the
+/// playback path makes on the frame it shows, so the export matches the screen.
+pub(crate) fn prepared_frame(
+    video: &mut Option<VideoSource>,
+    still: Option<&Frame>,
+    index: u64,
+    fps: f64,
+    fx: &mut VideoFxChain,
+) -> Result<Frame, String> {
+    let mut frame = match (video, still) {
+        (Some(clip), _) => clip.frame_at(index as f64 / fps)?,
+        (_, Some(frame)) => frame.clone(),
+        _ => return Err("there is no picture to encode".to_string()),
+    };
+    fx.apply_frame(&mut frame);
+    Ok(frame)
 }
 
 /// Length of the audio file in seconds. The mix decides how long the video is.
@@ -388,12 +410,17 @@ mod tests {
         Path::new(&format!("/proc/{pid}")).exists()
     }
 
+    /// Exports with no effects: these tests are about the mux, not the picture.
+    fn export(clip: &str, audio: &str, out: &str, fps: f64) -> Result<u64, String> {
+        export_clip(clip, audio, out, fps, &mut VideoFxChain::default())
+    }
+
     /// (a) 2 s of picture at 25 fps decodes back as 50 frames of the same size.
     #[test]
     fn a_two_second_export_has_fifty_frames_at_25_fps() {
         let Some(fx) = fixture("frames") else { return };
         let out = fx.dir.join("frames.mp4");
-        let written = export_clip(&fx.clip, &fx.audio, &out.to_string_lossy(), 25.0)
+        let written = export(&fx.clip, &fx.audio, &out.to_string_lossy(), 25.0)
             .expect("export should succeed");
         let csv = ffprobe(&[
             "-v",
@@ -433,7 +460,7 @@ mod tests {
     fn the_audio_stream_lasts_as_long_as_the_video() {
         let Some(fx) = fixture("sync") else { return };
         let out = fx.dir.join("sync.mp4").to_string_lossy().to_string();
-        export_clip(&fx.clip, &fx.audio, &out, 25.0).expect("export");
+        export(&fx.clip, &fx.audio, &out, 25.0).expect("export");
 
         let stream = |pick: &str| {
             ffprobe(&[
@@ -491,7 +518,7 @@ mod tests {
         let still = fx.dir.join("still.png");
         make(&["-v", "error", "-y", "-f", "lavfi", "-i", "color=c=red:size=96x64:d=1", "-frames:v", "1"], &still);
         let out = fx.dir.join("still.mp4").to_string_lossy().to_string();
-        let written = export_clip(&still.to_string_lossy(), &fx.audio, &out, 25.0).expect("export");
+        let written = export(&still.to_string_lossy(), &fx.audio, &out, 25.0).expect("export");
         let frame = VideoSource::open(&out)
             .expect("open the export")
             .frame_at(0.0)
@@ -516,7 +543,7 @@ mod tests {
         // An output directory that cannot be created.
         let bad = "/proc/sonix_export_no_such_dir/out.mp4";
         let started = Instant::now();
-        let err = export_clip(&fx.clip, &fx.audio, bad, 25.0)
+        let err = export(&fx.clip, &fx.audio, bad, 25.0)
             .expect_err("an unusable output path must fail");
         println!("invalid output after {:.1} ms: {err}", started.elapsed().as_secs_f64() * 1e3);
         assert!(err.contains("sonix_export_no_such_dir"), "the error must name the directory: {err}");
@@ -571,5 +598,29 @@ mod tests {
         assert!(err.contains("64x48"), "and the size it is for: {err}");
         drop(encoder);
         assert!(!out.exists(), "an abandoned encoder must not leave a file");
+    }
+
+    /// The chain reaches the file: the same clip exported through a zeroed brightness decodes
+    /// back black, where the plain export keeps its picture.
+    #[test]
+    fn the_fx_chain_reaches_the_encoded_file() {
+        use crate::audio::video_fx::Brightness;
+        let Some(fx) = fixture("fx") else { return };
+        let plain = fx.dir.join("plain.mp4").to_string_lossy().to_string();
+        let black = fx.dir.join("black.mp4").to_string_lossy().to_string();
+        export(&fx.clip, &fx.audio, &plain, 25.0).expect("plain export");
+        let mut chain = VideoFxChain::default();
+        chain.push(Box::new(Brightness { gain: 0.0 }));
+        export_clip(&fx.clip, &fx.audio, &black, 25.0, &mut chain).expect("filtered export");
+
+        let mean = |path: &str| -> f64 {
+            let mut source = VideoSource::open(path).expect("open the export");
+            let frame = source.frame_at(0.0).expect("first frame");
+            frame.rgb.iter().map(|level| *level as f64).sum::<f64>() / frame.rgb.len() as f64
+        };
+        let (before, after) = (mean(&plain), mean(&black));
+        println!("mean level at 0 s: no effects {before:.1}, brightness 0.0 {after:.1}");
+        assert!(before > 50.0, "the fixture clip should have a picture: {before:.1}");
+        assert!(after < 5.0, "the export was not filtered: {before:.1} -> {after:.1}");
     }
 }

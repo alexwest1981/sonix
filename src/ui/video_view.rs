@@ -8,6 +8,7 @@
 
 use eframe::egui;
 use crate::audio::video_engine::Playback;
+use crate::audio::video_fx::{Brightness, Pixelate, Tint, VideoFxChain};
 use crate::ui::theme::Theme;
 
 /// Allt videovyn minns mellan bildrutor.
@@ -26,6 +27,9 @@ pub struct VideoState {
     play_started: f64,
     /// Var filmen börjar på tidslinjen, i sekunder.
     pub offset_secs: f64,
+    /// The effects every new frame passes through. Empty unless the user added one; the same
+    /// chain is what an export of this clip would use, so the picture matches the file.
+    fx: VideoFxChain,
     texture: Option<egui::TextureHandle>,
     shown_frame: Option<u64>,
     last_update: f64,
@@ -95,7 +99,8 @@ impl VideoState {
                 self.play_from = local;
                 self.play_started = now;
             }
-            if let Some(frame) = self.playback.as_mut().and_then(|play| play.latest()) {
+            if let Some(mut frame) = self.playback.as_mut().and_then(|play| play.latest()) {
+                self.fx.apply_frame(&mut frame);
                 self.show(ctx, &frame, index, now);
             }
             return;
@@ -110,7 +115,10 @@ impl VideoState {
             return;
         };
         match source.frame_at(index as f64 / info.fps) {
-            Ok(frame) => self.show(ctx, &frame, index, now),
+            Ok(mut frame) => {
+                self.fx.apply_frame(&mut frame);
+                self.show(ctx, &frame, index, now)
+            }
             Err(err) => {
                 self.last_error = Some(err);
                 self.last_update = now;
@@ -218,6 +226,62 @@ pub fn render_video_view(
                 ))
                 .color(crate::ui::theme::palette().text_muted()),
             );
+        }
+
+        // The effects: three fixed ones, one parameter each, in the order they run.
+        let mut dirty = false;
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(crate::i18n::t("FX"))
+                    .size(Theme::FONT_S)
+                    .color(crate::ui::theme::palette().text_muted()),
+            );
+            if ui.small_button(crate::i18n::t("+ Brightness")).clicked() {
+                state.fx.push(Box::new(Brightness { gain: 1.0 }));
+                dirty = true;
+            }
+            if ui.small_button(crate::i18n::t("+ Tint")).clicked() {
+                state.fx.push(Box::new(Tint { rgb: [1.0, 1.0, 1.0] }));
+                dirty = true;
+            }
+            if ui.small_button(crate::i18n::t("+ Pixelate")).clicked() {
+                state.fx.push(Box::new(Pixelate { block: 8.0 }));
+                dirty = true;
+            }
+            if state.fx.is_empty() {
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("no effects: the picture is the file's"))
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().text_muted()),
+                );
+            }
+        });
+        let mut remove = None;
+        for (index, fx) in state.fx.iter_mut().enumerate() {
+            ui.horizontal(|ui| {
+                ui.label(fx.name());
+                let params = fx.params();
+                // Tint's three multipliers are one colour; every other effect is one number.
+                match <&mut [f32; 3]>::try_from(&mut *params) {
+                    Ok(rgb) => dirty |= ui.color_edit_button_rgb(rgb).changed(),
+                    Err(_) => {
+                        dirty |= ui
+                            .add(egui::DragValue::new(&mut params[0]).speed(0.05).range(0.0..=64.0))
+                            .changed();
+                    }
+                }
+                if ui.small_button("✕").clicked() {
+                    remove = Some(index);
+                }
+            });
+        }
+        if let Some(index) = remove {
+            state.fx.remove(index);
+        }
+        if dirty {
+            // A parameter changed, not the time: redraw the frame that is already decoded.
+            state.shown_frame = None;
+            state.last_update = 0.0;
         }
 
         if let Some(err) = &state.last_error {
