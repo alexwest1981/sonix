@@ -1207,7 +1207,7 @@ mod tests {
             Reply::json(tools_reply(2, tools)),
             Reply::json(call_reply(3, &tracks)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-a")).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-a"), None).expect("connect");
         let songs = session.library(Some("neon"), 10).expect("library");
 
         assert_eq!(songs.len(), 2);
@@ -1259,7 +1259,7 @@ mod tests {
             Reply::json(tools_reply(2, tools)),
             Reply::json(call_reply(3, &items)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-b")).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-b"), None).expect("connect");
         let songs = session.library(None, 5).expect("library");
 
         assert_eq!(songs.len(), 1);
@@ -1307,7 +1307,7 @@ mod tests {
             Reply::json(call_reply(3, &page1)),
             Reply::json(call_reply(4, &page2)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-c")).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-c"), None).expect("connect");
         let songs = session.library(None, 10).expect("library");
 
         let calls = tool_calls(&mock);
@@ -1364,7 +1364,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, tools)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-d")).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-d"), None).expect("connect");
         let err = session.library(None, 10).expect_err("no lister exists");
         println!("error: {err}");
         for name in ["generate_song", "create_music", "song_status"] {
@@ -1400,7 +1400,7 @@ mod tests {
             Reply::json(tools_reply(2, tools)),
             Reply::json(call_reply(3, &tracks)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-e")).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-e"), None).expect("connect");
         let songs = session.library(None, 10).expect("library");
         let dir = tmp_dir("lib-e");
         let saved = session
