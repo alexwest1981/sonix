@@ -1,15 +1,46 @@
 /* Minimal stereo gain plugin used by Sonix's LV2 host tests.
  *
- * Exports `lv2_descriptor` and nothing else: one URI, two audio inputs
- * (ports 0-1), two audio outputs (ports 2-3) and one control input (port 4).
+ * Exports `lv2_descriptor` with two URIs over the same five ports (two audio
+ * inputs 0-1, two audio outputs 2-3, one control input 4):
+ *   http://sonix.test/lv2/amp       — has `state:interface`, saves the gain
+ *   http://sonix.test/lv2/stateless — same audio path, no state interface
+ * so one build covers both "state is carried" and "no interface" cases.
  * Built by the test with `cc -shared -fPIC`.
  */
 #include <stdint.h>
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct _LV2_Feature LV2_Feature;
 typedef struct _LV2_Descriptor LV2_Descriptor;
 typedef void *LV2_Handle;
+typedef void *LV2_State_Handle;
+typedef int32_t LV2_State_Status;
+
+#define LV2_STATE_SUCCESS 0
+#define LV2_STATE_IS_POD (1 << 0)
+#define LV2_STATE_IS_PORTABLE (1 << 2)
+
+/* No URID map is offered to this plugin, so the key is a bare number. */
+#define KEY_GAIN 1u
+#define STATE_URI "http://lv2plug.in/ns/ext/state#interface"
+
+typedef LV2_State_Status (*LV2_State_Store_Function)(
+    LV2_State_Handle handle, uint32_t key, const void *value, uint32_t size,
+    uint32_t type, uint32_t flags);
+typedef const void *(*LV2_State_Retrieve_Function)(
+    LV2_State_Handle handle, uint32_t key, size_t *size, uint32_t *type,
+    uint32_t *flags);
+
+typedef struct {
+    LV2_State_Status (*save)(LV2_Handle instance, LV2_State_Store_Function store,
+                             LV2_State_Handle handle, uint32_t flags,
+                             LV2_Feature const *const *features);
+    LV2_State_Status (*restore)(LV2_Handle instance,
+                                LV2_State_Retrieve_Function retrieve,
+                                LV2_State_Handle handle, uint32_t flags,
+                                LV2_Feature const *const *features);
+} LV2_State_Interface;
 
 struct _LV2_Descriptor {
     char const *URI;
@@ -64,16 +95,57 @@ static void run(LV2_Handle instance, uint32_t sample_count) {
 
 static void cleanup(LV2_Handle instance) { free(instance); }
 
-static void *extension_data(char const *uri) {
+/* Saves exactly one value: the gain, as raw float bytes. */
+static LV2_State_Status state_save(LV2_Handle instance,
+                                   LV2_State_Store_Function store,
+                                   LV2_State_Handle handle, uint32_t flags,
+                                   LV2_Feature const *const *features) {
+    (void)flags;
+    (void)features;
+    SonixAmp *amp = instance;
+    float gain = amp->gain ? *amp->gain : 1.0f;
+    return store(handle, KEY_GAIN, &gain, sizeof(gain), 0,
+                 LV2_STATE_IS_POD | LV2_STATE_IS_PORTABLE);
+}
+
+/* Restores it into the buffer the host connected as the gain port. */
+static LV2_State_Status state_restore(LV2_Handle instance,
+                                      LV2_State_Retrieve_Function retrieve,
+                                      LV2_State_Handle handle, uint32_t flags,
+                                      LV2_Feature const *const *features) {
+    (void)flags;
+    (void)features;
+    SonixAmp *amp = instance;
+    size_t size = 0;
+    uint32_t type = 0, value_flags = 0;
+    const void *value = retrieve(handle, KEY_GAIN, &size, &type, &value_flags);
+    if (value && size == sizeof(float) && amp->gain) {
+        memcpy(amp->gain, value, sizeof(float));
+        return LV2_STATE_SUCCESS;
+    }
+    return 1; /* LV2_STATE_ERR_UNKNOWN */
+}
+
+static const LV2_State_Interface amp_state = {state_save, state_restore};
+
+static void *amp_extension_data(char const *uri) {
+    return strcmp(uri, STATE_URI) == 0 ? (void *)&amp_state : 0;
+}
+
+static void *no_extension_data(char const *uri) {
     (void)uri;
     return 0;
 }
 
-static const LV2_Descriptor descriptor = {
-    "http://sonix.test/lv2/amp", instantiate, connect_port, activate,
-    run, deactivate, cleanup, extension_data,
+static const LV2_Descriptor descriptors[] = {
+    {"http://sonix.test/lv2/amp", instantiate, connect_port, activate, run,
+     deactivate, cleanup, amp_extension_data},
+    {"http://sonix.test/lv2/stateless", instantiate, connect_port, activate,
+     run, deactivate, cleanup, no_extension_data},
 };
 
 LV2_Descriptor const *lv2_descriptor(uint32_t index) {
-    return index == 0 ? &descriptor : 0;
+    return index < sizeof(descriptors) / sizeof(descriptors[0])
+               ? &descriptors[index]
+               : 0;
 }

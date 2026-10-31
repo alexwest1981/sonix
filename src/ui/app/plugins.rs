@@ -34,6 +34,7 @@ pub fn load_plugin_into_track(&mut self, path: &str, track_index: usize) {
                     latency_offset_frames: 0,
                     smart_disable: false,
                     extra_out_targets: Vec::new(),
+                    lv2_state: insert.lv2_state(),
                 },
             );
             self.ensure_plugin_vecs(track_index);
@@ -86,6 +87,7 @@ pub fn load_plugin_preset_into_track(&mut self, path: &str, track_index: usize, 
                     latency_offset_frames: 0,
                     smart_disable: false,
                     extra_out_targets: Vec::new(),
+                    lv2_state: insert.lv2_state(),
                 },
             );
             self.ensure_plugin_vecs(track_index);
@@ -176,6 +178,8 @@ pub fn load_plugin_into_sandbox_track(&mut self, path: &str, track_index: usize)
             latency_offset_frames: 0,
             smart_disable: false,
             extra_out_targets: Vec::new(),
+            // Pairs cannot cross the sandbox boundary; the sandbox keeps `state`.
+            lv2_state: Vec::new(),
         },
     );
     self.ensure_plugin_sandboxes(track_index);
@@ -742,6 +746,12 @@ pub(crate) fn restore_plugin_slot(&mut self, track_index: usize, data: &SavedPlu
     match crate::audio::plugin_host_live::load_processor(&data.path, sample_rate, block as u32) {
         Ok(processor) => {
             let mut insert = crate::audio::plugin_host_live::PluginInsert::new(processor, block);
+            if !data.lv2_state.is_empty() && !insert.set_lv2_state(&data.lv2_state) {
+                return Some(crate::tstatus!(
+                    "could not restore LV2 state for '{}'",
+                    data.name
+                ));
+            }
             if !data.state.is_empty() && !insert.load_state(&data.state) {
                 return Some(crate::tstatus!(
                     "kunde inte återställa state för '{}'",
