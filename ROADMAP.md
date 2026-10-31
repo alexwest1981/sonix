@@ -190,16 +190,16 @@ redan via vår EEL2-motor. Det som fattas är lagret runtomkring.
 
 | # | Vad | Storlek | Varför |
 | :--: | :--- | :---: | :--- |
-| 1 | **Rubber Band** (formantbevarande stretch) | *S* | `rubberband.so` i REAPER; vi har bara egen WSOLA. Länka lib + exponera lägena. |
-| 2 | **Kodekar i processen** — *✅ (Opus/WavPack kvar)* | *M* | 0.9.216: symphonia läser FLAC, MP3, Vorbis, WAV och MP4/AAC i processen; `ffmpeg` är reserv för Opus, WavPack och AIFF. Prov: egen FLAC skrivs och läses genom `load_audio_pcm` utan ffmpeg. |
-| 3 | **LV2-hosting** | *M* | `PluginFormat::Lv2` finns bara för att avvisa; REAPER har egen skanner (151 `lv2`-träffar). Litet API, UI/state är det som kostar. |
-| 4 | **Lua bredvid Rhai** | *S* (Lua) / *L* (API) | REAPER: Lua 5.4.6 + 732 `RPR_`-funktioner. Språket är billigt, API-ytan är dyr. |
-| 5 | **DDP-export** (CUE/BIN, CD-TEXT/ISRC) | *S–M* | `reaper_ddp.so`; ren filskrivning, bränning kräver `cdrecord`. |
-| 6 | **JACK-backend** | *M* | `audioStreamer_JACK`; vi har cpal/ALSA. |
+| 1 | **Rubber Band** — *✅* | *S* | 0.9.220: `WarpMode::RubberBand` går via `dlopen` av `librubberband.so` och **faller tillbaka till WSOLA (`Complex`)** om biblioteket saknas, så ett projekt som valt läget låter som förut på en maskin utan det. **Mätt:** 4 410 sampel × 1,5 → **6 615 framer**, dominant **440,0 Hz**, +1 oktav → **880,0 Hz**, formantbevarande skiljer **0,603** vid pitch 2,0 men är bit-identiskt vid 1,0. |
+| 2 | **Kodekar i processen** — *✅* | *M* | 0.9.216 symphonia (FLAC, MP3, Vorbis, WAV, MP4/AAC), 0.9.223 **Opus** (egen Ogg-läsare + `dlopen` av libopus: 96 000 frames, 2,0000 s, **0,000 dB mot ffmpeg**), 0.9.227 **WavPack** (**bit-exakt**: 0,000000 dB, största sampelskillnad 0,000000000, även 24-bit). `ffmpeg` är reserv för AIFF. |
+| 3 | **LV2-hosting** — *✅ (ljud + parametrar)* | *M* | 0.9.219: egen host (`libloading` + `LV2_Descriptor`) i stället för `livi`, som krävde `lilv-0`/`serd-0` via pkg-config vid både bygge och körning. `/usr/lib/lv2` skannas, `--inspect-plugin` svarar `backend: LV2`. **Mätt** mot egen fixture: gain **1,000000** → 0,500000 → 1,000000 efter `reset()`. Presets/state/GUI är medvetet utanför. |
+| 4 | **Lua bredvid Rhai** — *✅ språket, ◐ API-ytan* | *S* (Lua) / *L* (API) | Lua 5.4 (`b24bb10`) med samma tolv värd­funktioner som Rhai, plus **Python 3** (`0d43e05`, opt-in). **Mätt:** `while true do end` stoppas på **21 ms**, `while True: pass` efter **1,0197 s**, `ldd | grep -c python` = 0 utan featuren. REAPERs 732 `RPR_*` är API-ytan, inte språket — den är kvar som L. |
+| 5 | **DDP-export** (CUE/BIN, CD-TEXT/ISRC) — *✅* | *S–M* | 0.9.217: `audio::ddp` + `--export-ddp`/`--export-cue`. **Mätt:** 5 s ljud → **375 sektorer / 882 000 byte** à 2352 byte, `DDP 2.00`-magic, ISRC i PQDESCR. Beskrivarna är ASCII, inte packade 18-byte CD-TEXT-paket; bränning kräver `cdrecord` (utanför). |
+| 6 | **JACK-backend** — *✅ bakom feature* | *M* | 0.9.225: `SONIX_AUDIO=jack`, `[features] jack`, DSP:n utbruten till `engine::Renderer` så cpal och JACK går samma väg. **Mätt:** `ldd | grep -c jack` = **0** i standardbygget, `libjack.so.0` med featuren; mot PipeWire:s JACK-server **48 128 frames i 47 cykler** @ 48 kHz, RMS 0,354. |
 | 7 | **Omsampling i r8brain-klass** — *✅* | *M* | `audio::resample` (Blackman, 32 taggar) sedan 0.9.215: rundtur 44,1→48→44,1 kHz ger **−75,6 dB** fel mot −27,8 dB för linjär interpolation. Polyfas-tabell är en optimering, inte en kvalitetsfråga. |
-| 8 | **Videomotor** (avkoda + koda + FX) | *L* | `reaper_video.so`; vi har bara `probe()` + en bildruta. |
-| 9 | **élastique Pro** | *L* (licens) | `elastique3.so`; kommersiell licens, inte kod. |
-| 10 | **HTTP-server/webbgränssnitt**, **ReaRoute**, **.ins-definitioner**, **Python-skript** | *S–M var* | Mindre, men mätta i kartan. |
+| 8 | **Videomotor** (avkoda + koda + FX) — *✅ avkodning + kodning, FX kvar* | *L* | 0.9.225 realtidsuppspelning: **50 bilder på 2,00 s = 25,0 fps**, latens median **0,43 ms**, `latest()` 0,018 ms. `--export-video`: 50 frames, **25/1 fps**, video/ljud/container 2,000 s. **Kvar:** FX-kedjan och video-DSL:en (post 19 i BACKLOG). |
+| 9 | **élastique Pro** | *L* (licens) | `elastique3.so`; kommersiell licens, inte kod. **Stängd tills vidare** — Rubber Band (post 1) täcker formantbevarande stretch. |
+| 10 | **HTTP-server/webbgränssnitt**, **ReaRoute**, **.ins-definitioner**, **Python-skript** — *◐ Python ✅* | *S–M var* | **Python 3** klart 0.9.227 (28 värd­funktioner, watchdog 1 s). Kvar: HTTP-servern/webbgränssnittet, ReaRoute (kräver ASIO/Wine) och `.ins`-definitioner för externa syntar. |
 
 ### Kräver ett nytt lager — inte en ratt
 

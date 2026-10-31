@@ -43,7 +43,7 @@ posten kommer från.
 | 15 | ◐ **Skript-API**: 28 funktioner i Rhai, Lua och Python (opt-in). REAPER har 732 `RPR_*` — ytan är L | REAPER | **L** |
 | 16 | ◐ **Python** finns som opt-in skriptspråk (28 funktioner). Kvar: Abletons **Live Object Model** — 60 moduler, 2 260 `.pyc` | Ableton | **L** |
 | 17 | **Max for Live-ekosystem** | Ableton | **L** | Vi har en graf, inte ett ekosystem |
-| 18 | ◐ **Videomotor**: `frame_at` + cache + **realtidsuppspelning 25,0 fps** klart. Kvar: kodning, FX-kedja | REAPER | **L** |
+| 18 | ✅ **Videomotor**: `frame_at` + cache + **realtidsuppspelning 25,0 fps** + `--export-video` (25/1 fps, video/ljud/container 2,000 s). Kvar: FX-kedja (post 19) | REAPER | **L** |
 | 19 | **Video-processor-DSL** (`//@param`, `//@gmem`) | REAPER | **L** | Kräver realtidsuppspelning först |
 | 20 | **élastique Pro** | båda | **L** | Kommersiell licens, inte kod |
 | 21 | **Disassemblera Abletons DSP per enhet** | Ableton | **L per enhet** | Enda vägen till exakta kurvor; klassnamnen (382 `O*Processor`) pekar ut dem |
