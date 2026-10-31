@@ -39,6 +39,10 @@ pub enum SandboxRequest {
     Reset,
     /// Reports the plugin's own latency in frames (not counting the transport).
     Latency,
+    /// A note to an instrument. Answered with [`SandboxResponse::Error`] when
+    /// the plugin is not an instrument, so a caller never believes it sent a
+    /// note to something that will not use one.
+    Note { on: bool, note: u8, velocity: u8 },
     Shutdown,
 }
 
@@ -236,6 +240,19 @@ fn handle_request(
         SandboxRequest::Latency => SandboxResponse::Latency {
             frames: processor.latency_frames(),
         },
+        SandboxRequest::Note { on, note, velocity } => {
+            if !processor.accepts_notes() {
+                return SandboxResponse::Error {
+                    message: "the plugin is not an instrument and takes no notes".to_string(),
+                };
+            }
+            if on {
+                processor.note_on(note, velocity);
+            } else {
+                processor.note_off(note);
+            }
+            SandboxResponse::Ok
+        }
         SandboxRequest::Shutdown => SandboxResponse::Ok,
     }
 }
@@ -390,6 +407,21 @@ impl crate::audio::plugin_host_live::PluginProcessor for SandboxProcessor {
             for sample in right.iter_mut() {
                 *sample = 0.0;
             }
+        }
+    }
+
+    /// Offline: publish once, then wait for the worker's block. A render has no
+    /// deadline; dropping a late block would punch a hole in the file.
+    fn render_block(&mut self, left: &mut [f32], right: &mut [f32]) {
+        if !self.bridge.publish_input(left, right) {
+            return;
+        }
+        let deadline = std::time::Instant::now() + Duration::from_secs(10);
+        while !self.bridge.take_output(left, right) {
+            if std::time::Instant::now() > deadline {
+                return;
+            }
+            std::thread::sleep(Duration::from_micros(200));
         }
     }
 
