@@ -126,6 +126,13 @@ impl SunoOAuth {
         Self::default()
     }
 
+    /// The client id a saved refresh token was issued to. Not secret, so it is kept beside the
+    /// tokens; a refresh with a different (newly registered) client is refused by the server.
+    pub fn with_client_id(mut self, client_id: impl Into<String>) -> Self {
+        self.client_id = Some(client_id.into());
+        self
+    }
+
     /// Dynamic client registration. Public client (`none`), so no secret is stored. The id is
     /// kept for [`Self::login_blocking`] and for later refreshes.
     pub fn register_client(&mut self, redirect_uri: &str) -> Result<String, String> {
