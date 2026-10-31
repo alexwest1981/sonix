@@ -323,6 +323,19 @@ fn sample_trigger_command(
     })
 }
 
+
+/// Build the trigger commands for one 16th-note step, mirroring the live UI
+/// (`trigger_step` in pattern mode, `trigger_song_step` in song mode).
+/// Noterna ett steg ger upphov till. Delas med realtidsmätningen (Fas 7.2), så att
+/// mätningen kör samma trigger-väg som exporten.
+#[cfg(test)]
+pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioCommand> {
+    // shortcut: one call, one fresh cycle — fine for tests and the benchmark, which do not
+    // play a sequence; the render loop below passes its own counter so round-robin cycles.
+    triggers_for_step_with(spec, bar, sib, &mut crate::audio::keymap::RoundRobin::default())
+}
+
+
 fn drum_cmd(ch_idx: usize) -> AudioCommand {
     match ch_idx {
         0 => AudioCommand::TriggerDrum(DrumType::Kick),
@@ -334,17 +347,6 @@ fn drum_cmd(ch_idx: usize) -> AudioCommand {
         _ => AudioCommand::TriggerDrum(DrumType::Kick),
     }
 }
-
-/// Build the trigger commands for one 16th-note step, mirroring the live UI
-/// (`trigger_step` in pattern mode, `trigger_song_step` in song mode).
-/// Noterna ett steg ger upphov till. Delas med realtidsmätningen (Fas 7.2), så att
-/// mätningen kör samma trigger-väg som exporten.
-pub(crate) fn triggers_for_step(spec: &RenderSpec, bar: usize, sib: usize) -> Vec<AudioCommand> {
-    // shortcut: one call, one fresh cycle — fine for tests and the benchmark, which do not
-    // play a sequence; the render loop below passes its own counter so round-robin cycles.
-    triggers_for_step_with(spec, bar, sib, &mut crate::audio::keymap::RoundRobin::default())
-}
-
 /// `triggers_for_step` with the caller's round-robin state, so `seq_position` zones take turns
 /// across the whole song.
 pub(crate) fn triggers_for_step_with(

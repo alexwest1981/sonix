@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.229] - 2026-10-31
+
+**SFZ round-robin cyklas** (0.9.229): `SampleZone.seq` bär `seq_position`/`seq_length`, och
+`RoundRobin::pick` håller en räknare per `(kanal, ton)`. Mätt med 220/990/330/660 Hz-samples: sex
+anslag på c4 → **220, 990, 220, 990, 220, 990**; en zon utan seq-data ger **220, 220, 220**; två
+toner delar inte räknare (c4/e4 → 220, 990, 330, 660, 220, 330). Exporten använder samma väljare,
+och `seq` följer med i projektfilen.
+
+**LV2-state sparas i projektet**: `LV2_State_Interface` (`save`/`restore`), `Lv2Instance::save_state`
+/ `restore_state`, och paret ligger i `SavedPluginData.lv2_state`. **Mätt:** gain 0,5 → spara →
+sätt 1,0 → återställ → **0,500** (både parametern och det hörda ljudet); en plugin utan
+state-interface ger tom vektor och ingen felkod; serde-rundturen bevarar `[(1, [0,0,0,63])]`.
+
+**`.ins`-instrumentdefinitioner** (`audio::ins`): Cakewalks textformat ger externa syntars program
+sina namn, med **🎛 Ladda .ins…** i MIDI-inställningarna. **Mätt:** två banker med 3 + 2 patchar
+läses (`Bank A: [0] Piano, [7] Strings, [12] Soft Pad`, `Bank B: [0] Bass, [3] Organ`);
+`program_name(0, 12)` → `Soft Pad`, `(0, 99)` → `None`; kommentarer hoppas över; en patchrad utan
+bank ger `line 3: patch '12=Soft Pad' has no [Bank] section above it`.
+
+**Video-FX-kedja** (`audio::video_fx`): `Brightness`, `Tint`, `Pixelate` i en kedja som körs på
+samma ställe i uppspelning och export. **Mätt:** brightness 1,5 på mellangrått ger **128 → 192**;
+tom kedja är **bit-identisk** (sha256 `964675f643d5f9e7` före och efter); pixelate 8 gör blocket
+enhetligt; samma kedja ger **samma sha256** i uppspelnings- och exportvägen (`17625aa095f37fb2`);
+en riktig export med brightness 0,0 avkodad tillbaka ger medelnivå **122,8 → 0,0**.
+
+1 309 prov gröna, 0 varningar.
+
 ## [0.9.228] - 2026-10-31
 
 **SFZ-import** (`audio::sfz`): region/group/global, notnamn eller siffror, relativa samplevägar,
