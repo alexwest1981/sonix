@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.231] - 2026-10-31
+
+**Suno via MCP — panel, inloggning och stämmor.** `audio::mcp_client` (JSON-RPC över Streamable
+HTTP, JSON *eller* SSE), `audio::suno_auth` (dynamisk klientregistrering, PKCE S256, loopback,
+refresh, tokenfil i **0600**) och `audio::suno` (`connect` → `tools` → `generate` → nedladdade
+filer). Verktygen **hittas vid uppkoppling** — ingen gissad namnlista: poängsättning på namn och
+schema valde `generate_song` (13) framför `create_music` (9) i mocken, och ett okänt svar ger ett fel
+som listar serverns egna verktygsnamn. Panelen i AI-fliken loggar in, skriver prompt/style/lyrics och
+lägger resultatet som **ett spår per stämma** i filnamnsordning; en zip går till den befintliga
+Suno-zipimporten och en ensam fil blir ett klipp. Mätt: två ljud-URL:er → två filer (16 + 8 byte),
+`stems: true`; asynkront svar pollat i två steg; 401 → **ett** anrop, inget retry; klassningen
+`One`/`Stems`/`Zip` prövas i `suno_files_are_classified`.
+
+**HTTP-styrning** (`--web [port]`): `127.0.0.1` endast, token i varje anrop, `/status` som JSON och
+play/stop. Mätt: fel token → 403 och **noll** kommandon; rätt token → **ett** `SetSongPlayback(true)`;
+lyssnaren bundad till `127.0.0.1:41877`.
+
+**Ljud genom bryggade Windows-plugins** (`--render-plugin [--sandbox]`): VST3 kunde inte spela en not
+alls förut — nu finns `IEventList`, instrumentdetektering ur fabrikens subkategorier och en
+`ProcessContext` med transport. Mätt: **Raum** (yabridge-effekt) RMS **0,160281** / topp 0,407325
+identiskt in-process och i sandboxen; **Surge XT** 0,088240 → 0,088341. **Massive XL skriver digital
+tystnad trots att noten levereras** (`kResultOk`, 1 event, 32 ramars latens) — det är mätt, inte
+antaget, och gäller in-process såväl som i sandbox.
+
+**LV2-URID** och state som läses om vid **sparning**: `gain → 2`, `unmap` ger URI:n tillbaka, patchen
+0,35 bevaras genom omladdning (förut sparades bara det som gällde vid laddning).
+
+**Round-robin** har nu **en** ingång (`triggers_for_step` med `&mut RoundRobin`) och cykelpositionen
+ligger i projektfilen: fyra zoner, tre anslag → nästa sampel efter omladdning är detsamma som före
+(0,4). En gammal fil utan fältet börjar på första sampel.
+
+**Tidskänsliga prov** mäter nu mot maskinens egen hastighet i stället för absoluta sekunder
+(`realtime_bench`), och video-/lua-gränserna har 20–370 gångers marginal. Hela sviten två gånger:
+**1 309 / 1 309 gröna** under last 12–20.
+
 ## [0.9.230] - 2026-10-31
 
 **VST3-modulens `ModuleEntry` anropas** — buggen som gjorde att **alla yabridge-plugins** kraschade
