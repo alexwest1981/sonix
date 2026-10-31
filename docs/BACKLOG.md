@@ -32,7 +32,7 @@ posten kommer från.
 | 9 | ✅ **JACK-backend** (`--features jack`, `SONIX_AUDIO=jack`) — 48 128 frames/47 cykler, RMS 0,354 | REAPER | **M** |
 | 10 | ◐ **Kontrollerytor**: MCU + **BCF2000** + **FaderPort** klara (rena parsers, testade byte för byte). Kvar: BabyHUI, OSC-yta, LED/display tillbaka till enheten | båda | **M** |
 | 11 | ✅ **VST3/VST2 genom sandboxen** (VST2 ej testad — ingen VST2-binär finns här) | REAPER | **M** |
-| 12 | ◐ **Opus klart** i processen (0,000 dB mot ffmpeg); **AIFF** pågår. **WavPack blockerad**: ingen `libwavpack` på maskinen och ingen ren Rust-dekoder — den vägen går via `ffmpeg` tills vidare | REAPER | **S–M** |
+| 12 | ✅ **Opus, AIFF och WavPack** avkodas i processen (WavPack: 0,000000 dB mot ffmpeg, bit-exakt) | REAPER | **S–M** |
 
 ## 3. Stort (L) — inte en ratt
 
@@ -40,7 +40,7 @@ posten kommer från.
 | :--: | :--- | :--- | :---: | :--- |
 | 13 | ✅ **Wavetable-motor** (mipmaps, morph, 7 unisonstämmor, filter) — källa via `SetInstrument` | Ableton | **L** | 14 kHz alias −110,5 dB mot −26,0 naivt · morph 0 → 0,3245 · 7 toppar |
 | 14 | ✅ **Fysisk modellering** (`Modal`: 64 resonatorer + klubba) | Ableton | **L** | 220 Hz → 220,0 · B=0,05 flyttar partial 8 +104,9 % · T60 1,000 s |
-| 15 | **Lua-API-paritet** (732 `RPR_`-funktioner) | REAPER | **L** | Språket är S, API-ytan är L |
+| 15 | ◐ **Skript-API**: 24 funktioner i båda språken (tracks, klipp, noter, transport). REAPER har 732 `RPR_*` — ytan är L, språket var S | REAPER | **L** |
 | 16 | **Python / Live Object Model** | Ableton | **L** | Deras moat: 60 moduler, 2 260 `.pyc` |
 | 17 | **Max for Live-ekosystem** | Ableton | **L** | Vi har en graf, inte ett ekosystem |
 | 18 | ◐ **Videomotor**: `frame_at` + cache + **realtidsuppspelning 25,0 fps** klart. Kvar: kodning, FX-kedja | REAPER | **L** |

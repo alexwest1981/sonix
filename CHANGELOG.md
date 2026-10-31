@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.226] - 2026-10-31
+
+**WavPack avkodas i processen** (`audio::wavpack`, dlopen mot `libwavpack`). Mätt: 44 100 Hz,
+**88 200 frames**, dominant 440,0 Hz, och mot ffmpeg:s egen avkodning **0,000000 dB** i RMS med
+**0,000000000** som största sampelskillnad — förlustfritt är förlustfritt, även vid 24 bitar.
+`load_audio_pcm` ger nu filens egen frekvens (48 kHz-fixture blev 48 000 frames, inte ffmpeg-vägens
+44,1). `docs/WAVPACK.md` säger hur biblioteket installeras.
+
+**Videokodning** (`audio::video_export`, `--export-video <klipp|bild> <ljud> <ut.mp4> [fps]`): en
+ffmpeg-process, `push_frame`/`finish`, bound på 60 s med kill, halvfärdig fil städas. Mätt på egen
+körning: 2 s video + 2 s ljud → **50 frames, 25/1 fps, 320×240**, varaktigheter 2,000/2,000/2,000 s,
+fem röda bilder ger R 253 / G 0 / B 0. Fel storlek avvisas: `frame is 6144 bytes, expected 9216`.
+
+**Skript-APIt utökat**: tracks, volym, mute, klipplängd, noter (`note_at`, `add_note`,
+`clear_notes`) och `log` — identiskt i Rhai och Lua. Mätt: samma sångskript i båda språken ger
+**byte-identisk `Ctx`**; index utanför intervallet ger `track 99 is outside 0..2` i båda; 8 noter på
+2 klipp tar **0,98 ms** (Rhai) och **0,10 ms** (Lua). `docs/SCRIPTING.md` listar hela ytan.
+
+1 284 prov gröna, 0 varningar.
+
 ## [0.9.225] - 2026-10-30
 
 **JACK-backend** bakom `--features jack`. DSP:n bröts ut ur cpal-callbacken till en `Renderer` som

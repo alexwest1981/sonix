@@ -549,6 +549,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
+    // `sonix --export-video <klipp|bild> <ljud.wav> <ut.mp4> [fps]`: writes one MP4 from a
+    // video or still image plus an audio file. Frames follow the audio length; a short clip
+    // holds its last frame. `finish` is bounded, so a stuck encoder cannot hang the process.
+    if let Some(pos) = std::env::args().position(|a| a == "--export-video") {
+        let args: Vec<String> = std::env::args().skip(pos + 1).collect();
+        if args.len() < 3 {
+            eprintln!("usage: sonix --export-video <clip-or-image> <audio.wav> <out.mp4> [fps]");
+            std::process::exit(2);
+        }
+        let fps = args.get(3).and_then(|f| f.parse::<f64>().ok()).unwrap_or(25.0);
+        match audio::video_export::export_clip(&args[0], &args[1], &args[2], fps) {
+            Ok(frames) => {
+                println!("exported {frames} frames at {fps} fps to {}", args[2]);
+                std::process::exit(0);
+            }
+            Err(err) => {
+                eprintln!("--export-video: {err}");
+                std::process::exit(1);
+            }
+        }
+    }
+
     // `sonix --export-ddp <fil.wav> <utmapp> [titel:start_sampel[:isrc] ...]`: writes a
     // Red Book DDP 2.00 image from one 44.1 kHz stereo WAV. `--export-cue` writes the
     // same program as CUE/BIN instead. Neither burns anything — the image is data.

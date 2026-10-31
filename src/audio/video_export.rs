@@ -5,7 +5,6 @@
 //! beats linking a codec into the build. Every wait is bounded and every child is reaped,
 //! because an export runs next to the UI and a stuck child would freeze the app.
 // Called by the export dialog, which is a separate change; until then only the tests use it.
-#![allow(dead_code)]
 
 use std::io::{Read, Write};
 use std::path::PathBuf;
@@ -328,49 +327,51 @@ mod tests {
         );
     }
 
+    /// **Delade medier, en kodning per process.** Sex prov som var och en kodar en 3 s
+    /// x264-klipp konkurrerar med resten av sviten om CPU:n; mätt föll två av dem i en full
+    /// körning men klarade sig ensamma. Klippet och waven kodas därför en gång, och bara
+    /// utmappen är per prov.
+    fn shared_media() -> (String, String) {
+        static MEDIA: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+        MEDIA
+            .get_or_init(|| {
+                let dir = std::env::temp_dir().join(format!("sonix_vx_media_{}", std::process::id()));
+                std::fs::create_dir_all(&dir).expect("temp dir");
+                let clip = dir.join("clip.mp4");
+                make(
+                    &[
+                        "-v", "error", "-y", "-f", "lavfi", "-i",
+                        "testsrc2=size=320x240:rate=25:duration=3",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                    ],
+                    &clip,
+                );
+                let audio = dir.join("audio.wav");
+                make(
+                    &[
+                        "-v", "error", "-y", "-f", "lavfi", "-i",
+                        "sine=frequency=440:sample_rate=48000:duration=2",
+                    ],
+                    &audio,
+                );
+                (
+                    clip.to_string_lossy().to_string(),
+                    audio.to_string_lossy().to_string(),
+                )
+            })
+            .clone()
+    }
+
     fn fixture(tag: &str) -> Option<Fixture> {
         if !VideoSource::is_available() {
             println!("skipping {tag}: ffmpeg is not installed, so nothing can be encoded");
             return None;
         }
+        let (clip, audio) = shared_media();
         let dir = std::env::temp_dir().join(format!("sonix_vx_{tag}_{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("temp dir");
-        let clip = dir.join("clip.mp4");
-        make(
-            &[
-                "-v",
-                "error",
-                "-y",
-                "-f",
-                "lavfi",
-                "-i",
-                "testsrc2=size=320x240:rate=25:duration=3",
-                "-c:v",
-                "libx264",
-                "-pix_fmt",
-                "yuv420p",
-            ],
-            &clip,
-        );
-        let audio = dir.join("audio.wav");
-        make(
-            &[
-                "-v",
-                "error",
-                "-y",
-                "-f",
-                "lavfi",
-                "-i",
-                "sine=frequency=440:sample_rate=48000:duration=2",
-            ],
-            &audio,
-        );
-        Some(Fixture {
-            dir,
-            clip: clip.to_string_lossy().to_string(),
-            audio: audio.to_string_lossy().to_string(),
-        })
+        Some(Fixture { dir, clip, audio })
     }
 
     fn ffprobe(args: &[&str]) -> String {
