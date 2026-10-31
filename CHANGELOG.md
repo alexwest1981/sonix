@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.230] - 2026-10-31
+
+**VST3-modulens `ModuleEntry` anropas** — buggen som gjorde att **alla yabridge-plugins** kraschade
+hosten: yabridge skapar sin brygga (och därmed fabriken) inuti `ModuleEntry`, och utan anropet föll
+`GetPluginFactory` på `assert(bridge)` i `vst3-chainloader.cpp:156` och processen dog. Nu anropas
+den före `InitDll`/`GetPluginFactory`, som VST3-specen säger.
+
+**Mätt:** `Kontakt 8` laddar — `Native Instruments v8.14.1`, **4 145 parametrar** (2 065
+automatiserbara); `Massive XL` — `v2.0.0 (R0)`, 2 105 parametrar, latens 32 ramar; `Supercharger`,
+`Reaktor 6`, `Raum`, `Replika`, `Guitar Rig 7` startar alla. Före fixen: core dump på varje.
+
+Provet `a_module_that_only_hands_out_a_factory_after_module_entry_still_loads` kompilerar
+`tests/fixtures/mock_vst3.c`, som **vägrar lämna ut någon fabrik** förrän entry-anropet skett.
+Bevisat med ctypes: utan `ModuleEntry` → `NULL`, efter → giltig pekare.
+
 ## [0.9.229] - 2026-10-31
 
 **SFZ round-robin cyklas** (0.9.229): `SampleZone.seq` bär `seq_position`/`seq_length`, och

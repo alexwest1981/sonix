@@ -1095,6 +1095,17 @@ static MockFactory g_factory = {&factory_vtbl, 1};
 extern "C" {
 #endif
 
+/* yabridge (and the VST3 spec) create the factory inside ModuleEntry; a host that skips it gets
+ * no factory at all. The mock refuses to hand out a factory until ModuleEntry has run, so a
+ * loader that forgets the call fails here instead of in someone's DAW. */
+static int g_module_entry_called = 0;
+
+bool ModuleEntry(void *shared_library_handle) {
+    (void)shared_library_handle;
+    g_module_entry_called = 1;
+    return true;
+}
+
 bool InitDll(void) {
     return true;
 }
@@ -1103,6 +1114,9 @@ bool ExitDll(void) {
     return true;
 }
 void *GetPluginFactory(void) {
+    if (!g_module_entry_called) {
+        return 0;
+    }
     g_factory.refcount = 1;
     return &g_factory;
 }

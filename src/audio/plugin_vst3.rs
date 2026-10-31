@@ -1245,6 +1245,24 @@ fn open(path: &str) -> Result<VstInstance, String> {
         crate::tstatus!("Kunde inte öppna '{}': {}", so.display(), e.to_string())
     })?;
 
+    // **Modulens egen startpunkt måste köras först.** yabridge skapar sin brygga (och därmed
+    // fabriken) inuti `ModuleEntry`; hoppar man över den faller `GetPluginFactory` på en
+    // `assert(bridge)` och processen dör. VST3-specen säger samma sak: finns `ModuleEntry` ska
+    // den anropas före `GetPluginFactory`.
+    let module_entry = unsafe {
+        lib.get::<unsafe extern "C" fn(*mut c_void) -> bool>(b"ModuleEntry\0")
+            .ok()
+            .map(|s| *s)
+    };
+    if let Some(entry) = module_entry
+        && !unsafe { entry(std::ptr::null_mut()) }
+    {
+        return Err(crate::tstatus!(
+            "'{}' ModuleEntry misslyckades",
+            so.display()
+        ));
+    }
+
     let init_dll = unsafe {
         lib.get::<unsafe extern "C" fn() -> bool>(b"InitDll\0")
             .ok()
@@ -1865,6 +1883,40 @@ pub fn inspect(path: &str) -> PluginInspection {
 
 #[cfg(test)]
 mod tests {
+
+    /// **yabridge skapar sin brygga i `ModuleEntry`.** Mocken vägrar lämna ut någon fabrik förrän
+    /// entry-anropet skett, så en lastare som hoppar över det får `null-factory` i stället för en
+    /// instans — det var precis så Kontakt 8 dog innan anropet lades in.
+    #[test]
+    fn a_module_that_only_hands_out_a_factory_after_module_entry_still_loads() {
+        let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/mock_vst3.c");
+        let out = std::env::temp_dir().join(format!("sonix_mock_vst3_entry_{}.so", std::process::id()));
+        let built = std::process::Command::new("cc")
+            .arg("-shared")
+            .arg("-fPIC")
+            .arg("-O1")
+            .arg("-o")
+            .arg(&out)
+            .arg(&source)
+            .status();
+        match built {
+            Ok(status) if status.success() => {}
+            _ => {
+                println!("hoppar: kunde inte kompilera mock_vst3.c med cc");
+                return;
+            }
+        }
+        let loaded = load(out.to_str().expect("temp path"));
+        println!(
+            "mock som kräver ModuleEntry: {}",
+            match &loaded {
+                Ok(instance) => format!("laddades som '{}'", instance.info().name),
+                Err(e) => format!("föll: {e}"),
+            }
+        );
+        assert!(loaded.is_ok(), "modulen laddades inte: {:?}", loaded.err());
+        let _ = std::fs::remove_file(&out);
+    }
     use super::*;
 
     #[test]
