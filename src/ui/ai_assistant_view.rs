@@ -26,7 +26,13 @@ pub fn render_ai_assistant_view(
     if let Some(msg) = ai_assistant.poll_remote_generation() {
         *status_msg = msg;
     }
+    // **Allt ska gå att nå.** Vyn var en lång stapel utan scroll: vid ett normalt fönster
+    // försvann nederdelen och inget svarade på hjulet. ScrollArea gör höjden tillgänglig i
+    // stället för att klippa den.
+    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
     ui.group(|ui| {
+        // Panelen fyller höjden: annars blir nedre halvan en tom rand under listan.
+        ui.set_min_height(ui.available_height());
         ui.horizontal(|ui| {
             ui.label(egui::RichText::new(crate::i18n::t("🤖 AI MUSIC PROMPT ENGINE & ASSISTANT (Suno & Local AI)")).strong().size(Theme::FONT_L).color(crate::ui::theme::palette().cyan()));
             ui.separator();
@@ -41,8 +47,14 @@ pub fn render_ai_assistant_view(
                 ui.label(egui::RichText::new(crate::i18n::t("✍ SKRIV MUSIKPROMPT (SVENSKA ELLER ENGELSKA):")).strong().size(Theme::FONT_S).color(crate::ui::theme::palette().orange()));
                 ui.add_space(4.0);
 
-                ui.horizontal(|ui| {
-                    ui.text_edit_singleline(&mut ai_assistant.prompt_input);
+                // Fältet äger hela bredden och knapparna ligger under det: förut klämdes fem
+                // knappar in till höger om ett halvtomt fält.
+                ui.add(
+                    egui::TextEdit::singleline(&mut ai_assistant.prompt_input)
+                        .desired_width(ui.available_width() - 8.0)
+                        .hint_text(crate::i18n::t("Beskriv låten, slingan eller ljudet")),
+                );
+                ui.horizontal_wrapped(|ui| {
                     if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("✨ Generera AI-Musik")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().yellow())).clicked() {
                         ai_assistant.generate();
                         *status_msg = ai_assistant.last_status.clone();
@@ -257,7 +269,7 @@ pub fn render_ai_assistant_view(
 
             ui.add_space(4.0);
 
-            for clip in &ai_assistant.generated_history {
+            for (index, clip) in ai_assistant.generated_history.iter().enumerate() {
                 ui.group(|ui| {
                     ui.horizontal(|ui| {
                         ui.vertical(|ui| {
@@ -266,31 +278,95 @@ pub fn render_ai_assistant_view(
                         });
 
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            // Apply to Bass (Channel 7)
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera på 🎸 Sub Bass")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().orange())).clicked()
-                                && channels.len() > 7 {
-                                    channels[7].steps[..16].copy_from_slice(&clip.channel_steps);
-                                    channels[7].notes[..16].copy_from_slice(&clip.notes);
-                                    *status_msg = crate::tstatus!("✔ Applicerade \"{}\" på Sub Bass (Kanal 8)!", clip.title);
-                                }
-
-                            // Apply to Lead (Channel 6)
-                            if ui.add(egui::Button::new(egui::RichText::new(crate::i18n::t("📥 Applicera på 🎹 303 Lead")).strong().size(Theme::FONT_S).color(Color32::BLACK)).fill(crate::ui::theme::palette().cyan())).clicked()
-                                && channels.len() > 6 {
-                                    channels[6].steps[..16].copy_from_slice(&clip.channel_steps);
-                                    channels[6].notes[..16].copy_from_slice(&clip.notes);
-                                    *status_msg = crate::tstatus!("✔ Applicerade \"{}\" på 303 Lead (Kanal 7)!", clip.title);
-                                }
-
-                            // Step count badge
+                            // **Målkanalen väljs, den gissas inte.** Förut fanns två fasta
+                            // knappar (Lead/Sub Bass) för varje klipp, även för en trap-808:a
+                            // eller en ackordmelodi. Nu finns en rullgardin med kanalernas egna
+                            // namn, och standardvalet följer klippets genre.
+                            let default = target_channel(&clip.genre, channels);
+                            let id = egui::Id::new(("ai_clip_target", index));
+                            let mut target: usize =
+                                ui.data_mut(|d| *d.get_temp_mut_or(id, default));
+                            if target >= channels.len() {
+                                target = default;
+                            }
+                            let label = channels
+                                .get(target)
+                                .map(|c| c.name.clone())
+                                .unwrap_or_else(|| crate::i18n::t("Ingen kanal").to_string());
+                            egui::ComboBox::from_id_salt(id.with("combo"))
+                                .selected_text(label)
+                                .show_ui(ui, |ui| {
+                                    for (ci, channel) in channels.iter().enumerate() {
+                                        ui.selectable_value(&mut target, ci, channel.name.clone());
+                                    }
+                                });
+                            ui.data_mut(|d| d.insert_temp(id, target));
+                            if ui
+                                .add(egui::Button::new(
+                                    egui::RichText::new(crate::i18n::t("📥 Applicera"))
+                                        .strong()
+                                        .size(Theme::FONT_S)
+                                        .color(Color32::BLACK),
+                                )
+                                .fill(crate::ui::theme::palette().orange()))
+                                .clicked()
+                                && let Some(channel) = channels.get_mut(target)
+                            {
+                                channel.steps[..16].copy_from_slice(&clip.channel_steps);
+                                channel.notes[..16].copy_from_slice(&clip.notes);
+                                *status_msg = crate::tstatus!(
+                                    "✔ \"{}\" → {}",
+                                    clip.title,
+                                    channel.name
+                                );
+                            }
+                            // Tempot i klippet kan skilja sig från projektets. Då står det här i
+                            // stället för att se ut som om det stämmer.
+                            let project_bpm = ai_assistant.context.bpm;
+                            if project_bpm > 0.0 && (clip.bpm - project_bpm).abs() > 0.5 {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "⚠ {:.0} BPM ≠ {:.0}",
+                                        clip.bpm, project_bpm
+                                    ))
+                                    .size(Theme::FONT_S)
+                                    .color(crate::ui::theme::palette().yellow()),
+                                );
+                            }
                             let active_steps = clip.channel_steps.iter().filter(|&&s| s).count();
-                            ui.label(egui::RichText::new(format!("{} steg", active_steps)).size(Theme::FONT_S).color(crate::ui::theme::palette().yellow()));
-                        });
+                            ui.label(
+                                egui::RichText::new(format!("{active_steps}"))
+                                    .size(Theme::FONT_S)
+                                    .color(crate::ui::theme::palette().yellow()),
+                            );                        });
                     });
                 });
                 ui.add_space(2.0);
             }
         });
     });
+    });
     action
+}
+
+/// **Klippets egen genre pekar ut kanalen.** En 808-bas hör inte hemma på en lead-kanal, så
+/// standardvalet följer genren och användaren kan sedan välja fritt i rullgardinen.
+fn target_channel(genre: &str, channels: &[ChannelStrip]) -> usize {
+    let genre = genre.to_lowercase();
+    let wanted: &[&str] = if genre.contains("bass") || genre.contains("808") || genre.contains("bas") {
+        &["bass", "bas", "sub"]
+    } else if genre.contains("drum") || genre.contains("trap") || genre.contains("drill") || genre.contains("groove") {
+        &["drum", "trum", "kick", "perc"]
+    } else if genre.contains("chord") || genre.contains("pad") || genre.contains("keys") {
+        &["keys", "piano", "pad", "chord"]
+    } else {
+        &["lead", "synth", "melodi"]
+    };
+    for (index, channel) in channels.iter().enumerate() {
+        let name = channel.name.to_lowercase();
+        if wanted.iter().any(|w| name.contains(w)) {
+            return index;
+        }
+    }
+    0
 }
