@@ -88,6 +88,30 @@ inte att gissa ur ordningen — MSVC lägger metoderna i deklarationsordning och
 Nästa steg är att disassemblera slot 1..n och se vilken som refererar sample-rate-medlemmen och
 skriver till utbufferten; det är den enda säkra kännetecknen.
 
+## Roars parameteretiketter, i ordning
+
+Direkt efter `ORoarProcessor`-vtablens två funktionspekare (`0x146d0a590`) ligger en NUL-separerad
+stränglista. Den är **läsbar text i `.rdata`**, inte gissad:
+
+```
+Diode Clipper · Tube Preamp · Half Wave Rectifier · Full Wave Rectifier · Low Mid X-Over ·
+Mid High X-Over · Bit Crusher · Shards · Digital · Bit Crush · Diode · Polynomial · Fractal ·
+Noise Injection
+HP · Notch · Peak · Comb · Half Rect · Full Rect · Level · BP · Resampling · Dispersion · Res
+Tone Freq · Single · Multi Band · FB Time Mode · FB Time · FB Synced · FB Note · Fb Gate On ·
+Sixteenth · Thresh · Filter Frequency · Feedback Filter Frequency · FB Freq ·
+Feedback Filter Bandwidth · Comp Hp On · Global Mod Amt · Filter Bandwidth · Simplex
+```
+
+De 14 första är shaper-lägen, de elva därefter filter-/vågformstyper, resten återkopplingens
+parametrar. Det motsäger inte den tidigare noteringen "12 shaper-lägen" — **antalet** beror på var
+man drar gränsen mellan kurva och filter — men **ordningen** är nu mätt: `Digital`, `Bit Crush` och
+`Diode` är tre olika lägen, och `Fractal`/`Polynomial`/`Simplex` ligger efter dem.
+
+Förbehåll: strängarna ligger i den ordning Ableton lagrar dem, vilket *inte* är bevisat vara
+parameterindex — för det krävs att man hittar den tabell som pekar på dem. Det som är mätt är
+listan och dess ordning i filen.
+
 ## Vägen vidare till koden
 
 Registreringen ger `typ_info`-adressen per klass. Därifrån går kedjan:
