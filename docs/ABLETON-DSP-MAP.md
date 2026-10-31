@@ -55,6 +55,39 @@ Utöver `O*`-klasserna finns byggstenar med egna namn i samma tabell — `AdsrFi
 moduluppdelning**: `ORoarProcessor` är alltså en armatur kring shapers, filter och feedback, inte en
 enda stor funktion.
 
+## Konstruktorn namnger vtable:n
+
+Registreringens tredje fält pekar inte på RTTI utan på **konstruktorn** — koden på
+`0x143600300` (för `ORoarProcessor`) är
+
+```asm
+48 89 4c 24 08        mov  [rsp+8], rcx      ; this
+53                    push rbx
+48 83 ec 20           sub  rsp, 0x20
+48 8b d9              mov  rbx, rcx
+e8 7e 17 8c fd        call <basklassens ctor>
+48 8d 05 56 a2 70 03  lea  rax, [rip+0x370a256]   ; <- vtable
+48 89 03              mov  [rbx], rax        ; this->vptr = vtable
+```
+
+Alltså: **konstruktorn skriver vtable-pekaren i objektets första ord**, och `lea`-adressen är
+vtable:n. Mätt för två enheter:
+
+| Enhet | Konstruktor | Vtable | Slot 0 | Slot 1 |
+| :--- | :--- | :--- | :--- | :--- |
+| `ORoarProcessor` | `0x143600300` | `0x146d0a580` | `0x143422160` | `0x140ec1860` |
+| `OReverbProcessor` | `0x1435ed780` | `0x146d08ff0` | `0x143422160` | `0x140db6aa0` |
+
+Slot 0 är samma funktion för båda (`0x143422160`) — det är destruktorn, som väntat i MSVC-layouten.
+Slot 1 skiljer sig, så det är en virtuell metod i basklassen. `OSineOscillatorProcessor` gav ingen
+`lea`-träff inom 64 byte, så mönstret gäller inte alla klasser (vissa konstruktorer sätter vtable:n
+via en delad hjälpfunktion).
+
+**Vad som fortfarande fattas:** att avgöra *vilken* slot som är `process()` och läsa den. Det går
+inte att gissa ur ordningen — MSVC lägger metoderna i deklarationsordning och vi har ingen header.
+Nästa steg är att disassemblera slot 1..n och se vilken som refererar sample-rate-medlemmen och
+skriver till utbufferten; det är den enda säkra kännetecknen.
+
 ## Vägen vidare till koden
 
 Registreringen ger `typ_info`-adressen per klass. Därifrån går kedjan:
