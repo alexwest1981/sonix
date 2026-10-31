@@ -303,6 +303,9 @@ impl SonixApp {
                     if action.generate_audio {
                         self.trigger_suno_ai_generation();
                     }
+                    if action.open_suno {
+                        self.show_suno_modal = true;
+                    }
                 }
                 ViewMode::EffectsMixer => {
                     self.render_effects_mixer_rack(ui);
@@ -423,6 +426,7 @@ impl SonixApp {
         }
 
         self.poll_remote_audio_generation();
+        self.poll_suno();
         self.poll_stem_separation();
     }
 

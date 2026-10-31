@@ -1464,6 +1464,115 @@ pub(crate) fn render_project_manager_modal(&mut self, ctx: &egui::Context) {
 }
 
 impl SonixApp {
+/// The Suno panel: sign in once, type a prompt, create — the result lands on its own channels.
+pub(crate) fn render_suno_modal(&mut self, ctx: &egui::Context) {
+    if !self.show_suno_modal {
+        return;
+    }
+    let mut open = self.show_suno_modal;
+    let pending = self.suno_pending.is_some();
+    egui::Window::new(crate::i18n::t("☀ Suno AI"))
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+        .default_size(Vec2::new(560.0, 520.0))
+        .show(ctx, |ui| {
+            ui.set_width(520.0);
+            ui.horizontal(|ui| {
+                if ui
+                    .add_enabled(
+                        !pending,
+                        egui::Button::new(crate::i18n::t("🔑 Sign in to Suno")),
+                    )
+                    .clicked()
+                {
+                    self.suno_connect();
+                }
+                if pending {
+                    ui.spinner();
+                }
+            });
+            if !self.suno_status.trim().is_empty() {
+                ui.label(
+                    egui::RichText::new(&self.suno_status)
+                        .size(Theme::FONT_S)
+                        .color(crate::ui::theme::palette().cyan()),
+                );
+            }
+            // The server's own `tools/list`: a beta surface that differs from our guesses shows
+            // here instead of staying hidden.
+            if !self.suno_tools.is_empty() {
+                ui.add_space(4.0);
+                ui.label(
+                    egui::RichText::new(crate::i18n::t("☀ Connected — tools the server exposes:"))
+                        .strong()
+                        .size(Theme::FONT_S),
+                );
+                for name in &self.suno_tools {
+                    ui.label(egui::RichText::new(name).monospace().size(Theme::FONT_S));
+                }
+            }
+
+            ui.separator();
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::t("Prompt:"));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.suno_prompt_input).desired_width(420.0),
+                );
+            });
+            ui.horizontal(|ui| {
+                ui.label(crate::i18n::t("Style:"));
+                ui.add(
+                    egui::TextEdit::singleline(&mut self.suno_style_input)
+                        .desired_width(420.0)
+                        .hint_text(crate::i18n::t("(optional)")),
+                );
+            });
+            ui.label(crate::i18n::t("Lyrics (optional):"));
+            ui.add(
+                egui::TextEdit::multiline(&mut self.suno_lyrics_input)
+                    .desired_rows(3)
+                    .desired_width(500.0),
+            );
+            ui.add_space(4.0);
+            if ui
+                .add_enabled(
+                    !pending,
+                    egui::Button::new(crate::i18n::t("✨ Create stems")),
+                )
+                .clicked()
+            {
+                self.suno_create();
+            }
+
+            if let Some(song) = &self.suno_last {
+                ui.separator();
+                ui.label(
+                    egui::RichText::new(crate::tstatus!(
+                        "☀ Latest result: {}",
+                        song.title
+                    ))
+                    .strong()
+                    .size(Theme::FONT_S)
+                    .color(crate::ui::theme::palette().green()),
+                );
+                for path in &song.files {
+                    if let Some(name) = path.file_name() {
+                        ui.label(
+                            egui::RichText::new(name.to_string_lossy())
+                                .size(Theme::FONT_S)
+                                .color(crate::ui::theme::palette().text_muted()),
+                        );
+                    }
+                }
+            }
+        });
+    self.show_suno_modal = open;
+}
+}
+
+impl SonixApp {
 pub(crate) fn render_ai_settings_modal(&mut self, ctx: &egui::Context) {
     if !self.show_ai_settings_modal {
         return;
@@ -3785,6 +3894,7 @@ impl SonixApp {
             || self.show_controller_modal
             || self.show_macros_modal
             || self.show_suno_import_modal
+            || self.show_suno_modal
             || self.show_midi_import_modal
             || self.show_phrase_bank
             || self.show_about_modal
@@ -4421,6 +4531,7 @@ impl SonixApp {
         self.render_hardware_controller_modal(ctx);
         self.render_batch_export_modal(ctx);
         self.render_suno_stem_import_modal(ctx);
+        self.render_suno_modal(ctx);
         self.render_wav_question_modal(ctx);
         self.render_stem_import_progress_modal(ctx);
         self.render_project_load_progress_modal(ctx);
