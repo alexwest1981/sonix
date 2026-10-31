@@ -1834,6 +1834,34 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                     }
                                 }
                             }
+                            if ui
+                                .button(crate::i18n::t("📥 Importera SFZ"))
+                                .on_hover_text(crate::i18n::t("Läser zoner ur en SFZ-fil (region/group/global). Samplevägarna ligger relativt .sfz-filen; ett saknat sampel hoppas över och de andra zonerna laddas. Anslags- och filteropkoderna läses inte."))
+                                .clicked()
+                                && let Some(p) = rfd::FileDialog::new()
+                                    .add_filter("SFZ", &["sfz"])
+                                    .pick_file()
+                            {
+                                match crate::audio::sfz::load(&p.to_string_lossy()) {
+                                    Ok(inst) => {
+                                        let count = inst.zones.len();
+                                        let name = inst.name;
+                                        ch.zones.extend(inst.zones);
+                                        self.status_message = crate::tstatus!(
+                                            "🎹 '{}': {} zoner in i keymappen",
+                                            name,
+                                            count
+                                        );
+                                    }
+                                    Err(e) => {
+                                        self.status_message = crate::tstatus!(
+                                            "⚠️ Kunde inte läsa '{}': {}",
+                                            p.display(),
+                                            e
+                                        );
+                                    }
+                                }
+                            }
                             // **Släppljud** (FL Keys): dämparens ljud, spelas när tonen släpps.
                             ui.horizontal(|ui| {
                                 let label = match &ch.release_path {
