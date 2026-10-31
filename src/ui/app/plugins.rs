@@ -35,6 +35,7 @@ pub fn load_plugin_into_track(&mut self, path: &str, track_index: usize) {
                     smart_disable: false,
                     extra_out_targets: Vec::new(),
                     lv2_state: insert.lv2_state(),
+                    lv2_state_handle: insert.lv2_state_handle(),
                 },
             );
             self.ensure_plugin_vecs(track_index);
@@ -88,6 +89,7 @@ pub fn load_plugin_preset_into_track(&mut self, path: &str, track_index: usize, 
                     smart_disable: false,
                     extra_out_targets: Vec::new(),
                     lv2_state: insert.lv2_state(),
+                    lv2_state_handle: insert.lv2_state_handle(),
                 },
             );
             self.ensure_plugin_vecs(track_index);
@@ -180,6 +182,9 @@ pub fn load_plugin_into_sandbox_track(&mut self, path: &str, track_index: usize)
             extra_out_targets: Vec::new(),
             // Pairs cannot cross the sandbox boundary; the sandbox keeps `state`.
             lv2_state: Vec::new(),
+            // The instance lives in the sandbox process, so its state cannot be
+            // re-read from here.
+            lv2_state_handle: None,
         },
     );
     self.ensure_plugin_sandboxes(track_index);
@@ -759,8 +764,12 @@ pub(crate) fn restore_plugin_slot(&mut self, track_index: usize, data: &SavedPlu
                 ));
             }
             let handle = insert.core_handle();
+            let lv2_handle = insert.lv2_state_handle();
             self.ensure_plugin_vecs(track_index);
             self.plugin_handles[track_index] = handle;
+            if let Some(slot) = self.plugin_slots.get_mut(track_index).and_then(|s| s.as_mut()) {
+                slot.lv2_state_handle = lv2_handle;
+            }
             let _ = self.engine.send_command(AudioCommand::SetTrackPlugin {
                 track_index,
                 insert: Some(insert),

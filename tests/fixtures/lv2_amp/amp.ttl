@@ -2,6 +2,9 @@
 @prefix doap: <http://usefulinc.com/ns/doap#> .
 
 <http://sonix.test/lv2/amp>
+    lv2:requiredFeature <http://lv2plug.in/ns/ext/urid#map> .
+
+<http://sonix.test/lv2/amp>
     a lv2:Plugin , lv2:AmplifierPlugin ;
     doap:name "Sonix Test Amp" ;
     doap:maintainer "Sonix Test Suite" ;
