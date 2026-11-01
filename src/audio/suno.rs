@@ -122,6 +122,23 @@ impl SunoSession {
         connect_at(&oauth.mcp, &oauth.token_file, url_slot, true)
     }
 
+
+    /// **Ett 401 mitt i en session ska inte döda den.** Token lever en timme; en skapning kan ta
+    /// längre. Vid `Expired` förnyas token ur den sparade refresh-token och anropet görs om en gång.
+    fn call_tool_refreshing(&mut self, name: &str, args: Value) -> Result<Value, McpError> {
+        match self.client.call_tool(name, args.clone()) {
+            Err(McpError::Expired) => {
+                let oauth = SunoOAuth::new();
+                let tokens = Tokens::load(&oauth.token_file).ok_or(McpError::Expired)?;
+                let fresh = oauth.refresh(&tokens).map_err(|_| McpError::Expired)?;
+                let _ = fresh.save(&oauth.token_file);
+                self.client.token = fresh.access_token;
+                self.client.call_tool(name, args)
+            }
+            other => other,
+        }
+    }
+
     pub fn tools(&self) -> &[McpTool] {
         &self.tools
     }
@@ -226,8 +243,7 @@ impl SunoSession {
         // The prompt (or whatever the caller put in its place) is the title's last resort.
         let fallback = find_string(&args, &["prompt", "description", "style"]);
         let mut result = self
-            .client
-            .call_tool(&tool.name, args)
+            .call_tool_refreshing(&tool.name, args)
             .map_err(|e| e.to_string())?;
 
         // An asynchronous generator answers with an id and a status; ask until audio appears.
@@ -257,8 +273,7 @@ impl SunoSession {
                     status.name
                 );
                 result = self
-                    .client
-                    .call_tool(&status.name, args)
+                    .call_tool_refreshing(&status.name, args)
                     .map_err(|e| e.to_string())?;
             }
         }
@@ -305,8 +320,7 @@ impl SunoSession {
         for page in 1..=LIB_PAGES {
             println!("suno: library page {page} via {} {args}", tool.name);
             let result = self
-                .client
-                .call_tool(&tool.name, args.clone())
+                .call_tool_refreshing(&tool.name, args.clone())
                 .map_err(|e| e.to_string())?;
             let payload = expand(&result);
             let batch = songs_from(&payload);
@@ -437,8 +451,7 @@ impl SunoSession {
         };
         println!("suno: voices via {} {}", tool.name, json!({}));
         let result = self
-            .client
-            .call_tool(&tool.name, json!({}))
+            .call_tool_refreshing(&tool.name, json!({}))
             .map_err(|e| e.to_string())?;
         let payload = expand(&result);
         let voices = voices_from(&payload);
@@ -483,8 +496,7 @@ impl SunoSession {
     /// no argument building — including the mutating ones.
     pub fn call(&mut self, tool: &str, args: Value) -> Result<Value, String> {
         println!("suno: tools/call {tool} {args}");
-        self.client
-            .call_tool(tool, args)
+        self.call_tool_refreshing(tool, args)
             .map_err(|e| e.to_string())
     }
 
@@ -499,8 +511,7 @@ impl SunoSession {
         let args = id_args(&tool, id);
         println!("suno: retrieve {id} via {} {args}", tool.name);
         let result = self
-            .client
-            .call_tool(&tool.name, args)
+            .call_tool_refreshing(&tool.name, args)
             .map_err(|e| e.to_string())?;
         let payload = expand(&result);
         let mut song = song_from(&payload).ok_or_else(|| {
@@ -605,8 +616,7 @@ impl SunoSession {
     fn payload(&mut self, tool: &str) -> Result<Value, String> {
         println!("suno: {tool} {}", json!({}));
         let result = self
-            .client
-            .call_tool(tool, json!({}))
+            .call_tool_refreshing(tool, json!({}))
             .map_err(|e| e.to_string())?;
         Ok(expand(&result))
     }
