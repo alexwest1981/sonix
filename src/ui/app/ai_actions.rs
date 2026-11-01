@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 
 use crate::audio::ai_tools;
 
-use super::{SharedResult, SonixApp, SunoTask};
+use super::{SharedResult, SonixApp, SunoMeta, SunoTask};
 
 impl SonixApp {
     /// Skickar användarens text till modellen i bakgrunden. `None` = ingen förfrågan pågår.
@@ -797,10 +797,60 @@ impl SonixApp {
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
         self.suno_pending = Some(slot.clone());
         self.suno_status = crate::tstatus!("⏳ Downloading \"{}\"…", song.title);
+        let song_id = song.id.clone();
         std::thread::spawn(move || {
             let result = crate::audio::suno::SunoSession::connect()
                 .and_then(|mut session| session.download_song(&song))
+                .map(SunoTask::Generated)
+                .map_err(|e| {
+                    // Krediten: felet bär id:t så panelen kan fråga om lov i stället för att ge upp.
+                    if e == crate::audio::suno::NEEDS_CREDIT {
+                        format!("{}|#|{e}", song_id)
+                    } else {
+                        e
+                    }
+                });
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Imports the song whose download the user just confirmed — one credit is spent.
+    pub fn suno_import_confirmed(&mut self, id: &str) {
+        if self.suno_pending.is_some() {
+            return;
+        }
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_status = crate::i18n::t("⏳ Downloading — one credit.").to_string();
+        let id = id.to_string();
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect()
+                .and_then(|mut session| session.download_song_confirmed(&id))
                 .map(SunoTask::Generated);
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Playlists, workspaces and account share one shape: fetch on a thread, park the answer.
+    pub fn suno_load_meta(&mut self, which: SunoMeta) {
+        if self.suno_pending.is_some() {
+            self.suno_status = crate::i18n::t("⏳ Already waiting on Suno.").to_string();
+            return;
+        }
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect().and_then(|mut session| {
+                Ok(match which {
+                    SunoMeta::Playlists => SunoTask::Playlists(session.playlists()?),
+                    SunoMeta::Workspaces => SunoTask::Workspaces(session.workspaces()?),
+                    SunoMeta::Account => SunoTask::Account(Box::new(session.account()?)),
+                })
+            });
             if let Ok(mut guard) = slot.lock() {
                 *guard = Some(result);
             }
@@ -847,11 +897,36 @@ impl SonixApp {
                 }
             }
             Ok(SunoTask::Generated(song)) => self.install_suno_song(song),
+            Ok(SunoTask::Playlists(list)) => {
+                self.suno_playlists = list;
+                self.suno_status = String::new();
+            }
+            Ok(SunoTask::Workspaces(list)) => {
+                self.suno_workspaces = list;
+                self.suno_status = String::new();
+            }
+            Ok(SunoTask::Account(account)) => {
+                self.suno_account = Some(*account);
+                self.suno_status = String::new();
+            }
             Ok(SunoTask::Library(songs)) => {
                 self.suno_status = crate::tstatus!("☀ {} songs in the library.", songs.len());
                 self.suno_library = songs;
             }
-            Err(error) => self.suno_status = error,
+            Err(error) => {
+                // Kreditkravet kommer kodat som "<id>\u{1}<felet>": panelen ska fråga, inte ge upp.
+                match error.split_once("|#|") {
+                    Some((id, text)) => {
+                        self.suno_credit_song = Some(id.to_string());
+                        self.suno_status = crate::i18n::t(
+                            "⚠ Nedladdningen kostar en kredit — bekräfta i bibliotekets rad.",
+                        )
+                        .to_string();
+                        let _ = text;
+                    }
+                    None => self.suno_status = error,
+                }
+            }
         }
     }
 

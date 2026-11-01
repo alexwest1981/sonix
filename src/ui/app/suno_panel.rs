@@ -118,9 +118,9 @@ impl SonixApp {
                 0 => self.suno_tab_create(ui),
                 1 => self.suno_tab_voices(ui),
                 2 => self.suno_tab_library(ui),
-                3 => self.suno_tab_tools(ui, "playlist"),
-                4 => self.suno_tab_tools(ui, "workspace"),
-                _ => self.suno_tab_tools(ui, "account"),
+                3 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Playlists),
+                4 => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Workspaces),
+                _ => self.suno_tab_meta(ui, crate::ui::app::SunoMeta::Account),
             });
     }
 
@@ -293,7 +293,7 @@ impl SonixApp {
         });
         ui.separator();
         // Raderna kopieras ut först: knappen muterar appen, och listan får inte lånas under tiden.
-        let rows: Vec<(String, String)> = self
+        let rows: Vec<(String, String, String)> = self
             .suno_library
             .iter()
             .map(|song| {
@@ -302,11 +302,12 @@ impl SonixApp {
                     .duration_secs
                     .map(|d| format!(" {d:.0}s"))
                     .unwrap_or_default();
-                (song.title.clone(), format!("{stems}{length}"))
+                (song.title.clone(), format!("{stems}{length}"), song.id.clone())
             })
             .collect();
         let mut import: Option<usize> = None;
-        for (index, (title, meta)) in rows.iter().enumerate() {
+        let mut confirm: Option<usize> = None;
+        for (index, (title, meta, index_id)) in rows.iter().enumerate() {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(title).size(Theme::FONT_S));
                 ui.label(
@@ -314,7 +315,18 @@ impl SonixApp {
                         .size(Theme::FONT_XS)
                         .color(palette().text_muted()),
                 );
-                if ui
+                // Kostar hämtningen en kredit visar raden det innan något spendera.
+                if self.suno_credit_song.as_deref() == Some(index_id.as_str()) {
+                    if ui
+                        .add_enabled(
+                            !pending,
+                            egui::Button::new(crate::i18n::t("✅ Bekräfta — 1 kredit")),
+                        )
+                        .clicked()
+                    {
+                        confirm = Some(index);
+                    }
+                } else if ui
                     .add_enabled(!pending, egui::Button::new(crate::i18n::t("📥 Importera")))
                     .clicked()
                 {
@@ -325,37 +337,117 @@ impl SonixApp {
         if let Some(index) = import {
             self.suno_import_song(index);
         }
+        if let Some(index) = confirm {
+            let id = rows[index].2.clone();
+            self.suno_credit_song = None;
+            self.suno_import_confirmed(&id);
+        }
     }
 
-    /// **Spellistor / arbetsytor / konto** — samma ruta tills vidare: rätt verktyg, rätt fråga.
-    fn suno_tab_tools(&mut self, ui: &mut egui::Ui, kind: &str) {
-        let (title, tool) = match kind {
-            "playlist" => ("Spellistor", "playlists-list"),
-            "workspace" => ("Arbetsytor", "workspaces-list"),
-            _ => ("Konto", "account-usage"),
+    /// **Spellistor / arbetsytor / konto** — samma form: en lista, en knapp, en rad per post.
+    fn suno_tab_meta(&mut self, ui: &mut egui::Ui, which: crate::ui::app::SunoMeta) {
+        use crate::ui::app::SunoMeta;
+        let pending = self.suno_pending.is_some();
+        let (title, load) = match which {
+            SunoMeta::Playlists => ("Spellistor", "📚 Hämta"),
+            SunoMeta::Workspaces => ("Arbetsytor", "📚 Hämta"),
+            SunoMeta::Account => ("Konto", "📚 Hämta"),
         };
-        ui.label(
-            RichText::new(title)
-                .strong()
-                .size(Theme::FONT_S)
-                .color(palette().orange()),
-        );
-        ui.label(
-            RichText::new(crate::tstatus!("☀ Verktyg: {}", tool))
-                .size(Theme::FONT_XS)
-                .color(palette().text_muted()),
-        );
-        // Verktygsytan finns redan i `suno_tools`; här listas den så att inget är dolt.
-        let names: Vec<String> = self.suno_tools.clone();
-        for name in names.iter().filter(|n| {
-            let n = n.to_lowercase();
-            match kind {
-                "playlist" => n.contains("playlist"),
-                "workspace" => n.contains("workspace"),
-                _ => n.contains("account"),
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(crate::i18n::t(title))
+                    .strong()
+                    .size(Theme::FONT_S)
+                    .color(palette().orange()),
+            );
+            if ui
+                .add_enabled(!pending, egui::Button::new(crate::i18n::t(load)))
+                .clicked()
+            {
+                self.suno_load_meta(which);
             }
-        }) {
-            ui.label(RichText::new(name).monospace().size(Theme::FONT_XS));
+        });
+        ui.separator();
+        match which {
+            SunoMeta::Playlists => {
+                if self.suno_playlists.is_empty() {
+                    ui.label(
+                        RichText::new(crate::i18n::t("Inga spellistor listade än.").to_string())
+                            .size(Theme::FONT_S)
+                            .color(palette().text_muted()),
+                    );
+                }
+                let rows: Vec<(String, String, u32)> = self
+                    .suno_playlists
+                    .iter()
+                    .map(|p| (p.name.clone(), p.id.clone(), p.clip_count.unwrap_or(0)))
+                    .collect();
+                for (name, id, clips) in rows {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(name).size(Theme::FONT_S));
+                        ui.label(
+                            RichText::new(format!("{clips}"))
+                                .size(Theme::FONT_XS)
+                                .color(palette().text_muted()),
+                        );
+                        ui.label(
+                            RichText::new(id)
+                                .monospace()
+                                .size(Theme::FONT_XS)
+                                .color(palette().text_muted()),
+                        );
+                    });
+                }
+            }
+            SunoMeta::Workspaces => {
+                if self.suno_workspaces.is_empty() {
+                    ui.label(
+                        RichText::new(crate::i18n::t("Inga arbetsytor listade än.").to_string())
+                            .size(Theme::FONT_S)
+                            .color(palette().text_muted()),
+                    );
+                }
+                let rows: Vec<(String, String)> = self
+                    .suno_workspaces
+                    .iter()
+                    .map(|w| (w.name.clone(), w.id.clone()))
+                    .collect();
+                for (name, id) in rows {
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(name).size(Theme::FONT_S));
+                        ui.label(
+                            RichText::new(id)
+                                .monospace()
+                                .size(Theme::FONT_XS)
+                                .color(palette().text_muted()),
+                        );
+                    });
+                }
+            }
+            SunoMeta::Account => match &self.suno_account {
+                Some(account) => {
+                    ui.label(
+                        RichText::new(crate::tstatus!(
+                            "Nedladdningskrediter: {}",
+                            account
+                                .credits
+                                .map(|c| format!("{c:.0}"))
+                                .unwrap_or_else(|| "—".to_string())
+                        ))
+                        .size(Theme::FONT_S),
+                    );
+                    if let Some(plan) = &account.plan {
+                        ui.label(RichText::new(plan).size(Theme::FONT_S));
+                    }
+                }
+                None => {
+                    ui.label(
+                        RichText::new(crate::i18n::t("Kontot är inte hämtat än.").to_string())
+                            .size(Theme::FONT_S)
+                            .color(palette().text_muted()),
+                    );
+                }
+            },
         }
     }
 

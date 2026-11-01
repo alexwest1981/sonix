@@ -41,6 +41,16 @@ pub struct GeneratedSong {
 
 /// One song as a library listing describes it. The server's payload shape is unknown, so every
 /// field but `raw` may come out empty; `raw` keeps the item untouched for the UI to inspect.
+/// Felet som betyder "fråga användaren om krediten först", inte "det gick inte".
+pub const NEEDS_CREDIT: &str =
+    "suno: the download costs one credit — confirm with the user first";
+
+/// Sant när servern säger att nedladdningen kräver en kredit och en bekräftelse.
+fn confirmation_needed(reply: &Value) -> bool {
+    let text = expand(reply).to_string().to_lowercase();
+    text.contains("requires_credit") || text.contains("confirm")
+}
+
 #[derive(Debug, Clone)]
 pub struct SunoSong {
     pub id: String,
@@ -246,6 +256,35 @@ impl SunoSession {
 
     /// Downloads a listed song: its stems when it has any, else its audio. Same per-song folder
     /// and the same `stems` flag as [`Self::generate`].
+    /// Samma hämtning, men med krediten bekräftad av användaren. Anropas bara från ett klick som
+    /// uttryckligen säger att det kostar en nedladdningskredit.
+    pub fn download_song_confirmed(&mut self, id: &str) -> Result<GeneratedSong, String> {
+        let reply = self.call(
+            "audio-download",
+            serde_json::json!({ "id": id, "confirm": true }),
+        )?;
+        let payload = expand(&reply);
+        let urls = audio_urls(&payload);
+        if urls.is_empty() {
+            let shown: String = payload.to_string().chars().take(300).collect();
+            return Err(format!("suno: the download reply carried no audio url: {shown}"));
+        }
+        let song = SunoSong {
+            id: id.to_string(),
+            title: payload
+                .get("title")
+                .and_then(|t| t.as_str())
+                .unwrap_or(id)
+                .to_string(),
+            audio_urls: urls,
+            stem_urls: Vec::new(),
+            duration_secs: None,
+            created: None,
+            raw: payload,
+        };
+        self.download_song(&song)
+    }
+
     pub fn download_song(&mut self, song: &SunoSong) -> Result<GeneratedSong, String> {
         self.download_song_into(song, &crate::paths::paths().suno_dir())
     }
@@ -267,6 +306,14 @@ impl SunoSession {
             song.title = listed_title;
         }
         let song = &song;
+        // **En nedladdning kostar en kredit.** Mätt mot den riktiga servern: `audio-download`
+        // svarar `{"status":"requires_credit", …}` tills man skickar `confirm: true`. Vi svarar med
+        // ett igenkännbart fel så UI:t kan fråga Alex först — aldrig spendera i tysthet.
+        if let Ok(reply) = self.call("audio-download", serde_json::json!({ "id": song.id }))
+            && confirmation_needed(&reply)
+        {
+            return Err(NEEDS_CREDIT.to_string());
+        }
         let urls = if song.stem_urls.is_empty() {
             &song.audio_urls
         } else {
@@ -2432,5 +2479,54 @@ mod tests {
         assert_eq!(call["params"]["arguments"], args);
         // Untouched: the MCP result, not its `content[].text` expanded.
         assert_eq!(result["content"][0]["text"], reply.to_string());
+    }
+
+    /// En nedladdning som kostar en kredit får **inte** ske tyst: svaret ska bli `NEEDS_CREDIT`,
+    /// och inga filer ska skrivas.
+    #[test]
+    fn a_download_that_costs_a_credit_asks_first() {
+        let tools = vec![
+            tool(
+                "library-list",
+                "List your songs",
+                json!({ "limit": { "type": "integer" } }),
+            ),
+            tool(
+                "audio-download",
+                "Download one song",
+                json!({ "id": { "type": "string" } }),
+            ),
+            tool(
+                "audio-create",
+                "Create a new song",
+                json!({ "description": { "type": "string" } }),
+            ),
+        ];
+        let reply = json!({
+            "credits_remaining": 22,
+            "format": "mp3",
+            "message": "Downloading this song uses one of the user's suno.com download credits. Ask them first, then call again with confirm: true.",
+            "status": "requires_credit"
+        });
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+            Reply::json(call_reply(3, &reply)),
+        ]);
+        let mut session =
+            connect_at(&mock.url, &fresh_tokens("credit"), None, true).expect("connect");
+        let song = SunoSong {
+            id: "credit-1".to_string(),
+            title: "Costs A Credit".to_string(),
+            audio_urls: vec!["https://cdn.example/c.mp3".to_string()],
+            stem_urls: Vec::new(),
+            duration_secs: None,
+            created: None,
+            raw: json!({}),
+        };
+        let error = session.download_song(&song).expect_err("must ask first");
+        println!("fel: {error}");
+        assert_eq!(error, NEEDS_CREDIT);
     }
 }

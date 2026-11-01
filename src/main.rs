@@ -919,6 +919,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(hint) = session.voices_hint() {
                     println!("{hint}");
                 }
+                match session.playlists() {
+                    Ok(list) => {
+                        println!("spellistor ({}):", list.len());
+                        for p in &list {
+                            println!("  {} — {} — {} spår", p.name, p.id, p.clip_count.unwrap_or(0));
+                        }
+                    }
+                    Err(e) => println!("spellistor: {e}"),
+                }
+                match session.workspaces() {
+                    Ok(list) => {
+                        println!("arbetsytor ({}):", list.len());
+                        for w in &list {
+                            println!("  {} — {}", w.name, w.id);
+                        }
+                    }
+                    Err(e) => println!("arbetsytor: {e}"),
+                }
+                match session.account() {
+                    Ok(acc) => println!("konto: plan {:?}, credits {:?}", acc.plan, acc.credits),
+                    Err(e) => println!("konto: {e}"),
+                }
                 match session.library(None, 5) {
                     Ok(songs) => {
                         println!("bibliotek ({} första):", songs.len());
@@ -930,6 +952,85 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 song.audio_urls.len(),
                                 song.stem_urls.len()
                             );
+                        }
+                        // Hämtar den första låtens riktiga URL:er — det Importera behöver.
+                        if let Some(first) = songs.first() {
+                            match session.retrieve_song(&first.id) {
+                                Ok(full) => println!(
+                                    "  hämtad: \"{}\" — ljud {} — stämmor {}",
+                                    full.title,
+                                    full.audio_urls.len(),
+                                    full.stem_urls.len()
+                                ),
+                                Err(e) => println!("  hämtning: {e}"),
+                            }
+                            // Om formen inte gav några URL:er: visa råsvaret så nästa parser blir rätt.
+                            if let Some(raw) = session
+                                .call(
+                                    "audio-retrieve",
+                                    serde_json::json!({ "id": first.id }),
+                                )
+                                .ok()
+                            {
+                                // Alla nycklar vars namn innehåller "url" — det är de vi behöver.
+                                fn walk(value: &serde_json::Value, path: &str) {
+                                    match value {
+                                        serde_json::Value::Object(map) => {
+                                            for (key, sub) in map {
+                                                let here = format!("{path}.{key}");
+                                                if key.to_lowercase().contains("url") {
+                                                    let text = sub.to_string();
+                                                    println!("  url {here} = {}", &text[..text.len().min(90)]);
+                                                }
+                                                walk(sub, &here);
+                                            }
+                                        }
+                                        serde_json::Value::Array(items) => {
+                                            for (i, sub) in items.iter().enumerate() {
+                                                walk(sub, &format!("{path}[{i}]"));
+                                            }
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                                // `content[].text` är en JSON-sträng; packa upp den först.
+                                let inner = raw
+                                    .get("content")
+                                    .and_then(|c| c.as_array())
+                                    .and_then(|items| items.first())
+                                    .and_then(|item| item.get("text"))
+                                    .cloned()
+                                    .unwrap_or(serde_json::Value::Null);
+                                let parsed = match inner.as_str() {
+                                    Some(text) => serde_json::from_str(text)
+                                        .unwrap_or(serde_json::Value::Null),
+                                    None => inner,
+                                };
+                                walk(&parsed, "svar");
+                                if let Ok(dl) = session.call(
+                                    "audio-download",
+                                    serde_json::json!({ "id": first.id }),
+                                ) {
+                                    let inner = dl
+                                        .get("content")
+                                        .and_then(|c| c.as_array())
+                                        .and_then(|i| i.first())
+                                        .and_then(|i| i.get("text"))
+                                        .cloned()
+                                        .unwrap_or(serde_json::Value::Null);
+                                    let parsed = match inner.as_str() {
+                                        Some(text) => serde_json::from_str(text)
+                                            .unwrap_or(serde_json::Value::Null),
+                                        None => inner,
+                                    };
+                                    walk(&parsed, "nedladdning");
+                                    let shown = parsed.to_string();
+                                    println!(
+                                        "  nedladdning rått: {}",
+                                        &shown[..shown.len().min(300)]
+                                    );
+                                }
+                            }
                         }
                     }
                     Err(e) => println!("bibliotek: {e}"),

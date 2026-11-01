@@ -153,6 +153,17 @@ pub enum SunoTask {
     Generated(crate::audio::suno::GeneratedSong),
     /// The user's own library, as the server listed it.
     Library(Vec<crate::audio::suno::SunoSong>),
+    Playlists(Vec<crate::audio::suno::SunoPlaylist>),
+    Workspaces(Vec<crate::audio::suno::SunoWorkspace>),
+    Account(Box<crate::audio::suno::SunoAccount>),
+}
+
+/// Which list a metadata fetch is for. `Copy` so a button closure can carry it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SunoMeta {
+    Playlists,
+    Workspaces,
+    Account,
 }
 
 pub struct SonixApp {
@@ -604,6 +615,11 @@ pub struct SonixApp {
     pub suno_voice_param: Option<String>,
     /// The user's Suno library: browse what already exists and pull any of it in.
     pub suno_library: Vec<crate::audio::suno::SunoSong>,
+    pub suno_playlists: Vec<crate::audio::suno::SunoPlaylist>,
+    pub suno_workspaces: Vec<crate::audio::suno::SunoWorkspace>,
+    pub suno_account: Option<crate::audio::suno::SunoAccount>,
+    /// Song id whose download is waiting for a credit confirmation.
+    pub suno_credit_song: Option<String>,
     pub suno_library_query: String,
     pub suno_model_version: String,
     pub suno_context_clip: Option<String>,
@@ -1338,6 +1354,10 @@ impl SonixApp {
             suno_voice_hint: None,
             suno_voice_param: None,
             suno_library: Vec::new(),
+            suno_playlists: Vec::new(),
+            suno_workspaces: Vec::new(),
+            suno_account: None,
+            suno_credit_song: None,
             suno_library_query: String::new(),
             suno_tools: Vec::new(),
             suno_last: None,
