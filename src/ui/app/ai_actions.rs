@@ -907,6 +907,8 @@ impl SonixApp {
                 voice_param,
             }) => {
                 self.suno_tools = tools;
+                // Arbetsytorna behövs för "Spara i": väljaren kan inte fyllas av gissningar.
+                self.suno_load_meta(SunoMeta::Workspaces);
                 self.suno_tool_name = tool_name;
                 self.suno_form = schema
                     .as_ref()

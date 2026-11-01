@@ -126,6 +126,14 @@ pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
             }
         }
     }
+    // **Ett arbetsytenamn är inget id.** Servern svarar "workspace_id is not a workspace id" på
+    // fritext; bara uuid-formade id (från `workspaces-list`) skickas.
+    if let Some(id) = map.get("workspace_id").and_then(|v| v.as_str()) {
+        let looks_like_id = id.len() >= 32 && id.chars().filter(|c| *c == '-').count() >= 4;
+        if !looks_like_id {
+            map.remove("workspace_id");
+        }
+    }
     // **`audio_influence` kräver en röst.** Schemat: "Only valid alongside a `voice_id` — a
     // generation that conditions on no audio returns 400". Mätt: `audio_influence requires
     // conditioning audio — set a voice_id` utan röst.
@@ -465,5 +473,25 @@ mod tests {
         }
         let args = args_from_form(&fields);
         println!("live-body: {args}");
+    }
+
+    /// Ett arbetsytenamn är inget id: servern svarar "workspace_id is not a workspace id".
+    #[test]
+    fn a_workspace_name_is_not_sent_as_an_id() {
+        let make = |value: &str| {
+            let mut fields = fallback_fields();
+            if let Some((_, SunoField::Text { value: v, .. })) =
+                fields.iter_mut().find(|(name, _)| name == "workspace_id")
+            {
+                *v = value.to_string();
+            }
+            args_from_form(&fields)
+        };
+        let named = make("Satfläsk");
+        println!("namn: {named}");
+        assert!(named.get("workspace_id").is_none());
+        let uuid = make("6f1c1b7e-2a44-4a9e-9d3f-1b2c3d4e5f60");
+        println!("id: {uuid}");
+        assert!(uuid.get("workspace_id").is_some());
     }
 }

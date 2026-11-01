@@ -380,7 +380,45 @@ impl SonixApp {
                         self.suno_field_bool(ui, slot, label);
                     }
                     self.suno_field_text(ui, slots.title, "Låtens titel", "(valfritt)", false);
-                    self.suno_field_text(ui, slots.workspace, "Spara i", "Min arbetsyta", false);
+                    // **Arbetsytan väljs, skrivs inte.** `workspace_id` tar ett id från
+                    // `workspaces-list`; ett påhittat namn ger "workspace_id is not a workspace id".
+                    if let Some(index) = slots.workspace {
+                        let rows: Vec<(String, String)> = self
+                            .suno_workspaces
+                            .iter()
+                            .map(|w| (w.id.clone(), w.name.clone()))
+                            .collect();
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                RichText::new(crate::i18n::t("Spara i")).size(Theme::FONT_S),
+                            );
+                            if rows.is_empty() {
+                                ui.label(
+                                    RichText::new(crate::i18n::t(
+                                        "Inga arbetsytor — hämta under fliken Arbetsytor",
+                                    ))
+                                    .size(Theme::FONT_XS)
+                                    .color(palette().text_muted()),
+                                );
+                            } else if let Some((_, SunoField::Text { value, .. })) =
+                                self.suno_form.get_mut(index)
+                            {
+                                let chosen = rows
+                                    .iter()
+                                    .find(|(id, _)| id == value)
+                                    .map(|(_, name)| name.clone())
+                                    .unwrap_or_else(|| crate::i18n::t("(ingen)").to_string());
+                                egui::ComboBox::from_id_salt("suno_workspace")
+                                    .selected_text(chosen)
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(value, String::new(), "(ingen)");
+                                        for (id, name) in &rows {
+                                            ui.selectable_value(value, id.clone(), name);
+                                        }
+                                    });
+                            }
+                        });
+                    }
                 });
             });
         });
