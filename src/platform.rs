@@ -94,3 +94,9 @@ mod tests {
         assert_eq!(program, "open");
     }
 }
+
+/// Öppnar en fil med systemets spelare — t.ex. en hämtad låt som ska lyssnas igenom.
+pub fn open_path(path: &str) -> bool {
+    let (program, args) = url_command(std::env::consts::OS, path);
+    Command::new(program).args(args).spawn().is_ok()
+}

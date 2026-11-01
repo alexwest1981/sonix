@@ -744,7 +744,10 @@ impl SonixApp {
             *slot = prompt.clone();
         }
         if !self.suno_voices.is_empty()
-            && let Some(param) = self.suno_voice_param.clone()
+            && let Some(param) = self
+                .suno_voice_param
+                .clone()
+                .or_else(|| Some("voice_id".to_string()))
             && let Some((voice_id, _)) = self.suno_voices.get(self.suno_voice_choice)
             && let Some((_, field)) = fields.iter_mut().find(|(name, field)| {
                 *name == param
@@ -846,6 +849,105 @@ impl SonixApp {
         });
     }
 
+    /// Fills the clip rows with title and length — `audio-retrieve` is metadata only, no credit.
+    pub fn suno_load_clip_titles(&mut self) {
+        if self.suno_clips.is_empty() || self.suno_pending.is_some() {
+            return;
+        }
+        let ids: Vec<String> = self.suno_clips.iter().map(|c| c.id.clone()).collect();
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect().and_then(|mut session| {
+                let mut songs = Vec::new();
+                for id in &ids {
+                    if let Ok(song) = session.retrieve_song(id) {
+                        songs.push(song);
+                    }
+                }
+                Ok(SunoTask::Clips(songs))
+            });
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Auditions one alternative: the audio costs a download credit, then the file opens in the
+    /// system player so both takes can be compared.
+    pub fn suno_audition(&mut self, index: usize) {
+        let Some(clip) = self.suno_clips.get(index).cloned() else {
+            return;
+        };
+        if let Some(file) = clip.file.clone() {
+            crate::platform::open_path(&file.to_string_lossy());
+            return;
+        }
+        if self.suno_pending.is_some() {
+            return;
+        }
+        let id = clip.id.clone();
+        self.suno_clip_pending = Some(index);
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_status = crate::i18n::t("📥 Hämtar ljudet — en kredit.").to_string();
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect()
+                .and_then(|mut session| session.download_song_confirmed(&id))
+                .map(SunoTask::Generated);
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
+    /// Separates the chosen alternative — in place in the Suno tab, with the progress bar.
+    pub fn suno_separate_clip(&mut self, index: usize) {
+        let Some(file) = self
+            .suno_clips
+            .get(index)
+            .and_then(|clip| clip.file.clone())
+        else {
+            self.suno_status =
+                crate::i18n::t("⚠ Lyssna på alternativet först — filen hämtas då.").to_string();
+            return;
+        };
+        self.suno_chain = false;
+        self.start_stem_separation_with(&file.to_string_lossy(), false);
+    }
+
+    /// Sends the finished stems to the timeline and lands there.
+    pub fn suno_export_stems(&mut self) {
+        let folder = self
+            .stem_project
+            .stem_files
+            .first()
+            .and_then(|p| std::path::Path::new(p).parent())
+            .map(|p| p.to_string_lossy().to_string());
+        let Some(folder) = folder else {
+            self.suno_status = crate::i18n::t("⚠ Inga stämmor att exportera än.").to_string();
+            return;
+        };
+        let title = self.stem_project.track_title.clone();
+        // **Tempo från själva låten.** Sunos API lämnar ingen BPM i metadata (mätt: duration,
+        // description, lyrics, type — inget tempo), så det mäts ur den hämtade filen och blir
+        // projektets tempo; annars ligger stämmorna i fel takt mot resten.
+        let bpm = self
+            .stem_project
+            .source_path
+            .as_deref()
+            .and_then(|p| crate::audio::stem_separator::detect_bpm_from_file(p).ok())
+            .map(|bpm| {
+                println!("suno: tempo ur filen: {bpm:.1} BPM");
+                bpm
+            })
+            .unwrap_or(self.bpm);
+        self.bpm = bpm;
+        self.import_suno_stems_from_folder(&folder, &title, bpm);
+        self.view_mode = crate::ui::app::ViewMode::PlaylistArranger;
+        self.suno_status = crate::i18n::t("✔ Stämmorna ligger på tidslinjen.").to_string();
+    }
+
     /// Imports the song whose download the user just confirmed — one credit is spent.
     pub fn suno_import_confirmed(&mut self, id: &str) {
         if self.suno_pending.is_some() {
@@ -937,6 +1039,15 @@ impl SonixApp {
                 self.suno_workspaces = list;
                 self.suno_status = String::new();
             }
+            Ok(SunoTask::Clips(songs)) => {
+                for song in songs {
+                    if let Some(clip) = self.suno_clips.iter_mut().find(|c| c.id == song.id) {
+                        clip.title = song.title;
+                        clip.seconds = song.duration_secs;
+                    }
+                }
+                self.suno_status = String::new();
+            }
             Ok(SunoTask::Account(account)) => {
                 self.suno_account = Some(*account);
                 self.suno_status = String::new();
@@ -968,32 +1079,40 @@ impl SonixApp {
         use crate::ui::app::import::{SunoArrival, classify_suno_files};
         // **Kedjan.** Servern skapade clips men lämnade inga filer: ljudet kostar en
         // nedladdningskredit. Är hämtningen förvald tar vi den nu, utan ett extra klick.
-        if song.files.is_empty() && !song.clip_ids.is_empty() {
-            if self.suno_auto_download {
-                let id = song.clip_ids[0].clone();
-                self.suno_status = crate::i18n::t("📥 Hämtar ljudet — en kredit.").to_string();
-                self.suno_import_confirmed(&id);
-            } else {
-                self.suno_status = crate::i18n::t(
-                    "Låten är klar i biblioteket — hämta den därifrån (1 kredit).",
-                )
-                .to_string();
+        if let Some(index) = self.suno_clip_pending.take() {
+            // Hämtningen gällde lyssning: filen hör till raden, inte till arrangemanget.
+            if let Some(file) = song.files.first().cloned() {
+                if let Some(clip) = self.suno_clips.get_mut(index) {
+                    clip.file = Some(file.clone());
+                }
+                crate::platform::open_path(&file.to_string_lossy());
+                self.suno_status = crate::i18n::t("🎧 Spelar upp i systemets spelare.").to_string();
             }
             self.suno_last = Some(song);
             return;
         }
+        if song.files.is_empty() && !song.clip_ids.is_empty() {
+            // Två alternativ, ingen fil: visa dem och låt användaren välja.
+            self.suno_clips = song
+                .clip_ids
+                .iter()
+                .map(|id| crate::ui::app::SunoClip {
+                    id: id.clone(),
+                    title: String::new(),
+                    seconds: None,
+                    file: None,
+                })
+                .collect();
+            self.suno_status = crate::tstatus!(
+                "✅ {} alternativ klara — lyssna och välj ett.",
+                self.suno_clips.len()
+            );
+            self.suno_last = Some(song);
+            self.suno_load_clip_titles();
+            return;
+        }
         // **Vart ljudet ska.** Bordet ger ett spår per fil; separatorn tar första filen som mix
         // och delar den i stämspår — samma väg som en importerad fil.
-        if self.suno_dest == crate::ui::app::SunoDest::Separator {
-            if let Some(first) = song.files.first() {
-                self.suno_chain = true;
-                self.start_stem_separation_with(&first.to_string_lossy(), false);
-                self.suno_status =
-                    crate::tstatus!("✔ {} skickad till separatorn.", song.title);
-                self.suno_last = Some(song);
-                return;
-            }
-        }
         match classify_suno_files(&song.files) {
             SunoArrival::One(path) => {
                 let tmpl = crate::ui::add_track_modal::get_track_templates()

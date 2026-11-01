@@ -156,6 +156,18 @@ pub enum SunoTask {
     Playlists(Vec<crate::audio::suno::SunoPlaylist>),
     Workspaces(Vec<crate::audio::suno::SunoWorkspace>),
     Account(Box<crate::audio::suno::SunoAccount>),
+    Clips(Vec<crate::audio::suno::SunoSong>),
+}
+
+/// **En av alternativen Suno skapade.** Två clips per beställning, ingen fil förrän man hämtar
+/// (en nedladdningskredit per fil).
+#[derive(Clone, Debug, Default)]
+pub struct SunoClip {
+    pub id: String,
+    pub title: String,
+    pub seconds: Option<f64>,
+    /// Filen på disk när den är hämtad.
+    pub file: Option<std::path::PathBuf>,
 }
 
 /// Vilken lista knapparna Audio/Voice/Inspo öppnar i Skapa.
@@ -164,13 +176,6 @@ pub enum SunoPick {
     Audio,
     Voice,
     Inspo,
-}
-
-/// Vart ett färdigt Suno-ljud ska: bordet (ett spår per fil) eller separatorn (stämspår).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum SunoDest {
-    Mixer,
-    Separator,
 }
 
 /// Which list a metadata fetch is for. `Copy` so a button closure can carry it.
@@ -610,12 +615,12 @@ pub struct SonixApp {
     // Suno AI Prompt Bar & Studio Timeline View
     /// Vilken ruta i Suno-ytan som är öppen (0 = Skapa).
     pub suno_tab: usize,
-    /// Vart importerade och skapade Suno-ljud tar vägen.
-    pub suno_dest: SunoDest,
     /// Vilken av Audio/Voice/Inspo som är öppen (None = ingen).
     pub suno_pick: Option<SunoPick>,
-    /// Hämta filen direkt efter skapandet (kostar en nedladdningskredit).
-    pub suno_auto_download: bool,
+    /// Alternativen från senaste skapandet.
+    pub suno_clips: Vec<SunoClip>,
+    /// Nedladdningen som pågår hör till den här raden (för lyssning, inte import).
+    pub suno_clip_pending: Option<usize>,
     /// Separationen startades från Suno: skicka stämmorna till Arrangera när hon är klar.
     pub suno_chain: bool,
     /// Källor för cover (Audio) och mashup (Inspo): clip-id från biblioteket.
@@ -1370,9 +1375,9 @@ impl SonixApp {
             export_preset_idx: 0,
             // Suno AI Prompt Bar & Studio Timeline View
             suno_tab: 0,
-            suno_dest: SunoDest::Mixer,
             suno_pick: None,
-            suno_auto_download: true,
+            suno_clips: Vec::new(),
+            suno_clip_pending: None,
             suno_chain: false,
             suno_source_song: None,
             suno_inspo_song: None,

@@ -874,6 +874,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("⚠ --render-plugin kräver en build med --features plugin-host");
         std::process::exit(1);
     }
+    // `sonix --suno-clip <id>`: skriver ut alla nycklar i klattens metadata (letar bl.a. BPM).
+    if let Some(pos) = std::env::args().position(|a| a == "--suno-clip") {
+        let id = std::env::args().nth(pos + 1).unwrap_or_default();
+        match audio::suno::SunoSession::connect_cached() {
+            Ok(mut session) => match session.call("audio-retrieve", serde_json::json!({ "id": id })) {
+                Ok(reply) => {
+                    let text = reply
+                        .get("content")
+                        .and_then(|c| c.as_array())
+                        .and_then(|i| i.first())
+                        .and_then(|i| i.get("text"))
+                        .and_then(|t| t.as_str())
+                        .map(|t| t.to_string())
+                        .unwrap_or_else(|| reply.to_string());
+                    let parsed: serde_json::Value =
+                        serde_json::from_str(&text).unwrap_or(serde_json::Value::Null);
+                    fn walk(v: &serde_json::Value, path: &str) {
+                        match v {
+                            serde_json::Value::Object(map) => {
+                                for (k, sub) in map {
+                                    walk(sub, &format!("{path}.{k}"));
+                                }
+                            }
+                            serde_json::Value::Array(items) => {
+                                for (i, sub) in items.iter().enumerate() {
+                                    walk(sub, &format!("{path}[{i}]"));
+                                }
+                            }
+                            other => {
+                                let shown = other.to_string();
+                                println!("{path} = {}", &shown[..shown.len().min(70)]);
+                            }
+                        }
+                    }
+                    walk(&parsed, "klatt");
+                }
+                Err(e) => eprintln!("⚠ {e}"),
+            },
+            Err(e) => eprintln!("⚠ {e}"),
+        }
+        std::process::exit(0);
+    }
+
     // `sonix --suno-flow "<beskrivning>"`: hela kedjan — skapa, vänta, hämta filen. Kostar en
     // nedladdningskredit. Separationen sker i appen (den behöver projektet), men filen ska landa.
     if let Some(pos) = std::env::args().position(|a| a == "--suno-flow") {

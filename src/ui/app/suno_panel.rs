@@ -55,30 +55,6 @@ impl SonixApp {
                 self.suno_tab = 0;
                 self.suno_create();
             }
-            // Hämtningen kostar en kredit — valet står i klartext före, inte som en överraskning.
-            ui.checkbox(
-                &mut self.suno_auto_download,
-                crate::i18n::t("📥 Hämta direkt (1 kredit)"),
-            );
-            ui.separator();
-            // Vart ljudet tar vägen — bordet eller separatorn.
-            ui.separator();
-            for (dest, label) in [
-                (crate::ui::app::SunoDest::Mixer, "→ Bordet"),
-                (crate::ui::app::SunoDest::Separator, "→ Separatorn"),
-            ] {
-                let active = self.suno_dest == dest;
-                let text = RichText::new(crate::i18n::t(label)).size(Theme::FONT_S);
-                let text = if active {
-                    text.strong().color(palette().bg())
-                } else {
-                    text.color(palette().text_muted())
-                };
-                let fill = if active { palette().cyan() } else { palette().panel() };
-                if ui.add(egui::Button::new(text).fill(fill)).clicked() {
-                    self.suno_dest = dest;
-                }
-            }
             if !self.suno_status.trim().is_empty() {
                 ui.label(
                     RichText::new(&self.suno_status)
@@ -423,6 +399,106 @@ impl SonixApp {
             });
         });
         // Väljarlistan ligger under båda kolumnerna — inuti en kolumn med höjd 0 låste layouten.
+        self.suno_pick_list(ui);
+        // **Alternativen Suno gav.** Lyssna (kostar en hämtning), välj ett, separera med
+        // förloppsindikator, exportera till tidslinjen — fyra tydliga steg i samma ruta.
+        if !self.suno_clips.is_empty() {
+            ui.add_space(6.0);
+            ui.label(
+                RichText::new(crate::tstatus!("🎵 {} alternativ", self.suno_clips.len()))
+                    .strong()
+                    .size(Theme::FONT_S)
+                    .color(palette().orange()),
+            );
+            let rows: Vec<(usize, String, Option<f64>, bool)> = self
+                .suno_clips
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    let title = if c.title.trim().is_empty() {
+                        c.id.clone()
+                    } else {
+                        c.title.clone()
+                    };
+                    (i, title, c.seconds, c.file.is_some())
+                })
+                .collect();
+            let mut audition: Option<usize> = None;
+            let mut separate: Option<usize> = None;
+            let busy = self.suno_pending.is_some() || self.stem_separation_active;
+            for (index, title, seconds, has_file) in rows {
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(title).size(Theme::FONT_S));
+                    if let Some(seconds) = seconds {
+                        ui.label(
+                            RichText::new(format!("{seconds:.0}s"))
+                                .size(Theme::FONT_XS)
+                                .color(palette().text_muted()),
+                        );
+                    }
+                    if ui
+                        .add_enabled(!busy, egui::Button::new(crate::i18n::t("🎧 Lyssna")))
+                        .on_hover_text(crate::i18n::t("Hämtar filen — 1 nedladdningskredit"))
+                        .clicked()
+                    {
+                        audition = Some(index);
+                    }
+                    if ui
+                        .add_enabled(
+                            has_file && !busy,
+                            egui::Button::new(crate::i18n::t("🎚 Separera")),
+                        )
+                        .on_disabled_hover_text(crate::i18n::t(
+                            "Lyssna på alternativet först — filen hämtas då",
+                        ))
+                        .clicked()
+                    {
+                        separate = Some(index);
+                    }
+                });
+            }
+            if let Some(index) = audition {
+                self.suno_audition(index);
+            }
+            if let Some(index) = separate {
+                self.suno_separate_clip(index);
+            }
+        }
+        // Förloppet medan den separerar.
+        if self.stem_separation_active {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(
+                    RichText::new(crate::i18n::t("Separerar stämmor…"))
+                        .size(Theme::FONT_S)
+                        .color(palette().cyan()),
+                );
+                ui.add(
+                    egui::ProgressBar::new(self.stem_project.progress)
+                        .desired_width(220.0)
+                        .show_percentage(),
+                );
+            });
+        } else if !self.stem_project.stem_files.is_empty() {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(crate::tstatus!(
+                        "🎚 {} stämmor klara",
+                        self.stem_project.stem_files.len()
+                    ))
+                    .size(Theme::FONT_S)
+                    .color(palette().cyan()),
+                );
+                if ui
+                    .button(crate::i18n::t("→ Exportera till tidslinjen"))
+                    .clicked()
+                {
+                    self.suno_export_stems();
+                }
+            });
+        }
         self.suno_pick_list(ui);
         // **Separationen syns här, inte i en annan flik.** Väljer man → Separatorn stannar ytan
         // kvar och visar förloppet; när stämmorna är klara går de till bordet med ett klick.

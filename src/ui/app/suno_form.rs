@@ -134,6 +134,11 @@ pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
             map.remove("workspace_id");
         }
     }
+    // **Rösten vinner över `vocal_gender`.** En namngiven röst har redan ett kön; servern säger
+    // uttryckligen att den tar precedence, så vi skickar inte båda.
+    if map.get("voice_id").and_then(|v| v.as_str()).is_some_and(|v| !v.is_empty()) {
+        map.remove("vocal_gender");
+    }
     // **`audio_influence` kräver en röst.** Schemat: "Only valid alongside a `voice_id` — a
     // generation that conditions on no audio returns 400". Mätt: `audio_influence requires
     // conditioning audio — set a voice_id` utan röst.
