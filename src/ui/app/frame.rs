@@ -65,6 +65,7 @@ fn view_name(view: ViewMode) -> &'static str {
         ViewMode::RemixFx => "🎛 Remix FX",
         ViewMode::VocalStudio => "🎙 Sångstudio",
         ViewMode::AiMusicAssistant => "🤖 AI",
+        ViewMode::Suno => "☀ Suno",
         ViewMode::ModularPatcher => "🔌 Patcher",
         ViewMode::StemSeparator => "🪄 Stämmor",
         ViewMode::Video => "🎬 Video",
@@ -304,8 +305,11 @@ impl SonixApp {
                         self.trigger_suno_ai_generation();
                     }
                     if action.open_suno {
-                        self.show_suno_modal = true;
+                        self.view_mode = ViewMode::Suno;
                     }
+                }
+                ViewMode::Suno => {
+                    self.render_suno_view(ui);
                 }
                 ViewMode::EffectsMixer => {
                     self.render_effects_mixer_rack(ui);

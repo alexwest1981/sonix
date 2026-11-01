@@ -1391,6 +1391,7 @@ pub fn enable_screenshot_mode(&mut self, out_dir: &std::path::Path) {
         (ScreenshotTarget::NewtimeModal, out_dir.join("34_newtime.png")),
         (ScreenshotTarget::Visualizer, out_dir.join("35_visualizer.png")),
         (ScreenshotTarget::ModMatrix, out_dir.join("36_mod_matrix.png")),
+        (ScreenshotTarget::View(ViewMode::Suno), out_dir.join("37_suno.png")),
     ];
 
     self.screenshot_queue = targets;

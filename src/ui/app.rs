@@ -50,6 +50,7 @@ use super::widgets::{
 pub mod script;
 pub mod state;
 pub mod suno_form;
+pub mod suno_panel;
 pub use state::*;
 
 mod project;
@@ -581,10 +582,11 @@ pub struct SonixApp {
     pub export_loudness_idx: usize,
     pub export_preset_idx: usize,
     // Suno AI Prompt Bar & Studio Timeline View
+    /// Vilken ruta i Suno-ytan som är öppen (0 = Skapa).
+    pub suno_tab: usize,
     pub suno_prompt_input: String,
     /// The Suno panel. `suno_tools` is what the server's own `tools/list` returned, so a beta
     /// surface that differs from our guesses is visible in the UI instead of hidden.
-    pub show_suno_modal: bool,
     pub suno_status: String,
     pub suno_tools: Vec<String>,
     pub suno_last: Option<crate::audio::suno::GeneratedSong>,
@@ -1325,8 +1327,8 @@ impl SonixApp {
             export_loudness_idx: 0,
             export_preset_idx: 0,
             // Suno AI Prompt Bar & Studio Timeline View
+            suno_tab: 0,
             suno_prompt_input: crate::i18n::t("Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll").to_string(),
-            show_suno_modal: false,
             suno_status: String::new(),
             suno_login_url: std::sync::Arc::new(std::sync::Mutex::new(None)),
             suno_form: Vec::new(),

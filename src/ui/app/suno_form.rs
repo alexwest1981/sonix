@@ -148,6 +148,7 @@ pub struct SunoSlots {
     pub duration: Option<usize>,
     pub max_mode: Option<usize>,
     pub personalize: Option<usize>,
+    pub instrumental: Option<usize>,
     pub workspace: Option<usize>,
     pub model: Option<usize>,
 }
@@ -172,9 +173,83 @@ pub fn slots(fields: &[(String, SunoField)]) -> SunoSlots {
         duration: find(fields, &["duration", "length"]),
         max_mode: find(fields, &["max_mode", "max"]),
         personalize: find(fields, &["personalize", "personal"]),
+        instrumental: find(fields, &["instrumental"]),
         workspace: find(fields, &["workspace", "save_to", "folder"]),
         model: find(fields, &["model", "version"]),
     }
+}
+
+
+/// **Fälten som den riktiga `audio-create` beskriver, mätta 1 nov 2026.** Används innan
+/// anslutningen hunnit hämta schemat, så att ytan går att skriva i direkt; vid anslutning ersätts
+/// listan av serverns egen. Ordningen är Sunos: det man skriver först, options sist.
+pub fn fallback_fields() -> Vec<(String, SunoField)> {
+    let text = |name: &str, multiline: bool| {
+        (
+            name.to_string(),
+            SunoField::Text {
+                value: String::new(),
+                multiline,
+            },
+        )
+    };
+    vec![
+        text("lyrics", true),
+        text("style", false),
+        text("title", false),
+        text("negative_style", false),
+        (
+            "instrumental".to_string(),
+            SunoField::Bool(false),
+        ),
+        (
+            "vocal_gender".to_string(),
+            SunoField::Choice {
+                options: vec!["female".to_string(), "male".to_string()],
+                selected: 0,
+            },
+        ),
+        (
+            "duration".to_string(),
+            SunoField::Number {
+                value: 0.0,
+                min: 0.0,
+                max: 300.0,
+            },
+        ),
+        (
+            "model".to_string(),
+            SunoField::Text {
+                value: "v6".to_string(),
+                multiline: false,
+            },
+        ),
+        text("workspace_id", false),
+        (
+            "controls.weirdness".to_string(),
+            SunoField::Number {
+                value: 0.5,
+                min: 0.0,
+                max: 1.0,
+            },
+        ),
+        (
+            "controls.style_influence".to_string(),
+            SunoField::Number {
+                value: 0.5,
+                min: 0.0,
+                max: 1.0,
+            },
+        ),
+        (
+            "controls.audio_influence".to_string(),
+            SunoField::Number {
+                value: 0.5,
+                min: 0.0,
+                max: 1.0,
+            },
+        ),
+    ]
 }
 
 #[cfg(test)]
@@ -290,5 +365,27 @@ mod tests {
         let bare = slots(&fields_from_schema(&json!({ "type": "object" })));
         assert_eq!(bare, SunoSlots::default());
         println!("utan schema: {bare:?}");
+    }
+
+    /// Reservschemat fyller Sunos egna kontroller innan anslutningen hunnit svara.
+    #[test]
+    fn the_fallback_schema_fills_the_workflow() {
+        let fields = fallback_fields();
+        let found = slots(&fields);
+        println!("reserv: {} fält, platser {found:?}", fields.len());
+        assert!(found.lyrics.is_some());
+        assert!(found.styles.is_some());
+        assert!(found.title.is_some());
+        assert!(found.weirdness.is_some());
+        assert!(found.style_influence.is_some());
+        assert!(found.vocal_gender.is_some());
+        assert!(found.duration.is_some());
+        assert!(found.model.is_some());
+        assert!(found.workspace.is_some());
+        // Variation finns inte i audio-create — platsen ska vara tom, inte påhittad.
+        assert!(found.variety.is_none());
+        let args = args_from_form(&fields);
+        println!("reserv-argument: {args}");
+        assert!(args.get("controls").and_then(|c| c.get("weirdness")).is_some());
     }
 }

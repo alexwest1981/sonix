@@ -32,6 +32,7 @@ pub enum ViewMode {
     RemixFx,
     VocalStudio,
     AiMusicAssistant,
+    Suno,
     ModularPatcher,
     StemSeparator,
     Video,
@@ -41,7 +42,7 @@ pub enum ViewMode {
 
 impl ViewMode {
     /// Ytorna i den ordning Tab går genom dem.
-    pub const ALL: [ViewMode; 13] = [
+    pub const ALL: [ViewMode; 14] = [
         ViewMode::ChannelRack,
         ViewMode::PianoRoll,
         ViewMode::PlaylistArranger,
@@ -50,6 +51,7 @@ impl ViewMode {
         ViewMode::RemixFx,
         ViewMode::VocalStudio,
         ViewMode::AiMusicAssistant,
+        ViewMode::Suno,
         ViewMode::ModularPatcher,
         ViewMode::StemSeparator,
         ViewMode::Video,
