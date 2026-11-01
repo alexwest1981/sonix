@@ -89,7 +89,15 @@ pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
                 }
                 json!(value)
             }
-            SunoField::Bool(on) => json!(on),
+            // **Bara sant skickas.** `duration_guidance`/`duration_strict` är `false` som default
+            // och servern svarar 400 på dem utan `duration`: "omit duration_guidance unless you
+            // set duration". Samma sak för `instrumental`.
+            SunoField::Bool(on) => {
+                if !*on {
+                    continue;
+                }
+                json!(true)
+            }
             // **Ett tal utanför schemats intervall skickas inte alls.** `duration` har 15–360 och
             // en nolla där betyder "låt modellen välja"; servern svarade `invalid_request` på den.
             SunoField::Number { value, min, max } => {
@@ -116,6 +124,19 @@ pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
             None => {
                 map.insert(name.clone(), value);
             }
+        }
+    }
+    // **`audio_influence` kräver en röst.** Schemat: "Only valid alongside a `voice_id` — a
+    // generation that conditions on no audio returns 400". Mätt: `audio_influence requires
+    // conditioning audio — set a voice_id` utan röst.
+    let has_voice = map
+        .get("voice_id")
+        .and_then(|v| v.as_str())
+        .is_some_and(|v| !v.trim().is_empty());
+    if !has_voice && let Some(controls) = map.get_mut("controls").and_then(|c| c.as_object_mut()) {
+        controls.remove("audio_influence");
+        if controls.is_empty() {
+            map.remove("controls");
         }
     }
     // **`description` och `style` får inte skickas ihop.** Schemat säger: "Not valid with
@@ -262,14 +283,6 @@ pub fn fallback_fields() -> Vec<(String, SunoField)> {
                 max: 1.0,
             },
         ),
-        (
-            "controls.audio_influence".to_string(),
-            SunoField::Number {
-                value: 0.5,
-                min: 0.0,
-                max: 1.0,
-            },
-        ),
     ]
 }
 
@@ -408,5 +421,29 @@ mod tests {
         let args = args_from_form(&fields);
         println!("reserv-argument: {args}");
         assert!(args.get("controls").and_then(|c| c.get("weirdness")).is_some());
+    }
+
+    /// Ett `false` i ett kryssruta-fält skickas inte: servern kallar det "invalid request body".
+    #[test]
+    fn a_false_toggle_is_not_sent() {
+        let schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "description": { "type": "string" },
+                "duration_guidance": { "type": "boolean" },
+                "duration_strict": { "type": "boolean" },
+                "instrumental": { "type": "boolean" }
+            }
+        });
+        let mut fields = fields_from_schema(&schema);
+        if let Some((_, SunoField::Text { value, .. })) = fields.first_mut() {
+            *value = "short atmospheric synthwave".to_string();
+        }
+        let args = args_from_form(&fields);
+        println!("argument: {args}");
+        assert!(args.get("duration_guidance").is_none());
+        assert!(args.get("duration_strict").is_none());
+        assert!(args.get("instrumental").is_none());
+        assert_eq!(args.get("description").and_then(|d| d.as_str()), Some("short atmospheric synthwave"));
     }
 }

@@ -904,6 +904,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(0);
     }
 
+    // `sonix --suno-create-args '<json>'`: skickar exakt den kroppen till audio-create. Används
+    // för att ringa in vilket fält servern kallar "invalid request body".
+    if let Some(pos) = std::env::args().position(|a| a == "--suno-create-args") {
+        let text = std::env::args().nth(pos + 1).unwrap_or_default();
+        let args: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        match audio::suno::SunoSession::connect_cached() {
+            Ok(mut session) => {
+                println!("skickar: {args}");
+                match session.generate_with(args) {
+                    Ok(song) => println!("skapad: {}", song.title),
+                    Err(e) => println!("svar: {e}"),
+                }
+            }
+            Err(e) => eprintln!("⚠ {e}"),
+        }
+        std::process::exit(0);
+    }
+
     // `sonix --suno-create "<beskrivning>"`: skapar en låt och väntar på att den blir klar.
     // Spenderar genereringskrediter men **inte** nedladdningskrediter (ingen hämtning).
     if let Some(pos) = std::env::args().position(|a| a == "--suno-create") {
