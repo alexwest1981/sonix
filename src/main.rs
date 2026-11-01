@@ -874,6 +874,75 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("⚠ --render-plugin kräver en build med --features plugin-host");
         std::process::exit(1);
     }
+    // `sonix --suno-tools`: frågar den inloggade Suno-servern vad den erbjuder, utan att öppna
+    // någon webbläsare. Svarar på "vilka fält finns?" innan panelen är byggd för dem.
+    if std::env::args().any(|a| a == "--suno-tools") {
+        match audio::suno::SunoSession::connect_cached() {
+            Ok(mut session) => {
+                println!("endpoint: {}", session.endpoint());
+                let tools: Vec<String> = session.tools().iter().map(|t| t.name.clone()).collect();
+                println!("verktyg ({}): {:?}", tools.len(), tools);
+                if let Some(tool) = session.generation_tool() {
+                    println!("generation: {}", tool.name);
+                }
+                if let Some(schema) = session.generation_schema() {
+                    if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
+                        for (name, spec) in props {
+                            let kind = spec.get("type").and_then(|t| t.as_str()).unwrap_or("?");
+                            let choices = spec
+                                .get("enum")
+                                .map(|e| format!(" {e}"))
+                                .unwrap_or_default();
+                            println!("  fält {name}: {kind}{choices}");
+                            if let Some(nested) = spec.get("properties").and_then(|p| p.as_object()) {
+                                for (sub, sub_spec) in nested {
+                                    let sub_kind =
+                                        sub_spec.get("type").and_then(|t| t.as_str()).unwrap_or("?");
+                                    let sub_choices = sub_spec
+                                        .get("enum")
+                                        .map(|e| format!(" {e}"))
+                                        .unwrap_or_default();
+                                    println!("    {name}.{sub}: {sub_kind}{sub_choices}");
+                                }
+                            }
+                        }
+                    }
+                }
+                match session.voices() {
+                    Ok(voices) => println!(
+                        "voices ({}): {:?}",
+                        voices.len(),
+                        voices.iter().map(|v| v.name.clone()).collect::<Vec<_>>()
+                    ),
+                    Err(e) => println!("voices: {e}"),
+                }
+                if let Some(hint) = session.voices_hint() {
+                    println!("{hint}");
+                }
+                match session.library(None, 5) {
+                    Ok(songs) => {
+                        println!("bibliotek ({} första):", songs.len());
+                        for song in &songs {
+                            println!(
+                                "  {} — id {} — ljud {} — stämmor {}",
+                                song.title,
+                                song.id,
+                                song.audio_urls.len(),
+                                song.stem_urls.len()
+                            );
+                        }
+                    }
+                    Err(e) => println!("bibliotek: {e}"),
+                }
+            }
+            Err(e) => {
+                eprintln!("⚠ {e}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+
     #[cfg(feature = "plugin-host")]
     if let Some(pos) = std::env::args().position(|a| a == "--render-plugin") {
         let rest: Vec<String> = std::env::args().skip(pos + 1).collect();

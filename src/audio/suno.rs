@@ -66,11 +66,19 @@ impl SunoSession {
 
     /// As [`Self::connect`], but the sign-in URL is handed to `url_slot` so the panel can show
     /// it: the browser is opened automatically, and when that fails the address is the way in.
+    /// Connects **without** ever opening a browser: the saved tokens are used, refreshed once if
+    /// they have expired, and anything else is an error. The CLI needs this — a probe should not
+    /// launch a sign-in window.
+    pub fn connect_cached() -> Result<SunoSession, String> {
+        let oauth = SunoOAuth::new();
+        connect_at(&oauth.mcp, &oauth.token_file, None, false)
+    }
+
     pub fn connect_with_slot(
         url_slot: Option<std::sync::Arc<std::sync::Mutex<Option<String>>>>,
     ) -> Result<SunoSession, String> {
         let oauth = SunoOAuth::new();
-        connect_at(&oauth.mcp, &oauth.token_file, url_slot)
+        connect_at(&oauth.mcp, &oauth.token_file, url_slot, true)
     }
 
     pub fn tools(&self) -> &[McpTool] {
@@ -185,7 +193,14 @@ impl SunoSession {
     /// filtered by `query`. The listing tool is discovered like the generator is; pagination is
     /// followed while the reply carries a cursor/next token the tool's schema has a slot for.
     pub fn library(&mut self, query: Option<&str>, limit: usize) -> Result<Vec<SunoSong>, String> {
-        let tool = pick_library(&self.tools)?.clone();
+        // **Rätt verktyg för rätt fråga.** Mätt mot den riktiga servern: `library-search` kräver
+        // en query på 1–200 tecken och svarar `invalid_request` utan, medan `library-list` listar
+        // allt. Utan den här uppdelningen blev ett tomt sökfält ett fel i stället för biblioteket.
+        let tool = match query {
+            Some(_) => pick_library_search(&self.tools),
+            None => pick_library_all(&self.tools),
+        }?
+        .clone();
         let mut args = library_args(&tool, query, limit);
         let mut songs: Vec<SunoSong> = Vec::new();
         for page in 1..=LIB_PAGES {
@@ -324,6 +339,7 @@ fn connect_at(
     endpoint: &str,
     token_file: &Path,
     url_slot: Option<std::sync::Arc<std::sync::Mutex<Option<String>>>>,
+    allow_login: bool,
 ) -> Result<SunoSession, String> {
     let mut oauth = SunoOAuth::new();
     oauth.mcp = endpoint.to_string();
@@ -337,12 +353,28 @@ fn connect_at(
                 Some(Ok(fresh)) => fresh,
                 Some(Err(e)) => {
                     println!("suno: refresh failed ({e}); signing in again");
-                    sign_in(&mut oauth, url_slot.clone())?
+                    if allow_login {
+                        sign_in(&mut oauth, url_slot.clone())?
+                    } else {
+                        return Err(format!("the saved tokens could not be refreshed: {e}"));
+                    }
                 }
-                None => sign_in(&mut oauth, url_slot.clone())?,
+                None => {
+                    if allow_login {
+                        sign_in(&mut oauth, url_slot.clone())?
+                    } else {
+                        return Err("no saved client id — sign in from the panel once".to_string());
+                    }
+                }
             }
         }
-        None => sign_in(&mut oauth, url_slot.clone())?,
+        None => {
+            if allow_login {
+                sign_in(&mut oauth, url_slot.clone())?
+            } else {
+                return Err("no saved Suno tokens — sign in from the panel once".to_string());
+            }
+        }
     };
     open(endpoint, &tokens.access_token).map_err(|e| e.to_string())
 }
@@ -382,11 +414,20 @@ fn open(endpoint: &str, token: &str) -> Result<SunoSession, McpError> {
 /// Name words that mean "make a song", with the weight each carries.
 const GEN_WORDS: [(&str, i32); 4] = [("song", 4), ("generate", 3), ("create", 3), ("music", 2)];
 /// Verbs that fetch or manage existing material. A tool carrying one is not a generator.
-const NOT_GEN: [&str; 7] = [
+const NOT_GEN: [&str; 20] = [
     "search", "list", "library", "status", "delete", "credits", "history",
+    // Mätt mot den riktiga servern: 32 verktyg, och de här orden sitter på allt som *inte* är
+    // en ny låt — covers, mashups, extensions, uppladdningar, redigeringar, hämtningar, likes.
+    "cover", "mashup", "extension", "upload", "edit", "like", "download", "retrieve",
+    "wait", "analysis", "alignment",
+    // `speech-create` är textuppläsning, inte musik — den vann annars på ordet create.
+    "speech", "tts",
 ];
 /// Argument names a generator is expected to take; their presence points at generation.
 const GEN_PROPS: [&str; 4] = ["prompt", "style", "lyrics", "title"];
+/// Rena skaparnamn, mätta på den riktiga servern (`audio-create`, `audio-full-song`). Utan de här
+/// vann `audio-mashups-create` med 8 poäng — ett verktyg som gör en mashup, inte en ny låt.
+const GEN_EXACT: [(&str, i32); 3] = [("audio-create", 12), ("audio-full-song", 10), ("song-create", 10)];
 
 /// Argument names a library listing is expected to take; their presence points at a listing.
 const LIB_PROPS: [&str; 5] = ["query", "limit", "cursor", "search", "q"];
@@ -402,7 +443,15 @@ const LIB_WORDS: [(&str, i32); 5] = [
 const NOT_LIB: [&str; 5] = ["generate", "create", "status", "delete", "credits"];
 
 fn score(tool: &McpTool) -> (i32, String) {
-    scoring(tool, &GEN_WORDS, &GEN_PROPS, &NOT_GEN)
+    let (mut total, mut why) = scoring(tool, &GEN_WORDS, &GEN_PROPS, &NOT_GEN);
+    let name = tool.name.to_lowercase();
+    for (exact, weight) in GEN_EXACT {
+        if name == exact {
+            total += weight;
+            why += &format!(" name:{exact}+{weight}");
+        }
+    }
+    (total, why)
 }
 
 /// Name, description and declared arguments, each word counted with its weight. A tool named
@@ -475,15 +524,46 @@ fn pick_generation(tools: &[McpTool]) -> Result<&McpTool, String> {
     pick(tools, &GEN_WORDS, &GEN_PROPS, &NOT_GEN, "song-generation")
 }
 
+
+/// `library-list` (eller `library-search` när servern bara har den) för en lista utan fråga.
+fn pick_library_all(tools: &[McpTool]) -> Result<&McpTool, String> {
+    let listing = tools
+        .iter()
+        .find(|t| {
+            let name = t.name.to_lowercase();
+            name.contains("library") && name.contains("list") && !name.contains("liked")
+        })
+        .or_else(|| {
+            tools.iter().find(|t| {
+                let name = t.name.to_lowercase();
+                name == "library-search" || (name.contains("library") && name.contains("search"))
+            })
+        });
+    match listing {
+        Some(tool) => Ok(tool),
+        None => pick_library(tools),
+    }
+}
+
+/// Sökverktyget, när användaren faktiskt skrev något.
+fn pick_library_search(tools: &[McpTool]) -> Result<&McpTool, String> {
+    tools
+        .iter()
+        .find(|t| t.name.to_lowercase().contains("library") && t.name.to_lowercase().contains("search"))
+        .map(Ok)
+        .unwrap_or_else(|| pick_library(tools))
+}
+
 fn pick_library(tools: &[McpTool]) -> Result<&McpTool, String> {
     pick(tools, &LIB_WORDS, &LIB_PROPS, &NOT_LIB, "song-library")
 }
 
 /// Name words that mean "the account's voices/personas", with the weight each carries.
-const VOICE_WORDS: [(&str, i32); 4] = [("persona", 5), ("voice", 5), ("singer", 3), ("artist", 3)];
+const VOICE_WORDS: [(&str, i32); 5] =
+    [("persona", 5), ("voice", 5), ("singer", 3), ("artist", 3), ("list", 6)];
 /// Verbs that make or remove a song. Such a tool is not the voices list, even when its
 /// description mentions an artist or a vocal.
-const NOT_VOICE: [&str; 3] = ["generate", "create", "delete"];
+const NOT_VOICE: [&str; 4] = ["generate", "create", "delete", "start"];
 
 /// The voice/persona lister, if the server has one. Its absence is not an error here: the caller
 /// reports it as an empty list plus [`SunoSession::voices_hint`].
@@ -1095,7 +1175,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, tools.clone())),
         ]);
-        let session = connect_at(&mock.url, &fresh_tokens("pick"), None).expect("connect");
+        let session = connect_at(&mock.url, &fresh_tokens("pick"), None, true).expect("connect");
 
         println!("endpoint: {}", session.endpoint());
         println!("{} tools exposed", session.tools().len());
@@ -1142,7 +1222,7 @@ mod tests {
             ),
         ]);
         let dir = tmp_dir("stems");
-        let mut session = connect_at(&mock.url, &fresh_tokens("stems"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("stems"), None, true).expect("connect");
         let song = session
             .generate_into("dark synthwave", Some("80s"), None, &dir)
             .expect("generate");
@@ -1186,7 +1266,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, tools)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("unknown"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("unknown"), None, true).expect("connect");
         let err = session
             .generate_into("anything", None, None, &tmp_dir("unknown"))
             .expect_err("no generator exists");
@@ -1251,7 +1331,7 @@ mod tests {
             ),
         ]);
         let dir = tmp_dir("poll");
-        let mut session = connect_at(&mock.url, &fresh_tokens("poll"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("poll"), None, true).expect("connect");
         let song = session
             .generate_into("slow burn", None, None, &dir)
             .expect("generate");
@@ -1363,7 +1443,7 @@ mod tests {
             Reply::json(tools_reply(2, tools)),
             Reply::json(call_reply(3, &tracks)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-a"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-a"), None, true).expect("connect");
         let songs = session.library(Some("neon"), 10).expect("library");
 
         assert_eq!(songs.len(), 2);
@@ -1415,7 +1495,7 @@ mod tests {
             Reply::json(tools_reply(2, tools)),
             Reply::json(call_reply(3, &items)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-b"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-b"), None, true).expect("connect");
         let songs = session.library(None, 5).expect("library");
 
         assert_eq!(songs.len(), 1);
@@ -1463,7 +1543,7 @@ mod tests {
             Reply::json(call_reply(3, &page1)),
             Reply::json(call_reply(4, &page2)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-c"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-c"), None, true).expect("connect");
         let songs = session.library(None, 10).expect("library");
 
         let calls = tool_calls(&mock);
@@ -1520,7 +1600,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, tools)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-d"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-d"), None, true).expect("connect");
         let err = session.library(None, 10).expect_err("no lister exists");
         println!("error: {err}");
         for name in ["generate_song", "create_music", "song_status"] {
@@ -1556,7 +1636,7 @@ mod tests {
             Reply::json(tools_reply(2, tools)),
             Reply::json(call_reply(3, &tracks)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("lib-e"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("lib-e"), None, true).expect("connect");
         let songs = session.library(None, 10).expect("library");
         let dir = tmp_dir("lib-e");
         let saved = session
@@ -1605,7 +1685,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, vec![option_tool()])),
         ]);
-        let session = connect_at(&mock.url, &fresh_tokens("schema"), None).expect("connect");
+        let session = connect_at(&mock.url, &fresh_tokens("schema"), None, true).expect("connect");
 
         let chosen = session.generation_tool().expect("a generator");
         println!("generation tool: {}", chosen.name);
@@ -1640,7 +1720,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, vec![bare])),
         ]);
-        let session = connect_at(&mock.url, &fresh_tokens("no-schema"), None).expect("connect");
+        let session = connect_at(&mock.url, &fresh_tokens("no-schema"), None, true).expect("connect");
         let schema = session.generation_schema().expect("a schema");
         println!("schema: {schema}");
         assert_eq!(schema["properties"], json!({}));
@@ -1663,7 +1743,7 @@ mod tests {
             )),
         ]);
         let dir = tmp_dir("given");
-        let mut session = connect_at(&mock.url, &fresh_tokens("given"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("given"), None, true).expect("connect");
         let args = json!({ "prompt": "x", "vocal_gender": "female", "weirdness": 0.7 });
         let song = session
             .generate_with_into(args.clone(), &dir)
@@ -1717,7 +1797,7 @@ mod tests {
             Reply::json(tools_reply(2, tools)),
             Reply::json(call_reply(3, &reply)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("voices"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("voices"), None, true).expect("connect");
         let voices = session.voices().expect("voices");
 
         for voice in &voices {
@@ -1769,7 +1849,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, tools)),
         ]);
-        let mut session = connect_at(&mock.url, &fresh_tokens("no-voice"), None).expect("connect");
+        let mut session = connect_at(&mock.url, &fresh_tokens("no-voice"), None, true).expect("connect");
 
         let voices = session
             .voices()
@@ -1800,7 +1880,7 @@ mod tests {
             Reply::status(202),
             Reply::json(tools_reply(2, tools)),
         ]);
-        let session = connect_at(&mock.url, &fresh_tokens("voice-param"), None).expect("connect");
+        let session = connect_at(&mock.url, &fresh_tokens("voice-param"), None, true).expect("connect");
 
         let param = session.voice_param().expect("a voice parameter");
         println!("voice param: {param}");

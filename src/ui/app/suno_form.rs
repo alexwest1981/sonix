@@ -24,6 +24,34 @@ pub enum SunoField {
     Choice { options: Vec<String>, selected: usize },
 }
 
+
+/// Ett schema-objekt blir ett fält. Delad av den platta och den nästlade vägen.
+fn field_from_spec(name: &str, spec: &Value) -> SunoField {
+    let kind = spec.get("type").and_then(|t| t.as_str()).unwrap_or("string");
+    if let Some(options) = spec.get("enum").and_then(|e| e.as_array()) {
+        let options: Vec<String> = options
+            .iter()
+            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+            .collect();
+        return SunoField::Choice { options, selected: 0 };
+    }
+    match kind {
+        "boolean" => SunoField::Bool(false),
+        "number" | "integer" => SunoField::Number {
+            value: spec.get("default").and_then(|d| d.as_f64()).unwrap_or(0.5),
+            min: spec.get("minimum").and_then(|d| d.as_f64()).unwrap_or(0.0),
+            max: spec.get("maximum").and_then(|d| d.as_f64()).unwrap_or(1.0),
+        },
+        _ => SunoField::Text {
+            value: String::new(),
+            multiline: matches!(
+                name.rsplit('.').next().unwrap_or(name),
+                "lyrics" | "prompt" | "description" | "style"
+            ),
+        },
+    }
+}
+
 /// Fälten i schemats ordning. Ett schema utan `properties` ger inga fält — panelen visar då bara
 /// prompten, vilket är rätt svar på ett verktyg som inte beskriver sig.
 pub fn fields_from_schema(schema: &Value) -> Vec<(String, SunoField)> {
@@ -32,32 +60,18 @@ pub fn fields_from_schema(schema: &Value) -> Vec<(String, SunoField)> {
     };
     let mut out = Vec::with_capacity(props.len());
     for (name, spec) in props {
-        let kind = spec.get("type").and_then(|t| t.as_str()).unwrap_or("string");
-        let field = if let Some(options) = spec.get("enum").and_then(|e| e.as_array()) {
-            let options: Vec<String> = options
-                .iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                .collect();
-            SunoField::Choice { options, selected: 0 }
-        } else {
-            match kind {
-                "boolean" => SunoField::Bool(false),
-                "number" | "integer" => SunoField::Number {
-                    value: spec
-                        .get("default")
-                        .and_then(|d| d.as_f64())
-                        .unwrap_or(0.5),
-                    min: spec.get("minimum").and_then(|d| d.as_f64()).unwrap_or(0.0),
-                    max: spec.get("maximum").and_then(|d| d.as_f64()).unwrap_or(1.0),
-                },
-                _ => SunoField::Text {
-                    value: String::new(),
-                    // Långa texter får en ruta man kan skriva i; `description`avgör inte det,
-                    // fältnamnet gör det.
-                    multiline: matches!(name.as_str(), "lyrics" | "prompt" | "description" | "style"),
-                },
+        // **Nästlade objekt packas upp.** Sunos `audio-create` lägger weirdness, style influence
+        // och variety inuti `controls`; utan det här blev "More options" tom fast servern har
+        // kontrollerna.
+        if let Some(nested) = spec.get("properties").and_then(|p| p.as_object()) {
+            for (sub, sub_spec) in nested {
+                let dotted = format!("{name}.{sub}");
+                let field = field_from_spec(&dotted, sub_spec);
+                out.push((dotted, field));
             }
-        };
+            continue;
+        }
+        let field = field_from_spec(name, spec);
         out.push((name.clone(), field));
     }
     out
@@ -82,7 +96,20 @@ pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
                 None => continue,
             },
         };
-        map.insert(name.clone(), value);
+        // `controls.weirdness` blir `{"controls":{"weirdness":…}}` — serverns egen form.
+        match name.split_once('.') {
+            Some((outer, inner)) => {
+                let entry = map
+                    .entry(outer.to_string())
+                    .or_insert_with(|| Value::Object(Map::new()));
+                if let Some(object) = entry.as_object_mut() {
+                    object.insert(inner.to_string(), value);
+                }
+            }
+            None => {
+                map.insert(name.clone(), value);
+            }
+        }
     }
     Value::Object(map)
 }
