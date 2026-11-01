@@ -746,7 +746,10 @@ impl SonixApp {
         if !self.suno_voices.is_empty()
             && let Some(param) = self.suno_voice_param.clone()
             && let Some((voice_id, _)) = self.suno_voices.get(self.suno_voice_choice)
-            && let Some((_, field)) = fields.iter_mut().find(|(name, _)| *name == param)
+            && let Some((_, field)) = fields.iter_mut().find(|(name, field)| {
+                *name == param
+                    && matches!(field, crate::ui::app::suno_form::SunoField::Text { .. })
+            })
         {
             *field = crate::ui::app::suno_form::SunoField::Text {
                 value: voice_id.clone(),

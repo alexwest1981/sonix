@@ -1350,16 +1350,13 @@ fn voice_prop(schema: &Value) -> Option<String> {
         .as_object()?
         .iter()
         .find_map(|(key, prop)| {
-            let described = prop
-                .get("description")
-                .and_then(Value::as_str)
-                .unwrap_or_default()
-                .to_lowercase();
+            // **Fältnamnet avgör, inte beskrivningen.** `instrumental` nämner `voice_id` i sin
+            // beskrivning ("A voice_id always sings…") och blev därför vald som röstfält — då hamnade
+            // ett röst-id i en boolean och servern svarade `invalid request body`.
+            let is_string = prop.get("type").and_then(Value::as_str) == Some("string");
             let named = key.to_lowercase();
-            [named.as_str(), described.as_str()]
-                .iter()
-                .any(|s| s.contains("voice") || s.contains("persona"))
-                .then(|| key.clone())
+            let looks_like_voice = named.contains("voice") || named.contains("persona");
+            (is_string && looks_like_voice).then(|| key.clone())
         })
 }
 
@@ -2627,5 +2624,19 @@ mod tests {
         let error = session.download_song(&song).expect_err("must ask first");
         println!("fel: {error}");
         assert_eq!(error, NEEDS_CREDIT);
+    }
+
+    /// Det riktiga `audio-create`-schemat har `instrumental` (boolean) före `voice_id`, och
+    /// `instrumental` nämner "voice_id" i sin beskrivning. Röstfältet måste ändå bli `voice_id`.
+    #[test]
+    fn the_voice_param_is_a_string_field_not_instrumental() {
+        let path = "/mnt/fastnvme/hermes/cache/scratch/create_schema.json";
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let schema: Value = serde_json::from_str(&text).expect("schema");
+        let param = voice_prop(&schema);
+        println!("röstfält: {param:?}");
+        assert_eq!(param.as_deref(), Some("voice_id"));
     }
 }
