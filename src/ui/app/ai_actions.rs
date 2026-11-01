@@ -722,7 +722,9 @@ impl SonixApp {
                 && matches!(field, crate::ui::app::suno_form::SunoField::Text { value, .. }
                     if !value.trim().is_empty())
         });
-        if prompt.is_empty() && !custom {
+        // En cover eller mashup behöver ingen beskrivning — källåten är underlaget.
+        let has_source = self.suno_source_song.is_some();
+        if prompt.is_empty() && !custom && !has_source {
             self.suno_status = crate::i18n::t("⚠ Write a prompt first.").to_string();
             return;
         }
@@ -751,16 +753,38 @@ impl SonixApp {
                 multiline: false,
             };
         }
-        let args = crate::ui::app::suno_form::args_from_form(&fields);
+        let mut args = crate::ui::app::suno_form::args_from_form(&fields);
+        // **Rätt verktyg för valet.** Audio = cover av en låt, Audio + Inspo = mashup av två,
+        // annars en helt ny låt. Fält verktyget inte har rensas bort i `generate_named`.
+        let tool = match (&self.suno_source_song, &self.suno_inspo_song) {
+            (Some((source, _)), Some((inspo, _))) => {
+                if let Some(object) = args.as_object_mut() {
+                    object.insert("id".to_string(), serde_json::json!(source));
+                    object.insert("additional_audio_id".to_string(), serde_json::json!(inspo));
+                }
+                Some("audio-mashups-create")
+            }
+            (Some((source, _)), None) => {
+                if let Some(object) = args.as_object_mut() {
+                    object.insert("id".to_string(), serde_json::json!(source));
+                }
+                Some("audio-covers-create")
+            }
+            _ => None,
+        };
         // `shortcut:` create connects again from the saved tokens instead of holding a session,
         // upgrade if the handshake ever costs real time.
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
         self.suno_pending = Some(slot.clone());
         self.suno_status = crate::tstatus!("⏳ Suno is creating: {args}");
         std::thread::spawn(move || {
-            let result = crate::audio::suno::SunoSession::connect()
-                .and_then(|mut session| session.generate_with(args))
-                .map(SunoTask::Generated);
+            let result = crate::audio::suno::SunoSession::connect().and_then(|mut session| {
+                match tool {
+                    Some(name) => session.generate_named(name, args),
+                    None => session.generate_with(args),
+                }
+            })
+            .map(SunoTask::Generated);
             if let Ok(mut guard) = slot.lock() {
                 *guard = Some(result);
             }

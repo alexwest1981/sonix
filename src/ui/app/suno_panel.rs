@@ -142,6 +142,73 @@ impl SonixApp {
             });
     }
 
+
+    /// Listan som knapparna Audio/Voice/Inspo fäller ut, på plats i rutan.
+    fn suno_pick_list(&mut self, ui: &mut egui::Ui) {
+        use crate::ui::app::SunoPick;
+        let Some(pick) = self.suno_pick else {
+            return;
+        };
+        egui::Frame::none()
+            .fill(palette().panel())
+            .inner_margin(6.0)
+            .show(ui, |ui| {
+                if pick == SunoPick::Voice {
+                    let rows: Vec<(String, String)> = self
+                        .suno_voices
+                        .iter()
+                        .map(|(id, name)| (id.clone(), name.clone()))
+                        .collect();
+                    if rows.is_empty() {
+                        ui.label(
+                            RichText::new(
+                                self.suno_voice_hint.clone().unwrap_or_else(|| {
+                                    crate::i18n::t("Inga röster listade än.").to_string()
+                                }),
+                            )
+                            .size(Theme::FONT_XS)
+                            .color(palette().text_muted()),
+                        );
+                    }
+                    for (index, (_, name)) in rows.iter().enumerate() {
+                        if ui
+                            .selectable_label(self.suno_voice_choice == index, name)
+                            .clicked()
+                        {
+                            self.suno_voice_choice = index;
+                            self.suno_pick = None;
+                        }
+                    }
+                    return;
+                }
+                let rows: Vec<(String, String)> = self
+                    .suno_library
+                    .iter()
+                    .map(|song| (song.id.clone(), song.title.clone()))
+                    .collect();
+                if rows.is_empty() {
+                    ui.label(
+                        RichText::new(
+                            crate::i18n::t("Hämtar biblioteket…")
+                                .to_string(),
+                        )
+                        .size(Theme::FONT_XS)
+                        .color(palette().text_muted()),
+                    );
+                }
+                for (id, title) in rows {
+                    if ui.selectable_label(false, title.as_str()).clicked() {
+                        match pick {
+                            SunoPick::Audio => self.suno_source_song = Some((id, title)),
+                            SunoPick::Inspo => self.suno_inspo_song = Some((id, title)),
+                            SunoPick::Voice => {}
+                        }
+                        self.suno_pick = None;
+                    }
+                }
+            });
+    }
+
     /// **Skapa** — Sunos eget flöde: lyrics, styles, bilagor till vänster, options till höger.
     fn suno_tab_create(&mut self, ui: &mut egui::Ui) {
         // Formuläret fylls ur reservschemat (mätt från den riktiga `audio-create`) redan innan
@@ -209,14 +276,69 @@ impl SonixApp {
                             }
                         }
                     });
+                    // Audio = en låt ur biblioteket som källa (cover), Voice = en röstmodell,
+                    // Inspo = en låt till som blandas in (mashup). Varje knapp öppnar listan
+                    // **här i rutan**, inte i en popup.
                     ui.horizontal_wrapped(|ui| {
-                        for (label, hint) in [
-                            ("🎵 Audio", "kräver ett uppladdningsverktyg"),
-                            ("🎤 Voice", "använd fliken Röster"),
-                            ("💡 Inspo", "kräver ett Inspo-verktyg"),
+                        for (pick, label, chosen) in [
+                            (
+                                crate::ui::app::SunoPick::Audio,
+                                "🎵 Audio",
+                                self.suno_source_song.as_ref().map(|(_, title)| title.clone()),
+                            ),
+                            (
+                                crate::ui::app::SunoPick::Voice,
+                                "🎤 Voice",
+                                self.suno_voices
+                                    .get(self.suno_voice_choice)
+                                    .map(|(_, name)| name.clone()),
+                            ),
+                            (
+                                crate::ui::app::SunoPick::Inspo,
+                                "💡 Inspo",
+                                self.suno_inspo_song.as_ref().map(|(_, title)| title.clone()),
+                            ),
                         ] {
-                            ui.add_enabled(false, egui::Button::new(label))
-                                .on_disabled_hover_text(hint);
+                            let text = match &chosen {
+                                Some(name) => format!("{label}: {name}"),
+                                None => label.to_string(),
+                            };
+                            let active = self.suno_pick == Some(pick);
+                            let fill = if active || chosen.is_some() {
+                                palette().cyan()
+                            } else {
+                                palette().panel()
+                            };
+                            let label_color = if active || chosen.is_some() {
+                                palette().bg()
+                            } else {
+                                palette().text()
+                            };
+                            if ui
+                                .add(
+                                    egui::Button::new(
+                                        RichText::new(text).size(Theme::FONT_S).color(label_color),
+                                    )
+                                    .fill(fill),
+                                )
+                                .clicked()
+                            {
+                                self.suno_pick = if active { None } else { Some(pick) };
+                                match pick {
+                                    crate::ui::app::SunoPick::Audio
+                                    | crate::ui::app::SunoPick::Inspo => {
+                                        if self.suno_library.is_empty() {
+                                            self.suno_load_library();
+                                        }
+                                    }
+                                    crate::ui::app::SunoPick::Voice => {}
+                                }
+                            }
+                        }
+                        if ui.button("✖").on_hover_text("Rensa valen").clicked() {
+                            self.suno_source_song = None;
+                            self.suno_inspo_song = None;
+                            self.suno_pick = None;
                         }
                     });
                 });
@@ -256,6 +378,8 @@ impl SonixApp {
                 });
             });
         });
+        // Väljarlistan ligger under båda kolumnerna — inuti en kolumn med höjd 0 låste layouten.
+        self.suno_pick_list(ui);
     }
 
     /// **Röster** — `voices-list` som en lista, inte som ett namn i en verktygsrad.

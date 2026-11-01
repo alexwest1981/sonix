@@ -909,10 +909,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(pos) = std::env::args().position(|a| a == "--suno-create-args") {
         let text = std::env::args().nth(pos + 1).unwrap_or_default();
         let args: serde_json::Value = serde_json::from_str(&text).unwrap_or_default();
+        let tool = std::env::args().nth(pos + 2).filter(|a| !a.starts_with("--"));
         match audio::suno::SunoSession::connect_cached() {
             Ok(mut session) => {
-                println!("skickar: {args}");
-                match session.generate_with(args) {
+                println!("skickar: {args} till {}", tool.as_deref().unwrap_or("audio-create"));
+                let outcome = match tool.as_deref() {
+                    Some(name) => session.generate_named(name, args),
+                    None => session.generate_with(args),
+                };
+                match outcome {
                     Ok(song) => println!("skapad: {}", song.title),
                     Err(e) => println!("svar: {e}"),
                 }
@@ -958,7 +963,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if let Some(tool) = session.generation_tool() {
                     println!("generation: {}", tool.name);
                 }
-                if std::env::args().any(|a| a == "--suno-schema")
+                if let Some(pos) = std::env::args().position(|a| a == "--suno-schema") {
+                    // `--suno-schema <verktyg>` dumpar det verktygets schema, inte bara create.
+                    let named = std::env::args().nth(pos + 1).filter(|a| !a.starts_with("--"));
+                    let schema = match named.as_deref() {
+                        Some(name) => session.tool_schema(name),
+                        None => session.generation_schema(),
+                    };
+                    if let Some(schema) = schema {
+                        println!("{}", serde_json::to_string_pretty(&schema).unwrap_or_default());
+                    }
+                    std::process::exit(0);
+                }
+                if false
                     && let Some(schema) = session.generation_schema()
                 {
                     println!(

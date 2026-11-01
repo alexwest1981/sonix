@@ -158,6 +158,14 @@ pub enum SunoTask {
     Account(Box<crate::audio::suno::SunoAccount>),
 }
 
+/// Vilken lista knapparna Audio/Voice/Inspo öppnar i Skapa.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SunoPick {
+    Audio,
+    Voice,
+    Inspo,
+}
+
 /// Vart ett färdigt Suno-ljud ska: bordet (ett spår per fil) eller separatorn (stämspår).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SunoDest {
@@ -604,6 +612,11 @@ pub struct SonixApp {
     pub suno_tab: usize,
     /// Vart importerade och skapade Suno-ljud tar vägen.
     pub suno_dest: SunoDest,
+    /// Vilken av Audio/Voice/Inspo som är öppen (None = ingen).
+    pub suno_pick: Option<SunoPick>,
+    /// Källor för cover (Audio) och mashup (Inspo): clip-id från biblioteket.
+    pub suno_source_song: Option<(String, String)>,
+    pub suno_inspo_song: Option<(String, String)>,
     pub suno_prompt_input: String,
     /// The Suno panel. `suno_tools` is what the server's own `tools/list` returned, so a beta
     /// surface that differs from our guesses is visible in the UI instead of hidden.
@@ -1354,6 +1367,9 @@ impl SonixApp {
             // Suno AI Prompt Bar & Studio Timeline View
             suno_tab: 0,
             suno_dest: SunoDest::Mixer,
+            suno_pick: None,
+            suno_source_song: None,
+            suno_inspo_song: None,
             suno_prompt_input: crate::i18n::t("Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll").to_string(),
             suno_status: String::new(),
             suno_login_url: std::sync::Arc::new(std::sync::Mutex::new(None)),

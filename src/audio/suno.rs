@@ -137,6 +137,14 @@ impl SunoSession {
 
     /// That tool's own `input_schema` — the form the panel draws. Never `Null`: a server that
     /// declares no schema answers with an empty `properties` object, which is the same form.
+    /// Schemat för ett verktyg vid namn — används för att mäta vad cover/mashup kräver.
+    pub fn tool_schema(&self, name: &str) -> Option<Value> {
+        self.tools
+            .iter()
+            .find(|t| t.name == name)
+            .map(|t| t.input_schema.clone())
+    }
+
     pub fn generation_schema(&self) -> Option<Value> {
         let schema = self.generation_tool()?.input_schema;
         Some(if schema.is_object() {
@@ -174,8 +182,43 @@ impl SunoSession {
         self.generate_with_into(args, &crate::paths::paths().suno_dir())
     }
 
+    /// Som [`Self::generate_with`], men med verktyget namngivet: cover och mashup är egna verktyg
+    /// (`audio-covers-create`, `audio-mashups-create`), inte lägen i `audio-create`.
+    pub fn generate_named(&mut self, tool_name: &str, args: Value) -> Result<GeneratedSong, String> {
+        let tool = self
+            .tools
+            .iter()
+            .find(|t| t.name == tool_name)
+            .cloned()
+            .ok_or_else(|| format!("suno: the server has no tool `{tool_name}`"))?;
+        // **Bara verktygets egna fält.** Alla verktyg har `additionalProperties: false`, och cover
+        // och mashup saknar t.ex. `description` — att skicka panelens hela formulär gav 400.
+        let declared: Vec<String> = props(&tool.input_schema)
+            .into_iter()
+            .map(|(_, name)| name)
+            .collect();
+        let args = match args {
+            Value::Object(map) => Value::Object(
+                map.into_iter()
+                    .filter(|(key, _)| declared.iter().any(|d| d == key))
+                    .collect(),
+            ),
+            other => other,
+        };
+        self.run_generation(tool, args, &crate::paths::paths().suno_dir())
+    }
+
     fn generate_with_into(&mut self, args: Value, base: &Path) -> Result<GeneratedSong, String> {
         let tool = pick_generation(&self.tools)?.clone();
+        self.run_generation(tool, args, base)
+    }
+
+    fn run_generation(
+        &mut self,
+        tool: McpTool,
+        args: Value,
+        base: &Path,
+    ) -> Result<GeneratedSong, String> {
         println!("suno: tools/call {} {args}", tool.name);
         // The prompt (or whatever the caller put in its place) is the title's last resort.
         let fallback = find_string(&args, &["prompt", "description", "style"]);
