@@ -160,7 +160,7 @@ impl SunoSession {
                     break;
                 }
                 std::thread::sleep(POLL_INTERVAL);
-                let args = status_args(&status, &id);
+                let args = id_args(&status, &id);
                 println!(
                     "suno: poll {attempt}/{POLL_TRIES} via {} {args}",
                     status.name
@@ -255,6 +255,18 @@ impl SunoSession {
         song: &SunoSong,
         base: &Path,
     ) -> Result<GeneratedSong, String> {
+        // A row from a listing carries no urls on the live server: the full record comes from the
+        // retrieve tool, per id.
+        let listed_title = song.title.clone();
+        let mut song = if song.audio_urls.is_empty() && song.stem_urls.is_empty() {
+            self.retrieve_song(&song.id)?
+        } else {
+            song.clone()
+        };
+        if song.title.trim().is_empty() {
+            song.title = listed_title;
+        }
+        let song = &song;
         let urls = if song.stem_urls.is_empty() {
             &song.audio_urls
         } else {
@@ -322,6 +334,173 @@ impl SunoSession {
         let schema = self.generation_schema()?;
         voice_prop(&schema)
     }
+
+    /// Every tool the server exposed, sorted, for a UI that only wants names.
+    pub fn tool_names(&self) -> Vec<String> {
+        let mut names: Vec<String> = self.tools.iter().map(|t| t.name.clone()).collect();
+        names.sort();
+        names
+    }
+
+    /// Sends exactly `name` and `args` to the server and returns the `tools/call` result as it
+    /// arrived. The escape hatch for tools that have no wrapper here: no expansion, no parsing,
+    /// no argument building — including the mutating ones.
+    pub fn call(&mut self, tool: &str, args: Value) -> Result<Value, String> {
+        println!("suno: tools/call {tool} {args}");
+        self.client
+            .call_tool(tool, args)
+            .map_err(|e| e.to_string())
+    }
+
+    /// One song by id, with the audio and stem urls a listing does not carry.
+    pub fn retrieve_song(&mut self, id: &str) -> Result<SunoSong, String> {
+        let tool = self
+            .tools
+            .iter()
+            .find(|t| t.name.to_lowercase().contains("retrieve"))
+            .cloned()
+            .ok_or_else(|| format!("suno: no tool to retrieve one song — `{id}` needs one whose name contains `retrieve`"))?;
+        let args = id_args(&tool, id);
+        println!("suno: retrieve {id} via {} {args}", tool.name);
+        let result = self
+            .client
+            .call_tool(&tool.name, args)
+            .map_err(|e| e.to_string())?;
+        let payload = expand(&result);
+        let mut song = song_from(&payload).ok_or_else(|| {
+            let shown: String = payload.to_string().chars().take(300).collect();
+            format!("suno: `{}` for `{id}` carried no song: {shown}", tool.name)
+        })?;
+        if song.id.trim().is_empty() {
+            song.id = id.to_string();
+        }
+        println!(
+            "suno: retrieved \"{}\" — {} audio url(s), {} stem url(s)",
+            song.title,
+            song.audio_urls.len(),
+            song.stem_urls.len()
+        );
+        Ok(song)
+    }
+
+    /// The account's playlists. `playlists-list` takes no arguments here.
+    pub fn playlists(&mut self) -> Result<Vec<SunoPlaylist>, String> {
+        let tool = self.tool_with(&["playlist", "list"])?.to_string();
+        let payload = self.payload(&tool)?;
+        let playlists: Vec<SunoPlaylist> = rows(&payload, &["playlists", "items", "results"])
+            .iter()
+            .filter_map(parse_playlist)
+            .collect();
+        println!("suno: {} playlist(s) via {tool}", playlists.len());
+        Ok(playlists)
+    }
+
+    /// The account's workspaces.
+    pub fn workspaces(&mut self) -> Result<Vec<SunoWorkspace>, String> {
+        let tool = self.tool_with(&["workspace", "list"])?.to_string();
+        let payload = self.payload(&tool)?;
+        let workspaces: Vec<SunoWorkspace> = rows(&payload, &["workspaces", "items", "results"])
+            .iter()
+            .filter_map(parse_workspace)
+            .collect();
+        println!("suno: {} workspace(s) via {tool}", workspaces.len());
+        Ok(workspaces)
+    }
+
+    /// Credits and plan, merged from `account-usage` and/or `account-me`.
+    ///
+    /// Only read-only account tools are asked: `account-upgrade` also starts with `account` and
+    /// must never be called by a status read. `raw` maps each tool's name to its payload.
+    pub fn account(&mut self) -> Result<SunoAccount, String> {
+        let tools: Vec<String> = self
+            .tools
+            .iter()
+            .filter(|t| {
+                let n = t.name.to_lowercase();
+                (n.contains("account") && ["usage", "me", "info", "status"].iter().any(|w| n.contains(w)))
+                    || (n.contains("credit") && n.contains("balance"))
+            })
+            .map(|t| t.name.clone())
+            .collect();
+        if tools.is_empty() {
+            return Err("suno: this server exposes no account usage, account info or credit balance tool".to_string());
+        }
+        let mut raw = Map::new();
+        let mut credits = None;
+        let mut plan = None;
+        for name in &tools {
+            let payload = self.payload(name)?;
+            credits = credits.or_else(|| {
+                number_at(
+                    &payload,
+                    &["credits_left", "credits", "credits_remaining", "remaining_credits", "credits_balance", "balance"],
+                )
+            });
+            plan = plan.or_else(|| find_string(&payload, &["plan", "plan_name", "subscription", "tier"]));
+            raw.insert(name.clone(), payload);
+        }
+        println!("suno: account — credits {credits:?}, plan {plan:?}");
+        Ok(SunoAccount {
+            credits,
+            plan,
+            raw: Value::Object(raw),
+        })
+    }
+
+    /// The one exposed tool whose lowercase name contains every `word`.
+    fn tool_with(&self, words: &[&str]) -> Result<&str, String> {
+        self.tools
+            .iter()
+            .find(|t| {
+                let name = t.name.to_lowercase();
+                words.iter().all(|w| name.contains(w))
+            })
+            .map(|t| t.name.as_str())
+            .ok_or_else(|| {
+                format!(
+                    "suno: this server exposes no `{}` tool; it has: {}",
+                    words.join("-"),
+                    self.tool_names().join(", ")
+                )
+            })
+    }
+
+    /// Calls `tool` with no arguments and returns its reply, expanded.
+    fn payload(&mut self, tool: &str) -> Result<Value, String> {
+        println!("suno: {tool} {}", json!({}));
+        let result = self
+            .client
+            .call_tool(tool, json!({}))
+            .map_err(|e| e.to_string())?;
+        Ok(expand(&result))
+    }
+}
+
+/// One playlist. Same tolerance as [`SunoSong`]: `raw` is the truth, the fields are what a list
+/// row can draw.
+#[derive(Debug, Clone)]
+pub struct SunoPlaylist {
+    pub id: String,
+    pub name: String,
+    pub clip_count: Option<u32>,
+    pub raw: Value,
+}
+
+/// One workspace.
+#[derive(Debug, Clone)]
+pub struct SunoWorkspace {
+    pub id: String,
+    pub name: String,
+    pub raw: Value,
+}
+
+/// Credits and plan, whichever account reply carried them.
+#[derive(Debug, Clone)]
+pub struct SunoAccount {
+    pub credits: Option<f64>,
+    pub plan: Option<String>,
+    /// Tool name → that tool's reply.
+    pub raw: Value,
 }
 
 /// One voice or persona. Same shape rule as [`SunoSong`]: the beta's field names are guesses,
@@ -655,8 +834,8 @@ fn build_args(tool: &McpTool, prompt: &str, style: Option<&str>, lyrics: Option<
     Value::Object(args)
 }
 
-/// The status tool takes the id: in its `id` argument when it declares one.
-fn status_args(tool: &McpTool, id: &str) -> Value {
+/// The status and retrieve tools take the id: in their `id` argument when they declare one.
+fn id_args(tool: &McpTool, id: &str) -> Value {
     let key = prop_named(&tool.input_schema, "id")
         .or_else(|| first_string_prop(&tool.input_schema))
         .unwrap_or_else(|| "id".to_string());
@@ -720,6 +899,32 @@ fn find_string(v: &Value, keys: &[&str]) -> Option<String> {
     }
 }
 
+/// The first number under one of `keys`, looking through nested objects and arrays. A numeric
+/// string counts as a number.
+fn number_at(v: &Value, keys: &[&str]) -> Option<f64> {
+    fn num(v: &Value) -> Option<f64> {
+        match v {
+            Value::Number(n) => n.as_f64(),
+            Value::String(s) => s.trim().parse::<f64>().ok(),
+            _ => None,
+        }
+    }
+    match v {
+        Value::Object(o) => {
+            for (k, val) in o {
+                if keys.iter().any(|want| k.eq_ignore_ascii_case(want))
+                    && let Some(n) = num(val)
+                {
+                    return Some(n);
+                }
+            }
+            o.values().find_map(|val| number_at(val, keys))
+        }
+        Value::Array(a) => a.iter().find_map(|val| number_at(val, keys)),
+        _ => None,
+    }
+}
+
 fn has_stems(v: &Value) -> bool {
     match v {
         Value::Object(o) => o
@@ -769,6 +974,19 @@ fn songs_from(v: &Value) -> Vec<SunoSong> {
         .or_else(|| first_object_array(v))
         .map(|items| items.iter().filter_map(parse_song).collect())
         .unwrap_or_default()
+}
+
+/// The one song in a retrieve reply: the outermost object that is a song (an id or an audio
+/// url), else the first song nested anywhere inside it.
+fn song_from(v: &Value) -> Option<SunoSong> {
+    let direct = if v.is_object() { parse_song(v) } else { None };
+    direct
+        .filter(|s| !s.id.is_empty() || !s.audio_urls.is_empty())
+        .or_else(|| match v {
+            Value::Object(o) => o.values().find_map(song_from),
+            Value::Array(a) => a.iter().find_map(song_from),
+            _ => None,
+        })
 }
 
 /// The first array whose objects look like songs, for a server that did not put its listing under
@@ -997,6 +1215,54 @@ fn voice_prop(schema: &Value) -> Option<String> {
                 .any(|s| s.contains("voice") || s.contains("persona"))
                 .then(|| key.clone())
         })
+}
+
+// ---------------------------------------------------------------- reading playlist/workspace replies
+
+/// The items of a list reply: a bare array, the array under one of `keys` (lowercase), or the
+/// first array of id/name objects — which is what an MCP `content[].text` wrapper holds.
+fn rows(v: &Value, keys: &[&str]) -> Vec<Value> {
+    match v {
+        Value::Array(a) => a.clone(),
+        _ => array_under(v, keys)
+            .or_else(|| first_object_array(v))
+            .cloned()
+            .unwrap_or_default(),
+    }
+}
+
+/// One playlist row. A row without an id is not a playlist.
+fn parse_playlist(v: &Value) -> Option<SunoPlaylist> {
+    let o = v.as_object()?;
+    let id = text_at(o, &["id", "playlist_id"])?;
+    Some(SunoPlaylist {
+        name: text_at(o, &["name", "title"]).unwrap_or_else(|| id.clone()),
+        clip_count: number_at(
+            v,
+            &[
+                "clip_count",
+                "num_clips",
+                "song_count",
+                "track_count",
+                "total_clips",
+                "count",
+            ],
+        )
+        .map(|n| n as u32),
+        id,
+        raw: v.clone(),
+    })
+}
+
+/// One workspace row.
+fn parse_workspace(v: &Value) -> Option<SunoWorkspace> {
+    let o = v.as_object()?;
+    let id = text_at(o, &["id", "workspace_id"])?;
+    Some(SunoWorkspace {
+        name: text_at(o, &["name", "title"]).unwrap_or_else(|| id.clone()),
+        id,
+        raw: v.clone(),
+    })
 }
 
 fn walk(v: &Value, f: &mut impl FnMut(&str)) {
@@ -1889,5 +2155,282 @@ mod tests {
         let plain = json!({ "properties": { "duration": { "type": "string" } } });
         println!("voice param for a plain schema: {:?}", voice_prop(&plain));
         assert_eq!(voice_prop(&plain), None);
+    }
+
+    // ------------------------------------------------------------ the rest of the server's tools
+
+    /// The tool name of every `tools/call` the mock saw, in request order.
+    fn called_tools(mock: &Mock) -> Vec<String> {
+        mock.requests()
+            .iter()
+            .filter_map(|r| {
+                let body = r.split_once("\r\n\r\n").map(|(_, body)| body)?;
+                let call: Value = serde_json::from_str(body.trim()).ok()?;
+                (call["method"] == "tools/call")
+                    .then(|| call["params"]["name"].as_str().unwrap_or_default().to_string())
+            })
+            .collect()
+    }
+
+    /// (a) `audio-retrieve` is found by name, the id goes in the argument its schema names, and
+    /// the reply yields the audio and stem urls a listing does not carry.
+    #[test]
+    fn retrieve_song_reads_the_audio_and_stem_urls_of_one_song() {
+        let tools = vec![
+            tool(
+                "library-list",
+                "List your songs",
+                json!({ "limit": { "type": "integer" } }),
+            ),
+            tool(
+                "audio-retrieve",
+                "Retrieve one song by id",
+                json!({ "id": { "type": "string" } }),
+            ),
+            tool(
+                "audio-create",
+                "Create a new song",
+                json!({ "description": { "type": "string" } }),
+            ),
+        ];
+        let reply = json!({
+            "id": "song-77",
+            "title": "Deep Water",
+            "audio_url": "https://cdn.example/deep-water.mp3",
+            "stems": ["https://cdn.example/deep-water-vox.wav",
+                      "https://cdn.example/deep-water-drums.wav"]
+        });
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+            Reply::json(call_reply(3, &reply)),
+        ]);
+        let mut session =
+            connect_at(&mock.url, &fresh_tokens("retrieve"), None, true).expect("connect");
+        let song = session.retrieve_song("song-77").expect("retrieve");
+
+        println!("id: {}", song.id);
+        println!("title: {}", song.title);
+        println!(
+            "audio urls: {} stem urls: {}",
+            song.audio_urls.len(),
+            song.stem_urls.len()
+        );
+        println!("audio: {:?}", song.audio_urls);
+        println!("stems: {:?}", song.stem_urls);
+        assert_eq!(song.id, "song-77");
+        assert_eq!(song.title, "Deep Water");
+        assert_eq!(song.audio_urls.len(), 1);
+        assert_eq!(song.stem_urls.len(), 2);
+
+        let request = mock
+            .requests()
+            .into_iter()
+            .find(|r| r.contains("audio-retrieve"))
+            .expect("a retrieve call");
+        println!("tool calls: {:?}", called_tools(&mock));
+        assert!(
+            request.contains("\"id\":\"song-77\""),
+            "the id did not reach the declared argument: {request}"
+        );
+    }
+
+    /// (b) A row from `library-list` has no urls: `download_song` asks the retrieve tool first,
+    /// and the retrieved urls are what land on disk.
+    #[test]
+    fn download_song_retrieves_a_listed_song_before_saving_it() {
+        let audio = Mock::new(vec![Reply::json("RIFFvox-"), Reply::json("RIFFdrum")]);
+        let tools = vec![
+            tool("library-list", "List your songs", json!({})),
+            tool(
+                "audio-retrieve",
+                "Retrieve one song by id",
+                json!({ "id": { "type": "string" } }),
+            ),
+        ];
+        let retrieved = json!({
+            "id": "song-9",
+            "title": "Row Song",
+            "audio_url": format!("{}/row-song.mp3", audio.url),
+            "stems": [format!("{}/row-vox.wav", audio.url),
+                      format!("{}/row-drum.wav", audio.url)]
+        });
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+            Reply::json(call_reply(3, &retrieved)),
+        ]);
+        let mut session =
+            connect_at(&mock.url, &fresh_tokens("dl-row"), None, true).expect("connect");
+        // Exactly what a listing gives on the live server: an id and a title, no urls.
+        let row = SunoSong {
+            id: "song-9".to_string(),
+            title: "Row Song".to_string(),
+            audio_urls: Vec::new(),
+            stem_urls: Vec::new(),
+            duration_secs: Some(201.0),
+            created: Some("2026-10-30T09:00:00Z".to_string()),
+            raw: json!({ "id": "song-9", "title": "Row Song" }),
+        };
+        let dir = tmp_dir("dl-row");
+        let saved = session
+            .download_song_into(&row, &dir)
+            .expect("download");
+
+        println!("request order: {:?}", called_tools(&mock));
+        println!("title: {}, stems: {}", saved.title, saved.stems);
+        for path in &saved.files {
+            let bytes = std::fs::metadata(path).expect("file").len();
+            println!("file: {} ({bytes} bytes)", path.display());
+            assert!(bytes > 0, "{} is empty", path.display());
+        }
+        assert_eq!(
+            called_tools(&mock),
+            ["audio-retrieve"],
+            "the retrieve tool was not the (only) call"
+        );
+        assert_eq!(saved.files.len(), 2);
+        assert!(saved.stems);
+        assert_eq!(saved.title, "Row Song");
+        assert!(saved.files[0].parent().unwrap().ends_with("row-song"));
+        assert_eq!(audio.count(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// (c) `playlists()` reads a `playlists` object, with the clip count.
+    #[test]
+    fn playlists_are_read_from_a_playlists_reply() {
+        let tools = vec![
+            tool("playlists-list", "List the user's playlists", json!({})),
+            tool(
+                "playlists-create",
+                "Create a playlist",
+                json!({ "name": { "type": "string" } }),
+            ),
+        ];
+        let reply = json!({ "playlists": [
+            { "id": "p1", "name": "Roadtrip", "clip_count": 12 }
+        ] });
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+            Reply::json(call_reply(3, &reply)),
+        ]);
+        let mut session =
+            connect_at(&mock.url, &fresh_tokens("playlists"), None, true).expect("connect");
+        let playlists = session.playlists().expect("playlists");
+
+        println!("tool calls: {:?}", called_tools(&mock));
+        for p in &playlists {
+            println!("playlist: {} / {} / {:?} clips", p.id, p.name, p.clip_count);
+        }
+        assert_eq!(playlists.len(), 1);
+        assert_eq!(playlists[0].id, "p1");
+        assert_eq!(playlists[0].name, "Roadtrip");
+        assert_eq!(playlists[0].clip_count, Some(12));
+        assert_eq!(called_tools(&mock), ["playlists-list"]);
+    }
+
+    /// (d) `workspaces()` reads a bare array.
+    #[test]
+    fn workspaces_are_read_from_a_bare_array() {
+        let tools = vec![tool("workspaces-list", "List workspaces", json!({}))];
+        let reply = json!([
+            { "id": "w1", "name": "Night Studio" },
+            { "id": "w2" }
+        ]);
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+            Reply::json(call_reply(3, &reply)),
+        ]);
+        let mut session =
+            connect_at(&mock.url, &fresh_tokens("workspaces"), None, true).expect("connect");
+        let workspaces = session.workspaces().expect("workspaces");
+
+        for w in &workspaces {
+            println!("workspace: {} / {}", w.id, w.name);
+        }
+        assert_eq!(workspaces.len(), 2);
+        assert_eq!(
+            (workspaces[0].id.as_str(), workspaces[0].name.as_str()),
+            ("w1", "Night Studio")
+        );
+        // A nameless workspace falls back to its id so the row is never blank.
+        assert_eq!(workspaces[1].name, "w2");
+    }
+
+    /// (e) `account()` reads credits and plan, and never calls the mutating `account-upgrade`.
+    #[test]
+    fn account_reads_credits_and_plan_without_upgrading() {
+        let tools = vec![
+            tool("account-me", "Your account", json!({})),
+            tool("account-upgrade", "Upgrade your plan", json!({ "plan": { "type": "string" } })),
+            tool("account-usage", "Your credit usage", json!({})),
+        ];
+        let reply = json!({ "credits_left": 120.5, "plan": "Pro" });
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+            Reply::json(call_reply(3, &reply)),
+            // The second account tool answers too; the first value found wins.
+            Reply::json(call_reply(4, &json!({ "credits": 118.0 }))),
+        ]);
+        let mut session =
+            connect_at(&mock.url, &fresh_tokens("account"), None, true).expect("connect");
+        let account = session.account().expect("account");
+
+        println!("tool calls: {:?}", called_tools(&mock));
+        println!("credits: {:?}", account.credits);
+        println!("plan: {:?}", account.plan);
+        println!("raw: {}", account.raw);
+        assert_eq!(account.credits, Some(120.5));
+        assert_eq!(account.plan.as_deref(), Some("Pro"));
+        assert!(
+            !called_tools(&mock).contains(&"account-upgrade".to_string()),
+            "a status read called a mutating tool"
+        );
+    }
+
+    /// (f) `call` sends the arguments it was given, byte for byte, and returns the reply raw.
+    #[test]
+    fn call_passes_the_arguments_through_untouched() {
+        let tools = vec![
+            tool(
+                "audio-wait",
+                "Wait for a clip to finish",
+                json!({ "clip_id": { "type": "string" } }),
+            ),
+            tool("account-me", "Your account", json!({})),
+        ];
+        let reply = json!({ "status": "complete", "clip_id": "c-1" });
+        let mock = Mock::new(vec![
+            Reply::json(INIT),
+            Reply::status(202),
+            Reply::json(tools_reply(2, tools)),
+            Reply::json(call_reply(3, &reply)),
+        ]);
+        let mut session = connect_at(&mock.url, &fresh_tokens("call"), None, true).expect("connect");
+        let args = json!({ "clip_id": "c-1", "wait": true, "timeout_ms": 30000 });
+        let result = session.call("audio-wait", args.clone()).expect("call");
+
+        let request = mock
+            .requests()
+            .into_iter()
+            .find(|r| r.contains("audio-wait"))
+            .expect("an audio-wait call");
+        let body = request.split_once("\r\n\r\n").map(|(_, b)| b).unwrap_or(&request);
+        let call: Value = serde_json::from_str(body.trim()).expect("a JSON-RPC body");
+        println!("tool call name: {}", call["params"]["name"]);
+        println!("arguments the mock received: {}", call["params"]["arguments"]);
+        println!("reply returned: {result}");
+        assert_eq!(call["params"]["arguments"], args);
+        // Untouched: the MCP result, not its `content[].text` expanded.
+        assert_eq!(result["content"][0]["text"], reply.to_string());
     }
 }
