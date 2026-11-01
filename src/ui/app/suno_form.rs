@@ -90,7 +90,14 @@ pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
                 json!(value)
             }
             SunoField::Bool(on) => json!(on),
-            SunoField::Number { value, .. } => json!(value),
+            // **Ett tal utanför schemats intervall skickas inte alls.** `duration` har 15–360 och
+            // en nolla där betyder "låt modellen välja"; servern svarade `invalid_request` på den.
+            SunoField::Number { value, min, max } => {
+                if *value < *min || *value > *max {
+                    continue;
+                }
+                json!(value)
+            }
             SunoField::Choice { options, selected } => match options.get(*selected) {
                 Some(choice) => json!(choice),
                 None => continue,
@@ -110,6 +117,16 @@ pub fn args_from_form(fields: &[(String, SunoField)]) -> Value {
                 map.insert(name.clone(), value);
             }
         }
+    }
+    // **`description` och `style` får inte skickas ihop.** Schemat säger: "Not valid with
+    // `description`" — Simple-läget skickar beskrivningen, Custom-läget taggarna.
+    if map
+        .get("description")
+        .and_then(|d| d.as_str())
+        .is_some_and(|d| !d.trim().is_empty())
+    {
+        map.remove("style");
+        map.remove("negative_style");
     }
     Value::Object(map)
 }
@@ -138,6 +155,7 @@ pub fn text_field_mut<'a>(
 /// inte det här" i stället för en ratt som inte gör något.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct SunoSlots {
+    pub description: Option<usize>,
     pub lyrics: Option<usize>,
     pub styles: Option<usize>,
     pub title: Option<usize>,
@@ -163,7 +181,8 @@ fn find(fields: &[(String, SunoField)], needles: &[&str]) -> Option<usize> {
 /// Platserna, i den ordning Suno visar dem.
 pub fn slots(fields: &[(String, SunoField)]) -> SunoSlots {
     SunoSlots {
-        lyrics: find(fields, &["lyric", "text"]),
+        description: find(fields, &["description", "prompt"]),
+        lyrics: find(fields, &["lyric"]),
         styles: find(fields, &["style", "tag", "genre"]),
         title: find(fields, &["title", "name"]),
         weirdness: find(fields, &["weird"]),
@@ -194,6 +213,7 @@ pub fn fallback_fields() -> Vec<(String, SunoField)> {
         )
     };
     vec![
+        text("description", true),
         text("lyrics", true),
         text("style", false),
         text("title", false),
@@ -209,12 +229,13 @@ pub fn fallback_fields() -> Vec<(String, SunoField)> {
                 selected: 0,
             },
         ),
+        // 0 = "modellen väljer" och faller utanför 15–360, så den skickas aldrig.
         (
             "duration".to_string(),
             SunoField::Number {
                 value: 0.0,
-                min: 0.0,
-                max: 300.0,
+                min: 15.0,
+                max: 360.0,
             },
         ),
         (

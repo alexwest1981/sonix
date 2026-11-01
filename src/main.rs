@@ -874,6 +874,61 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("⚠ --render-plugin kräver en build med --features plugin-host");
         std::process::exit(1);
     }
+    // `sonix --suno-wait <id,id>`: väntar på redan beställda clips utan att skapa nya.
+    if let Some(pos) = std::env::args().position(|a| a == "--suno-wait") {
+        let ids: Vec<String> = std::env::args()
+            .nth(pos + 1)
+            .unwrap_or_default()
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        match audio::suno::SunoSession::connect_cached() {
+            Ok(mut session) => match session
+                .call("audio-wait", serde_json::json!({ "ids": ids }))
+            {
+                Ok(reply) => {
+                    let shown = reply.to_string();
+                    println!("väntan: {}", &shown[..shown.len().min(1500)]);
+                }
+                Err(e) => {
+                    eprintln!("⚠ {e}");
+                    std::process::exit(1);
+                }
+            },
+            Err(e) => {
+                eprintln!("⚠ {e}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+
+    // `sonix --suno-create "<beskrivning>"`: skapar en låt och väntar på att den blir klar.
+    // Spenderar genereringskrediter men **inte** nedladdningskrediter (ingen hämtning).
+    if let Some(pos) = std::env::args().position(|a| a == "--suno-create") {
+        let prompt = std::env::args().nth(pos + 1).unwrap_or_default();
+        match audio::suno::SunoSession::connect_cached() {
+            Ok(mut session) => match session.generate(&prompt, None, None) {
+                Ok(song) => {
+                    println!("skapad: \"{}\" — ljud {} — stämmor {}", song.title, song.files.len(), song.stems);
+                    for file in &song.files {
+                        println!("  fil: {}", file.display());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("⚠ {e}");
+                    std::process::exit(1);
+                }
+            },
+            Err(e) => {
+                eprintln!("⚠ {e}");
+                std::process::exit(1);
+            }
+        }
+        std::process::exit(0);
+    }
+
     // `sonix --suno-tools`: frågar den inloggade Suno-servern vad den erbjuder, utan att öppna
     // någon webbläsare. Svarar på "vilka fält finns?" innan panelen är byggd för dem.
     if std::env::args().any(|a| a == "--suno-tools") {
@@ -884,6 +939,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("verktyg ({}): {:?}", tools.len(), tools);
                 if let Some(tool) = session.generation_tool() {
                     println!("generation: {}", tool.name);
+                }
+                if std::env::args().any(|a| a == "--suno-schema")
+                    && let Some(schema) = session.generation_schema()
+                {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&schema).unwrap_or_default()
+                    );
+                    std::process::exit(0);
                 }
                 if let Some(schema) = session.generation_schema() {
                     if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
@@ -938,7 +1002,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Err(e) => println!("arbetsytor: {e}"),
                 }
                 match session.account() {
-                    Ok(acc) => println!("konto: plan {:?}, credits {:?}", acc.plan, acc.credits),
+                    Ok(acc) => {
+                        println!("konto: plan {:?}, credits {:?}", acc.plan, acc.credits);
+                        let raw = acc.raw.to_string();
+                        println!("konto rått: {}", &raw[..raw.len().min(1200)]);
+                    }
                     Err(e) => println!("konto: {e}"),
                 }
                 match session.library(None, 5) {

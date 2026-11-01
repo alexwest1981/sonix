@@ -716,7 +716,13 @@ impl SonixApp {
     /// Creates a song on a background thread and puts the result on the timeline.
     pub fn suno_create(&mut self) {
         let prompt = self.suno_prompt_input.trim().to_string();
-        if prompt.is_empty() {
+        // Antingen en beskrivning (Simple) eller egna stilar/text (Custom) — båda är giltiga.
+        let custom = self.suno_form.iter().any(|(name, field)| {
+            matches!(name.as_str(), "style" | "lyrics")
+                && matches!(field, crate::ui::app::suno_form::SunoField::Text { value, .. }
+                    if !value.trim().is_empty())
+        });
+        if prompt.is_empty() && !custom {
             self.suno_status = crate::i18n::t("⚠ Write a prompt first.").to_string();
             return;
         }
@@ -727,9 +733,11 @@ impl SonixApp {
         // Formuläret är det som skickas: panelen har ritat det ur verktygets schema, så varje
         // fält bär serverns eget namn.
         let mut fields = self.suno_form.clone();
+        // **Fältet heter `description`.** `audio-create` har `additionalProperties: false`, så ett
+        // påhittat `prompt`-fält gav `invalid_request: invalid request body`.
         if let Some(slot) = crate::ui::app::suno_form::text_field_mut(
             &mut fields,
-            &["prompt", "description", "idea"],
+            &["description", "prompt"],
         ) {
             *slot = prompt.clone();
         }
@@ -743,12 +751,7 @@ impl SonixApp {
                 multiline: false,
             };
         }
-        let mut args = crate::ui::app::suno_form::args_from_form(&fields);
-        if args.get("prompt").is_none() && args.get("description").is_none() {
-            if let Some(object) = args.as_object_mut() {
-                object.insert("prompt".to_string(), serde_json::json!(prompt));
-            }
-        }
+        let args = crate::ui::app::suno_form::args_from_form(&fields);
         // `shortcut:` create connects again from the saved tokens instead of holding a session,
         // upgrade if the handshake ever costs real time.
         let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
@@ -934,6 +937,17 @@ impl SonixApp {
     /// stem-bundle import.
     fn install_suno_song(&mut self, song: crate::audio::suno::GeneratedSong) {
         use crate::ui::app::import::{SunoArrival, classify_suno_files};
+        // **Vart ljudet ska.** Bordet ger ett spår per fil; separatorn tar första filen som mix
+        // och delar den i stämspår — samma väg som en importerad fil.
+        if self.suno_dest == crate::ui::app::SunoDest::Separator {
+            if let Some(first) = song.files.first() {
+                self.start_stem_separation_with(&first.to_string_lossy());
+                self.suno_status =
+                    crate::tstatus!("✔ {} skickad till separatorn.", song.title);
+                self.suno_last = Some(song);
+                return;
+            }
+        }
         match classify_suno_files(&song.files) {
             SunoArrival::One(path) => {
                 let tmpl = crate::ui::add_track_modal::get_track_templates()

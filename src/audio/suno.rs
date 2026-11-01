@@ -45,6 +45,37 @@ pub struct GeneratedSong {
 pub const NEEDS_CREDIT: &str =
     "suno: the download costs one credit — confirm with the user first";
 
+/// Varje clip-id i svaret: `clip_ids` när det finns, annars det enskilda `id`:t.
+fn clip_ids(payload: &Value) -> Vec<String> {
+    let listed: Vec<String> = payload
+        .get("clip_ids")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if !listed.is_empty() {
+        return listed;
+    }
+    find_string(payload, &["song_id", "job_id", "task_id", "id"])
+        .map(|id| vec![id])
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+/// Vänteverktygets argument: en lista när schemat har `ids`, annars ett enskilt id.
+fn wait_args(tool: &McpTool, ids: &[String]) -> Value {
+    if props(&tool.input_schema).iter().any(|p| p.1 == "ids") {
+        return serde_json::json!({ "ids": ids });
+    }
+    let id = ids.first().cloned().unwrap_or_default();
+    id_args(tool, &id)
+}
+
 /// Sant när servern säger att nedladdningen kräver en kredit och en bekräftelse.
 fn confirmation_needed(reply: &Value) -> bool {
     let text = expand(reply).to_string().to_lowercase();
@@ -159,18 +190,22 @@ impl SunoSession {
             .iter()
             .find(|t| {
                 let n = t.name.to_lowercase();
-                n.contains("status") || n.contains("poll")
+                // Den riktiga beta-servern kallar vänteverktyget `audio-wait`, inte "status".
+                n.contains("status") || n.contains("poll") || n.contains("wait")
             })
             .cloned();
-        // A nested `id` is the song id until the beta proves otherwise.
-        let id = find_string(&expand(&result), &["song_id", "job_id", "task_id", "id"]);
-        if let (Some(status), Some(id)) = (status, id) {
+        // **En beställning kan bli flera låtar.** Mätt: `audio-create` svarar
+        // `{"id":…, "clip_ids":[…], "status":"submitted"}` och säger själv "call audio-wait once
+        // with all of them in ids".
+        let first = expand(&result);
+        let ids = clip_ids(&first);
+        if let (Some(status), true) = (status, !ids.is_empty()) {
             for attempt in 1..=POLL_TRIES {
                 if !audio_urls(&expand(&result)).is_empty() {
                     break;
                 }
                 std::thread::sleep(POLL_INTERVAL);
-                let args = id_args(&status, &id);
+                let args = wait_args(&status, &ids);
                 println!(
                     "suno: poll {attempt}/{POLL_TRIES} via {} {args}",
                     status.name
@@ -185,6 +220,14 @@ impl SunoSession {
         let payload = expand(&result);
         let urls = audio_urls(&payload);
         if urls.is_empty() {
+            // **Klart är inte samma sak som hämtat.** `audio-wait` svarar med färdiga clips men
+            // utan ljud-URL: själva filen kostar en nedladdningskredit via `audio-download`.
+            let done = payload.to_string().to_lowercase().contains("\"complete\"");
+            if done {
+                return Err(
+                    "suno: the song is ready in your library — fetching the audio costs one download credit (Library → Bekräfta)".to_string(),
+                );
+            }
             let shown: String = payload.to_string().chars().take(400).collect();
             return Err(format!(
                 "suno: `{}` returned no audio (.wav/.mp3/.flac/.zip): {shown}",

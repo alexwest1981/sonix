@@ -158,6 +158,13 @@ pub enum SunoTask {
     Account(Box<crate::audio::suno::SunoAccount>),
 }
 
+/// Vart ett färdigt Suno-ljud ska: bordet (ett spår per fil) eller separatorn (stämspår).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum SunoDest {
+    Mixer,
+    Separator,
+}
+
 /// Which list a metadata fetch is for. `Copy` so a button closure can carry it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum SunoMeta {
@@ -595,6 +602,8 @@ pub struct SonixApp {
     // Suno AI Prompt Bar & Studio Timeline View
     /// Vilken ruta i Suno-ytan som är öppen (0 = Skapa).
     pub suno_tab: usize,
+    /// Vart importerade och skapade Suno-ljud tar vägen.
+    pub suno_dest: SunoDest,
     pub suno_prompt_input: String,
     /// The Suno panel. `suno_tools` is what the server's own `tools/list` returned, so a beta
     /// surface that differs from our guesses is visible in the UI instead of hidden.
@@ -1344,6 +1353,7 @@ impl SonixApp {
             export_preset_idx: 0,
             // Suno AI Prompt Bar & Studio Timeline View
             suno_tab: 0,
+            suno_dest: SunoDest::Mixer,
             suno_prompt_input: crate::i18n::t("Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll").to_string(),
             suno_status: String::new(),
             suno_login_url: std::sync::Arc::new(std::sync::Mutex::new(None)),

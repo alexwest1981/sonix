@@ -55,6 +55,24 @@ impl SonixApp {
                 self.suno_tab = 0;
                 self.suno_create();
             }
+            // Vart ljudet tar vägen — bordet eller separatorn.
+            ui.separator();
+            for (dest, label) in [
+                (crate::ui::app::SunoDest::Mixer, "→ Bordet"),
+                (crate::ui::app::SunoDest::Separator, "→ Separatorn"),
+            ] {
+                let active = self.suno_dest == dest;
+                let text = RichText::new(crate::i18n::t(label)).size(Theme::FONT_S);
+                let text = if active {
+                    text.strong().color(palette().bg())
+                } else {
+                    text.color(palette().text_muted())
+                };
+                let fill = if active { palette().cyan() } else { palette().panel() };
+                if ui.add(egui::Button::new(text).fill(fill)).clicked() {
+                    self.suno_dest = dest;
+                }
+            }
             if !self.suno_status.trim().is_empty() {
                 ui.label(
                     RichText::new(&self.suno_status)
@@ -149,6 +167,24 @@ impl SonixApp {
                             .strong()
                             .size(Theme::FONT_S)
                             .color(palette().orange()),
+                    );
+                    // Simple-läget: en beskrivning, så skriver Suno både text och stil.
+                    ui.label(
+                        RichText::new(crate::i18n::t("Beskriv låten (Simple)"))
+                            .size(Theme::FONT_S),
+                    );
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.suno_prompt_input)
+                            .desired_rows(3)
+                            .desired_width(f32::INFINITY)
+                            .hint_text(crate::i18n::t(
+                                "t.ex. pagan metal med irländsk harpa, långsam och mörk",
+                            )),
+                    );
+                    ui.label(
+                        RichText::new(crate::i18n::t("eller Custom nedan:"))
+                            .size(Theme::FONT_XS)
+                            .color(palette().text_muted()),
                     );
                     self.suno_field_text(ui, slots.lyrics, "Lyrics", "Lämna tomt för instrumental", true);
                     self.suno_field_text(ui, slots.styles, "Styles", "pagan metal, irish harp, indie rap…", false);
