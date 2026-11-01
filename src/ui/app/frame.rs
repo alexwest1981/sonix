@@ -28,7 +28,7 @@ pub(crate) fn nav_group_of(view: ViewMode) -> u8 {
 }
 
 /// Alla vyer i den ordning flikarna listar dem.
-pub(crate) const VIEW_ORDER: [ViewMode; 13] = [
+pub(crate) const VIEW_ORDER: [ViewMode; 14] = [
     ViewMode::ChannelRack,
     ViewMode::PianoRoll,
     ViewMode::VocalStudio,
@@ -36,6 +36,7 @@ pub(crate) const VIEW_ORDER: [ViewMode; 13] = [
     ViewMode::SessionDrummer,
     ViewMode::ModularPatcher,
     ViewMode::AiMusicAssistant,
+    ViewMode::Suno,
     ViewMode::PlaylistArranger,
     ViewMode::Video,
     ViewMode::EffectsMixer,
@@ -1669,7 +1670,7 @@ impl SonixApp {
                     let active_group = nav_group_of(self.view_mode);
                     ui.add_space(16.0);
 
-                    const VIEWS: [(u8, ViewMode, &str); 13] = [
+                    const VIEWS: [(u8, ViewMode, &str); 14] = [
                         (0, ViewMode::ChannelRack, "🥁 Rack"),
                         (0, ViewMode::PianoRoll, "🎹 Piano"),
                         (0, ViewMode::VocalStudio, "🎙 Sångstudio"),
@@ -1677,6 +1678,7 @@ impl SonixApp {
                         (0, ViewMode::SessionDrummer, "🥁 Trummor"),
                         (3, ViewMode::ModularPatcher, "🧩 Patcher"),
                         (0, ViewMode::AiMusicAssistant, "🤖 AI"),
+                        (0, ViewMode::Suno, "☀ Suno"),
                         (1, ViewMode::PlaylistArranger, "🎼 Tidslinje"),
                         (1, ViewMode::Video, "🎬 Video"),
                         (2, ViewMode::EffectsMixer, "🎚 Mixer"),
