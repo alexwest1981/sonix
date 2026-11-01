@@ -467,7 +467,24 @@ pub fn poll_stem_separation(&mut self) {
                 .install_separation(result, &source, &stems_dir, &base)
                 .err();
             self.load_separated_stems_to_engine();
-            self.view_mode = ViewMode::StemSeparator;
+            // **Kedjan slutar i Arrangera.** Startades separationen från Suno ska stämmorna rakt in
+            // på bordet och ytan landa i tidslinjen — inte stanna i separatorn.
+            if self.suno_chain {
+                self.suno_chain = false;
+                let folder = self
+                    .stem_project
+                    .stem_files
+                    .first()
+                    .and_then(|p| std::path::Path::new(p).parent())
+                    .map(|p| p.to_string_lossy().to_string());
+                let title = self.stem_project.track_title.clone();
+                if let Some(folder) = folder {
+                    self.import_suno_stems_from_folder(&folder, &title, 0.0);
+                }
+                self.view_mode = ViewMode::PlaylistArranger;
+            } else {
+                self.view_mode = ViewMode::StemSeparator;
+            }
             let backend = if neural {
                 crate::i18n::t("HTDemucs (neural)")
             } else {

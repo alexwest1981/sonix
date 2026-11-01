@@ -37,6 +37,8 @@ pub struct GeneratedSong {
     pub title: String,
     /// The last `tools/call` result, untouched.
     pub raw: Value,
+    /// Clips the server created but has not handed out as files (a download costs a credit).
+    pub clip_ids: Vec<String>,
 }
 
 /// One song as a library listing describes it. The server's payload shape is unknown, so every
@@ -285,9 +287,14 @@ impl SunoSession {
             // utan ljud-URL: själva filen kostar en nedladdningskredit via `audio-download`.
             let done = payload.to_string().to_lowercase().contains("\"complete\"");
             if done {
-                return Err(
-                    "suno: the song is ready in your library — fetching the audio costs one download credit (Library → Bekräfta)".to_string(),
-                );
+                // Klar men ohämtad: lämna clip-id:na så kan anroparen hämta med kredit.
+                return Ok(GeneratedSong {
+                    files: Vec::new(),
+                    stems: false,
+                    title: find_string(&payload, &["title", "song_title"]).unwrap_or_default(),
+                    raw: result,
+                    clip_ids: clip_ids(&payload),
+                });
             }
             let shown: String = payload.to_string().chars().take(300).collect();
             return Err(format!(
@@ -701,7 +708,29 @@ fn connect_at(
             }
         }
     };
-    open(endpoint, &tokens.access_token).map_err(|e| e.to_string())
+    // **Servern kan neka token fast klockan säger att den lever.** Ett 401 här betyder att
+    // refresh-token ska användas en gång till — annars dör sessionen mitt i ett pass.
+    match open(endpoint, &tokens.access_token) {
+        Ok(session) => Ok(session),
+        Err(McpError::Expired) => {
+            let client_id = std::fs::read_to_string(client_id_file(token_file)).ok();
+            let fresh = client_id
+                .map(|id| oauth.clone().with_client_id(id.trim()).refresh(&tokens))
+                .and_then(|r| r.ok());
+            match fresh {
+                Some(fresh) => {
+                    let _ = fresh.save(token_file);
+                    open(endpoint, &fresh.access_token).map_err(|e| e.to_string())
+                }
+                None if allow_login => {
+                    let fresh = sign_in(&mut oauth, url_slot.clone())?;
+                    open(endpoint, &fresh.access_token).map_err(|e| e.to_string())
+                }
+                None => Err("the saved tokens were rejected and could not be refreshed".to_string()),
+            }
+        }
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// Dynamic registration + the browser, then the tokens are saved by `login_blocking`. The client
@@ -1445,6 +1474,7 @@ fn save_song(
         files,
         stems,
         title: title.to_string(),
+        clip_ids: Vec::new(),
         raw,
     })
 }

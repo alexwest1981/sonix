@@ -874,6 +874,39 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         eprintln!("⚠ --render-plugin kräver en build med --features plugin-host");
         std::process::exit(1);
     }
+    // `sonix --suno-flow "<beskrivning>"`: hela kedjan — skapa, vänta, hämta filen. Kostar en
+    // nedladdningskredit. Separationen sker i appen (den behöver projektet), men filen ska landa.
+    if let Some(pos) = std::env::args().position(|a| a == "--suno-flow") {
+        let prompt = std::env::args().nth(pos + 1).unwrap_or_default();
+        match audio::suno::SunoSession::connect_cached() {
+            Ok(mut session) => match session.generate(&prompt, None, None) {
+                Ok(song) if !song.files.is_empty() => {
+                    println!("klar utan hämtning: {} fil(er)", song.files.len());
+                }
+                Ok(song) => match song.clip_ids.first() {
+                    Some(id) => match session.download_song_confirmed(id) {
+                        Ok(done) => {
+                            println!(
+                                "hämtad: \"{}\" — {} fil(er), stämmor {}",
+                                done.title,
+                                done.files.len(),
+                                done.stems
+                            );
+                            for f in &done.files {
+                                println!("  fil: {} ({} byte)", f.display(), std::fs::metadata(f).map(|m| m.len()).unwrap_or(0));
+                            }
+                        }
+                        Err(e) => eprintln!("⚠ hämtning: {e}"),
+                    },
+                    None => eprintln!("⚠ inga clip-id i svaret"),
+                },
+                Err(e) => eprintln!("⚠ {e}"),
+            },
+            Err(e) => eprintln!("⚠ {e}"),
+        }
+        std::process::exit(0);
+    }
+
     // `sonix --suno-wait <id,id>`: väntar på redan beställda clips utan att skapa nya.
     if let Some(pos) = std::env::args().position(|a| a == "--suno-wait") {
         let ids: Vec<String> = std::env::args()

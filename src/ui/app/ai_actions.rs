@@ -964,10 +964,27 @@ impl SonixApp {
     /// stem-bundle import.
     fn install_suno_song(&mut self, song: crate::audio::suno::GeneratedSong) {
         use crate::ui::app::import::{SunoArrival, classify_suno_files};
+        // **Kedjan.** Servern skapade clips men lämnade inga filer: ljudet kostar en
+        // nedladdningskredit. Är hämtningen förvald tar vi den nu, utan ett extra klick.
+        if song.files.is_empty() && !song.clip_ids.is_empty() {
+            if self.suno_auto_download {
+                let id = song.clip_ids[0].clone();
+                self.suno_status = crate::i18n::t("📥 Hämtar ljudet — en kredit.").to_string();
+                self.suno_import_confirmed(&id);
+            } else {
+                self.suno_status = crate::i18n::t(
+                    "Låten är klar i biblioteket — hämta den därifrån (1 kredit).",
+                )
+                .to_string();
+            }
+            self.suno_last = Some(song);
+            return;
+        }
         // **Vart ljudet ska.** Bordet ger ett spår per fil; separatorn tar första filen som mix
         // och delar den i stämspår — samma väg som en importerad fil.
         if self.suno_dest == crate::ui::app::SunoDest::Separator {
             if let Some(first) = song.files.first() {
+                self.suno_chain = true;
                 self.start_stem_separation_with(&first.to_string_lossy(), false);
                 self.suno_status =
                     crate::tstatus!("✔ {} skickad till separatorn.", song.title);

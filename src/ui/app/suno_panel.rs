@@ -55,6 +55,12 @@ impl SonixApp {
                 self.suno_tab = 0;
                 self.suno_create();
             }
+            // Hämtningen kostar en kredit — valet står i klartext före, inte som en överraskning.
+            ui.checkbox(
+                &mut self.suno_auto_download,
+                crate::i18n::t("📥 Hämta direkt (1 kredit)"),
+            );
+            ui.separator();
             // Vart ljudet tar vägen — bordet eller separatorn.
             ui.separator();
             for (dest, label) in [

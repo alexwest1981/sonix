@@ -614,6 +614,10 @@ pub struct SonixApp {
     pub suno_dest: SunoDest,
     /// Vilken av Audio/Voice/Inspo som är öppen (None = ingen).
     pub suno_pick: Option<SunoPick>,
+    /// Hämta filen direkt efter skapandet (kostar en nedladdningskredit).
+    pub suno_auto_download: bool,
+    /// Separationen startades från Suno: skicka stämmorna till Arrangera när hon är klar.
+    pub suno_chain: bool,
     /// Källor för cover (Audio) och mashup (Inspo): clip-id från biblioteket.
     pub suno_source_song: Option<(String, String)>,
     pub suno_inspo_song: Option<(String, String)>,
@@ -1368,6 +1372,8 @@ impl SonixApp {
             suno_tab: 0,
             suno_dest: SunoDest::Mixer,
             suno_pick: None,
+            suno_auto_download: true,
+            suno_chain: false,
             suno_source_song: None,
             suno_inspo_song: None,
             suno_prompt_input: crate::i18n::t("Generera ett 8-takters synthwave-trumkomp och vokalmelodi i A-moll").to_string(),
