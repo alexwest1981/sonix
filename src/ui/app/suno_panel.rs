@@ -380,6 +380,52 @@ impl SonixApp {
         });
         // Väljarlistan ligger under båda kolumnerna — inuti en kolumn med höjd 0 låste layouten.
         self.suno_pick_list(ui);
+        // **Separationen syns här, inte i en annan flik.** Väljer man → Separatorn stannar ytan
+        // kvar och visar förloppet; när stämmorna är klara går de till bordet med ett klick.
+        if self.stem_separation_active {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.spinner();
+                ui.label(
+                    RichText::new(crate::i18n::t("Separerar stämmor…"))
+                        .size(Theme::FONT_S)
+                        .color(palette().cyan()),
+                );
+                ui.add(
+                    egui::ProgressBar::new(self.stem_project.progress)
+                        .desired_width(220.0)
+                        .show_percentage(),
+                );
+            });
+        } else if !self.stem_project.stem_files.is_empty() {
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label(
+                    RichText::new(crate::tstatus!(
+                        "🎚 {} stämmor klara från {}",
+                        self.stem_project.stem_files.len(),
+                        self.stem_project.track_title
+                    ))
+                    .size(Theme::FONT_S)
+                    .color(palette().cyan()),
+                );
+                if ui.button(crate::i18n::t("→ till bordet")).clicked()
+                    && let Some(dir) = self
+                        .stem_project
+                        .stem_files
+                        .first()
+                        .and_then(|p| std::path::Path::new(p).parent())
+                {
+                    let dir = dir.to_string_lossy().to_string();
+                    let title = self.stem_project.track_title.clone();
+                    self.import_suno_stems_from_folder(&dir, &title, 0.0);
+                    self.stem_project.stem_files.clear();
+                    self.suno_status =
+                        crate::i18n::t("✔ Stämmorna ligger på bordet.").to_string();
+                }
+            });
+        }
+
     }
 
     /// **Röster** — `voices-list` som en lista, inte som ett namn i en verktygsrad.

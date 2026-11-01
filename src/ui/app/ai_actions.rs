@@ -965,7 +965,7 @@ impl SonixApp {
         // och delar den i stämspår — samma väg som en importerad fil.
         if self.suno_dest == crate::ui::app::SunoDest::Separator {
             if let Some(first) = song.files.first() {
-                self.start_stem_separation_with(&first.to_string_lossy());
+                self.start_stem_separation_with(&first.to_string_lossy(), false);
                 self.suno_status =
                     crate::tstatus!("✔ {} skickad till separatorn.", song.title);
                 self.suno_last = Some(song);

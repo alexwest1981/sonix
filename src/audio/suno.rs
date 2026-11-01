@@ -220,6 +220,9 @@ impl SunoSession {
         base: &Path,
     ) -> Result<GeneratedSong, String> {
         println!("suno: tools/call {} {args}", tool.name);
+        // Felmeddelandet bär kroppen vi skickade: serverns svar är ofta bara "invalid request
+        // body", och då är det enda sättet att ringa in fältet att se vad vi faktiskt skickade.
+        let sent = args.to_string();
         // The prompt (or whatever the caller put in its place) is the title's last resort.
         let fallback = find_string(&args, &["prompt", "description", "style"]);
         let mut result = self
@@ -271,9 +274,9 @@ impl SunoSession {
                     "suno: the song is ready in your library — fetching the audio costs one download credit (Library → Bekräfta)".to_string(),
                 );
             }
-            let shown: String = payload.to_string().chars().take(400).collect();
+            let shown: String = payload.to_string().chars().take(300).collect();
             return Err(format!(
-                "suno: `{}` returned no audio (.wav/.mp3/.flac/.zip): {shown}",
+                "suno: `{}` ({shown}) — skickade: {sent}",
                 tool.name
             ));
         }

@@ -870,10 +870,10 @@ pub(crate) fn render_wav_question_modal(&mut self, ctx: &egui::Context) {
         WavQuestion::Separate { chosen, sibling } => {
             if separate_sibling {
                 self.pending_wav_question = None;
-                self.start_stem_separation_with(&sibling);
+                self.start_stem_separation_with(&sibling, true);
             } else if separate_chosen {
                 self.pending_wav_question = None;
-                self.start_stem_separation_with(&chosen);
+                self.start_stem_separation_with(&chosen, true);
             }
         }
     }

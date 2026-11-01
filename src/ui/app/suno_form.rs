@@ -446,4 +446,24 @@ mod tests {
         assert!(args.get("instrumental").is_none());
         assert_eq!(args.get("description").and_then(|d| d.as_str()), Some("short atmospheric synthwave"));
     }
+
+    /// **Fälten ur det riktiga `audio-create`-schemat**, med bara en beskrivning ifylld, ger den
+    /// kropp panelen skickar. Skrivs ut så den kan skickas till servern som den är.
+    #[test]
+    fn the_live_schema_body_is_printed() {
+        let path = "/mnt/fastnvme/hermes/cache/scratch/create_schema.json";
+        let Ok(text) = std::fs::read_to_string(path) else {
+            return;
+        };
+        let schema: Value = serde_json::from_str(&text).expect("schema");
+        let mut fields = fields_from_schema(&schema);
+        if let Some((_, SunoField::Text { value, .. })) = fields
+            .iter_mut()
+            .find(|(name, _)| name == "description")
+        {
+            *value = "short atmospheric synthwave, 20 seconds".to_string();
+        }
+        let args = args_from_form(&fields);
+        println!("live-body: {args}");
+    }
 }

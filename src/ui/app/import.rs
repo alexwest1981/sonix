@@ -356,13 +356,13 @@ pub fn start_stem_separation(&mut self, path: &str) {
         });
         return;
     }
-    self.start_stem_separation_with(path);
+    self.start_stem_separation_with(path, true);
 }
 }
 
 impl SonixApp {
 /// Själva separationen (bakgrundstråden). Kallas också när frågan är besvarad.
-pub fn start_stem_separation_with(&mut self, path: &str) {
+pub fn start_stem_separation_with(&mut self, path: &str, show_view: bool) {
     let (l, r, sr) = match crate::audio::load_audio_pcm(path) {
         Ok(v) => v,
         Err(e) => {
@@ -386,7 +386,9 @@ pub fn start_stem_separation_with(&mut self, path: &str) {
     if let Ok(mut slot) = self.stem_separation_result.lock() {
         *slot = None;
     }
-    self.view_mode = ViewMode::StemSeparator;
+    if show_view {
+        self.view_mode = ViewMode::StemSeparator;
+    }
 
     let backend = if crate::audio::neural_available() {
         crate::i18n::t("neural (HTDemucs)").to_string()
