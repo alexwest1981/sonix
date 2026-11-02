@@ -14,7 +14,7 @@ ytan med vad den lovar, och håller den när fönstret blir litet.
 | Bevis | Var | Vad det är |
 | :--- | :--- | :--- |
 | **Skärmdumpar** | `screenshots/` i repot (38 st, 25 okt) · färsk fångst 2 nov i `/mnt/fastnvme/hermes/cache/scratch/sonix-gui/shot/` | Körda ur appen själv med `--capture-screenshots` under Xvfb, 1920×1200, mörkt tema |
-| **Maskinbeskrivning av varje yta** | `gui-evidence.md` (genererad ur pixlarna av en lokal synmodell) | Regioner med pixelrutor, varje läsbar etikett ordagrant, påstådda lay-outfel, siffror. **OCR-kvalitet — inte facit.** En rad härifrån är ett spår, inte ett bevis |
+| **Maskinbeskrivning av ytorna** | `gui-evidence.md` utanför repot (`/mnt/fastnvme/hermes/cache/scratch/sonix-gui/`) | Regioner med pixelrutor, varje läsbar etikett ordagrant, påstådda lay-outfel, siffror. **OCR-kvalitet — inte facit**, och **27 av 39 ytor** blev beskrivna: den lokala synmodellen kvotstoppade på de tolv sista dialogerna (Edison, Newtone, Newtime, visualizern, modulationsmatrisen, Suno, vocoder-/bandkurvorna, stämmomenyn m.fl.). Inget av rundans 20 fynd vilar på en rad ur filen — alla står på `fil:rad` |
 | **Koden som ritar** | `src/ui/**` (64 filer, 58 556 rader) | Den enda källa som kan avgöra *varför* något ser ut som det gör |
 | **Temats sanning** | `src/ui/theme.rs` | 29 semantiska palettnycklar, textskalan, `item_spacing`, `button_padding`, `interact_size`, kontrastprovet |
 | **Texten** | `src/i18n.rs` (16 599 rader, 7 språk, svenska är nyckelspråk) + `scripts/i18n_audit.py` | Vad som är översatt och vad som är en literal som aldrig går genom `t()` |
@@ -112,7 +112,8 @@ kvitto** — där en siffra inte gick att reproducera står det.
 repot redan har en regel om), **16 kvittade och köade** i den ordning tabellen står. Noll fynd
 underkändes: varje rad granskaren skrev gick att hitta i koden.
 
-**Vad rundan inte kunde döma:** färg och kontrast i pixlarna (mörkt tema fångades, ljust inte),
+**Vad rundan inte kunde döma:** tolv av de 39 dialogerna i maskinbeskrivningen (kvotstopp — ytan finns i
+fångsten, textbeskrivningen saknas), färg och kontrast i pixlarna (mörkt tema fångades, ljust inte),
 fönstret vid 780×540 (fångsten tvingar fullskärm), och svarstider (llvmpipe). De tre står kvar som
 mätpunkter, inte som slutsatser.
 
