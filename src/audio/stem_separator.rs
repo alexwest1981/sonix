@@ -297,6 +297,16 @@ pub struct SeparationResult {
     pub fallback_reason: Option<String>,
 }
 
+/// Tempot ur en separation, när det är ett tempo alls.
+///
+/// `estimate_bpm` lämnar 0,0 för material utan tydlig puls, och 0,0 får aldrig bli
+/// projektets tempo: exporten räknar då takter på 40 BPM medan uppspelningen kör
+/// vidare på det riktiga, och regionen klipps till en tredjedel av ljudet. Utanför
+/// 20–300 är talet inte heller något tempo en människa spelar i.
+pub fn sane_bpm(bpm: f32) -> Option<f32> {
+    (20.0..=300.0).contains(&bpm).then_some(bpm)
+}
+
 /// Runs the best available separator: a real neural HTDemucs model when one is
 /// installed (and the `neural` feature is compiled in), otherwise the built-in
 /// spectral DSP separator. `progress` is called with `0.0..=1.0`.
@@ -473,7 +483,10 @@ impl StemProject {
             .unwrap_or(source_path)
             .to_string();
         self.duration_seconds = result.duration_seconds;
-        self.bpm = result.bpm;
+        // Bara ett rimligt uppmätt tempo får ersätta det som redan gäller.
+        if let Some(measured) = sane_bpm(result.bpm) {
+            self.bpm = measured;
+        }
         self.model_name = result.model_name;
         self.stem_audio = result.stems;
         self.stem_audio_base = self.stem_audio.clone();
@@ -988,6 +1001,187 @@ mod tests {
         assert!(!err.is_empty());
         let _ = std::fs::remove_file(&blocked);
     }
+
+    /// **Ände-till-ände för samplingsfrekvensen.** Neuronnätet arbetar i
+    /// `MODEL_SAMPLE_RATE` och lämnar stämmorna där, medan resultatet rapporterar
+    /// källans frekvens. Utan vägen tillbaka spelar en 48 kHz-källa 0,919x (147 cent
+    /// falskt), och WAV-headern säger ändå 48 kHz. Här läses filen som skrevs.
+    #[test]
+    fn the_written_stem_carries_the_rate_the_result_reports() {
+        use crate::audio::neural_separator::{stems_at_rate, MODEL_SAMPLE_RATE};
+
+        let source_rate = 48_000u32;
+        let seconds = 0.2f32;
+        let model_frames = (MODEL_SAMPLE_RATE as f32 * seconds) as usize;
+        let model_stem = |freq: f32| {
+            let samples: Vec<f32> = (0..model_frames)
+                .map(|i| {
+                    (i as f32 / MODEL_SAMPLE_RATE as f32 * freq * std::f32::consts::TAU).sin() * 0.8
+                })
+                .collect();
+            StemAudio { left: samples.clone(), right: samples }
+        };
+        let model_stems: Vec<StemAudio> = [220.0f32, 880.0, 110.0, 1320.0]
+            .into_iter()
+            .map(model_stem)
+            .collect();
+        let stems = stems_at_rate(model_stems, MODEL_SAMPLE_RATE, source_rate);
+
+        let dir = test_dir("rate");
+        let result = SeparationResult {
+            stems,
+            sample_rate: source_rate,
+            bpm: 120.0,
+            duration_seconds: seconds,
+            model_name: "test".to_string(),
+            used_neural: true,
+            fallback_reason: None,
+        };
+        let mut project = StemProject::default();
+        project
+            .install_separation(result, "/tmp/48k.wav", &dir, "48k")
+            .expect("stämmorna ska gå att skriva");
+
+        assert_eq!(project.sample_rate, source_rate);
+        assert_eq!(project.stem_files.len(), 4);
+        for path in &project.stem_files {
+            let (l, r, written_rate) =
+                crate::audio::load_wav_pcm(path).expect("stämfilen ska gå att läsa tillbaka");
+            let written_secs = l.len() as f32 / written_rate as f32;
+            println!(
+                "modell {MODEL_SAMPLE_RATE} Hz → källa {source_rate} Hz: skriven WAV \
+                 {written_rate} Hz, {} frames ({written_secs:.3} s), resultatet rapporterar \
+                 {} Hz",
+                l.len(),
+                project.sample_rate
+            );
+            assert_eq!(
+                written_rate, project.sample_rate,
+                "WAV-headerns frekvens ska vara den resultatet rapporterar"
+            );
+            assert_eq!(l.len(), r.len());
+            assert!(
+                (written_secs - project.duration_seconds).abs() < 0.005,
+                "längden ska bevaras genom omsamplingen: {written_secs:.3} s mot {:.3} s",
+                project.duration_seconds
+            );
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Ett uppmätt tempo på 0,0 betyder "ingen puls". Det får inte bli projektets
+    /// tempo: då räknar exporten takter i ett annat tempo än uppspelningen och
+    /// regionen klipps till en bråkdel av ljudet. Här prövas samma grind som
+    /// `poll_stem_separation` använder, med tempokartan som lokal state.
+    #[test]
+    fn a_zero_tempo_guess_changes_neither_the_tempo_nor_the_tempo_map() {
+        let dir = test_dir("tempo_zero");
+        let mut project = StemProject::default();
+        let project_bpm = project.bpm;
+        let stems: Vec<StemAudio> = [220.0f32, 880.0, 110.0, 1320.0]
+            .iter()
+            .map(|freq| {
+                let samples = tone(*freq, 4.0);
+                StemAudio { left: samples.clone(), right: samples }
+            })
+            .collect();
+        let result = SeparationResult {
+            stems,
+            sample_rate: 44_100,
+            bpm: 0.0,
+            duration_seconds: 4.0,
+            model_name: "test".to_string(),
+            used_neural: false,
+            fallback_reason: None,
+        };
+        project
+            .install_separation(result, "/tmp/ton.wav", &dir, "ton")
+            .expect("stämmorna ska gå att skriva");
+
+        // Samma två rader som `poll_stem_separation` kör efter installationen.
+        let mut points = vec![crate::audio::tempo::TempoPoint { start_bar: 0, bpm: project_bpm }];
+        let before = points.clone();
+        if let Some(measured) = sane_bpm(project.bpm) {
+            crate::audio::tempo::set_tempo_point(&mut points, 0, measured);
+        }
+
+        println!(
+            "uppmätt 0,0 → projektets tempo {:.0} BPM, tempokartan {} (oförändrad: {}), \
+             {} stämmor kvar i minnet",
+            project.bpm,
+            points.len(),
+            points == before,
+            project.stem_audio.len()
+        );
+        assert_eq!(project.bpm, project_bpm, "projektets tempo ska stå kvar");
+        assert_eq!(points, before, "tempokartan ska vara orörd");
+        assert_eq!(project.stem_audio.len(), 4);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Suno levererar mp3, och `load_wav_pcm` avvisar allt utan RIFF/WAVE — mätningen
+    /// föll därför alltid tillbaka på projektets tempo utan att säga det. Här mäts en
+    /// 44,1 kHz mp3 med en klick i 125 BPM. Utan ffmpeg mäts WAV-filen i stället och
+    /// utskriften säger att mp3-vägen är oprövad.
+    #[test]
+    fn the_tempo_of_an_mp3_is_measured() {
+        let dir = test_dir("bpm_mp3");
+        std::fs::create_dir_all(&dir).expect("tempkatalogen ska gå att skapa");
+        let bpm = 125.0f32;
+        let sr = 44_100u32;
+        let seconds = 12.0f32;
+        let n = (sr as f32 * seconds) as usize;
+        let period = (60.0 / bpm * sr as f32) as usize;
+        let mut click = vec![0.0f32; n];
+        let mut seed = 0x1234_5678u32;
+        let mut at = 0;
+        while at < n {
+            for i in 0..(sr as f32 * 0.05) as usize {
+                if at + i >= n {
+                    break;
+                }
+                seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+                let noise = (seed >> 9) as f32 / (1 << 23) as f32 - 1.0;
+                let env = (-(i as f32) / (sr as f32 * 0.008)).exp();
+                click[at + i] += 0.6 * noise * env;
+            }
+            at += period;
+        }
+        let wav = dir.join("click.wav");
+        crate::audio::exporter::write_stem_wav(wav.to_string_lossy().as_ref(), &click, &click, sr)
+            .expect("klickfilen ska gå att skriva");
+        let mp3 = dir.join("click.mp3");
+        let converted = std::process::Command::new("ffmpeg")
+            .args(["-y", "-loglevel", "error", "-i"])
+            .arg(&wav)
+            .args(["-ar", "44100", "-ac", "2", "-b:a", "192k"])
+            .arg(&mp3)
+            .status()
+            .map(|status| status.success())
+            .unwrap_or(false)
+            && mp3.is_file();
+        let path = if converted {
+            mp3
+        } else {
+            println!(
+                "ffmpeg saknas eller kunde inte koda mp3 — mäter 44,1 kHz WAV i stället, \
+                 mp3-vägen är oprövad här"
+            );
+            wav
+        };
+        let measured = detect_bpm_from_file(path.to_string_lossy().as_ref())
+            .expect("filen ska gå att mäta");
+        println!(
+            "{} 44,1 kHz, sann takt {bpm:.0} BPM: mätte {measured:.1} BPM (avvikelse {:.2} BPM)",
+            if converted { "mp3" } else { "wav" },
+            (measured - bpm).abs()
+        );
+        assert!(
+            (measured - bpm).abs() <= 2.0,
+            "mätte {measured:.1} BPM, väntade {bpm:.0}"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
 
 /// Läser en ljudfil och uppskattar tempot ur mixen (8.5c).
@@ -997,7 +1191,9 @@ mod tests {
 /// analysen kan köras utanför fönstret är själva poängen: ett tempo som gissas
 /// fel ställer hela projektet fel, och det ska synas innan det händer.
 pub fn detect_bpm_from_file(path: &str) -> Result<f32, String> {
-    let (l, r, sr) = crate::audio::load_wav_pcm(path)?;
+    // `load_wav_pcm` kräver RIFF/WAVE — Suno levererar mp3, och då föll mätningen
+    // alltid tillbaka på projektets tempo utan att säga det.
+    let (l, r, sr) = crate::audio::load_audio_pcm(path)?;
     if l.len().min(r.len()) < 1024 {
         return Err("filen är för kort för att tempot ska kunna uppskattas".to_string());
     }
