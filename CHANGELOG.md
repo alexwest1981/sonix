@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.235] - 2026-11-02
+
+**Tio mätta fel rättade efter EGM-genomgången** (`docs/EGM-SONIX-REVIEW.md`).
+
+*Ljudtråden:*
+- **Pitchdetektorn** tog 4,30 ms per bildruta inuti mikrofonens lås. Nu kopieras 1 896 prov under låset
+  (2,8 µs) och autokorrelationen körs utanför (1 889 µs), i 10 Hz med cachat värde. Mätt: samma ton
+  (219,9 Hz) även med den delade bufferten nollad och låset hållet av en annan tråd.
+- **En heap-allokering per sample** i stämmixningen är borta: `key_taps` återanvänds. Mätt 0 allokeringar
+  på 38 400 frames, värsta block 0,305 ms mot 2,667 ms budget (förut 4,289 ms, 2/1500 över).
+- **Instrumentbyte kompilerade JSFX på ljudtråden** (17 ms = 6,5 missade buffertar). Nu byggs källan på
+  UI-tråden och ljudtråden byter bara en box: **10,1 µs**. Provet raderar JSFX-filen före bytet och tonen klingar.
+
+*Samplingsfrekvens och tempo:*
+- **Neural separation märkte 44,1 kHz-ljud med källans frekvens** (48 kHz → 0,919×, 147 cent lågt).
+  Stämmorna resamplas nu tillbaka; skriven WAV och rapporterad frekvens stämmer (mätt 48 000 Hz, 9 600 frames).
+- **Ett uppmätt tempo på 0,0 skrev över projektets BPM** och klippte regionen till 0,317×. Nu avvisas
+  orimliga värden (0 och utanför 20–300) och tempot sätts genom `set_project_bpm`, så tempo-kartan är enda sanningen.
+- **`detect_bpm_from_file` läste bara WAV**, så Sunos mp3 föll alltid och projektets tempo användes tyst.
+  Nu läses allt via `load_audio_pcm`: mätt **125,0 BPM på en 125 BPM-mp3 (0,00 fel)**.
+- **Exporten använde projektets tempo som `source_bpm`** i stället för det uppmätta (1,44 s drift/min vid
+  125→128). Nu styr det uppmätta värdet både regionlängd och `source_bpm`.
+
+*Suno-panelen:*
+- Dubblerat block borta (två förloppsindikatorer, två exportrader, väljarlistan två gånger → en).
+- **Det man skriver före inloggning behålls** när serverns schema laddas (sammanfogas per fältnamn).
+- **En kreditgrind för allt som kostar**: knappen säger "1 kredit", första klicket armar raden, andra bekräftar.
+- **Lyssna följt av import debiterar inte två gånger** — redan hämtad fil återanvänds (0 nedladdningsanrop).
+- Statusraden visar en kort rad, trunkerad med hover, i stället för hela förfrågan inklusive låttext.
+
+*Layout och CI:*
+- Kanalstegets rad scrollar i sidled när den är bredare än panelen (980 px i en 320 px-docka), patternraden
+  bryter och scrollar, och EQ-raden räknar på verklig bredd utan 720 px-golv.
+- **CI installerar ffmpeg** och `fixture()` fäller om CI kör utan det — förut rapporterade 17 videoprov `ok`
+  genom att hoppa över. Det neurala jobbet är inte längre `continue-on-error`.
+
+Prov: 1 369 (var 1 357), 0 varningar.
+
 ## [0.9.234] - 2026-10-31
 
 **Suno-panelen följer Sunos eget skapandeflöde.** Vänster: **Lyrics** (tomt = instrumental),

@@ -189,3 +189,26 @@ Varje `fil:rad` ovan är uppslagen i koden efter granskningen: dubbelanropet (2 
 `detect_bpm_from_file`, `source_bpm: self.bpm`, `MODEL_SAMPLE_RATE`-resamplingen in, `detect_live_pitch_hz`
 i frame-loopen, `key_taps`-allokeringen i `process_stereo` samt ffmpeg-skippen i `fixture()`. Siffrorna i
 #2, #3 och #4 är granskarnas mätningar på den här maskinen; de är inte återupprepade av mig.
+
+---
+
+## Status efter åtgärdsrundan (0.9.235)
+
+| # | Post | Utförd | Bevis |
+|---|------|--------|-------|
+| 1 | Neural separation fel frekvens | ✅ | stämman resamplas tillbaka; mätt 48 000 Hz, 9 600 frames |
+| 2 | Pitchdetektor i låset per frame | ✅ | 2,8 µs i låset + 1 889 µs utanför, 10 Hz |
+| 3 | Allokering per sample | ✅ | 0 allokeringar/38 400 frames, värsta block 0,305 ms |
+| 4 | Instrumentbyte på ljudtråden | ✅ | 10,1 µs, JSFX-filen raderad före bytet |
+| 5 | BPM 0,0 skrev över tempot | ✅ | tempot orört, region 4,000 s för 4,0 s ljud |
+| 6 | Suno-tempot mättes aldrig | ✅ | 125,0 BPM på 125 BPM-mp3; `source_bpm` = uppmätt |
+| 7 | Dubblerat Suno-block | ✅ | väljaranrop 2 → 1, exportrader 2 → 1 |
+| 8 | Formulär kastades vid inloggning | ✅ | sammanfogning per fältnamn |
+| 9 | Inkonsekvent kreditgrind | ✅ | klick 1 armar, klick 2 bekräftar; 0 dubbelhämtningar |
+| 10 | Klippta rader | ✅ | scroll vid 321 > 320 px; EQ-block ryms vid 320/470/900/1600 |
+| — | CI grönt av fel skäl | ✅ | ffmpeg installeras, 17 videoprov kan inte längre hoppa tyst |
+| — | Stretch-proven | ⛔ | granskaren hade fel: de är mätningar mot filer på disk, inte ratio-prov |
+| — | `lib.rs` + UI-prov | ⏳ | kvar; kräver egen runda |
+
+Prov efter åtgärderna: **1 369** (var 1 357), 0 varningar. En kvarvarande flakig: `video_export`-provet
+som kodar samtidigt som de andra video-proven — grönt enskilt (7,45 s).
