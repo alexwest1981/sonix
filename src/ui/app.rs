@@ -471,7 +471,6 @@ pub struct SonixApp {
     // Stompbox FX
     pub stompbox_drive: f32,
     pub stompbox_tone: f32,
-    pub stompbox_cab: bool,
     // Modular Patcher, Stem Separator & Plugin Manager
     pub modular_graph: ModularGraph,
     pub patcher_enabled: bool,
@@ -1281,7 +1280,6 @@ impl SonixApp {
             remix_stutter: 0,
             stompbox_drive: 2.5,
             stompbox_tone: 5000.0,
-            stompbox_cab: true,
             modular_graph: ModularGraph::default(),
             patcher_enabled: false,
             last_patcher_spec: None,

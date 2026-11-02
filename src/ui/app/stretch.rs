@@ -1328,7 +1328,12 @@ pub(crate) fn resync_engine_after_reconfigure(&mut self) {
     let _ = self.engine.send_command(AudioCommand::SetDelay(self.delay));
     let _ = self.engine.send_command(AudioCommand::SetReverb(self.reverb));
     let _ = self.engine.send_command(AudioCommand::SetDrive(self.drive));
+    let _ = self.engine.send_command(AudioCommand::SetDriveTone(self.stompbox_tone));
     let _ = self.engine.send_command(AudioCommand::SetMasterVolume(self.master_volume));
+    let _ = self.engine.send_command(AudioCommand::SetMasterPanWidth {
+        pan: self.master_pan,
+        width: self.stereo_width,
+    });
     let _ = self.engine.send_command(AudioCommand::SetRemixFx { mode: 0, bpm: self.bpm });
     self.last_patcher_spec = None;
     self.sync_patcher_graph();

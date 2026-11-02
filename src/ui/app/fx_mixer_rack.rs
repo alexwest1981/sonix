@@ -391,8 +391,17 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
 
                 // MASTER — bordets sista remsa, som på en konsol.
                 mixer_strip(ui, strip_w, crate::i18n::t("MASTER"), pal.orange(), false, false, |ui| {
-                    crate::ui::widgets::rotary_knob_reset(ui, &mut self.master_pan, -1.0, 1.0, "PAN", pal.text(), 16.0, 0.0);
-                    crate::ui::widgets::rotary_knob_reset(ui, &mut self.stereo_width, 0.0, 2.0, "BREDD", pal.cyan(), 16.0, 1.0);
+                    // PAN och BREDD gick förut bara till projektfilen — ingen ljudkod läste
+                    // dem. Nu skickas de som ett kommando, och provet mäter matematiken.
+                    let mut master_ch = false;
+                    master_ch |= crate::ui::widgets::rotary_knob_reset(ui, &mut self.master_pan, -1.0, 1.0, "PAN", pal.text(), 16.0, 0.0);
+                    master_ch |= crate::ui::widgets::rotary_knob_reset(ui, &mut self.stereo_width, 0.0, 2.0, "BREDD", pal.cyan(), 16.0, 1.0);
+                    if master_ch {
+                        let _ = self.engine.send_command(AudioCommand::SetMasterPanWidth {
+                            pan: self.master_pan,
+                            width: self.stereo_width,
+                        });
+                    }
                     // **A/B** (Abletons Compare): A och B fångar mixen — volym, pan, mute
                     // per spår plus masternivån — och ↔ växlar och lägger den valda sidan.
                     ui.horizontal(|ui| {
@@ -1053,11 +1062,13 @@ pub(crate) fn render_effects_mixer_rack(&mut self, ui: &mut egui::Ui) {
                     ui.horizontal(|ui| {
                         let mut ch = false;
                         ch |= rotary_knob(ui, &mut self.stompbox_drive, 1.0, 8.0, "DRIVE", pal.orange(), 19.0);
+                        // TON läste ingen förut. "4x12 Cab" är borta: en högtalarsimulering är
+                        // en impuls och ett filter, inte en kryssruta som inte gör något.
                         ch |= rotary_knob(ui, &mut self.stompbox_tone, 1000.0, 10000.0, "TON", pal.yellow(), 19.0);
-                        ui.checkbox(&mut self.stompbox_cab, "4x12 Cab");
                         if ch {
                             self.drive = self.stompbox_drive;
                             let _ = self.engine.send_command(AudioCommand::SetDrive(self.drive));
+                            let _ = self.engine.send_command(AudioCommand::SetDriveTone(self.stompbox_tone));
                         }
                     });
                 });

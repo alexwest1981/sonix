@@ -517,6 +517,14 @@ pub enum AudioCommand {
     },
     LoadPreset(Preset),
     SetMasterVolume(f32),
+    /// Masterns panorering (−1…1) och stereobredd (0 = mono, 1 = orörd, 2 = dubbel sida).
+    /// Låg tidigare bara som fält i appen och lästes av ingen — ratten ljög.
+    SetMasterPanWidth {
+        pan: f32,
+        width: f32,
+    },
+    /// Mättningens tonkontroll i Hz (en pol lågpass efter drive). 20 kHz = av.
+    SetDriveTone(f32),
     StopAll,
     // Multi-Track Stem Audio Streaming
     LoadStemTrack {

@@ -9,6 +9,9 @@ impl SynthEngine {
     /// modulationsmatris, volym, equal-power-pan, `tanh`, DJ-FX (gate, remix), tape stop,
     /// control room och talkback. Samma kod för båda vägarna, annars glider de ifrån varandra.
     fn finish_master(&mut self, fx_l: f32, fx_r: f32, talkback: f32) -> (f32, f32) {
+        // **Masterns bredd** (Alex' ratt), mid/sid. Rena funktioner så att de går att mäta
+        // utan en motor — ratten som stod här ljög i månader, den läste ingen.
+        let (fx_l, fx_r) = master_width(fx_l, fx_r, self.stereo_width);
         // Modulationsmatrisen räknas per sampel, på masterns nivå före volymstegen.
         // Utan aktiva rader hoppas hela steget över — det är den vanliga vägen.
         let modulation = if self.modulation.is_empty() {
@@ -26,12 +29,9 @@ impl SynthEngine {
         self.mod_cutoff = modulation.cutoff;
         let gain = (self.master_volume * modulation.volume).clamp(0.0, 4.0);
         // Equal-power-pan: en panorering som bara sänker ena sidan tappar 3 dB i mitten.
-        let (pan_l, pan_r) = if modulation.pan.abs() < 0.001 {
-            (1.0, 1.0)
-        } else {
-            let angle = (modulation.pan.clamp(-1.0, 1.0) + 1.0) * 0.25 * std::f32::consts::PI;
-            (angle.cos() * std::f32::consts::SQRT_2, angle.sin() * std::f32::consts::SQRT_2)
-        };
+        // Användarens ratt och modulationsmatrisens pan summeras — annars hade de tagit ut
+        // varandra i stället för att flytta mastern tillsammans.
+        let (pan_l, pan_r) = master_pan_gains(modulation.pan + self.master_pan);
         let out_l = (fx_l * gain * pan_l).tanh();
         let out_r = (fx_r * gain * pan_r).tanh();
 
@@ -213,6 +213,13 @@ impl SynthEngine {
         // 2. Drive / Saturation on Synth
         if self.drive > 1.05 {
             mixed = (mixed * self.drive).tanh() / (self.drive * 0.7 + 0.3);
+            // **TON** sitter efter mättningen, i samma väg som DRIVE. Bara när drivet är på:
+            // annars hade en ratt på 5 kHz lagt ett lågpass över varje syntröst i varje projekt.
+            if self.drive_tone < 19_000.0 {
+                let a = tone_alpha(self.drive_tone, self.sample_rate);
+                self.drive_tone_z += a * (mixed - self.drive_tone_z);
+                mixed = self.drive_tone_z;
+            }
         }
 
         // 3. Per-voice resonant lowpass is applied inside each voice; the synth
@@ -1058,4 +1065,33 @@ impl SynthEngine {
 
         (out_l, out_r)
     }
+}
+
+/// **Masterns bredd**: `(mid + side·width, mid − side·width)`.
+///
+/// 1,0 ger exakt insignalen, 0,0 blir mono, 2,0 fördubblar sidan. Ren funktion, så provet
+/// mäter matematiken och inte en motor.
+pub(crate) fn master_width(l: f32, r: f32, width: f32) -> (f32, f32) {
+    if (width - 1.0).abs() < 0.001 {
+        return (l, r);
+    }
+    let mid = (l + r) * 0.5;
+    let side = (l - r) * 0.5 * width;
+    (mid + side, mid - side)
+}
+
+/// **Masterns panorering**, equal power: mitten ger (1, 1) i stället för 3 dB tapp.
+pub(crate) fn master_pan_gains(pan: f32) -> (f32, f32) {
+    let pan = pan.clamp(-1.0, 1.0);
+    if pan.abs() < 0.001 {
+        return (1.0, 1.0);
+    }
+    let angle = (pan + 1.0) * 0.25 * std::f32::consts::PI;
+    let k = std::f32::consts::SQRT_2;
+    (angle.cos() * k, angle.sin() * k)
+}
+
+/// Koefficienten för en pol lågpass vid `hz` — `y += a·(x − y)`.
+pub(crate) fn tone_alpha(hz: f32, sample_rate: f32) -> f32 {
+    (1.0 - (-std::f32::consts::TAU * hz.max(1.0) / sample_rate.max(1.0)).exp()).clamp(0.0, 1.0)
 }

@@ -72,6 +72,10 @@ fn describe_cmd(cmd: &AudioCommand) -> String {
         AudioCommand::StopAll => "StopAll".to_string(),
         AudioCommand::SetSongPlayback(playing) => format!("SetSongPlayback({})", playing),
         AudioCommand::SetMasterVolume(v) => format!("SetMasterVolume({})", v),
+        AudioCommand::SetMasterPanWidth { pan, width } => {
+            format!("SetMasterPanWidth({pan}, {width})")
+        }
+        AudioCommand::SetDriveTone(hz) => format!("SetDriveTone({hz})"),
         AudioCommand::ClearAllStemTracks => "ClearAllStemTracks".to_string(),
         AudioCommand::LoadStemTrack { track_index, left, right, sample_rate, volume, pan, start_time_secs } => {
             format!(
@@ -158,6 +162,8 @@ fn variant_name(cmd: &AudioCommand) -> &'static str {
         AudioCommand::SetTapeStop { .. } => "SetTapeStop",
         AudioCommand::LoadPreset(_) => "LoadPreset",
         AudioCommand::SetMasterVolume(_) => "SetMasterVolume",
+        AudioCommand::SetMasterPanWidth { .. } => "SetMasterPanWidth",
+        AudioCommand::SetDriveTone(_) => "SetDriveTone",
         AudioCommand::StopAll => "StopAll",
         AudioCommand::LoadStemTrack { .. } => "LoadStemTrack",
         AudioCommand::ClearAllStemTracks => "ClearAllStemTracks",
@@ -454,6 +460,14 @@ pub struct SynthEngine {
     /// Vart talkbacken går: 0 = monitorerna (MIX), 1 = cue A, 2 = cue B.
     pub talkback_cue: u8,
     pub drive: f32,
+    /// Tonkontrollen efter mättningen, i Hz. 20 kHz betyder av (en pol på 20 kHz hörs inte).
+    pub drive_tone: f32,
+    /// Filtrets tillstånd. En pol, mono — samma ställe som mättningen sker.
+    drive_tone_z: f32,
+    /// Masterns panorering (−1…1), oberoende av modulationsmatrisens pan.
+    pub master_pan: f32,
+    /// Masterns bredd: mid/sid-förhållandet. 1,0 = orörd, 0,0 = mono.
+    pub stereo_width: f32,
     pub master_fx: MasterFxChain,
     /// FM-inställningen för syntens röster (DX10/Sytrus-vägen).
     pub fm: FmParams,
@@ -648,6 +662,10 @@ impl SynthEngine {
             reverb: SimpleReverb::new(sample_rate),
             talkback_cue: 0,
             drive: 1.0,
+            drive_tone: 20_000.0,
+            drive_tone_z: 0.0,
+            master_pan: 0.0,
+            stereo_width: 1.0,
             master_fx: MasterFxChain::new(sample_rate),
             fm: FmParams::default(),
             remix_fx: RemixFx::new(sample_rate),

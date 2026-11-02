@@ -462,6 +462,13 @@ impl SynthEngine {
             AudioCommand::SetDrive(drv) => {
                 self.drive = drv.clamp(1.0, 10.0);
             }
+            AudioCommand::SetDriveTone(hz) => {
+                self.drive_tone = hz.clamp(500.0, 20_000.0);
+            }
+            AudioCommand::SetMasterPanWidth { pan, width } => {
+                self.master_pan = pan.clamp(-1.0, 1.0);
+                self.stereo_width = width.clamp(0.0, 2.0);
+            }
             AudioCommand::SetMasterFx(params) => {
                 self.master_fx.set_params(params);
             }

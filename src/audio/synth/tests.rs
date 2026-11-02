@@ -4376,3 +4376,62 @@ fn seeking_back_replays_a_region_the_cursor_passed() {
     }
     assert!(again > 0.1, "efter seek bakåt ska regionen höras igen: topp {again}");
 }
+
+/// **Masterns rattar läste ingen ljudkod.** PAN och BREDD skrevs bara till projektfilen, och
+/// DRIVE-pedalens TON lästes inte alls — tre kontroller som såg funktionella ut. Proven nedan
+/// mäter matematiken de nu går genom; vägen dit är ett kommando och en rad i `finish_master`.
+#[test]
+fn the_master_width_setting_reaches_the_signal() {
+    let (l, r) = (0.8_f32, 0.2_f32);
+    assert_eq!(super::process::master_width(l, r, 1.0), (l, r), "1,0 ska vara orörd");
+
+    let (ml, mr) = super::process::master_width(l, r, 0.0);
+    assert!((ml - mr).abs() < 1e-6, "bredd 0 ska bli mono, fick {ml}/{mr}");
+    assert!((ml - 0.5).abs() < 1e-6, "mono är mittkanalen, fick {ml}");
+
+    let (wl, wr) = super::process::master_width(l, r, 2.0);
+    assert!((wl - 1.1).abs() < 1e-6, "bredd 2 fördubblar sidan, vänster {wl}");
+    assert!((wr + 0.1).abs() < 1e-6, "bredd 2 fördubblar sidan, höger {wr}");
+}
+
+#[test]
+fn the_master_pan_is_equal_power_and_keeps_the_energy() {
+    assert_eq!(super::process::master_pan_gains(0.0), (1.0, 1.0));
+    let (l, r) = super::process::master_pan_gains(-1.0);
+    assert!((l - std::f32::consts::SQRT_2).abs() < 1e-5, "vänster fullt, fick {l}");
+    assert!(r.abs() < 1e-5, "höger tyst, fick {r}");
+    // Equal power: summan av kvadraterna är 2 i varje läge, inte 1 i mitten och 2 ute.
+    for pan in [-1.0_f32, -0.5, 0.0, 0.5, 1.0] {
+        let (l, r) = super::process::master_pan_gains(pan);
+        let energy = l * l + r * r;
+        assert!((energy - 2.0).abs() < 1e-4, "pan {pan} gav energi {energy}");
+    }
+}
+
+#[test]
+fn the_tone_control_takes_the_top_off_a_bright_signal() {
+    let sr = 48_000.0;
+    // En pol vid 1 kHz: 1 kHz ska passera (drygt halva toppen), 8 kHz ska tappas minst 10 dB
+    // mot samma signal genom ett öppet filter.
+    let peak_after = |hz: f32, cutoff: f32| {
+        let a = super::process::tone_alpha(cutoff, sr);
+        let mut z = 0.0_f32;
+        let mut peak = 0.0_f32;
+        for n in 0..4_800 {
+            let x = (std::f32::consts::TAU * hz * n as f32 / sr).sin();
+            z += a * (x - z);
+            if n > 1_000 {
+                peak = peak.max(z.abs());
+            }
+        }
+        peak
+    };
+    let low = peak_after(1_000.0, 1_000.0);
+    let high_closed = peak_after(8_000.0, 1_000.0);
+    let high_open = peak_after(8_000.0, 20_000.0);
+    assert!(low > 0.5, "1 kHz ska passera, topp {low}");
+    assert!(
+        high_closed < 0.32 * high_open,
+        "8 kHz ska dämpas minst 10 dB: {high_closed} mot {high_open}"
+    );
+}
