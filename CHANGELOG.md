@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Tre kontroller som ljög.** Masterns **PAN** skrevs bara till projektfilen och lästes av ingen
+  ljudkod; masterns **BREDD** fanns som fält, startvärde och ratt — och inget mer; drivepedalens
+  **TON** hade ingen läsare alls. Pan och bredd går nu genom ett kommando till `finish_master`
+  (equal power respektive mid/sid; bredd 0 = mono, 1 = orörd, 2 = dubbel sida) och tonen är ett
+  enpolsfilter efter mättningen, i samma väg som DRIVE.
+- **"4x12 Cab" borttagen.** Kryssrutan skrev ett fält som ingen läste; en högtalarsimulering är en
+  impuls och ett filter, inte en kryssruta.
+
+### Changed
+- **Radhöjden i arrangemanget: 120 → 96 px**, och varje spår har egen radzoom (0,5–2,0) som följer
+  med i projektfilen. Ctrl+hjul över spårhuvudet zoomar bara den raden; tre fasta steg ligger i
+  spårets högerklicksmeny. Lanes, patternblock och tagningarnas band följer radens höjd.
+
+Se `docs/EGM-SONIX-GUI.md` — EGM-genomgång 3, gränssnittet: 20 fynd prövade, 4 åtgärdade.
+
 ## [0.9.237] - 2026-11-02
 
 ### Fixed
