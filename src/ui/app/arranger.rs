@@ -120,11 +120,10 @@ pub(crate) fn render_playlist_arranger(&mut self, ui: &mut egui::Ui) {
         // knapparna trycks ihop, och det är samma bredd som mockupens spårhuvud.
         let header_w = 228.0;
         let bar_w = (60.0 * self.suno_zoom_level).clamp(16.0, 1500.0);
-        // Soundtrap-klippen är ~120 px höga; 64 px rad ger klipp på ~56 px utan att
-        // spårhuvudets kontroller behöver flyttas om (de skjuts ned med `ctrl_y_offset`).
-        // **120 px klipphöjd** enligt Soundtrap-blueprinten: klippet fyller nästan hela raden,
-        // och spårhuvudet har plats för den runda ikonen.
-        let row_h = 120.0;
+        // **96 px rad.** 120 px gav en tom nedre halva i spårhuvudet (dess innehåll slutar
+        // vid ~60 px) utan att klippet blev lättare att läsa. Alex 2026-11-02: "lite smalare,
+        // inte så höga" — och varje rad kan zoomas för sig, se `row_scale`.
+        let row_h = 96.0;
         let ruler_h = 32.0;
         // **Tidsaxeln går genom tempokartan** (Fas 8.2 steg 3). X är fortfarande takter
         // (`bar_w` per takt); varje gång en *sekund* behövs frågas kartan i stället för att
@@ -877,10 +876,20 @@ impl SonixApp {
                     || (t_idx == self.playlist_tracks.len() - 1 && track_name.to_lowercase().contains("mik"));
                 // Mikrofonspåret har samma höjd som de andra (Alex 2026-10-24) — den dubbla
                 // höjden gav en tom vit yta som inte visade något inspelningen behövde.
-                let track_row_h = row_h;
+                let track_row_h = row_height(row_h, self.playlist_tracks[t_idx].row_scale);
 
                 // Left Track Header Card (Sonix Style)
                 let (h_rect, h_resp) = ui.allocate_exact_size(Vec2::new(header_w, track_row_h), Sense::click_and_drag());
+                // **Ctrl+hjul över spårhuvudet zoomar den raden**, inte alla (Alex 2026-11-02):
+                // man vill ofta se en tagning närmare utan att de andra tar plats. Ändringen
+                // syns nästa bildruta — rutan är redan tilldelad med den gamla höjden.
+                if h_resp.hovered() && ui.input(|i| i.modifiers.ctrl) {
+                    let scroll = ui.input(|i| i.raw_scroll_delta.y);
+                    if scroll.abs() > 0.0 {
+                        let scale = &mut self.playlist_tracks[t_idx].row_scale;
+                        *scale = (*scale * if scroll > 0.0 { 1.15 } else { 0.87 }).clamp(0.5, 2.0);
+                    }
+                }
                 // **Dra rubriken för att flytta spåret** (REAPER). Ett klick utan rörelse
                 // går fortfarande till markeringen; en dragning flyttar vid släpp.
                 // Bara namnytan får starta en spårdragning: knapparna till höger
@@ -1100,6 +1109,24 @@ impl SonixApp {
                         self.move_selected_track(1);
                         ui.close_menu();
                     }
+                    ui.separator();
+                    // Radhöjd per spår (Alex 2026-11-02). Tre fasta steg räcker: det fria
+                    // reglaget är Ctrl+hjul över spårhuvudet.
+                    for (label, scale) in [
+                        ("↕ Raden: smal", 0.6_f32),
+                        ("↕ Raden: normal", 1.0),
+                        ("↕ Raden: hög", 1.6),
+                    ] {
+                        if ui.button(crate::i18n::t(label)).clicked() {
+                            self.playlist_tracks[t_idx].row_scale = scale;
+                            ui.close_menu();
+                        }
+                    }
+                    ui.label(
+                        egui::RichText::new(crate::i18n::t("Ctrl+hjul över spårhuvudet zoomar bara den raden"))
+                            .small()
+                            .color(crate::ui::theme::palette().text_muted()),
+                    );
                     ui.separator();
                     if ui.button(crate::i18n::t("🔲 Markera alla regioner på spåret")).clicked() {
                         self.select_all_regions(&[t_idx]);
@@ -1591,7 +1618,7 @@ impl SonixApp {
                             || track_name.to_lowercase().contains("mikrofon")
                             || track_name.to_lowercase().contains("microphone")
                             || (t_idx == self.playlist_tracks.len() - 1 && track_name.to_lowercase().contains("mik"));
-                        let track_row_h = row_h;
+                        let track_row_h = row_height(row_h, self.playlist_tracks[t_idx].row_scale);
 
                         // Full Timeline Track Lane (Scalable width with total_bars)
                         let (lane_rect, lane_resp) = ui.allocate_exact_size(Vec2::new(timeline_total_w, track_row_h), Sense::click_and_drag());
@@ -2597,7 +2624,7 @@ impl SonixApp {
                                             .clamp(1, 4)
                                             .min(32 - bar_idx);
                                         let c_min_x = lane_rect.min.x + bar_idx as f32 * bar_w;
-                                        let c_rect = Rect::from_min_size(Pos2::new(c_min_x + 1.0, lane_rect.min.y + 2.0), Vec2::new(bar_w * span as f32 - 2.0, row_h - 4.0));
+                                        let c_rect = Rect::from_min_size(Pos2::new(c_min_x + 1.0, lane_rect.min.y + 2.0), Vec2::new(bar_w * span as f32 - 2.0, track_row_h - 4.0));
                                         ui.painter().rect_filled(c_rect, Rounding::same(2.0), track_color);
                                         // **Lane-vyn** (0.9.46): varje tagning är en tunn rad i
                                         // blocket, och den lane som spelas i respektive takt är
@@ -2605,8 +2632,8 @@ impl SonixApp {
                                         // finns inget att välja mellan.
                                         if let Some(pat) = self.patterns.get(pat_idx) {
                                             let lanes = pat.take_lanes().len();
-                                            if lanes > 1 && row_h > 26.0 {
-                                                let band_h = (row_h - 4.0) / lanes as f32;
+                                            if lanes > 1 && track_row_h > 26.0 {
+                                                let band_h = (track_row_h - 4.0) / lanes as f32;
                                                 for b in 0..span {
                                                     // Kompningen är nycklad på **takt inom patternet**,
                                                     // inte på songtakt: `bar_idx` är songtakt, och ett
@@ -3383,6 +3410,12 @@ impl SonixApp {
 
 /// Tidlinjens geometri — **namngiven**, inte positionsbunden.
 ///
+/// En rads höjd ur spårets egen zoom. Kläms så att en rad aldrig blir mindre än att
+/// M/S/R/F-knapparna får plats (de slutar på 18 + 18 px från radens topp) eller slukar vyn.
+pub(crate) fn row_height(base: f32, scale: f32) -> f32 {
+    (base * scale).clamp(44.0, 400.0)
+}
+
 /// `header_w` och `row_h` är båda `f32`, och det här repot har redan kostat på sig en
 /// förväxling mellan två tal av samma typ. Med namngivna fält kan anroparen inte byta
 /// plats på dem utan att skriva fel namn.
@@ -3739,5 +3772,21 @@ impl SonixApp {
                     self.sync_track_regions(t_idx);
                 }
             }
+    }
+}
+
+#[cfg(test)]
+mod row_height_tests {
+    use super::row_height;
+
+    /// Raden får inte bli så låg att M/S/R/F hamnar utanför, och inte så hög att
+    /// en enda rad äter hela vyn. Gränserna gäller även för en fil med trasigt värde.
+    #[test]
+    fn a_row_stays_between_its_limits() {
+        assert_eq!(row_height(96.0, 1.0), 96.0);
+        assert_eq!(row_height(96.0, 0.0), 44.0);
+        assert_eq!(row_height(96.0, 100.0), 400.0);
+        // Standardraden gånger zoom: 96 * 1,6 = 153,6 — kontrollerna (60 px) får plats.
+        assert!((row_height(96.0, 1.6) - 153.6).abs() < 0.01);
     }
 }

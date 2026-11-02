@@ -967,6 +967,10 @@ pub struct SavedTrackData {
     pub notes: String,
     pub volume: f32,
     pub pan: f32,
+    /// Radens höjd som faktor av standardraden. Saknas i äldre filer — då är raden
+    /// normal, precis som förut.
+    #[serde(default = "default_row_scale")]
+    pub row_scale: f32,
     pub muted: bool,
     pub solo: bool,
     pub clips: [Option<usize>; 32],
@@ -1029,6 +1033,11 @@ fn default_sidechain_threshold_db() -> f32 {
     -30.0
 }
 
+/// Standardradhöjd för ett spår som sparades innan raden kunde zoomas.
+fn default_row_scale() -> f32 {
+    1.0
+}
+
 /// Ett fruset spår i projektfilen. Ljudet ligger i en fil i projektets egen
 /// materialmapp — filen bär sökvägen, inte ljudet, precis som för samplingar.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, PartialEq)]
@@ -1088,6 +1097,8 @@ pub struct PreloadedTrackData {
     pub notes: String,
     pub volume: f32,
     pub pan: f32,
+    /// Radens höjd i arrangemanget (se `PlaylistTrack::row_scale`).
+    pub row_scale: f32,
     pub muted: bool,
     pub solo: bool,
     pub regions: Vec<AudioRegion>,
@@ -1944,6 +1955,7 @@ pub fn load_demo_project(&mut self) {
                 notes: String::new(),
                 volume: 0.90,
                 pan: 0.0,
+                row_scale: 1.0,
                 muted: false,
                 solo: false,
                 regions: Vec::new(),
@@ -2035,6 +2047,7 @@ pub(crate) fn project_data(&self, name: &str) -> SonixProjectData {
         notes: t.notes.clone(),
         volume: t.volume,
         pan: t.pan,
+        row_scale: t.row_scale,
         muted: t.muted,
         solo: t.solo,
         clips: t.clips,
@@ -2476,6 +2489,7 @@ pub fn load_project_file(&mut self, path_str: &str) {
                 notes: st.notes,
                 volume: st.volume,
                 pan: st.pan,
+                row_scale: st.row_scale,
                 muted: st.muted,
                 solo: st.solo,
                 regions,
@@ -2681,6 +2695,7 @@ pub fn apply_loaded_project_payload(&mut self, payload: LoadedProjectPayload) {
         loaded_track.notes = st.notes;
         loaded_track.volume = st.volume;
         loaded_track.pan = st.pan;
+        loaded_track.row_scale = st.row_scale;
         loaded_track.muted = st.muted;
         loaded_track.solo = st.solo;
         loaded_track.regions = st.regions;
@@ -3172,5 +3187,32 @@ mod project_tempo_evidence_tests {
         );
         // Ingen karta och inga paket: inget bevis alls.
         assert_eq!(project_tempo_from_evidence(120.0, &[], true, &[]), None);
+    }
+}
+
+#[cfg(test)]
+mod row_scale_tests {
+    use super::SavedTrackData;
+
+    /// En fil som sparades innan raden kunde zoomas får normal radhöjd — och en zoom
+    /// som sparats kommer tillbaka. Båda hållen behövs: defaulten är det som gör att
+    /// gamla projekt öppnas alls, och värdet är det som gör zoomen till en inställning.
+    #[test]
+    fn an_old_file_gets_a_normal_row_and_a_new_one_keeps_its_zoom() {
+        let clips = "[null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,null]";
+        let old = format!(
+            r#"{{"name":"A","volume":0.8,"pan":0.0,"muted":false,"solo":false,"clips":{clips},"regions":[]}}"#
+        );
+        let parsed: SavedTrackData = serde_json::from_str(&old).expect("old track");
+        assert_eq!(parsed.row_scale, 1.0);
+
+        let zoomed = format!(
+            r#"{{"name":"A","volume":0.8,"pan":0.0,"row_scale":1.6,"muted":false,"solo":false,"clips":{clips},"regions":[]}}"#
+        );
+        let parsed: SavedTrackData = serde_json::from_str(&zoomed).expect("zoomed track");
+        assert_eq!(parsed.row_scale, 1.6);
+        let round = serde_json::to_string(&parsed).expect("serialize");
+        let back: SavedTrackData = serde_json::from_str(&round).expect("round trip");
+        assert_eq!(back.row_scale, 1.6);
     }
 }

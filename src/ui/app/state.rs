@@ -1375,6 +1375,11 @@ pub struct PlaylistTrack {
     pub color: Color32,
     pub volume: f32,
     pub pan: f32,
+    /// Radens höjd i arrangemanget som faktor av standardraden (0,5–2,0). Alex
+    /// 2026-11-02: en rad behöver kunna zoomas för sig — man vill se en tagning
+    /// närmare utan att de andra blir lika höga. En vy-inställning, men den ligger
+    /// på spåret så att den följer med när spåret flyttas eller dupliceras.
+    pub row_scale: f32,
     pub muted: bool,
     pub solo: bool,
     #[allow(dead_code)]
@@ -1902,6 +1907,7 @@ impl PlaylistTrack {
             color,
             volume: 0.85,
             pan: 0.0,
+            row_scale: 1.0,
             muted: false,
             solo: false,
             is_rec_armed: false,
