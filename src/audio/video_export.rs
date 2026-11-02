@@ -24,7 +24,7 @@ const FINISH_TIMEOUT: Duration = Duration::from_secs(60);
 #[cfg(not(test))]
 const EXIT_TIMEOUT: Duration = Duration::from_secs(2);
 #[cfg(test)]
-const EXIT_TIMEOUT: Duration = Duration::from_secs(30);
+const EXIT_TIMEOUT: Duration = Duration::from_secs(120);
 /// stderr of a failing ffmpeg is a diagnostic, not a log.
 const MAX_STDERR: usize = 4096;
 

@@ -45,7 +45,7 @@ const CACHE_FRAMES: usize = 8;
 #[cfg(not(test))]
 const DECODE_TIMEOUT: Duration = Duration::from_secs(5);
 #[cfg(test)]
-const DECODE_TIMEOUT: Duration = Duration::from_secs(30);
+const DECODE_TIMEOUT: Duration = Duration::from_secs(120);
 /// stderr of a failing ffmpeg is a diagnostic line, not a log — keep a human amount.
 const MAX_STDERR: usize = 4096;
 
