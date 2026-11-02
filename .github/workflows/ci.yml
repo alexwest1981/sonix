@@ -48,7 +48,7 @@ jobs:
               -o Acquire::https::Timeout=10 update || true
             if sudo timeout 90 apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=10 \
               -o Acquire::https::Timeout=10 install -y --no-install-recommends \
-              build-essential pkg-config libasound2-dev; then
+              build-essential pkg-config libasound2-dev ffmpeg; then
               break
             fi
             echo "apt-försök $attempt gick inte igenom — försöker igen"
@@ -128,9 +128,8 @@ jobs:
           fi
 
   neural:
-    name: Build & test (neural, non-blocking)
+    name: Build & test (neural)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -150,7 +149,7 @@ jobs:
               -o Acquire::https::Timeout=10 update || true
             if sudo timeout 90 apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=10 \
               -o Acquire::https::Timeout=10 install -y --no-install-recommends \
-              build-essential pkg-config libasound2-dev; then
+              build-essential pkg-config libasound2-dev ffmpeg; then
               break
             fi
             echo "apt-försök $attempt gick inte igenom — försöker igen"

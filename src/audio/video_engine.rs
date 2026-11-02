@@ -322,6 +322,12 @@ mod tests {
 
     fn fixture(tag: &str) -> Option<Fixture> {
         if !VideoSource::is_available() {
+            // **I CI är en utebliven ffmpeg ett fel, inte ett hopp.** Utan den här raden
+            // rapporterade sjutton videoprov "ok" genom att aldrig köra — grönt utan täckning.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "{tag}: ffmpeg is missing in CI — install it instead of skipping the video tests"
+            );
             println!("skipping {tag}: ffmpeg is not installed, nothing can be decoded");
             return None;
         }
