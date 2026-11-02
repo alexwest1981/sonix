@@ -901,6 +901,28 @@ impl SonixApp {
         });
     }
 
+    /// Plays one library row: the file is fetched (one credit) and opened in the system player.
+    pub fn suno_play_library(&mut self, index: usize) {
+        let Some(song) = self.suno_library.get(index).cloned() else {
+            return;
+        };
+        if self.suno_pending.is_some() {
+            return;
+        }
+        self.suno_library_pending = Some(index);
+        let slot: SharedResult<SunoTask> = Arc::new(Mutex::new(None));
+        self.suno_pending = Some(slot.clone());
+        self.suno_status = crate::tstatus!("🎧 Hämtar {} — en kredit…", song.title);
+        std::thread::spawn(move || {
+            let result = crate::audio::suno::SunoSession::connect()
+                .and_then(|mut session| session.download_song_confirmed(&song.id))
+                .map(SunoTask::Generated);
+            if let Ok(mut guard) = slot.lock() {
+                *guard = Some(result);
+            }
+        });
+    }
+
     /// Separates the chosen alternative — in place in the Suno tab, with the progress bar.
     pub fn suno_separate_clip(&mut self, index: usize) {
         let Some(file) = self
@@ -1037,7 +1059,8 @@ impl SonixApp {
             }
             Ok(SunoTask::Workspaces(list)) => {
                 self.suno_workspaces = list;
-                self.suno_status = String::new();
+                // Modellistan ligger i kontosvaret; ta den direkt efter, en fråga i taget.
+                self.suno_load_meta(SunoMeta::Account);
             }
             Ok(SunoTask::Clips(songs)) => {
                 for song in songs {
@@ -1079,6 +1102,14 @@ impl SonixApp {
         use crate::ui::app::import::{SunoArrival, classify_suno_files};
         // **Kedjan.** Servern skapade clips men lämnade inga filer: ljudet kostar en
         // nedladdningskredit. Är hämtningen förvald tar vi den nu, utan ett extra klick.
+        if self.suno_library_pending.take().is_some() {
+            if let Some(file) = song.files.first().cloned() {
+                crate::platform::open_path(&file.to_string_lossy());
+                self.suno_status = crate::i18n::t("🎧 Spelar upp i systemets spelare.").to_string();
+            }
+            self.suno_last = Some(song);
+            return;
+        }
         if let Some(index) = self.suno_clip_pending.take() {
             // Hämtningen gällde lyssning: filen hör till raden, inte till arrangemanget.
             if let Some(file) = song.files.first().cloned() {

@@ -47,6 +47,21 @@ pub struct GeneratedSong {
 pub const NEEDS_CREDIT: &str =
     "suno: the download costs one credit — confirm with the user first";
 
+/// `allowed_models` ur ett verktygssvar, var det än ligger i kuvertet.
+fn str_list_at_models(reply: &Value) -> Vec<String> {
+    let expanded = expand(reply);
+    expanded
+        .get("allowed_models")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// Varje clip-id i svaret: `clip_ids` när det finns, annars det enskilda `id`:t.
 fn clip_ids(payload: &Value) -> Vec<String> {
     let listed: Vec<String> = payload
@@ -594,7 +609,13 @@ impl SunoSession {
             raw.insert(name.clone(), payload);
         }
         println!("suno: account — credits {credits:?}, plan {plan:?}");
+        // `allowed_models` ligger i `account-usage`; listan styr vilka modeller panelen får erbjuda.
+        let models: Vec<String> = raw
+            .values()
+            .flat_map(str_list_at_models)
+            .collect();
         Ok(SunoAccount {
+            models,
             credits,
             plan,
             raw: Value::Object(raw),
@@ -650,6 +671,8 @@ pub struct SunoWorkspace {
 /// Credits and plan, whichever account reply carried them.
 #[derive(Debug, Clone)]
 pub struct SunoAccount {
+    /// Modell-etiketter kontot får skicka (`allowed_models` från `account-usage`).
+    pub models: Vec<String>,
     pub credits: Option<f64>,
     pub plan: Option<String>,
     /// Tool name → that tool's reply.

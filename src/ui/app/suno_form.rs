@@ -274,8 +274,9 @@ pub fn fallback_fields() -> Vec<(String, SunoField)> {
         ),
         (
             "model".to_string(),
+            // Ingen förvald modell: användaren väljer ur kontots `allowed_models`.
             SunoField::Text {
-                value: "v6".to_string(),
+                value: String::new(),
                 multiline: false,
             },
         ),

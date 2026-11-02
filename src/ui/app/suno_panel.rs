@@ -344,9 +344,44 @@ impl SonixApp {
                     for (slot, label) in [
                         (slots.vocal_gender, "Sångröst"),
                         (slots.duration, "Längd"),
-                        (slots.model, "Modell"),
                     ] {
                         self.suno_field_choice(ui, slot, label);
+                    }
+                    // **Modellen väljs ur kontots lista**, aldrig en tyst standardmodell.
+                    if let Some(index) = slots.model {
+                        let models: Vec<String> = self
+                            .suno_account
+                            .as_ref()
+                            .map(|a| a.models.clone())
+                            .unwrap_or_default();
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new(crate::i18n::t("Modell")).size(Theme::FONT_S));
+                            if models.is_empty() {
+                                ui.label(
+                                    RichText::new(crate::i18n::t(
+                                        "Hämta kontot under fliken Konto för modellistan",
+                                    ))
+                                    .size(Theme::FONT_XS)
+                                    .color(palette().text_muted()),
+                                );
+                            } else if let Some((_, SunoField::Text { value, .. })) =
+                                self.suno_form.get_mut(index)
+                            {
+                                let chosen = if value.trim().is_empty() {
+                                    crate::i18n::t("(planens standard)").to_string()
+                                } else {
+                                    value.clone()
+                                };
+                                egui::ComboBox::from_id_salt("suno_model")
+                                    .selected_text(chosen)
+                                    .show_ui(ui, |ui| {
+                                        ui.selectable_value(value, String::new(), "(planens standard)");
+                                        for model in &models {
+                                            ui.selectable_value(value, model.clone(), model);
+                                        }
+                                    });
+                            }
+                        });
                     }
                     for (slot, label) in [
                         (slots.instrumental, "Instrumental (ingen sång)"),
@@ -633,6 +668,7 @@ impl SonixApp {
             .collect();
         let mut import: Option<usize> = None;
         let mut confirm: Option<usize> = None;
+        let mut play: Option<usize> = None;
         for (index, (title, meta, index_id)) in rows.iter().enumerate() {
             ui.horizontal(|ui| {
                 ui.label(RichText::new(title).size(Theme::FONT_S));
@@ -641,6 +677,13 @@ impl SonixApp {
                         .size(Theme::FONT_XS)
                         .color(palette().text_muted()),
                 );
+                if ui
+                    .add_enabled(!pending, egui::Button::new(crate::i18n::t("🎧")))
+                    .on_hover_text(crate::i18n::t("Lyssna — hämtar filen, 1 kredit"))
+                    .clicked()
+                {
+                    play = Some(index);
+                }
                 // Kostar hämtningen en kredit visar raden det innan något spendera.
                 if self.suno_credit_song.as_deref() == Some(index_id.as_str()) {
                     if ui
@@ -659,6 +702,9 @@ impl SonixApp {
                     import = Some(index);
                 }
             });
+        }
+        if let Some(index) = play {
+            self.suno_play_library(index);
         }
         if let Some(index) = import {
             self.suno_import_song(index);

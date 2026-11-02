@@ -374,6 +374,9 @@ pub fn start_stem_separation_with(&mut self, path: &str, show_view: bool) {
     self.stem_separation_active = true;
     self.stem_project.is_separating = true;
     self.stem_project.progress = 0.0;
+    // **Filen spelas i sin egen takt.** Sunos mp3 är 44,1 kHz; projektets motor går i 48 kHz.
+    // Utan den här raden märktes stämmorna som 48 kHz och spelades en smurf hög.
+    self.stem_project.sample_rate = sr;
     self.stem_project.source_path = Some(path.to_string());
     self.stem_project.track_title = std::path::Path::new(path)
         .file_name()

@@ -621,6 +621,8 @@ pub struct SonixApp {
     pub suno_clips: Vec<SunoClip>,
     /// Nedladdningen som pågår hör till den här raden (för lyssning, inte import).
     pub suno_clip_pending: Option<usize>,
+    /// Lyssning på en rad i biblioteket (hämtas, öppnas, importeras inte).
+    pub suno_library_pending: Option<usize>,
     /// Separationen startades från Suno: skicka stämmorna till Arrangera när hon är klar.
     pub suno_chain: bool,
     /// Källor för cover (Audio) och mashup (Inspo): clip-id från biblioteket.
@@ -1378,6 +1380,7 @@ impl SonixApp {
             suno_pick: None,
             suno_clips: Vec::new(),
             suno_clip_pending: None,
+            suno_library_pending: None,
             suno_chain: false,
             suno_source_song: None,
             suno_inspo_song: None,
