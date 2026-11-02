@@ -184,8 +184,14 @@ Inte prioriterat: skanningen är bakgrundsarbete och cachen träffar normalt.
 | CI: jack/python + nattliga ignore-prov | ⏳ | två steg i `ci.yml` |
 | `modals.rs`, `arranger.rs`-delning | ⏳ | nästa strukturella pass |
 
-Prov efter åtgärderna: **1 368 gröna, 0 röda, 20 ignorerade** (19,7 s). `cargo check --no-default-features`
-0 varningar.
+Prov efter åtgärderna: **1 368 gröna, 0 röda, 20 ignorerade** (19,7 s) i basbenet och **1 437 gröna**
+i plugin-host-benet. `cargo check --no-default-features` 0 varningar, `cargo build --release --locked
+--no-default-features` 1 m 20 s.
+
+**CI efter rundan:** alla fem jobb gröna (körning `41496326702`), inklusive `--no-default-features`,
+Windows-bygget, neural-benet, release-paketen och rökproven på debian:12, ubuntu:22.04/24.04,
+fedora:41 och rockylinux:9. Plugin-host-benet föll först i `apt`-steget (spegel-timeout, inte koden);
+omkörningen av det jobbet gick grönt.
 
 ---
 
