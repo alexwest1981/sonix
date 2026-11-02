@@ -584,6 +584,10 @@ pub struct SynthEngine {
     /// sample, så att en buss vars mål är tystat inte blir stående och läcker in i nästa.
     /// Bufferten återanvänds — ingen allokering per sample.
     pub plugin_bus_in: Vec<[f32; 2]>,
+    /// **Sidechain key taps** (Fas 8.3): every track's last output `(left, right)`
+    /// for the sample being rendered. Reused — a `collect()` here cost one heap
+    /// allocation per sample (32 tracks: 4.29 ms worst block, 2.67 ms budget).
+    pub key_taps: Vec<(f32, f32)>,
     // Debug heartbeat counters (only used when SONIX_AUDIO_DEBUG is set)
     pub dbg_frames: u64,
 }
@@ -697,6 +701,7 @@ impl SynthEngine {
             track_out_r: Vec::new(),
             stem_incoming: Vec::new(),
             plugin_bus_in: Vec::new(),
+            key_taps: Vec::new(),
             dbg_frames: 0,
         }
     }

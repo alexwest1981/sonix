@@ -1878,13 +1878,22 @@ pub(crate) fn render_channel_rack(&mut self, ui: &mut egui::Ui) {
                                     }
                                     match entry.kind {
                                         InstrumentKind::Builtin | InstrumentKind::JsFx => {
-                                            let _ = self.engine.send_command(
-                                                crate::audio::command::AudioCommand::SetInstrument {
-                                                    path: Some(entry.path.clone()),
-                                                },
-                                            );
-                                            self.status_message =
-                                                crate::tstatus!("🎹 Källa: {}", entry.name);
+                                            // Built on this thread; the audio thread swaps it.
+                                            match crate::audio::command::build_instrument(
+                                                Some(&entry.path),
+                                                self.engine.sample_rate as f32,
+                                            ) {
+                                                Ok(source) => {
+                                                    let _ = self.engine.send_command(
+                                                        crate::audio::command::AudioCommand::SetInstrument {
+                                                            source,
+                                                        },
+                                                    );
+                                                    self.status_message =
+                                                        crate::tstatus!("🎹 Källa: {}", entry.name);
+                                                }
+                                                Err(err) => self.status_message = err,
+                                            }
                                         }
                                         InstrumentKind::Sfz => match crate::audio::sfz::load(&entry.path) {
                                             Ok(inst) => {

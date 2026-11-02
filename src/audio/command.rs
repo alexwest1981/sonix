@@ -707,9 +707,34 @@ pub enum AudioCommand {
     PatcherNoteOff,
     /// Ett JSFX-instrument som **källa** i stället för syntens röster (`None` = tillbaka till
     /// rösterna). Det är den enda vägen noter och en JSFX möts: synten äger noterna.
+    ///
+    /// The source is **built on the UI thread** by [`build_instrument`]: the audio thread
+    /// only swaps the box. A file read + JSFX compile here took 17.3–18.6 ms — 6.5 missed
+    /// buffers, heard as a click.
     SetInstrument {
-        path: Option<String>,
+        source: Option<Box<dyn crate::audio::plugin_host_live::PluginProcessor>>,
     },
+}
+
+/// Builds the source for [`AudioCommand::SetInstrument`] on the **caller's** thread: builtin
+/// pseudo-paths directly, otherwise a file read + JSFX compile. The audio thread receives a
+/// finished `Box` to put in `instrument` — it never touches the filesystem and never compiles.
+pub fn build_instrument(
+    path: Option<&str>,
+    sample_rate: f32,
+) -> Result<Option<Box<dyn crate::audio::plugin_host_live::PluginProcessor>>, String> {
+    Ok(match path {
+        // The builtin wavetable goes through the same source as a JSFX instrument: a
+        // pseudo-path, so the command and the UI button are the same thing.
+        Some(crate::audio::builtin_fx::wavetable_fx::WAVETABLE_SOURCE_PATH) => Some(Box::new(
+            crate::audio::builtin_fx::wavetable_fx::WavetableSource::new(sample_rate),
+        )),
+        Some(crate::audio::builtin_fx::modal_fx::MODAL_SOURCE_PATH) => Some(Box::new(
+            crate::audio::builtin_fx::modal_fx::ModalSource::new(sample_rate),
+        )),
+        Some(p) => Some(crate::audio::jsfx::processor::load(p, sample_rate)?),
+        None => None,
+    })
 }
 
 /// En send: en del av spårets signal till en annan buss (Fas 8.13).

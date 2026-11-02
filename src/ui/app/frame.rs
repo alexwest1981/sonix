@@ -232,9 +232,19 @@ impl SonixApp {
                         self.engine.sample_rate as f32,
                     );
                     if let Some(path) = &actions.instrument {
-                        let _ = self
-                            .engine
-                            .send_command(AudioCommand::SetInstrument { path: Some(path.clone()) });
+                        // Built here, on the UI thread: the audio thread then only swaps the
+                        // box — a file read + JSFX compile there cost 17–19 ms (6 buffers).
+                        match crate::audio::command::build_instrument(
+                            Some(path),
+                            self.engine.sample_rate as f32,
+                        ) {
+                            Ok(source) => {
+                                let _ = self
+                                    .engine
+                                    .send_command(AudioCommand::SetInstrument { source });
+                            }
+                            Err(err) => self.status_message = err,
+                        }
                     }
                     if let Some((path, track)) = actions.load_into_track {
                         self.load_plugin_into_track(&path, track);

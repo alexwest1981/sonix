@@ -154,7 +154,8 @@ mod tests {
         use crate::audio::synth::SynthEngine;
         let mut synth = SynthEngine::new(44_100.0);
         synth.handle_command(crate::audio::command::AudioCommand::SetInstrument {
-            path: Some(MODAL_SOURCE_PATH.to_string()),
+            source: crate::audio::command::build_instrument(Some(MODAL_SOURCE_PATH), 44_100.0)
+                .expect("builtin source"),
         });
         synth.handle_command(crate::audio::command::AudioCommand::NoteOn {
             note: 60,

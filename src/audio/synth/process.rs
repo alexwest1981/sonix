@@ -477,11 +477,11 @@ impl SynthEngine {
             // Sidokedjor (Fas 8.3): nyckelsignalerna är varje spårs senaste
             // utgångssample. De kopieras hit av samma skäl som gruppläget ovan —
             // loopen lånar `stem_tracks` mutabelt och kan inte läsa ett annat spår.
-            let key_taps: Vec<(f32, f32)> = self
-                .stem_tracks
-                .iter()
-                .map(|t| (t.last_out_l, t.last_out_r))
-                .collect();
+            // The buffer is reused (take/clear/extend/restore): the `collect()` that
+            // used to sit here allocated once per sample — 48 000 times a second.
+            let mut key_taps = std::mem::take(&mut self.key_taps);
+            key_taps.clear();
+            key_taps.extend(self.stem_tracks.iter().map(|t| (t.last_out_l, t.last_out_r)));
 
             // Buffetarna för det **pågående samplet** tas ut ur self: loopen lånar
             // `stem_tracks` mutabelt och kan inte läsa en annan medlem samtidigt. De
@@ -837,6 +837,7 @@ impl SynthEngine {
             self.track_out_r = out_r;
             self.stem_incoming = incoming;
             self.plugin_bus_in = plugin_bus_in;
+            self.key_taps = key_taps;
         }
 
         // Ljudklockan går så länge transporten rullar (Fas 8.13b) — också i ett projekt

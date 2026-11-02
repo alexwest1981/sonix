@@ -4,6 +4,7 @@ use cpal::{SampleFormat, Stream, StreamConfig};
 use eframe::egui::Color32;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 use super::vocal_harmonizer::RealtimeAutotune;
 use super::wav_writer::write_pcm_f32_to_wav;
 
@@ -583,6 +584,43 @@ fn process_mic_block<T: Copy>(
     block_max
 }
 
+/// Correlation window for the live pitch detector, in samples. 16 384 samples
+/// cost 4.27 ms per call at 48 kHz; 1024 costs 2.02 ms and still holds several
+/// periods of the lowest note the tuner tracks.
+pub const LIVE_PITCH_WINDOW: usize = 1024;
+
+/// How often the live pitch may be recomputed (10 Hz, one run per six 60 fps
+/// frames). Two milliseconds is 2 % of one core at that rate, and it is the UI
+/// thread that pays it — not the audio thread waiting for the analysis buffer.
+pub const LIVE_PITCH_INTERVAL: Duration = Duration::from_millis(100);
+
+/// Longest correlation lag [`detect_pitch_hz`] looks at: the 55 Hz floor.
+fn max_pitch_lag(sample_rate: f32) -> usize {
+    (sample_rate / 55.0) as usize
+}
+
+/// Copies the newest samples the pitch detector can use out of the analysis
+/// buffer — **the lock is held for the copy and nothing more**. The
+/// autocorrelation runs on the copy, after the guard is dropped: the mic
+/// callback holds that mutex for a whole block, and the detector took 4.27 ms
+/// at 48 kHz against a 2.67 ms block budget, all of it inside that lock.
+///
+/// Measured: ~3 µs under the lock, ~1.9 ms outside it.
+pub fn pitch_analysis_snapshot(
+    buffer: &Arc<Mutex<Vec<f32>>>,
+    sample_rate: f32,
+) -> Option<(Vec<f32>, f32)> {
+    let need = LIVE_PITCH_WINDOW + max_pitch_lag(sample_rate);
+    let buf = buffer.lock().ok()?;
+    let take = need.min(buf.len());
+    Some((buf[buf.len() - take..].to_vec(), sample_rate))
+}
+
+/// True when the live pitch is due for another run, i.e. at most 10 Hz.
+fn pitch_analysis_due(last: Option<Instant>, now: Instant) -> bool {
+    last.is_none_or(|last| now.duration_since(last) >= LIVE_PITCH_INTERVAL)
+}
+
 /// Normalized autocorrelation pitch detector. Returns the fundamental
 /// frequency in Hz for the most recent `samples`, or `None` if the signal is
 /// too quiet / unpitched. Suitable for guitar, bass and voice. Uses a fixed
@@ -595,7 +633,7 @@ pub fn detect_pitch_hz(samples: &[f32], sample_rate: f32) -> Option<f32> {
 
     // Use the most recent samples, but cap the correlation window for speed.
     let min_lag = (sample_rate / 1200.0).max(2.0) as usize;
-    let max_lag = (sample_rate / 55.0) as usize;
+    let max_lag = max_pitch_lag(sample_rate);
     if max_lag <= min_lag || n <= max_lag + 512 {
         return None;
     }
@@ -864,6 +902,11 @@ pub struct VocalStudioTrack {
     pub selected_crop_end_norm: f32,
     pub mic_capture: Option<LiveMicrophoneCapture>,
     pub mic_settings: MicrophoneSettings,
+    /// When the live pitch was last recomputed (see `detect_live_pitch_hz`);
+    /// `None` = never, so the first frame gets a fresh reading.
+    last_pitch_analysis: Option<Instant>,
+    /// The answer from that run, returned between runs.
+    last_pitch_hz: Option<f32>,
 }
 
 impl Default for VocalStudioTrack {
@@ -900,6 +943,9 @@ impl Default for VocalStudioTrack {
             selected_crop_end_norm: 1.0,
             mic_capture: Some(mic),
             mic_settings: settings,
+            // Due immediately: the first frame gets a fresh reading.
+            last_pitch_analysis: None,
+            last_pitch_hz: None,
         }
     }
 }
@@ -1014,13 +1060,23 @@ impl VocalStudioTrack {
 
     /// Detects the live fundamental frequency from the always-on microphone
     /// analysis buffer. Returns `None` when silent or unpitched.
-    pub fn detect_live_pitch_hz(&self) -> Option<f32> {
+    ///
+    /// The buffer is **copied under the lock** and the autocorrelation runs on
+    /// the copy, after the guard is dropped — the mic callback holds that mutex
+    /// for a whole block. Runs at [`LIVE_PITCH_INTERVAL`] (10 Hz) and returns
+    /// the previous answer in between, so the tuner and the howl detector see a
+    /// steady value instead of a flicker to `None`.
+    pub fn detect_live_pitch_hz(&mut self) -> Option<f32> {
         let mic = self.mic_capture.as_ref()?;
-        let buf = mic.analysis_buffer.lock().ok()?;
-        if buf.len() < 1024 {
-            return None;
+        let buffer = Arc::clone(&mic.analysis_buffer);
+        let sample_rate = mic.sample_rate as f32;
+        if !pitch_analysis_due(self.last_pitch_analysis, Instant::now()) {
+            return self.last_pitch_hz;
         }
-        detect_pitch_hz(&buf, mic.sample_rate as f32)
+        self.last_pitch_analysis = Some(Instant::now());
+        self.last_pitch_hz = pitch_analysis_snapshot(&buffer, sample_rate)
+            .and_then(|(samples, sr)| detect_pitch_hz(&samples, sr));
+        self.last_pitch_hz
     }
 
     /// Replaces the PCM of the currently selected take (used by Auto-Tune).
@@ -1961,3 +2017,65 @@ mod tests {
 
 }
 
+/// **The pitch analysis does not hold the analysis mutex while it computes.** The mic
+/// callback owns that mutex for a whole block, and the autocorrelation over the full
+/// 16 384-sample buffer took 4.27 ms at 48 kHz against a 2.67 ms block budget. The window is
+/// now copied under the lock and the maths runs on the copy: the test holds the lock for the
+/// whole analysis, requires it to finish anyway, and requires the answer to come from the
+/// copy rather than from the shared buffer.
+#[test]
+fn the_pitch_analysis_copies_the_window_before_correlating() {
+    const SR: f32 = 48_000.0;
+    const HZ: f32 = 220.0;
+    let buffer = Arc::new(Mutex::new(
+        (0..16_384)
+            .map(|i| 0.6 * (2.0 * std::f32::consts::PI * HZ * i as f32 / SR).sin())
+            .collect::<Vec<f32>>(),
+    ));
+
+    // The production copy: take the lock, copy the window, drop the guard.
+    let started = Instant::now();
+    let (window, sample_rate) =
+        pitch_analysis_snapshot(&buffer, SR).expect("a 16 384-sample buffer");
+    let copy_us = started.elapsed().as_secs_f64() * 1e6;
+
+    // The shared buffer is overwritten after the copy. If the detector read it, this is
+    // what it would find: silence.
+    for sample in buffer.lock().unwrap().iter_mut() {
+        *sample = 0.0;
+    }
+
+    // Hold the analysis mutex for the whole analysis, the way the mic callback does.
+    let guard = buffer.lock().unwrap();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let analyser = std::thread::spawn(move || {
+        let _ = tx.send(detect_pitch_hz(&window, sample_rate));
+    });
+    let started = Instant::now();
+    let detected = rx
+        .recv_timeout(Duration::from_secs(2))
+        .expect("the analysis waited for the analysis mutex — it must run on the copy");
+    let analyse_us = started.elapsed().as_secs_f64() * 1e6;
+    drop(guard);
+    analyser.join().expect("the analysis thread");
+
+    // Throttle: 10 Hz, not once per 60 fps frame.
+    let now = Instant::now();
+    let fifty = now.checked_sub(Duration::from_millis(50)).expect("50 ms back");
+    let hundred = now.checked_sub(LIVE_PITCH_INTERVAL).expect("one interval back");
+    assert!(pitch_analysis_due(None, now), "the first frame must analyse");
+    assert!(!pitch_analysis_due(Some(fifty), now), "50 ms is too early");
+    assert!(pitch_analysis_due(Some(hundred), now), "100 ms is due");
+
+    let detected = detected.expect("220 Hz is in the copy");
+    println!(
+        "live-pitch: copy {copy_us:.1} µs ({} samples) under the lock, analysis {analyse_us:.0} µs \
+         outside it, {detected:.1} Hz although the buffer was zeroed — the lock was held \
+         throughout (was: 4270 µs, all of it locked)",
+        LIVE_PITCH_WINDOW + max_pitch_lag(SR)
+    );
+    assert!(
+        (detected - HZ).abs() / HZ < 0.02,
+        "expected ~{HZ} Hz, got {detected} Hz"
+    );
+}

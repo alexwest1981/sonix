@@ -4125,45 +4125,81 @@ fn a_release_sample_plays_after_the_key_is_let_go() {
     assert!(without < 1e-4, "utan släppljud ska det vara tyst: {without:.6}");
 }
 
-/// Ett JSFX-instrument som källa: tyst utan not, hörs efter `NoteOn`, tystnar på `NoteOff` — och
-/// syntens egna röster hörs inte alls medan instrumentet är satt.
+/// A JSFX instrument as the source: silent without a note, heard after `NoteOn`, silent after
+/// `NoteOff` — and **the swap on the audio thread never touches the filesystem**. The source is
+/// built on the caller's thread (`build_instrument`), so the source file can be deleted before
+/// the command is handled and the note still plays. A `std::fs::read` + `Jsfx::compile` inside
+/// `handle_command` took 17.3–18.6 ms: 6.5 missed 2.667 ms buffers, an audible click.
 #[test]
-fn a_jsfx_instrument_can_be_the_synth_source() {
+fn an_instrument_swap_on_the_audio_thread_reads_no_file() {
     let path = std::env::temp_dir().join(format!("sonix-src-{}.jsfx", std::process::id()));
     std::fs::write(
         &path,
         "@init\ng = 0;\n@sample\nwhile (midirecv(offset, m1, m2, m3)) (\n  st = m1 & 240;\n  st == 144 ? g = 0.5;\n  st == 128 ? g = 0;\n);\nspl0 = g; spl1 = g;\n",
     )
-    .expect("skriv jsfx");
+    .expect("write jsfx");
+    let path = path.display().to_string();
+
+    // The UI thread builds the source out of the file...
+    let started = std::time::Instant::now();
+    let _first = crate::audio::command::build_instrument(Some(&path), 44_100.0)
+        .expect("the file is there when the UI builds the source");
+    let first_build_us = started.elapsed().as_secs_f64() * 1e6;
+    // ...and a second time on a warm interpreter: the first call pays one-time setup.
+    let started = std::time::Instant::now();
+    let source = crate::audio::command::build_instrument(Some(&path), 44_100.0)
+        .expect("the file is there when the UI builds the source");
+    let build_us = started.elapsed().as_secs_f64() * 1e6;
+
+    // ...and the file is gone before the audio thread ever sees the command.
+    std::fs::remove_file(&path).expect("remove the source file");
+    assert!(
+        std::fs::metadata(&path).is_err(),
+        "the source file must be gone before the swap"
+    );
 
     let mut synth = SynthEngine::new(44_100.0);
-    synth.handle_command(AudioCommand::SetInstrument { path: Some(path.display().to_string()) });
-    // Ett block är 512 frames: noten gäller från nästa block, så mät över två.
+    let started = std::time::Instant::now();
+    synth.handle_command(AudioCommand::SetInstrument { source });
+    let swap_us = started.elapsed().as_secs_f64() * 1e6;
+
+    // A block is 512 frames: the note counts from the next block, so measure over two.
     let peak = |s: &mut SynthEngine| {
         (0..1024).map(|_| s.process_stereo().0.abs()).fold(0.0f32, f32::max)
     };
-    assert_eq!(peak(&mut synth), 0.0, "tyst utan not");
+    assert_eq!(peak(&mut synth), 0.0, "silent without a note");
 
     synth.handle_command(AudioCommand::NoteOn { note: 60, freq: 261.6, velocity: 1.0, channel: 0 });
     // Instrumentet ligger på syntens masternivå: hörs, men inte på rå 0,5 (gain + tanh).
     let level = peak(&mut synth);
-    assert!((0.2..0.5).contains(&level), "noten ska höras på masternivå, fick {level}");
+    println!(
+        "instrument swap: build {build_us:.0} µs on the UI thread (first call {first_build_us:.0} µs), \
+         swap {swap_us:.2} µs on the audio thread, source file gone, peak {level:.3} \
+         (block budget 2667 µs; measured before on real instrument files: 17 300–18 600 µs)"
+    );
+    assert!(
+        swap_us < 500.0,
+        "the swap must be a box move, not a file read: {swap_us:.1} µs"
+    );
+    assert!((0.2..0.5).contains(&level), "the note must be heard through the master, got {level}");
 
     synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
-    let _ = peak(&mut synth); // blocket som redan renderats med noten klingar ut först
-    assert_eq!(peak(&mut synth), 0.0, "tyst efter not av");
+    let _ = peak(&mut synth); // the block already rendered with the note rings out first
+    assert_eq!(peak(&mut synth), 0.0, "silent after note off");
 
-    synth.handle_command(AudioCommand::SetInstrument { path: None });
-    let _ = std::fs::remove_file(path);
+    synth.handle_command(AudioCommand::SetInstrument { source: None });
 }
 
 /// **Wavetablen som syntkälla**: samma väg som ett JSFX-instrument, men inbyggd och utan fil.
 #[test]
 fn the_wavetable_can_be_the_synth_source() {
     let mut synth = SynthEngine::new(44_100.0);
-    synth.handle_command(AudioCommand::SetInstrument {
-        path: Some(crate::audio::builtin_fx::wavetable_fx::WAVETABLE_SOURCE_PATH.to_string()),
-    });
+    let source = crate::audio::command::build_instrument(
+        Some(crate::audio::builtin_fx::wavetable_fx::WAVETABLE_SOURCE_PATH),
+        44_100.0,
+    )
+    .expect("builtin source");
+    synth.handle_command(AudioCommand::SetInstrument { source });
     let peak = |s: &mut SynthEngine| {
         (0..1024).map(|_| s.process_stereo().0.abs()).fold(0.0f32, f32::max)
     };
@@ -4173,4 +4209,118 @@ fn the_wavetable_can_be_the_synth_source() {
     println!("wavetable-källa: topp {level:.3} vid C4");
     synth.handle_command(AudioCommand::NoteOff { note: 60, channel: 0 });
     let _ = peak(&mut synth);
+}
+
+/// Allocations counted **on the thread that measures**, so the other tests in the same binary
+/// (allocating concurrently) do not show up in the number.
+mod allocation_probe {
+    use std::alloc::{GlobalAlloc, Layout, System};
+    use std::cell::Cell;
+
+    thread_local! {
+        static ARMED: Cell<bool> = const { Cell::new(false) };
+        static COUNT: Cell<usize> = const { Cell::new(0) };
+    }
+
+    struct Counter;
+
+    // SAFETY: plain forwarding to `System`; the counter only touches thread-local `Cell`s.
+    unsafe impl GlobalAlloc for Counter {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            bump();
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(ptr, layout) }
+        }
+        unsafe fn realloc(&self, ptr: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+            bump();
+            unsafe { System.realloc(ptr, layout, new_size) }
+        }
+    }
+
+    fn bump() {
+        let _ = ARMED.try_with(|armed| {
+            if armed.get() {
+                let _ = COUNT.try_with(|count| count.set(count.get() + 1));
+            }
+        });
+    }
+
+    #[global_allocator]
+    static PROBE: Counter = Counter;
+
+    /// Runs `f` with the counter armed and returns how many allocations it made.
+    pub fn allocations_during(f: impl FnOnce()) -> usize {
+        COUNT.with(|c| c.set(0));
+        ARMED.with(|a| a.set(true));
+        f();
+        ARMED.with(|a| a.set(false));
+        COUNT.with(|c| c.get())
+    }
+}
+
+/// **`process_stereo` allocates zero times.** The sidechain key taps were collected into a
+/// fresh `Vec` inside the per-sample loop — one heap allocation per sample (48 000/s with 32
+/// tracks), and the worst block took 4.29 ms against a 2.67 ms budget. The test counts
+/// allocations over a whole measurement and reports how many blocks went over budget.
+///
+/// The window stays under 48 000 frames: the debug heartbeat (`dbg_log`) allocates once a
+/// second, which is a separate, older issue — not what this test measures.
+#[test]
+fn process_stereo_allocates_nothing() {
+    let mut synth = SynthEngine::new(48_000.0);
+    let one = Arc::new(vec![1.0f32; 4_800]);
+    for i in 0..32 {
+        synth.handle_command(AudioCommand::LoadStemTrack {
+            track_index: i,
+            left: one.clone(),
+            right: one.clone(),
+            sample_rate: 48_000.0,
+            volume: 0.5,
+            pan: 0.0,
+            start_time_secs: 0.0,
+        });
+        synth.handle_command(AudioCommand::SetStemTrackSidechain {
+            track_index: i,
+            from: Some(i.saturating_sub(1)),
+            amount_db: 12.0,
+            threshold_db: -30.0,
+        });
+    }
+    synth.handle_command(AudioCommand::SetSongPlayback(true));
+    // Warm-up: the reused buffer's capacity is taken once, not per sample.
+    for _ in 0..2_048 {
+        let _ = synth.process_stereo();
+    }
+
+    const FRAMES: usize = 128;
+    const BLOCKS: usize = 300;
+    let budget_ms = FRAMES as f32 / 48_000.0 * 1000.0;
+    let mut over_budget = 0usize;
+    let mut worst_ms = 0.0f32;
+    let allocations = allocation_probe::allocations_during(|| {
+        for _ in 0..BLOCKS {
+            let started = std::time::Instant::now();
+            for _ in 0..FRAMES {
+                let _ = synth.process_stereo();
+            }
+            let ms = started.elapsed().as_secs_f64() as f32 * 1000.0;
+            worst_ms = worst_ms.max(ms);
+            if ms > budget_ms {
+                over_budget += 1;
+            }
+        }
+    });
+
+    println!(
+        "process_stereo (32 tracks, sidechains): {allocations} allocations over {} frames, \
+         worst block {worst_ms:.3} ms against a {budget_ms:.3} ms budget, {over_budget}/{BLOCKS} over",
+        FRAMES * BLOCKS
+    );
+    assert_eq!(
+        allocations, 0,
+        "process_stereo must not allocate on the audio thread: {allocations} allocations"
+    );
+    assert!(worst_ms > 0.0, "the measurement must have measured something");
 }
